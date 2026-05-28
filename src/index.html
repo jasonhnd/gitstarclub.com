@@ -199,6 +199,12 @@
     transition: color 150ms, border-color 150ms;
   }
   footer a:hover { color: var(--color-accent); border-color: var(--color-accent); }
+  footer .updated {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.01em;
+  }
+  footer .updated time { color: var(--color-text); }
 </style>
 </head>
 <body>
@@ -229,6 +235,7 @@
 
   <footer>
     <span>Indexing 11 years of GitHub &middot; 5,000+ projects above 10k stars</span>
+    <span class="updated">Updated <time datetime="{{BUILD_ISO}}">{{BUILD_UTC}} UTC &middot; {{BUILD_JST}} JST</time></span>
     <a href="https://github.com/jasonhnd/gitstarclub.com">Source on GitHub</a>
   </footer>
 </body>
