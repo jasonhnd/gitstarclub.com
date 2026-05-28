@@ -1,4 +1,4 @@
-# gitstarhub SEO 设计
+# gitstarclub SEO 设计
 
 > SSG 的核心价值是可被搜索引擎收录、可分享。10M/天流量主要来自搜索引擎长尾
 > （如 "langchain star history"、"github trending 2024"）。SEO 不是加分项，是目标成立的前提。
@@ -26,7 +26,7 @@
 ```
 User-agent: *
 Allow: /
-Sitemap: https://<domain>/sitemap.xml
+Sitemap: https://gitstarclub.com/sitemap.xml
 ```
 
 - 不屏蔽任何内容页；爬虫预算靠站点结构和内链消化
@@ -36,9 +36,9 @@ Sitemap: https://<domain>/sitemap.xml
 
 | 页面 | title 模式 | description |
 |---|---|---|
-| 首页 | `gitstarhub — A Chronicle of Open Source` | 站点一句话介绍 |
-| 年度页 | `GitHub Stars in 2024 — gitstarhub` | 该年 top 项目摘要 |
-| 月度页 | `Top GitHub Repos in October 2024 — gitstarhub` | 当月 top 3 + 数据摘要 |
+| 首页 | `gitstarclub — A Chronicle of Open Source` | 站点一句话介绍 |
+| 年度页 | `GitHub Stars in 2024 — gitstarclub` | 该年 top 项目摘要 |
+| 月度页 | `Top GitHub Repos in October 2024 — gitstarclub` | 当月 top 3 + 数据摘要 |
 | Repo 页 | `anthropic/claude-code — Star History & Timeline` | 描述 + 当前 star + 关键里程碑 |
 
 - 每页 **canonical** 指向自身规范 URL

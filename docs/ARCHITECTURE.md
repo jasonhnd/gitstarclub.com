@@ -1,4 +1,4 @@
-# gitstarhub 架构
+# gitstarclub 架构
 
 > 精简的 SSG-first 架构。核心洞察：**数据只有 ~150-300MB，MVP 不需要数据库。**
 > 设计目标：扛 100万–1000万/天访问，运行时纯静态。产品设计见 [PRODUCT.md](./PRODUCT.md)。

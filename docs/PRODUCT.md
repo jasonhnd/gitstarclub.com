@@ -1,10 +1,10 @@
-# gitstarhub 产品设计
+# gitstarclub 产品设计
 
 > 本文档定义 MVP 的页面、信息架构、URL 与视觉调性。架构与数据层见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 调性
 
-**纸感编年史风**，不是"数据看板"。目的：在一众暗色 dashboard 数据工具里，纸感 + 衬线让 gitstarhub 一眼不同，契合"编年史"概念。
+**纸感编年史风**，不是"数据看板"。目的：在一众暗色 dashboard 数据工具里，纸感 + 衬线让 gitstarclub 一眼不同，契合"编年史"概念。
 
 ### 字体
 
@@ -137,7 +137,7 @@
 
 ## 项目命名
 
-保持 **gitstarhub**。名字是最容易改的东西，先做出来；品牌/域名后续再议。
+项目名 **gitstarclub**，域名 **gitstarclub.com**（已购）。
 
 ## 视觉/交互细节
 
