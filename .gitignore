@@ -12,3 +12,5 @@ data/
 *.json.gz
 .DS_Store
 gcp-key.json
+
+.vercel
