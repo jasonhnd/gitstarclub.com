@@ -21,7 +21,8 @@
 
 | 层 | 选择 | 性质 |
 |---|---|---|
-| 框架 | Next.js 15（App Router + RSC + Turbopack） | Vercel 原生 |
+| 框架 | Next.js 16（App Router + RSC + Turbopack） | Vercel 原生 |
+| 语言/工具链 | TypeScript 6 · React 19 · Zod 4 · Node 24 · 包管理器 bun | 全部最新版 |
 | 样式 | Tailwind 4 + shadcn/ui | |
 | 字体 | Fraunces (variable serif) + Inter | 编辑调性 |
 | **核心数据** | **SQLite 单文件**（`better-sqlite3` build 时查询） | 存 Vercel Blob |
@@ -29,11 +30,21 @@
 | 日常采集 | **Vercel Cron + 单 Function**（GraphQL 批量查） | Vercel 原生 |
 | 一次性回填 | **BigQuery**（GH Archive 公开表）+ DuckDB | 一次性 |
 | 部署 | Vercel | |
-| Web 分析 | Vercel Analytics + Speed Insights | Vercel 原生 |
+| Web 分析 | Vercel Analytics + Speed Insights · **GA4**（`NEXT_PUBLIC_GA_ID`） | |
 | 错误追踪 | Sentry | Vercel Marketplace |
 
 **MVP 不使用**：Tinybird/ClickHouse、Neon/Postgres、Redis、Inngest、GitHub Actions、v0、tRPC。
 理由：数据 < 300MB 无需查询引擎；日常采集足够轻，Vercel Cron 单 Function 即可。
+
+## 预告页（landing，已上线）
+
+主 SSG 应用就绪前，先用一个**独立的纯静态预告页**占位 gitstarclub.com，零运行时依赖：
+
+- 模板 `src/index.html` + 构建脚本 `build.mjs`（Node，无框架）：每次部署注入**构建时刻的 UTC + JST 双时间戳**写入页脚 → 生成 `public/index.html`，并拷贝 `assets/` 下的 OG 图与 favicon
+- Vercel 项目 framework=Other，输出目录 `public/`；CLI `vercel --prod` 部署，生产域名 alias 到该部署
+- GA4 以内嵌 gtag 脚本上报（静态页读不到运行时环境变量）
+- OG 图（1200×630）与 favicon 用本机 **Chrome 无头模式**渲染（完整支持 oklch + Google Fonts），产物提交进 `assets/`
+- 主应用（`web/` Next.js 16）上线后，此预告页退役
 
 ## 数据流
 
