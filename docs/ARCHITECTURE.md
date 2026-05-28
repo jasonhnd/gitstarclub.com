@@ -6,7 +6,7 @@
 ## 核心洞察
 
 1. **数据很小**：5,248 个 ≥10k star repo × 11 年日序列 ≈ 800 万行 ≈ 单个 SQLite 文件 150-300MB。
-2. **所有页面都是确定性聚合**：~5,400 页全部可在 build 时算完，烤进静态 HTML，运行时零查询。
+2. **所有页面都是确定性聚合**：~5,400 页全部可在 build 时算完，烤进静态 HTML，运行时零 DB 查询（热集每日由 cron 增量刷新，见「页面分层与重建节奏」）。
 3. **日常增量不需要 GH Archive**：每日增量 = 今日总 star − 昨日总 star，用 GraphQL 批量查即可。
 4. **数据库延后**：MVP database-free；ClickHouse/Tinybird 留到 v0.3 扩到 ≥100 star 时才有真实需求。
 
@@ -43,7 +43,7 @@
 - 模板 `src/index.html` + 构建脚本 `build.mjs`（Node，无框架）：每次部署注入**构建时刻的 UTC + JST 双时间戳**写入页脚 → 生成 `public/index.html`，并拷贝 `assets/` 下的 OG 图与 favicon
 - Vercel 项目 framework=Other，输出目录 `public/`；CLI `vercel --prod` 部署，生产域名 alias 到该部署
 - GA4 以内嵌 gtag 脚本上报（静态页读不到运行时环境变量）
-- OG 图（1200×630）与 favicon 用本机 **Chrome 无头模式**渲染（完整支持 oklch + Google Fonts），产物提交进 `assets/`
+- OG 图（1200×630）与 favicon 用本机 **Chrome 无头模式**渲染（脚本 `render-assets.mjs`，完整支持 Google Fonts；M3E 琥珀金配色，与 teaser 一致），产物提交进 `assets/`。图标 svg 用 `100vmin` 锁定方形，规避无头渲染时画布宽度翻倍导致的内容偏移
 - 主应用（`web/` Next.js 16）上线后，此预告页退役
 
 ## 数据流
@@ -59,17 +59,19 @@
 │  上传 SQLite → Vercel Blob                          │
 └─────────────────────────────────────────────────────┘
 
-┌─ 每日（Vercel Cron，03:00，单 Function，轻量）──────┐
-│  1. 下载 SQLite ← Blob                              │
-│  2. GraphQL 批量查 5,248 repo 当前 star（~53 查询）  │
-│  3. 昨日增量 = 今日总数 − 昨日总数，append 到 SQLite │
-│  4. 上传 SQLite → Blob                              │
-│  5. POST Vercel Deploy Hook → 触发重建              │
+┌─ 每日（Vercel Cron，03:00，单 Function，秒级）──────┐
+│  1. GraphQL 批量查 5,248 repo 当前 star（~53 查询）  │
+│  2. 昨日增量 = 今日总数 − 昨日总数，append canonical │
+│  3. 重算热集小聚合 → 写 hot-snapshot.json（~KB）Blob │
+│  4. revalidatePath 首页/当年/当月（×3 语言，~9 页）  │
+│     不再每日全量 rebuild（全量改每周）              │
 └─────────────────────────────────────────────────────┘
 
-┌─ 每周（Vercel Cron）────────────────────────────────┐
-│  GitHub search stars:>=10000 → diff 白名单           │
-│  新晋者：stargazers API（starred_at）补历史 → SQLite │
+┌─ 每周（Vercel Cron + Deploy Hook，全量重建）────────┐
+│  1. GitHub search stars:>=10000 → diff 白名单        │
+│  2. 新晋者：stargazers API（starred_at）补历史       │
+│  3. Deploy Hook → 全量 rebuild：repo 页 + 新历史页   │
+│     （~16k 页 ~8-27min，唯一的重 build）            │
 └─────────────────────────────────────────────────────┘
 
 ┌─ Build（每次 deploy）───────────────────────────────┐
@@ -188,13 +190,30 @@ build 时的聚合（示例）：
 - **Vercel build 时间**：Pro 计划单次 build 上限 45 分钟。16,200 页若每页 ~30-100ms，渲染约 8-27 分钟，**接近但可控**；OG 图生成是大头，需分摊
 - **OG 图离线化**：OG 图**不在每次 build 生成**。仅在数据变化时（pipeline 侧）增量生成变化页的 OG → 存 Blob。历史页 OG 永不重生成
 - **数据查询**：build 时 SQLite 全量载入内存（300MB 可行），所有聚合预算一次、缓存为内存对象，各页直接读，避免每页重复查询
-- **增量静态再生（关键）**：历史月份/年份/未变 repo 页用长 `revalidate` + on-demand revalidation，**不在日常 build 重新生成**；只有首页、当月、当年、当日变化的 repo 页参与每日更新
-- **风险阈值**：若 build 逼近上限，分两段——核心页（首页/年/月，~440 页）每日 build；repo 页改为 ISR 首次访问生成 + 长缓存
+- **页面分层重建（核心，见下）**：按"数据是否还会变"分三层配不同节奏，让重 build 只在每周发生
+
+### 页面分层与重建节奏（已决：解 SSG × 新鲜 × build 三角）
+
+| 层 | 页面 | 新鲜度 | 机制 |
+|---|---|---|---|
+| **热集** | 首页 · 当年 · 当月（×3 语言 ≈ 9 页） | 每日 | ISR 读 Blob 上 `hot-snapshot.json`（~KB 小聚合）；每日 cron `revalidatePath` 触发再生。Function 仅再生时跑、读 KB 不读 300MB，用户热路径仍 100% 命中 CDN |
+| **周更** | repo 详情页（~5,248 × 3） | 每周 | build 时 SSG，每周全量 redeploy 随 SQLite 一起重生；曲线尾部周级新鲜，编年史产品可接受 |
+| **冻结** | 历史年 / 月页 | 永不变 | 首次 build 生成后视为 immutable，后续不再重生（Next build cache / `revalidate:false`） |
+
+**重建节奏**：
+
+- **每周全量 build**（周日 cron + Deploy Hook）：重生周更层 + 新历史页，~16k 页 ~8-27min——**唯一的重 build**，落在 45min 预算内
+- **每日**：**不触发 deploy**；cron 更新数据 + 写 `hot-snapshot.json` + revalidate 热集 9 页，秒级完成
+- **按需**：代码 / 结构变更走正常全量 deploy
+
+**为什么这样分**：历史数据根本不变，每天重建纯浪费；repo 曲线是"历史"非"实时"，周级够用；只有首页 / 当期要每日新鲜。重 build 频率从每天降到每周，build 预算彻底脱险。
+
+**运行时不读 300MB**：重活（下载 300MB、append、算快照）全在每日 cron Function 内完成；热集 ISR 再生只读 KB 级 `hot-snapshot.json`，绝不在请求路径加载 SQLite；周更 / 冻结层是纯静态产物。
 
 ### 渲染策略
 
 - **build 时**：下载 SQLite → 内存预聚合 → 生成静态页 → Vercel Edge CDN
-- **运行时**：99.99% 请求命中边缘缓存，0 Function、0 查询
+- **运行时**：用户请求 99.99% 命中边缘缓存（0 查询、热路径 0 Function）；仅热集 ISR 在被 cron revalidate 后、由首个请求触发再生跑一次轻量 Function（读 KB 快照）
 - **每日更新**：见下「每日 cron 的无状态机制」
 
 ### 每日 cron 的无状态机制（Vercel Function 无持久磁盘）
@@ -207,7 +226,9 @@ build 时的聚合（示例）：
 3. better-sqlite3 打开 /tmp 文件，append 一日数据，更新 first_crossed_10k
 4. 以【新版本文件名】上传 Blob（如 data-2026-05-29.sqlite），不覆盖旧文件
 5. 原子更新一个指针（Blob 上的 latest.json → 指向新文件名）
-6. POST Vercel Deploy Hook → 触发重建
+6. 用 /tmp 里的 SQLite 重算热集小聚合（首页 / 当年 / 当月）→ 写 hot-snapshot.json → Blob
+7. revalidatePath 首页 / 当年 / 当月（×3 语言）→ 仅这 ~9 页按需再生
+   （全量 rebuild 不在每日；改由每周 Deploy Hook 触发）
 ```
 
 **并发与原子性**：
