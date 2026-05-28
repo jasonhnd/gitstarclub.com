@@ -2,89 +2,148 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
+  /* ===== Material 3 Expressive — amber seed (#F2A900), light scheme ===== */
+  :root {
+    --md-sys-color-primary-container: #f2a900;
+    --md-sys-color-on-primary-container: #614200;
+    --md-sys-color-primary-fixed-dim: #ffba3b;
+    --md-sys-color-tertiary: #00668a;
+    --md-sys-color-tertiary-container: #3fc3ff;
+    --md-sys-color-on-tertiary-container: #004e6b;
+    --md-sys-color-background: #fff8f3;
+    --md-sys-color-on-surface: #211b11;
+    --md-sys-color-on-surface-variant: #514533;
+    --md-sys-color-surface-container-high: #f4e6d6;
+    --md-sys-color-outline-variant: #d6c4ac;
+
+    --shape-m: 12px;
+    --shape-full: 999px;
+    --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, monospace;
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 1200px; height: 630px; }
-  :root {
-    --bg: oklch(98% 0.005 90);
-    --text: oklch(20% 0 0);
-    --muted: oklch(45% 0 0);
-    --accent: oklch(45% 0.13 250);
-    --rule: oklch(85% 0 0);
-  }
   body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: "Inter", sans-serif;
+    background: var(--md-sys-color-background);
+    color: var(--md-sys-color-on-surface);
+    font-family: var(--font-sans);
     padding: 64px 72px;
     display: flex;
     flex-direction: column;
-    position: relative;
-    overflow: hidden;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  body::before {
-    content: "";
-    position: absolute; inset: 0;
-    opacity: 0.03; pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
+
+  /* ===== Top bar ===== */
   .top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-bottom: 22px;
-    border-bottom: 1px solid var(--rule);
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
   }
-  .mark { font-family: "Geist Mono", monospace; font-size: 26px; letter-spacing: 0.01em; }
-  .mark b { color: var(--accent); font-weight: 500; }
-  .status {
-    font-family: "Geist Mono", monospace; font-size: 17px;
-    text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
-    display: flex; align-items: center; gap: 11px;
+  .mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 800;
+    font-size: 30px;
+    letter-spacing: -0.02em;
+    color: var(--md-sys-color-on-surface);
   }
-  .status::before { content:""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+  .mark .star { color: var(--md-sys-color-primary-fixed-dim); font-size: 1.05em; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 22px;
+    border-radius: var(--shape-full);
+    background: color-mix(in oklab, var(--md-sys-color-tertiary-container) 55%, transparent);
+    color: var(--md-sys-color-on-tertiary-container);
+    font-size: 19px;
+    font-weight: 600;
+    border: 1px solid color-mix(in oklab, var(--md-sys-color-tertiary) 35%, transparent);
+  }
+  .chip .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--md-sys-color-tertiary); }
 
+  /* ===== Main ===== */
   main { flex: 1; display: flex; flex-direction: column; justify-content: center; }
   h1 {
-    font-family: "Fraunces", serif; font-weight: 400;
-    font-size: 104px; line-height: 1.0; letter-spacing: -0.02em;
-    max-width: 16ch;
+    font-weight: 800;
+    font-size: 78px;
+    line-height: 1.04;
+    letter-spacing: -0.035em;
   }
-  h1 em { font-style: italic; color: var(--accent); }
-  .lede { margin-top: 28px; font-size: 30px; color: var(--muted); max-width: 30ch; }
+  .hl {
+    color: var(--md-sys-color-on-primary-container);
+    background: var(--md-sys-color-primary-container);
+    border-radius: var(--shape-m);
+    padding: 0.01em 0.16em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+  .lede {
+    margin-top: 22px;
+    font-size: 27px;
+    font-weight: 400;
+    line-height: 1.3;
+    color: var(--md-sys-color-on-surface-variant);
+    max-width: 38ch;
+  }
 
-  .spine { display: flex; gap: 14px; align-items: flex-end; margin-top: 44px; height: 96px; }
+  /* ===== Year spine ===== */
+  .spine { display: flex; gap: 16px; align-items: flex-end; margin-top: 30px; }
   .col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-  .col .bar { width: 30px; background: var(--accent); border-radius: 2px; opacity: 0.88; }
-  .col .yr { font-family: "Geist Mono", monospace; font-size: 16px; color: var(--muted); }
-
-  footer {
-    display: flex; align-items: center; justify-content: space-between;
-    padding-top: 22px; border-top: 1px solid var(--rule);
-    font-size: 20px; color: var(--muted);
+  .col .bar {
+    width: 34px;
+    border-radius: var(--shape-full);
+    background: var(--md-sys-color-primary-container);
   }
-  footer .url { font-family: "Geist Mono", monospace; color: var(--text); }
+  .col.peak .bar { background: var(--md-sys-color-primary-fixed-dim); }
+  .col .yr {
+    font-family: var(--font-mono);
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface-variant);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ===== Footer ===== */
+  footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 24px;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    font-size: 21px;
+    color: var(--md-sys-color-on-surface-variant);
+  }
+  footer .url { font-family: var(--font-mono); font-weight: 500; color: var(--md-sys-color-on-surface); }
 </style>
 </head>
 <body>
   <div class="top">
-    <span class="mark">git<b>star</b>club</span>
-    <span class="status">Launching soon</span>
+    <span class="mark"><span class="star">&#9733;</span>gitstarclub</span>
+    <span class="chip"><span class="dot"></span>Launching soon</span>
   </div>
 
   <main>
-    <h1>A chronicle of <em>open source</em>.</h1>
+    <h1>A chronicle of<br><span class="hl">open source</span>.</h1>
     <p class="lede">Look back, month by month, at which GitHub projects were rising.</p>
 
     <div class="spine">
-      <div class="col"><div class="bar" style="height:24%"></div><span class="yr">2019</span></div>
-      <div class="col"><div class="bar" style="height:38%"></div><span class="yr">2020</span></div>
-      <div class="col"><div class="bar" style="height:52%"></div><span class="yr">2021</span></div>
-      <div class="col"><div class="bar" style="height:66%"></div><span class="yr">2022</span></div>
-      <div class="col"><div class="bar" style="height:86%"></div><span class="yr">2023</span></div>
-      <div class="col"><div class="bar" style="height:100%"></div><span class="yr">2024</span></div>
+      <div class="col"><div class="bar" style="height:22px"></div><span class="yr">2019</span></div>
+      <div class="col"><div class="bar" style="height:32px"></div><span class="yr">2020</span></div>
+      <div class="col"><div class="bar" style="height:40px"></div><span class="yr">2021</span></div>
+      <div class="col"><div class="bar" style="height:36px"></div><span class="yr">2022</span></div>
+      <div class="col"><div class="bar" style="height:54px"></div><span class="yr">2023</span></div>
+      <div class="col peak"><div class="bar" style="height:66px"></div><span class="yr">2024</span></div>
+      <div class="col"><div class="bar" style="height:58px"></div><span class="yr">2025</span></div>
     </div>
   </main>
 
