@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "render": "node render-assets.mjs",
     "build": "node build.mjs"
   }
 }

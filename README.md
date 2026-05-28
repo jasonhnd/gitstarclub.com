@@ -62,12 +62,13 @@ gitstarclub/
 │
 │   # ── 预告页（已上线 gitstarclub.com，纯静态零依赖）──
 ├── src/index.html               # 预告页模板（含 {{BUILD_UTC/JST/ISO}} 占位符）
-├── assets/                      # OG 图 + favicon 源与产物
-│   ├── og.html / icon.html      # Chrome 无头渲染源
+├── assets/                      # OG 图 + favicon 源与产物（M3E 琥珀金）
+│   ├── og.html / icon.html      # Chrome 无头渲染源（M3E：Plus Jakarta Sans + 琥珀）
 │   ├── og.png (1200×630)        # 社交分享图
 │   ├── favicon.svg / favicon.png / apple-touch-icon.png
+├── render-assets.mjs            # 无头 Chrome 渲染 og/favicon PNG（仅源变更时重跑）
 ├── build.mjs                    # 注入 UTC+JST 时间戳 → 生成 public/，拷贝 assets
-├── package.json                 # build 脚本（node build.mjs）
+├── package.json                 # 脚本：render（出图）/ build（部署）
 ├── public/                      # 构建产物（gitignore）：index.html + 图标 + og
 │
 ├── pipeline/                    # 数据采集
@@ -101,7 +102,7 @@ gitstarclub/
 ### v0.1 — MVP（目标：一周内上线）
 
 - [x] 预告页上线（gitstarclub.com，M3 Expressive 静态页 + 明暗双模式 + GA4 + UTC/JST 页脚时间戳 + OG/favicon）
-- [ ] OG 图 / favicon 重渲染为 M3E 琥珀金配色（`assets/og.html`、`assets/icon.html`、`favicon.svg` 仍是旧纸感）
+- [x] OG 图 / favicon 重渲染为 M3E 琥珀金配色（`assets/og.html`、`assets/icon.html`、`favicon.svg`，经 `render-assets.mjs` 出图）
 - [x] Next.js 16 骨架（TS6 / React19 / Zod4 / Tailwind4 / bun）
 - [ ] BigQuery 回填 2015-至今 ≥10k repo 日序列 → canonical SQLite
 - [ ] GraphQL 抓 5,248 repo 元数据 → SQLite → 上传 Vercel Blob
@@ -135,7 +136,7 @@ gitstarclub/
 
 ## 开发状态
 
-- **预告页已上线**：gitstarclub.com（静态页，Vercel CLI 部署）。含 GA4、UTC+JST 页脚时间戳、OG 图与 favicon。
+- **预告页已上线**：gitstarclub.com（静态页，Vercel CLI 部署）。含 GA4、UTC+JST 页脚时间戳、M3E 琥珀金 OG 图与 favicon（`render-assets.mjs` 出图）。
 - **Next.js 16 应用骨架已建**（`web/`，TS6 / React19 / Zod4 / Tailwind4 / bun），尚未接入数据。
 - **数据假设已实测确认**（2026-05-28）：≥10k = 5,248 · ≥1k = 62,181 · ≥100 = 460,397；GraphQL 批量查 `stargazerCount` 验证可行。
 - 下一步：BigQuery 回填 → SQLite → 四个核心页面接真实数据。需先准备 GCP 凭证、GitHub PAT、Vercel Blob store。
