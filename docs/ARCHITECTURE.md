@@ -23,8 +23,8 @@
 |---|---|---|
 | 框架 | Next.js 16（App Router + RSC + Turbopack） | Vercel 原生 |
 | 语言/工具链 | TypeScript 6 · React 19 · Zod 4 · Node 24 · 包管理器 bun | 全部最新版 |
-| 样式 | Tailwind 4 + shadcn/ui | |
-| 字体 | Fraunces (variable serif) + Inter | 编辑调性 |
+| 样式 | Tailwind 4 + Material 3 Expressive tokens（`material-color-utilities` 生成）；组件库待定（`@material/web` 或自建） | M3E |
+| 字体 | Plus Jakarta Sans（几何变量无衬线）+ Geist Mono（数字/repo 名） | M3E 字体 |
 | **核心数据** | **SQLite 单文件**（`better-sqlite3` build 时查询） | 存 Vercel Blob |
 | 对象存储 | Vercel Blob（SQLite 数据 + 预生成 OG 图） | Vercel 原生 |
 | 日常采集 | **Vercel Cron + 单 Function**（GraphQL 批量查） | Vercel 原生 |
@@ -232,7 +232,7 @@ GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount`
 | HTML < 20KB | 直接降 bandwidth |
 | 内容页零客户端 JS | 图表服务端渲染 SVG |
 | `Cache-Control: s-maxage=86400, stale-while-revalidate` | 历史页强缓存 |
-| 字体子集化 + woff2 | Fraunces 控制在 ~30KB |
+| 字体子集化 + woff2 | Plus Jakarta Sans 子集控制在 ~30KB |
 | OG 图预生成存 Blob | 不消耗 Function |
 
 ### Bandwidth 防御阶梯
@@ -271,7 +271,7 @@ GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount`
 
 - SVG 图表（star 曲线 / 热力图）带 `<title>` + `aria-label`，并提供视觉隐藏的**数据表 fallback** 供屏幕阅读器
 - 语义化 HTML（`<main>`/`<nav>`/`<article>`），面包屑用 `<nav aria-label>`
-- 墨蓝强调色对暖白底满足 WCAG AA 对比度
+- M3 amber/teal 角色对暖调 surface 满足 WCAG AA 对比度（M3 tone 映射保证 on-* 配对可读），明暗双模式均达标
 - 键盘可达：所有内链可 Tab 聚焦，focus 态可见
 
 ## 演进路线（数据库何时引入）

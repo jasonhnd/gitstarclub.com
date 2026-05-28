@@ -65,7 +65,7 @@ Sitemap: https://gitstarclub.com/sitemap.xml
 | Repo 页 | repo 名 + star 曲线缩略 + 当前 star |
 
 - Twitter `summary_large_image` + Open Graph 全套
-- 字体与站点一致（Fraunces 标题）
+- 字体与站点一致（Plus Jakarta Sans 标题）；OG 卡片走 M3E 琥珀金配色
 
 ## 多语言 SEO（EN / JA / ZH）
 

@@ -100,7 +100,8 @@ gitstarclub/
 
 ### v0.1 — MVP（目标：一周内上线）
 
-- [x] 预告页上线（gitstarclub.com，纸感静态页 + GA4 + UTC/JST 页脚时间戳 + OG/favicon）
+- [x] 预告页上线（gitstarclub.com，M3 Expressive 静态页 + 明暗双模式 + GA4 + UTC/JST 页脚时间戳 + OG/favicon）
+- [ ] OG 图 / favicon 重渲染为 M3E 琥珀金配色（`assets/og.html`、`assets/icon.html`、`favicon.svg` 仍是旧纸感）
 - [x] Next.js 16 骨架（TS6 / React19 / Zod4 / Tailwind4 / bun）
 - [ ] BigQuery 回填 2015-至今 ≥10k repo 日序列 → canonical SQLite
 - [ ] GraphQL 抓 5,248 repo 元数据 → SQLite → 上传 Vercel Blob
