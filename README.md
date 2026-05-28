@@ -26,7 +26,8 @@
 | 核心数据 | **SQLite 单文件**（~150-300MB，存 Vercel Blob）；MVP 不需要数据库 |
 | 一次性回填 | **BigQuery**（GH Archive 公开表）+ DuckDB，~$10 |
 | 日常采集 | **Vercel Cron + 单 Function**：GraphQL 批量查当前 star，diff 出增量 |
-| 框架 | Next.js 15（App Router + RSC + Turbopack） |
+| 框架 | Next.js 16（App Router + RSC + Turbopack） |
+| 语言/工具链 | TypeScript 6 · React 19 · Zod 4 · Tailwind 4 · 包管理器 **bun** · Node 24 |
 | 部署 | Vercel（统一计费） |
 | 扛量目标 | 100万–1000万/天 |
 
@@ -58,12 +59,23 @@ gitstarclub/
 │   ├── ARCHITECTURE.md          # 技术栈、数据流、数据模型、扛量、build/cron 机制
 │   ├── PRODUCT.md               # 页面设计、URL、调性、i18n、命名
 │   └── SEO.md                   # sitemap、meta、结构化数据、OG、多语言 SEO
+│
+│   # ── 预告页（已上线 gitstarclub.com，纯静态零依赖）──
+├── src/index.html               # 预告页模板（含 {{BUILD_UTC/JST/ISO}} 占位符）
+├── assets/                      # OG 图 + favicon 源与产物
+│   ├── og.html / icon.html      # Chrome 无头渲染源
+│   ├── og.png (1200×630)        # 社交分享图
+│   ├── favicon.svg / favicon.png / apple-touch-icon.png
+├── build.mjs                    # 注入 UTC+JST 时间戳 → 生成 public/，拷贝 assets
+├── package.json                 # build 脚本（node build.mjs）
+├── public/                      # 构建产物（gitignore）：index.html + 图标 + og
+│
 ├── pipeline/                    # 数据采集
 │   └── backfill/                # 一次性 11 年回填
 │       ├── bigquery.sql         # 从 GH Archive 提取 ≥10k repo 日序列
 │       ├── load_sqlite.py       # DuckDB 清洗 → 灌入 canonical SQLite
 │       └── fetch_metadata.py    # GraphQL 抓 5,248 repo 元数据
-├── web/                         # Next.js 应用
+├── web/                         # Next.js 16 应用（已搭骨架，待接数据）
 │   ├── app/
 │   │   ├── page.tsx             # 首页时间轴
 │   │   ├── [year]/page.tsx      # 年度页
@@ -88,6 +100,8 @@ gitstarclub/
 
 ### v0.1 — MVP（目标：一周内上线）
 
+- [x] 预告页上线（gitstarclub.com，纸感静态页 + GA4 + UTC/JST 页脚时间戳 + OG/favicon）
+- [x] Next.js 16 骨架（TS6 / React19 / Zod4 / Tailwind4 / bun）
 - [ ] BigQuery 回填 2015-至今 ≥10k repo 日序列 → canonical SQLite
 - [ ] GraphQL 抓 5,248 repo 元数据 → SQLite → 上传 Vercel Blob
 - [ ] Next.js 四个核心页面（首页 / 年 / 月 / repo），build 时 better-sqlite3 查询 + SSG
@@ -120,4 +134,7 @@ gitstarclub/
 
 ## 开发状态
 
-正在搭骨架。还没有可运行代码。
+- **预告页已上线**：gitstarclub.com（静态页，Vercel CLI 部署）。含 GA4、UTC+JST 页脚时间戳、OG 图与 favicon。
+- **Next.js 16 应用骨架已建**（`web/`，TS6 / React19 / Zod4 / Tailwind4 / bun），尚未接入数据。
+- **数据假设已实测确认**（2026-05-28）：≥10k = 5,248 · ≥1k = 62,181 · ≥100 = 460,397；GraphQL 批量查 `stargazerCount` 验证可行。
+- 下一步：BigQuery 回填 → SQLite → 四个核心页面接真实数据。需先准备 GCP 凭证、GitHub PAT、Vercel Blob store。
