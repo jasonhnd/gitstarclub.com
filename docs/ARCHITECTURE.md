@@ -232,6 +232,37 @@ GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount`
 2. **1M – 5M/天**：极致压缩（Brotli 11、精简 HTML）
 3. **5M+/天**：Vercel 前挂 Cloudflare 吸收 egress，可砍 80–90% → ~$200–400/月
 
+## 运维 / 数据质量 / 合规
+
+### 时间与时区
+
+- **存储**：一律 UTC。每日 star 聚合按 **UTC 天边界**（与 GH Archive 一致），避免边界歧义
+- **显示**：凡出现具体时间点处（如 "last synced"、里程碑达成时刻），**双时间显示 UTC + JST**（日本时间）
+- JA locale 默认以 JST 为主、UTC 为辅；其余 locale 以 UTC 为主、JST 为辅
+- 日期粒度的数据（某日新增 star）不涉及时区换算，按 UTC 日呈现
+
+### 数据校验 / 对账
+
+两个来源会漂移：BigQuery 历史是 **gross adds**（只记加 star，数不到取消）；GraphQL 是**权威当前总数**。
+
+- 每日 cron 抓到 GraphQL 当前总数后，与"我们累加出的总数"比对
+- 漂移超阈值（如 > 2%）时，**以 GraphQL 为权威锚点**修正 `total_stars`，并记录 `sync_runs`
+- 保证页面显示的当前 star 数始终准确；历史曲线形状保留（gross），仅锚定终点
+- pipeline 跑 sanity check：单日新增异常（负数 / 突刺）打日志告警
+
+### 合规 / 署名
+
+- **GH Archive**：数据按其公开条款使用，About 页注明来源 "Data from GH Archive (gharchive.org)"
+- **GitHub**：通过官方 GraphQL/Search API 取数，遵守 ToS 与限额；仅展示公开 repo 公开数据
+- About 页声明数据口径（gross vs net、幸存者偏差、起点 2015）与来源链接
+
+### 无障碍（a11y）
+
+- SVG 图表（star 曲线 / 热力图）带 `<title>` + `aria-label`，并提供视觉隐藏的**数据表 fallback** 供屏幕阅读器
+- 语义化 HTML（`<main>`/`<nav>`/`<article>`），面包屑用 `<nav aria-label>`
+- 墨蓝强调色对暖白底满足 WCAG AA 对比度
+- 键盘可达：所有内链可 Tab 聚焦，focus 态可见
+
 ## 演进路线（数据库何时引入）
 
 | 阶段 | 触发条件 | 引入 |
