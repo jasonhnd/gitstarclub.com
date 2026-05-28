@@ -1,16 +1,16 @@
-# gitstarhub
+# gitstarclub
 
 > 一本可浏览的 GitHub 开源编年史 —— 按月 / 季 / 年回看哪些项目正在被关注。
 
 ## 是什么
 
-`gitstarhub` 把整个 GitHub 上**值得关注的开源项目**按时间维度索引，让你可以：
+`gitstarclub` 把整个 GitHub 上**值得关注的开源项目**按时间维度索引，让你可以：
 
 - 翻到任意一个月份，看那个月**最受关注**的项目是什么
 - 看任意 repo 的完整 star 曲线和"何时爆发"的拐点
 - 用时间作为第一导航，像翻阅编年史一样浏览开源世界
 
-不同于 GitHub Trending（只看当下）或 star-history（只看单个 repo），`gitstarhub` 提供的是**可回溯的、有结构的、有叙事的**开源历史视角。
+不同于 GitHub Trending（只看当下）或 star-history（只看单个 repo），`gitstarclub` 提供的是**可回溯的、有结构的、有叙事的**开源历史视角。
 
 ## MVP 范围
 
@@ -52,7 +52,7 @@ MVP 这一层：
 ## 项目结构（初版）
 
 ```
-gitstarhub/
+gitstarclub/
 ├── README.md
 ├── docs/
 │   ├── ARCHITECTURE.md          # 技术栈、数据流、数据模型、扛量、build/cron 机制
@@ -111,7 +111,7 @@ gitstarhub/
 
 ## 主要参考与差异化
 
-| 项目 | 它做什么 | gitstarhub 的差异 |
+| 项目 | 它做什么 | gitstarclub 的差异 |
 |---|---|---|
 | star-history.com | 单个 repo star 曲线 | 整个生态的时间索引 |
 | gitstar-ranking.com | 当前总榜 | 任意时间点的榜单 |
