@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; }
+  :root {
+    --bg: oklch(98% 0.005 90);
+    --text: oklch(20% 0 0);
+    --muted: oklch(45% 0 0);
+    --accent: oklch(45% 0.13 250);
+    --rule: oklch(85% 0 0);
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Inter", sans-serif;
+    padding: 64px 72px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: "";
+    position: absolute; inset: 0;
+    opacity: 0.03; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .mark { font-family: "Geist Mono", monospace; font-size: 26px; letter-spacing: 0.01em; }
+  .mark b { color: var(--accent); font-weight: 500; }
+  .status {
+    font-family: "Geist Mono", monospace; font-size: 17px;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+    display: flex; align-items: center; gap: 11px;
+  }
+  .status::before { content:""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+
+  main { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  h1 {
+    font-family: "Fraunces", serif; font-weight: 400;
+    font-size: 104px; line-height: 1.0; letter-spacing: -0.02em;
+    max-width: 16ch;
+  }
+  h1 em { font-style: italic; color: var(--accent); }
+  .lede { margin-top: 28px; font-size: 30px; color: var(--muted); max-width: 30ch; }
+
+  .spine { display: flex; gap: 14px; align-items: flex-end; margin-top: 44px; height: 96px; }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .col .bar { width: 30px; background: var(--accent); border-radius: 2px; opacity: 0.88; }
+  .col .yr { font-family: "Geist Mono", monospace; font-size: 16px; color: var(--muted); }
+
+  footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 22px; border-top: 1px solid var(--rule);
+    font-size: 20px; color: var(--muted);
+  }
+  footer .url { font-family: "Geist Mono", monospace; color: var(--text); }
+</style>
+</head>
+<body>
+  <div class="top">
+    <span class="mark">git<b>star</b>club</span>
+    <span class="status">Launching soon</span>
+  </div>
+
+  <main>
+    <h1>A chronicle of <em>open source</em>.</h1>
+    <p class="lede">Look back, month by month, at which GitHub projects were rising.</p>
+
+    <div class="spine">
+      <div class="col"><div class="bar" style="height:24%"></div><span class="yr">2019</span></div>
+      <div class="col"><div class="bar" style="height:38%"></div><span class="yr">2020</span></div>
+      <div class="col"><div class="bar" style="height:52%"></div><span class="yr">2021</span></div>
+      <div class="col"><div class="bar" style="height:66%"></div><span class="yr">2022</span></div>
+      <div class="col"><div class="bar" style="height:86%"></div><span class="yr">2023</span></div>
+      <div class="col"><div class="bar" style="height:100%"></div><span class="yr">2024</span></div>
+    </div>
+  </main>
+
+  <footer>
+    <span>Indexing 11 years of GitHub &middot; 5,000+ projects above 10k stars</span>
+    <span class="url">gitstarclub.com</span>
+  </footer>
+</body>
+</html>

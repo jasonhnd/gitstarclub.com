@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 
 const now = new Date();
 
@@ -24,4 +24,9 @@ let html = readFileSync('src/index.html', 'utf8')
 mkdirSync('public', { recursive: true });
 writeFileSync('public/index.html', html);
 
-console.log(`Built public/index.html — ${utc} UTC · ${jst} JST`);
+const staticAssets = ['favicon.svg', 'favicon.png', 'apple-touch-icon.png', 'og.png'];
+for (const file of staticAssets) {
+  copyFileSync(`assets/${file}`, `public/${file}`);
+}
+
+console.log(`Built public/index.html (+${staticAssets.length} assets) — ${utc} UTC · ${jst} JST`);
