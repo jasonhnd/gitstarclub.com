@@ -19,10 +19,14 @@
 | 数据集 | 公开 repo，star ≥ **10,000**（约 5,248 个，2026-05 实测） |
 | 时间范围 | 2015-01 至今 |
 | 数据源 | [GH Archive](https://www.gharchive.org/) + GitHub GraphQL API |
-| 核心页面 | 首页时间轴 / 月度页 / Repo 详情页 |
-| 存储 | Postgres（足够；将来扩到 ≥100 star 再切 ClickHouse） |
-| 框架 | Next.js 15 App Router + ISR |
-| 部署 | Vercel |
+| 核心页面 | 首页 / 年度页 / 月度页 / Repo 详情页 |
+| 渲染 | **SSG-first**：build 全量预生成 ~5,400 静态页，内容页零客户端 JS |
+| 核心数据 | **SQLite 单文件**（~150-300MB，存 Vercel Blob）；MVP 不需要数据库 |
+| 一次性回填 | **BigQuery**（GH Archive 公开表）+ DuckDB，~$10 |
+| 日常采集 | **Vercel Cron + 单 Function**：GraphQL 批量查当前 star，diff 出增量 |
+| 框架 | Next.js 15（App Router + RSC + Turbopack） |
+| 部署 | Vercel（统一计费） |
+| 扛量目标 | 100万–1000万/天 |
 
 > v0.2 之后再加：LLM 月度叙事、主题聚类、相似推荐、对比页、用户系统、下钻到 ≥100 star 的"观察层"。
 
@@ -38,9 +42,10 @@ GitHub Search API 实测（2026-05）：
 
 MVP 这一层：
 
-- Star 事件总量约 **2-4 亿条**，Postgres 单库可承载
-- 全量 LLM 摘要成本：**$5-10**（Claude Haiku，留待 v0.2）
-- 全量 embedding：**$2-5**（留待 v0.2）
+- 我们只关心这 5,248 个 repo 的 star（约 1.3 亿次），按天聚合后 **~800 万行**
+- 核心数据 = 单个 **SQLite 文件，150-300MB**（不是 TB！TB 是 GH Archive 全事件量）
+- 一次性回填走 BigQuery 扫描（~$10），日常增量靠 GraphQL diff
+- 全量 LLM 摘要：**$5-10**（Claude Haiku，留待 v0.2）
 
 ## 项目结构（初版）
 
@@ -48,27 +53,30 @@ MVP 这一层：
 gitstarhub/
 ├── README.md
 ├── docs/
-│   └── ARCHITECTURE.md          # 数据流、表结构、关键决策
-├── pipeline/                    # 数据回填 + 增量同步
-│   ├── backfill/
-│   │   ├── fetch_gharchive.py   # 从 GH Archive 拉历史 WatchEvent
-│   │   ├── build_whitelist.py   # 算出 ≥10k star 白名单
-│   │   └── fetch_metadata.py    # GraphQL 拉 repo 元数据
-│   ├── incremental/
-│   │   └── daily_sync.py        # 每日增量
-│   └── sql/
-│       └── schema.sql           # Postgres 建表
+│   ├── ARCHITECTURE.md          # 技术栈、数据流、数据模型、扛量策略
+│   └── PRODUCT.md               # 页面设计、URL、调性
+├── pipeline/                    # 数据采集
+│   └── backfill/                # 一次性 11 年回填
+│       ├── bigquery.sql         # 从 GH Archive 提取 ≥10k repo 日序列
+│       ├── load_sqlite.py       # DuckDB 清洗 → 灌入 canonical SQLite
+│       └── fetch_metadata.py    # GraphQL 抓 5,248 repo 元数据
 ├── web/                         # Next.js 应用
 │   ├── app/
 │   │   ├── page.tsx             # 首页时间轴
+│   │   ├── [year]/page.tsx      # 年度页
 │   │   ├── [year]/[month]/page.tsx
-│   │   └── repo/[owner]/[name]/page.tsx
+│   │   ├── r/[owner]/[name]/page.tsx
+│   │   └── api/cron/
+│   │       ├── daily/route.ts   # 每日：GraphQL diff → SQLite → deploy hook
+│   │       └── weekly/route.ts  # 每周：刷新白名单 + 补新晋历史
 │   ├── components/
 │   │   ├── Timeline.tsx
 │   │   ├── StarCurve.tsx
 │   │   └── RepoCard.tsx
 │   ├── lib/
-│   │   └── db.ts
+│   │   ├── data.ts              # better-sqlite3 查询（build 时）
+│   │   ├── blob.ts              # Vercel Blob 上传/下载 SQLite
+│   │   └── github.ts            # GraphQL 批量查 star
 │   └── package.json
 └── .env.example
 ```
@@ -77,24 +85,26 @@ gitstarhub/
 
 ### v0.1 — MVP（目标：一周内上线）
 
-- [ ] Day 1-2：GH Archive 回填脚本，2015-至今所有 WatchEvent 落库
-- [ ] Day 3：5248 repo 元数据批量抓取
-- [ ] Day 4-5：Next.js 三个核心页面
-- [ ] Day 6：时间轴可视化 + repo star 曲线
-- [ ] Day 7：每日增量 cron + Vercel 部署
+- [ ] BigQuery 回填 2015-至今 ≥10k repo 日序列 → canonical SQLite
+- [ ] GraphQL 抓 5,248 repo 元数据 → SQLite → 上传 Vercel Blob
+- [ ] Next.js 四个核心页面（首页 / 年 / 月 / repo），build 时 better-sqlite3 查询 + SSG
+- [ ] 时间轴 + star 曲线（服务端 SVG，零客户端 JS）
+- [ ] Vercel Cron 每日 GraphQL diff 增量 + deploy hook
+- [ ] Vercel 部署上线
 
 ### v0.2 — 叙事与发现
 
-- LLM 自动生成每月叙事总结（中英双语）
-- 主题聚类、相似 repo 推荐
+- 全站搜索（Pagefind / Orama 静态索引，仍无需后端数据库）
+- LLM 自动生成每月叙事总结（Vercel AI Gateway，中英双语）
 - 月度 / 年度可分享卡片（OG 图）
 - 拐点自动检测与标注
 
-### v0.3 — 下钻与对比
+### v0.3 — 下钻与对比（数据库登场）
 
-- 扩展数据集到 ≥100 star（46 万 repo）
+- 扩展数据集到 ≥100 star（46 万 repo）—— 单文件吃力，引入 **Tinybird (ClickHouse)**
 - 多 repo 对比页
 - 按语言 / topic / 创建年份的切片视图
+- 必要时加 Neon 存元数据、Turbopuffer 做语义检索
 
 ## 主要参考与差异化
 
