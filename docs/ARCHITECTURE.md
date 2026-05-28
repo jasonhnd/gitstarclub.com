@@ -159,21 +159,59 @@ build 时的聚合（示例）：
 
 ### 页面规模
 
-| 类型 | 数量 |
-|---|---|
-| 首页 | 1 |
-| 年度页 | ~11 |
-| 月度页 | ~132 |
-| Repo 详情页 | ~5,248 |
-| **合计** | **~5,400** |
+| 类型 | 数量 | × 3 语言 |
+|---|---|---|
+| 首页 | 1 | 3 |
+| 年度页 | ~11 | ~33 |
+| 月度页 | ~132 | ~396 |
+| Repo 详情页 | ~5,248 | ~15,744 |
+| OG 图（每页一张） | ~5,400 | ~16,200 |
+| **静态页合计** | **~5,400** | **~16,200** |
 
-build 全量预生成，几分钟完成。
+三语 × 5,400 ≈ **16,200 个静态页**（语言策略见 [SEO.md](./SEO.md)）。
+
+### Build 时长策略（必须正视）
+
+16,200 页 + 16,200 张 OG 图，全量 build 不能假设"几分钟"。约束与对策：
+
+- **Vercel build 时间**：Pro 计划单次 build 上限 45 分钟。16,200 页若每页 ~30-100ms，渲染约 8-27 分钟，**接近但可控**；OG 图生成是大头，需分摊
+- **OG 图离线化**：OG 图**不在每次 build 生成**。仅在数据变化时（pipeline 侧）增量生成变化页的 OG → 存 Blob。历史页 OG 永不重生成
+- **数据查询**：build 时 SQLite 全量载入内存（300MB 可行），所有聚合预算一次、缓存为内存对象，各页直接读，避免每页重复查询
+- **增量静态再生（关键）**：历史月份/年份/未变 repo 页用长 `revalidate` + on-demand revalidation，**不在日常 build 重新生成**；只有首页、当月、当年、当日变化的 repo 页参与每日更新
+- **风险阈值**：若 build 逼近上限，分两段——核心页（首页/年/月，~440 页）每日 build；repo 页改为 ISR 首次访问生成 + 长缓存
 
 ### 渲染策略
 
-- **build 时**：下载 SQLite → 查询 → 生成全部静态页 → Vercel Edge CDN
+- **build 时**：下载 SQLite → 内存预聚合 → 生成静态页 → Vercel Edge CDN
 - **运行时**：99.99% 请求命中边缘缓存，0 Function、0 查询
-- **每日更新**：Cron 更新 SQLite + 触发 deploy hook → 全量重建（几分钟，可接受）。后续可优化为只重建首页/当月/当年/变化的 repo 页
+- **每日更新**：见下「每日 cron 的无状态机制」
+
+### 每日 cron 的无状态机制（Vercel Function 无持久磁盘）
+
+每日 cron 需要"下载 300MB SQLite → 改 → 传回"，但 Vercel Function 无状态、有内存/时间上限。机制：
+
+```
+1. Function 启动，从 Blob 下载当前 SQLite（~300MB）到 /tmp（Function 有临时磁盘）
+2. GraphQL 批量查 5,248 repo 当前 star → 计算昨日增量
+3. better-sqlite3 打开 /tmp 文件，append 一日数据，更新 first_crossed_10k
+4. 以【新版本文件名】上传 Blob（如 data-2026-05-29.sqlite），不覆盖旧文件
+5. 原子更新一个指针（Blob 上的 latest.json → 指向新文件名）
+6. POST Vercel Deploy Hook → 触发重建
+```
+
+**并发与原子性**：
+- 采用**版本化文件 + 指针**，而非原地覆盖——build 读到的永远是某个完整版本，绝不会读到写一半的文件
+- build 读 `latest.json` 拿到当前版本文件名再下载，天然隔离 cron 的写入
+- 保留最近 N 个版本便于回滚；旧版本定期清理
+
+**资源核对**：
+- Function 内存：300MB 文件 + better-sqlite3 处理，配置 1-2GB 内存档即可
+- /tmp 容量：Vercel Function 提供 ~512MB 临时磁盘，300MB 文件可行；逼近上限时改用流式或拆分
+- 时间：下载 + 53 GraphQL + 写回 + 上传，约 30-90s，远在 Function 上限内
+
+### GraphQL 限额核对
+
+GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount` 这类标量字段的 query 成本极低（通常 1 point/query）。5,248 repo / 100 per query ≈ **53 query ≈ 53 points**，占小时额度的 ~1%。完全安全。元数据回填（含 topics 等）成本略高但仍远低于上限。
 
 ### 性能策略（为 10M/天）
 

@@ -20,7 +20,9 @@
 | 时间范围 | 2015-01 至今 |
 | 数据源 | [GH Archive](https://www.gharchive.org/) + GitHub GraphQL API |
 | 核心页面 | 首页 / 年度页 / 月度页 / Repo 详情页 |
-| 渲染 | **SSG-first**：build 全量预生成 ~5,400 静态页，内容页零客户端 JS |
+| 渲染 | **SSG-first**：build 预生成 ~5,400 页（× 3 语言 ≈ 16,200），内容页零客户端 JS |
+| 语言 | 英文（主） > 日文 > 中文，hreflang x-default = 英文 |
+| SEO | sitemap 分片 + schema.org + 每页 OG（build 时生成），见 docs/SEO.md |
 | 核心数据 | **SQLite 单文件**（~150-300MB，存 Vercel Blob）；MVP 不需要数据库 |
 | 一次性回填 | **BigQuery**（GH Archive 公开表）+ DuckDB，~$10 |
 | 日常采集 | **Vercel Cron + 单 Function**：GraphQL 批量查当前 star，diff 出增量 |
@@ -53,8 +55,9 @@ MVP 这一层：
 gitstarhub/
 ├── README.md
 ├── docs/
-│   ├── ARCHITECTURE.md          # 技术栈、数据流、数据模型、扛量策略
-│   └── PRODUCT.md               # 页面设计、URL、调性
+│   ├── ARCHITECTURE.md          # 技术栈、数据流、数据模型、扛量、build/cron 机制
+│   ├── PRODUCT.md               # 页面设计、URL、调性、i18n、命名
+│   └── SEO.md                   # sitemap、meta、结构化数据、OG、多语言 SEO
 ├── pipeline/                    # 数据采集
 │   └── backfill/                # 一次性 11 年回填
 │       ├── bigquery.sql         # 从 GH Archive 提取 ≥10k repo 日序列
