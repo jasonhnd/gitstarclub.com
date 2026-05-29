@@ -1,0 +1,17 @@
+{
+  "name": "gitstarclub-pipeline",
+  "private": true,
+  "type": "module",
+  "description": "One-time backfill + offline data jobs. Runs in full Node (not serverless). See docs/PIPELINE.md.",
+  "scripts": {
+    "whitelist": "node backfill/01-whitelist.mjs",
+    "metadata": "node backfill/03-metadata.mjs",
+    "rollup": "node backfill/04-rollup.mjs",
+    "precompute": "node backfill/05-precompute.mjs",
+    "upload": "node backfill/06-upload.mjs"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "^1",
+    "@vercel/blob": "^1"
+  }
+}
