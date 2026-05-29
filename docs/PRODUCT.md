@@ -6,7 +6,7 @@
 
 **Material 3 Expressive（M3E）** —— 2025 / Android 17 的设计语言：鲜明动态的色彩、富表现力的字体层级、圆润形状、弹簧动效、tonal elevation 与毛玻璃质感。
 
-差异化不再靠"纸感"，而靠 **琥珀金 seed 的 tonal 配色 + 金/青对比 + 表现力动效**：在一众暗色极客 dashboard 里仍一眼不同，且 premium。明暗双模式（系统偏好 + 手动切换），差异点是配色与动效，不是明暗本身。
+差异化不再靠"纸感"，而靠 **冷石墨灰中性底 + 金"星"accent + 表现力动效**：金色专属"星 / 峰值"语义，surface 走冷中性石墨灰（明确避开暖米色——那是 Claude 官网的观感）。在一众暗色极客 dashboard 里仍一眼不同，且 premium。明暗双模式（系统偏好 + 手动切换）。
 
 ### 字体
 
@@ -18,9 +18,9 @@
 - 标题走 M3 Display/Headline：大字号 + 重字重（700–800）、负字距，体现 M3E"强层级、即时感"
 - 正文同一家族 400/500；全站最多两个家族（无衬线 + 等宽），符合性能预算
 
-### 配色（M3 Fidelity，seed = 琥珀金 `#F2A900`）
+### 配色（accent = 琥珀金 `#F2A900`；surface = 冷中性石墨灰）
 
-色板由官方 `material-color-utilities` 的 **`SchemeFidelity`** 从琥珀金 seed 生成（Fidelity 忠实保留 seed 为品牌色，并自动配出青色互补）。完整 sys color roles（含 5 级 surface-container、fixed 角色、明暗两套）为权威产物；关键角色：
+**金色仅作 accent（"星"色）**：primary / primary-container / primary-fixed-dim 由琥珀金 seed 经 `material-color-utilities` 生成。**surface 与 Claude 暖米色脱钩**——改用 M3 baseline 冷中性灰（带极轻冷调），不随金 seed 染成暖色。完整 sys color roles（含 5 级 surface-container、fixed 角色、明暗两套）；关键角色：
 
 | 角色 | Light | Dark | 用途 |
 |---|---|---|---|
@@ -28,11 +28,11 @@
 | `primary-container` | `#f2a900` | `#f2a900` | **品牌琥珀**，高亮 / 强调面 |
 | `primary-fixed-dim` | `#ffba3b` | `#ffba3b` | 跨主题一致的亮金（★、峰值条） |
 | `tertiary` | `#00668a` | `#9edaff` | 青色互补强调（链接、chip） |
-| `surface` | `#fff8f3` | `#181209` | 暖调中性底（非死白 / 死黑） |
-| `surface-container-*` | 5 级 | 5 级 | tonal elevation 层级 |
+| `surface` | `#fbfbfd` | `#121316` | **冷石墨灰中性底**（非暖米 / 暖棕，区别于 Claude） |
+| `surface-container-*` | 5 级 | 5 级 | tonal elevation 层级（冷中性灰） |
 
 > 注：M3 里 `primary`（tone 40）是**深色**文字角色，**亮琥珀在 `primary-container`**。"亮金"装饰（星、峰值）用 `primary-fixed-dim`。
-> 重新生成：`Hct.fromInt(argbFromHex('#F2A900'))` → `new SchemeFidelity(src, isDark, 0)` → `MaterialDynamicColors[role].getArgb(scheme)`。
+> 金 accent 由 `#F2A900` seed 生成；surface / outline / inverse 用 M3 baseline 冷中性灰（与 seed 解耦，避免暖色染色 → 不撞 Claude）。
 
 ### 质感
 
@@ -42,7 +42,7 @@
 - **弹簧动效**：CSS `linear()` 编码弹簧曲线 + `cubic-bezier(0.2,0,0,1)` emphasized 缓动；**内容页仍零客户端 JS**，动效纯 CSS；跨文档 **View Transitions** 做容器形变页面转场
 - 尊重 `prefers-reduced-motion`
 
-> 放弃纸感 / 衬线。改走 M3 Expressive：鲜明、动态、premium、明暗双模式。已在线上 teaser（`src/index.html`）落地验证。
+> 放弃纸感 / 衬线、放弃暖米色（避开 Claude 观感）。M3 Expressive：**石墨灰 + 星金**、鲜明动态 premium、明暗双模式。teaser（`src/index.html`）与 web 应用均已落地。
 
 ## URL 结构
 
@@ -71,7 +71,7 @@
    - 点击：进入年度页 `/2024`
 3. **本月聚焦**：当月 TOP / 当月增速，左右并列
 4. **历史上的今天**：3-5 条
-   - 实现：取 `first_crossed_10k` 命中今天"月-日"的 repo，按当时 star 量排序
+   - 实现：取 `crossed_10k` 命中今天"月-日"的 repo，按当时 star 量排序
    - 更聪明的影响力排序留 v0.2
 
 ### 2. 年度页 `/2024`
@@ -123,9 +123,9 @@
 
 | 榜单 | 定义 | 偏向 |
 |---|---|---|
-| 当月新增 star TOP | `SUM(stars_gained)` 当月降序 | 已成名大项目 |
+| 当月新增 star TOP | 当月 flow（∑delta）降序 | 已成名大项目 |
 | 当月增速 TOP | `当月新增 / 月初总数` 降序，**月初总数 ≥ 20,000** 才入选 | 已有体量却仍在加速的中坚 |
-| 本月新晋 | 当月内 `total_stars` 首次 ≥ 10000 | 新血液 |
+| 本月新晋 | 当月累计（stock）首次 ≥ 10000 | 新血液 |
 
 **增速榜的 floor（月初 ≥ 20k）**：没有 floor 时增速榜永远是"刚进榜小项目榜"，与新晋榜重复。加 floor 后它变成"已有体量、却还在加速变大的中坚项目"，信息量独立。
 
