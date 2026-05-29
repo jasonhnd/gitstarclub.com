@@ -1,0 +1,188 @@
+# gitstarclub 测试策略
+
+> 精简的、决策导向的测试策略。核心原则：**数据正确性就是产品本身**——历史精度是卖点，错的数据比难看的页面更致命。
+> 因此测试金字塔不是常规倒三角：**pipeline / 数据质量测试是地基**，视觉 / a11y / E2E 在其上。架构见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
+
+## 测试取向（先定调）
+
+| 取向 | 决定 | 理由 |
+|---|---|---|
+| 真数据 > mock | 聚合 / 排名 / schema 测试**直接跑真 Parquet 子集 + 真 JSON 产物**，能用真数据就不 mock | 本产品 bug 几乎都藏在"真实数据的脏边角"（取消 star、改名、突刺、空月），mock 永远测不到 |
+| 结构 | **AAA**（Arrange-Act-Assert）三段式 | 数据测试断言密集，AAA 让"造数据 / 算 / 校验"边界清晰 |
+| 命名 | 描述行为，不描述函数名 | 如 `org 总量等于其成员 repo 总量之和`、`周窗口跨月不丢日`，失败即文档 |
+| 哲学 | 视觉回归**补充**而非替代逻辑覆盖 | 截图能抓"看起来错了"，抓不到"flow 求和少算一天"——后者靠单测 |
+
+## 覆盖目标
+
+- **逻辑代码 ≥ 80%**（聚合 / 排名 / 窗口 / 锚定 / schema / i18n 路由——即 `pipeline/` 与 `web/lib/` 的纯函数）。这是项目硬线。
+- **视觉回归**不计入覆盖率数字，是独立信号层（见 §2）。
+- 不为零客户端 JS 的纯展示 SVG 组件强凑单测覆盖——它们的信号在视觉回归里，单测它们的 markup 既脆又低价值。
+
+---
+
+## 1. Pipeline / 数据质量测试（最重要）
+
+数据在离线 pipeline 里被聚合成 JSON 视图，**一旦烤进 16k 静态页就无法运行时修正**。所以这一层是重兵把守区，分四类：聚合数学、schema 校验、sanity 不变量、golden file。
+
+### 1.1 聚合 + 排名数学（单测，真数据子集）
+
+针对 DuckDB 预算逻辑的纯函数等价物 / 或直接对 pipeline 输出断言。**用一小份真 Parquet 切片**（如 5–10 个知名 repo、跨 2–3 年）当 fixture，避免合成数据掩盖真实边界。
+
+- **flow（∑delta）**：窗口内每日 delta 求和 == 该窗口榜单数值；含 delta 为负（取消 star）的月份仍正确
+- **stock 累计 + 锚定**：累加到窗口末的总量；终点须**锚定 GraphQL `current_stars`**（gross 曲线终点 ≠ 当前总数时，以 GraphQL 为权威，见 ARCHITECTURE「数据校验/对账」）
+- **窗口边界**：
+  - 周不整除月——`周窗口跨月边界不重不漏`
+  - 月 / 年边界：闰年 2 月、跨年 12→1、月末 28/29/30/31 天
+  - 全时 = 2015-01 起点到当期，不早于 seam 也不漏起点月
+- **org 聚合**：按 `owner` 分组求和（含 User 与 Organization 两类 `owner_type`）== 其成员 repo 之和
+
+```ts
+// 示意，非实际测试代码
+test('周排名窗口跨月不丢日', () => {
+  // Arrange: 真切片中一个横跨 9/29–10/05 的 ISO 周
+  // Act:    取该周 flow 榜单
+  // Assert: 榜值 == 该 repo 这 7 天 delta 之和（含跨月两段）
+});
+```
+
+### 1.2 JSON 视图 schema 校验（Zod）
+
+所有 `rank/* · entity/* · heatmap/* · lookup/*` 与活尾 `current_month.json` / `hot-snapshot.json` 都有 **Zod schema**，pipeline 产出后立即校验，build 读取前再校验一次（fail-fast，脏 JSON 绝不进 build）。
+
+- 字段类型 / 必填 / 枚举（`owner_type ∈ {User, Org}`、`metric ∈ {flow, stock}`、`window ∈ {week,month,year,all-time}`）
+- 引用完整性：榜单里每个 `repo_id` 在 `lookup/repos.json` 有对应条目
+- Zod schema 即 build 读 JSON 的 TS 类型来源（single source of truth，避免 schema 与类型漂移）
+
+### 1.3 Sanity 不变量（数据级断言，对全量产物跑）
+
+这些是"数据物理定律"，对**每次 pipeline 全量输出**断言，任一违反即 CI 失败、阻断 deploy：
+
+| 不变量 | 阈值 / 规则 |
+|---|---|
+| stock 总量非负 | 任意 repo / org 任意窗口末累计 ≥ 0 |
+| 日 delta 在合理界 | 单日新增不超过 sane 上限（如历史单日峰值的 N 倍）；net 允许为负但有下界 |
+| 排名列表长度 | top-N JSON 恰为 N 条（或全集 < N 时为全集），无重复 `repo_id` |
+| 排名有序 | 按对应 metric 严格降序 |
+| org == ∑members | 每个 org 各窗口总量 == 其成员 repo 之和（容差 0） |
+| 漂移检查 | `按 adds 累加总数` vs GraphQL `current_stars` 漂移 ≤ 阈值（如 2%）；超阈记 `total_drift_pct` 并以 GraphQL 重锚（见 ARCHITECTURE） |
+| seam 连续性 | gross→net 接缝日（`meta.seam_date`）前后曲线无断裂 / 无重复计日 |
+
+### 1.4 Golden file（已知 repo 的已知里程碑）
+
+挑几个**事实公开可查**的知名 repo 作回归基准，把它们的关键节点固化成 golden 快照；pipeline 改动后比对，防止重构悄悄改变历史口径。
+
+- 例：某著名 repo 突破 10k / 50k / 100k 的**精确月份**与当时排名
+- 例：某 AI 项目某个爆发月的 flow 排名位次
+- golden 值人工核对一次后冻结；变更须显式 review（防"测试跟着 bug 一起改"）
+
+> golden file 测的是"历史不该变"；§1.1 测的是"算法该对"。两者互补：前者抓回归，后者抓逻辑。
+
+---
+
+## 2. 视觉回归（高信号——这是个"看的"站）
+
+整站是服务端渲染 SVG + 零客户端 JS 的视觉 SSG，截图差分信号极高。用 **Playwright 截图**。
+
+- **断点**：320 / 768 / 1024 / 1440（对齐 web 测试规则）
+- **双主题**：light + dark **都截**（M3E 明暗双模式都是一等公民，不能只测一套）
+- **关键页**（每页 × 4 断点 × 2 主题）：
+  - 首页：**年份脊柱**（bar 宽度 = 全年新增、年度标签）
+  - 月度页 `/2024/10`：**日历热力图** + 三个核心榜单（新增 / 增速 / 新晋）
+  - 年度页 `/2024`：12 月份格子热力图 + 年度 TOP
+  - Repo 详情页 `/r/:owner/:name`：**全历史 star 曲线** + 里程碑标注
+  - org 页（路由待 PRODUCT 定，见 ARCHITECTURE）：org 维度曲线 + 成员榜
+  - 全时总榜页
+- 截图针对**固定数据快照**（用 §1 的真切片 fixture build 一份确定性站点），避免每日数据变动导致截图漂移
+- 基准图入库；diff 超阈人工 review（数据更新引起的合理变化批准后更新基准）
+
+---
+
+## 3. 无障碍（a11y）
+
+对齐 ARCHITECTURE「无障碍」节，自动 + 手动结合：
+
+- **自动 axe 检查**：在关键页（首页 / 年 / 月 / repo）跑 axe-core，零 critical/serious 违规
+- **键盘导航**：所有内链可 Tab 聚焦、Tab 顺序合理、**focus 态可见**（M3 focus ring）；无键盘陷阱
+- **prefers-reduced-motion**：开启时 View Transitions / 弹簧动效降级或关闭（动效纯 CSS，须验证媒体查询确实生效）
+- **对比度 WCAG AA**：明暗双主题下文本 / on-* 角色对 surface 均达 AA（M3 tone 映射保证，但要断言验证）
+- **SVG 图表可达**：star 曲线 / 热力图带 `<title>` + `aria-label`，并有**视觉隐藏的数据表 fallback**（screen reader 能读到数值，不只是"一张图"）
+
+---
+
+## 4. E2E 关键流程
+
+验证**网状内链**真的连通（SEO 与产品都依赖它，见 SEO.md「内链策略」）。用 Playwright，断言导航而非像素。
+
+- **导航图贯通**：首页 → 年度页 → 月度页 → repo 页 → org 页 → 全时榜，任意页 3 跳内可达
+- **上下期导航**：月度页 `← 9月 | 11月 →`、年度页 `← 2023 | 2025 →` 永远在顶部且跳对
+- **里程碑链接 → 月度页锚点**：repo 页里程碑点击落到对应月份的正确锚点
+- **榜单行 → 实体页**：榜单里 repo 名 → repo 页；org 名 → org 页
+- **i18n 路由**：英文默认根路径（`/`、`/2024/10`、`/r/:owner/:name`）；日文 `/ja/...`；中文 `/zh/...` 都返回 200 且 UI chrome 已翻译、repo 数据保持原文（数据语言中立）
+- 用确定性等待（等元素 / URL），**不用 timeout 硬等**，避免 flaky
+
+---
+
+## 5. 性能（Core Web Vitals + 零 JS 红线）
+
+对齐 ARCHITECTURE「性能策略」。Lighthouse / CWV 跑在代表性页面（首页 + 一个 repo 页 + 一个月度页）。
+
+| 指标 | 目标 |
+|---|---|
+| LCP | < 2.5s |
+| INP | < 200ms |
+| CLS | < 0.1 |
+| FCP | < 1.5s |
+
+**结构性硬断言**（比 Lighthouse 评分更可靠，纳入 CI 阻断）：
+
+- **内容页零客户端 JS**：bundle 检查——除一小段内联主题切换脚本外，content 页不得 ship 任何客户端 JS chunk。这是架构红线，回归即 fail
+- **HTML < 20KB**：关键页渲染后 HTML 体积上限断言（直接降 bandwidth，见 ARCHITECTURE「Bandwidth 防御阶梯」）
+- **字体子集**：Plus Jakarta Sans 子集 woff2 ≤ ~30KB；只预加载真正关键的一档 weight
+- **图表尺寸固定**：SVG 有显式宽高，防 CLS
+
+---
+
+## 6. 跨浏览器
+
+Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
+
+- **Chrome / Firefox / Safari**（chromium / firefox / webkit）
+- 验证：滚动、纯 CSS 弹簧动效、**View Transitions fallback**（不支持的浏览器须优雅降级为无转场，不报错、不白屏）
+- 因内容页零 JS，跨浏览器风险面小，主要盯 CSS 新特性（`backdrop-filter` 毛玻璃、`linear()` 弹簧曲线、跨文档 View Transitions）的回退
+
+---
+
+## 在哪里跑 + 节奏
+
+| 测试 | 本地 | CI（PR） | Pre-publish（数据发布 / 部署前） |
+|---|---|---|---|
+| 1.1 聚合 / 排名单测 | ✅ 快，随时 | ✅ 必过 | ✅ |
+| 1.2 Zod schema 校验 | ✅ | ✅ | ✅ pipeline 产出即校验，脏 JSON 阻断 |
+| 1.3 sanity 不变量 | 可选 | ✅ 对产物跑 | ✅ **阻断 deploy** |
+| 1.4 golden file | ✅ | ✅ | ✅ |
+| 2. 视觉回归 | 选改动页 | ✅ 关键页全跑 | ✅ |
+| 3. a11y（axe + 键盘） | 选改动页 | ✅ | ✅ |
+| 4. E2E 导航 / i18n | 选改动流 | ✅ | ✅ |
+| 5. 性能 / 零 JS bundle | 零 JS 检查随时 | ✅ 零 JS + HTML 体积阻断；Lighthouse 报告 | ✅ |
+| 6. 跨浏览器 | 偶尔 | ✅ 关键页 | ✅ |
+
+**节奏要点**：
+
+- **CI（每 PR）**：1.x 全套 + 2/3/4/5/6 在关键页跑。逻辑测试是门禁，必过；视觉 diff 与 Lighthouse 出报告供 review。
+- **Pre-publish（每周数据刷新 / 部署前，见 ARCHITECTURE 页面分层）**：在视图 JSON 发布到 Blob 前，§1.2/1.3 对**全量 JSON 产物**跑一遍，任一不变量违反即中止发布——这是防脏数据进生产的最后闸门。
+- **每日 cron**：不触发 deploy，但 cron 写 `current_month.json` / `hot-snapshot.json` 后，对这两个活尾跑 §1.2 schema + §1.3 漂移/非负 sanity（秒级），异常告警（Sentry）而非静默。
+- **本地**：改 pipeline 先跑 1.x；改组件先跑相关页的视觉 + a11y。遵循「改动靠 Vercel 预览确认」——视觉 / 性能以预览部署为准，不依赖本地 dev。
+
+## 验收清单
+
+- [ ] 聚合 / 排名单测覆盖 flow / stock+锚定 / 周月年全时边界 / org 求和，跑真 Parquet 切片
+- [ ] 全部 JSON 视图有 Zod schema，pipeline 产出 + build 读取双校验
+- [ ] sanity 不变量（非负 / delta 界 / 榜长序 / org==∑members / 漂移 / seam）对全量产物跑，阻断 deploy
+- [ ] golden file 覆盖 ≥3 个知名 repo 的里程碑与排名，值已人工核对冻结
+- [ ] 视觉回归：关键页 × 4 断点 × 明暗双主题，基准入库
+- [ ] axe 零 critical；键盘可达 + focus 可见；reduced-motion 生效；AA 对比；SVG 有 title/aria + 数据表 fallback
+- [ ] E2E：导航图 3 跳贯通、上下期导航、里程碑锚点、榜单跳转、三语路由
+- [ ] 内容页零客户端 JS（bundle 断言）+ HTML < 20KB + 字体子集 ≤ ~30KB
+- [ ] CWV 达标（LCP<2.5s / INP<200ms / CLS<0.1 / FCP<1.5s）
+- [ ] 跨浏览器关键页通过，View Transitions 优雅降级
+- [ ] 逻辑代码覆盖率 ≥ 80%
