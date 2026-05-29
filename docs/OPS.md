@@ -1,0 +1,185 @@
+# gitstarclub 运维 / 部署
+
+> 运维与部署的唯一真相源。架构与数据流见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
+> 核心原则承袭架构：**Vercel-first 统一计费**、**运行时纯静态零引擎**、**重 build 只在每周**。本文把这些落到具体的项目、环境变量、Cron、Blob 与告警上。
+
+## 部署拓扑（两个独立 Vercel 项目）
+
+生产域名与主应用**物理隔离**，互不干扰：
+
+| 项目 | 内容 | 域名 | 状态 | 说明 |
+|---|---|---|---|---|
+| **预告页（teaser）** | `src/index.html` + `build.mjs` 出的纯静态页（framework=Other，输出 `public/`） | **gitstarclub.com / www.gitstarclub.com**（生产 alias） | **已上线，勿动** | 独立部署，零运行时依赖；主应用单独上线，主应用就绪后预告页才退役 |
+| **web 应用** | `web/`（Next.js 16，App Router + RSC） | **暂不指向生产域名**（用 `*.vercel.app` 预览 URL） | 开发中 | 自成一个 Vercel 项目；开发期预览保持 **PRIVATE**（非公开、不接生产域名），灰度自测 |
+
+**切换原则（teaser → app）**：
+
+- 两个项目各自独立的 Git 连接 / 环境变量 / 部署。改主应用永远碰不到 teaser，反之亦然。
+- 主应用功能完整、数据接通、预览自测通过后，**才**把生产域名 alias 从 teaser 切到 web 应用，并使预告页退役。
+- 在此之前 web 应用的预览**不公开、不被搜索引擎收录**（避免半成品被 SEO 抓走、避免域名归属混乱）。
+
+> 为什么两个项目而非一个：teaser 是「占位 + 不可回退的线上承诺」，web 应用是「高频迭代 + 私有灰度」。两者节奏与可见性诉求相反，分项目才能各自演进、互不阻塞。
+
+## 环境变量与密钥
+
+集中在 web 应用项目的 Vercel 环境变量里配置；本地用 `.env`（见 `.env.example`，**勿提交真实值**）。
+
+| 变量 | 用途 | 作用域 | 谁用 |
+|---|---|---|---|
+| `GITHUB_TOKEN` | GitHub GraphQL/Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | Server / 回填脚本 | 每日 cron · 每周 cron · 一次性回填 |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | Server / build / 回填脚本 | build 读视图 · cron 写活尾 · 回填上传 |
+| `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | Server | 每日 / 每周 cron route |
+| `VERCEL_DEPLOY_HOOK_URL` | Deploy Hook URL（可选；触发一次核心 rebuild，用于代码/结构变更或手动全量刷新） | Server | 手动 / CI（数据更新不需要它，长尾走 ISR） |
+| `GOOGLE_APPLICATION_CREDENTIALS` | GCP 服务账号 key 路径 | **本地回填脚本**（仅一次性 BigQuery 回填） | 一次性回填 |
+| `GCP_PROJECT_ID` | GCP 项目 ID | **本地回填脚本**（仅一次性 BigQuery 回填） | 一次性回填 |
+| `NEXT_PUBLIC_SITE_URL` | 站点规范域名（canonical / sitemap / OG 绝对 URL） | Build / Client | Next.js |
+| `NEXT_PUBLIC_GA_ID` | GA4 measurement ID | Client | Next.js |
+
+**约定**：
+
+- `NEXT_PUBLIC_*` 会进客户端 bundle，**只放非敏感值**；其余一律 Server-only。
+- `CRON_SECRET` / `BLOB_READ_WRITE_TOKEN` / `GITHUB_TOKEN` 是敏感密钥：只配在 Vercel 项目环境变量（Production / Preview 按需），**绝不写进仓库或客户端**。
+- **GCP 两项仅本地一次性回填用**：用 BigQuery 查 GH Archive（~$10，含稳定 repo.id）。回填一次后这两个变量即可弃用——**日常运营 0 GCP、0 外部账单**。（为何不用免费的 ClickHouse 公共实例/自建：见 ARCHITECTURE「为什么回填用 BigQuery」。）
+- 启动时校验必需密钥存在，缺失则 fail-fast（不静默吞）。
+
+## Vercel Blob 布局
+
+用**一个 PUBLIC store**：海量 JSON 视图由 build 在打包时按**直链 URL** 读取，公开读最省事、命中 CDN。Parquet canonical 体积小、仅离线 pipeline 触碰。
+
+```
+blob://
+├── canonical/
+│   └── star_daily.parquet          # 事实表（per-repo×天，~几十 MB，唯一真相源，仅离线/每周读写）
+├── lookup/
+│   ├── repos.json                  # repo 元数据（build join）
+│   └── orgs.json
+├── rank/                           # 预算好的排行榜视图（build 读）
+│   ├── {week|month|year}/{period}/{repo|org}/{flow|stock}.json
+│   └── all-time/{repo|org}/stock.json
+├── entity/
+│   ├── repo/{id}.json              # 曲线 + 里程碑 + 历期表 + 名次史
+│   └── org/{login}.json
+├── heatmap/{year|month}/{period}.json
+├── current_month.json              # 当月活尾（KB 级，每日 cron append-only 覆盖写）
+└── hot-snapshot.json               # 热集聚合（首页/当年/当月，每日 cron 重写，热集 ISR 读）
+```
+
+**Blob 操作约束（已验证，写 pipeline 时必须遵守）**：
+
+| 维度 | 数值 | 对策 |
+|---|---|---|
+| API | `put` / `head` / `list` / `del` / `copy`；可在 build 脚本、cron route、server component 调用 | — |
+| 单文件上限 | 5TB | 远超需求（我们数据仅几十 MB） |
+| Pro 容量 | ~5GB 存储 + 100GB 传输/月 | 数据几十 MB，宽裕 |
+| **写速率** | **4,500 次/分（75/s）** | **离线 pipeline 批量 `put()` 必须节流**（限并发 + 间隔），尤其上传上万 entity JSON 时 |
+| 同路径覆盖 | 需 `allowOverwrite: true` | 覆盖写视图 / 活尾时显式带上 |
+| **缓存传播** | 同路径覆盖最长 **60s** 才全网生效 | **每日更新的视图（活尾 / hot-snapshot）读取时带 query 参数 cache-bust**（如 `?v=<date>`），避免读到旧副本 |
+
+> 之所以选 PUBLIC store：JSON 视图本就是要被 build 直接 `fetch` 的公开数据，公开读免去签名、天然走 CDN。Parquet canonical 虽也在同 store，但只有持 token 的离线 pipeline 会动它，不在 build/运行时路径。
+
+## Cron 调度
+
+`web/vercel.json` 声明 `crons[]`；Pro 计划 **100 job/项目**、最小 1 次/分。两条 job：
+
+| Job | 调度（UTC） | 动作 | 触发 deploy？ |
+|---|---|---|---|
+| **每日** | `0 3 * * *`（~03:00） | **JSON-only**：GraphQL 查 current_stars → append `current_month.json` → 重算 `hot-snapshot.json` → `revalidatePath` 热集 9 页 | **否**（秒级，不碰 Parquet/引擎/deploy） |
+| **每周** | `0 4 * * 0`（周日 ~04:00） | 刷新白名单 diff + 新晋者补历史 → 折叠活尾入 Parquet + DuckDB 重算受影响视图 → `revalidatePath` 变更页 | **否**（长尾按需 ISR；不做 16k 全量 build） |
+
+```jsonc
+// web/vercel.json
+{
+  "crons": [
+    { "path": "/api/cron/daily",  "schedule": "0 3 * * *" },
+    { "path": "/api/cron/weekly", "schedule": "0 4 * * 0" }
+  ]
+}
+```
+
+**鉴权模式（CRON_SECRET）**：
+
+- 触发是对生产 URL 的 **HTTP GET**；配置 `CRON_SECRET` 后 Vercel 自动带 `Authorization: Bearer <CRON_SECRET>`。
+- handler 第一步校验该头，与 `process.env.CRON_SECRET` 不符即 `401`，拦截外部直呼 `/api/cron/*`（robots 已屏蔽 `/api/`，但鉴权才是真防线）。
+
+**幂等（关键约束）**：
+
+> Vercel Cron **无自动重试**，且**同一次可能触发两次**。两个 handler **必须幂等**：
+> - 每日：`current_month.json` 当月内 **append-only + 覆盖写**，按「今天 UTC 日期」作 upsert 键——重复执行只是用同一份 GraphQL 结果覆盖同一天，不会重复累加。
+> - 每周：折叠活尾入 Parquet、重算视图按「目标周期」幂等覆盖；新晋者补历史按 repo id 去重；`revalidatePath` 天然幂等（重复调用无害）。
+> - 失败靠**告警**兜底（见下），不靠重试。
+
+**时长**：cron route 是 Function，default 300s / **max 800s**。每日 job 秒级（仅 KB JSON + ~53 GraphQL 查询）；每周 job 较重（折叠 Parquet + 重算受影响视图 + revalidate），应控制在 800s 内；若重算量逼近上限，拆分分批或移到本机/CI 跑。
+
+## Deploy Hook 使用（可选）
+
+- 在 web 应用项目 **Settings → Git → Deploy Hooks** 创建（项目须 Git 连接），得到 URL 存入 `VERCEL_DEPLOY_HOOK_URL`；触发 `POST .../deploy/<prj>/<id>`（无 auth/payload）；限额 **5 hook/项目**。
+- **用途有限**：ISR 模型下**数据更新不需要 deploy**（cron 直接 `revalidatePath`）。Deploy 只在**代码/结构变更**时发生（一般 Git push 自动部署；此 hook 供手动/CI 触发一次核心 rebuild）。
+- **每日 / 每周 cron 都不触发全量 deploy**：每日 revalidate 热集，每周 revalidate 变更页；长尾页按需 ISR。
+
+> ⚠️ Vercel **每次 deploy 重建所有 build-时 SSG 页**，`.next/cache` 不跨 deploy 保留预渲染 HTML——所以历史/长尾页**不在 deploy 构建**（按需 ISR），deploy 只 build 小核心，永不逼近 45min 上限（见 ARCHITECTURE「页面分层」）。
+
+## 监控与告警
+
+| 关注 | 工具 | 触发 |
+|---|---|---|
+| 运行时 / build / cron 异常 | **Sentry**（Vercel Marketplace 接入） | 未捕获异常、route 报错、build 失败 |
+| pipeline 运行记录 | **`sync_runs` 日志**（每次每日/每周 job 落一条：开始/结束时刻、查询数、写入数、`total_drift_pct`、状态） | 供对账与回溯 |
+| **数据漂移** | 比对 GraphQL 权威总数 vs adds 累加总数 | **漂移 > 阈值（如 2%）告警**，并以 GraphQL 为锚点重锚（见 ARCHITECTURE「数据校验 / 对账」） |
+| **Cron 失败** | Sentry + `sync_runs` 状态 | **任一 cron 失败立即告警**——因无自动重试，漏一次每日 job = 活尾缺一天，必须人工补跑 |
+| 单日突刺 | pipeline sanity check | 单日新增极端突刺打日志告警（net 允许为负） |
+
+**告警通道**：Sentry 告警直发（邮件 / Slack 任一）。重点盯**两类无重试的失效**：cron 没跑 / 跑失败、数据漂移越界。
+
+> `sync_runs` 不需要数据库：可作为一条 JSON 记录 append 到 Blob（如 `ops/sync_runs.json`，append-only），或直接进 Sentry 的结构化事件。MVP 用最轻的即可。
+
+## 一次性 BigQuery 回填 Runbook（高层）
+
+11 年事件级历史只回填一次，走 **BigQuery**（要 GCP 凭证，~$10、含稳定 repo.id）。免费替代（ClickHouse 公共实例、自建摄入）评估后均不可行，见 ARCHITECTURE「为什么回填用 BigQuery」。
+
+**前置**：GCP 凭证（`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`）· GitHub PAT（`GITHUB_TOKEN`）· Vercel Blob store（`BLOB_READ_WRITE_TOKEN`）。本机 / 全 Node 环境跑，不在 Vercel。
+
+```
+1. 查 GH Archive WatchEvents（BigQuery）
+   按 repo + UTC 天 汇总 WatchEvent（2015-01 起，量大按年/按批分块）→ 导出
+2. 本机 DuckDB
+   落 per-repo×天 事实表 → star_daily.parquet
+   + 算里程碑（破 10k/50k/100k 精确日期）
+3. GraphQL（GITHUB_TOKEN）
+   抓元数据 + owner(+type) + current_stars（权威）→ repos.json
+4. DuckDB 预算所有 JSON 视图
+   {周/月/年/全时}×{repo/org}×{flow/stock} + entity 曲线 + heatmap
+5. 上传 Vercel Blob（BLOB_READ_WRITE_TOKEN）
+   canonical/star_daily.parquet + lookup/*.json + rank/** + entity/** + heatmap/**
+   ⚠️ 批量 put() 节流到 < 75/s（见 Blob 写速率约束）
+```
+
+- **成本**：~$10（一次性）；回填完永不再碰 GCP。
+- 口径瑕疵（gross vs net、幸存者偏差、起点 2015）见 ARCHITECTURE，About 页注明。
+- 回填完成后 GCP 两个变量即可弃用，日常运营回到 0 GCP。
+
+## Build 约束
+
+> **Vercel build 45 分钟硬上限（所有计划）—— 首要约束。** 绝不在单次 deploy 里 build 全部 ~16k 页。
+
+- 长尾页（历史 repo / org 详情）走**按需 ISR**，不在 deploy 时构建（见 ARCHITECTURE「页面分层」）。
+- 长尾（历史 / repo / org / 周页）**不在 deploy 构建**，按需 ISR 懒生成、存持久 ISR store；数据变更靠 cron `revalidatePath`，不做 16k 全量 build。
+- OG 图**不在每次 build 生成**：仅数据变化时（pipeline 侧）增量出图存 Blob，历史页 OG 永不重生成。
+- build 只读预算好的 JSON 视图直接渲染——**不聚合、不带引擎、不碰原生模块**。
+
+**Function 资源（ISR / cron）核对**：
+
+| 资源 | 默认 | 上限 |
+|---|---|---|
+| 时长 | 300s | **800s** |
+| 内存 / CPU | 2GB / 1 vCPU | 4GB / 2 vCPU |
+| `/tmp` | 500MB | — |
+| 响应体 | 4.5MB | Blob 直读绕过此限 |
+
+> 每日 cron 与热集 ISR 都只读写 KB 级 JSON，远不触及上述任何上限。读大文件一律走 Blob（绕过 4.5MB 响应体限制），且大文件只在离线 / 每周构建里碰。
+
+## 回滚
+
+- **Blob artifacts 版本化**：每周 pipeline 产出的视图 / Parquet 以版本/日期标识保留若干份（不就地永久覆盖 canonical），坏数据可指回上一版。
+- **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常部署**即可秒级回退（teaser 与 web 应用各自独立回滚，互不影响）。
+- **每日活尾**：`current_month.json` 当月 append-only、覆盖写，最坏读到滞后一天的热力图，无半写风险；要更稳可加 `latest.json` 指针。
+- **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。
