@@ -14,7 +14,7 @@
 
 - **SSG-first**：所有内容页 build 时预生成静态 HTML，用户请求永不触达 Function/数据库。
 - **零客户端 JS**（内容页）：图表服务端渲染 SVG。
-- **Vercel-first**：部署、Cron、Blob、Analytics 全在 Vercel，统一计费。回填只一次性读免费的 ClickHouse 公共实例（零 GCP / 零账单），之后运营 100% Vercel + GitHub API。
+- **Vercel-first**：部署、Cron、Blob、Analytics 全在 Vercel，统一计费。仅一次性回填用 BigQuery 扫 GH Archive（~$10，非 recurring），之后运营 100% Vercel + GitHub API。
 - **不可变历史 + 小活尾**：canonical = Parquet 事实表（离线，Vercel Blob）→ DuckDB 预算成 **JSON 视图**；活尾（当月）= KB 级 JSON，每日 cron 只读写它。**build 只读 JSON，不带任何引擎**。
 
 ## 技术栈
@@ -28,13 +28,13 @@
 | **核心数据** | **Parquet 事实表**（per-repo×天，离线 canonical）→ DuckDB 预算 → **JSON 视图**（build 读）+ JSON 活尾（当月，cron 读写） | 均存 Vercel Blob |
 | 对象存储 | Vercel Blob（Parquet canonical + JSON 视图 + 预生成 OG 图） | Vercel 原生 |
 | 日常采集 | **Vercel Cron + 单 Function**（GraphQL 批量查） | Vercel 原生 |
-| 一次性回填 | **GH Archive via ClickHouse 公共实例**（免费免注册）+ 本机 DuckDB | 一次性、零外部账单 |
+| 一次性回填 | **BigQuery**（GH Archive 公开表，含稳定 `repo.id`）+ 本机 DuckDB | 一次性 ~$10 |
 | 部署 | Vercel | |
 | Web 分析 | Vercel Analytics + Speed Insights · **GA4**（`NEXT_PUBLIC_GA_ID`） | |
 | 错误追踪 | Sentry | Vercel Marketplace |
 
-**MVP 不使用**：BigQuery/GCP（回填改用免费 ClickHouse 公共实例）、自建 ClickHouse/Tinybird、Neon/Postgres、Redis、Inngest、GitHub Actions、v0、tRPC。
-理由：所有视图离线预算成 JSON，运行时无需查询引擎；日常采集 GraphQL 单 Function 即可；回填一次性、零账单。（"用 ClickHouse" 仅指一次性**读**其免费公共实例，不自建、不托管。）
+**MVP 不使用**：自建 ClickHouse/Tinybird、Neon/Postgres、Redis、Inngest、GitHub Actions、v0、tRPC。
+理由：所有视图离线预算成 JSON，运行时无需查询引擎；日常采集 GraphQL 单 Function 即可；回填只一次性用 BigQuery（~$10，非 recurring），之后不再碰 GCP。
 
 ## 预告页（landing，已上线）
 
@@ -49,12 +49,11 @@
 ## 数据流
 
 ```
-┌─ 一次性回填（手动跑一次，本机/全 Node；零外部账单）─┐
-│  GH Archive via ClickHouse 公共实例（免费免注册）：  │
-│    SQL 查 WatchEvent，按 repo + day 汇总 → 导出       │
-│    （量大按年/按批分块；不用 BigQuery/GCP）          │
+┌─ 一次性回填（手动跑一次，本机/全 Node；~$10）───────┐
+│  BigQuery: 查 GH Archive WatchEvent（含 repo.id）     │
+│    按 repo+day 汇总 → 导出（仅扫 type/repo.id/created）│
 │  GraphQL: 元数据 + owner(+type) + current_stars(权威)│
-│  本机 DuckDB：落 per-repo×天 事实表（Parquet）       │
+│  本机 DuckDB：落 per-repo×天 事实表（Parquet, repo.id）│
 │    + 算里程碑（破 10k/50k/100k 精确日期）           │
 │  → Parquet canonical + repos.json → Vercel Blob      │
 └─────────────────────────────────────────────────────┘
@@ -74,11 +73,11 @@
 │     cron 全程不碰 Parquet / DuckDB / 引擎           │
 └─────────────────────────────────────────────────────┘
 
-┌─ 每周（Vercel Cron + Deploy Hook，全 Node）─────────┐
+┌─ 每周（Vercel Cron，全 Node）───────────────────────┐
 │  1. GitHub search ≥10k → diff 白名单                │
-│  2. 新晋者：ClickHouse 公共实例补历史 → Parquet      │
+│  2. 新晋者：BigQuery 补历史 → Parquet                │
 │  3. 折叠当月活尾→Parquet；DuckDB 重算受影响 JSON 视图│
-│  4. Deploy Hook → 全量 rebuild                       │
+│  4. revalidatePath 变更页（非 16k 全量 build）       │
 └─────────────────────────────────────────────────────┘
 
 ┌─ Build（每次 deploy）───────────────────────────────┐
@@ -101,11 +100,14 @@ GitHub GraphQL 可一次查 100 个 repo 的 `stargazerCount`，5,248 repo ≈ 5
 - net delta（净增，含取消 star）比 GH Archive 的 gross adds 更准确反映关注度
 - 轻到 Vercel Cron 单 Function 就能跑，无需 Inngest
 
-### 为什么回填用 ClickHouse 公共实例（不用 BigQuery）？
+### 为什么回填用 BigQuery（评估免费方案后）？
 
-过去 11 年的事件级历史只有 GH Archive 有——但 **GH Archive ≠ BigQuery**，BigQuery 只是查它的一种工具（要 GCP 账号 + ~$10）。ClickHouse 官方公共实例（`play.clickhouse.com`）免费免注册挂着同一份 GH Archive（`github_events` 表），直接 SQL 查 WatchEvent 按 repo+day 汇总导出即可，**零账号、零账单**，契合 Vercel-first / 避免外部账单。量大就按年/按批分块查。
+过去 11 年的事件级历史只有 GH Archive 有。免账单的免费路子都评估过、均不可行：
+- **ClickHouse 公共实例**（`play.clickhouse.com`）：`play` 账户硬限 `max_result_rows=1000`/响应、`readonly`，且表只有 `repo_name`、无 `repo.id` → 800 万行要分上万次分页、改名 repo 还对不齐。
+- **自建 ClickHouse/DuckDB 摄入**：要把 11 年原始档**下载 4–12TB**（无法按类型预筛）才能滤出 WatchEvent，不现实。
+- **GitHub stargazers API**：每 repo 4 万 stargazer 硬上限 + 只能采样，大 repo 历史取不全。
 
-**为什么不用 GitHub stargazers API**：每 repo 4 万 stargazer 硬上限（>4 万星的大 repo 历史取不全），且只能采样、不精确——分多日也绕不过上限。历史精度是本产品卖点，不将就。
+→ **BigQuery 一次性 ~$10**：一条 SQL、服务端聚合、含**稳定 `repo.id`**（改名正确归并）、精确又省事；回填完永不再碰 GCP（非 recurring，符合"避免散落账单"的本意）。`githubarchive.*` 列式表 `WHERE type='WatchEvent'` 只扫 type/repo.id/created_at。
 
 ### 为什么 build 读 JSON、引擎只在离线？
 
@@ -126,7 +128,7 @@ GitHub GraphQL 可一次查 100 个 repo 的 `stargazerCount`，5,248 repo ≈ 5
 - 历史曲线为 gross adds（GH Archive WatchEvent），上线后为 net delta（GraphQL diff），接缝处语义略不一致——star-history.com 同样如此
 - 幸存者偏差：只回填当前 ≥10k 的 repo（org 排名同理只含其 ≥10k repo）；历史上曾火后衰退的项目缺席，接受此口径，About 页注明
 - 累计 gross 曲线终点未必精确等于当前总数（历年有取消 star）；以 GraphQL 当前总数为权威锚点
-- repo 改名/迁移：历史事件按 ClickHouse 表的 `repo_name` 匹配，极少数改名 repo 早期历史可能对不齐（无稳定 id）；影响很小，About 页注明
+- repo 改名/迁移：BigQuery 的 GH Archive 有稳定 `repo.id`，按 id 归并，改名不丢历史（`repo_name` 仅作显示；URL 用当前 `full_name` + 旧 URL 301）
 
 ### 起点 2015-01
 
@@ -198,34 +200,39 @@ DuckDB 把所有 period × dim × metric 预算成 JSON：
 
 三语 × 5,400 ≈ **16,200 个静态页**（语言策略见 [SEO.md](./SEO.md)）。
 
-> ⚠️ 上表是原始"repo 月度编年史"页面。新增的 **周排名 + org 维度 + 全时榜** 视图已在数据层全部预算（见数据模型），但**哪些视图独立成页**（周页 ~600/语言、org 页可能上千/语言）是待定的 PRODUCT 取舍——下文页面分层（热 / 周更 / 冻结）三层节奏对新增页同样适用。
+> ⚠️ 上表是原始"repo 月度编年史"页面。新增的 **周排名 + org 维度 + 全时榜** 视图已在数据层全部预算（见数据模型）。因长尾走**按需 ISR**（懒生成、不占 build 预算，见下），org / 周页"成页"成本极低；**哪些视图独立成页**仍是待定的 PRODUCT 取舍，但已不受 build 预算约束。
 
 ### Build 时长策略（必须正视）
 
-16,200 页 + 16,200 张 OG 图，全量 build 不能假设"几分钟"。约束与对策：
+16k+ 页**不在 deploy 时全量构建**（会撞 45min 上限，且 deploy 本就会重置 ISR）。约束与对策：
 
-- **Vercel build 时间**：Pro 计划单次 build 上限 45 分钟。16,200 页若每页 ~30-100ms，渲染约 8-27 分钟，**接近但可控**；OG 图生成是大头，需分摊
-- **OG 图离线化**：OG 图**不在每次 build 生成**。仅在数据变化时（pipeline 侧）增量生成变化页的 OG → 存 Blob。历史页 OG 永不重生成
+- **Vercel build 上限 45min**：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜 ×3 语言，~数十页），秒~分钟级；长尾交给按需 ISR
+- **OG 图离线化**：OG 图**不在 build 生成**，仅在数据变化时（pipeline 侧）增量生成变化页的 OG → 存 Blob
 - **数据查询**：聚合已在 pipeline 预算成 JSON 视图；build 只读对应视图 JSON 直接渲染，**不在 build 做聚合、不带引擎**
-- **页面分层重建（核心，见下）**：按"数据是否还会变"分三层配不同节奏，让重 build 只在每周发生
+- **长尾按需 ISR（核心，见下）**：历史 / repo / org / 周页首访生成、持久缓存，不占 build 预算
 
-### 页面分层与重建节奏（已决：解 SSG × 新鲜 × build 三角）
+### 页面分层与重建节奏（已决；按 Vercel ISR 实况修正）
 
-| 层 | 页面 | 新鲜度 | 机制 |
-|---|---|---|---|
-| **热集** | 首页 · 当年 · 当月（×3 语言 ≈ 9 页） | 每日 | ISR 读 Blob 上 `hot-snapshot.json`（~KB 小聚合）；每日 cron `revalidatePath` 触发再生。Function 仅再生时跑、读 KB 快照不碰大文件/引擎，用户热路径仍 100% 命中 CDN |
-| **周更** | repo / org 详情页 | 每周 | build 时 SSG，每周重算 JSON 视图后随之重生；曲线尾部周级新鲜，编年史产品可接受 |
-| **冻结** | 历史年 / 月页 | 永不变 | 首次 build 生成后视为 immutable，后续不再重生（Next build cache / `revalidate:false`） |
+> ⚠️ Vercel 上**每次 deploy 重建所有 build-时 SSG 页**，`.next/cache` 不跨 deploy 保留预渲染 HTML——"历史页 build 一次永不重生"做不到。正解：deploy 只 build 小核心，长尾走**按需 ISR**。
 
-**重建节奏**：
+> **新鲜度 = 编年史（冻结）+ 脉搏（事件驱动）**。比喻报社：旧报纸归档永不重印；今天头版每天换；大新闻（老项目爆发）上头版 + 更新它那一页，但不重印整个报库。详见 [REQUIREMENTS §6](./REQUIREMENTS.md)。
 
-- **每周全量 build**（周日 cron + Deploy Hook）：重生周更层 + 新历史页，~16k 页 ~8-27min——**唯一的重 build**，落在 45min 预算内
-- **每日**：**不触发 deploy**；cron 更新数据 + 写 `hot-snapshot.json` + revalidate 热集 9 页，秒级完成
-- **按需**：代码 / 结构变更走正常全量 deploy
+| 层 | 页面 | 机制 |
+|---|---|---|
+| **核心（deploy 构建）** | 首页 · 当年 · 当月 · 全时榜 · `/trending`（×3 语言，~数十页） | deploy 时 SSG；每日 cron 写 `hot-snapshot.json` + `revalidatePath` 每日刷新 |
+| **mover（每日·事件驱动）** | 当日"显著在动"的 repo/org（通常几十~几百） | 每日 cron 据日增挑出（今日涨幅前 ~50 ∪ ≥ 其 90d 日均 5× 且当日 ≥200 ∪ 破里程碑）→ 刷新这些 repo/org 页 + 脉搏面 |
+| **长尾（按需 ISR）** | 历史年/月/周 · 未在动的 repo/org（~16k+） | `dynamicParams=true` 且不在 `generateStaticParams` → **不在 deploy 构建**；首访生成、持久缓存；仅数据变更时 `revalidatePath` 定点失效 |
+| **历史（冻结）** | 已完成 周/月/年页 | 一次生成后**永不变**，标 "as of 日期" |
 
-**为什么这样分**：历史数据根本不变，每天重建纯浪费；repo 曲线是"历史"非"实时"，周级够用；只有首页 / 当期要每日新鲜。重 build 频率从每天降到每周，build 预算彻底脱险。
+**节奏**：
 
-**运行时不碰大文件**：每日 cron 只读写 KB 级 JSON 活尾；热集 ISR 再生只读 KB 级 `hot-snapshot.json`，绝不在请求路径加载 Parquet 或任何引擎；周更 / 冻结层是纯静态产物。
+- **deploy**（代码/结构变更）：只构建小核心，永不逼近 45min；会重置 ISR store，长尾首访冷生成一次（10M/天下可忽略）
+- **每日**：不 deploy；cron 更新 JSON 活尾 + 写 `hot-snapshot.json` + **挑出 mover 集（在动的几十~几百个）刷新它们 + 脉搏面** + revalidate 核心热集。**没动的实体与全部历史一概不碰。**
+- **每周**：cron 刷新白名单 + 新晋者回填 + 重算受影响 JSON 视图 + 对变更页 `revalidatePath`（**不做 16k 全量 build**）
+
+**为什么**：16k+ 全量 build 会撞 45min，且 deploy 会重置 ISR——所以长尾交按需 ISR（懒生成、持久缓存），deploy 只管小核心。附带好处：org / 周页变"免费"（懒生成、不占 build 预算），page-surface 可放开。
+
+**配置要点**：`cacheComponents` 关闭（开启会禁用 `dynamicParams`）；长尾 `revalidate=false`（仅靠定点失效）；热集 ISR 只读 KB 级 `hot-snapshot.json`，绝不在请求路径加载 Parquet / 引擎。
 
 ### 渲染策略
 
@@ -242,9 +249,10 @@ DuckDB 把所有 period × dim × metric 预算成 JSON：
 2. 读 current_month.json（Blob，KB）← 拿昨日值算 net 日增
 3. append 今日：per-repo 日增 + daily_total；更新 current_stars
 4. 写回 current_month.json（覆盖即可——当月内 append-only）
-5. 重算 hot-snapshot.json（首页 / 当年 / 当月聚合）→ Blob
-6. revalidatePath 首页 / 当年 / 当月（×3 语言）→ 仅这 ~9 页按需再生
-   （全量 rebuild 不在每日；改由每周 Deploy Hook 触发）
+5. 挑 mover 集：今日涨幅前 ~50 ∪（今日 ≥ 其 90d 日均 5× 且当日净增 ≥200）∪ 破里程碑（几十~几百个）
+6. 重算 hot-snapshot.json + `/trending` 数据（含突刺/复活）→ Blob
+7. revalidatePath：核心热集（首页 / 当年 / 当月 / 全时 / trending ×3 语言）+ mover 集的 repo/org 页
+   （没动的实体 + 全部历史都不碰；不做全量 rebuild，长尾按需 ISR）
 ```
 
 **并发与原子性**：
@@ -289,7 +297,7 @@ GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount`
 
 ### 数据校验 / 对账
 
-两个来源会漂移：GH Archive（ClickHouse）历史是 **gross adds**（只记加 star，数不到取消）；GraphQL 是**权威当前总数**。
+两个来源会漂移：GH Archive（BigQuery）历史是 **gross adds**（只记加 star，数不到取消）；GraphQL 是**权威当前总数**。
 
 - 每日 cron 抓到 GraphQL `current_stars` 后，与"按 adds 累加出的总数"比对
 - 漂移超阈值（如 > 2%）时，**以 GraphQL 为权威锚点**：`current_stars` 直接取 GraphQL；历史 `total_end` 估算用新折扣重锚；记录 `sync_runs.total_drift_pct`
@@ -324,7 +332,7 @@ GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount`
 
 | 阶段 | 月成本 |
 |---|---|
-| MVP（< 100k/天） | ~$20（Vercel Pro）+ 一次性回填 **$0**（ClickHouse 公共实例） |
+| MVP（< 100k/天） | ~$20（Vercel Pro）+ 一次性回填 ~$10（BigQuery，一次性） |
 | 1M/天 | ~$40–100 |
 | 10M/天（纯 Vercel） | ~$2100（bandwidth 为主） |
 | 10M/天（前挂 Cloudflare） | ~$200–400 |

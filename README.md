@@ -24,7 +24,7 @@
 | 语言 | 英文（主） > 日文 > 中文，hreflang x-default = 英文 |
 | SEO | sitemap 分片 + schema.org + 每页 OG（build 时生成），见 docs/SEO.md |
 | 核心数据 | **Parquet 事实表**（离线 canonical）→ DuckDB 预算 → **JSON 视图**（build 读）+ JSON 活尾（当月，cron 读写）；运行时无数据库 |
-| 一次性回填 | **GH Archive via ClickHouse 公共实例**（免费免注册）+ 本机 DuckDB |
+| 一次性回填 | **BigQuery**（GH Archive 公开表，含稳定 repo.id）+ 本机 DuckDB，~$10 |
 | 日常采集 | **Vercel Cron + 单 Function**：GraphQL 批量查当前 star，diff 出增量 |
 | 框架 | Next.js 16（App Router + RSC + Turbopack） |
 | 语言/工具链 | TypeScript 6 · React 19 · Zod 4 · Tailwind 4 · 包管理器 **bun** · Node 24 |
@@ -47,7 +47,7 @@ MVP 这一层：
 
 - 我们只关心这 5,248 个 repo 的 star（约 1.3 亿次）；存成 per-repo×天 事实表 ≈ **800 万行**，Parquet 列存仅几十 MB（只在离线）
 - canonical = **Parquet 事实表**（离线，几十 MB）；服务层 = DuckDB 预算好的 **JSON 视图**（build 只读，运行时零引擎）
-- 一次性回填走免费 **ClickHouse 公共实例**（查 GH Archive，零账单 / 零 GCP），日常增量靠 GraphQL diff
+- 一次性回填走 **BigQuery**（查 GH Archive，~$10、含稳定 repo.id；评估过免费的 ClickHouse 公共实例/自建均不可行），日常增量靠 GraphQL diff
 - 全量 LLM 摘要：**$5-10**（Claude Haiku，留待 v0.2）
 
 ## 项目结构（初版）
@@ -58,7 +58,8 @@ gitstarclub/
 ├── docs/
 │   ├── ARCHITECTURE.md          # 技术栈、数据流、数据模型、扛量、build/cron 机制
 │   ├── PRODUCT.md               # 页面设计、URL、调性、i18n、命名
-│   └── SEO.md                   # sitemap、meta、结构化数据、OG、多语言 SEO
+│   ├── SEO.md                   # sitemap、meta、结构化数据、OG、多语言 SEO
+│   └── TESTING.md               # 测试策略：数据质量/视觉回归/a11y/E2E/性能/跨浏览器
 │
 │   # ── 预告页（已上线 gitstarclub.com，纯静态零依赖）──
 ├── src/index.html               # 预告页模板（含 {{BUILD_UTC/JST/ISO}} 占位符）
@@ -73,7 +74,7 @@ gitstarclub/
 │
 ├── pipeline/                    # 数据采集
 │   └── backfill/                # 一次性 11 年回填
-│       ├── extract.sql         # ClickHouse 公共实例查 GH Archive 日序列
+│       ├── extract.sql         # BigQuery 查 GH Archive 日序列（含 repo.id）
 │       ├── rollup.mjs           # 本机 DuckDB → Parquet 事实表 + JSON 视图
 │       └── metadata.mjs         # GraphQL 抓元数据 + owner + current_stars
 ├── web/                         # Next.js 16 应用（已搭骨架，待接数据）
@@ -104,11 +105,11 @@ gitstarclub/
 - [x] 预告页上线（gitstarclub.com，M3 Expressive 静态页 + 明暗双模式 + GA4 + UTC/JST 页脚时间戳 + OG/favicon）
 - [x] OG 图 / favicon 渲染为 M3E 石墨灰+星金配色（`assets/og.html`、`assets/icon.html`、`favicon.svg`，经 `render-assets.mjs` 出图）
 - [x] Next.js 16 骨架（TS6 / React19 / Zod4 / Tailwind4 / bun）
-- [ ] ClickHouse 公共实例回填 2015-至今 ≥10k repo 日序列 → Parquet 事实表
+- [ ] BigQuery 回填 2015-至今 ≥10k repo 日序列 → Parquet 事实表
 - [ ] GraphQL 抓元数据 + owner + current_stars → Parquet/JSON → 上传 Vercel Blob
 - [ ] Next.js 四个核心页面（首页 / 年 / 月 / repo），build 读预算 JSON 视图 + SSG
 - [ ] 时间轴 + star 曲线（服务端 SVG，零客户端 JS）
-- [ ] Vercel Cron 每日 GraphQL diff → 活尾 + revalidate；每周 deploy hook 全量重建
+- [ ] Vercel Cron 每日 GraphQL diff → 活尾 + revalidate；每周刷新白名单 + revalidate（长尾按需 ISR）
 - [ ] Vercel 部署上线
 
 ### v0.2 — 叙事与发现
@@ -139,4 +140,4 @@ gitstarclub/
 - **预告页已上线**：gitstarclub.com（静态页，Vercel CLI 部署）。含 GA4、UTC+JST 页脚时间戳、M3E 石墨灰+星金 OG 图与 favicon（`render-assets.mjs` 出图）。
 - **Next.js 16 应用骨架已建**（`web/`，TS6 / React19 / Zod4 / Tailwind4 / bun），尚未接入数据。
 - **数据假设已实测确认**（2026-05-28）：≥10k = 5,248 · ≥1k = 62,181 · ≥100 = 460,397；GraphQL 批量查 `stargazerCount` 验证可行。
-- 下一步：ClickHouse 公共实例回填 → Parquet/JSON → 四个核心页面接真实数据。需先准备 GitHub PAT、Vercel Blob store（无需 GCP）。
+- 下一步：BigQuery 回填 → Parquet/JSON → 四个核心页面接真实数据。需先准备 GCP 凭证、GitHub PAT、Vercel Blob store。
