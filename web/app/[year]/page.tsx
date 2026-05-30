@@ -1,27 +1,59 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "../_explore/Chrome";
-import { RankingList } from "../_explore/RankingList";
-import { YEARS, FIRST_YEAR, LAST_YEAR, monthsForYear, topReposForYear } from "../_explore/data";
+import { RankingList, type Row } from "../_explore/RankingList";
+import { getRank, getHeatmap, getReposLookup, joinRepoRank } from "@/lib/data";
+import { fmtStars, MONTH_ABBR } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
+const FIRST_YEAR = 2015;
+const CURRENT_YEAR = new Date().getUTCFullYear();
 
+export const dynamicParams = true; // historical years generated on demand (ISR)
+export const revalidate = false; // cron revalidates the current year
+
+export async function generateMetadata({ params }: { params: Promise<{ year: string }> }): Promise<Metadata> {
+  const { year } = await params;
+  return pageMeta({
+    title: `GitHub Stars in ${year} — Top Trending Repos & Star History`,
+    description: `The year ${year} in open source: top GitHub repositories by new stars, breakout projects crossing 10k, and month-by-month star trends.`,
+    path: `/${year}`,
+  });
+}
+
+// Core build: only the current year; history is on-demand ISR (FRONTEND §2.2/§9-A).
 export function generateStaticParams() {
-  return YEARS.map((y) => ({ year: String(y.year) }));
+  return [{ year: String(CURRENT_YEAR) }];
 }
 
 export default async function YearPage({ params }: { params: Promise<{ year: string }> }) {
   const { year: yearStr } = await params;
   const year = Number(yearStr);
-  const meta = YEARS.find((y) => y.year === year);
-  if (!meta) notFound();
+  if (!Number.isInteger(year) || year < FIRST_YEAR || year > CURRENT_YEAR) notFound();
 
-  const months = monthsForYear(year);
-  const maxM = Math.max(...months.map((m) => m.gained));
-  const tops = topReposForYear(year);
+  const [rank, heat, lookup] = await Promise.all([
+    getRank("year", String(year), "repo", "flow"),
+    getHeatmap("year", String(year)),
+    getReposLookup(),
+  ]);
+  if (!rank || !lookup) notFound();
+
+  const tops: Row[] = joinRepoRank(rank.items, lookup)
+    .slice(0, 20)
+    .map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const months = (heat?.cells ?? []).map(([period, total]) => ({
+    label: MONTH_ABBR[Number(String(period).slice(5, 7)) - 1],
+    month: Number(String(period).slice(5, 7)),
+    gained: total,
+  }));
+  const maxM = Math.max(1, ...months.map((m) => m.gained));
+  const yearTotal = months.reduce((a, m) => a + m.gained, 0);
+
   const prev = year > FIRST_YEAR ? year - 1 : null;
-  const next = year < LAST_YEAR ? year + 1 : null;
+  const next = year < CURRENT_YEAR ? year + 1 : null;
 
   return (
     <>
@@ -45,7 +77,13 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
           <NavArrow href={next ? `/${next}` : null} dir="next" label={next ? String(next) : ""} />
         </div>
         <p className="mt-3 text-center text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">
-          {meta.caption}
+          <span className="font-semibold text-on-surface">{fmtStars(yearTotal)}</span> stars gained across the tracked universe
+          {tops[0] && (
+            <>
+              {" · led by "}
+              <span className="font-semibold text-on-surface">{tops[0].name}</span>
+            </>
+          )}
         </p>
 
         <div className="mt-[clamp(2rem,4vw,3rem)] grid gap-8 md:grid-cols-[15rem_1fr]">
@@ -57,7 +95,7 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
               {months.map((m, i) => (
                 <li key={m.label}>
                   <Link
-                    href={`/${year}/${i + 1}`}
+                    href={`/${year}/${m.month}`}
                     className="grid grid-cols-[2.4rem_1fr] items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-on-surface/5"
                   >
                     <span className="font-mono text-[0.78rem] tabular-nums text-on-surface-variant">{m.label}</span>
@@ -74,9 +112,7 @@ export default async function YearPage({ params }: { params: Promise<{ year: str
           </aside>
 
           <section>
-            <h2 className="mb-2 text-[1.3rem] font-extrabold tracking-tight text-on-surface">
-              Top movers of {year}
-            </h2>
+            <h2 className="mb-2 text-[1.3rem] font-extrabold tracking-tight text-on-surface">Top movers of {year}</h2>
             <RankingList rows={tops} />
           </section>
         </div>

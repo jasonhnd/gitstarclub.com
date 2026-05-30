@@ -13,27 +13,34 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const title = "gitstarclub — A Chronicle of Open Source";
 const description =
-  "A browsable chronicle of open source. Look back, month by month and year by year, at which GitHub projects were rising. Launching soon.";
+  "A browsable chronicle of open source. Look back, month by month and year by year, at which GitHub projects were rising.";
+
+// metadataBase from env (SEO §2); falls back to the eventual production domain.
+// Indexing stays OFF until launch — the web app runs as a private preview while the
+// teaser owns the production domain (SEO §11 / OPS deploy topology). Flip SITE_INDEXABLE=1 at launch.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
+const indexable = process.env.SITE_INDEXABLE === "1";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://gitstarclub.com"),
-  title,
+  metadataBase: new URL(SITE_URL),
+  title: {
+    template: "%s · gitstarclub",
+    default: "gitstarclub — A Chronicle of Open Source",
+  },
   description,
-  alternates: { canonical: "/" },
+  robots: { index: indexable, follow: indexable },
   openGraph: {
     type: "website",
-    url: "/",
-    title,
-    description:
-      "A browsable chronicle of open source. Look back, month by month, at which GitHub projects were rising.",
+    siteName: "gitstarclub",
+    title: "gitstarclub — A Chronicle of Open Source",
+    description,
     images: [{ url: "/og.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
-    title,
-    description: "A browsable chronicle of open source. Launching soon.",
+    title: "gitstarclub — A Chronicle of Open Source",
+    description,
     images: ["/og.png"],
   },
   icons: {

@@ -22,15 +22,28 @@ export function Chrome({ tag }: { tag?: string }) {
           </span>
         ) : null}
       </Link>
-      <span className="inline-flex items-center gap-4">
+      <nav className="inline-flex items-center gap-4" aria-label="Primary">
+        <Link
+          href="/trending"
+          className="font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface"
+        >
+          Trending
+        </Link>
+        <Link
+          href="/rankings"
+          className="font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface"
+        >
+          Rankings
+        </Link>
         <Link
           href="/about"
-          className="font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface"
+          className="hidden font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface sm:inline"
         >
           About
         </Link>
         <ThemeToggle />
-      </span>
+      </nav>
+
     </header>
   );
 }

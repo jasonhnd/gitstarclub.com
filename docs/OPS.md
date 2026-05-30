@@ -87,14 +87,15 @@ blob://
 | **每周** | `0 4 * * 0`（周日 ~04:00） | 刷新白名单 diff + 新晋者补历史 → 折叠活尾入 Parquet + DuckDB 重算受影响视图 → `revalidatePath` 变更页 | **否**（长尾按需 ISR；不做 16k 全量 build） |
 
 ```jsonc
-// web/vercel.json
+// web/vercel.json — MVP ships daily only (see 落地 note)
 {
   "crons": [
-    { "path": "/api/cron/daily",  "schedule": "0 3 * * *" },
-    { "path": "/api/cron/weekly", "schedule": "0 4 * * 0" }
+    { "path": "/api/cron/daily", "schedule": "0 3 * * *" }
   ]
 }
 ```
+
+> **MVP 落地（已实现）**：每日 job = `web/app/api/cron/daily/route.ts`（`?dry=1` 可空跑预览）。CRON_SECRET 鉴权 → GraphQL 拉 current_stars（`web/lib/github.ts`，按 owner/name 批量）→ 幂等 upsert `current_month.json`（按 UTC 日）→ 重算 `hot-snapshot.json` 的**实时可推导部分**（all-time 用新 stars 重排；当月 flow = **回填的当月榜为底 + 活尾增量**，解了 OPS 原先"YTD-base 现场定"的开放点）；`year_spine`/`on_this_day` 暂沿用上一份快照（由离线/每周重算）→ `revalidatePath` 核心页。**每周重算不上 serverless**（运行时零引擎，无 DuckDB/Parquet）：白名单刷新 + 折叠当月入 Parquet + 重算视图 = 本机/CI **重跑 pipeline 01–06**，非 Vercel cron。`GITHUB_TOKEN` + `CRON_SECRET` 已配在 web 项目 Production/Development 环境变量。
 
 **鉴权模式（CRON_SECRET）**：
 

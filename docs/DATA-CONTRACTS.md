@@ -98,6 +98,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 ### 2.3 `rank/{window}/{period}/{dim}/{metric}.json`
 
 排行榜。`window∈{week,month,year}`、`period` 见全局约定、`dim∈{repo,org}`、`metric∈{flow,stock}`。
+**派生 repo 榜（仅 month/year，dim=repo）**：`metric=growth`（增速，item 含 `rate`=增速%、`base`=期初 stock）、`metric=new`（新晋，item 含 `date`=破 10k 日期）。口径见 [RANKING §4](./RANKING.md)；`RankItem` 因此带可选 `rate`/`base`/`date` 三字段。
 
 ```json
 {
