@@ -60,6 +60,7 @@ org 榜不抓新数据——把 per-repo 按 `owner` 分组求和：
 
 - `flow_org[period] = Σ_{r ∈ org 白名单 repo} flow[r, period]`
 - `stock_org[period] = Σ stock[r, period]`；全时 = `current_stars_sum`。
+- **成员 stock 前向填充（实现细节）**：成员 repo 在某期无事件时其 `stock_est` 缺失，直接求和会让 org 曲线在末期掉下来、终点对不上 `current_stars_sum`。故聚合前先按成员各自 `首次事件期→全局末期` **carry-forward** 其 `stock_est`（空期沿用上一期累计），再求和——org stock 曲线由此单调、终点精确等于 `current_stars_sum`（已验证 drift=0）。代价：org flow 在成员全闲的期记为 0（而非"无数据"），轻微偏离 §2 的"无事件不入榜"，仅影响极稀疏早期、榜尾，可接受。
 - org 成员 = 该 owner 的 ≥10k 白名单 repo（`entity/org.members`）。
 - owner_type（User/Organization）都参与；页面可加筛选（仅 Org / 全部），数据层不区分。
 - org 的"增速/新晋"可选（MVP 可不做）；若做：增速 = org flow / org 期初 stock（floor 更高，如 ≥100k）。

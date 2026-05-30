@@ -1,9 +1,11 @@
-import { fmtK, type Milestone } from "./data";
+import { fmtK } from "@/lib/format";
 
 type Point = { label: string; total: number };
+export type Milestone = { stars: number; label: string; monthIndex: number; date: string };
 
 // Server-rendered SVG area chart. Zero client JS. Amber gradient fill,
-// gold milestone pins, CSS line-draw on load.
+// gold milestone pins, CSS line-draw on load. Tolerates non-monotone series
+// (recent net stars can dip) by taking the true series max for the y-scale.
 export function StarCurve({ series, milestones }: { series: Point[]; milestones: Milestone[] }) {
   const W = 880;
   const H = 300;
@@ -12,7 +14,7 @@ export function StarCurve({ series, milestones }: { series: Point[]; milestones:
   const padT = 28;
   const padB = 30;
   const n = series.length;
-  const max = series[n - 1]?.total || 1;
+  const max = Math.max(1, ...series.map((p) => p.total));
 
   const x = (i: number) => padL + (i / Math.max(1, n - 1)) * (W - padL - padR);
   const y = (v: number) => H - padB - (v / max) * (H - padT - padB);

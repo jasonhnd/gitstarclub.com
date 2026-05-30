@@ -1,13 +1,37 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { Chrome } from "./_explore/Chrome";
-import { RankingList } from "./_explore/RankingList";
-import { YEARS, MAX_YEAR_GAINED, LAST_YEAR, topReposForYear } from "./_explore/data";
+import { RankingList, type Row } from "./_explore/RankingList";
+import { getHotSnapshot, getReposLookup, joinRepoRank } from "@/lib/data";
+import { fmtStars } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
-export default function Home() {
-  const thisMonth = topReposForYear(LAST_YEAR).slice(0, 3);
+export const metadata = pageMeta({
+  absoluteTitle: true,
+  title: "GitHub Star History & Trends — A Chronicle of Open Source · gitstarclub",
+  description:
+    "Explore 11 years of GitHub star history across 5,200+ projects with ≥10k stars. Yearly & monthly trending, all-time rankings, and per-repo star timelines.",
+  path: "/",
+});
+
+export const revalidate = false; // core page; daily cron revalidates after writing hot-snapshot
+
+export default async function Home() {
+  const [snap, lookup] = await Promise.all([getHotSnapshot(), getReposLookup()]);
+  const spine = snap?.home.year_spine ?? [];
+  const maxTotal = Math.max(1, ...spine.map(([, t]) => t));
+  const thisMonth: Row[] =
+    snap && lookup
+      ? joinRepoRank(snap.home.current_month_top.flow.slice(0, 3), lookup).map((r) => ({
+          owner: r.owner,
+          name: r.name,
+          lang: r.language,
+          gained: r.value,
+          total: r.current_stars,
+        }))
+      : [];
 
   return (
     <>
@@ -23,46 +47,45 @@ export default function Home() {
           Eleven years of momentum at a glance. Pick a year to drop into its chapter.
         </p>
 
-        <section
-          className="mt-[clamp(2.5rem,6vw,4.5rem)]"
-          aria-label="Stars gained per year, 2015–2026"
-        >
-          <div
-            className="grid h-[clamp(200px,32vw,340px)] items-end gap-1 sm:gap-[1vw]"
-            style={{ gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }}
-          >
-            {YEARS.map((y, i) => (
-              <Link
-                key={y.year}
-                href={`/${y.year}`}
-                aria-label={`${y.year}: ${y.caption}`}
-                className="group flex h-full min-w-0 flex-col items-center justify-end gap-3 transition-transform duration-200 ease-[var(--ease-spring)] hover:-translate-y-1.5 active:scale-[0.97]"
-              >
-                <span className="hidden font-mono text-[0.72rem] tabular-nums text-on-surface-variant opacity-0 transition-opacity group-hover:opacity-100 sm:block">
-                  {y.gained}M
-                </span>
-                <div className="flex w-full flex-1 items-end">
-                  <div
-                    className={`spine-bar-y w-full rounded-t-xl ${y.peak ? "bg-primary-fixed-dim" : "bg-primary-container"} transition-[filter] duration-200 group-hover:brightness-105`}
-                    style={
-                      { "--h": y.gained / MAX_YEAR_GAINED, height: "100%", animationDelay: `${0.04 * i}s` } as CSSProperties
-                    }
-                  />
-                </div>
-                <span className="font-mono text-[0.7rem] tabular-nums text-on-surface-variant transition-colors group-hover:text-on-surface sm:text-[0.8rem]">
-                  {`'${String(y.year).slice(2)}`}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
+        {spine.length > 0 && (
+          <section className="mt-[clamp(2.5rem,6vw,4.5rem)]" aria-label="Stars gained per year">
+            <div
+              className="grid h-[clamp(200px,32vw,340px)] items-end gap-1 sm:gap-[1vw]"
+              style={{ gridTemplateColumns: `repeat(${spine.length}, minmax(0, 1fr))` }}
+            >
+              {spine.map(([year, total], i) => (
+                <Link
+                  key={year}
+                  href={`/${year}`}
+                  aria-label={`${year}: ${fmtStars(total)} stars gained`}
+                  className="group flex h-full min-w-0 flex-col items-center justify-end gap-3 transition-transform duration-200 ease-[var(--ease-spring)] hover:-translate-y-1.5 active:scale-[0.97]"
+                >
+                  <span className="hidden font-mono text-[0.72rem] tabular-nums text-on-surface-variant opacity-0 transition-opacity group-hover:opacity-100 sm:block">
+                    {fmtStars(total)}
+                  </span>
+                  <div className="flex w-full flex-1 items-end">
+                    <div
+                      className={`spine-bar-y w-full rounded-t-xl ${total === maxTotal ? "bg-primary-fixed-dim" : "bg-primary-container"} transition-[filter] duration-200 group-hover:brightness-105`}
+                      style={{ "--h": total / maxTotal, height: "100%", animationDelay: `${0.04 * i}s` } as CSSProperties}
+                    />
+                  </div>
+                  <span className="font-mono text-[0.7rem] tabular-nums text-on-surface-variant transition-colors group-hover:text-on-surface sm:text-[0.8rem]">
+                    {`'${String(year).slice(2)}`}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
-        <section className="mt-[clamp(2.5rem,5vw,4rem)] max-w-[42rem]">
-          <h2 className="mb-2 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
-            This month so far
-          </h2>
-          <RankingList rows={thisMonth} />
-        </section>
+        {thisMonth.length > 0 && (
+          <section className="mt-[clamp(2.5rem,5vw,4rem)] max-w-[42rem]">
+            <h2 className="mb-2 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
+              This month so far
+            </h2>
+            <RankingList rows={thisMonth} />
+          </section>
+        )}
       </main>
     </>
   );

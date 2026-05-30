@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { Chrome } from "../_explore/Chrome";
+import { pageMeta } from "@/lib/seo";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
-export const metadata = {
-  title: "About — gitstarclub",
-  description: "How gitstarclub measures open source, and the honest caveats behind the data.",
-};
+export const metadata = pageMeta({
+  title: "About — Data Sources & Methodology",
+  description:
+    "How gitstarclub charts GitHub star history: data from GH Archive & GitHub API, gross vs net stars, the ≥10k whitelist, and known caveats.",
+  path: "/about",
+});
 
 function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
   return (

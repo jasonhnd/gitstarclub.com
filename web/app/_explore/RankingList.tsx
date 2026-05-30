@@ -1,9 +1,17 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { fmtK, type RepoRow } from "./data";
+import { fmtK } from "@/lib/format";
 
-type Row = RepoRow & { rate?: number; crossedDay?: number };
-type Variant = "gained" | "rate" | "crossed";
+export type Row = {
+  owner: string;
+  name: string;
+  lang: string | null;
+  total: number;
+  gained?: number;
+  rate?: number;
+  crossedDay?: number;
+};
+type Variant = "gained" | "rate" | "crossed" | "total";
 
 // Editorial ranking — not a data table. Rank as a gold display numeral,
 // repo name in the mono "data voice", metric weighted to the right.
@@ -28,9 +36,11 @@ export function RankingList({ rows, variant = "gained" }: { rows: Row[]; variant
                   {r.name}
                 </span>
               </div>
-              <span className="mt-1 inline-block rounded-full bg-surface-container-high px-2 py-0.5 text-[0.68rem] font-medium text-on-surface-variant">
-                {r.lang}
-              </span>
+              {r.lang && (
+                <span className="mt-1 inline-block rounded-full bg-surface-container-high px-2 py-0.5 text-[0.68rem] font-medium text-on-surface-variant">
+                  {r.lang}
+                </span>
+              )}
             </div>
             <div className="shrink-0 text-right">
               {variant === "rate" ? (
@@ -43,9 +53,11 @@ export function RankingList({ rows, variant = "gained" }: { rows: Row[]; variant
                   <div className="text-[1.05rem] font-extrabold tabular-nums text-on-surface">{fmtK(r.total)}★</div>
                   <div className="font-mono text-[0.72rem] text-on-surface-variant">10k · day {r.crossedDay}</div>
                 </>
+              ) : variant === "total" ? (
+                <div className="text-[1.05rem] font-extrabold tabular-nums text-on-surface">{fmtK(r.total)}★</div>
               ) : (
                 <>
-                  <div className="text-[1.05rem] font-extrabold tabular-nums text-on-surface">+{fmtK(r.gained)}</div>
+                  <div className="text-[1.05rem] font-extrabold tabular-nums text-on-surface">+{fmtK(r.gained ?? 0)}</div>
                   <div className="font-mono text-[0.72rem] text-on-surface-variant">{fmtK(r.total)}★</div>
                 </>
               )}

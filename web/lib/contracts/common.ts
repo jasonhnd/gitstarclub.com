@@ -24,16 +24,21 @@ export const Window = z.enum(["week", "month", "year", "all"]);
 export type Window = z.infer<typeof Window>;
 export const Dim = z.enum(["repo", "org"]);
 export type Dim = z.infer<typeof Dim>;
-export const Metric = z.enum(["flow", "stock"]);
+// flow/stock are the base metrics; growth (rate) and new (first ≥10k) are derived repo views.
+export const Metric = z.enum(["flow", "stock", "growth", "new"]);
 export type Metric = z.infer<typeof Metric>;
 
-/** One ranking row. `id` for repo dim, `login` for org dim. value may be negative (net flow). */
+/** One ranking row. `id` for repo dim, `login` for org dim. value may be negative (net flow).
+ *  Derived metrics add: `rate` (growth %, float), `base` (期初 stock), `date` (new: crossed-10k day). */
 export const RankItem = z.object({
   rank: z.number().int(),
   id: z.number().int().optional(),
   login: z.string().optional(),
   value: z.number().int(),
   prev_rank: z.number().int().nullable(),
+  rate: z.number().optional(),
+  base: z.number().int().optional(),
+  date: z.string().optional(),
 });
 export type RankItem = z.infer<typeof RankItem>;
 

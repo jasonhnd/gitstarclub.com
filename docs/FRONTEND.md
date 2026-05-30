@@ -30,17 +30,17 @@
 |---|---|---|---|---|---|
 | 首页 | `/` | `page.tsx` | ✅ 已建 | 核心 | — |
 | 年页 | `/[year]` | `[year]/page.tsx` | ✅ 已建 | 当年核心 / 历史按需 ISR | ⚠️ 现返回全部年（见 §9-A） |
-| 月页 | `/[year]/[month]` | `[year]/[month]/page.tsx` | ✅ 已建 | 当月核心 / 历史按需 ISR | ⚠️ 现返回全部月（见 §9-A） |
-| **周页** | `/[year]/W[week]` | `[year]/W[week]/page.tsx` **待加** | ✗ 待加 | 当周 mover / 过去周冻结（按需 ISR） | `[]`（长尾） |
-| repo 页 | `/r/[owner]/[name]` | `r/[owner]/[name]/page.tsx` | ✅ 已建 | 按需 ISR（mover 当日刷新） | ⚠️ 现返回全部 repo（见 §9-A） |
-| **org 页** | `/o/[login]` | `o/[login]/page.tsx` **待加** | ✗ 待加 | 按需 ISR（mover 当日刷新） | `[]`（长尾） |
-| **全时榜** | `/rankings` | `rankings/page.tsx` **待加** | ✗ 待加 | 核心（deploy 构建 + 每日 revalidate） | —（单页） |
-| **脉搏页** | `/trending` | `trending/page.tsx` **待加** | ✗ 待加 | 核心（每日 revalidate，事件驱动） | —（单页） |
+| 月页 | `/[year]/[month]` | `[year]/[period]/page.tsx` | ✅ 已建 | 当月核心 / 历史按需 ISR | 当月 only（§9-A 已收敛） |
+| **周页** | `/[year]/W[week]` | `[year]/[period]/page.tsx`（同段） | ✅ 已建 | 当周 mover / 过去周冻结（按需 ISR） | `[]`（长尾） |
+| repo 页 | `/r/[owner]/[name]` | `r/[owner]/[name]/page.tsx` | ✅ 已建 | 按需 ISR（mover 当日刷新） | `[]`（§9-A 已收敛） |
+| **org 页** | `/o/[login]` | `o/[login]/page.tsx` | ✅ 已建 | 按需 ISR（mover 当日刷新） | `[]`（长尾） |
+| **全时榜** | `/rankings` | `rankings/page.tsx` | ✅ 已建 | 核心（deploy 构建 + 每日 revalidate） | —（单页） |
+| **脉搏页** | `/trending` | `trending/page.tsx` | ✅ 已建 | 核心（每日 revalidate，事件驱动） | —（单页） |
 | 关于 | `/about` | `about/page.tsx` | ✅ 已建 | 核心 | — |
 
-**周页是独立页**（不是月/年页内的 section）——REQUIREMENTS §3 明确"`/YYYY/W##` 独立页；当周活、过去周冻结"。URL 段用字面量 `W` + ISO 周号（与 DATA-CONTRACTS `period = YYYY-Www` 对齐）：动态段命名为 `[week]`，目录写作 `W[week]`，使 `/2024/W42` 中 `week="42"`。
+**周页是独立页**（不是月/年页内的 section）——REQUIREMENTS §3 明确"`/YYYY/W##` 独立页；当周活、过去周冻结"。URL 用字面量 `W` + ISO 周号（与 DATA-CONTRACTS `period = YYYY-Www` 对齐），如 `/2024/W42`。
 
-> ⚠️ **路由消歧（必须处理）**：`/[year]/[month]` 与 `/[year]/W[week]` 都是"`/[year]/` 下一段"。`/2024/42`（月，会被 `[month]` 捕获后 `notFound`，因 42>12）与 `/2024/W42`（周）靠字面量前缀 `W` 区分——Next 会优先匹配更具体的 `W[week]`。月页须保留对 `month<1||month>12` 的 `notFound()` 守卫（现有 `[year]/[month]/page.tsx` 已有此守卫）。
+> ⚠️ **路由消歧（已落地）**：月页 `/[year]/[month]` 与周页 `/[year]/W[week]` 都在 `/[year]/` 下一段。**实测 Next 16 不允许 `[month]` 与 `W[week]` 两个同级动态目录并存——会互相冲突、两条路由都 404。** 故合并为**单一动态段** `[year]/[period]/page.tsx`：在页面里按字面量前缀分流——`/^W\d+$/` → 周视图，否则按数字 1–12 → 月视图（越界 `notFound()`）。`/2024/42`（42>12）落到月视图守卫 → 404。年页/repo 里的月链接仍写 `/${y}/${m}`。
 
 ### 1.2 i18n 路由（en 根 / `/ja` / `/zh`）
 
