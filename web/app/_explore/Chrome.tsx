@@ -23,7 +23,7 @@ export function Chrome({ tag, locale = "en", t = en }: { tag?: string; locale?: 
         ) : null}
       </Link>
       <nav className="inline-flex items-center gap-4" aria-label="Primary">
-        <Link href={`${lp}/trending`} className="font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface">
+        <Link href={`${lp}/pulse`} className="font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface">
           {t.nav.trending}
         </Link>
         <Link href={`${lp}/rankings`} className="font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface">

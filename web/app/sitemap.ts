@@ -14,11 +14,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   const curYear = now.getUTCFullYear();
 
-  const paths: string[] = ["", "/rankings", "/trending", "/about"]; // "" = locale home
+  const paths: string[] = ["", "/pulse", "/rankings", "/about"]; // "" = locale home
   for (let y = FIRST_YEAR; y <= curYear; y++) {
-    paths.push(`/${y}`);
+    paths.push(`/rankings/${y}`);
     const lastMonth = y === curYear ? now.getUTCMonth() + 1 : 12;
-    for (let m = 1; m <= lastMonth; m++) paths.push(`/${y}/${m}`);
+    for (let m = 1; m <= lastMonth; m++) paths.push(`/rankings/${y}/${m}`);
   }
   if (repos) for (const e of Object.values(repos)) paths.push(`/r/${e.full_name}`);
   if (orgs) for (const login of Object.keys(orgs)) paths.push(`/o/${login}`);
