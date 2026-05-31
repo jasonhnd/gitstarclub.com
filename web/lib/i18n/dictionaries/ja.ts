@@ -86,6 +86,10 @@ const ja: Dict = {
     onThisDay: "今日という日に",
     crossed: "突破",
   },
+  footer: {
+    madeIn: "東京で制作",
+    dataThrough: "データ更新日",
+  },
 };
 
 export default ja;
