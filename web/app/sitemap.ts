@@ -1,9 +1,10 @@
 import type { MetadataRoute } from "next";
 import { getReposLookup, getOrgsLookup, getMeta } from "@/lib/data";
+import { LOCALES } from "@/lib/i18n";
 
-// Enumerates every indexable URL so crawlers can discover the on-demand ISR long tail
-// (SEO §3.1b / §4). ~9.6k URLs — under the 50k single-file limit; shard via generateSitemaps
-// if it ever grows past that. lastModified is the stable pipeline date (not new Date()), per §3.3.
+// Enumerates every indexable URL (× 3 locales) so crawlers discover the on-demand ISR long
+// tail (SEO §3.1b / §4). ~29k URLs — under the 50k single-file limit; shard via
+// generateSitemaps if it grows past that. lastModified = stable pipeline date (§3.3).
 const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
 const FIRST_YEAR = 2015;
 
@@ -12,15 +13,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const lastModified = meta?.backfilled_at ? new Date(meta.backfilled_at) : new Date();
   const now = new Date();
   const curYear = now.getUTCFullYear();
-  const at = (path: string) => ({ url: `${BASE}${path}`, lastModified });
 
-  const entries: MetadataRoute.Sitemap = [at("/"), at("/rankings"), at("/trending"), at("/about")];
+  const paths: string[] = ["", "/rankings", "/trending", "/about"]; // "" = locale home
   for (let y = FIRST_YEAR; y <= curYear; y++) {
-    entries.push(at(`/${y}`));
+    paths.push(`/${y}`);
     const lastMonth = y === curYear ? now.getUTCMonth() + 1 : 12;
-    for (let m = 1; m <= lastMonth; m++) entries.push(at(`/${y}/${m}`));
+    for (let m = 1; m <= lastMonth; m++) paths.push(`/${y}/${m}`);
   }
-  if (repos) for (const e of Object.values(repos)) entries.push(at(`/r/${e.full_name}`));
-  if (orgs) for (const login of Object.keys(orgs)) entries.push(at(`/o/${login}`));
+  if (repos) for (const e of Object.values(repos)) paths.push(`/r/${e.full_name}`);
+  if (orgs) for (const login of Object.keys(orgs)) paths.push(`/o/${login}`);
+
+  const entries: MetadataRoute.Sitemap = [];
+  for (const p of paths) for (const loc of LOCALES) entries.push({ url: `${BASE}/${loc}${p}`, lastModified });
   return entries;
 }

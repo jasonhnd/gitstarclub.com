@@ -58,7 +58,7 @@ export const en = {
     onThisDay: "On this day",
     crossed: "crossed",
   },
-} as const;
+};
 
 export type Dict = typeof en;
 export default en;

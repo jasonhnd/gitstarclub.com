@@ -1,28 +1,37 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Chrome } from "../../_explore/Chrome";
-import { Heatmap } from "../../_explore/Heatmap";
-import { RankingList, type Row } from "../../_explore/RankingList";
+import { Chrome } from "@/app/_explore/Chrome";
+import { Heatmap } from "@/app/_explore/Heatmap";
+import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { getRank, getHeatmap, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars, MONTH_NAMES, MONTH_ABBR } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
+import { parseLang, getDictionary, localePrefix, type Locale, type Dict } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const FIRST_YEAR = 2015;
 const CURRENT_YEAR = new Date().getUTCFullYear();
 
-export const dynamicParams = true; // historical periods on demand (ISR)
-export const revalidate = false; // cron revalidates current period
+export const dynamicParams = true;
+export const revalidate = false;
 
-export async function generateMetadata({ params }: { params: Promise<{ year: string; period: string }> }): Promise<Metadata> {
-  const { year, period } = await params;
+export function generateStaticParams() {
+  const now = new Date();
+  return [{ year: String(now.getUTCFullYear()), period: String(now.getUTCMonth() + 1) }];
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ lang: string; year: string; period: string }> }): Promise<Metadata> {
+  const { lang, year, period } = await params;
+  const loc = parseLang(lang);
+  if (!loc) return {};
   const wk = /^W(\d{1,2})$/i.exec(period);
   if (wk)
     return pageMeta({
       title: `${year} Week ${Number(wk[1])} — Top Trending GitHub Repos`,
       description: `The top GitHub repositories by new stars in ISO week ${Number(wk[1])} of ${year}.`,
       path: `/${year}/${period}`,
+      locale: loc,
     });
   const month = Number(period);
   if (month >= 1 && month <= 12)
@@ -30,32 +39,28 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
       title: `Top GitHub Repos in ${MONTH_NAMES[month - 1]} ${year} — Trending & Star Growth`,
       description: `${MONTH_NAMES[month - 1]} ${year} on GitHub: repositories by new stars, fastest-growing projects, and newcomers crossing 10k.`,
       path: `/${year}/${period}`,
+      locale: loc,
     });
   return {};
 }
 
-// Core build: only the current month; history + all weeks are on-demand ISR.
-export function generateStaticParams() {
-  const now = new Date();
-  return [{ year: String(now.getUTCFullYear()), period: String(now.getUTCMonth() + 1) }];
-}
-
-// One dynamic segment serves both /YYYY/MM (month) and /YYYY/Www (week) — sibling dynamic
-// folders would collide, so the segment branches on the literal "W" prefix.
-export default async function PeriodPage({ params }: { params: Promise<{ year: string; period: string }> }) {
-  const { year: ys, period: ps } = await params;
+export default async function PeriodPage({ params }: { params: Promise<{ lang: string; year: string; period: string }> }) {
+  const { lang, year: ys, period: ps } = await params;
+  const loc = parseLang(lang);
+  if (!loc) notFound();
   const year = Number(ys);
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > CURRENT_YEAR) notFound();
+  const t = await getDictionary(loc);
 
   const wk = /^W(\d{1,2})$/i.exec(ps);
-  if (wk) return <WeekView year={year} week={Number(wk[1])} />;
-
+  if (wk) return <WeekView year={year} week={Number(wk[1])} loc={loc} t={t} />;
   const month = Number(ps);
   if (!Number.isInteger(month) || month < 1 || month > 12) notFound();
-  return <MonthView year={year} month={month} />;
+  return <MonthView year={year} month={month} loc={loc} t={t} />;
 }
 
-async function MonthView({ year, month }: { year: number; month: number }) {
+async function MonthView({ year, month, loc, t }: { year: number; month: number; loc: Locale; t: Dict }) {
+  const lp = localePrefix(loc);
   const period = `${year}-${String(month).padStart(2, "0")}`;
   const [flow, growth, newc, heat, lookup] = await Promise.all([
     getRank("month", period, "repo", "flow"),
@@ -70,22 +75,17 @@ async function MonthView({ year, month }: { year: number; month: number }) {
     .slice(0, 12)
     .map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
   const fastest: Row[] = growth
-    ? joinRepoRank(growth.items, lookup)
-        .slice(0, 8)
-        .map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars, rate: r.rate }))
+    ? joinRepoRank(growth.items, lookup).slice(0, 8).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars, rate: r.rate }))
     : [];
   const newcomers: Row[] = newc
-    ? joinRepoRank(newc.items, lookup)
-        .slice(0, 8)
-        .map((r) => ({
-          owner: r.owner,
-          name: r.name,
-          lang: r.language,
-          total: r.current_stars,
-          crossedDay: r.date ? Number(r.date.slice(8, 10)) : undefined,
-        }))
+    ? joinRepoRank(newc.items, lookup).slice(0, 8).map((r) => ({
+        owner: r.owner,
+        name: r.name,
+        lang: r.language,
+        total: r.current_stars,
+        crossedDay: r.date ? Number(r.date.slice(8, 10)) : undefined,
+      }))
     : [];
-
   const cells = (heat?.cells ?? []).map(([date, total]) => ({ label: String(Number(String(date).slice(8, 10))), gained: total }));
   const maxDay = Math.max(1, ...cells.map((c) => c.gained));
   const totalGained = cells.reduce((a, c) => a + c.gained, 0);
@@ -95,60 +95,56 @@ async function MonthView({ year, month }: { year: number; month: number }) {
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={loc} t={t} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Link
-          href={`/${year}`}
-          className="inline-flex items-center gap-1 font-mono text-[0.78rem] text-on-surface-variant transition-colors hover:text-on-surface"
-        >
+        <Link href={`${lp}/${year}`} className="inline-flex items-center gap-1 font-mono text-[0.78rem] text-on-surface-variant transition-colors hover:text-on-surface">
           ↑ {year}
         </Link>
-
         <div className="mt-4 flex items-center justify-between gap-4">
-          <PeriodArrow target={prev && `/${prev.y}/${prev.m}`} label={prev ? `${MONTH_ABBR[prev.m - 1]} '${String(prev.y).slice(2)}` : ""} dir="prev" />
+          <PeriodArrow target={prev && `${lp}/${prev.y}/${prev.m}`} label={prev ? `${MONTH_ABBR[prev.m - 1]} '${String(prev.y).slice(2)}` : ""} dir="prev" />
           <div className="text-center">
-            <div className="font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">Month</div>
+            <div className="font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{t.month.label}</div>
             <h1 className="animate-rise text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none tracking-[-0.03em] text-on-surface">
               {MONTH_NAMES[month - 1]} {year}
             </h1>
           </div>
-          <PeriodArrow target={next && `/${next.y}/${next.m}`} label={next ? `${MONTH_ABBR[next.m - 1]} '${String(next.y).slice(2)}` : ""} dir="next" />
+          <PeriodArrow target={next && `${lp}/${next.y}/${next.m}`} label={next ? `${MONTH_ABBR[next.m - 1]} '${String(next.y).slice(2)}` : ""} dir="next" />
         </div>
         <p className="mt-3 text-center text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">
-          The tracked universe gained <span className="font-semibold text-on-surface">{fmtStars(totalGained)}</span> stars
+          {t.month.gained} <span className="font-semibold text-on-surface">{fmtStars(totalGained)}</span>
           {newcomers.length > 0 && (
             <>
               {" · "}
-              <span className="font-semibold text-on-surface">{newcomers.length}</span> newcomers
+              <span className="font-semibold text-on-surface">{newcomers.length}</span> {t.month.newcomersWord}
             </>
           )}
         </p>
 
         {cells.length > 0 && (
           <section className="mt-[clamp(2rem,4vw,3rem)]">
-            <h2 className="mb-3 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">Daily momentum</h2>
+            <h2 className="mb-3 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">{t.month.daily}</h2>
             <Heatmap cells={cells} max={maxDay} columns={Math.min(16, cells.length)} square />
           </section>
         )}
 
         <div className="mt-[clamp(2.5rem,5vw,3.5rem)] grid gap-x-8 gap-y-10 md:grid-cols-3">
           <section>
-            <h2 className="mb-1 text-[1.1rem] font-extrabold tracking-tight text-on-surface">🔥 Most stars</h2>
-            <p className="mb-2 text-[0.8rem] text-on-surface-variant">Biggest absolute gains</p>
-            <RankingList rows={mostStars} variant="gained" />
+            <h2 className="mb-1 text-[1.1rem] font-extrabold tracking-tight text-on-surface">🔥 {t.month.most}</h2>
+            <p className="mb-2 text-[0.8rem] text-on-surface-variant">{t.month.mostSub}</p>
+            <RankingList rows={mostStars} variant="gained" locale={loc} />
           </section>
           {fastest.length > 0 && (
             <section>
-              <h2 className="mb-1 text-[1.1rem] font-extrabold tracking-tight text-on-surface">🚀 Fastest rising</h2>
-              <p className="mb-2 text-[0.8rem] text-on-surface-variant">Growth rate, ≥20k floor</p>
-              <RankingList rows={fastest} variant="rate" />
+              <h2 className="mb-1 text-[1.1rem] font-extrabold tracking-tight text-on-surface">🚀 {t.month.fastest}</h2>
+              <p className="mb-2 text-[0.8rem] text-on-surface-variant">{t.month.fastestSub}</p>
+              <RankingList rows={fastest} variant="rate" locale={loc} />
             </section>
           )}
           {newcomers.length > 0 && (
             <section>
-              <h2 className="mb-1 text-[1.1rem] font-extrabold tracking-tight text-on-surface">🎂 Newcomers</h2>
-              <p className="mb-2 text-[0.8rem] text-on-surface-variant">First crossed 10k</p>
-              <RankingList rows={newcomers} variant="crossed" />
+              <h2 className="mb-1 text-[1.1rem] font-extrabold tracking-tight text-on-surface">🎂 {t.month.newcomers}</h2>
+              <p className="mb-2 text-[0.8rem] text-on-surface-variant">{t.month.newcomersSub}</p>
+              <RankingList rows={newcomers} variant="crossed" locale={loc} />
             </section>
           )}
         </div>
@@ -157,8 +153,9 @@ async function MonthView({ year, month }: { year: number; month: number }) {
   );
 }
 
-async function WeekView({ year, week }: { year: number; week: number }) {
+async function WeekView({ year, week, loc, t }: { year: number; week: number; loc: Locale; t: Dict }) {
   if (week < 1 || week > 53) notFound();
+  const lp = localePrefix(loc);
   const period = `${year}-W${String(week).padStart(2, "0")}`;
   const [flow, lookup] = await Promise.all([getRank("week", period, "repo", "flow"), getReposLookup()]);
   if (!flow || !lookup) notFound();
@@ -169,24 +166,20 @@ async function WeekView({ year, week }: { year: number; week: number }) {
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={loc} t={t} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Link
-          href={`/${year}`}
-          className="inline-flex items-center gap-1 font-mono text-[0.78rem] text-on-surface-variant transition-colors hover:text-on-surface"
-        >
+        <Link href={`${lp}/${year}`} className="inline-flex items-center gap-1 font-mono text-[0.78rem] text-on-surface-variant transition-colors hover:text-on-surface">
           ↑ {year}
         </Link>
         <div className="mt-4 text-center">
-          <div className="font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">Week</div>
+          <div className="font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{t.week.label}</div>
           <h1 className="animate-rise text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none tracking-[-0.03em] text-on-surface">
             {period}
           </h1>
         </div>
-
         <section className="mt-[clamp(2rem,4vw,3rem)]">
-          <h2 className="mb-2 text-[1.3rem] font-extrabold tracking-tight text-on-surface">Top movers this week</h2>
-          <RankingList rows={movers} variant="gained" />
+          <h2 className="mb-2 text-[1.3rem] font-extrabold tracking-tight text-on-surface">{t.week.top}</h2>
+          <RankingList rows={movers} variant="gained" locale={loc} />
         </section>
       </main>
     </>
