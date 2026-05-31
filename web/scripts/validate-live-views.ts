@@ -1,0 +1,287 @@
+// Validates daily live JSON views on Vercel Blob after cron runs.
+// Run from web/:
+//   bun scripts/validate-live-views.ts [cacheBust]
+//   bun scripts/validate-live-views.ts --bust 2026-05-31
+
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import type { ZodType } from "zod";
+import { CurrentMonth, HotSnapshot } from "../lib/contracts/index";
+import type { RankItem } from "../lib/contracts/index";
+
+const BLOB_BASE_KEYS = ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL"] as const;
+const webDir = fileURLToPath(new URL("..", import.meta.url));
+
+type BlobBaseKey = (typeof BLOB_BASE_KEYS)[number];
+type JsonObject = Record<string, unknown>;
+
+type ViewResult =
+  | ({ ok: true; path: string; status: number; notFound: false } & JsonObject)
+  | {
+      ok: false;
+      path: string;
+      status?: number;
+      notFound: boolean;
+      error: string;
+      issues?: string[];
+    };
+
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function usage(): void {
+  console.log(
+    [
+      "Usage: bun scripts/validate-live-views.ts [cacheBust]",
+      "       bun scripts/validate-live-views.ts --bust 2026-05-31",
+      "",
+      "Reads BLOB_BASE_URL or NEXT_PUBLIC_BLOB_BASE_URL, also from web/.env.local when present.",
+    ].join("\n"),
+  );
+}
+
+function parseArgs(argv: string[]): string {
+  let bust: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "-h" || arg === "--help") {
+      usage();
+      process.exit(0);
+    }
+    if (arg === "--bust" || arg === "--v") {
+      const next = argv[++i];
+      if (!next) throw new Error(`${arg} requires a value`);
+      bust = next;
+      continue;
+    }
+    if (arg.startsWith("--bust=")) {
+      bust = arg.slice("--bust=".length);
+      continue;
+    }
+    if (arg.startsWith("--v=")) {
+      bust = arg.slice("--v=".length);
+      continue;
+    }
+    if (!arg.startsWith("-") && !bust) {
+      bust = arg;
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  return bust || utcToday();
+}
+
+function unquoteEnvValue(raw: string): string {
+  let value = raw.trim();
+  const quote = value[0];
+  if ((quote === `"` || quote === `'`) && value.endsWith(quote)) {
+    value = value.slice(1, -1);
+    if (quote === `"`) value = value.replaceAll("\\n", "\n").replaceAll("\\r", "\r");
+  } else {
+    value = value.replace(/\s+#.*$/, "").trim();
+  }
+  return value;
+}
+
+function loadBlobBaseFromEnvFile(): void {
+  const envPath = join(webDir, ".env.local");
+  if (!existsSync(envPath)) return;
+
+  for (const rawLine of readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const normalized = line.startsWith("export ") ? line.slice("export ".length).trimStart() : line;
+    const eq = normalized.indexOf("=");
+    if (eq <= 0) continue;
+
+    const key = normalized.slice(0, eq).trim();
+    if (!BLOB_BASE_KEYS.includes(key as BlobBaseKey)) continue;
+    if (process.env[key]) continue;
+
+    process.env[key] = unquoteEnvValue(normalized.slice(eq + 1));
+  }
+}
+
+function resolveBlobBase(): { base: URL; envKey: BlobBaseKey } {
+  loadBlobBaseFromEnvFile();
+
+  for (const key of BLOB_BASE_KEYS) {
+    const raw = process.env[key]?.trim();
+    if (!raw) continue;
+
+    let base: URL;
+    try {
+      base = new URL(raw.endsWith("/") ? raw : `${raw}/`);
+    } catch {
+      throw new Error(`${key} is not a valid URL`);
+    }
+
+    if (base.protocol !== "https:" && base.protocol !== "http:") {
+      throw new Error(`${key} must be an http(s) URL`);
+    }
+    return { base, envKey: key };
+  }
+
+  throw new Error("Missing BLOB_BASE_URL or NEXT_PUBLIC_BLOB_BASE_URL");
+}
+
+function viewUrl(base: URL, path: string, bust: string): URL {
+  const url = new URL(path, base);
+  url.searchParams.set("v", bust);
+  return url;
+}
+
+function issueSummary(error: { issues: Array<{ path: PropertyKey[]; message: string }> }): string[] {
+  return error.issues.slice(0, 5).map((issue) => {
+    const path = issue.path.length ? issue.path.join(".") : "(root)";
+    return `${path}: ${issue.message}`;
+  });
+}
+
+function topRankItems(items: RankItem[], limit = 5): JsonObject[] {
+  return items.slice(0, limit).map((item) => ({
+    rank: item.rank,
+    ...(item.id === undefined ? {} : { id: item.id }),
+    ...(item.login === undefined ? {} : { login: item.login }),
+    value: item.value,
+  }));
+}
+
+function topCurrentStars(currentStars: Record<string, number>, limit = 5): JsonObject[] {
+  return Object.entries(currentStars)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([id, value]) => {
+      const numericId = Number(id);
+      return {
+        id: Number.isSafeInteger(numericId) ? numericId : id,
+        value,
+      };
+    });
+}
+
+async function checkView<T>(
+  base: URL,
+  bust: string,
+  path: string,
+  schema: ZodType<T>,
+  summarize: (data: T) => JsonObject,
+): Promise<ViewResult> {
+  const url = viewUrl(base, path, bust);
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      cache: "no-store",
+      headers: { accept: "application/json" },
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      path,
+      notFound: false,
+      error: error instanceof Error ? error.message : "Fetch failed",
+    };
+  }
+
+  if (response.status === 404) {
+    return { ok: false, path, status: 404, notFound: true, error: "Not found" };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      path,
+      status: response.status,
+      notFound: false,
+      error: `HTTP ${response.status}`,
+    };
+  }
+
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    return {
+      ok: false,
+      path,
+      status: response.status,
+      notFound: false,
+      error: "Response is not valid JSON",
+    };
+  }
+
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      path,
+      status: response.status,
+      notFound: false,
+      error: "Contract validation failed",
+      issues: issueSummary(parsed.error),
+    };
+  }
+
+  return {
+    ok: true,
+    path,
+    status: response.status,
+    notFound: false,
+    ...summarize(parsed.data),
+  };
+}
+
+async function main(): Promise<void> {
+  const bust = parseArgs(process.argv.slice(2));
+  const { base, envKey } = resolveBlobBase();
+
+  const views = await Promise.all([
+    checkView(base, bust, "current_month.json", CurrentMonth, (data) => ({
+      month: data.month,
+      updated: data.updated,
+      daily_total_days: data.daily_totals.length,
+      last_daily_total: data.daily_totals.at(-1) ?? null,
+      repo_count: Object.keys(data.per_repo).length,
+      current_stars_count: Object.keys(data.current_stars).length,
+      current_stars_top: topCurrentStars(data.current_stars),
+    })),
+    checkView(base, bust, "hot-snapshot.json", HotSnapshot, (data) => ({
+      generated_at: data.generated_at,
+      current_month_flow_top: topRankItems(data.current_month.flow),
+      current_month_stock_top: topRankItems(data.current_month.stock),
+      current_year_flow_top: topRankItems(data.current_year.flow),
+      all_time_repo_top: topRankItems(data.all_time.repo),
+      all_time_org_top: topRankItems(data.all_time.org),
+      on_this_day_count: data.home.on_this_day.length,
+    })),
+  ]);
+
+  const summary = {
+    ok: views.every((view) => view.ok),
+    bust,
+    blob_base_env: envKey,
+    views,
+  };
+
+  console.log(JSON.stringify(summary, null, 2));
+  if (!summary.ok) process.exitCode = 1;
+}
+
+main().catch((error) => {
+  console.log(
+    JSON.stringify(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Unexpected failure",
+      },
+      null,
+      2,
+    ),
+  );
+  process.exitCode = 1;
+});

@@ -97,6 +97,8 @@ blob://
 
 > **MVP 落地（已实现）**：每日 job = `web/app/api/cron/daily/route.ts`（`?dry=1` 可空跑预览）。CRON_SECRET 鉴权 → GraphQL 拉 current_stars（`web/lib/github.ts`，按 owner/name 批量）→ 幂等 upsert `current_month.json`（按 UTC 日）→ 重算 `hot-snapshot.json` 的**实时可推导部分**（all-time 用新 stars 重排；当月 flow = **回填的当月榜为底 + 活尾增量**，解了 OPS 原先"YTD-base 现场定"的开放点）；`year_spine`/`on_this_day` 暂沿用上一份快照（由离线/每周重算）→ `revalidatePath` 核心页。**每周重算不上 serverless**（运行时零引擎，无 DuckDB/Parquet）：白名单刷新 + 折叠当月入 Parquet + 重算视图 = 本机/CI **重跑 pipeline 01–06**，非 Vercel cron。`GITHUB_TOKEN` + `CRON_SECRET` 已配在 web 项目 Production/Development 环境变量。
 
+**实跑状态（2026-05-31）**：首次在 Vercel 真实触发 daily cron 遇到 GitHub GraphQL `403`；当时 Blob 里的 `current_month.json` 与 `hot-snapshot.json` 仍为 `404`，没有半写。修复后已在 `gitstarclub-web` production target 复测成功：GraphQL 批次 pacing + `Retry-After`/secondary-limit 等待生效，`current_month.json` 与 `hot-snapshot.json` 已写入同一个 public Blob store，并通过 `web/scripts/validate-live-views.ts --bust 2026-05-31` 的 Zod contract 校验。相同数据集的本地全量 GraphQL 模拟约 131 秒；Vercel 实跑需要预留数分钟。
+
 **鉴权模式（CRON_SECRET）**：
 
 - 触发是对生产 URL 的 **HTTP GET**；配置 `CRON_SECRET` 后 Vercel 自动带 `Authorization: Bearer <CRON_SECRET>`。
@@ -109,7 +111,15 @@ blob://
 > - 每周：折叠活尾入 Parquet、重算视图按「目标周期」幂等覆盖；新晋者补历史按 repo id 去重；`revalidatePath` 天然幂等（重复调用无害）。
 > - 失败靠**告警**兜底（见下），不靠重试。
 
-**时长**：cron route 是 Function，default 300s / **max 800s**。每日 job 秒级（仅 KB JSON + ~53 GraphQL 查询）；每周 job 较重（折叠 Parquet + 重算受影响视图 + revalidate），应控制在 800s 内；若重算量逼近上限，拆分分批或移到本机/CI 跑。
+**时长**：cron route 是 Function，default 300s / **max 800s**。每日 job 只读写 KB 级 JSON，但 GraphQL 全量轮询需要按批次 pacing；本地全量模拟约 131s，Vercel 实跑必须预留数分钟并控制在 800s 内。每周 job 较重（折叠 Parquet + 重算受影响视图 + revalidate），不上 serverless；若重算量逼近上限，拆分分批或移到本机/CI 跑。
+
+**Daily cron 实跑 runbook**：
+
+1. 先在 Vercel production-target URL 调 `GET /api/cron/daily?dry=1`，带 `Authorization: Bearer <CRON_SECRET>`；若日志仍出现 GitHub GraphQL `403`、`Retry-After` 或 rate-limit remaining 接近 0，停止实跑，先继续降批次/加等待。
+2. 实跑前记录两个 Blob 对象状态：`current_month.json`、`hot-snapshot.json`。若返回 `404`，记录为“原本不存在”；若存在，下载到本地备份目录再继续。
+3. 真实触发 `GET /api/cron/daily`，同样带 `Authorization: Bearer <CRON_SECRET>`。客户端连接可能比函数完成更早关闭；以 Blob 写入和 Vercel logs 为准。
+4. 写后运行 `cd web && bun scripts/validate-live-views.ts --bust <UTC day>`，确认 `current_month.json` 包含本次 UTC day，`hot-snapshot.json` schema 可被现有 contracts 校验；再检查 `/en`、`/en/trending` 仍可访问且保持 noindex。
+5. 若再次失败且两个 Blob 仍为 `404`，视为无写入失败，无需数据回滚；若任一对象已写入但校验失败，按下方“每日活尾”回滚。
 
 ## Deploy Hook 使用（可选）
 
@@ -182,5 +192,5 @@ blob://
 
 - **Blob artifacts 版本化**：每周 pipeline 产出的视图 / Parquet 以版本/日期标识保留若干份（不就地永久覆盖 canonical），坏数据可指回上一版。
 - **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常部署**即可秒级回退（teaser 与 web 应用各自独立回滚，互不影响）。
-- **每日活尾**：`current_month.json` 当月 append-only、覆盖写，最坏读到滞后一天的热力图，无半写风险；要更稳可加 `latest.json` 指针。
+- **每日活尾**：`current_month.json` 当月 append-only、覆盖写；`hot-snapshot.json` 由同次 daily cron 重写。首次实跑失败时两者仍为 `404`，说明 GraphQL 阶段失败不会半写。以后实跑前先备份已存在对象；若失败前两者原本不存在，回滚就是保持/恢复为不存在；若已存在且新写入校验失败，用备份覆盖回 `current_month.json` 与 `hot-snapshot.json`，再用 cache-bust 读取确认。
 - **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。
