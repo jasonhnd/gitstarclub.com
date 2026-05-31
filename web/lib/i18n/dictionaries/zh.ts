@@ -86,6 +86,10 @@ const zh: Dict = {
     onThisDay: "历史上的今天",
     crossed: "突破",
   },
+  footer: {
+    madeIn: "于东京打造",
+    dataThrough: "数据截至",
+  },
 };
 
 export default zh;

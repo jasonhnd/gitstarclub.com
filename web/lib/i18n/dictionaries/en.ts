@@ -86,6 +86,10 @@ export const en = {
     onThisDay: "On this day",
     crossed: "crossed",
   },
+  footer: {
+    madeIn: "Made in Tokyo",
+    dataThrough: "Data through",
+  },
 };
 
 export type Dict = typeof en;
