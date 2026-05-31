@@ -25,8 +25,6 @@ Pulse is the entry experience and shows:
 - All-time giants: largest projects, used as a bridge into Rankings.
 - On this day: historical milestone callbacks.
 
-`/[lang]/trending` is kept as a compatibility redirect to `/[lang]/pulse`.
-
 ## Rankings
 
 Rankings owns both all-time and historical rankings:
@@ -36,10 +34,9 @@ Rankings owns both all-time and historical rankings:
 - `/[lang]/rankings/[year]/[month]`: monthly rankings, daily heatmap, growth, and newcomers.
 - `/[lang]/rankings/[year]/W[week]`: weekly movers.
 
-Legacy history URLs redirect into Rankings:
-
-- `/[lang]/[year]` -> `/[lang]/rankings/[year]`
-- `/[lang]/[year]/[period]` -> `/[lang]/rankings/[year]/[period]`
+There are no compatibility redirects for the old history or trending paths.
+Old URLs such as `/[lang]/trending`, `/[lang]/[year]`, and `/[lang]/[year]/[period]`
+are intentionally absent from the route tree and should return 404.
 
 ## Freshness
 

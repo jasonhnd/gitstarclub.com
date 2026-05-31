@@ -4,7 +4,7 @@
 > SEO 元数据 / sitemap / hreflang 细节见 [SEO.md](./SEO.md)；Blob 布局 / 环境变量 / 部署拓扑见 [OPS.md](./OPS.md)。
 > 技术事实基于 **Next.js 16.2.6 · React 19.2 · TypeScript 6 · Tailwind 4 · Zod 4 · 包管理器 bun**（见 `web/package.json`）。
 >
-> **本文区分「已建」与「待加」**：现有 `web/app` 已有 home / year / month / repo / about 五类页 + `_explore/` 组件（Chrome / RankingList / Heatmap / StarCurve）+ `components/ThemeToggle` + `globals.css` / `layout.tsx` / `template.tsx`。本文描述**现状**并标注**要补什么**，**不发明与仓库冲突的结构**。与文档/需求冲突处用 ⚠️ 显式标注（汇总见 §9）。
+> **本文区分「已建」与「待加」**：现有 `web/app` 已有 Pulse 首页、Pulse、Rankings、Rankings 历史页、repo、org、about + `_explore/` 组件（Chrome / RankingList / Heatmap / StarCurve）+ `components/ThemeToggle` + `globals.css` / `layout.tsx` / `template.tsx`。本文描述**现状**并标注**要补什么**，**不发明与仓库冲突的结构**。与文档/需求冲突处用 ⚠️ 显式标注（汇总见 §9）。
 
 ---
 
@@ -24,23 +24,21 @@
 
 ### 1.1 路由总表（页面 ↔ 文件 ↔ 渲染层）
 
-> 渲染层定义见 §2。`week`/`org`/`rankings`/`trending` 与 i18n 是**待加**段；标 ✅ 的是 `web/app` 现有文件。
+> 渲染层定义见 §2。站内 canonical URL 全部带语言前缀；旧 `/trending` 与旧 `/{year}` 历史路径已从路由树删除，不做兼容重定向。
 
 | 页 | URL | 文件（相对 `web/app/`） | 状态 | 渲染层 | `generateStaticParams` |
 |---|---|---|---|---|---|
-| 首页 | `/` | `page.tsx` | ✅ 已建 | 核心 | — |
-| 年页 | `/[year]` | `[year]/page.tsx` | ✅ 已建 | 当年核心 / 历史按需 ISR | ⚠️ 现返回全部年（见 §9-A） |
-| 月页 | `/[year]/[month]` | `[year]/[period]/page.tsx` | ✅ 已建 | 当月核心 / 历史按需 ISR | 当月 only（§9-A 已收敛） |
-| **周页** | `/[year]/W[week]` | `[year]/[period]/page.tsx`（同段） | ✅ 已建 | 当周 mover / 过去周冻结（按需 ISR） | `[]`（长尾） |
+| 首页 | `/[lang]` | `[lang]/page.tsx` | ✅ 已建 | 核心 Pulse | 3 语言 |
+| **脉搏页** | `/[lang]/pulse` | `[lang]/pulse/page.tsx` | ✅ 已建 | 核心（每日 revalidate，事件驱动） | 3 语言 |
+| **总榜** | `/[lang]/rankings` | `[lang]/rankings/page.tsx` | ✅ 已建 | 核心（deploy 构建 + 每日 revalidate） | 3 语言 |
+| 年榜 | `/[lang]/rankings/[year]` | `[lang]/rankings/[year]/page.tsx` | ✅ 已建 | 当年核心 / 历史按需 ISR | 当前年 × 3 语言 |
+| 月榜 | `/[lang]/rankings/[year]/[month]` | `[lang]/rankings/[year]/[period]/page.tsx` | ✅ 已建 | 当月核心 / 历史按需 ISR | 当前月 × 3 语言 |
+| 周榜 | `/[lang]/rankings/[year]/W[week]` | `[lang]/rankings/[year]/[period]/page.tsx` | ✅ 已建 | 当周 mover / 过去周冻结 | `[]`（长尾） |
 | repo 页 | `/r/[owner]/[name]` | `r/[owner]/[name]/page.tsx` | ✅ 已建 | 按需 ISR（mover 当日刷新） | `[]`（§9-A 已收敛） |
 | **org 页** | `/o/[login]` | `o/[login]/page.tsx` | ✅ 已建 | 按需 ISR（mover 当日刷新） | `[]`（长尾） |
-| **全时榜** | `/rankings` | `rankings/page.tsx` | ✅ 已建 | 核心（deploy 构建 + 每日 revalidate） | —（单页） |
-| **脉搏页** | `/trending` | `trending/page.tsx` | ✅ 已建 | 核心（每日 revalidate，事件驱动） | —（单页） |
 | 关于 | `/about` | `about/page.tsx` | ✅ 已建 | 核心 | — |
 
-**周页是独立页**（不是月/年页内的 section）——REQUIREMENTS §3 明确"`/YYYY/W##` 独立页；当周活、过去周冻结"。URL 用字面量 `W` + ISO 周号（与 DATA-CONTRACTS `period = YYYY-Www` 对齐），如 `/2024/W42`。
-
-> ⚠️ **路由消歧（已落地）**：月页 `/[year]/[month]` 与周页 `/[year]/W[week]` 都在 `/[year]/` 下一段。**实测 Next 16 不允许 `[month]` 与 `W[week]` 两个同级动态目录并存——会互相冲突、两条路由都 404。** 故合并为**单一动态段** `[year]/[period]/page.tsx`：在页面里按字面量前缀分流——`/^W\d+$/` → 周视图，否则按数字 1–12 → 月视图（越界 `notFound()`）。`/2024/42`（42>12）落到月视图守卫 → 404。年页/repo 里的月链接仍写 `/${y}/${m}`。
+**周榜是独立页面**，但归入总榜路径下：`/[lang]/rankings/YYYY/W##`。月榜和周榜共用 `[period]` 段，在页面里按 `W` 前缀分流；旧的 `/{lang}/YYYY` 与 `/{lang}/YYYY/MM` 不再存在。
 
 ### 1.2 i18n 路由（en 根 / `/ja` / `/zh`）
 
@@ -53,9 +51,10 @@ app/
   layout.tsx                 # 根 layout：<html lang="en"> + 字体 + 主题脚本 + RegisterSW + 全站 metadata
   [lang]/
     layout.tsx               # 嵌套：校验 locale(未知→notFound) + generateStaticParams(en/ja/zh) + <div lang={loc} class="contents"> 包子树
-    page.tsx  [year]/page.tsx  [year]/[period]/page.tsx
+    page.tsx  pulse/page.tsx
     r/[owner]/[name]/page.tsx  o/[login]/page.tsx
-    rankings/page.tsx  trending/page.tsx  about/page.tsx
+    rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
+    about/page.tsx
   robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
 ```
 
@@ -77,19 +76,19 @@ app/
 
 | 层 | 页面 | 新鲜度（REQUIREMENTS §6） | Next 机制 |
 |---|---|---|---|
-| **核心** | `/` · 当年 `/[当前年]` · 当月 · `/rankings` · `/trending`（×3 语言，~数十页） | 头版：每日换 | **deploy 时 SSG**（`generateStaticParams` 返回当期/单页） + 每日 cron `revalidatePath` |
+| **核心** | `/[lang]` · `/[lang]/pulse` · `/[lang]/rankings` · 当年/当月的 `/[lang]/rankings/...`（×3 语言） | 头版：每日换 | **deploy 时 SSG**（`generateStaticParams` 返回当期/单页） + 每日 cron `revalidatePath` |
 | **长尾** | 历史年/月 · **周** · repo · org（~16k+） | 编年史：冻结 / 标 as-of | **按需 ISR**：`dynamicParams=true` + 空 `generateStaticParams` + `revalidate=false`，首访生成、持久缓存 |
-| **mover** | 在 mover 集里的 repo/org + `/trending` | 脉搏：事件驱动，只刷"在动的那一小撮" | 每周/每日 cron 对其 `revalidatePath` 定点失效 → 下次访问再生 |
+| **mover** | 在 mover 集里的 repo/org + `/pulse` | 脉搏：事件驱动，只刷"在动的那一小撮" | 每周/每日 cron 对其 `revalidatePath` 定点失效 → 下次访问再生 |
 | **历史** | 已折叠入 Parquet 的过去周期 | 旧报纸：永不重印 | 纯静态命中 CDN；数据不变 = 不 revalidate |
 
 > 关键：**长尾页"成页"极便宜**（懒生成、不占 build 预算）——所以周页 / org 页独立成页不受 45min build 上限约束（[ARCHITECTURE](./ARCHITECTURE.md) 渲染分层）。
 
 ### 2.2 段配置速查（每类页面贴什么）
 
-**核心页（当年 / 当月 / rankings / trending）** —— deploy 构建具体 param：
+**核心页（Pulse / Rankings / 当年 / 当月）** —— deploy 构建具体 param：
 
 ```ts
-// 例：app/[[...locale]]/[year]/page.tsx（当年走核心，历史走 ISR — 同一文件、混合）
+// 例：app/[lang]/rankings/[year]/page.tsx（当年走核心，历史走 ISR — 同一文件、混合）
 export const dynamicParams = true            // 未列入的历史年 → 首访按需生成
 export async function generateStaticParams() {
   // 只预渲染「当前年」×3 语言；历史年留给按需 ISR
@@ -102,7 +101,7 @@ export const revalidate = false              // 不轮询；每日 cron 用 reva
 **长尾页（repo / org / 周 / 历史年月）** —— 不在 deploy 构建：
 
 ```ts
-// 例：app/[[...locale]]/r/[owner]/[name]/page.tsx
+// 例：app/[lang]/r/[owner]/[name]/page.tsx
 export const dynamicParams = true            // 默认值；空列表 + 此项 = 全部按需生成
 export async function generateStaticParams() {
   return []                                  // ⚠️ 现有 repo 页返回全部 repo（见 §9-A），应改成 []
@@ -113,9 +112,9 @@ export const revalidate = false              // 仅靠 cron 定点失效（每�
 **全时榜 / 脉搏（单页、每日新鲜）**：
 
 ```ts
-// 例：app/[[...locale]]/trending/page.tsx
+// 例：app/[lang]/pulse/page.tsx
 export const revalidate = false              // 不靠时间轮询
-// 每日 cron 写 hot-snapshot.json 后 revalidatePath('/trending') + 三语前缀
+// 每日 cron 写 hot-snapshot.json 后 revalidatePath('/pulse') + 三语前缀
 ```
 
 ### 2.3 `next.config.ts`：必须的全局开关
@@ -207,14 +206,14 @@ export const getRepoEntity = cache(async (id: number) => {
 |---|---|---|
 | 首页 `/` | `hot-snapshot.json`（`home`：`year_spine` / `current_month_top` / `on_this_day`） | 热集 ISR 只读 KB 级快照，**绝不**加载大文件（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.9） |
 | 年页（当年） | `hot-snapshot.json`（`current_year`） + `heatmap/year/{Y}.json`（12 月格） | 当年走热快照 |
-| 年页（历史） | `rank/year/{Y}/{repo,org}/{flow,stock}.json` + `heatmap/year/{Y}.json` | 冻结视图 |
-| 月页（当月） | `hot-snapshot.json`（`current_month`） + `heatmap/month/{period}.json`（合并 `current_month.json` 进行中日） | 进行中当月日总量来自活尾 |
-| 月页（历史） | `rank/month/{period}/{repo,org}/{flow,stock}.json` + `heatmap/month/{period}.json` | 三大榜 + 日热力 |
-| 周页 | `rank/week/{period}/{repo,org}/{flow,stock}.json`（当周合并活尾） | 独立页 |
+| 年榜（历史） | `rank/year/{Y}/{repo,org}/{flow,stock}.json` + `heatmap/year/{Y}.json` | 冻结视图 |
+| 月榜（当月） | `hot-snapshot.json`（`current_month`） + `heatmap/month/{period}.json`（合并 `current_month.json` 进行中日） | 进行中当月日总量来自活尾 |
+| 月榜（历史） | `rank/month/{period}/{repo,org}/{flow,stock}.json` + `heatmap/month/{period}.json` | 三大榜 + 日热力 |
+| 周榜 | `rank/week/{period}/{repo,org}/{flow,stock}.json`（当周合并活尾） | 独立页 |
 | repo 页 | `entity/repo/{id}.json`（`curve`/`milestones`/`monthly_table`/`rank_history`） | mover 当日刷新（curve 含 `recent_daily`） |
 | org 页 | `entity/org/{login}.json`（`members`/`curve`/`rank_history`） | 成员聚合曲线 |
 | 全时榜 `/rankings` | `rank/all-time/{repo,org}/stock.json`（或 `hot-snapshot.all_time`） | repo 榜 + org 榜并列 |
-| 脉搏 `/trending` | `hot-snapshot.json`（mover 集：今日/本周大涨 + 复活/突刺） | 每日 cron 重写 |
+| 脉搏 `/pulse` | `hot-snapshot.json`（mover 集：今日/本周大涨 + 复活/突刺） | 每日 cron 重写 |
 | 全部榜单页 | + `lookup/repos.json` / `lookup/orgs.json` | **lookup-join**，见 §3.4 |
 
 ### 3.4 lookup-join 模式（榜单只存 id，build join 出展示字段）
@@ -248,9 +247,9 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | Star 曲线 | ✅ `StarCurve.tsx` | 服务端 SVG `<path>`（line + area gradient）+ 里程碑金点 + mono 年份轴 | `.curve-line` `stroke-dashoffset` 描绘 + `.curve-area` 淡入 |
 | 日历/月热力图 | ✅ `Heatmap.tsx` | DOM 网格 + `color-mix` 强度（冷灰→亮金，非 GitHub 绿） | `animate-rise` stagger |
 | 年份脊柱（首页） | ✅ inline in `page.tsx`（`.spine-bar-y`） | DOM 柱，高度 `--h=gained/max` | `grow-y` 弹簧生长 |
-| 月度脊柱（年页） | ✅ inline in `[year]/page.tsx`（`.spine-bar`） | DOM 条，宽度 `--w` | `grow` 弹簧生长 |
+| 月度脊柱（年榜） | ✅ inline in `rankings/[year]/page.tsx`（`.spine-bar`） | DOM 条，宽度 `--w` | `grow` 弹簧生长 |
 | 榜单条 | ✅ `RankingList.tsx` | 有序列表 + 右对齐 mono 指标 | `animate-rise` stagger |
-| **年脊柱组件化**（建议） | 待加 `_explore/YearSpine.tsx` | 把首页 inline 脊柱抽成组件（供首页/trending 复用） | 同上 |
+| **年脊柱组件化**（建议） | 待加 `_explore/YearSpine.tsx` | 把首页 inline 脊柱抽成组件（供首页/pulse 复用） | 同上 |
 
 > 现有 SVG/DOM 图表都已是 RSC（无 `"use client"`），符合约束。新增 org 合计曲线复用 `StarCurve`（`entity/org` 的 `curve` 形状同 repo）。
 
@@ -281,7 +280,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 弹簧 | `--ease-spring`（CSS `linear()` 预计算关键点，`globals.css:115`） | bar 生长 / hover 抬升 / active 回弹 |
 | emphasized 缓动 | `--ease-emphasized`（`cubic-bezier(0.2,0,0,1)`，`globals.css:114`） | 主题/颜色过渡、淡入 |
 | 曲线绘制 | `.curve-line` / `.curve-area`（`globals.css:233/239`） | `stroke-dashoffset` 描绘 + 面积淡入 |
-| 状态脉冲 | `--animate-status`（`status-pulse`，`globals.css:153/173`） | `/trending` 的"在涨"状态点 |
+| 状态脉冲 | `--animate-status`（`status-pulse`，`globals.css:153/173`） | `/pulse` 的"在涨"状态点 |
 
 **reduced-motion 兜底（强制，已落地 `globals.css:258`）**：全局关 animation/transition，并把动画终态钉死（`.spine-bar` 直接 `scaleX(var(--w))`、`.curve-line` `stroke-dashoffset:0`、`.curve-area` `opacity:1`），保证无动效时布局与终态正确。新增组件的入场动画**必须**在此块补对应终态钉死。
 
@@ -304,12 +303,12 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | SW 注册 RegisterSW | `_explore/RegisterSW.tsx` | **Client** | PWA（见 §4.2 / §9-C） |
 | 占位数据 | `_explore/data.ts` | 模块 | ⚠️ 占位，真实层替换（见 §3） |
 
-> 现有页面里**面包屑 / 上下页导航 / 脊柱 / 页脚**是**内联**在各 page.tsx（如 `[year]/page.tsx` 的 `NavArrow`、`page.tsx` 的脊柱）。随页面增多建议抽成共享组件（见 §6.3）。
+> 现有页面里**面包屑 / 上下页导航 / 脊柱 / 页脚**是**内联**在各 page.tsx（如 `rankings/[year]/page.tsx` 的导航、`page.tsx` 的脊柱）。随页面增多建议抽成共享组件（见 §6.3）。
 
 ### 6.2 server-by-default 原则
 
 - 一切默认 RSC；只有 `ThemeToggle`（必需交互）与 `RegisterSW`（PWA）带 `"use client"`。
-- 新增页面（周/org/rankings/trending）**全用 RSC** + 复用上述组件；任何"看似要 JS"的交互先查 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §零客户端 JS 约束表是否有纯 CSS/服务端解法，否则需重新设计而非引入 client JS。
+- 新增页面（周/org/rankings/pulse）**全用 RSC** + 复用上述组件；任何"看似要 JS"的交互先查 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §零客户端 JS 约束表是否有纯 CSS/服务端解法，否则需重新设计而非引入 client JS。
 
 ### 6.3 待加的共享组件（随页面扩张）
 
@@ -390,13 +389,13 @@ return {
 
 > 把上面落到"动现有哪些文件"。**本文是 spec，不写应用代码**；以下是接入顺序建议。
 
-1. **数据层**：建 `web/lib/contracts/`（Zod，[DATA-CONTRACTS](./DATA-CONTRACTS.md) §4）+ `web/lib/data/`（fetch Blob + parse + `cache()`）→ 逐页把 `_explore/data.ts` 占位换成真实读取器；删除/收敛 `data.ts`。
-2. **段配置**：现有 `[year]` / `[year]/[month]` / `r/[owner]/[name]` 的 `generateStaticParams` 从"返回全部"改为"当期/空数组"（§2.2、§9-A）；repo/org/月/年的未知 param 改 `notFound()`（§9-B）。
-3. **`next.config.ts`**：显式注释 `cacheComponents` 关闭 + 预留 `redirects()`（§2.3）。
-4. **新页面**：加 `[year]/W[week]`、`o/[login]`、`rankings`、`trending`（全 RSC，复用组件）。
-5. **i18n**：引入 `[[...locale]]` 段，下移 `<html lang>`，建字典，补 `alternates.languages`（§7）。
+1. **数据层**：`web/lib/contracts/`（Zod，[DATA-CONTRACTS](./DATA-CONTRACTS.md) §4）+ `web/lib/data/`（fetch Blob + parse + `cache()`）是页面读取 JSON 视图的唯一入口。
+2. **段配置**：`rankings/[year]` / `rankings/[year]/[period]` 只预渲染当前年/月；历史页、repo、org、周榜走按需 ISR。repo/org/月/年的未知 param 改 `notFound()`（§9-B）。
+3. **`next.config.ts`**：保留根 `/` → `/en` 的入口跳转；不为旧 `/trending` 或旧 `/{year}` 历史路径配置兼容重定向。
+4. **页面**：`pulse`、`rankings`、`rankings/[year]`、`rankings/[year]/[period]`、`o/[login]` 已落地（全 RSC，复用组件）。
+5. **i18n**：使用必填 `[lang]` 段，建字典，补 `alternates.languages`（§7）。
 6. **SEO 配套**：`app/sitemap.ts`（`generateSitemaps()` 分片）、`app/robots.ts`、各页 `generateMetadata`、JSON-LD（[SEO](./SEO.md) §4/§5/§6）。
-7. **cron route**：`app/api/cron/daily` · `app/api/cron/weekly`（`revalidatePath` + `CRON_SECRET` 鉴权，[OPS](./OPS.md) §Cron）。
+7. **cron route**：`app/api/cron/daily`（`revalidatePath` + `CRON_SECRET` 鉴权，[OPS](./OPS.md) §Cron）。
 8. **共享组件**：抽 `Breadcrumbs` / `PrevNext` / `Footer` / `YearSpine` / `LangSwitcher`（§6.3）。
 
 ---
@@ -407,13 +406,13 @@ return {
 
 | # | 冲突/缺口 | 现状 | 文档要求 | 处置 |
 |---|---|---|---|---|
-| **A** | **长尾页 `generateStaticParams` 返回全部** | `[year]`（全部年）、`[year]/[month]`（全部年×12 月）、`r/[owner]/[name]`（全部 REPOS）都在 build 预渲染 | 长尾应**空 `generateStaticParams` + 按需 ISR**；仅当年/当月留核心（[ARCHITECTURE](./ARCHITECTURE.md) 分层、[SEO](./SEO.md) §3） | 真实层接入时改：当年/当月返回当期；历史年月 + 全部 repo/org/周 返回 `[]` |
+| **A** | **长尾页预渲染范围** | `rankings/[year]` / `rankings/[year]/[period]` 只预渲染当前年/月；repo/org/周榜空列表 | 长尾应**空 `generateStaticParams` + 按需 ISR**；仅当年/当月留核心（[ARCHITECTURE](./ARCHITECTURE.md) 分层、[SEO](./SEO.md) §3） | ✅ 已按当前 IA 收敛；继续保持 |
 | **B** | **未知 param 软兜底而非 404** | `repoDetail()` 查不到回 `REPOS[0]`（200）；月页/年页有 `notFound()` 但 repo 页无 | 未知 repo/org → `notFound()`（404），禁软 200（[SEO](./SEO.md) §3.2） | 真实读取器查不到即 `notFound()` |
 | **C** | **第三处客户端 JS（PWA）** | `RegisterSW.tsx`（`"use client"`，注册 SW）+ `manifest.ts` | DESIGN-SYSTEM 原仅列两处例外 | ✅ **已决：保留 PWA**，已在 DESIGN-SYSTEM 补为例外③（保留 RegisterSW/manifest/sw.js） |
 | **D** | **StarCurve 假设单调累计** | 占位 data 强制 `total` 非降；轴/area 按单增算 | `entity/repo.curve.recent_daily` net 可负，尾部可能回落（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5） | 真实接入时让 y 轴/area 容忍非单调；`max` 取序列实际最大值 |
-| **E** | **无 i18n / `lang` 硬编码** | `layout.tsx` `lang="en"`，无 locale 段/字典/hreflang | en 根 + `/ja` + `/zh` + hreflang 自指（[PRODUCT](./PRODUCT.md)/[SEO](./SEO.md) §10） | 见 §1.2 / §7 |
-| **F** | **`metadataBase` 硬编码** | `layout.tsx:21` 写死 `https://gitstarclub.com` | 应读 `NEXT_PUBLIC_SITE_URL`（预览/生产切换，[OPS](./OPS.md)/[SEO](./SEO.md) §2） | 改读环境变量 |
-| **G** | **缺 sitemap/robots/cron/og 路由** | `app/` 无 `sitemap.ts`/`robots.ts`/`api/`/动态 OG | SEO/OPS 要求齐备（[SEO](./SEO.md)/[OPS](./OPS.md)） | 待加（§8） |
+| **E** | **i18n URL 形态** | 必填 `[lang]`，英文在 `/en`；根 `/` 跳 `/en` | 原计划曾讨论 en 裸根，但需要 middleware | ✅ 已决：不上 middleware，统一三语前缀 |
+| **F** | **metadataBase** | `layout.tsx` 读 `NEXT_PUBLIC_SITE_URL`，默认 `https://gitstarclub.com` | 预览/生产可通过环境变量切换（[OPS](./OPS.md)/[SEO](./SEO.md) §2） | ✅ 已落地 |
+| **G** | **sitemap/robots/cron/og 路由** | `app/` 已有 `sitemap.ts`/`robots.ts`/`api/cron/daily`/动态 OG | SEO/OPS 要求齐备（[SEO](./SEO.md)/[OPS](./OPS.md)） | ✅ 已落地，继续扩展 OG 卡片 |
 | **H** | **repo 页 "synced" 时间写死** | `r/[owner]/[name]/page.tsx:45` 硬编码 `synced 2026-05-29 · 14:30 JST` | as-of 应来自数据（`fetched_at`/`updated`），UTC+JST 双显示（[ARCHITECTURE](./ARCHITECTURE.md) 时区） | 真实层取 `entity`/`current_stars` 的 as-of 字段 |
 | **I** | **`_explore/` 命名** | 组件在 `app/_explore/`（`_` 前缀 = private folder，不成路由段） | 设计系统组件清单引用 `_explore/` + `components/` | 沿用现状（`_explore` 私有目录合理）；新共享组件可继续放 `_explore/` 或提升到 `components/` |
 
@@ -424,13 +423,13 @@ return {
 ## 10. 落地核对清单（前端层）
 
 **路由**
-- [ ] 周页 `/[year]/W[week]` 独立、与 `[month]` 消歧（字面量 `W` 前缀 + month 守卫）
-- [ ] org `/o/[login]`、全时榜 `/rankings`、脉搏 `/trending` 已加（全 RSC）
-- [ ] i18n `[[...locale]]` 段：en 根 / `/ja` / `/zh`；未知 locale → `notFound()`；无自动重定向中间件
+- [x] 周榜 `/[lang]/rankings/[year]/W[week]` 独立、与月榜共用 `[period]` 并按 `W` 前缀消歧
+- [x] org `/[lang]/o/[login]`、总榜 `/[lang]/rankings`、脉搏 `/[lang]/pulse` 已加（全 RSC）
+- [x] i18n `[lang]` 段：`/en` / `/ja` / `/zh`；未知 locale → `notFound()`；无自动重定向中间件
 
 **分层 ↔ 配置**
 - [ ] `cacheComponents` 保持关闭（`next.config.ts` 注释说明）
-- [ ] 核心段（当年/当月/rankings/trending×3 语言）`generateStaticParams` 返回当期/单页
+- [x] 核心段（home/pulse/rankings/当年/当月 ×3 语言）`generateStaticParams` 返回当期/单页
 - [ ] 长尾段（历史年月/周/repo/org）`dynamicParams=true` + 空 `generateStaticParams` + `revalidate=false`
 - [ ] 数据变更靠 cron `revalidatePath`，无全量 build；`app/api/cron/*` 带 `CRON_SECRET` 鉴权
 
