@@ -12,7 +12,7 @@ export function Footer({ locale, t, asOf }: { locale: Locale; t: Dict; asOf?: st
           <span className="text-primary-fixed-dim" aria-hidden>
             ★
           </span>
-          gitstarclub
+          GitStarClub
         </Link>
         <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.78rem] text-on-surface-variant" aria-label="Footer">
           <Link href={`${lp}/trending`} className="transition-colors hover:text-on-surface">

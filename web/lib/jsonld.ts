@@ -8,7 +8,7 @@ export function webSiteLd(locale: string, path: string) {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    name: "gitstarclub",
+    name: "GitStarClub",
     url: abs(path),
     inLanguage: locale,
     description: "GitHub star history & trends across 5,200+ repositories with ≥10k stars.",

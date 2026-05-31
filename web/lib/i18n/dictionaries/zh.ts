@@ -16,7 +16,7 @@ const zh: Dict = {
     heroPre: "一份诚实的",
     heroAccent: "编年史",
     heroPost: "。",
-    lead: "gitstarclub 收录每一个公开的、星标超过 1 万的仓库，并自 2015 年起按月、按年重建它们各自的崛起轨迹。",
+    lead: "GitStarClub 收录每一个公开的、星标超过 1 万的仓库，并自 2015 年起按月、按年重建它们各自的崛起轨迹。",
     s1h: "数据从哪来",
     s1pPre: "历史由 ",
     s1pPost:
@@ -31,7 +31,7 @@ const zh: Dict = {
     s2cBody:
       " 2012 年底之前，GitHub 的「watch」与 star 并不等同；数据在 2015 年趋于稳定，我们以此作为现代开源时代的起点。",
     s3h: "时间",
-    s3p: "一切以 UTC 存储、按 UTC 日界聚合。凡显示具体时刻处，UTC 与 JST（日本时间）并列——gitstarclub 在东京制作。",
+    s3p: "一切以 UTC 存储、按 UTC 日界聚合。凡显示具体时刻处，UTC 与 JST（日本时间）并列——GitStarClub 在东京制作。",
     back: "返回编年史",
   },
   year: {

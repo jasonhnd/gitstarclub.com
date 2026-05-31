@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "gitstarclub — A Chronicle of Open Source",
-    short_name: "gitstarclub",
+    name: "GitStarClub — A Chronicle of Open Source",
+    short_name: "GitStarClub",
     description: "A browsable chronicle of open source — month by month, year by year.",
     start_url: "/",
     display: "standalone",

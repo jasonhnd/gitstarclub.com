@@ -15,7 +15,7 @@ export const en = {
     heroPre: "An honest ",
     heroAccent: "chronicle",
     heroPost: ".",
-    lead: "gitstarclub indexes every public repo above 10,000 stars and reconstructs when each one rose — month by month, year by year, since 2015.",
+    lead: "GitStarClub indexes every public repo above 10,000 stars and reconstructs when each one rose — month by month, year by year, since 2015.",
     s1h: "Where the data comes from",
     s1pPre: "History is reconstructed from ",
     s1pPost:
@@ -31,7 +31,7 @@ export const en = {
     s2cBody:
       " Before late 2012, GitHub’s “watch” wasn’t the same as a star; data stabilizes in 2015, our start of the modern open-source era.",
     s3h: "Time",
-    s3p: "Everything is stored in UTC and aggregated on UTC day boundaries. Wherever an exact moment is shown, both UTC and JST (Japan time) appear — gitstarclub is made in Tokyo.",
+    s3p: "Everything is stored in UTC and aggregated on UTC day boundaries. Wherever an exact moment is shown, both UTC and JST (Japan time) appear — GitStarClub is made in Tokyo.",
     back: "Back to the chronicle",
   },
   year: {
