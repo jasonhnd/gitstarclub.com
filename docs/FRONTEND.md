@@ -295,7 +295,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 组件 | 文件 | 类型 | 角色 |
 |---|---|---|---|
 | 顶栏 Top App Bar | `_explore/Chrome.tsx` | RSC | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + About 链接 + ThemeToggle |
-| 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；榜单行有稳定最小高度，保证双栏榜单等高 |
+| 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
 | 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
 | Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + `role="img"` + aria-label |
 | 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 唯一交互按钮（见 §4.2） |
