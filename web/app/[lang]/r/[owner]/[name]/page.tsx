@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { StarCurve, type Milestone } from "@/app/_explore/StarCurve";
 import { getRepoIdByFullName, getRepoEntity } from "@/lib/data";
-import { fmtStars, ymParts } from "@/lib/format";
+import { fmtStars, ymParts, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
 
@@ -78,7 +78,9 @@ export default async function RepoPage({ params }: { params: Promise<{ lang: str
               <span className="text-[0.9rem] text-on-surface-variant"> ★</span>
             </span>
             {repo.language && <span>{repo.language}</span>}
-            <span>{t.repo.created} {created.pretty}</span>
+            <span>
+              {t.repo.created} {monthLabel(loc, created.m, "short")} {created.y}
+            </span>
             {repo.is_archived && <span className="text-tertiary">{t.repo.archived}</span>}
           </div>
         </header>
@@ -100,7 +102,9 @@ export default async function RepoPage({ params }: { params: Promise<{ lang: str
                   <li key={m.stars}>
                     <Link href={`${lp}/${d.y}/${d.m}`} className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-4 py-2 transition-colors hover:bg-surface-container-high">
                       <span className="font-extrabold text-primary-fixed-dim">{m.label}</span>
-                      <span className="font-mono text-[0.8rem] text-on-surface-variant">{d.pretty}</span>
+                      <span className="font-mono text-[0.8rem] text-on-surface-variant">
+                        {monthLabel(loc, d.m, "short")} {d.y}
+                      </span>
                     </Link>
                   </li>
                 );
@@ -118,7 +122,9 @@ export default async function RepoPage({ params }: { params: Promise<{ lang: str
                 return (
                   <li key={row.month}>
                     <Link href={`${lp}/${d.y}/${d.m}`} className="group grid grid-cols-[1fr_auto_auto] items-center gap-4 py-2.5 transition-colors hover:bg-on-surface/5">
-                      <span className="font-mono text-[0.9rem] text-on-surface group-hover:underline group-hover:underline-offset-2">{d.pretty}</span>
+                      <span className="font-mono text-[0.9rem] text-on-surface group-hover:underline group-hover:underline-offset-2">
+                        {monthLabel(loc, d.m, "short")} {d.y}
+                      </span>
                       <span className="font-mono text-[0.85rem] tabular-nums text-on-surface-variant">{row.rank != null ? `${t.repo.rank} #${row.rank}` : ""}</span>
                       <span className="w-20 text-right font-semibold tabular-nums text-on-surface">+{fmtStars(row.adds)}</span>
                     </Link>
