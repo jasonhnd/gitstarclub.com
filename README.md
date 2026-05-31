@@ -77,15 +77,18 @@ gitstarclub/
 │       ├── extract.sql         # BigQuery 查 GH Archive 日序列（含 repo.id）
 │       ├── rollup.mjs           # 本机 DuckDB → Parquet 事实表 + JSON 视图
 │       └── metadata.mjs         # GraphQL 抓元数据 + owner + current_stars
-├── web/                         # Next.js 16 应用（已搭骨架，待接数据）
+├── web/                         # Next.js 16 应用
 │   ├── app/
-│   │   ├── page.tsx             # 首页时间轴
-│   │   ├── [year]/page.tsx      # 年度页
-│   │   ├── [year]/[month]/page.tsx
-│   │   ├── r/[owner]/[name]/page.tsx
-│   │   └── api/cron/
-│   │       ├── daily/route.ts   # 每日：GraphQL diff → JSON 活尾 + revalidate
-│   │       └── weekly/route.ts  # 每周：刷新白名单 + 补新晋历史
+│   │   ├── [lang]/
+│   │   │   ├── page.tsx         # 首页 = Pulse / 脉搏
+│   │   │   ├── pulse/page.tsx
+│   │   │   ├── rankings/page.tsx
+│   │   │   ├── rankings/[year]/page.tsx
+│   │   │   ├── rankings/[year]/[period]/page.tsx
+│   │   │   ├── r/[owner]/[name]/page.tsx
+│   │   │   ├── o/[login]/page.tsx
+│   │   │   └── about/page.tsx
+│   │   └── api/cron/daily/route.ts
 │   ├── components/
 │   │   ├── Timeline.tsx
 │   │   ├── StarCurve.tsx
