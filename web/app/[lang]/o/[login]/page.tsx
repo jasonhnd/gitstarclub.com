@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
+import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { getOrgEntity, getReposLookup } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
+import { orgLd } from "@/lib/jsonld";
 import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -55,6 +57,7 @@ export default async function OrgPage({ params }: { params: Promise<{ lang: stri
   return (
     <>
       <Chrome locale={loc} t={t} />
+      <JsonLd data={orgLd(org, `${lp}/o/${org.login}`, loc)} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs items={[{ label: t.nav.home, href: lp }, { label: org.login }]} />
         <header className="mt-4 animate-rise">

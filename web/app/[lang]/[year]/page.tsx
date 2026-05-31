@@ -4,10 +4,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
+import { JsonLd } from "@/app/_explore/JsonLd";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { getRank, getHeatmap, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
+import { collectionLd } from "@/lib/jsonld";
 import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -65,6 +67,7 @@ export default async function YearPage({ params }: { params: Promise<{ lang: str
   return (
     <>
       <Chrome locale={loc} t={t} />
+      <JsonLd data={collectionLd(`${t.year.top} ${year}`, `${lp}/${year}`, loc)} />
       <main className={`mx-auto w-full max-w-[64rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs items={[{ label: t.nav.home, href: lp }, { label: String(year) }]} />
 

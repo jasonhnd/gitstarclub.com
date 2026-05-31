@@ -4,9 +4,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
+import { JsonLd } from "@/app/_explore/JsonLd";
 import { getHotSnapshot, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
+import { webSiteLd } from "@/lib/jsonld";
 import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -49,6 +51,7 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
   return (
     <>
       <Chrome locale={loc} t={t} />
+      <JsonLd data={webSiteLd(loc, lp)} />
       <main className={`mx-auto w-full max-w-[68rem] flex-1 py-[clamp(2rem,5vw,4rem)] ${PAD_X}`}>
         <h1 className="max-w-[16ch] animate-rise text-[clamp(2.4rem,7vw,5rem)] font-extrabold leading-[1.0] tracking-[-0.04em]">
           {t.home.heroPre}

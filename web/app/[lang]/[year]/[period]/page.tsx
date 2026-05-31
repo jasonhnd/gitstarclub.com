@@ -3,11 +3,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
+import { JsonLd } from "@/app/_explore/JsonLd";
 import { Heatmap } from "@/app/_explore/Heatmap";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { getRank, getHeatmap, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
+import { collectionLd } from "@/lib/jsonld";
 import { parseLang, getDictionary, localePrefix, type Locale, type Dict } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -99,6 +101,7 @@ async function MonthView({ year, month, loc, t }: { year: number; month: number;
   return (
     <>
       <Chrome locale={loc} t={t} />
+      <JsonLd data={collectionLd(monthYearLabel(loc, year, month), `${lp}/${year}/${month}`, loc)} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
@@ -174,6 +177,7 @@ async function WeekView({ year, week, loc, t }: { year: number; week: number; lo
   return (
     <>
       <Chrome locale={loc} t={t} />
+      <JsonLd data={collectionLd(period, `${lp}/${year}/W${String(week).padStart(2, "0")}`, loc)} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
