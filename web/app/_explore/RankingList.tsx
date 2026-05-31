@@ -25,7 +25,7 @@ export function RankingList({ rows, variant = "gained", locale = "en" }: { rows:
         <li key={`${r.owner}/${r.name}`}>
           <Link
             href={`${lp}/r/${r.owner}/${r.name}`}
-            className="group flex animate-rise items-center gap-4 rounded-2xl px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985]"
+            className="group flex min-h-[4.25rem] animate-rise items-center gap-4 rounded-2xl px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985]"
             style={{ animationDelay: `${0.04 * i}s` } as CSSProperties}
           >
             <span className="w-9 shrink-0 text-right text-[1.5rem] font-extrabold tabular-nums text-primary-fixed-dim">

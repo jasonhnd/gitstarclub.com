@@ -150,7 +150,7 @@ export default nextConfig;
 
 ### 2.4 数据变更如何到达页面（无 deploy）
 
-- **每日 cron**（`/api/cron/daily`，[OPS](./OPS.md) §Cron）：写 `current_month.json` + `hot-snapshot.json` → `revalidatePath` 核心热集（首页 / 当年 / 当月 / rankings / trending，×3 语言）+ mover 集的 repo/org 页。
+- **每日 cron**（`/api/cron/daily`，[OPS](./OPS.md) §Cron）：写 `current_month.json` + `hot-snapshot.json` → `revalidatePath` 核心热集（首页 / pulse / rankings / 当年 / 当月，×3 语言）+ mover 集的 repo/org 页。
 - **每周 cron**：重算受影响 JSON 视图 → 对变更页 `revalidatePath`（**非 16k 全量 build**）。
 - **deploy**：仅代码/结构变更触发；会重置 ISR store，长尾首访冷生成一次（10M/天下可忽略，见 [ARCHITECTURE](./ARCHITECTURE.md)）。
 
@@ -295,7 +295,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 组件 | 文件 | 类型 | 角色 |
 |---|---|---|---|
 | 顶栏 Top App Bar | `_explore/Chrome.tsx` | RSC | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + About 链接 + ThemeToggle |
-| 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言 pill + 右对齐指标；整行 `<Link>`→repo 页 |
+| 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；榜单行有稳定最小高度，保证双栏榜单等高 |
 | 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
 | Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + `role="img"` + aria-label |
 | 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 唯一交互按钮（见 §4.2） |
@@ -316,9 +316,9 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 |---|---|---|
 | `Breadcrumbs` | Home→年→月 / Home→Rankings→org 等（[SEO](./SEO.md) §6.7） | 全页；同时承载 `BreadcrumbList` JSON-LD |
 | `PrevNext`（抽 `NavArrow`/`MonthArrow`） | 上下月 / 上下年 / 上下周（永远在顶部，[PRODUCT](./PRODUCT.md)） | 年/月/周页 |
-| `EntityCard` | repo/org 卡片（榜单外的实体展示，如 trending） | trending / rankings |
+| `EntityCard` | repo/org 卡片（榜单外的实体展示，如 Pulse） | pulse / rankings |
 | `Footer` | `border-t` + on-surface-variant + 构建时间戳（UTC+JST）+ **语言切换** | layout（i18n 语言切换落点） |
-| `YearSpine` | 首页 inline 脊柱抽组件 | 首页 / trending |
+| `YearSpine` | 首页 inline 脊柱抽组件 | 首页 / pulse |
 | `LangSwitcher` | en/ja/zh 切换（纯 `<Link>`，无 client JS） | Footer / app bar |
 
 ### 6.4 组件 ↔ JSON 契约映射（真实层接入时的入参形状）

@@ -90,13 +90,15 @@ export default async function RankingsPage({ params }: { params: Promise<{ lang:
                 <li key={o.login}>
                   <Link
                     href={`${lp}/o/${o.login}`}
-                    className="group flex animate-rise items-center gap-4 rounded-2xl px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985]"
+                    className="group flex min-h-[4.25rem] animate-rise items-center gap-4 rounded-2xl px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985]"
                     style={{ animationDelay: `${0.04 * i}s` } as CSSProperties}
                   >
                     <span className="w-9 shrink-0 text-right text-[1.5rem] font-extrabold tabular-nums text-primary-fixed-dim">{o.rank}</span>
                     <div className="min-w-0 flex-1">
                       <span className="truncate font-mono text-[0.95rem] font-semibold text-on-surface group-hover:underline group-hover:underline-offset-2">{o.login}</span>
-                      <div className="font-mono text-[0.68rem] text-on-surface-variant">{o.repo_count} {t.rankings.repos}</div>
+                      <span className="mt-1 inline-block rounded-full bg-surface-container-high px-2 py-0.5 text-[0.68rem] font-medium text-on-surface-variant">
+                        {o.repo_count} {t.rankings.repos}
+                      </span>
                     </div>
                     <div className="shrink-0 text-right text-[1.05rem] font-extrabold tabular-nums text-on-surface">{fmtStars(o.current_stars_sum)}★</div>
                   </Link>
