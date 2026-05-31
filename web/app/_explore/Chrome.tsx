@@ -15,7 +15,7 @@ export function Chrome({ tag, locale = "en", t = en }: { tag?: string; locale?: 
         <span className="text-[1.05em] text-primary-fixed-dim" aria-hidden="true">
           ★
         </span>
-        gitstarclub
+        GitStarClub
         {tag ? (
           <span className="ml-1 rounded-full bg-primary-container px-2 py-0.5 font-mono text-[0.7rem] font-semibold text-on-primary-container">
             {tag}

@@ -15,19 +15,19 @@ const indexable = process.env.SITE_INDEXABLE === "1";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { template: "%s · gitstarclub", default: "gitstarclub — A Chronicle of Open Source" },
+  title: { template: "%s · GitStarClub", default: "GitStarClub — A Chronicle of Open Source" },
   description,
   robots: { index: indexable, follow: indexable },
   openGraph: {
     type: "website",
-    siteName: "gitstarclub",
-    title: "gitstarclub — A Chronicle of Open Source",
+    siteName: "GitStarClub",
+    title: "GitStarClub — A Chronicle of Open Source",
     description,
     images: [{ url: "/og.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "gitstarclub — A Chronicle of Open Source",
+    title: "GitStarClub — A Chronicle of Open Source",
     description,
     images: ["/og.png"],
   },
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     ],
     apple: "/apple-touch-icon.png",
   },
-  appleWebApp: { capable: true, title: "gitstarclub", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "GitStarClub", statusBarStyle: "default" },
   other: { "apple-mobile-web-app-capable": "yes" },
 };
 

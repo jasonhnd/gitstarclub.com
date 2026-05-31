@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
   if (!loc) return {};
   return pageMeta({
     absoluteTitle: true,
-    title: "GitHub Star History & Trends — A Chronicle of Open Source · gitstarclub",
+    title: "GitHub Star History & Trends — A Chronicle of Open Source · GitStarClub",
     description:
       "Explore 11 years of GitHub star history across 5,200+ projects with ≥10k stars. Yearly & monthly trending, all-time rankings, and per-repo star timelines.",
     path: "/",
