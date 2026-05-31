@@ -7,7 +7,7 @@ const plusJakarta = Plus_Jakarta_Sans({ variable: "--font-plus-jakarta", subsets
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 const description =
-  "A browsable chronicle of open source. Look back, month by month and year by year, at which GitHub projects were rising.";
+  "A browsable pulse and chronicle of open source. See what is rising this week, this month, this year, and across GitHub star history.";
 
 // metadataBase from env; indexing OFF until launch (private preview — SEO §11). Flip SITE_INDEXABLE=1 at launch.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";

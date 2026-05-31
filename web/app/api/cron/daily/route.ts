@@ -3,6 +3,7 @@ import { getReposLookup, getHotSnapshot, getCurrentMonth, getRank } from "@/lib/
 import { fetchStarCounts, type RepoRef } from "@/lib/github";
 import { putView } from "@/lib/data/write";
 import { LOCALES } from "@/lib/i18n";
+import { currentUtcPeriods } from "@/lib/periods";
 
 // Daily freshness job (OPS §Cron). JSON-only — no Parquet/engine. Polls current_stars,
 // updates the current_month live tail, recomputes the live parts of hot-snapshot
@@ -116,7 +117,15 @@ export async function GET(req: Request) {
   await Promise.all([putView("current_month.json", currentMonth), putView("hot-snapshot.json", hotSnapshot)]);
 
   const y = month.slice(0, 4);
-  const suffixes = ["", "/rankings", "/trending", `/${y}`, `/${y}/${Number(month.slice(5, 7))}`];
+  const periods = currentUtcPeriods(now);
+  const suffixes = [
+    "",
+    "/pulse",
+    "/rankings",
+    `/rankings/${y}`,
+    `/rankings/${y}/${Number(month.slice(5, 7))}`,
+    `/rankings/${periods.week.year}/W${String(periods.week.week).padStart(2, "0")}`,
+  ];
   for (const loc of LOCALES) for (const s of suffixes) revalidatePath(`/${loc}${s}`);
 
   return Response.json({ ok: true, ...result });

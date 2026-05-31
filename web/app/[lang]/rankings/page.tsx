@@ -6,9 +6,10 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { getAllTime, getReposLookup, getOrgsLookup, joinRepoRank, joinOrgRank } from "@/lib/data";
-import { fmtStars } from "@/lib/format";
+import { fmtStars, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { collectionLd } from "@/lib/jsonld";
+import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -30,6 +31,7 @@ export default async function RankingsPage({ params }: { params: Promise<{ lang:
   const loc = parseLang((await params).lang);
   if (!loc) notFound();
   const lp = localePrefix(loc);
+  const periods = currentUtcPeriods();
   const [t, repoRank, orgRank, repoLk, orgLk] = await Promise.all([
     getDictionary(loc),
     getAllTime("repo"),
@@ -52,6 +54,29 @@ export default async function RankingsPage({ params }: { params: Promise<{ lang:
           {t.rankings.title}
         </h1>
         <p className="mt-3 max-w-[46ch] text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">{t.rankings.subtitle}</p>
+
+        <section className="mt-[clamp(1.5rem,3vw,2.25rem)] grid gap-3 md:grid-cols-4">
+          <HistoryLink href={`${lp}/rankings`} label="All-time" value={t.rankings.repositories} active />
+          <HistoryLink href={`${lp}/rankings/${periods.year}`} label={t.year.label} value={String(periods.year)} />
+          <HistoryLink href={`${lp}/rankings/${periods.year}/${periods.month}`} label={t.month.label} value={monthLabel(loc, periods.month, "short")} />
+          <HistoryLink href={`${lp}/rankings/${periods.week.year}/W${String(periods.week.week).padStart(2, "0")}`} label={t.week.label} value={periods.weekPeriod} />
+        </section>
+
+        <section className="mt-[clamp(1rem,2vw,1.5rem)]">
+          <div className="flex flex-wrap gap-2">
+            {Array.from({ length: periods.year - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i)
+              .reverse()
+              .map((year) => (
+                <Link
+                  key={year}
+                  href={`${lp}/rankings/${year}`}
+                  className="rounded-full bg-surface-container-high px-3 py-1.5 font-mono text-[0.75rem] text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-on-surface"
+                >
+                  {year}
+                </Link>
+              ))}
+          </div>
+        </section>
 
         <div className="mt-[clamp(2rem,4vw,3rem)] grid gap-x-10 gap-y-10 md:grid-cols-2">
           <section>
@@ -82,5 +107,19 @@ export default async function RankingsPage({ params }: { params: Promise<{ lang:
         </div>
       </main>
     </>
+  );
+}
+
+function HistoryLink({ href, label, value, active = false }: { href: string; label: string; value: string; active?: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={`rounded-2xl px-4 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 ${
+        active ? "bg-primary-container text-on-primary-container" : "bg-surface-container text-on-surface hover:bg-surface-container-high"
+      }`}
+    >
+      <span className="block font-mono text-[0.7rem] uppercase tracking-wider opacity-75">{label}</span>
+      <span className="mt-1 block truncate text-[1rem] font-extrabold">{value}</span>
+    </Link>
   );
 }

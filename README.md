@@ -139,4 +139,5 @@ gitstarclub/
 
 - **预告页仍是生产站**：gitstarclub.com / www.gitstarclub.com 保持独立，勿动。
 - **web 应用已构建并部署到私有/noindex 的 Vercel staging**：`https://gitstarclub-web.vercel.app`，真实数据、i18n、SEO 与 Blob JSON 视图链路已接通。
+- **信息架构已调整为“脉搏 / 总榜”两面**：`/[lang]` 与 `/[lang]/pulse` 展示本周、本月、本年脉搏；`/[lang]/rankings` 收纳 all-time、年度、月度、周度历史。详见 `docs/INFORMATION-ARCHITECTURE.md`。
 - **Daily cron 已真实跑通**：2026-05-31 首次触发遇到 GitHub GraphQL `403`，随后加入批次 pacing / `Retry-After` 限流处理并把函数预算调到 800s；复测已写入 `current_month.json` 与 `hot-snapshot.json`，并通过 live-view contract 校验。
