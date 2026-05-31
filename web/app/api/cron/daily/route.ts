@@ -11,7 +11,7 @@ import { LOCALES } from "@/lib/i18n";
 // Idempotent: re-running upserts today's UTC entry, never double-counts.
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 const TOP_N = 20;
 type Item = { rank: number; id?: number; login?: string; value: number; prev_rank: null };

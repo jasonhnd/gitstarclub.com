@@ -137,7 +137,6 @@ gitstarclub/
 
 ## 开发状态
 
-- **预告页已上线**：gitstarclub.com（静态页，Vercel CLI 部署）。含 GA4、UTC+JST 页脚时间戳、M3E 石墨灰+星金 OG 图与 favicon（`render-assets.mjs` 出图）。
-- **Next.js 16 应用骨架已建**（`web/`，TS6 / React19 / Zod4 / Tailwind4 / bun），尚未接入数据。
-- **数据假设已实测确认**（2026-05-28）：≥10k = 5,248 · ≥1k = 62,181 · ≥100 = 460,397；GraphQL 批量查 `stargazerCount` 验证可行。
-- 下一步：BigQuery 回填 → Parquet/JSON → 四个核心页面接真实数据。需先准备 GCP 凭证、GitHub PAT、Vercel Blob store。
+- **预告页仍是生产站**：gitstarclub.com / www.gitstarclub.com 保持独立，勿动。
+- **web 应用已构建并部署到私有/noindex 的 Vercel staging**：`https://gitstarclub-web.vercel.app`，真实数据、i18n、SEO 与 Blob JSON 视图链路已接通。
+- **Daily cron 已真实跑通**：2026-05-31 首次触发遇到 GitHub GraphQL `403`，随后加入批次 pacing / `Retry-After` 限流处理并把函数预算调到 800s；复测已写入 `current_month.json` 与 `hot-snapshot.json`，并通过 live-view contract 校验。
