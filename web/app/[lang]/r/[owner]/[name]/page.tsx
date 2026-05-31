@@ -3,10 +3,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
+import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve, type Milestone } from "@/app/_explore/StarCurve";
 import { getRepoIdByFullName, getRepoEntity } from "@/lib/data";
 import { fmtStars, ymParts, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
+import { repoLd } from "@/lib/jsonld";
 import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -64,6 +66,7 @@ export default async function RepoPage({ params }: { params: Promise<{ lang: str
   return (
     <>
       <Chrome locale={loc} t={t} />
+      <JsonLd data={repoLd(repo, `${lp}/r/${repo.full_name}`, loc)} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[

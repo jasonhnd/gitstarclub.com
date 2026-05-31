@@ -4,9 +4,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
+import { JsonLd } from "@/app/_explore/JsonLd";
 import { getAllTime, getReposLookup, getOrgsLookup, joinRepoRank, joinOrgRank } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
+import { collectionLd } from "@/lib/jsonld";
 import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -44,6 +46,7 @@ export default async function RankingsPage({ params }: { params: Promise<{ lang:
   return (
     <>
       <Chrome locale={loc} t={t} />
+      <JsonLd data={collectionLd(t.rankings.title, `${lp}/rankings`, loc)} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <h1 className="animate-rise text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none tracking-[-0.03em] text-on-surface">
           {t.rankings.title}
