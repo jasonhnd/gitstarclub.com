@@ -44,35 +44,28 @@
 
 ### 1.2 i18n 路由（en 根 / `/ja` / `/zh`）
 
-需求：英文在根（`x-default`），日文 `/ja`、中文 `/zh`（[REQUIREMENTS](./REQUIREMENTS.md) §9、[PRODUCT](./PRODUCT.md) i18n、[SEO](./SEO.md) §10）。⚠️ **现状未做任何 i18n**——`layout.tsx` 硬编码 `lang="en"`，无 locale 段。
+需求：三语 en / ja / zh（[REQUIREMENTS](./REQUIREMENTS.md) §9、[PRODUCT](./PRODUCT.md) i18n、[SEO](./SEO.md) §10）。✅ **已落地**（见下，URL 形态与原计划有出入）。
 
-**推荐落地（en 无前缀的可选 catch-all locale 段）**：
+**已落地（`[lang]` 必填段——原 `[[...locale]]` + en 无前缀 + 无中间件 实测在 Next 16 行不通）**：
 
 ```
 app/
-  layout.tsx                 # 根 layout（<html> 不在此定 lang，交给下层；或保留 en 默认）
-  [[...locale]]/             # 可选 catch-all：匹配 ""（en 根）、"ja"、"zh"
-    layout.tsx               # 读 locale → 注入 <html lang> + 字典 Provider（RSC，无客户端 JS）
-    page.tsx                 # 首页（迁自现 app/page.tsx）
-    [year]/page.tsx
-    [year]/[month]/page.tsx
-    [year]/W[week]/page.tsx
-    r/[owner]/[name]/page.tsx
-    o/[login]/page.tsx
-    rankings/page.tsx
-    trending/page.tsx
-    about/page.tsx
+  layout.tsx                 # 根 layout：<html lang="en"> + 字体 + 主题脚本 + RegisterSW + 全站 metadata
+  [lang]/
+    layout.tsx               # 嵌套：校验 locale(未知→notFound) + generateStaticParams(en/ja/zh) + <div lang={loc} class="contents"> 包子树
+    page.tsx  [year]/page.tsx  [year]/[period]/page.tsx
+    r/[owner]/[name]/page.tsx  o/[login]/page.tsx
+    rankings/page.tsx  trending/page.tsx  about/page.tsx
+  robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
 ```
 
-要点（决策）：
+要点（实测后修正）：
 
-- **en 无前缀**：英文落在根（`/2024/10`），`/ja/2024/10`、`/zh/2024/10` 为另两语。用**可选 catch-all** `[[...locale]]` 让一套页面文件同时服务三语，避免复制三份目录。`generateStaticParams` 在此段产出 `[{locale:[]},{locale:['ja']},{locale:['zh']}]` 的核心组合。
-- **`<html lang>` 下移**：当前 `lang="en"` 在根 `layout.tsx`（`web/app/layout.tsx:76`）。i18n 后由 locale 段 layout 按 `locale` 设 `lang`（en/ja/zh），根 layout 只保留全局 `<head>` 脚本与字体变量。
-- **不引入 i18n 库**：MVP 三语、文案量小，用**手写字典**（见 §7）+ RSC 读取即可，不上 `next-intl` / `next-i18next`（符合"零客户端 JS"与最小依赖；与 ARCHITECTURE「MVP 不使用」清单一致）。
-- **校验 locale**：未知前缀（非 `ja`/`zh` 且非空）→ `notFound()`，避免 `/xx/2024` 软 200。
-- **中间件**：MVP **不需要** `middleware.ts` 做 locale 协商（不自动按 `Accept-Language` 重定向——会破坏静态缓存且制造重复内容风险）。语言切换靠 UI 中显式链接（footer/app bar 的语言切换）。
-
-> 备选：Next 16 `i18n` 配置 + 子路径——但其与 App Router 的静态导出 / hreflang 自指控制不如 `[[...locale]]` 段直观可控，故选段方案。
+- ⚠️ **catch-all 不能嵌套**：`[[...locale]]` 是终结段，其下放不了 `[year]` 等子路由（整段会被吞掉，`/2024` 会被当成 locale）。故改用**必填 `[lang]` 段**，子路由正常嵌套。
+- ⚠️ **英文也带前缀 `/en`**：App Router 要"英文裸根 + 其它带前缀"**必须**用 middleware；本项目不上 middleware，故英文落 `/en`，裸根 `/` 由 `next.config.ts` `redirects()` 跳 `/en`。无前缀深链（`/2024`）不命中（404）——测试期 noindex、站内链接全带前缀，可接受。
+- **`<html lang>`**：Next 硬要求根 `app/layout.tsx` 渲染 `<html>`，故 `<html lang="en">` 固定在根；`[lang]/layout` 用 `<div lang={loc} class="contents">` 给子树标语言（lang 可挂任意元素，`display:contents` 不影响布局）。搜索引擎语言信号靠各页 metadata 的 hreflang（`pageMeta` 已发 `alternates.languages` en/ja/zh + x-default）。
+- **手写字典**：`web/lib/i18n/`（en/ja/zh + `getDictionary` / `parseLang` / `localePrefix`），不引第三方 i18n 库；数据字段不翻译；About 正文 MVP 暂留英文。
+- **校验 locale**：`parseLang` 未知 → `notFound()`（`/fr` → 404）。**语言切换**：app bar 内 `LangSwitcher`（纯 `<Link>`）。
 
 ---
 

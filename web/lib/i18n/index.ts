@@ -12,12 +12,12 @@ const loaders: Record<Locale, () => Promise<Dict>> = {
 
 export const getDictionary = (locale: Locale): Promise<Dict> => loaders[locale]();
 
-/** Optional catch-all [[...locale]] segment → Locale | null (null = unknown → 404). en = []. */
-export function parseLocale(seg: string[] | undefined): Locale | null {
-  if (!seg || seg.length === 0) return "en";
-  if (seg.length === 1 && (seg[0] === "ja" || seg[0] === "zh")) return seg[0];
-  return null;
+export function isLocale(s: string): s is Locale {
+  return (LOCALES as readonly string[]).includes(s);
 }
 
-/** URL prefix for a locale: "" for en, "/ja", "/zh". */
-export const localePrefix = (locale: Locale): string => (locale === "en" ? "" : `/${locale}`);
+/** Validate a `[lang]` route param → Locale | null (null = unknown → notFound). */
+export const parseLang = (lang: string): Locale | null => (isLocale(lang) ? lang : null);
+
+/** URL prefix for a locale. Every locale is prefixed in this scheme (en lives at /en). */
+export const localePrefix = (locale: Locale): string => `/${locale}`;
