@@ -23,13 +23,11 @@ export const metadata: Metadata = {
     siteName: "GitStarClub",
     title: "GitStarClub — A Chronicle of Open Source",
     description,
-    images: [{ url: "/og.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "GitStarClub — A Chronicle of Open Source",
     description,
-    images: ["/og.png"],
   },
   icons: {
     icon: [
