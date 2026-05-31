@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
+import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { getOrgEntity, getReposLookup } from "@/lib/data";
@@ -40,6 +41,7 @@ export default async function OrgPage({ params }: { params: Promise<{ lang: stri
   const login = decodeURIComponent(raw);
   const [org, lookup, t] = await Promise.all([getOrgEntity(login), getReposLookup(), getDictionary(loc)]);
   if (!org) notFound();
+  const lp = localePrefix(loc);
 
   const series = org.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
   const members: Row[] = org.members
@@ -54,7 +56,8 @@ export default async function OrgPage({ params }: { params: Promise<{ lang: stri
     <>
       <Chrome locale={loc} t={t} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <header className="animate-rise">
+        <Breadcrumbs items={[{ label: t.nav.home, href: lp }, { label: org.login }]} />
+        <header className="mt-4 animate-rise">
           <div className="font-mono text-[clamp(1.6rem,5vw,2.6rem)] font-semibold text-on-surface">{org.login}</div>
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">
             <span className="text-[1.6rem] font-extrabold tabular-nums text-primary-fixed-dim">

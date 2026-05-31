@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
+import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { getRank, getHeatmap, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars, monthLabel } from "@/lib/format";
@@ -65,9 +66,7 @@ export default async function YearPage({ params }: { params: Promise<{ lang: str
     <>
       <Chrome locale={loc} t={t} />
       <main className={`mx-auto w-full max-w-[64rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Link href={`${lp}/`} className="inline-flex items-center gap-1 font-mono text-[0.78rem] text-on-surface-variant transition-colors hover:text-on-surface">
-          ↑ {t.year.all}
-        </Link>
+        <Breadcrumbs items={[{ label: t.nav.home, href: lp }, { label: String(year) }]} />
 
         <div className="mt-4 flex items-center justify-between gap-4">
           <NavArrow href={prev ? `${lp}/${prev}` : null} dir="prev" label={prev ? String(prev) : ""} />

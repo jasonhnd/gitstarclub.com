@@ -1,7 +1,7 @@
 // UI-chrome strings only. Data (repo names, languages, topics, numbers) is never translated
 // (FRONTEND §7.1). `en` is the source-of-truth shape; ja/zh must match its keys.
 export const en = {
-  nav: { trending: "Trending", rankings: "Rankings", about: "About" },
+  nav: { home: "Home", trending: "Trending", rankings: "Rankings", about: "About" },
   home: {
     heroPre: "A chronicle of ",
     heroAccent: "open source",

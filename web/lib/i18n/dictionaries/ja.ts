@@ -2,7 +2,7 @@ import type { Dict } from "./en";
 
 // 日本語 UI chrome. データ（リポジトリ名・言語・トピック・数値）は翻訳しない。
 const ja: Dict = {
-  nav: { trending: "トレンド", rankings: "ランキング", about: "概要" },
+  nav: { home: "ホーム", trending: "トレンド", rankings: "ランキング", about: "概要" },
   home: {
     heroPre: "",
     heroAccent: "オープンソース",
