@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
+import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { Heatmap } from "@/app/_explore/Heatmap";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { getRank, getHeatmap, getReposLookup, joinRepoRank } from "@/lib/data";
@@ -99,9 +100,13 @@ async function MonthView({ year, month, loc, t }: { year: number; month: number;
     <>
       <Chrome locale={loc} t={t} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Link href={`${lp}/${year}`} className="inline-flex items-center gap-1 font-mono text-[0.78rem] text-on-surface-variant transition-colors hover:text-on-surface">
-          ↑ {year}
-        </Link>
+        <Breadcrumbs
+          items={[
+            { label: t.nav.home, href: lp },
+            { label: String(year), href: `${lp}/${year}` },
+            { label: monthYearLabel(loc, year, month) },
+          ]}
+        />
         <div className="mt-4 flex items-center justify-between gap-4">
           <PeriodArrow target={prev && `${lp}/${prev.y}/${prev.m}`} label={prev ? `${monthLabel(loc, prev.m, "short")} '${String(prev.y).slice(2)}` : ""} dir="prev" />
           <div className="text-center">
@@ -170,9 +175,13 @@ async function WeekView({ year, week, loc, t }: { year: number; week: number; lo
     <>
       <Chrome locale={loc} t={t} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Link href={`${lp}/${year}`} className="inline-flex items-center gap-1 font-mono text-[0.78rem] text-on-surface-variant transition-colors hover:text-on-surface">
-          ↑ {year}
-        </Link>
+        <Breadcrumbs
+          items={[
+            { label: t.nav.home, href: lp },
+            { label: String(year), href: `${lp}/${year}` },
+            { label: period },
+          ]}
+        />
         <div className="mt-4 text-center">
           <div className="font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{t.week.label}</div>
           <h1 className="animate-rise text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none tracking-[-0.03em] text-on-surface">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
+import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { StarCurve, type Milestone } from "@/app/_explore/StarCurve";
 import { getRepoIdByFullName, getRepoEntity } from "@/lib/data";
 import { fmtStars, ymParts, monthLabel } from "@/lib/format";
@@ -64,7 +65,14 @@ export default async function RepoPage({ params }: { params: Promise<{ lang: str
     <>
       <Chrome locale={loc} t={t} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <header className="animate-rise">
+        <Breadcrumbs
+          items={[
+            { label: t.nav.home, href: lp },
+            { label: repo.owner, href: `${lp}/o/${repo.owner}` },
+            { label: repo.name },
+          ]}
+        />
+        <header className="mt-4 animate-rise">
           <div className="flex flex-wrap items-baseline gap-x-1 gap-y-1 font-mono text-[clamp(1.4rem,4vw,2.2rem)]">
             <span className="text-on-surface-variant">{repo.owner} /</span>
             <span className="font-semibold text-on-surface">{repo.name}</span>

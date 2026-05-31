@@ -2,7 +2,7 @@ import type { Dict } from "./en";
 
 // 中文 UI chrome。数据（仓库名、语言、主题、数字）一律不翻译。
 const zh: Dict = {
-  nav: { trending: "脉搏", rankings: "总榜", about: "关于" },
+  nav: { home: "首页", trending: "脉搏", rankings: "总榜", about: "关于" },
   home: {
     heroPre: "",
     heroAccent: "开源",
