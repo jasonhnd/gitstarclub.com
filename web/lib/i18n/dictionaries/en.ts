@@ -3,8 +3,36 @@
 export const en = {
   nav: { trending: "Trending", rankings: "Rankings", about: "About" },
   home: {
+    heroPre: "A chronicle of ",
+    heroAccent: "open source",
+    heroPost: ".",
     lead: "Eleven years of momentum at a glance. Pick a year to drop into its chapter.",
     thisMonth: "This month so far",
+    perYear: "Stars gained per year",
+    gainedAria: "stars gained",
+  },
+  about: {
+    heroPre: "An honest ",
+    heroAccent: "chronicle",
+    heroPost: ".",
+    lead: "gitstarclub indexes every public repo above 10,000 stars and reconstructs when each one rose — month by month, year by year, since 2015.",
+    s1h: "Where the data comes from",
+    s1pPre: "History is reconstructed from ",
+    s1pPost:
+      " (every public GitHub event since 2015). Current totals come from the official GitHub GraphQL & Search APIs. We only show public data about public repositories.",
+    s2h: "The honest caveats",
+    s2aStrong: "Two measuring sticks.",
+    s2aBody:
+      " The historical curve counts gross stars added (GH Archive watch events); the live daily delta is net (it can go down when stars are removed). The seam between them is slightly inconsistent — star-history.com has the same limitation. Current totals are always anchored to the authoritative GitHub count.",
+    s2bStrong: "Survivor bias.",
+    s2bBody:
+      " We backfill only repos that are ≥10k stars today. Projects that rose and faded are missing from the history.",
+    s2cStrong: "Why 2015?",
+    s2cBody:
+      " Before late 2012, GitHub’s “watch” wasn’t the same as a star; data stabilizes in 2015, our start of the modern open-source era.",
+    s3h: "Time",
+    s3p: "Everything is stored in UTC and aggregated on UTC day boundaries. Wherever an exact moment is shown, both UTC and JST (Japan time) appear — gitstarclub is made in Tokyo.",
+    back: "Back to the chronicle",
   },
   year: {
     label: "Year",

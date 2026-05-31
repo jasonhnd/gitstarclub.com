@@ -5,7 +5,7 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { Heatmap } from "@/app/_explore/Heatmap";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { getRank, getHeatmap, getReposLookup, joinRepoRank } from "@/lib/data";
-import { fmtStars, MONTH_NAMES, MONTH_ABBR } from "@/lib/format";
+import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { parseLang, getDictionary, localePrefix, type Locale, type Dict } from "@/lib/i18n";
 
@@ -34,13 +34,15 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
       locale: loc,
     });
   const month = Number(period);
-  if (month >= 1 && month <= 12)
+  if (month >= 1 && month <= 12) {
+    const mn = monthLabel("en", month, "long");
     return pageMeta({
-      title: `Top GitHub Repos in ${MONTH_NAMES[month - 1]} ${year} — Trending & Star Growth`,
-      description: `${MONTH_NAMES[month - 1]} ${year} on GitHub: repositories by new stars, fastest-growing projects, and newcomers crossing 10k.`,
+      title: `Top GitHub Repos in ${mn} ${year} — Trending & Star Growth`,
+      description: `${mn} ${year} on GitHub: repositories by new stars, fastest-growing projects, and newcomers crossing 10k.`,
       path: `/${year}/${period}`,
       locale: loc,
     });
+  }
   return {};
 }
 
@@ -101,14 +103,14 @@ async function MonthView({ year, month, loc, t }: { year: number; month: number;
           ↑ {year}
         </Link>
         <div className="mt-4 flex items-center justify-between gap-4">
-          <PeriodArrow target={prev && `${lp}/${prev.y}/${prev.m}`} label={prev ? `${MONTH_ABBR[prev.m - 1]} '${String(prev.y).slice(2)}` : ""} dir="prev" />
+          <PeriodArrow target={prev && `${lp}/${prev.y}/${prev.m}`} label={prev ? `${monthLabel(loc, prev.m, "short")} '${String(prev.y).slice(2)}` : ""} dir="prev" />
           <div className="text-center">
             <div className="font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{t.month.label}</div>
             <h1 className="animate-rise text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none tracking-[-0.03em] text-on-surface">
-              {MONTH_NAMES[month - 1]} {year}
+              {monthYearLabel(loc, year, month)}
             </h1>
           </div>
-          <PeriodArrow target={next && `${lp}/${next.y}/${next.m}`} label={next ? `${MONTH_ABBR[next.m - 1]} '${String(next.y).slice(2)}` : ""} dir="next" />
+          <PeriodArrow target={next && `${lp}/${next.y}/${next.m}`} label={next ? `${monthLabel(loc, next.m, "short")} '${String(next.y).slice(2)}` : ""} dir="next" />
         </div>
         <p className="mt-3 text-center text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">
           {t.month.gained} <span className="font-semibold text-on-surface">{fmtStars(totalGained)}</span>

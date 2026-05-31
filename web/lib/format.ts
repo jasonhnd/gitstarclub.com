@@ -11,14 +11,26 @@ export function fmtStars(n: number): string {
   return String(n);
 }
 
-export const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-export const MONTH_ABBR = MONTH_NAMES.map((m) => m.slice(0, 3));
+const LOCALE_TAG: Record<string, string> = { en: "en-US", ja: "ja-JP", zh: "zh-CN" };
+const fmtCache = new Map<string, Intl.DateTimeFormat>();
+function dtf(locale: string, opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = `${locale}|${JSON.stringify(opts)}`;
+  let f = fmtCache.get(key);
+  if (!f) fmtCache.set(key, (f = new Intl.DateTimeFormat(LOCALE_TAG[locale] ?? locale, { timeZone: "UTC", ...opts })));
+  return f;
+}
 
-/** 'YYYY-MM' or 'YYYY-MM-DD' → { y, m, pretty }. */
-export function ymParts(period: string): { y: number; m: number; pretty: string } {
+/** Localized month name, e.g. en "Oct"/"October", ja/zh "10月". */
+export function monthLabel(locale: string, month: number, style: "long" | "short" = "short"): string {
+  return dtf(locale, { month: style }).format(Date.UTC(2000, month - 1, 1));
+}
+/** Localized "month year", e.g. en "October 2024", ja/zh "2024年10月". */
+export function monthYearLabel(locale: string, year: number, month: number): string {
+  return dtf(locale, { year: "numeric", month: "long" }).format(Date.UTC(year, month - 1, 1));
+}
+
+/** Parse 'YYYY-MM' or 'YYYY-MM-DD' → { y, m }. */
+export function ymParts(period: string): { y: number; m: number } {
   const [y, m] = period.split("-").map(Number);
-  return { y, m, pretty: `${MONTH_ABBR[m - 1]} ${y}` };
+  return { y, m };
 }

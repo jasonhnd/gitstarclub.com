@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { getRank, getHeatmap, getReposLookup, joinRepoRank } from "@/lib/data";
-import { fmtStars, MONTH_ABBR } from "@/lib/format";
+import { fmtStars, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
 
@@ -51,11 +51,10 @@ export default async function YearPage({ params }: { params: Promise<{ lang: str
   const tops: Row[] = joinRepoRank(rank.items, lookup)
     .slice(0, 20)
     .map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
-  const months = (heat?.cells ?? []).map(([period, total]) => ({
-    label: MONTH_ABBR[Number(String(period).slice(5, 7)) - 1],
-    month: Number(String(period).slice(5, 7)),
-    gained: total,
-  }));
+  const months = (heat?.cells ?? []).map(([period, total]) => {
+    const month = Number(String(period).slice(5, 7));
+    return { label: monthLabel(loc, month, "short"), month, gained: total };
+  });
   const maxM = Math.max(1, ...months.map((m) => m.gained));
   const yearTotal = months.reduce((a, m) => a + m.gained, 0);
 

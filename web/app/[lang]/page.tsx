@@ -51,7 +51,9 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
       <Chrome locale={loc} t={t} />
       <main className={`mx-auto w-full max-w-[68rem] flex-1 py-[clamp(2rem,5vw,4rem)] ${PAD_X}`}>
         <h1 className="max-w-[16ch] animate-rise text-[clamp(2.4rem,7vw,5rem)] font-extrabold leading-[1.0] tracking-[-0.04em]">
-          A chronicle of <span className="hl">open source</span>.
+          {t.home.heroPre}
+          <span className="hl">{t.home.heroAccent}</span>
+          {t.home.heroPost}
         </h1>
         <p
           className="mt-5 max-w-[46ch] animate-rise text-[clamp(1rem,1.7vw,1.25rem)] text-on-surface-variant"
@@ -61,7 +63,7 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
         </p>
 
         {spine.length > 0 && (
-          <section className="mt-[clamp(2.5rem,6vw,4.5rem)]" aria-label="Stars gained per year">
+          <section className="mt-[clamp(2.5rem,6vw,4.5rem)]" aria-label={t.home.perYear}>
             <div
               className="grid h-[clamp(200px,32vw,340px)] items-end gap-1 sm:gap-[1vw]"
               style={{ gridTemplateColumns: `repeat(${spine.length}, minmax(0, 1fr))` }}
@@ -70,7 +72,7 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
                 <Link
                   key={year}
                   href={`${lp}/${year}`}
-                  aria-label={`${year}: ${fmtStars(total)} stars gained`}
+                  aria-label={`${year}: ${fmtStars(total)} ${t.home.gainedAria}`}
                   className="group flex h-full min-w-0 flex-col items-center justify-end gap-3 transition-transform duration-200 ease-[var(--ease-spring)] hover:-translate-y-1.5 active:scale-[0.97]"
                 >
                   <span className="hidden font-mono text-[0.72rem] tabular-nums text-on-surface-variant opacity-0 transition-opacity group-hover:opacity-100 sm:block">
