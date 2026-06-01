@@ -27,6 +27,17 @@ export const RepoEntity = z.object({
   description: z.string().nullable(),
   language: z.string().nullable(),
   topics: z.array(z.string()),
+  homepage_url: z.string().nullable().optional(),
+  license: z.string().nullable().optional(),
+  latest_release: z
+    .object({
+      name: z.string().nullable().optional(),
+      tag_name: z.string(),
+      published_at: DateStr.nullable().optional(),
+      url: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   created_at: DateStr,
   current_stars: z.number().int(),
   is_archived: z.boolean(),

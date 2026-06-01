@@ -11,7 +11,7 @@ import { fmtStars, monthLabel } from "@/lib/format";
 import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
-import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
+import { getPreferredDictionary } from "@/lib/i18n/server";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
@@ -22,35 +22,30 @@ export function generateStaticParams() {
   return [{ year: String(currentUtcPeriods().year) }];
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ lang: string; year: string }> }): Promise<Metadata> {
-  const { lang, year } = await params;
-  const loc = parseLang(lang);
-  if (!loc) return {};
+export async function generateMetadata({ params }: { params: Promise<{ year: string }> }): Promise<Metadata> {
+  const { year } = await params;
   return pageMeta({
     title: `${year} GitHub Star Rankings — Yearly Movers`,
     description: `The ${year} ranking of GitHub repositories by stars gained, with month-by-month history.`,
     path: `/rankings/${year}`,
-    locale: loc,
+    locale: "en",
   });
 }
 
-export default async function RankingsYearPage({ params }: { params: Promise<{ lang: string; year: string }> }) {
-  const { lang, year: ys } = await params;
-  const loc = parseLang(lang);
-  if (!loc) notFound();
+export default async function RankingsYearPage({ params }: { params: Promise<{ year: string }> }) {
+  const { year: ys } = await params;
+  const { locale: loc, t } = await getPreferredDictionary();
   const year = Number(ys);
   const currentYear = currentUtcPeriods().year;
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > currentYear) notFound();
 
-  const [t, rank, heat, lookup] = await Promise.all([
-    getDictionary(loc),
+  const [rank, heat, lookup] = await Promise.all([
     getRank("year", String(year), "repo", "flow"),
     getHeatmap("year", String(year)),
     getReposLookup(),
   ]);
   if (!rank || !lookup) notFound();
 
-  const lp = localePrefix(loc);
   const tops: Row[] = joinRepoRank(rank.items, lookup)
     .slice(0, 24)
     .map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
@@ -64,9 +59,9 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ l
   return (
     <>
       <Chrome locale={loc} t={t} />
-      <JsonLd data={collectionLd(`${t.rankings.title} ${year}`, `${lp}/rankings/${year}`, loc)} />
+      <JsonLd data={collectionLd(`${t.rankings.title} ${year}`, `/rankings/${year}`, loc)} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Breadcrumbs items={[{ label: t.nav.home, href: lp }, { label: t.nav.rankings, href: `${lp}/rankings` }, { label: String(year) }]} />
+        <Breadcrumbs items={[{ label: t.nav.home, href: "/" }, { label: t.nav.rankings, href: "/rankings" }, { label: String(year) }]} />
 
         <section className="mt-5 grid gap-8 lg:grid-cols-[16rem_1fr]">
           <aside>
@@ -75,7 +70,7 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ l
             <p className="mt-3 text-[0.95rem] text-on-surface-variant">
               <span className="font-semibold text-on-surface">{fmtStars(total)}</span> {t.year.gained}
             </p>
-            <Link href={`${lp}/rankings`} className="mt-5 inline-block font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+            <Link href="/rankings" className="mt-5 inline-block font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
               {t.nav.rankings}
             </Link>
           </aside>
@@ -85,7 +80,7 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ l
               {months.map((m, i) => (
                 <Link
                   key={m.month}
-                  href={`${lp}/rankings/${year}/${m.month}`}
+                  href={`/rankings/${year}/${m.month}`}
                   className="rounded-2xl bg-surface-container px-4 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-surface-container-high"
                 >
                   <div className="flex items-baseline justify-between gap-3">

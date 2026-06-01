@@ -4,8 +4,8 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { getHotSnapshot, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { webSiteLd, collectionLd } from "@/lib/jsonld";
-import { currentUtcPeriods } from "@/lib/periods";
-import { localePrefix, type Dict, type Locale } from "@/lib/i18n";
+import { currentUtcPeriods, isoWeek } from "@/lib/periods";
+import { type Dict, type Locale } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
@@ -16,15 +16,24 @@ type PulseViewProps = {
 };
 
 export async function PulseView({ locale, t, includeWebsiteLd = false }: PulseViewProps) {
-  const lp = localePrefix(locale);
-  const periods = currentUtcPeriods();
-  const [snap, lookup, weekRank] = await Promise.all([
+  const now = new Date();
+  const periods = currentUtcPeriods(now);
+  const weekCandidates = recentWeekCandidates(now, 8);
+  const [snap, lookup, ...weekRanks] = await Promise.all([
     getHotSnapshot(),
     getReposLookup(),
-    getRank("week", periods.weekPeriod, "repo", "flow"),
+    ...weekCandidates.map((week) => getRank("week", week.period, "repo", "flow")),
   ]);
 
-  const weekRows = lookup && weekRank ? toRows(joinRepoRank(weekRank.items.slice(0, 8), lookup)) : [];
+  let activeWeek = { ...weekCandidates[0], rank: null as Awaited<ReturnType<typeof getRank>> };
+  for (const [index, rank] of weekRanks.entries()) {
+    if (rank && rank.items.length > 0) {
+      activeWeek = { ...weekCandidates[index], rank };
+      break;
+    }
+  }
+
+  const weekRows = lookup && activeWeek.rank ? toRows(joinRepoRank(activeWeek.rank.items.slice(0, 8), lookup)) : [];
   const monthRows = snap && lookup ? toRows(joinRepoRank(snap.current_month.flow.slice(0, 8), lookup)) : [];
   const yearRows = snap && lookup ? toRows(joinRepoRank(snap.current_year.flow.slice(0, 8), lookup)) : [];
   const giants = snap && lookup ? toRows(joinRepoRank(snap.all_time.repo.slice(0, 6), lookup), "total") : [];
@@ -36,8 +45,8 @@ export async function PulseView({ locale, t, includeWebsiteLd = false }: PulseVi
   return (
     <>
       <Chrome locale={locale} t={t} />
-      {includeWebsiteLd && <JsonLd data={webSiteLd(locale, lp)} />}
-      <JsonLd data={collectionLd(t.trending.title, `${lp}/pulse`, locale)} />
+      {includeWebsiteLd && <JsonLd data={webSiteLd(locale, "/")} />}
+      <JsonLd data={collectionLd(t.trending.title, "/pulse", locale)} />
       <main className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
         <section className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
           <div>
@@ -49,17 +58,17 @@ export async function PulseView({ locale, t, includeWebsiteLd = false }: PulseVi
           </div>
 
           <div className="grid gap-2 rounded-2xl bg-surface-container px-4 py-4">
-            <PulseJump href={`${lp}/rankings/${periods.week.year}/W${String(periods.week.week).padStart(2, "0")}`} label={t.week.label} value={periods.weekPeriod} />
-            <PulseJump href={`${lp}/rankings/${periods.year}/${periods.month}`} label={t.month.label} value={periods.monthPeriod} />
-            <PulseJump href={`${lp}/rankings/${periods.year}`} label={t.year.label} value={String(periods.year)} />
-            <PulseJump href={`${lp}/rankings`} label={t.nav.rankings} value="all-time" />
+            <PulseJump href={weekHref(activeWeek)} label={t.week.label} value={activeWeek.period} />
+            <PulseJump href={`/rankings/${periods.year}/${periods.month}`} label={t.month.label} value={periods.monthPeriod} />
+            <PulseJump href={`/rankings/${periods.year}`} label={t.year.label} value={String(periods.year)} />
+            <PulseJump href="/rankings" label={t.nav.rankings} value="all-time" />
           </div>
         </section>
 
         <div className="mt-[clamp(2rem,5vw,4rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
-          <PulsePanel title={t.week.top} href={`${lp}/rankings/${periods.week.year}/W${String(periods.week.week).padStart(2, "0")}`} rows={weekRows} locale={locale} />
-          <PulsePanel title={t.trending.surging} href={`${lp}/rankings/${periods.year}/${periods.month}`} rows={monthRows} locale={locale} />
-          <PulsePanel title={`${t.year.top} ${periods.year}`} href={`${lp}/rankings/${periods.year}`} rows={yearRows} locale={locale} />
+          <PulsePanel title={t.week.top} href={weekHref(activeWeek)} meta={activeWeek.period} rows={weekRows} locale={locale} />
+          <PulsePanel title={t.trending.surging} href={`/rankings/${periods.year}/${periods.month}`} meta={periods.monthPeriod} rows={monthRows} locale={locale} />
+          <PulsePanel title={`${t.year.top} ${periods.year}`} href={`/rankings/${periods.year}`} meta={String(periods.year)} rows={yearRows} locale={locale} />
         </div>
 
         <section className="mt-[clamp(2.5rem,5vw,4rem)] grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -69,7 +78,7 @@ export async function PulseView({ locale, t, includeWebsiteLd = false }: PulseVi
                 <h2 className="text-[1.35rem] font-extrabold tracking-tight text-on-surface">{t.rankings.title}</h2>
                 <p className="mt-1 text-[0.9rem] text-on-surface-variant">{t.rankings.subtitle}</p>
               </div>
-              <Link href={`${lp}/rankings`} className="font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+              <Link href="/rankings" className="font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
                 {t.nav.rankings}
               </Link>
             </div>
@@ -82,7 +91,7 @@ export async function PulseView({ locale, t, includeWebsiteLd = false }: PulseVi
               <ul className="flex flex-col divide-y divide-outline-variant/50">
                 {onThisDay.slice(0, 8).map((e) => (
                   <li key={`${e.id}-${e.crossed}`}>
-                    <Link href={`${lp}/r/${e.owner}/${e.name}`} className="group block py-2.5 transition-colors hover:bg-on-surface/5">
+                    <Link href={`/${e.owner}/${e.name}`} className="group block py-2.5 transition-colors hover:bg-on-surface/5">
                       <span className="block truncate font-mono text-[0.86rem] text-on-surface group-hover:underline group-hover:underline-offset-2">{e.full_name}</span>
                       <span className="font-mono text-[0.75rem] tabular-nums text-on-surface-variant">
                         {t.trending.crossed} <span className="font-semibold text-primary-fixed-dim">{e.crossed}</span> · {e.date}
@@ -118,16 +127,45 @@ function PulseJump({ href, label, value }: { href: string; label: string; value:
   );
 }
 
-function PulsePanel({ title, href, rows, locale }: { title: string; href: string; rows: Row[]; locale: Locale }) {
+function PulsePanel({ title, href, meta, rows, locale }: { title: string; href: string; meta?: string; rows: Row[]; locale: Locale }) {
   return (
     <section className="min-w-0">
-      <div className="mb-3 flex items-center justify-between gap-4">
-        <h2 className="text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-        <Link href={href} className="font-mono text-[0.72rem] text-primary-fixed-dim hover:underline">
-          open
-        </Link>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="min-w-0 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
+        <div className="flex shrink-0 items-center gap-2">
+          {meta && <span className="rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">{meta}</span>}
+          <Link href={href} className="font-mono text-[0.72rem] text-primary-fixed-dim hover:underline">
+            open
+          </Link>
+        </div>
       </div>
       <RankingList rows={rows} variant="gained" locale={locale} />
     </section>
   );
+}
+
+type WeekCandidate = {
+  year: number;
+  week: number;
+  period: string;
+};
+
+function recentWeekCandidates(now: Date, count: number): WeekCandidate[] {
+  const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const day = monday.getUTCDay() || 7;
+  monday.setUTCDate(monday.getUTCDate() + 1 - day);
+
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(monday);
+    date.setUTCDate(monday.getUTCDate() - index * 7);
+    const week = isoWeek(date);
+    return {
+      ...week,
+      period: `${week.year}-W${String(week.week).padStart(2, "0")}`,
+    };
+  });
+}
+
+function weekHref(week: WeekCandidate) {
+  return `/rankings/${week.year}/W${String(week.week).padStart(2, "0")}`;
 }

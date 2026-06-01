@@ -1,12 +1,7 @@
 import type { NextConfig } from "next";
 
-// Locale routing is path-prefixed via the [lang] segment (en at /en) — no middleware.
-// Bare root redirects into the default locale. cacheComponents stays OFF so empty
-// generateStaticParams + dynamicParams keep the long tail on-demand (FRONTEND §2.3).
-const nextConfig: NextConfig = {
-  async redirects() {
-    return [{ source: "/", destination: "/en", permanent: false }];
-  },
-};
+// Canonical URLs do not carry locale prefixes. Language is a cookie-backed in-page
+// preference, while repo pages mirror GitHub as /owner/name.
+const nextConfig: NextConfig = {};
 
 export default nextConfig;
