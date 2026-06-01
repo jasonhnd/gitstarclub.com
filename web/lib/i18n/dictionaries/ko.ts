@@ -1,0 +1,102 @@
+import type { Dict } from "./en";
+
+const ko: Dict = {
+  nav: { home: "홈", trending: "펄스", rankings: "순위", about: "소개" },
+  home: {
+    heroPre: "",
+    heroAccent: "오픈소스",
+    heroPost: "의 기록.",
+    lead: "11년의 오픈소스 활동을 한눈에 살펴보세요. 연도를 선택해 자세히 탐색할 수 있습니다.",
+    thisMonth: "이번 달 현재까지",
+    perYear: "연도별 증가한 스타 수",
+    gainedAria: "증가한 스타 수",
+  },
+  about: {
+    heroPre: "사실에 기반한 ",
+    heroAccent: "기록",
+    heroPost: ".",
+    lead: "GitStarClub은 스타 10,000개를 넘는 공개 저장소를 색인화하고, 2015년 이후 각 저장소가 어떻게 스타를 얻었는지 월별, 연도별로 재구성합니다.",
+    s1h: "데이터 출처",
+    s1pPre: "과거 추세는 ",
+    s1pPost:
+      "에서 재구성한 공개 GitHub 이벤트 데이터를 기반으로 합니다. 현재 총계는 GitHub의 공식 GraphQL 및 Search API에서 가져옵니다. 공개 저장소의 공개 데이터만 표시합니다.",
+    s2h: "방법론적 한계",
+    s2aStrong: "두 가지 측정 기준.",
+    s2aBody:
+      " 과거 추세는 GH Archive의 watch 이벤트를 바탕으로 추가된 총 스타 수를 사용합니다. 현재 일간 변화는 순증감 기준이므로 스타가 제거되면 감소할 수 있습니다. 두 기준이 만나는 지점에는 약간의 불일치가 있습니다. 현재 총계는 항상 GitHub의 공식 스타 수를 기준으로 합니다.",
+    s2bStrong: "선택 편향.",
+    s2bBody:
+      " 현재 스타가 10,000개 이상인 저장소만 과거 데이터를 복원합니다. 한때 인기가 있었지만 이후 기준 아래로 내려간 프로젝트는 포함되지 않습니다.",
+    s2cStrong: "왜 2015년부터인가?",
+    s2cBody:
+      " 2012년 말 이전의 GitHub watch 이벤트는 현재의 star와 같은 의미가 아니었습니다. 2015년부터 데이터가 장기 비교에 충분히 일관됩니다.",
+    s3h: "시간",
+    s3p: "모든 데이터는 UTC로 저장되고 UTC 날짜 경계를 기준으로 집계됩니다. 정확한 시점이 표시되는 경우 UTC와 JST(일본 표준시)를 함께 보여줍니다.",
+    back: "기록으로 돌아가기",
+  },
+  year: {
+    label: "연도",
+    all: "전체 연도",
+    spine: "개요",
+    top: "상위 저장소",
+    gained: "추적 저장소에서 증가한 스타 수",
+    ledBy: "선도한 저장소",
+  },
+  month: {
+    label: "월",
+    most: "가장 많이 증가한 스타",
+    mostSub: "절대 증가량 기준",
+    fastest: "가장 빠른 성장",
+    fastestSub: "증가율 기준, 최소 20k 스타",
+    newcomers: "신규 진입",
+    newcomersSub: "처음으로 10k 스타 돌파",
+    daily: "일간 활동",
+    gained: "추적 저장소가 획득한 스타 수",
+    newcomersWord: "신규 진입",
+  },
+  week: { label: "주", top: "이번 주 상위 저장소" },
+  repo: {
+    about: "소개",
+    history: "스타 추세",
+    milestones: "주요 이정표",
+    recent: "최근 활동",
+    created: "생성일",
+    archived: "보관됨",
+    github: "GitHub에서 열기",
+    rank: "순위",
+    owner: "소유자",
+    homepage: "홈페이지",
+    license: "라이선스",
+    latestRelease: "최신 릴리스",
+    noRelease: "GitHub 릴리스를 찾지 못했습니다",
+    topics: "주제",
+  },
+  org: {
+    history: "통합 스타 추세",
+    repos: "추적 저장소",
+    total: "총합",
+    trackedRepos: "개의 추적 저장소",
+    organization: "조직",
+    developer: "개인",
+  },
+  rankings: {
+    title: "역대 순위",
+    subtitle: "현재 스타 수를 기준으로 정렬한 저장소와 조직 순위입니다.",
+    repositories: "저장소",
+    organizations: "조직",
+    repos: "저장소",
+  },
+  trending: {
+    title: "오픈소스 펄스",
+    subtitle: "추적 중인 오픈소스 저장소에서 이번 주, 이번 달, 올해 무엇이 변하고 있는지 보여줍니다.",
+    surging: "이번 달 상승",
+    onThisDay: "오늘의 기록",
+    crossed: "돌파",
+  },
+  footer: {
+    madeIn: "도쿄에서 제작",
+    dataThrough: "데이터 업데이트 기준",
+  },
+};
+
+export default ko;

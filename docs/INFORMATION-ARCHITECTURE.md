@@ -13,6 +13,12 @@ stored in a first-party cookie, so repository URLs can mirror GitHub:
 - GitHub: `https://github.com/facebook/react`
 - GitStarClub: `/facebook/react`
 
+The default language is English. The language control shows the current language
+as a compact trigger and places the other supported languages in a dropdown:
+English, Japanese, Simplified Chinese, Traditional Chinese, Korean, Spanish, and
+French. The dropdown writes `gsc_lang` through `/api/lang` and returns to the
+same URL.
+
 ## Primary Navigation
 
 - **Pulse**: `/pulse`

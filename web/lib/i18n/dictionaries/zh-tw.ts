@@ -1,0 +1,102 @@
+import type { Dict } from "./en";
+
+const zhTw: Dict = {
+  nav: { home: "首頁", trending: "脈搏", rankings: "排行榜", about: "關於" },
+  home: {
+    heroPre: "",
+    heroAccent: "開源",
+    heroPost: "編年史。",
+    lead: "十一年的開源動能，一眼可見。選擇一個年份，進入它的篇章。",
+    thisMonth: "本月至今",
+    perYear: "每年新增星標",
+    gainedAria: "新增星標",
+  },
+  about: {
+    heroPre: "一部如實記錄的",
+    heroAccent: "編年史",
+    heroPost: "。",
+    lead: "GitStarClub 收錄所有公開且星標超過 10,000 的倉庫，並自 2015 年起按月、按年重建它們的成長軌跡。",
+    s1h: "資料來源",
+    s1pPre: "歷史資料重建自 ",
+    s1pPost:
+      "，涵蓋自 2015 年以來的公開 GitHub 事件。當前總星標來自 GitHub 官方 GraphQL API 與 Search API。我們只展示公開倉庫的公開資料。",
+    s2h: "方法上的限制",
+    s2aStrong: "兩種統計口徑。",
+    s2aBody:
+      " 歷史曲線統計的是新增星標總量，也就是 GH Archive 的 watch 事件；即時每日變化則是淨增減，取消星標時也可能下降。因此兩者銜接處會有輕微不一致。當前總量始終以 GitHub 的權威統計為準。",
+    s2bStrong: "選擇偏差。",
+    s2bBody:
+      " 我們只回填目前仍有至少 10,000 星標的倉庫。曾經走紅、但後來低於門檻的專案，不會出現在這段歷史中。",
+    s2cStrong: "為什麼從 2015 年開始？",
+    s2cBody:
+      " 在 2012 年底之前，GitHub 的 watch 與 star 並不完全等同；資料到了 2015 年後才趨於穩定，因此我們將其作為長期比較的起點。",
+    s3h: "時間",
+    s3p: "所有資料均以 UTC 儲存，並依 UTC 日期邊界彙整。凡顯示精確時間之處，會同時標示 UTC 與 JST（日本標準時間）。",
+    back: "返回歷史",
+  },
+  year: {
+    label: "年份",
+    all: "所有年份",
+    spine: "概覽",
+    top: "年度領先倉庫",
+    gained: "追蹤倉庫新增星標",
+    ledBy: "領先者",
+  },
+  month: {
+    label: "月份",
+    most: "新增星標最多",
+    mostSub: "按絕對增量排名",
+    fastest: "成長最快",
+    fastestSub: "成長率排名，僅統計 2 萬星以上專案",
+    newcomers: "新晉專案",
+    newcomersSub: "首次突破 1 萬星",
+    daily: "每日動態",
+    gained: "追蹤倉庫新增",
+    newcomersWord: "個新晉專案",
+  },
+  week: { label: "週", top: "本週領先倉庫" },
+  repo: {
+    about: "專案簡介",
+    history: "星標趨勢",
+    milestones: "里程碑",
+    recent: "近期動態",
+    created: "建立時間",
+    archived: "已封存",
+    github: "在 GitHub 上開啟",
+    rank: "排名",
+    owner: "擁有者",
+    homepage: "首頁",
+    license: "授權條款",
+    latestRelease: "最新版本",
+    noRelease: "未找到 GitHub Release",
+    topics: "主題標籤",
+  },
+  org: {
+    history: "合計星標趨勢",
+    repos: "追蹤倉庫",
+    total: "總計",
+    trackedRepos: "個追蹤倉庫",
+    organization: "組織",
+    developer: "個人",
+  },
+  rankings: {
+    title: "歷史總榜",
+    subtitle: "依目前星標數排序的倉庫與組織排行榜。",
+    repositories: "倉庫",
+    organizations: "組織",
+    repos: "個倉庫",
+  },
+  trending: {
+    title: "開源脈搏",
+    subtitle: "追蹤範圍內本週、本月與本年變化最明顯的開源專案。",
+    surging: "本月上升領先",
+    onThisDay: "歷史上的今天",
+    crossed: "突破",
+  },
+  footer: {
+    madeIn: "製作於東京",
+    dataThrough: "資料更新至",
+  },
+};
+
+export default zhTw;

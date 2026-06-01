@@ -4,6 +4,11 @@
 > `rank/week/<current>/repo/flow.json` is not present yet, the UI falls back to
 > the latest available weekly rank and displays the actual week badge, so the
 > weekly panel does not go blank before the offline weekly precompute runs.
+>
+> 2026-06-01 i18n note: English is the default UI language. Other languages are
+> selected from a compact dropdown and stored in the `gsc_lang` cookie without
+> changing the URL. Supported UI languages are English, Japanese, Simplified
+> Chinese, Traditional Chinese, Korean, Spanish, and French.
 
 > 一本可浏览的 GitHub 开源编年史 —— 按月 / 季 / 年回看哪些项目正在被关注。
 

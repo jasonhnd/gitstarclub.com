@@ -1,15 +1,29 @@
 import en, { type Dict } from "./dictionaries/en";
 
 export type { Dict };
-export const LOCALES = ["en", "ja", "zh"] as const;
+export const LOCALES = ["en", "ja", "zh", "zh-TW", "ko", "es", "fr"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 export const LANG_COOKIE = "gsc_lang";
+
+export const LANGUAGE_LABELS: Record<Locale, string> = {
+  en: "English",
+  ja: "日本語",
+  zh: "简体中文",
+  "zh-TW": "繁體中文",
+  ko: "한국어",
+  es: "Español",
+  fr: "Français",
+};
 
 const loaders: Record<Locale, () => Promise<Dict>> = {
   en: async () => en,
   ja: async () => (await import("./dictionaries/ja")).default,
   zh: async () => (await import("./dictionaries/zh")).default,
+  "zh-TW": async () => (await import("./dictionaries/zh-tw")).default,
+  ko: async () => (await import("./dictionaries/ko")).default,
+  es: async () => (await import("./dictionaries/es")).default,
+  fr: async () => (await import("./dictionaries/fr")).default,
 };
 
 export const getDictionary = (locale: Locale): Promise<Dict> => loaders[locale]();
