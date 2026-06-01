@@ -126,6 +126,8 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 {
   "id": 1296269, "full_name": "vuejs/vue", "owner": "vuejs", "owner_type": "Organization",
   "name": "vue", "description": "...", "language": "TypeScript", "topics": ["vue","framework"],
+  "homepage_url": "https://vuejs.org/", "license": "MIT",
+  "latest_release": { "name": "v3.5.0", "tag_name": "v3.5.0", "published_at": "2024-09-01", "url": "https://github.com/vuejs/core/releases/tag/v3.5.0" },
   "created_at": "2013-07-29", "current_stars": 207000, "is_archived": true,
   "milestones": { "crossed_10k": "2016-10-04", "crossed_50k": "2017-12-09", "crossed_100k": "2018-10-26" },
   "curve": {
@@ -138,6 +140,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 ```
 
 - `curve.monthly`：`[period, adds, total_end]`——历史走月点（11 年≈132 点）。
+- `homepage_url` / `license` / `latest_release`：可选 GitHub metadata 字段。页面只读 JSON 视图；这些字段由离线 metadata pipeline / cron 补齐，不在请求路径实时抓 GitHub。
 - `curve.recent_daily`：`[date, net_adds]`——近 ~90 天日点（曲线尾部），可负。
 - `monthly_table`：近 N 月的新增 + 当月 flow 名次。
 - `rank_history`：可选，名次史（驱动"名次走势"）。

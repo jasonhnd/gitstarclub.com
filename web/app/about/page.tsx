@@ -1,21 +1,18 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { pageMeta } from "@/lib/seo";
-import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
+import { getPreferredDictionary } from "@/lib/i18n/server";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
-export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
-  const loc = parseLang((await params).lang);
-  if (!loc) return {};
+export async function generateMetadata(): Promise<Metadata> {
   return pageMeta({
     title: "About — Data Sources & Methodology",
     description:
       "How GitStarClub charts GitHub star history: data from GH Archive & GitHub API, gross vs net stars, the ≥10k whitelist, and known caveats.",
     path: "/about",
-    locale: loc,
+    locale: "en",
   });
 }
 
@@ -28,15 +25,12 @@ function Section({ heading, children }: { heading: string; children: React.React
   );
 }
 
-export default async function AboutPage({ params }: { params: Promise<{ lang: string }> }) {
-  const loc = parseLang((await params).lang);
-  if (!loc) notFound();
-  const [t] = await Promise.all([getDictionary(loc)]);
-  const lp = localePrefix(loc);
+export default async function AboutPage() {
+  const { locale, t } = await getPreferredDictionary();
 
   return (
     <>
-      <Chrome locale={loc} t={t} />
+      <Chrome locale={locale} t={t} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(2rem,5vw,4rem)] ${PAD_X}`}>
         <p className="animate-rise font-mono text-[0.8rem] uppercase tracking-wider text-on-surface-variant">{t.nav.about}</p>
         <h1 className="mt-3 max-w-[16ch] animate-rise text-[clamp(2.2rem,6vw,4rem)] font-extrabold leading-[1.04] tracking-[-0.035em]">
@@ -82,7 +76,7 @@ export default async function AboutPage({ params }: { params: Promise<{ lang: st
 
         <div className="mt-12">
           <Link
-            href={`${lp}/`}
+            href="/"
             className="inline-flex items-center gap-1 font-semibold text-tertiary transition-colors hover:text-primary hover:underline hover:underline-offset-[3px]"
           >
             ← {t.about.back}

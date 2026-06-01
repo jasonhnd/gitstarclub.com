@@ -11,7 +11,8 @@ import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
 import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
-import { parseLang, getDictionary, localePrefix, type Dict, type Locale } from "@/lib/i18n";
+import { getPreferredDictionary } from "@/lib/i18n/server";
+import { type Dict, type Locale } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
@@ -23,29 +24,24 @@ export function generateStaticParams() {
   return [{ year: String(p.year), period: String(p.month) }];
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ lang: string; year: string; period: string }> }): Promise<Metadata> {
-  const { lang, year, period } = await params;
-  const loc = parseLang(lang);
-  if (!loc) return {};
+export async function generateMetadata({ params }: { params: Promise<{ year: string; period: string }> }): Promise<Metadata> {
+  const { year, period } = await params;
   const week = /^W(\d{1,2})$/i.exec(period);
   const label = week ? `${year} Week ${Number(week[1])}` : `${monthLabel("en", Number(period), "long")} ${year}`;
   return pageMeta({
     title: `${label} GitHub Star Rankings`,
     description: `GitHub repositories ranked by stars gained in ${label}.`,
     path: `/rankings/${year}/${period}`,
-    locale: loc,
+    locale: "en",
   });
 }
 
-export default async function RankingsPeriodPage({ params }: { params: Promise<{ lang: string; year: string; period: string }> }) {
-  const { lang, year: ys, period: ps } = await params;
-  const loc = parseLang(lang);
-  if (!loc) notFound();
+export default async function RankingsPeriodPage({ params }: { params: Promise<{ year: string; period: string }> }) {
+  const { year: ys, period: ps } = await params;
+  const { locale: loc, t } = await getPreferredDictionary();
   const year = Number(ys);
   const currentYear = currentUtcPeriods().year;
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > currentYear) notFound();
-  const t = await getDictionary(loc);
-
   const week = /^W(\d{1,2})$/i.exec(ps);
   if (week) return <WeekRankings loc={loc} t={t} year={year} week={Number(week[1])} />;
 
@@ -55,7 +51,6 @@ export default async function RankingsPeriodPage({ params }: { params: Promise<{
 }
 
 async function MonthRankings({ loc, t, year, month }: { loc: Locale; t: Dict; year: number; month: number }) {
-  const lp = localePrefix(loc);
   const period = `${year}-${String(month).padStart(2, "0")}`;
   const [flow, growth, newc, heat, lookup] = await Promise.all([
     getRank("month", period, "repo", "flow"),
@@ -85,18 +80,18 @@ async function MonthRankings({ loc, t, year, month }: { loc: Locale; t: Dict; ye
   return (
     <>
       <Chrome locale={loc} t={t} />
-      <JsonLd data={collectionLd(monthYearLabel(loc, year, month), `${lp}/rankings/${year}/${month}`, loc)} />
+      <JsonLd data={collectionLd(monthYearLabel(loc, year, month), `/rankings/${year}/${month}`, loc)} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
-            { label: t.nav.home, href: lp },
-            { label: t.nav.rankings, href: `${lp}/rankings` },
-            { label: String(year), href: `${lp}/rankings/${year}` },
+            { label: t.nav.home, href: "/" },
+            { label: t.nav.rankings, href: "/rankings" },
+            { label: String(year), href: `/rankings/${year}` },
             { label: monthYearLabel(loc, year, month) },
           ]}
         />
 
-        <PeriodHeader eyebrow={t.month.label} title={monthYearLabel(loc, year, month)} subtitle={`${t.month.gained} ${fmtStars(total)}`} backHref={`${lp}/rankings/${year}`} backLabel={String(year)} />
+        <PeriodHeader eyebrow={t.month.label} title={monthYearLabel(loc, year, month)} subtitle={`${t.month.gained} ${fmtStars(total)}`} backHref={`/rankings/${year}`} backLabel={String(year)} />
 
         {cells.length > 0 && (
           <section className="mt-[clamp(2rem,4vw,3rem)]">
@@ -130,7 +125,6 @@ async function MonthRankings({ loc, t, year, month }: { loc: Locale; t: Dict; ye
 
 async function WeekRankings({ loc, t, year, week }: { loc: Locale; t: Dict; year: number; week: number }) {
   if (week < 1 || week > 53) notFound();
-  const lp = localePrefix(loc);
   const period = `${year}-W${String(week).padStart(2, "0")}`;
   const [flow, lookup] = await Promise.all([getRank("week", period, "repo", "flow"), getReposLookup()]);
   if (!flow || !lookup) notFound();
@@ -141,17 +135,17 @@ async function WeekRankings({ loc, t, year, week }: { loc: Locale; t: Dict; year
   return (
     <>
       <Chrome locale={loc} t={t} />
-      <JsonLd data={collectionLd(period, `${lp}/rankings/${year}/W${String(week).padStart(2, "0")}`, loc)} />
+      <JsonLd data={collectionLd(period, `/rankings/${year}/W${String(week).padStart(2, "0")}`, loc)} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
-            { label: t.nav.home, href: lp },
-            { label: t.nav.rankings, href: `${lp}/rankings` },
-            { label: String(year), href: `${lp}/rankings/${year}` },
+            { label: t.nav.home, href: "/" },
+            { label: t.nav.rankings, href: "/rankings" },
+            { label: String(year), href: `/rankings/${year}` },
             { label: period },
           ]}
         />
-        <PeriodHeader eyebrow={t.week.label} title={period} subtitle={t.week.top} backHref={`${lp}/rankings/${year}`} backLabel={String(year)} />
+        <PeriodHeader eyebrow={t.week.label} title={period} subtitle={t.week.top} backHref={`/rankings/${year}`} backLabel={String(year)} />
         <section className="mt-[clamp(2rem,4vw,3rem)]">
           <RankingList rows={rows} variant="gained" locale={loc} />
         </section>

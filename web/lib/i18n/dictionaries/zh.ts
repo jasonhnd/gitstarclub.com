@@ -56,6 +56,7 @@ const zh: Dict = {
   },
   week: { label: "周", top: "本周涨星榜" },
   repo: {
+    about: "项目简介",
     history: "星标历史",
     milestones: "里程碑",
     recent: "近月新增",
@@ -63,6 +64,12 @@ const zh: Dict = {
     archived: "已归档",
     github: "在 GitHub 查看",
     rank: "第",
+    owner: "属主",
+    homepage: "主页",
+    license: "许可证",
+    latestRelease: "最新版本",
+    noRelease: "未检测到 GitHub Release",
+    topics: "主题",
   },
   org: {
     history: "合计星标历史",

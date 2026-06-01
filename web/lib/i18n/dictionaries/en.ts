@@ -56,6 +56,7 @@ export const en = {
   },
   week: { label: "Week", top: "Top movers this week" },
   repo: {
+    about: "About",
     history: "Star history",
     milestones: "Milestones",
     recent: "Recent months",
@@ -63,6 +64,12 @@ export const en = {
     archived: "archived",
     github: "View on GitHub",
     rank: "rank",
+    owner: "Owner",
+    homepage: "Homepage",
+    license: "License",
+    latestRelease: "Latest release",
+    noRelease: "No GitHub release detected",
+    topics: "Topics",
   },
   org: {
     history: "Combined star history",

@@ -1,7 +1,6 @@
 import { ImageResponse } from "next/og";
 
-// Default social card for all [lang] pages. Star is an inline SVG (next/og's default font
-// has no ★ glyph). Graphite surface + gold star, matching the brand.
+// Default social card. Star is an inline SVG because next/og's default font has no ★ glyph.
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const alt = "GitStarClub.com — A Chronicle of Open Source";

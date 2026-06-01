@@ -1,5 +1,10 @@
 # gitstarclub
 
+> 2026-06-01 Pulse note: `/` and `/pulse` read the current ISO week first. If
+> `rank/week/<current>/repo/flow.json` is not present yet, the UI falls back to
+> the latest available weekly rank and displays the actual week badge, so the
+> weekly panel does not go blank before the offline weekly precompute runs.
+
 > 一本可浏览的 GitHub 开源编年史 —— 按月 / 季 / 年回看哪些项目正在被关注。
 
 ## 是什么
@@ -19,9 +24,9 @@
 | 数据集 | 公开 repo，star ≥ **10,000**（约 5,248 个，2026-05 实测） |
 | 时间范围 | 2015-01 至今 |
 | 数据源 | [GH Archive](https://www.gharchive.org/) + GitHub GraphQL API |
-| 核心页面 | 首页 / 年度页 / 月度页 / Repo 详情页 |
-| 渲染 | **SSG-first**：build 预生成 ~5,400 页（× 3 语言 ≈ 16,200），内容页零客户端 JS |
-| 语言 | 英文（主） > 日文 > 中文，hreflang x-default = 英文 |
+| 核心页面 | 首页 / 脉搏 / 总榜 / 年月周榜 / GitHub 风格 Repo 详情页 |
+| 渲染 | JSON 视图驱动；热页按请求读取语言 cookie，长尾 repo/org/rankings 按需生成 |
+| 语言 | 英文（主） > 日文 > 中文；页内切换，URL 不带语言前缀 |
 | SEO | sitemap 分片 + schema.org + 每页 OG（build 时生成），见 docs/SEO.md |
 | 核心数据 | **Parquet 事实表**（离线 canonical）→ DuckDB 预算 → **JSON 视图**（build 读）+ JSON 活尾（当月，cron 读写）；运行时无数据库 |
 | 一次性回填 | **BigQuery**（GH Archive 公开表，含稳定 repo.id）+ 本机 DuckDB，~$10 |
@@ -79,16 +84,17 @@ gitstarclub/
 │       └── metadata.mjs         # GraphQL 抓元数据 + owner + current_stars
 ├── web/                         # Next.js 16 应用
 │   ├── app/
-│   │   ├── [lang]/
-│   │   │   ├── page.tsx         # 首页 = Pulse / 脉搏
-│   │   │   ├── pulse/page.tsx
-│   │   │   ├── rankings/page.tsx
-│   │   │   ├── rankings/[year]/page.tsx
-│   │   │   ├── rankings/[year]/[period]/page.tsx
-│   │   │   ├── r/[owner]/[name]/page.tsx
-│   │   │   ├── o/[login]/page.tsx
-│   │   │   └── about/page.tsx
-│   │   └── api/cron/daily/route.ts
+│   │   ├── page.tsx             # 首页 = Pulse / 脉搏
+│   │   ├── pulse/page.tsx
+│   │   ├── rankings/page.tsx
+│   │   ├── rankings/[year]/page.tsx
+│   │   ├── rankings/[year]/[period]/page.tsx
+│   │   ├── [owner]/[name]/page.tsx # GitHub 风格 repo URL
+│   │   ├── o/[login]/page.tsx
+│   │   ├── about/page.tsx
+│   │   └── api/
+│   │       ├── cron/daily/route.ts
+│   │       └── lang/route.ts     # 页内语言偏好 cookie
 │   ├── components/
 │   │   ├── Timeline.tsx
 │   │   ├── StarCurve.tsx
@@ -142,6 +148,6 @@ gitstarclub/
 
 - **预告页仍是生产站**：gitstarclub.com / www.gitstarclub.com 保持独立，勿动。
 - **web 应用已构建并部署到私有/noindex 的 Vercel staging**：`https://gitstarclub-web.vercel.app`，真实数据、i18n、SEO 与 Blob JSON 视图链路已接通。
-- **信息架构已调整为“脉搏 / 总榜”两面**：`/[lang]` 与 `/[lang]/pulse` 展示本周、本月、本年脉搏；`/[lang]/rankings` 收纳 all-time、年度、月度、周度历史。详见 `docs/INFORMATION-ARCHITECTURE.md`。
+- **信息架构已调整为“脉搏 / 总榜 / GitHub 风格 repo URL”**：`/` 与 `/pulse` 展示本周、本月、本年脉搏；`/rankings` 收纳 all-time、年度、月度、周度历史；项目详情页使用 `/{owner}/{repo}`，语言改为页内偏好而非 URL 前缀。详见 `docs/INFORMATION-ARCHITECTURE.md`。
 - **榜单视觉约束**：总榜的仓库 / 组织双栏使用固定行高、单行截断与同类 secondary pill，确保同数量榜单在桌面端高度一致。
 - **Daily cron 已真实跑通**：2026-05-31 首次触发遇到 GitHub GraphQL `403`，随后加入批次 pacing / `Retry-After` 限流处理并把函数预算调到 800s；复测已写入 `current_month.json` 与 `hot-snapshot.json`，并通过 live-view contract 校验。

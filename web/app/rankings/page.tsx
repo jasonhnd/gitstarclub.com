@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
@@ -10,30 +9,25 @@ import { fmtStars, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { collectionLd } from "@/lib/jsonld";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
-import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
+import { getPreferredDictionary } from "@/lib/i18n/server";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
 export const revalidate = false;
 
-export async function generateMetadata({ params }: { params: Promise<{ lang: string }> }): Promise<Metadata> {
-  const loc = parseLang((await params).lang);
-  if (!loc) return {};
+export async function generateMetadata(): Promise<Metadata> {
   return pageMeta({
     title: "All-Time GitHub Star Rankings — Most-Starred Repos & Orgs",
     description: "The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across 11 years.",
     path: "/rankings",
-    locale: loc,
+    locale: "en",
   });
 }
 
-export default async function RankingsPage({ params }: { params: Promise<{ lang: string }> }) {
-  const loc = parseLang((await params).lang);
-  if (!loc) notFound();
-  const lp = localePrefix(loc);
+export default async function RankingsPage() {
+  const { locale: loc, t } = await getPreferredDictionary();
   const periods = currentUtcPeriods();
-  const [t, repoRank, orgRank, repoLk, orgLk] = await Promise.all([
-    getDictionary(loc),
+  const [repoRank, orgRank, repoLk, orgLk] = await Promise.all([
     getAllTime("repo"),
     getAllTime("org"),
     getReposLookup(),
@@ -48,7 +42,7 @@ export default async function RankingsPage({ params }: { params: Promise<{ lang:
   return (
     <>
       <Chrome locale={loc} t={t} />
-      <JsonLd data={collectionLd(t.rankings.title, `${lp}/rankings`, loc)} />
+      <JsonLd data={collectionLd(t.rankings.title, "/rankings", loc)} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <h1 className="animate-rise text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none tracking-[-0.03em] text-on-surface">
           {t.rankings.title}
@@ -56,10 +50,10 @@ export default async function RankingsPage({ params }: { params: Promise<{ lang:
         <p className="mt-3 max-w-[46ch] text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">{t.rankings.subtitle}</p>
 
         <section className="mt-[clamp(1.5rem,3vw,2.25rem)] grid gap-3 md:grid-cols-4">
-          <HistoryLink href={`${lp}/rankings`} label="All-time" value={t.rankings.repositories} active />
-          <HistoryLink href={`${lp}/rankings/${periods.year}`} label={t.year.label} value={String(periods.year)} />
-          <HistoryLink href={`${lp}/rankings/${periods.year}/${periods.month}`} label={t.month.label} value={monthLabel(loc, periods.month, "short")} />
-          <HistoryLink href={`${lp}/rankings/${periods.week.year}/W${String(periods.week.week).padStart(2, "0")}`} label={t.week.label} value={periods.weekPeriod} />
+          <HistoryLink href="/rankings" label="All-time" value={t.rankings.repositories} active />
+          <HistoryLink href={`/rankings/${periods.year}`} label={t.year.label} value={String(periods.year)} />
+          <HistoryLink href={`/rankings/${periods.year}/${periods.month}`} label={t.month.label} value={monthLabel(loc, periods.month, "short")} />
+          <HistoryLink href={`/rankings/${periods.week.year}/W${String(periods.week.week).padStart(2, "0")}`} label={t.week.label} value={periods.weekPeriod} />
         </section>
 
         <section className="mt-[clamp(1rem,2vw,1.5rem)]">
@@ -69,7 +63,7 @@ export default async function RankingsPage({ params }: { params: Promise<{ lang:
               .map((year) => (
                 <Link
                   key={year}
-                  href={`${lp}/rankings/${year}`}
+                  href={`/rankings/${year}`}
                   className="rounded-full bg-surface-container-high px-3 py-1.5 font-mono text-[0.75rem] text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-on-surface"
                 >
                   {year}
@@ -89,7 +83,7 @@ export default async function RankingsPage({ params }: { params: Promise<{ lang:
               {orgs.map((o, i) => (
                 <li key={o.login}>
                   <Link
-                    href={`${lp}/o/${o.login}`}
+                    href={`/o/${o.login}`}
                     className="group flex h-[4.25rem] animate-rise items-center gap-4 overflow-hidden rounded-2xl px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985]"
                     style={{ animationDelay: `${0.04 * i}s` } as CSSProperties}
                   >

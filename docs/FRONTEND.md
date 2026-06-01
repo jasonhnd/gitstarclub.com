@@ -1,7 +1,7 @@
 # gitstarclub 前端设计（Next.js 16 Web 应用）
 
 > **前端层的唯一真相源**——把 [REQUIREMENTS](./REQUIREMENTS.md)（做什么）、[ARCHITECTURE](./ARCHITECTURE.md)（页面分层 / ISR / 节奏）、[DATA-CONTRACTS](./DATA-CONTRACTS.md)（消费的 JSON 视图 schema）、[DESIGN-SYSTEM](./DESIGN-SYSTEM.md)（M3E token / 组件 / 动效）落到 `web/` 这个 **Next.js 16 App Router** 应用的**路由 / 渲染配置 / 数据消费 / 组件 / i18n**。
-> SEO 元数据 / sitemap / hreflang 细节见 [SEO.md](./SEO.md)；Blob 布局 / 环境变量 / 部署拓扑见 [OPS.md](./OPS.md)。
+> SEO 元数据 / sitemap / canonical 细节见 [SEO.md](./SEO.md)；Blob 布局 / 环境变量 / 部署拓扑见 [OPS.md](./OPS.md)。
 > 技术事实基于 **Next.js 16.2.6 · React 19.2 · TypeScript 6 · Tailwind 4 · Zod 4 · 包管理器 bun**（见 `web/package.json`）。
 >
 > **本文区分「已建」与「待加」**：现有 `web/app` 已有 Pulse 首页、Pulse、Rankings、Rankings 历史页、repo、org、about + `_explore/` 组件（Chrome / RankingList / Heatmap / StarCurve）+ `components/ThemeToggle` + `globals.css` / `layout.tsx` / `template.tsx`。本文描述**现状**并标注**要补什么**，**不发明与仓库冲突的结构**。与文档/需求冲突处用 ⚠️ 显式标注（汇总见 §9）。
@@ -28,43 +28,43 @@
 
 | 页 | URL | 文件（相对 `web/app/`） | 状态 | 渲染层 | `generateStaticParams` |
 |---|---|---|---|---|---|
-| 首页 | `/[lang]` | `[lang]/page.tsx` | ✅ 已建 | 核心 Pulse | 3 语言 |
-| **脉搏页** | `/[lang]/pulse` | `[lang]/pulse/page.tsx` | ✅ 已建 | 核心（每日 revalidate，事件驱动） | 3 语言 |
-| **总榜** | `/[lang]/rankings` | `[lang]/rankings/page.tsx` | ✅ 已建 | 核心（deploy 构建 + 每日 revalidate） | 3 语言 |
-| 年榜 | `/[lang]/rankings/[year]` | `[lang]/rankings/[year]/page.tsx` | ✅ 已建 | 当年核心 / 历史按需 ISR | 当前年 × 3 语言 |
-| 月榜 | `/[lang]/rankings/[year]/[month]` | `[lang]/rankings/[year]/[period]/page.tsx` | ✅ 已建 | 当月核心 / 历史按需 ISR | 当前月 × 3 语言 |
-| 周榜 | `/[lang]/rankings/[year]/W[week]` | `[lang]/rankings/[year]/[period]/page.tsx` | ✅ 已建 | 当周 mover / 过去周冻结 | `[]`（长尾） |
-| repo 页 | `/r/[owner]/[name]` | `r/[owner]/[name]/page.tsx` | ✅ 已建 | 按需 ISR（mover 当日刷新） | `[]`（§9-A 已收敛） |
+| 首页 | `/` | `page.tsx` | ✅ 已建 | 核心 Pulse | — |
+| **脉搏页** | `/pulse` | `pulse/page.tsx` | ✅ 已建 | 核心（每日 revalidate，事件驱动） | — |
+| **总榜** | `/rankings` | `rankings/page.tsx` | ✅ 已建 | 核心（每日 revalidate） | — |
+| 年榜 | `/rankings/[year]` | `rankings/[year]/page.tsx` | ✅ 已建 | 当年核心 / 历史按需 ISR | 当前年 |
+| 月榜 | `/rankings/[year]/[month]` | `rankings/[year]/[period]/page.tsx` | ✅ 已建 | 当月核心 / 历史按需 ISR | 当前月 |
+| 周榜 | `/rankings/[year]/W[week]` | `rankings/[year]/[period]/page.tsx` | ✅ 已建 | 当周 mover / 过去周冻结 | `[]`（长尾） |
+| repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | ✅ 已建 | 按需 ISR（mover 当日刷新） | `[]`（长尾） |
 | **org 页** | `/o/[login]` | `o/[login]/page.tsx` | ✅ 已建 | 按需 ISR（mover 当日刷新） | `[]`（长尾） |
 | 关于 | `/about` | `about/page.tsx` | ✅ 已建 | 核心 | — |
 
-**周榜是独立页面**，但归入总榜路径下：`/[lang]/rankings/YYYY/W##`。月榜和周榜共用 `[period]` 段，在页面里按 `W` 前缀分流；旧的 `/{lang}/YYYY` 与 `/{lang}/YYYY/MM` 不再存在。
+**周榜是独立页面**，但归入总榜路径下：`/rankings/YYYY/W##`。月榜和周榜共用 `[period]` 段，在页面里按 `W` 前缀分流；旧的 `/{lang}/YYYY` 与 `/{lang}/YYYY/MM` 不再存在。
 
-### 1.2 i18n 路由（en 根 / `/ja` / `/zh`）
+### 1.2 i18n（页内偏好，不进 URL）
 
-需求：三语 en / ja / zh（[REQUIREMENTS](./REQUIREMENTS.md) §9、[PRODUCT](./PRODUCT.md) i18n、[SEO](./SEO.md) §10）。✅ **已落地**（见下，URL 形态与原计划有出入）。
+需求：三语 en / ja / zh（[REQUIREMENTS](./REQUIREMENTS.md) §9、[PRODUCT](./PRODUCT.md) i18n、[SEO](./SEO.md) §10）。✅ **已改为页内语言偏好**：URL 不包含语言段，repo URL 可与 GitHub 结构一致。
 
-**已落地（`[lang]` 必填段——原 `[[...locale]]` + en 无前缀 + 无中间件 实测在 Next 16 行不通）**：
+**已落地**：
 
 ```
 app/
-  layout.tsx                 # 根 layout：<html lang="en"> + 字体 + 主题脚本 + RegisterSW + 全站 metadata
-  [lang]/
-    layout.tsx               # 嵌套：校验 locale(未知→notFound) + generateStaticParams(en/ja/zh) + <div lang={loc} class="contents"> 包子树
-    page.tsx  pulse/page.tsx
-    r/[owner]/[name]/page.tsx  o/[login]/page.tsx
-    rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
-    about/page.tsx
+  layout.tsx                 # 读取 gsc_lang cookie，设置 <html lang>，渲染 Footer
+  page.tsx  pulse/page.tsx
+  [owner]/[name]/page.tsx    # GitHub 风格 repo URL
+  o/[login]/page.tsx
+  rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
+  about/page.tsx
+  api/lang/route.ts          # 设置语言 cookie 后回到当前 URL
   robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
 ```
 
 要点（实测后修正）：
 
-- ⚠️ **catch-all 不能嵌套**：`[[...locale]]` 是终结段，其下放不了 `[year]` 等子路由（整段会被吞掉，`/2024` 会被当成 locale）。故改用**必填 `[lang]` 段**，子路由正常嵌套。
-- ⚠️ **英文也带前缀 `/en`**：App Router 要"英文裸根 + 其它带前缀"**必须**用 middleware；本项目不上 middleware，故英文落 `/en`，裸根 `/` 由 `next.config.ts` `redirects()` 跳 `/en`。无前缀深链（`/2024`）不命中（404）——测试期 noindex、站内链接全带前缀，可接受。
-- **`<html lang>`**：Next 硬要求根 `app/layout.tsx` 渲染 `<html>`，故 `<html lang="en">` 固定在根；`[lang]/layout` 用 `<div lang={loc} class="contents">` 给子树标语言（lang 可挂任意元素，`display:contents` 不影响布局）。搜索引擎语言信号靠各页 metadata 的 hreflang（`pageMeta` 已发 `alternates.languages` en/ja/zh + x-default）。
-- **手写字典**：`web/lib/i18n/`（en/ja/zh + `getDictionary` / `parseLang` / `localePrefix`），不引第三方 i18n 库；数据字段不翻译；About 正文 MVP 暂留英文。
-- **校验 locale**：`parseLang` 未知 → `notFound()`（`/fr` → 404）。**语言切换**：app bar 内 `LangSwitcher`（纯 `<Link>`）。
+- **URL canonical 单一化**：`/facebook/react` 是唯一 repo URL；不再有 `/en/r/facebook/react` / `/zh/r/facebook/react`。
+- **语言偏好**：`LanguageSwitcher` 通过 `/api/lang?lang=...&next=...` 设置 `gsc_lang` cookie 后回到当前 URL。
+- **缓存取舍**：读取 cookie 会让页面按请求渲染，但 JSON 数据仍走 `fetch`/`cache()`；换来 URL 与 GitHub 一致、无多语言重复 URL。
+- **SEO 取舍**：canonical 不带语言，也不再发 `hreflang` 矩阵；默认 SEO 文案以英文为主，语言切换是用户体验功能。
+- **手写字典**：`web/lib/i18n/`（en/ja/zh + `getDictionary`），不引第三方 i18n 库；数据字段不翻译。
 
 ---
 
@@ -76,7 +76,7 @@ app/
 
 | 层 | 页面 | 新鲜度（REQUIREMENTS §6） | Next 机制 |
 |---|---|---|---|
-| **核心** | `/[lang]` · `/[lang]/pulse` · `/[lang]/rankings` · 当年/当月的 `/[lang]/rankings/...`（×3 语言） | 头版：每日换 | **deploy 时 SSG**（`generateStaticParams` 返回当期/单页） + 每日 cron `revalidatePath` |
+| **核心** | `/` · `/pulse` · `/rankings` · 当年/当月的 `/rankings/...` | 头版：每日换 | 每日 cron `revalidatePath`；页面按语言 cookie 请求渲染 |
 | **长尾** | 历史年/月 · **周** · repo · org（~16k+） | 编年史：冻结 / 标 as-of | **按需 ISR**：`dynamicParams=true` + 空 `generateStaticParams` + `revalidate=false`，首访生成、持久缓存 |
 | **mover** | 在 mover 集里的 repo/org + `/pulse` | 脉搏：事件驱动，只刷"在动的那一小撮" | 每周/每日 cron 对其 `revalidatePath` 定点失效 → 下次访问再生 |
 | **历史** | 已折叠入 Parquet 的过去周期 | 旧报纸：永不重印 | 纯静态命中 CDN；数据不变 = 不 revalidate |
@@ -88,7 +88,7 @@ app/
 **核心页（Pulse / Rankings / 当年 / 当月）** —— deploy 构建具体 param：
 
 ```ts
-// 例：app/[lang]/rankings/[year]/page.tsx（当年走核心，历史走 ISR — 同一文件、混合）
+// 例：app/rankings/[year]/page.tsx（当年走核心，历史走 ISR — 同一文件、混合）
 export const dynamicParams = true            // 未列入的历史年 → 首访按需生成
 export async function generateStaticParams() {
   // 只预渲染「当前年」×3 语言；历史年留给按需 ISR
@@ -101,7 +101,7 @@ export const revalidate = false              // 不轮询；每日 cron 用 reva
 **长尾页（repo / org / 周 / 历史年月）** —— 不在 deploy 构建：
 
 ```ts
-// 例：app/[lang]/r/[owner]/[name]/page.tsx
+// 例：app/[owner]/[name]/page.tsx
 export const dynamicParams = true            // 默认值；空列表 + 此项 = 全部按需生成
 export async function generateStaticParams() {
   return []                                  // ⚠️ 现有 repo 页返回全部 repo（见 §9-A），应改成 []
@@ -112,7 +112,7 @@ export const revalidate = false              // 仅靠 cron 定点失效（每�
 **全时榜 / 脉搏（单页、每日新鲜）**：
 
 ```ts
-// 例：app/[lang]/pulse/page.tsx
+// 例：app/pulse/page.tsx
 export const revalidate = false              // 不靠时间轮询
 // 每日 cron 写 hot-snapshot.json 后 revalidatePath('/pulse') + 三语前缀
 ```
@@ -133,7 +133,7 @@ const nextConfig: NextConfig = {
   // 量大时用动态 redirect（middleware 或 route），此处仅示意静态条目位置
   async redirects() {
     return [
-      // { source: '/r/old-owner/old-name', destination: '/r/new-owner/new-name', permanent: true },
+      // { source: '/old-owner/old-name', destination: '/new-owner/new-name', permanent: true },
     ];
   },
 };
@@ -319,7 +319,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | `EntityCard` | repo/org 卡片（榜单外的实体展示，如 Pulse） | pulse / rankings |
 | `Footer` | `border-t` + on-surface-variant + 构建时间戳（UTC+JST）+ **语言切换** | layout（i18n 语言切换落点） |
 | `YearSpine` | 首页 inline 脊柱抽组件 | 首页 / pulse |
-| `LangSwitcher` | en/ja/zh 切换（纯 `<Link>`，无 client JS） | Footer / app bar |
+| `LangSwitcher` | en/ja/zh 切换（`/api/lang` 设置 cookie 后回到当前 URL） | Footer / app bar |
 
 ### 6.4 组件 ↔ JSON 契约映射（真实层接入时的入参形状）
 
@@ -360,28 +360,22 @@ export type Locale = keyof typeof dicts;
 export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 ```
 
-- locale 段 layout 读 `getDictionary(locale)` → 以 props 下传给 RSC 子树（**不需要 Context / 客户端 Provider**——全 RSC）。
-- 现有 chrome 文案现是英文硬编码（如 `Chrome.tsx` 的 "About"、`page.tsx` 的 "This month so far"）。i18n 后这些改读字典键。
-- ⚠️ 现有页面有大量内联英文文案（年页 "all years" / "The spine" / "Top movers of {year}"、月页榜单标题等）——i18n 时需逐一抽到字典。
+- 根 `layout.tsx` 读取 `gsc_lang` cookie → `getDictionary(locale)` → Footer / 页面子树使用同一语言。
+- `LanguageSwitcher` 通过 `/api/lang` 设置 cookie 后回到当前 URL；不会改变 canonical URL。
+- 现有少量 SEO title/description 仍以英文为主，这是单一 canonical URL 的刻意取舍。
 
-### 7.3 hreflang / canonical（Metadata API）
+### 7.3 canonical（Metadata API）
 
-[SEO](./SEO.md) §10 矩阵：各语言 canonical **指自身**，hreflang 三语**双向自指** + `x-default`（en）。用 Next 16 Metadata API `alternates`：
+语言不再是 URL 维度，所以不发 `hreflang` 矩阵。每页只声明无语言前缀的 canonical：
 
 ```ts
-// 统一构造（en 同时充当 x-default）；BASE = process.env.NEXT_PUBLIC_SITE_URL
-function altLanguages(path: string) {            // path 形如 "/2024/10"（无 locale 前缀）
-  return { en: `${BASE}${path}`, ja: `${BASE}/ja${path}`, zh: `${BASE}/zh${path}`, "x-default": `${BASE}${path}` };
-}
-// 各页 generateMetadata：
 return {
-  alternates: { canonical: `${BASE}${localePrefix}${path}`, languages: altLanguages(path) },
-  // openGraph.locale 按语言：en_US / ja_JP / zh_CN；alternateLocale 列另两种
+  alternates: { canonical: path },
+  openGraph: { url: path },
 };
 ```
 
-- ⚠️ 现状 `layout.tsx` 的 metadata 只有 `alternates.canonical:"/"`，无 `languages`——i18n 落地时补全（细节与 sitemap `alternates.languages` 同源，见 [SEO](./SEO.md) §4.1/§10）。
-- `metadataBase`（`layout.tsx:21` 现硬编码 `https://gitstarclub.com`）应改读 `NEXT_PUBLIC_SITE_URL`（[OPS](./OPS.md) 环境变量 / [SEO](./SEO.md) §2）以适配预览/生产。
+- `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`（[OPS](./OPS.md) 环境变量 / [SEO](./SEO.md) §2）以适配预览/生产。
 
 ---
 
@@ -391,9 +385,9 @@ return {
 
 1. **数据层**：`web/lib/contracts/`（Zod，[DATA-CONTRACTS](./DATA-CONTRACTS.md) §4）+ `web/lib/data/`（fetch Blob + parse + `cache()`）是页面读取 JSON 视图的唯一入口。
 2. **段配置**：`rankings/[year]` / `rankings/[year]/[period]` 只预渲染当前年/月；历史页、repo、org、周榜走按需 ISR。repo/org/月/年的未知 param 改 `notFound()`（§9-B）。
-3. **`next.config.ts`**：保留根 `/` → `/en` 的入口跳转；不为旧 `/trending` 或旧 `/{year}` 历史路径配置兼容重定向。
+3. **`next.config.ts`**：不做语言前缀跳转；不为旧 `/trending`、旧 `/{year}` 历史路径或旧 `/r/...` 配置兼容重定向。
 4. **页面**：`pulse`、`rankings`、`rankings/[year]`、`rankings/[year]/[period]`、`o/[login]` 已落地（全 RSC，复用组件）。
-5. **i18n**：使用必填 `[lang]` 段，建字典，补 `alternates.languages`（§7）。
+5. **i18n**：使用 `gsc_lang` cookie + 页内语言切换，URL 不带语言段（§7）。
 6. **SEO 配套**：`app/sitemap.ts`（`generateSitemaps()` 分片）、`app/robots.ts`、各页 `generateMetadata`、JSON-LD（[SEO](./SEO.md) §4/§5/§6）。
 7. **cron route**：`app/api/cron/daily`（`revalidatePath` + `CRON_SECRET` 鉴权，[OPS](./OPS.md) §Cron）。
 8. **共享组件**：抽 `Breadcrumbs` / `PrevNext` / `Footer` / `YearSpine` / `LangSwitcher`（§6.3）。
@@ -410,7 +404,7 @@ return {
 | **B** | **未知 param 软兜底而非 404** | `repoDetail()` 查不到回 `REPOS[0]`（200）；月页/年页有 `notFound()` 但 repo 页无 | 未知 repo/org → `notFound()`（404），禁软 200（[SEO](./SEO.md) §3.2） | 真实读取器查不到即 `notFound()` |
 | **C** | **第三处客户端 JS（PWA）** | `RegisterSW.tsx`（`"use client"`，注册 SW）+ `manifest.ts` | DESIGN-SYSTEM 原仅列两处例外 | ✅ **已决：保留 PWA**，已在 DESIGN-SYSTEM 补为例外③（保留 RegisterSW/manifest/sw.js） |
 | **D** | **StarCurve 假设单调累计** | 占位 data 强制 `total` 非降；轴/area 按单增算 | `entity/repo.curve.recent_daily` net 可负，尾部可能回落（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5） | 真实接入时让 y 轴/area 容忍非单调；`max` 取序列实际最大值 |
-| **E** | **i18n URL 形态** | 必填 `[lang]`，英文在 `/en`；根 `/` 跳 `/en` | 原计划曾讨论 en 裸根，但需要 middleware | ✅ 已决：不上 middleware，统一三语前缀 |
+| **E** | **i18n URL 形态** | URL 不带语言段；`gsc_lang` cookie 决定 UI 语言 | repo URL 需要与 GitHub 结构一致 | ✅ 已决：页内语言偏好，canonical 单一 |
 | **F** | **metadataBase** | `layout.tsx` 读 `NEXT_PUBLIC_SITE_URL`，默认 `https://gitstarclub.com` | 预览/生产可通过环境变量切换（[OPS](./OPS.md)/[SEO](./SEO.md) §2） | ✅ 已落地 |
 | **G** | **sitemap/robots/cron/og 路由** | `app/` 已有 `sitemap.ts`/`robots.ts`/`api/cron/daily`/动态 OG | SEO/OPS 要求齐备（[SEO](./SEO.md)/[OPS](./OPS.md)） | ✅ 已落地，继续扩展 OG 卡片 |
 | **H** | **repo 页 "synced" 时间写死** | `r/[owner]/[name]/page.tsx:45` 硬编码 `synced 2026-05-29 · 14:30 JST` | as-of 应来自数据（`fetched_at`/`updated`），UTC+JST 双显示（[ARCHITECTURE](./ARCHITECTURE.md) 时区） | 真实层取 `entity`/`current_stars` 的 as-of 字段 |
@@ -423,13 +417,13 @@ return {
 ## 10. 落地核对清单（前端层）
 
 **路由**
-- [x] 周榜 `/[lang]/rankings/[year]/W[week]` 独立、与月榜共用 `[period]` 并按 `W` 前缀消歧
-- [x] org `/[lang]/o/[login]`、总榜 `/[lang]/rankings`、脉搏 `/[lang]/pulse` 已加（全 RSC）
-- [x] i18n `[lang]` 段：`/en` / `/ja` / `/zh`；未知 locale → `notFound()`；无自动重定向中间件
+- [x] 周榜 `/rankings/[year]/W[week]` 独立、与月榜共用 `[period]` 并按 `W` 前缀消歧
+- [x] org `/o/[login]`、repo `/[owner]/[name]`、总榜 `/rankings`、脉搏 `/pulse` 已加（全 RSC）
+- [x] i18n 页内切换：`gsc_lang` cookie；URL 不带 `/en` / `/ja` / `/zh`
 
 **分层 ↔ 配置**
 - [ ] `cacheComponents` 保持关闭（`next.config.ts` 注释说明）
-- [x] 核心段（home/pulse/rankings/当年/当月 ×3 语言）`generateStaticParams` 返回当期/单页
+- [x] 核心段（home/pulse/rankings/当年/当月）按需渲染；长尾段仍使用空 `generateStaticParams`
 - [ ] 长尾段（历史年月/周/repo/org）`dynamicParams=true` + 空 `generateStaticParams` + `revalidate=false`
 - [ ] 数据变更靠 cron `revalidatePath`，无全量 build；`app/api/cron/*` 带 `CRON_SECRET` 鉴权
 
@@ -444,7 +438,7 @@ return {
 
 **i18n**
 - [ ] 字典覆盖全部 UI chrome（抽离现有内联英文）；数据字段不翻译
-- [ ] 各页 `alternates.canonical` 指自身 + `alternates.languages`（en/ja/zh + x-default）；`og:locale` 按语言
+- [x] 各页 `alternates.canonical` 指无语言前缀 canonical；语言不再产生 `alternates.languages`
 - [ ] `metadataBase` 改读 `NEXT_PUBLIC_SITE_URL`
 
 **冲突收敛（§9）**

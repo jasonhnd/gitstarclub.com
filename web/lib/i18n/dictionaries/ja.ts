@@ -56,6 +56,7 @@ const ja: Dict = {
   },
   week: { label: "週", top: "今週の急上昇リポジトリ" },
   repo: {
+    about: "概要",
     history: "スター履歴",
     milestones: "マイルストーン",
     recent: "直近の月別",
@@ -63,6 +64,12 @@ const ja: Dict = {
     archived: "アーカイブ済み",
     github: "GitHubで見る",
     rank: "順位",
+    owner: "オーナー",
+    homepage: "ホームページ",
+    license: "ライセンス",
+    latestRelease: "最新リリース",
+    noRelease: "GitHub Release なし",
+    topics: "トピック",
   },
   org: {
     history: "合算スター履歴",

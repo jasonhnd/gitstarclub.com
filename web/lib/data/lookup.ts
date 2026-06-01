@@ -7,7 +7,7 @@ import { readView } from "./source";
 export const getReposLookup = cache(() => readView("lookup/repos.json", ReposLookup));
 export const getOrgsLookup = cache(() => readView("lookup/orgs.json", OrgsLookup));
 
-/** Reverse index full_name → repo id, for /r/[owner]/[name] → entity/repo/{id}. */
+/** Reverse index full_name → repo id, for /[owner]/[name] → entity/repo/{id}. */
 export const getRepoIdByFullName = cache(async () => {
   const lookup = await getReposLookup();
   const map = new Map<string, number>();

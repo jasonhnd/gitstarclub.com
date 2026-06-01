@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { localePrefix, type Locale } from "@/lib/i18n";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 
-// Per-page metadata. `path` is the locale-LESS path (e.g. "/2024", "/"); canonical gets the
-// locale prefix, and hreflang alternates point each language at its own URL + x-default=en.
-// See docs/SEO.md §2 / §10.
+// Per-page metadata. Language is an in-page preference, so canonical URLs do not carry locale
+// prefixes and we intentionally do not emit hreflang alternates for the same URL.
 
 export function pageMeta(opts: {
   title: string;
@@ -12,18 +11,14 @@ export function pageMeta(opts: {
   locale?: Locale;
   absoluteTitle?: boolean;
 }): Metadata {
-  const locale = opts.locale ?? "en";
-  const norm = (loc: Locale) => {
-    const p = localePrefix(loc) + (opts.path === "/" ? "" : opts.path);
-    return p || "/";
-  };
+  const locale = opts.locale ?? DEFAULT_LOCALE;
+  const norm = opts.path === "/" ? "/" : opts.path;
   return {
     title: opts.absoluteTitle ? { absolute: opts.title } : opts.title,
     description: opts.description,
     alternates: {
-      canonical: norm(locale),
-      languages: { en: norm("en"), ja: norm("ja"), zh: norm("zh"), "x-default": norm("en") },
+      canonical: norm,
     },
-    openGraph: { url: norm(locale), title: opts.title, description: opts.description },
+    openGraph: { url: norm, title: opts.title, description: opts.description, locale },
   };
 }

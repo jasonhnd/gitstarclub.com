@@ -2,6 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { RegisterSW } from "./_explore/RegisterSW";
+import { Footer } from "./_explore/Footer";
+import { getMeta } from "@/lib/data";
+import { getPreferredDictionary } from "@/lib/i18n/server";
 
 const plusJakarta = Plus_Jakarta_Sans({ variable: "--font-plus-jakarta", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -12,6 +15,8 @@ const description =
 // metadataBase from env; indexing OFF until launch (private preview — SEO §11). Flip SITE_INDEXABLE=1 at launch.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
 const indexable = process.env.SITE_INDEXABLE === "1";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -51,16 +56,19 @@ export const viewport: Viewport = {
 // Runs before paint: explicit override wins, else follow system. Prevents a theme flash.
 const themeInit = `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="dark"?"#121316":"#fbfbfd");}}catch(e){}})();`;
 
-// Document default is en; the [lang] layout scopes per-locale lang on its subtree (lang attribute
-// is valid on any element). hreflang in each page's metadata carries the search-engine signal.
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+// Language is an in-page preference stored in a first-party cookie; URLs stay canonical.
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const [{ locale, t }, meta] = await Promise.all([getPreferredDictionary(), getMeta()]);
   return (
-    <html lang="en" suppressHydrationWarning className={`${plusJakarta.variable} ${geistMono.variable}`}>
+    <html lang={locale} suppressHydrationWarning className={`${plusJakarta.variable} ${geistMono.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className="flex min-h-svh flex-col">
-        {children}
+        <div lang={locale} className="contents">
+          {children}
+          <Footer locale={locale} t={t} asOf={meta?.seam_date} />
+        </div>
         <RegisterSW />
       </body>
     </html>

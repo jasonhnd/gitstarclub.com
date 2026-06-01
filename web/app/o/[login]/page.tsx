@@ -9,41 +9,34 @@ import { getOrgEntity, getReposLookup } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { orgLd } from "@/lib/jsonld";
-import { parseLang, getDictionary, localePrefix } from "@/lib/i18n";
+import { getPreferredDictionary } from "@/lib/i18n/server";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
 export const dynamicParams = true;
+export const dynamic = "force-dynamic";
 export const revalidate = false;
 
-export function generateStaticParams() {
-  return [];
-}
-
-export async function generateMetadata({ params }: { params: Promise<{ lang: string; login: string }> }): Promise<Metadata> {
-  const { lang, login: raw } = await params;
-  const loc = parseLang(lang);
-  if (!loc) return {};
+export async function generateMetadata({ params }: { params: Promise<{ login: string }> }): Promise<Metadata> {
+  const { login: raw } = await params;
   const login = decodeURIComponent(raw);
   const org = await getOrgEntity(login);
-  if (!org) return pageMeta({ title: `${login} — GitHub Star Ranking`, description: `GitHub star history for ${login}.`, path: `/o/${login}`, locale: loc });
+  if (!org) return pageMeta({ title: `${login} — GitHub Star Ranking`, description: `GitHub star history for ${login}.`, path: `/o/${login}`, locale: "en" });
   const kind = org.owner_type === "Organization" ? "Organization" : "Developer";
   return pageMeta({
     title: `${org.login} — GitHub ${kind} Star Ranking & History`,
     description: `${org.login} on GitHub: combined star history across ${org.repo_count} tracked ≥10k-star repos — ${org.current_stars_sum.toLocaleString()} total stars, top projects, and all-time ranking.`,
     path: `/o/${org.login}`,
-    locale: loc,
+    locale: "en",
   });
 }
 
-export default async function OrgPage({ params }: { params: Promise<{ lang: string; login: string }> }) {
-  const { lang, login: raw } = await params;
-  const loc = parseLang(lang);
-  if (!loc) notFound();
+export default async function OrgPage({ params }: { params: Promise<{ login: string }> }) {
+  const { login: raw } = await params;
+  const { locale: loc, t } = await getPreferredDictionary();
   const login = decodeURIComponent(raw);
-  const [org, lookup, t] = await Promise.all([getOrgEntity(login), getReposLookup(), getDictionary(loc)]);
+  const [org, lookup] = await Promise.all([getOrgEntity(login), getReposLookup()]);
   if (!org) notFound();
-  const lp = localePrefix(loc);
 
   const series = org.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
   const members: Row[] = org.members
@@ -57,9 +50,9 @@ export default async function OrgPage({ params }: { params: Promise<{ lang: stri
   return (
     <>
       <Chrome locale={loc} t={t} />
-      <JsonLd data={orgLd(org, `${lp}/o/${org.login}`, loc)} />
+      <JsonLd data={orgLd(org, `/o/${org.login}`, loc)} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Breadcrumbs items={[{ label: t.nav.home, href: lp }, { label: org.login }]} />
+        <Breadcrumbs items={[{ label: t.nav.home, href: "/" }, { label: org.login }]} />
         <header className="mt-4 animate-rise">
           <div className="font-mono text-[clamp(1.6rem,5vw,2.6rem)] font-semibold text-on-surface">{org.login}</div>
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">

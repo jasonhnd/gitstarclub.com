@@ -2,7 +2,6 @@ import { revalidatePath } from "next/cache";
 import { getReposLookup, getHotSnapshot, getCurrentMonth, getRank } from "@/lib/data";
 import { fetchStarCounts, type RepoRef } from "@/lib/github";
 import { putView } from "@/lib/data/write";
-import { LOCALES } from "@/lib/i18n";
 import { currentUtcPeriods } from "@/lib/periods";
 
 // Daily freshness job (OPS §Cron). JSON-only — no Parquet/engine. Polls current_stars,
@@ -126,7 +125,7 @@ export async function GET(req: Request) {
     `/rankings/${y}/${Number(month.slice(5, 7))}`,
     `/rankings/${periods.week.year}/W${String(periods.week.week).padStart(2, "0")}`,
   ];
-  for (const loc of LOCALES) for (const s of suffixes) revalidatePath(`/${loc}${s}`);
+  for (const s of suffixes) revalidatePath(s || "/");
 
   return Response.json({ ok: true, ...result });
 }

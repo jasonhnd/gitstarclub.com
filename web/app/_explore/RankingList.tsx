@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { fmtK } from "@/lib/format";
-import { localePrefix, type Locale } from "@/lib/i18n";
+import { type Locale } from "@/lib/i18n";
 
 export type Row = {
   owner: string;
@@ -17,14 +17,13 @@ type Variant = "gained" | "rate" | "crossed" | "total";
 // Editorial ranking — not a data table. Rank as a gold display numeral,
 // repo name in the mono "data voice", metric weighted to the right.
 // Every row links to its repo page.
-export function RankingList({ rows, variant = "gained", locale = "en" }: { rows: Row[]; variant?: Variant; locale?: Locale }) {
-  const lp = localePrefix(locale);
+export function RankingList({ rows, variant = "gained" }: { rows: Row[]; variant?: Variant; locale?: Locale }) {
   return (
     <ol className="flex flex-col">
       {rows.map((r, i) => (
         <li key={`${r.owner}/${r.name}`}>
           <Link
-            href={`${lp}/r/${r.owner}/${r.name}`}
+            href={`/${r.owner}/${r.name}`}
             className="group flex h-[4.25rem] animate-rise items-center gap-4 overflow-hidden rounded-2xl px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985]"
             style={{ animationDelay: `${0.04 * i}s` } as CSSProperties}
           >
