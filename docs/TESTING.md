@@ -123,9 +123,10 @@ test('周排名窗口跨月不丢日', () => {
 
 - 无 `gsc_lang` cookie 访问 `/`、`/pulse`、`/rankings` 时应默认英文。
 - 语言切换器显示当前语言，展开后只列出其它语言；支持 `en`、`ja`、`zh`、`zh-TW`、`ko`、`es`、`fr`。
-- 点击任一语言后应请求 `/api/lang?lang=...&next=...`，写入 `gsc_lang` 并回到原 URL；URL 不应出现语言前缀。
+- 点击任一语言后应立即写入 `gsc_lang`，刷新当前 RSC 视图并保持原 URL；URL 不应出现语言前缀。
 - 从任一非英文语言都必须能切回 English。
-- `/api/lang?lang=fr&next=//evil.example` 必须回退到 `/`，防止开放重定向。
+- `/api/lang?lang=fr&next=//evil.example` 作为后备入口仍必须回退到 `/`，防止开放重定向。
+- Service worker 不得缓存 HTML 导航或 `/api/*` 响应；语言 cookie 改变后不能拿到旧页面缓存。
 - 切换语言后 `<html lang>` 与 UI 文案应一致；repo 名、语言、topic、数字等数据字段不得被翻译。
 - **i18n 路由**：英文默认根路径（`/`、`/2024/10`、`/r/:owner/:name`）；日文 `/ja/...`；中文 `/zh/...` 都返回 200 且 UI chrome 已翻译、repo 数据保持原文（数据语言中立）
 - 用确定性等待（等元素 / URL），**不用 timeout 硬等**，避免 flaky

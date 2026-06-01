@@ -54,14 +54,14 @@ app/
   o/[login]/page.tsx
   rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
   about/page.tsx
-  api/lang/route.ts          # 设置语言 cookie 后回到当前 URL
+  api/lang/route.ts          # 直接访问时的语言 cookie 后备入口
   robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
 ```
 
 要点（实测后修正）：
 
 - **URL canonical 单一化**：`/facebook/react` 是唯一 repo URL；不再有 `/en/r/facebook/react` / `/zh/r/facebook/react`。
-- **语言偏好**：默认英文；`LanguageSwitcher` 显示当前语言，其它语言在下拉菜单中。它通过 `/api/lang?lang=...&next=...` 设置 `gsc_lang` cookie 后回到当前 URL。
+- **语言偏好**：默认英文；`LanguageSwitcher` 显示当前语言，其它语言在下拉菜单中。客户端直接写入 `gsc_lang` cookie 并 `router.refresh()` 当前 RSC 视图，URL 不变；`/api/lang` 保留为直接访问时的安全后备入口。
 - **缓存取舍**：读取 cookie 会让页面按请求渲染，但 JSON 数据仍走 `fetch`/`cache()`；换来 URL 与 GitHub 一致、无多语言重复 URL。
 - **SEO 取舍**：canonical 不带语言，也不再发 `hreflang` 矩阵；默认 SEO 文案以英文为主，语言切换是用户体验功能。
 - **手写字典**：`web/lib/i18n/`（en/ja/zh/zh-TW/ko/es/fr + `getDictionary`），不引第三方 i18n 库；数据字段不翻译。
@@ -319,7 +319,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | `EntityCard` | repo/org 卡片（榜单外的实体展示，如 Pulse） | pulse / rankings |
 | `Footer` | `border-t` + on-surface-variant + 构建时间戳（UTC+JST）+ **语言切换** | layout（i18n 语言切换落点） |
 | `YearSpine` | 首页 inline 脊柱抽组件 | 首页 / pulse |
-| `LangSwitcher` | 当前语言按钮 + 其它语言下拉；支持 en/ja/zh/zh-TW/ko/es/fr（`/api/lang` 设置 cookie 后回到当前 URL） | Footer / app bar |
+| `LangSwitcher` | 当前语言按钮 + 其它语言下拉；支持 en/ja/zh/zh-TW/ko/es/fr（客户端写 cookie 后刷新当前 RSC 视图） | Footer / app bar |
 
 ### 6.4 组件 ↔ JSON 契约映射（真实层接入时的入参形状）
 
@@ -361,7 +361,7 @@ export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 ```
 
 - 根 `layout.tsx` 读取 `gsc_lang` cookie → `getDictionary(locale)` → Footer / 页面子树使用同一语言。
-- `LanguageSwitcher` 默认英文，使用下拉菜单切换其它语言；通过 `/api/lang` 设置 cookie 后回到当前 URL，不会改变 canonical URL。
+- `LanguageSwitcher` 默认英文，使用下拉菜单切换其它语言；客户端写 `gsc_lang` cookie 后刷新当前 RSC 视图，不会改变 canonical URL。`/api/lang` 仍保留为直接访问后备。
 - 现有少量 SEO title/description 仍以英文为主，这是单一 canonical URL 的刻意取舍。
 
 ### 7.3 canonical（Metadata API）

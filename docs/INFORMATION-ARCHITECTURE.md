@@ -16,8 +16,9 @@ stored in a first-party cookie, so repository URLs can mirror GitHub:
 The default language is English. The language control shows the current language
 as a compact trigger and places the other supported languages in a dropdown:
 English, Japanese, Simplified Chinese, Traditional Chinese, Korean, Spanish, and
-French. The dropdown writes `gsc_lang` through `/api/lang` and returns to the
-same URL.
+French. In the normal app shell, the client writes `gsc_lang` and refreshes the
+current RSC view immediately without changing the URL. `/api/lang` remains as a
+safe direct-access fallback endpoint.
 
 ## Primary Navigation
 
