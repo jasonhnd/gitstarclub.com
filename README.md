@@ -7,7 +7,8 @@
 >
 > 2026-06-01 i18n note: English is the default UI language. Other languages are
 > selected from a compact dropdown and stored in the `gsc_lang` cookie without
-> changing the URL. Supported UI languages are English, Japanese, Simplified
+> changing the URL. The client writes the cookie and refreshes the current RSC
+> view immediately. Supported UI languages are English, Japanese, Simplified
 > Chinese, Traditional Chinese, Korean, Spanish, and French.
 
 > 一本可浏览的 GitHub 开源编年史 —— 按月 / 季 / 年回看哪些项目正在被关注。
@@ -31,7 +32,7 @@
 | 数据源 | [GH Archive](https://www.gharchive.org/) + GitHub GraphQL API |
 | 核心页面 | 首页 / 脉搏 / 总榜 / 年月周榜 / GitHub 风格 Repo 详情页 |
 | 渲染 | JSON 视图驱动；热页按请求读取语言 cookie，长尾 repo/org/rankings 按需生成 |
-| 语言 | 英文（主） > 日文 > 中文；页内切换，URL 不带语言前缀 |
+| 语言 | 英文默认；下拉切换日文、简中、繁中、韩文、西文、法文；URL 不带语言前缀 |
 | SEO | sitemap 分片 + schema.org + 每页 OG（build 时生成），见 docs/SEO.md |
 | 核心数据 | **Parquet 事实表**（离线 canonical）→ DuckDB 预算 → **JSON 视图**（build 读）+ JSON 活尾（当月，cron 读写）；运行时无数据库 |
 | 一次性回填 | **BigQuery**（GH Archive 公开表，含稳定 repo.id）+ 本机 DuckDB，~$10 |
