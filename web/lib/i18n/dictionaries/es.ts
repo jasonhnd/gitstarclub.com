@@ -1,0 +1,102 @@
+import type { Dict } from "./en";
+
+const es: Dict = {
+  nav: { home: "Inicio", trending: "Pulso", rankings: "Rankings", about: "Acerca de" },
+  home: {
+    heroPre: "Una historia del ",
+    heroAccent: "código abierto",
+    heroPost: ".",
+    lead: "Once años de actividad de código abierto en una sola vista. Elige un año para explorarlo.",
+    thisMonth: "Mes hasta la fecha",
+    perYear: "Estrellas añadidas por año",
+    gainedAria: "estrellas añadidas",
+  },
+  about: {
+    heroPre: "Una historia ",
+    heroAccent: "basada en datos",
+    heroPost: ".",
+    lead: "GitStarClub indexa repositorios públicos con más de 10,000 estrellas y reconstruye cómo han ganado estrellas desde 2015, mes a mes y año a año.",
+    s1h: "Fuentes de datos",
+    s1pPre: "Las tendencias históricas se reconstruyen a partir de ",
+    s1pPost:
+      " (datos públicos de eventos de GitHub desde 2015). Los totales actuales provienen de las APIs oficiales de GitHub GraphQL y Search. Solo mostramos datos públicos de repositorios públicos.",
+    s2h: "Limitaciones metodológicas",
+    s2aStrong: "Dos medidas distintas.",
+    s2aBody:
+      " Las tendencias históricas usan estrellas brutas añadidas según eventos watch de GH Archive. El cambio diario actual es neto, por lo que puede disminuir cuando se eliminan estrellas. Esto crea una pequeña inconsistencia en el límite entre ambas medidas. Los totales actuales siempre usan el conteo oficial de GitHub.",
+    s2bStrong: "Sesgo de selección.",
+    s2bBody:
+      " Solo reconstruimos repositorios que hoy tienen al menos 10,000 estrellas. Los proyectos que fueron populares pero luego quedaron por debajo de ese umbral no están incluidos.",
+    s2cStrong: "¿Por qué empezar en 2015?",
+    s2cBody:
+      " Antes de finales de 2012, los eventos watch de GitHub no eran equivalentes a las estrellas. Para 2015, los datos son lo bastante consistentes para comparaciones de largo plazo.",
+    s3h: "Tiempo",
+    s3p: "Todos los datos se almacenan en UTC y se agregan por día UTC. Cuando se muestra una marca de tiempo exacta, aparecen UTC y JST (hora estándar de Japón).",
+    back: "Volver a la historia",
+  },
+  year: {
+    label: "Año",
+    all: "Todos los años",
+    spine: "Resumen",
+    top: "Repositorios principales en",
+    gained: "estrellas añadidas en repositorios monitoreados",
+    ledBy: "encabezado por",
+  },
+  month: {
+    label: "Mes",
+    most: "Más estrellas añadidas",
+    mostSub: "Mayor aumento absoluto",
+    fastest: "Crecimiento más rápido",
+    fastestSub: "Tasa de crecimiento, mínimo 20k estrellas",
+    newcomers: "Nuevos ingresos",
+    newcomersSub: "Superaron 10k estrellas por primera vez",
+    daily: "Actividad diaria",
+    gained: "Los repositorios monitoreados añadieron",
+    newcomersWord: "nuevos ingresos",
+  },
+  week: { label: "Semana", top: "Repositorios principales de esta semana" },
+  repo: {
+    about: "Acerca de",
+    history: "Tendencia de estrellas",
+    milestones: "Hitos",
+    recent: "Actividad reciente",
+    created: "creado",
+    archived: "archivado",
+    github: "Abrir en GitHub",
+    rank: "posición",
+    owner: "Propietario",
+    homepage: "Sitio web",
+    license: "Licencia",
+    latestRelease: "Última versión",
+    noRelease: "No se encontró una release en GitHub",
+    topics: "Temas",
+  },
+  org: {
+    history: "Tendencia combinada de estrellas",
+    repos: "Repositorios monitoreados",
+    total: "total",
+    trackedRepos: "repositorios monitoreados",
+    organization: "Organización",
+    developer: "Persona",
+  },
+  rankings: {
+    title: "Rankings históricos",
+    subtitle: "Repositorios y organizaciones ordenados por su conteo actual de estrellas.",
+    repositories: "Repositorios",
+    organizations: "Organizaciones",
+    repos: "repositorios",
+  },
+  trending: {
+    title: "Actividad de código abierto",
+    subtitle: "Qué está cambiando esta semana, este mes y este año en los repositorios de código abierto monitoreados.",
+    surging: "En alza este mes",
+    onThisDay: "En este día",
+    crossed: "superó",
+  },
+  footer: {
+    madeIn: "Hecho en Tokio",
+    dataThrough: "Datos actualizados hasta",
+  },
+};
+
+export default es;

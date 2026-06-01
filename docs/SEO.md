@@ -6,6 +6,11 @@
 >
 > 关联文档：渲染 / 页面分层 / ISR 见 [ARCHITECTURE.md](./ARCHITECTURE.md)；页面 / URL / i18n / 调性 / 配色见 [PRODUCT.md](./PRODUCT.md)；
 > 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.2.6**（App Router + Metadata API）。
+>
+> 2026-06-01 i18n status: canonical URLs are language-neutral. English is the
+> default SEO/user-facing language when no `gsc_lang` cookie is present; ja, zh,
+> zh-TW, ko, es, and fr are in-page UI preferences selected from a dropdown.
+> These language variants do not create separate URLs or `hreflang` alternates.
 
 ---
 

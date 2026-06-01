@@ -22,7 +22,7 @@ export function Chrome({ tag, locale = "en", t = en }: { tag?: string; locale?: 
           </span>
         ) : null}
       </Link>
-      <nav className="inline-flex items-center gap-4" aria-label="Primary">
+      <nav className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2 sm:gap-x-4" aria-label="Primary">
         <Link href="/pulse" className="font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface">
           {t.nav.trending}
         </Link>
