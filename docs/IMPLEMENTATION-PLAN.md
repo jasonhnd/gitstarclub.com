@@ -27,6 +27,8 @@ M0 契约/脚手架
 ## M1 — bootstrap 出真实数据（🗄️ 一次性，本机/全 Node；非日常运营路径）
 
 > 这是**首次冷启动**用的一次性 bootstrap（[PIPELINE §1](./PIPELINE.md)）。产物上传 Blob 后，recurring 刷新由 Vercel（live cron + Workflow）接管——见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) Phase 1–4。
+>
+> **状态**：◐ 本机 bootstrap 已跑过——`whitelist`→`extract`→`rollup`→`precompute` 已产出全套 JSON 视图并过 Zod 校验（[TESTING §1.2](./TESTING.md)：12,615 文件 0 失败）。`star_daily_gross/*.parquet`、`whitelist.json` 在 `pipeline/data/`。**上传/线上接入以 Vercel 实况为准**（页面已读 `@/lib/data`，说明 Blob 已有产物）。
 
 按 [PIPELINE §1](./PIPELINE.md)：
 1. `whitelist`：Search `stars:>=10000` 自适应分桶 → `whitelist.json`（≈5,248）。
@@ -38,21 +40,20 @@ M0 契约/脚手架
 - **依赖**：M0。
 - **验收**：Blob 上有全套真实 JSON、Zod + sanity（[TESTING §1](./TESTING.md)）全过；抽查 vue/react 等知名 repo 曲线/里程碑合理。
 
-## M2 — web 接真实数据（把原型从占位切到真实）
+## M2 — web 接真实数据（把原型从占位切到真实）✅ 基本完成
 
-按 [FRONTEND §3 + §9 A–I](./FRONTEND.md)：
-- `web/lib/data/`：fetch Blob + Zod parse + `cache()`；lookup-join。
-- 处置 §9：**A** 长尾 `generateStaticParams` 返回 `[]` + 按需 ISR；**B** 未知 param → `notFound()`；**D** 曲线容忍非单调；**E/F** 去硬编码 `lang`/`metadataBase`；移除占位 `_explore/data.ts`。
-- 四个核心页（首页/年/月/repo）渲染真实 JSON。
-- **依赖**：M1（要真实 JSON）。
-- **验收**：核心页真实数据、正文零客户端 JS、`notFound` 正确、`cacheComponents` 关闭、长尾按需 ISR 生效。
+按 [FRONTEND §3 + §9](./FRONTEND.md)：
+- ✅ `web/lib/data/`：fetch Blob + Zod parse + `cache()`；lookup-join 已落地;占位 `_explore/data.ts` 已删除。
+- ✅ 处置 §9：**B** 未知 param → `notFound()`(`[owner]/[name]`)、**E/F** i18n cookie + `metadataBase` 已收敛、**H** 去硬编码 synced 时间。**D** 非单调曲线待验证。
+- ✅ 页面渲染真实 JSON（首页/rankings/月/repo/org/pulse 均读 `@/lib/data`）。
+- **依赖**：M1。**验收**：核心页真实数据、`notFound` 正确 —— 已达。
+- ⚠️ **遗留(§9-J)**：i18n cookie 让根 layout `force-dynamic`,实际**非 ISR/SSG**,与扛量模型冲突,待架构决策。
 
-## M3 — 新页型
+## M3 — 新页型 ✅ 基本完成
 
-- `/o/:login`（org）、`/rankings`（全时）、`/YYYY/W##`（周，独立）、`/trending`（脉搏）。
-- 月/年页加 **org 榜 + flow/stock 并列**（[PRODUCT](./PRODUCT.md)、[RANKING](./RANKING.md)）。
-- **依赖**：M2（复用数据层 + 组件）。
-- **验收**：各页可达、复用契约、SEO meta/canonical 就位。
+- ✅ `/o/[login]`(org)、`/rankings`(全时)、`/rankings/[year]/W[week]`(周)、`/pulse`(脉搏) 已落地，全读 `@/lib/data`。
+- ◐ 月/年页 **org 榜 + flow/stock 并列** 视 PRODUCT 取舍（[PRODUCT](./PRODUCT.md)、[RANKING](./RANKING.md)），按需补。
+- **依赖**：M2。**验收**：各页可达、复用契约、SEO meta/canonical 就位 —— 已达。
 
 ## M4 — 每日 / 每周 cron
 
@@ -64,12 +65,12 @@ M0 契约/脚手架
 - **依赖**：M2/M3。
 - **验收**：cron 幂等；mover 当天上 `/pulse` + 其页刷新；漂移告警。Workflow 落地后全量重算走 staging→指针→revalidate。
 
-## M5 — SEO / i18n / PWA / 上线
+## M5 — SEO / i18n / PWA / 上线 ◐ 大部分落地
 
 按 [SEO](./SEO.md) + [OPS](./OPS.md)：
-- sitemap 分片 + robots + 每页 OG（`@vercel/og`→Blob）+ hreflang；i18n 字典 + 三语 + 年度标签内容；PWA（已决保留，DESIGN-SYSTEM 例外③）。
-- 部署：web 应用预览 noindex → 功能完整后**切生产域名**（teaser 退役）。
-- **验收**：[SEO 验收清单](./SEO.md) + CWV 达标 + Search Console 收录。
+- ✅ `sitemap.ts`/`robots.ts`/JSON-LD/OG/`generateMetadata` 已建；i18n 手写字典(en/ja/zh/zh-TW/ko/es/fr)已建（页内 cookie 切换，无 hreflang 矩阵）；PWA 保留（例外③）。
+- ✅ 已切生产域名（`gitstarclub.com` 指 web 应用，teaser 退役，见 [OPS](./OPS.md)）。
+- **验收**：[SEO 验收清单](./SEO.md) + CWV + Search Console 收录 —— 待核;⚠️ CWV/扛量受 §9-J `force-dynamic` 影响,需连同架构决策一并评估。
 
 ---
 
@@ -77,7 +78,11 @@ M0 契约/脚手架
 - M1：Zod schema + sanity 不变量（CI 阻断脏数据）。
 - M2+：视觉回归（明暗×断点）、a11y、E2E 导航、零 JS / HTML<20KB 断言。
 
-## 当前进度
-- ✅ M0 契约（`web/lib/contracts/` 初版已写）。
-- ✅ M4 每日 / 每周 **live cron** 已在 Vercel 跑通（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) Phase 0）。
-- ⏳ 待续：M1 bootstrap → M2 web 接真实数据 → M3 页型；并行推进 Vercel-only Phase 2–5（Workflow / canonical shard / 发布回滚）。
+## 当前进度（2026-06-02 拉齐到代码现状）
+- ✅ **M0 契约** `web/lib/contracts/`（common/lookup/entity/live）。
+- ◐ **M1 bootstrap**：本机已跑出全套 JSON 视图 + Zod 校验（12,615 文件 0 失败）；上传/线上以 Vercel 为准。
+- ✅ **M2 web 接真实数据**：页面读 `@/lib/data`，占位已删，`notFound` 已落地。
+- ✅ **M3 新页型**：org/rankings/周/pulse 已建。
+- ✅ **M4 live cron**：每日/每周已在 Vercel 跑通（Phase 0）。
+- ◐ **M5 SEO/i18n/PWA**：sitemap/robots/JSON-LD/OG/i18n 字典/PWA 已建；已切生产域名。
+- ⏳ **两大开口**：① **§9-J 渲染模式架构决策**（cookie i18n → `force-dynamic`，非 SSG/ISR，与扛量模型冲突）；② **Vercel-only Phase 2–5**（Workflow / canonical v2 shard / 发布回滚，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10）。
