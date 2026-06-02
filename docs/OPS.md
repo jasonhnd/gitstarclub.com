@@ -17,7 +17,7 @@
 | 项目 | 内容 | 域名 | 状态 | 说明 |
 |---|---|---|---|---|
 | **Production** | `web/`（Next.js 16，App Router + RSC） | **gitstarclub.com / www.gitstarclub.com** | 已切到 web 应用 | 生产 alias 指向 `gitstarclub.com` 项目的 Ready deployment |
-| **Preview / staging** | 同一项目的 Preview deployment | **pre.gitstarclub.com** | Vercel 侧待 DNS 完成 | Preview deployment 已可用；Cloudflare 需加 `A pre.gitstarclub.com 76.76.21.21` 后才能签证书并完成 alias |
+| **Preview / staging** | 同一项目的 Preview deployment | **pre.gitstarclub.com** | 已配置 | Cloudflare DNS：`A pre.gitstarclub.com 76.76.21.21`，Vercel alias 指向 Preview deployment，Preview Protection 保持私有 |
 
 **历史项目处理**：
 
@@ -41,7 +41,7 @@ vercel deploy . --prod --yes --scope zkscio --project gitstarclub.com --skip-dom
 vercel promote https://<deployment>.vercel.app --scope zkscio --yes
 ```
 
-`pre.gitstarclub.com` DNS 生效后，将最新 Preview deployment 绑定为测试环境：
+将最新 Preview deployment 绑定为测试环境：
 
 ```powershell
 vercel alias set https://<preview-deployment>.vercel.app pre.gitstarclub.com --scope zkscio
