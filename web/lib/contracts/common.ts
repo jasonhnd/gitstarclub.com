@@ -11,12 +11,14 @@ export const Period = z.string();
 export const OwnerType = z.enum(["User", "Organization"]);
 export type OwnerType = z.infer<typeof OwnerType>;
 
-/** meta.json — gross→net seam etc. */
+/** meta.json — gross→net seam + period fold watermark. Accepts the flat bootstrap meta
+ *  (backfilled_at, no folded_through) and the Phase 4 versioned meta (folded_through). */
 export const Meta = z.object({
   seam_date: DateStr,
-  backfilled_at: z.string(),
   schema_ver: z.number().int(),
   generated_at: z.string().optional(),
+  backfilled_at: z.string().optional(), // bootstrap-only
+  folded_through: z.object({ month: Period, week: Period }).optional(), // §8.3 live-overlay watermark
 });
 export type Meta = z.infer<typeof Meta>;
 
