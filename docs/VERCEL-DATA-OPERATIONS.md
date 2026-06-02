@@ -7,7 +7,8 @@
 > - **✅ 已在 Vercel 真跑通过（Phase 2，2026-06-02）**：**metadata / whitelist / rename workflow**。metadata seed 自 bootstrap `lookup/repos.json`、GitHub 只补新晋（不全量重拉,避开二级限流）。见 §10。
 > - **✅ 已实现（Phase 3a，2026-06-02）**：bootstrap 侧一次性导出 `canonical/v2/*` shard（`pipeline/backfill/07-export-v2.mjs`，DuckDB）。**discount `d` 存全精度 IEEE double**（非舍入），使 JS 重算的 `stock_est` 与 DuckDB 逐字节一致。
 > - **✅ 已实现并线上验证（Phase 4，2026-06-03）**：**rank/entity/heatmap 纯 JS 重算 → 版本化写入 `views/<run_id>/**` → validate 闸门 → 原子切 `views/latest.json` 指针**（`web/lib/workflows/recompute/*`、`web/lib/workflows/steps/{recompute-*,validate,publish}.ts`）。离线 parity：12,899 视图与 DuckDB 逐字节一致、anchor drift 0。生产真跑 `status=published`、5,252 repo、读侧经指针服务版本化数据（新晋 `lutris/lutris` 等线上可达）。读侧 `views/latest.json` → `views/<version>/<path>`，带扁平回退。
-> - **仍是设计蓝图 / 待实现（Phase 5）**：周期收口的 canonical 折叠（live overlay → `canonical/v2` 折进月/周 shard，§8.3）、旧版本 GC、归档。
+> - **✅ 已实现（Phase 5 月折叠，2026-06-03，代码完成+验证、待部署）**：cron 跨月把旧月 `per_repo` 冻结到 `canonical/v2/pending/<月>`（`live-refresh.ts`）+ L3 `foldCanonical` step（pending → `repo-monthly`/`site-daily`，推进 `folded_through.month`）+ **seam-aware 重算**（seam 后 net 不乘 d，`windows.ts`）。幂等、连续。**周折叠刻意延后**——周继续走 live 覆盖层（top-20，读路径 §4.1）。
+> - **仍待实现（Phase 5 收尾）**：周折叠、旧版本 GC（保留近 N，脚本 `web/scripts/blob-del-prefix.ts` 可手动）、backfill 归档。
 > - **仍是本地（bootstrap-only）**：`pipeline/backfill/`（含 BigQuery extract + 本机 DuckDB rollup/precompute）。本文**不删除**它，只把它从「生产 recurring 路径」降级为「一次性 bootstrap / 历史归档 / 紧急人工工具」。
 >
 > 关联：架构总览 [ARCHITECTURE.md](./ARCHITECTURE.md) · 数据契约 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) · 运维 [OPS.md](./OPS.md) · pipeline [PIPELINE.md](./PIPELINE.md) · 测试 [TESTING.md](./TESTING.md)。
@@ -53,7 +54,7 @@
 |---|---|---|---|---|
 | **L1 每日 live** | poll current_stars → 写 `current_month.json` + `live/*` 当前周期覆盖层 + `hot-snapshot.json` → revalidate 热集 | **Vercel Function**（单函数，JSON-only，秒级） | Cron `0 3 * * *` | ✅ 已实现 |
 | **L2 每周 live** | 复用 live refresh，覆盖写当前周 / 当前月 rank + 当月 heatmap + hot snapshot + `ops/sync-runs.json` | **Vercel Function**（单函数，JSON-only） | Cron `0 4 * * 0` | ✅ 已实现 |
-| **L3 Managed refresh** | 白名单 diff → 元数据 shard → 改名检测 → 新晋追踪 → rank/entity/heatmap 全量重算 → 校验 → 发布（切指针）| **Vercel Workflow**（多 step，Blob checkpoint） | Cron 触发（如每周一次，独立于 L2）或手动 | ✅ **Phase 2+4 已线上验证**（白名单/元数据/改名/重算/校验/发布）；周期折叠（Phase 5）待实现 |
+| **L3 Managed refresh** | 白名单 diff → 元数据 shard → 改名检测 → 月折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布（切指针）| **Vercel Workflow**（多 step，Blob checkpoint） | Cron 触发（如每周一次，独立于 L2）或手动 | ✅ **Phase 2+4 已线上验证**；**Phase 5 月折叠代码完成+验证（待部署）**；周折叠/版本 GC 待做 |
 | **L4 Bootstrap archive** | 11 年事件级历史首次回填（Search → BigQuery → DuckDB → JSON → Blob） | **本机 / 全 Node**（`pipeline/backfill`） | 手动，一次性 | 🗄️ 归档工具，非生产路径 |
 
 **分工原则**：
@@ -415,7 +416,7 @@ hot-snapshot / current_month： 直读 (L1/L2 活尾)
 | **Phase 4** | **rank / entity / heatmap recompute**：step 6–8 在 Workflow 内重算所有视图到 `views/<run_id>/**` + validate + publish（切指针） | ✅ 已线上验证（2026-06-03） | 一次 Workflow run 全量重算 + 校验 + 发布，离线 parity 12,899 视图逐字节一致 |
 | **Phase 5** | **archive local backfill**：`pipeline/backfill` 正式标注为 bootstrap-only / 历史归档；日常运营 0 本地依赖 | 🟡 待实现 | 文档与代码注释明确 backfill 非生产路径；recurring 全在 Vercel |
 
-> **进度**：Phase 0 live cron ✅；Phase 1 文档/契约 ✅；**Phase 2 metadata/whitelist/rename workflow ✅ 线上验证（2026-06-02）**；**Phase 3 canonical shard + 读侧指针 ✅**；**Phase 4 重算/校验/发布 ✅ 线上验证（2026-06-03，`status=published`，5,252 repo）**；**Phase 5（周期折叠 + 版本 GC + 归档）待实现**。
+> **进度**：Phase 0 live cron ✅；Phase 1 文档/契约 ✅；**Phase 2 metadata/whitelist/rename workflow ✅ 线上验证（2026-06-02）**；**Phase 3 canonical shard + 读侧指针 ✅**；**Phase 4 重算/校验/发布 ✅ 线上验证（2026-06-03，`status=published`，5,252 repo）**；**Phase 5 月折叠（cron 冻结 pending + foldCanonical + seam-aware 重算）代码完成+验证、待部署**；周折叠 / 版本 GC / backfill 归档待做。
 
 ---
 
