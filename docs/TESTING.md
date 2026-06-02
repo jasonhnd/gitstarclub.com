@@ -52,7 +52,7 @@ test('周排名窗口跨月不丢日', () => {
 - 字段类型 / 必填 / 枚举（`owner_type ∈ {User, Org}`、`metric ∈ {flow, stock}`、`window ∈ {week,month,year,all-time}`）
 - 引用完整性：榜单里每个 `repo_id` 在 `lookup/repos.json` 有对应条目
 - Zod schema 即 build 读 JSON 的 TS 类型来源（single source of truth，避免 schema 与类型漂移）
-- **实现**：`web/scripts/validate-views.ts`（`bun scripts/validate-views.ts` 全量校验 `pipeline/data/views/**` 对契约，失败非零退出）。bootstrap 后已对全部产物跑通（当前 12,615 文件 0 失败）。**Vercel-only 迁移后，Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/staging/<run_id>/**`**（§1.5），逻辑同源、只换运行位置。
+- **实现**：`web/scripts/validate-views.ts`（`bun scripts/validate-views.ts` 全量校验 `pipeline/data/views/**` 对契约，失败非零退出）。bootstrap 后已对全部产物跑通（当前 12,615 文件 0 失败）。**Vercel-only 迁移后，Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/<run_id>/**`**（§1.5），逻辑同源、只换运行位置。
 
 ### 1.3 Sanity 不变量（数据级断言，对全量产物跑）
 
@@ -80,14 +80,14 @@ test('周排名窗口跨月不丢日', () => {
 
 ### 1.5 Workflow 发布闸门 / staging 校验 / 回滚（🟡 待实现）
 
-> Vercel-only 迁移后，**数据校验的"最后闸门"从本地 CI 移到 Vercel Workflow 内的 `validate` step**——对 `views/staging/<run_id>/**` 跑后，**通过才切 `views/latest.json` 指针**（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.13）。同一套 §1.2 Zod + §1.3 sanity 断言**不变**，只是运行位置变了。
+> Vercel-only 迁移后，**数据校验的"最后闸门"从本地 CI 移到 Vercel Workflow 内的 `validate` step**——对 `views/<run_id>/**` 跑后，**通过才切 `views/latest.json` 指针**（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.13）。同一套 §1.2 Zod + §1.3 sanity 断言**不变**，只是运行位置变了。
 
 | 测试 | 在哪跑 | 断言 | 失败动作 |
 |---|---|---|---|
-| **staging 校验闸门** | Workflow `validate` step（Vercel） | §1.2 Zod 全量 + §1.3 sanity 不变量，对 `views/staging/<run_id>/**` | `ok=false` → **不切指针**；线上仍是上一版；staging 留存排查、Sentry 告警 |
+| **staging 校验闸门** | Workflow `validate` step（Vercel） | §1.2 Zod 全量 + §1.3 sanity 不变量，对 `views/<run_id>/**` | `ok=false` → **不切指针**；线上仍是上一版；staging 留存排查、Sentry 告警 |
 | **canonical shard 等价性** | 单测（CI）+ Workflow step | 「JSON shard 纯 JS 聚合」结果 == 「bootstrap DuckDB 同口径」结果（容差 0）——确保脱离 Parquet 不改数 | CI 阻断 / step error |
 | **发布指针原子性** | 集成测试 | 切指针前后读侧拿到的版本自洽；切到一半的请求拿旧版（不拿半发布） | CI 阻断 |
-| **回滚可逆** | 集成测试 | 把 `views/latest.json.version` 指回 `prev_version` 后，读侧立即拿回上一版；`published/<prev>` 仍在 | CI 阻断 |
+| **回滚可逆** | 集成测试 | 把 `views/latest.json.version` 指回 `prev_version` 后，读侧立即拿回上一版；`views/<prev>` 仍在 | CI 阻断 |
 | **step 幂等** | 单测 | 同 `(run_id, shard)` 重跑 step → 覆盖同一份产物，不重复累加（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8） | CI 阻断 |
 
 - **fixture**：§1.1 的真切片同样导出成 **canonical JSON shard fixture**（与 Parquet 切片同源），单测「shard 重算」与「DuckDB 重算」对拍。
@@ -196,7 +196,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 **节奏要点**：
 
 - **CI（每 PR）**：1.x 全套 + 2/3/4/5/6 在关键页跑。逻辑测试是门禁，必过；视觉 diff 与 Lighthouse 出报告供 review。
-- **Publish gate（Workflow `validate` step，🟡 待实现）**：生产全量重算把产物写到 `views/staging/<run_id>/**` 后，§1.2/1.3 对**全量 staging 产物**跑一遍，任一不变量违反即**不切 `views/latest.json` 指针**（线上仍上一版）——这是防脏数据进生产的最后闸门，从本地 CI 移到了 Vercel 内（§1.5）。
+- **Publish gate（Workflow `validate` step，✅ 已实现 Phase 4）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 Zod + sanity，任一不变量违反即**不切 `views/latest.json` 指针**（线上仍上一版）——防脏数据进生产的最后闸门，从本地 CI 移到 Vercel 内（§1.5）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
 - **每日 / 每周 cron**：不触发 deploy，但 cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后，对活尾跑 §1.2 schema + §1.3 漂移/非负 sanity（秒级），异常告警（Sentry）而非静默。
 - **本地**：改聚合逻辑先跑 1.x；改组件先跑相关页的视觉 + a11y。遵循「改动靠 Vercel 预览确认」——视觉 / 性能以预览部署为准，不依赖本地 dev。
 

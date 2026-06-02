@@ -6,9 +6,10 @@
 > `live/heatmap/*` overrides, revalidate the hot pages, and record runs in
 > `ops/sync-runs.json`.
 >
-> 2026-06-02 数据运营方向：每日 / 每周 cron 已 **Vercel-only**（上面那条）。**长期目标是把
-> 全部生产数据生命周期（白名单 / 元数据 / canonical 折叠 / 全量重算 / 发布 / 回滚）也搬上
-> Vercel，不依赖本地计算**——由 **Vercel Workflow** 承载（**设计目标 / 待实现**，见
+> 数据运营方向：每日 / 每周 cron 已 **Vercel-only**（上面那条）。**生产数据生命周期（白名单 / 元数据 /
+> 改名 / 全量重算 / 校验 / 发布 / 回滚）已搬上 Vercel、不依赖本地计算**——由 **Vercel Workflow** 承载
+> （**Phase 2–4 已线上验证：2026-06-03 `status=published`，重算 → `views/<run_id>/**` → validate →
+> 切 `views/latest.json` 指针；离线 parity 12,899 视图与 DuckDB 逐字节一致**；周期折叠 Phase 5 待实现，见
 > [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)）。`pipeline/backfill`
 > 的 BigQuery + 本机 DuckDB 仅作为**一次性 bootstrap / 历史归档**，不再是日常运营路径。
 >
@@ -41,9 +42,9 @@
 | 渲染 | JSON 视图驱动；热页按请求读取语言 cookie，长尾 repo/org/rankings 按需生成 |
 | 语言 | 英文默认；下拉切换日文、简中、繁中、韩文、西文、法文；URL 不带语言前缀 |
 | SEO | sitemap 分片 + schema.org + 每页 OG（build 时生成），见 docs/SEO.md |
-| 核心数据 | **JSON 视图**（build / 运行时只读）+ JSON 活尾（当月，cron 读写）；运行时无数据库。生产 canonical 目标是 **Vercel-friendly JSON shard**（脱离本地 Parquet/DuckDB，**待实现**，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)） |
+| 核心数据 | **JSON 视图**（build / 运行时只读）+ JSON 活尾（当月，cron 读写）；运行时无数据库。生产 canonical = **Vercel-friendly JSON shard**（`canonical/v2/*`，脱离本地 Parquet/DuckDB，**✅ 已实现**，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)） |
 | 一次性 bootstrap | **BigQuery**（GH Archive，含稳定 repo.id）+ 本机 DuckDB → Parquet 事实表，~$10。**仅首次冷启动 / 历史归档**，非日常运营路径 |
-| 日常采集 | **Vercel Cron + 单 Function**：GraphQL 批量查当前 star，diff 出增量（已实现）；历史 / 元数据 / 全量重算目标走 **Vercel Workflow**（待实现） |
+| 日常采集 | **Vercel Cron + 单 Function**：GraphQL 批量查当前 star，diff 出增量（已实现）；元数据 / 全量重算 / 发布走 **Vercel Workflow**（**✅ Phase 2–4 已线上验证**；周期折叠 Phase 5 待实现） |
 | 框架 | Next.js 16（App Router + RSC + Turbopack） |
 | 语言/工具链 | TypeScript 6 · React 19 · Zod 4 · Tailwind 4 · 包管理器 **bun** · Node 24 |
 | 部署 | Vercel（统一计费） |
@@ -134,7 +135,7 @@ gitstarclub/
 - [ ] Next.js 四个核心页面（首页 / 年 / 月 / repo），build 读预算 JSON 视图 + SSG
 - [ ] 时间轴 + star 曲线（服务端 SVG，零客户端 JS）
 - [x] Vercel Cron 每日 / 每周 live refresh → 活尾 + revalidate（已实现）
-- [ ] **Vercel Workflow** 承载白名单 / 元数据 / canonical 全量刷新（脱离本地，**待实现**，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)）
+- [x] **Vercel Workflow** 承载白名单 / 元数据 / 改名 / rank+entity+heatmap 全量重算 / 校验 / 发布（脱离本地，**Phase 2–4 已线上验证**；折叠 Phase 5 待实现，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)）
 - [ ] Vercel 部署上线
 
 ### v0.2 — 叙事与发现
