@@ -33,14 +33,14 @@
 | 页面类型 | URL 模式 | 渲染层 | 规模（单语言） | 收录优先级 |
 |---|---|---|---|---|
 | 首页 | `/` | 核心（deploy 构建） | 1 | 最高 |
-| 年度页 | `/2024` | 当年核心 / 历史按需 ISR | ~11 | 高 |
-| 月度页 | `/2024/10` | 当月核心 / 历史按需 ISR | ~132 | 高 |
-| Repo 详情页 | `/r/:owner/:name` | 按需 ISR | ~5,248 | 中（长尾主力） |
+| 年度页 | `/rankings/2024` | 当年核心 / 历史按需 ISR | ~11 | 高 |
+| 月度页 | `/rankings/2024/10` | 当月核心 / 历史按需 ISR | ~132 | 高 |
+| Repo 详情页 | `/:owner/:name` | 按需 ISR | ~5,248 | 中（长尾主力） |
 | **Org 详情页**（NEW） | `/o/:login` | 按需 ISR | ~1,000s（含 User+Org owner） | 中（长尾主力） |
 | **全时榜**（NEW） | `/rankings` | 核心（deploy 构建） | 1（+ 切片 待定） | 高 |
 | 关于页 | `/about` | 核心 | 1 | 低（但需收录） |
-| 周页 | `/YYYY/W##` | 当周核心 / 历史按需 ISR | ~570 | 中 |
-| **脉搏页**（NEW） | `/trending` | 核心（deploy 构建，每日刷新） | 1 | 高（"最新动态"入口） |
+| 周页 | `/rankings/YYYY/W##` | 当周核心 / 历史按需 ISR | ~570 | 中 |
+| **脉搏页**（NEW） | `/pulse` | 核心（deploy 构建，每日刷新） | 1 | 高（"最新动态"入口） |
 
 > **× 3 语言**：英文根 `x-default`、日文 `/ja/...`、中文 `/zh/...`（见 §10）。三语各自独立 URL ⇒ 收录目标 URL 数 ≈ 上表合计 × 3。
 
@@ -50,7 +50,7 @@
 
 | 维度 | 默认呈现 | 独立成页？ |
 |---|---|---|
-| **周榜**（week × repo/org × flow/stock） | **独立周页 `/YYYY/W##`** + 月/年页内周摘要 section（链到周页） | 已独立成页 |
+| **周榜**（week × repo/org × flow/stock） | **独立周页 `/rankings/YYYY/W##`** + 月/年页内周摘要 section（链到周页） | 已独立成页 |
 | **月榜 / 年榜**（month/year × …） | 月度页 / 年度页主体 | 已独立成页 |
 | **Org 榜**（org 维度） | Org 详情页 `/o/:login` + 各 period 页内 org section | Org 详情页已独立 |
 | **全时榜**（all-time × repo/org × stock） | **独立页 `/rankings`** | 已独立成页 |
@@ -64,7 +64,7 @@
 | 每语言 | 1 | ~11 | ~132 | ~5,248 | ~1,500（估） | ~2 | **~6,900** |
 | **× 3 语言** | | | | | | | **~20,700** |
 
-> 周页已独立 ⇒ +~570 × 3 ≈ +1,700，再加 `/trending`。**收录目标按 ~2.2–2.5 万 URL 规划 sitemap**（旧设计 ~1.6 万）。具体数随 org 白名单（含 User owner）浮动。
+> 周页已独立 ⇒ +~570 × 3 ≈ +1,700，再加 `/pulse`。**收录目标按 ~2.2–2.5 万 URL 规划 sitemap**（旧设计 ~1.6 万）。具体数随 org 白名单（含 User owner）浮动。
 
 ---
 
@@ -93,13 +93,13 @@ export const metadata: Metadata = {
 
 - 含词：`GitHub Star History`、`Trends`、`trending`、`star timelines`、`rankings`、`11 years`、`5,248 projects`。
 
-### 2.2 年度页 `/2024`
+### 2.2 年度页 `/rankings/2024`
 
 | 字段 | 模板（以 2024 为例） |
 |---|---|
 | title | `GitHub Stars in 2024 — Top Trending Repos & Star History` |
 | description | `The year 2024 in open source: top GitHub repos by new stars, breakout projects, and monthly trends. claude-code, ollama and 47 others crossed 10k. Star data charted month-by-month.` |
-| canonical | `/2024` |
+| canonical | `/rankings/2024` |
 
 ```ts
 export async function generateMetadata({ params }: { params: Promise<{ year: string }> }) {
@@ -108,29 +108,29 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
   return {
     title: `GitHub Stars in ${year} — Top Trending Repos & Star History`,
     description: `The year ${year} in open source: top GitHub repos by new stars in ${year}, ${v.newcomers} breakout projects crossing 10k, and month-by-month star trends. Top: ${v.top3.join(', ')}.`,
-    alternates: { canonical: `/${year}` },
+    alternates: { canonical: `/rankings/${year}` },
   }
 }
 ```
 
-### 2.3 月度页 `/2024/10`
+### 2.3 月度页 `/rankings/2024/10`
 
 | 字段 | 模板（2024-10） |
 |---|---|
 | title | `Top GitHub Repos in October 2024 — Trending & Star Growth` |
 | description | `October 2024 on GitHub: 5,248 tracked repos gained 2.3M stars. Top by new stars, fastest-growing, and 12 newcomers crossing 10k. See who trended in Oct 2024.` |
-| canonical | `/2024/10` |
+| canonical | `/rankings/2024/10` |
 
 - 含词：`Top GitHub Repos`、月份英文名 + 年（`October 2024`）、`Trending`、`Star Growth`。**月份用英文全称**（搜索量高于数字 `2024/10`）。
 - 周榜以 section 内嵌（默认）：section 标题如 `Week of Oct 7–13` 含锚点 `#w41`，供里程碑深链（见 §9）。
 
-### 2.4 Repo 详情页 `/r/:owner/:name`
+### 2.4 Repo 详情页 `/:owner/:name`
 
 | 字段 | 模板（`anthropics/claude-code`） |
 |---|---|
 | title | `anthropics/claude-code — Star History & Timeline` |
 | description | `Star history for anthropics/claude-code: 98,432 stars as of May 2026. See its growth curve, milestones (10k/50k/100k dates), monthly star gains, and ranking history.` |
-| canonical | `/r/anthropics/claude-code` |
+| canonical | `/anthropics/claude-code` |
 
 ```ts
 export async function generateMetadata({ params }: { params: Promise<{ owner: string; name: string }> }) {
@@ -140,7 +140,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
   return {
     title: `${owner}/${name} — Star History & Timeline`,
     description: `Star history for ${owner}/${name}: ${repo.stars.toLocaleString()} stars as of ${repo.asOf}. Growth curve, milestones (10k/50k/100k dates), monthly star gains, and ranking history.`,
-    alternates: { canonical: `/r/${owner}/${name}` },
+    alternates: { canonical: `/${owner}/${name}` },
   }
 }
 ```
@@ -250,7 +250,7 @@ Next.js 16 中 `app/.../sitemap.ts` 的 `generateSitemaps()` 返回 `[{ id }]`�
   /month/sitemap/0.xml                # 月度页（~132 × 3 ≈ 396 条）
   /r/sitemap/0.xml … /r/sitemap/N.xml # repo：~5,248 × 3 ≈ 15,744 → 每片 ≤5万，1 片足够（留分片接口备扩）
   /o/sitemap/0.xml … /o/sitemap/M.xml # org：~1,500 × 3 ≈ 4,500 → 1 片（量增时自动多片）
-  # /YYYY/W## 周页：/week/sitemap/{id}.xml
+  # /rankings/YYYY/W## 周页：/week/sitemap/{id}.xml
 ```
 
 > **当前规模 1 片即可装下 repo+org**，但**代码按 `generateSitemaps()` 分片写**（按 50,000 切批），规模一旦突破自动多片、无需返工。这是对旧 SEO.md「单片足够」的**修正**：保留单片现状，但**强制用可分片的实现**。
@@ -273,17 +273,11 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
   const id = Number(await props.id)
   const repos = await getRepoSlice(id * PER, PER)   // 该片 repo（含 lastModified 字段）
   return repos.map((r) => ({
-    url: `${BASE}/r/${r.full_name}`,                // 英文（x-default）作 <loc>
+    url: `${BASE}/${r.full_name}`,                  // 语言中立单一 URL
     lastModified: r.updatedAt,                      // 数据视图里的确定性日期（见 §3.3）
     changeFrequency: r.active ? 'daily' : 'yearly',
     priority: r.active ? 0.7 : 0.4,
-    alternates: {
-      languages: {                                  // hreflang，含 x-default（见 §10）
-        ja: `${BASE}/ja/r/${r.full_name}`,
-        zh: `${BASE}/zh/r/${r.full_name}`,
-        'x-default': `${BASE}/r/${r.full_name}`,
-      },
-    },
+    // ⚠️ 不再输出 alternates.languages —— 语言是页内 cookie 偏好、无语言 URL、不发 hreflang（见 §10）
   }))
 }
 ```
@@ -401,7 +395,7 @@ Host: https://gitstarclub.com
     "codeRepository": "https://github.com/anthropics/claude-code",
     "author": { "@type": "Organization", "name": "anthropics" },
     "programmingLanguage": "TypeScript",
-    "url": "https://gitstarclub.com/r/anthropics/claude-code"
+    "url": "https://gitstarclub.com/anthropics/claude-code"
   },
   {
     "@context": "https://schema.org",
@@ -434,7 +428,7 @@ Host: https://gitstarclub.com
     "@type": "ItemList",                 // 该 org 的 top repo 列表
     "name": "Top repositories by vercel",
     "itemListElement": [
-      { "@type": "ListItem", "position": 1, "url": "https://gitstarclub.com/r/vercel/next.js", "name": "vercel/next.js" }
+      { "@type": "ListItem", "position": 1, "url": "https://gitstarclub.com/vercel/next.js", "name": "vercel/next.js" }
     ]
   }
 ]
@@ -450,10 +444,10 @@ Host: https://gitstarclub.com
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     "name": "Top GitHub Repos in October 2024",
-    "url": "https://gitstarclub.com/2024/10",
+    "url": "https://gitstarclub.com/rankings/2024/10",
     "datePublished": "2024-11-01",
     "dateModified": "2024-11-01",        // 历史页固定；当月页 = 最近同步
-    "isPartOf": { "@type": "CollectionPage", "name": "GitHub Stars in 2024", "url": "https://gitstarclub.com/2024" }
+    "isPartOf": { "@type": "CollectionPage", "name": "GitHub Stars in 2024", "url": "https://gitstarclub.com/rankings/2024" }
   },
   {
     "@context": "https://schema.org",
@@ -461,7 +455,7 @@ Host: https://gitstarclub.com
     "name": "Top repos by new stars in October 2024",
     "numberOfItems": 20,
     "itemListElement": [
-      { "@type": "ListItem", "position": 1, "url": "https://gitstarclub.com/r/anthropics/claude-code", "name": "anthropics/claude-code" }
+      { "@type": "ListItem", "position": 1, "url": "https://gitstarclub.com/anthropics/claude-code", "name": "anthropics/claude-code" }
     ]
   }
   // 可再为「增速 TOP」「新晋」「周榜 section」各输出一个 ItemList
@@ -482,8 +476,8 @@ Host: https://gitstarclub.com
   "@type": "BreadcrumbList",
   "itemListElement": [
     { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://gitstarclub.com/" },
-    { "@type": "ListItem", "position": 2, "name": "2024", "item": "https://gitstarclub.com/2024" },
-    { "@type": "ListItem", "position": 3, "name": "October 2024", "item": "https://gitstarclub.com/2024/10" }
+    { "@type": "ListItem", "position": 2, "name": "2024", "item": "https://gitstarclub.com/rankings/2024" },
+    { "@type": "ListItem", "position": 3, "name": "October 2024", "item": "https://gitstarclub.com/rankings/2024/10" }
   ]
 }
 ```
@@ -537,31 +531,31 @@ Host: https://gitstarclub.com
 
 ```
 首页 /
- ├─ 年份脊柱（2015…当前）──────────────→ 各年度页 /YYYY        （1 跳到任意年）
- ├─ 本月聚焦 TOP / 增速 ────────────────→ repo 详情页 /r/..       （1 跳到热门 repo）
+ ├─ 年份脊柱（2015…当前）──────────────→ 各年度页 /rankings/YYYY （1 跳到任意年）
+ ├─ 本月聚焦 TOP / 增速 ────────────────→ repo 详情页 /:owner/:name （1 跳到热门 repo）
  ├─ 历史上的今天（里程碑）──────────────→ repo / 对应月度页
  └─ 全时榜入口 ─────────────────────────→ /rankings
 
-年度页 /YYYY
- ├─ 12 个月份格子 ─────────────────────→ 月度页 /YYYY/MM         （1 跳到任意月）
- ├─ 年度 TOP 50 行（repo 名）───────────→ repo 详情页 /r/..
+年度页 /rankings/YYYY
+ ├─ 12 个月份格子 ─────────────────────→ 月度页 /rankings/YYYY/MM （1 跳到任意月）
+ ├─ 年度 TOP 50 行（repo 名）───────────→ repo 详情页 /:owner/:name
  ├─ 年度 org section（若有）────────────→ org 详情页 /o/..
  └─ 上下年导航 ← YYYY-1 | YYYY+1 →       （年脊柱横向连通）
 
-月度页 /YYYY/MM
- ├─ 三大榜单每行 repo 名 ───────────────→ repo 详情页 /r/..
+月度页 /rankings/YYYY/MM
+ ├─ 三大榜单每行 repo 名 ───────────────→ repo 详情页 /:owner/:name
  ├─ 周榜 section 每行 ──────────────────→ repo / org
  ├─ 上下月导航 ← 上月 | 下月 → ↑ 年度页   （月链横向 + 纵向连通）
  └─ org 维度行（若有）──────────────────→ org 详情页 /o/..
 
-repo 详情页 /r/owner/name
- ├─ 里程碑（破 10k/50k/100k）───────────→ 对应月度页锚点 /YYYY/MM#..
+repo 详情页 /:owner/:name
+ ├─ 里程碑（破 10k/50k/100k）───────────→ 对应月度页锚点 /rankings/YYYY/MM#..
  ├─ 月度表现表（近 N 月，每行）──────────→ 对应月度页
  ├─ owner 链接 ─────────────────────────→ org 详情页 /o/owner    （repo↔org 互链）
  └─ 名次史 ─────────────────────────────→ 对应 period 页
 
 org 详情页 /o/login
- ├─ top repo 列表（每行）───────────────→ repo 详情页 /r/login/..  （org→repo）
+ ├─ top repo 列表（每行）───────────────→ repo 详情页 /login/:name （org→repo）
  ├─ 月度 org 表现 ──────────────────────→ 对应月度页
  └─ 全时 org 名次 ──────────────────────→ /rankings
 
@@ -587,53 +581,28 @@ org 详情页 /o/login
 
 ---
 
-## 10. 多语言 SEO（EN / JA / ZH）
+## 10. 多语言策略（页内 cookie 偏好，非 URL 多语言 SEO）
 
-| 维度 | 规则 |
+> ✅ 本章已按**现行 i18n 模型**重写（取代早期 URL 段 + hreflang 模型）。**语言是页内偏好（`gsc_lang` cookie），不进 URL、不发 hreflang**——这是产品决定（GitHub 风格单一 URL，见 [FRONTEND.md](./FRONTEND.md) §7 / §9-E）与本文顶部 2026-06-01 note 的口径。
+
+| 维度 | 现行规则 |
 |---|---|
-| URL | 英文在根（`/2024/10`、`/r/owner/name`）；日文 `/ja/...`；中文 `/zh/...` |
-| `x-default` | 指向**英文根版**（hreflang） |
-| canonical | **各语言指自身**（`/ja/2024/10` canonical = `/ja/2024/10`），不跨语言 canonical（见 §7） |
-| 翻译范围 | UI chrome / 导航 / 年度标签 / About / **meta + OG 文案**；**不翻译** repo 名 / 描述 / 语言 / topic / 数字（数据语言中立） |
-| 实现 | Next.js 16 Metadata API `alternates.languages`（含 `'x-default'` 键）；每页输出完整 hreflang 互链 |
+| URL | **语言中立、单一 URL**（`/rankings/2024/10`、`/owner/name`）；**无 `/ja`、`/zh` 语言前缀** |
+| canonical | 指自身的语言中立 URL；**不发 hreflang / `alternates.languages`**（没有语言变体 URL 可互指） |
+| SEO 语言 | **英文**为默认 SEO / 用户语言（无 cookie 时）；meta / OG 文案为英文 |
+| 其它语言 | en/ja/zh/zh-TW/ko/es/fr 是**页内 UI 偏好**（下拉切换，写 cookie + 客户端换 chrome，见 [FRONTEND.md](./FRONTEND.md) §7、§9-J 方案 C）；**不创建独立 URL、不影响收录** |
+| 翻译范围 | UI chrome / 导航 / 年度标签 / About / 面包屑名；**不翻译** repo 名 / 描述 / 语言 / topic / 数字（数据语言中立） |
+| og:locale | 默认 `en_US`；语言切换由客户端调整，不影响 canonical |
 
-### 10.1 hreflang 矩阵（每页三语 + x-default 互指）
+### 10.1 对早期"URL 多语言"假设的收敛（以本章为准）
 
-以月度页为例，**三语版本各自输出全套**（hreflang 必须**双向且自指**，否则 Google 忽略）：
+本章口径**取代**本文其它处早期按 URL 多语言写的内容，以下引用点应据此收敛（标注待逐处清理）：
 
-| 当前页 | `<link rel="canonical">` | hreflang `en` / `x-default` | hreflang `ja` | hreflang `zh` |
-|---|---|---|---|---|
-| `/2024/10`（en） | `/2024/10` | `/2024/10` | `/ja/2024/10` | `/zh/2024/10` |
-| `/ja/2024/10` | `/ja/2024/10` | `/2024/10` | `/ja/2024/10` | `/zh/2024/10` |
-| `/zh/2024/10` | `/zh/2024/10` | `/2024/10` | `/ja/2024/10` | `/zh/2024/10` |
-
-```ts
-// 统一构造（伪代码），en 同时充当 x-default
-function altLanguages(path: string) {            // path 形如 "/2024/10"
-  return {
-    en: `${BASE}${path}`,
-    ja: `${BASE}/ja${path}`,
-    zh: `${BASE}/zh${path}`,
-    'x-default': `${BASE}${path}`,
-  }
-}
-// generateMetadata 返回：
-return { alternates: { canonical: `${BASE}${langPrefix}${path}`, languages: altLanguages(path) } }
-```
-
-输出（en 版 head 片段）：
-
-```html
-<link rel="canonical" href="https://gitstarclub.com/2024/10" />
-<link rel="alternate" hreflang="en" href="https://gitstarclub.com/2024/10" />
-<link rel="alternate" hreflang="ja" href="https://gitstarclub.com/ja/2024/10" />
-<link rel="alternate" hreflang="zh" href="https://gitstarclub.com/zh/2024/10" />
-<link rel="alternate" hreflang="x-default" href="https://gitstarclub.com/2024/10" />
-```
-
-- **og:locale**：en=`en_US`、ja=`ja_JP`、zh=`zh_CN`；`openGraph.alternateLocale` 列另两种（社交平台语言协商）。
-- **sitemap 同步**：sitemap `alternates.languages` 与页面 hreflang **一致**（同一构造函数），三语 URL 同源声明（见 §4.1 示例）。
-- **优先级**：英文为主、日/中紧随（见 [PRODUCT.md](./PRODUCT.md)）；i18n 路由 + 文案字典从一开始预留，避免返工。三语各自独立 URL ⇒ 收录目标 × 3（见 §1.3）。
+- **§1.3 收录量级**：不再 × 语言数——URL 总数 = **单语言页数**（早期"× 3 语言 ≈ 2 万"作废）。
+- **§4.1 sitemap**：每个 `<url>` **不含 `alternates.languages`**；该处 hreflang / 语言 alternate 代码作废。
+- **§2 各页 meta**：不输出 hreflang 互链；canonical 指语言中立自身。
+- **§7 canonical 去重**：跨语言 canonical 一项不适用（无语言变体 URL）。
+- **§14 GSC**：无 hreflang 报告需关注。
 
 ---
 
@@ -729,11 +698,11 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 | 任务 | 操作 | 频率 |
 |---|---|---|
-| 验证站点 | GSC 加 `gitstarclub.com`（DNS 或 `metadata.verification.google` meta）；建议 Domain property 覆盖三语路径 | 一次 |
+| 验证站点 | GSC 加 `gitstarclub.com`（DNS 或 `metadata.verification.google` meta）；语言中立单一 URL，无需覆盖语言路径 | 一次 |
 | 提交 sitemap | 提交 `https://gitstarclub.com/sitemap.xml`（index）；GSC 自动发现各分片 | 切换后 + 分片结构变更时 |
 | 监控收录率 | Coverage / Pages 报告：盯 ①Discovered–not indexed（长尾未抓 → 检查内链/lastModified）②Crawled–not indexed（内容薄 → 加强页面价值）③Excluded by noindex（预览残留 → 清理） | 每周 |
 | **ISR 冷启动考量** | GSC 抓取首个 URL 会触发该页 ISR 生成（首抓 TTFB 略高、属正常）；**关注首抓后是否 200 + 内容完整**，而非冷启动延迟本身 | 抽查 |
-| hreflang 报告 | International Targeting：确认三语互链无「missing return tag」错误 | 每月 |
+| ~~hreflang 报告~~ | ⚠️ 不适用：语言中立单一 URL、不发 hreflang（见 §10）；无 International Targeting 需监控 | — |
 | URL Inspection | 抽查 repo / org / 历史月页：实时抓取看渲染后 HTML 是否含正文 + JSON-LD（验证 §3a 可索引性） | 抽查 |
 | 富结果监控 | Rich Results：Breadcrumb / Dataset 是否有效；用 [Rich Results Test](https://search.google.com/test/rich-results) 验 JSON-LD | 上线 + 变更 schema 时 |
 | 移除过时网址 | 若预览曾误被收录：Removals 工具临时移除 + 修 noindex | 仅事故时 |
@@ -758,8 +727,8 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 - [ ] 每页唯一 `title` / `description` / `canonical`，标题含真实搜索词（star history / trending / 年份 / repo / org 名）
 - [ ] `metadataBase` 设为生产域名，相对 URL 正确解析为绝对 URL
-- [ ] 各语言 canonical **指自身**；hreflang 三语**双向自指** + `x-default`（§10 矩阵），GSC 无 missing return tag
-- [ ] og:locale / alternateLocale 按语言正确；`og:type` 月/年页可带 published/modified time
+- [ ] canonical 指**语言中立单一 URL**；**不发 hreflang / `alternates.languages`**（语言是页内 cookie 偏好，见 §10）
+- [ ] `og:type` 月/年页可带 published/modified time（og:locale 默认 `en_US`）
 
 **按需 ISR 可索引性（§3）**
 
