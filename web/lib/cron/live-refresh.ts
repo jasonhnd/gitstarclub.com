@@ -52,6 +52,9 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promi
   const fresh = canReuseToday ? new Map<number, number>() : await fetchStarCounts(dry ? refs.slice(0, 50) : refs);
   const recalculatesToday = fresh.size > 0;
 
+  // Month rollover: the closing month's daily per_repo must be frozen to pending BEFORE
+  // current_month.json is overwritten, else the fold (L3) loses it (§8.3 step 1).
+  const rolledOver = !!existingCM && existingCM.month !== month;
   const carryMonth = existingCM?.month === month ? existingCM : undefined;
   const prevStars = (id: number) => existingCM?.current_stars?.[String(id)] ?? lookup[String(id)].current_stars;
   const mergedStars = new Map<number, number>(refs.map((ref) => [ref.id, lookup[String(ref.id)].current_stars]));
@@ -117,6 +120,7 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promi
   const monthHeatmap = mergeMonthHeatmap(monthHeat, month, dailyTotals, now);
 
   const writes = [
+    ...(rolledOver ? [`canonical/v2/pending/${existingCM!.month}.json`] : []),
     "current_month.json",
     "hot-snapshot.json",
     `live/rank/month/${month}/repo/flow.json`,
@@ -140,6 +144,16 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promi
   };
 
   if (dry) return result;
+
+  // freeze the closing month FIRST (before current_month.json is overwritten below).
+  if (rolledOver) {
+    await putView(`canonical/v2/pending/${existingCM!.month}.json`, {
+      period: existingCM!.month,
+      frozen_at: now.toISOString(),
+      daily_totals: existingCM!.daily_totals,
+      per_repo: existingCM!.per_repo,
+    });
+  }
 
   await Promise.all([
     putView("current_month.json", currentMonth),

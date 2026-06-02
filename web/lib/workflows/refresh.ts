@@ -1,6 +1,7 @@
 import { refreshWhitelist } from "./steps/whitelist";
 import { detectRenames } from "./steps/rename";
 import { refreshMetadataBucket } from "./steps/metadata";
+import { foldCanonical } from "./steps/fold";
 import { recomputeRank } from "./steps/recompute-rank";
 import { recomputeRepoEntities, recomputeOrgEntities } from "./steps/recompute-entity";
 import { recomputeHeatmap } from "./steps/recompute-heatmap";
@@ -34,6 +35,9 @@ export async function refreshWorkflow(runId: string) {
     }
     const metadata = { repos, buckets: REPO_BUCKETS, from_github: fromGithub };
 
+    // fold any closed months (live overlay → canonical) so the recompute below includes them.
+    const fold = await foldCanonical(runId);
+
     // recompute the full view matrix into the run's versioned prefix (does not touch live).
     const rank = await recomputeRank(runId);
     const repoEntities = await recomputeRepoEntities(runId);
@@ -51,7 +55,7 @@ export async function refreshWorkflow(runId: string) {
     const publish = await publishVersion(runId);
 
     await markPublished(runId, startedAt);
-    return { runId, ok: true, whitelist, rename, metadata, recompute, validation, publish };
+    return { runId, ok: true, whitelist, rename, metadata, fold, recompute, validation, publish };
   } catch (err) {
     await markFailed(runId, startedAt, err instanceof Error ? err.message : String(err));
     throw err;
