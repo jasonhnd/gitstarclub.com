@@ -152,35 +152,41 @@ export default nextConfig;
 
 - **每日 cron**（`/api/cron/daily`，[OPS](./OPS.md) §Cron）：写 `current_month.json` + `hot-snapshot.json` + `live/rank/*` 当前月/当前周覆盖层 + `live/heatmap/*` 当月覆盖层 → `revalidatePath` 核心热集（首页 / pulse / rankings / 当年 / 当月 / 当前周）。
 - **每周 cron**（`/api/cron/weekly`）：同样在 Vercel 内做 live refresh，保证周榜和月榜即使没有全量历史重算也不会断档；全量历史刷新另走 Vercel Workflow 分片，不做 16k 全量 build。
-- **deploy**：仅代码/结构变更触发；会重置 ISR store，长尾首访冷生成一次（10M/天下可忽略，见 [ARCHITECTURE](./ARCHITECTURE.md)）。
+- **deploy**：仅代码/结构变更触发；会重置 ISR store，长尾首访冷生成一次（见 [ARCHITECTURE](./ARCHITECTURE.md)）。
 
-> ⚠️ **`revalidatePath` 需要 mutable route handler（`/api/cron/*`）**——现有 app 尚无 `app/api/` 目录，属待加（与 OPS Cron 章节配套）。
+> ✅ `app/api/cron/daily` 与 `app/api/cron/weekly` 已落地（`revalidatePath` + `CRON_SECRET` 鉴权）。
+
+### 2.5 ⚠️ 当前渲染现实：`force-dynamic`（与 SSG/ISR 模型的分歧，§9-J）
+
+> **现状与上面 §2.1–2.4 的 SSG/ISR 蓝图不一致,如实记录**:为支持 cookie 版 i18n(`gsc_lang`),根 `layout.tsx` 设了 `export const dynamic = "force-dynamic"`,`[owner]/[name]`、`o/[login]` 也是 force-dynamic。**这让相关路由按请求 SSR、不进 ISR 持久缓存**,与 [ARCHITECTURE](./ARCHITECTURE.md)/[SEO](./SEO.md)「纯静态 + 边缘 CDN + 热路径零 Function 扛 10M/天」的核心假设冲突。
+
+- **为什么**:读 cookie(`cookies()`)使路由被 Next 标记为动态,无法静态化。这是 cookie i18n(§7、§9-E)的直接后果。
+- **影响**:扛量/成本模型需重估(动态渲染每请求一次 Function vs 纯静态命中 CDN);SEO 仍可索引(SSR 输出完整 HTML),但 CWV/TTFB 与缓存策略不同。
+- **未决,需架构决策**(§9-J 三选项):①接受动态、重估扛量;②i18n 回退 URL 段恢复 SSG;③内容页改免 cookie 的语言方案。**本次只拉齐文档、不擅自改架构。**
 
 ---
 
 ## 3. 数据消费（页面如何读 JSON 视图）
 
-### 3.1 现状 vs 目标
+### 3.1 现状（✅ 已接真实数据层，占位已移除）
 
-⚠️ 现有所有页面从 `web/app/_explore/data.ts` 读**占位数据**（同步、内存、`pseudo()` 造的假数）。data.ts 头部已自述 "Placeholder data … the data layer isn't built yet"。真实数据层落地后，要把 `_explore/data.ts` 换成**读 Blob 上的 JSON 视图**的数据访问层。
+✅ **占位 `_explore/data.ts` 已删除**；现有页面全部从 `@/lib/data` 读 Blob 上的真实 JSON 视图(`fetch` + Zod parse + React `cache()`)。8 个页面文件(`page`/`pulse`/`rankings/**`/`[owner]/[name]`/`o/[login]` 等)均 import `@/lib/data`,无一再用占位。
 
-### 3.2 数据访问层（建议落在 `web/lib/`）
+### 3.2 数据访问层（已落地 `web/lib/`）
 
-[DATA-CONTRACTS](./DATA-CONTRACTS.md) §4 规定 Zod schema 放 `web/lib/contracts/`（⚠️ 该目录尚不存在，待建）。建议结构：
+[DATA-CONTRACTS](./DATA-CONTRACTS.md) §4 的 Zod schema 已建于 `web/lib/contracts/`,读取器已建于 `web/lib/data/`。**实际结构**(与下方早期"建议结构"略有出入——按产物族归并,非每产物一文件):
 
 ```
 web/lib/
-  contracts/        # 每个 JSON 产物一个 Zod schema（单一类型事实源）
-    rank.ts         # rank/{window}/{period}/{dim}/{metric}.json
-    entity.ts       # entity/repo/{id}.json · entity/org/{login}.json
-    heatmap.ts      # heatmap/{year|month}/{period}.json
-    lookup.ts       # lookup/repos.json · lookup/orgs.json
-    snapshot.ts     # current_month.json · hot-snapshot.json
-    meta.ts         # meta.json（schema_ver 校验）
-  data/             # 读取器（fetch Blob + schema.parse + React cache 去重）
-    blob.ts         # 拼 Blob 直链 URL（读 NEXT_PUBLIC_* / 见 OPS Blob 布局）
-    rank.ts  entity.ts  heatmap.ts  lookup.ts  snapshot.ts
+  contracts/        # Zod schema（单一类型事实源），barrel = index.ts
+    common.ts       # 共享/枚举/rank/heatmap/meta 等基础 schema
+    lookup.ts  entity.ts  live.ts
+  data/             # 读取器（fetch Blob + schema.parse + React cache 去重），barrel = index.ts
+    source.ts       # readView：拼 Blob 直链 URL + fetch + parse（见 OPS Blob 布局）
+    lookup.ts  rank.ts  entity.ts  heatmap.ts  snapshot.ts  meta.ts  write.ts
 ```
+
+> 早期"每产物一个 schema 文件"的建议结构(rank.ts/heatmap.ts/snapshot.ts/meta.ts 分离)未严格采用;实际把 rank/heatmap/meta 的 schema 收进 `common.ts`,readers 仍按 rank/heatmap/snapshot/meta 分文件。契约语义不变。
 
 **读取器三要素**（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §4 + [SEO](./SEO.md) §2）：
 
@@ -197,8 +203,8 @@ export const getRepoEntity = cache(async (id: number) => {
 });
 ```
 
-- **build/运行时只 `fetch` + `parse`**——不聚合、不带引擎（[ARCHITECTURE](./ARCHITECTURE.md) 渲染策略）。
-- **未知 param → `notFound()`**（404，禁软 200，见 [SEO](./SEO.md) §3.2）。现有 `r/[owner]/[name]/page.tsx` 用 `repoDetail()` 兜底返回 `REPOS[0]`，⚠️ 真实层须改为查不到即 `notFound()`（见 §9-B）。
+- **运行时只 `fetch` + `parse`**——不聚合、不带引擎（[ARCHITECTURE](./ARCHITECTURE.md) 渲染策略）。
+- **未知 param → `notFound()`**（404，禁软 200，见 [SEO](./SEO.md) §3.2）。✅ 已落地：`[owner]/[name]/page.tsx` 先 `getRepoIdByFullName()` 查 id、查不到 `notFound()`，再 `getRepoEntity(id)`、为空再 `notFound()`（§9-B 已收敛）。
 
 ### 3.3 每页读哪些视图（页面 ↔ JSON 契约映射）
 
@@ -227,7 +233,7 @@ const lookup = await getRepoLookup();                            // { [id]: {own
 const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 ```
 
-好处（[DATA-CONTRACTS](./DATA-CONTRACTS.md)）：榜单文件保持小、repo 改名只需更新 lookup（不动每张榜）。⚠️ 现有 `RankingList`/`RankingRow` 直接吃内嵌了 `owner/name/lang/total` 的 `RepoRow`（来自占位 data.ts），真实层接入时入参形状改为 "rank item + lookup join 后" 的对象（见 §6 组件契约映射）。
+好处（[DATA-CONTRACTS](./DATA-CONTRACTS.md)）：榜单文件保持小、repo 改名只需更新 lookup（不动每张榜）。✅ 现行：`web/lib/data/rank.ts` 的 `joinRepoRank`/`joinOrgRank` 把 `rank.items`（`{rank,id,value,prev_rank}`）与 `lookup/*` join 出展示字段后喂给 `RankingList`（早期占位版曾内嵌 `owner/name/lang/total`，已弃）。
 
 ### 3.5 缓存一致性
 
@@ -299,39 +305,45 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
 | 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
 | Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + `role="img"` + aria-label |
-| 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 唯一交互按钮（见 §4.2） |
+| 面包屑 Breadcrumbs | `_explore/Breadcrumbs.tsx` | RSC | ✅ 已建：Home→年→月 / Home→owner→repo 等（[SEO](./SEO.md) §6.7） |
+| 结构化数据 JsonLd | `_explore/JsonLd.tsx` | RSC | ✅ 已建：注入 `application/ld+json`（配 `@/lib/jsonld`） |
+| 页脚 Footer | `_explore/Footer.tsx` | RSC | ✅ 已建：构建时间戳 + 语言切换落点 |
+| 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 交互按钮（见 §4.2） |
+| 语言切换 LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | ✅ 已建：写 `gsc_lang` cookie + `router.refresh()`（§7） |
 | 页面转场 Template | `template.tsx` | RSC | 重挂载淡入容器 |
 | SW 注册 RegisterSW | `_explore/RegisterSW.tsx` | **Client** | PWA（见 §4.2 / §9-C） |
-| 占位数据 | `_explore/data.ts` | 模块 | ⚠️ 占位，真实层替换（见 §3） |
 
-> 现有页面里**面包屑 / 上下页导航 / 脊柱 / 页脚**是**内联**在各 page.tsx（如 `rankings/[year]/page.tsx` 的导航、`page.tsx` 的脊柱）。随页面增多建议抽成共享组件（见 §6.3）。
+> ✅ 占位 `_explore/data.ts` 已删除（页面读 `@/lib/data`，见 §3.1）。面包屑 / 页脚 / 语言切换已抽成共享组件；**上下页导航 / 脊柱** 仍部分内联在各 page.tsx（见 §6.3 剩余待抽项）。
 
 ### 6.2 server-by-default 原则
 
 - 一切默认 RSC；只有 `ThemeToggle`（必需交互）与 `RegisterSW`（PWA）带 `"use client"`。
 - 新增页面（周/org/rankings/pulse）**全用 RSC** + 复用上述组件；任何"看似要 JS"的交互先查 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §零客户端 JS 约束表是否有纯 CSS/服务端解法，否则需重新设计而非引入 client JS。
 
-### 6.3 待加的共享组件（随页面扩张）
+### 6.3 共享组件（✅ 已建 / ⏳ 仍待抽）
 
-| 组件 | 用途 | 复用 |
+| 组件 | 状态 | 用途 / 复用 |
 |---|---|---|
-| `Breadcrumbs` | Home→年→月 / Home→Rankings→org 等（[SEO](./SEO.md) §6.7） | 全页；同时承载 `BreadcrumbList` JSON-LD |
-| `PrevNext`（抽 `NavArrow`/`MonthArrow`） | 上下月 / 上下年 / 上下周（永远在顶部，[PRODUCT](./PRODUCT.md)） | 年/月/周页 |
-| `EntityCard` | repo/org 卡片（榜单外的实体展示，如 Pulse） | pulse / rankings |
-| `Footer` | `border-t` + on-surface-variant + 构建时间戳（UTC+JST）+ **语言切换** | layout（i18n 语言切换落点） |
-| `YearSpine` | 首页 inline 脊柱抽组件 | 首页 / pulse |
-| `LangSwitcher` | 当前语言按钮 + 其它语言下拉；支持 en/ja/zh/zh-TW/ko/es/fr（客户端写 cookie 后刷新当前 RSC 视图） | Footer / app bar |
+| `Breadcrumbs` | ✅ 已建（`_explore/`） | Home→年→月 / Home→owner→repo（[SEO](./SEO.md) §6.7） |
+| `Footer` | ✅ 已建（`_explore/`） | 构建时间戳（UTC+JST）+ 语言切换落点 |
+| `LanguageSwitcher` | ✅ 已建（`components/`） | 当前语言 + 下拉切其它语言；en/ja/zh/zh-TW/ko/es/fr；写 cookie + `router.refresh()` |
+| `JsonLd` | ✅ 已建（`_explore/`） | 注入 `BreadcrumbList`/`Dataset` 等 JSON-LD |
+| `PrevNext`（`NavArrow`/`MonthArrow`） | ⏳ 仍内联 | 上下月 / 上下年 / 上下周（年/月/周页） |
+| `EntityCard` | ⏳ 待加 | repo/org 卡片（pulse / rankings） |
+| `YearSpine` | ⏳ 仍内联 | 首页脊柱抽组件（首页 / pulse） |
 
-### 6.4 组件 ↔ JSON 契约映射（真实层接入时的入参形状）
+### 6.4 组件 ↔ JSON 契约映射（✅ 现已用真实层入参）
 
-| 组件 | 当前入参（占位） | 真实层入参（DATA-CONTRACTS） |
+> 占位已移除;下表"真实层入参"列即**当前实际**入参,"早期占位"列仅作迁移留痕。
+
+| 组件 | 早期占位入参（已弃） | 真实层入参（DATA-CONTRACTS，现行） |
 |---|---|---|
 | `RankingList` | `RepoRow[]`（内嵌 owner/name/lang/total/gained） | `rank.items`（`{rank,id,value,prev_rank}`）**join** `lookup/*` 后的行（见 §3.4）；`prev_rank` 驱动 ↑↓/进出 TOP |
 | `StarCurve` | `{label,total}[]` + `Milestone[]` | `entity/repo.curve.monthly`（`[period,adds,total_end]`）取 `total_end` 为 `total`；`milestones` 来自 `entity.milestones`；尾部接 `curve.recent_daily` |
 | `Heatmap` | `{label,gained}[]` + max | `heatmap/{scope}/{period}.cells`（`[date|period, 总量]`）；当月合并 `current_month.json.daily_totals` |
 | 脊柱（YearSpine） | `YEARS`（占位） | `hot-snapshot.home.year_spine`（`[year, 总量]`） |
 
-> ⚠️ `entity/repo.curve.recent_daily` 可为负（取消 star，[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5）；`StarCurve` 现假设单调累计（占位 data.ts 强制 `total` 非降）。真实曲线尾部 net 段可能回落，组件 y 轴/area 计算需容忍非单调（见 §9-D）。
+> ⚠️ `entity/repo.curve.recent_daily` 可为负（取消 star，[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5）；真实数据已流入,但 `StarCurve` 取 `curve.monthly` 的 `total_end`(累计)作 `total`、可能仍按单增假设画轴/area——**真实曲线尾部 net 段回落时需验证渲染正确**（§9-D ⏳ 待验证），`max` 应取序列实际最大值。
 
 ---
 
@@ -384,34 +396,37 @@ return {
 
 > 把上面落到"动现有哪些文件"。**本文是 spec，不写应用代码**；以下是接入顺序建议。
 
-1. **数据层**：`web/lib/contracts/`（Zod，[DATA-CONTRACTS](./DATA-CONTRACTS.md) §4）+ `web/lib/data/`（fetch Blob + parse + `cache()`）是页面读取 JSON 视图的唯一入口。
-2. **段配置**：`rankings/[year]` / `rankings/[year]/[period]` 只预渲染当前年/月；历史页、repo、org、周榜走按需 ISR。repo/org/月/年的未知 param 改 `notFound()`（§9-B）。
-3. **`next.config.ts`**：不做语言前缀跳转；不为旧 `/trending`、旧 `/{year}` 历史路径或旧 `/r/...` 配置兼容重定向。
-4. **页面**：`pulse`、`rankings`、`rankings/[year]`、`rankings/[year]/[period]`、`o/[login]` 已落地（全 RSC，复用组件）。
-5. **i18n**：使用 `gsc_lang` cookie + 页内语言切换，URL 不带语言段（§7）。
-6. **SEO 配套**：`app/sitemap.ts`（`generateSitemaps()` 分片）、`app/robots.ts`、各页 `generateMetadata`、JSON-LD（[SEO](./SEO.md) §4/§5/§6）。
-7. **cron route**：`app/api/cron/daily`（`revalidatePath` + `CRON_SECRET` 鉴权，[OPS](./OPS.md) §Cron）。
-8. **共享组件**：抽 `Breadcrumbs` / `PrevNext` / `Footer` / `YearSpine` / `LangSwitcher`（§6.3）。
+> 多数项已落地;下表保留为"接点 + 现状"。剩余开口集中在 §9-J(渲染模式)与 §6.3 ⏳ 组件。
+
+1. ✅ **数据层**：`web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch Blob + parse + `cache()`）已是页面读 JSON 视图的唯一入口。
+2. ✅/◐ **段配置**：`rankings/[year]`/`[period]` 预渲染当前年/月 + `dynamicParams`;未知 param `notFound()` 已落地（§9-B）。⚠️ 但 repo/org/layout 用 `force-dynamic`,实际非 ISR（§9-J）。
+3. ✅ **`next.config.ts`**：无语言前缀跳转、无旧路径兼容重定向。
+4. ✅ **页面**：`pulse`/`rankings`/`rankings/[year]`/`[period]`/`[owner]/[name]`/`o/[login]` 已落地。
+5. ✅ **i18n**：`gsc_lang` cookie + 页内切换，URL 无语言段（§7）——但这是 §9-J `force-dynamic` 的根因。
+6. ✅ **SEO 配套**：`app/sitemap.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD 已建。
+7. ✅ **cron route**：`app/api/cron/{daily,weekly}`（`revalidatePath` + `CRON_SECRET`）。
+8. ◐ **共享组件**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` ✅ 已抽;`PrevNext`/`EntityCard`/`YearSpine` ⏳ 仍内联（§6.3）。
 
 ---
 
 ## 9. 与文档/需求的冲突与待决项（⚠️ 汇总）
 
-> 现有 `web/app` 是 **M3E UI/UX 探索原型**（`data.ts` 自述占位），多处与"生产分层/数据契约"模型有意或暂时不一致。这里逐条列出，供实现时对齐。
+> 现有 `web/app` **已接真实数据层**(占位移除)。早期"原型→生产"的多数差异已收敛;但 **i18n 改为 cookie 偏好后,根 `layout.tsx` 变成 `force-dynamic`**,引出一个与 SSG/ISR 模型的**当前实质分歧(见 J)**。逐条状态如下。
 
 | # | 冲突/缺口 | 现状 | 文档要求 | 处置 |
 |---|---|---|---|---|
-| **A** | **长尾页预渲染范围** | `rankings/[year]` / `rankings/[year]/[period]` 只预渲染当前年/月；repo/org/周榜空列表 | 长尾应**空 `generateStaticParams` + 按需 ISR**；仅当年/当月留核心（[ARCHITECTURE](./ARCHITECTURE.md) 分层、[SEO](./SEO.md) §3） | ✅ 已按当前 IA 收敛；继续保持 |
-| **B** | **未知 param 软兜底而非 404** | `repoDetail()` 查不到回 `REPOS[0]`（200）；月页/年页有 `notFound()` 但 repo 页无 | 未知 repo/org → `notFound()`（404），禁软 200（[SEO](./SEO.md) §3.2） | 真实读取器查不到即 `notFound()` |
-| **C** | **第三处客户端 JS（PWA）** | `RegisterSW.tsx`（`"use client"`，注册 SW）+ `manifest.ts` | DESIGN-SYSTEM 原仅列两处例外 | ✅ **已决：保留 PWA**，已在 DESIGN-SYSTEM 补为例外③（保留 RegisterSW/manifest/sw.js） |
-| **D** | **StarCurve 假设单调累计** | 占位 data 强制 `total` 非降；轴/area 按单增算 | `entity/repo.curve.recent_daily` net 可负，尾部可能回落（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5） | 真实接入时让 y 轴/area 容忍非单调；`max` 取序列实际最大值 |
-| **E** | **i18n URL 形态** | URL 不带语言段；`gsc_lang` cookie 决定 UI 语言 | repo URL 需要与 GitHub 结构一致 | ✅ 已决：页内语言偏好，canonical 单一 |
-| **F** | **metadataBase** | `layout.tsx` 读 `NEXT_PUBLIC_SITE_URL`，默认 `https://gitstarclub.com` | 预览/生产可通过环境变量切换（[OPS](./OPS.md)/[SEO](./SEO.md) §2） | ✅ 已落地 |
-| **G** | **sitemap/robots/cron/og 路由** | `app/` 已有 `sitemap.ts`/`robots.ts`/`api/cron/daily`/动态 OG | SEO/OPS 要求齐备（[SEO](./SEO.md)/[OPS](./OPS.md)） | ✅ 已落地，继续扩展 OG 卡片 |
-| **H** | **repo 页 "synced" 时间写死** | `r/[owner]/[name]/page.tsx:45` 硬编码 `synced 2026-05-29 · 14:30 JST` | as-of 应来自数据（`fetched_at`/`updated`），UTC+JST 双显示（[ARCHITECTURE](./ARCHITECTURE.md) 时区） | 真实层取 `entity`/`current_stars` 的 as-of 字段 |
-| **I** | **`_explore/` 命名** | 组件在 `app/_explore/`（`_` 前缀 = private folder，不成路由段） | 设计系统组件清单引用 `_explore/` + `components/` | 沿用现状（`_explore` 私有目录合理）；新共享组件可继续放 `_explore/` 或提升到 `components/` |
+| **A** | **长尾页预渲染范围** | `rankings/[year]`/`[period]` 用 `generateStaticParams` 预渲染当前年/月 + `dynamicParams`;repo/org 无 `generateStaticParams` | 长尾按需生成;仅当年/当月留核心（[ARCHITECTURE](./ARCHITECTURE.md) 分层、[SEO](./SEO.md) §3） | ◐ 参数侧已收敛;但渲染缓存被 J(`force-dynamic`)覆盖,**实际非 ISR 持久缓存** |
+| **B** | **未知 param 软兜底而非 404** | — | 未知 repo/org → `notFound()`（404），禁软 200（[SEO](./SEO.md) §3.2） | ✅ **已收敛**：`[owner]/[name]` 先查 id 不到即 `notFound()`,再查 entity 为空再 `notFound()` |
+| **C** | **第三处客户端 JS（PWA）** | `RegisterSW.tsx`（`"use client"`）+ `manifest.ts` | DESIGN-SYSTEM 原仅列两处例外 | ✅ **已决：保留 PWA**（DESIGN-SYSTEM 例外③） |
+| **D** | **StarCurve 假设单调累计** | 真实 `curve.recent_daily` net 可负、尾部可能回落 | y 轴/area 须容忍非单调（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5） | ⏳ **待验证**：真实数据已流入,需确认曲线尾部回落时渲染正确 |
+| **E** | **i18n URL 形态** | URL 不带语言段；`gsc_lang` cookie 决定 UI 语言 | repo URL 与 GitHub 一致 | ✅ 已决：页内语言偏好，canonical 单一 |
+| **F** | **metadataBase** | `layout.tsx` 读 `NEXT_PUBLIC_SITE_URL`，默认 `https://gitstarclub.com` | 环境变量切换（[OPS](./OPS.md)/[SEO](./SEO.md) §2） | ✅ 已落地 |
+| **G** | **sitemap/robots/cron/og 路由** | `app/` 已有 `sitemap.ts`/`robots.ts`/`api/cron/{daily,weekly}`/OG | SEO/OPS 要求齐备 | ✅ 已落地 |
+| **H** | **repo 页 "synced" 时间写死** | — | as-of 应来自数据 | ✅ **已收敛**：现 repo 页不再硬编码 synced 时间 |
+| **I** | **`_explore/` 命名** | 组件在 `app/_explore/`（private folder） | — | 沿用现状（合理） |
+| **J** | **渲染模式 = `force-dynamic`,非 SSG/ISR** ⚠️ | 根 `layout.tsx` `export const dynamic="force-dynamic"`(读 `gsc_lang` cookie 必然动态);`[owner]/[name]`、`o/[login]` 同样 force-dynamic | ARCHITECTURE/SEO 通篇假设 **SSG-first + 按需 ISR + 边缘 CDN 纯静态扛 10M/天、热路径零 Function** | ⚠️ **未决（架构级,需用户定）**：cookie i18n 让全站按请求 SSR,与"纯静态 CDN"扛量模型冲突。选项:①接受动态渲染(重估扛量/成本)②i18n 回退到 URL 段以恢复 SSG ③对内容页用其它免 cookie 方案。**不在本次拉齐内擅自改架构,仅如实记录** |
 
-> 处置原则：**原型先用占位跑通 M3E 观感是合理的**；上述差异是"原型→生产"的已知 TODO，不是设计错误。落地数据层时按本表逐条收敛即可。
+> 处置原则：早期占位差异(B/E/F/G/H)**已收敛**;A/D 收尾验证;**J 是新出现的架构级分歧**,源于 cookie i18n,需单独决策——见本表末与 §2.5。
 
 ---
 
@@ -424,23 +439,25 @@ return {
 
 **分层 ↔ 配置**
 - [ ] `cacheComponents` 保持关闭（`next.config.ts` 注释说明）
-- [x] 核心段（home/pulse/rankings/当年/当月）按需渲染；长尾段仍使用空 `generateStaticParams`
-- [ ] 长尾段（历史年月/周/repo/org）`dynamicParams=true` + 空 `generateStaticParams` + `revalidate=false`
-- [ ] 数据变更靠 cron `revalidatePath`，无全量 build；`app/api/cron/*` 带 `CRON_SECRET` 鉴权
+- [x] `rankings/[year]`/`[period]` 用 `generateStaticParams` 预渲染当年/当月 + `dynamicParams`
+- [x] 数据变更靠 cron `revalidatePath`；`app/api/cron/{daily,weekly}` 带 `CRON_SECRET` 鉴权
+- [ ] ⚠️ **渲染模式待决（§9-J）**：当前根 layout `force-dynamic`(cookie i18n),实际非 ISR 持久缓存——与 SSG 扛量模型冲突,需架构决策
 
 **数据消费**
-- [ ] `web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch+parse+`cache()`）替换 `_explore/data.ts`
-- [ ] 榜单走 lookup-join（rank item + `lookup/*`）；未知 param → `notFound()`
-- [ ] 每日视图读取带 `?v=<date>` cache-bust；`meta.schema_ver` 启动校验
+- [x] `web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch+parse+`cache()`）已替换占位 `_explore/data.ts`（已删除）
+- [x] 榜单走 lookup-join（rank item + `lookup/*`）；未知 param → `notFound()`
+- [ ] 每日视图读取带 `?v=<date>` cache-bust；`meta.schema_ver` 启动校验（核对落地）
 
 **零客户端 JS**
-- [ ] 内容页正文 0 client JS；图表服务端 SVG/DOM；仅主题切换 + PWA SW（已决保留为例外③）带 `"use client"`
+- [ ] 内容页正文 0 client JS；图表服务端 SVG/DOM；仅主题切换 + 语言切换 + PWA SW 带 `"use client"`
 - [ ] 新增入场动画在 `prefers-reduced-motion` 块补终态钉死
 
 **i18n**
-- [ ] 字典覆盖全部 UI chrome（抽离现有内联英文）；数据字段不翻译
-- [x] 各页 `alternates.canonical` 指无语言前缀 canonical；语言不再产生 `alternates.languages`
-- [ ] `metadataBase` 改读 `NEXT_PUBLIC_SITE_URL`
+- [x] 手写字典 `web/lib/i18n/`（en/ja/zh/zh-TW/ko/es/fr）；数据字段不翻译
+- [x] 各页 `alternates.canonical` 指无语言前缀 canonical；不发 `alternates.languages`
+- [x] `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`
 
 **冲突收敛（§9）**
-- [ ] A–I 逐条处置（长尾 ISR / 404 / PWA 例外文档 / 非单调曲线 / i18n / metadataBase / SEO 路由 / as-of 时间）
+- [x] B/E/F/G/H 已收敛；C 已决（PWA 例外③）
+- [ ] A/D 收尾验证（A 受 J 影响、D 非单调曲线渲染）
+- [ ] **J（force-dynamic vs SSG）架构级决策** ⬅ 当前最大开口
