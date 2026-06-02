@@ -19,6 +19,14 @@
 | **Production** | `web/`（Next.js 16，App Router + RSC） | **gitstarclub.com / www.gitstarclub.com** | 已切到 web 应用 | 生产 alias 指向 `gitstarclub.com` 项目的 Ready deployment |
 | **Preview / staging** | 同一项目的 Preview deployment | **pre.gitstarclub.com** | 已配置 | Cloudflare DNS：`A pre.gitstarclub.com 76.76.21.21`，Vercel alias 指向 Preview deployment，Preview Protection 保持私有 |
 
+**域名命名约定**：
+
+- 生产访问只使用 `gitstarclub.com` / `www.gitstarclub.com`。
+- 测试访问只使用 `pre.gitstarclub.com`。
+- `gitstarclubcom.vercel.app` / `gitstarclubcom-zkscio.vercel.app` 是 Vercel 自动生成的生产别名，保留但不对外传播。
+- `gitstarclub-<hash>-zkscio.vercel.app` 是每次部署的不可变 deployment URL，只用于 inspect/promote/回滚，不作为环境入口。
+- 旧 `gitstarclub-web*.vercel.app` 与旧分支 alias 已移除，避免和当前单项目拓扑混淆。
+
 **历史项目处理**：
 
 - `gitstarclub-web` 是旧 web staging 项目，只作临时回滚参考；后续部署不要再使用。
