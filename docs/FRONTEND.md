@@ -158,11 +158,18 @@ export default nextConfig;
 
 ### 2.5 ⚠️ 当前渲染现实：`force-dynamic`（与 SSG/ISR 模型的分歧，§9-J）
 
-> **现状与上面 §2.1–2.4 的 SSG/ISR 蓝图不一致,如实记录**:为支持 cookie 版 i18n(`gsc_lang`),根 `layout.tsx` 设了 `export const dynamic = "force-dynamic"`,`[owner]/[name]`、`o/[login]` 也是 force-dynamic。**这让相关路由按请求 SSR、不进 ISR 持久缓存**,与 [ARCHITECTURE](./ARCHITECTURE.md)/[SEO](./SEO.md)「纯静态 + 边缘 CDN + 热路径零 Function 扛 10M/天」的核心假设冲突。
+> **现状与上面 §2.1–2.4 的 SSG/ISR 蓝图不一致,如实记录(证据可核查)**:
+> - `web/app/layout.tsx:19` → `export const dynamic = "force-dynamic";`（根 layout 显式强制动态）
+> - `web/app/layout.tsx:61` → 根 layout 体内 `await getPreferredDictionary()` → `web/lib/i18n/server.ts:5` 调 `(await cookies()).get(LANG_COOKIE)`——**读 cookie 是 Dynamic API,本身就把整棵路由树打成按请求渲染**
+> - `web/app/[owner]/[name]/page.tsx:17`、`web/app/o/[login]/page.tsx:17` → 也各自 `force-dynamic`
+>
+> **后果**:每个请求跑一次 Server Function(SSR),不命中 CDN 静态文件,与 [ARCHITECTURE](./ARCHITECTURE.md)「永不触达 Function / 热路径 0 Function / 完全 SSG」直接冲突。
 
-- **为什么**:读 cookie(`cookies()`)使路由被 Next 标记为动态,无法静态化。这是 cookie i18n(§7、§9-E)的直接后果。
-- **影响**:扛量/成本模型需重估(动态渲染每请求一次 Function vs 纯静态命中 CDN);SEO 仍可索引(SSR 输出完整 HTML),但 CWV/TTFB 与缓存策略不同。
-- **未决,需架构决策**(§9-J 三选项):①接受动态、重估扛量;②i18n 回退 URL 段恢复 SSG;③内容页改免 cookie 的语言方案。**本次只拉齐文档、不擅自改架构。**
+- **仍成立**:内容页"零客户端 JS"、SSR 输出**完整可索引 HTML**(SEO §3a 不受影响)——force-dynamic 改的是"在哪渲染",不是"客户端有没有 JS"。
+- **不符**:"build 预生成静态 / 命中边缘缓存 / 热路径零 Function / 完全 SSG / 按需 ISR 持久缓存"。成本上 10M/天 ≈ 千万次 Function/天,与纯静态命中 CDN 的扛量模型完全不同。
+- **✅ 已决——目标 = C「静态基底 + 客户端译 chrome」**(取代早前三选项的"未决"):服务端只用**默认英文**静态渲染(render 路径**不读 cookie**);导航/标签/面包屑/About 这层薄 chrome 在**客户端**按 `localStorage`/cookie 切换。理由:每页 ~95% 是语言中立数据,只有几十个 chrome 字符串要翻;C 同时保住 **静态 CDN 扛量 + GitHub 风格 URL + 页内切语言**,且吻合已定的 SEO 口径(语言中立 canonical、英文默认、不发 hreflang,见 [SEO](./SEO.md) i18n 注)。
+  - 否决 A(接受动态→放弃扛量)、B(i18n 回 URL 段→推翻 GitHub 风格 URL §9-E)。
+- **时序**:当前 noindex 预览期(`layout.tsx:17` `SITE_INDEXABLE` 未开),放量问题未发生 ⇒ **不必今天重写**;**上线/放量前实现 C**:把 `getPreferredDictionary()` 移出服务端 render → 去掉 layout 与那两页的 `force-dynamic` → 客户端水合 chrome → 在 Vercel 核对页面回到 static/ISR(构建输出 static vs ƒ、响应头命中 CDN)。属代码活,待"继续做代码"再开。
 
 ---
 
@@ -424,9 +431,9 @@ return {
 | **G** | **sitemap/robots/cron/og 路由** | `app/` 已有 `sitemap.ts`/`robots.ts`/`api/cron/{daily,weekly}`/OG | SEO/OPS 要求齐备 | ✅ 已落地 |
 | **H** | **repo 页 "synced" 时间写死** | — | as-of 应来自数据 | ✅ **已收敛**：现 repo 页不再硬编码 synced 时间 |
 | **I** | **`_explore/` 命名** | 组件在 `app/_explore/`（private folder） | — | 沿用现状（合理） |
-| **J** | **渲染模式 = `force-dynamic`,非 SSG/ISR** ⚠️ | 根 `layout.tsx` `export const dynamic="force-dynamic"`(读 `gsc_lang` cookie 必然动态);`[owner]/[name]`、`o/[login]` 同样 force-dynamic | ARCHITECTURE/SEO 通篇假设 **SSG-first + 按需 ISR + 边缘 CDN 纯静态扛 10M/天、热路径零 Function** | ⚠️ **未决（架构级,需用户定）**：cookie i18n 让全站按请求 SSR,与"纯静态 CDN"扛量模型冲突。选项:①接受动态渲染(重估扛量/成本)②i18n 回退到 URL 段以恢复 SSG ③对内容页用其它免 cookie 方案。**不在本次拉齐内擅自改架构,仅如实记录** |
+| **J** | **渲染模式 = `force-dynamic`,非 SSG/ISR** ⚠️ | `layout.tsx:19` `dynamic="force-dynamic"` + `layout.tsx:61` 读 `getPreferredDictionary()`→`i18n/server.ts:5` `cookies()`;`[owner]/[name]:17`、`o/[login]:17` 同样 force-dynamic ⇒ 每请求一次 Function SSR | ARCHITECTURE/SEO 假设 **SSG-first + 按需 ISR + 边缘 CDN 纯静态扛 10M/天、热路径零 Function** | ✅ **已决：目标 = C「静态基底 + 客户端译 chrome」**——服务端只出默认英文静态页(不读 cookie)、客户端水合 chrome。保住 静态扛量 + GitHub URL + 页内切语言,吻合已定 SEO 口径。否决 A(接受动态)/B(i18n 回 URL 段)。当前 force-dynamic 是**预览期临时**,**上线前实现 C**(代码活)。详见 §2.5 |
 
-> 处置原则：早期占位差异(B/E/F/G/H)**已收敛**;A/D 收尾验证;**J 是新出现的架构级分歧**,源于 cookie i18n,需单独决策——见本表末与 §2.5。
+> 处置原则：早期占位差异(B/E/F/G/H)**已收敛**;A/D 收尾验证;**J 已定目标=C**(§2.5),实现待"继续做代码"。
 
 ---
 
