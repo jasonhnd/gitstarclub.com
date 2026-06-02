@@ -35,7 +35,7 @@ const raw: RawShards = {
   siteDailyByYear,
 };
 
-const model = buildModel(raw);
+const model = buildModel(raw, canonMeta.seam_date);
 const t0 = Date.now();
 const { views, stats } = computeAllViews(model, {
   gen: "PARITY",

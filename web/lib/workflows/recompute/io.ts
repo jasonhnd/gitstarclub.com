@@ -58,7 +58,7 @@ export async function loadCanonicalModel(bust: string): Promise<LoadedModel> {
   for (const s of siteShards) if (s) siteDailyByYear[s.year] = s;
 
   const raw = { repos, monthly, weekly, recentDaily, siteDailyByYear } as unknown as RawShards;
-  return { model: buildModel(raw), seamDate: meta.seam_date, foldedThrough: meta.folded_through };
+  return { model: buildModel(raw, meta.seam_date), seamDate: meta.seam_date, foldedThrough: meta.folded_through };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

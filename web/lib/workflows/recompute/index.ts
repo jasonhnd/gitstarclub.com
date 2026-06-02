@@ -4,7 +4,7 @@
 // computeRepoEntityViews, …) so each Vercel step stays short. See VERCEL-DATA-OPERATIONS §3.
 
 import type { Model } from "./model";
-import { computeOrgWindow, computeRepoWindow, type RepoWindow, type Window } from "./windows";
+import { computeOrgWindow, computeRepoWindow, deriveYearWindow, type RepoWindow, type Window } from "./windows";
 import { allTime, growth, newcomers, orgRankMatrix, repoRankMatrix, type RankView } from "./ranks";
 import { lookups, orgEntities, repoEntities } from "./entities";
 import { heatmaps } from "./heatmap";
@@ -28,17 +28,21 @@ export interface ViewBundle {
 /** Rank matrix + all-time + growth + newcomers (cross-bucket; needs the full model). */
 export function computeRankViews(model: Model, gen: string): Map<string, RankView> {
   const out = new Map<string, RankView>();
-  const repoWindows = new Map<Window, RepoWindow>();
+  const monthWin = computeRepoWindow(model, "month");
+  const repoWindows: Record<Window, RepoWindow> = {
+    month: monthWin,
+    week: computeRepoWindow(model, "week"),
+    year: deriveYearWindow(model, monthWin),
+  };
   for (const w of WINDOWS) {
-    const rw = computeRepoWindow(model, w);
-    repoWindows.set(w, rw);
+    const rw = repoWindows[w];
     for (const [k, v] of repoRankMatrix(rw, w, gen)) out.set(k, v);
     const ow = computeOrgWindow(model, rw);
     for (const [k, v] of orgRankMatrix(ow, w, gen)) out.set(k, v);
   }
   for (const [k, v] of allTime(model, gen)) out.set(k, v);
   for (const w of ["month", "year"] as const) {
-    for (const [k, v] of growth(repoWindows.get(w)!, w, gen)) out.set(k, v);
+    for (const [k, v] of growth(repoWindows[w], w, gen)) out.set(k, v);
     for (const [k, v] of newcomers(model, w, gen)) out.set(k, v);
   }
   return out;
@@ -51,8 +55,8 @@ export function computeAllViews(model: Model, opts: RecomputeOpts): ViewBundle {
 
   const monthWin = computeRepoWindow(model, "month");
   const monthOrg = computeOrgWindow(model, monthWin);
-  const yearWin = computeRepoWindow(model, "year");
   const weekWin = computeRepoWindow(model, "week");
+  const yearWin = deriveYearWindow(model, monthWin);
 
   for (const [w, rw] of [["month", monthWin], ["week", weekWin], ["year", yearWin]] as const) {
     for (const [k, v] of repoRankMatrix(rw, w, gen)) views.set(k, v);
