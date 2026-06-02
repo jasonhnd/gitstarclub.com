@@ -1,8 +1,10 @@
-// Minimal GitHub GraphQL client for the daily cron: batch current stargazerCount by
-// owner/name (aliased queries). Server-only; needs env GITHUB_TOKEN. See docs/OPS.md.
+// GitHub client: GraphQL (daily cron star counts) + REST Search (whitelist) +
+// GraphQL nodes() (metadata). Server-only; needs env GITHUB_TOKEN. See docs/OPS.md.
+import type { WhitelistEntry } from "@/lib/contracts";
 
 const TOKEN = process.env.GITHUB_TOKEN;
 const ENDPOINT = "https://api.github.com/graphql";
+const REST = "https://api.github.com";
 const MAX_RETRIES = 4;
 const BATCH_PAUSE_MS = 2000;
 
@@ -68,4 +70,62 @@ export async function fetchStarCounts(refs: RepoRef[], batchSize = 100): Promise
     if (i + batchSize < refs.length) await sleep(BATCH_PAUSE_MS);
   }
   return out;
+}
+
+// --- REST Search: whitelist (stars ≥ N) ---
+
+interface SearchRepo {
+  id: number;
+  node_id: string;
+  full_name: string;
+  name: string;
+  stargazers_count: number;
+  owner: { login: string };
+}
+interface SearchResult {
+  total_count: number;
+  items: SearchRepo[];
+}
+
+async function restSearch(params: Record<string, string | number>, attempt = 1): Promise<SearchResult> {
+  const url = new URL(`${REST}/search/repositories`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+  const res = await fetch(url, {
+    headers: { Authorization: `bearer ${TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "gitstarclub" },
+    cache: "no-store",
+  });
+  if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt <= MAX_RETRIES) {
+    const text = await res.text();
+    await sleep(secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
+    return restSearch(params, attempt + 1);
+  }
+  if (!res.ok) throw new Error(`GitHub Search ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json() as Promise<SearchResult>;
+}
+
+/** Whitelist = repos with stars ≥ minStars, via adaptive star-range bucketing (Search caps at
+ *  1000 results/query: split any bucket >1000 until it fits, then page). Sorted by stars desc.
+ *  Ported from pipeline/lib/github.mjs; see docs/PIPELINE.md §1 / VERCEL-DATA-OPERATIONS §3.4. */
+export async function searchWhitelist(minStars = 10000, maxStars = 600000): Promise<WhitelistEntry[]> {
+  if (!TOKEN) throw new Error("GITHUB_TOKEN not set");
+  const out = new Map<number, WhitelistEntry>(); // dedups range-boundary overlap
+  const queue: Array<[number, number]> = [[minStars, maxStars]];
+  while (queue.length) {
+    const [low, high] = queue.pop()!;
+    const q = `stars:${low}..${high}`;
+    const first = await restSearch({ q, sort: "stars", order: "desc", per_page: 100, page: 1 });
+    if (first.total_count > 1000 && high > low) {
+      const mid = Math.floor((low + high) / 2);
+      queue.push([low, mid], [mid + 1, high]);
+      continue;
+    }
+    const pages = Math.min(Math.ceil(first.total_count / 100), 10);
+    for (let page = 1; page <= pages; page++) {
+      const res = page === 1 ? first : await restSearch({ q, sort: "stars", order: "desc", per_page: 100, page });
+      for (const r of res.items) {
+        out.set(r.id, { id: r.id, node_id: r.node_id, full_name: r.full_name, owner: r.owner.login, name: r.name, stars: r.stargazers_count });
+      }
+    }
+  }
+  return [...out.values()].sort((a, b) => b.stars - a.stars);
 }
