@@ -137,7 +137,7 @@ for (const r of repos) {
     crossed_50k: r.crossed_50k ?? null,
     crossed_100k: r.crossed_100k ?? null,
     tracked_since: null,
-    d: Math.round((dById.get(r.id) ?? 1) * 1e6) / 1e6,
+    d: dById.get(r.id) ?? 1, // full-precision IEEE double (matches DuckDB) so stock_est reconstructs exactly
     fetched_at: r.fetched_at ?? GEN,
   };
 }
