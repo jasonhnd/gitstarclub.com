@@ -3,26 +3,53 @@
 > 运维与部署的唯一真相源。架构与数据流见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
 > 核心原则承袭架构：**Vercel-first 统一计费**、**运行时纯静态零引擎**、**重 build 只在每周**。本文把这些落到具体的项目、环境变量、Cron、Blob 与告警上。
 
-## 部署拓扑（两个独立 Vercel 项目）
+## 部署拓扑（单一 Vercel 项目）
 
-生产域名与主应用**物理隔离**，互不干扰：
+2026-06-02 起，生产与测试环境合并到同一个 Vercel 项目：
+
+- Team：`zkscio`
+- Project：`gitstarclub.com`
+- Project ID：`prj_V9RVqspNWPXXiytX7Fj3wlMT9wNw`
+- Root Directory：`web`
+- Framework：Next.js
+- Node.js：24.x
 
 | 项目 | 内容 | 域名 | 状态 | 说明 |
 |---|---|---|---|---|
-| **预告页（teaser）** | `src/index.html` + `build.mjs` 出的纯静态页（framework=Other，输出 `public/`） | **gitstarclub.com / www.gitstarclub.com**（生产 alias） | **已上线，勿动** | 独立部署，零运行时依赖；主应用单独上线，主应用就绪后预告页才退役 |
-| **web 应用** | `web/`（Next.js 16，App Router + RSC） | **暂不指向生产域名**（用 `*.vercel.app` 预览 URL） | 开发中 | 自成一个 Vercel 项目；开发期预览保持 **PRIVATE**（非公开、不接生产域名），灰度自测 |
+| **Production** | `web/`（Next.js 16，App Router + RSC） | **gitstarclub.com / www.gitstarclub.com** | 已切到 web 应用 | 生产 alias 指向 `gitstarclub.com` 项目的 Ready deployment |
+| **Preview / staging** | 同一项目的 Preview deployment | **pre.gitstarclub.com** | Vercel 侧待 DNS 完成 | Preview deployment 已可用；Cloudflare 需加 `A pre.gitstarclub.com 76.76.21.21` 后才能签证书并完成 alias |
 
-**切换原则（teaser → app）**：
+**历史项目处理**：
 
-- 两个项目各自独立的 Git 连接 / 环境变量 / 部署。改主应用永远碰不到 teaser，反之亦然。
-- 主应用功能完整、数据接通、预览自测通过后，**才**把生产域名 alias 从 teaser 切到 web 应用，并使预告页退役。
-- 在此之前 web 应用的预览**不公开、不被搜索引擎收录**（避免半成品被 SEO 抓走、避免域名归属混乱）。
+- `gitstarclub-web` 是旧 web staging 项目，只作临时回滚参考；后续部署不要再使用。
+- 根目录的 teaser 静态页源码仍保留，但生产域名已经从 teaser deployment promote 到 `gitstarclub.com` 的 Next.js deployment。
+- 删除旧 Vercel 项目属于破坏性操作；确认 `gitstarclub.com` Production 与 `pre.gitstarclub.com` 都稳定后再手动删除旧项目。
 
-> 为什么两个项目而非一个：teaser 是「占位 + 不可回退的线上承诺」，web 应用是「高频迭代 + 私有灰度」。两者节奏与可见性诉求相反，分项目才能各自演进、互不阻塞。
+**部署命令**：
+
+所有 Vercel CLI 命令从仓库根目录执行，因为项目 Root Directory 已设置为 `web`。
+
+```powershell
+vercel deploy . --prod --yes --scope zkscio --project gitstarclub.com
+vercel deploy . --yes --scope zkscio --project gitstarclub.com
+```
+
+需要先验证再切生产域名时：
+
+```powershell
+vercel deploy . --prod --yes --scope zkscio --project gitstarclub.com --skip-domain
+vercel promote https://<deployment>.vercel.app --scope zkscio --yes
+```
+
+`pre.gitstarclub.com` DNS 生效后，将最新 Preview deployment 绑定为测试环境：
+
+```powershell
+vercel alias set https://<preview-deployment>.vercel.app pre.gitstarclub.com --scope zkscio
+```
 
 ## 环境变量与密钥
 
-集中在 web 应用项目的 Vercel 环境变量里配置；本地用 `.env`（见 `.env.example`，**勿提交真实值**）。
+集中在 `zkscio/gitstarclub.com` 项目的 Vercel 环境变量里配置；本地用 `.env`（见 `.env.example`，**勿提交真实值**）。
 
 | 变量 | 用途 | 作用域 | 谁用 |
 |---|---|---|---|
@@ -38,7 +65,8 @@
 **约定**：
 
 - `NEXT_PUBLIC_*` 会进客户端 bundle，**只放非敏感值**；其余一律 Server-only。
-- `CRON_SECRET` / `BLOB_READ_WRITE_TOKEN` / `GITHUB_TOKEN` 是敏感密钥：只配在 Vercel 项目环境变量（Production / Preview 按需），**绝不写进仓库或客户端**。
+- `BLOB_BASE_URL`、`CRON_SECRET`、`BLOB_READ_WRITE_TOKEN`、`GITHUB_TOKEN` 需要同时配置到 Production 与 Preview，**绝不写进仓库或客户端**。
+- 写入 Vercel 变量时必须去掉首尾空白和 BOM；`CRON_SECRET` 带空白会让 Cron header 非法，`BLOB_BASE_URL` 带 BOM 会让 Next.js build 在 sitemap 阶段报 `ERR_INVALID_URL`。
 - **GCP 两项仅本地一次性回填用**：用 BigQuery 查 GH Archive（~$10，含稳定 repo.id）。回填一次后这两个变量即可弃用——**日常运营 0 GCP、0 外部账单**。（为何不用免费的 ClickHouse 公共实例/自建：见 ARCHITECTURE「为什么回填用 BigQuery」。）
 - 启动时校验必需密钥存在，缺失则 fail-fast（不静默吞）。
 
@@ -95,9 +123,9 @@ blob://
 }
 ```
 
-> **MVP 落地（已实现）**：每日 job = `web/app/api/cron/daily/route.ts`（`?dry=1` 可空跑预览）。CRON_SECRET 鉴权 → GraphQL 拉 current_stars（`web/lib/github.ts`，按 owner/name 批量）→ 幂等 upsert `current_month.json`（按 UTC 日）→ 重算 `hot-snapshot.json` 的**实时可推导部分**（all-time 用新 stars 重排；当月 flow = **回填的当月榜为底 + 活尾增量**，解了 OPS 原先"YTD-base 现场定"的开放点）；`year_spine`/`on_this_day` 暂沿用上一份快照（由离线/每周重算）→ `revalidatePath` 核心页。**每周重算不上 serverless**（运行时零引擎，无 DuckDB/Parquet）：白名单刷新 + 折叠当月入 Parquet + 重算视图 = 本机/CI **重跑 pipeline 01–06**，非 Vercel cron。`GITHUB_TOKEN` + `CRON_SECRET` 已配在 web 项目 Production/Development 环境变量。
+> **MVP 落地（已实现）**：每日 job = `web/app/api/cron/daily/route.ts`（`?dry=1` 可空跑预览）。CRON_SECRET 鉴权 → GraphQL 拉 current_stars（`web/lib/github.ts`，按 owner/name 批量）→ 幂等 upsert `current_month.json`（按 UTC 日）→ 重算 `hot-snapshot.json` 的**实时可推导部分**（all-time 用新 stars 重排；当月 flow = **回填的当月榜为底 + 活尾增量**，解了 OPS 原先"YTD-base 现场定"的开放点）；`year_spine`/`on_this_day` 暂沿用上一份快照（由离线/每周重算）→ `revalidatePath` 核心页。**每周重算不上 serverless**（运行时零引擎，无 DuckDB/Parquet）：白名单刷新 + 折叠当月入 Parquet + 重算视图 = 本机/CI **重跑 pipeline 01–06**，非 Vercel cron。`GITHUB_TOKEN` + `CRON_SECRET` 已配在 `gitstarclub.com` 项目 Production/Preview 环境变量。
 
-**实跑状态（2026-05-31）**：首次在 Vercel 真实触发 daily cron 遇到 GitHub GraphQL `403`；当时 Blob 里的 `current_month.json` 与 `hot-snapshot.json` 仍为 `404`，没有半写。修复后已在 `gitstarclub-web` production target 复测成功：GraphQL 批次 pacing + `Retry-After`/secondary-limit 等待生效，`current_month.json` 与 `hot-snapshot.json` 已写入同一个 public Blob store，并通过 `web/scripts/validate-live-views.ts --bust 2026-05-31` 的 Zod contract 校验。相同数据集的本地全量 GraphQL 模拟约 131 秒；Vercel 实跑需要预留数分钟。
+**实跑状态（2026-05-31）**：首次在 Vercel 真实触发 daily cron 遇到 GitHub GraphQL `403`；当时 Blob 里的 `current_month.json` 与 `hot-snapshot.json` 仍为 `404`，没有半写。修复后已在旧 `gitstarclub-web` production target 复测成功：GraphQL 批次 pacing + `Retry-After`/secondary-limit 等待生效，`current_month.json` 与 `hot-snapshot.json` 已写入同一个 public Blob store，并通过 `web/scripts/validate-live-views.ts --bust 2026-05-31` 的 Zod contract 校验。2026-06-02 已把同一套环境变量迁移到 `gitstarclub.com` 项目；迁移后仍需在新项目上做一次 `?dry=1` 和真实 cron 复核。
 
 **鉴权模式（CRON_SECRET）**：
 
@@ -191,6 +219,6 @@ blob://
 ## 回滚
 
 - **Blob artifacts 版本化**：每周 pipeline 产出的视图 / Parquet 以版本/日期标识保留若干份（不就地永久覆盖 canonical），坏数据可指回上一版。
-- **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常部署**即可秒级回退（teaser 与 web 应用各自独立回滚，互不影响）。
+- **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment**即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。
 - **每日活尾**：`current_month.json` 当月 append-only、覆盖写；`hot-snapshot.json` 由同次 daily cron 重写。首次实跑失败时两者仍为 `404`，说明 GraphQL 阶段失败不会半写。以后实跑前先备份已存在对象；若失败前两者原本不存在，回滚就是保持/恢复为不存在；若已存在且新写入校验失败，用备份覆盖回 `current_month.json` 与 `hot-snapshot.json`，再用 cache-bust 读取确认。
 - **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。

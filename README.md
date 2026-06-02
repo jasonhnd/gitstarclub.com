@@ -152,8 +152,9 @@ gitstarclub/
 
 ## 开发状态
 
-- **预告页仍是生产站**：gitstarclub.com / www.gitstarclub.com 保持独立，勿动。
-- **web 应用已构建并部署到私有/noindex 的 Vercel staging**：`https://gitstarclub-web.vercel.app`，真实数据、i18n、SEO 与 Blob JSON 视图链路已接通。
+- **生产站已切到 Next.js Web 应用**：`gitstarclub.com` / `www.gitstarclub.com` 现在指向 Vercel 项目 `zkscio/gitstarclub.com`（Root Directory = `web`）。
+- **测试环境使用同一 Vercel 项目的 Preview deployment**：当前 Preview deployment 为 `https://gitstarclub-6pxbb945v-zkscio.vercel.app`；`pre.gitstarclub.com` 需要在 Cloudflare 增加 `A pre.gitstarclub.com 76.76.21.21` 后再完成 alias/证书。
+- **旧项目 `gitstarclub-web` 暂保留为回滚参考**：后续部署不要再使用；确认生产与 `pre` 稳定后再删除旧项目。
 - **信息架构已调整为“脉搏 / 总榜 / GitHub 风格 repo URL”**：`/` 与 `/pulse` 展示本周、本月、本年脉搏；`/rankings` 收纳 all-time、年度、月度、周度历史；项目详情页使用 `/{owner}/{repo}`，语言改为页内偏好而非 URL 前缀。详见 `docs/INFORMATION-ARCHITECTURE.md`。
 - **榜单视觉约束**：总榜的仓库 / 组织双栏使用固定行高、单行截断与同类 secondary pill，确保同数量榜单在桌面端高度一致。
 - **Daily cron 已真实跑通**：2026-05-31 首次触发遇到 GitHub GraphQL `403`，随后加入批次 pacing / `Retry-After` 限流处理并把函数预算调到 800s；复测已写入 `current_month.json` 与 `hot-snapshot.json`，并通过 live-view contract 校验。

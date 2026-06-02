@@ -19,7 +19,7 @@
 1. **每页 = 一条长尾落地页**：标题里必须有真实搜索词（`star history`、`trending`、年份、repo / org 名）。页面不是"装饰展示数据"，是"回答一个具体查询"。
 2. **长尾走按需 ISR，但仍是全量服务端 HTML**：历史 / repo / org 页不在 deploy 构建，首访时由 ISR 生成——但生成出来的是**完整服务端渲染 HTML**，对爬虫与预渲染 SSG 无差别可索引（见 §3）。
 3. **sitemap 是长尾的唯一发现入口**：按需 ISR 页没有"自然外链"喂给爬虫，**必须靠 sitemap 枚举全部 URL**，否则爬虫既发现不了、也永远触发不了它们的生成。sitemap 与内链共同承担「让爬虫走遍全站」。
-4. **预览环境一律 `noindex`**：teaser 占着生产域名，web 应用在私有预览开发期（见 [OPS.md](./OPS.md) 部署拓扑）——预览**绝不能被收录**，否则半成品 / `*.vercel.app` 抢占品牌词、造成重复内容与域名归属混乱（见 §11）。
+4. **预览环境一律 `noindex`**：测试环境跑在同一 Vercel 项目的 Preview deployment（见 [OPS.md](./OPS.md) 部署拓扑）——预览**绝不能被收录**，否则 `*.vercel.app` / `pre.gitstarclub.com` 抢占品牌词、造成重复内容与域名归属混乱（见 §11）。
 5. **性能即排名因子**：零客户端 JS + HTML < 20KB 的 SSG 天然满足 Core Web Vitals（见 §12）。
 
 ---
@@ -635,16 +635,16 @@ return { alternates: { canonical: `${BASE}${langPrefix}${path}`, languages: altL
 
 ---
 
-## 11. 预览环境 noindex（双域名拓扑下的硬约束）
+## 11. 预览环境 noindex（生产 / 测试域名的硬约束）
 
-> 背景（见 [OPS.md](./OPS.md)）：**teaser 占着生产域名 `gitstarclub.com`**；web 应用开发期跑在 **PRIVATE 预览**（`*.vercel.app`），功能完整 + 数据接通 + 自测通过后**才**把生产域名 alias 切到 web 应用、teaser 退役。在此之前：
+> 背景（见 [OPS.md](./OPS.md)）：生产与测试已合并到 `zkscio/gitstarclub.com` 项目。生产域名是 `gitstarclub.com` / `www.gitstarclub.com`；测试域名是 `pre.gitstarclub.com`，指向同项目 Preview deployment。测试环境必须保持 private/noindex：
 
 | 防线 | 实现 |
 |---|---|
 | **robots.txt 全站禁抓** | 预览 host 返回 `User-Agent: *` + `Disallow: /`（见 §5 `isProductionHost()`） |
 | **每页 meta `noindex`** | 非生产 host 时 `robots: { index: false, follow: false }`（root layout 注入，覆盖全站） |
 | **预览保持 PRIVATE** | Vercel 项目预览部署设为非公开（Deployment Protection），从源头不可被匿名爬虫访问 |
-| **canonical 不外泄** | 预览期 `NEXT_PUBLIC_SITE_URL` 仍指生产域名 ⇒ 即便 meta 误放出，canonical 也指向生产、不让 `*.vercel.app` 成规范 URL |
+| **canonical 不外泄** | Preview 的 `NEXT_PUBLIC_SITE_URL` 仍指生产域名 ⇒ 即便 meta 误放出，canonical 也指向生产、不让 `*.vercel.app` / `pre.gitstarclub.com` 成规范 URL |
 
 ```ts
 // 判定（root layout / robots.ts / metadata 共用）

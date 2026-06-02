@@ -83,7 +83,7 @@
 
 ## 11. 部署 / 约束
 
-- **两个独立 Vercel 项目**：teaser（占生产域名，**勿动**，主应用上线才退役）+ web 应用（私有预览、noindex）。
+- **单一 Vercel 项目**：`zkscio/gitstarclub.com` 承载 Production 与 Preview；生产域名为 `gitstarclub.com` / `www.gitstarclub.com`，测试域名为 `pre.gitstarclub.com`（private/noindex）。
 - **Vercel-first / 避免散落账单**（BigQuery 仅一次性 ~$10 为唯一例外）。
 - 时区：存 UTC、显示 UTC + JST。Cron 鉴权 + 幂等 + 监控 + 回滚见 [OPS.md](./OPS.md)。
 
