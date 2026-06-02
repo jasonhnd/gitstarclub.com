@@ -7,7 +7,7 @@ import { currentUtcPeriods } from "@/lib/periods";
 const today = () => new Date().toISOString().slice(0, 10);
 
 export const getRankBase = cache((window: Window, period: string, dim: Dim, metric: Metric) =>
-  readView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList),
+  readView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList, { base: true }),
 );
 
 export const getRank = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
@@ -18,7 +18,7 @@ export const getRank = cache(async (window: Window, period: string, dim: Dim, me
   return getRankBase(window, period, dim, metric);
 });
 
-export const getAllTime = cache((dim: Dim) => readView(`rank/all-time/${dim}/stock.json`, RankList));
+export const getAllTime = cache((dim: Dim) => readView(`rank/all-time/${dim}/stock.json`, RankList, { base: true }));
 
 // lookup-join: rank items carry only id/login + value; merge display fields from lookup/*.
 // Entries missing from lookup are dropped (referential integrity is enforced upstream).
