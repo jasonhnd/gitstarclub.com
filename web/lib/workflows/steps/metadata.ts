@@ -23,6 +23,9 @@ export async function refreshMetadataShards(runId: string): Promise<MetadataResu
 
   const meta = await batchMetadata(wl.entries.map((e) => e.node_id));
   const fetchedAt = new Date().toISOString();
+  // Newcomers (just entered the whitelist) start tracking from discovery day (§6 conservative).
+  const newcomers = new Set(wl.diff.added);
+  const trackedSince = fetchedAt.slice(0, 10);
 
   const byBucket = new Map<number, typeof wl.entries>();
   for (const e of wl.entries) {
@@ -56,7 +59,7 @@ export async function refreshMetadataShards(runId: string): Promise<MetadataResu
         crossed_10k: prev?.crossed_10k ?? null,
         crossed_50k: prev?.crossed_50k ?? null,
         crossed_100k: prev?.crossed_100k ?? null,
-        tracked_since: prev?.tracked_since ?? null,
+        tracked_since: prev?.tracked_since ?? (newcomers.has(e.id) ? trackedSince : null),
         d: prev?.d,
         fetched_at: fetchedAt,
       };
