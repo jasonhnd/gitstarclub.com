@@ -27,14 +27,14 @@
 | 字体 | Plus Jakarta Sans（几何变量无衬线）+ Geist Mono（数字/repo 名） | M3E 字体 |
 | **核心数据** | **Parquet 事实表**（per-repo×天，离线 canonical）→ DuckDB 预算 → **JSON 视图**（build 读）+ JSON 活尾（当月，cron 读写） | 均存 Vercel Blob |
 | 对象存储 | Vercel Blob（Parquet canonical + JSON 视图 + 预生成 OG 图） | Vercel 原生 |
-| 日常采集 | **Vercel Cron + 单 Function**（GraphQL 批量查） | Vercel 原生 |
+| 日常采集 | **Vercel Cron + Function**（GraphQL 批量查 + JSON 视图覆盖） | Vercel 原生 |
 | 一次性回填 | **BigQuery**（GH Archive 公开表，含稳定 `repo.id`）+ 本机 DuckDB | 一次性 ~$10 |
 | 部署 | Vercel | |
 | Web 分析 | Vercel Analytics + Speed Insights · **GA4**（`NEXT_PUBLIC_GA_ID`） | |
 | 错误追踪 | Sentry | Vercel Marketplace |
 
 **MVP 不使用**：自建 ClickHouse/Tinybird、Neon/Postgres、Redis、Inngest、GitHub Actions、v0、tRPC。
-理由：所有视图离线预算成 JSON，运行时无需查询引擎；日常采集 GraphQL 单 Function 即可；回填只一次性用 BigQuery（~$10，非 recurring），之后不再碰 GCP。
+理由：所有视图离线预算成 JSON，运行时无需查询引擎；日常采集 GraphQL Function 即可；回填只一次性用 BigQuery（~$10，非 recurring），之后普通 cron 不再碰 GCP。
 
 ## 预告页（landing，已上线）
 
@@ -73,11 +73,11 @@
 │     cron 全程不碰 Parquet / DuckDB / 引擎           │
 └─────────────────────────────────────────────────────┘
 
-┌─ 每周（Vercel Cron，全 Node）───────────────────────┐
-│  1. GitHub search ≥10k → diff 白名单                │
-│  2. 新晋者：BigQuery 补历史 → Parquet                │
-│  3. 折叠当月活尾→Parquet；DuckDB 重算受影响 JSON 视图│
-│  4. revalidatePath 变更页（非 16k 全量 build）       │
+┌─ 每周（Vercel Cron，JSON-only 增量）────────────────┐
+│  1. GraphQL 查 current_stars                         │
+│  2. 覆盖当前周/月 rank + 当月 heatmap + hot snapshot │
+│  3. 写 ops/sync-runs.json                            │
+│  4. revalidatePath 当前周/月与热集页                 │
 └─────────────────────────────────────────────────────┘
 
 ┌─ Build（每次 deploy）───────────────────────────────┐
@@ -136,7 +136,7 @@ GitHub GraphQL 可一次查 100 个 repo 的 `stargazerCount`，5,248 repo ≈ 5
 
 ### 白名单
 
-= 当前 star ≥ 10,000 的 repo（约 5,248 个）。每周 Vercel Cron 用 GitHub search 刷新，新晋者补历史一次。
+= 当前 star ≥ 10,000 的 repo（约 5,248 个）。普通 Vercel Cron 不跑多年历史补片；新晋者补历史和全量 metadata 刷新要拆成 Vercel Workflow 分片，按 repo id 幂等写 Blob。
 
 ## 数据模型（逻辑模型 + JSON 物理形式）
 
@@ -228,7 +228,7 @@ DuckDB 把所有 period × dim × metric 预算成 JSON：
 
 - **deploy**（代码/结构变更）：只构建小核心，永不逼近 45min；会重置 ISR store，长尾首访冷生成一次（10M/天下可忽略）
 - **每日**：不 deploy；cron 更新 JSON 活尾 + 写 `hot-snapshot.json` + **挑出 mover 集（在动的几十~几百个）刷新它们 + 脉搏面** + revalidate 核心热集。**没动的实体与全部历史一概不碰。**
-- **每周**：cron 刷新白名单 + 新晋者回填 + 重算受影响 JSON 视图 + 对变更页 `revalidatePath`（**不做 16k 全量 build**）
+- **每周**：Vercel cron 做当前周/月 live refresh + 对变更页 `revalidatePath`（**不做 16k 全量 build**）。白名单 diff、新晋者多年回填、DuckDB 全量重算只走 Vercel Workflow 分片，不作为单个 Function。
 
 **为什么**：16k+ 全量 build 会撞 45min，且 deploy 会重置 ISR——所以长尾交按需 ISR（懒生成、持久缓存），deploy 只管小核心。附带好处：org / 周页变"免费"（懒生成、不占 build 预算），page-surface 可放开。
 
@@ -240,9 +240,9 @@ DuckDB 把所有 period × dim × metric 预算成 JSON：
 - **运行时**：用户请求 99.99% 命中边缘缓存（0 查询、热路径 0 Function）；仅热集 ISR 在被 cron revalidate 后、由首个请求触发再生跑一次轻量 Function（读 KB 快照）
 - **每日更新**：见下「每日 cron 的无状态机制」
 
-### 每日 cron 机制（JSON-only，无需碰 Parquet/引擎）
+### Vercel cron 机制（JSON-only，无需碰 Parquet/引擎）
 
-每日 cron 只更新**当月 JSON 活尾**（KB 级），不下载/改写大文件，机制极简：
+每日/每周 cron 都只更新**当月 JSON 活尾与当前周期 rank**（KB 级），不下载/改写大文件，机制极简：
 
 ```
 1. GraphQL 查 5,248 repo current_stars（~53 查询）
@@ -250,8 +250,8 @@ DuckDB 把所有 period × dim × metric 预算成 JSON：
 3. append 今日：per-repo 日增 + daily_total；更新 current_stars
 4. 写回 current_month.json（覆盖即可——当月内 append-only）
 5. 挑 mover 集：今日涨幅前 ~50 ∪（今日 ≥ 其 90d 日均 5× 且当日净增 ≥200）∪ 破里程碑（几十~几百个）
-6. 重算 hot-snapshot.json + `/trending` 数据（含突刺/复活）→ Blob
-7. revalidatePath：核心热集（首页 / 当年 / 当月 / 全时 / trending ×3 语言）+ mover 集的 repo/org 页
+6. 重算 hot-snapshot.json、当前周 rank、当前月 rank、当月 heatmap → Blob
+7. 写 ops/sync-runs.json；revalidatePath：核心热集（首页 / 当年 / 当月 / 全时 / pulse）+ 当前周/月页
    （没动的实体 + 全部历史都不碰；不做全量 rebuild，长尾按需 ISR）
 ```
 
@@ -261,7 +261,7 @@ DuckDB 把所有 period × dim × metric 预算成 JSON：
 
 **资源核对**：
 - cron：只处理 KB 级 JSON + 53 GraphQL，内存 / 时间 / tmp 全不构成约束（秒级）
-- DuckDB + Parquet 只在**离线 pipeline / 每周全 Node 构建**里跑；build / cron / 运行时无任何查询引擎或原生模块
+- DuckDB + Parquet 只在**一次性回填或 Vercel Workflow 分片化历史刷新**里跑；build / 普通 cron / 运行时无任何查询引擎或原生模块
 
 ### GraphQL 限额核对
 

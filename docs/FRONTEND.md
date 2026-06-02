@@ -114,7 +114,7 @@ export const revalidate = false              // 仅靠 cron 定点失效（每�
 ```ts
 // 例：app/pulse/page.tsx
 export const revalidate = false              // 不靠时间轮询
-// 每日 cron 写 hot-snapshot.json 后 revalidatePath('/pulse') + 三语前缀
+// Vercel cron 写 hot-snapshot.json / 当前周月 rank 后 revalidatePath('/pulse')
 ```
 
 ### 2.3 `next.config.ts`：必须的全局开关
@@ -150,8 +150,8 @@ export default nextConfig;
 
 ### 2.4 数据变更如何到达页面（无 deploy）
 
-- **每日 cron**（`/api/cron/daily`，[OPS](./OPS.md) §Cron）：写 `current_month.json` + `hot-snapshot.json` → `revalidatePath` 核心热集（首页 / pulse / rankings / 当年 / 当月，×3 语言）+ mover 集的 repo/org 页。
-- **每周 cron**：重算受影响 JSON 视图 → 对变更页 `revalidatePath`（**非 16k 全量 build**）。
+- **每日 cron**（`/api/cron/daily`，[OPS](./OPS.md) §Cron）：写 `current_month.json` + `hot-snapshot.json` + `live/rank/*` 当前月/当前周覆盖层 + `live/heatmap/*` 当月覆盖层 → `revalidatePath` 核心热集（首页 / pulse / rankings / 当年 / 当月 / 当前周）。
+- **每周 cron**（`/api/cron/weekly`）：同样在 Vercel 内做 live refresh，保证周榜和月榜即使没有全量历史重算也不会断档；全量历史刷新另走 Vercel Workflow 分片，不做 16k 全量 build。
 - **deploy**：仅代码/结构变更触发；会重置 ISR store，长尾首访冷生成一次（10M/天下可忽略，见 [ARCHITECTURE](./ARCHITECTURE.md)）。
 
 > ⚠️ **`revalidatePath` 需要 mutable route handler（`/api/cron/*`）**——现有 app 尚无 `app/api/` 目录，属待加（与 OPS Cron 章节配套）。
@@ -207,13 +207,13 @@ export const getRepoEntity = cache(async (id: number) => {
 | 首页 `/` | `hot-snapshot.json`（`home`：`year_spine` / `current_month_top` / `on_this_day`） | 热集 ISR 只读 KB 级快照，**绝不**加载大文件（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.9） |
 | 年页（当年） | `hot-snapshot.json`（`current_year`） + `heatmap/year/{Y}.json`（12 月格） | 当年走热快照 |
 | 年榜（历史） | `rank/year/{Y}/{repo,org}/{flow,stock}.json` + `heatmap/year/{Y}.json` | 冻结视图 |
-| 月榜（当月） | `hot-snapshot.json`（`current_month`） + `heatmap/month/{period}.json`（合并 `current_month.json` 进行中日） | 进行中当月日总量来自活尾 |
+| 月榜（当月） | `live/rank/month/{period}/repo/{flow,stock}.json` + `live/heatmap/month/{period}.json`，缺失时回退基础 `rank/*` / `heatmap/*` | 进行中当月来自 Vercel cron 活尾 |
 | 月榜（历史） | `rank/month/{period}/{repo,org}/{flow,stock}.json` + `heatmap/month/{period}.json` | 三大榜 + 日热力 |
-| 周榜 | `rank/week/{period}/{repo,org}/{flow,stock}.json`（当周合并活尾） | 独立页 |
+| 周榜 | 当前周优先 `live/rank/week/{period}/repo/flow.json`，历史周读基础 `rank/week/*` | 独立页 |
 | repo 页 | `entity/repo/{id}.json`（`curve`/`milestones`/`monthly_table`/`rank_history`） | mover 当日刷新（curve 含 `recent_daily`） |
 | org 页 | `entity/org/{login}.json`（`members`/`curve`/`rank_history`） | 成员聚合曲线 |
 | 全时榜 `/rankings` | `rank/all-time/{repo,org}/stock.json`（或 `hot-snapshot.all_time`） | repo 榜 + org 榜并列 |
-| 脉搏 `/pulse` | `hot-snapshot.json`（mover 集：今日/本周大涨 + 复活/突刺） | 每日 cron 重写 |
+| 脉搏 `/pulse` | `hot-snapshot.json` + 当前周 `live/rank/week/<current>/repo/flow.json` | 每日/每周 Vercel cron 重写 |
 | 全部榜单页 | + `lookup/repos.json` / `lookup/orgs.json` | **lookup-join**，见 §3.4 |
 
 ### 3.4 lookup-join 模式（榜单只存 id，build join 出展示字段）

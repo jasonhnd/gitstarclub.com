@@ -1,9 +1,10 @@
 # gitstarclub
 
-> 2026-06-01 Pulse note: `/` and `/pulse` read the current ISO week first. If
-> `rank/week/<current>/repo/flow.json` is not present yet, the UI falls back to
-> the latest available weekly rank and displays the actual week badge, so the
-> weekly panel does not go blank before the offline weekly precompute runs.
+> 2026-06-02 Vercel cron note: all scheduled entrypoints now run in Vercel.
+> `/api/cron/daily` runs at `0 3 * * *`; `/api/cron/weekly` runs at `0 4 * * 0`.
+> Both routes refresh the live JSON views, write `live/rank/*` and
+> `live/heatmap/*` overrides, revalidate the hot pages, and record runs in
+> `ops/sync-runs.json`.
 >
 > 2026-06-01 i18n note: English is the default UI language. Other languages are
 > selected from a compact dropdown and stored in the `gsc_lang` cookie without

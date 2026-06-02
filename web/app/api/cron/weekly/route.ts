@@ -9,14 +9,19 @@ export async function GET(req: Request) {
 
   const dry = new URL(req.url).searchParams.get("dry") === "1";
   const startedAt = new Date();
-  const id = syncRunId("daily", startedAt);
+  const id = syncRunId("weekly", startedAt);
 
   try {
-    const result = await refreshLiveViews("daily", dry);
-    const log_error = dry ? null : await safeRecordSyncRun(completedRun(id, "daily", dry, startedAt, result));
-    return Response.json({ ok: true, ...result, log_error });
+    const result = await refreshLiveViews("weekly", dry);
+    const log_error = dry ? null : await safeRecordSyncRun(completedRun(id, "weekly", dry, startedAt, result));
+    return Response.json({
+      ok: true,
+      ...result,
+      log_error,
+      mode: "vercel-incremental-live-refresh",
+    });
   } catch (error) {
-    const run = failedRun(id, "daily", dry, startedAt, error);
+    const run = failedRun(id, "weekly", dry, startedAt, error);
     const log_error = dry ? null : await safeRecordSyncRun(run);
     return Response.json({ ok: false, error: run.error, log_error }, { status: 500 });
   }

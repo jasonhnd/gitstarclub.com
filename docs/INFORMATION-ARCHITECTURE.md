@@ -77,6 +77,7 @@ Daily cron revalidates the new hot paths:
 
 The sitemap uses the new canonical history paths under `/rankings`.
 
-Weekly ranking JSON is still produced by the offline precompute pipeline. When a
-new UTC week starts before `rank/week/<current>/repo/flow.json` exists, Pulse
-falls back to the latest available weekly view instead of showing an empty panel.
+The current weekly ranking is now written by Vercel cron as
+`live/rank/week/<current>/repo/flow.json`. If that live override is absent,
+Pulse still falls back to the latest available base weekly view instead of
+showing an empty panel.
