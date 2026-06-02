@@ -91,9 +91,11 @@ blob://
 ├── canonical/
 │   ├── star_daily.parquet          # 🗄️ bootstrap 归档（仅一次性 / 灾难重建读写，非生产路径）
 │   └── v2/                          # 生产 canonical JSON shard（待实现，见 VERCEL-DATA-OPERATIONS §5）
-│       ├── repos/{bucket}.json      #   repo 维度 + 里程碑 + tracked_since
+│       ├── meta.json                #   seam_date · schema_ver · folded_through（周/月水位）
+│       ├── repos/{bucket}.json      #   repo 维度 + 里程碑 + tracked_since + 冻结折扣 d
 │       ├── repo-monthly/{bucket}.json · repo-weekly/{bucket}.json · repo-recent-daily/{bucket}.json
-│       └── site-daily/{yyyy}.json
+│       ├── site-daily/{yyyy}.json
+│       └── pending/{period}.json    #   已收口待折叠的周期活尾冻结快照（防重复/丢数据）
 ├── lookup/
 │   ├── repos.json                  # repo 元数据（build join）
 │   └── orgs.json

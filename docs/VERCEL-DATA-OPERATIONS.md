@@ -74,10 +74,11 @@ Vercel Cron（GET /api/workflows/refresh/start，带 CRON_SECRET）
             ├─ step 2  metadata shards
             ├─ step 3  rename detection
             ├─ step 4  newcomer tracking
-            ├─ step 5  canonical shard update（折叠当月活尾 + 新晋历史）
-            ├─ step 6  rank shard recompute     → views/staging/<run_id>/rank/**
-            ├─ step 7  entity shard recompute    → views/staging/<run_id>/entity/**
-            ├─ step 8  heatmap update            → views/staging/<run_id>/heatmap/**
+            ├─ step 5  canonical shard update（折叠已收口周期 + 新晋历史）
+            ├─ step 6  rank recompute（跨桶 gather）   → views/staging/<run_id>/rank/**
+            ├─ step 7a entity/repo recompute（桶内独立）→ views/staging/<run_id>/entity/repo/**
+            ├─ step 7b entity/org recompute（跨桶 gather）→ views/staging/<run_id>/entity/org/**
+            ├─ step 8  heatmap update                  → views/staging/<run_id>/heatmap/**
             ├─ step 9  validate（Zod + sanity，对 staging 全量）
             ├─ step 10 publish（更新 views/latest.json 指针）
             └─ step 11 revalidate（revalidatePath 核心热集；长尾按需 ISR）
@@ -106,21 +107,23 @@ export async function refreshWorkflow(runId: string) {
   await refreshMetadataShards(runId);   // step 2
   await detectRenames(runId);           // step 3
   await trackNewcomers(runId);          // step 4
-  await foldCanonicalShards(runId);     // step 5
-  await recomputeRankShards(runId);     // step 6
-  await recomputeEntityShards(runId);   // step 7
-  await recomputeHeatmaps(runId);       // step 8
+  await foldCanonicalShards(runId);       // step 5（读 pending 冻结快照，防重复/丢数据）
+  await recomputeRankShards(runId);       // step 6（跨桶 gather）
+  await recomputeRepoEntities(runId);     // step 7a（桶内独立，可并行分批）
+  await recomputeOrgEntities(runId);      // step 7b（跨桶 gather + 成员 carry-forward）
+  await recomputeHeatmaps(runId);         // step 8
   const report = await validateStaging(runId); // step 9
   if (!report.ok) return { runId, published: false, report };
-  await publishPointer(runId);          // step 10
-  await revalidateCore();               // step 11
+  await publishPointer(runId);            // step 10
+  await revalidateCore();                 // step 11
   return { runId, published: true, report };
 }
 
 // web/app/steps/recompute-rank.ts —— 待实现
 async function recomputeRankShards(runId: string) {
   'use step';                            // 独立 Function 路由、内建重试、幂等
-  // 读 canonical/v2 月/周 shard（Blob 直链）→ 算 rank → 写 views/staging/<runId>/rank/**
+  // 载入全部 canonical/v2 月/周 shard（Blob 直链）建 period 索引 → 算 rank → 写 views/staging/<runId>/rank/**
+  // ⚠️ 跨桶：rank/all-time/org 都需全部 repo，不能按桶切（见 §3.3 两类重算形状）
 }
 ```
 
@@ -134,6 +137,10 @@ async function recomputeRankShards(runId: string) {
 | **大数据走 Blob 直链** | step 间不通过 Workflow 传大 payload（受 4.5MB 限）。step 只传 `run_id` / shard key 等小标识；数据落 Blob，下一 step 从 Blob 直链读。 |
 | **长等待用 sleep** | 命中 GitHub secondary rate limit / `Retry-After` 时，step 内短等待；跨小时级配额恢复用 workflow `sleep('1 hour')`，不空转占资源。 |
 
+> ⚠️ **两类重算形状(实现者必读)**：shard 按 `repo_id % N` 分桶,但**不是所有重算都桶内自洽**——
+> - **桶内独立(可按桶并行分批)**：**entity/repo** —— 每个 repo 的 entity 文件只依赖它自己那一桶的数据(monthly/weekly/recent-daily/meta),天然可按桶分 step。
+> - **必须跨桶 gather(不能按桶切)**：**rank(任一周期需全部 repo 同期 flow/stock)、entity/org(成员 `repo_id` 散落不同桶,见 C2)、all-time(全量排序)** —— 这些 step 要先**把全部 `repo-monthly`(以及需要时 `repo-weekly`)桶载入内存建索引**,再按 period / owner 聚合。全量 repo-monthly ≈ 数 MB(见 §4.2),整体载入远低于 4GB,可行;但**绝不能误以为能桶内算完**。
+
 ### 3.4 步骤职责表
 
 | # | step | 读 | 写 | 说明 |
@@ -142,10 +149,11 @@ async function recomputeRankShards(runId: string) {
 | 2 | metadata shards | GitHub GraphQL `nodes(ids)` 批量 100/查 | `canonical/v2/repos/<bucket>.json` | owner/type、name、full_name、language、topics、createdAt、current_stars、isArchived。**分 bucket 写**，每 step 处理若干 bucket。 |
 | 3 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo：记录旧→新映射，供 web 层 301（见 [SEO.md](./SEO.md) §7）。canonical 按 `repo_id` 归并，改名不丢历史。 |
 | 4 | newcomer tracking | whitelist diff | `repos/<bucket>` 写 `tracked_since`；可选历史补片 | 新晋 repo 历史策略见 §6。默认保守：标 `tracked_since`，从发现日起追踪。 |
-| 5 | canonical shard update | `current_month.json`（活尾）+ 已收口周期 | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` | **折叠**：当月 / 当周收口时，把活尾 net delta 折进月 / 周 rollup shard；append 站点日总量。跌出者保留历史 shard、停止 poll。 |
-| 6 | rank recompute | canonical 月/周/meta shard | `views/staging/<run_id>/rank/**` | 按 period 批量算 flow/stock/growth/new + all-time，幂等写 staging。stock 锚定见 [RANKING.md](./RANKING.md)。 |
-| 7 | entity recompute | `repo-monthly` `repo-weekly` `repo-recent-daily` `repos` shard | `views/staging/<run_id>/entity/**` | 按 repo bucket 批量出 entity/repo、entity/org（成员聚合）。 |
-| 8 | heatmap update | `site-daily` / `site-monthly` shard | `views/staging/<run_id>/heatmap/**` | 站点级日 / 月总量。 |
+| 5 | canonical shard update | 已收口周期的**冻结快照** `canonical/v2/pending/<period>.json` + recent-daily | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` | **折叠**：周期收口时把活尾 net delta 折进月/周 rollup shard;append 站点日总量。**交接靠水位标记防重复/丢数据**——见 §8.3(H1)：cron 跨期重置 `current_month.json` 前先把上一期完整 `per_repo` 落到 `canonical/v2/pending/<period>.json`,step 5 只读 pending、折叠后标记 `folded_through=period`。跌出者保留历史 shard、停止 poll。 |
+| 6 | rank recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`/`meta` shard | `views/staging/<run_id>/rank/**` | 载入全部 monthly/weekly 桶建「period→repos」索引,按 period 算 flow/stock + all-time,幂等写 staging。**growth**:期初 stock = monthly `stock_est` 前缀和在 `period-1` 的值(§5.4),floor 期初 ≥20k;**new**:直接用 `repos.crossed_10k` 落当期判定(**不另用 stock_est 重算**,口径同 [RANKING.md](./RANKING.md) §4)。stock 锚定见 §5.4 / [RANKING.md](./RANKING.md) §3。 |
+| 7a | entity/repo recompute(**桶内独立**) | 单桶 `repo-monthly`/`repo-weekly`/`repo-recent-daily`/`repos` | `views/staging/<run_id>/entity/repo/**` | 每个 repo 只依赖自己那桶,可按桶并行分 step。 |
+| 7b | entity/org recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`(owner→members) | `views/staging/<run_id>/entity/org/**` | **不能按桶算**(成员散落各桶,C2)：先全量载入 monthly/weekly 桶,按 `owner` 聚合;org stock 须先对每个成员做 `首次事件期→末期` **carry-forward** 再求和(空期沿用上一期累计),终点对齐 `current_stars_sum`(口径同 [RANKING.md](./RANKING.md) §5)。 |
+| 8 | heatmap update | `site-daily` shard(+ 派生月总量) | `views/staging/<run_id>/heatmap/**` | 站点级日 / 月总量(月总量 = site-daily 当月求和)。 |
 | 9 | validate | `views/staging/<run_id>/**` | `ops/workflows/<run_id>/validation.json` | Zod schema + sanity 不变量（[TESTING.md](./TESTING.md) §1.2/1.3）。**不过不发布**。 |
 | 10 | publish | staging | `views/latest.json` 指针 + `ops/workflows/latest-success.json` | 原子切指针：读侧从此读新版本（见 §7）。 |
 | 11 | revalidate | — | revalidatePath 核心热集 | 长尾按需 ISR、不全量 build（见 [ARCHITECTURE.md](./ARCHITECTURE.md)）。 |
@@ -170,12 +178,14 @@ blob://
 │
 ├── canonical/                               # 生产 canonical（JSON shard，待实现 v2）
 │   ├── v2/
+│   │   ├── meta.json                        # seam_date · schema_ver · folded_through（周/月水位，见 §5.4/§8.3）
 │   │   ├── whitelist/<run_id>.json          # 白名单快照 + diff
-│   │   ├── repos/<bucket>.json              # repo 维度 + 里程碑 + tracked_since（按 id 分桶）
+│   │   ├── repos/<bucket>.json              # repo 维度 + 里程碑 + tracked_since + 冻结折扣 d（按 id 分桶）
 │   │   ├── repo-monthly/<bucket>.json       # per-repo 月 flow 序列（驱动月榜 + 月曲线）
 │   │   ├── repo-weekly/<bucket>.json        # per-repo ISO 周 flow 序列（驱动历史周榜）
 │   │   ├── repo-recent-daily/<bucket>.json  # per-repo 近 ~90 天日点（曲线尾 + 周边界）
-│   │   └── site-daily/<yyyy>.json           # 站点级日总量（驱动 heatmap）
+│   │   ├── site-daily/<yyyy>.json           # 站点级日总量（驱动 heatmap）
+│   │   └── pending/<period>.json            # 已收口、待折叠的周期活尾冻结快照（cron 写、step 5 读，见 §8.3）
 │   └── star_daily.parquet                   # 🗄️ bootstrap 归档（仅 L4 / 灾难重建用，非生产读路径）
 │
 ├── views/                                   # 发布层（指针切换，待实现）
@@ -194,26 +204,35 @@ blob://
 
 ### 4.1 读路径优先级（页面如何选版本）
 
-页面 / 数据层读取顺序（保持现有「live 优先、回退 base」的语义，只是 base 改为指针解析）：
+页面 / 数据层先读 `views/latest.json` 指针解析出 `<version>`(下记 `V = views/published/<version>`),再按「live 优先、回退 base」取数。**关键:用 `meta.folded_through` 水位决定某周期归 live 还是归 base,避免重复计数(§8.3)**：
 
 ```
-当前周期 rank/heatmap：  live/* （L1/L2 活尾） → 回退 views/<latest>/* （L3 发布版本）
-历史周期 rank/heatmap：  views/<latest>/* （L3 发布版本）
-entity / lookup：        views/<latest>/* （L3 发布版本）
-hot-snapshot / current_month： 直读（L1/L2 活尾）
+未折叠周期(period > folded_through,即当前/刚收口未发布)：
+    rank/heatmap：  live/* (L1/L2 活尾) → 回退 V/* (上一版 base,可能尚不含该期)
+已折叠周期(period ≤ folded_through,base 已含)：
+    rank/heatmap：  直接读 V/* (不再叠 live,防重复)
+entity / lookup：    V/* (L3 发布版本)
+hot-snapshot / current_month： 直读 (L1/L2 活尾)
 ```
 
-> 现状（Phase 0）：base 视图直接读 `rank/*` / `heatmap/*`（本机 precompute 上传的固定前缀）。迁移到 L3 后，base 改为「读 `views/latest.json` 指针 → 解析出版本前缀 → 读该前缀下的产物」。这一步是 §10 Phase 3 的事，**对页面逻辑透明**（数据层封装，组件不感知）。
+> 现状（Phase 0）：base 视图直接读 `rank/*` / `heatmap/*`(本机 precompute 上传的固定前缀),`getRank` 用「当前周期 live 优先」(`web/lib/data/rank.ts`)。迁移到 L3 后,base 改为「读 `views/latest.json` 指针 → 解析 `<version>` → 读 `views/published/<version>/` 下的产物」,并把「live vs base」判据从「是否当前周期」收紧为「period 与 `folded_through` 的关系」。这一步是 §10 Phase 3 的事,**对页面逻辑透明**(数据层封装,组件不感知)。
 
 ### 4.2 分桶（bucket）策略
 
-| shard | 分桶键 | 桶数（建议） | 单桶量级 | 重算粒度 |
+| shard | 分桶键 | 桶数（建议） | 单桶量级（估算） | 重算粒度 |
 |---|---|---|---|---|
-| `repos/<bucket>` | `repo_id % N` | 32 | ~165 repo / 桶 | metadata step 每 step 几个桶 |
-| `repo-monthly/<bucket>` | `repo_id % N` | 32 | ~165 repo × ~132 月点 ≈ 数百 KB | entity/rank step 按桶读 |
-| `repo-weekly/<bucket>` | `repo_id % N` | 64 | 控制在 ~1MB 内 | 历史周榜重算 |
-| `repo-recent-daily/<bucket>` | `repo_id % N` | 32 | 近 90 天，小 | 每日 / 每周折叠 |
+| `repos/<bucket>` | `repo_id % N` | 32 | ~165 repo / 桶，~数百 KB | metadata step 每 step 几个桶 |
+| `repo-monthly/<bucket>` | `repo_id % N` | 32 | ~165 repo × ~132 月点 × ~20B ≈ **~430 KB** | rank/entity gather |
+| `repo-weekly/<bucket>` | `repo_id % N` | 64 | ~82 repo × ~570 周点 × ~22B ≈ **~1 MB** | 历史周榜重算 |
+| `repo-recent-daily/<bucket>` | `repo_id % N` | 32 | ~165 repo × ≤90 日点，~数百 KB | 每日 / 每周折叠 |
 | `site-daily/<yyyy>` | 年 | 1/年 | 365 点，KB 级 | heatmap step |
+
+**内存校验(M2)**：跨桶 gather 的 step(rank / entity-org / all-time)需一次载入**全部**桶——
+- 全部 `repo-monthly`：32 × ~430KB ≈ **~14 MB**;全部 `repo-weekly`：64 × ~1MB ≈ **~64 MB**。
+- 即便同时载入 monthly + weekly + repos ≈ **&lt; 100 MB**,远低于 Function **4GB** 上限。
+- 单文件读走 **Blob 直链**(绕过 4.5MB 响应体限制),`repo-weekly` 单桶 ~1MB 也安全。
+- 写出侧:全量 entity(~16k 文件)按 **75/s** 节流 ≈ 213s,但 entity/repo 按桶分多 step(7a),每 step 仅 ~165 文件 ≈ 2–3s,不逼近 800s。
+> 桶数可调:若白名单扩容使 `repo-weekly` 单桶逼近内存/直链舒适区,调大桶数(如 128)即可,逻辑不变。
 
 > 桶数是可调旋钮：目标是**单桶 JSON 远小于 Function 内存、单 step 处理几个桶在时长内完成**。规模增长（白名单扩容）时调大桶数即可，不改逻辑。
 
@@ -247,14 +266,19 @@ hot-snapshot / current_month： 直读（L1/L2 活尾）
 
 > **关键洞察**：日粒度只在 bootstrap 时需要（算里程碑跨阈日 + 首次 rollup 成月/周）。**里程碑一次算定即冻结**；之后生产系统只**追加新日 delta（cron 活尾）并在周期收口时折进月/周 shard**。所以**生产 canonical = 月/周/站点 rollup shard + 滚动近 90 天 + repo 维度**，全 JSON、全小、全可在 Vercel 重算。原始 8M 行日表退为 bootstrap 归档。
 
-### 5.4 stock 锚定如何在 shard 上做
+> **recent-daily 老化收口（M1，避免曲线尾双源跳变）**：`repo-recent-daily` 是**滚动窗口**——一个日点滑出 90 天时,由 step 5 在折叠当月时**并入该月 `repo-monthly`**(同一动作、同一真相),并从 recent-daily 删除。**任一日期只在一处**：≤90 天在 recent-daily、>90 天在 monthly,不重叠。entity 曲线 `monthly`(月点)接 `recent_daily`(日尾)时,接缝就是 90 天水位线,口径连续(都是 net delta;stock 段按 §5.4 锚定)。
 
-stock（累计总量）历史值 = gross 累加 × 折扣锚定到 `current_stars`（公式见 [RANKING.md](./RANKING.md)）。在 v2 下：
+### 5.4 stock 锚定如何在 shard 上做（**必须分 seam 前后,口径同 [RANKING.md](./RANKING.md) §3**）
 
-- 折扣系数 `d = current_stars / total_gross`（`total_gross` = 该 repo 月 flow 之和）可在 entity/rank step 内**就地算**（读该 repo 桶的月序列求和），无需全量引擎。
-- 每个周期的 `stock_est = round(cumgross × d)`，cumsum 在桶内按 period 顺序累加即可——纯 JS，单桶内存可控。
+> ⚠️ **关键：折扣只作用于 seam 前的 gross,seam 后的 net 直接累加、不打折**。这是 [RANKING.md](./RANKING.md) §3 的权威口径,v2 必须照搬,否则曲线终点对不上 `current_stars`。
 
-> 即：原本 DuckDB 的窗口函数 `SUM(flow) OVER (PARTITION BY repo ORDER BY period)`，在 v2 里变成「读一个 repo 桶 → 对每个 repo 的月序列做前缀和」的纯 JS 计算。逻辑等价，但不需要 Parquet / DuckDB。
+- **持久化 `seam_date`**:v2 新增 `canonical/v2/meta.json`(含 `seam_date`、`schema_ver`,见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4)。seam = gross→net 边界(bootstrap 截止日)。
+- **折扣系数**(per repo,bootstrap 算定后冻结):`d = current_stars@seam / cumgross@seam_date`,**分母只含 seam 前 gross 累计**(不含任何 net)。`d ≤ 1`。
+- **seam 前(历史)**:`stock_est[period] = round(cumgross[period] × d)`,`cumgross` = 该 repo 月 flow(gross)在桶内的前缀和。终点(seam 月)= `cumgross@seam × d = current_stars@seam`,精确锚定。
+- **seam 后(net 期)**:`stock[period] = stock_est@seam + Σ(net flow 从 seam 到 period)`,**不打折**——net 是真实增量,精确跟踪(RANKING §3「seam 后不再估算」)。
+- **实现**:repo-monthly 桶里每个 period 标记 gross/net(按 `seam_date` 判),折扣只乘到 gross 段前缀和,net 段直接加。纯 JS、单桶内存可控。
+
+> 即:原本 DuckDB 的 `cumgross × d` + seam 后精确跟踪,在 v2 里变成「读一个 repo 桶 → 按 seam 分段做前缀和(gross 段乘 d、net 段不乘)」的纯 JS 计算。逻辑等价、口径与 RANKING §3 一致,但不需要 Parquet / DuckDB。**`d` 在 bootstrap 算定后写入 `repos` shard 冻结,Workflow 不重算 `d`(避免 net 累积让分母漂移)。**
 
 ---
 
@@ -290,9 +314,10 @@ stock（累计总量）历史值 = gross 累加 × 折扣锚定到 `current_star
 2. step 9 validate：对 staging 全量跑 Zod + sanity（见 TESTING）
    └─ 不过 → 终止，不切指针；staging 留存供排查（见 §8）
 3. step 10 publish：
-   a. 把 staging/<run_id> 提升为 published/<version>（或直接让指针指向 staging 前缀）
+   a. 把 staging/<run_id> 复制/移动到 published/<version>（version = 发布时刻 UTC）
    b. 原子更新 views/latest.json = { version, run_id, published_at, prev_version }
    c. 写 ops/workflows/latest-success.json = run_id
+   （读侧只认 published/<version> + 指针，不直接读 staging——见 §4.1/§2.11）
 4. step 11 revalidate：revalidatePath 核心热集（首页/pulse/rankings/当年/当月/当前周）
    长尾页按需 ISR，下次访问读新指针对应版本
 ```
@@ -342,9 +367,19 @@ stock（累计总量）历史值 = gross 累加 × 折扣锚定到 `current_star
 - **整个 run 卡死 / 超时**：运维据 `ops/workflows/<run_id>/manifest.json` 看卡在哪一 step；可重新触发同 `run_id`（幂等续跑）或起新 run。线上不受影响（指针未切）。
 - **GitHub 限流**：step 内遇 `403` / secondary limit / `Retry-After`，短等待重试；跨小时配额用 workflow `sleep` 等待后继续，不空转。
 
-### 8.3 与 L1/L2 live cron 的隔离
+### 8.3 与 L1/L2 live cron 的隔离 + 周期收口交接（H1：防重复/丢数据）
 
-L1/L2 写 `live/*` + `current_month.json` + `hot-snapshot.json`；L3 写 `canonical/v2/**` + `views/staging|published/**`。**前缀不重叠**，L3 重算期间 L1/L2 照常刷活尾，互不干扰。L3 发布后，当前周期的 live 覆盖层继续盖在新 base 之上（读路径见 §4.1）。
+**前缀隔离**：L1/L2 写 `live/*` + `current_month.json` + `hot-snapshot.json`；L3 写 `canonical/v2/**` + `views/staging|published/**`。前缀不重叠，L3 重算期间 L1/L2 照常刷活尾。
+
+**收口交接契约(关键——否则月初会丢上月最后一天的 net,或 live 与 canonical 重复计同一段)**：`current_month.json` 是**易失活尾**——现状 live cron 跨月时直接初始化新月、覆盖旧月(`live-refresh.ts` 的 `carryMonth` 在 `month` 变化时为空)。所以必须定义谁在「重置前」把上一期数据落到持久区:
+
+| 步骤 | 谁做 | 动作 |
+|---|---|---|
+| 1. 冻结上一期 | **L1/L2 cron**(跨期那次) | 检测到 `current_month.json.month ≠ 本次 month` → **先**把旧月完整 `per_repo` 写到 `canonical/v2/pending/<旧 period>.json`(幂等覆盖),**再**初始化新月活尾。绝不在未落 pending 前丢弃旧月。 |
+| 2. 折叠 | **L3 step 5** | 只读 `canonical/v2/pending/<period>.json`(已冻结、不再变动)→ 折进 `repo-monthly`/`repo-weekly` → 标 `folded_through=period`(写 `canonical/v2/meta.json`)。 |
+| 3. 防重复 | **读路径 §4.1** | 已折叠周期(`≤ folded_through`)只读 base(已含该期);未折叠的当前/刚收口周期读 live 覆盖层。**同一周期绝不同时计 live + canonical。** |
+
+> 这样:① 上月最后一天 net 一定先进 pending 才被覆盖 → **不丢**;② base 与 live 按 `folded_through` 水位线**互斥**取数 → **不重复**;③ pending 是冻结快照,L3 折叠期间 cron 不再动它 → step 5 读到的是稳定输入。`folded_through` 同时是周/月两套水位(周收口比月早)。
 
 ---
 
