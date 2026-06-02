@@ -217,7 +217,7 @@ export async function generateStaticParams() {
 
 | 页面 | `lastModified` 取值 | 稳定性 |
 |---|---|---|
-| 历史年 / 历史月（已折叠入 Parquet） | 该期数据**最后被重算的日期**（每周 pipeline 改动才变）→ 实质**固定** | 高（爬虫据此降频复抓） |
+| 历史年 / 历史月（已折叠进 canonical shard） | 该期数据**最后被重算的日期**（仅 Vercel Workflow 重算并发布新版本时才变）→ 实质**固定** | 高（爬虫据此降频复抓） |
 | 当年 / 当月 / 首页 / 全时榜 | **最近一次每日同步时间**（`hot-snapshot` 写入时刻 / UTC 日） | 每日变（爬虫据此勤复抓） |
 | repo / org 详情 | 该实体**最近有数据变动的日期**（当月在榜→每日级；早已沉寂→固定在最后活跃月） | 视活跃度 |
 
@@ -227,7 +227,7 @@ export async function generateStaticParams() {
 ### 3.4 配置要点（与 ARCHITECTURE 对齐）
 
 - **`cacheComponents` 关闭**：开启会改变 `dynamicParams` / 空数组语义（空 `generateStaticParams` 会 build 报错，需占位 param——与我们"长尾全按需"冲突）。MVP **保持关闭**。
-- 长尾段 `revalidate = false`：不做时间轮询失效，仅靠每周 `revalidatePath` 定点失效（数据视图每周才重算）。
+- 长尾段 `revalidate = false`：不做时间轮询失效，仅靠 Vercel Workflow 重算发布后的 `revalidatePath` 定点失效（base 数据视图仅 Workflow 发布新版本时才变）。
 - **热集 ISR 只读 KB 级 `hot-snapshot.json`**：绝不在请求路径加载 Parquet / DuckDB / 引擎（见 ARCHITECTURE）。
 - **Streaming metadata**：Next.js 16 对**可执行 JS 的爬虫**（如 Googlebot）会把 `generateMetadata` 流式注入 DOM、Google 能正确解析；对 **HTML-limited 爬虫**（`facebookexternalhit` / `Slackbot` / `Bingbot` / `Twitterbot`）则**阻塞渲染、把 meta 放进 `<head>`**。我们的 `generateMetadata` 不依赖运行时数据（只读已预算 JSON），可被预渲染进初始 HTML，**社交抓取与搜索引擎都拿得到完整 head**。无需改 `htmlLimitedBots`。
 
@@ -301,7 +301,7 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
 | about | 文案变更日 | `yearly` | 0.3 |
 
 - **多语言用 sitemap 内 `alternates.languages`**：Next.js 输出 `<xhtml:link rel="alternate" hreflang="...">`（含 `x-default`）。每个 `<url>` 的 `<loc>` 用英文版，alternates 列 ja/zh/x-default（见 §10 hreflang 矩阵）。
-- **sitemap 自身是 Route Handler、默认被缓存**：除非用 request-time API。我们的 sitemap 只读已预算 JSON，可被静态缓存；数据每周更新后由部署 / revalidate 刷新即可。
+- **sitemap 自身是 Route Handler、默认被缓存**：除非用 request-time API。我们的 sitemap 只读已预算 JSON，可被静态缓存；数据由 Vercel Workflow 重算发布后，经 `revalidatePath` / 部署刷新即可。
 - **priority/changeFrequency 是弱信号**：Google 基本忽略 `priority`，`changeFrequency` 仅作提示；**真正决定复抓的是 `lastModified` + 实际内容变化**——所以 §3.3 的稳定性最关键。
 
 ---

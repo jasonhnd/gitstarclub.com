@@ -1,7 +1,9 @@
 # gitstarclub 运维 / 部署
 
 > 运维与部署的唯一真相源。架构与数据流见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
-> 核心原则承袭架构：**Vercel-first 统一计费**、**运行时纯静态零引擎**、**重 build 只在每周**。本文把这些落到具体的项目、环境变量、Cron、Blob 与告警上。
+> 核心原则承袭架构：**Vercel-first 统一计费**、**运行时纯静态零引擎**、**生产数据运营不依赖本地计算**。本文把这些落到具体的项目、环境变量、Cron、Workflow、Blob 与告警上。
+>
+> ⚠️ **数据运营分层**：每日 / 每周 **live cron** 已实现（见 §Cron 调度）；历史 / 元数据 / canonical 全量刷新的 **Vercel Workflow runbook** 见 §Workflow runbook（**待实现**，设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)）；本机 BigQuery + DuckDB 回填见 §一次性 bootstrap Runbook（**归档，非日常路径**）。
 
 ## 部署拓扑（单一 Vercel 项目）
 
@@ -80,12 +82,18 @@ vercel alias set https://<preview-deployment>.vercel.app pre.gitstarclub.com --s
 
 ## Vercel Blob 布局
 
-用**一个 PUBLIC store**：海量 JSON 视图由 build 在打包时按**直链 URL** 读取，公开读最省事、命中 CDN。Parquet canonical 体积小、仅离线 pipeline 触碰。
+用**一个 PUBLIC store**：海量 JSON 视图由 build / 运行时按**直链 URL** 读取，公开读最省事、命中 CDN。canonical JSON shard 由 Workflow 读写（待实现）；bootstrap Parquet 体积小、仅一次性 bootstrap 触碰。
+
+> ⚠️ 下面是**现状（Phase 0）布局**。Vercel-only 迁移会**新增** `canonical/v2/`（JSON shard）、`views/`（staging + published + `latest.json` 指针）、`ops/workflows/`（Workflow checkpoint），并把 `canonical/star_daily.parquet` 降级为 bootstrap 归档。新布局完整定义见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4 与 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.11–2.13。
 
 ```
 blob://
 ├── canonical/
-│   └── star_daily.parquet          # 事实表（per-repo×天，~几十 MB，唯一真相源，仅离线/每周读写）
+│   ├── star_daily.parquet          # 🗄️ bootstrap 归档（仅一次性 / 灾难重建读写，非生产路径）
+│   └── v2/                          # 生产 canonical JSON shard（待实现，见 VERCEL-DATA-OPERATIONS §5）
+│       ├── repos/{bucket}.json      #   repo 维度 + 里程碑 + tracked_since
+│       ├── repo-monthly/{bucket}.json · repo-weekly/{bucket}.json · repo-recent-daily/{bucket}.json
+│       └── site-daily/{yyyy}.json
 ├── lookup/
 │   ├── repos.json                  # repo 元数据（build join）
 │   └── orgs.json
@@ -96,6 +104,13 @@ blob://
 │   ├── repo/{id}.json              # 曲线 + 里程碑 + 历期表 + 名次史
 │   └── org/{login}.json
 ├── heatmap/{year|month}/{period}.json
+├── live/                           # 当前周期活尾覆盖层（每日/每周 cron 写）
+│   ├── rank/{week|month}/{current}/repo/{flow|stock}.json
+│   └── heatmap/month/{current}.json
+├── views/                          # 发布层（待实现）：latest.json 指针 + staging/<run_id>/ + published/<version>/
+├── ops/
+│   ├── sync-runs.json              # live cron 运行记录（保留最近 100 次）
+│   └── workflows/<run_id>/…        # Workflow checkpoint（待实现）：manifest / steps / validation
 ├── current_month.json              # 当月活尾（KB 级，每日 cron append-only 覆盖写）
 └── hot-snapshot.json               # 热集聚合（首页/当年/当月，每日 cron 重写，热集 ISR 读）
 ```
@@ -107,11 +122,11 @@ blob://
 | API | `put` / `head` / `list` / `del` / `copy`；可在 build 脚本、cron route、server component 调用 | — |
 | 单文件上限 | 5TB | 远超需求（我们数据仅几十 MB） |
 | Pro 容量 | ~5GB 存储 + 100GB 传输/月 | 数据几十 MB，宽裕 |
-| **写速率** | **4,500 次/分（75/s）** | **离线 pipeline 批量 `put()` 必须节流**（限并发 + 间隔），尤其上传上万 entity JSON 时 |
+| **写速率** | **4,500 次/分（75/s）** | **批量 `put()` 必须节流**（限并发 + 间隔），尤其 bootstrap 上传 / Workflow 重算写上万 entity JSON 时 |
 | 同路径覆盖 | 需 `allowOverwrite: true` | 覆盖写视图 / 活尾时显式带上 |
 | **缓存传播** | 同路径覆盖最长 **60s** 才全网生效 | **每日更新的视图（活尾 / hot-snapshot）读取时带 query 参数 cache-bust**（如 `?v=<date>`），避免读到旧副本 |
 
-> 之所以选 PUBLIC store：JSON 视图本就是要被 build 直接 `fetch` 的公开数据，公开读免去签名、天然走 CDN。Parquet canonical 虽也在同 store，但只有持 token 的离线 pipeline 会动它，不在 build/运行时路径。
+> 之所以选 PUBLIC store：JSON 视图本就是要被 build / 运行时直接 `fetch` 的公开数据，公开读免去签名、天然走 CDN。canonical（JSON shard + bootstrap Parquet）虽也在同 store，但只有持 token 的 Workflow / bootstrap 会写它，不在 build/运行时读路径。
 
 ## Cron 调度
 
@@ -158,6 +173,26 @@ blob://
 4. 写后运行 `cd web && bun scripts/validate-live-views.ts --bust <UTC day>`，确认 `current_month.json` 包含本次 UTC day，`hot-snapshot.json` schema 可被现有 contracts 校验；再检查 `/en`、`/en/pulse` 仍可访问且保持 noindex。
 5. 若再次失败且两个 Blob 仍为 `404`，视为无写入失败，无需数据回滚；若任一对象已写入但校验失败，按下方“每日活尾”回滚。
 
+## Vercel Workflow runbook（🟡 待实现）
+
+> 承载历史 / 元数据 / canonical 全量刷新的长任务。设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)；落地后本节给具体运维步骤。**当前为占位** —— Phase 2–4 实现时填充实际命令。
+
+**为什么用 Workflow 而非单 Function**：单 Function 上限 800s / 4GB / bundle 250MB / 响应体 4.5MB（[Functions Limits](https://vercel.com/docs/functions/limitations)），装不下 DuckDB 全量重算；官方建议超长任务用 [Vercel Workflows](https://vercel.com/docs/workflows)（无单函数时长上限，可 pause/resume/checkpoint）。
+
+**触发**：Cron（或手动）`GET /api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 仅鉴权 + 启动 workflow + 返回 `run_id`，**不阻塞**。
+
+**实跑 runbook（设计草案）**：
+
+1. 调 `start` route 拿到 `run_id`；在 **Vercel Dashboard → Observability → Workflows** 看 run 状态（每 step 输入/输出/错误自动记录）。
+2. 看 `ops/workflows/<run_id>/manifest.json` + `steps/<step>.json` checkpoint 跟踪进度；step 失败 Workflow SDK 自动重试，跨 GitHub 配额用 `sleep` 等待。
+3. step 9 `validate` 对 `views/staging/<run_id>/**` 跑 Zod + sanity；**不过则终止，不切指针**，staging 留存排查。
+4. step 10 `publish` 切 `views/latest.json` 指针 + 写 `ops/workflows/latest-success.json`；step 11 `revalidate` 核心热集。
+5. **回滚**：把 `views/latest.json.version` 指回 `prev_version` → revalidate 核心热集（秒级，旧版本仍在 `published/<prev>`）。
+
+**鉴权 / 凭证**：`CRON_SECRET`（触发）、`GITHUB_TOKEN`（Search/GraphQL）、`BLOB_READ_WRITE_TOKEN`（读写 canonical/staging/published）。**Workflow 全程 0 GCP**（GCP 仅 bootstrap）。
+
+**告警**：Workflow 失败 / 卡死 → Sentry + `ops/workflows/<run_id>` 状态；因不切指针，线上始终是上一版，可从容排查。
+
 ## Deploy Hook 使用（可选）
 
 - 在 web 应用项目 **Settings → Git → Deploy Hooks** 创建（项目须 Git 连接），得到 URL 存入 `VERCEL_DEPLOY_HOOK_URL`；触发 `POST .../deploy/<prj>/<id>`（无 auth/payload）；限额 **5 hook/项目**。
@@ -180,7 +215,9 @@ blob://
 
 > `sync_runs` 不需要数据库：当前实现覆盖写 Blob 上的 `ops/sync-runs.json`，保留最近 100 次运行；需要更强告警时再把同一条结构化事件同步到 Sentry/Slack。
 
-## 一次性 BigQuery 回填 Runbook（高层）
+## 一次性 bootstrap Runbook（高层，🗄️ 归档 / 非日常路径）
+
+> **降级声明**：这是**首次冷启动 / 灾难重建 / 引入新数据源**时手动跑一次的工具，**不是 recurring 运营路径**。产物上传 Blob 后由 Vercel（live cron + Workflow）接管，日常运营 **0 本地依赖 · 0 GCP**。
 
 11 年事件级历史只回填一次，走 **BigQuery**（要 GCP 凭证，~$10、含稳定 repo.id）。免费替代（ClickHouse 公共实例、自建摄入）评估后均不可行，见 ARCHITECTURE「为什么回填用 BigQuery」。
 
@@ -223,11 +260,11 @@ blob://
 | `/tmp` | 500MB | — |
 | 响应体 | 4.5MB | Blob 直读绕过此限 |
 
-> 每日 cron 与热集 ISR 都只读写 KB 级 JSON，远不触及上述任何上限。读大文件一律走 Blob（绕过 4.5MB 响应体限制），且大文件只在离线 / 每周构建里碰。
+> 每日 cron 与热集 ISR 都只读写 KB 级 JSON，远不触及上述任何上限。读大文件一律走 Blob（绕过 4.5MB 响应体限制）。**全量重算超出单 Function 上限，必须走 Vercel Workflow 分片**（见 §Workflow runbook）。
 
 ## 回滚
 
-- **Blob artifacts 版本化**：每周 pipeline 产出的视图 / Parquet 以版本/日期标识保留若干份（不就地永久覆盖 canonical），坏数据可指回上一版。
+- **指针回滚（Workflow 发布，待实现）**：base 视图由 Workflow 写 `views/staging/<run_id>/` → 切 `views/latest.json` 指针发布。坏数据把指针的 `version` 指回 `prev_version` 即秒级回退（旧版本仍在 `published/<prev>`），见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7。
 - **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment**即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。
 - **每日活尾**：`current_month.json` 当月 append-only、覆盖写；`hot-snapshot.json` 由同次 daily cron 重写。首次实跑失败时两者仍为 `404`，说明 GraphQL 阶段失败不会半写。以后实跑前先备份已存在对象；若失败前两者原本不存在，回滚就是保持/恢复为不存在；若已存在且新写入校验失败，用备份覆盖回 `current_month.json` 与 `hot-snapshot.json`，再用 cache-bust 读取确认。
 - **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。

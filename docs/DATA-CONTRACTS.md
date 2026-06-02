@@ -1,7 +1,9 @@
-# gitstarclub 数据契约（Parquet canonical + JSON 视图）
+# gitstarclub 数据契约（canonical JSON shard + JSON 视图）
 
-> **pipeline 与 build 之间的接口**。物理形式与取舍见 [ARCHITECTURE.md](./ARCHITECTURE.md)「数据模型」；本文给每个产物的**精确 schema**。
-> 这是 build 侧 TypeScript 类型的唯一事实源——用 Zod 定义每个产物 schema，pipeline 产出时校验、build 读取时 parse（见 [TESTING.md](./TESTING.md) §1.2）。
+> **数据层与 build 之间的接口**。物理形式与取舍见 [ARCHITECTURE.md](./ARCHITECTURE.md)「数据模型」；本文给每个产物的**精确 schema**。
+> 这是 build 侧 TypeScript 类型的唯一事实源——用 Zod 定义每个产物 schema，产出时校验、build 读取时 parse（见 [TESTING.md](./TESTING.md) §1.2）。
+>
+> ⚠️ **canonical 形态**：§1 的 `star_daily.parquet` 是 **bootstrap 归档**形态。**生产 canonical = §1.4 的 JSON shard**（Vercel 可重算、无引擎）。Workflow / checkpoint / 发布指针契约见 §2.11–2.13。整体设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)。
 
 ## 全局约定
 
@@ -14,11 +16,11 @@
 
 ---
 
-## 1. Canonical（离线，Parquet，仅 pipeline 触碰）
+## 1. Canonical（仅数据层触碰：§1.1–1.3 bootstrap Parquet 形态；§1.4 生产 JSON shard）
 
-### 1.1 事实表 `canonical/star_daily.parquet`
+### 1.1 事实表 `canonical/star_daily.parquet`（🗄️ bootstrap 归档形态）
 
-唯一真相源。所有视图都从它聚合。
+bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，日表本身退为归档、不在生产读 / 重算路径。
 
 | 列 | 类型 | 说明 |
 |---|---|---|
@@ -46,6 +48,7 @@
 | `current_stars` | int | GraphQL 权威当前总数（**唯一必须精确的数**） |
 | `is_archived` | bool | |
 | `crossed_10k/50k/100k` | string\|null | 首破里程碑精确日期（供"历史上的今天"） |
+| `tracked_since` | string\|null | 进入白名单 / 开始追踪的日期。bootstrap 基线 repo 为 `null`（有完整历史）；新晋 repo = 发现日（页面据此标注，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6） |
 | `fetched_at` | string | 元数据抓取时刻 |
 
 ### 1.3 `meta`（→ `meta.json`）
@@ -55,6 +58,32 @@
 ```
 
 `seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。
+
+### 1.4 生产 canonical JSON shard（🟡 待实现，取代 Parquet 作为生产真相源）
+
+> 把 §1.1 的 8M 行日表**折叠 + 分桶**成一组小 JSON，让 Vercel Workflow 能无引擎重算。设计与分桶策略见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4.2/§5。`<bucket>` = `repo_id % N`。
+
+**`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`）：
+
+```json
+{ "1296269": { "id": 1296269, "node_id": "...", "owner": "vuejs", "owner_type": "Organization",
+               "name": "vue", "full_name": "vuejs/vue", "language": "TypeScript",
+               "current_stars": 207000, "crossed_10k": "2016-10-04", "tracked_since": null } }
+```
+
+**`canonical/v2/repo-monthly/{bucket}.json`** —— per-repo 月 flow 序列（驱动月榜 + entity 月曲线）：
+
+```json
+{ "1296269": [ ["2015-01", 1200], ["2015-02", 1500] ] }   // { "<id>": [[period, flow], ...] }
+```
+
+**`canonical/v2/repo-weekly/{bucket}.json`** —— per-repo ISO 周 flow 序列（驱动历史周榜）：`{ "<id>": [["2024-W42", 320], ...] }`。
+
+**`canonical/v2/repo-recent-daily/{bucket}.json`** —— per-repo 近 ~90 天日点（曲线尾 + 周边界，net 可负）：`{ "<id>": [["2026-03-01", 30], ["2026-03-02", -5]] }`。
+
+**`canonical/v2/site-daily/{yyyy}.json`** —— 站点级日总量（驱动 heatmap）：`{ "year": "2024", "cells": [["2024-01-01", 82000]] }`。
+
+> **stock 锚定**在 shard 上做：折扣 `d = current_stars / Σ月flow`，`stock_est` = 桶内对月序列前缀和 × `d`（纯 JS，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.4）。里程碑在 bootstrap 算定后冻结、写入 `repos` shard。
 
 ---
 
@@ -76,7 +105,16 @@ current_month.json                             # 活尾（cron 写）
 hot-snapshot.json                              # 热集（cron 写，ISR 读）
 ops/sync-runs.json                             # cron 运行记录（cron 写，运维读）
 meta.json
+# ── Vercel-only 发布层（🟡 待实现，见 §2.11–2.13）──
+views/latest.json                              # 发布指针（读侧据此解析版本前缀）
+views/staging/{run_id}/…                       # Workflow 待发布产物
+views/published/{version}/…                    # 已发布版本（保留近 N 份供回滚）
+ops/workflows/{run_id}/manifest.json           # Workflow run 元信息
+ops/workflows/{run_id}/steps/{step}.json       # 每个 step 的 checkpoint
+ops/workflows/latest-success.json              # 最近一次成功发布的 run_id（恢复点）
 ```
+
+> **发布层产物（`views/*`）的内部结构 = §2.1–2.7 的视图**（`rank/** entity/** heatmap/** lookup/** meta.json`），只是落在 `views/staging|published/<ver>/` 前缀下。读侧先读 `views/latest.json` 指针解析出 `<ver>`，再读该前缀下的视图（见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4.1）。
 
 ### 2.1 `lookup/repos.json`
 
@@ -236,18 +274,75 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 }
 ```
 
+### 2.11 `views/latest.json`（发布指针，🟡 待实现）
+
+读侧据此解析当前生效的视图版本前缀；切指针 = 原子发布 / 回滚（见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
+
+```json
+{
+  "version": "2026-06-02T04-00-00Z",
+  "run_id": "refresh-2026-06-02T04-00-00-000Z",
+  "published_at": "2026-06-02T04:03:11.000Z",
+  "prev_version": "2026-05-26T04-00-00Z",
+  "schema_ver": 1
+}
+```
+
+- 读侧带 `?v=<date>` cache-bust（规避 Blob 60s 传播）；解析 `version` → 读 `views/published/<version>/**`。
+- 回滚 = 把 `version` 写回 `prev_version`（旧版本仍在 `published/<prev>`）。
+
+### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json`（Workflow checkpoint，🟡 待实现）
+
+业务可读的 run 进度账本（Workflow SDK 自身另有持久化）。
+
+```json
+// manifest.json
+{
+  "run_id": "refresh-2026-06-02T04-00-00-000Z",
+  "started_at": "2026-06-02T04:00:00.000Z",
+  "status": "running",                          // running | published | failed
+  "steps": ["whitelist","metadata","renames","newcomers","canonical","rank","entity","heatmap","validate","publish","revalidate"],
+  "published_version": null
+}
+```
+
+```json
+// steps/rank.json
+{
+  "step": "rank", "status": "ok",               // ok | running | error
+  "started_at": "...", "finished_at": "...",
+  "shards_done": 32, "files_written": 4120,
+  "error": null
+}
+```
+
+`ops/workflows/latest-success.json` = `{ "run_id": "...", "version": "...", "published_at": "..." }`（恢复点）。
+
+### 2.13 `ops/workflows/{run_id}/validation.json`（校验报告，🟡 待实现）
+
+step `validate` 对 `views/staging/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md](./TESTING.md) §1.2/§1.3）；`ok=false` 则不切指针。
+
+```json
+{
+  "run_id": "...", "ok": true,
+  "checked": 12615, "schema_failures": 0,
+  "invariants": { "ranks_sorted": true, "org_eq_members": true, "drift_pct": 0.3 },
+  "failures": []
+}
+```
+
 ---
 
 ## 3. 版本 / 缓存 / 原子性
 
-- **原子切换**：每次 pipeline 发布可写到 `v/<build_id>/...` 前缀 + 更新 `latest.json` 指针，build 读指针指向的版本；或直接覆盖 + 读取时 query cache-bust（`?v=<date>`，见 [OPS.md](./OPS.md) Blob 60s 传播）。
+- **原子切换**：生产发布写 `views/staging/<run_id>/...` → validate → 更新 `views/latest.json` 指针（§2.11），读侧读指针指向的版本；当期活尾仍用覆盖写 + `?v=<date>` cache-bust（见 [OPS.md](./OPS.md) Blob 60s 传播）。
 - `meta.schema_ver`：破坏性 schema 改动 bump，build 启动校验版本匹配，不符 fail-fast。
 - 活尾 `current_month.json` 覆盖写最坏读到滞后一天，无半写风险。
 
 ## 4. 类型来源（单一事实源）
 
-每个产物用 Zod schema 定义于 `web/lib/contracts/`：
+每个产物用 Zod schema 定义于 `web/lib/contracts/`（canonical shard / workflow checkpoint / 发布指针的 schema 也归此处）：
 
-- pipeline 产出每个 JSON 后用对应 schema **校验**（脏数据不发布，见 TESTING §1.2/§1.3）。
-- build 读取时 `schema.parse(json)` → 得到带类型的对象，类型即从 Zod 推导，**不另写 interface**。
+- bootstrap / Workflow 产出每个 JSON 后用对应 schema **校验**（脏数据不发布、不切指针，见 TESTING §1.2/§1.3）。
+- build / 运行时读取时 `schema.parse(json)` → 得到带类型的对象，类型即从 Zod 推导，**不另写 interface**。
 - 改 schema = 改 Zod = 同时改契约、校验、类型——三者不会漂移。

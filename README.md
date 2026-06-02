@@ -6,6 +6,12 @@
 > `live/heatmap/*` overrides, revalidate the hot pages, and record runs in
 > `ops/sync-runs.json`.
 >
+> 2026-06-02 数据运营方向：每日 / 每周 cron 已 **Vercel-only**（上面那条）。**长期目标是把
+> 全部生产数据生命周期（白名单 / 元数据 / canonical 折叠 / 全量重算 / 发布 / 回滚）也搬上
+> Vercel，不依赖本地计算**——由 **Vercel Workflow** 承载（**设计目标 / 待实现**，见
+> [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)）。`pipeline/backfill`
+> 的 BigQuery + 本机 DuckDB 仅作为**一次性 bootstrap / 历史归档**，不再是日常运营路径。
+>
 > 2026-06-01 i18n note: English is the default UI language. Other languages are
 > selected from a compact dropdown and stored in the `gsc_lang` cookie without
 > changing the URL. The client writes the cookie and refreshes the current RSC
@@ -35,9 +41,9 @@
 | 渲染 | JSON 视图驱动；热页按请求读取语言 cookie，长尾 repo/org/rankings 按需生成 |
 | 语言 | 英文默认；下拉切换日文、简中、繁中、韩文、西文、法文；URL 不带语言前缀 |
 | SEO | sitemap 分片 + schema.org + 每页 OG（build 时生成），见 docs/SEO.md |
-| 核心数据 | **Parquet 事实表**（离线 canonical）→ DuckDB 预算 → **JSON 视图**（build 读）+ JSON 活尾（当月，cron 读写）；运行时无数据库 |
-| 一次性回填 | **BigQuery**（GH Archive 公开表，含稳定 repo.id）+ 本机 DuckDB，~$10 |
-| 日常采集 | **Vercel Cron + 单 Function**：GraphQL 批量查当前 star，diff 出增量 |
+| 核心数据 | **JSON 视图**（build / 运行时只读）+ JSON 活尾（当月，cron 读写）；运行时无数据库。生产 canonical 目标是 **Vercel-friendly JSON shard**（脱离本地 Parquet/DuckDB，**待实现**，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)） |
+| 一次性 bootstrap | **BigQuery**（GH Archive，含稳定 repo.id）+ 本机 DuckDB → Parquet 事实表，~$10。**仅首次冷启动 / 历史归档**，非日常运营路径 |
+| 日常采集 | **Vercel Cron + 单 Function**：GraphQL 批量查当前 star，diff 出增量（已实现）；历史 / 元数据 / 全量重算目标走 **Vercel Workflow**（待实现） |
 | 框架 | Next.js 16（App Router + RSC + Turbopack） |
 | 语言/工具链 | TypeScript 6 · React 19 · Zod 4 · Tailwind 4 · 包管理器 **bun** · Node 24 |
 | 部署 | Vercel（统一计费） |
@@ -69,6 +75,7 @@ gitstarclub/
 ├── README.md
 ├── docs/
 │   ├── ARCHITECTURE.md          # 技术栈、数据流、数据模型、扛量、build/cron 机制
+│   ├── VERCEL-DATA-OPERATIONS.md # Vercel-only 数据运营设计（Workflow/canonical shard/发布回滚，待实现）
 │   ├── PRODUCT.md               # 页面设计、URL、调性、i18n、命名
 │   ├── SEO.md                   # sitemap、meta、结构化数据、OG、多语言 SEO
 │   └── TESTING.md               # 测试策略：数据质量/视觉回归/a11y/E2E/性能/跨浏览器
@@ -84,11 +91,12 @@ gitstarclub/
 ├── package.json                 # 脚本：render（出图）/ build（部署）
 ├── public/                      # 构建产物（gitignore）：index.html + 图标 + og
 │
-├── pipeline/                    # 数据采集
-│   └── backfill/                # 一次性 11 年回填
-│       ├── extract.sql         # BigQuery 查 GH Archive 日序列（含 repo.id）
-│       ├── rollup.mjs           # 本机 DuckDB → Parquet 事实表 + JSON 视图
-│       └── metadata.mjs         # GraphQL 抓元数据 + owner + current_stars
+├── pipeline/                    # 🗄️ bootstrap 归档（一次性 / 灾难重建，非日常运营路径）
+│   └── backfill/                # 一次性 11 年回填（本机 / 全 Node；产物上传后由 Vercel 接管）
+│       ├── 02-extract.sql       # BigQuery 查 GH Archive 日序列（含 repo.id）
+│       ├── 04-rollup.mjs         # 本机 DuckDB → Parquet 事实表 + 里程碑
+│       ├── 05-precompute.mjs     # 本机 DuckDB → 全部 JSON 视图
+│       └── 06-upload.mjs         # 上传 Vercel Blob（节流 <75/s）
 ├── web/                         # Next.js 16 应用
 │   ├── app/
 │   │   ├── page.tsx             # 首页 = Pulse / 脉搏
@@ -121,11 +129,12 @@ gitstarclub/
 - [x] 预告页上线（gitstarclub.com，M3 Expressive 静态页 + 明暗双模式 + GA4 + UTC/JST 页脚时间戳 + OG/favicon）
 - [x] OG 图 / favicon 渲染为 M3E 石墨灰+星金配色（`assets/og.html`、`assets/icon.html`、`favicon.svg`，经 `render-assets.mjs` 出图）
 - [x] Next.js 16 骨架（TS6 / React19 / Zod4 / Tailwind4 / bun）
-- [ ] BigQuery 回填 2015-至今 ≥10k repo 日序列 → Parquet 事实表
-- [ ] GraphQL 抓元数据 + owner + current_stars → Parquet/JSON → 上传 Vercel Blob
+- [ ] BigQuery 回填 2015-至今 ≥10k repo 日序列 → Parquet 事实表（**一次性 bootstrap**，非 recurring）
+- [ ] GraphQL 抓元数据 + owner + current_stars → JSON → 上传 Vercel Blob
 - [ ] Next.js 四个核心页面（首页 / 年 / 月 / repo），build 读预算 JSON 视图 + SSG
 - [ ] 时间轴 + star 曲线（服务端 SVG，零客户端 JS）
-- [ ] Vercel Cron 每日 GraphQL diff → 活尾 + revalidate；每周刷新白名单 + revalidate（长尾按需 ISR）
+- [x] Vercel Cron 每日 / 每周 live refresh → 活尾 + revalidate（已实现）
+- [ ] **Vercel Workflow** 承载白名单 / 元数据 / canonical 全量刷新（脱离本地，**待实现**，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)）
 - [ ] Vercel 部署上线
 
 ### v0.2 — 叙事与发现

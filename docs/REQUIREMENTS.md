@@ -1,6 +1,6 @@
 # gitstarclub 需求基准（REQUIREMENTS）
 
-> **单一需求基准**——定义"做什么"。"怎么做"见 [ARCHITECTURE](./ARCHITECTURE.md) · [DATA-CONTRACTS](./DATA-CONTRACTS.md) · [PIPELINE](./PIPELINE.md) · [RANKING](./RANKING.md) · [FRONTEND](./FRONTEND.md) · [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) · [SEO](./SEO.md) · [OPS](./OPS.md) · [TESTING](./TESTING.md)。任何设计变更先回这里对齐。
+> **单一需求基准**——定义"做什么"。"怎么做"见 [ARCHITECTURE](./ARCHITECTURE.md) · [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) · [DATA-CONTRACTS](./DATA-CONTRACTS.md) · [PIPELINE](./PIPELINE.md) · [RANKING](./RANKING.md) · [FRONTEND](./FRONTEND.md) · [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) · [SEO](./SEO.md) · [OPS](./OPS.md) · [TESTING](./TESTING.md)。任何设计变更先回这里对齐。
 
 ## 1. 产品定位（两副面孔）
 
@@ -69,9 +69,15 @@
 
 ## 8. 数据形式 / pipeline
 
-- canonical = **Parquet 事实表**（per-repo×天，离线，几十 MB）；服务 = **DuckDB 预算 JSON 视图**（build 只读）。
-- 引擎（BigQuery/DuckDB）只在离线 / 全 Node；**build / cron / 运行时零引擎、零原生模块**。
-- 每日 cron JSON-only；每周折叠当月 + 重算受影响视图。详见 [DATA-CONTRACTS](./DATA-CONTRACTS.md)、[PIPELINE](./PIPELINE.md)。
+- 生产 canonical = **JSON shard**（per-repo 月/周 rollup + 站点日总量 + repo 维度，Vercel 可重算）；服务 = 预算好的 **JSON 视图**（build / 运行时只读）。bootstrap 形态是 Parquet 事实表（归档）。
+- 引擎（BigQuery/DuckDB）**只在一次性 bootstrap**；**生产 recurring 重算（历史/元数据/全量）走 Vercel Workflow，纯 JS + JSON shard、无引擎**；**build / cron / 运行时零引擎、零原生模块**。
+- 每日 / 每周 live cron JSON-only（已实现）；全量重算 + 发布 + 回滚走 Vercel Workflow（待实现）。详见 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)、[DATA-CONTRACTS](./DATA-CONTRACTS.md)、[PIPELINE](./PIPELINE.md)。
+
+## 8a. 非功能需求：生产不依赖本地计算 ⭐
+
+- **所有 recurring 数据作业在 Vercel 触发、运行、记录**（Cron / Function / Workflow）；本机 `pipeline/backfill` 仅作一次性 bootstrap / 历史归档 / 紧急人工工具，**不在日常运营路径**。
+- 单 Function 受 800s / 4GB / bundle 250MB / 响应体 4.5MB 限——**全量重算必须 Workflow 分片**，大文件走 Blob 直链。
+- 新晋 repo 历史**默认保守**（从发现日追踪、标 `tracked_since`），不为补历史引入 GCP 作为 recurring 依赖（取舍见 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §6）。
 
 ## 9. SEO / i18n
 
