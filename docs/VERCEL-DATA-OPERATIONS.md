@@ -4,7 +4,7 @@
 >
 > ⚠️ **实现状态声明（务必先读）**：
 > - **已实现（Phase 0）**：每日 / 每周 **Vercel live cron**（JSON-only），见 [OPS.md](./OPS.md)、[PIPELINE.md](./PIPELINE.md) §2–3。
-> - **code-complete，待部署验证（Phase 2）**：**metadata / whitelist workflow** 已写完（`workflow@4.3.1` + `withWorkflow()`；`web/lib/workflows/`、`web/app/api/workflows/refresh/start`、`web/lib/contracts/{canonical,workflow}.ts`），`next build` 绿。**尚未在 Vercel 真实跑过**（需部署 + Fluid Compute + env）。见 §10。
+> - **✅ 已在 Vercel 真跑通过（Phase 2，2026-06-02）**：**metadata / whitelist workflow**（`workflow@4.3.1`；`web/lib/workflows/`、`web/app/api/workflows/refresh/start`、`web/lib/contracts/{canonical,workflow}.ts`）。生产首跑 `status=published`、5,261 repo、32/32 repos 桶。**metadata seed 自 bootstrap `lookup/repos.json`、GitHub 只补新晋**（不全量重拉,避开二级限流）。见 §10。
 > - **仍是设计蓝图 / 待实现（Phase 3–5）**：canonical JSON shard 折叠、rank/entity/heatmap 重算、staging/pointer 发布回滚——下文这些步骤是设计，未写代码。
 > - **仍是本地（bootstrap-only）**：`pipeline/backfill/`（含 BigQuery extract + 本机 DuckDB rollup/precompute）。本文**不删除**它，只把它从「生产 recurring 路径」降级为「一次性 bootstrap / 历史归档 / 紧急人工工具」。
 >
@@ -147,7 +147,7 @@ async function recomputeRankShards(runId: string) {
 | # | step | 读 | 写 | 说明 |
 |---|---|---|---|---|
 | 1 | refresh whitelist | GitHub Search `stars:>=10000` | `canonical/v2/whitelist/<run_id>.json` + diff | 自适应分桶绕过 Search 1000 上限（逻辑同现 `01-whitelist`，但跑在 Vercel）。算出**新晋**（新 id）与**跌出**（旧 id 不再 ≥10k）。 |
-| 2 | metadata shards | GitHub GraphQL `nodes(ids)` 批量 100/查 | `canonical/v2/repos/<bucket>.json` | owner/type、name、full_name、language、topics、createdAt、current_stars、isArchived。**分 bucket 写**，每 step 处理若干 bucket。 |
+| 2 | metadata shards(**按 bucket,1 step/桶**) | bootstrap `lookup/repos.json`(owner_type/language)+ run whitelist(node_id、新鲜 current_stars、rename-aware full_name) | `canonical/v2/repos/<bucket>.json` | **存量 repo 从 bootstrap seed,不重拉 GitHub**;GitHub GraphQL `nodes()` 只补"既不在 prev shard 也不在 lookup"的真新晋(~12)。⚠️ **不可全量重拉 5,261 repo**——会撞 GitHub 二级限流(已实测)。每桶一个短 step,幂等。milestones/description/topics 留待 entity 富化(后续 phase)。 |
 | 3 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo：记录旧→新映射，供 web 层 301（见 [SEO.md](./SEO.md) §7）。canonical 按 `repo_id` 归并，改名不丢历史。 |
 | 4 | newcomer tracking | whitelist diff | `repos/<bucket>` 写 `tracked_since`；可选历史补片 | 新晋 repo 历史策略见 §6。默认保守：标 `tracked_since`，从发现日起追踪。 |
 | 5 | canonical shard update | 已收口周期的**冻结快照** `canonical/v2/pending/<period>.json` + recent-daily | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` | **折叠**：周期收口时把活尾 net delta 折进月/周 rollup shard;append 站点日总量。**交接靠水位标记防重复/丢数据**——见 §8.3(H1)：cron 跨期重置 `current_month.json` 前先把上一期完整 `per_repo` 落到 `canonical/v2/pending/<period>.json`,step 5 只读 pending、折叠后标记 `folded_through=period`。跌出者保留历史 shard、停止 poll。 |
@@ -410,7 +410,7 @@ hot-snapshot / current_month： 直读 (L1/L2 活尾)
 |---|---|---|---|
 | **Phase 0** | 每日 / 每周 **Vercel live cron**（JSON-only），写 `live/*` + 活尾 + hot-snapshot + sync-runs | ✅ 已完成 | daily/weekly 在 Vercel 真实跑通、契约校验通过 |
 | **Phase 1** | 落地 **Workflow 文档 + checkpoint schema**（本文 + DATA-CONTRACTS 契约 + OPS runbook） | ✅ 已完成 | 文档齐全，schema 定义清楚，可据此开工 |
-| **Phase 2** | **metadata / whitelist workflow**：把 `01-whitelist` + `03-metadata` 逻辑搬上 Vercel Workflow，产出 `canonical/v2/repos/**` + whitelist diff + rename map | 🟢 **code-complete，待部署验证** | 代码已落地：`workflow@4.3.1` + `withWorkflow()`；`lib/workflows/refresh.ts`（whitelist→rename→metadata）+ `app/api/workflows/refresh/start`（CRON_SECRET）+ `lib/workflows/checkpoint.ts`；契约 `lib/contracts/{canonical,workflow}.ts`。`next build` 绿、manifest 9 steps/1 workflow。**剩：Vercel 部署 + Fluid Compute + env，首跑校验** |
+| **Phase 2** | **metadata / whitelist workflow**：把 `01-whitelist` + `03-metadata` 逻辑搬上 Vercel Workflow，产出 `canonical/v2/repos/**` + whitelist diff + rename map | ✅ **已在 Vercel 真跑通过(2026-06-02)** | `workflow@4.3.1` + `withWorkflow()`；`lib/workflows/refresh.ts`（whitelist→rename→metadata）+ `app/api/workflows/refresh/start`（CRON_SECRET）+ checkpoint。生产首跑:`status=published`、5,261 repo、32/32 repos 桶、`latest-success` 已切、~6.5 min。**metadata seed 自 bootstrap `lookup/repos.json`,GitHub 只补新晋(§3.4/§6)——避开二级限流**。剩:把 start route 加进 `vercel.json` crons（首跑已通过,可加） |
 | **Phase 3** | **canonical JSON shard 迁移**：把 `star_daily.parquet` 折叠为 `repo-monthly/repo-weekly/repo-recent-daily/site-daily` shard；读侧 base 改走 `views/latest.json` 指针 | 🟡 待实现 | 生产重算不再需要读 Parquet / DuckDB |
 | **Phase 4** | **rank / entity / heatmap shard recompute**：step 6–8 在 Workflow 内重算所有视图到 staging + validate + publish + revalidate | 🟡 待实现 | 一次 Workflow run 能全量重算 + 发布 + 回滚，校验通过 |
 | **Phase 5** | **archive local backfill**：`pipeline/backfill` 正式标注为 bootstrap-only / 历史归档；日常运营 0 本地依赖 | 🟡 待实现 | 文档与代码注释明确 backfill 非生产路径；recurring 全在 Vercel |
