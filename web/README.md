@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GitStarClub Web
 
-## Getting Started
+Next.js 16 App Router application for GitStarClub.
 
-First, run the development server:
+## Local Development
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+```powershell
+bun install
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Required local secrets live in `web/.env.local` and must not be committed.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Vercel
 
-## Learn More
+The canonical Vercel project is `zkscio/gitstarclub.com`.
 
-To learn more about Next.js, take a look at the following resources:
+- Root Directory: `web`
+- Framework: Next.js
+- Production: `gitstarclub.com` / `www.gitstarclub.com`
+- Preview: `pre.gitstarclub.com` after Cloudflare DNS points `pre` to `76.76.21.21`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Run deploy commands from the repository root, not from `web/`, because the
+Vercel project already appends the `web` root directory.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```powershell
+vercel deploy . --prod --yes --scope zkscio --project gitstarclub.com
+vercel deploy . --yes --scope zkscio --project gitstarclub.com
+```
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Production and Preview both need `BLOB_BASE_URL`, `BLOB_READ_WRITE_TOKEN`,
+`CRON_SECRET`, and `GITHUB_TOKEN`.
