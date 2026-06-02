@@ -2,6 +2,8 @@
 
 > 从"文档齐全"到"逐模块开工"的桥。按**依赖顺序**给里程碑，每个含产出、依赖、验收。需求基准见 [REQUIREMENTS](./REQUIREMENTS.md)，各层细节见对应文档。
 > 原则：先立**契约**（类型即真相）→ 再出**真实数据** → 再让 web 接真实数据 → 扩页型 → 接 cron → SEO/上线。
+>
+> ⚠️ **与 Vercel-only 迁移的关系**：本文 M1 的「本机回填」是**一次性 bootstrap**；M4 的「每周 cron 白名单 diff / 新晋回填 / 折叠重算」的**生产形态目标是 Vercel Workflow，不依赖本地**——迁移分 **Phase 0–5**，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10。本文里程碑（M0–M5）讲「先把 MVP 跑起来」，VERCEL-DATA-OPERATIONS 讲「把生产数据路径搬离本地」，两者并行推进。
 
 ## 依赖图
 
@@ -22,7 +24,9 @@ M0 契约/脚手架
 - **pipeline 脚手架** `pipeline/`：`package.json`（`@duckdb/node-api`、`@vercel/blob`；运行用 node/全 Node 环境）、`lib/github.mjs`（Search 自适应分桶 + GraphQL 批量）。
 - **验收**：`tsc --noEmit` 过；契约覆盖所有视图；github 客户端能跑通一次小查询。
 
-## M1 — 回填出真实数据（一次性，本机/全 Node）
+## M1 — bootstrap 出真实数据（🗄️ 一次性，本机/全 Node；非日常运营路径）
+
+> 这是**首次冷启动**用的一次性 bootstrap（[PIPELINE §1](./PIPELINE.md)）。产物上传 Blob 后，recurring 刷新由 Vercel（live cron + Workflow）接管——见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) Phase 1–4。
 
 按 [PIPELINE §1](./PIPELINE.md)：
 1. `whitelist`：Search `stars:>=10000` 自适应分桶 → `whitelist.json`（≈5,248）。
@@ -53,11 +57,12 @@ M0 契约/脚手架
 ## M4 — 每日 / 每周 cron
 
 按 [PIPELINE §2–3](./PIPELINE.md) + [ARCHITECTURE 页面分层](./ARCHITECTURE.md)：
-- `web/app/api/cron/daily`：CRON_SECRET 校验 → GraphQL current_stars → net 日增 → 更新 `current_month.json` → **挑 mover 集** → 重算 `hot-snapshot.json` + `/trending` → `revalidatePath`（核心热集 + mover repo/org 页）。
-- `web/app/api/cron/weekly`：白名单 diff → 新晋回填 → 折叠当月 → 重算受影响视图 → revalidate。
+- ✅ `web/app/api/cron/daily`：CRON_SECRET 校验 → GraphQL current_stars → net 日增 → 更新 `current_month.json` → 重算 `hot-snapshot.json` + `live/*` 当前周期覆盖层 → `revalidatePath`（核心热集）。**已实现**。
+- ✅ `web/app/api/cron/weekly`：复用 live refresh，覆盖当前周/月 + hot snapshot + `ops/sync-runs.json`。**已实现**。
+- 🟡 **白名单 diff / 新晋回填 / canonical 折叠 / 全量重算 / 发布 / 回滚 → 不放普通 cron，目标走 Vercel Workflow**（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) Phase 2–4，待实现）。
 - **此处现场定**（文档最薄两块）：① 当期增量聚合的 **YTD-base**（存哪/每月更新）；② mover 的 **90 天基线**数据源（每日 cron JSON-only，需备一份滚动基线）。
 - **依赖**：M2/M3。
-- **验收**：cron 幂等；mover 当天上 `/trending` + 其页刷新；漂移告警。
+- **验收**：cron 幂等；mover 当天上 `/pulse` + 其页刷新；漂移告警。Workflow 落地后全量重算走 staging→指针→revalidate。
 
 ## M5 — SEO / i18n / PWA / 上线
 
@@ -74,4 +79,5 @@ M0 契约/脚手架
 
 ## 当前进度
 - ✅ M0 契约（`web/lib/contracts/` 初版已写）。
-- ⏳ 待续：M0 pipeline 脚手架 → M1…
+- ✅ M4 每日 / 每周 **live cron** 已在 Vercel 跑通（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) Phase 0）。
+- ⏳ 待续：M1 bootstrap → M2 web 接真实数据 → M3 页型；并行推进 Vercel-only Phase 2–5（Workflow / canonical shard / 发布回滚）。

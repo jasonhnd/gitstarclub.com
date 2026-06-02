@@ -22,11 +22,11 @@
 
 ## 1. Pipeline / 数据质量测试（最重要）
 
-数据在离线 pipeline 里被聚合成 JSON 视图，**一旦烤进 16k 静态页就无法运行时修正**。所以这一层是重兵把守区，分四类：聚合数学、schema 校验、sanity 不变量、golden file。
+数据在数据层（bootstrap / Vercel Workflow）被聚合成 JSON 视图，**一旦发布给 16k 静态页就无法运行时修正**。所以这一层是重兵把守区，分五类：聚合数学、schema 校验、sanity 不变量、golden file、发布闸门（§1.5）。
 
 ### 1.1 聚合 + 排名数学（单测，真数据子集）
 
-针对 DuckDB 预算逻辑的纯函数等价物 / 或直接对 pipeline 输出断言。**用一小份真 Parquet 切片**（如 5–10 个知名 repo、跨 2–3 年）当 fixture，避免合成数据掩盖真实边界。
+针对聚合预算逻辑的纯函数 / 或直接对产出断言。**用一小份真切片**（Parquet 子集 + 同源 canonical JSON shard，5–10 个知名 repo、跨 2–3 年）当 fixture，避免合成数据掩盖真实边界；并据此做 §1.5 的「shard 纯 JS 重算 == DuckDB 重算」等价对拍。
 
 - **flow（∑delta）**：窗口内每日 delta 求和 == 该窗口榜单数值；含 delta 为负（取消 star）的月份仍正确
 - **stock 累计 + 锚定**：累加到窗口末的总量；终点须**锚定 GraphQL `current_stars`**（gross 曲线终点 ≠ 当前总数时，以 GraphQL 为权威，见 ARCHITECTURE「数据校验/对账」）
@@ -52,7 +52,7 @@ test('周排名窗口跨月不丢日', () => {
 - 字段类型 / 必填 / 枚举（`owner_type ∈ {User, Org}`、`metric ∈ {flow, stock}`、`window ∈ {week,month,year,all-time}`）
 - 引用完整性：榜单里每个 `repo_id` 在 `lookup/repos.json` 有对应条目
 - Zod schema 即 build 读 JSON 的 TS 类型来源（single source of truth，避免 schema 与类型漂移）
-- **实现**：`web/scripts/validate-views.ts`（`bun scripts/validate-views.ts` 全量校验 `pipeline/data/views/**` 对契约，失败非零退出）。回填后已对全部产物跑通（当前 12,615 文件 0 失败）。
+- **实现**：`web/scripts/validate-views.ts`（`bun scripts/validate-views.ts` 全量校验 `pipeline/data/views/**` 对契约，失败非零退出）。bootstrap 后已对全部产物跑通（当前 12,615 文件 0 失败）。**Vercel-only 迁移后，Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/staging/<run_id>/**`**（§1.5），逻辑同源、只换运行位置。
 
 ### 1.3 Sanity 不变量（数据级断言，对全量产物跑）
 
@@ -77,6 +77,21 @@ test('周排名窗口跨月不丢日', () => {
 - golden 值人工核对一次后冻结；变更须显式 review（防"测试跟着 bug 一起改"）
 
 > golden file 测的是"历史不该变"；§1.1 测的是"算法该对"。两者互补：前者抓回归，后者抓逻辑。
+
+### 1.5 Workflow 发布闸门 / staging 校验 / 回滚（🟡 待实现）
+
+> Vercel-only 迁移后，**数据校验的"最后闸门"从本地 CI 移到 Vercel Workflow 内的 `validate` step**——对 `views/staging/<run_id>/**` 跑后，**通过才切 `views/latest.json` 指针**（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.13）。同一套 §1.2 Zod + §1.3 sanity 断言**不变**，只是运行位置变了。
+
+| 测试 | 在哪跑 | 断言 | 失败动作 |
+|---|---|---|---|
+| **staging 校验闸门** | Workflow `validate` step（Vercel） | §1.2 Zod 全量 + §1.3 sanity 不变量，对 `views/staging/<run_id>/**` | `ok=false` → **不切指针**；线上仍是上一版；staging 留存排查、Sentry 告警 |
+| **canonical shard 等价性** | 单测（CI）+ Workflow step | 「JSON shard 纯 JS 聚合」结果 == 「bootstrap DuckDB 同口径」结果（容差 0）——确保脱离 Parquet 不改数 | CI 阻断 / step error |
+| **发布指针原子性** | 集成测试 | 切指针前后读侧拿到的版本自洽；切到一半的请求拿旧版（不拿半发布） | CI 阻断 |
+| **回滚可逆** | 集成测试 | 把 `views/latest.json.version` 指回 `prev_version` 后，读侧立即拿回上一版；`published/<prev>` 仍在 | CI 阻断 |
+| **step 幂等** | 单测 | 同 `(run_id, shard)` 重跑 step → 覆盖同一份产物，不重复累加（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8） | CI 阻断 |
+
+- **fixture**：§1.1 的真切片同样导出成 **canonical JSON shard fixture**（与 Parquet 切片同源），单测「shard 重算」与「DuckDB 重算」对拍。
+- **隔离**：Workflow 校验只读 staging、不碰 `live/*` 活尾；活尾校验仍由每日/每周 cron 后置（见下「节奏」）。
 
 ---
 
@@ -165,12 +180,13 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ## 在哪里跑 + 节奏
 
-| 测试 | 本地 | CI（PR） | Pre-publish（数据发布 / 部署前） |
+| 测试 | 本地 | CI（PR） | Publish gate（Workflow `validate` step / 部署前） |
 |---|---|---|---|
 | 1.1 聚合 / 排名单测 | ✅ 快，随时 | ✅ 必过 | ✅ |
-| 1.2 Zod schema 校验 | ✅ | ✅ | ✅ pipeline 产出即校验，脏 JSON 阻断 |
-| 1.3 sanity 不变量 | 可选 | ✅ 对产物跑 | ✅ **阻断 deploy** |
+| 1.2 Zod schema 校验 | ✅ | ✅ | ✅ 产出即校验，脏 JSON 不切指针 |
+| 1.3 sanity 不变量 | 可选 | ✅ 对产物跑 | ✅ **不过不发布（不切指针）** |
 | 1.4 golden file | ✅ | ✅ | ✅ |
+| 1.5 shard 等价 / 发布 / 回滚 | ✅ | ✅ | ✅ Workflow staging 校验 + 指针闸门 |
 | 2. 视觉回归 | 选改动页 | ✅ 关键页全跑 | ✅ |
 | 3. a11y（axe + 键盘） | 选改动页 | ✅ | ✅ |
 | 4. E2E 导航 / i18n | 选改动流 | ✅ | ✅ |
@@ -180,15 +196,16 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 **节奏要点**：
 
 - **CI（每 PR）**：1.x 全套 + 2/3/4/5/6 在关键页跑。逻辑测试是门禁，必过；视觉 diff 与 Lighthouse 出报告供 review。
-- **Pre-publish（每周数据刷新 / 部署前，见 ARCHITECTURE 页面分层）**：在视图 JSON 发布到 Blob 前，§1.2/1.3 对**全量 JSON 产物**跑一遍，任一不变量违反即中止发布——这是防脏数据进生产的最后闸门。
-- **每日 cron**：不触发 deploy，但 cron 写 `current_month.json` / `hot-snapshot.json` 后，对这两个活尾跑 §1.2 schema + §1.3 漂移/非负 sanity（秒级），异常告警（Sentry）而非静默。
-- **本地**：改 pipeline 先跑 1.x；改组件先跑相关页的视觉 + a11y。遵循「改动靠 Vercel 预览确认」——视觉 / 性能以预览部署为准，不依赖本地 dev。
+- **Publish gate（Workflow `validate` step，🟡 待实现）**：生产全量重算把产物写到 `views/staging/<run_id>/**` 后，§1.2/1.3 对**全量 staging 产物**跑一遍，任一不变量违反即**不切 `views/latest.json` 指针**（线上仍上一版）——这是防脏数据进生产的最后闸门，从本地 CI 移到了 Vercel 内（§1.5）。
+- **每日 / 每周 cron**：不触发 deploy，但 cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后，对活尾跑 §1.2 schema + §1.3 漂移/非负 sanity（秒级），异常告警（Sentry）而非静默。
+- **本地**：改聚合逻辑先跑 1.x；改组件先跑相关页的视觉 + a11y。遵循「改动靠 Vercel 预览确认」——视觉 / 性能以预览部署为准，不依赖本地 dev。
 
 ## 验收清单
 
-- [ ] 聚合 / 排名单测覆盖 flow / stock+锚定 / 周月年全时边界 / org 求和，跑真 Parquet 切片
-- [ ] 全部 JSON 视图有 Zod schema，pipeline 产出 + build 读取双校验
-- [ ] sanity 不变量（非负 / delta 界 / 榜长序 / org==∑members / 漂移 / seam）对全量产物跑，阻断 deploy
+- [ ] 聚合 / 排名单测覆盖 flow / stock+锚定 / 周月年全时边界 / org 求和，跑真切片（Parquet 子集 + 同源 JSON shard）
+- [ ] 全部 JSON 视图有 Zod schema，产出 + build 读取双校验
+- [ ] sanity 不变量（非负 / delta 界 / 榜长序 / org==∑members / 漂移 / seam）对全量产物跑，阻断发布
+- [ ] （Workflow 落地后）staging 校验闸门：不过不切 `views/latest.json` 指针；shard 等价对拍、发布/回滚可逆（§1.5）
 - [ ] golden file 覆盖 ≥3 个知名 repo 的里程碑与排名，值已人工核对冻结
 - [ ] 视觉回归：关键页 × 4 断点 × 明暗双主题，基准入库
 - [ ] axe 零 critical；键盘可达 + focus 可见；reduced-motion 生效；AA 对比；SVG 有 title/aria + 数据表 fallback

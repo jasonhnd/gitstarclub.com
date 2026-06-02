@@ -1,21 +1,29 @@
 # gitstarclub 数据 Pipeline
 
-> 如何产出 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) 定义的产物。三段：**① 一次性回填 ② 每日 Vercel cron ③ 每周 Vercel cron**。
-> 普通 Vercel cron 只跑 JSON 增量刷新；引擎（BigQuery / DuckDB）不得塞进单个 Function。若历史全量刷新也要求 Vercel-only，需改造成 Vercel Workflow 分片步骤。架构见 [ARCHITECTURE.md](./ARCHITECTURE.md)，运维/凭证见 [OPS.md](./OPS.md)。
+> 如何产出 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) 定义的产物。四段：**① 一次性 bootstrap（归档）② 每日 Vercel cron（已实现）③ 每周 Vercel cron（已实现）④ Vercel Workflow 生产 pipeline（待实现）**。
+>
+> ⚠️ **口径**：本文 §1 的「本机 BigQuery + DuckDB 回填」是**一次性 bootstrap / 历史归档**，**不是日常运营路径**。
+> **生产 recurring 数据生命周期（白名单 / 元数据 / canonical 折叠 / 全量重算 / 发布 / 回滚）目标全部在 Vercel 运行**——
+> 由 §4 的 **Vercel Workflow** 承载（**设计目标 / 待实现**，详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)）。
+> 普通 Vercel cron 只跑 JSON 增量刷新；引擎（BigQuery / DuckDB）**不得**塞进单个 Function（受 800s / 4GB / 250MB 限）。
+> 架构见 [ARCHITECTURE.md](./ARCHITECTURE.md)，运维/凭证见 [OPS.md](./OPS.md)。
 
 ## 0. 角色与环境
 
-| 阶段 | 跑在哪 | 用什么 | 触发 |
-|---|---|---|---|
-| 一次性回填 | 本机 / 全 Node | BigQuery（一次）+ DuckDB + GraphQL | 手动跑一次 |
-| 每日 cron | Vercel Function | GraphQL + JSON 活尾（**不碰 DuckDB/Parquet**） | Vercel Cron `0 3 * * *` |
-| 每周 cron | Vercel Function | GraphQL + JSON 增量覆盖当前周/月/热集 | Vercel Cron `0 4 * * 0` |
+| 阶段 | 跑在哪 | 用什么 | 触发 | 状态 |
+|---|---|---|---|---|
+| ① 一次性 bootstrap | 本机 / 全 Node | BigQuery（一次）+ DuckDB + GraphQL → JSON | 手动跑一次 | 🗄️ 归档，非生产 |
+| ② 每日 cron | Vercel Function | GraphQL + JSON 活尾（**不碰 DuckDB/Parquet**） | Vercel Cron `0 3 * * *` | ✅ 已实现 |
+| ③ 每周 cron | Vercel Function | GraphQL + JSON 增量覆盖当前周/月/热集 | Vercel Cron `0 4 * * 0` | ✅ 已实现 |
+| ④ 生产重算 | **Vercel Workflow** | 多 step + Blob checkpoint + JSON shard（**无引擎**） | Cron 触发 / 手动 | 🟡 待实现 |
 
-凭证：`GITHUB_TOKEN`（GraphQL/Search）、GCP（**仅回填** BigQuery）、`BLOB_READ_WRITE_TOKEN`（上传）、`CRON_SECRET`。详见 OPS。
+凭证：`GITHUB_TOKEN`（GraphQL/Search）、GCP（**仅 bootstrap** BigQuery）、`BLOB_READ_WRITE_TOKEN`（上传）、`CRON_SECRET`。详见 OPS。
 
 ---
 
-## 1. 一次性回填（`pipeline/backfill/`，手动跑一次）
+## 1. 一次性 bootstrap（`pipeline/backfill/`，手动跑一次，🗄️ 归档）
+
+> **降级声明**：这一段是**首次冷启动 / 灾难重建**用的一次性工具，**不是日常运营 runbook**。它产出的 JSON 视图 + canonical 上传 Blob 后，由 Vercel（②③ live cron + ④ Workflow）接管 recurring 刷新。**日常运营 0 本地依赖。** 不删除这些脚本，但它们只在引入新数据源 / 重建基线时手动跑。
 
 ```
 01-whitelist → 02-extract(BigQuery) → 03-metadata(GraphQL)
@@ -77,21 +85,44 @@ GROUP BY repo_id, day;
 6. 落 ops/sync-runs.json 记录
 ```
 
-- 跌出 ≥10k、新晋者补多年历史、全时/实体历史重算：不作为普通 cron 的同步步骤。要放到 Vercel 内执行时，按 Vercel Workflow 拆分：白名单 diff → 新 id 历史补片 → JSON view 分片重算 → Blob 发布 → revalidate。
+- 跌出 ≥10k、新晋者补多年历史、全时/实体历史重算：不作为普通 cron 的同步步骤，交给 §4 Workflow。
 - 改名：Vercel cron 的 live refresh 仍以现有 lookup 为准；全量 metadata 刷新进入 Workflow 分片后再更新 lookup，旧 URL 由 web 层 301。
 
 ---
 
-## 4. 关键算法
+## 4. Vercel Workflow 生产 pipeline（🟡 待实现 —— 取代本机 DuckDB 全量重算）
+
+> 完整设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)。这里给与 §1 bootstrap 的**对应关系**：把 §1 那条本机链路逐步搬上 Vercel Workflow，**不依赖本地计算**。
+
+| §1 bootstrap 步骤（本机） | → | §4 Workflow step（Vercel，待实现） |
+|---|---|---|
+| 01-whitelist（Search） | → | step `refresh whitelist`（Search 自适应分桶 + diff） |
+| 03-metadata（GraphQL） | → | step `metadata shards` → `canonical/v2/repos/<bucket>.json` |
+| —（新增） | → | step `rename detection` + `newcomer tracking`（`tracked_since`） |
+| 04-rollup（DuckDB → Parquet + 里程碑） | → | step `canonical shard update`（活尾折叠进月/周 JSON shard；里程碑 bootstrap 算定后冻结） |
+| 05-precompute（DuckDB → 全部 JSON 视图） | → | steps `rank / entity / heatmap recompute`（读 JSON shard、纯 JS 聚合 → staging） |
+| 06-upload（Blob put 节流） | → | steps `validate → publish（切 views/latest 指针）→ revalidate` |
+
+**关键差异**：
+- **无引擎**：Workflow step 读 `canonical/v2/*` JSON shard，用纯 JS 做前缀和 / 分组 / 排序，**不加载 DuckDB / Parquet**（见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5）。
+- **分片 + checkpoint**：每 step 短小幂等，进度写 `ops/workflows/<run_id>/steps/<step>.json`；失败只影响 staging，不切线上指针（§7–8）。
+- **发布 = 切指针**：写 `views/staging/<run_id>/**` → validate → 切 `views/latest.json` → revalidate；可秒级回滚（§7）。
+- **不做 16k 全量 build**：发布只 revalidate 核心热集，长尾按需 ISR。
+
+> Workflow 落地前，③ 每周 live cron 是唯一的周级刷新，保证不断档；落地后两者前缀隔离、各司其职（live 覆盖层 vs base 发布层）。
+
+---
+
+## 5. 关键算法
 
 - **里程碑**：`repo cumsum(delta)` 跨阈值首日（回填时一次算定，冻结）。
 - **stock 历史锚定**：gross 累加 × 折扣对齐 `current_stars` —— 公式与精度边界见 [RANKING.md](./RANKING.md)。
 - **周期边界**：周 = ISO 周（UTC）；月/年 = UTC 日历边界。周不整除月，故 canonical 必须是**日**粒度（见 ARCHITECTURE 决策）。
 - **折叠老化**：当月收口 → 日聚合成月度（entity `curve.monthly`）；近 ~90 天保留日点（`recent_daily`），更老只留月度。
 
-## 5. 幂等 / 错误 / 重跑
+## 6. 幂等 / 错误 / 重跑
 
-- 每步可重跑：输出按 period/id 幂等覆盖；回填可分年/分批断点续跑。
-- **版本化产物**：发布写 `v/<build_id>/` + `latest.json` 指针（或覆盖 + cache-bust），坏数据可回退（OPS 回滚）。
-- **校验闸门**：产出 JSON 后跑 Zod schema + sanity 不变量（TESTING §1.2/§1.3），不过不发布。
-- **失败靠告警**（Sentry + `sync_runs`），不靠自动重试（OPS）。
+- 每步可重跑：输出按 period/id 幂等覆盖；bootstrap 可分年/分批断点续跑；Workflow step 按 `(run_id, shard)` 幂等（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8）。
+- **版本化产物**：Workflow 发布写 `views/staging/<run_id>/` → 切 `views/latest.json` 指针（保留 `prev_version`），坏数据指回上一版即可（OPS 回滚）。
+- **校验闸门**：产出 JSON 后跑 Zod schema + sanity 不变量（TESTING §1.2/§1.3），不过不发布、不切指针。
+- **失败靠告警**（Sentry + `sync_runs` + `ops/workflows/**`）；Workflow step 自带重试，跨配额用 `sleep` 等待，不空转。

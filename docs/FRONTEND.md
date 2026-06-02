@@ -13,7 +13,7 @@
 | # | 原则 | 落地约束 |
 |---|---|---|
 | 1 | **RSC 默认、零客户端 JS 优先** | 内容页全是 Server Component；图表服务端渲染 SVG/DOM；动效纯 CSS。唯一允许的客户端 JS 见 §4。 |
-| 2 | **build 只读 JSON、运行时零引擎** | 页面 body 与 `generateMetadata` 只 `fetch` pipeline 预算好的 JSON 视图（Vercel Blob），**绝不**在 build / 请求路径加载 Parquet / DuckDB / 原生模块（见 [ARCHITECTURE](./ARCHITECTURE.md)）。 |
+| 2 | **build 只读 JSON、运行时零引擎、不感知 Workflow** | 页面 body 与 `generateMetadata` 只 `fetch` 预算好的 JSON 视图（Vercel Blob），**绝不**在 build / 请求路径加载 Parquet / DuckDB / 原生模块，也**不知道** Vercel Workflow 存在——数据怎么产出（bootstrap / cron / Workflow）对页面透明，页面只读最终 JSON（见 [ARCHITECTURE](./ARCHITECTURE.md)、[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)）。 |
 | 3 | **页面分层 ↔ Next 配置一一对应** | 核心页 deploy 构建；长尾页按需 ISR；mover/pulse 每日 `revalidatePath`；历史冻结。这是本文的核心，见 §2。 |
 | 4 | **token 驱动、不写死调色板** | 组件用 Tailwind 工具类引用 `globals.css` 的 M3E 运行时变量（`bg-primary-container`、`text-on-surface-variant`…），主题切换即时生效（见 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §接入 Tailwind 4）。 |
 | 5 | **数据语言中立** | i18n 只翻译 UI chrome / 导航 / 标签 / meta；repo 名、描述、语言、topic、数字保留原文（见 §7、[PRODUCT](./PRODUCT.md) i18n）。 |
@@ -233,6 +233,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 - **每日更新的视图**（`current_month.json` / `hot-snapshot.json`）读取时带 `?v=<date>` cache-bust，规避 Blob 同路径覆盖最长 60s 传播窗口（[OPS](./OPS.md) §Blob 缓存传播）。
 - `meta.schema_ver`：build 启动校验版本匹配，不符 fail-fast（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §3）。
+- **base 视图版本指针（Workflow 落地后）**：base `rank/*` / `entity/*` / `heatmap/*` 改为「先读 `views/latest.json` 指针解析版本前缀，再读该前缀下视图」（[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7）。这一步**封装在 `web/lib/data/`**，组件入参形状不变、**对页面透明**；现有「live 优先、回退 base」语义保留（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11）。
 
 ---
 

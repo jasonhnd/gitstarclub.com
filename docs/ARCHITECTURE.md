@@ -1,21 +1,26 @@
 # gitstarclub 架构
 
-> 精简的 SSG-first 架构。核心洞察：**所有页面都是对 star 事件的确定性聚合，可离线预算成静态 JSON，运行时零数据库。**
+> 精简的 SSG-first 架构。核心洞察：**所有页面都是对 star 事件的确定性聚合，可预算成静态 JSON，运行时零数据库。**
 > 设计目标：扛 100万–1000万/天访问，运行时纯静态。产品设计见 [PRODUCT.md](./PRODUCT.md)。
+>
+> ⚠️ **生产数据运营方向（Vercel-only）**：本文描述的「离线 DuckDB/Parquet pipeline」是**一次性 bootstrap 形态**。
+> **长期目标是生产数据生命周期完全不依赖本地计算**——白名单 / 元数据 / canonical 折叠 / 全量重算 / 发布 / 回滚
+> 都搬上 **Vercel Workflow**（**设计目标 / 待实现**）。canonical 也从单个 Parquet 重设计为 **Vercel-friendly JSON shard**。
+> 详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)。本文凡提及 DuckDB/Parquet 处，均指 **bootstrap 归档**，不是 recurring 生产依赖。
 
 ## 核心洞察
 
 1. **唯一原子事实 = star 事件**：「某用户某天 star 了某 repo」。历史 star 数、任意窗口任意维度的排名，全是对这串事件的聚合。
-2. **历史 = 一张「per-repo × 天」事实表**（`delta`，seam 前 gross / 后 net）。**日**是支持"周排名"的最细必需粒度，能精确推出 周/月/年/全时 × repo/org × flow/stock。~800 万行，**Parquet 列存 ≈ 几十 MB**，只活在离线 pipeline。
-3. **所有视图离线预算成 JSON**：pipeline 用 DuckDB 把所有排行榜/曲线算成静态 JSON；**build 只读 JSON，运行时零数据库、零引擎、零原生模块**。
+2. **历史 = 一张「per-repo × 天」事实表**（`delta`，seam 前 gross / 后 net）。**日**是支持"周排名"的最细必需粒度，能精确推出 周/月/年/全时 × repo/org × flow/stock。~800 万行，bootstrap 时 **Parquet 列存 ≈ 几十 MB**（归档）；**生产阶段折叠成月/周 JSON shard**，日表不进生产读 / 重算路径。
+3. **所有视图预算成 JSON**：把所有排行榜/曲线算成静态 JSON；**build 只读 JSON，运行时零数据库、零引擎、零原生模块**。首次 bootstrap 用本机 DuckDB 出 JSON；**生产 recurring 重算目标走 Vercel Workflow + JSON shard，不依赖本地引擎**（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)）。
 4. **日常增量不下 GH Archive**：每日增量 = 今日总 star − 昨日总 star，GraphQL 批量查即可，秒级。
 
 ## 设计原则
 
 - **SSG-first**：所有内容页 build 时预生成静态 HTML，用户请求永不触达 Function/数据库。
 - **零客户端 JS**（内容页）：图表服务端渲染 SVG。
-- **Vercel-first**：部署、Cron、Blob、Analytics 全在 Vercel，统一计费。仅一次性回填用 BigQuery 扫 GH Archive（~$10，非 recurring），之后运营 100% Vercel + GitHub API。
-- **不可变历史 + 小活尾**：canonical = Parquet 事实表（离线，Vercel Blob）→ DuckDB 预算成 **JSON 视图**；活尾（当月）= KB 级 JSON，每日 cron 只读写它。**build 只读 JSON，不带任何引擎**。
+- **Vercel-first**：部署、Cron、Blob、Analytics 全在 Vercel，统一计费。仅一次性 bootstrap 用 BigQuery 扫 GH Archive（~$10，非 recurring），之后运营 100% Vercel + GitHub API。**生产 recurring 重算（历史 / 元数据 / 全量）目标走 Vercel Workflow**，不依赖本地（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)，待实现）。
+- **不可变历史 + 小活尾**：生产 canonical 目标 = **JSON shard**（per-repo 月/周 rollup + 站点日总量 + repo 维度，Vercel 可重算）；活尾（当月）= KB 级 JSON，每日 cron 只读写它。**build 只读 JSON，不带任何引擎**。bootstrap 阶段的 `star_daily.parquet` 仅作历史归档，不在生产读 / 重算路径。
 
 ## 技术栈
 
@@ -25,16 +30,17 @@
 | 语言/工具链 | TypeScript 6 · React 19 · Zod 4 · Node 24 · 包管理器 bun | 全部最新版 |
 | 样式 | Tailwind 4 + Material 3 Expressive tokens（`material-color-utilities` 生成）；组件库待定（`@material/web` 或自建） | M3E |
 | 字体 | Plus Jakarta Sans（几何变量无衬线）+ Geist Mono（数字/repo 名） | M3E 字体 |
-| **核心数据** | **Parquet 事实表**（per-repo×天，离线 canonical）→ DuckDB 预算 → **JSON 视图**（build 读）+ JSON 活尾（当月，cron 读写） | 均存 Vercel Blob |
-| 对象存储 | Vercel Blob（Parquet canonical + JSON 视图 + 预生成 OG 图） | Vercel 原生 |
-| 日常采集 | **Vercel Cron + Function**（GraphQL 批量查 + JSON 视图覆盖） | Vercel 原生 |
-| 一次性回填 | **BigQuery**（GH Archive 公开表，含稳定 `repo.id`）+ 本机 DuckDB | 一次性 ~$10 |
+| **核心数据** | **JSON 视图**（build / 运行时读）+ JSON 活尾（当月，cron 读写）；生产 canonical = **JSON shard**（目标，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)） | 均存 Vercel Blob |
+| 对象存储 | Vercel Blob（canonical JSON shard + JSON 视图 + 预生成 OG 图；bootstrap Parquet 归档） | Vercel 原生 |
+| 日常采集 | **Vercel Cron + Function**（GraphQL 批量查 + JSON 视图覆盖，已实现） | Vercel 原生 |
+| 生产重算（历史/元数据/全量） | **Vercel Workflow**（多 step + Blob checkpoint，**待实现**） | Vercel 原生 |
+| 一次性 bootstrap | **BigQuery**（GH Archive，含稳定 `repo.id`）+ 本机 DuckDB → Parquet | 一次性 ~$10，归档 |
 | 部署 | Vercel | |
 | Web 分析 | Vercel Analytics + Speed Insights · **GA4**（`NEXT_PUBLIC_GA_ID`） | |
 | 错误追踪 | Sentry | Vercel Marketplace |
 
 **MVP 不使用**：自建 ClickHouse/Tinybird、Neon/Postgres、Redis、Inngest、GitHub Actions、v0、tRPC。
-理由：所有视图离线预算成 JSON，运行时无需查询引擎；日常采集 GraphQL Function 即可；回填只一次性用 BigQuery（~$10，非 recurring），之后普通 cron 不再碰 GCP。
+理由：所有视图预算成 JSON，运行时无需查询引擎；日常采集 GraphQL Function 即可；历史/元数据/全量重算用 **Vercel Workflow**（自带队列 + 持久化 + 重试，无需 Inngest/GitHub Actions）；bootstrap 才一次性用 BigQuery（~$10，非 recurring），之后日常运营不再碰 GCP。
 
 ## 预告页（landing，已上线）
 
@@ -49,23 +55,24 @@
 ## 数据流
 
 ```
-┌─ 一次性回填（手动跑一次，本机/全 Node；~$10）───────┐
+┌─ 一次性 BOOTSTRAP（手动跑一次，本机/全 Node；~$10；🗄️ 归档，非 recurring）┐
 │  BigQuery: 查 GH Archive WatchEvent（含 repo.id）     │
 │    按 repo+day 汇总 → 导出（仅扫 type/repo.id/created）│
 │  GraphQL: 元数据 + owner(+type) + current_stars(权威)│
 │  本机 DuckDB：落 per-repo×天 事实表（Parquet, repo.id）│
-│    + 算里程碑（破 10k/50k/100k 精确日期）           │
-│  → Parquet canonical + repos.json → Vercel Blob      │
+│    + 算里程碑（破 10k/50k/100k 精确日期）→ JSON 视图  │
+│  → JSON shard + JSON 视图 → Vercel Blob（之后由 Vercel 接管）│
 └─────────────────────────────────────────────────────┘
 
-┌─ 预算视图（pipeline，DuckDB → JSON）────────────────┐
-│  DuckDB 读 Parquet，按 {周/月/年/全时}×{repo/org}    │
-│  ×{flow 新增 / stock 总量} 全 rollup → top-N JSON    │
-│  + per-repo / per-org 曲线 + 热力图 + 里程碑 → JSON  │
-│  → Vercel Blob（build 直接读，运行时零引擎）         │
+┌─ 生产重算（Vercel WORKFLOW，多 step + Blob checkpoint；待实现）┐
+│  Cron 触发 → Workflow 编排 steps：                   │
+│  whitelist diff → metadata shard → 改名/新晋 →       │
+│  canonical JSON shard 折叠 → rank/entity/heatmap 重算 │
+│  → staging → validate → 切 views/latest 指针 → revalidate│
+│  全程无 DuckDB/Parquet；大文件走 Blob 直链（VERCEL-DATA-OPERATIONS.md）│
 └─────────────────────────────────────────────────────┘
 
-┌─ 每日（Vercel Cron，JSON-only，秒级）───────────────┐
+┌─ 每日（Vercel Cron，JSON-only，秒级；已实现）────────┐
 │  1. GraphQL 查 current_stars（~53 查询）            │
 │  2. net 日增 = 今−昨；append 当月 JSON 活尾         │
 │  3. 重算 hot-snapshot.json（当前 周/月/年/全时 热视图）│
@@ -109,15 +116,16 @@ GitHub GraphQL 可一次查 100 个 repo 的 `stargazerCount`，5,248 repo ≈ 5
 
 → **BigQuery 一次性 ~$10**：一条 SQL、服务端聚合、含**稳定 `repo.id`**（改名正确归并）、精确又省事；回填完永不再碰 GCP（非 recurring，符合"避免散落账单"的本意）。`githubarchive.*` 列式表 `WHERE type='WatchEvent'` 只扫 type/repo.id/created_at。
 
-### 为什么 build 读 JSON、引擎只在离线？
+### 为什么 build 读 JSON、不带引擎？
 
 - 所有页面都是**确定性聚合、查询固定**，没有运行时临时查询需求
-- 于是把引擎关进离线 pipeline：DuckDB 读 Parquet 把所有视图预算成 JSON，**build/cron/运行时只碰 JSON**，零原生模块、零数据库、零并发写
-- 代价：新增切片视图要改 pipeline 重算（而非 build 里随手写 SQL）——MVP 视图固定，可接受
+- 于是不在 build / 运行时放引擎：所有视图**预算成 JSON**，**build/cron/运行时只碰 JSON**，零原生模块、零数据库、零并发写
+- bootstrap 阶段用 DuckDB 读 Parquet 出 JSON（一次性）；**生产 recurring 重算目标不用引擎**——直接读 canonical JSON shard、用纯 JS 做前缀和/排序（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5）
+- 代价：新增切片视图要改重算逻辑（而非随手写 SQL）——MVP 视图固定，可接受
 
 ### 为什么按天存（而非月/周）？
 
-要**周排名**，而周不整除月——日是能精确拼出 周/月/年/全时 的最小粒度，也正是 GH Archive 原生给的。日粒度 ~800 万行用 Parquet 列存仅几十 MB，且只在离线，对服务端零成本。
+要**周排名**，而周不整除月——日是能精确拼出 周/月/年/全时 的最小粒度，也正是 GH Archive 原生给的。日粒度 ~800 万行在 **bootstrap** 时用 Parquet 列存仅几十 MB；**生产阶段日表折叠为月/周 JSON shard**（日粒度只在 bootstrap 算里程碑 + 首次 rollup 时需要，之后冻结），生产重算只读小 shard，不依赖本地。
 
 ### org 维度零新增数据
 
@@ -140,21 +148,21 @@ GitHub GraphQL 可一次查 100 个 repo 的 `stargazerCount`，5,248 repo ≈ 5
 
 ## 数据模型（逻辑模型 + JSON 物理形式）
 
-物理上没有数据库：**canonical = Parquet 事实表（离线）**，**服务 = pipeline 预算好的 JSON 视图**。先逻辑模型，再物理形式。
+物理上没有数据库：**生产 canonical = JSON shard**（per-repo 月/周 rollup + 站点日总量 + repo 维度，Vercel 可重算，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5；bootstrap 形态是 `star_daily.parquet`，归档）；**服务 = 预算好的 JSON 视图**。先逻辑模型，再物理形式。
 
 ### 逻辑模型（概念，非物理表）
 
-- **事实表 `star_daily(repo_id, date, delta)`** —— 每 repo 每天 star 增量（seam 前 gross / 后 net，可负）。~800 万行，**唯一真相源**，存 Parquet。所有聚合从它推。
-- **维度 `repos`**：`id, node_id, owner, owner_type(User/Org), name, full_name, description, language, topics, created_at, current_stars`（GraphQL 权威）`, is_archived, crossed_10k/50k/100k, fetched_at`。
+- **事实表 `star_daily(repo_id, date, delta)`** —— 每 repo 每天 star 增量（seam 前 gross / 后 net，可负）。~800 万行，bootstrap 唯一真相源，存 Parquet（归档）；**生产形态 = 折叠后的月/周 JSON shard**（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5）。所有聚合从它推。
+- **维度 `repos`**：`id, node_id, owner, owner_type(User/Org), name, full_name, description, language, topics, created_at, current_stars`（GraphQL 权威）`, is_archived, crossed_10k/50k/100k, tracked_since, fetched_at`。
 - **`meta`**：`seam_date`（gross→net 边界）、`backfilled_at`、`schema_ver`。
 
-### 派生 = 窗口 × 维度 × 指标（DuckDB 在 pipeline 预算）
+### 派生 = 窗口 × 维度 × 指标（bootstrap 用 DuckDB；生产用 Workflow 纯 JS）
 
 - **窗口**：周 / 月 / 年 / 全时
 - **维度**：repo（按 `repo_id`）/ org（按 `owner` 分组，含 User 与 Organization）
 - **指标**：flow（窗口内 ∑delta，"谁在涨"）/ stock（累加到窗口末、锚 `current_stars`，"谁最大"）
 
-DuckDB SQL 示例（仅 pipeline 内，非运行时）：
+聚合逻辑示例（bootstrap 用下列 DuckDB SQL；**生产 Workflow 用等价纯 JS** 在 JSON shard 上做前缀和/分组，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.4。两者都**只在数据层、非运行时**）：
 
 ```sql
 -- 某月 repo 新增榜 (flow)
@@ -174,7 +182,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 ### 物理：JSON 视图 artifacts（build 读，Blob 存）
 
-DuckDB 把所有 period × dim × metric 预算成 JSON：
+数据层把所有 period × dim × metric 预算成 JSON（bootstrap 由 DuckDB 产出，生产由 Workflow 重算）：
 
 - `rank/{week|month|year}/{period}/{repo|org}/{flow|stock}.json` → top-N（引用 + 数值 + 名次）
 - `rank/all-time/{repo|org}/stock.json`
@@ -256,12 +264,12 @@ DuckDB 把所有 period × dim × metric 预算成 JSON：
 ```
 
 **并发与原子性**：
-- cron 只动当月小 JSON；build 读「上次周预算的 JSON 视图 + 当月活尾 JSON」。视图 / Parquet 仅每周重算，天然与 cron 隔离，**无需每日版本化大文件**
-- current_month.json 当月内 append-only，覆盖写最坏只让某次请求读到滞后一天的热力图，无半写风险；要更稳可加 `latest.json` 指针，但压力已极低
+- cron 只动当月小 JSON（写 `live/*` 覆盖层）；base 视图由 Workflow 全量重算后**切 `views/latest.json` 指针**发布（见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。live 覆盖层与 base 发布层前缀不重叠，天然与 cron 隔离
+- current_month.json 当月内 append-only，覆盖写最坏只让某次请求读到滞后一天的热力图，无半写风险；base 发布用指针原子切换、可回滚
 
 **资源核对**：
 - cron：只处理 KB 级 JSON + 53 GraphQL，内存 / 时间 / tmp 全不构成约束（秒级）
-- DuckDB + Parquet 只在**一次性回填或 Vercel Workflow 分片化历史刷新**里跑；build / 普通 cron / 运行时无任何查询引擎或原生模块
+- DuckDB + Parquet 只在**一次性 bootstrap** 里跑；**生产的历史 / 元数据 / 全量刷新走 Vercel Workflow 分片**（纯 JS + JSON shard，无引擎）；build / 普通 cron / 运行时无任何查询引擎或原生模块
 
 ### GraphQL 限额核对
 
@@ -321,7 +329,7 @@ GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount`
 
 | 阶段 | 触发条件 | 引入 |
 |---|---|---|
-| **MVP** | — | Parquet 事实表 + JSON 视图，纯静态 |
+| **MVP** | — | JSON shard canonical + JSON 视图，纯静态（bootstrap 用 Parquet 一次性产出） |
 | **v0.2** | 要全站搜索 / 月度 LLM 叙事 | Pagefind/Orama 静态搜索索引；Vercel AI Gateway 跑摘要 |
 | **v0.3** | 扩到 ≥100 star（46 万 repo），单文件吃力 | **Tinybird (ClickHouse)** 作主库；可能加 **Neon** 存元数据 |
 | later | 用户系统 / 对比 / 个性化 | Neon + 运行时查询；Turbopuffer 向量检索 |
