@@ -175,10 +175,11 @@ blob://
 4. 写后运行 `cd web && bun scripts/validate-live-views.ts --bust <UTC day>`，确认 `current_month.json` 包含本次 UTC day，`hot-snapshot.json` schema 可被现有 contracts 校验；再检查 `/`、`/pulse` 仍可访问且保持 noindex。
 5. 若再次失败且两个 Blob 仍为 `404`，视为无写入失败，无需数据回滚；若任一对象已写入但校验失败，按下方“每日活尾”回滚。
 
-## Vercel Workflow runbook（🟢 Phase 2 code-complete，待部署验证）
+## Vercel Workflow runbook（✅ Phase 2 已在 Vercel 真跑通过 2026-06-02）
 
 > 承载历史 / 元数据 / canonical 全量刷新的长任务。设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)。
-> **现状**：**Phase 2（白名单 / 元数据 / 改名 / 新晋）代码已落地**——`workflow@4.3.1` + `next.config` `withWorkflow()`；`web/lib/workflows/refresh.ts`（`refreshWorkflow`：whitelist→rename→metadata）+ `web/lib/workflows/steps/*` + `web/lib/workflows/checkpoint.ts` + `web/app/api/workflows/refresh/start/route.ts`。`next build` 绿、manifest 9 steps/1 workflow。**未在 Vercel 真实跑过。** Phase 3–5（折叠 / 重算 / 发布回滚）尚未写代码。
+> **现状**：**Phase 2（白名单 / 元数据 / 改名 / 新晋）已在生产 Vercel 真跑通过**——`workflow@4.3.1` + `withWorkflow()`；`web/lib/workflows/refresh.ts`（`refreshWorkflow`：whitelist→rename→metadata）+ `steps/*` + `checkpoint.ts` + `web/app/api/workflows/refresh/start/route.ts`。首跑 `status=published`、5,261 repo、32/32 repos 桶、`latest-success` 已切、~6.5 min。**metadata seed 自 `lookup/repos.json`，GitHub 只补新晋**（不全量重拉,否则撞二级限流——已实测踩坑）。Phase 3–5（折叠 / 重算 / 发布回滚）尚未写代码。
+> **未接 cron**：`/api/workflows/refresh/start` 尚未加进 `web/vercel.json` 的 `crons`（首跑已通过,可加,排程独立于 daily/weekly）。
 
 **为什么用 Workflow 而非单 Function**：单 Function 上限 800s / 4GB / bundle 250MB / 响应体 4.5MB（[Functions Limits](https://vercel.com/docs/functions/limitations)），装不下 DuckDB 全量重算；官方建议超长任务用 [Vercel Workflows](https://vercel.com/docs/workflows)（无单函数时长上限，可 pause/resume/checkpoint）。
 
