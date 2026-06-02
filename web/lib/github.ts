@@ -34,7 +34,7 @@ function secondaryLimitDelayMs(status: number, text: string): number | null {
   return /secondary rate limit|abuse detection|rate limit/i.test(text) ? 60_000 : null;
 }
 
-async function gql(query: string, attempt = 1): Promise<Record<string, { stargazerCount: number } | null>> {
+async function gql<T>(query: string, attempt = 1): Promise<T> {
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: { Authorization: `bearer ${TOKEN}`, "Content-Type": "application/json" },
@@ -44,10 +44,10 @@ async function gql(query: string, attempt = 1): Promise<Record<string, { stargaz
   const text = await res.text();
   if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt <= MAX_RETRIES) {
     await sleep(secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
-    return gql(query, attempt + 1);
+    return gql<T>(query, attempt + 1);
   }
   if (!res.ok) throw new Error(`GitHub GraphQL ${res.status}: ${text.slice(0, 200)}`);
-  const json = JSON.parse(text) as { data?: Record<string, { stargazerCount: number } | null>; errors?: unknown };
+  const json = JSON.parse(text) as { data?: T; errors?: unknown };
   // Partial data + errors is normal (a deleted/renamed repo aliases to null); only fail with no data.
   if (!json.data) throw new Error(`GraphQL: ${JSON.stringify(json.errors ?? {}).slice(0, 200)}`);
   return json.data;
@@ -62,7 +62,7 @@ export async function fetchStarCounts(refs: RepoRef[], batchSize = 100): Promise
     const query = `query{${batch
       .map((r, j) => `r${j}: repository(owner:${JSON.stringify(r.owner)}, name:${JSON.stringify(r.name)}){stargazerCount}`)
       .join(" ")}}`;
-    const data = await gql(query);
+    const data = await gql<Record<string, { stargazerCount: number } | null>>(query);
     batch.forEach((r, j) => {
       const node = data[`r${j}`];
       if (node && typeof node.stargazerCount === "number") out.set(r.id, node.stargazerCount);
@@ -128,4 +128,65 @@ export async function searchWhitelist(minStars = 10000, maxStars = 600000): Prom
     }
   }
   return [...out.values()].sort((a, b) => b.stars - a.stars);
+}
+
+// --- GraphQL nodes(): repo metadata ---
+
+export interface RepoMetadata {
+  full_name: string;
+  owner: string;
+  owner_type: "User" | "Organization";
+  name: string;
+  description: string | null;
+  language: string | null;
+  topics: string[];
+  created_at: string;
+  current_stars: number;
+  is_archived: boolean;
+}
+
+interface RepoNode {
+  databaseId: number | null;
+  nameWithOwner: string;
+  owner: { login: string; __typename: "User" | "Organization" };
+  name: string;
+  description: string | null;
+  primaryLanguage: { name: string } | null;
+  repositoryTopics: { nodes: Array<{ topic: { name: string } }> };
+  createdAt: string;
+  stargazerCount: number;
+  isArchived: boolean;
+}
+
+/** Batch repo metadata via GraphQL nodes() (100 ids/query) → Map<databaseId, RepoMetadata>.
+ *  Ported from pipeline/lib/github.mjs batchMetadata; see docs/VERCEL-DATA-OPERATIONS.md §3.4 (step 2). */
+export async function batchMetadata(nodeIds: string[]): Promise<Map<number, RepoMetadata>> {
+  if (!TOKEN) throw new Error("GITHUB_TOKEN not set");
+  const out = new Map<number, RepoMetadata>();
+  const selection =
+    "databaseId nameWithOwner owner{login __typename} name description primaryLanguage{name} " +
+    "repositoryTopics(first:20){nodes{topic{name}}} createdAt stargazerCount isArchived";
+  for (let i = 0; i < nodeIds.length; i += 100) {
+    const ids = nodeIds.slice(i, i + 100);
+    const query = `query{nodes(ids:${JSON.stringify(ids)}){... on Repository{${selection}}}}`;
+    const data = await gql<{ nodes: Array<RepoNode | null> }>(query);
+    for (const n of data.nodes) {
+      if (n && n.databaseId != null) {
+        out.set(n.databaseId, {
+          full_name: n.nameWithOwner,
+          owner: n.owner.login,
+          owner_type: n.owner.__typename,
+          name: n.name,
+          description: n.description,
+          language: n.primaryLanguage?.name ?? null,
+          topics: n.repositoryTopics.nodes.map((t) => t.topic.name),
+          created_at: n.createdAt,
+          current_stars: n.stargazerCount,
+          is_archived: n.isArchived,
+        });
+      }
+    }
+    if (i + 100 < nodeIds.length) await sleep(BATCH_PAUSE_MS);
+  }
+  return out;
 }
