@@ -39,6 +39,11 @@ export interface OrgAgg {
   members: number[]; // member repo ids
 }
 
+export interface SeamPeriods {
+  month: Period;
+  week: Period;
+}
+
 export interface Model {
   repos: Map<number, RepoMeta>;
   monthly: Map<number, Series>;
@@ -47,6 +52,7 @@ export interface Model {
   siteDaily: DailySeries; // all years, date-asc
   orgs: Map<string, OrgAgg>; // login -> aggregate
   ids: number[]; // repo ids, ascending
+  seam: SeamPeriods; // immutable gross/net boundary (periods ≤ seam are gross × d)
 }
 
 const numId = (k: string): number => Number(k);
@@ -60,8 +66,9 @@ export interface RawShards {
   siteDailyByYear: Record<string, { year: string; cells: DailySeries }>;
 }
 
-/** Merge bucket shards (already combined into flat records) into a compute Model. */
-export function buildModel(raw: RawShards): Model {
+/** Merge bucket shards (already combined into flat records) into a compute Model.
+ *  seamDate (canonical/v2/meta.seam_date) fixes the gross/net boundary for stock anchoring. */
+export function buildModel(raw: RawShards, seamDate: DateStr): Model {
   const repos = new Map<number, RepoMeta>();
   for (const [k, v] of Object.entries(raw.repos)) repos.set(numId(k), v);
 
@@ -93,8 +100,28 @@ export function buildModel(raw: RawShards): Model {
   }
 
   const ids = [...repos.keys()].sort((a, b) => a - b);
-  return { repos, monthly, weekly, recentDaily, siteDaily: siteCells, orgs, ids };
+  return { repos, monthly, weekly, recentDaily, siteDaily: siteCells, orgs, ids, seam: seamPeriods(seamDate) };
 }
 
 /** ISO week / month / year period strings sort lexically in chronological order. */
 export const byPeriod = (a: Period, b: Period): number => (a < b ? -1 : a > b ? 1 : 0);
+
+function isoWeekStr(d: Date): Period {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = (t.getUTCDay() + 6) % 7; // Mon=0
+  t.setUTCDate(t.getUTCDate() - day + 3); // Thursday of this ISO week
+  const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const fday = (firstThu.getUTCDay() + 6) % 7;
+  firstThu.setUTCDate(firstThu.getUTCDate() - fday + 3);
+  const week = 1 + Math.round((t.getTime() - firstThu.getTime()) / (7 * 86_400_000));
+  return `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+/** Immutable gross/net boundary = the month/week containing the last gross day (seam_date − 1).
+ *  Periods ≤ these are pre-seam gross (× d); later periods are post-seam net (RANKING §3, §8.3). */
+export function seamPeriods(seamDate: DateStr): SeamPeriods {
+  if (!seamDate) return { month: "9999-12", week: "9999-W99" }; // no seam → treat everything gross
+  const dt = new Date(`${seamDate}T00:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() - 1); // last gross day
+  return { month: dt.toISOString().slice(0, 7), week: isoWeekStr(dt) };
+}
