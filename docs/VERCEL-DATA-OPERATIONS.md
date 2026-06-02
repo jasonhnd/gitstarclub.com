@@ -4,7 +4,8 @@
 >
 > ⚠️ **实现状态声明（务必先读）**：
 > - **已实现（Phase 0）**：每日 / 每周 **Vercel live cron**（JSON-only），见 [OPS.md](./OPS.md)、[PIPELINE.md](./PIPELINE.md) §2–3。
-> - **本文为设计目标 / 待实现**：**Vercel Workflow** 承载的「历史 / 元数据 / canonical 全量刷新」**尚未落地**，下文所有 Workflow 步骤、canonical JSON shard、staging/pointer 发布机制都是**设计蓝图**，不是现状。落地顺序见 §10 迁移计划。
+> - **code-complete，待部署验证（Phase 2）**：**metadata / whitelist workflow** 已写完（`workflow@4.3.1` + `withWorkflow()`；`web/lib/workflows/`、`web/app/api/workflows/refresh/start`、`web/lib/contracts/{canonical,workflow}.ts`），`next build` 绿。**尚未在 Vercel 真实跑过**（需部署 + Fluid Compute + env）。见 §10。
+> - **仍是设计蓝图 / 待实现（Phase 3–5）**：canonical JSON shard 折叠、rank/entity/heatmap 重算、staging/pointer 发布回滚——下文这些步骤是设计，未写代码。
 > - **仍是本地（bootstrap-only）**：`pipeline/backfill/`（含 BigQuery extract + 本机 DuckDB rollup/precompute）。本文**不删除**它，只把它从「生产 recurring 路径」降级为「一次性 bootstrap / 历史归档 / 紧急人工工具」。
 >
 > 关联：架构总览 [ARCHITECTURE.md](./ARCHITECTURE.md) · 数据契约 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) · 运维 [OPS.md](./OPS.md) · pipeline [PIPELINE.md](./PIPELINE.md) · 测试 [TESTING.md](./TESTING.md)。
@@ -50,7 +51,7 @@
 |---|---|---|---|---|
 | **L1 每日 live** | poll current_stars → 写 `current_month.json` + `live/*` 当前周期覆盖层 + `hot-snapshot.json` → revalidate 热集 | **Vercel Function**（单函数，JSON-only，秒级） | Cron `0 3 * * *` | ✅ 已实现 |
 | **L2 每周 live** | 复用 live refresh，覆盖写当前周 / 当前月 rank + 当月 heatmap + hot snapshot + `ops/sync-runs.json` | **Vercel Function**（单函数，JSON-only） | Cron `0 4 * * 0` | ✅ 已实现 |
-| **L3 Managed refresh** | 白名单 diff → 元数据 shard → 改名检测 → 新晋追踪 → canonical 折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布 → revalidate | **Vercel Workflow**（多 step，Blob checkpoint） | Cron 触发（如每周一次，独立于 L2）或手动 | 🟡 **待实现（本文设计）** |
+| **L3 Managed refresh** | 白名单 diff → 元数据 shard → 改名检测 → 新晋追踪 → canonical 折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布 → revalidate | **Vercel Workflow**（多 step，Blob checkpoint） | Cron 触发（如每周一次，独立于 L2）或手动 | 🟢 **Phase 2（白名单/元数据/改名/新晋）code-complete，待部署**；折叠/重算/发布（Phase 3–5）待实现 |
 | **L4 Bootstrap archive** | 11 年事件级历史首次回填（Search → BigQuery → DuckDB → JSON → Blob） | **本机 / 全 Node**（`pipeline/backfill`） | 手动，一次性 | 🗄️ 归档工具，非生产路径 |
 
 **分工原则**：
@@ -408,13 +409,13 @@ hot-snapshot / current_month： 直读 (L1/L2 活尾)
 | Phase | 内容 | 状态 | 退出标准 |
 |---|---|---|---|
 | **Phase 0** | 每日 / 每周 **Vercel live cron**（JSON-only），写 `live/*` + 活尾 + hot-snapshot + sync-runs | ✅ 已完成 | daily/weekly 在 Vercel 真实跑通、契约校验通过 |
-| **Phase 1** | 落地 **Workflow 文档 + checkpoint schema**（本文 + DATA-CONTRACTS 契约 + OPS runbook） | 🟡 进行中（文档） | 文档齐全，schema 定义清楚，可据此开工 |
-| **Phase 2** | **metadata / whitelist workflow**：把 `01-whitelist` + `03-metadata` 逻辑搬上 Vercel Workflow，产出 `canonical/v2/repos/**` + whitelist diff + rename map | 🟡 待实现 | Workflow 能在 Vercel 刷新白名单 + 元数据 + 改名，写 checkpoint |
+| **Phase 1** | 落地 **Workflow 文档 + checkpoint schema**（本文 + DATA-CONTRACTS 契约 + OPS runbook） | ✅ 已完成 | 文档齐全，schema 定义清楚，可据此开工 |
+| **Phase 2** | **metadata / whitelist workflow**：把 `01-whitelist` + `03-metadata` 逻辑搬上 Vercel Workflow，产出 `canonical/v2/repos/**` + whitelist diff + rename map | 🟢 **code-complete，待部署验证** | 代码已落地：`workflow@4.3.1` + `withWorkflow()`；`lib/workflows/refresh.ts`（whitelist→rename→metadata）+ `app/api/workflows/refresh/start`（CRON_SECRET）+ `lib/workflows/checkpoint.ts`；契约 `lib/contracts/{canonical,workflow}.ts`。`next build` 绿、manifest 9 steps/1 workflow。**剩：Vercel 部署 + Fluid Compute + env，首跑校验** |
 | **Phase 3** | **canonical JSON shard 迁移**：把 `star_daily.parquet` 折叠为 `repo-monthly/repo-weekly/repo-recent-daily/site-daily` shard；读侧 base 改走 `views/latest.json` 指针 | 🟡 待实现 | 生产重算不再需要读 Parquet / DuckDB |
 | **Phase 4** | **rank / entity / heatmap shard recompute**：step 6–8 在 Workflow 内重算所有视图到 staging + validate + publish + revalidate | 🟡 待实现 | 一次 Workflow run 能全量重算 + 发布 + 回滚，校验通过 |
 | **Phase 5** | **archive local backfill**：`pipeline/backfill` 正式标注为 bootstrap-only / 历史归档；日常运营 0 本地依赖 | 🟡 待实现 | 文档与代码注释明确 backfill 非生产路径；recurring 全在 Vercel |
 
-> **Phase 1 = 本轮**：只改文档、设计模式，不动运行代码。后续 Phase 2–5 才逐步写 Workflow 实现代码。
+> **进度**：Phase 0 live cron ✅；Phase 1 文档/契约 ✅；**Phase 2 metadata/whitelist workflow 代码已完成（`workflow@4.3.1`，待 Vercel 部署 + Fluid Compute + env 后首跑验证）**；Phase 3–5 待实现。
 
 ---
 
