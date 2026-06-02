@@ -63,8 +63,8 @@ GROUP BY repo_id, day;
 3. net 日增 = 今日 current_stars − current_month.json 里昨日值
 4. upsert current_month.json：按 UTC 日写 daily_totals + per_repo + current_stars（append-only，幂等）
 5. 挑 mover 集（deltas 已在手，免费）：今日涨幅前 ~50 ∪（今日 ≥ 其 90d 日均 5× 且当日净增 ≥200）∪ 破里程碑
-6. 重算 hot-snapshot.json + `/trending` 数据（含突刺/复活）→ Blob
-7. revalidatePath：核心热集（首页/当年/当月/rankings/trending × 3 语言）+ **mover 集的 repo/org 页**
+6. 重算 hot-snapshot.json + `/pulse` 数据（含突刺/复活）→ Blob
+7. revalidatePath：核心热集（首页/当年/当月/rankings/pulse × 3 语言）+ **mover 集的 repo/org 页**
    （没动的实体 + 全部历史一概不碰）
 ```
 

@@ -229,7 +229,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 | 层 | 页面 | 机制 |
 |---|---|---|
-| **核心（deploy 构建）** | 首页 · 当年 · 当月 · 全时榜 · `/trending`（×3 语言，~数十页） | deploy 时 SSG；每日 cron 写 `hot-snapshot.json` + `revalidatePath` 每日刷新 |
+| **核心（deploy 构建）** | 首页 · 当年 · 当月 · 全时榜 · `/pulse`（×3 语言，~数十页） | deploy 时 SSG；每日 cron 写 `hot-snapshot.json` + `revalidatePath` 每日刷新 |
 | **mover（每日·事件驱动）** | 当日"显著在动"的 repo/org（通常几十~几百） | 每日 cron 据日增挑出（今日涨幅前 ~50 ∪ ≥ 其 90d 日均 5× 且当日 ≥200 ∪ 破里程碑）→ 刷新这些 repo/org 页 + 脉搏面 |
 | **长尾（按需 ISR）** | 历史年/月/周 · 未在动的 repo/org（~16k+） | `dynamicParams=true` 且不在 `generateStaticParams` → **不在 deploy 构建**；首访生成、持久缓存；仅数据变更时 `revalidatePath` 定点失效 |
 | **历史（冻结）** | 已完成 周/月/年页 | 一次生成后**永不变**，标 "as of 日期" |
