@@ -143,7 +143,7 @@ test('周排名窗口跨月不丢日', () => {
 - `/api/lang?lang=fr&next=//evil.example` 作为后备入口仍必须回退到 `/`，防止开放重定向。
 - Service worker 不得缓存 HTML 导航或 `/api/*` 响应；语言 cookie 改变后不能拿到旧页面缓存。
 - 切换语言后 `<html lang>` 与 UI 文案应一致；repo 名、语言、topic、数字等数据字段不得被翻译。
-- **i18n 路由**：英文默认根路径（`/`、`/rankings/2024/10`、`/:owner/:name`）；日文 `/ja/...`；中文 `/zh/...` 都返回 200 且 UI chrome 已翻译、repo 数据保持原文（数据语言中立）
+- **语言中立 URL × cookie**：不存在语言前缀路由（无 `/ja/...`、`/zh/...`）。应测同一条语言中立 URL（`/`、`/rankings/2024/10`、`/:owner/:name`）在 `gsc_lang` cookie 取不同值时都返回 200，且 UI chrome 按 cookie 翻译、repo 名/语言/topic/数字等数据字段保持原文（数据语言中立）
 - 用确定性等待（等元素 / URL），**不用 timeout 硬等**，避免 flaky
 
 ---
@@ -209,7 +209,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 - [ ] golden file 覆盖 ≥3 个知名 repo 的里程碑与排名，值已人工核对冻结
 - [ ] 视觉回归：关键页 × 4 断点 × 明暗双主题，基准入库
 - [ ] axe 零 critical；键盘可达 + focus 可见；reduced-motion 生效；AA 对比；SVG 有 title/aria + 数据表 fallback
-- [ ] E2E：导航图 3 跳贯通、上下期导航、里程碑锚点、榜单跳转、三语路由
+- [ ] E2E：导航图 3 跳贯通、上下期导航、里程碑锚点、榜单跳转、i18n cookie 切换（URL 不变、chrome 翻译）
 - [ ] 内容页零客户端 JS（bundle 断言）+ HTML < 20KB + 字体子集 ≤ ~30KB
 - [ ] CWV 达标（LCP<2.5s / INP<200ms / CLS<0.1 / FCP<1.5s）
 - [ ] 跨浏览器关键页通过，View Transitions 优雅降级

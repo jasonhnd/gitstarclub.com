@@ -199,16 +199,18 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 ### 页面规模
 
-| 类型 | 数量 | × 3 语言 |
-|---|---|---|
-| 首页 | 1 | 3 |
-| 年度页 | ~11 | ~33 |
-| 月度页 | ~132 | ~396 |
-| Repo 详情页 | ~5,248 | ~15,744 |
-| OG 图（每页一张） | ~5,400 | ~16,200 |
-| **静态页合计** | **~5,400** | **~16,200** |
+| 类型 | 数量（单语言） |
+|---|---|
+| 首页 | 1 |
+| 年度页 | ~11 |
+| 月度页 | ~132 |
+| Repo 详情页 | ~5,248 |
+| OG 图（每页一张） | ~5,400 |
+| **静态页合计** | **~5,400** |
 
-三语 × 5,400 ≈ **16,200 个静态页**（语言策略见 [SEO.md](./SEO.md)）。
+> 语言走**页内 cookie 偏好**，URL 语言中立、不为语言建独立 URL ⇒ 页数即单语言数，**不 × 语言数**。
+
+单语言 ~5,400（语言走页内 cookie，不 × 语言数）≈ **~5,400 单语言静态页**（语言策略见 [SEO.md §10](./SEO.md)：页内 cookie、无独立语言 URL）。
 
 > ⚠️ 上表是原始"repo 月度编年史"页面。新增的 **周排名 + org 维度 + 全时榜** 视图已在数据层全部预算（见数据模型）。因长尾走**按需 ISR**（懒生成、不占 build 预算，见下），org / 周页"成页"成本极低；**哪些视图独立成页**仍是待定的 PRODUCT 取舍，但已不受 build 预算约束。
 
@@ -216,7 +218,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 16k+ 页**不在 deploy 时全量构建**（会撞 45min 上限，且 deploy 本就会重置 ISR）。约束与对策：
 
-- **Vercel build 上限 45min**：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜 ×3 语言，~数十页），秒~分钟级；长尾交给按需 ISR
+- **Vercel build 上限 45min**：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜，~数十页；语言中立单一 URL，不 × 语言数），秒~分钟级；长尾交给按需 ISR
 - **OG 图离线化**：OG 图**不在 build 生成**，仅在数据变化时（pipeline 侧）增量生成变化页的 OG → 存 Blob
 - **数据查询**：聚合已在 pipeline 预算成 JSON 视图；build 只读对应视图 JSON 直接渲染，**不在 build 做聚合、不带引擎**
 - **长尾按需 ISR（核心，见下）**：历史 / repo / org / 周页首访生成、持久缓存，不占 build 预算
@@ -229,7 +231,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 | 层 | 页面 | 机制 |
 |---|---|---|
-| **核心（deploy 构建）** | 首页 · 当年 · 当月 · 全时榜 · `/pulse`（×3 语言，~数十页） | deploy 时 SSG；每日 cron 写 `hot-snapshot.json` + `revalidatePath` 每日刷新 |
+| **核心（deploy 构建）** | 首页 · 当年 · 当月 · 全时榜 · `/pulse`（~数十页，语言中立单一 URL） | deploy 时 SSG；每日 cron 写 `hot-snapshot.json` + `revalidatePath` 每日刷新 |
 | **mover（每日·事件驱动）** | 当日"显著在动"的 repo/org（通常几十~几百） | 每日 cron 据日增挑出（今日涨幅前 ~50 ∪ ≥ 其 90d 日均 5× 且当日 ≥200 ∪ 破里程碑）→ 刷新这些 repo/org 页 + 脉搏面 |
 | **长尾（按需 ISR）** | 历史年/月/周 · 未在动的 repo/org（~16k+） | `dynamicParams=true` 且不在 `generateStaticParams` → **不在 deploy 构建**；首访生成、持久缓存；仅数据变更时 `revalidatePath` 定点失效 |
 | **历史（冻结）** | 已完成 周/月/年页 | 一次生成后**永不变**，标 "as of 日期" |
