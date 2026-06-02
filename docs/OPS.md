@@ -109,7 +109,7 @@ blob://
 ├── live/                           # 当前周期活尾覆盖层（每日/每周 cron 写）
 │   ├── rank/{week|month}/{current}/repo/{flow|stock}.json
 │   └── heatmap/month/{current}.json
-├── views/                          # 发布层（待实现）：latest.json 指针 + staging/<run_id>/ + published/<version>/
+├── views/                          # 发布层（✅ 已实现 Phase 4）：latest.json 指针 + <run_id>/（version=run_id）
 ├── ops/
 │   ├── sync-runs.json              # live cron 运行记录（保留最近 100 次）
 │   └── workflows/<run_id>/…        # Workflow checkpoint（待实现）：manifest / steps / validation
@@ -273,7 +273,7 @@ blob://
 
 ## 回滚
 
-- **指针回滚（Workflow 发布，待实现）**：base 视图由 Workflow 写 `views/staging/<run_id>/` → 切 `views/latest.json` 指针发布。坏数据把指针的 `version` 指回 `prev_version` 即秒级回退（旧版本仍在 `published/<prev>`），见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7。
+- **指针回滚（Workflow 发布，✅ 已实现）**：base 视图由 Workflow 写 `views/<run_id>/`（version=run_id）→ validate → 切 `views/latest.json` 指针发布。坏数据把指针的 `version` 指回 `prev_version` 即秒级回退（旧版本仍在 `views/<prev>`），见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7。触发：`GET https://www.gitstarclub.com/api/workflows/refresh/start`（Bearer `CRON_SECRET`）。
 - **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment**即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。
 - **每日活尾**：`current_month.json` 当月 append-only、覆盖写；`hot-snapshot.json` 由同次 daily cron 重写。首次实跑失败时两者仍为 `404`，说明 GraphQL 阶段失败不会半写。以后实跑前先备份已存在对象；若失败前两者原本不存在，回滚就是保持/恢复为不存在；若已存在且新写入校验失败，用备份覆盖回 `current_month.json` 与 `hot-snapshot.json`，再用 cache-bust 读取确认。
 - **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。

@@ -105,8 +105,8 @@ GROUP BY repo_id, day;
 
 **关键差异**：
 - **无引擎**：Workflow step 读 `canonical/v2/*` JSON shard，用纯 JS 做前缀和 / 分组 / 排序，**不加载 DuckDB / Parquet**（见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5）。
-- **分片 + checkpoint**：每 step 短小幂等，进度写 `ops/workflows/<run_id>/steps/<step>.json`；失败只影响 staging，不切线上指针（§7–8）。
-- **发布 = 切指针**：写 `views/staging/<run_id>/**` → validate → 切 `views/latest.json` → revalidate；可秒级回滚（§7）。
+- **分片 + checkpoint**：每 step 短小幂等，进度写 `ops/workflows/<run_id>/steps/<step>.json`；失败只影响该版本前缀 `views/<run_id>/`，不切线上指针（§7–8）。
+- **发布 = 切指针**：写 `views/<run_id>/**`（version=run_id）→ validate → 切 `views/latest.json` → revalidate；可秒级回滚（§7）。✅ Phase 4 已线上验证。
 - **不做 16k 全量 build**：发布只 revalidate 核心热集，长尾按需 ISR。
 
 > Workflow 落地前，③ 每周 live cron 是唯一的周级刷新，保证不断档；落地后两者前缀隔离、各司其职（live 覆盖层 vs base 发布层）。
@@ -123,6 +123,6 @@ GROUP BY repo_id, day;
 ## 6. 幂等 / 错误 / 重跑
 
 - 每步可重跑：输出按 period/id 幂等覆盖；bootstrap 可分年/分批断点续跑；Workflow step 按 `(run_id, shard)` 幂等（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8）。
-- **版本化产物**：Workflow 发布写 `views/staging/<run_id>/` → 切 `views/latest.json` 指针（保留 `prev_version`），坏数据指回上一版即可（OPS 回滚）。
+- **版本化产物**：Workflow 发布写 `views/<run_id>/`（version=run_id）→ 切 `views/latest.json` 指针（保留 `prev_version`），坏数据指回上一版即可（OPS 回滚）。
 - **校验闸门**：产出 JSON 后跑 Zod schema + sanity 不变量（TESTING §1.2/§1.3），不过不发布、不切指针。
 - **失败靠告警**（Sentry + `sync_runs` + `ops/workflows/**`）；Workflow step 自带重试，跨配额用 `sleep` 等待，不空转。

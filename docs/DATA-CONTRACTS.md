@@ -57,9 +57,9 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 { "seam_date": "2026-05-31", "backfilled_at": "...", "schema_ver": 1, "generated_at": "..." }
 ```
 
-`seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。
+`seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。`Meta` 契约同时接受**扁平 bootstrap meta**（含 `backfilled_at`）与 **Phase 4 版本化 meta**（含 `folded_through`，无 `backfilled_at`）——二者皆 optional。
 
-### 1.4 生产 canonical JSON shard（🟡 待实现，取代 Parquet 作为生产真相源）
+### 1.4 生产 canonical JSON shard（✅ 已实现 Phase 3a，取代 Parquet 作为生产真相源）
 
 > 把 §1.1 的 8M 行日表**折叠 + 分桶**成一组小 JSON，让 Vercel Workflow 能无引擎重算。设计与分桶策略见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4.2/§5。`<bucket>` = `repo_id % N`。
 
@@ -73,7 +73,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 - `seam_date`：gross→net 边界，stock 锚定据此分段（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.4）。
 - `folded_through`：已折叠进 base 的最末周/月周期；读路径据此判某周期归 live 还是 base（防重复，§8.3）。
 
-**`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`；外加 `d` = 冻结折扣系数，bootstrap 算定）：
+**`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`；外加 `d` = 冻结折扣系数，bootstrap 算定，**存全精度 IEEE double**——舍入会让 JS 重算的 `stock_est` 与 DuckDB 差 ±1）：
 
 ```json
 { "1296269": { "id": 1296269, "node_id": "...", "owner": "vuejs", "owner_type": "Organization",
@@ -118,16 +118,15 @@ current_month.json                             # 活尾（cron 写）
 hot-snapshot.json                              # 热集（cron 写，ISR 读）
 ops/sync-runs.json                             # cron 运行记录（cron 写，运维读）
 meta.json
-# ── Vercel-only 发布层（🟡 待实现，见 §2.11–2.13）──
-views/latest.json                              # 发布指针（读侧据此解析版本前缀）
-views/staging/{run_id}/…                       # Workflow 待发布产物
-views/published/{version}/…                    # 已发布版本（保留近 N 份供回滚）
+# ── Vercel-only 发布层（✅ 已实现 Phase 4，见 §2.11–2.13）──
+views/latest.json                              # 发布指针（读侧据此解析版本前缀；version = run_id）
+views/{run_id}/…                               # 一个 run 的完整视图版本（version=run_id，无独立 staging/published）
 ops/workflows/{run_id}/manifest.json           # Workflow run 元信息
 ops/workflows/{run_id}/steps/{step}.json       # 每个 step 的 checkpoint
 ops/workflows/latest-success.json              # 最近一次成功发布的 run_id（恢复点）
 ```
 
-> **发布层产物（`views/*`）的内部结构 = §2.1–2.7 的视图**（`rank/** entity/** heatmap/** lookup/** meta.json`），只是落在 `views/staging|published/<ver>/` 前缀下。读侧先读 `views/latest.json` 指针解析出 `<ver>`，再读该前缀下的视图（见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4.1）。
+> **发布层产物（`views/<version>/*`）的内部结构 = §2.1–2.7 的视图**（`rank/** entity/** heatmap/** lookup/** meta.json`），落在 `views/<run_id>/` 前缀下（version = run_id，无 staging→published 拷贝）。读侧先读 `views/latest.json` 指针解析出 `<version>`，再读该前缀下的视图（无指针时回退扁平布局；见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4.1）。
 
 ### 2.1 `lookup/repos.json`
 
@@ -287,7 +286,7 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 }
 ```
 
-### 2.11 `views/latest.json`（发布指针，🟡 待实现）
+### 2.11 `views/latest.json`（发布指针，✅ 已实现 Phase 4）
 
 读侧据此解析当前生效的视图版本前缀；切指针 = 原子发布 / 回滚（见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
 
@@ -301,10 +300,10 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 }
 ```
 
-- 读侧带 `?v=<date>` cache-bust（规避 Blob 60s 传播）；解析 `version` → 读 `views/published/<version>/**`。
-- 回滚 = 把 `version` 写回 `prev_version`（旧版本仍在 `published/<prev>`）。
+- 读侧带短缓存 / cache-bust（规避 Blob 60s 传播）；解析 `version` → 读 `views/<version>/**`（version = run_id；无指针时回退扁平布局）。
+- 回滚 = 把 `version` 写回 `prev_version`（旧版本仍在 `views/<prev>`）。
 
-### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json`（Workflow checkpoint，🟡 待实现）
+### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json`（Workflow checkpoint，✅ 已实现）
 
 业务可读的 run 进度账本（Workflow SDK 自身另有持久化）。
 
@@ -331,9 +330,9 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 
 `ops/workflows/latest-success.json` = `{ "run_id": "...", "version": "...", "published_at": "..." }`（恢复点）。
 
-### 2.13 `ops/workflows/{run_id}/validation.json`（校验报告，🟡 待实现）
+### 2.13 `ops/workflows/{run_id}/validation.json`（校验报告，✅ 已实现）
 
-step `validate` 对 `views/staging/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md](./TESTING.md) §1.2/§1.3）；`ok=false` 则不切指针。
+step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md](./TESTING.md) §1.2/§1.3）；`ok=false` 则不切指针。
 
 ```json
 {
@@ -348,7 +347,7 @@ step `validate` 对 `views/staging/<run_id>/**` 跑 Zod + sanity 的结果（[TE
 
 ## 3. 版本 / 缓存 / 原子性
 
-- **原子切换**：生产发布写 `views/staging/<run_id>/...` → validate → 更新 `views/latest.json` 指针（§2.11），读侧读指针指向的版本；当期活尾仍用覆盖写 + `?v=<date>` cache-bust（见 [OPS.md](./OPS.md) Blob 60s 传播）。
+- **原子切换**：生产发布写 `views/<run_id>/...` → validate → 更新 `views/latest.json` 指针（§2.11），读侧读指针指向的版本；当期活尾仍用覆盖写 + `?v=<date>` cache-bust（见 [OPS.md](./OPS.md) Blob 60s 传播）。
 - `meta.schema_ver`：破坏性 schema 改动 bump，build 启动校验版本匹配，不符 fail-fast。
 - 活尾 `current_month.json` 覆盖写最坏读到滞后一天，无半写风险。
 

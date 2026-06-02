@@ -60,7 +60,7 @@ M0 契约/脚手架
 按 [PIPELINE §2–3](./PIPELINE.md) + [ARCHITECTURE 页面分层](./ARCHITECTURE.md)：
 - ✅ `web/app/api/cron/daily`：CRON_SECRET 校验 → GraphQL current_stars → net 日增 → 更新 `current_month.json` → 重算 `hot-snapshot.json` + `live/*` 当前周期覆盖层 → `revalidatePath`（核心热集）。**已实现**。
 - ✅ `web/app/api/cron/weekly`：复用 live refresh，覆盖当前周/月 + hot snapshot + `ops/sync-runs.json`。**已实现**。
-- 🟡 **白名单 diff / 新晋回填 / canonical 折叠 / 全量重算 / 发布 / 回滚 → 不放普通 cron，目标走 Vercel Workflow**（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) Phase 2–4，待实现）。
+- ✅ **白名单 diff / 新晋追踪 / 全量重算 / 发布 / 回滚 → Vercel Workflow**（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) Phase 2–4，已线上验证）；canonical 折叠（Phase 5）待实现。
 - **此处现场定**（文档最薄两块）：① 当期增量聚合的 **YTD-base**（存哪/每月更新）；② mover 的 **90 天基线**数据源（每日 cron JSON-only，需备一份滚动基线）。
 - **依赖**：M2/M3。
 - **验收**：cron 幂等；mover 当天上 `/pulse` + 其页刷新；漂移告警。Workflow 落地后全量重算走 staging→指针→revalidate。
@@ -85,5 +85,5 @@ M0 契约/脚手架
 - ✅ **M3 新页型**：org/rankings/周/pulse 已建。
 - ✅ **M4 live cron**：每日/每周已在 Vercel 跑通（Phase 0）。
 - ◐ **M5 SEO/i18n/PWA**：sitemap/robots/JSON-LD/OG/i18n 字典/PWA 已建；已切生产域名。
-- 🟢 **Vercel-only Phase 2**（metadata/whitelist workflow）**code-complete**：`workflow@4.3.1` + `web/lib/workflows/*` + `/api/workflows/refresh/start`，`next build` 绿；**待 Vercel 部署 + Fluid Compute + env 首跑验证**（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10）。
-- ⏳ **两大开口**：① **§9-J 渲染模式架构决策**（cookie i18n → `force-dynamic`，非 SSG/ISR，与扛量模型冲突）；② **Vercel-only Phase 3–5**（canonical 折叠 / rank+entity 重算 / 发布回滚，未实现）。
+- ✅ **Vercel-only Phase 2–4 已线上验证**：metadata/whitelist/rename workflow（Phase 2，2026-06-02）+ canonical/v2 shard 导出与读侧指针（Phase 3）+ rank/entity/heatmap 纯 JS 重算 → `views/<run_id>/**` → validate → 切 `views/latest.json` 指针（Phase 4，2026-06-03，`status=published`、5,252 repo；离线 parity 12,899 视图与 DuckDB 逐字节一致）。`workflow@4.3.1` + `web/lib/workflows/*`。
+- ⏳ **两大开口**：① **§9-J 渲染模式架构决策**（cookie i18n → `force-dynamic`，非 SSG/ISR，与扛量模型冲突）；② **Vercel-only Phase 5**（周期收口的 canonical 折叠 §8.3 / 旧版本 GC / backfill 归档，未实现）。
