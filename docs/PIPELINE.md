@@ -1,15 +1,15 @@
 # gitstarclub 数据 Pipeline
 
-> 如何产出 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) 定义的产物。三段：**① 一次性回填 ② 每日 cron ③ 每周 cron**。
-> 引擎（BigQuery / DuckDB）只在**离线 / 全 Node 环境**；build / 运行时 / 每日 cron 零引擎、零原生模块。架构见 [ARCHITECTURE.md](./ARCHITECTURE.md)，运维/凭证见 [OPS.md](./OPS.md)。
+> 如何产出 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) 定义的产物。三段：**① 一次性回填 ② 每日 Vercel cron ③ 每周 Vercel cron**。
+> 普通 Vercel cron 只跑 JSON 增量刷新；引擎（BigQuery / DuckDB）不得塞进单个 Function。若历史全量刷新也要求 Vercel-only，需改造成 Vercel Workflow 分片步骤。架构见 [ARCHITECTURE.md](./ARCHITECTURE.md)，运维/凭证见 [OPS.md](./OPS.md)。
 
 ## 0. 角色与环境
 
 | 阶段 | 跑在哪 | 用什么 | 触发 |
 |---|---|---|---|
 | 一次性回填 | 本机 / 全 Node | BigQuery（一次）+ DuckDB + GraphQL | 手动跑一次 |
-| 每日 cron | Vercel Function | 仅 fetch + JSON（**不碰 DuckDB/Parquet**） | Vercel Cron `0 3 * * *` |
-| 每周 cron | 全 Node（本机/CI） | DuckDB + GraphQL/Search | Vercel Cron 触发或本机 |
+| 每日 cron | Vercel Function | GraphQL + JSON 活尾（**不碰 DuckDB/Parquet**） | Vercel Cron `0 3 * * *` |
+| 每周 cron | Vercel Function | GraphQL + JSON 增量覆盖当前周/月/热集 | Vercel Cron `0 4 * * 0` |
 
 凭证：`GITHUB_TOKEN`（GraphQL/Search）、GCP（**仅回填** BigQuery）、`BLOB_READ_WRITE_TOKEN`（上传）、`CRON_SECRET`。详见 OPS。
 
@@ -66,20 +66,19 @@ GROUP BY repo_id, day;
 
 ---
 
-## 3. 每周 cron（全 Node，`pipeline/weekly/` 或 cron→本机）
+## 3. 每周 cron（Vercel Function，`web/app/api/cron/weekly`）
 
 ```
-1. GitHub Search 刷新 ≥10k 白名单 → diff 出新晋/跌出
-2. 新晋者：BigQuery 补其历史（同 02，仅新 id）→ 并入 star_daily.parquet
-3. 折叠：上月已收口的 current_month 日数据 → star_daily.parquet；
-   重算受影响的月/年/全时视图 + 相关 entity（DuckDB）
-4. 上传变更的 JSON 视图 → Blob
-5. revalidatePath 变更页（不做 16k 全量 build；长尾按需 ISR）
-6. 落 sync_runs 记录
+1. 校验 Authorization: Bearer CRON_SECRET
+2. GraphQL 批量刷新 current_stars
+3. upsert current_month.json
+4. 覆盖写当前月 repo flow/stock、当前周 repo flow、当前月 heatmap、hot-snapshot
+5. revalidatePath 核心页与当前周/月页
+6. 落 ops/sync-runs.json 记录
 ```
 
-- 跌出 ≥10k 的 repo：保留历史（编年史不删历史），仅不再每日轮询；策略见 RANKING / PRODUCT。
-- 改名：以 `repo.id` 为准更新 `full_name`，旧 URL 由 web 层 301。
+- 跌出 ≥10k、新晋者补多年历史、全时/实体历史重算：不作为普通 cron 的同步步骤。要放到 Vercel 内执行时，按 Vercel Workflow 拆分：白名单 diff → 新 id 历史补片 → JSON view 分片重算 → Blob 发布 → revalidate。
+- 改名：Vercel cron 的 live refresh 仍以现有 lookup 为准；全量 metadata 刷新进入 Workflow 分片后再更新 lookup，旧 URL 由 web 层 301。
 
 ---
 

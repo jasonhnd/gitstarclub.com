@@ -67,11 +67,14 @@ lookup/repos.json                              # build join 表
 lookup/orgs.json
 rank/{week|month|year}/{period}/{repo|org}/{flow|stock}.json
 rank/all-time/{repo|org}/stock.json
+live/rank/{week|month}/{period}/repo/{flow|stock}.json
+live/heatmap/month/{period}.json
 entity/repo/{id}.json
 entity/org/{login}.json
 heatmap/{year|month}/{period}.json
 current_month.json                             # 活尾（cron 写）
 hot-snapshot.json                              # 热集（cron 写，ISR 读）
+ops/sync-runs.json                             # cron 运行记录（cron 写，运维读）
 meta.json
 ```
 
@@ -172,7 +175,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 - `heatmap/year/2024.json` → 该年 12 个月总量（年页月格子），`cells` 用 `["2024-10", 总量]`。
 - 进行中当月的日总量来自 `current_month.json`，build 合并。
 
-### 2.8 `current_month.json`（活尾——每日 cron 写）
+### 2.8 `current_month.json`（活尾——Vercel cron 写）
 
 ```json
 {
@@ -185,7 +188,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 
 - 当月内 **append-only + 按 UTC 日 upsert**（幂等，见 [OPS.md](./OPS.md)）。
 - `current_stars`：每日 GraphQL 最新权威值（也用于锚定）。
-- 月底由每周 job 折叠进 Parquet（日→`star_daily`，聚合→月度），然后清空开新月。
+- 当前实现由每日/每周 Vercel cron 写活尾，并同步覆盖 `live/rank/*` 当前周/月 rank 与 `live/heatmap/*` 当月 heatmap。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。月底折叠进 Parquet 属历史全量刷新；若要求 Vercel-only，需走 Vercel Workflow 分片，不放单个 Function。
 
 ### 2.9 `hot-snapshot.json`（cron 写，热集 ISR 读）
 
@@ -202,6 +205,34 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
   "current_year": { "...": "同 rank items 子集" },
   "current_month": { "...": "" },
   "all_time": { "repo": [ ... ], "org": [ ... ] }
+}
+```
+
+### 2.10 `ops/sync-runs.json`（cron 运行记录）
+
+轻量运维日志；由 Vercel cron 覆盖写，保留最近 100 次运行。
+
+```json
+{
+  "generated_at": "2026-06-02T00:00:00.000Z",
+  "runs": [
+    {
+      "id": "daily-2026-06-02T03-00-00-000Z",
+      "job": "daily",
+      "status": "ok",
+      "dry": false,
+      "started_at": "2026-06-02T03:00:00.000Z",
+      "finished_at": "2026-06-02T03:02:11.000Z",
+      "duration_ms": 131000,
+      "result": {
+        "day": "2026-06-02",
+        "month": "2026-06",
+        "week": "2026-W23",
+        "polled": 5249,
+        "writes": ["current_month.json", "hot-snapshot.json"]
+      }
+    }
+  ]
 }
 ```
 

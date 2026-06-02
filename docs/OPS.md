@@ -119,19 +119,20 @@ blob://
 
 | Job | 调度（UTC） | 动作 | 触发 deploy？ |
 |---|---|---|---|
-| **每日** | `0 3 * * *`（~03:00） | **JSON-only**：GraphQL 查 current_stars → append `current_month.json` → 重算 `hot-snapshot.json` → `revalidatePath` 热集 9 页 | **否**（秒级，不碰 Parquet/引擎/deploy） |
-| **每周** | `0 4 * * 0`（周日 ~04:00） | 刷新白名单 diff + 新晋者补历史 → 折叠活尾入 Parquet + DuckDB 重算受影响视图 → `revalidatePath` 变更页 | **否**（长尾按需 ISR；不做 16k 全量 build） |
+| **每日** | `0 3 * * *`（~03:00） | **Vercel Function / JSON-only**：GraphQL 查 current_stars → append `current_month.json` → 重算 `hot-snapshot.json`、当前月/当前周 rank、当月 heatmap → `revalidatePath` 热集页 | **否**（不碰 Parquet/引擎/deploy） |
+| **每周** | `0 4 * * 0`（周日 ~04:00） | **Vercel Function / 增量刷新**：复用 live refresh，把当前周、当前月与热集重新覆盖写入 Blob，并落 `ops/sync-runs.json` | **否**（长尾按需 ISR；不做 16k 全量 build） |
 
 ```jsonc
-// web/vercel.json — MVP ships daily only (see 落地 note)
+// web/vercel.json — all scheduled entrypoints run on Vercel Production
 {
   "crons": [
-    { "path": "/api/cron/daily", "schedule": "0 3 * * *" }
+    { "path": "/api/cron/daily", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/weekly", "schedule": "0 4 * * 0" }
   ]
 }
 ```
 
-> **MVP 落地（已实现）**：每日 job = `web/app/api/cron/daily/route.ts`（`?dry=1` 可空跑预览）。CRON_SECRET 鉴权 → GraphQL 拉 current_stars（`web/lib/github.ts`，按 owner/name 批量）→ 幂等 upsert `current_month.json`（按 UTC 日）→ 重算 `hot-snapshot.json` 的**实时可推导部分**（all-time 用新 stars 重排；当月 flow = **回填的当月榜为底 + 活尾增量**，解了 OPS 原先"YTD-base 现场定"的开放点）；`year_spine`/`on_this_day` 暂沿用上一份快照（由离线/每周重算）→ `revalidatePath` 核心页。**每周重算不上 serverless**（运行时零引擎，无 DuckDB/Parquet）：白名单刷新 + 折叠当月入 Parquet + 重算视图 = 本机/CI **重跑 pipeline 01–06**，非 Vercel cron。`GITHUB_TOKEN` + `CRON_SECRET` 已配在 `gitstarclub.com` 项目 Production/Preview 环境变量。
+> **Vercel-only cron 落地（已实现）**：每日 job = `web/app/api/cron/daily/route.ts`，每周 job = `web/app/api/cron/weekly/route.ts`，两者都支持 `?dry=1`。CRON_SECRET 鉴权 → GraphQL 拉 current_stars（`web/lib/github.ts`，按 owner/name 批量）→ `web/lib/cron/live-refresh.ts` 幂等 upsert `current_month.json`（按 UTC 日）→ 重算 `hot-snapshot.json`、`live/rank/month/<current>/repo/{flow,stock}.json`、`live/rank/week/<current>/repo/flow.json`、`live/heatmap/month/<current>.json` → `revalidatePath` 核心页 → `ops/sync-runs.json` 记录运行。普通 Vercel Function 不承载一次性 DuckDB/Parquet 全量重算；若需要把历史全量刷新也放进 Vercel，必须拆成 Vercel Workflow 分片步骤，而不是单个 Function。
 
 **实跑状态（2026-05-31）**：首次在 Vercel 真实触发 daily cron 遇到 GitHub GraphQL `403`；当时 Blob 里的 `current_month.json` 与 `hot-snapshot.json` 仍为 `404`，没有半写。修复后已在旧 `gitstarclub-web` production target 复测成功：GraphQL 批次 pacing + `Retry-After`/secondary-limit 等待生效，`current_month.json` 与 `hot-snapshot.json` 已写入同一个 public Blob store，并通过 `web/scripts/validate-live-views.ts --bust 2026-05-31` 的 Zod contract 校验。2026-06-02 已把同一套环境变量迁移到 `gitstarclub.com` 项目；迁移后仍需在新项目上做一次 `?dry=1` 和真实 cron 复核。
 
@@ -144,10 +145,10 @@ blob://
 
 > Vercel Cron **无自动重试**，且**同一次可能触发两次**。两个 handler **必须幂等**：
 > - 每日：`current_month.json` 当月内 **append-only + 覆盖写**，按「今天 UTC 日期」作 upsert 键——重复执行只是用同一份 GraphQL 结果覆盖同一天，不会重复累加。
-> - 每周：折叠活尾入 Parquet、重算视图按「目标周期」幂等覆盖；新晋者补历史按 repo id 去重；`revalidatePath` 天然幂等（重复调用无害）。
+> - 每周：当前周、当前月与热集视图按「目标周期」幂等覆盖；`ops/sync-runs.json` 保留最近 100 次运行；`revalidatePath` 天然幂等（重复调用无害）。
 > - 失败靠**告警**兜底（见下），不靠重试。
 
-**时长**：cron route 是 Function，default 300s / **max 800s**。每日 job 只读写 KB 级 JSON，但 GraphQL 全量轮询需要按批次 pacing；本地全量模拟约 131s，Vercel 实跑必须预留数分钟并控制在 800s 内。每周 job 较重（折叠 Parquet + 重算受影响视图 + revalidate），不上 serverless；若重算量逼近上限，拆分分批或移到本机/CI 跑。
+**时长**：cron route 是 Function，default 300s / **max 800s**。每日/每周 Vercel cron 都只读写 JSON，但 GraphQL 全量轮询需要按批次 pacing；本地全量模拟约 131s，Vercel 实跑必须预留数分钟并控制在 800s 内。DuckDB/Parquet 的历史全量重算不得放进单个 Function；要 Vercel-only 时拆成 Workflow 分片，逐步读写 Blob checkpoint。
 
 **Daily cron 实跑 runbook**：
 
@@ -170,14 +171,14 @@ blob://
 | 关注 | 工具 | 触发 |
 |---|---|---|
 | 运行时 / build / cron 异常 | **Sentry**（Vercel Marketplace 接入） | 未捕获异常、route 报错、build 失败 |
-| pipeline 运行记录 | **`sync_runs` 日志**（每次每日/每周 job 落一条：开始/结束时刻、查询数、写入数、`total_drift_pct`、状态） | 供对账与回溯 |
+| pipeline 运行记录 | **`ops/sync-runs.json` 日志**（每次每日/每周 job 落一条：开始/结束时刻、查询数、写入路径、状态） | 供对账与回溯 |
 | **数据漂移** | 比对 GraphQL 权威总数 vs adds 累加总数 | **漂移 > 阈值（如 2%）告警**，并以 GraphQL 为锚点重锚（见 ARCHITECTURE「数据校验 / 对账」） |
 | **Cron 失败** | Sentry + `sync_runs` 状态 | **任一 cron 失败立即告警**——因无自动重试，漏一次每日 job = 活尾缺一天，必须人工补跑 |
 | 单日突刺 | pipeline sanity check | 单日新增极端突刺打日志告警（net 允许为负） |
 
 **告警通道**：Sentry 告警直发（邮件 / Slack 任一）。重点盯**两类无重试的失效**：cron 没跑 / 跑失败、数据漂移越界。
 
-> `sync_runs` 不需要数据库：可作为一条 JSON 记录 append 到 Blob（如 `ops/sync_runs.json`，append-only），或直接进 Sentry 的结构化事件。MVP 用最轻的即可。
+> `sync_runs` 不需要数据库：当前实现覆盖写 Blob 上的 `ops/sync-runs.json`，保留最近 100 次运行；需要更强告警时再把同一条结构化事件同步到 Sentry/Slack。
 
 ## 一次性 BigQuery 回填 Runbook（高层）
 
