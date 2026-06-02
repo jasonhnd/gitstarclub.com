@@ -85,4 +85,5 @@ M0 契约/脚手架
 - ✅ **M3 新页型**：org/rankings/周/pulse 已建。
 - ✅ **M4 live cron**：每日/每周已在 Vercel 跑通（Phase 0）。
 - ◐ **M5 SEO/i18n/PWA**：sitemap/robots/JSON-LD/OG/i18n 字典/PWA 已建；已切生产域名。
-- ⏳ **两大开口**：① **§9-J 渲染模式架构决策**（cookie i18n → `force-dynamic`，非 SSG/ISR，与扛量模型冲突）；② **Vercel-only Phase 2–5**（Workflow / canonical v2 shard / 发布回滚，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10）。
+- 🟢 **Vercel-only Phase 2**（metadata/whitelist workflow）**code-complete**：`workflow@4.3.1` + `web/lib/workflows/*` + `/api/workflows/refresh/start`，`next build` 绿；**待 Vercel 部署 + Fluid Compute + env 首跑验证**（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10）。
+- ⏳ **两大开口**：① **§9-J 渲染模式架构决策**（cookie i18n → `force-dynamic`，非 SSG/ISR，与扛量模型冲突）；② **Vercel-only Phase 3–5**（canonical 折叠 / rank+entity 重算 / 发布回滚，未实现）。
