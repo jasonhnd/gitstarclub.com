@@ -185,7 +185,9 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
 
 ## 3. 按需 ISR 的 SEO 语义（本站最关键的 SEO 细节）
 
-**渲染模型**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 页面分层）：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜 × 3 语言，~数十页）；历史 / repo / org 页是**按需 ISR**——`dynamicParams = true` 且**不在** `generateStaticParams` 返回 ⇒ 不在 deploy 构建，首访时生成、存入 Vercel 持久 ISR store，后续命中缓存。
+> ⚠️ **当前实况(预览期)**：cookie 版 i18n 让根 `layout.tsx` 为 `force-dynamic`,页面现按请求 SSR、**不是 ISR 持久缓存**(见 [FRONTEND.md](./FRONTEND.md) §9-J)。**对 SEO 的关键含义仍成立**——SSR 输出的是**完整可索引 HTML**(§3.1a),爬虫拿到的内容无差别;变的只是"缓存/扛量",不是"可索引性"。本节"按需 ISR"描述的是**目标态**;上线前按 §9-J 方案 C 恢复静态/ISR。
+
+**渲染模型（目标态）**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 页面分层）：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜 × 3 语言，~数十页）；历史 / repo / org 页是**按需 ISR**——`dynamicParams = true` 且**不在** `generateStaticParams` 返回 ⇒ 不在 deploy 构建，首访时生成、存入 Vercel 持久 ISR store，后续命中缓存。
 
 ### 3.1 四条必须落实的 SEO 含义
 
@@ -668,6 +670,8 @@ export const metadata: Metadata = isProductionHost()
 ---
 
 ## 12. 性能即 SEO（Core Web Vitals 作排名因子）
+
+> ⚠️ 下表「静态 HTML 走 Edge CDN」是**目标态**。当前预览期为 `force-dynamic`(按请求 SSR,见 [FRONTEND.md](./FRONTEND.md) §9-J),TTFB/缓存与纯静态不同;**零客户端 JS、HTML 体积**仍成立。上线前按 §9-J 方案 C 恢复静态后此节完全达成。
 
 SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 性能策略 + 用户 web/performance 规则）：
 
