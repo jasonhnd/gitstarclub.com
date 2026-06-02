@@ -42,7 +42,7 @@
 | 周页 | `/rankings/YYYY/W##` | 当周核心 / 历史按需 ISR | ~570 | 中 |
 | **脉搏页**（NEW） | `/pulse` | 核心（deploy 构建，每日刷新） | 1 | 高（"最新动态"入口） |
 
-> **× 3 语言**：英文根 `x-default`、日文 `/ja/...`、中文 `/zh/...`（见 §10）。三语各自独立 URL ⇒ 收录目标 URL 数 ≈ 上表合计 × 3。
+> **单语言收录**：语言是页内 `gsc_lang` cookie 偏好、不进 URL（见 §10），URL 语言中立单一 ⇒ 收录目标 URL 数 = 上表单语言合计，不乘语言数。
 
 ### 1.2 榜单矩阵（数据层全覆盖，成页是 PRODUCT 取舍）
 
@@ -55,16 +55,15 @@
 | **Org 榜**（org 维度） | Org 详情页 `/o/:login` + 各 period 页内 org section | Org 详情页已独立 |
 | **全时榜**（all-time × repo/org × stock） | **独立页 `/rankings`** | 已独立成页 |
 
-> 这套矩阵比旧设计的 ~5,400 页（纯 repo 月度编年史）**多得多**：org 页可能数千、全时榜独立、周榜可能独立——再 × 3 语言。**sitemap 分片数学必须按此新规模重算**（见 §4）。
+> 这套矩阵比旧设计的 ~5,400 页（纯 repo 月度编年史）**多得多**：org 页可能数千、全时榜独立、周榜可能独立（均为语言中立单一 URL，不乘语言数）。**sitemap 分片数学必须按此新规模重算**（见 §4）。
 
 ### 1.3 收录目标量级（估算）
 
-| 语言 | 首页 | 年 | 月 | repo | org | rankings + about | 单语言合计 |
+| 维度 | 首页 | 年 | 月 | repo | org | rankings + about | 单语言合计 |
 |---|---|---|---|---|---|---|---|
-| 每语言 | 1 | ~11 | ~132 | ~5,248 | ~1,500（估） | ~2 | **~6,900** |
-| **× 3 语言** | | | | | | | **~20,700** |
+| URL 数（语言中立） | 1 | ~11 | ~132 | ~5,248 | ~1,500（估） | ~2 | **~6,900** |
 
-> 周页已独立 ⇒ +~570 × 3 ≈ +1,700，再加 `/pulse`。**收录目标按 ~2.2–2.5 万 URL 规划 sitemap**（旧设计 ~1.6 万）。具体数随 org 白名单（含 User owner）浮动。
+> URL 语言中立单一、不乘语言数（见 §10）。周页已独立 ⇒ +~570，再加 `/pulse`。**收录目标按 ~7,500 URL 规划 sitemap**。具体数随 org 白名单（含 User owner）浮动。
 
 ---
 
@@ -74,7 +73,7 @@
 
 - `metadataBase = new URL(process.env.NEXT_PUBLIC_SITE_URL)`（见 [OPS.md](./OPS.md)，生产 = `https://gitstarclub.com`），所有相对 URL 据此解析为绝对 URL。
 - 根 `app/layout.tsx` 设 `title.template = '%s · gitstarclub'` + `title.default = 'gitstarclub'`；各页用 `title`（字符串）或 `title.absolute`（首页用 absolute，避免重复后缀）。
-- **每页 canonical 指向自身规范 URL**（语言前缀计入：`/ja/2024/10` 的 canonical 是它自己，不是英文版——英文版只是它的 hreflang alternate，见 §10）。
+- **每页 canonical 指向自身规范 URL**（语言中立单一 URL：`/rankings/2024/10` 的 canonical 就是它自己，**无语言前缀、不发 hreflang**——语言是页内 cookie 偏好，见 §10）。
 - 标题含**真实搜索词**：`star history` / `trending` / 年份 / repo / org 名 / `ranking`。描述 ≤ 155 字符、含数字与具体实体、首句即价值。
 
 > Next.js 16 实现：静态页用 `export const metadata`；依赖 `params` 的动态页用 `export async function generateMetadata({ params })`（`params` 是 Promise，需 `await`）。用 React `cache()` 包装 JSON 视图读取，让 `generateMetadata` 与页面 body **共享同一次数据读取**（去重）。
@@ -82,7 +81,7 @@
 ### 2.1 首页 `/`
 
 ```ts
-// app/[lang]/page.tsx （英文 lang 段省略前缀，见 §10）
+// app/page.tsx （语言中立单一 URL，无 lang 段，见 §10）
 export const metadata: Metadata = {
   title: { absolute: 'GitHub Star History & Trends — A Chronicle of Open Source · gitstarclub' },
   description:
@@ -187,7 +186,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
 
 > ⚠️ **当前实况(预览期)**：cookie 版 i18n 让根 `layout.tsx` 为 `force-dynamic`,页面现按请求 SSR、**不是 ISR 持久缓存**(见 [FRONTEND.md](./FRONTEND.md) §9-J)。**对 SEO 的关键含义仍成立**——SSR 输出的是**完整可索引 HTML**(§3.1a),爬虫拿到的内容无差别;变的只是"缓存/扛量",不是"可索引性"。本节"按需 ISR"描述的是**目标态**;上线前按 §9-J 方案 C 恢复静态/ISR。
 
-**渲染模型（目标态）**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 页面分层）：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜 × 3 语言，~数十页）；历史 / repo / org 页是**按需 ISR**——`dynamicParams = true` 且**不在** `generateStaticParams` 返回 ⇒ 不在 deploy 构建，首访时生成、存入 Vercel 持久 ISR store，后续命中缓存。
+**渲染模型（目标态）**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 页面分层）：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜，语言中立 ~数十页）；历史 / repo / org 页是**按需 ISR**——`dynamicParams = true` 且**不在** `generateStaticParams` 返回 ⇒ 不在 deploy 构建，首访时生成、存入 Vercel 持久 ISR store，后续命中缓存。
 
 ### 3.1 四条必须落实的 SEO 含义
 
@@ -237,7 +236,7 @@ export async function generateStaticParams() {
 
 ## 4. sitemap：index + 分片结构（按新规模）
 
-> **Sitemap 协议硬限**：单文件 ≤ **50,000 URL** 且 ≤ **50MB（未压缩）**。我们 ~2–2.5 万 URL 单文件理论塞得下，但**强烈建议按类型 + 语言分片**：①各片 `lastModified` 语义不同（历史固定 vs 每日变），分片让爬虫按片复抓频率；②未来 org / 周页扩张会突破 5 万；③便于 Search Console 分片监控收录率。
+> **Sitemap 协议硬限**：单文件 ≤ **50,000 URL** 且 ≤ **50MB（未压缩）**。我们 ~7,500 个语言中立 URL 单文件理论塞得下，但**强烈建议按类型分片**：①各片 `lastModified` 语义不同（历史固定 vs 每日变），分片让爬虫按片复抓频率；②未来 org / 周页扩张会突破 5 万；③便于 Search Console 分片监控收录率。
 
 ### 4.1 结构（Next.js 16 `generateSitemaps()` 实现）
 
@@ -245,11 +244,11 @@ Next.js 16 中 `app/.../sitemap.ts` 的 `generateSitemaps()` 返回 `[{ id }]`�
 
 ```
 /sitemap.xml                          # sitemap index（Next.js 自动聚合下列分片）
-  /sitemap/pages.xml                  # 静态/核心：首页 + 全时榜 + about（× 3 语言，~10 条）
-  /year/sitemap/0.xml                 # 年度页（~11 × 3 ≈ 33 条）
-  /month/sitemap/0.xml                # 月度页（~132 × 3 ≈ 396 条）
-  /r/sitemap/0.xml … /r/sitemap/N.xml # repo：~5,248 × 3 ≈ 15,744 → 每片 ≤5万，1 片足够（留分片接口备扩）
-  /o/sitemap/0.xml … /o/sitemap/M.xml # org：~1,500 × 3 ≈ 4,500 → 1 片（量增时自动多片）
+  /sitemap/pages.xml                  # 静态/核心：首页 + 全时榜 + about（语言中立，~3 条）
+  /year/sitemap/0.xml                 # 年度页（~11 条）
+  /month/sitemap/0.xml                # 月度页（~132 条）
+  /r/sitemap/0.xml … /r/sitemap/N.xml # repo：~5,248 → 每片 ≤5万，1 片足够（留分片接口备扩）
+  /o/sitemap/0.xml … /o/sitemap/M.xml # org：~1,500 → 1 片（量增时自动多片）
   # /rankings/YYYY/W## 周页：/week/sitemap/{id}.xml
 ```
 
@@ -261,11 +260,10 @@ import type { MetadataRoute } from 'next'
 
 const PER = 50_000
 const BASE = process.env.NEXT_PUBLIC_SITE_URL!     // https://gitstarclub.com
-const LANGS = { en: '', ja: '/ja', zh: '/zh' } as const
 
 export async function generateSitemaps() {
   const total = await countRepos()                 // 读 lookup/repos.json 计数
-  const shards = Math.ceil((total * 3) / PER)       // × 3 语言计入同片或分片，按实现定
+  const shards = Math.ceil(total / PER)             // 语言中立单一 URL，不乘语言数
   return Array.from({ length: shards }, (_, id) => ({ id }))
 }
 
@@ -296,7 +294,7 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
 | org | 同 repo 逻辑 | `weekly`/`yearly` | 0.6 / 0.4 |
 | about | 文案变更日 | `yearly` | 0.3 |
 
-- **多语言用 sitemap 内 `alternates.languages`**：Next.js 输出 `<xhtml:link rel="alternate" hreflang="...">`（含 `x-default`）。每个 `<url>` 的 `<loc>` 用英文版，alternates 列 ja/zh/x-default（见 §10 hreflang 矩阵）。
+- **不输出语言 alternate**：每个 `<url>` 仅一条语言中立 `<loc>`，**不含 `alternates.languages`、不发 `hreflang` / `x-default`**——语言是页内 `gsc_lang` cookie 偏好、无语言变体 URL（见 §10）。
 - **sitemap 自身是 Route Handler、默认被缓存**：除非用 request-time API。我们的 sitemap 只读已预算 JSON，可被静态缓存；数据由 Vercel Workflow 重算发布后，经 `revalidatePath` / 部署刷新即可。
 - **priority/changeFrequency 是弱信号**：Google 基本忽略 `priority`，`changeFrequency` 仅作提示；**真正决定复抓的是 `lastModified` + 实际内容变化**——所以 §3.3 的稳定性最关键。
 
@@ -338,7 +336,7 @@ Sitemap: https://gitstarclub.com/sitemap.xml
 Host: https://gitstarclub.com
 ```
 
-- **不屏蔽任何内容页**：~2 万长尾页全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + sitemap 分片共同消化。
+- **不屏蔽任何内容页**：~7,500 长尾页（语言中立单一 URL）全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + sitemap 分片共同消化。
 - **屏蔽 `/api/`**：cron / 内部 route 不该被抓（真正防线是 `CRON_SECRET` 鉴权，见 [OPS.md](./OPS.md)；robots 只是减少噪声）。
 - **预览 `Disallow: /`**：见 §11——`isProductionHost()` 据 `VERCEL_ENV` / host 判定，预览返回全站禁抓（与页面 `robots:{index:false}` meta 双保险）。
 - `host` 字段声明规范主机（少数爬虫用作镜像归并提示）。
@@ -503,7 +501,7 @@ Host: https://gitstarclub.com
 | 同一榜单的「周 section」既在月页又在年页出现 | 周榜默认**不独立成页**（无独立 URL ⇒ 无重复 URL）；若 §1 周页独立，则月/年页内的周 section 仅作摘要 + 链接到周页，**周页 canonical 指自身**，月/年页**不** canonical 到周页。 |
 | `/rankings` 的 repo 视图 vs org 视图（若做成 `?metric=` / 子路径） | **二选一为规范**：要么单页内并列展示（一个 URL，无重复）；要么 `/rankings`（repo，规范）+ `/rankings/org`（org，**canonical 指自身**，因内容确实不同）。**绝不**让 `?sort=`、`?period=` 等纯排序/筛选 query 产生可索引的重复 URL —— 这类 URL 一律 canonical 回无参数规范页。 |
 | repo 改名产生的新旧 URL | 旧 URL **301** → 新 URL；canonical 永远当前 `full_name`（见 §2.4 / [PRODUCT.md](./PRODUCT.md)）。 |
-| 语言版本 | 各语言 canonical **指自身**（不跨语言 canonical）；互译关系靠 hreflang 表达（见 §10）。**这是常见错误**：不要让 `/ja/...` canonical 到 `/...`。 |
+| 语言版本 | **无语言变体 URL**：语言是页内 `gsc_lang` cookie 偏好、不进 URL，不涉跨语言 canonical、不发 hreflang（见 §10）。 |
 | 尾部斜杠 / 大小写 | 统一**无尾斜杠 + owner/name 保留 GitHub 原始大小写**；其余形式 301 到规范形。 |
 
 > 原则：**一个内容、一个规范 URL**。query 参数视图（排序/筛选/分页除外）全部 canonical 回规范页；真正内容不同的视图（org vs repo、不同 period）各自 canonical 到自身。
@@ -525,7 +523,7 @@ Host: https://gitstarclub.com
 
 ---
 
-## 9. 内链图（爬虫消化 ~2 万页的关键，配合 sitemap）
+## 9. 内链图（爬虫消化 ~7,500 页的关键，配合 sitemap）
 
 > 目标：**任意页 ≤ 3 跳可达**；按需 ISR 页除 sitemap 外还能被内链发现 / 触发生成。内链是"爬虫预算的导流"，sitemap 是"全量清单"，两者缺一不可。
 
@@ -708,7 +706,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 | 移除过时网址 | 若预览曾误被收录：Removals 工具临时移除 + 修 noindex | 仅事故时 |
 | Core Web Vitals 报告 | GSC CWV 报告 + Vercel Speed Insights 双看（见 §12） | 每月 |
 
-- **抓取预算**：~2 万 URL 对 Googlebot 不算大，但**新站权重低 → 抓取慢**。加速：①sitemap 分片 + 准确 `lastModified`②强内链（§9）③核心页（首页/年/全时榜）先建权重，再靠内链把权重导给长尾。
+- **抓取预算**：~7,500 个语言中立 URL 对 Googlebot 不算大，但**新站权重低 → 抓取慢**。加速：①sitemap 分片 + 准确 `lastModified`②强内链（§9）③核心页（首页/年/全时榜）先建权重，再靠内链把权重导给长尾。
 - **索引节奏预期**：长尾 repo/org 页可能数周–数月才逐步收录；优先确保**高价值长尾**（热门 repo、近年月份）被内链 + sitemap 优先暴露。
 
 ---
@@ -719,9 +717,9 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 - [ ] `app/sitemap.ts` 用 `generateSitemaps()` 分片实现（按 50,000/片切批），index + 各类型分片可访问，全部 URL 可达
 - [ ] sitemap 每条 `lastModified` 来自数据视图确定性字段（历史固定、当期每日变），**非 `new Date()` 抖动**（§3.3 / §4.2）
-- [ ] sitemap `alternates.languages` 含 en/ja/zh + `x-default`，与页面 hreflang 一致
+- [ ] sitemap 每个 `<url>` 仅一条语言中立 `<loc>`，**无语言 alternate**（不含 `alternates.languages` / `hreflang` / `x-default`，见 §10）
 - [ ] `app/robots.ts`：生产 `Allow: /` + `Disallow: /api/` + Sitemap + Host；**预览 `Disallow: /`**
-- [ ] 收录目标量级按 ~2–2.5 万 URL 规划（含 org / rankings，× 3 语言）
+- [ ] 收录目标量级按 ~7,500 个语言中立 URL 规划（含 org / rankings，不乘语言数，见 §10）
 
 **每页元数据**
 
@@ -772,5 +770,5 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 **Search Console（§14）**
 
 - [ ] 生产切换后验证站点 + 提交 sitemap index
-- [ ] 监控收录率（Discovered/Crawled not indexed）、hreflang、富结果、CWV
+- [ ] 监控收录率（Discovered/Crawled not indexed）、富结果、CWV（**无 hreflang 项**，语言中立单一 URL，见 §10）
 - [ ] 预览期**绝不**向 GSC 提交任何 URL/sitemap

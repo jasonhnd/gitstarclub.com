@@ -29,7 +29,7 @@
 | 脉搏页 | `/pulse` | 今日/本周大涨 + 复活/突刺 |
 | 关于 | `/about` | 数据口径声明 |
 
-- 三语 × 各页：英文根（`x-default`）/ `/ja` / `/zh`。
+- URL 语言中立、单一（无 `/ja`、`/zh` 等语言前缀）；语言走页内 `gsc_lang` cookie 偏好（不发 hreflang，见 [SEO.md](./SEO.md) §10）。
 - 月/年页 **repo 榜与 org 榜并列**展示。
 
 ## 4. 排名
@@ -81,7 +81,7 @@
 
 ## 9. SEO / i18n
 
-- 每页 = 长尾落地页（标题含真实搜索词）；sitemap 分片（~2 万+ URL）；schema.org（Dataset/ItemList/Organization/BreadcrumbList…）；hreflang en(x-default)/ja/zh；OG 图（石墨灰+金，build 生成）；预览站 noindex。详见 [SEO.md](./SEO.md)。
+- 每页 = 长尾落地页（标题含真实搜索词）；sitemap 分片（~6,900 URL，语言中立单一 ⇒ 不乘语言数）；schema.org（Dataset/ItemList/Organization/BreadcrumbList…）；语言走页内 `gsc_lang` cookie 偏好、不进 URL、不发 hreflang（英文为默认 SEO 语言，见 [SEO.md](./SEO.md) §10）；OG 图（石墨灰+金，build 生成）；预览站 noindex。详见 [SEO.md](./SEO.md)。
 
 ## 10. 设计调性
 
@@ -104,6 +104,6 @@
 
 - [ ] 任意历史周期可回看，数据冻结精确。
 - [ ] `/pulse` 当天反映"谁在涨 / 老项目复活"。
-- [ ] repo/org/周/全时/脉搏 各页可达、SEO 友好、三语。
+- [ ] repo/org/周/全时/脉搏 各页可达、SEO 友好、七种 UI 语言（页内 cookie 偏好、单一语言中立 URL）。
 - [ ] 排名矩阵全维度正确（含 org、flow/stock、增速、新晋）。
 - [ ] 运行时纯静态扛 10M/天；回填仅一次性 $10、日常零外部账单。

@@ -91,9 +91,9 @@ app/
 // 例：app/rankings/[year]/page.tsx（当年走核心，历史走 ISR — 同一文件、混合）
 export const dynamicParams = true            // 未列入的历史年 → 首访按需生成
 export async function generateStaticParams() {
-  // 只预渲染「当前年」×3 语言；历史年留给按需 ISR
+  // 只预渲染「当前年」；历史年留给按需 ISR
   const Y = new Date().getUTCFullYear()
-  return [{ year: String(Y) }]               // locale 由上层段笛卡尔展开
+  return [{ year: String(Y) }]               // 语言走页内 cookie，无 [lang] 段
 }
 export const revalidate = false              // 不轮询；每日 cron 用 revalidatePath 刷当年
 ```

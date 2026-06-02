@@ -172,7 +172,7 @@ blob://
 1. 先在 Vercel production-target URL 调 `GET /api/cron/daily?dry=1`，带 `Authorization: Bearer <CRON_SECRET>`；若日志仍出现 GitHub GraphQL `403`、`Retry-After` 或 rate-limit remaining 接近 0，停止实跑，先继续降批次/加等待。
 2. 实跑前记录两个 Blob 对象状态：`current_month.json`、`hot-snapshot.json`。若返回 `404`，记录为“原本不存在”；若存在，下载到本地备份目录再继续。
 3. 真实触发 `GET /api/cron/daily`，同样带 `Authorization: Bearer <CRON_SECRET>`。客户端连接可能比函数完成更早关闭；以 Blob 写入和 Vercel logs 为准。
-4. 写后运行 `cd web && bun scripts/validate-live-views.ts --bust <UTC day>`，确认 `current_month.json` 包含本次 UTC day，`hot-snapshot.json` schema 可被现有 contracts 校验；再检查 `/en`、`/en/pulse` 仍可访问且保持 noindex。
+4. 写后运行 `cd web && bun scripts/validate-live-views.ts --bust <UTC day>`，确认 `current_month.json` 包含本次 UTC day，`hot-snapshot.json` schema 可被现有 contracts 校验；再检查 `/`、`/pulse` 仍可访问且保持 noindex。
 5. 若再次失败且两个 Blob 仍为 `404`，视为无写入失败，无需数据回滚；若任一对象已写入但校验失败，按下方“每日活尾”回滚。
 
 ## Vercel Workflow runbook（🟡 待实现）
