@@ -4,8 +4,11 @@ import { readView } from "./source";
 
 // Join tables (id/login → display fields). Rank lists store only ids; build joins these in.
 
-export const getReposLookup = cache(() => readView("lookup/repos.json", ReposLookup));
-export const getOrgsLookup = cache(() => readView("lookup/orgs.json", OrgsLookup));
+// base:true → versioned lookup via the publish pointer; flat fallback when no pointer (first run).
+// The metadata workflow step also calls these: pre-publish it reads the previous version (or flat
+// bootstrap on the very first run), both valid owner_type/language seeds. See VERCEL-DATA-OPERATIONS §7.
+export const getReposLookup = cache(() => readView("lookup/repos.json", ReposLookup, { base: true }));
+export const getOrgsLookup = cache(() => readView("lookup/orgs.json", OrgsLookup, { base: true }));
 
 /** Reverse index full_name → repo id, for /[owner]/[name] → entity/repo/{id}. */
 export const getRepoIdByFullName = cache(async () => {

@@ -6,7 +6,7 @@ import { currentUtcPeriods } from "@/lib/periods";
 const today = () => new Date().toISOString().slice(0, 10);
 
 export const getHeatmapBase = cache((scope: "year" | "month", period: string) =>
-  readView(`heatmap/${scope}/${period}.json`, Heatmap),
+  readView(`heatmap/${scope}/${period}.json`, Heatmap, { base: true }),
 );
 
 export const getHeatmap = cache(async (scope: "year" | "month", period: string) => {

@@ -6,7 +6,7 @@ import { WorkflowManifest } from "@/lib/contracts";
 // runbook artifacts. All writes are I/O, so each is its own "use step" (workflow
 // bodies must stay deterministic). See docs/VERCEL-DATA-OPERATIONS.md §3.4/§8.
 
-const STEPS = ["whitelist", "rename", "metadata"];
+const STEPS = ["whitelist", "rename", "metadata", "recompute", "validate", "publish"];
 
 /** Write the initial manifest (status=running); returns started_at for later updates. */
 export async function startRun(runId: string): Promise<string> {
