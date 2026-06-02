@@ -20,7 +20,7 @@ The canonical Vercel project is `zkscio/gitstarclub.com`.
 - Root Directory: `web`
 - Framework: Next.js
 - Production: `gitstarclub.com` / `www.gitstarclub.com`
-- Preview: `pre.gitstarclub.com` after Cloudflare DNS points `pre` to `76.76.21.21`
+- Preview: `pre.gitstarclub.com` with Vercel Preview Protection
 
 Run deploy commands from the repository root, not from `web/`, because the
 Vercel project already appends the `web` root directory.
