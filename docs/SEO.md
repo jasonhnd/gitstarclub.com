@@ -180,6 +180,16 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
 
 > **标题长度**：控制在 ~60 字符可见区内（含后缀会被 Google 截断时，前置真实搜索词保证关键信息不被截掉——这就是 repo / org 名放最前的原因）。
 
+### 2.8 对比页 `/compare`（NEW，v0.2 §5）
+
+| 字段 | 模板 |
+|---|---|
+| title | `Compare GitHub Star History · gitstarclub` |
+| description | `Overlay the star-history curves of any tracked repos (≥10k stars) on one chart — absolute or aligned from 10k.` |
+| canonical | `/compare`（**始终**指向无参版本） |
+
+- **无参** `/compare` = 可索引落地页（介绍工具 + 空选择器）；**带 `?repos=` 参数**的对比结果页 **`noindex`**——选择是用户态、组合无限，放任收录会造成抓取爆炸与重复内容（同 §0 原则）。canonical 统一回 `/compare`，sitemap **只列** `/compare`，不枚举组合。
+
 ---
 
 ## 3. 按需 ISR 的 SEO 语义（本站最关键的 SEO 细节）

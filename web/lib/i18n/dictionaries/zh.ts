@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const zh: Dict = {
-  nav: { home: "首页", trending: "脉搏", rankings: "排行榜", about: "关于" },
+  nav: { home: "首页", trending: "脉搏", rankings: "排行榜", compare: "对比", about: "关于" },
   home: {
     heroPre: "",
     heroAccent: "开源",
@@ -100,6 +100,20 @@ const zh: Dict = {
   },
   search: { label: "搜索", placeholder: "搜索仓库…", empty: "没有匹配的仓库", loading: "加载中…" },
   share: { label: "分享", copied: "已复制", onX: "分享到 X" },
+  compare: {
+    title: "对比 star 历史",
+    subtitle: "把任意已收录仓库（≥1 万星）的曲线叠在一起，至少选两个。",
+    modeAbsolute: "绝对值",
+    modeAlign10k: "对齐到 10k",
+    pickerPlaceholder: "搜索要加入的仓库…",
+    legendLabel: "图例",
+    empty: "至少选两个仓库开始对比。",
+    minHint: "再选一个仓库进行对比。",
+    limit: "最多对比 5 个仓库。",
+    remove: "移除",
+    addToCompare: "加入对比",
+    openCompare: "对比",
+  },
 };
 
 export default zh;

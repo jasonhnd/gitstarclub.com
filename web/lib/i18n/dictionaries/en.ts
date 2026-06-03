@@ -1,7 +1,7 @@
 // UI-chrome strings only. Data such as repo names, languages, topics, and numbers is never translated.
 // `en` is the source-of-truth shape; every other dictionary must match these keys.
 export const en = {
-  nav: { home: "Home", trending: "Pulse", rankings: "Rankings", about: "About" },
+  nav: { home: "Home", trending: "Pulse", rankings: "Rankings", compare: "Compare", about: "About" },
   home: {
     heroPre: "A history of ",
     heroAccent: "open source",
@@ -100,6 +100,20 @@ export const en = {
   },
   search: { label: "Search", placeholder: "Search repositories…", empty: "No matching repositories", loading: "Loading…" },
   share: { label: "Share", copied: "Copied", onX: "Share on X" },
+  compare: {
+    title: "Compare star history",
+    subtitle: "Overlay the curves of any tracked repositories (≥10k stars). Pick at least two.",
+    modeAbsolute: "Absolute",
+    modeAlign10k: "From 10k",
+    pickerPlaceholder: "Search repos to add…",
+    legendLabel: "Legend",
+    empty: "Pick at least two repos to compare.",
+    minHint: "Pick one more repo to compare.",
+    limit: "Maximum 5 repos.",
+    remove: "Remove",
+    addToCompare: "Add to compare",
+    openCompare: "Compare",
+  },
 };
 
 export type Dict = typeof en;

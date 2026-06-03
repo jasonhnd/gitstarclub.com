@@ -367,6 +367,16 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
 
 > **月度叙事无独立产物**（v0.2 §2）：榜页叙事是**确定性模板**、**渲染时**从该月 rank 数据（top/增速/新晋）现拼（`web/lib/narrative.ts`），**不落 Blob、不引 AI**。故此处无 `narrative/*` 契约。
 
+### 2.15 `/repo-curve?id=<id>`（✅ 规划 v0.2 §5，多 repo 对比瘦路由——无独立产物）
+
+多 repo 对比（`/compare`）需要浏览器**按需**取若干 repo 的曲线。**不新建 Blob 产物**：新增一个与 `/search-index` 同构的瘦服务端路由 `app/repo-curve/route.ts`，服务端经发布指针读版本化 `entity/repo/<id>.json`（§2.5），**投影**出对比所需的精简 payload 返回，响应带 `s-maxage` 走 CDN。schema `CompareCurve`（`web/lib/contracts/compare.ts`）：
+
+```json
+{ "id": 10270250, "full_name": "facebook/react", "current_stars": 232000, "crossed_10k": "2014-09-15", "points": [["2014-01", 9800], ["2014-02", 10400]] }
+```
+
+`points = [period, total_end][]`（取 entity `curve.monthly` 的累计列）；`crossed_10k` 来自 `entity.milestones.crossed_10k`，供「对齐到 10k」x 轴重映。**故此处无 `compare/*` 或 `curve/*` Blob 契约**——它是 entity 的只读投影，离线 parity 集合不变。
+
 ---
 
 ## 3. 版本 / 缓存 / 原子性

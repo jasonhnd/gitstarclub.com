@@ -108,8 +108,17 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
                 </span>
               )}
             </div>
-            <div className="mt-5">
+            <div className="mt-5 flex flex-wrap items-center gap-3">
               <ShareButton text={`${repo.full_name} — GitHub star history`} />
+              <Link
+                href={`/compare?repos=${encodeURIComponent(repo.full_name)}`}
+                className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-4 py-2 font-mono text-[0.78rem] text-on-surface transition-colors hover:bg-surface-container-high"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M4 18v-6m0 0V6m0 6h16m0 0v6m0-6V6" strokeLinecap="round" />
+                </svg>
+                <T path="compare.addToCompare" />
+              </Link>
             </div>
           </header>
 

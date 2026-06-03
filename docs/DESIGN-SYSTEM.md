@@ -211,6 +211,7 @@ token（与实现一致）：
 | **榜单行 Ranking Row** | `_explore/RankingList.tsx` | **编辑感、非数据表**：名次 = 金色大号 `tabular-nums`（`primary-fixed-dim`，1.5rem/800）；repo 名走 mono"数据声"（`owner/` 弱、`name` 强、hover 下划线）；语言 = `surface-container-high` 小 pill 弱标签；指标右对齐重权重（`+gained` / `+rate%` / `crossed`，`tabular-nums`）。整行 `<Link>` → repo 页，hover `-translate-y` + `bg-on-surface/5`，弹簧缓动，入场 stagger。 |
 | **日历热力图格 Heatmap Cell** | `_explore/Heatmap.tsx` | **刻意不用 GitHub 绿**：强度用 `color-mix(in oklab, primary-fixed-dim t%, surface-container)`，从冷灰底渐变到亮金（`t` 按 `gained/max`，下限 0.08 保证可见）；格子 `rounded-xl` + `ring-outline-variant/30`；`square` → `aspect-square` 日历格 / 否则 `h-20`；可选 `<Link>` → 月页，hover 抬升；mono 标签。 |
 | **Star 曲线 SVG** | `_explore/StarCurve.tsx` | **服务端渲染 SVG，零客户端 JS**：主线 `stroke=primary` 3px + 圆角接头；面积 `linearGradient` 琥珀渐隐（`primary-container` 0.5→0）；里程碑 = 金点（`primary-fixed-dim`，`surface` 描边）+ 虚线垂引 + 标签；mono 年份轴标（`on-surface-variant`）；`role="img"`+`aria-label` 摘要；CSS 线条描绘 + 面积淡入（reduced-motion 下钉终态）。 |
+| **对比曲线 CompareCurve** | `_explore/CompareCurve.tsx`（v0.2 §5） | **客户端组件**（`"use client"`，带 absolute↔对齐到 10k 切换——零 JS 约束的**新增例外④**，见下表）：N 条折线**无面积填充**、共享 y 轴；每条线取分类调色板 `--chart-cat-1..5`（5 色，琥珀/青/紫/绿/玫，OKLCH 选取在明暗两主题都够对比，build 期生成、不写死 hex）；图例 = 同色块 + `full_name` + 当前星数；模式切换为分段控件（`shape-full`，选中 `bg-primary-container text-on-primary-container`）；`role="img"`+`aria-label` 摘要 + 视觉隐藏数据表 fallback。 |
 | **面包屑 / 上下页导航** | （年 / 月页内） | `<nav aria-label>`；上下月 / 年导航**永远在顶部**（强化"翻阅"感）；当前项 `on-surface`、相邻项 `on-surface-variant` + hover 转 `on-surface`；mono 字。 |
 | **主题切换按钮** | `components/ThemeToggle.tsx` | **唯一客户端交互**（`"use client"`）：42px 圆形（`shape-full`）`bg-surface-container-high`，hover 升 `-highest`，`active:scale-90` 弹簧回弹，`focus-visible:outline-3 outline-primary`；日月图标用**纯 CSS 切换**（`[data-theme] .i-sun/.i-moon` 显隐），避免 hydration 闪烁。 |
 | **页脚 Footer** | （teaser / layout） | `border-t border-outline-variant`；`on-surface-variant` 文字；链接 `tertiary`，hover 转 `primary` + 下划线；构建时间戳 mono（UTC + JST 双显示，权威时区约定见 [ARCHITECTURE.md](./ARCHITECTURE.md) §时间与时区，调性见 [PRODUCT.md](./PRODUCT.md)「视觉/交互细节」）。 |
@@ -230,8 +231,9 @@ token（与实现一致）：
 | **主题手动切换** | 例外①。`ThemeToggle`（`"use client"`）写 `data-theme` + `localStorage` + 同步 `meta[theme-color]` | 极小 |
 | **防主题闪烁（no-FOUC）** | 例外②（内联脚本）。`<head>` 内同步小脚本：读 `localStorage.theme`，显式覆盖则 paint 前设 `data-theme` + `theme-color`；否则跟随系统。`<html suppressHydrationWarning>` | 内联 1 段 |
 | **PWA / standalone** | 例外③。`RegisterSW`（`"use client"`）注册 Service Worker（失败静默）+ `manifest.ts`；不渲染正文、不影响爬虫拿全量 HTML | 极小 |
+| **多 repo 对比页** | 例外④（v0.2 §5，仅限 `/compare`）。`CompareCurve` + 选择器（`"use client"`）：按需取曲线、归一化切换本质是**交互式探索工具**，无法服务端静态化。**只此一页**，不渗入内容正文页（repo/榜单/org 仍 0 JS） | 客户端 |
 
-> 规则：客户端 JS 仅限**三处明确例外**——防闪烁内联脚本、主题切换按钮、PWA SW 注册（`RegisterSW` + `manifest`）。任何**新**交互都必须能纯 CSS / 服务端实现，否则需重新设计而非引入客户端 JS。SVG 图表一律服务端渲染。
+> 规则：客户端 JS 仅限**四处明确例外**——防闪烁内联脚本、主题切换按钮、PWA SW 注册（`RegisterSW` + `manifest`）、以及 `/compare` 对比工具页（例外④，v0.2 §5，不渗入内容正文页）。任何**新**交互都必须能纯 CSS / 服务端实现，否则需重新设计而非引入客户端 JS。内容正文页（repo / 榜单 / org / 首页）SVG 图表一律服务端渲染。
 
 ## 落地核对清单
 

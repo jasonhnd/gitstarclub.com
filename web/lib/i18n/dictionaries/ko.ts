@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const ko: Dict = {
-  nav: { home: "홈", trending: "펄스", rankings: "순위", about: "소개" },
+  nav: { home: "홈", trending: "펄스", rankings: "순위", compare: "비교", about: "소개" },
   home: {
     heroPre: "",
     heroAccent: "오픈소스",
@@ -100,6 +100,20 @@ const ko: Dict = {
   },
   search: { label: "검색", placeholder: "저장소 검색…", empty: "일치하는 저장소가 없습니다", loading: "불러오는 중…" },
   share: { label: "공유", copied: "복사됨", onX: "X에 공유" },
+  compare: {
+    title: "스타 히스토리 비교",
+    subtitle: "등록된 저장소(≥10k 스타)의 곡선을 한 화면에 겹쳐봅니다. 최소 2개를 골라주세요.",
+    modeAbsolute: "절댓값",
+    modeAlign10k: "10k 도달부터",
+    pickerPlaceholder: "추가할 저장소 검색…",
+    legendLabel: "범례",
+    empty: "비교하려면 최소 2개를 선택하세요.",
+    minHint: "한 개 더 선택해 주세요.",
+    limit: "최대 5개.",
+    remove: "제거",
+    addToCompare: "비교에 추가",
+    openCompare: "비교",
+  },
 };
 
 export default ko;

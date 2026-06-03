@@ -56,6 +56,8 @@ app/
   about/page.tsx
   api/lang/route.ts          # 直接访问时的语言 cookie 后备入口（写 cookie）
   search-index/route.ts      # 客户端搜索索引端点：服务端读版本化 search/index.json + s-maxage 走 CDN（v0.2）
+  compare/page.tsx           # 多 repo 对比页（v0.2 §5）：静态壳 + 客户端读 URL ?repos= → 取曲线 → CompareCurve；带参 noindex
+  repo-curve/route.ts        # 对比瘦路由（v0.2 §5）：服务端读版本化 entity/repo/<id>.json → 投影精简曲线 + s-maxage 走 CDN
   robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
 ```
 
@@ -318,12 +320,13 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 组件 | 文件 | 类型 | 角色 |
 |---|---|---|---|
 | 顶栏 Top App Bar | `_explore/Chrome.tsx` | **Client** | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse/Rankings/About）+ 语言/主题切换 |
-| 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client** | ✅ 已建（v0.2）：导航栏搜索框；首次聚焦懒加载 `/search-index` + MiniSearch（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态走 chrome i18n（7 语） |
+| 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client** | ✅ 已建（v0.2）：导航栏搜索框；首次聚焦懒加载 `/search-index` + MiniSearch（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态走 chrome i18n（7 语）。**v0.2 §5 起**：每条结果加「+对比」勾选 + 底部「对比 N 个 →」跳 `/compare?repos=...`（行点击仍跳 repo） |
 | 分享 ShareButton | `_explore/ShareButton.tsx` | **Client** | ✅ 已建（v0.2 §4）：复制链接 + X 分享 intent；7 语 `share.*` chrome i18n；接 repo / 榜单月周 / 年页。榜单页另有动态 OG 卡（`rankings/[year]/[period]/opengraph-image.tsx` + `[year]/opengraph-image.tsx`，共享 `lib/og-card.tsx`） |
 | 月度叙事 Narrative | `_explore/Narrative.tsx` | **Client** | ✅ 已建（v0.2 §2）：月榜顶部中英叙事；en 默认 / zh·zh-TW 水合后切。文案由月页**渲染时**用确定性模板（`lib/narrative.ts`）从榜单数据现拼——**无 AI / 无产物** |
 | 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
 | 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
 | Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + **拐点标记点（v0.2 §3：三级色点 + `<title>` tooltip，零 JS）** + `role="img"` + aria-label |
+| 对比曲线 CompareCurve | `_explore/CompareCurve.tsx` | **Client** | ⏳ 待建（v0.2 §5）：多条折线叠图 + 图例（色块+full_name+星数）+ 共享 y 轴 + **absolute↔对齐到 10k 切换**；纯核心归一化在 `lib/compare/core.ts` |
 | 面包屑 Breadcrumbs | `_explore/Breadcrumbs.tsx` | RSC | ✅ 已建：Home→年→月 / Home→owner→repo 等（[SEO](./SEO.md) §6.7） |
 | 结构化数据 JsonLd | `_explore/JsonLd.tsx` | RSC | ✅ 已建：注入 `application/ld+json`（配 `@/lib/jsonld`） |
 | 页脚 Footer | `_explore/Footer.tsx` | RSC | ✅ 已建：构建时间戳 + 语言切换落点 |
@@ -359,6 +362,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 |---|---|---|
 | `RankingList` | `RepoRow[]`（内嵌 owner/name/lang/total/gained） | `rank.items`（`{rank,id,value,prev_rank}`）**join** `lookup/*` 后的行（见 §3.4）；`prev_rank` 驱动 ↑↓/进出 TOP |
 | `StarCurve` | `{label,total}[]` + `Milestone[]` + `CurveInflection[]` | `entity/repo.curve.monthly`（`[period,adds,total_end]`）取 `total_end` 为 `total`；`milestones` 来自 `entity.milestones`；`inflections` 来自 `entity.inflections`（period→monthIndex 映射，v0.2 §3）；尾部接 `curve.recent_daily` |
+| `CompareCurve` | `CompareCurve[]`（每 repo 一条曲线 payload） | 客户端从 `/repo-curve?id=` 并发取（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.15）；`points=[period,total]` 画线，`crossed_10k` 供「对齐到 10k」x 轴重映；归一化/配色在 `lib/compare/core.ts`（v0.2 §5） |
 | `Heatmap` | `{label,gained}[]` + max | `heatmap/{scope}/{period}.cells`（`[date|period, 总量]`）；当月合并 `current_month.json.daily_totals` |
 | 脊柱（YearSpine） | `YEARS`（占位） | `hot-snapshot.home.year_spine`（`[year, 总量]`） |
 

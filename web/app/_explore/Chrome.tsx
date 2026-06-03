@@ -35,6 +35,9 @@ export function Chrome({ tag }: { tag?: string }) {
         <Link href="/rankings" className="font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface">
           {t.nav.rankings}
         </Link>
+        <Link href="/compare" className="hidden font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface sm:inline">
+          {t.nav.compare}
+        </Link>
         <Link href="/about" className="hidden font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface sm:inline">
           {t.nav.about}
         </Link>
