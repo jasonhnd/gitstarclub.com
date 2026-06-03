@@ -28,10 +28,10 @@ M0 契约/脚手架
 
 > 这是**首次冷启动**用的一次性 bootstrap（[PIPELINE §1](./PIPELINE.md)）。产物上传 Blob 后，recurring 刷新由 Vercel（live cron + Workflow）接管——见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) Phase 1–4。
 >
-> **状态**：◐ 本机 bootstrap 已跑过——`whitelist`→`extract`→`rollup`→`precompute` 已产出全套 JSON 视图并过 Zod 校验（[TESTING §1.2](./TESTING.md)：12,615 文件 0 失败）。`star_daily_gross/*.parquet`、`whitelist.json` 在 `pipeline/data/`。**上传/线上接入以 Vercel 实况为准**（页面已读 `@/lib/data`，说明 Blob 已有产物）。
+> **状态**：◐ 本机 bootstrap 已跑过——`whitelist`→`extract`→`rollup`→`precompute` 已产出全套 JSON 视图并过 Zod 校验（[TESTING §1.2](./TESTING.md)：12,615 文件 0 失败）。`star_daily_gross/*.parquet`、`whitelist.json` 在 `pipeline/data/`。**上传/线上接入以 Vercel 实况为准**（页面已读 `@/lib/data`，说明 Blob 已有产物）。注：当前线上离线 parity = 12,899 视图，与此处 bootstrap 的 12,615 文件计数是不同口径（前者为线上重算产出的视图数，后者为首次冷启动精算的文件数）。
 
 按 [PIPELINE §1](./PIPELINE.md)：
-1. `whitelist`：Search `stars:>=10000` 自适应分桶 → `whitelist.json`（≈5,248）。
+1. `whitelist`：Search `stars:>=10000` 自适应分桶 → `whitelist.json`（bootstrap 基线 ≈5,248，当前约 5,261）。
 2. `extract`：BigQuery **先 dry-run 确认 ~$10**，再跑 WatchEvent→(repo.id, day, gross) → 导出 Parquet。
 3. `metadata`：GraphQL → owner+type / lang / topics / createdAt / current_stars。
 4. `rollup`（DuckDB）→ `star_daily.parquet` + 里程碑（cumsum 跨阈首日）+ daily_totals。

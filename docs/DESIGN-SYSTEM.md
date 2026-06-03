@@ -205,6 +205,7 @@ token（与实现一致）：
 | 组件 | 文件 | M3E 样式注记 |
 |---|---|---|
 | **顶栏 Top App Bar** | `_explore/Chrome.tsx` | `sticky top-0`，毛玻璃 `bg-surface/70 backdrop-blur-lg backdrop-saturate-150` + `border-outline-variant` 底边；logo 含金 ★（`primary-fixed-dim`，`aria-hidden`）+ 800 字重 wordmark；可选 tag = `primary-container` pill；右侧 About 链接 + 主题切换。standalone 下 `padding-top: max(.85rem, env(safe-area-inset-top))` 避刘海。 |
+| **搜索框 / Combobox** | `_explore/SearchBox.tsx` | **顶栏全站搜索**（`"use client"`，客户端 JS 例外但不在内容正文）：pill 容器（`rounded-full`）+ `focus-within:border-primary`；mono 输入、前置放大镜 icon（`aria-hidden`）；下拉面板 `surface-container-high` + 圆角 + 阴影（`elev`），命中行 hover `bg-on-surface/5`、激活行 `bg-on-surface/8`；a11y = `role="combobox"`/`listbox`/`option` + `aria-activedescendant`，键盘 ↑↓/Enter/Esc；首次聚焦懒加载 `search/index.json` + MiniSearch，结果直达 `/{owner}/{name}`；placeholder / 空态走 chrome i18n 七语。 |
 | **Chip / Badge** | （`Chrome` tag、状态 chip） | pill（`shape-full`）；强调态 `bg-primary-container text-on-primary-container`；信息态 `tertiary-container` + 描边；状态点 `status-pulse` 脉冲动画（`tertiary`）。 |
 | **Surface 卡片** | （工具类组合） | `bg-surface-container`/`-low` + `rounded-2xl`(`shape-l/xl`)；hover 升一级 container 或 `-translate-y` 抬升 + `elev`；内部用 tonal 区分而非重描边。 |
 | **榜单行 Ranking Row** | `_explore/RankingList.tsx` | **编辑感、非数据表**：名次 = 金色大号 `tabular-nums`（`primary-fixed-dim`，1.5rem/800）；repo 名走 mono"数据声"（`owner/` 弱、`name` 强、hover 下划线）；语言 = `surface-container-high` 小 pill 弱标签；指标右对齐重权重（`+gained` / `+rate%` / `crossed`，`tabular-nums`）。整行 `<Link>` → repo 页，hover `-translate-y` + `bg-on-surface/5`，弹簧缓动，入场 stagger。 |

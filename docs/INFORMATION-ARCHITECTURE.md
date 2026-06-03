@@ -28,6 +28,17 @@ safe direct-access fallback endpoint.
 
 The home page (`/`) is also the Pulse experience. It is no longer a separate chronicle landing page.
 
+## Search
+
+A global SearchBox lives in the chrome top bar (`Chrome.tsx`) as the "go directly
+by name" discovery entry. It covers all ~5,261 tracked repositories and
+complements "browse by time" (year / month / week). The box is a client combobox:
+on first focus it lazy-loads the versioned `search/index.json` (served over the
+CDN) into MiniSearch, then does instant client-side lookup (prefix + fuzzy typo
+tolerance, weighted by stars). Results link straight to `/{owner}/{repo}`. There
+is no `/search?q=` results page — it is an instant dropdown that jumps to the
+repo/owner.
+
 ## Pulse
 
 Pulse is the entry experience and shows:

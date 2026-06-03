@@ -11,7 +11,7 @@
 
 ## 2. 数据集范围
 
-- 白名单 = 当前 star ≥ **10,000** 的公开 repo（≈5,248，2026-05 实测）。每周刷新；新晋者补历史；跌出者保留历史、停止轮询。
+- 白名单 = 当前 star ≥ **10,000** 的公开 repo（bootstrap ≈5,248 @2026-05 实测 → 当前约 5,261；每周浮动）。每周刷新；新晋者补历史；跌出者保留历史、停止轮询。
 - 时间 **2015-01 至今**（2015 前 watch≠star、schema 不稳）。
 - 维度：**repo + org**（org = 按 owner 聚合，含 User 与 Organization 两类）。
 
@@ -31,6 +31,7 @@
 
 - URL 语言中立、单一（无 `/ja`、`/zh` 等语言前缀）；语言走页内 `gsc_lang` cookie 偏好（不发 hreflang，见 [SEO.md](./SEO.md) §10）。
 - 月/年页 **repo 榜与 org 榜并列**展示。
+- **导航栏全站搜索（✅ 已上线）**：顶栏 chrome 客户端 combobox，首次聚焦懒加载版本化 `search/index.json` + MiniSearch（zero 后端、走 CDN），typo 容错 + 按 stars 加权，直达 `/{owner}/{name}`；「按名字直达」入口，无 `/search?q=` 结果页。
 
 ## 4. 排名
 
@@ -71,7 +72,7 @@
 
 - 生产 canonical = **JSON shard**（per-repo 月/周 rollup + 站点日总量 + repo 维度，Vercel 可重算）；服务 = 预算好的 **JSON 视图**（build / 运行时只读）。bootstrap 形态是 Parquet 事实表（归档）。
 - 引擎（BigQuery/DuckDB）**只在一次性 bootstrap**；**生产 recurring 重算（历史/元数据/全量）走 Vercel Workflow，纯 JS + JSON shard、无引擎**；**build / cron / 运行时零引擎、零原生模块**。
-- 每日 / 每周 live cron JSON-only（已实现）；全量重算 + 发布 + 回滚走 Vercel Workflow（待实现）。详见 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)、[DATA-CONTRACTS](./DATA-CONTRACTS.md)、[PIPELINE](./PIPELINE.md)。
+- 每日 / 每周 live cron JSON-only（已实现）；全量重算 + 发布 + 回滚 + 折叠 + GC 走 Vercel Workflow（✅ 已实现 / 线上验证，Phase 2–5，2026-06-03 status=published）。详见 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)、[DATA-CONTRACTS](./DATA-CONTRACTS.md)、[PIPELINE](./PIPELINE.md)。
 
 ## 8a. 非功能需求：生产不依赖本地计算 ⭐
 

@@ -4,8 +4,8 @@
 > 设计目标：扛 100万–1000万/天访问，运行时纯静态。产品设计见 [PRODUCT.md](./PRODUCT.md)。
 >
 > ⚠️ **生产数据运营方向（Vercel-only）**：本文描述的「离线 DuckDB/Parquet pipeline」是**一次性 bootstrap 形态**。
-> **长期目标是生产数据生命周期完全不依赖本地计算**——白名单 / 元数据 / canonical 折叠 / 全量重算 / 发布 / 回滚
-> 都搬上 **Vercel Workflow**（**设计目标 / 待实现**）。canonical 也从单个 Parquet 重设计为 **Vercel-friendly JSON shard**。
+> **生产数据生命周期已完全不依赖本地计算**——白名单 / 元数据 / canonical 折叠 / 全量重算 / 发布 / 回滚
+> 都搬上 **Vercel Workflow**（**✅ Phase 2–5 已线上验证，2026-06-03 status=published**）。canonical 也从单个 Parquet 重设计为 **Vercel-friendly JSON shard**。
 > 详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)。本文凡提及 DuckDB/Parquet 处，均指 **bootstrap 归档**，不是 recurring 生产依赖。
 
 ## 核心洞察
@@ -20,7 +20,7 @@
 - **SSG-first**：所有内容页 build 时预生成静态 HTML（或按需 ISR 首访生成后持久缓存），用户请求永不触达 Function/数据库。
   > ✅ **已达成（option C 落地）**：早前 cookie 版 i18n 让根 `layout.tsx` 变成 `force-dynamic`、内容页按请求 SSR 的临时态**已解决**——chrome 翻译移到客户端（`i18n/client.tsx` 的 `I18nProvider`/`<T>`），服务端只出默认英文静态页。构建路由表全部 `ƒ`→`○` 静态 / `●` SSG 按需 ISR。证据与决策见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5。
 - **零客户端 JS**（内容页）：图表服务端渲染 SVG。
-- **Vercel-first**：部署、Cron、Blob、Analytics 全在 Vercel，统一计费。仅一次性 bootstrap 用 BigQuery 扫 GH Archive（~$10，非 recurring），之后运营 100% Vercel + GitHub API。**生产 recurring 重算（历史 / 元数据 / 全量）目标走 Vercel Workflow**，不依赖本地（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)，待实现）。
+- **Vercel-first**：部署、Cron、Blob、Analytics 全在 Vercel，统一计费。仅一次性 bootstrap 用 BigQuery 扫 GH Archive（~$10，非 recurring），之后运营 100% Vercel + GitHub API。**生产 recurring 重算（历史 / 元数据 / 全量）走 Vercel Workflow**，不依赖本地（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)，✅ Phase 2–5 已线上验证，2026-06-03 status=published）。
 - **不可变历史 + 小活尾**：生产 canonical 目标 = **JSON shard**（per-repo 月/周 rollup + 站点日总量 + repo 维度，Vercel 可重算）；活尾（当月）= KB 级 JSON，每日 cron 只读写它。**build 只读 JSON，不带任何引擎**。bootstrap 阶段的 `star_daily.parquet` 仅作历史归档，不在生产读 / 重算路径。
 
 ## 技术栈
@@ -34,7 +34,7 @@
 | **核心数据** | **JSON 视图**（build / 运行时读）+ JSON 活尾（当月，cron 读写）；生产 canonical = **JSON shard**（目标，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)） | 均存 Vercel Blob |
 | 对象存储 | Vercel Blob（canonical JSON shard + JSON 视图 + 预生成 OG 图；bootstrap Parquet 归档） | Vercel 原生 |
 | 日常采集 | **Vercel Cron + Function**（GraphQL 批量查 + JSON 视图覆盖，已实现） | Vercel 原生 |
-| 生产重算（历史/元数据/全量） | **Vercel Workflow**（多 step + Blob checkpoint，**待实现**） | Vercel 原生 |
+| 生产重算（历史/元数据/全量） | **Vercel Workflow**（多 step + Blob checkpoint，**✅ Phase 2–5 已线上验证**） | Vercel 原生 |
 | 一次性 bootstrap | **BigQuery**（GH Archive，含稳定 `repo.id`）+ 本机 DuckDB → Parquet | 一次性 ~$10，归档 |
 | 部署 | Vercel | |
 | Web 分析 | Vercel Analytics + Speed Insights · **GA4**（`NEXT_PUBLIC_GA_ID`） | |
@@ -65,11 +65,11 @@
 │  → JSON shard + JSON 视图 → Vercel Blob（之后由 Vercel 接管）│
 └─────────────────────────────────────────────────────┘
 
-┌─ 生产重算（Vercel WORKFLOW，多 step + Blob checkpoint；待实现）┐
+┌─ 生产重算（Vercel WORKFLOW，多 step + Blob checkpoint；✅ Phase 2–5 已线上验证）┐
 │  Cron 触发 → Workflow 编排 steps：                   │
-│  whitelist diff → metadata shard → 改名/新晋 →       │
-│  canonical JSON shard 折叠 → rank/entity/heatmap 重算 │
-│  → staging → validate → 切 views/latest 指针 → revalidate│
+│  whitelist → rename → metadata（分桶）→ fold（月/周）→ │
+│  recompute（rank/entity/heatmap 写 views/<run_id>）→  │
+│  validate（闸门）→ publish（切 views/latest 指针）→ gc │
 │  全程无 DuckDB/Parquet；大文件走 Blob 直链（VERCEL-DATA-OPERATIONS.md）│
 └─────────────────────────────────────────────────────┘
 
@@ -103,7 +103,7 @@
 ### 为什么日常增量不用 GH Archive？
 
 每日只需"每个 repo 昨天新增多少 star"，而 `昨日增量 = 今日总数 − 昨日总数`。
-GitHub GraphQL 可一次查 100 个 repo 的 `stargazerCount`，5,248 repo ≈ 53 个查询，几秒完成。
+GitHub GraphQL 可一次查 100 个 repo 的 `stargazerCount`，约 5,261 repo ≈ 53 个查询，几秒完成。
 
 - 不必每天下载 1-3GB GH Archive
 - net delta（净增，含取消 star）比 GH Archive 的 gross adds 更准确反映关注度
@@ -146,7 +146,7 @@ GitHub GraphQL 可一次查 100 个 repo 的 `stargazerCount`，5,248 repo ≈ 5
 
 ### 白名单
 
-= 当前 star ≥ 10,000 的 repo（约 5,248 个）。普通 Vercel Cron 不跑多年历史补片；新晋者补历史和全量 metadata 刷新要拆成 Vercel Workflow 分片，按 repo id 幂等写 Blob。
+= 当前 star ≥ 10,000 的 repo（约 5,261 个，随周变动）。普通 Vercel Cron 不跑多年历史补片；新晋者补历史和全量 metadata 刷新要拆成 Vercel Workflow 分片，按 repo id 幂等写 Blob。
 
 ## 数据模型（逻辑模型 + JSON 物理形式）
 
@@ -191,6 +191,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 - `entity/repo/{id}.json`、`entity/org/{login}.json` → 曲线（周/月点 + 近期日点）+ 里程碑 + 历期表 + 名次史
 - `heatmap/{year|month}/{period}.json` → 站点级日/月总量
 - `lookup/repos.json`、`lookup/orgs.json` → 元数据（build join 用）
+- `search/index.json` → 客户端全站搜索索引（recompute 从 `repos` 派生，v0.2）；读侧经 `/search-index` 动态 Route Handler（服务端解析发布指针读版本化产物，响应带 `s-maxage` 走 CDN）
 - 活尾 `current_month.json`（cron 写）、`hot-snapshot.json`（cron 写，热集 ISR 读）
 
 > build 把这些 JSON 直接烤成 HTML——不聚合、不带引擎、不碰原生模块。新增视图 = pipeline 多算一类 JSON。
@@ -204,13 +205,13 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 | 首页 | 1 |
 | 年度页 | ~11 |
 | 月度页 | ~132 |
-| Repo 详情页 | ~5,248 |
-| OG 图（每页一张） | ~5,400 |
-| **静态页合计** | **~5,400** |
+| Repo 详情页 | 约 5,261 |
+| OG 图（每页一张） | 约 5.3k |
+| **静态页合计** | **约 5.3k** |
 
 > 语言走**页内 cookie 偏好**，URL 语言中立、不为语言建独立 URL ⇒ 页数即单语言数，**不 × 语言数**。
 
-单语言 ~5,400（语言走页内 cookie，不 × 语言数）≈ **~5,400 单语言静态页**（语言策略见 [SEO.md §10](./SEO.md)：页内 cookie、无独立语言 URL）。
+单语言 约 5.3k（语言走页内 cookie，不 × 语言数）≈ **约 5.3k 单语言静态页**（语言策略见 [SEO.md §10](./SEO.md)：页内 cookie、无独立语言 URL）。
 
 > ⚠️ 上表是原始"repo 月度编年史"页面。新增的 **周排名 + org 维度 + 全时榜** 视图已在数据层全部预算（见数据模型）。因长尾走**按需 ISR**（懒生成、不占 build 预算，见下），org / 周页"成页"成本极低；**哪些视图独立成页**仍是待定的 PRODUCT 取舍，但已不受 build 预算约束。
 
@@ -257,7 +258,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 每日/每周 cron 都只更新**当月 JSON 活尾与当前周期 rank**（KB 级），不下载/改写大文件，机制极简：
 
 ```
-1. GraphQL 查 5,248 repo current_stars（~53 查询）
+1. GraphQL 查约 5,261 repo current_stars（~53 查询）
 2. 读 current_month.json（Blob，KB）← 拿昨日值算 net 日增
 3. append 今日：per-repo 日增 + daily_total；更新 current_stars
 4. 写回 current_month.json（覆盖即可——当月内 append-only）
@@ -277,7 +278,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 ### GraphQL 限额核对
 
-GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount` 这类标量字段的 query 成本极低（通常 1 point/query）。5,248 repo / 100 per query ≈ **53 query ≈ 53 points**，占小时额度的 ~1%。完全安全。元数据回填（含 topics 等）成本略高但仍远低于上限。
+GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount` 这类标量字段的 query 成本极低（通常 1 point/query）。约 5,261 repo / 100 per query ≈ **53 query ≈ 53 points**，占小时额度的 ~1%。完全安全。元数据回填（含 topics 等）成本略高但仍远低于上限。
 
 ### 性能策略（为 10M/天）
 
@@ -336,7 +337,7 @@ GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount`
 | 阶段 | 触发条件 | 引入 |
 |---|---|---|
 | **MVP** | — | JSON shard canonical + JSON 视图，纯静态（bootstrap 用 Parquet 一次性产出） |
-| **v0.2** | 要全站搜索 / 月度 LLM 叙事 | Pagefind/Orama 静态搜索索引；Vercel AI Gateway 跑摘要 |
+| **v0.2** | 要全站搜索 / 月度 LLM 叙事 | ✅ 全站搜索已上线（MiniSearch + 构建期 `search/index.json` + `/search-index` CDN 路由）；月度 LLM 叙事仍走 Vercel AI Gateway（待引入） |
 | **v0.3** | 扩到 ≥100 star（46 万 repo），单文件吃力 | **Tinybird (ClickHouse)** 作主库；可能加 **Neon** 存元数据 |
 | later | 用户系统 / 对比 / 个性化 | Neon + 运行时查询；Turbopuffer 向量检索 |
 

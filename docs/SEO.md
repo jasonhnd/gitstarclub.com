@@ -35,7 +35,7 @@
 | 首页 | `/` | 核心（deploy 构建） | 1 | 最高 |
 | 年度页 | `/rankings/2024` | 当年核心 / 历史按需 ISR | ~11 | 高 |
 | 月度页 | `/rankings/2024/10` | 当月核心 / 历史按需 ISR | ~132 | 高 |
-| Repo 详情页 | `/:owner/:name` | 按需 ISR | ~5,248 | 中（长尾主力） |
+| Repo 详情页 | `/:owner/:name` | 按需 ISR | ~5,261 | 中（长尾主力） |
 | **Org 详情页**（NEW） | `/o/:login` | 按需 ISR | ~1,000s（含 User+Org owner） | 中（长尾主力） |
 | **全时榜**（NEW） | `/rankings` | 核心（deploy 构建） | 1（+ 切片 待定） | 高 |
 | 关于页 | `/about` | 核心 | 1 | 低（但需收录） |
@@ -61,7 +61,7 @@
 
 | 维度 | 首页 | 年 | 月 | repo | org | rankings + about | 单语言合计 |
 |---|---|---|---|---|---|---|---|
-| URL 数（语言中立） | 1 | ~11 | ~132 | ~5,248 | ~1,500（估） | ~2 | **~6,900** |
+| URL 数（语言中立） | 1 | ~11 | ~132 | ~5,261 | ~1,500（估） | ~2 | **~6,900** |
 
 > URL 语言中立单一、不乘语言数（见 §10）。周页已独立 ⇒ +~570，再加 `/pulse`。**收录目标按 ~7,500 URL 规划 sitemap**。具体数随 org 白名单（含 User owner）浮动。
 
@@ -85,12 +85,12 @@
 export const metadata: Metadata = {
   title: { absolute: 'GitHub Star History & Trends — A Chronicle of Open Source · gitstarclub' },
   description:
-    'Explore 11 years of GitHub star history across 5,248 projects with ≥10k stars. Yearly & monthly trending, all-time rankings, and per-repo star timelines. Updated daily.',
+    'Explore 11 years of GitHub star history across 5,261 projects with ≥10k stars. Yearly & monthly trending, all-time rankings, and per-repo star timelines. Updated daily.',
   alternates: { canonical: '/' },
 }
 ```
 
-- 含词：`GitHub Star History`、`Trends`、`trending`、`star timelines`、`rankings`、`11 years`、`5,248 projects`。
+- 含词：`GitHub Star History`、`Trends`、`trending`、`star timelines`、`rankings`、`11 years`、`5,261 projects`。
 
 ### 2.2 年度页 `/rankings/2024`
 
@@ -117,7 +117,7 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
 | 字段 | 模板（2024-10） |
 |---|---|
 | title | `Top GitHub Repos in October 2024 — Trending & Star Growth` |
-| description | `October 2024 on GitHub: 5,248 tracked repos gained 2.3M stars. Top by new stars, fastest-growing, and 12 newcomers crossing 10k. See who trended in Oct 2024.` |
+| description | `October 2024 on GitHub: 5,261 tracked repos gained 2.3M stars. Top by new stars, fastest-growing, and 12 newcomers crossing 10k. See who trended in Oct 2024.` |
 | canonical | `/rankings/2024/10` |
 
 - 含词：`Top GitHub Repos`、月份英文名 + 年（`October 2024`）、`Trending`、`Star Growth`。**月份用英文全称**（搜索量高于数字 `2024/10`）。
@@ -247,7 +247,7 @@ Next.js 16 中 `app/.../sitemap.ts` 的 `generateSitemaps()` 返回 `[{ id }]`�
   /sitemap/pages.xml                  # 静态/核心：首页 + 全时榜 + about（语言中立，~3 条）
   /year/sitemap/0.xml                 # 年度页（~11 条）
   /month/sitemap/0.xml                # 月度页（~132 条）
-  /r/sitemap/0.xml … /r/sitemap/N.xml # repo：~5,248 → 每片 ≤5万，1 片足够（留分片接口备扩）
+  /r/sitemap/0.xml … /r/sitemap/N.xml # repo：~5,261 → 每片 ≤5万，1 片足够（留分片接口备扩）
   /o/sitemap/0.xml … /o/sitemap/M.xml # org：~1,500 → 1 片（量增时自动多片）
   # /rankings/YYYY/W## 周页：/week/sitemap/{id}.xml
 ```
@@ -338,6 +338,7 @@ Host: https://gitstarclub.com
 
 - **不屏蔽任何内容页**：~7,500 长尾页（语言中立单一 URL）全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + sitemap 分片共同消化。
 - **屏蔽 `/api/`**：cron / 内部 route 不该被抓（真正防线是 `CRON_SECRET` 鉴权，见 [OPS.md](./OPS.md)；robots 只是减少噪声）。
+- **`/search-index`（顶级 JSON 端点）当前故意放行**：它是 v0.2 全站搜索的版本化索引（`search/index.json`），经发布指针由 Route Handler 服务、带 `s-maxage` 走 CDN，被搜索框首次聚焦时懒加载。当前 `robots.ts` 只 `Disallow: /api/`、未屏蔽它（CDN JSON、非内容页、对 SEO 无害）。若日后要拦爬虫抓这个 JSON，再在 `robots.ts` 加 `/search-index` 到 Disallow——**此为文档取向说明，当前不改 `robots.ts` 代码**。
 - **预览 `Disallow: /`**：见 §11——`isProductionHost()` 据 `VERCEL_ENV` / host 判定，预览返回全站禁抓（与页面 `robots:{index:false}` meta 双保险）。
 - `host` 字段声明规范主机（少数爬虫用作镜像归并提示）。
 
@@ -347,7 +348,7 @@ Host: https://gitstarclub.com
 
 > 目的：①Google 富结果（面包屑、站内搜索框、数据集卡片）；②给 LLM / AI Overviews 喂结构化事实（star 时间序列、排名），抢 AI 答案位。用 `<script type="application/ld+json">` 注入（服务端渲染进 HTML，非客户端）。**所有页面都带 `BreadcrumbList`**。
 
-### 6.1 全站（根 layout）：`WebSite` + `SearchAction`
+### 6.1 全站（根 layout）：`WebSite`（暂不含 `SearchAction`）
 
 ```jsonc
 {
@@ -355,16 +356,13 @@ Host: https://gitstarclub.com
   "@type": "WebSite",
   "name": "gitstarclub",
   "url": "https://gitstarclub.com/",
-  "description": "A chronicle of GitHub star history across 11 years.",
-  "potentialAction": {            // 站内搜索（v0.2 上线搜索后启用，URL 模板预留）
-    "@type": "SearchAction",
-    "target": { "@type": "EntryPoint", "urlTemplate": "https://gitstarclub.com/search?q={query}" },
-    "query-input": "required name=query"
-  }
+  "description": "A chronicle of GitHub star history across 11 years."
+  // 不输出 potentialAction / SearchAction：v0.2 搜索是客户端 combobox、直达
+  // /{owner}/{name}，无规范结果页 URL 可供 SearchAction 广告（见下注）
 }
 ```
 
-> MVP 无站内搜索时，`SearchAction` 暂不输出（避免声明不存在的能力）；待 v0.2 搜索上线再加。`WebSite` 本体始终输出。
+> **v0.2 全站搜索已上线**，但它是**导航栏客户端 combobox**（首次聚焦懒加载 `search/index.json` + MiniSearch，命中直达 `/{owner}/{name}`），**没有 `/search?q=` 结果页 URL**。`SearchAction` 的 `urlTemplate` 必须指向一个可返回结果列表的规范页面——本站没有，故 `potentialAction` / `SearchAction` **暂不输出**（绝不广告一个指向不存在页面的 urlTemplate）。`WebSite` 本体始终输出。若未来新增 `/search` 结果页，再补 `SearchAction`。
 
 ### 6.2 首页：`WebSite` + `Dataset`（站点级数据集）
 
@@ -373,7 +371,7 @@ Host: https://gitstarclub.com
   "@context": "https://schema.org",
   "@type": "Dataset",
   "name": "GitHub Star History (≥10k repos, 2015–present)",
-  "description": "Daily star deltas and cumulative star history for 5,248 GitHub repositories with ≥10,000 stars, since 2015.",
+  "description": "Daily star deltas and cumulative star history for 5,261 GitHub repositories with ≥10,000 stars, since 2015.",
   "url": "https://gitstarclub.com/",
   "temporalCoverage": "2015-01-01/..",
   "creator": { "@type": "Organization", "name": "gitstarclub" },
@@ -677,7 +675,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 | 页面 | OG 图内容（1200×630，flex 布局） | 文案搜索词对齐 |
 |---|---|---|
-| 首页 | 大标题「GitHub Star History」+ 年份脊柱缩略（2015→now 金色条）+ 「5,248 repos · 11 years」 | star history |
+| 首页 | 大标题「GitHub Star History」+ 年份脊柱缩略（2015→now 金色条）+ 「~5,261 repos · 11 years」 | star history |
 | 年度页 | 「GitHub 2024」特大字 + 年度 TOP 3 repo 名（金色）+ 全年新增星数 | github 2024 trending |
 | 月度页 | 「Oct 2024」+ 当月 TOP 3 repo + 缩略日历热力图（金色深浅）+ 新晋数 | top github repos october 2024 |
 | Repo 页 | `owner/name`（等宽大字）+ star 曲线缩略（金线）+ 当前 star 数 + 里程碑点 | <repo> star history |
@@ -737,7 +735,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **结构化数据（§6）**
 
-- [ ] 全站 `WebSite`（+ `SearchAction` 待 v0.2）；首页 `Dataset`
+- [ ] 全站 `WebSite`（**不含 `SearchAction`**：v0.2 搜索是客户端 combobox、无结果页 URL，见 §6.1）；首页 `Dataset`
 - [ ] repo 页 `SoftwareSourceCode` + `Dataset`；org 页 `Organization`/`Person` + `ItemList`
 - [ ] 月/年页 `CollectionPage` + 各榜 `ItemList`；全时榜 `CollectionPage` + repo/org `ItemList`
 - [ ] **每页 `BreadcrumbList`**；全部通过 Google Rich Results 测试
