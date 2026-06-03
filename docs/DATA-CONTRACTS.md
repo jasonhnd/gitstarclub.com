@@ -191,7 +191,8 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
     "recent_daily": [ ["2026-03-01", 30], ["2026-03-02", -5] ]
   },
   "monthly_table": [ { "month": "2024-10", "adds": 1234, "rank": 42 } ],
-  "rank_history": { "month": [ ["2024-10", 42], ["2024-11", 38] ] }
+  "rank_history": { "month": [ ["2024-10", 42], ["2024-11", 38] ] },
+  "inflections": [ { "period": "2018-10", "flow": 12000, "kind": "peak" } ]
 }
 ```
 
@@ -200,6 +201,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 - `curve.recent_daily`：`[date, net_adds]`——近 ~90 天日点（曲线尾部），可负。
 - `monthly_table`：近 N 月的新增 + 当月 flow 名次。
 - `rank_history`：可选，名次史（驱动"名次走势"）。
+- `inflections`：可选，拐点标记 `[{period, flow, kind}]`（recompute 派生，v0.2 §3，见 [IMPLEMENTATION-PLAN](./IMPLEMENTATION-PLAN.md)）——月 flow ≥ K× 滚动中位数且过绝对下限的"爆发"月，最高月 `kind:"peak"`、其余 `"surge"`，至多 3 个；`StarCurve` 据此画标记 + tooltip。旧数据无此字段（optional）。
 
 ### 2.6 `entity/org/{login}.json`
 

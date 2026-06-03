@@ -63,6 +63,10 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
     const monthIndex = series.findIndex((p) => p.label === date.slice(0, 7));
     return monthIndex >= 0 ? [{ stars, label, date, monthIndex }] : [];
   });
+  const inflections = (repo.inflections ?? []).flatMap((inf) => {
+    const monthIndex = series.findIndex((p) => p.label === inf.period);
+    return monthIndex >= 0 ? [{ monthIndex, flow: inf.flow, kind: inf.kind, label: inf.period }] : [];
+  });
   const monthly = [...repo.monthly_table].reverse();
   const created = ymParts(repo.created_at);
 
@@ -148,7 +152,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
               <h2 className="mb-3 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
                 <T path="repo.history" />
               </h2>
-              <StarCurve series={series} milestones={milestones} />
+              <StarCurve series={series} milestones={milestones} inflections={inflections} />
             </section>
           )}
 

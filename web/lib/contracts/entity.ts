@@ -18,6 +18,14 @@ export type Curve = z.infer<typeof Curve>;
 /** Optional rank history: { window: [[period, rank], ...] }. */
 export const RankHistory = z.record(z.string(), z.array(z.tuple([Period, z.number().int()]))).optional();
 
+/** A "when it broke out" marker on the star curve (recompute-derived; v0.2 §3). */
+export const Inflection = z.object({
+  period: Period,
+  flow: z.number().int(),
+  kind: z.enum(["surge", "peak"]),
+});
+export type Inflection = z.infer<typeof Inflection>;
+
 export const RepoEntity = z.object({
   id: z.number().int(),
   full_name: z.string(),
@@ -55,6 +63,7 @@ export const RepoEntity = z.object({
     }),
   ),
   rank_history: RankHistory,
+  inflections: z.array(Inflection).optional(),
 });
 export type RepoEntity = z.infer<typeof RepoEntity>;
 

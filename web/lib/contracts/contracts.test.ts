@@ -35,6 +35,7 @@ import {
   OrgEntity,
   Heatmap,
   Curve,
+  Inflection,
   // live
   CurrentMonth,
   HotSnapshot,
@@ -416,6 +417,16 @@ describe("entity / view contracts", () => {
 
   test("RepoEntity rejects non-array topics", () => {
     expect(rejects(RepoEntity, { ...repoEntity, topics: "react" })).toBe(true);
+  });
+
+  test("Inflection parses; rejects bad kind enum", () => {
+    expect(Inflection.parse({ period: "2021-03", flow: 12000, kind: "peak" }).kind).toBe("peak");
+    expect(rejects(Inflection, { period: "2021-03", flow: 12000, kind: "spike" })).toBe(true);
+  });
+
+  test("RepoEntity parses with optional inflections", () => {
+    const e = RepoEntity.parse({ ...repoEntity, inflections: [{ period: "2021-03", flow: 12000, kind: "surge" }] });
+    expect(e.inflections).toHaveLength(1);
   });
 
   const orgEntity = { login: "vercel", owner_type: "Organization", current_stars_sum: 500000, repo_count: 50, members: [1, 2, 3], curve };
