@@ -69,7 +69,7 @@ MVP 这一层：
 ```
 gitstarclub/
 ├── README.md
-├── docs/                          # 16 篇设计/运维文档；索引与阅读顺序见 docs/README.md
+├── docs/                          # 15 篇设计/运维文档；索引与阅读顺序见 docs/README.md
 │   ├── README.md                  # 📑 文档总索引 + 单一真相源归属图 + 阅读顺序
 │   ├── REQUIREMENTS.md            # 需求基准（repo/视图计数口径的单一源）
 │   ├── ARCHITECTURE.md            # 技术栈、数据流、数据模型、扛量、页面分层
@@ -77,7 +77,7 @@ gitstarclub/
 │   ├── DATA-CONTRACTS.md          # 每个产物的 Zod schema（构建侧类型唯一事实源）
 │   ├── PIPELINE.md  RANKING.md  OPS.md  TESTING.md
 │   ├── FRONTEND.md  SEO.md  PRODUCT.md  DESIGN-SYSTEM.md  INFORMATION-ARCHITECTURE.md
-│   └── IMPLEMENTATION-PLAN.md  V0.2-DESIGN.md
+│   └── IMPLEMENTATION-PLAN.md     # v0.1 里程碑 + v0.2/v0.3 范围与设计
 │
 ├── pipeline/backfill/             # 🗄️ 一次性 bootstrap / 历史归档（本机 / 全 Node，非日常运营）
 │   ├── 01-whitelist.mjs           # Search ≥10k 自适应分桶 → whitelist
@@ -118,7 +118,7 @@ gitstarclub/
 
 ## 路线图
 
-> 概览如下；里程碑状态-of-record 见 [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md)，v0.2/v0.3 范围与设计见 [docs/V0.2-DESIGN.md](docs/V0.2-DESIGN.md)。
+> 概览如下；里程碑 + v0.2/v0.3 范围与设计均见 [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md)（路线图状态-of-record）。
 
 ### v0.1 — MVP（✅ 已上线）
 
