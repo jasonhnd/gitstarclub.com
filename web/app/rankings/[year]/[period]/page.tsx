@@ -7,6 +7,7 @@ import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { Heatmap } from "@/app/_explore/Heatmap";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
+import { ShareButton } from "@/app/_explore/ShareButton";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
 import { collectionLd } from "@/lib/jsonld";
@@ -35,6 +36,7 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
     description: `GitHub repositories ranked by stars gained in ${label}.`,
     path: `/rankings/${year}/${period}`,
     locale: "en",
+    ogImage: `/rankings/${year}/${period}/opengraph-image`,
   });
 }
 
@@ -103,6 +105,7 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
           }
           backHref={`/rankings/${year}`}
           backLabel={String(year)}
+          shareText={`${monthYearLabel(loc, year, month)} — GitHub star rankings`}
         />
 
         {cells.length > 0 && (
@@ -165,7 +168,7 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
             { label: period },
           ]}
         />
-        <PeriodHeader eyebrow={<T path="week.label" />} title={period} subtitle={<T path="week.top" />} backHref={`/rankings/${year}`} backLabel={String(year)} />
+        <PeriodHeader eyebrow={<T path="week.label" />} title={period} subtitle={<T path="week.top" />} backHref={`/rankings/${year}`} backLabel={String(year)} shareText={`${period} — GitHub star rankings`} />
         <section className="mt-[clamp(2rem,4vw,3rem)]">
           <RankingList rows={rows} variant="gained" locale={loc} />
         </section>
@@ -174,7 +177,7 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
   );
 }
 
-function PeriodHeader({ eyebrow, title, subtitle, backHref, backLabel }: { eyebrow: ReactNode; title: ReactNode; subtitle: ReactNode; backHref: string; backLabel: string }) {
+function PeriodHeader({ eyebrow, title, subtitle, backHref, backLabel, shareText }: { eyebrow: ReactNode; title: ReactNode; subtitle: ReactNode; backHref: string; backLabel: string; shareText: string }) {
   return (
     <section className="mt-5">
       <Link href={backHref} className="font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
@@ -183,6 +186,9 @@ function PeriodHeader({ eyebrow, title, subtitle, backHref, backLabel }: { eyebr
       <p className="mt-5 font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{eyebrow}</p>
       <h1 className="mt-2 text-[clamp(2rem,6vw,3.8rem)] font-extrabold leading-none tracking-[-0.03em] text-on-surface">{title}</h1>
       <p className="mt-3 max-w-[44ch] text-[clamp(0.95rem,1.6vw,1.1rem)] text-on-surface-variant">{subtitle}</p>
+      <div className="mt-5">
+        <ShareButton text={shareText} />
+      </div>
     </section>
   );
 }

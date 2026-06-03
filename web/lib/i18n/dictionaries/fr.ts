@@ -98,6 +98,7 @@ const fr: Dict = {
     dataThrough: "Données mises à jour jusqu'au",
   },
   search: { label: "Rechercher", placeholder: "Rechercher des dépôts…", empty: "Aucun dépôt correspondant", loading: "Chargement…" },
+  share: { label: "Partager", copied: "Copié", onX: "Partager sur X" },
 };
 
 export default fr;

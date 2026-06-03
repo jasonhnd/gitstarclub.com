@@ -98,6 +98,7 @@ const es: Dict = {
     dataThrough: "Datos actualizados hasta",
   },
   search: { label: "Buscar", placeholder: "Buscar repositorios…", empty: "Sin repositorios coincidentes", loading: "Cargando…" },
+  share: { label: "Compartir", copied: "Copiado", onX: "Compartir en X" },
 };
 
 export default es;

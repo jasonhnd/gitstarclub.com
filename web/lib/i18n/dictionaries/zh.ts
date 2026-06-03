@@ -98,6 +98,7 @@ const zh: Dict = {
     dataThrough: "数据更新至",
   },
   search: { label: "搜索", placeholder: "搜索仓库…", empty: "没有匹配的仓库", loading: "加载中…" },
+  share: { label: "分享", copied: "已复制", onX: "分享到 X" },
 };
 
 export default zh;

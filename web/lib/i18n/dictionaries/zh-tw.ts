@@ -98,6 +98,7 @@ const zhTw: Dict = {
     dataThrough: "資料更新至",
   },
   search: { label: "搜尋", placeholder: "搜尋倉庫…", empty: "沒有符合的倉庫", loading: "載入中…" },
+  share: { label: "分享", copied: "已複製", onX: "分享到 X" },
 };
 
 export default zhTw;

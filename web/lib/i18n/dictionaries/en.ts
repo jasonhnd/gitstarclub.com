@@ -98,6 +98,7 @@ export const en = {
     dataThrough: "Data updated through",
   },
   search: { label: "Search", placeholder: "Search repositories…", empty: "No matching repositories", loading: "Loading…" },
+  share: { label: "Share", copied: "Copied", onX: "Share on X" },
 };
 
 export type Dict = typeof en;

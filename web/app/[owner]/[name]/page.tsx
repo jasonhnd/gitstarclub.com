@@ -6,6 +6,7 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve, type Milestone } from "@/app/_explore/StarCurve";
+import { ShareButton } from "@/app/_explore/ShareButton";
 import { getRepoIdByFullName, getRepoEntity } from "@/lib/data";
 import { fmtStars, ymParts, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
@@ -106,6 +107,9 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
                   <T path="repo.archived" />
                 </span>
               )}
+            </div>
+            <div className="mt-5">
+              <ShareButton text={`${repo.full_name} — GitHub star history`} />
             </div>
           </header>
 

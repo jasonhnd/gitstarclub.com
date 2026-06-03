@@ -98,6 +98,7 @@ const ko: Dict = {
     dataThrough: "데이터 업데이트 기준",
   },
   search: { label: "검색", placeholder: "저장소 검색…", empty: "일치하는 저장소가 없습니다", loading: "불러오는 중…" },
+  share: { label: "공유", copied: "복사됨", onX: "X에 공유" },
 };
 
 export default ko;
