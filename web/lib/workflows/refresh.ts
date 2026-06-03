@@ -7,6 +7,7 @@ import { recomputeRepoEntities, recomputeOrgEntities } from "./steps/recompute-e
 import { recomputeHeatmap } from "./steps/recompute-heatmap";
 import { validateVersion } from "./steps/validate";
 import { publishVersion } from "./steps/publish";
+import { gcVersions } from "./steps/gc";
 import { startRun, markPublished, markFailed } from "./checkpoint";
 import { REPO_BUCKETS } from "./buckets";
 
@@ -55,7 +56,8 @@ export async function refreshWorkflow(runId: string) {
     const publish = await publishVersion(runId);
 
     await markPublished(runId, startedAt);
-    return { runId, ok: true, whitelist, rename, metadata, fold, recompute, validation, publish };
+    const gc = await gcVersions(runId); // best-effort cleanup of old versions; never fails the run
+    return { runId, ok: true, whitelist, rename, metadata, fold, recompute, validation, publish, gc };
   } catch (err) {
     await markFailed(runId, startedAt, err instanceof Error ? err.message : String(err));
     throw err;
