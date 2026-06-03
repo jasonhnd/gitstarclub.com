@@ -53,6 +53,7 @@ export const en = {
     daily: "Daily activity",
     gained: "Tracked repositories added",
     newcomersWord: "newcomers",
+    narrative: "This month",
   },
   week: { label: "Week", top: "Top repositories this week" },
   repo: {

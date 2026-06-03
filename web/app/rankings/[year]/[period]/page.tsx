@@ -8,7 +8,8 @@ import { Heatmap } from "@/app/_explore/Heatmap";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { ShareButton } from "@/app/_explore/ShareButton";
-import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
+import { Narrative } from "@/app/_explore/Narrative";
+import { getHeatmap, getRank, getReposLookup, joinRepoRank, getNarrative } from "@/lib/data";
 import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
 import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
@@ -56,12 +57,13 @@ export default async function RankingsPeriodPage({ params }: { params: Promise<{
 
 async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; month: number }) {
   const period = `${year}-${String(month).padStart(2, "0")}`;
-  const [flow, growth, newc, heat, lookup] = await Promise.all([
+  const [flow, growth, newc, heat, lookup, narrative] = await Promise.all([
     getRank("month", period, "repo", "flow"),
     getRank("month", period, "repo", "growth"),
     getRank("month", period, "repo", "new"),
     getHeatmap("month", period),
     getReposLookup(),
+    getNarrative(period),
   ]);
   if (!flow || !lookup) notFound();
 
@@ -107,6 +109,15 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
           backLabel={String(year)}
           shareText={`${monthYearLabel(loc, year, month)} — GitHub star rankings`}
         />
+
+        {narrative && (
+          <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)]">
+            <p className="mb-3 font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">
+              <T path="month.narrative" />
+            </p>
+            <Narrative en={narrative.en} zh={narrative.zh} />
+          </section>
+        )}
 
         {cells.length > 0 && (
           <section className="mt-[clamp(2rem,4vw,3rem)]">

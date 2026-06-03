@@ -53,6 +53,7 @@ const zhTw: Dict = {
     daily: "每日動態",
     gained: "追蹤倉庫新增",
     newcomersWord: "個新晉專案",
+    narrative: "本月敘事",
   },
   week: { label: "週", top: "本週領先倉庫" },
   repo: {
