@@ -53,6 +53,7 @@ const es: Dict = {
     daily: "Actividad diaria",
     gained: "Los repositorios monitoreados añadieron",
     newcomersWord: "nuevos ingresos",
+    narrative: "Este mes",
   },
   week: { label: "Semana", top: "Repositorios principales de esta semana" },
   repo: {

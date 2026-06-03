@@ -53,6 +53,7 @@ const ja: Dict = {
     daily: "日次の動向",
     gained: "対象リポジトリの獲得スター数",
     newcomersWord: "新規到達",
+    narrative: "今月の動き",
   },
   week: { label: "週", top: "今週の上位リポジトリ" },
   repo: {

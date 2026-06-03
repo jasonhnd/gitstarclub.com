@@ -53,6 +53,7 @@ const ko: Dict = {
     daily: "일간 활동",
     gained: "추적 저장소가 획득한 스타 수",
     newcomersWord: "신규 진입",
+    narrative: "이번 달 이야기",
   },
   week: { label: "주", top: "이번 주 상위 저장소" },
   repo: {

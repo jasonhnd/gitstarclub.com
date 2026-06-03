@@ -53,6 +53,7 @@ const zh: Dict = {
     daily: "每日动态",
     gained: "追踪仓库新增",
     newcomersWord: "个新晋项目",
+    narrative: "本月叙事",
   },
   week: { label: "周", top: "本周领先仓库" },
   repo: {
