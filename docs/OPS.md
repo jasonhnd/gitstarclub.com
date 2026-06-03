@@ -224,6 +224,17 @@ blob://
 
 > `sync_runs` 不需要数据库：当前实现覆盖写 Blob 上的 `ops/sync-runs.json`，保留最近 100 次运行；需要更强告警时再把同一条结构化事件同步到 Sentry/Slack。
 
+### 告警 webhook（`ALERT_WEBHOOK_URL`，可选）
+
+数据 pipeline（Vercel Workflow 全量刷新 + 每日 / 每周 cron）失败时调用 `sendAlert`（`web/lib/observability/alert.ts`）。`sendAlert` 有两条投递面，都是**尽力而为、绝不抛错**（告警失败不能拖垮 pipeline）：
+
+1. **永远**写一条可 grep 的结构化日志 `[ALERT] <pipeline> failed`（含 `run_id` / `step` / `error`）到 **Vercel function logs**——即便没配 webhook 也看得到。
+2. **当且仅当**设置了环境变量 `ALERT_WEBHOOK_URL` 时，额外向该 URL `POST` 一段 JSON 失败摘要（`{ text, pipeline, run_id, step, error, at }`，5s 超时）。**未设置 = 仅日志**（no-op，不报错）。
+
+**一行接入**：在 Vercel 项目 Settings → Environment Variables 加 `ALERT_WEBHOOK_URL`，值指向一个能收 JSON POST 的端点——Slack / Discord incoming webhook，或调试用的 `https://webhook.site/...`。配上即生效，无需改代码；留空则保持纯日志模式。
+
+> 最近一次各 pipeline 的运行状态（`ok` / `failed` + `run_id` + 时间）由 `recordHealth` 写在 **`ops/workflows/health.json`**（同 Blob），可与 `ops/sync-runs.json` 一起作对账入口。
+
 ## 一次性 bootstrap Runbook（高层，🗄️ 归档 / 非日常路径）
 
 > **降级声明**：这是**首次冷启动 / 灾难重建 / 引入新数据源**时手动跑一次的工具，**不是 recurring 运营路径**。产物上传 Blob 后由 Vercel（live cron + Workflow）接管，日常运营 **0 本地依赖 · 0 GCP**。
