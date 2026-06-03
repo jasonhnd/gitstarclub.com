@@ -4,6 +4,7 @@
 
 import type { DateStr, Model } from "./model";
 import type { RepoWindow, OrgWindow } from "./windows";
+import { detectInflections, type Inflection } from "./inflections";
 
 const MONTHLY_TABLE_MONTHS = 24;
 
@@ -23,6 +24,7 @@ export interface RepoEntity {
   curve: { monthly: Array<[string, number, number]>; recent_daily: Array<[string, number]> };
   monthly_table: Array<{ month: string; adds: number; rank: number }>;
   rank_history: { month: Array<[string, number]> };
+  inflections?: Inflection[];
 }
 
 /** entity/repo/<id>.json for every repo, plus the max stock-anchor drift for sanity. */
@@ -35,7 +37,7 @@ export function repoEntities(model: Model, monthWin: RepoWindow): { views: Map<s
     const drows = model.recentDaily.get(id) ?? [];
     const last = mrows.at(-1);
     if (last) anchorDrift = Math.max(anchorDrift, Math.abs(last.stock_est - meta.current_stars));
-    views.set(`entity/repo/${id}.json`, {
+    const entity: RepoEntity = {
       id,
       full_name: meta.full_name,
       owner: meta.owner,
@@ -58,7 +60,10 @@ export function repoEntities(model: Model, monthWin: RepoWindow): { views: Map<s
       },
       monthly_table: mrows.slice(-MONTHLY_TABLE_MONTHS).map((r) => ({ month: r.period, adds: r.flow, rank: r.flow_rank })),
       rank_history: { month: mrows.map((r) => [r.period, r.flow_rank] as [string, number]) },
-    });
+    };
+    const inflections = detectInflections(mrows.map((r) => [r.period, r.flow] as [string, number]));
+    if (inflections.length) entity.inflections = inflections;
+    views.set(`entity/repo/${id}.json`, entity);
   }
   return { views, anchorDrift };
 }

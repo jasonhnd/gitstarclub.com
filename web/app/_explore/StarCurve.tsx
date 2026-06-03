@@ -2,11 +2,20 @@ import { fmtK } from "@/lib/format";
 
 type Point = { label: string; total: number };
 export type Milestone = { stars: number; label: string; monthIndex: number; date: string };
+export type CurveInflection = { monthIndex: number; flow: number; kind: "surge" | "peak"; label: string };
 
 // Server-rendered SVG area chart. Zero client JS. Amber gradient fill,
 // gold milestone pins, CSS line-draw on load. Tolerates non-monotone series
 // (recent net stars can dip) by taking the true series max for the y-scale.
-export function StarCurve({ series, milestones }: { series: Point[]; milestones: Milestone[] }) {
+export function StarCurve({
+  series,
+  milestones,
+  inflections = [],
+}: {
+  series: Point[];
+  milestones: Milestone[];
+  inflections?: CurveInflection[];
+}) {
   const W = 880;
   const H = 300;
   const padL = 6;
@@ -97,6 +106,23 @@ export function StarCurve({ series, milestones }: { series: Point[]; milestones:
                 {m.label}
               </text>
             </g>
+          );
+        })}
+
+        {inflections.map((inf) => {
+          const ix = x(inf.monthIndex);
+          const iy = y(series[inf.monthIndex]?.total ?? 0);
+          return (
+            <circle
+              key={`inf-${inf.label}`}
+              cx={ix}
+              cy={iy}
+              r={inf.kind === "peak" ? 5 : 4}
+              style={{ fill: "var(--md-sys-color-tertiary)", stroke: "var(--md-sys-color-surface)" }}
+              strokeWidth={2}
+            >
+              <title>{`${inf.label} · +${fmtK(inf.flow)} ★`}</title>
+            </circle>
           );
         })}
 

@@ -138,7 +138,7 @@ gitstarclub/
 - ✅ 全站搜索已上线（导航栏 MiniSearch 即时检索；构建期 `search/index.json` + `/search-index` CDN 路由，仍无需后端数据库）
 - LLM 自动生成每月叙事总结（Vercel AI Gateway，中英双语）
 - 月度 / 年度可分享卡片（OG 图）
-- 拐点自动检测与标注
+- ✅ 拐点自动检测与标注（已实现：`entity/repo.inflections` + StarCurve 标记）
 
 ### v0.3 — 下钻与对比（数据库登场）
 

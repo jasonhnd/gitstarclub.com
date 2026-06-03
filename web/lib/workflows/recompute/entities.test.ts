@@ -206,3 +206,24 @@ describe("searchIndex", () => {
     expect(doc.description.length).toBe(200);
   });
 });
+
+describe("repoEntities — inflections (v0.2 §3)", () => {
+  test("tiny-flow repos get no inflections field (below ABS_FLOOR)", () => {
+    const model = syntheticModel();
+    const { views } = repoEntities(model, computeRepoWindow(model, "month"));
+    expect(views.get("entity/repo/10.json")!.inflections).toBeUndefined();
+  });
+
+  test("a breakout month surfaces as a peak inflection on the entity", () => {
+    const raw = {
+      repos: { "5": { id: 5, owner: "x", owner_type: "User", name: "r", full_name: "x/r", current_stars: 3300, d: 1 } },
+      monthly: { "5": [["2020-01", 100], ["2020-02", 100], ["2020-03", 100], ["2020-04", 3000]] },
+      weekly: { "5": [] },
+      recentDaily: {},
+      siteDailyByYear: {},
+    } as unknown as RawShards;
+    const model = buildModel(raw, "2026-05-30");
+    const { views } = repoEntities(model, computeRepoWindow(model, "month"));
+    expect(views.get("entity/repo/5.json")!.inflections).toEqual([{ period: "2020-04", flow: 3000, kind: "peak" }]);
+  });
+});

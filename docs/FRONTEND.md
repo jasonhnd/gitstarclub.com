@@ -321,7 +321,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client** | ✅ 已建（v0.2）：导航栏搜索框；首次聚焦懒加载 `/search-index` + MiniSearch（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态走 chrome i18n（7 语） |
 | 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
 | 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
-| Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + `role="img"` + aria-label |
+| Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + **拐点标记点（v0.2 §3：三级色点 + `<title>` tooltip，零 JS）** + `role="img"` + aria-label |
 | 面包屑 Breadcrumbs | `_explore/Breadcrumbs.tsx` | RSC | ✅ 已建：Home→年→月 / Home→owner→repo 等（[SEO](./SEO.md) §6.7） |
 | 结构化数据 JsonLd | `_explore/JsonLd.tsx` | RSC | ✅ 已建：注入 `application/ld+json`（配 `@/lib/jsonld`） |
 | 页脚 Footer | `_explore/Footer.tsx` | RSC | ✅ 已建：构建时间戳 + 语言切换落点 |
@@ -356,7 +356,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 组件 | 早期占位入参（已弃） | 真实层入参（DATA-CONTRACTS，现行） |
 |---|---|---|
 | `RankingList` | `RepoRow[]`（内嵌 owner/name/lang/total/gained） | `rank.items`（`{rank,id,value,prev_rank}`）**join** `lookup/*` 后的行（见 §3.4）；`prev_rank` 驱动 ↑↓/进出 TOP |
-| `StarCurve` | `{label,total}[]` + `Milestone[]` | `entity/repo.curve.monthly`（`[period,adds,total_end]`）取 `total_end` 为 `total`；`milestones` 来自 `entity.milestones`；尾部接 `curve.recent_daily` |
+| `StarCurve` | `{label,total}[]` + `Milestone[]` + `CurveInflection[]` | `entity/repo.curve.monthly`（`[period,adds,total_end]`）取 `total_end` 为 `total`；`milestones` 来自 `entity.milestones`；`inflections` 来自 `entity.inflections`（period→monthIndex 映射，v0.2 §3）；尾部接 `curve.recent_daily` |
 | `Heatmap` | `{label,gained}[]` + max | `heatmap/{scope}/{period}.cells`（`[date|period, 总量]`）；当月合并 `current_month.json.daily_totals` |
 | 脊柱（YearSpine） | `YEARS`（占位） | `hot-snapshot.home.year_spine`（`[year, 总量]`） |
 

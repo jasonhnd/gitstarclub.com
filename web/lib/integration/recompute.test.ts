@@ -23,7 +23,9 @@ import {
 import { existsSync } from "node:fs";
 
 // ── structural diff (ignores generated_at/backfilled_at; order-insensitive on object keys) ──────
-const IGNORE = new Set(["generated_at", "backfilled_at"]);
+// `inflections` is a v0.2-derived entity field with no DuckDB-precompute counterpart on disk;
+// exclude it from byte-parity (the algorithm is covered by inflections.test.ts).
+const IGNORE = new Set(["generated_at", "backfilled_at", "inflections"]);
 interface Leaf {
   path: string;
   a: unknown;
