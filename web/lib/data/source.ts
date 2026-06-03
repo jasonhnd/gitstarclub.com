@@ -27,7 +27,13 @@ async function resolveVersion(): Promise<string | null> {
   let version: string | null = null;
   if (BLOB_BASE) {
     try {
-      const res = await fetch(`${BLOB_BASE}/views/latest.json?v=${Math.floor(now / VERSION_TTL_MS)}`, { cache: "no-store" });
+      // Revalidated, NOT no-store: a `no-store` fetch flips an on-demand-ISR page to dynamic at
+      // render time ("Page changed from static to dynamic at runtime" → 500 on the first cold
+      // generation, before the in-memory memo warms). A 60s-revalidated fetch keeps the same ≤60s
+      // pointer freshness while staying static/ISR-safe. The rotating ?v= still busts the Blob CDN.
+      const res = await fetch(`${BLOB_BASE}/views/latest.json?v=${Math.floor(now / VERSION_TTL_MS)}`, {
+        next: { revalidate: VERSION_TTL_MS / 1000 },
+      });
       if (res.ok) {
         const j = (await res.json()) as { version?: unknown };
         if (typeof j.version === "string") version = j.version;
