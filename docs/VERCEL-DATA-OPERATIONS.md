@@ -54,7 +54,7 @@
 |---|---|---|---|---|
 | **L1 每日 live** | poll current_stars → 写 `current_month.json` + `live/*` 当前周期覆盖层 + `hot-snapshot.json` → revalidate 热集 | **Vercel Function**（单函数，JSON-only，秒级） | Cron `0 3 * * *` | ✅ 已实现 |
 | **L2 每周 live** | 复用 live refresh，覆盖写当前周 / 当前月 rank + 当月 heatmap + hot snapshot + `ops/sync-runs.json` | **Vercel Function**（单函数，JSON-only） | Cron `0 4 * * 0` | ✅ 已实现 |
-| **L3 Managed refresh** | 白名单 diff → 元数据 shard → 改名检测 → 月折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布（切指针）| **Vercel Workflow**（多 step，Blob checkpoint） | Cron 触发（如每周一次，独立于 L2）或手动 | ✅ **Phase 2+4+5 已线上验证**（白名单/元数据/改名/月折叠/重算/校验/发布/版本 GC，2026-06-03 `status=published`）；周折叠待做 |
+| **L3 Managed refresh** | 白名单 diff → 元数据 shard → 改名检测 → 月折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布（切指针）| **Vercel Workflow**（多 step，Blob checkpoint） | **每周 cron**（周日 06:00 UTC，`/api/workflows/refresh/start`，独立于 L2）/ 手动 | ✅ **Phase 2+4+5 已线上验证 + 已接入每周 cron**（白名单/元数据/改名/月折叠/重算/校验/发布/版本 GC，2026-06-03 `status=published`）；周折叠待做 |
 | **L4 Bootstrap archive** | 11 年事件级历史首次回填（Search → BigQuery → DuckDB → JSON → Blob） | **本机 / 全 Node**（`pipeline/backfill`） | 手动，一次性 | 🗄️ 归档工具，非生产路径 |
 
 **分工原则**：
