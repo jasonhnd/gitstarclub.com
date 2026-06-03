@@ -14,7 +14,7 @@ import { addDays, endOfMonth, monthsBetween, sundayOfWeekId, weekIdOf } from "./
 // upserts by period, only advances forward, so a workflow retry never double-counts. Runs after
 // metadata, before recompute, so the recompute turns the folded weeks into top-100 week rankings.
 
-function nextMonth(m: string): string {
+export function nextMonth(m: string): string {
   const [y, mo] = m.split("-").map(Number);
   return mo >= 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
 }
