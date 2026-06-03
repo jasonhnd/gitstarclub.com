@@ -1,5 +1,5 @@
 import { loadCanonicalModel, writeVersion } from "../recompute/io";
-import { computeOrgWindow, computeRepoWindow, lookups, orgEntities, repoEntities } from "../recompute";
+import { computeOrgWindow, computeRepoWindow, lookups, orgEntities, repoEntities, searchIndex } from "../recompute";
 
 // Steps 7a/7b — entity recompute. Both need the global month window: a repo's
 // monthly_table.rank / rank_history is its cross-repo flow rank, so entity/repo is NOT
@@ -21,7 +21,7 @@ export async function recomputeOrgEntities(runId: string): Promise<{ files: numb
   const monthWin = computeRepoWindow(model, "month");
   const monthOrg = computeOrgWindow(model, monthWin);
   const { views, anchorDrift } = orgEntities(model, monthOrg);
-  const merged = new Map<string, unknown>([...views, ...lookups(model)]);
+  const merged = new Map<string, unknown>([...views, ...lookups(model), ...searchIndex(model, runId)]);
   const files = await writeVersion(runId, merged);
   return { files, anchorDrift };
 }

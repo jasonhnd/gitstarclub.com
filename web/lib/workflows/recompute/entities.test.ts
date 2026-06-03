@@ -3,7 +3,7 @@
 import { test, expect, describe } from "bun:test";
 import { buildModel, type RawShards } from "./model";
 import { computeRepoWindow, computeOrgWindow } from "./windows";
-import { repoEntities, orgEntities, lookups } from "./entities";
+import { repoEntities, orgEntities, lookups, searchIndex } from "./entities";
 
 // Two repos under org "alpha". Seam month = 2026-05, so 2026-06 is post-seam:
 //   repo 10 (d=0.8): gross 100 → stock round(100*0.8)=80; 2026-05 +50 → round(150*0.8)=120;
@@ -150,5 +150,59 @@ describe("lookups", () => {
       repo_count: 2,
       current_stars_sum: 210,
     });
+  });
+});
+
+describe("searchIndex", () => {
+  const model = syntheticModel();
+  const idx = searchIndex(model, "gen-x");
+  const payload = idx.get("search/index.json") as { generated_at: string; count: number; repos: Array<Record<string, unknown>> };
+
+  test("emits a single search/index.json view", () => {
+    expect([...idx.keys()]).toEqual(["search/index.json"]);
+  });
+
+  test("count matches repos length; generated_at is passed through", () => {
+    expect(payload.count).toBe(2);
+    expect(payload.repos.length).toBe(2);
+    expect(payload.generated_at).toBe("gen-x");
+  });
+
+  test("docs are id-ascending and carry the lean searchable fields", () => {
+    expect(payload.repos[0]).toEqual({
+      id: 10,
+      full_name: "alpha/one",
+      owner: "alpha",
+      language: "TypeScript",
+      current_stars: 150,
+      description: "first",
+    });
+  });
+
+  test("missing language/description collapse to null", () => {
+    expect(payload.repos[1]).toEqual({
+      id: 30,
+      full_name: "alpha/two",
+      owner: "alpha",
+      language: null,
+      current_stars: 60,
+      description: null,
+    });
+  });
+
+  test("description is head-capped to bound the client payload", () => {
+    const long = "x".repeat(500);
+    const m = buildModel(
+      {
+        repos: { "1": { id: 1, owner: "o", owner_type: "User", name: "r", full_name: "o/r", description: long, current_stars: 5, d: 1 } },
+        monthly: { "1": [] },
+        weekly: { "1": [] },
+        recentDaily: {},
+        siteDailyByYear: {},
+      } as unknown as RawShards,
+      "2026-05-30",
+    );
+    const doc = (searchIndex(m, "g").get("search/index.json") as { repos: Array<{ description: string }> }).repos[0];
+    expect(doc.description.length).toBe(200);
   });
 });

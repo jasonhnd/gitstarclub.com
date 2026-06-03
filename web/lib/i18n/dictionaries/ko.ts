@@ -97,6 +97,7 @@ const ko: Dict = {
     madeIn: "도쿄에서 제작",
     dataThrough: "데이터 업데이트 기준",
   },
+  search: { label: "검색", placeholder: "저장소 검색…", empty: "일치하는 저장소가 없습니다", loading: "불러오는 중…" },
 };
 
 export default ko;

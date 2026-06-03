@@ -6,7 +6,7 @@
 import type { Model } from "./model";
 import { computeOrgWindow, computeRepoWindow, deriveYearWindow, type RepoWindow, type Window } from "./windows";
 import { allTime, growth, newcomers, orgRankMatrix, repoRankMatrix, type RankView } from "./ranks";
-import { lookups, orgEntities, repoEntities } from "./entities";
+import { lookups, orgEntities, repoEntities, searchIndex } from "./entities";
 import { heatmaps } from "./heatmap";
 
 export * from "./model";
@@ -76,6 +76,7 @@ export function computeAllViews(model: Model, opts: RecomputeOpts): ViewBundle {
   const org = orgEntities(model, monthOrg);
   for (const [k, v] of org.views) views.set(k, v);
   for (const [k, v] of lookups(model)) views.set(k, v);
+  for (const [k, v] of searchIndex(model, gen)) views.set(k, v);
 
   views.set("meta.json", {
     seam_date: opts.seamDate,
@@ -90,4 +91,4 @@ export function computeAllViews(model: Model, opts: RecomputeOpts): ViewBundle {
   };
 }
 
-export { repoEntities, orgEntities, lookups, heatmaps };
+export { repoEntities, orgEntities, lookups, searchIndex, heatmaps };

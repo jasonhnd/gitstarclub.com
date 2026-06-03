@@ -55,6 +55,7 @@ app/
   rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
   about/page.tsx
   api/lang/route.ts          # 直接访问时的语言 cookie 后备入口（写 cookie）
+  search-index/route.ts      # 客户端搜索索引端点：服务端读版本化 search/index.json + s-maxage 走 CDN（v0.2）
   robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
 ```
 
@@ -200,7 +201,9 @@ web/lib/
     lookup.ts  entity.ts  live.ts
   data/             # 读取器（fetch Blob + schema.parse + React cache 去重），barrel = index.ts
     source.ts       # readView：拼 Blob 直链 URL + fetch + parse（见 OPS Blob 布局）
-    lookup.ts  rank.ts  entity.ts  heatmap.ts  snapshot.ts  meta.ts  write.ts
+    lookup.ts  rank.ts  entity.ts  heatmap.ts  snapshot.ts  meta.ts  search.ts  write.ts
+  search/           # 客户端检索纯核心（MiniSearch 配置 + 查询；SearchBox 懒加载，v0.2）
+    core.ts
 ```
 
 > 早期"每产物一个 schema 文件"的建议结构(rank.ts/heatmap.ts/snapshot.ts/meta.ts 分离)未严格采用;实际把 rank/heatmap/meta 的 schema 收进 `common.ts`,readers 仍按 rank/heatmap/snapshot/meta 分文件。契约语义不变。
@@ -318,7 +321,8 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 | 组件 | 文件 | 类型 | 角色 |
 |---|---|---|---|
-| 顶栏 Top App Bar | `_explore/Chrome.tsx` | RSC | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + About 链接 + ThemeToggle |
+| 顶栏 Top App Bar | `_explore/Chrome.tsx` | **Client** | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse/Rankings/About）+ 语言/主题切换 |
+| 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client** | ✅ 已建（v0.2）：导航栏搜索框；首次聚焦懒加载 `/search-index` + MiniSearch（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态走 chrome i18n（7 语） |
 | 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
 | 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
 | Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + `role="img"` + aria-label |

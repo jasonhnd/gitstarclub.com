@@ -7,3 +7,4 @@ export * from "./entity";
 export * from "./heatmap";
 export * from "./snapshot";
 export * from "./meta";
+export * from "./search";

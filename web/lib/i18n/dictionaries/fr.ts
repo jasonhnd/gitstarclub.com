@@ -97,6 +97,7 @@ const fr: Dict = {
     madeIn: "Conçu à Tokyo",
     dataThrough: "Données mises à jour jusqu'au",
   },
+  search: { label: "Rechercher", placeholder: "Rechercher des dépôts…", empty: "Aucun dépôt correspondant", loading: "Chargement…" },
 };
 
 export default fr;

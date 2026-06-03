@@ -38,6 +38,9 @@ import {
   // live
   CurrentMonth,
   HotSnapshot,
+  // search
+  SearchDoc,
+  SearchIndex,
 } from "./index";
 
 // Each block proves a schema PARSES a valid shape AND REJECTS a real bad one
@@ -475,5 +478,31 @@ describe("live contracts", () => {
         current_month: topLists,
       }),
     ).toBe(true);
+  });
+});
+
+describe("search contracts", () => {
+  const doc = { id: 1, full_name: "vercel/next.js", owner: "vercel", language: "TypeScript", current_stars: 120000, description: "The React Framework" };
+
+  test("SearchDoc parses; language/description nullable", () => {
+    expect(SearchDoc.parse({ ...doc, language: null, description: null }).id).toBe(1);
+  });
+
+  test("SearchDoc rejects non-int current_stars", () => {
+    expect(rejects(SearchDoc, { ...doc, current_stars: 1.5 })).toBe(true);
+  });
+
+  test("SearchDoc rejects missing full_name", () => {
+    const { full_name, ...bad } = doc;
+    expect(rejects(SearchDoc, bad)).toBe(true);
+  });
+
+  test("SearchIndex parses generated_at + count + repos[]", () => {
+    const idx = { generated_at: "2026-06-01T00:00:00Z", count: 1, repos: [doc] };
+    expect(SearchIndex.parse(idx).repos).toHaveLength(1);
+  });
+
+  test("SearchIndex rejects non-array repos", () => {
+    expect(rejects(SearchIndex, { generated_at: "x", count: 0, repos: {} })).toBe(true);
   });
 });

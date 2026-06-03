@@ -97,6 +97,7 @@ const ja: Dict = {
     madeIn: "東京で制作",
     dataThrough: "データ反映日",
   },
+  search: { label: "検索", placeholder: "リポジトリを検索…", empty: "一致するリポジトリがありません", loading: "読み込み中…" },
 };
 
 export default ja;

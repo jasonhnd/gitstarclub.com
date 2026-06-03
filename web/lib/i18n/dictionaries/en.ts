@@ -97,6 +97,7 @@ export const en = {
     madeIn: "Made in Tokyo",
     dataThrough: "Data updated through",
   },
+  search: { label: "Search", placeholder: "Search repositories…", empty: "No matching repositories", loading: "Loading…" },
 };
 
 export type Dict = typeof en;

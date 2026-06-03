@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import { SearchBox } from "./SearchBox";
 import { useDict } from "@/lib/i18n/client";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -27,6 +28,7 @@ export function Chrome({ tag }: { tag?: string }) {
         ) : null}
       </Link>
       <nav className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2 sm:gap-x-4" aria-label="Primary">
+        <SearchBox />
         <Link href="/pulse" className="font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface">
           {t.nav.trending}
         </Link>

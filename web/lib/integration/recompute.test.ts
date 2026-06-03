@@ -102,6 +102,10 @@ function compareView(rel: string, produced: unknown, disk: unknown): Leaf[] {
 // live-cron artifacts the offline recompute intentionally does not reproduce.
 const LIVE_ARTIFACTS = new Set(["hot-snapshot.json", "current_month.json"]);
 
+// v0.2 views recompute derives but the DuckDB bootstrap never exported, so there is no disk
+// reference to diff against. Correctness is covered by entities.test.ts / search/core.test.ts.
+const NO_DISK_REF = new Set(["search/index.json"]);
+
 interface ParityResult {
   viewCount: number;
   diskCount: number;
@@ -136,6 +140,7 @@ function runParity(): ParityResult {
   const mismatchSamples: string[] = [];
 
   for (const [rel, produced] of views) {
+    if (NO_DISK_REF.has(rel)) continue; // new-in-v0.2 artifact, no bootstrap reference to diff
     if (!existsSync(`${VIEWS}/${rel}`)) {
       missingOnDisk++;
       if (mismatchSamples.length < 12) mismatchSamples.push(`MISSING ON DISK: ${rel}`);

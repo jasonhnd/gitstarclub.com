@@ -97,6 +97,7 @@ const zhTw: Dict = {
     madeIn: "製作於東京",
     dataThrough: "資料更新至",
   },
+  search: { label: "搜尋", placeholder: "搜尋倉庫…", empty: "沒有符合的倉庫", loading: "載入中…" },
 };
 
 export default zhTw;
