@@ -1,16 +1,16 @@
 # gitstarclub
 
-> 2026-06-02 Vercel cron note: all scheduled entrypoints now run in Vercel.
-> `/api/cron/daily` runs at `0 3 * * *`; `/api/cron/weekly` runs at `0 4 * * 0`.
-> Both routes refresh the live JSON views, write `live/rank/*` and
-> `live/heatmap/*` overrides, revalidate the hot pages, and record runs in
-> `ops/sync-runs.json`.
+> 2026-06-03 Vercel cron note: all scheduled entrypoints now run in Vercel.
+> `/api/cron/daily` `0 3 * * *` + `/api/cron/weekly` `0 4 * * 0` refresh the live
+> JSON tail; `/api/workflows/refresh/start` `0 6 * * 0` triggers the managed L3
+> refresh workflow (whitelist → metadata → fold → recompute → publish → GC).
 >
-> 数据运营方向：每日 / 每周 cron 已 **Vercel-only**（上面那条）。**生产数据生命周期（白名单 / 元数据 /
-> 改名 / 全量重算 / 校验 / 发布 / 回滚）已搬上 Vercel、不依赖本地计算**——由 **Vercel Workflow** 承载
-> （**Phase 2–4 已线上验证：2026-06-03 `status=published`，重算 → `views/<run_id>/**` → validate →
-> 切 `views/latest.json` 指针；离线 parity 12,899 视图与 DuckDB 逐字节一致**；周期折叠 Phase 5 待实现，见
-> [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)）。`pipeline/backfill`
+> 数据运营方向：每日 / 每周 live cron + 每周 L3 workflow 全部 **Vercel-only、零本地依赖、零手动触发**。
+> **生产数据生命周期（白名单 / 元数据 / 改名 / 月+周折叠 / 全量重算 / 校验 / 发布 / 版本 GC / 回滚）由
+> Vercel Workflow 承载**——**Phase 2–5 已线上验证（2026-06-03 `status=published`）：重算 →
+> `views/<run_id>/**` → validate → 切 `views/latest.json` 指针 → 版本 GC；离线 parity 12,899 视图与
+> DuckDB 逐字节一致；seam-aware 折叠用合成+集成测试覆盖**，见
+> [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)。`pipeline/backfill`
 > 的 BigQuery + 本机 DuckDB 仅作为**一次性 bootstrap / 历史归档**，不再是日常运营路径。
 >
 > 2026-06-01 i18n note: English is the default UI language. Other languages are
@@ -51,7 +51,7 @@
 | SEO | sitemap 分片 + schema.org + 每页 OG（build 时生成），见 docs/SEO.md |
 | 核心数据 | **JSON 视图**（build / 运行时只读）+ JSON 活尾（当月，cron 读写）；运行时无数据库。生产 canonical = **Vercel-friendly JSON shard**（`canonical/v2/*`，脱离本地 Parquet/DuckDB，**✅ 已实现**，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)） |
 | 一次性 bootstrap | **BigQuery**（GH Archive，含稳定 repo.id）+ 本机 DuckDB → Parquet 事实表，~$10。**仅首次冷启动 / 历史归档**，非日常运营路径 |
-| 日常采集 | **Vercel Cron + 单 Function**：GraphQL 批量查当前 star，diff 出增量（已实现）；元数据 / 全量重算 / 发布走 **Vercel Workflow**（**✅ Phase 2–4 已线上验证**；周期折叠 Phase 5 待实现） |
+| 日常采集 | **Vercel Cron + 单 Function**：GraphQL 批量查当前 star，diff 出增量（已实现）；元数据 / 月+周折叠 / 全量重算 / 发布 / GC 走 **Vercel Workflow**（**✅ Phase 2–5 已线上验证**，每周 cron 全自动） |
 | 框架 | Next.js 16（App Router + RSC + Turbopack） |
 | 语言/工具链 | TypeScript 6 · React 19 · Zod 4 · Tailwind 4 · 包管理器 **bun** · Node 24 |
 | 部署 | Vercel（统一计费） |
@@ -83,7 +83,7 @@ gitstarclub/
 ├── README.md
 ├── docs/
 │   ├── ARCHITECTURE.md          # 技术栈、数据流、数据模型、扛量、build/cron 机制
-│   ├── VERCEL-DATA-OPERATIONS.md # Vercel-only 数据运营设计（Workflow/canonical shard/发布回滚，待实现）
+│   ├── VERCEL-DATA-OPERATIONS.md # Vercel-only 数据运营设计（Workflow/canonical shard/月+周折叠/发布回滚，✅ 已线上验证）
 │   ├── PRODUCT.md               # 页面设计、URL、调性、i18n、命名
 │   ├── SEO.md                   # sitemap、meta、结构化数据、OG、多语言 SEO
 │   └── TESTING.md               # 测试策略：数据质量/视觉回归/a11y/E2E/性能/跨浏览器
@@ -142,7 +142,7 @@ gitstarclub/
 - [ ] Next.js 四个核心页面（首页 / 年 / 月 / repo），build 读预算 JSON 视图 + SSG
 - [ ] 时间轴 + star 曲线（服务端 SVG，零客户端 JS）
 - [x] Vercel Cron 每日 / 每周 live refresh → 活尾 + revalidate（已实现）
-- [x] **Vercel Workflow** 承载白名单 / 元数据 / 改名 / rank+entity+heatmap 全量重算 / 校验 / 发布（脱离本地，**Phase 2–4 已线上验证**；折叠 Phase 5 待实现，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)）
+- [x] **Vercel Workflow** 承载白名单 / 元数据 / 改名 / 月+周折叠 / rank+entity+heatmap 全量重算 / 校验 / 发布 / 版本 GC（脱离本地、每周 cron 全自动，**Phase 2–5 已线上验证**，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)）
 - [ ] Vercel 部署上线
 
 ### v0.2 — 叙事与发现
