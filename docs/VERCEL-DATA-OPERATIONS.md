@@ -209,6 +209,8 @@ hot-snapshot / current_month： 直读 (L1/L2 活尾)
 
 > ✅ 现状（Phase 4+5 已实现）：base 视图（rank/all-time/entity/heatmap/meta/lookup）走 `readView(path, schema, { base:true })` → 读 `views/latest.json` 指针 → 解析 `<version>` → 读 `views/<version>/<path>`，**无指针时回退扁平布局**（首发前/异常时不致断站）。`live/*`、`current_month`、`hot-snapshot`、`canonical/*`、`ops/*` 仍走扁平（`base:false`）。对页面逻辑透明（数据层封装，组件不感知）。**「live vs base」判据已按 `meta.folded_through` 水位收紧**（period ≤ `folded_through` 直读 base、未折叠周期叠 live，§8.3），防重复计数。
 
+> ⚠️ **指针读取必须用「60s 重校验缓存」而非 `no-store`**：`resolveVersion()`（`web/lib/data/source.ts`）用 `fetch(views/latest.json, { next: { revalidate: 60 } })`。`no-store` 是动态 API——会让**按需 ISR 长尾页**（repo / org / rankings）在**冷函数实例**首渲时"由静态变动态"，Next 抛 `Page changed from static to dynamic at runtime` → **首访 500**，内存 memo 暖后才恢复 200。60s 重校验保持同样 ≤60s 指针新鲜度、对静态/ISR 安全（2026-06-03 经 prod 日志定位 + 修复 + 验证）。
+
 ### 4.2 分桶（bucket）策略
 
 | shard | 分桶键 | 桶数（建议） | 单桶量级（估算） | 重算粒度 |
