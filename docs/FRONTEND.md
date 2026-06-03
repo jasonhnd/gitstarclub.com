@@ -319,6 +319,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 |---|---|---|---|
 | 顶栏 Top App Bar | `_explore/Chrome.tsx` | **Client** | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse/Rankings/About）+ 语言/主题切换 |
 | 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client** | ✅ 已建（v0.2）：导航栏搜索框；首次聚焦懒加载 `/search-index` + MiniSearch（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态走 chrome i18n（7 语） |
+| 分享 ShareButton | `_explore/ShareButton.tsx` | **Client** | ✅ 已建（v0.2 §4）：复制链接 + X 分享 intent；7 语 `share.*` chrome i18n；接 repo / 榜单月周 / 年页。榜单页另有动态 OG 卡（`rankings/[year]/[period]/opengraph-image.tsx` + `[year]/opengraph-image.tsx`，共享 `lib/og-card.tsx`） |
 | 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
 | 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
 | Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + **拐点标记点（v0.2 §3：三级色点 + `<title>` tooltip，零 JS）** + `role="img"` + aria-label |

@@ -87,7 +87,7 @@ M0 契约/脚手架
 - ✅ **M5 SEO/i18n/PWA**：sitemap/robots/JSON-LD/OG（含每页 og:image 修复）/ 7 语 i18n（option C 客户端译 chrome）/ PWA 已建；已切生产域名；CWV/收录上线后核对。
 - ✅ **Vercel-only Phase 2–5 已线上验证（2026-06-03 `status=published`）**：metadata/whitelist/rename（Phase 2）+ canonical/v2 shard + 读侧指针（Phase 3）+ rank/entity/heatmap 纯 JS 重算 → `views/<run_id>/**` → validate → 切 `views/latest.json` 指针（Phase 4）+ **月+周 canonical 折叠 / 版本 GC（Phase 5）**；离线 parity 12,899 视图与 DuckDB 逐字节一致；监控/告警 + 345 bun 测试。`workflow@4.3.1` + `web/lib/workflows/*`。
 - ✅ **两大开口已闭合**：① §9-J 渲染模式 → **option C**（静态基底 + 客户端译 chrome）已实现，页面回 SSG/ISR；② Vercel-only **Phase 5**（折叠 / GC / backfill 归档）已完成。
-- 🚧 **v0.2 叙事与发现（设计 + 进度见下「v0.2」节）已启动**：§1 **全站搜索 ✅ 已线上验证**（`search/index.json` 5,261 repo + `/search-index` CDN 路由 + 客户端 MiniSearch）、§3 **拐点检测 ✅ 已实现**（`entity/repo.inflections` + StarCurve 标记，下次 recompute 发布后填充）；分享卡片补全 / LLM 月度叙事**待做**；≥100★下钻 / 任意 repo 对比 / 聚类 / 语义检索属 v0.3，**阻塞于 DB 选型决策（见下「v0.3」节）**。
+- 🚧 **v0.2 叙事与发现（设计 + 进度见下「v0.2」节）已启动**：§1 **全站搜索 ✅ 已线上验证**（`search/index.json` 5,261 repo + `/search-index` CDN 路由 + 客户端 MiniSearch）、§3 **拐点检测 ✅**（`entity/repo.inflections` + StarCurve 标记）、§4 **可分享卡片 ✅**（榜单 OG 卡 + ShareButton）；LLM 月度叙事**待做**；≥100★下钻 / 任意 repo 对比 / 聚类 / 语义检索属 v0.3，**阻塞于 DB 选型决策（见下「v0.3」节）**。
 
 ---
 
@@ -95,7 +95,7 @@ M0 契约/脚手架
 
 > 主题：让用户更容易**找到**和**读懂**开源编年史。**继续守 v0.1 硬约束**——运行时纯静态只读 JSON/Blob、零运行时引擎/数据库、Vercel-first 统一计费、零本地 recurring 依赖。凡是需要 DB 的（下钻 / 任意对比 / 语义检索）推到「v0.3」节。每项纪律同 v0.1：先离线/合成验证正确性，再上；产物落 Blob、读侧带回退；workflow step 幂等 + best-effort。
 >
-> **建造顺序**：① 搜索 ✅ → ② 拐点 ✅ → ③ 分享卡片补全 → ④ LLM 月度叙事 →（v0.3 闸门）DB 选型。
+> **建造顺序**：① 搜索 ✅ → ② 拐点 ✅ → ③ 分享卡片补全 ✅ → ④ LLM 月度叙事 →（v0.3 闸门）DB 选型。
 
 ### v0.2 §1 全站搜索 ✅ 已实现
 
@@ -114,10 +114,10 @@ M0 契约/脚手架
 - **技术**：纯算法跑在 recompute（零新数据源、零 LLM）——对每个 repo 月度 flow 做 changepoint（flow ≥ K × 前 N 月滚动中位数 + 绝对下限），写进 `entity/repo/<id>.json` 新字段 `inflections: [{period, flow, kind}]`，`StarCurve` 在这些月画标记 + tooltip。
 - **✅ 已落地**：纯核心 `lib/workflows/recompute/inflections.ts`（`detectInflections`：K=3 × 6 月滚动中位数 + `ABS_FLOOR=500` + 取 top-3，最高月标 `kind:"peak"`）；entity step 计算并写入 `inflections`（空则不写）；Zod 契约 `Inflection` + `RepoEntity.inflections` optional（旧数据仍 parse）；`StarCurve` 渲染三级色标记点 + `<title>` tooltip（零 JS）。离线 parity 经 `IGNORE` 跳过该新字段；单测 11 例（算法 7 + entity 2 + 契约 2），tsc + `next build` 绿。拐点数据将在下次 recompute 发布后填充。
 
-### v0.2 §4 可分享卡片 ◐ 部分
+### v0.2 §4 可分享卡片 ✅ 已实现
 
 - **现状**：每页 og:image 已修（repo 页自定义卡、其余站点卡，v0.1 已做）。
-- **补**：① 每月/每年榜的 OG 卡（`app/rankings/[year]/[period]/opengraph-image.tsx`，动态生成"6 月榜 top3"卡）；② 页面"分享"按钮（复制链接 / X 分享 intent）。**量：小**。
+- **✅ 已落地**：① 榜单 OG 卡——`app/rankings/[year]/[period]/opengraph-image.tsx`（月/周）+ `[year]/opengraph-image.tsx`（年）动态生成"该期 top3"卡，共享 `lib/og-card.tsx`（`next/og`，石墨灰+金、stars 内联 SVG），并接进各页 `pageMeta.ogImage`；② `app/_explore/ShareButton.tsx`（复制链接 + X 分享 intent，7 语 `share.*` chrome i18n），接进 repo / 榜单月周 / 年页。`next build` 绿；本地 smoke：两张 OG 卡 200 `image/png`、页面 `og:image` 指向卡、ShareButton 入 SSR。
 
 ## v0.3 — 下钻与对比（DB 阻塞，需先拍板选型）
 

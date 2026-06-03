@@ -98,6 +98,7 @@ const ja: Dict = {
     dataThrough: "データ反映日",
   },
   search: { label: "検索", placeholder: "リポジトリを検索…", empty: "一致するリポジトリがありません", loading: "読み込み中…" },
+  share: { label: "共有", copied: "コピーしました", onX: "X で共有" },
 };
 
 export default ja;

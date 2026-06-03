@@ -6,6 +6,7 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
+import { ShareButton } from "@/app/_explore/ShareButton";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars, monthLabel } from "@/lib/format";
 import { collectionLd } from "@/lib/jsonld";
@@ -32,6 +33,7 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
     description: `The ${year} ranking of GitHub repositories by stars gained, with month-by-month history.`,
     path: `/rankings/${year}`,
     locale: "en",
+    ogImage: `/rankings/${year}/opengraph-image`,
   });
 }
 
@@ -78,6 +80,9 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
             <Link href="/rankings" className="mt-5 inline-block font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
               <T path="nav.rankings" />
             </Link>
+            <div className="mt-6">
+              <ShareButton text={`${year} — GitHub star rankings`} />
+            </div>
           </aside>
 
           <div>
