@@ -47,7 +47,7 @@ M0 契约/脚手架
 - ✅ 处置 §9：**B** 未知 param → `notFound()`(`[owner]/[name]`)、**E/F** i18n cookie + `metadataBase` 已收敛、**H** 去硬编码 synced 时间。**D** 非单调曲线待验证。
 - ✅ 页面渲染真实 JSON（首页/rankings/月/repo/org/pulse 均读 `@/lib/data`）。
 - **依赖**：M1。**验收**：核心页真实数据、`notFound` 正确 —— 已达。
-- ⚠️ **遗留(§9-J)**：i18n cookie 让根 layout `force-dynamic`,实际**非 ISR/SSG**,与扛量模型冲突,待架构决策。
+- ✅ **§9-J 已解（option C）**：chrome i18n 移到客户端（`I18nProvider` 水合后读 `gsc_lang` cookie 换 chrome 字串），页面 BODY 回到默认英文 SSG/ISR、不再 `force-dynamic`，扛量模型恢复。见 [FRONTEND §2.5](./FRONTEND.md)。
 
 ## M3 — 新页型 ✅ 基本完成
 
@@ -60,7 +60,7 @@ M0 契约/脚手架
 按 [PIPELINE §2–3](./PIPELINE.md) + [ARCHITECTURE 页面分层](./ARCHITECTURE.md)：
 - ✅ `web/app/api/cron/daily`：CRON_SECRET 校验 → GraphQL current_stars → net 日增 → 更新 `current_month.json` → 重算 `hot-snapshot.json` + `live/*` 当前周期覆盖层 → `revalidatePath`（核心热集）。**已实现**。
 - ✅ `web/app/api/cron/weekly`：复用 live refresh，覆盖当前周/月 + hot snapshot + `ops/sync-runs.json`。**已实现**。
-- ✅ **白名单 diff / 新晋追踪 / 全量重算 / 发布 / 回滚 → Vercel Workflow**（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) Phase 2–4，已线上验证）；canonical 折叠（Phase 5）待实现。
+- ✅ **白名单 diff / 新晋追踪 / 全量重算 / 发布 / 回滚 / canonical 月+周折叠 / 版本 GC → Vercel Workflow**（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) Phase 2–5，均已线上验证）。
 - **此处现场定**（文档最薄两块）：① 当期增量聚合的 **YTD-base**（存哪/每月更新）；② mover 的 **90 天基线**数据源（每日 cron JSON-only，需备一份滚动基线）。
 - **依赖**：M2/M3。
 - **验收**：cron 幂等；mover 当天上 `/pulse` + 其页刷新；漂移告警。Workflow 落地后全量重算走 staging→指针→revalidate。
@@ -70,7 +70,7 @@ M0 契约/脚手架
 按 [SEO](./SEO.md) + [OPS](./OPS.md)：
 - ✅ `sitemap.ts`/`robots.ts`/JSON-LD/OG/`generateMetadata` 已建；i18n 手写字典(en/ja/zh/zh-TW/ko/es/fr)已建（页内 cookie 切换，无 hreflang 矩阵）；PWA 保留（例外③）。
 - ✅ 已切生产域名（`gitstarclub.com` 指 web 应用，teaser 退役，见 [OPS](./OPS.md)）。
-- **验收**：[SEO 验收清单](./SEO.md) + CWV + Search Console 收录 —— 待核;⚠️ CWV/扛量受 §9-J `force-dynamic` 影响,需连同架构决策一并评估。
+- **验收**：[SEO 验收清单](./SEO.md) + CWV + Search Console 收录 —— 上线后待核（§9-J 已解为 option C，页面回到 SSG/ISR，扛量模型不再受 `force-dynamic` 影响）。
 
 ---
 
@@ -78,12 +78,13 @@ M0 契约/脚手架
 - M1：Zod schema + sanity 不变量（CI 阻断脏数据）。
 - M2+：视觉回归（明暗×断点）、a11y、E2E 导航、零 JS / HTML<20KB 断言。
 
-## 当前进度（2026-06-02 拉齐到代码现状）
-- ✅ **M0 契约** `web/lib/contracts/`（common/lookup/entity/live）。
-- ◐ **M1 bootstrap**：本机已跑出全套 JSON 视图 + Zod 校验（12,615 文件 0 失败）；上传/线上以 Vercel 为准。
+## 当前进度（2026-06-03 拉齐到代码现状）
+- ✅ **M0 契约** `web/lib/contracts/`（common/lookup/entity/live/canonical/workflow/search）。
+- ◐ **M1 bootstrap**：本机已跑出全套 JSON 视图 + Zod 校验；现为**一次性归档路径**，recurring 刷新由 Vercel 接管。
 - ✅ **M2 web 接真实数据**：页面读 `@/lib/data`，占位已删，`notFound` 已落地。
 - ✅ **M3 新页型**：org/rankings/周/pulse 已建。
 - ✅ **M4 live cron**：每日/每周已在 Vercel 跑通（Phase 0）。
-- ◐ **M5 SEO/i18n/PWA**：sitemap/robots/JSON-LD/OG/i18n 字典/PWA 已建；已切生产域名。
-- ✅ **Vercel-only Phase 2–4 已线上验证**：metadata/whitelist/rename workflow（Phase 2，2026-06-02）+ canonical/v2 shard 导出与读侧指针（Phase 3）+ rank/entity/heatmap 纯 JS 重算 → `views/<run_id>/**` → validate → 切 `views/latest.json` 指针（Phase 4，2026-06-03，`status=published`、5,252 repo；离线 parity 12,899 视图与 DuckDB 逐字节一致）。`workflow@4.3.1` + `web/lib/workflows/*`。
-- ⏳ **两大开口**：① **§9-J 渲染模式架构决策**（cookie i18n → `force-dynamic`，非 SSG/ISR，与扛量模型冲突）；② **Vercel-only Phase 5**（周期收口的 canonical 折叠 §8.3 / 旧版本 GC / backfill 归档，未实现）。
+- ✅ **M5 SEO/i18n/PWA**：sitemap/robots/JSON-LD/OG（含每页 og:image 修复）/ 7 语 i18n（option C 客户端译 chrome）/ PWA 已建；已切生产域名；CWV/收录上线后核对。
+- ✅ **Vercel-only Phase 2–5 已线上验证（2026-06-03 `status=published`）**：metadata/whitelist/rename（Phase 2）+ canonical/v2 shard + 读侧指针（Phase 3）+ rank/entity/heatmap 纯 JS 重算 → `views/<run_id>/**` → validate → 切 `views/latest.json` 指针（Phase 4）+ **月+周 canonical 折叠 / 版本 GC（Phase 5）**；离线 parity 12,899 视图与 DuckDB 逐字节一致；监控/告警 + 345 bun 测试。`workflow@4.3.1` + `web/lib/workflows/*`。
+- ✅ **两大开口已闭合**：① §9-J 渲染模式 → **option C**（静态基底 + 客户端译 chrome）已实现，页面回 SSG/ISR；② Vercel-only **Phase 5**（折叠 / GC / backfill 归档）已完成。
+- 🚧 **v0.2 叙事与发现（[V0.2-DESIGN](./V0.2-DESIGN.md)）已启动**：§1 **全站搜索 ✅ 已上线并线上验证**（recompute 派生 `search/index.json` 5,261 repo + `/search-index` CDN 路由 + 客户端 MiniSearch）；拐点检测 / 分享卡片补全 / LLM 月度叙事**待做**；≥100★下钻 / 任意 repo 对比 / 聚类 / 语义检索属 v0.3，**阻塞于 DB 选型决策**。
