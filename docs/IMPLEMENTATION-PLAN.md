@@ -87,7 +87,7 @@ M0 契约/脚手架
 - ✅ **M5 SEO/i18n/PWA**：sitemap/robots/JSON-LD/OG（含每页 og:image 修复）/ 7 语 i18n（option C 客户端译 chrome）/ PWA 已建；已切生产域名；CWV/收录上线后核对。
 - ✅ **Vercel-only Phase 2–5 已线上验证（2026-06-03 `status=published`）**：metadata/whitelist/rename（Phase 2）+ canonical/v2 shard + 读侧指针（Phase 3）+ rank/entity/heatmap 纯 JS 重算 → `views/<run_id>/**` → validate → 切 `views/latest.json` 指针（Phase 4）+ **月+周 canonical 折叠 / 版本 GC（Phase 5）**；离线 parity 12,899 视图与 DuckDB 逐字节一致；监控/告警 + 345 bun 测试。`workflow@4.3.1` + `web/lib/workflows/*`。
 - ✅ **两大开口已闭合**：① §9-J 渲染模式 → **option C**（静态基底 + 客户端译 chrome）已实现，页面回 SSG/ISR；② Vercel-only **Phase 5**（折叠 / GC / backfill 归档）已完成。
-- 🚧 **v0.2 叙事与发现（设计 + 进度见下「v0.2」节）已启动**：§1 **全站搜索 ✅ 已线上验证**（`search/index.json` 5,261 repo + `/search-index` CDN 路由 + 客户端 MiniSearch）、§3 **拐点检测 ✅**（`entity/repo.inflections` + StarCurve 标记）、§4 **可分享卡片 ✅**（榜单 OG 卡 + ShareButton）、§2 **LLM 月度叙事 ✅**（generateNarrative + Narrative，首批叙事待 AI Gateway 发布生成）——**v0.2 4 条主线全部落地**；≥100★下钻 / 任意 repo 对比 / 聚类 / 语义检索属 v0.3，**阻塞于 DB 选型决策（见下「v0.3」节）**。
+- 🚧 **v0.2 叙事与发现（设计 + 进度见下「v0.2」节）已启动**：§1 **全站搜索 ✅ 已线上验证**（`search/index.json` 5,261 repo + `/search-index` CDN 路由 + 客户端 MiniSearch）、§3 **拐点检测 ✅**（`entity/repo.inflections` + StarCurve 标记）、§4 **可分享卡片 ✅**（榜单 OG 卡 + ShareButton）、§2 **月度叙事 ✅**（确定性模板、渲染时拼、无 AI）——**v0.2 4 条主线全部落地**；≥100★下钻 / 任意 repo 对比 / 聚类 / 语义检索属 v0.3，**阻塞于 DB 选型决策（见下「v0.3」节）**。
 
 ---
 
@@ -95,7 +95,7 @@ M0 契约/脚手架
 
 > 主题：让用户更容易**找到**和**读懂**开源编年史。**继续守 v0.1 硬约束**——运行时纯静态只读 JSON/Blob、零运行时引擎/数据库、Vercel-first 统一计费、零本地 recurring 依赖。凡是需要 DB 的（下钻 / 任意对比 / 语义检索）推到「v0.3」节。每项纪律同 v0.1：先离线/合成验证正确性，再上；产物落 Blob、读侧带回退；workflow step 幂等 + best-effort。
 >
-> **建造顺序**：① 搜索 ✅ → ② 拐点 ✅ → ③ 分享卡片补全 ✅ → ④ LLM 月度叙事 ✅ →（v0.3 闸门）DB 选型。**v0.2 4 条主线全部落地。**
+> **建造顺序**：① 搜索 ✅ → ② 拐点 ✅ → ③ 分享卡片补全 ✅ → ④ 月度叙事 ✅（确定性模板，**无 AI**）→（v0.3 闸门）DB 选型。**v0.2 4 条主线全部落地。**
 
 ### v0.2 §1 全站搜索 ✅ 已实现
 
@@ -103,11 +103,11 @@ M0 契约/脚手架
 - **技术**：客户端检索 + 构建期静态索引（MiniSearch 索引 JSON；不选 Pagefind——repo 页按需 ISR、构建期未全预渲染，且我们本就有结构化数据）。recompute 从 `repos` shard 派生 `search/index.json`（`{id, full_name, owner, language, current_stars, description}`，~5,261 条），落 Blob 走 CDN，随每次 recompute 刷新（自动含新晋 repo）。
 - **✅ 已落地**：① recompute（entity/org step）派生 + Zod 契约 `lib/contracts/search.ts` + 并入 `validate`（断言条目数）；② 纯核心 `lib/search/core.ts`（prefix + fuzzy 0.2 + 按 stars 加权）+ 客户端 `app/_explore/SearchBox.tsx`（首次聚焦懒加载索引/MiniSearch、键盘 ↑↓/Enter/Esc、combobox a11y、placeholder/空态走 7 语 chrome i18n）+ 接进 `Chrome`；③ `/search-index` 路由（服务端读版本化 `views/<version>/search/index.json`，响应带 `s-maxage` 走 CDN，无产物时优雅回退空索引）。18 例单测覆盖 core/builder/契约，离线 parity 跳过该新视图，已线上验证（5,261 repo published 2026-06-03）。
 
-### v0.2 §2 LLM 月度叙事 ✅ 已实现（首批叙事待 AI Gateway 发布生成）
+### v0.2 §2 月度叙事 ✅ 已实现（确定性模板，**无 AI**）
 
-- **目标**：每月榜页顶部一段自动生成的中英叙事（"2026 年 6 月，X 因 Y 爆发式增长……"），让数字有故事。
-- **技术**：L3 workflow 新增 step `generateNarrative`——对**刚收口**的月，取该月 top movers / 新晋 / 增速作 context，调 **Vercel AI Gateway**（Claude Haiku，不开外部账单）生成 ~70 字、中英各一，落 `narrative/<period>.json`（幂等，已存在则跳过）。读侧月榜页读取（带回退，无则不渲染）。成本 ~$0.001/月、best-effort 不阻塞发布。
-- **✅ 已落地**：纯 prompt 核心 `lib/workflows/narrative-context.ts`（可测）；step `steps/narrative.ts`（发布后 best-effort **never-throw** 尾步）——读收口月 `rank/month/<period>` top/增速/新晋 + lookup → `generateObject`（`ai@6`，model `anthropic/claude-haiku-4-5`，Vercel AI Gateway，OIDC 鉴权）出 `{en,zh}` → 写 flat `narrative/<period>.json`（幂等：已存在跳过）；Zod 契约 `Narrative`；读侧 `data/narrative.ts` + 客户端 `Narrative` 组件（en 默认 / zh·zh-TW 水合后切，option C）+ 月页渲染 + 7 语 `month.narrative` 标题。`next build` 绿、单测覆盖 prompt/契约。**待**：AI Gateway 在 prod 鉴权（OIDC）+ 一次 recompute 才会生成首批叙事（失败不阻塞发布）。
+- **目标**：每月榜页顶部一段自动生成的中英叙事（"2026 年 6 月，X 领涨……"），让数字有故事。
+- **技术（确定性、零依赖、不引 AI）**：**不引 LLM / 外部依赖 / 鉴权 / Blob 产物**——月榜页本就加载该月 top movers / 增速 / 新晋，**渲染时**用纯函数 `lib/narrative.ts` `buildNarrative()` 把这些拼成一句**如实**的中英叙事。更契合本站 factual 调性、零账单、可复现、无鉴权摩擦；代价：只复述事实、没有 LLM 那种"因 X 而爆发"的因果洞察——这是刻意取舍。
+- **✅ 已落地**：纯函数 `lib/narrative.ts`（`buildNarrative(input) → {en,zh}|null`，4 例单测）；月页**渲染时**用已加载的 flow/增速/新晋拼叙事 → 客户端 `Narrative` 组件（en 默认 / zh·zh-TW 水合后切，option C）；7 语 `month.narrative` 标题。**无 workflow step、无契约、无 Blob 产物、无 `ai` 依赖**。`next build` 绿、单测过。
 
 ### v0.2 §3 拐点检测与标注 ✅ 已实现
 

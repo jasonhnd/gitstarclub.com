@@ -8,4 +8,3 @@ export * from "./heatmap";
 export * from "./snapshot";
 export * from "./meta";
 export * from "./search";
-export * from "./narrative";

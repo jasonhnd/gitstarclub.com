@@ -62,8 +62,6 @@ MVP 这一层：
 - 我们只关心这约 5,261 个 repo 的 star（约 1.3 亿次）；存成 per-repo×天 事实表 ≈ **800 万行**，Parquet 列存仅几十 MB（只在离线）
 - bootstrap canonical = **Parquet 事实表**（离线，几十 MB）；**生产 canonical 已折叠为 `canonical/v2` JSON shard**（Vercel 无引擎重算）；服务层 = 预算好的 **JSON 视图**（build / 运行时只读，零引擎）
 - 一次性回填走 **BigQuery**（查 GH Archive，~$10、含稳定 repo.id；评估过免费的 ClickHouse 公共实例/自建均不可行），日常增量靠 GraphQL diff
-- 全量 LLM 摘要：**$5-10**（Claude Haiku，留待 v0.2）
-
 ## 项目结构（初版）
 
 ```
@@ -136,7 +134,7 @@ gitstarclub/
 ### v0.2 — 叙事与发现
 
 - ✅ 全站搜索已上线（导航栏 MiniSearch 即时检索；构建期 `search/index.json` + `/search-index` CDN 路由，仍无需后端数据库）
-- ✅ LLM 自动生成每月叙事总结（Vercel AI Gateway · Claude Haiku，中英双语；首批待 recompute 发布生成）
+- ✅ 每月叙事总结（确定性模板从榜单数据现拼，中英双语，**无 AI / 无依赖**）
 - ✅ 月度 / 年度可分享卡片（榜单 OG 卡 + 分享按钮）
 - ✅ 拐点自动检测与标注（已实现：`entity/repo.inflections` + StarCurve 标记）
 

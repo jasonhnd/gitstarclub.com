@@ -334,7 +334,7 @@ GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount`
 | 阶段 | 触发条件 | 引入 |
 |---|---|---|
 | **MVP** | — | JSON shard canonical + JSON 视图，纯静态（bootstrap 用 Parquet 一次性产出） |
-| **v0.2** | 要全站搜索 / 月度 LLM 叙事 | ✅ 全站搜索已上线（MiniSearch + 构建期 `search/index.json` + `/search-index` CDN 路由）；月度 LLM 叙事仍走 Vercel AI Gateway（待引入） |
+| **v0.2** | 叙事与发现（搜索 / 叙事 / 拐点 / 分享卡片） | ✅ 四条主线全部已上线：搜索（MiniSearch + `search/index.json` + `/search-index`）、月度叙事（**确定性模板、无 AI**）、拐点标记、榜单 OG 卡 + 分享按钮。**v0.2 不引入任何新数据层 / AI** |
 | **v0.3** | 扩到 ≥100 star（46 万 repo），单文件吃力 | **Tinybird (ClickHouse)** 作主库；可能加 **Neon** 存元数据 |
 | later | 用户系统 / 对比 / 个性化 | Neon + 运行时查询；Turbopuffer 向量检索 |
 

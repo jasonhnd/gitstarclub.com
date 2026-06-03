@@ -365,14 +365,7 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
 }
 ```
 
-### 2.15 `narrative/<period>.json`（✅ 已实现 v0.2 §2，月度 LLM 叙事）
-
-L3 workflow 发布后的 best-effort 尾步 `generateNarrative` 对**刚收口的月**生成的中英双语短叙事（~70 字）：调 **Vercel AI Gateway**（Claude Haiku，OIDC 鉴权）、落 **flat** `narrative/<period>.json`（幂等——已存在跳过，因收口月叙事不可变）。月榜页带回退读取（无则不渲染）；客户端 `Narrative` 组件 en 默认 / zh·zh-TW 水合后切（option C）。契约 `Narrative`（`web/lib/contracts/narrative.ts`）。
-
-```json
-{ "period": "2026-05", "generated_at": "...", "model": "anthropic/claude-haiku-4-5",
-  "en": "In May 2026, …", "zh": "2026 年 5 月，……" }
-```
+> **月度叙事无独立产物**（v0.2 §2）：榜页叙事是**确定性模板**、**渲染时**从该月 rank 数据（top/增速/新晋）现拼（`web/lib/narrative.ts`），**不落 Blob、不引 AI**。故此处无 `narrative/*` 契约。
 
 ---
 
