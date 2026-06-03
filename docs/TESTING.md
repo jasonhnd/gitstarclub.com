@@ -191,18 +191,20 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ## 在哪里跑 + 节奏
 
-| 测试 | 本地 | CI（PR） | Publish gate（Workflow `validate` step / 部署前） |
-|---|---|---|---|
-| 1.1 聚合 / 排名单测 | ✅ 快，随时 | ✅ 必过 | ✅ |
-| 1.2 Zod schema 校验 | ✅ | ✅ | ✅ 产出即校验，脏 JSON 不切指针 |
-| 1.3 sanity 不变量 | 可选 | ✅ 对产物跑 | ✅ **不过不发布（不切指针）** |
-| 1.4 golden file | ✅ | ✅ | ✅ |
-| 1.5 shard 等价 / 发布 / 回滚 | ✅ | ✅ | ✅ Workflow staging 校验 + 指针闸门 |
-| 2. 视觉回归 | 选改动页 | ✅ 关键页全跑 | ✅ |
-| 3. a11y（axe + 键盘） | 选改动页 | ✅ | ✅ |
-| 4. E2E 导航 / i18n | 选改动流 | ✅ | ✅ |
-| 5. 性能 / 零 JS bundle | 零 JS 检查随时 | ✅ 零 JS + HTML 体积阻断；Lighthouse 报告 | ✅ |
-| 6. 跨浏览器 | 偶尔 | ✅ 关键页 | ✅ |
+> **两道闸门别混淆**：①**Workflow `validate` step**（生产数据重算后）只跑 §1.2 Zod + §1.3 sanity，**读 staging `views/<run_id>/**`**，不过则不切指针——它**不渲染页面**，所以视觉/a11y/E2E/perf/跨浏览器**不在这道闸门**。②**部署前 CI**（代码变更触发 deploy 前）跑视觉/a11y/E2E/perf/跨浏览器等渲染级门禁。
+
+| 测试 | 本地 | CI（PR） | Workflow `validate`（数据重算后，读 staging） | 部署前 CI（deploy 前） |
+|---|---|---|---|---|
+| 1.1 聚合 / 排名单测 | ✅ 快，随时 | ✅ 必过 | — | ✅ |
+| 1.2 Zod schema 校验 | ✅ | ✅ | ✅ 产出即校验，脏 JSON 不切指针 | ✅ build 读取前 |
+| 1.3 sanity 不变量 | 可选 | ✅ 对产物跑 | ✅ **不过不切指针** | ✅ |
+| 1.4 golden file | ✅ | ✅ | — | ✅ |
+| 1.5 shard 等价 / 发布 / 回滚 | ✅ | ✅ | ✅ staging 校验 + 指针闸门 | — |
+| 2. 视觉回归 | 选改动页 | ✅ 关键页全跑 | —（不渲染页面） | ✅ |
+| 3. a11y（axe + 键盘） | 选改动页 | ✅ | —（不渲染页面） | ✅ |
+| 4. E2E 导航 / i18n | 选改动流 | ✅ | —（不渲染页面） | ✅ |
+| 5. 性能 / 零 JS bundle | 零 JS 检查随时 | ✅ 零 JS + HTML 体积阻断；Lighthouse 报告 | —（不渲染页面） | ✅ |
+| 6. 跨浏览器 | 偶尔 | ✅ 关键页 | —（不渲染页面） | ✅ |
 
 **节奏要点**：
 
@@ -216,7 +218,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 - [ ] 聚合 / 排名单测覆盖 flow / stock+锚定 / 周月年全时边界 / org 求和，跑真切片（Parquet 子集 + 同源 JSON shard）
 - [ ] 全部 JSON 视图有 Zod schema，产出 + build 读取双校验
 - [ ] sanity 不变量（非负 / delta 界 / 榜长序 / org==∑members / 漂移 / seam）对全量产物跑，阻断发布
-- [ ] （Workflow 落地后）staging 校验闸门：不过不切 `views/latest.json` 指针；shard 等价对拍、发布/回滚可逆（§1.5）
+- [ ] staging 校验闸门：不过不切 `views/latest.json` 指针；shard 等价对拍、发布/回滚可逆（§1.5）
 - [ ] golden file 覆盖 ≥3 个知名 repo 的里程碑与排名，值已人工核对冻结
 - [ ] 视觉回归：关键页 × 4 断点 × 明暗双主题，基准入库
 - [ ] axe 零 critical；键盘可达 + focus 可见；reduced-motion 生效；AA 对比；SVG 有 title/aria + 数据表 fallback

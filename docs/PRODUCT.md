@@ -20,19 +20,10 @@
 
 ### 配色（accent = 琥珀金 `#F2A900`；surface = 冷中性石墨灰）
 
-**金色仅作 accent（"星"色）**：primary / primary-container / primary-fixed-dim 由琥珀金 seed 经 `material-color-utilities` 生成。**surface 与 Claude 暖米色脱钩**——改用 M3 baseline 冷中性灰（带极轻冷调），不随金 seed 染成暖色。完整 sys color roles（含 5 级 surface-container、fixed 角色、明暗两套）；关键角色：
+**金色仅作 accent（"星"色）**：primary / primary-container / primary-fixed-dim 由琥珀金 seed 经 `material-color-utilities` 生成。**surface 与 Claude 暖米色脱钩**——改用 M3 baseline 冷中性灰（带极轻冷调），不随金 seed 染成暖色。完整 sys color roles（含 5 级 surface-container、fixed 角色、明暗两套）。
 
-| 角色 | Light | Dark | 用途 |
-|---|---|---|---|
-| `primary` | `#7f5700` | `#ffca74` | 文字 / 图标 / 按钮填充 |
-| `primary-container` | `#f2a900` | `#f2a900` | **品牌琥珀**，高亮 / 强调面 |
-| `primary-fixed-dim` | `#ffba3b` | `#ffba3b` | 跨主题一致的亮金（★、峰值条） |
-| `tertiary` | `#00668a` | `#9edaff` | 青色互补强调（链接、chip） |
-| `surface` | `#fbfbfd` | `#121316` | **冷石墨灰中性底**（非暖米 / 暖棕，区别于 Claude） |
-| `surface-container-*` | 5 级 | 5 级 | tonal elevation 层级（冷中性灰） |
-
-> 注：M3 里 `primary`（tone 40）是**深色**文字角色，**亮琥珀在 `primary-container`**。"亮金"装饰（星、峰值）用 `primary-fixed-dim`。
-> 金 accent 由 `#F2A900` seed 生成；surface / outline / inverse 用 M3 baseline 冷中性灰（与 seed 解耦，避免暖色染色 → 不撞 Claude）。
+> 注：M3 里 `primary`（tone 40）是**深色**文字角色，**亮琥珀在 `primary-container`**；"亮金"装饰（星、峰值）用 `primary-fixed-dim`；surface / outline / inverse 用 M3 baseline 冷中性灰（与 seed 解耦，避免暖色染色 → 不撞 Claude）。
+> **完整调色板（角色 × Light/Dark × 用途，明暗两套全角色）见 [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md)。**
 
 ### 质感
 
@@ -45,6 +36,8 @@
 > 放弃纸感 / 衬线、放弃暖米色（避开 Claude 观感）。M3 Expressive：**石墨灰 + 星金**、鲜明动态 premium、明暗双模式。teaser（`src/index.html`）与 web 应用均已落地。
 
 ## URL 结构
+
+> 下表给**用途 ↔ URL**；权威路由↔文件↔渲染层清单见 [FRONTEND.md](./FRONTEND.md) §1.1。
 
 | 用途 | URL |
 |---|---|
@@ -70,10 +63,10 @@
 
 **布局（从上到下）**：
 
-1. 标题与一句话（"开源世界的编年史 · 约 5,261 个 ≥10k star 项目 · 11 年时间轴"）
+1. 标题与一句话（"开源世界的编年史 · 约 5,261 个 ≥10k star 项目 · 12 年时间轴"）
 2. **年份脊柱**：2015 → 当前年，每行一年
    - 每行 = bar（宽度 = 全年新增 star）+ 全年星数 + **一句年度标签**
-   - 年度标签：MVP 人工手写 11 条（如 "2024 · AI 元年 · claude-code, ollama 崛起"），v0.2 LLM 化
+   - 年度标签：MVP 人工手写 12 条（每年一条，如 "2024 · AI 元年 · claude-code, ollama 崛起"），v0.2 LLM 化
    - 点击：进入年度页 `/rankings/2024`
 3. **本月聚焦**：当月 TOP / 当月增速，左右并列
 4. **历史上的今天**：3-5 条
@@ -161,9 +154,7 @@
 | 当月增速 TOP | `当月新增 / 月初总数` 降序，**月初总数 ≥ 20,000** 才入选 | 已有体量却仍在加速的中坚 |
 | 本月新晋 | 当月累计（stock）首次 ≥ 10000 | 新血液 |
 
-**增速榜的 floor（月初 ≥ 20k）**：没有 floor 时增速榜永远是"刚进榜小项目榜"，与新晋榜重复。加 floor 后它变成"已有体量、却还在加速变大的中坚项目"，信息量独立。
-
-排重规则：新晋成员不进入增速 TOP，避免重复展示。
+> 增速榜 floor（月初 ≥ 20k）的理由、排重规则（新晋不进增速）等口径见 [RANKING.md](./RANKING.md) §4。
 
 ## Repo 身份与改名
 
@@ -173,16 +164,7 @@
 
 ## 多语言（i18n）
 
-优先级：**英文（默认） > 日文 > 中文 >** zh-TW / ko / es / fr。
-
-> ✅ 现行模型：**语言是页内 cookie 偏好（`gsc_lang`），不进 URL、不发 hreflang**（取代早期"URL 语言段 + 三语独立静态页"）。权威口径见 [SEO.md](./SEO.md) §10。
-
-- 默认英文在**语言中立单一 URL**（`/`、`/rankings/2024/10`、`/owner/name`）；语言切换走页内 cookie（`gsc_lang`），**URL 不带语言段**
-- **canonical 语言中立、不发 hreflang / `x-default`**（无语言变体 URL 可互指）
-- **翻译范围**：UI chrome、导航、年度标签、About、面包屑（meta/OG 文案为英文）
-- **不翻译**：repo 名、描述、语言、topic、数字（数据语言中立，保留原文）
-- **不**为语言建独立 URL ⇒ 收录页数 = 单语言页数（**非 × 语言数**）
-- 支持 en/ja/zh/zh-TW/ko/es/fr 七种 UI 语言；手写文案字典（`web/lib/i18n/`），客户端切换换 chrome（见 [FRONTEND.md](./FRONTEND.md) §7 / §9-J 方案 C）
+调性：默认英文，优先级 **英文 > 日文 > 中文 >** zh-TW / ko / es / fr 七种 UI 语言；语言是页内 cookie 偏好（`gsc_lang`），不进 URL、不发 hreflang，仅翻译 chrome、不碰数据字段。**权威口径见 [SEO.md](./SEO.md) §10，实现见 [FRONTEND.md](./FRONTEND.md) §7（option C）。**
 
 ## 项目命名
 
@@ -194,7 +176,7 @@
 - **榜单内的 repo 名 = 内部链接**；星数变化 = 视觉权重；语言 = 弱标签
 - **里程碑链接** = 月度页锚点，形成网状内部循环
 - **时间点双显示 UTC + JST**（JA locale 以 JST 为主）；日期粒度数据按 UTC 日
-- **全站搜索（v0.2 已上线）**：导航栏搜索框，客户端即时检索（typo 容错、按 stars 加权），直达任意 repo/owner；零运行时后端、走 CDN（见下「发现入口」）
+- **全站搜索（v0.2 已上线）**：见上「发现入口：全站搜索」。
 - 暂不做：对比（v0.3）、用户系统（later）
 
 ## v0.2 增量（备忘，MVP 不做）
@@ -202,7 +184,7 @@
 - 每月 LLM 叙事总结（"本月趋势是 X..."）
 - 月度 / 年度 OG 卡片自动生成（"GitHub 2024 in Review"）
 - 主题聚类、相似 repo 推荐
-- 全站搜索
+- ~~全站搜索~~（✅ 已上线，见「发现入口」）
 
 ## v0.3 增量
 

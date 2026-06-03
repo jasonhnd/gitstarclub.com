@@ -36,11 +36,11 @@
 | 年度页 | `/rankings/2024` | 当年核心 / 历史按需 ISR | ~11 | 高 |
 | 月度页 | `/rankings/2024/10` | 当月核心 / 历史按需 ISR | ~132 | 高 |
 | Repo 详情页 | `/:owner/:name` | 按需 ISR | ~5,261 | 中（长尾主力） |
-| **Org 详情页**（NEW） | `/o/:login` | 按需 ISR | ~1,000s（含 User+Org owner） | 中（长尾主力） |
-| **全时榜**（NEW） | `/rankings` | 核心（deploy 构建） | 1（+ 切片 待定） | 高 |
+| **Org 详情页** | `/o/:login` | 按需 ISR | ~1,000s（含 User+Org owner） | 中（长尾主力） |
+| **全时榜** | `/rankings` | 核心（deploy 构建） | 1（+ 切片 待定） | 高 |
 | 关于页 | `/about` | 核心 | 1 | 低（但需收录） |
 | 周页 | `/rankings/YYYY/W##` | 当周核心 / 历史按需 ISR | ~570 | 中 |
-| **脉搏页**（NEW） | `/pulse` | 核心（deploy 构建，每日刷新） | 1 | 高（"最新动态"入口） |
+| **脉搏页** | `/pulse` | 核心（deploy 构建，每日刷新） | 1 | 高（"最新动态"入口） |
 
 > **单语言收录**：语言是页内 `gsc_lang` cookie 偏好、不进 URL（见 §10），URL 语言中立单一 ⇒ 收录目标 URL 数 = 上表单语言合计，不乘语言数。
 
@@ -59,11 +59,11 @@
 
 ### 1.3 收录目标量级（估算）
 
-| 维度 | 首页 | 年 | 月 | repo | org | rankings + about | 单语言合计 |
+| 维度 | 首页 | 年 | 月 | repo | org | rankings + about | 上表小计 |
 |---|---|---|---|---|---|---|---|
 | URL 数（语言中立） | 1 | ~11 | ~132 | ~5,261 | ~1,500（估） | ~2 | **~6,900** |
 
-> URL 语言中立单一、不乘语言数（见 §10）。周页已独立 ⇒ +~570，再加 `/pulse`。**收录目标按 ~7,500 URL 规划 sitemap**。具体数随 org 白名单（含 User owner）浮动。
+> URL 语言中立单一、不乘语言数（见 §10）。上表小计 ~6,900 **未含周页与 `/pulse`**；加上独立周页 +~570 再加 `/pulse` ⇒ **当前约 6,900、规划 ~7,500 URL，sitemap 按 ~7,500 规划**。具体数随 org 白名单（含 User owner）浮动。
 
 ---
 
@@ -252,7 +252,7 @@ Next.js 16 中 `app/.../sitemap.ts` 的 `generateSitemaps()` 返回 `[{ id }]`�
   # /rankings/YYYY/W## 周页：/week/sitemap/{id}.xml
 ```
 
-> **当前规模 1 片即可装下 repo+org**，但**代码按 `generateSitemaps()` 分片写**（按 50,000 切批），规模一旦突破自动多片、无需返工。这是对旧 SEO.md「单片足够」的**修正**：保留单片现状，但**强制用可分片的实现**。
+> **当前规模 1 片即可装下 repo+org**，但**代码按 `generateSitemaps()` 分片写**（按 50,000 切批），规模一旦突破自动多片、无需返工。规则：保留单片现状，但**强制用可分片的实现**。
 
 ```ts
 // app/r/sitemap.ts —— repo 分片示例
@@ -458,7 +458,7 @@ Host: https://gitstarclub.com
 ]
 ```
 
-> 旧 SEO.md 用 `Article` —— **修正为 `CollectionPage`**：月/年页本质是"策展的实体集合 + 榜单"，`CollectionPage` + 多个 `ItemList` 比 `Article` 更贴切（`Article` 适合 v0.2 的 LLM 叙事段落，届时可叠加）。保留 `datePublished` / `dateModified`。
+> 月/年页用 **`CollectionPage` + 多个 `ItemList`**：月/年页本质是"策展的实体集合 + 榜单"，比 `Article` 更贴切（`Article` 适合 v0.2 的 LLM 叙事段落，届时可叠加）。保留 `datePublished` / `dateModified`。
 
 ### 6.6 全时榜 `/rankings`：`CollectionPage` + `ItemList`（repo 榜 + org 榜）
 
@@ -590,21 +590,11 @@ org 详情页 /o/login
 | 翻译范围 | UI chrome / 导航 / 年度标签 / About / 面包屑名；**不翻译** repo 名 / 描述 / 语言 / topic / 数字（数据语言中立） |
 | og:locale | 默认 `en_US`；语言切换由客户端调整，不影响 canonical |
 
-### 10.1 对早期"URL 多语言"假设的收敛（以本章为准）
-
-本章口径**取代**本文其它处早期按 URL 多语言写的内容，以下引用点应据此收敛（标注待逐处清理）：
-
-- **§1.3 收录量级**：不再 × 语言数——URL 总数 = **单语言页数**（早期"× 3 语言 ≈ 2 万"作废）。
-- **§4.1 sitemap**：每个 `<url>` **不含 `alternates.languages`**；该处 hreflang / 语言 alternate 代码作废。
-- **§2 各页 meta**：不输出 hreflang 互链；canonical 指语言中立自身。
-- **§7 canonical 去重**：跨语言 canonical 一项不适用（无语言变体 URL）。
-- **§14 GSC**：无 hreflang 报告需关注。
-
 ---
 
 ## 11. 预览环境 noindex（生产 / 测试域名的硬约束）
 
-> 背景（见 [OPS.md](./OPS.md)）：生产与测试已合并到 `zkscio/gitstarclub.com` 项目。生产域名是 `gitstarclub.com` / `www.gitstarclub.com`；测试域名是 `pre.gitstarclub.com`，指向同项目 Preview deployment。测试环境必须保持 private/noindex：
+> 背景：生产与测试合并在同一 Vercel 项目，测试域名指向 Preview deployment（部署拓扑 / 域名见 [OPS.md](./OPS.md)）。SEO 硬约束：测试环境必须保持 private/noindex：
 
 | 防线 | 实现 |
 |---|---|
@@ -613,13 +603,7 @@ org 详情页 /o/login
 | **预览保持 PRIVATE** | Vercel 项目预览部署设为非公开（Deployment Protection），从源头不可被匿名爬虫访问 |
 | **canonical 不外泄** | Preview 的 `NEXT_PUBLIC_SITE_URL` 仍指生产域名 ⇒ 即便 meta 误放出，canonical 也指向生产、不让 `*.vercel.app` / `pre.gitstarclub.com` 成规范 URL |
 
-```ts
-// 判定（root layout / robots.ts / metadata 共用）
-function isProductionHost() {
-  return process.env.VERCEL_ENV === 'production'
-      && process.env.NEXT_PUBLIC_SITE_URL?.includes('gitstarclub.com')
-}
-```
+`isProductionHost()` 的主机检测实现（`VERCEL_ENV` + host 判定，root layout / robots.ts / metadata 共用）属部署拓扑，见 [OPS.md](./OPS.md)。SEO 侧只消费它来决定 noindex meta：
 
 ```ts
 // root layout metadata（预览期）

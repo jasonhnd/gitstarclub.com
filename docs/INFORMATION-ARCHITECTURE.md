@@ -1,8 +1,15 @@
 # GitStarClub Information Architecture
 
-## 2026-06-01 Update
+> This document is the **UX navigation narrative — a reader's map** (English overview)
+> of how the site hangs together. It is **not** the canonical route table: the
+> authoritative route ↔ file ↔ render-layer listing lives in
+> [FRONTEND.md](./FRONTEND.md) §1.1.
+>
+> Routes: see [FRONTEND.md](./FRONTEND.md) §1.1.
 
-The site now follows two user questions:
+## Two User Questions
+
+_(2026-06-01 update.)_ The site now follows two user questions:
 
 1. **Pulse**: what is moving now?
 2. **Rankings**: who is largest, and who won a historical slice?
@@ -30,14 +37,12 @@ The home page (`/`) is also the Pulse experience. It is no longer a separate chr
 
 ## Search
 
-A global SearchBox lives in the chrome top bar (`Chrome.tsx`) as the "go directly
-by name" discovery entry. It covers all ~5,261 tracked repositories and
-complements "browse by time" (year / month / week). The box is a client combobox:
-on first focus it lazy-loads the versioned `search/index.json` (served over the
-CDN) into MiniSearch, then does instant client-side lookup (prefix + fuzzy typo
-tolerance, weighted by stars). Results link straight to `/{owner}/{repo}`. There
-is no `/search?q=` results page — it is an instant dropdown that jumps to the
-repo/owner.
+A global SearchBox in the chrome top bar is the "go directly by name" discovery
+entry, covering all ~5,261 tracked repositories and complementing "browse by
+time" (year / month / week). It is an instant client combobox that jumps straight
+to `/{owner}/{repo}` (no `/search?q=` results page). Component / lazy-load /
+MiniSearch detail: see [FRONTEND.md](./FRONTEND.md) §6.1 (SearchBox); product
+framing: [PRODUCT.md](./PRODUCT.md) discovery entry.
 
 ## Pulse
 
@@ -59,6 +64,9 @@ Rankings owns both all-time and historical rankings:
 - `/rankings/[year]/[month]`: monthly rankings, daily heatmap, growth, and newcomers.
 - `/rankings/[year]/W[week]`: weekly movers.
 
+Ranking definitions (flow/stock, growth, newcomers) live in [RANKING.md](./RANKING.md);
+route ↔ file ↔ render layer in [FRONTEND.md](./FRONTEND.md) §1.1.
+
 ## Repository Pages
 
 Repository details use GitHub-style canonical paths:
@@ -78,17 +86,17 @@ Legacy language-prefixed and `/r/` URLs are not canonical.
 
 ## Freshness
 
-Daily cron revalidates the new hot paths:
+The live-refresh cron revalidates the hot paths — home, `/pulse`, `/rankings`,
+and the current year / month / week under `/rankings`. Both the **daily** and
+**weekly** crons run the same incremental live refresh (`refreshLiveViews`); the
+weekly pass mainly guarantees weekly and monthly views never go stale even
+without a full historical recompute. Full-history recompute runs separately on a
+Vercel Workflow, not on these crons. Cron cadence and what each write touches:
+see [FRONTEND.md](./FRONTEND.md) §2.4.
 
-- home
-- `/pulse`
-- `/rankings`
-- current year under `/rankings`
-- current month under `/rankings`
+The sitemap uses the canonical history paths under `/rankings`.
 
-The sitemap uses the new canonical history paths under `/rankings`.
-
-The current weekly ranking is now written by Vercel cron as
-`live/rank/week/<current>/repo/flow.json`. If that live override is absent,
-Pulse still falls back to the latest available base weekly view instead of
-showing an empty panel.
+The current weekly ranking is written by the live-refresh cron as
+`live/rank/week/<current>/repo/flow.json`. If that live override is absent, Pulse
+still falls back to the latest available base weekly view instead of showing an
+empty panel.

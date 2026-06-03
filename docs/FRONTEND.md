@@ -59,15 +59,11 @@ app/
   robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
 ```
 
-要点（option C 落地后修正）：
+要点：
 
 - **URL canonical 单一化**：`/facebook/react` 是唯一 repo URL；不再有 `/en/r/facebook/react` / `/zh/r/facebook/react`。
-- **✅ chrome 改客户端 i18n（option C 已实现）**：页面 BODY 一律静态/ISR、按**默认英文**预渲染（HTML 合法且可索引）；只有 **chrome**（导航 / 页脚 / section / UI 标签）走客户端 i18n —— `web/lib/i18n/client.tsx` 的 `I18nProvider` 在浏览器读 `gsc_lang` cookie，水合后把 chrome 字串换成用户语言。**数据**（排名、曲线、数字、repo 名、日期）语言无关，不翻译。
-- **避免水合不匹配**：服务端 + 客户端首帧都渲染默认英文（与静态 HTML 一致），locale 切换只在 `useEffect`（水合后）发生。chrome 文本节点用 `<T path="...">` 客户端组件渲染。
-- **语言偏好**：默认英文；`LanguageSwitcher` 显示当前语言，其它语言在下拉菜单中。客户端写入 `gsc_lang` cookie 并 `router.refresh()`；URL 不变；`/api/lang` 保留为直接访问时的安全后备入口。
-- **缓存取舍（已消除 force-dynamic）**：chrome 翻译移出服务端 render → 页面回到 static（`○`）/ISR（`●`），不再按请求渲染；JSON 数据仍走 `fetch`/`cache()`。换来 URL 与 GitHub 一致、无多语言重复 URL，且重新获得 CDN 静态扛量。
-- **SEO 取舍**：canonical 不带语言，也不再发 `hreflang` 矩阵；默认 SEO 文案 + 静态 HTML chrome 以英文为主，语言切换是水合后的用户体验功能。
-- **手写字典**：`web/lib/i18n/`（en/ja/zh/zh-TW/ko/es/fr + `getDictionary`）；服务端 `getPreferredDictionary`（`i18n/server.ts`）已弃用（读 cookie = Dynamic API，会打破静态）；客户端经 `i18n/client.tsx` 消费。不引第三方 i18n 库；数据字段不翻译。
+- **渲染模式见 §2.5**（静态基底 + 客户端译 chrome、已消除 `force-dynamic`）。
+- **i18n 实现细节见 §7**（手写字典、`I18nProvider`/`<T>`、`gsc_lang` cookie 水合后切 chrome、`i18n/server.ts` 弃用）；数据字段不翻译。
 
 ---
 
@@ -426,7 +422,7 @@ return {
 2. ✅ **段配置**：`rankings/[year]`/`[period]` 预渲染当前年/月 + `dynamicParams`;repo/org `generateStaticParams() => []` 转按需 ISR;未知 param `notFound()` 已落地（§9-B）。option C 后全部回到 static/ISR（§9-J）。
 3. ✅ **`next.config.ts`**：无语言前缀跳转、无旧路径兼容重定向。
 4. ✅ **页面**：`pulse`/`rankings`/`rankings/[year]`/`[period]`/`[owner]/[name]`/`o/[login]` 已落地。
-5. ✅ **i18n（option C）**：chrome 走客户端 `I18nProvider`/`<T>`（`i18n/client.tsx`），BODY 静态默认英文;`gsc_lang` cookie 水合后切 chrome，URL 无语言段（§7）。已消除 §9-J `force-dynamic`。
+5. ✅ **i18n**：客户端 chrome i18n 已落地（机制见 §7，渲染模式见 §2.5）。
 6. ✅ **SEO 配套**：`app/sitemap.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD 已建。
 7. ✅ **cron route**：`app/api/cron/{daily,weekly}`（`revalidatePath` + `CRON_SECRET`）。
 8. ◐ **共享组件**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` ✅ 已抽;`PrevNext`/`EntityCard`/`YearSpine` ⏳ 仍内联（§6.3）。
@@ -448,7 +444,7 @@ return {
 | **G** | **sitemap/robots/cron/og 路由** | `app/` 已有 `sitemap.ts`/`robots.ts`/`api/cron/{daily,weekly}`/OG | SEO/OPS 要求齐备 | ✅ 已落地 |
 | **H** | **repo 页 "synced" 时间写死** | — | as-of 应来自数据 | ✅ **已收敛**：现 repo 页不再硬编码 synced 时间 |
 | **I** | **`_explore/` 命名** | 组件在 `app/_explore/`（private folder） | — | 沿用现状（合理） |
-| **J** | ~~**渲染模式 = `force-dynamic`,非 SSG/ISR**~~ ✅ 已解决 | **option C 已实现**：`layout.tsx` 去掉 `force-dynamic` 且不再读 cookie;chrome 移到 `i18n/client.tsx` 的 `I18nProvider`/`<T>`(客户端水合切换);repo/org 去掉 `force-dynamic` + 加 `generateStaticParams() => []`。构建路由表全部 `ƒ`→`○`/`●` | ARCHITECTURE/SEO 假设 **SSG-first + 按需 ISR + 边缘 CDN 纯静态扛 10M/天、热路径零 Function** | ✅ **已实现 C「静态基底 + 客户端译 chrome」**：服务端只出默认英文静态页(不读 cookie)、客户端水合 chrome。保住 静态扛量 + GitHub URL + 页内切语言,吻合已定 SEO 口径。详见 §2.5（含构建路由表证据） |
+| **J** | **渲染模式 = `force-dynamic`,非 SSG/ISR** | — | SSG-first + 按需 ISR + 边缘 CDN 纯静态扛量、热路径零 Function | ✅ **已解决：option C（静态基底 + 客户端译 chrome），见 §2.5**（含构建路由表证据） |
 
 > 处置原则：早期占位差异(B/E/F/G/H)**已收敛**;A/J **已解决**(option C,§2.5);D 收尾验证。
 
@@ -465,7 +461,7 @@ return {
 - [ ] `cacheComponents` 保持关闭（`next.config.ts` 注释说明）
 - [x] `rankings/[year]`/`[period]` 用 `generateStaticParams` 预渲染当年/当月 + `dynamicParams`
 - [x] 数据变更靠 cron `revalidatePath`；`app/api/cron/{daily,weekly}` 带 `CRON_SECRET` 鉴权
-- [x] ✅ **渲染模式已解决（§9-J / §2.5）**：option C 移除 layout 与 repo/org 的 `force-dynamic`、chrome 移客户端 → 构建路由表全部回到 `○` 静态 / `●` SSG 按需 ISR（不再按请求 SSR）
+- [x] ✅ 渲染模式已解决：option C（详见 §2.5 / §9-J）→ 构建路由表全部回到 `○` 静态 / `●` SSG 按需 ISR
 
 **数据消费**
 - [x] `web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch+parse+`cache()`）已替换占位 `_explore/data.ts`（已删除）
@@ -485,4 +481,3 @@ return {
 **冲突收敛（§9）**
 - [x] B/E/F/G/H 已收敛；C 已决（PWA 例外③）；A/J 已解决（option C，§2.5）
 - [ ] D 收尾验证（非单调曲线渲染）
-- [x] J 渲染模式 → 已收口为 option C（静态基底 + 客户端译 chrome）

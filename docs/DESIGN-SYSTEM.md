@@ -213,7 +213,7 @@ token（与实现一致）：
 | **Star 曲线 SVG** | `_explore/StarCurve.tsx` | **服务端渲染 SVG，零客户端 JS**：主线 `stroke=primary` 3px + 圆角接头；面积 `linearGradient` 琥珀渐隐（`primary-container` 0.5→0）；里程碑 = 金点（`primary-fixed-dim`，`surface` 描边）+ 虚线垂引 + 标签；mono 年份轴标（`on-surface-variant`）；`role="img"`+`aria-label` 摘要；CSS 线条描绘 + 面积淡入（reduced-motion 下钉终态）。 |
 | **面包屑 / 上下页导航** | （年 / 月页内） | `<nav aria-label>`；上下月 / 年导航**永远在顶部**（强化"翻阅"感）；当前项 `on-surface`、相邻项 `on-surface-variant` + hover 转 `on-surface`；mono 字。 |
 | **主题切换按钮** | `components/ThemeToggle.tsx` | **唯一客户端交互**（`"use client"`）：42px 圆形（`shape-full`）`bg-surface-container-high`，hover 升 `-highest`，`active:scale-90` 弹簧回弹，`focus-visible:outline-3 outline-primary`；日月图标用**纯 CSS 切换**（`[data-theme] .i-sun/.i-moon` 显隐），避免 hydration 闪烁。 |
-| **页脚 Footer** | （teaser / layout） | `border-t border-outline-variant`；`on-surface-variant` 文字；链接 `tertiary`，hover 转 `primary` + 下划线；构建时间戳 mono（UTC + JST 双显示，见 PRODUCT/ARCHITECTURE 时区约定）。 |
+| **页脚 Footer** | （teaser / layout） | `border-t border-outline-variant`；`on-surface-variant` 文字；链接 `tertiary`，hover 转 `primary` + 下划线；构建时间戳 mono（UTC + JST 双显示，权威时区约定见 [ARCHITECTURE.md](./ARCHITECTURE.md) §时间与时区，调性见 [PRODUCT.md](./PRODUCT.md)「视觉/交互细节」）。 |
 | **年份脊柱 / 柱 Spine Bar** | `page.tsx` + `.spine-bar(-y)` | 条 = `primary-container`，峰值年 = `primary-fixed-dim`；`shape-full`/`rounded-t-xl`；宽 / 高用 `--w`/`--h`（`gained/max`）；弹簧生长动画，hover `-translate-y` + `brightness-105`；整柱 `<Link>` → 年页，mono 年份标。 |
 
 ## 零客户端 JS 约束与各交互的处理
