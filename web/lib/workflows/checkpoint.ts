@@ -1,5 +1,6 @@
 import { putView } from "@/lib/data/write";
 import { WorkflowManifest } from "@/lib/contracts";
+import { recordHealth, sendAlert } from "@/lib/observability/alert";
 
 // Business-readable run checkpoints (ops/workflows/<run_id>/...). The Workflow SDK
 // already persists step results + observability; these are the operator-facing
@@ -29,6 +30,8 @@ export async function markPublished(runId: string, startedAt: string): Promise<v
     version: runId,
     published_at: new Date().toISOString(),
   });
+  // Best-effort health beacon for the success path (never throws).
+  await recordHealth("workflow-refresh", "ok", { run_id: runId });
 }
 
 /** Mark the run failed; line on Blob does not flip latest-success (line stays at last good run). */
@@ -38,4 +41,7 @@ export async function markFailed(runId: string, startedAt: string, error: string
   WorkflowManifest.parse(manifest);
   await putView(`ops/workflows/${runId}/manifest.json`, manifest);
   await putView(`ops/workflows/${runId}/error.json`, { run_id: runId, error, at: new Date().toISOString() });
+  // Surface the failure: greppable log + optional webhook + health beacon. None of these throw.
+  await sendAlert({ pipeline: "workflow-refresh", title: "managed refresh failed", run_id: runId, error });
+  await recordHealth("workflow-refresh", "failed", { run_id: runId, error });
 }
