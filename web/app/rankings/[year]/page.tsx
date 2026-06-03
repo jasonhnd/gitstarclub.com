@@ -11,9 +11,12 @@ import { fmtStars, monthLabel } from "@/lib/format";
 import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
-import { getPreferredDictionary } from "@/lib/i18n/server";
+import { T } from "@/lib/i18n/client";
+import { DEFAULT_LOCALE } from "@/lib/i18n";
+import en from "@/lib/i18n/dictionaries/en";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
+const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;
 export const revalidate = false;
@@ -34,7 +37,7 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
 
 export default async function RankingsYearPage({ params }: { params: Promise<{ year: string }> }) {
   const { year: ys } = await params;
-  const { locale: loc, t } = await getPreferredDictionary();
+  const loc = LOC;
   const year = Number(ys);
   const currentYear = currentUtcPeriods().year;
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > currentYear) notFound();
@@ -58,20 +61,22 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
 
   return (
     <>
-      <Chrome locale={loc} t={t} />
-      <JsonLd data={collectionLd(`${t.rankings.title} ${year}`, `/rankings/${year}`, loc)} />
+      <Chrome />
+      <JsonLd data={collectionLd(`${en.rankings.title} ${year}`, `/rankings/${year}`, loc)} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Breadcrumbs items={[{ label: t.nav.home, href: "/" }, { label: t.nav.rankings, href: "/rankings" }, { label: String(year) }]} />
+        <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { path: "nav.rankings", href: "/rankings" }, { label: String(year) }]} />
 
         <section className="mt-5 grid gap-8 lg:grid-cols-[16rem_1fr]">
           <aside>
-            <p className="font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{t.year.label}</p>
+            <p className="font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">
+              <T path="year.label" />
+            </p>
             <h1 className="mt-2 text-[clamp(2.6rem,7vw,4.5rem)] font-extrabold leading-none tracking-[-0.04em] text-on-surface">{year}</h1>
             <p className="mt-3 text-[0.95rem] text-on-surface-variant">
-              <span className="font-semibold text-on-surface">{fmtStars(total)}</span> {t.year.gained}
+              <span className="font-semibold text-on-surface">{fmtStars(total)}</span> <T path="year.gained" />
             </p>
             <Link href="/rankings" className="mt-5 inline-block font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
-              {t.nav.rankings}
+              <T path="nav.rankings" />
             </Link>
           </aside>
 
@@ -95,7 +100,7 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
             </div>
 
             <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">
-              {t.year.top} {year}
+              <T path="year.top" /> {year}
             </h2>
             <RankingList rows={tops} locale={loc} />
           </div>

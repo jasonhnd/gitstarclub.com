@@ -4,7 +4,8 @@ import "./globals.css";
 import { RegisterSW } from "./_explore/RegisterSW";
 import { Footer } from "./_explore/Footer";
 import { getMeta } from "@/lib/data";
-import { getPreferredDictionary } from "@/lib/i18n/server";
+import { I18nProvider } from "@/lib/i18n/client";
+import { DEFAULT_LOCALE } from "@/lib/i18n";
 
 const plusJakarta = Plus_Jakarta_Sans({ variable: "--font-plus-jakarta", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -15,8 +16,6 @@ const description =
 // metadataBase from env; indexing OFF until launch (private preview — SEO §11). Flip SITE_INDEXABLE=1 at launch.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
 const indexable = process.env.SITE_INDEXABLE === "1";
-
-export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -57,18 +56,23 @@ export const viewport: Viewport = {
 const themeInit = `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="dark"?"#121316":"#fbfbfd");}}catch(e){}})();`;
 
 // Language is an in-page preference stored in a first-party cookie; URLs stay canonical.
+// The server renders the default locale (English) so pages stay static/ISR; the client
+// I18nProvider reads the cookie after hydration and swaps the chrome strings. The data
+// (`seam_date`) is locale-independent.
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [{ locale, t }, meta] = await Promise.all([getPreferredDictionary(), getMeta()]);
+  const meta = await getMeta();
   return (
-    <html lang={locale} suppressHydrationWarning className={`${plusJakarta.variable} ${geistMono.variable}`}>
+    <html lang={DEFAULT_LOCALE} suppressHydrationWarning className={`${plusJakarta.variable} ${geistMono.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className="flex min-h-svh flex-col">
-        <div lang={locale} className="contents">
-          {children}
-          <Footer locale={locale} t={t} asOf={meta?.seam_date} />
-        </div>
+        <I18nProvider>
+          <div className="contents">
+            {children}
+            <Footer asOf={meta?.seam_date} />
+          </div>
+        </I18nProvider>
         <RegisterSW />
       </body>
     </html>

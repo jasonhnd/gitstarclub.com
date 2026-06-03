@@ -1,17 +1,20 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
+import { T } from "@/lib/i18n/client";
+import { DEFAULT_LOCALE } from "@/lib/i18n";
+import en from "@/lib/i18n/dictionaries/en";
 import { getAllTime, getReposLookup, getOrgsLookup, joinRepoRank, joinOrgRank } from "@/lib/data";
 import { fmtStars, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { collectionLd } from "@/lib/jsonld";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
-import { getPreferredDictionary } from "@/lib/i18n/server";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
+const LOC = DEFAULT_LOCALE;
 
 export const revalidate = false;
 
@@ -25,7 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RankingsPage() {
-  const { locale: loc, t } = await getPreferredDictionary();
+  const loc = LOC;
   const periods = currentUtcPeriods();
   const [repoRank, orgRank, repoLk, orgLk] = await Promise.all([
     getAllTime("repo"),
@@ -41,19 +44,21 @@ export default async function RankingsPage() {
 
   return (
     <>
-      <Chrome locale={loc} t={t} />
-      <JsonLd data={collectionLd(t.rankings.title, "/rankings", loc)} />
+      <Chrome />
+      <JsonLd data={collectionLd(en.rankings.title, "/rankings", loc)} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <h1 className="animate-rise text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none tracking-[-0.03em] text-on-surface">
-          {t.rankings.title}
+          <T path="rankings.title" />
         </h1>
-        <p className="mt-3 max-w-[46ch] text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">{t.rankings.subtitle}</p>
+        <p className="mt-3 max-w-[46ch] text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">
+          <T path="rankings.subtitle" />
+        </p>
 
         <section className="mt-[clamp(1.5rem,3vw,2.25rem)] grid gap-3 md:grid-cols-4">
-          <HistoryLink href="/rankings" label="All-time" value={t.rankings.repositories} active />
-          <HistoryLink href={`/rankings/${periods.year}`} label={t.year.label} value={String(periods.year)} />
-          <HistoryLink href={`/rankings/${periods.year}/${periods.month}`} label={t.month.label} value={monthLabel(loc, periods.month, "short")} />
-          <HistoryLink href={`/rankings/${periods.week.year}/W${String(periods.week.week).padStart(2, "0")}`} label={t.week.label} value={periods.weekPeriod} />
+          <HistoryLink href="/rankings" label="All-time" value={<T path="rankings.repositories" />} active />
+          <HistoryLink href={`/rankings/${periods.year}`} label={<T path="year.label" />} value={String(periods.year)} />
+          <HistoryLink href={`/rankings/${periods.year}/${periods.month}`} label={<T path="month.label" />} value={monthLabel(loc, periods.month, "short")} />
+          <HistoryLink href={`/rankings/${periods.week.year}/W${String(periods.week.week).padStart(2, "0")}`} label={<T path="week.label" />} value={periods.weekPeriod} />
         </section>
 
         <section className="mt-[clamp(1rem,2vw,1.5rem)]">
@@ -74,11 +79,15 @@ export default async function RankingsPage() {
 
         <div className="mt-[clamp(2rem,4vw,3rem)] grid gap-x-10 gap-y-10 md:grid-cols-2">
           <section>
-            <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">{t.rankings.repositories}</h2>
+            <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">
+              <T path="rankings.repositories" />
+            </h2>
             <RankingList rows={repoRows} variant="total" locale={loc} />
           </section>
           <section>
-            <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">{t.rankings.organizations}</h2>
+            <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">
+              <T path="rankings.organizations" />
+            </h2>
             <ol className="flex flex-col">
               {orgs.map((o, i) => (
                 <li key={o.login}>
@@ -91,7 +100,7 @@ export default async function RankingsPage() {
                     <div className="flex h-full min-w-0 flex-1 flex-col justify-center">
                       <span className="truncate font-mono text-[0.95rem] font-semibold text-on-surface group-hover:underline group-hover:underline-offset-2">{o.login}</span>
                       <span className="mt-1 inline-block w-fit max-w-full truncate whitespace-nowrap rounded-full bg-surface-container-high px-2 py-0.5 text-[0.68rem] font-medium text-on-surface-variant">
-                        {o.repo_count} {t.rankings.repos}
+                        {o.repo_count} <T path="rankings.repos" />
                       </span>
                     </div>
                     <div className="shrink-0 text-right text-[1.05rem] font-extrabold tabular-nums text-on-surface">{fmtStars(o.current_stars_sum)}★</div>
@@ -106,7 +115,7 @@ export default async function RankingsPage() {
   );
 }
 
-function HistoryLink({ href, label, value, active = false }: { href: string; label: string; value: string; active?: boolean }) {
+function HistoryLink({ href, label, value, active = false }: { href: string; label: ReactNode; value: ReactNode; active?: boolean }) {
   return (
     <Link
       href={href}

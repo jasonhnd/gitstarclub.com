@@ -18,6 +18,13 @@
 > changing the URL. The client writes the cookie and refreshes the current RSC
 > view immediately. Supported UI languages are English, Japanese, Simplified
 > Chinese, Traditional Chinese, Korean, Spanish, and French.
+>
+> i18n rendering (option C): page bodies are static/ISR and rendered in the
+> default locale (English) so they stay cacheable on the CDN; only the chrome
+> (nav, footer, section/UI labels) is translated client-side via an
+> `I18nProvider` (`web/lib/i18n/client.tsx`) that reads the `gsc_lang` cookie
+> after hydration. Data (rankings, numbers, repo names, dates) is
+> locale-independent and never translated.
 
 > 一本可浏览的 GitHub 开源编年史 —— 按月 / 季 / 年回看哪些项目正在被关注。
 
@@ -39,7 +46,7 @@
 | 时间范围 | 2015-01 至今 |
 | 数据源 | [GH Archive](https://www.gharchive.org/) + GitHub GraphQL API |
 | 核心页面 | 首页 / 脉搏 / 总榜 / 年月周榜 / GitHub 风格 Repo 详情页 |
-| 渲染 | JSON 视图驱动；热页按请求读取语言 cookie，长尾 repo/org/rankings 按需生成 |
+| 渲染 | JSON 视图驱动；热页 `○` 静态、长尾 repo/org/rankings `●` 按需 ISR；chrome 客户端 i18n（option C，不再 force-dynamic） |
 | 语言 | 英文默认；下拉切换日文、简中、繁中、韩文、西文、法文；URL 不带语言前缀 |
 | SEO | sitemap 分片 + schema.org + 每页 OG（build 时生成），见 docs/SEO.md |
 | 核心数据 | **JSON 视图**（build / 运行时只读）+ JSON 活尾（当月，cron 读写）；运行时无数据库。生产 canonical = **Vercel-friendly JSON shard**（`canonical/v2/*`，脱离本地 Parquet/DuckDB，**✅ 已实现**，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)） |
