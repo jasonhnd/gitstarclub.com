@@ -1,6 +1,6 @@
 # gitstarclub 实现计划（构建顺序）
 
-> 从"文档齐全"到"逐模块开工"的桥。按**依赖顺序**给里程碑，每个含产出、依赖、验收。需求基准见 [REQUIREMENTS](./REQUIREMENTS.md)，各层细节见对应文档。
+> 从"文档齐全"到"逐模块开工"的桥，也是**路线图的状态-of-record**：v0.1 里程碑 M0–M5（下）+ **v0.2 / v0.3 范围与设计**（文末「v0.2」「v0.3」节）。按**依赖顺序**给里程碑，每个含产出、依赖、验收。需求基准见 [REQUIREMENTS](./REQUIREMENTS.md)，各层细节见对应文档。
 > 原则：先立**契约**（类型即真相）→ 再出**真实数据** → 再让 web 接真实数据 → 扩页型 → 接 cron → SEO/上线。
 >
 > ⚠️ **与 Vercel-only 迁移的关系**：本文 M1 的「本机回填」是**一次性 bootstrap**；M4 的「每周 cron 白名单 diff / 新晋回填 / 折叠重算」的**生产形态目标是 Vercel Workflow，不依赖本地**——迁移分 **Phase 0–5**，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10。本文里程碑（M0–M5）讲「先把 MVP 跑起来」，VERCEL-DATA-OPERATIONS 讲「把生产数据路径搬离本地」，两者并行推进。
@@ -87,4 +87,46 @@ M0 契约/脚手架
 - ✅ **M5 SEO/i18n/PWA**：sitemap/robots/JSON-LD/OG（含每页 og:image 修复）/ 7 语 i18n（option C 客户端译 chrome）/ PWA 已建；已切生产域名；CWV/收录上线后核对。
 - ✅ **Vercel-only Phase 2–5 已线上验证（2026-06-03 `status=published`）**：metadata/whitelist/rename（Phase 2）+ canonical/v2 shard + 读侧指针（Phase 3）+ rank/entity/heatmap 纯 JS 重算 → `views/<run_id>/**` → validate → 切 `views/latest.json` 指针（Phase 4）+ **月+周 canonical 折叠 / 版本 GC（Phase 5）**；离线 parity 12,899 视图与 DuckDB 逐字节一致；监控/告警 + 345 bun 测试。`workflow@4.3.1` + `web/lib/workflows/*`。
 - ✅ **两大开口已闭合**：① §9-J 渲染模式 → **option C**（静态基底 + 客户端译 chrome）已实现，页面回 SSG/ISR；② Vercel-only **Phase 5**（折叠 / GC / backfill 归档）已完成。
-- 🚧 **v0.2 叙事与发现（[V0.2-DESIGN](./V0.2-DESIGN.md)）已启动**：§1 **全站搜索 ✅ 已上线并线上验证**（recompute 派生 `search/index.json` 5,261 repo + `/search-index` CDN 路由 + 客户端 MiniSearch）；拐点检测 / 分享卡片补全 / LLM 月度叙事**待做**；≥100★下钻 / 任意 repo 对比 / 聚类 / 语义检索属 v0.3，**阻塞于 DB 选型决策**。
+- 🚧 **v0.2 叙事与发现（设计 + 进度见下「v0.2」节）已启动**：§1 **全站搜索 ✅ 已上线并线上验证**（recompute 派生 `search/index.json` 5,261 repo + `/search-index` CDN 路由 + 客户端 MiniSearch）；拐点检测 / 分享卡片补全 / LLM 月度叙事**待做**；≥100★下钻 / 任意 repo 对比 / 聚类 / 语义检索属 v0.3，**阻塞于 DB 选型决策（见下「v0.3」节）**。
+
+---
+
+## v0.2 — 叙事与发现（设计 + 进度）
+
+> 主题：让用户更容易**找到**和**读懂**开源编年史。**继续守 v0.1 硬约束**——运行时纯静态只读 JSON/Blob、零运行时引擎/数据库、Vercel-first 统一计费、零本地 recurring 依赖。凡是需要 DB 的（下钻 / 任意对比 / 语义检索）推到「v0.3」节。每项纪律同 v0.1：先离线/合成验证正确性，再上；产物落 Blob、读侧带回退；workflow step 幂等 + best-effort。
+>
+> **建造顺序**：① 搜索 ✅ → ② 拐点 → ③ 分享卡片补全 → ④ LLM 月度叙事 →（v0.3 闸门）DB 选型。
+
+### v0.2 §1 全站搜索 ✅ 已实现
+
+- **目标**：导航栏搜索框，输入 repo 名 / owner / 关键词 → 即时结果 → 点进 repo/org 页。
+- **技术**：客户端检索 + 构建期静态索引（MiniSearch 索引 JSON；不选 Pagefind——repo 页按需 ISR、构建期未全预渲染，且我们本就有结构化数据）。recompute 从 `repos` shard 派生 `search/index.json`（`{id, full_name, owner, language, current_stars, description}`，~5,261 条），落 Blob 走 CDN，随每次 recompute 刷新（自动含新晋 repo）。
+- **✅ 已落地**：① recompute（entity/org step）派生 + Zod 契约 `lib/contracts/search.ts` + 并入 `validate`（断言条目数）；② 纯核心 `lib/search/core.ts`（prefix + fuzzy 0.2 + 按 stars 加权）+ 客户端 `app/_explore/SearchBox.tsx`（首次聚焦懒加载索引/MiniSearch、键盘 ↑↓/Enter/Esc、combobox a11y、placeholder/空态走 7 语 chrome i18n）+ 接进 `Chrome`；③ `/search-index` 路由（服务端读版本化 `views/<version>/search/index.json`，响应带 `s-maxage` 走 CDN，无产物时优雅回退空索引）。18 例单测覆盖 core/builder/契约，离线 parity 跳过该新视图，已线上验证（5,261 repo published 2026-06-03）。
+
+### v0.2 §2 LLM 月度叙事 ⏳ 待做
+
+- **目标**：每月榜页顶部一段自动生成的中英叙事（"2026 年 6 月，X 因 Y 爆发式增长……"），让数字有故事。
+- **技术**：L3 workflow 新增 step `generateNarrative`——对**刚收口**的月，取该月 top movers / 新晋 / 增速作 context，调 **Vercel AI Gateway**（Claude Haiku，不开外部账单）生成 ~80 字、中英各一，落 `narrative/<period>.json`（幂等，已存在则跳过）。读侧月榜页读取（带回退，无则不渲染）。成本 ~$0.001/月、best-effort 不阻塞发布。**量：中（含 prompt 调试）**。
+
+### v0.2 §3 拐点检测与标注 ⏳ 待做
+
+- **目标**：在 repo 的 star 曲线上自动标出"何时爆发"的拐点。
+- **技术**：纯算法跑在 recompute（零新数据源、零 LLM）——对每个 repo 月度 flow 做 changepoint（flow > k × 前 N 月中位数 / 最大单月相对增幅），写进 `entity/repo/<id>.json` 新字段 `inflections: [{period, flow, kind}]`，`StarCurve` 在这些月画标记 + tooltip。**量：小–中**。
+
+### v0.2 §4 可分享卡片 ◐ 部分
+
+- **现状**：每页 og:image 已修（repo 页自定义卡、其余站点卡，v0.1 已做）。
+- **补**：① 每月/每年榜的 OG 卡（`app/rankings/[year]/[period]/opengraph-image.tsx`，动态生成"6 月榜 top3"卡）；② 页面"分享"按钮（复制链接 / X 分享 intent）。**量：小**。
+
+## v0.3 — 下钻与对比（DB 阻塞，需先拍板选型）
+
+≥100 star 下钻（46 万 repo）、多 repo 任意对比、主题/语言聚类、语义检索——**都装不进当前 JSON shard 模型**（46 万 × 历史太大，且需任意筛选/聚合/向量查询），必须引入分析型数据层；这与「Vercel-first、零外部账单、运行时零引擎」**有直接张力**，需要一次架构决策：
+
+| 选项 | 说明 | 张力 |
+|---|---|---|
+| **Tinybird（托管 ClickHouse）** | 分析查询强、roadmap 既定选项 | 外部账单（违反"零散落账单"）；运行时要查它（违反"纯静态"）——需重新界定 |
+| **Vercel Postgres / Neon** | Vercel 生态内 | 关系库扛分析型聚合（46 万 × 时序）吃力 |
+| **继续 JSON + 预算更多视图** | 不引 DB | 46 万 repo 的任意筛选/对比组合爆炸，预算不出来 |
+| **ClickHouse 自建 / 公共实例** | 便宜 | 运维成本、可靠性（架构文档已评估过不可行） |
+
+**建议**：v0.2 先不碰下钻；v0.3 启动前**专门过一次这个 DB 选型决策**（可做选型对比 + POC）。决策前下钻/语义检索保持"未实现"。**多 repo 对比**：简版（对比已有 ≥10k repo 的曲线）可放 v0.2 末；任意 repo 对比需 v0.3 DB。

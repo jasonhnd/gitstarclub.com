@@ -11,7 +11,7 @@ import type { SearchHit } from "@/lib/search/core";
 
 // Global repo search. The index (search/index.json, ~5k repos) and MiniSearch itself are lazy-
 // loaded on first focus — kept out of the initial bundle — then everything runs client-side.
-// See docs/V0.2-DESIGN.md §1.
+// See docs/IMPLEMENTATION-PLAN.md (v0.2 §1).
 
 const LIMIT = 8;
 

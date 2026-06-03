@@ -15,9 +15,9 @@
 9. [SEO.md](./SEO.md) — sitemap、meta、结构化数据、OG、robots、多语 SEO
 10. [OPS.md](./OPS.md) — 运维 runbook：Blob 布局、cron 调度、监控/告警、部署/回滚
 11. [TESTING.md](./TESTING.md) — 测试策略 + workflow 闸门 + 测试套件
-12. [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) — 构建顺序 M0–M5 + 里程碑进度
+12. [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) — 构建顺序 M0–M5 + 里程碑进度 + **v0.2/v0.3 范围与设计**
 
-**卫星文档**（按需）：[V0.2-DESIGN.md](./V0.2-DESIGN.md)（v0.2/v0.3 设计蓝图）· [PRODUCT.md](./PRODUCT.md)（产品/页面/调性）· [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md)（UX 导航叙事 / reader's map，英文）。
+**卫星文档**（按需）：[PRODUCT.md](./PRODUCT.md)（产品/页面/调性）· [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md)（UX 导航叙事 / reader's map，英文）。
 
 ## 每篇职责一览
 
@@ -34,8 +34,7 @@
 | SEO | sitemap/meta/JSON-LD/OG/robots、**i18n 多语 SEO 口径** |
 | OPS | **Blob 物理布局**、**cron 调度**、监控/告警、部署拓扑、回滚 runbook |
 | TESTING | 测试金字塔、数据质量闸门、workflow 发布闸门、套件清单 |
-| IMPLEMENTATION-PLAN | **里程碑路线图**（状态-of-record） |
-| V0.2-DESIGN | **v0.2/v0.3 范围与设计**（搜索✅ / 叙事 / 拐点 / 分享卡片 / v0.3 DB 阻塞点） |
+| IMPLEMENTATION-PLAN | **里程碑路线图**（状态-of-record）+ **v0.2/v0.3 范围与设计**（搜索✅ / 叙事 / 拐点 / 分享卡片 / v0.3 DB 阻塞点） |
 | PRODUCT | 产品定位、页面用途/布局、调性、命名 |
 | INFORMATION-ARCHITECTURE | UX 导航叙事（reader's map）；路由清单以 FRONTEND §1.1 为准 |
 
@@ -56,11 +55,11 @@
 | 配色 / 设计令牌 | **DESIGN-SYSTEM** |
 | 排名口径 / seam / stock 锚定 | **RANKING** §3 |
 | 里程碑路线图 | **IMPLEMENTATION-PLAN** |
-| v0.2 / v0.3 范围 | **V0.2-DESIGN** |
+| v0.2 / v0.3 范围与设计 | **IMPLEMENTATION-PLAN**（文末「v0.2」「v0.3」节） |
 
 ## 当前状态（2026-06-03）
 
 - **v0.1 MVP + Vercel-only 数据生命周期 Phase 2–5**：✅ 已上线 / 线上验证（`status=published`）。
 - **v0.2 叙事与发现**：全站搜索 ✅ 已上线；拐点检测 / 分享卡片补全 / LLM 月度叙事 ⏳ 待做。
-- **v0.3 下钻 / 对比 / 聚类 / 语义检索**：📋 仅设计，阻塞于一次 DB 选型决策（见 V0.2-DESIGN §5）。
+- **v0.3 下钻 / 对比 / 聚类 / 语义检索**：📋 仅设计，阻塞于一次 DB 选型决策（见 IMPLEMENTATION-PLAN「v0.3」节）。
 - **发布前关口**：noindex → 上线切换（`SITE_INDEXABLE=1`）+ CWV / 收录核对（见 SEO）。

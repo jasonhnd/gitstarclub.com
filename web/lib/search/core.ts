@@ -3,7 +3,7 @@ import type { SearchDoc } from "@/lib/contracts";
 
 // Pure MiniSearch wiring, built in the browser from /search-index and also unit-tested under
 // bun. The SearchBox dynamically imports this on first focus so MiniSearch stays out of the
-// initial client bundle. See docs/V0.2-DESIGN.md §1.
+// initial client bundle. See docs/IMPLEMENTATION-PLAN.md (v0.2 §1).
 
 export interface SearchHit {
   id: number;
