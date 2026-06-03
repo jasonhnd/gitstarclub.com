@@ -87,7 +87,7 @@ M0 契约/脚手架
 - ✅ **M5 SEO/i18n/PWA**：sitemap/robots/JSON-LD/OG（含每页 og:image 修复）/ 7 语 i18n（option C 客户端译 chrome）/ PWA 已建；已切生产域名；CWV/收录上线后核对。
 - ✅ **Vercel-only Phase 2–5 已线上验证（2026-06-03 `status=published`）**：metadata/whitelist/rename（Phase 2）+ canonical/v2 shard + 读侧指针（Phase 3）+ rank/entity/heatmap 纯 JS 重算 → `views/<run_id>/**` → validate → 切 `views/latest.json` 指针（Phase 4）+ **月+周 canonical 折叠 / 版本 GC（Phase 5）**；离线 parity 12,899 视图与 DuckDB 逐字节一致；监控/告警 + 345 bun 测试。`workflow@4.3.1` + `web/lib/workflows/*`。
 - ✅ **两大开口已闭合**：① §9-J 渲染模式 → **option C**（静态基底 + 客户端译 chrome）已实现，页面回 SSG/ISR；② Vercel-only **Phase 5**（折叠 / GC / backfill 归档）已完成。
-- 🚧 **v0.2 叙事与发现（设计 + 进度见下「v0.2」节）已启动**：§1 **全站搜索 ✅ 已线上验证**（`search/index.json` 5,261 repo + `/search-index` CDN 路由 + 客户端 MiniSearch）、§3 **拐点检测 ✅**（`entity/repo.inflections` + StarCurve 标记）、§4 **可分享卡片 ✅**（榜单 OG 卡 + ShareButton）、§2 **月度叙事 ✅**（确定性模板、渲染时拼、无 AI）——**v0.2 4 条主线全部落地**；≥100★下钻 / 任意 repo 对比 / 聚类 / 语义检索属 v0.3，**阻塞于 DB 选型决策（见下「v0.3」节）**。
+- 🚧 **v0.2 叙事与发现（设计 + 进度见下「v0.2」节）已启动**：§1 **全站搜索 ✅ 已线上验证**（`search/index.json` 5,261 repo + `/search-index` CDN 路由 + 客户端 MiniSearch）、§3 **拐点检测 ✅**（`entity/repo.inflections` + StarCurve 标记）、§4 **可分享卡片 ✅**（榜单 OG 卡 + ShareButton）、§2 **月度叙事 ✅**（确定性模板、渲染时拼、无 AI）——**§1–§4 主线全部落地**；§5 **多 repo 对比（简版）🚧 进行中**（≥1 万星集叠图对比，URL 即状态，瘦路由 `/repo-curve` 复用 entity，零新数据产物/零 DB）；≥100★下钻 / 任意 repo 对比 / 聚类 / 语义检索属 v0.3，**阻塞于 DB 选型决策（见下「v0.3」节）**。
 
 ---
 
@@ -95,7 +95,7 @@ M0 契约/脚手架
 
 > 主题：让用户更容易**找到**和**读懂**开源编年史。**继续守 v0.1 硬约束**——运行时纯静态只读 JSON/Blob、零运行时引擎/数据库、Vercel-first 统一计费、零本地 recurring 依赖。凡是需要 DB 的（下钻 / 任意对比 / 语义检索）推到「v0.3」节。每项纪律同 v0.1：先离线/合成验证正确性，再上；产物落 Blob、读侧带回退；workflow step 幂等 + best-effort。
 >
-> **建造顺序**：① 搜索 ✅ → ② 拐点 ✅ → ③ 分享卡片补全 ✅ → ④ 月度叙事 ✅（确定性模板，**无 AI**）→（v0.3 闸门）DB 选型。**v0.2 4 条主线全部落地。**
+> **建造顺序**：① 搜索 ✅ → ② 拐点 ✅ → ③ 分享卡片补全 ✅ → ④ 月度叙事 ✅（确定性模板，**无 AI**）→ ⑤ 多 repo 对比（简版，🚧 开工；守约束、零新数据产物、零 DB）→（v0.3 闸门）DB 选型。**v0.2 §1–§4 主线全部落地；§5 简版对比进行中。**
 
 ### v0.2 §1 全站搜索 ✅ 已实现
 
@@ -120,6 +120,16 @@ M0 契约/脚手架
 - **现状**：每页 og:image 已修（repo 页自定义卡、其余站点卡，v0.1 已做）。
 - **✅ 已落地**：① 榜单 OG 卡——`app/rankings/[year]/[period]/opengraph-image.tsx`（月/周）+ `[year]/opengraph-image.tsx`（年）动态生成"该期 top3"卡，共享 `lib/og-card.tsx`（`next/og`，石墨灰+金、stars 内联 SVG），并接进各页 `pageMeta.ogImage`；② `app/_explore/ShareButton.tsx`（复制链接 + X 分享 intent，7 语 `share.*` chrome i18n），接进 repo / 榜单月周 / 年页。`next build` 绿；本地 smoke：两张 OG 卡 200 `image/png`、页面 `og:image` 指向卡、ShareButton 入 SSR。
 
+### v0.2 §5 多 repo 对比（简版） 🚧 进行中
+
+- **目标**：把多个已收录 repo（≥1 万星那 5,261 个）的 star 曲线**叠在一张图**上比较增长。一个 `/compare` 页，要对比的 repo 放在 URL 里（`/compare?repos=facebook/react,vuejs/vue`）→ URL 即状态、链接可分享。明确**只做简版**：可对比集 = 已收录的 ≥1 万星 repo；任意 repo / ≥100 星下钻属 v0.3（DB 阻塞）。
+- **为什么守住 v0.1/v0.2 全部硬约束**：曲线数据每个 repo 早已存在（`entity/repo/<id>.json` 的 `curve.monthly = [period, adds, total_end]`）——**零新 recompute 产物、零 DB、零新外部依赖**。只新增一个与 `/search-index` 同构的**瘦服务端路由** `/repo-curve?id=`：服务端经发布指针读版本化 entity、返回精简曲线、CDN s-maxage 缓存（Blob 仍服务端、可回滚）；浏览器按需抓几个小 JSON 在前端叠加。选择器**复用**已有搜索索引（`lib/search/core`）。
+- **归一化两模式**（用户定）：**绝对值**（各自累计星数，共享 y 轴）+ 可切换**对齐到 10k**（x 轴换成「各自破 1 万星后第 N 个月」，同起点比增长轨迹/速度，仅用已有 `milestones.crossed_10k`）。不加 log 轴（避免复杂）。上限叠 **5** 个。
+- **三入口**（用户定，全做）：① 导航栏 `/compare` 链接 + 该页自带多选搜索器；② repo 页「加入对比」按钮 → `/compare?repos=owner/name`；③ 导航 `SearchBox` 每条结果加「+对比」勾选 + 底部「对比 N 个 →」（行点击仍跳 repo 页）。
+- **建造顺序**：①瘦路由 `/repo-curve` + 契约 `lib/contracts/compare.ts` + 数据访问 → ②纯核心 `lib/compare/core.ts`（URL repos 解析/序列化、两种归一化、配色；bun 单测）→ ③`CompareCurve` 组件（多线 + 图例 + 共享 y 轴 + 对齐切换）→ ④`/compare` 页壳 + 多选择器 → ⑤三入口接线 → ⑥7 语 `compare.*` chrome i18n + 测试/build/提交。
+- **SEO**：`/compare`（无参）为可索引落地页（介绍工具）；带 `?repos=` 参数页 `noindex`（避免组合 URL 抓取爆炸）、canonical 指向 `/compare`。
+- **离线 parity 不受影响**：无新数据视图产物（`/repo-curve` 是 entity 的瘦投影，非独立 Blob 文件），recompute parity 集合不变。
+
 ## v0.3 — 下钻与对比（DB 阻塞，需先拍板选型）
 
 ≥100 star 下钻（46 万 repo）、多 repo 任意对比、主题/语言聚类、语义检索——**都装不进当前 JSON shard 模型**（46 万 × 历史太大，且需任意筛选/聚合/向量查询），必须引入分析型数据层；这与「Vercel-first、零外部账单、运行时零引擎」**有直接张力**，需要一次架构决策：
@@ -131,4 +141,4 @@ M0 契约/脚手架
 | **继续 JSON + 预算更多视图** | 不引 DB | 46 万 repo 的任意筛选/对比组合爆炸，预算不出来 |
 | **ClickHouse 自建 / 公共实例** | 便宜 | 运维成本、可靠性（架构文档已评估过不可行） |
 
-**建议**：v0.2 先不碰下钻；v0.3 启动前**专门过一次这个 DB 选型决策**（可做选型对比 + POC）。决策前下钻/语义检索保持"未实现"。**多 repo 对比**：简版（对比已有 ≥10k repo 的曲线）可放 v0.2 末；任意 repo 对比需 v0.3 DB。
+**建议**：v0.2 先不碰下钻；v0.3 启动前**专门过一次这个 DB 选型决策**（可做选型对比 + POC）。决策前下钻/语义检索保持"未实现"。**多 repo 对比**：简版（对比已有 ≥10k repo 的曲线）已在 **v0.2 §5 开工**（见上）；任意 repo（含 ≥100 星长尾）对比需 v0.3 DB。

@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const zhTw: Dict = {
-  nav: { home: "首頁", trending: "脈搏", rankings: "排行榜", about: "關於" },
+  nav: { home: "首頁", trending: "脈搏", rankings: "排行榜", compare: "對比", about: "關於" },
   home: {
     heroPre: "",
     heroAccent: "開源",
@@ -100,6 +100,20 @@ const zhTw: Dict = {
   },
   search: { label: "搜尋", placeholder: "搜尋倉庫…", empty: "沒有符合的倉庫", loading: "載入中…" },
   share: { label: "分享", copied: "已複製", onX: "分享到 X" },
+  compare: {
+    title: "對比 star 歷史",
+    subtitle: "把任意已收錄倉庫（≥1 萬星）的曲線疊在一起，至少選兩個。",
+    modeAbsolute: "絕對值",
+    modeAlign10k: "對齊到 10k",
+    pickerPlaceholder: "搜尋要加入的倉庫…",
+    legendLabel: "圖例",
+    empty: "至少選兩個倉庫開始對比。",
+    minHint: "再選一個倉庫進行對比。",
+    limit: "最多對比 5 個倉庫。",
+    remove: "移除",
+    addToCompare: "加入對比",
+    openCompare: "對比",
+  },
 };
 
 export default zhTw;

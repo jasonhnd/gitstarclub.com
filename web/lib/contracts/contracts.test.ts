@@ -42,6 +42,8 @@ import {
   // search
   SearchDoc,
   SearchIndex,
+  // compare
+  CompareCurve,
 } from "./index";
 
 // Each block proves a schema PARSES a valid shape AND REJECTS a real bad one
@@ -515,5 +517,27 @@ describe("search contracts", () => {
 
   test("SearchIndex rejects non-array repos", () => {
     expect(rejects(SearchIndex, { generated_at: "x", count: 0, repos: {} })).toBe(true);
+  });
+});
+
+describe("compare contracts", () => {
+  const curve = {
+    id: 10270250,
+    full_name: "facebook/react",
+    current_stars: 232000,
+    crossed_10k: "2014-09-15",
+    points: [["2014-01", 9800] as [string, number], ["2014-02", 10400] as [string, number]],
+  };
+
+  test("CompareCurve parses; crossed_10k nullable", () => {
+    expect(CompareCurve.parse({ ...curve, crossed_10k: null }).points).toHaveLength(2);
+  });
+
+  test("CompareCurve rejects point tuple with wrong arity", () => {
+    expect(rejects(CompareCurve, { ...curve, points: [["2014-01", 9800, 1]] })).toBe(true);
+  });
+
+  test("CompareCurve rejects non-int current_stars", () => {
+    expect(rejects(CompareCurve, { ...curve, current_stars: 1.5 })).toBe(true);
   });
 });

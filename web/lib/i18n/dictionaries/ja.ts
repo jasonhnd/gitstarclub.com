@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const ja: Dict = {
-  nav: { home: "ホーム", trending: "動向", rankings: "ランキング", about: "このサイトについて" },
+  nav: { home: "ホーム", trending: "動向", rankings: "ランキング", compare: "比較", about: "このサイトについて" },
   home: {
     heroPre: "",
     heroAccent: "オープンソース",
@@ -100,6 +100,20 @@ const ja: Dict = {
   },
   search: { label: "検索", placeholder: "リポジトリを検索…", empty: "一致するリポジトリがありません", loading: "読み込み中…" },
   share: { label: "共有", copied: "コピーしました", onX: "X で共有" },
+  compare: {
+    title: "スター履歴を比較",
+    subtitle: "登録済みリポジトリ（1 万スター以上）のカーブを 1 枚に重ねます。2 件以上選んでください。",
+    modeAbsolute: "絶対値",
+    modeAlign10k: "1 万到達から",
+    pickerPlaceholder: "追加するリポジトリを検索…",
+    legendLabel: "凡例",
+    empty: "比較するには 2 件以上選んでください。",
+    minHint: "もう 1 件選んでください。",
+    limit: "最大 5 件まで。",
+    remove: "削除",
+    addToCompare: "比較に追加",
+    openCompare: "比較",
+  },
 };
 
 export default ja;

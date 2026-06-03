@@ -8,10 +8,13 @@ import { useChrome } from "@/lib/i18n/client";
 import { fmtStars } from "@/lib/format";
 import type { SearchDoc } from "@/lib/contracts";
 import type { SearchHit } from "@/lib/search/core";
+import { MAX_COMPARE } from "@/lib/compare/core";
 
 // Global repo search. The index (search/index.json, ~5k repos) and MiniSearch itself are lazy-
 // loaded on first focus — kept out of the initial bundle — then everything runs client-side.
-// See docs/IMPLEMENTATION-PLAN.md (v0.2 §1).
+// Each result row also has a "+ compare" toggle (v0.2 §5): selections accumulate in a small set
+// and a footer CTA jumps to /compare?repos=… with everything chosen. Capped at MAX_COMPARE.
+// See docs/IMPLEMENTATION-PLAN.md (v0.2 §1, §5).
 
 const LIMIT = 8;
 
@@ -26,12 +29,15 @@ export function SearchBox() {
   const placeholder = useChrome("search.placeholder");
   const emptyText = useChrome("search.empty");
   const loadingText = useChrome("search.loading");
+  const addToCompareLabel = useChrome("compare.addToCompare");
+  const openCompareLabel = useChrome("compare.openCompare");
 
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const [loading, setLoading] = useState(false);
+  const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
 
   const engineRef = useRef<Engine | null>(null);
   const loadingRef = useRef(false);
@@ -78,6 +84,24 @@ export function SearchBox() {
     setHits([]);
     setActive(-1);
   }, []);
+
+  const toggleCompare = useCallback((fullName: string) => {
+    setCompareSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(fullName)) next.delete(fullName);
+      else if (next.size < MAX_COMPARE) next.add(fullName);
+      return next;
+    });
+  }, []);
+
+  const openCompare = useCallback(() => {
+    if (compareSet.size === 0) return;
+    const param = encodeURIComponent([...compareSet].join(","));
+    router.push(`/compare?repos=${param}`);
+    setCompareSet(new Set());
+    reset();
+    inputRef.current?.blur();
+  }, [compareSet, router, reset]);
 
   const onChange = (value: string) => {
     setQ(value);
@@ -158,35 +182,72 @@ export function SearchBox() {
         <div className="absolute right-0 z-30 mt-2 w-[min(24rem,92vw)] overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-high shadow-xl">
           {hits.length > 0 ? (
             <ul id={listId} role="listbox" aria-label={label} className="max-h-[70vh] overflow-y-auto py-1">
-              {hits.map((h, i) => (
-                <li key={h.id} id={`${listId}-${i}`} role="option" aria-selected={i === active}>
-                  <Link
-                    href={`/${h.full_name}`}
-                    onMouseEnter={() => setActive(i)}
-                    onClick={reset}
-                    className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 transition-colors ${
-                      i === active ? "bg-on-surface/8" : "hover:bg-on-surface/5"
-                    }`}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-mono text-[0.82rem]">
-                        <span className="text-on-surface-variant">{h.owner}/</span>
-                        <span className="font-semibold text-on-surface">{h.full_name.slice(h.owner.length + 1)}</span>
-                      </span>
-                      {h.description && (
-                        <span className="mt-0.5 block truncate text-[0.72rem] text-on-surface-variant">{h.description}</span>
-                      )}
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2 font-mono text-[0.72rem] text-on-surface-variant">
-                      {h.language && <span className="hidden sm:inline">{h.language}</span>}
-                      <span className="tabular-nums text-primary-fixed-dim">{fmtStars(h.current_stars)} ★</span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
+              {hits.map((h, i) => {
+                const inCompare = compareSet.has(h.full_name);
+                const compareDisabled = !inCompare && compareSet.size >= MAX_COMPARE;
+                return (
+                  <li key={h.id} id={`${listId}-${i}`} role="option" aria-selected={i === active}>
+                    <div
+                      className={`grid grid-cols-[minmax(0,1fr)_auto] items-stretch transition-colors ${
+                        i === active ? "bg-on-surface/8" : "hover:bg-on-surface/5"
+                      }`}
+                    >
+                      <Link
+                        href={`/${h.full_name}`}
+                        onMouseEnter={() => setActive(i)}
+                        onClick={reset}
+                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-mono text-[0.82rem]">
+                            <span className="text-on-surface-variant">{h.owner}/</span>
+                            <span className="font-semibold text-on-surface">{h.full_name.slice(h.owner.length + 1)}</span>
+                          </span>
+                          {h.description && (
+                            <span className="mt-0.5 block truncate text-[0.72rem] text-on-surface-variant">{h.description}</span>
+                          )}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2 font-mono text-[0.72rem] text-on-surface-variant">
+                          {h.language && <span className="hidden sm:inline">{h.language}</span>}
+                          <span className="tabular-nums text-primary-fixed-dim">{fmtStars(h.current_stars)} ★</span>
+                        </span>
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => toggleCompare(h.full_name)}
+                        disabled={compareDisabled}
+                        aria-pressed={inCompare}
+                        aria-label={`${addToCompareLabel}: ${h.full_name}`}
+                        title={addToCompareLabel}
+                        className={`flex w-9 items-center justify-center font-mono text-[0.95rem] transition-colors ${
+                          inCompare
+                            ? "bg-primary-container text-on-primary-container"
+                            : "text-on-surface-variant hover:bg-on-surface/10 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                        }`}
+                      >
+                        {inCompare ? "✓" : "+"}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="px-3 py-3 font-mono text-[0.76rem] text-on-surface-variant">{loading ? loadingText : emptyText}</p>
+          )}
+          {compareSet.size > 0 && (
+            <div className="flex items-center justify-between gap-3 border-t border-outline-variant px-3 py-2">
+              <span className="font-mono text-[0.72rem] text-on-surface-variant">
+                {compareSet.size}/{MAX_COMPARE}
+              </span>
+              <button
+                type="button"
+                onClick={openCompare}
+                className="rounded-full bg-primary-container px-3 py-1 font-mono text-[0.75rem] font-semibold text-on-primary-container transition-colors hover:brightness-110"
+              >
+                {openCompareLabel} →
+              </button>
+            </div>
           )}
         </div>
       )}

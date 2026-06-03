@@ -35,6 +35,13 @@
   --md-sys-color-primary-fixed-dim: #ffba3b;
   --md-sys-color-on-primary-fixed: #281900;
   --md-shadow-rgb: 0 0 0;
+  /* Categorical chart palette (v0.2 §5 CompareCurve) — 5 perceptually-distinct hues for
+     multi-series overlay; first two align with the amber/cyan brand. */
+  --chart-cat-1: #b8860b;
+  --chart-cat-2: #00668a;
+  --chart-cat-3: #7c3aed;
+  --chart-cat-4: #15803d;
+  --chart-cat-5: #be123c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -71,6 +78,11 @@
     --md-sys-color-primary-fixed-dim: #ffba3b;
     --md-sys-color-on-primary-fixed: #281900;
     --md-shadow-rgb: 0 0 0;
+    --chart-cat-1: #ffca74;
+    --chart-cat-2: #9edaff;
+    --chart-cat-3: #a78bfa;
+    --chart-cat-4: #4ade80;
+    --chart-cat-5: #fb7185;
   }
 }
 
@@ -107,6 +119,11 @@
   --md-sys-color-inverse-on-surface: #2f3033;
   --md-sys-color-primary-fixed-dim: #ffba3b;
   --md-sys-color-on-primary-fixed: #281900;
+  --chart-cat-1: #ffca74;
+  --chart-cat-2: #9edaff;
+  --chart-cat-3: #a78bfa;
+  --chart-cat-4: #4ade80;
+  --chart-cat-5: #fb7185;
 }
 
 /* non-color design tokens */

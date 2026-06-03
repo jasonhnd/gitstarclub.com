@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const fr: Dict = {
-  nav: { home: "Accueil", trending: "Activité", rankings: "Classements", about: "À propos" },
+  nav: { home: "Accueil", trending: "Activité", rankings: "Classements", compare: "Comparer", about: "À propos" },
   home: {
     heroPre: "Une histoire de l'",
     heroAccent: "open source",
@@ -100,6 +100,20 @@ const fr: Dict = {
   },
   search: { label: "Rechercher", placeholder: "Rechercher des dépôts…", empty: "Aucun dépôt correspondant", loading: "Chargement…" },
   share: { label: "Partager", copied: "Copié", onX: "Partager sur X" },
+  compare: {
+    title: "Comparer l'historique des étoiles",
+    subtitle: "Superposez les courbes de tout dépôt suivi (≥10k étoiles). Choisissez-en au moins deux.",
+    modeAbsolute: "Absolu",
+    modeAlign10k: "Depuis 10k",
+    pickerPlaceholder: "Rechercher des dépôts à ajouter…",
+    legendLabel: "Légende",
+    empty: "Choisissez au moins deux dépôts à comparer.",
+    minHint: "Choisissez un dépôt de plus à comparer.",
+    limit: "Maximum 5 dépôts.",
+    remove: "Retirer",
+    addToCompare: "Ajouter à la comparaison",
+    openCompare: "Comparer",
+  },
 };
 
 export default fr;

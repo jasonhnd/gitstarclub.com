@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const es: Dict = {
-  nav: { home: "Inicio", trending: "Pulso", rankings: "Rankings", about: "Acerca de" },
+  nav: { home: "Inicio", trending: "Pulso", rankings: "Rankings", compare: "Comparar", about: "Acerca de" },
   home: {
     heroPre: "Una historia del ",
     heroAccent: "código abierto",
@@ -100,6 +100,20 @@ const es: Dict = {
   },
   search: { label: "Buscar", placeholder: "Buscar repositorios…", empty: "Sin repositorios coincidentes", loading: "Cargando…" },
   share: { label: "Compartir", copied: "Copiado", onX: "Compartir en X" },
+  compare: {
+    title: "Comparar historial de estrellas",
+    subtitle: "Superpón las curvas de cualquier repositorio rastreado (≥10k estrellas). Elige al menos dos.",
+    modeAbsolute: "Absoluto",
+    modeAlign10k: "Desde 10k",
+    pickerPlaceholder: "Buscar repos para añadir…",
+    legendLabel: "Leyenda",
+    empty: "Elige al menos dos repos para comparar.",
+    minHint: "Elige un repo más para comparar.",
+    limit: "Máximo 5 repos.",
+    remove: "Quitar",
+    addToCompare: "Añadir a comparación",
+    openCompare: "Comparar",
+  },
 };
 
 export default es;
