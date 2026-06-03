@@ -485,4 +485,4 @@ return {
 **冲突收敛（§9）**
 - [x] B/E/F/G/H 已收敛；C 已决（PWA 例外③）；A/J 已解决（option C，§2.5）
 - [ ] D 收尾验证（非单调曲线渲染）
-- [ ] **J（force-dynamic vs SSG）架构级决策** ⬅ 当前最大开口
+- [x] J 渲染模式 → 已收口为 option C（静态基底 + 客户端译 chrome）

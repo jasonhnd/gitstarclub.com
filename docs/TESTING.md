@@ -52,7 +52,7 @@ test('周排名窗口跨月不丢日', () => {
 - 字段类型 / 必填 / 枚举（`owner_type ∈ {User, Org}`、`metric ∈ {flow, stock}`、`window ∈ {week,month,year,all-time}`）
 - 引用完整性：榜单里每个 `repo_id` 在 `lookup/repos.json` 有对应条目
 - Zod schema 即 build 读 JSON 的 TS 类型来源（single source of truth，避免 schema 与类型漂移）
-- **实现**：`web/scripts/validate-views.ts`（`bun scripts/validate-views.ts` 全量校验 `pipeline/data/views/**` 对契约，失败非零退出）。bootstrap 后已对全部产物跑通（当前 12,615 文件 0 失败）。**Vercel-only 迁移后，Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/<run_id>/**`**（§1.5），逻辑同源、只换运行位置。
+- **实现**：`web/scripts/validate-views.ts`（`bun scripts/validate-views.ts` 全量校验 `pipeline/data/views/**` 对契约，失败非零退出）。bootstrap precompute 产出 ~12,615 文件，对全部产物跑 Zod 0 失败；这与离线 parity 是两个不同指标——**当前离线 parity = 12,899 个视图与 DuckDB 重算逐字节一致**（`web/lib/integration/recompute.test.ts`），勿混淆文件计数与字节对拍计数。**Vercel-only 迁移后，Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/<run_id>/**`**（§1.5，**抽样关键视图**而非全量逐文件），逻辑同源、只换运行位置。
 
 ### 1.3 Sanity 不变量（数据级断言，对全量产物跑）
 
@@ -78,7 +78,7 @@ test('周排名窗口跨月不丢日', () => {
 
 > golden file 测的是"历史不该变"；§1.1 测的是"算法该对"。两者互补：前者抓回归，后者抓逻辑。
 
-### 1.5 Workflow 发布闸门 / staging 校验 / 回滚（🟡 待实现）
+### 1.5 Workflow 发布闸门 / staging 校验 / 回滚（✅ 已实现 / 线上验证）
 
 > Vercel-only 迁移后，**数据校验的"最后闸门"从本地 CI 移到 Vercel Workflow 内的 `validate` step**——对 `views/<run_id>/**` 跑后，**通过才切 `views/latest.json` 指针**（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.13）。同一套 §1.2 Zod + §1.3 sanity 断言**不变**，只是运行位置变了。
 
@@ -92,6 +92,17 @@ test('周排名窗口跨月不丢日', () => {
 
 - **fixture**：§1.1 的真切片同样导出成 **canonical JSON shard fixture**（与 Parquet 切片同源），单测「shard 重算」与「DuckDB 重算」对拍。
 - **隔离**：Workflow 校验只读 staging、不碰 `live/*` 活尾；活尾校验仍由每日/每周 cron 后置（见下「节奏」）。
+
+### 1.6 v0.2 全站搜索测试
+
+v0.2 的 `search/index.json` 与客户端 MiniSearch 检索单独成测：
+
+- `web/lib/search/core.test.ts`：MiniSearch 装配（prefix / fuzzy 0.2 typo 容错 / 按 stars 加权 `starBoost`，热门 repo 置顶）。
+- `web/lib/workflows/recompute/entities.test.ts` 的 `searchIndex` 用例：recompute 从 `repos` 维度派生索引（条目数、字段、描述截断）。
+- contracts `SearchIndex` / `SearchDoc` schema 契约测试（`web/lib/contracts/search.ts`）。
+- 全套 `bun test lib/` = **345 测试 / 21 文件**。
+
+- **parity 跳过**：`web/lib/integration/recompute.test.ts` 经 `NO_DISK_REF` 跳过 `search/index.json`（v0.2 新视图，DuckDB 无参照可对拍），与 live-artifact 跳过并列——其余 12,899 视图仍逐字节对拍。
 
 ---
 

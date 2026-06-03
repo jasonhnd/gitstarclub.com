@@ -47,7 +47,7 @@
 
 | 项 | 决定 |
 |---|---|
-| 数据集 | 公开 repo，star ≥ **10,000**（约 5,248 个，2026-05 实测） |
+| 数据集 | 公开 repo，star ≥ **10,000**（2026-05 实测约 5,248 个，当前约 5,261） |
 | 时间范围 | 2015-01 至今 |
 | 数据源 | [GH Archive](https://www.gharchive.org/) + GitHub GraphQL API |
 | 核心页面 | 首页 / 脉搏 / 总榜 / 年月周榜 / GitHub 风格 Repo 详情页 |
@@ -72,11 +72,11 @@ GitHub Search API 实测（2026-05）：
 |---|---|
 | ≥ 100 stars | 460,324 |
 | ≥ 1,000 stars | 62,174 |
-| **≥ 10,000 stars (MVP)** | **5,248** |
+| **≥ 10,000 stars (MVP)** | **5,248**（当前约 5,261） |
 
 MVP 这一层：
 
-- 我们只关心这 5,248 个 repo 的 star（约 1.3 亿次）；存成 per-repo×天 事实表 ≈ **800 万行**，Parquet 列存仅几十 MB（只在离线）
+- 我们只关心这约 5,261 个 repo 的 star（约 1.3 亿次）；存成 per-repo×天 事实表 ≈ **800 万行**，Parquet 列存仅几十 MB（只在离线）
 - canonical = **Parquet 事实表**（离线，几十 MB）；服务层 = DuckDB 预算好的 **JSON 视图**（build 只读，运行时零引擎）
 - 一次性回填走 **BigQuery**（查 GH Archive，~$10、含稳定 repo.id；评估过免费的 ClickHouse 公共实例/自建均不可行），日常增量靠 GraphQL diff
 - 全量 LLM 摘要：**$5-10**（Claude Haiku，留待 v0.2）
@@ -152,7 +152,7 @@ gitstarclub/
 
 ### v0.2 — 叙事与发现
 
-- 全站搜索（Pagefind / Orama 静态索引，仍无需后端数据库）
+- ✅ 全站搜索已上线（导航栏 MiniSearch 即时检索；构建期 `search/index.json` + `/search-index` CDN 路由，仍无需后端数据库）
 - LLM 自动生成每月叙事总结（Vercel AI Gateway，中英双语）
 - 月度 / 年度可分享卡片（OG 图）
 - 拐点自动检测与标注

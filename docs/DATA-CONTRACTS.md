@@ -54,7 +54,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 ### 1.3 `meta`（→ `meta.json`）
 
 ```json
-{ "seam_date": "2026-05-31", "backfilled_at": "...", "schema_ver": 1, "generated_at": "..." }
+{ "seam_date": "2026-05-30", "backfilled_at": "...", "schema_ver": 1, "generated_at": "..." }
 ```
 
 `seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。`Meta` 契约同时接受**扁平 bootstrap meta**（含 `backfilled_at`）与 **Phase 4 版本化 meta**（含 `folded_through`，无 `backfilled_at`）——二者皆 optional。
@@ -66,8 +66,8 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 **`canonical/v2/meta.json`** —— 全局元信息（驱动 stock 锚定分段 + 收口水位）：
 
 ```json
-{ "seam_date": "2026-05-31", "schema_ver": 1,
-  "folded_through": { "month": "2026-05", "week": "2026-W21" } }
+{ "seam_date": "2026-05-30", "schema_ver": 1,
+  "folded_through": { "month": "2026-05", "week": "2026-W22" } }
 ```
 
 - `seam_date`：gross→net 边界，stock 锚定据此分段（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.4）。
@@ -239,7 +239,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 
 - 当月内 **append-only + 按 UTC 日 upsert**（幂等，见 [OPS.md](./OPS.md)）。
 - `current_stars`：每日 GraphQL 最新权威值（也用于锚定）。
-- 当前实现由每日/每周 Vercel cron 写活尾，并同步覆盖 `live/rank/*` 当前周/月 rank 与 `live/heatmap/*` 当月 heatmap。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（待实现，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§8.3）；交接靠 `canonical/v2/pending/<period>.json` + `folded_through` 水位防重复/丢数据。
+- 当前实现由每日/每周 Vercel cron 写活尾，并同步覆盖 `live/rank/*` 当前周/月 rank 与 `live/heatmap/*` 当月 heatmap。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（✅ 已实现，月+周折叠 `fold.ts`，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§8.3）；交接靠 `canonical/v2/pending/<period>.json` + `folded_through` 水位防重复/丢数据。
 
 ### 2.9 `hot-snapshot.json`（cron 写，热集 ISR 读）
 
@@ -314,15 +314,15 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
   "run_id": "refresh-2026-06-02T04-00-00-000Z",
   "started_at": "2026-06-02T04:00:00.000Z",
   "status": "running",                          // running | published | failed
-  "steps": ["whitelist","metadata","renames","newcomers","canonical","rank","entity-repo","entity-org","heatmap","validate","publish","revalidate"],
+  "steps": ["whitelist","rename","metadata","fold","recompute","validate","publish","gc"],
   "published_version": null
 }
 ```
 
 ```json
-// steps/rank.json
+// steps/recompute.json
 {
-  "step": "rank", "status": "ok",               // ok | running | error
+  "step": "recompute", "status": "ok",          // ok | running | error
   "started_at": "...", "finished_at": "...",
   "shards_done": 32, "files_written": 4120,
   "error": null
@@ -334,11 +334,12 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 ### 2.13 `ops/workflows/{run_id}/validation.json`（校验报告，✅ 已实现）
 
 step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md](./TESTING.md) §1.2/§1.3）；`ok=false` 则不切指针。
+**`checked` 是抽样读的视图数（非全量逐文件）**：闸门只抽查关键视图（`meta` / `rank/all-time` / `lookup/repos` / `search/index` / 抽样 top-repo entity / 去年 heatmap，约 6 个）作 schema + 不变量断言，`checked` 即这些抽样次数。
 
 ```json
 {
   "run_id": "...", "ok": true,
-  "checked": 12615, "schema_failures": 0,
+  "checked": 6, "schema_failures": 0,
   "invariants": { "ranks_sorted": true, "org_eq_members": true, "drift_pct": 0.3 },
   "failures": []
 }

@@ -1,10 +1,10 @@
 # gitstarclub 数据 Pipeline
 
-> 如何产出 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) 定义的产物。四段：**① 一次性 bootstrap（归档）② 每日 Vercel cron（已实现）③ 每周 Vercel cron（已实现）④ Vercel Workflow 生产 pipeline（待实现）**。
+> 如何产出 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) 定义的产物。四段：**① 一次性 bootstrap（归档）② 每日 Vercel cron（已实现）③ 每周 Vercel cron（已实现）④ Vercel Workflow 生产 pipeline（✅ 已实现并线上验证，2026-06-03 status=published）**。
 >
 > ⚠️ **口径**：本文 §1 的「本机 BigQuery + DuckDB 回填」是**一次性 bootstrap / 历史归档**，**不是日常运营路径**。
-> **生产 recurring 数据生命周期（白名单 / 元数据 / canonical 折叠 / 全量重算 / 发布 / 回滚）目标全部在 Vercel 运行**——
-> 由 §4 的 **Vercel Workflow** 承载（**设计目标 / 待实现**，详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)）。
+> **生产 recurring 数据生命周期（白名单 / 元数据 / canonical 折叠 / 全量重算 / 发布 / 回滚）全部在 Vercel 运行**——
+> 由 §4 的 **Vercel Workflow** 承载（**✅ 已实现并线上验证**，详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)）。
 > 普通 Vercel cron 只跑 JSON 增量刷新；引擎（BigQuery / DuckDB）**不得**塞进单个 Function（受 800s / 4GB / 250MB 限）。
 > 架构见 [ARCHITECTURE.md](./ARCHITECTURE.md)，运维/凭证见 [OPS.md](./OPS.md)。
 
@@ -15,7 +15,7 @@
 | ① 一次性 bootstrap | 本机 / 全 Node | BigQuery（一次）+ DuckDB + GraphQL → JSON | 手动跑一次 | 🗄️ 归档，非生产 |
 | ② 每日 cron | Vercel Function | GraphQL + JSON 活尾（**不碰 DuckDB/Parquet**） | Vercel Cron `0 3 * * *` | ✅ 已实现 |
 | ③ 每周 cron | Vercel Function | GraphQL + JSON 增量覆盖当前周/月/热集 | Vercel Cron `0 4 * * 0` | ✅ 已实现 |
-| ④ 生产重算 | **Vercel Workflow** | 多 step + Blob checkpoint + JSON shard（**无引擎**） | Cron 触发 / 手动 | 🟡 待实现 |
+| ④ 生产重算 | **Vercel Workflow** | 多 step + Blob checkpoint + JSON shard（**无引擎**） | Vercel Cron `0 6 * * 0` / 手动 | ✅ 已实现并线上验证 |
 
 凭证：`GITHUB_TOKEN`（GraphQL/Search）、GCP（**仅 bootstrap** BigQuery）、`BLOB_READ_WRITE_TOKEN`（上传）、`CRON_SECRET`。详见 OPS。
 
@@ -30,7 +30,7 @@
             → 04-rollup(DuckDB) → 05-precompute(DuckDB) → 06-upload(Blob)
 ```
 
-**01 whitelist** — GitHub Search `stars:>=10000`，按 star 区间**自适应分桶**绕过 Search 1000 结果上限（区间 >1000 则二分），输出 `data/whitelist.json`：`{id, node_id, full_name, owner, name, stars}`（≈5,248）。
+**01 whitelist** — GitHub Search `stars:>=10000`，按 star 区间**自适应分桶**绕过 Search 1000 结果上限（区间 >1000 则二分），输出 `data/whitelist.json`：`{id, node_id, full_name, owner, name, stars}`（2026-05 bootstrap 基线 ≈5,248，当前约 5,261，每周变动）。
 
 **02 extract（BigQuery，~$10）** — 先 `--dry_run` 确认扫描量/费用，再跑：
 ```sql
@@ -59,7 +59,7 @@ GROUP BY repo_id, day;
 
 ```
 1. 校验 Authorization: Bearer CRON_SECRET（否则 401）
-2. GraphQL 批量查 5,248 repo current_stars（~53 查询）
+2. GraphQL 批量查约 5,261 repo current_stars（~53 查询）
 3. net 日增 = 今日 current_stars − current_month.json 里昨日值
 4. upsert current_month.json：按 UTC 日写 daily_totals + per_repo + current_stars（append-only，幂等）
 5. 挑 mover 集（deltas 已在手，免费）：今日涨幅前 ~50 ∪（今日 ≥ 其 90d 日均 5× 且当日净增 ≥200）∪ 破里程碑
@@ -90,18 +90,18 @@ GROUP BY repo_id, day;
 
 ---
 
-## 4. Vercel Workflow 生产 pipeline（🟡 待实现 —— 取代本机 DuckDB 全量重算）
+## 4. Vercel Workflow 生产 pipeline（✅ 已实现并线上验证 —— 取代本机 DuckDB 全量重算）
 
-> 完整设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)。这里给与 §1 bootstrap 的**对应关系**：把 §1 那条本机链路逐步搬上 Vercel Workflow，**不依赖本地计算**。
+> 完整设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)。这里给与 §1 bootstrap 的**对应关系**：§1 那条本机链路已逐步搬上 Vercel Workflow，**不依赖本地计算**。
 
-| §1 bootstrap 步骤（本机） | → | §4 Workflow step（Vercel，待实现） |
+| §1 bootstrap 步骤（本机） | → | §4 Workflow step（Vercel，✅ 已实现） |
 |---|---|---|
 | 01-whitelist（Search） | → | step `refresh whitelist`（Search 自适应分桶 + diff） |
 | 03-metadata（GraphQL） | → | step `metadata shards` → `canonical/v2/repos/<bucket>.json` |
 | —（新增） | → | step `rename detection` + `newcomer tracking`（`tracked_since`） |
 | 04-rollup（DuckDB → Parquet + 里程碑） | → | step `canonical shard update`（活尾折叠进月/周 JSON shard；里程碑 bootstrap 算定后冻结） |
-| 05-precompute（DuckDB → 全部 JSON 视图） | → | steps `rank / entity / heatmap recompute`（读 JSON shard、纯 JS 聚合 → staging） |
-| 06-upload（Blob put 节流） | → | steps `validate → publish（切 views/latest 指针）→ revalidate` |
+| 05-precompute（DuckDB → 全部 JSON 视图） | → | steps `rank / entity / heatmap recompute`（读 JSON shard、纯 JS 聚合 → `views/<run_id>/**`）；entity/org step（`recompute-entity.ts`）派生 `search/index.json`，并入 validate 闸门 |
+| 06-upload（Blob put 节流） | → | steps `validate → publish（切 views/latest 指针）→ gc（版本回收）→ revalidate` |
 
 **关键差异**：
 - **无引擎**：Workflow step 读 `canonical/v2/*` JSON shard，用纯 JS 做前缀和 / 分组 / 排序，**不加载 DuckDB / Parquet**（见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5）。
@@ -109,7 +109,7 @@ GROUP BY repo_id, day;
 - **发布 = 切指针**：写 `views/<run_id>/**`（version=run_id）→ validate → 切 `views/latest.json` → revalidate；可秒级回滚（§7）。✅ Phase 4 已线上验证。
 - **不做 16k 全量 build**：发布只 revalidate 核心热集，长尾按需 ISR。
 
-> Workflow 落地前，③ 每周 live cron 是唯一的周级刷新，保证不断档；落地后两者前缀隔离、各司其职（live 覆盖层 vs base 发布层）。
+> Workflow 已落地：③ 每周 live cron 与 ④ Workflow 前缀隔离、各司其职（live 覆盖层 vs base 发布层），周级刷新不断档。
 
 ---
 
@@ -118,7 +118,7 @@ GROUP BY repo_id, day;
 - **里程碑**：`repo cumsum(delta)` 跨阈值首日（回填时一次算定，冻结）。
 - **stock 历史锚定**：gross 累加 × 折扣对齐 `current_stars` —— 公式与精度边界见 [RANKING.md](./RANKING.md)。
 - **周期边界**：周 = ISO 周（UTC）；月/年 = UTC 日历边界。周不整除月，故 canonical 必须是**日**粒度（见 ARCHITECTURE 决策）。
-- **折叠老化**：当月收口 → 日聚合成月度（entity `curve.monthly`）；近 ~90 天保留日点（`recent_daily`），更老只留月度。
+- **折叠老化**：当月收口 → 日聚合成月度（entity `curve.monthly`）；近 ~90 天保留日点（`recent_daily`），更老只留月度。**ISO 周**在所有归属日落入已冻结月后折进 `repo-weekly`（与月折叠同期、同一 `fold` step，水位 `folded_through.week`；跨月周从两个月 pending 取日聚合）。
 
 ## 6. 幂等 / 错误 / 重跑
 
