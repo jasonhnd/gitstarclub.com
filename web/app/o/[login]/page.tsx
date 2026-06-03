@@ -9,13 +9,21 @@ import { getOrgEntity, getReposLookup } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { orgLd } from "@/lib/jsonld";
-import { getPreferredDictionary } from "@/lib/i18n/server";
+import { T } from "@/lib/i18n/client";
+import { DEFAULT_LOCALE } from "@/lib/i18n";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
+const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;
-export const dynamic = "force-dynamic";
 export const revalidate = false;
+
+// No paths are prebuilt at deploy time (the org set is large and versioned). Returning an
+// empty list makes this a statically-optimized route: an uncached path is rendered on first
+// request and then cached (ISR/on-demand SSG) rather than re-rendered on every request.
+export function generateStaticParams() {
+  return [];
+}
 
 export async function generateMetadata({ params }: { params: Promise<{ login: string }> }): Promise<Metadata> {
   const { login: raw } = await params;
@@ -33,7 +41,7 @@ export async function generateMetadata({ params }: { params: Promise<{ login: st
 
 export default async function OrgPage({ params }: { params: Promise<{ login: string }> }) {
   const { login: raw } = await params;
-  const { locale: loc, t } = await getPreferredDictionary();
+  const loc = LOC;
   const login = decodeURIComponent(raw);
   const [org, lookup] = await Promise.all([getOrgEntity(login), getReposLookup()]);
   if (!org) notFound();
@@ -49,31 +57,35 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
 
   return (
     <>
-      <Chrome locale={loc} t={t} />
+      <Chrome />
       <JsonLd data={orgLd(org, `/o/${org.login}`, loc)} />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Breadcrumbs items={[{ label: t.nav.home, href: "/" }, { label: org.login }]} />
+        <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { label: org.login }]} />
         <header className="mt-4 animate-rise">
           <div className="font-mono text-[clamp(1.6rem,5vw,2.6rem)] font-semibold text-on-surface">{org.login}</div>
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">
             <span className="text-[1.6rem] font-extrabold tabular-nums text-primary-fixed-dim">
               {fmtStars(org.current_stars_sum)}
-              <span className="text-[0.9rem] text-on-surface-variant"> ★ {t.org.total}</span>
+              <span className="text-[0.9rem] text-on-surface-variant"> ★ <T path="org.total" /></span>
             </span>
-            <span>{org.repo_count} {t.org.trackedRepos}</span>
-            <span>{org.owner_type === "Organization" ? t.org.organization : t.org.developer}</span>
+            <span>{org.repo_count} <T path="org.trackedRepos" /></span>
+            <span>{org.owner_type === "Organization" ? <T path="org.organization" /> : <T path="org.developer" />}</span>
           </div>
         </header>
 
         {series.length > 1 && (
           <section className="mt-[clamp(2rem,4vw,3rem)]">
-            <h2 className="mb-3 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">{t.org.history}</h2>
+            <h2 className="mb-3 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
+              <T path="org.history" />
+            </h2>
             <StarCurve series={series} milestones={[]} />
           </section>
         )}
 
         <section className="mt-[clamp(2rem,4vw,3rem)]">
-          <h2 className="mb-3 text-[1.2rem] font-extrabold tracking-tight text-on-surface">{t.org.repos}</h2>
+          <h2 className="mb-3 text-[1.2rem] font-extrabold tracking-tight text-on-surface">
+            <T path="org.repos" />
+          </h2>
           <RankingList rows={members} variant="total" locale={loc} />
         </section>
       </main>

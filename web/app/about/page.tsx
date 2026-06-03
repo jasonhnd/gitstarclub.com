@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
+import { T } from "@/lib/i18n/client";
 import { pageMeta } from "@/lib/seo";
-import { getPreferredDictionary } from "@/lib/i18n/server";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
@@ -16,7 +16,7 @@ export async function generateMetadata(): Promise<Metadata> {
   });
 }
 
-function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
+function Section({ heading, children }: { heading: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="mt-10 max-w-[58ch]">
       <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">{heading}</h2>
@@ -25,53 +25,63 @@ function Section({ heading, children }: { heading: string; children: React.React
   );
 }
 
-export default async function AboutPage() {
-  const { locale, t } = await getPreferredDictionary();
-
+export default function AboutPage() {
   return (
     <>
-      <Chrome locale={locale} t={t} />
+      <Chrome />
       <main className={`mx-auto w-full max-w-[60rem] py-[clamp(2rem,5vw,4rem)] ${PAD_X}`}>
-        <p className="animate-rise font-mono text-[0.8rem] uppercase tracking-wider text-on-surface-variant">{t.nav.about}</p>
+        <p className="animate-rise font-mono text-[0.8rem] uppercase tracking-wider text-on-surface-variant">
+          <T path="nav.about" />
+        </p>
         <h1 className="mt-3 max-w-[16ch] animate-rise text-[clamp(2.2rem,6vw,4rem)] font-extrabold leading-[1.04] tracking-[-0.035em]">
-          {t.about.heroPre}
-          <span className="hl">{t.about.heroAccent}</span>
-          {t.about.heroPost}
+          <T path="about.heroPre" />
+          <span className="hl">
+            <T path="about.heroAccent" />
+          </span>
+          <T path="about.heroPost" />
         </h1>
         <p
           className="mt-5 max-w-[52ch] animate-rise text-[clamp(1.05rem,1.8vw,1.3rem)] text-on-surface-variant"
           style={{ animationDelay: "0.08s" }}
         >
-          {t.about.lead}
+          <T path="about.lead" />
         </p>
 
-        <Section heading={t.about.s1h}>
+        <Section heading={<T path="about.s1h" />}>
           <p>
-            {t.about.s1pPre}
+            <T path="about.s1pPre" />
             <a className="font-semibold text-tertiary hover:text-primary" href="https://www.gharchive.org/">
               GH Archive
             </a>
-            {t.about.s1pPost}
+            <T path="about.s1pPost" />
           </p>
         </Section>
 
-        <Section heading={t.about.s2h}>
+        <Section heading={<T path="about.s2h" />}>
           <p>
-            <strong className="text-on-surface">{t.about.s2aStrong}</strong>
-            {t.about.s2aBody}
+            <strong className="text-on-surface">
+              <T path="about.s2aStrong" />
+            </strong>
+            <T path="about.s2aBody" />
           </p>
           <p>
-            <strong className="text-on-surface">{t.about.s2bStrong}</strong>
-            {t.about.s2bBody}
+            <strong className="text-on-surface">
+              <T path="about.s2bStrong" />
+            </strong>
+            <T path="about.s2bBody" />
           </p>
           <p>
-            <strong className="text-on-surface">{t.about.s2cStrong}</strong>
-            {t.about.s2cBody}
+            <strong className="text-on-surface">
+              <T path="about.s2cStrong" />
+            </strong>
+            <T path="about.s2cBody" />
           </p>
         </Section>
 
-        <Section heading={t.about.s3h}>
-          <p>{t.about.s3p}</p>
+        <Section heading={<T path="about.s3h" />}>
+          <p>
+            <T path="about.s3p" />
+          </p>
         </Section>
 
         <div className="mt-12">
@@ -79,7 +89,7 @@ export default async function AboutPage() {
             href="/"
             className="inline-flex items-center gap-1 font-semibold text-tertiary transition-colors hover:text-primary hover:underline hover:underline-offset-[3px]"
           >
-            ← {t.about.back}
+            ← <T path="about.back" />
           </Link>
         </div>
       </main>

@@ -1,12 +1,16 @@
+"use client";
+
 import Link from "next/link";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
-import { type Locale } from "@/lib/i18n";
-import en, { type Dict } from "@/lib/i18n/dictionaries/en";
+import { useDict } from "@/lib/i18n/client";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
-export function Chrome({ tag, locale = "en", t = en }: { tag?: string; locale?: Locale; t?: Dict }) {
+// Top chrome. Translated client-side: renders English in the static HTML, swaps to the
+// cookie locale after hydration. `tag` is an optional locale-independent badge.
+export function Chrome({ tag }: { tag?: string }) {
+  const { locale, t } = useDict();
   return (
     <header
       className={`app-bar sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-outline-variant bg-surface/70 pb-[0.85rem] backdrop-blur-lg backdrop-saturate-150 ${PAD_X}`}

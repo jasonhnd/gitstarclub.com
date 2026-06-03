@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { pageMeta } from "@/lib/seo";
-import { getPreferredDictionary } from "@/lib/i18n/server";
 import { PulseView } from "./PulseView";
 
 export const revalidate = false;
@@ -14,7 +13,6 @@ export async function generateMetadata(): Promise<Metadata> {
   });
 }
 
-export default async function PulsePage() {
-  const { locale, t } = await getPreferredDictionary();
-  return <PulseView locale={locale} t={t} />;
+export default function PulsePage() {
+  return <PulseView />;
 }

@@ -48,23 +48,25 @@
 
 ```
 app/
-  layout.tsx                 # 读取 gsc_lang cookie，设置 <html lang>，渲染 Footer
+  layout.tsx                 # 渲染默认英文（<html lang="en"> 静态），用 <I18nProvider> 包裹子树 + 渲染 Footer
   page.tsx  pulse/page.tsx
   [owner]/[name]/page.tsx    # GitHub 风格 repo URL
   o/[login]/page.tsx
   rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
   about/page.tsx
-  api/lang/route.ts          # 直接访问时的语言 cookie 后备入口
+  api/lang/route.ts          # 直接访问时的语言 cookie 后备入口（写 cookie）
   robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
 ```
 
-要点（实测后修正）：
+要点（option C 落地后修正）：
 
 - **URL canonical 单一化**：`/facebook/react` 是唯一 repo URL；不再有 `/en/r/facebook/react` / `/zh/r/facebook/react`。
-- **语言偏好**：默认英文；`LanguageSwitcher` 显示当前语言，其它语言在下拉菜单中。客户端直接写入 `gsc_lang` cookie 并 `router.refresh()` 当前 RSC 视图，URL 不变；`/api/lang` 保留为直接访问时的安全后备入口。
-- **缓存取舍**：读取 cookie 会让页面按请求渲染，但 JSON 数据仍走 `fetch`/`cache()`；换来 URL 与 GitHub 一致、无多语言重复 URL。
-- **SEO 取舍**：canonical 不带语言，也不再发 `hreflang` 矩阵；默认 SEO 文案以英文为主，语言切换是用户体验功能。
-- **手写字典**：`web/lib/i18n/`（en/ja/zh/zh-TW/ko/es/fr + `getDictionary`），不引第三方 i18n 库；数据字段不翻译。
+- **✅ chrome 改客户端 i18n（option C 已实现）**：页面 BODY 一律静态/ISR、按**默认英文**预渲染（HTML 合法且可索引）；只有 **chrome**（导航 / 页脚 / section / UI 标签）走客户端 i18n —— `web/lib/i18n/client.tsx` 的 `I18nProvider` 在浏览器读 `gsc_lang` cookie，水合后把 chrome 字串换成用户语言。**数据**（排名、曲线、数字、repo 名、日期）语言无关，不翻译。
+- **避免水合不匹配**：服务端 + 客户端首帧都渲染默认英文（与静态 HTML 一致），locale 切换只在 `useEffect`（水合后）发生。chrome 文本节点用 `<T path="...">` 客户端组件渲染。
+- **语言偏好**：默认英文；`LanguageSwitcher` 显示当前语言，其它语言在下拉菜单中。客户端写入 `gsc_lang` cookie 并 `router.refresh()`；URL 不变；`/api/lang` 保留为直接访问时的安全后备入口。
+- **缓存取舍（已消除 force-dynamic）**：chrome 翻译移出服务端 render → 页面回到 static（`○`）/ISR（`●`），不再按请求渲染；JSON 数据仍走 `fetch`/`cache()`。换来 URL 与 GitHub 一致、无多语言重复 URL，且重新获得 CDN 静态扛量。
+- **SEO 取舍**：canonical 不带语言，也不再发 `hreflang` 矩阵；默认 SEO 文案 + 静态 HTML chrome 以英文为主，语言切换是水合后的用户体验功能。
+- **手写字典**：`web/lib/i18n/`（en/ja/zh/zh-TW/ko/es/fr + `getDictionary`）；服务端 `getPreferredDictionary`（`i18n/server.ts`）已弃用（读 cookie = Dynamic API，会打破静态）；客户端经 `i18n/client.tsx` 消费。不引第三方 i18n 库；数据字段不翻译。
 
 ---
 
@@ -76,7 +78,7 @@ app/
 
 | 层 | 页面 | 新鲜度（REQUIREMENTS §6） | Next 机制 |
 |---|---|---|---|
-| **核心** | `/` · `/pulse` · `/rankings` · 当年/当月的 `/rankings/...` | 头版：每日换 | 每日 cron `revalidatePath`；页面按语言 cookie 请求渲染 |
+| **核心** | `/` · `/pulse` · `/rankings` · 当年/当月的 `/rankings/...` | 头版：每日换 | 每日 cron `revalidatePath`；页面静态预渲染（默认英文），chrome 走客户端 i18n（option C） |
 | **长尾** | 历史年/月 · **周** · repo · org（~16k+） | 编年史：冻结 / 标 as-of | **按需 ISR**：`dynamicParams=true` + 空 `generateStaticParams` + `revalidate=false`，首访生成、持久缓存 |
 | **mover** | 在 mover 集里的 repo/org + `/pulse` | 脉搏：事件驱动，只刷"在动的那一小撮" | 每周/每日 cron 对其 `revalidatePath` 定点失效 → 下次访问再生 |
 | **历史** | 已折叠入 Parquet 的过去周期 | 旧报纸：永不重印 | 纯静态命中 CDN；数据不变 = 不 revalidate |
@@ -104,7 +106,7 @@ export const revalidate = false              // 不轮询；每日 cron 用 reva
 // 例：app/[owner]/[name]/page.tsx
 export const dynamicParams = true            // 默认值；空列表 + 此项 = 全部按需生成
 export async function generateStaticParams() {
-  return []                                  // ⚠️ 现有 repo 页返回全部 repo（见 §9-A），应改成 []
+  return []                                  // ✅ repo/org 页返回 [] → 全部按需 ISR（option C 已落地）
 }
 export const revalidate = false              // 仅靠 cron 定点失效（每周重算 / mover 当日刷新）
 ```
@@ -156,20 +158,28 @@ export default nextConfig;
 
 > ✅ `app/api/cron/daily` 与 `app/api/cron/weekly` 已落地（`revalidatePath` + `CRON_SECRET` 鉴权）。
 
-### 2.5 ⚠️ 当前渲染现实：`force-dynamic`（与 SSG/ISR 模型的分歧，§9-J）
+### 2.5 ✅ 渲染现实：option C 已实现（静态基底 + 客户端译 chrome）
 
-> **现状与上面 §2.1–2.4 的 SSG/ISR 蓝图不一致,如实记录(证据可核查)**:
-> - `web/app/layout.tsx:19` → `export const dynamic = "force-dynamic";`（根 layout 显式强制动态）
-> - `web/app/layout.tsx:61` → 根 layout 体内 `await getPreferredDictionary()` → `web/lib/i18n/server.ts:5` 调 `(await cookies()).get(LANG_COOKIE)`——**读 cookie 是 Dynamic API,本身就把整棵路由树打成按请求渲染**
-> - `web/app/[owner]/[name]/page.tsx:17`、`web/app/o/[login]/page.tsx:17` → 也各自 `force-dynamic`
->
-> **后果**:每个请求跑一次 Server Function(SSR),不命中 CDN 静态文件,与 [ARCHITECTURE](./ARCHITECTURE.md)「永不触达 Function / 热路径 0 Function / 完全 SSG」直接冲突。
+> **早前的 `force-dynamic` 分歧已消除**。曾经的现状（根 `layout.tsx` `force-dynamic` + `getPreferredDictionary()` 读 cookie + repo/org 两页各自 `force-dynamic`）把整棵路由树打成按请求渲染（SSR、不命中 CDN），与 [ARCHITECTURE](./ARCHITECTURE.md)「热路径 0 Function / 完全 SSG / 按需 ISR」冲突。**现已按 option C 重写。**
 
-- **仍成立**:内容页"零客户端 JS"、SSR 输出**完整可索引 HTML**(SEO §3a 不受影响)——force-dynamic 改的是"在哪渲染",不是"客户端有没有 JS"。
-- **不符**:"build 预生成静态 / 命中边缘缓存 / 热路径零 Function / 完全 SSG / 按需 ISR 持久缓存"。成本上 10M/天 ≈ 千万次 Function/天,与纯静态命中 CDN 的扛量模型完全不同。
-- **✅ 已决——目标 = C「静态基底 + 客户端译 chrome」**(取代早前三选项的"未决"):服务端只用**默认英文**静态渲染(render 路径**不读 cookie**);导航/标签/面包屑/About 这层薄 chrome 在**客户端**按 `localStorage`/cookie 切换。理由:每页 ~95% 是语言中立数据,只有几十个 chrome 字符串要翻;C 同时保住 **静态 CDN 扛量 + GitHub 风格 URL + 页内切语言**,且吻合已定的 SEO 口径(语言中立 canonical、英文默认、不发 hreflang,见 [SEO](./SEO.md) i18n 注)。
-  - 否决 A(接受动态→放弃扛量)、B(i18n 回 URL 段→推翻 GitHub 风格 URL §9-E)。
-- **时序**:当前 noindex 预览期(`layout.tsx:17` `SITE_INDEXABLE` 未开),放量问题未发生 ⇒ **不必今天重写**;**上线/放量前实现 C**:把 `getPreferredDictionary()` 移出服务端 render → 去掉 layout 与那两页的 `force-dynamic` → 客户端水合 chrome → 在 Vercel 核对页面回到 static/ISR(构建输出 static vs ƒ、响应头命中 CDN)。属代码活,待"继续做代码"再开。
+**已落地的改法**：
+
+- `web/app/layout.tsx`：删除 `export const dynamic = "force-dynamic"`；不再 `await getPreferredDictionary()`；`<html lang="en">` 静态；`{children}` 包进 `<I18nProvider>`（`web/lib/i18n/client.tsx`）。
+- `web/lib/i18n/client.tsx`（新增，`"use client"`）：`I18nProvider` 首帧返回默认英文（与 SSR HTML 一致），`useEffect` 里读 `gsc_lang` cookie → 懒加载字典 → 换 chrome；`useDict()` / `<T path="...">` 给 chrome 组件用。
+- `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` 改为 client，经 `useDict()` 取语言（chrome 字串在水合后切换）。
+- 各页（`page.tsx` / `pulse` / `rankings*` / `about` / repo / org）：移除 cookie 读取，BODY 用默认英文静态渲染，chrome 文本换成 `<T>`；repo/org 加 `generateStaticParams() => []` 转按需 ISR。
+- `web/lib/i18n/server.ts`：标注**弃用**（读 cookie 会破坏静态；保留仅供非页面服务端上下文，勿在 page/layout 调用）。
+
+**构建证据**（`cd web && bun run build` 路由表，`ƒ`→`○`/`●`）：
+
+| 路由 | 之前 | 之后 |
+|---|---|---|
+| `/` · `/pulse` · `/rankings` · `/about` | `ƒ` 动态 | `○` 静态 |
+| `/rankings/[year]` · `/rankings/[year]/[period]` | `ƒ` 动态 | `●` SSG（当年/当月预渲染 + 其余按需） |
+| `/[owner]/[name]` · `/o/[login]` | `ƒ` 动态 | `●` SSG（`[]` + `dynamicParams` → 全部按需 ISR） |
+
+- **仍成立**：SSR/静态输出**完整可索引 HTML**（英文 chrome 直接进静态 HTML，SEO §3a 不受影响），数据语言中立。
+- **取舍依据**：每页 ~95% 是语言中立数据，仅几十个 chrome 字符串要翻 → C 同时保住 **静态 CDN 扛量 + GitHub 风格 URL + 页内切语言**，吻合已定 SEO 口径（语言中立 canonical、英文默认、不发 hreflang，见 [SEO](./SEO.md) i18n 注）。否决了 A（接受动态→放弃扛量）、B（i18n 回 URL 段→推翻 GitHub 风格 URL §9-E）。
 
 ---
 
@@ -364,13 +374,15 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 > 这条直接决定字典只覆盖"界面词"，不碰任何来自 JSON 视图的数据字段。
 
-### 7.2 字典（手写、RSC 读取）
+### 7.2 字典（手写；服务端默认英文 + 客户端按 cookie 切换）
 
 ```
 web/lib/i18n/
   dictionaries/
     en.ts   ja.ts   zh.ts   zh-tw.ts   ko.ts   es.ts   fr.ts
-  index.ts                       # getDictionary(locale) — 服务端读取，无客户端 JS
+  index.ts                       # getDictionary(locale) — 懒加载字典
+  client.tsx                     # "use client" I18nProvider / useDict / <T>（chrome 客户端切换，option C）
+  server.ts                      # ⚠️ 弃用：getPreferredDictionary 读 cookie 会破坏静态；勿在 page/layout 调用
 ```
 
 ```ts
@@ -380,9 +392,10 @@ export type Locale = keyof typeof dicts;
 export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 ```
 
-- 根 `layout.tsx` 读取 `gsc_lang` cookie → `getDictionary(locale)` → Footer / 页面子树使用同一语言。
-- `LanguageSwitcher` 默认英文，使用下拉菜单切换其它语言；客户端写 `gsc_lang` cookie 后刷新当前 RSC 视图，不会改变 canonical URL。`/api/lang` 仍保留为直接访问后备。
-- 现有少量 SEO title/description 仍以英文为主，这是单一 canonical URL 的刻意取舍。
+- 根 `layout.tsx` 静态渲染 `<html lang="en">`，用 `<I18nProvider>` 包裹子树（不读 cookie）。Provider 首帧返回默认英文（与静态 HTML 一致），`useEffect` 里读 `gsc_lang` cookie → `getDictionary(locale)` → 换 chrome（避免水合不匹配）。
+- chrome 文本节点用 `<T path="...">`（客户端组件）；`Chrome`/`Footer`/`Breadcrumbs` 经 `useDict()` 取语言。**数据**（数字/日期/repo 名）语言无关，按默认英文服务端渲染进静态 HTML。
+- `LanguageSwitcher` 默认英文，下拉切其它语言；客户端写 `gsc_lang` cookie 后 `router.refresh()`，不改 canonical URL。`/api/lang` 仍保留为直接访问后备。
+- 现有少量 SEO title/description + 静态 HTML chrome 仍以英文为主，这是单一 canonical URL 的刻意取舍。
 
 ### 7.3 canonical（Metadata API）
 
@@ -403,13 +416,13 @@ return {
 
 > 把上面落到"动现有哪些文件"。**本文是 spec，不写应用代码**；以下是接入顺序建议。
 
-> 多数项已落地;下表保留为"接点 + 现状"。剩余开口集中在 §9-J(渲染模式)与 §6.3 ⏳ 组件。
+> 多数项已落地;下表保留为"接点 + 现状"。§9-J(渲染模式)已按 option C 收口;剩余开口集中在 §6.3 ⏳ 组件。
 
 1. ✅ **数据层**：`web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch Blob + parse + `cache()`）已是页面读 JSON 视图的唯一入口。
-2. ✅/◐ **段配置**：`rankings/[year]`/`[period]` 预渲染当前年/月 + `dynamicParams`;未知 param `notFound()` 已落地（§9-B）。⚠️ 但 repo/org/layout 用 `force-dynamic`,实际非 ISR（§9-J）。
+2. ✅ **段配置**：`rankings/[year]`/`[period]` 预渲染当前年/月 + `dynamicParams`;repo/org `generateStaticParams() => []` 转按需 ISR;未知 param `notFound()` 已落地（§9-B）。option C 后全部回到 static/ISR（§9-J）。
 3. ✅ **`next.config.ts`**：无语言前缀跳转、无旧路径兼容重定向。
 4. ✅ **页面**：`pulse`/`rankings`/`rankings/[year]`/`[period]`/`[owner]/[name]`/`o/[login]` 已落地。
-5. ✅ **i18n**：`gsc_lang` cookie + 页内切换，URL 无语言段（§7）——但这是 §9-J `force-dynamic` 的根因。
+5. ✅ **i18n（option C）**：chrome 走客户端 `I18nProvider`/`<T>`（`i18n/client.tsx`），BODY 静态默认英文;`gsc_lang` cookie 水合后切 chrome，URL 无语言段（§7）。已消除 §9-J `force-dynamic`。
 6. ✅ **SEO 配套**：`app/sitemap.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD 已建。
 7. ✅ **cron route**：`app/api/cron/{daily,weekly}`（`revalidatePath` + `CRON_SECRET`）。
 8. ◐ **共享组件**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` ✅ 已抽;`PrevNext`/`EntityCard`/`YearSpine` ⏳ 仍内联（§6.3）。
@@ -418,11 +431,11 @@ return {
 
 ## 9. 与文档/需求的冲突与待决项（⚠️ 汇总）
 
-> 现有 `web/app` **已接真实数据层**(占位移除)。早期"原型→生产"的多数差异已收敛;但 **i18n 改为 cookie 偏好后,根 `layout.tsx` 变成 `force-dynamic`**,引出一个与 SSG/ISR 模型的**当前实质分歧(见 J)**。逐条状态如下。
+> 现有 `web/app` **已接真实数据层**(占位移除)。早期"原型→生产"的多数差异已收敛;**i18n 的 `force-dynamic` 分歧已按 option C 实现解决(见 J)**。逐条状态如下。
 
 | # | 冲突/缺口 | 现状 | 文档要求 | 处置 |
 |---|---|---|---|---|
-| **A** | **长尾页预渲染范围** | `rankings/[year]`/`[period]` 用 `generateStaticParams` 预渲染当前年/月 + `dynamicParams`;repo/org 无 `generateStaticParams` | 长尾按需生成;仅当年/当月留核心（[ARCHITECTURE](./ARCHITECTURE.md) 分层、[SEO](./SEO.md) §3） | ◐ 参数侧已收敛;但渲染缓存被 J(`force-dynamic`)覆盖,**实际非 ISR 持久缓存** |
+| **A** | **长尾页预渲染范围** | `rankings/[year]`/`[period]` 用 `generateStaticParams` 预渲染当前年/月 + `dynamicParams`;repo/org `generateStaticParams() => []` | 长尾按需生成;仅当年/当月留核心（[ARCHITECTURE](./ARCHITECTURE.md) 分层、[SEO](./SEO.md) §3） | ✅ **已收敛**：option C 移除 `force-dynamic` 后,构建路由表 repo/org/历史年月均为 `●` SSG/按需 ISR 持久缓存 |
 | **B** | **未知 param 软兜底而非 404** | — | 未知 repo/org → `notFound()`（404），禁软 200（[SEO](./SEO.md) §3.2） | ✅ **已收敛**：`[owner]/[name]` 先查 id 不到即 `notFound()`,再查 entity 为空再 `notFound()` |
 | **C** | **第三处客户端 JS（PWA）** | `RegisterSW.tsx`（`"use client"`）+ `manifest.ts` | DESIGN-SYSTEM 原仅列两处例外 | ✅ **已决：保留 PWA**（DESIGN-SYSTEM 例外③） |
 | **D** | **StarCurve 假设单调累计** | 真实 `curve.recent_daily` net 可负、尾部可能回落 | y 轴/area 须容忍非单调（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5） | ⏳ **待验证**：真实数据已流入,需确认曲线尾部回落时渲染正确 |
@@ -431,9 +444,9 @@ return {
 | **G** | **sitemap/robots/cron/og 路由** | `app/` 已有 `sitemap.ts`/`robots.ts`/`api/cron/{daily,weekly}`/OG | SEO/OPS 要求齐备 | ✅ 已落地 |
 | **H** | **repo 页 "synced" 时间写死** | — | as-of 应来自数据 | ✅ **已收敛**：现 repo 页不再硬编码 synced 时间 |
 | **I** | **`_explore/` 命名** | 组件在 `app/_explore/`（private folder） | — | 沿用现状（合理） |
-| **J** | **渲染模式 = `force-dynamic`,非 SSG/ISR** ⚠️ | `layout.tsx:19` `dynamic="force-dynamic"` + `layout.tsx:61` 读 `getPreferredDictionary()`→`i18n/server.ts:5` `cookies()`;`[owner]/[name]:17`、`o/[login]:17` 同样 force-dynamic ⇒ 每请求一次 Function SSR | ARCHITECTURE/SEO 假设 **SSG-first + 按需 ISR + 边缘 CDN 纯静态扛 10M/天、热路径零 Function** | ✅ **已决：目标 = C「静态基底 + 客户端译 chrome」**——服务端只出默认英文静态页(不读 cookie)、客户端水合 chrome。保住 静态扛量 + GitHub URL + 页内切语言,吻合已定 SEO 口径。否决 A(接受动态)/B(i18n 回 URL 段)。当前 force-dynamic 是**预览期临时**,**上线前实现 C**(代码活)。详见 §2.5 |
+| **J** | ~~**渲染模式 = `force-dynamic`,非 SSG/ISR**~~ ✅ 已解决 | **option C 已实现**：`layout.tsx` 去掉 `force-dynamic` 且不再读 cookie;chrome 移到 `i18n/client.tsx` 的 `I18nProvider`/`<T>`(客户端水合切换);repo/org 去掉 `force-dynamic` + 加 `generateStaticParams() => []`。构建路由表全部 `ƒ`→`○`/`●` | ARCHITECTURE/SEO 假设 **SSG-first + 按需 ISR + 边缘 CDN 纯静态扛 10M/天、热路径零 Function** | ✅ **已实现 C「静态基底 + 客户端译 chrome」**：服务端只出默认英文静态页(不读 cookie)、客户端水合 chrome。保住 静态扛量 + GitHub URL + 页内切语言,吻合已定 SEO 口径。详见 §2.5（含构建路由表证据） |
 
-> 处置原则：早期占位差异(B/E/F/G/H)**已收敛**;A/D 收尾验证;**J 已定目标=C**(§2.5),实现待"继续做代码"。
+> 处置原则：早期占位差异(B/E/F/G/H)**已收敛**;A/J **已解决**(option C,§2.5);D 收尾验证。
 
 ---
 
@@ -441,14 +454,14 @@ return {
 
 **路由**
 - [x] 周榜 `/rankings/[year]/W[week]` 独立、与月榜共用 `[period]` 并按 `W` 前缀消歧
-- [x] org `/o/[login]`、repo `/[owner]/[name]`、总榜 `/rankings`、脉搏 `/pulse` 已加（全 RSC）
-- [x] i18n 页内切换：`gsc_lang` cookie；URL 不带语言前缀；支持 en/ja/zh/zh-TW/ko/es/fr
+- [x] org `/o/[login]`、repo `/[owner]/[name]`、总榜 `/rankings`、脉搏 `/pulse` 已加
+- [x] i18n 页内切换：`gsc_lang` cookie；URL 不带语言前缀；支持 en/ja/zh/zh-TW/ko/es/fr（chrome 客户端切换，option C）
 
 **分层 ↔ 配置**
 - [ ] `cacheComponents` 保持关闭（`next.config.ts` 注释说明）
 - [x] `rankings/[year]`/`[period]` 用 `generateStaticParams` 预渲染当年/当月 + `dynamicParams`
 - [x] 数据变更靠 cron `revalidatePath`；`app/api/cron/{daily,weekly}` 带 `CRON_SECRET` 鉴权
-- [ ] ⚠️ **渲染模式待决（§9-J）**：当前根 layout `force-dynamic`(cookie i18n),实际非 ISR 持久缓存——与 SSG 扛量模型冲突,需架构决策
+- [x] ✅ **渲染模式已解决（§9-J / §2.5）**：option C 移除 layout 与 repo/org 的 `force-dynamic`、chrome 移客户端 → 构建路由表全部回到 `○` 静态 / `●` SSG 按需 ISR（不再按请求 SSR）
 
 **数据消费**
 - [x] `web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch+parse+`cache()`）已替换占位 `_explore/data.ts`（已删除）
@@ -456,15 +469,16 @@ return {
 - [ ] 每日视图读取带 `?v=<date>` cache-bust；`meta.schema_ver` 启动校验（核对落地）
 
 **零客户端 JS**
-- [ ] 内容页正文 0 client JS；图表服务端 SVG/DOM；仅主题切换 + 语言切换 + PWA SW 带 `"use client"`
+- [x] 内容页**数据**正文 0 client JS（图表服务端 SVG/DOM）；chrome（导航/页脚/section/面包屑标签）随 option C 改为 `"use client"`（`<T>`/`useDict`）水合切换 + 主题切换 + 语言切换 + PWA SW
 - [ ] 新增入场动画在 `prefers-reduced-motion` 块补终态钉死
 
 **i18n**
 - [x] 手写字典 `web/lib/i18n/`（en/ja/zh/zh-TW/ko/es/fr）；数据字段不翻译
+- [x] chrome 客户端 i18n：`i18n/client.tsx`（`I18nProvider`/`useDict`/`<T>`）水合后读 `gsc_lang` cookie 切换；服务端默认英文静态（`i18n/server.ts` 弃用）
 - [x] 各页 `alternates.canonical` 指无语言前缀 canonical；不发 `alternates.languages`
 - [x] `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`
 
 **冲突收敛（§9）**
-- [x] B/E/F/G/H 已收敛；C 已决（PWA 例外③）
-- [ ] A/D 收尾验证（A 受 J 影响、D 非单调曲线渲染）
+- [x] B/E/F/G/H 已收敛；C 已决（PWA 例外③）；A/J 已解决（option C，§2.5）
+- [ ] D 收尾验证（非单调曲线渲染）
 - [ ] **J（force-dynamic vs SSG）架构级决策** ⬅ 当前最大开口

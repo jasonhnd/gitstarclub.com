@@ -17,8 +17,8 @@
 
 ## 设计原则
 
-- **SSG-first**：所有内容页 build 时预生成静态 HTML，用户请求永不触达 Function/数据库。
-  > ⚠️ **当前实况(预览期)与此不符**：cookie 版 i18n 让根 `layout.tsx` 变成 `force-dynamic`,内容页现按请求 SSR、不是纯静态。这是临时态;**目标 = 恢复静态(方案 C「静态基底 + 客户端译 chrome」)**,上线前实现。证据与决策见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5。本节描述的是**目标态**。
+- **SSG-first**：所有内容页 build 时预生成静态 HTML（或按需 ISR 首访生成后持久缓存），用户请求永不触达 Function/数据库。
+  > ✅ **已达成（option C 落地）**：早前 cookie 版 i18n 让根 `layout.tsx` 变成 `force-dynamic`、内容页按请求 SSR 的临时态**已解决**——chrome 翻译移到客户端（`i18n/client.tsx` 的 `I18nProvider`/`<T>`），服务端只出默认英文静态页。构建路由表全部 `ƒ`→`○` 静态 / `●` SSG 按需 ISR。证据与决策见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5。
 - **零客户端 JS**（内容页）：图表服务端渲染 SVG。
 - **Vercel-first**：部署、Cron、Blob、Analytics 全在 Vercel，统一计费。仅一次性 bootstrap 用 BigQuery 扫 GH Archive（~$10，非 recurring），之后运营 100% Vercel + GitHub API。**生产 recurring 重算（历史 / 元数据 / 全量）目标走 Vercel Workflow**，不依赖本地（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)，待实现）。
 - **不可变历史 + 小活尾**：生产 canonical 目标 = **JSON shard**（per-repo 月/周 rollup + 站点日总量 + repo 维度，Vercel 可重算）；活尾（当月）= KB 级 JSON，每日 cron 只读写它。**build 只读 JSON，不带任何引擎**。bootstrap 阶段的 `star_daily.parquet` 仅作历史归档，不在生产读 / 重算路径。
@@ -95,7 +95,7 @@
 └─────────────────────────────────────────────────────┘
 
 运行时：100% 静态 HTML 走 CDN，无数据库、无引擎、无 Function 在热路径。
-（⚠️ 目标态;当前预览期因 cookie i18n 为 force-dynamic、按请求 SSR——见 [FRONTEND.md](./FRONTEND.md) §9-J,上线前恢复静态）
+（✅ option C 已落地：chrome 客户端 i18n、移除 `force-dynamic`,内容页回到 `○` 静态 / `●` 按需 ISR——见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5）
 ```
 
 ## 关键决策
@@ -281,7 +281,7 @@ GitHub GraphQL 按 point 计费，**5,000 points/小时**。查 `stargazerCount`
 
 ### 性能策略（为 10M/天）
 
-> ⚠️ 下表「完全 SSG / Function 归零」是**目标态**。当前预览期因 cookie i18n 为 `force-dynamic`(按请求 SSR),此条暂不成立——上线前按 [FRONTEND.md](./FRONTEND.md) §9-J 方案 C 恢复静态后再达成。
+> ✅ 下表「完全 SSG / Function 归零」**已达成**：option C 落地后 chrome 走客户端 i18n、移除 `force-dynamic`,内容页回到 `○` 静态 / `●` 按需 ISR（构建路由表证据见 [FRONTEND.md](./FRONTEND.md) §2.5 / §9-J）。
 
 | 策略 | 目的 |
 |---|---|
