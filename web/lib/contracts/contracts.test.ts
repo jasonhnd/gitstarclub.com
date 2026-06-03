@@ -42,8 +42,6 @@ import {
   // search
   SearchDoc,
   SearchIndex,
-  // narrative
-  Narrative,
 } from "./index";
 
 // Each block proves a schema PARSES a valid shape AND REJECTS a real bad one
@@ -517,18 +515,5 @@ describe("search contracts", () => {
 
   test("SearchIndex rejects non-array repos", () => {
     expect(rejects(SearchIndex, { generated_at: "x", count: 0, repos: {} })).toBe(true);
-  });
-});
-
-describe("narrative contract", () => {
-  const n = { period: "2026-05", generated_at: "2026-06-01T00:00:00Z", en: "A lively month.", zh: "热闹的一月。" };
-
-  test("Narrative parses period + bilingual text; model optional", () => {
-    expect(Narrative.parse(n).period).toBe("2026-05");
-    expect(Narrative.parse({ ...n, model: "anthropic/claude-haiku-4-5" }).model).toBe("anthropic/claude-haiku-4-5");
-  });
-
-  test("Narrative rejects missing zh", () => {
-    expect(rejects(Narrative, { period: "2026-05", generated_at: "x", en: "hi" })).toBe(true);
   });
 });

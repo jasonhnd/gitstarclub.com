@@ -9,7 +9,8 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { Narrative } from "@/app/_explore/Narrative";
-import { getHeatmap, getRank, getReposLookup, joinRepoRank, getNarrative } from "@/lib/data";
+import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
+import { buildNarrative } from "@/lib/narrative";
 import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
 import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
@@ -57,13 +58,12 @@ export default async function RankingsPeriodPage({ params }: { params: Promise<{
 
 async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; month: number }) {
   const period = `${year}-${String(month).padStart(2, "0")}`;
-  const [flow, growth, newc, heat, lookup, narrative] = await Promise.all([
+  const [flow, growth, newc, heat, lookup] = await Promise.all([
     getRank("month", period, "repo", "flow"),
     getRank("month", period, "repo", "growth"),
     getRank("month", period, "repo", "new"),
     getHeatmap("month", period),
     getReposLookup(),
-    getNarrative(period),
   ]);
   if (!flow || !lookup) notFound();
 
@@ -82,6 +82,14 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
     : [];
   const cells = (heat?.cells ?? []).map(([date, total]) => ({ label: String(Number(String(date).slice(8, 10))), gained: total }));
   const total = cells.reduce((sum, c) => sum + c.gained, 0);
+  const narrative = buildNarrative({
+    labelEn: monthYearLabel("en", year, month),
+    labelZh: `${year} 年 ${month} 月`,
+    topGainers: most.slice(0, 3).map((r) => ({ full_name: `${r.owner}/${r.name}`, gained: r.gained ?? 0 })),
+    fastest: fastest.slice(0, 1).map((r) => ({ full_name: `${r.owner}/${r.name}`, rate: Math.round(r.rate ?? 0) })),
+    newcomerCount: newc?.items.length ?? 0,
+    newcomers: newcomers.slice(0, 2).map((r) => `${r.owner}/${r.name}`),
+  });
 
   return (
     <>

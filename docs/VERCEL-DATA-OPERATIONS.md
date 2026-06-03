@@ -113,7 +113,6 @@ export async function refreshWorkflow(runId: string) {
   await recomputeHeatmap(runId);          // step 8
   const report = await validateVersion(runId); // step 9
   await publishVersion(runId);            // step 10（切 views/latest.json 指针）
-  await generateNarrative(runId);         // step 10b（best-effort 月度 LLM 叙事，never-throw，v0.2 §2）
   await gcVersions(runId);                // step 11（版本 GC，best-effort 不抛）
   return { runId, ok: true, report };
 }
@@ -155,7 +154,6 @@ async function recomputeRank(runId: string) {
 | 8 | heatmap update | `site-daily` shard(+ 派生月总量) | `views/<run_id>/heatmap/**` | 站点级日 / 月总量(月总量 = site-daily 当月求和)。 |
 | 9 | validate | `views/<run_id>/**` | `ops/workflows/<run_id>/validation.json` | Zod schema + sanity 不变量（[TESTING.md](./TESTING.md) §1.2/1.3，含 `search/index.json` 条目数闸门）。**不过不发布**。 |
 | 10 | publish | `views/<run_id>/**` | `views/latest.json` 指针 + `ops/workflows/latest-success.json` | 原子切指针(version=run_id)：读侧从此读新版本（见 §7）。 |
-| 10b | generateNarrative(**best-effort**) | 收口月 `rank/month/<period>` top/增速/新晋 + `lookup/repos` | flat `narrative/<period>.json`（幂等：已存在跳过） | **v0.2 §2**：发布后调 Vercel AI Gateway(Claude Haiku，OIDC)出中英叙事；**never-throw**——失败/无鉴权则跳过，不影响已发布 run。见 [DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.15。 |
 | 11 | gc | `views/latest.json` + `list(views/)` | `del views/<旧 version>/**` | **版本 GC**（`gc.ts`，发布后跑）：保留最新 4 版 + 当前 / `prev_version` 指针（回滚目标），删更旧的孤儿版本。**best-effort、绝不抛错**——清理失败不拖垮已发布的 run。 |
 | 12 | revalidate | — | revalidatePath 核心热集 | 长尾按需 ISR、不全量 build（见 [ARCHITECTURE.md](./ARCHITECTURE.md)）。 |
 
