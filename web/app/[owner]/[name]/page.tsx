@@ -43,6 +43,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
     description: `Star history for ${repo.full_name}: ${repo.current_stars.toLocaleString()} stars. Growth curve, milestones (10k/50k/100k dates), monthly star gains, and ranking history.`,
     path: `/${repo.full_name}`,
     locale: "en",
+    ogImage: `/${repo.full_name}/opengraph-image`, // per-repo OG card (app/[owner]/[name]/opengraph-image.tsx)
   });
 }
 

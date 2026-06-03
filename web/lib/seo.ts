@@ -10,15 +10,19 @@ export function pageMeta(opts: {
   path: string;
   locale?: Locale;
   absoluteTitle?: boolean;
+  /** og/twitter image URL. Defaults to the site OG card; setting `openGraph` here would
+   *  otherwise suppress the file-convention opengraph-image, so pass a route's own
+   *  `<route>/opengraph-image` to keep its custom card (resolved absolute via metadataBase). */
+  ogImage?: string;
 }): Metadata {
   const locale = opts.locale ?? DEFAULT_LOCALE;
   const norm = opts.path === "/" ? "/" : opts.path;
+  const images = [{ url: opts.ogImage ?? "/opengraph-image" }];
   return {
     title: opts.absoluteTitle ? { absolute: opts.title } : opts.title,
     description: opts.description,
-    alternates: {
-      canonical: norm,
-    },
-    openGraph: { url: norm, title: opts.title, description: opts.description, locale },
+    alternates: { canonical: norm },
+    openGraph: { url: norm, title: opts.title, description: opts.description, locale, images },
+    twitter: { card: "summary_large_image", title: opts.title, description: opts.description, images },
   };
 }
