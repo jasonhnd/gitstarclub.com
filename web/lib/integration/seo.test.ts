@@ -180,7 +180,8 @@ describe.each(PAGES)("SEO basics — $label", ({ path, canonPath }) => {
 });
 
 // --------------------------------------------------------------------------------------------
-// og:image — present on home + repo; surfaced as a gap on rankings (no per-route OG image).
+// og:image — pageMeta now emits openGraph.images + twitter on every page; repo pages keep their
+// per-repo card, the rest fall back to the site OG card.
 // --------------------------------------------------------------------------------------------
 
 describe("Open Graph image (og:image)", () => {
@@ -192,19 +193,13 @@ describe("Open Graph image (og:image)", () => {
     }
   });
 
-  test("rankings page og:image (reported if missing — does not block)", () => {
-    const img = metaProp(page("/rankings/2024/6").html, "og:image");
-    if (img) {
-      expect(img).toMatch(/^https?:\/\//);
-    } else {
-      // Known gap: /rankings/[year]/[period] has no opengraph-image route, so it inherits no
-      // social card image. Surfaced here rather than failing the acceptance run.
-      console.warn(
-        "[SEO][gap] /rankings/2024/6 has no og:image — rankings routes lack an opengraph-image; " +
-          "add app/rankings/[year]/[period]/opengraph-image.tsx (or a layout-level openGraph.images) for social cards.",
-      );
-      expect(img).toBeNull();
-    }
+  test("rankings page exposes an absolute og:image + twitter:image", async () => {
+    // cache-bust: on-demand ISR pages can briefly serve a pre-deploy copy from the edge cache.
+    const { html } = await get(`/rankings/2024/6?v=${Date.now()}`);
+    const og = metaProp(html, "og:image");
+    expect(og).toBeTruthy();
+    expect(og).toMatch(/^https?:\/\//);
+    expect(metaName(html, "twitter:image")).toMatch(/^https?:\/\//);
   });
 });
 
