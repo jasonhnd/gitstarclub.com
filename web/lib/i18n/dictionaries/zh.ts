@@ -97,6 +97,7 @@ const zh: Dict = {
     madeIn: "制作于东京",
     dataThrough: "数据更新至",
   },
+  search: { label: "搜索", placeholder: "搜索仓库…", empty: "没有匹配的仓库", loading: "加载中…" },
 };
 
 export default zh;

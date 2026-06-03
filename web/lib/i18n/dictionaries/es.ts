@@ -97,6 +97,7 @@ const es: Dict = {
     madeIn: "Hecho en Tokio",
     dataThrough: "Datos actualizados hasta",
   },
+  search: { label: "Buscar", placeholder: "Buscar repositorios…", empty: "Sin repositorios coincidentes", loading: "Cargando…" },
 };
 
 export default es;

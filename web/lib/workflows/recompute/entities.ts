@@ -102,6 +102,26 @@ export function orgEntities(model: Model, monthOrg: OrgWindow): { views: Map<str
   return { views, anchorDrift };
 }
 
+const SEARCH_DESC_CAP = 200; // bound the client-loaded index; keywords live in the description head
+
+/** search/index.json — one lean doc per repo for the client-side MiniSearch index (§V0.2 §1).
+ *  Derived from the same repos dimension as lookups; descriptions are head-capped to bound size. */
+export function searchIndex(model: Model, gen: string): Map<string, unknown> {
+  const repos = model.ids.map((id) => {
+    const r = model.repos.get(id)!;
+    const desc = (r.description ?? "").slice(0, SEARCH_DESC_CAP);
+    return {
+      id: r.id,
+      full_name: r.full_name,
+      owner: r.owner,
+      language: r.language ?? null,
+      current_stars: r.current_stars,
+      description: desc || null,
+    };
+  });
+  return new Map<string, unknown>([["search/index.json", { generated_at: gen, count: repos.length, repos }]]);
+}
+
 export function lookups(model: Model): Map<string, unknown> {
   const repoLk: Record<string, unknown> = {};
   for (const r of model.repos.values())

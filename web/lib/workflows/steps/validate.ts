@@ -1,6 +1,6 @@
 import { readView } from "@/lib/data/source";
 import { putView } from "@/lib/data/write";
-import { Heatmap, Meta, RankList, RepoEntity, ReposLookup, WorkflowValidation } from "@/lib/contracts";
+import { Heatmap, Meta, RankList, RepoEntity, ReposLookup, SearchIndex, WorkflowValidation } from "@/lib/contracts";
 
 // Step 9 — publish gate. Reads key views from the freshly written version
 // (views/<run_id>/**) and checks Zod schema + sanity invariants. Throwing here aborts
@@ -48,6 +48,13 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
     const n = Object.keys(lookup).length;
     invariants.lookup_repos = n;
     if (n < MIN_LOOKUP) failures.push(`lookup/repos: only ${n} entries`);
+  }
+
+  const search = await read("search/index.json", SearchIndex);
+  if (search) {
+    invariants.search_repos = search.count;
+    if (search.count < MIN_LOOKUP) failures.push(`search/index: only ${search.count} repos`);
+    if (search.repos.length !== search.count) failures.push("search/index: count != repos.length");
   }
 
   // sample the top repo's entity — must have a non-empty anchored curve.

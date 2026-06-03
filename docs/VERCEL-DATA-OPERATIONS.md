@@ -156,9 +156,9 @@ async function recomputeRankShards(runId: string) {
 | 5 | canonical shard update | 已收口周期的**冻结快照** `canonical/v2/pending/<period>.json` + recent-daily | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` | **折叠**：周期收口时把活尾 net delta 折进月/周 rollup shard;append 站点日总量。**交接靠水位标记防重复/丢数据**——见 §8.3(H1)：cron 跨期重置 `current_month.json` 前先把上一期完整 `per_repo` 落到 `canonical/v2/pending/<period>.json`,step 5 只读 pending、折叠后标记 `folded_through=period`。跌出者保留历史 shard、停止 poll。 |
 | 6 | rank recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`/`meta` shard | `views/<run_id>/rank/**` | 载入全部 monthly/weekly 桶建「period→repos」索引,按 period 算 flow/stock + all-time,幂等写 staging。**growth**:期初 stock = monthly `stock_est` 前缀和在 `period-1` 的值(§5.4),floor 期初 ≥20k;**new**:直接用 `repos.crossed_10k` 落当期判定(**不另用 stock_est 重算**,口径同 [RANKING.md](./RANKING.md) §4)。stock 锚定见 §5.4 / [RANKING.md](./RANKING.md) §3。 |
 | 7a | entity/repo recompute(**桶内独立**) | 单桶 `repo-monthly`/`repo-weekly`/`repo-recent-daily`/`repos` | `views/<run_id>/entity/repo/**` | 每个 repo 只依赖自己那桶,可按桶并行分 step。 |
-| 7b | entity/org recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`(owner→members) | `views/<run_id>/entity/org/**` | **不能按桶算**(成员散落各桶,C2)：先全量载入 monthly/weekly 桶,按 `owner` 聚合;org stock 须先对每个成员做 `首次事件期→末期` **carry-forward** 再求和(空期沿用上一期累计),终点对齐 `current_stars_sum`(口径同 [RANKING.md](./RANKING.md) §5)。 |
+| 7b | entity/org recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`(owner→members) | `views/<run_id>/entity/org/**` + `lookup/**` + `search/index.json` | **不能按桶算**(成员散落各桶,C2)：先全量载入 monthly/weekly 桶,按 `owner` 聚合;org stock 须先对每个成员做 `首次事件期→末期` **carry-forward** 再求和(空期沿用上一期累计),终点对齐 `current_stars_sum`(口径同 [RANKING.md](./RANKING.md) §5)。**v0.2**:同步从 `repos` 维度派生 `search/index.json`(客户端搜索索引,见 [DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.14)。 |
 | 8 | heatmap update | `site-daily` shard(+ 派生月总量) | `views/<run_id>/heatmap/**` | 站点级日 / 月总量(月总量 = site-daily 当月求和)。 |
-| 9 | validate | `views/<run_id>/**` | `ops/workflows/<run_id>/validation.json` | Zod schema + sanity 不变量（[TESTING.md](./TESTING.md) §1.2/1.3）。**不过不发布**。 |
+| 9 | validate | `views/<run_id>/**` | `ops/workflows/<run_id>/validation.json` | Zod schema + sanity 不变量（[TESTING.md](./TESTING.md) §1.2/1.3，含 `search/index.json` 条目数闸门）。**不过不发布**。 |
 | 10 | publish | `views/<run_id>/**` | `views/latest.json` 指针 + `ops/workflows/latest-success.json` | 原子切指针(version=run_id)：读侧从此读新版本（见 §7）。 |
 | 11 | revalidate | — | revalidatePath 核心热集 | 长尾按需 ISR、不全量 build（见 [ARCHITECTURE.md](./ARCHITECTURE.md)）。 |
 
@@ -195,7 +195,7 @@ blob://
 ├── views/                                   # 发布层（指针切换，✅ 已实现 Phase 4）
 │   ├── latest.json                          # 指针：当前生效的版本前缀（version = run_id；见 §7）
 │   └── <run_id>/                            # 一个 run 的完整视图版本（version=run_id，无独立 staging/published）
-│       └── rank/** entity/** heatmap/** lookup/** meta.json   # 写完→validate→指针指向它即上线
+│       └── rank/** entity/** heatmap/** lookup/** search/index.json meta.json   # 写完→validate→指针指向它即上线
 │
 ├── live/                                     # 当前周期活尾覆盖层（L1/L2 写，已实现）
 │   ├── rank/{week|month}/<current>/repo/{flow,stock}.json

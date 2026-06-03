@@ -6,3 +6,4 @@ export * from "./entity";
 export * from "./live";
 export * from "./canonical";
 export * from "./workflow";
+export * from "./search";

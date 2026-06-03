@@ -107,6 +107,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 ```
 lookup/repos.json                              # build join 表
 lookup/orgs.json
+search/index.json                              # 客户端全站搜索索引（recompute 派生，v0.2）
 rank/{week|month|year}/{period}/{repo|org}/{flow|stock}.json
 rank/all-time/{repo|org}/stock.json
 live/rank/{week|month}/{period}/repo/{flow|stock}.json
@@ -340,6 +341,20 @@ step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md
   "checked": 12615, "schema_failures": 0,
   "invariants": { "ranks_sorted": true, "org_eq_members": true, "drift_pct": 0.3 },
   "failures": []
+}
+```
+
+### 2.14 `search/index.json`（✅ 已实现 v0.2，客户端全站搜索）
+
+recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描述头部截断 200 字符以控体积），随 entity/org step 写入 `views/<run_id>/search/index.json`，并入 `validate`（断言条目数 ≥ 阈值）。客户端 `SearchBox` 首次聚焦时懒加载 + 建 MiniSearch 索引（typo 容错 + prefix + 按 stars 加权），**零运行时后端**；读侧经 `/search-index` 路由（服务端解析发布指针读版本化产物，响应带 `s-maxage` 走 CDN）。schema `SearchIndex`/`SearchDoc`（`web/lib/contracts/search.ts`）。
+
+```json
+{
+  "generated_at": "<run_id>",
+  "count": 5261,
+  "repos": [
+    { "id": 1296269, "full_name": "vuejs/vue", "owner": "vuejs", "language": "JavaScript", "current_stars": 207000, "description": "..." }
+  ]
 }
 ```
 

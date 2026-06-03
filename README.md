@@ -25,6 +25,10 @@
 > `I18nProvider` (`web/lib/i18n/client.tsx`) that reads the `gsc_lang` cookie
 > after hydration. Data (rankings, numbers, repo names, dates) is
 > locale-independent and never translated.
+>
+> 2026-06-03 v0.2 note: 全站搜索已落地（导航栏搜索框）——recompute 派生 `search/index.json`，客户端
+> MiniSearch 即时检索（prefix + typo 容错 + 按 stars 加权），**零运行时后端、走 CDN**，索引随每次
+> recompute 刷新。见 [docs/V0.2-DESIGN.md](docs/V0.2-DESIGN.md) §1。
 
 > 一本可浏览的 GitHub 开源编年史 —— 按月 / 季 / 年回看哪些项目正在被关注。
 
@@ -35,6 +39,7 @@
 - 翻到任意一个月份，看那个月**最受关注**的项目是什么
 - 看任意 repo 的完整 star 曲线和"何时爆发"的拐点
 - 用时间作为第一导航，像翻阅编年史一样浏览开源世界
+- 用导航栏搜索框直接跳到任意 repo / owner（客户端即时检索，typo 容错）
 
 不同于 GitHub Trending（只看当下）或 star-history（只看单个 repo），`gitstarclub` 提供的是**可回溯的、有结构的、有叙事的**开源历史视角。
 
