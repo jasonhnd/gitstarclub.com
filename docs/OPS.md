@@ -90,7 +90,7 @@ vercel alias set https://<preview-deployment>.vercel.app pre.gitstarclub.com --s
 blob://
 ├── canonical/
 │   ├── star_daily.parquet          # 🗄️ bootstrap 归档（仅一次性 / 灾难重建读写，非生产路径）
-│   └── v2/                          # 生产 canonical JSON shard（✅ 已实现，见 VERCEL-DATA-OPERATIONS §5）
+│   └── v2/                          # 生产 canonical JSON shard（✅ 已实现，见 VERCEL-DATA-OPERATIONS §4）
 │       ├── meta.json                #   seam_date · schema_ver · folded_through（周/月水位）
 │       ├── repos/{bucket}.json      #   repo 维度 + 里程碑 + tracked_since + 冻结折扣 d
 │       ├── repo-monthly/{bucket}.json · repo-weekly/{bucket}.json · repo-recent-daily/{bucket}.json
@@ -156,7 +156,7 @@ blob://
 
 > **Vercel-only cron 落地（已实现）**：每日 job = `web/app/api/cron/daily/route.ts`，每周 job = `web/app/api/cron/weekly/route.ts`，两者都支持 `?dry=1`。CRON_SECRET 鉴权 → GraphQL 拉 current_stars（`web/lib/github.ts`，按 owner/name 批量）→ `web/lib/cron/live-refresh.ts` 幂等 upsert `current_month.json`（按 UTC 日）→ 重算 `hot-snapshot.json`、`live/rank/month/<current>/repo/{flow,stock}.json`、`live/rank/week/<current>/repo/flow.json`、`live/heatmap/month/<current>.json` → `revalidatePath` 核心页 → `ops/sync-runs.json` 记录运行。普通 Vercel Function 不承载一次性 DuckDB/Parquet 全量重算；若需要把历史全量刷新也放进 Vercel，必须拆成 Vercel Workflow 分片步骤，而不是单个 Function。
 
-**实跑状态（2026-05-31）**：首次在 Vercel 真实触发 daily cron 遇到 GitHub GraphQL `403`；当时 Blob 里的 `current_month.json` 与 `hot-snapshot.json` 仍为 `404`，没有半写。修复后已在旧 `gitstarclub-web` production target 复测成功：GraphQL 批次 pacing + `Retry-After`/secondary-limit 等待生效，`current_month.json` 与 `hot-snapshot.json` 已写入同一个 public Blob store，并通过 `web/scripts/validate-live-views.ts --bust 2026-05-31` 的 Zod contract 校验。2026-06-02 已把同一套环境变量迁移到 `gitstarclub.com` 项目；迁移后仍需在新项目上做一次 `?dry=1` 和真实 cron 复核。
+**实跑历史（2026-05-31 → 06-03）**：首次在 Vercel 真实触发 daily cron 遇到 GitHub GraphQL `403`；当时 Blob 里的 `current_month.json` 与 `hot-snapshot.json` 仍为 `404`，没有半写。修复后已在旧 `gitstarclub-web` production target 复测成功：GraphQL 批次 pacing + `Retry-After`/secondary-limit 等待生效，`current_month.json` 与 `hot-snapshot.json` 已写入同一个 public Blob store，并通过 `web/scripts/validate-live-views.ts --bust 2026-05-31` 的 Zod contract 校验。2026-06-02 把同一套环境变量迁移到 `gitstarclub.com` 项目，2026-06-03 整套数据管线（live cron + Phase 4/5 Workflow）已在该项目线上 `status=published`、约 5,261 repo 真跑通过。
 
 **鉴权模式（CRON_SECRET）**：
 
@@ -182,8 +182,8 @@ blob://
 
 ## Vercel Workflow runbook（✅ Phase 2+4+5 已实现并线上验证 2026-06-03 status=published）
 
-> 承载历史 / 元数据 / canonical 全量刷新的长任务。设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)。
-> **现状**：**全链路已在生产 Vercel 真跑通过**——`workflow@4.3.1` + `withWorkflow()`；`web/lib/workflows/refresh.ts`（`refreshWorkflow`：whitelist→rename→metadata→fold（月+周）→recompute（rank/entity/heatmap）→validate→publish（切指针）→gc）+ `steps/*` + `checkpoint.ts` + `web/app/api/workflows/refresh/start/route.ts`。最新真跑 `status=published`、约 5,261 repo、`latest-success` 已切。**metadata seed 自 `lookup/repos.json`，GitHub 只补新晋**（不全量重拉,否则撞二级限流——已实测踩坑）。Phase 3–5（折叠 / 重算 / 发布回滚 / 版本 GC）**✅ 已实现并线上验证（2026-06-03 status=published）**。
+> 承载历史 / 元数据 / canonical 全量刷新的长任务。本节只给**运维步骤**；**Workflow 设计与 step 清单见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §3**（不在 OPS 重述）。
+> **现状**：**全链路已在生产 Vercel 真跑通过**——`workflow@4.3.1` + `withWorkflow()`；`web/lib/workflows/refresh.ts`（`refreshWorkflow`）+ `steps/*` + `checkpoint.ts` + `web/app/api/workflows/refresh/start/route.ts`。最新真跑 `status=published`、约 5,261 repo、`latest-success` 已切。**metadata seed 自 `lookup/repos.json`，GitHub 只补新晋**（不全量重拉,否则撞二级限流——已实测踩坑）。Phase 3–5（折叠 / 重算 / 发布回滚 / 版本 GC）**✅ 已实现并线上验证（2026-06-03 status=published）**。
 > **已接 cron**：`/api/workflows/refresh/start` 已加进 `web/vercel.json` 的 `crons`——`0 6 * * 0`（周日 06:00 UTC，排程独立于 daily/weekly）。
 
 **为什么用 Workflow 而非单 Function**：单 Function 上限 800s / 4GB / bundle 250MB / 响应体 4.5MB（[Functions Limits](https://vercel.com/docs/functions/limitations)），装不下 DuckDB 全量重算；官方建议超长任务用 [Vercel Workflows](https://vercel.com/docs/workflows)（无单函数时长上限，可 pause/resume/checkpoint）。

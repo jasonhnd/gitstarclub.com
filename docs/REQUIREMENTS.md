@@ -1,6 +1,6 @@
 # gitstarclub 需求基准（REQUIREMENTS）
 
-> **单一需求基准**——定义"做什么"。"怎么做"见 [ARCHITECTURE](./ARCHITECTURE.md) · [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) · [DATA-CONTRACTS](./DATA-CONTRACTS.md) · [PIPELINE](./PIPELINE.md) · [RANKING](./RANKING.md) · [FRONTEND](./FRONTEND.md) · [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) · [SEO](./SEO.md) · [OPS](./OPS.md) · [TESTING](./TESTING.md)。任何设计变更先回这里对齐。
+> **单一需求基准**——定义"做什么"。"怎么做"见 [ARCHITECTURE](./ARCHITECTURE.md) · [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) · [DATA-CONTRACTS](./DATA-CONTRACTS.md) · [PIPELINE](./PIPELINE.md) · [RANKING](./RANKING.md) · [FRONTEND](./FRONTEND.md) · [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) · [SEO](./SEO.md) · [OPS](./OPS.md) · [TESTING](./TESTING.md)；UX 导航叙事（reader's map）见 [INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md)。任何设计变更先回这里对齐。
 
 ## 1. 产品定位（两副面孔）
 
@@ -43,7 +43,7 @@
 ## 5. 数据来源与口径
 
 - **历史回填（一次性）**：BigQuery 查 GH Archive WatchEvent（含稳定 `repo.id`），~$10。（免费方案 ClickHouse 公共实例 1000 行上限、自建 4–12TB 均已评估排除。）
-- **日常监测**：GitHub GraphQL 每日批量查 `current_stars`（5,248 repo ≈ 53 查询，**< 1 MB / 秒级 / ~1% 额度**）→ diff 出 net 日增。
+- **日常监测**：GitHub GraphQL 每日批量查 `current_stars`（约 5,261 repo，`ceil(5261/100)=53` 查询，**< 1 MB / 秒级 / ~1% 额度**）→ diff 出 net 日增。
 - **元数据**：GraphQL（owner + owner_type、language、topics、createdAt、current_stars、isArchived）。
 - **口径**：历史 = gross（GH Archive 无取消事件）/ 上线后 = net（含取消，可负）；**seam** 分界。**`current_stars` 是唯一必须精确的数**；历史 stock = gross 累加 × 折扣**锚定**到 current_stars（估算，标 as-of）。
 
@@ -59,7 +59,7 @@
   3. **破里程碑**：今日跨 10k / 50k / 100k。
   > 数字（50 / 5× / 200）是可调旋钮，上线后按真实数据校准。
 - 老项目爆发 → 进刷新集 → 当天上 `/pulse` + 它的 repo 页当天刷新（曲线立刻显示这波）。
-- **不全量刷 16k**（毁静态/贵）、**不一律冻结**（错过爆发）。
+- **不全量刷长尾页**（当前约 5,261 repo，含 org/周期页上限留 ~16k 余量；全量刷会毁静态/贵）、**不一律冻结**（错过爆发）。
 
 ## 7. 渲染 / 扛量
 
@@ -82,7 +82,7 @@
 
 ## 9. SEO / i18n
 
-- 每页 = 长尾落地页（标题含真实搜索词）；sitemap 分片（~6,900 URL，语言中立单一 ⇒ 不乘语言数）；schema.org（Dataset/ItemList/Organization/BreadcrumbList…）；语言走页内 `gsc_lang` cookie 偏好、不进 URL、不发 hreflang（英文为默认 SEO 语言，见 [SEO.md](./SEO.md) §10）；OG 图（石墨灰+金，build 生成）；预览站 noindex。详见 [SEO.md](./SEO.md)。
+- 每页 = 长尾落地页（标题含真实搜索词）；sitemap 分片（语言中立单一 ⇒ 不乘语言数，**权威 URL 规模见 [SEO.md](./SEO.md)** §1.3）；schema.org（Dataset/ItemList/Organization/BreadcrumbList…）；语言走页内 `gsc_lang` cookie 偏好、不进 URL、不发 hreflang（英文为默认 SEO 语言，见 [SEO.md](./SEO.md) §10）；OG 图（石墨灰+金，build 生成）；预览站 noindex。详见 [SEO.md](./SEO.md)。
 
 ## 10. 设计调性
 

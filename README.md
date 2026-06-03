@@ -1,34 +1,17 @@
 # gitstarclub
 
-> 2026-06-03 Vercel cron note: all scheduled entrypoints now run in Vercel.
-> `/api/cron/daily` `0 3 * * *` + `/api/cron/weekly` `0 4 * * 0` refresh the live
-> JSON tail; `/api/workflows/refresh/start` `0 6 * * 0` triggers the managed L3
-> refresh workflow (whitelist → metadata → fold → recompute → publish → GC).
+> **状态（2026-06-03）** — v0.1 MVP + Vercel-only 数据生命周期 **Phase 2–5 已线上验证**（`status=published`）；
+> v0.2 **全站搜索已上线**。生产数据全流程（白名单→元数据→改名→月+周折叠→重算→校验→发布→版本 GC→回滚）由
+> **Vercel Workflow** 每周 cron 自动承载，**零本地依赖、零手动触发**；离线 parity 12,899 视图与 DuckDB 逐字节一致。
+> 详见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md) §10、文档总索引 [docs/README.md](docs/README.md)。
 >
-> 数据运营方向：每日 / 每周 live cron + 每周 L3 workflow 全部 **Vercel-only、零本地依赖、零手动触发**。
-> **生产数据生命周期（白名单 / 元数据 / 改名 / 月+周折叠 / 全量重算 / 校验 / 发布 / 版本 GC / 回滚）由
-> Vercel Workflow 承载**——**Phase 2–5 已线上验证（2026-06-03 `status=published`）：重算 →
-> `views/<run_id>/**` → validate → 切 `views/latest.json` 指针 → 版本 GC；离线 parity 12,899 视图与
-> DuckDB 逐字节一致；seam-aware 折叠用合成+集成测试覆盖**，见
-> [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)。`pipeline/backfill`
-> 的 BigQuery + 本机 DuckDB 仅作为**一次性 bootstrap / 历史归档**，不再是日常运营路径。
+> **Cron**（3 条，见 [docs/OPS.md](docs/OPS.md) §Cron）：`/api/cron/daily` `0 3 * * *` + `/api/cron/weekly` `0 4 * * 0`（live 活尾）
+> + `/api/workflows/refresh/start` `0 6 * * 0`（L3 全量刷新）。
 >
-> 2026-06-01 i18n note: English is the default UI language. Other languages are
-> selected from a compact dropdown and stored in the `gsc_lang` cookie without
-> changing the URL. The client writes the cookie and refreshes the current RSC
-> view immediately. Supported UI languages are English, Japanese, Simplified
-> Chinese, Traditional Chinese, Korean, Spanish, and French.
+> **i18n（option C）**：英文默认 UI 语言；日/简中/繁中/韩/西/法 经 `gsc_lang` cookie 页内切换、URL 不变；页面 BODY 静态英文，
+> 仅 chrome 客户端水合后切换——见 [docs/FRONTEND.md](docs/FRONTEND.md) §2.5、[docs/SEO.md](docs/SEO.md) §10。
 >
-> i18n rendering (option C): page bodies are static/ISR and rendered in the
-> default locale (English) so they stay cacheable on the CDN; only the chrome
-> (nav, footer, section/UI labels) is translated client-side via an
-> `I18nProvider` (`web/lib/i18n/client.tsx`) that reads the `gsc_lang` cookie
-> after hydration. Data (rankings, numbers, repo names, dates) is
-> locale-independent and never translated.
->
-> 2026-06-03 v0.2 note: 全站搜索已落地（导航栏搜索框）——recompute 派生 `search/index.json`，客户端
-> MiniSearch 即时检索（prefix + typo 容错 + 按 stars 加权），**零运行时后端、走 CDN**，索引随每次
-> recompute 刷新。见 [docs/V0.2-DESIGN.md](docs/V0.2-DESIGN.md) §1。
+> `pipeline/backfill` 的 BigQuery + 本机 DuckDB 仅作**一次性 bootstrap / 历史归档**，非日常运营路径。
 
 > 一本可浏览的 GitHub 开源编年史 —— 按月 / 季 / 年回看哪些项目正在被关注。
 
@@ -77,7 +60,7 @@ GitHub Search API 实测（2026-05）：
 MVP 这一层：
 
 - 我们只关心这约 5,261 个 repo 的 star（约 1.3 亿次）；存成 per-repo×天 事实表 ≈ **800 万行**，Parquet 列存仅几十 MB（只在离线）
-- canonical = **Parquet 事实表**（离线，几十 MB）；服务层 = DuckDB 预算好的 **JSON 视图**（build 只读，运行时零引擎）
+- bootstrap canonical = **Parquet 事实表**（离线，几十 MB）；**生产 canonical 已折叠为 `canonical/v2` JSON shard**（Vercel 无引擎重算）；服务层 = 预算好的 **JSON 视图**（build / 运行时只读，零引擎）
 - 一次性回填走 **BigQuery**（查 GH Archive，~$10、含稳定 repo.id；评估过免费的 ClickHouse 公共实例/自建均不可行），日常增量靠 GraphQL diff
 - 全量 LLM 摘要：**$5-10**（Claude Haiku，留待 v0.2）
 
@@ -86,69 +69,69 @@ MVP 这一层：
 ```
 gitstarclub/
 ├── README.md
-├── docs/
-│   ├── ARCHITECTURE.md          # 技术栈、数据流、数据模型、扛量、build/cron 机制
-│   ├── VERCEL-DATA-OPERATIONS.md # Vercel-only 数据运营设计（Workflow/canonical shard/月+周折叠/发布回滚，✅ 已线上验证）
-│   ├── PRODUCT.md               # 页面设计、URL、调性、i18n、命名
-│   ├── SEO.md                   # sitemap、meta、结构化数据、OG、多语言 SEO
-│   └── TESTING.md               # 测试策略：数据质量/视觉回归/a11y/E2E/性能/跨浏览器
+├── docs/                          # 16 篇设计/运维文档；索引与阅读顺序见 docs/README.md
+│   ├── README.md                  # 📑 文档总索引 + 单一真相源归属图 + 阅读顺序
+│   ├── REQUIREMENTS.md            # 需求基准（repo/视图计数口径的单一源）
+│   ├── ARCHITECTURE.md            # 技术栈、数据流、数据模型、扛量、页面分层
+│   ├── VERCEL-DATA-OPERATIONS.md  # Vercel-only 数据生命周期（Workflow/折叠/发布回滚，✅ 线上验证）
+│   ├── DATA-CONTRACTS.md          # 每个产物的 Zod schema（构建侧类型唯一事实源）
+│   ├── PIPELINE.md  RANKING.md  OPS.md  TESTING.md
+│   ├── FRONTEND.md  SEO.md  PRODUCT.md  DESIGN-SYSTEM.md  INFORMATION-ARCHITECTURE.md
+│   └── IMPLEMENTATION-PLAN.md  V0.2-DESIGN.md
 │
-│   # ── 预告页（已上线 gitstarclub.com，纯静态零依赖）──
-├── src/index.html               # 预告页模板（含 {{BUILD_UTC/JST/ISO}} 占位符）
-├── assets/                      # OG 图 + favicon 源与产物（M3E 石墨灰+星金）
-│   ├── og.html / icon.html      # Chrome 无头渲染源（M3E：Plus Jakarta Sans + 石墨灰+金）
-│   ├── og.png (1200×630)        # 社交分享图
-│   ├── favicon.svg / favicon.png / apple-touch-icon.png
-├── render-assets.mjs            # 无头 Chrome 渲染 og/favicon PNG（仅源变更时重跑）
-├── build.mjs                    # 注入 UTC+JST 时间戳 → 生成 public/，拷贝 assets
-├── package.json                 # 脚本：render（出图）/ build（部署）
-├── public/                      # 构建产物（gitignore）：index.html + 图标 + og
+├── pipeline/backfill/             # 🗄️ 一次性 bootstrap / 历史归档（本机 / 全 Node，非日常运营）
+│   ├── 01-whitelist.mjs           # Search ≥10k 自适应分桶 → whitelist
+│   ├── 02-extract.sql             # BigQuery 查 GH Archive 日序列（含 repo.id）
+│   ├── 03-metadata.mjs            # GraphQL 元数据
+│   ├── 04-rollup.mjs              # DuckDB → Parquet 事实表 + 里程碑
+│   ├── 05-precompute.mjs          # DuckDB → 全部 JSON 视图
+│   ├── 06-upload.mjs              # 上传 Vercel Blob（节流）
+│   └── 07-export-v2.mjs           # 导出 canonical/v2 JSON shard（脱离 Parquet）
 │
-├── pipeline/                    # 🗄️ bootstrap 归档（一次性 / 灾难重建，非日常运营路径）
-│   └── backfill/                # 一次性 11 年回填（本机 / 全 Node；产物上传后由 Vercel 接管）
-│       ├── 02-extract.sql       # BigQuery 查 GH Archive 日序列（含 repo.id）
-│       ├── 04-rollup.mjs         # 本机 DuckDB → Parquet 事实表 + 里程碑
-│       ├── 05-precompute.mjs     # 本机 DuckDB → 全部 JSON 视图
-│       └── 06-upload.mjs         # 上传 Vercel Blob（节流 <75/s）
-├── web/                         # Next.js 16 应用
+├── web/                           # Next.js 16 应用（App Router + RSC + Turbopack）
 │   ├── app/
-│   │   ├── page.tsx             # 首页 = Pulse / 脉搏
-│   │   ├── pulse/page.tsx
-│   │   ├── rankings/page.tsx
-│   │   ├── rankings/[year]/page.tsx
-│   │   ├── rankings/[year]/[period]/page.tsx
-│   │   ├── [owner]/[name]/page.tsx # GitHub 风格 repo URL
-│   │   ├── o/[login]/page.tsx
-│   │   ├── about/page.tsx
-│   │   └── api/
-│   │       ├── cron/daily/route.ts
-│   │       └── lang/route.ts     # 页内语言偏好 cookie
-│   ├── components/
-│   │   ├── Timeline.tsx
-│   │   ├── StarCurve.tsx
-│   │   └── RepoCard.tsx
+│   │   ├── page.tsx               # 首页 = Pulse / 脉搏
+│   │   ├── pulse/  about/         # 脉搏 / 关于
+│   │   ├── rankings/[year]/[period]/   # 全时 / 年 / 月 / 周榜
+│   │   ├── [owner]/[name]/        # GitHub 风格 repo URL（+ opengraph-image）
+│   │   ├── o/[login]/             # org / owner 页
+│   │   ├── search-index/route.ts  # 客户端搜索索引端点（服务端读版本化产物 + CDN s-maxage）
+│   │   ├── api/{cron/daily, cron/weekly, workflows/refresh/start, lang}/route.ts
+│   │   ├── _explore/              # Chrome · SearchBox · RankingList · Heatmap · StarCurve · Breadcrumbs · Footer · JsonLd · RegisterSW
+│   │   ├── components/            # ThemeToggle · LanguageSwitcher
+│   │   ├── robots.ts  sitemap.ts  manifest.ts  opengraph-image.tsx
+│   │   └── layout.tsx  template.tsx  globals.css
 │   ├── lib/
-│   │   ├── data.ts              # 读预算 JSON 视图（build 时）
-│   │   ├── blob.ts              # Vercel Blob 读写 JSON 视图 / 活尾
-│   │   └── github.ts            # GraphQL 批量查 star
-│   └── package.json
+│   │   ├── contracts/             # Zod schema（构建侧类型唯一事实源）
+│   │   ├── data/                  # 读取器：fetch Blob + Zod parse + React cache
+│   │   ├── workflows/             # L3 refresh workflow + steps（recompute / fold / gc / …）
+│   │   ├── search/                # MiniSearch 纯核心（SearchBox 懒加载）
+│   │   ├── i18n/                  # 7 语手写字典 + 客户端 I18nProvider（option C）
+│   │   ├── observability/         # 告警 / 健康（alert.ts）
+│   │   ├── cron/                  # live-refresh（当月活尾）
+│   │   └── format.ts  seo.ts  jsonld.ts  periods.ts  github.ts
+│   └── vercel.json                # 3 条 cron（daily / weekly / refresh-workflow）
+│
+├── src/index.html  assets/  build.mjs  render-assets.mjs   # 🗄️ 已退役的预告页（纯静态，保留备查）
 └── .env.example
 ```
 
 ## 路线图
 
-### v0.1 — MVP（目标：一周内上线）
+> 概览如下；里程碑状态-of-record 见 [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md)，v0.2/v0.3 范围与设计见 [docs/V0.2-DESIGN.md](docs/V0.2-DESIGN.md)。
+
+### v0.1 — MVP（✅ 已上线）
 
 - [x] 预告页上线（gitstarclub.com，M3 Expressive 静态页 + 明暗双模式 + GA4 + UTC/JST 页脚时间戳 + OG/favicon）
 - [x] OG 图 / favicon 渲染为 M3E 石墨灰+星金配色（`assets/og.html`、`assets/icon.html`、`favicon.svg`，经 `render-assets.mjs` 出图）
 - [x] Next.js 16 骨架（TS6 / React19 / Zod4 / Tailwind4 / bun）
-- [ ] BigQuery 回填 2015-至今 ≥10k repo 日序列 → Parquet 事实表（**一次性 bootstrap**，非 recurring）
-- [ ] GraphQL 抓元数据 + owner + current_stars → JSON → 上传 Vercel Blob
-- [ ] Next.js 四个核心页面（首页 / 年 / 月 / repo），build 读预算 JSON 视图 + SSG
-- [ ] 时间轴 + star 曲线（服务端 SVG，零客户端 JS）
+- [x] BigQuery 回填 2015-至今 ≥10k repo 日序列 → Parquet 事实表（**一次性 bootstrap**，非 recurring）
+- [x] GraphQL 抓元数据 + owner + current_stars → JSON → 上传 Vercel Blob
+- [x] Next.js 四个核心页面（首页 / 年 / 月 / repo），build 读预算 JSON 视图 + SSG
+- [x] 时间轴 + star 曲线（服务端 SVG，零客户端 JS）
 - [x] Vercel Cron 每日 / 每周 live refresh → 活尾 + revalidate（已实现）
 - [x] **Vercel Workflow** 承载白名单 / 元数据 / 改名 / 月+周折叠 / rank+entity+heatmap 全量重算 / 校验 / 发布 / 版本 GC（脱离本地、每周 cron 全自动，**Phase 2–5 已线上验证**，见 [docs/VERCEL-DATA-OPERATIONS.md](docs/VERCEL-DATA-OPERATIONS.md)）
-- [ ] Vercel 部署上线
+- [x] Vercel 部署上线
 
 ### v0.2 — 叙事与发现
 

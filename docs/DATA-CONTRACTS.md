@@ -102,10 +102,12 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 ## 2. 服务视图（JSON，build 读，Vercel Blob 存）
 
-### 2.0 产物清单（Blob 布局见 [OPS.md](./OPS.md)）
+### 2.0 视图 schema 索引（物理 Blob 树见 [OPS.md](./OPS.md) §Blob 布局）
+
+> 下列为**有 §2.x schema 的视图名 → 章节**索引；完整物理布局（含 `canonical/v2/*` shard）不在此重列，见 OPS §Blob 布局。
 
 ```
-lookup/repos.json                              # build join 表
+lookup/repos.json                              # build join 表（§2.1）
 lookup/orgs.json
 search/index.json                              # 客户端全站搜索索引（recompute 派生，v0.2）
 rank/{week|month|year}/{period}/{repo|org}/{flow|stock}.json
@@ -314,10 +316,12 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
   "run_id": "refresh-2026-06-02T04-00-00-000Z",
   "started_at": "2026-06-02T04:00:00.000Z",
   "status": "running",                          // running | published | failed
-  "steps": ["whitelist","rename","metadata","fold","recompute","validate","publish","gc"],
+  "steps": ["whitelist","rename","metadata","fold","recompute","validate","publish","gc"],  // manifest 分组（细粒度 12 步见 VERCEL-DATA-OPERATIONS §3.4）
   "published_version": null
 }
 ```
+
+> `steps[]` 为 **manifest 分组**（8 项，对应进度账本）；**细粒度 12 步**（whitelist/rename/metadata/newcomer/fold/rank/entity-repo/entity-org/heatmap/validate/publish/gc/revalidate）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §3.4。
 
 ```json
 // steps/recompute.json

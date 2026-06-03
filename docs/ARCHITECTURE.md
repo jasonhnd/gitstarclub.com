@@ -20,7 +20,7 @@
 - **SSG-first**：所有内容页 build 时预生成静态 HTML（或按需 ISR 首访生成后持久缓存），用户请求永不触达 Function/数据库。
   > ✅ **已达成（option C 落地）**：早前 cookie 版 i18n 让根 `layout.tsx` 变成 `force-dynamic`、内容页按请求 SSR 的临时态**已解决**——chrome 翻译移到客户端（`i18n/client.tsx` 的 `I18nProvider`/`<T>`），服务端只出默认英文静态页。构建路由表全部 `ƒ`→`○` 静态 / `●` SSG 按需 ISR。证据与决策见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5。
 - **零客户端 JS**（内容页）：图表服务端渲染 SVG。
-- **Vercel-first**：部署、Cron、Blob、Analytics 全在 Vercel，统一计费。仅一次性 bootstrap 用 BigQuery 扫 GH Archive（~$10，非 recurring），之后运营 100% Vercel + GitHub API。**生产 recurring 重算（历史 / 元数据 / 全量）走 Vercel Workflow**，不依赖本地（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)，✅ Phase 2–5 已线上验证，2026-06-03 status=published）。
+- **Vercel-first**：部署、Cron、Blob、Analytics 全在 Vercel，统一计费。仅一次性 bootstrap 用 BigQuery 扫 GH Archive（~$10，非 recurring），之后运营 100% Vercel + GitHub API。**生产 recurring 重算（历史 / 元数据 / 全量）走 Vercel Workflow**，不依赖本地（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)）。
 - **不可变历史 + 小活尾**：生产 canonical 目标 = **JSON shard**（per-repo 月/周 rollup + 站点日总量 + repo 维度，Vercel 可重算）；活尾（当月）= KB 级 JSON，每日 cron 只读写它。**build 只读 JSON，不带任何引擎**。bootstrap 阶段的 `star_daily.parquet` 仅作历史归档，不在生产读 / 重算路径。
 
 ## 技术栈
@@ -34,7 +34,7 @@
 | **核心数据** | **JSON 视图**（build / 运行时读）+ JSON 活尾（当月，cron 读写）；生产 canonical = **JSON shard**（目标，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)） | 均存 Vercel Blob |
 | 对象存储 | Vercel Blob（canonical JSON shard + JSON 视图 + 预生成 OG 图；bootstrap Parquet 归档） | Vercel 原生 |
 | 日常采集 | **Vercel Cron + Function**（GraphQL 批量查 + JSON 视图覆盖，已实现） | Vercel 原生 |
-| 生产重算（历史/元数据/全量） | **Vercel Workflow**（多 step + Blob checkpoint，**✅ Phase 2–5 已线上验证**） | Vercel 原生 |
+| 生产重算（历史/元数据/全量） | **Vercel Workflow**（多 step + Blob checkpoint） | Vercel 原生 |
 | 一次性 bootstrap | **BigQuery**（GH Archive，含稳定 `repo.id`）+ 本机 DuckDB → Parquet | 一次性 ~$10，归档 |
 | 部署 | Vercel | |
 | Web 分析 | Vercel Analytics + Speed Insights · **GA4**（`NEXT_PUBLIC_GA_ID`） | |
@@ -65,12 +65,13 @@
 │  → JSON shard + JSON 视图 → Vercel Blob（之后由 Vercel 接管）│
 └─────────────────────────────────────────────────────┘
 
-┌─ 生产重算（Vercel WORKFLOW，多 step + Blob checkpoint；✅ Phase 2–5 已线上验证）┐
+┌─ 生产重算（Vercel WORKFLOW，多 step + Blob checkpoint；见 VERCEL-DATA-OPERATIONS §10）┐
 │  Cron 触发 → Workflow 编排 steps：                   │
 │  whitelist → rename → metadata（分桶）→ fold（月/周）→ │
 │  recompute（rank/entity/heatmap 写 views/<run_id>）→  │
 │  validate（闸门）→ publish（切 views/latest 指针）→ gc │
-│  全程无 DuckDB/Parquet；大文件走 Blob 直链（VERCEL-DATA-OPERATIONS.md）│
+│  全程无 DuckDB/Parquet；大文件走 Blob 直链          │
+│  （step 详表见 VERCEL-DATA-OPERATIONS §3.4）         │
 └─────────────────────────────────────────────────────┘
 
 ┌─ 每日（Vercel Cron，JSON-only，秒级；已实现）────────┐
@@ -155,8 +156,10 @@ GitHub GraphQL 可一次查 100 个 repo 的 `stargazerCount`，约 5,261 repo �
 ### 逻辑模型（概念，非物理表）
 
 - **事实表 `star_daily(repo_id, date, delta)`** —— 每 repo 每天 star 增量（seam 前 gross / 后 net，可负）。~800 万行，bootstrap 唯一真相源，存 Parquet（归档）；**生产形态 = 折叠后的月/周 JSON shard**（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5）。所有聚合从它推。
-- **维度 `repos`**：`id, node_id, owner, owner_type(User/Org), name, full_name, description, language, topics, created_at, current_stars`（GraphQL 权威）`, is_archived, crossed_10k/50k/100k, tracked_since, fetched_at`。
-- **`meta`**：`seam_date`（gross→net 边界）、`backfilled_at`、`schema_ver`。
+- **维度 `repos`**：每 repo 的属主 / 语言 / 里程碑等展示与归类字段，主键用不可变数字 `id`（改名稳定），`current_stars` 为 GraphQL 权威当前总数（唯一必须精确的数）。
+- **`meta`**：全局元信息——`seam_date`（gross→net 边界）等。
+
+（字段级 schema 见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.2/§1.3）
 
 ### 派生 = 窗口 × 维度 × 指标（bootstrap 用 DuckDB；生产用 Workflow 纯 JS）
 
@@ -184,15 +187,9 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 ### 物理：JSON 视图 artifacts（build 读，Blob 存）
 
-数据层把所有 period × dim × metric 预算成 JSON（bootstrap 由 DuckDB 产出，生产由 Workflow 重算）：
+数据层把所有 period × dim × metric 预算成 JSON（bootstrap 由 DuckDB 产出，生产由 Workflow 重算）：排行榜（rank）、实体曲线（entity repo/org）、热力图（heatmap）、join 表（lookup）、客户端搜索索引（search/index，v0.2）、活尾（current_month / hot-snapshot，cron 写）。
 
-- `rank/{week|month|year}/{period}/{repo|org}/{flow|stock}.json` → top-N（引用 + 数值 + 名次）
-- `rank/all-time/{repo|org}/stock.json`
-- `entity/repo/{id}.json`、`entity/org/{login}.json` → 曲线（周/月点 + 近期日点）+ 里程碑 + 历期表 + 名次史
-- `heatmap/{year|month}/{period}.json` → 站点级日/月总量
-- `lookup/repos.json`、`lookup/orgs.json` → 元数据（build join 用）
-- `search/index.json` → 客户端全站搜索索引（recompute 从 `repos` 派生，v0.2）；读侧经 `/search-index` 动态 Route Handler（服务端解析发布指针读版本化产物，响应带 `s-maxage` 走 CDN）
-- 活尾 `current_month.json`（cron 写）、`hot-snapshot.json`（cron 写，热集 ISR 读）
+（完整 Blob 树见 [OPS.md](./OPS.md) §Blob 布局；视图 schema 见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2）
 
 > build 把这些 JSON 直接烤成 HTML——不聚合、不带引擎、不碰原生模块。新增视图 = pipeline 多算一类 JSON。
 
