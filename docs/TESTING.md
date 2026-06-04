@@ -84,11 +84,22 @@ test('周排名窗口跨月不丢日', () => {
 
 ### 1.5 Workflow 发布闸门 / staging 校验 / 回滚
 
-> **数据校验的"最后闸门"位于 Vercel Workflow 内的 `validate` step**——对 `views/<run_id>/**` 跑后，**通过才切 `views/latest.json` 指针**（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.13）。同一套 §1.2 Zod + §1.3 sanity 断言在不同位置共享同一套实现。
+> **数据校验的"最后闸门"位于 Vercel Workflow 内的 `validate` step**——对 `views/<run_id>/**` 跑**抽样断言**，**通过才切 `views/latest.json` 指针**（实现 `web/lib/workflows/steps/validate.ts`、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md)）。
+
+**当前实际断言的不变量**（与 §1.3 完整清单的差距见下表）：
+
+| 断言 | 检查内容 |
+|---|---|
+| `meta.json` | `seam_date` 存在 |
+| 全时 stock 总榜 | `items` 非空、`rank[0]==1`、`value` 严格降序 |
+| `lookup/repos.json` | 条目数 ≥ 1000（防止下游 join 表崩塌） |
+| `search/index.json` | `count` ≥ 1000 且 `count == repos.length`（防止索引漂移） |
+| 头部 repo entity | 全时榜 #1 的 `entity/repo/<id>.json` 的 `curve.monthly` 非空 |
+| 上一年 heatmap | `heatmap/year/<Y-1>.json` 可读、字段齐 |
 
 | 测试 | 在哪跑 | 断言 | 失败动作 |
 |---|---|---|---|
-| **staging 校验闸门** | Workflow `validate` step（Vercel） | §1.2 Zod 全量 + §1.3 sanity 不变量，对 `views/<run_id>/**` | `ok=false` → **不切指针**；线上仍是上一版；staging 留存排查、Sentry 告警 |
+| **staging 校验闸门** | Workflow `validate` step（Vercel） | 上表 6 项抽样断言，对 `views/<run_id>/**` | `ok=false` → **不切指针**；线上仍是上一版；staging 版本保留供排查；写 `ops/workflows/<run_id>/validation.json` |
 | **canonical shard 等价性** | 单测（CI）+ Workflow step | 「JSON shard 纯 JS 聚合」结果 == 「bootstrap DuckDB 同口径」结果（容差 0）——确保脱离 Parquet 不改数 | CI 阻断 / step error |
 | **发布指针原子性** | 集成测试 | 切指针前后读侧拿到的版本自洽；切到一半的请求拿旧版（不拿半发布） | CI 阻断 |
 | **回滚可逆** | 集成测试 | 把 `views/latest.json.version` 指回 `prev_version` 后，读侧立即拿回上一版；`views/<prev>` 仍在 | CI 阻断 |
@@ -96,6 +107,7 @@ test('周排名窗口跨月不丢日', () => {
 
 - **fixture**：§1.1 的真切片同样导出成 **canonical JSON shard fixture**（与 Parquet 切片同源），单测「shard 重算」与「DuckDB 重算」对拍。
 - **隔离**：Workflow 校验只读 staging、不碰 `live/*` 活尾；活尾校验仍由每日/每周 cron 后置（见下「节奏」）。
+- **当前 gap**（未在 validate step 中执行，留作未来工作）：org `stock == ∑members` 等价、monthly ↔ recent-daily seam 连续、`meta.folded_through` 单调、`total_drift_pct` 阈值——这些不变量记录在 §1.3 但**目前不阻断发布**，仅作 §1.1/§1.4 测试目标。
 
 ### 1.6 全站搜索测试
 

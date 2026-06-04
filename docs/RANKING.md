@@ -53,8 +53,8 @@ stock_est[repo, date] = round(cumgross[repo, date] × d[repo])   # 锚定估算
 
 ### 新晋（new member）
 - 定义：`stock` 在当期内**首次** ≥ 10,000（白名单门槛）。
-- 历史用 `stock_est` 跨越判定；seam 后用精确 stock。日期精度来自里程碑 `crossed_10k`（PIPELINE §4）。
-- **排重**：新晋成员**不进入增速 TOP**，避免重复展示。
+- **判定来源**：直接读 `repos.crossed_10k`（bootstrap 算定后冻结写入 `canonical/v2/repos/<bucket>.json`），按其 `slice(0,len(period))` 等于当期归类——**不在 recompute 时重算 stock_est 跨越**，避免与 bootstrap 算定的里程碑漂移。
+- **排重**：增速榜的 ≥20k floor 隐式排除刚破 1 万的新晋项目；两榜信息域天然不重叠。
 
 ## 5. org 维度聚合
 
@@ -85,7 +85,7 @@ org 榜不抓新数据——把 per-repo 按 `owner` 分组求和：
 | 情况 | 处理 |
 |---|---|
 | flow 为负（取消 > 新增） | 正常入榜、排末尾；不裁剪（诚实展示） |
-| 平手（同 value） | 二级排序按 `stock`（flow 榜）/ `current_stars`（stock 榜）降序，再按 `repo_id` 稳定排序 |
+| 平手（同 value） | 二级排序：window 内 flow 榜按 `stock_est` 降序；window 内 stock 榜按 `flow` 降序；**all-time stock 榜按 `current_stars` 降序**；最末稳定排序按 `repo_id`（`web/lib/workflows/recompute/ranks.ts`） |
 | 实体在窗口无数据 | 不入该窗口榜（区别于 flow=0） |
 | 新 repo（创建于窗口内） | 仅从创建日起有数据；stock 从 0 起 |
 | repo 跌出 ≥10k 白名单 | 保留历史（编年史不删），停止每日轮询；是否仍进当前榜 = PRODUCT 取舍（默认：当前榜按当前白名单，历史榜保留） |

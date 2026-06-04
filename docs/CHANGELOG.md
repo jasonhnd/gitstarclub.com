@@ -16,11 +16,11 @@ Theme: narrative and discovery — make the chronicle easier to find and easier 
 - **Monthly narrative**. Each ranking month renders a one-paragraph en/zh summary built at render time from that month's existing rows (top movers, fastest growth, newcomers). Pure function in `web/lib/narrative.ts`. No AI, no stored artifact.
 - **Star-curve inflection detection**. Per-repo changepoint algorithm in `web/lib/workflows/recompute/inflections.ts` (K × six-month rolling median + absolute floor) writes `entity/repo.inflections`; `StarCurve` renders marker points with tooltips. Zero client JS.
 - **Shareable cards**. Dynamic OG images for monthly, weekly, and yearly rankings via `next/og`; `ShareButton` (copy-link + X intent) on repo, rankings, and yearly pages.
-- **Full-text repo search**. `search/index.json` derived by the recompute (one entry per tracked repo, ~5,261 docs). Client-side MiniSearch in `web/app/_explore/SearchBox.tsx`, lazy-loaded on first focus. Served through `/search-index` (server-side reads the versioned artifact, response is CDN-cached via `s-maxage`).
+- **Full-text repo search**. `search/index.json` derived by the recompute (one entry per tracked repo, current count tracks the whitelist). Client-side MiniSearch in `web/app/_explore/SearchBox.tsx`, lazy-loaded on first focus. Served through `/search-index` (server-side reads the versioned artifact, response is CDN-cached via `s-maxage`).
 
 ### Changed
 
-- The `ai` package and Vercel AI Gateway dependency were removed before launch. The monthly narrative pipeline that briefly used `generateObject` was replaced with the deterministic template above. The project is deliberately AI-free; see [feedback memory](../../../C%3A/Users/owner/.claude/projects/D--AgenticCoder-gitstarclub-com/memory/feedback_no_ai_deterministic.md) for the rationale.
+- The `ai` package and Vercel AI Gateway dependency were removed before launch. The monthly narrative pipeline that briefly used `generateObject` was replaced with the deterministic template above. The project is deliberately AI-free — see [ARCHITECTURE.md](./ARCHITECTURE.md) "Hard constraints" for the rationale.
 
 ### Fixed
 

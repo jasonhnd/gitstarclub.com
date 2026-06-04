@@ -50,8 +50,8 @@ A topic lives in exactly one document. Other documents reference it; they do not
 |---|---|
 | Repo / view counts | REQUIREMENTS |
 | Per-artifact schema (field-level) | DATA-CONTRACTS |
-| Blob layout | OPS (§Blob layout) |
-| Cron schedule | OPS (§Cron) |
+| Blob layout | OPS (§Vercel Blob 布局) |
+| Cron schedule | OPS (§Cron 调度) |
 | Workflow step enumeration | VERCEL-DATA-OPERATIONS |
 | Rendering model (static base + client-side chrome i18n) | FRONTEND (§2.5) |
 | Route catalog | FRONTEND (§1.1) |

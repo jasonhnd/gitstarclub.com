@@ -66,20 +66,24 @@ vercel alias set https://<preview-deployment>.vercel.app pre.gitstarclub.com --s
 
 ## 环境变量与密钥
 
-集中在 `zkscio/gitstarclub.com` 项目的 Vercel 环境变量里配置；本地用 `.env`（见 `.env.example`，**勿提交真实值**）。
+集中在 `zkscio/gitstarclub.com` 项目的 Vercel 环境变量里配置；本地用 `.env`（见仓库根目录 `.env.example`，**勿提交真实值**）。
 
-| 变量 | 用途 | 作用域 | 谁用 |
-|---|---|---|---|
-| `GITHUB_TOKEN` | GitHub GraphQL / Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | Server / 回填脚本 | 每日 cron · 每周 cron · 一次性回填 |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | Server / build / 回填脚本 | build 读视图 · cron 写活尾 · 回填上传 |
-| `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch） | Server / Build | Next.js build · 视图直读 |
-| `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | Server | 每日 / 每周 cron route · Workflow 触发 |
-| `VERCEL_DEPLOY_HOOK_URL` | Deploy Hook URL（可选；触发一次核心 rebuild，用于代码 / 结构变更或手动全量刷新） | Server | 手动 / CI（数据更新不需要它，长尾走 ISR） |
-| `ALERT_WEBHOOK_URL` | 失败告警 webhook（Slack / Discord / webhook.site，POST JSON 摘要；不设则仅日志） | Server | cron · Workflow `sendAlert` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | GCP 服务账号 key 路径 | **本地回填脚本**（仅一次性 BigQuery 回填） | 一次性回填 |
-| `GCP_PROJECT_ID` | GCP 项目 ID | **本地回填脚本**（仅一次性 BigQuery 回填） | 一次性回填 |
-| `NEXT_PUBLIC_SITE_URL` | 站点规范域名（canonical / sitemap / OG 绝对 URL） | Build / Client | Next.js |
-| `NEXT_PUBLIC_GA_ID` | GA4 measurement ID | Client | Next.js |
+| 变量 | 用途 | 必需 / 可选 | 格式 | 谁用（path:line） |
+|---|---|---|---|---|
+| `GITHUB_TOKEN` | GitHub GraphQL / Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | **必需**（cron / Workflow） | `ghp_…` PAT 字符串 | `web/lib/github.ts:5`；每日 cron · 每周 cron · Workflow whitelist/metadata step · 一次性回填 |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts:6` · `web/lib/workflows/recompute/io.ts:18` · `web/lib/workflows/steps/gc.ts:10`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本 |
+| `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/data/source.ts:10` · `web/lib/cron/sync-runs.ts:83`；Next.js build · ISR 视图直读 · live cron 读发布指针 |
+| `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/data/source.ts:10` · `web/lib/cron/sync-runs.ts:83`；客户端 bundle 中读取 |
+| `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | **必需** | 随机串（≥32 字符，**无首尾空白**） | `web/app/api/cron/daily/route.ts:33` · `web/app/api/cron/weekly/route.ts:38` · `web/app/api/workflows/refresh/start/route.ts:13`；每日 / 每周 cron · Workflow 触发 |
+| `VERCEL_DEPLOY_HOOK_URL` | Deploy Hook URL（触发一次核心 rebuild，用于代码 / 结构变更或手动全量刷新） | 可选 | `https://api.vercel.com/v1/integrations/deploy/<id>` | 手动 / CI（数据更新不需要它，长尾走 ISR） |
+| `ALERT_WEBHOOK_URL` | 失败告警 webhook（Slack / Discord incoming webhook 或 `https://webhook.site/...`，POST JSON 摘要；**不设则仅日志**） | 可选 | `https://…` 可接收 JSON POST 的端点 | `web/lib/observability/alert.ts:45`；Workflow `sendAlert` · 每日 / 每周 cron 失败投递 |
+| `SITE_INDEXABLE` | 生产 indexing 开关——`"1"` 解除 pre-launch noindex 并开放 sitemap | 可选（默认 noindex） | 字符串 `"1"` 才生效，其他值 / 未设 = noindex | `web/app/robots.ts:6` · `web/app/layout.tsx:18`；上线时单点切换 |
+| `GOOGLE_APPLICATION_CREDENTIALS` | GCP 服务账号 key 路径 | 仅一次性回填 | 本机文件路径，例 `./gcp-key.json` | **本地回填脚本**（仅一次性 BigQuery 回填） |
+| `GCP_PROJECT_ID` | GCP 项目 ID | 仅一次性回填 | GCP project ID 字符串 | **本地回填脚本**（仅一次性 BigQuery 回填） |
+| `NEXT_PUBLIC_SITE_URL` | 站点规范域名（canonical / sitemap / OG / JSON-LD 绝对 URL） | **必需**（生产） | `https://gitstarclub.com` 等绝对 URL（**无尾斜杠**） | `web/app/sitemap.ts:6` · `web/app/robots.ts:5` · `web/app/layout.tsx:17` · `web/lib/jsonld.ts:4` · `web/app/_explore/Breadcrumbs.tsx:10` |
+| `NEXT_PUBLIC_GA_ID` | GA4 measurement ID | 可选 | `G-XXXXXXXXXX` | Next.js client analytics |
+| `SEO_LIVE_BASE` | 集成测试拉取的活线 origin（默认 `https://www.gitstarclub.com`，留空可跳过测试） | 仅测试 | `https://www.gitstarclub.com` 或空串 | `web/lib/integration/seo.test.ts:23` |
+| `SEO_CANON_ORIGIN` | 集成测试断言的 canonical origin（默认 `https://gitstarclub.com`） | 仅测试 | 绝对 origin（**无尾斜杠**） | `web/lib/integration/seo.test.ts:25` |
 
 **约定**：
 
@@ -96,33 +100,59 @@ vercel alias set https://<preview-deployment>.vercel.app pre.gitstarclub.com --s
 ```
 blob://
 ├── canonical/
-│   ├── star_daily.parquet          # bootstrap 归档（仅一次性 / 灾难重建读写，非生产路径）
-│   └── v2/                          # 生产 canonical JSON shard（见 VERCEL-DATA-OPERATIONS §4）
-│       ├── meta.json                #   seam_date · schema_ver · folded_through（周/月水位）
-│       ├── repos/{bucket}.json      #   repo 维度 + 里程碑 + tracked_since + 冻结折扣 d
+│   ├── star_daily.parquet                          # bootstrap 归档（仅一次性 / 灾难重建读写，非生产路径）
+│   └── v2/                                          # 生产 canonical JSON shard（见 VERCEL-DATA-OPERATIONS §4）
+│       ├── meta.json                                #   seam_date · schema_ver · folded_through（周/月水位）
+│       ├── whitelist/                               #   Workflow step 1：≥10k 白名单（web/lib/workflows/steps/whitelist.ts）
+│       │   ├── <run_id>.json                        #     单次 run 快照（entries + diff.added/dropped）
+│       │   └── latest.json                          #     指针：{ run_id, ids } —— 下次 run 计算 diff 用
+│       ├── repos/{bucket}.json                      #   repo 维度 + 里程碑 + tracked_since + 冻结折扣 d
 │       ├── repo-monthly/{bucket}.json · repo-weekly/{bucket}.json · repo-recent-daily/{bucket}.json
 │       ├── site-daily/{yyyy}.json
-│       └── pending/{period}.json    #   已收口待折叠的周期活尾冻结快照（防重复 / 丢数据）
+│       └── pending/{period}.json                    #   已收口待折叠的周期活尾冻结快照（防重复 / 丢数据）
 ├── lookup/
-│   ├── repos.json                  # repo 元数据（build join）
+│   ├── repos.json                                   # repo 元数据（build join）
 │   └── orgs.json
-├── rank/                           # 预算好的排行榜视图（build 读）
+├── rank/                                            # 预算好的排行榜视图（build 读，flat 旧布局；新布局走 views/<run_id>/rank/**）
 │   ├── {week|month|year}/{period}/{repo|org}/{flow|stock}.json
 │   └── all-time/{repo|org}/stock.json
-├── entity/
-│   ├── repo/{id}.json              # 曲线 + 里程碑 + 历期表 + 名次史
+├── entity/                                          # flat 旧布局
+│   ├── repo/{id}.json                               # 曲线 + 里程碑 + 历期表 + 名次史
 │   └── org/{login}.json
 ├── heatmap/{year|month}/{period}.json
-├── live/                           # 当前周期活尾覆盖层（每日 / 每周 cron 写）
+├── live/                                            # 当前周期活尾覆盖层（每日 / 每周 cron 写）
 │   ├── rank/{week|month}/{current}/repo/{flow|stock}.json
 │   └── heatmap/month/{current}.json
-├── views/                          # 发布层：latest.json 指针 + <run_id>/（version=run_id）
-│   └── <run_id>/search/index.json  # 客户端搜索索引（entity/org step 派生，validate 闸门校验条目数）
+├── views/                                           # 发布层：latest.json 指针 + <run_id>/（version=run_id）
+│   ├── latest.json                                  #   pointer：{ version, run_id, published_at, prev_version, schema_ver }
+│   └── <run_id>/                                    #   版本化输出（writeVersion → views/<run_id>/<rel>）
+│       ├── meta.json                                #     版本元（seam_date · schema_ver · folded_through · generated_at）
+│       ├── lookup/                                  #     entity step 派生（lookup/repos.json + lookup/orgs.json）
+│       │   ├── repos.json
+│       │   └── orgs.json
+│       ├── search/
+│       │   └── index.json                           #     客户端搜索索引（entity step 派生，validate 闸门校验条目数）
+│       ├── rank/                                    #     rank 矩阵（窗口 × 维度 × 指标）
+│       │   ├── {week|month|year}/{period}/{repo|org}/{flow|stock|growth|new}.json
+│       │   └── all-time/{repo|org}/stock.json
+│       ├── entity/                                  #     repo / org 曲线 + 里程碑 + 历期表 + 名次史
+│       │   ├── repo/{id}.json
+│       │   └── org/{login}.json
+│       └── heatmap/                                 #     站点级日 / 月汇总
+│           ├── month/{yyyy-mm}.json
+│           └── year/{yyyy}.json
 ├── ops/
-│   ├── sync-runs.json              # live cron 运行记录（保留最近 100 次）
-│   └── workflows/<run_id>/…        # Workflow checkpoint：manifest / steps / validation
-├── current_month.json              # 当月活尾（KB 级，每日 cron append-only 覆盖写）
-└── hot-snapshot.json               # 热集聚合（首页 / 当年 / 当月，每日 cron 重写，热集 ISR 读）
+│   ├── sync-runs.json                               # live cron 运行记录（保留最近 100 次）
+│   └── workflows/
+│       ├── latest-success.json                      #   最近一次成功 run 的恢复点：{ run_id, version, published_at }
+│       ├── health.json                              #   pipeline 健康灯（每条 pipeline 最近一次 ok/failed + run_id + at）
+│       └── <run_id>/                                #   Workflow 单次 run checkpoint
+│           ├── manifest.json                        #     步骤清单 + 状态（running / published / failed）
+│           ├── validation.json                      #     发布闸门结果（ok · checked · invariants · failures）
+│           ├── renames.json                         #     rename step 输出（old_full_name → new_full_name，web 层 301）
+│           └── error.json                           #     失败时写入（run_id · error · at）
+├── current_month.json                               # 当月活尾（KB 级，每日 cron append-only 覆盖写）
+└── hot-snapshot.json                                # 热集聚合（首页 / 当年 / 当月，每日 cron 重写，热集 ISR 读）
 ```
 
 **Blob 操作约束（写 pipeline 时必须遵守）**：

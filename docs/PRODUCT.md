@@ -35,7 +35,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,2
 
 ### 配色（accent = 琥珀金 `#F2A900`；surface = 冷中性石墨灰）
 
-**金色仅作 accent（"星"色）**：primary / primary-container / primary-fixed-dim 由琥珀金 seed 经 `material-color-utilities` 生成。**surface 与 Claude 暖米色脱钩**——改用 M3 baseline 冷中性灰（带极轻冷调），不随金 seed 染成暖色。完整 sys color roles（含 5 级 surface-container、fixed 角色、明暗两套）。
+**金色仅作 accent（"星"色）**：primary / primary-container / primary-fixed-dim 是从琥珀金参考色手工调出、写在 `web/app/globals.css` 的 M3 token。**surface 与 Claude 暖米色脱钩**——改用 M3 baseline 冷中性灰（带极轻冷调），不随金 seed 染成暖色。完整 sys color roles（含 5 级 surface-container、fixed 角色、明暗两套）。
 
 > 注：M3 里 `primary`（tone 40）是**深色**文字角色，**亮琥珀在 `primary-container`**；"亮金"装饰（星、峰值）用 `primary-fixed-dim`；surface / outline / inverse 用 M3 baseline 冷中性灰（与 seed 解耦，避免暖色染色 → 不撞 Claude）。
 > **完整调色板（角色 × Light/Dark × 用途，明暗两套全角色）见 [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md)。**
@@ -64,6 +64,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,2
 | **Org 详情页** | `/o/:login` |
 | **全时榜** | `/rankings` |
 | **脉搏页** | `/pulse`（今日/本周大涨 + 复活/突刺） |
+| **对比页** | `/compare?repos=a/b,c/d`（多 repo 叠图，URL 即状态、可分享） |
 | 关于页 | `/about` |
 
 原则：**最短、可读、SEO 友好**。**URL 语言中立、无语言段**（语言走页内 `gsc_lang` cookie，见下「多语言」与 [SEO.md](./SEO.md) §10）。
@@ -155,8 +156,17 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,2
 
 ### 发现入口：全站搜索
 
-- **导航栏搜索框**（顶栏 chrome），覆盖全部约 5,261 个被追踪 repo——「按名字直达」的发现入口，与「按时间浏览」（年/月/周）互补。
+- **导航栏搜索框**（顶栏 chrome），覆盖**全部被追踪 repo**——「按名字直达」的发现入口，与「按时间浏览」（年/月/周）互补。
 - **客户端即时检索**：MiniSearch 在首次聚焦时懒加载版本化 `search/index.json`（经 CDN）；prefix + fuzzy typo 容错、按 stars 加权；结果直达 `/{owner}/{name}`。**零运行时后端**——无 `/search?q=` 结果页。
+- **每条搜索结果带「+对比」勾选**：勾选多条后底部出现「对比 N 个 →」按钮，跳 `/compare?repos=...`，与导航栏的对比入口及 repo 页「加入对比」按钮共同构成对比工具的三个入口。
+
+### 对比工具：`/compare`
+
+- **目标**：把已收录 repo（≥1 万星）的 star 曲线**叠在一张图**上比增长。
+- **URL 即状态**：`/compare?repos=facebook/react,vuejs/vue` 直接复现选择，链接可分享。上限 5 个。
+- **两种归一化**：绝对值（共享 y 轴的累计星数）与"对齐到 10k"（x 轴换成各自破万后的第 N 个月，比的是增长轨迹）。
+- **三个入口**：导航栏链接、repo 页「加入对比」按钮、搜索框多选 CTA（见上）。
+- **任意 repo 对比**（含 ≥100 星长尾）属未来工作（DB 阻塞，见 [ROADMAP.md](./ROADMAP.md)）。
 
 ## 排名矩阵与榜单定义
 

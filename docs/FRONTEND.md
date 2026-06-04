@@ -42,7 +42,25 @@
 | 周榜 | `/rankings/[year]/W[week]` | `rankings/[year]/[period]/page.tsx` | 当周 mover / 过去周冻结 | `[]`（长尾） |
 | repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | 按需 ISR（mover 当日刷新） | `[]`（长尾） |
 | **org 页** | `/o/[login]` | `o/[login]/page.tsx` | 按需 ISR（mover 当日刷新） | `[]`（长尾） |
+| **对比页** | `/compare` | `compare/page.tsx` + `compare/CompareClient.tsx` | 静态壳（`force-static`），客户端读 `?repos=` + 取曲线 | — |
 | 关于 | `/about` | `about/page.tsx` | 核心 | — |
+
+**路由处理器（route handlers）**：
+
+| 路径 | 文件 | 用途 |
+|---|---|---|
+| `/api/cron/daily` | `api/cron/daily/route.ts` | 每日 live overlay（`current_month.json` + `hot-snapshot.json`） |
+| `/api/cron/weekly` | `api/cron/weekly/route.ts` | 每周 live overlay refresh |
+| `/api/workflows/refresh/start` | `api/workflows/refresh/start/route.ts` | 触发 L3 全量重算 Workflow |
+| `/api/lang` | `api/lang/route.ts` | 直接访问时的语言 cookie 后备入口 |
+| `/search-index` | `search-index/route.ts` | 客户端搜索索引端点（服务端读版本化 JSON + s-maxage CDN） |
+| `/repo-curve` | `repo-curve/route.ts` | 对比页瘦路由（按 id 投影 entity 曲线 + s-maxage CDN） |
+
+OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
+- 站点级 `/opengraph-image`（`app/opengraph-image.tsx`，`web/lib/og-card.tsx`）
+- repo 页 `/[owner]/[name]/opengraph-image`（`[owner]/[name]/opengraph-image.tsx`）
+- 年榜 `/rankings/[year]/opengraph-image`（`rankings/[year]/opengraph-image.tsx`）
+- 月/周榜 `/rankings/[year]/[period]/opengraph-image`（`rankings/[year]/[period]/opengraph-image.tsx`）
 
 **周榜是独立页面**，但归入总榜路径下：`/rankings/YYYY/W##`。月榜和周榜共用 `[period]` 段，在页面里按 `W` 前缀分流；旧的 `/{lang}/YYYY` 与 `/{lang}/YYYY/MM` 不再存在。
 
@@ -332,9 +350,12 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
 | Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + 拐点标记点（三级色点 + `<title>` tooltip，零 JS）+ `role="img"` + aria-label |
 | 对比曲线 CompareCurve | `_explore/CompareCurve.tsx` | **Client** | 多条折线叠图 + 图例（色块+full_name+星数）+ 共享 y 轴 + **absolute↔对齐到 10k 切换**；纯核心归一化在 `lib/compare/core.ts` |
-| 面包屑 Breadcrumbs | `_explore/Breadcrumbs.tsx` | RSC | Home→年→月 / Home→owner→repo 等（[SEO](./SEO.md) §6.7） |
+| 面包屑 Breadcrumbs | `_explore/Breadcrumbs.tsx` | **Client** | 客户端组件（i18n cookie 切 chrome 标签）；Home→年→月 / Home→owner→repo 等 + `BreadcrumbList` JSON-LD（[SEO](./SEO.md)） |
 | 结构化数据 JsonLd | `_explore/JsonLd.tsx` | RSC | 注入 `application/ld+json`（配 `@/lib/jsonld`） |
-| 页脚 Footer | `_explore/Footer.tsx` | RSC | 构建时间戳 + 语言切换落点 |
+| 页脚 Footer | `_explore/Footer.tsx` | **Client** | 客户端组件（i18n cookie 切 chrome 文案）；构建时间戳 + 语言切换落点 |
+| Pulse 视图 PulseView | `pulse/PulseView.tsx` | RSC | 首页与 `/pulse` 共享主体：本周/本月/本年脉搏、全时巨头桥接、"历史上的今天"。可选 `includeWebsiteLd` 注入 `WebSite` JSON-LD（仅首页用） |
+| 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步 |
+| OG 图渲染（站点 / repo / 月+周 / 年） | `opengraph-image.tsx` × 4 | RSC（next/og） | 动态生成 1200×630 PNG；共享 `lib/og-card.tsx`（石墨灰+金、stars 内联 SVG） |
 | 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 交互按钮（见 §4.2） |
 | 语言切换 LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | 写 `gsc_lang` cookie + `router.refresh()`（§7） |
 | 页面转场 Template | `template.tsx` | RSC | 重挂载淡入容器 |
@@ -344,8 +365,9 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 ### 6.2 server-by-default 原则
 
-- 一切默认 RSC；只有 `ThemeToggle`（必需交互）与 `RegisterSW`（PWA）带 `"use client"`。
-- 新增页面（周/org/rankings/pulse）**全用 RSC** + 复用上述组件；任何"看似要 JS"的交互先查 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §零客户端 JS 约束表是否有纯 CSS/服务端解法，否则需重新设计而非引入 client JS。
+- **内容主体永远 RSC**：rank lists、heatmaps、repo 主体、org 主体、星曲线（StarCurve）等承载数据的图与表全部服务端渲染、零客户端 JS。
+- **客户端组件仅限两类**：(a) i18n cookie 驱动的 chrome（Chrome / Footer / Breadcrumbs / Narrative）—— 因为页面 BODY 是默认英文静态、cookie 偏好水合后在客户端切换；(b) 交互工具（SearchBox / ShareButton / CompareCurve+CompareClient / ThemeToggle / LanguageSwitcher / RegisterSW）。完整清单与判定规则见 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) "客户端 JS 例外清单"。
+- 新增页面前先确认所选交互无法纯 CSS / 服务端实现，再引入 client component；最低限度不能让内容主体（rank list / heatmap / star curve）变 client。
 
 ### 6.3 共享组件目录
 
