@@ -14,7 +14,7 @@ import { MAX_COMPARE } from "@/lib/compare/core";
 // loaded on first focus — kept out of the initial bundle — then everything runs client-side.
 // Each result row also has a "+ compare" toggle (v0.2 §5): selections accumulate in a small set
 // and a footer CTA jumps to /compare?repos=… with everything chosen. Capped at MAX_COMPARE.
-// See docs/IMPLEMENTATION-PLAN.md (v0.2 §1, §5).
+// See docs/FRONTEND.md (search + compare surfaces).
 
 const LIMIT = 8;
 

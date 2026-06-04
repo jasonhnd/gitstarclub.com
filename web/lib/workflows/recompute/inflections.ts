@@ -2,8 +2,8 @@
 // flow series. Zero new data source, zero LLM: a month is an inflection when its flow both
 // (a) exceeds RATIO× the trailing-window median baseline and (b) clears an absolute floor (so a
 // ≥10k-star repo's quiet early months don't register). Runs in recompute (entities.ts); the
-// result lands in entity/repo/<id>.json and StarCurve marks it. See docs/IMPLEMENTATION-PLAN.md
-// (v0.2 §3) and docs/DATA-CONTRACTS.md §2.5.
+// result lands in entity/repo/<id>.json and StarCurve marks it.
+// See docs/DATA-CONTRACTS.md (RepoEntity.inflections).
 
 export type InflectionKind = "surge" | "peak";
 export interface Inflection {
