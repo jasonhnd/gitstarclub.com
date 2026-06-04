@@ -268,7 +268,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 | 字段 | 值 |
 |---|---|
-| title | 在源码中传入 `'Compare GitHub Star History · gitstarclub'`，但未传 `absoluteTitle`，因此根 layout 的 `title.template = '%s · GitStarClub'` 会再追加品牌后缀，**最终 `<title>` 渲染为 `Compare GitHub Star History · gitstarclub · GitStarClub`**——`gitstarclub` 后缀写进了字符串里，建议后续改为 `absoluteTitle: true` 或去掉源串里的 ` · gitstarclub`，避免品牌词重复（已知小问题，不阻塞发布） |
+| title | 源码传入 `'Compare GitHub Star History'`；根 layout 的 `title.template = '%s · GitStarClub'` 追加品牌 → 最终 `<title>` = `Compare GitHub Star History · GitStarClub` |
 | description | `Overlay the star-history curves of any tracked repositories (≥10k stars) on one chart — absolute or aligned from 10k.` |
 | canonical | `/compare`（**始终**指向无参版本，参数页通过 canonical 折回） |
 
