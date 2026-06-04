@@ -16,7 +16,7 @@ export const revalidate = false;
 
 export function generateMetadata(): Metadata {
   return pageMeta({
-    title: "Compare GitHub Star History · gitstarclub",
+    title: "Compare GitHub Star History",
     description:
       "Overlay the star-history curves of any tracked repositories (≥10k stars) on one chart — absolute or aligned from 10k.",
     path: "/compare",
