@@ -1,15 +1,12 @@
 # GitStarClub Information Architecture
 
-> This document is the **UX navigation narrative — a reader's map** (English overview)
-> of how the site hangs together. It is **not** the canonical route table: the
-> authoritative route ↔ file ↔ render-layer listing lives in
-> [FRONTEND.md](./FRONTEND.md) §1.1.
->
-> Routes: see [FRONTEND.md](./FRONTEND.md) §1.1.
+## Scope
+
+This document is the **UX navigation narrative — a reader's map** of how the site hangs together. It is **not** the canonical route table: the authoritative route ↔ file ↔ render-layer listing lives in [FRONTEND.md](./FRONTEND.md) §1.1. Read this to understand how a visitor moves through the site; read FRONTEND to extend it.
 
 ## Two User Questions
 
-_(2026-06-01 update.)_ The site now follows two user questions:
+The site is organized around two user questions:
 
 1. **Pulse**: what is moving now?
 2. **Rankings**: who is largest, and who won a historical slice?

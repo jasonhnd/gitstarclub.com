@@ -1,9 +1,11 @@
 # gitstarclub 数据契约（canonical JSON shard + JSON 视图）
 
-> **数据层与 build 之间的接口**。物理形式与取舍见 [ARCHITECTURE.md](./ARCHITECTURE.md)「数据模型」；本文给每个产物的**精确 schema**。
-> 这是 build 侧 TypeScript 类型的唯一事实源——用 Zod 定义每个产物 schema，产出时校验、build 读取时 parse（见 [TESTING.md](./TESTING.md) §1.2）。
->
-> ⚠️ **canonical 形态**：§1 的 `star_daily.parquet` 是 **bootstrap 归档**形态。**生产 canonical = §1.4 的 JSON shard**（Vercel 可重算、无引擎）。Workflow / checkpoint / 发布指针契约见 §2.11–2.13。整体设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)。
+## Scope
+
+本文是 **数据层与 build 之间的接口契约**，给每个 canonical shard 与 JSON 视图的**精确 schema**——字段、类型、口径、引用关系，并作为 `web/lib/contracts/` Zod 定义的事实源。新增产物 / 改字段 / 调口径前必读。
+物理形式、取舍与生成流水线见 [ARCHITECTURE.md](./ARCHITECTURE.md)「数据模型」与 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)；前端如何消费见 [FRONTEND.md](./FRONTEND.md)；榜单口径细则见 [RANKING.md](./RANKING.md)；本文不涉及部署、运维、cron 调度（见 [OPS.md](./OPS.md)）。
+
+> ⚠️ **canonical 形态**：§1 的 `star_daily.parquet` 是 **bootstrap 归档**形态。**生产 canonical = §1.4 的 JSON shard**（Vercel 可重算、无引擎）。Workflow / checkpoint / 发布指针契约见 §2.11–2.13。
 
 ## 全局约定
 
@@ -57,9 +59,9 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 { "seam_date": "2026-05-30", "backfilled_at": "...", "schema_ver": 1, "generated_at": "..." }
 ```
 
-`seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。`Meta` 契约同时接受**扁平 bootstrap meta**（含 `backfilled_at`）与 **Phase 4 版本化 meta**（含 `folded_through`，无 `backfilled_at`）——二者皆 optional。
+`seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。`Meta` 契约同时接受**扁平 bootstrap meta**（含 `backfilled_at`）与**版本化 meta**（含 `folded_through`，无 `backfilled_at`）——二者皆 optional。
 
-### 1.4 生产 canonical JSON shard（✅ 已实现 Phase 3a，取代 Parquet 作为生产真相源）
+### 1.4 生产 canonical JSON shard
 
 > 把 §1.1 的 8M 行日表**折叠 + 分桶**成一组小 JSON，让 Vercel Workflow 能无引擎重算。设计与分桶策略见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4.2/§5。`<bucket>` = `repo_id % N`。
 
@@ -109,7 +111,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 ```
 lookup/repos.json                              # build join 表（§2.1）
 lookup/orgs.json
-search/index.json                              # 客户端全站搜索索引（recompute 派生，v0.2）
+search/index.json                              # 客户端全站搜索索引（recompute 派生）
 rank/{week|month|year}/{period}/{repo|org}/{flow|stock}.json
 rank/all-time/{repo|org}/stock.json
 live/rank/{week|month}/{period}/repo/{flow|stock}.json
@@ -121,7 +123,7 @@ current_month.json                             # 活尾（cron 写）
 hot-snapshot.json                              # 热集（cron 写，ISR 读）
 ops/sync-runs.json                             # cron 运行记录（cron 写，运维读）
 meta.json
-# ── Vercel-only 发布层（✅ 已实现 Phase 4，见 §2.11–2.13）──
+# ── Vercel-only 发布层（见 §2.11–2.13）──
 views/latest.json                              # 发布指针（读侧据此解析版本前缀；version = run_id）
 views/{run_id}/…                               # 一个 run 的完整视图版本（version=run_id，无独立 staging/published）
 ops/workflows/{run_id}/manifest.json           # Workflow run 元信息
@@ -201,7 +203,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 - `curve.recent_daily`：`[date, net_adds]`——近 ~90 天日点（曲线尾部），可负。
 - `monthly_table`：近 N 月的新增 + 当月 flow 名次。
 - `rank_history`：可选，名次史（驱动"名次走势"）。
-- `inflections`：可选，拐点标记 `[{period, flow, kind}]`（recompute 派生，v0.2 §3，见 [IMPLEMENTATION-PLAN](./IMPLEMENTATION-PLAN.md)）——月 flow ≥ K× 滚动中位数且过绝对下限的"爆发"月，最高月 `kind:"peak"`、其余 `"surge"`，至多 3 个；`StarCurve` 据此画标记 + tooltip。旧数据无此字段（optional）。
+- `inflections`：可选，拐点标记 `[{period, flow, kind}]`，由 recompute 派生——月 flow ≥ K× 滚动中位数且过绝对下限的"爆发"月，最高月 `kind:"peak"`、其余 `"surge"`，至多 3 个；`StarCurve` 据此画标记 + tooltip。旧数据无此字段（optional）。
 
 ### 2.6 `entity/org/{login}.json`
 
@@ -243,7 +245,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 
 - 当月内 **append-only + 按 UTC 日 upsert**（幂等，见 [OPS.md](./OPS.md)）。
 - `current_stars`：每日 GraphQL 最新权威值（也用于锚定）。
-- 当前实现由每日/每周 Vercel cron 写活尾，并同步覆盖 `live/rank/*` 当前周/月 rank 与 `live/heatmap/*` 当月 heatmap。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（✅ 已实现，月+周折叠 `fold.ts`，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§8.3）；交接靠 `canonical/v2/pending/<period>.json` + `folded_through` 水位防重复/丢数据。
+- 每日/每周 Vercel cron 写活尾，并同步覆盖 `live/rank/*` 当前周/月 rank 与 `live/heatmap/*` 当月 heatmap。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（月+周折叠 `fold.ts`，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§8.3）；交接靠 `canonical/v2/pending/<period>.json` + `folded_through` 水位防重复/丢数据。
 
 ### 2.9 `hot-snapshot.json`（cron 写，热集 ISR 读）
 
@@ -291,7 +293,7 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 }
 ```
 
-### 2.11 `views/latest.json`（发布指针，✅ 已实现 Phase 4）
+### 2.11 `views/latest.json` — 发布指针
 
 读侧据此解析当前生效的视图版本前缀；切指针 = 原子发布 / 回滚（见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
 
@@ -308,7 +310,7 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 - 读侧带短缓存 / cache-bust（规避 Blob 60s 传播）；解析 `version` → 读 `views/<version>/**`（version = run_id；无指针时回退扁平布局）。
 - 回滚 = 把 `version` 写回 `prev_version`（旧版本仍在 `views/<prev>`）。
 
-### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json`（Workflow checkpoint，✅ 已实现）
+### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json` — Workflow checkpoint
 
 业务可读的 run 进度账本（Workflow SDK 自身另有持久化）。
 
@@ -337,7 +339,7 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 
 `ops/workflows/latest-success.json` = `{ "run_id": "...", "version": "...", "published_at": "..." }`（恢复点）。
 
-### 2.13 `ops/workflows/{run_id}/validation.json`（校验报告，✅ 已实现）
+### 2.13 `ops/workflows/{run_id}/validation.json` — 校验报告
 
 step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md](./TESTING.md) §1.2/§1.3）；`ok=false` 则不切指针。
 **`checked` 是抽样读的视图数（非全量逐文件）**：闸门只抽查关键视图（`meta` / `rank/all-time` / `lookup/repos` / `search/index` / 抽样 top-repo entity / 去年 heatmap，约 6 个）作 schema + 不变量断言，`checked` 即这些抽样次数。
@@ -351,7 +353,7 @@ step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md
 }
 ```
 
-### 2.14 `search/index.json`（✅ 已实现 v0.2，客户端全站搜索）
+### 2.14 `search/index.json` — 客户端全站搜索
 
 recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描述头部截断 200 字符以控体积），随 entity/org step 写入 `views/<run_id>/search/index.json`，并入 `validate`（断言条目数 ≥ 阈值）。客户端 `SearchBox` 首次聚焦时懒加载 + 建 MiniSearch 索引（typo 容错 + prefix + 按 stars 加权），**零运行时后端**；读侧经 `/search-index` 路由（服务端解析发布指针读版本化产物，响应带 `s-maxage` 走 CDN）。schema `SearchIndex`/`SearchDoc`（`web/lib/contracts/search.ts`）。
 
@@ -365,9 +367,9 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
 }
 ```
 
-> **月度叙事无独立产物**（v0.2 §2）：榜页叙事是**确定性模板**、**渲染时**从该月 rank 数据（top/增速/新晋）现拼（`web/lib/narrative.ts`），**不落 Blob、不引 AI**。故此处无 `narrative/*` 契约。
+> **月度叙事无独立产物**：榜页叙事是**确定性模板**、**渲染时**从该月 rank 数据（top/增速/新晋）现拼（`web/lib/narrative.ts`），**不落 Blob、不引 AI**。故此处无 `narrative/*` 契约。
 
-### 2.15 `/repo-curve?id=<id>`（✅ 规划 v0.2 §5，多 repo 对比瘦路由——无独立产物）
+### 2.15 `/repo-curve?id=<id>` — 多 repo 对比瘦路由（无独立产物）
 
 多 repo 对比（`/compare`）需要浏览器**按需**取若干 repo 的曲线。**不新建 Blob 产物**：新增一个与 `/search-index` 同构的瘦服务端路由 `app/repo-curve/route.ts`，服务端经发布指针读版本化 `entity/repo/<id>.json`（§2.5），**投影**出对比所需的精简 payload 返回，响应带 `s-maxage` 走 CDN。schema `CompareCurve`（`web/lib/contracts/compare.ts`）：
 

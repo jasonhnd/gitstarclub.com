@@ -1,6 +1,8 @@
-# gitstarclub 需求基准（REQUIREMENTS）
+# gitstarclub 需求基准
 
-> **单一需求基准**——定义"做什么"。"怎么做"见 [ARCHITECTURE](./ARCHITECTURE.md) · [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) · [DATA-CONTRACTS](./DATA-CONTRACTS.md) · [PIPELINE](./PIPELINE.md) · [RANKING](./RANKING.md) · [FRONTEND](./FRONTEND.md) · [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) · [SEO](./SEO.md) · [OPS](./OPS.md) · [TESTING](./TESTING.md)；UX 导航叙事（reader's map）见 [INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md)。任何设计变更先回这里对齐。
+## Scope
+
+本文是产品需求的**单一基准**——定义"做什么"。所有结构性争议、新功能立项、口径调整都先回到这里对齐。"怎么做"分散在各层文档：架构 [ARCHITECTURE](./ARCHITECTURE.md)、数据运维 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)、契约 [DATA-CONTRACTS](./DATA-CONTRACTS.md)、bootstrap 流水线 [PIPELINE](./PIPELINE.md)、排名口径 [RANKING](./RANKING.md)、前端 [FRONTEND](./FRONTEND.md)、设计系统 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md)、SEO [SEO](./SEO.md)、运维 [OPS](./OPS.md)、测试 [TESTING](./TESTING.md)；UX 导航叙事见 [INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md)。未做的功能与受阻决策见 [ROADMAP.md](./ROADMAP.md)。
 
 ## 1. 产品定位（两副面孔）
 
@@ -31,7 +33,8 @@
 
 - URL 语言中立、单一（无 `/ja`、`/zh` 等语言前缀）；语言走页内 `gsc_lang` cookie 偏好（不发 hreflang，见 [SEO.md](./SEO.md) §10）。
 - 月/年页 **repo 榜与 org 榜并列**展示。
-- **导航栏全站搜索（✅ 已上线）**：顶栏 chrome 客户端 combobox，首次聚焦懒加载版本化 `search/index.json` + MiniSearch（zero 后端、走 CDN），typo 容错 + 按 stars 加权，直达 `/{owner}/{name}`；「按名字直达」入口，无 `/search?q=` 结果页。
+- **导航栏全站搜索**：顶栏 chrome 客户端 combobox，首次聚焦懒加载版本化 `search/index.json` + MiniSearch（zero 后端、走 CDN），typo 容错 + 按 stars 加权，直达 `/{owner}/{name}`；「按名字直达」入口，无 `/search?q=` 结果页。
+- **多 repo 对比**：`/compare` 静态壳 + URL 携带 `?repos=a/b,c/d`，前端按需取版本化曲线、叠图比较；归一化两模式（绝对值 / 对齐到破万）；上限 5 个；可对比集 = 已收录的 ≥1 万星 repo。任意 repo / ≥100 星下钻属未来工作，见 [ROADMAP.md](./ROADMAP.md)。
 
 ## 4. 排名
 
@@ -72,7 +75,7 @@
 
 - 生产 canonical = **JSON shard**（per-repo 月/周 rollup + 站点日总量 + repo 维度，Vercel 可重算）；服务 = 预算好的 **JSON 视图**（build / 运行时只读）。bootstrap 形态是 Parquet 事实表（归档）。
 - 引擎（BigQuery/DuckDB）**只在一次性 bootstrap**；**生产 recurring 重算（历史/元数据/全量）走 Vercel Workflow，纯 JS + JSON shard、无引擎**；**build / cron / 运行时零引擎、零原生模块**。
-- 每日 / 每周 live cron JSON-only（已实现）；全量重算 + 发布 + 回滚 + 折叠 + GC 走 Vercel Workflow（✅ 已实现 / 线上验证，Phase 2–5，2026-06-03 status=published）。详见 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)、[DATA-CONTRACTS](./DATA-CONTRACTS.md)、[PIPELINE](./PIPELINE.md)。
+- 每日 / 每周 live cron JSON-only；全量重算 + 发布 + 回滚 + 折叠 + GC 走 Vercel Workflow。详见 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)、[DATA-CONTRACTS](./DATA-CONTRACTS.md)、[PIPELINE](./PIPELINE.md)。
 
 ## 8a. 非功能需求：生产不依赖本地计算 ⭐
 

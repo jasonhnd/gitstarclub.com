@@ -3,7 +3,11 @@
 > 精简的、决策导向的测试策略。核心原则：**数据正确性就是产品本身**——历史精度是卖点，错的数据比难看的页面更致命。
 > 因此测试金字塔不是常规倒三角：**pipeline / 数据质量测试是地基**，视觉 / a11y / E2E 在其上。架构见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
 
-## 测试取向（先定调）
+## Scope
+
+本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。
+
+## 测试取向(先定调)
 
 | 取向 | 决定 | 理由 |
 |---|---|---|
@@ -52,7 +56,7 @@ test('周排名窗口跨月不丢日', () => {
 - 字段类型 / 必填 / 枚举（`owner_type ∈ {User, Org}`、`metric ∈ {flow, stock}`、`window ∈ {week,month,year,all-time}`）
 - 引用完整性：榜单里每个 `repo_id` 在 `lookup/repos.json` 有对应条目
 - Zod schema 即 build 读 JSON 的 TS 类型来源（single source of truth，避免 schema 与类型漂移）
-- **实现**：`web/scripts/validate-views.ts`（`bun scripts/validate-views.ts` 全量校验 `pipeline/data/views/**` 对契约，失败非零退出）。bootstrap precompute 产出 ~12,615 文件，对全部产物跑 Zod 0 失败；这与离线 parity 是两个不同指标——**当前离线 parity = 12,899 个视图与 DuckDB 重算逐字节一致**（`web/lib/integration/recompute.test.ts`），勿混淆文件计数与字节对拍计数。**Vercel-only 迁移后，Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/<run_id>/**`**（§1.5，**抽样关键视图**而非全量逐文件），逻辑同源、只换运行位置。
+- **实现**：`web/scripts/validate-views.ts`（`bun scripts/validate-views.ts` 全量校验 `pipeline/data/views/**` 对契约，失败非零退出）。bootstrap precompute 全部产物跑 Zod 契约校验,期望 0 失败；这与离线 parity 是两个不同指标——**离线 parity 测试**比对生成的视图与 DuckDB 重算结果逐字节一致（`web/lib/integration/recompute.test.ts`），勿混淆文件契约校验与字节对拍。**Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/<run_id>/**`**（§1.5，**抽样关键视图**而非全量逐文件），逻辑同源、只换运行位置。
 
 ### 1.3 Sanity 不变量（数据级断言，对全量产物跑）
 
@@ -78,9 +82,9 @@ test('周排名窗口跨月不丢日', () => {
 
 > golden file 测的是"历史不该变"；§1.1 测的是"算法该对"。两者互补：前者抓回归，后者抓逻辑。
 
-### 1.5 Workflow 发布闸门 / staging 校验 / 回滚（✅ 已实现 / 线上验证）
+### 1.5 Workflow 发布闸门 / staging 校验 / 回滚
 
-> Vercel-only 迁移后，**数据校验的"最后闸门"从本地 CI 移到 Vercel Workflow 内的 `validate` step**——对 `views/<run_id>/**` 跑后，**通过才切 `views/latest.json` 指针**（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.13）。同一套 §1.2 Zod + §1.3 sanity 断言**不变**，只是运行位置变了。
+> **数据校验的"最后闸门"位于 Vercel Workflow 内的 `validate` step**——对 `views/<run_id>/**` 跑后，**通过才切 `views/latest.json` 指针**（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.13）。同一套 §1.2 Zod + §1.3 sanity 断言在不同位置共享同一套实现。
 
 | 测试 | 在哪跑 | 断言 | 失败动作 |
 |---|---|---|---|
@@ -93,16 +97,16 @@ test('周排名窗口跨月不丢日', () => {
 - **fixture**：§1.1 的真切片同样导出成 **canonical JSON shard fixture**（与 Parquet 切片同源），单测「shard 重算」与「DuckDB 重算」对拍。
 - **隔离**：Workflow 校验只读 staging、不碰 `live/*` 活尾；活尾校验仍由每日/每周 cron 后置（见下「节奏」）。
 
-### 1.6 v0.2 全站搜索测试
+### 1.6 全站搜索测试
 
-v0.2 的 `search/index.json` 与客户端 MiniSearch 检索单独成测：
+`search/index.json` 与客户端 MiniSearch 检索单独成测：
 
 - `web/lib/search/core.test.ts`：MiniSearch 装配（prefix / fuzzy 0.2 typo 容错 / 按 stars 加权 `starBoost`，热门 repo 置顶）。
 - `web/lib/workflows/recompute/entities.test.ts` 的 `searchIndex` 用例：recompute 从 `repos` 维度派生索引（条目数、字段、描述截断）。
 - contracts `SearchIndex` / `SearchDoc` schema 契约测试（`web/lib/contracts/search.ts`）。
-- 全套 `bun test lib/` = **345 测试 / 21 文件**。
+- 全套测试通过 `bun test lib/` 一次性运行。
 
-- **parity 跳过**：`web/lib/integration/recompute.test.ts` 经 `NO_DISK_REF` 跳过 `search/index.json`（v0.2 新视图，DuckDB 无参照可对拍），与 live-artifact 跳过并列——其余 12,899 视图仍逐字节对拍。
+- **parity 跳过**：`web/lib/integration/recompute.test.ts` 经 `NO_DISK_REF` 跳过 `search/index.json`（派生视图，DuckDB 无参照可对拍），与 live-artifact 跳过并列——其余视图仍逐字节对拍。
 
 ---
 
@@ -195,21 +199,21 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 | 测试 | 本地 | CI（PR） | Workflow `validate`（数据重算后，读 staging） | 部署前 CI（deploy 前） |
 |---|---|---|---|---|
-| 1.1 聚合 / 排名单测 | ✅ 快，随时 | ✅ 必过 | — | ✅ |
-| 1.2 Zod schema 校验 | ✅ | ✅ | ✅ 产出即校验，脏 JSON 不切指针 | ✅ build 读取前 |
-| 1.3 sanity 不变量 | 可选 | ✅ 对产物跑 | ✅ **不过不切指针** | ✅ |
-| 1.4 golden file | ✅ | ✅ | — | ✅ |
-| 1.5 shard 等价 / 发布 / 回滚 | ✅ | ✅ | ✅ staging 校验 + 指针闸门 | — |
-| 2. 视觉回归 | 选改动页 | ✅ 关键页全跑 | —（不渲染页面） | ✅ |
-| 3. a11y（axe + 键盘） | 选改动页 | ✅ | —（不渲染页面） | ✅ |
-| 4. E2E 导航 / i18n | 选改动流 | ✅ | —（不渲染页面） | ✅ |
-| 5. 性能 / 零 JS bundle | 零 JS 检查随时 | ✅ 零 JS + HTML 体积阻断；Lighthouse 报告 | —（不渲染页面） | ✅ |
-| 6. 跨浏览器 | 偶尔 | ✅ 关键页 | —（不渲染页面） | ✅ |
+| 1.1 聚合 / 排名单测 | 是，快、随时 | 是，必过 | — | 是 |
+| 1.2 Zod schema 校验 | 是 | 是 | 是，产出即校验，脏 JSON 不切指针 | 是，build 读取前 |
+| 1.3 sanity 不变量 | 可选 | 是，对产物跑 | 是，**不过不切指针** | 是 |
+| 1.4 golden file | 是 | 是 | — | 是 |
+| 1.5 shard 等价 / 发布 / 回滚 | 是 | 是 | 是，staging 校验 + 指针闸门 | — |
+| 2. 视觉回归 | 选改动页 | 是，关键页全跑 | —（不渲染页面） | 是 |
+| 3. a11y（axe + 键盘） | 选改动页 | 是 | —（不渲染页面） | 是 |
+| 4. E2E 导航 / i18n | 选改动流 | 是 | —（不渲染页面） | 是 |
+| 5. 性能 / 零 JS bundle | 零 JS 检查随时 | 是，零 JS + HTML 体积阻断；Lighthouse 报告 | —（不渲染页面） | 是 |
+| 6. 跨浏览器 | 偶尔 | 是，关键页 | —（不渲染页面） | 是 |
 
 **节奏要点**：
 
 - **CI（每 PR）**：1.x 全套 + 2/3/4/5/6 在关键页跑。逻辑测试是门禁，必过；视觉 diff 与 Lighthouse 出报告供 review。
-- **Publish gate（Workflow `validate` step，✅ 已实现 Phase 4）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 Zod + sanity，任一不变量违反即**不切 `views/latest.json` 指针**（线上仍上一版）——防脏数据进生产的最后闸门，从本地 CI 移到 Vercel 内（§1.5）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
+- **Publish gate（Workflow `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 Zod + sanity，任一不变量违反即**不切 `views/latest.json` 指针**（线上仍上一版）——防脏数据进生产的最后闸门，运行于 Vercel Workflow 内（§1.5）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
 - **每日 / 每周 cron**：不触发 deploy，但 cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后，对活尾跑 §1.2 schema + §1.3 漂移/非负 sanity（秒级），异常告警（Sentry）而非静默。
 - **本地**：改聚合逻辑先跑 1.x；改组件先跑相关页的视觉 + a11y。遵循「改动靠 Vercel 预览确认」——视觉 / 性能以预览部署为准，不依赖本地 dev。
 

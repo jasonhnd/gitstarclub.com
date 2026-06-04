@@ -1,6 +1,8 @@
 # gitstarclub 排名规格
 
-> 所有榜单的定义、口径与边界。数据来自 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) 的 `star_daily` 事实表；产物形状见同文 `rank/*`。页面呈现见 [PRODUCT.md](./PRODUCT.md)，口径瑕疵见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+## Scope
+
+本文定义所有榜单的口径与边界：窗口 × 维度 × 指标的精确定义、stock 锚定算法、派生榜（增速 / 新晋）规则、org 聚合、周期边界、平手处理。新增榜单、改口径、改 floor 前必读。数据来源见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md)（`star_daily` 事实表）；产物形状同文 `rank/*` 节；页面呈现见 [PRODUCT.md](./PRODUCT.md)；口径瑕疵的产品级解释见 [ARCHITECTURE.md](./ARCHITECTURE.md)「数据口径的诚实瑕疵」。
 
 ## 1. 矩阵总览
 

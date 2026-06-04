@@ -1,65 +1,69 @@
 # gitstarclub 文档索引
 
-> 一本可浏览的 GitHub 开源编年史。运行时**纯静态只读** JSON / Vercel Blob、零运行时数据库；生产数据生命周期由 **Vercel Workflow** 每周 cron 自动承载（Phase 2–5 已线上验证）。本页是 `docs/` 的导航入口：**阅读顺序** + **每篇职责** + **单一真相源归属图**。项目总览见根 [../README.md](../README.md)。
+A browsable history of GitHub open-source activity. The site is fully static-read at runtime: JSON in Vercel Blob behind a publish pointer, no runtime database, no engine in the request path. Recurring data refresh runs on Vercel Workflow.
 
-## 阅读顺序（新人按此走一遍）
+This page is the navigation index for `docs/`. For a project overview, start at [../README.md](../README.md). For what shipped when, see [CHANGELOG.md](./CHANGELOG.md). For what isn't built yet, see [ROADMAP.md](./ROADMAP.md).
 
-1. [REQUIREMENTS.md](./REQUIREMENTS.md) — 需求与范围基准（任何设计变更先回这里对齐）
-2. [ARCHITECTURE.md](./ARCHITECTURE.md) — 技术栈、数据流、数据模型、扛量、页面分层
-3. [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) — Vercel-only 数据生命周期（L1–L4、Workflow、Phase 0–5、发布/回滚/GC）
-4. [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) — 每个产物的 Zod schema（构建侧类型唯一事实源）
-5. [PIPELINE.md](./PIPELINE.md) — 管线阶段（bootstrap + live cron + L3 workflow + 折叠老化）
-6. [RANKING.md](./RANKING.md) — 排名口径（seam 边界、stock 锚定、flow/stock、growth/new）
-7. [FRONTEND.md](./FRONTEND.md) — 路由、渲染分层（option C）、i18n 实现、组件、数据消费
-8. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) — 设计令牌、配色、组件模式（视觉/交互唯一真相源）
-9. [SEO.md](./SEO.md) — sitemap、meta、结构化数据、OG、robots、多语 SEO
-10. [OPS.md](./OPS.md) — 运维 runbook：Blob 布局、cron 调度、监控/告警、部署/回滚
-11. [TESTING.md](./TESTING.md) — 测试策略 + workflow 闸门 + 测试套件
-12. [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) — 构建顺序 M0–M5 + 里程碑进度 + **v0.2/v0.3 范围与设计**
+## Reading order (new engineer)
 
-**卫星文档**（按需）：[PRODUCT.md](./PRODUCT.md)（产品/页面/调性）· [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md)（UX 导航叙事 / reader's map，英文）。
+1. [REQUIREMENTS.md](./REQUIREMENTS.md) — what the product is and the constraints it operates under.
+2. [ARCHITECTURE.md](./ARCHITECTURE.md) — system overview: tech stack, data flow, data model, rendering model, hard constraints.
+3. [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) — Blob layout, publish pointer, Workflow pipeline, live overlay, rollback, garbage collection.
+4. [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) — every canonical shard and view schema (the Zod source of truth).
+5. [PIPELINE.md](./PIPELINE.md) — bootstrap pipeline (one-off, archive-only).
+6. [RANKING.md](./RANKING.md) — rank definitions: window × dim × metric, stock anchoring, derived rankings, tie-breaking.
+7. [FRONTEND.md](./FRONTEND.md) — route catalog, rendering strategy, component catalog, data-access layer, i18n.
+8. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) — tokens, typography, components, motion, accessibility, zero-client-JS constraint.
+9. [SEO.md](./SEO.md) — per-page SEO templates, sitemap structure, robots policy.
+10. [OPS.md](./OPS.md) — runbooks: deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
+11. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
-## 每篇职责一览
+Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative.
 
-| 文档 | 职责 |
+Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural decisions: [ROADMAP.md](./ROADMAP.md).
+
+## Responsibility per document
+
+| Document | Scope |
 |---|---|
-| REQUIREMENTS | 需求基准、范围、约束；**repo/视图计数口径**的单一源 |
-| ARCHITECTURE | 技术栈、数据流、数据模型（逻辑层）、扛量、页面分层、演进路线 |
-| VERCEL-DATA-OPERATIONS | 生产数据生命周期；**Workflow 步骤枚举**与发布/回滚/GC 机制 |
-| DATA-CONTRACTS | canonical shard + 视图 + workflow/指针的 **Zod schema**（类型唯一事实源） |
-| PIPELINE | 数据管线各阶段与算法、幂等性 |
-| RANKING | **排名/stock 锚定/seam** 口径（算法唯一真相源） |
-| FRONTEND | **路由/页面清单**、**渲染模型 / option C**、i18n 实现、组件 |
-| DESIGN-SYSTEM | **配色 / 设计令牌 / 组件模式**（视觉唯一真相源） |
-| SEO | sitemap/meta/JSON-LD/OG/robots、**i18n 多语 SEO 口径** |
-| OPS | **Blob 物理布局**、**cron 调度**、监控/告警、部署拓扑、回滚 runbook |
-| TESTING | 测试金字塔、数据质量闸门、workflow 发布闸门、套件清单 |
-| IMPLEMENTATION-PLAN | **里程碑路线图**（状态-of-record）+ **v0.2/v0.3 范围与设计**（搜索✅ / 叙事 / 拐点 / 分享卡片 / v0.3 DB 阻塞点） |
-| PRODUCT | 产品定位、页面用途/布局、调性、命名 |
-| INFORMATION-ARCHITECTURE | UX 导航叙事（reader's map）；路由清单以 FRONTEND §1.1 为准 |
+| REQUIREMENTS | Product baseline, scope, constraints; single source for repo/view counts |
+| ARCHITECTURE | System overview: tech stack, data flow, hard constraints, rendering model, key decisions |
+| VERCEL-DATA-OPERATIONS | Production data lifecycle: Blob layout, publish pointer, Workflow steps, rollback, garbage collection |
+| DATA-CONTRACTS | Per-shard / per-view Zod schemas (single source of truth for build-side types) |
+| PIPELINE | Bootstrap pipeline stages and algorithms (one-off, archived; recurring refresh lives in VERCEL-DATA-OPERATIONS) |
+| RANKING | Rank definitions, stock anchoring, derived rankings, edge cases (single source of truth for ranking algorithms) |
+| FRONTEND | Routes, rendering strategy, component catalog, data-access layer, i18n implementation |
+| DESIGN-SYSTEM | Tokens, typography, components, motion, accessibility, zero-client-JS exceptions |
+| SEO | Per-page SEO templates, sitemap structure, robots/noindex policy, internal linking |
+| OPS | Deploy / rollback / cron / workflow runbooks, Blob layout, env vars, alerting, failure modes |
+| TESTING | Test pyramid, contract tests, recompute parity, validation invariants, smoke tests |
+| PRODUCT | Product framing: identity, page surfaces, tone, data-honesty posture, i18n posture |
+| INFORMATION-ARCHITECTURE | UX navigation narrative (reader's map); the authoritative route table is in FRONTEND §1.1 |
+| CHANGELOG | Versioned release history (what shipped and when) |
+| ROADMAP | Open work, architectural decisions, backlog |
 
-## 单一真相源归属图（避免重复漂移）
+## Single source of truth ownership
 
-同一主题只在一处定义，其余文档**指针引用**，不重述：
+A topic lives in exactly one document. Other documents reference it; they do not restate it. This keeps facts from drifting.
 
-| 主题 | 唯一归属 |
+| Topic | Owning document |
 |---|---|
-| repo / 视图计数 | **REQUIREMENTS** |
-| 产物 schema（字段级） | **DATA-CONTRACTS** |
-| Blob 物理树 | **OPS** §Blob 布局 |
-| Cron 调度 | **OPS** §Cron |
-| Workflow 步骤枚举 | **VERCEL-DATA-OPERATIONS** §3.4（manifest 8 步分组见 DATA-CONTRACTS §2.12） |
-| 渲染模型 / option C | **FRONTEND** §2.5 |
-| 路由 / 页面清单 | **FRONTEND** §1.1 |
-| i18n 模型 | **SEO** §10（实现细节 FRONTEND §7） |
-| 配色 / 设计令牌 | **DESIGN-SYSTEM** |
-| 排名口径 / seam / stock 锚定 | **RANKING** §3 |
-| 里程碑路线图 | **IMPLEMENTATION-PLAN** |
-| v0.2 / v0.3 范围与设计 | **IMPLEMENTATION-PLAN**（文末「v0.2」「v0.3」节） |
+| Repo / view counts | REQUIREMENTS |
+| Per-artifact schema (field-level) | DATA-CONTRACTS |
+| Blob layout | OPS (§Blob layout) |
+| Cron schedule | OPS (§Cron) |
+| Workflow step enumeration | VERCEL-DATA-OPERATIONS |
+| Rendering model (static base + client-side chrome i18n) | FRONTEND (§2.5) |
+| Route catalog | FRONTEND (§1.1) |
+| i18n posture | SEO (§10); implementation detail in FRONTEND (§7) |
+| Color tokens / design vocabulary | DESIGN-SYSTEM |
+| Ranking algorithms (seam, stock anchoring, derived rankings) | RANKING |
+| Release history | CHANGELOG |
+| Open work / architectural decisions | ROADMAP |
 
-## 当前状态（2026-06-03）
+## Maintaining the docs
 
-- **v0.1 MVP + Vercel-only 数据生命周期 Phase 2–5**：✅ 已上线 / 线上验证（`status=published`）。
-- **v0.2 叙事与发现**：全站搜索 ✅ 已上线；拐点检测 / 分享卡片补全 / LLM 月度叙事 ⏳ 待做。
-- **v0.3 下钻 / 对比 / 聚类 / 语义检索**：📋 仅设计，阻塞于一次 DB 选型决策（见 IMPLEMENTATION-PLAN「v0.3」节）。
-- **发布前关口**：noindex → 上线切换（`SITE_INDEXABLE=1`）+ CWV / 收录核对（见 SEO）。
+- When a contract, route, or behavior changes, update the owning document in the same commit. Cross-references in other documents should not need to change, because they point to the owning document by name rather than copying the rule.
+- When a user-visible change ships, add an entry to CHANGELOG.
+- When a piece of open work moves into the backlog or its blocking decision changes, update ROADMAP.
+- Each document opens with a `## Scope` section that states its responsibility and what is out of scope. Keep that current; it is the contract between the document and its readers.

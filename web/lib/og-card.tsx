@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 import { fmtStars } from "@/lib/format";
 
 // Shared ranking social card (period + year). Graphite/gold brand surface; stars are inline SVG
-// (next/og's default font has no ★ glyph). See docs/IMPLEMENTATION-PLAN.md (v0.2 §4).
+// (next/og's default font has no ★ glyph). See docs/SEO.md for the OG-card strategy.
 
 export const OG_SIZE = { width: 1200, height: 630 };
 

@@ -1,16 +1,17 @@
 # gitstarclub SEO 设计
 
+## Scope
+
+本文定义每个页面类型的 SEO 规则（`title` / `description` / `canonical` / `robots`）、sitemap 分片结构、按需 ISR 在 SEO 语境下的语义，以及内链策略。
+
 > SSG 的核心价值是**可被搜索引擎收录、可分享**。目标流量（百万–千万/天）主要来自搜索引擎长尾
 > （如 `langchain star history`、`github trending 2024`、`vercel github stars`、`anthropic org star ranking`）。
-> **SEO 不是加分项，是目标成立的前提**——本站没有品牌词流量、没有社交裂变引擎，唯一的规模化获客是「每一页都精确命中一条长尾查询」。
+> **SEO 不是加分项，是目标成立的前提**——本站没有品牌词流量、没有社交裂变引擎,唯一的规模化获客是「每一页都精确命中一条长尾查询」。
 >
 > 关联文档：渲染 / 页面分层 / ISR 见 [ARCHITECTURE.md](./ARCHITECTURE.md)；页面 / URL / i18n / 调性 / 配色见 [PRODUCT.md](./PRODUCT.md)；
 > 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.2.6**（App Router + Metadata API）。
 >
-> 2026-06-01 i18n status: canonical URLs are language-neutral. English is the
-> default SEO/user-facing language when no `gsc_lang` cookie is present; ja, zh,
-> zh-TW, ko, es, and fr are in-page UI preferences selected from a dropdown.
-> These language variants do not create separate URLs or `hreflang` alternates.
+> i18n 口径：canonical URL 语言中立。无 `gsc_lang` cookie 时默认 SEO / 用户语言为英文；ja、zh、zh-TW、ko、es、fr 是页内 UI 偏好，通过下拉切换。这些语言变体不创建独立 URL，也不产生 `hreflang` 互指。
 
 ---
 
@@ -147,7 +148,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
 - **repo 名是最强搜索词**：用户直接搜 `<repo> star history`。title 把 `owner/name` 放最前。
 - **改名 / 迁移**：URL 用当前 `full_name`；旧 URL 做 **301**（见 [PRODUCT.md](./PRODUCT.md) repo 身份）→ canonical 永远指向当前规范 URL，避免重复内容。
 
-### 2.5 Org 详情页 `/o/:login`（NEW）
+### 2.5 Org 详情页 `/o/:login`
 
 | 字段 | 模板（`vercel`） |
 |---|---|
@@ -158,7 +159,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
 - 含词：org `login`、`Organization`、`Star Ranking`、`History`。owner 含 **User 与 Organization 两类**（见 ARCHITECTURE「org 维度」）；个人 owner 文案用 `developer` 而非 `organization`（按 `owner_type` 切词）。
 - 口径诚实：org 榜只含其 ≥10k repo（幸存者偏差，About 页注明）——描述不宣称"全部仓库"。
 
-### 2.6 全时榜 `/rankings`（NEW）
+### 2.6 全时榜 `/rankings`
 
 | 字段 | 模板 |
 |---|---|
@@ -180,7 +181,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
 
 > **标题长度**：控制在 ~60 字符可见区内（含后缀会被 Google 截断时，前置真实搜索词保证关键信息不被截掉——这就是 repo / org 名放最前的原因）。
 
-### 2.8 对比页 `/compare`（NEW，v0.2 §5）
+### 2.8 对比页 `/compare`
 
 | 字段 | 模板 |
 |---|---|
@@ -194,7 +195,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
 
 ## 3. 按需 ISR 的 SEO 语义（本站最关键的 SEO 细节）
 
-> ✅ **已达成（option C 落地）**：早前 cookie 版 i18n 让根 `layout.tsx` 为 `force-dynamic`、页面按请求 SSR 的临时态**已解决**——chrome 翻译移到客户端（`i18n/client.tsx`），服务端只出默认英文静态/ISR 页。构建路由表全部 `ƒ`→`○`/`●`（见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5）。**对 SEO 的关键含义本就成立**——输出的是**完整可索引 HTML**(§3.1a)，且现在重新获得 ISR 持久缓存/CDN 扛量。
+> chrome 翻译在客户端（`i18n/client.tsx`）执行，服务端只出默认英文静态 / ISR 页；构建路由表为 `○`（静态）/ `●`（按需 ISR），不存在 `ƒ`（force-dynamic）。见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5。**对 SEO 的关键含义**：输出的是**完整可索引 HTML**（§3.1a），且 ISR 持久缓存 / CDN 共同扛量。
 
 **渲染模型**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 页面分层）：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜，语言中立 ~数十页）；历史 / repo / org 页是**按需 ISR**——`dynamicParams = true` 且 `generateStaticParams` 返回空（或仅当年/当月）⇒ 不在 deploy 构建，首访时生成、存入 Vercel 持久 ISR store，后续命中缓存。
 
@@ -285,7 +286,7 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
     lastModified: r.updatedAt,                      // 数据视图里的确定性日期（见 §3.3）
     changeFrequency: r.active ? 'daily' : 'yearly',
     priority: r.active ? 0.7 : 0.4,
-    // ⚠️ 不再输出 alternates.languages —— 语言是页内 cookie 偏好、无语言 URL、不发 hreflang（见 §10）
+    // 不输出 alternates.languages —— 语言是页内 cookie 偏好、无语言 URL、不发 hreflang（见 §10）
   }))
 }
 ```
@@ -348,7 +349,7 @@ Host: https://gitstarclub.com
 
 - **不屏蔽任何内容页**：~7,500 长尾页（语言中立单一 URL）全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + sitemap 分片共同消化。
 - **屏蔽 `/api/`**：cron / 内部 route 不该被抓（真正防线是 `CRON_SECRET` 鉴权，见 [OPS.md](./OPS.md)；robots 只是减少噪声）。
-- **`/search-index`（顶级 JSON 端点）当前故意放行**：它是 v0.2 全站搜索的版本化索引（`search/index.json`），经发布指针由 Route Handler 服务、带 `s-maxage` 走 CDN，被搜索框首次聚焦时懒加载。当前 `robots.ts` 只 `Disallow: /api/`、未屏蔽它（CDN JSON、非内容页、对 SEO 无害）。若日后要拦爬虫抓这个 JSON，再在 `robots.ts` 加 `/search-index` 到 Disallow——**此为文档取向说明，当前不改 `robots.ts` 代码**。
+- **`/search-index`（顶级 JSON 端点）故意放行**：它是全站搜索的版本化索引（`search/index.json`），经发布指针由 Route Handler 服务、带 `s-maxage` 走 CDN，被搜索框首次聚焦时懒加载。`robots.ts` 只 `Disallow: /api/`、不屏蔽它（CDN JSON、非内容页、对 SEO 无害）。若需拦爬虫抓这个 JSON，在 `robots.ts` 加 `/search-index` 到 Disallow 即可。
 - **预览 `Disallow: /`**：见 §11——`isProductionHost()` 据 `VERCEL_ENV` / host 判定，预览返回全站禁抓（与页面 `robots:{index:false}` meta 双保险）。
 - `host` 字段声明规范主机（少数爬虫用作镜像归并提示）。
 
@@ -367,12 +368,12 @@ Host: https://gitstarclub.com
   "name": "gitstarclub",
   "url": "https://gitstarclub.com/",
   "description": "A chronicle of GitHub star history across 11 years."
-  // 不输出 potentialAction / SearchAction：v0.2 搜索是客户端 combobox、直达
+  // 不输出 potentialAction / SearchAction：搜索是客户端 combobox、直达
   // /{owner}/{name}，无规范结果页 URL 可供 SearchAction 广告（见下注）
 }
 ```
 
-> **v0.2 全站搜索已上线**，但它是**导航栏客户端 combobox**（首次聚焦懒加载 `search/index.json` + MiniSearch，命中直达 `/{owner}/{name}`），**没有 `/search?q=` 结果页 URL**。`SearchAction` 的 `urlTemplate` 必须指向一个可返回结果列表的规范页面——本站没有，故 `potentialAction` / `SearchAction` **暂不输出**（绝不广告一个指向不存在页面的 urlTemplate）。`WebSite` 本体始终输出。若未来新增 `/search` 结果页，再补 `SearchAction`。
+> 全站搜索是**导航栏客户端 combobox**（首次聚焦懒加载 `search/index.json` + MiniSearch，命中直达 `/{owner}/{name}`），**没有 `/search?q=` 结果页 URL**。`SearchAction` 的 `urlTemplate` 必须指向一个可返回结果列表的规范页面——本站没有，故 `potentialAction` / `SearchAction` **不输出**（绝不广告一个指向不存在页面的 urlTemplate）。`WebSite` 本体始终输出。若未来新增 `/search` 结果页，再补 `SearchAction`。
 
 ### 6.2 首页：`WebSite` + `Dataset`（站点级数据集）
 
@@ -468,7 +469,7 @@ Host: https://gitstarclub.com
 ]
 ```
 
-> 月/年页用 **`CollectionPage` + 多个 `ItemList`**：月/年页本质是"策展的实体集合 + 榜单"，比 `Article` 更贴切（`Article` 适合 v0.2 的 LLM 叙事段落，届时可叠加）。保留 `datePublished` / `dateModified`。
+> 月/年页用 **`CollectionPage` + 多个 `ItemList`**：月/年页本质是"策展的实体集合 + 榜单"，比 `Article` 更贴切（`Article` 适合后续叙事段落，届时可叠加）。保留 `datePublished` / `dateModified`。
 
 ### 6.6 全时榜 `/rankings`：`CollectionPage` + `ItemList`（repo 榜 + org 榜）
 
@@ -589,9 +590,9 @@ org 详情页 /o/login
 
 ## 10. 多语言策略（页内 cookie 偏好，非 URL 多语言 SEO）
 
-> ✅ 本章已按**现行 i18n 模型**重写（取代早期 URL 段 + hreflang 模型）。**语言是页内偏好（`gsc_lang` cookie），不进 URL、不发 hreflang**——这是产品决定（GitHub 风格单一 URL，见 [FRONTEND.md](./FRONTEND.md) §7 / §9-E）与本文顶部 2026-06-01 note 的口径。
+> **语言是页内偏好（`gsc_lang` cookie），不进 URL、不发 hreflang**——这是产品决定（GitHub 风格单一 URL，见 [FRONTEND.md](./FRONTEND.md) §7 / §9-E），与本文顶部 i18n 口径一致。
 
-| 维度 | 现行规则 |
+| 维度 | 规则 |
 |---|---|
 | URL | **语言中立、单一 URL**（`/rankings/2024/10`、`/owner/name`）；**无 `/ja`、`/zh` 语言前缀** |
 | canonical | 指自身的语言中立 URL；**不发 hreflang / `alternates.languages`**（没有语言变体 URL 可互指） |
@@ -630,7 +631,7 @@ export const metadata: Metadata = isProductionHost()
 
 ## 12. 性能即 SEO（Core Web Vitals 作排名因子）
 
-> ✅ 下表「静态 HTML 走 Edge CDN」**已达成**：option C 落地后内容页回到 `○` 静态 / `●` 按需 ISR（移除 `force-dynamic`、chrome 客户端 i18n，见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5），TTFB/缓存即纯静态/ISR 命中;**零客户端 JS（数据正文）、HTML 体积**仍成立。
+> 内容页为 `○` 静态 / `●` 按需 ISR（chrome i18n 在客户端，见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5），TTFB / 缓存走纯静态 / ISR 命中；正文零客户端 JS、HTML 体积控制在阈值内。
 
 SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 性能策略 + 用户 web/performance 规则）：
 
@@ -653,7 +654,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 ## 13. OG / 社交卡片（石墨灰 + 星金）
 
-> ⚠️ **配色已重塑为「石墨灰 + 星金」**（NOT 旧 amber 琥珀——品牌已 recolor，见 [PRODUCT.md](./PRODUCT.md) 配色）。
+> 配色为「石墨灰 + 星金」（见 [PRODUCT.md](./PRODUCT.md) 配色）。
 
 **生成与存储**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) / [OPS.md](./OPS.md)）：
 
@@ -692,7 +693,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 | 提交 sitemap | 提交 `https://gitstarclub.com/sitemap.xml`（index）；GSC 自动发现各分片 | 切换后 + 分片结构变更时 |
 | 监控收录率 | Coverage / Pages 报告：盯 ①Discovered–not indexed（长尾未抓 → 检查内链/lastModified）②Crawled–not indexed（内容薄 → 加强页面价值）③Excluded by noindex（预览残留 → 清理） | 每周 |
 | **ISR 冷启动考量** | GSC 抓取首个 URL 会触发该页 ISR 生成（首抓 TTFB 略高、属正常）；**关注首抓后是否 200 + 内容完整**，而非冷启动延迟本身 | 抽查 |
-| ~~hreflang 报告~~ | ⚠️ 不适用：语言中立单一 URL、不发 hreflang（见 §10）；无 International Targeting 需监控 | — |
+| ~~hreflang 报告~~ | 不适用：语言中立单一 URL、不发 hreflang（见 §10）；无 International Targeting 需监控 | — |
 | URL Inspection | 抽查 repo / org / 历史月页：实时抓取看渲染后 HTML 是否含正文 + JSON-LD（验证 §3a 可索引性） | 抽查 |
 | 富结果监控 | Rich Results：Breadcrumb / Dataset 是否有效；用 [Rich Results Test](https://search.google.com/test/rich-results) 验 JSON-LD | 上线 + 变更 schema 时 |
 | 移除过时网址 | 若预览曾误被收录：Removals 工具临时移除 + 修 noindex | 仅事故时 |
@@ -729,7 +730,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **结构化数据（§6）**
 
-- [ ] 全站 `WebSite`（**不含 `SearchAction`**：v0.2 搜索是客户端 combobox、无结果页 URL，见 §6.1）；首页 `Dataset`
+- [ ] 全站 `WebSite`（**不含 `SearchAction`**：搜索是客户端 combobox、无结果页 URL，见 §6.1）；首页 `Dataset`
 - [ ] repo 页 `SoftwareSourceCode` + `Dataset`；org 页 `Organization`/`Person` + `ItemList`
 - [ ] 月/年页 `CollectionPage` + 各榜 `ItemList`；全时榜 `CollectionPage` + repo/org `ItemList`
 - [ ] **每页 `BreadcrumbList`**；全部通过 Google Rich Results 测试
