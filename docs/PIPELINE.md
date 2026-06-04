@@ -36,6 +36,7 @@
 ```
 01-whitelist → 02-extract(BigQuery) → 03-metadata(GraphQL)
             → 04-rollup(DuckDB) → 05-precompute(DuckDB) → 06-upload(Blob)
+            → 07-export-v2(DuckDB → canonical/v2 JSON shards)
 ```
 
 **01 whitelist** — GitHub Search `stars:>=10000`，按 star 区间**自适应分桶**绕过 Search 1000 结果上限（区间 >1000 则二分），输出 `data/whitelist.json`：`{id, node_id, full_name, owner, name, stars}`。当前规模约 5,261，每周变动。
@@ -60,6 +61,8 @@ GROUP BY repo_id, day;
 **05 precompute views（DuckDB）** — 按榜单矩阵与实体 rollup，产出全部 JSON 视图（rank/entity/heatmap/lookup，DATA-CONTRACTS §2）。**stock 锚定**与口径见 [RANKING.md](./RANKING.md)。
 
 **06 upload（Blob）** — `star_daily.parquet` + `lookup/*` + `rank/**` + `entity/**` + `heatmap/**` + `meta.json`（含 `seam_date`）。批量 `put()` **节流 <75/s**（OPS Blob 限速）。
+
+**07 export-v2（DuckDB → canonical/v2 JSON shards）** — 把 §1.1 的 8M 行日表**折叠 + 分桶**成 `canonical/v2/{meta,repos,repo-monthly,repo-weekly,repo-recent-daily,site-daily}/...` JSON shards（`<bucket>=repo_id % N`），让 Vercel Workflow 在无引擎环境下重算。冻结 `repos.d`（stock 锚定折扣，IEEE double 全精度）+ 里程碑 `crossed_*`；fold 水位写 `canonical/v2/meta.json` 的 `folded_through`。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6 与 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4。
 
 ---
 

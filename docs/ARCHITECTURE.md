@@ -28,14 +28,13 @@ The same data layer also operates AI-free: features that look like they would ca
 |---|---|---|
 | Framework | Next.js 16 (App Router, RSC, Turbopack) | Vercel-native |
 | Language / toolchain | TypeScript 6, React 19, Zod 4, Node 24, bun | |
-| Styling | Tailwind 4 + Material 3 Expressive tokens (graphite + amber); generated via `material-color-utilities` | |
+| Styling | Tailwind 4 + Material 3 Expressive tokens (graphite + amber), hand-authored in `web/app/globals.css` following the M3 system color role taxonomy | |
 | Fonts | Plus Jakarta Sans (variable sans), Geist Mono (numerals, repo names) | |
 | Read-side data | Versioned JSON views in Vercel Blob, served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
 | Live-overlay data | Daily `current_month.json`, weekly `hot-snapshot.json`, written by cron | Append-only within a period |
 | Recurring data refresh | Vercel Workflow (multi-step, Blob checkpoint) | |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
 | Analytics | Vercel Analytics + Speed Insights, GA4 | |
-| Error tracking | Sentry | Vercel Marketplace |
 
 Deliberately not in the stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, GitHub Actions, tRPC, any LLM SDK. The reasoning is the constraints above.
 
@@ -86,7 +85,7 @@ At runtime, content pages serve as static HTML from the edge. On-demand ISR page
 
 ### Why daily increments do not pull GH Archive
 
-Daily deltas only need `current_stars(today) − current_stars(yesterday)` per repo. GitHub's GraphQL API returns 100 repos per query, so ~5,300 tracked repos costs ~53 queries (a few seconds, ~1% of the hourly point budget). Pulling 1–3 GB of GH Archive daily is unnecessary, and net deltas (which can be negative when stars are revoked) are a more honest signal than GH Archive's gross adds.
+Daily deltas only need `current_stars(today) − current_stars(yesterday)` per repo. GitHub's GraphQL API returns 100 repos per query, so the current tracked set (a few thousand repos; see [REQUIREMENTS.md](./REQUIREMENTS.md) §2 for the live count) costs a handful of queries — a few seconds, well under 1% of the hourly point budget. Pulling 1–3 GB of GH Archive daily is unnecessary, and net deltas (which can be negative when stars are revoked) are a more honest signal than GH Archive's gross adds.
 
 ### Why bootstrap uses BigQuery
 
@@ -123,7 +122,7 @@ GitHub's "watch" semantics changed in late 2012. By 2015 the WatchEvent stream i
 
 ### Whitelist
 
-The tracked set is repos with current stars ≥ 10,000, currently ~5,261 entries (drifts slowly). New entrants are picked up by the workflow's whitelist diff and metadata seeding without manual intervention.
+The tracked set is repos with current stars ≥ 10,000 (a few thousand entries; the live count drifts slowly and lives in [REQUIREMENTS.md](./REQUIREMENTS.md) §2). New entrants are picked up by the workflow's whitelist diff and metadata seeding without manual intervention.
 
 ## Data model
 
@@ -180,7 +179,7 @@ Builds ingest these JSONs directly and bake them into static HTML. Adding a new 
 | Month | ~132 |
 | Week | ~570 |
 | All-time rankings | small |
-| Repo | ~5,300 |
+| Repo | ~the current whitelist size (see [REQUIREMENTS.md](./REQUIREMENTS.md) §2) |
 | Organization | several thousand |
 | Compare | 1 (static shell, URL-driven state) |
 | Search index endpoint | 1 |
@@ -208,7 +207,7 @@ Cadence:
 - **Weekly cron**: refresh the current week and month rank, current-month heatmap, hot snapshot, and `ops/sync-runs.json`.
 - **Workflow runs** (recompute → validate → publish): re-derive every `views/**` artifact, validate, and atomically swap the pointer. Old versions are reaped by the GC step.
 
-Configuration constraints: `cacheComponents` is off (it disables `dynamicParams`); long-tail uses `revalidate=false`; ISR rendering reads only KB-sized hot-snapshot JSON.
+Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default — leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model); long-tail pages export `revalidate=false`; ISR rendering reads only KB-sized hot-snapshot JSON.
 
 ### GraphQL budget
 

@@ -1,8 +1,8 @@
 # Roadmap
 
-What is not yet built. For history of what has shipped, see [CHANGELOG.md](./CHANGELOG.md). For how the system currently works, start at [README.md](./README.md).
+Open work and the architectural decisions that gate it. For history of what has shipped, see [CHANGELOG.md](./CHANGELOG.md). For how the system currently works, start at [README.md](./README.md).
 
-This document does not track sprint-level execution. It records open work and the architectural decisions that gate it.
+This document does not track sprint-level execution. It captures (1) the open architectural decision that blocks several feature requests, (2) the feature backlog gated by that decision, and (3) continuous hygiene work that is always in flight (operations, SEO observation, doc upkeep).
 
 ---
 
@@ -55,7 +55,7 @@ Embedding-based search over descriptions, topics, and READMEs. Needs an embeddin
 
 ---
 
-## Ongoing (no architectural decision needed)
+## Continuous hygiene (always in flight, no decision needed)
 
 - **SEO observation.** Once Search Console coverage and field CWV stabilize, iterate on internal-linking and sitemap shard sizing if long-tail discovery underperforms (see [SEO.md](./SEO.md)).
 - **Operational hygiene.** Continue recording post-incident learnings in [OPS.md](./OPS.md). Tighten `validate` invariants whenever contract drift surfaces.

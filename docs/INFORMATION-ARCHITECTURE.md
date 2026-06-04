@@ -28,6 +28,7 @@ safe direct-access fallback endpoint.
 
 - **Pulse**: `/pulse`
 - **Rankings**: `/rankings`
+- **Compare**: `/compare` — multi-repo star-history overlay (URL-as-state)
 - **About**: `/about`
 
 The home page (`/`) is also the Pulse experience. It is no longer a separate chronicle landing page.
@@ -63,6 +64,10 @@ Rankings owns both all-time and historical rankings:
 
 Ranking definitions (flow/stock, growth, newcomers) live in [RANKING.md](./RANKING.md);
 route ↔ file ↔ render layer in [FRONTEND.md](./FRONTEND.md) §1.1.
+
+## Compare
+
+`/compare` overlays the star curves of any tracked repos (≥10,000 stars) on a single chart. The selected repos live in the URL (`/compare?repos=facebook/react,vuejs/vue`), so links are shareable and the page itself is fully static (`force-static`); the client-side `CompareClient` reads the search index, fetches a lean per-repo curve from `/repo-curve?id=`, and renders the overlay with a toggle between absolute calendar and "align to 10k" modes (capped at 5 repos). Three entry points feed it: the nav link, a per-repo "Add to compare" button, and a per-result `+` toggle on the global SearchBox with a "Compare N →" CTA.
 
 ## Repository Pages
 

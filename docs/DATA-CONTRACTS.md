@@ -50,7 +50,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 | `current_stars` | int | GraphQL 权威当前总数（**唯一必须精确的数**） |
 | `is_archived` | bool | |
 | `crossed_10k/50k/100k` | string\|null | 首破里程碑精确日期（供"历史上的今天"） |
-| `tracked_since` | string\|null | 进入白名单 / 开始追踪的日期。bootstrap 基线 repo 为 `null`（有完整历史）；新晋 repo = 发现日（页面据此标注，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6） |
+| `tracked_since` | string\|null | 进入白名单 / 开始追踪的日期。bootstrap 基线 repo 为 `null`（有完整历史）；新晋 repo = 发现日（页面据此标注，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10） |
 | `fetched_at` | string | 元数据抓取时刻 |
 
 ### 1.3 `meta`（→ `meta.json`）
@@ -63,7 +63,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 ### 1.4 生产 canonical JSON shard
 
-> 把 §1.1 的 8M 行日表**折叠 + 分桶**成一组小 JSON，让 Vercel Workflow 能无引擎重算。设计与分桶策略见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4.2/§5。`<bucket>` = `repo_id % N`。
+> 把 §1.1 的 8M 行日表**折叠 + 分桶**成一组小 JSON，让 Vercel Workflow 能无引擎重算。设计与分桶策略见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§5.2。`<bucket>` = `repo_id % N`。
 
 **`canonical/v2/meta.json`** —— 全局元信息（驱动 stock 锚定分段 + 收口水位）：
 
@@ -72,8 +72,8 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
   "folded_through": { "month": "2026-05", "week": "2026-W22" } }
 ```
 
-- `seam_date`：gross→net 边界，stock 锚定据此分段（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.4）。
-- `folded_through`：已折叠进 base 的最末周/月周期；读路径据此判某周期归 live 还是 base（防重复，§8.3）。
+- `seam_date`：gross→net 边界，stock 锚定据此分段（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3）。
+- `folded_through`：已折叠进 base 的最末周/月周期；读路径据此判某周期归 live 还是 base（防重复，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）。
 
 **`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`；外加 `d` = 冻结折扣系数，bootstrap 算定，**存全精度 IEEE double**——舍入会让 JS 重算的 `stock_est` 与 DuckDB 差 ±1）：
 
@@ -92,13 +92,13 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 **`canonical/v2/repo-weekly/{bucket}.json`** —— per-repo ISO 周 flow 序列（驱动历史周榜）：`{ "<id>": [["2024-W42", 320], ...] }`。
 
-**`canonical/v2/repo-recent-daily/{bucket}.json`** —— per-repo 近 ~90 天日点（曲线尾 + 周边界，net 可负）：`{ "<id>": [["2026-03-01", 30], ["2026-03-02", -5]] }`。滚出 90 天的日点由折叠 step 并入 `repo-monthly`（单一真相，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.3）。
+**`canonical/v2/repo-recent-daily/{bucket}.json`** —— per-repo 近 ~90 天日点（曲线尾 + 周边界，net 可负）：`{ "<id>": [["2026-03-01", 30], ["2026-03-02", -5]] }`。滚出 90 天的日点由折叠 step 并入 `repo-monthly`（单一真相，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.2）。
 
 **`canonical/v2/site-daily/{yyyy}.json`** —— 站点级日总量（驱动 heatmap）：`{ "year": "2024", "cells": [["2024-01-01", 82000]] }`。
 
-**`canonical/v2/pending/{period}.json`** —— 已收口、待折叠的周期活尾冻结快照（cron 跨期重置前写、折叠 step 读，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8.3）：形同 `current_month.json` 的 `per_repo` + `daily_totals`。
+**`canonical/v2/pending/{period}.json`** —— 已收口、待折叠的周期活尾冻结快照（cron 跨期重置前写、折叠 step 读，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）：形同 `current_month.json` 的 `per_repo` + `daily_totals`。
 
-> **stock 锚定**(口径同 [RANKING.md](./RANKING.md) §3,**必须分 seam 前后**)：折扣 `d = current_stars@seam / cumgross@seam_date`(**分母只含 seam 前 gross**),bootstrap 算定后写入 `repos` shard 冻结。seam 前 `stock_est = cumgross × d`；**seam 后 net 不打折、直接累加**：`stock = stock@seam + Σ(seam 后 net)`。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.4。里程碑同样 bootstrap 算定后冻结、写入 `repos` shard。
+> **stock 锚定**(口径同 [RANKING.md](./RANKING.md) §3,**必须分 seam 前后**)：折扣 `d = current_stars@seam / cumgross@seam_date`(**分母只含 seam 前 gross**),bootstrap 算定后写入 `repos` shard 冻结。seam 前 `stock_est = cumgross × d`；**seam 后 net 不打折、直接累加**：`stock = stock@seam + Σ(seam 后 net)`。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3。里程碑同样 bootstrap 算定后冻结、写入 `repos` shard。
 
 ---
 
@@ -131,7 +131,7 @@ ops/workflows/{run_id}/steps/{step}.json       # 每个 step 的 checkpoint
 ops/workflows/latest-success.json              # 最近一次成功发布的 run_id（恢复点）
 ```
 
-> **发布层产物（`views/<version>/*`）的内部结构 = §2.1–2.7 的视图**（`rank/** entity/** heatmap/** lookup/** meta.json`），落在 `views/<run_id>/` 前缀下（version = run_id，无 staging→published 拷贝）。读侧先读 `views/latest.json` 指针解析出 `<version>`，再读该前缀下的视图（无指针时回退扁平布局；见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4.1）。
+> **发布层产物（`views/<version>/*`）的内部结构 = §2.1–2.7 的视图**（`rank/** entity/** heatmap/** lookup/** meta.json`），落在 `views/<run_id>/` 前缀下（version = run_id，无 staging→published 拷贝）。读侧先读 `views/latest.json` 指针解析出 `<version>`，再读该前缀下的视图（无指针时回退扁平布局；见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.1）。
 
 ### 2.1 `lookup/repos.json`
 
@@ -245,7 +245,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 
 - 当月内 **append-only + 按 UTC 日 upsert**（幂等，见 [OPS.md](./OPS.md)）。
 - `current_stars`：每日 GraphQL 最新权威值（也用于锚定）。
-- 每日/每周 Vercel cron 写活尾，并同步覆盖 `live/rank/*` 当前周/月 rank 与 `live/heatmap/*` 当月 heatmap。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（月+周折叠 `fold.ts`，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§8.3）；交接靠 `canonical/v2/pending/<period>.json` + `folded_through` 水位防重复/丢数据。
+- 每日/每周 Vercel cron 写活尾，并同步覆盖 `live/rank/*` 当前周/月 rank 与 `live/heatmap/*` 当月 heatmap。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（月+周折叠 `fold.ts`，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6/§7.2）；交接靠 `canonical/v2/pending/<period>.json` + `folded_through` 水位防重复/丢数据。
 
 ### 2.9 `hot-snapshot.json`（cron 写，热集 ISR 读）
 
@@ -320,12 +320,12 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
   "run_id": "refresh-2026-06-02T04-00-00-000Z",
   "started_at": "2026-06-02T04:00:00.000Z",
   "status": "running",                          // running | published | failed
-  "steps": ["whitelist","rename","metadata","fold","recompute","validate","publish","gc"],  // manifest 分组（细粒度 12 步见 VERCEL-DATA-OPERATIONS §3.4）
+  "steps": ["whitelist","rename","metadata","fold","recompute","validate","publish","gc"],  // manifest 分组（细粒度 12 步见 VERCEL-DATA-OPERATIONS §4）
   "published_version": null
 }
 ```
 
-> `steps[]` 为 **manifest 分组**（8 项，对应进度账本）；**细粒度 12 步**（whitelist/rename/metadata/newcomer/fold/rank/entity-repo/entity-org/heatmap/validate/publish/gc/revalidate）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §3.4。
+> `steps[]` 为 **manifest 分组**（8 项，对应进度账本）；**细粒度 12 步**（whitelist/rename/metadata/newcomer/fold/rank/entity-repo/entity-org/heatmap/validate/publish/gc/revalidate）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。
 
 ```json
 // steps/recompute.json

@@ -42,6 +42,7 @@
 | 关于页 | `/about` | 核心 | 1 | 低（但需收录） |
 | 周页 | `/rankings/YYYY/W##` | 当周核心 / 历史按需 ISR | ~570 | 中 |
 | **脉搏页** | `/pulse` | 核心（deploy 构建，每日刷新） | 1 | 高（"最新动态"入口） |
+| 对比页 | `/compare` | 核心（deploy 构建，静态壳） | 1 | 中（工具页） |
 
 > **单语言收录**：语言是页内 `gsc_lang` cookie 偏好、不进 URL（见 §10），URL 语言中立单一 ⇒ 收录目标 URL 数 = 上表单语言合计，不乘语言数。
 
@@ -60,11 +61,11 @@
 
 ### 1.3 收录目标量级（估算）
 
-| 维度 | 首页 | 年 | 月 | repo | org | rankings + about | 上表小计 |
+| 维度 | 首页 | 年 | 月 | repo | org | rankings + about + compare | 上表小计 |
 |---|---|---|---|---|---|---|---|
-| URL 数（语言中立） | 1 | ~11 | ~132 | ~5,261 | ~1,500（估） | ~2 | **~6,900** |
+| URL 数（语言中立） | 1 | ~11 | ~132 | ~5,261 | ~1,500（估） | ~3 | **~6,900** |
 
-> URL 语言中立单一、不乘语言数（见 §10）。上表小计 ~6,900 **未含周页与 `/pulse`**；加上独立周页 +~570 再加 `/pulse` ⇒ **当前约 6,900、规划 ~7,500 URL，sitemap 按 ~7,500 规划**。具体数随 org 白名单（含 User owner）浮动。
+> URL 语言中立单一、不乘语言数（见 §10）。上表小计 ~6,900 **未含周页与 `/pulse`**；加上独立周页 +~570 再加 `/pulse` + `/compare` ⇒ **当前约 6,900、规划 ~7,500 URL，sitemap 按 ~7,500 规划**。具体数随 org 白名单（含 User owner）浮动。
 
 ---
 
@@ -73,7 +74,8 @@
 **全局约定**：
 
 - `metadataBase = new URL(process.env.NEXT_PUBLIC_SITE_URL)`（见 [OPS.md](./OPS.md)，生产 = `https://gitstarclub.com`），所有相对 URL 据此解析为绝对 URL。
-- 根 `app/layout.tsx` 设 `title.template = '%s · gitstarclub'` + `title.default = 'gitstarclub'`；各页用 `title`（字符串）或 `title.absolute`（首页用 absolute，避免重复后缀）。
+- 根 `app/layout.tsx` 设 `title.template = '%s · GitStarClub'` + `title.default = 'GitStarClub — A Chronicle of Open Source'`；各页用 `title`（字符串）或 `title.absolute`（首页用 absolute，避免重复后缀）。各页 metadata 由 `web/lib/seo.ts` 的 `pageMeta(...)` 工具统一构造（注入 `canonical` / `openGraph.url` / `twitter.images` / 默认 OG card）。
+- 根 layout 还根据 `SITE_INDEXABLE` 全局发 `robots: { index, follow }`：默认 `false`（预发期 noindex），见 §5 / §11。
 - **每页 canonical 指向自身规范 URL**（语言中立单一 URL：`/rankings/2024/10` 的 canonical 就是它自己，**无语言前缀、不发 hreflang**——语言是页内 cookie 偏好，见 §10）。
 - 标题含**真实搜索词**：`star history` / `trending` / 年份 / repo / org 名 / `ranking`。描述 ≤ 155 字符、含数字与具体实体、首句即价值。
 
@@ -81,101 +83,180 @@
 
 ### 2.1 首页 `/`
 
-```ts
-// app/page.tsx （语言中立单一 URL，无 lang 段，见 §10）
-export const metadata: Metadata = {
-  title: { absolute: 'GitHub Star History & Trends — A Chronicle of Open Source · gitstarclub' },
-  description:
-    'Explore 11 years of GitHub star history across 5,261 projects with ≥10k stars. Yearly & monthly trending, all-time rankings, and per-repo star timelines. Updated daily.',
-  alternates: { canonical: '/' },
-}
-```
+实际实现（`web/app/page.tsx`，经 `pageMeta(...)` 工具构造，`absoluteTitle: true` 跳过站点后缀模板）：
 
-- 含词：`GitHub Star History`、`Trends`、`trending`、`star timelines`、`rankings`、`11 years`、`5,261 projects`。
+| 字段 | 值 |
+|---|---|
+| title | `Open Source Pulse & GitHub Star History · GitStarClub`（`absolute`，不附加 `· gitstarclub` 后缀） |
+| description | `See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.` |
+| canonical | `/` |
+
+- 含词：`Open Source Pulse`、`GitHub Star History`、`fastest-rising`、`star rankings`。
 
 ### 2.2 年度页 `/rankings/2024`
 
+实际实现（`web/app/rankings/[year]/page.tsx`）：
+
 | 字段 | 模板（以 2024 为例） |
 |---|---|
-| title | `GitHub Stars in 2024 — Top Trending Repos & Star History` |
-| description | `The year 2024 in open source: top GitHub repos by new stars, breakout projects, and monthly trends. claude-code, ollama and 47 others crossed 10k. Star data charted month-by-month.` |
+| title | `2024 GitHub Star Rankings — Yearly Movers` |
+| description | `The 2024 ranking of GitHub repositories by stars gained, with month-by-month history.` |
 | canonical | `/rankings/2024` |
+| ogImage | `/rankings/2024/opengraph-image`（路由内置 OG card） |
 
 ```ts
-export async function generateMetadata({ params }: { params: Promise<{ year: string }> }) {
-  const { year } = await params
-  const v = await getYearView(year) // React cache()，与 body 共享
-  return {
-    title: `GitHub Stars in ${year} — Top Trending Repos & Star History`,
-    description: `The year ${year} in open source: top GitHub repos by new stars in ${year}, ${v.newcomers} breakout projects crossing 10k, and month-by-month star trends. Top: ${v.top3.join(', ')}.`,
-    alternates: { canonical: `/rankings/${year}` },
-  }
+export async function generateMetadata({ params }: { params: Promise<{ year: string }> }): Promise<Metadata> {
+  const { year } = await params;
+  return pageMeta({
+    title: `${year} GitHub Star Rankings — Yearly Movers`,
+    description: `The ${year} ranking of GitHub repositories by stars gained, with month-by-month history.`,
+    path: `/rankings/${year}`,
+    locale: "en",
+    ogImage: `/rankings/${year}/opengraph-image`,
+  });
 }
 ```
 
-### 2.3 月度页 `/rankings/2024/10`
+> 模板目前固定不携带年度 TOP3 / newcomer 数等动态字段——长尾页的 description 是参数化模板，避免在 `generateMetadata` 里加额外 JSON 读取。后续若想注入"Top: …"等动态片段，再叠加 `getYearView()` 读取。
 
-| 字段 | 模板（2024-10） |
-|---|---|
-| title | `Top GitHub Repos in October 2024 — Trending & Star Growth` |
-| description | `October 2024 on GitHub: 5,261 tracked repos gained 2.3M stars. Top by new stars, fastest-growing, and 12 newcomers crossing 10k. See who trended in Oct 2024.` |
-| canonical | `/rankings/2024/10` |
+### 2.3 月度页 / 周页 `/rankings/2024/10` · `/rankings/2024/W41`
 
-- 含词：`Top GitHub Repos`、月份英文名 + 年（`October 2024`）、`Trending`、`Star Growth`。**月份用英文全称**（搜索量高于数字 `2024/10`）。
-- 周榜以 section 内嵌（默认）：section 标题如 `Week of Oct 7–13` 含锚点 `#w41`，供里程碑深链（见 §9）。
+实际实现（`web/app/rankings/[year]/[period]/page.tsx`，`[period]` 段同时承载月与周，由 `^W(\d{1,2})$/i` 分流）：
+
+| 字段 | 模板（2024-10） | 模板（2024-W41） |
+|---|---|---|
+| title | `October 2024 GitHub Star Rankings` | `2024 Week 41 GitHub Star Rankings` |
+| description | `GitHub repositories ranked by stars gained in October 2024.` | `GitHub repositories ranked by stars gained in 2024 Week 41.` |
+| canonical | `/rankings/2024/10` | `/rankings/2024/W41` |
+| ogImage | `/rankings/2024/10/opengraph-image` | `/rankings/2024/W41/opengraph-image` |
+
+```ts
+export async function generateMetadata({ params }: { params: Promise<{ year: string; period: string }> }): Promise<Metadata> {
+  const { year, period } = await params;
+  const week = /^W(\d{1,2})$/i.exec(period);
+  const label = week ? `${year} Week ${Number(week[1])}` : `${monthLabel("en", Number(period), "long")} ${year}`;
+  return pageMeta({
+    title: `${label} GitHub Star Rankings`,
+    description: `GitHub repositories ranked by stars gained in ${label}.`,
+    path: `/rankings/${year}/${period}`,
+    locale: "en",
+    ogImage: `/rankings/${year}/${period}/opengraph-image`,
+  });
+}
+```
+
+- 含词：月份英文全称（`October 2024`）/ 周编号（`2024 Week 41`）、`GitHub Star Rankings`。**月份用英文全称**（搜索量高于数字 `2024/10`）。
+- 周榜为**独立页**（`/rankings/YYYY/W##`），月页内不再内嵌周 section。月页 / 年页通过内链指向周页（见 §9）。
 
 ### 2.4 Repo 详情页 `/:owner/:name`
 
-| 字段 | 模板（`anthropics/claude-code`） |
+实际实现（`web/app/[owner]/[name]/page.tsx`）：
+
+| 字段 | 模板（`anthropics/claude-code`，已找到 entity） |
 |---|---|
 | title | `anthropics/claude-code — Star History & Timeline` |
-| description | `Star history for anthropics/claude-code: 98,432 stars as of May 2026. See its growth curve, milestones (10k/50k/100k dates), monthly star gains, and ranking history.` |
+| description | `Star history for anthropics/claude-code: 98,432 stars. Growth curve, milestones (10k/50k/100k dates), monthly star gains, and ranking history.` |
 | canonical | `/anthropics/claude-code` |
+| ogImage | `/anthropics/claude-code/opengraph-image`（按 repo 现场绘制曲线 + 数字 + repo 名） |
 
 ```ts
-export async function generateMetadata({ params }: { params: Promise<{ owner: string; name: string }> }) {
-  const { owner, name } = await params
-  const repo = await getRepoEntity(owner, name) // 未知 repo → notFound()（见 §3 状态码）
-  if (!repo) notFound()
-  return {
-    title: `${owner}/${name} — Star History & Timeline`,
-    description: `Star history for ${owner}/${name}: ${repo.stars.toLocaleString()} stars as of ${repo.asOf}. Growth curve, milestones (10k/50k/100k dates), monthly star gains, and ranking history.`,
-    alternates: { canonical: `/${owner}/${name}` },
-  }
+export async function generateMetadata({ params }: { params: Promise<{ owner: string; name: string }> }): Promise<Metadata> {
+  const { owner, name } = await params;
+  const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
+  const id = (await getRepoIdByFullName()).get(fullName.toLowerCase());
+  const repo = id !== undefined ? await getRepoEntity(id) : null;
+  // 找不到时仍返回 metadata（描述用 fullName 兜底）；body 里再 notFound()（见 §3.2）
+  if (!repo) return pageMeta({ title: `${fullName} — Star History`, description: `GitHub star history for ${fullName}.`, path: `/${fullName}`, locale: "en" });
+  return pageMeta({
+    title: `${repo.full_name} — Star History & Timeline`,
+    description: `Star history for ${repo.full_name}: ${repo.current_stars.toLocaleString()} stars. Growth curve, milestones (10k/50k/100k dates), monthly star gains, and ranking history.`,
+    path: `/${repo.full_name}`,
+    locale: "en",
+    ogImage: `/${repo.full_name}/opengraph-image`,
+  });
 }
 ```
 
 - **repo 名是最强搜索词**：用户直接搜 `<repo> star history`。title 把 `owner/name` 放最前。
+- `current_stars` 用 `toLocaleString()` 加千分逗号（无 "as of" 日期——目前不在 description 里硬编日期，避免冷月每日刷描述）。
 - **改名 / 迁移**：URL 用当前 `full_name`；旧 URL 做 **301**（见 [PRODUCT.md](./PRODUCT.md) repo 身份）→ canonical 永远指向当前规范 URL，避免重复内容。
+- **未知 repo**：`generateMetadata` 返回兜底 meta（`title = '<fullName> — Star History'`），页面 body 调 `notFound()` 触发 404 UI + 状态码（见 §3.2）。
 
 ### 2.5 Org 详情页 `/o/:login`
 
-| 字段 | 模板（`vercel`） |
-|---|---|
-| title | `vercel — GitHub Organization Star Ranking & History` |
-| description | `vercel on GitHub: combined star history across its ≥10k-star repos. Total stars, top projects (next.js, …), monthly org-level star gains, and all-time org ranking.` |
-| canonical | `/o/vercel` |
+实际实现（`web/app/o/[login]/page.tsx`，按 `owner_type` 切换 `Organization` / `Developer`）：
 
-- 含词：org `login`、`Organization`、`Star Ranking`、`History`。owner 含 **User 与 Organization 两类**（见 ARCHITECTURE「org 维度」）；个人 owner 文案用 `developer` 而非 `organization`（按 `owner_type` 切词）。
-- 口径诚实：org 榜只含其 ≥10k repo（幸存者偏差，About 页注明）——描述不宣称"全部仓库"。
+| 字段 | 模板（`vercel`，`owner_type=Organization`） | 模板（`tj`，`owner_type=User`） |
+|---|---|---|
+| title | `vercel — GitHub Organization Star Ranking & History` | `tj — GitHub Developer Star Ranking & History` |
+| description | `vercel on GitHub: combined star history across 12 tracked ≥10k-star repos — 538,910 total stars, top projects, and all-time ranking.` | `tj on GitHub: combined star history across 4 tracked ≥10k-star repos — 79,830 total stars, top projects, and all-time ranking.` |
+| canonical | `/o/vercel` | `/o/tj` |
+
+```ts
+export async function generateMetadata({ params }: { params: Promise<{ login: string }> }): Promise<Metadata> {
+  const { login: raw } = await params;
+  const login = decodeURIComponent(raw);
+  const org = await getOrgEntity(login);
+  // 未知 login 时仍返回兜底 meta；页面 body 再 notFound()
+  if (!org) return pageMeta({ title: `${login} — GitHub Star Ranking`, description: `GitHub star history for ${login}.`, path: `/o/${login}`, locale: "en" });
+  const kind = org.owner_type === "Organization" ? "Organization" : "Developer";
+  return pageMeta({
+    title: `${org.login} — GitHub ${kind} Star Ranking & History`,
+    description: `${org.login} on GitHub: combined star history across ${org.repo_count} tracked ≥10k-star repos — ${org.current_stars_sum.toLocaleString()} total stars, top projects, and all-time ranking.`,
+    path: `/o/${org.login}`,
+    locale: "en",
+  });
+}
+```
+
+- 含词：org `login`、`Organization` / `Developer`（按 `owner_type` 切词）、`Star Ranking`、`History`。owner 含 **User 与 Organization 两类**（见 ARCHITECTURE「org 维度」）。
+- 口径诚实：`tracked ≥10k-star repos` 明确说"被追踪的 ≥10k 仓库"（幸存者偏差，About 页注明）——描述不宣称"全部仓库"。
+- 不设 `ogImage`，沿用站点默认 OG card（见 §13）。
 
 ### 2.6 全时榜 `/rankings`
 
-| 字段 | 模板 |
+实际实现（`web/app/rankings/page.tsx`，静态 + 每日 revalidate）：
+
+| 字段 | 值 |
 |---|---|
 | title | `All-Time GitHub Star Rankings — Most-Starred Repos & Orgs` |
-| description | `The all-time most-starred GitHub repositories and organizations. Top 100 repos and orgs by total stars across 11 years. Updated daily.` |
+| description | `The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across 11 years.` |
 | canonical | `/rankings` |
+
+```ts
+export async function generateMetadata(): Promise<Metadata> {
+  return pageMeta({
+    title: "All-Time GitHub Star Rankings — Most-Starred Repos & Orgs",
+    description: "The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across 11 years.",
+    path: "/rankings",
+    locale: "en",
+  });
+}
+```
 
 - 若派生切片（如 `/rankings?metric=org` 或 `/rankings/org`）**待定 PRODUCT**；**canonical 去重见 §7**（避免 repo / org 两视图互为重复内容）。
 
 ### 2.7 关于页 `/about`
 
-| 字段 | 模板 |
+实际实现（`web/app/about/page.tsx`）：
+
+| 字段 | 值 |
 |---|---|
-| title | `About — Data Sources & Methodology · gitstarclub` |
-| description | `How gitstarclub charts GitHub star history: data from GH Archive & GitHub API, gross vs net stars, the ≥10k whitelist, and known caveats (survivorship bias, 2015 start).` |
+| title | `About — Data Sources & Methodology`（站点后缀 ` · gitstarclub` 由 root layout 的 `title.template` 自动追加，最终为 `About — Data Sources & Methodology · gitstarclub`） |
+| description | `How GitStarClub charts GitHub star history: data from GH Archive & GitHub API, gross vs net stars, the ≥10k whitelist, and known caveats.` |
 | canonical | `/about` |
+
+```ts
+export async function generateMetadata(): Promise<Metadata> {
+  return pageMeta({
+    title: "About — Data Sources & Methodology",
+    description:
+      "How GitStarClub charts GitHub star history: data from GH Archive & GitHub API, gross vs net stars, the ≥10k whitelist, and known caveats.",
+    path: "/about",
+    locale: "en",
+  });
+}
+```
 
 - 收录但低优先级；承载**数据口径与署名**（GH Archive / GitHub API），是 E-E-A-T 信号（透明度）。
 
@@ -183,19 +264,37 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
 
 ### 2.8 对比页 `/compare`
 
-| 字段 | 模板 |
-|---|---|
-| title | `Compare GitHub Star History · gitstarclub` |
-| description | `Overlay the star-history curves of any tracked repos (≥10k stars) on one chart — absolute or aligned from 10k.` |
-| canonical | `/compare`（**始终**指向无参版本） |
+实际实现（`web/app/compare/page.tsx`，`export const dynamic = "force-static"`，全量静态壳 + 客户端读 `?repos=` 渲染）：
 
-- **无参** `/compare` = 可索引落地页（介绍工具 + 空选择器）；**带 `?repos=` 参数**的对比结果页 **`noindex`**——选择是用户态、组合无限，放任收录会造成抓取爆炸与重复内容（同 §0 原则）。canonical 统一回 `/compare`，sitemap **只列** `/compare`，不枚举组合。
+| 字段 | 值 |
+|---|---|
+| title | 在源码中传入 `'Compare GitHub Star History · gitstarclub'`，但未传 `absoluteTitle`，因此根 layout 的 `title.template = '%s · GitStarClub'` 会再追加品牌后缀，**最终 `<title>` 渲染为 `Compare GitHub Star History · gitstarclub · GitStarClub`**——`gitstarclub` 后缀写进了字符串里，建议后续改为 `absoluteTitle: true` 或去掉源串里的 ` · gitstarclub`，避免品牌词重复（已知小问题，不阻塞发布） |
+| description | `Overlay the star-history curves of any tracked repositories (≥10k stars) on one chart — absolute or aligned from 10k.` |
+| canonical | `/compare`（**始终**指向无参版本，参数页通过 canonical 折回） |
+
+```ts
+export const dynamic = "force-static";
+export function generateMetadata(): Metadata {
+  return pageMeta({
+    title: "Compare GitHub Star History · gitstarclub",
+    description:
+      "Overlay the star-history curves of any tracked repositories (≥10k stars) on one chart — absolute or aligned from 10k.",
+    path: "/compare",
+    locale: "en",
+  });
+}
+```
+
+- **去重策略：仅靠 canonical**：`/compare` 是 `force-static` 静态壳，所有 `?repos=...` 排列**共用同一份 HTML**（参数完全由客户端读 URL 解析），`<head>` 里只声明 `canonical: /compare`。
+- **`noindex` 不实施**：先前设计里"带参版本 `noindex`"需要按请求读 `searchParams` → 把页面退化为 dynamic SSR；本站为了保留 CDN 静态命中，**没有**在带参时输出 `robots: { index: false }` meta。
+- **依赖 canonical 收敛**：Googlebot / Bingbot 对 canonical 标签的合并去重历史上非常可靠——所有 `?repos=...` 命中应被折回 `/compare` 作为唯一 indexable 表面；如果将来 Search Console 收录报告显示带参 URL 仍被独立索引，再升级为 `dynamic = "force-dynamic"` 路径以发 `noindex`。
+- sitemap **只列** `/compare`，不枚举 `?repos=...` 组合。
 
 ---
 
 ## 3. 按需 ISR 的 SEO 语义（本站最关键的 SEO 细节）
 
-> chrome 翻译在客户端（`i18n/client.tsx`）执行，服务端只出默认英文静态 / ISR 页；构建路由表为 `○`（静态）/ `●`（按需 ISR），不存在 `ƒ`（force-dynamic）。见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5。**对 SEO 的关键含义**：输出的是**完整可索引 HTML**（§3.1a），且 ISR 持久缓存 / CDN 共同扛量。
+> chrome 翻译在客户端（`i18n/client.tsx`）执行，服务端只出默认英文静态 / ISR 页；构建路由表为 `○`（静态）/ `●`（按需 ISR），不存在 `ƒ`（force-dynamic）。见 [FRONTEND.md](./FRONTEND.md) §2.5（渲染模式：静态基底 + 客户端译 chrome）。**对 SEO 的关键含义**：输出的是**完整可索引 HTML**（§3.1a），且 ISR 持久缓存 / CDN 共同扛量。
 
 **渲染模型**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 页面分层）：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜，语言中立 ~数十页）；历史 / repo / org 页是**按需 ISR**——`dynamicParams = true` 且 `generateStaticParams` 返回空（或仅当年/当月）⇒ 不在 deploy 构建，首访时生成、存入 Vercel 持久 ISR store，后续命中缓存。
 
@@ -227,6 +326,8 @@ export async function generateStaticParams() {
 
 ### 3.3 `lastModified` 规则（同时用于 sitemap 与潜在 HTTP 头）
 
+**目标态**（分片实施后，见 §4.4）：
+
 | 页面 | `lastModified` 取值 | 稳定性 |
 |---|---|---|
 | 历史年 / 历史月（已折叠进 canonical shard） | 该期数据**最后被重算的日期**（仅 Vercel Workflow 重算并发布新版本时才变）→ 实质**固定** | 高（爬虫据此降频复抓） |
@@ -235,6 +336,8 @@ export async function generateStaticParams() {
 
 - **稳定性原则**：历史页 `lastModified` **不可每次 build 抖动**（否则爬虫误判全站每日全变、浪费预算）。取值来自**数据视图里的确定性字段**（pipeline 写入的 `updated_at` / 期末日），不是 `new Date()`。
 - 与 §4 sitemap 的 `lastModified` 同源（同一字段），保证 sitemap 与页面声明一致。
+
+**当前态（已知偏离）**：`web/app/sitemap.ts` 当前是单一扁平 sitemap，**全站共用一个 `lastModified`**（`meta.backfilled_at` 或回退 `new Date()`，见 §4.2）——历史月页和沉寂 repo 都会跟着这个值动。这与上表「历史页应稳定」相违，目前可容忍（URL 规模仅 ~7k、`meta` 命中率高），但**切分片时必须按上表逐 URL 取实体级日期**。
 
 ### 3.4 配置要点（与 ARCHITECTURE 对齐）
 
@@ -245,53 +348,98 @@ export async function generateStaticParams() {
 
 ---
 
-## 4. sitemap：index + 分片结构（按新规模）
+## 4. sitemap：当前单文件 flat 实现（~7k URL）+ 未来分片预留
 
-> **Sitemap 协议硬限**：单文件 ≤ **50,000 URL** 且 ≤ **50MB（未压缩）**。我们 ~7,500 个语言中立 URL 单文件理论塞得下，但**强烈建议按类型分片**：①各片 `lastModified` 语义不同（历史固定 vs 每日变），分片让爬虫按片复抓频率；②未来 org / 周页扩张会突破 5 万；③便于 Search Console 分片监控收录率。
+> **Sitemap 协议硬限**：单文件 ≤ **50,000 URL** 且 ≤ **50MB（未压缩）**。当前 ~7,500 个语言中立 URL **单文件塞得下**，故先用**单一扁平 sitemap**；待 URL 规模逼近 5 万时再切到 `generateSitemaps()` 分片（见 §4.3）。
 
-### 4.1 结构（Next.js 16 `generateSitemaps()` 实现）
+### 4.1 当前实现（单一 flat sitemap）
 
-Next.js 16 中 `app/.../sitemap.ts` 的 `generateSitemaps()` 返回 `[{ id }]`，分片产物 URL 为 **`/<route>/sitemap/<id>.xml`**（v16：`id` 在默认导出里是 Promise，需 `await props.id`）。规划如下：
+实际代码（`web/app/sitemap.ts`，全文）：
+
+```ts
+import type { MetadataRoute } from "next";
+import { getReposLookup, getOrgsLookup, getMeta } from "@/lib/data";
+
+const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
+const FIRST_YEAR = 2015;
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const [repos, orgs, meta] = await Promise.all([getReposLookup(), getOrgsLookup(), getMeta()]);
+  const lastModified = meta?.backfilled_at ? new Date(meta.backfilled_at) : new Date();
+  const now = new Date();
+  const curYear = now.getUTCFullYear();
+
+  const paths: string[] = ["", "/pulse", "/rankings", "/about"]; // "" = home
+  for (let y = FIRST_YEAR; y <= curYear; y++) {
+    paths.push(`/rankings/${y}`);
+    const lastMonth = y === curYear ? now.getUTCMonth() + 1 : 12;
+    for (let m = 1; m <= lastMonth; m++) paths.push(`/rankings/${y}/${m}`);
+  }
+  if (repos) for (const e of Object.values(repos)) paths.push(`/${e.full_name}`);
+  if (orgs) for (const login of Object.keys(orgs)) paths.push(`/o/${login}`);
+
+  return paths.map((p) => ({ url: `${BASE}${p}`, lastModified }));
+}
+```
+
+特征：
+
+- **单一 `export default`**，无 `generateSitemaps()`、无分片；产物路径 `/sitemap.xml` 直接列出全部 URL。
+- 覆盖路径：首页 `/`、`/pulse`、`/rankings`、`/about`，每年 `/rankings/YYYY`，每年每月 `/rankings/YYYY/MM`，所有 repo `/{owner}/{name}`，所有 org `/o/{login}`。
+- **未在 sitemap**：周页 `/rankings/YYYY/W##`、`/compare`、`/about` 之外的工具页——周页待加入（详见 §4.5 已知缺口）。
+
+### 4.2 `lastModified` 的当前取值（已知限制）
+
+```ts
+const lastModified = meta?.backfilled_at ? new Date(meta.backfilled_at) : new Date();
+return paths.map((p) => ({ url: `${BASE}${p}`, lastModified }));
+```
+
+- **全站共用一个 `lastModified`**：所有 URL 都标同一个日期，要么是 `meta.backfilled_at`（Vercel Workflow 最近一次全量重算时间戳）要么——若 meta 缺失——**回退到 `new Date()`**。
+- **回退到 `new Date()` 会按每次 build 抖动**：这违反 §3.3 / §4.4 「历史页 `lastModified` 必须稳定」的原则——若 `meta` 读取失败或 redeploy 频率过高，sitemap 会让 Googlebot 误判全站每日全变。
+- **目前可容忍的理由**：URL 规模仅 ~7k，Googlebot 抓取预算消化得起；且 `meta.backfilled_at` 在正常 path 下会命中（pipeline 输出必带 meta），抖动只在异常路径出现。
+- **何时必须收紧**：①URL 规模逼近 50k 需要切分片时；②Search Console 出现「Discovered – currently not indexed」激增，疑似浪费抓取预算时——届时按 §4.3 / §4.4 实现分片 + 每片自己的 `lastModified` 取自 `entity.json` 的实体级最后变动日。
+
+### 4.3 未来分片结构（规模逼近 50k 时再实现）
+
+Next.js 16 `app/.../sitemap.ts` 的 `generateSitemaps()` 返回 `[{ id }]`，分片产物 URL 为 **`/<route>/sitemap/<id>.xml`**（v16：`id` 在默认导出里是 Promise，需 `await props.id`）。规划：
 
 ```
 /sitemap.xml                          # sitemap index（Next.js 自动聚合下列分片）
-  /sitemap/pages.xml                  # 静态/核心：首页 + 全时榜 + about（语言中立，~3 条）
-  /year/sitemap/0.xml                 # 年度页（~11 条）
-  /month/sitemap/0.xml                # 月度页（~132 条）
-  /r/sitemap/0.xml … /r/sitemap/N.xml # repo：~5,261 → 每片 ≤5万，1 片足够（留分片接口备扩）
-  /o/sitemap/0.xml … /o/sitemap/M.xml # org：~1,500 → 1 片（量增时自动多片）
-  # /rankings/YYYY/W## 周页：/week/sitemap/{id}.xml
+  /sitemap/pages.xml                  # 静态/核心：首页 + 全时榜 + about + /pulse + /compare
+  /year/sitemap/0.xml                 # 年度页
+  /month/sitemap/0.xml                # 月度页
+  /r/sitemap/0.xml … /r/sitemap/N.xml # repo：每片 ≤5 万
+  /o/sitemap/0.xml … /o/sitemap/M.xml # org
+  /week/sitemap/0.xml                 # 独立周页
 ```
 
-> **当前规模 1 片即可装下 repo+org**，但**代码按 `generateSitemaps()` 分片写**（按 50,000 切批），规模一旦突破自动多片、无需返工。规则：保留单片现状，但**强制用可分片的实现**。
-
 ```ts
-// app/r/sitemap.ts —— repo 分片示例
-import type { MetadataRoute } from 'next'
+// app/r/sitemap.ts —— repo 分片示例（未来）
+import type { MetadataRoute } from "next";
 
-const PER = 50_000
-const BASE = process.env.NEXT_PUBLIC_SITE_URL!     // https://gitstarclub.com
+const PER = 50_000;
+const BASE = process.env.NEXT_PUBLIC_SITE_URL!;
 
 export async function generateSitemaps() {
-  const total = await countRepos()                 // 读 lookup/repos.json 计数
-  const shards = Math.ceil(total / PER)             // 语言中立单一 URL，不乘语言数
-  return Array.from({ length: shards }, (_, id) => ({ id }))
+  const total = await countRepos();
+  const shards = Math.ceil(total / PER);
+  return Array.from({ length: shards }, (_, id) => ({ id }));
 }
 
 export default async function sitemap(props: { id: Promise<string> }): Promise<MetadataRoute.Sitemap> {
-  const id = Number(await props.id)
-  const repos = await getRepoSlice(id * PER, PER)   // 该片 repo（含 lastModified 字段）
+  const id = Number(await props.id);
+  const repos = await getRepoSlice(id * PER, PER);
   return repos.map((r) => ({
-    url: `${BASE}/${r.full_name}`,                  // 语言中立单一 URL
-    lastModified: r.updatedAt,                      // 数据视图里的确定性日期（见 §3.3）
-    changeFrequency: r.active ? 'daily' : 'yearly',
+    url: `${BASE}/${r.full_name}`,
+    lastModified: r.updatedAt,
+    changeFrequency: r.active ? "daily" : "yearly",
     priority: r.active ? 0.7 : 0.4,
-    // 不输出 alternates.languages —— 语言是页内 cookie 偏好、无语言 URL、不发 hreflang（见 §10）
-  }))
+  }));
 }
 ```
 
-### 4.2 `lastModified` / `changeFrequency` / `priority` 规则
+### 4.4 分片实施时的 `lastModified` / `changeFrequency` / `priority` 规则
 
 | 分片 | lastModified | changeFrequency | priority |
 |---|---|---|---|
@@ -309,34 +457,39 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
 - **sitemap 自身是 Route Handler、默认被缓存**：除非用 request-time API。我们的 sitemap 只读已预算 JSON，可被静态缓存；数据由 Vercel Workflow 重算发布后，经 `revalidatePath` / 部署刷新即可。
 - **priority/changeFrequency 是弱信号**：Google 基本忽略 `priority`，`changeFrequency` 仅作提示；**真正决定复抓的是 `lastModified` + 实际内容变化**——所以 §3.3 的稳定性最关键。
 
+### 4.5 当前 sitemap 的已知缺口
+
+| 项 | 现状 | 影响 | 处理 |
+|---|---|---|---|
+| 周页 `/rankings/YYYY/W##` | 未枚举 | 周页只能靠 §9 内链发现；新建周页可能漏抓 | 加 `for (week of 1..lastWeek) paths.push(\`/rankings/${y}/W${pad(w)}\`)`，或独立 `app/week/sitemap.ts` |
+| `/compare` | 未枚举 | 工具页 | 加 `paths.push("/compare")` |
+| 全局 `lastModified` 共用 | 单一值 | 历史月 / 沉寂 repo 的 `lastModified` 会跟着全站抖动 | 切分片后逐 URL 用实体级日期（`entity.json.updated_at` / 期末日） |
+| `meta` 缺失回退 `new Date()` | 异常路径 | sitemap 会按每 build 抖动 | 兜底改为固定日期（如 `BUILD_TIME` 或上次 deploy 时间，从 `process.env.VERCEL_GIT_COMMIT_SHA` 派生），或 hard-fail（让缺 meta 的 build 失败） |
+
 ---
 
 ## 5. robots.txt
 
-用 Next.js 16 `app/robots.ts` 生成（`MetadataRoute.Robots`）：
+用 Next.js 16 `app/robots.ts` 生成（`MetadataRoute.Robots`）。**实际机制：环境变量 `SITE_INDEXABLE` 总开关**——不分主机，按 env 决定是否放开收录。预发期（teaser 占域名、私有 preview deployment 跑 web 应用）即便 host 是生产域名，只要 `SITE_INDEXABLE` 未设也返回 `Disallow: /`，launch 当天才翻牌：
 
 ```ts
-// app/robots.ts
-import type { MetadataRoute } from 'next'
+// app/robots.ts （实际实现，简化）
+import type { MetadataRoute } from "next";
 
-const BASE = process.env.NEXT_PUBLIC_SITE_URL!
+const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
+const indexable = process.env.SITE_INDEXABLE === "1";
 
 export default function robots(): MetadataRoute.Robots {
-  // 预览环境：全站 noindex（见 §11 与下方判定）
-  if (!isProductionHost()) {
-    return { rules: [{ userAgent: '*', disallow: '/' }] }
-  }
+  if (!indexable) return { rules: [{ userAgent: "*", disallow: "/" }] };
   return {
-    rules: [
-      { userAgent: '*', allow: '/', disallow: ['/api/'] },
-    ],
+    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/"] }],
     sitemap: `${BASE}/sitemap.xml`,
     host: BASE,
-  }
+  };
 }
 ```
 
-输出（生产）：
+输出（launch 后，`SITE_INDEXABLE=1` 已置位）：
 
 ```txt
 User-Agent: *
@@ -347,10 +500,19 @@ Sitemap: https://gitstarclub.com/sitemap.xml
 Host: https://gitstarclub.com
 ```
 
+输出（pre-launch，`SITE_INDEXABLE` 未设或非 `"1"`）：
+
+```txt
+User-Agent: *
+Disallow: /
+```
+
+- **总开关 = 环境变量、不看 host**：这是与早期设计的关键差异。原始设想是 `isProductionHost()` 按 host / `VERCEL_ENV` 自动判定，但实际实现选了更稳健的 **launch flag**：预发阶段即便生产域名的 Preview deployment（web 应用）也会噤声，避免抢先于 teaser 暴露。
+- **launch 翻牌流程**：①Vercel 项目 production 环境加 `SITE_INDEXABLE=1`②redeploy（不需要改代码）③`robots.txt` 立即放开 + sitemap 暴露 + 根 layout 的全局 `robots: { index: true, follow: true }` 一起翻牌。
 - **不屏蔽任何内容页**：~7,500 长尾页（语言中立单一 URL）全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + sitemap 分片共同消化。
 - **屏蔽 `/api/`**：cron / 内部 route 不该被抓（真正防线是 `CRON_SECRET` 鉴权，见 [OPS.md](./OPS.md)；robots 只是减少噪声）。
 - **`/search-index`（顶级 JSON 端点）故意放行**：它是全站搜索的版本化索引（`search/index.json`），经发布指针由 Route Handler 服务、带 `s-maxage` 走 CDN，被搜索框首次聚焦时懒加载。`robots.ts` 只 `Disallow: /api/`、不屏蔽它（CDN JSON、非内容页、对 SEO 无害）。若需拦爬虫抓这个 JSON，在 `robots.ts` 加 `/search-index` 到 Disallow 即可。
-- **预览 `Disallow: /`**：见 §11——`isProductionHost()` 据 `VERCEL_ENV` / host 判定，预览返回全站禁抓（与页面 `robots:{index:false}` meta 双保险）。
+- **Preview deployment 的处理**：Preview 默认就 `SITE_INDEXABLE` 未设 → `Disallow: /`；再叠加 root layout 的 `robots: { index: false, follow: false }` meta（同一总开关驱动），共防一处。Preview 还需在 Vercel 项目设 Deployment Protection（PRIVATE），见 §11。
 - `host` 字段声明规范主机（少数爬虫用作镜像归并提示）。
 
 ---
@@ -359,7 +521,9 @@ Host: https://gitstarclub.com
 
 > 目的：①Google 富结果（面包屑、站内搜索框、数据集卡片）；②给 LLM / AI Overviews 喂结构化事实（star 时间序列、排名），抢 AI 答案位。用 `<script type="application/ld+json">` 注入（服务端渲染进 HTML，非客户端）。**所有页面都带 `BreadcrumbList`**。
 
-### 6.1 全站（根 layout）：`WebSite`（暂不含 `SearchAction`）
+### 6.1 首页：`WebSite`（仅首页，不在根 layout）
+
+**实际实现**：`WebSite` JSON-LD **只在首页 `/` 注入**，通过 `PulseView` 组件的 `includeWebsiteLd` prop 控制（`web/app/page.tsx` 传 `includeWebsiteLd`；`web/app/pulse/PulseView.tsx` 内 `{includeWebsiteLd && <JsonLd data={webSiteLd(...)}/>}`）。**根 layout 不注入** `WebSite`——历史 / repo / org / `/rankings` 等其它页面没有 `WebSite` ld，只各自挂自己的 `CollectionPage` / `SoftwareSourceCode` / `Organization` / `Dataset` 等。
 
 ```jsonc
 {
@@ -373,7 +537,7 @@ Host: https://gitstarclub.com
 }
 ```
 
-> 全站搜索是**导航栏客户端 combobox**（首次聚焦懒加载 `search/index.json` + MiniSearch，命中直达 `/{owner}/{name}`），**没有 `/search?q=` 结果页 URL**。`SearchAction` 的 `urlTemplate` 必须指向一个可返回结果列表的规范页面——本站没有，故 `potentialAction` / `SearchAction` **不输出**（绝不广告一个指向不存在页面的 urlTemplate）。`WebSite` 本体始终输出。若未来新增 `/search` 结果页，再补 `SearchAction`。
+> 全站搜索是**导航栏客户端 combobox**（首次聚焦懒加载 `search/index.json` + MiniSearch，命中直达 `/{owner}/{name}`），**没有 `/search?q=` 结果页 URL**。`SearchAction` 的 `urlTemplate` 必须指向一个可返回结果列表的规范页面——本站没有，故 `potentialAction` / `SearchAction` **不输出**（绝不广告一个指向不存在页面的 urlTemplate）。`WebSite` 本体只在首页输出（Google 的 site-name 信号通常依赖首页的 `WebSite` ld）。若未来新增 `/search` 结果页，再补 `SearchAction`。
 
 ### 6.2 首页：`WebSite` + `Dataset`（站点级数据集）
 
@@ -590,14 +754,14 @@ org 详情页 /o/login
 
 ## 10. 多语言策略（页内 cookie 偏好，非 URL 多语言 SEO）
 
-> **语言是页内偏好（`gsc_lang` cookie），不进 URL、不发 hreflang**——这是产品决定（GitHub 风格单一 URL，见 [FRONTEND.md](./FRONTEND.md) §7 / §9-E），与本文顶部 i18n 口径一致。
+> **语言是页内偏好（`gsc_lang` cookie），不进 URL、不发 hreflang**——这是产品决定（GitHub 风格单一 URL，见 [FRONTEND.md](./FRONTEND.md) §7 / §1.2），与本文顶部 i18n 口径一致。
 
 | 维度 | 规则 |
 |---|---|
 | URL | **语言中立、单一 URL**（`/rankings/2024/10`、`/owner/name`）；**无 `/ja`、`/zh` 语言前缀** |
 | canonical | 指自身的语言中立 URL；**不发 hreflang / `alternates.languages`**（没有语言变体 URL 可互指） |
 | SEO 语言 | **英文**为默认 SEO / 用户语言（无 cookie 时）；meta / OG 文案为英文 |
-| 其它语言 | en/ja/zh/zh-TW/ko/es/fr 是**页内 UI 偏好**（下拉切换，写 cookie + 客户端换 chrome，见 [FRONTEND.md](./FRONTEND.md) §7、§9-J 方案 C）；**不创建独立 URL、不影响收录** |
+| 其它语言 | en/ja/zh/zh-TW/ko/es/fr 是**页内 UI 偏好**（下拉切换，写 cookie + 客户端换 chrome，见 [FRONTEND.md](./FRONTEND.md) §7 + §2.5 静态基底 + 客户端译 chrome）；**不创建独立 URL、不影响收录** |
 | 翻译范围 | UI chrome / 导航 / 年度标签 / About / 面包屑名；**不翻译** repo 名 / 描述 / 语言 / topic / 数字（数据语言中立） |
 | og:locale | 默认 `en_US`；语言切换由客户端调整，不影响 canonical |
 
@@ -605,25 +769,32 @@ org 详情页 /o/login
 
 ## 11. 预览环境 noindex（生产 / 测试域名的硬约束）
 
-> 背景：生产与测试合并在同一 Vercel 项目，测试域名指向 Preview deployment（部署拓扑 / 域名见 [OPS.md](./OPS.md)）。SEO 硬约束：测试环境必须保持 private/noindex：
+> 背景：生产与测试合并在同一 Vercel 项目，测试域名指向 Preview deployment（部署拓扑 / 域名见 [OPS.md](./OPS.md)）。SEO 硬约束：测试环境必须保持 private/noindex。
+
+**实际实现：单一环境变量 `SITE_INDEXABLE` 控制所有三条 SEO 噤声防线**（不按 host 判定）：
 
 | 防线 | 实现 |
 |---|---|
-| **robots.txt 全站禁抓** | 预览 host 返回 `User-Agent: *` + `Disallow: /`（见 §5 `isProductionHost()`） |
-| **每页 meta `noindex`** | 非生产 host 时 `robots: { index: false, follow: false }`（root layout 注入，覆盖全站） |
+| **robots.txt 全站禁抓** | `SITE_INDEXABLE !== "1"` → `app/robots.ts` 返回 `User-Agent: *` + `Disallow: /`（见 §5） |
+| **每页 meta `noindex`** | 同一 flag 驱动 root layout 的 `robots: { index: indexable, follow: indexable }`，覆盖全站；未设时所有页 `<meta name="robots" content="noindex,nofollow">` |
+| **sitemap 不外发** | `Disallow: /` 时也不向 robots 写 `Sitemap:` 行，进一步降低被发现的概率（sitemap 路由本身仍可访问，但没有 robots 广告） |
 | **预览保持 PRIVATE** | Vercel 项目预览部署设为非公开（Deployment Protection），从源头不可被匿名爬虫访问 |
 | **canonical 不外泄** | Preview 的 `NEXT_PUBLIC_SITE_URL` 仍指生产域名 ⇒ 即便 meta 误放出，canonical 也指向生产、不让 `*.vercel.app` / `pre.gitstarclub.com` 成规范 URL |
 
-`isProductionHost()` 的主机检测实现（`VERCEL_ENV` + host 判定，root layout / robots.ts / metadata 共用）属部署拓扑，见 [OPS.md](./OPS.md)。SEO 侧只消费它来决定 noindex meta：
+代码（`web/app/layout.tsx`）：
 
 ```ts
-// root layout metadata（预览期）
-export const metadata: Metadata = isProductionHost()
-  ? { /* 正常 */ }
-  : { robots: { index: false, follow: false } }
+const indexable = process.env.SITE_INDEXABLE === "1";
+export const metadata: Metadata = {
+  // ...
+  robots: { index: indexable, follow: indexable },
+};
 ```
 
-- **切换日检查清单**：生产 alias 切到 web 应用后，确认 ①`VERCEL_ENV=production` 下 robots 恢复 `Allow: /`②meta `noindex` 消失 ③sitemap 可访问 ④teaser 退役、其部署不再持有生产域名（避免两部署争域名）。
+**为什么不用主机检测**：早期设计想用 `isProductionHost()`（host / `VERCEL_ENV`）自动判定，但 launch 前后 teaser 与 web 应用要共享生产域名的过渡期，host 判定容易在不该开放时翻牌；env flag 显式、可控、单一翻牌点。
+
+- **launch 当天翻牌**：①Vercel 项目 production 环境加 `SITE_INDEXABLE=1`②redeploy（不需要改代码）③robots 恢复 `Allow: /` + meta `noindex` 消失 + sitemap 在 robots 里被广告。
+- **切换日检查清单**：alias 切到 web 应用 + `SITE_INDEXABLE=1` 部署完成后确认 ①`/robots.txt` 返回 `Allow: /` + `Sitemap:` 行 ②任意页面 `<meta name="robots">` 不再含 `noindex` ③`/sitemap.xml` 可访问 ④teaser 退役、其部署不再持有生产域名（避免两部署争域名）。
 - **绝不**在预览期向 Search Console 提交预览 URL / sitemap。
 - **风险**：半成品被收录会污染品牌词、产生重复内容、且生产切换后需大量「移除过时网址」清理——预防成本远低于补救。
 
@@ -631,7 +802,7 @@ export const metadata: Metadata = isProductionHost()
 
 ## 12. 性能即 SEO（Core Web Vitals 作排名因子）
 
-> 内容页为 `○` 静态 / `●` 按需 ISR（chrome i18n 在客户端，见 [FRONTEND.md](./FRONTEND.md) §9-J / §2.5），TTFB / 缓存走纯静态 / ISR 命中；正文零客户端 JS、HTML 体积控制在阈值内。
+> 内容页为 `○` 静态 / `●` 按需 ISR（chrome i18n 在客户端，见 [FRONTEND.md](./FRONTEND.md) §2.5 静态基底 + 客户端译 chrome），TTFB / 缓存走纯静态 / ISR 命中；正文零客户端 JS、HTML 体积控制在阈值内。
 
 SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 性能策略 + 用户 web/performance 规则）：
 
@@ -708,10 +879,12 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **收录基础设施**
 
-- [ ] `app/sitemap.ts` 用 `generateSitemaps()` 分片实现（按 50,000/片切批），index + 各类型分片可访问，全部 URL 可达
-- [ ] sitemap 每条 `lastModified` 来自数据视图确定性字段（历史固定、当期每日变），**非 `new Date()` 抖动**（§3.3 / §4.2）
+- [ ] **当前**：`app/sitemap.ts` 为单一扁平 `export default`，列出首页 / `/pulse` / `/rankings` / `/about` + 全部年月 + 全部 repo + 全部 org；`/sitemap.xml` 可访问（§4.1）
+- [ ] **当前已知偏离**：全站共用 `meta.backfilled_at` 作 `lastModified`，缺 meta 时回退 `new Date()`——URL 规模 ~7k 下可容忍，分片实施时按 §4.4 收紧
+- [ ] **未来分片切换条件**：URL 规模逼近 50k 或 GSC 出现抓取预算浪费 → 切到 `generateSitemaps()` + 每片各自 `lastModified`（§4.3 / §4.4）
 - [ ] sitemap 每个 `<url>` 仅一条语言中立 `<loc>`，**无语言 alternate**（不含 `alternates.languages` / `hreflang` / `x-default`，见 §10）
-- [ ] `app/robots.ts`：生产 `Allow: /` + `Disallow: /api/` + Sitemap + Host；**预览 `Disallow: /`**
+- [ ] `app/robots.ts`：`SITE_INDEXABLE=1` 时输出 `Allow: /` + `Disallow: /api/` + Sitemap + Host；**未设置时全站 `Disallow: /`**（§5 / §11）
+- [ ] 已知缺口：周页 `/rankings/YYYY/W##` 与 `/compare` 未在 sitemap 中（§4.5）
 - [ ] 收录目标量级按 ~7,500 个语言中立 URL 规划（含 org / rankings，不乘语言数，见 §10）
 
 **每页元数据**
@@ -730,7 +903,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **结构化数据（§6）**
 
-- [ ] 全站 `WebSite`（**不含 `SearchAction`**：搜索是客户端 combobox、无结果页 URL，见 §6.1）；首页 `Dataset`
+- [ ] 首页 `WebSite`（**仅首页，不在根 layout**；不含 `SearchAction`：搜索是客户端 combobox、无结果页 URL，见 §6.1）+ 首页 `Dataset`
 - [ ] repo 页 `SoftwareSourceCode` + `Dataset`；org 页 `Organization`/`Person` + `ItemList`
 - [ ] 月/年页 `CollectionPage` + 各榜 `ItemList`；全时榜 `CollectionPage` + repo/org `ItemList`
 - [ ] **每页 `BreadcrumbList`**；全部通过 Google Rich Results 测试
