@@ -133,6 +133,19 @@ ops/workflows/latest-success.json              # 最近一次成功发布的 run
 
 > **发布层产物（`views/<version>/*`）的内部结构 = §2.1–2.7 的视图**（`rank/** entity/** heatmap/** lookup/** meta.json`），落在 `views/<run_id>/` 前缀下（version = run_id，无 staging→published 拷贝）。读侧先读 `views/latest.json` 指针解析出 `<version>`，再读该前缀下的视图（无指针时回退扁平布局；见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.1）。
 
+Phase 1 category views also live under `views/<run_id>/`:
+
+- `categories/registry.json` - public category registry and counts.
+- `categories/assignments.json` - repo id to category id assignments.
+- `lookup/categories.json` - small client/build lookup for public categories;
+  category entries may carry `sitemap` eligibility so route discovery can omit
+  explicitly hidden categories.
+- `rank/category/<dimension>/<slug>/all-time/repo/stock.json` - phase-1 all-time category rank.
+
+Windowed category rank views are reserved for later category page phases; do not
+emit `rank/category/**/{week|month|year}/**` until the write-budget impact is
+explicitly accepted.
+
 ### 2.1 `lookup/repos.json`
 
 build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元数据在 `entity/repo`）。
@@ -177,6 +190,34 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 ### 2.4 `rank/all-time/{dim}/stock.json`
 
 `items` 形状同上；全时仅 `stock`（repo = `current_stars` 排序，org = `current_stars_sum` 排序）。
+
+### 2.4a `rank/category/<dimension>/<slug>/all-time/repo/stock.json`
+
+Phase-1 category rank views are all-time repo stock lists only. They reuse
+`RankItem` rows but add category metadata to the rank meta object:
+
+```json
+{
+  "meta": {
+    "window": "all",
+    "period": "all",
+    "dim": "repo",
+    "metric": "stock",
+    "generated_at": "...",
+    "category": { "id": "language/python", "dimension": "language", "slug": "python" }
+  },
+  "items": [
+    { "rank": 1, "id": 1296269, "value": 12345, "prev_rank": null }
+  ]
+}
+```
+
+Rules:
+
+- `dim` is always `repo`.
+- `metric` is `stock` for the Phase-1 all-time view.
+- Every `item.id` must be assigned to `meta.category.id` in `categories/assignments.json`.
+- Windowed `flow`/`stock` category ranks are future work; avoid emitting them until the category route phase has accepted the extra view count.
 
 ### 2.5 `entity/repo/{id}.json`
 
@@ -342,7 +383,7 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 ### 2.13 `ops/workflows/{run_id}/validation.json` — 校验报告
 
 step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md](./TESTING.md) §1.2/§1.3）；`ok=false` 则不切指针。
-**`checked` 是抽样读的视图数（非全量逐文件）**：闸门只抽查关键视图（`meta` / `rank/all-time` / `lookup/repos` / `search/index` / 抽样 top-repo entity / 去年 heatmap，约 6 个）作 schema + 不变量断言，`checked` 即这些抽样次数。
+**`checked` 是抽样读的视图数（非全量逐文件）**：闸门只抽查关键视图（`meta` / `rank/all-time` / `lookup/repos` / `search/index` / category registry/assignments/lookup / category all-time rank sample / 抽样 top-repo entity / 去年 heatmap）作 schema + 不变量断言，`checked` 即这些抽样次数。
 
 ```json
 {

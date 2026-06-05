@@ -37,7 +37,7 @@ The full design and operations docs live in [`docs/`](docs/README.md). New engin
 4. [DATA-CONTRACTS](docs/DATA-CONTRACTS.md) — every shard and view schema.
 5. [FRONTEND](docs/FRONTEND.md) — routes, rendering strategy, component catalog.
 
-For deploy / rollback / cron / alerting see [OPS](docs/OPS.md). For release history see [CHANGELOG](docs/CHANGELOG.md). For open work and architectural decisions see [ROADMAP](docs/ROADMAP.md).
+For deploy / rollback / cron / alerting see [OPS](docs/OPS.md). For category taxonomy and rollout see [CATEGORIES](docs/CATEGORIES.md). For release history see [CHANGELOG](docs/CHANGELOG.md). For open work and architectural decisions see [ROADMAP](docs/ROADMAP.md).
 
 ## Repository layout
 

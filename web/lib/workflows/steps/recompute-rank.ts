@@ -1,5 +1,5 @@
 import { loadCanonicalModel, writeVersion } from "../recompute/io";
-import { computeRankViews } from "../recompute";
+import { computeCategoryViews, computeRankViews } from "../recompute";
 
 // Step 6 — rank recompute (cross-bucket gather). Loads the full canonical model and
 // writes the rank matrix (window × dim × metric) + all-time + growth + newcomers to
@@ -9,7 +9,9 @@ import { computeRankViews } from "../recompute";
 export async function recomputeRank(runId: string): Promise<{ files: number }> {
   "use step";
   const { model } = await loadCanonicalModel(runId);
-  const views = computeRankViews(model, new Date().toISOString());
+  const generatedAt = new Date().toISOString();
+  const views = new Map<string, unknown>(computeRankViews(model, generatedAt));
+  for (const [path, view] of computeCategoryViews(model, generatedAt)) views.set(path, view);
   const files = await writeVersion(runId, views);
   return { files };
 }

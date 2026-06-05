@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const ja: Dict = {
-  nav: { home: "ホーム", trending: "動向", rankings: "ランキング", compare: "比較", about: "このサイトについて" },
+  nav: { home: "ホーム", trending: "動向", rankings: "ランキング", categories: "カテゴリ", compare: "比較", about: "このサイトについて" },
   home: {
     heroPre: "",
     heroAccent: "オープンソース",

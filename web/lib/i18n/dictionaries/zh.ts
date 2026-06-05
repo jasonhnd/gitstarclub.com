@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const zh: Dict = {
-  nav: { home: "首页", trending: "脉搏", rankings: "排行榜", compare: "对比", about: "关于" },
+  nav: { home: "首页", trending: "脉搏", rankings: "排行榜", categories: "分类", compare: "对比", about: "关于" },
   home: {
     heroPre: "",
     heroAccent: "开源",

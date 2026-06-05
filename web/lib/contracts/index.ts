@@ -8,3 +8,4 @@ export * from "./canonical";
 export * from "./workflow";
 export * from "./search";
 export * from "./compare";
+export * from "./categories";

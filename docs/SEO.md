@@ -42,6 +42,7 @@
 | 关于页 | `/about` | 核心 | 1 | 低（但需收录） |
 | 周页 | `/rankings/YYYY/W##` | 当周核心 / 历史按需 ISR | ~570 | 中 |
 | **脉搏页** | `/pulse` | 核心（deploy 构建，每日刷新） | 1 | 高（"最新动态"入口） |
+| 分类页 | `/categories/...` | 核心入口 + priority language 预渲染 + 公开 category 按需 ISR | 有界，随 registry | 中 |
 | 对比页 | `/compare` | 核心（deploy 构建，静态壳） | 1 | 中（工具页） |
 
 > **单语言收录**：语言是页内 `gsc_lang` cookie 偏好、不进 URL（见 §10），URL 语言中立单一 ⇒ 收录目标 URL 数 = 上表单语言合计，不乘语言数。
@@ -262,6 +263,29 @@ export async function generateMetadata(): Promise<Metadata> {
 
 > **标题长度**：控制在 ~60 字符可见区内（含后缀会被 Google 截断时，前置真实搜索词保证关键信息不被截掉——这就是 repo / org 名放最前的原因）。
 
+### 2.7a 分类页 `/categories/...`
+
+实际实现（`web/app/categories/`，registry-driven static/ISR pages）：
+
+| 字段 | 值 |
+|---|---|
+| title | `/categories` 为 `GitHub Repository Categories`；详情页为 `<Category> GitHub Repository Rankings` |
+| description | 说明按 language / ecosystem / domain / project type / owner kind / maturity 浏览 tracked repositories |
+| canonical | `/categories`、`/categories/[dimension]`、`/categories/[dimension]/[slug]` 各自指向自身规范 URL |
+| JSON-LD | `CollectionPage`，URL 使用规范路径 |
+
+```ts
+export const revalidate = 60;
+export const dynamicParams = true;
+export function generateStaticParams() {
+  return priorityLanguageStaticParams();
+}
+```
+
+- `/categories` 与 `/categories/language` 作为核心发现入口进入 sitemap。
+- 详情页首批预渲染 priority language slugs（如 `python` / `html` / `javascript` / `go` / `rust`）；后续公开 registry category 通过 `dynamicParams = true` 按需生成。
+- 不公开或低量 category 不应返回 200；页面逻辑通过 registry `public` 标记决定是否 `notFound()`。
+
 ### 2.8 对比页 `/compare`
 
 实际实现（`web/app/compare/page.tsx`，`export const dynamic = "force-static"`，全量静态壳 + 客户端读 `?repos=` 渲染）：
@@ -337,7 +361,7 @@ export async function generateStaticParams() {
 - **稳定性原则**：历史页 `lastModified` **不可每次 build 抖动**（否则爬虫误判全站每日全变、浪费预算）。取值来自**数据视图里的确定性字段**（pipeline 写入的 `updated_at` / 期末日），不是 `new Date()`。
 - 与 §4 sitemap 的 `lastModified` 同源（同一字段），保证 sitemap 与页面声明一致。
 
-**当前态（已知偏离）**：`web/app/sitemap.ts` 当前是单一扁平 sitemap，**全站共用一个 `lastModified`**（`meta.backfilled_at` 或回退 `new Date()`，见 §4.2）——历史月页和沉寂 repo 都会跟着这个值动。这与上表「历史页应稳定」相违，目前可容忍（URL 规模仅 ~7k、`meta` 命中率高），但**切分片时必须按上表逐 URL 取实体级日期**。
+**当前态（已知偏离）**：`web/app/sitemap.ts` 当前是单一扁平 sitemap，**全站共用一个 `lastModified`**（`meta.backfilled_at` → `meta.generated_at` → 固定 fallback，见 §4.2）——历史月页和沉寂 repo 都会跟着这个值动。这与上表「历史页应稳定」相违，目前可容忍（URL 规模仅 ~7k、`meta` 命中率高），但**切分片时必须按上表逐 URL 取实体级日期**。
 
 ### 3.4 配置要点（与 ARCHITECTURE 对齐）
 
@@ -358,25 +382,19 @@ export async function generateStaticParams() {
 
 ```ts
 import type { MetadataRoute } from "next";
-import { getReposLookup, getOrgsLookup, getMeta } from "@/lib/data";
+import { getReposLookup, getOrgsLookup, getCategoriesLookup, getMeta } from "@/lib/data";
+import { buildSitemapPaths, resolveSitemapLastModified } from "@/lib/sitemap";
 
 const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
-const FIRST_YEAR = 2015;
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [repos, orgs, meta] = await Promise.all([getReposLookup(), getOrgsLookup(), getMeta()]);
-  const lastModified = meta?.backfilled_at ? new Date(meta.backfilled_at) : new Date();
-  const now = new Date();
-  const curYear = now.getUTCFullYear();
-
-  const paths: string[] = ["", "/pulse", "/rankings", "/about"]; // "" = home
-  for (let y = FIRST_YEAR; y <= curYear; y++) {
-    paths.push(`/rankings/${y}`);
-    const lastMonth = y === curYear ? now.getUTCMonth() + 1 : 12;
-    for (let m = 1; m <= lastMonth; m++) paths.push(`/rankings/${y}/${m}`);
-  }
-  if (repos) for (const e of Object.values(repos)) paths.push(`/${e.full_name}`);
-  if (orgs) for (const login of Object.keys(orgs)) paths.push(`/o/${login}`);
+  const [repos, orgs, categories, meta] = await Promise.all([
+    getReposLookup(),
+    getOrgsLookup(),
+    getCategoriesLookup(),
+    getMeta(),
+  ]);
+  const lastModified = resolveSitemapLastModified(meta);
+  const paths = buildSitemapPaths({ repos, orgs, categories });
 
   return paths.map((p) => ({ url: `${BASE}${p}`, lastModified }));
 }
@@ -385,19 +403,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 特征：
 
 - **单一 `export default`**，无 `generateSitemaps()`、无分片；产物路径 `/sitemap.xml` 直接列出全部 URL。
-- 覆盖路径：首页 `/`、`/pulse`、`/rankings`、`/about`，每年 `/rankings/YYYY`，每年每月 `/rankings/YYYY/MM`，所有 repo `/{owner}/{name}`，所有 org `/o/{login}`。
-- **未在 sitemap**：周页 `/rankings/YYYY/W##`、`/compare`、`/about` 之外的工具页——周页待加入（详见 §4.5 已知缺口）。
+- 覆盖路径：首页 `/`、`/pulse`、`/rankings`、`/compare`、`/categories`、`/about`，每年 `/rankings/YYYY`，每年每月 `/rankings/YYYY/MM`，有效 ISO 周页 `/rankings/YYYY/W##`，所有 repo `/{owner}/{name}`，所有 org `/o/{login}`，以及 `lookup/categories.json` 标出的公开 category 路径；显式 `sitemap: false` 的 category 不枚举。
+- 路径枚举逻辑已抽到 `web/lib/sitemap.ts`，用单元测试覆盖 `/compare`、category 路径、当前周截断、ISO 53 周年份与 repo/org 长尾。
 
 ### 4.2 `lastModified` 的当前取值（已知限制）
 
 ```ts
-const lastModified = meta?.backfilled_at ? new Date(meta.backfilled_at) : new Date();
+const lastModified = resolveSitemapLastModified(meta);
 return paths.map((p) => ({ url: `${BASE}${p}`, lastModified }));
 ```
 
-- **全站共用一个 `lastModified`**：所有 URL 都标同一个日期，要么是 `meta.backfilled_at`（Vercel Workflow 最近一次全量重算时间戳）要么——若 meta 缺失——**回退到 `new Date()`**。
-- **回退到 `new Date()` 会按每次 build 抖动**：这违反 §3.3 / §4.4 「历史页 `lastModified` 必须稳定」的原则——若 `meta` 读取失败或 redeploy 频率过高，sitemap 会让 Googlebot 误判全站每日全变。
-- **目前可容忍的理由**：URL 规模仅 ~7k，Googlebot 抓取预算消化得起；且 `meta.backfilled_at` 在正常 path 下会命中（pipeline 输出必带 meta），抖动只在异常路径出现。
+- **全站共用一个 `lastModified`**：所有 URL 都标同一个日期；解析顺序是 `meta.backfilled_at`（bootstrap）→ `meta.generated_at`（versioned workflow meta）→ 固定 fallback `2026-06-04T00:00:00.000Z`。
+- **不再回退到 `new Date()`**：缺 meta 或时间戳无效时也使用固定 fallback，避免每次 build 抖动并误导爬虫判断全站变化。
+- **目前可容忍的理由**：URL 规模仅 ~7k，Googlebot 抓取预算消化得起；且 `meta.backfilled_at` / `meta.generated_at` 在正常 path 下会命中。
 - **何时必须收紧**：①URL 规模逼近 50k 需要切分片时；②Search Console 出现「Discovered – currently not indexed」激增，疑似浪费抓取预算时——届时按 §4.3 / §4.4 实现分片 + 每片自己的 `lastModified` 取自 `entity.json` 的实体级最后变动日。
 
 ### 4.3 未来分片结构（规模逼近 50k 时再实现）
@@ -461,10 +479,8 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
 
 | 项 | 现状 | 影响 | 处理 |
 |---|---|---|---|
-| 周页 `/rankings/YYYY/W##` | 未枚举 | 周页只能靠 §9 内链发现；新建周页可能漏抓 | 加 `for (week of 1..lastWeek) paths.push(\`/rankings/${y}/W${pad(w)}\`)`，或独立 `app/week/sitemap.ts` |
-| `/compare` | 未枚举 | 工具页 | 加 `paths.push("/compare")` |
 | 全局 `lastModified` 共用 | 单一值 | 历史月 / 沉寂 repo 的 `lastModified` 会跟着全站抖动 | 切分片后逐 URL 用实体级日期（`entity.json.updated_at` / 期末日） |
-| `meta` 缺失回退 `new Date()` | 异常路径 | sitemap 会按每 build 抖动 | 兜底改为固定日期（如 `BUILD_TIME` 或上次 deploy 时间，从 `process.env.VERCEL_GIT_COMMIT_SHA` 派生），或 hard-fail（让缺 meta 的 build 失败） |
+| `meta` 缺失或时间戳无效 | 异常路径 | 已使用固定 fallback，避免 sitemap 按每 build 抖动 | 若 GSC 显示 fallback 过旧影响发现，再改为 hard-fail 或显式 env 日期 |
 
 ---
 
@@ -879,12 +895,13 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **收录基础设施**
 
-- [ ] **当前**：`app/sitemap.ts` 为单一扁平 `export default`，列出首页 / `/pulse` / `/rankings` / `/about` + 全部年月 + 全部 repo + 全部 org；`/sitemap.xml` 可访问（§4.1）
-- [ ] **当前已知偏离**：全站共用 `meta.backfilled_at` 作 `lastModified`，缺 meta 时回退 `new Date()`——URL 规模 ~7k 下可容忍，分片实施时按 §4.4 收紧
+- [ ] **当前**：`app/sitemap.ts` 为单一扁平 `export default`，列出首页 / `/pulse` / `/rankings` / `/compare` / `/categories` / `/about` + 全部年月 + 有效 ISO 周页 + 全部 repo + 全部 org + 公开 category 路径；`/sitemap.xml` 可访问（§4.1）
+- [ ] **当前已知偏离**：全站共用 `backfilled_at/generated_at/fallback` 作 `lastModified`——URL 规模 ~7k 下可容忍，分片实施时按 §4.4 收紧到实体级日期
 - [ ] **未来分片切换条件**：URL 规模逼近 50k 或 GSC 出现抓取预算浪费 → 切到 `generateSitemaps()` + 每片各自 `lastModified`（§4.3 / §4.4）
 - [ ] sitemap 每个 `<url>` 仅一条语言中立 `<loc>`，**无语言 alternate**（不含 `alternates.languages` / `hreflang` / `x-default`，见 §10）
 - [ ] `app/robots.ts`：`SITE_INDEXABLE=1` 时输出 `Allow: /` + `Disallow: /api/` + Sitemap + Host；**未设置时全站 `Disallow: /`**（§5 / §11）
-- [ ] 已知缺口：周页 `/rankings/YYYY/W##` 与 `/compare` 未在 sitemap 中（§4.5）
+- [x] 周页 `/rankings/YYYY/W##` 与 `/compare` 已在 sitemap 中（§4.1）
+- [x] 分类入口与公开 category 路径已在 sitemap 中（§4.1）
 - [ ] 收录目标量级按 ~7,500 个语言中立 URL 规划（含 org / rankings，不乘语言数，见 §10）
 
 **每页元数据**
