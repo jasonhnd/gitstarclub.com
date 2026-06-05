@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const ko: Dict = {
-  nav: { home: "홈", trending: "펄스", rankings: "순위", compare: "비교", about: "소개" },
+  nav: { home: "홈", trending: "펄스", rankings: "순위", categories: "카테고리", compare: "비교", about: "소개" },
   home: {
     heroPre: "",
     heroAccent: "오픈소스",

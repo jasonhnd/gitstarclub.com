@@ -16,7 +16,7 @@ export function Chrome({ tag }: { tag?: string }) {
     <header
       className={`app-bar sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-outline-variant bg-surface/70 pb-[0.85rem] backdrop-blur-lg backdrop-saturate-150 ${PAD_X}`}
     >
-      <Link href="/" className="inline-flex items-center gap-2 text-[1.15rem] font-extrabold tracking-[-0.02em] text-on-surface">
+      <Link href="/" className="inline-flex items-center gap-2 text-[1.15rem] font-extrabold text-on-surface">
         <span className="text-[1.05em] text-primary-fixed-dim" aria-hidden="true">
           ★
         </span>
@@ -34,6 +34,9 @@ export function Chrome({ tag }: { tag?: string }) {
         </Link>
         <Link href="/rankings" className="font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface">
           {t.nav.rankings}
+        </Link>
+        <Link href="/categories" className="hidden font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface md:inline">
+          {t.nav.categories}
         </Link>
         <Link href="/compare" className="hidden font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface sm:inline">
           {t.nav.compare}

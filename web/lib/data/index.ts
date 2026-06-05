@@ -9,3 +9,4 @@ export * from "./snapshot";
 export * from "./meta";
 export * from "./search";
 export * from "./compare";
+export * from "./categories";

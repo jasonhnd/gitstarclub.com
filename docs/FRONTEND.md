@@ -494,3 +494,34 @@ return {
 - chrome 客户端 i18n：`i18n/client.tsx`（`I18nProvider`/`useDict`/`<T>`）水合后读 `gsc_lang` cookie 切换；服务端默认英文静态（`i18n/server.ts` 弃用）
 - 各页 `alternates.canonical` 指无语言前缀 canonical；不发 `alternates.languages`
 - `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`
+
+---
+
+## 11. Category Routes
+
+Phase 2 category browsing is implemented in `web/app/categories/`.
+
+Routes:
+
+- `/categories` renders the registry-driven category index.
+- `/categories/[dimension]` renders one dimension index, such as
+  `/categories/language`.
+- `/categories/[dimension]/[slug]` renders a category detail page. Static params
+  include priority language slugs plus any public category found in the
+  published registry; `dynamicParams = true` keeps future public registry
+  categories addressable.
+
+Data and rendering:
+
+- `web/app/categories/category-page-data.ts` owns route helpers, fallback
+  registry construction, public-category filtering, and priority language
+  static params.
+- Category pages read `categories/registry.json`,
+  `rank/category/<dimension>/<slug>/all-time/repo/stock.json`, and
+  `lookup/repos.json` through `web/lib/data/categories.ts`.
+- The `/categories` index groups public categories by registry dimension rather
+  than hard-coding only languages.
+- The category index, dimension pages, and detail pages use 60-second ISR so a
+  newly published registry can appear without a full redeploy.
+- The chrome nav exposes `/categories` through the localized `nav.categories`
+  dictionary entry.

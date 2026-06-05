@@ -1,7 +1,7 @@
 // UI-chrome strings only. Data such as repo names, languages, topics, and numbers is never translated.
 // `en` is the source-of-truth shape; every other dictionary must match these keys.
 export const en = {
-  nav: { home: "Home", trending: "Pulse", rankings: "Rankings", compare: "Compare", about: "About" },
+  nav: { home: "Home", trending: "Pulse", rankings: "Rankings", categories: "Categories", compare: "Compare", about: "About" },
   home: {
     heroPre: "A history of ",
     heroAccent: "open source",

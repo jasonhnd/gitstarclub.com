@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const fr: Dict = {
-  nav: { home: "Accueil", trending: "Activité", rankings: "Classements", compare: "Comparer", about: "À propos" },
+  nav: { home: "Accueil", trending: "Activité", rankings: "Classements", categories: "Catégories", compare: "Comparer", about: "À propos" },
   home: {
     heroPre: "Une histoire de l'",
     heroAccent: "open source",

@@ -7,7 +7,20 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
 import type { ZodType } from "zod";
-import { Meta, ReposLookup, OrgsLookup, RankList, RepoEntity, OrgEntity, Heatmap, HotSnapshot } from "../lib/contracts/index";
+import {
+  CategoriesLookup,
+  CategoryAssignments,
+  CategoryRankList,
+  CategoryRegistry,
+  Heatmap,
+  HotSnapshot,
+  Meta,
+  OrgsLookup,
+  OrgEntity,
+  RankList,
+  RepoEntity,
+  ReposLookup,
+} from "../lib/contracts/index";
 
 const viewsDir =
   process.argv[2] ?? fileURLToPath(new URL("../../pipeline/data/views", import.meta.url));
@@ -28,6 +41,10 @@ function schemaFor(rel: string): ZodType | null {
   if (rel === "hot-snapshot.json") return HotSnapshot;
   if (rel === "lookup/repos.json") return ReposLookup;
   if (rel === "lookup/orgs.json") return OrgsLookup;
+  if (rel === "lookup/categories.json") return CategoriesLookup;
+  if (rel === "categories/registry.json") return CategoryRegistry;
+  if (rel === "categories/assignments.json") return CategoryAssignments;
+  if (rel.startsWith("rank/category/")) return CategoryRankList;
   if (rel.startsWith("rank/")) return RankList;
   if (rel.startsWith("entity/repo/")) return RepoEntity;
   if (rel.startsWith("entity/org/")) return OrgEntity;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type MiniSearch from "minisearch";
 import { useChrome } from "@/lib/i18n/client";
@@ -32,7 +32,7 @@ export function CompareClient() {
 
   const [engine, setEngine] = useState<Engine | null>(null);
   const [curves, setCurves] = useState<Map<string, CompareCurve>>(new Map());
-  const [pending, setPending] = useState<Set<string>>(new Set());
+  const pendingRef = useRef<Set<string>>(new Set());
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
 
@@ -73,14 +73,10 @@ export function CompareClient() {
     if (!engine) return;
     const need = repos.filter((name) => {
       const key = name.toLowerCase();
-      return !curves.has(key) && !pending.has(key);
+      return !curves.has(key) && !pendingRef.current.has(key);
     });
     if (need.length === 0) return;
-    setPending((p) => {
-      const np = new Set(p);
-      need.forEach((n) => np.add(n.toLowerCase()));
-      return np;
-    });
+    need.forEach((n) => pendingRef.current.add(n.toLowerCase()));
     void Promise.all(
       need.map(async (name) => {
         const doc = engine.byFullName.get(name.toLowerCase());
@@ -97,13 +93,9 @@ export function CompareClient() {
         });
         return next;
       });
-      setPending((p) => {
-        const np = new Set(p);
-        need.forEach((n) => np.delete(n.toLowerCase()));
-        return np;
-      });
+      need.forEach((n) => pendingRef.current.delete(n.toLowerCase()));
     });
-  }, [engine, repos, curves, pending]);
+  }, [engine, repos, curves]);
 
   const orderedCurves = useMemo(
     () => repos.map((n) => curves.get(n.toLowerCase())).filter((c): c is CompareCurve => Boolean(c)),

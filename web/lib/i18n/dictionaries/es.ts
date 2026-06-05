@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const es: Dict = {
-  nav: { home: "Inicio", trending: "Pulso", rankings: "Rankings", compare: "Comparar", about: "Acerca de" },
+  nav: { home: "Inicio", trending: "Pulso", rankings: "Rankings", categories: "Categorías", compare: "Comparar", about: "Acerca de" },
   home: {
     heroPre: "Una historia del ",
     heroAccent: "código abierto",

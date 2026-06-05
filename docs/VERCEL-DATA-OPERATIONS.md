@@ -159,6 +159,7 @@ async function recomputeRank(runId: string) {
 | 3 | metadata shards(**按 bucket,1 step/桶**,内含 newcomer 追踪) | bootstrap `lookup/repos.json`(owner_type/language)+ run whitelist(node_id、新鲜 current_stars、rename-aware full_name) | `canonical/v2/repos/<bucket>.json`(含 `tracked_since`) | **存量 repo 从 bootstrap seed,不重拉 GitHub**;GitHub GraphQL `nodes()` 只补"既不在 prev shard 也不在 lookup"的真新晋(~12)。**newcomer 追踪不是独立 step**——发现新 id 时同步写 `tracked_since`(默认方案 A,见 §10)。⚠️ **不可全量重拉所有 repo**——会撞 GitHub 二级限流(已实测)。每桶一个短 step,幂等。milestones/description/topics 留待 entity 富化。 |
 | 4 | canonical fold | 已收口周期的**冻结快照** `canonical/v2/pending/<period>.json` + recent-daily | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` + `meta.json.folded_through` | **折叠**:周期收口时把活尾 net delta 折进月/周 rollup shard;append 站点日总量。**交接靠水位标记防重复/丢数据**——见 §7.2(H1):cron 跨期重置 `current_month.json` 前先把上一期完整 `per_repo` 落到 `canonical/v2/pending/<period>.json`,fold 只读 pending、折叠后标记 `folded_through=period`。跌出者保留历史 shard、停止 poll。 |
 | 5 | rank recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`/`meta` shard | `views/<run_id>/rank/**` | 载入全部 monthly/weekly 桶建「period→repos」索引,按 period 算 flow/stock + all-time,幂等写 staging。**growth**:期初 stock = monthly `stock_est` 前缀和在 `period-1` 的值(§6.3),floor 期初 ≥20k;**new**:直接用 `repos.crossed_10k` 落当期判定(**不另用 stock_est 重算**,口径同 [RANKING.md](./RANKING.md) §4)。stock 锚定见 §6.3 / [RANKING.md](./RANKING.md) §3。 |
+| 5a | category artifacts(**same gather as rank**) | `repos` + rank inputs already loaded by step 5 | `views/<run_id>/categories/**` + `lookup/categories.json` + `rank/category/**/all-time/repo/stock.json` | Phase-1 deterministic category registry, repo assignments, public category lookup, and bounded all-time category stock ranks. Windowed category ranks stay out of Phase 1 to avoid a large view-count expansion. |
 | 6a | entity/repo recompute(**桶内独立**) | 单桶 `repo-monthly`/`repo-weekly`/`repo-recent-daily`/`repos` | `views/<run_id>/entity/repo/**` | 每个 repo 只依赖自己那桶,可按桶并行分 step。 |
 | 6b | entity/org recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`(owner→members) | `views/<run_id>/entity/org/**` + `lookup/**` + `search/index.json` | **不能按桶算**(成员散落各桶,C2):先全量载入 monthly/weekly 桶,按 `owner` 聚合;org stock 须先对每个成员做 `首次事件期→末期` **carry-forward** 再求和(空期沿用上一期累计),终点对齐 `current_stars_sum`(口径同 [RANKING.md](./RANKING.md) §5)。同步从 `repos` 维度派生 `search/index.json`(客户端搜索索引,见 [DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.14)。 |
 | 7 | heatmap update | `site-daily` shard(+ 派生月总量) | `views/<run_id>/heatmap/**` | 站点级日 / 月总量(月总量 = site-daily 当月求和)。 |
@@ -216,6 +217,17 @@ blob://
         └── current_month.json               # 该版本快照下的当月活尾投影(读侧可用作回退)
         # 写完→validate→指针指向它即上线
 ```
+
+Phase-1 category outputs under `views/<run_id>/`:
+
+- `categories/registry.json`
+- `categories/assignments.json`
+- `lookup/categories.json`
+- `rank/category/<dimension>/<slug>/all-time/repo/stock.json`
+
+These are written by the rank recompute gather. Windowed category ranks are not
+part of Phase 1 because they multiply the view count across every public
+category and every historical week/month/year.
 
 ### 5.1 读路径优先级(页面如何选版本)
 
@@ -361,6 +373,10 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
   - `views/<run_id>/rank/all-time/repo/stock.json`(契约 `RankList`)
   - `views/<run_id>/lookup/repos.json`(契约 `ReposLookup`)
   - `views/<run_id>/search/index.json`(契约 `SearchIndex`)
+  - `views/<run_id>/categories/registry.json`(契约 `CategoryRegistry`)
+  - `views/<run_id>/categories/assignments.json`(契约 `CategoryAssignments`)
+  - `views/<run_id>/lookup/categories.json`(契约 `CategoriesLookup`)
+  - `views/<run_id>/rank/category/<sample>/all-time/repo/stock.json`(契约 `CategoryRankList`)
   - `views/<run_id>/entity/repo/<topId>.json`(契约 `RepoEntity`,top repo 抽样)
   - `views/<run_id>/heatmap/year/<lastYear>.json`(契约 `Heatmap`,上一公历年抽样)
 - **Sanity 不变量**(在 schema 校验之外另行 assert,失败即抛错终止 workflow):
@@ -368,6 +384,7 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
   - **`rank/all-time/repo/stock.json`**:`items` 非空 · `items[0].rank === 1` · `value` 严格非递增(`items[i].value <= items[i-1].value`);
   - **`lookup/repos.json`**:条目数 ≥ `MIN_LOOKUP`(=1000);
   - **`search/index.json`**:`count ≥ MIN_LOOKUP`(=1000)且 `count === repos.length`;
+  - **category views**:`registry` 非空且有 public categories;assignments 覆盖 ≥ `MIN_LOOKUP`;`language`/`language_family`/`owner_kind` 每 repo 单值;assignment 引用都存在于 registry;抽样 category rank 的 repo 都属于该 category;
   - **top repo entity**:`entity/repo/<allTime.items[0].id>.json` 的 `curve.monthly` 长度 > 0;
   - **上一公历年 heatmap 存在**:`heatmap/year/<UTCFullYear - 1>.json` 能读到(prior calendar year 总是已收口)。
 - **输出**:`ops/workflows/<run_id>/validation.json`(契约 `WorkflowValidation`,含 `run_id` / `ok` / `checked` / `schema_failures` / `invariants` / `failures`)。任一 sanity 失败 → `failures` 非空 → 抛错;publish step 不会启动,版本前缀留作孤儿待 GC。

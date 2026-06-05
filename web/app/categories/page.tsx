@@ -1,0 +1,106 @@
+import Link from "next/link";
+import type { Metadata } from "next";
+import { Chrome } from "@/app/_explore/Chrome";
+import { JsonLd } from "@/app/_explore/JsonLd";
+import { getCategoryRegistry } from "@/lib/data";
+import { collectionLd } from "@/lib/jsonld";
+import { pageMeta } from "@/lib/seo";
+import { DEFAULT_LOCALE } from "@/lib/i18n";
+import { CATEGORY_INDEX_PREVIEW_LIMIT, categoryPath, fallbackRegistry, publicCategoryEntries, publicDimensions } from "./category-page-data";
+
+const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
+const LOC = DEFAULT_LOCALE;
+
+export const revalidate = 60;
+
+export async function generateMetadata(): Promise<Metadata> {
+  return pageMeta({
+    title: "GitHub Repository Categories",
+    description: "Browse tracked GitHub repositories by language, ecosystem, domain, project type, owner kind, and maturity.",
+    path: "/categories",
+    locale: "en",
+  });
+}
+
+export default async function CategoriesPage() {
+  const registry = (await getCategoryRegistry()) ?? fallbackRegistry();
+  const publicCategories = publicCategoryEntries(registry);
+  const dimensions = publicDimensions(registry);
+
+  return (
+    <>
+      <Chrome />
+      <JsonLd data={collectionLd("GitHub repository categories", "/categories", LOC)} />
+      <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+        <section>
+          <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">Categories</p>
+          <h1 className="mt-2 text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none text-on-surface">
+            Repository categories
+          </h1>
+          <p className="mt-3 max-w-[50ch] text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">
+            Browse the tracked open-source set through deterministic language and topic groupings.
+          </p>
+        </section>
+
+        <section className="mt-[clamp(1.5rem,3vw,2.25rem)] grid gap-3 md:grid-cols-3">
+          {registry.dimensions.map((dimension) => {
+            const visible = dimension.categories.filter((category) => category.public);
+            return (
+              <Link
+                key={dimension.id}
+                href={categoryPath(dimension.id)}
+                className="rounded-lg bg-surface-container px-4 py-4 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-surface-container-high"
+              >
+                <span className="block text-[1.05rem] font-extrabold text-on-surface">{dimension.label}</span>
+                <span className="mt-2 block font-mono text-[0.78rem] text-on-surface-variant">
+                  {visible.length} groups
+                </span>
+              </Link>
+            );
+          })}
+        </section>
+
+        <section className="mt-[clamp(2rem,4vw,3rem)]">
+          <h2 className="text-[1.3rem] font-extrabold text-on-surface">Browse by dimension</h2>
+          <div className="mt-4 grid gap-[clamp(1.25rem,3vw,2rem)]">
+            {dimensions.map((dimension) => (
+              <section key={dimension.id} aria-labelledby={`dimension-${dimension.id}`}>
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                  <h3 id={`dimension-${dimension.id}`} className="text-[1.05rem] font-extrabold text-on-surface">
+                    {dimension.label}
+                  </h3>
+                  <Link href={categoryPath(dimension.id)} className="font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+                    View all
+                  </Link>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {dimension.categories.slice(0, CATEGORY_INDEX_PREVIEW_LIMIT).map((category) => (
+                    <CategoryLink key={category.id} href={categoryPath(category.dimension, category.slug)} label={category.label} count={category.count} />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </section>
+
+        {publicCategories.length === 0 && (
+          <p className="mt-8 rounded-lg bg-surface-container px-4 py-3 text-[0.9rem] text-on-surface-variant">
+            Category data is waiting for the next published recompute.
+          </p>
+        )}
+      </main>
+    </>
+  );
+}
+
+function CategoryLink({ href, label, count }: { href: string; label: string; count: number }) {
+  return (
+    <Link
+      href={href}
+      className="flex min-h-16 items-center justify-between gap-3 rounded-lg bg-surface-container px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-surface-container-high"
+    >
+      <span className="truncate font-mono text-[0.9rem] font-semibold text-on-surface">{label}</span>
+      {count > 0 ? <span className="shrink-0 font-mono text-[0.75rem] text-on-surface-variant">{count}</span> : null}
+    </Link>
+  );
+}

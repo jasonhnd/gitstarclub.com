@@ -18,7 +18,7 @@ This page is the navigation index for `docs/`. For a project overview, start at 
 10. [OPS.md](./OPS.md) — runbooks: deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
 11. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
-Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative.
+Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout.
 
 Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural decisions: [ROADMAP.md](./ROADMAP.md).
 
@@ -38,6 +38,7 @@ Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural 
 | OPS | Deploy / rollback / cron / workflow runbooks, Blob layout, env vars, alerting, failure modes |
 | TESTING | Test pyramid, contract tests, recompute parity, validation invariants, smoke tests |
 | PRODUCT | Product framing: identity, page surfaces, tone, data-honesty posture, i18n posture |
+| CATEGORIES | Category taxonomy, deterministic classification rules, category data artifacts, category route rollout |
 | INFORMATION-ARCHITECTURE | UX navigation narrative (reader's map); the authoritative route table is in FRONTEND §1.1 |
 | CHANGELOG | Versioned release history (what shipped and when) |
 | ROADMAP | Open work, architectural decisions, backlog |
@@ -53,6 +54,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Blob layout | OPS (§Vercel Blob 布局) |
 | Cron schedule | OPS (§Cron 调度) |
 | Workflow step enumeration | VERCEL-DATA-OPERATIONS |
+| Category taxonomy / classification rules | CATEGORIES |
 | Rendering model (static base + client-side chrome i18n) | FRONTEND (§2.5) |
 | Route catalog | FRONTEND (§1.1) |
 | i18n posture | SEO (§10); implementation detail in FRONTEND (§7) |

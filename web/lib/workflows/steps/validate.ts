@@ -1,6 +1,18 @@
 import { readView } from "@/lib/data/source";
 import { putView } from "@/lib/data/write";
-import { Heatmap, Meta, RankList, RepoEntity, ReposLookup, SearchIndex, WorkflowValidation } from "@/lib/contracts";
+import {
+  CategoriesLookup,
+  CategoryAssignments,
+  CategoryRankList,
+  CategoryRegistry,
+  Heatmap,
+  Meta,
+  RankList,
+  RepoEntity,
+  ReposLookup,
+  SearchIndex,
+  WorkflowValidation,
+} from "@/lib/contracts";
 
 // Step 9 — publish gate. Reads key views from the freshly written version
 // (views/<run_id>/**) and checks Zod schema + sanity invariants. Throwing here aborts
@@ -55,6 +67,70 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
     invariants.search_repos = search.count;
     if (search.count < MIN_LOOKUP) failures.push(`search/index: only ${search.count} repos`);
     if (search.repos.length !== search.count) failures.push("search/index: count != repos.length");
+  }
+
+  const categoryRegistry = await read("categories/registry.json", CategoryRegistry);
+  const categoryAssignments = await read("categories/assignments.json", CategoryAssignments);
+  const categoriesLookup = await read("lookup/categories.json", CategoriesLookup);
+  const categoryIds = new Set<string>();
+  const publicCategories = categoryRegistry?.dimensions.flatMap((dimension) => dimension.categories.filter((category) => category.public)) ?? [];
+
+  if (categoryRegistry) {
+    const categoryCount = categoryRegistry.dimensions.reduce((sum, dimension) => sum + dimension.categories.length, 0);
+    invariants.category_registry_categories = categoryCount;
+    invariants.category_public_categories = publicCategories.length;
+    for (const dimension of categoryRegistry.dimensions) for (const category of dimension.categories) categoryIds.add(category.id);
+    if (categoryCount === 0) failures.push("categories/registry: empty");
+    if (publicCategories.length === 0) failures.push("categories/registry: no public categories");
+  }
+
+  if (categoryAssignments) {
+    const assignments = Object.values(categoryAssignments.repositories);
+    invariants.category_assignments_repos = assignments.length;
+    if (assignments.length < MIN_LOOKUP) failures.push(`categories/assignments: only ${assignments.length} repos`);
+
+    const singleLanguage = assignments.every((assignment) => assignment.language.length === 1);
+    const singleLanguageFamily = assignments.every((assignment) => assignment.language_family.length === 1);
+    const singleOwnerKind = assignments.every((assignment) => assignment.owner_kind.length === 1);
+    invariants.category_single_language = singleLanguage;
+    invariants.category_single_language_family = singleLanguageFamily;
+    invariants.category_single_owner_kind = singleOwnerKind;
+    if (!singleLanguage) failures.push("categories/assignments: language must have exactly one category per repo");
+    if (!singleLanguageFamily) failures.push("categories/assignments: language_family must have exactly one category per repo");
+    if (!singleOwnerKind) failures.push("categories/assignments: owner_kind must have exactly one category per repo");
+
+    if (categoryIds.size) {
+      let unknownRefs = 0;
+      for (const assignment of assignments) {
+        for (const refs of Object.values(assignment)) {
+          for (const ref of refs) if (!categoryIds.has(ref)) unknownRefs++;
+        }
+      }
+      invariants.category_unknown_refs = unknownRefs;
+      if (unknownRefs > 0) failures.push(`categories/assignments: ${unknownRefs} unknown category refs`);
+    }
+  }
+
+  if (categoriesLookup) {
+    const lookupCategories = categoriesLookup.dimensions.reduce((sum, dimension) => sum + dimension.categories.length, 0);
+    invariants.categories_lookup_categories = lookupCategories;
+    if (lookupCategories === 0) failures.push("lookup/categories: empty");
+  }
+
+  const sampleCategory = publicCategories[0];
+  if (sampleCategory) {
+    const categoryRank = await read(
+      `rank/category/${sampleCategory.dimension}/${sampleCategory.slug}/all-time/repo/stock.json`,
+      CategoryRankList,
+    );
+    if (categoryRank && categoryAssignments) {
+      const rankItemsAssigned = categoryRank.items.every((item) => {
+        if (item.id == null) return false;
+        return categoryAssignments.repositories[String(item.id)]?.[sampleCategory.dimension].includes(sampleCategory.id) ?? false;
+      });
+      invariants.category_sample_rank_items_assigned = rankItemsAssigned;
+      if (!rankItemsAssigned) failures.push(`rank/category/${sampleCategory.id}: contains unassigned repo`);
+    }
   }
 
   // sample the top repo's entity — must have a non-empty anchored curve.

@@ -12,7 +12,7 @@ Several recurring user requests cannot be served by the current model (static JS
 
 - **Drill-down beyond the ≥10k whitelist.** The site indexes ~5.3k repos today. Extending to ≥100 stars is roughly 460k repos with full history. The view set explodes.
 - **Arbitrary-repo compare.** `/compare` overlays any subset of the tracked ≥10k set today. Comparing repos outside the index requires data on demand.
-- **Topic / language / cohort clustering.** Pre-aggregated slices for `topic == X`, `language == Y`, `created_year == N`, and combinations of these.
+- **Topic / language / cohort clustering.** Arbitrary pre-aggregated slices for `topic == X`, `language == Y`, `created_year == N`, and combinations of these.
 - **Semantic search.** Embedding-based search over descriptions and topics (intent, not keyword).
 
 All of these need arbitrary filtering / aggregation / vector queries over hundreds of thousands of repos × time series. That is beyond what a fixed view set can answer cheaply, which is why they sit behind this gate.
@@ -26,7 +26,11 @@ All of these need arbitrary filtering / aggregation / vector queries over hundre
 | **More precomputed JSON views** | No DB. The combinatorial space of filter/sort/aggregate does not fit a finite set of pre-built shards. |
 | **Self-hosted ClickHouse** | Operationally cheap to run, expensive to operate. Already evaluated and ruled out in [ARCHITECTURE.md](./ARCHITECTURE.md). |
 
-A formal selection (option compare + small POC + decision record) must precede any of the work below. Until it lands, this entire backlog is paused.
+A formal selection (option compare + small POC + decision record) must precede any of the work below. Until it lands, the backlog below is paused.
+
+Finite category pages over the current tracked whitelist are intentionally scoped
+outside this decision. They use deterministic rules and precomputed JSON views,
+not arbitrary filtering or a query backend. See [CATEGORIES.md](./CATEGORIES.md).
 
 ---
 
@@ -48,6 +52,8 @@ Extend `/compare` so it accepts any GitHub `owner/name`, not only the indexed se
 ### Topic / language / cohort clustering
 
 Pre-aggregated rankings for `topic`, `language`, and `created_year` slices (and pairwise combinations). May need a query backend or a much larger view set.
+
+This is different from the scoped category rollout in [CATEGORIES.md](./CATEGORIES.md), which only covers curated, finite, precomputed category pages over the current tracked whitelist.
 
 ### Semantic search
 

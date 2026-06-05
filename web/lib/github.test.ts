@@ -126,7 +126,7 @@ describe("searchWhitelist star-range bucketing math (replicated)", () => {
 
   test("midpoint split eventually terminates (strictly shrinking ranges)", () => {
     // Drive the split to a width-1 range to prove progress / no infinite loop.
-    let lo = 10000;
+    const lo = 10000;
     let hi = 10003;
     let guard = 0;
     while (hi > lo && guard < 100) {

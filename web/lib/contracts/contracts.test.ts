@@ -44,6 +44,14 @@ import {
   SearchIndex,
   // compare
   CompareCurve,
+  // categories
+  CategoryDimension,
+  CategoryRegistryEntry,
+  CategoryRegistry,
+  RepositoryCategoryAssignment,
+  CategoryAssignments,
+  CategoriesLookup,
+  CategoryRankList,
 } from "./index";
 
 // Each block proves a schema PARSES a valid shape AND REJECTS a real bad one
@@ -517,6 +525,126 @@ describe("search contracts", () => {
 
   test("SearchIndex rejects non-array repos", () => {
     expect(rejects(SearchIndex, { generated_at: "x", count: 0, repos: {} })).toBe(true);
+  });
+});
+
+describe("category contracts", () => {
+  const category = {
+    id: "language/python",
+    dimension: "language",
+    slug: "python",
+    label: "Python",
+    aliases: ["py"],
+    count: 120,
+    public: true,
+    sitemap: true,
+    minimum_repo_count: 20,
+  };
+
+  test("CategoryDimension rejects unknown dimension", () => {
+    expect(CategoryDimension.parse("language")).toBe("language");
+    expect(rejects(CategoryDimension, "license")).toBe(true);
+  });
+
+  test("CategoryRegistryEntry parses stable ids and rejects bad id format", () => {
+    expect(CategoryRegistryEntry.parse(category).id).toBe("language/python");
+    expect(rejects(CategoryRegistryEntry, { ...category, id: "language:python" })).toBe(true);
+  });
+
+  test("CategoryRegistry parses dimensions with categories", () => {
+    const registry = {
+      rules_version: "2026-06-05.1",
+      generated_at: "2026-06-05T00:00:00Z",
+      dimensions: [{ id: "language", label: "Language", categories: [category] }],
+    };
+    expect(CategoryRegistry.parse(registry).dimensions[0].categories).toHaveLength(1);
+  });
+
+  const assignment = {
+    language: ["language/python"],
+    language_family: ["language_family/python"],
+    domain: ["domain/ai-ml"],
+    project_type: ["project_type/library"],
+    ecosystem: ["ecosystem/python"],
+    owner_kind: ["owner_kind/organization"],
+    maturity: ["maturity/star-10k", "maturity/active"],
+  };
+
+  test("RepositoryCategoryAssignment parses every dimension", () => {
+    expect(RepositoryCategoryAssignment.parse(assignment).language[0]).toBe("language/python");
+  });
+
+  test("RepositoryCategoryAssignment rejects invalid category id", () => {
+    expect(rejects(RepositoryCategoryAssignment, { ...assignment, domain: ["domain:ai-ml"] })).toBe(true);
+  });
+
+  test("CategoryAssignments parses record keyed by repo id", () => {
+    const payload = { rules_version: "2026-06-05.1", generated_at: "x", repositories: { "1": assignment } };
+    expect(CategoryAssignments.parse(payload).repositories["1"].ecosystem).toEqual(["ecosystem/python"]);
+  });
+
+  test("CategoriesLookup parses public category metadata", () => {
+    const lookup = {
+      rules_version: "2026-06-05.1",
+      generated_at: "x",
+      dimensions: [{ id: "language", label: "Language", categories: [{ id: "language/python", slug: "python", label: "Python", count: 120, sitemap: true }] }],
+    };
+    const parsed = CategoriesLookup.parse(lookup);
+    expect(parsed.dimensions[0].categories[0].slug).toBe("python");
+    expect(parsed.dimensions[0].categories[0].sitemap).toBe(true);
+    expect(
+      CategoriesLookup.parse({
+        ...lookup,
+        dimensions: [{ id: "language", label: "Language", categories: [{ id: "language/rust", slug: "rust", label: "Rust", count: 40 }] }],
+      }).dimensions[0].categories[0].sitemap,
+    ).toBeUndefined();
+  });
+
+  test("CategoryRankList parses category meta + repo items", () => {
+    const rank = {
+      meta: {
+        window: "all",
+        period: "all",
+        dim: "repo",
+        metric: "stock",
+        generated_at: "x",
+        category: { id: "language/python", dimension: "language", slug: "python" },
+      },
+      items: [{ rank: 1, id: 1, value: 120000, prev_rank: null }],
+    };
+    expect(CategoryRankList.parse(rank).meta.category.id).toBe("language/python");
+  });
+
+  test("CategoryRankList rejects org dim", () => {
+    expect(
+      rejects(CategoryRankList, {
+        meta: {
+          window: "all",
+          period: "all",
+          dim: "org",
+          metric: "stock",
+          generated_at: "x",
+          category: { id: "language/python", dimension: "language", slug: "python" },
+        },
+        items: [],
+      }),
+    ).toBe(true);
+  });
+
+  test("CategoryRankList rejects derived global metrics", () => {
+    expect(
+      rejects(CategoryRankList, {
+        meta: {
+          window: "month",
+          period: "2026-05",
+          dim: "repo",
+          metric: "growth",
+          generated_at: "x",
+          category: { id: "language/python", dimension: "language", slug: "python" },
+        },
+        items: [],
+      }),
+    ).toBe(true);
   });
 });
 

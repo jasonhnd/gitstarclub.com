@@ -17,6 +17,10 @@ Theme: narrative and discovery — make the chronicle easier to find and easier 
 - **Star-curve inflection detection**. Per-repo changepoint algorithm in `web/lib/workflows/recompute/inflections.ts` (K × six-month rolling median + absolute floor) writes `entity/repo.inflections`; `StarCurve` renders marker points with tooltips. Zero client JS.
 - **Shareable cards**. Dynamic OG images for monthly, weekly, and yearly rankings via `next/og`; `ShareButton` (copy-link + X intent) on repo, rankings, and yearly pages.
 - **Full-text repo search**. `search/index.json` derived by the recompute (one entry per tracked repo, current count tracks the whitelist). Client-side MiniSearch in `web/app/_explore/SearchBox.tsx`, lazy-loaded on first focus. Served through `/search-index` (server-side reads the versioned artifact, response is CDN-cached via `s-maxage`).
+- **Category development spec**. [CATEGORIES.md](./CATEGORIES.md) defines the first finite category taxonomy, deterministic classification rules, generated data artifacts, category routes, sitemap behavior, and phased rollout for language and broader category pages.
+- **Category artifact foundation**. The recompute now derives deterministic category rules, `categories/registry.json`, `categories/assignments.json`, `lookup/categories.json`, and bounded all-time category repo stock ranks. Publish validation checks category schemas, single-value assignment invariants, registry references, and sampled category rank membership.
+- **Category browsing pages**. `/categories`, `/categories/[dimension]`, and priority language detail pages render registry-driven category navigation, all-time category ranks, canonical metadata, top-nav discovery, and sitemap entries from `lookup/categories.json`.
+- **Broader category browsing**. The category index now groups public categories across all registry dimensions; detail static params include public registry categories, and sitemap generation respects per-category `sitemap` eligibility.
 
 ### Changed
 
@@ -25,6 +29,8 @@ Theme: narrative and discovery — make the chronicle easier to find and easier 
 ### Fixed
 
 - Cold-generation 500 on long-tail ISR pages. `resolveVersion()` used `cache: "no-store"` on the publish-pointer fetch, which forced the page from static to dynamic at render time and crashed before the in-memory memo warmed. Switched to a 60s-revalidated fetch (same pointer freshness, static-safe).
+- Sitemap discovery now includes the static `/compare` tool page and canonical weekly ranking pages (`/rankings/YYYY/W##`) so on-demand ISR week pages are discoverable without relying only on internal links.
+- Sitemap `lastModified` no longer falls back to request/build time when `meta.json` is missing. It resolves from `backfilled_at`, then `generated_at`, then a fixed stable fallback date to avoid crawl-budget churn on exceptional data reads.
 
 ---
 
