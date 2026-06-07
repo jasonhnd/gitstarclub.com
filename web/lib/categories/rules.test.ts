@@ -20,7 +20,7 @@ describe("category slug and language normalization", () => {
     expect(languageCategoryFromLanguage(null)).toEqual({ id: "language/unknown", slug: "unknown", label: "Unknown" });
   });
 
-  test("classifies every GitHub language when a repository has a language breakdown", () => {
+  test("classifies primary and significant GitHub languages when a repository has a language breakdown", () => {
     const assignment = classifyRepository({
       full_name: "public-apis/public-apis",
       language: "Python",
@@ -33,6 +33,24 @@ describe("category slug and language normalization", () => {
 
     expect(assignment.language).toEqual(["language/python", "language/javascript", "language/html"]);
     expect(assignment.language_family).toEqual(["language_family/js-ts", "language_family/python", "language_family/web-markup"]);
+  });
+
+  test("does not classify tiny support-file languages as repository languages", () => {
+    const assignment = classifyRepository({
+      full_name: "jesseduffield/lazygit",
+      language: "Go",
+      languages: [
+        { name: "Go", size: 3_743_183 },
+        { name: "Shell", size: 7_999 },
+        { name: "Nix", size: 4_258 },
+        { name: "Makefile", size: 1_459 },
+        { name: "Just", size: 1_286 },
+        { name: "Dockerfile", size: 1_121 },
+      ],
+    });
+
+    expect(assignment.language).toEqual(["language/go"]);
+    expect(assignment.language_family).toEqual(["language_family/systems"]);
   });
 
   test("languageFamilyForLanguageSlug maps priority languages", () => {

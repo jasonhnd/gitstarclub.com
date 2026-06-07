@@ -1,4 +1,4 @@
-export const CATEGORY_RULES_VERSION = "2026-06-05.1";
+export const CATEGORY_RULES_VERSION = "2026-06-07.2";
 
 export const CATEGORY_DIMENSIONS = [
   "language",
@@ -47,6 +47,7 @@ export interface ClassificationOptions {
 
 const DEFAULT_MINIMUM_REPO_COUNT = 20;
 const NEWCOMER_DAYS = 366;
+const SECONDARY_LANGUAGE_CATEGORY_MIN_SHARE = 0.1;
 
 export const PRIORITY_LANGUAGE_SLUGS = [
   "python",
@@ -257,16 +258,33 @@ export function languageCategoryFromLanguage(language?: string | null): { id: st
   return { id: categoryId("language", slug), slug, label: languageLabelBySlug.get(slug) ?? language.trim() };
 }
 
-export function languageCategoriesFromRepository(repo: CategoryRepoInput): Array<{ id: string; slug: string; label: string }> {
-  const names: string[] = [];
-  if (repo.language) names.push(repo.language);
-  for (const language of repo.languages ?? []) {
-    if (language.name) names.push(language.name);
+export function categoryLanguageNamesFromRepository(repo: CategoryRepoInput): string[] {
+  const primary = repo.language?.trim() || null;
+  const breakdown = (repo.languages ?? [])
+    .map((language) => ({
+      name: language.name.trim(),
+      size: Math.max(0, language.size ?? 0),
+    }))
+    .filter((language) => language.name);
+  const total = breakdown.reduce((sum, language) => sum + language.size, 0);
+  const names: string[] = primary ? [primary] : [];
+
+  if (total > 0) {
+    for (const language of breakdown) {
+      if (primary && slugifyCategoryPart(language.name) === slugifyCategoryPart(primary)) continue;
+      if (language.size / total >= SECONDARY_LANGUAGE_CATEGORY_MIN_SHARE) names.push(language.name);
+    }
+  } else if (!primary && breakdown.length > 0) {
+    names.push(breakdown[0].name);
   }
 
+  return names.length ? names : ["Unknown"];
+}
+
+export function languageCategoriesFromRepository(repo: CategoryRepoInput): Array<{ id: string; slug: string; label: string }> {
   const seen = new Set<string>();
   const categories: Array<{ id: string; slug: string; label: string }> = [];
-  for (const name of names) {
+  for (const name of categoryLanguageNamesFromRepository(repo)) {
     const category = languageCategoryFromLanguage(name);
     if (seen.has(category.id)) continue;
     seen.add(category.id);
