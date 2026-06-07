@@ -28,11 +28,7 @@ export function generateStaticParams() {
   return [];
 }
 
-const MS: ReadonlyArray<[string, number, "crossed_10k" | "crossed_50k" | "crossed_100k"]> = [
-  ["10k", 10000, "crossed_10k"],
-  ["50k", 50000, "crossed_50k"],
-  ["100k", 100000, "crossed_100k"],
-];
+const STAR_MILESTONE_STEP = 50_000;
 
 export async function generateMetadata({ params }: { params: Promise<{ owner: string; name: string }> }): Promise<Metadata> {
   const { owner, name } = await params;
@@ -42,7 +38,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
   if (!repo) return pageMeta({ title: `${fullName} — Star History`, description: `GitHub star history for ${fullName}.`, path: `/${fullName}`, locale: "en" });
   return pageMeta({
     title: `${repo.full_name} — Star History & Timeline`,
-    description: `Star history for ${repo.full_name}: ${repo.current_stars.toLocaleString()} stars. Growth curve, milestones (10k/50k/100k dates), monthly star gains, and ranking history.`,
+    description: `Star history for ${repo.full_name}: ${repo.current_stars.toLocaleString()} stars. Growth curve, every-50k milestones, monthly star gains, and ranking history.`,
     path: `/${repo.full_name}`,
     locale: "en",
     ogImage: `/${repo.full_name}/opengraph-image`, // per-repo OG card (app/[owner]/[name]/opengraph-image.tsx)
@@ -59,12 +55,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   if (!repo) notFound();
 
   const series = repo.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
-  const milestones: Milestone[] = MS.flatMap(([label, stars, key]) => {
-    const date = repo.milestones[key];
-    if (!date) return [];
-    const monthIndex = series.findIndex((p) => p.label === date.slice(0, 7));
-    return monthIndex >= 0 ? [{ stars, label, date, monthIndex }] : [];
-  });
+  const milestones = starMilestones(series);
   const inflections = (repo.inflections ?? []).flatMap((inf) => {
     const monthIndex = series.findIndex((p) => p.label === inf.period);
     return monthIndex >= 0 ? [{ monthIndex, flow: inf.flow, kind: inf.kind, label: inf.period }] : [];
@@ -236,6 +227,28 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
       </main>
     </>
   );
+}
+
+function starMilestones(series: Array<{ label: string; total: number }>): Milestone[] {
+  const maxTotal = Math.max(0, ...series.map((point) => point.total));
+  const maxThreshold = Math.floor(maxTotal / STAR_MILESTONE_STEP) * STAR_MILESTONE_STEP;
+  const milestones: Milestone[] = [];
+  for (let stars = STAR_MILESTONE_STEP; stars <= maxThreshold; stars += STAR_MILESTONE_STEP) {
+    const monthIndex = series.findIndex((point) => point.total >= stars);
+    if (monthIndex < 0) continue;
+    milestones.push({
+      stars,
+      label: starMilestoneLabel(stars),
+      date: `${series[monthIndex].label}-01`,
+      monthIndex,
+    });
+  }
+  return milestones;
+}
+
+function starMilestoneLabel(stars: number): string {
+  if (stars >= 1_000_000) return `${Number((stars / 1_000_000).toFixed(1))}M`;
+  return `${stars / 1000}k`;
 }
 
 type RepoLanguage = { name: string; size?: number | null; color?: string | null };

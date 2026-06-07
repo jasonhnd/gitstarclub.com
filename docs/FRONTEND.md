@@ -386,7 +386,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 组件 | 入参来源（DATA-CONTRACTS） |
 |---|---|
 | `RankingList` | `rank.items`（`{rank,id,value,prev_rank}`）**join** `lookup/*` 后的行（见 §3.4）；`prev_rank` 驱动 ↑↓/进出 TOP |
-| `StarCurve` | `entity/repo.curve.monthly`（`[period,adds,total_end]`）取 `total_end` 为 `total`；`milestones` 来自 `entity.milestones`；`inflections` 来自 `entity.inflections`（period→monthIndex 映射）；尾部接 `curve.recent_daily` |
+| `StarCurve` | `entity/repo.curve.monthly`（`[period,adds,total_end]`）取 `total_end` 为 `total`；`milestones` 从曲线累计值派生，每 50k stars 取首次达到的月份；`inflections` 来自 `entity.inflections`（period→monthIndex 映射）；尾部接 `curve.recent_daily` |
 | `CompareCurve` | 客户端从 `/repo-curve?id=` 并发取（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.15）；`points=[period,total]` 画线，`crossed_10k` 供「对齐到 10k」x 轴重映；归一化/配色在 `lib/compare/core.ts` |
 | `Heatmap` | `heatmap/{scope}/{period}.cells`（`[date|period, 总量]`）；当月合并 `current_month.json.daily_totals` |
 | 脊柱（YearSpine） | `hot-snapshot.home.year_spine`（`[year, 总量]`） |
