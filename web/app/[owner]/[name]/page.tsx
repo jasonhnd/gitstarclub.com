@@ -19,11 +19,11 @@ const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;
-export const revalidate = false;
+export const revalidate = 60;
 
 // No paths are prebuilt at deploy time (the repo set is large and versioned). Returning an
 // empty list makes this a statically-optimized route: an uncached path is rendered on first
-// request and then cached (ISR/on-demand SSG) rather than re-rendered on every request.
+// request and then periodically refreshed rather than re-rendered on every request.
 export function generateStaticParams() {
   return [];
 }
