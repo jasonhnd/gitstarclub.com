@@ -13,7 +13,7 @@ import { pageMeta } from "@/lib/seo";
 import { repoLd } from "@/lib/jsonld";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
-import { slugifyCategoryPart } from "@/lib/categories/rules";
+import { categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const LOC = DEFAULT_LOCALE;
@@ -70,6 +70,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
     return monthIndex >= 0 ? [{ monthIndex, flow: inf.flow, kind: inf.kind, label: inf.period }] : [];
   });
   const languages = repoLanguageEntries(repo);
+  const languageTotalSize = repo.languages?.reduce((sum, language) => sum + Math.max(0, language.size ?? 0), 0) ?? 0;
   const monthly = [...repo.monthly_table].reverse();
   const created = ymParts(repo.created_at);
 
@@ -135,7 +136,9 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
             {repo.description && <p className="mt-3 text-[0.95rem] leading-relaxed text-on-surface">{repo.description}</p>}
             <dl className="mt-4 grid gap-3 text-[0.86rem]">
               <MetaRow label={<T path="repo.owner" />} value={repo.owner} href={`/o/${repo.owner}`} />
-              {languages.length > 0 && <MetaRow label={languages.length > 1 ? "Languages" : "Language"} value={<LanguageLinks languages={languages} />} wrap />}
+              {languages.length > 0 && (
+                <MetaRow label={languages.length > 1 ? "Languages" : "Language"} value={<LanguageLinks languages={languages} totalSize={languageTotalSize} />} wrap />
+              )}
               {repo.license && <MetaRow label={<T path="repo.license" />} value={repo.license} />}
               {repo.homepage_url && <MetaRow label={<T path="repo.homepage" />} value={repo.homepage_url.replace(/^https?:\/\//, "")} href={repo.homepage_url} external />}
               <MetaRow
@@ -238,12 +241,17 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
 type RepoLanguage = { name: string; size?: number | null; color?: string | null };
 
 function repoLanguageEntries(repo: { language: string | null; languages?: RepoLanguage[] }): RepoLanguage[] {
-  const source = repo.languages?.length ? repo.languages : repo.language ? [{ name: repo.language, size: null, color: null }] : [];
+  const primarySlug = repo.language ? slugifyCategoryPart(repo.language) : null;
+  const breakdown = repo.languages ?? [];
+  const primaryEntry = primarySlug ? breakdown.find((language) => slugifyCategoryPart(language.name) === primarySlug) ?? { name: repo.language!, size: null, color: null } : null;
+  const source = primaryEntry ? [primaryEntry, ...breakdown.filter((language) => slugifyCategoryPart(language.name) !== primarySlug)] : breakdown;
+  const categoryLanguageSlugs = new Set(categoryLanguageNamesFromRepository(repo).map(slugifyCategoryPart));
   const seen = new Set<string>();
   return source.filter((language) => {
     const name = language.name.trim();
     const key = name.toLowerCase();
     if (!name || seen.has(key)) return false;
+    if (!categoryLanguageSlugs.has(slugifyCategoryPart(name))) return false;
     seen.add(key);
     return true;
   });
@@ -253,8 +261,8 @@ function languageHref(name: string): string {
   return `/categories/language/${slugifyCategoryPart(name)}`;
 }
 
-function LanguageLinks({ languages }: { languages: RepoLanguage[] }) {
-  const total = languages.reduce((sum, language) => sum + Math.max(0, language.size ?? 0), 0);
+function LanguageLinks({ languages, totalSize }: { languages: RepoLanguage[]; totalSize: number }) {
+  const total = totalSize || languages.reduce((sum, language) => sum + Math.max(0, language.size ?? 0), 0);
   return (
     <div className="flex flex-wrap gap-2">
       {languages.map((language) => {

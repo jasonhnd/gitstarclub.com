@@ -65,13 +65,18 @@ Slugs must be lowercase ASCII kebab-case. Labels may be title case for display.
 
 ### Dimension: language
 
-Source: GitHub language breakdown when available; falls back to GitHub primary
-language on older shards.
+Source: GitHub primary language plus significant secondary languages from the
+GitHub language breakdown when available. Older shards fall back to GitHub
+primary language.
 
 Rules:
 
-- Repositories may belong to multiple language categories when GitHub reports a
-  multi-language breakdown.
+- Repositories always belong to their GitHub primary language when available.
+- Repositories may belong to additional language categories only when a
+  secondary language is a meaningful share of the repository. Tiny support-file
+  languages such as small `Justfile`, `Dockerfile`, `Makefile`, `Shell`, or
+  config snippets must not create category membership for an otherwise dominant
+  primary-language repository.
 - Normalize common display variants to stable slugs.
 - Preserve unknown languages as normalized slugs only if the category has enough
   repositories to be useful.
@@ -107,7 +112,8 @@ Source: derived from assigned `language` categories.
 
 Rules:
 
-- Exactly one family per repository.
+- At least one family per repository; repositories with multiple significant
+  language categories may have multiple families.
 - Use a lookup table, not keyword matching.
 - This dimension gives users broader browsing paths when a raw language list is
   too fragmented.
@@ -295,8 +301,8 @@ Classification should be deterministic and easy to test.
 Recommended precedence:
 
 1. Normalize direct source fields.
-2. Assign `language` from GitHub language breakdown, falling back to primary
-   language.
+2. Assign `language` from GitHub primary language plus significant secondary
+   languages from the language breakdown.
 3. Assign `language_family` from every assigned language's lookup table.
 4. Assign `owner_kind` from owner metadata.
 5. Assign `maturity` from star, archive, and activity metadata.
@@ -338,7 +344,7 @@ Suggested shape:
 
 ```json
 {
-  "rules_version": "2026-06-04.1",
+  "rules_version": "2026-06-07.2",
   "generated_at": "2026-06-04T00:00:00.000Z",
   "dimensions": [
     {
@@ -378,7 +384,7 @@ Suggested shape:
 
 ```json
 {
-  "rules_version": "2026-06-04.1",
+  "rules_version": "2026-06-07.2",
   "generated_at": "2026-06-04T00:00:00.000Z",
   "repositories": {
     "123456": {
@@ -444,7 +450,7 @@ Suggested shape:
 
 ```json
 {
-  "rules_version": "2026-06-04.1",
+  "rules_version": "2026-06-07.2",
   "generated_at": "2026-06-04T00:00:00.000Z",
   "dimensions": [
     {

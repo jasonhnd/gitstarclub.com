@@ -1,5 +1,6 @@
-// schema.org JSON-LD builders (SEO §6). URLs are absolute against the canonical site base.
+// schema.org JSON-LD builders (SEO section 6). URLs are absolute against the canonical site base.
 // BreadcrumbList lives in the Breadcrumbs component; these add the per-page-type schema.
+import { categoryLanguageNamesFromRepository } from "@/lib/categories/rules";
 
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com").replace(/\/+$/, "");
 const abs = (path: string) => `${SITE}${path}`;
@@ -19,7 +20,7 @@ export function repoLd(
   repo: {
     full_name: string;
     language: string | null;
-    languages?: Array<{ name: string }>;
+    languages?: Array<{ name: string; size?: number | null; color?: string | null }>;
     description: string | null;
     created_at: string;
     current_stars: number;
@@ -27,7 +28,7 @@ export function repoLd(
   path: string,
   locale: string,
 ) {
-  const programmingLanguages = repo.languages?.length ? repo.languages.map((language) => language.name) : repo.language ? [repo.language] : [];
+  const programmingLanguages = categoryLanguageNamesFromRepository(repo).filter((language) => language !== "Unknown");
   return {
     "@context": "https://schema.org",
     "@type": "SoftwareSourceCode",
