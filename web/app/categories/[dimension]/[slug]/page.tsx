@@ -73,12 +73,12 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
           ]}
         />
 
-        <section className="mt-5 grid gap-8 lg:grid-cols-[16rem_1fr]">
-          <aside>
+        <section className="mt-5 grid gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+          <aside className="min-w-0">
             <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">
               {dimensionEntry?.label ?? dimension}
             </p>
-            <h1 className="mt-2 text-[clamp(2.2rem,6vw,4rem)] font-extrabold leading-none text-on-surface">
+            <h1 className="mt-2 break-words text-[clamp(2.2rem,5vw,3.25rem)] font-extrabold leading-none text-on-surface [overflow-wrap:anywhere]">
               {category.label}
             </h1>
             <p className="mt-3 text-[0.95rem] text-on-surface-variant">
@@ -89,7 +89,7 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
             </Link>
           </aside>
 
-          <div>
+          <div className="min-w-0">
             <div className="mb-3 flex items-baseline justify-between gap-3">
               <h2 className="text-[1.3rem] font-extrabold text-on-surface">Top repositories</h2>
               <span className="font-mono text-[0.75rem] text-on-surface-variant">All-time stars</span>
