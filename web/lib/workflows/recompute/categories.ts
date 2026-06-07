@@ -6,7 +6,7 @@ import {
   classifyRepository,
   definitionMinimumRepoCount,
   labelFromSlug,
-  languageCategoryFromLanguage,
+  languageCategoriesFromRepository,
   type CategoryAssignment,
   type CategoryDefinition,
   type CategoryDimension,
@@ -64,8 +64,7 @@ function buildAssignments(model: Model, generatedAt: string): BuiltAssignments {
 
   for (const id of model.ids) {
     const repo = model.repos.get(id)!;
-    const language = languageCategoryFromLanguage(repo.language);
-    languageLabels.set(language.slug, language.label);
+    for (const language of languageCategoriesFromRepository(repo)) languageLabels.set(language.slug, language.label);
 
     const assignment = classifyRepository(repo, { generatedAt });
     repositories[String(id)] = assignment;

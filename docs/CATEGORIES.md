@@ -65,11 +65,13 @@ Slugs must be lowercase ASCII kebab-case. Labels may be title case for display.
 
 ### Dimension: language
 
-Source: GitHub primary language.
+Source: GitHub language breakdown when available; falls back to GitHub primary
+language on older shards.
 
 Rules:
 
-- One primary language per repository when GitHub provides one.
+- Repositories may belong to multiple language categories when GitHub reports a
+  multi-language breakdown.
 - Normalize common display variants to stable slugs.
 - Preserve unknown languages as normalized slugs only if the category has enough
   repositories to be useful.
@@ -101,7 +103,7 @@ svelte
 
 ### Dimension: language_family
 
-Source: derived from `language`.
+Source: derived from assigned `language` categories.
 
 Rules:
 
@@ -273,7 +275,7 @@ The first implementation should use fields already available in the pipeline:
 
 - Repository ID.
 - Full name, owner, and repo name.
-- GitHub primary language.
+- GitHub primary language and language breakdown.
 - GitHub topics.
 - Description.
 - Owner type.
@@ -293,8 +295,9 @@ Classification should be deterministic and easy to test.
 Recommended precedence:
 
 1. Normalize direct source fields.
-2. Assign `language` from GitHub primary language.
-3. Assign `language_family` from the language-family lookup table.
+2. Assign `language` from GitHub language breakdown, falling back to primary
+   language.
+3. Assign `language_family` from every assigned language's lookup table.
 4. Assign `owner_kind` from owner metadata.
 5. Assign `maturity` from star, archive, and activity metadata.
 6. Assign `domain`, `project_type`, and `ecosystem` from topic rules.
@@ -539,7 +542,7 @@ Deliverables:
 
 Acceptance criteria:
 
-- Every repository has exactly one `language_family`.
+- Every repository has at least one `language` and one `language_family`.
 - Every repository has exactly one `owner_kind` when owner metadata exists.
 - Category IDs are stable ASCII strings.
 - Category counts are reproducible from assignments.

@@ -37,9 +37,13 @@ export async function refreshMetadataBucket(runId: string, bucket: number): Prom
   const trackedSince = new Date().toISOString().slice(0, 10);
   const fetchedAt = new Date().toISOString();
 
-  // Only repos absent from BOTH the previous shard and the bootstrap lookup are
-  // genuine newcomers that need a GitHub metadata fetch (usually 0-1 per bucket).
-  const needGitHub = entries.filter((e) => !prevShard[String(e.id)] && !lookup[String(e.id)]);
+  // Only genuine newcomers and repos missing the GitHub language breakdown need
+  // a GitHub metadata fetch. After the first language-backfill run, existing
+  // repos carry `languages` in the canonical shard and are not re-pulled weekly.
+  const needGitHub = entries.filter((e) => {
+    const prev = prevShard[String(e.id)];
+    return (!prev && !lookup[String(e.id)]) || !Array.isArray(prev?.languages);
+  });
   const gh = needGitHub.length ? await batchMetadata(needGitHub.map((e) => e.node_id)) : new Map();
 
   const shard: Record<string, ReposShardEntry> = { ...prevShard }; // keep dropped/historical repos
@@ -54,9 +58,10 @@ export async function refreshMetadataBucket(runId: string, bucket: number): Prom
       name: e.name,
       full_name: e.full_name,
       current_stars: e.stars, // whitelist: fresh from Search
-      owner_type: lk?.owner_type ?? g?.owner_type ?? prev?.owner_type ?? "User",
+      owner_type: g?.owner_type ?? lk?.owner_type ?? prev?.owner_type ?? "User",
       description: g?.description ?? prev?.description ?? null,
-      language: lk?.language ?? g?.language ?? prev?.language ?? null,
+      language: g?.language ?? lk?.language ?? prev?.language ?? null,
+      languages: g?.languages ?? prev?.languages ?? [],
       topics: g?.topics ?? prev?.topics ?? [],
       created_at: g?.created_at ?? prev?.created_at,
       is_archived: g?.is_archived ?? prev?.is_archived ?? false,

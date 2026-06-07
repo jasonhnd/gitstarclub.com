@@ -27,6 +27,15 @@ export const ReposShardEntry = z.object({
   full_name: z.string(),
   description: z.string().nullable().optional(),
   language: z.string().nullable().optional(),
+  languages: z
+    .array(
+      z.object({
+        name: z.string(),
+        size: z.number().int().nonnegative(),
+        color: z.string().nullable().optional(),
+      }),
+    )
+    .optional(),
   topics: z.array(z.string()).optional(),
   created_at: z.string().optional(),
   current_stars: z.number().int(),

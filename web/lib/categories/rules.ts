@@ -32,6 +32,7 @@ export interface CategoryRepoInput {
   full_name?: string | null;
   description?: string | null;
   language?: string | null;
+  languages?: Array<{ name: string; size?: number | null; color?: string | null }> | null;
   topics?: string[] | null;
   current_stars?: number | null;
   is_archived?: boolean | null;
@@ -256,6 +257,24 @@ export function languageCategoryFromLanguage(language?: string | null): { id: st
   return { id: categoryId("language", slug), slug, label: languageLabelBySlug.get(slug) ?? language.trim() };
 }
 
+export function languageCategoriesFromRepository(repo: CategoryRepoInput): Array<{ id: string; slug: string; label: string }> {
+  const names: string[] = [];
+  if (repo.language) names.push(repo.language);
+  for (const language of repo.languages ?? []) {
+    if (language.name) names.push(language.name);
+  }
+
+  const seen = new Set<string>();
+  const categories: Array<{ id: string; slug: string; label: string }> = [];
+  for (const name of names) {
+    const category = languageCategoryFromLanguage(name);
+    if (seen.has(category.id)) continue;
+    seen.add(category.id);
+    categories.push(category);
+  }
+  return categories.length ? categories : [languageCategoryFromLanguage(null)];
+}
+
 export function languageFamilyForLanguageSlug(languageSlug: string): string {
   if (languageSlug === "unknown") return "unknown";
   return languageFamilyBySlug.get(languageSlug) ?? "other";
@@ -361,13 +380,13 @@ function textHaystack(repo: CategoryRepoInput): string {
   return [repo.full_name, repo.name, repo.description].filter(Boolean).join(" ").toLowerCase();
 }
 
-function matchRules(repo: CategoryRepoInput, languageSlug: string, rules: KeywordRule[], dimension: CategoryDimension): string[] {
+function matchRules(repo: CategoryRepoInput, languageSlugs: string[], rules: KeywordRule[], dimension: CategoryDimension): string[] {
   const topics = normalizedTopics(repo);
   const text = textHaystack(repo);
   const ids: string[] = [];
   for (const rule of rules) {
     const topicMatch = (rule.topics ?? []).some((topic) => topics.has(topic));
-    const languageMatch = (rule.languages ?? []).includes(languageSlug);
+    const languageMatch = (rule.languages ?? []).some((language) => languageSlugs.includes(language));
     const keywordMatch = (rule.keywords ?? []).some((keyword) => text.includes(keyword));
     if (topicMatch || languageMatch || keywordMatch) ids.push(categoryId(dimension, rule.slug));
   }
@@ -406,16 +425,17 @@ function uniqueSorted(values: string[]): string[] {
 
 export function classifyRepository(repo: CategoryRepoInput, options: ClassificationOptions = {}): CategoryAssignment {
   const assignment = emptyAssignment();
-  const language = languageCategoryFromLanguage(repo.language);
-  const family = languageFamilyForLanguageSlug(language.slug);
+  const languages = languageCategoriesFromRepository(repo);
+  const languageSlugs = languages.map((language) => language.slug);
+  const families = uniqueSorted(languageSlugs.map((slug) => categoryId("language_family", languageFamilyForLanguageSlug(slug))));
 
-  assignment.language = [language.id];
-  assignment.language_family = [categoryId("language_family", family)];
+  assignment.language = languages.map((language) => language.id);
+  assignment.language_family = families;
   assignment.owner_kind = [categoryId("owner_kind", ownerKind(repo))];
   assignment.maturity = maturity(repo, options);
-  assignment.domain = matchRules(repo, language.slug, domainRules, "domain");
-  assignment.project_type = matchRules(repo, language.slug, projectTypeRules, "project_type");
-  assignment.ecosystem = matchRules(repo, language.slug, ecosystemRules, "ecosystem");
+  assignment.domain = matchRules(repo, languageSlugs, domainRules, "domain");
+  assignment.project_type = matchRules(repo, languageSlugs, projectTypeRules, "project_type");
+  assignment.ecosystem = matchRules(repo, languageSlugs, ecosystemRules, "ecosystem");
 
   return assignment;
 }

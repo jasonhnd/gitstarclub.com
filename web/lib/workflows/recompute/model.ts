@@ -16,6 +16,7 @@ export interface RepoMeta {
   full_name: string;
   description?: string | null;
   language?: string | null;
+  languages?: Array<{ name: string; size: number; color?: string | null }>;
   topics?: string[];
   created_at?: string;
   current_stars: number;

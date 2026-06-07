@@ -16,10 +16,18 @@ export function webSiteLd(locale: string, path: string) {
 }
 
 export function repoLd(
-  repo: { full_name: string; language: string | null; description: string | null; created_at: string; current_stars: number },
+  repo: {
+    full_name: string;
+    language: string | null;
+    languages?: Array<{ name: string }>;
+    description: string | null;
+    created_at: string;
+    current_stars: number;
+  },
   path: string,
   locale: string,
 ) {
+  const programmingLanguages = repo.languages?.length ? repo.languages.map((language) => language.name) : repo.language ? [repo.language] : [];
   return {
     "@context": "https://schema.org",
     "@type": "SoftwareSourceCode",
@@ -27,7 +35,7 @@ export function repoLd(
     url: abs(path),
     codeRepository: `https://github.com/${repo.full_name}`,
     inLanguage: locale,
-    ...(repo.language ? { programmingLanguage: repo.language } : {}),
+    ...(programmingLanguages.length ? { programmingLanguage: programmingLanguages } : {}),
     ...(repo.description ? { description: repo.description } : {}),
     ...(repo.created_at ? { dateCreated: repo.created_at } : {}),
     interactionStatistic: {

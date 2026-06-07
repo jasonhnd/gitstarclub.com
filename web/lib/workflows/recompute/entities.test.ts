@@ -14,7 +14,7 @@ function syntheticModel(): ReturnType<typeof buildModel> {
     repos: {
       "10": {
         id: 10, owner: "alpha", owner_type: "Organization", name: "one", full_name: "alpha/one",
-        description: "first", language: "TypeScript", topics: ["cli"], created_at: "2020-01-15T09:00:00Z",
+        description: "first", language: "TypeScript", languages: [{ name: "TypeScript", size: 1200, color: "#3178c6" }, { name: "JavaScript", size: 300, color: "#f1e05a" }], topics: ["cli"], created_at: "2020-01-15T09:00:00Z",
         current_stars: 150, is_archived: false, crossed_10k: "2024-03-01", d: 0.8,
       },
       "30": {
@@ -50,6 +50,7 @@ describe("repoEntities", () => {
     expect(e.id).toBe(10);
     expect(e.full_name).toBe("alpha/one");
     expect(e.language).toBe("TypeScript");
+    expect(e.languages).toEqual([{ name: "TypeScript", size: 1200, color: "#3178c6" }, { name: "JavaScript", size: 300, color: "#f1e05a" }]);
     expect(e.topics).toEqual(["cli"]);
     expect(e.created_at).toBe("2020-01-15"); // sliced to YYYY-MM-DD
     expect(e.milestones).toEqual({ crossed_10k: "2024-03-01", crossed_50k: null, crossed_100k: null });

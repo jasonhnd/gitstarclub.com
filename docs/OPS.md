@@ -219,7 +219,7 @@ blob://
 
 > 承载历史 / 元数据 / canonical 全量刷新的长任务。本节只给**运维步骤**；**Workflow 设计与 step 清单见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §3**。
 >
-> 关键约束：**metadata seed 自 `lookup/repos.json`，GitHub 只补新晋**——不全量重拉，否则撞 GitHub 二级限流。
+> 关键约束：**metadata seed 自 `lookup/repos.json`，GitHub 只补新晋**；旧 shard 缺少 GitHub `languages` breakdown 时允许一次性补齐，补完后不每周全量重拉，否则撞 GitHub 二级限流。
 >
 > 接 cron：`/api/workflows/refresh/start` 在 `web/vercel.json` 的 `crons` 中，调度 `0 6 * * 0`（周日 06:00 UTC，独立于 daily / weekly）。
 

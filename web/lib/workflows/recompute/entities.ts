@@ -16,6 +16,7 @@ export interface RepoEntity {
   name: string;
   description: string | null;
   language: string | null;
+  languages?: Array<{ name: string; size: number; color?: string | null }>;
   topics: string[];
   created_at: string;
   current_stars: number;
@@ -45,6 +46,7 @@ export function repoEntities(model: Model, monthWin: RepoWindow): { views: Map<s
       name: meta.name,
       description: meta.description ?? null,
       language: meta.language ?? null,
+      languages: meta.languages ?? [],
       topics: meta.topics ?? [],
       created_at: (meta.created_at ?? "").slice(0, 10),
       current_stars: meta.current_stars,

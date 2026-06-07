@@ -20,6 +20,21 @@ describe("category slug and language normalization", () => {
     expect(languageCategoryFromLanguage(null)).toEqual({ id: "language/unknown", slug: "unknown", label: "Unknown" });
   });
 
+  test("classifies every GitHub language when a repository has a language breakdown", () => {
+    const assignment = classifyRepository({
+      full_name: "public-apis/public-apis",
+      language: "Python",
+      languages: [
+        { name: "Python", size: 5000 },
+        { name: "JavaScript", size: 1200 },
+        { name: "HTML", size: 800 },
+      ],
+    });
+
+    expect(assignment.language).toEqual(["language/python", "language/javascript", "language/html"]);
+    expect(assignment.language_family).toEqual(["language_family/js-ts", "language_family/python", "language_family/web-markup"]);
+  });
+
   test("languageFamilyForLanguageSlug maps priority languages", () => {
     expect(languageFamilyForLanguageSlug("javascript")).toBe("js-ts");
     expect(languageFamilyForLanguageSlug("typescript")).toBe("js-ts");
