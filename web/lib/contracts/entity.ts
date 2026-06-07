@@ -34,6 +34,15 @@ export const RepoEntity = z.object({
   name: z.string(),
   description: z.string().nullable(),
   language: z.string().nullable(),
+  languages: z
+    .array(
+      z.object({
+        name: z.string(),
+        size: z.number().int().nonnegative(),
+        color: z.string().nullable().optional(),
+      }),
+    )
+    .optional(),
   topics: z.array(z.string()),
   homepage_url: z.string().nullable().optional(),
   license: z.string().nullable().optional(),

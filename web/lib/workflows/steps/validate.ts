@@ -89,14 +89,14 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
     invariants.category_assignments_repos = assignments.length;
     if (assignments.length < MIN_LOOKUP) failures.push(`categories/assignments: only ${assignments.length} repos`);
 
-    const singleLanguage = assignments.every((assignment) => assignment.language.length === 1);
-    const singleLanguageFamily = assignments.every((assignment) => assignment.language_family.length === 1);
+    const hasLanguage = assignments.every((assignment) => assignment.language.length >= 1);
+    const hasLanguageFamily = assignments.every((assignment) => assignment.language_family.length >= 1);
     const singleOwnerKind = assignments.every((assignment) => assignment.owner_kind.length === 1);
-    invariants.category_single_language = singleLanguage;
-    invariants.category_single_language_family = singleLanguageFamily;
+    invariants.category_has_language = hasLanguage;
+    invariants.category_has_language_family = hasLanguageFamily;
     invariants.category_single_owner_kind = singleOwnerKind;
-    if (!singleLanguage) failures.push("categories/assignments: language must have exactly one category per repo");
-    if (!singleLanguageFamily) failures.push("categories/assignments: language_family must have exactly one category per repo");
+    if (!hasLanguage) failures.push("categories/assignments: language must have at least one category per repo");
+    if (!hasLanguageFamily) failures.push("categories/assignments: language_family must have at least one category per repo");
     if (!singleOwnerKind) failures.push("categories/assignments: owner_kind must have exactly one category per repo");
 
     if (categoryIds.size) {

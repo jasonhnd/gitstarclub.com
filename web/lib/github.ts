@@ -139,6 +139,7 @@ export interface RepoMetadata {
   name: string;
   description: string | null;
   language: string | null;
+  languages: Array<{ name: string; size: number; color: string | null }>;
   topics: string[];
   created_at: string;
   current_stars: number;
@@ -152,6 +153,9 @@ interface RepoNode {
   name: string;
   description: string | null;
   primaryLanguage: { name: string } | null;
+  languages: {
+    edges: Array<{ size: number; node: { name: string; color: string | null } }>;
+  };
   repositoryTopics: { nodes: Array<{ topic: { name: string } }> };
   createdAt: string;
   stargazerCount: number;
@@ -165,6 +169,7 @@ export async function batchMetadata(nodeIds: string[]): Promise<Map<number, Repo
   const out = new Map<number, RepoMetadata>();
   const selection =
     "databaseId nameWithOwner owner{login __typename} name description primaryLanguage{name} " +
+    "languages(first:10, orderBy:{field:SIZE, direction:DESC}){edges{size node{name color}}} " +
     "repositoryTopics(first:20){nodes{topic{name}}} createdAt stargazerCount isArchived";
   for (let i = 0; i < nodeIds.length; i += 100) {
     const ids = nodeIds.slice(i, i + 100);
@@ -179,6 +184,7 @@ export async function batchMetadata(nodeIds: string[]): Promise<Map<number, Repo
           name: n.name,
           description: n.description,
           language: n.primaryLanguage?.name ?? null,
+          languages: n.languages.edges.map((edge) => ({ name: edge.node.name, size: edge.size, color: edge.node.color ?? null })),
           topics: n.repositoryTopics.nodes.map((t) => t.topic.name),
           created_at: n.createdAt,
           current_stars: n.stargazerCount,

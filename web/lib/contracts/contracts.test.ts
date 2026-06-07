@@ -190,7 +190,15 @@ describe("canonical shards", () => {
   });
 
   test("ReposShardEntry parses with optional/nullable fields", () => {
-    const full = { ...validEntry, description: null, language: "TypeScript", topics: ["react"], crossed_10k: "2020-01-01", d: 0.95 };
+    const full = {
+      ...validEntry,
+      description: null,
+      language: "TypeScript",
+      languages: [{ name: "TypeScript", size: 1200, color: "#3178c6" }],
+      topics: ["react"],
+      crossed_10k: "2020-01-01",
+      d: 0.95,
+    };
     expect(ReposShardEntry.parse(full).d).toBe(0.95);
   });
 
@@ -403,6 +411,7 @@ describe("entity / view contracts", () => {
     name: "next.js",
     description: null,
     language: "TypeScript",
+    languages: [{ name: "TypeScript", size: 5000, color: "#3178c6" }],
     topics: ["react"],
     created_at: "2016-10-05",
     current_stars: 120000,
@@ -413,7 +422,9 @@ describe("entity / view contracts", () => {
   };
 
   test("RepoEntity parses full object (rank_history optional)", () => {
-    expect(RepoEntity.parse(repoEntity).id).toBe(1);
+    const parsed = RepoEntity.parse(repoEntity);
+    expect(parsed.id).toBe(1);
+    expect(parsed.languages?.[0].name).toBe("TypeScript");
   });
 
   test("RepoEntity parses with optional rank_history record", () => {

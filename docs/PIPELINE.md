@@ -51,7 +51,7 @@ GROUP BY repo_id, day;
 ```
 含稳定 `repo.id`（改名归并），导出 Parquet 到本机。
 
-**03 metadata（GraphQL）** — `nodes(ids:[node_id])` 批量 100/查询取 `owner.login + owner.__typename + name + description + primaryLanguage + repositoryTopics + createdAt + stargazerCount(=current_stars) + isArchived` → `repos` 维度（DATA-CONTRACTS §1.2）。
+**03 metadata（GraphQL）** — `nodes(ids:[node_id])` 批量 100/查询取 `owner.login + owner.__typename + name + description + primaryLanguage + languages + repositoryTopics + createdAt + stargazerCount(=current_stars) + isArchived` → `repos` 维度（DATA-CONTRACTS §1.2）。
 
 **04 rollup（DuckDB）** — 读 02 的 Parquet：
 - 落 `canonical/star_daily.parquet`（`repo_id, date, delta=gross_adds`）。

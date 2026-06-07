@@ -13,6 +13,7 @@ import { pageMeta } from "@/lib/seo";
 import { repoLd } from "@/lib/jsonld";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
+import { slugifyCategoryPart } from "@/lib/categories/rules";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const LOC = DEFAULT_LOCALE;
@@ -68,6 +69,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
     const monthIndex = series.findIndex((p) => p.label === inf.period);
     return monthIndex >= 0 ? [{ monthIndex, flow: inf.flow, kind: inf.kind, label: inf.period }] : [];
   });
+  const languages = repoLanguageEntries(repo);
   const monthly = [...repo.monthly_table].reverse();
   const created = ymParts(repo.created_at);
 
@@ -98,7 +100,11 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
                 {fmtStars(repo.current_stars)}
                 <span className="text-[0.9rem] text-on-surface-variant"> ★</span>
               </span>
-              {repo.language && <span>{repo.language}</span>}
+              {languages[0] && (
+                <Link href={languageHref(languages[0].name)} className="text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]">
+                  {languages[0].name}
+                </Link>
+              )}
               <span>
                 <T path="repo.created" /> {monthLabel(loc, created.m, "short")} {created.y}
               </span>
@@ -129,7 +135,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
             {repo.description && <p className="mt-3 text-[0.95rem] leading-relaxed text-on-surface">{repo.description}</p>}
             <dl className="mt-4 grid gap-3 text-[0.86rem]">
               <MetaRow label={<T path="repo.owner" />} value={repo.owner} href={`/o/${repo.owner}`} />
-              {repo.language && <MetaRow label="Language" value={repo.language} />}
+              {languages.length > 0 && <MetaRow label={languages.length > 1 ? "Languages" : "Language"} value={<LanguageLinks languages={languages} />} wrap />}
               {repo.license && <MetaRow label={<T path="repo.license" />} value={repo.license} />}
               {repo.homepage_url && <MetaRow label={<T path="repo.homepage" />} value={repo.homepage_url.replace(/^https?:\/\//, "")} href={repo.homepage_url} external />}
               <MetaRow
@@ -229,11 +235,65 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   );
 }
 
-function MetaRow({ label, value, href, external = false }: { label: ReactNode; value: ReactNode; href?: string; external?: boolean }) {
+type RepoLanguage = { name: string; size?: number | null; color?: string | null };
+
+function repoLanguageEntries(repo: { language: string | null; languages?: RepoLanguage[] }): RepoLanguage[] {
+  const source = repo.languages?.length ? repo.languages : repo.language ? [{ name: repo.language, size: null, color: null }] : [];
+  const seen = new Set<string>();
+  return source.filter((language) => {
+    const name = language.name.trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function languageHref(name: string): string {
+  return `/categories/language/${slugifyCategoryPart(name)}`;
+}
+
+function LanguageLinks({ languages }: { languages: RepoLanguage[] }) {
+  const total = languages.reduce((sum, language) => sum + Math.max(0, language.size ?? 0), 0);
+  return (
+    <div className="flex flex-wrap gap-2">
+      {languages.map((language) => {
+        const share = total > 0 && language.size ? Math.round((language.size / total) * 1000) / 10 : null;
+        return (
+          <Link
+            key={language.name}
+            href={languageHref(language.name)}
+            className="inline-flex max-w-full items-center gap-2 rounded-full bg-surface-container-high px-2.5 py-1 font-mono text-[0.72rem] text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-primary"
+          >
+            {language.color && <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: language.color }} aria-hidden="true" />}
+            <span className="truncate">{language.name}</span>
+            {share !== null && <span className="shrink-0 text-on-surface-variant">{share}%</span>}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function MetaRow({
+  label,
+  value,
+  href,
+  external = false,
+  wrap = false,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  href?: string;
+  external?: boolean;
+  wrap?: boolean;
+}) {
   const valueNode = href ? (
     <a href={href} className="truncate font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" {...(external ? { rel: "noreferrer" } : {})}>
       {value}
     </a>
+  ) : wrap ? (
+    <div className="min-w-0">{value}</div>
   ) : (
     <span className="truncate font-semibold text-on-surface">{value}</span>
   );
