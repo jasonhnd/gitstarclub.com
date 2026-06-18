@@ -45,7 +45,14 @@ GitHub APIs
 | `web/lib/i18n/` | Server/client dictionaries and locale helpers |
 | `web/lib/compare/` | Compare-page normalization and curve logic |
 | `web/lib/search/` | Search index/query core |
+| `web/lib/observability/` | Health and alert helpers for cron/workflow failure alerting |
+| `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
 | `docs/` | Product, architecture, data, operations, frontend, SEO, testing, and development docs |
+
+Shared root-level utilities live directly under `web/lib/`: `github.ts` (GitHub
+GraphQL client), `format.ts` (number/time formatting), `periods.ts` (period/window
+helpers), `narrative.ts` (deterministic monthly narrative), `og-card.tsx` (OG image
+renderer), and the SEO helpers listed under [SEO And Discovery](#seo-and-discovery).
 
 ## Route Map
 
@@ -62,9 +69,11 @@ GitHub APIs
 | `/categories` | `web/app/categories/page.tsx` | category registry |
 | `/categories/[dimension]` | `web/app/categories/[dimension]/page.tsx` | category registry |
 | `/categories/[dimension]/[slug]` | `web/app/categories/[dimension]/[slug]/page.tsx` | category rank + repo lookup |
+| `/about` | `web/app/about/page.tsx` | static page: data sources & methodology |
 | `/api/cron/daily` | `web/app/api/cron/daily/route.ts` | live-overlay refresh |
 | `/api/cron/weekly` | `web/app/api/cron/weekly/route.ts` | live-overlay refresh |
 | `/api/workflows/refresh/start` | `web/app/api/workflows/refresh/start/route.ts` | managed refresh enqueue |
+| `/api/lang` | `web/app/api/lang/route.ts` | sets language cookie, then redirects |
 | `/repo-curve` | `web/app/repo-curve/route.ts` | compare curve endpoint |
 | `/search-index` | `web/app/search-index/route.ts` | search payload |
 
