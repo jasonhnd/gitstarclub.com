@@ -86,7 +86,7 @@ Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
 ```
 
 > 上图 step 顺序与实现源码 `web/lib/workflows/refresh.ts` L27–60 一致:
-> `whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → validate → publish → gc`。
+> `whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`。
 > Workflow 编排到 `gc` 即结束,**不主动调 `revalidatePath`**——读侧通过 `views/latest.json` 指针 + 60s TTL 自然拾取(§7.4),按需 ISR 接管长尾;若要把传播窗口从 60s 压到秒级,由 live-overlay cron handler 单独负责 revalidate(职责分离,不在 L3 workflow 内)。
 
 **为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 仅「鉴权 + 启动 workflow + 返回」,把真正的长任务交给 Workflow runtime 异步编排。
@@ -155,7 +155,7 @@ async function recomputeRank(runId: string) {
 | # | step | 读 | 写 | 说明 |
 |---|---|---|---|---|
 | 1 | refresh whitelist | GitHub Search `stars:>=10000` | `canonical/v2/whitelist/<run_id>.json` + diff | 自适应分桶绕过 Search 1000 上限(逻辑同 `01-whitelist`,但跑在 Vercel)。算出**新晋**(新 id)与**跌出**(旧 id 不再 ≥10k)。 |
-| 2 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo:记录旧→新映射,供 web 层 301(见 [SEO.md](./SEO.md) §7)。**先于 metadata 跑**——metadata 会覆盖 `full_name`,改名检测必须在覆盖前读到旧值。canonical 按 `repo_id` 归并,改名不丢历史。 |
+| 2 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo:记录旧→新映射,其增量由后续 build-aliases step 并集成 `lookup/aliases.json`,供 repo 页 308 重定向(见 [FRONTEND.md](./FRONTEND.md))。**先于 metadata 跑**——metadata 会覆盖 `full_name`,改名检测必须在覆盖前读到旧值。canonical 按 `repo_id` 归并,改名不丢历史。 |
 | 3 | metadata shards(**按 bucket,1 step/桶**,内含 newcomer 追踪) | bootstrap `lookup/repos.json`(owner_type/language)+ run whitelist(node_id、新鲜 current_stars、rename-aware full_name) | `canonical/v2/repos/<bucket>.json`(含 `tracked_since` + GitHub `languages`) | **存量 repo 从 bootstrap seed,不重拉 GitHub**;GitHub GraphQL `nodes()` 只补"既不在 prev shard 也不在 lookup"的真新晋(~12)，以及缺少 `languages` breakdown 的旧 shard repo（一次性补齐后不再每周全量重拉）。**newcomer 追踪不是独立 step**——发现新 id 时同步写 `tracked_since`(默认方案 A,见 §10)。⚠️ **不可每次全量重拉所有 repo**——会撞 GitHub 二级限流(已实测)。每桶一个短 step,幂等。milestones/description/topics 留待 entity 富化。 |
 | 4 | canonical fold | 已收口周期的**冻结快照** `canonical/v2/pending/<period>.json` + recent-daily | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` + `meta.json.folded_through` | **折叠**:周期收口时把活尾 net delta 折进月/周 rollup shard;append 站点日总量。**交接靠水位标记防重复/丢数据**——见 §7.2(H1):cron 跨期重置 `current_month.json` 前先把上一期完整 `per_repo` 落到 `canonical/v2/pending/<period>.json`,fold 只读 pending、折叠后标记 `folded_through=period`。跌出者保留历史 shard、停止 poll。 |
 | 5 | rank recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`/`meta` shard | `views/<run_id>/rank/**` | 载入全部 monthly/weekly 桶建「period→repos」索引,按 period 算 flow/stock + all-time,幂等写 staging。**growth**:期初 stock = monthly `stock_est` 前缀和在 `period-1` 的值(§6.3),floor 期初 ≥20k;**new**:直接用 `repos.crossed_10k` 落当期判定(**不另用 stock_est 重算**,口径同 [RANKING.md](./RANKING.md) §4)。stock 锚定见 §6.3 / [RANKING.md](./RANKING.md) §3。 |
@@ -163,11 +163,12 @@ async function recomputeRank(runId: string) {
 | 6a | entity/repo recompute(**桶内独立**) | 单桶 `repo-monthly`/`repo-weekly`/`repo-recent-daily`/`repos` | `views/<run_id>/entity/repo/**` | 每个 repo 只依赖自己那桶,可按桶并行分 step。 |
 | 6b | entity/org recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`(owner→members) | `views/<run_id>/entity/org/**` + `lookup/**` + `search/index.json` | **不能按桶算**(成员散落各桶,C2):先全量载入 monthly/weekly 桶,按 `owner` 聚合;org stock 须先对每个成员做 `首次事件期→末期` **carry-forward** 再求和(空期沿用上一期累计),终点对齐 `current_stars_sum`(口径同 [RANKING.md](./RANKING.md) §5)。同步从 `repos` 维度派生 `search/index.json`(客户端搜索索引,见 [DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.14)。 |
 | 7 | heatmap update | `site-daily` shard(+ 派生月总量) | `views/<run_id>/heatmap/**` | 站点级日 / 月总量(月总量 = site-daily 当月求和)。 |
-| 8 | validate | `views/<run_id>/**` | `ops/workflows/<run_id>/validation.json` | Zod schema + sanity 不变量(见 §8 实测清单)。**不过不发布**。 |
-| 9 | publish | `views/<run_id>/**` | `views/latest.json` 指针 + `ops/workflows/latest-success.json` | 原子切指针(version=run_id):读侧从此读新版本(见 §7)。 |
-| 10 | gc | `views/latest.json` + `list(views/)` | `del views/<旧 version>/**` | **版本 GC**(`gc.ts`,发布后跑):保留最新 4 版 + 当前 / `prev_version` 指针(回滚目标),删更旧的孤儿版本。**best-effort、绝不抛错**——清理失败不拖垮已发布的 run。 |
+| 8 | build aliases | 所有保留的 `ops/workflows/<run>/renames.json` + 本 run `lookup/repos.json` | `views/<run_id>/lookup/aliases.json` | 旧 full_name → 当前 id 的累积别名表,供 repo 页 308 重定向改名旧 URL。并集历史 renames 增量(gc 不删 ops/),自愈,自动覆盖更早 run 的改名；剔除 dangling/自指/与活仓库撞名项。 |
+| 9 | validate | `views/<run_id>/**` | `ops/workflows/<run_id>/validation.json` | Zod schema + sanity 不变量(见 §8 实测清单)。**不过不发布**。 |
+| 10 | publish | `views/<run_id>/**` | `views/latest.json` 指针 + `ops/workflows/latest-success.json` | 原子切指针(version=run_id):读侧从此读新版本(见 §7)。 |
+| 11 | gc | `views/latest.json` + `list(views/)` | `del views/<旧 version>/**` | **版本 GC**(`gc.ts`,发布后跑):保留最新 4 版 + 当前 / `prev_version` 指针(回滚目标),删更旧的孤儿版本。**best-effort、绝不抛错**——清理失败不拖垮已发布的 run。 |
 
-> 上表是**逻辑职责**枚举,顺序与 `web/lib/workflows/refresh.ts` L27–60 完全一致(`whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → validate → publish → gc`)。运行 manifest 把这些归并为 8 个 checkpoint step(`whitelist / rename / metadata / fold / recompute / validate / publish / gc`),见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12。
+> 上表是**逻辑职责**枚举,顺序与 `web/lib/workflows/refresh.ts` L27–60 完全一致(`whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`)。运行 manifest 把这些归并为 8 个 checkpoint step(`whitelist / rename / metadata / fold / recompute / validate / publish / gc`),见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12。
 >
 > ⚠️ **workflow 不调 `revalidatePath`**:发布后读侧通过 `views/latest.json` 指针 + 60s TTL 自然拾取新版本(§7.4);若要把传播窗口从 60s 压到秒级,由 live-overlay cron handler 负责 revalidate,不在 L3 workflow 路径内(职责分离 / 可独立 GC)。
 

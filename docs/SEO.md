@@ -180,7 +180,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
 
 - **repo 名是最强搜索词**：用户直接搜 `<repo> star history`。title 把 `owner/name` 放最前。
 - `current_stars` 用 `toLocaleString()` 加千分逗号（无 "as of" 日期——目前不在 description 里硬编日期，避免冷月每日刷描述）。
-- **改名 / 迁移**：URL 用当前 `full_name`；旧 URL 做 **301**（见 [PRODUCT.md](./PRODUCT.md) repo 身份）→ canonical 永远指向当前规范 URL，避免重复内容。
+- **改名 / 迁移**：URL 用当前 `full_name`；旧 URL 做 **308 永久重定向**（见 [PRODUCT.md](./PRODUCT.md) repo 身份）→ canonical 永远指向当前规范 URL，避免重复内容。
 - **未知 repo**：`generateMetadata` 返回兜底 meta（`title = '<fullName> — Star History'`），页面 body 调 `notFound()` 触发 404 UI + 状态码（见 §3.2）。
 
 ### 2.5 Org 详情页 `/o/:login`
@@ -335,7 +335,7 @@ export function generateMetadata(): Metadata {
 
 - **合法 param → 200**：`generateMetadata` / 页面正常渲染。
 - **未知 param → 404**：`getRepoEntity` / `getOrgEntity` 查不到 → 调 `notFound()`（Next.js 返回 404 + not-found UI）。**绝不能给未知 repo/org 返回 200 软 404**（Google 会判"软 404"、浪费抓取预算、污染收录）。
-- **改名旧 URL → 301**：永久重定向到当前 `full_name`（见 [PRODUCT.md](./PRODUCT.md)）。
+- **改名旧 URL → 308 永久重定向**：永久重定向到当前 `full_name`（见 [PRODUCT.md](./PRODUCT.md)）（repo 路由据 `lookup/aliases.json` 实现，见 [FRONTEND.md](./FRONTEND.md)）。
 
 ```ts
 // 按需 ISR 段配置（repo / org / 历史年月）

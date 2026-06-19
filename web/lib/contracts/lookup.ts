@@ -29,3 +29,10 @@ export type OrgLookupEntry = z.infer<typeof OrgLookupEntry>;
 /** lookup/orgs.json — keyed by owner login. */
 export const OrgsLookup = z.record(z.string(), OrgLookupEntry);
 export type OrgsLookup = z.infer<typeof OrgsLookup>;
+
+/** lookup/aliases.json — old (renamed-away) full_name (lowercased) → current repo id.
+ *  The repo route 308-redirects a stale slug to the id's current full_name. repo_id is stable
+ *  across GitHub renames, so the redirect target is resolved fresh from ReposLookup at request
+ *  time. Built by the buildAliases workflow step. See docs/DATA-CONTRACTS.md. */
+export const AliasMap = z.record(z.string(), z.number().int());
+export type AliasMap = z.infer<typeof AliasMap>;

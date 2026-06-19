@@ -183,8 +183,8 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,2
 ## Repo 身份与改名
 
 - 主键用 GitHub repo **id**（不可变）；URL 用当前 `owner/name`
-- repo 改名/迁移：每周白名单刷新时被动更新 `full_name`，旧 URL 做 **301** 重定向
-- MVP 不主动追踪完整改名历史（量小，不值得投入）
+- repo 改名/迁移：每周白名单刷新时被动更新 `full_name`，旧 URL 做 **308** 永久重定向（repo 路由据累积别名表 `lookup/aliases.json`，见 [FRONTEND.md](./FRONTEND.md)）
+- 改名历史由 `build aliases` step 并集所有保留的 `renames.json` 增量得到（gc 不删 `ops/`），无需额外追踪
 
 ## 多语言（i18n）
 
