@@ -1,6 +1,7 @@
 import { readView } from "@/lib/data/source";
 import { putView } from "@/lib/data/write";
 import {
+  AliasMap,
   CategoriesLookup,
   CategoryAssignments,
   CategoryRankList,
@@ -55,11 +56,29 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
     if (!desc) failures.push("all-time/repo: values not descending");
   }
 
-  const lookup = await read<Record<string, unknown>>("lookup/repos.json", ReposLookup);
+  const lookup = await read("lookup/repos.json", ReposLookup);
   if (lookup) {
     const n = Object.keys(lookup).length;
     invariants.lookup_repos = n;
     if (n < MIN_LOOKUP) failures.push(`lookup/repos: only ${n} entries`);
+  }
+
+  // aliases must point at still-tracked ids and must not shadow a live repo's current full_name.
+  const aliases = await read("lookup/aliases.json", AliasMap);
+  if (aliases && lookup) {
+    const trackedIds = new Set(Object.keys(lookup));
+    const liveNames = new Set(Object.values(lookup).map((e) => e.full_name.toLowerCase()));
+    let dangling = 0;
+    let colliding = 0;
+    for (const [oldName, id] of Object.entries(aliases)) {
+      if (!trackedIds.has(String(id))) dangling++;
+      if (liveNames.has(oldName)) colliding++;
+    }
+    invariants.alias_count = Object.keys(aliases).length;
+    invariants.alias_dangling = dangling;
+    invariants.alias_colliding = colliding;
+    if (dangling > 0) failures.push(`lookup/aliases: ${dangling} alias(es) point to an untracked id`);
+    if (colliding > 0) failures.push(`lookup/aliases: ${colliding} alias(es) shadow a live repo`);
   }
 
   const search = await read("search/index.json", SearchIndex);

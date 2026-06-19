@@ -153,14 +153,6 @@ const nextConfig: NextConfig = {
   // 关键：cacheComponents 必须保持「关闭」——开启会禁用 dynamicParams，
   // 并使空 generateStaticParams() 在 build 报错（与「长尾全按需」冲突）。
   // 见 ARCHITECTURE 页面分层 §配置要点 / SEO §3.4。默认即关,勿误开。
-
-  // 长尾改名 301（见 PRODUCT「repo 身份」/ SEO §7）——旧 full_name → 当前 full_name
-  // 量大时用动态 redirect（middleware 或 route），此处仅示意静态条目位置
-  async redirects() {
-    return [
-      // { source: '/old-owner/old-name', destination: '/new-owner/new-name', permanent: true },
-    ];
-  },
 };
 
 export default nextConfig;
@@ -171,7 +163,7 @@ export default nextConfig;
 | `cacheComponents` | **关闭（不设/false）** | 开启禁用 `dynamicParams`、空 `generateStaticParams` 会 build 报错（[ARCHITECTURE](./ARCHITECTURE.md) / [SEO](./SEO.md) §3.4）。 |
 | `dynamicParams`（段级） | `true` | 长尾首访生成；未知 param 则 `notFound()`（404，见 [SEO](./SEO.md) §3.2）。 |
 | `revalidate`（段级） | `false` | 不做时间轮询；数据变更全靠 cron `revalidatePath` 定点失效。 |
-| `redirects()` | repo 改名 301 | canonical 永远指当前 `full_name`（[SEO](./SEO.md) §7）。 |
+| repo 改名重定向 | 路由层（非 next.config） | repo 页据 `lookup/aliases.json` 对改名旧 slug 发 `permanentRedirect`（308）到当前 `full_name`；canonical 永远指当前名（[SEO](./SEO.md) §7）。 |
 
 ### 2.4 数据变更如何到达页面（无 deploy）
 
@@ -246,7 +238,7 @@ export const getRepoEntity = cache(async (id: number) => {
 ```
 
 - **运行时只 `fetch` + `parse`**——不聚合、不带引擎（[ARCHITECTURE](./ARCHITECTURE.md) 渲染策略）。
-- **未知 param → `notFound()`**（404，禁软 200，见 [SEO](./SEO.md) §3.2）。`[owner]/[name]/page.tsx` 先 `getRepoIdByFullName()` 查 id、查不到 `notFound()`，再 `getRepoEntity(id)`、为空再 `notFound()`。
+- **未知 param → `notFound()`**（404，禁软 200，见 [SEO](./SEO.md) §3.2）。`[owner]/[name]/page.tsx` 先 `getRepoIdByFullName()` 查 id；查不到再查 `lookup/aliases.json`（`getAliasMap`），命中改名别名则 `permanentRedirect`（308）到当前 `full_name`；仍无则 `notFound()`，再 `getRepoEntity(id)`、为空再 `notFound()`。
 
 ### 3.3 每页读哪些视图（页面 ↔ JSON 契约映射）
 

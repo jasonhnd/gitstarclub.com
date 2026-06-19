@@ -111,6 +111,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 ```
 lookup/repos.json                              # build join 表（§2.1）
 lookup/orgs.json
+lookup/aliases.json                            # 改名旧 full_name → 当前 repo id（§2.2b）
 search/index.json                              # 客户端全站搜索索引（recompute 派生）
 rank/{week|month|year}/{period}/{repo|org}/{flow|stock}.json
 rank/all-time/{repo|org}/stock.json
@@ -164,6 +165,14 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
   "vuejs": { "login": "vuejs", "owner_type": "Organization",
              "repo_count": 14, "current_stars_sum": 312000 }
 }
+```
+
+### 2.2b `lookup/aliases.json`
+
+改名映射：旧（已弃用）`full_name`（小写）→ 当前 `repo id`。repo 页 `/[owner]/[name]` 在 slug 查不到时据此 **308 永久重定向**到该 id 的当前 `full_name`（`repo_id` 跨改名稳定，重定向目标在请求时从 `lookup/repos.json` 实时解析）。由 `buildAliases` workflow step 产出：并集所有保留的 `ops/workflows/<run>/renames.json` 增量（gc 不删 `ops/`，故能覆盖更早 run 的改名），剔除已不再追踪的 id、自指、以及与活仓库当前名相撞的项。
+
+```json
+{ "facebook/react": 10270250, "facebook/react-native": 29028775 }
 ```
 
 ### 2.3 `rank/{window}/{period}/{dim}/{metric}.json`

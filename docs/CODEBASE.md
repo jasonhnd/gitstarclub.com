@@ -88,7 +88,9 @@ Important files:
   versioned reads. Do not change pointer caching without reading
   [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md).
 - `rank.ts`, `entity.ts`, `lookup.ts`, `heatmap.ts`, `categories.ts`,
-  `compare.ts`, `search.ts`: typed read helpers for page code.
+  `compare.ts`, `search.ts`: typed read helpers for page code. `lookup.ts` also
+  exposes `getAliasMap` for `aliases` (`lookup/aliases.json`, old full_name ->
+  current id for rename redirects).
 - `write.ts`: write helper for workflow, cron, and ops paths. Page code should
   not write.
 
@@ -124,6 +126,7 @@ whitelist
   -> recompute repo entities
   -> recompute org entities/search/lookups
   -> recompute heatmap
+  -> build aliases (lookup/aliases.json)
   -> validate
   -> publish
   -> gc
@@ -155,6 +158,10 @@ Common components:
 - `Heatmap`: activity heatmap.
 - `CompareCurve`: compare chart.
 - `SearchBox`, `ShareButton`, `Breadcrumbs`, `JsonLd`, `Narrative`.
+
+The repo route `/[owner]/[name]` 308-redirects a renamed repo's stale slug to its
+current `full_name` via `lookup/aliases.json` (`getAliasMap`) before falling back
+to `notFound()`.
 
 When changing layout, check [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) and
 [FRONTEND.md](./FRONTEND.md) before editing CSS classes.

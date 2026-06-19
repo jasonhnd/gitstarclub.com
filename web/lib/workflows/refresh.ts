@@ -5,6 +5,7 @@ import { foldCanonical } from "./steps/fold";
 import { recomputeRank } from "./steps/recompute-rank";
 import { recomputeRepoEntities, recomputeOrgEntities } from "./steps/recompute-entity";
 import { recomputeHeatmap } from "./steps/recompute-heatmap";
+import { buildAliases } from "./steps/aliases";
 import { validateVersion } from "./steps/validate";
 import { publishVersion } from "./steps/publish";
 import { gcVersions } from "./steps/gc";
@@ -51,13 +52,16 @@ export async function refreshWorkflow(runId: string) {
       heatmap: heatmap.files,
     };
 
+    // accumulate renamed-away full_names → current id so the repo route 308-redirects stale URLs.
+    const aliases = await buildAliases(runId);
+
     // publish gate: validate the version, then atomically flip the pointer.
     const validation = await validateVersion(runId);
     const publish = await publishVersion(runId);
 
     await markPublished(runId, startedAt);
     const gc = await gcVersions(runId); // best-effort cleanup of old versions; never fails the run
-    return { runId, ok: true, whitelist, rename, metadata, fold, recompute, validation, publish, gc };
+    return { runId, ok: true, whitelist, rename, metadata, fold, recompute, aliases, validation, publish, gc };
   } catch (err) {
     await markFailed(runId, startedAt, err instanceof Error ? err.message : String(err));
     throw err;

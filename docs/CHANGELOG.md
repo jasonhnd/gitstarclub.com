@@ -6,6 +6,14 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ---
 
+## Unreleased
+
+### Fixed
+
+- **Renamed repos no longer 404 on their old URL.** When a tracked repo is renamed or transferred on GitHub (e.g. `facebook/react` → `react/react`), the recurring refresh now accumulates every retained rename delta into a published `lookup/aliases.json`, and the repo route `/[owner]/[name]` issues a 308 permanent redirect from a stale slug to the repo's current `full_name` instead of returning 404. This implements the rename→redirect behavior the docs had long described but the web layer never consumed. New `buildAliases` workflow step (unions all retained `renames.json` deltas → current ids) and `AliasMap` contract; publish validation now rejects aliases that dangle or shadow a live repo.
+
+---
+
 ## 0.2.0 — 2026-06-04
 
 Theme: narrative and discovery — make the chronicle easier to find and easier to read.

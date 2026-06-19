@@ -1,13 +1,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve, type Milestone } from "@/app/_explore/StarCurve";
 import { ShareButton } from "@/app/_explore/ShareButton";
-import { getRepoIdByFullName, getRepoEntity } from "@/lib/data";
+import { getRepoIdByFullName, getRepoEntity, getAliasMap, getReposLookup } from "@/lib/data";
 import { fmtStars, ymParts, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { repoLd } from "@/lib/jsonld";
@@ -30,10 +30,25 @@ export function generateStaticParams() {
 
 const STAR_MILESTONE_STEP = 50_000;
 
+// Resolve a URL slug → repo id. On a miss, if the slug is a former name of a still-tracked repo
+// (GitHub rename, e.g. facebook/react → react/react), 308-redirect to its current slug; otherwise
+// return undefined so the caller can 404.
+async function resolveRepoId(fullName: string): Promise<number | undefined> {
+  const lower = fullName.toLowerCase();
+  const id = (await getRepoIdByFullName()).get(lower);
+  if (id !== undefined) return id;
+  const aliasId = (await getAliasMap())?.[lower];
+  if (aliasId !== undefined) {
+    const current = (await getReposLookup())?.[String(aliasId)]?.full_name;
+    if (current && current.toLowerCase() !== lower) permanentRedirect(`/${current}`);
+  }
+  return undefined;
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ owner: string; name: string }> }): Promise<Metadata> {
   const { owner, name } = await params;
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
-  const id = (await getRepoIdByFullName()).get(fullName.toLowerCase());
+  const id = await resolveRepoId(fullName);
   const repo = id !== undefined ? await getRepoEntity(id) : null;
   if (!repo) return pageMeta({ title: `${fullName} — Star History`, description: `GitHub star history for ${fullName}.`, path: `/${fullName}`, locale: "en" });
   return pageMeta({
@@ -49,7 +64,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   const { owner, name } = await params;
   const loc = LOC;
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
-  const id = (await getRepoIdByFullName()).get(fullName.toLowerCase());
+  const id = await resolveRepoId(fullName);
   if (id === undefined) notFound();
   const repo = await getRepoEntity(id);
   if (!repo) notFound();
