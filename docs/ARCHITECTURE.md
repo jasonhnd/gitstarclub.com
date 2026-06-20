@@ -57,7 +57,7 @@ Deliberately not in the stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, 
 └─────────────────────────────────────────────────────────────┘
 
 ┌─ Daily cron (live overlay, JSON-only, seconds) ─────────────┐
-│  1. GraphQL: current_stars for tracked repos (~53 queries)  │
+│  1. GraphQL: current_stars for tracked repos (~54 queries)  │
 │  2. Net daily delta = today − yesterday                     │
 │  3. Append to current_month.json                            │
 │  4. Recompute hot-snapshot.json (home + current-period top) │
@@ -114,7 +114,7 @@ Weekly rankings cross calendar months. Daily is the smallest grain that exactly 
 - Historical curves are gross adds (GH Archive WatchEvents); live deltas are net (GraphQL). The seam introduces a small inconsistency. Current totals always reflect GitHub's authoritative count.
 - Survivorship bias: only repos that currently have ≥10,000 stars are backfilled. Projects that were once popular but dropped below the threshold are absent.
 - Cumulative gross does not necessarily equal current total (stars get revoked); the current total is the authoritative anchor.
-- Repo renames keep their identity via `repo.id`; URLs use the current `full_name` with 301 redirects from the old.
+- Repo renames keep their identity via `repo.id`; URLs use the current `full_name` with 308 redirects from the old.
 
 ### Why the data starts at 2015
 
@@ -211,7 +211,7 @@ Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next
 
 ### GraphQL budget
 
-The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per query; ~53 queries per cron run (~1%) sit comfortably under the limit. Metadata backfill (topics, license, etc.) costs more per query but still remains well below the budget.
+The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per query; ~54 queries per cron run (~1%) sit comfortably under the limit. Metadata backfill (topics, license, etc.) costs more per query but still remains well below the budget.
 
 ### Performance posture (designed for ~10M page views per day)
 

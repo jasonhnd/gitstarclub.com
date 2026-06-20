@@ -13,7 +13,7 @@
 
 ## 2. 数据集范围
 
-- 白名单 = 当前 star ≥ **10,000** 的公开 repo（bootstrap ≈5,248 @2026-05 实测 → 当前约 5,261；每周浮动）。每周刷新；新晋者补历史；跌出者保留历史、停止轮询。
+- 白名单 = 当前 star ≥ **10,000** 的公开 repo（bootstrap ≈5,248 @2026-05 实测 → 当前约 5,302；每周浮动）。每周刷新；新晋者补历史；跌出者保留历史、停止轮询。
 - 时间 **2015-01 至今**（2015 前 watch≠star、schema 不稳）。
 - 维度：**repo + org**（org = 按 owner 聚合，含 User 与 Organization 两类）。
 
@@ -28,6 +28,7 @@
 | repo 页 | `/:owner/:name` | 曲线 · 里程碑 · 月度表 |
 | org 页 | `/o/:login` | 合计曲线 · 成员 · 名次 |
 | 全时榜 | `/rankings` | 当前总量 repo / org TOP |
+| 分类浏览 | `/categories` · `/categories/:dimension` · `/categories/:dimension/:slug` | 按 语言/生态/领域/类型/owner/成熟度 多维下钻 |
 | 脉搏页 | `/pulse` | 今日/本周大涨 + 复活/突刺 |
 | 关于 | `/about` | 数据口径声明 |
 
@@ -46,7 +47,7 @@
 ## 5. 数据来源与口径
 
 - **历史回填（一次性）**：BigQuery 查 GH Archive WatchEvent（含稳定 `repo.id`），~$10。（免费方案 ClickHouse 公共实例 1000 行上限、自建 4–12TB 均已评估排除。）
-- **日常监测**：GitHub GraphQL 每日批量查 `current_stars`（约 5,261 repo，`ceil(5261/100)=53` 查询，**< 1 MB / 秒级 / ~1% 额度**）→ diff 出 net 日增。
+- **日常监测**：GitHub GraphQL 每日批量查 `current_stars`（约 5,302 repo，`ceil(5302/100)=54` 查询，**< 1 MB / 秒级 / ~1% 额度**）→ diff 出 net 日增。
 - **元数据**：GraphQL（owner + owner_type、language、topics、createdAt、current_stars、isArchived）。
 - **口径**：历史 = gross（GH Archive 无取消事件）/ 上线后 = net（含取消，可负）；**seam** 分界。**`current_stars` 是唯一必须精确的数**；历史 stock = gross 累加 × 折扣**锚定**到 current_stars（估算，标 as-of）。
 
@@ -62,7 +63,7 @@
   3. **破里程碑**：今日跨 10k / 50k / 100k。
   > 数字（50 / 5× / 200）是可调旋钮，上线后按真实数据校准。
 - 老项目爆发 → 进刷新集 → 当天上 `/pulse` + 它的 repo 页当天刷新（曲线立刻显示这波）。
-- **不全量刷长尾页**（当前约 5,261 repo，含 org/周期页上限留 ~16k 余量；全量刷会毁静态/贵）、**不一律冻结**（错过爆发）。
+- **不全量刷长尾页**（当前约 5,302 repo，含 org/周期页上限留 ~16k 余量；全量刷会毁静态/贵）、**不一律冻结**（错过爆发）。
 
 ## 7. 渲染 / 扛量
 

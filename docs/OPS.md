@@ -129,12 +129,18 @@ blob://
 │       ├── meta.json                                #     版本元（seam_date · schema_ver · folded_through · generated_at）
 │       ├── lookup/                                  #     entity step 派生（lookup/repos.json + lookup/orgs.json）
 │       │   ├── repos.json
-│       │   └── orgs.json
+│       │   ├── orgs.json
+│       │   ├── aliases.json                         #     buildAliases step 派生：old_full_name → 当前 id（repo route 308 跳转，validate 校验）
+│       │   └── categories.json                      #     category step 派生：公开分类目录（validate 校验非空）
+│       ├── categories/                              #     category step 派生（registry + 每仓分配，validate 校验）
+│       │   ├── registry.json                        #       分类登记表（dimensions × categories，含 public 标记）
+│       │   └── assignments.json                     #       每仓分类分配（language / language_family / owner_kind → category id）
 │       ├── search/
 │       │   └── index.json                           #     客户端搜索索引（entity step 派生，validate 闸门校验条目数）
 │       ├── rank/                                    #     rank 矩阵（窗口 × 维度 × 指标）
 │       │   ├── {week|month|year}/{period}/{repo|org}/{flow|stock|growth|new}.json
-│       │   └── all-time/{repo|org}/stock.json
+│       │   ├── all-time/{repo|org}/stock.json
+│       │   └── category/{dimension}/{slug}/all-time/{repo|org}/stock.json  # 分类排行榜（validate 抽样校验）
 │       ├── entity/                                  #     repo / org 曲线 + 里程碑 + 历期表 + 名次史
 │       │   ├── repo/{id}.json
 │       │   └── org/{login}.json
@@ -149,7 +155,7 @@ blob://
 │       └── <run_id>/                                #   Workflow 单次 run checkpoint
 │           ├── manifest.json                        #     步骤清单 + 状态（running / published / failed）
 │           ├── validation.json                      #     发布闸门结果（ok · checked · invariants · failures）
-│           ├── renames.json                         #     rename step 输出（old_full_name → new_full_name，web 层 301）
+│           ├── renames.json                         #     rename step 输出（old_full_name → new_full_name，web 层 308）
 │           └── error.json                           #     失败时写入（run_id · error · at）
 ├── current_month.json                               # 当月活尾（KB 级，每日 cron append-only 覆盖写）
 └── hot-snapshot.json                                # 热集聚合（首页 / 当年 / 当月，每日 cron 重写，热集 ISR 读）
@@ -234,11 +240,11 @@ blob://
 
 1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → 拿 `run_id`（route 仅鉴权 + `start(refreshWorkflow)` + 返回，不阻塞）。
 2. 在 **Vercel Dashboard → Observability → Workflows** 看 run；或 `bun x workflow inspect runs`。
-3. 看 `ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`latest-success.json`。
+3. 看 `ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`views/<run_id>/lookup/aliases.json`（buildAliases，recompute 之后 / validate 之前）、`latest-success.json`。
 4. 校验白名单数、repos shard 分桶齐全、diff / rename 合理。
 5. cron 已接入（`/api/workflows/refresh/start`，`0 6 * * 0`，独立于 daily / weekly 排程）；手动验证某次部署时可先用 `?dry=1` 或单次触发再观察。
 
-> 全链路 step：`fold`（月 + 周）、`recompute`、`validate` 发布闸门、`publish` 切 `views/latest.json` 指针 / 回滚、`gc` 版本回收（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
+> 全链路 step：`fold`（月 + 周）、`recompute`、`buildAliases`（→ `lookup/aliases.json`）、`validate` 发布闸门、`publish` 切 `views/latest.json` 指针 / 回滚、`gc` 版本回收（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
 
 **鉴权 / 凭证**：`CRON_SECRET`（触发）、`GITHUB_TOKEN`（Search / GraphQL）、`BLOB_READ_WRITE_TOKEN`（读写 canonical / staging / published）。**Workflow 全程 0 GCP**（GCP 仅 bootstrap）。
 

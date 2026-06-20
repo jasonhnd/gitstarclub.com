@@ -80,9 +80,10 @@ Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
             ├─ step 6b entity/org recompute(跨桶 gather + 派生 search/index.json)
             │                                              → views/<run_id>/entity/org/** + lookup/** + search/index.json
             ├─ step 7  heatmap update                       → views/<run_id>/heatmap/**
-            ├─ step 8  validate(Zod + sanity,对 views/<run_id> 该版本)
-            ├─ step 9  publish(更新 views/latest.json 指针)
-            └─ step 10 gc(版本垃圾回收,best-effort)
+            ├─ step 8  build aliases(改名旧名→当前 id)      → views/<run_id>/lookup/aliases.json
+            ├─ step 9  validate(Zod + sanity,对 views/<run_id> 该版本)
+            ├─ step 10 publish(更新 views/latest.json 指针)
+            └─ step 11 gc(版本垃圾回收,best-effort)
 ```
 
 > 上图 step 顺序与实现源码 `web/lib/workflows/refresh.ts` L27–60 一致:
@@ -118,9 +119,10 @@ export async function refreshWorkflow(runId: string) {
   await recomputeRepoEntities(runId);                  // step 6a(桶内独立,可并行分批)
   await recomputeOrgEntities(runId);                   // step 6b(跨桶 gather + 成员 carry-forward + 派生 search/index.json)
   await recomputeHeatmap(runId);                       // step 7
-  await validateVersion(runId);                        // step 8
-  await publishVersion(runId);                         // step 9(切 views/latest.json 指针)
-  await gcVersions(runId);                             // step 10(版本 GC,best-effort 不抛)
+  await buildAliases(runId);                           // step 8(改名旧 full_name → 当前 id,供 308 重定向)
+  await validateVersion(runId);                        // step 9
+  await publishVersion(runId);                         // step 10(切 views/latest.json 指针)
+  await gcVersions(runId);                             // step 11(版本 GC,best-effort 不抛)
   return { runId, ok: true };
 }
 
@@ -168,7 +170,7 @@ async function recomputeRank(runId: string) {
 | 10 | publish | `views/<run_id>/**` | `views/latest.json` 指针 + `ops/workflows/latest-success.json` | 原子切指针(version=run_id):读侧从此读新版本(见 §7)。 |
 | 11 | gc | `views/latest.json` + `list(views/)` | `del views/<旧 version>/**` | **版本 GC**(`gc.ts`,发布后跑):保留最新 4 版 + 当前 / `prev_version` 指针(回滚目标),删更旧的孤儿版本。**best-effort、绝不抛错**——清理失败不拖垮已发布的 run。 |
 
-> 上表是**逻辑职责**枚举,顺序与 `web/lib/workflows/refresh.ts` L27–60 完全一致(`whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`)。运行 manifest 把这些归并为 8 个 checkpoint step(`whitelist / rename / metadata / fold / recompute / validate / publish / gc`),见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12。
+> 上表是**逻辑职责**枚举,顺序与 `web/lib/workflows/refresh.ts` L27–60 完全一致。**细粒度 = 12 个真实 step-function**:`whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`(无 `revalidate`、无独立 `newcomer` step——workflow 不调 `revalidatePath`,newcomer 追踪折进 metadata 的 `tracked_since`)。运行 manifest 把这 12 步归并为 8 个 checkpoint step(`whitelist / rename / metadata / fold / recompute / validate / publish / gc`),见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12。
 >
 > ⚠️ **workflow 不调 `revalidatePath`**:发布后读侧通过 `views/latest.json` 指针 + 60s TTL 自然拾取新版本(§7.4);若要把传播窗口从 60s 压到秒级,由 live-overlay cron handler 负责 revalidate,不在 L3 workflow 路径内(职责分离 / 可独立 GC)。
 
@@ -289,9 +291,9 @@ hot-snapshot / current_month: 直读 (L1/L2 活尾)
 | 站点级日总量 | DuckDB `GROUP BY 日` | `canonical/v2/site-daily/<yyyy>.json` | heatmap |
 | repo 维度 + 里程碑 | `repos` 维度 | `canonical/v2/repos/<bucket>.json` | lookup + entity meta + 新晋 |
 
-> **关键洞察**:日粒度只在 bootstrap 时需要(算里程碑跨阈日 + 首次 rollup 成月/周)。**里程碑一次算定即冻结**;之后生产系统只**追加新日 delta(cron 活尾)并在周期收口时折进月/周 shard**。所以**生产 canonical = 月/周/站点 rollup shard + 滚动近 90 天 + repo 维度**,全 JSON、全小、全可在 Vercel 重算。原始 8M 行日表退为 bootstrap 归档。
+> **关键洞察**:日粒度只在 bootstrap 时需要(算里程碑跨阈日 + 首次 rollup 成月/周)。**里程碑一次算定即冻结**;之后生产系统只**追加新日 delta(cron 活尾)并在周期收口时折进月/周 shard**。所以**生产 canonical = 月/周/站点 rollup shard + 近 90 天 + repo 维度**,全 JSON、全小、全可在 Vercel 重算。原始 8M 行日表退为 bootstrap 归档。
 
-> **recent-daily 老化收口(避免曲线尾双源跳变)**:`repo-recent-daily` 是**滚动窗口**——一个日点滑出 90 天时,由 step 5 在折叠当月时**并入该月 `repo-monthly`**(同一动作、同一真相),并从 recent-daily 删除。**任一日期只在一处**:≤90 天在 recent-daily、>90 天在 monthly,不重叠。entity 曲线 `monthly`(月点)接 `recent_daily`(日尾)时,接缝就是 90 天水位线,口径连续(都是 net delta;stock 段按 §6.3 锚定)。
+> ⚠️ **recent-daily 当前未做老化(与 issue #3 一致)**:`repo-recent-daily` 由 **bootstrap(`07-export-v2`)一次性 seed**,recurring `fold` step(`fold.ts`)**只折叠月/周 rollup + site-daily,不读、不写、不修剪 `repo-recent-daily`**——`web/lib/` 内没有任何 `repo-recent-daily` 的 writer,只有 reader(`io.ts:53`)。因此「日点滑出 90 天时并入 `repo-monthly` 并从 recent-daily 删除」的滚动老化机制**尚未实现**,不要据此推断接缝去重已生效。entity 曲线 `monthly`(月点)接 `recent_daily`(日尾)的接缝连续性由 recompute 阶段保证(都是 net delta;stock 段按 §6.3 锚定),不依赖 fold 的修剪。
 
 ### 6.3 stock 锚定(必须分 seam 前后,口径同 [RANKING.md](./RANKING.md) §3)
 
@@ -477,7 +479,7 @@ step 11(`gc`)在 publish 成功后跑,负责回收旧版本前缀:
 | **Function compute** | step 数 × 每 step 时长 | step 按 shard 分批,控制总 step 数;I/O 等待(GraphQL / Blob)不计 active CPU,但要控 active 计算量(前缀和 / 排序在桶内做,桶不过大)。 |
 | **Blob 写速率 / 量** | 重算写出的视图文件数 | 遵守 **75/s 写上限**([OPS.md](./OPS.md));批量 put 限并发 + 节流;只写**变化的 shard**(diff-aware),不每次全量重写 16k+ 文件。 |
 | **Blob 存储 / 保留** | published 历史版本份数 | 只保留近 N 份 published;旧版本清理。canonical shard 体积小(几十 MB 级)。 |
-| **GitHub API 时间** | metadata / stargazers 调用 | GraphQL `nodes()` 100/查、标量字段成本低(约 5,261 repo ≈ 53 查 ≈ 1% 小时配额);stargazers(方案 B)受 5,000 req/hr 限,用 sleep 分批。 |
+| **GitHub API 时间** | metadata / stargazers 调用 | GraphQL `nodes()` 100/查、标量字段成本低(约 5,302 repo ≈ 54 查 ≈ 1% 小时配额);stargazers(方案 B)受 5,000 req/hr 限,用 sleep 分批。 |
 | **页面再生** | revalidate 后冷生成 | **不一次性生成 16k 页**;继续 ISR / revalidate,长尾首访冷生成一次(读 KB 视图,可忽略)。 |
 
 **硬约束复述**:

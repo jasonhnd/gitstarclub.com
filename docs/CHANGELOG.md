@@ -8,6 +8,10 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ## Unreleased
 
+### Changed
+
+- **Repo-page star milestones now mark every 50k.** The per-repo milestone list and curve markers step at a fixed 50,000-star interval (50k / 100k / 150k …) instead of the previous fixed `10k / 50k / 100k` set, so long-running repos surface their full milestone cadence. Driven by `STAR_MILESTONE_STEP = 50_000` in `web/app/[owner]/[name]/page.tsx` (commit `3d30efb`).
+
 ### Fixed
 
 - **Renamed repos no longer 404 on their old URL.** When a tracked repo is renamed or transferred on GitHub (e.g. `facebook/react` → `react/react`), the recurring refresh now accumulates every retained rename delta into a published `lookup/aliases.json`, and the repo route `/[owner]/[name]` issues a 308 permanent redirect from a stale slug to the repo's current `full_name` instead of returning 404. This implements the rename→redirect behavior the docs had long described but the web layer never consumed. New `buildAliases` workflow step (unions all retained `renames.json` deltas → current ids) and `AliasMap` contract; publish validation now rejects aliases that dangle or shadow a live repo.
