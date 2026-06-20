@@ -39,7 +39,9 @@
             → 07-export-v2(DuckDB → canonical/v2 JSON shards)
 ```
 
-**01 whitelist** — GitHub Search `stars:>=10000`，按 star 区间**自适应分桶**绕过 Search 1000 结果上限（区间 >1000 则二分），输出 `data/whitelist.json`：`{id, node_id, full_name, owner, name, stars}`。当前规模约 5,261，每周变动。
+**01 whitelist** — GitHub Search `stars:>=10000`，按 star 区间**自适应分桶**绕过 Search 1000 结果上限（区间 >1000 则二分），输出 `data/whitelist.json`：`{id, node_id, full_name, owner, name, stars}`。当前规模约 5,302，每周变动。
+
+> **新晋基线（首个 v2 run）**：Workflow 的 whitelist step（`whitelist.ts:24-28`）用 `canonical/v2/whitelist/latest.json` 的 id 集作新晋 diff 基线；该指针**首 run 尚不存在时回退 bootstrap `lookup/repos.json` 的 id 集**——否则首 run 会把全部既有 repo 误判为「新晋」。之后每 run 写回 `latest.json` 作为下一 run 的基线。
 
 **02 extract（BigQuery，~$10）** — 先 `--dry_run` 确认扫描量/费用，再跑：
 ```sql
@@ -70,7 +72,7 @@ GROUP BY repo_id, day;
 
 ```
 1. 校验 Authorization: Bearer CRON_SECRET（否则 401）
-2. GraphQL 批量查约 5,261 repo current_stars（~53 查询）
+2. GraphQL 批量查约 5,302 repo current_stars（~54 查询）
 3. net 日增 = 今日 current_stars − current_month.json 里昨日值
 4. upsert current_month.json：按 UTC 日写 daily_totals + per_repo + current_stars（append-only，幂等）
 5. 挑 mover 集（deltas 已在手，免费）：今日涨幅前 ~50 ∪（今日 ≥ 其 90d 日均 5× 且当日净增 ≥200）∪ 破里程碑
@@ -97,7 +99,7 @@ GROUP BY repo_id, day;
 ```
 
 - 跌出 ≥10k、新晋者补多年历史、全时/实体历史重算：不作为普通 cron 的同步步骤，交给 §4 Workflow。
-- 改名：Vercel cron 的 live refresh 仍以现有 lookup 为准；全量 metadata 刷新进入 Workflow 分片后再更新 lookup，旧 URL 由 web 层 301。
+- 改名：Vercel cron 的 live refresh 仍以现有 lookup 为准；全量 metadata 刷新进入 Workflow 分片后再更新 lookup，旧 URL 由 web 层 308。
 
 ---
 
@@ -112,6 +114,7 @@ GROUP BY repo_id, day;
 | —（新增） | → | step `rename detection` + `newcomer tracking`（`tracked_since`） |
 | 04-rollup（DuckDB → Parquet + 里程碑） | → | step `canonical shard update`（活尾折叠进月/周 JSON shard；里程碑 bootstrap 算定后冻结） |
 | 05-precompute（DuckDB → 全部 JSON 视图） | → | steps `rank / entity / heatmap recompute`（读 JSON shard、纯 JS 聚合 → `views/<run_id>/**`）；entity/org step（`recompute-entity.ts`）派生 `search/index.json`，并入 validate 闸门 |
+| —（新增） | → | step `build aliases`（`aliases.ts`）：并集所有保留 run 的 `renames.json` 增量 → `views/<run_id>/lookup/aliases.json`，供改名旧 URL 308 重定向 |
 | 06-upload（Blob put 节流） | → | steps `validate → publish（切 views/latest 指针）→ gc（版本回收）→ revalidate` |
 
 **关键差异**：
@@ -129,7 +132,7 @@ GROUP BY repo_id, day;
 - **里程碑**：`repo cumsum(delta)` 跨阈值首日（回填时一次算定，冻结）。
 - **stock 历史锚定**：gross 累加 × 折扣对齐 `current_stars` —— 公式与精度边界见 [RANKING.md](./RANKING.md)。
 - **周期边界**：周 = ISO 周（UTC）；月/年 = UTC 日历边界。周不整除月，故 canonical 必须是**日**粒度（见 ARCHITECTURE 决策）。
-- **折叠老化**：当月收口 → 日聚合成月度（entity `curve.monthly`）；近 ~90 天保留日点（`recent_daily`），更老只留月度。**ISO 周**在所有归属日落入已冻结月后折进 `repo-weekly`（与月折叠同期、同一 `fold` step，水位 `folded_through.week`；跨月周从两个月 pending 取日聚合）。
+- **折叠老化**：当月收口 → 日聚合成月度（entity `curve.monthly`）。**ISO 周**在所有归属日落入已冻结月后折进 `repo-weekly`（与月折叠同期、同一 `fold` step，水位 `folded_through.week`；跨月周从两个月 pending 取日聚合）。⚠️ **`repo-recent-daily` 当前不老化**：它由 bootstrap（`07-export-v2`）一次性 seed，recurring `fold`（`fold.ts`）只折叠月/周 rollup + site-daily，**不读、不写、不修剪** recent-daily（`web/lib/` 无 writer，仅 reader `io.ts:53`）；「近 ~90 天保留日点、更老滚进月度」的滚动老化**尚未实现**（xref issue #3）。
 
 ## 6. 幂等 / 错误 / 重跑
 
