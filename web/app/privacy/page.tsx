@@ -16,7 +16,7 @@ export default function PrivacyPage() {
   return (
     <>
       <Chrome />
-      <main className={`mx-auto w-full max-w-[60rem] py-[clamp(2rem,5vw,4rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[60rem] py-[clamp(2rem,5vw,4rem)] ${PAD_X}`}>
         <p className="font-mono text-[0.8rem] uppercase tracking-wider text-on-surface-variant">Privacy</p>
         <h1 className="mt-3 max-w-[16ch] text-[clamp(2.2rem,6vw,4rem)] font-extrabold leading-[1.04] text-on-surface">
           No tracking by default.

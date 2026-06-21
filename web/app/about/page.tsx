@@ -28,7 +28,7 @@ export default function AboutPage() {
   return (
     <>
       <Chrome />
-      <main className={`mx-auto w-full max-w-[60rem] py-[clamp(2rem,5vw,4rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[60rem] py-[clamp(2rem,5vw,4rem)] ${PAD_X}`}>
         <p className="animate-rise font-mono text-[0.8rem] uppercase tracking-wider text-on-surface-variant">
           <T path="nav.about" />
         </p>

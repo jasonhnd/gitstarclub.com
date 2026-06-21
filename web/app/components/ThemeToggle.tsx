@@ -27,7 +27,7 @@ export function ThemeToggle() {
       onClick={toggleTheme}
       aria-label="Switch theme"
       title="Switch theme"
-      className="theme-toggle grid size-[42px] cursor-pointer place-items-center rounded-full bg-surface-container-high text-on-surface transition-[background,transform] duration-200 ease-[var(--ease-emphasized)] hover:bg-surface-container-highest active:scale-90 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className="theme-toggle grid size-11 cursor-pointer place-items-center rounded-full bg-surface-container-high text-on-surface transition-[background,transform] duration-200 ease-[var(--ease-emphasized)] hover:bg-surface-container-highest active:scale-90"
     >
       <svg className="i-moon size-[22px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" fill="currentColor" />

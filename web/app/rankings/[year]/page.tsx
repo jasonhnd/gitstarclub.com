@@ -65,7 +65,7 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
     <>
       <Chrome />
       <JsonLd data={collectionLd(`${en.rankings.title} ${year}`, `/rankings/${year}`, loc)} />
-      <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { path: "nav.rankings", href: "/rankings" }, { label: String(year) }]} />
 
         <section className="mt-5 grid gap-8 lg:grid-cols-[16rem_1fr]">
@@ -77,7 +77,7 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
             <p className="mt-3 text-[0.95rem] text-on-surface-variant">
               <span className="font-semibold text-on-surface">{fmtStars(total)}</span> <T path="year.gained" />
             </p>
-            <Link href="/rankings" className="mt-5 inline-block font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+            <Link href="/rankings" className="mt-5 inline-block font-mono text-[0.78rem] text-accent-text hover:underline">
               <T path="nav.rankings" />
             </Link>
             <div className="mt-6">

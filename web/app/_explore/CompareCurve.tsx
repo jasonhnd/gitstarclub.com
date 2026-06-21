@@ -34,7 +34,7 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
   const yTicks = [0, Math.round(chart.yMax / 2), chart.yMax];
 
   return (
-    <figure className="m-0">
+    <figure className="m-0 overflow-x-auto pb-2">
       <div
         role="group"
         aria-label={modeLabels.absolute + " / " + modeLabels.align10k}
@@ -46,7 +46,7 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
             type="button"
             onClick={() => setMode(m)}
             aria-pressed={m === mode}
-            className={`rounded-full px-3 py-1 transition-colors ${
+            className={`min-h-11 rounded-full px-3 py-1 transition-colors ${
               m === mode
                 ? "bg-secondary-container text-on-secondary-container"
                 : "text-on-surface-variant hover:text-on-surface"
@@ -59,10 +59,10 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
 
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="h-auto w-full"
+        className="aspect-[880/300] min-w-[38rem] w-full max-w-none"
         role="img"
         aria-label={`Star history overlay of ${chart.lines.length} repositories (${mode})`}
-        preserveAspectRatio="none"
+        preserveAspectRatio="xMidYMid meet"
       >
         {/* baseline */}
         <line

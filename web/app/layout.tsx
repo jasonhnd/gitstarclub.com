@@ -66,6 +66,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </head>
       <body className="flex min-h-svh flex-col">
         <I18nProvider>
+          <a href="#main" className="skip-link">
+            Skip to content
+          </a>
           <div className="contents">
             {children}
             <Footer asOf={meta?.seam_date} />

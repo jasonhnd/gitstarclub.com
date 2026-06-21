@@ -122,7 +122,7 @@ const ko: Dict = {
     privacy: "개인정보",
   },
   search: { label: "검색", placeholder: "저장소 검색…", empty: "일치하는 저장소가 없습니다", loading: "불러오는 중…" },
-  share: { label: "공유", copied: "복사됨", onX: "X에 공유" },
+  share: { label: "공유", copied: "복사됨", onX: "X에 공유", opensNewTab: "새 탭에서 열림" },
   compare: {
     title: "스타 히스토리 비교",
     subtitle: "등록된 저장소(≥10k 스타)의 곡선을 한 화면에 겹쳐봅니다. 최소 2개를 골라주세요.",

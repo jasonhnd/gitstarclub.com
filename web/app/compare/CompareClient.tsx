@@ -44,6 +44,8 @@ export function CompareClient() {
   const minHint = useChrome("compare.minHint");
   const limitText = useChrome("compare.limit");
   const removeLabel = useChrome("compare.remove");
+  const pickerEmptyText = useChrome("search.empty");
+  const pickerLoadingText = useChrome("search.loading");
 
   // Load global search index once (same /search-index endpoint used by SearchBox).
   useEffect(() => {
@@ -143,7 +145,7 @@ export function CompareClient() {
   return (
     <div>
       <div className="rounded-2xl border border-outline-variant bg-surface-container-low p-4">
-        <div className="flex items-center gap-2 rounded-full border border-outline-variant bg-surface px-3 py-2 transition-colors focus-within:border-primary">
+        <div className="flex min-h-11 items-center gap-2 rounded-full border border-outline-variant bg-surface px-3 py-2 transition-colors focus-within:border-primary">
           <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-on-surface-variant" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-3.5-3.5" strokeLinecap="round" />
@@ -153,10 +155,11 @@ export function CompareClient() {
             value={q}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder={placeholder}
+            aria-label={placeholder}
             disabled={!canAdd}
             autoComplete="off"
             spellCheck={false}
-            className="w-full bg-transparent font-mono text-[0.85rem] text-on-surface outline-none placeholder:text-on-surface-variant disabled:opacity-50"
+            className="w-full bg-transparent font-mono text-[0.85rem] text-on-surface placeholder:text-on-surface-variant disabled:opacity-50"
           />
         </div>
         {!canAdd && <p className="mt-2 font-mono text-[0.75rem] text-on-surface-variant">{limitText}</p>}
@@ -170,7 +173,7 @@ export function CompareClient() {
                     type="button"
                     disabled={selected || !canAdd}
                     onClick={() => add(h.full_name)}
-                    className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-on-surface/5 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-on-surface/5 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <span className="min-w-0">
                       <span className="block truncate font-mono text-[0.82rem]">
@@ -178,7 +181,7 @@ export function CompareClient() {
                         <span className="font-semibold text-on-surface">{h.full_name.slice(h.owner.length + 1)}</span>
                       </span>
                     </span>
-                    <span className="shrink-0 font-mono text-[0.72rem] tabular-nums text-primary-fixed-dim">
+                    <span className="shrink-0 font-mono text-[0.72rem] tabular-nums text-accent-text">
                       {fmtStars(h.current_stars)} ★
                     </span>
                   </button>
@@ -186,6 +189,11 @@ export function CompareClient() {
               );
             })}
           </ul>
+        )}
+        {q.trim() && hits.length === 0 && (
+          <p role="status" aria-live="polite" className="mt-2 px-3 font-mono text-[0.75rem] text-on-surface-variant">
+            {engine ? pickerEmptyText : pickerLoadingText}
+          </p>
         )}
         {repos.length > 0 && (
           <ul className="mt-3 flex flex-wrap gap-2">
@@ -195,7 +203,7 @@ export function CompareClient() {
                   type="button"
                   onClick={() => remove(name)}
                   aria-label={`${removeLabel} ${name}`}
-                  className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-3 py-1 font-mono text-[0.78rem] text-on-surface transition-colors hover:bg-on-surface/10"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full bg-surface-container-high px-3 py-1 font-mono text-[0.78rem] text-on-surface transition-colors hover:bg-on-surface/10"
                 >
                   <span>{name}</span>
                   <span aria-hidden="true" className="text-on-surface-variant">

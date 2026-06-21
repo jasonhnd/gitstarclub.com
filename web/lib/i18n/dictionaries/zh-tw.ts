@@ -122,7 +122,7 @@ const zhTw: Dict = {
     privacy: "隱私",
   },
   search: { label: "搜尋", placeholder: "搜尋倉庫…", empty: "沒有符合的倉庫", loading: "載入中…" },
-  share: { label: "分享", copied: "已複製", onX: "分享到 X" },
+  share: { label: "分享", copied: "已複製", onX: "分享到 X", opensNewTab: "在新分頁開啟" },
   compare: {
     title: "對比 star 歷史",
     subtitle: "把任意已收錄倉庫（≥1 萬星）的曲線疊在一起，至少選兩個。",
