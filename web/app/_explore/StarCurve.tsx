@@ -37,13 +37,13 @@ export function StarCurve({
     .filter(({ p }) => p.label.endsWith("-01"));
 
   return (
-    <figure className="m-0">
+    <figure className="m-0 overflow-x-auto pb-2">
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="h-auto w-full"
+        className="aspect-[880/300] min-w-[38rem] w-full max-w-none"
         role="img"
         aria-label={`Star history — rises to ${fmtK(max)} stars over ${n} months`}
-        preserveAspectRatio="none"
+        preserveAspectRatio="xMidYMid meet"
       >
         <defs>
           <linearGradient id="amberFade" x1="0" y1="0" x2="0" y2="1">

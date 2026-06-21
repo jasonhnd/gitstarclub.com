@@ -51,10 +51,10 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
       <Chrome />
       {includeWebsiteLd && <JsonLd data={webSiteLd(LOC, "/")} />}
       <JsonLd data={collectionLd(en.pulse.title, "/pulse", LOC)} />
-      <main className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
         <section className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
           <div>
-            <p className="font-mono text-[0.78rem] uppercase tracking-wider text-primary-fixed-dim">
+            <p className="font-mono text-[0.78rem] uppercase tracking-wider text-accent-text">
               <T path="nav.pulse" />
             </p>
             <h1 className="mt-3 max-w-[13ch] animate-rise text-[var(--type-display-lg)] font-extrabold leading-[0.98] tracking-[-0.04em] text-on-surface">
@@ -99,7 +99,7 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
                   <T path="rankings.subtitle" />
                 </p>
               </div>
-              <Link href="/rankings" className="font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+              <Link href="/rankings" className="font-mono text-[0.78rem] text-accent-text hover:underline">
                 <T path="nav.rankings" />
               </Link>
             </div>
@@ -117,7 +117,7 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
                     <Link href={`/${e.owner}/${e.name}`} className="group block py-2.5 transition-colors hover:bg-on-surface/5">
                       <span className="block truncate font-mono text-[0.86rem] text-on-surface group-hover:underline group-hover:underline-offset-2">{e.full_name}</span>
                       <span className="font-mono text-[0.75rem] tabular-nums text-on-surface-variant">
-                        <T path="pulse.crossed" /> <span className="font-semibold text-primary-fixed-dim">{e.crossed}</span> · {e.date}
+                        <T path="pulse.crossed" /> <span className="font-semibold text-accent-text">{e.crossed}</span> · {e.date}
                       </span>
                     </Link>
                   </li>
@@ -157,7 +157,7 @@ function PulsePanel({ title, href, meta, rows }: { title: ReactNode; href: strin
         <h2 className="min-w-0 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
         <div className="flex shrink-0 items-center gap-2">
           {meta && <span className="rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">{meta}</span>}
-          <Link href={href} className="font-mono text-[0.72rem] text-primary-fixed-dim hover:underline">
+          <Link href={href} className="font-mono text-[0.72rem] text-accent-text hover:underline">
             <T path="pulse.open" />
           </Link>
         </div>

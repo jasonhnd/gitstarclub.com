@@ -122,7 +122,7 @@ const fr: Dict = {
     privacy: "Confidentialité",
   },
   search: { label: "Rechercher", placeholder: "Rechercher des dépôts…", empty: "Aucun dépôt correspondant", loading: "Chargement…" },
-  share: { label: "Partager", copied: "Copié", onX: "Partager sur X" },
+  share: { label: "Partager", copied: "Copié", onX: "Partager sur X", opensNewTab: "ouvre un nouvel onglet" },
   compare: {
     title: "Comparer l'historique des étoiles",
     subtitle: "Superposez les courbes de tout dépôt suivi (≥10k étoiles). Choisissez-en au moins deux.",

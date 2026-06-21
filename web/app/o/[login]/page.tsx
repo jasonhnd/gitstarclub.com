@@ -59,14 +59,14 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
     <>
       <Chrome />
       <JsonLd data={orgLd(org, `/o/${org.login}`, loc)} />
-      <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { label: org.login }]} />
         <header className="mt-4 animate-rise">
-          <div className="font-mono text-[clamp(1.6rem,5vw,2.6rem)] font-semibold text-on-surface">{org.login}</div>
+          <h1 className="font-mono text-[clamp(1.6rem,5vw,2.6rem)] font-semibold text-on-surface">{org.login}</h1>
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">
-            <span className="text-[1.6rem] font-extrabold tabular-nums text-primary-fixed-dim">
+            <span className="text-[1.6rem] font-extrabold tabular-nums text-accent-text">
               {fmtStars(org.current_stars_sum)}
-              <span className="text-[0.9rem] text-on-surface-variant"> ★ <T path="org.total" /></span>
+              <span className="text-[0.9rem] text-on-surface-variant"> ★<T path="org.total" /></span>
             </span>
             <span>{org.repo_count} <T path="org.trackedRepos" /></span>
             <span>{org.owner_type === "Organization" ? <T path="org.organization" /> : <T path="org.developer" />}</span>

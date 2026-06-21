@@ -84,7 +84,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
     <>
       <Chrome />
       <JsonLd data={repoLd(repo, `/${repo.full_name}`, loc)} />
-      <main className={`mx-auto w-full max-w-[72rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
             { path: "nav.home", href: "/" },
@@ -95,15 +95,15 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
 
         <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
           <header className="animate-rise">
-            <div className="flex flex-wrap items-baseline gap-x-1 gap-y-1 font-mono text-[clamp(1.4rem,4vw,2.2rem)]">
+            <h1 className="flex flex-wrap items-baseline gap-x-1 gap-y-1 font-mono text-[clamp(1.4rem,4vw,2.2rem)]">
               <span className="text-on-surface-variant">{repo.owner} /</span>
               <span className="font-semibold text-on-surface">{repo.name}</span>
-            </div>
+            </h1>
             {repo.description && (
               <p className="mt-3 max-w-[52ch] text-[clamp(1rem,1.7vw,1.2rem)] text-on-surface-variant">{repo.description}</p>
             )}
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">
-              <span className="text-[1.6rem] font-extrabold tabular-nums text-primary-fixed-dim">
+              <span className="text-[1.6rem] font-extrabold tabular-nums text-accent-text">
                 {fmtStars(repo.current_stars)}
                 <span className="text-[0.9rem] text-on-surface-variant"> ★</span>
               </span>
@@ -168,7 +168,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
                 </div>
               </div>
             )}
-            <a href={`https://github.com/${repo.full_name}`} className="mt-5 inline-flex items-center gap-1 font-semibold text-tertiary transition-colors hover:text-primary hover:underline hover:underline-offset-[3px]">
+            <a href={`https://github.com/${repo.full_name}`} rel="noreferrer" className="mt-5 inline-flex items-center gap-1 font-semibold text-tertiary transition-colors hover:text-primary hover:underline hover:underline-offset-[3px]">
               <T path="repo.github" /> →
             </a>
           </aside>
@@ -195,7 +195,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
                   return (
                     <li key={m.stars}>
                       <Link href={`/rankings/${d.y}/${d.m}`} className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-4 py-2 transition-colors hover:bg-surface-container-high">
-                        <span className="font-extrabold text-primary-fixed-dim">{m.label}</span>
+                        <span className="font-extrabold text-accent-text">{m.label}</span>
                         <span className="font-mono text-[0.8rem] text-on-surface-variant">
                           {monthLabel(loc, d.m, "short")} {d.y}
                         </span>
@@ -217,11 +217,11 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
                   const d = ymParts(row.month);
                   return (
                     <li key={row.month}>
-                      <Link href={`/rankings/${d.y}/${d.m}`} className="group grid grid-cols-[1fr_auto_auto] items-center gap-4 py-2.5 transition-colors hover:bg-on-surface/5">
-                        <span className="font-mono text-[0.9rem] text-on-surface group-hover:underline group-hover:underline-offset-2">
+                      <Link href={`/rankings/${d.y}/${d.m}`} className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-3 transition-colors hover:bg-on-surface/5 sm:grid-cols-[1fr_auto_auto] sm:gap-4 sm:py-2.5">
+                        <span className="min-w-0 font-mono text-[0.9rem] text-on-surface group-hover:underline group-hover:underline-offset-2">
                           {monthLabel(loc, d.m, "short")} {d.y}
                         </span>
-                        <span className="font-mono text-[0.85rem] tabular-nums text-on-surface-variant">
+                        <span className="font-mono text-[0.78rem] tabular-nums text-on-surface-variant sm:text-[0.85rem]">
                           {row.rank != null ? (
                             <>
                               <T path="repo.rank" /> #{row.rank}
@@ -230,7 +230,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
                             ""
                           )}
                         </span>
-                        <span className="w-20 text-right font-semibold tabular-nums text-on-surface">+{fmtStars(row.adds)}</span>
+                        <span className="col-span-2 text-right font-semibold tabular-nums text-on-surface sm:col-span-1 sm:w-20">+{fmtStars(row.adds)}</span>
                       </Link>
                     </li>
                   );

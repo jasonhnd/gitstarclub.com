@@ -49,7 +49,7 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
     <>
       <Chrome />
       <JsonLd data={collectionLd(`${entry.label} categories`, categoryPath(dimension), LOC)} />
-      <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { path: "nav.categories", href: "/categories" }, { label: entry.label }]} />
 
         <section className="mt-5">
