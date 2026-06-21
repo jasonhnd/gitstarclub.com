@@ -5,6 +5,8 @@ import { PAD_X } from "@/app/_explore/layout-tokens";
 import { T } from "@/lib/i18n/client";
 import { pageMeta } from "@/lib/seo";
 
+export const revalidate = false;
+
 export async function generateMetadata(): Promise<Metadata> {
   return pageMeta({
     title: "About — Data Sources & Methodology",

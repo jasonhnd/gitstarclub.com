@@ -19,7 +19,7 @@ export interface ViewOpts {
   versionTtlMs?: number;
 }
 
-const VERSION_TTL_MS = 60_000;
+const VERSION_TTL_MS = 3_600_000;
 const READ_RETRIES = 2;
 const versionMemo = new Map<number, { version: string | null; at: number }>();
 
@@ -35,7 +35,7 @@ function shouldRetry(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
-/** Resolve the live published version from views/latest.json (≤60s stale). null → flat fallback. */
+/** Resolve the live published version from views/latest.json (≤1h stale). null → flat fallback. */
 async function resolveVersion(ttlMs = VERSION_TTL_MS): Promise<string | null> {
   const now = Date.now();
   const memo = versionMemo.get(ttlMs);

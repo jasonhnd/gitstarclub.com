@@ -17,7 +17,7 @@ import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { T } from "@/lib/i18n/client";
-import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
+import { DEFAULT_LOCALE, LOCALES, type Locale } from "@/lib/i18n";
 
 const LOC = DEFAULT_LOCALE;
 
@@ -83,8 +83,7 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
   const cells = (heat?.cells ?? []).map(([date, total]) => ({ label: String(Number(String(date).slice(8, 10))), gained: total }));
   const total = cells.reduce((sum, c) => sum + c.gained, 0);
   const narrative = buildNarrative({
-    labelEn: monthYearLabel("en", year, month),
-    labelZh: `${year} 年 ${month} 月`,
+    labels: Object.fromEntries(LOCALES.map((locale) => [locale, monthYearLabel(locale, year, month)])) as Record<Locale, string>,
     topGainers: most.slice(0, 3).map((r) => ({ full_name: `${r.owner}/${r.name}`, gained: r.gained ?? 0 })),
     fastest: fastest.slice(0, 1).map((r) => ({ full_name: `${r.owner}/${r.name}`, rate: Math.round(r.rate ?? 0) })),
     newcomerCount: newc?.items.length ?? 0,
@@ -123,7 +122,7 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
             <p className="mb-3 font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">
               <T path="month.narrative" />
             </p>
-            <Narrative en={narrative.en} zh={narrative.zh} />
+            <Narrative texts={narrative} />
           </section>
         )}
 

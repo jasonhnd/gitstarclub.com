@@ -3,10 +3,10 @@ import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { RegisterSW } from "./_explore/RegisterSW";
 import { Footer } from "./_explore/Footer";
-import { getMeta } from "@/lib/data";
 import { I18nProvider } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { THEME_INIT_SCRIPT } from "@/lib/theme-script";
+import { LANG_INIT_SCRIPT } from "@/lib/lang-script";
 
 const plusJakarta = Plus_Jakarta_Sans({ variable: "--font-plus-jakarta", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -57,12 +57,12 @@ export const viewport: Viewport = {
 // The server renders the default locale (English) so pages stay static/ISR; the client
 // I18nProvider reads the cookie after hydration and swaps the chrome strings. The data
 // (`seam_date`) is locale-independent.
-export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const meta = await getMeta();
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang={DEFAULT_LOCALE} suppressHydrationWarning className={`${plusJakarta.variable} ${geistMono.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: LANG_INIT_SCRIPT }} />
       </head>
       <body className="flex min-h-svh flex-col">
         <I18nProvider>
@@ -71,7 +71,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </a>
           <div className="contents">
             {children}
-            <Footer asOf={meta?.seam_date} />
+            <Footer />
           </div>
         </I18nProvider>
         <RegisterSW />
