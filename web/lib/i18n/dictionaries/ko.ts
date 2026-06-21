@@ -2,15 +2,6 @@ import type { Dict } from "./en";
 
 const ko: Dict = {
   nav: { home: "홈", pulse: "펄스", rankings: "순위", categories: "카테고리", compare: "비교", about: "소개" },
-  home: {
-    heroPre: "",
-    heroAccent: "오픈소스",
-    heroPost: "의 기록.",
-    lead: "10년이 넘는 오픈소스 활동을 한눈에 살펴보세요. 연도를 선택해 자세히 탐색할 수 있습니다.",
-    thisMonth: "이번 달 현재까지",
-    perYear: "연도별 증가한 스타 수",
-    gainedAria: "증가한 스타 수",
-  },
   about: {
     heroPre: "사실에 기반한 ",
     heroAccent: "기록",
@@ -36,23 +27,16 @@ const ko: Dict = {
   },
   year: {
     label: "연도",
-    all: "전체 연도",
-    spine: "개요",
     top: "상위 저장소",
     gained: "추적 저장소에서 증가한 스타 수",
-    ledBy: "선도한 저장소",
   },
   month: {
     label: "월",
     most: "가장 많이 증가한 스타",
-    mostSub: "절대 증가량 기준",
     fastest: "가장 빠른 성장",
-    fastestSub: "증가율 기준, 최소 20k 스타",
     newcomers: "신규 진입",
-    newcomersSub: "처음으로 10k 스타 돌파",
     daily: "일간 활동",
     gained: "추적 저장소가 획득한 스타 수",
-    newcomersWord: "신규 진입",
     narrative: "이번 달 이야기",
   },
   week: { label: "주", top: "이번 주 상위 저장소" },

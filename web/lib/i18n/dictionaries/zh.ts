@@ -2,15 +2,6 @@ import type { Dict } from "./en";
 
 const zh: Dict = {
   nav: { home: "首页", pulse: "脉搏", rankings: "排行榜", categories: "分类", compare: "对比", about: "关于" },
-  home: {
-    heroPre: "",
-    heroAccent: "开源",
-    heroPost: "编年史。",
-    lead: "十余年开源势能，尽收眼底。选择一个年份，进入它的篇章。",
-    thisMonth: "本月至今",
-    perYear: "各年新增星标",
-    gainedAria: "新增星标",
-  },
   about: {
     heroPre: "一部如实记录的",
     heroAccent: "编年史",
@@ -36,23 +27,16 @@ const zh: Dict = {
   },
   year: {
     label: "年份",
-    all: "所有年份",
-    spine: "概览",
     top: "年度领先仓库",
     gained: "追踪仓库新增星标",
-    ledBy: "领涨",
   },
   month: {
     label: "月份",
     most: "新增星标最多",
-    mostSub: "按绝对增量排名",
     fastest: "增速最快",
-    fastestSub: "增速排名，仅统计 2 万星以上项目",
     newcomers: "新晋项目",
-    newcomersSub: "首次突破 1 万星",
     daily: "每日动态",
     gained: "追踪仓库新增",
-    newcomersWord: "个新晋项目",
     narrative: "本月叙事",
   },
   week: { label: "周", top: "本周领先仓库" },

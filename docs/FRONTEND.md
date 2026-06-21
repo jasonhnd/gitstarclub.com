@@ -40,13 +40,14 @@
 | 年榜 | `/rankings/[year]` | `rankings/[year]/page.tsx` | 当年核心 / 历史按需 ISR | 当前年 |
 | 月榜 | `/rankings/[year]/[month]` | `rankings/[year]/[period]/page.tsx` | 当月核心 / 历史按需 ISR | 当前月 |
 | 周榜 | `/rankings/[year]/W[week]` | `rankings/[year]/[period]/page.tsx` | 当周 mover / 过去周冻结 | `[]`（长尾） |
-| repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | 按需 ISR（`revalidate=60`，mover 当日 `revalidatePath`） | `[]`（长尾） |
+| repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | 按需 ISR（`revalidate=3600`，mover 当日 `revalidatePath`） | `[]`（长尾） |
+| **org 索引** | `/o`、`/o/page/[page]` | `o/page.tsx`、`o/page/[page]/page.tsx` | 组织目录 ISR（`revalidate=3600`） | org 页数 |
 | **org 页** | `/o/[login]` | `o/[login]/page.tsx` | 按需 ISR（`revalidate=false`，mover 当日刷新） | `[]`（长尾） |
 | **对比页** | `/compare` | `compare/page.tsx` + `compare/CompareClient.tsx` | 静态壳（`force-static`），客户端读 `?repos=` + 取曲线 | — |
 | 关于 | `/about` | `about/page.tsx` | 核心 | — |
-| **分类索引** | `/categories` | `categories/page.tsx` | `revalidate=60` ISR | — |
-| **分类维度** | `/categories/[dimension]` | `categories/[dimension]/page.tsx` | `revalidate=60` ISR，`dynamicParams=true` | 各维度名 |
-| **分类详情** | `/categories/[dimension]/[slug]` | `categories/[dimension]/[slug]/page.tsx` | `revalidate=60` ISR，`dynamicParams=true` | 优先语言 slug + 注册表公开分类 |
+| **分类索引** | `/categories` | `categories/page.tsx` | `revalidate=3600` ISR | — |
+| **分类维度** | `/categories/[dimension]` | `categories/[dimension]/page.tsx` | `revalidate=3600` ISR，`dynamicParams=true` | 各维度名 |
+| **分类详情** | `/categories/[dimension]/[slug]`、`/categories/[dimension]/[slug]/page/[page]` | `categories/[dimension]/[slug]/page.tsx`、`categories/[dimension]/[slug]/page/[page]/page.tsx` | `revalidate=3600` ISR，`dynamicParams=true` | 公开分类 + 分类页数 |
 
 **路由处理器（route handlers）**：
 
@@ -75,10 +76,10 @@ OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
 
 ```
 app/
-  layout.tsx                 # 渲染默认英文（<html lang="en"> 静态），用 <I18nProvider> 包裹子树 + 渲染 Footer
+  layout.tsx                 # 渲染默认英文（<html lang="en"> 静态），paint 前 lang/theme 脚本 + <I18nProvider> + Footer
   page.tsx  pulse/page.tsx
   [owner]/[name]/page.tsx    # GitHub 风格 repo URL
-  o/[login]/page.tsx
+  o/page.tsx  o/page/[page]/page.tsx  o/[login]/page.tsx
   rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
   about/page.tsx
   api/lang/route.ts          # 直接访问时的语言 cookie 后备入口（写 cookie）
@@ -112,9 +113,10 @@ app/
 > 关键：**长尾页"成页"极便宜**（懒生成、不占 build 预算）——所以周页 / org 页独立成页不受 45min build 上限约束（[ARCHITECTURE](./ARCHITECTURE.md) 渲染分层）。
 >
 > **长尾 `revalidate` 不是一刀切 `false`**（按文件分裂，以代码为准）：
-> - **repo `/[owner]/[name]`** = `60`（`page.tsx:22`）——首访生成 + 每 60s 后台再生，叠加 mover 当日 `revalidatePath`。
+> - **repo `/[owner]/[name]`** = `3600`（`page.tsx:22`）——首访生成 + 每 1h 后台再生，叠加 mover 当日 `revalidatePath`。
+> - **org 索引 `/o` / `/o/page/[page]`** = `3600`——提供可爬的 owner 目录层，按 `lookup/orgs.json` 页数预渲染。
 > - **org `/o/[login]`** = `false`（`page.tsx:19`）——纯靠 cron 定点失效，不做时间轮询。
-> - **分类 `/categories*`** = `60`（三个 `page.tsx` 均 `revalidate = 60`）——新发布的注册表分类无需重新部署即可在 60s 内出现。
+> - **分类 `/categories*`** = `3600`——新发布的注册表分类无需重新部署即可在 1h 内出现；分类详情 page 2+ 通过 `/categories/[dimension]/[slug]/page/[page]` 自规范化。
 > - 历史年/月/周仍走 §2.2「核心页」混合文件里的 `revalidate=false` 段（当年/当月预渲染、历史按需）。
 
 ### 2.2 段配置速查（每类页面贴什么）
@@ -141,8 +143,8 @@ export async function generateStaticParams() {
   return []                                  // repo/org 页返回 [] → 全部按需 ISR
 }
 export const revalidate = false              // org：仅靠 cron 定点失效（每周重算 / mover 当日刷新）
-// 注意：repo 页（app/[owner]/[name]/page.tsx）相同的 [] + dynamicParams，但 revalidate=60
-// （首访生成后每 60s 后台再生 + cron 定点失效叠加），与 org 的 false 不同——见 §2.1 长尾行脚注。
+// 注意：repo 页（app/[owner]/[name]/page.tsx）相同的 [] + dynamicParams，但 revalidate=3600
+// （首访生成后每 1h 后台再生 + cron 定点失效叠加），与 org 的 false 不同——见 §2.1 长尾行脚注。
 ```
 
 **全时榜 / 脉搏（单页、每日新鲜）**：
@@ -190,8 +192,8 @@ export default nextConfig;
 
 **实现要点**：
 
-- `web/app/layout.tsx`：不读 cookie；`<html lang="en">` 静态；`{children}` 包进 `<I18nProvider>`（`web/lib/i18n/client.tsx`）。
-- `web/lib/i18n/client.tsx`（`"use client"`）：`I18nProvider` 首帧返回默认英文（与 SSR HTML 一致），`useEffect` 里读 `gsc_lang` cookie → 懒加载字典 → 换 chrome；`useDict()` / `<T path="...">` 给 chrome 组件用。
+- `web/app/layout.tsx`：不读 cookie；`<html lang="en">` 静态，paint 前 `LANG_INIT_SCRIPT` 可按 `gsc_lang` 调整 `documentElement.lang`；`{children}` 包进 `<I18nProvider>`（`web/lib/i18n/client.tsx`）。
+- `web/lib/i18n/client.tsx`（`"use client"`）：`I18nProvider` 首帧返回默认英文（与 SSR HTML 一致），`useEffect` 里读 `gsc_lang` cookie → 懒加载字典 → 换 chrome；同时监听 `gsc:localechange`，语言切换不触发 RSC refresh；`useDict()` / `<T path="...">` 给 chrome 组件用。
 - `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` 为 client 组件，经 `useDict()` 取语言（chrome 字串水合后切换）。
 - 各页（`page.tsx` / `pulse` / `rankings*` / `about` / repo / org）：不读 cookie,BODY 用默认英文静态渲染,chrome 文本经 `<T>` 切换；repo/org 用 `generateStaticParams() => []` 转按需 ISR。
 - `web/lib/i18n/server.ts`：**弃用**——读 cookie 会破坏静态;保留仅供非页面服务端上下文,勿在 page/layout 调用。
@@ -223,10 +225,12 @@ export default nextConfig;
 web/lib/
   contracts/        # Zod schema（单一类型事实源），barrel = index.ts
     common.ts       # 共享/枚举/rank/heatmap/meta 等基础 schema
-    lookup.ts  entity.ts  live.ts
+    lookup.ts  entity.ts  live.ts  canonical.ts  categories.ts
+    compare.ts  search.ts  workflow.ts
   data/             # 读取器（fetch Blob + schema.parse + React cache 去重），barrel = index.ts
     source.ts       # readView：拼 Blob 直链 URL + fetch + parse（见 OPS Blob 布局）
-    lookup.ts  rank.ts  entity.ts  heatmap.ts  snapshot.ts  meta.ts  search.ts  write.ts
+    lookup.ts  rank.ts  entity.ts  heatmap.ts  snapshot.ts  meta.ts
+    search.ts  compare.ts  categories.ts  watermark.ts
   search/           # 客户端检索纯核心（MiniSearch 配置 + 查询；SearchBox 懒加载）
     core.ts
 ```
@@ -284,7 +288,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 - **每日更新的视图**（`current_month.json` / `hot-snapshot.json`）读取时带 `?v=<date>` cache-bust，规避 Blob 同路径覆盖最长 60s 传播窗口（[OPS](./OPS.md) §Blob 缓存传播）。
 - `meta.schema_ver`：build 启动校验版本匹配，不符 fail-fast（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §3）。
-- **base 视图版本指针**：base `rank/*` / `entity/*` / `heatmap/*` 通过「先读 `views/latest.json` 指针解析版本前缀，再读该前缀下视图」消费（[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7）。这一步**封装在 `web/lib/data/`**，组件入参形状不变、**对页面透明**；「live 优先、回退 base」语义保留（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11）。
+- **base 视图版本指针**：base `rank/*` / `entity/*` / `heatmap/*` 通过「先读 `views/latest.json` 指针解析版本前缀，再读该前缀下视图」消费（[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7）。读侧指针 TTL 为 3600 秒；sitemap 作为特殊爬虫入口使用 86400 秒 TTL。这一步**封装在 `web/lib/data/`**，组件入参形状不变、**对页面透明**；「live 优先、回退 base」语义保留（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11）。
 
 ---
 
@@ -306,7 +310,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 ### 4.2 允许的客户端 JS（三处例外）
 
-[DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 规定**三处明确例外**：防闪烁内联脚本、主题切换按钮、PWA SW 注册（`RegisterSW.tsx` + `manifest.ts`，作为 `"use client"` 组件渲染在根 `layout.tsx:76`）。三者都极小、不渲染正文内容。
+[DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 规定明确例外：防闪烁内联脚本（theme + lang）、主题切换按钮、PWA SW 注册（`RegisterSW.tsx` + `manifest.ts`）。这些都极小、不渲染正文内容。
 
 | 客户端 JS | 文件 | 性质 | DESIGN-SYSTEM 例外 |
 |---|---|---|---|
@@ -348,7 +352,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 顶栏 Top App Bar | `_explore/Chrome.tsx` | **Client** | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse / Rankings · Categories `md+` · Compare `sm+` · About `sm+`）+ 语言/主题切换 |
 | 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client** | 导航栏搜索框；首次聚焦懒加载 `/search-index` + MiniSearch（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态走 chrome i18n（7 语）。每条结果带「+对比」勾选 + 底部「对比 N 个 →」跳 `/compare?repos=...`（行点击仍跳 repo） |
 | 分享 ShareButton | `_explore/ShareButton.tsx` | **Client** | 复制链接 + X 分享 intent；7 语 `share.*` chrome i18n；接 repo / 榜单月周 / 年页。榜单页另有动态 OG 卡（`rankings/[year]/[period]/opengraph-image.tsx` + `[year]/opengraph-image.tsx`，共享 `lib/og-card.tsx`） |
-| 月度叙事 Narrative | `_explore/Narrative.tsx` | **Client** | 月榜顶部中英叙事；en 默认 / zh·zh-TW 水合后切。文案由月页**渲染时**用确定性模板（`lib/narrative.ts`）从榜单数据现拼——**无 AI / 无产物** |
+| 月度叙事 Narrative | `_explore/Narrative.tsx` | RSC | 月榜顶部 7 语叙事；服务端一次渲染各 locale 文本，由 `html[lang]` CSS 显示当前语言。文案由月页**渲染时**用确定性模板（`lib/narrative.ts`）从榜单数据现拼——**无 AI / 无产物** |
 | 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
 | 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
 | Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + 拐点标记点（三级色点 + `<title>` tooltip，零 JS）+ `role="img"` + aria-label |
@@ -360,7 +364,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步 |
 | OG 图渲染（站点 / repo / 月+周 / 年） | `opengraph-image.tsx` × 4 | RSC（next/og） | 动态生成 1200×630 PNG；共享 `lib/og-card.tsx`（石墨灰+金、stars 内联 SVG） |
 | 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 交互按钮（见 §4.2） |
-| 语言切换 LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | 写 `gsc_lang` cookie + `router.refresh()`（§7） |
+| 语言切换 LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | 写 `gsc_lang` cookie + 派发 `gsc:localechange`，不触发 RSC refresh（§7） |
 | 页面转场 Template | `template.tsx` | RSC | 重挂载淡入容器 |
 | SW 注册 RegisterSW | `_explore/RegisterSW.tsx` | **Client** | PWA（见 §4.2） |
 
@@ -369,7 +373,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 ### 6.2 server-by-default 原则
 
 - **内容主体永远 RSC**：rank lists、heatmaps、repo 主体、org 主体、星曲线（StarCurve）等承载数据的图与表全部服务端渲染、零客户端 JS。
-- **客户端组件仅限两类**：(a) i18n cookie 驱动的 chrome（Chrome / Footer / Breadcrumbs / Narrative）—— 因为页面 BODY 是默认英文静态、cookie 偏好水合后在客户端切换；(b) 交互工具（SearchBox / ShareButton / CompareCurve+CompareClient / ThemeToggle / LanguageSwitcher / RegisterSW）。完整清单与判定规则见 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) "客户端 JS 例外清单"。
+- **客户端组件仅限两类**：(a) i18n cookie 驱动的 chrome（Chrome / Footer / Breadcrumbs）—— 因为页面 BODY 是默认英文静态、cookie 偏好水合后在客户端切换；Narrative 是服务端组件，用 `html[lang]` CSS 在已渲染的 locale 文本间切换；(b) 交互工具（SearchBox / ShareButton / CompareCurve+CompareClient / ThemeToggle / LanguageSwitcher / RegisterSW）。完整清单与判定规则见 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) "客户端 JS 例外清单"。
 - 新增页面前先确认所选交互无法纯 CSS / 服务端实现，再引入 client component；最低限度不能让内容主体（rank list / heatmap / star curve）变 client。
 
 ### 6.3 共享组件目录
@@ -377,9 +381,9 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 组件 | 位置 | 用途 / 复用 |
 |---|---|---|
 | `Breadcrumbs` | `_explore/` | Home→年→月 / Home→owner→repo（[SEO](./SEO.md) §6.7） |
-| `Footer` | `_explore/` | 构建时间戳（UTC+JST）+ 语言切换落点 |
-| `layout-tokens.ts` | `_explore/` | 共享页面横向 gutter：`PAD_X = px-[var(--space-gutter)]`，实际 token 定义见 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) |
-| `LanguageSwitcher` | `components/` | 当前语言 + 下拉切其它语言；en/ja/zh/zh-TW/ko/es/fr；写 cookie + `router.refresh()` |
+| `Footer` | `_explore/` | 页脚导航 + 语言切换落点 |
+| `layout-tokens.ts` | `_explore/` | 共享页面横向 gutter：`PAD_X = px-[clamp(1.25rem,5vw,2.5rem)]`，对齐 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 锁定基线 |
+| `LanguageSwitcher` | `components/` | 当前语言 + 下拉切其它语言；en/ja/zh/zh-TW/ko/es/fr；写 cookie + 派发 `gsc:localechange` |
 | `JsonLd` | `_explore/` | 注入 `BreadcrumbList`/`Dataset` 等 JSON-LD |
 | `PrevNext`（`NavArrow`/`MonthArrow`） | 内联 | 上下月 / 上下年 / 上下周（年/月/周页）—— 可抽组件 |
 | `EntityCard` | 内联 | repo/org 卡片（pulse / rankings）—— 可抽组件 |
@@ -427,9 +431,9 @@ export type Locale = keyof typeof dicts;
 export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 ```
 
-- 根 `layout.tsx` 静态渲染 `<html lang="en">`，用 `<I18nProvider>` 包裹子树（不读 cookie）。Provider 首帧返回默认英文（与静态 HTML 一致），`useEffect` 里读 `gsc_lang` cookie → `getDictionary(locale)` → 换 chrome（避免水合不匹配）。
+- 根 `layout.tsx` 静态渲染 `<html lang="en">`，用 `<I18nProvider>` 包裹子树（不读 cookie）。`LANG_INIT_SCRIPT` 在 paint 前按 `gsc_lang` 设置 `documentElement.lang`；Provider 首帧返回默认英文（与静态 HTML 一致），`useEffect` 里读 `gsc_lang` cookie → `getDictionary(locale)` → 换 chrome（避免水合不匹配）。
 - chrome 文本节点用 `<T path="...">`（客户端组件）；`Chrome`/`Footer`/`Breadcrumbs` 经 `useDict()` 取语言。Pulse 页面文案走 `nav.pulse` / `pulse.*`，避免旧“trending”命名继续混淆编辑语义。**数据**（数字/日期/repo 名）语言无关，按默认英文服务端渲染进静态 HTML。
-- `LanguageSwitcher` 默认英文，下拉切其它语言；客户端写 `gsc_lang` cookie 后 `router.refresh()`，不改 canonical URL。`/api/lang` 仍保留为直接访问后备。
+- `LanguageSwitcher` 默认英文，下拉切其它语言；客户端写 `gsc_lang` cookie 后派发 `gsc:localechange`，不触发 RSC refresh，不改 canonical URL。`/api/lang` 仍保留为直接访问后备。
 - 现有少量 SEO title/description + 静态 HTML chrome 仍以英文为主，这是单一 canonical URL 的刻意取舍。
 
 ### 7.3 canonical（Metadata API）
@@ -458,7 +462,7 @@ return {
 5. **i18n**：客户端 chrome i18n（机制见 §7，渲染模式见 §2.5）。
 6. **SEO 配套**：`app/sitemap.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD。
 7. **cron route**：`app/api/cron/{daily,weekly}`（`revalidatePath` + `CRON_SECRET`）。
-8. **共享组件 / token helper**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` 抽成共享组件；页面横向 padding 统一经 `_explore/layout-tokens.ts` 的 `PAD_X` 读取 `--space-gutter`;`PrevNext`/`EntityCard`/`YearSpine` 仍内联（§6.3）。
+8. **共享组件 / token helper**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` 抽成共享组件；页面横向 padding 统一经 `_explore/layout-tokens.ts` 的 `PAD_X` 使用锁定基线 clamp 值；`PrevNext`/`EntityCard`/`YearSpine` 仍内联（§6.3）。
 
 ---
 
@@ -514,18 +518,23 @@ Routes:
   include priority language slugs plus any public category found in the
   published registry; `dynamicParams = true` keeps future public registry
   categories addressable.
+- `/categories/[dimension]/[slug]/page/[page]` renders page 2+ of large
+  categories from `categories/assignments.json` + `lookup/repos.json`. Page 1
+  stays canonical at `/categories/[dimension]/[slug]`.
 
 Data and rendering:
 
 - `web/app/categories/category-page-data.ts` owns route helpers, fallback
-  registry construction, public-category filtering, and priority language
-  static params.
+  registry construction, public-category filtering, pagination path helpers,
+  and static params.
 - Category pages read `categories/registry.json`,
+  `categories/assignments.json`,
   `rank/category/<dimension>/<slug>/all-time/repo/stock.json`, and
   `lookup/repos.json` through `web/lib/data/categories.ts`.
 - The `/categories` index groups public categories by registry dimension rather
   than hard-coding only languages.
-- The category index, dimension pages, and detail pages use 60-second ISR so a
-  newly published registry can appear without a full redeploy.
+- The category index, dimension pages, and detail pages use 3600-second ISR so a
+  newly published registry can appear without a full redeploy while avoiding
+  minute-by-minute background regeneration.
 - The chrome nav exposes `/categories` through the localized `nav.categories`
   dictionary entry.

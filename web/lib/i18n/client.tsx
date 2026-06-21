@@ -14,7 +14,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import en, { type Dict } from "./dictionaries/en";
-import { DEFAULT_LOCALE, LANG_COOKIE, getDictionary, isLocale, type Locale } from ".";
+import { DEFAULT_LOCALE, LANG_COOKIE, LANGUAGE_CHANGE_EVENT, getDictionary, isLocale, type Locale } from ".";
 
 type I18nState = { locale: Locale; t: Dict };
 
@@ -33,14 +33,21 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    const locale = readLocaleCookie();
-    if (locale === DEFAULT_LOCALE) return; // already correct; nothing to swap
-    document.documentElement.lang = locale;
-    void getDictionary(locale).then((t) => {
-      if (!cancelled) setState({ locale, t });
-    });
+    const applyLocale = (locale: Locale) => {
+      document.documentElement.lang = locale;
+      void getDictionary(locale).then((t) => {
+        if (!cancelled) setState({ locale, t });
+      });
+    };
+    applyLocale(readLocaleCookie());
+    const onLocaleChange = (event: Event) => {
+      const locale = (event as CustomEvent<Locale>).detail;
+      if (isLocale(locale)) applyLocale(locale);
+    };
+    window.addEventListener(LANGUAGE_CHANGE_EVENT, onLocaleChange);
     return () => {
       cancelled = true;
+      window.removeEventListener(LANGUAGE_CHANGE_EVENT, onLocaleChange);
     };
   }, []);
 

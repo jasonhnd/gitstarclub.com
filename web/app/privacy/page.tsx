@@ -3,6 +3,8 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { pageMeta } from "@/lib/seo";
 
+export const revalidate = false;
+
 export async function generateMetadata(): Promise<Metadata> {
   return pageMeta({
     title: "Privacy",

@@ -5,6 +5,7 @@ export const LOCALES = ["en", "ja", "zh", "zh-TW", "ko", "es", "fr"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 export const LANG_COOKIE = "gsc_lang";
+export const LANGUAGE_CHANGE_EVENT = "gsc:localechange";
 
 export const LANGUAGE_LABELS: Record<Locale, string> = {
   en: "English",

@@ -12,7 +12,7 @@ import { CATEGORY_INDEX_PREVIEW_LIMIT, categoryPath, fallbackRegistry, publicCat
 
 const LOC = DEFAULT_LOCALE;
 
-export const revalidate = 60;
+export const revalidate = 3600;
 
 export async function generateMetadata(): Promise<Metadata> {
   return pageMeta({

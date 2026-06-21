@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { LANG_COOKIE, LANGUAGE_LABELS, LOCALES, type Locale } from "@/lib/i18n";
+import { useEffect, useRef, useState } from "react";
+import { LANG_COOKIE, LANGUAGE_CHANGE_EVENT, LANGUAGE_LABELS, LOCALES, type Locale } from "@/lib/i18n";
 
 const ONE_YEAR = 60 * 60 * 24 * 365;
 
 export function LanguageSwitcher({ locale }: { locale: Locale }) {
-  const router = useRouter();
   const menuRef = useRef<HTMLDetailsElement>(null);
   const [pendingLocale, setPendingLocale] = useState<Locale | null>(null);
-  const [isPending, startTransition] = useTransition();
   const active = pendingLocale ?? locale;
   const otherLocales = LOCALES.filter((l) => l !== active);
 
@@ -20,8 +17,8 @@ export function LanguageSwitcher({ locale }: { locale: Locale }) {
     document.cookie = `${LANG_COOKIE}=${encodeURIComponent(pendingLocale)}; Path=/; Max-Age=${ONE_YEAR}; SameSite=Lax${secure}`;
     document.documentElement.lang = pendingLocale;
     menuRef.current?.removeAttribute("open");
-    startTransition(() => router.refresh());
-  }, [pendingLocale, router, startTransition]);
+    window.dispatchEvent(new CustomEvent(LANGUAGE_CHANGE_EVENT, { detail: pendingLocale }));
+  }, [pendingLocale]);
 
   function choose(next: Locale) {
     setPendingLocale(next);
@@ -44,7 +41,6 @@ export function LanguageSwitcher({ locale }: { locale: Locale }) {
             key={l}
             type="button"
             onClick={() => choose(l)}
-            disabled={isPending}
             className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 font-mono text-[0.75rem] text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
             lang={l}
           >
