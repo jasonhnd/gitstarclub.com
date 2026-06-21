@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
 function readBlobBase(): string | null {
   // lib/integration/ → ../../.env.local
   const envPath = join(import.meta.dir, "..", "..", ".env.local");
+  if (!existsSync(envPath)) return null;
   let raw: string;
   try {
     raw = readFileSync(envPath, "utf8");
@@ -96,11 +97,11 @@ function currentYearMonth(): { year: number; month: number } {
   return { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
 }
 
-// describe block name flags this as live/network for filtered runs and CI reporting.
 if (!BLOB_BASE) {
-  console.warn("[live-smoke.test] SKIP: BLOB_BASE_URL not found; live network smoke not run.");
-  test.skip("live smoke requires BLOB_BASE_URL", () => {});
+  console.warn("[live-smoke.test] SKIP: web/.env.local with BLOB_BASE_URL is not present.");
+  test.skip("live smoke requires BLOB_BASE_URL in web/.env.local", () => {});
 } else {
+  // describe block name flags this as live/network for filtered runs and CI reporting.
   describe("live-smoke [network] — production deploy + Blob health", () => {
   // ── Pages: 200 + expected content ─────────────────────────────────────────
   // Every surface renders the shared <Chrome>, whose default-locale nav contains
@@ -226,6 +227,5 @@ if (!BLOB_BASE) {
       const txt = await getOk(`${SITE}/robots.txt`);
       expect(txt).toContain("User-Agent");
     });
-  });
   });
 }

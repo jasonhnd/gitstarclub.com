@@ -54,6 +54,17 @@ export default function AboutPage() {
             </a>
             <T path="about.s1pPost" />
           </p>
+          <p>
+            Historical event data is credited to{" "}
+            <a className="font-semibold text-tertiary hover:text-primary" href="https://www.gharchive.org/" rel="noreferrer">
+              GH Archive
+            </a>
+            , licensed under{" "}
+            <a className="font-semibold text-tertiary hover:text-primary" href="https://creativecommons.org/licenses/by/4.0/" rel="noreferrer">
+              CC BY 4.0
+            </a>
+            . GitStarClub derives, aggregates, and transforms that event stream into ranking and curve views. Repository metadata and current star totals come from public GitHub APIs.
+          </p>
         </Section>
 
         <Section heading={<T path="about.s2h" />}>
