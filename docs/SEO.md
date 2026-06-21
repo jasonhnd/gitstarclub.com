@@ -36,7 +36,7 @@
 | 首页 | `/` | 核心（deploy 构建） | 1 | 最高 |
 | 年度页 | `/rankings/2024` | 当年核心 / 历史按需 ISR | ~11 | 高 |
 | 月度页 | `/rankings/2024/10` | 当月核心 / 历史按需 ISR | ~132 | 高 |
-| Repo 详情页 | `/:owner/:name` | 按需 ISR | ~5,261 | 中（长尾主力） |
+| Repo 详情页 | `/:owner/:name` | 按需 ISR | 5,300+（the tracked set） | 中（长尾主力） |
 | **Org 详情页** | `/o/:login` | 按需 ISR | ~1,000s（含 User+Org owner） | 中（长尾主力） |
 | **全时榜** | `/rankings` | 核心（deploy 构建） | 1（+ 切片 待定） | 高 |
 | 关于页 | `/about` | 核心 | 1 | 低（但需收录） |
@@ -64,7 +64,7 @@
 
 | 维度 | 首页 | 年 | 月 | repo | org | rankings + about + compare | 上表小计 |
 |---|---|---|---|---|---|---|---|
-| URL 数（语言中立） | 1 | ~11 | ~132 | ~5,261 | ~1,500（估） | ~3 | **~6,900** |
+| URL 数（语言中立） | 1 | ~11 | ~132 | 5,300+（the tracked set） | ~1,500（估） | ~3 | **~6,900** |
 
 > URL 语言中立单一、不乘语言数（见 §10）。上表小计 ~6,900 **未含周页与 `/pulse`**；加上独立周页 +~570 再加 `/pulse` + `/compare` ⇒ **当前约 6,900、规划 ~7,500 URL，sitemap 按 ~7,500 规划**。具体数随 org 白名单（含 User owner）浮动。
 
@@ -88,11 +88,38 @@
 
 | 字段 | 值 |
 |---|---|
-| title | `Open Source Pulse & GitHub Star History · GitStarClub`（`absolute`，不附加 `· gitstarclub` 后缀） |
+| title | `Open Source Pulse & GitHub Star History · GitStarClub`（`absolute`，不附加 `· GitStarClub` 后缀） |
 | description | `See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.` |
 | canonical | `/` |
 
 - 含词：`Open Source Pulse`、`GitHub Star History`、`fastest-rising`、`star rankings`。
+
+### 2.1a 脉搏页 `/pulse`
+
+实际实现（`web/app/pulse/page.tsx`，`export const revalidate = false`，渲染与首页同源的 `PulseView`，但**不带** `includeWebsiteLd` ⇒ 无 `WebSite` JSON-LD，见 §6.1）：
+
+| 字段 | 值 |
+|---|---|
+| title | `Open Source Pulse — Weekly, Monthly & Yearly GitHub Movers`（非 `absolute` ⇒ root layout 追加 `· GitStarClub` → 最终 `Open Source Pulse — Weekly, Monthly & Yearly GitHub Movers · GitStarClub`） |
+| description | `The current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub repositories.` |
+| canonical | `/pulse` |
+
+```ts
+export const revalidate = false;
+export async function generateMetadata(): Promise<Metadata> {
+  return pageMeta({
+    title: "Open Source Pulse — Weekly, Monthly & Yearly GitHub Movers",
+    description:
+      "The current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub repositories.",
+    path: "/pulse",
+    locale: "en",
+  });
+}
+```
+
+- 含词：`Open Source Pulse`、`Weekly` / `Monthly` / `Yearly`、`GitHub Movers`、`fastest-rising`。
+- 作为「最新动态」入口（§1 收录优先级「高」）；不设 `ogImage` ⇒ 回退站点默认 OG card（见 §13）。
+- 已在 sitemap 中（§4.1 覆盖 `/pulse`）。
 
 ### 2.2 年度页 `/rankings/2024`
 
@@ -221,14 +248,15 @@ export async function generateMetadata({ params }: { params: Promise<{ login: st
 | 字段 | 值 |
 |---|---|
 | title | `All-Time GitHub Star Rankings — Most-Starred Repos & Orgs` |
-| description | `The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across 11 years.` |
+| description | `The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across ${trackedYears} years.` |
 | canonical | `/rankings` |
 
 ```ts
 export async function generateMetadata(): Promise<Metadata> {
+  const trackedYears = currentUtcPeriods().year - FIRST_YEAR + 1;
   return pageMeta({
     title: "All-Time GitHub Star Rankings — Most-Starred Repos & Orgs",
-    description: "The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across 11 years.",
+    description: `The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across ${trackedYears} years.`,
     path: "/rankings",
     locale: "en",
   });
@@ -243,7 +271,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 | 字段 | 值 |
 |---|---|
-| title | `About — Data Sources & Methodology`（站点后缀 ` · gitstarclub` 由 root layout 的 `title.template` 自动追加，最终为 `About — Data Sources & Methodology · gitstarclub`） |
+| title | `About — Data Sources & Methodology`（站点后缀 ` · GitStarClub` 由 root layout 的 `title.template` 自动追加，最终为 `About — Data Sources & Methodology · GitStarClub`） |
 | description | `How GitStarClub charts GitHub star history: data from GH Archive & GitHub API, gross vs net stars, the ≥10k whitelist, and known caveats.` |
 | canonical | `/about` |
 
@@ -300,7 +328,7 @@ export function generateStaticParams() {
 export const dynamic = "force-static";
 export function generateMetadata(): Metadata {
   return pageMeta({
-    title: "Compare GitHub Star History · gitstarclub",
+    title: "Compare GitHub Star History",
     description:
       "Overlay the star-history curves of any tracked repositories (≥10k stars) on one chart — absolute or aligned from 10k.",
     path: "/compare",
@@ -527,7 +555,7 @@ Disallow: /
 - **launch 翻牌流程**：①Vercel 项目 production 环境加 `SITE_INDEXABLE=1`②redeploy（不需要改代码）③`robots.txt` 立即放开 + sitemap 暴露 + 根 layout 的全局 `robots: { index: true, follow: true }` 一起翻牌。
 - **不屏蔽任何内容页**：~7,500 长尾页（语言中立单一 URL）全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + sitemap 分片共同消化。
 - **屏蔽 `/api/`**：cron / 内部 route 不该被抓（真正防线是 `CRON_SECRET` 鉴权，见 [OPS.md](./OPS.md)；robots 只是减少噪声）。
-- **`/search-index`（顶级 JSON 端点）故意放行**：它是全站搜索的版本化索引（`search/index.json`），经发布指针由 Route Handler 服务、带 `s-maxage` 走 CDN，被搜索框首次聚焦时懒加载。`robots.ts` 只 `Disallow: /api/`、不屏蔽它（CDN JSON、非内容页、对 SEO 无害）。若需拦爬虫抓这个 JSON，在 `robots.ts` 加 `/search-index` 到 Disallow 即可。
+- **`/search-index`、`/repo-curve`（顶级 JSON 端点）故意放行**：均不在 `/api/` 下，故 `Disallow: /api/` 不覆盖它们。`/search-index` 是全站搜索的版本化索引（`search/index.json`），经发布指针由 Route Handler 服务、带 `s-maxage` 走 CDN，被搜索框首次聚焦时懒加载；`/repo-curve` 同理是 repo 曲线数据的版本化 JSON 端点（CDN 缓存、被详情页 / 对比页按需读取）。`robots.ts` 只 `Disallow: /api/`、不屏蔽这两者（CDN JSON、非内容页、对 SEO 无害）。若需拦爬虫抓这些 JSON，在 `robots.ts` 把 `/search-index`、`/repo-curve` 加到 Disallow 即可。
 - **Preview deployment 的处理**：Preview 默认就 `SITE_INDEXABLE` 未设 → `Disallow: /`；再叠加 root layout 的 `robots: { index: false, follow: false }` meta（同一总开关驱动），共防一处。Preview 还需在 Vercel 项目设 Deployment Protection（PRIVATE），见 §11。
 - `host` 字段声明规范主机（少数爬虫用作镜像归并提示）。
 
@@ -535,19 +563,24 @@ Disallow: /
 
 ## 6. JSON-LD 结构化数据（schema.org，每页类型逐一）
 
-> 目的：①Google 富结果（面包屑、站内搜索框、数据集卡片）；②给 LLM / AI Overviews 喂结构化事实（star 时间序列、排名），抢 AI 答案位。用 `<script type="application/ld+json">` 注入（服务端渲染进 HTML，非客户端）。**所有页面都带 `BreadcrumbList`**。
+> 目的：①Google 富结果（主要是面包屑）；②给 LLM / AI Overviews 喂结构化事实（repo star 数 / 站点描述），抢 AI 答案位。用 `<script type="application/ld+json">` 注入（服务端渲染进 HTML，非客户端）。
+>
+> **实际实现以 `web/lib/jsonld.ts` 的 4 个 builder 为唯一事实来源**：`webSiteLd`（首页 `WebSite`）、`repoLd`（repo `SoftwareSourceCode` + `interactionStatistic` star 数）、`orgLd`（org `Organization` / `Person`）、`collectionLd`（月/年/全时榜 `CollectionPage`）。`BreadcrumbList` **不在这 4 个 builder 内**，由 `Breadcrumbs.tsx` 组件单独输出（见 §6.7）。**不输出 `Dataset` / `ItemList` / `SearchAction`**，也不在 `CollectionPage` 上带 `datePublished` / `dateModified` / `isPartOf`（下面各小节逐一说明）。
 
 ### 6.1 首页：`WebSite`（仅首页，不在根 layout）
 
-**实际实现**：`WebSite` JSON-LD **只在首页 `/` 注入**，通过 `PulseView` 组件的 `includeWebsiteLd` prop 控制（`web/app/page.tsx` 传 `includeWebsiteLd`；`web/app/pulse/PulseView.tsx` 内 `{includeWebsiteLd && <JsonLd data={webSiteLd(...)}/>}`）。**根 layout 不注入** `WebSite`——历史 / repo / org / `/rankings` 等其它页面没有 `WebSite` ld，只各自挂自己的 `CollectionPage` / `SoftwareSourceCode` / `Organization` / `Dataset` 等。
+**实际实现**：`WebSite` JSON-LD **只在首页 `/` 注入**，通过 `PulseView` 组件的 `includeWebsiteLd` prop 控制（`web/app/page.tsx` 传 `includeWebsiteLd`；`web/app/pulse/PulseView.tsx` 内 `{includeWebsiteLd && <JsonLd data={webSiteLd(...)}/>}`）。**根 layout 不注入** `WebSite`——历史 / repo / org / `/rankings` 等其它页面没有 `WebSite` ld，只各自挂自己的 `CollectionPage` / `SoftwareSourceCode` / `Organization` / `Person`（见 §6.3–6.6）。
+
+实际输出（`web/lib/jsonld.ts` 的 `webSiteLd(locale, path)`）：
 
 ```jsonc
 {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  "name": "gitstarclub",
-  "url": "https://gitstarclub.com/",
-  "description": "A chronicle of GitHub star history across 11 years."
+  "name": "GitStarClub",
+  "url": "https://gitstarclub.com/",      // abs(path)，首页 path = "/"
+  "inLanguage": "en",                      // locale（页内默认英文，见 §10）
+  "description": "GitHub star history & trends across 5,300+ repositories with ≥10k stars."
   // 不输出 potentialAction / SearchAction：搜索是客户端 combobox、直达
   // /{owner}/{name}，无规范结果页 URL 可供 SearchAction 广告（见下注）
 }
@@ -555,105 +588,71 @@ Disallow: /
 
 > 全站搜索是**导航栏客户端 combobox**（首次聚焦懒加载 `search/index.json` + MiniSearch，命中直达 `/{owner}/{name}`），**没有 `/search?q=` 结果页 URL**。`SearchAction` 的 `urlTemplate` 必须指向一个可返回结果列表的规范页面——本站没有，故 `potentialAction` / `SearchAction` **不输出**（绝不广告一个指向不存在页面的 urlTemplate）。`WebSite` 本体只在首页输出（Google 的 site-name 信号通常依赖首页的 `WebSite` ld）。若未来新增 `/search` 结果页，再补 `SearchAction`。
 
-### 6.2 首页：`WebSite` + `Dataset`（站点级数据集）
+### 6.2 首页：**不输出 `Dataset`**
+
+`jsonld.ts` 没有 `Dataset` builder——首页除上面的 `WebSite` 外**不注入站点级 `Dataset`**（无 `temporalCoverage` / `creator` / `isBasedOn` / `license` 等字段）。GH Archive / GitHub API 的署名与口径在 `/about` 页面正文承载（见 §2.7），不通过 JSON-LD `Dataset` 表达。若未来要补数据集卡片，再在 `jsonld.ts` 新增 builder。
+
+### 6.3 Repo 详情页：`SoftwareSourceCode` + `BreadcrumbList`
+
+实际输出（`web/lib/jsonld.ts` 的 `repoLd(repo, path, locale)`）——`@type` 为 **`SoftwareSourceCode`**，**不输出 `Dataset`、不输出 `temporalCoverage`**；star 数通过 **`interactionStatistic`（`InteractionCounter`）** 表达：
 
 ```jsonc
 {
   "@context": "https://schema.org",
-  "@type": "Dataset",
-  "name": "GitHub Star History (≥10k repos, 2015–present)",
-  "description": "Daily star deltas and cumulative star history for 5,261 GitHub repositories with ≥10,000 stars, since 2015.",
-  "url": "https://gitstarclub.com/",
-  "temporalCoverage": "2015-01-01/..",
-  "creator": { "@type": "Organization", "name": "gitstarclub" },
-  "isBasedOn": "https://www.gharchive.org/",   // 署名（见 ARCHITECTURE 合规）
-  "license": "https://docs.github.com/site-policy"
+  "@type": "SoftwareSourceCode",
+  "name": "anthropics/claude-code",                       // repo.full_name（完整带 owner）
+  "url": "https://gitstarclub.com/anthropics/claude-code",
+  "codeRepository": "https://github.com/anthropics/claude-code",
+  "inLanguage": "en",                                      // locale
+  "programmingLanguage": ["TypeScript"],                   // 仅当非空时输出（剔除 "Unknown"）
+  "description": "...",                                     // 仅当 repo.description 存在时输出
+  "dateCreated": "2024-02-01T00:00:00Z",                   // repo.created_at，仅当存在时输出
+  "interactionStatistic": {
+    "@type": "InteractionCounter",
+    "interactionType": "https://schema.org/LikeAction",
+    "userInteractionCount": 98432                          // repo.current_stars（star 数）
+  }
 }
 ```
 
-### 6.3 Repo 详情页：`SoftwareSourceCode` + `Dataset` + `BreadcrumbList`
+> repo 页的结构化主体是 `SoftwareSourceCode`：`codeRepository` 关联 GitHub 源，`programmingLanguage` / `description` / `dateCreated` 为条件字段，star 数走 `interactionStatistic` 的 `InteractionCounter`（`LikeAction`）。**没有独立的 `author` 节点**（owner 关系靠 `full_name` 与 §9 内链）。repo 页另由 `Breadcrumbs.tsx` 单独输出 `BreadcrumbList`（见 §6.7）。
+
+### 6.4 Org 详情页：`Organization` / `Person` + `BreadcrumbList`
+
+实际输出（`web/lib/jsonld.ts` 的 `orgLd(org, path, locale)`）——按 `owner_type` 在 `Organization` / `Person` 间切换，**不输出 `ItemList`**：
 
 ```jsonc
-[
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareSourceCode",
-    "name": "claude-code",
-    "codeRepository": "https://github.com/anthropics/claude-code",
-    "author": { "@type": "Organization", "name": "anthropics" },
-    "programmingLanguage": "TypeScript",
-    "url": "https://gitstarclub.com/anthropics/claude-code"
-  },
-  {
-    "@context": "https://schema.org",
-    "@type": "Dataset",
-    "name": "Star history for anthropics/claude-code",
-    "description": "Daily and cumulative GitHub star counts for anthropics/claude-code since its first tracked date.",
-    "variableMeasured": "GitHub stars",
-    "temporalCoverage": "2024-02-01/..",
-    "isBasedOn": "https://www.gharchive.org/"
-  },
-  { "@type": "BreadcrumbList", "...": "见 6.7" }
-]
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",                  // owner_type==="Organization" → Organization，否则 Person
+  "name": "vercel",                          // org.login
+  "url": "https://gitstarclub.com/o/vercel",
+  "sameAs": "https://github.com/vercel",     // 单个字符串，非数组
+  "inLanguage": "en"                         // locale
+}
 ```
 
-> repo 的 star 时间序列是本站独家结构化资产 → `Dataset` 让它对"数据型查询"与 AI 答案更可见。`SoftwareSourceCode` 关联 GitHub 源、`author` 关联 org 实体。
+> 个人 owner（`owner_type=User`）用 `@type: Person` 替代 `Organization`（按数据切换）。该 org 的 top repo 列表**不以 `ItemList` 结构化输出**，靠页面正文行 + §9 内链被发现。org 页另由 `Breadcrumbs.tsx` 输出 `BreadcrumbList`。
 
-### 6.4 Org 详情页：`Organization` + `ItemList` + `BreadcrumbList`
+### 6.5 月度页 / 年度页：`CollectionPage` + `BreadcrumbList`
+
+实际输出（`web/lib/jsonld.ts` 的 `collectionLd(name, path, locale)`）——仅 `CollectionPage` 三字段，**不输出 `ItemList`，也不输出 `datePublished` / `dateModified` / `isPartOf`**：
 
 ```jsonc
-[
-  {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    "name": "vercel",
-    "url": "https://gitstarclub.com/o/vercel",
-    "sameAs": ["https://github.com/vercel"]
-  },
-  {
-    "@context": "https://schema.org",
-    "@type": "ItemList",                 // 该 org 的 top repo 列表
-    "name": "Top repositories by vercel",
-    "itemListElement": [
-      { "@type": "ListItem", "position": 1, "url": "https://gitstarclub.com/vercel/next.js", "name": "vercel/next.js" }
-    ]
-  }
-]
+{
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  "name": "October 2024 GitHub Star Rankings",   // 调用方传入的 name
+  "url": "https://gitstarclub.com/rankings/2024/10",
+  "inLanguage": "en"                              // locale
+}
 ```
 
-> 个人 owner（`owner_type=User`）用 `@type: Person` 替代 `Organization`（按数据切换）。
+> 月/年页的榜单**不以 `ItemList` + `ListItem` 结构化重复输出**（避免与正文表格重复维护）；`CollectionPage` 仅声明"这是一个策展集合页"。`collectionLd` 不带任何日期字段，因此历史页与当月页的结构化数据无 `dateModified` 抖动问题。榜单行的可发现性由 §9 内链承担。月/年页另由 `Breadcrumbs.tsx` 输出 `BreadcrumbList`（Home → 年 →〔月〕）。
 
-### 6.5 月度页 / 年度页：`CollectionPage` + `ItemList`（×N 榜单）+ `BreadcrumbList`
+### 6.6 全时榜 `/rankings`：`CollectionPage` + `BreadcrumbList`
 
-```jsonc
-[
-  {
-    "@context": "https://schema.org",
-    "@type": "CollectionPage",
-    "name": "Top GitHub Repos in October 2024",
-    "url": "https://gitstarclub.com/rankings/2024/10",
-    "datePublished": "2024-11-01",
-    "dateModified": "2024-11-01",        // 历史页固定；当月页 = 最近同步
-    "isPartOf": { "@type": "CollectionPage", "name": "GitHub Stars in 2024", "url": "https://gitstarclub.com/rankings/2024" }
-  },
-  {
-    "@context": "https://schema.org",
-    "@type": "ItemList",                 // 「当月新增 TOP」榜
-    "name": "Top repos by new stars in October 2024",
-    "numberOfItems": 20,
-    "itemListElement": [
-      { "@type": "ListItem", "position": 1, "url": "https://gitstarclub.com/anthropics/claude-code", "name": "anthropics/claude-code" }
-    ]
-  }
-  // 可再为「增速 TOP」「新晋」「周榜 section」各输出一个 ItemList
-]
-```
-
-> 月/年页用 **`CollectionPage` + 多个 `ItemList`**：月/年页本质是"策展的实体集合 + 榜单"，比 `Article` 更贴切（`Article` 适合后续叙事段落，届时可叠加）。保留 `datePublished` / `dateModified`。
-
-### 6.6 全时榜 `/rankings`：`CollectionPage` + `ItemList`（repo 榜 + org 榜）
-
-- 两个 `ItemList`（all-time repo by stock、all-time org by stock），各列 top-N `ListItem`，指向对应 repo/org 详情页（强化 §9 内链）。
+- 复用 `collectionLd(...)` 输出单个 `CollectionPage`（`name` / `url` / `inLanguage`），**不输出 repo / org 的 `ItemList`**。repo / org 榜的实体链接由页面正文行 + §9 内链发现。另由 `Breadcrumbs.tsx` 输出 `BreadcrumbList`（Home → Rankings）。
 
 ### 6.7 全站面包屑：`BreadcrumbList`
 
@@ -689,7 +688,7 @@ Disallow: /
 |---|---|
 | 同一榜单的「周 section」既在月页又在年页出现 | 周榜默认**不独立成页**（无独立 URL ⇒ 无重复 URL）；若 §1 周页独立，则月/年页内的周 section 仅作摘要 + 链接到周页，**周页 canonical 指自身**，月/年页**不** canonical 到周页。 |
 | `/rankings` 的 repo 视图 vs org 视图（若做成 `?metric=` / 子路径） | **二选一为规范**：要么单页内并列展示（一个 URL，无重复）；要么 `/rankings`（repo，规范）+ `/rankings/org`（org，**canonical 指自身**，因内容确实不同）。**绝不**让 `?sort=`、`?period=` 等纯排序/筛选 query 产生可索引的重复 URL —— 这类 URL 一律 canonical 回无参数规范页。 |
-| repo 改名产生的新旧 URL | 旧 URL **301** → 新 URL；canonical 永远当前 `full_name`（见 §2.4 / [PRODUCT.md](./PRODUCT.md)）。 |
+| repo 改名产生的新旧 URL | 旧 URL **308** → 新 URL；canonical 永远当前 `full_name`（见 §2.4 / [PRODUCT.md](./PRODUCT.md)）。 |
 | 语言版本 | **无语言变体 URL**：语言是页内 `gsc_lang` cookie 偏好、不进 URL，不涉跨语言 canonical、不发 hreflang（见 §10）。 |
 | 尾部斜杠 / 大小写 | 统一**无尾斜杠 + owner/name 保留 GitHub 原始大小写**；其余形式 301 到规范形。 |
 
@@ -830,7 +829,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 | **FCP** | < 1.0s | 内联关键 CSS、字体子集化 woff2（Plus Jakarta Sans 子集 ~30KB） |
 | **TTFB** | 低 | 99.99% 命中边缘缓存；ISR 冷启动仅读 KB JSON（见 §3） |
 
-- **图片**：OG 图预生成存 Blob（见 §13）、不消耗 Function；页内若有图一律显式尺寸 + `loading=lazy`（below-fold）。
+- **图片**：OG 图由 `next/og` 路由现绘 + ISR / CDN 缓存（见 §13），命中后不重复消耗 Function；页内若有图一律显式尺寸 + `loading=lazy`（below-fold）。
 - **字体**：最多两家族（Plus Jakarta Sans + Geist Mono）、`font-display: swap`、子集化、仅 preload 关键权重。
 - **缓存头**：历史页 `Cache-Control: s-maxage=86400, stale-while-revalidate`（见 ARCHITECTURE）。
 - **移动优先索引**：Google 用移动版索引——SSG 响应式、无移动专属阻断；确保移动视口 meta（Next.js 默认注入）与触控可达。
@@ -845,28 +844,30 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **生成与存储**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) / [OPS.md](./OPS.md)）：
 
-- 每页一张 OG 图（1200×630），用 **`@vercel/og`（`next/og` 的 `ImageResponse`，底层 Satori + resvg）** 生成。
-- **不在运行时 Function 出图、也不在每次 build 出图**：仅在**数据变化时（pipeline 侧）增量**生成变化页的 OG → 存 **Vercel Blob**（`blob://og/...`）。历史页 OG 永不重生成。
-- 页面 meta 的 `openGraph.images` / `twitter.images` 指向 **Blob 上的绝对 URL**（不走 Next.js 动态 OG route）。
-- 字体：**Plus Jakarta Sans（标题）+ Geist Mono（数字 / repo 名）**，与站点一致。
-- 配色：surface = 冷石墨灰中性底；accent = 星金（`primary-fixed-dim #ffba3b` 用于 ★ / 峰值 / 数字高亮）。明色卡为主（社交流多浅色背景下更醒目）。
+- OG 图（1200×630）用 **`next/og` 的 `ImageResponse`（底层 Satori + resvg）** 生成，承载在 **`opengraph-image.tsx` 文件约定的 Route Handler** 里。
+- **没有 Blob 支撑的 OG pipeline**：卡片不在 pipeline 侧增量生成、也不存 Vercel Blob（`blob://og/...`），更不在每次 build 全量出图。它们在**请求 / ISR 时按路由现绘**，随路由段一起进 Vercel 持久 ISR store + CDN 缓存，后续命中即取缓存（与正文页同一缓存模型，见 §3）。
+- 页面 meta 的注入由 `web/lib/seo.ts` 的 `pageMeta(...)` 统一完成：`openGraph.images` / `twitter.images` 设为 `opts.ogImage ?? "/opengraph-image"`，即一个**路由路径**（`<route>/opengraph-image` 或站点默认 `/opengraph-image`），经 `metadataBase` 解析为绝对 URL——**不是 Blob URL，也不绕过 Next.js 动态 OG route**（恰恰相反，正是走这个 route）。注意：`pageMeta` 显式传 `images` 是为了不让自定义 `openGraph` 覆盖文件约定卡片时把它吞掉。
+- 字体：当前用 **`next/og` 默认字体**（★ 用内联 SVG `<path>` 绘制，因默认字体无 ★ 字形）；尚未接入 Plus Jakarta Sans / Geist Mono 子集。
+- 配色（见 `web/lib/og-theme.ts`）：surface = 石墨灰深底 `#121316`；文字走 `on-surface #e3e2e6` / `on-surface-variant #c3c7cf` / `outline #8d9199`；accent = 星金（★ / 数字高亮用 `primary-fixed-dim #ffba3b`）。当前为**深色卡**。
 
 > 注意：Satori 仅支持 flexbox + CSS 子集（**不支持 `display: grid`**），OG 模板用 flex 布局。
 
-### 13.1 每页 OG 内容模板
+### 13.1 已实现的 OG 卡片（4 张；其余页回退站点卡）
 
-| 页面 | OG 图内容（1200×630，flex 布局） | 文案搜索词对齐 |
-|---|---|---|
-| 首页 | 大标题「GitHub Star History」+ 年份脊柱缩略（2015→now 金色条）+ 「~5,261 repos · 11 years」 | star history |
-| 年度页 | 「GitHub 2024」特大字 + 年度 TOP 3 repo 名（金色）+ 全年新增星数 | github 2024 trending |
-| 月度页 | 「Oct 2024」+ 当月 TOP 3 repo + 缩略日历热力图（金色深浅）+ 新晋数 | top github repos october 2024 |
-| Repo 页 | `owner/name`（等宽大字）+ star 曲线缩略（金线）+ 当前 star 数 + 里程碑点 | <repo> star history |
-| Org 页 | `login` + org 累计星数 + top repo 名 + org 排名 badge | <org> github stars |
-| 全时榜 | 「All-Time GitHub Star Rankings」+ TOP 5 repo 缩略条 | most starred github repos |
+> **现状：只实现 4 张卡片**，分别由 4 个 `opengraph-image.tsx` 路由产出。Org 页与全时榜 `/rankings` **不设自定义 `ogImage`** ⇒ `pageMeta` 回退到站点默认 `/opengraph-image`（站点卡），**没有专属卡**。早期设计列出的 6 张每页卡（含 org、全时榜专属）**未全部落地**。
 
-- **Twitter card**：`summary_large_image`；`twitter.title` / `twitter.description` 复用各页 meta；`twitter.images` 指 Blob OG URL。
-- **Open Graph 全套**：`og:title` / `og:description` / `og:url`（canonical）/ `og:type`（首页/榜单 `website`，月/年页可 `article` 配 `publishedTime`/`modifiedTime`）/ `og:image`（+ `width:1200` `height:630` `alt`）/ `og:locale`（按语言，见 §10）/ `og:site_name = gitstarclub`。
-- **alt 文本**：OG 图 `og:image:alt` 描述内容（如 "Star history chart for anthropics/claude-code"）——a11y + 部分平台展示。
+| 页面 | OG 卡片 | 实现位置 | 内容（1200×630，flex 布局） | 文案搜索词对齐 |
+|---|---|---|---|---|
+| 站点默认 / 首页 / `/pulse` | **站点卡** | `web/app/opengraph-image.tsx` | `GitStarClub.com` 大标题 + 「A chronicle of open source — more than a decade of GitHub star history across 5,300+ projects.」 | star history |
+| Repo 页 | **repo 卡** | `web/app/[owner]/[name]/opengraph-image.tsx` | `owner/name` 大字 + 当前 star 数（`fmtStars`）+ 主语言（按 repo 现场读取，未知 repo 仅出名） | <repo> star history |
+| 年度页 | **排名卡** | `web/app/rankings/[year]/opengraph-image.tsx`（共用 `og-card.tsx` 的 `rankingCard`） | 「<Year>」特大字 + 当年 stars-gained TOP 3 repo（金色 + `+N`） | github <year> trending |
+| 月度页 / 周页 | **排名卡** | `web/app/rankings/[year]/[period]/opengraph-image.tsx`（共用 `rankingCard`，按 `^W(\d+)$` 分流月/周） | 「<Month Year>」/「<Year> · Week N」+ 该期 stars-gained TOP 3 | top github repos october 2024 |
+| Org 页 | **（回退站点卡）** | 无专属路由（`pageMeta` 不传 `ogImage`） | 同站点卡 | <org> github stars |
+| 全时榜 `/rankings` | **（回退站点卡）** | 无专属路由（`pageMeta` 不传 `ogImage`） | 同站点卡 | most starred github repos |
+
+- **Twitter card**：`pageMeta` 设 `twitter.card = "summary_large_image"`；`twitter.title` / `twitter.description` / `twitter.images` 复用各页 meta 与上述卡片路由。
+- **Open Graph**：`pageMeta` 输出 `og:title` / `og:description` / `og:url`（canonical）/ `og:image`（指卡片路由）/ `og:locale`。`og:type`（`website` vs `article`+published/modified time）与 `og:site_name` 由根 `app/layout.tsx` 的 metadata 统一提供，未在 `pageMeta` 内逐页设。
+- **alt 文本**：各 `opengraph-image.tsx` 导出 `alt`（站点卡 `GitStarClub.com — A Chronicle of Open Source`；repo 卡 `GitHub star history`；排名卡 `GitHub star rankings`）。
 
 ---
 
@@ -882,7 +883,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 | **ISR 冷启动考量** | GSC 抓取首个 URL 会触发该页 ISR 生成（首抓 TTFB 略高、属正常）；**关注首抓后是否 200 + 内容完整**，而非冷启动延迟本身 | 抽查 |
 | ~~hreflang 报告~~ | 不适用：语言中立单一 URL、不发 hreflang（见 §10）；无 International Targeting 需监控 | — |
 | URL Inspection | 抽查 repo / org / 历史月页：实时抓取看渲染后 HTML 是否含正文 + JSON-LD（验证 §3a 可索引性） | 抽查 |
-| 富结果监控 | Rich Results：Breadcrumb / Dataset 是否有效；用 [Rich Results Test](https://search.google.com/test/rich-results) 验 JSON-LD | 上线 + 变更 schema 时 |
+| 富结果监控 | Rich Results：Breadcrumb 是否有效（**本站不输出 Dataset / ItemList**，见 §6）；用 [Rich Results Test](https://search.google.com/test/rich-results) 验 JSON-LD | 上线 + 变更 schema 时 |
 | 移除过时网址 | 若预览曾误被收录：Removals 工具临时移除 + 修 noindex | 仅事故时 |
 | Core Web Vitals 报告 | GSC CWV 报告 + Vercel Speed Insights 双看（见 §12） | 每月 |
 
@@ -914,16 +915,16 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 **按需 ISR 可索引性（§3）**
 
 - [ ] 长尾段 `dynamicParams = true` + `generateStaticParams` 返回 `[]`；核心段返回具体 param
-- [ ] **未知 repo/org param → `notFound()`（404）**，不返回软 200；改名旧 URL → 301
+- [ ] **未知 repo/org param → `notFound()`（404）**，不返回软 200；改名旧 URL → 308
 - [ ] `cacheComponents` 关闭；长尾 `revalidate = false`
 - [ ] URL Inspection 抽查：ISR 页首抓返回 200 + 完整服务端 HTML（含正文 + JSON-LD），不依赖客户端 JS
 
 **结构化数据（§6）**
 
-- [ ] 首页 `WebSite`（**仅首页，不在根 layout**；不含 `SearchAction`：搜索是客户端 combobox、无结果页 URL，见 §6.1）+ 首页 `Dataset`
-- [ ] repo 页 `SoftwareSourceCode` + `Dataset`；org 页 `Organization`/`Person` + `ItemList`
-- [ ] 月/年页 `CollectionPage` + 各榜 `ItemList`；全时榜 `CollectionPage` + repo/org `ItemList`
-- [ ] **每页 `BreadcrumbList`**；全部通过 Google Rich Results 测试
+- [ ] 首页 `WebSite`（**仅首页，不在根 layout**；含 `name`/`url`/`inLanguage`/`description`；不含 `SearchAction`、**不含 `Dataset`**，见 §6.1 / §6.2）
+- [ ] repo 页 `SoftwareSourceCode` + `interactionStatistic`（`InteractionCounter` / star 数），**不含 `Dataset` / `temporalCoverage`**；org 页 `Organization`/`Person`（**不含 `ItemList`**）
+- [ ] 月/年页与全时榜均为单个 `CollectionPage`（`name`/`url`/`inLanguage`），**不含 `ItemList`，不含 `datePublished`/`dateModified`/`isPartOf`**
+- [ ] **每页 `BreadcrumbList` 由 `Breadcrumbs.tsx` 单独输出**（不在 `jsonld.ts` 4 个 builder 内）；全部通过 Google Rich Results 测试
 
 **去重与分页（§7 / §8）**
 
@@ -937,8 +938,8 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **OG / 社交（§13）**
 
-- [ ] 每页 OG 图（pipeline 增量生成、存 Blob、**石墨灰+星金**、Plus Jakarta Sans+Geist Mono）
-- [ ] meta 指向 Blob OG 绝对 URL；Twitter `summary_large_image` + OG 全套 + alt
+- [ ] 4 张 OG 卡片（站点 / repo / 年 / 月·周）由 `opengraph-image.tsx` 路由现绘 + ISR/CDN 缓存（**石墨灰深底 `#121316` + 星金 `#ffba3b`**、当前 `next/og` 默认字体）；org 页与全时榜回退站点卡
+- [ ] `pageMeta` 把 `og:image` / `twitter.images` 指向卡片路由（`<route>/opengraph-image` 或 `/opengraph-image`，经 `metadataBase` 解析）；Twitter `summary_large_image` + alt
 
 **性能（§12）**
 

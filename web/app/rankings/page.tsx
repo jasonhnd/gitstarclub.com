@@ -19,9 +19,10 @@ const LOC = DEFAULT_LOCALE;
 export const revalidate = false;
 
 export async function generateMetadata(): Promise<Metadata> {
+  const trackedYears = currentUtcPeriods().year - FIRST_YEAR + 1;
   return pageMeta({
     title: "All-Time GitHub Star Rankings — Most-Starred Repos & Orgs",
-    description: "The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across 11 years.",
+    description: `The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across ${trackedYears} years.`,
     path: "/rankings",
     locale: "en",
   });

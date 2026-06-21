@@ -64,6 +64,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | i18n posture | SEO (§10); implementation detail in FRONTEND (§7) |
 | Color tokens / design vocabulary | DESIGN-SYSTEM |
 | Ranking algorithms (seam, stock anchoring, derived rankings) | RANKING |
+| Repo identity / rename → redirect posture | PRODUCT (§Repo 身份与改名) |
 | Code module map / route ownership | CODEBASE |
 | Development workflow / change playbooks | DEVELOPMENT |
 | Release history | CHANGELOG |

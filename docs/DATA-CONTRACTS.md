@@ -42,7 +42,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 | `owner` | string | 属主 login |
 | `owner_type` | `"User"\|"Organization"` | 决定 org 榜归类 |
 | `name` | string | repo 名 |
-| `full_name` | string | 当前 `owner/name`（改名更新；URL 用它，旧 URL 301） |
+| `full_name` | string | 当前 `owner/name`（改名更新；URL 用它，旧 URL 308） |
 | `description` | string\|null | |
 | `language` | string\|null | 主语言 |
 | `topics` | string[] | |
@@ -75,7 +75,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 - `seam_date`：gross→net 边界，stock 锚定据此分段（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3）。
 - `folded_through`：已折叠进 base 的最末周/月周期；读路径据此判某周期归 live 还是 base（防重复，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）。
 
-**`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`；外加 `d` = 冻结折扣系数，bootstrap 算定，**存全精度 IEEE double**——舍入会让 JS 重算的 `stock_est` 与 DuckDB 差 ±1）：
+**`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`、`fetched_at`（元数据抓取时刻）；外加 `d` = 冻结折扣系数，bootstrap 算定，**存全精度 IEEE double**——舍入会让 JS 重算的 `stock_est` 与 DuckDB 差 ±1）：
 
 ```json
 { "1296269": { "id": 1296269, "node_id": "...", "owner": "vuejs", "owner_type": "Organization",
@@ -92,7 +92,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 **`canonical/v2/repo-weekly/{bucket}.json`** —— per-repo ISO 周 flow 序列（驱动历史周榜）：`{ "<id>": [["2024-W42", 320], ...] }`。
 
-**`canonical/v2/repo-recent-daily/{bucket}.json`** —— per-repo 近 ~90 天日点（曲线尾 + 周边界，net 可负）：`{ "<id>": [["2026-03-01", 30], ["2026-03-02", -5]] }`。滚出 90 天的日点由折叠 step 并入 `repo-monthly`（单一真相，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.2）。
+**`canonical/v2/repo-recent-daily/{bucket}.json`** —— per-repo 近 ~90 天日点（曲线尾 + 周边界，net 可负）：`{ "<id>": [["2026-03-01", 30], ["2026-03-02", -5]] }`。⚠️ **bootstrap(`07-export-v2`)一次性 seed**；recurring `fold` step(`fold.ts`)**不读、不写、不修剪** recent-daily(`web/lib/` 内无 writer，仅 reader `io.ts:53`)——「滚出 90 天的日点并入 `repo-monthly`」的老化机制**尚未实现**（xref issue #3 / [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.2）。
 
 **`canonical/v2/site-daily/{yyyy}.json`** —— 站点级日总量（驱动 heatmap）：`{ "year": "2024", "cells": [["2024-01-01", 82000]] }`。
 
@@ -124,6 +124,7 @@ current_month.json                             # 活尾（cron 写）
 hot-snapshot.json                              # 热集（cron 写，ISR 读）
 ops/sync-runs.json                             # cron 运行记录（cron 写，运维读）
 meta.json
+canonical/v2/whitelist/latest.json             # { run_id, ids[] }：上一 run 已追踪的 id 基线（whitelist step 写，供新晋 diff；首 run 缺失则回退 bootstrap lookup/repos.json）
 # ── Vercel-only 发布层（见 §2.11–2.13）──
 views/latest.json                              # 发布指针（读侧据此解析版本前缀；version = run_id）
 views/{run_id}/…                               # 一个 run 的完整视图版本（version=run_id，无独立 staging/published）
@@ -178,7 +179,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 ### 2.3 `rank/{window}/{period}/{dim}/{metric}.json`
 
 排行榜。`window∈{week,month,year}`、`period` 见全局约定、`dim∈{repo,org}`、`metric∈{flow,stock}`。
-**派生 repo 榜（仅 month/year，dim=repo）**：`metric=growth`（增速，item 含 `rate`=增速%、`base`=期初 stock）、`metric=new`（新晋，item 含 `date`=破 10k 日期）。口径见 [RANKING §4](./RANKING.md)；`RankItem` 因此带可选 `rate`/`base`/`date` 三字段。
+**派生 repo 榜（仅 month/year，dim=repo）**：`metric=growth`（增速，item 含 `rate`=增速%、`base`=期初 stock；**入榜须期初 stock ≥ 20,000 且当期 flow > 0**——`flow<=0` 一并剔除，见 `ranks.ts:131`）、`metric=new`（新晋，item 含 `date`=破 10k 日期）。口径见 [RANKING §4](./RANKING.md)；`RankItem` 因此带可选 `rate`/`base`/`date` 三字段。
 
 ```json
 {
@@ -418,7 +419,7 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
 ```json
 {
   "generated_at": "<run_id>",
-  "count": 5261,
+  "count": 5302,
   "repos": [
     { "id": 1296269, "full_name": "vuejs/vue", "owner": "vuejs", "language": "JavaScript", "current_stars": 207000, "description": "..." }
   ]

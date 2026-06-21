@@ -38,6 +38,7 @@ stock_est[repo, date] = round(cumgross[repo, date] × d[repo])   # 锚定估算
 - **比例折扣**把"取消 star"的修正**均匀分摊**到全历史，曲线终点正好落在 `current_stars`。
 - **seam 后**：stock 由每日 `current_stars` 精确跟踪，不再估算。
 - `entity/repo.curve.monthly` 的 `total_end` = 月末 `stock_est`（历史）/ 精确（seam 后）。
+- **年窗口 stock 锚定到该年 12 月（末月）**：年榜的 stock **不**在年粒度独立重算 gross/net，而是直接取该年**最后一个月**的月度 `stock_est`（年 flow 仍 = 12 个月 flow 之和）。这样跨 seam 那一年内部已被月度逻辑解掉的"年内接缝拆分"会原样继承进年窗口，避免双重锚定（`web/lib/workflows/recompute/windows.ts` `deriveYearWindow`）。
 - **精度边界**：假设取消率随时间均匀（实际会变），是 MVP 可接受估算；About 页注明"历史曲线为锚定估算，终点精确"。star-history.com 同类做法。
 
 > **唯一必须精确的数 = `current_stars`**（页面显示的当前 star）。历史曲线形状保留、终点锚定即可。
@@ -48,7 +49,7 @@ stock_est[repo, date] = round(cumgross[repo, date] × d[repo])   # 锚定估算
 
 ### 增速 TOP（growth rate）
 - 定义：`当期 flow / 期初 stock`，降序。
-- **Floor：期初 stock ≥ 20,000 才入选**。无 floor 时增速榜永远是"刚进榜小项目榜"、与新晋榜重复；加 floor 后变成"已有体量却仍在加速的中坚"，信息量独立。
+- **入选两条件（同时满足）**：① **期初 stock ≥ 20,000**（Floor）；② **当期 flow > 0**（仅取正增长，排除 flow ≤ 0 的取消/持平期，使"增速"语义干净）。无 floor 时增速榜永远是"刚进榜小项目榜"、与新晋榜重复；加 floor 后变成"已有体量却仍在加速的中坚"，信息量独立。
 - 期初 stock = 上一周期末 `stock_est`（历史）/ 精确（seam 后）。
 
 ### 新晋（new member）
@@ -85,7 +86,10 @@ org 榜不抓新数据——把 per-repo 按 `owner` 分组求和：
 | 情况 | 处理 |
 |---|---|
 | flow 为负（取消 > 新增） | 正常入榜、排末尾；不裁剪（诚实展示） |
-| 平手（同 value） | 二级排序：window 内 flow 榜按 `stock_est` 降序；window 内 stock 榜按 `flow` 降序；**all-time stock 榜按 `current_stars` 降序**；最末稳定排序按 `repo_id`（`web/lib/workflows/recompute/ranks.ts`） |
+| 平手（同 value）— 主榜 | 二级排序：window 内 flow 榜按 `stock_est` 降序；window 内 stock 榜按 `flow` 降序；**all-time repo stock 榜按 `current_stars` 降序**；最末稳定排序按 `repo_id`（`web/lib/workflows/recompute/ranks.ts`） |
+| 平手（同 value）— 增速 growth | `rate`（=flow/base）降序 → `flow` 降序 → `repo_id` 升序 |
+| 平手（同 value）— 新晋 new | `current_stars` 降序 → `repo_id` 升序 |
+| 平手（同 value）— all-time org stock | `current_stars_sum` 降序 → `login` 升序 |
 | 实体在窗口无数据 | 不入该窗口榜（区别于 flow=0） |
 | 新 repo（创建于窗口内） | 仅从创建日起有数据；stock 从 0 起 |
 | repo 跌出 ≥10k 白名单 | 保留历史（编年史不删），停止每日轮询；是否仍进当前榜 = PRODUCT 取舍（默认：当前榜按当前白名单，历史榜保留） |

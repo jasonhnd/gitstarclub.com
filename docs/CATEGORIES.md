@@ -340,6 +340,12 @@ Purpose:
 - Stores `rules_version` and `generated_at`.
 - Controls which categories are allowed to get public routes and sitemap entries.
 
+> **Curated categories bypass `minimum_repo_count`.** A category becomes public when
+> `public !== false && count > 0 && (curated || count >= minimum_repo_count)`
+> (`web/lib/workflows/recompute/categories.ts`). Because every priority launch language is marked
+> `curated` (`web/lib/categories/rules.ts`), all priority languages are public regardless of their
+> repo count, while non-curated categories must clear `minimum_repo_count`.
+
 Suggested shape:
 
 ```json
@@ -474,16 +480,9 @@ Recommended public routes:
 /categories/[dimension]/[slug]
 ```
 
-Optional language shortcuts:
-
-```text
-/languages
-/languages/[slug]
-```
-
-If language shortcuts are added, choose one canonical URL family and redirect or
-canonicalize the other one. Do not publish duplicate canonical pages for the same
-category.
+Optional language shortcuts (`/languages`, `/languages/[slug]`) were **considered and not
+adopted** (see Open Questions). Language pages live only under the canonical
+`/categories/language/[slug]` family; no `/languages*` routes exist.
 
 ## Page Requirements
 
@@ -521,7 +520,13 @@ Sitemap rules:
 
 ## Implementation Phases
 
-### Phase 0: Documentation and Taxonomy
+> **Status:** Phases 0–4 are **SHIPPED** and proven live (category registry = 214 categories,
+> 87 public, 5,298 repo assignments in production). Publish validation enforces the Phase 1
+> invariants on every run (see `web/lib/workflows/steps/validate.ts`). **Phase 5 (analytical
+> category layer) is the only pending phase**, blocked on the roadmap's analytical data-layer
+> decision.
+
+### Phase 0: Documentation and Taxonomy — SHIPPED
 
 Deliverables:
 
@@ -535,7 +540,7 @@ Acceptance criteria:
   layer.
 - The docs index points to this document.
 
-### Phase 1: Rules and Generated Artifacts
+### Phase 1: Rules and Generated Artifacts — SHIPPED
 
 Deliverables:
 
@@ -555,7 +560,7 @@ Acceptance criteria:
 - Empty generated public categories fail validation.
 - Category all-time rank items are a subset of assigned repositories.
 
-### Phase 2: Language Pages
+### Phase 2: Language Pages — SHIPPED
 
 Deliverables:
 
@@ -578,7 +583,7 @@ Acceptance criteria:
 - Canonical URLs are stable.
 - Build, sitemap, and i18n checks cover language page discovery.
 
-### Phase 3: Broader Category Pages
+### Phase 3: Broader Category Pages — SHIPPED
 
 Deliverables:
 
@@ -596,7 +601,7 @@ Acceptance criteria:
 - Low-volume categories are hidden from sitemap unless curated.
 - Related category links use registry metadata, not ad hoc page code.
 
-### Phase 4: Search and Navigation Integration
+### Phase 4: Search and Navigation Integration — SHIPPED
 
 Deliverables:
 
@@ -610,7 +615,7 @@ Acceptance criteria:
 - Category chips link to canonical category pages.
 - Search remains usable without arbitrary server-side filtering.
 
-### Phase 5: Analytical Category Layer
+### Phase 5: Analytical Category Layer — PENDING (only open phase)
 
 Deliverables:
 
@@ -639,8 +644,10 @@ Recommended test coverage:
 
 ## Open Questions
 
-- Should `/languages/[slug]` exist as a user-facing shortcut, or should language
-  pages live only under `/categories/language/[slug]`?
+- ~~Should `/languages/[slug]` exist as a user-facing shortcut, or should language
+  pages live only under `/categories/language/[slug]`?~~ **RESOLVED: it does NOT exist.**
+  Language pages live only under `/categories/language/[slug]`; there is no `/languages` or
+  `/languages/[slug]` route. The single canonical language URL family is `/categories/language/*`.
 - What minimum repository count should be required for automatic public category
   pages?
 - Which categories should be manually curated even if they are below the minimum

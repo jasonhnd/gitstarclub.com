@@ -11,7 +11,7 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 | Site | [gitstarclub.com](https://gitstarclub.com) |
 | Stack | Next.js 16 (App Router, RSC) · TypeScript 6 · React 19 · Zod 4 · Tailwind 4 · bun · Node 24 |
 | Read path | Static HTML / on-demand ISR from Vercel Edge; JSON in Vercel Blob behind a publish pointer; no runtime database, no engine in the request path |
-| Recurring data refresh | Vercel Workflow (whitelist → metadata → fold → recompute → validate → publish → garbage-collect) |
+| Recurring data refresh | Vercel Workflow (whitelist → rename → metadata → fold → recompute → buildAliases → validate → publish → garbage-collect) |
 | Live overlay | Daily and weekly Vercel cron (`current_month.json`, `hot-snapshot.json`) |
 | Bootstrap | One-off BigQuery (GH Archive) + local DuckDB → Parquet → Blob; archived after seed |
 | Target scale | ~10M page views per day |
@@ -22,7 +22,7 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 - **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB / ClickHouse / Postgres / vector index in the runtime image.
 - **Zero runtime database.** Read-side state is versioned Blob views behind a publish pointer.
 - **Static content pages.** Zero client JavaScript on content surfaces. The named exceptions live in [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md).
-- **Vercel-first.** Deploy, cron, Blob, analytics, workflow — all on Vercel. No scattered third-party billing.
+- **Vercel-first.** Deploy, cron, Blob, workflow, and any future analytics stay on Vercel. No scattered third-party billing.
 - **AI-free.** Features that would normally call an LLM (summaries, classifications) ship as deterministic templates.
 
 The reasoning behind each constraint is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -75,7 +75,8 @@ gitstarclub/
     ├── lib/
     │   ├── contracts/             Zod schemas (build-side type source of truth)
     │   ├── data/                  Read layer: fetch Blob + Zod parse + React cache
-    │   ├── workflows/             Workflow steps: recompute, fold, validate, publish, gc
+    │   ├── workflows/             Workflow steps: rename, fold, recompute, buildAliases, validate, publish, gc
+    │   ├── categories/            Deterministic category rules (slug / family / topic / keyword classification)
     │   ├── search/                MiniSearch core (lazy-loaded by SearchBox)
     │   ├── compare/               Compare normalization core (URL parse, alignment, palette)
     │   ├── i18n/                  Seven-locale chrome dictionaries + I18nProvider
@@ -91,7 +92,7 @@ gitstarclub/
 |---|---|---|
 | `/api/cron/daily` | `0 3 * * *` | Live overlay: append today's deltas, recompute `hot-snapshot.json`, revalidate hot surfaces |
 | `/api/cron/weekly` | `0 4 * * 0` | Weekly live refresh of current week, current month, hot snapshot, sync runs |
-| `/api/workflows/refresh/start` | `0 6 * * 0` | Full recompute via Workflow: whitelist → metadata → fold → recompute → validate → publish → gc |
+| `/api/workflows/refresh/start` | `0 6 * * 0` | Full recompute via Workflow: whitelist → rename → metadata → fold → recompute → buildAliases → validate → publish → gc |
 
 See [docs/OPS.md](docs/OPS.md) for details and the manual-trigger runbook.
 

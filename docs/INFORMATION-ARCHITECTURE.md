@@ -28,6 +28,7 @@ safe direct-access fallback endpoint.
 
 - **Pulse**: `/pulse`
 - **Rankings**: `/rankings`
+- **Categories**: `/categories` — browse by language / ecosystem / domain (shown at `md+` widths)
 - **Compare**: `/compare` — multi-repo star-history overlay (URL-as-state)
 - **About**: `/about`
 
@@ -36,7 +37,7 @@ The home page (`/`) is also the Pulse experience. It is no longer a separate chr
 ## Search
 
 A global SearchBox in the chrome top bar is the "go directly by name" discovery
-entry, covering all ~5,261 tracked repositories and complementing "browse by
+entry, covering the full tracked set (5,300+ repositories) and complementing "browse by
 time" (year / month / week). It is an instant client combobox that jumps straight
 to `/{owner}/{repo}` (no `/search?q=` results page). Component / lazy-load /
 MiniSearch detail: see [FRONTEND.md](./FRONTEND.md) §6.1 (SearchBox); product
@@ -76,8 +77,11 @@ Repository details use GitHub-style canonical paths:
 - `/{owner}/{repo}`: repository star history and GitHub metadata side panel.
 - `/o/{login}`: organization / owner aggregate page.
 
-Reserved top-level paths (`pulse`, `rankings`, `about`, `o`, `api`, `-`) belong
-to GitStarClub and cannot be interpreted as repository owners.
+Reserved top-level paths belong to GitStarClub and cannot be interpreted as
+repository owners: the page segments `pulse`, `rankings`, `categories`,
+`compare`, `about`, `o`, `-`; the route handlers `api`, `search-index`,
+`repo-curve`; and the root metadata routes `sitemap.xml`, `robots.txt`, and
+`manifest.webmanifest` (`sitemap.ts` / `robots.ts` / `manifest.ts`).
 
 Repository pages read GitHub metadata from precomputed JSON views. They do not
 scrape GitHub HTML and do not call GitHub at request time. Optional fields such

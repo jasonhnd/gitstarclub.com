@@ -16,7 +16,8 @@ export function LanguageSwitcher({ locale }: { locale: Locale }) {
 
   useEffect(() => {
     if (!pendingLocale) return;
-    document.cookie = `${LANG_COOKIE}=${encodeURIComponent(pendingLocale)}; Path=/; Max-Age=${ONE_YEAR}; SameSite=Lax`;
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${LANG_COOKIE}=${encodeURIComponent(pendingLocale)}; Path=/; Max-Age=${ONE_YEAR}; SameSite=Lax${secure}`;
     document.documentElement.lang = pendingLocale;
     menuRef.current?.removeAttribute("open");
     startTransition(() => router.refresh());
