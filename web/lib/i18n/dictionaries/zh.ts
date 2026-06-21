@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const zh: Dict = {
-  nav: { home: "首页", trending: "脉搏", rankings: "排行榜", categories: "分类", compare: "对比", about: "关于" },
+  nav: { home: "首页", pulse: "脉搏", rankings: "排行榜", categories: "分类", compare: "对比", about: "关于" },
   home: {
     heroPre: "",
     heroAccent: "开源",
@@ -108,12 +108,13 @@ const zh: Dict = {
     organizations: "组织",
     repos: "个仓库",
   },
-  trending: {
+  pulse: {
     title: "开源脉搏",
     subtitle: "追踪范围内本周、本月与本年变化最明显的开源项目。",
     surging: "本月上涨领先",
     onThisDay: "历史上的今天",
     crossed: "突破",
+    open: "打开",
   },
   footer: {
     madeIn: "制作于东京",

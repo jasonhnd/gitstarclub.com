@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { pageMeta } from "@/lib/seo";
+import { PULSE_META_DESCRIPTION, PULSE_META_TITLE } from "@/lib/site-copy";
 import { PulseView } from "./PulseView";
 
 export const revalidate = false;
 
 export async function generateMetadata(): Promise<Metadata> {
   return pageMeta({
-    title: "Open Source Pulse — Weekly, Monthly & Yearly GitHub Movers",
-    description: "The current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub repositories.",
+    title: PULSE_META_TITLE,
+    description: PULSE_META_DESCRIPTION,
     path: "/pulse",
     locale: "en",
   });

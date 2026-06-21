@@ -22,7 +22,7 @@
   --md-sys-color-surface-variant: #dfe2eb;
   --md-sys-color-on-surface-variant: #43474e;
   --md-sys-color-surface-dim: #dadce0;
-  --md-sys-color-surface-bright: #fbfbfd;
+  --md-sys-color-surface-bright: #ffffff;
   --md-sys-color-surface-container-lowest: #ffffff;
   --md-sys-color-surface-container-low: #f5f5f8;
   --md-sys-color-surface-container: #efeff2;
@@ -128,6 +128,18 @@
 
 /* non-color design tokens */
 :root {
+  --shape-xs: 4px;
+  --shape-s: 8px;
+  --shape-m: 12px;
+  --shape-l: 16px;
+  --shape-xl: 28px;
+  --shape-full: 999px;
+  --space-gutter: clamp(1.25rem, 5vw, 2.5rem);
+  --space-section-y: clamp(1.5rem, 4vw, 3rem);
+  --type-display-lg: clamp(2.6rem, 7vw, 5.4rem);
+  --type-display-md: clamp(2.2rem, 6vw, 4rem);
+  --type-title-lg: 1.35rem;
+  --type-title-md: 1.15rem;
   --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
   --ease-spring: linear(
     0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849,
@@ -156,6 +168,10 @@
   --color-on-surface: var(--md-sys-color-on-surface);
   --color-surface-variant: var(--md-sys-color-surface-variant);
   --color-on-surface-variant: var(--md-sys-color-on-surface-variant);
+  --color-surface-dim: var(--md-sys-color-surface-dim);
+  --color-surface-bright: var(--md-sys-color-surface-bright);
+  --color-surface-container-lowest: var(--md-sys-color-surface-container-lowest);
+  --color-surface-container-low: var(--md-sys-color-surface-container-low);
   --color-surface-container: var(--md-sys-color-surface-container);
   --color-surface-container-high: var(--md-sys-color-surface-container-high);
   --color-surface-container-highest: var(--md-sys-color-surface-container-highest);
@@ -220,7 +236,7 @@ body {
 .hl {
   color: var(--md-sys-color-on-primary-container);
   background: var(--md-sys-color-primary-container);
-  border-radius: 12px;
+  border-radius: var(--shape-m);
   padding: 0.02em 0.22em;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;

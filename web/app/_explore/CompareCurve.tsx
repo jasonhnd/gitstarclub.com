@@ -48,7 +48,7 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
             aria-pressed={m === mode}
             className={`rounded-full px-3 py-1 transition-colors ${
               m === mode
-                ? "bg-primary-container text-on-primary-container"
+                ? "bg-secondary-container text-on-secondary-container"
                 : "text-on-surface-variant hover:text-on-surface"
             }`}
           >

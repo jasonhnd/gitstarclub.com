@@ -1,10 +1,9 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
+import { PAD_X } from "@/app/_explore/layout-tokens";
 import { T } from "@/lib/i18n/client";
 import { pageMeta } from "@/lib/seo";
-
-const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
 export async function generateMetadata(): Promise<Metadata> {
   return pageMeta({

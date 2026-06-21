@@ -78,7 +78,7 @@ describe("en dictionary shape (source of truth)", () => {
         "repo",
         "org",
         "rankings",
-        "trending",
+        "pulse",
         "footer",
       ]),
     );
@@ -95,7 +95,7 @@ describe("en dictionary shape (source of truth)", () => {
 describe("resolve (dotted-path resolver, replicated from client.tsx)", () => {
   test("returns the leaf string for a valid dotted path", () => {
     expect(resolve(en, "nav.home")).toBe("Home");
-    expect(resolve(en, "nav.trending")).toBe("Pulse"); // label differs from key on purpose
+    expect(resolve(en, "nav.pulse")).toBe("Pulse");
     expect(resolve(en, "footer.madeIn")).toBe("Made in Tokyo");
   });
 

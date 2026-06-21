@@ -7,6 +7,7 @@ import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve, type Milestone } from "@/app/_explore/StarCurve";
 import { ShareButton } from "@/app/_explore/ShareButton";
+import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getRepoIdByFullName, getRepoEntity, getAliasMap, getReposLookup } from "@/lib/data";
 import { fmtStars, ymParts, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
@@ -15,7 +16,6 @@ import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
 
-const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;
@@ -135,7 +135,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
             </div>
           </header>
 
-          <aside className="rounded-2xl bg-surface-container px-4 py-4">
+          <aside className="rounded-2xl bg-surface-container-low px-4 py-4">
             <h2 className="font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
               <T path="repo.about" />
             </h2>

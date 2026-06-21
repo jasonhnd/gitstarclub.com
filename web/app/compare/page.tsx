@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
+import { PAD_X } from "@/app/_explore/layout-tokens";
 import { pageMeta } from "@/lib/seo";
 import { T } from "@/lib/i18n/client";
 import { CompareClient } from "./CompareClient";
@@ -23,8 +24,6 @@ export function generateMetadata(): Metadata {
     locale: "en",
   });
 }
-
-const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
 export default function ComparePage() {
   return (

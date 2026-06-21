@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const fr: Dict = {
-  nav: { home: "Accueil", trending: "Activité", rankings: "Classements", categories: "Catégories", compare: "Comparer", about: "À propos" },
+  nav: { home: "Accueil", pulse: "Activité", rankings: "Classements", categories: "Catégories", compare: "Comparer", about: "À propos" },
   home: {
     heroPre: "Une histoire de l'",
     heroAccent: "open source",
@@ -108,12 +108,13 @@ const fr: Dict = {
     organizations: "Organisations",
     repos: "dépôts",
   },
-  trending: {
+  pulse: {
     title: "Activité open source",
     subtitle: "Ce qui change cette semaine, ce mois-ci et cette année dans les dépôts open source suivis.",
     surging: "En hausse ce mois-ci",
     onThisDay: "En ce jour",
     crossed: "a dépassé",
+    open: "Ouvrir",
   },
   footer: {
     madeIn: "Conçu à Tokyo",

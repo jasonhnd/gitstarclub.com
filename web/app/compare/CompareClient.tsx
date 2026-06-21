@@ -142,7 +142,7 @@ export function CompareClient() {
 
   return (
     <div>
-      <div className="rounded-2xl border border-outline-variant bg-surface-container p-4">
+      <div className="rounded-2xl border border-outline-variant bg-surface-container-low p-4">
         <div className="flex items-center gap-2 rounded-full border border-outline-variant bg-surface px-3 py-2 transition-colors focus-within:border-primary">
           <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-on-surface-variant" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />

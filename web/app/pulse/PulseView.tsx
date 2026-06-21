@@ -3,14 +3,13 @@ import Link from "next/link";
 import { Chrome } from "@/app/_explore/Chrome";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
+import { PAD_X } from "@/app/_explore/layout-tokens";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import en from "@/lib/i18n/dictionaries/en";
 import { getHotSnapshot, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { webSiteLd, collectionLd } from "@/lib/jsonld";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
-
-const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 
 // Locale-neutral body: data formatting uses the default locale (English) so the page is
 // static. Chrome labels are rendered via <T> and swapped to the cookie locale after hydration.
@@ -51,22 +50,22 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
     <>
       <Chrome />
       {includeWebsiteLd && <JsonLd data={webSiteLd(LOC, "/")} />}
-      <JsonLd data={collectionLd(en.trending.title, "/pulse", LOC)} />
+      <JsonLd data={collectionLd(en.pulse.title, "/pulse", LOC)} />
       <main className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
         <section className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
           <div>
             <p className="font-mono text-[0.78rem] uppercase tracking-wider text-primary-fixed-dim">
-              <T path="nav.trending" />
+              <T path="nav.pulse" />
             </p>
-            <h1 className="mt-3 max-w-[13ch] animate-rise text-[clamp(2.6rem,7vw,5.4rem)] font-extrabold leading-[0.98] tracking-[-0.04em] text-on-surface">
-              <T path="trending.title" />
+            <h1 className="mt-3 max-w-[13ch] animate-rise text-[var(--type-display-lg)] font-extrabold leading-[0.98] tracking-[-0.04em] text-on-surface">
+              <T path="pulse.title" />
             </h1>
             <p className="mt-5 max-w-[48ch] text-[clamp(1rem,1.7vw,1.2rem)] text-on-surface-variant">
-              <T path="trending.subtitle" />
+              <T path="pulse.subtitle" />
             </p>
           </div>
 
-          <div className="grid gap-2 rounded-2xl bg-surface-container px-4 py-4">
+          <div className="grid gap-2 rounded-2xl bg-surface-container-low px-4 py-4">
             <PulseJump href={weekHref(activeWeek)} label={<T path="week.label" />} value={activeWeek.period} />
             <PulseJump href={`/rankings/${periods.year}/${periods.month}`} label={<T path="month.label" />} value={periods.monthPeriod} />
             <PulseJump href={`/rankings/${periods.year}`} label={<T path="year.label" />} value={String(periods.year)} />
@@ -76,7 +75,7 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
 
         <div className="mt-[clamp(2rem,5vw,4rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel title={<T path="week.top" />} href={weekHref(activeWeek)} meta={activeWeek.period} rows={weekRows} />
-          <PulsePanel title={<T path="trending.surging" />} href={`/rankings/${periods.year}/${periods.month}`} meta={periods.monthPeriod} rows={monthRows} />
+          <PulsePanel title={<T path="pulse.surging" />} href={`/rankings/${periods.year}/${periods.month}`} meta={periods.monthPeriod} rows={monthRows} />
           <PulsePanel
             title={
               <>
@@ -110,7 +109,7 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
           {onThisDay.length > 0 && (
             <aside>
               <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">
-                <T path="trending.onThisDay" />
+                <T path="pulse.onThisDay" />
               </h2>
               <ul className="flex flex-col divide-y divide-outline-variant/50">
                 {onThisDay.slice(0, 8).map((e) => (
@@ -118,7 +117,7 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
                     <Link href={`/${e.owner}/${e.name}`} className="group block py-2.5 transition-colors hover:bg-on-surface/5">
                       <span className="block truncate font-mono text-[0.86rem] text-on-surface group-hover:underline group-hover:underline-offset-2">{e.full_name}</span>
                       <span className="font-mono text-[0.75rem] tabular-nums text-on-surface-variant">
-                        <T path="trending.crossed" /> <span className="font-semibold text-primary-fixed-dim">{e.crossed}</span> · {e.date}
+                        <T path="pulse.crossed" /> <span className="font-semibold text-primary-fixed-dim">{e.crossed}</span> · {e.date}
                       </span>
                     </Link>
                   </li>
@@ -159,7 +158,7 @@ function PulsePanel({ title, href, meta, rows }: { title: ReactNode; href: strin
         <div className="flex shrink-0 items-center gap-2">
           {meta && <span className="rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">{meta}</span>}
           <Link href={href} className="font-mono text-[0.72rem] text-primary-fixed-dim hover:underline">
-            open
+            <T path="pulse.open" />
           </Link>
         </div>
       </div>

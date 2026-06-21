@@ -7,6 +7,7 @@ import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { ShareButton } from "@/app/_explore/ShareButton";
+import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars, monthLabel } from "@/lib/format";
 import { collectionLd } from "@/lib/jsonld";
@@ -16,7 +17,6 @@ import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import en from "@/lib/i18n/dictionaries/en";
 
-const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;
