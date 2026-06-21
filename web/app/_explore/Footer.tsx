@@ -28,6 +28,9 @@ export function Footer({ asOf }: { asOf?: string | null }) {
           <Link href="/about" className="transition-colors hover:text-on-surface">
             {t.nav.about}
           </Link>
+          <Link href="/privacy" className="transition-colors hover:text-on-surface">
+            {t.footer.privacy}
+          </Link>
           <LanguageSwitcher locale={locale} />
         </nav>
       </div>

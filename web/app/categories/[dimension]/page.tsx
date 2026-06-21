@@ -9,6 +9,7 @@ import { getCategoryRegistry } from "@/lib/data";
 import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
+import { T } from "@/lib/i18n/client";
 import { categoryPath, fallbackRegistry, findDimension, isCategoryDimension } from "../category-page-data";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -49,15 +50,17 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
       <Chrome />
       <JsonLd data={collectionLd(`${entry.label} categories`, categoryPath(dimension), LOC)} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { label: "Categories", href: "/categories" }, { label: entry.label }]} />
+        <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { path: "nav.categories", href: "/categories" }, { label: entry.label }]} />
 
         <section className="mt-5">
-          <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">Category dimension</p>
+          <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">
+            <T path="categories.dimensionEyebrow" />
+          </p>
           <h1 className="mt-2 text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none text-on-surface">
             {entry.label}
           </h1>
           <p className="mt-3 max-w-[48ch] text-[clamp(0.95rem,1.6vw,1.1rem)] text-on-surface-variant">
-            {categories.length} public groups in the tracked repository set.
+            {categories.length} <T path="categories.publicGroups" />
           </p>
         </section>
 
@@ -70,7 +73,13 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
             >
               <span className="block truncate font-mono text-[0.95rem] font-semibold text-on-surface">{category.label}</span>
               <span className="mt-1 block font-mono text-[0.75rem] text-on-surface-variant">
-                {category.count > 0 ? `${category.count} repositories` : "Pending count"}
+                {category.count > 0 ? (
+                  <>
+                    {category.count} <T path="categories.repositories" />
+                  </>
+                ) : (
+                  <T path="categories.pendingCount" />
+                )}
               </span>
             </Link>
           ))}

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useDict, type ChromeKey } from "@/lib/i18n/client";
+import { stringifyJsonForScript } from "@/lib/json-script";
 
 // A crumb is either a chrome label (translated client-side via `path`) or a data label
 // (already-resolved string, e.g. a repo owner or a year). Data labels are locale-independent.
@@ -48,7 +49,7 @@ export function Breadcrumbs({ items }: { items: Crumb[] }) {
           </span>
         );
       })}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: stringifyJsonForScript(ld) }} />
     </nav>
   );
 }

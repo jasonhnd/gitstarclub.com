@@ -248,14 +248,15 @@ export async function generateMetadata({ params }: { params: Promise<{ login: st
 | 字段 | 值 |
 |---|---|
 | title | `All-Time GitHub Star Rankings — Most-Starred Repos & Orgs` |
-| description | `The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across 11 years.` |
+| description | `The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across ${trackedYears} years.` |
 | canonical | `/rankings` |
 
 ```ts
 export async function generateMetadata(): Promise<Metadata> {
+  const trackedYears = currentUtcPeriods().year - FIRST_YEAR + 1;
   return pageMeta({
     title: "All-Time GitHub Star Rankings — Most-Starred Repos & Orgs",
-    description: "The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across 11 years.",
+    description: `The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across ${trackedYears} years.`,
     path: "/rankings",
     locale: "en",
   });
@@ -579,7 +580,7 @@ Disallow: /
   "name": "GitStarClub",
   "url": "https://gitstarclub.com/",      // abs(path)，首页 path = "/"
   "inLanguage": "en",                      // locale（页内默认英文，见 §10）
-  "description": "GitHub star history & trends across 5,200+ repositories with ≥10k stars."
+  "description": "GitHub star history & trends across 5,300+ repositories with ≥10k stars."
   // 不输出 potentialAction / SearchAction：搜索是客户端 combobox、直达
   // /{owner}/{name}，无规范结果页 URL 可供 SearchAction 广告（见下注）
 }
@@ -847,7 +848,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 - **没有 Blob 支撑的 OG pipeline**：卡片不在 pipeline 侧增量生成、也不存 Vercel Blob（`blob://og/...`），更不在每次 build 全量出图。它们在**请求 / ISR 时按路由现绘**，随路由段一起进 Vercel 持久 ISR store + CDN 缓存，后续命中即取缓存（与正文页同一缓存模型，见 §3）。
 - 页面 meta 的注入由 `web/lib/seo.ts` 的 `pageMeta(...)` 统一完成：`openGraph.images` / `twitter.images` 设为 `opts.ogImage ?? "/opengraph-image"`，即一个**路由路径**（`<route>/opengraph-image` 或站点默认 `/opengraph-image`），经 `metadataBase` 解析为绝对 URL——**不是 Blob URL，也不绕过 Next.js 动态 OG route**（恰恰相反，正是走这个 route）。注意：`pageMeta` 显式传 `images` 是为了不让自定义 `openGraph` 覆盖文件约定卡片时把它吞掉。
 - 字体：当前用 **`next/og` 默认字体**（★ 用内联 SVG `<path>` 绘制，因默认字体无 ★ 字形）；尚未接入 Plus Jakarta Sans / Geist Mono 子集。
-- 配色（见 `web/lib/og-card.tsx` / `web/app/opengraph-image.tsx`）：surface = 石墨灰深底 `#121316`；文字 `#e6e1e6` / `#cac4cf`；accent = 星金（★ / 数字高亮用 `#f4b942`）。当前为**深色卡**。
+- 配色（见 `web/lib/og-theme.ts`）：surface = 石墨灰深底 `#121316`；文字走 `on-surface #e3e2e6` / `on-surface-variant #c3c7cf` / `outline #8d9199`；accent = 星金（★ / 数字高亮用 `primary-fixed-dim #ffba3b`）。当前为**深色卡**。
 
 > 注意：Satori 仅支持 flexbox + CSS 子集（**不支持 `display: grid`**），OG 模板用 flex 布局。
 
@@ -857,7 +858,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 | 页面 | OG 卡片 | 实现位置 | 内容（1200×630，flex 布局） | 文案搜索词对齐 |
 |---|---|---|---|---|
-| 站点默认 / 首页 / `/pulse` | **站点卡** | `web/app/opengraph-image.tsx` | `GitStarClub.com` 大标题 + 「A chronicle of open source — 11 years of GitHub star history across 5,200+ projects.」 | star history |
+| 站点默认 / 首页 / `/pulse` | **站点卡** | `web/app/opengraph-image.tsx` | `GitStarClub.com` 大标题 + 「A chronicle of open source — more than a decade of GitHub star history across 5,300+ projects.」 | star history |
 | Repo 页 | **repo 卡** | `web/app/[owner]/[name]/opengraph-image.tsx` | `owner/name` 大字 + 当前 star 数（`fmtStars`）+ 主语言（按 repo 现场读取，未知 repo 仅出名） | <repo> star history |
 | 年度页 | **排名卡** | `web/app/rankings/[year]/opengraph-image.tsx`（共用 `og-card.tsx` 的 `rankingCard`） | 「<Year>」特大字 + 当年 stars-gained TOP 3 repo（金色 + `+N`） | github <year> trending |
 | 月度页 / 周页 | **排名卡** | `web/app/rankings/[year]/[period]/opengraph-image.tsx`（共用 `rankingCard`，按 `^W(\d+)$` 分流月/周） | 「<Month Year>」/「<Year> · Week N」+ 该期 stars-gained TOP 3 | top github repos october 2024 |
@@ -937,7 +938,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **OG / 社交（§13）**
 
-- [ ] 4 张 OG 卡片（站点 / repo / 年 / 月·周）由 `opengraph-image.tsx` 路由现绘 + ISR/CDN 缓存（**石墨灰深底 `#121316` + 星金 `#f4b942`**、当前 `next/og` 默认字体）；org 页与全时榜回退站点卡
+- [ ] 4 张 OG 卡片（站点 / repo / 年 / 月·周）由 `opengraph-image.tsx` 路由现绘 + ISR/CDN 缓存（**石墨灰深底 `#121316` + 星金 `#ffba3b`**、当前 `next/og` 默认字体）；org 页与全时榜回退站点卡
 - [ ] `pageMeta` 把 `og:image` / `twitter.images` 指向卡片路由（`<route>/opengraph-image` 或 `/opengraph-image`，经 `metadataBase` 解析）；Twitter `summary_large_image` + alt
 
 **性能（§12）**

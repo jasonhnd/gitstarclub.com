@@ -1,12 +1,13 @@
 import { refreshLiveViews } from "@/lib/cron/live-refresh";
 import { completedRun, failedRun, safeRecordSyncRun, syncRunId } from "@/lib/cron/sync-runs";
 import { recordHealth, sendAlert } from "@/lib/observability/alert";
+import { hasValidBearerToken, internalFailurePayload } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 export async function GET(req: Request) {
-  if (!authorized(req)) return new Response("Unauthorized", { status: 401 });
+  if (!hasValidBearerToken(req.headers.get("authorization"))) return new Response("Unauthorized", { status: 401 });
 
   const dry = new URL(req.url).searchParams.get("dry") === "1";
   const startedAt = new Date();
@@ -29,11 +30,7 @@ export async function GET(req: Request) {
       await sendAlert({ pipeline: "cron-weekly", title: "weekly live refresh failed", run_id: id, error: run.error });
       await recordHealth("cron-weekly", "failed", { run_id: id, error: run.error });
     }
-    return Response.json({ ok: false, error: run.error, log_error }, { status: 500 });
+    console.error("[cron-weekly] failed", { run_id: id, error: run.error, log_error });
+    return Response.json(internalFailurePayload(id), { status: 500 });
   }
-}
-
-function authorized(req: Request): boolean {
-  const auth = req.headers.get("authorization");
-  return Boolean(process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`);
 }

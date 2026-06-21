@@ -10,6 +10,6 @@ export function GET(req: Request) {
   const next = url.searchParams.get("next") || "/";
   const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
   const res = NextResponse.redirect(new URL(safeNext, url));
-  res.cookies.set(LANG_COOKIE, locale, { path: "/", maxAge: ONE_YEAR, sameSite: "lax" });
+  res.cookies.set(LANG_COOKIE, locale, { path: "/", maxAge: ONE_YEAR, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
   return res;
 }

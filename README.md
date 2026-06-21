@@ -22,7 +22,7 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 - **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB / ClickHouse / Postgres / vector index in the runtime image.
 - **Zero runtime database.** Read-side state is versioned Blob views behind a publish pointer.
 - **Static content pages.** Zero client JavaScript on content surfaces. The named exceptions live in [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md).
-- **Vercel-first.** Deploy, cron, Blob, analytics, workflow — all on Vercel. No scattered third-party billing.
+- **Vercel-first.** Deploy, cron, Blob, workflow, and any future analytics stay on Vercel. No scattered third-party billing.
 - **AI-free.** Features that would normally call an LLM (summaries, classifications) ship as deterministic templates.
 
 The reasoning behind each constraint is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

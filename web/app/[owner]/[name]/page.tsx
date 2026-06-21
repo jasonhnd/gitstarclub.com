@@ -143,7 +143,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
             <dl className="mt-4 grid gap-3 text-[0.86rem]">
               <MetaRow label={<T path="repo.owner" />} value={repo.owner} href={`/o/${repo.owner}`} />
               {languages.length > 0 && (
-                <MetaRow label={languages.length > 1 ? "Languages" : "Language"} value={<LanguageLinks languages={languages} totalSize={languageTotalSize} />} wrap />
+                <MetaRow label={<T path={languages.length > 1 ? "repo.languages" : "repo.language"} />} value={<LanguageLinks languages={languages} totalSize={languageTotalSize} />} wrap />
               )}
               {repo.license && <MetaRow label={<T path="repo.license" />} value={repo.license} />}
               {repo.homepage_url && <MetaRow label={<T path="repo.homepage" />} value={repo.homepage_url.replace(/^https?:\/\//, "")} href={repo.homepage_url} external />}
