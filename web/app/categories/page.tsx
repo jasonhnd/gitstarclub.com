@@ -6,6 +6,7 @@ import { getCategoryRegistry } from "@/lib/data";
 import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
+import { T } from "@/lib/i18n/client";
 import { CATEGORY_INDEX_PREVIEW_LIMIT, categoryPath, fallbackRegistry, publicCategoryEntries, publicDimensions } from "./category-page-data";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -33,12 +34,14 @@ export default async function CategoriesPage() {
       <JsonLd data={collectionLd("GitHub repository categories", "/categories", LOC)} />
       <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <section>
-          <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">Categories</p>
+          <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">
+            <T path="categories.eyebrow" />
+          </p>
           <h1 className="mt-2 text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none text-on-surface">
-            Repository categories
+            <T path="categories.title" />
           </h1>
           <p className="mt-3 max-w-[50ch] text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">
-            Browse the tracked open-source set through deterministic language and topic groupings.
+            <T path="categories.subtitle" />
           </p>
         </section>
 
@@ -53,7 +56,7 @@ export default async function CategoriesPage() {
               >
                 <span className="block text-[1.05rem] font-extrabold text-on-surface">{dimension.label}</span>
                 <span className="mt-2 block font-mono text-[0.78rem] text-on-surface-variant">
-                  {visible.length} groups
+                  {visible.length} <T path="categories.groups" />
                 </span>
               </Link>
             );
@@ -61,7 +64,9 @@ export default async function CategoriesPage() {
         </section>
 
         <section className="mt-[clamp(2rem,4vw,3rem)]">
-          <h2 className="text-[1.3rem] font-extrabold text-on-surface">Browse by dimension</h2>
+          <h2 className="text-[1.3rem] font-extrabold text-on-surface">
+            <T path="categories.browseByDimension" />
+          </h2>
           <div className="mt-4 grid gap-[clamp(1.25rem,3vw,2rem)]">
             {dimensions.map((dimension) => (
               <section key={dimension.id} aria-labelledby={`dimension-${dimension.id}`}>
@@ -70,7 +75,7 @@ export default async function CategoriesPage() {
                     {dimension.label}
                   </h3>
                   <Link href={categoryPath(dimension.id)} className="font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
-                    View all
+                    <T path="categories.viewAll" />
                   </Link>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -85,7 +90,7 @@ export default async function CategoriesPage() {
 
         {publicCategories.length === 0 && (
           <p className="mt-8 rounded-lg bg-surface-container px-4 py-3 text-[0.9rem] text-on-surface-variant">
-            Category data is waiting for the next published recompute.
+            <T path="categories.empty" />
           </p>
         )}
       </main>

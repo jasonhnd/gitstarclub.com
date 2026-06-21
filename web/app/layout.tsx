@@ -6,6 +6,7 @@ import { Footer } from "./_explore/Footer";
 import { getMeta } from "@/lib/data";
 import { I18nProvider } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
+import { THEME_INIT_SCRIPT } from "@/lib/theme-script";
 
 const plusJakarta = Plus_Jakarta_Sans({ variable: "--font-plus-jakarta", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -52,9 +53,6 @@ export const viewport: Viewport = {
   ],
 };
 
-// Runs before paint: explicit override wins, else follow system. Prevents a theme flash.
-const themeInit = `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="dark"?"#121316":"#fbfbfd");}}catch(e){}})();`;
-
 // Language is an in-page preference stored in a first-party cookie; URLs stay canonical.
 // The server renders the default locale (English) so pages stay static/ISR; the client
 // I18nProvider reads the cookie after hydration and swaps the chrome strings. The data
@@ -64,7 +62,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang={DEFAULT_LOCALE} suppressHydrationWarning className={`${plusJakarta.variable} ${geistMono.variable}`}>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="flex min-h-svh flex-col">
         <I18nProvider>

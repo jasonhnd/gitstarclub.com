@@ -1,0 +1,37 @@
+import { describe, expect, test } from "bun:test";
+import { stringifyJsonForScript } from "./json-script";
+import { hasValidBearerToken } from "./security";
+
+describe("stringifyJsonForScript", () => {
+  test("escapes script-breaking and HTML-sensitive characters", () => {
+    const json = stringifyJsonForScript({
+      description: '</script><script>alert("x")</script>&',
+      line: "a\u2028b\u2029c",
+    });
+
+    expect(json).not.toContain("</script>");
+    expect(json).not.toContain("<script>");
+    expect(json).toContain("\\u003c/script\\u003e\\u003cscript\\u003e");
+    expect(json).toContain("\\u0026");
+    expect(json).toContain("\\u2028");
+    expect(json).toContain("\\u2029");
+    expect(JSON.parse(json)).toEqual({
+      description: '</script><script>alert("x")</script>&',
+      line: "a\u2028b\u2029c",
+    });
+  });
+});
+
+describe("hasValidBearerToken", () => {
+  test("accepts an exact bearer token match", () => {
+    expect(hasValidBearerToken("Bearer secret-value", "secret-value")).toBe(true);
+  });
+
+  test("rejects missing, malformed, and unequal bearer tokens", () => {
+    expect(hasValidBearerToken(null, "secret-value")).toBe(false);
+    expect(hasValidBearerToken("Basic secret-value", "secret-value")).toBe(false);
+    expect(hasValidBearerToken("Bearer secret-value-extra", "secret-value")).toBe(false);
+    expect(hasValidBearerToken("Bearer wrong-value", "secret-value")).toBe(false);
+    expect(hasValidBearerToken("Bearer secret-value", "")).toBe(false);
+  });
+});

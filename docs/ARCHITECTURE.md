@@ -16,7 +16,7 @@ These are non-negotiable for the production system. New features must respect al
 
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
 2. **Zero runtime database.** Read-side state lives in versioned Blob views resolved through a publish pointer; there is no SQL connection to open.
-3. **Vercel-first.** Deploy, cron, Blob, analytics, workflow — all on Vercel. No scattered third-party billing surfaces.
+3. **Vercel-first.** Deploy, cron, Blob, workflow, and any future analytics stay on Vercel. No scattered third-party billing surfaces.
 4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML with zero client JavaScript. The few client-JS exceptions are listed in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
 5. **Recurring work on Vercel, not the laptop.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) runs as a Vercel Workflow. Local pipeline runs are reserved for one-off bootstrap.
 
@@ -34,7 +34,7 @@ The same data layer also operates AI-free: features that look like they would ca
 | Live-overlay data | Daily `current_month.json`, weekly `hot-snapshot.json`, written by cron | Append-only within a period |
 | Recurring data refresh | Vercel Workflow (multi-step, Blob checkpoint) | |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
-| Analytics | Vercel Analytics + Speed Insights, GA4 | |
+| Analytics | Not enabled in the client app; any future analytics must ship with privacy notice and consent gating where required | |
 
 Deliberately not in the stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, GitHub Actions, tRPC, any LLM SDK. The reasoning is the constraints above.
 
@@ -57,7 +57,7 @@ Deliberately not in the stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, 
 └─────────────────────────────────────────────────────────────┘
 
 ┌─ Daily cron (live overlay, JSON-only, seconds) ─────────────┐
-│  1. GraphQL: current_stars for tracked repos (~53 queries)  │
+│  1. GraphQL: current_stars for tracked repos (~54 queries)  │
 │  2. Net daily delta = today − yesterday                     │
 │  3. Append to current_month.json                            │
 │  4. Recompute hot-snapshot.json (home + current-period top) │
@@ -114,7 +114,7 @@ Weekly rankings cross calendar months. Daily is the smallest grain that exactly 
 - Historical curves are gross adds (GH Archive WatchEvents); live deltas are net (GraphQL). The seam introduces a small inconsistency. Current totals always reflect GitHub's authoritative count.
 - Survivorship bias: only repos that currently have ≥10,000 stars are backfilled. Projects that were once popular but dropped below the threshold are absent.
 - Cumulative gross does not necessarily equal current total (stars get revoked); the current total is the authoritative anchor.
-- Repo renames keep their identity via `repo.id`; URLs use the current `full_name` with 301 redirects from the old.
+- Repo renames keep their identity via `repo.id`; URLs use the current `full_name` with 308 redirects from the old.
 
 ### Why the data starts at 2015
 
@@ -211,7 +211,7 @@ Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next
 
 ### GraphQL budget
 
-The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per query; ~53 queries per cron run (~1%) sit comfortably under the limit. Metadata backfill (topics, license, etc.) costs more per query but still remains well below the budget.
+The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per query; ~54 queries per cron run (~1%) sit comfortably under the limit. Metadata backfill (topics, license, etc.) costs more per query but still remains well below the budget.
 
 ### Performance posture (designed for ~10M page views per day)
 

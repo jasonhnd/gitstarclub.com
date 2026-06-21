@@ -9,6 +9,7 @@ import { getCategoryAllTime, getCategoryRegistry, getReposLookup, joinRepoRank }
 import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
+import { T } from "@/lib/i18n/client";
 import {
   categoryPath,
   fallbackRegistry,
@@ -67,7 +68,7 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
         <Breadcrumbs
           items={[
             { path: "nav.home", href: "/" },
-            { label: "Categories", href: "/categories" },
+            { path: "nav.categories", href: "/categories" },
             { label: dimensionEntry?.label ?? dimension, href: categoryPath(dimension) },
             { label: category.label },
           ]}
@@ -82,29 +83,41 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
               {category.label}
             </h1>
             <p className="mt-3 text-[0.95rem] text-on-surface-variant">
-              {category.count > 0 ? `${category.count} tracked repositories` : "Category count pending"}
+              {category.count > 0 ? (
+                <>
+                  {category.count} <T path="categories.trackedRepositories" />
+                </>
+              ) : (
+                <T path="categories.countPending" />
+              )}
             </p>
             <Link href={categoryPath(dimension)} className="mt-5 inline-block font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
-              {dimensionEntry?.label ?? "Categories"}
+              {dimensionEntry?.label ?? <T path="nav.categories" />}
             </Link>
           </aside>
 
           <div className="min-w-0">
             <div className="mb-3 flex items-baseline justify-between gap-3">
-              <h2 className="text-[1.3rem] font-extrabold text-on-surface">Top repositories</h2>
-              <span className="font-mono text-[0.75rem] text-on-surface-variant">All-time stars</span>
+              <h2 className="text-[1.3rem] font-extrabold text-on-surface">
+                <T path="categories.topRepositories" />
+              </h2>
+              <span className="font-mono text-[0.75rem] text-on-surface-variant">
+                <T path="categories.allTimeStars" />
+              </span>
             </div>
             {rows.length > 0 ? (
               <RankingList rows={rows} variant="total" locale={LOC} />
             ) : (
               <p className="rounded-lg bg-surface-container px-4 py-3 text-[0.9rem] text-on-surface-variant">
-                Ranking data is waiting for the next published recompute.
+                <T path="categories.rankingPending" />
               </p>
             )}
 
             {siblingCategories.length > 0 && (
               <section className="mt-[clamp(2rem,4vw,3rem)]">
-                <h2 className="mb-3 text-[1.05rem] font-extrabold text-on-surface">Related categories</h2>
+                <h2 className="mb-3 text-[1.05rem] font-extrabold text-on-surface">
+                  <T path="categories.relatedCategories" />
+                </h2>
                 <div className="flex flex-wrap gap-2">
                   {siblingCategories.map((entry) => (
                     <Link

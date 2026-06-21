@@ -93,13 +93,18 @@ test('周排名窗口跨月不丢日', () => {
 | `meta.json` | `seam_date` 存在 |
 | 全时 stock 总榜 | `items` 非空、`rank[0]==1`、`value` 严格降序 |
 | `lookup/repos.json` | 条目数 ≥ 1000（防止下游 join 表崩塌） |
+| `lookup/aliases.json` | 别名完整性：无 dangling（每个别名 id 仍在 `lookup/repos.json` 内）、无 live-shadow（别名旧名不得撞当前某 repo 的 `full_name`） |
 | `search/index.json` | `count` ≥ 1000 且 `count == repos.length`（防止索引漂移） |
+| `categories/registry.json` | 非空；至少一个 `public` 分类 |
+| `categories/assignments.json` | 条目数 ≥ 1000；每 repo `language`/`language_family` 各 ≥1、`owner_kind` 恰 1；无 unknown 分类引用（assignment 里每个分类 id 在 registry 内） |
+| `lookup/categories.json` | 非空 |
+| 抽样 category-rank | 取首个 public 分类的 `rank/category/<dim>/<slug>/all-time/repo/stock.json`，其每个 item 都已在 assignments 中归入该分类 |
 | 头部 repo entity | 全时榜 #1 的 `entity/repo/<id>.json` 的 `curve.monthly` 非空 |
 | 上一年 heatmap | `heatmap/year/<Y-1>.json` 可读、字段齐 |
 
 | 测试 | 在哪跑 | 断言 | 失败动作 |
 |---|---|---|---|
-| **staging 校验闸门** | Workflow `validate` step（Vercel） | 上表 6 项抽样断言，对 `views/<run_id>/**` | `ok=false` → **不切指针**；线上仍是上一版；staging 版本保留供排查；写 `ops/workflows/<run_id>/validation.json` |
+| **staging 校验闸门** | Workflow `validate` step（Vercel） | 上表全部抽样断言（含 alias 完整性 + category 套件），对 `views/<run_id>/**` | `ok=false` → **不切指针**；线上仍是上一版；staging 版本保留供排查；写 `ops/workflows/<run_id>/validation.json` |
 | **canonical shard 等价性** | 单测（CI）+ Workflow step | 「JSON shard 纯 JS 聚合」结果 == 「bootstrap DuckDB 同口径」结果（容差 0）——确保脱离 Parquet 不改数 | CI 阻断 / step error |
 | **发布指针原子性** | 集成测试 | 切指针前后读侧拿到的版本自洽；切到一半的请求拿旧版（不拿半发布） | CI 阻断 |
 | **回滚可逆** | 集成测试 | 把 `views/latest.json.version` 指回 `prev_version` 后，读侧立即拿回上一版；`views/<prev>` 仍在 | CI 阻断 |
@@ -116,7 +121,12 @@ test('周排名窗口跨月不丢日', () => {
 - `web/lib/search/core.test.ts`：MiniSearch 装配（prefix / fuzzy 0.2 typo 容错 / 按 stars 加权 `starBoost`，热门 repo 置顶）。
 - `web/lib/workflows/recompute/entities.test.ts` 的 `searchIndex` 用例：recompute 从 `repos` 维度派生索引（条目数、字段、描述截断）。
 - contracts `SearchIndex` / `SearchDoc` schema 契约测试（`web/lib/contracts/search.ts`）。
-- 全套测试通过 `bun test lib/` 一次性运行。
+- 全套测试通过 `bun test lib/` 一次性运行（**当前规模：424 tests / 28 files**，作新鲜度锚点）。
+
+> **别名与分类相关测试**（覆盖上文 §1.5 闸门里的 alias/category 断言对应逻辑）：
+> - `web/lib/workflows/recompute/aliases.test.ts`：alias-map 构建（并集保留的 `renames.json` 增量 → 当前 id）。
+> - `web/lib/workflows/recompute/categories.test.ts`：分类产物派生（registry / assignments / lookup / all-time category rank、public 资格、curated 绕过 `minimum_repo_count`）。
+> - `web/lib/categories/rules.test.ts`：确定性分类规则（slug 归一、language-family 映射、topic/keyword 规则）。
 
 - **parity 跳过**：`web/lib/integration/recompute.test.ts` 经 `NO_DISK_REF` 跳过 `search/index.json`（派生视图，DuckDB 无参照可对拍），与 live-artifact 跳过并列——其余视图仍逐字节对拍。
 

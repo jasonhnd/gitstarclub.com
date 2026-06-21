@@ -30,7 +30,7 @@
 
 ### 1.1 路由总表（页面 ↔ 文件 ↔ 渲染层）
 
-> 渲染层定义见 §2。站内 canonical URL 全部带语言前缀；旧 `/trending` 与旧 `/{year}` 历史路径已从路由树删除，不做兼容重定向。
+> 渲染层定义见 §2。站内 canonical URL 全部带语言前缀；旧 `/trending` 与旧 `/{year}` 这类**历史路径形态**已从路由树删除，不做形态兼容重定向。但 repo 改名是另一回事：repo 页对改名旧 slug **发 308 永久重定向**到当前 `full_name`（见 §2.3 / §3.2 alias 机制），这与「不做兼容重定向」不矛盾——前者指消失的路径形态，后者指仍在追踪的 repo 换了名字。
 
 | 页 | URL | 文件（相对 `web/app/`） | 渲染层 | `generateStaticParams` |
 |---|---|---|---|---|
@@ -40,10 +40,13 @@
 | 年榜 | `/rankings/[year]` | `rankings/[year]/page.tsx` | 当年核心 / 历史按需 ISR | 当前年 |
 | 月榜 | `/rankings/[year]/[month]` | `rankings/[year]/[period]/page.tsx` | 当月核心 / 历史按需 ISR | 当前月 |
 | 周榜 | `/rankings/[year]/W[week]` | `rankings/[year]/[period]/page.tsx` | 当周 mover / 过去周冻结 | `[]`（长尾） |
-| repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | 按需 ISR（mover 当日刷新） | `[]`（长尾） |
-| **org 页** | `/o/[login]` | `o/[login]/page.tsx` | 按需 ISR（mover 当日刷新） | `[]`（长尾） |
+| repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | 按需 ISR（`revalidate=60`，mover 当日 `revalidatePath`） | `[]`（长尾） |
+| **org 页** | `/o/[login]` | `o/[login]/page.tsx` | 按需 ISR（`revalidate=false`，mover 当日刷新） | `[]`（长尾） |
 | **对比页** | `/compare` | `compare/page.tsx` + `compare/CompareClient.tsx` | 静态壳（`force-static`），客户端读 `?repos=` + 取曲线 | — |
 | 关于 | `/about` | `about/page.tsx` | 核心 | — |
+| **分类索引** | `/categories` | `categories/page.tsx` | `revalidate=60` ISR | — |
+| **分类维度** | `/categories/[dimension]` | `categories/[dimension]/page.tsx` | `revalidate=60` ISR，`dynamicParams=true` | 各维度名 |
+| **分类详情** | `/categories/[dimension]/[slug]` | `categories/[dimension]/[slug]/page.tsx` | `revalidate=60` ISR，`dynamicParams=true` | 优先语言 slug + 注册表公开分类 |
 
 **路由处理器（route handlers）**：
 
@@ -102,11 +105,17 @@ app/
 | 层 | 页面 | 新鲜度（REQUIREMENTS §6） | Next 机制 |
 |---|---|---|---|
 | **核心** | `/` · `/pulse` · `/rankings` · 当年/当月的 `/rankings/...` | 头版：每日换 | 每日 cron `revalidatePath`；页面静态预渲染（默认英文），chrome 走客户端 i18n（option C） |
-| **长尾** | 历史年/月 · **周** · repo · org（~16k+） | 编年史：冻结 / 标 as-of | **按需 ISR**：`dynamicParams=true` + 空 `generateStaticParams` + `revalidate=false`，首访生成、持久缓存 |
+| **长尾** | 历史年/月 · **周** · repo · org（~16k+）· 分类 | 编年史：冻结 / 标 as-of | **按需 ISR**：`dynamicParams=true` + 空（或注册表派生）`generateStaticParams`，首访生成、持久缓存。`revalidate` 按页分裂（见下脚注），均叠加 cron `revalidatePath` 定点失效 |
 | **mover** | 在 mover 集里的 repo/org + `/pulse` | 脉搏：事件驱动，只刷"在动的那一小撮" | 每周/每日 cron 对其 `revalidatePath` 定点失效 → 下次访问再生 |
 | **历史** | 已折叠入 Parquet 的过去周期 | 旧报纸：永不重印 | 纯静态命中 CDN；数据不变 = 不 revalidate |
 
 > 关键：**长尾页"成页"极便宜**（懒生成、不占 build 预算）——所以周页 / org 页独立成页不受 45min build 上限约束（[ARCHITECTURE](./ARCHITECTURE.md) 渲染分层）。
+>
+> **长尾 `revalidate` 不是一刀切 `false`**（按文件分裂，以代码为准）：
+> - **repo `/[owner]/[name]`** = `60`（`page.tsx:22`）——首访生成 + 每 60s 后台再生，叠加 mover 当日 `revalidatePath`。
+> - **org `/o/[login]`** = `false`（`page.tsx:19`）——纯靠 cron 定点失效，不做时间轮询。
+> - **分类 `/categories*`** = `60`（三个 `page.tsx` 均 `revalidate = 60`）——新发布的注册表分类无需重新部署即可在 60s 内出现。
+> - 历史年/月/周仍走 §2.2「核心页」混合文件里的 `revalidate=false` 段（当年/当月预渲染、历史按需）。
 
 ### 2.2 段配置速查（每类页面贴什么）
 
@@ -126,12 +135,14 @@ export const revalidate = false              // 不轮询；每日 cron 用 reva
 **长尾页（repo / org / 周 / 历史年月）** —— 不在 deploy 构建：
 
 ```ts
-// 例：app/[owner]/[name]/page.tsx
+// 例：app/o/[login]/page.tsx（org 页 revalidate=false 的范式）
 export const dynamicParams = true            // 默认值；空列表 + 此项 = 全部按需生成
 export async function generateStaticParams() {
   return []                                  // repo/org 页返回 [] → 全部按需 ISR
 }
-export const revalidate = false              // 仅靠 cron 定点失效（每周重算 / mover 当日刷新）
+export const revalidate = false              // org：仅靠 cron 定点失效（每周重算 / mover 当日刷新）
+// 注意：repo 页（app/[owner]/[name]/page.tsx）相同的 [] + dynamicParams，但 revalidate=60
+// （首访生成后每 60s 后台再生 + cron 定点失效叠加），与 org 的 false 不同——见 §2.1 长尾行脚注。
 ```
 
 **全时榜 / 脉搏（单页、每日新鲜）**：
@@ -202,7 +213,7 @@ export default nextConfig;
 
 ### 3.1 数据来源
 
-页面全部从 `@/lib/data` 读 Blob 上的真实 JSON 视图(`fetch` + Zod parse + React `cache()`)。8 个页面文件(`page`/`pulse`/`rankings/**`/`[owner]/[name]`/`o/[login]` 等)均 import `@/lib/data`。
+页面全部从 `@/lib/data` 读 Blob 上的真实 JSON 视图(`fetch` + Zod parse + React `cache()`)。所有内容页(`rankings/**`/`[owner]/[name]`/`o/[login]`/`categories/**` 等)均 import `@/lib/data`;首页 `page.tsx` 与 `pulse/page.tsx` 经共享的 `PulseView` 间接读取(故不直接 import)。
 
 ### 3.2 数据访问层（`web/lib/`）
 
@@ -295,16 +306,16 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 ### 4.2 允许的客户端 JS（三处例外）
 
-[DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 规定**三处明确例外**：防闪烁内联脚本、主题切换按钮、PWA SW 注册（`RegisterSW.tsx` + `manifest.ts`，挂在根 `layout.tsx:85`）。三者都极小、不渲染正文内容。
+[DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 规定**三处明确例外**：防闪烁内联脚本、主题切换按钮、PWA SW 注册（`RegisterSW.tsx` + `manifest.ts`，作为 `"use client"` 组件渲染在根 `layout.tsx:76`）。三者都极小、不渲染正文内容。
 
 | 客户端 JS | 文件 | 性质 | DESIGN-SYSTEM 例外 |
 |---|---|---|---|
-| 防 FOUC 主题脚本 | `layout.tsx:67`（内联 `themeInit`） | paint 前读 `localStorage.theme` 设 `data-theme` + `theme-color` | ① |
+| 防 FOUC 主题脚本 | `layout.tsx`：`themeInit` const `:56`，内联 `<script dangerouslySetInnerHTML>` `:67` | paint 前读 `localStorage.theme` 设 `data-theme` + `theme-color` | ① |
 | 主题切换按钮 | `components/ThemeToggle.tsx`（`"use client"`） | 写 `data-theme` + `localStorage` + 同步 `meta[theme-color]`；图标 CSS 显隐 | ② |
 | Service Worker 注册 (PWA) | `_explore/RegisterSW.tsx`（`"use client"`） | 注册 `/sw.js`（失败静默）+ `manifest.ts` | ③（PWA standalone） |
 
 - 这些都极小且不渲染内容页正文 → 不破坏「正文零客户端 JS、爬虫拿全量 HTML」（[SEO](./SEO.md) §3a）。
-- `<html suppressHydrationWarning>`（`layout.tsx:77`）配合主题脚本，避免 hydration 警告。
+- `<html suppressHydrationWarning>`（`layout.tsx:65`）配合主题脚本，避免 hydration 警告。
 
 ---
 
@@ -314,15 +325,15 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 | 动效 | 实现（globals.css） | 备注 |
 |---|---|---|
-| **跨文档页面转场** | `@view-transition { navigation: auto; }`（`globals.css:246`） | 纯 CSS 零 JS；浏览器不支持时无害降级 |
-| 路由淡入 | `template.tsx` 重挂载 + `.page-enter`（`--animate-page`，`globals.css:214`） | template 每次导航重挂、CSS 动画自然重放 |
-| 入场 rise | `--animate-rise`（`rise` keyframe，`globals.css:151/157`）+ `animation-delay` stagger | 标题 / 榜单行 / 热力格 |
-| 弹簧 | `--ease-spring`（CSS `linear()` 预计算关键点，`globals.css:115`） | bar 生长 / hover 抬升 / active 回弹 |
-| emphasized 缓动 | `--ease-emphasized`（`cubic-bezier(0.2,0,0,1)`，`globals.css:114`） | 主题/颜色过渡、淡入 |
-| 曲线绘制 | `.curve-line` / `.curve-area`（`globals.css:233/239`） | `stroke-dashoffset` 描绘 + 面积淡入 |
-| 状态脉冲 | `--animate-status`（`status-pulse`，`globals.css:153/173`） | `/pulse` 的"在涨"状态点 |
+| **跨文档页面转场** | `@view-transition { navigation: auto; }`（`globals.css:263`） | 纯 CSS 零 JS；浏览器不支持时无害降级 |
+| 路由淡入 | `template.tsx` 重挂载 + `.page-enter`（`globals.css:231`，`--animate-page` `:171`） | template 每次导航重挂、CSS 动画自然重放 |
+| 入场 rise | `--animate-rise`（`:168`）+ `rise` keyframe（`:174`）+ `animation-delay` stagger | 标题 / 榜单行 / 热力格 |
+| 弹簧 | `--ease-spring`（CSS `linear()` 预计算关键点，`globals.css:132`） | bar 生长 / hover 抬升 / active 回弹 |
+| emphasized 缓动 | `--ease-emphasized`（`cubic-bezier(0.2,0,0,1)`，`globals.css:131`） | 主题/颜色过渡、淡入 |
+| 曲线绘制 | `.curve-line`（`:250`）/ `.curve-area`（`:256`） | `stroke-dashoffset` 描绘 + 面积淡入 |
+| 状态脉冲 | `--animate-status`（`:170`）/ `status-pulse` keyframe（`:190`） | `/pulse` 的"在涨"状态点 |
 
-**reduced-motion 兜底（强制，`globals.css:258`）**：全局关 animation/transition，并把动画终态钉死（`.spine-bar` 直接 `scaleX(var(--w))`、`.curve-line` `stroke-dashoffset:0`、`.curve-area` `opacity:1`），保证无动效时布局与终态正确。新增组件的入场动画**必须**在此块补对应终态钉死。
+**reduced-motion 兜底（强制，`globals.css:275`）**：全局关 animation/transition，并把动画终态钉死（`.spine-bar` 直接 `scaleX(var(--w))`、`.curve-line` `stroke-dashoffset:0`、`.curve-area` `opacity:1`），保证无动效时布局与终态正确。新增组件的入场动画**必须**在此块补对应终态钉死。
 
 > 弹簧曲线关键点 build 期预计算（[DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 落地清单）——现 `globals.css` 是手写快照，生成器落地后替换。
 
@@ -334,7 +345,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 | 组件 | 文件 | 类型 | 角色 |
 |---|---|---|---|
-| 顶栏 Top App Bar | `_explore/Chrome.tsx` | **Client** | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse/Rankings/About）+ 语言/主题切换 |
+| 顶栏 Top App Bar | `_explore/Chrome.tsx` | **Client** | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse / Rankings · Categories `md+` · Compare `sm+` · About `sm+`）+ 语言/主题切换 |
 | 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client** | 导航栏搜索框；首次聚焦懒加载 `/search-index` + MiniSearch（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态走 chrome i18n（7 语）。每条结果带「+对比」勾选 + 底部「对比 N 个 →」跳 `/compare?repos=...`（行点击仍跳 repo） |
 | 分享 ShareButton | `_explore/ShareButton.tsx` | **Client** | 复制链接 + X 分享 intent；7 语 `share.*` chrome i18n；接 repo / 榜单月周 / 年页。榜单页另有动态 OG 卡（`rankings/[year]/[period]/opengraph-image.tsx` + `[year]/opengraph-image.tsx`，共享 `lib/og-card.tsx`） |
 | 月度叙事 Narrative | `_explore/Narrative.tsx` | **Client** | 月榜顶部中英叙事；en 默认 / zh·zh-TW 水合后切。文案由月页**渲染时**用确定性模板（`lib/narrative.ts`）从榜单数据现拼——**无 AI / 无产物** |
