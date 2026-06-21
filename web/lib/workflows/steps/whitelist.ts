@@ -8,7 +8,7 @@ import { WhitelistSnapshot } from "@/lib/contracts";
 // Workflow step: refresh the ≥10k whitelist via GitHub Search, diff against the
 // previously-tracked id set, and write canonical/v2/whitelist/<run_id>.json + a
 // latest pointer. Ported from pipeline/backfill/01-whitelist. See
-// docs/VERCEL-DATA-OPERATIONS.md §3.4 (step 1).
+// docs/VERCEL-DATA-OPERATIONS.md §4 whitelist step.
 
 const WhitelistLatest = z.object({ run_id: z.string(), ids: z.array(z.number().int()) });
 

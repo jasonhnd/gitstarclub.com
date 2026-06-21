@@ -12,7 +12,7 @@ import { buildAliasMap } from "../recompute/aliases";
 // gc never prunes ops/, and a rename only appears in the delta of the run that first observed it
 // (a later run sees whitelist == prev shard → no delta). Re-unioning all retained deltas each run
 // is self-healing and captures renames that happened in earlier runs (e.g. facebook/create-react-app).
-// See docs/VERCEL-DATA-OPERATIONS.md §3.4 and docs/DATA-CONTRACTS.md.
+// See docs/VERCEL-DATA-OPERATIONS.md §4 and docs/DATA-CONTRACTS.md.
 
 const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
@@ -30,18 +30,16 @@ export async function buildAliases(runId: string): Promise<AliasResult> {
   const lookup = await readView(`views/${runId}/lookup/repos.json`, ReposLookup, { bust: runId });
   if (!lookup) throw new Error(`lookup/repos.json for run ${runId} not found`);
 
-  // Enumerate every run folder and union its rename delta (best-effort per file).
+  // Enumerate every run folder and union its rename delta. A missing renames.json is a normal
+  // older-run shape; transport/schema failures must fail the step instead of silently shrinking
+  // lookup/aliases.json.
   const { folders } = await list({ prefix: "ops/workflows/", mode: "folded", token: TOKEN });
-  const maps = await Promise.all(
-    folders.map((folder) =>
-      readView(`${folder}renames.json`, RenameMap, { bust: runId }).catch(() => null),
-    ),
-  );
+  const maps = await Promise.all(folders.map((folder) => readView(`${folder}renames.json`, RenameMap, { bust: runId })));
   const renameEntries = maps.flatMap((m) => m?.renames ?? []);
 
   const aliases = buildAliasMap(renameEntries, lookup);
   AliasMap.parse(aliases);
   await putView(`views/${runId}/lookup/aliases.json`, aliases);
 
-  return { aliases: Object.keys(aliases).length, runs_scanned: maps.filter(Boolean).length };
+  return { aliases: Object.keys(aliases).length, runs_scanned: folders.length };
 }

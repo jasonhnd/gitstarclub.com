@@ -1,7 +1,7 @@
 import { getMeta } from "./meta";
 import { currentUtcPeriods } from "@/lib/periods";
 
-// Live-overlay watermark (§8.3). A week/month period is served by the live overlay while it
+// Live-overlay watermark (VERCEL-DATA-OPERATIONS §7.2). A week/month period is served by the live overlay while it
 // is NOT yet folded into the base, i.e. period > folded_through. This keeps a just-closed
 // period reading its frozen-complete live snapshot until the fold moves it into canonical —
 // without it, a period vanishes the moment it stops being "current" but before it is folded.

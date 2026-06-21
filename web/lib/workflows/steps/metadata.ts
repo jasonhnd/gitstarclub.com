@@ -14,7 +14,7 @@ import { repoBucket } from "../buckets";
 // secondary rate limit. Bootstrap-frozen / M5-managed fields (milestones,
 // tracked_since, discount d) are preserved from the previous shard; repos that
 // fell out of the whitelist stay (chronicle never deletes).
-// See docs/VERCEL-DATA-OPERATIONS.md §3.4 (step 2) / §6.
+// See docs/VERCEL-DATA-OPERATIONS.md §4 metadata step / §6.
 
 export interface MetadataBucketResult {
   bucket: number;

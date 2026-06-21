@@ -1,4 +1,4 @@
-// Pure ISO-week date math for the canonical week fold (§8.3). All UTC, no I/O.
+// Pure ISO-week date math for the canonical week fold (VERCEL-DATA-OPERATIONS §7.2). All UTC, no I/O.
 // Week ids are "YYYY-Www" (zero-padded), produced by the SAME isoWeek() the live cron uses
 // (lib/periods.ts), so a folded week id equals the live-overlay week id it replaces.
 
