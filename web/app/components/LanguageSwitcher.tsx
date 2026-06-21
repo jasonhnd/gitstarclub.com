@@ -30,7 +30,7 @@ export function LanguageSwitcher({ locale }: { locale: Locale }) {
   return (
     <details ref={menuRef} className="group relative shrink-0">
       <summary
-        className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container px-3 font-mono text-[0.72rem] font-medium text-on-surface-variant transition-colors marker:content-none hover:bg-surface-container-high hover:text-on-surface [&::-webkit-details-marker]:hidden"
+        className="flex h-11 cursor-pointer list-none items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container px-3 font-mono text-[0.72rem] font-medium text-on-surface-variant transition-colors marker:content-none hover:bg-surface-container-high hover:text-on-surface [&::-webkit-details-marker]:hidden"
         aria-label="Language"
       >
         <span className="max-w-[6rem] truncate">{LANGUAGE_LABELS[active]}</span>
@@ -45,7 +45,7 @@ export function LanguageSwitcher({ locale }: { locale: Locale }) {
             type="button"
             onClick={() => choose(l)}
             disabled={isPending}
-            className="flex w-full items-center justify-between rounded-xl px-3 py-2 font-mono text-[0.75rem] text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
+            className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 font-mono text-[0.75rem] text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
             lang={l}
           >
             {LANGUAGE_LABELS[l]}

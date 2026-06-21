@@ -34,10 +34,11 @@
   --md-sys-color-inverse-on-surface: #f1f0f4;
   --md-sys-color-primary-fixed-dim: #ffba3b;
   --md-sys-color-on-primary-fixed: #281900;
+  --md-sys-color-accent-text: #7f5700;
   --md-shadow-rgb: 0 0 0;
   /* Categorical chart palette (v0.2 §5 CompareCurve) — 5 perceptually-distinct hues for
      multi-series overlay; first two align with the amber/cyan brand. */
-  --chart-cat-1: #b8860b;
+  --chart-cat-1: #7f5700;
   --chart-cat-2: #00668a;
   --chart-cat-3: #7c3aed;
   --chart-cat-4: #15803d;
@@ -77,6 +78,7 @@
     --md-sys-color-inverse-on-surface: #2f3033;
     --md-sys-color-primary-fixed-dim: #ffba3b;
     --md-sys-color-on-primary-fixed: #281900;
+    --md-sys-color-accent-text: #ffca74;
     --md-shadow-rgb: 0 0 0;
     --chart-cat-1: #ffca74;
     --chart-cat-2: #9edaff;
@@ -119,6 +121,7 @@
   --md-sys-color-inverse-on-surface: #2f3033;
   --md-sys-color-primary-fixed-dim: #ffba3b;
   --md-sys-color-on-primary-fixed: #281900;
+  --md-sys-color-accent-text: #ffca74;
   --chart-cat-1: #ffca74;
   --chart-cat-2: #9edaff;
   --chart-cat-3: #a78bfa;
@@ -157,6 +160,7 @@
   --color-primary-container: var(--md-sys-color-primary-container);
   --color-on-primary-container: var(--md-sys-color-on-primary-container);
   --color-primary-fixed-dim: var(--md-sys-color-primary-fixed-dim);
+  --color-accent-text: var(--md-sys-color-accent-text);
   --color-secondary-container: var(--md-sys-color-secondary-container);
   --color-on-secondary-container: var(--md-sys-color-on-secondary-container);
   --color-tertiary: var(--md-sys-color-tertiary);
@@ -226,6 +230,33 @@ body {
   /* PWA: no rubber-band/pull-to-refresh, clear the home indicator */
   overscroll-behavior-y: none;
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 50;
+  transform: translateY(-150%);
+  border-radius: 999px;
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  padding: 0.65rem 1rem;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: var(--elev-2);
+  transition: transform 160ms var(--ease-emphasized);
+}
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+:where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 3px;
+}
+main:focus {
+  outline: none;
 }
 /* sticky app bar clears the status bar / notch when standalone */
 .app-bar {

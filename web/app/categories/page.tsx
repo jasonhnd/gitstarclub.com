@@ -32,7 +32,7 @@ export default async function CategoriesPage() {
     <>
       <Chrome />
       <JsonLd data={collectionLd("GitHub repository categories", "/categories", LOC)} />
-      <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <section>
           <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">
             <T path="categories.eyebrow" />
@@ -74,7 +74,7 @@ export default async function CategoriesPage() {
                   <h3 id={`dimension-${dimension.id}`} className="text-[1.05rem] font-extrabold text-on-surface">
                     {dimension.label}
                   </h3>
-                  <Link href={categoryPath(dimension.id)} className="font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+                  <Link href={categoryPath(dimension.id)} className="font-mono text-[0.78rem] text-accent-text hover:underline">
                     <T path="categories.viewAll" />
                   </Link>
                 </div>
@@ -104,7 +104,7 @@ function CategoryLink({ href, label, count }: { href: string; label: string; cou
       href={href}
       className="flex min-h-16 items-center justify-between gap-3 rounded-lg bg-surface-container px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-surface-container-high"
     >
-      <span className="truncate font-mono text-[0.9rem] font-semibold text-on-surface">{label}</span>
+      <span className="truncate font-mono text-[0.9rem] font-semibold text-on-surface" title={label}>{label}</span>
       {count > 0 ? <span className="shrink-0 font-mono text-[0.75rem] text-on-surface-variant">{count}</span> : null}
     </Link>
   );

@@ -24,15 +24,15 @@ export function RankingList({ rows, variant = "gained" }: { rows: Row[]; variant
         <li key={`${r.owner}/${r.name}`}>
           <Link
             href={`/${r.owner}/${r.name}`}
-            className="group flex h-[4.25rem] animate-rise items-center gap-4 overflow-hidden rounded-2xl px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985]"
+            className="group flex min-h-[4.25rem] animate-rise items-center gap-2 overflow-hidden rounded-2xl px-2.5 py-2.5 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985] sm:gap-4 sm:px-3 sm:py-3"
             style={{ animationDelay: `${0.04 * i}s` } as CSSProperties}
           >
-            <span className="w-9 shrink-0 text-right text-[1.5rem] font-extrabold tabular-nums text-primary-fixed-dim">
+            <span className="w-7 shrink-0 text-right text-[1.25rem] font-extrabold tabular-nums text-accent-text sm:w-9 sm:text-[1.5rem]">
               {i + 1}
             </span>
-            <div className="flex h-full min-w-0 flex-1 flex-col justify-center">
+            <div className="flex min-w-0 flex-1 flex-col justify-center">
               <div className="flex min-w-0 items-baseline gap-1 overflow-hidden">
-                <span className="max-w-[45%] shrink-0 truncate font-mono text-[0.9rem] text-on-surface-variant">{r.owner}/</span>
+                <span className="max-w-[42%] shrink-0 truncate font-mono text-[0.82rem] text-on-surface-variant sm:text-[0.9rem]">{r.owner}/</span>
                 <span className="truncate font-mono text-[0.95rem] font-semibold text-on-surface group-hover:underline group-hover:underline-offset-2">
                   {r.name}
                 </span>
@@ -43,23 +43,23 @@ export function RankingList({ rows, variant = "gained" }: { rows: Row[]; variant
                 </span>
               )}
             </div>
-            <div className="shrink-0 text-right">
+            <div className="max-w-[6rem] shrink-0 text-right sm:max-w-none">
               {variant === "rate" ? (
                 <>
-                  <div className="text-[1.05rem] font-extrabold tabular-nums text-on-surface">+{r.rate}%</div>
-                  <div className="font-mono text-[0.72rem] text-on-surface-variant">{fmtK(r.total)}★</div>
+                  <div className="text-[0.95rem] font-extrabold tabular-nums text-on-surface sm:text-[1.05rem]">+{r.rate}%</div>
+                  <div className="whitespace-nowrap font-mono text-[0.68rem] text-on-surface-variant sm:text-[0.72rem]">{fmtK(r.total)}★</div>
                 </>
               ) : variant === "crossed" ? (
                 <>
-                  <div className="text-[1.05rem] font-extrabold tabular-nums text-on-surface">{fmtK(r.total)}★</div>
-                  <div className="font-mono text-[0.72rem] text-on-surface-variant">10k · day {r.crossedDay}</div>
+                  <div className="text-[0.95rem] font-extrabold tabular-nums text-on-surface sm:text-[1.05rem]">{fmtK(r.total)}★</div>
+                  <div className="whitespace-nowrap font-mono text-[0.68rem] text-on-surface-variant sm:text-[0.72rem]">10k · day {r.crossedDay}</div>
                 </>
               ) : variant === "total" ? (
-                <div className="text-[1.05rem] font-extrabold tabular-nums text-on-surface">{fmtK(r.total)}★</div>
+                <div className="text-[0.95rem] font-extrabold tabular-nums text-on-surface sm:text-[1.05rem]">{fmtK(r.total)}★</div>
               ) : (
                 <>
-                  <div className="text-[1.05rem] font-extrabold tabular-nums text-on-surface">+{fmtK(r.gained ?? 0)}</div>
-                  <div className="font-mono text-[0.72rem] text-on-surface-variant">{fmtK(r.total)}★</div>
+                  <div className="text-[0.95rem] font-extrabold tabular-nums text-on-surface sm:text-[1.05rem]">+{fmtK(r.gained ?? 0)}</div>
+                  <div className="whitespace-nowrap font-mono text-[0.68rem] text-on-surface-variant sm:text-[0.72rem]">{fmtK(r.total)}★</div>
                 </>
               )}
             </div>
