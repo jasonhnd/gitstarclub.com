@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
+import { PAD_X } from "@/app/_explore/layout-tokens";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import en from "@/lib/i18n/dictionaries/en";
@@ -13,7 +14,6 @@ import { pageMeta } from "@/lib/seo";
 import { collectionLd } from "@/lib/jsonld";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 
-const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const LOC = DEFAULT_LOCALE;
 
 export const revalidate = false;

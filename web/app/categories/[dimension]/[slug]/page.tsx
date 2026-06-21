@@ -5,6 +5,7 @@ import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { Chrome } from "@/app/_explore/Chrome";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
+import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getCategoryAllTime, getCategoryRegistry, getReposLookup, joinRepoRank } from "@/lib/data";
 import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
@@ -18,7 +19,6 @@ import {
   publicCategoryStaticParams,
 } from "../../category-page-data";
 
-const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;

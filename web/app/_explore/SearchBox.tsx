@@ -179,7 +179,7 @@ export function SearchBox() {
       </div>
 
       {showPanel && (
-        <div className="absolute right-0 z-30 mt-2 w-[min(24rem,92vw)] overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-high shadow-xl">
+        <div className="absolute right-0 z-30 mt-2 w-[min(24rem,92vw)] overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-high shadow-[var(--elev-2)]">
           {hits.length > 0 ? (
             <ul id={listId} role="listbox" aria-label={label} className="max-h-[70vh] overflow-y-auto py-1">
               {hits.map((h, i) => {

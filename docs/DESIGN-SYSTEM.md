@@ -51,7 +51,7 @@
 | `on-surface-variant` | `#43474e` | `#c3c7cf` | 次要文字、弱标签、轴标 |
 | `surface-variant` | `#dfe2eb` | `#43474e` | 弱填充面 |
 | `surface-dim` | `#dadce0` | `#121316` | 最暗 surface 变体（背景下沉） |
-| `surface-bright` | `#fbfbfd` | `#38393c` | 最亮 surface 变体（强调浮起） |
+| `surface-bright` | `#ffffff` | `#38393c` | 最亮 surface 变体（强调浮起） |
 | `surface-container-lowest→highest` | 5 级（`#ffffff`→`#e3e3e7`） | 5 级（`#0d0e11`→`#333538`） | **tonal elevation 层级**（冷中性灰） |
 | `outline` / `outline-variant` | `#73777f` / `#c3c7cf` | `#8d9199` / `#43474e` | 分隔线、描边、ring |
 | `inverse-surface` / `inverse-on-surface` | `#2f3033` / `#f1f0f4` | `#e3e2e6` / `#2f3033` | 反色面（toast / 选区） |
@@ -89,13 +89,15 @@
   --color-primary-fixed-dim:  var(--md-sys-color-primary-fixed-dim);
   --color-surface:            var(--md-sys-color-surface);
   --color-on-surface:         var(--md-sys-color-on-surface);
-  --color-surface-container-high: var(--md-sys-color-surface-container-high);
+  --color-surface-bright:     var(--md-sys-color-surface-bright);
+  --color-surface-container-lowest: var(--md-sys-color-surface-container-lowest);
+  --color-surface-container-low:    var(--md-sys-color-surface-container-low);
+  --color-surface-container-high:   var(--md-sys-color-surface-container-high);
   --color-outline-variant:    var(--md-sys-color-outline-variant);
-  /* …其余按需映射… */
 }
 ```
 
-→ 组件用 `bg-primary-container`、`text-on-surface-variant`、`border-outline-variant`、`bg-surface/70`（带透明度）等工具类，永不写死 hex。
+→ 组件用 `bg-primary-container`、`text-on-surface-variant`、`border-outline-variant`、`bg-surface-bright/70`（带透明度）等工具类，永不写死 hex。
 
 ## 字体与排版
 
@@ -109,7 +111,14 @@
 - **数字一律等宽 + `tabular-nums`**（`font-mono tabular-nums`）：榜单 / star 数 / 年份对齐不跳动，也利于 CLS。
 - 标题走 M3 Display/Headline：大字号 + 重字重（700–800）+ 负字距（`tracking` ≈ −0.02em ～ −0.04em），体现"强层级、即时感"。
 
-排版量级（参照实现，用 `clamp()` 流式）：
+排版量级（参照实现，关键入口用 `--type-*` token；局部说明文本可继续用一次性尺寸）：
+
+```css
+--type-display-lg: clamp(2.6rem, 7vw, 5.4rem);
+--type-display-md: clamp(2.2rem, 6vw, 4rem);
+--type-title-lg: 1.35rem;
+--type-title-md: 1.15rem;
+```
 
 | 级别 | 大小 | 字重 / 字距 | 用途 |
 |---|---|---|---|
@@ -122,7 +131,7 @@
 
 ## 形状（Shape Scale）
 
-M3 shape scale，token 化：
+M3 shape scale，token 化；token 定义在 `web/app/globals.css`，需要绑定到 primitive 时直接用 `var(--shape-*)`（例如 `.hl`），不要覆盖 Tailwind 默认 `rounded-*` 量表造成全站隐式变形。
 
 | token | 值 | 用途 |
 |---|---|---|
@@ -134,6 +143,17 @@ M3 shape scale，token 化：
 | `--shape-full` | `999px` | pill chip、圆形按钮、bar 端点、状态点 |
 
 原则：pill（`full`）给状态 / 标签 / 名次徽标；squircle（`l`/`xl`）给内容容器；同一层级形状一致，不滥用混合圆角。
+
+## 间距（Spacing）
+
+横向页面 gutter 是共享 token，避免各页面重复手写同一段 clamp：
+
+```css
+--space-gutter: clamp(1.25rem, 5vw, 2.5rem);
+--space-section-y: clamp(1.5rem, 4vw, 3rem);
+```
+
+Web 应用通过 `web/app/_explore/layout-tokens.ts` 暴露 `PAD_X = "px-[var(--space-gutter)]"`；页面主体统一组合 `PAD_X` 与各自纵向节奏。Retired teaser 源 `src/index.html` 也保留同名 gutter token，避免静态资产文案更新时再次分叉。
 
 ## 动效
 
@@ -166,7 +186,7 @@ token（与实现一致）：
 
 **tonal + 阴影双轨**：
 
-- **tonal（主）**：用 5 级 `surface-container-*` 表达层级——越高的面用越"高"的 container（`lowest` 贴底 → `highest` 最浮）。明暗双模式各有 5 级冷灰。
+- **tonal（主）**：用 5 级 `surface-container-*` 表达层级——越高的面用越"高"的 container（`lowest` 贴底 → `highest` 最浮）。明暗双模式各有 5 级冷灰；静态大容器优先 `surface-container-low`，互动卡片 hover 升到 `surface-container-high`。
 - **阴影（辅）**：M3 软阴影 token，仅给真正"浮"起来的元素（浮层、hover 抬升）：
 
 ```css
@@ -174,9 +194,9 @@ token（与实现一致）：
 --elev-2: 0 1px 2px rgb(var(--md-shadow-rgb)/.30), 0 2px 6px 2px rgb(var(--md-shadow-rgb)/.14);
 ```
 
-- **毛玻璃**（顶栏 / 浮层）：`bg-surface/70 backdrop-blur-lg backdrop-saturate-150`（半透明 + 模糊饱和），M3E 标志质感，配 `border-outline-variant` 底边。
+- **毛玻璃**（顶栏 / 浮层）：`bg-surface-bright/70 backdrop-blur-lg backdrop-saturate-150`（半透明 + 模糊饱和），M3E 标志质感，配 `border-outline-variant` 底边；搜索浮层使用 `shadow-[var(--elev-2)]`。
 
-层级建议：页底 = `background`；常规卡片 = `surface-container` / `surface-container-low`；hover / 浮起 = 升一级 container（+ `elev`）；顶栏 = 毛玻璃 surface。
+层级建议：页底 = `background`；页脚/贴底带 = `surface-container-lowest`；静态容器 = `surface-container-low`；常规互动卡片 = `surface-container`；hover / 浮起 = 升一级 container（+ `elev`）；顶栏 = 毛玻璃 bright surface。
 
 ## 无障碍（a11y）
 
@@ -196,15 +216,15 @@ token（与实现一致）：
 |---|---|---|
 | **顶栏 Top App Bar** | `_explore/Chrome.tsx` | `sticky top-0`，毛玻璃 `bg-surface/70 backdrop-blur-lg backdrop-saturate-150` + `border-outline-variant` 底边；logo 含金 ★（`primary-fixed-dim`，`aria-hidden`）+ 800 字重 wordmark；可选 tag = `primary-container` pill；右侧 About 链接 + 主题切换。standalone 下 `padding-top: max(.85rem, env(safe-area-inset-top))` 避刘海。 |
 | **搜索框 / Combobox** | `_explore/SearchBox.tsx` | **顶栏全站搜索**（`"use client"`，客户端 JS 例外但不在内容正文）：pill 容器（`rounded-full`）+ `focus-within:border-primary`；mono 输入、前置放大镜 icon（`aria-hidden`）；下拉面板 `surface-container-high` + 圆角 + 阴影（`elev`），命中行 hover `bg-on-surface/5`、激活行 `bg-on-surface/8`；a11y = `role="combobox"`/`listbox`/`option` + `aria-activedescendant`，键盘 ↑↓/Enter/Esc；首次聚焦懒加载 `search/index.json` + MiniSearch，结果直达 `/{owner}/{name}`；placeholder / 空态走 chrome i18n 七语。 |
-| **Chip / Badge** | （`Chrome` tag、状态 chip） | pill（`shape-full`）；强调态 `bg-primary-container text-on-primary-container`；信息态 `tertiary-container` + 描边；状态点 `status-pulse` 脉冲动画（`tertiary`）。 |
-| **Surface 卡片** | （工具类组合） | `bg-surface-container`/`-low` + `rounded-2xl`(`shape-l/xl`)；hover 升一级 container 或 `-translate-y` 抬升 + `elev`；内部用 tonal 区分而非重描边。 |
+| **Chip / Badge** | （`Chrome` tag、状态 chip） | pill（`shape-full`）；强调态 `bg-primary-container text-on-primary-container`；信息态 `bg-tertiary-container text-on-tertiary-container` + 描边；状态点 `status-pulse` 脉冲动画（`tertiary`）。 |
+| **Surface 卡片** | （工具类组合） | 静态容器 `bg-surface-container-low`，互动卡片 `bg-surface-container`，hover 升 `-high` 或 `-highest`；`rounded-*` 用 Tailwind 量表，token primitive 用 `var(--shape-*)`；内部用 tonal 区分而非重描边。 |
 | **榜单行 Ranking Row** | `_explore/RankingList.tsx` | **编辑感、非数据表**：名次 = 金色大号 `tabular-nums`（`primary-fixed-dim`，1.5rem/800）；repo 名走 mono"数据声"（`owner/` 弱、`name` 强、hover 下划线）；语言 = `surface-container-high` 小 pill 弱标签；指标右对齐重权重（`+gained` / `+rate%` / `crossed`，`tabular-nums`）。整行 `<Link>` → repo 页，hover `-translate-y` + `bg-on-surface/5`，弹簧缓动，入场 stagger。 |
 | **日历热力图格 Heatmap Cell** | `_explore/Heatmap.tsx` | **刻意不用 GitHub 绿**：强度用 `color-mix(in oklab, primary-fixed-dim t%, surface-container)`，从冷灰底渐变到亮金（`t` 按 `gained/max`，下限 0.08 保证可见）；格子 `rounded-xl` + `ring-outline-variant/30`；`square` → `aspect-square` 日历格 / 否则 `h-20`；可选 `<Link>` → 月页，hover 抬升；mono 标签。 |
 | **Star 曲线 SVG** | `_explore/StarCurve.tsx` | **服务端渲染 SVG，零客户端 JS**：主线 `stroke=primary` 3px + 圆角接头；面积 `linearGradient` 琥珀渐隐（`primary-container` 0.5→0）；里程碑 = 金点（`primary-fixed-dim`，`surface` 描边）+ 虚线垂引 + 标签；mono 年份轴标（`on-surface-variant`）；`role="img"`+`aria-label` 摘要；CSS 线条描绘 + 面积淡入（reduced-motion 下钉终态）。 |
-| **对比曲线 CompareCurve** | `_explore/CompareCurve.tsx` + `compare/CompareClient.tsx` | **客户端组件**（`"use client"`，带 absolute↔对齐到 10k 切换——属"交互式工具"例外类，仅限 `/compare`，见下节例外清单）：N 条折线**无面积填充**、共享 y 轴；每条线取分类调色板 `--chart-cat-1..5`（5 色，琥珀/青/紫/绿/玫，OKLCH 选取在明暗两主题都够对比，不写死 hex）；图例 = 同色块 + `full_name` + 当前星数；模式切换为分段控件（`shape-full`，选中 `bg-primary-container text-on-primary-container`）；`role="img"`+`aria-label` 摘要 + 视觉隐藏数据表 fallback。 |
+| **对比曲线 CompareCurve** | `_explore/CompareCurve.tsx` + `compare/CompareClient.tsx` | **客户端组件**（`"use client"`，带 absolute↔对齐到 10k 切换——属"交互式工具"例外类，仅限 `/compare`，见下节例外清单）：N 条折线**无面积填充**、共享 y 轴；每条线取分类调色板 `--chart-cat-1..5`（5 色，琥珀/青/紫/绿/玫，OKLCH 选取在明暗两主题都够对比，不写死 hex）；图例 = 同色块 + `full_name` + 当前星数；模式切换为分段控件（`shape-full`，选中 `bg-secondary-container text-on-secondary-container`）；`role="img"`+`aria-label` 摘要 + 视觉隐藏数据表 fallback。 |
 | **面包屑 / 上下页导航** | （年 / 月页内） | `<nav aria-label>`；上下月 / 年导航**永远在顶部**（强化"翻阅"感）；当前项 `on-surface`、相邻项 `on-surface-variant` + hover 转 `on-surface`；mono 字。 |
 | **主题切换按钮** | `components/ThemeToggle.tsx` | 客户端交互（`"use client"`，属"交互式工具"例外类）：42px 圆形（`shape-full`）`bg-surface-container-high`，hover 升 `-highest`，`active:scale-90` 弹簧回弹，`focus-visible:outline-3 outline-primary`；日月图标用**纯 CSS 切换**（`[data-theme] .i-sun/.i-moon` 显隐），避免 hydration 闪烁。 |
-| **页脚 Footer** | `_explore/Footer.tsx` | `border-t border-outline-variant`；`on-surface-variant` 文字；链接 `tertiary`，hover 转 `primary` + 下划线；构建时间戳 mono（UTC + JST 双显示，权威时区约定见 [ARCHITECTURE.md](./ARCHITECTURE.md) §时间与时区，调性见 [PRODUCT.md](./PRODUCT.md)「视觉/交互细节」）。 |
+| **页脚 Footer** | `_explore/Footer.tsx` | `bg-surface-container-lowest/60` + `border-t border-outline-variant`；`on-surface-variant` 文字；链接 `tertiary`，hover 转 `primary` + 下划线；构建时间戳 mono（UTC + JST 双显示，权威时区约定见 [ARCHITECTURE.md](./ARCHITECTURE.md) §时间与时区，调性见 [PRODUCT.md](./PRODUCT.md)「视觉/交互细节」）。 |
 | **年份脊柱 / 柱 Spine Bar** | `page.tsx` + `.spine-bar(-y)` | 条 = `primary-container`，峰值年 = `primary-fixed-dim`；`shape-full`/`rounded-t-xl`；宽 / 高用 `--w`/`--h`（`gained/max`）；弹簧生长动画，hover `-translate-y` + `brightness-105`；整柱 `<Link>` → 年页，mono 年份标。 |
 
 ## 零客户端 JS 约束与各交互的处理
@@ -262,7 +282,7 @@ token（与实现一致）：
 - [ ] 不引入 `@material/material-color-utilities`；改色直接编辑 `globals.css` 手写 token 块
 - [ ] `@theme inline` 映射就位，工具类引用运行时变量、主题切换即时生效
 - [ ] 字体两家族、latin 子集、woff2 ~30KB、`tabular-nums` 用于所有数字
-- [ ] 形状 / 动效 / 高度全部 token 化，无写死 hex / px 调色板
+- [ ] 形状 / 间距 / 排版入口 / 动效 / 高度全部 token 化；页面横向 gutter 走 `--space-gutter` + `_explore/layout-tokens.ts`，无写死 hex / px 调色板
 - [ ] `prefers-reduced-motion` 全局兜底 + 动画终态钉死
 - [ ] 对比度 AA 实测（含明暗、金 / 冷灰组合）；focus-visible 全覆盖；SVG `aria-label` + 数据表 fallback
 - [ ] 内容正文表面（榜单 / 图表 / repo 正文 / org 正文 / 首页正文）零客户端 JS；客户端 JS 仅限三类具名例外（内联脚本 / i18n chrome / 交互式工具），具体文件清单见§零客户端 JS 约束
