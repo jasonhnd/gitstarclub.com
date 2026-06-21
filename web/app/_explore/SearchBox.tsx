@@ -149,7 +149,7 @@ export function SearchBox() {
 
   return (
     <div ref={rootRef} className="relative">
-      <div className="flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-3 py-1.5 transition-colors focus-within:border-primary focus-within:bg-surface">
+      <div className="flex min-h-11 items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-3 py-1.5 transition-colors focus-within:border-primary focus-within:bg-surface">
         <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-on-surface-variant" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.5-3.5" strokeLinecap="round" />
@@ -174,7 +174,7 @@ export function SearchBox() {
           }}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
-          className="w-32 bg-transparent font-mono text-[0.8rem] text-on-surface outline-none placeholder:text-on-surface-variant sm:w-44 lg:w-56"
+          className="w-24 bg-transparent font-mono text-[0.8rem] text-on-surface placeholder:text-on-surface-variant sm:w-44 lg:w-56"
         />
       </div>
 
@@ -196,7 +196,7 @@ export function SearchBox() {
                         href={`/${h.full_name}`}
                         onMouseEnter={() => setActive(i)}
                         onClick={reset}
-                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2"
+                        className="grid min-h-11 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
                       >
                         <span className="min-w-0">
                           <span className="block truncate font-mono text-[0.82rem]">
@@ -209,7 +209,7 @@ export function SearchBox() {
                         </span>
                         <span className="flex shrink-0 items-center gap-2 font-mono text-[0.72rem] text-on-surface-variant">
                           {h.language && <span className="hidden sm:inline">{h.language}</span>}
-                          <span className="tabular-nums text-primary-fixed-dim">{fmtStars(h.current_stars)} ★</span>
+                          <span className="tabular-nums text-accent-text">{fmtStars(h.current_stars)} ★</span>
                         </span>
                       </Link>
                       <button
@@ -219,7 +219,7 @@ export function SearchBox() {
                         aria-pressed={inCompare}
                         aria-label={`${addToCompareLabel}: ${h.full_name}`}
                         title={addToCompareLabel}
-                        className={`flex w-9 items-center justify-center font-mono text-[0.95rem] transition-colors ${
+                        className={`flex w-11 items-center justify-center font-mono text-[0.95rem] transition-colors ${
                           inCompare
                             ? "bg-primary-container text-on-primary-container"
                             : "text-on-surface-variant hover:bg-on-surface/10 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
@@ -233,7 +233,9 @@ export function SearchBox() {
               })}
             </ul>
           ) : (
-            <p className="px-3 py-3 font-mono text-[0.76rem] text-on-surface-variant">{loading ? loadingText : emptyText}</p>
+            <p role="status" aria-live="polite" className="px-3 py-3 font-mono text-[0.76rem] text-on-surface-variant">
+              {loading ? loadingText : emptyText}
+            </p>
           )}
           {compareSet.size > 0 && (
             <div className="flex items-center justify-between gap-3 border-t border-outline-variant px-3 py-2">
@@ -243,7 +245,7 @@ export function SearchBox() {
               <button
                 type="button"
                 onClick={openCompare}
-                className="rounded-full bg-primary-container px-3 py-1 font-mono text-[0.75rem] font-semibold text-on-primary-container transition-colors hover:brightness-110"
+                className="min-h-11 rounded-full bg-primary-container px-3 py-1 font-mono text-[0.75rem] font-semibold text-on-primary-container transition-colors hover:brightness-110"
               >
                 {openCompareLabel} →
               </button>

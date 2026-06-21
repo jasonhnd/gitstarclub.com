@@ -64,7 +64,7 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
     <>
       <Chrome />
       <JsonLd data={collectionLd(`${category.label} repositories`, categoryPath(dimension, slug), LOC)} />
-      <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
             { path: "nav.home", href: "/" },
@@ -91,7 +91,7 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
                 <T path="categories.countPending" />
               )}
             </p>
-            <Link href={categoryPath(dimension)} className="mt-5 inline-block font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+            <Link href={categoryPath(dimension)} className="mt-5 inline-block font-mono text-[0.78rem] text-accent-text hover:underline">
               {dimensionEntry?.label ?? <T path="nav.categories" />}
             </Link>
           </aside>

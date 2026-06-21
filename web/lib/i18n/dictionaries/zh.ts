@@ -122,7 +122,7 @@ const zh: Dict = {
     privacy: "隐私",
   },
   search: { label: "搜索", placeholder: "搜索仓库…", empty: "没有匹配的仓库", loading: "加载中…" },
-  share: { label: "分享", copied: "已复制", onX: "分享到 X" },
+  share: { label: "分享", copied: "已复制", onX: "分享到 X", opensNewTab: "在新标签页打开" },
   compare: {
     title: "对比 star 历史",
     subtitle: "把任意已收录仓库（≥1 万星）的曲线叠在一起，至少选两个。",

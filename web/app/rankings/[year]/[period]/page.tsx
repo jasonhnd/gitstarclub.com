@@ -95,7 +95,7 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
     <>
       <Chrome />
       <JsonLd data={collectionLd(monthYearLabel(loc, year, month), `/rankings/${year}/${month}`, loc)} />
-      <main className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
             { path: "nav.home", href: "/" },
@@ -178,7 +178,7 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
     <>
       <Chrome />
       <JsonLd data={collectionLd(period, `/rankings/${year}/W${String(week).padStart(2, "0")}`, loc)} />
-      <main className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
             { path: "nav.home", href: "/" },
@@ -199,7 +199,7 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
 function PeriodHeader({ eyebrow, title, subtitle, backHref, backLabel, shareText }: { eyebrow: ReactNode; title: ReactNode; subtitle: ReactNode; backHref: string; backLabel: string; shareText: string }) {
   return (
     <section className="mt-5">
-      <Link href={backHref} className="font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+      <Link href={backHref} className="font-mono text-[0.78rem] text-accent-text hover:underline">
         {backLabel}
       </Link>
       <p className="mt-5 font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{eyebrow}</p>

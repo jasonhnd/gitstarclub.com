@@ -122,7 +122,7 @@ const es: Dict = {
     privacy: "Privacidad",
   },
   search: { label: "Buscar", placeholder: "Buscar repositorios…", empty: "Sin repositorios coincidentes", loading: "Cargando…" },
-  share: { label: "Compartir", copied: "Copiado", onX: "Compartir en X" },
+  share: { label: "Compartir", copied: "Copiado", onX: "Compartir en X", opensNewTab: "se abre en una pestaña nueva" },
   compare: {
     title: "Comparar historial de estrellas",
     subtitle: "Superpón las curvas de cualquier repositorio rastreado (≥10k estrellas). Elige al menos dos.",

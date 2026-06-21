@@ -122,7 +122,7 @@ const ja: Dict = {
     privacy: "プライバシー",
   },
   search: { label: "検索", placeholder: "リポジトリを検索…", empty: "一致するリポジトリがありません", loading: "読み込み中…" },
-  share: { label: "共有", copied: "コピーしました", onX: "X で共有" },
+  share: { label: "共有", copied: "コピーしました", onX: "X で共有", opensNewTab: "新しいタブで開きます" },
   compare: {
     title: "スター履歴を比較",
     subtitle: "登録済みリポジトリ（1 万スター以上）のカーブを 1 枚に重ねます。2 件以上選んでください。",

@@ -122,7 +122,7 @@ export const en = {
     privacy: "Privacy",
   },
   search: { label: "Search", placeholder: "Search repositories…", empty: "No matching repositories", loading: "Loading…" },
-  share: { label: "Share", copied: "Copied", onX: "Share on X" },
+  share: { label: "Share", copied: "Copied", onX: "Share on X", opensNewTab: "opens in new tab" },
   compare: {
     title: "Compare star history",
     subtitle: "Overlay the curves of any tracked repositories (≥10k stars). Pick at least two.",
