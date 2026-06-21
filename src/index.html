@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>GitStarClub — A Chronicle of Open Source</title>
-<meta name="description" content="A browsable chronicle of open source. Look back, month by month and year by year, at which GitHub projects were rising. Launching soon." />
+<meta name="description" content="A browsable chronicle of open source. Explore the current pulse and historical GitHub star rankings, month by month and year by year." />
 
 <link rel="canonical" href="https://gitstarclub.com/" />
 <meta property="og:type" content="website" />
@@ -16,7 +16,7 @@
 <meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="GitStarClub — A Chronicle of Open Source" />
-<meta name="twitter:description" content="A browsable chronicle of open source. Launching soon." />
+<meta name="twitter:description" content="A browsable chronicle of open source: current pulse and historical GitHub star rankings." />
 <meta name="twitter:image" content="https://gitstarclub.com/og.png" />
 
 <meta name="theme-color" content="#fbfbfd" />
@@ -62,7 +62,7 @@
     --md-sys-color-surface-variant: #dfe2eb;
     --md-sys-color-on-surface-variant: #43474e;
     --md-sys-color-surface-dim: #dadce0;
-    --md-sys-color-surface-bright: #fbfbfd;
+    --md-sys-color-surface-bright: #ffffff;
     --md-sys-color-surface-container-lowest: #ffffff;
     --md-sys-color-surface-container-low: #f5f5f8;
     --md-sys-color-surface-container: #efeff2;
@@ -157,6 +157,10 @@
     --shape-l: 16px;
     --shape-xl: 28px;
     --shape-full: 999px;
+    --space-gutter: clamp(1.25rem, 5vw, 2.5rem);
+    --space-section-y: clamp(2.5rem, 7vw, 6rem);
+    --type-display-lg: clamp(2.6rem, 8.5vw, 5.75rem);
+    --type-body-lg: clamp(1.05rem, 2vw, 1.35rem);
 
     /* M3 motion */
     --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
@@ -201,7 +205,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.85rem clamp(1.25rem, 5vw, 2.5rem);
+    padding: 0.85rem var(--space-gutter);
     background: color-mix(in oklab, var(--md-sys-color-surface) 72%, transparent);
     backdrop-filter: blur(16px) saturate(1.4);
     -webkit-backdrop-filter: blur(16px) saturate(1.4);
@@ -284,7 +288,7 @@
     width: 100%;
     max-width: 60rem;
     margin: 0 auto;
-    padding: clamp(2.5rem, 7vw, 6rem) clamp(1.25rem, 5vw, 2.5rem);
+    padding: var(--space-section-y) var(--space-gutter);
     display: flex;
     flex-direction: column;
   }
@@ -293,7 +297,7 @@
 
   h1 {
     font-weight: 800;
-    font-size: clamp(2.6rem, 8.5vw, 5.75rem);
+    font-size: var(--type-display-lg);
     line-height: 1.0;
     letter-spacing: -0.035em;
     max-width: 16ch;
@@ -310,7 +314,7 @@
 
   .lede {
     margin-top: 1.75rem;
-    font-size: clamp(1.05rem, 2vw, 1.35rem);
+    font-size: var(--type-body-lg);
     font-weight: 400;
     color: var(--md-sys-color-on-surface-variant);
     max-width: 48ch;
@@ -374,7 +378,7 @@
   /* ===== Footer ===== */
   footer {
     border-top: 1px solid var(--md-sys-color-outline-variant);
-    padding: 1.5rem clamp(1.25rem, 5vw, 2.5rem);
+    padding: 1.5rem var(--space-gutter);
     max-width: 60rem;
     margin: 0 auto;
     width: 100%;
@@ -404,7 +408,7 @@
   <header class="appbar">
     <span class="mark"><span class="star" aria-hidden="true">★</span>GitStarClub</span>
     <span class="bar-right">
-      <span class="chip"><span class="dot" aria-hidden="true"></span>Launching soon</span>
+      <span class="chip"><span class="dot" aria-hidden="true"></span>Star history</span>
       <button class="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme">
         <svg class="i-moon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" fill="currentColor"/>
@@ -421,9 +425,8 @@
     <main>
       <h1>A chronicle of <span class="hl">open source</span>.</h1>
       <p class="lede">
-        Look back &mdash; month by month, year by year &mdash; at which GitHub
-        projects were rising. Not just what&rsquo;s trending now, but a browsable
-        history of when things rose.
+        Explore the current open-source pulse and look back &mdash; month by
+        month, year by year &mdash; at which GitHub projects were rising.
       </p>
 
       <div class="spine" aria-hidden="true">

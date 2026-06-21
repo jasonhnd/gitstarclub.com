@@ -9,6 +9,7 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { Narrative } from "@/app/_explore/Narrative";
+import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { buildNarrative } from "@/lib/narrative";
 import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
@@ -18,7 +19,6 @@ import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 
-const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
 import { JsonLd } from "@/app/_explore/JsonLd";
+import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getCategoryRegistry } from "@/lib/data";
 import { collectionLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
@@ -9,7 +10,6 @@ import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
 import { CATEGORY_INDEX_PREVIEW_LIMIT, categoryPath, fallbackRegistry, publicCategoryEntries, publicDimensions } from "./category-page-data";
 
-const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const LOC = DEFAULT_LOCALE;
 
 export const revalidate = 60;

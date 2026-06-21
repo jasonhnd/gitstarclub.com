@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const ja: Dict = {
-  nav: { home: "ホーム", trending: "動向", rankings: "ランキング", categories: "カテゴリ", compare: "比較", about: "このサイトについて" },
+  nav: { home: "ホーム", pulse: "動向", rankings: "ランキング", categories: "カテゴリ", compare: "比較", about: "このサイトについて" },
   home: {
     heroPre: "",
     heroAccent: "オープンソース",
@@ -108,12 +108,13 @@ const ja: Dict = {
     organizations: "組織",
     repos: "リポジトリ",
   },
-  trending: {
+  pulse: {
     title: "オープンソースの動向",
     subtitle: "追跡対象のオープンソースから、今週・今月・今年に変化しているプロジェクトを示します。",
     surging: "今月の上昇",
     onThisDay: "この日の節目",
     crossed: "突破",
+    open: "開く",
   },
   footer: {
     madeIn: "東京で制作",

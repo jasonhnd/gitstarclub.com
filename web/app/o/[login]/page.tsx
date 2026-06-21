@@ -5,6 +5,7 @@ import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
+import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getOrgEntity, getReposLookup } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
@@ -12,7 +13,6 @@ import { orgLd } from "@/lib/jsonld";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 
-const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;

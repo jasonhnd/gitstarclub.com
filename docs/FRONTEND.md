@@ -378,6 +378,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 |---|---|---|
 | `Breadcrumbs` | `_explore/` | Home→年→月 / Home→owner→repo（[SEO](./SEO.md) §6.7） |
 | `Footer` | `_explore/` | 构建时间戳（UTC+JST）+ 语言切换落点 |
+| `layout-tokens.ts` | `_explore/` | 共享页面横向 gutter：`PAD_X = px-[var(--space-gutter)]`，实际 token 定义见 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) |
 | `LanguageSwitcher` | `components/` | 当前语言 + 下拉切其它语言；en/ja/zh/zh-TW/ko/es/fr；写 cookie + `router.refresh()` |
 | `JsonLd` | `_explore/` | 注入 `BreadcrumbList`/`Dataset` 等 JSON-LD |
 | `PrevNext`（`NavArrow`/`MonthArrow`） | 内联 | 上下月 / 上下年 / 上下周（年/月/周页）—— 可抽组件 |
@@ -427,7 +428,7 @@ export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 ```
 
 - 根 `layout.tsx` 静态渲染 `<html lang="en">`，用 `<I18nProvider>` 包裹子树（不读 cookie）。Provider 首帧返回默认英文（与静态 HTML 一致），`useEffect` 里读 `gsc_lang` cookie → `getDictionary(locale)` → 换 chrome（避免水合不匹配）。
-- chrome 文本节点用 `<T path="...">`（客户端组件）；`Chrome`/`Footer`/`Breadcrumbs` 经 `useDict()` 取语言。**数据**（数字/日期/repo 名）语言无关，按默认英文服务端渲染进静态 HTML。
+- chrome 文本节点用 `<T path="...">`（客户端组件）；`Chrome`/`Footer`/`Breadcrumbs` 经 `useDict()` 取语言。Pulse 页面文案走 `nav.pulse` / `pulse.*`，避免旧“trending”命名继续混淆编辑语义。**数据**（数字/日期/repo 名）语言无关，按默认英文服务端渲染进静态 HTML。
 - `LanguageSwitcher` 默认英文，下拉切其它语言；客户端写 `gsc_lang` cookie 后 `router.refresh()`，不改 canonical URL。`/api/lang` 仍保留为直接访问后备。
 - 现有少量 SEO title/description + 静态 HTML chrome 仍以英文为主，这是单一 canonical URL 的刻意取舍。
 
@@ -457,7 +458,7 @@ return {
 5. **i18n**：客户端 chrome i18n（机制见 §7，渲染模式见 §2.5）。
 6. **SEO 配套**：`app/sitemap.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD。
 7. **cron route**：`app/api/cron/{daily,weekly}`（`revalidatePath` + `CRON_SECRET`）。
-8. **共享组件**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` 抽成共享组件;`PrevNext`/`EntityCard`/`YearSpine` 仍内联（§6.3）。
+8. **共享组件 / token helper**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` 抽成共享组件；页面横向 padding 统一经 `_explore/layout-tokens.ts` 的 `PAD_X` 读取 `--space-gutter`;`PrevNext`/`EntityCard`/`YearSpine` 仍内联（§6.3）。
 
 ---
 
