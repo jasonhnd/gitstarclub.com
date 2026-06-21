@@ -12,7 +12,7 @@ export function webSiteLd(locale: string, path: string) {
     name: "GitStarClub",
     url: abs(path),
     inLanguage: locale,
-    description: "GitHub star history & trends across 5,200+ repositories with ≥10k stars.",
+    description: "GitHub star history & trends across 5,300+ repositories with ≥10k stars.",
   };
 }
 
