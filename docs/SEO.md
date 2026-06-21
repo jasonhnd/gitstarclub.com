@@ -84,7 +84,7 @@
 
 ### 2.1 首页 `/`
 
-实际实现（`web/app/page.tsx`，经 `pageMeta(...)` 工具构造，`absoluteTitle: true` 跳过站点后缀模板）：
+实际实现（`web/app/page.tsx`，经 `pageMeta(...)` 工具构造，`absoluteTitle: true` 跳过站点后缀模板；Pulse title/description 副本来自 `web/lib/site-copy.ts`）：
 
 | 字段 | 值 |
 |---|---|
@@ -96,21 +96,20 @@
 
 ### 2.1a 脉搏页 `/pulse`
 
-实际实现（`web/app/pulse/page.tsx`，`export const revalidate = false`，渲染与首页同源的 `PulseView`，但**不带** `includeWebsiteLd` ⇒ 无 `WebSite` JSON-LD，见 §6.1）：
+实际实现（`web/app/pulse/page.tsx`，`export const revalidate = false`，渲染与首页同源的 `PulseView`，但**不带** `includeWebsiteLd` ⇒ 无 `WebSite` JSON-LD，见 §6.1；title/description 副本来自 `web/lib/site-copy.ts`）：
 
 | 字段 | 值 |
 |---|---|
-| title | `Open Source Pulse — Weekly, Monthly & Yearly GitHub Movers`（非 `absolute` ⇒ root layout 追加 `· GitStarClub` → 最终 `Open Source Pulse — Weekly, Monthly & Yearly GitHub Movers · GitStarClub`） |
-| description | `The current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub repositories.` |
+| title | `Open Source Pulse & GitHub Star History`（非 `absolute` ⇒ root layout 追加 `· GitStarClub` → 最终 `Open Source Pulse & GitHub Star History · GitStarClub`） |
+| description | `See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.` |
 | canonical | `/pulse` |
 
 ```ts
 export const revalidate = false;
 export async function generateMetadata(): Promise<Metadata> {
   return pageMeta({
-    title: "Open Source Pulse — Weekly, Monthly & Yearly GitHub Movers",
-    description:
-      "The current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub repositories.",
+    title: PULSE_META_TITLE,
+    description: PULSE_META_DESCRIPTION,
     path: "/pulse",
     locale: "en",
   });
@@ -868,6 +867,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 - **Twitter card**：`pageMeta` 设 `twitter.card = "summary_large_image"`；`twitter.title` / `twitter.description` / `twitter.images` 复用各页 meta 与上述卡片路由。
 - **Open Graph**：`pageMeta` 输出 `og:title` / `og:description` / `og:url`（canonical）/ `og:image`（指卡片路由）/ `og:locale`。`og:type`（`website` vs `article`+published/modified time）与 `og:site_name` 由根 `app/layout.tsx` 的 metadata 统一提供，未在 `pageMeta` 内逐页设。
 - **alt 文本**：各 `opengraph-image.tsx` 导出 `alt`（站点卡 `GitStarClub.com — A Chronicle of Open Source`；repo 卡 `GitHub star history`；排名卡 `GitHub star rankings`）。
+- **旧 teaser 资产**：`assets/og.html` 是根目录静态 teaser 的 1200×630 源模板，`render-assets.mjs` 生成 `assets/og.png`，`build.mjs` 同步到根 `public/og.png`；Next 应用的 fallback 静态图同步放在 `web/public/og.png`。其 wordmark 与计数需保持 `GitStarClub.com` / `5,300+`，避免与动态 `opengraph-image.tsx` 分叉。
 
 ---
 

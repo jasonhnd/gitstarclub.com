@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const ko: Dict = {
-  nav: { home: "홈", trending: "펄스", rankings: "순위", categories: "카테고리", compare: "비교", about: "소개" },
+  nav: { home: "홈", pulse: "펄스", rankings: "순위", categories: "카테고리", compare: "비교", about: "소개" },
   home: {
     heroPre: "",
     heroAccent: "오픈소스",
@@ -108,12 +108,13 @@ const ko: Dict = {
     organizations: "조직",
     repos: "저장소",
   },
-  trending: {
+  pulse: {
     title: "오픈소스 펄스",
     subtitle: "추적 중인 오픈소스 저장소에서 이번 주, 이번 달, 올해 무엇이 변하고 있는지 보여줍니다.",
     surging: "이번 달 상승",
     onThisDay: "오늘의 기록",
     crossed: "돌파",
+    open: "열기",
   },
   footer: {
     madeIn: "도쿄에서 제작",

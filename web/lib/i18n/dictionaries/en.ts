@@ -1,7 +1,7 @@
 // UI-chrome strings only. Data such as repo names, languages, topics, and numbers is never translated.
 // `en` is the source-of-truth shape; every other dictionary must match these keys.
 export const en = {
-  nav: { home: "Home", trending: "Pulse", rankings: "Rankings", categories: "Categories", compare: "Compare", about: "About" },
+  nav: { home: "Home", pulse: "Pulse", rankings: "Rankings", categories: "Categories", compare: "Compare", about: "About" },
   home: {
     heroPre: "A history of ",
     heroAccent: "open source",
@@ -108,12 +108,13 @@ export const en = {
     organizations: "Organizations",
     repos: "repositories",
   },
-  trending: {
+  pulse: {
     title: "Open-source activity",
     subtitle: "What is changing this week, this month, and this year across tracked open-source repositories.",
     surging: "Rising this month",
     onThisDay: "On this day",
     crossed: "crossed",
+    open: "Open",
   },
   footer: {
     madeIn: "Made in Tokyo",
