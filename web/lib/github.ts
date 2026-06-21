@@ -1,6 +1,8 @@
 // GitHub client: GraphQL (daily cron star counts) + REST Search (whitelist) +
 // GraphQL nodes() (metadata). Server-only; needs env GITHUB_TOKEN. See docs/OPS.md.
-import type { WhitelistEntry } from "@/lib/contracts";
+import { z } from "zod";
+import { WhitelistEntry } from "@/lib/contracts";
+import type { WhitelistEntry as WhitelistEntryRecord } from "@/lib/contracts";
 
 const TOKEN = process.env.GITHUB_TOKEN;
 const ENDPOINT = "https://api.github.com/graphql";
@@ -15,6 +17,7 @@ export interface RepoRef {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const NonNegativeInt = z.number().int().nonnegative();
 
 function retryDelayMs(res: Response, attempt: number): number {
   const retryAfter = Number(res.headers.get("retry-after"));
@@ -34,7 +37,7 @@ function secondaryLimitDelayMs(status: number, text: string): number | null {
   return /secondary rate limit|abuse detection|rate limit/i.test(text) ? 60_000 : null;
 }
 
-async function gql<T>(query: string, attempt = 1): Promise<T> {
+async function gql<T>(query: string, schema: z.ZodType<T>, attempt = 1): Promise<T> {
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: { Authorization: `bearer ${TOKEN}`, "Content-Type": "application/json" },
@@ -44,13 +47,14 @@ async function gql<T>(query: string, attempt = 1): Promise<T> {
   const text = await res.text();
   if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt <= MAX_RETRIES) {
     await sleep(secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
-    return gql<T>(query, attempt + 1);
+    return gql<T>(query, schema, attempt + 1);
   }
   if (!res.ok) throw new Error(`GitHub GraphQL ${res.status}: ${text.slice(0, 200)}`);
-  const json = JSON.parse(text) as { data?: T; errors?: unknown };
+  const json = z.object({ data: z.unknown().optional(), errors: z.unknown().optional() }).passthrough().parse(JSON.parse(text));
   // Partial data + errors is normal (a deleted/renamed repo aliases to null); only fail with no data.
   if (!json.data) throw new Error(`GraphQL: ${JSON.stringify(json.errors ?? {}).slice(0, 200)}`);
-  return json.data;
+  if (json.errors) console.warn("[github] GraphQL returned partial errors", JSON.stringify(json.errors).slice(0, 200));
+  return schema.parse(json.data);
 }
 
 /** Current stargazerCount for each repo → Map<id, stars>. Missing/renamed repos are skipped. */
@@ -62,7 +66,7 @@ export async function fetchStarCounts(refs: RepoRef[], batchSize = 100): Promise
     const query = `query{${batch
       .map((r, j) => `r${j}: repository(owner:${JSON.stringify(r.owner)}, name:${JSON.stringify(r.name)}){stargazerCount}`)
       .join(" ")}}`;
-    const data = await gql<Record<string, { stargazerCount: number } | null>>(query);
+    const data = await gql(query, z.record(z.string(), z.object({ stargazerCount: NonNegativeInt }).strict().nullable()));
     batch.forEach((r, j) => {
       const node = data[`r${j}`];
       if (node && typeof node.stargazerCount === "number") out.set(r.id, node.stargazerCount);
@@ -74,18 +78,19 @@ export async function fetchStarCounts(refs: RepoRef[], batchSize = 100): Promise
 
 // --- REST Search: whitelist (stars ≥ N) ---
 
-interface SearchRepo {
-  id: number;
-  node_id: string;
-  full_name: string;
-  name: string;
-  stargazers_count: number;
-  owner: { login: string };
-}
-interface SearchResult {
-  total_count: number;
-  items: SearchRepo[];
-}
+const SearchRepoSchema = z.object({
+  id: NonNegativeInt,
+  node_id: z.string(),
+  full_name: z.string(),
+  name: z.string(),
+  stargazers_count: NonNegativeInt,
+  owner: z.object({ login: z.string() }).passthrough(),
+}).passthrough();
+const SearchResultSchema = z.object({
+  total_count: NonNegativeInt,
+  items: z.array(SearchRepoSchema),
+}).passthrough();
+type SearchResult = z.infer<typeof SearchResultSchema>;
 
 async function restSearch(params: Record<string, string | number>, attempt = 1): Promise<SearchResult> {
   const url = new URL(`${REST}/search/repositories`);
@@ -100,15 +105,15 @@ async function restSearch(params: Record<string, string | number>, attempt = 1):
     return restSearch(params, attempt + 1);
   }
   if (!res.ok) throw new Error(`GitHub Search ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return res.json() as Promise<SearchResult>;
+  return SearchResultSchema.parse(await res.json());
 }
 
 /** Whitelist = repos with stars ≥ minStars, via adaptive star-range bucketing (Search caps at
  *  1000 results/query: split any bucket >1000 until it fits, then page). Sorted by stars desc.
- *  Ported from pipeline/lib/github.mjs; see docs/PIPELINE.md §1 / VERCEL-DATA-OPERATIONS §3.4. */
-export async function searchWhitelist(minStars = 10000, maxStars = 600000): Promise<WhitelistEntry[]> {
+ *  Ported from pipeline/lib/github.mjs; see docs/PIPELINE.md §1 / VERCEL-DATA-OPERATIONS §4. */
+export async function searchWhitelist(minStars = 10000, maxStars = 600000): Promise<WhitelistEntryRecord[]> {
   if (!TOKEN) throw new Error("GITHUB_TOKEN not set");
-  const out = new Map<number, WhitelistEntry>(); // dedups range-boundary overlap
+  const out = new Map<number, WhitelistEntryRecord>(); // dedups range-boundary overlap
   const queue: Array<[number, number]> = [[minStars, maxStars]];
   while (queue.length) {
     const [low, high] = queue.pop()!;
@@ -119,11 +124,22 @@ export async function searchWhitelist(minStars = 10000, maxStars = 600000): Prom
       queue.push([low, mid], [mid + 1, high]);
       continue;
     }
+    if (first.total_count > 1000) {
+      throw new Error(`GitHub Search bucket ${q} has ${first.total_count} results and cannot be paged completely`);
+    }
     const pages = Math.min(Math.ceil(first.total_count / 100), 10);
     for (let page = 1; page <= pages; page++) {
       const res = page === 1 ? first : await restSearch({ q, sort: "stars", order: "desc", per_page: 100, page });
       for (const r of res.items) {
-        out.set(r.id, { id: r.id, node_id: r.node_id, full_name: r.full_name, owner: r.owner.login, name: r.name, stars: r.stargazers_count });
+        const entry = WhitelistEntry.parse({
+          id: r.id,
+          node_id: r.node_id,
+          full_name: r.full_name,
+          owner: r.owner.login,
+          name: r.name,
+          stars: r.stargazers_count,
+        });
+        out.set(r.id, entry);
       }
     }
   }
@@ -146,24 +162,32 @@ export interface RepoMetadata {
   is_archived: boolean;
 }
 
-interface RepoNode {
-  databaseId: number | null;
-  nameWithOwner: string;
-  owner: { login: string; __typename: "User" | "Organization" };
-  name: string;
-  description: string | null;
-  primaryLanguage: { name: string } | null;
-  languages: {
-    edges: Array<{ size: number; node: { name: string; color: string | null } }>;
-  };
-  repositoryTopics: { nodes: Array<{ topic: { name: string } }> };
-  createdAt: string;
-  stargazerCount: number;
-  isArchived: boolean;
-}
+const RepoNodeSchema = z.object({
+  databaseId: NonNegativeInt.nullable(),
+  nameWithOwner: z.string(),
+  owner: z.object({ login: z.string(), __typename: z.enum(["User", "Organization"]) }).passthrough(),
+  name: z.string(),
+  description: z.string().nullable(),
+  primaryLanguage: z.object({ name: z.string() }).passthrough().nullable(),
+  languages: z.object({
+    edges: z.array(
+      z.object({
+        size: NonNegativeInt,
+        node: z.object({ name: z.string(), color: z.string().nullable() }).passthrough(),
+      }).passthrough(),
+    ),
+  }).passthrough(),
+  repositoryTopics: z.object({
+    nodes: z.array(z.object({ topic: z.object({ name: z.string() }).passthrough() }).passthrough()),
+  }).passthrough(),
+  createdAt: z.string(),
+  stargazerCount: NonNegativeInt,
+  isArchived: z.boolean(),
+}).passthrough();
+const NodesResponseSchema = z.object({ nodes: z.array(z.unknown().nullable()) }).passthrough();
 
 /** Batch repo metadata via GraphQL nodes() (100 ids/query) → Map<databaseId, RepoMetadata>.
- *  Ported from pipeline/lib/github.mjs batchMetadata; see docs/VERCEL-DATA-OPERATIONS.md §3.4 (step 2). */
+ *  Ported from pipeline/lib/github.mjs batchMetadata; see docs/VERCEL-DATA-OPERATIONS.md §4 metadata step. */
 export async function batchMetadata(nodeIds: string[]): Promise<Map<number, RepoMetadata>> {
   if (!TOKEN) throw new Error("GITHUB_TOKEN not set");
   const out = new Map<number, RepoMetadata>();
@@ -174,23 +198,29 @@ export async function batchMetadata(nodeIds: string[]): Promise<Map<number, Repo
   for (let i = 0; i < nodeIds.length; i += 100) {
     const ids = nodeIds.slice(i, i + 100);
     const query = `query{nodes(ids:${JSON.stringify(ids)}){... on Repository{${selection}}}}`;
-    const data = await gql<{ nodes: Array<RepoNode | null> }>(query);
-    for (const n of data.nodes) {
-      if (n && n.databaseId != null) {
-        out.set(n.databaseId, {
-          full_name: n.nameWithOwner,
-          owner: n.owner.login,
-          owner_type: n.owner.__typename,
-          name: n.name,
-          description: n.description,
-          language: n.primaryLanguage?.name ?? null,
-          languages: n.languages.edges.map((edge) => ({ name: edge.node.name, size: edge.size, color: edge.node.color ?? null })),
-          topics: n.repositoryTopics.nodes.map((t) => t.topic.name),
-          created_at: n.createdAt,
-          current_stars: n.stargazerCount,
-          is_archived: n.isArchived,
-        });
+    const data = await gql(query, NodesResponseSchema);
+    for (const raw of data.nodes) {
+      if (!raw) continue;
+      const parsed = RepoNodeSchema.safeParse(raw);
+      if (!parsed.success) {
+        console.warn("[github] skipped invalid repository node", parsed.error.message.slice(0, 200));
+        continue;
       }
+      const n = parsed.data;
+      if (n.databaseId == null) continue;
+      out.set(n.databaseId, {
+        full_name: n.nameWithOwner,
+        owner: n.owner.login,
+        owner_type: n.owner.__typename,
+        name: n.name,
+        description: n.description,
+        language: n.primaryLanguage?.name ?? null,
+        languages: n.languages.edges.map((edge) => ({ name: edge.node.name, size: edge.size, color: edge.node.color ?? null })),
+        topics: n.repositoryTopics.nodes.map((t) => t.topic.name),
+        created_at: n.createdAt,
+        current_stars: n.stargazerCount,
+        is_archived: n.isArchived,
+      });
     }
     if (i + 100 < nodeIds.length) await sleep(BATCH_PAUSE_MS);
   }

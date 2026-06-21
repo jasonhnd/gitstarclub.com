@@ -130,13 +130,11 @@ function buildFixture(): FoldFixture {
   };
 }
 
-const describeOrSkip = LOCAL_DATA_PRESENT ? describe : describe.skip;
 if (!LOCAL_DATA_PRESENT) {
-  // eslint-disable-next-line no-console
   console.warn(`[fold-integration.test] SKIP: local pipeline data not found under ${CANON} — fold integration not run.`);
-}
-
-describeOrSkip("fold → recompute integration (synthetic closed 2026-06 over real shards)", () => {
+  test.skip("fold integration requires local pipeline data", () => {});
+} else {
+  describe("fold → recompute integration (synthetic closed 2026-06 over real shards)", () => {
   const f = buildFixture();
 
   test("two distinct repos with a 2026-05 anchor were found", () => {
@@ -174,4 +172,5 @@ describeOrSkip("fold → recompute integration (synthetic closed 2026-06 over re
   test("pre-seam month stock unchanged vs baseline", () => {
     expect(f.oldFoldedStock).toBe(f.oldBaseStock);
   });
-});
+  });
+}

@@ -1,18 +1,18 @@
 import { z } from "zod";
-import { DateStr, Period, OwnerType } from "./common";
+import { DateStr, NonNegativeInt, Period, OwnerType, SafeText, TimestampStr } from "./common";
 
 // entity/repo/{id}.json, entity/org/{login}.json, heatmap/*.json.
 // See docs/DATA-CONTRACTS.md §2.5–2.7.
 
 /** [period, adds, total_end] — historical monthly point. */
-export const MonthlyPoint = z.tuple([Period, z.number().int(), z.number().int()]);
+export const MonthlyPoint = z.tuple([Period, z.number().int(), NonNegativeInt]);
 /** [date, net_adds] — recent daily point (net may be negative). */
 export const DailyPoint = z.tuple([DateStr, z.number().int()]);
 
 export const Curve = z.object({
   monthly: z.array(MonthlyPoint),
   recent_daily: z.array(DailyPoint),
-});
+}).strict();
 export type Curve = z.infer<typeof Curve>;
 
 /** Optional rank history: { window: [[period, rank], ...] }. */
@@ -23,68 +23,71 @@ export const Inflection = z.object({
   period: Period,
   flow: z.number().int(),
   kind: z.enum(["surge", "peak"]),
-});
+}).strict();
 export type Inflection = z.infer<typeof Inflection>;
 
+const UrlString = z.union([z.string().url(), z.literal("")]);
+
 export const RepoEntity = z.object({
-  id: z.number().int(),
-  full_name: z.string(),
-  owner: z.string(),
+  id: NonNegativeInt,
+  full_name: SafeText,
+  owner: SafeText,
   owner_type: OwnerType,
-  name: z.string(),
-  description: z.string().nullable(),
-  language: z.string().nullable(),
+  name: SafeText,
+  description: SafeText.nullable(),
+  language: SafeText.nullable(),
   languages: z
     .array(
       z.object({
-        name: z.string(),
-        size: z.number().int().nonnegative(),
-        color: z.string().nullable().optional(),
-      }),
+        name: SafeText,
+        size: NonNegativeInt,
+        color: SafeText.nullable().optional(),
+      }).strict(),
     )
     .optional(),
-  topics: z.array(z.string()),
-  homepage_url: z.string().nullable().optional(),
-  license: z.string().nullable().optional(),
+  topics: z.array(SafeText),
+  homepage_url: UrlString.nullable().optional(),
+  license: SafeText.nullable().optional(),
   latest_release: z
     .object({
-      name: z.string().nullable().optional(),
-      tag_name: z.string(),
+      name: SafeText.nullable().optional(),
+      tag_name: SafeText,
       published_at: DateStr.nullable().optional(),
-      url: z.string().nullable().optional(),
+      url: UrlString.nullable().optional(),
     })
+    .strict()
     .nullable()
     .optional(),
   created_at: DateStr,
-  current_stars: z.number().int(),
+  current_stars: NonNegativeInt,
   is_archived: z.boolean(),
   milestones: z.object({
     crossed_10k: DateStr.nullable(),
     crossed_50k: DateStr.nullable(),
     crossed_100k: DateStr.nullable(),
-  }),
+  }).strict(),
   curve: Curve,
   monthly_table: z.array(
     z.object({
       month: Period,
       adds: z.number().int(),
-      rank: z.number().int().nullable(),
-    }),
+      rank: NonNegativeInt.nullable(),
+    }).strict(),
   ),
   rank_history: RankHistory,
   inflections: z.array(Inflection).optional(),
-});
+}).strict();
 export type RepoEntity = z.infer<typeof RepoEntity>;
 
 export const OrgEntity = z.object({
-  login: z.string(),
+  login: SafeText,
   owner_type: OwnerType,
-  current_stars_sum: z.number().int(),
-  repo_count: z.number().int(),
-  members: z.array(z.number().int()),
+  current_stars_sum: NonNegativeInt,
+  repo_count: NonNegativeInt,
+  members: z.array(NonNegativeInt),
   curve: Curve,
   rank_history: RankHistory,
-});
+}).strict();
 export type OrgEntity = z.infer<typeof OrgEntity>;
 
 /** heatmap/{year|month}/{period}.json — cells [date|month, total_adds]. */
@@ -92,8 +95,8 @@ export const Heatmap = z.object({
   meta: z.object({
     scope: z.enum(["year", "month"]),
     period: Period,
-    generated_at: z.string(),
-  }),
+    generated_at: TimestampStr,
+  }).strict(),
   cells: z.array(z.tuple([z.string(), z.number().int()])),
-});
+}).strict();
 export type Heatmap = z.infer<typeof Heatmap>;

@@ -13,6 +13,8 @@
 - **周期标识 `period`**：周 = ISO 周 `YYYY-Www`（如 `2024-W42`）；月 `YYYY-MM`；年 `YYYY`；全时 `all`。
 - **主键**：repo = GitHub 数字 `repo_id`（不可变，跨改名稳定）；org = `owner` login 字符串。
 - **数值**：整数。`delta` / flow 在 seam 后为 net，**可为负**（取消 star）；stock（累计）非负。
+- **契约硬线**：`current_stars` / `current_stars_sum` / `stars` / count 类字段非负；`RankItem.value` 仍可为负（net flow）。`RankItem` 必须且只能携带 `id`（repo）或 `login`（org）之一。
+- **文本与时间**：日期字段使用 UTC `YYYY-MM-DD`；`generated_at` / `published_at` / checkpoint 时间戳使用带时区的 ISO timestamp。自由文本字段由 React 渲染层转义，同时契约拒绝高风险 active HTML 片段（script/iframe/style 等）。
 - **引用 vs 内嵌**：排行榜 JSON 只存实体 **id/login + 数值**，不内嵌名字/描述；build 用 `lookup/*` join 出展示字段 → 榜单文件保持小、改名只需更新 lookup。
 - 每个 JSON 带 `meta`（至少 `generated_at`，视图另含 `period/window/dim/metric`）便于缓存与调试。
 
@@ -379,12 +381,12 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
   "run_id": "refresh-2026-06-02T04-00-00-000Z",
   "started_at": "2026-06-02T04:00:00.000Z",
   "status": "running",                          // running | published | failed
-  "steps": ["whitelist","rename","metadata","fold","recompute","validate","publish","gc"],  // manifest 分组（细粒度 12 步见 VERCEL-DATA-OPERATIONS §4）
+  "steps": ["whitelist","rename","metadata","fold","recompute","buildAliases","validate","publish","gc"],  // manifest 分组（细粒度步骤见 VERCEL-DATA-OPERATIONS §4）
   "published_version": null
 }
 ```
 
-> `steps[]` 为 **manifest 分组**（8 项，对应进度账本）；**细粒度 12 步**（whitelist/rename/metadata/newcomer/fold/rank/entity-repo/entity-org/heatmap/validate/publish/gc/revalidate）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。
+> `steps[]` 为 **manifest 分组**（9 项，对应进度账本，含真实 `buildAliases` 阶段）；**细粒度 12 步**（whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。Workflow SDK 自身持久化 step 结果；`steps/<step>.json` 是保留的业务可读 checkpoint 形状，当前 web/lib 实现只写 manifest / validation / error / latest-success 等 run 级账本。
 
 ```json
 // steps/recompute.json
@@ -418,7 +420,7 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
 
 ```json
 {
-  "generated_at": "<run_id>",
+  "generated_at": "2026-06-02T00:00:00.000Z",
   "count": 5302,
   "repos": [
     { "id": 1296269, "full_name": "vuejs/vue", "owner": "vuejs", "language": "JavaScript", "current_stars": 207000, "description": "..." }

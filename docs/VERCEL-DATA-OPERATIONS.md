@@ -159,7 +159,7 @@ async function recomputeRank(runId: string) {
 | 1 | refresh whitelist | GitHub Search `stars:>=10000` | `canonical/v2/whitelist/<run_id>.json` + diff | 自适应分桶绕过 Search 1000 上限(逻辑同 `01-whitelist`,但跑在 Vercel)。算出**新晋**(新 id)与**跌出**(旧 id 不再 ≥10k)。 |
 | 2 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo:记录旧→新映射,其增量由后续 build-aliases step 并集成 `lookup/aliases.json`,供 repo 页 308 重定向(见 [FRONTEND.md](./FRONTEND.md))。**先于 metadata 跑**——metadata 会覆盖 `full_name`,改名检测必须在覆盖前读到旧值。canonical 按 `repo_id` 归并,改名不丢历史。 |
 | 3 | metadata shards(**按 bucket,1 step/桶**,内含 newcomer 追踪) | bootstrap `lookup/repos.json`(owner_type/language)+ run whitelist(node_id、新鲜 current_stars、rename-aware full_name) | `canonical/v2/repos/<bucket>.json`(含 `tracked_since` + GitHub `languages`) | **存量 repo 从 bootstrap seed,不重拉 GitHub**;GitHub GraphQL `nodes()` 只补"既不在 prev shard 也不在 lookup"的真新晋(~12)，以及缺少 `languages` breakdown 的旧 shard repo（一次性补齐后不再每周全量重拉）。**newcomer 追踪不是独立 step**——发现新 id 时同步写 `tracked_since`(默认方案 A,见 §10)。⚠️ **不可每次全量重拉所有 repo**——会撞 GitHub 二级限流(已实测)。每桶一个短 step,幂等。milestones/description/topics 留待 entity 富化。 |
-| 4 | canonical fold | 已收口周期的**冻结快照** `canonical/v2/pending/<period>.json` + recent-daily | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` + `meta.json.folded_through` | **折叠**:周期收口时把活尾 net delta 折进月/周 rollup shard;append 站点日总量。**交接靠水位标记防重复/丢数据**——见 §7.2(H1):cron 跨期重置 `current_month.json` 前先把上一期完整 `per_repo` 落到 `canonical/v2/pending/<period>.json`,fold 只读 pending、折叠后标记 `folded_through=period`。跌出者保留历史 shard、停止 poll。 |
+| 4 | canonical fold | 已收口周期的**冻结快照** `canonical/v2/pending/<period>.json` | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` + `meta.json.folded_through` | **折叠**:周期收口时把活尾 net delta 折进月/周 rollup shard;append 站点日总量。**交接靠水位标记防重复/丢数据**——见 §7.2(H1):cron 跨期重置 `current_month.json` 前先把上一期完整 `per_repo` 落到 `canonical/v2/pending/<period>.json`,fold 只读 pending、折叠后标记 `folded_through=period`。`repo-recent-daily` 不参与 recurring fold（见 §6.2 / issue #3）。跌出者保留历史 shard、停止 poll。 |
 | 5 | rank recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`/`meta` shard | `views/<run_id>/rank/**` | 载入全部 monthly/weekly 桶建「period→repos」索引,按 period 算 flow/stock + all-time,幂等写 staging。**growth**:期初 stock = monthly `stock_est` 前缀和在 `period-1` 的值(§6.3),floor 期初 ≥20k;**new**:直接用 `repos.crossed_10k` 落当期判定(**不另用 stock_est 重算**,口径同 [RANKING.md](./RANKING.md) §4)。stock 锚定见 §6.3 / [RANKING.md](./RANKING.md) §3。 |
 | 5a | category artifacts(**same gather as rank**) | `repos` + rank inputs already loaded by step 5 | `views/<run_id>/categories/**` + `lookup/categories.json` + `rank/category/**/all-time/repo/stock.json` | Phase-1 deterministic category registry, repo assignments, public category lookup, and bounded all-time category stock ranks. Windowed category ranks stay out of Phase 1 to avoid a large view-count expansion. |
 | 6a | entity/repo recompute(**桶内独立**) | 单桶 `repo-monthly`/`repo-weekly`/`repo-recent-daily`/`repos` | `views/<run_id>/entity/repo/**` | 每个 repo 只依赖自己那桶,可按桶并行分 step。 |
@@ -170,7 +170,7 @@ async function recomputeRank(runId: string) {
 | 10 | publish | `views/<run_id>/**` | `views/latest.json` 指针 + `ops/workflows/latest-success.json` | 原子切指针(version=run_id):读侧从此读新版本(见 §7)。 |
 | 11 | gc | `views/latest.json` + `list(views/)` | `del views/<旧 version>/**` | **版本 GC**(`gc.ts`,发布后跑):保留最新 4 版 + 当前 / `prev_version` 指针(回滚目标),删更旧的孤儿版本。**best-effort、绝不抛错**——清理失败不拖垮已发布的 run。 |
 
-> 上表是**逻辑职责**枚举,顺序与 `web/lib/workflows/refresh.ts` L27–60 完全一致。**细粒度 = 12 个真实 step-function**:`whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`(无 `revalidate`、无独立 `newcomer` step——workflow 不调 `revalidatePath`,newcomer 追踪折进 metadata 的 `tracked_since`)。运行 manifest 把这 12 步归并为 8 个 checkpoint step(`whitelist / rename / metadata / fold / recompute / validate / publish / gc`),见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12。
+> 上表是**逻辑职责**枚举,顺序与 `web/lib/workflows/refresh.ts` L27–60 完全一致。**细粒度 = 12 个真实 step-function**:`whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`(无 `revalidate`、无独立 `newcomer` step——workflow 不调 `revalidatePath`,newcomer 追踪折进 metadata 的 `tracked_since`)。运行 manifest 把这 12 步归并为 9 个 checkpoint step(`whitelist / rename / metadata / fold / recompute / buildAliases / validate / publish / gc`),见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12。
 >
 > ⚠️ **workflow 不调 `revalidatePath`**:发布后读侧通过 `views/latest.json` 指针 + 60s TTL 自然拾取新版本(§7.4);若要把传播窗口从 60s 压到秒级,由 live-overlay cron handler 负责 revalidate,不在 L3 workflow 路径内(职责分离 / 可独立 GC)。
 
@@ -256,7 +256,7 @@ hot-snapshot / current_month: 直读 (L1/L2 活尾)
 | `repos/<bucket>` | `repo_id % N` | 32 | ~165 repo / 桶,~数百 KB | metadata step 每 step 几个桶 |
 | `repo-monthly/<bucket>` | `repo_id % N` | 32 | ~165 repo × ~132 月点 × ~20B ≈ **~430 KB** | rank/entity gather |
 | `repo-weekly/<bucket>` | `repo_id % N` | 64 | ~82 repo × ~570 周点 × ~22B ≈ **~1 MB** | 历史周榜重算 |
-| `repo-recent-daily/<bucket>` | `repo_id % N` | 32 | ~165 repo × ≤90 日点,~数百 KB | 每日 / 每周折叠 |
+| `repo-recent-daily/<bucket>` | `repo_id % N` | 32 | ~165 repo × ≤90 日点,~数百 KB | bootstrap 一次性 seed；entity recompute 只读；recurring fold 当前不老化 / 不修剪（issue #3 选择文档化现状） |
 | `site-daily/<yyyy>` | 年 | 1/年 | 365 点,KB 级 | heatmap step |
 
 **内存校验**:跨桶 gather 的 step(rank / entity-org / all-time)需一次载入**全部**桶——
@@ -327,7 +327,7 @@ L1/L2 与 L3 写不同 Blob 前缀(`live/*` vs `canonical/v2/**` + `views/<run_i
 | 步骤 | 谁做 | 动作 |
 |---|---|---|
 | 1. 冻结上一期 | **L1/L2 cron**(跨期那次) | 检测到 `current_month.json.month ≠ 本次 month` → **先**把旧月完整 `per_repo` 写到 `canonical/v2/pending/<旧 period>.json`(幂等覆盖),**再**初始化新月活尾。绝不在未落 pending 前丢弃旧月。 |
-| 2. 折叠 | **L3 step 5** | 只读 `canonical/v2/pending/<period>.json`(已冻结、不再变动)→ 折进 `repo-monthly`/`repo-weekly` → 标 `folded_through=period`(写 `canonical/v2/meta.json`)。 |
+| 2. 折叠 | **L3 fold step** | 只读 `canonical/v2/pending/<period>.json`(已冻结、不再变动)→ 折进 `repo-monthly`/`repo-weekly` → 标 `folded_through=period`(写 `canonical/v2/meta.json`)。 |
 | 3. 防重复 | **读路径 §5.1** | 已折叠周期(`≤ folded_through`)只读 base(已含该期);未折叠的当前/刚收口周期读 live 覆盖层。**同一周期绝不同时计 live + canonical。** |
 
 > 这样:① 上月最后一天 net 一定先进 pending 才被覆盖 → **不丢**;② base 与 live 按 `folded_through` 水位线**互斥**取数 → **不重复**;③ pending 是冻结快照,L3 折叠期间 cron 不再动它 → step 5 读到的是稳定输入。`folded_through` 同时是周/月两套水位(周收口比月早)。
@@ -374,7 +374,9 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
 - **Zod schema 校验**(每个文件读取时按 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2 契约逐字段验证;任一文件 schema parse 失败计入 `schema_failures` 并加入 `failures`):
   - `views/<run_id>/meta.json`(契约 `Meta`)
   - `views/<run_id>/rank/all-time/repo/stock.json`(契约 `RankList`)
+  - `views/<run_id>/rank/all-time/org/stock.json`(契约 `RankList`)
   - `views/<run_id>/lookup/repos.json`(契约 `ReposLookup`)
+  - `views/<run_id>/lookup/orgs.json`(契约 `OrgsLookup`)
   - `views/<run_id>/search/index.json`(契约 `SearchIndex`)
   - `views/<run_id>/categories/registry.json`(契约 `CategoryRegistry`)
   - `views/<run_id>/categories/assignments.json`(契约 `CategoryAssignments`)
@@ -382,10 +384,14 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
   - `views/<run_id>/rank/category/<sample>/all-time/repo/stock.json`(契约 `CategoryRankList`)
   - `views/<run_id>/entity/repo/<topId>.json`(契约 `RepoEntity`,top repo 抽样)
   - `views/<run_id>/heatmap/year/<lastYear>.json`(契约 `Heatmap`,上一公历年抽样)
+  - `live/rank/month/<current>/repo/{flow,stock}.json`、`live/rank/week/<current>/repo/flow.json`、`hot-snapshot.json`（当前 live/hot 覆盖层契约）
 - **Sanity 不变量**(在 schema 校验之外另行 assert,失败即抛错终止 workflow):
   - **`meta.seam_date` 存在**(布尔 truthy);
-  - **`rank/all-time/repo/stock.json`**:`items` 非空 · `items[0].rank === 1` · `value` 严格非递增(`items[i].value <= items[i-1].value`);
+  - **`meta.folded_through` 单调**:若上一发布版本有 `folded_through`,新版本的 month/week 不得倒退;
+  - **rank 列表完整性**:`all-time`、当前 live rank、hot-snapshot 内 rank 子集都检查 rank 从 1 连续、`value` 非递增、无重复 rank、无重复 `id/login`;
+  - **引用完整性**:repo rank item 的 `id` 必须存在于 `lookup/repos.json`;org rank item 的 `login` 必须存在于 `lookup/orgs.json`;
   - **`lookup/repos.json`**:条目数 ≥ `MIN_LOOKUP`(=1000);
+  - **`lookup/aliases.json`**:无 dangling / live-shadow,且相对上一发布版本 alias count 不倒退（buildAliases 必须扫描所有 workflow run folder;读取错误会失败,缺失 `renames.json` 视为空增量）;
   - **`search/index.json`**:`count ≥ MIN_LOOKUP`(=1000)且 `count === repos.length`;
   - **category views**:`registry` 非空且有 public categories;assignments 覆盖 ≥ `MIN_LOOKUP`;`language`/`language_family` 每 repo 至少一个,`owner_kind` 每 repo 单值;assignment 引用都存在于 registry;抽样 category rank 的 repo 都属于该 category;
   - **top repo entity**:`entity/repo/<allTime.items[0].id>.json` 的 `curve.monthly` 长度 > 0;
@@ -398,11 +404,10 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
 
 下列检查曾在早期设计稿中列为"硬不变量",但**目前 `validate.ts` 未实现**——它们或者代价过高(全量遍历)、或者依赖 L1 cron 与 L3 折叠之间的同步语义(运行时另有侦测/告警机制),保留为未来增强项,不应被误读为已生效:
 
-- ~~rank 文件数与 period 集合一致~~ —— 目前只抽样 `all-time/repo/stock.json`,不枚举全部 period。
+- ~~rank 文件数与 period 集合一致~~ —— 目前抽样 all-time + 当前 live/hot rank,不枚举全部历史 period。
 - ~~org stock 终点 = 成员 `current_stars_sum`(carry-forward 等式)~~ —— 不在 validate 内,口径靠 recompute step 内部不变量(见 [RANKING.md](./RANKING.md) §5)。
 - ~~entity 曲线 monthly / recent_daily 接缝在 90 天水位线连续~~ —— 仅抽样 top repo 的 `monthly` 非空,**不**校验 monthly↔recent_daily 接缝。
 - ~~月榜 / 近期日榜的 seam 连续性~~ —— 不在 validate 内,seam 锚定由 recompute 阶段保证(§6.3)。
-- ~~`meta.folded_through` 单调不退~~ —— 仅检查 `seam_date` 存在;`folded_through` 单调性靠 fold step 内部水位写入,validate 不二次校验。
 
 > 如要补强其中任一项,直接改 `validate.ts` 并同步更新本节;不要在其他文档(如 TESTING)宣称已生效。
 

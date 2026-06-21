@@ -2,7 +2,7 @@ import { list, del } from "@vercel/blob";
 import { readView } from "@/lib/data/source";
 import { ViewsPointer } from "@/lib/contracts";
 
-// Step 11 — version GC. After publish, keep the newest KEEP versions plus the live pointer's
+// Version GC. After publish, keep the newest KEEP versions plus the live pointer's
 // version + prev_version (the rollback target), and delete older orphan versions under views/.
 // Best-effort: never throws — a cleanup failure must not fail an already-published run.
 // See docs/VERCEL-DATA-OPERATIONS.md §7 (retain near N).

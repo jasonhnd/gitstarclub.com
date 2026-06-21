@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DateStr, OwnerType, Period } from "./common";
+import { DateStr, NonNegativeInt, OwnerType, Period, SafeText, TimestampStr } from "./common";
 
 // canonical/v2/* — production canonical JSON shards that replace the bootstrap
 // star_daily.parquet as the production source of truth. See docs/DATA-CONTRACTS.md
@@ -8,45 +8,45 @@ import { DateStr, OwnerType, Period } from "./common";
 /** canonical/v2/meta.json — stock-anchoring seam + period fold watermarks. */
 export const CanonicalMeta = z.object({
   seam_date: DateStr,
-  schema_ver: z.number().int(),
+  schema_ver: NonNegativeInt,
   folded_through: z.object({
     month: Period,
     week: Period,
-  }),
-});
+  }).strict(),
+}).strict();
 export type CanonicalMeta = z.infer<typeof CanonicalMeta>;
 
 /** One repo's dimension row in canonical/v2/repos/<bucket>.json.
  *  `d` = frozen discount (current_stars@seam / cumgross@seam_date), bootstrap-fixed. */
 export const ReposShardEntry = z.object({
-  id: z.number().int(),
-  node_id: z.string(),
-  owner: z.string(),
+  id: NonNegativeInt,
+  node_id: SafeText,
+  owner: SafeText,
   owner_type: OwnerType,
-  name: z.string(),
-  full_name: z.string(),
-  description: z.string().nullable().optional(),
-  language: z.string().nullable().optional(),
+  name: SafeText,
+  full_name: SafeText,
+  description: SafeText.nullable().optional(),
+  language: SafeText.nullable().optional(),
   languages: z
     .array(
       z.object({
-        name: z.string(),
-        size: z.number().int().nonnegative(),
-        color: z.string().nullable().optional(),
-      }),
+        name: SafeText,
+        size: NonNegativeInt,
+        color: SafeText.nullable().optional(),
+      }).strict(),
     )
     .optional(),
-  topics: z.array(z.string()).optional(),
+  topics: z.array(SafeText).optional(),
   created_at: z.string().optional(),
-  current_stars: z.number().int(),
+  current_stars: NonNegativeInt,
   is_archived: z.boolean().optional(),
   crossed_10k: z.string().nullable().optional(),
   crossed_50k: z.string().nullable().optional(),
   crossed_100k: z.string().nullable().optional(),
   tracked_since: z.string().nullable().optional(),
-  d: z.number().optional(),
-  fetched_at: z.string().optional(),
-});
+  d: z.number().nonnegative().optional(),
+  fetched_at: TimestampStr.optional(),
+}).strict();
 export type ReposShardEntry = z.infer<typeof ReposShardEntry>;
 
 /** canonical/v2/repos/<bucket>.json — keyed by repo id (stringified). */
@@ -70,40 +70,40 @@ export type RepoRecentDailyShard = z.infer<typeof RepoRecentDailyShard>;
 
 /** canonical/v2/site-daily/<yyyy>.json — site-wide daily totals (heatmap source). */
 export const SiteDaily = z.object({
-  year: z.string(),
+  year: z.string().regex(/^\d{4}$/),
   cells: z.array(z.tuple([DateStr, z.number().int()])),
-});
+}).strict();
 export type SiteDaily = z.infer<typeof SiteDaily>;
 
 /** One whitelist row (GitHub Search `stars:>=10000`). */
 export const WhitelistEntry = z.object({
-  id: z.number().int(),
-  node_id: z.string(),
-  full_name: z.string(),
-  owner: z.string(),
-  name: z.string(),
-  stars: z.number().int(),
-});
+  id: NonNegativeInt,
+  node_id: SafeText,
+  full_name: SafeText,
+  owner: SafeText,
+  name: SafeText,
+  stars: NonNegativeInt,
+}).strict();
 export type WhitelistEntry = z.infer<typeof WhitelistEntry>;
 
 /** canonical/v2/whitelist/<run_id>.json — snapshot + diff vs the previous run. */
 export const WhitelistSnapshot = z.object({
-  run_id: z.string(),
-  generated_at: z.string(),
-  count: z.number().int(),
+  run_id: SafeText,
+  generated_at: TimestampStr,
+  count: NonNegativeInt,
   entries: z.array(WhitelistEntry),
   diff: z.object({
-    added: z.array(z.number().int()), // new repo ids (newcomers)
-    dropped: z.array(z.number().int()), // ids no longer ≥10k
-  }),
-});
+    added: z.array(NonNegativeInt), // new repo ids (newcomers)
+    dropped: z.array(NonNegativeInt), // ids no longer >=10k
+  }).strict(),
+}).strict().refine((snapshot) => snapshot.count === snapshot.entries.length, "count must match entries length");
 export type WhitelistSnapshot = z.infer<typeof WhitelistSnapshot>;
 
-/** canonical/v2/pending/<period>.json — frozen closed-period live tail awaiting fold (§8.3). */
+/** canonical/v2/pending/<period>.json — frozen closed-period live tail awaiting fold (VERCEL-DATA-OPERATIONS §7.2). */
 export const PendingPeriod = z.object({
   period: Period,
-  frozen_at: z.string(),
+  frozen_at: TimestampStr,
   daily_totals: z.array(z.tuple([DateStr, z.number().int()])),
   per_repo: z.record(z.string(), DailySeries),
-});
+}).strict();
 export type PendingPeriod = z.infer<typeof PendingPeriod>;
