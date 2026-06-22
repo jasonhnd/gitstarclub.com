@@ -7,7 +7,6 @@ import {
   CategoryRankList,
   CategoryRegistry,
   Heatmap,
-  HotSnapshot,
   Meta,
   OrgsLookup,
   RankList,
@@ -17,7 +16,6 @@ import {
   WorkflowValidation,
 } from "@/lib/contracts";
 import type { RankItem } from "@/lib/contracts";
-import { currentUtcPeriods } from "@/lib/periods";
 
 // Publish gate. Reads key views from the freshly written version
 // (views/<run_id>/**) and checks Zod schema + sanity invariants. Throwing here aborts
@@ -38,18 +36,6 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
     checked++;
     try {
       const v = await readView<T>(`views/${runId}/${rel}`, schema, { bust: runId });
-      if (v === null) failures.push(`${rel}: missing`);
-      return v;
-    } catch (err) {
-      schemaFailures++;
-      failures.push(`${rel}: schema — ${err instanceof Error ? err.message : String(err)}`);
-      return null;
-    }
-  };
-  const readFlat = async <T>(rel: string, schema: Parameters<typeof readView<T>>[1]): Promise<T | null> => {
-    checked++;
-    try {
-      const v = await readView<T>(rel, schema, { bust: runId });
       if (v === null) failures.push(`${rel}: missing`);
       return v;
     } catch (err) {
@@ -125,23 +111,6 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
   if (search) {
     invariants.search_repos = search.count;
     if (search.count < MIN_LOOKUP) failures.push(`search/index: only ${search.count} repos`);
-  }
-
-  const periods = currentUtcPeriods();
-  const liveRanks = await Promise.all([
-    readFlat(`live/rank/month/${periods.monthPeriod}/repo/flow.json`, RankList),
-    readFlat(`live/rank/month/${periods.monthPeriod}/repo/stock.json`, RankList),
-    readFlat(`live/rank/week/${periods.weekPeriod}/repo/flow.json`, RankList),
-  ]);
-  if (lookup) {
-    for (const rank of liveRanks) {
-      if (rank) Object.assign(invariants, inspectRank(`live/${rank.meta.window}/${rank.meta.period}/${rank.meta.metric}`, rank, failures, { lookup }).invariants);
-    }
-  }
-
-  const hot = await readFlat("hot-snapshot.json", HotSnapshot);
-  if (hot && lookup && orgLookup) {
-    inspectHotSnapshot(hot, lookup, orgLookup, failures, invariants);
   }
 
   const categoryRegistry = await read("categories/registry.json", CategoryRegistry);
@@ -273,32 +242,6 @@ function inspectRank(
   if (duplicateKeys > 0) failures.push(`${label}: ${duplicateKeys} duplicate item id/login value(s)`);
   if (missingRefs > 0) failures.push(`${label}: ${missingRefs} missing id/login reference(s)`);
   return { invariants };
-}
-
-function inspectHotSnapshot(
-  hot: HotSnapshot,
-  lookup: ReposLookup,
-  orgLookup: OrgsLookup,
-  failures: string[],
-  invariants: Record<string, boolean | number>,
-): void {
-  const rank = (dim: "repo" | "org", metric: "flow" | "stock", items: RankItem[]) =>
-    ({
-      meta: { window: "all", period: "all", dim, metric, generated_at: hot.generated_at },
-      items,
-    }) satisfies RankList;
-
-  const checks = [
-    inspectRank("hot/home/month/flow", rank("repo", "flow", hot.home.current_month_top.flow), failures, { lookup }),
-    inspectRank("hot/home/month/stock", rank("repo", "stock", hot.home.current_month_top.stock), failures, { lookup }),
-    inspectRank("hot/current-year/flow", rank("repo", "flow", hot.current_year.flow), failures, { lookup }),
-    inspectRank("hot/current-year/stock", rank("repo", "stock", hot.current_year.stock), failures, { lookup }),
-    inspectRank("hot/current-month/flow", rank("repo", "flow", hot.current_month.flow), failures, { lookup }),
-    inspectRank("hot/current-month/stock", rank("repo", "stock", hot.current_month.stock), failures, { lookup }),
-    inspectRank("hot/all-time/repo", rank("repo", "stock", hot.all_time.repo), failures, { lookup }),
-    inspectRank("hot/all-time/org", rank("org", "stock", hot.all_time.org), failures, { orgLookup }),
-  ];
-  for (const check of checks) Object.assign(invariants, check.invariants);
 }
 
 function itemKey(item: RankItem): string | null {

@@ -384,11 +384,10 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
   - `views/<run_id>/rank/category/<sample>/all-time/repo/stock.json`(契约 `CategoryRankList`)
   - `views/<run_id>/entity/repo/<topId>.json`(契约 `RepoEntity`,top repo 抽样)
   - `views/<run_id>/heatmap/year/<lastYear>.json`(契约 `Heatmap`,上一公历年抽样)
-  - `live/rank/month/<current>/repo/{flow,stock}.json`、`live/rank/week/<current>/repo/flow.json`、`hot-snapshot.json`（当前 live/hot 覆盖层契约）
 - **Sanity 不变量**(在 schema 校验之外另行 assert,失败即抛错终止 workflow):
   - **`meta.seam_date` 存在**(布尔 truthy);
   - **`meta.folded_through` 单调**:若上一发布版本有 `folded_through`,新版本的 month/week 不得倒退;
-  - **rank 列表完整性**:`all-time`、当前 live rank、hot-snapshot 内 rank 子集都检查 rank 从 1 连续、`value` 非递增、无重复 rank、无重复 `id/login`;
+  - **rank 列表完整性**:staging `all-time` repo/org rank 检查 rank 从 1 连续、`value` 非递增、无重复 rank、无重复 `id/login`;
   - **引用完整性**:repo rank item 的 `id` 必须存在于 `lookup/repos.json`;org rank item 的 `login` 必须存在于 `lookup/orgs.json`;
   - **`lookup/repos.json`**:条目数 ≥ `MIN_LOOKUP`(=1000);
   - **`lookup/aliases.json`**:无 dangling / live-shadow,且相对上一发布版本 alias count 不倒退（buildAliases 必须扫描所有 workflow run folder;读取错误会失败,缺失 `renames.json` 视为空增量）;
@@ -404,7 +403,7 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
 
 下列检查曾在早期设计稿中列为"硬不变量",但**目前 `validate.ts` 未实现**——它们或者代价过高(全量遍历)、或者依赖 L1 cron 与 L3 折叠之间的同步语义(运行时另有侦测/告警机制),保留为未来增强项,不应被误读为已生效:
 
-- ~~rank 文件数与 period 集合一致~~ —— 目前抽样 all-time + 当前 live/hot rank,不枚举全部历史 period。
+- ~~rank 文件数与 period 集合一致~~ —— 目前抽样 all-time repo/org rank,不枚举全部历史 period。
 - ~~org stock 终点 = 成员 `current_stars_sum`(carry-forward 等式)~~ —— 不在 validate 内,口径靠 recompute step 内部不变量(见 [RANKING.md](./RANKING.md) §5)。
 - ~~entity 曲线 monthly / recent_daily 接缝在 90 天水位线连续~~ —— 仅抽样 top repo 的 `monthly` 非空,**不**校验 monthly↔recent_daily 接缝。
 - ~~月榜 / 近期日榜的 seam 连续性~~ —— 不在 validate 内,seam 锚定由 recompute 阶段保证(§6.3)。

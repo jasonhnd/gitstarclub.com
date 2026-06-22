@@ -93,7 +93,7 @@ test('周排名窗口跨月不丢日', () => {
 | `meta.json` | `seam_date` 存在 |
 | 全时 stock 总榜 | repo/org all-time rank 均读 schema；`items` 非空、`rank[0]==1`、`value` 非递增；rank 从 1 连续、无重复 rank、无重复 `id/login` |
 | `lookup/repos.json` | 条目数 ≥ 1000（防止下游 join 表崩塌） |
-| rank 引用完整性 | all-time、当前 live rank、hot-snapshot 内 rank item 的 repo `id` 必须在 `lookup/repos.json`；org `login` 必须在 `lookup/orgs.json` |
+| rank 引用完整性 | staging all-time rank item 的 repo `id` 必须在 `lookup/repos.json`；org `login` 必须在 `lookup/orgs.json` |
 | `meta.folded_through` | 相对上一发布版本不倒退（month/week 单调） |
 | `lookup/aliases.json` | 别名完整性：无 dangling（每个别名 id 仍在 `lookup/repos.json` 内）、无 live-shadow（别名旧名不得撞当前某 repo 的 `full_name`）、alias count 不小于上一发布版本 |
 | `search/index.json` | `count` ≥ 1000 且 `count == repos.length`（防止索引漂移） |
@@ -103,7 +103,6 @@ test('周排名窗口跨月不丢日', () => {
 | 抽样 category-rank | 取首个 public 分类的 `rank/category/<dim>/<slug>/all-time/repo/stock.json`，其每个 item 都已在 assignments 中归入该分类 |
 | 头部 repo entity | 全时榜 #1 的 `entity/repo/<id>.json` 的 `curve.monthly` 非空 |
 | 上一年 heatmap | `heatmap/year/<Y-1>.json` 可读、字段齐 |
-| live / hot 覆盖层 | 当前月 repo flow/stock、当前周 repo flow、`hot-snapshot.json` 通过 schema + rank 引用完整性检查 |
 
 | 测试 | 在哪跑 | 断言 | 失败动作 |
 |---|---|---|---|
