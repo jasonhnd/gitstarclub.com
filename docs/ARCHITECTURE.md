@@ -34,7 +34,7 @@ The same data layer also operates AI-free: features that look like they would ca
 | Live-overlay data | Daily `current_month.json`, weekly `hot-snapshot.json`, written by cron | Append-only within a period |
 | Recurring data refresh | Vercel Workflow (multi-step, Blob checkpoint) | |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
-| Code validation | Bun checks | No committed GitHub Actions workflow yet; the current review gate is `bun run lint`, `bun run typecheck`, and `bun test lib/` from `web/` |
+| Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test` from `web/` on PRs and `main` pushes |
 | Analytics | Not enabled in the client app; any future analytics must ship with privacy notice and consent gating where required | |
 
 Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, tRPC, any LLM SDK. The reasoning is the constraints above.

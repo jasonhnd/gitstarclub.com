@@ -7,7 +7,7 @@
 
 ## Current Automation
 
-No GitHub Actions workflow is committed yet. The current code-review gate from `web/` is `bun run lint`, `bun run typecheck`, and `bun test lib/`.
+GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test`.
 
 The visual, a11y, E2E, performance, and cross-browser sections below remain target coverage until their Playwright/Lighthouse/browser tooling is added. They should not be treated as current PR blockers.
 
