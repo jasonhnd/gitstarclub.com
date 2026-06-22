@@ -182,7 +182,7 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
 | 字段 | 模板（`anthropics/claude-code`，已找到 entity） |
 |---|---|
 | title | `anthropics/claude-code — Star History & Timeline` |
-| description | `Star history for anthropics/claude-code: 98,432 stars. Growth curve, every-50k milestones, monthly star gains, and ranking history.` |
+| description | `Star history for anthropics/claude-code: 98,432 stars. Growth curve, exact 10k/50k/100k milestones, monthly star gains, and ranking history.` |
 | canonical | `/anthropics/claude-code` |
 | ogImage | `/anthropics/claude-code/opengraph-image`（按 repo 现场绘制曲线 + 数字 + repo 名） |
 
@@ -196,7 +196,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
   if (!repo) return pageMeta({ title: `${fullName} — Star History`, description: `GitHub star history for ${fullName}.`, path: `/${fullName}`, locale: "en" });
   return pageMeta({
     title: `${repo.full_name} — Star History & Timeline`,
-    description: `Star history for ${repo.full_name}: ${repo.current_stars.toLocaleString()} stars. Growth curve, every-50k milestones, monthly star gains, and ranking history.`,
+    description: `Star history for ${repo.full_name}: ${repo.current_stars.toLocaleString()} stars. Growth curve, exact 10k/50k/100k milestones, monthly star gains, and ranking history.`,
     path: `/${repo.full_name}`,
     locale: "en",
     ogImage: `/${repo.full_name}/opengraph-image`,

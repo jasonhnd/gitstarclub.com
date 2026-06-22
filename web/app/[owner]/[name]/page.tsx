@@ -5,13 +5,14 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { JsonLd } from "@/app/_explore/JsonLd";
-import { StarCurve, type Milestone } from "@/app/_explore/StarCurve";
+import { StarCurve } from "@/app/_explore/StarCurve";
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getRepoIdByFullName, getRepoEntity, getAliasMap, getReposLookup } from "@/lib/data";
 import { fmtStars, ymParts, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { repoLd } from "@/lib/jsonld";
+import { exactRepoMilestones } from "@/lib/repo-milestones";
 import { resolveRepoRoute } from "@/lib/repo-route";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
@@ -29,7 +30,6 @@ export function generateStaticParams() {
   return [];
 }
 
-const STAR_MILESTONE_STEP = 50_000;
 
 // Resolve a URL slug → repo id. On a miss, if the slug is a former name of a still-tracked repo
 // (GitHub rename, e.g. facebook/react → react/react), 308-redirect to its current slug; otherwise
@@ -53,7 +53,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
   if (!repo) return pageMeta({ title: `${fullName} — Star History`, description: `GitHub star history for ${fullName}.`, path: `/${fullName}`, locale: "en" });
   return pageMeta({
     title: `${repo.full_name} — Star History & Timeline`,
-    description: `Star history for ${repo.full_name}: ${repo.current_stars.toLocaleString()} stars. Growth curve, every-50k milestones, monthly star gains, and ranking history.`,
+    description: `Star history for ${repo.full_name}: ${repo.current_stars.toLocaleString()} stars. Growth curve, exact 10k/50k/100k milestones, monthly star gains, and ranking history.`,
     path: `/${repo.full_name}`,
     locale: "en",
     ogImage: `/${repo.full_name}/opengraph-image`, // per-repo OG card (app/[owner]/[name]/opengraph-image.tsx)
@@ -70,7 +70,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   if (!repo) notFound();
 
   const series = repo.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
-  const milestones = starMilestones(series);
+  const milestones = exactRepoMilestones(series, repo.milestones);
   const inflections = (repo.inflections ?? []).flatMap((inf) => {
     const monthIndex = series.findIndex((p) => p.label === inf.period);
     return monthIndex >= 0 ? [{ monthIndex, flow: inf.flow, kind: inf.kind, label: inf.period }] : [];
@@ -242,28 +242,6 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
       </main>
     </>
   );
-}
-
-function starMilestones(series: Array<{ label: string; total: number }>): Milestone[] {
-  const maxTotal = Math.max(0, ...series.map((point) => point.total));
-  const maxThreshold = Math.floor(maxTotal / STAR_MILESTONE_STEP) * STAR_MILESTONE_STEP;
-  const milestones: Milestone[] = [];
-  for (let stars = STAR_MILESTONE_STEP; stars <= maxThreshold; stars += STAR_MILESTONE_STEP) {
-    const monthIndex = series.findIndex((point) => point.total >= stars);
-    if (monthIndex < 0) continue;
-    milestones.push({
-      stars,
-      label: starMilestoneLabel(stars),
-      date: `${series[monthIndex].label}-01`,
-      monthIndex,
-    });
-  }
-  return milestones;
-}
-
-function starMilestoneLabel(stars: number): string {
-  if (stars >= 1_000_000) return `${Number((stars / 1_000_000).toFixed(1))}M`;
-  return `${stars / 1000}k`;
 }
 
 type RepoLanguage = { name: string; size?: number | null; color?: string | null };

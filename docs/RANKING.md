@@ -31,14 +31,14 @@
 
 ```
 cumgross[repo, date] = Σ_{d ≤ date} delta            # gross 累加曲线
-d[repo] = current_stars[repo] / cumgross[repo, seam_date]   # 折扣 (≤ 1)
+d[repo] = current_stars[repo] / cumgross[repo, seam_date]   # 锚定因子 (>= 0; archive undercount can make it > 1)
 stock_est[repo, date] = round(cumgross[repo, date] × d[repo])   # 锚定估算
 ```
 
-- **比例折扣**把"取消 star"的修正**均匀分摊**到全历史，曲线终点正好落在 `current_stars`。
+- **锚定因子**把 GitHub Archive 低计或取消 star 的差异统一锚定到 `current_stars`，因此 `d` 可能小于、等于或大于 1。
 - **seam 后**：stock 由每日 `current_stars` 精确跟踪，不再估算。
 - `entity/repo.curve.monthly` 的 `total_end` = 月末 `stock_est`（历史）/ 精确（seam 后）。
-- **年窗口 stock 锚定到该年 12 月（末月）**：年榜的 stock **不**在年粒度独立重算 gross/net，而是直接取该年**最后一个月**的月度 `stock_est`（年 flow 仍 = 12 个月 flow 之和）。这样跨 seam 那一年内部已被月度逻辑解掉的"年内接缝拆分"会原样继承进年窗口，避免双重锚定（`web/lib/workflows/recompute/windows.ts` `deriveYearWindow`）。
+- **年窗口 stock 锚定到该年最后有数据月**：年榜的 stock **不**在年粒度独立重算 gross/net，而是直接取该年**最后一个有数据月**的月度 `stock_est`（年 flow = 该年有数据月 flow 之和）。这样跨 seam 那一年内部已被月度逻辑解掉的"年内接缝拆分"会原样继承进年窗口，避免双重锚定（`web/lib/workflows/recompute/windows.ts` `deriveYearWindow`）。
 - **精度边界**：假设取消率随时间均匀（实际会变），是 MVP 可接受估算；About 页注明"历史曲线为锚定估算，终点精确"。star-history.com 同类做法。
 
 > **唯一必须精确的数 = `current_stars`**（页面显示的当前 star）。历史曲线形状保留、终点锚定即可。
@@ -50,11 +50,11 @@ stock_est[repo, date] = round(cumgross[repo, date] × d[repo])   # 锚定估算
 ### 增速 TOP（growth rate）
 - 定义：`当期 flow / 期初 stock`，降序。
 - **入选两条件（同时满足）**：① **期初 stock ≥ 20,000**（Floor）；② **当期 flow > 0**（仅取正增长，排除 flow ≤ 0 的取消/持平期，使"增速"语义干净）。无 floor 时增速榜永远是"刚进榜小项目榜"、与新晋榜重复；加 floor 后变成"已有体量却仍在加速的中坚"，信息量独立。
-- 期初 stock = 上一周期末 `stock_est`（历史）/ 精确（seam 后）。
+- 期初 stock = 上一有数据期末 `stock_est`（历史）/ 精确（seam 后）。
 
 ### 新晋（new member）
 - 定义：`stock` 在当期内**首次** ≥ 10,000（白名单门槛）。
-- **判定来源**：直接读 `repos.crossed_10k`（bootstrap 算定后冻结写入 `canonical/v2/repos/<bucket>.json`），按其 `slice(0,len(period))` 等于当期归类——**不在 recompute 时重算 stock_est 跨越**，避免与 bootstrap 算定的里程碑漂移。
+- **判定来源**：直接读冻结的 `repos.crossed_10k`（bootstrap 算定后写入 `canonical/v2/repos/<bucket>.json`），按其 `slice(0,len(period))` 等于当期归类——**不在 recompute 或页面端用 `stock_est` 反推首破日期**，避免与 bootstrap 算定的里程碑漂移。
 - **排重**：增速榜的 ≥20k floor 隐式排除刚破 1 万的新晋项目；两榜信息域天然不重叠。
 
 ## 5. org 维度聚合

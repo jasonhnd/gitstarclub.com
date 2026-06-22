@@ -17,7 +17,7 @@ export const CanonicalMeta = z.object({
 export type CanonicalMeta = z.infer<typeof CanonicalMeta>;
 
 /** One repo's dimension row in canonical/v2/repos/<bucket>.json.
- *  `d` = frozen discount (current_stars@seam / cumgross@seam_date), bootstrap-fixed. */
+ *  `d` = frozen anchoring factor (current_stars@seam / cumgross@seam_date), bootstrap-fixed. */
 export const ReposShardEntry = z.object({
   id: NonNegativeInt,
   node_id: SafeText,

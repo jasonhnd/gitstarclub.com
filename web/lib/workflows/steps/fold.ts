@@ -10,7 +10,7 @@ import { addDays, endOfMonth, monthsBetween, sundayOfWeekId, weekIdOf } from "./
 // month flow → repo-monthly, daily totals → site-daily; advances meta.folded_through.month.
 // THEN folds the CLOSED ISO weeks now fully inside frozen months into repo-weekly and advances
 // meta.folded_through.week (see foldWeeks below). Folded periods are post-seam NET — the seam-aware
-// recompute (windows.ts) adds them on top of the anchor without discounting by d. Idempotent:
+// recompute (windows.ts) adds them on top of the anchor without scaling them by d. Idempotent:
 // upserts by period, only advances forward, so a workflow retry never double-counts. Runs after
 // metadata, before recompute, so the recompute turns the folded weeks into top-100 week rankings.
 // See VERCEL-DATA-OPERATIONS §7.2 for the period closeout handoff.

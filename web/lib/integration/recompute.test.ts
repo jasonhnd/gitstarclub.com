@@ -1,6 +1,9 @@
 // Offline parity gate as a bun:test suite (port of scripts/parity-recompute.ts).
 // Recomputes EVERY view from the local canonical/v2 shards with the pure-JS recompute core and
 // structurally diffs each one against the DuckDB precompute output under pipeline/data/views.
+// The DuckDB disk reference is a legacy precompute oracle only while folded_through is at or
+// before the gross/net seam. Post-seam stock correctness is pinned separately by
+// post-seam-oracle.test.ts; do not relax the maxDelta=0 parity assertion here.
 // This is the Phase-4 equivalence proof: the JS recompute must reproduce the legacy pipeline
 // byte-for-byte (maxΔ 0) under three documented normalizations:
 //   • ignore the generated_at / backfilled_at timestamps,

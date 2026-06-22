@@ -153,8 +153,9 @@ Common components:
 
 - `Chrome`: site shell/navigation.
 - `RankingList`: rank rows used by rankings and categories.
-- `StarCurve`: server-rendered SVG star trend. Repo pages derive every-50k
-  milestones from `entity/repo.curve.monthly`.
+- `StarCurve`: server-rendered SVG star trend. Repo pages pass frozen exact
+  `10k` / `50k` / `100k` milestones from `entity/repo.milestones`; higher
+  thresholds are not curve-derived.
 - `Heatmap`: activity heatmap.
 - `CompareCurve`: compare chart.
 - `SearchBox`, `ShareButton`, `Breadcrumbs`, `JsonLd`, `Narrative`.
