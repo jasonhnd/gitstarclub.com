@@ -36,6 +36,17 @@ export function Footer({ asOf }: { asOf?: string | null }) {
       <div className="mx-auto mt-4 w-full max-w-[68rem] font-mono text-[0.72rem] text-on-surface-variant">
         {t.footer.madeIn}
         {asOf ? ` · ${t.footer.dataThrough} ${asOf}` : ""}
+        <span className="mt-2 block max-w-[72ch] leading-relaxed">
+          Data from{" "}
+          <a className="text-tertiary hover:text-primary" href="https://www.gharchive.org/" rel="noreferrer">
+            GH Archive
+          </a>
+          , licensed under{" "}
+          <a className="text-tertiary hover:text-primary" href="https://creativecommons.org/licenses/by/4.0/" rel="noreferrer">
+            CC BY 4.0
+          </a>
+          , derived and transformed by GitStarClub. GitHub repository metadata and current star totals come from public GitHub APIs.
+        </span>
       </div>
     </footer>
   );
