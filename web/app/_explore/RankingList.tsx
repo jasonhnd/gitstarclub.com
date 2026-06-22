@@ -27,7 +27,7 @@ export function RankingList({ rows, variant = "gained" }: { rows: Row[]; variant
             className="group flex min-h-[4.25rem] animate-rise items-center gap-2 overflow-hidden rounded-2xl px-2.5 py-2.5 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985] sm:gap-4 sm:px-3 sm:py-3"
             style={{ animationDelay: `${0.04 * i}s` } as CSSProperties}
           >
-            <span className="w-7 shrink-0 text-right text-[1.25rem] font-extrabold tabular-nums text-accent-text sm:w-9 sm:text-[1.5rem]">
+            <span className="w-7 shrink-0 text-right text-[1.25rem] font-extrabold tabular-nums text-primary-fixed-dim sm:w-9 sm:text-[1.5rem]">
               {i + 1}
             </span>
             <div className="flex min-w-0 flex-1 flex-col justify-center">
