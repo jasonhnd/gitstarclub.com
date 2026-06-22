@@ -1,7 +1,7 @@
 // Recompute orchestrator — assembles the full view matrix from a Model, the pure-JS
 // replacement for pipeline/backfill/05-precompute.mjs. The offline parity harness runs
 // computeAllViews(); workflow step drivers call the per-group helpers (computeRankViews,
-// computeRepoEntityViews, …) so each Vercel step stays short. See VERCEL-DATA-OPERATIONS §3.
+// computeRepoEntityViews, etc.) so each Vercel step stays short. See VERCEL-DATA-OPERATIONS §3.1/§4.
 
 import type { Model } from "./model";
 import { computeOrgWindow, computeRepoWindow, deriveYearWindow, type RepoWindow, type Window } from "./windows";

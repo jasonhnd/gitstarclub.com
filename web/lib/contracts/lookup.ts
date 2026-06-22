@@ -1,17 +1,17 @@
 import { z } from "zod";
-import { OwnerType } from "./common";
+import { NonNegativeInt, OwnerType, SafeText } from "./common";
 
 // lookup/*.json — minimal join tables read by build to render rank lists/cards.
 // Full metadata lives in entity/*. See docs/DATA-CONTRACTS.md §2.1–2.2.
 
 export const RepoLookupEntry = z.object({
-  owner: z.string(),
-  name: z.string(),
-  full_name: z.string(),
+  owner: SafeText,
+  name: SafeText,
+  full_name: SafeText,
   owner_type: OwnerType,
-  language: z.string().nullable(),
-  current_stars: z.number().int(),
-});
+  language: SafeText.nullable(),
+  current_stars: NonNegativeInt,
+}).strict();
 export type RepoLookupEntry = z.infer<typeof RepoLookupEntry>;
 
 /** lookup/repos.json — keyed by repo id (stringified). */
@@ -19,11 +19,11 @@ export const ReposLookup = z.record(z.string(), RepoLookupEntry);
 export type ReposLookup = z.infer<typeof ReposLookup>;
 
 export const OrgLookupEntry = z.object({
-  login: z.string(),
+  login: SafeText,
   owner_type: OwnerType,
-  repo_count: z.number().int(),
-  current_stars_sum: z.number().int(),
-});
+  repo_count: NonNegativeInt,
+  current_stars_sum: NonNegativeInt,
+}).strict();
 export type OrgLookupEntry = z.infer<typeof OrgLookupEntry>;
 
 /** lookup/orgs.json — keyed by owner login. */
@@ -34,5 +34,5 @@ export type OrgsLookup = z.infer<typeof OrgsLookup>;
  *  The repo route 308-redirects a stale slug to the id's current full_name. repo_id is stable
  *  across GitHub renames, so the redirect target is resolved fresh from ReposLookup at request
  *  time. Built by the buildAliases workflow step. See docs/DATA-CONTRACTS.md. */
-export const AliasMap = z.record(z.string(), z.number().int());
+export const AliasMap = z.record(SafeText, NonNegativeInt);
 export type AliasMap = z.infer<typeof AliasMap>;

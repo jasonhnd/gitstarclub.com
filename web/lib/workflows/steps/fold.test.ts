@@ -1,4 +1,4 @@
-// Unit tests for the PURE cores of the canonical week fold (§8.3) — no Blob I/O.
+// Unit tests for the pure cores of the canonical week fold (VERCEL-DATA-OPERATIONS §7.2) — no Blob I/O.
 // computeWeekRows is the testable seam: given the FROZEN month pendings that cover the
 // candidate weeks, it emits one WeekRow per ISO week (W > fromWeekExclusive, Sunday ≤
 // end-of-foldedMonth), contiguously by +7 days, summing cross-month weeks from BOTH pendings.

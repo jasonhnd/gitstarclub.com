@@ -3,6 +3,7 @@ import { getCurrentMonth, getHeatmapBase, getHotSnapshot, getRankBase, getReposL
 import { putView } from "@/lib/data/write";
 import { fetchStarCounts, type RepoRef } from "@/lib/github";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
+import { PendingPeriod } from "@/lib/contracts";
 import type { Heatmap, RankItem, RankList } from "@/lib/contracts";
 
 const TOP_N = 20;
@@ -53,7 +54,7 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promi
   const recalculatesToday = fresh.size > 0;
 
   // Month rollover: the closing month's daily per_repo must be frozen to pending BEFORE
-  // current_month.json is overwritten, else the fold (L3) loses it (§8.3 step 1).
+  // current_month.json is overwritten, else the L3 fold loses it (VERCEL-DATA-OPERATIONS §7.2).
   const rolledOver = !!existingCM && existingCM.month !== month;
   const carryMonth = existingCM?.month === month ? existingCM : undefined;
   const prevStars = (id: number) => existingCM?.current_stars?.[String(id)] ?? lookup[String(id)].current_stars;
@@ -147,12 +148,13 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promi
 
   // freeze the closing month FIRST (before current_month.json is overwritten below).
   if (rolledOver) {
-    await putView(`canonical/v2/pending/${existingCM!.month}.json`, {
+    const pending = PendingPeriod.parse({
       period: existingCM!.month,
       frozen_at: now.toISOString(),
       daily_totals: existingCM!.daily_totals,
       per_repo: existingCM!.per_repo,
     });
+    await putView(`canonical/v2/pending/${existingCM!.month}.json`, pending);
   }
 
   await Promise.all([

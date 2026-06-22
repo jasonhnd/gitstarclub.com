@@ -1,4 +1,4 @@
-// Unit tests for the pure ISO-week date math behind the canonical week fold (§8.3).
+// Unit tests for the pure ISO-week date math behind the canonical week fold (VERCEL-DATA-OPERATIONS §7.2).
 // Everything is UTC + string-in/string-out, so these are deterministic with no I/O.
 // The hard case is ISO 8601 year boundaries: 2026 is a LONG ISO year (it has W53), and
 // that week's days spill into Jan 2027 — the id↔date round-trip must still hold.

@@ -5,7 +5,7 @@ import { repoBucket } from "../buckets";
 import { currentUtcPeriods } from "@/lib/periods";
 import { addDays, endOfMonth, monthsBetween, sundayOfWeekId, weekIdOf } from "./week-dates";
 
-// Step 5 — canonical fold (§8.3 step 2). Folds CLOSED months (those with a frozen pending
+// Canonical fold. Folds CLOSED months (those with a frozen pending
 // snapshot, after folded_through.month and before the current month) into canonical/v2:
 // month flow → repo-monthly, daily totals → site-daily; advances meta.folded_through.month.
 // THEN folds the CLOSED ISO weeks now fully inside frozen months into repo-weekly and advances
@@ -13,6 +13,7 @@ import { addDays, endOfMonth, monthsBetween, sundayOfWeekId, weekIdOf } from "./
 // recompute (windows.ts) adds them on top of the anchor without discounting by d. Idempotent:
 // upserts by period, only advances forward, so a workflow retry never double-counts. Runs after
 // metadata, before recompute, so the recompute turns the folded weeks into top-100 week rankings.
+// See VERCEL-DATA-OPERATIONS §7.2 for the period closeout handoff.
 
 export function nextMonth(m: string): string {
   const [y, mo] = m.split("-").map(Number);

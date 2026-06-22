@@ -1,4 +1,4 @@
-// Canonical week-fold check §8.3 (port of scripts/test-week-fold.ts).
+// Canonical week-fold check for VERCEL-DATA-OPERATIONS §7.2 (port of scripts/test-week-fold.ts).
 // The PURE per-repo week-flow core (computeWeekRows) needs no Blob I/O, so we feed it synthetic
 // month pendings and assert the hard cases:
 //   (a) a CROSS-MONTH ISO week (Jun 29–Jul 5 = 2026-W27) sums days from BOTH months' pendings;

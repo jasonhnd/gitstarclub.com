@@ -1,9 +1,9 @@
 import { loadCanonicalModel, writeVersion } from "../recompute/io";
 import { heatmaps } from "../recompute";
 
-// Step 8 — heatmap + version meta. Site-wide daily totals → month files; monthly totals
+// Heatmap + version meta. Site-wide daily totals → month files; monthly totals
 // → year files. Also writes the version's meta.json (seam_date + folded_through) that the
-// read side uses for the live-overlay watermark. See docs/VERCEL-DATA-OPERATIONS.md §3 (step 8) / §8.3.
+// read side uses for the live-overlay watermark. See docs/VERCEL-DATA-OPERATIONS.md §4 / §7.2.
 
 export async function recomputeHeatmap(runId: string): Promise<{ files: number }> {
   "use step";

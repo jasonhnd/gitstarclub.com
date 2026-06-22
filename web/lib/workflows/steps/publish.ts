@@ -3,12 +3,12 @@ import { putView } from "@/lib/data/write";
 import { LatestSuccess, ViewsPointer } from "@/lib/contracts";
 import { SCHEMA_VER } from "@/lib/data/meta";
 
-// Step 10 — publish. Atomically flips views/latest.json to the new version (a single-file
+// Publish step: atomically flips views/latest.json to the new version (a single-file
 // overwrite), after which the read side resolves the new version. prev_version is retained
 // so rollback is one pointer write back. Runs only after validateVersion passes.
-// See docs/VERCEL-DATA-OPERATIONS.md §3 (step 10) / §7.
+// See docs/VERCEL-DATA-OPERATIONS.md §7.
 
-export async function publishVersion(runId: string): Promise<{ version: string; prev_version: string | null }> {
+export async function publishVersion(runId: string): Promise<{ version: string; prev_version: string | null; published_at: string }> {
   "use step";
 
   // current pointer becomes prev_version; tolerate absent/legacy pointer on first publish.
@@ -29,5 +29,5 @@ export async function publishVersion(runId: string): Promise<{ version: string; 
   LatestSuccess.parse(recovery);
   await putView("ops/workflows/latest-success.json", recovery);
 
-  return { version: runId, prev_version: prevVersion };
+  return { version: runId, prev_version: prevVersion, published_at: publishedAt };
 }

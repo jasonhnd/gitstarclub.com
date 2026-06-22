@@ -25,22 +25,26 @@ const SITE = "https://www.gitstarclub.com";
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /** Read ONLY the BLOB_BASE_URL line from web/.env.local. Never touches the token. */
-function readBlobBase(): string {
+function readBlobBase(): string | null {
   // lib/integration/ → ../../.env.local
   const envPath = join(import.meta.dir, "..", "..", ".env.local");
   let raw: string;
   try {
     raw = readFileSync(envPath, "utf8");
-  } catch (err) {
-    throw new Error(`could not read ${envPath} for BLOB_BASE_URL: ${(err as Error).message}`);
+  } catch {
+    return null;
   }
   // Match exactly the BLOB_BASE_URL assignment; ignore BLOB_READ_WRITE_TOKEN etc.
   const match = raw.match(/^\s*BLOB_BASE_URL\s*=\s*"?([^"\r\n]+)"?\s*$/m);
-  if (!match) throw new Error("BLOB_BASE_URL not found in web/.env.local");
+  if (!match) return null;
   return match[1].trim().replace(/\/+$/, "");
 }
 
-const BLOB_BASE = readBlobBase();
+const BLOB_BASE = (
+  readBlobBase() ??
+  (process.env.RUN_LIVE_SMOKE === "1" ? (process.env.BLOB_BASE_URL ?? process.env.NEXT_PUBLIC_BLOB_BASE_URL) : "") ??
+  ""
+).replace(/\/+$/, "");
 
 interface FetchResult {
   status: number;
@@ -93,7 +97,11 @@ function currentYearMonth(): { year: number; month: number } {
 }
 
 // describe block name flags this as live/network for filtered runs and CI reporting.
-describe("live-smoke [network] — production deploy + Blob health", () => {
+if (!BLOB_BASE) {
+  console.warn("[live-smoke.test] SKIP: BLOB_BASE_URL not found; live network smoke not run.");
+  test.skip("live smoke requires BLOB_BASE_URL", () => {});
+} else {
+  describe("live-smoke [network] — production deploy + Blob health", () => {
   // ── Pages: 200 + expected content ─────────────────────────────────────────
   // Every surface renders the shared <Chrome>, whose default-locale nav contains
   // "Rankings" and "Pulse". We assert on that stable chrome (plus a per-page
@@ -219,4 +227,5 @@ describe("live-smoke [network] — production deploy + Blob health", () => {
       expect(txt).toContain("User-Agent");
     });
   });
-});
+  });
+}

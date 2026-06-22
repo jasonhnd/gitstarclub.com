@@ -6,8 +6,8 @@ import { repoBucket } from "../buckets";
 // Workflow step: detect repo renames by comparing the run whitelist's full_name
 // (repo_id is stable across renames) against the previous repos shard. MUST run
 // BEFORE the metadata step overwrites those shards. Writes
-// ops/workflows/<run_id>/renames.json (web layer 301s old URLs → new).
-// See docs/VERCEL-DATA-OPERATIONS.md §3.4 (step 3).
+// ops/workflows/<run_id>/renames.json (web layer 308s old URLs -> new).
+// See docs/VERCEL-DATA-OPERATIONS.md §4 rename detection step.
 
 export interface RenameResult {
   renames: number;
