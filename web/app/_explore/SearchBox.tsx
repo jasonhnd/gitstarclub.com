@@ -209,7 +209,7 @@ export function SearchBox() {
                         </span>
                         <span className="flex shrink-0 items-center gap-2 font-mono text-[0.72rem] text-on-surface-variant">
                           {h.language && <span className="hidden sm:inline">{h.language}</span>}
-                          <span className="tabular-nums text-accent-text">{fmtStars(h.current_stars)} ★</span>
+                          <span className="tabular-nums text-primary-fixed-dim">{fmtStars(h.current_stars)} ★</span>
                         </span>
                       </Link>
                       <button

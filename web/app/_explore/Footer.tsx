@@ -9,7 +9,7 @@ import { PAD_X } from "./layout-tokens";
 export function Footer({ asOf }: { asOf?: string | null }) {
   const { locale, t } = useDict();
   return (
-    <footer className={`mt-auto border-t border-outline-variant bg-surface-container-lowest/60 py-8 ${PAD_X}`}>
+    <footer className={`mt-auto border-t border-outline-variant py-8 ${PAD_X}`}>
       <div className="mx-auto flex w-full max-w-[68rem] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <Link href="/" className="inline-flex items-center gap-2 font-extrabold tracking-[-0.02em] text-on-surface">
           <span className="text-primary-fixed-dim" aria-hidden>
