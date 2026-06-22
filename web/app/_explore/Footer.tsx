@@ -1,13 +1,12 @@
-"use client";
-
 import Link from "next/link";
-import { useDict } from "@/lib/i18n/client";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { PAD_X } from "./layout-tokens";
+import en from "@/lib/i18n/dictionaries/en";
+import { DEFAULT_LOCALE } from "@/lib/i18n";
 
-// Chrome — translated client-side. `asOf` is locale-independent data passed from the server.
+// Footer chrome renders server-side in the default locale. `asOf` is locale-independent data.
 export function Footer({ asOf }: { asOf?: string | null }) {
-  const { locale, t } = useDict();
+  const t = en;
   return (
     <footer className={`mt-auto border-t border-outline-variant py-8 ${PAD_X}`}>
       <div className="mx-auto flex w-full max-w-[68rem] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -30,7 +29,7 @@ export function Footer({ asOf }: { asOf?: string | null }) {
           <Link href="/privacy" className="transition-colors hover:text-on-surface">
             {t.footer.privacy}
           </Link>
-          <LanguageSwitcher locale={locale} />
+          <LanguageSwitcher locale={DEFAULT_LOCALE} />
         </nav>
       </div>
       <div className="mx-auto mt-4 w-full max-w-[68rem] font-mono text-[0.72rem] text-on-surface-variant">

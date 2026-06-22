@@ -211,7 +211,7 @@ The top bar baseline from commit `689605c` is:
 | Aspect | Baseline |
 |---|---|
 | Component | `web/app/_explore/Chrome.tsx` |
-| Client boundary | `"use client"` chrome shell; content pages remain server-rendered |
+| Client boundary | Server-rendered chrome shell; `SearchBox`, `LanguageSwitcher`, and `ThemeToggle` are client islands |
 | Header position | `sticky top-0 z-20` |
 | Layout | `flex items-center justify-between gap-4` |
 | Border | `border-b border-outline-variant` |

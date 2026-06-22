@@ -1,7 +1,5 @@
-"use client";
-
 import Link from "next/link";
-import { useDict, type ChromeKey } from "@/lib/i18n/client";
+import { chromeText, type ChromeKey } from "@/lib/i18n/client";
 import { stringifyJsonForScript } from "@/lib/json-script";
 
 // A crumb is either a chrome label (translated client-side via `path`) or a data label
@@ -11,11 +9,10 @@ export type Crumb = { label?: string; path?: ChromeKey; href?: string };
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com").replace(/\/+$/, "");
 
 // Visible breadcrumb trail + BreadcrumbList JSON-LD (SEO §6.7). Last item is the current page.
-// Rendered client-side so chrome crumbs follow the language cookie; data crumbs are passed as
-// plain labels. The static HTML emits the default-locale (English) chrome, which is SEO-valid.
+// Rendered server-side with default-locale chrome labels; data crumbs are passed as plain labels.
+// The static HTML stays deterministic and SEO-valid.
 export function Breadcrumbs({ items }: { items: Crumb[] }) {
-  const { t } = useDict();
-  const labelOf = (c: Crumb): string => (c.path ? resolvePath(t, c.path) : (c.label ?? ""));
+  const labelOf = (c: Crumb): string => (c.path ? chromeText(c.path) : (c.label ?? ""));
 
   const ld = {
     "@context": "https://schema.org",
@@ -52,9 +49,4 @@ export function Breadcrumbs({ items }: { items: Crumb[] }) {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: stringifyJsonForScript(ld) }} />
     </nav>
   );
-}
-
-function resolvePath(t: object, path: string): string {
-  const value = path.split(".").reduce<unknown>((acc, key) => (acc as Record<string, unknown>)?.[key], t);
-  return typeof value === "string" ? value : path;
 }

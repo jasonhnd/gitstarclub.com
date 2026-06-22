@@ -3,7 +3,6 @@ import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { RegisterSW } from "./_explore/RegisterSW";
 import { Footer } from "./_explore/Footer";
-import { I18nProvider } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { THEME_INIT_SCRIPT } from "@/lib/theme-script";
 import { LANG_INIT_SCRIPT } from "@/lib/lang-script";
@@ -54,9 +53,8 @@ export const viewport: Viewport = {
 };
 
 // Language is an in-page preference stored in a first-party cookie; URLs stay canonical.
-// The server renders the default locale (English) so pages stay static/ISR; the client
-// I18nProvider reads the cookie after hydration and swaps the chrome strings. The data
-// (`seam_date`) is locale-independent.
+// The server renders default-locale chrome into static HTML. Client islands update
+// documentElement.lang for CSS-driven locale variants without wrapping content pages.
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang={DEFAULT_LOCALE} suppressHydrationWarning className={`${plusJakarta.variable} ${geistMono.variable}`}>
@@ -65,15 +63,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: LANG_INIT_SCRIPT }} />
       </head>
       <body className="flex min-h-svh flex-col">
-        <I18nProvider>
-          <a href="#main" className="skip-link">
-            Skip to content
-          </a>
-          <div className="contents">
-            {children}
-            <Footer />
-          </div>
-        </I18nProvider>
+        <a href="#main" className="skip-link">
+          Skip to content
+        </a>
+        <div className="contents">
+          {children}
+          <Footer />
+        </div>
         <RegisterSW />
       </body>
     </html>

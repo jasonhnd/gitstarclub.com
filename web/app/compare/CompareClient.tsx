@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type MiniSearch from "minisearch";
-import { useChrome } from "@/lib/i18n/client";
+import { useChrome } from "@/lib/i18n/client-runtime";
 import { fmtStars } from "@/lib/format";
 import type { CompareCurve, SearchDoc } from "@/lib/contracts";
 import type { SearchHit } from "@/lib/search/core";
