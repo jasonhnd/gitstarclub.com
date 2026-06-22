@@ -23,3 +23,7 @@ jobs:
       - run: bun run lint
       - run: bunx tsc --noEmit -p tsconfig.json
       - run: bun run test
+        env:
+          # source.ts captures BLOB_BASE at module load; the readView unit tests need a
+          # truthy base (fetch is mocked by path). Mirrors local .env.local.
+          BLOB_BASE_URL: https://blob.example.com
