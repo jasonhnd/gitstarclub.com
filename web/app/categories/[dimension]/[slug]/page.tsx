@@ -91,7 +91,7 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
                 <T path="categories.countPending" />
               )}
             </p>
-            <Link href={categoryPath(dimension)} className="mt-5 inline-block font-mono text-[0.78rem] text-accent-text hover:underline">
+            <Link href={categoryPath(dimension)} className="mt-5 inline-block font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
               {dimensionEntry?.label ?? <T path="nav.categories" />}
             </Link>
           </aside>

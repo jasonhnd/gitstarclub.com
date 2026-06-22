@@ -74,7 +74,7 @@ export default async function CategoriesPage() {
                   <h3 id={`dimension-${dimension.id}`} className="text-[1.05rem] font-extrabold text-on-surface">
                     {dimension.label}
                   </h3>
-                  <Link href={categoryPath(dimension.id)} className="font-mono text-[0.78rem] text-accent-text hover:underline">
+                  <Link href={categoryPath(dimension.id)} className="font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
                     <T path="categories.viewAll" />
                   </Link>
                 </div>

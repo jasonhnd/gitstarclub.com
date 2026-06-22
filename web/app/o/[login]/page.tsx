@@ -64,7 +64,7 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
         <header className="mt-4 animate-rise">
           <h1 className="font-mono text-[clamp(1.6rem,5vw,2.6rem)] font-semibold text-on-surface">{org.login}</h1>
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">
-            <span className="text-[1.6rem] font-extrabold tabular-nums text-accent-text">
+            <span className="text-[1.6rem] font-extrabold tabular-nums text-primary-fixed-dim">
               {fmtStars(org.current_stars_sum)}
               <span className="text-[0.9rem] text-on-surface-variant"> ★<T path="org.total" /></span>
             </span>
