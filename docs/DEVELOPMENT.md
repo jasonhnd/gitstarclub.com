@@ -9,6 +9,9 @@ reverse-engineering decisions from code.
 For the code map, see [CODEBASE.md](./CODEBASE.md). For project-wide ownership
 rules, see [README.md](./README.md).
 
+For issue shape, role boundaries, PR merge gates, and visual-change guardrails,
+see [WORKFLOW.md](./WORKFLOW.md).
+
 ## Development Contract
 
 Every non-trivial change should answer these questions before code is edited:
