@@ -14,11 +14,12 @@ This page is the navigation index for `docs/`. For a project overview, start at 
 6. [RANKING.md](./RANKING.md) — rank definitions: window × dim × metric, stock anchoring, derived rankings, tie-breaking.
 7. [CODEBASE.md](./CODEBASE.md) — code map: routes, layers, data access, workflow modules, and ownership boundaries.
 8. [DEVELOPMENT.md](./DEVELOPMENT.md) — development playbooks: which code and docs to touch for common changes.
-9. [FRONTEND.md](./FRONTEND.md) — route catalog, rendering strategy, component catalog, data-access layer, i18n.
-10. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) — tokens, typography, components, motion, accessibility, zero-client-JS constraint.
-11. [SEO.md](./SEO.md) — per-page SEO templates, sitemap structure, robots policy.
-12. [OPS.md](./OPS.md) — runbooks: deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
-13. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
+9. [WORKFLOW.md](./WORKFLOW.md) - document-driven issue, PR, merge, and visual-guardrail workflow.
+10. [FRONTEND.md](./FRONTEND.md) — route catalog, rendering strategy, component catalog, data-access layer, i18n.
+11. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) - locked visual baseline, tokens, typography, Chrome appearance, accessibility notes.
+12. [SEO.md](./SEO.md) — per-page SEO templates, sitemap structure, robots policy.
+13. [OPS.md](./OPS.md) — runbooks: deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
+14. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
 Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout.
 
@@ -36,8 +37,9 @@ Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural 
 | RANKING | Rank definitions, stock anchoring, derived rankings, edge cases (single source of truth for ranking algorithms) |
 | CODEBASE | Code map: route files, data layers, contracts, workflow modules, category system, and ownership boundaries |
 | DEVELOPMENT | Developer workflow: doc ownership, change playbooks, Vercel-first verification, and drift handling |
+| WORKFLOW | Document-driven issue workflow, role boundaries, merge gates, and visual guardrails |
 | FRONTEND | Routes, rendering strategy, component catalog, data-access layer, i18n implementation |
-| DESIGN-SYSTEM | Tokens, typography, components, motion, accessibility, zero-client-JS exceptions |
+| DESIGN-SYSTEM | Locked visual baseline, tokens, typography, Chrome appearance, accessibility notes |
 | SEO | Per-page SEO templates, sitemap structure, robots/noindex policy, internal linking |
 | OPS | Deploy / rollback / cron / workflow runbooks, Blob layout, env vars, alerting, failure modes |
 | TESTING | Test pyramid, contract tests, recompute parity, validation invariants, smoke tests |
@@ -66,7 +68,8 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Ranking algorithms (seam, stock anchoring, derived rankings) | RANKING |
 | Repo identity / rename → redirect posture | PRODUCT (§Repo 身份与改名) |
 | Code module map / route ownership | CODEBASE |
-| Development workflow / change playbooks | DEVELOPMENT |
+| Issue workflow / PR gates / visual guardrails | WORKFLOW |
+| Development change playbooks | DEVELOPMENT |
 | Release history | CHANGELOG |
 | Open work / architectural decisions | ROADMAP |
 
