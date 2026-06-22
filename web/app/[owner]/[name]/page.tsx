@@ -12,6 +12,7 @@ import { getRepoIdByFullName, getRepoEntity, getAliasMap, getReposLookup } from 
 import { fmtStars, ymParts, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { repoLd } from "@/lib/jsonld";
+import { resolveRepoRoute } from "@/lib/repo-route";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
@@ -34,14 +35,13 @@ const STAR_MILESTONE_STEP = 50_000;
 // (GitHub rename, e.g. facebook/react → react/react), 308-redirect to its current slug; otherwise
 // return undefined so the caller can 404.
 async function resolveRepoId(fullName: string): Promise<number | undefined> {
-  const lower = fullName.toLowerCase();
-  const id = (await getRepoIdByFullName()).get(lower);
-  if (id !== undefined) return id;
-  const aliasId = (await getAliasMap())?.[lower];
-  if (aliasId !== undefined) {
-    const current = (await getReposLookup())?.[String(aliasId)]?.full_name;
-    if (current && current.toLowerCase() !== lower) permanentRedirect(`/${current}`);
-  }
+  const idsByFullName = await getRepoIdByFullName();
+  const direct = resolveRepoRoute(fullName, idsByFullName, null, null);
+  if (direct.kind === "found") return direct.id;
+
+  const resolution = resolveRepoRoute(fullName, idsByFullName, await getAliasMap(), await getReposLookup());
+  if (resolution.kind === "found") return resolution.id;
+  if (resolution.kind === "redirect") permanentRedirect(resolution.location);
   return undefined;
 }
 

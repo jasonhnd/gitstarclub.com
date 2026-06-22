@@ -1,7 +1,7 @@
 import { start } from "workflow/api";
 import { refreshWorkflow } from "@/lib/workflows/refresh";
 import { sendAlert } from "@/lib/observability/alert";
-import { hasValidBearerToken, internalFailurePayload } from "@/lib/security";
+import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 
 // Cron entrypoint: authorize, start the managed-refresh workflow, return the
 // run_id immediately (start() enqueues; it does not block). The long work runs
@@ -10,7 +10,8 @@ import { hasValidBearerToken, internalFailurePayload } from "@/lib/security";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request): Promise<Response> {
-  if (!hasValidBearerToken(req.headers.get("authorization"))) return new Response("Unauthorized", { status: 401 });
+  const unauthorized = requireBearerToken(req.headers.get("authorization"));
+  if (unauthorized) return unauthorized;
 
   const runId = `refresh-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
   try {

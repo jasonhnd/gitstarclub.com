@@ -8,6 +8,14 @@ export function hasValidBearerToken(authorization: string | null, secret = proce
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
+export function unauthorizedResponse(): Response {
+  return new Response("Unauthorized", { status: 401 });
+}
+
+export function requireBearerToken(authorization: string | null, secret = process.env.CRON_SECRET): Response | null {
+  return hasValidBearerToken(authorization, secret) ? null : unauthorizedResponse();
+}
+
 export function internalFailurePayload(runId: string) {
   return { ok: false, runId, error: "Internal server error" };
 }

@@ -34,9 +34,10 @@ The same data layer also operates AI-free: features that look like they would ca
 | Live-overlay data | Daily `current_month.json`, weekly `hot-snapshot.json`, written by cron | Append-only within a period |
 | Recurring data refresh | Vercel Workflow (multi-step, Blob checkpoint) | |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
+| Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test` from `web/` on PRs and `main` pushes |
 | Analytics | Not enabled in the client app; any future analytics must ship with privacy notice and consent gating where required | |
 
-Deliberately not in the stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, GitHub Actions, tRPC, any LLM SDK. The reasoning is the constraints above.
+Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, tRPC, any LLM SDK. The reasoning is the constraints above.
 
 ## Data flow
 
@@ -251,9 +252,9 @@ Two sources drift: GH Archive (gross) and GraphQL (authoritative net total).
 
 ### Compliance and attribution
 
-- **GH Archive**: data used per the source's public terms. The About page credits "Data from GH Archive (gharchive.org)".
-- **GitHub**: data fetched through official GraphQL/Search APIs under ToS; only public data for public repos.
-- The About page documents the data caveats (gross vs net, survivorship bias, 2015 start) and links the sources.
+- **GH Archive**: historical WatchEvent data is credited to GH Archive (gharchive.org), licensed under CC BY 4.0, and disclosed as derived/transformed into GitStarClub ranking and curve views.
+- **GitHub**: repository metadata and current star totals are fetched through official GraphQL/Search APIs under ToS; only public data for public repos.
+- The About page and footer document the data caveats (gross vs net, survivorship bias, 2015 start), attribution, and source links.
 
 ### Accessibility
 

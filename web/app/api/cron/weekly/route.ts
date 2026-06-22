@@ -1,13 +1,14 @@
 import { refreshLiveViews } from "@/lib/cron/live-refresh";
 import { completedRun, failedRun, safeRecordSyncRun, syncRunId } from "@/lib/cron/sync-runs";
 import { recordHealth, sendAlert } from "@/lib/observability/alert";
-import { hasValidBearerToken, internalFailurePayload } from "@/lib/security";
+import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 export async function GET(req: Request) {
-  if (!hasValidBearerToken(req.headers.get("authorization"))) return new Response("Unauthorized", { status: 401 });
+  const unauthorized = requireBearerToken(req.headers.get("authorization"));
+  if (unauthorized) return unauthorized;
 
   const dry = new URL(req.url).searchParams.get("dry") === "1";
   const startedAt = new Date();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { stringifyJsonForScript } from "./json-script";
-import { hasValidBearerToken } from "./security";
+import { hasValidBearerToken, requireBearerToken } from "./security";
 
 describe("stringifyJsonForScript", () => {
   test("escapes script-breaking and HTML-sensitive characters", () => {
@@ -33,5 +33,17 @@ describe("hasValidBearerToken", () => {
     expect(hasValidBearerToken("Bearer secret-value-extra", "secret-value")).toBe(false);
     expect(hasValidBearerToken("Bearer wrong-value", "secret-value")).toBe(false);
     expect(hasValidBearerToken("Bearer secret-value", "")).toBe(false);
+  });
+});
+
+describe("requireBearerToken", () => {
+  test("returns null for authorized cron/workflow route requests", () => {
+    expect(requireBearerToken("Bearer secret-value", "secret-value")).toBeNull();
+  });
+
+  test("returns 401 for missing, invalid, or unconfigured secrets", () => {
+    expect(requireBearerToken(null, "secret-value")?.status).toBe(401);
+    expect(requireBearerToken("Bearer wrong-value", "secret-value")?.status).toBe(401);
+    expect(requireBearerToken("Bearer secret-value", "")?.status).toBe(401);
   });
 });
