@@ -39,7 +39,7 @@ instead:
   `repo.curve.monthly[*][2]` into the chart series.
 - `web/app/[owner]/[name]/page.tsx:73` derives milestones from that series.
 - `web/app/[owner]/[name]/page.tsx:187` renders those derived milestones.
-- `web/app/[owner]/[name]/page.tsx:247` starts `starMilestones()`.
+- `web/app/[owner]/[name]/page.tsx:247` previously started the curve-derived milestone helper.
 - `web/app/[owner]/[name]/page.tsx:252` picks the first curve point whose
   `total` is greater than or equal to the threshold.
 - `web/app/[owner]/[name]/page.tsx:257` turns that curve month into
@@ -92,13 +92,12 @@ The likely root cause is a two-source milestone model:
    so the historical curve is amplified enough to cross 10k years earlier than
    the frozen milestone date.
 
-This is amplified by documentation language that calls `d` a discount and says
-`d <= 1`:
+This is amplified by the previous bounded-d documentation language:
 
-- `docs/RANKING.md:34` defines `d` as a discount `(<= 1)`.
-- `docs/VERCEL-DATA-OPERATIONS.md:303` repeats `d <= 1`.
+- `docs/RANKING.md:34` previously defined `d` as bounded by 1.
+- `docs/VERCEL-DATA-OPERATIONS.md:303` previously repeated that bounded claim.
 - `web/lib/contracts/canonical.ts:47` only validates `d` as nonnegative, not as
-  `<= 1`.
+  bounded by 1.
 
 ### Fix option
 
@@ -116,7 +115,7 @@ Tradeoff:
 
 - Pros: preserves the existing contracts, keeps `crossed_*` as the single exact
   milestone source, and removes the visible contradiction for known thresholds.
-- Cons: the current every-50k milestone UI can derive thresholds beyond the
+- Cons: the former curve-derived milestone UI can derive thresholds beyond the
   stored `crossed_50k`/`crossed_100k` fields; exact dates for 150k+ would need
   new data if the product wants them to remain exact.
 
@@ -183,7 +182,7 @@ The JS implementation is explicitly seam-aware:
 The authoritative operations doc matches the JS formula:
 
 - `docs/VERCEL-DATA-OPERATIONS.md:298` is the stock anchoring section.
-- `docs/VERCEL-DATA-OPERATIONS.md:300` says the discount applies only to
+- `docs/VERCEL-DATA-OPERATIONS.md:300` says `d` applies only to
   pre-seam gross and post-seam net is accumulated directly.
 - `docs/VERCEL-DATA-OPERATIONS.md:303` defines `d`.
 - `docs/VERCEL-DATA-OPERATIONS.md:304` defines pre-seam stock.
@@ -277,7 +276,7 @@ Impact surface:
 `d` is currently produced during bootstrap export and persisted in canonical repo
 shards:
 
-- `pipeline/backfill/07-export-v2.mjs:80` calls it a frozen discount that
+- `pipeline/backfill/07-export-v2.mjs:80` calls it a frozen anchoring factor that
   anchors stock to `current_stars`.
 - `pipeline/backfill/07-export-v2.mjs:84` computes
   `current_stars::DOUBLE / g.tot`, falling back to `1` when gross total is zero.
@@ -289,20 +288,20 @@ shards:
 - `web/lib/contracts/canonical.ts:47` validates persisted `d` as an optional
   nonnegative number.
 
-The current documentation uses "discount" language:
+The previous documentation used bounded-d language:
 
 - `docs/RANKING.md:34` says `d = current_stars / cumgross` and labels it a
-  discount `(<= 1)`.
-- `docs/RANKING.md:38` says the proportional discount distributes unstars over
+-  bounded factor wording.
+- `docs/RANKING.md:38` says the proportional factor distributes unstars over
   history.
-- `docs/DATA-CONTRACTS.md:80` calls `d` a frozen discount coefficient.
+- `docs/DATA-CONTRACTS.md:80` calls `d` a frozen coefficient.
 - `docs/DATA-CONTRACTS.md:103` defines seam-aware anchoring and says post-seam
-  net is not discounted.
-- `docs/VERCEL-DATA-OPERATIONS.md:303` says `d <= 1`.
+-  net is not scaled by `d`.
+- `docs/VERCEL-DATA-OPERATIONS.md:303` says `d` is bounded by 1.
 
-Observed data contradicts the `<= 1` wording. The reproduction above found
+Observed data contradicts the bounded wording. The reproduction above found
 `janl/mustache.js` with `d = 1.4634103641456582`. Therefore the precise current
-semantics are "anchoring factor", not "discount factor": it can shrink or
+semantics are "anchoring factor", not "bounded scaling factor": it can shrink or
 amplify pre-seam gross history depending on the ratio between GraphQL
 `current_stars` and archive-derived cumulative gross.
 
@@ -361,7 +360,7 @@ Code references:
 - `web/lib/workflows/recompute/windows.ts:81` adds net flow to the frozen
   anchor.
 - `docs/VERCEL-DATA-OPERATIONS.md:305` states the same formula.
-- `docs/DATA-CONTRACTS.md:103` states that post-seam net is not discounted.
+- `docs/DATA-CONTRACTS.md:103` states that post-seam net is not scaled by `d`.
 
 Year windows are derived from monthly rows, not recomputed independently:
 
@@ -378,7 +377,7 @@ Year windows are derived from monthly rows, not recomputed independently:
 
 Update terminology and guardrails in a follow-up:
 
-- rename documentation wording from "discount" to "anchoring factor";
+- rename documentation wording from bounded scaling to "anchoring factor";
 - state that `d >= 0` and may be greater than 1;
 - keep the persisted field name `d` unless a schema migration is justified;
 - add validation or reporting for unusually high `d` values if the product wants
@@ -403,7 +402,7 @@ Impact surface:
 
 ### No-fix option
 
-Keep "discount <= 1" wording and current validation.
+Keep the old bounded-d wording and current validation.
 
 Tradeoff:
 
@@ -424,5 +423,5 @@ This phase should close #36 only. Suggested follow-up issues:
    fields or label curve-derived crossings as estimates.
 2. Post-seam correctness gate: add a synthetic integration oracle for
    `anchor + post-seam net` independent of DuckDB parity.
-3. `d` terminology and guardrails: update docs/comments from "discount" to
+3. `d` terminology and guardrails: update docs/comments from bounded scaling to
    "anchoring factor" and decide whether high `d` values should warn or fail.

@@ -77,7 +77,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 - `seam_date`：gross→net 边界，stock 锚定据此分段（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3）。
 - `folded_through`：已折叠进 base 的最末周/月周期；读路径据此判某周期归 live 还是 base（防重复，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）。
 
-**`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`、`fetched_at`（元数据抓取时刻）；外加 `d` = 冻结折扣系数，bootstrap 算定，**存全精度 IEEE double**——舍入会让 JS 重算的 `stock_est` 与 DuckDB 差 ±1）：
+**`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`、`fetched_at`（元数据抓取时刻）；外加 `d` = 冻结锚定因子（`>= 0`，GitHub Archive 低计时可 `> 1`），bootstrap 算定，**存全精度 IEEE double**——舍入会让 JS 重算的 `stock_est` 与 DuckDB 差 ±1）：
 
 ```json
 { "1296269": { "id": 1296269, "node_id": "...", "owner": "vuejs", "owner_type": "Organization",
@@ -100,7 +100,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 **`canonical/v2/pending/{period}.json`** —— 已收口、待折叠的周期活尾冻结快照（cron 跨期重置前写、折叠 step 读，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）：形同 `current_month.json` 的 `per_repo` + `daily_totals`。
 
-> **stock 锚定**(口径同 [RANKING.md](./RANKING.md) §3,**必须分 seam 前后**)：折扣 `d = current_stars@seam / cumgross@seam_date`(**分母只含 seam 前 gross**),bootstrap 算定后写入 `repos` shard 冻结。seam 前 `stock_est = cumgross × d`；**seam 后 net 不打折、直接累加**：`stock = stock@seam + Σ(seam 后 net)`。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3。里程碑同样 bootstrap 算定后冻结、写入 `repos` shard。
+> **stock 锚定**(口径同 [RANKING.md](./RANKING.md) §3,**必须分 seam 前后**)：锚定因子 `d = current_stars@seam / cumgross@seam_date`(**分母只含 seam 前 gross**),bootstrap 算定后写入 `repos` shard 冻结；`d >= 0`，Archive 低计时可 `> 1`。seam 前 `stock_est = cumgross × d`；**seam 后 net 不乘 `d`、直接累加**：`stock = stock@seam + Σ(seam 后 net)`。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3。里程碑同样 bootstrap 算定后冻结、写入 `repos` shard。
 
 ---
 

@@ -105,7 +105,7 @@ blob://
 │       ├── whitelist/                               #   Workflow step 1：≥10k 白名单（web/lib/workflows/steps/whitelist.ts）
 │       │   ├── <run_id>.json                        #     单次 run 快照（entries + diff.added/dropped）
 │       │   └── latest.json                          #     指针：{ run_id, ids } —— 下次 run 计算 diff 用
-│       ├── repos/{bucket}.json                      #   repo 维度 + 里程碑 + tracked_since + 冻结折扣 d
+│       ├── repos/{bucket}.json                      #   repo 维度 + 里程碑 + tracked_since + 冻结锚定因子 d
 │       ├── repo-monthly/{bucket}.json · repo-weekly/{bucket}.json · repo-recent-daily/{bucket}.json
 │       ├── site-daily/{yyyy}.json
 │       └── pending/{period}.json                    #   已收口待折叠的周期活尾冻结快照（防重复 / 丢数据）

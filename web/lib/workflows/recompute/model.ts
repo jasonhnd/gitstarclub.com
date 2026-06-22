@@ -25,7 +25,7 @@ export interface RepoMeta {
   crossed_50k?: string | null;
   crossed_100k?: string | null;
   tracked_since?: string | null;
-  /** Frozen discount d = current_stars@seam / cumgross@seam_date (bootstrap-fixed). */
+  /** Frozen anchoring factor d = current_stars@seam / cumgross@seam_date (bootstrap-fixed). */
   d: number;
 }
 

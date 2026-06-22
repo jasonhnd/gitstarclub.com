@@ -11,11 +11,13 @@ import {
   OrgsLookup,
   RankList,
   RepoEntity,
+  ReposShard,
   ReposLookup,
   SearchIndex,
   WorkflowValidation,
 } from "@/lib/contracts";
 import type { RankItem } from "@/lib/contracts";
+import { REPO_BUCKETS } from "@/lib/workflows/buckets";
 
 // Publish gate. Reads key views from the freshly written version
 // (views/<run_id>/**) and checks Zod schema + sanity invariants. Throwing here aborts
@@ -24,6 +26,7 @@ import type { RankItem } from "@/lib/contracts";
 // NOT assert last_stock == current_stars here. See docs/VERCEL-DATA-OPERATIONS.md §8.
 
 const MIN_LOOKUP = 1000;
+export const HIGH_D_FACTOR_WARN_THRESHOLD = 2;
 
 export async function validateVersion(runId: string): Promise<{ ok: boolean; checked: number; failures: string[] }> {
   "use step";
@@ -66,6 +69,9 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
 
   if (allTime && lookup) Object.assign(invariants, inspectRank("all-time/repo", allTime, failures, { lookup }).invariants);
   if (allTimeOrg && orgLookup) Object.assign(invariants, inspectRank("all-time/org", allTimeOrg, failures, { orgLookup }).invariants);
+  const dFactorReport = await inspectCanonicalAnchoringFactors(runId);
+  checked += dFactorReport.checked;
+  Object.assign(invariants, dFactorReport.invariants);
 
   const previousMeta = await readView("meta.json", Meta, { base: true, bust: runId });
   if (meta?.folded_through && previousMeta?.folded_through) {
@@ -197,6 +203,65 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
   await putView(`ops/workflows/${runId}/validation.json`, validation);
   if (!ok) throw new Error(`validation failed (${failures.length}): ${failures.slice(0, 5).join("; ")}`);
   return { ok, checked, failures };
+}
+
+type AnchoringShard = Record<string, { d?: number | null }>;
+
+export function inspectAnchoringFactors(
+  shards: AnchoringShard[],
+  threshold = HIGH_D_FACTOR_WARN_THRESHOLD,
+): Record<string, boolean | number> {
+  let reposChecked = 0;
+  let reposWithD = 0;
+  let highCount = 0;
+  let maxD = 0;
+
+  for (const shard of shards) {
+    for (const repo of Object.values(shard)) {
+      reposChecked++;
+      if (typeof repo.d !== "number" || !Number.isFinite(repo.d)) continue;
+      reposWithD++;
+      maxD = Math.max(maxD, repo.d);
+      if (repo.d > threshold) highCount++;
+    }
+  }
+
+  return {
+    d_factor_warn_threshold: threshold,
+    d_factor_repos_checked: reposChecked,
+    d_factor_repos_with_d: reposWithD,
+    d_factor_high_count: highCount,
+    d_factor_max: Math.round(maxD * 1000) / 1000,
+    d_factor_warning: highCount > 0,
+  };
+}
+
+async function inspectCanonicalAnchoringFactors(
+  runId: string,
+): Promise<{ checked: number; invariants: Record<string, boolean | number> }> {
+  const shards: AnchoringShard[] = [];
+  let missing = 0;
+  let schemaErrors = 0;
+
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    try {
+      const shard = await readView(`canonical/v2/repos/${bucket}.json`, ReposShard, { bust: runId });
+      if (shard) shards.push(shard);
+      else missing++;
+    } catch {
+      schemaErrors++;
+    }
+  }
+
+  return {
+    checked: REPO_BUCKETS,
+    invariants: {
+      ...inspectAnchoringFactors(shards),
+      d_factor_canonical_shards: REPO_BUCKETS,
+      d_factor_canonical_missing: missing,
+      d_factor_canonical_schema_errors: schemaErrors,
+    },
+  };
 }
 
 function inspectRank(

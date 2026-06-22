@@ -10,7 +10,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
-- **Repo-page star milestones now mark every 50k.** The per-repo milestone list and curve markers step at a fixed 50,000-star interval (50k / 100k / 150k …) instead of the previous fixed `10k / 50k / 100k` set, so long-running repos surface their full milestone cadence. Driven by `STAR_MILESTONE_STEP = 50_000` in `web/app/[owner]/[name]/page.tsx` (commit `3d30efb`).
+- **Repo-page star milestones use frozen exact crossings.** The per-repo milestone list and curve markers now read `entity/repo.milestones.crossed_10k/50k/100k`; higher thresholds are hidden until a frozen first-crossing field exists, so estimated curve-derived dates are not presented as exact newcomer evidence.
 
 ### Fixed
 

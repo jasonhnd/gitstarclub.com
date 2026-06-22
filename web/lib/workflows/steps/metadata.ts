@@ -12,7 +12,7 @@ import { repoBucket } from "../buckets";
 // (absent from both the previous shard and the bootstrap lookup), so the
 // recurring refresh does not re-pull all ~5,261 repos and never trips GitHub's
 // secondary rate limit. Bootstrap-frozen / M5-managed fields (milestones,
-// tracked_since, discount d) are preserved from the previous shard; repos that
+// tracked_since, anchoring factor d) are preserved from the previous shard; repos that
 // fell out of the whitelist stay (chronicle never deletes).
 // See docs/VERCEL-DATA-OPERATIONS.md §4 metadata step / §6.
 
