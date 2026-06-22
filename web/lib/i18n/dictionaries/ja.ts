@@ -2,15 +2,6 @@ import type { Dict } from "./en";
 
 const ja: Dict = {
   nav: { home: "ホーム", pulse: "動向", rankings: "ランキング", categories: "カテゴリ", compare: "比較", about: "このサイトについて" },
-  home: {
-    heroPre: "",
-    heroAccent: "オープンソース",
-    heroPost: "の年代記。",
-    lead: "10年以上にわたる勢いを、ひと目でたどれます。年を選んで、その章へ進んでください。",
-    thisMonth: "今月のここまで",
-    perYear: "年ごとの獲得スター数",
-    gainedAria: "獲得スター数",
-  },
   about: {
     heroPre: "誠実な",
     heroAccent: "記録",
@@ -36,23 +27,16 @@ const ja: Dict = {
   },
   year: {
     label: "年",
-    all: "全期間",
-    spine: "概要",
     top: "の上位リポジトリ",
     gained: "対象リポジトリで獲得したスター数",
-    ledBy: "首位",
   },
   month: {
     label: "月",
     most: "最多獲得スター",
-    mostSub: "絶対増加数順",
     fastest: "最速成長",
-    fastestSub: "増加率順・2 万スター以上",
     newcomers: "新規到達",
-    newcomersSub: "初めて 1 万スターを突破",
     daily: "日次の動向",
     gained: "対象リポジトリの獲得スター数",
-    newcomersWord: "新規到達",
     narrative: "今月の動き",
   },
   week: { label: "週", top: "今週の上位リポジトリ" },

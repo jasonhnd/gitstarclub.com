@@ -2,15 +2,6 @@ import type { Dict } from "./en";
 
 const zhTw: Dict = {
   nav: { home: "首頁", pulse: "脈搏", rankings: "排行榜", categories: "分類", compare: "對比", about: "關於" },
-  home: {
-    heroPre: "",
-    heroAccent: "開源",
-    heroPost: "編年史。",
-    lead: "十餘年的開源動能，一眼可見。選擇一個年份，進入它的篇章。",
-    thisMonth: "本月至今",
-    perYear: "每年新增星標",
-    gainedAria: "新增星標",
-  },
   about: {
     heroPre: "一部如實記錄的",
     heroAccent: "編年史",
@@ -36,23 +27,16 @@ const zhTw: Dict = {
   },
   year: {
     label: "年份",
-    all: "所有年份",
-    spine: "概覽",
     top: "年度領先倉庫",
     gained: "追蹤倉庫新增星標",
-    ledBy: "領先者",
   },
   month: {
     label: "月份",
     most: "新增星標最多",
-    mostSub: "按絕對增量排名",
     fastest: "成長最快",
-    fastestSub: "成長率排名，僅統計 2 萬星以上專案",
     newcomers: "新晉專案",
-    newcomersSub: "首次突破 1 萬星",
     daily: "每日動態",
     gained: "追蹤倉庫新增",
-    newcomersWord: "個新晉專案",
     narrative: "本月敘事",
   },
   week: { label: "週", top: "本週領先倉庫" },

@@ -75,18 +75,15 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 
 ### 1. 首页 `/`
 
-**目标**：一眼传达"整个开源世界的时间脉络"，让访客点进任意一年/月。
+**目标**：作为 Pulse 首页，一眼展示当前开源世界正在变化的项目，并把访客导向本周、本月、全时榜、repo、org 与分类长尾页。
 
 **布局（从上到下）**：
 
-1. 标题与一句话（"开源世界的编年史 · 约 5,302 个 ≥10k star 项目 · 12 年时间轴"）
-2. **年份脊柱**：2015 → 当前年，每行一年
-   - 每行 = bar（宽度 = 全年新增 star）+ 全年星数 + **一句年度标签**
-   - 年度标签：人工手写 12 条（每年一条，如 "2024 · AI 元年 · claude-code, ollama 崛起"）
-   - 点击：进入年度页 `/rankings/2024`
-3. **本月聚焦**：当月 TOP / 当月增速，左右并列
-4. **历史上的今天**：3-5 条
-   - 实现：取 `crossed_10k` 命中今天"月-日"的 repo，按当时 star 量排序
+1. Pulse 标题与一句话，说明本周、本月、本年正在变化的开源项目。
+2. **本月上升项目**：当前月 flow 榜，直接链接 repo 详情页。
+3. **历史上的今天 / 复活项目**：从 hot snapshot 中读取当天相关项目，作为回看入口。
+4. 导航与搜索把用户带到 `/pulse`、`/rankings`、`/categories`、`/compare`、repo 详情页与 org 详情页。
+5. 首页与 `/pulse` 共用 `PulseView`；首页额外输出 `WebSite` JSON-LD，`/pulse` 作为独立 CollectionPage。
 
 ### 2. 年度页 `/rankings/2024`
 
@@ -188,7 +185,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 
 ## 多语言（i18n）
 
-调性：默认英文，优先级 **英文 > 日文 > 中文 >** zh-TW / ko / es / fr 七种 UI 语言；语言是页内 cookie 偏好（`gsc_lang`），不进 URL、不发 hreflang，仅翻译 chrome、不碰数据字段。**权威口径见 [SEO.md](./SEO.md) §10，实现见 [FRONTEND.md](./FRONTEND.md) §7（option C）。**
+调性：默认英文，优先级 **英文 > 日文 > 中文 >** zh-TW / ko / es / fr 七种 UI 语言；语言是页内 cookie 偏好（`gsc_lang`），不进 URL、不发 hreflang，翻译 chrome 与确定性 Narrative 文案，不碰 repo 名、描述、语言、topic、数字等数据字段。**权威口径见 [SEO.md](./SEO.md) §10，实现见 [FRONTEND.md](./FRONTEND.md) §7（option C）。**
 
 ## 项目命名
 

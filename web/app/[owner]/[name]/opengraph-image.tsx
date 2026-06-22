@@ -8,6 +8,7 @@ import { OG_COLORS, OG_SIZE, OG_STAR_PATH } from "@/lib/og-theme";
 export const size = OG_SIZE;
 export const contentType = "image/png";
 export const alt = "GitHub star history";
+export const revalidate = 3600;
 
 export default async function Image({ params }: { params: Promise<{ owner: string; name: string }> }) {
   const { owner, name } = await params;

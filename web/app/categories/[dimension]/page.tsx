@@ -16,7 +16,7 @@ import { categoryPath, fallbackRegistry, findDimension, isCategoryDimension } fr
 const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;
-export const revalidate = 60;
+export const revalidate = 3600;
 
 export function generateStaticParams() {
   return CATEGORY_DIMENSIONS.map((dimension) => ({ dimension }));
@@ -71,7 +71,9 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
               href={categoryPath(category.dimension, category.slug)}
               className="rounded-lg bg-surface-container px-4 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-surface-container-high"
             >
-              <span className="block truncate font-mono text-[0.95rem] font-semibold text-on-surface">{category.label}</span>
+              <span className="block truncate font-mono text-[0.95rem] font-semibold text-on-surface" title={category.label}>
+                {category.label}
+              </span>
               <span className="mt-1 block font-mono text-[0.75rem] text-on-surface-variant">
                 {category.count > 0 ? (
                   <>

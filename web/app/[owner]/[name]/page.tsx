@@ -20,7 +20,7 @@ import { categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/
 const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;
-export const revalidate = 60;
+export const revalidate = 3600;
 
 // No paths are prebuilt at deploy time (the repo set is large and versioned). Returning an
 // empty list makes this a statically-optimized route: an uncached path is rendered on first
