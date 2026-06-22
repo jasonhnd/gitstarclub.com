@@ -1,1 +1,1 @@
-export const PAD_X = "px-[var(--space-gutter)]";
+export const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";

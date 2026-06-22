@@ -103,7 +103,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
               <p className="mt-3 max-w-[52ch] text-[clamp(1rem,1.7vw,1.2rem)] text-on-surface-variant">{repo.description}</p>
             )}
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">
-              <span className="text-[1.6rem] font-extrabold tabular-nums text-accent-text">
+              <span className="text-[1.6rem] font-extrabold tabular-nums text-primary-fixed-dim">
                 {fmtStars(repo.current_stars)}
                 <span className="text-[0.9rem] text-on-surface-variant"> ★</span>
               </span>
@@ -135,7 +135,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
             </div>
           </header>
 
-          <aside className="rounded-2xl bg-surface-container-low px-4 py-4">
+          <aside className="rounded-2xl bg-surface-container px-4 py-4">
             <h2 className="font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
               <T path="repo.about" />
             </h2>
@@ -195,7 +195,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
                   return (
                     <li key={m.stars}>
                       <Link href={`/rankings/${d.y}/${d.m}`} className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-4 py-2 transition-colors hover:bg-surface-container-high">
-                        <span className="font-extrabold text-accent-text">{m.label}</span>
+                        <span className="font-extrabold text-primary-fixed-dim">{m.label}</span>
                         <span className="font-mono text-[0.8rem] text-on-surface-variant">
                           {monthLabel(loc, d.m, "short")} {d.y}
                         </span>
