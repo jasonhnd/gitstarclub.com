@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NonNegativeInt, SafeText, TimestampStr } from "./common";
 
 // search/index.json — flat client-side search index derived from the repos shard during
 // recompute (one doc per tracked repo). Lazy-loaded by the SearchBox on first focus and fed
@@ -7,18 +8,18 @@ import { z } from "zod";
 
 /** One searchable repo. Kept lean — only what ranks results and renders a hit row. */
 export const SearchDoc = z.object({
-  id: z.number().int(),
-  full_name: z.string(),
-  owner: z.string(),
-  language: z.string().nullable().optional(),
-  current_stars: z.number().int(),
-  description: z.string().nullable().optional(),
-});
+  id: NonNegativeInt,
+  full_name: SafeText,
+  owner: SafeText,
+  language: SafeText.nullable().optional(),
+  current_stars: NonNegativeInt,
+  description: SafeText.nullable().optional(),
+}).strict();
 export type SearchDoc = z.infer<typeof SearchDoc>;
 
 export const SearchIndex = z.object({
-  generated_at: z.string(),
-  count: z.number().int(),
+  generated_at: TimestampStr,
+  count: NonNegativeInt,
   repos: z.array(SearchDoc),
-});
+}).strict().refine((index) => index.count === index.repos.length, "count must match repos length");
 export type SearchIndex = z.infer<typeof SearchIndex>;

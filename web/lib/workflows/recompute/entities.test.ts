@@ -156,7 +156,8 @@ describe("lookups", () => {
 
 describe("searchIndex", () => {
   const model = syntheticModel();
-  const idx = searchIndex(model, "gen-x");
+  const generatedAt = "2024-06-01T00:00:00.000Z";
+  const idx = searchIndex(model, generatedAt);
   const payload = idx.get("search/index.json") as { generated_at: string; count: number; repos: Array<Record<string, unknown>> };
 
   test("emits a single search/index.json view", () => {
@@ -166,7 +167,7 @@ describe("searchIndex", () => {
   test("count matches repos length; generated_at is passed through", () => {
     expect(payload.count).toBe(2);
     expect(payload.repos.length).toBe(2);
-    expect(payload.generated_at).toBe("gen-x");
+    expect(payload.generated_at).toBe(generatedAt);
   });
 
   test("docs are id-ascending and carry the lean searchable fields", () => {
@@ -203,7 +204,7 @@ describe("searchIndex", () => {
       } as unknown as RawShards,
       "2026-05-30",
     );
-    const doc = (searchIndex(m, "g").get("search/index.json") as { repos: Array<{ description: string }> }).repos[0];
+    const doc = (searchIndex(m, generatedAt).get("search/index.json") as { repos: Array<{ description: string }> }).repos[0];
     expect(doc.description.length).toBe(200);
   });
 });

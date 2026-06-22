@@ -119,7 +119,7 @@ function isoWeekStr(d: Date): Period {
 }
 
 /** Immutable gross/net boundary = the month/week containing the last gross day (seam_date − 1).
- *  Periods ≤ these are pre-seam gross (× d); later periods are post-seam net (RANKING §3, §8.3). */
+ *  Periods <= these are pre-seam gross (x d); later periods are post-seam net (RANKING §3). */
 export function seamPeriods(seamDate: DateStr): SeamPeriods {
   if (!seamDate) return { month: "9999-12", week: "9999-W99" }; // no seam → treat everything gross
   const dt = new Date(`${seamDate}T00:00:00Z`);

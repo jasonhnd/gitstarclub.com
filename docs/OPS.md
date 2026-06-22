@@ -150,7 +150,7 @@ blob://
 │   ├── sync-runs.json                               # live cron 运行记录（保留最近 100 次）
 │   └── workflows/
 │       ├── latest-success.json                      #   最近一次成功 run 的恢复点：{ run_id, version, published_at }
-│       ├── health.json                              #   pipeline 健康灯（每条 pipeline 最近一次 ok/failed + run_id + at）
+│       ├── health.json                              #   pipeline 健康灯（workflow ok/failed；cron 失败路径写 failed）
 │       └── <run_id>/                                #   Workflow 单次 run checkpoint
 │           ├── manifest.json                        #     步骤清单 + 状态（running / published / failed）
 │           ├── validation.json                      #     发布闸门结果（ok · checked · invariants · failures）
@@ -183,7 +183,7 @@ blob://
 |---|---|---|---|
 | **每日** | `0 3 * * *`（~03:00） | **Vercel Function / JSON-only**：GraphQL 查 current_stars → append `current_month.json` → 重算 `hot-snapshot.json`、当前月 / 当前周 rank、当月 heatmap → `revalidatePath` 热集页 | **否**（不碰 Parquet / 引擎 / deploy） |
 | **每周** | `0 4 * * 0`（周日 ~04:00） | **Vercel Function / 增量刷新**：复用 live refresh，把当前周、当前月与热集重新覆盖写入 Blob，并落 `ops/sync-runs.json` | **否**（长尾按需 ISR；不做全量 build） |
-| **每周 refresh workflow** | `0 6 * * 0`（周日 06:00） | **Vercel Workflow / 全量刷新**：`/api/workflows/refresh/start` 鉴权后启动 `refreshWorkflow`——白名单 → 改名 → 元数据 → 折叠 → rank / entity / heatmap 重算 → 校验 → 发布（切指针）→ 版本 GC | **否**（发布只切指针 + revalidate 热集；排程独立于 daily / weekly） |
+| **每周 refresh workflow** | `0 6 * * 0`（周日 06:00） | **Vercel Workflow / 全量刷新**：`/api/workflows/refresh/start` 鉴权后启动 `refreshWorkflow`——白名单 → 改名 → 元数据 → 折叠 → rank / entity / heatmap 重算 → 校验 → 发布（切指针）→ 版本 GC | **否**（发布只切指针；排程独立于 daily / weekly） |
 
 ```jsonc
 // web/vercel.json — all scheduled entrypoints run on Vercel Production
@@ -280,7 +280,7 @@ blob://
 
 **一行接入**：在 Vercel 项目 Settings → Environment Variables 加 `ALERT_WEBHOOK_URL`，值指向一个能收 JSON POST 的端点——Slack / Discord incoming webhook，或调试用的 `https://webhook.site/...`。配上即生效，无需改代码；留空则保持纯日志模式。
 
-> 最近一次各 pipeline 的运行状态（`ok` / `failed` + `run_id` + 时间）由 `recordHealth` 写在 **`ops/workflows/health.json`**（同 Blob），可与 `ops/sync-runs.json` 一起作对账入口。
+> `ops/workflows/health.json` 由 `recordHealth` 写入：Workflow 成功 / 失败都会写 `workflow-refresh` 的 `ok` / `failed`；每日 / 每周 cron 当前只在失败路径写 `cron-daily` / `cron-weekly` 的 `failed`（成功记录仍以 `ops/sync-runs.json` 为准）。因此排查 cron 最近成功时间时，先看 `ops/sync-runs.json`，不要把 health.json 没有 cron `ok` 误判成成功灯缺失。
 
 ## 一次性 bootstrap Runbook（归档 / 非日常路径）
 

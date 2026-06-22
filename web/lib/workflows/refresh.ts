@@ -11,6 +11,7 @@ import { publishVersion } from "./steps/publish";
 import { gcVersions } from "./steps/gc";
 import { startRun, markPublished, markFailed } from "./checkpoint";
 import { REPO_BUCKETS } from "./buckets";
+import { sendAlert } from "@/lib/observability/alert";
 
 // Phase 2+4 managed-refresh workflow:
 //   whitelist → rename → metadata (per bucket)
@@ -61,6 +62,7 @@ export async function refreshWorkflow(runId: string) {
 
     await markPublished(runId, startedAt);
     const gc = await gcVersions(runId); // best-effort cleanup of old versions; never fails the run
+    if (gc.error) await sendAlert({ pipeline: "workflow-refresh", title: "version gc failed", run_id: runId, step: "gc", error: gc.error });
     return { runId, ok: true, whitelist, rename, metadata, fold, recompute, aliases, validation, publish, gc };
   } catch (err) {
     await markFailed(runId, startedAt, err instanceof Error ? err.message : String(err));

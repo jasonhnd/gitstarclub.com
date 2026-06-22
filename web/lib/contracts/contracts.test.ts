@@ -61,6 +61,8 @@ function rejects(schema: { safeParse: (v: unknown) => { success: boolean } }, ba
   return schema.safeParse(bad).success === false;
 }
 
+const TS = "2024-06-01T00:00:00.000Z";
+
 describe("common primitives", () => {
   test("OwnerType enum: valid parses, bad enum rejects", () => {
     expect(OwnerType.parse("User")).toBe("User");
@@ -84,8 +86,8 @@ describe("Meta — accepts BOTH bootstrap flat meta AND Phase 4 versioned meta",
     const flat = {
       seam_date: "2024-01-01",
       schema_ver: 2,
-      generated_at: "2024-01-02T00:00:00Z",
-      backfilled_at: "2024-01-01T00:00:00Z",
+      generated_at: TS,
+      backfilled_at: TS,
     };
     expect(Meta.parse(flat)).toEqual(flat);
     expect(Meta.parse(flat).folded_through).toBeUndefined();
@@ -139,9 +141,13 @@ describe("RankItem / RankList", () => {
     expect(rejects(RankItem, { rank: 1, id: 1, value: 5.5, prev_rank: null })).toBe(true);
   });
 
+  test("rejects both repo id and org login on one RankItem", () => {
+    expect(rejects(RankItem, { rank: 1, id: 1, login: "vercel", value: 5, prev_rank: null })).toBe(true);
+  });
+
   test("RankList parses with nested meta + items array", () => {
     const list = {
-      meta: { window: "month", period: "2024-05", dim: "repo", metric: "flow", generated_at: "2024-06-01T00:00:00Z" },
+      meta: { window: "month", period: "2024-05", dim: "repo", metric: "flow", generated_at: TS },
       items: [{ rank: 1, id: 1, value: 10, prev_rank: null }],
     };
     expect(RankList.parse(list).items).toHaveLength(1);
@@ -263,7 +269,7 @@ describe("canonical shards", () => {
   test("WhitelistSnapshot parses with diff added/dropped", () => {
     const snap = {
       run_id: "r1",
-      generated_at: "2024-06-01T00:00:00Z",
+      generated_at: TS,
       count: 1,
       entries: [{ id: 1, node_id: "n", full_name: "a/b", owner: "a", name: "b", stars: 12000 }],
       diff: { added: [2], dropped: [3] },
@@ -286,7 +292,7 @@ describe("canonical shards", () => {
   test("PendingPeriod parses period + daily_totals + per_repo", () => {
     const p = {
       period: "2024-05",
-      frozen_at: "2024-06-01T00:00:00Z",
+      frozen_at: TS,
       daily_totals: [["2024-05-31", 42] as [string, number]],
       per_repo: { "1": [["2024-05-31", 7] as [string, number]] },
     };
@@ -300,7 +306,7 @@ describe("canonical shards", () => {
 
 describe("workflow contracts", () => {
   test("ViewsPointer parses (prev_version nullable)", () => {
-    const vp = { version: "v3", run_id: "r3", published_at: "2024-06-01T00:00:00Z", prev_version: null, schema_ver: 2 };
+    const vp = { version: "v3", run_id: "r3", published_at: TS, prev_version: null, schema_ver: 2 };
     expect(ViewsPointer.parse(vp).prev_version).toBeNull();
     expect(ViewsPointer.parse({ ...vp, prev_version: "v2" }).prev_version).toBe("v2");
   });
@@ -310,7 +316,7 @@ describe("workflow contracts", () => {
   });
 
   test("WorkflowManifest parses with status enum + nullable published_version", () => {
-    const m = { run_id: "r1", started_at: "2024-06-01T00:00:00Z", status: "running", steps: ["a", "b"], published_version: null };
+    const m = { run_id: "r1", started_at: TS, status: "running", steps: ["a", "b"], published_version: null };
     expect(WorkflowManifest.parse(m).status).toBe("running");
     expect(WorkflowManifest.parse({ ...m, status: "published", published_version: "v1" }).status).toBe("published");
   });
@@ -322,7 +328,7 @@ describe("workflow contracts", () => {
   });
 
   test("WorkflowStepCheckpoint parses with StepStatus enum", () => {
-    const s = { step: "build", status: "ok", started_at: "x", finished_at: null };
+    const s = { step: "build", status: "ok", started_at: TS, finished_at: null };
     expect(WorkflowStepCheckpoint.parse(s).status).toBe("ok");
   });
 
@@ -331,7 +337,7 @@ describe("workflow contracts", () => {
   });
 
   test("LatestSuccess parses; rejects missing version", () => {
-    expect(LatestSuccess.parse({ run_id: "r1", version: "v1", published_at: "x" }).version).toBe("v1");
+    expect(LatestSuccess.parse({ run_id: "r1", version: "v1", published_at: TS }).version).toBe("v1");
     expect(rejects(LatestSuccess, { run_id: "r1", published_at: "x" })).toBe(true);
   });
 
@@ -354,7 +360,7 @@ describe("workflow contracts", () => {
   });
 
   test("RenameMap parses renames array", () => {
-    const rm = { run_id: "r1", generated_at: "x", renames: [{ id: 1, old_full_name: "a/b", new_full_name: "a/c" }] };
+    const rm = { run_id: "r1", generated_at: TS, renames: [{ id: 1, old_full_name: "a/b", new_full_name: "a/c" }] };
     expect(RenameMap.parse(rm).renames[0].new_full_name).toBe("a/c");
   });
 
@@ -458,7 +464,7 @@ describe("entity / view contracts", () => {
   });
 
   test("Heatmap parses scope enum + cells", () => {
-    const h = { meta: { scope: "year", period: "2024", generated_at: "x" }, cells: [["2024-01-01", 10] as [string, number]] };
+    const h = { meta: { scope: "year", period: "2024", generated_at: TS }, cells: [["2024-01-01", 10] as [string, number]] };
     expect(Heatmap.parse(h).meta.scope).toBe("year");
   });
 
@@ -485,9 +491,10 @@ describe("live contracts", () => {
 
   test("HotSnapshot parses nested home/current/all_time", () => {
     const rankItems = [{ rank: 1, id: 1, value: 10, prev_rank: null }];
+    const orgRankItems = [{ rank: 1, login: "vercel", value: 10, prev_rank: null }];
     const topLists = { flow: rankItems, stock: rankItems };
     const hs = {
-      generated_at: "2024-06-01T00:00:00Z",
+      generated_at: TS,
       home: {
         year_spine: [["2024", 1000] as [string, number]],
         current_month_top: topLists,
@@ -495,7 +502,7 @@ describe("live contracts", () => {
       },
       current_year: topLists,
       current_month: topLists,
-      all_time: { repo: rankItems, org: rankItems },
+      all_time: { repo: rankItems, org: orgRankItems },
     };
     expect(HotSnapshot.parse(hs).home.on_this_day[0].id).toBe(1);
   });
@@ -530,7 +537,7 @@ describe("search contracts", () => {
   });
 
   test("SearchIndex parses generated_at + count + repos[]", () => {
-    const idx = { generated_at: "2026-06-01T00:00:00Z", count: 1, repos: [doc] };
+    const idx = { generated_at: TS, count: 1, repos: [doc] };
     expect(SearchIndex.parse(idx).repos).toHaveLength(1);
   });
 
@@ -565,7 +572,7 @@ describe("category contracts", () => {
   test("CategoryRegistry parses dimensions with categories", () => {
     const registry = {
       rules_version: "2026-06-05.1",
-      generated_at: "2026-06-05T00:00:00Z",
+      generated_at: TS,
       dimensions: [{ id: "language", label: "Language", categories: [category] }],
     };
     expect(CategoryRegistry.parse(registry).dimensions[0].categories).toHaveLength(1);
@@ -589,15 +596,19 @@ describe("category contracts", () => {
     expect(rejects(RepositoryCategoryAssignment, { ...assignment, domain: ["domain:ai-ml"] })).toBe(true);
   });
 
+  test("RepositoryCategoryAssignment rejects multiple owner_kind values", () => {
+    expect(rejects(RepositoryCategoryAssignment, { ...assignment, owner_kind: ["owner_kind/organization", "owner_kind/user"] })).toBe(true);
+  });
+
   test("CategoryAssignments parses record keyed by repo id", () => {
-    const payload = { rules_version: "2026-06-05.1", generated_at: "x", repositories: { "1": assignment } };
+    const payload = { rules_version: "2026-06-05.1", generated_at: TS, repositories: { "1": assignment } };
     expect(CategoryAssignments.parse(payload).repositories["1"].ecosystem).toEqual(["ecosystem/python"]);
   });
 
   test("CategoriesLookup parses public category metadata", () => {
     const lookup = {
       rules_version: "2026-06-05.1",
-      generated_at: "x",
+      generated_at: TS,
       dimensions: [{ id: "language", label: "Language", categories: [{ id: "language/python", slug: "python", label: "Python", count: 120, sitemap: true }] }],
     };
     const parsed = CategoriesLookup.parse(lookup);
@@ -618,7 +629,7 @@ describe("category contracts", () => {
         period: "all",
         dim: "repo",
         metric: "stock",
-        generated_at: "x",
+        generated_at: TS,
         category: { id: "language/python", dimension: "language", slug: "python" },
       },
       items: [{ rank: 1, id: 1, value: 120000, prev_rank: null }],

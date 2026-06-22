@@ -91,9 +91,11 @@ test('周排名窗口跨月不丢日', () => {
 | 断言 | 检查内容 |
 |---|---|
 | `meta.json` | `seam_date` 存在 |
-| 全时 stock 总榜 | `items` 非空、`rank[0]==1`、`value` 严格降序 |
+| 全时 stock 总榜 | repo/org all-time rank 均读 schema；`items` 非空、`rank[0]==1`、`value` 非递增；rank 从 1 连续、无重复 rank、无重复 `id/login` |
 | `lookup/repos.json` | 条目数 ≥ 1000（防止下游 join 表崩塌） |
-| `lookup/aliases.json` | 别名完整性：无 dangling（每个别名 id 仍在 `lookup/repos.json` 内）、无 live-shadow（别名旧名不得撞当前某 repo 的 `full_name`） |
+| rank 引用完整性 | staging all-time rank item 的 repo `id` 必须在 `lookup/repos.json`；org `login` 必须在 `lookup/orgs.json` |
+| `meta.folded_through` | 相对上一发布版本不倒退（month/week 单调） |
+| `lookup/aliases.json` | 别名完整性：无 dangling（每个别名 id 仍在 `lookup/repos.json` 内）、无 live-shadow（别名旧名不得撞当前某 repo 的 `full_name`）、alias count 不小于上一发布版本 |
 | `search/index.json` | `count` ≥ 1000 且 `count == repos.length`（防止索引漂移） |
 | `categories/registry.json` | 非空；至少一个 `public` 分类 |
 | `categories/assignments.json` | 条目数 ≥ 1000；每 repo `language`/`language_family` 各 ≥1、`owner_kind` 恰 1；无 unknown 分类引用（assignment 里每个分类 id 在 registry 内） |
@@ -112,7 +114,7 @@ test('周排名窗口跨月不丢日', () => {
 
 - **fixture**：§1.1 的真切片同样导出成 **canonical JSON shard fixture**（与 Parquet 切片同源），单测「shard 重算」与「DuckDB 重算」对拍。
 - **隔离**：Workflow 校验只读 staging、不碰 `live/*` 活尾；活尾校验仍由每日/每周 cron 后置（见下「节奏」）。
-- **当前 gap**（未在 validate step 中执行，留作未来工作）：org `stock == ∑members` 等价、monthly ↔ recent-daily seam 连续、`meta.folded_through` 单调、`total_drift_pct` 阈值——这些不变量记录在 §1.3 但**目前不阻断发布**，仅作 §1.1/§1.4 测试目标。
+- **当前 gap**（未在 validate step 中执行，留作未来工作）：org `stock == ∑members` 等价、monthly ↔ recent-daily seam 连续、`total_drift_pct` 阈值、全量历史 period 文件集合完整性——这些不变量记录在 §1.3 但**目前不阻断发布**，仅作 §1.1/§1.4 测试目标。
 
 ### 1.6 全站搜索测试
 

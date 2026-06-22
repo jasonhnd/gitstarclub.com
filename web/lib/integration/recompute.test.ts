@@ -198,13 +198,11 @@ function runParity(): ParityResult {
   };
 }
 
-const describeOrSkip = LOCAL_DATA_PRESENT ? describe : describe.skip;
 if (!LOCAL_DATA_PRESENT) {
-  // eslint-disable-next-line no-console
   console.warn(`[recompute.test] SKIP: local pipeline data not found under ${CANON} — integration parity not run.`);
-}
-
-describeOrSkip("recompute parity vs DuckDB precompute (offline gate)", () => {
+  test.skip("recompute parity requires local pipeline data", () => {});
+} else {
+  describe("recompute parity vs DuckDB precompute (offline gate)", () => {
   // Recompute + diff once; every assertion reads from this single result.
   const r = runParity();
 
@@ -240,4 +238,5 @@ describeOrSkip("recompute parity vs DuckDB precompute (offline gate)", () => {
     expect(r.exact + r.rounding + r.mismatch + r.missingOnDisk).toBe(r.diskCount);
     expect(r.exact).toBe(r.diskCount);
   });
-});
+  });
+}
