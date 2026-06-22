@@ -238,6 +238,18 @@ body {
 main:focus {
   outline: none;
 }
+.i18n-narrative [data-locale] {
+  display: none;
+}
+html[lang="en"] .i18n-narrative [data-locale="en"],
+html[lang="ja"] .i18n-narrative [data-locale="ja"],
+html[lang="zh"] .i18n-narrative [data-locale="zh"],
+html[lang="zh-TW"] .i18n-narrative [data-locale="zh-TW"],
+html[lang="ko"] .i18n-narrative [data-locale="ko"],
+html[lang="es"] .i18n-narrative [data-locale="es"],
+html[lang="fr"] .i18n-narrative [data-locale="fr"] {
+  display: block;
+}
 /* sticky app bar clears the status bar / notch when standalone */
 .app-bar {
   padding-top: max(0.85rem, env(safe-area-inset-top));

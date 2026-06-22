@@ -2,15 +2,6 @@ import type { Dict } from "./en";
 
 const fr: Dict = {
   nav: { home: "Accueil", pulse: "Activité", rankings: "Classements", categories: "Catégories", compare: "Comparer", about: "À propos" },
-  home: {
-    heroPre: "Une histoire de l'",
-    heroAccent: "open source",
-    heroPost: ".",
-    lead: "Plus d'une décennie d'activité open source en une seule vue. Choisissez une année pour l'explorer.",
-    thisMonth: "Mois en cours",
-    perYear: "Étoiles ajoutées par an",
-    gainedAria: "étoiles ajoutées",
-  },
   about: {
     heroPre: "Une histoire ",
     heroAccent: "factuelle",
@@ -36,23 +27,16 @@ const fr: Dict = {
   },
   year: {
     label: "Année",
-    all: "Toutes les années",
-    spine: "Vue d'ensemble",
     top: "Dépôts principaux en",
     gained: "étoiles ajoutées dans les dépôts suivis",
-    ledBy: "mené par",
   },
   month: {
     label: "Mois",
     most: "Plus grand nombre d'étoiles ajoutées",
-    mostSub: "Plus forte hausse absolue",
     fastest: "Croissance la plus rapide",
-    fastestSub: "Taux de croissance, minimum 20k étoiles",
     newcomers: "Nouveaux entrants",
-    newcomersSub: "Ont dépassé 10k étoiles pour la première fois",
     daily: "Activité quotidienne",
     gained: "Les dépôts suivis ont ajouté",
-    newcomersWord: "nouveaux entrants",
     narrative: "Ce mois-ci",
   },
   week: { label: "Semaine", top: "Dépôts principaux cette semaine" },

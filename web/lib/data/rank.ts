@@ -6,12 +6,20 @@ import { isLiveOverlayPeriod } from "./watermark";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+function hasLiveRank(window: Window, dim: Dim, metric: Metric): boolean {
+  if (dim !== "repo") return false;
+  if (window === "month") return metric === "flow" || metric === "stock";
+  if (window === "week") return metric === "flow";
+  return false;
+}
+
 export const getRankBase = cache((window: Window, period: string, dim: Dim, metric: Metric) =>
   readView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList, { base: true }),
 );
 
 export const getRank = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
-  if ((window === "week" || window === "month") && (await isLiveOverlayPeriod(window, period))) {
+  const liveWindow = window === "month" || window === "week" ? window : null;
+  if (liveWindow && hasLiveRank(window, dim, metric) && (await isLiveOverlayPeriod(liveWindow, period))) {
     const live = await readView(`live/rank/${window}/${period}/${dim}/${metric}.json`, RankList, { bust: today() });
     if (live) return live;
   }

@@ -158,7 +158,9 @@ Source: topics first, then repository name and description keywords.
 Rules:
 
 - A repository may have multiple domains.
-- Topic matches have higher confidence than keyword matches.
+- Topic, language, and keyword rules are evaluated as a flat OR in code; the
+  first implementation does not assign confidence or ordering between topic and
+  keyword matches.
 - If no rule matches, omit the dimension rather than assigning a weak category.
 
 Initial domains:
@@ -285,7 +287,6 @@ The first implementation should use fields already available in the pipeline:
 - GitHub topics.
 - Description.
 - Owner type.
-- Created date.
 - Archived status.
 - Current stars.
 - Star milestone timestamps.
@@ -306,9 +307,9 @@ Recommended precedence:
 3. Assign `language_family` from every assigned language's lookup table.
 4. Assign `owner_kind` from owner metadata.
 5. Assign `maturity` from star, archive, and activity metadata.
-6. Assign `domain`, `project_type`, and `ecosystem` from topic rules.
-7. Assign remaining `domain`, `project_type`, and `ecosystem` values from
-   keyword rules over repo name and description.
+6. Assign `domain`, `project_type`, and `ecosystem` by evaluating each
+   category's topic / language / keyword predicates as a flat OR over repo name,
+   description, topics, and language fields.
 
 Topic and keyword rules should live in one explicit rules module. Avoid spreading
 classification logic across pages, route handlers, and build scripts.
@@ -478,6 +479,7 @@ Recommended public routes:
 /categories
 /categories/[dimension]
 /categories/[dimension]/[slug]
+/categories/[dimension]/[slug]/page/[page]
 ```
 
 Optional language shortcuts (`/languages`, `/languages/[slug]`) were **considered and not
@@ -490,7 +492,9 @@ Category detail pages should show:
 
 - Category label and short description.
 - Repository count.
-- Top all-time repositories.
+- Paginated all-time repositories, sorted by current stars. Page 1 remains the
+  canonical `/categories/[dimension]/[slug]` URL; page 2+ use
+  `/categories/[dimension]/[slug]/page/[page]`.
 - Current week or month movers.
 - Newcomers when available.
 - Related categories.
@@ -513,6 +517,8 @@ Sitemap rules:
 - Include `/categories`.
 - Include public dimension pages.
 - Include public category detail pages.
+- Include public category detail pagination pages when the category count
+  exceeds the page size.
 - Exclude empty categories.
 - Exclude categories below `minimum_repo_count` unless explicitly curated.
 - Exclude any public category whose lookup entry has `sitemap: false`.
@@ -521,7 +527,7 @@ Sitemap rules:
 ## Implementation Phases
 
 > **Status:** Phases 0–4 are **SHIPPED** and proven live (category registry = 214 categories,
-> 87 public, 5,298 repo assignments in production). Publish validation enforces the Phase 1
+> 87 public, 5,302 repo assignments in production). Publish validation enforces the Phase 1
 > invariants on every run (see `web/lib/workflows/steps/validate.ts`). **Phase 5 (analytical
 > category layer) is the only pending phase**, blocked on the roadmap's analytical data-layer
 > decision.
@@ -648,8 +654,10 @@ Recommended test coverage:
   pages live only under `/categories/language/[slug]`?~~ **RESOLVED: it does NOT exist.**
   Language pages live only under `/categories/language/[slug]`; there is no `/languages` or
   `/languages/[slug]` route. The single canonical language URL family is `/categories/language/*`.
-- What minimum repository count should be required for automatic public category
-  pages?
+- ~~What minimum repository count should be required for automatic public category
+  pages?~~ **RESOLVED:** the default `minimum_repo_count` is 20. No current
+  category definition overrides it; curated categories can still bypass the
+  threshold.
 - Which categories should be manually curated even if they are below the minimum
   count?
 - Should `html`, `css`, `vue`, and `svelte` be treated as languages only, or

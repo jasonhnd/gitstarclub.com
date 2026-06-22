@@ -70,7 +70,6 @@ describe("en dictionary shape (source of truth)", () => {
     expect(Object.keys(en)).toEqual(
       expect.arrayContaining([
         "nav",
-        "home",
         "about",
         "year",
         "month",

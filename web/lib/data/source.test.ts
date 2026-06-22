@@ -2,8 +2,8 @@ import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
 
 // source.ts reads BLOB_BASE_URL at module-load time and memoises the published version
-// (views/latest.json) for 60s at module scope. So we must (1) set the env BEFORE importing
-// the SUT, and (2) drive Date.now() forward past the 60s TTL to invalidate the version memo
+// (views/latest.json) for 1h at module scope. So we must (1) set the env BEFORE importing
+// the SUT, and (2) drive Date.now() forward past the 1h TTL to invalidate the version memo
 // between scenarios. We route a mocked global fetch by URL to simulate pointer + view fetches.
 
 // MUST equal the base set in rank.test.ts: source.ts captures BLOB_BASE once at load, and
@@ -24,7 +24,7 @@ const realNow = Date.now;
 
 let clock = 1_000_000;
 const advancePastTtl = () => {
-  clock += 120_000; // > VERSION_TTL_MS (60s) → version memo expires
+  clock += 3_700_000; // > VERSION_TTL_MS (1h) → version memo expires
 };
 
 interface FakeRoute {
@@ -54,7 +54,7 @@ function routeFor(url: string): FakeRoute {
 beforeEach(() => {
   routes = {};
   fetchCalls = [];
-  clock += 120_000; // ensure each test starts with an expired version memo
+  advancePastTtl(); // ensure each test starts with an expired version memo
   Date.now = () => clock;
   globalThis.fetch = mock((input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input.toString();

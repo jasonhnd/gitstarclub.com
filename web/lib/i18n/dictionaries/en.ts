@@ -2,15 +2,6 @@
 // `en` is the source-of-truth shape; every other dictionary must match these keys.
 export const en = {
   nav: { home: "Home", pulse: "Pulse", rankings: "Rankings", categories: "Categories", compare: "Compare", about: "About" },
-  home: {
-    heroPre: "A history of ",
-    heroAccent: "open source",
-    heroPost: ".",
-    lead: "More than a decade of open-source activity in one view. Select a year to explore it.",
-    thisMonth: "Month to date",
-    perYear: "Stars added by year",
-    gainedAria: "stars added",
-  },
   about: {
     heroPre: "A factual ",
     heroAccent: "history",
@@ -36,23 +27,16 @@ export const en = {
   },
   year: {
     label: "Year",
-    all: "All years",
-    spine: "Overview",
     top: "Top repositories in",
     gained: "stars added across tracked repositories",
-    ledBy: "led by",
   },
   month: {
     label: "Month",
     most: "Most stars added",
-    mostSub: "Largest absolute increase",
     fastest: "Fastest growth",
-    fastestSub: "Growth rate, minimum 20k stars",
     newcomers: "Newcomers",
-    newcomersSub: "First exceeded 10k stars",
     daily: "Daily activity",
     gained: "Tracked repositories added",
-    newcomersWord: "newcomers",
     narrative: "This month",
   },
   week: { label: "Week", top: "Top repositories this week" },

@@ -3,6 +3,8 @@ import {
   buildSitemapPaths,
   resolveSitemapLastModified,
   SITEMAP_FALLBACK_LAST_MODIFIED,
+  sitemapChangeFrequency,
+  sitemapPriority,
   weeksInIsoYear,
 } from "./sitemap";
 
@@ -50,8 +52,19 @@ describe("buildSitemapPaths", () => {
     const paths = buildSitemapPaths({
       now: new Date("2026-06-04T12:00:00.000Z"),
       repos: { "1": { full_name: "vuejs/vue" } },
-      orgs: { vercel: {} },
-      categories: { dimensions: [{ id: "language", categories: [{ slug: "python" }, { slug: "rust", sitemap: true }, { slug: "unknown", sitemap: false }] }] },
+      orgs: Object.fromEntries(Array.from({ length: 101 }, (_, index) => [`org-${index}`, {}])),
+      categories: {
+        dimensions: [
+          {
+            id: "language",
+            categories: [
+              { slug: "python", count: 250 },
+              { slug: "rust", count: 40, sitemap: true },
+              { slug: "unknown", count: 1000, sitemap: false },
+            ],
+          },
+        ],
+      },
     });
 
     expect(paths).toContain("");
@@ -60,8 +73,12 @@ describe("buildSitemapPaths", () => {
     expect(paths).toContain("/categories");
     expect(paths).toContain("/categories/language");
     expect(paths).toContain("/categories/language/python");
+    expect(paths).toContain("/categories/language/python/page/2");
+    expect(paths).toContain("/categories/language/python/page/3");
+    expect(paths).not.toContain("/categories/language/python/page/4");
     expect(paths).toContain("/categories/language/rust");
     expect(paths).not.toContain("/categories/language/unknown");
+    expect(paths).not.toContain("/categories/language/unknown/page/2");
     expect(paths).toContain("/compare");
     expect(paths).toContain("/about");
     expect(paths).toContain("/rankings/2026");
@@ -70,7 +87,9 @@ describe("buildSitemapPaths", () => {
     expect(paths).toContain("/rankings/2026/W23");
     expect(paths).not.toContain("/rankings/2026/W24");
     expect(paths).toContain("/vuejs/vue");
-    expect(paths).toContain("/o/vercel");
+    expect(paths).toContain("/o");
+    expect(paths).toContain("/o/page/2");
+    expect(paths).toContain("/o/org-0");
   });
 
   test("does not enumerate future ISO-week years during a January previous-year ISO week", () => {
@@ -78,5 +97,16 @@ describe("buildSitemapPaths", () => {
 
     expect(paths).toContain("/rankings/2026/W53");
     expect(paths).not.toContain("/rankings/2027/W01");
+  });
+});
+
+describe("sitemap hints", () => {
+  test("classifies crawl cadence and priority by path family", () => {
+    expect(sitemapChangeFrequency("")).toBe("daily");
+    expect(sitemapChangeFrequency("/o/page/2")).toBe("weekly");
+    expect(sitemapChangeFrequency("/owner/repo")).toBe("monthly");
+    expect(sitemapPriority("")).toBe(1);
+    expect(sitemapPriority("/categories/language/python/page/2")).toBe(0.6);
+    expect(sitemapPriority("/about")).toBe(0.4);
   });
 });

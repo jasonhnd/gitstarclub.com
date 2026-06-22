@@ -2,15 +2,6 @@ import type { Dict } from "./en";
 
 const es: Dict = {
   nav: { home: "Inicio", pulse: "Pulso", rankings: "Rankings", categories: "Categorías", compare: "Comparar", about: "Acerca de" },
-  home: {
-    heroPre: "Una historia del ",
-    heroAccent: "código abierto",
-    heroPost: ".",
-    lead: "Más de una década de actividad de código abierto en una sola vista. Elige un año para explorarlo.",
-    thisMonth: "Mes hasta la fecha",
-    perYear: "Estrellas añadidas por año",
-    gainedAria: "estrellas añadidas",
-  },
   about: {
     heroPre: "Una historia ",
     heroAccent: "basada en datos",
@@ -36,23 +27,16 @@ const es: Dict = {
   },
   year: {
     label: "Año",
-    all: "Todos los años",
-    spine: "Resumen",
     top: "Repositorios principales en",
     gained: "estrellas añadidas en repositorios monitoreados",
-    ledBy: "encabezado por",
   },
   month: {
     label: "Mes",
     most: "Más estrellas añadidas",
-    mostSub: "Mayor aumento absoluto",
     fastest: "Crecimiento más rápido",
-    fastestSub: "Tasa de crecimiento, mínimo 20k estrellas",
     newcomers: "Nuevos ingresos",
-    newcomersSub: "Superaron 10k estrellas por primera vez",
     daily: "Actividad diaria",
     gained: "Los repositorios monitoreados añadieron",
-    newcomersWord: "nuevos ingresos",
     narrative: "Este mes",
   },
   week: { label: "Semana", top: "Repositorios principales de esta semana" },

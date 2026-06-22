@@ -66,7 +66,7 @@
 |---|---|---|---|---|---|---|---|
 | URL 数（语言中立） | 1 | ~11 | ~132 | 5,300+（the tracked set） | ~1,500（估） | ~3 | **~6,900** |
 
-> URL 语言中立单一、不乘语言数（见 §10）。上表小计 ~6,900 **未含周页与 `/pulse`**；加上独立周页 +~570 再加 `/pulse` + `/compare` ⇒ **当前约 6,900、规划 ~7,500 URL，sitemap 按 ~7,500 规划**。具体数随 org 白名单（含 User owner）浮动。
+> URL 语言中立单一、不乘语言数（见 §10）。上表小计 ~6,900 **未含周页、`/pulse`、owner 索引分页、category 分页**；加上这些可爬入口后，当前 sitemap 约按 **~10k URL** 规划。具体数随 org 白名单（含 User owner）与 category count 浮动。
 
 ---
 
@@ -298,19 +298,19 @@ export async function generateMetadata(): Promise<Metadata> {
 |---|---|
 | title | `/categories` 为 `GitHub Repository Categories`；详情页为 `<Category> GitHub Repository Rankings` |
 | description | 说明按 language / ecosystem / domain / project type / owner kind / maturity 浏览 tracked repositories |
-| canonical | `/categories`、`/categories/[dimension]`、`/categories/[dimension]/[slug]` 各自指向自身规范 URL |
+| canonical | `/categories`、`/categories/[dimension]`、`/categories/[dimension]/[slug]` 各自指向自身规范 URL；分类详情 page 2+ 指向 `/categories/[dimension]/[slug]/page/[page]` 自身 |
 | JSON-LD | `CollectionPage`，URL 使用规范路径 |
 
 ```ts
-export const revalidate = 60;
+export const revalidate = 3600;
 export const dynamicParams = true;
-export function generateStaticParams() {
-  return priorityLanguageStaticParams();
+export async function generateStaticParams() {
+  return publicCategoryStaticParams(await getCategoryRegistry());
 }
 ```
 
-- `/categories` 与 `/categories/language` 作为核心发现入口进入 sitemap。
-- 详情页首批预渲染 priority language slugs（如 `python` / `html` / `javascript` / `go` / `rust`）；后续公开 registry category 通过 `dynamicParams = true` 按需生成。
+- `/categories`、公开维度页、公开 category 详情页与详情分页页进入 sitemap。
+- 详情页预渲染 priority language slugs 加公开 registry category；分页页按 category count 预渲染 page 2+，`dynamicParams = true` 保持后续公开 registry category 可按需生成。
 - 不公开或低量 category 不应返回 200；页面逻辑通过 registry `public` 标记决定是否 `notFound()`。
 
 ### 2.8 对比页 `/compare`
@@ -388,7 +388,7 @@ export async function generateStaticParams() {
 - **稳定性原则**：历史页 `lastModified` **不可每次 build 抖动**（否则爬虫误判全站每日全变、浪费预算）。取值来自**数据视图里的确定性字段**（pipeline 写入的 `updated_at` / 期末日），不是 `new Date()`。
 - 与 §4 sitemap 的 `lastModified` 同源（同一字段），保证 sitemap 与页面声明一致。
 
-**当前态（已知偏离）**：`web/app/sitemap.ts` 当前是单一扁平 sitemap，**全站共用一个 `lastModified`**（`meta.backfilled_at` → `meta.generated_at` → 固定 fallback，见 §4.2）——历史月页和沉寂 repo 都会跟着这个值动。这与上表「历史页应稳定」相违，目前可容忍（URL 规模仅 ~7k、`meta` 命中率高），但**切分片时必须按上表逐 URL 取实体级日期**。
+**当前态（已知偏离）**：`web/app/sitemap.ts` 当前是单一扁平 sitemap，**全站共用一个 `lastModified`**（`meta.backfilled_at` → `meta.generated_at` → 固定 fallback，见 §4.2）——历史月页和沉寂 repo 都会跟着这个值动。这与上表「历史页应稳定」相违，目前可容忍（URL 规模约 ~10k、`meta` 命中率高），但**切分片时必须按上表逐 URL 取实体级日期**。
 
 ### 3.4 配置要点（与 ARCHITECTURE 对齐）
 
@@ -399,9 +399,9 @@ export async function generateStaticParams() {
 
 ---
 
-## 4. sitemap：当前单文件 flat 实现（~7k URL）+ 未来分片预留
+## 4. sitemap：当前单文件 flat 实现（~10k URL）+ 未来分片预留
 
-> **Sitemap 协议硬限**：单文件 ≤ **50,000 URL** 且 ≤ **50MB（未压缩）**。当前 ~7,500 个语言中立 URL **单文件塞得下**，故先用**单一扁平 sitemap**；待 URL 规模逼近 5 万时再切到 `generateSitemaps()` 分片（见 §4.3）。
+> **Sitemap 协议硬限**：单文件 ≤ **50,000 URL** 且 ≤ **50MB（未压缩）**。当前约 ~10k 个语言中立 URL **单文件塞得下**，故先用**单一扁平 sitemap**；待 URL 规模逼近 5 万时再切到 `generateSitemaps()` 分片（见 §4.3）。
 
 ### 4.1 当前实现（单一 flat sitemap）
 
@@ -409,40 +409,56 @@ export async function generateStaticParams() {
 
 ```ts
 import type { MetadataRoute } from "next";
-import { getReposLookup, getOrgsLookup, getCategoriesLookup, getMeta } from "@/lib/data";
-import { buildSitemapPaths, resolveSitemapLastModified } from "@/lib/sitemap";
+import { CategoriesLookup, Meta, OrgsLookup, ReposLookup } from "@/lib/contracts";
+import { readView } from "@/lib/data";
+import { buildSitemapPaths, resolveSitemapLastModified, sitemapChangeFrequency, sitemapPriority } from "@/lib/sitemap";
 
 const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
+const SITEMAP_REVALIDATE_SECONDS = 86400;
+
+export const revalidate = 86400;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const base = { base: true, versionTtlMs: SITEMAP_REVALIDATE_SECONDS * 1000 };
   const [repos, orgs, categories, meta] = await Promise.all([
-    getReposLookup(),
-    getOrgsLookup(),
-    getCategoriesLookup(),
-    getMeta(),
+    readView("lookup/repos.json", ReposLookup, base),
+    readView("lookup/orgs.json", OrgsLookup, base),
+    readView("lookup/categories.json", CategoriesLookup, base),
+    readView("meta.json", Meta, base),
   ]);
   const lastModified = resolveSitemapLastModified(meta);
   const paths = buildSitemapPaths({ repos, orgs, categories });
 
-  return paths.map((p) => ({ url: `${BASE}${p}`, lastModified }));
+  return paths.map((p) => ({
+    url: `${BASE}${p}`,
+    lastModified,
+    changeFrequency: sitemapChangeFrequency(p),
+    priority: sitemapPriority(p),
+  }));
 }
 ```
 
 特征：
 
 - **单一 `export default`**，无 `generateSitemaps()`、无分片；产物路径 `/sitemap.xml` 直接列出全部 URL。
-- 覆盖路径：首页 `/`、`/pulse`、`/rankings`、`/compare`、`/categories`、`/about`，每年 `/rankings/YYYY`，每年每月 `/rankings/YYYY/MM`，有效 ISO 周页 `/rankings/YYYY/W##`，所有 repo `/{owner}/{name}`，所有 org `/o/{login}`，以及 `lookup/categories.json` 标出的公开 category 路径；显式 `sitemap: false` 的 category 不枚举。
-- 路径枚举逻辑已抽到 `web/lib/sitemap.ts`，用单元测试覆盖 `/compare`、category 路径、当前周截断、ISO 53 周年份与 repo/org 长尾。
+- 覆盖路径：首页 `/`、`/pulse`、`/rankings`、`/compare`、`/categories`、`/about`，每年 `/rankings/YYYY`，每年每月 `/rankings/YYYY/MM`，有效 ISO 周页 `/rankings/YYYY/W##`，所有 repo `/{owner}/{name}`，`/o` 组织索引与 `/o/page/[page]`，所有 org `/o/{login}`，以及 `lookup/categories.json` 标出的公开 category 路径和 category 分页路径；显式 `sitemap: false` 的 category 不枚举。
+- 路径枚举逻辑已抽到 `web/lib/sitemap.ts`，用单元测试覆盖 `/compare`、category 路径和分页、org 索引分页、当前周截断、ISO 53 周年份与 repo/org 长尾。每个 URL 输出 `lastModified`、`changeFrequency`、`priority`；sitemap route 和其版本指针读取都按 86400 秒缓存。
 
 ### 4.2 `lastModified` 的当前取值（已知限制）
 
 ```ts
 const lastModified = resolveSitemapLastModified(meta);
-return paths.map((p) => ({ url: `${BASE}${p}`, lastModified }));
+return paths.map((p) => ({
+  url: `${BASE}${p}`,
+  lastModified,
+  changeFrequency: sitemapChangeFrequency(p),
+  priority: sitemapPriority(p),
+}));
 ```
 
 - **全站共用一个 `lastModified`**：所有 URL 都标同一个日期；解析顺序是 `meta.backfilled_at`（bootstrap）→ `meta.generated_at`（versioned workflow meta）→ 固定 fallback `2026-06-04T00:00:00.000Z`。
 - **不再回退到 `new Date()`**：缺 meta 或时间戳无效时也使用固定 fallback，避免每次 build 抖动并误导爬虫判断全站变化。
-- **目前可容忍的理由**：URL 规模仅 ~7k，Googlebot 抓取预算消化得起；且 `meta.backfilled_at` / `meta.generated_at` 在正常 path 下会命中。
+- **目前可容忍的理由**：URL 规模约 ~10k，Googlebot 抓取预算消化得起；且 `meta.backfilled_at` / `meta.generated_at` 在正常 path 下会命中。
 - **何时必须收紧**：①URL 规模逼近 50k 需要切分片时；②Search Console 出现「Discovered – currently not indexed」激增，疑似浪费抓取预算时——届时按 §4.3 / §4.4 实现分片 + 每片自己的 `lastModified` 取自 `entity.json` 的实体级最后变动日。
 
 ### 4.3 未来分片结构（规模逼近 50k 时再实现）
@@ -552,7 +568,7 @@ Disallow: /
 
 - **总开关 = 环境变量、不看 host**：这是与早期设计的关键差异。原始设想是 `isProductionHost()` 按 host / `VERCEL_ENV` 自动判定，但实际实现选了更稳健的 **launch flag**：预发阶段即便生产域名的 Preview deployment（web 应用）也会噤声，避免抢先于 teaser 暴露。
 - **launch 翻牌流程**：①Vercel 项目 production 环境加 `SITE_INDEXABLE=1`②redeploy（不需要改代码）③`robots.txt` 立即放开 + sitemap 暴露 + 根 layout 的全局 `robots: { index: true, follow: true }` 一起翻牌。
-- **不屏蔽任何内容页**：~7,500 长尾页（语言中立单一 URL）全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + sitemap 分片共同消化。
+- **不屏蔽任何内容页**：~10k 长尾页（语言中立单一 URL）全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + sitemap 分片共同消化。
 - **屏蔽 `/api/`**：cron / 内部 route 不该被抓（真正防线是 `CRON_SECRET` 鉴权，见 [OPS.md](./OPS.md)；robots 只是减少噪声）。
 - **`/search-index`、`/repo-curve`（顶级 JSON 端点）故意放行**：均不在 `/api/` 下，故 `Disallow: /api/` 不覆盖它们。`/search-index` 是全站搜索的版本化索引（`search/index.json`），经发布指针由 Route Handler 服务、带 `s-maxage` 走 CDN，被搜索框首次聚焦时懒加载；`/repo-curve` 同理是 repo 曲线数据的版本化 JSON 端点（CDN 缓存、被详情页 / 对比页按需读取）。`robots.ts` 只 `Disallow: /api/`、不屏蔽这两者（CDN JSON、非内容页、对 SEO 无害）。若需拦爬虫抓这些 JSON，在 `robots.ts` 把 `/search-index`、`/repo-curve` 加到 Disallow 即可。
 - **Preview deployment 的处理**：Preview 默认就 `SITE_INDEXABLE` 未设 → `Disallow: /`；再叠加 root layout 的 `robots: { index: false, follow: false }` meta（同一总开关驱动），共防一处。Preview 还需在 Vercel 项目设 Deployment Protection（PRIVATE），见 §11。
@@ -710,7 +726,7 @@ Disallow: /
 
 ---
 
-## 9. 内链图（爬虫消化 ~7,500 页的关键，配合 sitemap）
+## 9. 内链图（爬虫消化 ~10k 页的关键，配合 sitemap）
 
 > 目标：**任意页 ≤ 3 跳可达**；按需 ISR 页除 sitemap 外还能被内链发现 / 触发生成。内链是"爬虫预算的导流"，sitemap 是"全量清单"，两者缺一不可。
 
@@ -744,9 +760,18 @@ org 详情页 /o/login
  ├─ 月度 org 表现 ──────────────────────→ 对应月度页
  └─ 全时 org 名次 ──────────────────────→ /rankings
 
+org 索引 /o 与 /o/page/N
+ ├─ 每行 owner ─────────────────────────→ org 详情页 /o/login
+ └─ prev/next + 页码 ───────────────────→ 全部 owner 分页
+
 全时榜 /rankings
  ├─ repo 榜每行 ────────────────────────→ repo 详情页
  └─ org 榜每行 ─────────────────────────→ org 详情页
+
+分类详情 /categories/dimension/slug
+ ├─ 每行 repo ──────────────────────────→ repo 详情页
+ ├─ prev/next + 页码 ───────────────────→ 分类深分页
+ └─ related categories ────────────────→ 同维度其他分类
 ```
 
 **关键边（必须实现）**：
@@ -758,11 +783,13 @@ org 详情页 /o/login
 | 榜单行 → 实体（repo/org） | 长尾详情页被发现 + 触发 ISR；**这是 repo/org 页的主发现路径** |
 | 里程碑 / 月度表 → 月度页 | repo 页反哺月页、形成网状回环 |
 | repo ↔ org 互链（owner 字段） | org 页被 repo 页发现，反之亦然 |
+| `/o` 分页索引 → org | 所有 owner 至少有一条可爬站内入链，降低 sitemap-only 孤岛 |
+| 分类详情分页 → repo | category 第 101+ 成员获得主题枢纽页入链，page 1 canonical 不被破坏 |
 | prev/next（上下月、上下年） | 时间轴横向连通、降低孤岛 |
 | 面包屑（§6.7） | 每页向上回链，纵向连通 |
 
-- **深度核对**：首页→年（1）→月（2）→repo（3）= 3 跳；首页→全时榜（1）→repo（2）；首页→热门 repo（1）→owner org（2）。**全站 ≤ 3 跳**达成。
-- **孤岛风险**：早已沉寂、从未进入任何近期榜单的 repo —— 靠 ①sitemap 枚举（必达）②其历史所在月页的榜单行（历史月页也在 sitemap）双重兜底。
+- **深度核对**：首页→年（1）→月（2）→repo（3）= 3 跳；首页→全时榜（1）→repo（2）；首页→热门 repo（1）→owner org（2）；首页→`/o`（1）→任意 org（2+分页）；首页→`/categories`（1）→分类（2）→分类分页 repo（3+分页）。核心长尾入口达成。
+- **孤岛风险**：早已沉寂、从未进入任何近期榜单的 repo/org —— 靠 ①sitemap 枚举（必达）②历史月页榜单行 ③`/o` owner 索引 ④category 详情分页四层兜底。
 
 ---
 
@@ -776,7 +803,7 @@ org 详情页 /o/login
 | canonical | 指自身的语言中立 URL；**不发 hreflang / `alternates.languages`**（没有语言变体 URL 可互指） |
 | SEO 语言 | **英文**为默认 SEO / 用户语言（无 cookie 时）；meta / OG 文案为英文 |
 | 其它语言 | en/ja/zh/zh-TW/ko/es/fr 是**页内 UI 偏好**（下拉切换，写 cookie + 客户端换 chrome，见 [FRONTEND.md](./FRONTEND.md) §7 + §2.5 静态基底 + 客户端译 chrome）；**不创建独立 URL、不影响收录** |
-| 翻译范围 | UI chrome / 导航 / 年度标签 / About / 面包屑名；**不翻译** repo 名 / 描述 / 语言 / topic / 数字（数据语言中立） |
+| 翻译范围 | UI chrome / 导航 / 年度标签 / About / 面包屑名 / 确定性 Narrative；**不翻译** repo 名 / 描述 / 语言 / topic / 数字（数据语言中立） |
 | og:locale | 默认 `en_US`；语言切换由客户端调整，不影响 canonical |
 
 ---
@@ -887,7 +914,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 | 移除过时网址 | 若预览曾误被收录：Removals 工具临时移除 + 修 noindex | 仅事故时 |
 | Core Web Vitals 报告 | GSC CWV 报告 + Vercel Speed Insights 双看（见 §12） | 每月 |
 
-- **抓取预算**：~7,500 个语言中立 URL 对 Googlebot 不算大，但**新站权重低 → 抓取慢**。加速：①sitemap 分片 + 准确 `lastModified`②强内链（§9）③核心页（首页/年/全时榜）先建权重，再靠内链把权重导给长尾。
+- **抓取预算**：~10k 个语言中立 URL 对 Googlebot 不算大，但**新站权重低 → 抓取慢**。加速：①sitemap 分片 + 准确 `lastModified`②强内链（§9）③核心页（首页/年/全时榜）先建权重，再靠内链把权重导给长尾。
 - **索引节奏预期**：长尾 repo/org 页可能数周–数月才逐步收录；优先确保**高价值长尾**（热门 repo、近年月份）被内链 + sitemap 优先暴露。
 
 ---
@@ -896,14 +923,14 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **收录基础设施**
 
-- [ ] **当前**：`app/sitemap.ts` 为单一扁平 `export default`，列出首页 / `/pulse` / `/rankings` / `/compare` / `/categories` / `/about` + 全部年月 + 有效 ISO 周页 + 全部 repo + 全部 org + 公开 category 路径；`/sitemap.xml` 可访问（§4.1）
-- [ ] **当前已知偏离**：全站共用 `backfilled_at/generated_at/fallback` 作 `lastModified`——URL 规模 ~7k 下可容忍，分片实施时按 §4.4 收紧到实体级日期
+- [ ] **当前**：`app/sitemap.ts` 为单一扁平 `export default`，列出首页 / `/pulse` / `/rankings` / `/compare` / `/categories` / `/about` + 全部年月 + 有效 ISO 周页 + 全部 repo + `/o` owner 索引分页 + 全部 org + 公开 category 路径与分页；`/sitemap.xml` 可访问（§4.1）
+- [ ] **当前已知偏离**：全站共用 `backfilled_at/generated_at/fallback` 作 `lastModified`——URL 规模 ~10k 下可容忍，分片实施时按 §4.4 收紧到实体级日期
 - [ ] **未来分片切换条件**：URL 规模逼近 50k 或 GSC 出现抓取预算浪费 → 切到 `generateSitemaps()` + 每片各自 `lastModified`（§4.3 / §4.4）
 - [ ] sitemap 每个 `<url>` 仅一条语言中立 `<loc>`，**无语言 alternate**（不含 `alternates.languages` / `hreflang` / `x-default`，见 §10）
 - [ ] `app/robots.ts`：`SITE_INDEXABLE=1` 时输出 `Allow: /` + `Disallow: /api/` + Sitemap + Host；**未设置时全站 `Disallow: /`**（§5 / §11）
 - [x] 周页 `/rankings/YYYY/W##` 与 `/compare` 已在 sitemap 中（§4.1）
-- [x] 分类入口与公开 category 路径已在 sitemap 中（§4.1）
-- [ ] 收录目标量级按 ~7,500 个语言中立 URL 规划（含 org / rankings，不乘语言数，见 §10）
+- [x] `/o` owner 索引分页、分类入口、公开 category 路径与 category 分页已在 sitemap 中（§4.1）
+- [ ] 收录目标量级按 ~10k 个语言中立 URL 规划（含 org / rankings / owner 索引分页 / category 分页，不乘语言数，见 §10）
 
 **每页元数据**
 
@@ -929,7 +956,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 **去重与分页（§7 / §8）**
 
 - [ ] 排序/筛选 query 视图 canonical 回规范页；内容不同的视图（org vs repo、不同 period）各 canonical 自身
-- [ ] 长榜单优先不分页（top-N 单页）；若分页则各页 canonical 自身 + 进 sitemap
+- [ ] 长榜单优先不分页（top-N 单页）；category 深分页和 owner 索引分页各页 canonical 自身 + 进 sitemap
 
 **内链（§9）**
 

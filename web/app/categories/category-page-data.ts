@@ -5,9 +5,9 @@ import {
   categoryId,
   type CategoryDimension,
 } from "@/lib/categories/rules";
-import type { CategoriesLookup, CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts";
+import type { CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts";
+import { CATEGORY_DETAIL_PAGE_SIZE, pageCount } from "@/lib/pagination";
 
-export const CATEGORY_REVALIDATE_SECONDS = 60;
 export const CATEGORY_INDEX_PREVIEW_LIMIT = 10;
 
 export function isCategoryDimension(value: string): value is CategoryDimension {
@@ -16,6 +16,10 @@ export function isCategoryDimension(value: string): value is CategoryDimension {
 
 export function categoryPath(dimension: string, slug?: string): string {
   return slug ? `/categories/${dimension}/${slug}` : `/categories/${dimension}`;
+}
+
+export function categoryDetailPagePath(dimension: string, slug: string, page = 1): string {
+  return page <= 1 ? categoryPath(dimension, slug) : `${categoryPath(dimension, slug)}/page/${page}`;
 }
 
 export function fallbackRegistry(): CategoryRegistry {
@@ -67,7 +71,7 @@ export function publicCategoryEntries(registry: CategoryRegistry): CategoryRegis
   return registry.dimensions.flatMap((dimension) => dimension.categories.filter((category) => category.public));
 }
 
-export function publicCategoriesForDimension(dimension: { categories: CategoryRegistryEntry[] }): CategoryRegistryEntry[] {
+function publicCategoriesForDimension(dimension: { categories: CategoryRegistryEntry[] }): CategoryRegistryEntry[] {
   return dimension.categories.filter((category) => category.public);
 }
 
@@ -98,6 +102,17 @@ export function publicCategoryStaticParams(registry?: CategoryRegistry | null) {
   return uniqueCategoryParams([...priorityLanguageStaticParams(), ...params]);
 }
 
+export function publicCategoryPageStaticParams(registry?: CategoryRegistry | null) {
+  if (!registry) return [];
+  return publicCategoryEntries(registry).flatMap((category) =>
+    Array.from({ length: Math.max(0, pageCount(category.count, CATEGORY_DETAIL_PAGE_SIZE) - 1) }, (_, index) => ({
+      dimension: category.dimension,
+      slug: category.slug,
+      page: String(index + 2),
+    })),
+  );
+}
+
 function uniqueCategoryParams(params: Array<{ dimension: string; slug: string }>) {
   const seen = new Set<string>();
   return params.filter((param) => {
@@ -106,16 +121,4 @@ function uniqueCategoryParams(params: Array<{ dimension: string; slug: string }>
     seen.add(key);
     return true;
   });
-}
-
-export function sitemapCategoryPaths(categories?: CategoriesLookup | null): string[] {
-  const paths = ["/categories", "/categories/language"];
-  if (!categories) return paths;
-  for (const dimension of categories.dimensions) {
-    paths.push(categoryPath(dimension.id));
-    for (const category of dimension.categories) {
-      if (category.sitemap !== false) paths.push(categoryPath(dimension.id, category.slug));
-    }
-  }
-  return [...new Set(paths)].sort();
 }
