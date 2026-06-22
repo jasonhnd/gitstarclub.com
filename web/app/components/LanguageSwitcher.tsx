@@ -1,14 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { LANG_COOKIE, LANGUAGE_CHANGE_EVENT, LANGUAGE_LABELS, LOCALES, type Locale } from "@/lib/i18n";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { DEFAULT_LOCALE, LANG_COOKIE, LANGUAGE_CHANGE_EVENT, LANGUAGE_LABELS, LOCALES, isLocale, type Locale } from "@/lib/i18n";
 
 const ONE_YEAR = 60 * 60 * 24 * 365;
+
+function readLocaleCookie(): Locale {
+  if (typeof document === "undefined") return DEFAULT_LOCALE;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${LANG_COOKIE}=([^;]*)`));
+  const value = match ? decodeURIComponent(match[1]) : undefined;
+  return value && isLocale(value) ? value : DEFAULT_LOCALE;
+}
 
 export function LanguageSwitcher({ locale }: { locale: Locale }) {
   const menuRef = useRef<HTMLDetailsElement>(null);
   const [pendingLocale, setPendingLocale] = useState<Locale | null>(null);
-  const active = pendingLocale ?? locale;
+  const active = useSyncExternalStore(
+    (onStoreChange) => {
+      window.addEventListener(LANGUAGE_CHANGE_EVENT, onStoreChange);
+      return () => window.removeEventListener(LANGUAGE_CHANGE_EVENT, onStoreChange);
+    },
+    readLocaleCookie,
+    () => locale,
+  );
   const otherLocales = LOCALES.filter((l) => l !== active);
 
   useEffect(() => {

@@ -17,7 +17,7 @@ These are non-negotiable for the production system. New features must respect al
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
 2. **Zero runtime database.** Read-side state lives in versioned Blob views resolved through a publish pointer; there is no SQL connection to open.
 3. **Vercel-first.** Deploy, cron, Blob, workflow, and any future analytics stay on Vercel. No scattered third-party billing surfaces.
-4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML with zero client JavaScript. The few client-JS exceptions are listed in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
+4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, and service-worker registration.
 5. **Recurring work on Vercel, not the laptop.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) runs as a Vercel Workflow. Local pipeline runs are reserved for one-off bootstrap.
 
 The same data layer also operates AI-free: features that look like they would call an LLM (summaries, classifications, narratives) ship as deterministic templates instead. The rationale and tradeoff are recorded in the team feedback memory.
@@ -220,7 +220,7 @@ The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per quer
 |---|---|
 | Static HTML for content pages | Function invocations stay at zero |
 | HTML under ~20 KB | Reduces bandwidth at scale |
-| Zero client JS on content pages | SVG charts render server-side |
+| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction islands hydrate |
 | `Cache-Control: s-maxage=86400, stale-while-revalidate` | Historical surfaces cached aggressively |
 | Subset fonts as woff2 | Plus Jakarta Sans subset ~30 KB |
 | Pre-rendered OG cards in Blob | No function cost on share embeds |

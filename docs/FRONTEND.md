@@ -76,7 +76,7 @@ OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
 
 ```
 app/
-  layout.tsx                 # 渲染默认英文（<html lang="en"> 静态），paint 前 lang/theme 脚本 + <I18nProvider> + Footer
+  layout.tsx                 # 渲染默认英文（<html lang="en"> 静态），paint 前 lang/theme 脚本 + Footer；无全树 I18nProvider
   page.tsx  pulse/page.tsx
   [owner]/[name]/page.tsx    # GitHub 风格 repo URL
   o/page.tsx  o/page/[page]/page.tsx  o/[login]/page.tsx
@@ -93,7 +93,7 @@ app/
 
 - **URL canonical 单一化**：`/facebook/react` 是唯一 repo URL；不存在 `/en/r/facebook/react` / `/zh/r/facebook/react` 形态。
 - **渲染模式见 §2.5**（静态基底 + 客户端译 chrome）。
-- **i18n 实现细节见 §7**（手写字典、`I18nProvider`/`<T>`、`gsc_lang` cookie 水合后切 chrome、`i18n/server.ts` 弃用）；数据字段不翻译。
+- **i18n 实现细节见 §7**（手写字典、服务端默认语言 `<T>`、`gsc_lang` cookie 只驱动语言小岛与 CSS 语言切换、`i18n/server.ts` 弃用）；数据字段不翻译。
 
 ---
 
@@ -105,7 +105,7 @@ app/
 
 | 层 | 页面 | 新鲜度（REQUIREMENTS §6） | Next 机制 |
 |---|---|---|---|
-| **核心** | `/` · `/pulse` · `/rankings` · 当年/当月的 `/rankings/...` | 头版：每日换 | 每日 cron `revalidatePath`；页面静态预渲染（默认英文），chrome 走客户端 i18n（option C） |
+| **核心** | `/` · `/pulse` · `/rankings` · 当年/当月的 `/rankings/...` | 头版：每日换 | 每日 cron `revalidatePath`；页面静态预渲染（默认英文），chrome 服务端渲染，只有搜索/语言/主题等叶子控件水合 |
 | **长尾** | 历史年/月 · **周** · repo · org（~16k+）· 分类 | 编年史：冻结 / 标 as-of | **按需 ISR**：`dynamicParams=true` + 空（或注册表派生）`generateStaticParams`，首访生成、持久缓存。`revalidate` 按页分裂（见下脚注），均叠加 cron `revalidatePath` 定点失效 |
 | **mover** | 在 mover 集里的 repo/org + `/pulse` | 脉搏：事件驱动，只刷"在动的那一小撮" | 每周/每日 cron 对其 `revalidatePath` 定点失效 → 下次访问再生 |
 | **历史** | 已折叠入 Parquet 的过去周期 | 旧报纸：永不重印 | 纯静态命中 CDN；数据不变 = 不 revalidate |
@@ -188,13 +188,14 @@ export default nextConfig;
 
 ### 2.5 渲染模式：静态基底 + 客户端译 chrome
 
-页面 BODY 使用默认英文静态渲染,chrome（顶栏 / 页脚 / 面包屑标签 / 区段标题）在客户端经 `<I18nProvider>` 读 `gsc_lang` cookie 后水合切换。整棵路由树命中 CDN（核心页 SSG、长尾按需 ISR），不进入按请求 SSR。
+页面 BODY 与 chrome（顶栏 / 页脚 / 面包屑标签 / 区段标题）使用默认英文服务端静态渲染。`gsc_lang` cookie 只由语言小岛读取，用于设置 `documentElement.lang` 和 CSS 驱动的多语内容切换。整棵路由树命中 CDN（核心页 SSG、长尾按需 ISR），不进入按请求 SSR。
 
 **实现要点**：
 
-- `web/app/layout.tsx`：不读 cookie；`<html lang="en">` 静态，paint 前 `LANG_INIT_SCRIPT` 可按 `gsc_lang` 调整 `documentElement.lang`；`{children}` 包进 `<I18nProvider>`（`web/lib/i18n/client.tsx`）。
-- `web/lib/i18n/client.tsx`（`"use client"`）：`I18nProvider` 首帧返回默认英文（与 SSR HTML 一致），`useEffect` 里读 `gsc_lang` cookie → 懒加载字典 → 换 chrome；同时监听 `gsc:localechange`，语言切换不触发 RSC refresh；`useDict()` / `<T path="...">` 给 chrome 组件用。
-- `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` 为 client 组件，经 `useDict()` 取语言（chrome 字串水合后切换）。
+- `web/app/layout.tsx`：不读 cookie；`<html lang="en">` 静态，paint 前 `LANG_INIT_SCRIPT` 可按 `gsc_lang` 调整 `documentElement.lang`；不再用全树 `<I18nProvider>` 包裹内容页。
+- `web/lib/i18n/client.tsx`：服务端安全的默认语言 `<T path="...">` / `chromeText()` / `resolveChromePath()`；供 RSC 页面和 chrome 组件直接渲染静态英文。
+- `web/lib/i18n/client-runtime.tsx`：保留 `I18nProvider` / `useDict()` / `useChrome()` 给真正 client 工具（目前主要是 `/compare` 交互面）使用；不会包住全站 layout。
+- `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` 为服务端组件；`SearchBox`、`LanguageSwitcher`、`ThemeToggle` 是顶栏内的最小 client islands。
 - 各页（`page.tsx` / `pulse` / `rankings*` / `about` / repo / org）：不读 cookie,BODY 用默认英文静态渲染,chrome 文本经 `<T>` 切换；repo/org 用 `generateStaticParams() => []` 转按需 ISR。
 - `web/lib/i18n/server.ts`：**弃用**——读 cookie 会破坏静态;保留仅供非页面服务端上下文,勿在 page/layout 调用。
 
@@ -231,7 +232,7 @@ web/lib/
     source.ts       # readView：拼 Blob 直链 URL + fetch + parse（见 OPS Blob 布局）
     lookup.ts  rank.ts  entity.ts  heatmap.ts  snapshot.ts  meta.ts
     search.ts  compare.ts  categories.ts  watermark.ts
-  search/           # 客户端检索纯核心（MiniSearch 配置 + 查询；SearchBox 懒加载）
+  search/           # 客户端检索纯核心（MiniSearch 配置 + 查询；SearchBox 懒加载到 Web Worker）
     core.ts
 ```
 
@@ -349,17 +350,17 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 | 组件 | 文件 | 类型 | 角色 |
 |---|---|---|---|
-| 顶栏 Top App Bar | `_explore/Chrome.tsx` | **Client** | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse / Rankings · Categories `md+` · Compare `sm+` · About `sm+`）+ 语言/主题切换 |
-| 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client** | 导航栏搜索框；首次聚焦懒加载 `/search-index` + MiniSearch（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态走 chrome i18n（7 语）。每条结果带「+对比」勾选 + 底部「对比 N 个 →」跳 `/compare?repos=...`（行点击仍跳 repo） |
+| 顶栏 Top App Bar | `_explore/Chrome.tsx` | RSC + islands | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse / Rankings · Categories `md+` · Compare `sm+` · About `sm+`）+ 语言/主题切换；Chrome 壳服务端渲染，SearchBox/LanguageSwitcher/ThemeToggle 水合 |
+| 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client island** | 导航栏搜索框；首次聚焦懒加载 `/search-index`，description 在 route 层截短，MiniSearch 建索引和查询在 Web Worker 内执行（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态由服务端 Chrome 传默认语言 label。每条结果带「+对比」勾选 + 底部「对比 N 个 →」跳 `/compare?repos=...`（行点击仍跳 repo） |
 | 分享 ShareButton | `_explore/ShareButton.tsx` | **Client** | 复制链接 + X 分享 intent；7 语 `share.*` chrome i18n；接 repo / 榜单月周 / 年页。榜单页另有动态 OG 卡（`rankings/[year]/[period]/opengraph-image.tsx` + `[year]/opengraph-image.tsx`，共享 `lib/og-card.tsx`） |
 | 月度叙事 Narrative | `_explore/Narrative.tsx` | RSC | 月榜顶部 7 语叙事；服务端一次渲染各 locale 文本，由 `html[lang]` CSS 显示当前语言。文案由月页**渲染时**用确定性模板（`lib/narrative.ts`）从榜单数据现拼——**无 AI / 无产物** |
 | 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
 | 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
 | Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + 拐点标记点（三级色点 + `<title>` tooltip，零 JS）+ `role="img"` + aria-label |
 | 对比曲线 CompareCurve | `_explore/CompareCurve.tsx` | **Client** | 多条折线叠图 + 图例（色块+full_name+星数）+ 共享 y 轴 + **absolute↔对齐到 10k 切换**；纯核心归一化在 `lib/compare/core.ts` |
-| 面包屑 Breadcrumbs | `_explore/Breadcrumbs.tsx` | **Client** | 客户端组件（i18n cookie 切 chrome 标签）；Home→年→月 / Home→owner→repo 等 + `BreadcrumbList` JSON-LD（[SEO](./SEO.md)） |
+| 面包屑 Breadcrumbs | `_explore/Breadcrumbs.tsx` | RSC | 默认语言服务端渲染；Home→年→月 / Home→owner→repo 等 + `BreadcrumbList` JSON-LD（[SEO](./SEO.md)） |
 | 结构化数据 JsonLd | `_explore/JsonLd.tsx` | RSC | 注入 `application/ld+json`（配 `@/lib/jsonld`） |
-| 页脚 Footer | `_explore/Footer.tsx` | **Client** | 客户端组件（i18n cookie 切 chrome 文案）；构建时间戳 + 语言切换落点 |
+| 页脚 Footer | `_explore/Footer.tsx` | RSC + island | 默认语言服务端渲染；构建时间戳 + LanguageSwitcher 语言小岛 |
 | Pulse 视图 PulseView | `pulse/PulseView.tsx` | RSC | 首页与 `/pulse` 共享主体：本周/本月/本年脉搏、全时巨头桥接、"历史上的今天"。可选 `includeWebsiteLd` 注入 `WebSite` JSON-LD（仅首页用） |
 | 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步 |
 | OG 图渲染（站点 / repo / 月+周 / 年） | `opengraph-image.tsx` × 4 | RSC（next/og） | 动态生成 1200×630 PNG；共享 `lib/og-card.tsx`（石墨灰+金、stars 内联 SVG） |
@@ -373,7 +374,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 ### 6.2 server-by-default 原则
 
 - **内容主体永远 RSC**：rank lists、heatmaps、repo 主体、org 主体、星曲线（StarCurve）等承载数据的图与表全部服务端渲染、零客户端 JS。
-- **客户端组件仅限两类**：(a) i18n cookie 驱动的 chrome（Chrome / Footer / Breadcrumbs）—— 因为页面 BODY 是默认英文静态、cookie 偏好水合后在客户端切换；Narrative 是服务端组件，用 `html[lang]` CSS 在已渲染的 locale 文本间切换；(b) 交互工具（SearchBox / ShareButton / CompareCurve+CompareClient / ThemeToggle / LanguageSwitcher / RegisterSW）。完整清单与判定规则见 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) "客户端 JS 例外清单"。
+- **客户端组件仅限交互小岛**：SearchBox / ShareButton / CompareCurve+CompareClient / ThemeToggle / LanguageSwitcher / RegisterSW。Chrome / Footer / Breadcrumbs / `<T>` 已服务端化；Narrative 是服务端组件，用 `html[lang]` CSS 在已渲染的 locale 文本间切换。完整清单与判定规则见 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) "客户端 JS 例外清单"。
 - 新增页面前先确认所选交互无法纯 CSS / 服务端实现，再引入 client component；最低限度不能让内容主体（rank list / heatmap / star curve）变 client。
 
 ### 6.3 共享组件目录
@@ -420,7 +421,8 @@ web/lib/i18n/
   dictionaries/
     en.ts   ja.ts   zh.ts   zh-tw.ts   ko.ts   es.ts   fr.ts
   index.ts                       # getDictionary(locale) — 懒加载字典
-  client.tsx                     # "use client" I18nProvider / useDict / <T>（chrome 客户端切换，option C）
+  client.tsx                     # 服务端安全的默认语言 <T> / chromeText / resolveChromePath
+  client-runtime.tsx             # "use client" I18nProvider / useDict / useChrome（仅交互工具使用）
   server.ts                      # ⚠️ 弃用：getPreferredDictionary 读 cookie 会破坏静态；勿在 page/layout 调用
 ```
 
@@ -431,8 +433,8 @@ export type Locale = keyof typeof dicts;
 export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 ```
 
-- 根 `layout.tsx` 静态渲染 `<html lang="en">`，用 `<I18nProvider>` 包裹子树（不读 cookie）。`LANG_INIT_SCRIPT` 在 paint 前按 `gsc_lang` 设置 `documentElement.lang`；Provider 首帧返回默认英文（与静态 HTML 一致），`useEffect` 里读 `gsc_lang` cookie → `getDictionary(locale)` → 换 chrome（避免水合不匹配）。
-- chrome 文本节点用 `<T path="...">`（客户端组件）；`Chrome`/`Footer`/`Breadcrumbs` 经 `useDict()` 取语言。Pulse 页面文案走 `nav.pulse` / `pulse.*`，避免旧“trending”命名继续混淆编辑语义。**数据**（数字/日期/repo 名）语言无关，按默认英文服务端渲染进静态 HTML。
+- 根 `layout.tsx` 静态渲染 `<html lang="en">`，不包全树 provider，也不读 cookie。`LANG_INIT_SCRIPT` 在 paint 前按 `gsc_lang` 设置 `documentElement.lang`。
+- chrome 文本节点用服务端安全的 `<T path="...">`；`Chrome`/`Footer`/`Breadcrumbs` 直接渲染默认语言。Pulse 页面文案走 `nav.pulse` / `pulse.*`，避免旧“trending”命名继续混淆编辑语义。**数据**（数字/日期/repo 名）语言无关，按默认英文服务端渲染进静态 HTML。
 - `LanguageSwitcher` 默认英文，下拉切其它语言；客户端写 `gsc_lang` cookie 后派发 `gsc:localechange`，不触发 RSC refresh，不改 canonical URL。`/api/lang` 仍保留为直接访问后备。
 - 现有少量 SEO title/description + 静态 HTML chrome 仍以英文为主，这是单一 canonical URL 的刻意取舍。
 
@@ -480,7 +482,7 @@ return {
 **路由**
 - 周榜 `/rankings/[year]/W[week]` 独立、与月榜共用 `[period]` 并按 `W` 前缀消歧
 - org `/o/[login]`、repo `/[owner]/[name]`、总榜 `/rankings`、脉搏 `/pulse`
-- i18n 页内切换：`gsc_lang` cookie；URL 不带语言前缀；支持 en/ja/zh/zh-TW/ko/es/fr（chrome 客户端切换）
+- i18n 页内切换：`gsc_lang` cookie；URL 不带语言前缀；支持 en/ja/zh/zh-TW/ko/es/fr（内容页 chrome 默认语言服务端渲染；语言小岛更新 `documentElement.lang`）
 
 **分层 ↔ 配置**
 - `cacheComponents` 保持关闭（`next.config.ts` 注释说明）
@@ -494,12 +496,12 @@ return {
 - 每日视图读取带 `?v=<date>` cache-bust；`meta.schema_ver` 启动校验
 
 **零客户端 JS**
-- 内容页**数据**正文 0 client JS（图表服务端 SVG/DOM）；chrome（导航/页脚/section/面包屑标签）通过 `"use client"`（`<T>`/`useDict`）水合切换 + 主题切换 + 语言切换 + PWA SW
+- 内容页**数据正文与 chrome 壳**服务端渲染（图表服务端 SVG/DOM）；只允许明确交互小岛水合：SearchBox、ShareButton、ThemeToggle、LanguageSwitcher、RegisterSW，以及 `/compare` 的 CompareClient/CompareCurve
 - 新增入场动画在 `prefers-reduced-motion` 块补终态钉死
 
 **i18n**
 - 手写字典 `web/lib/i18n/`（en/ja/zh/zh-TW/ko/es/fr）；数据字段不翻译
-- chrome 客户端 i18n：`i18n/client.tsx`（`I18nProvider`/`useDict`/`<T>`）水合后读 `gsc_lang` cookie 切换；服务端默认英文静态（`i18n/server.ts` 弃用）
+- chrome 默认语言服务端渲染：`i18n/client.tsx` 提供 server-safe `<T>`；`i18n/client-runtime.tsx` 仅供真正 client 工具读取 cookie / 字典；`i18n/server.ts` 弃用
 - 各页 `alternates.canonical` 指无语言前缀 canonical；不发 `alternates.languages`
 - `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`
 
