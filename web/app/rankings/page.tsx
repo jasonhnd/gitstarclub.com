@@ -97,7 +97,7 @@ export default async function RankingsPage() {
                     className="group flex min-h-[4.25rem] animate-rise items-center gap-2 overflow-hidden rounded-2xl px-2.5 py-2.5 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985] sm:gap-4 sm:px-3 sm:py-3"
                     style={rankingStaggerStyle(i)}
                   >
-                    <span className="w-7 shrink-0 text-right text-[1.25rem] font-extrabold tabular-nums text-primary-fixed-dim sm:w-9 sm:text-[1.5rem]">{o.rank}</span>
+                    <span className="text-readable-gold w-7 shrink-0 text-right text-[1.25rem] font-extrabold tabular-nums sm:w-9 sm:text-[1.5rem]">{o.rank}</span>
                     <div className="flex min-w-0 flex-1 flex-col justify-center">
                       <span className="truncate font-mono text-[0.95rem] font-semibold text-on-surface group-hover:underline group-hover:underline-offset-2">{o.login}</span>
                       <span className="mt-1 inline-block w-fit max-w-full truncate whitespace-nowrap rounded-full bg-surface-container-high px-2 py-0.5 text-[0.68rem] font-medium text-on-surface-variant">

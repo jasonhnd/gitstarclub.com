@@ -181,7 +181,7 @@ export function CompareClient() {
                         <span className="font-semibold text-on-surface">{h.full_name.slice(h.owner.length + 1)}</span>
                       </span>
                     </span>
-                    <span className="shrink-0 font-mono text-[0.72rem] tabular-nums text-primary-fixed-dim">
+                    <span className="text-readable-gold shrink-0 font-mono text-[0.72rem] tabular-nums">
                       {fmtStars(h.current_stars)} ★
                     </span>
                   </button>
