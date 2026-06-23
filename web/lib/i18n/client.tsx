@@ -12,9 +12,17 @@ type Leaves<T, P extends string = ""> = {
 
 export type ChromeKey = Leaves<Dict>;
 
+function lookupPath(t: Dict, path: string): unknown {
+  return path.split(".").reduce<unknown>((acc, key) => (acc as Record<string, unknown>)?.[key], t);
+}
+
 export function resolveChromePath(t: Dict, path: string): string {
-  const value = path.split(".").reduce<unknown>((acc, key) => (acc as Record<string, unknown>)?.[key], t);
-  return typeof value === "string" ? value : path;
+  const value = lookupPath(t, path);
+  if (typeof value === "string") return value;
+
+  const fallback = t === en ? value : lookupPath(en, path);
+  if (typeof fallback === "string") return fallback;
+  return path;
 }
 
 export function chromeText(path: ChromeKey): string {
