@@ -27,18 +27,18 @@ export function RankingList({ rows, variant = "gained", startRank = 1 }: { rows:
   return (
     <ol className="flex flex-col">
       {rows.map((r, i) => (
-        <li key={`${r.owner}/${r.name}`}>
+        <li key={`${r.owner}/${r.name}`} className="min-w-0">
           <Link
             href={`/${r.owner}/${r.name}`}
-            className="group flex min-h-[4.25rem] animate-rise items-center gap-2 overflow-hidden rounded-2xl px-2.5 py-2.5 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985] sm:gap-4 sm:px-3 sm:py-3"
+            className="group flex min-h-[4.25rem] min-w-0 animate-rise items-center gap-2 overflow-hidden rounded-2xl px-2.5 py-2.5 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985] sm:gap-4 sm:px-3 sm:py-3"
             style={rankingStaggerStyle(i)}
           >
-            <span className="text-readable-gold w-7 shrink-0 text-right text-[1.25rem] font-extrabold tabular-nums sm:w-9 sm:text-[1.5rem]">
+            <span className="text-readable-gold w-6 shrink-0 text-right text-[1.15rem] font-extrabold tabular-nums sm:w-9 sm:text-[1.5rem]">
               {startRank + i}
             </span>
             <div className="flex min-w-0 flex-1 flex-col justify-center">
               <div className="flex min-w-0 items-baseline gap-1 overflow-hidden">
-                <span className="max-w-[42%] shrink-0 truncate font-mono text-[0.82rem] text-on-surface-variant sm:text-[0.9rem]">{r.owner}/</span>
+                <span className="max-w-[38%] shrink-0 truncate font-mono text-[0.82rem] text-on-surface-variant sm:max-w-[42%] sm:text-[0.9rem]">{r.owner}/</span>
                 <span className="truncate font-mono text-[0.95rem] font-semibold text-on-surface group-hover:underline group-hover:underline-offset-2">
                   {r.name}
                 </span>
@@ -49,7 +49,7 @@ export function RankingList({ rows, variant = "gained", startRank = 1 }: { rows:
                 </span>
               )}
             </div>
-            <div className="max-w-[6rem] shrink-0 text-right sm:max-w-none">
+            <div className="w-[4.75rem] shrink-0 overflow-hidden text-right sm:w-auto sm:max-w-none">
               {variant === "rate" ? (
                 <>
                   <div className="text-[0.95rem] font-extrabold tabular-nums text-on-surface sm:text-[1.05rem]">+{r.rate}%</div>

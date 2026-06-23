@@ -12,6 +12,10 @@ function readLocaleCookie(): Locale {
   return value && isLocale(value) ? value : DEFAULT_LOCALE;
 }
 
+function shortLocale(locale: Locale): string {
+  return locale === "zh-TW" ? "TW" : locale.toUpperCase();
+}
+
 export function LanguageSwitcher({ locale }: { locale: Locale }) {
   const menuRef = useRef<HTMLDetailsElement>(null);
   const [pendingLocale, setPendingLocale] = useState<Locale | null>(null);
@@ -41,11 +45,12 @@ export function LanguageSwitcher({ locale }: { locale: Locale }) {
   return (
     <details ref={menuRef} className="group relative shrink-0">
       <summary
-        className="flex h-11 cursor-pointer list-none items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container px-3 font-mono text-[0.72rem] font-medium text-on-surface-variant transition-colors marker:content-none hover:bg-surface-container-high hover:text-on-surface [&::-webkit-details-marker]:hidden"
+        className="flex h-11 w-11 cursor-pointer list-none items-center justify-center gap-1.5 rounded-full border border-outline-variant bg-surface-container px-0 font-mono text-[0.72rem] font-medium text-on-surface-variant transition-colors marker:content-none hover:bg-surface-container-high hover:text-on-surface sm:w-auto sm:justify-start sm:px-3 [&::-webkit-details-marker]:hidden"
         aria-label="Language"
       >
-        <span className="max-w-[6rem] truncate">{LANGUAGE_LABELS[active]}</span>
-        <span className="text-[0.65rem] opacity-70 transition-transform group-open:rotate-180" aria-hidden>
+        <span className="font-semibold uppercase sm:hidden">{shortLocale(active)}</span>
+        <span className="hidden max-w-[6rem] truncate sm:inline">{LANGUAGE_LABELS[active]}</span>
+        <span className="hidden text-[0.65rem] opacity-70 transition-transform group-open:rotate-180 sm:inline" aria-hidden>
           v
         </span>
       </summary>

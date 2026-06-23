@@ -198,7 +198,7 @@ export function SearchBox({ labels }: { labels: SearchBoxLabels }) {
   const showPanel = open && q.trim().length > 0;
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative min-w-0">
       <div className="flex min-h-11 items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-3 py-1.5 transition-colors focus-within:border-primary focus-within:bg-surface">
         <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-on-surface-variant" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
@@ -224,7 +224,7 @@ export function SearchBox({ labels }: { labels: SearchBoxLabels }) {
           }}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
-          className="w-24 bg-transparent font-mono text-[0.8rem] text-on-surface placeholder:text-on-surface-variant sm:w-44 lg:w-56"
+          className="w-20 bg-transparent font-mono text-[0.8rem] text-on-surface placeholder:text-on-surface-variant min-[360px]:w-24 sm:w-44 lg:w-56"
         />
       </div>
 
