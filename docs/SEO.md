@@ -302,7 +302,7 @@ export async function generateMetadata(): Promise<Metadata> {
 | JSON-LD | `CollectionPage`，URL 使用规范路径 |
 
 ```ts
-export const revalidate = 3600;
+export const revalidate = 86400;
 export const dynamicParams = true;
 export async function generateStaticParams() {
   return publicCategoryStaticParams(await getCategoryRegistry());
@@ -856,7 +856,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 | **TTFB** | 低 | 99.99% 命中边缘缓存；ISR 冷启动仅读 KB JSON（见 §3） |
 
 - **图片**：OG 图由 `next/og` 路由现绘 + ISR / CDN 缓存（见 §13），命中后不重复消耗 Function；页内若有图一律显式尺寸 + `loading=lazy`（below-fold）。
-- **字体**：最多两家族（Plus Jakarta Sans + Geist Mono）、`font-display: swap`、子集化、仅 preload 关键权重。
+- **字体**：最多两家族（Plus Jakarta Sans + Geist Mono）、`font-display: swap`、子集化；仅 preload 正文 Plus Jakarta，Geist Mono 延后加载。
 - **缓存头**：历史页 `Cache-Control: s-maxage=86400, stale-while-revalidate`（见 ARCHITECTURE）。
 - **移动优先索引**：Google 用移动版索引——SSG 响应式、无移动专属阻断；确保移动视口 meta（Next.js 默认注入）与触控可达。
 
@@ -870,7 +870,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **生成与存储**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) / [OPS.md](./OPS.md)）：
 
-- OG 图（1200×630）用 **`next/og` 的 `ImageResponse`（底层 Satori + resvg）** 生成，承载在 **`opengraph-image.tsx` 文件约定的 Route Handler** 里。
+- OG 图（1200×630）用 **`next/og` 的 `ImageResponse`（底层 Satori + resvg）** 生成，承载在 **`opengraph-image.tsx` 文件约定的 Route Handler** 里；4 个现有 OG route 均导出 `revalidate=86400`。
 - **没有 Blob 支撑的 OG pipeline**：卡片不在 pipeline 侧增量生成、也不存 Vercel Blob（`blob://og/...`），更不在每次 build 全量出图。它们在**请求 / ISR 时按路由现绘**，随路由段一起进 Vercel 持久 ISR store + CDN 缓存，后续命中即取缓存（与正文页同一缓存模型，见 §3）。
 - 页面 meta 的注入由 `web/lib/seo.ts` 的 `pageMeta(...)` 统一完成：`openGraph.images` / `twitter.images` 设为 `opts.ogImage ?? "/opengraph-image"`，即一个**路由路径**（`<route>/opengraph-image` 或站点默认 `/opengraph-image`），经 `metadataBase` 解析为绝对 URL——**不是 Blob URL，也不绕过 Next.js 动态 OG route**（恰恰相反，正是走这个 route）。注意：`pageMeta` 显式传 `images` 是为了不让自定义 `openGraph` 覆盖文件约定卡片时把它吞掉。
 - 字体：当前用 **`next/og` 默认字体**（★ 用内联 SVG `<path>` 绘制，因默认字体无 ★ 字形）；尚未接入 Plus Jakarta Sans / Geist Mono 子集。
@@ -884,10 +884,10 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 | 页面 | OG 卡片 | 实现位置 | 内容（1200×630，flex 布局） | 文案搜索词对齐 |
 |---|---|---|---|---|
-| 站点默认 / 首页 / `/pulse` | **站点卡** | `web/app/opengraph-image.tsx` | `GitStarClub.com` 大标题 + 「A chronicle of open source — more than a decade of GitHub star history across 5,300+ projects.」 | star history |
-| Repo 页 | **repo 卡** | `web/app/[owner]/[name]/opengraph-image.tsx` | `owner/name` 大字 + 当前 star 数（`fmtStars`）+ 主语言（按 repo 现场读取，未知 repo 仅出名） | <repo> star history |
-| 年度页 | **排名卡** | `web/app/rankings/[year]/opengraph-image.tsx`（共用 `og-card.tsx` 的 `rankingCard`） | 「<Year>」特大字 + 当年 stars-gained TOP 3 repo（金色 + `+N`） | github <year> trending |
-| 月度页 / 周页 | **排名卡** | `web/app/rankings/[year]/[period]/opengraph-image.tsx`（共用 `rankingCard`，按 `^W(\d+)$` 分流月/周） | 「<Month Year>」/「<Year> · Week N」+ 该期 stars-gained TOP 3 | top github repos october 2024 |
+| 站点默认 / 首页 / `/pulse` | **站点卡** | `web/app/opengraph-image.tsx`（`revalidate=86400`） | `GitStarClub.com` 大标题 + 「A chronicle of open source — more than a decade of GitHub star history across 5,300+ projects.」 | star history |
+| Repo 页 | **repo 卡** | `web/app/[owner]/[name]/opengraph-image.tsx`（`revalidate=86400`） | `owner/name` 大字 + 当前 star 数（`fmtStars`）+ 主语言（按 repo 现场读取，未知 repo 仅出名） | <repo> star history |
+| 年度页 | **排名卡** | `web/app/rankings/[year]/opengraph-image.tsx`（`revalidate=86400`，共用 `og-card.tsx` 的 `rankingCard`） | 「<Year>」特大字 + 当年 stars-gained TOP 3 repo（金色 + `+N`） | github <year> trending |
+| 月度页 / 周页 | **排名卡** | `web/app/rankings/[year]/[period]/opengraph-image.tsx`（`revalidate=86400`，共用 `rankingCard`，按 `^W(\d+)$` 分流月/周） | 「<Month Year>」/「<Year> · Week N」+ 该期 stars-gained TOP 3 | top github repos october 2024 |
 | Org 页 | **（回退站点卡）** | 无专属路由（`pageMeta` 不传 `ogImage`） | 同站点卡 | <org> github stars |
 | 全时榜 `/rankings` | **（回退站点卡）** | 无专属路由（`pageMeta` 不传 `ogImage`） | 同站点卡 | most starred github repos |
 

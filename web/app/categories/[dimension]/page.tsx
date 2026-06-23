@@ -16,7 +16,7 @@ import { categoryPath, fallbackRegistry, findDimension, isCategoryDimension } fr
 const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;
-export const revalidate = 3600;
+export const revalidate = 86400;
 
 export function generateStaticParams() {
   return CATEGORY_DIMENSIONS.map((dimension) => ({ dimension }));

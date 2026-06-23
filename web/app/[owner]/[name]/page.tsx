@@ -8,7 +8,7 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getRepoIdByFullName, getRepoEntity, getAliasMap, getReposLookup } from "@/lib/data";
+import { getRepoIdByFullNameDaily, getRepoEntityDaily, getAliasMapDaily, getReposLookupDaily } from "@/lib/data";
 import { fmtStars, ymParts, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { repoLd } from "@/lib/jsonld";
@@ -21,7 +21,7 @@ import { categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/
 const LOC = DEFAULT_LOCALE;
 
 export const dynamicParams = true;
-export const revalidate = 3600;
+export const revalidate = 86400;
 
 // No paths are prebuilt at deploy time (the repo set is large and versioned). Returning an
 // empty list makes this a statically-optimized route: an uncached path is rendered on first
@@ -35,11 +35,11 @@ export function generateStaticParams() {
 // (GitHub rename, e.g. facebook/react → react/react), 308-redirect to its current slug; otherwise
 // return undefined so the caller can 404.
 async function resolveRepoId(fullName: string): Promise<number | undefined> {
-  const idsByFullName = await getRepoIdByFullName();
+  const idsByFullName = await getRepoIdByFullNameDaily();
   const direct = resolveRepoRoute(fullName, idsByFullName, null, null);
   if (direct.kind === "found") return direct.id;
 
-  const resolution = resolveRepoRoute(fullName, idsByFullName, await getAliasMap(), await getReposLookup());
+  const resolution = resolveRepoRoute(fullName, idsByFullName, await getAliasMapDaily(), await getReposLookupDaily());
   if (resolution.kind === "found") return resolution.id;
   if (resolution.kind === "redirect") permanentRedirect(resolution.location);
   return undefined;
@@ -49,7 +49,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
   const { owner, name } = await params;
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
   const id = await resolveRepoId(fullName);
-  const repo = id !== undefined ? await getRepoEntity(id) : null;
+  const repo = id !== undefined ? await getRepoEntityDaily(id) : null;
   if (!repo) return pageMeta({ title: `${fullName} — Star History`, description: `GitHub star history for ${fullName}.`, path: `/${fullName}`, locale: "en" });
   return pageMeta({
     title: `${repo.full_name} — Star History & Timeline`,
@@ -66,7 +66,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
   const id = await resolveRepoId(fullName);
   if (id === undefined) notFound();
-  const repo = await getRepoEntity(id);
+  const repo = await getRepoEntityDaily(id);
   if (!repo) notFound();
 
   const series = repo.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
