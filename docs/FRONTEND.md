@@ -40,14 +40,14 @@
 | 年榜 | `/rankings/[year]` | `rankings/[year]/page.tsx` | 当年核心 / 历史按需 ISR | 当前年 |
 | 月榜 | `/rankings/[year]/[month]` | `rankings/[year]/[period]/page.tsx` | 当月核心 / 历史按需 ISR | 当前月 |
 | 周榜 | `/rankings/[year]/W[week]` | `rankings/[year]/[period]/page.tsx` | 当周 mover / 过去周冻结 | `[]`（长尾） |
-| repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | 按需 ISR（`revalidate=3600`，mover 当日 `revalidatePath`） | `[]`（长尾） |
+| repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | 按需 ISR（`revalidate=86400`，mover 当日 `revalidatePath`） | `[]`（长尾） |
 | **org 索引** | `/o`、`/o/page/[page]` | `o/page.tsx`、`o/page/[page]/page.tsx` | 组织目录 ISR（`revalidate=3600`） | org 页数 |
 | **org 页** | `/o/[login]` | `o/[login]/page.tsx` | 按需 ISR（`revalidate=false`，mover 当日刷新） | `[]`（长尾） |
 | **对比页** | `/compare` | `compare/page.tsx` + `compare/CompareClient.tsx` | 静态壳（`force-static`），客户端读 `?repos=` + 取曲线 | — |
 | 关于 | `/about` | `about/page.tsx` | 核心 | — |
-| **分类索引** | `/categories` | `categories/page.tsx` | `revalidate=3600` ISR | — |
-| **分类维度** | `/categories/[dimension]` | `categories/[dimension]/page.tsx` | `revalidate=3600` ISR，`dynamicParams=true` | 各维度名 |
-| **分类详情** | `/categories/[dimension]/[slug]`、`/categories/[dimension]/[slug]/page/[page]` | `categories/[dimension]/[slug]/page.tsx`、`categories/[dimension]/[slug]/page/[page]/page.tsx` | `revalidate=3600` ISR，`dynamicParams=true` | 公开分类 + 分类页数 |
+| **分类索引** | `/categories` | `categories/page.tsx` | `revalidate=86400` ISR | — |
+| **分类维度** | `/categories/[dimension]` | `categories/[dimension]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 各维度名 |
+| **分类详情** | `/categories/[dimension]/[slug]`、`/categories/[dimension]/[slug]/page/[page]` | `categories/[dimension]/[slug]/page.tsx`、`categories/[dimension]/[slug]/page/[page]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 公开分类 + 分类页数 |
 
 **路由处理器（route handlers）**：
 
@@ -65,6 +65,7 @@ OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
 - repo 页 `/[owner]/[name]/opengraph-image`（`[owner]/[name]/opengraph-image.tsx`）
 - 年榜 `/rankings/[year]/opengraph-image`（`rankings/[year]/opengraph-image.tsx`）
 - 月/周榜 `/rankings/[year]/[period]/opengraph-image`（`rankings/[year]/[period]/opengraph-image.tsx`）
+四类 OG 路由均 `revalidate=86400`，对齐每日 live cron；生成路径只读 Blob JSON，不触发运行时引擎。
 
 **周榜是独立页面**，但归入总榜路径下：`/rankings/YYYY/W##`。月榜和周榜共用 `[period]` 段，在页面里按 `W` 前缀分流；旧的 `/{lang}/YYYY` 与 `/{lang}/YYYY/MM` 不再存在。
 
@@ -113,10 +114,10 @@ app/
 > 关键：**长尾页"成页"极便宜**（懒生成、不占 build 预算）——所以周页 / org 页独立成页不受 45min build 上限约束（[ARCHITECTURE](./ARCHITECTURE.md) 渲染分层）。
 >
 > **长尾 `revalidate` 不是一刀切 `false`**（按文件分裂，以代码为准）：
-> - **repo `/[owner]/[name]`** = `3600`（`page.tsx:22`）——首访生成 + 每 1h 后台再生，叠加 mover 当日 `revalidatePath`。
+> - **repo `/[owner]/[name]`** = `86400`（`page.tsx:22`）——首访生成 + 每 1 天后台再生，叠加 mover 当日 `revalidatePath`。
 > - **org 索引 `/o` / `/o/page/[page]`** = `3600`——提供可爬的 owner 目录层，按 `lookup/orgs.json` 页数预渲染。
 > - **org `/o/[login]`** = `false`（`page.tsx:19`）——纯靠 cron 定点失效，不做时间轮询。
-> - **分类 `/categories*`** = `3600`——新发布的注册表分类无需重新部署即可在 1h 内出现；分类详情 page 2+ 通过 `/categories/[dimension]/[slug]/page/[page]` 自规范化。
+> - **分类 `/categories*`** = `86400`——新发布的注册表分类无需重新部署即可在 1 天内出现；分类详情 page 2+ 通过 `/categories/[dimension]/[slug]/page/[page]` 自规范化。
 > - 历史年/月/周仍走 §2.2「核心页」混合文件里的 `revalidate=false` 段（当年/当月预渲染、历史按需）。
 
 ### 2.2 段配置速查（每类页面贴什么）
@@ -143,8 +144,8 @@ export async function generateStaticParams() {
   return []                                  // repo/org 页返回 [] → 全部按需 ISR
 }
 export const revalidate = false              // org：仅靠 cron 定点失效（每周重算 / mover 当日刷新）
-// 注意：repo 页（app/[owner]/[name]/page.tsx）相同的 [] + dynamicParams，但 revalidate=3600
-// （首访生成后每 1h 后台再生 + cron 定点失效叠加），与 org 的 false 不同——见 §2.1 长尾行脚注。
+// 注意：repo 页（app/[owner]/[name]/page.tsx）相同的 [] + dynamicParams，但 revalidate=86400
+// （首访生成后每 1 天后台再生 + cron 定点失效叠加），与 org 的 false 不同——见 §2.1 长尾行脚注。
 ```
 
 **全时榜 / 脉搏（单页、每日新鲜）**：
@@ -289,7 +290,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 - **每日更新的视图**（`current_month.json` / `hot-snapshot.json`）读取时带 `?v=<date>` cache-bust，规避 Blob 同路径覆盖最长 60s 传播窗口（[OPS](./OPS.md) §Blob 缓存传播）。
 - `meta.schema_ver`：build 启动校验版本匹配，不符 fail-fast（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §3）。
-- **base 视图版本指针**：base `rank/*` / `entity/*` / `heatmap/*` 通过「先读 `views/latest.json` 指针解析版本前缀，再读该前缀下视图」消费（[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7）。读侧指针 TTL 为 3600 秒；sitemap 作为特殊爬虫入口使用 86400 秒 TTL。这一步**封装在 `web/lib/data/`**，组件入参形状不变、**对页面透明**；「live 优先、回退 base」语义保留（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11）。
+- **base 视图版本指针**：base `rank/*` / `entity/*` / `heatmap/*` 通过「先读 `views/latest.json` 指针解析版本前缀，再读该前缀下视图」消费（[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7）。默认读侧指针 TTL 为 3600 秒；repo / categories / OG 等 1 天 ISR 路由使用 daily base 读取入口（86400 秒），避免 `views/latest.json` fetch 把 route TTL 降到 1h；sitemap 作为特殊爬虫入口也使用 86400 秒 TTL。这一步**封装在 `web/lib/data/`**，组件入参形状不变、**对页面透明**；「live 优先、回退 base」语义保留（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11）。
 
 ---
 
@@ -363,7 +364,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 页脚 Footer | `_explore/Footer.tsx` | RSC + island | 默认语言服务端渲染；构建时间戳 + LanguageSwitcher 语言小岛 |
 | Pulse 视图 PulseView | `pulse/PulseView.tsx` | RSC | 首页与 `/pulse` 共享主体：本周/本月/本年脉搏、全时巨头桥接、"历史上的今天"。可选 `includeWebsiteLd` 注入 `WebSite` JSON-LD（仅首页用） |
 | 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步 |
-| OG 图渲染（站点 / repo / 月+周 / 年） | `opengraph-image.tsx` × 4 | RSC（next/og） | 动态生成 1200×630 PNG；共享 `lib/og-card.tsx`（石墨灰+金、stars 内联 SVG） |
+| OG 图渲染（站点 / repo / 月+周 / 年） | `opengraph-image.tsx` × 4 | RSC（next/og） | 动态生成 1200×630 PNG；`revalidate=86400`，共享 `lib/og-card.tsx`（石墨灰+金、stars 内联 SVG） |
 | 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 交互按钮（见 §4.2） |
 | 语言切换 LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | 写 `gsc_lang` cookie + 派发 `gsc:localechange`，不触发 RSC refresh（§7） |
 | 页面转场 Template | `template.tsx` | RSC | 重挂载淡入容器 |
@@ -536,7 +537,7 @@ Data and rendering:
   `lookup/repos.json` through `web/lib/data/categories.ts`.
 - The `/categories` index groups public categories by registry dimension rather
   than hard-coding only languages.
-- The category index, dimension pages, and detail pages use 3600-second ISR so a
+- The category index, dimension pages, and detail pages use 86400-second ISR so a
   newly published registry can appear without a full redeploy while avoiding
   minute-by-minute background regeneration.
 - The chrome nav exposes `/categories` through the localized `nav.categories`
