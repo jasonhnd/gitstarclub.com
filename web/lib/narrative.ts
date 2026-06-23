@@ -3,7 +3,7 @@ import { LOCALES, type Locale } from "@/lib/i18n";
 // Deterministic monthly narrative (v0.2 §2) — a factual one-paragraph summary built from the
 // month's own ranking data. No LLM / no external dependency / no stored artifact: the month page
 // already loads these rows, so the blurb is composed at render time. Returns null when there is
-// nothing to say.
+// nothing to say. Every supported locale gets an explicit deterministic template.
 
 export interface NarrativeInput {
   labels: Record<Locale, string>;

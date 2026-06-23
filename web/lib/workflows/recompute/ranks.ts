@@ -3,10 +3,10 @@
 // resolved against the *full* ranking of the previous period (RANKING §4).
 
 import { type Model, type Period, type RepoMeta } from "./model";
+import { GROWTH_FLOOR_STARS } from "@/lib/constants";
 import type { OrgWindow, RepoWindow, Window } from "./windows";
 
 const TOP_N = 100;
-const GROWTH_FLOOR = 20000;
 
 export interface RankView {
   meta: { window: string; period: string; dim: string; metric: string; generated_at: string };
@@ -128,7 +128,7 @@ export function growth(rw: RepoWindow, w: Window, gen: string): Map<string, Rank
     for (let i = 1; i < rows.length; i++) {
       const base = rows[i - 1].stock_est;
       const flow = rows[i].flow;
-      if (base < GROWTH_FLOOR || flow <= 0) continue;
+      if (base < GROWTH_FLOOR_STARS || flow <= 0) continue;
       let bucket = byPeriodRows.get(rows[i].period);
       if (!bucket) byPeriodRows.set(rows[i].period, (bucket = []));
       bucket.push({ id, flow, base });

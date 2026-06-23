@@ -21,6 +21,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { DuckDBInstance } from "@duckdb/node-api";
+import { GROWTH_FLOOR_STARS } from "../../web/lib/constants.mjs";
 
 const dataDir = fileURLToPath(new URL("../data", import.meta.url));
 const p = (rel) => `${dataDir}/${rel}`.replaceAll("\\", "/"); // DuckDB wants forward slashes
@@ -327,7 +328,7 @@ async function exportGrowth(w) {
      r AS (
        SELECT period, repo_id, flow, base,
               ROW_NUMBER() OVER (PARTITION BY period ORDER BY flow::DOUBLE / base DESC, flow DESC, repo_id) rank
-       FROM g WHERE base >= 20000 AND flow > 0
+       FROM g WHERE base >= ${GROWTH_FLOOR_STARS} AND flow > 0
      )
      SELECT period, repo_id, flow, base, rank FROM r WHERE rank <= ${TOP_N} ORDER BY period, rank`,
   );
