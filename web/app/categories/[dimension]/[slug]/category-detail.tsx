@@ -188,7 +188,7 @@ function categoryRows({
 
 function LinkBack({ href, label }: { href: string; label: string | null }) {
   return (
-    <Link href={href} className="mt-5 inline-block font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+    <Link href={href} className="text-readable-gold mt-5 inline-block font-mono text-[0.78rem] hover:underline">
       {label ?? <T path="nav.categories" />}
     </Link>
   );

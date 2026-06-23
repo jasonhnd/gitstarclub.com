@@ -77,7 +77,7 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
             <p className="mt-3 text-[0.95rem] text-on-surface-variant">
               <span className="font-semibold text-on-surface">{fmtStars(total)}</span> <T path="year.gained" />
             </p>
-            <Link href="/rankings" className="mt-5 inline-block font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+            <Link href="/rankings" className="text-readable-gold mt-5 inline-block font-mono text-[0.78rem] hover:underline">
               <T path="nav.rankings" />
             </Link>
             <div className="mt-6">

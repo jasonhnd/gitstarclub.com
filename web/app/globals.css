@@ -238,6 +238,18 @@ body {
 main:focus {
   outline: none;
 }
+/* Readable amber text: light mode uses on-primary-container; dark mode keeps the locked brand gold. */
+.text-readable-gold {
+  color: var(--md-sys-color-on-primary-container);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .text-readable-gold {
+    color: var(--md-sys-color-primary-fixed-dim);
+  }
+}
+[data-theme="dark"] .text-readable-gold {
+  color: var(--md-sys-color-primary-fixed-dim);
+}
 .i18n-narrative [data-locale] {
   display: none;
 }
