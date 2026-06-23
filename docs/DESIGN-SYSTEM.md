@@ -124,6 +124,24 @@ The baseline does not define Tailwind mappings for `surface-bright`,
 `surface-container-lowest`, or `surface-container-low`. Adding those mappings is
 a visual token change and must follow [WORKFLOW.md](./WORKFLOW.md).
 
+### Readable Gold Text
+
+`--md-sys-color-primary-fixed-dim` remains locked as the brand gold for dark
+mode, decorative star marks, chart accents, and heatmap fills. It is not a
+readable light-mode text color on `--md-sys-color-surface`.
+
+Gold-accent text uses the semantic `.text-readable-gold` class instead of
+`text-primary-fixed-dim`. The class resolves only through existing locked
+tokens:
+
+| Theme | Source token |
+|---|---|
+| Light | `var(--md-sys-color-on-primary-container)` |
+| Dark | `var(--md-sys-color-primary-fixed-dim)` |
+
+This preserves the visual baseline tokens while keeping light-mode gold text at
+WCAG AA contrast.
+
 ## Typography
 
 The baseline font families are loaded in `web/app/layout.tsx` at commit
