@@ -4,6 +4,7 @@ import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { pageMeta } from "@/lib/seo";
 import { T } from "@/lib/i18n/client";
+import { I18nProvider } from "@/lib/i18n/client-runtime";
 import { CompareClient } from "./CompareClient";
 
 // /compare — multi-repo star-history overlay (v0.2 §5).
@@ -40,7 +41,9 @@ export default function ComparePage() {
           </p>
         </header>
         <section className="mt-[clamp(2rem,4vw,3rem)]">
-          <CompareClient />
+          <I18nProvider>
+            <CompareClient />
+          </I18nProvider>
         </section>
       </main>
     </>

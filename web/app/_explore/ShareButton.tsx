@@ -1,15 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useChrome } from "@/lib/i18n/client";
 
 // Share control: copy the page link (transient "Copied" feedback) + open an X (Twitter) intent.
-// Client-only; reads window.location at click time. Labels go through chrome i18n. (v0.2 §4)
+// Client-only; reads window.location at click time. Labels use default chrome text. (v0.2 §4)
 export function ShareButton({ text }: { text?: string }) {
-  const label = useChrome("share.label");
-  const copied = useChrome("share.copied");
-  const onX = useChrome("share.onX");
-  const opensNewTab = useChrome("share.opensNewTab");
+  const label = "Share";
+  const copied = "Copied";
+  const onX = "Share on X";
+  const opensNewTab = "opens in new tab";
   const [done, setDone] = useState(false);
 
   const copy = async () => {

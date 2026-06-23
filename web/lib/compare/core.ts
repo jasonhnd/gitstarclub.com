@@ -1,4 +1,5 @@
 import type { CompareCurve } from "@/lib/contracts";
+import { MAX_COMPARE } from "./constants";
 
 // Pure core for the multi-repo compare page (v0.2 §5): URL repos param parse/serialize, color
 // assignment, and the normalization that turns N CompareCurve payloads into a single CompareChart
@@ -6,8 +7,7 @@ import type { CompareCurve } from "@/lib/contracts";
 // timeline, "align10k" re-bases each repo's x-axis to months-since-crossing-10k. No I/O, no
 // React — unit-testable under bun.
 
-export const MAX_COMPARE = 5;
-export const MIN_COMPARE = 2;
+export { MAX_COMPARE, MIN_COMPARE } from "./constants";
 
 export type CompareMode = "absolute" | "align10k";
 
