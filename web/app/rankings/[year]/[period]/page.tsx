@@ -198,7 +198,7 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
 function PeriodHeader({ eyebrow, title, subtitle, backHref, backLabel, shareText }: { eyebrow: ReactNode; title: ReactNode; subtitle: ReactNode; backHref: string; backLabel: string; shareText: string }) {
   return (
     <section className="mt-5">
-      <Link href={backHref} className="font-mono text-[0.78rem] text-primary-fixed-dim hover:underline">
+      <Link href={backHref} className="text-readable-gold font-mono text-[0.78rem] hover:underline">
         {backLabel}
       </Link>
       <p className="mt-5 font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{eyebrow}</p>
