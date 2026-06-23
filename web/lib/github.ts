@@ -2,6 +2,7 @@
 // GraphQL nodes() (metadata). Server-only; needs env GITHUB_TOKEN. See docs/OPS.md.
 import { z } from "zod";
 import { WhitelistEntry } from "@/lib/contracts";
+import { MIN_TRACKED_STARS } from "@/lib/constants";
 import type { WhitelistEntry as WhitelistEntryRecord } from "@/lib/contracts";
 
 const TOKEN = process.env.GITHUB_TOKEN;
@@ -111,7 +112,7 @@ async function restSearch(params: Record<string, string | number>, attempt = 1):
 /** Whitelist = repos with stars ≥ minStars, via adaptive star-range bucketing (Search caps at
  *  1000 results/query: split any bucket >1000 until it fits, then page). Sorted by stars desc.
  *  Ported from pipeline/lib/github.mjs; see docs/PIPELINE.md §1 / VERCEL-DATA-OPERATIONS §4. */
-export async function searchWhitelist(minStars = 10000, maxStars = 600000): Promise<WhitelistEntryRecord[]> {
+export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 600000): Promise<WhitelistEntryRecord[]> {
   if (!TOKEN) throw new Error("GITHUB_TOKEN not set");
   const out = new Map<number, WhitelistEntryRecord>(); // dedups range-boundary overlap
   const queue: Array<[number, number]> = [[minStars, maxStars]];

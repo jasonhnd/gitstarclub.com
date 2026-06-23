@@ -74,7 +74,7 @@ vercel alias set https://<preview-deployment>.vercel.app pre.gitstarclub.com --s
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts:6` · `web/lib/workflows/recompute/io.ts:18` · `web/lib/workflows/steps/gc.ts:10`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本 |
 | `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/data/source.ts:10` · `web/lib/cron/sync-runs.ts:83`；Next.js build · ISR 视图直读 · live cron 读发布指针 |
 | `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/data/source.ts:10` · `web/lib/cron/sync-runs.ts:83`；客户端 bundle 中读取 |
-| `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | **必需** | 随机串（≥32 字符，**无首尾空白**） | `web/app/api/cron/daily/route.ts:33` · `web/app/api/cron/weekly/route.ts:38` · `web/app/api/workflows/refresh/start/route.ts:13`；每日 / 每周 cron · Workflow 触发 |
+| `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | **必需** | 随机串（≥32 字符，**无首尾空白**） | `web/lib/cron/handlers.ts` · `web/app/api/workflows/refresh/start/route.ts:13`；每日 / 每周 cron · Workflow 触发 |
 | `VERCEL_DEPLOY_HOOK_URL` | Deploy Hook URL（触发一次核心 rebuild，用于代码 / 结构变更或手动全量刷新） | 可选 | `https://api.vercel.com/v1/integrations/deploy/<id>` | 手动 / CI（数据更新不需要它，长尾走 ISR） |
 | `ALERT_WEBHOOK_URL` | 失败告警 webhook（Slack / Discord incoming webhook 或 `https://webhook.site/...`，POST JSON 摘要；**不设则仅日志**） | 可选 | `https://…` 可接收 JSON POST 的端点 | `web/lib/observability/alert.ts:45`；Workflow `sendAlert` · 每日 / 每周 cron 失败投递 |
 | `SITE_INDEXABLE` | 生产 indexing 开关——`"1"` 解除 pre-launch noindex 并开放 sitemap | 可选（默认 noindex） | 字符串 `"1"` 才生效，其他值 / 未设 = noindex | `web/app/robots.ts:6` · `web/app/layout.tsx:18`；上线时单点切换 |
@@ -196,7 +196,7 @@ blob://
 }
 ```
 
-> **Vercel-only cron 实现**：每日 job = `web/app/api/cron/daily/route.ts`，每周 job = `web/app/api/cron/weekly/route.ts`，两者都支持 `?dry=1`。CRON_SECRET 鉴权 → GraphQL 拉 current_stars（`web/lib/github.ts`，按 owner / name 批量）→ `web/lib/cron/live-refresh.ts` 幂等 upsert `current_month.json`（按 UTC 日）→ 重算 `hot-snapshot.json`、`live/rank/month/<current>/repo/{flow,stock}.json`、`live/rank/week/<current>/repo/flow.json`、`live/heatmap/month/<current>.json` → `revalidatePath` 核心页 → `ops/sync-runs.json` 记录运行。普通 Vercel Function 不承载一次性 DuckDB / Parquet 全量重算；若需要把历史全量刷新也放进 Vercel，必须拆成 Vercel Workflow 分片步骤，而不是单个 Function。
+> **Vercel-only cron 实现**：每日 job = `web/app/api/cron/daily/route.ts`，每周 job = `web/app/api/cron/weekly/route.ts`，两者都委托 `web/lib/cron/handlers.ts` 并支持 `?dry=1`。CRON_SECRET 鉴权 → GraphQL 拉 current_stars（`web/lib/github.ts`，按 owner / name 批量）→ `web/lib/cron/live-refresh.ts` 幂等 upsert `current_month.json`（按 UTC 日）→ 重算 `hot-snapshot.json`、`live/rank/month/<current>/repo/{flow,stock}.json`、`live/rank/week/<current>/repo/flow.json`、`live/heatmap/month/<current>.json` → `revalidatePath` 核心页 → `ops/sync-runs.json` 记录运行。普通 Vercel Function 不承载一次性 DuckDB / Parquet 全量重算；若需要把历史全量刷新也放进 Vercel，必须拆成 Vercel Workflow 分片步骤，而不是单个 Function。
 
 **鉴权模式（CRON_SECRET）**：
 

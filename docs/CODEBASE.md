@@ -41,7 +41,7 @@ GitHub APIs
 | `web/lib/workflows/` | Vercel Workflow orchestration and refresh steps |
 | `web/lib/workflows/recompute/` | Pure recompute core: ranks, entities, heatmaps, categories, windows |
 | `web/lib/categories/` | Deterministic category taxonomy and classification rules |
-| `web/lib/cron/` | Daily/weekly live-overlay refresh handlers |
+| `web/lib/cron/` | Shared daily/weekly live-overlay route handlers and refresh logic |
 | `web/lib/i18n/` | Server/client dictionaries and locale helpers |
 | `web/lib/compare/` | Compare-page normalization and curve logic |
 | `web/lib/search/` | Search index/query core |
@@ -70,8 +70,8 @@ renderer), and the SEO helpers listed under [SEO And Discovery](#seo-and-discove
 | `/categories/[dimension]` | `web/app/categories/[dimension]/page.tsx` | category registry |
 | `/categories/[dimension]/[slug]` | `web/app/categories/[dimension]/[slug]/page.tsx` | category rank + repo lookup |
 | `/about` | `web/app/about/page.tsx` | static page: data sources & methodology |
-| `/api/cron/daily` | `web/app/api/cron/daily/route.ts` | live-overlay refresh |
-| `/api/cron/weekly` | `web/app/api/cron/weekly/route.ts` | live-overlay refresh |
+| `/api/cron/daily` | `web/app/api/cron/daily/route.ts` → `web/lib/cron/handlers.ts` | live-overlay refresh |
+| `/api/cron/weekly` | `web/app/api/cron/weekly/route.ts` → `web/lib/cron/handlers.ts` | live-overlay refresh |
 | `/api/workflows/refresh/start` | `web/app/api/workflows/refresh/start/route.ts` | managed refresh enqueue |
 | `/api/lang` | `web/app/api/lang/route.ts` | sets language cookie, then redirects |
 | `/repo-curve` | `web/app/repo-curve/route.ts` | compare curve endpoint |
