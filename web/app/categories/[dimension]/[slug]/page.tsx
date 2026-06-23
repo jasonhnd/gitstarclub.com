@@ -3,7 +3,7 @@ import { CategoryDetail, generateCategoryDetailMetadata } from "./category-detai
 import { publicCategoryStaticParams } from "../../category-page-data";
 
 export const dynamicParams = true;
-export const revalidate = 3600;
+export const revalidate = 86400;
 
 export async function generateStaticParams() {
   return publicCategoryStaticParams(await getCategoryRegistry());

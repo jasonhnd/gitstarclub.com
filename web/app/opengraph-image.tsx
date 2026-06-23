@@ -5,6 +5,7 @@ import { OG_COLORS, OG_SIZE, OG_STAR_PATH } from "@/lib/og-theme";
 export const size = OG_SIZE;
 export const contentType = "image/png";
 export const alt = "GitStarClub.com — A Chronicle of Open Source";
+export const revalidate = 86400;
 
 export default function Image() {
   return new ImageResponse(

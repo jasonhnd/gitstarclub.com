@@ -1,7 +1,7 @@
 import { cache } from "react";
 import type { Window, Dim, Metric, RankItem, RepoLookupEntry, OrgLookupEntry } from "@/lib/contracts";
 import { RankList } from "@/lib/contracts";
-import { readView } from "./source";
+import { DAILY_BASE_VIEW_OPTS, DAILY_BASE_VIEW_TTL_MS, readView } from "./source";
 import { isLiveOverlayPeriod } from "./watermark";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -16,6 +16,9 @@ function hasLiveRank(window: Window, dim: Dim, metric: Metric): boolean {
 export const getRankBase = cache((window: Window, period: string, dim: Dim, metric: Metric) =>
   readView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList, { base: true }),
 );
+export const getRankBaseDaily = cache((window: Window, period: string, dim: Dim, metric: Metric) =>
+  readView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList, DAILY_BASE_VIEW_OPTS),
+);
 
 export const getRank = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
   const liveWindow = window === "month" || window === "week" ? window : null;
@@ -24,6 +27,14 @@ export const getRank = cache(async (window: Window, period: string, dim: Dim, me
     if (live) return live;
   }
   return getRankBase(window, period, dim, metric);
+});
+export const getRankDaily = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
+  const liveWindow = window === "month" || window === "week" ? window : null;
+  if (liveWindow && hasLiveRank(window, dim, metric) && (await isLiveOverlayPeriod(liveWindow, period, DAILY_BASE_VIEW_TTL_MS))) {
+    const live = await readView(`live/rank/${window}/${period}/${dim}/${metric}.json`, RankList, { bust: today() });
+    if (live) return live;
+  }
+  return getRankBaseDaily(window, period, dim, metric);
 });
 
 export const getAllTime = cache((dim: Dim) => readView(`rank/all-time/${dim}/stock.json`, RankList, { base: true }));
