@@ -542,3 +542,26 @@ Data and rendering:
   minute-by-minute background regeneration.
 - The chrome nav exposes `/categories` through the localized `nav.categories`
   dictionary entry.
+
+## 12. Responsive Behavior
+
+- `Chrome.tsx` is still a Server Component. Mobile primary navigation is a
+  native `<details>/<summary>` disclosure, so it adds no new client JavaScript.
+  Below `sm`, Pulse / Rankings / Categories / Compare / About are reachable from
+  that disclosure with a 44px trigger. At `sm+`, desktop inline navigation keeps
+  the existing breakpoints: Pulse and Rankings visible, Compare/About visible
+  from `sm`, Categories visible from `md`.
+- The mobile chrome row uses a compact four-column layout for SearchBox,
+  language, theme, and menu controls. `LanguageSwitcher` keeps its full language
+  label from `sm` and uses a 44px locale-code trigger below `sm`.
+- `Heatmap.tsx` keeps the DOM grid and brand `color-mix` ramp, but caps columns
+  responsively for readability: up to 8 columns on narrow 320px phones, up to 10
+  columns from 375px, and the caller-provided column count again from `md`.
+- `RankingList.tsx` constrains row, rank, owner, and metric widths on narrow
+  screens so long repository names truncate inside the row instead of widening
+  the page.
+- Repo recent rows on `/[owner]/[name]` are single-column on narrow screens and
+  return to the three-column month/rank/adds layout from `sm`.
+- `manifest.ts` has a single static Web App Manifest `theme_color`; browser
+  chrome follows light/dark through `layout.tsx` `viewport.themeColor` media
+  entries and the runtime `ThemeToggle` meta update.

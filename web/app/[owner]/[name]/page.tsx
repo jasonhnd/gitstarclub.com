@@ -217,7 +217,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
                   const d = ymParts(row.month);
                   return (
                     <li key={row.month}>
-                      <Link href={`/rankings/${d.y}/${d.m}`} className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-3 transition-colors hover:bg-on-surface/5 sm:grid-cols-[1fr_auto_auto] sm:gap-4 sm:py-2.5">
+                      <Link href={`/rankings/${d.y}/${d.m}`} className="group grid grid-cols-1 items-start gap-y-1 py-3 transition-colors hover:bg-on-surface/5 sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-4 sm:py-2.5">
                         <span className="min-w-0 font-mono text-[0.9rem] text-on-surface group-hover:underline group-hover:underline-offset-2">
                           {monthLabel(loc, d.m, "short")} {d.y}
                         </span>
@@ -230,7 +230,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
                             ""
                           )}
                         </span>
-                        <span className="col-span-2 text-right font-semibold tabular-nums text-on-surface sm:col-span-1 sm:w-20">+{fmtStars(row.adds)}</span>
+                        <span className="font-semibold tabular-nums text-on-surface sm:w-20 sm:text-right">+{fmtStars(row.adds)}</span>
                       </Link>
                     </li>
                   );

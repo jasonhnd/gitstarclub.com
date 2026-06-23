@@ -19,11 +19,18 @@ export function Heatmap({
   square?: boolean;
 }) {
   const cols = columns ?? cells.length;
+  const heatmapStyle = {
+    "--heatmap-cols-xs": String(Math.min(cols, 8)),
+    "--heatmap-cols-sm": String(Math.min(cols, 10)),
+    "--heatmap-cols-md": String(cols),
+    "--heatmap-cell-min": square ? "1.75rem" : "0",
+  } as CSSProperties;
+
   return (
     <div className="overflow-x-auto pb-2">
       <div
-        className="grid gap-2"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(${square ? "1.75rem" : "0"}, 1fr))` }}
+        className="grid gap-1.5 [grid-template-columns:repeat(var(--heatmap-cols-xs),minmax(var(--heatmap-cell-min),1fr))] min-[375px]:[grid-template-columns:repeat(var(--heatmap-cols-sm),minmax(var(--heatmap-cell-min),1fr))] md:gap-2 md:[grid-template-columns:repeat(var(--heatmap-cols-md),minmax(var(--heatmap-cell-min),1fr))]"
+        style={heatmapStyle}
       >
         {cells.map((c, i) => {
           const t = Math.max(0.08, Math.min(1, c.gained / max));
