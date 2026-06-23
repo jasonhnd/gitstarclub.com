@@ -13,6 +13,12 @@ export type Row = {
   crossedDay?: number;
 };
 type Variant = "gained" | "rate" | "crossed" | "total";
+const STAGGER_CAP_INDEX = 12;
+
+export function rankingStaggerStyle(i: number): CSSProperties | undefined {
+  if (i > STAGGER_CAP_INDEX) return undefined;
+  return { animationDelay: `${0.04 * Math.min(i, STAGGER_CAP_INDEX)}s` } as CSSProperties;
+}
 
 // Editorial ranking — not a data table. Rank as a gold display numeral,
 // repo name in the mono "data voice", metric weighted to the right.
@@ -25,7 +31,7 @@ export function RankingList({ rows, variant = "gained", startRank = 1 }: { rows:
           <Link
             href={`/${r.owner}/${r.name}`}
             className="group flex min-h-[4.25rem] animate-rise items-center gap-2 overflow-hidden rounded-2xl px-2.5 py-2.5 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985] sm:gap-4 sm:px-3 sm:py-3"
-            style={{ animationDelay: `${0.04 * Math.min(i, 12)}s` } as CSSProperties}
+            style={rankingStaggerStyle(i)}
           >
             <span className="w-7 shrink-0 text-right text-[1.25rem] font-extrabold tabular-nums text-primary-fixed-dim sm:w-9 sm:text-[1.5rem]">
               {startRank + i}

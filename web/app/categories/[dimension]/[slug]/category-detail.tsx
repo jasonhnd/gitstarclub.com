@@ -7,7 +7,7 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { PaginationNav } from "@/app/_explore/PaginationNav";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getCategoryAllTime, getCategoryAssignments, getCategoryRegistry, getReposLookup, joinRepoRank } from "@/lib/data";
+import { getCategoryAllTime, getCategoryAssignments, getCategoryRegistry, getReposLookupDaily, joinRepoRank } from "@/lib/data";
 import { collectionLd } from "@/lib/jsonld";
 import { CATEGORY_DETAIL_PAGE_SIZE, pageCount, parsePositivePage, slicePage } from "@/lib/pagination";
 import { pageMeta } from "@/lib/seo";
@@ -52,7 +52,7 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
   if (!category) notFound();
 
   const dimensionEntry = findDimension(registry, dimension);
-  const [rank, lookup, assignments] = await Promise.all([getCategoryAllTime(dimension, slug), getReposLookup(), getCategoryAssignments()]);
+  const [rank, lookup, assignments] = await Promise.all([getCategoryAllTime(dimension, slug), getReposLookupDaily(), getCategoryAssignments()]);
   const rows = categoryRows({
     categoryId: category.id,
     dimension: category.dimension,
@@ -164,7 +164,7 @@ function categoryRows({
   categoryId: string;
   dimension: keyof NonNullable<Awaited<ReturnType<typeof getCategoryAssignments>>>["repositories"][string];
   rankItems: NonNullable<Awaited<ReturnType<typeof getCategoryAllTime>>>["items"];
-  lookup: Awaited<ReturnType<typeof getReposLookup>>;
+  lookup: Awaited<ReturnType<typeof getReposLookupDaily>>;
   assignments: Awaited<ReturnType<typeof getCategoryAssignments>>;
 }): Row[] {
   if (!lookup) return [];

@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { getRepoIdByFullName, getRepoEntity } from "@/lib/data";
+import { getRepoIdByFullNameDaily, getRepoEntityDaily } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
 import { OG_COLORS, OG_SIZE, OG_STAR_PATH } from "@/lib/og-theme";
 
@@ -8,13 +8,13 @@ import { OG_COLORS, OG_SIZE, OG_STAR_PATH } from "@/lib/og-theme";
 export const size = OG_SIZE;
 export const contentType = "image/png";
 export const alt = "GitHub star history";
-export const revalidate = 3600;
+export const revalidate = 86400;
 
 export default async function Image({ params }: { params: Promise<{ owner: string; name: string }> }) {
   const { owner, name } = await params;
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
-  const id = (await getRepoIdByFullName()).get(fullName.toLowerCase());
-  const repo = id !== undefined ? await getRepoEntity(id) : null;
+  const id = (await getRepoIdByFullNameDaily()).get(fullName.toLowerCase());
+  const repo = id !== undefined ? await getRepoEntityDaily(id) : null;
   const titleSize = fullName.length > 28 ? 56 : fullName.length > 18 ? 72 : 88;
 
   return new ImageResponse(

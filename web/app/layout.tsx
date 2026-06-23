@@ -8,7 +8,7 @@ import { THEME_INIT_SCRIPT } from "@/lib/theme-script";
 import { LANG_INIT_SCRIPT } from "@/lib/lang-script";
 
 const plusJakarta = Plus_Jakarta_Sans({ variable: "--font-plus-jakarta", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"], preload: false });
 
 const description =
   "A browsable pulse and chronicle of open source. See what is rising this week, this month, this year, and across GitHub star history.";

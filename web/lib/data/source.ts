@@ -20,6 +20,8 @@ export interface ViewOpts {
 }
 
 const VERSION_TTL_MS = 3_600_000;
+export const DAILY_BASE_VIEW_TTL_MS = 86_400_000;
+export const DAILY_BASE_VIEW_OPTS = { base: true, versionTtlMs: DAILY_BASE_VIEW_TTL_MS } as const satisfies ViewOpts;
 const READ_RETRIES = 2;
 const versionMemo = new Map<number, { version: string | null; at: number }>();
 

@@ -7,8 +7,8 @@ import { currentUtcPeriods } from "@/lib/periods";
 // without it, a period vanishes the moment it stops being "current" but before it is folded.
 // Falls back to "is current period" when meta has no folded_through (flat bootstrap meta).
 
-export async function isLiveOverlayPeriod(window: "week" | "month", period: string): Promise<boolean> {
-  const meta = await getMeta();
+export async function isLiveOverlayPeriod(window: "week" | "month", period: string, versionTtlMs?: number): Promise<boolean> {
+  const meta = await getMeta(versionTtlMs);
   const fold = meta?.folded_through;
   if (fold) return period > fold[window];
   const current = currentUtcPeriods();
