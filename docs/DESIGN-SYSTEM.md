@@ -142,6 +142,10 @@ tokens:
 This preserves the visual baseline tokens while keeping light-mode gold text at
 WCAG AA contrast.
 
+Small text on `--md-sys-color-primary-container` must not lower
+`--md-sys-color-on-primary-container` with opacity, because the full token pair
+is only just above the WCAG AA threshold for normal text.
+
 ## Typography
 
 The baseline font families are loaded in `web/app/layout.tsx` at commit

@@ -124,7 +124,7 @@ function HistoryLink({ href, label, value, active = false }: { href: string; lab
         active ? "bg-primary-container text-on-primary-container" : "bg-surface-container text-on-surface hover:bg-surface-container-high"
       }`}
     >
-      <span className="block font-mono text-[0.7rem] uppercase tracking-wider opacity-75">{label}</span>
+      <span className={`block font-mono text-[0.7rem] uppercase tracking-wider ${active ? "" : "opacity-75"}`}>{label}</span>
       <span className="mt-1 block truncate text-[1rem] font-extrabold">{value}</span>
     </Link>
   );
