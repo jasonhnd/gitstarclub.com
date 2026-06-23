@@ -160,7 +160,7 @@ async function recomputeRank(runId: string) {
 | 2 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo:记录旧→新映射,其增量由后续 build-aliases step 并集成 `lookup/aliases.json`,供 repo 页 308 重定向(见 [FRONTEND.md](./FRONTEND.md))。**先于 metadata 跑**——metadata 会覆盖 `full_name`,改名检测必须在覆盖前读到旧值。canonical 按 `repo_id` 归并,改名不丢历史。 |
 | 3 | metadata shards(**按 bucket,1 step/桶**,内含 newcomer 追踪) | bootstrap `lookup/repos.json`(owner_type/language)+ run whitelist(node_id、新鲜 current_stars、rename-aware full_name) | `canonical/v2/repos/<bucket>.json`(含 `tracked_since` + GitHub `languages`) | **存量 repo 从 bootstrap seed,不重拉 GitHub**;GitHub GraphQL `nodes()` 只补"既不在 prev shard 也不在 lookup"的真新晋(~12)，以及缺少 `languages` breakdown 的旧 shard repo（一次性补齐后不再每周全量重拉）。**newcomer 追踪不是独立 step**——发现新 id 时同步写 `tracked_since`(默认方案 A,见 §10)。⚠️ **不可每次全量重拉所有 repo**——会撞 GitHub 二级限流(已实测)。每桶一个短 step,幂等。milestones/description/topics 留待 entity 富化。 |
 | 4 | canonical fold | 已收口周期的**冻结快照** `canonical/v2/pending/<period>.json` | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` + `meta.json.folded_through` | **折叠**:周期收口时把活尾 net delta 折进月/周 rollup shard;append 站点日总量。**交接靠水位标记防重复/丢数据**——见 §7.2(H1):cron 跨期重置 `current_month.json` 前先把上一期完整 `per_repo` 落到 `canonical/v2/pending/<period>.json`,fold 只读 pending、折叠后标记 `folded_through=period`。`repo-recent-daily` 不参与 recurring fold（见 §6.2 / issue #3）。跌出者保留历史 shard、停止 poll。 |
-| 5 | rank recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`/`meta` shard | `views/<run_id>/rank/**` | 载入全部 monthly/weekly 桶建「period→repos」索引,按 period 算 flow/stock + all-time,幂等写 staging。**growth**:期初 stock = monthly `stock_est` 前缀和在 `period-1` 的值(§6.3),floor 期初 ≥20k;**new**:直接用 `repos.crossed_10k` 落当期判定(**不另用 stock_est 重算**,口径同 [RANKING.md](./RANKING.md) §4)。stock 锚定见 §6.3 / [RANKING.md](./RANKING.md) §3。 |
+| 5 | rank recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`/`meta` shard | `views/<run_id>/rank/**` | 载入全部 monthly/weekly 桶建「period→repos」索引,按 period 算 flow/stock + all-time,幂等写 staging。**growth**:期初 stock = monthly `stock_est` 的上一有数据期值(§6.3),floor 期初 ≥20k;**new**:直接用 `repos.crossed_10k` 落当期判定(**不另用 stock_est 重算**,口径同 [RANKING.md](./RANKING.md) §4)。stock 锚定见 §6.3 / [RANKING.md](./RANKING.md) §3。 |
 | 5a | category artifacts(**same gather as rank**) | `repos` + rank inputs already loaded by step 5 | `views/<run_id>/categories/**` + `lookup/categories.json` + `rank/category/**/all-time/repo/stock.json` | Phase-1 deterministic category registry, repo assignments, public category lookup, and bounded all-time category stock ranks. Windowed category ranks stay out of Phase 1 to avoid a large view-count expansion. |
 | 6a | entity/repo recompute(**桶内独立**) | 单桶 `repo-monthly`/`repo-weekly`/`repo-recent-daily`/`repos` | `views/<run_id>/entity/repo/**` | 每个 repo 只依赖自己那桶,可按桶并行分 step。 |
 | 6b | entity/org recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`(owner→members) | `views/<run_id>/entity/org/**` + `lookup/**` + `search/index.json` | **不能按桶算**(成员散落各桶,C2):先全量载入 monthly/weekly 桶,按 `owner` 聚合;org stock 须先对每个成员做 `首次事件期→末期` **carry-forward** 再求和(空期沿用上一期累计),终点对齐 `current_stars_sum`(口径同 [RANKING.md](./RANKING.md) §5)。同步从 `repos` 维度派生 `search/index.json`(客户端搜索索引,见 [DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.14)。 |
@@ -195,7 +195,7 @@ blob://
 ├── canonical/v2/                            # 生产 canonical(JSON shard)
 │   ├── meta.json                            # seam_date · schema_ver · folded_through(周/月水位,见 §6.3/§7.2)
 │   ├── whitelist/<run_id>.json              # 白名单快照 + diff(每次 whitelist step 产出)
-│   ├── repos/<bucket>.json                  # repo 维度 + 里程碑 + tracked_since + 冻结折扣 d(按 id 分桶)
+│   ├── repos/<bucket>.json                  # repo 维度 + 里程碑 + tracked_since + 冻结锚定因子 d(按 id 分桶)
 │   ├── repo-monthly/<bucket>.json           # per-repo 月 flow 序列(驱动月榜 + 月曲线)
 │   ├── repo-weekly/<bucket>.json            # per-repo ISO 周 flow 序列(驱动历史周榜)
 │   ├── repo-recent-daily/<bucket>.json      # per-repo 近 ~90 天日点(曲线尾 + 周边界)
@@ -297,15 +297,15 @@ hot-snapshot / current_month: 直读 (L1/L2 活尾)
 
 ### 6.3 stock 锚定(必须分 seam 前后,口径同 [RANKING.md](./RANKING.md) §3)
 
-> ⚠️ **关键:折扣只作用于 seam 前的 gross,seam 后的 net 直接累加、不打折**。这是 [RANKING.md](./RANKING.md) §3 的权威口径,生产 shard 照搬,否则曲线终点对不上 `current_stars`。
+> ⚠️ **关键:`d` 只作用于 seam 前的 gross,seam 后的 net 直接累加、不再乘 `d`**。这是 [RANKING.md](./RANKING.md) §3 的权威口径,生产 shard 照搬,否则曲线终点对不上 `current_stars`。
 
 - **持久化 `seam_date`**:`canonical/v2/meta.json` 含 `seam_date`、`schema_ver`(见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4)。seam = gross→net 边界(bootstrap 截止日)。
-- **折扣系数**(per repo,bootstrap 算定后冻结):`d = current_stars@seam / cumgross@seam_date`,**分母只含 seam 前 gross 累计**(不含任何 net)。`d ≤ 1`。
+- **锚定因子**(per repo,bootstrap 算定后冻结):`d = current_stars@seam / cumgross@seam_date`,**分母只含 seam 前 gross 累计**(不含任何 net)。契约仅要求 `d >= 0`; GitHub Archive 低计时可 `d > 1`。
 - **seam 前(历史)**:`stock_est[period] = round(cumgross[period] × d)`,`cumgross` = 该 repo 月 flow(gross)在桶内的前缀和。终点(seam 月)= `cumgross@seam × d = current_stars@seam`,精确锚定。
-- **seam 后(net 期)**:`stock[period] = stock_est@seam + Σ(net flow 从 seam 到 period)`,**不打折**——net 是真实增量,精确跟踪(RANKING §3「seam 后不再估算」)。
-- **实现**:repo-monthly 桶里每个 period 标记 gross/net(按 `seam_date` 判),折扣只乘到 gross 段前缀和,net 段直接加。纯 JS、单桶内存可控。
+- **seam 后(net 期)**:`stock[period] = stock_est@seam + Σ(net flow 从 seam 到 period)`,**不再乘 `d`**——net 是真实增量,精确跟踪(RANKING §3「seam 后不再估算」)。
+- **实现**:repo-monthly 桶里每个 period 标记 gross/net(按 `seam_date` 判),`d` 只乘到 gross 段前缀和,net 段直接加。纯 JS、单桶内存可控。
 
-> 即:原本 DuckDB 的 `cumgross × d` + seam 后精确跟踪,在生产 shard 里变成「读一个 repo 桶 → 按 seam 分段做前缀和(gross 段乘 d、net 段不乘)」的纯 JS 计算。逻辑等价、口径与 RANKING §3 一致,但不需要 Parquet / DuckDB。**`d` 在 bootstrap 算定后写入 `repos` shard 冻结,Workflow 不重算 `d`(避免 net 累积让分母漂移)。**
+> 即:生产 shard 里是「读一个 repo 桶 → 按 seam 分段做前缀和(gross 段乘 d、net 段不乘)」的纯 JS 计算,口径与 RANKING §3 一致,不需要 Parquet / DuckDB。**`d` 在 bootstrap 算定后写入 `repos` shard 冻结,Workflow 不重算 `d`(避免 net 累积让分母漂移)。**旧 DuckDB parity 只用于 folded_through 不晚于 seam 的等价对拍;post-seam 正确性由独立合成夹具断言。
 
 ---
 
@@ -391,6 +391,7 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
   - **引用完整性**:repo rank item 的 `id` 必须存在于 `lookup/repos.json`;org rank item 的 `login` 必须存在于 `lookup/orgs.json`;
   - **`lookup/repos.json`**:条目数 ≥ `MIN_LOOKUP`(=1000);
   - **`lookup/aliases.json`**:无 dangling / live-shadow,且相对上一发布版本 alias count 不倒退（buildAliases 必须扫描所有 workflow run folder;读取错误会失败,缺失 `renames.json` 视为空增量）;
+  - **`canonical/v2/repos/*` 的 `d` 告警报告**:统计 `d > 2` 的 repo 数和最大值,写入 `d_factor_*` invariants;这是 warning 级报告,不进入 `failures`,不阻断发布;
   - **`search/index.json`**:`count ≥ MIN_LOOKUP`(=1000)且 `count === repos.length`;
   - **category views**:`registry` 非空且有 public categories;assignments 覆盖 ≥ `MIN_LOOKUP`;`language`/`language_family` 每 repo 至少一个,`owner_kind` 每 repo 单值;assignment 引用都存在于 registry;抽样 category rank 的 repo 都属于该 category;
   - **top repo entity**:`entity/repo/<allTime.items[0].id>.json` 的 `curve.monthly` 长度 > 0;

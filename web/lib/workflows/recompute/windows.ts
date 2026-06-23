@@ -1,7 +1,7 @@
 // Per-window metric tables — pure-JS equivalents of precompute's rm_<w> / om_<w>.
 // Seam-aware stock anchoring (RANKING §3): pre-seam periods (≤ model.seam[w]) use
 // round(cumGross × frozen d) so the curve endpoint lands on current_stars@seam; post-seam
-// periods add net on top of that frozen anchor (net is NOT discounted). While all canonical
+// periods add net on top of that frozen anchor (net is not scaled by d). While all canonical
 // data is pre-seam the post-seam branch is inert, so output is unchanged. Org stock
 // forward-fills idle periods so the org curve endpoint sums to current_stars_sum (RANKING §5).
 
@@ -52,7 +52,7 @@ function finalizeWindow(byRepo: Map<number, RepoRow[]>, rowsByPeriod: Map<Period
 
 /** Month/week repo window. Seam-aware stock: pre-seam periods (≤ model.seam[w]) accumulate gross
  *  and stock = round(cumGross × d); post-seam periods add net on top of the frozen seam anchor
- *  round(cumGross@seam × d) — net is NOT discounted (RANKING §3). `cumgross` is the running total
+ *  round(cumGross@seam × d) — net is not scaled by d (RANKING §3). `cumgross` is the running total
  *  used only as the flow_rank tiebreak; it equals the gross cumsum while all data is pre-seam. */
 export function computeRepoWindow(model: Model, w: "month" | "week"): RepoWindow {
   const seamPeriod = model.seam[w];

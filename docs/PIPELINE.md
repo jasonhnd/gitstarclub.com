@@ -64,7 +64,7 @@ GROUP BY repo_id, day;
 
 **06 upload（Blob）** — `star_daily.parquet` + `lookup/*` + `rank/**` + `entity/**` + `heatmap/**` + `meta.json`（含 `seam_date`）。批量 `put()` **节流 <75/s**（OPS Blob 限速）。
 
-**07 export-v2（DuckDB → canonical/v2 JSON shards）** — 把 §1.1 的 8M 行日表**折叠 + 分桶**成 `canonical/v2/{meta,repos,repo-monthly,repo-weekly,repo-recent-daily,site-daily}/...` JSON shards（`<bucket>=repo_id % N`），让 Vercel Workflow 在无引擎环境下重算。冻结 `repos.d`（stock 锚定折扣，IEEE double 全精度）+ 里程碑 `crossed_*`；fold 水位写 `canonical/v2/meta.json` 的 `folded_through`。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6 与 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4。
+**07 export-v2（DuckDB → canonical/v2 JSON shards）** — 把 §1.1 的 8M 行日表**折叠 + 分桶**成 `canonical/v2/{meta,repos,repo-monthly,repo-weekly,repo-recent-daily,site-daily}/...` JSON shards（`<bucket>=repo_id % N`），让 Vercel Workflow 在无引擎环境下重算。冻结 `repos.d`（stock 锚定因子，IEEE double 全精度，`>= 0` 且可 `> 1`）+ 里程碑 `crossed_*`；fold 水位写 `canonical/v2/meta.json` 的 `folded_through`。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6 与 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4。
 
 ---
 
@@ -130,7 +130,7 @@ GROUP BY repo_id, day;
 ## 5. 关键算法
 
 - **里程碑**：`repo cumsum(delta)` 跨阈值首日（回填时一次算定，冻结）。
-- **stock 历史锚定**：gross 累加 × 折扣对齐 `current_stars` —— 公式与精度边界见 [RANKING.md](./RANKING.md)。
+- **stock 历史锚定**：gross 累加 × 锚定因子 `d` 对齐 `current_stars` —— 公式与精度边界见 [RANKING.md](./RANKING.md)。
 - **周期边界**：周 = ISO 周（UTC）；月/年 = UTC 日历边界。周不整除月，故 canonical 必须是**日**粒度（见 ARCHITECTURE 决策）。
 - **折叠老化**：当月收口 → 日聚合成月度（entity `curve.monthly`）。**ISO 周**在所有归属日落入已冻结月后折进 `repo-weekly`（与月折叠同期、同一 `fold` step，水位 `folded_through.week`；跨月周从两个月 pending 取日聚合）。⚠️ **`repo-recent-daily` 当前不老化**：它由 bootstrap（`07-export-v2`）一次性 seed，recurring `fold`（`fold.ts`）只折叠月/周 rollup + site-daily，**不读、不写、不修剪** recent-daily（`web/lib/` 无 writer，仅 reader `io.ts:53`）；「近 ~90 天保留日点、更老滚进月度」的滚动老化**尚未实现**（xref issue #3）。
 

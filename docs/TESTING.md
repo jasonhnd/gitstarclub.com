@@ -102,6 +102,7 @@ test('周排名窗口跨月不丢日', () => {
 | rank 引用完整性 | staging all-time rank item 的 repo `id` 必须在 `lookup/repos.json`；org `login` 必须在 `lookup/orgs.json` |
 | `meta.folded_through` | 相对上一发布版本不倒退（month/week 单调） |
 | `lookup/aliases.json` | 别名完整性：无 dangling（每个别名 id 仍在 `lookup/repos.json` 内）、无 live-shadow（别名旧名不得撞当前某 repo 的 `full_name`）、alias count 不小于上一发布版本 |
+| `canonical/v2/repos/*` `d` 因子 | warning 级报告：统计 `d > 2` 的 repo 数和最大值，写入 `d_factor_*` invariants，不进入 `failures` |
 | `search/index.json` | `count` ≥ 1000 且 `count == repos.length`（防止索引漂移） |
 | `categories/registry.json` | 非空；至少一个 `public` 分类 |
 | `categories/assignments.json` | 条目数 ≥ 1000；每 repo `language`/`language_family` 各 ≥1、`owner_kind` 恰 1；无 unknown 分类引用（assignment 里每个分类 id 在 registry 内） |
@@ -113,7 +114,7 @@ test('周排名窗口跨月不丢日', () => {
 | 测试 | 在哪跑 | 断言 | 失败动作 |
 |---|---|---|---|
 | **staging 校验闸门** | Workflow `validate` step（Vercel） | 上表全部抽样断言（含 alias 完整性 + category 套件），对 `views/<run_id>/**` | `ok=false` → **不切指针**；线上仍是上一版；staging 版本保留供排查；写 `ops/workflows/<run_id>/validation.json` |
-| **canonical shard 等价性** | 单测（CI）+ Workflow step | 「JSON shard 纯 JS 聚合」结果 == 「bootstrap DuckDB 同口径」结果（容差 0）——确保脱离 Parquet 不改数 | CI 阻断 / step error |
+| **canonical shard 等价性** | 单测（CI）+ Workflow step | 「JSON shard 纯 JS 聚合」结果 == 「bootstrap DuckDB 同口径」结果（容差 0）；DuckDB parity 只作为 `folded_through <= seam` 的 legacy 等价对拍,不是 post-seam oracle | CI 阻断 / step error |
 | **发布指针原子性** | 集成测试 | 切指针前后读侧拿到的版本自洽；切到一半的请求拿旧版（不拿半发布） | CI 阻断 |
 | **回滚可逆** | 集成测试 | 把 `views/latest.json.version` 指回 `prev_version` 后，读侧立即拿回上一版；`views/<prev>` 仍在 | CI 阻断 |
 | **step 幂等** | 单测 | 同 `(run_id, shard)` 重跑 step → 覆盖同一份产物，不重复累加（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8） | CI 阻断 |
@@ -136,7 +137,7 @@ test('周排名窗口跨月不丢日', () => {
 > - `web/lib/workflows/recompute/categories.test.ts`：分类产物派生（registry / assignments / lookup / all-time category rank、public 资格、curated 绕过 `minimum_repo_count`）。
 > - `web/lib/categories/rules.test.ts`：确定性分类规则（slug 归一、language-family 映射、topic/keyword 规则）。
 
-- **parity 跳过**：`web/lib/integration/recompute.test.ts` 经 `NO_DISK_REF` 跳过 `search/index.json`（派生视图，DuckDB 无参照可对拍），与 live-artifact 跳过并列——其余视图仍逐字节对拍。
+- **parity 跳过 / 边界**：`web/lib/integration/recompute.test.ts` 经 `NO_DISK_REF` 跳过 `search/index.json`（派生视图，DuckDB 无参照可对拍），与 live-artifact 跳过并列——其余视图仍逐字节对拍。该 DuckDB disk reference 只在 `folded_through <= seam` 时是等价参照;post-seam 公式由 `web/lib/integration/post-seam-oracle.test.ts` 的合成夹具断言 `round(cumGross@seam * d) + Σ(post-seam net)`。
 
 ---
 
