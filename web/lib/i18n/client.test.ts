@@ -3,7 +3,7 @@
 // hooks live in `client-runtime.tsx`. bun's runtime has no real `document`, so the cookie
 // parser is replicated here against the real LANG_COOKIE / isLocale / en values.
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import en from "./dictionaries/en";
+import en, { type Dict } from "./dictionaries/en";
 import { DEFAULT_LOCALE, LANG_COOKIE, getDictionary, isLocale, LOCALES, type Locale } from ".";
 import { resolveChromePath } from "./client";
 
@@ -89,6 +89,11 @@ describe("resolveChromePath (dotted-path resolver)", () => {
   test("falls back to the path string for a missing key", () => {
     expect(resolveChromePath(en, "nav.missing")).toBe("nav.missing");
     expect(resolveChromePath(en, "does.not.exist")).toBe("does.not.exist");
+  });
+
+  test("falls back to English before returning the path string", () => {
+    const partial = { ...en, nav: { ...en.nav, pulse: undefined as unknown as string } } as Dict;
+    expect(resolveChromePath(partial, "nav.pulse")).toBe(en.nav.pulse);
   });
 
   test("falls back when the path resolves to a non-string (an object node)", () => {

@@ -435,6 +435,7 @@ export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 
 - 根 `layout.tsx` 静态渲染 `<html lang="en">`，不包全树 provider，也不读 cookie。`LANG_INIT_SCRIPT` 在 paint 前按 `gsc_lang` 设置 `documentElement.lang`。
 - chrome 文本节点用服务端安全的 `<T path="...">`；`Chrome`/`Footer`/`Breadcrumbs` 直接渲染默认语言。Pulse 页面文案走 `nav.pulse` / `pulse.*`，避免旧“trending”命名继续混淆编辑语义。**数据**（数字/日期/repo 名）语言无关，按默认英文服务端渲染进静态 HTML。
+- 客户端 i18n resolver 缺键时先回退英文 `en[path]`，只有英文也缺失或路径指向对象节点时才返回原始 path，避免局部字典漏项直接暴露给用户。
 - `LanguageSwitcher` 默认英文，下拉切其它语言；客户端写 `gsc_lang` cookie 后派发 `gsc:localechange`，不触发 RSC refresh，不改 canonical URL。`/api/lang` 仍保留为直接访问后备。
 - 现有少量 SEO title/description + 静态 HTML chrome 仍以英文为主，这是单一 canonical URL 的刻意取舍。
 
