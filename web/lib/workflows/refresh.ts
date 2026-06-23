@@ -17,7 +17,7 @@ import { sendAlert } from "@/lib/observability/alert";
 //   whitelist → rename → metadata (per bucket)
 //   → recompute rank/entity/heatmap into views/<run_id>/** → validate → publish pointer.
 // Rename runs before metadata so it can read the previous full_name before it is overwritten.
-// Recompute reads the canonical/v2 shards (refreshed by metadata) and the frozen discount d, so
+// Recompute reads the canonical/v2 shards (refreshed by metadata) and the frozen anchoring factor d, so
 // stock curves stay seam-anchored. Validation gates the pointer switch: a bad recompute never
 // goes live. Started by the cron route (/api/workflows/refresh/start). See VERCEL-DATA-OPERATIONS §3.
 
