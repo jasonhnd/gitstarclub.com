@@ -1,30 +1,18 @@
-// Unit tests for the PURE i18n logic that backs the client chrome provider.
-//
-// `client.tsx` is a "use client" React module: `I18nProvider`, `useDict`, `T`, etc.
-// all require React rendering, and its two pure helpers — `readLocaleCookie` and
-// `resolve` — are module-private (not exported). bun's runtime also has no `document`
-// (see check below). So we:
-//   - import & test the genuinely pure exports from `./index` directly
-//     (isLocale, getDictionary, DEFAULT_LOCALE, LANG_COOKIE, en dictionary shape), and
-//   - shim `globalThis.document.cookie` and replicate `readLocaleCookie` / `resolve`
-//     VERBATIM from client.tsx so the cookie-parse regex + dotted-path resolver are
-//     covered against the real LANG_COOKIE / isLocale / en values.
-// If client.tsx's private helpers change, these replicas must be kept in sync.
+// Unit tests for the pure i18n logic that backs static chrome text and client islands.
+// `client.tsx` stays server-safe and exports the deterministic chrome resolver; client-only
+// hooks live in `client-runtime.tsx`. bun's runtime has no real `document`, so the cookie
+// parser is replicated here against the real LANG_COOKIE / isLocale / en values.
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import en from "./dictionaries/en";
 import { DEFAULT_LOCALE, LANG_COOKIE, getDictionary, isLocale, LOCALES, type Locale } from ".";
+import { resolveChromePath } from "./client";
 
-// --- Replicas of the module-private helpers in client.tsx (kept verbatim). -------
+// --- Cookie parser replica for the browser-only runtime. -------------------------
 function readLocaleCookie(): Locale {
   if (typeof document === "undefined") return DEFAULT_LOCALE;
   const match = document.cookie.match(new RegExp(`(?:^|; )${LANG_COOKIE}=([^;]*)`));
   const value = match ? decodeURIComponent(match[1]) : undefined;
   return value && isLocale(value) ? value : DEFAULT_LOCALE;
-}
-
-function resolve(t: typeof en, path: string): string {
-  const value = path.split(".").reduce<unknown>((acc, key) => (acc as Record<string, unknown>)?.[key], t);
-  return typeof value === "string" ? value : path;
 }
 
 describe("isLocale (from ./index)", () => {
@@ -91,25 +79,25 @@ describe("en dictionary shape (source of truth)", () => {
   });
 });
 
-describe("resolve (dotted-path resolver, replicated from client.tsx)", () => {
+describe("resolveChromePath (dotted-path resolver)", () => {
   test("returns the leaf string for a valid dotted path", () => {
-    expect(resolve(en, "nav.home")).toBe("Home");
-    expect(resolve(en, "nav.pulse")).toBe("Pulse");
-    expect(resolve(en, "footer.madeIn")).toBe("Made in Tokyo");
+    expect(resolveChromePath(en, "nav.home")).toBe("Home");
+    expect(resolveChromePath(en, "nav.pulse")).toBe("Pulse");
+    expect(resolveChromePath(en, "footer.madeIn")).toBe("Made in Tokyo");
   });
 
   test("falls back to the path string for a missing key", () => {
-    expect(resolve(en, "nav.missing")).toBe("nav.missing");
-    expect(resolve(en, "does.not.exist")).toBe("does.not.exist");
+    expect(resolveChromePath(en, "nav.missing")).toBe("nav.missing");
+    expect(resolveChromePath(en, "does.not.exist")).toBe("does.not.exist");
   });
 
   test("falls back when the path resolves to a non-string (an object node)", () => {
     // `nav` is an object, not a leaf string → return the path unchanged.
-    expect(resolve(en, "nav")).toBe("nav");
+    expect(resolveChromePath(en, "nav")).toBe("nav");
   });
 
   test("an empty path resolves to the root object → falls back to the path", () => {
-    expect(resolve(en, "")).toBe("");
+    expect(resolveChromePath(en, "")).toBe("");
   });
 });
 

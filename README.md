@@ -79,9 +79,9 @@ gitstarclub/
     │   ├── data/                  Read layer: fetch Blob + Zod parse + React cache
     │   ├── workflows/             Workflow steps: rename, fold, recompute, buildAliases, validate, publish, gc
     │   ├── categories/            Deterministic category rules (slug / family / topic / keyword classification)
-    │   ├── search/                MiniSearch core (lazy-loaded by SearchBox)
+    │   ├── search/                MiniSearch core (worker-built by SearchBox)
     │   ├── compare/               Compare normalization core (URL parse, alignment, palette)
-    │   ├── i18n/                  Seven-locale chrome dictionaries + I18nProvider
+    │   ├── i18n/                  Seven-locale chrome dictionaries + client runtime hooks
     │   ├── observability/         Health and alert helpers
     │   ├── cron/                  Live-refresh helpers
     │   └── integration/           Cross-module integration + smoke tests

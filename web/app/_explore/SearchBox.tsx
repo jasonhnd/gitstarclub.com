@@ -3,34 +3,38 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type MiniSearch from "minisearch";
-import { useChrome } from "@/lib/i18n/client";
 import { fmtStars } from "@/lib/format";
 import type { SearchDoc } from "@/lib/contracts";
 import type { SearchHit } from "@/lib/search/core";
-import { MAX_COMPARE } from "@/lib/compare/core";
+import { MAX_COMPARE } from "@/lib/compare/constants";
 
-// Global repo search. The index (search/index.json, ~5k repos) and MiniSearch itself are lazy-
-// loaded on first focus — kept out of the initial bundle — then everything runs client-side.
+// Global repo search. The index (search/index.json, ~5k repos) is fetched on first focus;
+// MiniSearch indexing and querying run in a Web Worker to keep the main thread responsive.
 // Each result row also has a "+ compare" toggle (v0.2 §5): selections accumulate in a small set
 // and a footer CTA jumps to /compare?repos=… with everything chosen. Capped at MAX_COMPARE.
 // See docs/FRONTEND.md (search + compare surfaces).
 
 const LIMIT = 8;
 
-interface Engine {
-  ms: MiniSearch<SearchDoc>;
-  query: (ms: MiniSearch<SearchDoc>, q: string, limit?: number) => SearchHit[];
+type WorkerMessage = { type: "ready" } | { type: "results"; id: number; hits: SearchHit[] } | { type: "error"; id?: number };
+
+export interface SearchBoxLabels {
+  label: string;
+  placeholder: string;
+  empty: string;
+  loading: string;
+  addToCompare: string;
+  openCompare: string;
 }
 
-export function SearchBox() {
+export function SearchBox({ labels }: { labels: SearchBoxLabels }) {
   const router = useRouter();
-  const label = useChrome("search.label");
-  const placeholder = useChrome("search.placeholder");
-  const emptyText = useChrome("search.empty");
-  const loadingText = useChrome("search.loading");
-  const addToCompareLabel = useChrome("compare.addToCompare");
-  const openCompareLabel = useChrome("compare.openCompare");
+  const label = labels.label;
+  const placeholder = labels.placeholder;
+  const emptyText = labels.empty;
+  const loadingText = labels.loading;
+  const addToCompareLabel = labels.addToCompare;
+  const openCompareLabel = labels.openCompare;
 
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -39,41 +43,79 @@ export function SearchBox() {
   const [loading, setLoading] = useState(false);
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
 
-  const engineRef = useRef<Engine | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const readyRef = useRef(false);
   const loadingRef = useRef(false);
   const pendingRef = useRef<string | null>(null);
+  const requestRef = useRef(0);
+  const activeRequestRef = useRef(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const listId = useId();
 
   const runQuery = useCallback((value: string) => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    const next = engine.query(engine.ms, value, LIMIT);
-    setHits(next);
-    setActive(next.length > 0 ? 0 : -1);
+    const worker = workerRef.current;
+    if (!worker || !readyRef.current) {
+      pendingRef.current = value;
+      return;
+    }
+    const id = ++requestRef.current;
+    activeRequestRef.current = id;
+    worker.postMessage({ type: "query", id, q: value, limit: LIMIT });
   }, []);
 
   const ensureEngine = useCallback(async () => {
-    if (engineRef.current || loadingRef.current) return;
+    if (workerRef.current || loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
     try {
-      const [core, res] = await Promise.all([
-        import("@/lib/search/core"),
-        fetch("/search-index", { cache: "force-cache" }),
-      ]);
+      const res = await fetch("/search-index", { cache: "force-cache" });
       const data = (await res.json()) as { repos?: SearchDoc[] };
-      engineRef.current = { ms: core.createIndex(data.repos ?? []), query: core.queryIndex };
-      if (pendingRef.current != null) {
-        runQuery(pendingRef.current);
-        pendingRef.current = null;
-      }
+      const worker = new Worker(new URL("./search-worker.ts", import.meta.url), { type: "module" });
+      workerRef.current = worker;
+      worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
+        const message = event.data;
+        if (message.type === "ready") {
+          readyRef.current = true;
+          loadingRef.current = false;
+          setLoading(false);
+          if (pendingRef.current != null) {
+            const pending = pendingRef.current;
+            pendingRef.current = null;
+            runQuery(pending);
+          }
+          return;
+        }
+        if (message.type === "results" && message.id === activeRequestRef.current) {
+          setHits(message.hits);
+          setActive(message.hits.length > 0 ? 0 : -1);
+          return;
+        }
+        if (message.type === "error") {
+          setHits([]);
+          setActive(-1);
+          if (message.id === undefined || !readyRef.current) {
+            worker.terminate();
+            workerRef.current = null;
+            loadingRef.current = false;
+            readyRef.current = false;
+            setLoading(false);
+          }
+        }
+      };
+      worker.onerror = () => {
+        worker.terminate();
+        workerRef.current = null;
+        loadingRef.current = false;
+        readyRef.current = false;
+        setLoading(false);
+      };
+      worker.postMessage({ type: "init", repos: data.repos ?? [] });
     } catch {
       // best-effort: if the index can't load, search stays inert (no matches), nothing breaks.
-    } finally {
       loadingRef.current = false;
+      readyRef.current = false;
       setLoading(false);
     }
   }, [runQuery]);
@@ -106,7 +148,7 @@ export function SearchBox() {
   const onChange = (value: string) => {
     setQ(value);
     setOpen(true);
-    if (!engineRef.current) {
+    if (!readyRef.current) {
       pendingRef.current = value;
       void ensureEngine();
       return;
@@ -135,6 +177,14 @@ export function SearchBox() {
       setActive(-1);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      workerRef.current?.terminate();
+      workerRef.current = null;
+      readyRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
