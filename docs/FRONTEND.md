@@ -360,7 +360,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + 拐点标记点（三级色点 + `<title>` tooltip，零 JS）+ `role="img"` + aria-label |
 | 对比曲线 CompareCurve | `_explore/CompareCurve.tsx` | **Client** | 多条折线叠图 + 图例（色块+full_name+星数）+ 共享 y 轴 + **absolute↔对齐到 10k 切换**；纯核心归一化在 `lib/compare/core.ts` |
 | 面包屑 Breadcrumbs | `_explore/Breadcrumbs.tsx` | RSC | 默认语言服务端渲染；Home→年→月 / Home→owner→repo 等 + `BreadcrumbList` JSON-LD（[SEO](./SEO.md)） |
-| 结构化数据 JsonLd | `_explore/JsonLd.tsx` | RSC | 注入 `application/ld+json`（配 `@/lib/jsonld`） |
+| 结构化数据 JsonLd | `_explore/JsonLd.tsx` | RSC | 注入 `application/ld+json`（配 `@/lib/jsonld` 的 `CollectionPage` / `ItemList` / 实体 builder） |
 | 页脚 Footer | `_explore/Footer.tsx` | RSC + island | 默认语言服务端渲染；构建时间戳 + LanguageSwitcher 语言小岛 |
 | Pulse 视图 PulseView | `pulse/PulseView.tsx` | RSC | 首页与 `/pulse` 共享主体：本周/本月/本年脉搏、全时巨头桥接、"历史上的今天"。可选 `includeWebsiteLd` 注入 `WebSite` JSON-LD（仅首页用） |
 | 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步 |
@@ -386,7 +386,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | `Footer` | `_explore/` | 页脚导航 + 语言切换落点 |
 | `layout-tokens.ts` | `_explore/` | 共享页面横向 gutter：`PAD_X = px-[clamp(1.25rem,5vw,2.5rem)]`，对齐 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 锁定基线 |
 | `LanguageSwitcher` | `components/` | 当前语言 + 下拉切其它语言；en/ja/zh/zh-TW/ko/es/fr；写 cookie + 派发 `gsc:localechange` |
-| `JsonLd` | `_explore/` | 注入 `BreadcrumbList`/`Dataset` 等 JSON-LD |
+| `JsonLd` | `_explore/` | 注入 `CollectionPage`、`ItemList`、repo/org 实体等 JSON-LD |
 | `PrevNext`（`NavArrow`/`MonthArrow`） | 内联 | 上下月 / 上下年 / 上下周（年/月/周页）—— 可抽组件 |
 | `EntityCard` | 内联 | repo/org 卡片（pulse / rankings）—— 可抽组件 |
 | `YearSpine` | 内联 | 首页脊柱（首页 / pulse）—— 可抽组件 |
@@ -542,8 +542,30 @@ Data and rendering:
   minute-by-minute background regeneration.
 - The chrome nav exposes `/categories` through the localized `nav.categories`
   dictionary entry.
+- Category index, dimension pages, and category detail pages emit server-rendered
+  `ItemList` JSON-LD from the same rows that are visible in HTML. Detail page N
+  offsets `position` by the pagination start rank.
+- Category detail pages with more than one page expose a visible "Browse all"
+  pagination anchor and related same-dimension category links.
 
-## 12. Responsive Behavior
+## 12. SEO Link Surfaces
+
+The SEO link graph is server-rendered and deterministic; it does not add client
+JavaScript.
+
+- Repo pages include a compact link hub after the summary area. It links to the
+  owner org page, public category pages for the repo, and up to six related
+  repositories chosen deterministically: same owner first, then same primary
+  language, sorted by stars and `full_name`.
+- Year, month, and week ranking detail pages keep their top slices but expose a
+  "Complete ranking" anchor to the full server-rendered rank list on the same
+  page.
+- `/rankings`, ranking detail pages, category list pages, category detail pages,
+  and `/o` owner index pages emit `ItemList` JSON-LD from the server rows.
+- The footer links `/categories` and `/o` from every page so crawler entry points
+  for category and owner directories are not limited to the top app bar.
+
+## 13. Responsive Behavior
 
 - `Chrome.tsx` is still a Server Component. Mobile primary navigation is a
   native `<details>/<summary>` disclosure, so it adds no new client JavaScript.

@@ -4,6 +4,7 @@ import {
   resolveSitemapLastModified,
   SITEMAP_FALLBACK_LAST_MODIFIED,
   sitemapChangeFrequency,
+  sitemapLastModified,
   sitemapPriority,
   weeksInIsoYear,
 } from "./sitemap";
@@ -108,5 +109,29 @@ describe("sitemap hints", () => {
     expect(sitemapPriority("")).toBe(1);
     expect(sitemapPriority("/categories/language/python/page/2")).toBe(0.6);
     expect(sitemapPriority("/about")).toBe(0.4);
+  });
+});
+
+describe("sitemapLastModified", () => {
+  const meta = { generated_at: "2026-06-04T12:00:00.000Z" };
+
+  test("uses period end dates for historical ranking URLs, capped by the data snapshot", () => {
+    expect(sitemapLastModified("/rankings/2024", { meta }).toISOString()).toBe("2024-12-31T23:59:59.999Z");
+    expect(sitemapLastModified("/rankings/2024/10", { meta }).toISOString()).toBe("2024-10-31T23:59:59.999Z");
+    expect(sitemapLastModified("/rankings/2026/W23", { meta }).toISOString()).toBe("2026-06-04T12:00:00.000Z");
+  });
+
+  test("uses category lookup generation time for category URLs", () => {
+    expect(
+      sitemapLastModified("/categories/language/python", {
+        meta,
+        categories: { generated_at: "2026-06-03T00:00:00.000Z", dimensions: [] },
+      }).toISOString(),
+    ).toBe("2026-06-03T00:00:00.000Z");
+  });
+
+  test("uses the data snapshot date for repo and org entity URLs", () => {
+    expect(sitemapLastModified("/vuejs/vue", { meta }).toISOString()).toBe("2026-06-04T12:00:00.000Z");
+    expect(sitemapLastModified("/o/vuejs", { meta }).toISOString()).toBe("2026-06-04T12:00:00.000Z");
   });
 });

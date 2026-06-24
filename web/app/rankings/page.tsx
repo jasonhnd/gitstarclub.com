@@ -11,7 +11,7 @@ import en from "@/lib/i18n/dictionaries/en";
 import { getAllTime, getReposLookup, getOrgsLookup, joinRepoRank, joinOrgRank } from "@/lib/data";
 import { fmtStars, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
-import { collectionLd } from "@/lib/jsonld";
+import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 
 const LOC = DEFAULT_LOCALE;
@@ -47,6 +47,22 @@ export default async function RankingsPage() {
     <>
       <Chrome />
       <JsonLd data={collectionLd(en.rankings.title, "/rankings", loc)} />
+      <JsonLd
+        data={itemListLd(
+          `${en.rankings.title} repositories`,
+          "/rankings",
+          loc,
+          repoRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
+        )}
+      />
+      <JsonLd
+        data={itemListLd(
+          `${en.rankings.title} organizations`,
+          "/rankings",
+          loc,
+          orgs.map((org) => ({ name: org.login, path: `/o/${org.login}` })),
+        )}
+      />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <h1 className="animate-rise text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none tracking-[-0.03em] text-on-surface">
           <T path="rankings.title" />

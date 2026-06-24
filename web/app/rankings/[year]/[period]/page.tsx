@@ -13,7 +13,7 @@ import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { buildNarrative } from "@/lib/narrative";
 import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
-import { collectionLd } from "@/lib/jsonld";
+import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { T } from "@/lib/i18n/client";
@@ -67,9 +67,8 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
   ]);
   if (!flow || !lookup) notFound();
 
-  const most: Row[] = joinRepoRank(flow.items, lookup)
-    .slice(0, 18)
-    .map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const flowRows: Row[] = joinRepoRank(flow.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const most = flowRows.slice(0, 18);
   const fastest: Row[] = growth
     ? joinRepoRank(growth.items, lookup)
         .slice(0, 10)
@@ -94,6 +93,14 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
     <>
       <Chrome />
       <JsonLd data={collectionLd(monthYearLabel(loc, year, month), `/rankings/${year}/${month}`, loc)} />
+      <JsonLd
+        data={itemListLd(
+          `${monthYearLabel(loc, year, month)} GitHub repository rankings`,
+          `/rankings/${year}/${month}`,
+          loc,
+          flowRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
+        )}
+      />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
@@ -114,6 +121,7 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
           }
           backHref={`/rankings/${year}`}
           backLabel={String(year)}
+          completeHref={flowRows.length > most.length ? "#complete-ranking" : undefined}
           shareText={`${monthYearLabel(loc, year, month)} — GitHub star rankings`}
         />
 
@@ -159,6 +167,13 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
             </section>
           )}
         </div>
+
+        {flowRows.length > most.length && (
+          <section id="complete-ranking" className="mt-[clamp(2rem,4vw,3rem)] min-w-0 scroll-mt-24">
+            <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">Complete ranking</h2>
+            <RankingList rows={flowRows} variant="gained" locale={loc} />
+          </section>
+        )}
       </main>
     </>
   );
@@ -169,14 +184,21 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
   const period = `${year}-W${String(week).padStart(2, "0")}`;
   const [flow, lookup] = await Promise.all([getRank("week", period, "repo", "flow"), getReposLookup()]);
   if (!flow || !lookup) notFound();
-  const rows: Row[] = joinRepoRank(flow.items, lookup)
-    .slice(0, 32)
-    .map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const rankRows: Row[] = joinRepoRank(flow.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const rows = rankRows.slice(0, 32);
 
   return (
     <>
       <Chrome />
       <JsonLd data={collectionLd(period, `/rankings/${year}/W${String(week).padStart(2, "0")}`, loc)} />
+      <JsonLd
+        data={itemListLd(
+          `${period} GitHub repository rankings`,
+          `/rankings/${year}/W${String(week).padStart(2, "0")}`,
+          loc,
+          rankRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
+        )}
+      />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
@@ -186,21 +208,56 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
             { label: period },
           ]}
         />
-        <PeriodHeader eyebrow={<T path="week.label" />} title={period} subtitle={<T path="week.top" />} backHref={`/rankings/${year}`} backLabel={String(year)} shareText={`${period} — GitHub star rankings`} />
+        <PeriodHeader
+          eyebrow={<T path="week.label" />}
+          title={period}
+          subtitle={<T path="week.top" />}
+          backHref={`/rankings/${year}`}
+          backLabel={String(year)}
+          completeHref={rankRows.length > rows.length ? "#complete-ranking" : undefined}
+          shareText={`${period} — GitHub star rankings`}
+        />
         <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
           <RankingList rows={rows} variant="gained" locale={loc} />
         </section>
+        {rankRows.length > rows.length && (
+          <section id="complete-ranking" className="mt-[clamp(2rem,4vw,3rem)] min-w-0 scroll-mt-24">
+            <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">Complete ranking</h2>
+            <RankingList rows={rankRows} variant="gained" locale={loc} />
+          </section>
+        )}
       </main>
     </>
   );
 }
 
-function PeriodHeader({ eyebrow, title, subtitle, backHref, backLabel, shareText }: { eyebrow: ReactNode; title: ReactNode; subtitle: ReactNode; backHref: string; backLabel: string; shareText: string }) {
+function PeriodHeader({
+  eyebrow,
+  title,
+  subtitle,
+  backHref,
+  backLabel,
+  completeHref,
+  shareText,
+}: {
+  eyebrow: ReactNode;
+  title: ReactNode;
+  subtitle: ReactNode;
+  backHref: string;
+  backLabel: string;
+  completeHref?: string;
+  shareText: string;
+}) {
   return (
     <section className="mt-5">
       <Link href={backHref} className="text-readable-gold font-mono text-[0.78rem] hover:underline">
         {backLabel}
       </Link>
+      {completeHref && (
+        <Link href={completeHref} className="text-readable-gold ml-4 font-mono text-[0.78rem] hover:underline">
+          Complete ranking
+        </Link>
+      )}
       <p className="mt-5 font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{eyebrow}</p>
       <h1 className="mt-2 text-[clamp(2rem,6vw,3.8rem)] font-extrabold leading-none tracking-[-0.03em] text-on-surface">{title}</h1>
       <p className="mt-3 max-w-[44ch] text-[clamp(0.95rem,1.6vw,1.1rem)] text-on-surface-variant">{subtitle}</p>
