@@ -76,7 +76,7 @@ function MobileNav({ t }: { t: typeof en }) {
     <details className="group relative shrink-0 sm:hidden">
       <summary
         className="grid size-11 cursor-pointer list-none place-items-center rounded-full bg-surface-container-high text-on-surface transition-[background,transform] duration-200 ease-[var(--ease-emphasized)] marker:content-none hover:bg-surface-container-highest active:scale-90 [&::-webkit-details-marker]:hidden"
-        aria-label="Open primary navigation"
+        aria-label="Primary navigation"
       >
         <svg viewBox="0 0 24 24" className="size-[22px]" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
