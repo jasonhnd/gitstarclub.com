@@ -8,7 +8,8 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getRepoIdByFullNameDaily, getRepoEntityDaily, getAliasMapDaily, getReposLookupDaily } from "@/lib/data";
+import { getRepoIdByFullNameDaily, getRepoEntityDaily, getAliasMapDaily, getReposLookupDaily, getCategoryAssignments, getCategoryRegistry } from "@/lib/data";
+import type { CategoryAssignments, CategoryRegistry, RepoLookupEntry } from "@/lib/contracts";
 import { fmtStars, ymParts, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { repoLd } from "@/lib/jsonld";
@@ -16,7 +17,7 @@ import { exactRepoMilestones } from "@/lib/repo-milestones";
 import { resolveRepoRoute } from "@/lib/repo-route";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
-import { categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
+import { CATEGORY_DIMENSIONS, categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
 
 const LOC = DEFAULT_LOCALE;
 
@@ -66,7 +67,12 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
   const id = await resolveRepoId(fullName);
   if (id === undefined) notFound();
-  const repo = await getRepoEntityDaily(id);
+  const [repo, lookup, assignments, registry] = await Promise.all([
+    getRepoEntityDaily(id),
+    getReposLookupDaily(),
+    getCategoryAssignments(),
+    getCategoryRegistry(),
+  ]);
   if (!repo) notFound();
 
   const series = repo.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
@@ -79,6 +85,8 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   const languageTotalSize = repo.languages?.reduce((sum, language) => sum + Math.max(0, language.size ?? 0), 0) ?? 0;
   const monthly = [...repo.monthly_table].reverse();
   const created = ymParts(repo.created_at);
+  const categoryLinks = repoCategoryLinks(id, assignments, registry, languages);
+  const related = relatedRepositories(repo, lookup);
 
   return (
     <>
@@ -174,6 +182,8 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
           </aside>
         </div>
 
+        <RepoLinkHub owner={repo.owner} categories={categoryLinks} related={related} />
+
         <div className="max-w-[60rem]">
           {series.length > 1 && (
             <section className="mt-[clamp(2rem,4vw,3rem)]">
@@ -245,6 +255,8 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
 }
 
 type RepoLanguage = { name: string; size?: number | null; color?: string | null };
+type CategoryLink = { id: string; label: string; href: string };
+type RelatedRepo = Pick<RepoLookupEntry, "full_name" | "owner" | "name" | "language" | "current_stars">;
 
 function repoLanguageEntries(repo: { language: string | null; languages?: RepoLanguage[] }): RepoLanguage[] {
   const primarySlug = repo.language ? slugifyCategoryPart(repo.language) : null;
@@ -265,6 +277,135 @@ function repoLanguageEntries(repo: { language: string | null; languages?: RepoLa
 
 function languageHref(name: string): string {
   return `/categories/language/${slugifyCategoryPart(name)}`;
+}
+
+function categoryHref(dimension: string, slug: string): string {
+  return `/categories/${dimension}/${slug}`;
+}
+
+function repoCategoryLinks(
+  repoId: number,
+  assignments: CategoryAssignments | null,
+  registry: CategoryRegistry | null,
+  languages: RepoLanguage[],
+): CategoryLink[] {
+  const links = new Map<string, CategoryLink>();
+  for (const language of languages.slice(0, 3)) {
+    const slug = slugifyCategoryPart(language.name);
+    links.set(`language/${slug}`, { id: `language/${slug}`, label: language.name, href: languageHref(language.name) });
+  }
+
+  const assignment = assignments?.repositories[String(repoId)];
+  if (!assignment || !registry) return [...links.values()].slice(0, 8);
+
+  const registryById = new Map(
+    registry.dimensions.flatMap((dimension) =>
+      dimension.categories.filter((category) => category.public).map((category) => [category.id, category] as const),
+    ),
+  );
+
+  for (const dimension of CATEGORY_DIMENSIONS) {
+    for (const id of assignment[dimension]) {
+      const category = registryById.get(id);
+      if (!category || links.has(category.id)) continue;
+      links.set(category.id, {
+        id: category.id,
+        label: category.label,
+        href: categoryHref(category.dimension, category.slug),
+      });
+    }
+  }
+
+  return [...links.values()].slice(0, 8);
+}
+
+function relatedRepositories(
+  repo: { full_name: string; owner: string; language: string | null },
+  lookup: Record<string, RepoLookupEntry> | null,
+  limit = 6,
+): RelatedRepo[] {
+  if (!lookup) return [];
+  const rows = Object.values(lookup).filter((entry) => entry.full_name !== repo.full_name);
+  const sort = (a: RepoLookupEntry, b: RepoLookupEntry) => b.current_stars - a.current_stars || a.full_name.localeCompare(b.full_name);
+  const seen = new Set<string>();
+  const related: RelatedRepo[] = [];
+
+  for (const entry of rows.filter((candidate) => candidate.owner === repo.owner).sort(sort)) {
+    if (seen.has(entry.full_name)) continue;
+    seen.add(entry.full_name);
+    related.push(entry);
+  }
+
+  if (repo.language) {
+    for (const entry of rows.filter((candidate) => candidate.language === repo.language && candidate.owner !== repo.owner).sort(sort)) {
+      if (seen.has(entry.full_name)) continue;
+      seen.add(entry.full_name);
+      related.push(entry);
+      if (related.length >= limit) break;
+    }
+  }
+
+  return related.slice(0, limit);
+}
+
+function RepoLinkHub({ owner, categories, related }: { owner: string; categories: CategoryLink[]; related: RelatedRepo[] }) {
+  return (
+    <section aria-labelledby="repo-link-hub" className="mt-[clamp(1.75rem,3.5vw,2.5rem)] border-y border-outline-variant py-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 id="repo-link-hub" className="text-[1.05rem] font-extrabold text-on-surface">
+          Explore related pages
+        </h2>
+        <Link href="/categories" className="text-readable-gold font-mono text-[0.78rem] hover:underline">
+          Categories
+        </Link>
+      </div>
+      <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_minmax(0,1.4fr)]">
+        <div className="min-w-0">
+          <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">Owner</p>
+          <Link href={`/o/${owner}`} className="text-readable-gold mt-2 inline-block max-w-full truncate font-mono text-[0.9rem] font-semibold hover:underline" title={owner}>
+            /o/{owner}
+          </Link>
+        </div>
+        {categories.length > 0 && (
+          <div className="min-w-0">
+            <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">Categories</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {categories.map((category) => (
+                <Link
+                  key={category.id}
+                  href={category.href}
+                  className="rounded-full bg-surface-container-high px-2.5 py-1 font-mono text-[0.72rem] text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-primary"
+                >
+                  {category.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+        {related.length > 0 && (
+          <div className="min-w-0">
+            <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">Related repositories</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {related.map((entry) => (
+                <Link
+                  key={entry.full_name}
+                  href={`/${entry.full_name}`}
+                  className="min-w-0 rounded-lg bg-surface-container-high px-3 py-2 transition-colors hover:bg-surface-container-highest"
+                >
+                  <span className="block truncate font-mono text-[0.78rem] font-semibold text-on-surface" title={entry.full_name}>
+                    {entry.owner}/{entry.name}
+                  </span>
+                  <span className="mt-1 block font-mono text-[0.68rem] text-on-surface-variant">
+                    {fmtStars(entry.current_stars)}★{entry.language ? ` · ${entry.language}` : ""}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function LanguageLinks({ languages, totalSize }: { languages: RepoLanguage[]; totalSize: number }) {

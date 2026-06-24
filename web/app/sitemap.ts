@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { CategoriesLookup, Meta, OrgsLookup, ReposLookup } from "@/lib/contracts";
 import { readView } from "@/lib/data";
-import { buildSitemapPaths, resolveSitemapLastModified, sitemapChangeFrequency, sitemapPriority } from "@/lib/sitemap";
+import { buildSitemapPaths, sitemapChangeFrequency, sitemapLastModified, sitemapPriority } from "@/lib/sitemap";
 
 // Enumerates every canonical URL so crawlers discover the on-demand ISR long tail.
 // Language is an in-page preference, not a URL dimension.
@@ -18,12 +18,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     readView("lookup/categories.json", CategoriesLookup, base),
     readView("meta.json", Meta, base),
   ]);
-  const lastModified = resolveSitemapLastModified(meta);
   const paths = buildSitemapPaths({ repos, orgs, categories });
 
   return paths.map((p) => ({
     url: `${BASE}${p}`,
-    lastModified,
+    lastModified: sitemapLastModified(p, { meta, categories }),
     changeFrequency: sitemapChangeFrequency(p),
     priority: sitemapPriority(p),
   }));

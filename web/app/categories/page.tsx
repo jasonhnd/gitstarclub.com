@@ -4,7 +4,7 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getCategoryRegistry } from "@/lib/data";
-import { collectionLd } from "@/lib/jsonld";
+import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
@@ -32,6 +32,14 @@ export default async function CategoriesPage() {
     <>
       <Chrome />
       <JsonLd data={collectionLd("GitHub repository categories", "/categories", LOC)} />
+      <JsonLd
+        data={itemListLd(
+          "GitHub repository categories",
+          "/categories",
+          LOC,
+          publicCategories.map((category) => ({ name: category.label, path: categoryPath(category.dimension, category.slug) })),
+        )}
+      />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <section>
           <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">

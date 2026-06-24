@@ -388,7 +388,7 @@ export async function generateStaticParams() {
 - **稳定性原则**：历史页 `lastModified` **不可每次 build 抖动**（否则爬虫误判全站每日全变、浪费预算）。取值来自**数据视图里的确定性字段**（pipeline 写入的 `updated_at` / 期末日），不是 `new Date()`。
 - 与 §4 sitemap 的 `lastModified` 同源（同一字段），保证 sitemap 与页面声明一致。
 
-**当前态（已知偏离）**：`web/app/sitemap.ts` 当前是单一扁平 sitemap，**全站共用一个 `lastModified`**（`meta.backfilled_at` → `meta.generated_at` → 固定 fallback，见 §4.2）——历史月页和沉寂 repo 都会跟着这个值动。这与上表「历史页应稳定」相违，目前可容忍（URL 规模约 ~10k、`meta` 命中率高），但**切分片时必须按上表逐 URL 取实体级日期**。
+**当前态**：`web/app/sitemap.ts` 仍是单一扁平 sitemap，但 `lastModified` 已按 URL 类型从真实数据日期派生（见 §4.2）：历史年/月/周取对应期末日并以发布数据时间封顶，category 路径取 registry `generated_at`，repo / org / 核心页取当前发布视图的 `meta.backfilled_at` / `meta.generated_at`。当前 lookup 契约没有 repo/org 实体级 `updated_at`，所以 repo/org 尚不能表达「该实体最后活跃日」；未来若在契约中增加该字段，再收紧到实体级日期。
 
 ### 3.4 配置要点（与 ARCHITECTURE 对齐）
 
@@ -411,7 +411,7 @@ export async function generateStaticParams() {
 import type { MetadataRoute } from "next";
 import { CategoriesLookup, Meta, OrgsLookup, ReposLookup } from "@/lib/contracts";
 import { readView } from "@/lib/data";
-import { buildSitemapPaths, resolveSitemapLastModified, sitemapChangeFrequency, sitemapPriority } from "@/lib/sitemap";
+import { buildSitemapPaths, sitemapChangeFrequency, sitemapLastModified, sitemapPriority } from "@/lib/sitemap";
 
 const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
 const SITEMAP_REVALIDATE_SECONDS = 86400;
@@ -426,12 +426,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     readView("lookup/categories.json", CategoriesLookup, base),
     readView("meta.json", Meta, base),
   ]);
-  const lastModified = resolveSitemapLastModified(meta);
   const paths = buildSitemapPaths({ repos, orgs, categories });
 
   return paths.map((p) => ({
     url: `${BASE}${p}`,
-    lastModified,
+    lastModified: sitemapLastModified(p, { meta, categories }),
     changeFrequency: sitemapChangeFrequency(p),
     priority: sitemapPriority(p),
   }));
@@ -444,22 +443,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 - 覆盖路径：首页 `/`、`/pulse`、`/rankings`、`/compare`、`/categories`、`/about`，每年 `/rankings/YYYY`，每年每月 `/rankings/YYYY/MM`，有效 ISO 周页 `/rankings/YYYY/W##`，所有 repo `/{owner}/{name}`，`/o` 组织索引与 `/o/page/[page]`，所有 org `/o/{login}`，以及 `lookup/categories.json` 标出的公开 category 路径和 category 分页路径；显式 `sitemap: false` 的 category 不枚举。
 - 路径枚举逻辑已抽到 `web/lib/sitemap.ts`，用单元测试覆盖 `/compare`、category 路径和分页、org 索引分页、当前周截断、ISO 53 周年份与 repo/org 长尾。每个 URL 输出 `lastModified`、`changeFrequency`、`priority`；sitemap route 和其版本指针读取都按 86400 秒缓存。
 
-### 4.2 `lastModified` 的当前取值（已知限制）
+### 4.2 `lastModified` 的当前取值
 
 ```ts
-const lastModified = resolveSitemapLastModified(meta);
 return paths.map((p) => ({
   url: `${BASE}${p}`,
-  lastModified,
+  lastModified: sitemapLastModified(p, { meta, categories }),
   changeFrequency: sitemapChangeFrequency(p),
   priority: sitemapPriority(p),
 }));
 ```
 
-- **全站共用一个 `lastModified`**：所有 URL 都标同一个日期；解析顺序是 `meta.backfilled_at`（bootstrap）→ `meta.generated_at`（versioned workflow meta）→ 固定 fallback `2026-06-04T00:00:00.000Z`。
-- **不再回退到 `new Date()`**：缺 meta 或时间戳无效时也使用固定 fallback，避免每次 build 抖动并误导爬虫判断全站变化。
-- **目前可容忍的理由**：URL 规模约 ~10k，Googlebot 抓取预算消化得起；且 `meta.backfilled_at` / `meta.generated_at` 在正常 path 下会命中。
-- **何时必须收紧**：①URL 规模逼近 50k 需要切分片时；②Search Console 出现「Discovered – currently not indexed」激增，疑似浪费抓取预算时——届时按 §4.3 / §4.4 实现分片 + 每片自己的 `lastModified` 取自 `entity.json` 的实体级最后变动日。
+- **基础数据日期**：`resolveSitemapLastModified(meta)` 仍解析 `meta.backfilled_at`（bootstrap）→ `meta.generated_at`（versioned workflow meta）→ 固定 fallback `2026-06-04T00:00:00.000Z`。fallback 只用于异常路径，正常发布使用真实 meta 时间。
+- **rank 历史页**：`/rankings/YYYY`、`/rankings/YYYY/MM`、`/rankings/YYYY/W##` 取该年 / 月 / ISO 周期末日，并用基础数据日期封顶，避免未来期或尚未发布的数据日期进入 sitemap。
+- **category 路径**：`/categories*` 取 `lookup/categories.json` 的 `generated_at`；缺失或无效时回退基础数据日期。
+- **repo / org / 核心页**：当前 lookup 与 entity 契约没有暴露实体级 `updated_at`，所以这些 URL 使用当前发布视图的基础数据日期；这是比硬编码 fallback 更准确的真实发布数据日期，但不是最后活跃日。
+- **不回退到 `new Date()`**：缺 meta 或时间戳无效时也使用固定 fallback，避免每次 build 抖动并误导爬虫判断全站变化。
 
 ### 4.3 未来分片结构（规模逼近 50k 时再实现）
 
@@ -522,7 +521,7 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
 
 | 项 | 现状 | 影响 | 处理 |
 |---|---|---|---|
-| 全局 `lastModified` 共用 | 单一值 | 历史月 / 沉寂 repo 的 `lastModified` 会跟着全站抖动 | 切分片后逐 URL 用实体级日期（`entity.json.updated_at` / 期末日） |
+| repo / org 实体级活跃日期 | lookup 契约未暴露 | repo/org 仍只能用发布数据日期，不能表达最后活跃日 | 若 GSC 显示抓取预算浪费，再在数据契约中增加实体级 `updated_at` 并接入 sitemap |
 | `meta` 缺失或时间戳无效 | 异常路径 | 已使用固定 fallback，避免 sitemap 按每 build 抖动 | 若 GSC 显示 fallback 过旧影响发现，再改为 hard-fail 或显式 env 日期 |
 
 ---
@@ -580,7 +579,7 @@ Disallow: /
 
 > 目的：①Google 富结果（主要是面包屑）；②给 LLM / AI Overviews 喂结构化事实（repo star 数 / 站点描述），抢 AI 答案位。用 `<script type="application/ld+json">` 注入（服务端渲染进 HTML，非客户端）。
 >
-> **实际实现以 `web/lib/jsonld.ts` 的 4 个 builder 为唯一事实来源**：`webSiteLd`（首页 `WebSite`）、`repoLd`（repo `SoftwareSourceCode` + `interactionStatistic` star 数）、`orgLd`（org `Organization` / `Person`）、`collectionLd`（月/年/全时榜 `CollectionPage`）。`BreadcrumbList` **不在这 4 个 builder 内**，由 `Breadcrumbs.tsx` 组件单独输出（见 §6.7）。**不输出 `Dataset` / `ItemList` / `SearchAction`**，也不在 `CollectionPage` 上带 `datePublished` / `dateModified` / `isPartOf`（下面各小节逐一说明）。
+> **实际实现以 `web/lib/jsonld.ts` 的 5 个 builder 为唯一事实来源**：`webSiteLd`（首页 `WebSite`）、`repoLd`（repo `SoftwareSourceCode` + `interactionStatistic` star 数）、`orgLd`（org `Organization` / `Person`）、`collectionLd`（月/年/全时榜与分类/org 索引的 `CollectionPage`）、`itemListLd`（rankings / categories / org index 的 `ItemList`）。`BreadcrumbList` **不在这些 builder 内**，由 `Breadcrumbs.tsx` 组件单独输出（见 §6.7）。**不输出 `Dataset` / `SearchAction`**，也不在 `CollectionPage` 上带 `datePublished` / `dateModified` / `isPartOf`（下面各小节逐一说明）。
 
 ### 6.1 首页：`WebSite`（仅首页，不在根 layout）
 
@@ -649,9 +648,9 @@ Disallow: /
 
 > 个人 owner（`owner_type=User`）用 `@type: Person` 替代 `Organization`（按数据切换）。该 org 的 top repo 列表**不以 `ItemList` 结构化输出**，靠页面正文行 + §9 内链被发现。org 页另由 `Breadcrumbs.tsx` 输出 `BreadcrumbList`。
 
-### 6.5 月度页 / 年度页：`CollectionPage` + `BreadcrumbList`
+### 6.5 月度页 / 年度页：`CollectionPage` + `ItemList` + `BreadcrumbList`
 
-实际输出（`web/lib/jsonld.ts` 的 `collectionLd(name, path, locale)`）——仅 `CollectionPage` 三字段，**不输出 `ItemList`，也不输出 `datePublished` / `dateModified` / `isPartOf`**：
+实际输出（`web/lib/jsonld.ts` 的 `collectionLd(name, path, locale)`）——`CollectionPage` 仍只保留三字段，**不输出 `datePublished` / `dateModified` / `isPartOf`**：
 
 ```jsonc
 {
@@ -663,11 +662,13 @@ Disallow: /
 }
 ```
 
-> 月/年页的榜单**不以 `ItemList` + `ListItem` 结构化重复输出**（避免与正文表格重复维护）；`CollectionPage` 仅声明"这是一个策展集合页"。`collectionLd` 不带任何日期字段，因此历史页与当月页的结构化数据无 `dateModified` 抖动问题。榜单行的可发现性由 §9 内链承担。月/年页另由 `Breadcrumbs.tsx` 输出 `BreadcrumbList`（Home → 年 →〔月〕）。
+> 月/年/周页同时用 `itemListLd(...)` 输出与正文榜单同源的 `ItemList`。年页和月/周页先展示顶部切片，并在同页提供 `#complete-ranking` 完整榜单锚点；`ItemList` 使用完整服务端 rank 行，`position` 与正文排名一致。`collectionLd` 不带任何日期字段，因此历史页与当月页的结构化数据无 `dateModified` 抖动问题。月/年页另由 `Breadcrumbs.tsx` 输出 `BreadcrumbList`（Home → 年 →〔月〕）。
 
-### 6.6 全时榜 `/rankings`：`CollectionPage` + `BreadcrumbList`
+### 6.6 全时榜 `/rankings`：`CollectionPage` + `ItemList`
 
-- 复用 `collectionLd(...)` 输出单个 `CollectionPage`（`name` / `url` / `inLanguage`），**不输出 repo / org 的 `ItemList`**。repo / org 榜的实体链接由页面正文行 + §9 内链发现。另由 `Breadcrumbs.tsx` 输出 `BreadcrumbList`（Home → Rankings）。
+- 复用 `collectionLd(...)` 输出单个 `CollectionPage`（`name` / `url` / `inLanguage`）。
+- 同页输出两个 `ItemList`：repo 全时榜 `/{owner}/{name}`，org 全时榜 `/o/{login}`。两者都来自已渲染的服务端行，不引入客户端计算。
+- category index、category dimension、category detail/page N、org index/page N 也用 `itemListLd(...)` 描述当前列表项；category detail 的 `startPosition` 与分页排名偏移一致。
 
 ### 6.7 全站面包屑：`BreadcrumbList`
 
@@ -735,24 +736,24 @@ Disallow: /
  ├─ 年份脊柱（2015…当前）──────────────→ 各年度页 /rankings/YYYY （1 跳到任意年）
  ├─ 本月聚焦 TOP / 增速 ────────────────→ repo 详情页 /:owner/:name （1 跳到热门 repo）
  ├─ 历史上的今天（里程碑）──────────────→ repo / 对应月度页
- └─ 全时榜入口 ─────────────────────────→ /rankings
+ ├─ 全时榜入口 ─────────────────────────→ /rankings
+ └─ Footer ─────────────────────────────→ /categories / /o
 
 年度页 /rankings/YYYY
  ├─ 12 个月份格子 ─────────────────────→ 月度页 /rankings/YYYY/MM （1 跳到任意月）
- ├─ 年度 TOP 50 行（repo 名）───────────→ repo 详情页 /:owner/:name
- ├─ 年度 org section（若有）────────────→ org 详情页 /o/..
- └─ 上下年导航 ← YYYY-1 | YYYY+1 →       （年脊柱横向连通）
+ ├─ 年度 TOP 行（repo 名）──────────────→ repo 详情页 /:owner/:name
+ └─ Complete ranking 锚点 ─────────────→ 同页完整榜单
 
 月度页 /rankings/YYYY/MM
  ├─ 三大榜单每行 repo 名 ───────────────→ repo 详情页 /:owner/:name
- ├─ 周榜 section 每行 ──────────────────→ repo / org
- ├─ 上下月导航 ← 上月 | 下月 → ↑ 年度页   （月链横向 + 纵向连通）
- └─ org 维度行（若有）──────────────────→ org 详情页 /o/..
+ └─ Complete ranking 锚点 ─────────────→ 同页完整 flow 榜单
 
 repo 详情页 /:owner/:name
  ├─ 里程碑（每 50k stars）──────────────→ 对应月度页锚点 /rankings/YYYY/MM#..
  ├─ 月度表现表（近 N 月，每行）──────────→ 对应月度页
  ├─ owner 链接 ─────────────────────────→ org 详情页 /o/owner    （repo↔org 互链）
+ ├─ category links ─────────────────────→ 所属 language / topic category
+ ├─ related repositories ───────────────→ 同 owner 或同主语言 repo
  └─ 名次史 ─────────────────────────────→ 对应 period 页
 
 org 详情页 /o/login
@@ -771,6 +772,7 @@ org 索引 /o 与 /o/page/N
 分类详情 /categories/dimension/slug
  ├─ 每行 repo ──────────────────────────→ repo 详情页
  ├─ prev/next + 页码 ───────────────────→ 分类深分页
+ ├─ Browse all 锚点 ────────────────────→ 同页 pagination
  └─ related categories ────────────────→ 同维度其他分类
 ```
 
@@ -783,13 +785,16 @@ org 索引 /o 与 /o/page/N
 | 榜单行 → 实体（repo/org） | 长尾详情页被发现 + 触发 ISR；**这是 repo/org 页的主发现路径** |
 | 里程碑 / 月度表 → 月度页 | repo 页反哺月页、形成网状回环 |
 | repo ↔ org 互链（owner 字段） | org 页被 repo 页发现，反之亦然 |
+| repo → category / related repositories | repo 长尾反哺主题页与同类 repo，减少单纯 sitemap 发现 |
 | `/o` 分页索引 → org | 所有 owner 至少有一条可爬站内入链，降低 sitemap-only 孤岛 |
 | 分类详情分页 → repo | category 第 101+ 成员获得主题枢纽页入链，page 1 canonical 不被破坏 |
+| rankings 完整榜单锚点 | 年/月/周 detail 页顶部切片之外的 rank 行也可被同页发现 |
+| Footer → `/categories` / `/o` | 全站每页提供分类与 owner 目录入口 |
 | prev/next（上下月、上下年） | 时间轴横向连通、降低孤岛 |
 | 面包屑（§6.7） | 每页向上回链，纵向连通 |
 
-- **深度核对**：首页→年（1）→月（2）→repo（3）= 3 跳；首页→全时榜（1）→repo（2）；首页→热门 repo（1）→owner org（2）；首页→`/o`（1）→任意 org（2+分页）；首页→`/categories`（1）→分类（2）→分类分页 repo（3+分页）。核心长尾入口达成。
-- **孤岛风险**：早已沉寂、从未进入任何近期榜单的 repo/org —— 靠 ①sitemap 枚举（必达）②历史月页榜单行 ③`/o` owner 索引 ④category 详情分页四层兜底。
+- **深度核对**：首页→年（1）→月（2）→repo（3）= 3 跳；首页→全时榜（1）→repo（2）；首页→热门 repo（1）→owner org（2）；任意页→Footer `/o`（1）→任意 org（2+分页）；任意页→Footer `/categories`（1）→分类（2）→分类分页 repo（3+分页）。核心长尾入口达成。
+- **孤岛风险**：早已沉寂、从未进入任何近期榜单的 repo/org —— 靠 ①sitemap 枚举（必达）②历史 rank 完整榜单 ③`/o` owner 索引 ④category 详情分页 ⑤repo related hub 五层兜底。
 
 ---
 
@@ -910,7 +915,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 | **ISR 冷启动考量** | GSC 抓取首个 URL 会触发该页 ISR 生成（首抓 TTFB 略高、属正常）；**关注首抓后是否 200 + 内容完整**，而非冷启动延迟本身 | 抽查 |
 | ~~hreflang 报告~~ | 不适用：语言中立单一 URL、不发 hreflang（见 §10）；无 International Targeting 需监控 | — |
 | URL Inspection | 抽查 repo / org / 历史月页：实时抓取看渲染后 HTML 是否含正文 + JSON-LD（验证 §3a 可索引性） | 抽查 |
-| 富结果监控 | Rich Results：Breadcrumb 是否有效（**本站不输出 Dataset / ItemList**，见 §6）；用 [Rich Results Test](https://search.google.com/test/rich-results) 验 JSON-LD | 上线 + 变更 schema 时 |
+| 富结果监控 | Rich Results：Breadcrumb 与列表页 `ItemList` 是否有效（**本站不输出 Dataset**，见 §6）；用 [Rich Results Test](https://search.google.com/test/rich-results) 验 JSON-LD | 上线 + 变更 schema 时 |
 | 移除过时网址 | 若预览曾误被收录：Removals 工具临时移除 + 修 noindex | 仅事故时 |
 | Core Web Vitals 报告 | GSC CWV 报告 + Vercel Speed Insights 双看（见 §12） | 每月 |
 
@@ -924,7 +929,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 **收录基础设施**
 
 - [ ] **当前**：`app/sitemap.ts` 为单一扁平 `export default`，列出首页 / `/pulse` / `/rankings` / `/compare` / `/categories` / `/about` + 全部年月 + 有效 ISO 周页 + 全部 repo + `/o` owner 索引分页 + 全部 org + 公开 category 路径与分页；`/sitemap.xml` 可访问（§4.1）
-- [ ] **当前已知偏离**：全站共用 `backfilled_at/generated_at/fallback` 作 `lastModified`——URL 规模 ~10k 下可容忍，分片实施时按 §4.4 收紧到实体级日期
+- [ ] sitemap `lastModified` 按 URL 类型从真实数据日期派生：rank 历史页用期末日封顶、category 用 registry `generated_at`、repo/org/core 用发布 meta；不使用 `new Date()` 抖动
 - [ ] **未来分片切换条件**：URL 规模逼近 50k 或 GSC 出现抓取预算浪费 → 切到 `generateSitemaps()` + 每片各自 `lastModified`（§4.3 / §4.4）
 - [ ] sitemap 每个 `<url>` 仅一条语言中立 `<loc>`，**无语言 alternate**（不含 `alternates.languages` / `hreflang` / `x-default`，见 §10）
 - [ ] `app/robots.ts`：`SITE_INDEXABLE=1` 时输出 `Allow: /` + `Disallow: /api/` + Sitemap + Host；**未设置时全站 `Disallow: /`**（§5 / §11）
@@ -949,9 +954,9 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 **结构化数据（§6）**
 
 - [ ] 首页 `WebSite`（**仅首页，不在根 layout**；含 `name`/`url`/`inLanguage`/`description`；不含 `SearchAction`、**不含 `Dataset`**，见 §6.1 / §6.2）
-- [ ] repo 页 `SoftwareSourceCode` + `interactionStatistic`（`InteractionCounter` / star 数），**不含 `Dataset` / `temporalCoverage`**；org 页 `Organization`/`Person`（**不含 `ItemList`**）
-- [ ] 月/年页与全时榜均为单个 `CollectionPage`（`name`/`url`/`inLanguage`），**不含 `ItemList`，不含 `datePublished`/`dateModified`/`isPartOf`**
-- [ ] **每页 `BreadcrumbList` 由 `Breadcrumbs.tsx` 单独输出**（不在 `jsonld.ts` 4 个 builder 内）；全部通过 Google Rich Results 测试
+- [ ] repo 页 `SoftwareSourceCode` + `interactionStatistic`（`InteractionCounter` / star 数），**不含 `Dataset` / `temporalCoverage`**；org 详情页 `Organization`/`Person`
+- [ ] 月/年/周页、全时榜、category 列表页、org 索引页均有 `CollectionPage`；列表页另输出同源 `ItemList`，但 `CollectionPage` 不含 `datePublished`/`dateModified`/`isPartOf`
+- [ ] **每页 `BreadcrumbList` 由 `Breadcrumbs.tsx` 单独输出**（不在 `jsonld.ts` 5 个 builder 内）；全部通过 Google Rich Results 测试
 
 **去重与分页（§7 / §8）**
 
@@ -960,8 +965,8 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **内链（§9）**
 
-- [ ] 年份脊柱 / 月份格子 / 榜单行→实体 / repo↔org 互链 / prev-next / 面包屑 全部实现
-- [ ] 全站任意页 ≤ 3 跳可达；沉寂 repo 有 sitemap + 历史月页双兜底
+- [ ] 年份脊柱 / 月份格子 / 榜单行→实体 / repo↔org 互链 / repo→category/related / rankings 完整榜单锚点 / category 分页 / footer 目录入口 / 面包屑 全部实现
+- [ ] 全站任意页 ≤ 3 跳可达；沉寂 repo 有 sitemap + 历史 rank 完整榜单 + category 深分页兜底
 
 **OG / 社交（§13）**
 

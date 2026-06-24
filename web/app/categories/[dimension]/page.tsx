@@ -7,7 +7,7 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CATEGORY_DIMENSIONS } from "@/lib/categories/rules";
 import { getCategoryRegistry } from "@/lib/data";
-import { collectionLd } from "@/lib/jsonld";
+import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
@@ -49,6 +49,14 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
     <>
       <Chrome />
       <JsonLd data={collectionLd(`${entry.label} categories`, categoryPath(dimension), LOC)} />
+      <JsonLd
+        data={itemListLd(
+          `${entry.label} categories`,
+          categoryPath(dimension),
+          LOC,
+          categories.map((category) => ({ name: category.label, path: categoryPath(category.dimension, category.slug) })),
+        )}
+      />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { path: "nav.categories", href: "/categories" }, { label: entry.label }]} />
 
