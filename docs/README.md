@@ -21,7 +21,7 @@ This page is the navigation index for `docs/`. For a project overview, start at 
 13. [OPS.md](./OPS.md) — runbooks: deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
 14. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
-Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout.
+Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [perf/CWV-25.md](./perf/CWV-25.md) for the pre-launch Lighthouse / Core Web Vitals baseline.
 
 Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural decisions: [ROADMAP.md](./ROADMAP.md).
 
