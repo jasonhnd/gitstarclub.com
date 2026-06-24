@@ -136,14 +136,14 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
         )}
 
         <div className="mt-[clamp(2.5rem,5vw,3.5rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
-          <section>
+          <section className="min-w-0">
             <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">
               <T path="month.most" />
             </h2>
             <RankingList rows={most} variant="gained" locale={loc} />
           </section>
           {fastest.length > 0 && (
-            <section>
+            <section className="min-w-0">
               <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">
                 <T path="month.fastest" />
               </h2>
@@ -151,7 +151,7 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
             </section>
           )}
           {newcomers.length > 0 && (
-            <section>
+            <section className="min-w-0">
               <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">
                 <T path="month.newcomers" />
               </h2>
@@ -187,7 +187,7 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
           ]}
         />
         <PeriodHeader eyebrow={<T path="week.label" />} title={period} subtitle={<T path="week.top" />} backHref={`/rankings/${year}`} backLabel={String(year)} shareText={`${period} — GitHub star rankings`} />
-        <section className="mt-[clamp(2rem,4vw,3rem)]">
+        <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
           <RankingList rows={rows} variant="gained" locale={loc} />
         </section>
       </main>

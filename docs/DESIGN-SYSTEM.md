@@ -235,7 +235,7 @@ The top bar baseline from commit `689605c` is:
 | Component | `web/app/_explore/Chrome.tsx` |
 | Client boundary | Server-rendered chrome shell; `SearchBox`, `LanguageSwitcher`, and `ThemeToggle` are client islands |
 | Header position | `sticky top-0 z-20` |
-| Layout | `flex items-center justify-between gap-4` |
+| Layout | Mobile may wrap into two rows for touch targets; `sm+` keeps `flex items-center justify-between gap-4` |
 | Border | `border-b border-outline-variant` |
 | Background | `bg-surface/70` |
 | Backdrop | `backdrop-blur-lg backdrop-saturate-150` |
@@ -245,11 +245,13 @@ The top bar baseline from commit `689605c` is:
 | Logo | `inline-flex items-center gap-2 text-[1.15rem] font-extrabold text-on-surface` |
 | Star mark | `star glyph`, `text-[1.05em] text-primary-fixed-dim`, `aria-hidden="true"` |
 | Tag | `rounded-full bg-primary-container px-2 py-0.5 font-mono text-[0.7rem] font-semibold text-on-primary-container` |
-| Nav layout | `flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2 sm:gap-x-4` |
+| Nav layout | Mobile uses a four-column grid for SearchBox / language / theme / menu; `sm+` returns to `w-auto gap-x-4 gap-y-2` |
 | Nav label | `aria-label="Primary"` |
 | Nav links | `font-mono text-[0.8rem] text-on-surface-variant transition-colors hover:text-on-surface` |
-| Responsive hiding | `categories` hidden until `md`; `compare` and `about` hidden until `sm` |
+| Mobile disclosure | `<details>/<summary>` only below `sm`, pure HTML/CSS, `size-11` trigger, contains Pulse / Rankings / Categories / Compare / About |
+| Responsive hiding | Inline links keep the baseline breakpoints: `pulse` and `rankings` shown from `sm`; `categories` from `md`; `compare` and `about` from `sm` |
 | Controls | `SearchBox`, `LanguageSwitcher`, and `ThemeToggle` remain in the chrome |
+| Mobile controls | `SearchBox` narrows below `sm`; `LanguageSwitcher` uses a 44px locale-code trigger below `sm` and full language label from `sm` |
 
 Changing the top bar background, blur, border, spacing, text sizes, responsive
 visibility, controls, or logo treatment is a visual change.
