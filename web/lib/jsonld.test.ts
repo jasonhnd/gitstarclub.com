@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { repoLd } from "./jsonld";
+import { itemListLd, repoLd } from "./jsonld";
 import { stringifyJsonForScript } from "./json-script";
 
 describe("repoLd", () => {
@@ -26,6 +26,28 @@ describe("repoLd", () => {
       "@type": "SoftwareSourceCode",
       name: "owner/tool",
       description: 'x</script><img src=x onerror="alert(1)">',
+    });
+  });
+});
+
+describe("itemListLd", () => {
+  test("emits stable ItemList positions and absolute item URLs", () => {
+    const data = itemListLd("Top repos", "/rankings", "en", [{ name: "vuejs/vue", path: "/vuejs/vue" }], 11);
+
+    expect(data).toMatchObject({
+      "@type": "ItemList",
+      name: "Top repos",
+      numberOfItems: 1,
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 11,
+          item: {
+            name: "vuejs/vue",
+            url: "https://gitstarclub.com/vuejs/vue",
+          },
+        },
+      ],
     });
   });
 });

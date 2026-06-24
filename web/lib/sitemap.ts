@@ -2,7 +2,10 @@ import { FIRST_YEAR, isoWeek } from "./periods";
 import { CATEGORY_DETAIL_PAGE_SIZE, ORG_INDEX_PAGE_SIZE, pageCount } from "./pagination";
 
 type RepoLike = { full_name: string };
-type CategoriesLike = { dimensions: Array<{ id: string; categories: Array<{ slug: string; count: number; sitemap?: boolean }> }> };
+type CategoriesLike = {
+  generated_at?: string;
+  dimensions: Array<{ id: string; categories: Array<{ slug: string; count: number; sitemap?: boolean }> }>;
+};
 type SitemapMeta = { backfilled_at?: string; generated_at?: string };
 type SitemapFrequency = "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
 
@@ -16,6 +19,24 @@ export function resolveSitemapLastModified(meta?: SitemapMeta | null): Date {
   }
 
   return new Date(SITEMAP_FALLBACK_LAST_MODIFIED);
+}
+
+export function sitemapLastModified(
+  path: string,
+  opts: {
+    meta?: SitemapMeta | null;
+    categories?: CategoriesLike | null;
+  } = {},
+): Date {
+  const dataDate = resolveSitemapLastModified(opts.meta);
+  const rankingDate = rankingPathLastModified(path, dataDate);
+  if (rankingDate) return rankingDate;
+
+  if (path === "/categories" || path.startsWith("/categories/")) {
+    return validDate(opts.categories?.generated_at) ?? dataDate;
+  }
+
+  return dataDate;
 }
 
 export function weeksInIsoYear(year: number): number {
@@ -83,4 +104,42 @@ export function sitemapPriority(path: string): number {
   if (path.startsWith("/o/")) return 0.5;
   if (path === "/compare" || path === "/about") return 0.4;
   return 0.5;
+}
+
+function rankingPathLastModified(path: string, dataDate: Date): Date | null {
+  const year = /^\/rankings\/(\d{4})$/.exec(path);
+  if (year) return minDate(endOfYearUtc(Number(year[1])), dataDate);
+
+  const month = /^\/rankings\/(\d{4})\/(\d{1,2})$/.exec(path);
+  if (month) return minDate(endOfMonthUtc(Number(month[1]), Number(month[2])), dataDate);
+
+  const week = /^\/rankings\/(\d{4})\/W(\d{2})$/.exec(path);
+  if (week) return minDate(endOfIsoWeekUtc(Number(week[1]), Number(week[2])), dataDate);
+
+  return null;
+}
+
+function validDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function minDate(a: Date, b: Date): Date {
+  return a.getTime() <= b.getTime() ? a : b;
+}
+
+function endOfMonthUtc(year: number, month: number): Date {
+  return new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+}
+
+function endOfYearUtc(year: number): Date {
+  return new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
+}
+
+function endOfIsoWeekUtc(year: number, week: number): Date {
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const weekOneMonday = Date.UTC(year, 0, 4 - jan4Day + 1);
+  return new Date(weekOneMonday + ((week - 1) * 7 + 6) * 24 * 60 * 60 * 1000 + (24 * 60 * 60 * 1000 - 1));
 }

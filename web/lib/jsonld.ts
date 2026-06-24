@@ -67,3 +67,29 @@ export function collectionLd(name: string, path: string, locale: string) {
     inLanguage: locale,
   };
 }
+
+export function itemListLd(
+  name: string,
+  path: string,
+  locale: string,
+  items: Array<{ name: string; path: string }>,
+  startPosition = 1,
+) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name,
+    url: abs(path),
+    inLanguage: locale,
+    numberOfItems: items.length,
+    itemListElement: items.map((item, index) => ({
+      "@type": "ListItem",
+      position: startPosition + index,
+      item: {
+        "@type": "Thing",
+        name: item.name,
+        url: abs(item.path),
+      },
+    })),
+  };
+}

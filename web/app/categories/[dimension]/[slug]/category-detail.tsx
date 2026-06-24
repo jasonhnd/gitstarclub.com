@@ -8,7 +8,7 @@ import { PaginationNav } from "@/app/_explore/PaginationNav";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getCategoryAllTime, getCategoryAssignments, getCategoryRegistry, getReposLookupDaily, joinRepoRank } from "@/lib/data";
-import { collectionLd } from "@/lib/jsonld";
+import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { CATEGORY_DETAIL_PAGE_SIZE, pageCount, parsePositivePage, slicePage } from "@/lib/pagination";
 import { pageMeta } from "@/lib/seo";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
@@ -74,6 +74,15 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
     <>
       <Chrome />
       <JsonLd data={collectionLd(`${category.label} repositories`, categoryDetailPagePath(dimension, slug, page), LOC)} />
+      <JsonLd
+        data={itemListLd(
+          `${category.label} repositories`,
+          categoryDetailPagePath(dimension, slug, page),
+          LOC,
+          pageRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
+          startRank,
+        )}
+      />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
           items={[
@@ -102,6 +111,11 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
               )}
             </p>
             <LinkBack href={categoryPath(dimension)} label={dimensionEntry?.label ?? null} />
+            {totalPages > 1 && (
+              <a href="#category-pages" className="text-readable-gold mt-3 block font-mono text-[0.78rem] hover:underline">
+                Browse all {rows.length.toLocaleString("en-US")} repositories
+              </a>
+            )}
           </aside>
 
           <div className="min-w-0">
@@ -116,12 +130,14 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
             {pageRows.length > 0 ? (
               <>
                 <RankingList rows={pageRows} variant="total" locale={LOC} startRank={startRank} />
-                <PaginationNav
-                  currentPage={page}
-                  pageCount={totalPages}
-                  hrefForPage={(nextPage) => categoryDetailPagePath(dimension, slug, nextPage)}
-                  label={`${category.label} pagination`}
-                />
+                <div id="category-pages" className="scroll-mt-24">
+                  <PaginationNav
+                    currentPage={page}
+                    pageCount={totalPages}
+                    hrefForPage={(nextPage) => categoryDetailPagePath(dimension, slug, nextPage)}
+                    label={`${category.label} pagination`}
+                  />
+                </div>
               </>
             ) : (
               <p className="rounded-lg bg-surface-container px-4 py-3 text-[0.9rem] text-on-surface-variant">
