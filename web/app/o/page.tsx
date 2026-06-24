@@ -6,7 +6,7 @@ import { PaginationNav } from "@/app/_explore/PaginationNav";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getOrgsLookup } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
-import { collectionLd } from "@/lib/jsonld";
+import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { ORG_INDEX_PAGE_SIZE } from "@/lib/pagination";
 import { pageMeta } from "@/lib/seo";
@@ -40,6 +40,15 @@ export async function OrgIndex({ page }: { page: number }) {
     <>
       <Chrome />
       <JsonLd data={collectionLd("GitHub organization index", orgIndexPath(page), LOC)} />
+      <JsonLd
+        data={itemListLd(
+          "GitHub organization index",
+          orgIndexPath(page),
+          LOC,
+          pageRows.map((org) => ({ name: org.login, path: `/o/${org.login}` })),
+          first || 1,
+        )}
+      />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <section>
           <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">Organizations</p>

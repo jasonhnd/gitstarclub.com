@@ -10,7 +10,7 @@ import { ShareButton } from "@/app/_explore/ShareButton";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars, monthLabel } from "@/lib/format";
-import { collectionLd } from "@/lib/jsonld";
+import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { T } from "@/lib/i18n/client";
@@ -51,9 +51,8 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
   ]);
   if (!rank || !lookup) notFound();
 
-  const tops: Row[] = joinRepoRank(rank.items, lookup)
-    .slice(0, 24)
-    .map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const rankRows: Row[] = joinRepoRank(rank.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const tops = rankRows.slice(0, 24);
   const months = (heat?.cells ?? []).map(([period, total]) => {
     const month = Number(String(period).slice(5, 7));
     return { month, label: monthLabel(loc, month, "short"), gained: total };
@@ -65,6 +64,14 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
     <>
       <Chrome />
       <JsonLd data={collectionLd(`${en.rankings.title} ${year}`, `/rankings/${year}`, loc)} />
+      <JsonLd
+        data={itemListLd(
+          `${year} GitHub repository rankings`,
+          `/rankings/${year}`,
+          loc,
+          rankRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
+        )}
+      />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { path: "nav.rankings", href: "/rankings" }, { label: String(year) }]} />
 
@@ -80,6 +87,11 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
             <Link href="/rankings" className="text-readable-gold mt-5 inline-block font-mono text-[0.78rem] hover:underline">
               <T path="nav.rankings" />
             </Link>
+            {rankRows.length > tops.length && (
+              <Link href="#complete-ranking" className="text-readable-gold mt-3 block font-mono text-[0.78rem] hover:underline">
+                Complete ranking
+              </Link>
+            )}
             <div className="mt-6">
               <ShareButton text={`${year} — GitHub star rankings`} />
             </div>
@@ -108,6 +120,12 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
               <T path="year.top" /> {year}
             </h2>
             <RankingList rows={tops} locale={loc} />
+            {rankRows.length > tops.length && (
+              <section id="complete-ranking" className="mt-[clamp(2rem,4vw,3rem)] scroll-mt-24">
+                <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">Complete ranking</h2>
+                <RankingList rows={rankRows} locale={loc} />
+              </section>
+            )}
           </div>
         </section>
       </main>

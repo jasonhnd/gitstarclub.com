@@ -23,6 +23,12 @@ export function Footer({ asOf }: { asOf?: string | null }) {
           <Link href="/rankings" className="transition-colors hover:text-on-surface">
             {t.nav.rankings}
           </Link>
+          <Link href="/categories" className="transition-colors hover:text-on-surface">
+            {t.nav.categories}
+          </Link>
+          <Link href="/o" className="transition-colors hover:text-on-surface">
+            Organizations
+          </Link>
           <Link href="/about" className="transition-colors hover:text-on-surface">
             {t.nav.about}
           </Link>
