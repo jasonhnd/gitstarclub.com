@@ -108,6 +108,7 @@ The gaps are equally clear:
 
 Implementation rule for every page type:
 
+- The concrete numbers in the example capsules below are format examples, not durable assertions of the current production value; implementation must generate them deterministically from the current Blob JSON fields.
 - The capsule must be normal server-rendered HTML, near the top of the content.
 - The capsule should be 40-60 English words by default because canonical pages are English-first. UI translations can mirror it, but data fields stay language-neutral.
 - It must include a real date, at least one distinctive GitStarClub-only statistic, and attribution: `— GitStarClub`.
@@ -118,7 +119,7 @@ Implementation rule for every page type:
 
 Relevant fields:
 
-- `entity/repo/{id}.json`: `full_name`, `description`, `current_stars`, `created_at`, `language`, `languages`, `topics`, `milestones.crossed_10k/50k/100k`, `curve.monthly`, `monthly_table`, `rank_history`, `inflections`, `recent_daily`.
+- `entity/repo/{id}.json`: `full_name`, `description`, `current_stars`, `created_at`, `language`, `languages`, `topics`, `milestones.crossed_10k/50k/100k`, `curve.monthly`, `curve.recent_daily`, `monthly_table`, `rank_history`, `inflections`.
 - `lookup/repos.json`: deterministic lookup for related repo links.
 - `rank/*`: linked from milestone chips and recent monthly rows.
 
@@ -184,7 +185,7 @@ Implementation notes:
 Relevant fields:
 
 - `rank/{week|month|year|all-time}/{period}/{repo|org}/{flow|stock}.json`
-- `heatmap/{scope}/{period}.json`
+- `heatmap/{year|month}/{period}.json`
 - `lookup/repos.json`, `lookup/orgs.json`
 - deterministic narrative for month pages.
 
@@ -291,13 +292,13 @@ Relevant fields:
 
 Answer capsule example:
 
-> As of 2026-06-24, GitStarClub's compare surface can explain whether react/react or vuejs/core grew faster after 10k stars by aligning each repository's monthly `total_end` series to its `crossed_10k` date, while preserving absolute current-star totals for context. — GitStarClub
+> As of 2026-06-24, GitStarClub's compare surface can explain whether react/react or vuejs/vue grew faster after 10k stars by aligning each repository's monthly `total_end` series to its `crossed_10k` date, while preserving absolute current-star totals for context. — GitStarClub
 
 FAQ candidates:
 
 - How can I compare two GitHub repositories by star history?
 - What does "align to 10k stars" mean?
-- Which grew faster after 10k stars: react/react or vuejs/core?
+- Which grew faster after 10k stars: react/react or vuejs/vue?
 - Can a compare URL be cited by an AI answer engine?
 - Why does compare use a client island while content pages stay server-rendered?
 
@@ -333,6 +334,8 @@ GEO should add the following shapes in later implementation PRs.
 
 Use on the home page and optionally on major ranking/category pages. GitStarClub is fundamentally a derived, transformed dataset of GitHub star history; Dataset is the missing schema type.
 
+The `variableMeasured.name` values below are descriptive schema labels, not a byte-for-byte JSON contract. Where a label maps to a production field, it uses or names the real field path (`current_stars`, `current_stars_sum`, rank item `value`, `curve.monthly` `total_end`, `milestones.crossed_*`).
+
 ```json
 {
   "@context": "https://schema.org",
@@ -351,13 +354,12 @@ Use on the home page and optionally on major ranking/category pages. GitStarClub
   "dateModified": "2026-06-24T00:00:00Z",
   "variableMeasured": [
     { "@type": "PropertyValue", "name": "current_stars" },
-    { "@type": "PropertyValue", "name": "star_growth_flow" },
-    { "@type": "PropertyValue", "name": "stock_est" },
-    { "@type": "PropertyValue", "name": "crossed_10k" },
-    { "@type": "PropertyValue", "name": "crossed_50k" },
-    { "@type": "PropertyValue", "name": "crossed_100k" },
-    { "@type": "PropertyValue", "name": "org_current_stars_sum" },
-    { "@type": "PropertyValue", "name": "seam_date" }
+    { "@type": "PropertyValue", "name": "current_stars_sum" },
+    { "@type": "PropertyValue", "name": "rank item value (flow stars added)" },
+    { "@type": "PropertyValue", "name": "curve.monthly total_end" },
+    { "@type": "PropertyValue", "name": "milestones.crossed_10k" },
+    { "@type": "PropertyValue", "name": "milestones.crossed_50k" },
+    { "@type": "PropertyValue", "name": "milestones.crossed_100k" }
   ],
   "measurementTechnique": "GitHub public API current totals plus GH Archive WatchEvent history, reconciled through deterministic seam-aware anchoring."
 }
@@ -738,7 +740,7 @@ Each item is intentionally issue-sized and should be implemented in a separate P
 
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
-| `[geo] Add public dataset methodology page` | Create a server-rendered page explaining data sources, fields, seam, cadence, license, and sample queries. | Page links DATA-CONTRACTS/RANKING concepts in user-facing language, emits Dataset schema, and is linked from footer/about. |
+| `[geo] Enhance existing /about methodology page for GEO` | Extend the existing `/about` page with Dataset schema, user-facing field definitions, license, cadence, seam explanation, and sample queries. | Existing about page links DATA-CONTRACTS/RANKING concepts in user-facing language, emits Dataset schema, keeps footer access through the existing About link, and adds no new route. |
 | `[geo] Publish small deterministic data exports` | Generate top rankings, milestone, and org aggregate CSV/JSON extracts from existing views. | Exports are versioned, documented, downloadable without runtime engines, and have stable license/attribution copy. |
 | `[geo] Add GitStarClub Organization identity schema` | Add site-level Organization schema with approved sameAs entries. | sameAs entries are reviewed, stable, and documented; no scraped external links. |
 | `[geo] Add shareable static data snippets` | Add copy/link/embed affordances for weekly movers, milestones, and org totals. | Server-rendered snippets preserve visual baseline, include canonical links, and require visual signoff if UI changes. |
