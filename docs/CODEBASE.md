@@ -147,7 +147,8 @@ Rules:
 ## Frontend Components
 
 Shared UI is in `web/app/_explore/`. These are mostly server components and
-should stay zero-client-JS unless a workflow requires client interactivity.
+should stay near-zero-client-JS unless a workflow requires client interactivity.
+The explicit global client islands are `RegisterSW` and Vercel Web Analytics.
 
 Common components:
 
