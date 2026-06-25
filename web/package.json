@@ -17,6 +17,7 @@
     "test:cov": "bun test lib/ --coverage"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.4.0",
     "minisearch": "^7.2.0",
     "next": "16.2.6",

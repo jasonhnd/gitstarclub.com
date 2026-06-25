@@ -8,6 +8,10 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ## Unreleased
 
+### Added
+
+- **Vercel Web Analytics.** Enabled cookieless aggregate page-view measurement through Vercel Web Analytics and corrected the privacy page copy to reflect that no analytics cookies or personal data are collected.
+
 ### Changed
 
 - **Repo-page star milestones use frozen exact crossings.** The per-repo milestone list and curve markers now read `entity/repo.milestones.crossed_10k/50k/100k`; higher thresholds are hidden until a frozen first-crossing field exists, so estimated curve-derived dates are not presented as exact newcomer evidence.

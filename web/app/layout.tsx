@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { RegisterSW } from "./_explore/RegisterSW";
 import { Footer } from "./_explore/Footer";
@@ -71,6 +72,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <Footer />
         </div>
         <RegisterSW />
+        <Analytics />
       </body>
     </html>
   );
