@@ -2,7 +2,7 @@
 
 ## Scope
 
-本文定义每个页面类型的 SEO 规则（`title` / `description` / `canonical` / `robots`）、sitemap 分片结构、按需 ISR 在 SEO 语境下的语义，以及内链策略。
+本文定义每个页面类型的 SEO 规则（`title` / `description` / `canonical` / `robots`）、sitemap 分片结构、按需 ISR 在 SEO 语境下的语义，以及内链策略。生成式答案引擎引用策略、答案胶囊、FAQ / Dataset schema、AI crawler hygiene、IndexNow 与 GEO 度量见 [GEO.md](./GEO.md)。
 
 > SSG 的核心价值是**可被搜索引擎收录、可分享**。目标流量（百万–千万/天）主要来自搜索引擎长尾
 > （如 `langchain star history`、`github trending 2024`、`vercel github stars`、`anthropic org star ranking`）。
@@ -10,6 +10,7 @@
 >
 > 关联文档：渲染 / 页面分层 / ISR 见 [ARCHITECTURE.md](./ARCHITECTURE.md)；页面 / URL / i18n / 调性 / 配色见 [PRODUCT.md](./PRODUCT.md)；
 > 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.2.6**（App Router + Metadata API）。
+> AI answer-engine citation strategy is owned by [GEO.md](./GEO.md); this document stays focused on classic search crawl, canonical, metadata, sitemap, and internal-link mechanics.
 >
 > i18n 口径：canonical URL 语言中立。无 `gsc_lang` cookie 时默认 SEO / 用户语言为英文；ja、zh、zh-TW、ko、es、fr 是页内 UI 偏好，通过下拉切换。这些语言变体不创建独立 URL，也不产生 `hreflang` 互指。
 
