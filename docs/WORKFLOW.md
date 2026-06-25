@@ -61,8 +61,8 @@ Reviewers check:
 - The PR matches the issue acceptance criteria.
 - The PR cites the owning document and updates it when behavior, contracts,
   routes, operations, copy, or visual rules changed.
-- The hard constraints still hold: zero runtime engine/database, zero client JS
-  on content pages, AI-free deterministic behavior, and Vercel-first operations.
+- The hard constraints still hold: zero runtime engine/database, near-zero client JS
+  on content pages with explicit global islands, AI-free deterministic behavior, and Vercel-first operations.
 - Validation is green for the required commands.
 - The PR avoids unrelated code, docs, formatting, generated files, and broad
   rewrites.
