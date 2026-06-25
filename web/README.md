@@ -32,3 +32,10 @@ vercel deploy . --yes --scope zkscio --project gitstarclub.com
 
 Production and Preview both need `BLOB_BASE_URL`, `BLOB_READ_WRITE_TOKEN`,
 `CRON_SECRET`, and `GITHUB_TOKEN`.
+
+## Analytics
+
+Web traffic is measured with [Vercel Web Analytics](https://vercel.com/docs/analytics)
+via the `@vercel/analytics` package (`<Analytics />` in `app/layout.tsx`). It is
+cookieless and collects no personal data. Collection only starts once **Web Analytics**
+is enabled for the project in the Vercel dashboard.
