@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getOrgEntity, getReposLookup } from "@/lib/data";
+import { getMeta, getOrgEntity, getReposLookup } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { orgLd } from "@/lib/jsonld";
+import { buildOrgCapsule, dataAsOfFromMeta } from "@/lib/geo-capsules";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 
@@ -43,10 +45,11 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
   const { login: raw } = await params;
   const loc = LOC;
   const login = decodeURIComponent(raw);
-  const [org, lookup] = await Promise.all([getOrgEntity(login), getReposLookup()]);
+  const [org, lookup, meta] = await Promise.all([getOrgEntity(login), getReposLookup(), getMeta()]);
   if (!org) notFound();
 
   const series = org.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
+  const capsule = buildOrgCapsule(org, dataAsOfFromMeta(meta, org.curve.recent_daily.at(-1)?.[0], org.curve.monthly.at(-1)?.[0]));
   const members: Row[] = org.members
     .map((id) => {
       const m = lookup?.[String(id)];
@@ -72,6 +75,8 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
             <span>{org.owner_type === "Organization" ? <T path="org.organization" /> : <T path="org.developer" />}</span>
           </div>
         </header>
+
+        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />
 
         {series.length > 1 && (
           <section className="mt-[clamp(2rem,4vw,3rem)]">
