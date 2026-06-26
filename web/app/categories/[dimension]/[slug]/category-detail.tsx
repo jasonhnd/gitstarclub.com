@@ -10,10 +10,10 @@ import { PaginationNav } from "@/app/_explore/PaginationNav";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getCategoryAllTime, getCategoryAssignments, getCategoryRegistry, getMeta, getReposLookupDaily, joinRepoRank } from "@/lib/data";
-import { collectionLd, itemListLd } from "@/lib/jsonld";
+import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { CATEGORY_DETAIL_PAGE_SIZE, pageCount, parsePositivePage, slicePage } from "@/lib/pagination";
 import { pageMeta } from "@/lib/seo";
-import { buildCategoryDetailCapsule, resolveDataAsOfLabel } from "@/lib/geo-capsules";
+import { buildCategoryDetailCapsule, resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { buildCategoryDetailFaqs } from "@/lib/geo-faq";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
@@ -74,17 +74,27 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
   const last = first + pageRows.length - 1;
   const siblingCategories = (dimensionEntry?.categories ?? []).filter((entry) => entry.public && entry.id !== category.id).slice(0, 8);
   const asOf = resolveDataAsOfLabel(rank?.meta.generated_at, registry.generated_at, assignments?.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const pagePath = categoryDetailPagePath(dimension, slug, page);
+  const dateModified = resolveDataAsOfValue(rank?.meta.generated_at, registry.generated_at, assignments?.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const dataset = datasetLd({
+    name: `GitStarClub ${category.label} Repository Dataset`,
+    path: pagePath,
+    locale: LOC,
+    description: `${category.label} repository rankings generated from precomputed Blob category assignment, category rank, and repository lookup JSON.`,
+    dateModified,
+  });
   const capsule = asOf ? buildCategoryDetailCapsule({ category, asOf, rows }) : null;
   const faqItems = buildCategoryDetailFaqs({ category, asOf, rows });
 
   return (
     <>
       <Chrome />
-      <JsonLd data={collectionLd(`${category.label} repositories`, categoryDetailPagePath(dimension, slug, page), LOC)} />
+      <JsonLd data={collectionLd(`${category.label} repositories`, pagePath, LOC, { dateModified, about: datasetRef(pagePath) })} />
+      <JsonLd data={dataset} />
       <JsonLd
         data={itemListLd(
           `${category.label} repositories`,
-          categoryDetailPagePath(dimension, slug, page),
+          pagePath,
           LOC,
           pageRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
           startRank,

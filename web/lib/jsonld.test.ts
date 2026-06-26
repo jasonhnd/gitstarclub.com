@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { faqPageLd, itemListLd, repoLd } from "./jsonld";
+import { collectionLd, datasetLd, datasetRef, faqPageLd, itemListLd, repoLd } from "./jsonld";
 import { stringifyJsonForScript } from "./json-script";
+import { resolveDataAsOfValue } from "./geo-capsules";
 
 describe("repoLd", () => {
   test("can be safely serialized into a JSON-LD script with adversarial text", () => {
@@ -48,6 +49,62 @@ describe("itemListLd", () => {
           },
         },
       ],
+    });
+  });
+});
+
+describe("datasetLd", () => {
+  test("emits reusable Dataset JSON-LD with a real dateModified value", () => {
+    const dateModified = resolveDataAsOfValue("fallback", "2026-06-24T12:00:00Z");
+    const data = datasetLd({
+      name: "GitStarClub June 2026 Rankings Dataset",
+      path: "/rankings/2026/6",
+      locale: "en",
+      description: "Monthly GitHub repository rankings generated from precomputed Blob rank and heatmap JSON.",
+      dateModified,
+      variableMeasured: ["rank item value (flow stars added)", "current_stars"],
+    });
+
+    expect(data).toMatchObject({
+      "@context": "https://schema.org",
+      "@type": "Dataset",
+      "@id": "https://gitstarclub.com/rankings/2026/6#dataset",
+      name: "GitStarClub June 2026 Rankings Dataset",
+      url: "https://gitstarclub.com/rankings/2026/6",
+      inLanguage: "en",
+      isAccessibleForFree: true,
+      license: "https://creativecommons.org/licenses/by/4.0/",
+      dateModified: "2026-06-24T12:00:00Z",
+      creator: {
+        "@type": "Organization",
+        name: "GitStarClub",
+        url: "https://gitstarclub.com",
+      },
+      variableMeasured: [
+        { "@type": "PropertyValue", name: "rank item value (flow stars added)" },
+        { "@type": "PropertyValue", name: "current_stars" },
+      ],
+    });
+  });
+
+  test("serializes dateModified and omits fallback-only dates", () => {
+    const dataset = datasetLd({
+      name: "GitStarClub Categories Dataset",
+      path: "/categories",
+      locale: "en",
+      description: "Category registry and repository assignment data generated from precomputed Blob JSON.",
+      dateModified: resolveDataAsOfValue("fallback"),
+    });
+    const collection = collectionLd("GitHub repository categories", "/categories", "en", {
+      dateModified: resolveDataAsOfValue("fallback", "2026-06-25T00:00:00Z"),
+      about: datasetRef("/categories"),
+    });
+
+    expect(dataset).not.toHaveProperty("dateModified");
+    expect(JSON.parse(stringifyJsonForScript(collection))).toMatchObject({
+      "@type": "CollectionPage",
+      dateModified: "2026-06-25T00:00:00Z",
+      about: { "@id": "https://gitstarclub.com/categories#dataset" },
     });
   });
 });

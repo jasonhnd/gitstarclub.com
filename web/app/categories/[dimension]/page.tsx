@@ -9,9 +9,9 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CATEGORY_DIMENSIONS } from "@/lib/categories/rules";
 import { getCategoryRegistry, getMeta } from "@/lib/data";
-import { collectionLd, itemListLd } from "@/lib/jsonld";
+import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
-import { buildCategoryDimensionCapsule, resolveDataAsOfLabel } from "@/lib/geo-capsules";
+import { buildCategoryDimensionCapsule, resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { buildCategoryDimensionFaqs } from "@/lib/geo-faq";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
@@ -50,17 +50,27 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
 
   const categories = entry.categories.filter((category) => category.public);
   const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const pagePath = categoryPath(dimension);
+  const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const dataset = datasetLd({
+    name: `GitStarClub ${entry.label} Category Dataset`,
+    path: pagePath,
+    locale: LOC,
+    description: `${entry.label} category definitions, counts, and crawlable category links generated from precomputed Blob category registry JSON.`,
+    dateModified,
+  });
   const capsule = asOf ? buildCategoryDimensionCapsule(entry, asOf) : null;
   const faqItems = buildCategoryDimensionFaqs(entry, asOf);
 
   return (
     <>
       <Chrome />
-      <JsonLd data={collectionLd(`${entry.label} categories`, categoryPath(dimension), LOC)} />
+      <JsonLd data={collectionLd(`${entry.label} categories`, pagePath, LOC, { dateModified, about: datasetRef(pagePath) })} />
+      <JsonLd data={dataset} />
       <JsonLd
         data={itemListLd(
           `${entry.label} categories`,
-          categoryPath(dimension),
+          pagePath,
           LOC,
           categories.map((category) => ({ name: category.label, path: categoryPath(category.dimension, category.slug) })),
         )}

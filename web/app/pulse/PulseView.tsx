@@ -10,8 +10,8 @@ import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import en from "@/lib/i18n/dictionaries/en";
 import { getHotSnapshot, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
-import { webSiteLd, collectionLd } from "@/lib/jsonld";
-import { buildPulseCapsule, resolveDataAsOfLabel } from "@/lib/geo-capsules";
+import { webSiteLd, collectionLd, datasetLd, datasetRef } from "@/lib/jsonld";
+import { buildPulseCapsule, resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { buildPulseFaqs } from "@/lib/geo-faq";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
 
@@ -46,6 +46,15 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
   const yearRows = snap && lookup ? toRows(joinRepoRank(snap.current_year.flow.slice(0, 8), lookup)) : [];
   const giants = snap && lookup ? toRows(joinRepoRank(snap.all_time.repo.slice(0, 6), lookup), "total") : [];
   const asOf = resolveDataAsOfLabel(snap?.generated_at, activeWeek.rank?.meta.generated_at);
+  const pagePath = includeWebsiteLd ? "/" : "/pulse";
+  const dateModified = resolveDataAsOfValue(snap?.generated_at, activeWeek.rank?.meta.generated_at);
+  const dataset = datasetLd({
+    name: "GitStarClub Pulse Dataset",
+    path: pagePath,
+    locale: LOC,
+    description: "Current GitHub star momentum, weekly movers, month-to-date movers, and all-time leaders generated from precomputed hot snapshot and rank JSON.",
+    dateModified,
+  });
   const capsule = asOf ? buildPulseCapsule({ asOf, weekRows, monthRows }) : null;
   const faqItems = buildPulseFaqs({ asOf, weekRows, monthRows, activeWeek: activeWeek.period, activeMonth: periods.monthPeriod });
   const onThisDay = (snap?.home.on_this_day ?? []).flatMap((e) => {
@@ -56,8 +65,9 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
   return (
     <>
       <Chrome />
-      {includeWebsiteLd && <JsonLd data={webSiteLd(LOC, "/")} />}
-      <JsonLd data={collectionLd(en.pulse.title, "/pulse", LOC)} />
+      {includeWebsiteLd && <JsonLd data={webSiteLd(LOC, "/", { dateModified, about: datasetRef(pagePath) })} />}
+      <JsonLd data={collectionLd(en.pulse.title, pagePath, LOC, { dateModified, about: datasetRef(pagePath) })} />
+      <JsonLd data={dataset} />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
         <section className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
           <div>
