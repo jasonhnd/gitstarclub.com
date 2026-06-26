@@ -5,6 +5,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
+import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import { ShareButton } from "@/app/_explore/ShareButton";
@@ -17,6 +18,7 @@ import { repoLd } from "@/lib/jsonld";
 import { exactRepoMilestones } from "@/lib/repo-milestones";
 import { resolveRepoRoute } from "@/lib/repo-route";
 import { buildRepoCapsule, resolveDataAsOfFromMeta } from "@/lib/geo-capsules";
+import { buildRepoFaqs } from "@/lib/geo-faq";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { CATEGORY_DIMENSIONS, categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
@@ -92,6 +94,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   const related = relatedRepositories(repo, lookup);
   const asOf = resolveDataAsOfFromMeta(meta, repo.curve.recent_daily.at(-1)?.[0], repo.curve.monthly.at(-1)?.[0]);
   const capsule = asOf ? buildRepoCapsule(repo, asOf) : null;
+  const faqItems = buildRepoFaqs(repo, asOf);
 
   return (
     <>
@@ -256,6 +259,8 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
             </section>
           )}
         </div>
+
+        <FaqBlock items={faqItems} path={`/${repo.full_name}`} locale={loc} />
       </main>
     </>
   );
