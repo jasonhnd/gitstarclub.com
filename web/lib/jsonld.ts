@@ -4,8 +4,91 @@ import { categoryLanguageNamesFromRepository } from "@/lib/categories/rules";
 
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com").replace(/\/+$/, "");
 const abs = (path: string) => `${SITE}${path}`;
+const SITE_ORG = {
+  "@type": "Organization",
+  name: "GitStarClub",
+  url: SITE,
+} as const;
 
-export function webSiteLd(locale: string, path: string) {
+type DateModifiedOptions = {
+  dateModified?: string | null;
+};
+
+type PageLdOptions = DateModifiedOptions & {
+  about?: object | null;
+};
+
+type DatasetLdOptions = DateModifiedOptions & {
+  name: string;
+  path: string;
+  locale: string;
+  description: string;
+  keywords?: string[];
+  temporalCoverage?: string;
+  variableMeasured?: string[];
+  measurementTechnique?: string;
+};
+
+const DEFAULT_DATASET_VARIABLES = [
+  "current_stars",
+  "current_stars_sum",
+  "rank item value (flow stars added)",
+  "curve.monthly total_end",
+  "milestones.crossed_10k",
+  "milestones.crossed_50k",
+  "milestones.crossed_100k",
+] as const;
+
+const DEFAULT_MEASUREMENT_TECHNIQUE =
+  "GitHub public API current totals plus GH Archive WatchEvent history, reconciled through deterministic seam-aware anchoring.";
+
+function optionalDateModified(dateModified: string | null | undefined) {
+  return dateModified ? { dateModified } : {};
+}
+
+function optionalAbout(about: object | null | undefined) {
+  return about ? { about } : {};
+}
+
+export function datasetRef(path: string) {
+  return { "@id": `${abs(path)}#dataset` };
+}
+
+export function datasetLd({
+  name,
+  path,
+  locale,
+  description,
+  dateModified,
+  keywords,
+  temporalCoverage,
+  variableMeasured = [...DEFAULT_DATASET_VARIABLES],
+  measurementTechnique = DEFAULT_MEASUREMENT_TECHNIQUE,
+}: DatasetLdOptions) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    ...datasetRef(path),
+    name,
+    description,
+    url: abs(path),
+    inLanguage: locale,
+    creator: SITE_ORG,
+    publisher: SITE_ORG,
+    isAccessibleForFree: true,
+    license: "https://creativecommons.org/licenses/by/4.0/",
+    ...optionalDateModified(dateModified),
+    ...(keywords?.length ? { keywords } : {}),
+    ...(temporalCoverage ? { temporalCoverage } : {}),
+    variableMeasured: variableMeasured.map((name) => ({
+      "@type": "PropertyValue",
+      name,
+    })),
+    measurementTechnique,
+  };
+}
+
+export function webSiteLd(locale: string, path: string, options: PageLdOptions = {}) {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
@@ -13,6 +96,8 @@ export function webSiteLd(locale: string, path: string) {
     url: abs(path),
     inLanguage: locale,
     description: "GitHub star history & trends across 5,300+ repositories with ≥10k stars.",
+    ...optionalDateModified(options.dateModified),
+    ...optionalAbout(options.about),
   };
 }
 
@@ -27,6 +112,7 @@ export function repoLd(
   },
   path: string,
   locale: string,
+  options: DateModifiedOptions = {},
 ) {
   const programmingLanguages = categoryLanguageNamesFromRepository(repo).filter((language) => language !== "Unknown");
   return {
@@ -39,6 +125,7 @@ export function repoLd(
     ...(programmingLanguages.length ? { programmingLanguage: programmingLanguages } : {}),
     ...(repo.description ? { description: repo.description } : {}),
     ...(repo.created_at ? { dateCreated: repo.created_at } : {}),
+    ...optionalDateModified(options.dateModified),
     interactionStatistic: {
       "@type": "InteractionCounter",
       interactionType: "https://schema.org/LikeAction",
@@ -47,7 +134,7 @@ export function repoLd(
   };
 }
 
-export function orgLd(org: { login: string; owner_type: string }, path: string, locale: string) {
+export function orgLd(org: { login: string; owner_type: string }, path: string, locale: string, options: DateModifiedOptions = {}) {
   return {
     "@context": "https://schema.org",
     "@type": org.owner_type === "Organization" ? "Organization" : "Person",
@@ -55,16 +142,19 @@ export function orgLd(org: { login: string; owner_type: string }, path: string, 
     url: abs(path),
     sameAs: `https://github.com/${org.login}`,
     inLanguage: locale,
+    ...optionalDateModified(options.dateModified),
   };
 }
 
-export function collectionLd(name: string, path: string, locale: string) {
+export function collectionLd(name: string, path: string, locale: string, options: PageLdOptions = {}) {
   return {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     name,
     url: abs(path),
     inLanguage: locale,
+    ...optionalDateModified(options.dateModified),
+    ...optionalAbout(options.about),
   };
 }
 

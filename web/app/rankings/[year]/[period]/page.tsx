@@ -14,9 +14,9 @@ import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { buildNarrative } from "@/lib/narrative";
 import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
-import { collectionLd, itemListLd } from "@/lib/jsonld";
+import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
-import { buildRankingCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
+import { buildRankingCapsule, dataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "@/lib/i18n";
@@ -96,15 +96,26 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
     newcomerCount: newc?.items.length ?? 0,
     newcomers: newcomers.slice(0, 2).map((r) => `${r.owner}/${r.name}`),
   });
+  const pagePath = `/rankings/${year}/${month}`;
+  const title = monthYearLabel(loc, year, month);
+  const dateModified = resolveDataAsOfValue(flow.meta.generated_at, heat?.meta.generated_at, growth?.meta.generated_at, newc?.meta.generated_at);
+  const dataset = datasetLd({
+    name: `GitStarClub ${title} Rankings Dataset`,
+    path: pagePath,
+    locale: loc,
+    description: `${title} GitHub repository growth rankings, fastest-growth rows, newcomer rows, and daily heatmap totals generated from precomputed Blob JSON.`,
+    dateModified,
+  });
 
   return (
     <>
       <Chrome />
-      <JsonLd data={collectionLd(monthYearLabel(loc, year, month), `/rankings/${year}/${month}`, loc)} />
+      <JsonLd data={collectionLd(title, pagePath, loc, { dateModified, about: datasetRef(pagePath) })} />
+      <JsonLd data={dataset} />
       <JsonLd
         data={itemListLd(
-          `${monthYearLabel(loc, year, month)} GitHub repository rankings`,
-          `/rankings/${year}/${month}`,
+          `${title} GitHub repository rankings`,
+          pagePath,
           loc,
           flowRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
         )}
@@ -202,15 +213,25 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
     metric: "gained",
   });
   const rows = rankRows.slice(0, 32);
+  const pagePath = `/rankings/${year}/W${String(week).padStart(2, "0")}`;
+  const dateModified = resolveDataAsOfValue(flow.meta.generated_at);
+  const dataset = datasetLd({
+    name: `GitStarClub ${period} Rankings Dataset`,
+    path: pagePath,
+    locale: loc,
+    description: `${period} GitHub repository weekly growth rankings generated from precomputed Blob rank JSON.`,
+    dateModified,
+  });
 
   return (
     <>
       <Chrome />
-      <JsonLd data={collectionLd(period, `/rankings/${year}/W${String(week).padStart(2, "0")}`, loc)} />
+      <JsonLd data={collectionLd(period, pagePath, loc, { dateModified, about: datasetRef(pagePath) })} />
+      <JsonLd data={dataset} />
       <JsonLd
         data={itemListLd(
           `${period} GitHub repository rankings`,
-          `/rankings/${year}/W${String(week).padStart(2, "0")}`,
+          pagePath,
           loc,
           rankRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
         )}

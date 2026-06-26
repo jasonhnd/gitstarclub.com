@@ -58,6 +58,13 @@ export function resolveDataAsOfLabel(...candidates: Array<string | null | undefi
   return null;
 }
 
+export function resolveDataAsOfValue(...candidates: Array<string | null | undefined>): string | null {
+  for (const candidate of candidates) {
+    if (candidate && formatDataAsOf(candidate)) return candidate;
+  }
+  return null;
+}
+
 export function dataAsOfFromMeta(meta: Meta | null | undefined, ...fallbacks: Array<string | null | undefined>): string {
   return dataAsOfLabel(meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, ...fallbacks);
 }

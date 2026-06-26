@@ -87,7 +87,7 @@ GitStarClub has several advantages that most content sites must build from scrat
 | HTTPS production host | The public site is served from `https://gitstarclub.com`, with canonical URLs generated from `NEXT_PUBLIC_SITE_URL`. | AI search engines and classic crawlers get one secure apex identity, not fragmented preview or subdomain URLs. |
 | Canonical URL model | Language-neutral canonical URLs; repo URLs match GitHub slugs; old repo aliases redirect to current slugs. | Entity matching is simple: `/react/react`, `/o/vercel`, `/rankings/2026/6`. |
 | Sitemap coverage | Public sitemap sampled on 2026-06-24 contained 10,877 `<loc>` entries with real `lastModified`, `changeFrequency`, and `priority`. | Long-tail ISR pages are discoverable even before natural links exist. |
-| Existing schema | `web/lib/jsonld.ts` emits WebSite, SoftwareSourceCode, Organization/Person, CollectionPage, and ItemList; breadcrumbs emit BreadcrumbList. | The schema foundation exists; GEO needs Dataset, FAQPage, stronger sameAs, and real dateModified. |
+| Existing schema | `web/lib/jsonld.ts` emits WebSite, SoftwareSourceCode, Organization/Person, CollectionPage, ItemList, Dataset, and optional `dateModified`; breadcrumbs emit BreadcrumbList. | The schema foundation exists; GEO still needs FAQPage and stronger sameAs enrichment. |
 | Deterministic narrative | Month pages already generate narrative from rank data without AI. | Answer capsules can use the same deterministic pattern: template + JSON fields, no LLM. |
 | Robots baseline | When indexable, current robots policy allows `/` and disallows `/api/`, which also permits AI crawlers unless separately blocked. | The gap is explicit intent and training-vs-retrieval policy, not a crawl blockade. |
 
@@ -95,9 +95,8 @@ The gaps are equally clear:
 
 | Gap | Why it matters |
 |---|---|
-| FAQ still pending | Many user questions are latent in the data, but pages do not yet expose question-led answers. |
-| Dataset schema still pending | GitStarClub is fundamentally a dataset, but schema currently describes pages and entities, not the dataset itself. |
-| Schema freshness still pending | Visible capsules now carry data-as-of dates; schema still needs matching `dateModified` fields in a later implementation. |
+| Visible FAQ still pending | Many user questions are latent in the data, but pages do not yet expose question-led answers or matching FAQPage schema. |
+| Repo/org Dataset relationships still pending | Dataset schema is linked from home, ranking, and category pages; repo and org entity pages can add matching Dataset relationships later if reviewers want page-level datasets there too. |
 | No explicit AI crawler policy | Wildcard allow is permissive, but not communicative. Explicit rules reduce ambiguity and make policy reviewable. |
 | No Bing / IndexNow workflow | If ChatGPT discovery depends on Bing-like indexes, relying only on passive crawling is slower than necessary. |
 
@@ -325,13 +324,15 @@ Current `web/lib/jsonld.ts` builders:
 - `orgLd(...)` -> `Organization` or `Person`
 - `collectionLd(...)` -> `CollectionPage`
 - `itemListLd(...)` -> `ItemList`
+- `datasetLd(...)` -> `Dataset`
+- `webSiteLd(...)`, `repoLd(...)`, `orgLd(...)`, and `collectionLd(...)` accept optional `dateModified`
 - Breadcrumb schema lives in the `Breadcrumbs` component as `BreadcrumbList`
 
-GEO should add the following shapes in later implementation PRs.
+GEO uses the following shapes. Dataset and `dateModified` are implemented for home, ranking, and category surfaces; FAQPage and sameAs enrichment remain later implementation work.
 
 ### 6.1 Dataset: site-level and optional ranking-level
 
-Use on the home page and optionally on major ranking/category pages. GitStarClub is fundamentally a derived, transformed dataset of GitHub star history; Dataset is the missing schema type.
+Use on the home page and major ranking/category pages. GitStarClub is fundamentally a derived, transformed dataset of GitHub star history, so Dataset schema is linked from page-level schema where the visible facts are backed by precomputed Blob JSON.
 
 The `variableMeasured.name` values below are descriptive schema labels, not a byte-for-byte JSON contract. Where a label maps to a production field, it uses or names the real field path (`current_stars`, `current_stars_sum`, rank item `value`, `curve.monthly` `total_end`, `milestones.crossed_*`).
 
@@ -366,10 +367,19 @@ The `variableMeasured.name` values below are descriptive schema labels, not a by
 
 Implementation linkage:
 
-- Add a `datasetLd(meta, path, locale)` builder in `web/lib/jsonld.ts`.
-- `dateModified` should use `meta.generated_at`, `meta.folded_through`, or the page's actual latest data watermark, never a hard-coded date.
-- `temporalCoverage` should derive from the first available year and current data year.
-- The visible page should include a matching "Data as of" line.
+- `web/lib/jsonld.ts` exposes `datasetLd({ name, path, locale, description, dateModified })` plus `datasetRef(path)`.
+- Page-level `CollectionPage` / `WebSite` schema links to the Dataset with `about: datasetRef(path)`; the Dataset is also emitted as its own JSON-LD object.
+- `dateModified` is resolved with the non-throwing `resolveDataAsOfValue(...)` helper from real Blob fields only. It skips fallback sentinels such as `categories/registry.json`'s `"fallback"` value and omits `dateModified` when no real data date exists.
+- Current source fields by surface:
+  - Home and `/pulse`: `hot-snapshot.json.generated_at`, falling back to the active weekly rank `meta.generated_at`.
+  - All-time rankings: `rank/all-time/{repo|org}/stock.json.meta.generated_at`.
+  - Year rankings: `rank/year/{year}/repo/flow.json.meta.generated_at`, falling back to `heatmap/year/{year}.json.meta.generated_at`.
+  - Month rankings: `rank/month/{period}/repo/{flow|growth|new}.json.meta.generated_at`, with heatmap `meta.generated_at` as another real watermark.
+  - Week rankings: `rank/week/{period}/repo/flow.json.meta.generated_at`.
+  - Category index/dimension pages: `categories/registry.json.generated_at`, falling back to `meta.json.generated_at`, `meta.json.backfilled_at`, or `meta.json.folded_through.month`.
+  - Category detail pages: category rank `meta.generated_at`, `categories/registry.json.generated_at`, `categories/assignments.json.generated_at`, then the same `meta.json` fallbacks.
+- `temporalCoverage` remains optional and should only be emitted when a caller has a data-backed coverage range.
+- The visible page should include a matching "Data as of" line when the page has a real data date.
 
 ### 6.2 FAQPage: generated from visible FAQ
 
@@ -445,7 +455,7 @@ Implementation linkage:
 
 ### 6.4 CollectionPage / Article dateModified
 
-Current `collectionLd` lacks `dateModified`. GEO should add optional date fields to collection and entity schema.
+`collectionLd`, `webSiteLd`, `repoLd`, and `orgLd` accept optional `dateModified`. Collection and website schema can link the page Dataset through `about`; builders omit `dateModified` when the supplied value is `null`.
 
 ```json
 {
@@ -456,16 +466,15 @@ Current `collectionLd` lacks `dateModified`. GEO should add optional date fields
   "inLanguage": "en",
   "dateModified": "2026-06-24T00:00:00Z",
   "about": {
-    "@type": "Dataset",
-    "name": "GitStarClub GitHub Star History Dataset"
+    "@id": "https://gitstarclub.com/rankings/2026/6#dataset"
   }
 }
 ```
 
 Implementation linkage:
 
-- Extend `collectionLd(name, path, locale, options)` rather than adding ad hoc JSON-LD in pages.
-- Repo pages should add `dateModified` to `SoftwareSourceCode` only if it describes GitStarClub's page data update, not the upstream repository's code update.
+- `collectionLd(name, path, locale, options)` handles optional `dateModified` and `about` Dataset references; pages should not build ad hoc CollectionPage objects.
+- `repoLd(...)` and `orgLd(...)` accept optional `dateModified`, but repo/org pages should pass it only if it describes GitStarClub's page data update, not the upstream repository's code update.
 - Keep `BreadcrumbList` as-is in `Breadcrumbs`; do not duplicate breadcrumbs.
 
 ---
@@ -487,15 +496,16 @@ GEO implementation should add:
 |---|---|---|
 | Repo | `Data as of {meta.generated_at or daily watermark}` near the capsule. | `dateModified` on page schema and Dataset relationship. |
 | Org | Same as repo, using org entity / base watermark. | `dateModified` on Organization/Person page schema. |
-| Current rankings | `Month-to-date as of {date}` or `Week-to-date as of {date}`. | `dateModified` from live overlay or meta. |
-| Historical rankings | `Final period data through {period_end}`. | `dateModified` can be the publish date; the text should clarify the ranking period is frozen. |
-| Categories | `Category assignments and star totals as of {date}`. | `CollectionPage.dateModified`. |
-| Pulse | `Updated daily; live period as of {date}`. | WebSite / CollectionPage / Dataset dateModified. |
+| Current rankings | `Month-to-date as of {date}` or `Week-to-date as of {date}`. | `CollectionPage.dateModified` and Dataset `dateModified` from live overlay rank meta or heatmap meta. |
+| Historical rankings | `Final period data through {period_end}`. | `CollectionPage.dateModified` and Dataset `dateModified` from the frozen rank/heatmap `meta.generated_at`. |
+| Categories | `Category assignments and star totals as of {date}`. | `CollectionPage.dateModified` and Dataset `dateModified` from category registry, assignment, category rank, or meta watermarks. |
+| Pulse | `Updated daily; live period as of {date}`. | WebSite / CollectionPage / Dataset `dateModified` from `hot-snapshot.json.generated_at` or active weekly rank meta. |
 
 Rules:
 
 - Never hard-code a freshness date.
 - Never update `dateModified` merely to look fresh; it must correspond to a real data publish, live overlay, or page content change.
+- Never serialize fallback sentinels such as `"fallback"` as schema freshness; omit `dateModified` until a real Blob date or watermark is available.
 - Use year and period terms in H1 or capsule where they matter: `June 2026 GitHub Star Rankings`, `2026-W26 weekly movers`.
 - For current-period surfaces, use `month-to-date` or `week-to-date`; for historical periods, use `final` or `frozen`.
 
@@ -759,7 +769,7 @@ Each item is intentionally issue-sized and should be implemented in a separate P
 |---|---|---|
 | `[geo] Add answer capsules and visible data-as-of blocks` | Implemented in #52: deterministic server-rendered capsules on repo, org, rankings, category, pulse, and compare surfaces. Existing Blob JSON fields only. | Each page type has a 40-60 word capsule, a real data date, GitStarClub attribution, no runtime AI, no new client JS, and tests for visible changes. |
 | `[geo] Add visible FAQ blocks and FAQPage JSON-LD` | Add 3-5 deterministic FAQ items per page type and emit matching FAQPage schema from a shared builder. | FAQ is visible in HTML; JSON-LD exactly mirrors visible answers; no hidden schema; tests cover escaping and schema shape. |
-| `[geo] Add Dataset and dateModified schema` | Add `datasetLd`, optional `dateModified` to collection/entity builders, and Dataset linkage on home/ranking/category pages. | JSON-LD validates structurally; dates come from `meta` or actual watermarks; no hard-coded date; docs updated. |
+| `[geo] Add Dataset and dateModified schema` | Implemented in #57: `datasetLd`, optional `dateModified` on collection/entity builders, and Dataset linkage on home/ranking/category pages. | JSON-LD tests validate Dataset shape and `dateModified`; dates come from `meta` or actual watermarks; no hard-coded date. |
 | `[geo] Make AI crawler policy explicit in robots` | Extend `robots.ts` to explicitly list retrieval, search, and training crawlers while preserving preview noindex and `/api/` disallow. | Production robots includes explicit agents; preview still disallows all; tests assert expected robots output. |
 | `[geo] Add Bing Webmaster and IndexNow publish hook` | Document verification, host IndexNow key, and POST changed URLs after workflow publish and cron live overlay writes. | No external paid service; URL batches are deterministic and capped; failure does not block data publish but logs warning. |
 | `[geo] Add llms.txt hygiene file` | Generate a concise `/llms.txt` from static links and methodology pages. | File follows spec, does not duplicate entire sitemap, has no runtime dependency, and docs state no proven citation benefit. |
