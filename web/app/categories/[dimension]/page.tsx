@@ -3,12 +3,14 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { Chrome } from "@/app/_explore/Chrome";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CATEGORY_DIMENSIONS } from "@/lib/categories/rules";
-import { getCategoryRegistry } from "@/lib/data";
+import { getCategoryRegistry, getMeta } from "@/lib/data";
 import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
+import { buildCategoryDimensionCapsule, resolveDataAsOfLabel } from "@/lib/geo-capsules";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
 import { categoryPath, fallbackRegistry, findDimension, isCategoryDimension } from "../category-page-data";
@@ -39,11 +41,14 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
   const { dimension } = await params;
   if (!isCategoryDimension(dimension)) notFound();
 
-  const registry = (await getCategoryRegistry()) ?? fallbackRegistry();
+  const [registryView, meta] = await Promise.all([getCategoryRegistry(), getMeta()]);
+  const registry = registryView ?? fallbackRegistry();
   const entry = findDimension(registry, dimension);
   if (!entry) notFound();
 
   const categories = entry.categories.filter((category) => category.public);
+  const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const capsule = asOf ? buildCategoryDimensionCapsule(entry, asOf) : null;
 
   return (
     <>
@@ -71,6 +76,8 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
             {categories.length} <T path="categories.publicGroups" />
           </p>
         </section>
+
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />}
 
         <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)] grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {categories.map((category) => (

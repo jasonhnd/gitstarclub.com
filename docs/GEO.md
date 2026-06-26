@@ -95,10 +95,9 @@ The gaps are equally clear:
 
 | Gap | Why it matters |
 |---|---|
-| No answer capsules | AI engines must infer the "answer" from charts, lists, and metadata instead of lifting a clean paragraph. |
-| No on-page FAQ | Many user questions are latent in the data, but pages do not expose question-led answers. |
-| No Dataset schema | GitStarClub is fundamentally a dataset, but schema currently describes pages and entities, not the dataset itself. |
-| Freshness not always visible | `sitemap.ts` and Blob metadata know dates, but users and answer engines need visible "Data as of" facts near the answer. |
+| FAQ still pending | Many user questions are latent in the data, but pages do not yet expose question-led answers. |
+| Dataset schema still pending | GitStarClub is fundamentally a dataset, but schema currently describes pages and entities, not the dataset itself. |
+| Schema freshness still pending | Visible capsules now carry data-as-of dates; schema still needs matching `dateModified` fields in a later implementation. |
 | No explicit AI crawler policy | Wildcard allow is permissive, but not communicative. Explicit rules reduce ambiguity and make policy reviewable. |
 | No Bing / IndexNow workflow | If ChatGPT discovery depends on Bing-like indexes, relying only on passive crawling is slower than necessary. |
 
@@ -729,7 +728,7 @@ Each item is intentionally issue-sized and should be implemented in a separate P
 
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
-| `[geo] Add answer capsules and visible data-as-of blocks` | Add deterministic server-rendered capsules to repo, org, rankings, category, pulse, and compare surfaces. Use existing Blob JSON fields only. | Each page type has a 40-60 word capsule, a real data date, GitStarClub attribution, no runtime AI, no new client JS, and snapshots for visible changes. |
+| `[geo] Add answer capsules and visible data-as-of blocks` | Implemented in #52: deterministic server-rendered capsules on repo, org, rankings, category, pulse, and compare surfaces. Existing Blob JSON fields only. | Each page type has a 40-60 word capsule, a real data date, GitStarClub attribution, no runtime AI, no new client JS, and tests for visible changes. |
 | `[geo] Add visible FAQ blocks and FAQPage JSON-LD` | Add 3-5 deterministic FAQ items per page type and emit matching FAQPage schema from a shared builder. | FAQ is visible in HTML; JSON-LD exactly mirrors visible answers; no hidden schema; tests cover escaping and schema shape. |
 | `[geo] Add Dataset and dateModified schema` | Add `datasetLd`, optional `dateModified` to collection/entity builders, and Dataset linkage on home/ranking/category pages. | JSON-LD validates structurally; dates come from `meta` or actual watermarks; no hard-coded date; docs updated. |
 | `[geo] Make AI crawler policy explicit in robots` | Extend `robots.ts` to explicitly list retrieval, search, and training crawlers while preserving preview noindex and `/api/` disallow. | Production robots includes explicit agents; preview still disallows all; tests assert expected robots output. |

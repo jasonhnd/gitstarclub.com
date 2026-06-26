@@ -3,18 +3,20 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getRepoIdByFullNameDaily, getRepoEntityDaily, getAliasMapDaily, getReposLookupDaily, getCategoryAssignments, getCategoryRegistry } from "@/lib/data";
+import { DAILY_BASE_VIEW_TTL_MS, getRepoIdByFullNameDaily, getRepoEntityDaily, getAliasMapDaily, getReposLookupDaily, getCategoryAssignments, getCategoryRegistry, getMeta } from "@/lib/data";
 import type { CategoryAssignments, CategoryRegistry, RepoLookupEntry } from "@/lib/contracts";
 import { fmtStars, ymParts, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { repoLd } from "@/lib/jsonld";
 import { exactRepoMilestones } from "@/lib/repo-milestones";
 import { resolveRepoRoute } from "@/lib/repo-route";
+import { buildRepoCapsule, resolveDataAsOfFromMeta } from "@/lib/geo-capsules";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { CATEGORY_DIMENSIONS, categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
@@ -67,11 +69,12 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
   const id = await resolveRepoId(fullName);
   if (id === undefined) notFound();
-  const [repo, lookup, assignments, registry] = await Promise.all([
+  const [repo, lookup, assignments, registry, meta] = await Promise.all([
     getRepoEntityDaily(id),
     getReposLookupDaily(),
     getCategoryAssignments(),
     getCategoryRegistry(),
+    getMeta(DAILY_BASE_VIEW_TTL_MS),
   ]);
   if (!repo) notFound();
 
@@ -87,6 +90,8 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   const created = ymParts(repo.created_at);
   const categoryLinks = repoCategoryLinks(id, assignments, registry, languages);
   const related = relatedRepositories(repo, lookup);
+  const asOf = resolveDataAsOfFromMeta(meta, repo.curve.recent_daily.at(-1)?.[0], repo.curve.monthly.at(-1)?.[0]);
+  const capsule = asOf ? buildRepoCapsule(repo, asOf) : null;
 
   return (
     <>
@@ -181,6 +186,8 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
             </a>
           </aside>
         </div>
+
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
 
         <RepoLinkHub owner={repo.owner} categories={categoryLinks} related={related} />
 

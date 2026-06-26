@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
@@ -12,6 +13,7 @@ import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars, monthLabel } from "@/lib/format";
 import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
+import { buildRankingCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
@@ -52,6 +54,12 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
   if (!rank || !lookup) notFound();
 
   const rankRows: Row[] = joinRepoRank(rank.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const capsule = buildRankingCapsule({
+    title: `${year} GitHub Star Rankings`,
+    asOf: dataAsOfLabel(rank.meta.generated_at, heat?.meta.generated_at),
+    rows: rankRows,
+    metric: "gained",
+  });
   const tops = rankRows.slice(0, 24);
   const months = (heat?.cells ?? []).map(([period, total]) => {
     const month = Number(String(period).slice(5, 7));
@@ -98,6 +106,8 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
           </aside>
 
           <div>
+            <AnswerCapsule capsule={capsule} className="mb-6" />
+
             <div className="mb-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {months.map((m, i) => (
                 <Link
