@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
+import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PaginationNav } from "@/app/_explore/PaginationNav";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
@@ -13,6 +14,7 @@ import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { CATEGORY_DETAIL_PAGE_SIZE, pageCount, parsePositivePage, slicePage } from "@/lib/pagination";
 import { pageMeta } from "@/lib/seo";
 import { buildCategoryDetailCapsule, resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
+import { buildCategoryDetailFaqs } from "@/lib/geo-faq";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
 import {
@@ -82,6 +84,7 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
     dateModified,
   });
   const capsule = asOf ? buildCategoryDetailCapsule({ category, asOf, rows }) : null;
+  const faqItems = buildCategoryDetailFaqs({ category, asOf, rows });
 
   return (
     <>
@@ -179,6 +182,7 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
                 </div>
               </section>
             )}
+            <FaqBlock items={faqItems} path={categoryDetailPagePath(dimension, slug, page)} locale={LOC} />
           </div>
         </section>
       </main>

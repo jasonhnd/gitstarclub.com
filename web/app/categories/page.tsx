@@ -2,12 +2,14 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
+import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getCategoryRegistry, getMeta } from "@/lib/data";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { buildCategoryIndexCapsule, resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
+import { buildCategoryIndexFaqs } from "@/lib/geo-faq";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
 import { CATEGORY_INDEX_PREVIEW_LIMIT, categoryPath, fallbackRegistry, publicCategoryEntries, publicDimensions } from "./category-page-data";
@@ -40,6 +42,7 @@ export default async function CategoriesPage() {
     dateModified,
   });
   const capsule = asOf ? buildCategoryIndexCapsule(registry, asOf) : null;
+  const faqItems = buildCategoryIndexFaqs(registry, asOf);
 
   return (
     <>
@@ -117,6 +120,8 @@ export default async function CategoriesPage() {
             <T path="categories.empty" />
           </p>
         )}
+
+        <FaqBlock items={faqItems} path="/categories" locale={LOC} />
       </main>
     </>
   );
