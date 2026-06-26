@@ -571,17 +571,39 @@ Policy notes:
 
 ChatGPT Search and several AI search surfaces depend heavily on Bing-like discovery paths, so Bing should not be left passive.
 
-Implementation design:
+Current implementation:
 
-- Verify `gitstarclub.com` in Bing Webmaster Tools.
-- Submit `https://gitstarclub.com/sitemap.xml`.
-- Add IndexNow key hosting at `/{key}.txt` as a static or route-served UTF-8 file.
-- Add a Vercel-first publish hook in the existing data publish path:
-  - Workflow publish: submit changed core URLs, period URLs, and entity URLs whose data changed.
-  - Daily/weekly cron: submit `/`, `/pulse`, current year/month/week ranking URLs, and mover repo/org URLs.
-  - Cap and batch URLs to the IndexNow POST endpoint.
+- IndexNow key file: `web/public/3a620d7fc7e043aa854c68841375d81b.txt`, served at `https://gitstarclub.com/3a620d7fc7e043aa854c68841375d81b.txt`.
+- IndexNow code: `web/lib/indexnow.ts`.
+- Workflow publish hook: `web/lib/workflows/steps/publish.ts` calls IndexNow after `views/latest.json` and `ops/workflows/latest-success.json` are written.
+- Daily/weekly live-overlay hook: `web/lib/cron/live-refresh.ts` calls IndexNow after live overlay JSON writes and hot-path revalidation.
+- Canonical URL formatting shares the sitemap helpers in `web/lib/sitemap.ts`; the hook does not submit `sitemap.xml` or every sitemap URL by default.
 
-No runtime database or external service is required. The hook can run after the Blob publish pointer or live overlay write succeeds, using deterministic URL lists already known to the workflow.
+Bing Webmaster verification steps:
+
+1. Add `https://gitstarclub.com` in Bing Webmaster Tools.
+2. Preferred repo-free option: import verification from the already verified Google Search Console property, or use DNS verification in Cloudflare.
+3. Repo-hosted file option: download Bing's verification XML file and commit it under `web/public/` so it is served from the site root. The expected path is usually `web/public/BingSiteAuth.xml`, which becomes `https://gitstarclub.com/BingSiteAuth.xml`.
+4. Meta-tag option: set `BING_SITE_VERIFICATION=<Bing msvalidate.01 token>` in the Vercel Production environment. `web/app/layout.tsx` emits `<meta name="msvalidate.01" content="...">` when that variable is present.
+5. After verification, submit `https://gitstarclub.com/sitemap.xml` in Bing Webmaster Tools.
+
+IndexNow runtime configuration:
+
+- `NEXT_PUBLIC_SITE_URL` must be `https://gitstarclub.com` in production so submitted URLs match the canonical sitemap host.
+- `INDEXNOW_ENABLED=1` forces submission, useful for a controlled production smoke test.
+- `INDEXNOW_ENABLED=0` disables submission without removing the hooks.
+- With neither override set, submission is enabled only when `VERCEL_ENV=production` and the canonical host is `gitstarclub.com` or `www.gitstarclub.com`.
+
+Batching and failure policy:
+
+- Per request cap: 100 URLs.
+- Per run cap: 200 URLs.
+- URL ordering is deterministic for the same input set: hot core pages first, then ranking periods, then entity/category paths sorted by canonical URL.
+- Workflow publish compares selected versioned Blob views from `views/<run_id>/` and `views/<prev_version>/` to submit only changed core, period, category, repo, and org URLs.
+- Daily/weekly cron submits `/`, `/pulse`, `/rankings`, current year/month/week ranking URLs, and the repo/org URLs for live movers.
+- IndexNow POST errors and URL-derivation errors log `[indexnow]` warnings with source, run id/job, batch, status or error, and URL count. They never throw back into workflow publish or cron, so external indexing cannot block data publication.
+
+No runtime database, runtime AI, LLM, or external paid indexing service is required. The hook runs from deterministic URL lists already known to the workflow or live-overlay refresh.
 
 ### 8.3 llms.txt
 

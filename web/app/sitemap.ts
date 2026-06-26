@@ -1,11 +1,11 @@
 import type { MetadataRoute } from "next";
 import { CategoriesLookup, Meta, OrgsLookup, ReposLookup } from "@/lib/contracts";
 import { readView } from "@/lib/data";
-import { buildSitemapPaths, sitemapChangeFrequency, sitemapLastModified, sitemapPriority } from "@/lib/sitemap";
+import { absoluteCanonicalUrl, buildSitemapPaths, sitemapChangeFrequency, sitemapLastModified, sitemapPriority, siteBaseUrl } from "@/lib/sitemap";
 
 // Enumerates every canonical URL so crawlers discover the on-demand ISR long tail.
 // Language is an in-page preference, not a URL dimension.
-const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
+const BASE = siteBaseUrl();
 const SITEMAP_REVALIDATE_SECONDS = 86400;
 
 export const revalidate = 86400;
@@ -21,7 +21,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const paths = buildSitemapPaths({ repos, orgs, categories });
 
   return paths.map((p) => ({
-    url: `${BASE}${p}`,
+    url: absoluteCanonicalUrl(p, BASE),
     lastModified: sitemapLastModified(p, { meta, categories }),
     changeFrequency: sitemapChangeFrequency(p),
     priority: sitemapPriority(p),

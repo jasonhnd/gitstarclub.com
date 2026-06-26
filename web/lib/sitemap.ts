@@ -10,6 +10,16 @@ type SitemapMeta = { backfilled_at?: string; generated_at?: string };
 type SitemapFrequency = "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
 
 export const SITEMAP_FALLBACK_LAST_MODIFIED = "2026-06-04T00:00:00.000Z";
+export const DEFAULT_SITE_URL = "https://gitstarclub.com";
+
+export function siteBaseUrl(value = process.env.NEXT_PUBLIC_SITE_URL ?? DEFAULT_SITE_URL): string {
+  return value.replace(/\/+$/, "");
+}
+
+export function absoluteCanonicalUrl(path: string, base = siteBaseUrl()): string {
+  const normalized = path === "/" ? "" : path.startsWith("/") ? path : `/${path}`;
+  return `${base}${normalized}`;
+}
 
 export function resolveSitemapLastModified(meta?: SitemapMeta | null): Date {
   for (const value of [meta?.backfilled_at, meta?.generated_at, SITEMAP_FALLBACK_LAST_MODIFIED]) {
