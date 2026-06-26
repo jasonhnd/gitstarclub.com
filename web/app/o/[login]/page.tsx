@@ -7,6 +7,7 @@ import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
+import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getMeta, getOrgEntity, getReposLookup } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
@@ -14,6 +15,7 @@ import { pageMeta } from "@/lib/seo";
 import { orgLd } from "@/lib/jsonld";
 import { buildOrgCapsule, resolveDataAsOfFromMeta } from "@/lib/geo-capsules";
 import { buildOrgFaqs } from "@/lib/geo-faq";
+import { buildOrgTotalSnippet } from "@/lib/shareable-snippets";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 
@@ -60,6 +62,7 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
     })
     .filter((r): r is Row => r !== null)
     .sort((a, b) => b.total - a.total);
+  const snippet = buildOrgTotalSnippet({ org, asOf, members });
   const faqItems = buildOrgFaqs(org, members, asOf);
 
   return (
@@ -81,6 +84,7 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
         </header>
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
+        {snippet && <ShareableSnippet snippet={snippet} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
 
         {series.length > 1 && (
           <section className="mt-[clamp(2rem,4vw,3rem)]">
