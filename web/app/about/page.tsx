@@ -96,6 +96,56 @@ export default function AboutPage() {
           </p>
         </Section>
 
+        <Section heading="Downloadable data exports">
+          <p>
+            GitStarClub publishes small static CSV and JSON extracts for top rankings, repository milestone crossings, and organization aggregates. The files are generated from existing precomputed Blob views, versioned under <code>/data/exports/v1/</code>, and dated from real view metadata.
+          </p>
+          <p>
+            License:{" "}
+            <a className="font-semibold text-tertiary hover:text-primary" href="https://creativecommons.org/licenses/by/4.0/" rel="noreferrer">
+              CC BY 4.0
+            </a>
+            . Attribution: Data from GH Archive, derived by GitStarClub.
+          </p>
+          <ul className="list-disc space-y-2 pl-6">
+            <li>
+              <a className="font-semibold text-tertiary hover:text-primary" href="/data/exports/v1/latest/manifest.json">
+                Export manifest
+              </a>
+            </li>
+            <li>
+              <a className="font-semibold text-tertiary hover:text-primary" href="/data/exports/v1/latest/top-rankings.csv">
+                Top rankings CSV
+              </a>{" "}
+              ·{" "}
+              <a className="font-semibold text-tertiary hover:text-primary" href="/data/exports/v1/latest/top-rankings.json">
+                JSON
+              </a>
+            </li>
+            <li>
+              <a className="font-semibold text-tertiary hover:text-primary" href="/data/exports/v1/latest/top-repo-milestones.csv">
+                Repository milestones CSV
+              </a>{" "}
+              ·{" "}
+              <a className="font-semibold text-tertiary hover:text-primary" href="/data/exports/v1/latest/top-repo-milestones.json">
+                JSON
+              </a>
+            </li>
+            <li>
+              <a className="font-semibold text-tertiary hover:text-primary" href="/data/exports/v1/latest/top-org-aggregates.csv">
+                Organization aggregates CSV
+              </a>{" "}
+              ·{" "}
+              <a className="font-semibold text-tertiary hover:text-primary" href="/data/exports/v1/latest/top-org-aggregates.json">
+                JSON
+              </a>
+            </li>
+          </ul>
+          <p>
+            See <a className="font-semibold text-tertiary hover:text-primary" href="https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/DATA-EXPORTS.md">DATA-EXPORTS.md</a> for fields, source views, and regeneration notes.
+          </p>
+        </Section>
+
         <div className="mt-12">
           <Link
             href="/"
