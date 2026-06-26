@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { fallbackRegistry } from "@/app/categories/category-page-data";
 import type { CategoryRegistry, OrgEntity, RepoEntity } from "@/lib/contracts";
 import {
   buildAllTimeRankingCapsule,
@@ -14,6 +15,8 @@ import {
   dataAsOfFromMeta,
   dataAsOfLabel,
   formatDataAsOf,
+  resolveDataAsOfFromMeta,
+  resolveDataAsOfLabel,
   visibleCapsuleSnapshot,
   type AnswerCapsuleContent,
 } from "./geo-capsules";
@@ -133,6 +136,23 @@ describe("GEO answer capsules", () => {
     expect(() => dataAsOfLabel("fallback")).toThrow("GEO answer capsule requires a real data-as-of date");
   });
 
+  test("resolves fallback category registry dates from a real secondary watermark without throwing", () => {
+    const registryFallback = fallbackRegistry();
+    expect(registryFallback.generated_at).toBe("fallback");
+    expect(() => resolveDataAsOfLabel(registryFallback.generated_at, "2026-06-24T12:00:00Z")).not.toThrow();
+    expect(resolveDataAsOfLabel(registryFallback.generated_at, "2026-06-24T12:00:00Z")).toBe("June 24, 2026");
+    expect(resolveDataAsOfLabel(registryFallback.generated_at)).toBeNull();
+  });
+
+  test("dateless meta uses the non-throwing skip path for optional capsules", () => {
+    const datelessMeta = { seam_date: "2020-01-01", schema_ver: 1 };
+    const asOfFromDatelessMeta = resolveDataAsOfFromMeta(datelessMeta);
+    expect(asOfFromDatelessMeta).toBeNull();
+    expect(() => (asOfFromDatelessMeta ? buildCompareCapsule(asOfFromDatelessMeta) : null)).not.toThrow();
+    expect(() => (asOfFromDatelessMeta ? buildRepoCapsule(repo, asOfFromDatelessMeta) : null)).not.toThrow();
+    expect(() => (asOfFromDatelessMeta ? buildOrgCapsule(org, asOfFromDatelessMeta) : null)).not.toThrow();
+  });
+
   test("keeps every deterministic capsule within the 40-60 word target", () => {
     for (const capsule of capsules) {
       expect(capsuleWordCount(capsule)).toBeGreaterThanOrEqual(40);
@@ -168,9 +188,33 @@ describe("GEO answer capsules", () => {
         "Source: GitStarClub",
       ].join("\n"),
     );
+    expect(visibleCapsuleSnapshot(buildAllTimeRankingCapsule({ asOf, repoRows: rankRows, orgRows: [{ login: "vercel", current_stars_sum: 400000, repo_count: 42 }] }))).toBe(
+      [
+        "Answer capsule",
+        "As of June 24, 2026, GitStarClub's all-time rankings summarize the largest tracked GitHub repositories and organizations. react/react leads repositories with 246.0k total stars, while vercel leads organizations with 400.0k total stars. The page is built from precomputed all-time rank JSON plus repository and organization lookup fields. — GitStarClub",
+        "Data as of: June 24, 2026",
+        "Source: GitStarClub",
+      ].join("\n"),
+    );
   });
 
   test("snapshots visible category, pulse, and compare capsules", () => {
+    expect(visibleCapsuleSnapshot(buildCategoryIndexCapsule(registry, asOf))).toBe(
+      [
+        "Answer capsule",
+        "As of June 24, 2026, GitStarClub organizes tracked GitHub repositories into 2 public categories across 3 dimensions, including languages, ecosystems, domains. These links come from deterministic category registry JSON and help readers reach focused repository lists without relying only on sitemap discovery. — GitStarClub",
+        "Data as of: June 24, 2026",
+        "Source: GitStarClub",
+      ].join("\n"),
+    );
+    expect(visibleCapsuleSnapshot(buildCategoryDimensionCapsule(registry.dimensions[0], asOf))).toBe(
+      [
+        "Answer capsule",
+        "As of June 24, 2026, GitStarClub lists 2 public categories in the languages dimension for tracked GitHub repositories. This dimension page is generated from category registry JSON, with deterministic counts and crawlable links so readers and answer engines can move from broad taxonomy to specific repository rankings. — GitStarClub",
+        "Data as of: June 24, 2026",
+        "Source: GitStarClub",
+      ].join("\n"),
+    );
     expect(visibleCapsuleSnapshot(buildCategoryDetailCapsule({ category: registry.dimensions[0].categories[0], asOf, rows: rankRows }))).toBe(
       [
         "Answer capsule",

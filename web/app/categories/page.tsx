@@ -4,10 +4,10 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getCategoryRegistry } from "@/lib/data";
+import { getCategoryRegistry, getMeta } from "@/lib/data";
 import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
-import { buildCategoryIndexCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
+import { buildCategoryIndexCapsule, resolveDataAsOfLabel } from "@/lib/geo-capsules";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
 import { CATEGORY_INDEX_PREVIEW_LIMIT, categoryPath, fallbackRegistry, publicCategoryEntries, publicDimensions } from "./category-page-data";
@@ -26,10 +26,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function CategoriesPage() {
-  const registry = (await getCategoryRegistry()) ?? fallbackRegistry();
+  const [registryView, meta] = await Promise.all([getCategoryRegistry(), getMeta()]);
+  const registry = registryView ?? fallbackRegistry();
   const publicCategories = publicCategoryEntries(registry);
   const dimensions = publicDimensions(registry);
-  const capsule = buildCategoryIndexCapsule(registry, dataAsOfLabel(registry.generated_at));
+  const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const capsule = asOf ? buildCategoryIndexCapsule(registry, asOf) : null;
 
   return (
     <>
@@ -56,7 +58,7 @@ export default async function CategoriesPage() {
           </p>
         </section>
 
-        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />}
 
         <section className="mt-[clamp(1.5rem,3vw,2.25rem)] grid gap-3 md:grid-cols-3">
           {registry.dimensions.map((dimension) => {

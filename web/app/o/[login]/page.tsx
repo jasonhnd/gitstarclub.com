@@ -11,7 +11,7 @@ import { getMeta, getOrgEntity, getReposLookup } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { orgLd } from "@/lib/jsonld";
-import { buildOrgCapsule, dataAsOfFromMeta } from "@/lib/geo-capsules";
+import { buildOrgCapsule, resolveDataAsOfFromMeta } from "@/lib/geo-capsules";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 
@@ -49,7 +49,8 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
   if (!org) notFound();
 
   const series = org.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
-  const capsule = buildOrgCapsule(org, dataAsOfFromMeta(meta, org.curve.recent_daily.at(-1)?.[0], org.curve.monthly.at(-1)?.[0]));
+  const asOf = resolveDataAsOfFromMeta(meta, org.curve.recent_daily.at(-1)?.[0], org.curve.monthly.at(-1)?.[0]);
+  const capsule = asOf ? buildOrgCapsule(org, asOf) : null;
   const members: Row[] = org.members
     .map((id) => {
       const m = lookup?.[String(id)];
@@ -76,7 +77,7 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
           </div>
         </header>
 
-        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
 
         {series.length > 1 && (
           <section className="mt-[clamp(2rem,4vw,3rem)]">

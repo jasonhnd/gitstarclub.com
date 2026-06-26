@@ -16,7 +16,7 @@ import { pageMeta } from "@/lib/seo";
 import { repoLd } from "@/lib/jsonld";
 import { exactRepoMilestones } from "@/lib/repo-milestones";
 import { resolveRepoRoute } from "@/lib/repo-route";
-import { buildRepoCapsule, dataAsOfFromMeta } from "@/lib/geo-capsules";
+import { buildRepoCapsule, resolveDataAsOfFromMeta } from "@/lib/geo-capsules";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { CATEGORY_DIMENSIONS, categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
@@ -90,7 +90,8 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   const created = ymParts(repo.created_at);
   const categoryLinks = repoCategoryLinks(id, assignments, registry, languages);
   const related = relatedRepositories(repo, lookup);
-  const capsule = buildRepoCapsule(repo, dataAsOfFromMeta(meta, repo.curve.recent_daily.at(-1)?.[0], repo.curve.monthly.at(-1)?.[0]));
+  const asOf = resolveDataAsOfFromMeta(meta, repo.curve.recent_daily.at(-1)?.[0], repo.curve.monthly.at(-1)?.[0]);
+  const capsule = asOf ? buildRepoCapsule(repo, asOf) : null;
 
   return (
     <>
@@ -186,7 +187,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
           </aside>
         </div>
 
-        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
 
         <RepoLinkHub owner={repo.owner} categories={categoryLinks} related={related} />
 

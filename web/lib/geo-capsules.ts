@@ -45,15 +45,25 @@ export function formatDataAsOf(value: string | null | undefined): string | null 
 }
 
 export function dataAsOfLabel(...candidates: Array<string | null | undefined>): string {
+  const label = resolveDataAsOfLabel(...candidates);
+  if (label) return label;
+  throw new Error("GEO answer capsule requires a real data-as-of date from precomputed metadata.");
+}
+
+export function resolveDataAsOfLabel(...candidates: Array<string | null | undefined>): string | null {
   for (const candidate of candidates) {
     const label = formatDataAsOf(candidate);
     if (label) return label;
   }
-  throw new Error("GEO answer capsule requires a real data-as-of date from precomputed metadata.");
+  return null;
 }
 
 export function dataAsOfFromMeta(meta: Meta | null | undefined, ...fallbacks: Array<string | null | undefined>): string {
   return dataAsOfLabel(meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, ...fallbacks);
+}
+
+export function resolveDataAsOfFromMeta(meta: Meta | null | undefined, ...fallbacks: Array<string | null | undefined>): string | null {
+  return resolveDataAsOfLabel(meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, ...fallbacks);
 }
 
 export function buildRepoCapsule(repo: RepoEntity, asOf: string): AnswerCapsuleContent {
@@ -124,7 +134,7 @@ export function buildCategoryIndexCapsule(registry: CategoryRegistry, asOf: stri
 export function buildCategoryDimensionCapsule(dimension: CategoryDimensionRegistry, asOf: string): AnswerCapsuleContent {
   const publicCategories = dimension.categories.filter((category) => category.public);
   const text = withSource(
-    `As of ${asOf}, GitStarClub lists ${publicCategories.length.toLocaleString("en-US")} public ${dimension.label.toLowerCase()} categories for tracked GitHub repositories. This dimension page is generated from category registry JSON, with deterministic counts and crawlable links so readers and answer engines can move from broad taxonomy to specific repository rankings.`,
+    `As of ${asOf}, GitStarClub lists ${publicCategories.length.toLocaleString("en-US")} public categories in the ${dimension.label.toLowerCase()} dimension for tracked GitHub repositories. This dimension page is generated from category registry JSON, with deterministic counts and crawlable links so readers and answer engines can move from broad taxonomy to specific repository rankings.`,
   );
   return capsule(text, asOf);
 }

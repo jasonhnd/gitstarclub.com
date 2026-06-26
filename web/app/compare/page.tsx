@@ -5,7 +5,7 @@ import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { pageMeta } from "@/lib/seo";
 import { getMeta } from "@/lib/data";
-import { buildCompareCapsule, dataAsOfFromMeta } from "@/lib/geo-capsules";
+import { buildCompareCapsule, resolveDataAsOfFromMeta } from "@/lib/geo-capsules";
 import { T } from "@/lib/i18n/client";
 import { I18nProvider } from "@/lib/i18n/client-runtime";
 import { CompareClient } from "./CompareClient";
@@ -31,7 +31,8 @@ export function generateMetadata(): Metadata {
 
 export default async function ComparePage() {
   const meta = await getMeta();
-  const capsule = buildCompareCapsule(dataAsOfFromMeta(meta));
+  const asOf = resolveDataAsOfFromMeta(meta);
+  const capsule = asOf ? buildCompareCapsule(asOf) : null;
 
   return (
     <>
@@ -46,7 +47,7 @@ export default async function ComparePage() {
             <T path="compare.subtitle" />
           </p>
         </header>
-        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" />
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" />}
         <section className="mt-[clamp(2rem,4vw,3rem)]">
           <I18nProvider>
             <CompareClient />
