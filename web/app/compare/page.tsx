@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { pageMeta } from "@/lib/seo";
+import { getMeta } from "@/lib/data";
+import { buildCompareCapsule, resolveDataAsOfFromMeta } from "@/lib/geo-capsules";
 import { T } from "@/lib/i18n/client";
 import { I18nProvider } from "@/lib/i18n/client-runtime";
 import { CompareClient } from "./CompareClient";
@@ -26,7 +29,11 @@ export function generateMetadata(): Metadata {
   });
 }
 
-export default function ComparePage() {
+export default async function ComparePage() {
+  const meta = await getMeta();
+  const asOf = resolveDataAsOfFromMeta(meta);
+  const capsule = asOf ? buildCompareCapsule(asOf) : null;
+
   return (
     <>
       <Chrome />
@@ -40,6 +47,7 @@ export default function ComparePage() {
             <T path="compare.subtitle" />
           </p>
         </header>
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" />}
         <section className="mt-[clamp(2rem,4vw,3rem)]">
           <I18nProvider>
             <CompareClient />
