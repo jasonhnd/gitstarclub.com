@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
+import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
@@ -12,6 +13,7 @@ import { fmtStars } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { orgLd } from "@/lib/jsonld";
 import { buildOrgCapsule, resolveDataAsOfFromMeta } from "@/lib/geo-capsules";
+import { buildOrgFaqs } from "@/lib/geo-faq";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 
@@ -58,6 +60,7 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
     })
     .filter((r): r is Row => r !== null)
     .sort((a, b) => b.total - a.total);
+  const faqItems = buildOrgFaqs(org, members, asOf);
 
   return (
     <>
@@ -94,6 +97,8 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
           </h2>
           <RankingList rows={members} variant="total" locale={loc} />
         </section>
+
+        <FaqBlock items={faqItems} path={`/o/${org.login}`} locale={loc} />
       </main>
     </>
   );

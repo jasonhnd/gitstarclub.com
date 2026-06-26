@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
+import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { RankingList, rankingStaggerStyle, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
@@ -13,7 +14,8 @@ import { getAllTime, getReposLookup, getOrgsLookup, joinRepoRank, joinOrgRank } 
 import { fmtStars, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { collectionLd, itemListLd } from "@/lib/jsonld";
-import { buildAllTimeRankingCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
+import { buildAllTimeRankingCapsule, resolveDataAsOfLabel } from "@/lib/geo-capsules";
+import { buildAllTimeRankingFaqs } from "@/lib/geo-faq";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 
 const LOC = DEFAULT_LOCALE;
@@ -44,11 +46,9 @@ export default async function RankingsPage() {
       ? joinRepoRank(repoRank.items, repoLk).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }))
       : [];
   const orgs = orgRank && orgLk ? joinOrgRank(orgRank.items, orgLk) : [];
-  const capsule = buildAllTimeRankingCapsule({
-    asOf: dataAsOfLabel(repoRank?.meta.generated_at, orgRank?.meta.generated_at),
-    repoRows,
-    orgRows: orgs,
-  });
+  const asOf = resolveDataAsOfLabel(repoRank?.meta.generated_at, orgRank?.meta.generated_at);
+  const capsule = asOf ? buildAllTimeRankingCapsule({ asOf, repoRows, orgRows: orgs }) : null;
+  const faqItems = buildAllTimeRankingFaqs({ asOf, repoRows, orgRows: orgs });
 
   return (
     <>
@@ -78,7 +78,7 @@ export default async function RankingsPage() {
           <T path="rankings.subtitle" />
         </p>
 
-        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />}
 
         <section className="mt-[clamp(1.5rem,3vw,2.25rem)] grid gap-3 md:grid-cols-4">
           <HistoryLink href="/rankings" label="All-time" value={<T path="rankings.repositories" />} active />
@@ -136,6 +136,8 @@ export default async function RankingsPage() {
             </ol>
           </section>
         </div>
+
+        <FaqBlock items={faqItems} path="/rankings" locale={loc} />
       </main>
     </>
   );

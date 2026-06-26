@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { itemListLd, repoLd } from "./jsonld";
+import { faqPageLd, itemListLd, repoLd } from "./jsonld";
 import { stringifyJsonForScript } from "./json-script";
 
 describe("repoLd", () => {
@@ -45,6 +45,68 @@ describe("itemListLd", () => {
           item: {
             name: "vuejs/vue",
             url: "https://gitstarclub.com/vuejs/vue",
+          },
+        },
+      ],
+    });
+  });
+});
+
+describe("faqPageLd", () => {
+  test("emits FAQPage schema with Question and Answer entities", () => {
+    const data = faqPageLd(
+      [
+        {
+          question: "What does GitStarClub track?",
+          answer: "GitStarClub tracks precomputed GitHub star history.",
+        },
+      ],
+      "/rankings",
+      "en",
+    );
+
+    expect(data).toMatchObject({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      url: "https://gitstarclub.com/rankings",
+      inLanguage: "en",
+      mainEntity: [
+        {
+          "@type": "Question",
+          name: "What does GitStarClub track?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "GitStarClub tracks precomputed GitHub star history.",
+          },
+        },
+      ],
+    });
+  });
+
+  test("can be safely serialized into a JSON-LD script with adversarial FAQ text", () => {
+    const data = faqPageLd(
+      [
+        {
+          question: 'Can FAQ text contain "</script>"?',
+          answer: 'No raw x</script><img src=x onerror="alert(1)"> markup should survive script serialization.',
+        },
+      ],
+      "/faq-test",
+      "en",
+    );
+
+    const serialized = stringifyJsonForScript(data);
+
+    expect(serialized).not.toContain("</script>");
+    expect(serialized).not.toContain("<img");
+    expect(serialized).toContain("\\u003c/script\\u003e");
+    expect(JSON.parse(serialized)).toMatchObject({
+      "@type": "FAQPage",
+      mainEntity: [
+        {
+          name: 'Can FAQ text contain "</script>"?',
+          acceptedAnswer: {
+            text: 'No raw x</script><img src=x onerror="alert(1)"> markup should survive script serialization.',
           },
         },
       ],
