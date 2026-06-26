@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentMonth, getHeatmapBase, getHotSnapshot, getRankBase, getReposLookup } from "@/lib/data";
 import { putView } from "@/lib/data/write";
 import { fetchStarCounts, type RepoRef } from "@/lib/github";
+import { submitLiveOverlayIndexNow } from "@/lib/indexnow";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
 import { PendingPeriod } from "@/lib/contracts";
 import type { Heatmap, RankItem, RankList } from "@/lib/contracts";
@@ -167,6 +168,17 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promi
   ]);
 
   revalidateLivePaths(periods);
+  const moverRepoIds = topRepoIds(currentMonthFlow, currentWeekFlow);
+  await submitLiveOverlayIndexNow({
+    job,
+    day: today,
+    year: periods.year,
+    monthPeriod: month,
+    weekPeriod,
+    repos: lookup,
+    repoIds: moverRepoIds,
+    orgLogins: ownerLoginsForRepoIds(moverRepoIds, lookup),
+  });
   return result;
 }
 
@@ -202,6 +214,15 @@ function mergeRankFlow(baseItems: RankItem[], deltas: Map<number, number>): { id
   }
   for (const [id, delta] of deltas) merged.set(id, (merged.get(id) ?? 0) + delta);
   return [...merged].map(([id, value]) => ({ id, value }));
+}
+
+function topRepoIds(...lists: TopItem[][]): number[] {
+  return [...new Set(lists.flatMap((items) => items.map((item) => item.id).filter((id): id is number => id != null)))];
+}
+
+function ownerLoginsForRepoIds(ids: number[], lookup: Awaited<ReturnType<typeof getReposLookup>>): string[] {
+  if (!lookup) return [];
+  return [...new Set(ids.map((id) => lookup[String(id)]?.owner).filter((owner): owner is string => !!owner))];
 }
 
 function rankList(
