@@ -585,7 +585,7 @@ No runtime database or external service is required. The hook can run after the 
 
 ### 8.3 llms.txt
 
-`llms.txt` should be treated honestly: cheap hygiene, not a proven citation lever.
+`llms.txt` should be treated honestly: cheap hygiene, not a proven citation lever. The shipped `/llms.txt` is a discovery aid only; there is no proven citation or ranking benefit.
 
 Evidence:
 
@@ -594,26 +594,33 @@ Evidence:
 - Ahrefs' 137k-domain study, as summarized by Search Engine Journal, reported that most valid `llms.txt` files received no requests in the sampled period.
 - Google representatives have publicly described `llms.txt` as speculative and comparable to old meta-keyword behavior for now.
 
-Recommended implementation:
+Current implementation:
 
 ```md
 # GitStarClub
 
-> Deterministic GitHub star history, rankings, milestones, and organization aggregates for tracked open-source repositories.
+> Deterministic GitHub star history, rankings, milestones, category views, and organization aggregates for tracked open-source repositories.
 
 ## Core data surfaces
 
+- [GitStarClub home](https://gitstarclub.com/)
 - [Open-source pulse](https://gitstarclub.com/pulse)
 - [All-time rankings](https://gitstarclub.com/rankings)
 - [June 2026 rankings](https://gitstarclub.com/rankings/2026/6)
 - [Python category rankings](https://gitstarclub.com/categories/language/python)
+- [Repository comparison](https://gitstarclub.com/compare)
 - [Vercel organization star history](https://gitstarclub.com/o/vercel)
 - [react/react star history](https://gitstarclub.com/react/react)
 
-## Methodology
+## Methodology and docs
 
 - [About GitStarClub data sources](https://gitstarclub.com/about)
+- [Ranking methodology](https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/RANKING.md)
+- [Data contracts](https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/DATA-CONTRACTS.md)
+- [GEO and crawler hygiene](https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/GEO.md)
 ```
+
+The file is checked in at `web/public/llms.txt`, served from the site root by Next static assets, and covered by `web/lib/llms.test.ts`. It intentionally remains a curated list, not a sitemap replacement.
 
 Recommendation on `llms-full.txt`:
 

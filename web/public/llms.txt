@@ -1,0 +1,21 @@
+# GitStarClub
+
+> Deterministic GitHub star history, rankings, milestones, category views, and organization aggregates for tracked open-source repositories.
+
+## Core data surfaces
+
+- [GitStarClub home](https://gitstarclub.com/)
+- [Open-source pulse](https://gitstarclub.com/pulse)
+- [All-time rankings](https://gitstarclub.com/rankings)
+- [June 2026 rankings](https://gitstarclub.com/rankings/2026/6)
+- [Python category rankings](https://gitstarclub.com/categories/language/python)
+- [Repository comparison](https://gitstarclub.com/compare)
+- [Vercel organization star history](https://gitstarclub.com/o/vercel)
+- [react/react star history](https://gitstarclub.com/react/react)
+
+## Methodology and docs
+
+- [About GitStarClub data sources](https://gitstarclub.com/about)
+- [Ranking methodology](https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/RANKING.md)
+- [Data contracts](https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/DATA-CONTRACTS.md)
+- [GEO and crawler hygiene](https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/GEO.md)
