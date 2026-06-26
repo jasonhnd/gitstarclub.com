@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Chrome } from "@/app/_explore/Chrome";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
@@ -9,6 +10,7 @@ import { DEFAULT_LOCALE } from "@/lib/i18n";
 import en from "@/lib/i18n/dictionaries/en";
 import { getHotSnapshot, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { webSiteLd, collectionLd } from "@/lib/jsonld";
+import { buildPulseCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
 
 // Locale-neutral body: data formatting uses the default locale (English) so the page is
@@ -41,6 +43,11 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
   const monthRows = snap && lookup ? toRows(joinRepoRank(snap.current_month.flow.slice(0, 8), lookup)) : [];
   const yearRows = snap && lookup ? toRows(joinRepoRank(snap.current_year.flow.slice(0, 8), lookup)) : [];
   const giants = snap && lookup ? toRows(joinRepoRank(snap.all_time.repo.slice(0, 6), lookup), "total") : [];
+  const capsule = buildPulseCapsule({
+    asOf: dataAsOfLabel(snap?.generated_at, activeWeek.rank?.meta.generated_at),
+    weekRows,
+    monthRows,
+  });
   const onThisDay = (snap?.home.on_this_day ?? []).flatMap((e) => {
     const m = lookup?.[String(e.id)];
     return m ? [{ ...e, full_name: m.full_name, owner: m.owner, name: m.name }] : [];
@@ -72,6 +79,8 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
             <PulseJump href="/rankings" label={<T path="nav.rankings" />} value="all-time" />
           </div>
         </section>
+
+        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" />
 
         <div className="mt-[clamp(2rem,5vw,4rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel title={<T path="week.top" />} href={weekHref(activeWeek)} meta={activeWeek.period} rows={weekRows} />

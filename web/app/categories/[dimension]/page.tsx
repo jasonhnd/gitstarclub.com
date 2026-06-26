@@ -3,12 +3,14 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { Chrome } from "@/app/_explore/Chrome";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CATEGORY_DIMENSIONS } from "@/lib/categories/rules";
 import { getCategoryRegistry } from "@/lib/data";
 import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
+import { buildCategoryDimensionCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
 import { categoryPath, fallbackRegistry, findDimension, isCategoryDimension } from "../category-page-data";
@@ -44,6 +46,7 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
   if (!entry) notFound();
 
   const categories = entry.categories.filter((category) => category.public);
+  const capsule = buildCategoryDimensionCapsule(entry, dataAsOfLabel(registry.generated_at));
 
   return (
     <>
@@ -71,6 +74,8 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
             {categories.length} <T path="categories.publicGroups" />
           </p>
         </section>
+
+        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />
 
         <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)] grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {categories.map((category) => (

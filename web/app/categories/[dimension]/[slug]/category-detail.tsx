@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { Chrome } from "@/app/_explore/Chrome";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PaginationNav } from "@/app/_explore/PaginationNav";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
@@ -11,6 +12,7 @@ import { getCategoryAllTime, getCategoryAssignments, getCategoryRegistry, getRep
 import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { CATEGORY_DETAIL_PAGE_SIZE, pageCount, parsePositivePage, slicePage } from "@/lib/pagination";
 import { pageMeta } from "@/lib/seo";
+import { buildCategoryDetailCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
 import {
@@ -69,6 +71,11 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
   const first = rows.length > 0 ? startRank : 0;
   const last = first + pageRows.length - 1;
   const siblingCategories = (dimensionEntry?.categories ?? []).filter((entry) => entry.public && entry.id !== category.id).slice(0, 8);
+  const capsule = buildCategoryDetailCapsule({
+    category,
+    asOf: dataAsOfLabel(rank?.meta.generated_at, registry.generated_at, assignments?.generated_at),
+    rows,
+  });
 
   return (
     <>
@@ -119,6 +126,8 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
           </aside>
 
           <div className="min-w-0">
+            <AnswerCapsule capsule={capsule} className="mb-6" />
+
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
               <h2 className="text-[1.3rem] font-extrabold text-on-surface">
                 <T path="categories.topRepositories" />

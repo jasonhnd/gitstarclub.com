@@ -1,11 +1,13 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getCategoryRegistry } from "@/lib/data";
 import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
+import { buildCategoryIndexCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
 import { CATEGORY_INDEX_PREVIEW_LIMIT, categoryPath, fallbackRegistry, publicCategoryEntries, publicDimensions } from "./category-page-data";
@@ -27,6 +29,7 @@ export default async function CategoriesPage() {
   const registry = (await getCategoryRegistry()) ?? fallbackRegistry();
   const publicCategories = publicCategoryEntries(registry);
   const dimensions = publicDimensions(registry);
+  const capsule = buildCategoryIndexCapsule(registry, dataAsOfLabel(registry.generated_at));
 
   return (
     <>
@@ -52,6 +55,8 @@ export default async function CategoriesPage() {
             <T path="categories.subtitle" />
           </p>
         </section>
+
+        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />
 
         <section className="mt-[clamp(1.5rem,3vw,2.25rem)] grid gap-3 md:grid-cols-3">
           {registry.dimensions.map((dimension) => {

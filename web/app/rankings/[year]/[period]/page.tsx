@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { Heatmap } from "@/app/_explore/Heatmap";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
@@ -15,6 +16,7 @@ import { buildNarrative } from "@/lib/narrative";
 import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
 import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
+import { buildRankingCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "@/lib/i18n";
@@ -68,6 +70,12 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
   if (!flow || !lookup) notFound();
 
   const flowRows: Row[] = joinRepoRank(flow.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const capsule = buildRankingCapsule({
+    title: `${monthYearLabel(loc, year, month)} GitHub Star Rankings`,
+    asOf: dataAsOfLabel(flow.meta.generated_at, heat?.meta.generated_at),
+    rows: flowRows,
+    metric: "gained",
+  });
   const most = flowRows.slice(0, 18);
   const fastest: Row[] = growth
     ? joinRepoRank(growth.items, lookup)
@@ -124,6 +132,8 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
           completeHref={flowRows.length > most.length ? "#complete-ranking" : undefined}
           shareText={`${monthYearLabel(loc, year, month)} — GitHub star rankings`}
         />
+
+        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" />
 
         {narrative && (
           <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)]">
@@ -185,6 +195,12 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
   const [flow, lookup] = await Promise.all([getRank("week", period, "repo", "flow"), getReposLookup()]);
   if (!flow || !lookup) notFound();
   const rankRows: Row[] = joinRepoRank(flow.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const capsule = buildRankingCapsule({
+    title: `${period} GitHub Star Rankings`,
+    asOf: dataAsOfLabel(flow.meta.generated_at),
+    rows: rankRows,
+    metric: "gained",
+  });
   const rows = rankRows.slice(0, 32);
 
   return (
@@ -217,6 +233,7 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
           completeHref={rankRows.length > rows.length ? "#complete-ranking" : undefined}
           shareText={`${period} — GitHub star rankings`}
         />
+        <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" />
         <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
           <RankingList rows={rows} variant="gained" locale={loc} />
         </section>
