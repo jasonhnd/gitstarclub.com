@@ -17,6 +17,7 @@ const description =
 // metadataBase from env; indexing OFF until launch (private preview — SEO §11). Flip SITE_INDEXABLE=1 at launch.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
 const indexable = process.env.SITE_INDEXABLE === "1";
+const bingSiteVerification = process.env.BING_SITE_VERIFICATION;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -42,7 +43,10 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
   appleWebApp: { capable: true, title: "GitStarClub", statusBarStyle: "default" },
-  other: { "apple-mobile-web-app-capable": "yes" },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+    ...(bingSiteVerification ? { "msvalidate.01": bingSiteVerification } : {}),
+  },
 };
 
 export const viewport: Viewport = {
