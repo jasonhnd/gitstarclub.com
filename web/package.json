@@ -13,6 +13,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "exports:generate": "bun scripts/generate-data-exports.ts",
     "test": "bun test lib/",
     "test:cov": "bun test lib/ --coverage"
   },
