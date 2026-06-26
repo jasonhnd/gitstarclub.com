@@ -93,3 +93,25 @@ export function itemListLd(
     })),
   };
 }
+
+export type FaqItem = {
+  question: string;
+  answer: string;
+};
+
+export function faqPageLd(items: readonly FaqItem[], path: string, locale: string) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    url: abs(path),
+    inLanguage: locale,
+    mainEntity: items.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer,
+      },
+    })),
+  };
+}
