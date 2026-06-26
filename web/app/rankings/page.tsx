@@ -12,8 +12,8 @@ import en from "@/lib/i18n/dictionaries/en";
 import { getAllTime, getReposLookup, getOrgsLookup, joinRepoRank, joinOrgRank } from "@/lib/data";
 import { fmtStars, monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
-import { collectionLd, itemListLd } from "@/lib/jsonld";
-import { buildAllTimeRankingCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
+import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
+import { buildAllTimeRankingCapsule, dataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 
 const LOC = DEFAULT_LOCALE;
@@ -44,6 +44,14 @@ export default async function RankingsPage() {
       ? joinRepoRank(repoRank.items, repoLk).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }))
       : [];
   const orgs = orgRank && orgLk ? joinOrgRank(orgRank.items, orgLk) : [];
+  const dateModified = resolveDataAsOfValue(repoRank?.meta.generated_at, orgRank?.meta.generated_at);
+  const dataset = datasetLd({
+    name: "GitStarClub All-Time Rankings Dataset",
+    path: "/rankings",
+    locale: loc,
+    description: "All-time GitHub repository and organization rankings generated from precomputed Blob rank JSON.",
+    dateModified,
+  });
   const capsule = buildAllTimeRankingCapsule({
     asOf: dataAsOfLabel(repoRank?.meta.generated_at, orgRank?.meta.generated_at),
     repoRows,
@@ -53,7 +61,8 @@ export default async function RankingsPage() {
   return (
     <>
       <Chrome />
-      <JsonLd data={collectionLd(en.rankings.title, "/rankings", loc)} />
+      <JsonLd data={collectionLd(en.rankings.title, "/rankings", loc, { dateModified, about: datasetRef("/rankings") })} />
+      <JsonLd data={dataset} />
       <JsonLd
         data={itemListLd(
           `${en.rankings.title} repositories`,

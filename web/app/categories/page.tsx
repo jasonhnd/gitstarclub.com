@@ -5,9 +5,9 @@ import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getCategoryRegistry, getMeta } from "@/lib/data";
-import { collectionLd, itemListLd } from "@/lib/jsonld";
+import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
-import { buildCategoryIndexCapsule, resolveDataAsOfLabel } from "@/lib/geo-capsules";
+import { buildCategoryIndexCapsule, resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
 import { CATEGORY_INDEX_PREVIEW_LIMIT, categoryPath, fallbackRegistry, publicCategoryEntries, publicDimensions } from "./category-page-data";
@@ -31,12 +31,21 @@ export default async function CategoriesPage() {
   const publicCategories = publicCategoryEntries(registry);
   const dimensions = publicDimensions(registry);
   const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const dataset = datasetLd({
+    name: "GitStarClub Category Registry Dataset",
+    path: "/categories",
+    locale: LOC,
+    description: "Public category dimensions, category counts, and crawlable category links generated from precomputed Blob category registry JSON.",
+    dateModified,
+  });
   const capsule = asOf ? buildCategoryIndexCapsule(registry, asOf) : null;
 
   return (
     <>
       <Chrome />
-      <JsonLd data={collectionLd("GitHub repository categories", "/categories", LOC)} />
+      <JsonLd data={collectionLd("GitHub repository categories", "/categories", LOC, { dateModified, about: datasetRef("/categories") })} />
+      <JsonLd data={dataset} />
       <JsonLd
         data={itemListLd(
           "GitHub repository categories",

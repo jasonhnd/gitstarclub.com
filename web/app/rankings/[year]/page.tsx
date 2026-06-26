@@ -11,9 +11,9 @@ import { ShareButton } from "@/app/_explore/ShareButton";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { fmtStars, monthLabel } from "@/lib/format";
-import { collectionLd, itemListLd } from "@/lib/jsonld";
+import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
-import { buildRankingCapsule, dataAsOfLabel } from "@/lib/geo-capsules";
+import { buildRankingCapsule, dataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
@@ -54,6 +54,15 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
   if (!rank || !lookup) notFound();
 
   const rankRows: Row[] = joinRepoRank(rank.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const pagePath = `/rankings/${year}`;
+  const dateModified = resolveDataAsOfValue(rank.meta.generated_at, heat?.meta.generated_at);
+  const dataset = datasetLd({
+    name: `GitStarClub ${year} Rankings Dataset`,
+    path: pagePath,
+    locale: loc,
+    description: `${year} GitHub repository growth rankings and monthly heatmap totals generated from precomputed Blob rank and heatmap JSON.`,
+    dateModified,
+  });
   const capsule = buildRankingCapsule({
     title: `${year} GitHub Star Rankings`,
     asOf: dataAsOfLabel(rank.meta.generated_at, heat?.meta.generated_at),
@@ -71,7 +80,8 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
   return (
     <>
       <Chrome />
-      <JsonLd data={collectionLd(`${en.rankings.title} ${year}`, `/rankings/${year}`, loc)} />
+      <JsonLd data={collectionLd(`${en.rankings.title} ${year}`, pagePath, loc, { dateModified, about: datasetRef(pagePath) })} />
+      <JsonLd data={dataset} />
       <JsonLd
         data={itemListLd(
           `${year} GitHub repository rankings`,
