@@ -1,3 +1,5 @@
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
@@ -34,9 +36,36 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
+const exportRoot = join(process.cwd(), "public", "data", "exports", "v1");
+
+function latestDataExportDate(): string | null {
+  if (!existsSync(exportRoot)) return null;
+  return (
+    readdirSync(exportRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name))
+      .map((entry) => entry.name)
+      .sort()
+      .at(-1) ?? null
+  );
+}
+
 const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
+  },
+  async rewrites() {
+    const latestExportDate = latestDataExportDate();
+    if (!latestExportDate) return [];
+    return {
+      beforeFiles: [
+        {
+          source: "/data/exports/v1/latest/:path*",
+          destination: `/data/exports/v1/${latestExportDate}/:path*`,
+        },
+      ],
+      afterFiles: [],
+      fallback: [],
+    };
   },
 };
 

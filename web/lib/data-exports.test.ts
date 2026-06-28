@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { OrgLookupEntry, RankList, RepoEntity, RepoLookupEntry } from "@/lib/contracts";
 import {
@@ -12,7 +12,7 @@ import {
   type JsonExport,
 } from "./data-exports";
 
-const generatedManifestPath = join(import.meta.dir, "..", "public", "data", "exports", "v1", "latest", "manifest.json");
+const generatedExportRoot = join(import.meta.dir, "..", "public", "data", "exports", "v1");
 
 describe("buildDataExportBundle", () => {
   test("builds deterministic bounded JSON and CSV exports with attribution", () => {
@@ -132,8 +132,10 @@ describe("buildDataExportBundle", () => {
 
 describe("checked-in data export manifest", () => {
   test("keeps generated static exports bounded and attributed", () => {
-    expect(existsSync(generatedManifestPath)).toBe(true);
-    const manifest = JSON.parse(readFileSync(generatedManifestPath, "utf8")) as {
+    const generatedManifestPath = latestDatedManifestPath();
+    expect(generatedManifestPath).not.toBeNull();
+    expect(existsSync(generatedManifestPath ?? "")).toBe(true);
+    const manifest = JSON.parse(readFileSync(generatedManifestPath ?? "", "utf8")) as {
       schema_version: number;
       export_date: string;
       data_as_of: string;
@@ -160,9 +162,22 @@ describe("checked-in data export manifest", () => {
       expect(file.latest_urls.csv).toBe(`/data/exports/v1/latest/${file.name}.csv`);
       expect(file.dated_urls.json).toBe(`/data/exports/v1/${manifest.export_date}/${file.name}.json`);
       expect(file.dated_urls.csv).toBe(`/data/exports/v1/${manifest.export_date}/${file.name}.csv`);
+      expect(existsSync(join(generatedExportRoot, "latest", `${file.name}.json`))).toBe(false);
+      expect(existsSync(join(generatedExportRoot, "latest", `${file.name}.csv`))).toBe(false);
     }
+    expect(existsSync(join(generatedExportRoot, "latest", "manifest.json"))).toBe(false);
   });
 });
+
+function latestDatedManifestPath(): string | null {
+  if (!existsSync(generatedExportRoot)) return null;
+  const latestDate = readdirSync(generatedExportRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .at(-1);
+  return latestDate ? join(generatedExportRoot, latestDate, "manifest.json") : null;
+}
 
 function rankList({ items, ...meta }: RankList["meta"] & { items: RankList["items"] }): RankList {
   return { meta, items };

@@ -220,6 +220,9 @@ export default async function AboutPage() {
             GitStarClub publishes small static CSV and JSON extracts for top rankings, repository milestone crossings, and organization aggregates. The files are generated from existing precomputed Blob views, versioned under <code>/data/exports/v1/</code>, and dated from real view metadata.
           </p>
           <p>
+            The <code>/data/exports/v1/latest/</code> links are stable aliases to the newest dated export directory, so downloads keep working without storing a duplicate latest snapshot.
+          </p>
+          <p>
             License:{" "}
             <a className="font-semibold text-tertiary hover:text-primary" href="https://creativecommons.org/licenses/by/4.0/" rel="noreferrer">
               CC BY 4.0
