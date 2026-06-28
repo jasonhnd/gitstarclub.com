@@ -18,7 +18,7 @@ The core thesis is:
 
 > Original data is GitStarClub's strongest citation moat. GEO work should turn every repo, org, ranking, category, pulse, and compare surface into a small, dated, attributable statistical answer, while preserving deterministic static rendering.
 
-This document defines that strategy, the evidence behind it, page-by-page tactics, schema additions, indexing hygiene, measurement, and an implementation roadmap. All implementation items in Section 11 are intended to become separate issues after this document is reviewed.
+This document defines that strategy, the evidence behind it, page-by-page tactics, schema additions, indexing hygiene, measurement, and an implementation roadmap. All implementation items in Section 12 are intended to become separate issues after this document is reviewed.
 
 ---
 
@@ -87,7 +87,7 @@ GitStarClub has several advantages that most content sites must build from scrat
 | HTTPS production host | The public site is served from `https://gitstarclub.com`, with canonical URLs generated from `NEXT_PUBLIC_SITE_URL`. | AI search engines and classic crawlers get one secure apex identity, not fragmented preview or subdomain URLs. |
 | Canonical URL model | Language-neutral canonical URLs; repo URLs match GitHub slugs; old repo aliases redirect to current slugs. | Entity matching is simple: `/react/react`, `/o/vercel`, `/rankings/2026/6`. |
 | Sitemap coverage | Public sitemap sampled on 2026-06-24 contained 10,877 `<loc>` entries with real `lastModified`, `changeFrequency`, and `priority`. | Long-tail ISR pages are discoverable even before natural links exist. |
-| Existing schema | `web/lib/jsonld.ts` emits WebSite, SoftwareSourceCode, Organization/Person, CollectionPage, ItemList, Dataset, and optional `dateModified`; breadcrumbs emit BreadcrumbList. | The schema foundation exists; GEO still needs FAQPage and stronger sameAs enrichment. |
+| Existing schema | `web/lib/jsonld.ts` emits WebSite, site Organization, SoftwareSourceCode, Organization/Person, CollectionPage, ItemList, Dataset, FAQPage, and optional `dateModified`; breadcrumbs emit BreadcrumbList. | The schema foundation exists; GEO deepening now focuses on Dataset distribution, temporalCoverage, stronger sameAs enrichment, semantic tables, and measurement. |
 | Deterministic narrative | Month pages already generate narrative from rank data without AI. | Answer capsules can use the same deterministic pattern: template + JSON fields, no LLM. |
 | Robots baseline | When indexable, current robots policy allows `/` and disallows `/api/`, which also permits AI crawlers unless separately blocked. | The gap is explicit intent and training-vs-retrieval policy, not a crawl blockade. |
 
@@ -327,7 +327,7 @@ Current `web/lib/jsonld.ts` builders:
 - `webSiteLd(...)`, `repoLd(...)`, `orgLd(...)`, and `collectionLd(...)` accept optional `dateModified`
 - Breadcrumb schema lives in the `Breadcrumbs` component as `BreadcrumbList`
 
-GEO uses the following shapes. Dataset and `dateModified` are implemented for home, ranking, and category surfaces; FAQPage and sameAs enrichment remain later implementation work.
+GEO uses the following shapes. Dataset and `dateModified` are implemented for home, ranking, category, and methodology surfaces; FAQPage is implemented from visible FAQ blocks; sameAs enrichment beyond the current approved baseline remains later implementation work.
 
 ### 6.1 Dataset: site-level and optional ranking-level
 
@@ -378,6 +378,9 @@ Implementation linkage:
   - Category index/dimension pages: `categories/registry.json.generated_at`, falling back to `meta.json.generated_at`, `meta.json.backfilled_at`, or `meta.json.folded_through.month`.
   - Category detail pages: category rank `meta.generated_at`, `categories/registry.json.generated_at`, `categories/assignments.json.generated_at`, then the same `meta.json` fallbacks.
 - `temporalCoverage` remains optional and should only be emitted when a caller has a data-backed coverage range.
+- Deepening round Dataset enrichment should add `distribution` only for public static export files, not private Blob views. Use `DataDownload` entries pointing at stable `/data/exports/v1/latest/*` aliases for the manifest and bounded CSV/JSON extracts, with `encodingFormat` (`application/json` or `text/csv`) and human-readable `name`.
+- Dataset `temporalCoverage` should be derived from real coverage metadata or visible export metadata. Prefer an interval such as `2015/2026` or `2015-01/2026-06` only when the implementation can prove both endpoints from precomputed views; otherwise omit the field.
+- The Dataset `distribution` list must remain small and citeable: start with the export manifest plus the three public extract families from [DATA-EXPORTS.md](./DATA-EXPORTS.md). Do not expose raw internal Blob contract paths through Dataset distribution.
 - The visible page should include a matching "Data as of" line when the page has a real data date.
 
 ### 6.2 FAQPage: generated from visible FAQ
@@ -458,6 +461,9 @@ Implementation linkage:
 - Keep GitHub sameAs mandatory when rendering owner pages.
 - Add optional sameAs enrichment only from deterministic metadata fields or approved static registry; do not scrape arbitrary profile links at request time.
 - If Wikidata or other profiles are added, record source and ownership in the docs before shipping.
+- Deepening round repo/org `sameAs` enrichment must use an approved allowlist, not arbitrary homepage crawling. Allowed source classes are first-party project homepages already present in the repo entity, verified GitHub owner URLs, official organization domains from a reviewed static registry, and future Wikidata entries approved in a separate docs issue.
+- Every non-GitHub `sameAs` URL needs a reviewer-visible reason: `source`, `ownership_evidence`, `entity_type`, `approved_by`, and `approved_at`. If that provenance cannot be documented, omit the URL.
+- Do not add social profiles, package registries, or community mirrors merely because they mention the repository. `sameAs` is an identity claim, not an external-reference dump.
 
 ### 6.4 CollectionPage / Article dateModified
 
@@ -482,6 +488,19 @@ Implementation linkage:
 - `collectionLd(name, path, locale, options)` handles optional `dateModified` and `about` Dataset references; pages should not build ad hoc CollectionPage objects.
 - `repoLd(...)` and `orgLd(...)` accept optional `dateModified`, but repo/org pages should pass it only if it describes GitStarClub's page data update, not the upstream repository's code update.
 - Keep `BreadcrumbList` as-is in `Breadcrumbs`; do not duplicate breadcrumbs.
+
+### 6.5 Semantic data tables for extraction
+
+Semantic HTML tables are a GEO surface, not only a visual component. Presence AI's cited benchmark in Section 3 reports data tables as the strongest tested content format, so deepening work should make existing ranking, organization, and category facts easier to extract without changing the data model.
+
+Implementation contract:
+
+- Keep tables server-rendered and deterministic. Rows must come from the same Blob JSON already used by the page.
+- Use real table semantics: `<table>`, `<caption>` or an accessible heading, `<thead>`, `<tbody>`, `<th scope="col">`, and stable column labels. Do not replace semantic tables with div grids when the content is tabular.
+- Candidate surfaces: complete ranking rows, organization member repository summaries, category detail repository lists, and compact top-row summaries for Pulse where the visible layout can support a table.
+- Each table should expose at least one citeable statistic column and one canonical URL column or link: rank, repository or organization name, current stars or period gain, period/date label, and canonical GitStarClub URL.
+- UI-affecting table changes require visual sign-off. They may alter page density, mobile overflow, and scan behavior even when colors and tokens stay unchanged.
+- Do not duplicate giant hidden tables for crawlers. If the table is not useful to users, it should not be emitted for GEO.
 
 ---
 
@@ -514,6 +533,9 @@ Rules:
 - Never serialize fallback sentinels such as `"fallback"` as schema freshness; omit `dateModified` until a real Blob date or watermark is available.
 - Use year and period terms in H1 or capsule where they matter: `June 2026 GitHub Star Rankings`, `2026-W26 weekly movers`.
 - For current-period surfaces, use `month-to-date` or `week-to-date`; for historical periods, use `final` or `frozen`.
+- Dataset `temporalCoverage` must describe the covered observation window, not the page publish date. It should advance only when the underlying export or data coverage advances.
+- Dataset `distribution` `dateModified`, if added later, should match the export manifest `data_as_of` or dated export directory metadata, not the deployment timestamp.
+- Measurement reports should record the freshness label seen by answer engines when a citation is reviewed; stale or missing "Data as of" text is a follow-up bug, not a manual-note problem.
 
 This matches Ahrefs' finding that AI assistants cite fresher URLs than classic organic results on average, while avoiding the common false-freshness trap.
 
@@ -695,6 +717,12 @@ The engineering goal is to make external citation easy. It should not fabricate 
 
 Do not introduce paid GEO monitoring by default. Use Vercel-first measurement and a small manual query set.
 
+The measurement loop has three layers:
+
+1. Aggregate server-side bot and referrer reporting from Vercel logs.
+2. A versioned target-query file at `docs/geo/queries.md`.
+3. A citation review cadence that turns wrong, stale, or missing citations into implementation issues.
+
 ### 10.1 Bot and referrer logs
 
 Track user-agent families in Vercel logs or a Vercel-native log export:
@@ -726,6 +754,15 @@ Track likely AI referrers:
 
 Keep the first implementation aggregate-only. Do not add user-level tracking or client analytics without a separate privacy review.
 
+Reporting contract:
+
+- Source: Vercel request logs, Vercel log drains, or another Vercel-native export. Do not add a client-side tracker for GEO measurement.
+- Grain: daily or weekly aggregate rows by `date`, `user_agent_family`, `path_family`, `status_bucket`, and `count`.
+- Referrers: aggregate by normalized host only, not full URL with query strings. Store `referrer_host`, `path_family`, and `count`.
+- Privacy: no IP addresses, user ids, cookies, or raw query parameters in checked-in reports.
+- Path families: `repo`, `org`, `rankings`, `category`, `pulse`, `compare`, `about`, `data-export`, and `other`.
+- Output: a human-readable report can live under `docs/analysis/` or `docs/geo/` in a later issue; runtime code must remain Vercel-first and deterministic.
+
 ### 10.2 Manual target query set
 
 Create `docs/geo/queries.md` in a later issue. It should list real prompts GitStarClub should win, grouped by page type:
@@ -737,6 +774,19 @@ Create `docs/geo/queries.md` in a later issue. It should list real prompts GitSt
 - Category: "largest Python repositories on GitHub by stars"
 - Pulse: "top GitHub repositories gaining stars this week"
 - Compare: "did React or Vue grow faster after 10k stars?"
+
+Target-query row format:
+
+| Field | Required | Example |
+|---|---|---|
+| `id` | yes | `repo-react-100k` |
+| `page_type` | yes | `repo` |
+| `query` | yes | `when did react/react reach 100k GitHub stars?` |
+| `expected_url` | yes | `/react/react` |
+| `expected_fact` | yes | `100k milestone month from repo.milestones.crossed_100k` |
+| `source_fields` | yes | `entity/repo/{id}.json milestones.crossed_100k` |
+| `priority` | yes | `high` |
+| `notes` | no | `Checks exact milestone citation.` |
 
 Weekly manual checks:
 
@@ -763,11 +813,148 @@ Secondary metrics:
 - Answer accuracy when cited.
 - Stale citation rate: answers citing old periods or non-canonical URLs.
 
+Citation-review cadence:
+
+- Weekly for the first eight weeks after GEO deepening launches.
+- Monthly after citation occupancy and answer accuracy stabilize.
+- Ad hoc after any schema, robots, sitemap, or answer-capsule change.
+- Every review should classify misses as `not indexed`, `not cited`, `wrong URL`, `stale fact`, `wrong fact`, `competitor cited`, or `engine unavailable`.
+- Each actionable miss should become a follow-up issue linked to the relevant GEO subsection, not an undocumented one-off tweak.
+
 ---
 
-## 11. Phased Implementation Roadmap
+## 11. GEO Deepening Round
+
+The deepening round strengthens the surfaces already shipped in Phase 1 and Phase 2. It is not a new-page program. Implementation should improve Dataset linkage, measurement, identity clarity, semantic extraction, and citeable compare summaries while preserving the existing constraints: no runtime AI, no runtime database, no new paid service, server-rendered content, and minimal UI change.
+
+Every item below is issue-sized. Implementation issues should cite the relevant subsection instead of re-defining scope in the issue body.
+
+### 11.1 Dataset distribution and temporal coverage
+
+Goal: connect GitStarClub Dataset JSON-LD to the public #65 data exports and describe the covered observation window honestly.
+
+Scope:
+
+- Extend `datasetLd(...)` in a later implementation issue to accept a small `distribution` array of schema.org `DataDownload` objects.
+- Link only public static export files from `/data/exports/v1/latest/*`: the manifest, top rankings, top repository milestones, and top organization aggregates.
+- Include `name`, `encodingFormat`, and `contentUrl` on each `DataDownload`. Optional `dateModified` may be used only when it comes from the export manifest or dated export metadata.
+- Add `temporalCoverage` only when the implementation can derive both endpoints from real data coverage. Do not hard-code the latest year or use deployment time as coverage.
+- Keep `/about`, home, rankings, and category Dataset facts aligned with visible page text and [DATA-EXPORTS.md](./DATA-EXPORTS.md).
+
+Acceptance sketch:
+
+- JSON-LD validates as Dataset with DataDownload distribution.
+- Distribution URLs resolve through the stable latest export aliases and do not point at private Blob views.
+- `temporalCoverage` is omitted when coverage cannot be proven from precomputed data.
+- Tests assert escaping, shape, and absence of hard-coded freshness dates.
+
+### 11.2 Measurement loop and query tracking
+
+Goal: make GEO outcomes measurable without paid monitoring or client-side tracking.
+
+Scope:
+
+- Build aggregate AI crawler and referrer reporting from Vercel-native logs or exports, following Section 10.1.
+- Create `docs/geo/queries.md` with the target-query format in Section 10.2.
+- Add an initial query set covering repo, org, ranking, category, pulse, compare, about/methodology, and data-export citation queries.
+- Establish the citation-review cadence from Section 10.2: weekly for eight weeks after launch, monthly after stabilization, and ad hoc after crawler/schema/sitemap changes.
+- Track both citation occupancy and answer accuracy; stale facts and wrong canonical URLs should become follow-up issues.
+
+Acceptance sketch:
+
+- Reports are aggregate-only and contain no IPs, cookies, user ids, or raw query strings.
+- Query rows include `id`, `page_type`, `query`, `expected_url`, `expected_fact`, `source_fields`, and `priority`.
+- Review output can classify misses as indexing, citation, accuracy, freshness, URL, or competitor issues.
+
+### 11.3 Repo and org sameAs enrichment
+
+Goal: improve entity disambiguation without making unsupported identity claims.
+
+Scope:
+
+- Keep GitHub owner URLs as the mandatory baseline `sameAs` value for org/person entity pages.
+- Add optional sameAs arrays only from an approved static registry or deterministic metadata with documented provenance.
+- Allow first-party project or organization domains, verified GitHub URLs, and separately approved Wikidata entries. Do not scrape arbitrary profile links.
+- Record provenance for every non-GitHub URL: source, ownership evidence, entity type, reviewer, and approval date.
+- Omit uncertain URLs. sameAs is an identity assertion, not a general external-link list.
+
+Acceptance sketch:
+
+- Repo/org schema remains deterministic and server-rendered.
+- No request-time scraping or external lookup is introduced.
+- Tests cover single-value GitHub fallback, approved arrays, and rejection or omission of unapproved URLs.
+
+### 11.4 Semantic data tables
+
+Goal: expose core ranking, organization, and category facts in the AI-citation format most likely to be extracted while keeping the UI useful to humans.
+
+Scope:
+
+- Add or refine visible semantic tables for complete ranking rows, organization member summaries, category detail rankings, and compact Pulse summaries where appropriate.
+- Use real table semantics and accessible labels as specified in Section 6.5.
+- Keep data source parity with the already-rendered server rows; do not add hidden crawler-only tables.
+- Preserve mobile usability. Wide tables may use the existing horizontal-scroll strategy when needed.
+- This is UI-affecting work and requires visual sign-off before merge.
+
+Acceptance sketch:
+
+- Tables are server-rendered from existing Blob JSON and contain canonical links.
+- Rows and rankings match existing visible data.
+- 320px, 375px, 768px, and desktop screenshots show no overlap or token drift.
+- No global visual tokens are changed.
+
+### 11.5 Server-rendered citeable compare conclusion
+
+Goal: make `/compare` citeable without adding a new route or pretending client-only query state is server-rendered.
+
+Scope:
+
+- Keep `/compare` as the route. Do not add pair-specific pages in this round.
+- Add a server-rendered generic conclusion block that explains what GitStarClub Compare can conclude from precomputed repo curves: absolute history, 10k-aligned growth, current stars, and milestone context.
+- If URL query parameters are later parsed server-side, the conclusion may summarize the selected pair only when the route has loaded both compare curves on the server from existing Blob JSON.
+- Until then, visible copy and schema must stay generic and must not claim facts about client-selected repositories.
+- This is UI-affecting work and requires visual sign-off before merge.
+
+Acceptance sketch:
+
+- `/compare` remains near-zero client JS except the existing interactive island.
+- The server-rendered conclusion is deterministic, source-attributed, and dated only when a real data date is available.
+- No runtime AI, no runtime database, and no new route are introduced.
+
+### 11.6 SEO reconciliation
+
+Goal: keep classic SEO documentation aligned with GEO schema that has already shipped.
+
+Scope:
+
+- `docs/SEO.md` Section 6.2 must state that the home page now emits Dataset JSON-LD through `datasetLd(...)`, linked from `WebSite.about` through `datasetRef(...)`.
+- SEO should continue to own classic crawl, canonical, metadata, sitemap, and internal-link mechanics.
+- GEO remains the owning document for answer-engine citation strategy, Dataset enrichment, FAQ, sameAs, AI crawler hygiene, and measurement.
+
+Acceptance sketch:
+
+- `SEO.md` no longer claims there is no Dataset builder or no home-page Dataset.
+- `SEO.md` links to this document for Dataset deepening details.
+- No runtime or code behavior changes are part of the docs-only reconciliation issue.
+
+### 11.7 Deepening implementation issue list
+
+| Proposed issue title | Scope | Acceptance sketch |
+|---|---|---|
+| `[geo] Add Dataset DataDownload distribution and temporalCoverage` | Implement Section 11.1 for public data exports and proven coverage windows. | Dataset JSON-LD includes bounded public DataDownload entries; temporalCoverage is data-backed or omitted; tests cover shape and no hard-coded dates. |
+| `[geo] Add Vercel-first GEO measurement report` | Implement Section 11.2 bot/referrer aggregation. | Aggregate-only report by user-agent/referrer/path family; no client analytics or personal data. |
+| `[geo] Add target query tracking doc and citation review cadence` | Create `docs/geo/queries.md` and the review template from Section 10.2. | Query set covers all page types; weekly/manual check rows are copy-paste ready; citation occupancy and accuracy are defined. |
+| `[geo] Enrich repo and org sameAs from approved identities` | Implement Section 11.3. | Approved sameAs arrays render deterministically; unapproved URLs are omitted; no scraping. |
+| `[geo] Add semantic data tables for citeable ranking surfaces` | Implement Section 11.4. | Server-rendered tables expose core facts and canonical links; visual sign-off attached. |
+| `[geo] Add server-rendered compare conclusion` | Implement Section 11.5 on existing `/compare`. | No new route; generic or truly server-backed pair conclusion only; visual sign-off attached. |
+
+---
+
+## 12. Phased Implementation Roadmap
 
 Each item is intentionally issue-sized and should be implemented in a separate PR unless a reviewer explicitly groups compatible docs-only changes.
+
+The GEO deepening implementation round is specified in Section 11. Use Section 11.7 for the next batch of blocked implementation issues.
 
 ### Phase 1: Engineering, highest leverage, no constraint conflict
 
@@ -806,7 +993,7 @@ Each item is intentionally issue-sized and should be implemented in a separate P
 
 ---
 
-## 12. Pitfalls, Non-Goals, and Constraint Fit
+## 13. Pitfalls, Non-Goals, and Constraint Fit
 
 Pitfalls:
 
