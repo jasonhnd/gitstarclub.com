@@ -580,7 +580,7 @@ Disallow: /
 
 > 目的：①Google 富结果（主要是面包屑）；②给 LLM / AI Overviews 喂结构化事实（repo star 数 / 站点描述），抢 AI 答案位。用 `<script type="application/ld+json">` 注入（服务端渲染进 HTML，非客户端）。
 >
-> **实际实现以 `web/lib/jsonld.ts` 的 5 个 builder 为唯一事实来源**：`webSiteLd`（首页 `WebSite`）、`repoLd`（repo `SoftwareSourceCode` + `interactionStatistic` star 数）、`orgLd`（org `Organization` / `Person`）、`collectionLd`（月/年/全时榜与分类/org 索引的 `CollectionPage`）、`itemListLd`（rankings / categories / org index 的 `ItemList`）。`BreadcrumbList` **不在这些 builder 内**，由 `Breadcrumbs.tsx` 组件单独输出（见 §6.7）。**不输出 `Dataset` / `SearchAction`**，也不在 `CollectionPage` 上带 `datePublished` / `dateModified` / `isPartOf`（下面各小节逐一说明）。
+> **Current implementation source of truth is `web/lib/jsonld.ts`**: `webSiteLd` (home `WebSite`), `siteOrganizationLd` (site `Organization`), `repoLd` (repo `SoftwareSourceCode` + star `interactionStatistic`), `orgLd` (owner `Organization` / `Person`), `collectionLd` (ranking/category/org-index `CollectionPage`), `itemListLd` (rankings / categories / org index `ItemList`), `datasetLd` / `datasetRef` (Dataset JSON-LD), and `faqPageLd` (visible FAQ schema). `BreadcrumbList` **does not live inside those builders**; `Breadcrumbs.tsx` emits it separately (see §6.7). `SearchAction` is still intentionally omitted because the site has no canonical `/search?q=` results page.
 
 ### 6.1 首页：`WebSite`（仅首页，不在根 layout）
 
@@ -603,9 +603,11 @@ Disallow: /
 
 > 全站搜索是**导航栏客户端 combobox**（首次聚焦懒加载 `search/index.json` + MiniSearch，命中直达 `/{owner}/{name}`），**没有 `/search?q=` 结果页 URL**。`SearchAction` 的 `urlTemplate` 必须指向一个可返回结果列表的规范页面——本站没有，故 `potentialAction` / `SearchAction` **不输出**（绝不广告一个指向不存在页面的 urlTemplate）。`WebSite` 本体只在首页输出（Google 的 site-name 信号通常依赖首页的 `WebSite` ld）。若未来新增 `/search` 结果页，再补 `SearchAction`。
 
-### 6.2 首页：**不输出 `Dataset`**
+### 6.2 Home page: `Dataset`
 
-`jsonld.ts` 没有 `Dataset` builder——首页除上面的 `WebSite` 外**不注入站点级 `Dataset`**（无 `temporalCoverage` / `creator` / `isBasedOn` / `license` 等字段）。GH Archive / GitHub API 的署名与口径在 `/about` 页面正文承载（见 §2.7），不通过 JSON-LD `Dataset` 表达。若未来要补数据集卡片，再在 `jsonld.ts` 新增 builder。
+Current implementation: the home page now emits Dataset JSON-LD through `datasetLd(...)` in `PulseView`, alongside the home `WebSite` schema. `webSiteLd(...)` links to the page Dataset with `about: datasetRef("/")`, and the Dataset carries `creator`, `publisher`, `license`, `isAccessibleForFree`, `variableMeasured`, `measurementTechnique`, and optional `dateModified` from real Blob metadata. The `/pulse` page uses the same component with `/pulse` as the Dataset path.
+
+Dataset enrichment details, including future `DataDownload` `distribution` entries and `temporalCoverage`, are owned by [GEO.md §11](./GEO.md#11-geo-deepening-round). SEO keeps ownership of classic crawl, canonical, metadata, sitemap, and internal-link mechanics.
 
 ### 6.3 Repo 详情页：`SoftwareSourceCode` + `BreadcrumbList`
 
@@ -916,7 +918,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 | **ISR 冷启动考量** | GSC 抓取首个 URL 会触发该页 ISR 生成（首抓 TTFB 略高、属正常）；**关注首抓后是否 200 + 内容完整**，而非冷启动延迟本身 | 抽查 |
 | ~~hreflang 报告~~ | 不适用：语言中立单一 URL、不发 hreflang（见 §10）；无 International Targeting 需监控 | — |
 | URL Inspection | 抽查 repo / org / 历史月页：实时抓取看渲染后 HTML 是否含正文 + JSON-LD（验证 §3a 可索引性） | 抽查 |
-| 富结果监控 | Rich Results：Breadcrumb 与列表页 `ItemList` 是否有效（**本站不输出 Dataset**，见 §6）；用 [Rich Results Test](https://search.google.com/test/rich-results) 验 JSON-LD | 上线 + 变更 schema 时 |
+| Rich result monitoring | Validate Breadcrumb, visible-list `ItemList`, and shipped Dataset JSON-LD where applicable (see §6); use [Rich Results Test](https://search.google.com/test/rich-results) for JSON-LD smoke checks. | Launch + schema changes |
 | 移除过时网址 | 若预览曾误被收录：Removals 工具临时移除 + 修 noindex | 仅事故时 |
 | Core Web Vitals 报告 | GSC CWV 报告 + Vercel Speed Insights 双看（见 §12） | 每月 |
 
@@ -954,7 +956,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 
 **结构化数据（§6）**
 
-- [ ] 首页 `WebSite`（**仅首页，不在根 layout**；含 `name`/`url`/`inLanguage`/`description`；不含 `SearchAction`、**不含 `Dataset`**，见 §6.1 / §6.2）
+- [ ] 首页 `WebSite`（**仅首页，不在根 layout**；含 `name`/`url`/`inLanguage`/`description`；不含 `SearchAction`）+ home Dataset JSON-LD from `datasetLd(...)`（见 §6.1 / §6.2）
 - [ ] repo 页 `SoftwareSourceCode` + `interactionStatistic`（`InteractionCounter` / star 数），**不含 `Dataset` / `temporalCoverage`**；org 详情页 `Organization`/`Person`
 - [ ] 月/年/周页、全时榜、category 列表页、org 索引页均有 `CollectionPage`；列表页另输出同源 `ItemList`，但 `CollectionPage` 不含 `datePublished`/`dateModified`/`isPartOf`
 - [ ] **每页 `BreadcrumbList` 由 `Breadcrumbs.tsx` 单独输出**（不在 `jsonld.ts` 5 个 builder 内）；全部通过 Google Rich Results 测试
