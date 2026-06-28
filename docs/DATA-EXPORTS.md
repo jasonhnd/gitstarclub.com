@@ -2,6 +2,8 @@
 
 GitStarClub publishes small, deterministic CSV and JSON extracts for reuse and citation. They are generated from existing precomputed Vercel Blob views and checked in as static assets under `web/public/data/exports/v1/`.
 
+Exports are stored once, in dated directories such as `web/public/data/exports/v1/YYYY-MM-DD/`. The public `/data/exports/v1/latest/*` URLs are stable aliases rewritten by Next.js to the newest dated directory at build time; `latest/` is not a second copy of the CSV or JSON payloads.
+
 ## License and attribution
 
 The exports use CC BY 4.0 and carry this attribution copy:
@@ -12,7 +14,7 @@ CSV files repeat the license and attribution columns on every row. JSON files in
 
 ## Export set
 
-The latest export set is available at:
+The latest export set is available through stable alias URLs:
 
 - `/data/exports/v1/latest/manifest.json`
 - `/data/exports/v1/latest/top-rankings.csv`
@@ -22,7 +24,7 @@ The latest export set is available at:
 - `/data/exports/v1/latest/top-org-aggregates.csv`
 - `/data/exports/v1/latest/top-org-aggregates.json`
 
-Each manifest also points to the dated copy for the same generated data, for example `/data/exports/v1/YYYY-MM-DD/manifest.json`.
+These aliases resolve to the newest dated directory, for example `/data/exports/v1/YYYY-MM-DD/manifest.json`. Each manifest also includes dated URLs for the same generated data.
 
 ## Source views
 
@@ -61,3 +63,5 @@ bun run exports:generate --month 2026-06
 ```
 
 The generator derives `data_as_of` and `export_date` from real Blob view `generated_at` metadata. It does not use deployment time or hard-coded freshness dates.
+
+Regeneration writes the dated export directory and removes any stale `latest/` directory so the repository does not store byte-identical snapshots twice. The build-time rewrite keeps `/data/exports/v1/latest/*` download links working.
