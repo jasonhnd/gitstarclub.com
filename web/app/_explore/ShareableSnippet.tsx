@@ -3,7 +3,7 @@ import type { ShareableSnippetContent } from "@/lib/shareable-snippets";
 
 export function ShareableSnippet({ snippet, className = "" }: { snippet: ShareableSnippetContent; className?: string }) {
   return (
-    <section aria-label={`${snippet.title} shareable snippet`} className={`border-y border-outline-variant py-4 ${className}`}>
+    <section aria-label={`${snippet.title} shareable snippet`} className={`rounded-2xl border border-outline-variant bg-surface-container px-4 py-4 ${className}`}>
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">Shareable snippet</p>
