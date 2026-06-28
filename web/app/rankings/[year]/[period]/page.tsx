@@ -10,6 +10,7 @@ import { Heatmap } from "@/app/_explore/Heatmap";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { ShareButton } from "@/app/_explore/ShareButton";
+import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
 import { Narrative } from "@/app/_explore/Narrative";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
@@ -19,6 +20,7 @@ import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
 import { buildRankingCapsule, resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { buildRankingFaqs } from "@/lib/geo-faq";
+import { buildWeeklyMoversSnippet } from "@/lib/shareable-snippets";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "@/lib/i18n";
@@ -220,9 +222,10 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
     rows: rankRows,
     metric: "gained",
   }) : null;
+  const pagePath = `/rankings/${year}/W${String(week).padStart(2, "0")}`;
+  const snippet = buildWeeklyMoversSnippet({ period, asOf, rows: rankRows, path: pagePath });
   const faqItems = buildRankingFaqs({ title, asOf, rows: rankRows, metric: "gained" });
   const rows = rankRows.slice(0, 32);
-  const pagePath = `/rankings/${year}/W${String(week).padStart(2, "0")}`;
   const dateModified = resolveDataAsOfValue(flow.meta.generated_at);
   const dataset = datasetLd({
     name: `GitStarClub ${period} Rankings Dataset`,
@@ -264,6 +267,7 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
           shareText={`${period} — GitHub star rankings`}
         />
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" />}
+        {snippet && <ShareableSnippet snippet={snippet} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" />}
         <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
           <RankingList rows={rows} variant="gained" locale={loc} />
         </section>
