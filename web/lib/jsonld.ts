@@ -4,6 +4,8 @@ import { categoryLanguageNamesFromRepository } from "@/lib/categories/rules";
 
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com").replace(/\/+$/, "");
 const abs = (path: string) => `${SITE}${path}`;
+export const SITE_ORGANIZATION_SAME_AS = ["https://github.com/jasonhnd/gitstarclub.com"] as const;
+
 const SITE_ORG = {
   "@type": "Organization",
   name: "GitStarClub",
@@ -52,6 +54,17 @@ function optionalAbout(about: object | null | undefined) {
 
 export function datasetRef(path: string) {
   return { "@id": `${abs(path)}#dataset` };
+}
+
+export function siteOrganizationLd() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "GitStarClub",
+    url: SITE,
+    logo: abs("/icon-512.png"),
+    sameAs: [...SITE_ORGANIZATION_SAME_AS],
+  };
 }
 
 export function datasetLd({

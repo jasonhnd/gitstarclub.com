@@ -425,11 +425,18 @@ Existing `orgLd` sets `sameAs` to the GitHub owner URL. GEO should support array
   "@type": "Organization",
   "name": "GitStarClub",
   "url": "https://gitstarclub.com",
+  "logo": "https://gitstarclub.com/icon-512.png",
   "sameAs": [
     "https://github.com/jasonhnd/gitstarclub.com"
   ]
 }
 ```
+
+Approved site-level `sameAs` list:
+
+- `https://github.com/jasonhnd/gitstarclub.com` - reviewed first-party source repository and project profile for GitStarClub.
+
+Only add URLs to this list after review confirms they are stable, first-party project or publisher profiles. Do not use scraped, inferred, or arbitrary external profiles.
 
 For GitHub owner pages:
 

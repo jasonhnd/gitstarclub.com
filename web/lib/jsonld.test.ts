@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { collectionLd, datasetLd, datasetRef, faqPageLd, itemListLd, repoLd } from "./jsonld";
+import { SITE_ORGANIZATION_SAME_AS, collectionLd, datasetLd, datasetRef, faqPageLd, itemListLd, repoLd, siteOrganizationLd } from "./jsonld";
 import { stringifyJsonForScript } from "./json-script";
 import { resolveDataAsOfValue } from "./geo-capsules";
 
@@ -28,6 +28,22 @@ describe("repoLd", () => {
       name: "owner/tool",
       description: 'x</script><img src=x onerror="alert(1)">',
     });
+  });
+});
+
+describe("siteOrganizationLd", () => {
+  test("emits the reviewed site-level Organization identity", () => {
+    const data = siteOrganizationLd();
+
+    expect(data).toEqual({
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "GitStarClub",
+      url: "https://gitstarclub.com",
+      logo: "https://gitstarclub.com/icon-512.png",
+      sameAs: [...SITE_ORGANIZATION_SAME_AS],
+    });
+    expect(data.sameAs).toEqual(["https://github.com/jasonhnd/gitstarclub.com"]);
   });
 });
 
