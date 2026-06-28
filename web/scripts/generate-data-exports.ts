@@ -125,8 +125,13 @@ async function buildBundle(month: string): Promise<DataExportBundle> {
 function writeBundle(bundle: DataExportBundle): void {
   const latestDir = join(exportRoot, "latest");
   const datedDir = join(exportRoot, bundle.manifest.export_date);
-  writeBundleDir(bundle, latestDir);
+  removeLatestDir(latestDir);
   writeBundleDir(bundle, datedDir);
+}
+
+function removeLatestDir(latestDir: string): void {
+  assertInsideExportRoot(latestDir);
+  rmSync(latestDir, { recursive: true, force: true });
 }
 
 function writeBundleDir(bundle: DataExportBundle, outDir: string): void {
@@ -167,7 +172,7 @@ console.log(
       export_date: bundle.manifest.export_date,
       data_as_of: bundle.manifest.data_as_of,
       rows: Object.fromEntries(bundle.manifest.files.map((file) => [file.name, file.rows])),
-      latest: `/data/exports/v1/latest/manifest.json`,
+      latest_alias: `/data/exports/v1/latest/manifest.json`,
       dated: `/data/exports/v1/${bundle.manifest.export_date}/manifest.json`,
     },
     null,
