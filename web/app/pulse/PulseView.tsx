@@ -10,7 +10,7 @@ import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import en from "@/lib/i18n/dictionaries/en";
 import { getHotSnapshot, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
-import { webSiteLd, collectionLd, datasetLd, datasetRef } from "@/lib/jsonld";
+import { webSiteLd, collectionLd, datasetLd, datasetRef, siteOrganizationLd } from "@/lib/jsonld";
 import { buildPulseCapsule, resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { buildPulseFaqs } from "@/lib/geo-faq";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
@@ -65,6 +65,7 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
   return (
     <>
       <Chrome />
+      {includeWebsiteLd && <JsonLd data={siteOrganizationLd()} />}
       {includeWebsiteLd && <JsonLd data={webSiteLd(LOC, "/", { dateModified, about: datasetRef(pagePath) })} />}
       <JsonLd data={collectionLd(en.pulse.title, pagePath, LOC, { dateModified, about: datasetRef(pagePath) })} />
       <JsonLd data={dataset} />
