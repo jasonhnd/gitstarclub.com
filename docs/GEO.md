@@ -785,7 +785,7 @@ Each item is intentionally issue-sized and should be implemented in a separate P
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
 | `[geo] Enhance existing /about methodology page for GEO` | Extend the existing `/about` page with Dataset schema, user-facing field definitions, license, cadence, seam explanation, and sample queries. | Existing about page links DATA-CONTRACTS/RANKING concepts in user-facing language, emits Dataset schema, keeps footer access through the existing About link, and adds no new route. |
-| `[geo] Publish small deterministic data exports` | Generate top rankings, milestone, and org aggregate CSV/JSON extracts from existing views. | Exports are versioned, documented, downloadable without runtime engines, and have stable license/attribution copy. |
+| `[geo] Publish small deterministic data exports` | Implemented in #65: generate bounded top ranking, repository milestone, and organization aggregate CSV/JSON extracts from existing precomputed Blob views. | Static exports are versioned, dated from real `generated_at` metadata, documented, downloadable without runtime engines, and carry CC BY 4.0 plus "Data from GH Archive, derived by GitStarClub" attribution. |
 | `[geo] Add GitStarClub Organization identity schema` | Add site-level Organization schema with approved sameAs entries. | sameAs entries are reviewed, stable, and documented; no scraped external links. |
 | `[geo] Add shareable static data snippets` | Add copy/link/embed affordances for weekly movers, milestones, and org totals. | Server-rendered snippets preserve visual baseline, include canonical links, and require visual signoff if UI changes. |
 
