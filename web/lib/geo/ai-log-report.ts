@@ -257,7 +257,7 @@ function collectRecords(value: unknown): RawRecord[] {
   if (Array.isArray(value)) return value.flatMap((item) => collectRecords(item));
   if (!isRecord(value)) return [];
 
-  const batched = firstArray(value, ["logs", "events", "data"]);
+  const batched = looksLikeSingleLogRecord(value) ? undefined : firstArray(value, ["logs", "events", "data"]);
   if (batched) return batched.flatMap((item) => collectRecords(item));
 
   return [value];
@@ -326,16 +326,22 @@ function classifyAiReferrer(referrer: string | undefined): AiReferrerHost | unde
 }
 
 function looksLikeGoogleAiSurface(referrer: string): boolean {
-  const lower = referrer.toLowerCase();
-  return (
-    lower.includes("udm=50") ||
-    lower.includes("ai_overview") ||
-    lower.includes("aio") ||
-    lower.includes("ai+overview") ||
-    lower.includes("ai%20overview") ||
-    lower.includes("ai+mode") ||
-    lower.includes("ai%20mode")
-  );
+  const url = urlFromReferrer(referrer);
+  if (!url) return hasGoogleAiSurfaceToken(referrer);
+
+  for (const [key, value] of url.searchParams) {
+    if (key.toLowerCase() === "udm" && value.trim() === "50") return true;
+  }
+
+  for (const segment of pathSegments(url.pathname)) {
+    if (isGoogleAiSurfaceToken(segment)) return true;
+  }
+
+  for (const [key, value] of url.searchParams) {
+    if (isGoogleAiSurfaceToken(key) || isGoogleAiSurfaceToken(value)) return true;
+  }
+
+  return false;
 }
 
 function classifyPathFamily(rawPath: string | undefined): GeoPathFamily {
@@ -379,6 +385,44 @@ function stripHost(host: string): string | undefined {
   const normalized = host.trim().toLowerCase().replace(/\.$/, "").replace(/:\d+$/, "");
   if (!normalized) return undefined;
   return normalized.startsWith("www.") ? normalized.slice("www.".length) : normalized;
+}
+
+function urlFromReferrer(rawReferrer: string): URL | undefined {
+  const value = rawReferrer.trim();
+  if (!value) return undefined;
+
+  try {
+    return value.startsWith("http://") || value.startsWith("https://") ? new URL(value) : new URL(`https://${value}`);
+  } catch {
+    return undefined;
+  }
+}
+
+function pathSegments(pathname: string): string[] {
+  return pathname
+    .split("/")
+    .map((segment) => decodeUrlPart(segment))
+    .filter((segment) => segment.length > 0);
+}
+
+function hasGoogleAiSurfaceToken(value: string): boolean {
+  return value
+    .split(/[/?#&=]/)
+    .some((token) => isGoogleAiSurfaceToken(decodeUrlPart(token)));
+}
+
+function isGoogleAiSurfaceToken(value: string): boolean {
+  const normalized = value.trim().toLowerCase().replace(/[-_+]+/g, " ").replace(/\s+/g, " ");
+  return normalized === "ai overview" || normalized === "ai mode";
+}
+
+function decodeUrlPart(value: string): string {
+  const plusAsSpace = value.replace(/\+/g, " ");
+  try {
+    return decodeURIComponent(plusAsSpace);
+  } catch {
+    return plusAsSpace;
+  }
 }
 
 function periodKey(timestamp: unknown, grain: ReportGrain): string {
@@ -425,6 +469,47 @@ function firstArray(record: RawRecord, keys: string[]): unknown[] | undefined {
     if (Array.isArray(value)) return value;
   }
   return undefined;
+}
+
+function looksLikeSingleLogRecord(record: RawRecord): boolean {
+  return (
+    hasLogRecordFields(record) ||
+    hasLogRecordFields(readRecord(record, "proxy")) ||
+    hasLogRecordFields(readRecord(record, "request")) ||
+    hasLogRecordFields(readRecord(record, "httpRequest"))
+  );
+}
+
+function hasLogRecordFields(record: RawRecord | undefined): boolean {
+  if (!record) return false;
+
+  return [
+    "timestamp",
+    "time",
+    "datetime",
+    "date",
+    "host",
+    "hostname",
+    "path",
+    "requestPath",
+    "request_path",
+    "url",
+    "requestUrl",
+    "request_url",
+    "referer",
+    "referrer",
+    "requestReferer",
+    "requestReferrer",
+    "request_referrer",
+    "userAgent",
+    "userAgents",
+    "user_agent",
+    "requestUserAgent",
+    "request_user_agent",
+    "ua",
+    "statusCode",
+    "status_code",
+  ].some((key) => record[key] !== undefined && record[key] !== null);
 }
 
 function readRecord(record: RawRecord | undefined, key: string): RawRecord | undefined {
