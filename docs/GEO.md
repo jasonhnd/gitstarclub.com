@@ -16,7 +16,7 @@ GEO, or Generative Engine Optimization, is the work of making a site more likely
 
 The core thesis is:
 
-> Original data is GitStarClub's strongest citation moat. GEO work should turn every repo, org, ranking, category, pulse, and compare surface into a small, dated, attributable statistical answer, while preserving deterministic static rendering.
+> Original data is GitStarClub's strongest citation moat. GEO work should turn every repo, org, ranking, category, pulse, compare, methodology, and data-export surface into a small, dated, attributable statistical answer, while preserving deterministic static rendering.
 
 This document defines that strategy, the evidence behind it, page-by-page tactics, schema additions, indexing hygiene, measurement, and an implementation roadmap. All implementation items in Section 12 are intended to become separate issues after this document is reviewed.
 
@@ -765,7 +765,7 @@ Reporting contract:
 
 ### 10.2 Manual target query set
 
-Create `docs/geo/queries.md` in a later issue. It should list real prompts GitStarClub should win, grouped by page type:
+The target-query registry lives at [docs/geo/queries.md](./geo/queries.md). It lists real prompts GitStarClub should win across the full tracked page-type set, grouped by page type:
 
 - Repo: "when did react/react reach 100k GitHub stars?"
 - Repo: "react GitHub star history"
@@ -774,6 +774,8 @@ Create `docs/geo/queries.md` in a later issue. It should list real prompts GitSt
 - Category: "largest Python repositories on GitHub by stars"
 - Pulse: "top GitHub repositories gaining stars this week"
 - Compare: "did React or Vue grow faster after 10k stars?"
+- About / methodology: "how does GitStarClub calculate GitHub star history?"
+- Data export: "GitStarClub data exports manifest"
 
 Target-query row format:
 
@@ -855,8 +857,8 @@ Goal: make GEO outcomes measurable without paid monitoring or client-side tracki
 Scope:
 
 - Build aggregate AI crawler and referrer reporting from Vercel-native logs or exports, following Section 10.1.
-- Create `docs/geo/queries.md` with the target-query format in Section 10.2.
-- Add an initial query set covering repo, org, ranking, category, pulse, compare, about/methodology, and data-export citation queries.
+- Maintain `docs/geo/queries.md` with the target-query format in Section 10.2.
+- Maintain query coverage for repo, org, ranking, category, pulse, compare, about/methodology, and data-export pages.
 - Establish the citation-review cadence from Section 10.2: weekly for eight weeks after launch, monthly after stabilization, and ad hoc after crawler/schema/sitemap changes.
 - Track both citation occupancy and answer accuracy; stale facts and wrong canonical URLs should become follow-up issues.
 
@@ -943,7 +945,7 @@ Acceptance sketch:
 |---|---|---|
 | `[geo] Add Dataset DataDownload distribution and temporalCoverage` | Implement Section 11.1 for public data exports and proven coverage windows. | Dataset JSON-LD includes bounded public DataDownload entries; temporalCoverage is data-backed or omitted; tests cover shape and no hard-coded dates. |
 | `[geo] Add Vercel-first GEO measurement report` | Implement Section 11.2 bot/referrer aggregation. | Aggregate-only report by user-agent/referrer/path family; no client analytics or personal data. |
-| `[geo] Add target query tracking doc and citation review cadence` | Create `docs/geo/queries.md` and the review template from Section 10.2. | Query set covers all page types; weekly/manual check rows are copy-paste ready; citation occupancy and accuracy are defined. |
+| `[geo] Add target query tracking doc and citation review cadence` | Implemented in #76: add `docs/geo/queries.md` and the review template from Section 10.2. | Query set covers repo, org, ranking, category, pulse, compare, about/methodology, and data-export page types; weekly/manual check rows are copy-paste ready; citation occupancy and accuracy are defined. |
 | `[geo] Enrich repo and org sameAs from approved identities` | Implement Section 11.3. | Approved sameAs arrays render deterministically; unapproved URLs are omitted; no scraping. |
 | `[geo] Add semantic data tables for citeable ranking surfaces` | Implement Section 11.4. | Server-rendered tables expose core facts and canonical links; visual sign-off attached. |
 | `[geo] Add server-rendered compare conclusion` | Implement Section 11.5 on existing `/compare`. | No new route; generic or truly server-backed pair conclusion only; visual sign-off attached. |
@@ -981,7 +983,7 @@ The GEO deepening implementation round is specified in Section 11. Use Section 1
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
 | `[geo] Add AI crawler and referrer log reporting` | Build a Vercel-first aggregate report for AI crawler user-agents and AI referrers. | No client analytics; report aggregates only; docs list user-agent/referrer taxonomy. |
-| `[geo] Add target AI query tracking doc` | Create `docs/geo/queries.md` with target questions, manual weekly check workflow, and citation occupancy metric. | Query list covers all page types; weekly row format is copy-paste ready; no paid monitoring dependency. |
+| `[geo] Add target AI query tracking doc` | Implemented in #76: create `docs/geo/queries.md` with target questions, manual weekly check workflow, and citation occupancy metric. | Query list covers repo, org, ranking, category, pulse, compare, about/methodology, and data-export page types; weekly row format is copy-paste ready; no paid monitoring dependency. |
 | `[geo] Review citations and stale answers after launch` | Run manual checks across ChatGPT, Perplexity, Google AI Mode/AIO, Gemini, Claude, and Grok. | Report records citations, wrong answers, missing pages, and follow-up implementation issues. |
 
 ### Off-chain / operations
