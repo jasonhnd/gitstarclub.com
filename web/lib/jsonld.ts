@@ -5,12 +5,23 @@ import { categoryLanguageNamesFromRepository } from "@/lib/categories/rules";
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com").replace(/\/+$/, "");
 const abs = (path: string) => `${SITE}${path}`;
 export const SITE_ORGANIZATION_SAME_AS = ["https://github.com/jasonhnd/gitstarclub.com"] as const;
+export const APPROVED_OWNER_SAME_AS_REGISTRY = {} as const satisfies Record<string, readonly ApprovedSameAsEntry[]>;
+export const APPROVED_REPO_SAME_AS_REGISTRY = {} as const satisfies Record<string, readonly ApprovedSameAsEntry[]>;
 
 const SITE_ORG = {
   "@type": "Organization",
   name: "GitStarClub",
   url: SITE,
 } as const;
+
+type ApprovedSameAsEntry = {
+  url: string;
+  source: "approved_static_registry";
+  ownership_evidence: string;
+  entity_type: "repo" | "owner";
+  approved_by: string;
+  approved_at: string;
+};
 
 type DateModifiedOptions = {
   dateModified?: string | null;
@@ -50,6 +61,24 @@ function optionalDateModified(dateModified: string | null | undefined) {
 
 function optionalAbout(about: object | null | undefined) {
   return about ? { about } : {};
+}
+
+function isTrustedSameAsUrl(value: string | null | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function registrySameAsUrls(registry: Record<string, readonly ApprovedSameAsEntry[]>, key: string): string[] {
+  return (registry[key.toLowerCase()] ?? []).map((entry) => entry.url);
+}
+
+function sameAsList(...urls: Array<string | null | undefined>): string[] {
+  return [...new Set(urls.filter(isTrustedSameAsUrl))];
 }
 
 export function datasetRef(path: string) {
@@ -120,6 +149,7 @@ export function repoLd(
     language: string | null;
     languages?: Array<{ name: string; size?: number | null; color?: string | null }>;
     description: string | null;
+    homepage_url?: string | null;
     created_at: string;
     current_stars: number;
   },
@@ -134,6 +164,11 @@ export function repoLd(
     name: repo.full_name,
     url: abs(path),
     codeRepository: `https://github.com/${repo.full_name}`,
+    sameAs: sameAsList(
+      `https://github.com/${repo.full_name}`,
+      repo.homepage_url,
+      ...registrySameAsUrls(APPROVED_REPO_SAME_AS_REGISTRY, repo.full_name),
+    ),
     inLanguage: locale,
     ...(programmingLanguages.length ? { programmingLanguage: programmingLanguages } : {}),
     ...(repo.description ? { description: repo.description } : {}),
@@ -153,7 +188,7 @@ export function orgLd(org: { login: string; owner_type: string }, path: string, 
     "@type": org.owner_type === "Organization" ? "Organization" : "Person",
     name: org.login,
     url: abs(path),
-    sameAs: `https://github.com/${org.login}`,
+    sameAs: sameAsList(`https://github.com/${org.login}`, ...registrySameAsUrls(APPROVED_OWNER_SAME_AS_REGISTRY, org.login)),
     inLanguage: locale,
     ...optionalDateModified(options.dateModified),
   };

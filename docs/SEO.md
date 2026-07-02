@@ -620,6 +620,7 @@ Dataset enrichment details, including future `DataDownload` `distribution` entri
   "name": "anthropics/claude-code",                       // repo.full_name（完整带 owner）
   "url": "https://gitstarclub.com/anthropics/claude-code",
   "codeRepository": "https://github.com/anthropics/claude-code",
+  "sameAs": ["https://github.com/anthropics/claude-code"], // 数组；repo.homepage_url 存在时追加
   "inLanguage": "en",                                      // locale
   "programmingLanguage": ["TypeScript"],                   // 仅当非空时输出（剔除 "Unknown"）
   "description": "...",                                     // 仅当 repo.description 存在时输出
@@ -632,7 +633,7 @@ Dataset enrichment details, including future `DataDownload` `distribution` entri
 }
 ```
 
-> repo 页的结构化主体是 `SoftwareSourceCode`：`codeRepository` 关联 GitHub 源，`programmingLanguage` / `description` / `dateCreated` 为条件字段，star 数走 `interactionStatistic` 的 `InteractionCounter`（`LikeAction`）。**没有独立的 `author` 节点**（owner 关系靠 `full_name` 与 §9 内链）。repo 页另由 `Breadcrumbs.tsx` 单独输出 `BreadcrumbList`（见 §6.7）。
+> repo 页的结构化主体是 `SoftwareSourceCode`：`codeRepository` 关联 GitHub 源，`sameAs` 数组始终包含 GitHub repo URL，并可包含 repo entity JSON 中已有的 `homepage_url`；`programmingLanguage` / `description` / `dateCreated` 为条件字段，star 数走 `interactionStatistic` 的 `InteractionCounter`（`LikeAction`）。**没有独立的 `author` 节点**（owner 关系靠 `full_name` 与 §9 内链）。repo 页另由 `Breadcrumbs.tsx` 单独输出 `BreadcrumbList`（见 §6.7）。
 
 ### 6.4 Org 详情页：`Organization` / `Person` + `BreadcrumbList`
 
@@ -644,12 +645,12 @@ Dataset enrichment details, including future `DataDownload` `distribution` entri
   "@type": "Organization",                  // owner_type==="Organization" → Organization，否则 Person
   "name": "vercel",                          // org.login
   "url": "https://gitstarclub.com/o/vercel",
-  "sameAs": "https://github.com/vercel",     // 单个字符串，非数组
+  "sameAs": ["https://github.com/vercel"],   // 数组；GitHub owner URL 必有，approved registry 可追加
   "inLanguage": "en"                         // locale
 }
 ```
 
-> 个人 owner（`owner_type=User`）用 `@type: Person` 替代 `Organization`（按数据切换）。该 org 的 top repo 列表**不以 `ItemList` 结构化输出**，靠页面正文行 + §9 内链被发现。org 页另由 `Breadcrumbs.tsx` 输出 `BreadcrumbList`。
+> 个人 owner（`owner_type=User`）用 `@type: Person` 替代 `Organization`（按数据切换）。`sameAs` 只从 GitHub owner URL 与 `web/lib/jsonld.ts` 中的 approved static registry 生成，不抓取外部 profile。该 org 的 top repo 列表**不以 `ItemList` 结构化输出**，靠页面正文行 + §9 内链被发现。org 页另由 `Breadcrumbs.tsx` 输出 `BreadcrumbList`。
 
 ### 6.5 月度页 / 年度页：`CollectionPage` + `ItemList` + `BreadcrumbList`
 
