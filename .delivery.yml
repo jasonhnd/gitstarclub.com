@@ -1,0 +1,26 @@
+version: 1
+adapters:
+  work_items: github
+  workspace: git-worktree
+  conductor: opus
+  worker: codex          # Codex implements each issue
+  vcs: github
+  verifier: claude       # independent read-only review; differs from worker
+  gate: human-merge      # humans choose what merges
+worker:
+  base_branch: pre       # gitstarclub integrates on pre; promote = merge pre -> main
+  command_hint: "implement the issue per its acceptance and docs/GEO.md; honor the hard constraints (no runtime AI, near-zero client JS on content pages, Vercel-first, deterministic, English-only, no new pages unless the issue says so); run the web/ checks; commit"
+verifier:
+  model: "claude-opus-4-8[1m]"
+  reasoning_effort: max
+ci:
+  checks: [verify]       # required GitHub check that must be green
+verification:
+  browser:
+    enabled: auto        # browser-verify UI changes automatically
+    globs:
+      - web/app/**
+      - "**/*.tsx"
+      - "**/*.css"
+report:
+  channel: chat

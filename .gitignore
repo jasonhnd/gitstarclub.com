@@ -18,3 +18,7 @@ gcp-key.json
 
 .vercel
 .gstack/
+
+# loopcoder run state (local only)
+.loopcoder/
+
