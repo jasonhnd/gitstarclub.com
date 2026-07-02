@@ -761,7 +761,7 @@ Reporting contract:
 - Referrers: aggregate by normalized host only, not full URL with query strings. Store `referrer_host`, `path_family`, and `count`.
 - Privacy: no IP addresses, user ids, cookies, or raw query parameters in checked-in reports.
 - Path families: `repo`, `org`, `rankings`, `category`, `pulse`, `compare`, `about`, `data-export`, and `other`.
-- Output: a human-readable report can live under `docs/analysis/` or `docs/geo/` in a later issue; runtime code must remain Vercel-first and deterministic.
+- Output: `cd web && bun run geo:report -- --input <vercel-log-export.ndjson> --format markdown` builds the aggregate report from Vercel Log Drains JSON/NDJSON or exported request-log JSON. The parser and taxonomy live in `web/lib/geo/ai-log-report.ts`; operator notes and the checked taxonomy are in [docs/geo/ai-log-reporting.md](./geo/ai-log-reporting.md).
 
 ### 10.2 Manual target query set
 
