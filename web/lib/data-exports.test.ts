@@ -4,10 +4,14 @@ import { join } from "node:path";
 import type { OrgLookupEntry, RankList, RepoEntity, RepoLookupEntry } from "@/lib/contracts";
 import {
   DATA_EXPORT_ATTRIBUTION,
+  DATA_EXPORT_ENCODING_FORMAT,
   DATA_EXPORT_LICENSE,
   DATA_EXPORT_LIMITS,
+  DATA_EXPORT_SITE_URL,
   DATA_EXPORT_SCHEMA_VERSION,
   buildDataExportBundle,
+  dataExportDownloadsFromManifest,
+  readLatestStaticDataExportManifest,
   toCsv,
   type JsonExport,
 } from "./data-exports";
@@ -106,6 +110,15 @@ describe("buildDataExportBundle", () => {
     expect(bundle.csv.topRankings).toContain(DATA_EXPORT_ATTRIBUTION);
     expect(bundle.manifest.files).toHaveLength(3);
     expect(bundle.manifest.files[0].dated_urls.json).toBe("/data/exports/v1/2026-06-24/top-rankings.json");
+    expect(dataExportDownloadsFromManifest(bundle.manifest).map((download) => download.contentUrl)).toEqual([
+      `${DATA_EXPORT_SITE_URL}/data/exports/v1/latest/manifest.json`,
+      `${DATA_EXPORT_SITE_URL}/data/exports/v1/latest/top-rankings.json`,
+      `${DATA_EXPORT_SITE_URL}/data/exports/v1/latest/top-rankings.csv`,
+      `${DATA_EXPORT_SITE_URL}/data/exports/v1/latest/top-repo-milestones.json`,
+      `${DATA_EXPORT_SITE_URL}/data/exports/v1/latest/top-repo-milestones.csv`,
+      `${DATA_EXPORT_SITE_URL}/data/exports/v1/latest/top-org-aggregates.json`,
+      `${DATA_EXPORT_SITE_URL}/data/exports/v1/latest/top-org-aggregates.csv`,
+    ]);
   });
 
   test("escapes CSV cells with commas, quotes, and line breaks", () => {
@@ -166,6 +179,30 @@ describe("checked-in data export manifest", () => {
       expect(existsSync(join(generatedExportRoot, "latest", `${file.name}.csv`))).toBe(false);
     }
     expect(existsSync(join(generatedExportRoot, "latest", "manifest.json"))).toBe(false);
+
+    const downloads = dataExportDownloadsFromManifest(manifest);
+    expect(downloads).toHaveLength(manifest.files.reduce((count, file) => count + file.formats.length, 1));
+    expect(downloads[0]).toEqual({
+      name: "GitStarClub data export manifest",
+      contentUrl: "https://gitstarclub.com/data/exports/v1/latest/manifest.json",
+      encodingFormat: DATA_EXPORT_ENCODING_FORMAT.json,
+    });
+    for (const file of manifest.files) {
+      for (const format of file.formats) {
+        expect(downloads).toContainEqual({
+          name: `${file.title} (${format.toUpperCase()})`,
+          contentUrl: `https://gitstarclub.com${file.latest_urls[format]}`,
+          encodingFormat: DATA_EXPORT_ENCODING_FORMAT[format],
+        });
+      }
+    }
+  });
+
+  test("finds the latest checked-in dated manifest", () => {
+    const manifest = readLatestStaticDataExportManifest();
+
+    expect(manifest).not.toBeNull();
+    expect(manifest?.files.length).toBeGreaterThan(0);
   });
 });
 
