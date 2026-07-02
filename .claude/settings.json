@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "loopcoder hook conductor-attest",
+            "timeout": 10,
+            "type": "command"
+          },
+          {
+            "command": "loopcoder hook conductor-relay-guard",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "loopcoder hook conductor-attest",
+            "timeout": 10,
+            "type": "command"
+          },
+          {
+            "command": "loopcoder hook conductor-relay-guard",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}
