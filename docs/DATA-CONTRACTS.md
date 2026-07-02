@@ -260,7 +260,7 @@ Rules:
 - `languages`: optional GitHub language breakdown from GraphQL
   `Repository.languages`, sorted by byte size descending. Older published shards
   may omit it; pages fall back to the primary `language` field.
-- `homepage_url` / `license` / `latest_release`：可选 GitHub metadata 字段。页面只读 JSON 视图；这些字段由离线 metadata pipeline / cron 补齐，不在请求路径实时抓 GitHub。
+- `homepage_url` / `license` / `latest_release`：可选 GitHub metadata 字段。页面只读 JSON 视图；这些字段由离线 metadata pipeline / cron 补齐，不在请求路径实时抓 GitHub。`homepage_url` 也可作为 repo JSON-LD `sameAs` 的 deterministic first-party identity source。
 - `curve.recent_daily`：`[date, net_adds]`——近 ~90 天日点（曲线尾部），可负。
 - `monthly_table`：近 N 月的新增 + 当月 flow 名次。
 - `rank_history`：可选，名次史（驱动"名次走势"）。
