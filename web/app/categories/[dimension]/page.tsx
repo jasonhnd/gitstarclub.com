@@ -6,6 +6,7 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
+import { CategorySummaryTable } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CATEGORY_DIMENSIONS } from "@/lib/categories/rules";
 import { getCategoryRegistry, getMeta } from "@/lib/data";
@@ -49,6 +50,7 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
   if (!entry) notFound();
 
   const categories = entry.categories.filter((category) => category.public);
+  const categoryRows = categories.map((category) => ({ ...category, path: categoryPath(category.dimension, category.slug) }));
   const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const pagePath = categoryPath(dimension);
   const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
@@ -91,6 +93,8 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
         </section>
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />}
+
+        <CategorySummaryTable rows={categoryRows} caption={`${entry.label} GitHub repository categories`} />
 
         <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)] grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {categories.map((category) => (
