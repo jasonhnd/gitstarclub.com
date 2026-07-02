@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
 import { JsonLd } from "@/app/_explore/JsonLd";
+import { OrganizationRankingTable } from "@/app/_explore/SemanticDataTable";
 import { PaginationNav } from "@/app/_explore/PaginationNav";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getOrgsLookup } from "@/lib/data";
@@ -62,6 +63,8 @@ export async function OrgIndex({ page }: { page: number }) {
             </p>
           )}
         </section>
+
+        <OrganizationRankingTable rows={pageRows} startRank={first || 1} caption={`GitHub organization index page ${page}`} />
 
         <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)] grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {pageRows.map((org) => (

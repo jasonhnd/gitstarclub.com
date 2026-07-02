@@ -5,6 +5,7 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { RankingList, rankingStaggerStyle, type Row } from "@/app/_explore/RankingList";
+import { OrganizationRankingTable } from "@/app/_explore/SemanticDataTable";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { T } from "@/lib/i18n/client";
@@ -117,12 +118,13 @@ export default async function RankingsPage() {
             <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">
               <T path="rankings.repositories" />
             </h2>
-            <RankingList rows={repoRows} variant="total" locale={loc} />
+            <RankingList rows={repoRows} variant="total" locale={loc} tableCaption="All-time GitHub repository rankings" />
           </section>
           <section>
             <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">
               <T path="rankings.organizations" />
             </h2>
+            <OrganizationRankingTable rows={orgs} caption="All-time GitHub organization rankings" />
             <ol className="flex flex-col">
               {orgs.map((o, i) => (
                 <li key={o.login}>
