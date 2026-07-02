@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { CategorySummaryTable, OrganizationRankingTable, RepositoryRankingTable } from "@/app/_explore/SemanticDataTable";
 
 describe("semantic data tables", () => {
-  test("renders repository ranking rows as a hidden table with headers", () => {
+  test("renders repository ranking rows as a visible table with canonical links", () => {
     const html = renderToStaticMarkup(
       createElement(RepositoryRankingTable, {
         caption: "Monthly GitHub repositories",
@@ -14,16 +14,34 @@ describe("semantic data tables", () => {
     );
 
     expect(html).toContain("<table");
-    expect(html).toContain('class="sr-only"');
+    expect(html).not.toContain("sr-only");
+    expect(html).toContain('data-semantic-table="repository-rankings"');
     expect(html).toContain("<thead>");
     expect(html).toContain("<tbody>");
     expect(html).toContain('scope="col"');
     expect(html).toContain('scope="row"');
     expect(html).toContain("Stars gained");
+    expect(html).toContain('href="/octo/kit"');
     expect(html).toContain("octo/kit");
   });
 
-  test("renders organization rows with row headers", () => {
+  test("renders repository total variant without a period metric column", () => {
+    const html = renderToStaticMarkup(
+      createElement(RepositoryRankingTable, {
+        caption: "All-time GitHub repositories",
+        variant: "total",
+        rows: [{ owner: "octo", name: "kit", lang: null, total: 42000 }],
+      }),
+    );
+
+    expect(html).toContain("Total stars");
+    expect(html).toContain('href="/octo/kit"');
+    expect(html).not.toContain("Stars gained");
+    expect(html).not.toContain("Growth rate percent");
+    expect(html).not.toContain("10k crossing day");
+  });
+
+  test("renders organization rows with row headers and canonical links", () => {
     const html = renderToStaticMarkup(
       createElement(OrganizationRankingTable, {
         caption: "All-time GitHub organizations",
@@ -32,12 +50,13 @@ describe("semantic data tables", () => {
     );
 
     expect(html).toContain('data-semantic-table="organization-rankings"');
-    expect(html).toContain('<th scope="row">vercel</th>');
+    expect(html).toContain('href="/o/vercel"');
+    expect(html).toContain("vercel");
     expect(html).toContain("Tracked repositories");
-    expect(html).toContain("500000");
+    expect(html).toContain("500.0k");
   });
 
-  test("renders category rows with extractable paths", () => {
+  test("renders category rows with canonical URL links and column", () => {
     const html = renderToStaticMarkup(
       createElement(CategorySummaryTable, {
         caption: "Public categories",
@@ -46,8 +65,16 @@ describe("semantic data tables", () => {
     );
 
     expect(html).toContain('data-semantic-table="repository-categories"');
-    expect(html).toContain('<th scope="row">TypeScript</th>');
+    expect(html).toContain("GitStarClub URL");
+    expect(html).toContain('href="/categories/language/typescript"');
+    expect(html).toContain("TypeScript");
     expect(html).toContain("Tracked repositories");
     expect(html).toContain("/categories/language/typescript");
+  });
+
+  test("renders no table when rows are empty", () => {
+    expect(renderToStaticMarkup(createElement(RepositoryRankingTable, { rows: [] }))).toBe("");
+    expect(renderToStaticMarkup(createElement(OrganizationRankingTable, { rows: [] }))).toBe("");
+    expect(renderToStaticMarkup(createElement(CategorySummaryTable, { rows: [] }))).toBe("");
   });
 });
