@@ -39,7 +39,7 @@ Monthly after citation occupancy and answer accuracy stabilize:
 - Rotate through medium-priority queries so every medium query is checked at least once per quarter.
 - Re-run any query tied to a page that changed since the previous review.
 
-Ad hoc after schema, robots, sitemap, answer-capsule, ranking, category, or data-export changes:
+Ad hoc after schema, robots, sitemap, answer-capsule, ranking, category, methodology, or data-export changes:
 
 - Re-run affected high-priority queries within one week.
 - Record whether the miss is `not indexed`, `not cited`, `wrong URL`, `stale fact`, `wrong fact`, `competitor cited`, or `engine unavailable`.
@@ -56,6 +56,8 @@ Copy one row per query-engine check:
 Use canonical paths in `Cited URL` when the engine cites GitStarClub. If it cites a non-canonical GitStarClub URL, record the shown URL and mark accuracy as `partially correct` or `wrong` depending on the answer.
 
 ## Target queries
+
+Tracked page types are `repo`, `org`, `ranking`, `category`, `pulse`, `compare`, `about`, and `data-export`.
 
 ### Repo pages
 
@@ -119,3 +121,24 @@ Expected page family: `/compare`.
 | compare-react-vue-10k | compare | did React or Vue grow faster after 10k stars? | /compare | compare page supports 10k-aligned star-history overlays | /repo-curve?id= projection from entity/repo/{id}.json curve.monthly and milestones.crossed_10k | high | Current page is a generic citeable compare surface, not a server-rendered pair-specific answer. |
 | compare-repo-star-history | compare | compare GitHub star history for multiple repositories | /compare | multi-repo star-history comparison tool with absolute and 10k-aligned modes | web/lib/contracts/compare.ts CompareCurve; /repo-curve?id= | high | Checks whether engines cite the canonical compare tool. |
 | compare-react-nextjs | compare | compare react and next.js GitHub star growth | /compare | generic comparison workflow and curve source | /repo-curve?id= projection from entity/repo/{id}.json | medium | Do not treat client-only selected pairs as server-rendered evidence. |
+
+### About / methodology page
+
+Expected page family: `/about`.
+
+| id | page_type | query | expected_url | expected_fact | source_fields | priority | notes |
+|---|---|---|---|---|---|---|---|
+| about-star-history-methodology | about | how does GitStarClub calculate GitHub star history? | /about | GitStarClub combines GH Archive WatchEvent history with public GitHub API current totals using deterministic seam-aware anchoring | web/app/about/page.tsx; docs/DATA-CONTRACTS.md; docs/RANKING.md | high | Checks methodology citation for star-history derivation. |
+| about-citable-fields | about | what GitStarClub fields can be cited for GitHub stars? | /about | citable fields include current_stars, current_stars_sum, rank item value, monthly curve totals, recent daily net change, and 10k/50k/100k milestones | web/app/about/page.tsx ABOUT_DATASET_VARIABLES | medium | Checks whether engines cite the methodology surface for field definitions. |
+| about-license-attribution | about | what attribution is required for GitStarClub GitHub star history data? | /about | GitStarClub uses CC BY 4.0 attribution copy: Data from GH Archive, derived by GitStarClub | web/app/about/page.tsx; docs/DATA-EXPORTS.md | medium | Checks attribution and license citation. |
+
+### Data-export files
+
+Expected page family: `/data/exports/v1/latest/*`.
+
+| id | page_type | query | expected_url | expected_fact | source_fields | priority | notes |
+|---|---|---|---|---|---|---|---|
+| data-export-manifest | data-export | GitStarClub data exports manifest | /data/exports/v1/latest/manifest.json | export manifest lists export_date, data_as_of, license, attribution, limits, and latest URLs for top rankings, repo milestones, and org aggregates | web/public/data/exports/v1/{date}/manifest.json; docs/DATA-EXPORTS.md | high | Checks citation of the stable latest manifest alias. |
+| data-export-top-rankings | data-export | download GitHub repository ranking data as CSV from GitStarClub | /data/exports/v1/latest/top-rankings.csv | bounded top rankings export includes current-month repository growth rows and all-time repository stock rows with license and attribution columns | web/public/data/exports/v1/{date}/top-rankings.csv; web/public/data/exports/v1/{date}/top-rankings.json | high | Checks dataset-file citation rather than only the human page. |
+| data-export-repo-milestones | data-export | download GitHub repository milestone crossing dates dataset | /data/exports/v1/latest/top-repo-milestones.csv | repo milestones export includes top repository current_stars plus crossed_10k, crossed_50k, and crossed_100k fields | web/public/data/exports/v1/{date}/top-repo-milestones.csv; web/public/data/exports/v1/{date}/top-repo-milestones.json | high | Checks exact milestone dataset citation. |
+| data-export-org-aggregates | data-export | download GitHub organization aggregate star counts dataset | /data/exports/v1/latest/top-org-aggregates.csv | org aggregates export includes top owner login, owner_type, repo_count, current_stars_sum, rank_value, and canonical org URL | web/public/data/exports/v1/{date}/top-org-aggregates.csv; web/public/data/exports/v1/{date}/top-org-aggregates.json | medium | Checks organization aggregate dataset citation. |
