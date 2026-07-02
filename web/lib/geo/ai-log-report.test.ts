@@ -141,6 +141,69 @@ describe("AI crawler and referrer log report", () => {
     ]);
   });
 
+  test("does not count ordinary Google queries containing aio as AI referrers", () => {
+    const input = JSON.stringify({
+      timestamp: "2026-01-05T12:00:00.000Z",
+      path: "/pulse",
+      userAgent: "Mozilla/5.0",
+      referer: "https://www.google.com/search?q=aiohttp+aioseo+usage",
+      statusCode: 200,
+    });
+
+    const report = buildAiLogReport(input);
+
+    expect(report.input_records).toBe(1);
+    expect(report.referrer_counts).toEqual([]);
+    expect(JSON.stringify(report)).not.toContain("aiohttp");
+    expect(JSON.stringify(report)).not.toContain("aioseo");
+  });
+
+  test("counts single records that carry batch-named array fields", () => {
+    const input = JSON.stringify([
+      {
+        timestamp: "2026-01-05T12:00:00.000Z",
+        path: "/about",
+        userAgent: "GPTBot/1.0",
+        statusCode: 200,
+        data: [
+          {
+            timestamp: "2026-01-05T12:00:00.000Z",
+            path: "/pulse",
+            userAgent: "ClaudeBot/1.0",
+            statusCode: 200,
+          },
+        ],
+      },
+      {
+        timestamp: "2026-01-05T13:00:00.000Z",
+        path: "/about",
+        userAgent: "GPTBot/1.0",
+        statusCode: 200,
+        logs: [],
+      },
+      {
+        timestamp: "2026-01-05T14:00:00.000Z",
+        path: "/about",
+        userAgent: "GPTBot/1.0",
+        statusCode: 200,
+        events: [],
+      },
+    ]);
+
+    const report = buildAiLogReport(input);
+
+    expect(report.input_records).toBe(3);
+    expect(report.crawler_counts).toEqual([
+      {
+        date: "2026-01-05",
+        user_agent_family: "GPTBot",
+        path_family: "about",
+        status_bucket: "2xx",
+        count: 3,
+      },
+    ]);
+  });
+
   test("documents the taxonomy in machine-readable output and markdown", () => {
     const report = buildAiLogReport("");
     const markdown = formatAiLogReportMarkdown(report);
