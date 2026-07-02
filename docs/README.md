@@ -19,7 +19,7 @@ This page is the navigation index for `docs/`. For a project overview, start at 
 11. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) - locked visual baseline, tokens, typography, Chrome appearance, accessibility notes.
 12. [SEO.md](./SEO.md) — per-page SEO templates, sitemap structure, robots policy.
 13. [GEO.md](./GEO.md) — answer-engine citation strategy: answer capsules, schema, crawler hygiene, freshness, and measurement.
-14. [OPS.md](./OPS.md) — runbooks: deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
+14. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
 15. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
 Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [perf/CWV-25.md](./perf/CWV-25.md) for the pre-launch Lighthouse / Core Web Vitals baseline.
@@ -43,7 +43,7 @@ Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural 
 | DESIGN-SYSTEM | Locked visual baseline, tokens, typography, Chrome appearance, accessibility notes |
 | SEO | Per-page SEO templates, sitemap structure, robots/noindex policy, internal linking |
 | GEO | Answer-engine citation strategy, page-type answer capsules, GEO schema plan, AI crawler hygiene, freshness, and measurement |
-| OPS | Deploy / rollback / cron / workflow runbooks, Blob layout, env vars, alerting, failure modes |
+| OPS | Branch topology / staging, deploy / rollback / cron / workflow runbooks, Blob layout, env vars, alerting, failure modes |
 | TESTING | Test pyramid, contract tests, recompute parity, validation invariants, smoke tests |
 | PRODUCT | Product framing: identity, page surfaces, tone, data-honesty posture, i18n posture |
 | CATEGORIES | Category taxonomy, deterministic classification rules, category data artifacts, category route rollout |
@@ -60,6 +60,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Repo / view counts | REQUIREMENTS |
 | Per-artifact schema (field-level) | DATA-CONTRACTS |
 | Blob layout | OPS (§Vercel Blob 布局) |
+| Branch topology / staging / promotion | [OPS.md](./OPS.md) (§Branch topology / staging) |
 | Cron schedule | OPS (§Cron 调度) |
 | Workflow step enumeration | VERCEL-DATA-OPERATIONS |
 | Category taxonomy / classification rules | CATEGORIES |
