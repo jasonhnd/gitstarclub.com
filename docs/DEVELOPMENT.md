@@ -117,14 +117,23 @@ Docs-only changes are allowed when the code already implements the behavior.
 The project is operated Vercel-first. Do not rely on a local dev server as the
 final verification path.
 
+Branch topology and promotion are owned by [OPS.md](./OPS.md) §Branch topology /
+staging. Feature work merges into `pre`, staging verification uses
+`https://pre.gitstarclub.com`, and production promotion is a merge from `pre` to
+`main`.
+
 Preferred production verification sequence:
 
-1. Push the change to `main`.
-2. Wait for Vercel production deployment to serve the new HTML or behavior.
-3. For code-only read-side changes, verify the affected production URL directly.
-4. For recompute/category/data changes, trigger the production refresh workflow
+1. Merge the feature PR into `pre`.
+2. Wait for the fixed staging domain, `https://pre.gitstarclub.com`, to serve the
+   Preview deployment.
+3. Verify the affected staging URL or behavior on `pre`.
+4. Promote by merging `pre` into `main`.
+5. Wait for the Vercel production deployment to serve the new HTML or behavior.
+6. For code-only read-side changes, verify the affected production URL directly.
+7. For recompute/category/data changes, trigger the production refresh workflow
    after deployment and wait for `views/latest.json` to point at the new run.
-5. Verify the exact production page or Blob view that proves the change.
+8. Verify the exact production page or Blob view that proves the change.
 
 Useful production signals:
 
