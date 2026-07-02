@@ -1,3 +1,5 @@
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import type { OrgLookupEntry, RankItem, RankList, RepoEntity, RepoLookupEntry } from "@/lib/contracts";
 
 export const DATA_EXPORT_SCHEMA_VERSION = 1;
@@ -7,18 +9,27 @@ export const DATA_EXPORT_LICENSE = {
   url: "https://creativecommons.org/licenses/by/4.0/",
 } as const;
 export const DATA_EXPORT_BASE_PATH = "/data/exports/v1";
+export const DATA_EXPORT_SITE_URL = "https://gitstarclub.com";
+export const DATA_EXPORT_ENCODING_FORMAT = {
+  csv: "text/csv",
+  json: "application/json",
+} as const;
 export const DATA_EXPORT_LIMITS = {
   topRankingRowsPerList: 50,
   milestoneSourceRepos: 100,
   orgRows: 50,
 } as const;
 
-const SITE_URL = "https://gitstarclub.com";
-
-type ExportFormat = "csv" | "json";
+export type ExportFormat = "csv" | "json";
 
 type JsonValue = string | number | boolean | null;
 type CsvRow = Record<string, JsonValue | undefined>;
+
+export type DataExportDownload = {
+  name: string;
+  contentUrl: string;
+  encodingFormat: (typeof DATA_EXPORT_ENCODING_FORMAT)[ExportFormat];
+};
 
 export type ExportFileManifest = {
   name: string;
@@ -174,7 +185,7 @@ export function buildDataExportBundle({
           language: repo.language,
           value: repo.value,
           current_stars: repo.current_stars,
-          url: `${SITE_URL}/${repo.owner}/${repo.name}`,
+          url: `${DATA_EXPORT_SITE_URL}/${repo.owner}/${repo.name}`,
           source_view: sourceViewForRank(currentMonthRepoGrowth),
           ...licenseRow(),
         })),
@@ -193,7 +204,7 @@ export function buildDataExportBundle({
           language: repo.language,
           value: repo.value,
           current_stars: repo.current_stars,
-          url: `${SITE_URL}/${repo.owner}/${repo.name}`,
+          url: `${DATA_EXPORT_SITE_URL}/${repo.owner}/${repo.name}`,
           source_view: sourceViewForRank(allTimeRepoStars),
           ...licenseRow(),
         })),
@@ -229,7 +240,7 @@ export function buildDataExportBundle({
             crossed_10k: entity.milestones.crossed_10k,
             crossed_50k: entity.milestones.crossed_50k,
             crossed_100k: entity.milestones.crossed_100k,
-            url: `${SITE_URL}/${repo.owner}/${repo.name}`,
+            url: `${DATA_EXPORT_SITE_URL}/${repo.owner}/${repo.name}`,
             source_views: `${sourceViewForRank(allTimeRepoStars)};lookup/repos.json;entity/repo/${repo.id}.json`,
             ...licenseRow(),
           },
@@ -256,7 +267,7 @@ export function buildDataExportBundle({
         repo_count: org.repo_count,
         current_stars_sum: org.current_stars_sum,
         rank_value: org.value,
-        url: `${SITE_URL}/o/${org.login}`,
+        url: `${DATA_EXPORT_SITE_URL}/o/${org.login}`,
         source_view: sourceViewForRank(allTimeOrgStars),
         ...licenseRow(),
       })),
@@ -408,6 +419,56 @@ function fileManifest(exportData: JsonExport<CsvRow>): ExportFileManifest {
       csv: `${DATA_EXPORT_BASE_PATH}/${exportData.export_date}/${name}.csv`,
     },
   };
+}
+
+export function dataExportDownloadsFromManifest(manifest: Pick<ExportManifest, "files">): DataExportDownload[] {
+  return [
+    {
+      name: "GitStarClub data export manifest",
+      contentUrl: canonicalExportUrl(`${DATA_EXPORT_BASE_PATH}/latest/manifest.json`),
+      encodingFormat: DATA_EXPORT_ENCODING_FORMAT.json,
+    },
+    ...manifest.files.flatMap((file) =>
+      file.formats.flatMap((format) => {
+        const latestUrl = file.latest_urls[format];
+        if (!latestUrl) return [];
+        return [
+          {
+            name: `${file.title} (${format.toUpperCase()})`,
+            contentUrl: canonicalExportUrl(latestUrl),
+            encodingFormat: DATA_EXPORT_ENCODING_FORMAT[format],
+          },
+        ];
+      }),
+    ),
+  ];
+}
+
+export function readLatestStaticDataExportManifest(): ExportManifest | null {
+  const root = staticExportRoot();
+  if (!root) return null;
+  const latestDate = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .at(-1);
+  if (!latestDate) return null;
+
+  const manifestPath = join(root, latestDate, "manifest.json");
+  if (!existsSync(manifestPath)) return null;
+  return JSON.parse(readFileSync(manifestPath, "utf8")) as ExportManifest;
+}
+
+function canonicalExportUrl(path: string): string {
+  return `${DATA_EXPORT_SITE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function staticExportRoot(): string | null {
+  const candidates = [
+    join(process.cwd(), "public", "data", "exports", "v1"),
+    join(process.cwd(), "web", "public", "data", "exports", "v1"),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
 function latestTimestamp(...values: string[]): string {
