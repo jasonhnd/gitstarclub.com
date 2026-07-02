@@ -10,7 +10,7 @@ import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import en from "@/lib/i18n/dictionaries/en";
 import { getHotSnapshot, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
-import { webSiteLd, collectionLd, datasetLd, datasetRef, siteOrganizationLd } from "@/lib/jsonld";
+import { webSiteLd, collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine, siteOrganizationLd } from "@/lib/jsonld";
 import { buildPulseCapsule, resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { buildPulseFaqs } from "@/lib/geo-faq";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
@@ -48,12 +48,14 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
   const asOf = resolveDataAsOfLabel(snap?.generated_at, activeWeek.rank?.meta.generated_at);
   const pagePath = includeWebsiteLd ? "/" : "/pulse";
   const dateModified = resolveDataAsOfValue(snap?.generated_at, activeWeek.rank?.meta.generated_at);
+  const temporalCoverage = datasetTemporalCoverageFromYearSpine(snap?.home.year_spine);
   const dataset = datasetLd({
     name: "GitStarClub Pulse Dataset",
     path: pagePath,
     locale: LOC,
     description: "Current GitHub star momentum, weekly movers, month-to-date movers, and all-time leaders generated from precomputed hot snapshot and rank JSON.",
     dateModified,
+    temporalCoverage,
   });
   const capsule = asOf ? buildPulseCapsule({ asOf, weekRows, monthRows }) : null;
   const faqItems = buildPulseFaqs({ asOf, weekRows, monthRows, activeWeek: activeWeek.period, activeMonth: periods.monthPeriod });

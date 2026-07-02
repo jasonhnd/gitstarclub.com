@@ -1,7 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { SITE_ORGANIZATION_SAME_AS, collectionLd, datasetLd, datasetRef, faqPageLd, itemListLd, repoLd, siteOrganizationLd } from "./jsonld";
+import {
+  SITE_ORGANIZATION_SAME_AS,
+  collectionLd,
+  datasetLd,
+  datasetRef,
+  datasetTemporalCoverageFromYearSpine,
+  faqPageLd,
+  itemListLd,
+  repoLd,
+  siteOrganizationLd,
+} from "./jsonld";
 import { stringifyJsonForScript } from "./json-script";
 import { resolveDataAsOfValue } from "./geo-capsules";
+import { dataExportDownloadsFromManifest, readLatestStaticDataExportManifest } from "./data-exports";
 
 describe("repoLd", () => {
   test("can be safely serialized into a JSON-LD script with adversarial text", () => {
@@ -91,6 +102,14 @@ describe("datasetLd", () => {
       isAccessibleForFree: true,
       license: "https://creativecommons.org/licenses/by/4.0/",
       dateModified: "2026-06-24T12:00:00Z",
+      distribution: expect.arrayContaining([
+        {
+          "@type": "DataDownload",
+          name: "GitStarClub data export manifest",
+          contentUrl: "https://gitstarclub.com/data/exports/v1/latest/manifest.json",
+          encodingFormat: "application/json",
+        },
+      ]),
       creator: {
         "@type": "Organization",
         name: "GitStarClub",
@@ -101,6 +120,42 @@ describe("datasetLd", () => {
         { "@type": "PropertyValue", name: "current_stars" },
       ],
     });
+  });
+
+  test("derives DataDownload distribution from the checked-in export manifest", () => {
+    const manifest = readLatestStaticDataExportManifest();
+    expect(manifest).not.toBeNull();
+
+    const data = datasetLd({
+      name: "GitStarClub Dataset",
+      path: "/",
+      locale: "en",
+      description: "GitHub star history dataset.",
+    });
+
+    const expectedDownloads = dataExportDownloadsFromManifest(manifest!);
+    expect(data.distribution).toEqual(
+      expectedDownloads.map((download) => ({
+        "@type": "DataDownload",
+        ...download,
+      })),
+    );
+    expect(data.distribution).toHaveLength(1 + manifest!.files.reduce((count, file) => count + file.formats.length, 0));
+    expect(data.distribution.every((download) => download.contentUrl.startsWith("https://gitstarclub.com/data/exports/v1/latest/"))).toBe(true);
+  });
+
+  test("derives temporalCoverage from a real year spine", () => {
+    expect(
+      datasetTemporalCoverageFromYearSpine(
+        [
+          ["2017", 10],
+          ["2015", 5],
+          ["2026", 12],
+        ],
+      ),
+    ).toBe("2015/2026");
+    expect(datasetTemporalCoverageFromYearSpine([["fallback", 5]])).toBeUndefined();
+    expect(datasetTemporalCoverageFromYearSpine([])).toBeUndefined();
   });
 
   test("serializes dateModified and omits fallback-only dates", () => {
