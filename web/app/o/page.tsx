@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
 import { JsonLd } from "@/app/_explore/JsonLd";
@@ -6,12 +5,11 @@ import { OrganizationRankingTable } from "@/app/_explore/SemanticDataTable";
 import { PaginationNav } from "@/app/_explore/PaginationNav";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getOrgsLookup } from "@/lib/data";
-import { fmtStars } from "@/lib/format";
 import { collectionLd, itemListLd } from "@/lib/jsonld";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { ORG_INDEX_PAGE_SIZE } from "@/lib/pagination";
 import { pageMeta } from "@/lib/seo";
-import { orgIndexPageCount, orgIndexPageRows, orgIndexPath, orgIndexRows, type OrgIndexRow } from "./org-index-data";
+import { orgIndexPageCount, orgIndexPageRows, orgIndexPath, orgIndexRows } from "./org-index-data";
 
 const LOC = DEFAULT_LOCALE;
 
@@ -66,30 +64,8 @@ export async function OrgIndex({ page }: { page: number }) {
 
         <OrganizationRankingTable rows={pageRows} startRank={first || 1} caption={`GitHub organization index page ${page}`} />
 
-        <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)] grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {pageRows.map((org) => (
-            <OrgCard key={org.login} org={org} />
-          ))}
-        </section>
-
         <PaginationNav currentPage={page} pageCount={totalPages} hrefForPage={orgIndexPath} label="Organizations pagination" />
       </main>
     </>
-  );
-}
-
-function OrgCard({ org }: { org: OrgIndexRow }) {
-  return (
-    <Link
-      href={`/o/${org.login}`}
-      className="rounded-lg bg-surface-container px-4 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-surface-container-high"
-    >
-      <span className="block truncate font-mono text-[0.95rem] font-semibold text-on-surface" title={org.login}>
-        {org.login}
-      </span>
-      <span className="mt-2 block font-mono text-[0.75rem] text-on-surface-variant">
-        {fmtStars(org.current_stars_sum)} stars · {org.repo_count} repos · {org.owner_type === "Organization" ? "Organization" : "Developer"}
-      </span>
-    </Link>
   );
 }

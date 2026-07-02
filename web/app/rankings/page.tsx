@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
-import { RankingList, rankingStaggerStyle, type Row } from "@/app/_explore/RankingList";
+import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { OrganizationRankingTable } from "@/app/_explore/SemanticDataTable";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
@@ -12,7 +12,7 @@ import { T } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import en from "@/lib/i18n/dictionaries/en";
 import { getAllTime, getReposLookup, getOrgsLookup, joinRepoRank, joinOrgRank } from "@/lib/data";
-import { fmtStars, monthLabel } from "@/lib/format";
+import { monthLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { buildAllTimeRankingCapsule, resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
@@ -125,26 +125,6 @@ export default async function RankingsPage() {
               <T path="rankings.organizations" />
             </h2>
             <OrganizationRankingTable rows={orgs} caption="All-time GitHub organization rankings" />
-            <ol className="flex flex-col">
-              {orgs.map((o, i) => (
-                <li key={o.login}>
-                  <Link
-                    href={`/o/${o.login}`}
-                    className="group flex min-h-[4.25rem] animate-rise items-center gap-2 overflow-hidden rounded-2xl px-2.5 py-2.5 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-on-surface/5 active:scale-[0.985] sm:gap-4 sm:px-3 sm:py-3"
-                    style={rankingStaggerStyle(i)}
-                  >
-                    <span className="text-readable-gold w-7 shrink-0 text-right text-[1.25rem] font-extrabold tabular-nums sm:w-9 sm:text-[1.5rem]">{o.rank}</span>
-                    <div className="flex min-w-0 flex-1 flex-col justify-center">
-                      <span className="truncate font-mono text-[0.95rem] font-semibold text-on-surface group-hover:underline group-hover:underline-offset-2">{o.login}</span>
-                      <span className="mt-1 inline-block w-fit max-w-full truncate whitespace-nowrap rounded-full bg-surface-container-high px-2 py-0.5 text-[0.68rem] font-medium text-on-surface-variant">
-                        {o.repo_count} <T path="rankings.repos" />
-                      </span>
-                    </div>
-                    <div className="shrink-0 text-right text-[0.95rem] font-extrabold tabular-nums text-on-surface sm:text-[1.05rem]">{fmtStars(o.current_stars_sum)}★</div>
-                  </Link>
-                </li>
-              ))}
-            </ol>
           </section>
         </div>
 
