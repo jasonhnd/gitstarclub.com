@@ -26,6 +26,61 @@ describe("repoLd", () => {
     });
   });
 
+  test("emits only the GitHub URL when homepage metadata is absent", () => {
+    const data = repoLd(
+      {
+        full_name: "owner/tool",
+        language: "TypeScript",
+        languages: [{ name: "TypeScript", size: 100, color: "#3178c6" }],
+        description: "A useful developer tool.",
+        created_at: "2024-01-02",
+        current_stars: 12345,
+      },
+      "/owner/tool",
+      "en",
+    );
+
+    expect(data.sameAs).toEqual(["https://github.com/owner/tool"]);
+  });
+
+  test("drops non-https and malformed homepage metadata from sameAs", () => {
+    for (const homepage_url of ["http://tool.example", "not a url"]) {
+      const data = repoLd(
+        {
+          full_name: "owner/tool",
+          language: "TypeScript",
+          languages: [{ name: "TypeScript", size: 100, color: "#3178c6" }],
+          description: "A useful developer tool.",
+          homepage_url,
+          created_at: "2024-01-02",
+          current_stars: 12345,
+        },
+        "/owner/tool",
+        "en",
+      );
+
+      expect(data.sameAs).toEqual(["https://github.com/owner/tool"]);
+    }
+  });
+
+  test("deduplicates homepage metadata when it matches the GitHub URL", () => {
+    const data = repoLd(
+      {
+        full_name: "owner/tool",
+        language: "TypeScript",
+        languages: [{ name: "TypeScript", size: 100, color: "#3178c6" }],
+        description: "A useful developer tool.",
+        homepage_url: "https://github.com/owner/tool",
+        created_at: "2024-01-02",
+        current_stars: 12345,
+      },
+      "/owner/tool",
+      "en",
+    );
+
+    expect(data.sameAs).toEqual(["https://github.com/owner/tool"]);
+  });
+
   test("can be safely serialized into a JSON-LD script with adversarial text", () => {
     const data = repoLd(
       {
