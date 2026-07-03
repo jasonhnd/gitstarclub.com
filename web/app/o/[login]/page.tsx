@@ -64,13 +64,14 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
     .sort((a, b) => b.total - a.total);
   const snippet = buildOrgTotalSnippet({ org, asOf, members });
   const faqItems = buildOrgFaqs(org, members, asOf);
+  const pagePath = `/o/${org.login}`;
 
   return (
     <>
-      <Chrome />
-      <JsonLd data={orgLd(org, `/o/${org.login}`, loc)} />
+      <Chrome locale={loc} canonicalPath={pagePath} />
+      <JsonLd data={orgLd(org, pagePath, loc)} />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { label: org.login }]} />
+        <Breadcrumbs locale={loc} items={[{ path: "nav.home", href: "/" }, { label: org.login }]} />
         <header className="mt-4 animate-rise">
           <h1 className="font-mono text-[clamp(1.6rem,5vw,2.6rem)] font-semibold text-on-surface">{org.login}</h1>
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">
@@ -102,7 +103,7 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
           <RankingList rows={members} variant="total" locale={loc} tableCaption={`${org.login} member repositories by current stars`} />
         </section>
 
-        <FaqBlock items={faqItems} path={`/o/${org.login}`} locale={loc} />
+        <FaqBlock items={faqItems} path={pagePath} locale={loc} />
       </main>
     </>
   );

@@ -83,7 +83,7 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={loc} canonicalPath={pagePath} />
       <JsonLd data={collectionLd(`${en.rankings.title} ${year}`, pagePath, loc, { dateModified, about: datasetRef(pagePath) })} />
       <JsonLd data={dataset} />
       <JsonLd
@@ -95,7 +95,7 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
         )}
       />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { path: "nav.rankings", href: "/rankings" }, { label: String(year) }]} />
+        <Breadcrumbs locale={loc} items={[{ path: "nav.home", href: "/" }, { path: "nav.rankings", href: "/rankings" }, { label: String(year) }]} />
 
         <section className="mt-5 grid gap-8 lg:grid-cols-[16rem_1fr]">
           <aside>

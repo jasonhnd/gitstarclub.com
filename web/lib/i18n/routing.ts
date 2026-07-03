@@ -1,4 +1,4 @@
-import { DEFAULT_LOCALE, LOCALES, isLocale, type Locale } from ".";
+import { DEFAULT_LOCALE, LOCALES, isLocale, type Locale } from "./locales";
 
 export type NonDefaultLocale = Exclude<Locale, typeof DEFAULT_LOCALE>;
 
