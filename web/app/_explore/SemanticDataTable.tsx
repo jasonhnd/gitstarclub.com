@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { fmtK, fmtStars } from "@/lib/format";
+import { T } from "@/lib/i18n/client";
 import type { Row } from "./RankingList";
 
 type RankingVariant = "gained" | "rate" | "crossed" | "total";
@@ -160,16 +161,16 @@ export function CategorySummaryTable({ rows, caption = "Repository categories" }
         <thead>
           <tr>
             <th scope="col" className={headClass}>
-              Category
+              <T path="categories.eyebrow" />
             </th>
             <th scope="col" className={headClass}>
-              Dimension
+              <T path="categories.dimensionEyebrow" />
             </th>
             <th scope="col" className={headClass}>
               Slug
             </th>
             <th scope="col" className={`${headClass} text-right`}>
-              Tracked repositories
+              <T path="categories.trackedRepositories" />
             </th>
             <th scope="col" className={headClass}>
               GitStarClub URL
@@ -188,7 +189,9 @@ export function CategorySummaryTable({ rows, caption = "Repository categories" }
                 </th>
                 <td className={mutedCellClass}>{row.dimension}</td>
                 <td className={mutedCellClass}>{row.slug}</td>
-                <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{row.count}</td>
+                <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>
+                  {row.count > 0 ? row.count : <T path="categories.pendingCount" />}
+                </td>
                 <td className={cellClass(mutedCellClass, "last")}>
                   <Link href={path} className="hover:text-on-surface hover:underline hover:underline-offset-2">
                     {path}
