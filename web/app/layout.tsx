@@ -56,8 +56,8 @@ export const viewport: Viewport = {
   ],
 };
 
-// Language is route-derived. The root layout remains default English until localized
-// route wrappers provide per-locale layouts in later rollout steps.
+// Language is route-derived by localized page wrappers. The root layout remains
+// default English because Next's root layout does not receive child route params.
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang={DEFAULT_LOCALE} suppressHydrationWarning className={`${plusJakarta.variable} ${geistMono.variable}`}>
