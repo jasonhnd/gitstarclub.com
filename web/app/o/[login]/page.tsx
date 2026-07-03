@@ -99,7 +99,7 @@ export default async function OrgPage({ params }: { params: Promise<{ login: str
           <h2 className="mb-3 text-[1.2rem] font-extrabold tracking-tight text-on-surface">
             <T path="org.repos" />
           </h2>
-          <RankingList rows={members} variant="total" locale={loc} />
+          <RankingList rows={members} variant="total" locale={loc} tableCaption={`${org.login} member repositories by current stars`} />
         </section>
 
         <FaqBlock items={faqItems} path={`/o/${org.login}`} locale={loc} />
