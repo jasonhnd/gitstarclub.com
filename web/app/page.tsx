@@ -1,20 +1,12 @@
 import type { Metadata } from "next";
-import { pageMeta } from "@/lib/seo";
-import { PULSE_META_DESCRIPTION, PULSE_META_TITLE } from "@/lib/site-copy";
-import { PulseView } from "./pulse/PulseView";
+import { generatePulseMetadata, PulsePageView } from "./_localized/pulse";
 
 export const revalidate = false;
 
 export async function generateMetadata(): Promise<Metadata> {
-  return pageMeta({
-    absoluteTitle: true,
-    title: `${PULSE_META_TITLE} · GitStarClub`,
-    description: PULSE_META_DESCRIPTION,
-    path: "/",
-    locale: "en",
-  });
+  return generatePulseMetadata({ locale: "en", canonicalPath: "/", absoluteTitle: true });
 }
 
 export default function Home() {
-  return <PulseView includeWebsiteLd />;
+  return <PulsePageView locale="en" canonicalPath="/" includeWebsiteLd />;
 }

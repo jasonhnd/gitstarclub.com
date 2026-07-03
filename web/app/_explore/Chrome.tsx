@@ -2,8 +2,8 @@ import Link from "next/link";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { SearchBox } from "./SearchBox";
-import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
-import { chromeText, type ChromeKey } from "@/lib/i18n/client";
+import { DEFAULT_LOCALE, type Dict, type Locale } from "@/lib/i18n";
+import { chromeText, resolveChromePath, type ChromeKey } from "@/lib/i18n/client";
 import { localizedPath } from "@/lib/i18n/routing";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
@@ -15,15 +15,16 @@ type ChromeProps = {
   tag?: string;
   locale?: Locale;
   canonicalPath: string;
+  dictionary?: Dict;
 };
 
-function label(path: ChromeKey): string {
-  return chromeText(path);
+function label(dictionary: Dict | undefined, path: ChromeKey): string {
+  return dictionary ? resolveChromePath(dictionary, path) : chromeText(path);
 }
 
 // Top chrome. Server-rendered with route-locale links; text remains English until
 // page-body localization lands. `tag` is an optional locale-independent badge.
-export function Chrome({ tag, locale = DEFAULT_LOCALE, canonicalPath }: ChromeProps) {
+export function Chrome({ tag, locale = DEFAULT_LOCALE, canonicalPath, dictionary }: ChromeProps) {
   const href = (path: string) => localizedPath(locale, path);
   return (
     <header
@@ -43,44 +44,44 @@ export function Chrome({ tag, locale = DEFAULT_LOCALE, canonicalPath }: ChromePr
       <nav className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center justify-end gap-1.5 sm:flex sm:w-auto sm:flex-wrap sm:gap-x-4 sm:gap-y-2" aria-label="Primary">
         <SearchBox
           labels={{
-            label: label("search.label"),
-            placeholder: label("search.placeholder"),
-            empty: label("search.empty"),
-            loading: label("search.loading"),
-            addToCompare: label("compare.addToCompare"),
-            openCompare: label("compare.openCompare"),
+            label: label(dictionary, "search.label"),
+            placeholder: label(dictionary, "search.placeholder"),
+            empty: label(dictionary, "search.empty"),
+            loading: label(dictionary, "search.loading"),
+            addToCompare: label(dictionary, "compare.addToCompare"),
+            openCompare: label(dictionary, "compare.openCompare"),
           }}
         />
         <Link href={href("/pulse")} className={`hidden sm:inline ${NAV_LINK_CLASS}`}>
-          {label("nav.pulse")}
+          {label(dictionary, "nav.pulse")}
         </Link>
         <Link href={href("/rankings")} className={`hidden sm:inline ${NAV_LINK_CLASS}`}>
-          {label("nav.rankings")}
+          {label(dictionary, "nav.rankings")}
         </Link>
         <Link href={href("/categories")} className={`hidden md:inline ${NAV_LINK_CLASS}`}>
-          {label("nav.categories")}
+          {label(dictionary, "nav.categories")}
         </Link>
         <Link href={href("/compare")} className={`hidden sm:inline ${NAV_LINK_CLASS}`}>
-          {label("nav.compare")}
+          {label(dictionary, "nav.compare")}
         </Link>
         <Link href={href("/about")} className={`hidden sm:inline ${NAV_LINK_CLASS}`}>
-          {label("nav.about")}
+          {label(dictionary, "nav.about")}
         </Link>
         <LanguageSwitcher locale={locale} canonicalPath={canonicalPath} />
         <ThemeToggle />
-        <MobileNav locale={locale} />
+        <MobileNav locale={locale} dictionary={dictionary} />
       </nav>
     </header>
   );
 }
 
-function MobileNav({ locale }: { locale: Locale }) {
+function MobileNav({ locale, dictionary }: { locale: Locale; dictionary?: Dict }) {
   const links = [
-    { href: localizedPath(locale, "/pulse"), label: label("nav.pulse") },
-    { href: localizedPath(locale, "/rankings"), label: label("nav.rankings") },
-    { href: localizedPath(locale, "/categories"), label: label("nav.categories") },
-    { href: localizedPath(locale, "/compare"), label: label("nav.compare") },
-    { href: localizedPath(locale, "/about"), label: label("nav.about") },
+    { href: localizedPath(locale, "/pulse"), label: label(dictionary, "nav.pulse") },
+    { href: localizedPath(locale, "/rankings"), label: label(dictionary, "nav.rankings") },
+    { href: localizedPath(locale, "/categories"), label: label(dictionary, "nav.categories") },
+    { href: localizedPath(locale, "/compare"), label: label(dictionary, "nav.compare") },
+    { href: localizedPath(locale, "/about"), label: label(dictionary, "nav.about") },
   ];
 
   return (

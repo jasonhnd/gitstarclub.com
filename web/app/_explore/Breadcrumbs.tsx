@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
-import { chromeText, type ChromeKey } from "@/lib/i18n/client";
+import { DEFAULT_LOCALE, type Dict, type Locale } from "@/lib/i18n";
+import { chromeText, resolveChromePath, type ChromeKey } from "@/lib/i18n/client";
 import { localizedPath } from "@/lib/i18n/routing";
 import { stringifyJsonForScript } from "@/lib/json-script";
 
@@ -13,8 +13,8 @@ const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com").rep
 // Visible breadcrumb trail + BreadcrumbList JSON-LD (SEO §6.7). Last item is the current page.
 // Rendered server-side with route-locale links; data crumbs are passed as plain labels.
 // The static HTML stays deterministic and SEO-valid.
-export function Breadcrumbs({ items, locale = DEFAULT_LOCALE }: { items: Crumb[]; locale?: Locale }) {
-  const labelOf = (c: Crumb): string => (c.path ? chromeText(c.path) : (c.label ?? ""));
+export function Breadcrumbs({ items, locale = DEFAULT_LOCALE, dictionary }: { items: Crumb[]; locale?: Locale; dictionary?: Dict }) {
+  const labelOf = (c: Crumb): string => (c.path ? (dictionary ? resolveChromePath(dictionary, c.path) : chromeText(c.path)) : (c.label ?? ""));
   const hrefOf = (c: Crumb): string | undefined => (c.href ? localizedPath(locale, c.href) : undefined);
 
   const ld = {
