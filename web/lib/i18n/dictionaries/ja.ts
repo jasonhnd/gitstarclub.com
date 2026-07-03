@@ -2,6 +2,31 @@ import type { Dict } from "./en";
 
 const ja: Dict = {
   nav: { home: "ホーム", pulse: "動向", rankings: "ランキング", categories: "カテゴリ", compare: "比較", about: "このサイトについて" },
+  common: {
+    faqHeading: "よくある質問",
+    dataLastUpdated: "データ最終更新",
+    dataAsOf: "データ基準日",
+    source: "ソース",
+    allTime: "通算",
+    versus: "vs",
+    tiedAt: "同値",
+    json: "JSON",
+  },
+  meta: {
+    homeTitle: "オープンソースの動向と GitHub スター履歴",
+    homeDescription: "今週・今月・今年に伸びている GitHub プロジェクトと、通算スターランキングを確認できます。",
+    pulseTitle: "オープンソースの動向と GitHub スター履歴",
+    pulseDescription: "今週・今月・今年に伸びている GitHub プロジェクトと、通算スターランキングを確認できます。",
+    rankingsTitle: "通算 GitHub スターランキング — 最多スターのリポジトリと組織",
+    rankingsDescriptionPrefix: "通算で最もスターを集めた GitHub リポジトリと組織。対象期間 ",
+    rankingsDescriptionSuffix: " 年分の合計スター上位 100 件です。",
+    compareTitle: "GitHub スター履歴を比較",
+    compareDescription: "追跡対象リポジトリ（1 万スター以上）のスター履歴カーブを、絶対値または 1 万到達起点で重ねて比較します。",
+    aboutTitle: "このサイトについて — データソースと手法",
+    aboutDescription: "GH Archive と GitHub API、総増加と純増減、1 万スター以上の対象リスト、既知の注意点を説明します。",
+    privacyTitle: "プライバシー",
+    privacyDescription: "GitStarClub のプライバシー方針：Cookie を使わない Vercel Web Analytics、追跡 Cookie なし、必須の言語設定 Cookie のみ。",
+  },
   about: {
     heroPre: "誠実な",
     heroAccent: "記録",
@@ -24,6 +49,50 @@ const ja: Dict = {
     s3h: "時刻とタイムゾーン",
     s3p: "すべてのデータは UTC で保存し、UTC 日付の境界で集計しています。正確な時刻を表示する箇所では、UTC と JST（日本標準時）の両方を併記します。",
     back: "履歴に戻る",
+    ghArchiveCreditPre: "履歴イベントデータは ",
+    ghArchiveCreditMid: " に帰属し、ライセンスは ",
+    ghArchiveCreditPost:
+      " です。GitStarClub はそのイベントストリームをランキングとカーブ表示へ派生・集計・変換します。リポジトリのメタデータと現在のスター数は公開 GitHub API から取得します。",
+    anchorHeading: "スター履歴の基準合わせ",
+    anchorP1:
+      "GitHub のイベント履歴と現在の公開スター数は、常に完全には一致しません。GitStarClub は固定のシーム日を使い、古い累積履歴を現在の GitHub API 合計に非負の係数で合わせ、その後の純増減をイベントストリームから加算します。",
+    anchorP2WithMonthPrefix:
+      "目的は、訪問時にデータベース、検索エンジン、ライブ GitHub クエリを動かさず、リポジトリ同士を比較できる一貫した履歴カーブを作ることです。現在のオーバーレイデータは ",
+    anchorP2WithMonthSuffix: " まで折り込まれています。",
+    anchorP2NoMonth:
+      "目的は、訪問時にデータベース、検索エンジン、ライブ GitHub クエリを動かさず、リポジトリ同士を比較できる一貫した履歴カーブを作ることです。公開ページは利用可能な最新の事前計算 JSON を読み込みます。",
+    fieldsHeading: "引用しやすいフィールド",
+    fieldCurrentStars: "追跡対象リポジトリの現在の公開 GitHub スター数です。",
+    fieldCurrentStarsSum: "オーナーまたは組織に属する追跡対象リポジトリの現在スター合計です。",
+    fieldRankValue: "週、月、年などで獲得したスター数として表示されるランキング値です。",
+    fieldCurveMonthly: "記録済み月末時点の、基準合わせ済みリポジトリ合計です。",
+    fieldRecentDaily: "直近の動向表示に使う日次スター変化です。",
+    fieldMilestones: "リポジトリが 1 万、5 万、10 万スターを初めて超えた既知の日付です。",
+    refreshHeading: "更新頻度とページ配信",
+    refreshP1:
+      "GitStarClub は、リポジトリ、組織、ランキング、カテゴリ、Pulse、比較ビュー向けに事前計算済み Blob JSON を公開します。履歴ビューはデータワークフローで再構築され、ライブな変動オーバーレイは定期公開パスで更新されます。",
+    refreshP2:
+      "Web サイトはリクエスト時とビルド時に公開済み JSON だけを読みます。コンテンツページの配信中にデータベース、スコアリングエンジン、AI モデル、外部有料サービスは実行しません。",
+    sampleHeading: "GitStarClub が答える質問例",
+    sample1: "react/react が初めて 10 万 GitHub スターを超えたのはいつか。",
+    sample2: "今月最も GitHub スターを獲得したリポジトリはどれか。",
+    sample3: "ある組織は追跡対象リポジトリ全体で何スターを持つか。",
+    sample4: "Python リポジトリで最も GitHub スターが多いものはどれか。",
+    sample5: "2 つのリポジトリは、どちらも 1 万スターを超えた後にどう伸びたか。",
+    citeP:
+      "GitStarClub は公開 GitHub シグナルを派生・検証可能な形で提示するサイトです。変換済みランキングとチャートは GitStarClub を、イベント由来の履歴を再利用する場合は基礎となる公開イベントアーカイブとして GH Archive をクレジットしてください。",
+    exportsHeading: "ダウンロード可能なデータ出力",
+    exportsP1:
+      "GitStarClub は上位ランキング、リポジトリのマイルストーン到達、組織集計について、小さな静的 CSV と JSON 抽出を公開します。ファイルは既存の事前計算 Blob ビューから生成され、/data/exports/v1/ にバージョン管理され、実際のビュー metadata で日付付けされます。",
+    exportsP2:
+      "/data/exports/v1/latest/ のリンクは最新の日付付きエクスポートディレクトリへの安定したエイリアスなので、重複した latest スナップショットを保存しなくてもダウンロードが継続します。",
+    exportsLicensePrefix: "ライセンス:",
+    exportsAttribution: "帰属: GH Archive のデータを GitStarClub が派生しました。",
+    exportManifest: "エクスポート manifest",
+    topRankingsCsv: "上位ランキング CSV",
+    repoMilestonesCsv: "リポジトリマイルストーン CSV",
+    orgAggregatesCsv: "組織集計 CSV",
+    dataExportsDocPrefix: "フィールド、ソースビュー、再生成手順は DATA-EXPORTS.md を参照してください。",
   },
   year: {
     label: "年",
@@ -91,6 +160,7 @@ const ja: Dict = {
     repositories: "リポジトリ",
     organizations: "組織",
     repos: "リポジトリ",
+    allTime: "通算",
   },
   pulse: {
     title: "オープンソースの動向",
@@ -104,6 +174,35 @@ const ja: Dict = {
     madeIn: "東京で制作",
     dataThrough: "データ反映日",
     privacy: "プライバシー",
+  },
+  privacy: {
+    eyebrow: "プライバシー",
+    title: "最初からプライバシー重視。",
+    analyticsTitle: "アナリティクス",
+    analyticsBody:
+      "GitStarClub は Vercel Web Analytics を使い、ページビューを集計値として数えます。Cookie を使わずプライバシーに配慮しており、Cookie の設定、サイト横断の追跡、端末フィンガープリント、個人データやプロフィールデータの収集は行いません。広告ピクセルや第三者トラッキングスクリプトもありません。",
+    cookiesTitle: "Cookie とストレージ",
+    cookiesBody:
+      "唯一の Cookie は言語設定を保存する gsc_lang です。これはファーストパーティの機能的な設定 Cookie です。テーマ設定はブラウザ内のローカルストレージに保存され、サーバーには送信されません。",
+    dataTitle: "サイトに表示されるデータ",
+    dataBody:
+      "このサイトは公開 GitHub リポジトリデータと派生したスター履歴集計を表示します。アカウントを求めず、訪問者の個人プロフィール情報を収集しません。",
+  },
+  tables: {
+    repositoryRankings: "リポジトリランキング",
+    organizationRankings: "組織ランキング",
+    rank: "順位",
+    repository: "リポジトリ",
+    language: "言語",
+    unknown: "不明",
+    starsGained: "獲得スター",
+    growthRatePercent: "成長率パーセント",
+    tenKCrossingDay: "1 万到達日",
+    day: "日",
+    totalStars: "合計スター",
+    owner: "オーナー",
+    ownerType: "オーナー種別",
+    trackedRepositories: "追跡リポジトリ",
   },
   search: { label: "検索", placeholder: "リポジトリを検索…", empty: "一致するリポジトリがありません", loading: "読み込み中…" },
   share: { label: "共有", copied: "コピーしました", onX: "X で共有", opensNewTab: "新しいタブで開きます" },
@@ -120,6 +219,15 @@ const ja: Dict = {
     remove: "削除",
     addToCompare: "比較に追加",
     openCompare: "比較",
+    serverEyebrow: "サーバーレンダリング比較",
+    serverHeading: "1 万スター到達後、どちらが速く伸びたか",
+    serverCaption: "サーバーレンダリングされた GitHub リポジトリ比較の結論",
+    pair: "組み合わせ",
+    tenKMonths: "1 万到達月",
+    sharedHorizon: "共通期間",
+    fasterAfter10k: "1 万以降に速い",
+    currentStars: "現在スター",
+    repoCurveSource: "GitStarClub repo-curve JSON",
   },
 };
 

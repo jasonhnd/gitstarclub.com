@@ -11,7 +11,15 @@ export function fmtStars(n: number): string {
   return String(n);
 }
 
-const LOCALE_TAG: Record<string, string> = { en: "en-US", ja: "ja-JP", zh: "zh-CN" };
+const LOCALE_TAG: Record<string, string> = {
+  en: "en-US",
+  ja: "ja-JP",
+  zh: "zh-CN",
+  "zh-TW": "zh-TW",
+  ko: "ko-KR",
+  es: "es-ES",
+  fr: "fr-FR",
+};
 const fmtCache = new Map<string, Intl.DateTimeFormat>();
 function dtf(locale: string, opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
   const key = `${locale}|${JSON.stringify(opts)}`;

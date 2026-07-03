@@ -37,41 +37,90 @@ export type CategorySummaryRow = {
   path?: string;
 };
 
+export type RepositoryRankingTableLabels = {
+  caption: string;
+  rank: string;
+  repository: string;
+  language: string;
+  unknown: string;
+  starsGained: string;
+  growthRatePercent: string;
+  tenKCrossingDay: string;
+  day: string;
+  totalStars: string;
+};
+
+export type OrganizationRankingTableLabels = {
+  caption: string;
+  rank: string;
+  owner: string;
+  ownerType: string;
+  unknown: string;
+  trackedRepositories: string;
+  totalStars: string;
+};
+
+const DEFAULT_REPOSITORY_LABELS: RepositoryRankingTableLabels = {
+  caption: "Repository rankings",
+  rank: "Rank",
+  repository: "Repository",
+  language: "Language",
+  unknown: "Unknown",
+  starsGained: "Stars gained",
+  growthRatePercent: "Growth rate percent",
+  tenKCrossingDay: "10k crossing day",
+  day: "Day",
+  totalStars: "Total stars",
+};
+
+const DEFAULT_ORGANIZATION_LABELS: OrganizationRankingTableLabels = {
+  caption: "Organization rankings",
+  rank: "Rank",
+  owner: "Owner",
+  ownerType: "Owner type",
+  unknown: "Unknown",
+  trackedRepositories: "Tracked repositories",
+  totalStars: "Total stars",
+};
+
 export function RepositoryRankingTable({
   rows,
   variant = "gained",
   startRank = 1,
-  caption = "Repository rankings",
+  caption,
+  labels,
 }: {
   rows: Row[];
   variant?: RankingVariant;
   startRank?: number;
   caption?: string;
+  labels?: Partial<RepositoryRankingTableLabels>;
 }) {
   if (rows.length === 0) return null;
+  const text = { ...DEFAULT_REPOSITORY_LABELS, ...labels };
 
   return (
     <div className={tableWrapClass}>
       <table className={tableClass} data-semantic-table="repository-rankings">
-        <caption className={captionClass}>{caption}</caption>
+        <caption className={captionClass}>{caption ?? text.caption}</caption>
         <thead>
           <tr>
             <th scope="col" className={`${headClass} w-14 text-right`}>
-              Rank
+              {text.rank}
             </th>
             <th scope="col" className={headClass}>
-              Repository
+              {text.repository}
             </th>
             <th scope="col" className={headClass}>
-              Language
+              {text.language}
             </th>
             {variant !== "total" && (
               <th scope="col" className={`${headClass} text-right`}>
-                {metricHeader(variant)}
+                {metricHeader(variant, text)}
               </th>
             )}
             <th scope="col" className={`${headClass} text-right`}>
-              Total stars
+              {text.totalStars}
             </th>
           </tr>
         </thead>
@@ -84,8 +133,8 @@ export function RepositoryRankingTable({
                   {row.owner}/{row.name}
                 </Link>
               </th>
-              <td className={mutedCellClass}>{row.lang ?? "Unknown"}</td>
-              {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant)}</td>}
+              <td className={mutedCellClass}>{row.lang ?? text.unknown}</td>
+              {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant, text)}</td>}
               <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>{fmtStars(row.total)}★</td>
             </tr>
           ))}
@@ -98,34 +147,37 @@ export function RepositoryRankingTable({
 export function OrganizationRankingTable({
   rows,
   startRank = 1,
-  caption = "Organization rankings",
+  caption,
+  labels,
 }: {
   rows: OrganizationSummaryRow[];
   startRank?: number;
   caption?: string;
+  labels?: Partial<OrganizationRankingTableLabels>;
 }) {
   if (rows.length === 0) return null;
+  const text = { ...DEFAULT_ORGANIZATION_LABELS, ...labels };
 
   return (
     <div className={tableWrapClass}>
       <table className={tableClass} data-semantic-table="organization-rankings">
-        <caption className={captionClass}>{caption}</caption>
+        <caption className={captionClass}>{caption ?? text.caption}</caption>
         <thead>
           <tr>
             <th scope="col" className={`${headClass} w-14 text-right`}>
-              Rank
+              {text.rank}
             </th>
             <th scope="col" className={headClass}>
-              Owner
+              {text.owner}
             </th>
             <th scope="col" className={headClass}>
-              Owner type
+              {text.ownerType}
             </th>
             <th scope="col" className={`${headClass} text-right`}>
-              Tracked repositories
+              {text.trackedRepositories}
             </th>
             <th scope="col" className={`${headClass} text-right`}>
-              Total stars
+              {text.totalStars}
             </th>
           </tr>
         </thead>
@@ -138,7 +190,7 @@ export function OrganizationRankingTable({
                   {row.login}
                 </Link>
               </th>
-              <td className={mutedCellClass}>{row.owner_type ?? "Unknown"}</td>
+              <td className={mutedCellClass}>{row.owner_type ?? text.unknown}</td>
               <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{row.repo_count}</td>
               <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>
                 {fmtStars(row.current_stars_sum)}★
@@ -206,23 +258,23 @@ export function CategorySummaryTable({ rows, caption = "Repository categories" }
   );
 }
 
-function metricHeader(variant: Exclude<RankingVariant, "total">): string {
+function metricHeader(variant: Exclude<RankingVariant, "total">, labels: RepositoryRankingTableLabels): string {
   switch (variant) {
     case "rate":
-      return "Growth rate percent";
+      return labels.growthRatePercent;
     case "crossed":
-      return "10k crossing day";
+      return labels.tenKCrossingDay;
     case "gained":
-      return "Stars gained";
+      return labels.starsGained;
   }
 }
 
-function metricValue(row: Row, variant: Exclude<RankingVariant, "total">): number | string {
+function metricValue(row: Row, variant: Exclude<RankingVariant, "total">, labels: RepositoryRankingTableLabels): number | string {
   switch (variant) {
     case "rate":
       return row.rate == null ? "" : `+${row.rate}%`;
     case "crossed":
-      return row.crossedDay == null ? "" : `Day ${row.crossedDay}`;
+      return row.crossedDay == null ? "" : `${labels.day} ${row.crossedDay}`;
     case "gained":
       return `+${fmtK(row.gained ?? 0)}`;
   }
