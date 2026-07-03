@@ -68,8 +68,20 @@ describe("semantic data tables", () => {
     expect(html).toContain("GitStarClub URL");
     expect(html).toContain('href="/categories/language/typescript"');
     expect(html).toContain("TypeScript");
-    expect(html).toContain("Tracked repositories");
+    expect(html).toContain("tracked repositories");
     expect(html).toContain("/categories/language/typescript");
+  });
+
+  test("renders pending text for zero-count category rows", () => {
+    const html = renderToStaticMarkup(
+      createElement(CategorySummaryTable, {
+        caption: "Public categories",
+        rows: [{ id: "domain/ai", dimension: "domain", slug: "ai", label: "AI", count: 0, path: "/categories/domain/ai" }],
+      }),
+    );
+
+    expect(html).toContain("Pending count");
+    expect(html).not.toContain("<td>0</td>");
   });
 
   test("renders no table when rows are empty", () => {

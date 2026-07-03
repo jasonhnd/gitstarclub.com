@@ -13,7 +13,7 @@ import { buildCategoryIndexCapsule, resolveDataAsOfLabel, resolveDataAsOfValue }
 import { buildCategoryIndexFaqs } from "@/lib/geo-faq";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { T } from "@/lib/i18n/client";
-import { categoryPath, fallbackRegistry, publicCategoryEntries } from "./category-page-data";
+import { CATEGORY_INDEX_PREVIEW_LIMIT, categoryPath, fallbackRegistry, publicCategoryEntries, publicDimensions } from "./category-page-data";
 
 const LOC = DEFAULT_LOCALE;
 
@@ -32,6 +32,7 @@ export default async function CategoriesPage() {
   const [registryView, meta] = await Promise.all([getCategoryRegistry(), getMeta()]);
   const registry = registryView ?? fallbackRegistry();
   const publicCategories = publicCategoryEntries(registry);
+  const dimensions = publicDimensions(registry);
   const categoryRows = publicCategories.map((category) => ({ ...category, path: categoryPath(category.dimension, category.slug) }));
   const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
@@ -93,6 +94,31 @@ export default async function CategoriesPage() {
           })}
         </section>
 
+        <section className="mt-[clamp(2rem,4vw,3rem)]">
+          <h2 className="text-[1.3rem] font-extrabold text-on-surface">
+            <T path="categories.browseByDimension" />
+          </h2>
+          <div className="mt-4 grid gap-[clamp(1.25rem,3vw,2rem)]">
+            {dimensions.map((dimension) => (
+              <section key={dimension.id} aria-labelledby={`dimension-${dimension.id}`}>
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                  <h3 id={`dimension-${dimension.id}`} className="text-[1.05rem] font-extrabold text-on-surface">
+                    {dimension.label}
+                  </h3>
+                  <Link href={categoryPath(dimension.id)} className="text-readable-gold font-mono text-[0.78rem] hover:underline">
+                    <T path="categories.viewAll" />
+                  </Link>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {dimension.categories.slice(0, CATEGORY_INDEX_PREVIEW_LIMIT).map((category) => (
+                    <CategoryLink key={category.id} href={categoryPath(category.dimension, category.slug)} label={category.label} count={category.count} />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </section>
+
         {publicCategories.length === 0 && (
           <p className="mt-8 rounded-lg bg-surface-container px-4 py-3 text-[0.9rem] text-on-surface-variant">
             <T path="categories.empty" />
@@ -102,5 +128,19 @@ export default async function CategoriesPage() {
         <FaqBlock items={faqItems} path="/categories" locale={LOC} />
       </main>
     </>
+  );
+}
+
+function CategoryLink({ href, label, count }: { href: string; label: string; count: number }) {
+  return (
+    <Link
+      href={href}
+      className="flex min-h-16 items-center justify-between gap-3 rounded-lg bg-surface-container px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-surface-container-high"
+    >
+      <span className="truncate font-mono text-[0.9rem] font-semibold text-on-surface" title={label}>
+        {label}
+      </span>
+      {count > 0 ? <span className="shrink-0 font-mono text-[0.75rem] text-on-surface-variant">{count}</span> : null}
+    </Link>
   );
 }
