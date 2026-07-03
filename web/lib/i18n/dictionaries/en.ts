@@ -2,6 +2,36 @@
 // `en` is the source-of-truth shape; every other dictionary must match these keys.
 export const en = {
   nav: { home: "Home", pulse: "Pulse", rankings: "Rankings", categories: "Categories", compare: "Compare", about: "About" },
+  common: {
+    faqHeading: "Frequently asked questions",
+    dataLastUpdated: "Data last updated",
+    dataAsOf: "Data as of",
+    source: "Source",
+    allTime: "all-time",
+    versus: "vs",
+    tiedAt: "Tied at",
+    json: "JSON",
+  },
+  meta: {
+    homeTitle: "Open Source Pulse & GitHub Star History",
+    homeDescription:
+      "See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.",
+    pulseTitle: "Open Source Pulse & GitHub Star History",
+    pulseDescription:
+      "See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.",
+    rankingsTitle: "All-Time GitHub Star Rankings — Most-Starred Repos & Orgs",
+    rankingsDescriptionPrefix: "The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across ",
+    rankingsDescriptionSuffix: " years.",
+    compareTitle: "Compare GitHub Star History",
+    compareDescription:
+      "Overlay the star-history curves of any tracked repositories (≥10k stars) on one chart — absolute or aligned from 10k.",
+    aboutTitle: "About — Data Sources & Methodology",
+    aboutDescription:
+      "How GitStarClub charts GitHub star history: data from GH Archive & GitHub API, gross vs net stars, the ≥10k whitelist, and known caveats.",
+    privacyTitle: "Privacy",
+    privacyDescription:
+      "GitStarClub privacy details: privacy-friendly Vercel Web Analytics, no tracking cookies, and only an essential language preference cookie.",
+  },
   about: {
     heroPre: "A factual ",
     heroAccent: "history",
@@ -24,6 +54,50 @@ export const en = {
     s3h: "Time",
     s3p: "All data is stored in UTC and aggregated by UTC day. When an exact timestamp is shown, both UTC and JST (Japan Standard Time) are displayed.",
     back: "Back to the history",
+    ghArchiveCreditPre: "Historical event data is credited to ",
+    ghArchiveCreditMid: ", licensed under ",
+    ghArchiveCreditPost:
+      ". GitStarClub derives, aggregates, and transforms that event stream into ranking and curve views. Repository metadata and current star totals come from public GitHub APIs.",
+    anchorHeading: "How the star history is anchored",
+    anchorP1:
+      "GitHub event history and the current public star count do not always line up exactly. GitStarClub uses a fixed seam date, anchors the older cumulative history to the current GitHub API total with a non-negative factor, and then adds the later net star changes from the event stream.",
+    anchorP2WithMonthPrefix:
+      "The goal is a consistent historical curve that can be compared across repositories without running a database, search engine, or live GitHub query during a visitor request. Current overlay data has been folded through ",
+    anchorP2WithMonthSuffix: ".",
+    anchorP2NoMonth:
+      "The goal is a consistent historical curve that can be compared across repositories without running a database, search engine, or live GitHub query during a visitor request. Published pages read the latest available precomputed JSON.",
+    fieldsHeading: "Fields readers can cite",
+    fieldCurrentStars: "The current public GitHub star total for a tracked repository.",
+    fieldCurrentStarsSum: "The sum of current stars across an owner or organization's tracked repositories.",
+    fieldRankValue: "The visible ranking value, such as stars gained during a week, month, or year.",
+    fieldCurveMonthly: "The repository's anchored total at the end of a recorded month.",
+    fieldRecentDaily: "The recent daily star change used for fresh movement views.",
+    fieldMilestones: "Frozen first-known dates when a repository crossed the 10k, 50k, or 100k star thresholds.",
+    refreshHeading: "Refresh cadence and page serving",
+    refreshP1:
+      "GitStarClub publishes precomputed Blob JSON for repository pages, organization pages, rankings, categories, Pulse, and comparison views. Historical views are rebuilt by the data workflow, while live mover overlays are refreshed by the scheduled publishing path.",
+    refreshP2:
+      "The website reads only those published JSON files at request and build time. It does not run a database, scoring engine, AI model, or external paid service while serving content pages.",
+    sampleHeading: "Sample questions GitStarClub answers",
+    sample1: "When did react/react first cross 100k GitHub stars?",
+    sample2: "Which repositories gained the most GitHub stars this month?",
+    sample3: "How many tracked stars does an organization have across its repositories?",
+    sample4: "Which Python repositories have the most GitHub stars?",
+    sample5: "How do two repositories compare after both reached 10k stars?",
+    citeP:
+      "GitStarClub is a derived, reviewable presentation of public GitHub signals. Cite GitStarClub for the transformed rankings and charts, and credit GH Archive for the underlying public event archive when reusing event-derived history.",
+    exportsHeading: "Downloadable data exports",
+    exportsP1:
+      "GitStarClub publishes small static CSV and JSON extracts for top rankings, repository milestone crossings, and organization aggregates. The files are generated from existing precomputed Blob views, versioned under /data/exports/v1/, and dated from real view metadata.",
+    exportsP2:
+      "The /data/exports/v1/latest/ links are stable aliases to the newest dated export directory, so downloads keep working without storing a duplicate latest snapshot.",
+    exportsLicensePrefix: "License:",
+    exportsAttribution: "Attribution: Data from GH Archive, derived by GitStarClub.",
+    exportManifest: "Export manifest",
+    topRankingsCsv: "Top rankings CSV",
+    repoMilestonesCsv: "Repository milestones CSV",
+    orgAggregatesCsv: "Organization aggregates CSV",
+    dataExportsDocPrefix: "See DATA-EXPORTS.md for fields, source views, and regeneration notes.",
   },
   year: {
     label: "Year",
@@ -91,6 +165,7 @@ export const en = {
     repositories: "Repositories",
     organizations: "Organizations",
     repos: "repositories",
+    allTime: "All-time",
   },
   pulse: {
     title: "Open-source activity",
@@ -104,6 +179,35 @@ export const en = {
     madeIn: "Made in Tokyo",
     dataThrough: "Data updated through",
     privacy: "Privacy",
+  },
+  privacy: {
+    eyebrow: "Privacy",
+    title: "Privacy-first by default.",
+    analyticsTitle: "Analytics",
+    analyticsBody:
+      "GitStarClub uses Vercel Web Analytics to count page views in aggregate. It is cookieless and privacy-friendly: it does not set cookies, follow you across sites, fingerprint your device, or collect personal or profile data. There are no advertising pixels or third-party tracking scripts.",
+    cookiesTitle: "Cookies and storage",
+    cookiesBody:
+      "The only cookie is gsc_lang, which stores your language preference. It is a first-party, functional preference cookie. Theme preference is stored locally in your browser and is not sent to the server.",
+    dataTitle: "Data shown on the site",
+    dataBody:
+      "The site displays public GitHub repository data and derived star-history aggregates. It does not ask for an account and does not collect personal profile information from visitors.",
+  },
+  tables: {
+    repositoryRankings: "Repository rankings",
+    organizationRankings: "Organization rankings",
+    rank: "Rank",
+    repository: "Repository",
+    language: "Language",
+    unknown: "Unknown",
+    starsGained: "Stars gained",
+    growthRatePercent: "Growth rate percent",
+    tenKCrossingDay: "10k crossing day",
+    day: "Day",
+    totalStars: "Total stars",
+    owner: "Owner",
+    ownerType: "Owner type",
+    trackedRepositories: "Tracked repositories",
   },
   search: { label: "Search", placeholder: "Search repositories…", empty: "No matching repositories", loading: "Loading…" },
   share: { label: "Share", copied: "Copied", onX: "Share on X", opensNewTab: "opens in new tab" },
@@ -120,6 +224,15 @@ export const en = {
     remove: "Remove",
     addToCompare: "Add to compare",
     openCompare: "Compare",
+    serverEyebrow: "Server-rendered comparison",
+    serverHeading: "Which grew faster after 10k stars?",
+    serverCaption: "Server-rendered GitHub repository comparison conclusions",
+    pair: "Pair",
+    tenKMonths: "10k months",
+    sharedHorizon: "Shared horizon",
+    fasterAfter10k: "Faster after 10k",
+    currentStars: "Current stars",
+    repoCurveSource: "GitStarClub repo-curve JSON",
   },
 };
 
