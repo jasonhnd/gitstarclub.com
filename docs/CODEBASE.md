@@ -191,7 +191,8 @@ SEO helpers live in:
 - `web/lib/seo.ts`
 - `web/lib/jsonld.ts`
 - `web/lib/sitemap.ts`
-- `web/app/sitemap.ts`
+- `web/app/sitemap.xml/route.ts`
+- `web/app/sitemap-*.xml/route.ts`
 - `web/app/robots.ts`
 - route-level `opengraph-image.tsx`
 
