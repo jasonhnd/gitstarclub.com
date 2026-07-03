@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
@@ -6,6 +5,7 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
+import { CategorySummaryTable } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CATEGORY_DIMENSIONS } from "@/lib/categories/rules";
 import { getCategoryRegistry, getMeta } from "@/lib/data";
@@ -49,6 +49,7 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
   if (!entry) notFound();
 
   const categories = entry.categories.filter((category) => category.public);
+  const categoryRows = categories.map((category) => ({ ...category, path: categoryPath(category.dimension, category.slug) }));
   const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const pagePath = categoryPath(dimension);
   const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
@@ -92,28 +93,7 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />}
 
-        <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)] grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {categories.map((category) => (
-            <Link
-              key={category.id}
-              href={categoryPath(category.dimension, category.slug)}
-              className="rounded-lg bg-surface-container px-4 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-surface-container-high"
-            >
-              <span className="block truncate font-mono text-[0.95rem] font-semibold text-on-surface" title={category.label}>
-                {category.label}
-              </span>
-              <span className="mt-1 block font-mono text-[0.75rem] text-on-surface-variant">
-                {category.count > 0 ? (
-                  <>
-                    {category.count} <T path="categories.repositories" />
-                  </>
-                ) : (
-                  <T path="categories.pendingCount" />
-                )}
-              </span>
-            </Link>
-          ))}
-        </section>
+        <CategorySummaryTable rows={categoryRows} caption={`${entry.label} GitHub repository categories`} />
 
         <FaqBlock items={faqItems} path={categoryPath(dimension)} locale={LOC} />
       </main>

@@ -14,6 +14,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "exports:generate": "bun scripts/generate-data-exports.ts",
+    "geo:report": "bun scripts/geo-ai-log-report.ts",
     "test": "bun test lib/",
     "test:cov": "bun test lib/ --coverage"
   },
