@@ -116,7 +116,7 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={loc} canonicalPath={pagePath} />
       <JsonLd data={collectionLd(pageLabel, pagePath, loc, { dateModified, about: datasetRef(pagePath) })} />
       <JsonLd data={dataset} />
       <JsonLd
@@ -129,6 +129,7 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
       />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
+          locale={loc}
           items={[
             { path: "nav.home", href: "/" },
             { path: "nav.rankings", href: "/rankings" },
@@ -237,7 +238,7 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={loc} canonicalPath={pagePath} />
       <JsonLd data={collectionLd(period, pagePath, loc, { dateModified, about: datasetRef(pagePath) })} />
       <JsonLd data={dataset} />
       <JsonLd
@@ -250,6 +251,7 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
       />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
+          locale={loc}
           items={[
             { path: "nav.home", href: "/" },
             { path: "nav.rankings", href: "/rankings" },

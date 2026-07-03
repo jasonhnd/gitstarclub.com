@@ -6,7 +6,6 @@ import { RegisterSW } from "./_explore/RegisterSW";
 import { Footer } from "./_explore/Footer";
 import { DEFAULT_LOCALE } from "@/lib/i18n";
 import { THEME_INIT_SCRIPT } from "@/lib/theme-script";
-import { LANG_INIT_SCRIPT } from "@/lib/lang-script";
 
 const plusJakarta = Plus_Jakarta_Sans({ variable: "--font-plus-jakarta", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"], preload: false });
@@ -57,15 +56,13 @@ export const viewport: Viewport = {
   ],
 };
 
-// Language is an in-page preference stored in a first-party cookie; URLs stay canonical.
-// The server renders default-locale chrome into static HTML. Client islands update
-// documentElement.lang for CSS-driven locale variants without wrapping content pages.
+// Language is route-derived. The root layout remains default English until localized
+// route wrappers provide per-locale layouts in later rollout steps.
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang={DEFAULT_LOCALE} suppressHydrationWarning className={`${plusJakarta.variable} ${geistMono.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-        <script dangerouslySetInnerHTML={{ __html: LANG_INIT_SCRIPT }} />
       </head>
       <body className="flex min-h-svh flex-col">
         <a href="#main" className="skip-link">
