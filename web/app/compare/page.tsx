@@ -50,9 +50,9 @@ export default async function ComparePage() {
 
   return (
     <>
-      <Chrome />
+      <Chrome locale="en" canonicalPath="/compare" />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { path: "compare.title" }]} />
+        <Breadcrumbs locale="en" items={[{ path: "nav.home", href: "/" }, { path: "compare.title" }]} />
         <header className="mt-4 animate-rise">
           <h1 className="font-mono text-[clamp(1.4rem,4vw,2.2rem)] font-semibold text-on-surface">
             <T path="compare.title" />

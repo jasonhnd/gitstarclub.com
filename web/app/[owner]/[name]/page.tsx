@@ -98,13 +98,15 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
   const capsule = asOf ? buildRepoCapsule(repo, asOf) : null;
   const milestoneSnippet = buildRepoMilestoneSnippet({ repo, asOf, milestones });
   const faqItems = buildRepoFaqs(repo, asOf);
+  const pagePath = `/${repo.full_name}`;
 
   return (
     <>
-      <Chrome />
-      <JsonLd data={repoLd(repo, `/${repo.full_name}`, loc)} />
+      <Chrome locale={loc} canonicalPath={pagePath} />
+      <JsonLd data={repoLd(repo, pagePath, loc)} />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
+          locale={loc}
           items={[
             { path: "nav.home", href: "/" },
             { label: repo.owner, href: `/o/${repo.owner}` },
@@ -264,7 +266,7 @@ export default async function RepoPage({ params }: { params: Promise<{ owner: st
           )}
         </div>
 
-        <FaqBlock items={faqItems} path={`/${repo.full_name}`} locale={loc} />
+        <FaqBlock items={faqItems} path={pagePath} locale={loc} />
       </main>
     </>
   );

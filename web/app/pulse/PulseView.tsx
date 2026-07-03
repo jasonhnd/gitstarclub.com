@@ -66,7 +66,7 @@ export async function PulseView({ includeWebsiteLd = false }: PulseViewProps) {
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={LOC} canonicalPath={pagePath} />
       {includeWebsiteLd && <JsonLd data={siteOrganizationLd()} />}
       {includeWebsiteLd && <JsonLd data={webSiteLd(LOC, "/", { dateModified, about: datasetRef(pagePath) })} />}
       <JsonLd data={collectionLd(en.pulse.title, pagePath, LOC, { dateModified, about: datasetRef(pagePath) })} />

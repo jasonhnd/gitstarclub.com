@@ -88,7 +88,7 @@ export default async function AboutPage() {
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={LOC} canonicalPath={ABOUT_PATH} />
       <JsonLd data={dataset} />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[60rem] py-[clamp(2rem,5vw,4rem)] ${PAD_X}`}>
         <p className="animate-rise font-mono text-[0.8rem] uppercase tracking-wider text-on-surface-variant">

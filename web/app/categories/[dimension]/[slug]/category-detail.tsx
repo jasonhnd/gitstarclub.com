@@ -88,7 +88,7 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={LOC} canonicalPath={pagePath} />
       <JsonLd data={collectionLd(`${category.label} repositories`, pagePath, LOC, { dateModified, about: datasetRef(pagePath) })} />
       <JsonLd data={dataset} />
       <JsonLd
@@ -102,6 +102,7 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
       />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
         <Breadcrumbs
+          locale={LOC}
           items={[
             { path: "nav.home", href: "/" },
             { path: "nav.categories", href: "/categories" },

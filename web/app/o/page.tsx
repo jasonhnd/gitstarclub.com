@@ -37,7 +37,7 @@ export async function OrgIndex({ page }: { page: number }) {
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={LOC} canonicalPath={orgIndexPath(page)} />
       <JsonLd data={collectionLd("GitHub organization index", orgIndexPath(page), LOC)} />
       <JsonLd
         data={itemListLd(
