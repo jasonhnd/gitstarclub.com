@@ -110,7 +110,7 @@ an explicit recovery procedure.
 | `SITE_INDEXABLE` | 生产 indexing 开关——`"1"` 解除 pre-launch noindex 并开放 sitemap | 可选（默认 noindex） | 字符串 `"1"` 才生效，其他值 / 未设 = noindex | `web/app/robots.ts:6` · `web/app/layout.tsx:18`；上线时单点切换 |
 | `GOOGLE_APPLICATION_CREDENTIALS` | GCP 服务账号 key 路径 | 仅一次性回填 | 本机文件路径，例 `./gcp-key.json` | **本地回填脚本**（仅一次性 BigQuery 回填） |
 | `GCP_PROJECT_ID` | GCP 项目 ID | 仅一次性回填 | GCP project ID 字符串 | **本地回填脚本**（仅一次性 BigQuery 回填） |
-| `NEXT_PUBLIC_SITE_URL` | 站点规范域名（canonical / sitemap / OG / JSON-LD 绝对 URL） | **必需**（生产） | `https://gitstarclub.com` 等绝对 URL（**无尾斜杠**） | `web/app/sitemap.ts:6` · `web/app/robots.ts:5` · `web/app/layout.tsx:17` · `web/lib/jsonld.ts:4` · `web/app/_explore/Breadcrumbs.tsx:10` |
+| `NEXT_PUBLIC_SITE_URL` | 站点规范域名（canonical / sitemap / OG / JSON-LD 绝对 URL） | **必需**（生产） | `https://gitstarclub.com` 等绝对 URL（**无尾斜杠**） | `web/lib/sitemap.ts:26` · `web/app/robots.ts:5` · `web/app/layout.tsx:17` · `web/lib/jsonld.ts:4` · `web/app/_explore/Breadcrumbs.tsx:10` |
 | `SEO_LIVE_BASE` | 集成测试拉取的活线 origin（默认 `https://www.gitstarclub.com`，留空可跳过测试） | 仅测试 | `https://www.gitstarclub.com` 或空串 | `web/lib/integration/seo.test.ts:23` |
 | `SEO_CANON_ORIGIN` | 集成测试断言的 canonical origin（默认 `https://gitstarclub.com`） | 仅测试 | 绝对 origin（**无尾斜杠**） | `web/lib/integration/seo.test.ts:25` |
 

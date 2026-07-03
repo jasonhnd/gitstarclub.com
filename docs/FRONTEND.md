@@ -209,7 +209,7 @@ export default nextConfig;
 | `/[owner]/[name]` · `/o/[login]` | `●` SSG（`[]` + `dynamicParams` → 全部按需 ISR） |
 
 - SSR/静态输出**完整可索引 HTML**（英文 chrome 直接进静态 HTML,SEO §3a 不受影响），数据语言中立。
-- 取舍依据：每页约 95% 是语言中立数据,仅少量 chrome 字符串需要翻译 → 静态基底 + 客户端译 chrome 同时保住**静态 CDN 扛量 + GitHub 风格 URL + 页内切语言**,吻合 SEO 口径（语言中立 canonical、英文默认、不发 hreflang,见 [SEO](./SEO.md) i18n 注）。
+- 取舍依据：每页约 95% 是语言中立数据,仅少量 chrome 字符串需要翻译 → 静态基底 + 分步 locale URL 迁移同时保住**静态 CDN 扛量 + GitHub 风格 URL**；metadata 与 sitemap 已先按 [I18N.md](./I18N.md) step 2 输出 locale canonical / hreflang，页面正文迁移后续推进。
 
 ---
 
@@ -440,15 +440,17 @@ export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 - `LanguageSwitcher` 默认英文，下拉切其它语言；客户端写 `gsc_lang` cookie 后派发 `gsc:localechange`，不触发 RSC refresh，不改 canonical URL。`/api/lang` 仍保留为直接访问后备。
 - 现有少量 SEO title/description + 静态 HTML chrome 仍以英文为主，这是单一 canonical URL 的刻意取舍。
 
-### 7.3 canonical（Metadata API）
+### 7.3 canonical / hreflang（Metadata API）
 
-语言不再是 URL 维度，所以不发 `hreflang` 矩阵。每页只声明无语言前缀的 canonical：
+服务器端多语言 URL 迁移按 [I18N.md](./I18N.md) 分步推进。当前 metadata 基础设施已经 locale-aware：调用 `pageMeta()` 时传入 locale、无语言前缀的 canonical path、localized title / description；helper 负责生成 locale canonical、`og:url`、`og:locale` 与完整 `hreflang` 矩阵（含 `x-default` -> English 无前缀 URL）。
 
 ```ts
-return {
-  alternates: { canonical: path },
-  openGraph: { url: path },
-};
+return pageMeta({
+  locale,
+  path: "/rankings",
+  title,
+  description,
+});
 ```
 
 - `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`（[OPS](./OPS.md) 环境变量 / [SEO](./SEO.md) §2）以适配预览/生产。
@@ -464,7 +466,7 @@ return {
 3. **`next.config.ts`**：无语言前缀跳转、无旧路径兼容重定向。
 4. **页面**：`pulse`/`rankings`/`rankings/[year]`/`[period]`/`[owner]/[name]`/`o/[login]`。
 5. **i18n**：客户端 chrome i18n（机制见 §7，渲染模式见 §2.5）。
-6. **SEO 配套**：`app/sitemap.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD。
+6. **SEO 配套**：`app/sitemap.xml/route.ts`、`app/sitemap-*.xml/route.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD。
 7. **cron route**：`app/api/cron/{daily,weekly}`（`revalidatePath` + `CRON_SECRET`）。
 8. **共享组件 / token helper**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` 抽成共享组件；页面横向 padding 统一经 `_explore/layout-tokens.ts` 的 `PAD_X` 使用锁定基线 clamp 值；`PrevNext`/`EntityCard`/`YearSpine` 仍内联（§6.3）。
 
@@ -504,7 +506,7 @@ return {
 **i18n**
 - 手写字典 `web/lib/i18n/`（en/ja/zh/zh-TW/ko/es/fr）；数据字段不翻译
 - chrome 默认语言服务端渲染：`i18n/client.tsx` 提供 server-safe `<T>`；`i18n/client-runtime.tsx` 仅供真正 client 工具读取 cookie / 字典；`i18n/server.ts` 弃用
-- 各页 `alternates.canonical` 指无语言前缀 canonical；不发 `alternates.languages`
+- 各页 `pageMeta()` 以无语言前缀 canonical path 为输入，输出当前 locale canonical 与完整 `alternates.languages`
 - `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`
 
 ---
