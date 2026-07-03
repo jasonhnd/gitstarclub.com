@@ -185,7 +185,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 
 ## 多语言（i18n）
 
-调性：默认英文，优先级 **英文 > 日文 > 中文 >** zh-TW / ko / es / fr 七种 UI 语言；语言是页内 cookie 偏好（`gsc_lang`），不进 URL、不发 hreflang，翻译 chrome 与确定性 Narrative 文案，不碰 repo 名、描述、语言、topic、数字等数据字段。**权威口径见 [SEO.md](./SEO.md) §10，实现见 [FRONTEND.md](./FRONTEND.md) §7（option C）。**
+调性：默认英文，优先级 **英文 > 日文 > 中文 >** zh-TW / ko / es / fr 七种 UI 语言；English URL 保持无前缀，非默认 locale URL / metadata / sitemap 按 [I18N.md](./I18N.md) 分步迁移，repo 名、描述、语言、topic、数字等数据字段不翻译。**权威口径见 [SEO.md](./SEO.md) §10，实现见 [FRONTEND.md](./FRONTEND.md) §7。**
 
 ## 项目命名
 

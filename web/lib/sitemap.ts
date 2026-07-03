@@ -1,5 +1,7 @@
 import { FIRST_YEAR, isoWeek } from "./periods";
 import { CATEGORY_DETAIL_PAGE_SIZE, ORG_INDEX_PAGE_SIZE, pageCount } from "./pagination";
+import { DEFAULT_LOCALE, LOCALES, type Locale } from "./i18n";
+import { localizedPath, toHreflang } from "./i18n/routing";
 
 type RepoLike = { full_name: string };
 type CategoriesLike = {
@@ -8,6 +10,15 @@ type CategoriesLike = {
 };
 type SitemapMeta = { backfilled_at?: string; generated_at?: string };
 type SitemapFrequency = "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
+export type SitemapAlternate = { hreflang: string; href: string };
+export type LocaleSitemapEntry = {
+  loc: string;
+  lastModified: Date;
+  changeFrequency: SitemapFrequency;
+  priority: number;
+  alternates: SitemapAlternate[];
+};
+export type SitemapIndexEntry = { loc: string; lastModified: Date };
 
 export const SITEMAP_FALLBACK_LAST_MODIFIED = "2026-06-04T00:00:00.000Z";
 export const DEFAULT_SITE_URL = "https://gitstarclub.com";
@@ -19,6 +30,78 @@ export function siteBaseUrl(value = process.env.NEXT_PUBLIC_SITE_URL ?? DEFAULT_
 export function absoluteCanonicalUrl(path: string, base = siteBaseUrl()): string {
   const normalized = path === "/" ? "" : path.startsWith("/") ? path : `/${path}`;
   return `${base}${normalized}`;
+}
+
+export function localizedCanonicalUrl(locale: Locale, canonicalPath: string, base = siteBaseUrl()): string {
+  return absoluteCanonicalUrl(localizedPath(locale, canonicalPath), base);
+}
+
+export function localizedAlternateUrls(canonicalPath: string, base = siteBaseUrl()): SitemapAlternate[] {
+  const englishUrl = localizedCanonicalUrl(DEFAULT_LOCALE, canonicalPath, base);
+  return [
+    { hreflang: "x-default", href: englishUrl },
+    ...LOCALES.map((locale) => ({ hreflang: toHreflang(locale), href: localizedCanonicalUrl(locale, canonicalPath, base) })),
+  ];
+}
+
+export function localeSitemapPath(locale: Locale): string {
+  return `/sitemap-${locale}.xml`;
+}
+
+export function buildSitemapIndexEntries(lastModified: Date, base = siteBaseUrl()): SitemapIndexEntry[] {
+  return LOCALES.map((locale) => ({
+    loc: absoluteCanonicalUrl(localeSitemapPath(locale), base),
+    lastModified,
+  }));
+}
+
+export function buildLocaleSitemapEntries(
+  locale: Locale,
+  paths: string[],
+  opts: {
+    meta?: SitemapMeta | null;
+    categories?: CategoriesLike | null;
+    base?: string;
+  } = {},
+): LocaleSitemapEntry[] {
+  const base = opts.base ?? siteBaseUrl();
+  return paths.map((path) => ({
+    loc: localizedCanonicalUrl(locale, path, base),
+    alternates: localizedAlternateUrls(path, base),
+    lastModified: sitemapLastModified(path, { meta: opts.meta, categories: opts.categories }),
+    changeFrequency: sitemapChangeFrequency(path),
+    priority: sitemapPriority(path),
+  }));
+}
+
+export function buildSitemapIndexXml(entries: SitemapIndexEntry[]): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...entries.flatMap((entry) => ["  <sitemap>", `    <loc>${escapeXml(entry.loc)}</loc>`, `    <lastmod>${entry.lastModified.toISOString()}</lastmod>`, "  </sitemap>"]),
+    "</sitemapindex>",
+    "",
+  ].join("\n");
+}
+
+export function buildSitemapXml(entries: LocaleSitemapEntry[]): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
+    ...entries.flatMap((entry) => [
+      "  <url>",
+      `    <loc>${escapeXml(entry.loc)}</loc>`,
+      ...entry.alternates.map(
+        (alternate) => `    <xhtml:link rel="alternate" hreflang="${escapeXml(alternate.hreflang)}" href="${escapeXml(alternate.href)}" />`,
+      ),
+      `    <lastmod>${entry.lastModified.toISOString()}</lastmod>`,
+      `    <changefreq>${entry.changeFrequency}</changefreq>`,
+      `    <priority>${entry.priority}</priority>`,
+      "  </url>",
+    ]),
+    "</urlset>",
+    "",
+  ].join("\n");
 }
 
 export function resolveSitemapLastModified(meta?: SitemapMeta | null): Date {
@@ -152,4 +235,21 @@ function endOfIsoWeekUtc(year: number, week: number): Date {
   const jan4Day = jan4.getUTCDay() || 7;
   const weekOneMonday = Date.UTC(year, 0, 4 - jan4Day + 1);
   return new Date(weekOneMonday + ((week - 1) * 7 + 6) * 24 * 60 * 60 * 1000 + (24 * 60 * 60 * 1000 - 1));
+}
+
+function escapeXml(value: string): string {
+  return value.replace(/[<>&'"]/g, (char) => {
+    switch (char) {
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case "&":
+        return "&amp;";
+      case "'":
+        return "&apos;";
+      default:
+        return "&quot;";
+    }
+  });
 }
