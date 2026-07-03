@@ -176,14 +176,14 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
             <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">
               <T path="month.most" />
             </h2>
-            <RankingList rows={most} variant="gained" locale={loc} />
+            <RankingList rows={most} variant="gained" locale={loc} tableCaption={`${pageLabel} GitHub repositories by stars gained`} />
           </section>
           {fastest.length > 0 && (
             <section className="min-w-0">
               <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">
                 <T path="month.fastest" />
               </h2>
-              <RankingList rows={fastest} variant="rate" locale={loc} />
+              <RankingList rows={fastest} variant="rate" locale={loc} tableCaption={`${pageLabel} GitHub repositories by growth rate`} />
             </section>
           )}
           {newcomers.length > 0 && (
@@ -191,7 +191,7 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
               <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">
                 <T path="month.newcomers" />
               </h2>
-              <RankingList rows={newcomers} variant="crossed" locale={loc} />
+              <RankingList rows={newcomers} variant="crossed" locale={loc} tableCaption={`${pageLabel} GitHub repositories crossing 10k stars`} />
             </section>
           )}
         </div>
@@ -199,7 +199,7 @@ async function MonthRankings({ loc, year, month }: { loc: Locale; year: number; 
         {flowRows.length > most.length && (
           <section id="complete-ranking" className="mt-[clamp(2rem,4vw,3rem)] min-w-0 scroll-mt-24">
             <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">Complete ranking</h2>
-            <RankingList rows={flowRows} variant="gained" locale={loc} />
+            <RankingList rows={flowRows} variant="gained" locale={loc} tableCaption={`Complete ${pageLabel} GitHub repositories by stars gained`} />
           </section>
         )}
         <FaqBlock items={faqItems} path={`/rankings/${year}/${month}`} locale={loc} />
@@ -269,12 +269,12 @@ async function WeekRankings({ loc, year, week }: { loc: Locale; year: number; we
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" />}
         {snippet && <ShareableSnippet snippet={snippet} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" />}
         <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
-          <RankingList rows={rows} variant="gained" locale={loc} />
+          <RankingList rows={rows} variant="gained" locale={loc} tableCaption={`${period} GitHub repositories by stars gained`} />
         </section>
         {rankRows.length > rows.length && (
           <section id="complete-ranking" className="mt-[clamp(2rem,4vw,3rem)] min-w-0 scroll-mt-24">
             <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">Complete ranking</h2>
-            <RankingList rows={rankRows} variant="gained" locale={loc} />
+            <RankingList rows={rankRows} variant="gained" locale={loc} tableCaption={`Complete ${period} GitHub repositories by stars gained`} />
           </section>
         )}
         <FaqBlock items={faqItems} path={`/rankings/${year}/W${String(week).padStart(2, "0")}`} locale={loc} />

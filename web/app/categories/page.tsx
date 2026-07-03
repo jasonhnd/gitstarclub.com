@@ -4,6 +4,7 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
+import { CategorySummaryTable } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getCategoryRegistry, getMeta } from "@/lib/data";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
@@ -32,6 +33,7 @@ export default async function CategoriesPage() {
   const registry = registryView ?? fallbackRegistry();
   const publicCategories = publicCategoryEntries(registry);
   const dimensions = publicDimensions(registry);
+  const categoryRows = publicCategories.map((category) => ({ ...category, path: categoryPath(category.dimension, category.slug) }));
   const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const dataset = datasetLd({
@@ -71,6 +73,8 @@ export default async function CategoriesPage() {
         </section>
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />}
+
+        <CategorySummaryTable rows={categoryRows} caption="Public GitHub repository categories" />
 
         <section className="mt-[clamp(1.5rem,3vw,2.25rem)] grid gap-3 md:grid-cols-3">
           {registry.dimensions.map((dimension) => {
@@ -133,7 +137,9 @@ function CategoryLink({ href, label, count }: { href: string; label: string; cou
       href={href}
       className="flex min-h-16 items-center justify-between gap-3 rounded-lg bg-surface-container px-3 py-3 transition-[background-color,transform] duration-200 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:bg-surface-container-high"
     >
-      <span className="truncate font-mono text-[0.9rem] font-semibold text-on-surface" title={label}>{label}</span>
+      <span className="truncate font-mono text-[0.9rem] font-semibold text-on-surface" title={label}>
+        {label}
+      </span>
       {count > 0 ? <span className="shrink-0 font-mono text-[0.75rem] text-on-surface-variant">{count}</span> : null}
     </Link>
   );
