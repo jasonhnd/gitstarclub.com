@@ -148,7 +148,7 @@ export async function CategoryDetail({ dimension, slug, page }: { dimension: str
             </div>
             {pageRows.length > 0 ? (
               <>
-                <RankingList rows={pageRows} variant="total" locale={LOC} startRank={startRank} />
+                <RankingList rows={pageRows} variant="total" locale={LOC} startRank={startRank} tableCaption={`${category.label} repositories by current stars`} />
                 <div id="category-pages" className="scroll-mt-24">
                   <PaginationNav
                     currentPage={page}

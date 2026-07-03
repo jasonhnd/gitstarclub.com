@@ -52,6 +52,11 @@ must state any deliberate exclusions.
 
 Every PR is reviewed in two separate passes.
 
+Branch topology and promotion are owned by [OPS.md](./OPS.md) §Branch topology /
+staging. Feature PRs target `pre`, staging verification uses
+`https://pre.gitstarclub.com`, and production promotion is a merge from `pre` to
+`main`.
+
 ### 1. Should This Merge? (是否该合并)
 
 This pass decides whether the change belongs in the project.

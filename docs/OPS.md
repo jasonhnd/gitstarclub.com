@@ -25,13 +25,45 @@
 
 | 项目 | 内容 | 域名 | 说明 |
 |---|---|---|---|
-| **Production** | `web/`（Next.js，App Router + RSC） | **gitstarclub.com / www.gitstarclub.com** | 生产 alias 指向 `gitstarclub.com` 项目的 Ready deployment |
-| **Preview / staging** | 同一项目的 Preview deployment | **pre.gitstarclub.com** | Cloudflare DNS：`A pre.gitstarclub.com 76.76.21.21`，Vercel alias 指向 Preview deployment，Preview Protection 保持私有 |
+| **Production** | `web/`（Next.js，App Router + RSC） | **gitstarclub.com / www.gitstarclub.com** | Production branch is `main`; production is indexable only when `SITE_INDEXABLE=1` is set in Production |
+| **Preview / staging** | 同一项目的 Preview deployment | **pre.gitstarclub.com** | Fixed custom domain for the `pre` branch; Cloudflare DNS is `A pre.gitstarclub.com 76.76.21.21`, DNS-only |
+
+## Branch topology / staging
+
+GitHub and Vercel use a two-branch topology:
+
+| Branch | Vercel target | Domain | Indexing | Purpose |
+|---|---|---|---|---|
+| `main` | Production Branch = `main` | `https://gitstarclub.com` / `https://www.gitstarclub.com` | Indexable only in Production; `SITE_INDEXABLE=1` is Production-only | Production |
+| `pre` | Preview deployment for git branch `pre` | `https://pre.gitstarclub.com` | Always noindex in Preview | Staging |
+
+`pre.gitstarclub.com` is a stable custom staging domain, not the auto
+`*-git-pre-*.vercel.app` branch alias. It is bound in the Vercel project domain
+configuration to the `pre` git branch (`gitBranch: pre`). Cloudflare DNS points
+`pre.gitstarclub.com` to Vercel with `A -> 76.76.21.21`; the record is DNS-only
+and must not be proxied.
+
+Preview is intentionally noindex. `SITE_INDEXABLE` and `NEXT_PUBLIC_SITE_URL`
+are Production-only, so Preview emits `<meta name="robots"
+content="noindex,nofollow">` and `robots.txt` returns `User-Agent: *` with
+`Disallow: /`. Preview still reads production Blob data because `BLOB_*`
+variables are set for Preview.
+
+Access: `pre` is currently public. Project-level Vercel Authentication /
+`ssoProtection` was disabled on 2026-07-02, so Preview deployments are publicly
+reachable but remain noindex. Production is unaffected. If staging must become
+private again, re-enable Vercel Authentication and issue a
+Protection-Bypass-for-Automation token for curl, CI, or other automated checks.
+
+Development flow: feature work targets `pre` through PRs into `pre`. Verify the
+merged Preview deployment at `https://pre.gitstarclub.com`. Promotion to
+production is a merge from `pre` to `main`.
 
 **域名命名约定**：
 
 - 生产访问只使用 `gitstarclub.com` / `www.gitstarclub.com`。
 - 测试访问只使用 `pre.gitstarclub.com`。
+- `pre.gitstarclub.com` is the fixed custom domain bound to the `pre` branch; it is not the auto `*-git-pre-*.vercel.app` branch alias.
 - `gitstarclubcom.vercel.app` / `gitstarclubcom-zkscio.vercel.app` 是 Vercel 自动生成的生产别名，保留但不对外传播。
 - `gitstarclub-<hash>-zkscio.vercel.app` 是每次部署的不可变 deployment URL，只用于 inspect / promote / 回滚，不作为环境入口。
 - 旧 `gitstarclub-web*.vercel.app` 与旧分支 alias 已移除，避免和当前单项目拓扑混淆。
@@ -58,11 +90,9 @@ vercel deploy . --prod --yes --scope zkscio --project gitstarclub.com --skip-dom
 vercel promote https://<deployment>.vercel.app --scope zkscio --yes
 ```
 
-将最新 Preview deployment 绑定为测试环境：
-
-```powershell
-vercel alias set https://<preview-deployment>.vercel.app pre.gitstarclub.com --scope zkscio
-```
+Staging is branch-bound through the Vercel project domain configuration
+(`gitBranch: pre`). Do not replace it with a one-off deployment alias except for
+an explicit recovery procedure.
 
 ## 环境变量与密钥
 

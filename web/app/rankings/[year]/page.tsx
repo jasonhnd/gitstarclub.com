@@ -143,11 +143,11 @@ export default async function RankingsYearPage({ params }: { params: Promise<{ y
             <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">
               <T path="year.top" /> {year}
             </h2>
-            <RankingList rows={tops} locale={loc} />
+            <RankingList rows={tops} locale={loc} tableCaption={`${year} GitHub repository growth rankings`} />
             {rankRows.length > tops.length && (
               <section id="complete-ranking" className="mt-[clamp(2rem,4vw,3rem)] scroll-mt-24">
                 <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">Complete ranking</h2>
-                <RankingList rows={rankRows} locale={loc} />
+                <RankingList rows={rankRows} locale={loc} tableCaption={`Complete ${year} GitHub repository growth rankings`} />
               </section>
             )}
             <FaqBlock items={faqItems} path={`/rankings/${year}`} locale={loc} />

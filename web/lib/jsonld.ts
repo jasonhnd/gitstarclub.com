@@ -1,16 +1,32 @@
 // schema.org JSON-LD builders (SEO section 6). URLs are absolute against the canonical site base.
 // BreadcrumbList lives in the Breadcrumbs component; these add the per-page-type schema.
 import { categoryLanguageNamesFromRepository } from "@/lib/categories/rules";
+import {
+  dataExportDownloadsFromManifest,
+  readLatestStaticDataExportManifest,
+  type DataExportDownload,
+} from "@/lib/data-exports";
 
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com").replace(/\/+$/, "");
 const abs = (path: string) => `${SITE}${path}`;
 export const SITE_ORGANIZATION_SAME_AS = ["https://github.com/jasonhnd/gitstarclub.com"] as const;
+export const APPROVED_OWNER_SAME_AS_REGISTRY = {} as const satisfies Record<string, readonly ApprovedSameAsEntry[]>;
+export const APPROVED_REPO_SAME_AS_REGISTRY = {} as const satisfies Record<string, readonly ApprovedSameAsEntry[]>;
 
 const SITE_ORG = {
   "@type": "Organization",
   name: "GitStarClub",
   url: SITE,
 } as const;
+
+type ApprovedSameAsEntry = {
+  url: string;
+  source: "approved_static_registry";
+  ownership_evidence: string;
+  entity_type: "repo" | "owner";
+  approved_by: string;
+  approved_at: string;
+};
 
 type DateModifiedOptions = {
   dateModified?: string | null;
@@ -25,8 +41,9 @@ type DatasetLdOptions = DateModifiedOptions & {
   path: string;
   locale: string;
   description: string;
+  distribution?: DataExportDownload[] | null;
   keywords?: string[];
-  temporalCoverage?: string;
+  temporalCoverage?: string | null;
   variableMeasured?: string[];
   measurementTechnique?: string;
 };
@@ -52,8 +69,49 @@ function optionalAbout(about: object | null | undefined) {
   return about ? { about } : {};
 }
 
+function isTrustedSameAsUrl(value: string | null | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function registrySameAsUrls(registry: Record<string, readonly ApprovedSameAsEntry[]>, key: string): string[] {
+  return (registry[key.toLowerCase()] ?? []).map((entry) => entry.url);
+}
+
+function sameAsList(...urls: Array<string | null | undefined>): string[] {
+  return [...new Set(urls.filter(isTrustedSameAsUrl))];
+}
+
+let defaultDistribution: DataExportDownload[] | null | undefined;
+
+function defaultDatasetDistribution(): DataExportDownload[] {
+  if (defaultDistribution !== undefined) return defaultDistribution ?? [];
+  const manifest = readLatestStaticDataExportManifest();
+  defaultDistribution = manifest ? dataExportDownloadsFromManifest(manifest) : null;
+  return defaultDistribution ?? [];
+}
+
 export function datasetRef(path: string) {
   return { "@id": `${abs(path)}#dataset` };
+}
+
+export function datasetTemporalCoverageFromYearSpine(
+  yearSpine: readonly (readonly [string, number])[] | null | undefined,
+): string | undefined {
+  const years = yearSpine
+    ?.map(([year]) => yearFromValue(year))
+    .filter((year): year is number => year !== null)
+    .sort((a, b) => a - b);
+  const firstYear = years?.at(0);
+  const currentYear = years?.at(-1);
+
+  if (!firstYear || !currentYear || currentYear < firstYear) return undefined;
+  return `${firstYear}/${currentYear}`;
 }
 
 export function siteOrganizationLd() {
@@ -73,11 +131,13 @@ export function datasetLd({
   locale,
   description,
   dateModified,
+  distribution,
   keywords,
   temporalCoverage,
   variableMeasured = [...DEFAULT_DATASET_VARIABLES],
   measurementTechnique = DEFAULT_MEASUREMENT_TECHNIQUE,
 }: DatasetLdOptions) {
+  const downloads = distribution ?? defaultDatasetDistribution();
   return {
     "@context": "https://schema.org",
     "@type": "Dataset",
@@ -93,12 +153,29 @@ export function datasetLd({
     ...optionalDateModified(dateModified),
     ...(keywords?.length ? { keywords } : {}),
     ...(temporalCoverage ? { temporalCoverage } : {}),
+    ...(downloads.length
+      ? {
+          distribution: downloads.map((download) => ({
+            "@type": "DataDownload",
+            name: download.name,
+            contentUrl: download.contentUrl,
+            encodingFormat: download.encodingFormat,
+          })),
+        }
+      : {}),
     variableMeasured: variableMeasured.map((name) => ({
       "@type": "PropertyValue",
       name,
     })),
     measurementTechnique,
   };
+}
+
+function yearFromValue(value: string | null | undefined): number | null {
+  const match = /^(\d{4})(?:$|[-T])/.exec(value ?? "");
+  if (!match) return null;
+  const year = Number(match[1]);
+  return Number.isInteger(year) ? year : null;
 }
 
 export function webSiteLd(locale: string, path: string, options: PageLdOptions = {}) {
@@ -120,6 +197,7 @@ export function repoLd(
     language: string | null;
     languages?: Array<{ name: string; size?: number | null; color?: string | null }>;
     description: string | null;
+    homepage_url?: string | null;
     created_at: string;
     current_stars: number;
   },
@@ -134,6 +212,11 @@ export function repoLd(
     name: repo.full_name,
     url: abs(path),
     codeRepository: `https://github.com/${repo.full_name}`,
+    sameAs: sameAsList(
+      `https://github.com/${repo.full_name}`,
+      repo.homepage_url,
+      ...registrySameAsUrls(APPROVED_REPO_SAME_AS_REGISTRY, repo.full_name),
+    ),
     inLanguage: locale,
     ...(programmingLanguages.length ? { programmingLanguage: programmingLanguages } : {}),
     ...(repo.description ? { description: repo.description } : {}),
@@ -153,7 +236,7 @@ export function orgLd(org: { login: string; owner_type: string }, path: string, 
     "@type": org.owner_type === "Organization" ? "Organization" : "Person",
     name: org.login,
     url: abs(path),
-    sameAs: `https://github.com/${org.login}`,
+    sameAs: sameAsList(`https://github.com/${org.login}`, ...registrySameAsUrls(APPROVED_OWNER_SAME_AS_REGISTRY, org.login)),
     inLanguage: locale,
     ...optionalDateModified(options.dateModified),
   };
