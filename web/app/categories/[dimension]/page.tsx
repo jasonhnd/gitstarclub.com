@@ -65,7 +65,7 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={LOC} canonicalPath={pagePath} />
       <JsonLd data={collectionLd(`${entry.label} categories`, pagePath, LOC, { dateModified, about: datasetRef(pagePath) })} />
       <JsonLd data={dataset} />
       <JsonLd
@@ -77,7 +77,7 @@ export default async function CategoryDimensionPage({ params }: { params: Promis
         )}
       />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
-        <Breadcrumbs items={[{ path: "nav.home", href: "/" }, { path: "nav.categories", href: "/categories" }, { label: entry.label }]} />
+        <Breadcrumbs locale={LOC} items={[{ path: "nav.home", href: "/" }, { path: "nav.categories", href: "/categories" }, { label: entry.label }]} />
 
         <section className="mt-5">
           <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">

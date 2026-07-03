@@ -61,7 +61,7 @@ export default async function RankingsPage() {
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={loc} canonicalPath="/rankings" />
       <JsonLd data={collectionLd(en.rankings.title, "/rankings", loc, { dateModified, about: datasetRef("/rankings") })} />
       <JsonLd data={dataset} />
       <JsonLd

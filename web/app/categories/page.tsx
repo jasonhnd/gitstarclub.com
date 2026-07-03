@@ -48,7 +48,7 @@ export default async function CategoriesPage() {
 
   return (
     <>
-      <Chrome />
+      <Chrome locale={LOC} canonicalPath="/categories" />
       <JsonLd data={collectionLd("GitHub repository categories", "/categories", LOC, { dateModified, about: datasetRef("/categories") })} />
       <JsonLd data={dataset} />
       <JsonLd
