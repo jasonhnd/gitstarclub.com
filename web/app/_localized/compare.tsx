@@ -17,7 +17,6 @@ import {
 } from "@/lib/compare/conclusions";
 import { fmtStars } from "@/lib/format";
 import { getDictionary, type Locale } from "@/lib/i18n";
-import { I18nProvider } from "@/lib/i18n/client-runtime";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { pageMeta } from "@/lib/seo";
 import { buildLocalizedCompareCapsule, buildLocalizedCompareFaqs } from "./seo-copy";
@@ -44,6 +43,18 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
   const faqItems = buildLocalizedCompareFaqs(locale, asOf);
   const pairConclusions = await loadPairConclusions(repoIds);
   const conclusionText = asOf ? buildCompareConclusionText(asOf, pairConclusions) : null;
+  const compareClientLabels = {
+    modeAbsolute: t.compare.modeAbsolute,
+    modeAlign10k: t.compare.modeAlign10k,
+    pickerPlaceholder: t.compare.pickerPlaceholder,
+    legendLabel: t.compare.legendLabel,
+    empty: t.compare.empty,
+    minHint: t.compare.minHint,
+    limit: t.compare.limit,
+    remove: t.compare.remove,
+    pickerEmpty: t.search.empty,
+    pickerLoading: t.search.loading,
+  };
 
   return (
     <>
@@ -136,9 +147,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
           </section>
         )}
         <section className="mt-[clamp(2rem,4vw,3rem)]">
-          <I18nProvider>
-            <CompareClient />
-          </I18nProvider>
+          <CompareClient labels={compareClientLabels} comparePath={routePath} />
         </section>
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
