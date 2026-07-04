@@ -50,7 +50,7 @@ export async function RankingsPageView({ locale }: { locale: Locale }) {
       ? joinRepoRank(repoRank.items, repoLk).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }))
       : [];
   const orgs = orgRank && orgLk ? joinOrgRank(orgRank.items, orgLk) : [];
-  const asOf = resolveDataAsOfLabel(repoRank?.meta.generated_at, orgRank?.meta.generated_at);
+  const asOf = resolveDataAsOfLabel(repoRank?.meta.generated_at, orgRank?.meta.generated_at, { locale });
   const dateModified = resolveDataAsOfValue(repoRank?.meta.generated_at, orgRank?.meta.generated_at);
   const dataset = datasetLd({
     name: `${t.rankings.title} Dataset`,

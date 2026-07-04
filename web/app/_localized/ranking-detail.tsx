@@ -97,7 +97,7 @@ export async function RankingsYearPageView({ locale, year: yearValue }: { locale
   if (!rank || !lookup) notFound();
 
   const rankRows: Row[] = joinRepoRank(rank.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
-  const asOf = resolveDataAsOfLabel(rank.meta.generated_at, heat?.meta.generated_at);
+  const asOf = resolveDataAsOfLabel(rank.meta.generated_at, heat?.meta.generated_at, { locale });
   const pagePath = `/rankings/${year}`;
   const routePath = localizedPath(locale, pagePath);
   const href = (path: string) => localizedPath(locale, path);
@@ -226,7 +226,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const flowRows: Row[] = joinRepoRank(flow.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
   const pageLabel = monthYearLabel(locale, year, month);
   const title = fill(text.periodMetaTitle, { label: pageLabel });
-  const asOf = resolveDataAsOfLabel(flow.meta.generated_at, heat?.meta.generated_at);
+  const asOf = resolveDataAsOfLabel(flow.meta.generated_at, heat?.meta.generated_at, { locale });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: flowRows, metric: "gained" }) : null;
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: flowRows, metric: "gained" });
   const most = flowRows.slice(0, 18);
@@ -243,15 +243,8 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const cells = (heat?.cells ?? []).map(([date, total]) => ({ label: String(Number(String(date).slice(8, 10))), gained: total }));
   const total = cells.reduce((sum, c) => sum + c.gained, 0);
   const narrative = buildNarrative({
-    labels: {
-      en: monthYearLabel("en", year, month),
-      ja: monthYearLabel("ja", year, month),
-      zh: monthYearLabel("zh", year, month),
-      "zh-TW": monthYearLabel("zh-TW", year, month),
-      ko: monthYearLabel("ko", year, month),
-      es: monthYearLabel("es", year, month),
-      fr: monthYearLabel("fr", year, month),
-    },
+    locale,
+    label: pageLabel,
     topGainers: most.slice(0, 3).map((r) => ({ full_name: `${r.owner}/${r.name}`, gained: r.gained ?? 0 })),
     fastest: fastest.slice(0, 1).map((r) => ({ full_name: `${r.owner}/${r.name}`, rate: Math.round(r.rate ?? 0) })),
     newcomerCount: newc?.items.length ?? 0,
@@ -316,7 +309,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
         {narrative && (
           <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)]">
             <p className="mb-3 font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{t.month.narrative}</p>
-            <Narrative texts={narrative} locale={locale} />
+            <Narrative text={narrative} locale={locale} />
           </section>
         )}
 
@@ -367,7 +360,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   if (!flow || !lookup) notFound();
   const rankRows: Row[] = joinRepoRank(flow.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
   const title = fill(text.periodMetaTitle, { label: period });
-  const asOf = resolveDataAsOfLabel(flow.meta.generated_at);
+  const asOf = resolveDataAsOfLabel(flow.meta.generated_at, { locale });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: rankRows, metric: "gained" }) : null;
   const pagePath = `/rankings/${year}/W${String(week).padStart(2, "0")}`;
   const routePath = localizedPath(locale, pagePath);

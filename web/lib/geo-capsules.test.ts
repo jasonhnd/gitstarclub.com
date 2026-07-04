@@ -139,6 +139,9 @@ describe("GEO answer capsules", () => {
     expect(formatDataAsOf("2026-06-24T12:00:00Z")).toBe("June 24, 2026");
     expect(formatDataAsOf("2026-06-24")).toBe("June 24, 2026");
     expect(formatDataAsOf("2026-06")).toBe("June 2026");
+    expect(formatDataAsOf("2026-06-28T12:00:00Z", "ja")).toBe("2026年6月28日");
+    expect(formatDataAsOf("2026-06-28T12:00:00Z", "fr")).toBe("28 juin 2026");
+    expect(resolveDataAsOfLabel("fallback", "2026-06-28T12:00:00Z", { locale: "ko" })).toBe("2026년 6월 28일");
     expect(dataAsOfFromMeta({ seam_date: "2020-01-01", schema_ver: 1, folded_through: { month: "2026-06", week: "2026-W25" } })).toBe("June 2026");
     expect(() => dataAsOfLabel("fallback")).toThrow("GEO answer capsule requires a real data-as-of date");
   });
