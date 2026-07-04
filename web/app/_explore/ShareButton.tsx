@@ -4,13 +4,21 @@ import { useState } from "react";
 
 // Share control: copy the page link (transient "Copied" feedback) + open an X (Twitter) intent.
 // Client-only; reads window.location at click time. Labels use default chrome text. (v0.2 §4)
-export function ShareButton({
-  text,
-  labels = { label: "Share", copied: "Copied", onX: "Share on X", opensNewTab: "opens in new tab" },
-}: {
-  text?: string;
-  labels?: { label: string; copied: string; onX: string; opensNewTab: string };
-}) {
+export type ShareButtonLabels = {
+  label: string;
+  copied: string;
+  onX: string;
+  opensNewTab: string;
+};
+
+const DEFAULT_LABELS: ShareButtonLabels = {
+  label: "Share",
+  copied: "Copied",
+  onX: "Share on X",
+  opensNewTab: "opens in new tab",
+};
+
+export function ShareButton({ text, labels = DEFAULT_LABELS }: { text?: string; labels?: ShareButtonLabels }) {
   const [done, setDone] = useState(false);
 
   const copy = async () => {
