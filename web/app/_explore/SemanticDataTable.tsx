@@ -1,7 +1,6 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { fmtK, fmtStars } from "@/lib/format";
-import { T } from "@/lib/i18n/client";
 import type { Row } from "./RankingList";
 
 type RankingVariant = "gained" | "rate" | "crossed" | "total";
@@ -35,6 +34,16 @@ export type CategorySummaryRow = {
   label: string;
   count: number;
   path?: string;
+};
+
+export type CategorySummaryTableLabels = {
+  caption: string;
+  category: string;
+  dimension: string;
+  slug: string;
+  trackedRepositories: string;
+  gitstarclubUrl: string;
+  pendingCount: string;
 };
 
 export type RepositoryRankingTableLabels = {
@@ -81,6 +90,16 @@ const DEFAULT_ORGANIZATION_LABELS: OrganizationRankingTableLabels = {
   unknown: "Unknown",
   trackedRepositories: "Tracked repositories",
   totalStars: "Total stars",
+};
+
+const DEFAULT_CATEGORY_LABELS: CategorySummaryTableLabels = {
+  caption: "Repository categories",
+  category: "Categories",
+  dimension: "Category dimension",
+  slug: "Slug",
+  trackedRepositories: "tracked repositories",
+  gitstarclubUrl: "GitStarClub URL",
+  pendingCount: "Pending count",
 };
 
 export function RepositoryRankingTable({
@@ -203,29 +222,38 @@ export function OrganizationRankingTable({
   );
 }
 
-export function CategorySummaryTable({ rows, caption = "Repository categories" }: { rows: CategorySummaryRow[]; caption?: string }) {
+export function CategorySummaryTable({
+  rows,
+  caption,
+  labels,
+}: {
+  rows: CategorySummaryRow[];
+  caption?: string;
+  labels?: Partial<CategorySummaryTableLabels>;
+}) {
   if (rows.length === 0) return null;
+  const text = { ...DEFAULT_CATEGORY_LABELS, ...labels };
 
   return (
     <div className={tableWrapClass}>
       <table className={tableClass} data-semantic-table="repository-categories">
-        <caption className={captionClass}>{caption}</caption>
+        <caption className={captionClass}>{caption ?? text.caption}</caption>
         <thead>
           <tr>
             <th scope="col" className={headClass}>
-              <T path="categories.eyebrow" />
+              {text.category}
             </th>
             <th scope="col" className={headClass}>
-              <T path="categories.dimensionEyebrow" />
+              {text.dimension}
             </th>
             <th scope="col" className={headClass}>
-              Slug
+              {text.slug}
             </th>
             <th scope="col" className={`${headClass} text-right`}>
-              <T path="categories.trackedRepositories" />
+              {text.trackedRepositories}
             </th>
             <th scope="col" className={headClass}>
-              GitStarClub URL
+              {text.gitstarclubUrl}
             </th>
           </tr>
         </thead>
@@ -242,7 +270,7 @@ export function CategorySummaryTable({ rows, caption = "Repository categories" }
                 <td className={mutedCellClass}>{row.dimension}</td>
                 <td className={mutedCellClass}>{row.slug}</td>
                 <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>
-                  {row.count > 0 ? row.count : <T path="categories.pendingCount" />}
+                  {row.count > 0 ? row.count : text.pendingCount}
                 </td>
                 <td className={cellClass(mutedCellClass, "last")}>
                   <Link href={path} className="hover:text-on-surface hover:underline hover:underline-offset-2">
