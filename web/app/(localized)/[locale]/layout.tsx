@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { RootShell, rootMetadata, rootViewport } from "../../_shell/RootShell";
 import { resolveLocaleSegment } from "../../_localized/routing";
+import { getDictionary } from "@/lib/i18n";
 import { toHreflang } from "@/lib/i18n/routing";
 
 export const metadata = rootMetadata;
@@ -13,6 +14,12 @@ export default async function LocaleRootLayout({
   children: ReactNode;
   params: Promise<{ locale: string }>;
 }) {
-  const { locale } = await params;
-  return <RootShell lang={toHreflang(resolveLocaleSegment(locale))}>{children}</RootShell>;
+  const { locale: rawLocale } = await params;
+  const locale = resolveLocaleSegment(rawLocale);
+  const dictionary = await getDictionary(locale);
+  return (
+    <RootShell lang={toHreflang(locale)} locale={locale} dictionary={dictionary}>
+      {children}
+    </RootShell>
+  );
 }

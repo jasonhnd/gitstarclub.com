@@ -8,19 +8,19 @@ function shortLocale(locale: Locale): string {
   return locale === "zh-TW" ? "TW" : locale.toUpperCase();
 }
 
-export function CurrentPathLanguageSwitcher({ fallbackLocale = DEFAULT_LOCALE }: { fallbackLocale?: Locale }) {
+export function CurrentPathLanguageSwitcher({ fallbackLocale = DEFAULT_LOCALE, label }: { fallbackLocale?: Locale; label: string }) {
   const pathname = usePathname();
   const current = pathname ? stripLocale(pathname) : { locale: fallbackLocale, path: "/" };
-  return <LanguageSwitcher locale={current.locale} canonicalPath={current.path} />;
+  return <LanguageSwitcher locale={current.locale} canonicalPath={current.path} label={label} />;
 }
 
-export function LanguageSwitcher({ locale, canonicalPath }: { locale: Locale; canonicalPath: string }) {
+export function LanguageSwitcher({ locale, canonicalPath, label }: { locale: Locale; canonicalPath: string; label: string }) {
   const canonical = stripLocale(canonicalPath).path;
   return (
     <details className="group relative shrink-0">
       <summary
         className="flex h-11 w-11 cursor-pointer list-none items-center justify-center gap-1.5 rounded-full border border-outline-variant bg-surface-container px-0 font-mono text-[0.72rem] font-medium text-on-surface-variant transition-colors marker:content-none hover:bg-surface-container-high hover:text-on-surface sm:w-auto sm:justify-start sm:px-3 [&::-webkit-details-marker]:hidden"
-        aria-label="Language"
+        aria-label={label}
       >
         <span className="font-semibold uppercase sm:hidden">{shortLocale(locale)}</span>
         <span className="hidden max-w-[6rem] truncate sm:inline">{LANGUAGE_LABELS[locale]}</span>

@@ -5,6 +5,8 @@ import { Analytics } from "@vercel/analytics/next";
 import "../globals.css";
 import { RegisterSW } from "../_explore/RegisterSW";
 import { Footer } from "../_explore/Footer";
+import { DEFAULT_LOCALE, type Dict, type Locale } from "@/lib/i18n";
+import { chromeText, resolveChromePath } from "@/lib/i18n/client";
 import { THEME_INIT_SCRIPT } from "@/lib/theme-script";
 
 const plusJakarta = Plus_Jakarta_Sans({ variable: "--font-plus-jakarta", subsets: ["latin"] });
@@ -56,7 +58,21 @@ export const rootViewport: Viewport = {
   ],
 };
 
-export function RootShell({ lang, children }: Readonly<{ lang: string; children: ReactNode }>) {
+function label(dictionary: Dict | undefined, path: Parameters<typeof chromeText>[0]): string {
+  return dictionary ? resolveChromePath(dictionary, path) : chromeText(path);
+}
+
+export function RootShell({
+  lang,
+  locale = DEFAULT_LOCALE,
+  dictionary,
+  children,
+}: Readonly<{
+  lang: string;
+  locale?: Locale;
+  dictionary?: Dict;
+  children: ReactNode;
+}>) {
   return (
     <html lang={lang} suppressHydrationWarning className={`${plusJakarta.variable} ${geistMono.variable}`}>
       <head>
@@ -64,11 +80,11 @@ export function RootShell({ lang, children }: Readonly<{ lang: string; children:
       </head>
       <body className="flex min-h-svh flex-col">
         <a href="#main" className="skip-link">
-          Skip to content
+          {label(dictionary, "a11y.skipToContent")}
         </a>
         <div className="contents">
           {children}
-          <Footer />
+          <Footer locale={locale} dictionary={dictionary} />
         </div>
         <RegisterSW />
         <Analytics />

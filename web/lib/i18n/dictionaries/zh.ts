@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const zh: Dict = {
-  nav: { home: "首页", pulse: "脉搏", rankings: "排行榜", categories: "分类", compare: "对比", about: "关于" },
+  nav: { home: "首页", pulse: "脉搏", rankings: "排行榜", categories: "分类", organizations: "组织", compare: "对比", about: "关于" },
   common: {
     faqHeading: "常见问题",
     dataLastUpdated: "数据最后更新",
@@ -14,6 +14,19 @@ const zh: Dict = {
     json: "JSON",
     previous: "上一页",
     next: "下一页",
+  },
+  a11y: {
+    primary: "主导航",
+    primaryNavigation: "主导航菜单",
+    switchTheme: "切换主题",
+    language: "语言",
+    breadcrumb: "面包屑",
+    footer: "页脚",
+    skipToContent: "跳到正文",
+    compareModes: "{absolute} / {align10k}",
+    starHistory: "星标历史 - {months} 个月内升至 {stars} 星",
+    starHistoryOverlay: "{count} 个仓库的星标历史叠加图（{mode}）",
+    starsAdded: "{label}: 新增 {stars} 星",
   },
   meta: {
     homeTitle: "开源脉搏与 GitHub 星标历史",
@@ -229,6 +242,9 @@ const zh: Dict = {
     madeIn: "制作于东京",
     dataThrough: "数据更新至",
     privacy: "隐私",
+    dataFrom: "数据来自",
+    licensedUnder: "授权许可",
+    attributionSuffix: "由 GitStarClub 派生并转换。GitHub 仓库元数据和当前星标总数来自公开 GitHub API。",
   },
   privacy: {
     eyebrow: "隐私",
@@ -255,6 +271,9 @@ const zh: Dict = {
     owner: "所有者",
     ownerType: "所有者类型",
     trackedRepositories: "已追踪仓库",
+    slug: "Slug",
+    gitstarclubUrl: "GitStarClub 网址",
+    rowStarsAdded: "{rank}: 新增 {stars} 星",
   },
   search: { label: "搜索", placeholder: "搜索仓库…", empty: "没有匹配的仓库", loading: "加载中…" },
   share: {

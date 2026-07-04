@@ -25,7 +25,7 @@ export function RankingList({
   locale?: Locale;
   startRank?: number;
   tableCaption?: string;
-  labels?: Partial<RepositoryRankingTableLabels>;
+  labels: RepositoryRankingTableLabels;
 }) {
   return <RepositoryRankingTable rows={rows} variant={variant} startRank={startRank} caption={tableCaption} labels={labels} locale={locale} />;
 }

@@ -3,6 +3,9 @@ import Link from "next/link";
 import { fmtStars } from "@/lib/format";
 
 type Cell = { label: string; gained: number; href?: string };
+export type HeatmapLabels = {
+  starsAdded: string;
+};
 
 // Tonal amber heatmap — intensity ramps surface-container → primary-fixed-dim.
 // Deliberately NOT the GitHub green grid; recolored into the brand world.
@@ -12,11 +15,13 @@ export function Heatmap({
   max,
   columns,
   square = false,
+  labels,
 }: {
   cells: Cell[];
   max: number;
   columns?: number;
   square?: boolean;
+  labels: HeatmapLabels;
 }) {
   const cols = columns ?? cells.length;
   const heatmapStyle = {
@@ -34,7 +39,7 @@ export function Heatmap({
       >
         {cells.map((c, i) => {
           const t = Math.max(0.08, Math.min(1, c.gained / max));
-          const label = `${c.label}: ${fmtStars(c.gained)} stars added`;
+          const label = fillTemplate(labels.starsAdded, { label: c.label, stars: fmtStars(c.gained) });
           const fill = `color-mix(in oklab, var(--md-sys-color-primary-fixed-dim) ${Math.round(
             t * 100,
           )}%, var(--md-sys-color-surface-container))`;
@@ -64,4 +69,8 @@ export function Heatmap({
       </div>
     </div>
   );
+}
+
+function fillTemplate(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
 }

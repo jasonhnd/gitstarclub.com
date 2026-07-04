@@ -75,8 +75,7 @@ export async function OrgIndexPageView({ locale, page }: { locale: Locale; page:
           pageCount={totalPages}
           hrefForPage={(nextPage) => localizedPath(locale, orgIndexPath(nextPage))}
           label={t.org.indexPagination}
-          previousLabel={t.common.previous}
-          nextLabel={t.common.next}
+          labels={{ previous: t.common.previous, next: t.common.next }}
         />
       </main>
     </>

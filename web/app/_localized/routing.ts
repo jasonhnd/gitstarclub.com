@@ -30,6 +30,7 @@ export function repositoryTableLabels(t: Dict) {
     tenKCrossingDay: t.tables.tenKCrossingDay,
     day: t.tables.day,
     totalStars: t.tables.totalStars,
+    rowStarsAdded: t.tables.rowStarsAdded,
   };
 }
 
