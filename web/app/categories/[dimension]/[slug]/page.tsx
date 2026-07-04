@@ -1,17 +1,22 @@
-import { getCategoryRegistry } from "@/lib/data";
-import { CategoryDetail, generateCategoryDetailMetadata } from "./category-detail";
-import { publicCategoryStaticParams } from "../../category-page-data";
+import type { Metadata } from "next";
+import {
+  CategoryDetailPageView,
+  generateCategoryDetailMetadataForLocale,
+  generateCategoryDetailStaticParams,
+} from "../../../_localized/categories";
 
 export const dynamicParams = true;
 export const revalidate = 86400;
 
-export async function generateStaticParams() {
-  return publicCategoryStaticParams(await getCategoryRegistry());
+export function generateStaticParams() {
+  return generateCategoryDetailStaticParams();
 }
 
-export const generateMetadata = generateCategoryDetailMetadata;
+export async function generateMetadata({ params }: { params: Promise<{ dimension: string; slug: string }> }): Promise<Metadata> {
+  return generateCategoryDetailMetadataForLocale("en", await params);
+}
 
 export default async function CategoryDetailPage({ params }: { params: Promise<{ dimension: string; slug: string }> }) {
   const { dimension, slug } = await params;
-  return <CategoryDetail dimension={dimension} slug={slug} page={1} />;
+  return <CategoryDetailPageView locale="en" dimension={dimension} slug={slug} page={1} />;
 }
