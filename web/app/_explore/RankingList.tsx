@@ -15,6 +15,7 @@ type Variant = "gained" | "rate" | "crossed" | "total";
 export function RankingList({
   rows,
   variant = "gained",
+  locale,
   startRank = 1,
   tableCaption,
   labels,
@@ -26,5 +27,5 @@ export function RankingList({
   tableCaption?: string;
   labels?: Partial<RepositoryRankingTableLabels>;
 }) {
-  return <RepositoryRankingTable rows={rows} variant={variant} startRank={startRank} caption={tableCaption} labels={labels} />;
+  return <RepositoryRankingTable rows={rows} variant={variant} startRank={startRank} caption={tableCaption} labels={labels} locale={locale} />;
 }

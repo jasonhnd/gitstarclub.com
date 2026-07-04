@@ -1,6 +1,8 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { fmtK, fmtStars } from "@/lib/format";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
+import { localizedPath } from "@/lib/i18n/routing";
 import type { Row } from "./RankingList";
 
 type RankingVariant = "gained" | "rate" | "crossed" | "total";
@@ -108,12 +110,14 @@ export function RepositoryRankingTable({
   startRank = 1,
   caption,
   labels,
+  locale = DEFAULT_LOCALE,
 }: {
   rows: Row[];
   variant?: RankingVariant;
   startRank?: number;
   caption?: string;
   labels?: Partial<RepositoryRankingTableLabels>;
+  locale?: Locale;
 }) {
   if (rows.length === 0) return null;
   const text = { ...DEFAULT_REPOSITORY_LABELS, ...labels };
@@ -148,7 +152,7 @@ export function RepositoryRankingTable({
             <tr key={`${row.owner}/${row.name}`} className="group animate-rise" style={tableStaggerStyle(index)}>
               <td className={cellClass(rankCellClass, "first")}>{startRank + index}</td>
               <th scope="row" className={bodyCellClass}>
-                <Link href={`/${row.owner}/${row.name}`} className={linkClass}>
+                <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={linkClass}>
                   {row.owner}/{row.name}
                 </Link>
               </th>
@@ -168,11 +172,13 @@ export function OrganizationRankingTable({
   startRank = 1,
   caption,
   labels,
+  locale = DEFAULT_LOCALE,
 }: {
   rows: OrganizationSummaryRow[];
   startRank?: number;
   caption?: string;
   labels?: Partial<OrganizationRankingTableLabels>;
+  locale?: Locale;
 }) {
   if (rows.length === 0) return null;
   const text = { ...DEFAULT_ORGANIZATION_LABELS, ...labels };
@@ -205,7 +211,7 @@ export function OrganizationRankingTable({
             <tr key={row.login} className="group animate-rise" style={tableStaggerStyle(index)}>
               <td className={cellClass(rankCellClass, "first")}>{row.rank ?? startRank + index}</td>
               <th scope="row" className={bodyCellClass}>
-                <Link href={`/o/${row.login}`} className={linkClass}>
+                <Link href={localizedPath(locale, `/o/${row.login}`)} className={linkClass}>
                   {row.login}
                 </Link>
               </th>

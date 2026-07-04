@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getOrgsLookup } from "@/lib/data";
 import { parsePositivePage } from "@/lib/pagination";
-import { pageMeta } from "@/lib/seo";
-import { OrgIndex } from "../../page";
+import { generateOrgIndexMetadata, OrgIndexPageView } from "@/app/_localized/org-index";
 import { orgIndexPageCount, orgIndexPath, orgIndexRows } from "../../org-index-data";
 
 export const dynamicParams = true;
@@ -16,12 +15,7 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ page: string }> }): Promise<Metadata> {
   const page = parsePositivePage((await params).page) ?? 1;
-  return pageMeta({
-    title: `GitHub Organization Index - Page ${page}`,
-    description: "Browse tracked GitHub organizations and developers by combined stars across their repositories.",
-    path: orgIndexPath(page),
-    locale: "en",
-  });
+  return generateOrgIndexMetadata({ locale: "en", page });
 }
 
 export default async function OrgIndexPagedPage({ params }: { params: Promise<{ page: string }> }) {
@@ -32,5 +26,5 @@ export default async function OrgIndexPagedPage({ params }: { params: Promise<{ 
   const totalPages = orgIndexPageCount(orgIndexRows(await getOrgsLookup()).length);
   if (page > totalPages) notFound();
 
-  return <OrgIndex page={page} />;
+  return <OrgIndexPageView locale="en" page={page} />;
 }
