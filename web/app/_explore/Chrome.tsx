@@ -43,6 +43,7 @@ export function Chrome({ tag, locale = DEFAULT_LOCALE, canonicalPath, dictionary
       </Link>
       <nav className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center justify-end gap-1.5 sm:flex sm:w-auto sm:flex-wrap sm:gap-x-4 sm:gap-y-2" aria-label="Primary">
         <SearchBox
+          locale={locale}
           labels={{
             label: label(dictionary, "search.label"),
             placeholder: label(dictionary, "search.placeholder"),
