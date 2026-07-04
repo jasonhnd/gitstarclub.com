@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
-import { LOCALES, isLocale, type Dict, type Locale } from "@/lib/i18n";
-import type { NonDefaultLocale } from "@/lib/i18n/routing";
+import { isLocale, type Dict } from "@/lib/i18n";
+import { NON_DEFAULT_LOCALES, type NonDefaultLocale } from "@/lib/i18n/routing";
 
 export type LocaleParams = Promise<{ locale: string }>;
 
-export function generateCoreLocaleStaticParams(): Array<{ locale: Locale }> {
-  return LOCALES.map((locale) => ({ locale }));
+export function generateCoreLocaleStaticParams(): Array<{ locale: NonDefaultLocale }> {
+  return NON_DEFAULT_LOCALES.map((locale) => ({ locale }));
 }
 
 export async function resolveRouteLocale(params: LocaleParams): Promise<NonDefaultLocale> {
