@@ -85,7 +85,7 @@ GitStarClub has several advantages that most content sites must build from scrat
 | Server-rendered content | `FRONTEND.md` defines content bodies as RSC/static HTML; charts are server SVG/DOM; client JS is limited to explicit islands. | Crawlers and answer extractors see the actual facts without hydrating the app. |
 | Fast pages | #25 Lighthouse baseline recorded mobile FCP around 0.91-1.22s and desktop FCP around 0.25-0.29s on representative production pages; CLS was 0.000-0.003. | Performance is already unlikely to be the blocking factor for extraction or crawl. |
 | HTTPS production host | The public site is served from `https://gitstarclub.com`, with canonical URLs generated from `NEXT_PUBLIC_SITE_URL`. | AI search engines and classic crawlers get one secure apex identity, not fragmented preview or subdomain URLs. |
-| Canonical URL model | Language-neutral canonical URLs; repo URLs match GitHub slugs; old repo aliases redirect to current slugs. | Entity matching is simple: `/react/react`, `/o/vercel`, `/rankings/2026/6`. |
+| Canonical URL model | English canonical URLs stay unprefixed; non-default locales (`ja`, `zh`, `zh-TW`, `ko`, `es`, `fr`) use prefixed canonicals. Each locale page canonicalizes to itself and emits the full `hreflang` / `x-default` set; repo URLs still match GitHub slugs in the English base path; old repo aliases redirect to current slugs. | Entity matching stays predictable across locale alternates: `/react/react`, `/ja/react/react`, `/o/vercel`, `/zh-TW/o/vercel`, `/rankings/2026/6`. |
 | Sitemap coverage | Public sitemap sampled on 2026-06-24 contained 10,877 `<loc>` entries with real `lastModified`, `changeFrequency`, and `priority`. | Long-tail ISR pages are discoverable even before natural links exist. |
 | Existing schema | `web/lib/jsonld.ts` emits WebSite, site Organization, SoftwareSourceCode, Organization/Person, CollectionPage, ItemList, Dataset, FAQPage, and optional `dateModified`; breadcrumbs emit BreadcrumbList. | The schema foundation exists; GEO deepening now focuses on Dataset distribution, temporalCoverage, stronger sameAs enrichment, semantic tables, and measurement. |
 | Deterministic narrative | Month pages already generate narrative from rank data without AI. | Answer capsules can use the same deterministic pattern: template + JSON fields, no LLM. |
@@ -107,7 +107,7 @@ Implementation rule for every page type:
 
 - The concrete numbers in the example capsules below are format examples, not durable assertions of the current production value; implementation must generate them deterministically from the current Blob JSON fields.
 - The capsule must be normal server-rendered HTML, near the top of the content.
-- The capsule should be 40-60 English words by default because canonical pages are English-first. UI translations can mirror it, but data fields stay language-neutral.
+- The capsule should be concise: 40-60 English words, or an equivalent localized length for non-default locales. On `/ja`, `/zh`, `/zh-TW`, `/ko`, `/es`, and `/fr`, render the capsule in the route locale with locale-formatted dates and numbers; data fields stay language-neutral.
 - It must include a real date, at least one distinctive GitStarClub-only statistic, and attribution: `— GitStarClub`.
 - FAQ must answer natural user questions, not internal implementation questions.
 - Statistical sentences must be generated from existing JSON fields only.
