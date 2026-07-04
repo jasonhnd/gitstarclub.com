@@ -16,8 +16,8 @@ These are non-negotiable for the production system. New features must respect al
 
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
 2. **Zero runtime database.** Read-side state lives in versioned Blob views resolved through a publish pointer; there is no SQL connection to open.
-3. **Vercel-first.** Deploy, cron, Blob, workflow, and analytics stay on Vercel. No scattered third-party billing surfaces.
-4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, service-worker registration, and Vercel Web Analytics.
+3. **Vercel-first.** Deploy, cron, Blob, workflow, and Vercel Web Analytics stay on Vercel. Google Analytics 4 is optional and must stay env-gated through `NEXT_PUBLIC_GA_ID`.
+4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, service-worker registration, Vercel Web Analytics, and optional env-gated GA4.
 5. **Recurring work on Vercel, not the laptop.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) runs as a Vercel Workflow. Local pipeline runs are reserved for one-off bootstrap.
 
 The same data layer also operates AI-free: features that look like they would call an LLM (summaries, classifications, narratives) ship as deterministic templates instead. The rationale and tradeoff are recorded in the team feedback memory.
@@ -35,7 +35,7 @@ The same data layer also operates AI-free: features that look like they would ca
 | Recurring data refresh | Vercel Workflow (multi-step, Blob checkpoint) | |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
 | Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test` from `web/` on PRs and `main` pushes |
-| Analytics | Vercel Web Analytics via `@vercel/analytics`; cookieless aggregate page-view measurement only, with the privacy posture documented on `/privacy`. Because it sets no cookies and collects no personal data, it does not require consent gating. | |
+| Analytics | Vercel Web Analytics via `@vercel/analytics` remains enabled. Optional Google Analytics 4 uses Next.js `@next/third-parties/google` and renders only when `NEXT_PUBLIC_GA_ID` is a non-empty value starting with `G-`; unset or invalid values emit no GA script. | |
 
 Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, tRPC, any LLM SDK. The reasoning is the constraints above.
 
@@ -220,7 +220,7 @@ The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per quer
 |---|---|
 | Static HTML for content pages | Function invocations stay at zero |
 | HTML under ~20 KB | Reduces bandwidth at scale |
-| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW and Vercel Web Analytics |
+| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW, Vercel Web Analytics, and optional env-gated GA4 |
 | `Cache-Control: s-maxage=86400, stale-while-revalidate` | Historical surfaces cached aggressively |
 | Subset fonts as woff2 | Plus Jakarta Sans subset ~30 KB |
 | Pre-rendered OG cards in Blob | No function cost on share embeds |
