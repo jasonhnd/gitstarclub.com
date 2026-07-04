@@ -10,6 +10,10 @@ export function generateCoreLocaleStaticParams(): Array<{ locale: Locale }> {
 
 export async function resolveRouteLocale(params: LocaleParams): Promise<NonDefaultLocale> {
   const { locale } = await params;
+  return resolveLocaleSegment(locale);
+}
+
+export function resolveLocaleSegment(locale: string): NonDefaultLocale {
   if (!isLocale(locale) || locale === "en") notFound();
   return locale;
 }
