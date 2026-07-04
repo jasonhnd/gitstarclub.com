@@ -4,6 +4,10 @@ A browsable history of GitHub open-source activity. The site is fully static-rea
 
 This page is the navigation index for `docs/`. For a project overview, start at [../README.md](../README.md). For what shipped when, see [CHANGELOG.md](./CHANGELOG.md). For what isn't built yet, see [ROADMAP.md](./ROADMAP.md).
 
+## Analytics
+
+Vercel Web Analytics remains enabled through `<Analytics />` in `web/app/_shell/RootShell.tsx`. Google Analytics 4 is optional and env-gated: set `NEXT_PUBLIC_GA_ID` to a non-empty measurement ID starting with `G-` to render the Next.js `GoogleAnalytics` component; when unset or invalid, no GA script is emitted.
+
 ## Reading order (new engineer)
 
 1. [REQUIREMENTS.md](./REQUIREMENTS.md) — what the product is and the constraints it operates under.

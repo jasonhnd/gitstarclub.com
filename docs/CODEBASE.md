@@ -148,7 +148,8 @@ Rules:
 
 Shared UI is in `web/app/_explore/`. These are mostly server components and
 should stay near-zero-client-JS unless a workflow requires client interactivity.
-The explicit global client islands are `RegisterSW` and Vercel Web Analytics.
+The explicit global client islands are `RegisterSW`, Vercel Web Analytics, and
+optional env-gated Google Analytics 4 from `web/app/_shell/RootShell.tsx`.
 
 Common components:
 
