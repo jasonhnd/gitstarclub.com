@@ -1,4 +1,4 @@
-import { fmtStars, monthLabel } from "@/lib/format";
+import { fmtStars, formatInteger, monthYearLabel } from "@/lib/format";
 import type { Locale } from "@/lib/i18n";
 import type { ExactRepoMilestone } from "@/lib/repo-milestones";
 
@@ -149,17 +149,22 @@ export function buildWeeklyMoversSnippet({
 }
 
 export function buildRepoMilestoneSnippet({
+  locale = "en",
   repo,
   asOf,
   milestones,
 }: {
+  locale?: Locale;
   repo: { full_name: string };
   asOf: string | null;
   milestones: ExactRepoMilestone[];
 }): ShareableSnippetContent | null {
   if (!asOf || milestones.length === 0) return null;
 
-  const milestoneText = readableList(milestones.map((milestone) => `${milestone.label} in ${monthYearFromDate(milestone.date)}`));
+  const milestoneText = readableList(
+    milestones.map((milestone) => `${milestone.label} in ${monthYearFromDate(milestone.date, locale)}`),
+    locale,
+  );
   const text = `As of ${asOf}, GitStarClub records ${repo.full_name} crossing ${milestoneText}. These milestone dates come from frozen repository fields and link back to the matching monthly ranking pages. Source: GitStarClub repository star history.`;
 
   return snippet({
@@ -178,10 +183,12 @@ export function buildRepoMilestoneSnippet({
 }
 
 export function buildOrgTotalSnippet({
+  locale = "en",
   org,
   asOf,
   members,
 }: {
+  locale?: Locale;
   org: { login: string; current_stars_sum: number; repo_count: number };
   asOf: string | null;
   members: MemberRow[];
@@ -189,8 +196,8 @@ export function buildOrgTotalSnippet({
   if (!asOf) return null;
 
   const top = members.slice(0, 3);
-  const leaders = top.length ? ` Top tracked repositories include ${readableList(top.map((row) => `${repoName(row)} (${fmtStars(row.total ?? 0)} stars)`))}.` : "";
-  const text = `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${org.repo_count.toLocaleString("en-US")} tracked repositories on GitStarClub.${leaders} Source: GitStarClub organization star history.`;
+  const leaders = top.length ? ` Top tracked repositories include ${readableList(top.map((row) => `${repoName(row)} (${fmtStars(row.total ?? 0)} stars)`), locale)}.` : "";
+  const text = `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories on GitStarClub.${leaders} Source: GitStarClub organization star history.`;
 
   return snippet({
     kind: "org-total",
@@ -251,16 +258,15 @@ function signedStars(value: number): string {
   return `${prefix}${fmtStars(Math.abs(value))}`;
 }
 
-function monthYearFromDate(date: string): string {
+function monthYearFromDate(date: string, locale: Locale): string {
   const year = Number(date.slice(0, 4));
   const month = Number(date.slice(5, 7));
-  return `${monthLabel("en", month, "long")} ${year}`;
+  return monthYearLabel(locale, year, month);
 }
 
-function readableList(items: string[]): string {
+function readableList(items: string[], locale: Locale = "en"): string {
   if (items.length <= 1) return items[0] ?? "";
-  if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
+  return new Intl.ListFormat(locale, { type: "conjunction" }).format(items);
 }
 
 function joinItems(items: readonly string[], locale: Locale): string {

@@ -2,7 +2,7 @@ import type { AnswerCapsuleLabels } from "@/app/_explore/AnswerCapsule";
 import type { CategorySummaryTableLabels } from "@/app/_explore/SemanticDataTable";
 import type { ShareableSnippetLabels } from "@/app/_explore/ShareableSnippet";
 import { ANSWER_CAPSULE_SOURCE, type AnswerCapsuleContent, type CapsuleRankRow } from "@/lib/geo-capsules";
-import { fmtStars } from "@/lib/format";
+import { fmtStars, formatInteger } from "@/lib/format";
 import type { CategoryDimensionRegistry, CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts";
 import type { Dict, Locale } from "@/lib/i18n";
 import type { FaqItem } from "@/lib/jsonld";
@@ -948,8 +948,8 @@ export function buildLocalizedCategoryIndexCapsule(locale: Locale, registry: Cat
     locale,
     fill(text.categoryIndexCapsule, {
       asOf,
-      categories: count(publicCategories.length),
-      dimensions: count(registry.dimensions.length),
+      categories: count(locale, publicCategories.length),
+      dimensions: count(locale, registry.dimensions.length),
       labels,
     }),
     asOf,
@@ -961,8 +961,8 @@ export function buildLocalizedCategoryIndexFaqs(locale: Locale, registry: Catego
   const publicCategories = registry.dimensions.flatMap((dimension) => dimension.categories.filter((category) => category.public));
   const firstDimension = registry.dimensions[0];
   const values = {
-    categories: count(publicCategories.length),
-    dimensions: count(registry.dimensions.length),
+    categories: count(locale, publicCategories.length),
+    dimensions: count(locale, registry.dimensions.length),
     labels: listLabels(registry.dimensions.map((dimension) => dimension.label), locale),
   };
   return [
@@ -987,7 +987,7 @@ export function buildLocalizedCategoryDimensionCapsule(locale: Locale, dimension
     fill(text.categoryDimensionCapsule, {
       asOf,
       label: dimension.label,
-      categories: count(publicCategories.length),
+      categories: count(locale, publicCategories.length),
     }),
     asOf,
   );
@@ -997,7 +997,7 @@ export function buildLocalizedCategoryDimensionFaqs(locale: Locale, dimension: C
   const text = detailText(locale);
   const publicCategories = dimension.categories.filter((category) => category.public);
   const largest = [...publicCategories].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))[0];
-  const values = { label: dimension.label, categories: count(publicCategories.length) };
+  const values = { label: dimension.label, categories: count(locale, publicCategories.length) };
   return [
     {
       question: fill(text.categoryDimensionQ, { label: dimension.label }),
@@ -1006,7 +1006,7 @@ export function buildLocalizedCategoryDimensionFaqs(locale: Locale, dimension: C
     {
       question: fill(text.categoryLargestQ, { label: dimension.label }),
       answer: largest
-        ? fill(text.categoryLargestA, { label: dimension.label, category: largest.label, count: count(largest.count) })
+        ? fill(text.categoryLargestA, { label: dimension.label, category: largest.label, count: count(locale, largest.count) })
         : fill(text.categoryLargestFallbackA, { label: dimension.label }),
     },
     {
@@ -1040,7 +1040,7 @@ export function buildLocalizedCategoryDetailCapsule({
     fill(text.categoryDetailCapsule, {
       asOf,
       label: category.label,
-      count: count(category.count),
+      count: count(locale, category.count),
       leader,
       followers,
     }),
@@ -1066,8 +1066,8 @@ export function buildLocalizedCategoryDetailFaqs({
     {
       question: fill(text.categoryDetailQ, { label: category.label }),
       answer: asOf
-        ? fill(text.categoryDetailAWithAsOf, { asOf, label: category.label, count: count(category.count) })
-        : fill(text.categoryDetailANoAsOf, { label: category.label, count: count(category.count) }),
+        ? fill(text.categoryDetailAWithAsOf, { asOf, label: category.label, count: count(locale, category.count) })
+        : fill(text.categoryDetailANoAsOf, { label: category.label, count: count(locale, category.count) }),
     },
     {
       question: fill(text.categoryDetailLeaderQ, { label: category.label }),
@@ -1115,8 +1115,8 @@ function signedStars(value: number): string {
   return `${prefix}${fmtStars(Math.abs(value))}`;
 }
 
-function count(value: number): string {
-  return value.toLocaleString("en-US");
+function count(locale: Locale, value: number): string {
+  return formatInteger(locale, value);
 }
 
 function listLabels(values: readonly string[], locale: Locale): string {

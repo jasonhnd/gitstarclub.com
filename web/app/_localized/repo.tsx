@@ -93,7 +93,7 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
   const created = ymParts(repo.created_at);
   const categoryLinks = repoCategoryLinks(id, assignments, registry, languages);
   const related = relatedRepositories(repo, lookup);
-  const asOf = resolveDataAsOfFromMeta(meta, repo.curve.recent_daily.at(-1)?.[0], repo.curve.monthly.at(-1)?.[0]);
+  const asOf = resolveDataAsOfFromMeta(meta, repo.curve.recent_daily.at(-1)?.[0], repo.curve.monthly.at(-1)?.[0], { locale });
   const capsule = asOf ? buildLocalizedRepoCapsule(t, locale, repo, asOf) : null;
   const milestoneSnippet = buildLocalizedRepoMilestoneSnippet({ t, locale, repo, asOf, milestones });
   const faqItems = buildLocalizedRepoFaqs(t, locale, repo, asOf);

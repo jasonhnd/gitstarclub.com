@@ -1,5 +1,5 @@
 import type { Locale } from "@/lib/i18n";
-import { fmtStars } from "@/lib/format";
+import { fmtStars, formatInteger } from "@/lib/format";
 import { ANSWER_CAPSULE_SOURCE, type AnswerCapsuleContent, type CapsuleOrgRankRow, type CapsuleRankRow } from "@/lib/geo-capsules";
 import type { FaqItem } from "@/lib/jsonld";
 
@@ -461,7 +461,7 @@ export function buildLocalizedAllTimeRankingCapsule({
 }): AnswerCapsuleContent {
   const c = copy[locale];
   const repoLead = repoRows[0] ? fill(c.rankingsRepoLead, rankValues(repoRows[0], { metric: "total" })) : c.rankingsRepoFallback;
-  const orgLead = orgRows[0] ? fill(c.rankingsOrgLead, orgValues(orgRows[0])) : c.rankingsOrgFallback;
+  const orgLead = orgRows[0] ? fill(c.rankingsOrgLead, orgValues(orgRows[0], locale)) : c.rankingsOrgFallback;
   return capsule(locale, fill(c.rankingsCapsule, { asOf, repoLead, orgLead }), asOf);
 }
 
@@ -480,7 +480,7 @@ export function buildLocalizedAllTimeRankingFaqs(locale: Locale, input: Rankings
     },
     {
       question: c.rankingsOrgQ,
-      answer: orgLead ? fill(c.rankingsOrgA, orgValues(orgLead)) : c.rankingsOrgFallbackA,
+      answer: orgLead ? fill(c.rankingsOrgA, orgValues(orgLead, locale)) : c.rankingsOrgFallbackA,
     },
     { question: c.rankingsDataQ, answer: c.rankingsDataA },
   ];
@@ -515,11 +515,11 @@ function rankValues(row: CapsuleRankRow, opts: { period?: string; metric: "gaine
   };
 }
 
-function orgValues(row: CapsuleOrgRankRow): Record<string, string> {
+function orgValues(row: CapsuleOrgRankRow, locale: Locale): Record<string, string> {
   return {
     org: row.login,
     value: fmtStars(row.current_stars_sum),
-    repos: row.repo_count.toLocaleString("en-US"),
+    repos: formatInteger(locale, row.repo_count),
   };
 }
 
