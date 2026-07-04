@@ -67,9 +67,9 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
   const faqItems = buildLocalizedOrgFaqs(t, language, org, members, asOf);
   const pagePath = `/o/${org.login}`;
   const routePath = localizedPath(locale, pagePath);
-  const capsuleLabels = { heading: t.common.answerCapsule, dataAsOf: t.common.dataAsOf, source: t.common.source };
+  const capsuleLabels = { ariaLabel: t.common.answerCapsule, eyebrow: t.common.answerCapsule, dataAsOf: t.common.dataAsOf, source: t.common.source };
   const snippetLabels = {
-    heading: t.share.snippet,
+    eyebrow: t.share.snippet,
     copy: t.share.copy,
     copied: t.share.copied,
     embed: t.share.embed,
@@ -102,7 +102,7 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
             <h2 className="mb-3 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
               {t.org.history}
             </h2>
-            <StarCurve series={series} milestones={[]} />
+            <StarCurve series={series} milestones={[]} labels={{ ariaLabel: t.a11y.starHistory }} />
           </section>
         )}
 
@@ -210,6 +210,7 @@ function buildLocalizedOrgTotalSnippet({
       { label: fill(t.org.starHistoryLink, { login: org.login }), href: localizedPath(locale, `/o/${org.login}`) },
       ...top.map((row) => ({ label: repoName(row), href: localizedPath(locale, `/${repoName(row)}`) })),
     ],
+    sourceLabel: t.common.source,
   });
 }
 
@@ -218,11 +219,13 @@ function snippet({
   title,
   text,
   links,
+  sourceLabel,
 }: {
   kind: ShareableSnippetContent["kind"];
   title: string;
   text: string;
   links: Array<{ label: string; href: string }>;
+  sourceLabel: string;
 }): ShareableSnippetContent {
   const canonicalLinks = links.map((link) => ({ ...link, href: absoluteSnippetUrl(link.href) }));
   const copyText = [text, ...canonicalLinks.map((link) => `${link.label}: ${link.href}`)].join("\n");
@@ -232,17 +235,17 @@ function snippet({
     text,
     links: canonicalLinks,
     copyText,
-    embedHtml: embedHtml(title, text, canonicalLinks),
+    embedHtml: embedHtml(title, text, canonicalLinks, sourceLabel),
   };
 }
 
-function embedHtml(title: string, text: string, links: Array<{ label: string; href: string }>): string {
+function embedHtml(title: string, text: string, links: Array<{ label: string; href: string }>, sourceLabel: string): string {
   const source = links[0];
   return [
     `<blockquote cite="${escapeAttribute(source?.href ?? absoluteSnippetUrl("/"))}">`,
     `<p><strong>${escapeHtml(title)}</strong></p>`,
     `<p>${escapeHtml(text)}</p>`,
-    source ? `<p><a href="${escapeAttribute(source.href)}">Source: ${escapeHtml(source.label)}</a></p>` : "",
+    source ? `<p><a href="${escapeAttribute(source.href)}">${escapeHtml(sourceLabel)}: ${escapeHtml(source.label)}</a></p>` : "",
     `</blockquote>`,
   ]
     .filter(Boolean)

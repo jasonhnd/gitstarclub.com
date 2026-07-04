@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const ko: Dict = {
-  nav: { home: "홈", pulse: "펄스", rankings: "순위", categories: "카테고리", compare: "비교", about: "소개" },
+  nav: { home: "홈", pulse: "펄스", rankings: "순위", categories: "카테고리", organizations: "조직", compare: "비교", about: "소개" },
   common: {
     faqHeading: "자주 묻는 질문",
     dataLastUpdated: "데이터 마지막 업데이트",
@@ -14,6 +14,19 @@ const ko: Dict = {
     json: "JSON",
     previous: "이전",
     next: "다음",
+  },
+  a11y: {
+    primary: "기본",
+    primaryNavigation: "기본 내비게이션",
+    switchTheme: "테마 전환",
+    language: "언어",
+    breadcrumb: "이동 경로",
+    footer: "푸터",
+    skipToContent: "본문으로 건너뛰기",
+    compareModes: "{absolute} / {align10k}",
+    starHistory: "스타 히스토리 - {months}개월 동안 {stars} 스타까지 상승",
+    starHistoryOverlay: "{count}개 저장소의 스타 히스토리 오버레이({mode})",
+    starsAdded: "{label}: {stars} 스타 증가",
   },
   meta: {
     homeTitle: "오픈소스 펄스와 GitHub 스타 히스토리",
@@ -229,6 +242,9 @@ const ko: Dict = {
     madeIn: "도쿄에서 제작",
     dataThrough: "데이터 업데이트 기준",
     privacy: "개인정보",
+    dataFrom: "데이터 출처",
+    licensedUnder: "라이선스",
+    attributionSuffix: "GitStarClub이 파생하고 변환했습니다. GitHub 저장소 메타데이터와 현재 스타 총계는 공개 GitHub API에서 가져옵니다.",
   },
   privacy: {
     eyebrow: "개인정보",
@@ -255,6 +271,9 @@ const ko: Dict = {
     owner: "소유자",
     ownerType: "소유자 유형",
     trackedRepositories: "추적 저장소",
+    slug: "Slug",
+    gitstarclubUrl: "GitStarClub URL",
+    rowStarsAdded: "{rank}: {stars} 스타 증가",
   },
   search: { label: "검색", placeholder: "저장소 검색…", empty: "일치하는 저장소가 없습니다", loading: "불러오는 중…" },
   share: {

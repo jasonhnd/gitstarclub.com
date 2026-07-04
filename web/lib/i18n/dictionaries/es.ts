@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const es: Dict = {
-  nav: { home: "Inicio", pulse: "Pulso", rankings: "Rankings", categories: "Categorías", compare: "Comparar", about: "Acerca de" },
+  nav: { home: "Inicio", pulse: "Pulso", rankings: "Rankings", categories: "Categorías", organizations: "Organizaciones", compare: "Comparar", about: "Acerca de" },
   common: {
     faqHeading: "Preguntas frecuentes",
     dataLastUpdated: "Datos actualizados por última vez",
@@ -14,6 +14,19 @@ const es: Dict = {
     json: "JSON",
     previous: "Anterior",
     next: "Siguiente",
+  },
+  a11y: {
+    primary: "Principal",
+    primaryNavigation: "Navegación principal",
+    switchTheme: "Cambiar tema",
+    language: "Idioma",
+    breadcrumb: "Ruta de navegación",
+    footer: "Pie de página",
+    skipToContent: "Saltar al contenido",
+    compareModes: "{absolute} / {align10k}",
+    starHistory: "Historial de estrellas - sube a {stars} estrellas en {months} meses",
+    starHistoryOverlay: "Superposición de historial de estrellas de {count} repositorios ({mode})",
+    starsAdded: "{label}: {stars} estrellas ganadas",
   },
   meta: {
     homeTitle: "Pulso de código abierto e historial de estrellas de GitHub",
@@ -231,6 +244,10 @@ const es: Dict = {
     madeIn: "Hecho en Tokio",
     dataThrough: "Datos actualizados hasta",
     privacy: "Privacidad",
+    dataFrom: "Datos de",
+    licensedUnder: "licencia",
+    attributionSuffix:
+      "derivados y transformados por GitStarClub. Los metadatos de repositorios y los totales actuales de estrellas vienen de las API públicas de GitHub.",
   },
   privacy: {
     eyebrow: "Privacidad",
@@ -257,6 +274,9 @@ const es: Dict = {
     owner: "Propietario",
     ownerType: "Tipo de propietario",
     trackedRepositories: "Repositorios monitoreados",
+    slug: "Slug",
+    gitstarclubUrl: "URL de GitStarClub",
+    rowStarsAdded: "{rank}: {stars} estrellas ganadas",
   },
   search: { label: "Buscar", placeholder: "Buscar repositorios…", empty: "Sin repositorios coincidentes", loading: "Cargando…" },
   share: {

@@ -364,7 +364,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
                     pageCount={totalPages}
                     hrefForPage={(nextPage) => href(categoryDetailPagePath(dimension, slug, nextPage))}
                     label={fill(text.categoryPagination, { label: category.label })}
-                    labels={paginationLabels(locale)}
+                    labels={paginationLabels(t)}
                   />
                 </div>
               </>

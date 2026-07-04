@@ -323,7 +323,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
         {cells.length > 0 && (
           <section className="mt-[clamp(2rem,4vw,3rem)]">
             <h2 className="mb-3 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">{t.month.daily}</h2>
-            <Heatmap cells={cells} max={Math.max(1, ...cells.map((c) => c.gained))} columns={Math.min(16, cells.length)} square />
+            <Heatmap cells={cells} max={Math.max(1, ...cells.map((c) => c.gained))} columns={Math.min(16, cells.length)} square labels={{ starsAdded: t.a11y.starsAdded }} />
           </section>
         )}
 
@@ -421,7 +421,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
           shareLabels={shareButtonLabels(locale, t)}
         />
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={answerCapsuleLabels(locale, t)} />}
-        {snippet && <ShareableSnippet snippet={snippet} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={shareableSnippetLabels(locale)} />}
+        {snippet && <ShareableSnippet snippet={snippet} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={shareableSnippetLabels(t)} />}
         <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
           <RankingList rows={rows} variant="gained" locale={locale} tableCaption={fill(text.gainedCaption, { label: period })} labels={tableLabels} />
         </section>

@@ -20,13 +20,13 @@ function toggleTheme() {
   if (meta) meta.setAttribute("content", next === "dark" ? DARK_BG : LIGHT_BG);
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ label }: { label: string }) {
   return (
     <button
       type="button"
       onClick={toggleTheme}
-      aria-label="Switch theme"
-      title="Switch theme"
+      aria-label={label}
+      title={label}
       className="theme-toggle grid size-11 cursor-pointer place-items-center rounded-full bg-surface-container-high text-on-surface transition-[background,transform] duration-200 ease-[var(--ease-emphasized)] hover:bg-surface-container-highest active:scale-90"
     >
       <svg className="i-moon size-[22px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">

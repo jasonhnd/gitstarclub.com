@@ -31,7 +31,10 @@ export function Breadcrumbs({ items, locale = DEFAULT_LOCALE, dictionary }: { it
     }),
   };
   return (
-    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 font-mono text-[0.78rem] text-on-surface-variant">
+    <nav
+      aria-label={dictionary ? resolveChromePath(dictionary, "a11y.breadcrumb") : chromeText("a11y.breadcrumb")}
+      className="flex flex-wrap items-center gap-1.5 font-mono text-[0.78rem] text-on-surface-variant"
+    >
       {items.map((c, i) => {
         const last = i === items.length - 1;
         const label = labelOf(c);
