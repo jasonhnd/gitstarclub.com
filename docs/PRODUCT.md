@@ -67,7 +67,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 | **对比页** | `/compare?repos=a/b,c/d`（多 repo 叠图，URL 即状态、可分享） |
 | 关于页 | `/about` |
 
-原则：**最短、可读、SEO 友好**。**URL 语言中立、无语言段**（语言走页内 `gsc_lang` cookie，见下「多语言」与 [SEO.md](./SEO.md) §10）。
+原则：**最短、可读、SEO 友好**。English 保持无前缀 URL；ja/zh/zh-TW/ko/es/fr 使用 locale 前缀 URL，并通过 canonical / `hreflang` / `x-default` 互指（见下「多语言」与 [SEO.md](./SEO.md) §10）。
 
 ## 核心页面（编年史 + 脉搏两面）
 
@@ -185,7 +185,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 
 ## 多语言（i18n）
 
-调性：默认英文，优先级 **英文 > 日文 > 中文 >** zh-TW / ko / es / fr 七种 UI 语言；English URL 保持无前缀，非默认 locale URL / metadata / sitemap 按 [I18N.md](./I18N.md) 分步迁移，repo 名、描述、语言、topic、数字等数据字段不翻译。**权威口径见 [SEO.md](./SEO.md) §10，实现见 [FRONTEND.md](./FRONTEND.md) §7。**
+调性：默认英文，优先级 **英文 > 日文 > 中文 >** zh-TW / ko / es / fr 七种 UI 语言；English URL 保持无前缀，非默认 locale URL / metadata / sitemap / 语言切换导航已按 [I18N.md](./I18N.md) 落地，repo 名、描述、语言、topic、数字等数据字段不翻译。产品功能名 **GitStarClub Pulse** 与 **GitStarClub Compare** 作为品牌名不翻译。**权威口径见 [SEO.md](./SEO.md) §10，实现见 [FRONTEND.md](./FRONTEND.md) §7。**
 
 ## 项目命名
 

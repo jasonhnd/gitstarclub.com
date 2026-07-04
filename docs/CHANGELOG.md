@@ -60,7 +60,7 @@ Theme: finish the Vercel-only data lifecycle (folding, garbage collection, alert
 - **Version garbage collection**. The publisher prunes old `views/<run_id>/**` directories behind the publish pointer, keeping the rollback horizon bounded.
 - **L3 managed refresh** wired into the weekly cron. Recompute → validate → publish runs end-to-end on Vercel without local involvement.
 - **Failure alerts** via `ALERT_WEBHOOK_URL` and a health endpoint covering cron and workflow pipelines.
-- **Static page bodies + client-side chrome i18n** (option C). Pages render in the default English locale into static HTML; the chrome (nav, footer, labels) swaps to the cookie locale after hydration. Removes the temporary `force-dynamic` and restores SSG/ISR throughput.
+- **Static page bodies + client-side chrome i18n** (option C). Pages rendered in the default English locale into static HTML, and chrome labels swapped to the then-current preference locale after hydration. Historical note: the current implementation is server-rendered per-locale URL routing with `hreflang`.
 - **End-to-end fold→recompute integration test** asserting byte-identical output across the fold seam.
 
 ### Fixed
@@ -109,7 +109,7 @@ Theme: SEO depth and design polish.
 - Per-page **dynamic OG cards** (`next/og`) for repo, rankings, and pulse.
 - **JSON-LD structured data** per page type (Dataset, BreadcrumbList, Organization).
 - **Breadcrumb trail** with matching `BreadcrumbList` JSON-LD.
-- **Localized site footer** on every page; multilingual chrome via `[lang]` segment for en/ja/zh (later superseded by option C cookie-based switching in 0.1.5).
+- **Localized site footer** on every page; multilingual chrome via `[lang]` segment for en/ja/zh (later superseded by 0.1.5 client preference switching, and then by the current per-locale URL rendering model).
 - **Pulse + rankings IA** reorganized into the current structure.
 
 ### Changed

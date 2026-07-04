@@ -12,7 +12,7 @@
 > 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.2.6**（App Router + Metadata API）。
 > AI answer-engine citation strategy is owned by [GEO.md](./GEO.md); this document stays focused on classic search crawl, canonical, metadata, sitemap, and internal-link mechanics.
 >
-> i18n rollout 口径：服务器端多语言 URL 迁移以 [I18N.md](./I18N.md) 为准。Step 2 已把 `pageMeta()` 与 sitemap XML 基础设施改为 locale-aware：English 保持无前缀，ja/zh/zh-TW/ko/es/fr 使用前缀 URL，并输出 `hreflang` / `x-default`；页面正文与 middleware 迁移属于后续步骤。
+> i18n rollout 口径：服务器端多语言 URL 已落地（见 [I18N.md](./I18N.md)）。English 保持无前缀，ja/zh/zh-TW/ko/es/fr 使用前缀 URL；页面正文、metadata、canonical、`hreflang` / `x-default`、sitemap 与语言切换导航都按 route locale 输出。`gsc_lang` cookie 仅保留为 middleware / `/api/lang` 的偏好重定向信号，不参与页面渲染。
 
 ---
 
@@ -46,7 +46,7 @@
 | 分类页 | `/categories/...` | 核心入口 + priority language 预渲染 + 公开 category 按需 ISR | 有界，随 registry | 中 |
 | 对比页 | `/compare` | 核心（deploy 构建，静态壳） | 1 | 中（工具页） |
 
-> **单语言收录**：语言是页内 `gsc_lang` cookie 偏好、不进 URL（见 §10），URL 语言中立单一 ⇒ 收录目标 URL 数 = 上表单语言合计，不乘语言数。
+> **locale 收录模型**：上表规模是基础 canonical path 基数。English 使用无前缀 URL；每个非默认 locale 生成同一组前缀 URL（见 §10），因此收录目标 URL 数约为基础 path 数 × 7。
 
 ### 1.2 榜单矩阵（数据层全覆盖，成页是 PRODUCT 取舍）
 
@@ -59,15 +59,15 @@
 | **Org 榜**（org 维度） | Org 详情页 `/o/:login` + 各 period 页内 org section | Org 详情页已独立 |
 | **全时榜**（all-time × repo/org × stock） | **独立页 `/rankings`** | 已独立成页 |
 
-> 这套矩阵比旧设计的 ~5,400 页（纯 repo 月度编年史）**多得多**：org 页可能数千、全时榜独立、周榜可能独立（均为语言中立单一 URL，不乘语言数）。**sitemap 分片数学必须按此新规模重算**（见 §4）。
+> 这套矩阵比旧设计的 ~5,400 页（纯 repo 月度编年史）**多得多**：org 页可能数千、全时榜独立、周榜独立。分片数学先按基础 canonical path 基数估算，再乘以 7 个 locale URL（见 §4 / §10）。
 
 ### 1.3 收录目标量级（估算）
 
 | 维度 | 首页 | 年 | 月 | repo | org | rankings + about + compare | 上表小计 |
 |---|---|---|---|---|---|---|---|
-| URL 数（语言中立） | 1 | ~11 | ~132 | 5,300+（the tracked set） | ~1,500（估） | ~3 | **~6,900** |
+| 基础 canonical path 数 | 1 | ~11 | ~132 | 5,300+（the tracked set） | ~1,500（估） | ~3 | **~6,900** |
 
-> URL 语言中立单一、不乘语言数（见 §10）。上表小计 ~6,900 **未含周页、`/pulse`、owner 索引分页、category 分页**；加上这些可爬入口后，当前 sitemap 约按 **~10k URL** 规划。具体数随 org 白名单（含 User owner）与 category count 浮动。
+> 上表小计 ~6,900 是基础 canonical path 基数，**未含周页、`/pulse`、owner 索引分页、category 分页**；加上这些可爬入口后，当前每个 locale sitemap 约按 **~10k URL** 规划，总可收录 URL 约为该基础 path 清单 × 7。具体数随 org 白名单（含 User owner）与 category count 浮动。
 
 ---
 
@@ -346,9 +346,9 @@ export function generateMetadata(): Metadata {
 
 ## 3. 按需 ISR 的 SEO 语义（本站最关键的 SEO 细节）
 
-> chrome 翻译在客户端（`i18n/client.tsx`）执行，服务端只出默认英文静态 / ISR 页；构建路由表为 `○`（静态）/ `●`（按需 ISR），不存在 `ƒ`（force-dynamic）。见 [FRONTEND.md](./FRONTEND.md) §2.5（渲染模式：静态基底 + 客户端译 chrome）。**对 SEO 的关键含义**：输出的是**完整可索引 HTML**（§3.1a），且 ISR 持久缓存 / CDN 共同扛量。
+> UI chrome 与页面正文按 route locale 服务端渲染，构建路由表保持 `○`（静态）/ `●`（按需 ISR），不存在 `ƒ`（force-dynamic）。见 [FRONTEND.md](./FRONTEND.md) §2.5（渲染模式：route locale + 服务端本地化 HTML）。**对 SEO 的关键含义**：每个 locale URL 输出对应语言的**完整可索引 HTML**（§3.1a），且 ISR 持久缓存 / CDN 共同扛量。
 
-**渲染模型**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 页面分层）：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜，语言中立 ~数十页）；历史 / repo / org 页是**按需 ISR**——`dynamicParams = true` 且 `generateStaticParams` 返回空（或仅当年/当月）⇒ 不在 deploy 构建，首访时生成、存入 Vercel 持久 ISR store，后续命中缓存。
+**渲染模型**（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 页面分层）：deploy 只构建**小核心**（首页 / 当年 / 当月 / 全时榜，以及对应 locale 的热表面）；历史 / repo / org 页是**按需 ISR**——`dynamicParams = true` 且 `generateStaticParams` 返回空（或仅当年/当月）⇒ 不在 deploy 全量构建，首访时按 route locale 生成、存入 Vercel 持久 ISR store，后续命中缓存。
 
 ### 3.1 四条必须落实的 SEO 含义
 
@@ -402,7 +402,7 @@ export async function generateStaticParams() {
 
 ## 4. sitemap：sitemap index + per-locale XML（每个 locale 约 ~10k URL）
 
-> **Sitemap 协议硬限**：单文件 ≤ **50,000 URL** 且 ≤ **50MB（未压缩）**。当前 sitemap 按 locale 拆成 7 个文件；每个 locale 文件约 ~10k URL，低于单文件上限，总 URL 量约为语言中立 URL 数 × 7。
+> **Sitemap 协议硬限**：单文件 ≤ **50,000 URL** 且 ≤ **50MB（未压缩）**。当前 sitemap 按 locale 拆成 7 个文件；每个 locale 文件约 ~10k URL，低于单文件上限，总 URL 量约为基础 canonical path 数 × 7。
 
 ### 4.1 当前实现（显式 XML route handlers）
 
@@ -551,7 +551,7 @@ Disallow: /
 
 - **总开关 = 环境变量、不看 host**：这是与早期设计的关键差异。原始设想是 `isProductionHost()` 按 host / `VERCEL_ENV` 自动判定，但实际实现选了更稳健的 **launch flag**：预发阶段即便生产域名的 Preview deployment（web 应用）也会噤声，避免抢先于 teaser 暴露。
 - **launch 翻牌流程**：①Vercel 项目 production 环境加 `SITE_INDEXABLE=1`②redeploy（不需要改代码）③`robots.txt` 立即放开 + sitemap 暴露 + 根 layout 的全局 `robots: { index: true, follow: true }` 一起翻牌。
-- **不屏蔽任何内容页**：~10k 长尾页（语言中立单一 URL）全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + sitemap 分片共同消化。
+- **不屏蔽任何内容页**：每个 locale 约 ~10k URL 全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + per-locale sitemap 分片共同消化。
 - **屏蔽 `/api/`**：cron / 内部 route 不该被抓（真正防线是 `CRON_SECRET` 鉴权，见 [OPS.md](./OPS.md)；robots 只是减少噪声）。
 - **`/search-index`、`/repo-curve`（顶级 JSON 端点）故意放行**：均不在 `/api/` 下，故 `Disallow: /api/` 不覆盖它们。`/search-index` 是全站搜索的版本化索引（`search/index.json`），经发布指针由 Route Handler 服务、带 `s-maxage` 走 CDN，被搜索框首次聚焦时懒加载；`/repo-curve` 同理是 repo 曲线数据的版本化 JSON 端点（CDN 缓存、被详情页 / 对比页按需读取）。`robots.ts` 只 `Disallow: /api/`、不屏蔽这两者（CDN JSON、非内容页、对 SEO 无害）。若需拦爬虫抓这些 JSON，在 `robots.ts` 把 `/search-index`、`/repo-curve` 加到 Disallow 即可。
 - **Preview deployment 的处理**：Preview 默认就 `SITE_INDEXABLE` 未设 → `Disallow: /`；再叠加 root layout 的 `robots: { index: false, follow: false }` meta（同一总开关驱动），共防一处。Preview 还需在 Vercel 项目设 Deployment Protection（PRIVATE），见 §11。
@@ -577,7 +577,7 @@ Disallow: /
   "@type": "WebSite",
   "name": "GitStarClub",
   "url": "https://gitstarclub.com/",      // abs(path)，首页 path = "/"
-  "inLanguage": "en",                      // locale（页内默认英文，见 §10）
+  "inLanguage": "en",                      // route locale（见 §10）
   "description": "GitHub star history & trends across 5,300+ repositories with ≥10k stars."
   // 不输出 potentialAction / SearchAction：搜索是客户端 combobox、直达
   // /{owner}/{name}，无规范结果页 URL 可供 SearchAction 广告（见下注）
@@ -785,17 +785,17 @@ org 索引 /o 与 /o/page/N
 
 ---
 
-## 10. 多语言策略（locale URL metadata / sitemap rollout）
+## 10. 多语言策略（locale URL / hreflang / sitemap）
 
-> 服务器端多语言 URL 迁移按 [I18N.md](./I18N.md) 分步推进。当前已落地 metadata 与 sitemap：English 无前缀，非默认 locale 有前缀 URL，并输出 hreflang；页面正文、middleware 与语言切换导航仍按后续步骤迁移。
+> 服务器端多语言 URL 已落地：English 无前缀，非默认 locale 有前缀 URL；页面正文、metadata、middleware、语言切换导航、canonical、hreflang 与 sitemap 已统一到这套 route-locale 架构。`gsc_lang` cookie 仅保留为 middleware / `/api/lang` 的偏好重定向信号。
 
 | 维度 | 规则 |
 |---|---|
 | URL | English 保持无前缀（`/rankings/2024/10`、`/owner/name`）；非默认 locale 使用前缀（`/ja/rankings`、`/zh-TW/owner/name`） |
 | canonical | 指当前 locale 自身规范 URL；`x-default` 指 English 无前缀 URL |
-| SEO 语言 | **英文**仍是默认 SEO / 用户语言；locale URL 的 meta / OG 文案由调用方传入 localized title / description |
-| 其它语言 | en/ja/zh/zh-TW/ko/es/fr 有独立 URL 与 hreflang alternate；页面正文服务端迁移按 [I18N.md](./I18N.md) 后续步骤推进 |
-| 翻译范围 | UI chrome / 导航 / 年度标签 / About / 面包屑名 / 确定性 Narrative；**不翻译** repo 名 / 描述 / 语言 / topic / 数字（数据语言中立） |
+| SEO 语言 | English 是默认 / `x-default`；非默认 locale URL 的页面正文、meta / OG 文案、JSON-LD `inLanguage` 与 chrome 由 route dictionary 服务端输出 |
+| 其它语言 | en/ja/zh/zh-TW/ko/es/fr 有独立 URL 与 hreflang alternate；同一 canonical path 的所有 locale URL 互指 |
+| 翻译范围 | UI chrome / 导航 / 年度标签 / About / 面包屑名 / 确定性 Narrative；**不翻译** repo 名 / 描述 / 语言 / topic / 数字（数据语言中立）。产品功能名 **GitStarClub Pulse** / **GitStarClub Compare** 作为品牌名不翻译 |
 | og:locale | 由 `web/lib/i18n/routing.ts` 映射：`en_US`、`ja_JP`、`zh_CN`、`zh_TW`、`ko_KR`、`es_ES`、`fr_FR` |
 
 ---
@@ -835,7 +835,7 @@ export const metadata: Metadata = {
 
 ## 12. 性能即 SEO（Core Web Vitals 作排名因子）
 
-> 内容页为 `○` 静态 / `●` 按需 ISR（chrome i18n 在客户端，见 [FRONTEND.md](./FRONTEND.md) §2.5 静态基底 + 客户端译 chrome），TTFB / 缓存走纯静态 / ISR 命中；正文零客户端 JS、HTML 体积控制在阈值内。
+> 内容页为 `○` 静态 / `●` 按需 ISR（route locale 服务端本地化 HTML，见 [FRONTEND.md](./FRONTEND.md) §2.5），TTFB / 缓存走纯静态 / ISR 命中；正文零客户端 JS、HTML 体积控制在阈值内。
 
 SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHITECTURE.md) 性能策略 + 用户 web/performance 规则）：
 
@@ -906,7 +906,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 | 移除过时网址 | 若预览曾误被收录：Removals 工具临时移除 + 修 noindex | 仅事故时 |
 | Core Web Vitals 报告 | GSC CWV 报告 + Vercel Speed Insights 双看（见 §12） | 每月 |
 
-- **抓取预算**：每个 locale sitemap 约 ~10k URL，单文件低于 50k；总 URL 约 7 倍语言中立清单，需靠准确 `lastModified`、强内链（§9）与核心页权重传导消化长尾。
+- **抓取预算**：每个 locale sitemap 约 ~10k URL，单文件低于 50k；总 URL 约 7 倍基础 canonical path 清单，需靠准确 `lastModified`、强内链（§9）与核心页权重传导消化长尾。
 - **索引节奏预期**：长尾 repo/org 页可能数周–数月才逐步收录；优先确保**高价值长尾**（热门 repo、近年月份）被内链 + sitemap 优先暴露。
 
 ---
@@ -922,7 +922,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 - [ ] `app/robots.ts`：`SITE_INDEXABLE=1` 时输出 `Allow: /` + `Disallow: /api/` + Sitemap + Host；**未设置时全站 `Disallow: /`**（§5 / §11）
 - [x] 周页 `/rankings/YYYY/W##` 与 `/compare` 已在 sitemap 中（§4.1）
 - [x] `/o` owner 索引分页、分类入口、公开 category 路径与 category 分页已在 sitemap 中（§4.1）
-- [ ] 收录目标量级按每 locale ~10k URL、总计约 7 倍语言中立 URL 规划（含 org / rankings / owner 索引分页 / category 分页，见 §10）
+- [ ] 收录目标量级按每 locale ~10k URL、总计约 7 倍基础 canonical path 规划（含 org / rankings / owner 索引分页 / category 分页，见 §10）
 
 **每页元数据**
 
@@ -973,5 +973,5 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 **Search Console（§14）**
 
 - [ ] 生产切换后验证站点 + 提交 sitemap index
-- [ ] 监控收录率（Discovered/Crawled not indexed）、富结果、CWV（**无 hreflang 项**，语言中立单一 URL，见 §10）
+- [ ] 监控收录率（Discovered/Crawled not indexed）、富结果、CWV 与 hreflang 诊断（locale URL / `x-default` 见 §10）
 - [ ] 预览期**绝不**向 GSC 提交任何 URL/sitemap
