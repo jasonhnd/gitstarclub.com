@@ -73,7 +73,7 @@ renderer), and the SEO helpers listed under [SEO And Discovery](#seo-and-discove
 | `/api/cron/daily` | `web/app/api/cron/daily/route.ts` → `web/lib/cron/handlers.ts` | live-overlay refresh |
 | `/api/cron/weekly` | `web/app/api/cron/weekly/route.ts` → `web/lib/cron/handlers.ts` | live-overlay refresh |
 | `/api/workflows/refresh/start` | `web/app/api/workflows/refresh/start/route.ts` | managed refresh enqueue |
-| `/api/lang` | `web/app/api/lang/route.ts` | sets language cookie, then redirects |
+| `/api/lang` | `web/app/api/lang/route.ts` | sets the language preference cookie, then redirects to the locale URL |
 | `/repo-curve` | `web/app/repo-curve/route.ts` | compare curve endpoint |
 | `/search-index` | `web/app/search-index/route.ts` | search payload |
 
