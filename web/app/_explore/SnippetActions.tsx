@@ -2,14 +2,28 @@
 
 import { useState } from "react";
 
+export type SnippetActionLabels = {
+  copy: string;
+  copied: string;
+  embed: string;
+  embedCopied: string;
+};
+
+const DEFAULT_LABELS: SnippetActionLabels = {
+  copy: "Copy",
+  copied: "Copied",
+  embed: "Embed",
+  embedCopied: "Embed copied",
+};
+
 export function SnippetActions({
   copyText,
   embedHtml,
-  labels = { copy: "Copy", copied: "Copied", embed: "Embed", embedCopied: "Embed copied" },
+  labels = DEFAULT_LABELS,
 }: {
   copyText: string;
   embedHtml: string;
-  labels?: { copy: string; copied: string; embed: string; embedCopied: string };
+  labels?: SnippetActionLabels;
 }) {
   const [copied, setCopied] = useState<"text" | "embed" | null>(null);
 
