@@ -173,7 +173,7 @@ Builds ingest these JSONs directly and bake them into static HTML. Adding a new 
 
 ### Page set
 
-| Page type | Count (locale-neutral) |
+| Page type | Base canonical path count |
 |---|---|
 | Home | 1 |
 | Year | ~11 |
@@ -186,7 +186,7 @@ Builds ingest these JSONs directly and bake them into static HTML. Adding a new 
 | Search index endpoint | 1 |
 | OG cards (per surface) | one per page |
 
-URLs are locale-neutral; language is a cookie preference, not a URL segment. The page count is therefore the single-language count rather than a multiplier. Long-tail surfaces (year / month / week / repo / org) render through on-demand ISR rather than at deploy time.
+English keeps the base canonical paths unprefixed; non-default locales add URL prefixes and participate in canonical / `hreflang` / sitemap output. The table above counts base canonical paths, while crawlable locale URLs are roughly that set multiplied by the seven supported locales. Long-tail surfaces (year / month / week / repo / org) still render through on-demand ISR rather than being fully cross-producted at deploy time.
 
 ### Build budget
 
