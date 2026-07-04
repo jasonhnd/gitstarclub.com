@@ -72,8 +72,8 @@ export async function AboutPageView({ locale }: { locale: Locale }) {
   const routePath = localizedPath(locale, ABOUT_PATH);
   const meta = await getMeta();
   const dateModified = resolveDataAsOfValue(meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
-  const dataAsOf = resolveDataAsOfLabel(dateModified);
-  const foldedMonth = formatDataAsOf(meta?.folded_through?.month);
+  const dataAsOf = resolveDataAsOfLabel(dateModified, { locale });
+  const foldedMonth = formatDataAsOf(meta?.folded_through?.month, locale);
   const dataset = datasetLd({
     name: t.meta.aboutTitle,
     path: routePath,

@@ -39,10 +39,10 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
   const language = toBcp47Locale(locale);
   const routePath = localizedPath(locale, COMPARE_PATH);
   const [meta, repoIds] = await Promise.all([getMeta(), getRepoIdByFullName()]);
-  const asOf = resolveDataAsOfFromMeta(meta);
+  const asOf = resolveDataAsOfFromMeta(meta, { locale });
   const capsule = asOf ? buildLocalizedCompareCapsule(locale, asOf) : null;
   const faqItems = buildLocalizedCompareFaqs(locale, asOf);
-  const pairConclusions = await loadPairConclusions(repoIds);
+  const pairConclusions = await loadPairConclusions(repoIds, locale);
   const conclusionText = asOf ? buildCompareConclusionText(asOf, pairConclusions) : null;
   const compareClientLabels = {
     modeAbsolute: t.compare.modeAbsolute,
@@ -158,7 +158,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
   );
 }
 
-async function loadPairConclusions(repoIds: Map<string, number>): Promise<ComparePairConclusion[]> {
+async function loadPairConclusions(repoIds: Map<string, number>, locale: Locale): Promise<ComparePairConclusion[]> {
   const rows = await Promise.all(
     COMMON_COMPARE_PAIRS.map(async (pair) => {
       const aId = repoIds.get(pair.a.toLowerCase());
@@ -166,7 +166,7 @@ async function loadPairConclusions(repoIds: Map<string, number>): Promise<Compar
       if (aId === undefined || bId === undefined) return null;
       const [a, b] = await Promise.all([getRepoCurve(aId), getRepoCurve(bId)]);
       if (!a || !b) return null;
-      return buildComparePairConclusion(pair, a, b);
+      return buildComparePairConclusion(pair, a, b, locale);
     }),
   );
   return rows.filter((row): row is ComparePairConclusion => Boolean(row));

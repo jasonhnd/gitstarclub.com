@@ -12,6 +12,7 @@ import { CategorySummaryTable } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CATEGORY_DIMENSIONS } from "@/lib/categories/rules";
 import { getCategoryAllTime, getCategoryAssignments, getCategoryRegistry, getMeta, getReposLookupDaily, joinRepoRank } from "@/lib/data";
+import { formatInteger } from "@/lib/format";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { getDictionary, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
@@ -108,7 +109,7 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
   const routePath = localizedPath(locale, "/categories");
   const href = (path: string) => localizedPath(locale, path);
   const categoryRows = publicCategories.map((category) => ({ ...category, path: href(categoryPath(category.dimension, category.slug)) }));
-  const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
   const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const dataset = datasetLd({
     name: text.categoryIndexDatasetName,
@@ -155,7 +156,7 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
               >
                 <span className="block text-[1.05rem] font-extrabold text-on-surface">{dimension.label}</span>
                 <span className="mt-2 block font-mono text-[0.78rem] text-on-surface-variant">
-                  {visible.length} {t.categories.groups}
+                  {formatInteger(locale, visible.length)} {t.categories.groups}
                 </span>
               </Link>
             );
@@ -177,7 +178,7 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   {dimension.categories.slice(0, CATEGORY_INDEX_PREVIEW_LIMIT).map((category) => (
-                    <CategoryLink key={category.id} href={href(categoryPath(category.dimension, category.slug))} label={category.label} count={category.count} />
+                    <CategoryLink key={category.id} href={href(categoryPath(category.dimension, category.slug))} label={category.label} count={category.count} locale={locale} />
                   ))}
                 </div>
               </section>
@@ -209,7 +210,7 @@ export async function CategoryDimensionPageView({ locale, dimension }: { locale:
   const href = (path: string) => localizedPath(locale, path);
   const categories = entry.categories.filter((category) => category.public);
   const categoryRows = categories.map((category) => ({ ...category, path: href(categoryPath(category.dimension, category.slug)) }));
-  const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
   const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const dataset = datasetLd({
     name: fill(text.categoryDimensionDatasetName, { label: entry.label }),
@@ -241,7 +242,7 @@ export async function CategoryDimensionPageView({ locale, dimension }: { locale:
           <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">{t.categories.dimensionEyebrow}</p>
           <h1 className="mt-2 text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none text-on-surface">{entry.label}</h1>
           <p className="mt-3 max-w-[48ch] text-[clamp(0.95rem,1.6vw,1.1rem)] text-on-surface-variant">
-            {categories.length} {t.categories.publicGroups}
+            {formatInteger(locale, categories.length)} {t.categories.publicGroups}
           </p>
         </section>
 
@@ -283,7 +284,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
   const first = rows.length > 0 ? startRank : 0;
   const last = first + pageRows.length - 1;
   const siblingCategories = (dimensionEntry?.categories ?? []).filter((entry) => entry.public && entry.id !== category.id).slice(0, 8);
-  const asOf = resolveDataAsOfLabel(rank?.meta.generated_at, registry.generated_at, assignments?.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const asOf = resolveDataAsOfLabel(rank?.meta.generated_at, registry.generated_at, assignments?.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
   const pagePath = categoryDetailPagePath(dimension, slug, page);
   const routePath = localizedPath(locale, pagePath);
   const href = (path: string) => localizedPath(locale, path);
@@ -332,7 +333,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
             <p className="mt-3 text-[0.95rem] text-on-surface-variant">
               {category.count > 0 ? (
                 <>
-                  {category.count} {t.categories.trackedRepositories}
+                  {formatInteger(locale, category.count)} {t.categories.trackedRepositories}
                 </>
               ) : (
                 t.categories.countPending
@@ -341,7 +342,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
             <LinkBack href={href(categoryPath(dimension))} label={dimensionEntry?.label ?? t.nav.categories} />
             {totalPages > 1 && (
               <a href="#category-pages" className="text-readable-gold mt-3 block font-mono text-[0.78rem] hover:underline">
-                {fill(text.browseAllRepositories, { count: rows.length.toLocaleString("en-US") })}
+                {fill(text.browseAllRepositories, { count: formatInteger(locale, rows.length) })}
               </a>
             )}
           </aside>
@@ -352,7 +353,13 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
               <h2 className="text-[1.3rem] font-extrabold text-on-surface">{t.categories.topRepositories}</h2>
               <span className="font-mono text-[0.75rem] text-on-surface-variant">
-                {rows.length > 0 ? fill(text.range, { first, last, total: rows.length.toLocaleString("en-US") }) : t.categories.allTimeStars}
+                {rows.length > 0
+                  ? fill(text.range, {
+                      first: formatInteger(locale, first),
+                      last: formatInteger(locale, last),
+                      total: formatInteger(locale, rows.length),
+                    })
+                  : t.categories.allTimeStars}
               </span>
             </div>
             {pageRows.length > 0 ? (
@@ -396,7 +403,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
   );
 }
 
-function CategoryLink({ href, label, count }: { href: string; label: string; count: number }) {
+function CategoryLink({ href, label, count, locale }: { href: string; label: string; count: number; locale: Locale }) {
   return (
     <Link
       href={href}
@@ -405,7 +412,7 @@ function CategoryLink({ href, label, count }: { href: string; label: string; cou
       <span className="truncate font-mono text-[0.9rem] font-semibold text-on-surface" title={label}>
         {label}
       </span>
-      {count > 0 ? <span className="shrink-0 font-mono text-[0.75rem] text-on-surface-variant">{count}</span> : null}
+      {count > 0 ? <span className="shrink-0 font-mono text-[0.75rem] text-on-surface-variant">{formatInteger(locale, count)}</span> : null}
     </Link>
   );
 }

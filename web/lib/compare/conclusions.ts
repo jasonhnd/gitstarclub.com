@@ -1,5 +1,6 @@
 import type { CompareCurve } from "@/lib/contracts";
 import { fmtStars, monthYearLabel } from "@/lib/format";
+import type { Locale } from "@/lib/i18n";
 
 export type ComparePairSpec = {
   label: string;
@@ -37,6 +38,7 @@ export function buildComparePairConclusion(
   spec: ComparePairSpec,
   a: CompareCurve,
   b: CompareCurve,
+  locale: Locale = "en",
 ): ComparePairConclusion | null {
   const aOrigin = aligned10kOrigin(a);
   const bOrigin = aligned10kOrigin(b);
@@ -45,8 +47,8 @@ export function buildComparePairConclusion(
   const horizonMonths = Math.min(a.points.length - aOrigin, b.points.length - bOrigin) - 1;
   if (horizonMonths < 1) return null;
 
-  const aResult = repoResultAtHorizon(a, aOrigin, horizonMonths);
-  const bResult = repoResultAtHorizon(b, bOrigin, horizonMonths);
+  const aResult = repoResultAtHorizon(a, aOrigin, horizonMonths, locale);
+  const bResult = repoResultAtHorizon(b, bOrigin, horizonMonths, locale);
   const comparison = aResult.gainedAfter10k - bResult.gainedAfter10k;
   const winner = comparison === 0 ? null : comparison > 0 ? aResult : bResult;
   const loser = comparison === 0 ? null : comparison > 0 ? bResult : aResult;
@@ -84,13 +86,13 @@ function aligned10kOrigin(curve: CompareCurve): number | null {
   return index >= 0 ? index : null;
 }
 
-function repoResultAtHorizon(curve: CompareCurve, origin: number, horizonMonths: number): ComparePairRepoResult {
+function repoResultAtHorizon(curve: CompareCurve, origin: number, horizonMonths: number, locale: Locale): ComparePairRepoResult {
   const originStars = curve.points[origin][1];
   const starsAtHorizon = curve.points[origin + horizonMonths][1];
   return {
     fullName: curve.full_name,
     crossed10k: curve.crossed_10k ?? "",
-    crossed10kLabel: monthLabel(curve.crossed_10k ?? ""),
+    crossed10kLabel: monthLabel(curve.crossed_10k ?? "", locale),
     originStars,
     starsAtHorizon,
     gainedAfter10k: starsAtHorizon - originStars,
@@ -98,10 +100,10 @@ function repoResultAtHorizon(curve: CompareCurve, origin: number, horizonMonths:
   };
 }
 
-function monthLabel(value: string): string {
+function monthLabel(value: string, locale: Locale): string {
   const year = Number(value.slice(0, 4));
   const month = Number(value.slice(5, 7));
-  return monthYearLabel("en", year, month);
+  return monthYearLabel(locale, year, month);
 }
 
 function formatMonthSpan(months: number): string {

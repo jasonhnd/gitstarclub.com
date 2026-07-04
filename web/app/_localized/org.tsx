@@ -54,7 +54,7 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
   if (!org) notFound();
 
   const series = org.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
-  const asOf = resolveDataAsOfFromMeta(meta, org.curve.recent_daily.at(-1)?.[0], org.curve.monthly.at(-1)?.[0]);
+  const asOf = resolveDataAsOfFromMeta(meta, org.curve.recent_daily.at(-1)?.[0], org.curve.monthly.at(-1)?.[0], { locale });
   const capsule = asOf ? buildLocalizedOrgCapsule(t, language, org, asOf) : null;
   const members: Row[] = org.members
     .map((id) => {
