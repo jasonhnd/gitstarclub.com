@@ -1,19 +1,10 @@
-// Unit tests for the pure i18n logic that backs static chrome text and client islands.
-// `client.tsx` stays server-safe and exports the deterministic chrome resolver; client-only
-// hooks live in `client-runtime.tsx`. bun's runtime has no real `document`, so the cookie
-// parser is replicated here against the real LANG_COOKIE / isLocale / en values.
-import { test, expect, describe, beforeEach, afterEach } from "bun:test";
+// Unit tests for the pure i18n logic that backs static chrome text and prop-localized client islands.
+// `client.tsx` stays server-safe and exports the deterministic chrome resolver; client-only hooks
+// live in `client-runtime.tsx` as a route-dictionary fallback.
+import { test, expect, describe } from "bun:test";
 import en, { type Dict } from "./dictionaries/en";
-import { DEFAULT_LOCALE, LANG_COOKIE, getDictionary, isLocale, LOCALES, type Locale } from ".";
+import { DEFAULT_LOCALE, getDictionary, isLocale, LOCALES } from ".";
 import { resolveChromePath } from "./client";
-
-// --- Cookie parser replica for the browser-only runtime. -------------------------
-function readLocaleCookie(): Locale {
-  if (typeof document === "undefined") return DEFAULT_LOCALE;
-  const match = document.cookie.match(new RegExp(`(?:^|; )${LANG_COOKIE}=([^;]*)`));
-  const value = match ? decodeURIComponent(match[1]) : undefined;
-  return value && isLocale(value) ? value : DEFAULT_LOCALE;
-}
 
 describe("isLocale (from ./index)", () => {
   test("accepts every declared locale", () => {
@@ -103,45 +94,5 @@ describe("resolveChromePath (dotted-path resolver)", () => {
 
   test("an empty path resolves to the root object → falls back to the path", () => {
     expect(resolveChromePath(en, "")).toBe("");
-  });
-});
-
-describe("readLocaleCookie (cookie parse, replicated from client.tsx)", () => {
-  const ORIGINAL_DOCUMENT = (globalThis as { document?: unknown }).document;
-
-  beforeEach(() => {
-    // Shim a minimal document with a writable `cookie` string.
-    (globalThis as { document?: unknown }).document = { cookie: "" };
-  });
-
-  afterEach(() => {
-    if (ORIGINAL_DOCUMENT === undefined) delete (globalThis as { document?: unknown }).document;
-    else (globalThis as { document?: unknown }).document = ORIGINAL_DOCUMENT;
-  });
-
-  test("returns DEFAULT_LOCALE when no cookie is present", () => {
-    (globalThis as { document: { cookie: string } }).document.cookie = "";
-    expect(readLocaleCookie()).toBe(DEFAULT_LOCALE);
-  });
-
-  test("reads a valid locale from the gsc_lang cookie", () => {
-    (globalThis as { document: { cookie: string } }).document.cookie = `${LANG_COOKIE}=ja`;
-    expect(readLocaleCookie()).toBe("ja");
-  });
-
-  test("parses gsc_lang when it is not the first cookie in the string", () => {
-    (globalThis as { document: { cookie: string } }).document.cookie = `other=1; ${LANG_COOKIE}=fr; another=2`;
-    expect(readLocaleCookie()).toBe("fr");
-  });
-
-  test("URL-decodes the cookie value before validating (zh-TW)", () => {
-    // "zh-TW" has no special chars, but exercise the decode path with an encoded hyphen-free value.
-    (globalThis as { document: { cookie: string } }).document.cookie = `${LANG_COOKIE}=${encodeURIComponent("zh-TW")}`;
-    expect(readLocaleCookie()).toBe("zh-TW");
-  });
-
-  test("falls back to DEFAULT_LOCALE for an unsupported cookie value", () => {
-    (globalThis as { document: { cookie: string } }).document.cookie = `${LANG_COOKIE}=de`;
-    expect(readLocaleCookie()).toBe(DEFAULT_LOCALE);
   });
 });

@@ -3,7 +3,7 @@ import { type Locale } from "./locales";
 
 export type { Dict };
 export type { Locale };
-export { DEFAULT_LOCALE, LANG_COOKIE, LANGUAGE_CHANGE_EVENT, LANGUAGE_LABELS, LOCALES, isLocale } from "./locales";
+export { DEFAULT_LOCALE, LANG_COOKIE, LANGUAGE_LABELS, LOCALES, isLocale } from "./locales";
 
 const loaders: Record<Locale, () => Promise<Dict>> = {
   en: async () => en,

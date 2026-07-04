@@ -1,8 +1,7 @@
 import en, { type Dict } from "./dictionaries/en";
 
-// Server-safe chrome text helpers. Pages render the default locale into static
-// HTML; the language cookie only affects small client islands such as the
-// language switcher and purpose-built interactive tools.
+// Server-safe chrome text helpers. Content pages resolve route dictionaries on
+// the server and pass already-localized labels into client islands.
 
 type Leaves<T, P extends string = ""> = {
   [K in keyof T & string]: T[K] extends string
