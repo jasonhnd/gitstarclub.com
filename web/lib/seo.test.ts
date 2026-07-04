@@ -44,7 +44,7 @@ describe("pageMeta", () => {
     });
   });
 
-  test("localizes canonical and Open Graph URLs while keeping x-default English unprefixed", () => {
+  test("localizes canonical and emits the full hreflang alternate set", () => {
     const meta = pageMeta({
       title: "Classement",
       description: "Classement des etoiles GitHub.",
@@ -57,8 +57,16 @@ describe("pageMeta", () => {
     expect(alternates.canonical).toBe("https://gitstarclub.test/fr/rankings");
     expect(openGraph.url).toBe("https://gitstarclub.test/fr/rankings");
     expect(openGraph.locale).toBe("fr_FR");
-    expect(alternates.languages["x-default"]).toBe("https://gitstarclub.test/rankings");
-    expect(alternates.languages.fr).toBe("https://gitstarclub.test/fr/rankings");
+    expect(alternates.languages).toEqual({
+      "x-default": "https://gitstarclub.test/rankings",
+      en: "https://gitstarclub.test/rankings",
+      ja: "https://gitstarclub.test/ja/rankings",
+      "zh-CN": "https://gitstarclub.test/zh/rankings",
+      "zh-TW": "https://gitstarclub.test/zh-TW/rankings",
+      ko: "https://gitstarclub.test/ko/rankings",
+      es: "https://gitstarclub.test/es/rankings",
+      fr: "https://gitstarclub.test/fr/rankings",
+    });
   });
 
   test("can suppress localized alternates for pages outside localized SEO", () => {
