@@ -11,18 +11,21 @@ The site is organized around two user questions:
 1. **Pulse**: what is moving now?
 2. **Rankings**: who is largest, and who won a historical slice?
 
-Canonical URLs no longer carry the UI language. Language is an in-page preference
-stored in a first-party cookie, so repository URLs can mirror GitHub:
+English canonical URLs are unprefixed, and every non-default locale has a
+prefixed URL that maps to the same canonical path. Repository URLs still mirror
+GitHub in English:
 
 - GitHub: `https://github.com/facebook/react`
 - GitStarClub: `/facebook/react`
+- GitStarClub Japanese: `/ja/facebook/react`
 
 The default language is English. The language control shows the current language
 as a compact trigger and places the other supported languages in a dropdown:
 English, Japanese, Simplified Chinese, Traditional Chinese, Korean, Spanish, and
-French. In the normal app shell, the client writes `gsc_lang` and refreshes the
-current RSC view immediately without changing the URL. `/api/lang` remains as a
-safe direct-access fallback endpoint.
+French. Each option is a normal link to the matching locale URL, so navigation
+returns server-rendered localized HTML. The `gsc_lang` cookie remains only as a
+preference signal for middleware and `/api/lang` compatibility redirects; it is
+not an in-page rendering state.
 
 ## Primary Navigation
 
