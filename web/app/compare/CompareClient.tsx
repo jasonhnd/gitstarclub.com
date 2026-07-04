@@ -35,6 +35,8 @@ export type CompareClientLabels = {
   remove: string;
   pickerEmpty: string;
   pickerLoading: string;
+  compareModesAria: string;
+  starHistoryOverlayAria: string;
 };
 
 export function CompareClient({ labels, comparePath = "/compare" }: { labels: CompareClientLabels; comparePath?: string }) {
@@ -223,6 +225,7 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
             curves={orderedCurves}
             modeLabels={{ absolute: labels.modeAbsolute, align10k: labels.modeAlign10k }}
             legendAria={labels.legendLabel}
+            ariaLabels={{ compareModes: labels.compareModesAria, starHistoryOverlay: labels.starHistoryOverlayAria }}
           />
         ) : (
           <p className="rounded-2xl border border-dashed border-outline-variant px-4 py-8 text-center font-mono text-[0.85rem] text-on-surface-variant">

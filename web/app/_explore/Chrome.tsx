@@ -22,8 +22,7 @@ function label(dictionary: Dict | undefined, path: ChromeKey): string {
   return dictionary ? resolveChromePath(dictionary, path) : chromeText(path);
 }
 
-// Top chrome. Server-rendered with route-locale links; text remains English until
-// page-body localization lands. `tag` is an optional locale-independent badge.
+// Top chrome. Server-rendered with route-locale links. `tag` is an optional locale-independent badge.
 export function Chrome({ tag, locale = DEFAULT_LOCALE, canonicalPath, dictionary }: ChromeProps) {
   const href = (path: string) => localizedPath(locale, path);
   return (
@@ -41,7 +40,7 @@ export function Chrome({ tag, locale = DEFAULT_LOCALE, canonicalPath, dictionary
           </span>
         ) : null}
       </Link>
-      <nav className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center justify-end gap-1.5 sm:flex sm:w-auto sm:flex-wrap sm:gap-x-4 sm:gap-y-2" aria-label="Primary">
+      <nav className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center justify-end gap-1.5 sm:flex sm:w-auto sm:flex-wrap sm:gap-x-4 sm:gap-y-2" aria-label={label(dictionary, "a11y.primary")}>
         <SearchBox
           locale={locale}
           labels={{
@@ -68,8 +67,8 @@ export function Chrome({ tag, locale = DEFAULT_LOCALE, canonicalPath, dictionary
         <Link href={href("/about")} className={`hidden sm:inline ${NAV_LINK_CLASS}`}>
           {label(dictionary, "nav.about")}
         </Link>
-        <LanguageSwitcher locale={locale} canonicalPath={canonicalPath} />
-        <ThemeToggle />
+        <LanguageSwitcher locale={locale} canonicalPath={canonicalPath} label={label(dictionary, "a11y.language")} />
+        <ThemeToggle label={label(dictionary, "a11y.switchTheme")} />
         <MobileNav locale={locale} dictionary={dictionary} />
       </nav>
     </header>
@@ -89,7 +88,7 @@ function MobileNav({ locale, dictionary }: { locale: Locale; dictionary?: Dict }
     <details className="group relative shrink-0 sm:hidden">
       <summary
         className="grid size-11 cursor-pointer list-none place-items-center rounded-full bg-surface-container-high text-on-surface transition-[background,transform] duration-200 ease-[var(--ease-emphasized)] marker:content-none hover:bg-surface-container-highest active:scale-90 [&::-webkit-details-marker]:hidden"
-        aria-label="Primary navigation"
+        aria-label={label(dictionary, "a11y.primaryNavigation")}
       >
         <svg viewBox="0 0 24 24" className="size-[22px]" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />

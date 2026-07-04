@@ -10,21 +10,10 @@ import type { FaqItem } from "@/lib/jsonld";
 type RankingMetric = "gained" | "total";
 
 type DetailText = {
-  answerCapsule: string;
-  shareableSnippet: string;
-  copy: string;
-  copied: string;
-  embed: string;
-  embedCopied: string;
-  previous: string;
-  next: string;
   completeRanking: string;
-  slug: string;
-  gitstarclubUrl: string;
   browseAllRepositories: string;
   page: string;
   sourceSuffix: string;
-  shareOpensNewTab: string;
   yearMetaTitle: string;
   yearMetaDescription: string;
   periodMetaTitle: string;
@@ -121,21 +110,10 @@ type DetailText = {
 
 const TEXT: Record<Locale, DetailText> = {
   en: {
-    answerCapsule: "Answer capsule",
-    shareableSnippet: "Shareable snippet",
-    copy: "Copy",
-    copied: "Copied",
-    embed: "Embed",
-    embedCopied: "Embed copied",
-    previous: "Previous",
-    next: "Next",
     completeRanking: "Complete ranking",
-    slug: "Slug",
-    gitstarclubUrl: "GitStarClub URL",
     browseAllRepositories: "Browse all {count} repositories",
     page: "page",
     sourceSuffix: " - GitStarClub",
-    shareOpensNewTab: "opens in new tab",
     yearMetaTitle: "{year} GitHub Star Rankings - Yearly Movers",
     yearMetaDescription: "The {year} ranking of GitHub repositories by stars gained, with month-by-month history.",
     periodMetaTitle: "{label} GitHub Star Rankings",
@@ -238,21 +216,10 @@ const TEXT: Record<Locale, DetailText> = {
     gainedStarsValue: "{value} stars",
   },
   ja: {
-    answerCapsule: "回答カプセル",
-    shareableSnippet: "共有用スニペット",
-    copy: "コピー",
-    copied: "コピー済み",
-    embed: "埋め込み",
-    embedCopied: "埋め込みをコピー済み",
-    previous: "前へ",
-    next: "次へ",
     completeRanking: "完全なランキング",
-    slug: "スラッグ",
-    gitstarclubUrl: "GitStarClub URL",
     browseAllRepositories: "{count} 件のリポジトリをすべて見る",
     page: "ページ",
     sourceSuffix: " - GitStarClub",
-    shareOpensNewTab: "新しいタブで開きます",
     yearMetaTitle: "{year} GitHub スターランキング - 年間上昇",
     yearMetaDescription: "{year} 年にスターを増やした GitHub リポジトリのランキングと月別履歴。",
     periodMetaTitle: "{label} GitHub スターランキング",
@@ -351,21 +318,10 @@ const TEXT: Record<Locale, DetailText> = {
     gainedStarsValue: "{value} スター",
   },
   zh: {
-    answerCapsule: "答案摘要",
-    shareableSnippet: "可分享片段",
-    copy: "复制",
-    copied: "已复制",
-    embed: "嵌入",
-    embedCopied: "嵌入已复制",
-    previous: "上一页",
-    next: "下一页",
     completeRanking: "完整排名",
-    slug: "Slug",
-    gitstarclubUrl: "GitStarClub URL",
     browseAllRepositories: "浏览全部 {count} 个仓库",
     page: "页",
     sourceSuffix: " - GitStarClub",
-    shareOpensNewTab: "在新标签页打开",
     yearMetaTitle: "{year} GitHub 星标排名 - 年度增长",
     yearMetaDescription: "{year} 年按新增星标排序的 GitHub 仓库排名，并包含逐月历史。",
     periodMetaTitle: "{label} GitHub 星标排名",
@@ -464,21 +420,10 @@ const TEXT: Record<Locale, DetailText> = {
     gainedStarsValue: "{value} 星",
   },
   "zh-TW": {
-    answerCapsule: "答案摘要",
-    shareableSnippet: "可分享片段",
-    copy: "複製",
-    copied: "已複製",
-    embed: "嵌入",
-    embedCopied: "嵌入已複製",
-    previous: "上一頁",
-    next: "下一頁",
     completeRanking: "完整排名",
-    slug: "Slug",
-    gitstarclubUrl: "GitStarClub URL",
     browseAllRepositories: "瀏覽全部 {count} 個倉庫",
     page: "頁",
     sourceSuffix: " - GitStarClub",
-    shareOpensNewTab: "在新分頁開啟",
     yearMetaTitle: "{year} GitHub 星標排名 - 年度成長",
     yearMetaDescription: "{year} 年依新增星標排序的 GitHub 倉庫排名，並包含逐月歷史。",
     periodMetaTitle: "{label} GitHub 星標排名",
@@ -577,21 +522,10 @@ const TEXT: Record<Locale, DetailText> = {
     gainedStarsValue: "{value} 星",
   },
   ko: {
-    answerCapsule: "답변 캡슐",
-    shareableSnippet: "공유 스니펫",
-    copy: "복사",
-    copied: "복사됨",
-    embed: "임베드",
-    embedCopied: "임베드 복사됨",
-    previous: "이전",
-    next: "다음",
     completeRanking: "전체 순위",
-    slug: "Slug",
-    gitstarclubUrl: "GitStarClub URL",
     browseAllRepositories: "저장소 {count}개 모두 보기",
     page: "페이지",
     sourceSuffix: " - GitStarClub",
-    shareOpensNewTab: "새 탭에서 열림",
     yearMetaTitle: "{year} GitHub 스타 순위 - 연간 상승",
     yearMetaDescription: "{year}년에 스타를 얻은 GitHub 저장소 순위와 월별 히스토리입니다.",
     periodMetaTitle: "{label} GitHub 스타 순위",
@@ -690,21 +624,10 @@ const TEXT: Record<Locale, DetailText> = {
     gainedStarsValue: "{value} 스타",
   },
   es: {
-    answerCapsule: "Cápsula de respuesta",
-    shareableSnippet: "Fragmento compartible",
-    copy: "Copiar",
-    copied: "Copiado",
-    embed: "Insertar",
-    embedCopied: "Inserción copiada",
-    previous: "Anterior",
-    next: "Siguiente",
     completeRanking: "Ranking completo",
-    slug: "Slug",
-    gitstarclubUrl: "URL de GitStarClub",
     browseAllRepositories: "Ver los {count} repositorios",
     page: "página",
     sourceSuffix: " - GitStarClub",
-    shareOpensNewTab: "abre en una pestaña nueva",
     yearMetaTitle: "Ranking de estrellas GitHub {year} - crecimiento anual",
     yearMetaDescription: "Ranking {year} de repositorios GitHub por estrellas ganadas, con historia mes a mes.",
     periodMetaTitle: "Ranking de estrellas GitHub {label}",
@@ -803,21 +726,10 @@ const TEXT: Record<Locale, DetailText> = {
     gainedStarsValue: "{value} estrellas",
   },
   fr: {
-    answerCapsule: "Capsule de réponse",
-    shareableSnippet: "Extrait partageable",
-    copy: "Copier",
-    copied: "Copié",
-    embed: "Intégrer",
-    embedCopied: "Intégration copiée",
-    previous: "Précédent",
-    next: "Suivant",
     completeRanking: "Classement complet",
-    slug: "Slug",
-    gitstarclubUrl: "URL GitStarClub",
     browseAllRepositories: "Voir les {count} dépôts",
     page: "page",
     sourceSuffix: " - GitStarClub",
-    shareOpensNewTab: "ouvre un nouvel onglet",
     yearMetaTitle: "Classement d'étoiles GitHub {year} - progression annuelle",
     yearMetaDescription: "Le classement {year} des dépôts GitHub par étoiles gagnées, avec un historique mois par mois.",
     periodMetaTitle: "Classement d'étoiles GitHub {label}",
@@ -922,51 +834,47 @@ export function detailText(locale: Locale): DetailText {
 }
 
 export function answerCapsuleLabels(locale: Locale, t: Dict): AnswerCapsuleLabels {
-  const text = detailText(locale);
   return {
-    ariaLabel: text.answerCapsule,
-    eyebrow: text.answerCapsule,
+    ariaLabel: t.common.answerCapsule,
+    eyebrow: t.common.answerCapsule,
     dataAsOf: t.common.dataAsOf,
     source: t.common.source,
   };
 }
 
-export function categoryTableLabels(locale: Locale, t: Dict): Partial<CategorySummaryTableLabels> {
-  const text = detailText(locale);
+export function categoryTableLabels(locale: Locale, t: Dict): CategorySummaryTableLabels {
   return {
+    caption: t.categories.title,
     category: t.categories.eyebrow,
     dimension: t.categories.dimensionEyebrow,
-    slug: text.slug,
+    slug: t.tables.slug,
     trackedRepositories: t.categories.trackedRepositories,
-    gitstarclubUrl: text.gitstarclubUrl,
+    gitstarclubUrl: t.tables.gitstarclubUrl,
     pendingCount: t.categories.pendingCount,
   };
 }
 
 export function shareButtonLabels(locale: Locale, t: Dict) {
-  const text = detailText(locale);
   return {
     label: t.share.label,
     copied: t.share.copied,
     onX: t.share.onX,
-    opensNewTab: text.shareOpensNewTab,
+    opensNewTab: t.share.opensNewTab,
   };
 }
 
-export function shareableSnippetLabels(locale: Locale): ShareableSnippetLabels {
-  const text = detailText(locale);
+export function shareableSnippetLabels(t: Dict): ShareableSnippetLabels {
   return {
-    eyebrow: text.shareableSnippet,
-    copy: text.copy,
-    copied: text.copied,
-    embed: text.embed,
-    embedCopied: text.embedCopied,
+    eyebrow: t.share.snippet,
+    copy: t.share.copy,
+    copied: t.share.copied,
+    embed: t.share.embed,
+    embedCopied: t.share.embedCopied,
   };
 }
 
-export function paginationLabels(locale: Locale): { previous: string; next: string } {
-  const text = detailText(locale);
-  return { previous: text.previous, next: text.next };
+export function paginationLabels(t: Dict): { previous: string; next: string } {
+  return { previous: t.common.previous, next: t.common.next };
 }
 
 export function buildLocalizedRankingCapsule({

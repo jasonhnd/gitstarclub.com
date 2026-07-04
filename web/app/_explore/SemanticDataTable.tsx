@@ -59,6 +59,7 @@ export type RepositoryRankingTableLabels = {
   tenKCrossingDay: string;
   day: string;
   totalStars: string;
+  rowStarsAdded: string;
 };
 
 export type OrganizationRankingTableLabels = {
@@ -69,39 +70,6 @@ export type OrganizationRankingTableLabels = {
   unknown: string;
   trackedRepositories: string;
   totalStars: string;
-};
-
-const DEFAULT_REPOSITORY_LABELS: RepositoryRankingTableLabels = {
-  caption: "Repository rankings",
-  rank: "Rank",
-  repository: "Repository",
-  language: "Language",
-  unknown: "Unknown",
-  starsGained: "Stars gained",
-  growthRatePercent: "Growth rate percent",
-  tenKCrossingDay: "10k crossing day",
-  day: "Day",
-  totalStars: "Total stars",
-};
-
-const DEFAULT_ORGANIZATION_LABELS: OrganizationRankingTableLabels = {
-  caption: "Organization rankings",
-  rank: "Rank",
-  owner: "Owner",
-  ownerType: "Owner type",
-  unknown: "Unknown",
-  trackedRepositories: "Tracked repositories",
-  totalStars: "Total stars",
-};
-
-const DEFAULT_CATEGORY_LABELS: CategorySummaryTableLabels = {
-  caption: "Repository categories",
-  category: "Categories",
-  dimension: "Category dimension",
-  slug: "Slug",
-  trackedRepositories: "tracked repositories",
-  gitstarclubUrl: "GitStarClub URL",
-  pendingCount: "Pending count",
 };
 
 export function RepositoryRankingTable({
@@ -116,11 +84,11 @@ export function RepositoryRankingTable({
   variant?: RankingVariant;
   startRank?: number;
   caption?: string;
-  labels?: Partial<RepositoryRankingTableLabels>;
+  labels: RepositoryRankingTableLabels;
   locale?: Locale;
 }) {
   if (rows.length === 0) return null;
-  const text = { ...DEFAULT_REPOSITORY_LABELS, ...labels };
+  const text = labels;
 
   return (
     <div className={tableWrapClass}>
@@ -148,19 +116,22 @@ export function RepositoryRankingTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
-            <tr key={`${row.owner}/${row.name}`} className="group animate-rise" style={tableStaggerStyle(index)}>
-              <td className={cellClass(rankCellClass, "first")}>{startRank + index}</td>
-              <th scope="row" className={bodyCellClass}>
-                <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={linkClass}>
-                  {row.owner}/{row.name}
-                </Link>
-              </th>
-              <td className={mutedCellClass}>{row.lang ?? text.unknown}</td>
-              {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant, text)}</td>}
-              <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>{fmtStars(row.total)}★</td>
-            </tr>
-          ))}
+          {rows.map((row, index) => {
+            const rank = startRank + index;
+            return (
+              <tr key={`${row.owner}/${row.name}`} className="group animate-rise" style={tableStaggerStyle(index)} aria-label={rowAriaLabel(row, rank, variant, text)}>
+                <td className={cellClass(rankCellClass, "first")}>{rank}</td>
+                <th scope="row" className={bodyCellClass}>
+                  <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={linkClass}>
+                    {row.owner}/{row.name}
+                  </Link>
+                </th>
+                <td className={mutedCellClass}>{row.lang ?? text.unknown}</td>
+                {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant, text)}</td>}
+                <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>{fmtStars(row.total)}★</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -177,11 +148,11 @@ export function OrganizationRankingTable({
   rows: OrganizationSummaryRow[];
   startRank?: number;
   caption?: string;
-  labels?: Partial<OrganizationRankingTableLabels>;
+  labels: OrganizationRankingTableLabels;
   locale?: Locale;
 }) {
   if (rows.length === 0) return null;
-  const text = { ...DEFAULT_ORGANIZATION_LABELS, ...labels };
+  const text = labels;
 
   return (
     <div className={tableWrapClass}>
@@ -235,10 +206,10 @@ export function CategorySummaryTable({
 }: {
   rows: CategorySummaryRow[];
   caption?: string;
-  labels?: Partial<CategorySummaryTableLabels>;
+  labels: CategorySummaryTableLabels;
 }) {
   if (rows.length === 0) return null;
-  const text = { ...DEFAULT_CATEGORY_LABELS, ...labels };
+  const text = labels;
 
   return (
     <div className={tableWrapClass}>
@@ -314,6 +285,11 @@ function metricValue(row: Row, variant: Exclude<RankingVariant, "total">, labels
   }
 }
 
+function rowAriaLabel(row: Row, rank: number, variant: RankingVariant, labels: RepositoryRankingTableLabels): string | undefined {
+  if (variant !== "gained") return undefined;
+  return fill(labels.rowStarsAdded, { rank: String(rank), stars: fmtK(row.gained ?? 0) });
+}
+
 function tableStaggerStyle(i: number): CSSProperties | undefined {
   if (i > STAGGER_CAP_INDEX) return undefined;
   return { animationDelay: `${0.04 * Math.min(i, STAGGER_CAP_INDEX)}s` } as CSSProperties;
@@ -325,4 +301,8 @@ function cellClass(base: string, position: CellPosition): string {
 
 function categoryRowPath(row: CategorySummaryRow): string {
   return row.path ?? `/categories/${row.dimension}/${row.slug}`;
+}
+
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
 }

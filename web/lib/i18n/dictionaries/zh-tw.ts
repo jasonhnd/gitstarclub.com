@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const zhTw: Dict = {
-  nav: { home: "首頁", pulse: "脈搏", rankings: "排行榜", categories: "分類", compare: "對比", about: "關於" },
+  nav: { home: "首頁", pulse: "脈搏", rankings: "排行榜", categories: "分類", organizations: "組織", compare: "對比", about: "關於" },
   common: {
     faqHeading: "常見問題",
     dataLastUpdated: "資料最後更新",
@@ -14,6 +14,19 @@ const zhTw: Dict = {
     json: "JSON",
     previous: "上一頁",
     next: "下一頁",
+  },
+  a11y: {
+    primary: "主導覽",
+    primaryNavigation: "主導覽選單",
+    switchTheme: "切換主題",
+    language: "語言",
+    breadcrumb: "麵包屑",
+    footer: "頁尾",
+    skipToContent: "跳到正文",
+    compareModes: "{absolute} / {align10k}",
+    starHistory: "星標歷史 - {months} 個月內升至 {stars} 星",
+    starHistoryOverlay: "{count} 個倉庫的星標歷史疊加圖（{mode}）",
+    starsAdded: "{label}: 新增 {stars} 星",
   },
   meta: {
     homeTitle: "開源脈搏與 GitHub 星標歷史",
@@ -229,6 +242,9 @@ const zhTw: Dict = {
     madeIn: "製作於東京",
     dataThrough: "資料更新至",
     privacy: "隱私",
+    dataFrom: "資料來自",
+    licensedUnder: "授權條款",
+    attributionSuffix: "由 GitStarClub 派生並轉換。GitHub 倉庫中繼資料和目前星標總數來自公開 GitHub API。",
   },
   privacy: {
     eyebrow: "隱私",
@@ -255,6 +271,9 @@ const zhTw: Dict = {
     owner: "擁有者",
     ownerType: "擁有者類型",
     trackedRepositories: "已追蹤倉庫",
+    slug: "Slug",
+    gitstarclubUrl: "GitStarClub 網址",
+    rowStarsAdded: "{rank}: 新增 {stars} 星",
   },
   search: { label: "搜尋", placeholder: "搜尋倉庫…", empty: "沒有符合的倉庫", loading: "載入中…" },
   share: {

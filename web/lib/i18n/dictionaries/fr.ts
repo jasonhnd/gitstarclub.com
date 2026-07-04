@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const fr: Dict = {
-  nav: { home: "Accueil", pulse: "Activité", rankings: "Classements", categories: "Catégories", compare: "Comparer", about: "À propos" },
+  nav: { home: "Accueil", pulse: "Activité", rankings: "Classements", categories: "Catégories", organizations: "Organisations", compare: "Comparer", about: "À propos" },
   common: {
     faqHeading: "Questions fréquentes",
     dataLastUpdated: "Dernière mise à jour des données",
@@ -14,6 +14,19 @@ const fr: Dict = {
     json: "JSON",
     previous: "Précédent",
     next: "Suivant",
+  },
+  a11y: {
+    primary: "Principal",
+    primaryNavigation: "Navigation principale",
+    switchTheme: "Changer de thème",
+    language: "Langue",
+    breadcrumb: "Fil d'Ariane",
+    footer: "Pied de page",
+    skipToContent: "Aller au contenu",
+    compareModes: "{absolute} / {align10k}",
+    starHistory: "Historique des étoiles - monte à {stars} étoiles sur {months} mois",
+    starHistoryOverlay: "Superposition de l'historique des étoiles de {count} dépôts ({mode})",
+    starsAdded: "{label}: {stars} étoiles gagnées",
   },
   meta: {
     homeTitle: "Activité open source et historique des étoiles GitHub",
@@ -231,6 +244,10 @@ const fr: Dict = {
     madeIn: "Conçu à Tokyo",
     dataThrough: "Données mises à jour jusqu'au",
     privacy: "Confidentialité",
+    dataFrom: "Données de",
+    licensedUnder: "licence",
+    attributionSuffix:
+      "dérivées et transformées par GitStarClub. Les métadonnées des dépôts et les totaux actuels d'étoiles viennent des API publiques de GitHub.",
   },
   privacy: {
     eyebrow: "Confidentialité",
@@ -257,6 +274,9 @@ const fr: Dict = {
     owner: "Propriétaire",
     ownerType: "Type de propriétaire",
     trackedRepositories: "Dépôts suivis",
+    slug: "Slug",
+    gitstarclubUrl: "URL GitStarClub",
+    rowStarsAdded: "{rank}: {stars} étoiles gagnées",
   },
   search: { label: "Rechercher", placeholder: "Rechercher des dépôts…", empty: "Aucun dépôt correspondant", loading: "Chargement…" },
   share: {
