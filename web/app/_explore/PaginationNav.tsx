@@ -5,11 +5,15 @@ export function PaginationNav({
   pageCount,
   hrefForPage,
   label,
+  previousLabel = "Previous",
+  nextLabel = "Next",
 }: {
   currentPage: number;
   pageCount: number;
   hrefForPage: (page: number) => string;
   label: string;
+  previousLabel?: string;
+  nextLabel?: string;
 }) {
   if (pageCount <= 1) return null;
 
@@ -21,7 +25,7 @@ export function PaginationNav({
     <nav aria-label={label} className="mt-6 flex flex-wrap items-center gap-2 font-mono text-[0.78rem]">
       {currentPage > 1 && (
         <Link rel="prev" href={hrefForPage(currentPage - 1)} className="rounded-full bg-surface-container px-3 py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface">
-          Previous
+          {previousLabel}
         </Link>
       )}
       {windowStart > 1 && <PageLink page={1} currentPage={currentPage} hrefForPage={hrefForPage} />}
@@ -33,7 +37,7 @@ export function PaginationNav({
       {windowEnd < pageCount && <PageLink page={pageCount} currentPage={currentPage} hrefForPage={hrefForPage} />}
       {currentPage < pageCount && (
         <Link rel="next" href={hrefForPage(currentPage + 1)} className="rounded-full bg-surface-container px-3 py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface">
-          Next
+          {nextLabel}
         </Link>
       )}
     </nav>
