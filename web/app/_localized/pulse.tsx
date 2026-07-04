@@ -16,6 +16,7 @@ import { currentUtcPeriods, isoWeek } from "@/lib/periods";
 import { pageMeta } from "@/lib/seo";
 import { repositoryTableLabels } from "./routing";
 import { buildLocalizedPulseCapsule, buildLocalizedPulseFaqs } from "./seo-copy";
+import { answerCapsuleLabels } from "./detail-copy";
 
 export async function generatePulseMetadata({
   locale,
@@ -114,11 +115,11 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           </div>
         </section>
 
-        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" />}
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" labels={answerCapsuleLabels(locale, t)} />}
 
         <div className="mt-[clamp(2rem,5vw,4rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
-          <PulsePanel title={t.week.top} href={href(weekHref(activeWeek))} meta={activeWeek.period} rows={weekRows} labels={repoLabels} openLabel={t.pulse.open} />
-          <PulsePanel title={t.pulse.surging} href={href(`/rankings/${periods.year}/${periods.month}`)} meta={periods.monthPeriod} rows={monthRows} labels={repoLabels} openLabel={t.pulse.open} />
+          <PulsePanel title={t.week.top} href={href(weekHref(activeWeek))} meta={activeWeek.period} rows={weekRows} labels={repoLabels} openLabel={t.pulse.open} locale={locale} />
+          <PulsePanel title={t.pulse.surging} href={href(`/rankings/${periods.year}/${periods.month}`)} meta={periods.monthPeriod} rows={monthRows} labels={repoLabels} openLabel={t.pulse.open} locale={locale} />
           <PulsePanel
             title={
               <>
@@ -130,6 +131,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
             rows={yearRows}
             labels={repoLabels}
             openLabel={t.pulse.open}
+            locale={locale}
           />
         </div>
 
@@ -198,6 +200,7 @@ function PulsePanel({
   rows,
   labels,
   openLabel,
+  locale,
 }: {
   title: ReactNode;
   href: string;
@@ -205,6 +208,7 @@ function PulsePanel({
   rows: Row[];
   labels: ReturnType<typeof repositoryTableLabels>;
   openLabel: string;
+  locale: Locale;
 }) {
   return (
     <section className="min-w-0">
@@ -217,7 +221,7 @@ function PulsePanel({
           </Link>
         </div>
       </div>
-      <RankingList rows={rows} variant="gained" labels={labels} />
+      <RankingList rows={rows} variant="gained" labels={labels} locale={locale} />
     </section>
   );
 }

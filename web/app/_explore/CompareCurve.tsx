@@ -17,6 +17,10 @@ interface CompareCurveProps {
   initialMode?: CompareMode;
   modeLabels: { absolute: string; align10k: string };
   legendAria: string;
+  ariaLabels: {
+    compareModes: string;
+    starHistoryOverlay: string;
+  };
 }
 
 const W = 880;
@@ -26,7 +30,7 @@ const PAD_R = 12;
 const PAD_T = 12;
 const PAD_B = 30;
 
-export function CompareCurve({ curves, initialMode = "absolute", modeLabels, legendAria }: CompareCurveProps) {
+export function CompareCurve({ curves, initialMode = "absolute", modeLabels, legendAria, ariaLabels }: CompareCurveProps) {
   const [mode, setMode] = useState<CompareMode>(initialMode);
   const chart = buildChart(curves, mode);
   const x = (v: number) => PAD_L + (v / Math.max(1, chart.xMax)) * (W - PAD_L - PAD_R);
@@ -37,7 +41,7 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
     <figure className="m-0 overflow-x-auto pb-2">
       <div
         role="group"
-        aria-label={modeLabels.absolute + " / " + modeLabels.align10k}
+        aria-label={fill(ariaLabels.compareModes, { absolute: modeLabels.absolute, align10k: modeLabels.align10k })}
         className="mb-3 inline-flex rounded-full border border-outline-variant bg-surface-container p-0.5 font-mono text-[0.78rem]"
       >
         {(["absolute", "align10k"] as const).map((m) => (
@@ -61,7 +65,7 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
         viewBox={`0 0 ${W} ${H}`}
         className="aspect-[880/300] min-w-[38rem] w-full max-w-none"
         role="img"
-        aria-label={`Star history overlay of ${chart.lines.length} repositories (${mode})`}
+        aria-label={fill(ariaLabels.starHistoryOverlay, { count: String(chart.lines.length), mode: modeLabels[mode] })}
         preserveAspectRatio="xMidYMid meet"
       >
         {/* baseline */}
@@ -145,4 +149,8 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
       </ul>
     </figure>
   );
+}
+
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
 }

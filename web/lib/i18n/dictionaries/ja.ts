@@ -1,7 +1,7 @@
 import type { Dict } from "./en";
 
 const ja: Dict = {
-  nav: { home: "ホーム", pulse: "動向", rankings: "ランキング", categories: "カテゴリ", compare: "比較", about: "このサイトについて" },
+  nav: { home: "ホーム", pulse: "動向", rankings: "ランキング", categories: "カテゴリ", organizations: "組織", compare: "比較", about: "このサイトについて" },
   common: {
     faqHeading: "よくある質問",
     dataLastUpdated: "データ最終更新",
@@ -14,6 +14,19 @@ const ja: Dict = {
     json: "JSON",
     previous: "前へ",
     next: "次へ",
+  },
+  a11y: {
+    primary: "主要",
+    primaryNavigation: "主要ナビゲーション",
+    switchTheme: "テーマを切り替え",
+    language: "言語",
+    breadcrumb: "パンくずリスト",
+    footer: "フッター",
+    skipToContent: "本文へスキップ",
+    compareModes: "{absolute} / {align10k}",
+    starHistory: "スター履歴 - {months} か月で {stars} スターまで上昇",
+    starHistoryOverlay: "{count} 件のリポジトリのスター履歴オーバーレイ（{mode}）",
+    starsAdded: "{label}: {stars} スター増加",
   },
   meta: {
     homeTitle: "オープンソースの動向と GitHub スター履歴",
@@ -246,6 +259,10 @@ const ja: Dict = {
     madeIn: "東京で制作",
     dataThrough: "データ反映日",
     privacy: "プライバシー",
+    dataFrom: "データ提供:",
+    licensedUnder: "ライセンス:",
+    attributionSuffix:
+      "GitStarClub が派生・変換しています。リポジトリのメタデータと現在のスター数は公開 GitHub API から取得しています。",
   },
   privacy: {
     eyebrow: "プライバシー",
@@ -275,6 +292,9 @@ const ja: Dict = {
     owner: "オーナー",
     ownerType: "オーナー種別",
     trackedRepositories: "追跡リポジトリ",
+    slug: "スラッグ",
+    gitstarclubUrl: "GitStarClub の URL",
+    rowStarsAdded: "{rank}: {stars} スター増加",
   },
   search: { label: "検索", placeholder: "リポジトリを検索…", empty: "一致するリポジトリがありません", loading: "読み込み中…" },
   share: {

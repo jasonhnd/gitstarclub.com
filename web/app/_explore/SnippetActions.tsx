@@ -9,21 +9,14 @@ export type SnippetActionLabels = {
   embedCopied: string;
 };
 
-const DEFAULT_LABELS: SnippetActionLabels = {
-  copy: "Copy",
-  copied: "Copied",
-  embed: "Embed",
-  embedCopied: "Embed copied",
-};
-
 export function SnippetActions({
   copyText,
   embedHtml,
-  labels = DEFAULT_LABELS,
+  labels,
 }: {
   copyText: string;
   embedHtml: string;
-  labels?: SnippetActionLabels;
+  labels: SnippetActionLabels;
 }) {
   const [copied, setCopied] = useState<"text" | "embed" | null>(null);
 

@@ -3,6 +3,9 @@ import { fmtK } from "@/lib/format";
 type Point = { label: string; total: number };
 export type Milestone = { stars: number; label: string; monthIndex: number; date: string };
 export type CurveInflection = { monthIndex: number; flow: number; kind: "surge" | "peak"; label: string };
+export type StarCurveLabels = {
+  ariaLabel: string;
+};
 
 // Server-rendered SVG area chart. Zero client JS. Amber gradient fill,
 // gold milestone pins, CSS line-draw on load. Tolerates non-monotone series
@@ -11,10 +14,12 @@ export function StarCurve({
   series,
   milestones,
   inflections = [],
+  labels,
 }: {
   series: Point[];
   milestones: Milestone[];
   inflections?: CurveInflection[];
+  labels: StarCurveLabels;
 }) {
   const W = 880;
   const H = 300;
@@ -42,7 +47,7 @@ export function StarCurve({
         viewBox={`0 0 ${W} ${H}`}
         className="aspect-[880/300] min-w-[38rem] w-full max-w-none"
         role="img"
-        aria-label={`Star history — rises to ${fmtK(max)} stars over ${n} months`}
+        aria-label={fill(labels.ariaLabel, { stars: fmtK(max), months: String(n) })}
         preserveAspectRatio="xMidYMid meet"
       >
         <defs>
@@ -141,4 +146,8 @@ export function StarCurve({
       </svg>
     </figure>
   );
+}
+
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
 }

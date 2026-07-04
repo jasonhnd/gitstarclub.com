@@ -19,6 +19,7 @@ import { fmtStars } from "@/lib/format";
 import { getDictionary, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { pageMeta } from "@/lib/seo";
+import { answerCapsuleLabels } from "./detail-copy";
 import { buildLocalizedCompareCapsule, buildLocalizedCompareFaqs } from "./seo-copy";
 
 const COMPARE_PATH = "/compare";
@@ -54,6 +55,8 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
     remove: t.compare.remove,
     pickerEmpty: t.search.empty,
     pickerLoading: t.search.loading,
+    compareModesAria: t.a11y.compareModes,
+    starHistoryOverlayAria: t.a11y.starHistoryOverlay,
   };
 
   return (
@@ -65,7 +68,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
           <h1 className="font-mono text-[clamp(1.4rem,4vw,2.2rem)] font-semibold text-on-surface">{t.compare.title}</h1>
           <p className="mt-3 max-w-[60ch] text-[clamp(1rem,1.5vw,1.1rem)] text-on-surface-variant">{t.compare.subtitle}</p>
         </header>
-        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" />}
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={answerCapsuleLabels(locale, t)} />}
         {conclusionText && pairConclusions.length > 0 && (
           <section aria-labelledby="server-compare-title" className="mt-[clamp(1.5rem,3vw,2.25rem)] rounded-2xl border border-outline-variant bg-surface-container px-4 py-4">
             <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">{t.compare.serverEyebrow}</p>
@@ -99,11 +102,11 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
                   {pairConclusions.map((row) => (
                     <tr key={row.label}>
                       <th scope="row" className="py-3 pr-4 align-top font-mono text-[0.82rem] font-semibold text-on-surface">
-                        <Link href={`/${row.repos[0].fullName}`} className="hover:text-primary hover:underline hover:underline-offset-2">
+                        <Link href={localizedPath(locale, `/${row.repos[0].fullName}`)} className="hover:text-primary hover:underline hover:underline-offset-2">
                           {row.repos[0].fullName}
                         </Link>
                         <span className="text-on-surface-variant"> {t.common.versus} </span>
-                        <Link href={`/${row.repos[1].fullName}`} className="hover:text-primary hover:underline hover:underline-offset-2">
+                        <Link href={localizedPath(locale, `/${row.repos[1].fullName}`)} className="hover:text-primary hover:underline hover:underline-offset-2">
                           {row.repos[1].fullName}
                         </Link>
                       </th>

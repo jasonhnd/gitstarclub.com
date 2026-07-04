@@ -9,6 +9,12 @@ export type AnswerCapsuleContent = {
   source: typeof ANSWER_CAPSULE_SOURCE;
 };
 
+export type VisibleCapsuleLabels = {
+  answerCapsule: string;
+  dataAsOf: string;
+  source: string;
+};
+
 export type CapsuleRankRow = {
   owner: string;
   name: string;
@@ -193,8 +199,8 @@ export function capsuleWordCount(capsule: Pick<AnswerCapsuleContent, "text"> | s
   return text.replace(/[—/]/g, " ").trim().split(/\s+/).filter(Boolean).length;
 }
 
-export function visibleCapsuleSnapshot(capsule: AnswerCapsuleContent): string {
-  return ["Answer capsule", capsule.text, `Data as of: ${capsule.asOf}`, `Source: ${capsule.source}`].join("\n");
+export function visibleCapsuleSnapshot(capsule: AnswerCapsuleContent, labels: VisibleCapsuleLabels): string {
+  return [labels.answerCapsule, capsule.text, `${labels.dataAsOf}: ${capsule.asOf}`, `${labels.source}: ${capsule.source}`].join("\n");
 }
 
 function capsule(text: string, asOf: string): AnswerCapsuleContent {

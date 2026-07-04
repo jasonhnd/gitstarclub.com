@@ -17,6 +17,7 @@ import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { organizationTableLabels, repositoryTableLabels } from "./routing";
+import { answerCapsuleLabels } from "./detail-copy";
 import { buildLocalizedAllTimeRankingCapsule, buildLocalizedAllTimeRankingFaqs } from "./seo-copy";
 
 const RANKINGS_PATH = "/rankings";
@@ -90,7 +91,7 @@ export async function RankingsPageView({ locale }: { locale: Locale }) {
         </h1>
         <p className="mt-3 max-w-[46ch] text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">{t.rankings.subtitle}</p>
 
-        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" />}
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" labels={answerCapsuleLabels(locale, t)} />}
 
         <section className="mt-[clamp(1.5rem,3vw,2.25rem)] grid gap-3 md:grid-cols-4">
           <HistoryLink href={href(RANKINGS_PATH)} label={t.rankings.allTime} value={t.rankings.repositories} active />
@@ -122,7 +123,7 @@ export async function RankingsPageView({ locale }: { locale: Locale }) {
           </section>
           <section>
             <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">{t.rankings.organizations}</h2>
-            <OrganizationRankingTable rows={orgs} caption={orgLabels.caption} labels={orgLabels} />
+            <OrganizationRankingTable rows={orgs} caption={orgLabels.caption} labels={orgLabels} locale={locale} />
           </section>
         </div>
 

@@ -1,7 +1,7 @@
 // UI-chrome strings only. Data such as repo names, languages, topics, and numbers is never translated.
 // `en` is the source-of-truth shape; every other dictionary must match these keys.
 export const en = {
-  nav: { home: "Home", pulse: "Pulse", rankings: "Rankings", categories: "Categories", compare: "Compare", about: "About" },
+  nav: { home: "Home", pulse: "Pulse", rankings: "Rankings", categories: "Categories", organizations: "Organizations", compare: "Compare", about: "About" },
   common: {
     faqHeading: "Frequently asked questions",
     dataLastUpdated: "Data last updated",
@@ -14,6 +14,19 @@ export const en = {
     json: "JSON",
     previous: "Previous",
     next: "Next",
+  },
+  a11y: {
+    primary: "Primary",
+    primaryNavigation: "Primary navigation",
+    switchTheme: "Switch theme",
+    language: "Language",
+    breadcrumb: "Breadcrumb",
+    footer: "Footer",
+    skipToContent: "Skip to content",
+    compareModes: "{absolute} / {align10k}",
+    starHistory: "Star history - rises to {stars} stars over {months} months",
+    starHistoryOverlay: "Star history overlay of {count} repositories ({mode})",
+    starsAdded: "{label}: {stars} stars added",
   },
   meta: {
     homeTitle: "Open Source Pulse & GitHub Star History",
@@ -251,6 +264,10 @@ export const en = {
     madeIn: "Made in Tokyo",
     dataThrough: "Data updated through",
     privacy: "Privacy",
+    dataFrom: "Data from",
+    licensedUnder: "licensed under",
+    attributionSuffix:
+      "derived and transformed by GitStarClub. GitHub repository metadata and current star totals come from public GitHub APIs.",
   },
   privacy: {
     eyebrow: "Privacy",
@@ -280,6 +297,9 @@ export const en = {
     owner: "Owner",
     ownerType: "Owner type",
     trackedRepositories: "Tracked repositories",
+    slug: "Slug",
+    gitstarclubUrl: "GitStarClub URL",
+    rowStarsAdded: "{rank}: {stars} stars added",
   },
   search: { label: "Search", placeholder: "Search repositories…", empty: "No matching repositories", loading: "Loading…" },
   share: {
