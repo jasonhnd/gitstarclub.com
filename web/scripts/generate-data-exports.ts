@@ -1,15 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { currentUtcPeriods } from "../lib/periods";
 import { buildDataExportBundle, type DataExportBundle } from "../lib/data-exports";
+import { loadWebEnvFiles, warnEnvFileDiagnostic } from "./lib/env";
 
 const BLOB_BASE_KEYS = ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL"] as const;
 const webDir = fileURLToPath(new URL("..", import.meta.url));
 const publicDir = join(webDir, "public");
 const exportRoot = join(publicDir, "data", "exports", "v1");
-
-type BlobBaseKey = (typeof BLOB_BASE_KEYS)[number];
 
 type Args = {
   month: string;
@@ -48,32 +47,11 @@ function parseArgs(argv: string[]): Args {
   return { month };
 }
 
-function unquoteEnvValue(raw: string): string {
-  let value = raw.trim();
-  const quote = value[0];
-  if ((quote === `"` || quote === `'`) && value.endsWith(quote)) {
-    value = value.slice(1, -1);
-    if (quote === `"`) value = value.replaceAll("\\n", "\n").replaceAll("\\r", "\r");
-  } else {
-    value = value.replace(/\s+#.*$/, "").trim();
-  }
-  return value;
-}
-
 function loadBlobBaseFromEnvFile(): void {
-  const envPath = join(webDir, ".env.local");
-  if (!existsSync(envPath)) return;
-
-  for (const rawLine of readFileSync(envPath, "utf8").split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    const normalized = line.startsWith("export ") ? line.slice("export ".length).trimStart() : line;
-    const eq = normalized.indexOf("=");
-    if (eq <= 0) continue;
-    const key = normalized.slice(0, eq).trim();
-    if (!BLOB_BASE_KEYS.includes(key as BlobBaseKey)) continue;
-    process.env[key] ??= unquoteEnvValue(normalized.slice(eq + 1));
-  }
+  loadWebEnvFiles(webDir, {
+    keys: BLOB_BASE_KEYS,
+    onDiagnostic: warnEnvFileDiagnostic,
+  });
 }
 
 function ensureBlobBase(): void {

@@ -3,12 +3,11 @@
 //   bun scripts/validate-live-views.ts [cacheBust]
 //   bun scripts/validate-live-views.ts --bust 2026-05-31
 
-import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
 import type { ZodType } from "zod";
 import { CurrentMonth, HotSnapshot } from "../lib/contracts/index";
 import type { RankItem } from "../lib/contracts/index";
+import { loadWebEnvFiles, warnEnvFileDiagnostic } from "./lib/env";
 
 const BLOB_BASE_KEYS = ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL"] as const;
 const webDir = fileURLToPath(new URL("..", import.meta.url));
@@ -75,36 +74,11 @@ function parseArgs(argv: string[]): string {
   return bust || utcToday();
 }
 
-function unquoteEnvValue(raw: string): string {
-  let value = raw.trim();
-  const quote = value[0];
-  if ((quote === `"` || quote === `'`) && value.endsWith(quote)) {
-    value = value.slice(1, -1);
-    if (quote === `"`) value = value.replaceAll("\\n", "\n").replaceAll("\\r", "\r");
-  } else {
-    value = value.replace(/\s+#.*$/, "").trim();
-  }
-  return value;
-}
-
 function loadBlobBaseFromEnvFile(): void {
-  const envPath = join(webDir, ".env.local");
-  if (!existsSync(envPath)) return;
-
-  for (const rawLine of readFileSync(envPath, "utf8").split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-
-    const normalized = line.startsWith("export ") ? line.slice("export ".length).trimStart() : line;
-    const eq = normalized.indexOf("=");
-    if (eq <= 0) continue;
-
-    const key = normalized.slice(0, eq).trim();
-    if (!BLOB_BASE_KEYS.includes(key as BlobBaseKey)) continue;
-    if (process.env[key]) continue;
-
-    process.env[key] = unquoteEnvValue(normalized.slice(eq + 1));
-  }
+  loadWebEnvFiles(webDir, {
+    keys: BLOB_BASE_KEYS,
+    onDiagnostic: warnEnvFileDiagnostic,
+  });
 }
 
 function resolveBlobBase(): { base: URL; envKey: BlobBaseKey } {
