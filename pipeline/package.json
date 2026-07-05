@@ -12,6 +12,6 @@
   },
   "dependencies": {
     "@duckdb/node-api": "1.5.3-r.2",
-    "@vercel/blob": "^1"
+    "@vercel/blob": "^2.5.0"
   }
 }

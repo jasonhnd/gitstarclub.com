@@ -7,7 +7,13 @@
 
 ## Current Automation
 
-GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test`.
+GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun install --frozen-lockfile`, `bun audit --audit-level=high`, `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test`. It also runs `bun install --frozen-lockfile` and `bun audit --audit-level=high` from `pipeline/`, because `pipeline` has a separate Bun lockfile and install context.
+
+### Dependency audit policy
+
+High-severity dependency advisories are CI blockers. Fix them by upgrading the direct dependency that owns the vulnerable chain; when no fixed direct release exists, use a narrow top-level Bun `overrides` entry and remove it once the upstream package releases a fixed dependency.
+
+Moderate and low advisories are not PR blockers by default, but they must be reviewed during dependency maintenance. Escalate them to blocking work when they affect server-side fetch, route handling, build-time parsing, or workflow/pipeline execution, or when the advisory notes a realistic production exploit path.
 
 The visual, a11y, E2E, performance, and cross-browser sections below remain target coverage until their Playwright/Lighthouse/browser tooling is added. They should not be treated as current PR blockers.
 
