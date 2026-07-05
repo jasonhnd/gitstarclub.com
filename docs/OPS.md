@@ -181,7 +181,8 @@ blob://
 │   ├── sync-runs.json                               # live cron 运行记录（保留最近 100 次）
 │   └── workflows/
 │       ├── latest-success.json                      #   最近一次成功 run 的恢复点：{ run_id, version, published_at }
-│       ├── health.json                              #   pipeline 健康灯（workflow ok/failed；cron 失败路径写 failed）
+│       ├── active.json                              #   当前 refresh lease（ETag 条件写；含 idempotency_key）
+│       ├── health.json                              #   pipeline 健康灯（workflow ok/failed/attached/rejected；cron 失败路径写 failed）
 │       └── <run_id>/                                #   Workflow 单次 run checkpoint
 │           ├── manifest.json                        #     步骤清单 + 状态（running / published / failed）
 │           ├── validation.json                      #     发布闸门结果（ok · checked · invariants · failures）
@@ -315,7 +316,7 @@ For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, 
 
 **一行接入**：在 Vercel 项目 Settings → Environment Variables 加 `ALERT_WEBHOOK_URL`，值指向一个能收 JSON POST 的端点——Slack / Discord incoming webhook，或调试用的 `https://webhook.site/...`。配上即生效，无需改代码；留空则保持纯日志模式。
 
-> `ops/workflows/health.json` 由 `recordHealth` 写入：Workflow 成功 / 失败都会写 `workflow-refresh` 的 `ok` / `failed`；每日 / 每周 cron 当前只在失败路径写 `cron-daily` / `cron-weekly` 的 `failed`（成功记录仍以 `ops/sync-runs.json` 为准）。因此排查 cron 最近成功时间时，先看 `ops/sync-runs.json`，不要把 health.json 没有 cron `ok` 误判成成功灯缺失。
+> `ops/workflows/health.json` 由 `recordHealth` 写入：Workflow 成功 / 失败都会写 `workflow-refresh` 的 `ok` / `failed`；refresh start 路由遇到同一周幂等重试会写 `attached`，遇到不同 idempotency key 的并发 active run 会写 `rejected`；每日 / 每周 cron 当前只在失败路径写 `cron-daily` / `cron-weekly` 的 `failed`（成功记录仍以 `ops/sync-runs.json` 为准）。因此排查 cron 最近成功时间时，先看 `ops/sync-runs.json`，不要把 health.json 没有 cron `ok` 误判成成功灯缺失。
 
 ## 一次性 bootstrap Runbook（归档 / 非日常路径）
 
