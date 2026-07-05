@@ -1,3 +1,14 @@
+---
+owner: ranking
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - ranking definitions
+  - stock anchoring
+  - derived rankings
+  - ranking edge cases
+---
+
 # gitstarclub 排名规格
 
 ## Scope

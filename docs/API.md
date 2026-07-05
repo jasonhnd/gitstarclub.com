@@ -1,3 +1,13 @@
+---
+owner: API / route contracts
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - endpoint contracts
+  - route handler auth and cache behavior
+  - public JSON and metadata endpoint behavior
+---
+
 # GitStarClub API reference
 
 ## Scope

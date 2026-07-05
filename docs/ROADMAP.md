@@ -1,3 +1,13 @@
+---
+owner: roadmap
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - open work
+  - architectural decisions
+  - backlog
+---
+
 # Roadmap
 
 Open work and the architectural decisions that gate it. For history of what has shipped, see [CHANGELOG.md](./CHANGELOG.md). For how the system currently works, start at [README.md](./README.md).

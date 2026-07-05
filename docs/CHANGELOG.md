@@ -1,3 +1,12 @@
+---
+owner: release history
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - versioned release history
+  - shipped changes
+---
+
 # Changelog
 
 Notable changes to gitstarclub. Newest first. Versioning is informal: the running site is always the tip of `main`.

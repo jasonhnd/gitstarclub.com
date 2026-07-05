@@ -1,3 +1,15 @@
+---
+owner: SEO
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - per-page SEO templates
+  - sitemap structure
+  - robots and noindex policy
+  - internal linking
+  - i18n SEO posture
+---
+
 # gitstarclub SEO 设计
 
 ## Scope

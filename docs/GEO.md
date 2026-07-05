@@ -1,3 +1,15 @@
+---
+owner: GEO
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - answer-engine citation strategy
+  - answer capsules
+  - GEO schema plan
+  - AI crawler hygiene
+  - freshness and measurement intent
+---
+
 # GitStarClub GEO strategy and implementation design
 
 ## Scope

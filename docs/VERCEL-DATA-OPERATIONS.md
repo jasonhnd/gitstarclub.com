@@ -1,3 +1,14 @@
+---
+owner: data operations / workflows
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - production data lifecycle
+  - Vercel Blob publish model
+  - Workflow refresh pipeline
+  - rollback and garbage collection
+---
+
 # gitstarclub Vercel 数据运营（VERCEL-DATA-OPERATIONS）
 
 > 本文目标:描述 gitstarclub 生产数据生命周期在 Vercel 上的当前运行形态——所有 recurring 数据作业在 Vercel 触发、运行、记录、发布、回滚。本机 `pipeline/backfill` 仅作为一次性 bootstrap 工具 / 历史归档,不在日常运营路径上。
