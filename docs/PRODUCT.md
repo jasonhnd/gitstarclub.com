@@ -6,6 +6,22 @@
 
 本文档描述**产品本身**——gitstarclub 是什么、给谁看、各页面承载什么、调性、数据诚实立场、i18n 立场。改动产品前先读此文。版本/阶段/状态属于工程进度,不在此处。当前不在范围内的能力见 [ROADMAP.md](./ROADMAP.md)。
 
+## 需求 ID 对照
+
+稳定 requirement ID 的单一来源是 [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-id--优先级--追踪矩阵)。本产品文档只记录页面/体验如何承载这些 ID；验收口径仍回到 REQUIREMENTS 的 `P0-AC*` 与测试文档。
+
+| Requirement ID | Product surface | Priority | Product responsibility |
+|---|---|---|---|
+| `REQ-CHRONICLE-001` | 首页、年/月/周榜、repo/org 页、全时榜 | P0 | 提供可回看、可内链、标注 as-of 的编年史阅读体验。 |
+| `REQ-PULSE-001` | 首页"现在在涨"区、`/pulse` | P0 | 呈现今日/本周 movers、复活/突刺与每日刷新语义。 |
+| `REQ-RANKING-001` | 年/月/周/全时榜单与派生榜 | P0 | 让 repo/org、flow/stock、growth/new 的榜单语义在页面上清晰可比。 |
+| `REQ-I18N-001` | English 无前缀 URL；ja/zh/zh-TW/ko/es/fr 前缀 URL | P0 | 本地化 chrome、metadata 和 SEO 链接，同时保持 repo 数据字段原文。 |
+| `REQ-DATAOPS-001` | 数据诚实、新鲜度、as-of/每日刷新说明 | P0 | 页面只表达已发布数据状态，不暗示请求时实时抓取或预测。 |
+| `REQ-PERF-001` | 静态内容页、低 JS、可 CDN 缓存的阅读体验 | P0 | 产品体验不得依赖客户端重绘正文或请求路径数据计算。 |
+| `REQ-SEARCH-001` | 顶栏搜索与搜索结果 "+对比" | P1 | 提供按名字直达和从搜索进入 compare 的发现入口。 |
+| `REQ-COMPARE-001` | `/compare?repos=...` | P1 | 用可分享 URL 表达多 repo 曲线对比状态。 |
+| `REQ-CATEGORY-001` | `/categories` 及分类下钻 | P1 | 支持按生态/语言/领域等维度发现 ranked repos。 |
+
 ## 产品定位
 
 gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,302 个 ≥10k star 项目跨 12 年时间轴的两面式站点:
