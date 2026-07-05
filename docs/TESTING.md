@@ -148,7 +148,7 @@ test('周排名窗口跨月不丢日', () => {
 
 > **别名与分类相关测试**（覆盖上文 §1.5 闸门里的 alias/category 断言对应逻辑）：
 > - `web/lib/workflows/recompute/aliases.test.ts`：alias-map 构建（并集保留的 `renames.json` 增量 → 当前 id）。
-> - `web/lib/workflows/recompute/categories.test.ts`：分类产物派生（registry / assignments / lookup / all-time category rank、public 资格、curated 绕过 `minimum_repo_count`）。
+> - `web/lib/workflows/recompute/categories.test.ts`：分类产物派生（registry / assignments / lookup / paged all-time category rank、public 资格、curated 绕过 `minimum_repo_count`）。
 > - `web/lib/categories/rules.test.ts`：确定性分类规则（slug 归一、language-family 映射、topic/keyword 规则）。
 
 - **parity 跳过 / 边界**：`web/lib/integration/recompute.test.ts` 经 `NO_DISK_REF` 跳过 `search/index.json`（派生视图，DuckDB 无参照可对拍），与 live-artifact 跳过并列——其余视图仍逐字节对拍。该 DuckDB disk reference 只在 `folded_through <= seam` 时是等价参照;post-seam 公式由 `web/lib/integration/post-seam-oracle.test.ts` 的合成夹具断言 `round(cumGross@seam * d) + Σ(post-seam net)`。

@@ -38,6 +38,8 @@ import { generateCoreLocaleStaticParams } from "./routing";
 type YearParam = { year: string };
 type PeriodParam = { year: string; period: string };
 
+const RANKING_DETAIL_ROW_LIMIT = 100;
+
 export function generateRankingYearStaticParams(): YearParam[] {
   return [{ year: String(currentUtcPeriods().year) }];
 }
@@ -96,7 +98,13 @@ export async function RankingsYearPageView({ locale, year: yearValue }: { locale
   ]);
   if (!rank || !lookup) notFound();
 
-  const rankRows: Row[] = joinRepoRank(rank.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const rankRows: Row[] = joinRepoRank(rank.items.slice(0, RANKING_DETAIL_ROW_LIMIT), lookup).map((r) => ({
+    owner: r.owner,
+    name: r.name,
+    lang: r.language,
+    gained: r.value,
+    total: r.current_stars,
+  }));
   const asOf = resolveDataAsOfLabel(rank.meta.generated_at, heat?.meta.generated_at, { locale });
   const pagePath = `/rankings/${year}`;
   const routePath = localizedPath(locale, pagePath);
@@ -223,7 +231,13 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   ]);
   if (!flow || !lookup) notFound();
 
-  const flowRows: Row[] = joinRepoRank(flow.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const flowRows: Row[] = joinRepoRank(flow.items.slice(0, RANKING_DETAIL_ROW_LIMIT), lookup).map((r) => ({
+    owner: r.owner,
+    name: r.name,
+    lang: r.language,
+    gained: r.value,
+    total: r.current_stars,
+  }));
   const pageLabel = monthYearLabel(locale, year, month);
   const title = fill(text.periodMetaTitle, { label: pageLabel });
   const asOf = resolveDataAsOfLabel(flow.meta.generated_at, heat?.meta.generated_at, { locale });
@@ -231,13 +245,11 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: flowRows, metric: "gained" });
   const most = flowRows.slice(0, 18);
   const fastest: Row[] = growth
-    ? joinRepoRank(growth.items, lookup)
-        .slice(0, 10)
+    ? joinRepoRank(growth.items.slice(0, 10), lookup)
         .map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars, rate: r.rate }))
     : [];
   const newcomers: Row[] = newc
-    ? joinRepoRank(newc.items, lookup)
-        .slice(0, 10)
+    ? joinRepoRank(newc.items.slice(0, 10), lookup)
         .map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars, crossedDay: r.date ? Number(r.date.slice(8, 10)) : undefined }))
     : [];
   const cells = (heat?.cells ?? []).map(([date, total]) => ({ label: String(Number(String(date).slice(8, 10))), gained: total }));
@@ -358,7 +370,13 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const period = `${year}-W${String(week).padStart(2, "0")}`;
   const [flow, lookup] = await Promise.all([getRank("week", period, "repo", "flow"), getReposLookup()]);
   if (!flow || !lookup) notFound();
-  const rankRows: Row[] = joinRepoRank(flow.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const rankRows: Row[] = joinRepoRank(flow.items.slice(0, RANKING_DETAIL_ROW_LIMIT), lookup).map((r) => ({
+    owner: r.owner,
+    name: r.name,
+    lang: r.language,
+    gained: r.value,
+    total: r.current_stars,
+  }));
   const title = fill(text.periodMetaTitle, { label: period });
   const asOf = resolveDataAsOfLabel(flow.meta.generated_at, { locale });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: rankRows, metric: "gained" }) : null;

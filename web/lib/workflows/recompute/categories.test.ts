@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CATEGORY_RANK_PAGE_SIZE, categoryAllTimeRankPath } from "../../categories/rank-pages";
 import { buildModel, type RawShards, type RepoMeta } from "./model";
 import { computeCategoryViews } from "./categories";
 
@@ -64,6 +65,29 @@ function fixtureModel() {
   return buildModel(raw, "");
 }
 
+function modelFromRepos(repos: Record<string, RepoMeta>) {
+  const raw = {
+    repos,
+    monthly: {},
+    weekly: {},
+    recentDaily: {},
+    siteDailyByYear: {},
+  } as RawShards;
+  return buildModel(raw, "");
+}
+
+function largePythonModel(count: number) {
+  const repos: Record<string, RepoMeta> = {};
+  for (let id = 1; id <= count; id++) {
+    repos[String(id)] = repo(id, {
+      language: "Python",
+      topics: ["python"],
+      current_stars: 200_000 - id,
+    });
+  }
+  return modelFromRepos(repos);
+}
+
 describe("computeCategoryViews", () => {
   const views = computeCategoryViews(fixtureModel(), GEN);
 
@@ -123,9 +147,38 @@ describe("computeCategoryViews", () => {
   });
 
   test("all-time category rank only includes assigned repos", () => {
-    const rank = views.get("rank/category/language/python/all-time/repo/stock.json") as { items: Array<{ id: number; value: number }> };
+    const rank = views.get(categoryAllTimeRankPath("language", "python")) as { items: Array<{ id: number; value: number }> };
     expect(rank.items.map((item) => item.id)).toEqual([1, 2]);
     expect(rank.items.map((item) => item.value)).toEqual([120_000, 80_000]);
+    expect(views.has(categoryAllTimeRankPath("language", "python", 2))).toBe(false);
+  });
+
+  test("does not emit all-time category rank pages for empty categories", () => {
+    const emptyViews = computeCategoryViews(modelFromRepos({}), GEN);
+    expect(emptyViews.has(categoryAllTimeRankPath("language", "python"))).toBe(false);
+  });
+
+  test("paginates all-time category ranks larger than one page", () => {
+    const largeViews = computeCategoryViews(largePythonModel(CATEGORY_RANK_PAGE_SIZE + 3), GEN);
+    const firstPage = largeViews.get(categoryAllTimeRankPath("language", "python")) as {
+      items: Array<{ rank: number; id: number; value: number }>;
+    };
+    const secondPage = largeViews.get(categoryAllTimeRankPath("language", "python", 2)) as {
+      items: Array<{ rank: number; id: number; value: number }>;
+    };
+
+    expect(firstPage.items).toHaveLength(CATEGORY_RANK_PAGE_SIZE);
+    expect(firstPage.items[0]).toMatchObject({ rank: 1, id: 1, value: 199_999 });
+    expect(firstPage.items[CATEGORY_RANK_PAGE_SIZE - 1]).toMatchObject({
+      rank: CATEGORY_RANK_PAGE_SIZE,
+      id: CATEGORY_RANK_PAGE_SIZE,
+    });
+    expect(secondPage.items).toHaveLength(3);
+    expect(secondPage.items[0]).toMatchObject({
+      rank: CATEGORY_RANK_PAGE_SIZE + 1,
+      id: CATEGORY_RANK_PAGE_SIZE + 1,
+    });
+    expect(largeViews.has(categoryAllTimeRankPath("language", "python", 3))).toBe(false);
   });
 
   test("does not emit period category ranks in phase 1", () => {
