@@ -55,8 +55,8 @@ export function mergeBuckets<T>(sub: string): Record<string, T> {
 export function loadRawShards(): RawShards {
   const siteDailyByYear: RawShards["siteDailyByYear"] = {};
   for (const f of readdirSync(`${CANON}/site-daily`)) {
-    const o = J(`${CANON}/site-daily/${f}`) as { year: number };
-    siteDailyByYear[o.year] = o as RawShards["siteDailyByYear"][number];
+    const o = J(`${CANON}/site-daily/${f}`) as RawShards["siteDailyByYear"][number];
+    siteDailyByYear[o.year] = o;
   }
   return {
     repos: mergeBuckets("repos"),

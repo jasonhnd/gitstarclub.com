@@ -26,11 +26,13 @@ const describeLive = LIVE_SEO_ENABLED ? describe : describe.skip;
 // The page's *own* canonical URL is built against the apex host the site canonicalizes to.
 const CANON_ORIGIN = (process.env.SEO_CANON_ORIGIN ?? "https://gitstarclub.com").replace(/\/+$/, "");
 
-const PAGES = [
+type SeoPage = { label: string; path: string; canonPath: string };
+
+const PAGES: SeoPage[] = [
   { label: "home", path: "/", canonPath: "" },
   { label: "repo detail (/vuejs/vue)", path: "/vuejs/vue", canonPath: "/vuejs/vue" },
   { label: "month rankings (/rankings/2024/6)", path: "/rankings/2024/6", canonPath: "/rankings/2024/6" },
-] as const;
+];
 
 const FETCH_TIMEOUT_MS = 30_000;
 

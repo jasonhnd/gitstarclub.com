@@ -1,22 +1,23 @@
 // Minimal PWA service worker. Cache only immutable/static assets.
 // HTML and API responses depend on cookies, so they must always hit the network.
 const CACHE = "gsc-static-v2";
+const sw = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (self));
 
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) =>
+sw.addEventListener("install", () => sw.skipWaiting());
+sw.addEventListener("activate", (event) =>
   event.waitUntil(
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
+      .then(() => sw.clients.claim()),
   ),
 );
 
-self.addEventListener("fetch", (event) => {
+sw.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== sw.location.origin) return;
   if (request.mode === "navigate" || request.destination === "document" || url.pathname.startsWith("/api/")) return;
 
   const cacheable =
@@ -32,7 +33,7 @@ self.addEventListener("fetch", (event) => {
           if (res && res.ok) cache.put(request, res.clone());
           return res;
         })
-        .catch(() => cached);
+        .catch(() => cached ?? Response.error());
       return cached || network;
     }),
   );

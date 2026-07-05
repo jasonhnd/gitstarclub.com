@@ -106,6 +106,8 @@ Run these from `web/`:
 | Start the dev server | `bun dev` |
 | Lint | `bun run lint` |
 | Typecheck | `bun run typecheck` |
+| Typecheck tests / integration | `bun run typecheck:tests` |
+| Typecheck scripts / pipeline JS | `bun run typecheck:scripts` |
 | Test | `bun test lib/` |
 | Build | `bun run build` |
 
