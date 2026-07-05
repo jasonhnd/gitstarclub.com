@@ -16,17 +16,18 @@ This section is the authoritative newcomer reading order. Update it when adding,
 2. [ARCHITECTURE.md](./ARCHITECTURE.md) — system overview: tech stack, data flow, data model, rendering model, hard constraints.
 3. [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) — Blob layout, publish pointer, Workflow pipeline, live overlay, rollback, garbage collection.
 4. [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) — every canonical shard and view schema (the Zod source of truth).
-5. [PIPELINE.md](./PIPELINE.md) — bootstrap pipeline (one-off, archive-only).
-6. [RANKING.md](./RANKING.md) — rank definitions: window × dim × metric, stock anchoring, derived rankings, tie-breaking.
-7. [CODEBASE.md](./CODEBASE.md) — code map: routes, layers, data access, workflow modules, and ownership boundaries.
-8. [DEVELOPMENT.md](./DEVELOPMENT.md) — development playbooks: which code and docs to touch for common changes.
-9. [WORKFLOW.md](./WORKFLOW.md) - document-driven issue, PR, merge, and visual-guardrail workflow.
-10. [FRONTEND.md](./FRONTEND.md) — route catalog, rendering strategy, component catalog, data-access layer, i18n.
-11. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) - locked visual baseline, tokens, typography, Chrome appearance, accessibility notes.
-12. [SEO.md](./SEO.md) — per-page SEO templates, sitemap structure, robots policy.
-13. [GEO.md](./GEO.md) — answer-engine citation strategy: answer capsules, schema, crawler hygiene, freshness, and measurement.
-14. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
-15. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
+5. [API.md](./API.md) — endpoint contracts: method, auth, params, response, cache, status codes, examples.
+6. [PIPELINE.md](./PIPELINE.md) — bootstrap pipeline (one-off, archive-only).
+7. [RANKING.md](./RANKING.md) — rank definitions: window × dim × metric, stock anchoring, derived rankings, tie-breaking.
+8. [CODEBASE.md](./CODEBASE.md) — code map: routes, layers, data access, workflow modules, and ownership boundaries.
+9. [DEVELOPMENT.md](./DEVELOPMENT.md) — development playbooks: which code and docs to touch for common changes.
+10. [WORKFLOW.md](./WORKFLOW.md) - document-driven issue, PR, merge, and visual-guardrail workflow.
+11. [FRONTEND.md](./FRONTEND.md) — route catalog, rendering strategy, component catalog, data-access layer, i18n.
+12. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) - locked visual baseline, tokens, typography, Chrome appearance, accessibility notes.
+13. [SEO.md](./SEO.md) — per-page SEO templates, sitemap structure, robots policy.
+14. [GEO.md](./GEO.md) — answer-engine citation strategy: answer capsules, schema, crawler hygiene, freshness, and measurement.
+15. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
+16. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
 Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [perf/CWV-25.md](./perf/CWV-25.md) for the pre-launch Lighthouse / Core Web Vitals baseline.
 
@@ -40,6 +41,7 @@ Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural 
 | ARCHITECTURE | System overview: tech stack, data flow, hard constraints, rendering model, key decisions |
 | VERCEL-DATA-OPERATIONS | Production data lifecycle: Blob layout, publish pointer, Workflow steps, rollback, garbage collection |
 | DATA-CONTRACTS | Per-shard / per-view Zod schemas (single source of truth for build-side types) |
+| API | Endpoint contracts: route handlers, public JSON endpoints, metadata endpoints, auth, cache, statuses |
 | PIPELINE | Bootstrap pipeline stages and algorithms (one-off, archived; recurring refresh lives in VERCEL-DATA-OPERATIONS) |
 | RANKING | Rank definitions, stock anchoring, derived rankings, edge cases (single source of truth for ranking algorithms) |
 | CODEBASE | Code map: route files, data layers, contracts, workflow modules, category system, and ownership boundaries |
@@ -65,6 +67,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 |---|---|
 | Repo / view counts | REQUIREMENTS |
 | Per-artifact schema (field-level) | DATA-CONTRACTS |
+| Endpoint contracts (method / auth / params / response / cache / status codes) | [API.md](./API.md) |
 | Blob layout | OPS (§Vercel Blob 布局) |
 | Branch topology / staging / promotion | [OPS.md](./OPS.md) (§Branch topology / staging) |
 | Cron schedule | OPS (§Cron 调度) |
