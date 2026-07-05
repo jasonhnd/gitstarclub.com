@@ -1,12 +1,12 @@
-import type { Metadata } from "next";
+import { createEnglishPage } from "@/app/_localized/page-adapter";
 import { generatePrivacyMetadata, PrivacyPageView } from "@/app/_localized/privacy";
 
 export const revalidate = false;
 
-export async function generateMetadata(): Promise<Metadata> {
-  return generatePrivacyMetadata("en");
-}
+const route = createEnglishPage({
+  generateMetadata: ({ locale }) => generatePrivacyMetadata(locale),
+  render: ({ locale }) => <PrivacyPageView locale={locale} />,
+});
 
-export default function PrivacyPage() {
-  return <PrivacyPageView locale="en" />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

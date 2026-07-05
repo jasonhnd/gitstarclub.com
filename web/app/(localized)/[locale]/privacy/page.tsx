@@ -1,19 +1,15 @@
-import type { Metadata } from "next";
+import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import { generatePrivacyMetadata, PrivacyPageView } from "@/app/_localized/privacy";
-import { generateCoreLocaleStaticParams, resolveRouteLocale, type LocaleParams } from "@/app/_localized/routing";
+import { generateCoreLocaleStaticParams } from "@/app/_localized/routing";
 
 export const revalidate = false;
 
-export function generateStaticParams() {
-  return generateCoreLocaleStaticParams();
-}
+export const generateStaticParams = generateCoreLocaleStaticParams;
 
-export async function generateMetadata({ params }: { params: LocaleParams }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  return generatePrivacyMetadata(locale);
-}
+const route = createLocalizedPage({
+  generateMetadata: ({ locale }) => generatePrivacyMetadata(locale),
+  render: ({ locale }) => <PrivacyPageView locale={locale} />,
+});
 
-export default async function LocalizedPrivacyPage({ params }: { params: LocaleParams }) {
-  const locale = await resolveRouteLocale(params);
-  return <PrivacyPageView locale={locale} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

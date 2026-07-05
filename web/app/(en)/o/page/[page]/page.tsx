@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
+import { createEnglishPage } from "@/app/_localized/page-adapter";
 import { getOrgsLookup } from "@/lib/data";
 import { parsePositivePage } from "@/lib/pagination";
 import { generateOrgIndexMetadata, OrgIndexPageView } from "@/app/_localized/org-index";
@@ -13,18 +13,22 @@ export async function generateStaticParams() {
   return Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) => ({ page: String(index + 2) }));
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ page: string }> }): Promise<Metadata> {
-  const page = parsePositivePage((await params).page) ?? 1;
-  return generateOrgIndexMetadata({ locale: "en", page });
-}
+const route = createEnglishPage<{ page: string }>({
+  generateMetadata: ({ locale, params }) => {
+    const page = parsePositivePage(params.page) ?? 1;
+    return generateOrgIndexMetadata({ locale, page });
+  },
+  render: async ({ locale, params }) => {
+    const page = parsePositivePage(params.page);
+    if (!page) notFound();
+    if (page === 1) permanentRedirect(orgIndexPath());
 
-export default async function OrgIndexPagedPage({ params }: { params: Promise<{ page: string }> }) {
-  const page = parsePositivePage((await params).page);
-  if (!page) notFound();
-  if (page === 1) permanentRedirect(orgIndexPath());
+    const totalPages = orgIndexPageCount(orgIndexRows(await getOrgsLookup()).length);
+    if (page > totalPages) notFound();
 
-  const totalPages = orgIndexPageCount(orgIndexRows(await getOrgsLookup()).length);
-  if (page > totalPages) notFound();
+    return <OrgIndexPageView locale={locale} page={page} />;
+  },
+});
 
-  return <OrgIndexPageView locale="en" page={page} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

@@ -1,12 +1,12 @@
-import type { Metadata } from "next";
+import { createEnglishPage } from "@/app/_localized/page-adapter";
 import { AboutPageView, generateAboutMetadata } from "@/app/_localized/about";
 
 export const revalidate = false;
 
-export async function generateMetadata(): Promise<Metadata> {
-  return generateAboutMetadata("en");
-}
+const route = createEnglishPage({
+  generateMetadata: ({ locale }) => generateAboutMetadata(locale),
+  render: ({ locale }) => <AboutPageView locale={locale} />,
+});
 
-export default function AboutPage() {
-  return <AboutPageView locale="en" />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;
