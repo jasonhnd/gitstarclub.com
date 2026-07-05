@@ -1,4 +1,5 @@
 import { putView } from "@/lib/data/write";
+import { BLOB_JSON_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
 import type { LiveRefreshJob, LiveRefreshResult } from "./live-refresh";
 
 const SYNC_RUNS_PATH = "ops/sync-runs.json";
@@ -84,7 +85,7 @@ async function readSyncRuns(): Promise<SyncRunsFile> {
   if (!base) return { generated_at: new Date().toISOString(), runs: [] };
 
   const url = `${base}/${SYNC_RUNS_PATH}?v=${Date.now()}`;
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetchWithTimeout(url, { cache: "no-store", timeoutMs: BLOB_JSON_FETCH_TIMEOUT_MS });
   if (res.status === 404) return { generated_at: new Date().toISOString(), runs: [] };
   if (!res.ok) throw new Error(`sync-runs fetch failed: ${res.status}`);
 
