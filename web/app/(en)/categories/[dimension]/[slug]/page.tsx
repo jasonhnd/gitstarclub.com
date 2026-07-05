@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import { createEnglishPage } from "@/app/_localized/page-adapter";
 import {
   CategoryDetailPageView,
   generateCategoryDetailMetadataForLocale,
@@ -12,11 +12,12 @@ export function generateStaticParams() {
   return generateCategoryDetailStaticParams();
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ dimension: string; slug: string }> }): Promise<Metadata> {
-  return generateCategoryDetailMetadataForLocale("en", await params);
-}
+const route = createEnglishPage<{ dimension: string; slug: string }>({
+  generateMetadata: ({ locale, params }) => generateCategoryDetailMetadataForLocale(locale, params),
+  render: ({ locale, params: { dimension, slug } }) => (
+    <CategoryDetailPageView locale={locale} dimension={dimension} slug={slug} page={1} />
+  ),
+});
 
-export default async function CategoryDetailPage({ params }: { params: Promise<{ dimension: string; slug: string }> }) {
-  const { dimension, slug } = await params;
-  return <CategoryDetailPageView locale="en" dimension={dimension} slug={slug} page={1} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

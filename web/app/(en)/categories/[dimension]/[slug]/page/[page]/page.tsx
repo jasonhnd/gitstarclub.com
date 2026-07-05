@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
+import { createEnglishPage } from "@/app/_localized/page-adapter";
 import {
   CategoryDetailPageView,
   generateCategoryDetailMetadataForLocale,
@@ -15,15 +15,16 @@ export function generateStaticParams() {
   return generateCategoryDetailStaticParams();
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ dimension: string; slug: string; page: string }> }): Promise<Metadata> {
-  return generateCategoryDetailMetadataForLocale("en", await params);
-}
+const route = createEnglishPage<{ dimension: string; slug: string; page: string }>({
+  generateMetadata: ({ locale, params }) => generateCategoryDetailMetadataForLocale(locale, params),
+  render: ({ locale, params: { dimension, slug, page: rawPage } }) => {
+    const page = parsePositivePage(rawPage);
+    if (!page) notFound();
+    if (page === 1) permanentRedirect(categoryPath(dimension, slug));
 
-export default async function CategoryDetailPagedPage({ params }: { params: Promise<{ dimension: string; slug: string; page: string }> }) {
-  const { dimension, slug, page: rawPage } = await params;
-  const page = parsePositivePage(rawPage);
-  if (!page) notFound();
-  if (page === 1) permanentRedirect(categoryPath(dimension, slug));
+    return <CategoryDetailPageView locale={locale} dimension={dimension} slug={slug} page={page} />;
+  },
+});
 
-  return <CategoryDetailPageView locale="en" dimension={dimension} slug={slug} page={page} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

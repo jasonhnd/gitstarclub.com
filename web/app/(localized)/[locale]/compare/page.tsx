@@ -1,20 +1,16 @@
-import type { Metadata } from "next";
+import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import { ComparePageView, generateCompareMetadata } from "@/app/_localized/compare";
-import { generateCoreLocaleStaticParams, resolveRouteLocale, type LocaleParams } from "@/app/_localized/routing";
+import { generateCoreLocaleStaticParams } from "@/app/_localized/routing";
 
 export const dynamic = "force-static";
 export const revalidate = false;
 
-export function generateStaticParams() {
-  return generateCoreLocaleStaticParams();
-}
+export const generateStaticParams = generateCoreLocaleStaticParams;
 
-export async function generateMetadata({ params }: { params: LocaleParams }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  return generateCompareMetadata(locale);
-}
+const route = createLocalizedPage({
+  generateMetadata: ({ locale }) => generateCompareMetadata(locale),
+  render: ({ locale }) => <ComparePageView locale={locale} />,
+});
 
-export default async function LocalizedComparePage({ params }: { params: LocaleParams }) {
-  const locale = await resolveRouteLocale(params);
-  return <ComparePageView locale={locale} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;
