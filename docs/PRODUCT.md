@@ -1,3 +1,13 @@
+---
+owner: product
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - product framing
+  - page surfaces
+  - scope boundaries
+---
+
 # gitstarclub 产品设计
 
 > 本文档定义产品的页面、信息架构、URL 与视觉调性。架构与数据层见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
@@ -66,6 +76,19 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 | **脉搏页** | `/pulse`（今日/本周大涨 + 复活/突刺） |
 | **对比页** | `/compare?repos=a/b,c/d`（多 repo 叠图，URL 即状态、可分享） |
 | 关于页 | `/about` |
+
+Requirement mapping:
+
+| Product surface | Requirement ID |
+|---|---|
+| Static-read posture and data honesty | `REQ-STATIC-001` |
+| 首页 and `/pulse` current movers | `REQ-PULSE-001` |
+| Year/month/week/all-time rankings | `REQ-RANKING-001` |
+| Repo and org detail pages | `REQ-ENTITY-001` |
+| Tracked-set `/compare` | `REQ-COMPARE-001` |
+| Category browsing | `REQ-CATEGORY-001` |
+| Locale URL and multilingual chrome | `REQ-I18N-001` |
+| Crawlable canonical surfaces | `REQ-SEO-001` |
 
 原则：**最短、可读、SEO 友好**。English 保持无前缀 URL；ja/zh/zh-TW/ko/es/fr 使用 locale 前缀 URL，并通过 canonical / `hreflang` / `x-default` 互指（见下「多语言」与 [SEO.md](./SEO.md) §10）。
 
@@ -159,7 +182,8 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 
 ### 对比工具：`/compare`
 
-- **目标**：把已收录 repo（≥1 万星）的 star 曲线**叠在一张图**上比增长。
+- **Requirement ID**：`REQ-COMPARE-001`（tracked-set compare）。
+- **当前 scope**：把已收录、已预计算、≥1 万星 repo 的 star 曲线**叠在一张图**上比增长。
 - **URL 即状态**：`/compare?repos=facebook/react,vuejs/vue` 直接复现选择，链接可分享。上限 5 个。
 - **两种归一化**：绝对值（共享 y 轴的累计星数）与"对齐到 10k"（x 轴换成各自破万后的第 N 个月，比的是增长轨迹）。
 - **三个入口**：导航栏链接、repo 页「加入对比」按钮、搜索框多选 CTA（见上）。
@@ -201,4 +225,4 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 
 ## 范围之外
 
-当前不在范围内的能力（多 repo 对比、用户系统、数据集扩展、自动叙事/OG 卡片、主题聚类等）见 [ROADMAP.md](./ROADMAP.md)。
+当前不在范围内的能力包括：任意 GitHub repo 对比（未收录 repo、低于当前 tracked set 的长尾 repo、需要数据库或查询层的 compare）、用户系统、数据集扩展、自动叙事/OG 卡片、主题聚类等。已收录 ≥1 万星 repo 的 tracked-set `/compare` 属于当前范围，未来 arbitrary-repo compare 见 [ROADMAP.md](./ROADMAP.md)。

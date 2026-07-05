@@ -1,3 +1,13 @@
+---
+owner: system-architecture
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - system architecture
+  - hard constraints
+  - rendering model
+---
+
 # Architecture
 
 ## Scope
@@ -41,7 +51,7 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 
 ## Data flow
 
-```
+```text
 ┌─ Bootstrap (one-off, archived) ─────────────────────────────┐
 │  BigQuery   →   GH Archive WatchEvent (repo_id, day, gross) │
 │  GraphQL    →   metadata + current_stars (authoritative)    │

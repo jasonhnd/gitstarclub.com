@@ -1,3 +1,13 @@
+---
+owner: roadmap
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - open work
+  - deferred architectural decisions
+  - backlog boundaries
+---
+
 # Roadmap
 
 Open work and the architectural decisions that gate it. For history of what has shipped, see [CHANGELOG.md](./CHANGELOG.md). For how the system currently works, start at [README.md](./README.md).
@@ -47,7 +57,7 @@ Expand the tracked set from the current ~5.3k to ~460k repositories. Affects:
 
 ### Arbitrary-repo compare
 
-Extend `/compare` so it accepts any GitHub `owner/name`, not only the indexed set. Requires fetching curve data on demand for repos that the recompute did not precompute. Likely depends on the drill-down expansion above.
+Extend `/compare` so it accepts any GitHub `owner/name`, not only the indexed tracked set covered by `REQ-COMPARE-001`. Requires fetching curve data on demand for repos that the recompute did not precompute. Likely depends on the drill-down expansion above.
 
 ### Topic / language / cohort clustering
 

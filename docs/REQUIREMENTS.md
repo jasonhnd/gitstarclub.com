@@ -1,8 +1,46 @@
+---
+owner: product-requirements
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - product baseline
+  - requirement IDs
+  - requirements acceptance criteria
+---
+
 # gitstarclub 需求基准
 
 ## Scope
 
 本文是产品需求的**单一基准**——定义"做什么"。所有结构性争议、新功能立项、口径调整都先回到这里对齐。"怎么做"分散在各层文档：架构 [ARCHITECTURE](./ARCHITECTURE.md)、数据运维 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)、契约 [DATA-CONTRACTS](./DATA-CONTRACTS.md)、bootstrap 流水线 [PIPELINE](./PIPELINE.md)、排名口径 [RANKING](./RANKING.md)、前端 [FRONTEND](./FRONTEND.md)、设计系统 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md)、SEO [SEO](./SEO.md)、运维 [OPS](./OPS.md)、测试 [TESTING](./TESTING.md)；UX 导航叙事见 [INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md)。未做的功能与受阻决策见 [ROADMAP.md](./ROADMAP.md)。
+
+## 0. Requirement catalog and traceability
+
+Stable IDs are used across product, frontend, data-contract, roadmap, and testing docs. P0 requirements must have a user story and an observable acceptance signal before implementation work is considered complete.
+
+| ID | Priority | Capability | User story | Testable acceptance signal |
+|---|---|---|---|---|
+| `REQ-STATIC-001` | P0 | Static-read runtime | As an operator, I want request paths to read only published JSON views so that traffic can be served from Vercel without a runtime database or analytics engine. | `cd web && bun run build` succeeds with `BLOB_BASE_URL`; app code reads through `web/lib/data/*`; no runtime DuckDB/ClickHouse/Postgres dependency is introduced. |
+| `REQ-RANKING-001` | P0 | Time-indexed ranking pages | As a reader, I want year, month, week, and all-time rankings so that I can browse GitHub star history by period. | Representative URLs `/rankings`, `/rankings/2024`, `/rankings/2024/10`, and `/rankings/2024/W42` return 200 for known data; `bun test lib/workflows/recompute/ranks.test.ts lib/workflows/recompute/windows.test.ts` passes. |
+| `REQ-ENTITY-001` | P0 | Repo and owner detail pages | As a reader, I want repo and owner pages so that I can inspect a project or owner across its star history. | Known tracked repo and owner URLs such as `/:owner/:name` and `/o/:login` render from entity views; entity contract tests pass under `bun test lib/contracts/contracts.test.ts`. |
+| `REQ-PULSE-001` | P0 | Current pulse surfaces | As a returning reader, I want `/` and `/pulse` to show current movers so that I can see what is changing now. | `/` and `/pulse` render from `hot-snapshot.json` and current rank/live views; daily/weekly cron runbooks in OPS define the data freshness check. |
+| `REQ-SEO-001` | P0 | Crawlable, canonical, multilingual pages | As a search visitor, I want canonical indexable pages with locale alternates so that search and answer engines can discover the right page. | `bun test lib/integration/seo.test.ts` passes against the live default origin, or an explicit `SEO_LIVE_BASE`; sitemap/canonical implementation remains aligned with SEO and FRONTEND. |
+| `REQ-COMPARE-001` | P1 | Tracked-set compare | As a reader comparing known projects, I want `/compare?repos=a/b,c/d` to overlay up to five tracked ≥10k-star repositories so that I can compare growth without a database-backed query surface. | `/compare` remains a static shell; `bun test lib/compare/core.test.ts lib/compare/conclusions.test.ts` passes; arbitrary repo compare remains deferred in ROADMAP. |
+| `REQ-CATEGORY-001` | P1 | Category browsing | As a reader, I want deterministic category pages so that I can browse tracked repos by language, ecosystem, domain, and owner kind. | `/categories`, `/categories/language`, and public category detail URLs render from registry/assignment views; `bun test lib/categories/rules.test.ts lib/workflows/recompute/categories.test.ts` passes. |
+| `REQ-I18N-001` | P1 | Seven-locale UI chrome | As a non-English reader, I want locale-prefixed pages and UI chrome in my language while repo data stays source-language neutral. | English URLs are unprefixed; `ja`, `zh`, `zh-TW`, `ko`, `es`, and `fr` use locale prefixes; route locale drives `<html lang>`, canonical, and `hreflang` per SEO/FRONTEND. |
+
+Traceability:
+
+| ID | REQUIREMENTS section | PRODUCT | FRONTEND / DATA-CONTRACTS | TESTING |
+|---|---|---|---|---|
+| `REQ-STATIC-001` | §7, §8, §8a, §11 | Scope and data-honesty posture | FRONTEND §2, DATA-CONTRACTS §2, VERCEL-DATA-OPERATIONS | Current build/typecheck gate; Workflow validate gate |
+| `REQ-RANKING-001` | §3, §4 | 核心页面; 排名矩阵与榜单定义 | FRONTEND §1.1, DATA-CONTRACTS rank views | `ranks.test.ts`, `windows.test.ts`, contract tests |
+| `REQ-ENTITY-001` | §3, §5 | Repo 详情页; Org 详情页; Repo 身份与改名 | FRONTEND §1.1, §6.4; DATA-CONTRACTS entity views | contract tests, entity recompute tests |
+| `REQ-PULSE-001` | §1, §3, §6 | 首页; 脉搏页 | FRONTEND §2.4; DATA-CONTRACTS live/hot snapshot | cron runbooks, live-view validation |
+| `REQ-SEO-001` | §3, §9 | URL 结构; 多语言 | FRONTEND §7; SEO; I18N | SEO integration tests against the default live origin or explicit `SEO_LIVE_BASE` |
+| `REQ-COMPARE-001` | §3 | 对比工具: `/compare` | FRONTEND compare route and `repo-curve`; DATA-CONTRACTS §2.15 | compare core/conclusion tests |
+| `REQ-CATEGORY-001` | §3 | Discovery/navigation references | FRONTEND §11; DATA-CONTRACTS category views | category rules/recompute tests |
+| `REQ-I18N-001` | §3, §9 | 多语言（i18n） | FRONTEND §7; SEO §10; I18N | locale URL checks; target E2E in TESTING |
 
 ## 1. 产品定位（两副面孔）
 
@@ -35,7 +73,7 @@
 - English URL 保持无前缀；非默认 locale 使用有前缀 URL，metadata / canonical / sitemap / hreflang 按 route locale 输出（当前 SEO 口径见 [SEO.md](./SEO.md) §10；架构见 [I18N.md](./I18N.md)）。
 - 月/年页 **repo 榜与 org 榜并列**展示。
 - **导航栏全站搜索**：顶栏 chrome 客户端 combobox，首次聚焦懒加载版本化 `search/index.json` + MiniSearch（zero 后端、走 CDN），typo 容错 + 按 stars 加权，直达 `/{owner}/{name}`；「按名字直达」入口，无 `/search?q=` 结果页。
-- **多 repo 对比**：`/compare` 静态壳 + URL 携带 `?repos=a/b,c/d`，前端按需取版本化曲线、叠图比较；归一化两模式（绝对值 / 对齐到破万）；上限 5 个；可对比集 = 已收录的 ≥1 万星 repo。任意 repo / ≥100 星下钻属未来工作，见 [ROADMAP.md](./ROADMAP.md)。
+- **多 repo 对比 (`REQ-COMPARE-001`)**：`/compare` 静态壳 + URL 携带 `?repos=a/b,c/d`，前端按需取版本化曲线、叠图比较；归一化两模式（绝对值 / 对齐到破万）；上限 5 个；可对比集 = 已收录的 ≥1 万星 repo。任意 repo / ≥100 星下钻属未来工作，见 [ROADMAP.md](./ROADMAP.md)。
 
 ## 4. 排名
 
@@ -107,8 +145,20 @@
 
 ## 验收（需求层面）
 
-- [ ] 任意历史周期可回看，数据冻结精确。
-- [ ] `/pulse` 当天反映"谁在涨 / 老项目复活"。
-- [ ] repo/org/周/全时/脉搏 各页可达、SEO 友好、七种 UI 语言（English 无前缀，非默认 locale 使用有前缀 URL）。
-- [ ] 排名矩阵全维度正确（含 org、flow/stock、增速、新晋）。
-- [ ] 运行时纯静态扛 10M/天；回填仅一次性 $10、日常零外部账单。
+| Requirement | Observable pass/fail signal | Validation reference |
+|---|---|---|
+| `REQ-STATIC-001` | `cd web && bun run build` succeeds with `BLOB_BASE_URL` set; request-path code does not import runtime analytical engines or database clients. | ARCHITECTURE hard constraints; FRONTEND §2; local build command |
+| `REQ-RANKING-001` | Representative ranking URLs return 200 for known published periods: `/rankings`, `/rankings/2024`, `/rankings/2024/10`, `/rankings/2024/W42`; rank rows are ordered by the documented metric and tie-breaks. | `bun test lib/workflows/recompute/ranks.test.ts lib/workflows/recompute/windows.test.ts`; RANKING |
+| `REQ-ENTITY-001` | Known tracked repo and owner URLs render from entity views, e.g. `/:owner/:name` and `/o/:login`; unknown entities 404 or redirect according to alias rules. | `bun test lib/contracts/contracts.test.ts lib/workflows/recompute/entities.test.ts`; FRONTEND §1.1 |
+| `REQ-PULSE-001` | `/` and `/pulse` render current mover sections from `hot-snapshot.json`; after daily/weekly cron, live-view validation confirms current-period artifacts are present. | OPS daily cron runbook; `web/scripts/validate-live-views.ts` when running live checks |
+| `REQ-SEO-001` | English canonical URLs are unprefixed; non-default locales such as `/ja/rankings/2024/10` emit locale-specific canonical/hreflang metadata; sitemap includes eligible route families. | SEO; FRONTEND §7; `bun test lib/integration/seo.test.ts` |
+| `REQ-COMPARE-001` | `/compare?repos=facebook/react,vuejs/vue` accepts only tracked-set repo slugs, caps selection at five, and supports absolute and 10k-aligned modes; arbitrary untracked repo compare remains deferred. | `bun test lib/compare/core.test.ts lib/compare/conclusions.test.ts`; ROADMAP arbitrary-repo compare |
+| `REQ-CATEGORY-001` | `/categories`, `/categories/language`, and a public `/categories/:dimension/:slug` page render from category registry/assignment views and expose canonical links. | `bun test lib/categories/rules.test.ts lib/workflows/recompute/categories.test.ts`; CATEGORIES |
+| `REQ-I18N-001` | Route locale controls `<html lang>`, chrome copy, canonical, and `hreflang`; repo names, topics, languages, and numeric data remain source-language neutral. | FRONTEND §7; SEO §10; target E2E in TESTING |
+| Documentation hygiene | All docs under `docs/` expose owner/status/last-reviewed metadata and all Markdown code fences have info strings. | `cd web && bun run docs:check` |
+
+Reviewer checklist:
+
+- [ ] P0 requirement rows above have a passing command, automated test, Workflow gate, or documented manual runbook step.
+- [ ] Target-state checks are not described as current automation unless the script or CI job exists.
+- [ ] Deferred scope uses `ROADMAP.md` references instead of vague "out of scope" language.

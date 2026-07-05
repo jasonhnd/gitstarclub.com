@@ -1,3 +1,13 @@
+---
+owner: operations
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - operations runbooks
+  - deployment topology
+  - cron and rollback procedures
+---
+
 # gitstarclub Operations Runbook
 
 > 运维与部署的唯一真相源。架构与数据流见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
@@ -127,7 +137,7 @@ an explicit recovery procedure.
 
 使用**一个 PUBLIC store**：海量 JSON 视图由 build / 运行时按**直链 URL** 读取，公开读最省事、命中 CDN。canonical JSON shard 由 Workflow 读写；bootstrap Parquet 体积小、仅一次性 bootstrap 触碰。新布局完整定义见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4 与 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.11–2.13。
 
-```
+```text
 blob://
 ├── canonical/
 │   ├── star_daily.parquet                          # bootstrap 归档（仅一次性 / 灾难重建读写，非生产路径）
@@ -321,7 +331,7 @@ blob://
 
 **前置**：GCP 凭证（`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`）· GitHub PAT（`GITHUB_TOKEN`）· Vercel Blob store（`BLOB_READ_WRITE_TOKEN`）。本机 / 全 Node 环境跑，不在 Vercel。
 
-```
+```text
 1. 查 GH Archive WatchEvents（BigQuery）
    按 repo + UTC 天 汇总 WatchEvent（2015-01 起，量大按年 / 按批分块）→ 导出
 2. 本机 DuckDB

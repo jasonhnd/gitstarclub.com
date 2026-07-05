@@ -1,3 +1,13 @@
+---
+owner: workflow
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - issue workflow
+  - PR gates
+  - visual guardrails
+---
+
 # Document-Driven Development Workflow (文档驱动开发工作流)
 
 ## Scope

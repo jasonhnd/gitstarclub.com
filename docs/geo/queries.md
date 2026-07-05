@@ -1,3 +1,12 @@
+---
+owner: geo
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - GEO target query tracking
+  - citation review cadence
+---
+
 # GEO target AI query tracking
 
 ## Scope

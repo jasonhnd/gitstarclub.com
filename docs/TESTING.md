@@ -1,3 +1,13 @@
+---
+owner: testing
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - current automation
+  - target test coverage
+  - validation expectations
+---
+
 # gitstarclub 测试策略
 
 > 精简的、决策导向的测试策略。核心原则：**数据正确性就是产品本身**——历史精度是卖点，错的数据比难看的页面更致命。
@@ -5,13 +15,58 @@
 
 ## Scope
 
+本文档定义 GitStarClub 的测试与验证责任边界：当前已经在 PR CI 中执行的 gate、开发者本地必须能复现的验证命令、Workflow 数据发布闸门、以及尚未落地的目标测试层。相邻主题由其他文档负责：开发流程见 [DEVELOPMENT.md](./DEVELOPMENT.md)，PR 规则见 [WORKFLOW.md](./WORKFLOW.md)，生产运行与回滚见 [OPS.md](./OPS.md)，性能历史基线见 [perf/CWV-25.md](./perf/CWV-25.md)。
+
+状态词在本文中有固定含义：
+
+| Status | Meaning |
+|---|---|
+| `enforced` | 当前自动执行，失败会阻断 PR CI、build、test run 或 Workflow publish |
+| `manual` | 当前由开发者或 reviewer 按需手动执行，不是自动 PR gate |
+| `report-only` | 当前产生证据或报告，但不自动阻断 |
+| `planned` | 目标态已记录，尚未接入自动化 |
+| `not implemented` | 仍是测试策略的一部分，但尚无工具或脚本 |
+
 ## Current Automation
 
-GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test`.
+GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`:
+
+```bash
+bun run docs:check
+bun run lint
+bun run typecheck
+bun run test
+```
+
+`bun run test` is currently `bun test lib/`. CI sets `BLOB_BASE_URL=https://blob.example.com` for the unit tests whose fetch path is mocked but whose module initialization requires a truthy Blob base.
 
 The visual, a11y, E2E, performance, and cross-browser sections below remain target coverage until their Playwright/Lighthouse/browser tooling is added. They should not be treated as current PR blockers.
 
+本地 build 验证不是当前 GitHub Actions gate，但改动影响 Next build、metadata、sitemap、route generation、data readers 或 docs acceptance 时应运行：
+
+```powershell
+$env:BLOB_BASE_URL = "https://gitstarclub.com"
+bun run build
+```
+
+## Target Coverage
+
 本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。
+
+Target coverage sections below intentionally stay in the document so reviewers know the desired direction. They are labeled with the status matrix in §在哪里跑 + 节奏 and must not be described as enforced until the corresponding script, workflow, or CI job exists.
+
+Requirement validation map:
+
+| Requirement ID | Current validation |
+|---|---|
+| `REQ-STATIC-001` | `bun run typecheck`; `bun run build` with `BLOB_BASE_URL` when build or data-read behavior changes |
+| `REQ-RANKING-001` | `bun test lib/workflows/recompute/ranks.test.ts lib/workflows/recompute/windows.test.ts` |
+| `REQ-ENTITY-001` | `bun test lib/contracts/contracts.test.ts lib/workflows/recompute/entities.test.ts` |
+| `REQ-PULSE-001` | `web/scripts/validate-live-views.ts` for live artifact checks; cron runbooks in OPS |
+| `REQ-SEO-001` | `bun test lib/integration/seo.test.ts` against the default live origin or explicit `SEO_LIVE_BASE`; sitemap/canonical review otherwise |
+| `REQ-COMPARE-001` | `bun test lib/compare/core.test.ts lib/compare/conclusions.test.ts` |
+| `REQ-CATEGORY-001` | `bun test lib/categories/rules.test.ts lib/workflows/recompute/categories.test.ts` |
+| `REQ-I18N-001` | Current manual route-locale checks; target E2E coverage in §4.1 |
 
 ## 测试取向(先定调)
 
@@ -227,39 +282,55 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ## 在哪里跑 + 节奏
 
-> **两道闸门别混淆**：①**Workflow `validate` step**（生产数据重算后）只跑 §1.2 Zod + §1.3 sanity，**读 staging `views/<run_id>/**`**，不过则不切指针——它**不渲染页面**，所以视觉/a11y/E2E/perf/跨浏览器**不在这道闸门**。②**部署前 CI**（代码变更触发 deploy 前）跑视觉/a11y/E2E/perf/跨浏览器等渲染级门禁。
+> **两道闸门别混淆**：①**Current PR CI** 是 `.github/workflows/ci.yml`，目前只跑 `docs:check`、lint、typecheck、`bun test lib/`。②**Workflow `validate` step**（生产数据重算后）读 staging `views/<run_id>/**`，只跑发布前数据闸门；它不渲染页面，所以视觉/a11y/E2E/perf/跨浏览器不在这道闸门。
 
-| 测试 | 本地 | CI（PR） | Workflow `validate`（数据重算后，读 staging） | 部署前 CI（deploy 前） |
+| 测试层 | Current status | Current automated gate | Manual / report-only path | Target / planned gate |
 |---|---|---|---|---|
-| 1.1 聚合 / 排名单测 | 是，快、随时 | 是，必过 | — | 是 |
-| 1.2 Zod schema 校验 | 是 | 是 | 是，产出即校验，脏 JSON 不切指针 | 是，build 读取前 |
-| 1.3 sanity 不变量 | 可选 | 是，对产物跑 | 是，**不过不切指针** | 是 |
-| 1.4 golden file | 是 | 是 | — | 是 |
-| 1.5 shard 等价 / 发布 / 回滚 | 是 | 是 | 是，staging 校验 + 指针闸门 | — |
-| 2. 视觉回归 | 选改动页 | 是，关键页全跑 | —（不渲染页面） | 是 |
-| 3. a11y（axe + 键盘） | 选改动页 | 是 | —（不渲染页面） | 是 |
-| 4. E2E 导航 / i18n | 选改动流 | 是 | —（不渲染页面） | 是 |
-| 5. 性能 / 零 JS bundle | 零 JS 检查随时 | 是，零 JS + HTML 体积阻断；Lighthouse 报告 | —（不渲染页面） | 是 |
-| 6. 跨浏览器 | 偶尔 | 是，关键页 | —（不渲染页面） | 是 |
+| Markdown metadata + fence hygiene | `enforced` | PR CI: `bun run docs:check` | Same command locally from `web/` | Keep required frontmatter and code-fence info strings enforced |
+| 1.1 聚合 / 排名单测 | `enforced` | PR CI: `bun run test` → `bun test lib/` | Target specific files, e.g. `bun test lib/workflows/recompute/ranks.test.ts` | Broaden fixtures as new ranking behavior ships |
+| 1.2 Zod schema 校验 | `enforced` for covered contracts | PR CI: contract/unit tests under `web/lib/` | Build reads also fail-fast when malformed views are fetched | Keep producer, reader, and contract tests aligned |
+| 1.3 sanity 不变量 | `enforced` in Workflow validate for implemented invariants; some invariants remain `planned` | `web/lib/workflows/steps/validate.ts` blocks publish when implemented failures occur | Review `ops/workflows/<run_id>/validation.json` after refreshes | Add org sum, seam, drift, and full-period completeness gates when implemented |
+| 1.4 golden file | `planned` | None | Historical analysis and fixture review only | Add reviewed golden snapshots for known milestones |
+| 1.5 shard 等价 / 发布 / 回滚 | `enforced` where tests exist | PR CI via `bun test lib/` for current integration/unit coverage | Workflow publish/rollback runbooks in OPS | Expand parity only where post-seam oracle is valid |
+| 2. 视觉回归 | `not implemented` | None | Reviewer screenshots or Vercel Preview inspection when UI changes | Playwright screenshots on key pages and breakpoints |
+| 3. a11y（axe + 键盘） | `planned` | None | Manual keyboard/focus review for affected UI | axe + keyboard checks on representative pages |
+| 4. E2E 导航 / i18n | `planned` | None | Manual route checks on Preview or production when relevant | Playwright navigation and locale URL checks |
+| 5. 性能 / 零 JS bundle | `report-only` for [perf/CWV-25.md](./perf/CWV-25.md); `planned` for automated gates | None | Lighthouse / build inspection by reviewer when performance-sensitive | Bundle/HTML-size assertions and Lighthouse report |
+| 6. 跨浏览器 | `planned` | None | Manual spot-check when CSS/browser risk warrants it | Playwright Chromium/Firefox/WebKit smoke |
 
 **节奏要点**：
 
-- **CI（每 PR）**：1.x 全套 + 2/3/4/5/6 在关键页跑。逻辑测试是门禁，必过；视觉 diff 与 Lighthouse 出报告供 review。
+- **CI（每 PR）**：当前只跑 `docs:check`、lint、typecheck、`bun test lib/`。不要把视觉、a11y、E2E、性能、跨浏览器描述成已自动阻断。
 - **Publish gate（Workflow `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 Zod + sanity，任一不变量违反即**不切 `views/latest.json` 指针**（线上仍上一版）——防脏数据进生产的最后闸门，运行于 Vercel Workflow 内（§1.5）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
 - **每日 / 每周 cron**：不触发 deploy，但 cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后，对活尾跑 §1.2 schema + §1.3 漂移/非负 sanity（秒级），异常告警（Sentry）而非静默。
-- **本地**：改聚合逻辑先跑 1.x；改组件先跑相关页的视觉 + a11y。遵循「改动靠 Vercel 预览确认」——视觉 / 性能以预览部署为准，不依赖本地 dev。
+- **本地**：改聚合逻辑先跑 `bun test lib/` 或目标 test file；改文档先跑 `bun run docs:check`；改 Next build 或 route metadata 时用 `BLOB_BASE_URL` 跑 `bun run build`。遵循「改动靠 Vercel 预览确认」——视觉 / 性能最终以预览部署为准，不依赖本地 dev。
 
 ## 验收清单
 
-- [ ] 聚合 / 排名单测覆盖 flow / stock+锚定 / 周月年全时边界 / org 求和，跑真切片（Parquet 子集 + 同源 JSON shard）
-- [ ] 全部 JSON 视图有 Zod schema，产出 + build 读取双校验
-- [ ] sanity 不变量（非负 / delta 界 / 榜长序 / org==∑members / 漂移 / seam）对全量产物跑，阻断发布
-- [ ] staging 校验闸门：不过不切 `views/latest.json` 指针；shard 等价对拍、发布/回滚可逆（§1.5）
-- [ ] golden file 覆盖 ≥3 个知名 repo 的里程碑与排名，值已人工核对冻结
-- [ ] 视觉回归：关键页 × 4 断点 × 明暗双主题，基准入库
-- [ ] axe 零 critical；键盘可达 + focus 可见；reduced-motion 生效；AA 对比；SVG 有 title/aria + 数据表 fallback
-- [ ] E2E：导航图 3 跳贯通、上下期导航、里程碑锚点、榜单跳转、i18n locale URL 导航（`<html lang>` / canonical / hreflang / chrome 翻译一致）
-- [ ] 内容页零客户端 JS（bundle 断言）+ HTML < 20KB + 字体子集 ≤ ~30KB
-- [ ] CWV 达标（LCP<2.5s / INP<200ms / CLS<0.1 / FCP<1.5s）
-- [ ] 跨浏览器关键页通过，View Transitions 优雅降级
-- [ ] 逻辑代码覆盖率 ≥ 80%
+Current required PR checks:
+
+- [ ] `bun run docs:check` passes when docs changed.
+- [ ] `bun run lint` passes.
+- [ ] `bun run typecheck` passes.
+- [ ] `bun test lib/` passes.
+- [ ] `bun run build` passes with `BLOB_BASE_URL` when the change can affect Next build, metadata, sitemap, route generation, or data readers.
+
+Current Workflow publish checks:
+
+- [ ] `web/lib/workflows/steps/validate.ts` returns `ok=true` before `views/latest.json` is cut to a new version.
+- [ ] `ops/workflows/<run_id>/validation.json` records implemented invariants and failures for production refreshes.
+
+Target checklist, not yet fully automated:
+
+- [ ] 聚合 / 排名单测覆盖 flow / stock+锚定 / 周月年全时边界 / org 求和，跑真切片（Parquet 子集 + 同源 JSON shard）。
+- [ ] 全部 JSON 视图有 Zod schema，产出 + build 读取双校验。
+- [ ] sanity 不变量（非负 / delta 界 / 榜长序 / org==∑members / 漂移 / seam）对全量产物跑，阻断发布；当前未实现项必须保持 `planned` 标记。
+- [ ] staging 校验闸门：不过不切 `views/latest.json` 指针；shard 等价对拍、发布/回滚可逆（§1.5）。
+- [ ] golden file 覆盖 ≥3 个知名 repo 的里程碑与排名，值已人工核对冻结。
+- [ ] 视觉回归：关键页 × 4 断点 × 明暗双主题，基准入库。
+- [ ] axe 零 critical；键盘可达 + focus 可见；reduced-motion 生效；AA 对比；SVG 有 title/aria + 数据表 fallback。
+- [ ] E2E：导航图 3 跳贯通、上下期导航、里程碑锚点、榜单跳转、i18n locale URL 导航（`<html lang>` / canonical / hreflang / chrome 翻译一致）。
+- [ ] 内容页零客户端 JS（bundle 断言）+ HTML < 20KB + 字体子集 ≤ ~30KB。
+- [ ] CWV 达标（LCP<2.5s / INP<200ms / CLS<0.1 / FCP<1.5s）。
+- [ ] 跨浏览器关键页通过，View Transitions 优雅降级。
+- [ ] 逻辑代码覆盖率 ≥ 80%。

@@ -1,3 +1,14 @@
+---
+owner: frontend
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - route catalog
+  - rendering strategy
+  - component ownership
+  - i18n implementation
+---
+
 # gitstarclub 前端设计（Next.js 16 Web 应用）
 
 > **前端层的唯一真相源**——把 [REQUIREMENTS](./REQUIREMENTS.md)（做什么）、[ARCHITECTURE](./ARCHITECTURE.md)（页面分层 / ISR / 节奏）、[DATA-CONTRACTS](./DATA-CONTRACTS.md)（消费的 JSON 视图 schema）、[DESIGN-SYSTEM](./DESIGN-SYSTEM.md)（M3E token / 组件 / 动效）落到 `web/` 这个 **Next.js 16 App Router** 应用的**路由 / 渲染配置 / 数据消费 / 组件 / i18n**。
@@ -49,6 +60,20 @@
 | **分类维度** | `/categories/[dimension]` | `categories/[dimension]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 各维度名 |
 | **分类详情** | `/categories/[dimension]/[slug]`、`/categories/[dimension]/[slug]/page/[page]` | `categories/[dimension]/[slug]/page.tsx`、`categories/[dimension]/[slug]/page/[page]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 公开分类 + 分类页数 |
 
+`/compare` implements `REQ-COMPARE-001`: tracked-set compare over already indexed ≥10k-star repositories, capped at five selected repos. Arbitrary GitHub repo compare, lower-star long-tail compare, and database-backed compare are deferred to [ROADMAP.md](./ROADMAP.md).
+
+Route-to-requirement traceability:
+
+| Route family | Requirement ID |
+|---|---|
+| `/`, `/pulse` | `REQ-PULSE-001` |
+| `/rankings*` | `REQ-RANKING-001` |
+| `/[owner]/[name]`, `/o/[login]` | `REQ-ENTITY-001` |
+| `/compare`, `/repo-curve` | `REQ-COMPARE-001` |
+| `/categories*` | `REQ-CATEGORY-001` |
+| locale-prefixed routes | `REQ-I18N-001`, `REQ-SEO-001` |
+| build/runtime data access | `REQ-STATIC-001` |
+
 **路由处理器（route handlers）**：
 
 | 路径 | 文件 | 用途 |
@@ -75,7 +100,7 @@ OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
 
 **路由文件布局**：
 
-```
+```text
 app/
   _shell/RootShell.tsx       # 两个 root layout 共享：fonts/global CSS/theme init/body/Footer
   _localized/*.tsx           # route-locale 共享页面实现
@@ -232,7 +257,7 @@ export default nextConfig;
 
 [DATA-CONTRACTS](./DATA-CONTRACTS.md) §4 的 Zod schema 位于 `web/lib/contracts/`,读取器位于 `web/lib/data/`。结构按产物族归并,非每产物一文件:
 
-```
+```text
 web/lib/
   contracts/        # Zod schema（单一类型事实源），barrel = index.ts
     common.ts       # 共享/枚举/rank/heatmap/meta 等基础 schema
@@ -426,7 +451,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 ### 7.2 字典（手写；route locale 服务端选择）
 
-```
+```text
 web/lib/i18n/
   dictionaries/
     en.ts   ja.ts   zh.ts   zh-tw.ts   ko.ts   es.ts   fr.ts

@@ -1,3 +1,12 @@
+---
+owner: data-correctness
+status: historical
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - issue 21 data correctness analysis
+  - supporting investigation record
+---
+
 # Data correctness analysis for issue #21
 
 Status: phase-1 analysis for #36. This document does not change code, data, or

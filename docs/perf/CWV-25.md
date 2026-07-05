@@ -1,3 +1,12 @@
+---
+owner: performance
+status: baseline
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Core Web Vitals baseline for issue 25
+  - Lighthouse evidence
+---
+
 # Core Web Vitals / Lighthouse baseline (#25)
 
 ## Scope

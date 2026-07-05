@@ -1,3 +1,13 @@
+---
+owner: ranking
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - ranking algorithms
+  - stock anchoring
+  - derived ranking rules
+---
+
 # gitstarclub 排名规格
 
 ## Scope
@@ -29,7 +39,7 @@
 
 历史是 gross（GH Archive 无取消事件），累加会**系统性偏高**；唯一精确锚点是今天的 `current_stars`（GraphQL）。算法：
 
-```
+```text
 cumgross[repo, date] = Σ_{d ≤ date} delta            # gross 累加曲线
 d[repo] = current_stars[repo] / cumgross[repo, seam_date]   # 锚定因子 (>= 0; archive undercount can make it > 1)
 stock_est[repo, date] = round(cumgross[repo, date] × d[repo])   # 锚定估算

@@ -1,3 +1,13 @@
+---
+owner: development-workflow
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - development workflow
+  - change playbooks
+  - local validation commands
+---
+
 # Development Guide
 
 ## Scope

@@ -1,3 +1,13 @@
+---
+owner: design-system
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - visual baseline
+  - tokens
+  - motion and accessibility rules
+---
+
 # Design System Baseline
 
 ## Scope

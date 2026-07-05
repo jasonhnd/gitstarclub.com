@@ -1,3 +1,13 @@
+---
+owner: geo
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - answer-engine citation strategy
+  - GEO roadmap
+  - AI crawler measurement strategy
+---
+
 # GitStarClub GEO strategy and implementation design
 
 ## Scope
@@ -7,6 +17,11 @@ This document is the owning document for GitStarClub's GEO strategy: how the exi
 GEO complements [SEO.md](./SEO.md). SEO owns crawlability, canonical URLs, metadata, sitemap, robots policy, and internal links. GEO owns answer-engine citation tactics layered on top of those surfaces: answer capsules, FAQ blocks, dataset schema, AI crawler hygiene, freshness signals, entity authority, and measurement.
 
 Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only JSON from Vercel Blob, and implementation must remain deterministic and Vercel-first.
+
+Operational satellites:
+
+- [geo/queries.md](./geo/queries.md) owns target AI query tracking, weekly review rows, citation occupancy, and answer-accuracy review cadence.
+- [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) owns the aggregate AI crawler/referrer report taxonomy and runbook.
 
 ---
 

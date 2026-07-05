@@ -1,3 +1,13 @@
+---
+owner: codebase
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - code map
+  - route ownership
+  - module boundaries
+---
+
 # Codebase Map
 
 ## Scope

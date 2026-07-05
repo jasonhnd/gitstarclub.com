@@ -1,3 +1,14 @@
+---
+owner: seo
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - crawlability
+  - canonical URLs
+  - sitemap policy
+  - structured data ownership
+---
+
 # gitstarclub SEO 设计
 
 ## Scope
@@ -448,7 +459,7 @@ return paths.map((p) => ({
 
 Next.js 16 `app/.../sitemap.ts` 的 `generateSitemaps()` 返回 `[{ id }]`，分片产物 URL 为 **`/<route>/sitemap/<id>.xml`**（v16：`id` 在默认导出里是 Promise，需 `await props.id`）。规划：
 
-```
+```text
 /sitemap.xml                          # sitemap index（Next.js 自动聚合下列分片）
   /sitemap/pages.xml                  # 静态/核心：首页 + 全时榜 + about + /pulse + /compare
   /year/sitemap/0.xml                 # 年度页
@@ -718,7 +729,7 @@ Dataset enrichment details, including future `DataDownload` `distribution` entri
 
 > 目标：**任意页 ≤ 3 跳可达**；按需 ISR 页除 sitemap 外还能被内链发现 / 触发生成。内链是"爬虫预算的导流"，sitemap 是"全量清单"，两者缺一不可。
 
-```
+```text
 首页 /
  ├─ 年份脊柱（2015…当前）──────────────→ 各年度页 /rankings/YYYY （1 跳到任意年）
  ├─ 本月聚焦 TOP / 增速 ────────────────→ repo 详情页 /:owner/:name （1 跳到热门 repo）

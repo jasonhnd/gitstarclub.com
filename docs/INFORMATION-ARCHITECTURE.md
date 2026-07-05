@@ -1,3 +1,12 @@
+---
+owner: information-architecture
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - UX navigation narrative
+  - information architecture rationale
+---
+
 # GitStarClub Information Architecture
 
 ## Scope

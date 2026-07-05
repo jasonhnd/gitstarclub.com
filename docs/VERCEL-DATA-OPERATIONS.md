@@ -1,3 +1,13 @@
+---
+owner: data-operations
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Vercel data lifecycle
+  - Workflow publish model
+  - Blob view versioning
+---
+
 # gitstarclub Vercel 数据运营（VERCEL-DATA-OPERATIONS）
 
 > 本文目标:描述 gitstarclub 生产数据生命周期在 Vercel 上的当前运行形态——所有 recurring 数据作业在 Vercel 触发、运行、记录、发布、回滚。本机 `pipeline/backfill` 仅作为一次性 bootstrap 工具 / 历史归档,不在日常运营路径上。
@@ -67,7 +77,7 @@ gitstarclub 的运行时是**纯静态**:用户请求只读预算好的 JSON / B
 
 ### 3.1 Workflow 与 Cron / Function 的职责切分
 
-```
+```text
 Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
   └─ route 只做一件事:鉴权 + 启动 workflow,立即返回 run_id(不阻塞)
        └─ Vercel Workflow('use workflow'):编排下列 steps,可 pause/resume、跨部署存活
@@ -180,7 +190,7 @@ async function recomputeRank(runId: string) {
 
 > 沿用 [OPS.md](./OPS.md) 的单一 PUBLIC store。下面只列**与 L3 Workflow 生命周期直接相关的前缀**(`canonical/v2/*`、`views/*`、`ops/workflows/*`,以及 L1/L2 活尾即 `live/*` / `current_month.json` / `hot-snapshot.json` 的位置点)。`lookup/`、`search/index.json`、`current_month.json` 是 L3 / L1 的**一级产物**故同列于此;**完整 Blob 树(含历史前缀 / 完整 `live/*` 子目录 / 归档残留)以 [OPS.md](./OPS.md) §Blob 布局为准**——本节与 OPS 冗余,以 OPS 为权威。`canonical/star_daily.parquet` 已降级为 bootstrap 归档(仍可留存,不在生产读路径)。
 
-```
+```text
 blob://
 ├── ops/workflows/                           # L3 Workflow checkpoints + 元信息
 │   ├── <run_id>/
@@ -236,7 +246,7 @@ category and every historical week/month/year.
 
 页面 / 数据层先读 `views/latest.json` 指针解析出 `<version>`(下记 `V = views/<version>`,version = run_id),再按「live 优先、回退 base」取数。**关键:用 `meta.folded_through` 水位决定某周期归 live 还是归 base,避免重复计数(§7.2)**:
 
-```
+```text
 未折叠周期(period > folded_through,即当前/刚收口未发布):
     rank/heatmap:  live/* (L1/L2 活尾) → 回退 V/* (上一版 base,可能尚不含该期)
 已折叠周期(period ≤ folded_through,base 已含):
@@ -336,7 +346,7 @@ L1/L2 与 L3 写不同 Blob 前缀(`live/*` vs `canonical/v2/**` + `views/<run_i
 
 > **版本前缀 = run_id,无独立 staging/published 两段式**。重算直接写 `views/<run_id>/**`(新前缀,不影响线上);该版本未被指针引用前对读侧不可见,等价于「staging」。publish 仅原子覆盖写一个指针文件即上线——省掉一次全量复制(~12,899 文件)。
 
-```
+```text
 1. step 6–8 重算产物写到 views/<run_id>/**(version = run_id,不影响线上)
 2. step 9 validate:对该版本跑 Zod + sanity(见 TESTING)
    └─ 不过 → 抛错终止,指针从未切;views/<run_id> 成为无人引用的孤儿,留存排查 / 后续 GC

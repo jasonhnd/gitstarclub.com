@@ -4,11 +4,13 @@ import { test, expect, describe, beforeAll } from "bun:test";
 //
 // This exercises the rendered HTML / metadata endpoints of https://www.gitstarclub.com
 // against the policy in docs/SEO.md:
-//   - single language-neutral URL per page (no /ja, /zh prefixes, NO hreflang matrix — SEO §10)
+//   - English canonical URLs stay unprefixed; ja/zh/zh-TW/ko/es/fr use locale prefixes
+//     with a full hreflang / x-default matrix (SEO §10)
 //   - English default-locale metadata, <html lang="en"> (SEO §10 / §3)
 //   - per-page <title> / <meta description> / canonical-to-self + Open Graph (SEO §2 / §13)
 //   - at least one valid schema.org JSON-LD block per page (SEO §6)
-//   - /sitemap.xml enumerates the long tail (SEO §4) and /robots.txt is well-formed (SEO §5 / §11)
+//   - /sitemap.xml is a sitemap index and per-locale sitemaps enumerate long-tail URLs
+//     with alternates (SEO §4) and /robots.txt is well-formed (SEO §5 / §11)
 //
 // Because the suite hits the network, it is opt-out via SEO_LIVE_BASE="" and tolerant of the
 // site's launch state: docs/SEO.md §11 keeps the site noindex / robots `Disallow: /` until
@@ -70,6 +72,12 @@ function metaName(html: string, name: string): string | null {
   return tag ? content(tag) : null;
 }
 
+/** Generic attribute extractor, regardless of attribute order or case. */
+function attr(tag: string, name: string): string | null {
+  const m = new RegExp(`\\b${name}=["']([^"']*)["']`, "i").exec(tag);
+  return m ? m[1] : null;
+}
+
 /** content="" of the first <meta property="<p>"> (Open Graph), regardless of attribute order. */
 function metaProp(html: string, prop: string): string | null {
   const tag = new RegExp(`<meta\\b[^>]*\\bproperty=["']${prop}["'][^>]*>`, "i").exec(html)?.[0];
@@ -98,10 +106,22 @@ function ldJsonBlocks(html: string): string[] {
   return out;
 }
 
-/** Count of hreflang alternate links — policy (SEO §10) is zero. */
-function hreflangCount(html: string): number {
-  const matches = html.match(/<link\b[^>]*\brel=["']alternate["'][^>]*\bhreflang=/gi);
-  return matches ? matches.length : 0;
+/** hreflang alternate links keyed by hreflang value. */
+function hreflangLinks(html: string): Map<string, string> {
+  const links = new Map<string, string>();
+  const tags = html.match(/<link\b[^>]*\brel=["']alternate["'][^>]*>/gi) ?? [];
+  for (const tag of tags) {
+    const lang = attr(tag, "hreflang");
+    const href = attr(tag, "href");
+    if (lang && href) links.set(lang, href);
+  }
+  return links;
+}
+
+function localizedUrl(canonPath: string, locale: string): string {
+  if (locale === "x-default" || locale === "en") return `${CANON_ORIGIN}${canonPath}`;
+  const segment = locale === "zh-CN" ? "zh" : locale;
+  return `${CANON_ORIGIN}/${segment}${canonPath}`;
 }
 
 // --- shared fetch (one round trip per page, reused across assertions) ------------------------
@@ -174,8 +194,13 @@ describe.each(PAGES)("SEO basics — $label", ({ path, canonPath }) => {
     }
   });
 
-  test("emits NO hreflang alternate matrix (policy: none — SEO §10)", () => {
-    expect(hreflangCount(page(path).html)).toBe(0);
+  test("emits the full hreflang alternate matrix (SEO §10)", () => {
+    const links = hreflangLinks(page(path).html);
+    const expected = ["x-default", "en", "ja", "zh-CN", "zh-TW", "ko", "es", "fr"];
+    expect([...links.keys()].sort()).toEqual([...expected].sort());
+    for (const lang of expected) {
+      expect(links.get(lang)).toBe(localizedUrl(canonPath, lang));
+    }
   });
 });
 
@@ -218,11 +243,12 @@ describe("document language", () => {
 });
 
 // --------------------------------------------------------------------------------------------
-// /sitemap.xml — valid XML urlset enumerating home + rankings + repo URLs (SEO §4).
+// /sitemap.xml — valid XML sitemap index; locale sitemaps enumerate URLs (SEO §4).
 // --------------------------------------------------------------------------------------------
 
 describe("/sitemap.xml", () => {
   let xml = "";
+  let enXml = "";
   let status = 0;
   let ctype = "";
 
@@ -231,6 +257,9 @@ describe("/sitemap.xml", () => {
     xml = r.html;
     status = r.status;
     ctype = r.contentType;
+
+    const en = await get("/sitemap-en.xml");
+    enXml = en.html;
   });
 
   test("responds 200 as XML", () => {
@@ -238,19 +267,29 @@ describe("/sitemap.xml", () => {
     expect(ctype.toLowerCase()).toMatch(/xml/);
   });
 
-  test("is a well-formed <urlset> document", () => {
+  test("is a well-formed <sitemapindex> document", () => {
     expect(xml).toContain("<?xml");
-    expect(xml).toMatch(/<urlset[\s>]/);
-    expect(xml).toMatch(/<\/urlset>/);
+    expect(xml).toMatch(/<sitemapindex[\s>]/);
+    expect(xml).toMatch(/<\/sitemapindex>/);
   });
 
-  test("contains several <loc> entries", () => {
-    const locs = xml.match(/<loc>/gi) ?? [];
-    expect(locs.length).toBeGreaterThan(10);
-  });
-
-  test("enumerates the homepage + rankings + repo URLs", () => {
+  test("contains one sitemap per supported locale", () => {
     const locUrls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1].trim());
+    expect(locUrls).toEqual([
+      `${CANON_ORIGIN}/sitemap-en.xml`,
+      `${CANON_ORIGIN}/sitemap-ja.xml`,
+      `${CANON_ORIGIN}/sitemap-zh.xml`,
+      `${CANON_ORIGIN}/sitemap-zh-TW.xml`,
+      `${CANON_ORIGIN}/sitemap-ko.xml`,
+      `${CANON_ORIGIN}/sitemap-es.xml`,
+      `${CANON_ORIGIN}/sitemap-fr.xml`,
+    ]);
+  });
+
+  test("English sitemap enumerates the homepage + rankings + repo URLs", () => {
+    expect(enXml).toMatch(/<urlset[\s>]/);
+    const locUrls = [...enXml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1].trim());
+    expect(locUrls.length).toBeGreaterThan(10);
     // homepage (apex, with or without trailing slash)
     expect(locUrls.some((u) => u === CANON_ORIGIN || u === `${CANON_ORIGIN}/`)).toBe(true);
     // a rankings month URL

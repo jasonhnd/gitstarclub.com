@@ -1,3 +1,13 @@
+---
+owner: categories
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - category taxonomy
+  - classification rules
+  - category route rollout
+---
+
 # Categories
 
 This document defines the first category system for GitStarClub. It is a
