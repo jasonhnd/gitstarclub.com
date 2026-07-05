@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { WorkflowLease } from "@/lib/contracts";
 import type { HealthStatus } from "@/lib/observability/alert";
 import type { WorkflowLeaseSnapshot, WorkflowLeaseStore } from "./lease";
@@ -37,14 +37,26 @@ class MemoryLeaseStore implements WorkflowLeaseStore {
 }
 
 const originalSecret = process.env.CRON_SECRET;
+const originalBlobBase = process.env.BLOB_BASE_URL;
+const originalBlobToken = process.env.BLOB_READ_WRITE_TOKEN;
+const originalGithubToken = process.env.GITHUB_TOKEN;
 
 beforeEach(() => {
   process.env.CRON_SECRET = "secret";
+  process.env.BLOB_BASE_URL = "https://blob.example.com";
+  process.env.BLOB_READ_WRITE_TOKEN = "blob-token";
+  process.env.GITHUB_TOKEN = "github-token";
 });
 
 afterEach(() => {
   if (originalSecret === undefined) delete process.env.CRON_SECRET;
   else process.env.CRON_SECRET = originalSecret;
+  if (originalBlobBase === undefined) delete process.env.BLOB_BASE_URL;
+  else process.env.BLOB_BASE_URL = originalBlobBase;
+  if (originalBlobToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+  else process.env.BLOB_READ_WRITE_TOKEN = originalBlobToken;
+  if (originalGithubToken === undefined) delete process.env.GITHUB_TOKEN;
+  else process.env.GITHUB_TOKEN = originalGithubToken;
 });
 
 function request(url = "https://gitstarclub.com/api/workflows/refresh/start"): Request {
@@ -63,6 +75,27 @@ function runningLease(runId: string, idempotencyKey: string): WorkflowLease {
 }
 
 describe("startRefreshWorkflowRoute", () => {
+  test("fails before acquiring a lease when required runtime config is missing", async () => {
+    delete process.env.GITHUB_TOKEN;
+    const store = new MemoryLeaseStore();
+    const startWorkflow = mock(async () => {});
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const response = await startRefreshWorkflowRoute(request(), startWorkflow, {
+        now: new Date("2026-07-05T06:00:00.000Z"),
+        leaseStore: store,
+        recordHealth: async () => {},
+      });
+
+      expect(response.status).toBe(500);
+      expect(startWorkflow).not.toHaveBeenCalled();
+      expect(store.lease).toBeNull();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   test("two simultaneous route calls do not both enqueue refresh workflows", async () => {
     const store = new MemoryLeaseStore();
     const startWorkflow = mock(async () => {});

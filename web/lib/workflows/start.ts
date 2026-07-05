@@ -1,4 +1,5 @@
 import { recordHealth, sendAlert, type AlertSummary, type HealthStatus } from "@/lib/observability/alert";
+import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 import { claimWorkflowLease, releaseWorkflowLease, type WorkflowLeaseStore } from "@/lib/workflows/lease";
 
@@ -54,6 +55,12 @@ async function recordStartHealth(
   await recorder("workflow-refresh", status, detail);
 }
 
+function requireRefreshWorkflowRuntimeConfig(): void {
+  requireBlobBaseUrl();
+  requireBlobWriteToken();
+  requireGithubToken();
+}
+
 export async function startRefreshWorkflowRoute(
   req: Request,
   startWorkflow: RefreshWorkflowStarter,
@@ -68,6 +75,14 @@ export async function startRefreshWorkflowRoute(
   const idempotencyKey = refreshIdempotencyKey(req, now);
   const recorder = opts.recordHealth ?? recordHealth;
   const alerter = opts.sendAlert ?? sendAlert;
+
+  try {
+    requireRefreshWorkflowRuntimeConfig();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[workflow-refresh] invalid runtime config", { run_id: runId, error: message });
+    return Response.json(internalFailurePayload(runId), { status: 500 });
+  }
 
   let claim;
   try {
