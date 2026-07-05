@@ -413,6 +413,7 @@ Suggested view path pattern:
 
 ```text
 rank/category/<dimension>/<slug>/all-time/repo/stock.json
+rank/category/<dimension>/<slug>/all-time/repo/stock/page/<page>.json
 rank/category/<dimension>/<slug>/<window>/<period>/repo/<metric>.json
 ```
 
@@ -423,6 +424,7 @@ rank/category/language/python/month/2026-05/repo/flow.json
 rank/category/language/rust/week/2026-W22/repo/stock.json
 rank/category/domain/ai-ml/year/2026/repo/flow.json
 rank/category/language/python/all-time/repo/stock.json
+rank/category/language/python/all-time/repo/stock/page/2.json
 ```
 
 Rules:
@@ -433,6 +435,9 @@ Rules:
 - Reuse the same rank metric names as global ranking views.
 - Every repository in a category rank file must have the matching category
   assignment.
+- All-time category rank files are page slices capped to
+  `CATEGORY_DETAIL_PAGE_SIZE`; the root `stock.json` path is page 1 and page
+  2+ uses `stock/page/<page>.json`.
 - Empty or very small category views should not be public unless curated.
 - Phase 1 emits only `all-time/repo/stock` category ranks to keep the Workflow
   write budget bounded. Windowed category ranks are added later for the selected

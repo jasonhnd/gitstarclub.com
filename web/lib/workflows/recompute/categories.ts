@@ -11,10 +11,9 @@ import {
   type CategoryDefinition,
   type CategoryDimension,
 } from "@/lib/categories/rules";
+import { CATEGORY_RANK_PAGE_SIZE, categoryAllTimeRankPath } from "@/lib/categories/rank-pages";
 import type { CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts/categories";
 import type { Model, Period } from "./model";
-
-const TOP_N = 100;
 
 const DIMENSION_LABELS: Record<CategoryDimension, string> = {
   language: "Language",
@@ -170,30 +169,38 @@ function buildCategoriesLookup(registry: CategoryRegistry) {
   };
 }
 
-function categoryAllTimeRank(
+function categoryAllTimeRankViews(
   model: Model,
   category: CategoryRegistryEntry,
   repoIds: Set<number>,
   generatedAt: string,
-): CategoryRankView | null {
+): Array<{ path: string; view: CategoryRankView }> {
   const items = [...repoIds]
     .map((id) => model.repos.get(id))
     .filter((repo): repo is NonNullable<typeof repo> => Boolean(repo))
     .sort((a, b) => b.current_stars - a.current_stars || a.id - b.id)
-    .slice(0, TOP_N)
     .map((repo, i) => ({ rank: i + 1, id: repo.id, value: repo.current_stars, prev_rank: null }));
-  if (items.length === 0) return null;
-  return {
-    meta: {
-      window: "all",
-      period: "all",
-      dim: "repo",
-      metric: "stock",
-      generated_at: generatedAt,
-      category: { id: category.id, dimension: category.dimension, slug: category.slug },
-    },
-    items,
-  };
+  if (items.length === 0) return [];
+
+  const pages: Array<{ path: string; view: CategoryRankView }> = [];
+  for (let offset = 0; offset < items.length; offset += CATEGORY_RANK_PAGE_SIZE) {
+    const page = offset / CATEGORY_RANK_PAGE_SIZE + 1;
+    pages.push({
+      path: categoryAllTimeRankPath(category.dimension, category.slug, page),
+      view: {
+        meta: {
+          window: "all",
+          period: "all",
+          dim: "repo",
+          metric: "stock",
+          generated_at: generatedAt,
+          category: { id: category.id, dimension: category.dimension, slug: category.slug },
+        },
+        items: items.slice(offset, offset + CATEGORY_RANK_PAGE_SIZE),
+      },
+    });
+  }
+  return pages;
 }
 
 export function computeCategoryViews(model: Model, generatedAt: string): Map<string, unknown> {
@@ -209,8 +216,7 @@ export function computeCategoryViews(model: Model, generatedAt: string): Map<str
     const repoIds = assignments.categoryRepos.get(category.id);
     if (!repoIds?.size) continue;
 
-    const allTime = categoryAllTimeRank(model, category, repoIds, generatedAt);
-    if (allTime) views.set(`rank/category/${category.dimension}/${category.slug}/all-time/repo/stock.json`, allTime);
+    for (const { path, view } of categoryAllTimeRankViews(model, category, repoIds, generatedAt)) views.set(path, view);
   }
 
   return views;

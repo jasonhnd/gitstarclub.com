@@ -221,6 +221,7 @@ Relevant fields:
 - `categories/registry.json`: public category dimensions and labels.
 - `categories/assignments.json`: deterministic repository assignments.
 - `rank/category/{dimension}/{slug}/all-time/repo/stock.json`
+- `rank/category/{dimension}/{slug}/all-time/repo/stock/page/{page}.json` for page 2+
 - `lookup/repos.json`
 
 Answer capsule example:
@@ -378,7 +379,7 @@ Implementation linkage:
   - Month rankings: `rank/month/{period}/repo/{flow|growth|new}.json.meta.generated_at`, with heatmap `meta.generated_at` as another real watermark.
   - Week rankings: `rank/week/{period}/repo/flow.json.meta.generated_at`.
   - Category index/dimension pages: `categories/registry.json.generated_at`, falling back to `meta.json.generated_at`, `meta.json.backfilled_at`, or `meta.json.folded_through.month`.
-  - Category detail pages: category rank `meta.generated_at`, `categories/registry.json.generated_at`, `categories/assignments.json.generated_at`, then the same `meta.json` fallbacks.
+  - Category detail pages: category rank `meta.generated_at`, `categories/registry.json.generated_at`, then the same `meta.json` fallbacks.
 - `temporalCoverage` remains optional and should only be emitted when a caller has a data-backed coverage range.
 - Deepening round Dataset enrichment should add `distribution` only for public static export files, not private Blob views. Use `DataDownload` entries pointing at stable `/data/exports/v1/latest/*` aliases for the manifest and bounded CSV/JSON extracts, with `encodingFormat` (`application/json` or `text/csv`) and human-readable `name`.
 - Dataset `temporalCoverage` should be derived from real coverage metadata or visible export metadata. Prefer an interval such as `2015/2026` or `2015-01/2026-06` only when the implementation can prove both endpoints from precomputed views; otherwise omit the field.
@@ -543,7 +544,7 @@ GEO implementation should add:
 | Org | Same as repo, using org entity / base watermark. | `dateModified` on Organization/Person page schema. |
 | Current rankings | `Month-to-date as of {date}` or `Week-to-date as of {date}`. | `CollectionPage.dateModified` and Dataset `dateModified` from live overlay rank meta or heatmap meta. |
 | Historical rankings | `Final period data through {period_end}`. | `CollectionPage.dateModified` and Dataset `dateModified` from the frozen rank/heatmap `meta.generated_at`. |
-| Categories | `Category assignments and star totals as of {date}`. | `CollectionPage.dateModified` and Dataset `dateModified` from category registry, assignment, category rank, or meta watermarks. |
+| Categories | `Category rank and star totals as of {date}`. | `CollectionPage.dateModified` and Dataset `dateModified` from category registry, category rank, or meta watermarks. |
 | Pulse | `Updated daily; live period as of {date}`. | WebSite / CollectionPage / Dataset `dateModified` from `hot-snapshot.json.generated_at` or active weekly rank meta. |
 
 Rules:

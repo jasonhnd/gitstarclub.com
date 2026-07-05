@@ -534,8 +534,8 @@ Routes:
   published registry; `dynamicParams = true` keeps future public registry
   categories addressable.
 - `/categories/[dimension]/[slug]/page/[page]` renders page 2+ of large
-  categories from `categories/assignments.json` + `lookup/repos.json`. Page 1
-  stays canonical at `/categories/[dimension]/[slug]`.
+  categories from precomputed category rank page artifacts + `lookup/repos.json`.
+  Page 1 stays canonical at `/categories/[dimension]/[slug]`.
 
 Data and rendering:
 
@@ -543,9 +543,9 @@ Data and rendering:
   registry construction, public-category filtering, pagination path helpers,
   and static params.
 - Category pages read `categories/registry.json`,
-  `categories/assignments.json`,
-  `rank/category/<dimension>/<slug>/all-time/repo/stock.json`, and
-  `lookup/repos.json` through `web/lib/data/categories.ts`.
+  `rank/category/<dimension>/<slug>/all-time/repo/stock.json`,
+  `rank/category/<dimension>/<slug>/all-time/repo/stock/page/<page>.json`,
+  and `lookup/repos.json` through `web/lib/data/categories.ts`.
 - The `/categories` index groups public categories by registry dimension rather
   than hard-coding only languages.
 - The category index, dimension pages, and detail pages use 86400-second ISR so a

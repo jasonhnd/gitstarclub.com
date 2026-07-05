@@ -1,5 +1,6 @@
 import { readView } from "@/lib/data/source";
 import { putView } from "@/lib/data/write";
+import { CATEGORY_RANK_PAGE_SIZE, categoryAllTimeRankPath } from "@/lib/categories/rank-pages";
 import {
   AliasMap,
   CategoriesLookup,
@@ -170,7 +171,7 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
   const sampleCategory = publicCategories[0];
   if (sampleCategory) {
     const categoryRank = await read(
-      `rank/category/${sampleCategory.dimension}/${sampleCategory.slug}/all-time/repo/stock.json`,
+      categoryAllTimeRankPath(sampleCategory.dimension, sampleCategory.slug),
       CategoryRankList,
     );
     if (categoryRank && categoryAssignments) {
@@ -180,6 +181,24 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
       });
       invariants.category_sample_rank_items_assigned = rankItemsAssigned;
       if (!rankItemsAssigned) failures.push(`rank/category/${sampleCategory.id}: contains unassigned repo`);
+    }
+
+    if (sampleCategory.count > CATEGORY_RANK_PAGE_SIZE) {
+      const categoryRankPage2 = await read(
+        categoryAllTimeRankPath(sampleCategory.dimension, sampleCategory.slug, 2),
+        CategoryRankList,
+      );
+      if (categoryRankPage2 && categoryAssignments) {
+        const pageItemsAssigned = categoryRankPage2.items.every((item) => {
+          if (item.id == null) return false;
+          return categoryAssignments.repositories[String(item.id)]?.[sampleCategory.dimension].includes(sampleCategory.id) ?? false;
+        });
+        const pageRanksContinue = categoryRankPage2.items[0]?.rank === CATEGORY_RANK_PAGE_SIZE + 1;
+        invariants.category_sample_rank_page_2_items_assigned = pageItemsAssigned;
+        invariants.category_sample_rank_page_2_ranks_continue = pageRanksContinue;
+        if (!pageItemsAssigned) failures.push(`rank/category/${sampleCategory.id}/page/2: contains unassigned repo`);
+        if (!pageRanksContinue) failures.push(`rank/category/${sampleCategory.id}/page/2: rank[0] does not continue from page 1`);
+      }
     }
   }
 
