@@ -437,6 +437,24 @@ describe("entity / view contracts", () => {
     expect(RepoEntity.parse({ ...repoEntity, rank_history: { month: [["2024-05", 1]] } }).id).toBe(1);
   });
 
+  test("RepoEntity accepts http and https external URLs plus empty sentinels", () => {
+    expect(
+      RepoEntity.parse({
+        ...repoEntity,
+        homepage_url: "http://example.com",
+        latest_release: { tag_name: "v1.0.0", url: "https://github.com/vercel/next.js/releases/tag/v1.0.0" },
+      }).latest_release?.url,
+    ).toBe("https://github.com/vercel/next.js/releases/tag/v1.0.0");
+    expect(RepoEntity.parse({ ...repoEntity, homepage_url: "", latest_release: { tag_name: "v1.0.0", url: "" } }).homepage_url).toBe("");
+  });
+
+  test("RepoEntity rejects non-http(s) homepage and release URLs", () => {
+    for (const value of ["javascript:alert(1)", "data:text/html,<h1>x</h1>", "file:///etc/passwd", "ftp://example.com/file", "mailto:security@example.com"]) {
+      expect(rejects(RepoEntity, { ...repoEntity, homepage_url: value })).toBe(true);
+      expect(rejects(RepoEntity, { ...repoEntity, latest_release: { tag_name: "v1.0.0", url: value } })).toBe(true);
+    }
+  });
+
   test("RepoEntity rejects missing required milestones", () => {
     const { milestones, ...bad } = repoEntity;
     expect(rejects(RepoEntity, bad)).toBe(true);
