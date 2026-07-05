@@ -15,8 +15,8 @@
     "typecheck": "tsc --noEmit",
     "exports:generate": "bun scripts/generate-data-exports.ts",
     "geo:report": "bun scripts/geo-ai-log-report.ts",
-    "test": "bun test lib/",
-    "test:cov": "bun test lib/ --coverage"
+    "test": "bun test lib/ scripts/lib/",
+    "test:cov": "bun test lib/ scripts/lib/ --coverage"
   },
   "dependencies": {
     "@next/third-parties": "16.2.6",
