@@ -1,6 +1,5 @@
-import type { Metadata } from "next";
+import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import { generateOrgIndexMetadata, OrgIndexPageView } from "@/app/_localized/org-index";
-import { resolveLocaleSegment } from "@/app/_localized/routing";
 
 export const dynamicParams = true;
 export const revalidate = 3600;
@@ -11,12 +10,10 @@ export function generateStaticParams() {
   return [];
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
-  const { locale } = await params;
-  return generateOrgIndexMetadata({ locale: resolveLocaleSegment(locale), page: 1 });
-}
+const route = createLocalizedPage({
+  generateMetadata: ({ locale }) => generateOrgIndexMetadata({ locale, page: 1 }),
+  render: ({ locale }) => <OrgIndexPageView locale={locale} page={1} />,
+});
 
-export default async function LocalizedOrgIndexPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
-  return <OrgIndexPageView locale={resolveLocaleSegment(locale)} page={1} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

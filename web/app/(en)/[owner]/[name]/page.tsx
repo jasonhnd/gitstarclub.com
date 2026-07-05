@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import { createEnglishPage } from "@/app/_localized/page-adapter";
 import { generateRepoMetadata, RepoPageView } from "@/app/_localized/repo";
 
 export const dynamicParams = true;
@@ -10,12 +10,10 @@ export function generateStaticParams() {
   return [];
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ owner: string; name: string }> }): Promise<Metadata> {
-  const { owner, name } = await params;
-  return generateRepoMetadata({ locale: "en", owner, name });
-}
+const route = createEnglishPage<{ owner: string; name: string }>({
+  generateMetadata: ({ locale, params: { owner, name } }) => generateRepoMetadata({ locale, owner, name }),
+  render: ({ locale, params: { owner, name } }) => <RepoPageView locale={locale} owner={owner} name={name} />,
+});
 
-export default async function RepoPage({ params }: { params: Promise<{ owner: string; name: string }> }) {
-  const { owner, name } = await params;
-  return <RepoPageView locale="en" owner={owner} name={name} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

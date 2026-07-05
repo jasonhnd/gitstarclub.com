@@ -1,12 +1,9 @@
-import type { Metadata } from "next";
+import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import {
   CategoryDetailPageView,
   generateCategoryDetailMetadataForLocale,
   generateCategoryDetailStaticParams,
 } from "@/app/_localized/categories";
-import { resolveRouteLocale } from "@/app/_localized/routing";
-
-type Params = Promise<{ locale: string; dimension: string; slug: string }>;
 
 export const dynamicParams = true;
 export const revalidate = 86400;
@@ -15,14 +12,12 @@ export function generateStaticParams() {
   return generateCategoryDetailStaticParams();
 }
 
-export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  const { dimension, slug } = await params;
-  return generateCategoryDetailMetadataForLocale(locale, { dimension, slug });
-}
+const route = createLocalizedPage<{ dimension: string; slug: string }>({
+  generateMetadata: ({ locale, params }) => generateCategoryDetailMetadataForLocale(locale, params),
+  render: ({ locale, params: { dimension, slug } }) => (
+    <CategoryDetailPageView locale={locale} dimension={dimension} slug={slug} page={1} />
+  ),
+});
 
-export default async function LocalizedCategoryDetailPage({ params }: { params: Params }) {
-  const locale = await resolveRouteLocale(params);
-  const { dimension, slug } = await params;
-  return <CategoryDetailPageView locale={locale} dimension={dimension} slug={slug} page={1} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

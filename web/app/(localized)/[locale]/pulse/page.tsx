@@ -1,19 +1,15 @@
-import type { Metadata } from "next";
+import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import { generatePulseMetadata, PulsePageView } from "@/app/_localized/pulse";
-import { generateCoreLocaleStaticParams, resolveRouteLocale, type LocaleParams } from "@/app/_localized/routing";
+import { generateCoreLocaleStaticParams } from "@/app/_localized/routing";
 
 export const revalidate = false;
 
-export function generateStaticParams() {
-  return generateCoreLocaleStaticParams();
-}
+export const generateStaticParams = generateCoreLocaleStaticParams;
 
-export async function generateMetadata({ params }: { params: LocaleParams }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  return generatePulseMetadata({ locale, canonicalPath: "/pulse" });
-}
+const route = createLocalizedPage({
+  generateMetadata: ({ locale }) => generatePulseMetadata({ locale, canonicalPath: "/pulse" }),
+  render: ({ locale }) => <PulsePageView locale={locale} canonicalPath="/pulse" />,
+});
 
-export default async function LocalizedPulsePage({ params }: { params: LocaleParams }) {
-  const locale = await resolveRouteLocale(params);
-  return <PulsePageView locale={locale} canonicalPath="/pulse" />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

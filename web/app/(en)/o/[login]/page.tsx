@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import { createEnglishPage } from "@/app/_localized/page-adapter";
 import { generateOrgMetadata, OrgPageView } from "@/app/_localized/org";
 
 export const dynamicParams = true;
@@ -10,12 +10,10 @@ export function generateStaticParams() {
   return [];
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ login: string }> }): Promise<Metadata> {
-  const { login } = await params;
-  return generateOrgMetadata({ locale: "en", login });
-}
+const route = createEnglishPage<{ login: string }>({
+  generateMetadata: ({ locale, params: { login } }) => generateOrgMetadata({ locale, login }),
+  render: ({ locale, params: { login } }) => <OrgPageView locale={locale} login={login} />,
+});
 
-export default async function OrgPage({ params }: { params: Promise<{ login: string }> }) {
-  const { login } = await params;
-  return <OrgPageView locale="en" login={login} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;
