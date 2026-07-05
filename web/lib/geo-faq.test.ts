@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import type { CategoryRegistry, OrgEntity, RepoEntity } from "@/lib/contracts";
 import type { FaqItem } from "@/lib/jsonld";
+import { dataAsOfLabel } from "./geo-capsules";
 import {
   buildAllTimeRankingFaqs,
   buildCategoryDetailFaqs,
@@ -161,6 +162,18 @@ describe("GEO FAQ helpers", () => {
     }
   });
 
+  test("keeps localized dates and grouped counts identical in visible FAQ and JSON-LD", () => {
+    const asOfFr = dataAsOfLabel("2026-06-28T12:00:00Z", { locale: "fr" });
+    const category = { ...registry.dimensions[0].categories[0], count: 1234 };
+    const items = buildCategoryDetailFaqs({ category, asOf: asOfFr, rows: rankRows, locale: "fr" });
+    const html = renderFaq(items, "/fr/categories/language/javascript", "fr");
+    const pairs = schemaPairsFromHtml(html);
+
+    expect(pairs).toEqual(visiblePairsFromHtml(html));
+    expect(pairs[0][1]).toContain("28 juin 2026");
+    expect(pairs[0][1]).toContain((1234).toLocaleString("fr-FR"));
+  });
+
   test("escapes visible HTML and JSON-LD script text without changing parsed FAQ strings", () => {
     const items = [
       {
@@ -238,8 +251,8 @@ describe("GEO FAQ helpers", () => {
   });
 });
 
-function renderFaq(items: readonly FaqItem[], path: string): string {
-  return renderToStaticMarkup(createElement(FaqBlock, { items, path, locale: "en" }));
+function renderFaq(items: readonly FaqItem[], path: string, locale = "en"): string {
+  return renderToStaticMarkup(createElement(FaqBlock, { items, path, locale }));
 }
 
 function schemaPairsFromHtml(html: string): Array<[string, string]> {

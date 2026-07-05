@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildLocaleSitemapEntries,
+  buildSitemapIndexEntries,
+  buildSitemapIndexXml,
   buildSitemapPaths,
+  buildSitemapXml,
+  localizedAlternateUrls,
+  localizedCanonicalUrl,
+  localeSitemapPath,
   resolveSitemapLastModified,
   SITEMAP_FALLBACK_LAST_MODIFIED,
   sitemapChangeFrequency,
@@ -109,6 +116,66 @@ describe("sitemap hints", () => {
     expect(sitemapPriority("")).toBe(1);
     expect(sitemapPriority("/categories/language/python/page/2")).toBe(0.6);
     expect(sitemapPriority("/about")).toBe(0.4);
+  });
+});
+
+describe("localized sitemap urls", () => {
+  const base = "https://gitstarclub.test";
+  const meta = { generated_at: "2026-06-04T12:00:00.000Z" };
+
+  test("builds localized canonical URLs from canonical paths without locale prefixes", () => {
+    expect(localizedCanonicalUrl("en", "/rankings", base)).toBe("https://gitstarclub.test/rankings");
+    expect(localizedCanonicalUrl("ja", "/rankings", base)).toBe("https://gitstarclub.test/ja/rankings");
+    expect(localizedCanonicalUrl("zh-TW", "", base)).toBe("https://gitstarclub.test/zh-TW");
+  });
+
+  test("builds the full hreflang alternate set with x-default pointing to English", () => {
+    expect(localizedAlternateUrls("/rankings", base)).toEqual([
+      { hreflang: "x-default", href: "https://gitstarclub.test/rankings" },
+      { hreflang: "en", href: "https://gitstarclub.test/rankings" },
+      { hreflang: "ja", href: "https://gitstarclub.test/ja/rankings" },
+      { hreflang: "zh-CN", href: "https://gitstarclub.test/zh/rankings" },
+      { hreflang: "zh-TW", href: "https://gitstarclub.test/zh-TW/rankings" },
+      { hreflang: "ko", href: "https://gitstarclub.test/ko/rankings" },
+      { hreflang: "es", href: "https://gitstarclub.test/es/rankings" },
+      { hreflang: "fr", href: "https://gitstarclub.test/fr/rankings" },
+    ]);
+  });
+
+  test("builds per-locale entries while keeping deterministic sitemap hints", () => {
+    const entries = buildLocaleSitemapEntries("ja", ["", "/rankings/2024/6"], { meta, base });
+
+    expect(entries[0].loc).toBe("https://gitstarclub.test/ja");
+    expect(entries[0].priority).toBe(1);
+    expect(entries[0].changeFrequency).toBe("daily");
+    expect(entries[0].lastModified.toISOString()).toBe("2026-06-04T12:00:00.000Z");
+    expect(entries[0].alternates).toContainEqual({ hreflang: "ja", href: "https://gitstarclub.test/ja" });
+    expect(entries[0].alternates).toContainEqual({ hreflang: "x-default", href: "https://gitstarclub.test" });
+
+    expect(entries[1].loc).toBe("https://gitstarclub.test/ja/rankings/2024/6");
+    expect(entries[1].lastModified.toISOString()).toBe("2024-06-30T23:59:59.999Z");
+  });
+
+  test("builds sitemap index XML for all locale sitemap files", () => {
+    const xml = buildSitemapIndexXml(buildSitemapIndexEntries(new Date("2026-06-04T12:00:00.000Z"), base));
+
+    expect(localeSitemapPath("zh-TW")).toBe("/sitemap-zh-TW.xml");
+    expect(xml).toContain("<sitemapindex");
+    expect(xml.match(/<sitemap>/g)?.length).toBe(7);
+    expect(xml).toContain("<loc>https://gitstarclub.test/sitemap-en.xml</loc>");
+    expect(xml).toContain("<loc>https://gitstarclub.test/sitemap-zh-TW.xml</loc>");
+    expect(xml).toContain("<lastmod>2026-06-04T12:00:00.000Z</lastmod>");
+  });
+
+  test("serializes per-locale sitemap XML with xhtml alternates", () => {
+    const xml = buildSitemapXml(buildLocaleSitemapEntries("fr", ["/rankings"], { meta, base }));
+
+    expect(xml).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
+    expect(xml).toContain("<loc>https://gitstarclub.test/fr/rankings</loc>");
+    expect(xml).toContain('<xhtml:link rel="alternate" hreflang="x-default" href="https://gitstarclub.test/rankings" />');
+    expect(xml).toContain('<xhtml:link rel="alternate" hreflang="fr" href="https://gitstarclub.test/fr/rankings" />');
+    expect(xml).toContain("<changefreq>daily</changefreq>");
+    expect(xml).toContain("<priority>0.9</priority>");
   });
 });
 

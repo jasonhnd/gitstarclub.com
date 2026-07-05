@@ -1,14 +1,14 @@
 import type { CategoryDimensionRegistry, CategoryRegistry, CategoryRegistryEntry, OrgEntity, RepoEntity } from "@/lib/contracts";
-import { fmtStars, monthYearLabel } from "@/lib/format";
+import { fmtStars, formatInteger, monthYearLabel } from "@/lib/format";
 import type { CapsuleOrgRankRow, CapsuleRankRow } from "@/lib/geo-capsules";
 import type { FaqItem } from "@/lib/jsonld";
 
 type RankingMetric = "gained" | "total";
 
-export function buildRepoFaqs(repo: RepoEntity, asOf: string | null): FaqItem[] {
+export function buildRepoFaqs(repo: RepoEntity, asOf: string | null, locale = "en"): FaqItem[] {
   const latest = repo.curve.monthly.at(-1);
   const latestPhrase = latest
-    ? `${monthLabel(latest[0])} recorded ${signedStars(latest[1])} stars and ended at ${fmtStars(latest[2])} total stars`
+    ? `${monthLabel(latest[0], locale)} recorded ${signedStars(latest[1])} stars and ended at ${fmtStars(latest[2])} total stars`
     : "the monthly curve is unavailable in the loaded repository JSON";
   const language = repo.language ?? "an unspecified primary language";
 
@@ -25,7 +25,7 @@ export function buildRepoFaqs(repo: RepoEntity, asOf: string | null): FaqItem[] 
     },
     {
       question: `When did ${repo.full_name} cross major star milestones?`,
-      answer: repoMilestoneAnswer(repo),
+      answer: repoMilestoneAnswer(repo, locale),
     },
     {
       question: `What is the latest monthly growth point for ${repo.full_name}?`,
@@ -38,7 +38,7 @@ export function buildRepoFaqs(repo: RepoEntity, asOf: string | null): FaqItem[] 
   ];
 }
 
-export function buildOrgFaqs(org: OrgEntity, members: readonly CapsuleRankRow[], asOf: string | null): FaqItem[] {
+export function buildOrgFaqs(org: OrgEntity, members: readonly CapsuleRankRow[], asOf: string | null, locale = "en"): FaqItem[] {
   const kind = org.owner_type === "Organization" ? "organization" : "developer";
   const lead = members[0];
   const leadAnswer = lead
@@ -49,8 +49,8 @@ export function buildOrgFaqs(org: OrgEntity, members: readonly CapsuleRankRow[],
     {
       question: `How many tracked stars does ${org.login} have?`,
       answer: asOf
-        ? `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${org.repo_count.toLocaleString("en-US")} tracked repositories.`
-        : `${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${org.repo_count.toLocaleString("en-US")} tracked repositories in the loaded organization JSON.`,
+        ? `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories.`
+        : `${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories in the loaded organization JSON.`,
     },
     {
       question: `Is ${org.login} an organization or developer page?`,
@@ -71,10 +71,12 @@ export function buildAllTimeRankingFaqs({
   asOf,
   repoRows,
   orgRows,
+  locale = "en",
 }: {
   asOf: string | null;
   repoRows: readonly CapsuleRankRow[];
   orgRows: readonly CapsuleOrgRankRow[];
+  locale?: string;
 }): FaqItem[] {
   const repoLead = repoRows[0];
   const orgLead = orgRows[0];
@@ -95,7 +97,7 @@ export function buildAllTimeRankingFaqs({
     {
       question: "Which organization leads the all-time ranking?",
       answer: orgLead
-        ? `${orgLead.login} leads the visible organization ranking with ${fmtStars(orgLead.current_stars_sum)} total stars across ${orgLead.repo_count.toLocaleString("en-US")} tracked repositories.`
+        ? `${orgLead.login} leads the visible organization ranking with ${fmtStars(orgLead.current_stars_sum)} total stars across ${formatInteger(locale, orgLead.repo_count)} tracked repositories.`
         : "The visible organization ranking is waiting for precomputed organization rank rows.",
     },
     {
@@ -142,7 +144,7 @@ export function buildRankingFaqs({
   ];
 }
 
-export function buildCategoryIndexFaqs(registry: CategoryRegistry, asOf: string | null): FaqItem[] {
+export function buildCategoryIndexFaqs(registry: CategoryRegistry, asOf: string | null, locale = "en"): FaqItem[] {
   const publicCategories = registry.dimensions.flatMap((dimension) => dimension.categories.filter((category) => category.public));
   const firstDimension = registry.dimensions[0];
 
@@ -150,8 +152,8 @@ export function buildCategoryIndexFaqs(registry: CategoryRegistry, asOf: string 
     {
       question: "What are GitHub repository categories on GitStarClub?",
       answer: asOf
-        ? `As of ${asOf}, GitStarClub organizes tracked repositories into ${publicCategories.length.toLocaleString("en-US")} public categories across ${registry.dimensions.length} dimensions.`
-        : `GitStarClub organizes tracked repositories into ${publicCategories.length.toLocaleString("en-US")} public categories across ${registry.dimensions.length} dimensions in the loaded registry JSON.`,
+        ? `As of ${asOf}, GitStarClub organizes tracked repositories into ${formatInteger(locale, publicCategories.length)} public categories across ${formatInteger(locale, registry.dimensions.length)} dimensions.`
+        : `GitStarClub organizes tracked repositories into ${formatInteger(locale, publicCategories.length)} public categories across ${formatInteger(locale, registry.dimensions.length)} dimensions in the loaded registry JSON.`,
     },
     {
       question: "Which category dimensions are available?",
@@ -170,7 +172,7 @@ export function buildCategoryIndexFaqs(registry: CategoryRegistry, asOf: string 
   ];
 }
 
-export function buildCategoryDimensionFaqs(dimension: CategoryDimensionRegistry, asOf: string | null): FaqItem[] {
+export function buildCategoryDimensionFaqs(dimension: CategoryDimensionRegistry, asOf: string | null, locale = "en"): FaqItem[] {
   const publicCategories = dimension.categories.filter((category) => category.public);
   const largest = [...publicCategories].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))[0];
 
@@ -178,13 +180,13 @@ export function buildCategoryDimensionFaqs(dimension: CategoryDimensionRegistry,
     {
       question: `What does the ${dimension.label} category page include?`,
       answer: asOf
-        ? `As of ${asOf}, the ${dimension.label} page lists ${publicCategories.length.toLocaleString("en-US")} public categories for tracked GitHub repositories.`
-        : `The ${dimension.label} page lists ${publicCategories.length.toLocaleString("en-US")} public categories for tracked GitHub repositories from registry JSON.`,
+        ? `As of ${asOf}, the ${dimension.label} page lists ${formatInteger(locale, publicCategories.length)} public categories for tracked GitHub repositories.`
+        : `The ${dimension.label} page lists ${formatInteger(locale, publicCategories.length)} public categories for tracked GitHub repositories from registry JSON.`,
     },
     {
       question: `Which ${dimension.label} category has the most tracked repositories?`,
       answer: largest
-        ? `${largest.label} is the largest visible ${dimension.label} category with ${largest.count.toLocaleString("en-US")} tracked repositories.`
+        ? `${largest.label} is the largest visible ${dimension.label} category with ${formatInteger(locale, largest.count)} tracked repositories.`
         : `No public ${dimension.label} category counts are available in the loaded registry JSON.`,
     },
     {
@@ -202,10 +204,12 @@ export function buildCategoryDetailFaqs({
   category,
   asOf,
   rows,
+  locale = "en",
 }: {
   category: CategoryRegistryEntry;
   asOf: string | null;
   rows: readonly CapsuleRankRow[];
+  locale?: string;
 }): FaqItem[] {
   const leader = rows[0];
   const second = rows[1];
@@ -214,8 +218,8 @@ export function buildCategoryDetailFaqs({
     {
       question: `What repositories are included in ${category.label}?`,
       answer: asOf
-        ? `As of ${asOf}, ${category.label} includes ${category.count.toLocaleString("en-US")} tracked repositories according to the category registry.`
-        : `${category.label} includes ${category.count.toLocaleString("en-US")} tracked repositories according to the loaded category registry.`,
+        ? `As of ${asOf}, ${category.label} includes ${formatInteger(locale, category.count)} tracked repositories according to the category registry.`
+        : `${category.label} includes ${formatInteger(locale, category.count)} tracked repositories according to the loaded category registry.`,
     },
     {
       question: `Which repository leads ${category.label}?`,
@@ -305,23 +309,23 @@ export function visibleFaqSnapshot(items: readonly FaqItem[]): string {
   return ["Frequently asked questions", ...items.flatMap((item) => [item.question, item.answer])].join("\n");
 }
 
-function repoMilestoneAnswer(repo: RepoEntity): string {
+function repoMilestoneAnswer(repo: RepoEntity, locale: string): string {
   const milestones = [
     ["10k", repo.milestones.crossed_10k],
     ["50k", repo.milestones.crossed_50k],
     ["100k", repo.milestones.crossed_100k],
   ] as const;
-  const known = milestones.flatMap(([label, date]) => (date ? [`${label} in ${monthLabel(date)}`] : []));
+  const known = milestones.flatMap(([label, date]) => (date ? [`${label} in ${monthLabel(date, locale)}`] : []));
   if (known.length === 0) {
     return `${repo.full_name} has no frozen 10k, 50k, or 100k milestone date in the loaded repository JSON.`;
   }
   return `${repo.full_name} crossed ${listLabels(known)} according to frozen milestone fields in the repository JSON.`;
 }
 
-function monthLabel(value: string): string {
+function monthLabel(value: string, locale: string): string {
   const year = Number(value.slice(0, 4));
   const month = Number(value.slice(5, 7));
-  return monthYearLabel("en", year, month);
+  return monthYearLabel(locale, year, month);
 }
 
 function repoName(row: CapsuleRankRow): string {

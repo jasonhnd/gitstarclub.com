@@ -1,7 +1,8 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { fmtK, fmtStars } from "@/lib/format";
-import { T } from "@/lib/i18n/client";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
+import { localizedPath } from "@/lib/i18n/routing";
 import type { Row } from "./RankingList";
 
 type RankingVariant = "gained" | "rate" | "crossed" | "total";
@@ -37,58 +38,100 @@ export type CategorySummaryRow = {
   path?: string;
 };
 
+export type CategorySummaryTableLabels = {
+  caption: string;
+  category: string;
+  dimension: string;
+  slug: string;
+  trackedRepositories: string;
+  gitstarclubUrl: string;
+  pendingCount: string;
+};
+
+export type RepositoryRankingTableLabels = {
+  caption: string;
+  rank: string;
+  repository: string;
+  language: string;
+  unknown: string;
+  starsGained: string;
+  growthRatePercent: string;
+  tenKCrossingDay: string;
+  day: string;
+  totalStars: string;
+  rowStarsAdded: string;
+};
+
+export type OrganizationRankingTableLabels = {
+  caption: string;
+  rank: string;
+  owner: string;
+  ownerType: string;
+  unknown: string;
+  trackedRepositories: string;
+  totalStars: string;
+};
+
 export function RepositoryRankingTable({
   rows,
   variant = "gained",
   startRank = 1,
-  caption = "Repository rankings",
+  caption,
+  labels,
+  locale = DEFAULT_LOCALE,
 }: {
   rows: Row[];
   variant?: RankingVariant;
   startRank?: number;
   caption?: string;
+  labels: RepositoryRankingTableLabels;
+  locale?: Locale;
 }) {
   if (rows.length === 0) return null;
+  const text = labels;
 
   return (
     <div className={tableWrapClass}>
       <table className={tableClass} data-semantic-table="repository-rankings">
-        <caption className={captionClass}>{caption}</caption>
+        <caption className={captionClass}>{caption ?? text.caption}</caption>
         <thead>
           <tr>
             <th scope="col" className={`${headClass} w-14 text-right`}>
-              Rank
+              {text.rank}
             </th>
             <th scope="col" className={headClass}>
-              Repository
+              {text.repository}
             </th>
             <th scope="col" className={headClass}>
-              Language
+              {text.language}
             </th>
             {variant !== "total" && (
               <th scope="col" className={`${headClass} text-right`}>
-                {metricHeader(variant)}
+                {metricHeader(variant, text)}
               </th>
             )}
             <th scope="col" className={`${headClass} text-right`}>
-              Total stars
+              {text.totalStars}
             </th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
-            <tr key={`${row.owner}/${row.name}`} className="group animate-rise" style={tableStaggerStyle(index)}>
-              <td className={cellClass(rankCellClass, "first")}>{startRank + index}</td>
-              <th scope="row" className={bodyCellClass}>
-                <Link href={`/${row.owner}/${row.name}`} className={linkClass}>
-                  {row.owner}/{row.name}
-                </Link>
-              </th>
-              <td className={mutedCellClass}>{row.lang ?? "Unknown"}</td>
-              {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant)}</td>}
-              <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>{fmtStars(row.total)}★</td>
-            </tr>
-          ))}
+          {rows.map((row, index) => {
+            const rank = startRank + index;
+            return (
+              <tr key={`${row.owner}/${row.name}`} className="group animate-rise" style={tableStaggerStyle(index)} aria-label={rowAriaLabel(row, rank, variant, text)}>
+                <td className={cellClass(rankCellClass, "first")}>{rank}</td>
+                <th scope="row" className={bodyCellClass}>
+                  <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={linkClass}>
+                    {row.owner}/{row.name}
+                  </Link>
+                </th>
+                <td className={mutedCellClass}>{row.lang ?? text.unknown}</td>
+                {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant, text)}</td>}
+                <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>{fmtStars(row.total)}★</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -98,34 +141,39 @@ export function RepositoryRankingTable({
 export function OrganizationRankingTable({
   rows,
   startRank = 1,
-  caption = "Organization rankings",
+  caption,
+  labels,
+  locale = DEFAULT_LOCALE,
 }: {
   rows: OrganizationSummaryRow[];
   startRank?: number;
   caption?: string;
+  labels: OrganizationRankingTableLabels;
+  locale?: Locale;
 }) {
   if (rows.length === 0) return null;
+  const text = labels;
 
   return (
     <div className={tableWrapClass}>
       <table className={tableClass} data-semantic-table="organization-rankings">
-        <caption className={captionClass}>{caption}</caption>
+        <caption className={captionClass}>{caption ?? text.caption}</caption>
         <thead>
           <tr>
             <th scope="col" className={`${headClass} w-14 text-right`}>
-              Rank
+              {text.rank}
             </th>
             <th scope="col" className={headClass}>
-              Owner
+              {text.owner}
             </th>
             <th scope="col" className={headClass}>
-              Owner type
+              {text.ownerType}
             </th>
             <th scope="col" className={`${headClass} text-right`}>
-              Tracked repositories
+              {text.trackedRepositories}
             </th>
             <th scope="col" className={`${headClass} text-right`}>
-              Total stars
+              {text.totalStars}
             </th>
           </tr>
         </thead>
@@ -134,11 +182,11 @@ export function OrganizationRankingTable({
             <tr key={row.login} className="group animate-rise" style={tableStaggerStyle(index)}>
               <td className={cellClass(rankCellClass, "first")}>{row.rank ?? startRank + index}</td>
               <th scope="row" className={bodyCellClass}>
-                <Link href={`/o/${row.login}`} className={linkClass}>
+                <Link href={localizedPath(locale, `/o/${row.login}`)} className={linkClass}>
                   {row.login}
                 </Link>
               </th>
-              <td className={mutedCellClass}>{row.owner_type ?? "Unknown"}</td>
+              <td className={mutedCellClass}>{row.owner_type ?? text.unknown}</td>
               <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{row.repo_count}</td>
               <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>
                 {fmtStars(row.current_stars_sum)}★
@@ -151,29 +199,38 @@ export function OrganizationRankingTable({
   );
 }
 
-export function CategorySummaryTable({ rows, caption = "Repository categories" }: { rows: CategorySummaryRow[]; caption?: string }) {
+export function CategorySummaryTable({
+  rows,
+  caption,
+  labels,
+}: {
+  rows: CategorySummaryRow[];
+  caption?: string;
+  labels: CategorySummaryTableLabels;
+}) {
   if (rows.length === 0) return null;
+  const text = labels;
 
   return (
     <div className={tableWrapClass}>
       <table className={tableClass} data-semantic-table="repository-categories">
-        <caption className={captionClass}>{caption}</caption>
+        <caption className={captionClass}>{caption ?? text.caption}</caption>
         <thead>
           <tr>
             <th scope="col" className={headClass}>
-              <T path="categories.eyebrow" />
+              {text.category}
             </th>
             <th scope="col" className={headClass}>
-              <T path="categories.dimensionEyebrow" />
+              {text.dimension}
             </th>
             <th scope="col" className={headClass}>
-              Slug
+              {text.slug}
             </th>
             <th scope="col" className={`${headClass} text-right`}>
-              <T path="categories.trackedRepositories" />
+              {text.trackedRepositories}
             </th>
             <th scope="col" className={headClass}>
-              GitStarClub URL
+              {text.gitstarclubUrl}
             </th>
           </tr>
         </thead>
@@ -190,7 +247,7 @@ export function CategorySummaryTable({ rows, caption = "Repository categories" }
                 <td className={mutedCellClass}>{row.dimension}</td>
                 <td className={mutedCellClass}>{row.slug}</td>
                 <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>
-                  {row.count > 0 ? row.count : <T path="categories.pendingCount" />}
+                  {row.count > 0 ? row.count : text.pendingCount}
                 </td>
                 <td className={cellClass(mutedCellClass, "last")}>
                   <Link href={path} className="hover:text-on-surface hover:underline hover:underline-offset-2">
@@ -206,26 +263,31 @@ export function CategorySummaryTable({ rows, caption = "Repository categories" }
   );
 }
 
-function metricHeader(variant: Exclude<RankingVariant, "total">): string {
+function metricHeader(variant: Exclude<RankingVariant, "total">, labels: RepositoryRankingTableLabels): string {
   switch (variant) {
     case "rate":
-      return "Growth rate percent";
+      return labels.growthRatePercent;
     case "crossed":
-      return "10k crossing day";
+      return labels.tenKCrossingDay;
     case "gained":
-      return "Stars gained";
+      return labels.starsGained;
   }
 }
 
-function metricValue(row: Row, variant: Exclude<RankingVariant, "total">): number | string {
+function metricValue(row: Row, variant: Exclude<RankingVariant, "total">, labels: RepositoryRankingTableLabels): number | string {
   switch (variant) {
     case "rate":
       return row.rate == null ? "" : `+${row.rate}%`;
     case "crossed":
-      return row.crossedDay == null ? "" : `Day ${row.crossedDay}`;
+      return row.crossedDay == null ? "" : `${labels.day} ${row.crossedDay}`;
     case "gained":
       return `+${fmtK(row.gained ?? 0)}`;
   }
+}
+
+function rowAriaLabel(row: Row, rank: number, variant: RankingVariant, labels: RepositoryRankingTableLabels): string | undefined {
+  if (variant !== "gained") return undefined;
+  return fill(labels.rowStarsAdded, { rank: String(rank), stars: fmtK(row.gained ?? 0) });
 }
 
 function tableStaggerStyle(i: number): CSSProperties | undefined {
@@ -239,4 +301,8 @@ function cellClass(base: string, position: CellPosition): string {
 
 function categoryRowPath(row: CategorySummaryRow): string {
   return row.path ?? `/categories/${row.dimension}/${row.slug}`;
+}
+
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
 }

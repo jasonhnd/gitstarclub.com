@@ -5,11 +5,13 @@ export function FaqBlock({
   items,
   path,
   locale,
+  heading = "Frequently asked questions",
   className = "",
 }: {
   items: readonly FaqItem[];
   path: string;
   locale: string;
+  heading?: string;
   className?: string;
 }) {
   if (items.length === 0) return null;
@@ -19,7 +21,7 @@ export function FaqBlock({
       <JsonLd data={faqPageLd(items, path, locale)} />
       <section aria-labelledby="faq-heading" className={`mt-[clamp(2rem,4vw,3rem)] ${className}`}>
         <h2 id="faq-heading" className="text-[1.25rem] font-extrabold tracking-tight text-on-surface">
-          Frequently asked questions
+          {heading}
         </h2>
         <div className="mt-4 grid gap-3">
           {items.map((item) => (

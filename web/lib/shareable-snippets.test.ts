@@ -46,6 +46,15 @@ describe("shareable snippets", () => {
       "https://gitstarclub.com/rankings/2017/1",
       "https://gitstarclub.com/rankings/2018/6",
     ]);
+
+    const localized = buildRepoMilestoneSnippet({
+      locale: "ja",
+      repo: { full_name: "react/react" },
+      asOf: "2026年6月24日",
+      milestones: [{ stars: 10000, label: "10k", date: "2015-05-20", monthIndex: 0 }],
+    });
+    expect(localized?.text).toContain("10k in 2015年5月");
+    expect(localized?.text).not.toMatch(/January|February|March|April|May|June|July|August|September|October|November|December/);
   });
 
   test("builds org total snippets with member links and escaped embed html", () => {
@@ -63,6 +72,14 @@ describe("shareable snippets", () => {
     expect(snippet?.links.at(0)?.href).toBe("https://gitstarclub.com/o/vercel");
     expect(snippet?.embedHtml).toContain("vercel organization total");
     expect(snippet?.embedHtml).not.toContain("<script");
+
+    const localized = buildOrgTotalSnippet({
+      locale: "fr",
+      org: { login: "vercel", current_stars_sum: 400000, repo_count: 1234 },
+      asOf: "28 juin 2026",
+      members: [],
+    });
+    expect(localized?.copyText).toContain(`across ${(1234).toLocaleString("fr-FR")} tracked repositories`);
   });
 
   test("normalizes canonical urls", () => {
