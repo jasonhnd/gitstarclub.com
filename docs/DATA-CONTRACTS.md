@@ -170,7 +170,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 }
 ```
 
-### 2.2b `lookup/aliases.json`
+### 2.2b `lookup/aliases.json`（`REQ-ENTITY-001`）
 
 改名映射：旧（已弃用）`full_name`（小写）→ 当前 `repo id`。repo 页 `/[owner]/[name]` 在 slug 查不到时据此 **308 永久重定向**到该 id 的当前 `full_name`（`repo_id` 跨改名稳定，重定向目标在请求时从 `lookup/repos.json` 实时解析）。由 `buildAliases` workflow step 产出：并集所有保留的 `ops/workflows/<run>/renames.json` 增量（gc 不删 `ops/`，故能覆盖更早 run 的改名），剔除已不再追踪的 id、自指、以及与活仓库当前名相撞的项。
 
@@ -178,7 +178,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 { "facebook/react": 10270250, "facebook/react-native": 29028775 }
 ```
 
-### 2.3 `rank/{window}/{period}/{dim}/{metric}.json`
+### 2.3 `rank/{window}/{period}/{dim}/{metric}.json`（`REQ-RANKING-001`）
 
 排行榜。`window∈{week,month,year}`、`period` 见全局约定、`dim∈{repo,org}`、`metric∈{flow,stock}`。
 **派生 repo 榜（仅 month/year，dim=repo）**：`metric=growth`（增速，item 含 `rate`=增速%、`base`=期初 stock；**入榜须期初 stock ≥ 20,000 且当期 flow > 0**——`flow<=0` 一并剔除，见 `ranks.ts:131`）、`metric=new`（新晋，item 含 `date`=破 10k 日期）。口径见 [RANKING §4](./RANKING.md)；`RankItem` 因此带可选 `rate`/`base`/`date` 三字段。
@@ -199,11 +199,11 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 - `prev_rank`：上一同类周期的名次（供"↑↓ / 进出 TOP50"），无则 `null`。
 - top-N：repo 默认 100、org 默认 100（页面按需截断）。
 
-### 2.4 `rank/all-time/{dim}/stock.json`
+### 2.4 `rank/all-time/{dim}/stock.json`（`REQ-RANKING-001`）
 
 `items` 形状同上；全时仅 `stock`（repo = `current_stars` 排序，org = `current_stars_sum` 排序）。
 
-### 2.4a `rank/category/<dimension>/<slug>/all-time/repo/stock.json`
+### 2.4a `rank/category/<dimension>/<slug>/all-time/repo/stock.json`（`REQ-CATEGORY-001`）
 
 Phase-1 category rank views are all-time repo stock lists only. They reuse
 `RankItem` rows but add category metadata to the rank meta object:
@@ -231,7 +231,7 @@ Rules:
 - Every `item.id` must be assigned to `meta.category.id` in `categories/assignments.json`.
 - Windowed `flow`/`stock` category ranks are future work; avoid emitting them until the category route phase has accepted the extra view count.
 
-### 2.5 `entity/repo/{id}.json`
+### 2.5 `entity/repo/{id}.json`（`REQ-ENTITY-001`）
 
 ```json
 {
@@ -266,7 +266,7 @@ Rules:
 - `rank_history`：可选，名次史（驱动"名次走势"）。
 - `inflections`：可选，拐点标记 `[{period, flow, kind}]`，由 recompute 派生——月 flow ≥ K× 滚动中位数且过绝对下限的"爆发"月，最高月 `kind:"peak"`、其余 `"surge"`，至多 3 个；`StarCurve` 据此画标记 + tooltip。旧数据无此字段（optional）。
 
-### 2.6 `entity/org/{login}.json`
+### 2.6 `entity/org/{login}.json`（`REQ-ENTITY-001`）
 
 ```json
 {
@@ -293,7 +293,7 @@ Rules:
 - `heatmap/year/2024.json` → 该年 12 个月总量（年页月格子），`cells` 用 `["2024-10", 总量]`。
 - 进行中当月的日总量来自 `current_month.json`，build 合并。
 
-### 2.8 `current_month.json`（活尾——Vercel cron 写）
+### 2.8 `current_month.json`（活尾——Vercel cron 写，`REQ-PULSE-001` / `REQ-RANKING-001`）
 
 ```json
 {
@@ -308,7 +308,7 @@ Rules:
 - `current_stars`：每日 GraphQL 最新权威值（也用于锚定）。
 - 每日/每周 Vercel cron 写活尾，并同步覆盖 `live/rank/*` 当前周/月 rank 与 `live/heatmap/*` 当月 heatmap。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（月+周折叠 `fold.ts`，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6/§7.2）；交接靠 `canonical/v2/pending/<period>.json` + `folded_through` 水位防重复/丢数据。
 
-### 2.9 `hot-snapshot.json`（cron 写，热集 ISR 读）
+### 2.9 `hot-snapshot.json`（cron 写，热集 ISR 读，`REQ-PULSE-001`）
 
 KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 
@@ -414,7 +414,7 @@ step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md
 }
 ```
 
-### 2.14 `search/index.json` — 客户端全站搜索
+### 2.14 `search/index.json` — 客户端全站搜索（`REQ-SEARCH-001`）
 
 recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描述头部截断 200 字符以控体积），随 entity/org step 写入 `views/<run_id>/search/index.json`，并入 `validate`（断言条目数 ≥ 阈值）。客户端 `SearchBox` 首次聚焦时懒加载 + 建 MiniSearch 索引（typo 容错 + prefix + 按 stars 加权），**零运行时后端**；读侧经 `/search-index` 路由（服务端解析发布指针读版本化产物，响应带 `s-maxage` 走 CDN）。schema `SearchIndex`/`SearchDoc`（`web/lib/contracts/search.ts`）。
 
@@ -430,7 +430,7 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
 
 > **月度叙事无独立产物**：榜页叙事是**确定性模板**、**渲染时**从该月 rank 数据（top/增速/新晋）现拼（`web/lib/narrative.ts`），**不落 Blob、不引 AI**。故此处无 `narrative/*` 契约。
 
-### 2.15 `/repo-curve?id=<id>` — 多 repo 对比瘦路由（无独立产物）
+### 2.15 `/repo-curve?id=<id>` — 多 repo 对比瘦路由（无独立产物，`REQ-COMPARE-001`）
 
 多 repo 对比（`/compare`）需要浏览器**按需**取若干 repo 的曲线。**不新建 Blob 产物**：新增一个与 `/search-index` 同构的瘦服务端路由 `app/repo-curve/route.ts`，服务端经发布指针读版本化 `entity/repo/<id>.json`（§2.5），**投影**出对比所需的精简 payload 返回，响应带 `s-maxage` 走 CDN。schema `CompareCurve`（`web/lib/contracts/compare.ts`）：
 

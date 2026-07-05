@@ -32,33 +32,33 @@
 
 > 渲染层定义见 §2。English canonical URL 保持无前缀；ja/zh/zh-TW/ko/es/fr 使用 locale 前缀并与 English 互发 `hreflang` / `x-default`。下表列出 English 无前缀路径；非默认 locale 通过 `(localized)/[locale]` 路由组复用同一 canonical path（例如 `/ja/rankings`、`/fr/facebook/react`）。旧 `/trending` 与旧 `/{year}` 这类**历史路径形态**已从路由树删除，不做形态兼容重定向。但 repo 改名是另一回事：repo 页对改名旧 slug **发 308 永久重定向**到当前 `full_name`（见 §2.3 / §3.2 alias 机制），这与「不做兼容重定向」不矛盾——前者指消失的路径形态，后者指仍在追踪的 repo 换了名字。
 
-| 页 | URL | 文件（相对 `web/app/`） | 渲染层 | `generateStaticParams` |
-|---|---|---|---|---|
-| 首页 | `/` | `page.tsx` | 核心 Pulse | — |
-| **脉搏页** | `/pulse` | `pulse/page.tsx` | 核心（每日 revalidate，事件驱动） | — |
-| **总榜** | `/rankings` | `rankings/page.tsx` | 核心（每日 revalidate） | — |
-| 年榜 | `/rankings/[year]` | `rankings/[year]/page.tsx` | 当年核心 / 历史按需 ISR | 当前年 |
-| 月榜 | `/rankings/[year]/[month]` | `rankings/[year]/[period]/page.tsx` | 当月核心 / 历史按需 ISR | 当前月 |
-| 周榜 | `/rankings/[year]/W[week]` | `rankings/[year]/[period]/page.tsx` | 当周 mover / 过去周冻结 | `[]`（长尾） |
-| repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | 按需 ISR（`revalidate=86400`，mover 当日 `revalidatePath`） | `[]`（长尾） |
-| **org 索引** | `/o`、`/o/page/[page]` | `o/page.tsx`、`o/page/[page]/page.tsx` | 组织目录 ISR（`revalidate=3600`） | org 页数 |
-| **org 页** | `/o/[login]` | `o/[login]/page.tsx` | 按需 ISR（`revalidate=false`，mover 当日刷新） | `[]`（长尾） |
-| **对比页** | `/compare` | `compare/page.tsx` + `compare/CompareClient.tsx` | 静态壳（`force-static`），客户端读 `?repos=` + 取曲线 | — |
-| 关于 | `/about` | `about/page.tsx` | 核心 | — |
-| **分类索引** | `/categories` | `categories/page.tsx` | `revalidate=86400` ISR | — |
-| **分类维度** | `/categories/[dimension]` | `categories/[dimension]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 各维度名 |
-| **分类详情** | `/categories/[dimension]/[slug]`、`/categories/[dimension]/[slug]/page/[page]` | `categories/[dimension]/[slug]/page.tsx`、`categories/[dimension]/[slug]/page/[page]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 公开分类 + 分类页数 |
+| 页 | URL | 文件（相对 `web/app/`） | 渲染层 | `generateStaticParams` | 需求 ID |
+|---|---|---|---|---|---|
+| 首页 | `/` | `page.tsx` | 核心 Pulse | — | `REQ-PULSE-001` |
+| **脉搏页** | `/pulse` | `pulse/page.tsx` | 核心（每日 revalidate，事件驱动） | — | `REQ-PULSE-001` |
+| **总榜** | `/rankings` | `rankings/page.tsx` | 核心（每日 revalidate） | — | `REQ-RANKING-001` |
+| 年榜 | `/rankings/[year]` | `rankings/[year]/page.tsx` | 当年核心 / 历史按需 ISR | 当前年 | `REQ-RANKING-001` |
+| 月榜 | `/rankings/[year]/[month]` | `rankings/[year]/[period]/page.tsx` | 当月核心 / 历史按需 ISR | 当前月 | `REQ-RANKING-001` |
+| 周榜 | `/rankings/[year]/W[week]` | `rankings/[year]/[period]/page.tsx` | 当周 mover / 过去周冻结 | `[]`（长尾） | `REQ-RANKING-001` |
+| repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | 按需 ISR（`revalidate=86400`，mover 当日 `revalidatePath`） | `[]`（长尾） | `REQ-ENTITY-001` |
+| **org 索引** | `/o`、`/o/page/[page]` | `o/page.tsx`、`o/page/[page]/page.tsx` | 组织目录 ISR（`revalidate=3600`） | org 页数 | `REQ-ENTITY-001` |
+| **org 页** | `/o/[login]` | `o/[login]/page.tsx` | 按需 ISR（`revalidate=false`，mover 当日刷新） | `[]`（长尾） | `REQ-ENTITY-001` |
+| **对比页** | `/compare` | `compare/page.tsx` + `compare/CompareClient.tsx` | 静态壳（`force-static`），客户端读 `?repos=` + 取曲线 | — | `REQ-COMPARE-001` |
+| 关于 | `/about` | `about/page.tsx` | 核心 | — | — |
+| **分类索引** | `/categories` | `categories/page.tsx` | `revalidate=86400` ISR | — | `REQ-CATEGORY-001` |
+| **分类维度** | `/categories/[dimension]` | `categories/[dimension]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 各维度名 | `REQ-CATEGORY-001` |
+| **分类详情** | `/categories/[dimension]/[slug]`、`/categories/[dimension]/[slug]/page/[page]` | `categories/[dimension]/[slug]/page.tsx`、`categories/[dimension]/[slug]/page/[page]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 公开分类 + 分类页数 | `REQ-CATEGORY-001` |
 
 **路由处理器（route handlers）**：
 
-| 路径 | 文件 | 用途 |
-|---|---|---|
-| `/api/cron/daily` | `api/cron/daily/route.ts` | 每日 live overlay（`current_month.json` + `hot-snapshot.json`） |
-| `/api/cron/weekly` | `api/cron/weekly/route.ts` | 每周 live overlay refresh |
-| `/api/workflows/refresh/start` | `api/workflows/refresh/start/route.ts` | 触发 L3 全量重算 Workflow |
-| `/api/lang` | `api/lang/route.ts` | 直接访问时的语言 cookie 后备入口 |
-| `/search-index` | `search-index/route.ts` | 客户端搜索索引端点（服务端读版本化 JSON + s-maxage CDN） |
-| `/repo-curve` | `repo-curve/route.ts` | 对比页瘦路由（按 id 投影 entity 曲线 + s-maxage CDN） |
+| 路径 | 文件 | 用途 | 需求 ID |
+|---|---|---|---|
+| `/api/cron/daily` | `api/cron/daily/route.ts` | 每日 live overlay（`current_month.json` + `hot-snapshot.json`） | `REQ-PULSE-001` |
+| `/api/cron/weekly` | `api/cron/weekly/route.ts` | 每周 live overlay refresh | `REQ-PULSE-001` / `REQ-RANKING-001` |
+| `/api/workflows/refresh/start` | `api/workflows/refresh/start/route.ts` | 触发 L3 全量重算 Workflow | `REQ-RANKING-001` / `REQ-ENTITY-001` |
+| `/api/lang` | `api/lang/route.ts` | 直接访问时的语言 cookie 后备入口 | `REQ-I18N-001` |
+| `/search-index` | `search-index/route.ts` | 客户端搜索索引端点（服务端读版本化 JSON + s-maxage CDN） | `REQ-SEARCH-001` |
+| `/repo-curve` | `repo-curve/route.ts` | 对比页瘦路由（按 id 投影 entity 曲线 + s-maxage CDN） | `REQ-COMPARE-001` |
 
 OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
 - 站点级 `/opengraph-image`（`app/opengraph-image.tsx`，`web/lib/og-card.tsx`）
@@ -71,7 +71,7 @@ OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
 
 ### 1.2 i18n（locale URL + 服务端渲染）
 
-需求：默认英文，并提供 en / ja / zh / zh-TW / ko / es / fr 七种 UI 语言（[REQUIREMENTS](./REQUIREMENTS.md) §9、[PRODUCT](./PRODUCT.md) i18n、[SEO](./SEO.md) §10）。English 使用无前缀 URL；非默认 locale 使用前缀 URL。repo URL 仍保留 GitHub 风格 canonical path，只在非默认 locale 前加语言段：`/facebook/react`、`/ja/facebook/react`、`/fr/facebook/react`。
+需求（`REQ-I18N-001`）：默认英文，并提供 en / ja / zh / zh-TW / ko / es / fr 七种 UI 语言（[REQUIREMENTS](./REQUIREMENTS.md) §9、[PRODUCT](./PRODUCT.md) i18n、[SEO](./SEO.md) §10）。English 使用无前缀 URL；非默认 locale 使用前缀 URL。repo URL 仍保留 GitHub 风格 canonical path，只在非默认 locale 前加语言段：`/facebook/react`、`/ja/facebook/react`、`/fr/facebook/react`。
 
 **路由文件布局**：
 

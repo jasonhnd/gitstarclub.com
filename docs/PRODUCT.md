@@ -4,7 +4,7 @@
 
 ## Scope
 
-本文档描述**产品本身**——gitstarclub 是什么、给谁看、各页面承载什么、调性、数据诚实立场、i18n 立场。改动产品前先读此文。版本/阶段/状态属于工程进度,不在此处。当前不在范围内的能力见 [ROADMAP.md](./ROADMAP.md)。
+本文档描述**产品本身**——gitstarclub 是什么、给谁看、各页面承载什么、调性、数据诚实立场、i18n 立场。改动产品前先读此文。版本/阶段/状态属于工程进度,不在此处。核心能力的需求 ID / 优先级 / 验收标准见 [REQUIREMENTS.md](./REQUIREMENTS.md) §3a；当前不在范围内的能力见 [ROADMAP.md](./ROADMAP.md)。
 
 ## 产品定位
 
@@ -73,7 +73,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 
 > **编年史面**：首页/年/月/周/repo/org/全时榜——回看，多为冻结 / 标 "as of 日期"。**脉搏面**：`/pulse` + 首页"现在在涨"区——每日刷新"谁在涨/老项目复活"（新鲜度模型见 [REQUIREMENTS §6](./REQUIREMENTS.md)）。
 
-### 1. 首页 `/`
+### 1. 首页 `/`（`REQ-PULSE-001`）
 
 **目标**：作为 Pulse 首页，一眼展示当前开源世界正在变化的项目，并把访客导向本周、本月、全时榜、repo、org 与分类长尾页。
 
@@ -85,7 +85,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 4. 导航与搜索把用户带到 `/pulse`、`/rankings`、`/categories`、`/compare`、repo 详情页与 org 详情页。
 5. 首页与 `/pulse` 共用 `PulseView`；首页额外输出 `WebSite` JSON-LD，`/pulse` 作为独立 CollectionPage。
 
-### 2. 年度页 `/rankings/2024`
+### 2. 年度页 `/rankings/2024`（`REQ-RANKING-001`）
 
 **目标**：在年的尺度回顾"那一年开源世界的脉络"。
 
@@ -99,7 +99,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 4. 年度新晋成员（首次突破 10k 的 repo）
 5. 上下年导航 `← 2023 | 2025 →`
 
-### 3. 月度页 `/rankings/2024/10`
+### 3. 月度页 `/rankings/2024/10`（`REQ-RANKING-001`）
 
 **目标**：在一页内看完"那个月开源世界发生了什么"。
 
@@ -116,7 +116,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 5. **上下月对比**：进入/跌出 TOP 50 的项目
 6. 内部链接：榜单里每个 repo → repo 详情页
 
-### 4. Repo 详情页 `/:owner/:name`
+### 4. Repo 详情页 `/:owner/:name`（`REQ-ENTITY-001`）
 
 **目标**：完整看一个项目的"一生"。
 
@@ -131,33 +131,33 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
    - 月份列每行都是链接到月度页
 6. 元信息：topics、GitHub 外链
 
-### 5. 周页 `/rankings/2024/W42`（独立）
+### 5. 周页 `/rankings/2024/W42`（独立，`REQ-RANKING-001`）
 
 - 那一周的 repo / org 涨幅 TOP + 站点周总量；上下周导航（ISO 周）。
 - 当周为"活"页（每日刷新），过去周冻结。
 
-### 6. Org 详情页 `/o/:login`
+### 6. Org 详情页 `/o/:login`（`REQ-ENTITY-001`）
 
 - org 合计 star 曲线（成员聚合）+ 当前总数（as-of）。
 - 成员 repo 列表（各自 star）+ org 在各周期的名次史。
 - User 与 Organization 都有页。
 
-### 7. 全时榜 `/rankings`
+### 7. 全时榜 `/rankings`（`REQ-RANKING-001`）
 
 - 当前总量 TOP：**repo 榜 + org 榜**（stock 降序）。"谁最大"的总览，每日刷新。
 
-### 8. 脉搏页 `/pulse`（此刻在涨）
+### 8. 脉搏页 `/pulse`（此刻在涨，`REQ-PULSE-001`）
 
 - 今日 / 本周 **涨幅 TOP** + **复活/突刺**（老项目突然爆）。
 - 每日刷新，是"最新动态"的落点（判定口径见 [REQUIREMENTS §6](./REQUIREMENTS.md)）。
 
-### 发现入口：全站搜索
+### 发现入口：全站搜索（`REQ-SEARCH-001`）
 
 - **导航栏搜索框**（顶栏 chrome），覆盖**全部被追踪 repo**——「按名字直达」的发现入口，与「按时间浏览」（年/月/周）互补。
 - **客户端即时检索**：MiniSearch 在首次聚焦时懒加载版本化 `search/index.json`（经 CDN）；prefix + fuzzy typo 容错、按 stars 加权；结果直达 `/{owner}/{name}`。**零运行时后端**——无 `/search?q=` 结果页。
 - **每条搜索结果带「+对比」勾选**：勾选多条后底部出现「对比 N 个 →」按钮，跳 `/compare?repos=...`，与导航栏的对比入口及 repo 页「加入对比」按钮共同构成对比工具的三个入口。
 
-### 对比工具：`/compare`
+### 对比工具：`/compare`（`REQ-COMPARE-001`）
 
 - **目标**：把已收录 repo（≥1 万星）的 star 曲线**叠在一张图**上比增长。
 - **URL 即状态**：`/compare?repos=facebook/react,vuejs/vue` 直接复现选择，链接可分享。上限 5 个。
@@ -165,7 +165,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 - **三个入口**：导航栏链接、repo 页「加入对比」按钮、搜索框多选 CTA（见上）。
 - **任意 repo 对比**（含 ≥100 星长尾）属未来工作（DB 阻塞，见 [ROADMAP.md](./ROADMAP.md)）。
 
-## 排名矩阵与榜单定义
+## 排名矩阵与榜单定义（`REQ-RANKING-001`）
 
 > 全矩阵 **{周/月/年/全时} × {repo/org} × {flow 新增 / stock 总量}**——定义、stock 锚定、边界见 [RANKING.md](./RANKING.md)。下面是页面上常用的派生榜：
 
@@ -183,7 +183,7 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 - repo 改名/迁移：每周白名单刷新时被动更新 `full_name`，旧 URL 做 **308** 永久重定向（repo 路由据累积别名表 `lookup/aliases.json`，见 [FRONTEND.md](./FRONTEND.md)）
 - 改名历史由 `build aliases` step 并集所有保留的 `renames.json` 增量得到（gc 不删 `ops/`），无需额外追踪
 
-## 多语言（i18n）
+## 多语言（i18n，`REQ-I18N-001`）
 
 调性：默认英文，优先级 **英文 > 日文 > 中文 >** zh-TW / ko / es / fr 七种 UI 语言；English URL 保持无前缀，非默认 locale URL / metadata / sitemap / 语言切换导航已按 [I18N.md](./I18N.md) 落地，repo 名、描述、语言、topic、数字等数据字段不翻译。产品功能名 **GitStarClub Pulse** 与 **GitStarClub Compare** 作为品牌名不翻译。**权威口径见 [SEO.md](./SEO.md) §10，实现见 [FRONTEND.md](./FRONTEND.md) §7。**
 
@@ -201,4 +201,4 @@ gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,3
 
 ## 范围之外
 
-当前不在范围内的能力（多 repo 对比、用户系统、数据集扩展、自动叙事/OG 卡片、主题聚类等）见 [ROADMAP.md](./ROADMAP.md)。
+当前不在范围内的能力（任意 repo 对比含 ≥100 星长尾、用户系统、数据集扩展、自动叙事/OG 卡片、主题聚类等）见 [ROADMAP.md](./ROADMAP.md)。

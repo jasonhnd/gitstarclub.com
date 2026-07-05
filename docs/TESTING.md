@@ -13,6 +13,20 @@ The visual, a11y, E2E, performance, and cross-browser sections below remain targ
 
 本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。
 
+## Requirement Traceability
+
+需求 ID 的权威清单在 [REQUIREMENTS.md](./REQUIREMENTS.md) §3a；下表把每个核心需求映射到当前自动化或目标测试层。新增测试应在名称、注释或 test describe 中保留对应 ID，避免只能靠 prose 反查。
+
+| Requirement ID | Priority | Validation focus | Current / target coverage |
+|---|---|---|---|
+| `REQ-PULSE-001` | P0 | Pulse live/hot data can publish safely and render navigable current-mover surfaces. | Workflow `validate` step samples `current_month.json`, `hot-snapshot.json`, `live/rank/*`; target E2E covers home/`/pulse` → ranking/repo/category/compare navigation. |
+| `REQ-RANKING-001` | P0 | Ranking windows, dimensions, metrics, sort order, references, and historical freeze semantics stay correct. | §1.1 ranking math tests; `web/lib/integration/recompute.test.ts`; `web/lib/contracts/contracts.test.ts`; Workflow `validate` step rank/lookup checks. |
+| `REQ-ENTITY-001` | P0 | Repo/org entity pages have stable identity, milestones/curves, member aggregation, and rename redirects. | §1.4 golden-file target; entity schema tests in `web/lib/contracts/contracts.test.ts`; `lookup/aliases.json` validation and `web/lib/workflows/recompute/aliases.test.ts`; target E2E covers rank → repo/org navigation. |
+| `REQ-I18N-001` | P0 | Locale URLs, chrome dictionaries, metadata alternates, middleware redirects, and data-language neutrality stay consistent. | §4.1; `web/lib/i18n/routing.test.ts`; `web/lib/i18n/middleware.test.ts`; `web/lib/i18n/client.test.ts`; sitemap/SEO tests for alternates. |
+| `REQ-SEARCH-001` | P1 | Search index generation, schema, MiniSearch behavior, and no-result-page architecture stay stable. | §1.6; `web/lib/search/core.test.ts`; `web/lib/workflows/recompute/entities.test.ts` searchIndex case; `SearchIndex` / `SearchDoc` contract tests. |
+| `REQ-COMPARE-001` | P1 | Compare URL state, curve projection contract, and absolute / align-to-10k normalization stay correct. | `web/lib/compare/core.test.ts`; `web/lib/compare/conclusions.test.ts`; `CompareCurve` contract tests in `web/lib/contracts/contracts.test.ts`; target E2E covers `/compare?repos=...`. |
+| `REQ-CATEGORY-001` | P1 | Category registry, assignments, lookup, route discovery, and category rank membership stay deterministic. | Workflow `validate` category checks; `web/lib/workflows/recompute/categories.test.ts`; `web/lib/categories/rules.test.ts`; sitemap route tests. |
+
 ## 测试取向(先定调)
 
 | 取向 | 决定 | 理由 |
@@ -34,7 +48,7 @@ The visual, a11y, E2E, performance, and cross-browser sections below remain targ
 
 数据在数据层（bootstrap / Vercel Workflow）被聚合成 JSON 视图，**一旦发布给 16k 静态页就无法运行时修正**。所以这一层是重兵把守区，分五类：聚合数学、schema 校验、sanity 不变量、golden file、发布闸门（§1.5）。
 
-### 1.1 聚合 + 排名数学（单测，真数据子集）
+### 1.1 聚合 + 排名数学（单测，真数据子集；`REQ-RANKING-001` / `REQ-ENTITY-001`）
 
 针对聚合预算逻辑的纯函数 / 或直接对产出断言。**用一小份真切片**（Parquet 子集 + 同源 canonical JSON shard，5–10 个知名 repo、跨 2–3 年）当 fixture，避免合成数据掩盖真实边界；并据此做 §1.5 的「shard 纯 JS 重算 == DuckDB 重算」等价对拍。
 
@@ -55,7 +69,7 @@ test('周排名窗口跨月不丢日', () => {
 });
 ```
 
-### 1.2 JSON 视图 schema 校验（Zod）
+### 1.2 JSON 视图 schema 校验（Zod；`REQ-RANKING-001` / `REQ-ENTITY-001` / `REQ-SEARCH-001` / `REQ-COMPARE-001`）
 
 所有 `rank/* · entity/* · heatmap/* · lookup/*` 与活尾 `current_month.json` / `hot-snapshot.json` 都有 **Zod schema**，pipeline 产出后立即校验，build 读取前再校验一次（fail-fast，脏 JSON 绝不进 build）。
 
@@ -88,7 +102,7 @@ test('周排名窗口跨月不丢日', () => {
 
 > golden file 测的是"历史不该变"；§1.1 测的是"算法该对"。两者互补：前者抓回归，后者抓逻辑。
 
-### 1.5 Workflow 发布闸门 / staging 校验 / 回滚
+### 1.5 Workflow 发布闸门 / staging 校验 / 回滚（`REQ-PULSE-001` / `REQ-RANKING-001` / `REQ-CATEGORY-001`）
 
 > **数据校验的"最后闸门"位于 Vercel Workflow 内的 `validate` step**——对 `views/<run_id>/**` 跑**抽样断言**，**通过才切 `views/latest.json` 指针**（实现 `web/lib/workflows/steps/validate.ts`、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md)）。
 
@@ -123,7 +137,7 @@ test('周排名窗口跨月不丢日', () => {
 - **隔离**：Workflow 校验只读 staging、不碰 `live/*` 活尾；活尾校验仍由每日/每周 cron 后置（见下「节奏」）。
 - **当前 gap**（未在 validate step 中执行，留作未来工作）：org `stock == ∑members` 等价、monthly ↔ recent-daily seam 连续、`total_drift_pct` 阈值、全量历史 period 文件集合完整性——这些不变量记录在 §1.3 但**目前不阻断发布**，仅作 §1.1/§1.4 测试目标。
 
-### 1.6 全站搜索测试
+### 1.6 全站搜索测试（`REQ-SEARCH-001`）
 
 `search/index.json` 与客户端 MiniSearch 检索单独成测：
 
@@ -180,7 +194,7 @@ test('周排名窗口跨月不丢日', () => {
 - **里程碑链接 → 月度页锚点**：repo 页里程碑点击落到对应月份的正确锚点
 - **榜单行 → 实体页**：榜单里 repo 名 → repo 页；org 名 → org 页
 
-### 4.1 i18n locale URL、语言下拉与 cookie 重定向
+### 4.1 i18n locale URL、语言下拉与 cookie 重定向（`REQ-I18N-001`）
 
 - 无 `gsc_lang` cookie 访问 `/`、`/pulse`、`/rankings` 时应渲染 English；带非默认 `Accept-Language` 首访 `/` 时 middleware 可 307 到对应 locale root。
 - 语言切换器显示当前 route locale，展开后列出 `en`、`ja`、`zh`、`zh-TW`、`ko`、`es`、`fr`；每一项都是普通 `<a>` 链接。

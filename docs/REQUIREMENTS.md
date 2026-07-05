@@ -37,6 +37,20 @@
 - **导航栏全站搜索**：顶栏 chrome 客户端 combobox，首次聚焦懒加载版本化 `search/index.json` + MiniSearch（zero 后端、走 CDN），typo 容错 + 按 stars 加权，直达 `/{owner}/{name}`；「按名字直达」入口，无 `/search?q=` 结果页。
 - **多 repo 对比**：`/compare` 静态壳 + URL 携带 `?repos=a/b,c/d`，前端按需取版本化曲线、叠图比较；归一化两模式（绝对值 / 对齐到破万）；上限 5 个；可对比集 = 已收录的 ≥1 万星 repo。任意 repo / ≥100 星下钻属未来工作，见 [ROADMAP.md](./ROADMAP.md)。
 
+## 3a. 核心需求 ID / 优先级 / 可追踪性
+
+需求 ID 是跨 BRD/PRD/FSD/UX、实现与测试的稳定锚点。新增或调整核心能力时，先在本表新增/修改 ID，再同步 PRODUCT、FRONTEND / DATA-CONTRACTS 与 TESTING 的引用。
+
+| ID | 优先级 | 能力 | User story | 验收标准 | Product / UX | Frontend / Data | Tests |
+|---|---|---|---|---|---|---|---|
+| `REQ-PULSE-001` | P0 | Pulse 首页与 `/pulse` 当前动态 | As a returning OSS watcher, I want to see current movers and revived projects, so that I can understand what is changing now without scanning every ranking page. | `/` 与 `/pulse` 共用 Pulse 体验；展示本周/本月/本年动态、全时桥接和历史上的今天；每日 live/hot 数据刷新后页面能链接到 repo、rankings、categories、compare。 | [PRODUCT](./PRODUCT.md) 首页 / 脉搏页；[INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md) Pulse | [FRONTEND](./FRONTEND.md) `PulsePageView` / `RankingList`；[DATA-CONTRACTS](./DATA-CONTRACTS.md) `current_month.json` / `hot-snapshot.json` / `live/rank/*` | [TESTING](./TESTING.md) §1.5 validation gate、§4 E2E navigation |
+| `REQ-RANKING-001` | P0 | 历史与全时排名矩阵 | As an OSS researcher, I want weekly, monthly, yearly, and all-time rankings across repos and orgs, so that I can compare historical movement and current scale. | 支持 `{周/月/年/全时} × {repo/org} × {flow/stock}`；月/年派生增速与新晋；历史周期冻结、当前周期可活尾覆盖；榜单行可到实体页。 | [PRODUCT](./PRODUCT.md) 年/月/周/全时榜与排名矩阵；[RANKING](./RANKING.md) | [FRONTEND](./FRONTEND.md) rankings routes / `RankingList`；[DATA-CONTRACTS](./DATA-CONTRACTS.md) `rank/*` / `lookup/*` | [TESTING](./TESTING.md) §1.1 ranking math、§1.2 schemas、§1.5 validation gate |
+| `REQ-ENTITY-001` | P0 | Repo / org 详情页 | As a project evaluator, I want repo and owner history pages, so that I can inspect long-term growth, milestones, members, and ranking context. | Repo 页展示 star 曲线、里程碑、月度表现、topics 和 GitHub 外链；org 页展示成员聚合曲线、成员列表、名次史；repo 改名旧 URL 308 到当前 `full_name`。 | [PRODUCT](./PRODUCT.md) Repo / Org 详情页；[INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md) entity pages | [FRONTEND](./FRONTEND.md) repo/org routes / `StarCurve`；[DATA-CONTRACTS](./DATA-CONTRACTS.md) `entity/repo/*` / `entity/org/*` / `lookup/aliases.json` | [TESTING](./TESTING.md) §1.4 golden files、§4 E2E entity navigation |
+| `REQ-I18N-001` | P0 | 七语 UI 与 locale URL | As a global visitor, I want the UI chrome and metadata in my route language while repository data remains original, so that localized pages stay accurate and canonical. | English 无前缀；ja/zh/zh-TW/ko/es/fr 使用 locale 前缀；metadata/canonical/`hreflang`/sitemap 与 route locale 一致；repo 名、描述、语言、topic、数字不翻译。 | [PRODUCT](./PRODUCT.md) 多语言；[SEO](./SEO.md) §10；[I18N](./I18N.md) | [FRONTEND](./FRONTEND.md) §1.2 / §7 locale routing, dictionaries, `LanguageSwitcher` | [TESTING](./TESTING.md) §4.1；`web/lib/i18n/*.test.ts` |
+| `REQ-SEARCH-001` | P1 | 导航栏全站搜索 | As a visitor who knows a repository name, I want instant navigation search, so that I can jump to tracked repo pages without a separate search results page. | SearchBox 首次聚焦懒加载 `/search-index`；MiniSearch prefix/fuzzy/stars weighting；结果直达 repo；无 `/search?q=` 页面；搜索结果可作为 compare 入口。 | [PRODUCT](./PRODUCT.md) 发现入口：全站搜索 | [FRONTEND](./FRONTEND.md) `SearchBox` / `/search-index`；[DATA-CONTRACTS](./DATA-CONTRACTS.md) `search/index.json` | [TESTING](./TESTING.md) §1.6；`web/lib/search/core.test.ts` |
+| `REQ-COMPARE-001` | P1 | 多 repo star-history 对比 | As a technical decision maker, I want to overlay tracked repositories' star curves, so that I can compare absolute history and post-10k growth trajectories. | `/compare` 静态壳；URL `?repos=` 可分享；已收录 ≥10k repo，上限 5 个；支持绝对值与对齐到 10k 两种模式；入口来自 nav、repo 页和 SearchBox。 | [PRODUCT](./PRODUCT.md) 对比工具；[INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md) Compare | [FRONTEND](./FRONTEND.md) `CompareClient` / `CompareCurve` / `/repo-curve`；[DATA-CONTRACTS](./DATA-CONTRACTS.md) `CompareCurve` | [TESTING](./TESTING.md) traceability table；`web/lib/compare/core.test.ts` / `web/lib/contracts/contracts.test.ts` |
+| `REQ-CATEGORY-001` | P1 | 分类浏览与长尾入口 | As an explorer, I want category landing pages and category rankings, so that I can browse repositories by language, ecosystem, domain, type, owner, and maturity. | `/categories`、`/categories/:dimension`、`/categories/:dimension/:slug` 可达；公开分类从 registry 驱动；分类详情显示 all-time repo stock rank；分类路由纳入 sitemap/i18n。 | [CATEGORIES](./CATEGORIES.md)；[PRODUCT](./PRODUCT.md) URL 结构 | [FRONTEND](./FRONTEND.md) categories routes；[DATA-CONTRACTS](./DATA-CONTRACTS.md) `categories/*` / `rank/category/*` | [TESTING](./TESTING.md) §1.5 category validation；`web/lib/categories/*.test.ts` |
+
 ## 4. 排名
 
 - 矩阵 **{周 / 月 / 年 / 全时} × {repo / org} × {flow 新增 / stock 总量}**。
@@ -107,8 +121,9 @@
 
 ## 验收（需求层面）
 
-- [ ] 任意历史周期可回看，数据冻结精确。
-- [ ] `/pulse` 当天反映"谁在涨 / 老项目复活"。
-- [ ] repo/org/周/全时/脉搏 各页可达、SEO 友好、七种 UI 语言（English 无前缀，非默认 locale 使用有前缀 URL）。
-- [ ] 排名矩阵全维度正确（含 org、flow/stock、增速、新晋）。
-- [ ] 运行时纯静态扛 10M/天；回填仅一次性 $10、日常零外部账单。
+- [ ] `REQ-RANKING-001` 任意历史周期可回看，数据冻结精确。
+- [ ] `REQ-PULSE-001` `/pulse` 当天反映"谁在涨 / 老项目复活"。
+- [ ] `REQ-ENTITY-001` / `REQ-RANKING-001` / `REQ-PULSE-001` repo/org/周/全时/脉搏各页可达、SEO 友好。
+- [ ] `REQ-I18N-001` 七种 UI 语言可达，English 无前缀，非默认 locale 使用有前缀 URL。
+- [ ] `REQ-RANKING-001` 排名矩阵全维度正确（含 org、flow/stock、增速、新晋）。
+- [ ] `REQ-PULSE-001` / `REQ-RANKING-001` 运行时纯静态扛 10M/天；回填仅一次性 $10、日常零外部账单。
