@@ -29,19 +29,7 @@ The reasoning behind each constraint is in [docs/ARCHITECTURE.md](docs/ARCHITECT
 
 ## Documentation
 
-The full design and operations docs live in [`docs/`](docs/README.md). New engineers should read in this order:
-
-1. [REQUIREMENTS](docs/REQUIREMENTS.md) — what the product is and the constraints it operates under.
-2. [ARCHITECTURE](docs/ARCHITECTURE.md) — system overview.
-3. [VERCEL-DATA-OPERATIONS](docs/VERCEL-DATA-OPERATIONS.md) — Blob layout, publish pointer, Workflow pipeline.
-4. [DATA-CONTRACTS](docs/DATA-CONTRACTS.md) — every shard and view schema.
-5. [CODEBASE](docs/CODEBASE.md) — code map: routes, layers, data access, workflow modules.
-6. [DEVELOPMENT](docs/DEVELOPMENT.md) — development playbooks and doc ownership.
-7. [WORKFLOW](docs/WORKFLOW.md) - document-driven issue, PR, merge, and visual-guardrail workflow.
-8. [FRONTEND](docs/FRONTEND.md) — routes, rendering strategy, component catalog.
-9. [DESIGN-SYSTEM](docs/DESIGN-SYSTEM.md) - locked visual baseline and design-token rules.
-
-For deploy / rollback / cron / alerting see [OPS](docs/OPS.md). For category taxonomy and rollout see [CATEGORIES](docs/CATEGORIES.md). For release history see [CHANGELOG](docs/CHANGELOG.md). For open work and architectural decisions see [ROADMAP](docs/ROADMAP.md).
+The full design and operations docs live in [`docs/`](docs/README.md). For the maintained new-engineer reading order, satellite-doc placement, and docs ownership map, see [docs/README.md](docs/README.md).
 
 ## Repository layout
 
