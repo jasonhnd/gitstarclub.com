@@ -1,230 +1,90 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fmtStars } from "@/lib/format";
-import type { SearchHit } from "@/lib/search/core";
-import {
-  createSearchWorkerError,
-  parseSearchIndexPayload,
-  type SearchLoadState,
-  type SearchWorkerError,
-  type SearchWorkerOutMessage,
-} from "@/lib/search/worker-protocol";
 import { MAX_COMPARE } from "@/lib/compare/constants";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 import { localizedPath } from "@/lib/i18n/routing";
+import { SearchPanel } from "./search-box/SearchPanel";
+import type { SearchBoxLabels } from "./search-box/types";
+import { useCompareSelection } from "./search-box/useCompareSelection";
+import { useSearchEngine } from "./search-box/useSearchEngine";
+import { useSearchKeyboardNavigation } from "./search-box/useSearchKeyboardNavigation";
 
-// Global repo search. The index (search/index.json, ~5k repos) is fetched on first focus;
-// MiniSearch indexing and querying run in a Web Worker to keep the main thread responsive.
-// Each result row also has a "+ compare" toggle (v0.2 §5): selections accumulate in a small set
-// and a footer CTA jumps to the localized compare route with everything chosen. Capped at MAX_COMPARE.
-// See docs/FRONTEND.md (search + compare surfaces).
+export type { SearchBoxLabels } from "./search-box/types";
+
+// Global repo search. The index is fetched on first focus; MiniSearch indexing and querying
+// run in a Web Worker. Result rendering, keyboard navigation, and compare selection are kept
+// in small modules so the client shell only coordinates state and navigation.
 
 const LIMIT = 8;
 
-function logSearchFailure(error: SearchWorkerError) {
-  if (process.env.NODE_ENV !== "production") {
-    console.error(`[search] ${error.code}: ${error.message}`, error.details ?? "");
-  }
-}
-
-export interface SearchBoxLabels {
-  label: string;
-  placeholder: string;
-  empty: string;
-  loading: string;
-  error: string;
-  retry: string;
-  addToCompare: string;
-  openCompare: string;
-}
-
 export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchBoxLabels; locale?: Locale }) {
   const router = useRouter();
-  const label = labels.label;
-  const placeholder = labels.placeholder;
-  const emptyText = labels.empty;
-  const loadingText = labels.loading;
-  const errorText = labels.error;
-  const retryText = labels.retry;
-  const addToCompareLabel = labels.addToCompare;
-  const openCompareLabel = labels.openCompare;
-
   const [q, setQ] = useState("");
-  const [hits, setHits] = useState<SearchHit[]>([]);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(-1);
-  const [loadState, setLoadState] = useState<SearchLoadState>("idle");
-  const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
-
-  const workerRef = useRef<Worker | null>(null);
-  const readyRef = useRef(false);
-  const loadingRef = useRef(false);
-  const loadStateRef = useRef<SearchLoadState>("idle");
-  const pendingRef = useRef<string | null>(null);
-  const requestRef = useRef(0);
-  const activeRequestRef = useRef(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
   const listId = useId();
 
-  const setSearchLoadState = useCallback((state: SearchLoadState) => {
-    loadStateRef.current = state;
-    setLoadState(state);
-  }, []);
+  const { ensureEngine, hits, loadState, query, resetHits } = useSearchEngine({ limit: LIMIT });
+  const { clearCompare, compareSet, toggleCompare } = useCompareSelection(MAX_COMPARE);
 
-  const stopWorker = useCallback(() => {
-    workerRef.current?.terminate();
-    workerRef.current = null;
-    readyRef.current = false;
-    loadingRef.current = false;
-  }, []);
+  const resetShell = useCallback(() => {
+    setOpen(false);
+    setQ("");
+    resetHits();
+  }, [resetHits]);
 
-  const failSearch = useCallback(
-    (error: SearchWorkerError) => {
-      logSearchFailure(error);
-      pendingRef.current = inputRef.current?.value ?? null;
-      stopWorker();
-      setHits([]);
-      setActive(-1);
-      setSearchLoadState("error");
+  const commitHit = useCallback(
+    (index: number) => {
+      const hit = hits[index];
+      if (!hit) return;
+      router.push(localizedPath(locale, `/${hit.full_name}`));
+      inputRef.current?.blur();
+      resetShell();
     },
-    [setSearchLoadState, stopWorker],
+    [hits, locale, resetShell, router],
   );
 
-  const runQuery = useCallback((value: string) => {
-    const worker = workerRef.current;
-    if (!worker || !readyRef.current) {
-      pendingRef.current = value;
-      return;
-    }
-    const id = ++requestRef.current;
-    activeRequestRef.current = id;
-    worker.postMessage({ type: "query", id, q: value, limit: LIMIT });
-  }, []);
+  const { active, onKeyDown, resetActive, setActive } = useSearchKeyboardNavigation({
+    itemCount: hits.length,
+    onCommit: commitHit,
+    onEscape: () => setOpen(false),
+    onOpen: () => setOpen(true),
+  });
 
-  const ensureEngine = useCallback(async ({ force = false }: { force?: boolean } = {}) => {
-    if ((workerRef.current || loadingRef.current) && !force) return;
-    if (force) stopWorker();
-    loadingRef.current = true;
-    readyRef.current = false;
-    setSearchLoadState("loading");
-    setHits([]);
-    setActive(-1);
-    try {
-      const res = await fetch("/search-index", { cache: "force-cache" });
-      if (!res.ok) throw new Error(`Search index request failed with ${res.status}`);
-      const data = await res.json();
-      const parsed = parseSearchIndexPayload(data);
-      if (!parsed.ok) {
-        failSearch(parsed.error);
-        return;
-      }
-      const worker = new Worker(new URL("./search-worker.ts", import.meta.url), { type: "module" });
-      workerRef.current = worker;
-      worker.onmessage = (event: MessageEvent<SearchWorkerOutMessage>) => {
-        const message = event.data;
-        if (message.type === "ready") {
-          readyRef.current = true;
-          loadingRef.current = false;
-          setSearchLoadState("ready");
-          if (pendingRef.current != null) {
-            const pending = pendingRef.current;
-            pendingRef.current = null;
-            runQuery(pending);
-          }
-          return;
-        }
-        if (message.type === "results" && message.id === activeRequestRef.current) {
-          setHits(message.hits);
-          setActive(message.hits.length > 0 ? 0 : -1);
-          return;
-        }
-        if (message.type === "error") {
-          failSearch(message.error);
-        }
-      };
-      worker.onerror = (event) => {
-        failSearch(createSearchWorkerError("worker-init", event.message || event.error));
-      };
-      worker.postMessage({ type: "init", repos: parsed.repos });
-    } catch (error) {
-      failSearch(createSearchWorkerError("load-failed", error));
-    }
-  }, [failSearch, runQuery, setSearchLoadState, stopWorker]);
+  const reset = useCallback(() => {
+    resetShell();
+    resetActive();
+  }, [resetActive, resetShell]);
+
+  useEffect(() => {
+    setActive(hits.length > 0 ? 0 : -1);
+  }, [hits, setActive]);
 
   const retrySearch = useCallback(() => {
     setOpen(true);
-    pendingRef.current = q;
-    void ensureEngine({ force: true });
+    void ensureEngine({ force: true, query: q });
   }, [ensureEngine, q]);
-
-  const reset = useCallback(() => {
-    setOpen(false);
-    setQ("");
-    setHits([]);
-    setActive(-1);
-  }, []);
-
-  const toggleCompare = useCallback((fullName: string) => {
-    setCompareSet((prev) => {
-      const next = new Set(prev);
-      if (next.has(fullName)) next.delete(fullName);
-      else if (next.size < MAX_COMPARE) next.add(fullName);
-      return next;
-    });
-  }, []);
 
   const openCompare = useCallback(() => {
     if (compareSet.size === 0) return;
     const param = encodeURIComponent([...compareSet].join(","));
     router.push(`${localizedPath(locale, "/compare")}?repos=${param}`);
-    setCompareSet(new Set());
+    clearCompare();
     reset();
     inputRef.current?.blur();
-  }, [compareSet, locale, router, reset]);
+  }, [clearCompare, compareSet, locale, reset, router]);
 
-  const onChange = (value: string) => {
-    setQ(value);
-    setOpen(true);
-    if (!readyRef.current) {
-      pendingRef.current = value;
-      if (loadStateRef.current !== "error") void ensureEngine();
-      return;
-    }
-    runQuery(value);
-  };
-
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
+  const onChange = useCallback(
+    (value: string) => {
+      setQ(value);
       setOpen(true);
-      setActive((i) => Math.min(i + 1, hits.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActive((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter") {
-      const hit = hits[active];
-      if (hit) {
-        e.preventDefault();
-        router.push(localizedPath(locale, `/${hit.full_name}`));
-        inputRef.current?.blur();
-        reset();
-      }
-    } else if (e.key === "Escape") {
-      setOpen(false);
-      setActive(-1);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      stopWorker();
-    };
-  }, [stopWorker]);
+      if (!query(value) && loadState !== "error") void ensureEngine();
+    },
+    [ensureEngine, loadState, query],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -254,12 +114,12 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
           aria-expanded={showPanel}
           aria-controls={listId}
           aria-autocomplete="list"
-          aria-label={label}
+          aria-label={labels.label}
           aria-activedescendant={showPanel && active >= 0 ? `${listId}-${active}` : undefined}
           enterKeyHint="go"
           autoComplete="off"
           spellCheck={false}
-          placeholder={placeholder}
+          placeholder={labels.placeholder}
           value={q}
           onFocus={() => {
             setOpen(true);
@@ -272,90 +132,21 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
       </div>
 
       {showPanel && (
-        <div className="absolute right-0 z-30 mt-2 w-[min(24rem,92vw)] overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-high shadow-[var(--elev-2)]">
-          {searchFailed ? (
-            <div role="status" aria-live="polite" className="space-y-2 px-3 py-3">
-              <p className="font-mono text-[0.76rem] text-on-surface-variant">{errorText}</p>
-              <button
-                type="button"
-                onClick={retrySearch}
-                className="min-h-9 rounded-full bg-primary-container px-3 py-1 font-mono text-[0.72rem] font-semibold text-on-primary-container transition-colors hover:brightness-110"
-              >
-                {retryText}
-              </button>
-            </div>
-          ) : hits.length > 0 ? (
-            <ul id={listId} role="listbox" aria-label={label} className="max-h-[70vh] overflow-y-auto py-1">
-              {hits.map((h, i) => {
-                const inCompare = compareSet.has(h.full_name);
-                const compareDisabled = !inCompare && compareSet.size >= MAX_COMPARE;
-                return (
-                  <li key={h.id} id={`${listId}-${i}`} role="option" aria-selected={i === active}>
-                    <div
-                      className={`grid grid-cols-[minmax(0,1fr)_auto] items-stretch transition-colors ${
-                        i === active ? "bg-on-surface/8" : "hover:bg-on-surface/5"
-                      }`}
-                    >
-                      <Link
-                        href={localizedPath(locale, `/${h.full_name}`)}
-                        onMouseEnter={() => setActive(i)}
-                        onClick={reset}
-                        className="grid min-h-11 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate font-mono text-[0.82rem]">
-                            <span className="text-on-surface-variant">{h.owner}/</span>
-                            <span className="font-semibold text-on-surface">{h.full_name.slice(h.owner.length + 1)}</span>
-                          </span>
-                          {h.description && (
-                            <span className="mt-0.5 block truncate text-[0.72rem] text-on-surface-variant">{h.description}</span>
-                          )}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2 font-mono text-[0.72rem] text-on-surface-variant">
-                          {h.language && <span className="hidden sm:inline">{h.language}</span>}
-                          <span className="text-readable-gold tabular-nums">{fmtStars(h.current_stars)} ★</span>
-                        </span>
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => toggleCompare(h.full_name)}
-                        disabled={compareDisabled}
-                        aria-pressed={inCompare}
-                        aria-label={`${addToCompareLabel}: ${h.full_name}`}
-                        title={addToCompareLabel}
-                        className={`flex w-11 items-center justify-center font-mono text-[0.95rem] transition-colors ${
-                          inCompare
-                            ? "bg-primary-container text-on-primary-container"
-                            : "text-on-surface-variant hover:bg-on-surface/10 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-                        }`}
-                      >
-                        {inCompare ? "✓" : "+"}
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p role="status" aria-live="polite" className="px-3 py-3 font-mono text-[0.76rem] text-on-surface-variant">
-              {loading ? loadingText : emptyText}
-            </p>
-          )}
-          {compareSet.size > 0 && (
-            <div className="flex items-center justify-between gap-3 border-t border-outline-variant px-3 py-2">
-              <span className="font-mono text-[0.72rem] text-on-surface-variant">
-                {compareSet.size}/{MAX_COMPARE}
-              </span>
-              <button
-                type="button"
-                onClick={openCompare}
-                className="min-h-11 rounded-full bg-primary-container px-3 py-1 font-mono text-[0.75rem] font-semibold text-on-primary-container transition-colors hover:brightness-110"
-              >
-                {openCompareLabel} →
-              </button>
-            </div>
-          )}
-        </div>
+        <SearchPanel
+          active={active}
+          compareSet={compareSet}
+          hits={hits}
+          labels={labels}
+          listId={listId}
+          loading={loading}
+          locale={locale}
+          onActiveChange={setActive}
+          onOpenCompare={openCompare}
+          onReset={reset}
+          onRetry={retrySearch}
+          onToggleCompare={toggleCompare}
+          searchFailed={searchFailed}
+        />
       )}
     </div>
   );
