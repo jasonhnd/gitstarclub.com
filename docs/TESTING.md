@@ -25,6 +25,22 @@ The visual, a11y, E2E, performance, and cross-browser sections below remain targ
 
 The issue #25 Lighthouse / Core Web Vitals baseline is archived in [perf/CWV-25.md](./perf/CWV-25.md). Treat that file as supporting evidence for one measured run; this document owns current performance targets and test expectations.
 
+## Requirement Traceability
+
+Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-id--优先级--追踪矩阵). New tests that validate a core product behavior should name the relevant `REQ-*` ID in the test description, fixture name, or surrounding comment when the mapping is not obvious from the file path.
+
+| Requirement ID | Acceptance link | Current automated evidence | Planned / manual evidence |
+|---|---|---|---|
+| `REQ-CHRONICLE-001` | `P0-AC1`, `P0-AC3` | `web/lib/workflows/recompute/windows.test.ts`, `web/lib/workflows/steps/fold.test.ts`, `web/lib/integration/week-fold.test.ts`, `web/lib/integration/seam-fold.test.ts`, `web/lib/data/watermark.test.ts`, SEO/routing tests | Browser E2E navigation graph, visual regression, manual Preview page review |
+| `REQ-PULSE-001` | `P0-AC2`, `P0-AC3` | `web/lib/cron/live-refresh.test.ts`, workflow/live smoke tests, SEO/routing tests | Daily cron runbook validation and Preview `/pulse` freshness check |
+| `REQ-RANKING-001` | `P0-AC4` | `web/lib/workflows/recompute/ranks.test.ts`, `web/lib/workflows/recompute/windows.test.ts`, `web/lib/contracts/contracts.test.ts`, `web/lib/integration/recompute.test.ts`, Workflow `validate` step | Golden-file milestones and full publish/rollback E2E |
+| `REQ-I18N-001` | `P0-AC3` | `web/lib/i18n/routing.test.ts`, `web/lib/i18n/middleware.test.ts`, `web/lib/seo.test.ts`, `web/lib/sitemap.test.ts`, `web/lib/integration/seo.test.ts` | Browser language-switcher E2E and locale smoke on Preview |
+| `REQ-DATAOPS-001` | `P0-AC6` | `web/lib/cron/live-refresh.test.ts`, `web/lib/workflows/steps/validate.test.ts`, `web/lib/workflows/steps/week-dates.test.ts`, workflow start/lease tests | Vercel logs / Blob ops artifact review from OPS runbooks |
+| `REQ-PERF-001` | `P0-AC5` | Current CI does not enforce browser/perf budgets; supporting baseline lives in `docs/perf/CWV-25.md` | Lighthouse/CWV, zero-JS, HTML-size, and cross-browser gates in §5/§6 |
+| `REQ-SEARCH-001` | P1 catalog criteria | `web/lib/search/core.test.ts`, `web/lib/search/worker-protocol.test.ts`, `web/lib/workflows/recompute/entities.test.ts`, search contracts | Browser combobox E2E once Playwright exists |
+| `REQ-COMPARE-001` | P1 catalog criteria | `web/lib/compare/core.test.ts`, `web/lib/compare/curve-fetch.test.ts`, `web/lib/compare/conclusions.test.ts` | Browser `/compare?repos=...` flow and URL-share E2E |
+| `REQ-CATEGORY-001` | P1 catalog criteria | `web/lib/workflows/recompute/categories.test.ts`, `web/lib/categories/rules.test.ts`, category SEO/route tests | Category browser E2E and pagination visual checks |
+
 本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。
 
 ## 测试取向(先定调)

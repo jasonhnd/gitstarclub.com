@@ -7,6 +7,22 @@
 
 > ⚠️ **canonical 形态**：§1 的 `star_daily.parquet` 是 **bootstrap 归档**形态。**生产 canonical = §1.4 的 JSON shard**（Vercel 可重算、无引擎）。Workflow / checkpoint / 发布指针契约见 §2.11–2.13。
 
+## Requirement Traceability
+
+[REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-id--优先级--追踪矩阵) owns priority and acceptance language. This table identifies which JSON contracts provide evidence for each requirement.
+
+| Requirement ID | Contract artifacts | Contract responsibility |
+|---|---|---|
+| `REQ-CHRONICLE-001` | `rank/**`, `entity/repo/{id}.json`, `entity/org/{login}.json`, `heatmap/{year|month}/{period}.json`, `lookup/**` | Historical and entity pages can join stable ids/logins to versioned ranking, curve, heatmap, and lookup views. |
+| `REQ-PULSE-001` | `current_month.json`, `hot-snapshot.json`, `live/rank/**`, `live/heatmap/**`, `ops/sync-runs.json` | Daily movers and pulse pages have a bounded, fresh live-overlay contract independent of full recompute. |
+| `REQ-RANKING-001` | `rank/{window}/{period}/{dim}/{metric}.json`, `rank/all-time/{dim}/stock.json`, derived `growth` / `new` rank files | Rank item shape, metric semantics, id-vs-login exclusivity, ordering, continuity, and top-N rules are schema-visible. |
+| `REQ-I18N-001` | All data views; no translated repo/org data fields | Data contracts remain language-neutral so frontend locale routes can localize chrome/meta without mutating source facts. |
+| `REQ-DATAOPS-001` | `views/latest.json`, `ops/workflows/{run_id}/manifest.json`, `ops/workflows/{run_id}/validation.json`, `ops/workflows/latest-success.json` | Published versions, validation gates, checkpoints, and rollback pointers are explicit artifacts. |
+| `REQ-PERF-001` | Budgeted JSON service views, lookup-only rank joins, `/repo-curve` projection | Frontend reads small, precomputed views instead of loading engines or full canonical shards on request paths. |
+| `REQ-SEARCH-001` | `search/index.json` | Search has a versioned, compact client index with one document per tracked repo. |
+| `REQ-COMPARE-001` | `/repo-curve?id=<id>` projection from `entity/repo/{id}.json` | Compare reuses entity curves and returns only the slim curve payload needed by the client. |
+| `REQ-CATEGORY-001` | `categories/registry.json`, `categories/assignments.json`, `lookup/categories.json`, `rank/category/**` | Category pages are driven by public registry and assignment artifacts, with paged all-time rank views. |
+
 ## 全局约定
 
 - **日期**：一律 UTC，`YYYY-MM-DD`。

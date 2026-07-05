@@ -12,6 +12,22 @@
 
 不在本文覆盖范围:JSON 视图 schema 与契约语义见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md);Route Handler / 公开 JSON endpoint 的 method、auth、params、response、cache、status codes 见 [API.md](./API.md);M3E token / 调色板 / 动效曲线等设计系统细节见 [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md);SEO 元数据与 sitemap 细节见 [SEO.md](./SEO.md);Blob 布局与部署拓扑见 [OPS.md](./OPS.md)。
 
+## Requirement Traceability
+
+需求 ID 的权威目录在 [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-id--优先级--追踪矩阵)。本表把这些 ID 映射到前端路由、组件与数据读取边界；测试映射见 [TESTING.md](./TESTING.md#requirement-traceability)。
+
+| Requirement ID | Frontend implementation surface | Data/contract boundary | Primary verification |
+|---|---|---|---|
+| `REQ-CHRONICLE-001` | `(en)` / `(localized)` 的 `rankings/**`、`[owner]/[name]`、`o/**`、`_localized/rankings.tsx` | `rank/**`, `entity/**`, `heatmap/**`, `lookup/**` | `P0-AC1`, `P0-AC3`; routing, SEO, recompute, fold tests |
+| `REQ-PULSE-001` | `/`, `/pulse`, `_localized/pulse.tsx`, `pulse/PulseView.tsx`, cron-triggered `revalidatePath` | `hot-snapshot.json`, `current_month.json`, `live/*`, `ops/sync-runs.json` | `P0-AC2`, `P0-AC3`; live-refresh tests |
+| `REQ-RANKING-001` | `/rankings`, `/rankings/[year]`, `/rankings/[year]/[period]`, `RankingList` | `rank/{week|month|year|all-time}/**` plus derived `growth`/`new` | `P0-AC4`; ranking, contract, recompute tests |
+| `REQ-I18N-001` | `(en)` root, `(localized)/[locale]`, `LanguageSwitcher`, `pageMeta()`, sitemap routes | Data fields stay language-neutral; only chrome/meta dictionaries localize | `P0-AC3`; i18n routing/middleware, SEO, sitemap tests |
+| `REQ-DATAOPS-001` | `api/cron/{daily,weekly}`, `api/workflows/refresh/start`, read-side version pointer handling | `views/latest.json`, `ops/workflows/**`, live artifacts | `P0-AC6`; workflow validate/start and cron tests |
+| `REQ-PERF-001` | RSC content pages, server-rendered SVG/DOM charts, limited client islands | Budgeted JSON view reads; no request-path engine access | `P0-AC5`; performance runbook and planned budget gates |
+| `REQ-SEARCH-001` | `SearchBox`, `/search-index`, MiniSearch worker protocol | `search/index.json` | search core, worker protocol, search-index contract tests |
+| `REQ-COMPARE-001` | `/compare`, `CompareClient`, `CompareCurve`, `/repo-curve` | entity repo curve projection via `/repo-curve?id=` | compare core, curve-fetch, planned E2E |
+| `REQ-CATEGORY-001` | `categories/**`, `category-page-data.ts`, category ItemList JSON-LD | `categories/registry.json`, `lookup/categories.json`, `rank/category/**` | category recompute/rules and SEO tests |
+
 ---
 
 ## 0. 设计原则（先读这条）
