@@ -388,6 +388,19 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 
 > `steps[]` 为 **manifest 分组**（9 项，对应进度账本，含真实 `buildAliases` 阶段）；**细粒度 12 步**（whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。Workflow SDK 自身持久化 step 结果；`steps/<step>.json` 是保留的业务可读 checkpoint 形状，当前 web/lib 实现只写 manifest / validation / error / latest-success 等 run 级账本。
 
+`ops/workflows/active.json` 是 refresh workflow 的互斥 lease。start 路由和 workflow body 都通过 Blob ETag 条件写更新该文件；同一周 cron idempotency key 的重复投递会 attach 到已有 `run_id`，不同 key 的并发触发会返回 409 并写 health。
+
+```json
+{
+  "run_id": "refresh-2026-06-07T06-00-00-000Z",
+  "status": "running",
+  "acquired_at": "2026-06-07T06:00:00.000Z",
+  "expires_at": "2026-06-07T18:00:00.000Z",
+  "idempotency_key": "workflow-refresh:2026-W23",
+  "trigger": "manual-or-cron"
+}
+```
+
 ```json
 // steps/recompute.json
 {
