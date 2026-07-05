@@ -189,6 +189,7 @@ blob://
 │   │   ├── renames.json                     # 改名映射(rename step 产出)
 │   │   ├── validation.json                  # 校验报告(validate step 产出,见 §8)
 │   │   └── error.json                       # 失败时写入(markFailed,含 step + message,便于排查)
+│   ├── active.json                          # 当前 refresh lease(ETag 条件写 + weekly idempotency key)
 │   ├── latest-success.json                  # 最近一次成功发布的 run_id(恢复点)
 │   └── health.json                          # 整体健康状态(最近 run 摘要,供运维 / 监控查询)
 │
