@@ -12,6 +12,7 @@ import { gcVersions } from "./steps/gc";
 import { startRun, markPublished, markFailed } from "./checkpoint";
 import { REPO_BUCKETS } from "./buckets";
 import { sendAlert } from "@/lib/observability/alert";
+import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
 
 // Phase 2+4 managed-refresh workflow:
 //   whitelist → rename → metadata (per bucket)
@@ -23,6 +24,10 @@ import { sendAlert } from "@/lib/observability/alert";
 
 export async function refreshWorkflow(runId: string) {
   "use workflow";
+
+  requireBlobBaseUrl();
+  requireBlobWriteToken();
+  requireGithubToken();
 
   const startedAt = await startRun(runId);
   try {

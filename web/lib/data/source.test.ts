@@ -1,26 +1,16 @@
 import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
+import { readView } from "./source";
 
-// source.ts reads BLOB_BASE_URL at module-load time and memoises the published version
-// (views/latest.json) for 1h at module scope. So we must (1) set the env BEFORE importing
-// the SUT, and (2) drive Date.now() forward past the 1h TTL to invalidate the version memo
-// between scenarios. We route a mocked global fetch by URL to simulate pointer + view fetches.
-
-// MUST equal the base set in rank.test.ts: source.ts captures BLOB_BASE once at load, and
-// whichever test file loads source.ts first wins for the whole process. Using ??= + the same
-// value keeps the full lib/data/ suite order-independent (assertions below build on this base).
 const BLOB = "https://blob.example.com";
-process.env.BLOB_BASE_URL ??= BLOB;
-// Guard: NEXT_PUBLIC fallback must not shadow the primary base in this test.
-delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
-
-// Import AFTER env is set so BLOB_BASE captures our test base.
-const { readView } = await import("./source");
+const OTHER_BLOB = "https://other-blob.example.com";
 
 const Doc = z.object({ ok: z.boolean(), tag: z.string() });
 
 const realFetch = globalThis.fetch;
 const realNow = Date.now;
+const originalBlobBase = process.env.BLOB_BASE_URL;
+const originalPublicBlobBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
 
 let clock = 1_000_000;
 const advancePastTtl = () => {
@@ -54,6 +44,8 @@ function routeFor(url: string): FakeRoute {
 beforeEach(() => {
   routes = {};
   fetchCalls = [];
+  process.env.BLOB_BASE_URL = BLOB;
+  delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   advancePastTtl(); // ensure each test starts with an expired version memo
   Date.now = () => clock;
   globalThis.fetch = mock((input: string | URL | Request) => {
@@ -66,6 +58,10 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = realFetch;
   Date.now = realNow;
+  if (originalBlobBase === undefined) delete process.env.BLOB_BASE_URL;
+  else process.env.BLOB_BASE_URL = originalBlobBase;
+  if (originalPublicBlobBase === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  else process.env.NEXT_PUBLIC_BLOB_BASE_URL = originalPublicBlobBase;
 });
 
 describe("readView — base:true version-prefix resolution", () => {
@@ -127,6 +123,23 @@ describe("readView — base:true version-prefix resolution", () => {
 
     expect(result).toBeNull();
   });
+
+  test("keys the publish-pointer memo by the current Blob base URL", async () => {
+    routes = {
+      [`${BLOB}/views/latest.json`]: { status: 200, json: { version: "v1" } },
+      [`${BLOB}/views/v1/data/item.json`]: { status: 200, json: { ok: true, tag: "first-base" } },
+      [`${OTHER_BLOB}/views/latest.json`]: { status: 200, json: { version: "v2" } },
+      [`${OTHER_BLOB}/views/v2/data/item.json`]: { status: 200, json: { ok: true, tag: "second-base" } },
+    };
+
+    const first = await readView("data/item.json", Doc, { base: true });
+    process.env.BLOB_BASE_URL = OTHER_BLOB;
+    const second = await readView("data/item.json", Doc, { base: true });
+
+    expect(first).toEqual({ ok: true, tag: "first-base" });
+    expect(second).toEqual({ ok: true, tag: "second-base" });
+    expect(fetchCalls.filter((u) => u.includes("/views/latest.json"))).toHaveLength(2);
+  });
 });
 
 describe("readView — non-base (flat) reads", () => {
@@ -151,5 +164,21 @@ describe("readView — non-base (flat) reads", () => {
     routes = {};
     const result = await readView("live/rank/week/2099-W01/repo/flow.json", Doc);
     expect(result).toBeNull();
+  });
+
+  test("uses the current Blob base URL without re-importing the module", async () => {
+    routes = {
+      [`${BLOB}/live/current.json`]: { status: 200, json: { ok: true, tag: "first-base" } },
+      [`${OTHER_BLOB}/live/current.json`]: { status: 200, json: { ok: true, tag: "second-base" } },
+    };
+
+    const first = await readView("live/current.json", Doc);
+    process.env.BLOB_BASE_URL = OTHER_BLOB;
+    const second = await readView("live/current.json", Doc);
+
+    expect(first).toEqual({ ok: true, tag: "first-base" });
+    expect(second).toEqual({ ok: true, tag: "second-base" });
+    expect(fetchCalls.some((u) => u.startsWith(`${BLOB}/live/current.json`))).toBe(true);
+    expect(fetchCalls.some((u) => u.startsWith(`${OTHER_BLOB}/live/current.json`))).toBe(true);
   });
 });

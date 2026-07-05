@@ -1,6 +1,7 @@
 import { start } from "workflow/api";
 import { refreshWorkflow } from "@/lib/workflows/refresh";
 import { sendAlert } from "@/lib/observability/alert";
+import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 
 // Cron entrypoint: authorize, start the managed-refresh workflow, return the
@@ -15,6 +16,9 @@ export async function GET(req: Request): Promise<Response> {
 
   const runId = `refresh-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
   try {
+    requireBlobBaseUrl();
+    requireBlobWriteToken();
+    requireGithubToken();
     await start(refreshWorkflow, [runId]);
   } catch (error) {
     // Enqueue failed: the workflow body never runs, so markFailed won't fire here.

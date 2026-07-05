@@ -1,4 +1,5 @@
 import { putView } from "@/lib/data/write";
+import { getBlobBaseUrl } from "@/lib/runtime-config";
 import type { LiveRefreshJob, LiveRefreshResult } from "./live-refresh";
 
 const SYNC_RUNS_PATH = "ops/sync-runs.json";
@@ -80,7 +81,7 @@ export async function safeRecordSyncRun(run: SyncRun): Promise<string | null> {
 }
 
 async function readSyncRuns(): Promise<SyncRunsFile> {
-  const base = (process.env.BLOB_BASE_URL ?? process.env.NEXT_PUBLIC_BLOB_BASE_URL ?? "").replace(/\/+$/, "");
+  const base = getBlobBaseUrl();
   if (!base) return { generated_at: new Date().toISOString(), runs: [] };
 
   const url = `${base}/${SYNC_RUNS_PATH}?v=${Date.now()}`;

@@ -1,6 +1,7 @@
 import { refreshLiveViews, type LiveRefreshJob } from "@/lib/cron/live-refresh";
 import { completedRun, failedRun, safeRecordSyncRun, syncRunId } from "@/lib/cron/sync-runs";
 import { recordHealth, sendAlert } from "@/lib/observability/alert";
+import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 
 export async function runLiveRefreshRoute(req: Request, job: LiveRefreshJob): Promise<Response> {
@@ -12,6 +13,10 @@ export async function runLiveRefreshRoute(req: Request, job: LiveRefreshJob): Pr
   const id = syncRunId(job, startedAt);
 
   try {
+    requireBlobBaseUrl();
+    requireGithubToken();
+    if (!dry) requireBlobWriteToken();
+
     const result = await refreshLiveViews(job, dry);
     const log_error = dry ? null : await safeRecordSyncRun(completedRun(id, job, dry, startedAt, result));
     return Response.json({
