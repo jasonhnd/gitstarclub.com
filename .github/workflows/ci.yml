@@ -26,7 +26,9 @@ jobs:
       - run: bun run audit:deps
         working-directory: pipeline
       - run: bun run lint
-      - run: bunx tsc --noEmit -p tsconfig.json
+      - run: bun run typecheck
+      - run: bun run typecheck:tests
+      - run: bun run typecheck:scripts
       - run: bun run test
         env:
           # source.ts captures BLOB_BASE at module load; the readView unit tests need a

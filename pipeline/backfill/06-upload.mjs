@@ -67,7 +67,8 @@ async function uploadOne(item) {
       });
       return body.length;
     } catch (err) {
-      if (attempt > RETRIES) throw new Error(`put ${item.rel} failed after ${RETRIES} retries: ${err.message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      if (attempt > RETRIES) throw new Error(`put ${item.rel} failed after ${RETRIES} retries: ${message}`);
       await sleep(500 * 2 ** (attempt - 1));
     }
   }

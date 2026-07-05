@@ -100,7 +100,8 @@ await con.run(
 const repos = JSON.parse(readFileSync(p("repos.json"), "utf8"));
 const repoById = new Map(repos.map((r) => [r.id, r]));
 
-const [{ hi }] = await query(`SELECT CAST(MAX(date) AS VARCHAR) hi FROM read_parquet('${SD}')`);
+const [{ hi: rawHi }] = await query(`SELECT CAST(MAX(date) AS VARCHAR) hi FROM read_parquet('${SD}')`);
+const hi = String(rawHi);
 const seamDate = addDays(hi, 1); // gross→net boundary: first day the daily cron will track as net
 const recentCutoff = addDays(seamDate, -RECENT_DAYS);
 
