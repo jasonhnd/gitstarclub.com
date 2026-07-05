@@ -27,15 +27,26 @@ export type LiveRefreshResult = {
   current_month_flow_1: TopItem | null;
 };
 
+export function liveRefreshPeriods(now = new Date()) {
+  const today = now.toISOString().slice(0, 10);
+  const month = today.slice(0, 7);
+  const periods = currentUtcPeriods(now);
+  return { now, today, month, periods, weekPeriod: periods.weekPeriod };
+}
+
+export function repoRefsFromLookup(lookup: NonNullable<Awaited<ReturnType<typeof getReposLookup>>>): RepoRef[] {
+  return Object.entries(lookup).map(([id, entry]) => ({
+    id: Number(id),
+    owner: entry.owner,
+    name: entry.name,
+  }));
+}
+
 export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promise<LiveRefreshResult> {
   const lookup = await getReposLookup();
   if (!lookup) throw new Error("lookup unavailable");
 
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const month = today.slice(0, 7);
-  const periods = currentUtcPeriods(now);
-  const weekPeriod = periods.weekPeriod;
+  const { now, today, month, periods, weekPeriod } = liveRefreshPeriods();
 
   const [existingCM, snap, monthRank, weekRank, monthHeat] = await Promise.all([
     getCurrentMonth(),
@@ -45,11 +56,7 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promi
     getHeatmapBase("month", month),
   ]);
 
-  const refs: RepoRef[] = Object.entries(lookup).map(([id, entry]) => ({
-    id: Number(id),
-    owner: entry.owner,
-    name: entry.name,
-  }));
+  const refs = repoRefsFromLookup(lookup);
   const canReuseToday = !dry && job === "weekly" && existingCM?.month === month && existingCM.updated === today;
   const fresh = canReuseToday ? new Map<number, number>() : await fetchStarCounts(dry ? refs.slice(0, 50) : refs);
   const recalculatesToday = fresh.size > 0;

@@ -4,7 +4,7 @@ import {
   generateCategoryDetailMetadataForLocale,
   generateCategoryDetailStaticParams,
 } from "@/app/_localized/categories";
-import { resolveRouteLocale } from "@/app/_localized/routing";
+import { resolveLocalizedRoute, routeMetadata, routeView } from "@/app/_localized/page-adapters";
 
 type Params = Promise<{ locale: string; dimension: string; slug: string }>;
 
@@ -16,13 +16,9 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  const { dimension, slug } = await params;
-  return generateCategoryDetailMetadataForLocale(locale, { dimension, slug });
+  return routeMetadata(resolveLocalizedRoute(params), (locale, routeParams) => generateCategoryDetailMetadataForLocale(locale, routeParams));
 }
 
 export default async function LocalizedCategoryDetailPage({ params }: { params: Params }) {
-  const locale = await resolveRouteLocale(params);
-  const { dimension, slug } = await params;
-  return <CategoryDetailPageView locale={locale} dimension={dimension} slug={slug} page={1} />;
+  return routeView(resolveLocalizedRoute(params), (locale, { dimension, slug }) => <CategoryDetailPageView locale={locale} dimension={dimension} slug={slug} page={1} />);
 }

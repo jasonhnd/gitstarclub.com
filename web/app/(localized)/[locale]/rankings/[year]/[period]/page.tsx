@@ -4,7 +4,7 @@ import {
   generateRankingPeriodMetadata,
   RankingsPeriodPageView,
 } from "@/app/_localized/ranking-detail";
-import { resolveRouteLocale } from "@/app/_localized/routing";
+import { resolveLocalizedRoute, routeMetadata, routeView } from "@/app/_localized/page-adapters";
 
 type Params = Promise<{ locale: string; year: string; period: string }>;
 
@@ -16,13 +16,9 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  const { year, period } = await params;
-  return generateRankingPeriodMetadata(locale, { year, period });
+  return routeMetadata(resolveLocalizedRoute(params), (locale, routeParams) => generateRankingPeriodMetadata(locale, routeParams));
 }
 
 export default async function LocalizedRankingsPeriodPage({ params }: { params: Params }) {
-  const locale = await resolveRouteLocale(params);
-  const { year, period } = await params;
-  return <RankingsPeriodPageView locale={locale} year={year} period={period} />;
+  return routeView(resolveLocalizedRoute(params), (locale, { year, period }) => <RankingsPeriodPageView locale={locale} year={year} period={period} />);
 }

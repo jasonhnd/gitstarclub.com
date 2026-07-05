@@ -7,6 +7,8 @@ import { fmtStars } from "@/lib/format";
 import type { CompareCurve, SearchDoc } from "@/lib/contracts";
 import type { SearchHit } from "@/lib/search/core";
 import { MAX_COMPARE, MIN_COMPARE, parseRepos, serializeRepos } from "@/lib/compare/core";
+import { loadCompareCurve, type CompareCurveLoadFailure } from "@/lib/compare/load";
+import { parseSearchIndexPayload } from "@/lib/search/client";
 import { CompareCurve as CompareCurveChart } from "@/app/_explore/CompareCurve";
 
 // CompareClient (v0.2 §5) — the interactive shell that turns the static /compare page into a
@@ -33,6 +35,9 @@ export type CompareClientLabels = {
   minHint: string;
   limit: string;
   remove: string;
+  pickerError: string;
+  curveError: string;
+  retry: string;
   pickerEmpty: string;
   pickerLoading: string;
   compareModesAria: string;
@@ -45,8 +50,12 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
   const repos = useMemo(() => parseRepos(params?.get("repos")), [params]);
 
   const [engine, setEngine] = useState<Engine | null>(null);
+  const [engineError, setEngineError] = useState(false);
+  const [engineRetry, setEngineRetry] = useState(0);
   const [curves, setCurves] = useState<Map<string, CompareCurve>>(new Map());
   const pendingRef = useRef<Set<string>>(new Set());
+  const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
+  const [curveErrors, setCurveErrors] = useState<Map<string, CompareCurveLoadFailure>>(new Map());
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
 
@@ -55,52 +64,89 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
     let cancelled = false;
     (async () => {
       try {
+        setEngineError(false);
         const [core, res] = await Promise.all([
           import("@/lib/search/core"),
           fetch("/search-index", { cache: "force-cache" }),
         ]);
-        const data = (await res.json()) as { repos?: SearchDoc[] };
+        if (!res.ok) throw new Error(`search-index HTTP ${res.status}`);
+        const parsed = parseSearchIndexPayload(await res.json());
+        if (!parsed.ok) throw new Error(parsed.message);
         if (cancelled) return;
-        const docs = data.repos ?? [];
+        const docs = parsed.repos;
         const byFullName = new Map<string, SearchDoc>(docs.map((d) => [d.full_name.toLowerCase(), d]));
         setEngine({ ms: core.createIndex(docs), query: core.queryIndex, byFullName });
       } catch {
-        // best-effort: if the index can't load, the picker stays inert; existing chips remain visible.
+        if (!cancelled) setEngineError(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [engineRetry]);
 
   // Fetch curves for selected repos we don't have yet.
   useEffect(() => {
     if (!engine) return;
     const need = repos.filter((name) => {
       const key = name.toLowerCase();
-      return !curves.has(key) && !pendingRef.current.has(key);
+      return !curves.has(key) && !pendingRef.current.has(key) && !curveErrors.has(key);
     });
     if (need.length === 0) return;
-    need.forEach((n) => pendingRef.current.add(n.toLowerCase()));
-    void Promise.all(
-      need.map(async (name) => {
-        const doc = engine.byFullName.get(name.toLowerCase());
-        if (!doc) return null;
-        const res = await fetch(`/repo-curve?id=${doc.id}`, { cache: "force-cache" });
-        if (!res.ok) return null;
-        return (await res.json()) as CompareCurve;
-      }),
-    ).then((results) => {
-      setCurves((prev) => {
-        const next = new Map(prev);
-        results.forEach((r) => {
-          if (r) next.set(r.full_name.toLowerCase(), r);
+    const needKeys = need.map((n) => n.toLowerCase());
+    needKeys.forEach((key) => pendingRef.current.add(key));
+    setPendingKeys((prev) => new Set([...prev, ...needKeys]));
+
+    let active = true;
+    void (async () => {
+      try {
+        const results = await Promise.all(need.map((name) => loadCompareCurve(name, engine.byFullName.get(name.toLowerCase()))));
+        if (!active) return;
+        setCurves((prev) => {
+          const next = new Map(prev);
+          results.forEach((result) => {
+            if (result.ok) next.set(result.curve.full_name.toLowerCase(), result.curve);
+          });
+          return next;
         });
-        return next;
-      });
-      need.forEach((n) => pendingRef.current.delete(n.toLowerCase()));
-    });
-  }, [engine, repos, curves]);
+        setCurveErrors((prev) => {
+          const next = new Map(prev);
+          results.forEach((result) => {
+            const key = result.repo.toLowerCase();
+            if (result.ok) next.delete(key);
+            else next.set(key, result.error);
+          });
+          return next;
+        });
+      } catch {
+        if (!active) return;
+        setCurveErrors((prev) => {
+          const next = new Map(prev);
+          need.forEach((name) =>
+            next.set(name.toLowerCase(), {
+              repo: name,
+              reason: "request-failed",
+              message: `${name} curve request could not complete.`,
+            }),
+          );
+          return next;
+        });
+      } finally {
+        needKeys.forEach((key) => pendingRef.current.delete(key));
+        if (active) {
+          setPendingKeys((prev) => {
+            const next = new Set(prev);
+            needKeys.forEach((key) => next.delete(key));
+            return next;
+          });
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [engine, repos, curves, curveErrors]);
 
   const orderedCurves = useMemo(
     () => repos.map((n) => curves.get(n.toLowerCase())).filter((c): c is CompareCurve => Boolean(c)),
@@ -129,10 +175,31 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
 
   const remove = useCallback(
     (fullName: string) => {
+      const key = fullName.toLowerCase();
+      pendingRef.current.delete(key);
+      setPendingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      setCurveErrors((prev) => {
+        const next = new Map(prev);
+        next.delete(key);
+        return next;
+      });
       updateRepos(repos.filter((n) => n.toLowerCase() !== fullName.toLowerCase()));
     },
     [repos, updateRepos],
   );
+
+  const retryCurve = useCallback((fullName: string) => {
+    const key = fullName.toLowerCase();
+    setCurveErrors((prev) => {
+      const next = new Map(prev);
+      next.delete(key);
+      return next;
+    });
+  }, []);
 
   const onQueryChange = (v: string) => {
     setQ(v);
@@ -193,7 +260,15 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
             })}
           </ul>
         )}
-        {q.trim() && hits.length === 0 && (
+        {engineError && (
+          <div role="alert" className="mt-2 rounded-xl border border-outline-variant bg-surface-container-high px-3 py-3 font-mono text-[0.75rem] text-on-surface-variant">
+            <p>{labels.pickerError}</p>
+            <button type="button" onClick={() => setEngineRetry((value) => value + 1)} className="text-readable-gold mt-2 min-h-8 font-semibold hover:underline">
+              {labels.retry}
+            </button>
+          </div>
+        )}
+        {q.trim() && hits.length === 0 && !engineError && (
           <p role="status" aria-live="polite" className="mt-2 px-3 font-mono text-[0.75rem] text-on-surface-variant">
             {engine ? labels.pickerEmpty : labels.pickerLoading}
           </p>
@@ -216,6 +291,28 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
               </li>
             ))}
           </ul>
+        )}
+        {pendingKeys.size > 0 && (
+          <p role="status" aria-live="polite" className="mt-3 font-mono text-[0.75rem] text-on-surface-variant">
+            {labels.pickerLoading}
+          </p>
+        )}
+        {curveErrors.size > 0 && (
+          <div role="alert" className="mt-3 rounded-xl border border-outline-variant bg-surface-container-high px-3 py-3 font-mono text-[0.75rem] text-on-surface-variant">
+            <p>{labels.curveError}</p>
+            <ul className="mt-2 grid gap-2">
+              {[...curveErrors.values()].map((error) => (
+                <li key={error.repo} className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0 truncate" title={error.message}>
+                    {error.repo}
+                  </span>
+                  <button type="button" onClick={() => retryCurve(error.repo)} className="text-readable-gold min-h-8 font-semibold hover:underline">
+                    {labels.retry}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
 

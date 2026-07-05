@@ -20,6 +20,13 @@ import { buildNarrative } from "@/lib/narrative";
 import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
+import {
+  MONTH_RANKING_PREVIEW_LIMIT,
+  WEEK_RANKING_PREVIEW_LIMIT,
+  YEAR_RANKING_PREVIEW_LIMIT,
+  boundedRankItems,
+  hasMoreRankItems,
+} from "@/lib/rankings/page";
 import { pageMeta } from "@/lib/seo";
 import { buildWeeklyMoversSnippet } from "@/lib/shareable-snippets";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
@@ -96,7 +103,8 @@ export async function RankingsYearPageView({ locale, year: yearValue }: { locale
   ]);
   if (!rank || !lookup) notFound();
 
-  const rankRows: Row[] = joinRepoRank(rank.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const boundedItems = boundedRankItems(rank.items);
+  const rankRows: Row[] = joinRepoRank(boundedItems, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
   const asOf = resolveDataAsOfLabel(rank.meta.generated_at, heat?.meta.generated_at, { locale });
   const pagePath = `/rankings/${year}`;
   const routePath = localizedPath(locale, pagePath);
@@ -113,7 +121,7 @@ export async function RankingsYearPageView({ locale, year: yearValue }: { locale
   });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: rankRows, metric: "gained" }) : null;
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: rankRows, metric: "gained" });
-  const tops = rankRows.slice(0, 24);
+  const tops = rankRows.slice(0, YEAR_RANKING_PREVIEW_LIMIT);
   const months = (heat?.cells ?? []).map(([period, total]) => {
     const month = Number(String(period).slice(5, 7));
     return { month, label: monthLabel(locale, month, "short"), gained: total };
@@ -147,7 +155,7 @@ export async function RankingsYearPageView({ locale, year: yearValue }: { locale
             <Link href={href("/rankings")} className="text-readable-gold mt-5 inline-block font-mono text-[0.78rem] hover:underline">
               {t.nav.rankings}
             </Link>
-            {rankRows.length > tops.length && (
+            {hasMoreRankItems(rank.items.length, tops.length) && (
               <Link href="#complete-ranking" className="text-readable-gold mt-3 block font-mono text-[0.78rem] hover:underline">
                 {text.completeRanking}
               </Link>
@@ -182,7 +190,7 @@ export async function RankingsYearPageView({ locale, year: yearValue }: { locale
               {t.year.top} {year}
             </h2>
             <RankingList rows={tops} locale={locale} tableCaption={fill(text.repositoryRankingsCaption, { label: String(year) })} labels={tableLabels} />
-            {rankRows.length > tops.length && (
+            {hasMoreRankItems(rank.items.length, tops.length) && (
               <section id="complete-ranking" className="mt-[clamp(2rem,4vw,3rem)] scroll-mt-24">
                 <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">{text.completeRanking}</h2>
                 <RankingList rows={rankRows} locale={locale} tableCaption={fill(text.completeRepositoryRankingsCaption, { label: String(year) })} labels={tableLabels} />
@@ -223,13 +231,14 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   ]);
   if (!flow || !lookup) notFound();
 
-  const flowRows: Row[] = joinRepoRank(flow.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const boundedFlowItems = boundedRankItems(flow.items);
+  const flowRows: Row[] = joinRepoRank(boundedFlowItems, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
   const pageLabel = monthYearLabel(locale, year, month);
   const title = fill(text.periodMetaTitle, { label: pageLabel });
   const asOf = resolveDataAsOfLabel(flow.meta.generated_at, heat?.meta.generated_at, { locale });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: flowRows, metric: "gained" }) : null;
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: flowRows, metric: "gained" });
-  const most = flowRows.slice(0, 18);
+  const most = flowRows.slice(0, MONTH_RANKING_PREVIEW_LIMIT);
   const fastest: Row[] = growth
     ? joinRepoRank(growth.items, lookup)
         .slice(0, 10)
@@ -339,7 +348,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
           )}
         </div>
 
-        {flowRows.length > most.length && (
+        {hasMoreRankItems(flow.items.length, most.length) && (
           <section id="complete-ranking" className="mt-[clamp(2rem,4vw,3rem)] min-w-0 scroll-mt-24">
             <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">{text.completeRanking}</h2>
             <RankingList rows={flowRows} variant="gained" locale={locale} tableCaption={fill(text.completeRepositoryRankingsCaption, { label: pageLabel })} labels={tableLabels} />
@@ -358,7 +367,8 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const period = `${year}-W${String(week).padStart(2, "0")}`;
   const [flow, lookup] = await Promise.all([getRank("week", period, "repo", "flow"), getReposLookup()]);
   if (!flow || !lookup) notFound();
-  const rankRows: Row[] = joinRepoRank(flow.items, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
+  const boundedFlowItems = boundedRankItems(flow.items);
+  const rankRows: Row[] = joinRepoRank(boundedFlowItems, lookup).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, gained: r.value, total: r.current_stars }));
   const title = fill(text.periodMetaTitle, { label: period });
   const asOf = resolveDataAsOfLabel(flow.meta.generated_at, { locale });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: rankRows, metric: "gained" }) : null;
@@ -367,7 +377,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const href = (path: string) => localizedPath(locale, path);
   const snippet = buildWeeklyMoversSnippet({ locale, period, asOf, rows: rankRows, path: routePath });
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: rankRows, metric: "gained" });
-  const rows = rankRows.slice(0, 32);
+  const rows = rankRows.slice(0, WEEK_RANKING_PREVIEW_LIMIT);
   const tableLabels = repositoryTableLabels(t);
   const dateModified = resolveDataAsOfValue(flow.meta.generated_at);
   const dataset = datasetLd({
@@ -408,7 +418,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
           subtitle={t.week.top}
           backHref={href(`/rankings/${year}`)}
           backLabel={String(year)}
-          completeHref={rankRows.length > rows.length ? "#complete-ranking" : undefined}
+          completeHref={hasMoreRankItems(flow.items.length, rows.length) ? "#complete-ranking" : undefined}
           completeLabel={text.completeRanking}
           shareText={title}
           shareLabels={shareButtonLabels(locale, t)}
@@ -418,7 +428,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
         <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
           <RankingList rows={rows} variant="gained" locale={locale} tableCaption={fill(text.gainedCaption, { label: period })} labels={tableLabels} />
         </section>
-        {rankRows.length > rows.length && (
+        {hasMoreRankItems(flow.items.length, rows.length) && (
           <section id="complete-ranking" className="mt-[clamp(2rem,4vw,3rem)] min-w-0 scroll-mt-24">
             <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">{text.completeRanking}</h2>
             <RankingList rows={rankRows} variant="gained" locale={locale} tableCaption={fill(text.completeRepositoryRankingsCaption, { label: period })} labels={tableLabels} />

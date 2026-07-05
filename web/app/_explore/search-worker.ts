@@ -1,18 +1,13 @@
-import { createIndex, queryIndex, type SearchHit } from "@/lib/search/core";
-import type { SearchDoc } from "@/lib/contracts";
-
-type InitMessage = { type: "init"; repos: SearchDoc[] };
-type QueryMessage = { type: "query"; id: number; q: string; limit: number };
-type InMessage = InitMessage | QueryMessage;
-type OutMessage = { type: "ready" } | { type: "results"; id: number; hits: SearchHit[] } | { type: "error"; id?: number };
+import { createIndex, queryIndex } from "@/lib/search/core";
+import { searchWorkerError, type SearchWorkerInMessage, type SearchWorkerOutMessage } from "@/lib/search/client";
 
 let index: ReturnType<typeof createIndex> | null = null;
 
-function post(message: OutMessage) {
+function post(message: SearchWorkerOutMessage) {
   self.postMessage(message);
 }
 
-self.onmessage = (event: MessageEvent<InMessage>) => {
+self.onmessage = (event: MessageEvent<SearchWorkerInMessage>) => {
   const message = event.data;
   try {
     if (message.type === "init") {
@@ -21,11 +16,11 @@ self.onmessage = (event: MessageEvent<InMessage>) => {
       return;
     }
     if (!index) {
-      post({ type: "results", id: message.id, hits: [] });
+      post(searchWorkerError("not-ready", "Search worker received a query before initialization.", message.id));
       return;
     }
     post({ type: "results", id: message.id, hits: queryIndex(index, message.q, message.limit) });
-  } catch {
-    post(message.type === "query" ? { type: "error", id: message.id } : { type: "error" });
+  } catch (error) {
+    post(message.type === "query" ? searchWorkerError("query-failed", error, message.id) : searchWorkerError("init-failed", error));
   }
 };

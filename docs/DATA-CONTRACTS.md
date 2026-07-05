@@ -144,7 +144,7 @@ Phase 1 category views also live under `views/<run_id>/`:
 - `lookup/categories.json` - small client/build lookup for public categories;
   category entries may carry `sitemap` eligibility so route discovery can omit
   explicitly hidden categories.
-- `rank/category/<dimension>/<slug>/all-time/repo/stock.json` - phase-1 all-time category rank.
+- `rank/category/<dimension>/<slug>/all-time/repo/stock.json` - phase-1 all-time category rank. The view is sorted by current stars and includes every assigned repo for that public category, so page rendering can slice the requested category page without rebuilding the whole category from assignments.
 
 Windowed category rank views are reserved for later category page phases; do not
 emit `rank/category/**/{week|month|year}/**` until the write-budget impact is
@@ -229,6 +229,7 @@ Rules:
 - `dim` is always `repo`.
 - `metric` is `stock` for the Phase-1 all-time view.
 - Every `item.id` must be assigned to `meta.category.id` in `categories/assignments.json`.
+- The item list is not top-100 capped; route code owns pagination and bounded rendering.
 - Windowed `flow`/`stock` category ranks are future work; avoid emitting them until the category route phase has accepted the extra view count.
 
 ### 2.5 `entity/repo/{id}.json`

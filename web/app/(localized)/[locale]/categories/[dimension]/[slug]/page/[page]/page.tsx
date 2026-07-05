@@ -5,7 +5,7 @@ import {
   generateCategoryDetailMetadataForLocale,
   generateCategoryDetailStaticParams,
 } from "@/app/_localized/categories";
-import { resolveRouteLocale } from "@/app/_localized/routing";
+import { resolveLocalizedRoute, routeMetadata, routeView } from "@/app/_localized/page-adapters";
 import { categoryPath } from "@/app/categories/category-page-data";
 import { localizedPath } from "@/lib/i18n/routing";
 import { parsePositivePage } from "@/lib/pagination";
@@ -20,17 +20,15 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  const { dimension, slug, page } = await params;
-  return generateCategoryDetailMetadataForLocale(locale, { dimension, slug, page });
+  return routeMetadata(resolveLocalizedRoute(params), (locale, routeParams) => generateCategoryDetailMetadataForLocale(locale, routeParams));
 }
 
 export default async function LocalizedCategoryDetailPagedPage({ params }: { params: Params }) {
-  const locale = await resolveRouteLocale(params);
-  const { dimension, slug, page: rawPage } = await params;
-  const page = parsePositivePage(rawPage);
-  if (!page) notFound();
-  if (page === 1) permanentRedirect(localizedPath(locale, categoryPath(dimension, slug)));
+  return routeView(resolveLocalizedRoute(params), (locale, { dimension, slug, page: rawPage }) => {
+    const page = parsePositivePage(rawPage);
+    if (!page) notFound();
+    if (page === 1) permanentRedirect(localizedPath(locale, categoryPath(dimension, slug)));
 
-  return <CategoryDetailPageView locale={locale} dimension={dimension} slug={slug} page={page} />;
+    return <CategoryDetailPageView locale={locale} dimension={dimension} slug={slug} page={page} />;
+  });
 }

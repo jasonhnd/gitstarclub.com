@@ -28,6 +28,9 @@ import { REPO_BUCKETS } from "@/lib/workflows/buckets";
 const MIN_LOOKUP = 1000;
 export const HIGH_D_FACTOR_WARN_THRESHOLD = 2;
 
+type ValidationInvariants = Record<string, boolean | number>;
+type ValidationRead = <T>(rel: string, schema: Parameters<typeof readView<T>>[1]) => Promise<T | null>;
+
 export async function validateVersion(runId: string): Promise<{ ok: boolean; checked: number; failures: string[] }> {
   "use step";
   const failures: string[] = [];
@@ -48,9 +51,35 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
     }
   };
 
+  const meta = await validateMeta(read, invariants);
+  const { allTime, lookup } = await validateCoreRankViews(read, failures, invariants);
+  const dFactorReport = await inspectCanonicalAnchoringFactors(runId);
+  checked += dFactorReport.checked;
+  Object.assign(invariants, dFactorReport.invariants);
+
+  await validateFoldedThrough(runId, meta, failures, invariants);
+  await validateAliases(read, runId, lookup, failures, invariants);
+  await validateSearchIndex(read, failures, invariants);
+  const { categoryAssignments, publicCategories } = await validateCategories(read, failures, invariants);
+  await validateSampleCategory(read, publicCategories, categoryAssignments, failures, invariants);
+  await validateSampleRepo(read, allTime, failures, invariants);
+  await validateHeatmap(read);
+
+  const ok = failures.length === 0;
+  const validation = { run_id: runId, ok, checked, schema_failures: schemaFailures, invariants, failures };
+  WorkflowValidation.parse(validation);
+  await putView(`ops/workflows/${runId}/validation.json`, validation);
+  if (!ok) throw new Error(`validation failed (${failures.length}): ${failures.slice(0, 5).join("; ")}`);
+  return { ok, checked, failures };
+}
+
+async function validateMeta(read: ValidationRead, invariants: ValidationInvariants): Promise<Meta | null> {
   const meta = await read("meta.json", Meta);
   if (meta) invariants.seam_date_present = Boolean((meta as { seam_date?: string }).seam_date);
+  return meta;
+}
 
+async function validateCoreRankViews(read: ValidationRead, failures: string[], invariants: ValidationInvariants) {
   const allTime = await read("rank/all-time/repo/stock.json", RankList);
   if (allTime) {
     invariants.all_time_repo_items = allTime.items.length;
@@ -69,56 +98,71 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
 
   if (allTime && lookup) Object.assign(invariants, inspectRank("all-time/repo", allTime, failures, { lookup }).invariants);
   if (allTimeOrg && orgLookup) Object.assign(invariants, inspectRank("all-time/org", allTimeOrg, failures, { orgLookup }).invariants);
-  const dFactorReport = await inspectCanonicalAnchoringFactors(runId);
-  checked += dFactorReport.checked;
-  Object.assign(invariants, dFactorReport.invariants);
+  return { allTime, lookup, allTimeOrg, orgLookup };
+}
 
+async function validateFoldedThrough(
+  runId: string,
+  meta: Meta | null,
+  failures: string[],
+  invariants: ValidationInvariants,
+) {
   const previousMeta = await readView("meta.json", Meta, { base: true, bust: runId });
-  if (meta?.folded_through && previousMeta?.folded_through) {
-    const monotonic =
-      meta.folded_through.month >= previousMeta.folded_through.month &&
-      meta.folded_through.week >= previousMeta.folded_through.week;
-    invariants.folded_through_monotonic = monotonic;
-    if (!monotonic) {
-      failures.push(
-        `meta.folded_through regressed from ${previousMeta.folded_through.month}/${previousMeta.folded_through.week} to ${meta.folded_through.month}/${meta.folded_through.week}`,
-      );
-    }
-  }
+  if (!meta?.folded_through || !previousMeta?.folded_through) return;
 
-  // aliases must point at still-tracked ids and must not shadow a live repo's current full_name.
+  const monotonic =
+    meta.folded_through.month >= previousMeta.folded_through.month &&
+    meta.folded_through.week >= previousMeta.folded_through.week;
+  invariants.folded_through_monotonic = monotonic;
+  if (!monotonic) {
+    failures.push(
+      `meta.folded_through regressed from ${previousMeta.folded_through.month}/${previousMeta.folded_through.week} to ${meta.folded_through.month}/${meta.folded_through.week}`,
+    );
+  }
+}
+
+async function validateAliases(
+  read: ValidationRead,
+  runId: string,
+  lookup: ReposLookup | null,
+  failures: string[],
+  invariants: ValidationInvariants,
+) {
   const aliases = await read("lookup/aliases.json", AliasMap);
-  if (aliases && lookup) {
-    const trackedIds = new Set(Object.keys(lookup));
-    const liveNames = new Set(Object.values(lookup).map((e) => e.full_name.toLowerCase()));
-    let dangling = 0;
-    let colliding = 0;
-    for (const [oldName, id] of Object.entries(aliases)) {
-      if (!trackedIds.has(String(id))) dangling++;
-      if (liveNames.has(oldName)) colliding++;
-    }
-    invariants.alias_count = Object.keys(aliases).length;
-    invariants.alias_dangling = dangling;
-    invariants.alias_colliding = colliding;
-    if (dangling > 0) failures.push(`lookup/aliases: ${dangling} alias(es) point to an untracked id`);
-    if (colliding > 0) failures.push(`lookup/aliases: ${colliding} alias(es) shadow a live repo`);
+  if (!aliases || !lookup) return;
 
-    const previousAliases = await readView("lookup/aliases.json", AliasMap, { base: true, bust: runId });
-    if (previousAliases) {
-      const previousCount = Object.keys(previousAliases).length;
-      const currentCount = Object.keys(aliases).length;
-      invariants.alias_prev_count = previousCount;
-      invariants.alias_non_regression = currentCount >= previousCount;
-      if (currentCount < previousCount) failures.push(`lookup/aliases: count regressed from ${previousCount} to ${currentCount}`);
-    }
+  const trackedIds = new Set(Object.keys(lookup));
+  const liveNames = new Set(Object.values(lookup).map((e) => e.full_name.toLowerCase()));
+  let dangling = 0;
+  let colliding = 0;
+  for (const [oldName, id] of Object.entries(aliases)) {
+    if (!trackedIds.has(String(id))) dangling++;
+    if (liveNames.has(oldName)) colliding++;
   }
+  invariants.alias_count = Object.keys(aliases).length;
+  invariants.alias_dangling = dangling;
+  invariants.alias_colliding = colliding;
+  if (dangling > 0) failures.push(`lookup/aliases: ${dangling} alias(es) point to an untracked id`);
+  if (colliding > 0) failures.push(`lookup/aliases: ${colliding} alias(es) shadow a live repo`);
 
+  const previousAliases = await readView("lookup/aliases.json", AliasMap, { base: true, bust: runId });
+  if (previousAliases) {
+    const previousCount = Object.keys(previousAliases).length;
+    const currentCount = Object.keys(aliases).length;
+    invariants.alias_prev_count = previousCount;
+    invariants.alias_non_regression = currentCount >= previousCount;
+    if (currentCount < previousCount) failures.push(`lookup/aliases: count regressed from ${previousCount} to ${currentCount}`);
+  }
+}
+
+async function validateSearchIndex(read: ValidationRead, failures: string[], invariants: ValidationInvariants) {
   const search = await read("search/index.json", SearchIndex);
-  if (search) {
-    invariants.search_repos = search.count;
-    if (search.count < MIN_LOOKUP) failures.push(`search/index: only ${search.count} repos`);
-  }
+  if (!search) return;
+  invariants.search_repos = search.count;
+  if (search.count < MIN_LOOKUP) failures.push(`search/index: only ${search.count} repos`);
+}
 
+async function validateCategories(read: ValidationRead, failures: string[], invariants: ValidationInvariants) {
   const categoryRegistry = await read("categories/registry.json", CategoryRegistry);
   const categoryAssignments = await read("categories/assignments.json", CategoryAssignments);
   const categoriesLookup = await read("lookup/categories.json", CategoriesLookup);
@@ -135,30 +179,7 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
   }
 
   if (categoryAssignments) {
-    const assignments = Object.values(categoryAssignments.repositories);
-    invariants.category_assignments_repos = assignments.length;
-    if (assignments.length < MIN_LOOKUP) failures.push(`categories/assignments: only ${assignments.length} repos`);
-
-    const hasLanguage = assignments.every((assignment) => assignment.language.length >= 1);
-    const hasLanguageFamily = assignments.every((assignment) => assignment.language_family.length >= 1);
-    const singleOwnerKind = assignments.every((assignment) => assignment.owner_kind.length === 1);
-    invariants.category_has_language = hasLanguage;
-    invariants.category_has_language_family = hasLanguageFamily;
-    invariants.category_single_owner_kind = singleOwnerKind;
-    if (!hasLanguage) failures.push("categories/assignments: language must have at least one category per repo");
-    if (!hasLanguageFamily) failures.push("categories/assignments: language_family must have at least one category per repo");
-    if (!singleOwnerKind) failures.push("categories/assignments: owner_kind must have exactly one category per repo");
-
-    if (categoryIds.size) {
-      let unknownRefs = 0;
-      for (const assignment of assignments) {
-        for (const refs of Object.values(assignment)) {
-          for (const ref of refs) if (!categoryIds.has(ref)) unknownRefs++;
-        }
-      }
-      invariants.category_unknown_refs = unknownRefs;
-      if (unknownRefs > 0) failures.push(`categories/assignments: ${unknownRefs} unknown category refs`);
-    }
+    validateCategoryAssignments(categoryAssignments, categoryIds, failures, invariants);
   }
 
   if (categoriesLookup) {
@@ -167,42 +188,79 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
     if (lookupCategories === 0) failures.push("lookup/categories: empty");
   }
 
+  return { categoryAssignments, publicCategories };
+}
+
+function validateCategoryAssignments(
+  categoryAssignments: CategoryAssignments,
+  categoryIds: Set<string>,
+  failures: string[],
+  invariants: ValidationInvariants,
+) {
+  const assignments = Object.values(categoryAssignments.repositories);
+  invariants.category_assignments_repos = assignments.length;
+  if (assignments.length < MIN_LOOKUP) failures.push(`categories/assignments: only ${assignments.length} repos`);
+
+  const hasLanguage = assignments.every((assignment) => assignment.language.length >= 1);
+  const hasLanguageFamily = assignments.every((assignment) => assignment.language_family.length >= 1);
+  const singleOwnerKind = assignments.every((assignment) => assignment.owner_kind.length === 1);
+  invariants.category_has_language = hasLanguage;
+  invariants.category_has_language_family = hasLanguageFamily;
+  invariants.category_single_owner_kind = singleOwnerKind;
+  if (!hasLanguage) failures.push("categories/assignments: language must have at least one category per repo");
+  if (!hasLanguageFamily) failures.push("categories/assignments: language_family must have at least one category per repo");
+  if (!singleOwnerKind) failures.push("categories/assignments: owner_kind must have exactly one category per repo");
+
+  if (categoryIds.size) {
+    let unknownRefs = 0;
+    for (const assignment of assignments) {
+      for (const refs of Object.values(assignment)) {
+        for (const ref of refs) if (!categoryIds.has(ref)) unknownRefs++;
+      }
+    }
+    invariants.category_unknown_refs = unknownRefs;
+    if (unknownRefs > 0) failures.push(`categories/assignments: ${unknownRefs} unknown category refs`);
+  }
+}
+
+async function validateSampleCategory(
+  read: ValidationRead,
+  publicCategories: Array<{ id: string; dimension: keyof CategoryAssignments["repositories"][string]; slug: string }>,
+  categoryAssignments: CategoryAssignments | null,
+  failures: string[],
+  invariants: ValidationInvariants,
+) {
   const sampleCategory = publicCategories[0];
-  if (sampleCategory) {
-    const categoryRank = await read(
-      `rank/category/${sampleCategory.dimension}/${sampleCategory.slug}/all-time/repo/stock.json`,
-      CategoryRankList,
-    );
-    if (categoryRank && categoryAssignments) {
-      const rankItemsAssigned = categoryRank.items.every((item) => {
-        if (item.id == null) return false;
-        return categoryAssignments.repositories[String(item.id)]?.[sampleCategory.dimension].includes(sampleCategory.id) ?? false;
-      });
-      invariants.category_sample_rank_items_assigned = rankItemsAssigned;
-      if (!rankItemsAssigned) failures.push(`rank/category/${sampleCategory.id}: contains unassigned repo`);
-    }
-  }
+  if (!sampleCategory) return;
 
-  // sample the top repo's entity — must have a non-empty anchored curve.
+  const categoryRank = await read(
+    `rank/category/${sampleCategory.dimension}/${sampleCategory.slug}/all-time/repo/stock.json`,
+    CategoryRankList,
+  );
+  if (!categoryRank || !categoryAssignments) return;
+
+  const rankItemsAssigned = categoryRank.items.every((item) => {
+    if (item.id == null) return false;
+    return categoryAssignments.repositories[String(item.id)]?.[sampleCategory.dimension].includes(sampleCategory.id) ?? false;
+  });
+  invariants.category_sample_rank_items_assigned = rankItemsAssigned;
+  if (!rankItemsAssigned) failures.push(`rank/category/${sampleCategory.id}: contains unassigned repo`);
+}
+
+async function validateSampleRepo(read: ValidationRead, allTime: RankList | null, failures: string[], invariants: ValidationInvariants) {
   const topId = allTime?.items[0]?.id;
-  if (topId != null) {
-    const ent = await read(`entity/repo/${topId}.json`, RepoEntity);
-    if (ent) {
-      invariants.sample_curve_months = ent.curve.monthly.length;
-      if (ent.curve.monthly.length === 0) failures.push(`entity/repo/${topId}: empty curve`);
-    }
-  }
+  if (topId == null) return;
 
-  // a heatmap year that must exist (prior calendar year is always complete).
+  const ent = await read(`entity/repo/${topId}.json`, RepoEntity);
+  if (ent) {
+    invariants.sample_curve_months = ent.curve.monthly.length;
+    if (ent.curve.monthly.length === 0) failures.push(`entity/repo/${topId}: empty curve`);
+  }
+}
+
+async function validateHeatmap(read: ValidationRead) {
   const lastYear = String(new Date().getUTCFullYear() - 1);
   await read(`heatmap/year/${lastYear}.json`, Heatmap);
-
-  const ok = failures.length === 0;
-  const validation = { run_id: runId, ok, checked, schema_failures: schemaFailures, invariants, failures };
-  WorkflowValidation.parse(validation);
-  await putView(`ops/workflows/${runId}/validation.json`, validation);
-  if (!ok) throw new Error(`validation failed (${failures.length}): ${failures.slice(0, 5).join("; ")}`);
-  return { ok, checked, failures };
 }
 
 type AnchoringShard = Record<string, { d?: number | null }>;

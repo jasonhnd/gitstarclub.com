@@ -14,8 +14,6 @@ import {
 import type { CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts/categories";
 import type { Model, Period } from "./model";
 
-const TOP_N = 100;
-
 const DIMENSION_LABELS: Record<CategoryDimension, string> = {
   language: "Language",
   language_family: "Language Family",
@@ -180,7 +178,6 @@ function categoryAllTimeRank(
     .map((id) => model.repos.get(id))
     .filter((repo): repo is NonNullable<typeof repo> => Boolean(repo))
     .sort((a, b) => b.current_stars - a.current_stars || a.id - b.id)
-    .slice(0, TOP_N)
     .map((repo, i) => ({ rank: i + 1, id: repo.id, value: repo.current_stars, prev_rank: null }));
   if (items.length === 0) return null;
   return {

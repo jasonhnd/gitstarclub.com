@@ -4,7 +4,7 @@ import {
   generateCategoryDimensionMetadata,
   generateLocalizedCategoryDimensionStaticParams,
 } from "@/app/_localized/categories";
-import { resolveRouteLocale } from "@/app/_localized/routing";
+import { resolveLocalizedRoute, routeMetadata, routeView } from "@/app/_localized/page-adapters";
 
 type Params = Promise<{ locale: string; dimension: string }>;
 
@@ -16,13 +16,9 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  const { dimension } = await params;
-  return generateCategoryDimensionMetadata(locale, dimension);
+  return routeMetadata(resolveLocalizedRoute(params), (locale, { dimension }) => generateCategoryDimensionMetadata(locale, dimension));
 }
 
 export default async function LocalizedCategoryDimensionPage({ params }: { params: Params }) {
-  const locale = await resolveRouteLocale(params);
-  const { dimension } = await params;
-  return <CategoryDimensionPageView locale={locale} dimension={dimension} />;
+  return routeView(resolveLocalizedRoute(params), (locale, { dimension }) => <CategoryDimensionPageView locale={locale} dimension={dimension} />);
 }

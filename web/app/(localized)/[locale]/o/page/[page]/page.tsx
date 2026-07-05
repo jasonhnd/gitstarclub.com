@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { generateOrgIndexMetadata, OrgIndexPageView } from "@/app/_localized/org-index";
-import { resolveLocaleSegment } from "@/app/_localized/routing";
+import { resolveLocalizedRoute, routeMetadata, routeView } from "@/app/_localized/page-adapters";
 import { localizedPath } from "@/lib/i18n/routing";
 import { getOrgsLookup } from "@/lib/data";
 import { parsePositivePage } from "@/lib/pagination";
@@ -15,20 +15,20 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string; page: string }> }): Promise<Metadata> {
-  const { locale, page: rawPage } = await params;
-  const page = parsePositivePage(rawPage) ?? 1;
-  return generateOrgIndexMetadata({ locale: resolveLocaleSegment(locale), page });
+  return routeMetadata(resolveLocalizedRoute(params), (locale, { page: rawPage }) =>
+    generateOrgIndexMetadata({ locale, page: parsePositivePage(rawPage) ?? 1 }),
+  );
 }
 
 export default async function LocalizedOrgIndexPagedPage({ params }: { params: Promise<{ locale: string; page: string }> }) {
-  const { locale, page: rawPage } = await params;
-  const routeLocale = resolveLocaleSegment(locale);
-  const page = parsePositivePage(rawPage);
-  if (!page) notFound();
-  if (page === 1) permanentRedirect(localizedPath(routeLocale, orgIndexPath()));
+  return routeView(resolveLocalizedRoute(params), async (locale, { page: rawPage }) => {
+    const page = parsePositivePage(rawPage);
+    if (!page) notFound();
+    if (page === 1) permanentRedirect(localizedPath(locale, orgIndexPath()));
 
-  const totalPages = orgIndexPageCount(orgIndexRows(await getOrgsLookup()).length);
-  if (page > totalPages) notFound();
+    const totalPages = orgIndexPageCount(orgIndexRows(await getOrgsLookup()).length);
+    if (page > totalPages) notFound();
 
-  return <OrgIndexPageView locale={routeLocale} page={page} />;
+    return <OrgIndexPageView locale={locale} page={page} />;
+  });
 }

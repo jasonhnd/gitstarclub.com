@@ -7,17 +7,18 @@ import { Chrome } from "@/app/_explore/Chrome";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PaginationNav } from "@/app/_explore/PaginationNav";
-import { RankingList, type Row } from "@/app/_explore/RankingList";
+import { RankingList } from "@/app/_explore/RankingList";
 import { CategorySummaryTable } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CATEGORY_DIMENSIONS } from "@/lib/categories/rules";
-import { getCategoryAllTime, getCategoryAssignments, getCategoryRegistry, getMeta, getReposLookupDaily, joinRepoRank } from "@/lib/data";
+import { categoryRowsPage } from "@/lib/categories/page";
+import { getCategoryAllTime, getCategoryAssignments, getCategoryRegistry, getMeta, getReposLookupDaily } from "@/lib/data";
 import { formatInteger } from "@/lib/format";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { getDictionary, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
-import { CATEGORY_DETAIL_PAGE_SIZE, pageCount, parsePositivePage, slicePage } from "@/lib/pagination";
+import { CATEGORY_DETAIL_PAGE_SIZE, parsePositivePage } from "@/lib/pagination";
 import { pageMeta } from "@/lib/seo";
 import {
   CATEGORY_INDEX_PREVIEW_LIMIT,
@@ -268,20 +269,32 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
 
   const dimensionEntry = findDimension(registry, dimension);
   const [rank, lookup, assignments, meta] = await Promise.all([getCategoryAllTime(dimension, slug), getReposLookupDaily(), getCategoryAssignments(), getMeta()]);
-  const rows = categoryRows({
+  const pageData = categoryRowsPage({
     categoryId: category.id,
     dimension: category.dimension,
     rankItems: rank?.items ?? [],
     lookup,
     assignments,
+    page,
+    pageSize: CATEGORY_DETAIL_PAGE_SIZE,
+    totalCountHint: category.count,
   });
-  const totalPages = pageCount(rows.length, CATEGORY_DETAIL_PAGE_SIZE);
-  if (page > totalPages && rows.length > 0) notFound();
-  if (page > 1 && rows.length === 0) notFound();
+  const summaryRows = categoryRowsPage({
+    categoryId: category.id,
+    dimension: category.dimension,
+    rankItems: rank?.items ?? [],
+    lookup,
+    assignments,
+    page: 1,
+    pageSize: 3,
+  }).rows;
+  const totalPages = pageData.totalPages;
+  if (page > totalPages && pageData.totalRows > 0) notFound();
+  if (page > 1 && pageData.totalRows === 0) notFound();
 
-  const pageRows = slicePage(rows, page, CATEGORY_DETAIL_PAGE_SIZE);
+  const pageRows = pageData.rows;
   const startRank = (page - 1) * CATEGORY_DETAIL_PAGE_SIZE + 1;
-  const first = rows.length > 0 ? startRank : 0;
+  const first = pageData.totalRows > 0 ? startRank : 0;
   const last = first + pageRows.length - 1;
   const siblingCategories = (dimensionEntry?.categories ?? []).filter((entry) => entry.public && entry.id !== category.id).slice(0, 8);
   const asOf = resolveDataAsOfLabel(rank?.meta.generated_at, registry.generated_at, assignments?.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
@@ -297,8 +310,8 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
     description: fill(text.categoryDetailDatasetDescription, { label: category.label }),
     dateModified,
   });
-  const capsule = asOf ? buildLocalizedCategoryDetailCapsule({ locale, category, asOf, rows }) : null;
-  const faqItems = buildLocalizedCategoryDetailFaqs({ locale, category, asOf, rows });
+  const capsule = asOf ? buildLocalizedCategoryDetailCapsule({ locale, category, asOf, rows: summaryRows }) : null;
+  const faqItems = buildLocalizedCategoryDetailFaqs({ locale, category, asOf, rows: summaryRows });
 
   return (
     <>
@@ -342,7 +355,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
             <LinkBack href={href(categoryPath(dimension))} label={dimensionEntry?.label ?? t.nav.categories} />
             {totalPages > 1 && (
               <a href="#category-pages" className="text-readable-gold mt-3 block font-mono text-[0.78rem] hover:underline">
-                {fill(text.browseAllRepositories, { count: formatInteger(locale, rows.length) })}
+                {fill(text.browseAllRepositories, { count: formatInteger(locale, pageData.totalRows) })}
               </a>
             )}
           </aside>
@@ -353,11 +366,11 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
               <h2 className="text-[1.3rem] font-extrabold text-on-surface">{t.categories.topRepositories}</h2>
               <span className="font-mono text-[0.75rem] text-on-surface-variant">
-                {rows.length > 0
+                {pageData.totalRows > 0
                   ? fill(text.range, {
                       first: formatInteger(locale, first),
                       last: formatInteger(locale, last),
-                      total: formatInteger(locale, rows.length),
+                      total: formatInteger(locale, pageData.totalRows),
                     })
                   : t.categories.allTimeStars}
               </span>
@@ -415,38 +428,6 @@ function CategoryLink({ href, label, count, locale }: { href: string; label: str
       {count > 0 ? <span className="shrink-0 font-mono text-[0.75rem] text-on-surface-variant">{formatInteger(locale, count)}</span> : null}
     </Link>
   );
-}
-
-function categoryRows({
-  categoryId,
-  dimension,
-  rankItems,
-  lookup,
-  assignments,
-}: {
-  categoryId: string;
-  dimension: keyof NonNullable<Awaited<ReturnType<typeof getCategoryAssignments>>>["repositories"][string];
-  rankItems: NonNullable<Awaited<ReturnType<typeof getCategoryAllTime>>>["items"];
-  lookup: Awaited<ReturnType<typeof getReposLookupDaily>>;
-  assignments: Awaited<ReturnType<typeof getCategoryAssignments>>;
-}): Row[] {
-  if (!lookup) return [];
-  if (assignments) {
-    const rows = Object.entries(assignments.repositories).flatMap(([id, assignment]) => {
-      if (!assignment[dimension].includes(categoryId)) return [];
-      const repo = lookup[id];
-      return repo ? [{ owner: repo.owner, name: repo.name, lang: repo.language, total: repo.current_stars }] : [];
-    });
-    if (rows.length > 0) {
-      return rows.sort((a, b) => b.total - a.total || `${a.owner}/${a.name}`.localeCompare(`${b.owner}/${b.name}`));
-    }
-  }
-  return joinRepoRank(rankItems, lookup).map((repo) => ({
-    owner: repo.owner,
-    name: repo.name,
-    lang: repo.language,
-    total: repo.current_stars,
-  }));
 }
 
 function LinkBack({ href, label }: { href: string; label: string }) {

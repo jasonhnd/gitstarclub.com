@@ -128,14 +128,17 @@ test('周排名窗口跨月不丢日', () => {
 `search/index.json` 与客户端 MiniSearch 检索单独成测：
 
 - `web/lib/search/core.test.ts`：MiniSearch 装配（prefix / fuzzy 0.2 typo 容错 / 按 stars 加权 `starBoost`，热门 repo 置顶）。
+- `web/lib/search/client.test.ts` / `keyboard.test.ts`：search-index payload bad-shape checks, structured worker error messages, and combobox active-index bounds.
 - `web/lib/workflows/recompute/entities.test.ts` 的 `searchIndex` 用例：recompute 从 `repos` 维度派生索引（条目数、字段、描述截断）。
 - contracts `SearchIndex` / `SearchDoc` schema 契约测试（`web/lib/contracts/search.ts`）。
-- 全套测试通过 `bun test lib/` 一次性运行（**当前规模：424 tests / 28 files**，作新鲜度锚点）。
+- 全套测试通过 `bun test lib/` 一次性运行；不要在文档中固定测试数量，新增 pure helper 测试会让该数字频繁变化。
 
 > **别名与分类相关测试**（覆盖上文 §1.5 闸门里的 alias/category 断言对应逻辑）：
 > - `web/lib/workflows/recompute/aliases.test.ts`：alias-map 构建（并集保留的 `renames.json` 增量 → 当前 id）。
 > - `web/lib/workflows/recompute/categories.test.ts`：分类产物派生（registry / assignments / lookup / all-time category rank、public 资格、curated 绕过 `minimum_repo_count`）。
 > - `web/lib/categories/rules.test.ts`：确定性分类规则（slug 归一、language-family 映射、topic/keyword 规则）。
+> - `web/lib/categories/page.test.ts`：分类详情分页 helper，覆盖 empty / small / larger-than-one-page category。
+> - `web/lib/compare/load.test.ts`：`/repo-curve` rejected fetch 与 invalid response 的可恢复错误形状。
 
 - **parity 跳过 / 边界**：`web/lib/integration/recompute.test.ts` 经 `NO_DISK_REF` 跳过 `search/index.json`（派生视图，DuckDB 无参照可对拍），与 live-artifact 跳过并列——其余视图仍逐字节对拍。该 DuckDB disk reference 只在 `folded_through <= seam` 时是等价参照;post-seam 公式由 `web/lib/integration/post-seam-oracle.test.ts` 的合成夹具断言 `round(cumGross@seam * d) + Σ(post-seam net)`。
 

@@ -361,7 +361,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 组件 | 文件 | 类型 | 角色 |
 |---|---|---|---|
 | 顶栏 Top App Bar | `_explore/Chrome.tsx` | RSC + islands | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse / Rankings · Categories `md+` · Compare `sm+` · About `sm+`）+ 语言/主题切换；Chrome 壳服务端渲染，SearchBox/LanguageSwitcher/ThemeToggle 水合 |
-| 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client island** | 导航栏搜索框；首次聚焦懒加载 `/search-index`，description 在 route 层截短，MiniSearch 建索引和查询在 Web Worker 内执行（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态由服务端 Chrome 传默认语言 label。每条结果带「+对比」勾选 + 底部「对比 N 个 →」跳 `/compare?repos=...`（行点击仍跳 repo） |
+| 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client island** | 导航栏搜索框；首次聚焦懒加载 `/search-index`，description 在 route 层截短，MiniSearch 建索引和查询在 Web Worker 内执行（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态/错误态由服务端 Chrome 传 route-locale label。worker 与索引加载失败会回到可见的 recoverable error + retry，不再静默变成 inert input。每条结果带「+对比」勾选 + 底部「对比 N 个 →」跳 `/compare?repos=...`（行点击仍跳 repo） |
 | 分享 ShareButton | `_explore/ShareButton.tsx` | **Client** | 复制链接 + X 分享 intent；7 语 `share.*` chrome i18n；接 repo / 榜单月周 / 年页。榜单页另有动态 OG 卡（`rankings/[year]/[period]/opengraph-image.tsx` + `[year]/opengraph-image.tsx`，共享 `lib/og-card.tsx`） |
 | 月度叙事 Narrative | `_explore/Narrative.tsx` | RSC | 月榜顶部 7 语叙事；服务端一次渲染各 locale 文本，由 `html[lang]` CSS 显示当前语言。文案由月页**渲染时**用确定性模板（`lib/narrative.ts`）从榜单数据现拼——**无 AI / 无产物** |
 | 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
@@ -372,7 +372,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 结构化数据 JsonLd | `_explore/JsonLd.tsx` | RSC | 注入 `application/ld+json`（配 `@/lib/jsonld` 的 `CollectionPage` / `ItemList` / 实体 builder） |
 | 页脚 Footer | `_explore/Footer.tsx` | RSC + island | 默认语言服务端渲染；构建时间戳 + LanguageSwitcher 语言小岛 |
 | Pulse 视图 PulseView | `pulse/PulseView.tsx` | RSC | 首页与 `/pulse` 共享主体：本周/本月/本年脉搏、全时巨头桥接、"历史上的今天"。可选 `includeWebsiteLd` 注入 `WebSite` JSON-LD（仅首页用） |
-| 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步 |
+| 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步。`/repo-curve` rejected fetch、HTTP error、invalid payload 都会清理 pending state，展示 per-repo recoverable error，并允许 retry 或移除 chip。 |
 | OG 图渲染（站点 / repo / 月+周 / 年） | `opengraph-image.tsx` × 4 | RSC（next/og） | 动态生成 1200×630 PNG；`revalidate=86400`，共享 `lib/og-card.tsx`（石墨灰+金、stars 内联 SVG） |
 | 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 交互按钮（见 §4.2） |
 | 语言切换 LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | 根据当前 route locale 与 canonical path 生成 locale URL `<a>` 链接；导航后服务端返回对应语言 HTML（§7） |
@@ -556,6 +556,11 @@ Data and rendering:
 - Category index, dimension pages, and category detail pages emit server-rendered
   `ItemList` JSON-LD from the same rows that are visible in HTML. Detail page N
   offsets `position` by the pagination start rank.
+- Category detail pages read only the requested page of rows through
+  `web/lib/categories/page.ts`. New category rank views are generated as full
+  assigned-repo all-time ranks so the page can slice precomputed rank rows; the
+  assignments scan remains only as a compatibility fallback for older data that
+  lacks enough rank rows for page 2+.
 - Category detail pages with more than one page expose a visible "Browse all"
   pagination anchor and related same-dimension category links.
 
@@ -568,9 +573,9 @@ JavaScript.
   owner org page, public category pages for the repo, and up to six related
   repositories chosen deterministically: same owner first, then same primary
   language, sorted by stars and `full_name`.
-- Year, month, and week ranking detail pages keep their top slices but expose a
-  "Complete ranking" anchor to the full server-rendered rank list on the same
-  page.
+- Year, month, and week ranking detail pages keep their top slices but bound the
+  same-page "Complete ranking" section to the first 100 joined rows, matching
+  the current rank-view budget and avoiding unbounded server-rendered lists.
 - `/rankings`, ranking detail pages, category list pages, category detail pages,
   and `/o` owner index pages emit `ItemList` JSON-LD from the server rows.
 - The footer links `/categories` and `/o` from every page so crawler entry points

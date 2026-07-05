@@ -48,6 +48,8 @@ export function Chrome({ tag, locale = DEFAULT_LOCALE, canonicalPath, dictionary
             placeholder: label(dictionary, "search.placeholder"),
             empty: label(dictionary, "search.empty"),
             loading: label(dictionary, "search.loading"),
+            error: label(dictionary, "search.error"),
+            retry: label(dictionary, "search.retry"),
             addToCompare: label(dictionary, "compare.addToCompare"),
             openCompare: label(dictionary, "compare.openCompare"),
           }}

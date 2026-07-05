@@ -64,6 +64,26 @@ function fixtureModel() {
   return buildModel(raw, "");
 }
 
+function largeLanguageModel(count: number) {
+  const repos = Object.fromEntries(
+    Array.from({ length: count }, (_, index) => {
+      const id = index + 1;
+      return [
+        String(id),
+        repo(id, {
+          owner: "python",
+          name: `repo${id}`,
+          full_name: `python/repo${id}`,
+          language: "Python",
+          current_stars: 200_000 - id,
+        }),
+      ];
+    }),
+  );
+  const raw = { repos, monthly: {}, weekly: {}, recentDaily: {}, siteDailyByYear: {} } as unknown as RawShards;
+  return buildModel(raw, "");
+}
+
 describe("computeCategoryViews", () => {
   const views = computeCategoryViews(fixtureModel(), GEN);
 
@@ -126,6 +146,14 @@ describe("computeCategoryViews", () => {
     const rank = views.get("rank/category/language/python/all-time/repo/stock.json") as { items: Array<{ id: number; value: number }> };
     expect(rank.items.map((item) => item.id)).toEqual([1, 2]);
     expect(rank.items.map((item) => item.value)).toEqual([120_000, 80_000]);
+  });
+
+  test("all-time category rank is not capped at the first page", () => {
+    const largeViews = computeCategoryViews(largeLanguageModel(105), GEN);
+    const rank = largeViews.get("rank/category/language/python/all-time/repo/stock.json") as { items: Array<{ id: number; value: number }> };
+
+    expect(rank.items).toHaveLength(105);
+    expect(rank.items[100].rank).toBe(101);
   });
 
   test("does not emit period category ranks in phase 1", () => {

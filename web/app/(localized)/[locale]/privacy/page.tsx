@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { generatePrivacyMetadata, PrivacyPageView } from "@/app/_localized/privacy";
-import { generateCoreLocaleStaticParams, resolveRouteLocale, type LocaleParams } from "@/app/_localized/routing";
+import { resolveLocalizedRoute, routeMetadata, routeView } from "@/app/_localized/page-adapters";
+import { generateCoreLocaleStaticParams, type LocaleParams } from "@/app/_localized/routing";
 
 export const revalidate = false;
 
@@ -9,11 +10,9 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: { params: LocaleParams }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  return generatePrivacyMetadata(locale);
+  return routeMetadata(resolveLocalizedRoute(params), (locale) => generatePrivacyMetadata(locale));
 }
 
 export default async function LocalizedPrivacyPage({ params }: { params: LocaleParams }) {
-  const locale = await resolveRouteLocale(params);
-  return <PrivacyPageView locale={locale} />;
+  return routeView(resolveLocalizedRoute(params), (locale) => <PrivacyPageView locale={locale} />);
 }

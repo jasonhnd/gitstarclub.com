@@ -37,7 +37,7 @@ mock.module("next/cache", () => ({
   },
 }));
 
-const { refreshLiveViews } = await import("./live-refresh");
+const { liveRefreshPeriods, refreshLiveViews, repoRefsFromLookup } = await import("./live-refresh");
 
 beforeEach(() => {
   lookup = {
@@ -50,6 +50,29 @@ beforeEach(() => {
 });
 
 describe("refreshLiveViews", () => {
+  test("liveRefreshPeriods derives stable day/month/week identifiers", () => {
+    const periods = liveRefreshPeriods(new Date("2026-07-05T12:00:00.000Z"));
+
+    expect(periods.today).toBe("2026-07-05");
+    expect(periods.month).toBe("2026-07");
+    expect(periods.weekPeriod).toMatch(/^2026-W\d{2}$/);
+  });
+
+  test("repoRefsFromLookup preserves numeric ids and GitHub owner/name", () => {
+    expect(
+      repoRefsFromLookup({
+        "42": {
+          id: 42,
+          full_name: "facebook/react",
+          owner: "facebook",
+          name: "react",
+          language: "TypeScript",
+          current_stars: 250000,
+        },
+      }),
+    ).toEqual([{ id: 42, owner: "facebook", name: "react" }]);
+  });
+
   test("throws when lookup/repos.json is unavailable", async () => {
     lookup = null;
 

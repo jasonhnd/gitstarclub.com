@@ -4,7 +4,7 @@ import {
   generateRankingYearMetadata,
   RankingsYearPageView,
 } from "@/app/_localized/ranking-detail";
-import { resolveRouteLocale } from "@/app/_localized/routing";
+import { resolveLocalizedRoute, routeMetadata, routeView } from "@/app/_localized/page-adapters";
 
 type Params = Promise<{ locale: string; year: string }>;
 
@@ -16,13 +16,9 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  const { year } = await params;
-  return generateRankingYearMetadata(locale, year);
+  return routeMetadata(resolveLocalizedRoute(params), (locale, { year }) => generateRankingYearMetadata(locale, year));
 }
 
 export default async function LocalizedRankingsYearPage({ params }: { params: Params }) {
-  const locale = await resolveRouteLocale(params);
-  const { year } = await params;
-  return <RankingsYearPageView locale={locale} year={year} />;
+  return routeView(resolveLocalizedRoute(params), (locale, { year }) => <RankingsYearPageView locale={locale} year={year} />);
 }
