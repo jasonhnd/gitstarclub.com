@@ -108,6 +108,22 @@ bun dev
 
 Required environment for local development is documented in [docs/OPS.md](docs/OPS.md) and `.env.example`. Reads against production Blob require `BLOB_BASE_URL` and `BLOB_READ_WRITE_TOKEN`; writes (cron / workflow) additionally require `CRON_SECRET` and `GITHUB_TOKEN`.
 
+## Common commands
+
+Run these from `web/`:
+
+| Task | Command |
+|---|---|
+| Install dependencies | `bun install` |
+| Start the dev server | `bun dev` |
+| Lint | `bun run lint` |
+| Typecheck | `bun run typecheck` |
+| Test | `bun test lib/` |
+| Build | `bun run build` |
+
+For the full development workflow, targeted test examples, and Vercel-first
+verification details, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
 ## Differentiation
 
 | Project | What it does | Where gitstarclub differs |
