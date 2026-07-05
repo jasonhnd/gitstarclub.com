@@ -278,7 +278,14 @@ const es: Dict = {
     gitstarclubUrl: "URL de GitStarClub",
     rowStarsAdded: "{rank}: {stars} estrellas ganadas",
   },
-  search: { label: "Buscar", placeholder: "Buscar repositorios…", empty: "Sin repositorios coincidentes", loading: "Cargando…" },
+  search: {
+    label: "Buscar",
+    placeholder: "Buscar repositorios…",
+    empty: "Sin repositorios coincidentes",
+    loading: "Cargando…",
+    error: "No se pudo cargar la búsqueda.",
+    retry: "Reintentar",
+  },
   share: {
     label: "Compartir",
     copied: "Copiado",

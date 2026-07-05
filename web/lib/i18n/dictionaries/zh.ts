@@ -275,7 +275,14 @@ const zh: Dict = {
     gitstarclubUrl: "GitStarClub 网址",
     rowStarsAdded: "{rank}: 新增 {stars} 星",
   },
-  search: { label: "搜索", placeholder: "搜索仓库…", empty: "没有匹配的仓库", loading: "加载中…" },
+  search: {
+    label: "搜索",
+    placeholder: "搜索仓库…",
+    empty: "没有匹配的仓库",
+    loading: "加载中…",
+    error: "搜索加载失败。",
+    retry: "重试",
+  },
   share: {
     label: "分享",
     copied: "已复制",
