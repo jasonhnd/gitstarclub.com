@@ -4,6 +4,7 @@
   "type": "module",
   "description": "One-time backfill + offline data jobs. Runs in full Node (not serverless). See docs/PIPELINE.md.",
   "scripts": {
+    "audit:deps": "bun audit --audit-level=high",
     "whitelist": "node backfill/01-whitelist.mjs",
     "metadata": "node backfill/03-metadata.mjs",
     "rollup": "node backfill/04-rollup.mjs",
@@ -12,6 +13,6 @@
   },
   "dependencies": {
     "@duckdb/node-api": "1.5.3-r.2",
-    "@vercel/blob": "^1"
+    "@vercel/blob": "^2.5.0"
   }
 }
