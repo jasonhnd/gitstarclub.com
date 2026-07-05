@@ -5,6 +5,8 @@
 
 ## Scope
 
+This document owns the project's testing strategy and verification boundaries: contract tests, pure-logic unit tests, integration and recompute parity checks, data-validation invariants, smoke tests, and CI/PR validation gates. It distinguishes checks that are currently automated in `## Current Automation` from target-state coverage described later; target visual, a11y, E2E, performance, and cross-browser checks are not PR blockers until their tooling exists. Development playbooks live in [DEVELOPMENT.md](./DEVELOPMENT.md), production workflow and operations live in [OPS.md](./OPS.md) and [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md), and architecture or ranking-contract details stay in their owning docs.
+
 ## Current Automation
 
 GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test`.
