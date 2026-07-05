@@ -2,6 +2,7 @@
 // (classic or fine-grained PAT, public repo read). Shared by backfill + weekly.
 
 import { MIN_TRACKED_STARS } from "../../web/lib/constants.mjs";
+import { GITHUB_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../../web/lib/fetch-timeout.mjs";
 
 const TOKEN = process.env.GITHUB_TOKEN;
 const REST = "https://api.github.com";
@@ -27,11 +28,14 @@ function rateLimitWaitMs(res, attempt) {
   return Math.min(2 ** attempt * 1000, 60000);
 }
 
-async function restGet(path, params = {}) {
+async function restGet(path, params = {}, opts = {}) {
   const url = new URL(REST + path);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, { headers: headers() });
+    const res = await fetchWithTimeout(url, {
+      headers: headers(),
+      timeoutMs: opts.timeoutMs ?? GITHUB_FETCH_TIMEOUT_MS,
+    });
     if ((res.status === 403 || res.status === 429) && attempt <= 8) {
       await sleep(rateLimitWaitMs(res, attempt));
       continue;
@@ -41,12 +45,13 @@ async function restGet(path, params = {}) {
   }
 }
 
-async function gql(query, variables = {}) {
+async function gql(query, variables = {}, opts = {}) {
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(GQL, {
+    const res = await fetchWithTimeout(GQL, {
       method: "POST",
       headers: { ...headers(), "Content-Type": "application/json" },
       body: JSON.stringify({ query, variables }),
+      timeoutMs: opts.timeoutMs ?? GITHUB_FETCH_TIMEOUT_MS,
     });
     if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt <= 8) {
       await sleep(rateLimitWaitMs(res, attempt));
@@ -61,7 +66,7 @@ async function gql(query, variables = {}) {
 // Search caps at 1000 results/query → bucket by star ranges, splitting any
 // bucket >1000 until it fits, then page through each.
 // Returns [{ id, node_id, full_name, owner, name, stars }] sorted by stars desc.
-export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 600000) {
+export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 600000, opts = {}) {
   const out = new Map(); // id -> repo (dedups range-boundary overlap)
   const queue = [[minStars, maxStars]];
   while (queue.length) {
@@ -69,7 +74,7 @@ export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 6
     const q = `stars:${low}..${high}`;
     const first = await restGet("/search/repositories", {
       q, sort: "stars", order: "desc", per_page: 100, page: 1,
-    });
+    }, opts);
     if (first.total_count > 1000 && high > low) {
       const mid = Math.floor((low + high) / 2);
       queue.push([low, mid], [mid + 1, high]);
@@ -79,7 +84,7 @@ export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 6
     for (let page = 1; page <= pages; page++) {
       const res = page === 1
         ? first
-        : await restGet("/search/repositories", { q, sort: "stars", order: "desc", per_page: 100, page });
+        : await restGet("/search/repositories", { q, sort: "stars", order: "desc", per_page: 100, page }, opts);
       for (const r of res.items) {
         out.set(r.id, {
           id: r.id,
@@ -97,11 +102,11 @@ export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 6
 
 // Run a GraphQL nodes() query over node ids in batches of 100; map each
 // returned Repository via `pick`. Returns Map<databaseId, picked>.
-async function batchNodes(nodeIds, selection, pick) {
+async function batchNodes(nodeIds, selection, pick, opts = {}) {
   const result = new Map();
   const query = `query($ids:[ID!]!){ nodes(ids:$ids){ ... on Repository { databaseId ${selection} } } }`;
   for (let i = 0; i < nodeIds.length; i += 100) {
-    const data = await gql(query, { ids: nodeIds.slice(i, i + 100) });
+    const data = await gql(query, { ids: nodeIds.slice(i, i + 100) }, opts);
     for (const n of data.nodes) {
       if (n && n.databaseId != null) result.set(n.databaseId, pick(n));
     }
@@ -110,12 +115,12 @@ async function batchNodes(nodeIds, selection, pick) {
 }
 
 // Current authoritative stargazerCount. Returns Map<databaseId, stars>.
-export function batchStargazerCounts(nodeIds) {
-  return batchNodes(nodeIds, "stargazerCount", (n) => n.stargazerCount);
+export function batchStargazerCounts(nodeIds, opts = {}) {
+  return batchNodes(nodeIds, "stargazerCount", (n) => n.stargazerCount, opts);
 }
 
 // Full metadata incl. owner_type (User|Organization). Returns Map<databaseId, {...}>.
-export function batchMetadata(nodeIds) {
+export function batchMetadata(nodeIds, opts = {}) {
   const selection = `
     nameWithOwner owner { login __typename } name
     description
@@ -133,5 +138,5 @@ export function batchMetadata(nodeIds) {
     created_at: n.createdAt,
     current_stars: n.stargazerCount,
     is_archived: n.isArchived,
-  }));
+  }), opts);
 }

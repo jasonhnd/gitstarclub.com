@@ -116,6 +116,28 @@ describe("readView — base:true version-prefix resolution", () => {
     expect(fetchCalls.some((u) => u.includes("/data/whatever.json") && !u.includes("/views/"))).toBe(true);
   });
 
+  test("falls back to flat <path> when the pointer stalls past the timeout", async () => {
+    advancePastTtl();
+    routes = { "/data/pointer-timeout.json": { status: 200, json: { ok: true, tag: "flat-after-timeout" } } };
+    let pointerSignal: AbortSignal | undefined;
+
+    globalThis.fetch = mock((input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      fetchCalls.push(url);
+      if (url.includes("/views/latest.json")) {
+        pointerSignal = init?.signal ?? undefined;
+        return new Promise<Response>(() => {});
+      }
+      return Promise.resolve(makeRes(routeFor(url)));
+    }) as unknown as typeof fetch;
+
+    const result = await readView("data/pointer-timeout.json", Doc, { base: true, timeoutMs: 5 });
+
+    expect(result).toEqual({ ok: true, tag: "flat-after-timeout" });
+    expect(pointerSignal?.aborted).toBe(true);
+    expect(fetchCalls.some((u) => u.includes("/data/pointer-timeout.json") && !u.includes("/views/"))).toBe(true);
+  });
+
   test("returns null when the resolved base view itself is 404", async () => {
     advancePastTtl();
     routes = {
@@ -151,5 +173,23 @@ describe("readView — non-base (flat) reads", () => {
     routes = {};
     const result = await readView("live/rank/week/2099-W01/repo/flow.json", Doc);
     expect(result).toBeNull();
+  });
+
+  test("aborts stalled flat reads and surfaces a timeout after retries", async () => {
+    advancePastTtl();
+    const signals: AbortSignal[] = [];
+
+    globalThis.fetch = mock((input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      fetchCalls.push(url);
+      if (init?.signal) signals.push(init.signal);
+      return new Promise<Response>(() => {});
+    }) as unknown as typeof fetch;
+
+    await expect(readView("live/stalled.json", Doc, { timeoutMs: 5 })).rejects.toThrow("view fetch live/stalled.json -> timeout after 5ms");
+
+    expect(fetchCalls).toHaveLength(3);
+    expect(signals).toHaveLength(3);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
   });
 });
