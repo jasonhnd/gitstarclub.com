@@ -301,7 +301,14 @@ export const en = {
     gitstarclubUrl: "GitStarClub URL",
     rowStarsAdded: "{rank}: {stars} stars added",
   },
-  search: { label: "Search", placeholder: "Search repositories…", empty: "No matching repositories", loading: "Loading…" },
+  search: {
+    label: "Search",
+    placeholder: "Search repositories…",
+    empty: "No matching repositories",
+    loading: "Loading…",
+    error: "Search could not load.",
+    retry: "Retry",
+  },
   share: {
     label: "Share",
     copied: "Copied",
