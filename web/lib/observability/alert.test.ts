@@ -72,7 +72,7 @@ describe("sendAlert", () => {
     await sendAlert(SUMMARY);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [calledUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [calledUrl, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(calledUrl).toBe(url);
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["content-type"]).toBe("application/json");
@@ -98,7 +98,7 @@ describe("sendAlert", () => {
     await expect(sendAlert(SUMMARY)).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     // It logged the delivery failure (in addition to the primary [ALERT] line).
-    const logged = errSpy.mock.calls.map((c) => String(c[0]));
+    const logged = (errSpy.mock.calls as unknown[][]).map((c) => String(c[0]));
     expect(logged.some((l) => l.includes("webhook delivery failed"))).toBe(true);
   });
 
@@ -139,7 +139,7 @@ describe("recordHealth", () => {
       recordHealth("cron-daily", "failed", { error: "upstream 500" }),
     ).resolves.toBeUndefined();
 
-    const logged = errSpy.mock.calls.map((c) => String(c[0]));
+    const logged = (errSpy.mock.calls as unknown[][]).map((c) => String(c[0]));
     expect(logged.some((l) => l.includes("health write failed"))).toBe(true);
   });
 });
