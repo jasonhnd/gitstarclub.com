@@ -1,3 +1,12 @@
+---
+owner: bootstrap pipeline
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - one-off bootstrap pipeline
+  - archived backfill algorithms
+---
+
 # gitstarclub 数据 Pipeline
 
 > 如何产出 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) 定义的产物。本文聚焦**一次性 bootstrap pipeline**：把一个空白系统从零 seed 出 `canonical/v2/**` 与 `views/**`。日常 recurring 刷新由 Vercel Workflow 承担，本机不参与。

@@ -1,3 +1,12 @@
+---
+owner: GEO measurement / citation review
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - GEO target-query registry
+  - citation-review worksheet
+---
+
 # GEO target AI query tracking
 
 ## Scope

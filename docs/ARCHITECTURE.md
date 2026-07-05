@@ -1,3 +1,15 @@
+---
+owner: architecture
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - system overview
+  - tech stack
+  - data flow
+  - rendering model
+  - hard constraints
+---
+
 # Architecture
 
 ## Scope

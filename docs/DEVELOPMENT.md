@@ -1,3 +1,14 @@
+---
+owner: development process
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - developer workflow
+  - documentation ownership practice
+  - change playbooks
+  - drift handling
+---
+
 # Development Guide
 
 ## Scope

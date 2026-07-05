@@ -1,3 +1,14 @@
+---
+owner: issue and PR workflow
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - document-driven issue workflow
+  - role boundaries
+  - merge gates
+  - visual guardrails
+---
+
 # Document-Driven Development Workflow (文档驱动开发工作流)
 
 ## Scope

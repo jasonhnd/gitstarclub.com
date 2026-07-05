@@ -1,3 +1,13 @@
+---
+owner: product / requirements
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - product baseline
+  - project scope and constraints
+  - repository and view counts
+---
+
 # gitstarclub 需求基准
 
 ## Scope

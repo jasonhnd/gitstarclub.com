@@ -1,3 +1,14 @@
+---
+owner: codebase architecture
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - code map
+  - route ownership
+  - data layer ownership
+  - workflow module ownership
+---
+
 # Codebase Map
 
 ## Scope
