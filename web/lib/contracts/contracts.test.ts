@@ -2,6 +2,11 @@ import { test, expect, describe } from "bun:test";
 import {
   // common
   Meta,
+  DateStr,
+  TimestampStr,
+  MonthPeriod,
+  WeekPeriod,
+  YearPeriod,
   RankItem,
   RankList,
   OwnerType,
@@ -64,6 +69,38 @@ function rejects(schema: { safeParse: (v: unknown) => { success: boolean } }, ba
 const TS = "2024-06-01T00:00:00.000Z";
 
 describe("common primitives", () => {
+  test("DateStr accepts real UTC dates and rejects empty or impossible dates", () => {
+    expect(DateStr.parse("2024-02-29")).toBe("2024-02-29");
+    expect(rejects(DateStr, "")).toBe(true);
+    expect(rejects(DateStr, "2024-02-30")).toBe(true);
+    expect(rejects(DateStr, "2024-2-03")).toBe(true);
+  });
+
+  test("TimestampStr requires an ISO timestamp with timezone", () => {
+    expect(TimestampStr.parse(TS)).toBe(TS);
+    expect(rejects(TimestampStr, "2024-06-01T00:00:00")).toBe(true);
+    expect(rejects(TimestampStr, "")).toBe(true);
+  });
+
+  test("MonthPeriod / WeekPeriod / YearPeriod reject malformed periods", () => {
+    expect(MonthPeriod.parse("2024-05")).toBe("2024-05");
+    expect(WeekPeriod.parse("2024-W20")).toBe("2024-W20");
+    expect(WeekPeriod.parse("2026-W53")).toBe("2026-W53");
+    expect(YearPeriod.parse("2024")).toBe("2024");
+
+    expect(rejects(MonthPeriod, "")).toBe(true);
+    expect(rejects(MonthPeriod, "2024-13")).toBe(true);
+    expect(rejects(MonthPeriod, "2024-5")).toBe(true);
+    expect(rejects(MonthPeriod, "2024-W20")).toBe(true);
+
+    expect(rejects(WeekPeriod, "2024-W00")).toBe(true);
+    expect(rejects(WeekPeriod, "2024-W53")).toBe(true);
+    expect(rejects(WeekPeriod, "2024-20")).toBe(true);
+
+    expect(rejects(YearPeriod, "")).toBe(true);
+    expect(rejects(YearPeriod, "2024-05")).toBe(true);
+  });
+
   test("OwnerType enum: valid parses, bad enum rejects", () => {
     expect(OwnerType.parse("User")).toBe("User");
     expect(OwnerType.parse("Organization")).toBe("Organization");
@@ -202,10 +239,26 @@ describe("canonical shards", () => {
       language: "TypeScript",
       languages: [{ name: "TypeScript", size: 1200, color: "#3178c6" }],
       topics: ["react"],
+      created_at: "2020-01-01T00:00:00Z",
       crossed_10k: "2020-01-01",
+      tracked_since: "2024-06-01",
       d: 0.95,
+      fetched_at: TS,
     };
     expect(ReposShardEntry.parse(full).d).toBe(0.95);
+  });
+
+  test("ReposShardEntry parses date-only created_at for bootstrap-compatible shards", () => {
+    expect(ReposShardEntry.parse({ ...validEntry, created_at: "2020-01-01" }).created_at).toBe("2020-01-01");
+  });
+
+  test("ReposShardEntry rejects malformed date and timestamp fields", () => {
+    expect(rejects(ReposShardEntry, { ...validEntry, created_at: "" })).toBe(true);
+    expect(rejects(ReposShardEntry, { ...validEntry, created_at: "2020-02-30" })).toBe(true);
+    expect(rejects(ReposShardEntry, { ...validEntry, created_at: "2020-01-01T00:00:00" })).toBe(true);
+    expect(rejects(ReposShardEntry, { ...validEntry, crossed_10k: "2020-13-01" })).toBe(true);
+    expect(rejects(ReposShardEntry, { ...validEntry, tracked_since: "" })).toBe(true);
+    expect(rejects(ReposShardEntry, { ...validEntry, fetched_at: "2020-01-01T00:00:00" })).toBe(true);
   });
 
   test("ReposShardEntry rejects bad owner_type enum", () => {
@@ -234,12 +287,25 @@ describe("canonical shards", () => {
     expect(rejects(RepoMonthlyShard, { "1": [["2024-05", 1.5]] })).toBe(true);
   });
 
+  test("RepoMonthlyShard rejects empty and malformed month periods", () => {
+    expect(rejects(RepoMonthlyShard, { "1": [["", 1]] })).toBe(true);
+    expect(rejects(RepoMonthlyShard, { "1": [["2024-13", 1]] })).toBe(true);
+    expect(rejects(RepoMonthlyShard, { "1": [["2024-W20", 1]] })).toBe(true);
+  });
+
   test("RepoWeeklyShard parses week tuples", () => {
     expect(RepoWeeklyShard.parse({ "1": [["2024-W20", 12]] })["1"][0][0]).toBe("2024-W20");
   });
 
   test("RepoWeeklyShard rejects 3-element tuple (wrong arity)", () => {
     expect(rejects(RepoWeeklyShard, { "1": [["2024-W20", 12, 99]] })).toBe(true);
+  });
+
+  test("RepoWeeklyShard rejects empty, malformed, and impossible week periods", () => {
+    expect(rejects(RepoWeeklyShard, { "1": [["", 1]] })).toBe(true);
+    expect(rejects(RepoWeeklyShard, { "1": [["2024-W00", 1]] })).toBe(true);
+    expect(rejects(RepoWeeklyShard, { "1": [["2024-W53", 1]] })).toBe(true);
+    expect(rejects(RepoWeeklyShard, { "1": [["2024-05", 1]] })).toBe(true);
   });
 
   test("RepoRecentDailyShard parses [date, net] tuples (net negative ok)", () => {
@@ -250,6 +316,10 @@ describe("canonical shards", () => {
     expect(rejects(RepoRecentDailyShard, { "1": [["2024-05-01", "x"]] })).toBe(true);
   });
 
+  test("RepoRecentDailyShard rejects impossible dates", () => {
+    expect(rejects(RepoRecentDailyShard, { "1": [["2024-02-30", 1]] })).toBe(true);
+  });
+
   test("SiteDaily parses year + cells", () => {
     const sd = { year: "2024", cells: [["2024-01-01", 500] as [string, number]] };
     expect(SiteDaily.parse(sd).cells).toHaveLength(1);
@@ -257,6 +327,11 @@ describe("canonical shards", () => {
 
   test("SiteDaily rejects missing cells", () => {
     expect(rejects(SiteDaily, { year: "2024" })).toBe(true);
+  });
+
+  test("SiteDaily rejects malformed year periods and impossible dates", () => {
+    expect(rejects(SiteDaily, { year: "2024-05", cells: [] })).toBe(true);
+    expect(rejects(SiteDaily, { year: "2024", cells: [["2024-02-30", 1]] })).toBe(true);
   });
 
   test("WhitelistEntry parses; rejects missing stars", () => {
@@ -301,6 +376,12 @@ describe("canonical shards", () => {
 
   test("PendingPeriod rejects missing frozen_at", () => {
     expect(rejects(PendingPeriod, { period: "2024-05", daily_totals: [], per_repo: {} })).toBe(true);
+  });
+
+  test("PendingPeriod rejects malformed period and date strings", () => {
+    expect(rejects(PendingPeriod, { period: "2024-W20", frozen_at: TS, daily_totals: [], per_repo: {} })).toBe(true);
+    expect(rejects(PendingPeriod, { period: "2024-13", frozen_at: TS, daily_totals: [], per_repo: {} })).toBe(true);
+    expect(rejects(PendingPeriod, { period: "2024-05", frozen_at: TS, daily_totals: [["2024-05-32", 1]], per_repo: {} })).toBe(true);
   });
 });
 
@@ -487,6 +568,21 @@ describe("live contracts", () => {
 
   test("CurrentMonth rejects missing current_stars", () => {
     expect(rejects(CurrentMonth, { month: "2024-05", updated: "2024-05-31", daily_totals: [], per_repo: {} })).toBe(true);
+  });
+
+  test("CurrentMonth rejects malformed month and date strings", () => {
+    const cm = {
+      month: "2024-05",
+      updated: "2024-05-31",
+      daily_totals: [["2024-05-31", 42] as [string, number]],
+      per_repo: { "1": [["2024-05-31", 7] as [string, number]] },
+      current_stars: { "1": 120000 },
+    };
+    expect(rejects(CurrentMonth, { ...cm, month: "" })).toBe(true);
+    expect(rejects(CurrentMonth, { ...cm, month: "2024-13" })).toBe(true);
+    expect(rejects(CurrentMonth, { ...cm, month: "2024-W20" })).toBe(true);
+    expect(rejects(CurrentMonth, { ...cm, updated: "2024-02-30" })).toBe(true);
+    expect(rejects(CurrentMonth, { ...cm, daily_totals: [["2024-05-32", 42]] })).toBe(true);
   });
 
   test("HotSnapshot parses nested home/current/all_time", () => {
