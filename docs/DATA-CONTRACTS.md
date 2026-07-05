@@ -144,7 +144,8 @@ Phase 1 category views also live under `views/<run_id>/`:
 - `lookup/categories.json` - small client/build lookup for public categories;
   category entries may carry `sitemap` eligibility so route discovery can omit
   explicitly hidden categories.
-- `rank/category/<dimension>/<slug>/all-time/repo/stock.json` - phase-1 all-time category rank.
+- `rank/category/<dimension>/<slug>/all-time/repo/stock.json` - phase-1 all-time category rank page 1.
+- `rank/category/<dimension>/<slug>/all-time/repo/stock/page/<page>.json` - phase-1 all-time category rank pages 2+.
 
 Windowed category rank views are reserved for later category page phases; do not
 emit `rank/category/**/{week|month|year}/**` until the write-budget impact is
@@ -203,10 +204,13 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 
 `items` 形状同上；全时仅 `stock`（repo = `current_stars` 排序，org = `current_stars_sum` 排序）。
 
-### 2.4a `rank/category/<dimension>/<slug>/all-time/repo/stock.json`
+### 2.4a `rank/category/<dimension>/<slug>/all-time/repo/stock*.json`
 
 Phase-1 category rank views are all-time repo stock lists only. They reuse
-`RankItem` rows but add category metadata to the rank meta object:
+`RankItem` rows but add category metadata to the rank meta object. Page 1 keeps
+the compatibility path `rank/category/<dimension>/<slug>/all-time/repo/stock.json`;
+page 2+ lives at
+`rank/category/<dimension>/<slug>/all-time/repo/stock/page/<page>.json`.
 
 ```json
 {
@@ -228,6 +232,8 @@ Rules:
 
 - `dim` is always `repo`.
 - `metric` is `stock` for the Phase-1 all-time view.
+- Each category rank file is capped to `CATEGORY_DETAIL_PAGE_SIZE` rows; ranks
+  continue across page files (`101`, `102`, ... on page 2).
 - Every `item.id` must be assigned to `meta.category.id` in `categories/assignments.json`.
 - Windowed `flow`/`stock` category ranks are future work; avoid emitting them until the category route phase has accepted the extra view count.
 

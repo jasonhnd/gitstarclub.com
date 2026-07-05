@@ -11,13 +11,13 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { CategorySummaryTable } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CATEGORY_DIMENSIONS } from "@/lib/categories/rules";
-import { getCategoryAllTime, getCategoryAssignments, getCategoryRegistry, getMeta, getReposLookupDaily, joinRepoRank } from "@/lib/data";
+import { getCategoryAllTimePage, getCategoryRegistry, getMeta, getReposLookupDaily, joinRepoRank } from "@/lib/data";
 import { formatInteger } from "@/lib/format";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { getDictionary, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
-import { CATEGORY_DETAIL_PAGE_SIZE, pageCount, parsePositivePage, slicePage } from "@/lib/pagination";
+import { CATEGORY_DETAIL_PAGE_SIZE, pageCount, parsePositivePage } from "@/lib/pagination";
 import { pageMeta } from "@/lib/seo";
 import {
   CATEGORY_INDEX_PREVIEW_LIMIT,
@@ -267,28 +267,31 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
   if (!category) notFound();
 
   const dimensionEntry = findDimension(registry, dimension);
-  const [rank, lookup, assignments, meta] = await Promise.all([getCategoryAllTime(dimension, slug), getReposLookupDaily(), getCategoryAssignments(), getMeta()]);
-  const rows = categoryRows({
-    categoryId: category.id,
-    dimension: category.dimension,
-    rankItems: rank?.items ?? [],
-    lookup,
-    assignments,
-  });
-  const totalPages = pageCount(rows.length, CATEGORY_DETAIL_PAGE_SIZE);
-  if (page > totalPages && rows.length > 0) notFound();
-  if (page > 1 && rows.length === 0) notFound();
+  const [rank, firstPageRank, lookup, meta] = await Promise.all([
+    getCategoryAllTimePage(dimension, slug, page),
+    page > 1 ? getCategoryAllTimePage(dimension, slug, 1) : null,
+    getReposLookupDaily(),
+    getMeta(),
+  ]);
+  const totalRows = category.count;
+  const totalPages = pageCount(totalRows, CATEGORY_DETAIL_PAGE_SIZE);
+  if (page > totalPages && totalRows > 0) notFound();
+  if (page > 1 && totalRows === 0) notFound();
+  if (totalRows > 0 && !rank) notFound();
+  if (totalRows > 0 && page > 1 && !firstPageRank) notFound();
 
-  const pageRows = slicePage(rows, page, CATEGORY_DETAIL_PAGE_SIZE);
+  const pageRows = categoryRows(rank?.items ?? [], lookup);
+  if (totalRows > 0 && pageRows.length === 0) notFound();
+  const topRows = page === 1 ? pageRows : categoryRows(firstPageRank?.items ?? [], lookup);
   const startRank = (page - 1) * CATEGORY_DETAIL_PAGE_SIZE + 1;
-  const first = rows.length > 0 ? startRank : 0;
+  const first = totalRows > 0 ? startRank : 0;
   const last = first + pageRows.length - 1;
   const siblingCategories = (dimensionEntry?.categories ?? []).filter((entry) => entry.public && entry.id !== category.id).slice(0, 8);
-  const asOf = resolveDataAsOfLabel(rank?.meta.generated_at, registry.generated_at, assignments?.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
+  const asOf = resolveDataAsOfLabel(rank?.meta.generated_at, registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
   const pagePath = categoryDetailPagePath(dimension, slug, page);
   const routePath = localizedPath(locale, pagePath);
   const href = (path: string) => localizedPath(locale, path);
-  const dateModified = resolveDataAsOfValue(rank?.meta.generated_at, registry.generated_at, assignments?.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
+  const dateModified = resolveDataAsOfValue(rank?.meta.generated_at, registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const tableLabels = repositoryTableLabels(t);
   const dataset = datasetLd({
     name: fill(text.categoryDetailDatasetName, { label: category.label }),
@@ -297,8 +300,8 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
     description: fill(text.categoryDetailDatasetDescription, { label: category.label }),
     dateModified,
   });
-  const capsule = asOf ? buildLocalizedCategoryDetailCapsule({ locale, category, asOf, rows }) : null;
-  const faqItems = buildLocalizedCategoryDetailFaqs({ locale, category, asOf, rows });
+  const capsule = asOf ? buildLocalizedCategoryDetailCapsule({ locale, category, asOf, rows: topRows }) : null;
+  const faqItems = buildLocalizedCategoryDetailFaqs({ locale, category, asOf, rows: topRows });
 
   return (
     <>
@@ -342,7 +345,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
             <LinkBack href={href(categoryPath(dimension))} label={dimensionEntry?.label ?? t.nav.categories} />
             {totalPages > 1 && (
               <a href="#category-pages" className="text-readable-gold mt-3 block font-mono text-[0.78rem] hover:underline">
-                {fill(text.browseAllRepositories, { count: formatInteger(locale, rows.length) })}
+                {fill(text.browseAllRepositories, { count: formatInteger(locale, totalRows) })}
               </a>
             )}
           </aside>
@@ -353,11 +356,11 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
               <h2 className="text-[1.3rem] font-extrabold text-on-surface">{t.categories.topRepositories}</h2>
               <span className="font-mono text-[0.75rem] text-on-surface-variant">
-                {rows.length > 0
+                {totalRows > 0
                   ? fill(text.range, {
                       first: formatInteger(locale, first),
                       last: formatInteger(locale, last),
-                      total: formatInteger(locale, rows.length),
+                      total: formatInteger(locale, totalRows),
                     })
                   : t.categories.allTimeStars}
               </span>
@@ -417,30 +420,11 @@ function CategoryLink({ href, label, count, locale }: { href: string; label: str
   );
 }
 
-function categoryRows({
-  categoryId,
-  dimension,
-  rankItems,
-  lookup,
-  assignments,
-}: {
-  categoryId: string;
-  dimension: keyof NonNullable<Awaited<ReturnType<typeof getCategoryAssignments>>>["repositories"][string];
-  rankItems: NonNullable<Awaited<ReturnType<typeof getCategoryAllTime>>>["items"];
-  lookup: Awaited<ReturnType<typeof getReposLookupDaily>>;
-  assignments: Awaited<ReturnType<typeof getCategoryAssignments>>;
-}): Row[] {
+function categoryRows(
+  rankItems: NonNullable<Awaited<ReturnType<typeof getCategoryAllTimePage>>>["items"],
+  lookup: Awaited<ReturnType<typeof getReposLookupDaily>>,
+): Row[] {
   if (!lookup) return [];
-  if (assignments) {
-    const rows = Object.entries(assignments.repositories).flatMap(([id, assignment]) => {
-      if (!assignment[dimension].includes(categoryId)) return [];
-      const repo = lookup[id];
-      return repo ? [{ owner: repo.owner, name: repo.name, lang: repo.language, total: repo.current_stars }] : [];
-    });
-    if (rows.length > 0) {
-      return rows.sort((a, b) => b.total - a.total || `${a.owner}/${a.name}`.localeCompare(`${b.owner}/${b.name}`));
-    }
-  }
   return joinRepoRank(rankItems, lookup).map((repo) => ({
     owner: repo.owner,
     name: repo.name,
