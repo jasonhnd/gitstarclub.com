@@ -1,3 +1,15 @@
+---
+owner: SEO
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Per-page SEO templates, sitemap structure, robots policy, canonical URLs, and internal linking
+related_docs:
+  - ./FRONTEND.md
+  - ./GEO.md
+  - ./OPS.md
+---
+
 # gitstarclub SEO 设计
 
 ## Scope

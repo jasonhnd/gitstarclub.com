@@ -1,3 +1,14 @@
+---
+owner: Release history
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Versioned release history and user-visible shipped changes
+related_docs:
+  - ./ROADMAP.md
+  - ./README.md
+---
+
 # Changelog
 
 Notable changes to gitstarclub. Newest first. Versioning is informal: the running site is always the tip of `main`.

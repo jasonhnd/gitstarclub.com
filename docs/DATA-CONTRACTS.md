@@ -1,3 +1,15 @@
+---
+owner: Data contracts
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Canonical JSON shard schemas, JSON view schemas, and build-side type contracts
+related_docs:
+  - ./ARCHITECTURE.md
+  - ./VERCEL-DATA-OPERATIONS.md
+  - ./RANKING.md
+---
+
 # gitstarclub 数据契约（canonical JSON shard + JSON 视图）
 
 ## Scope

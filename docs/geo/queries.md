@@ -1,3 +1,14 @@
+---
+owner: GEO measurement
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Manual target-query registry for answer-engine citation reviews
+related_docs:
+  - ../GEO.md
+  - ./ai-log-reporting.md
+---
+
 # GEO target AI query tracking
 
 ## Scope

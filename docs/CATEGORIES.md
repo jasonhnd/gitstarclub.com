@@ -1,3 +1,15 @@
+---
+owner: Category taxonomy
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Category taxonomy, deterministic classification rules, category artifacts, and category route rollout
+related_docs:
+  - ./FRONTEND.md
+  - ./DATA-CONTRACTS.md
+  - ./SEO.md
+---
+
 # Categories
 
 This document defines the first category system for GitStarClub. It is a

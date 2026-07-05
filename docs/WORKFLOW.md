@@ -1,3 +1,15 @@
+---
+owner: Document-driven workflow
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Issue shape, role boundaries, PR merge gates, and visual-change guardrails
+related_docs:
+  - ./DEVELOPMENT.md
+  - ./DESIGN-SYSTEM.md
+  - ./TESTING.md
+---
+
 # Document-Driven Development Workflow (文档驱动开发工作流)
 
 ## Scope

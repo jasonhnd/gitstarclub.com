@@ -1,3 +1,16 @@
+---
+owner: System architecture
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - System architecture, data flow, rendering model, hard constraints, and key decisions
+related_docs:
+  - ./REQUIREMENTS.md
+  - ./DATA-CONTRACTS.md
+  - ./VERCEL-DATA-OPERATIONS.md
+  - ./FRONTEND.md
+---
+
 # Architecture
 
 ## Scope

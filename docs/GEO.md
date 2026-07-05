@@ -1,3 +1,15 @@
+---
+owner: GEO strategy
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Answer-engine citation strategy, answer capsules, AI crawler hygiene, freshness signals, and GEO measurement
+related_docs:
+  - ./SEO.md
+  - ./geo/ai-log-reporting.md
+  - ./geo/queries.md
+---
+
 # GitStarClub GEO strategy and implementation design
 
 ## Scope

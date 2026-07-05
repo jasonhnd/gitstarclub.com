@@ -1,3 +1,15 @@
+---
+owner: Product framing
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Product identity, page surfaces, tone, data-honesty posture, and i18n posture
+related_docs:
+  - ./REQUIREMENTS.md
+  - ./INFORMATION-ARCHITECTURE.md
+  - ./ROADMAP.md
+---
+
 # gitstarclub 产品设计
 
 > 本文档定义产品的页面、信息架构、URL 与视觉调性。架构与数据层见 [ARCHITECTURE.md](./ARCHITECTURE.md)。

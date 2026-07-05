@@ -1,3 +1,15 @@
+---
+owner: Codebase map
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Route files, data layers, contracts, workflow modules, category system, and ownership boundaries
+related_docs:
+  - ./ARCHITECTURE.md
+  - ./DEVELOPMENT.md
+  - ./WORKFLOW.md
+---
+
 # Codebase Map
 
 ## Scope

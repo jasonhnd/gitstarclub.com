@@ -1,3 +1,15 @@
+---
+owner: Operations
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, environment variables, alerting, and failure modes
+related_docs:
+  - ./VERCEL-DATA-OPERATIONS.md
+  - ./ARCHITECTURE.md
+  - ./TESTING.md
+---
+
 # gitstarclub Operations Runbook
 
 > 运维与部署的唯一真相源。架构与数据流见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。

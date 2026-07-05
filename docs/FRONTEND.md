@@ -1,3 +1,16 @@
+---
+owner: Frontend architecture
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Route catalog, rendering strategy, component catalog, data-access layer, and i18n implementation
+related_docs:
+  - ./ARCHITECTURE.md
+  - ./DESIGN-SYSTEM.md
+  - ./SEO.md
+  - ./I18N.md
+---
+
 # gitstarclub 前端设计（Next.js 16 Web 应用）
 
 > **前端层的唯一真相源**——把 [REQUIREMENTS](./REQUIREMENTS.md)（做什么）、[ARCHITECTURE](./ARCHITECTURE.md)（页面分层 / ISR / 节奏）、[DATA-CONTRACTS](./DATA-CONTRACTS.md)（消费的 JSON 视图 schema）、[DESIGN-SYSTEM](./DESIGN-SYSTEM.md)（M3E token / 组件 / 动效）落到 `web/` 这个 **Next.js 16 App Router** 应用的**路由 / 渲染配置 / 数据消费 / 组件 / i18n**。

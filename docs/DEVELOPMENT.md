@@ -1,3 +1,15 @@
+---
+owner: Development workflow
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Development playbooks, doc ownership workflow, Vercel-first verification, and drift handling
+related_docs:
+  - ./CODEBASE.md
+  - ./WORKFLOW.md
+  - ./TESTING.md
+---
+
 # Development Guide
 
 ## Scope

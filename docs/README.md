@@ -1,3 +1,13 @@
+---
+owner: Documentation governance
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Docs navigation, ownership map, metadata convention, and review expectations
+related_docs:
+  - ../README.md
+---
+
 # gitstarclub 文档索引
 
 A browsable history of GitHub open-source activity. The site is fully static-read at runtime: JSON in Vercel Blob behind a publish pointer, no runtime database, no engine in the request path. Recurring data refresh runs on Vercel Workflow.
@@ -26,7 +36,7 @@ Vercel Web Analytics remains enabled through `<Analytics />` in `web/app/_shell/
 14. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
 15. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
-Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [perf/CWV-25.md](./perf/CWV-25.md) for the pre-launch Lighthouse / Core Web Vitals baseline.
+Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [DATA-EXPORTS.md](./DATA-EXPORTS.md) for reusable export files; [I18N.md](./I18N.md) for the locale URL design; [perf/CWV-25.md](./perf/CWV-25.md) for the pre-launch Lighthouse / Core Web Vitals baseline.
 
 Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural decisions: [ROADMAP.md](./ROADMAP.md).
 
@@ -38,6 +48,7 @@ Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural 
 | ARCHITECTURE | System overview: tech stack, data flow, hard constraints, rendering model, key decisions |
 | VERCEL-DATA-OPERATIONS | Production data lifecycle: Blob layout, publish pointer, Workflow steps, rollback, garbage collection |
 | DATA-CONTRACTS | Per-shard / per-view Zod schemas (single source of truth for build-side types) |
+| DATA-EXPORTS | Public CSV / JSON export formats, attribution text, and latest alias behavior |
 | PIPELINE | Bootstrap pipeline stages and algorithms (one-off, archived; recurring refresh lives in VERCEL-DATA-OPERATIONS) |
 | RANKING | Rank definitions, stock anchoring, derived rankings, edge cases (single source of truth for ranking algorithms) |
 | CODEBASE | Code map: route files, data layers, contracts, workflow modules, category system, and ownership boundaries |
@@ -47,6 +58,7 @@ Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural 
 | DESIGN-SYSTEM | Locked visual baseline, tokens, typography, Chrome appearance, accessibility notes |
 | SEO | Per-page SEO templates, sitemap structure, robots/noindex policy, internal linking |
 | GEO | Answer-engine citation strategy, page-type answer capsules, GEO schema plan, AI crawler hygiene, freshness, and measurement |
+| I18N | Server-rendered locale URL design, locale routing posture, and migration notes |
 | OPS | Branch topology / staging, deploy / rollback / cron / workflow runbooks, Blob layout, env vars, alerting, failure modes |
 | TESTING | Test pyramid, contract tests, recompute parity, validation invariants, smoke tests |
 | PRODUCT | Product framing: identity, page surfaces, tone, data-honesty posture, i18n posture |
@@ -63,6 +75,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 |---|---|
 | Repo / view counts | REQUIREMENTS |
 | Per-artifact schema (field-level) | DATA-CONTRACTS |
+| Public export formats / attribution | DATA-EXPORTS |
 | Blob layout | OPS (§Vercel Blob 布局) |
 | Branch topology / staging / promotion | [OPS.md](./OPS.md) (§Branch topology / staging) |
 | Cron schedule | OPS (§Cron 调度) |
@@ -70,7 +83,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Category taxonomy / classification rules | CATEGORIES |
 | Rendering model (static base + client-side chrome i18n) | FRONTEND (§2.5) |
 | Route catalog | FRONTEND (§1.1) |
-| i18n posture | SEO (§10); implementation detail in FRONTEND (§7) |
+| i18n posture | SEO (§10); implementation detail in FRONTEND (§7); server-rendered locale URL design in I18N |
 | Answer-engine citation strategy / GEO | GEO |
 | Color tokens / design vocabulary | DESIGN-SYSTEM |
 | Ranking algorithms (seam, stock anchoring, derived rankings) | RANKING |
@@ -81,9 +94,37 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Release history | CHANGELOG |
 | Open work / architectural decisions | ROADMAP |
 
+## Metadata convention
+
+Each Markdown document in `docs/` starts with YAML frontmatter:
+
+```yaml
+---
+owner: Documentation governance
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Docs navigation, ownership map, metadata convention, and review expectations
+related_docs:
+  - ../README.md
+---
+```
+
+Required fields:
+
+- `owner` names the owning role or topic.
+- `status` is one of `active`, `historical`, `draft`, or `superseded`.
+- `last_reviewed` uses `YYYY-MM-DD` and changes when the owner verifies the document still matches the current system.
+- `source_of_truth_for` lists the facts this document owns. Other documents should link here instead of copying those facts.
+- `related_docs` is optional and should stay short.
+
+Satellite docs use the same metadata. Active runbooks use `status: active`; investigation notes, baselines, and one-time reports use `status: historical`.
+
 ## Maintaining the docs
 
 - When a contract, route, or behavior changes, update the owning document in the same commit. Cross-references in other documents should not need to change, because they point to the owning document by name rather than copying the rule.
 - When a user-visible change ships, add an entry to CHANGELOG.
 - When a piece of open work moves into the backlog or its blocking decision changes, update ROADMAP.
-- Each document opens with a `## Scope` section that states its responsibility and what is out of scope. Keep that current; it is the contract between the document and its readers.
+- Keep each document's metadata current. `owner`, `status`, and `source_of_truth_for` should change when responsibility changes; `last_reviewed` should change only after a real review.
+- Each core document opens with a `## Scope` section that states its responsibility and what is out of scope. Keep that current; it is the contract between the document and its readers.
+- Run `bun run docs:metadata` before merging doc changes that add or rename Markdown files under `docs/`.

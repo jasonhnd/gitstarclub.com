@@ -1,3 +1,15 @@
+---
+owner: Data exports
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Public CSV and JSON export formats, attribution text, dated directories, and latest alias behavior
+related_docs:
+  - ./DATA-CONTRACTS.md
+  - ./OPS.md
+  - ./SEO.md
+---
+
 # GitStarClub data exports
 
 GitStarClub publishes small, deterministic CSV and JSON extracts for reuse and citation. They are generated from existing precomputed Vercel Blob views and checked in as static assets under `web/public/data/exports/v1/`.

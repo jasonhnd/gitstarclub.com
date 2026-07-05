@@ -1,3 +1,14 @@
+---
+owner: GEO measurement
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - AI crawler and referrer log reporting runbook
+related_docs:
+  - ../GEO.md
+  - ./queries.md
+---
+
 # AI crawler and referrer log reporting
 
 GitStarClub measures GEO crawler reach and AI referrals from Vercel-side request logs. This path is aggregate-only: it does not add client JavaScript, browser analytics events, cookies, user ids, IP addresses, or stored raw referrer URLs.

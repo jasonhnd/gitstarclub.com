@@ -1,3 +1,15 @@
+---
+owner: Roadmap
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Open work, architectural decisions, backlog, and continuous hygiene work
+related_docs:
+  - ./CHANGELOG.md
+  - ./REQUIREMENTS.md
+  - ./ARCHITECTURE.md
+---
+
 # Roadmap
 
 Open work and the architectural decisions that gate it. For history of what has shipped, see [CHANGELOG.md](./CHANGELOG.md). For how the system currently works, start at [README.md](./README.md).

@@ -1,3 +1,15 @@
+---
+owner: Product requirements
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Product baseline, scope, constraints, repo counts, and view counts
+related_docs:
+  - ./ARCHITECTURE.md
+  - ./PRODUCT.md
+  - ./ROADMAP.md
+---
+
 # gitstarclub 需求基准
 
 ## Scope

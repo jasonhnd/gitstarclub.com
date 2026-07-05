@@ -1,3 +1,15 @@
+---
+owner: Ranking algorithms
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Ranking windows, dimensions, metrics, stock anchoring, derived rankings, edge cases, and tie-breaking
+related_docs:
+  - ./DATA-CONTRACTS.md
+  - ./ARCHITECTURE.md
+  - ./PRODUCT.md
+---
+
 # gitstarclub 排名规格
 
 ## Scope

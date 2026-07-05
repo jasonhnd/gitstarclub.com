@@ -1,3 +1,14 @@
+---
+owner: Information architecture
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - UX navigation narrative and reader journey map
+related_docs:
+  - ./FRONTEND.md
+  - ./PRODUCT.md
+---
+
 # GitStarClub Information Architecture
 
 ## Scope

@@ -1,3 +1,15 @@
+---
+owner: Data quality analysis
+status: historical
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Issue 21 data correctness phase 1 investigation notes
+related_docs:
+  - ../DATA-CONTRACTS.md
+  - ../RANKING.md
+  - ../TESTING.md
+---
+
 # Data correctness analysis for issue #21
 
 Status: phase-1 analysis for #36. This document does not change code, data, or

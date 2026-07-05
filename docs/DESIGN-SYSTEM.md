@@ -1,3 +1,14 @@
+---
+owner: Design system
+status: active
+last_reviewed: 2026-07-05
+source_of_truth_for:
+  - Visual tokens, typography, Chrome baseline, motion vocabulary, and accessibility notes
+related_docs:
+  - ./FRONTEND.md
+  - ./PRODUCT.md
+---
+
 # Design System Baseline
 
 ## Scope
