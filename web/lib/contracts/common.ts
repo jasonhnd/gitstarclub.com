@@ -3,12 +3,44 @@ import { z } from "zod";
 // Shared primitives + ranking shapes. See docs/DATA-CONTRACTS.md.
 // Dates are UTC.
 
+function isValidUtcDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12) return false;
+
+  const daysInMonth = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1];
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function weeksInIsoYear(year: number): number {
+  const jan1 = new Date(Date.UTC(year, 0, 1)).getUTCDay();
+  const dec31 = new Date(Date.UTC(year, 11, 31)).getUTCDay();
+  return jan1 === 4 || dec31 === 4 ? 53 : 52;
+}
+
 /** ISO 'YYYY-MM-DD' (UTC). */
-export const DateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const DateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(isValidUtcDate, "must be a real UTC date");
 /** ISO timestamp with timezone offset, e.g. Date#toISOString(). */
 export const TimestampStr = z.string().datetime({ offset: true });
+/** Month period id: 'YYYY-MM'. */
+export const MonthPeriod = z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/);
+/** ISO week period id: 'YYYY-Www'. */
+export const WeekPeriod = z.string().regex(/^(\d{4})-W(0[1-9]|[1-4]\d|5[0-3])$/).refine((value) => {
+  const [, year, week] = /^(\d{4})-W(\d{2})$/.exec(value) ?? [];
+  return Number(week) <= weeksInIsoYear(Number(year));
+}, "must be a real ISO week");
+/** Year period id: 'YYYY'. */
+export const YearPeriod = z.string().regex(/^\d{4}$/);
 /** Period id: week 'YYYY-Www' | month 'YYYY-MM' | year 'YYYY' | 'all'. */
-export const Period = z.string().regex(/^(?:\d{4}-W\d{2}|\d{4}-\d{2}|\d{4}|all)$/);
+export const Period = z.union([WeekPeriod, MonthPeriod, YearPeriod, z.literal("all")]);
 export const NonNegativeInt = z.number().int().nonnegative();
 export const PositiveRank = z.number().int().positive();
 export const SafeText = z
@@ -31,7 +63,7 @@ export const Meta = z.object({
   schema_ver: NonNegativeInt,
   generated_at: TimestampStr.optional(),
   backfilled_at: TimestampStr.optional(), // bootstrap-only
-  folded_through: z.object({ month: Period, week: Period }).strict().optional(), // live-overlay watermark
+  folded_through: z.object({ month: MonthPeriod, week: WeekPeriod }).strict().optional(), // live-overlay watermark
 }).strict();
 export type Meta = z.infer<typeof Meta>;
 

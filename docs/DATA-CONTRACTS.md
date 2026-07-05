@@ -10,11 +10,11 @@
 ## 全局约定
 
 - **日期**：一律 UTC，`YYYY-MM-DD`。
-- **周期标识 `period`**：周 = ISO 周 `YYYY-Www`（如 `2024-W42`）；月 `YYYY-MM`；年 `YYYY`；全时 `all`。
+- **周期标识 `period`**：周 = `WeekPeriod` ISO 周 `YYYY-Www`（如 `2024-W42`）；月 = `MonthPeriod` `YYYY-MM`；年 = `YearPeriod` `YYYY`；全时 `all`。
 - **主键**：repo = GitHub 数字 `repo_id`（不可变，跨改名稳定）；org = `owner` login 字符串。
 - **数值**：整数。`delta` / flow 在 seam 后为 net，**可为负**（取消 star）；stock（累计）非负。
 - **契约硬线**：`current_stars` / `current_stars_sum` / `stars` / count 类字段非负；`RankItem.value` 仍可为负（net flow）。`RankItem` 必须且只能携带 `id`（repo）或 `login`（org）之一。
-- **文本与时间**：日期字段使用 UTC `YYYY-MM-DD`；`generated_at` / `published_at` / checkpoint 时间戳使用带时区的 ISO timestamp。自由文本字段由 React 渲染层转义，同时契约拒绝高风险 active HTML 片段（script/iframe/style 等）。
+- **文本与时间**：`DateStr` 日期字段使用 UTC `YYYY-MM-DD`；`TimestampStr`（`generated_at` / `published_at` / checkpoint 等）使用带时区的 ISO timestamp。自由文本字段由 React 渲染层转义，同时契约拒绝高风险 active HTML 片段（script/iframe/style 等）。
 - **引用 vs 内嵌**：排行榜 JSON 只存实体 **id/login + 数值**，不内嵌名字/描述；build 用 `lookup/*` join 出展示字段 → 榜单文件保持小、改名只需更新 lookup。
 - 每个 JSON 带 `meta`（至少 `generated_at`，视图另含 `period/window/dim/metric`）便于缓存与调试。
 
@@ -48,12 +48,12 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 | `description` | string\|null | |
 | `language` | string\|null | 主语言 |
 | `topics` | string[] | |
-| `created_at` | string | repo 创建日 ISO |
+| `created_at` | DateStr\|TimestampStr | repo 创建日期；canonical shard 可保留 GitHub `createdAt` timestamp，entity 视图裁成 `YYYY-MM-DD` |
 | `current_stars` | int | GraphQL 权威当前总数（**唯一必须精确的数**） |
 | `is_archived` | bool | |
-| `crossed_10k/50k/100k` | string\|null | 首破里程碑精确日期（供"历史上的今天"） |
-| `tracked_since` | string\|null | 进入白名单 / 开始追踪的日期。bootstrap 基线 repo 为 `null`（有完整历史）；新晋 repo = 发现日（页面据此标注，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10） |
-| `fetched_at` | string | 元数据抓取时刻 |
+| `crossed_10k/50k/100k` | DateStr\|null | 首破里程碑精确日期（供"历史上的今天"） |
+| `tracked_since` | DateStr\|null | 进入白名单 / 开始追踪的日期。bootstrap 基线 repo 为 `null`（有完整历史）；新晋 repo = 发现日（页面据此标注，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10） |
+| `fetched_at` | TimestampStr | 元数据抓取时刻 |
 
 ### 1.3 `meta`（→ `meta.json`）
 
@@ -86,19 +86,19 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
                "d": 0.9123 } }
 ```
 
-**`canonical/v2/repo-monthly/{bucket}.json`** —— per-repo 月 flow 序列（驱动月榜 + entity 月曲线）：
+**`canonical/v2/repo-monthly/{bucket}.json`** —— per-repo 月 flow 序列（period = `MonthPeriod`，驱动月榜 + entity 月曲线）：
 
 ```json
 { "1296269": [ ["2015-01", 1200], ["2015-02", 1500] ] }   // { "<id>": [[period, flow], ...]；seam 前 gross / 后 net }
 ```
 
-**`canonical/v2/repo-weekly/{bucket}.json`** —— per-repo ISO 周 flow 序列（驱动历史周榜）：`{ "<id>": [["2024-W42", 320], ...] }`。
+**`canonical/v2/repo-weekly/{bucket}.json`** —— per-repo ISO 周 flow 序列（period = `WeekPeriod`，驱动历史周榜）：`{ "<id>": [["2024-W42", 320], ...] }`。
 
 **`canonical/v2/repo-recent-daily/{bucket}.json`** —— per-repo 近 ~90 天日点（曲线尾 + 周边界，net 可负）：`{ "<id>": [["2026-03-01", 30], ["2026-03-02", -5]] }`。⚠️ **bootstrap(`07-export-v2`)一次性 seed**；recurring `fold` step(`fold.ts`)**不读、不写、不修剪** recent-daily(`web/lib/` 内无 writer，仅 reader `io.ts:53`)——「滚出 90 天的日点并入 `repo-monthly`」的老化机制**尚未实现**（xref issue #3 / [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.2）。
 
-**`canonical/v2/site-daily/{yyyy}.json`** —— 站点级日总量（驱动 heatmap）：`{ "year": "2024", "cells": [["2024-01-01", 82000]] }`。
+**`canonical/v2/site-daily/{yyyy}.json`** —— 站点级日总量（`year` = `YearPeriod`，驱动 heatmap）：`{ "year": "2024", "cells": [["2024-01-01", 82000]] }`。
 
-**`canonical/v2/pending/{period}.json`** —— 已收口、待折叠的周期活尾冻结快照（cron 跨期重置前写、折叠 step 读，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）：形同 `current_month.json` 的 `per_repo` + `daily_totals`。
+**`canonical/v2/pending/{period}.json`** —— 已收口、待折叠的月周期活尾冻结快照（period = `MonthPeriod`；cron 跨期重置前写、折叠 step 读，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）：形同 `current_month.json` 的 `per_repo` + `daily_totals`。
 
 > **stock 锚定**(口径同 [RANKING.md](./RANKING.md) §3,**必须分 seam 前后**)：锚定因子 `d = current_stars@seam / cumgross@seam_date`(**分母只含 seam 前 gross**),bootstrap 算定后写入 `repos` shard 冻结；`d >= 0`，Archive 低计时可 `> 1`。seam 前 `stock_est = cumgross × d`；**seam 后 net 不乘 `d`、直接累加**：`stock = stock@seam + Σ(seam 后 net)`。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3。里程碑同样 bootstrap 算定后冻结、写入 `repos` shard。
 
@@ -294,6 +294,8 @@ Rules:
 - 进行中当月的日总量来自 `current_month.json`，build 合并。
 
 ### 2.8 `current_month.json`（活尾——Vercel cron 写）
+
+`month` 字段是 `MonthPeriod`；`updated` / `daily_totals` / `per_repo` 日期字段是 `DateStr`。
 
 ```json
 {
