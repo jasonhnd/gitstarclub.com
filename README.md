@@ -33,7 +33,7 @@ The full design and operations docs live in [`docs/`](docs/README.md). For the m
 
 ## Repository layout
 
-```
+```text
 gitstarclub/
 ├── README.md
 ├── docs/                          Documentation (see docs/README.md for the index)

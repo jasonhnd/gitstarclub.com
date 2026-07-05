@@ -110,7 +110,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 > 下列为**有 §2.x schema 的视图名 → 章节**索引；完整物理布局（含 `canonical/v2/*` shard）不在此重列，见 OPS §Blob 布局。
 
-```
+```text
 lookup/repos.json                              # build join 表（§2.1）
 lookup/orgs.json
 lookup/aliases.json                            # 改名旧 full_name → 当前 repo id（§2.2b）
