@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { WhitelistEntry } from "@/lib/contracts";
 import { MIN_TRACKED_STARS } from "@/lib/constants";
+import { GITHUB_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
 import type { WhitelistEntry as WhitelistEntryRecord } from "@/lib/contracts";
 
 const TOKEN = process.env.GITHUB_TOKEN;
@@ -15,6 +16,10 @@ export interface RepoRef {
   id: number;
   owner: string;
   name: string;
+}
+
+export interface GitHubFetchOptions {
+  timeoutMs?: number;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -38,17 +43,18 @@ function secondaryLimitDelayMs(status: number, text: string): number | null {
   return /secondary rate limit|abuse detection|rate limit/i.test(text) ? 60_000 : null;
 }
 
-async function gql<T>(query: string, schema: z.ZodType<T>, attempt = 1): Promise<T> {
-  const res = await fetch(ENDPOINT, {
+async function gql<T>(query: string, schema: z.ZodType<T>, attempt = 1, opts: GitHubFetchOptions = {}): Promise<T> {
+  const res = await fetchWithTimeout(ENDPOINT, {
     method: "POST",
     headers: { Authorization: `bearer ${TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
     cache: "no-store",
+    timeoutMs: opts.timeoutMs ?? GITHUB_FETCH_TIMEOUT_MS,
   });
   const text = await res.text();
   if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt <= MAX_RETRIES) {
     await sleep(secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
-    return gql<T>(query, schema, attempt + 1);
+    return gql<T>(query, schema, attempt + 1, opts);
   }
   if (!res.ok) throw new Error(`GitHub GraphQL ${res.status}: ${text.slice(0, 200)}`);
   const json = z.object({ data: z.unknown().optional(), errors: z.unknown().optional() }).passthrough().parse(JSON.parse(text));
@@ -59,7 +65,7 @@ async function gql<T>(query: string, schema: z.ZodType<T>, attempt = 1): Promise
 }
 
 /** Current stargazerCount for each repo → Map<id, stars>. Missing/renamed repos are skipped. */
-export async function fetchStarCounts(refs: RepoRef[], batchSize = 100): Promise<Map<number, number>> {
+export async function fetchStarCounts(refs: RepoRef[], batchSize = 100, opts: GitHubFetchOptions = {}): Promise<Map<number, number>> {
   if (!TOKEN) throw new Error("GITHUB_TOKEN not set");
   const out = new Map<number, number>();
   for (let i = 0; i < refs.length; i += batchSize) {
@@ -67,7 +73,7 @@ export async function fetchStarCounts(refs: RepoRef[], batchSize = 100): Promise
     const query = `query{${batch
       .map((r, j) => `r${j}: repository(owner:${JSON.stringify(r.owner)}, name:${JSON.stringify(r.name)}){stargazerCount}`)
       .join(" ")}}`;
-    const data = await gql(query, z.record(z.string(), z.object({ stargazerCount: NonNegativeInt }).strict().nullable()));
+    const data = await gql(query, z.record(z.string(), z.object({ stargazerCount: NonNegativeInt }).strict().nullable()), 1, opts);
     batch.forEach((r, j) => {
       const node = data[`r${j}`];
       if (node && typeof node.stargazerCount === "number") out.set(r.id, node.stargazerCount);
@@ -93,17 +99,18 @@ const SearchResultSchema = z.object({
 }).passthrough();
 type SearchResult = z.infer<typeof SearchResultSchema>;
 
-async function restSearch(params: Record<string, string | number>, attempt = 1): Promise<SearchResult> {
+async function restSearch(params: Record<string, string | number>, attempt = 1, opts: GitHubFetchOptions = {}): Promise<SearchResult> {
   const url = new URL(`${REST}/search/repositories`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Authorization: `bearer ${TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "gitstarclub" },
     cache: "no-store",
+    timeoutMs: opts.timeoutMs ?? GITHUB_FETCH_TIMEOUT_MS,
   });
   if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt <= MAX_RETRIES) {
     const text = await res.text();
     await sleep(secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
-    return restSearch(params, attempt + 1);
+    return restSearch(params, attempt + 1, opts);
   }
   if (!res.ok) throw new Error(`GitHub Search ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return SearchResultSchema.parse(await res.json());
@@ -112,14 +119,14 @@ async function restSearch(params: Record<string, string | number>, attempt = 1):
 /** Whitelist = repos with stars ≥ minStars, via adaptive star-range bucketing (Search caps at
  *  1000 results/query: split any bucket >1000 until it fits, then page). Sorted by stars desc.
  *  Ported from pipeline/lib/github.mjs; see docs/PIPELINE.md §1 / VERCEL-DATA-OPERATIONS §4. */
-export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 600000): Promise<WhitelistEntryRecord[]> {
+export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 600000, opts: GitHubFetchOptions = {}): Promise<WhitelistEntryRecord[]> {
   if (!TOKEN) throw new Error("GITHUB_TOKEN not set");
   const out = new Map<number, WhitelistEntryRecord>(); // dedups range-boundary overlap
   const queue: Array<[number, number]> = [[minStars, maxStars]];
   while (queue.length) {
     const [low, high] = queue.pop()!;
     const q = `stars:${low}..${high}`;
-    const first = await restSearch({ q, sort: "stars", order: "desc", per_page: 100, page: 1 });
+    const first = await restSearch({ q, sort: "stars", order: "desc", per_page: 100, page: 1 }, 1, opts);
     if (first.total_count > 1000 && high > low) {
       const mid = Math.floor((low + high) / 2);
       queue.push([low, mid], [mid + 1, high]);
@@ -130,7 +137,7 @@ export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 6
     }
     const pages = Math.min(Math.ceil(first.total_count / 100), 10);
     for (let page = 1; page <= pages; page++) {
-      const res = page === 1 ? first : await restSearch({ q, sort: "stars", order: "desc", per_page: 100, page });
+      const res = page === 1 ? first : await restSearch({ q, sort: "stars", order: "desc", per_page: 100, page }, 1, opts);
       for (const r of res.items) {
         const entry = WhitelistEntry.parse({
           id: r.id,
@@ -189,7 +196,7 @@ const NodesResponseSchema = z.object({ nodes: z.array(z.unknown().nullable()) })
 
 /** Batch repo metadata via GraphQL nodes() (100 ids/query) → Map<databaseId, RepoMetadata>.
  *  Ported from pipeline/lib/github.mjs batchMetadata; see docs/VERCEL-DATA-OPERATIONS.md §4 metadata step. */
-export async function batchMetadata(nodeIds: string[]): Promise<Map<number, RepoMetadata>> {
+export async function batchMetadata(nodeIds: string[], opts: GitHubFetchOptions = {}): Promise<Map<number, RepoMetadata>> {
   if (!TOKEN) throw new Error("GITHUB_TOKEN not set");
   const out = new Map<number, RepoMetadata>();
   const selection =
@@ -199,7 +206,7 @@ export async function batchMetadata(nodeIds: string[]): Promise<Map<number, Repo
   for (let i = 0; i < nodeIds.length; i += 100) {
     const ids = nodeIds.slice(i, i + 100);
     const query = `query{nodes(ids:${JSON.stringify(ids)}){... on Repository{${selection}}}}`;
-    const data = await gql(query, NodesResponseSchema);
+    const data = await gql(query, NodesResponseSchema, 1, opts);
     for (const raw of data.nodes) {
       if (!raw) continue;
       const parsed = RepoNodeSchema.safeParse(raw);
