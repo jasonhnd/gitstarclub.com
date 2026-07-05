@@ -21,6 +21,8 @@ import { test, expect, describe, beforeAll } from "bun:test";
 // Canonical host is the apex (no www); we fetch over www and follow no redirects for HTML so
 // the served (pre-redirect) markup is asserted. SEO_LIVE_BASE overrides the fetch origin.
 const BASE = process.env.SEO_LIVE_BASE ?? "https://www.gitstarclub.com";
+const LIVE_SEO_ENABLED = BASE.trim().length > 0;
+const describeLive = LIVE_SEO_ENABLED ? describe : describe.skip;
 // The page's *own* canonical URL is built against the apex host the site canonicalizes to.
 const CANON_ORIGIN = (process.env.SEO_CANON_ORIGIN ?? "https://gitstarclub.com").replace(/\/+$/, "");
 
@@ -109,6 +111,8 @@ function hreflangCount(html: string): number {
 const fetched = new Map<string, Fetched>();
 
 beforeAll(async () => {
+  if (!LIVE_SEO_ENABLED) return;
+
   await Promise.all(
     PAGES.map(async (p) => {
       fetched.set(p.path, await get(p.path));
@@ -126,7 +130,7 @@ const page = (path: string): Fetched => {
 // Per-page metadata: title / description / canonical-to-self / Open Graph / JSON-LD
 // --------------------------------------------------------------------------------------------
 
-describe.each(PAGES)("SEO basics — $label", ({ path, canonPath }) => {
+describeLive.each(PAGES)("SEO basics — $label", ({ path, canonPath }) => {
   test("responds 200 with HTML", () => {
     const p = page(path);
     expect(p.status).toBe(200);
@@ -184,7 +188,7 @@ describe.each(PAGES)("SEO basics — $label", ({ path, canonPath }) => {
 // per-repo card, the rest fall back to the site OG card.
 // --------------------------------------------------------------------------------------------
 
-describe("Open Graph image (og:image)", () => {
+describeLive("Open Graph image (og:image)", () => {
   test("home and repo pages expose an absolute og:image", () => {
     for (const path of ["/", "/vuejs/vue"]) {
       const img = metaProp(page(path).html, "og:image");
@@ -207,7 +211,7 @@ describe("Open Graph image (og:image)", () => {
 // <html lang="en"> — default-locale static (SEO §10 / §3).
 // --------------------------------------------------------------------------------------------
 
-describe("document language", () => {
+describeLive("document language", () => {
   test("<html> declares lang=en on every page", () => {
     for (const { path } of PAGES) {
       const tag = /<html\b[^>]*>/i.exec(page(path).html)?.[0] ?? "";
@@ -221,7 +225,7 @@ describe("document language", () => {
 // /sitemap.xml — valid XML urlset enumerating home + rankings + repo URLs (SEO §4).
 // --------------------------------------------------------------------------------------------
 
-describe("/sitemap.xml", () => {
+describeLive("/sitemap.xml", () => {
   let xml = "";
   let status = 0;
   let ctype = "";
@@ -267,7 +271,7 @@ describe("/sitemap.xml", () => {
 // pre-launch the site is noindex with `Disallow: /` and no Sitemap line.
 // --------------------------------------------------------------------------------------------
 
-describe("/robots.txt", () => {
+describeLive("/robots.txt", () => {
   let txt = "";
   let status = 0;
 
