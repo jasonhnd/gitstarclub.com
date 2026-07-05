@@ -33,7 +33,7 @@
 
 > **降级声明**：这一段是**首次冷启动 / 灾难重建**用的一次性工具，**不是日常运营 runbook**。它产出的 JSON 视图 + canonical 上传 Blob 后，由 Vercel（§2/§3 live cron + §4 Workflow）接管 recurring 刷新。**日常运营 0 本地依赖。** 不删除这些脚本，但它们只在引入新数据源 / 重建基线时手动跑。
 
-```
+```text
 01-whitelist → 02-extract(BigQuery) → 03-metadata(GraphQL)
             → 04-rollup(DuckDB) → 05-precompute(DuckDB) → 06-upload(Blob)
             → 07-export-v2(DuckDB → canonical/v2 JSON shards)
@@ -70,7 +70,7 @@ GROUP BY repo_id, day;
 
 ## 2. 每日 cron（`web/app/api/cron/daily`，JSON-only，幂等）
 
-```
+```text
 1. 校验 Authorization: Bearer CRON_SECRET（否则 401）
 2. GraphQL 批量查约 5,302 repo current_stars（~54 查询）
 3. net 日增 = 今日 current_stars − current_month.json 里昨日值
@@ -89,7 +89,7 @@ GROUP BY repo_id, day;
 
 ## 3. 每周 cron（Vercel Function，`web/app/api/cron/weekly`）
 
-```
+```text
 1. 校验 Authorization: Bearer CRON_SECRET
 2. GraphQL 批量刷新 current_stars
 3. upsert current_month.json

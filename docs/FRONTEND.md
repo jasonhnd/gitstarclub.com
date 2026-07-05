@@ -75,7 +75,7 @@ OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
 
 **路由文件布局**：
 
-```
+```text
 app/
   _shell/RootShell.tsx       # 两个 root layout 共享：fonts/global CSS/theme init/body/Footer
   _localized/*.tsx           # route-locale 共享页面实现
@@ -232,7 +232,7 @@ export default nextConfig;
 
 [DATA-CONTRACTS](./DATA-CONTRACTS.md) §4 的 Zod schema 位于 `web/lib/contracts/`,读取器位于 `web/lib/data/`。结构按产物族归并,非每产物一文件:
 
-```
+```text
 web/lib/
   contracts/        # Zod schema（单一类型事实源），barrel = index.ts
     common.ts       # 共享/枚举/rank/heatmap/meta 等基础 schema
@@ -426,7 +426,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 ### 7.2 字典（手写；route locale 服务端选择）
 
-```
+```text
 web/lib/i18n/
   dictionaries/
     en.ts   ja.ts   zh.ts   zh-tw.ts   ko.ts   es.ts   fr.ts

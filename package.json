@@ -6,6 +6,7 @@
   "packageManager": "bun@1.3.14",
   "scripts": {
     "render": "bun ./render-assets.mjs",
-    "build": "bun ./build.mjs"
+    "build": "bun ./build.mjs",
+    "lint:md": "bun ./scripts/check-markdown-code-fences.mjs"
   }
 }

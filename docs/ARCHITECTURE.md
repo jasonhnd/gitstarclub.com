@@ -41,7 +41,7 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 
 ## Data flow
 
-```
+```text
 ┌─ Bootstrap (one-off, archived) ─────────────────────────────┐
 │  BigQuery   →   GH Archive WatchEvent (repo_id, day, gross) │
 │  GraphQL    →   metadata + current_stars (authoritative)    │
