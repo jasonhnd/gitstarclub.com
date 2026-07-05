@@ -1,7 +1,7 @@
 # gitstarclub 前端设计（Next.js 16 Web 应用）
 
 > **前端层的唯一真相源**——把 [REQUIREMENTS](./REQUIREMENTS.md)（做什么）、[ARCHITECTURE](./ARCHITECTURE.md)（页面分层 / ISR / 节奏）、[DATA-CONTRACTS](./DATA-CONTRACTS.md)（消费的 JSON 视图 schema）、[DESIGN-SYSTEM](./DESIGN-SYSTEM.md)（M3E token / 组件 / 动效）落到 `web/` 这个 **Next.js 16 App Router** 应用的**路由 / 渲染配置 / 数据消费 / 组件 / i18n**。
-> SEO 元数据 / sitemap / canonical 细节见 [SEO.md](./SEO.md)；Blob 布局 / 环境变量 / 部署拓扑见 [OPS.md](./OPS.md)。
+> SEO 元数据 / sitemap / canonical 细节见 [SEO.md](./SEO.md)；Route Handler 与公开 JSON endpoint 契约见 [API.md](./API.md)；Blob 布局 / 环境变量 / 部署拓扑见 [OPS.md](./OPS.md)。
 > 技术事实基于 **Next.js 16.2.6 · React 19.2 · TypeScript 6 · Tailwind 4 · Zod 4 · 包管理器 bun**（见 `web/package.json`）。
 
 ---
@@ -10,7 +10,7 @@
 
 本文档描述 `web/` 应用（Next.js 16 App Router）的**路由树、组件目录、数据访问层、i18n 架构与渲染策略**,面向需要扩展或维护前端的工程师。
 
-不在本文覆盖范围:JSON 视图 schema 与契约语义见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md);M3E token / 调色板 / 动效曲线等设计系统细节见 [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md);SEO 元数据与 sitemap 细节见 [SEO.md](./SEO.md);Blob 布局与部署拓扑见 [OPS.md](./OPS.md)。
+不在本文覆盖范围:JSON 视图 schema 与契约语义见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md);Route Handler / 公开 JSON endpoint 的 method、auth、params、response、cache、status codes 见 [API.md](./API.md);M3E token / 调色板 / 动效曲线等设计系统细节见 [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md);SEO 元数据与 sitemap 细节见 [SEO.md](./SEO.md);Blob 布局与部署拓扑见 [OPS.md](./OPS.md)。
 
 ---
 
@@ -49,7 +49,7 @@
 | **分类维度** | `/categories/[dimension]` | `categories/[dimension]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 各维度名 |
 | **分类详情** | `/categories/[dimension]/[slug]`、`/categories/[dimension]/[slug]/page/[page]` | `categories/[dimension]/[slug]/page.tsx`、`categories/[dimension]/[slug]/page/[page]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 公开分类 + 分类页数 |
 
-**路由处理器（route handlers）**：
+**路由处理器（route handlers）**：下表只保留前端路由树定位；endpoint contract（method / auth / params / response / cache / status codes）由 [API.md](./API.md) 统一维护。
 
 | 路径 | 文件 | 用途 |
 |---|---|---|
@@ -57,8 +57,8 @@
 | `/api/cron/weekly` | `api/cron/weekly/route.ts` | 每周 live overlay refresh |
 | `/api/workflows/refresh/start` | `api/workflows/refresh/start/route.ts` | 触发 L3 全量重算 Workflow |
 | `/api/lang` | `api/lang/route.ts` | 直接访问时的语言 cookie 后备入口 |
-| `/search-index` | `search-index/route.ts` | 客户端搜索索引端点（服务端读版本化 JSON + s-maxage CDN） |
-| `/repo-curve` | `repo-curve/route.ts` | 对比页瘦路由（按 id 投影 entity 曲线 + s-maxage CDN） |
+| `/search-index` | `search-index/route.ts` | 客户端搜索索引端点 |
+| `/repo-curve` | `repo-curve/route.ts` | 对比页瘦路由（按 id 投影 entity 曲线） |
 
 OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
 - 站点级 `/opengraph-image`（`app/opengraph-image.tsx`，`web/lib/og-card.tsx`）
@@ -92,9 +92,9 @@ app/
     [owner]/[name]/page.tsx  # /ja/facebook/react 等 locale-prefixed repo URL
     o/**  rankings/**  categories/**  compare/page.tsx  about/page.tsx  privacy/page.tsx
   api/lang/route.ts          # 兼容入口：写 gsc_lang 后重定向到 locale URL
-  search-index/route.ts      # 客户端搜索索引端点：服务端读版本化 search/index.json + s-maxage 走 CDN
+  search-index/route.ts      # 客户端搜索索引端点（contract 见 API.md）
   compare/page.tsx           # 多 repo 对比页：静态壳 + 客户端读 URL ?repos= → 取曲线 → CompareCurve；带参 noindex
-  repo-curve/route.ts        # 对比瘦路由：服务端读版本化 entity/repo/<id>.json → 投影精简曲线 + s-maxage 走 CDN
+  repo-curve/route.ts        # 对比瘦路由（contract 见 API.md）
   robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
 ```
 
@@ -189,8 +189,8 @@ export default nextConfig;
 
 ### 2.4 数据变更如何到达页面（无 deploy）
 
-- **每日 cron**（`/api/cron/daily`，[OPS](./OPS.md) §Cron）：写 `current_month.json` + `hot-snapshot.json` + `live/rank/*` 当前月/当前周覆盖层 + `live/heatmap/*` 当月覆盖层 → `revalidatePath` 核心热集（首页 / pulse / rankings / 当年 / 当月 / 当前周）。
-- **每周 cron**（`/api/cron/weekly`）：同样在 Vercel 内做 live refresh，保证周榜和月榜即使没有全量历史重算也不会断档；全量历史刷新另走 Vercel Workflow 分片，不做 16k 全量 build。
+- **每日 cron**（`/api/cron/daily`，[API](./API.md) / [OPS](./OPS.md) §Cron）：写 `current_month.json` + `hot-snapshot.json` + `live/rank/*` 当前月/当前周覆盖层 + `live/heatmap/*` 当月覆盖层 → `revalidatePath` 核心热集（首页 / pulse / rankings / 当年 / 当月 / 当前周）。
+- **每周 cron**（`/api/cron/weekly`，[API](./API.md)）：同样在 Vercel 内做 live refresh，保证周榜和月榜即使没有全量历史重算也不会断档；全量历史刷新另走 Vercel Workflow 分片，不做 16k 全量 build。
 - **deploy**：仅代码/结构变更触发；会重置 ISR store，长尾首访冷生成一次（见 [ARCHITECTURE](./ARCHITECTURE.md)）。
 
 > `app/api/cron/daily` 与 `app/api/cron/weekly` 通过 `revalidatePath` + `CRON_SECRET` 鉴权刷新热集。
@@ -476,7 +476,7 @@ return pageMeta({
 4. **页面**：`(en)` 与 `(localized)/[locale]` 两套路由组调用 `_localized/*` 共享实现，覆盖 `pulse`/`rankings`/`rankings/[year]`/`[period]`/`[owner]/[name]`/`o/[login]`/`categories`/`compare`。
 5. **i18n**：route-locale 服务端渲染（机制见 §7，渲染模式见 §2.5）。
 6. **SEO 配套**：`app/sitemap.xml/route.ts`、`app/sitemap-*.xml/route.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD。
-7. **cron route**：`app/api/cron/{daily,weekly}`（`revalidatePath` + `CRON_SECRET`）。
+7. **cron route**：`app/api/cron/{daily,weekly}`（`revalidatePath` + `CRON_SECRET`）；endpoint contract 见 [API.md](./API.md)。
 8. **共享组件 / token helper**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` 抽成共享组件；页面横向 padding 统一经 `_explore/layout-tokens.ts` 的 `PAD_X` 使用锁定基线 clamp 值；`PrevNext`/`EntityCard`/`YearSpine` 仍内联（§6.3）。
 
 ---

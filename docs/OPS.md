@@ -1,7 +1,7 @@
 # gitstarclub Operations Runbook
 
 > 运维与部署的唯一真相源。架构与数据流见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
-> 核心原则承袭架构：**Vercel-first 统一计费**、**运行时纯静态零引擎**、**生产数据运营不依赖本地计算**。本文把这些落到具体的项目、环境变量、Cron、Workflow、Blob 与告警上。
+> 核心原则承袭架构：**Vercel-first 统一计费**、**运行时纯静态零引擎**、**生产数据运营不依赖本地计算**。本文把这些落到具体的项目、环境变量、Cron、Workflow、Blob 与告警上；endpoint method/auth/cache/status contracts 见 [API.md](./API.md)。
 
 ## Scope
 
@@ -204,11 +204,13 @@ blob://
 
 > 之所以选 PUBLIC store：JSON 视图本就是要被 build / 运行时直接 `fetch` 的公开数据，公开读免去签名、天然走 CDN。canonical（JSON shard + bootstrap Parquet）虽也在同 store，但只有持 token 的 Workflow / bootstrap 会写它，不在 build / 运行时读路径。
 
-> **`/search-index` Route Handler**：`web/app/search-index/route.ts` 服务端经发布指针读版本化搜索索引（`views/<version>/search/index.json`），响应带 `Cache-Control` 走 CDN（命中 `s-maxage=3600`、首发前 MISS `s-maxage=60`），稳态近零后端。
+> **公开 JSON endpoint**：`/search-index`、`/repo-curve` 与静态 data export aliases 的 method/cache/status contract 见 [API.md](./API.md)；Blob 读取与物理布局仍以本节为准。
 
 ## Cron 调度
 
 `web/vercel.json` 声明 `crons[]`；Pro 计划 **100 job / 项目**、最小 1 次 / 分。三条 job：
+
+Endpoint method、auth、query、response、cache 与 status contract 见 [API.md](./API.md)；本节只维护调度、幂等和运维 runbook。
 
 | Job | 调度（UTC） | 动作 | 触发 deploy？ |
 |---|---|---|---|
@@ -232,7 +234,7 @@ blob://
 **鉴权模式（CRON_SECRET）**：
 
 - 触发是对生产 URL 的 **HTTP GET**；配置 `CRON_SECRET` 后 Vercel 自动带 `Authorization: Bearer <CRON_SECRET>`。
-- handler 第一步校验该头，与 `process.env.CRON_SECRET` 不符即 `401`，拦截外部直呼 `/api/cron/*`（robots 已屏蔽 `/api/`，但鉴权才是真防线）。
+- handler 第一步校验该头，拦截外部直呼 `/api/cron/*` 与 Workflow trigger；精确 status / response contract 见 [API.md](./API.md)（robots 已屏蔽 `/api/`，但鉴权才是真防线）。
 
 **幂等（关键约束）**：
 
