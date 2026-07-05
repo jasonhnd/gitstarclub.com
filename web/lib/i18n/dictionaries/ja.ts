@@ -296,7 +296,14 @@ const ja: Dict = {
     gitstarclubUrl: "GitStarClub の URL",
     rowStarsAdded: "{rank}: {stars} スター増加",
   },
-  search: { label: "検索", placeholder: "リポジトリを検索…", empty: "一致するリポジトリがありません", loading: "読み込み中…" },
+  search: {
+    label: "検索",
+    placeholder: "リポジトリを検索…",
+    empty: "一致するリポジトリがありません",
+    loading: "読み込み中…",
+    error: "検索を読み込めませんでした。",
+    retry: "再試行",
+  },
   share: {
     label: "共有",
     copied: "コピーしました",

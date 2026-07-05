@@ -275,7 +275,14 @@ const zhTw: Dict = {
     gitstarclubUrl: "GitStarClub 網址",
     rowStarsAdded: "{rank}: 新增 {stars} 星",
   },
-  search: { label: "搜尋", placeholder: "搜尋倉庫…", empty: "沒有符合的倉庫", loading: "載入中…" },
+  search: {
+    label: "搜尋",
+    placeholder: "搜尋倉庫…",
+    empty: "沒有符合的倉庫",
+    loading: "載入中…",
+    error: "搜尋載入失敗。",
+    retry: "重試",
+  },
   share: {
     label: "分享",
     copied: "已複製",

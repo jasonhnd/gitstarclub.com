@@ -4,8 +4,14 @@ import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } f
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fmtStars } from "@/lib/format";
-import type { SearchDoc } from "@/lib/contracts";
 import type { SearchHit } from "@/lib/search/core";
+import {
+  createSearchWorkerError,
+  parseSearchIndexPayload,
+  type SearchLoadState,
+  type SearchWorkerError,
+  type SearchWorkerOutMessage,
+} from "@/lib/search/worker-protocol";
 import { MAX_COMPARE } from "@/lib/compare/constants";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 import { localizedPath } from "@/lib/i18n/routing";
@@ -18,13 +24,19 @@ import { localizedPath } from "@/lib/i18n/routing";
 
 const LIMIT = 8;
 
-type WorkerMessage = { type: "ready" } | { type: "results"; id: number; hits: SearchHit[] } | { type: "error"; id?: number };
+function logSearchFailure(error: SearchWorkerError) {
+  if (process.env.NODE_ENV !== "production") {
+    console.error(`[search] ${error.code}: ${error.message}`, error.details ?? "");
+  }
+}
 
 export interface SearchBoxLabels {
   label: string;
   placeholder: string;
   empty: string;
   loading: string;
+  error: string;
+  retry: string;
   addToCompare: string;
   openCompare: string;
 }
@@ -35,6 +47,8 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
   const placeholder = labels.placeholder;
   const emptyText = labels.empty;
   const loadingText = labels.loading;
+  const errorText = labels.error;
+  const retryText = labels.retry;
   const addToCompareLabel = labels.addToCompare;
   const openCompareLabel = labels.openCompare;
 
@@ -42,12 +56,13 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const [loading, setLoading] = useState(false);
+  const [loadState, setLoadState] = useState<SearchLoadState>("idle");
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
 
   const workerRef = useRef<Worker | null>(null);
   const readyRef = useRef(false);
   const loadingRef = useRef(false);
+  const loadStateRef = useRef<SearchLoadState>("idle");
   const pendingRef = useRef<string | null>(null);
   const requestRef = useRef(0);
   const activeRequestRef = useRef(0);
@@ -55,6 +70,30 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
   const inputRef = useRef<HTMLInputElement>(null);
 
   const listId = useId();
+
+  const setSearchLoadState = useCallback((state: SearchLoadState) => {
+    loadStateRef.current = state;
+    setLoadState(state);
+  }, []);
+
+  const stopWorker = useCallback(() => {
+    workerRef.current?.terminate();
+    workerRef.current = null;
+    readyRef.current = false;
+    loadingRef.current = false;
+  }, []);
+
+  const failSearch = useCallback(
+    (error: SearchWorkerError) => {
+      logSearchFailure(error);
+      pendingRef.current = inputRef.current?.value ?? null;
+      stopWorker();
+      setHits([]);
+      setActive(-1);
+      setSearchLoadState("error");
+    },
+    [setSearchLoadState, stopWorker],
+  );
 
   const runQuery = useCallback((value: string) => {
     const worker = workerRef.current;
@@ -67,21 +106,31 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
     worker.postMessage({ type: "query", id, q: value, limit: LIMIT });
   }, []);
 
-  const ensureEngine = useCallback(async () => {
-    if (workerRef.current || loadingRef.current) return;
+  const ensureEngine = useCallback(async ({ force = false }: { force?: boolean } = {}) => {
+    if ((workerRef.current || loadingRef.current) && !force) return;
+    if (force) stopWorker();
     loadingRef.current = true;
-    setLoading(true);
+    readyRef.current = false;
+    setSearchLoadState("loading");
+    setHits([]);
+    setActive(-1);
     try {
       const res = await fetch("/search-index", { cache: "force-cache" });
-      const data = (await res.json()) as { repos?: SearchDoc[] };
+      if (!res.ok) throw new Error(`Search index request failed with ${res.status}`);
+      const data = await res.json();
+      const parsed = parseSearchIndexPayload(data);
+      if (!parsed.ok) {
+        failSearch(parsed.error);
+        return;
+      }
       const worker = new Worker(new URL("./search-worker.ts", import.meta.url), { type: "module" });
       workerRef.current = worker;
-      worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
+      worker.onmessage = (event: MessageEvent<SearchWorkerOutMessage>) => {
         const message = event.data;
         if (message.type === "ready") {
           readyRef.current = true;
           loadingRef.current = false;
-          setLoading(false);
+          setSearchLoadState("ready");
           if (pendingRef.current != null) {
             const pending = pendingRef.current;
             pendingRef.current = null;
@@ -95,32 +144,23 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
           return;
         }
         if (message.type === "error") {
-          setHits([]);
-          setActive(-1);
-          if (message.id === undefined || !readyRef.current) {
-            worker.terminate();
-            workerRef.current = null;
-            loadingRef.current = false;
-            readyRef.current = false;
-            setLoading(false);
-          }
+          failSearch(message.error);
         }
       };
-      worker.onerror = () => {
-        worker.terminate();
-        workerRef.current = null;
-        loadingRef.current = false;
-        readyRef.current = false;
-        setLoading(false);
+      worker.onerror = (event) => {
+        failSearch(createSearchWorkerError("worker-init", event.message || event.error));
       };
-      worker.postMessage({ type: "init", repos: data.repos ?? [] });
-    } catch {
-      // best-effort: if the index can't load, search stays inert (no matches), nothing breaks.
-      loadingRef.current = false;
-      readyRef.current = false;
-      setLoading(false);
+      worker.postMessage({ type: "init", repos: parsed.repos });
+    } catch (error) {
+      failSearch(createSearchWorkerError("load-failed", error));
     }
-  }, [runQuery]);
+  }, [failSearch, runQuery, setSearchLoadState, stopWorker]);
+
+  const retrySearch = useCallback(() => {
+    setOpen(true);
+    pendingRef.current = q;
+    void ensureEngine({ force: true });
+  }, [ensureEngine, q]);
 
   const reset = useCallback(() => {
     setOpen(false);
@@ -152,7 +192,7 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
     setOpen(true);
     if (!readyRef.current) {
       pendingRef.current = value;
-      void ensureEngine();
+      if (loadStateRef.current !== "error") void ensureEngine();
       return;
     }
     runQuery(value);
@@ -182,11 +222,9 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
 
   useEffect(() => {
     return () => {
-      workerRef.current?.terminate();
-      workerRef.current = null;
-      readyRef.current = false;
+      stopWorker();
     };
-  }, []);
+  }, [stopWorker]);
 
   useEffect(() => {
     if (!open) return;
@@ -197,7 +235,10 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  const showPanel = open && q.trim().length > 0;
+  const hasQuery = q.trim().length > 0;
+  const loading = loadState === "loading";
+  const searchFailed = loadState === "error";
+  const showPanel = open && (hasQuery || searchFailed);
 
   return (
     <div ref={rootRef} className="relative min-w-0">
@@ -232,7 +273,18 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
 
       {showPanel && (
         <div className="absolute right-0 z-30 mt-2 w-[min(24rem,92vw)] overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-high shadow-[var(--elev-2)]">
-          {hits.length > 0 ? (
+          {searchFailed ? (
+            <div role="status" aria-live="polite" className="space-y-2 px-3 py-3">
+              <p className="font-mono text-[0.76rem] text-on-surface-variant">{errorText}</p>
+              <button
+                type="button"
+                onClick={retrySearch}
+                className="min-h-9 rounded-full bg-primary-container px-3 py-1 font-mono text-[0.72rem] font-semibold text-on-primary-container transition-colors hover:brightness-110"
+              >
+                {retryText}
+              </button>
+            </div>
+          ) : hits.length > 0 ? (
             <ul id={listId} role="listbox" aria-label={label} className="max-h-[70vh] overflow-y-auto py-1">
               {hits.map((h, i) => {
                 const inCompare = compareSet.has(h.full_name);

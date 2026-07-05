@@ -275,7 +275,14 @@ const ko: Dict = {
     gitstarclubUrl: "GitStarClub URL",
     rowStarsAdded: "{rank}: {stars} 스타 증가",
   },
-  search: { label: "검색", placeholder: "저장소 검색…", empty: "일치하는 저장소가 없습니다", loading: "불러오는 중…" },
+  search: {
+    label: "검색",
+    placeholder: "저장소 검색…",
+    empty: "일치하는 저장소가 없습니다",
+    loading: "불러오는 중…",
+    error: "검색을 불러오지 못했습니다.",
+    retry: "다시 시도",
+  },
   share: {
     label: "공유",
     copied: "복사됨",
