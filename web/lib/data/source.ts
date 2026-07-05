@@ -1,5 +1,6 @@
 import type { ZodType } from "zod";
 import { BLOB_JSON_FETCH_TIMEOUT_MS, FetchTimeoutError, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
+import { requireBlobBaseUrl } from "@/lib/runtime-config";
 
 // View source: reads JSON views by direct URL from the Vercel Blob store (public).
 // BLOB_BASE_URL must point at the store base (set in Vercel project env + local .env.local).
@@ -7,8 +8,6 @@ import { BLOB_JSON_FETCH_TIMEOUT_MS, FetchTimeoutError, fetchWithTimeout } from 
 // with a flat-layout fallback, so the read side serves the validated version and rollback is a
 // single pointer write. Live-overlay / canonical / ops reads stay flat (base:false).
 // See docs/OPS.md (Blob layout), docs/FRONTEND.md §3, docs/VERCEL-DATA-OPERATIONS.md §7.
-
-const BLOB_BASE = (process.env.BLOB_BASE_URL ?? process.env.NEXT_PUBLIC_BLOB_BASE_URL ?? "").replace(/\/+$/, "");
 
 export interface ViewOpts {
   /** Cache-bust token for daily-updated views (current_month / hot-snapshot); see OPS §Blob. */
@@ -26,7 +25,7 @@ const VERSION_TTL_MS = 3_600_000;
 export const DAILY_BASE_VIEW_TTL_MS = 86_400_000;
 export const DAILY_BASE_VIEW_OPTS = { base: true, versionTtlMs: DAILY_BASE_VIEW_TTL_MS } as const satisfies ViewOpts;
 const READ_RETRIES = 2;
-const versionMemo = new Map<number, { version: string | null; at: number }>();
+const versionMemo = new Map<string, { version: string | null; at: number }>();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -41,18 +40,19 @@ function shouldRetry(status: number): boolean {
 }
 
 /** Resolve the live published version from views/latest.json (≤1h stale). null → flat fallback. */
-async function resolveVersion(ttlMs = VERSION_TTL_MS, timeoutMs = BLOB_JSON_FETCH_TIMEOUT_MS): Promise<string | null> {
+async function resolveVersion(blobBase: string, ttlMs = VERSION_TTL_MS, timeoutMs = BLOB_JSON_FETCH_TIMEOUT_MS): Promise<string | null> {
   const now = Date.now();
-  const memo = versionMemo.get(ttlMs);
+  const memoKey = `${blobBase}\0${ttlMs}`;
+  const memo = versionMemo.get(memoKey);
   if (memo && now - memo.at < ttlMs) return memo.version;
   let version: string | null = null;
-  if (BLOB_BASE) {
+  if (blobBase) {
     try {
       // Revalidated, NOT no-store: a `no-store` fetch flips an on-demand-ISR page to dynamic at
       // render time ("Page changed from static to dynamic at runtime" → 500 on the first cold
       // generation, before the in-memory memo warms). A revalidated fetch keeps bounded pointer
       // freshness while staying static/ISR-safe. The rotating ?v= still busts the Blob CDN.
-      const res = await fetchWithTimeout(`${BLOB_BASE}/views/latest.json?v=${Math.floor(now / ttlMs)}`, {
+      const res = await fetchWithTimeout(`${blobBase}/views/latest.json?v=${Math.floor(now / ttlMs)}`, {
         next: { revalidate: ttlMs / 1000 },
         timeoutMs,
       });
@@ -64,23 +64,23 @@ async function resolveVersion(ttlMs = VERSION_TTL_MS, timeoutMs = BLOB_JSON_FETC
       version = null; // pointer unreachable → flat fallback (never break the read path)
     }
   }
-  versionMemo.set(ttlMs, { version, at: now });
+  versionMemo.set(memoKey, { version, at: now });
   return version;
 }
 
 async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
-  if (!BLOB_BASE) throw new Error("BLOB_BASE_URL not set — point it at the Vercel Blob store base URL.");
+  const blobBase = requireBlobBaseUrl();
   let key = path;
   let bust = opts.bust;
   const timeoutMs = opts.timeoutMs ?? BLOB_JSON_FETCH_TIMEOUT_MS;
   if (opts.base) {
-    const version = await resolveVersion(opts.versionTtlMs, timeoutMs);
+    const version = await resolveVersion(blobBase, opts.versionTtlMs, timeoutMs);
     if (version) {
       key = `views/${version}/${path}`;
       bust ??= version; // versioned path is immutable
     }
   }
-  const url = `${BLOB_BASE}/${key}${bust ? `?v=${encodeURIComponent(bust)}` : ""}`;
+  const url = `${blobBase}/${key}${bust ? `?v=${encodeURIComponent(bust)}` : ""}`;
   let res: Response | null = null;
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= READ_RETRIES + 1; attempt++) {
