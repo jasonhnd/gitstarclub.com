@@ -1,5 +1,6 @@
 import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
 import { WorkflowLease } from "@/lib/contracts";
+import { requireBlobWriteToken } from "@/lib/runtime-config";
 
 const ACTIVE_PATH = "ops/workflows/active.json";
 const LEASE_TTL_MS = 12 * 60 * 60 * 1000;
@@ -30,12 +31,6 @@ type ClaimArgs = {
   allowExistingRun?: boolean;
 };
 
-function token(): string {
-  const value = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!value) throw new Error("BLOB_READ_WRITE_TOKEN not set");
-  return value;
-}
-
 async function streamText(stream: ReadableStream<Uint8Array>): Promise<string> {
   return new Response(stream).text();
 }
@@ -49,7 +44,7 @@ function isBlobConflict(error: unknown): boolean {
 
 export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
   async read(): Promise<WorkflowLeaseSnapshot> {
-    const result = await get(ACTIVE_PATH, { access: "public", token: token() });
+    const result = await get(ACTIVE_PATH, { access: "public", token: requireBlobWriteToken() });
     if (!result) return { lease: null, etag: null };
     if (result.statusCode !== 200 || !result.stream) throw new Error(`lease read ${ACTIVE_PATH} -> ${result.statusCode}`);
     return {
@@ -63,7 +58,7 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
     try {
       await put(ACTIVE_PATH, JSON.stringify(lease), {
         access: "public",
-        token: token(),
+        token: requireBlobWriteToken(),
         allowOverwrite: false,
         addRandomSuffix: false,
         contentType: "application/json",
@@ -81,7 +76,7 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
     try {
       await put(ACTIVE_PATH, JSON.stringify(lease), {
         access: "public",
-        token: token(),
+        token: requireBlobWriteToken(),
         allowOverwrite: true,
         addRandomSuffix: false,
         contentType: "application/json",

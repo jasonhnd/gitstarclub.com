@@ -1,21 +1,13 @@
 import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
+import { readView } from "./source";
 
-// source.ts reads BLOB_BASE_URL at module-load time and memoises the published version
-// (views/latest.json) for 1h at module scope. So we must (1) set the env BEFORE importing
-// the SUT, and (2) drive Date.now() forward past the 1h TTL to invalidate the version memo
-// between scenarios. We route a mocked global fetch by URL to simulate pointer + view fetches.
-
-// MUST equal the base set in rank.test.ts: source.ts captures BLOB_BASE once at load, and
-// whichever test file loads source.ts first wins for the whole process. Using ??= + the same
-// value keeps the full lib/data/ suite order-independent (assertions below build on this base).
+// Route a mocked global fetch by URL to simulate pointer + view fetches.
+// Date.now() is driven forward past the 1h TTL between scenarios to invalidate
+// the publish-pointer memo without reloading modules.
 const BLOB = "https://blob.example.com";
-process.env.BLOB_BASE_URL ??= BLOB;
-// Guard: NEXT_PUBLIC fallback must not shadow the primary base in this test.
-delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
-
-// Import AFTER env is set so BLOB_BASE captures our test base.
-const { readView } = await import("./source");
+const originalBase = process.env.BLOB_BASE_URL;
+const originalPublicBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
 
 const Doc = z.object({ ok: z.boolean(), tag: z.string() });
 
@@ -54,6 +46,8 @@ function routeFor(url: string): FakeRoute {
 beforeEach(() => {
   routes = {};
   fetchCalls = [];
+  process.env.BLOB_BASE_URL = BLOB;
+  delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   advancePastTtl(); // ensure each test starts with an expired version memo
   Date.now = () => clock;
   globalThis.fetch = mock((input: string | URL | Request) => {
@@ -66,6 +60,51 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = realFetch;
   Date.now = realNow;
+  if (originalBase === undefined) delete process.env.BLOB_BASE_URL;
+  else process.env.BLOB_BASE_URL = originalBase;
+  if (originalPublicBase === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  else process.env.NEXT_PUBLIC_BLOB_BASE_URL = originalPublicBase;
+});
+
+describe("readView — runtime Blob config", () => {
+  test("uses BLOB_BASE_URL changes made after source.ts is imported", async () => {
+    process.env.BLOB_BASE_URL = "https://blob-one.example.com";
+    routes = {
+      "/views/latest.json": { status: 200, json: { version: "v1" } },
+      "/views/v1/data/runtime.json": { status: 200, json: { ok: true, tag: "one" } },
+    };
+
+    expect(await readView("data/runtime.json", Doc, { base: true })).toEqual({ ok: true, tag: "one" });
+
+    process.env.BLOB_BASE_URL = "https://blob-two.example.com";
+    routes = {
+      "/views/latest.json": { status: 200, json: { version: "v2" } },
+      "/views/v2/data/runtime.json": { status: 200, json: { ok: true, tag: "two" } },
+    };
+
+    expect(await readView("data/runtime.json", Doc, { base: true })).toEqual({ ok: true, tag: "two" });
+    expect(fetchCalls.some((url) => url.startsWith("https://blob-two.example.com/views/latest.json"))).toBe(true);
+  });
+
+  test("falls back to NEXT_PUBLIC_BLOB_BASE_URL at call time", async () => {
+    delete process.env.BLOB_BASE_URL;
+    process.env.NEXT_PUBLIC_BLOB_BASE_URL = "https://public-blob.example.com/";
+    routes = {
+      "/flat/runtime.json": { status: 200, json: { ok: true, tag: "public" } },
+    };
+
+    expect(await readView("flat/runtime.json", Doc)).toEqual({ ok: true, tag: "public" });
+    expect(fetchCalls[0]?.startsWith("https://public-blob.example.com/flat/runtime.json")).toBe(true);
+  });
+
+  test("throws before fetching when no Blob base is configured", async () => {
+    delete process.env.BLOB_BASE_URL;
+    delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+
+    await expect(readView("flat/runtime.json", Doc)).rejects.toThrow("BLOB_BASE_URL not set");
+
+    expect(fetchCalls).toEqual([]);
+  });
 });
 
 describe("readView — base:true version-prefix resolution", () => {

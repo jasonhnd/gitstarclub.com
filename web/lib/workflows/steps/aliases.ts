@@ -2,6 +2,7 @@ import { list } from "@vercel/blob";
 import { readView } from "@/lib/data/source";
 import { putView } from "@/lib/data/write";
 import { RenameMap, ReposLookup, AliasMap } from "@/lib/contracts";
+import { requireBlobWriteToken } from "@/lib/runtime-config";
 import { buildAliasMap } from "../recompute/aliases";
 
 // Workflow step (after recompute, before validate): build views/<run_id>/lookup/aliases.json —
@@ -14,8 +15,6 @@ import { buildAliasMap } from "../recompute/aliases";
 // is self-healing and captures renames that happened in earlier runs (e.g. facebook/create-react-app).
 // See docs/VERCEL-DATA-OPERATIONS.md §4 and docs/DATA-CONTRACTS.md.
 
-const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-
 export interface AliasResult {
   aliases: number;
   runs_scanned: number;
@@ -23,7 +22,7 @@ export interface AliasResult {
 
 export async function buildAliases(runId: string): Promise<AliasResult> {
   "use step";
-  if (!TOKEN) throw new Error("BLOB_READ_WRITE_TOKEN not set");
+  const token = requireBlobWriteToken();
 
   // Current repo lookup written earlier this run (id → full_name + fields); the redirect target
   // is resolved from here, so a still-tracked id always points at its current slug.
@@ -33,7 +32,7 @@ export async function buildAliases(runId: string): Promise<AliasResult> {
   // Enumerate every run folder and union its rename delta. A missing renames.json is a normal
   // older-run shape; transport/schema failures must fail the step instead of silently shrinking
   // lookup/aliases.json.
-  const { folders } = await list({ prefix: "ops/workflows/", mode: "folded", token: TOKEN });
+  const { folders } = await list({ prefix: "ops/workflows/", mode: "folded", token });
   const maps = await Promise.all(folders.map((folder) => readView(`${folder}renames.json`, RenameMap, { bust: runId })));
   const renameEntries = maps.flatMap((m) => m?.renames ?? []);
 
