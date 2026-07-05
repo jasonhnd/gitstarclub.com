@@ -26,7 +26,13 @@ export const Inflection = z.object({
 }).strict();
 export type Inflection = z.infer<typeof Inflection>;
 
-const UrlString = z.union([z.string().url(), z.literal("")]);
+export const HttpUrlString = z.union([
+  z.literal(""),
+  z.string().url().refine((value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  }, "must use http or https"),
+]);
 
 export const RepoEntity = z.object({
   id: NonNegativeInt,
@@ -46,14 +52,14 @@ export const RepoEntity = z.object({
     )
     .optional(),
   topics: z.array(SafeText),
-  homepage_url: UrlString.nullable().optional(),
+  homepage_url: HttpUrlString.nullable().optional(),
   license: SafeText.nullable().optional(),
   latest_release: z
     .object({
       name: SafeText.nullable().optional(),
       tag_name: SafeText,
       published_at: DateStr.nullable().optional(),
-      url: UrlString.nullable().optional(),
+      url: HttpUrlString.nullable().optional(),
     })
     .strict()
     .nullable()

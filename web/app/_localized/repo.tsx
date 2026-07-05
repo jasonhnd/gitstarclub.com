@@ -23,6 +23,7 @@ import { absoluteSnippetUrl, type ShareableSnippetContent } from "@/lib/shareabl
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { CATEGORY_DIMENSIONS, categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
+import { safeExternalHref } from "@/lib/external-url";
 
 
 // Resolve a URL slug → repo id. On a miss, if the slug is a former name of a still-tracked repo
@@ -99,6 +100,8 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
   const faqItems = buildLocalizedRepoFaqs(t, locale, repo, asOf);
   const pagePath = `/${repo.full_name}`;
   const routePath = localizedPath(locale, pagePath);
+  const homepageHref = safeExternalHref(repo.homepage_url);
+  const releaseHref = safeExternalHref(repo.latest_release?.url);
   const capsuleLabels = { ariaLabel: t.common.answerCapsule, eyebrow: t.common.answerCapsule, dataAsOf: t.common.dataAsOf, source: t.common.source };
   const snippetLabels = {
     eyebrow: t.share.snippet,
@@ -176,12 +179,12 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
                 <MetaRow label={languages.length > 1 ? t.repo.languages : t.repo.language} value={<LanguageLinks languages={languages} totalSize={languageTotalSize} locale={locale} />} wrap />
               )}
               {repo.license && <MetaRow label={t.repo.license} value={repo.license} />}
-              {repo.homepage_url && <MetaRow label={t.repo.homepage} value={repo.homepage_url.replace(/^https?:\/\//, "")} href={repo.homepage_url} external />}
+              {homepageHref && <MetaRow label={t.repo.homepage} value={homepageHref.replace(/^https?:\/\//i, "")} href={homepageHref} external />}
               <MetaRow
                 label={t.repo.latestRelease}
                 value={repo.latest_release ? repo.latest_release.name || repo.latest_release.tag_name : t.repo.noRelease}
-                href={repo.latest_release?.url ?? undefined}
-                external={Boolean(repo.latest_release?.url)}
+                href={releaseHref ?? undefined}
+                external={Boolean(releaseHref)}
               />
             </dl>
             {repo.topics.length > 0 && (
@@ -483,8 +486,9 @@ function MetaRow({
   external?: boolean;
   wrap?: boolean;
 }) {
-  const valueNode = href ? (
-    <a href={href} className="truncate font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" {...(external ? { rel: "noreferrer" } : {})}>
+  const safeHref = href && external ? safeExternalHref(href) ?? undefined : href;
+  const valueNode = safeHref ? (
+    <a href={safeHref} className="truncate font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" {...(external ? { rel: "noreferrer" } : {})}>
       {value}
     </a>
   ) : wrap ? (
