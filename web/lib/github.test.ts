@@ -12,6 +12,8 @@
 // (If github.ts changes these helpers, keep the replicas in sync.) No fetch is
 // invoked and GITHUB_TOKEN is never set, so this suite makes zero network calls.
 import { test, expect, describe } from "bun:test";
+import { FetchTimeoutError } from "@/lib/fetch-timeout";
+import { fetchStarCounts } from "./github";
 
 const MAX_RETRIES = 4; // mirrors github.ts
 
@@ -172,5 +174,29 @@ describe("retry attempt boundary (MAX_RETRIES)", () => {
     expect(shouldRetry(1)).toBe(true);
     expect(shouldRetry(MAX_RETRIES)).toBe(true);
     expect(shouldRetry(MAX_RETRIES + 1)).toBe(false);
+  });
+});
+
+describe("GitHub request timeout behavior", () => {
+  test("fetchStarCounts aborts a stalled GraphQL request and surfaces FetchTimeoutError", async () => {
+    const originalToken = process.env.GITHUB_TOKEN;
+    const realFetch = globalThis.fetch;
+    process.env.GITHUB_TOKEN = "ghp_test";
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+      });
+    }) as typeof fetch;
+
+    try {
+      await expect(
+        fetchStarCounts([{ id: 1, owner: "vercel", name: "next.js" }], 100, { timeoutMs: 1, maxRetries: 0 }),
+      ).rejects.toBeInstanceOf(FetchTimeoutError);
+      expect(process.env.GITHUB_TOKEN).toBe("ghp_test");
+    } finally {
+      globalThis.fetch = realFetch;
+      if (originalToken === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = originalToken;
+    }
   });
 });

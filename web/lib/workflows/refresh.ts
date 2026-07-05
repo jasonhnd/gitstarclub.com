@@ -21,10 +21,10 @@ import { sendAlert } from "@/lib/observability/alert";
 // stock curves stay seam-anchored. Validation gates the pointer switch: a bad recompute never
 // goes live. Started by the cron route (/api/workflows/refresh/start). See VERCEL-DATA-OPERATIONS §3.
 
-export async function refreshWorkflow(runId: string) {
+export async function refreshWorkflow(runId: string, triggerPeriod?: string) {
   "use workflow";
 
-  const startedAt = await startRun(runId);
+  const startedAt = await startRun(runId, triggerPeriod);
   try {
     const whitelist = await refreshWhitelist(runId);
     const rename = await detectRenames(runId);

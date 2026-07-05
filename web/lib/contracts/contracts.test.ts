@@ -21,6 +21,7 @@ import {
   // workflow
   ViewsPointer,
   WorkflowManifest,
+  WorkflowLease,
   WorkflowStepCheckpoint,
   LatestSuccess,
   WorkflowValidation,
@@ -325,6 +326,27 @@ describe("workflow contracts", () => {
     expect(
       rejects(WorkflowManifest, { run_id: "r1", started_at: "x", status: "pending", steps: [], published_version: null }),
     ).toBe(true);
+  });
+
+  test("WorkflowLease parses optional trigger/idempotency metadata", () => {
+    const lease = {
+      run_id: "r1",
+      status: "running",
+      acquired_at: TS,
+      expires_at: "2024-06-01T12:00:00.000Z",
+      trigger_period: "2024-W22",
+      idempotency_key: "refresh:2024-W22",
+      last_event: "acquired",
+      last_triggered_at: TS,
+    };
+    expect(WorkflowLease.parse(lease).trigger_period).toBe("2024-W22");
+    expect(WorkflowLease.parse({ ...lease, last_event: "attached" }).last_event).toBe("attached");
+  });
+
+  test("WorkflowLease rejects bad status and bad lease event", () => {
+    const lease = { run_id: "r1", status: "running", acquired_at: TS, expires_at: TS };
+    expect(rejects(WorkflowLease, { ...lease, status: "pending" })).toBe(true);
+    expect(rejects(WorkflowLease, { ...lease, last_event: "queued" })).toBe(true);
   });
 
   test("WorkflowStepCheckpoint parses with StepStatus enum", () => {

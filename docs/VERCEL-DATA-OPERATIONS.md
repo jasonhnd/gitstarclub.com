@@ -69,7 +69,7 @@ gitstarclub 的运行时是**纯静态**:用户请求只读预算好的 JSON / B
 
 ```
 Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
-  └─ route 只做一件事:鉴权 + 启动 workflow,立即返回 run_id(不阻塞)
+  └─ route:鉴权 + CAS 获取 active lease + 启动/attach/409,立即返回 run_id(不阻塞)
        └─ Vercel Workflow('use workflow'):编排下列 steps,可 pause/resume、跨部署存活
             ├─ step 1  refresh whitelist                 ('use step')
             ├─ step 2  rename detection(先于 metadata,读旧 full_name)
@@ -90,7 +90,7 @@ Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
 > `whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`。
 > Workflow 编排到 `gc` 即结束,**不主动调 `revalidatePath`**——读侧通过 `views/latest.json` 指针 + 60s TTL 自然拾取(§7.4),按需 ISR 接管长尾;若要把传播窗口从 60s 压到秒级,由 live-overlay cron handler 单独负责 revalidate(职责分离,不在 L3 workflow 内)。
 
-**为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 仅「鉴权 + 启动 workflow + 返回」,把真正的长任务交给 Workflow runtime 异步编排。
+**为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 仅「鉴权 + 获取 active lease + 启动 workflow / attach / 409 + 返回」,把真正的长任务交给 Workflow runtime 异步编排。active lease 写在 `ops/workflows/active.json`,使用 Vercel Blob 条件写(`allowOverwrite:false` 创建、`ifMatch` 接管)避免两个并发触发同时进入全量刷新。
 
 ### 3.2 Workflow SDK 落地形态
 
@@ -142,8 +142,10 @@ async function recomputeRank(runId: string) {
 |---|---|
 | **每个 step 短小** | 单 step 控制在 Function 时长 / 内存内(< 800s、< 4GB)。重算按 **shard 分批**:rank 重算每 step 处理 1 个周期或 1 个 period 批,不是「一次算完所有周期」。 |
 | **每个 step 幂等** | step 输入 = `(run_id, shard 范围)`;输出按确定路径覆盖写 `views/<run_id>/`。重跑同 `run_id` = 覆盖同一份产物,不重复累加(见 §11)。 |
+| **入口互斥** | `/api/workflows/refresh/start` 先 CAS 获取 `ops/workflows/active.json`。同一 weekly period 的重复投递 attach 到现有 running/published run；未过期的其他 run 返回 `409`;过期 running 或 failed lease 可被新 run 接管。attached/rejected 写入 `ops/workflows/health.json`。 |
 | **step 之间用 Blob checkpoint** | 每个 step 完成后写 `ops/workflows/<run_id>/steps/<step>.json`(状态 + 产物清单 + 计数)。Workflow SDK 自身也持久化 step 结果;checkpoint 是**业务可读**的进度账本,供运维 / 恢复用。 |
 | **大数据走 Blob 直链** | step 间不通过 Workflow 传大 payload(受 4.5MB 限)。step 只传 `run_id` / shard key 等小标识;数据落 Blob,下一 step 从 Blob 直链读。 |
+| **网络请求有上限** | Blob JSON 读取默认 10s 超时；GitHub GraphQL/Search 默认 30s 超时，并保留原有 retry/backoff。最终超时以 `FetchTimeoutError` 抛出，和 HTTP status error 可区分。 |
 | **长等待用 sleep** | 命中 GitHub secondary rate limit / `Retry-After` 时,step 内短等待;跨小时级配额恢复用 workflow `sleep('1 hour')`,不空转占资源。 |
 
 > ⚠️ **两类重算形状(实现者必读)**:shard 按 `repo_id % N` 分桶,但**不是所有重算都桶内自洽**——
@@ -183,6 +185,7 @@ async function recomputeRank(runId: string) {
 ```
 blob://
 ├── ops/workflows/                           # L3 Workflow checkpoints + 元信息
+│   ├── active.json                           # 当前 refresh lease: run_id/status/trigger_period/idempotency_key/expires_at
 │   ├── <run_id>/
 │   │   ├── manifest.json                    # run 元信息:触发时间、step 列表、整体状态
 │   │   ├── steps/<step>.json                # 每个 step 的 checkpoint(状态 + 产物 + 计数)
@@ -421,13 +424,14 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
 |---|---|
 | **每个 step 幂等** | step 输出按 `(run_id, shard)` 确定路径覆盖写;重跑同 `run_id` 同 shard = 覆盖同一份,不重复累加。 |
 | **重跑同一个 `run_id` 不写坏数据** | 版本前缀含 `run_id`;同 run 重跑只覆盖自己的 `views/<run_id>`,不碰已发布版本。 |
+| **并发触发不双跑** | start route 对 active lease 做条件写；同周期重复触发 attach，异周期 / 手动重叠触发在 lease 未过期时 `409`，避免两个 refresh 同时发布竞争版本。 |
 | **失败只影响该版本前缀** | 指针未切前,线上读的是 `views/latest.json` 指向的上一版;任何 step 失败都不影响线上。 |
 | **`ops/workflows/latest-success.json` 是恢复点** | 记录最近一次成功发布的 run_id;新 run 从它的 canonical 状态出发增量重算。 |
 
 ### 9.2 恢复路径
 
 - **某 step 失败**:Workflow SDK 内建 step 重试(网络错 / 崩溃自动重试)。业务侧每 step 写 `ops/workflows/<run_id>/steps/<step>.json` checkpoint,Workflow 重放时跳过已完成 step、从断点继续。
-- **整个 run 卡死 / 超时**:运维据 `ops/workflows/<run_id>/manifest.json` 看卡在哪一 step;可重新触发同 `run_id`(幂等续跑)或起新 run。线上不受影响(指针未切)。
+- **整个 run 卡死 / 超时**:运维据 `ops/workflows/active.json` 与 `ops/workflows/<run_id>/manifest.json` 看卡在哪一 step;active lease 过期后新触发可接管。若要续跑同 `run_id`,仍需确认 active lease 未被其他 run 接管。线上不受影响(指针未切)。
 - **GitHub 限流**:step 内遇 `403` / secondary limit / `Retry-After`,短等待重试;跨小时配额用 workflow `sleep` 等待后继续,不空转。
 
 ### 9.3 回滚

@@ -16,6 +16,7 @@ const HEALTH_PATH = "ops/workflows/health.json";
 
 /** Which automated pipeline produced this signal (used for grep + dashboards). */
 export type AlertPipeline = "workflow-refresh" | "cron-daily" | "cron-weekly";
+export type HealthStatus = "ok" | "failed" | "attached" | "rejected";
 
 export type AlertSummary = {
   pipeline: AlertPipeline;
@@ -78,14 +79,17 @@ export async function sendAlert(summary: AlertSummary): Promise<void> {
  */
 export async function recordHealth(
   pipeline: AlertPipeline,
-  status: "ok" | "failed",
-  detail: { run_id?: string; error?: string } = {},
+  status: HealthStatus,
+  detail: { run_id?: string; error?: string; trigger_period?: string; active_run_id?: string; event?: string } = {},
 ): Promise<void> {
   try {
     await putView(HEALTH_PATH, {
       pipeline,
       status,
       run_id: detail.run_id ?? null,
+      active_run_id: detail.active_run_id ?? null,
+      trigger_period: detail.trigger_period ?? null,
+      event: detail.event ?? null,
       error: detail.error ?? null,
       at: new Date().toISOString(),
     });

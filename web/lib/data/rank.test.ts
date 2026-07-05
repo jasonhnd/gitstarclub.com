@@ -1,13 +1,10 @@
 import { test, expect, describe } from "bun:test";
 import type { RankItem, RepoLookupEntry, OrgLookupEntry } from "@/lib/contracts";
 
-// rank.ts transitively imports source.ts, whose module-scope BLOB_BASE is captured at load.
-// source.ts is a singleton; whichever test file loads it first fixes that value process-wide.
-// Set a base here (before the dynamic import below) so the full lib/data/ suite is order-safe —
-// these pure join helpers never fetch, but importing rank.ts must not crash on an empty base.
+// These pure join helpers never fetch, but a non-empty base keeps any accidental
+// readView call in this suite pointed at the mocked Blob host.
 process.env.BLOB_BASE_URL ??= "https://blob.example.com";
 
-// Dynamic import (post-env) so source.ts evaluates with a non-empty base regardless of file order.
 const { joinRepoRank, joinOrgRank } = await import("./rank");
 
 // Pure lookup-join helpers only. getRank/getRankBase fetch Blob and are NOT tested here.

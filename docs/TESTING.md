@@ -139,6 +139,12 @@ test('周排名窗口跨月不丢日', () => {
 
 - **parity 跳过 / 边界**：`web/lib/integration/recompute.test.ts` 经 `NO_DISK_REF` 跳过 `search/index.json`（派生视图，DuckDB 无参照可对拍），与 live-artifact 跳过并列——其余视图仍逐字节对拍。该 DuckDB disk reference 只在 `folded_through <= seam` 时是等价参照;post-seam 公式由 `web/lib/integration/post-seam-oracle.test.ts` 的合成夹具断言 `round(cumGross@seam * d) + Σ(post-seam net)`。
 
+### 1.7 Runtime helper coverage
+
+- `web/lib/workflows/lease.test.ts` covers active refresh lease behavior: concurrent same-period acquisition, conflict on another fresh run, expired takeover, published same-period attach, failed same-period replacement, and stale release protection.
+- `web/lib/fetch-timeout.test.ts`, `web/lib/data/source.test.ts`, and `web/lib/github.test.ts` cover timeout errors with mocked stalled fetches; timeout failures use `FetchTimeoutError` so alert/error paths can distinguish them from HTTP status failures.
+- `web/lib/scripts-env.test.ts` covers shared script env-file parsing for comments, blanks, malformed lines, quoting, and existing-env override policy.
+
 ---
 
 ## 2. 视觉回归（高信号——这是个"看的"站）

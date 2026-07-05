@@ -126,8 +126,36 @@ describe("recordHealth", () => {
     expect(data.pipeline).toBe("cron-weekly");
     expect(data.status).toBe("ok");
     expect(data.run_id).toBe("r9");
+    expect(data.active_run_id).toBeNull();
+    expect(data.trigger_period).toBeNull();
+    expect(data.event).toBeNull();
     expect(data.error).toBeNull();
     expect(typeof data.at).toBe("string");
+  });
+
+  test("records attached/rejected workflow trigger context", async () => {
+    const calls: Array<{ path: string; data: unknown }> = [];
+    putViewImpl = async (path, data) => {
+      calls.push({ path, data });
+    };
+
+    await expect(
+      recordHealth("workflow-refresh", "rejected", {
+        run_id: "candidate",
+        active_run_id: "active",
+        trigger_period: "2026-W27",
+        event: "rejected",
+        error: "already running",
+      }),
+    ).resolves.toBeUndefined();
+
+    const data = calls[0].data as Record<string, unknown>;
+    expect(data.status).toBe("rejected");
+    expect(data.run_id).toBe("candidate");
+    expect(data.active_run_id).toBe("active");
+    expect(data.trigger_period).toBe("2026-W27");
+    expect(data.event).toBe("rejected");
+    expect(data.error).toBe("already running");
   });
 
   test("swallows a putView failure (does NOT propagate)", async () => {

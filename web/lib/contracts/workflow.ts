@@ -27,11 +27,18 @@ export const WorkflowManifest = z.object({
 }).strict();
 export type WorkflowManifest = z.infer<typeof WorkflowManifest>;
 
+export const WorkflowLeaseEvent = z.enum(["acquired", "attached", "rejected", "taken_over", "released"]);
+export type WorkflowLeaseEvent = z.infer<typeof WorkflowLeaseEvent>;
+
 export const WorkflowLease = z.object({
   run_id: SafeText,
   status: WorkflowStatus,
   acquired_at: TimestampStr,
   expires_at: TimestampStr,
+  trigger_period: SafeText.optional(),
+  idempotency_key: SafeText.optional(),
+  last_event: WorkflowLeaseEvent.optional(),
+  last_triggered_at: TimestampStr.optional(),
 }).strict();
 export type WorkflowLease = z.infer<typeof WorkflowLease>;
 

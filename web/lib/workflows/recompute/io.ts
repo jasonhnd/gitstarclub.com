@@ -1,5 +1,6 @@
 import { put } from "@vercel/blob";
 import { readView } from "@/lib/data/source";
+import { requireBlobWriteToken } from "@/lib/runtime-config";
 import {
   CanonicalMeta,
   ReposShard,
@@ -15,7 +16,6 @@ import { buildModel, type Model, type RawShards } from "./model";
 // view set (views/<run_id>/**). Reads bust Blob's short cache with the run id so a step
 // sees the canonical shards written earlier in the same run. See VERCEL-DATA-OPERATIONS §3/§7.
 
-const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 const WRITE_PER_SEC = 60; // Blob write-rate budget (OPS §Blob)
 const WRITE_CONCURRENCY = 12;
 const SITE_YEAR_MIN = 2010;
@@ -65,7 +65,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Write a view map under views/<run_id>/** with a concurrency pool + write-rate gate. */
 export async function writeVersion(runId: string, views: Map<string, unknown>): Promise<number> {
-  if (!TOKEN) throw new Error("BLOB_READ_WRITE_TOKEN not set");
+  const token = requireBlobWriteToken();
   const items = [...views.entries()];
   let i = 0;
   let nextStart = 0;
@@ -81,7 +81,7 @@ export async function writeVersion(runId: string, views: Map<string, unknown>): 
       await gate();
       await put(`views/${runId}/${rel}`, JSON.stringify(obj), {
         access: "public",
-        token: TOKEN,
+        token,
         allowOverwrite: true,
         addRandomSuffix: false,
         contentType: "application/json",

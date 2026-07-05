@@ -100,10 +100,10 @@ an explicit recovery procedure.
 
 | 变量 | 用途 | 必需 / 可选 | 格式 | 谁用（path:line） |
 |---|---|---|---|---|
-| `GITHUB_TOKEN` | GitHub GraphQL / Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | **必需**（cron / Workflow） | `ghp_…` PAT 字符串 | `web/lib/github.ts:5`；每日 cron · 每周 cron · Workflow whitelist/metadata step · 一次性回填 |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts:6` · `web/lib/workflows/recompute/io.ts:18` · `web/lib/workflows/steps/gc.ts:10`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本 |
-| `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/data/source.ts:10` · `web/lib/cron/sync-runs.ts:83`；Next.js build · ISR 视图直读 · live cron 读发布指针 |
-| `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/data/source.ts:10` · `web/lib/cron/sync-runs.ts:83`；客户端 bundle 中读取 |
+| `GITHUB_TOKEN` | GitHub GraphQL / Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | **必需**（cron / Workflow） | `ghp_…` PAT 字符串 | `web/lib/runtime-config.ts` · `web/lib/github.ts`；每日 cron · 每周 cron · Workflow whitelist/metadata step · 一次性回填 |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/runtime-config.ts` · `web/lib/data/write.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`；cron 写活尾 · Workflow 写 canonical/views/lease · GC 删旧版本 |
+| `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` · `web/lib/workflows/lease.ts` · `web/lib/cron/sync-runs.ts`；Next.js build · ISR 视图直读 · live cron 读发布指针/active lease |
+| `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；客户端 bundle 中读取 |
 | `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | **必需** | 随机串（≥32 字符，**无首尾空白**） | `web/lib/cron/handlers.ts` · `web/app/api/workflows/refresh/start/route.ts:13`；每日 / 每周 cron · Workflow 触发 |
 | `VERCEL_DEPLOY_HOOK_URL` | Deploy Hook URL（触发一次核心 rebuild，用于代码 / 结构变更或手动全量刷新） | 可选 | `https://api.vercel.com/v1/integrations/deploy/<id>` | 手动 / CI（数据更新不需要它，长尾走 ISR） |
 | `ALERT_WEBHOOK_URL` | 失败告警 webhook（Slack / Discord incoming webhook 或 `https://webhook.site/...`，POST JSON 摘要；**不设则仅日志**） | 可选 | `https://…` 可接收 JSON POST 的端点 | `web/lib/observability/alert.ts:45`；Workflow `sendAlert` · 每日 / 每周 cron 失败投递 |
@@ -180,8 +180,9 @@ blob://
 ├── ops/
 │   ├── sync-runs.json                               # live cron 运行记录（保留最近 100 次）
 │   └── workflows/
+│       ├── active.json                              #   active refresh lease：{ run_id, status, trigger_period, idempotency_key, expires_at }
 │       ├── latest-success.json                      #   最近一次成功 run 的恢复点：{ run_id, version, published_at }
-│       ├── health.json                              #   pipeline 健康灯（workflow ok/failed；cron 失败路径写 failed）
+│       ├── health.json                              #   pipeline 健康灯（workflow ok/failed/attached/rejected；cron 失败路径写 failed）
 │       └── <run_id>/                                #   Workflow 单次 run checkpoint
 │           ├── manifest.json                        #     步骤清单 + 状态（running / published / failed）
 │           ├── validation.json                      #     发布闸门结果（ok · checked · invariants · failures）
@@ -214,7 +215,7 @@ blob://
 |---|---|---|---|
 | **每日** | `0 3 * * *`（~03:00） | **Vercel Function / JSON-only**：GraphQL 查 current_stars → append `current_month.json` → 重算 `hot-snapshot.json`、当前月 / 当前周 rank、当月 heatmap → `revalidatePath` 热集页 | **否**（不碰 Parquet / 引擎 / deploy） |
 | **每周** | `0 4 * * 0`（周日 ~04:00） | **Vercel Function / 增量刷新**：复用 live refresh，把当前周、当前月与热集重新覆盖写入 Blob，并落 `ops/sync-runs.json` | **否**（长尾按需 ISR；不做全量 build） |
-| **每周 refresh workflow** | `0 6 * * 0`（周日 06:00） | **Vercel Workflow / 全量刷新**：`/api/workflows/refresh/start` 鉴权后启动 `refreshWorkflow`——白名单 → 改名 → 元数据 → 折叠 → rank / entity / heatmap 重算 → 校验 → 发布（切指针）→ 版本 GC | **否**（发布只切指针；排程独立于 daily / weekly） |
+| **每周 refresh workflow** | `0 6 * * 0`（周日 06:00） | **Vercel Workflow / 全量刷新**：`/api/workflows/refresh/start` 鉴权后先获取 `ops/workflows/active.json` lease；同周期重复触发 attach 到现有 run，未过期的其他 run 返回 `409`，过期 lease 可接管；拿到 lease 后启动 `refreshWorkflow`——白名单 → 改名 → 元数据 → 折叠 → rank / entity / heatmap 重算 → 校验 → 发布（切指针）→ 版本 GC | **否**（发布只切指针；排程独立于 daily / weekly） |
 
 ```jsonc
 // web/vercel.json — all scheduled entrypoints run on Vercel Production
@@ -268,9 +269,12 @@ blob://
 
 **手动触发 runbook**：
 
-1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → 拿 `run_id`（route 仅鉴权 + `start(refreshWorkflow)` + 返回，不阻塞）。
+1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 先用 Blob 条件写获取 active lease，再返回：
+   - `200 { ok:true, runId, lease:"acquired"|"taken_over" }`：本次触发已 enqueue workflow。
+   - `200 { ok:true, runId, lease:"attached" }`：同一 weekly period 已有 running/published run，本次触发不再 enqueue。
+   - `409 { ok:false, lease:"rejected", activeRunId }`：另一个未过期 refresh run 正在占用 lease。
 2. 在 **Vercel Dashboard → Observability → Workflows** 看 run；或 `bun x workflow inspect runs`。
-3. 看 `ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`views/<run_id>/lookup/aliases.json`（buildAliases，recompute 之后 / validate 之前）、`latest-success.json`。
+3. 看 `ops/workflows/active.json`（当前 lease / 触发周期 / 过期时间）、`ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`views/<run_id>/lookup/aliases.json`（buildAliases，recompute 之后 / validate 之前）、`latest-success.json`。
 4. 校验白名单数、repos shard 分桶齐全、diff / rename 合理。
 5. cron 已接入（`/api/workflows/refresh/start`，`0 6 * * 0`，独立于 daily / weekly 排程）；手动验证某次部署时可先用 `?dry=1` 或单次触发再观察。
 
@@ -311,7 +315,7 @@ blob://
 
 **一行接入**：在 Vercel 项目 Settings → Environment Variables 加 `ALERT_WEBHOOK_URL`，值指向一个能收 JSON POST 的端点——Slack / Discord incoming webhook，或调试用的 `https://webhook.site/...`。配上即生效，无需改代码；留空则保持纯日志模式。
 
-> `ops/workflows/health.json` 由 `recordHealth` 写入：Workflow 成功 / 失败都会写 `workflow-refresh` 的 `ok` / `failed`；每日 / 每周 cron 当前只在失败路径写 `cron-daily` / `cron-weekly` 的 `failed`（成功记录仍以 `ops/sync-runs.json` 为准）。因此排查 cron 最近成功时间时，先看 `ops/sync-runs.json`，不要把 health.json 没有 cron `ok` 误判成成功灯缺失。
+> `ops/workflows/health.json` 由 `recordHealth` 写入：Workflow 成功 / 失败写 `workflow-refresh` 的 `ok` / `failed`；重复触发复用现有 run 写 `attached`，被 active lease 拒绝写 `rejected`（含 `active_run_id` / `trigger_period`）。每日 / 每周 cron 当前只在失败路径写 `cron-daily` / `cron-weekly` 的 `failed`（成功记录仍以 `ops/sync-runs.json` 为准）。因此排查 cron 最近成功时间时，先看 `ops/sync-runs.json`，不要把 health.json 没有 cron `ok` 误判成成功灯缺失。
 
 ## 一次性 bootstrap Runbook（归档 / 非日常路径）
 

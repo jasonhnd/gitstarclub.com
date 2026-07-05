@@ -4,11 +4,13 @@ import { test, expect, describe, beforeAll } from "bun:test";
 //
 // This exercises the rendered HTML / metadata endpoints of https://www.gitstarclub.com
 // against the policy in docs/SEO.md:
-//   - single language-neutral URL per page (no /ja, /zh prefixes, NO hreflang matrix — SEO §10)
+//   - default English URL is unprefixed, non-default locales use prefixes, and pages emit hreflang
+//     alternates plus x-default (SEO §10)
 //   - English default-locale metadata, <html lang="en"> (SEO §10 / §3)
 //   - per-page <title> / <meta description> / canonical-to-self + Open Graph (SEO §2 / §13)
 //   - at least one valid schema.org JSON-LD block per page (SEO §6)
-//   - /sitemap.xml enumerates the long tail (SEO §4) and /robots.txt is well-formed (SEO §5 / §11)
+//   - /sitemap.xml is a sitemap index, per-locale sitemaps enumerate the long tail (SEO §4),
+//     and /robots.txt is well-formed (SEO §5 / §11)
 //
 // Because the suite hits the network, it is opt-out via SEO_LIVE_BASE="" and tolerant of the
 // site's launch state: docs/SEO.md §11 keeps the site noindex / robots `Disallow: /` until
@@ -98,7 +100,7 @@ function ldJsonBlocks(html: string): string[] {
   return out;
 }
 
-/** Count of hreflang alternate links — policy (SEO §10) is zero. */
+/** Count of hreflang alternate links — policy (SEO §10) is x-default + supported locales. */
 function hreflangCount(html: string): number {
   const matches = html.match(/<link\b[^>]*\brel=["']alternate["'][^>]*\bhreflang=/gi);
   return matches ? matches.length : 0;
@@ -174,8 +176,8 @@ describe.each(PAGES)("SEO basics — $label", ({ path, canonPath }) => {
     }
   });
 
-  test("emits NO hreflang alternate matrix (policy: none — SEO §10)", () => {
-    expect(hreflangCount(page(path).html)).toBe(0);
+  test("emits the locale hreflang alternate matrix (SEO §10)", () => {
+    expect(hreflangCount(page(path).html)).toBe(8);
   });
 });
 
@@ -218,19 +220,26 @@ describe("document language", () => {
 });
 
 // --------------------------------------------------------------------------------------------
-// /sitemap.xml — valid XML urlset enumerating home + rankings + repo URLs (SEO §4).
+// /sitemap.xml — sitemap index; /sitemap-en.xml enumerates home + rankings + repo URLs (SEO §4).
 // --------------------------------------------------------------------------------------------
 
 describe("/sitemap.xml", () => {
   let xml = "";
+  let englishXml = "";
   let status = 0;
+  let englishStatus = 0;
   let ctype = "";
+  let englishCtype = "";
 
   beforeAll(async () => {
     const r = await get("/sitemap.xml");
     xml = r.html;
     status = r.status;
     ctype = r.contentType;
+    const en = await get("/sitemap-en.xml");
+    englishXml = en.html;
+    englishStatus = en.status;
+    englishCtype = en.contentType;
   });
 
   test("responds 200 as XML", () => {
@@ -238,19 +247,29 @@ describe("/sitemap.xml", () => {
     expect(ctype.toLowerCase()).toMatch(/xml/);
   });
 
-  test("is a well-formed <urlset> document", () => {
+  test("is a well-formed sitemap index document", () => {
     expect(xml).toContain("<?xml");
-    expect(xml).toMatch(/<urlset[\s>]/);
-    expect(xml).toMatch(/<\/urlset>/);
+    expect(xml).toMatch(/<sitemapindex[\s>]/);
+    expect(xml).toMatch(/<\/sitemapindex>/);
   });
 
-  test("contains several <loc> entries", () => {
-    const locs = xml.match(/<loc>/gi) ?? [];
-    expect(locs.length).toBeGreaterThan(10);
-  });
-
-  test("enumerates the homepage + rankings + repo URLs", () => {
+  test("contains the per-locale sitemap entries", () => {
     const locUrls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1].trim());
+    expect(locUrls).toContain(`${CANON_ORIGIN}/sitemap-en.xml`);
+    expect(locUrls).toContain(`${CANON_ORIGIN}/sitemap-ja.xml`);
+    expect(locUrls).toContain(`${CANON_ORIGIN}/sitemap-zh-TW.xml`);
+    expect(locUrls.length).toBeGreaterThanOrEqual(7);
+  });
+
+  test("English sitemap responds as a urlset", () => {
+    expect(englishStatus).toBe(200);
+    expect(englishCtype.toLowerCase()).toMatch(/xml/);
+    expect(englishXml).toMatch(/<urlset[\s>]/);
+    expect(englishXml).toMatch(/<\/urlset>/);
+  });
+
+  test("English sitemap enumerates the homepage + rankings + repo URLs", () => {
+    const locUrls = [...englishXml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1].trim());
     // homepage (apex, with or without trailing slash)
     expect(locUrls.some((u) => u === CANON_ORIGIN || u === `${CANON_ORIGIN}/`)).toBe(true);
     // a rankings month URL

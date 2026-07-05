@@ -2,15 +2,20 @@
 // (classic or fine-grained PAT, public repo read). Shared by backfill + weekly.
 
 import { MIN_TRACKED_STARS } from "../../web/lib/constants.mjs";
+import { fetchWithTimeout, GITHUB_FETCH_TIMEOUT_MS, isFetchTimeoutError } from "./fetch-timeout.mjs";
 
-const TOKEN = process.env.GITHUB_TOKEN;
 const REST = "https://api.github.com";
 const GQL = "https://api.github.com/graphql";
 
+function token() {
+  const value = process.env.GITHUB_TOKEN?.trim();
+  if (!value) throw new Error("GITHUB_TOKEN not set");
+  return value;
+}
+
 function headers() {
-  if (!TOKEN) throw new Error("GITHUB_TOKEN not set");
   return {
-    Authorization: `Bearer ${TOKEN}`,
+    Authorization: `Bearer ${token()}`,
     Accept: "application/vnd.github+json",
     "User-Agent": "gitstarclub-pipeline",
   };
@@ -27,11 +32,24 @@ function rateLimitWaitMs(res, attempt) {
   return Math.min(2 ** attempt * 1000, 60000);
 }
 
+function timeoutWaitMs(attempt) {
+  return Math.min(2 ** attempt * 1000, 60000);
+}
+
 async function restGet(path, params = {}) {
   const url = new URL(REST + path);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, { headers: headers() });
+    let res;
+    try {
+      res = await fetchWithTimeout(url, { headers: headers() }, { timeoutMs: GITHUB_FETCH_TIMEOUT_MS, label: "GitHub REST fetch" });
+    } catch (error) {
+      if (isFetchTimeoutError(error) && attempt <= 8) {
+        await sleep(timeoutWaitMs(attempt));
+        continue;
+      }
+      throw error;
+    }
     if ((res.status === 403 || res.status === 429) && attempt <= 8) {
       await sleep(rateLimitWaitMs(res, attempt));
       continue;
@@ -43,11 +61,24 @@ async function restGet(path, params = {}) {
 
 async function gql(query, variables = {}) {
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(GQL, {
-      method: "POST",
-      headers: { ...headers(), "Content-Type": "application/json" },
-      body: JSON.stringify({ query, variables }),
-    });
+    let res;
+    try {
+      res = await fetchWithTimeout(
+        GQL,
+        {
+          method: "POST",
+          headers: { ...headers(), "Content-Type": "application/json" },
+          body: JSON.stringify({ query, variables }),
+        },
+        { timeoutMs: GITHUB_FETCH_TIMEOUT_MS, label: "GitHub GraphQL fetch" },
+      );
+    } catch (error) {
+      if (isFetchTimeoutError(error) && attempt <= 8) {
+        await sleep(timeoutWaitMs(attempt));
+        continue;
+      }
+      throw error;
+    }
     if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt <= 8) {
       await sleep(rateLimitWaitMs(res, attempt));
       continue;

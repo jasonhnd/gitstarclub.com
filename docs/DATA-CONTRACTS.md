@@ -132,6 +132,7 @@ views/latest.json                              # 发布指针（读侧据此解�
 views/{run_id}/…                               # 一个 run 的完整视图版本（version=run_id，无独立 staging/published）
 ops/workflows/{run_id}/manifest.json           # Workflow run 元信息
 ops/workflows/{run_id}/steps/{step}.json       # 每个 step 的 checkpoint
+ops/workflows/active.json                      # 当前 refresh lease / idempotency key
 ops/workflows/latest-success.json              # 最近一次成功发布的 run_id（恢复点）
 ```
 
@@ -399,6 +400,25 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 ```
 
 `ops/workflows/latest-success.json` = `{ "run_id": "...", "version": "...", "published_at": "..." }`（恢复点）。
+
+`ops/workflows/active.json` 是 refresh 入口互斥 lease，由 `/api/workflows/refresh/start` 通过 Blob 条件写维护：
+
+```json
+{
+  "run_id": "refresh-2026-07-05T06-00-00-000Z",
+  "status": "running",
+  "acquired_at": "2026-07-05T06:00:00.000Z",
+  "expires_at": "2026-07-05T18:00:00.000Z",
+  "trigger_period": "2026-W27",
+  "idempotency_key": "refresh:2026-W27",
+  "last_event": "acquired",
+  "last_triggered_at": "2026-07-05T06:00:00.000Z"
+}
+```
+
+- `trigger_period` 是 weekly cron 的 ISO week id；同周期重复投递 attach 到已有 running/published run。
+- 未过期的其他 running run 让入口返回 `409`;过期 running 或 failed lease 可被新 run 接管。
+- 当前 active lease 的 `last_event` 由获取/接管/释放路径写为 `acquired` / `taken_over` / `released`；attached/rejected 的操作侧摘要写 `ops/workflows/health.json`。
 
 ### 2.13 `ops/workflows/{run_id}/validation.json` — 校验报告
 

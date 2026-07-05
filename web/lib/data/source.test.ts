@@ -1,20 +1,13 @@
 import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
+import { FetchTimeoutError } from "@/lib/fetch-timeout";
 
-// source.ts reads BLOB_BASE_URL at module-load time and memoises the published version
-// (views/latest.json) for 1h at module scope. So we must (1) set the env BEFORE importing
-// the SUT, and (2) drive Date.now() forward past the 1h TTL to invalidate the version memo
-// between scenarios. We route a mocked global fetch by URL to simulate pointer + view fetches.
-
-// MUST equal the base set in rank.test.ts: source.ts captures BLOB_BASE once at load, and
-// whichever test file loads source.ts first wins for the whole process. Using ??= + the same
-// value keeps the full lib/data/ suite order-independent (assertions below build on this base).
+// Route a mocked global fetch by URL to simulate pointer + view fetches.
 const BLOB = "https://blob.example.com";
 process.env.BLOB_BASE_URL ??= BLOB;
 // Guard: NEXT_PUBLIC fallback must not shadow the primary base in this test.
 delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
 
-// Import AFTER env is set so BLOB_BASE captures our test base.
 const { readView } = await import("./source");
 
 const Doc = z.object({ ok: z.boolean(), tag: z.string() });
@@ -151,5 +144,33 @@ describe("readView — non-base (flat) reads", () => {
     routes = {};
     const result = await readView("live/rank/week/2099-W01/repo/flow.json", Doc);
     expect(result).toBeNull();
+  });
+
+  test("reads the current BLOB_BASE_URL without re-importing the module", async () => {
+    const previous = process.env.BLOB_BASE_URL;
+    process.env.BLOB_BASE_URL = "https://runtime.example.com";
+    routes = {
+      "/runtime.json": { status: 200, json: { ok: true, tag: "runtime-env" } },
+    };
+
+    try {
+      const result = await readView("runtime.json", Doc);
+
+      expect(result).toEqual({ ok: true, tag: "runtime-env" });
+      expect(fetchCalls[0]).toContain("https://runtime.example.com/runtime.json");
+    } finally {
+      if (previous === undefined) delete process.env.BLOB_BASE_URL;
+      else process.env.BLOB_BASE_URL = previous;
+    }
+  });
+
+  test("surfaces stalled Blob reads as FetchTimeoutError", async () => {
+    globalThis.fetch = mock((_input: string | URL | Request, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(readView("stalled.json", Doc, { timeoutMs: 1 })).rejects.toBeInstanceOf(FetchTimeoutError);
   });
 });
