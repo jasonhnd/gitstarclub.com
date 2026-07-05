@@ -5,7 +5,9 @@
 
 ## Scope
 
-## Current Automation
+This document separates current automation from target coverage and planned gates. Use **Current automation** for real blockers, **Target coverage** for the testing strategy, and **Planned gates** for implementation status.
+
+## Current automation
 
 GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test`. PR tests set `SEO_LIVE_BASE=""` so the network-dependent live SEO suite stays out of the deterministic CI gate.
 
@@ -13,7 +15,13 @@ Dependency audit is also a PR gate. CI runs `bun run audit:deps` in both `web/` 
 
 Temporary dependency-audit overrides live in the affected package manifest, next to the lockfile they protect. As of this policy, `web/package.json` pins `undici` above the high-advisory floor while `workflow` still ships a vulnerable transitive pin, and pins `piscina` to the first fixed 4.x release while `@swc/cli` has not released an updated dependency range. `find-up@7` is a compatibility pin, not a security exception: it keeps Vercel Bun resolving the ESM package required by `workflow` builders while eslint keeps its own compatible nested `find-up@5`.
 
-The visual, a11y, E2E, performance, and cross-browser sections below remain target coverage until their Playwright/Lighthouse/browser tooling is added. They should not be treated as current PR blockers.
+Those three commands are the current PR/main CI blockers. `bun run test` maps to `bun test lib/`; the CI job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. No committed Playwright, Lighthouse, axe, or cross-browser job is enforced today.
+
+The Vercel Workflow `validate` step is a separate production-data publish gate: it samples `views/<run_id>/**` after recompute and blocks the `views/latest.json` pointer cut on validation failure. It is not a page-rendering or PR CI gate.
+
+## Target coverage
+
+The visual, a11y, E2E, performance, and cross-browser sections below remain target coverage until their Playwright/Lighthouse/browser tooling is added. They should not be treated as current PR blockers. The status table in **Planned gates** is the source of truth for whether each check is `enforced`, `manual`, `report-only`, `planned`, or `not implemented`.
 
 The issue #25 Lighthouse / Core Web Vitals baseline is archived in [perf/CWV-25.md](./perf/CWV-25.md). Treat that file as supporting evidence for one measured run; this document owns current performance targets and test expectations.
 
@@ -72,7 +80,7 @@ test('周排名窗口跨月不丢日', () => {
 
 ### 1.3 Sanity 不变量（数据级断言，对全量产物跑）
 
-这些是"数据物理定律"，对**每次 pipeline 全量输出**断言，任一违反即 CI 失败、阻断 deploy：
+这些是"数据物理定律"。目标状态是对**每次 pipeline 全量输出**断言，任一违反即阻断对应 gate；当前已自动化的范围见下方 **Planned gates** 状态表：
 
 | 不变量 | 阈值 / 规则 |
 |---|---|
@@ -212,7 +220,7 @@ test('周排名窗口跨月不丢日', () => {
 | CLS | < 0.1 |
 | FCP | < 1.5s |
 
-**结构性硬断言**（比 Lighthouse 评分更可靠，纳入 CI 阻断）：
+**结构性硬断言**（比 Lighthouse 评分更可靠，计划纳入后续 gates）：
 
 - **内容页零客户端 JS**：bundle 检查——除一小段内联主题切换脚本外，content 页不得 ship 任何客户端 JS chunk。这是架构红线，回归即 fail
 - **HTML < 20KB**：关键页渲染后 HTML 体积上限断言（直接降 bandwidth，见 ARCHITECTURE「Bandwidth 防御阶梯」）
@@ -231,31 +239,49 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ---
 
-## 在哪里跑 + 节奏
+## Planned gates
 
-> **两道闸门别混淆**：①**Workflow `validate` step**（生产数据重算后）只跑 §1.2 Zod + §1.3 sanity，**读 staging `views/<run_id>/**`**，不过则不切指针——它**不渲染页面**，所以视觉/a11y/E2E/perf/跨浏览器**不在这道闸门**。②**部署前 CI**（代码变更触发 deploy 前）跑视觉/a11y/E2E/perf/跨浏览器等渲染级门禁。
+> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/main CI 只强制 `bun run lint`、`bunx tsc --noEmit -p tsconfig.json`、`bun run test`。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Playwright / axe / Lighthouse / cross-browser gates 尚未提交自动化 tooling 时，都是 target coverage。
 
-| 测试 | 本地 | CI（PR） | Workflow `validate`（数据重算后，读 staging） | 部署前 CI（deploy 前） |
-|---|---|---|---|---|
-| 1.1 聚合 / 排名单测 | 是，快、随时 | 是，必过 | — | 是 |
-| 1.2 Zod schema 校验 | 是 | 是 | 是，产出即校验，脏 JSON 不切指针 | 是，build 读取前 |
-| 1.3 sanity 不变量 | 可选 | 是，对产物跑 | 是，**不过不切指针** | 是 |
-| 1.4 golden file | 是 | 是 | — | 是 |
-| 1.5 shard 等价 / 发布 / 回滚 | 是 | 是 | 是，staging 校验 + 指针闸门 | — |
-| 2. 视觉回归 | 选改动页 | 是，关键页全跑 | —（不渲染页面） | 是 |
-| 3. a11y（axe + 键盘） | 选改动页 | 是 | —（不渲染页面） | 是 |
-| 4. E2E 导航 / i18n | 选改动流 | 是 | —（不渲染页面） | 是 |
-| 5. 性能 / 零 JS bundle | 零 JS 检查随时 | 是，零 JS + HTML 体积阻断；Lighthouse 报告 | —（不渲染页面） | 是 |
-| 6. 跨浏览器 | 偶尔 | 是，关键页 | —（不渲染页面） | 是 |
+状态含义：`enforced` = 当前自动化 gate 会阻断；`manual` = reviewer / operator 可手动检查但不自动阻断；`report-only` = 有报告或基线但不阻断；`planned` = 已定义目标，尚无提交的 gate；`not implemented` = 尚无当前 tooling。
+
+| 检查 | 状态 | 当前执行位置 | 说明 / 目标 gate |
+|---|---|---|---|
+| `lint` | `enforced` | GitHub Actions PR/main：`bun run lint` | 当前 PR blocker |
+| TypeScript | `enforced` | GitHub Actions PR/main：`bunx tsc --noEmit -p tsconfig.json` | 当前 PR blocker |
+| `web/lib` test suite | `enforced` | GitHub Actions PR/main：`bun run test` → `bun test lib/` | 当前 PR blocker；覆盖纯逻辑、contracts、workflow validation、i18n/route/SEO helpers 等 |
+| 1.1 聚合 / 排名单测 | `enforced` | `bun test lib/` 中的 recompute / ranking / window / integration suites | 覆盖目标仍以 §1.1 为准 |
+| 1.2 Zod schema 契约 | `enforced` | `bun test lib/` contract tests；Workflow `validate` 抽样 staging 视图 | 全量产物校验仍是 target coverage |
+| 1.3 sanity 不变量 | `enforced` | Workflow `validate` step；相关 unit tests | 当前自动化范围是 §1.5 列出的抽样断言；§1.3 全量清单仍是 target coverage |
+| 1.4 golden file | `planned` | 无独立 gate | 已有 milestone 字段/展示逻辑测试；≥3 个知名 repo 的人工核对 golden baseline 尚未单独落地 |
+| 1.5 staging validate / pointer cut | `enforced` | Vercel Workflow `validate` step | `ok=false` 不切 `views/latest.json`；不是 PR 页面渲染 gate |
+| 1.5 full publish / rollback E2E | `planned` | 无独立 gate | 目标是发布、回滚、读侧原子性端到端验证 |
+| 2. 视觉回归 | `not implemented` | 无 Playwright screenshot job | 目标：关键页 × 4 断点 × 明暗双主题，基准入库 |
+| 3. a11y（axe + 键盘） | `not implemented` | 无 axe/browser a11y job | 目标：axe critical/serious 为 0 + 键盘/focus/reduced-motion/manual review |
+| 4. E2E 导航 / i18n browser flows | `not implemented` | 无 Playwright browser E2E job | `web/lib` 有部分 fetch/unit 覆盖，但不是浏览器 E2E gate |
+| 5. Lighthouse / CWV | `report-only` | `docs/perf/CWV-25.md` historical baseline | 目标：代表性页面自动 Lighthouse/CWV 报告；字段 INP 需 RUM/CrUX |
+| 5. 零 JS / HTML / font budgets | `planned` | 无独立 budget gate | 目标：脚本化 structural checks，并在 gate 中阻断 |
+| 6. 跨浏览器 | `not implemented` | 无 Playwright multi-engine job | 目标：chromium / firefox / webkit 关键页与渐进增强 fallback |
+| Vercel preview visual/perf review | `manual` | Reviewer 按改动页面检查 | 不是当前自动 gate；适合在 browser tooling 落地前补充 review 信号 |
 
 **节奏要点**：
 
-- **CI（每 PR）**：1.x 全套 + 2/3/4/5/6 在关键页跑。逻辑测试是门禁，必过；视觉 diff 与 Lighthouse 出报告供 review。
-- **Publish gate（Workflow `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 Zod + sanity，任一不变量违反即**不切 `views/latest.json` 指针**（线上仍上一版）——防脏数据进生产的最后闸门，运行于 Vercel Workflow 内（§1.5）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
-- **每日 / 每周 cron**：不触发 deploy，但 cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后，对活尾跑 §1.2 schema + §1.3 漂移/非负 sanity（秒级），异常告警（Sentry）而非静默。
-- **本地**：改聚合逻辑先跑 1.x；改组件先跑相关页的视觉 + a11y。遵循「改动靠 Vercel 预览确认」——视觉 / 性能以预览部署为准，不依赖本地 dev。
+- **CI（每 PR / main push）**：当前只跑 `bun run lint`、`bunx tsc --noEmit -p tsconfig.json`、`bun run test`，三者必过。视觉 / a11y / E2E / Lighthouse / cross-browser 目前不在 PR CI 中运行，也不阻断 PR。
+- **Publish gate（Workflow `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 的当前抽样 Zod + sanity，任一当前断言失败即**不切 `views/latest.json` 指针**（线上仍上一版）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
+- **Planned browser/render gates**：视觉、a11y、E2E、Lighthouse、cross-browser 自动化需要先提交对应 Playwright/Lighthouse/axe/browser tooling。当前文档未记录专门 tooling issue link 或目标日期；开出后在本节补链接。
+- **每日 / 每周 cron**：不触发 deploy；cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后的活尾 schema/sanity 告警属于 ops 目标，不是当前 PR CI gate。
+- **本地 / manual**：改聚合逻辑先跑相关 `bun test lib/...`；改组件可按 Vercel 预览手动看相关页视觉、a11y、性能，但这些手动检查不是当前自动 PR blocker。
 
 ## 验收清单
+
+### Required current checks
+
+- [ ] `web/` PR/main CI passes `bun run lint`
+- [ ] `web/` PR/main CI passes `bunx tsc --noEmit -p tsconfig.json`
+- [ ] `web/` PR/main CI passes `bun run test` (`bun test lib/`)
+- [ ] 涉及生产数据发布时，Workflow `validate` 失败仍不切 `views/latest.json` 指针
+
+### Target-state / planned checks
 
 - [ ] 聚合 / 排名单测覆盖 flow / stock+锚定 / 周月年全时边界 / org 求和，跑真切片（Parquet 子集 + 同源 JSON shard）
 - [ ] 全部 JSON 视图有 Zod schema，产出 + build 读取双校验
