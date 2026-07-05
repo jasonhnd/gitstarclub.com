@@ -26,9 +26,32 @@ Vercel Web Analytics remains enabled through `<Analytics />` in `web/app/_shell/
 14. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
 15. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
-Satellite docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [perf/CWV-25.md](./perf/CWV-25.md) for the pre-launch Lighthouse / Core Web Vitals baseline.
+Supporting docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout.
 
 Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural decisions: [ROADMAP.md](./ROADMAP.md).
+
+## Appendix documents
+
+Nested Markdown files under `docs/` are appendix documents. They are useful evidence or operational runbooks, but they do not replace the owning core documents listed above.
+
+### Reports and baselines
+
+| Document | Status | Owner / topic | Update when | Truth role |
+|---|---|---|---|---|
+| [perf/CWV-25.md](./perf/CWV-25.md) | Baseline | TESTING / performance | A newer Lighthouse or Core Web Vitals baseline is captured, or the old baseline needs an explicit closure note. | Supporting evidence for issue #25; [TESTING.md](./TESTING.md) owns current performance targets and gates. |
+
+### GEO operations
+
+| Document | Status | Owner / topic | Update when | Truth role |
+|---|---|---|---|---|
+| [geo/queries.md](./geo/queries.md) | Active | GEO measurement / citation review | Target queries, review cadence, page-type coverage, or miss classifications change. Re-run affected high-priority checks after schema, robots, sitemap, answer-capsule, ranking, category, methodology, or data-export changes. | Operational registry; [GEO.md](./GEO.md) remains the source of truth for strategy, metrics, and measurement intent. |
+| [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) | Active | GEO crawler and AI-referrer reporting | `geo:report` inputs, output fields, taxonomy, privacy rules, or operator commands change. | Operational runbook; [GEO.md](./GEO.md) owns the reporting intent, and [OPS.md](./OPS.md) owns production log/operations practice. |
+
+### Historical analyses
+
+| Document | Status | Owner / topic | Update when | Truth role |
+|---|---|---|---|---|
+| [analysis/DATA-CORRECTNESS-21.md](./analysis/DATA-CORRECTNESS-21.md) | Historical | Data correctness analysis for issue #21 / #36 follow-up planning | Only to add a closure note, link a follow-up issue, or correct an audit reference. Do not treat it as current product guidance. | Supporting evidence only; current ranking, contract, and test behavior belong to [RANKING.md](./RANKING.md), [DATA-CONTRACTS.md](./DATA-CONTRACTS.md), and [TESTING.md](./TESTING.md). |
 
 ## Responsibility per document
 
@@ -52,6 +75,10 @@ Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural 
 | PRODUCT | Product framing: identity, page surfaces, tone, data-honesty posture, i18n posture |
 | CATEGORIES | Category taxonomy, deterministic classification rules, category data artifacts, category route rollout |
 | INFORMATION-ARCHITECTURE | UX navigation narrative (reader's map); the authoritative route table is in FRONTEND §1.1 |
+| perf/CWV-25 | Baseline performance report for issue #25; supporting evidence, not current test policy |
+| geo/queries | Active GEO target-query registry and citation-review worksheet |
+| geo/ai-log-reporting | Active aggregate AI crawler / AI-referrer log reporting runbook |
+| analysis/DATA-CORRECTNESS-21 | Historical data-correctness analysis for issue #21 / #36 follow-up planning |
 | CHANGELOG | Versioned release history (what shipped and when) |
 | ROADMAP | Open work, architectural decisions, backlog |
 
@@ -78,6 +105,10 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Code module map / route ownership | CODEBASE |
 | Issue workflow / PR gates / visual guardrails | WORKFLOW |
 | Development change playbooks | DEVELOPMENT |
+| GEO target-query registry and citation-review worksheet | GEO; appendix maintained in [geo/queries.md](./geo/queries.md) |
+| GEO crawler / AI-referrer aggregate reporting | GEO and OPS; appendix maintained in [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) |
+| Core Web Vitals baseline evidence | TESTING owns current targets; appendix baseline in [perf/CWV-25.md](./perf/CWV-25.md) |
+| Historical data-correctness analysis | Current behavior lives in RANKING, DATA-CONTRACTS, and TESTING; appendix evidence in [analysis/DATA-CORRECTNESS-21.md](./analysis/DATA-CORRECTNESS-21.md) |
 | Release history | CHANGELOG |
 | Open work / architectural decisions | ROADMAP |
 

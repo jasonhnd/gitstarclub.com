@@ -298,6 +298,8 @@ blob://
 | **Cron 失败** | Sentry + `sync_runs` 状态 | **任一 cron 失败立即告警**——因无自动重试，漏一次每日 job = 活尾缺一天，必须人工补跑 |
 | 单日突刺 | pipeline sanity check | 单日新增极端突刺打日志告警（net 允许为负） |
 
+For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, use [geo/ai-log-reporting.md](./geo/ai-log-reporting.md). That appendix owns the operator command and taxonomy; this runbook owns the production log and alerting context.
+
 **告警通道**：Sentry 告警直发（邮件 / Slack 任一）。重点盯**两类无重试的失效**：cron 没跑 / 跑失败、数据漂移越界。
 
 > `sync_runs` 不需要数据库：当前实现覆盖写 Blob 上的 `ops/sync-runs.json`，保留最近 100 次运行；需要更强告警时再把同一条结构化事件同步到 Sentry / Slack。
