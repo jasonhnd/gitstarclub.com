@@ -553,7 +553,7 @@ Disallow: /
 - **launch 翻牌流程**：①Vercel 项目 production 环境加 `SITE_INDEXABLE=1`②redeploy（不需要改代码）③`robots.txt` 立即放开 + sitemap 暴露 + 根 layout 的全局 `robots: { index: true, follow: true }` 一起翻牌。
 - **不屏蔽任何内容页**：每个 locale 约 ~10k URL 全要被抓；爬虫预算靠 §3.3 稳定 `lastModified` + §9 内链结构 + per-locale sitemap 分片共同消化。
 - **屏蔽 `/api/`**：cron / 内部 route 不该被抓（真正防线是 `CRON_SECRET` 鉴权，见 [OPS.md](./OPS.md)；robots 只是减少噪声）。
-- **`/search-index`、`/repo-curve`（顶级 JSON 端点）故意放行**：均不在 `/api/` 下，故 `Disallow: /api/` 不覆盖它们。`/search-index` 是全站搜索的版本化索引（`search/index.json`），经发布指针由 Route Handler 服务、带 `s-maxage` 走 CDN，被搜索框首次聚焦时懒加载；`/repo-curve` 同理是 repo 曲线数据的版本化 JSON 端点（CDN 缓存、被详情页 / 对比页按需读取）。`robots.ts` 只 `Disallow: /api/`、不屏蔽这两者（CDN JSON、非内容页、对 SEO 无害）。若需拦爬虫抓这些 JSON，在 `robots.ts` 把 `/search-index`、`/repo-curve` 加到 Disallow 即可。
+- **`/search-index`、`/repo-curve`（顶级 JSON 端点）故意放行**：均不在 `/api/` 下，故 `Disallow: /api/` 不覆盖它们。两者的 endpoint contract 见 [API.md](./API.md)；`robots.ts` 只 `Disallow: /api/`、不屏蔽这两者（CDN JSON、非内容页、对 SEO 无害）。若需拦爬虫抓这些 JSON，在 `robots.ts` 把 `/search-index`、`/repo-curve` 加到 Disallow 即可。
 - **Preview deployment 的处理**：Preview 默认就 `SITE_INDEXABLE` 未设 → `Disallow: /`；再叠加 root layout 的 `robots: { index: false, follow: false }` meta（同一总开关驱动），共防一处。Preview 还需在 Vercel 项目设 Deployment Protection（PRIVATE），见 §11。
 - `host` 字段声明规范主机（少数爬虫用作镜像归并提示）。
 

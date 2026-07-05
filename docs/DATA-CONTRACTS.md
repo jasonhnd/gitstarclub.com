@@ -416,7 +416,7 @@ step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md
 
 ### 2.14 `search/index.json` — 客户端全站搜索
 
-recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描述头部截断 200 字符以控体积），随 entity/org step 写入 `views/<run_id>/search/index.json`，并入 `validate`（断言条目数 ≥ 阈值）。客户端 `SearchBox` 首次聚焦时懒加载 + 建 MiniSearch 索引（typo 容错 + prefix + 按 stars 加权），**零运行时后端**；读侧经 `/search-index` 路由（服务端解析发布指针读版本化产物，响应带 `s-maxage` 走 CDN）。schema `SearchIndex`/`SearchDoc`（`web/lib/contracts/search.ts`）。
+recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描述头部截断 200 字符以控体积），随 entity/org step 写入 `views/<run_id>/search/index.json`，并入 `validate`（断言条目数 ≥ 阈值）。客户端 `SearchBox` 首次聚焦时懒加载 + 建 MiniSearch 索引（typo 容错 + prefix + 按 stars 加权），**零运行时后端**；读侧经 `/search-index` 路由服务端解析发布指针读取版本化产物。endpoint method、cache、fallback 与 status contract 见 [API.md](./API.md)。schema `SearchIndex`/`SearchDoc`（`web/lib/contracts/search.ts`）。
 
 ```json
 {
@@ -432,7 +432,7 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
 
 ### 2.15 `/repo-curve?id=<id>` — 多 repo 对比瘦路由（无独立产物）
 
-多 repo 对比（`/compare`）需要浏览器**按需**取若干 repo 的曲线。**不新建 Blob 产物**：新增一个与 `/search-index` 同构的瘦服务端路由 `app/repo-curve/route.ts`，服务端经发布指针读版本化 `entity/repo/<id>.json`（§2.5），**投影**出对比所需的精简 payload 返回，响应带 `s-maxage` 走 CDN。schema `CompareCurve`（`web/lib/contracts/compare.ts`）：
+多 repo 对比（`/compare`）需要浏览器**按需**取若干 repo 的曲线。**不新建 Blob 产物**：`app/repo-curve/route.ts` 服务端经发布指针读版本化 `entity/repo/<id>.json`（§2.5），**投影**出对比所需的精简 payload 返回。endpoint method、query、cache、error status contract 见 [API.md](./API.md)。schema `CompareCurve`（`web/lib/contracts/compare.ts`）：
 
 ```json
 { "id": 10270250, "full_name": "facebook/react", "current_stars": 232000, "crossed_10k": "2014-09-15", "points": [["2014-01", 9800], ["2014-02", 10400]] }
