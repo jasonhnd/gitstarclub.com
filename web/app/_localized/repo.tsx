@@ -1,5 +1,3 @@
-import Link from "next/link";
-import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
@@ -7,13 +5,10 @@ import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
-import { StarCurve } from "@/app/_explore/StarCurve";
-import { ShareButton } from "@/app/_explore/ShareButton";
-import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { DAILY_BASE_VIEW_TTL_MS, getRepoIdByFullNameDaily, getRepoEntityDaily, getAliasMapDaily, getReposLookupDaily, getCategoryAssignments, getCategoryRegistry, getMeta } from "@/lib/data";
-import type { CategoryAssignments, CategoryRegistry, RepoEntity, RepoLookupEntry } from "@/lib/contracts";
-import { fmtStars, ymParts, monthLabel, monthYearLabel } from "@/lib/format";
+import type { RepoEntity } from "@/lib/contracts";
+import { fmtStars, ymParts, monthYearLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { repoLd, type FaqItem } from "@/lib/jsonld";
 import { exactRepoMilestones, type ExactRepoMilestone } from "@/lib/repo-milestones";
@@ -22,7 +17,8 @@ import { ANSWER_CAPSULE_SOURCE, resolveDataAsOfFromMeta, type AnswerCapsuleConte
 import { absoluteSnippetUrl, type ShareableSnippetContent } from "@/lib/shareable-snippets";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
-import { CATEGORY_DIMENSIONS, categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
+import { relatedRepositories, repoCategoryLinks, repoLanguageEntries } from "@/lib/repo-page";
+import { RepoAboutPanel, RepoHeaderSection, RepoHistorySection, RepoLinkHub, RepoMilestonesSection, RepoRecentSection } from "./repo-sections";
 
 
 // Resolve a URL slug → repo id. On a miss, if the slug is a former name of a still-tracked repo
@@ -68,7 +64,6 @@ export async function generateRepoMetadata({ locale, owner, name }: { locale: Lo
 export async function RepoPageView({ locale, owner, name }: { locale: Locale; owner: string; name: string }) {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
-  const href = (path: string) => localizedPath(locale, path);
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
   const id = await resolveRepoId(fullName, locale);
   if (id === undefined) notFound();
@@ -124,84 +119,8 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
         />
 
         <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-          <header className="animate-rise">
-            <h1 className="flex flex-wrap items-baseline gap-x-1 gap-y-1 font-mono text-[clamp(1.4rem,4vw,2.2rem)]">
-              <span className="text-on-surface-variant">{repo.owner} /</span>
-              <span className="font-semibold text-on-surface">{repo.name}</span>
-            </h1>
-            {repo.description && (
-              <p className="mt-3 max-w-[52ch] text-[clamp(1rem,1.7vw,1.2rem)] text-on-surface-variant">{repo.description}</p>
-            )}
-            <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">
-              <span className="text-readable-gold text-[1.6rem] font-extrabold tabular-nums">
-                {fmtStars(repo.current_stars)}
-                <span className="text-[0.9rem] text-on-surface-variant"> ★</span>
-              </span>
-              {languages[0] && (
-                <Link href={href(languageHref(languages[0].name))} className="text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]">
-                  {languages[0].name}
-                </Link>
-              )}
-              <span>
-                {t.repo.created} {monthLabel(locale, created.m, "short")} {created.y}
-              </span>
-              {repo.is_archived && (
-                <span className="text-tertiary">
-                  {t.repo.archived}
-                </span>
-              )}
-            </div>
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <ShareButton text={`${repo.full_name} — ${t.repo.starHistory}`} labels={t.share} />
-              <Link
-                href={href(`/compare?repos=${encodeURIComponent(repo.full_name)}`)}
-                className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-4 py-2 font-mono text-[0.78rem] text-on-surface transition-colors hover:bg-surface-container-high"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path d="M4 18v-6m0 0V6m0 6h16m0 0v6m0-6V6" strokeLinecap="round" />
-                </svg>
-                {t.compare.addToCompare}
-              </Link>
-            </div>
-          </header>
-
-          <aside className="rounded-2xl bg-surface-container px-4 py-4">
-            <h2 className="font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
-              {t.repo.about}
-            </h2>
-            {repo.description && <p className="mt-3 text-[0.95rem] leading-relaxed text-on-surface">{repo.description}</p>}
-            <dl className="mt-4 grid gap-3 text-[0.86rem]">
-              <MetaRow label={t.repo.owner} value={repo.owner} href={href(`/o/${repo.owner}`)} />
-              {languages.length > 0 && (
-                <MetaRow label={languages.length > 1 ? t.repo.languages : t.repo.language} value={<LanguageLinks languages={languages} totalSize={languageTotalSize} locale={locale} />} wrap />
-              )}
-              {repo.license && <MetaRow label={t.repo.license} value={repo.license} />}
-              {repo.homepage_url && <MetaRow label={t.repo.homepage} value={repo.homepage_url.replace(/^https?:\/\//, "")} href={repo.homepage_url} external />}
-              <MetaRow
-                label={t.repo.latestRelease}
-                value={repo.latest_release ? repo.latest_release.name || repo.latest_release.tag_name : t.repo.noRelease}
-                href={repo.latest_release?.url ?? undefined}
-                external={Boolean(repo.latest_release?.url)}
-              />
-            </dl>
-            {repo.topics.length > 0 && (
-              <div className="mt-5">
-                <h3 className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">
-                  {t.repo.topics}
-                </h3>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {repo.topics.slice(0, 12).map((tp) => (
-                    <span key={tp} className="rounded-full bg-surface-container-high px-2.5 py-1 font-mono text-[0.72rem] text-on-surface-variant">
-                      {tp}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            <a href={`https://github.com/${repo.full_name}`} rel="noreferrer" className="mt-5 inline-flex items-center gap-1 font-semibold text-tertiary transition-colors hover:text-primary hover:underline hover:underline-offset-[3px]">
-              {t.repo.github} →
-            </a>
-          </aside>
+          <RepoHeaderSection created={created} languages={languages} locale={locale} repo={repo} t={t} />
+          <RepoAboutPanel languageTotalSize={languageTotalSize} languages={languages} locale={locale} repo={repo} t={t} />
         </div>
 
         {capsule && <AnswerCapsule capsule={capsule} labels={capsuleLabels} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
@@ -209,294 +128,14 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
         <RepoLinkHub owner={repo.owner} categories={categoryLinks} related={related} locale={locale} t={t} />
 
         <div className="max-w-[60rem]">
-          {series.length > 1 && (
-            <section className="mt-[clamp(2rem,4vw,3rem)]">
-              <h2 className="mb-3 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
-                {t.repo.history}
-              </h2>
-              <StarCurve series={series} milestones={milestones} inflections={inflections} labels={{ ariaLabel: t.a11y.starHistory }} />
-            </section>
-          )}
-
-          {milestones.length > 0 && (
-            <section className="mt-[clamp(2rem,4vw,3rem)]">
-              <h2 className="mb-3 text-[1.2rem] font-extrabold tracking-tight text-on-surface">
-                {t.repo.milestones}
-              </h2>
-              <ul className="flex flex-wrap gap-2">
-                {milestones.map((m) => {
-                  const d = ymParts(m.date);
-                  return (
-                    <li key={m.stars}>
-                      <Link href={href(`/rankings/${d.y}/${d.m}`)} className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-4 py-2 transition-colors hover:bg-surface-container-high">
-                        <span className="text-readable-gold font-extrabold">{m.label}</span>
-                        <span className="font-mono text-[0.8rem] text-on-surface-variant">
-                          {monthLabel(locale, d.m, "short")} {d.y}
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-              {milestoneSnippet && <ShareableSnippet snippet={milestoneSnippet} labels={snippetLabels} className="mt-4" />}
-            </section>
-          )}
-
-          {monthly.length > 0 && (
-            <section className="mt-[clamp(2rem,4vw,3rem)]">
-              <h2 className="mb-3 text-[1.2rem] font-extrabold tracking-tight text-on-surface">
-                {t.repo.recent}
-              </h2>
-              <ul className="flex flex-col divide-y divide-outline-variant/50">
-                {monthly.map((row) => {
-                  const d = ymParts(row.month);
-                  return (
-                    <li key={row.month}>
-                      <Link href={href(`/rankings/${d.y}/${d.m}`)} className="group grid grid-cols-1 items-start gap-y-1 py-3 transition-colors hover:bg-on-surface/5 sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-4 sm:py-2.5">
-                        <span className="min-w-0 font-mono text-[0.9rem] text-on-surface group-hover:underline group-hover:underline-offset-2">
-                          {monthLabel(locale, d.m, "short")} {d.y}
-                        </span>
-                        <span className="font-mono text-[0.78rem] tabular-nums text-on-surface-variant sm:text-[0.85rem]">
-                          {row.rank != null ? (
-                            <>
-                              {t.repo.rank} #{row.rank}
-                            </>
-                          ) : (
-                            ""
-                          )}
-                        </span>
-                        <span className="font-semibold tabular-nums text-on-surface sm:w-20 sm:text-right">+{fmtStars(row.adds)}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
+          <RepoHistorySection series={series} milestones={milestones} inflections={inflections} t={t} />
+          <RepoMilestonesSection locale={locale} milestones={milestones} milestoneSnippet={milestoneSnippet} snippetLabels={snippetLabels} t={t} />
+          <RepoRecentSection locale={locale} monthly={monthly} t={t} />
         </div>
 
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
     </>
-  );
-}
-
-type RepoLanguage = { name: string; size?: number | null; color?: string | null };
-type CategoryLink = { id: string; label: string; href: string };
-type RelatedRepo = Pick<RepoLookupEntry, "full_name" | "owner" | "name" | "language" | "current_stars">;
-
-function repoLanguageEntries(repo: { language: string | null; languages?: RepoLanguage[] }): RepoLanguage[] {
-  const primarySlug = repo.language ? slugifyCategoryPart(repo.language) : null;
-  const breakdown = repo.languages ?? [];
-  const primaryEntry = primarySlug ? breakdown.find((language) => slugifyCategoryPart(language.name) === primarySlug) ?? { name: repo.language!, size: null, color: null } : null;
-  const source = primaryEntry ? [primaryEntry, ...breakdown.filter((language) => slugifyCategoryPart(language.name) !== primarySlug)] : breakdown;
-  const categoryLanguageSlugs = new Set(categoryLanguageNamesFromRepository(repo).map(slugifyCategoryPart));
-  const seen = new Set<string>();
-  return source.filter((language) => {
-    const name = language.name.trim();
-    const key = name.toLowerCase();
-    if (!name || seen.has(key)) return false;
-    if (!categoryLanguageSlugs.has(slugifyCategoryPart(name))) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function languageHref(name: string): string {
-  return `/categories/language/${slugifyCategoryPart(name)}`;
-}
-
-function categoryHref(dimension: string, slug: string): string {
-  return `/categories/${dimension}/${slug}`;
-}
-
-function repoCategoryLinks(
-  repoId: number,
-  assignments: CategoryAssignments | null,
-  registry: CategoryRegistry | null,
-  languages: RepoLanguage[],
-): CategoryLink[] {
-  const links = new Map<string, CategoryLink>();
-  for (const language of languages.slice(0, 3)) {
-    const slug = slugifyCategoryPart(language.name);
-    links.set(`language/${slug}`, { id: `language/${slug}`, label: language.name, href: languageHref(language.name) });
-  }
-
-  const assignment = assignments?.repositories[String(repoId)];
-  if (!assignment || !registry) return [...links.values()].slice(0, 8);
-
-  const registryById = new Map(
-    registry.dimensions.flatMap((dimension) =>
-      dimension.categories.filter((category) => category.public).map((category) => [category.id, category] as const),
-    ),
-  );
-
-  for (const dimension of CATEGORY_DIMENSIONS) {
-    for (const id of assignment[dimension]) {
-      const category = registryById.get(id);
-      if (!category || links.has(category.id)) continue;
-      links.set(category.id, {
-        id: category.id,
-        label: category.label,
-        href: categoryHref(category.dimension, category.slug),
-      });
-    }
-  }
-
-  return [...links.values()].slice(0, 8);
-}
-
-function relatedRepositories(
-  repo: { full_name: string; owner: string; language: string | null },
-  lookup: Record<string, RepoLookupEntry> | null,
-  limit = 6,
-): RelatedRepo[] {
-  if (!lookup) return [];
-  const rows = Object.values(lookup).filter((entry) => entry.full_name !== repo.full_name);
-  const sort = (a: RepoLookupEntry, b: RepoLookupEntry) => b.current_stars - a.current_stars || a.full_name.localeCompare(b.full_name);
-  const seen = new Set<string>();
-  const related: RelatedRepo[] = [];
-
-  for (const entry of rows.filter((candidate) => candidate.owner === repo.owner).sort(sort)) {
-    if (seen.has(entry.full_name)) continue;
-    seen.add(entry.full_name);
-    related.push(entry);
-  }
-
-  if (repo.language) {
-    for (const entry of rows.filter((candidate) => candidate.language === repo.language && candidate.owner !== repo.owner).sort(sort)) {
-      if (seen.has(entry.full_name)) continue;
-      seen.add(entry.full_name);
-      related.push(entry);
-      if (related.length >= limit) break;
-    }
-  }
-
-  return related.slice(0, limit);
-}
-
-function RepoLinkHub({
-  owner,
-  categories,
-  related,
-  locale,
-  t,
-}: {
-  owner: string;
-  categories: CategoryLink[];
-  related: RelatedRepo[];
-  locale: Locale;
-  t: Dict;
-}) {
-  const href = (path: string) => localizedPath(locale, path);
-  return (
-    <section aria-labelledby="repo-link-hub" className="mt-[clamp(1.75rem,3.5vw,2.5rem)] border-y border-outline-variant py-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 id="repo-link-hub" className="text-[1.05rem] font-extrabold text-on-surface">
-          {t.repo.relatedPages}
-        </h2>
-        <Link href={href("/categories")} className="text-readable-gold font-mono text-[0.78rem] hover:underline">
-          {t.nav.categories}
-        </Link>
-      </div>
-      <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_minmax(0,1.4fr)]">
-        <div className="min-w-0">
-          <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">{t.repo.owner}</p>
-          <Link href={href(`/o/${owner}`)} className="text-readable-gold mt-2 inline-block max-w-full truncate font-mono text-[0.9rem] font-semibold hover:underline" title={owner}>
-            /o/{owner}
-          </Link>
-        </div>
-        {categories.length > 0 && (
-          <div className="min-w-0">
-            <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">{t.nav.categories}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {categories.map((category) => (
-                <Link
-                  key={category.id}
-                  href={href(category.href)}
-                  className="rounded-full bg-surface-container-high px-2.5 py-1 font-mono text-[0.72rem] text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-primary"
-                >
-                  {category.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-        {related.length > 0 && (
-          <div className="min-w-0">
-            <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">{t.repo.relatedRepositories}</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {related.map((entry) => (
-                <Link
-                  key={entry.full_name}
-                  href={href(`/${entry.full_name}`)}
-                  className="min-w-0 rounded-lg bg-surface-container-high px-3 py-2 transition-colors hover:bg-surface-container-highest"
-                >
-                  <span className="block truncate font-mono text-[0.78rem] font-semibold text-on-surface" title={entry.full_name}>
-                    {entry.owner}/{entry.name}
-                  </span>
-                  <span className="mt-1 block font-mono text-[0.68rem] text-on-surface-variant">
-                    {fmtStars(entry.current_stars)}★{entry.language ? ` · ${entry.language}` : ""}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function LanguageLinks({ languages, totalSize, locale }: { languages: RepoLanguage[]; totalSize: number; locale: Locale }) {
-  const total = totalSize || languages.reduce((sum, language) => sum + Math.max(0, language.size ?? 0), 0);
-  return (
-    <div className="flex flex-wrap gap-2">
-      {languages.map((language) => {
-        const share = total > 0 && language.size ? Math.round((language.size / total) * 1000) / 10 : null;
-        return (
-          <Link
-            key={language.name}
-            href={localizedPath(locale, languageHref(language.name))}
-            className="inline-flex max-w-full items-center gap-2 rounded-full bg-surface-container-high px-2.5 py-1 font-mono text-[0.72rem] text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-primary"
-          >
-            {language.color && <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: language.color }} aria-hidden="true" />}
-            <span className="truncate">{language.name}</span>
-            {share !== null && <span className="shrink-0 text-on-surface-variant">{share}%</span>}
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
-function MetaRow({
-  label,
-  value,
-  href,
-  external = false,
-  wrap = false,
-}: {
-  label: ReactNode;
-  value: ReactNode;
-  href?: string;
-  external?: boolean;
-  wrap?: boolean;
-}) {
-  const valueNode = href ? (
-    <a href={href} className="truncate font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" {...(external ? { rel: "noreferrer" } : {})}>
-      {value}
-    </a>
-  ) : wrap ? (
-    <div className="min-w-0">{value}</div>
-  ) : (
-    <span className="truncate font-semibold text-on-surface">{value}</span>
-  );
-  return (
-    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3">
-      <dt className="font-mono text-on-surface-variant">{label}</dt>
-      <dd className="min-w-0">{valueNode}</dd>
-    </div>
   );
 }
 
