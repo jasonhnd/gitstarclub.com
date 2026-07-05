@@ -6,6 +6,7 @@ import type MiniSearch from "minisearch";
 import { fmtStars } from "@/lib/format";
 import type { CompareCurve, SearchDoc } from "@/lib/contracts";
 import type { SearchHit } from "@/lib/search/core";
+import { fetchRepoCurve } from "@/lib/compare/curve-fetch";
 import { MAX_COMPARE, MIN_COMPARE, parseRepos, serializeRepos } from "@/lib/compare/core";
 import { CompareCurve as CompareCurveChart } from "@/app/_explore/CompareCurve";
 
@@ -35,9 +36,22 @@ export type CompareClientLabels = {
   remove: string;
   pickerEmpty: string;
   pickerLoading: string;
+  pickerLoadError: string;
+  loadError: string;
+  retry: string;
   compareModesAria: string;
   starHistoryOverlayAria: string;
 };
+
+function formatRepoLabel(template: string, repo: string): string {
+  return template.replace("{repo}", repo);
+}
+
+function logCompareClientError(message: string, error: unknown) {
+  if (process.env.NODE_ENV !== "production") {
+    console.error(message, error);
+  }
+}
 
 export function CompareClient({ labels, comparePath = "/compare" }: { labels: CompareClientLabels; comparePath?: string }) {
   const router = useRouter();
@@ -46,9 +60,11 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
 
   const [engine, setEngine] = useState<Engine | null>(null);
   const [curves, setCurves] = useState<Map<string, CompareCurve>>(new Map());
+  const [curveErrors, setCurveErrors] = useState<Map<string, string>>(new Map());
   const pendingRef = useRef<Set<string>>(new Set());
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
+  const [pickerError, setPickerError] = useState(false);
 
   // Load global search index once (same /search-index endpoint used by SearchBox).
   useEffect(() => {
@@ -59,13 +75,16 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
           import("@/lib/search/core"),
           fetch("/search-index", { cache: "force-cache" }),
         ]);
+        if (!res.ok) throw new Error(`search index request failed: ${res.status}`);
         const data = (await res.json()) as { repos?: SearchDoc[] };
         if (cancelled) return;
         const docs = data.repos ?? [];
         const byFullName = new Map<string, SearchDoc>(docs.map((d) => [d.full_name.toLowerCase(), d]));
         setEngine({ ms: core.createIndex(docs), query: core.queryIndex, byFullName });
-      } catch {
-        // best-effort: if the index can't load, the picker stays inert; existing chips remain visible.
+        setPickerError(false);
+      } catch (error) {
+        logCompareClientError("[compare] failed to load search index", error);
+        if (!cancelled) setPickerError(true);
       }
     })();
     return () => {
@@ -78,33 +97,77 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
     if (!engine) return;
     const need = repos.filter((name) => {
       const key = name.toLowerCase();
-      return !curves.has(key) && !pendingRef.current.has(key);
+      return !curves.has(key) && !curveErrors.has(key) && !pendingRef.current.has(key);
     });
     if (need.length === 0) return;
     need.forEach((n) => pendingRef.current.add(n.toLowerCase()));
-    void Promise.all(
-      need.map(async (name) => {
-        const doc = engine.byFullName.get(name.toLowerCase());
-        if (!doc) return null;
-        const res = await fetch(`/repo-curve?id=${doc.id}`, { cache: "force-cache" });
-        if (!res.ok) return null;
-        return (await res.json()) as CompareCurve;
-      }),
-    ).then((results) => {
-      setCurves((prev) => {
-        const next = new Map(prev);
-        results.forEach((r) => {
-          if (r) next.set(r.full_name.toLowerCase(), r);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const results = await Promise.all(
+          need.map(async (name) => {
+            const key = name.toLowerCase();
+            const doc = engine.byFullName.get(key);
+            if (!doc) return { ok: false as const, name, key, reason: "missing-repo" };
+            return fetchRepoCurve(name, doc.id);
+          }),
+        );
+        if (cancelled) return;
+
+        setCurves((prev) => {
+          const next = new Map(prev);
+          results.forEach((result) => {
+            if (result.ok) next.set(result.curve.full_name.toLowerCase(), result.curve);
+          });
+          return next;
         });
-        return next;
-      });
-      need.forEach((n) => pendingRef.current.delete(n.toLowerCase()));
-    });
-  }, [engine, repos, curves]);
+
+        setCurveErrors((prev) => {
+          const next = new Map(prev);
+          results.forEach((result) => {
+            if (result.ok) {
+              next.delete(result.key);
+              return;
+            }
+            logCompareClientError(`[compare] failed to load curve for ${result.name}`, result);
+            next.set(result.key, result.name);
+          });
+          return next;
+        });
+      } catch (error) {
+        logCompareClientError("[compare] unexpected curve batch failure", error);
+        if (!cancelled) {
+          setCurveErrors((prev) => {
+            const next = new Map(prev);
+            need.forEach((name) => next.set(name.toLowerCase(), name));
+            return next;
+          });
+        }
+      } finally {
+        need.forEach((n) => pendingRef.current.delete(n.toLowerCase()));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [engine, repos, curves, curveErrors]);
 
   const orderedCurves = useMemo(
     () => repos.map((n) => curves.get(n.toLowerCase())).filter((c): c is CompareCurve => Boolean(c)),
     [repos, curves],
+  );
+  const failedRepos = useMemo(
+    () =>
+      repos
+        .map((name) => {
+          const key = name.toLowerCase();
+          const failedName = curveErrors.get(key);
+          return failedName ? { key, name: failedName } : null;
+        })
+        .filter((entry): entry is { key: string; name: string } => Boolean(entry)),
+    [repos, curveErrors],
   );
 
   const updateRepos = useCallback(
@@ -130,9 +193,24 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
   const remove = useCallback(
     (fullName: string) => {
       updateRepos(repos.filter((n) => n.toLowerCase() !== fullName.toLowerCase()));
+      setCurveErrors((prev) => {
+        const next = new Map(prev);
+        next.delete(fullName.toLowerCase());
+        return next;
+      });
     },
     [repos, updateRepos],
   );
+
+  const retry = useCallback((fullName: string) => {
+    const key = fullName.toLowerCase();
+    pendingRef.current.delete(key);
+    setCurveErrors((prev) => {
+      const next = new Map(prev);
+      next.delete(key);
+      return next;
+    });
+  }, []);
 
   const onQueryChange = (v: string) => {
     setQ(v);
@@ -195,7 +273,7 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
         )}
         {q.trim() && hits.length === 0 && (
           <p role="status" aria-live="polite" className="mt-2 px-3 font-mono text-[0.75rem] text-on-surface-variant">
-            {engine ? labels.pickerEmpty : labels.pickerLoading}
+            {pickerError ? labels.pickerLoadError : engine ? labels.pickerEmpty : labels.pickerLoading}
           </p>
         )}
         {repos.length > 0 && (
@@ -213,6 +291,34 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
                     ×
                   </span>
                 </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {failedRepos.length > 0 && (
+          <ul className="mt-3 space-y-2" aria-live="polite">
+            {failedRepos.map((entry) => (
+              <li
+                key={entry.key}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[color:var(--chart-cat-5)] bg-surface-container-high px-3 py-2 font-mono text-[0.75rem] text-on-surface"
+              >
+                <span>{formatRepoLabel(labels.loadError, entry.name)}</span>
+                <span className="inline-flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => retry(entry.name)}
+                    className="min-h-9 rounded-full bg-surface px-3 py-1 font-semibold text-on-surface transition-colors hover:bg-on-surface/10"
+                  >
+                    {labels.retry}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(entry.name)}
+                    className="min-h-9 rounded-full bg-surface px-3 py-1 font-semibold text-on-surface transition-colors hover:bg-on-surface/10"
+                  >
+                    {labels.remove}
+                  </button>
+                </span>
               </li>
             ))}
           </ul>

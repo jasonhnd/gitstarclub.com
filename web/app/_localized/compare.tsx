@@ -55,6 +55,9 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
     remove: t.compare.remove,
     pickerEmpty: t.search.empty,
     pickerLoading: t.search.loading,
+    pickerLoadError: t.compare.pickerLoadError,
+    loadError: t.compare.loadError,
+    retry: t.compare.retry,
     compareModesAria: t.a11y.compareModes,
     starHistoryOverlayAria: t.a11y.starHistoryOverlay,
   };
