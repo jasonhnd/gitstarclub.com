@@ -141,6 +141,48 @@ describe("buildDataExportBundle", () => {
 
     expect(csv).toBe('name\n"quoted, ""repo""\nnext"\n');
   });
+
+  test("neutralizes CSV formula prefixes in string cells", () => {
+    const csv = toCsv(
+      {
+        schema_version: DATA_EXPORT_SCHEMA_VERSION,
+        export_name: "sample",
+        title: "Sample",
+        export_date: "2026-06-24",
+        data_as_of: "2026-06-24T00:00:00.000Z",
+        license: DATA_EXPORT_LICENSE,
+        attribution: DATA_EXPORT_ATTRIBUTION,
+        generated_from: "Existing precomputed GitStarClub Blob views.",
+        source_views: ["sample.json"],
+        row_count: 8,
+        rows: [
+          { name: "=1+1", score: -42 },
+          { name: "+1+1", score: 1 },
+          { name: "-1+1", score: 2 },
+          { name: "@cmd", score: 3 },
+          { name: "\tcmd", score: 4 },
+          { name: "\rcmd", score: 5 },
+          { name: "\ncmd", score: 6 },
+          { name: "normal", score: 7 },
+        ],
+      } satisfies JsonExport<{ name: string; score: number }>,
+      ["name", "score"],
+    );
+
+    expect(csv).toBe(
+      [
+        "name,score",
+        "'=1+1,-42",
+        "'+1+1,1",
+        "'-1+1,2",
+        "'@cmd,3",
+        "'\tcmd,4",
+        `"'\rcmd",5`,
+        `"'\ncmd",6`,
+        "normal,7",
+      ].join("\n") + "\n",
+    );
+  });
 });
 
 describe("checked-in data export manifest", () => {
