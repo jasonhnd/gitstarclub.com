@@ -1,19 +1,15 @@
-import type { Metadata } from "next";
+import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import { AboutPageView, generateAboutMetadata } from "@/app/_localized/about";
-import { generateCoreLocaleStaticParams, resolveRouteLocale, type LocaleParams } from "@/app/_localized/routing";
+import { generateCoreLocaleStaticParams } from "@/app/_localized/routing";
 
 export const revalidate = false;
 
-export function generateStaticParams() {
-  return generateCoreLocaleStaticParams();
-}
+export const generateStaticParams = generateCoreLocaleStaticParams;
 
-export async function generateMetadata({ params }: { params: LocaleParams }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  return generateAboutMetadata(locale);
-}
+const route = createLocalizedPage({
+  generateMetadata: ({ locale }) => generateAboutMetadata(locale),
+  render: ({ locale }) => <AboutPageView locale={locale} />,
+});
 
-export default async function LocalizedAboutPage({ params }: { params: LocaleParams }) {
-  const locale = await resolveRouteLocale(params);
-  return <AboutPageView locale={locale} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

@@ -1,13 +1,13 @@
-import type { Metadata } from "next";
+import { createEnglishPage } from "@/app/_localized/page-adapter";
 import { generateCompareMetadata, ComparePageView } from "@/app/_localized/compare";
 
 export const dynamic = "force-static";
 export const revalidate = false;
 
-export async function generateMetadata(): Promise<Metadata> {
-  return generateCompareMetadata("en");
-}
+const route = createEnglishPage({
+  generateMetadata: ({ locale }) => generateCompareMetadata(locale),
+  render: ({ locale }) => <ComparePageView locale={locale} />,
+});
 
-export default function ComparePage() {
-  return <ComparePageView locale="en" />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

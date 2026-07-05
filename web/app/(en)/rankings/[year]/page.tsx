@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import { createEnglishPage } from "@/app/_localized/page-adapter";
 import {
   generateRankingYearMetadata,
   generateRankingYearStaticParams,
@@ -12,12 +12,10 @@ export function generateStaticParams() {
   return generateRankingYearStaticParams();
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ year: string }> }): Promise<Metadata> {
-  const { year } = await params;
-  return generateRankingYearMetadata("en", year);
-}
+const route = createEnglishPage<{ year: string }>({
+  generateMetadata: ({ locale, params: { year } }) => generateRankingYearMetadata(locale, year),
+  render: ({ locale, params: { year } }) => <RankingsYearPageView locale={locale} year={year} />,
+});
 
-export default async function RankingsYearPage({ params }: { params: Promise<{ year: string }> }) {
-  const { year } = await params;
-  return <RankingsYearPageView locale="en" year={year} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

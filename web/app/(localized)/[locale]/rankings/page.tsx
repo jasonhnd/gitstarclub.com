@@ -1,19 +1,15 @@
-import type { Metadata } from "next";
+import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import { generateRankingsMetadata, RankingsPageView } from "@/app/_localized/rankings";
-import { generateCoreLocaleStaticParams, resolveRouteLocale, type LocaleParams } from "@/app/_localized/routing";
+import { generateCoreLocaleStaticParams } from "@/app/_localized/routing";
 
 export const revalidate = false;
 
-export function generateStaticParams() {
-  return generateCoreLocaleStaticParams();
-}
+export const generateStaticParams = generateCoreLocaleStaticParams;
 
-export async function generateMetadata({ params }: { params: LocaleParams }): Promise<Metadata> {
-  const locale = await resolveRouteLocale(params);
-  return generateRankingsMetadata(locale);
-}
+const route = createLocalizedPage({
+  generateMetadata: ({ locale }) => generateRankingsMetadata(locale),
+  render: ({ locale }) => <RankingsPageView locale={locale} />,
+});
 
-export default async function LocalizedRankingsPage({ params }: { params: LocaleParams }) {
-  const locale = await resolveRouteLocale(params);
-  return <RankingsPageView locale={locale} />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;

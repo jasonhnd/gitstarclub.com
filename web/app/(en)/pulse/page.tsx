@@ -1,12 +1,12 @@
-import type { Metadata } from "next";
+import { createEnglishPage } from "@/app/_localized/page-adapter";
 import { generatePulseMetadata, PulsePageView } from "@/app/_localized/pulse";
 
 export const revalidate = false;
 
-export async function generateMetadata(): Promise<Metadata> {
-  return generatePulseMetadata({ locale: "en", canonicalPath: "/pulse" });
-}
+const route = createEnglishPage({
+  generateMetadata: ({ locale }) => generatePulseMetadata({ locale, canonicalPath: "/pulse" }),
+  render: ({ locale }) => <PulsePageView locale={locale} canonicalPath="/pulse" />,
+});
 
-export default function PulsePage() {
-  return <PulsePageView locale="en" canonicalPath="/pulse" />;
-}
+export const generateMetadata = route.generateMetadata;
+export default route.Page;
