@@ -21,6 +21,7 @@ import {
   // workflow
   ViewsPointer,
   WorkflowManifest,
+  WorkflowLease,
   WorkflowStepCheckpoint,
   LatestSuccess,
   WorkflowValidation,
@@ -325,6 +326,18 @@ describe("workflow contracts", () => {
     expect(
       rejects(WorkflowManifest, { run_id: "r1", started_at: "x", status: "pending", steps: [], published_version: null }),
     ).toBe(true);
+  });
+
+  test("WorkflowLease parses idempotency metadata", () => {
+    const lease = WorkflowLease.parse({
+      run_id: "r1",
+      status: "running",
+      acquired_at: TS,
+      expires_at: TS,
+      idempotency_key: "workflow-refresh:2026-W27",
+      trigger: "manual-or-cron",
+    });
+    expect(lease.idempotency_key).toBe("workflow-refresh:2026-W27");
   });
 
   test("WorkflowStepCheckpoint parses with StepStatus enum", () => {

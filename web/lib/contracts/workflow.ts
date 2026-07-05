@@ -32,6 +32,8 @@ export const WorkflowLease = z.object({
   status: WorkflowStatus,
   acquired_at: TimestampStr,
   expires_at: TimestampStr,
+  idempotency_key: SafeText.optional(),
+  trigger: SafeText.optional(),
 }).strict();
 export type WorkflowLease = z.infer<typeof WorkflowLease>;
 

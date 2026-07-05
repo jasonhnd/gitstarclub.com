@@ -29,6 +29,8 @@ export type AlertSummary = {
   error?: string;
 };
 
+export type HealthStatus = "ok" | "failed" | "attached" | "rejected";
+
 /**
  * Emit a failure alert. Always logs a greppable "[ALERT]" line; additionally POSTs
  * to ALERT_WEBHOOK_URL when that env var is set. Never throws.
@@ -78,14 +80,15 @@ export async function sendAlert(summary: AlertSummary): Promise<void> {
  */
 export async function recordHealth(
   pipeline: AlertPipeline,
-  status: "ok" | "failed",
-  detail: { run_id?: string; error?: string } = {},
+  status: HealthStatus,
+  detail: { run_id?: string; error?: string; idempotency_key?: string } = {},
 ): Promise<void> {
   try {
     await putView(HEALTH_PATH, {
       pipeline,
       status,
       run_id: detail.run_id ?? null,
+      idempotency_key: detail.idempotency_key ?? null,
       error: detail.error ?? null,
       at: new Date().toISOString(),
     });
