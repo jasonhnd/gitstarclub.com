@@ -46,7 +46,7 @@ describe("IndexNow batching", () => {
       const result = await submitIndexNowUrls(["/pulse"], { source: "test" }, {
         base: "https://gitstarclub.com",
         enabled: true,
-        fetcher: async () => new Response("nope", { status: 500 }),
+        fetcher: (async () => new Response("nope", { status: 500 })) as unknown as typeof fetch,
       });
 
       expect(result.failed).toBe(1);

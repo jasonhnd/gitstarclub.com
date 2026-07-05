@@ -151,6 +151,8 @@ them when appropriate, but do not treat them as the final deployment check.
 cd web
 bun run lint
 bun run typecheck
+bun run typecheck:tests
+bun run typecheck:scripts
 bun test lib/
 bun run build
 ```

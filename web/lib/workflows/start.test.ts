@@ -88,7 +88,7 @@ describe("startRefreshWorkflowRoute", () => {
       now: new Date("2026-07-05T06:01:00.000Z"),
       leaseStore: store,
       recordHealth: async (_pipeline, status, detail) => {
-        health.push({ status, detail });
+        health.push({ status, detail: detail ?? {} });
       },
     });
 
@@ -107,7 +107,7 @@ describe("startRefreshWorkflowRoute", () => {
       now: new Date("2026-07-05T06:01:00.000Z"),
       leaseStore: store,
       recordHealth: async (_pipeline, status, detail) => {
-        health.push({ status, detail });
+        health.push({ status, detail: detail ?? {} });
       },
     });
 

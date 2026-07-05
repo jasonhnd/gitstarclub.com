@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "WebWorker"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "typeRoots": ["./web/node_modules/@types", "./pipeline/node_modules/@types"]
+  },
+  "include": [
+    "build.mjs",
+    "render-assets.mjs",
+    "scripts/**/*.mjs",
+    "pipeline/**/*.mjs",
+    "web/**/*.mjs",
+    "web/public/sw.js"
+  ],
+  "exclude": ["node_modules", "web/node_modules", "pipeline/node_modules", "pipeline/data", "web/.next"]
+}

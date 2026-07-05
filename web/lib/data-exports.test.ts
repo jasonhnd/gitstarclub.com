@@ -13,6 +13,7 @@ import {
   dataExportDownloadsFromManifest,
   readLatestStaticDataExportManifest,
   toCsv,
+  type ExportManifest,
   type JsonExport,
 } from "./data-exports";
 
@@ -190,14 +191,7 @@ describe("checked-in data export manifest", () => {
     const generatedManifestPath = latestDatedManifestPath();
     expect(generatedManifestPath).not.toBeNull();
     expect(existsSync(generatedManifestPath ?? "")).toBe(true);
-    const manifest = JSON.parse(readFileSync(generatedManifestPath ?? "", "utf8")) as {
-      schema_version: number;
-      export_date: string;
-      data_as_of: string;
-      license: { name: string; url: string };
-      attribution: string;
-      files: Array<{ name: string; rows: number; latest_urls: Record<string, string>; dated_urls: Record<string, string> }>;
-    };
+    const manifest = JSON.parse(readFileSync(generatedManifestPath ?? "", "utf8")) as ExportManifest;
 
     expect(manifest.schema_version).toBe(DATA_EXPORT_SCHEMA_VERSION);
     expect(manifest.export_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);

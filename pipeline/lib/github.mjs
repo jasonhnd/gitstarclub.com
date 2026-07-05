@@ -70,7 +70,9 @@ export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 6
   const out = new Map(); // id -> repo (dedups range-boundary overlap)
   const queue = [[minStars, maxStars]];
   while (queue.length) {
-    const [low, high] = queue.pop();
+    const range = queue.pop();
+    if (!range) break;
+    const [low, high] = range;
     const q = `stars:${low}..${high}`;
     const first = await restGet("/search/repositories", {
       q, sort: "stars", order: "desc", per_page: 100, page: 1,

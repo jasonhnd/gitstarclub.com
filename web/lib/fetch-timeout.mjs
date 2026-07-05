@@ -2,7 +2,16 @@ export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 export const BLOB_JSON_FETCH_TIMEOUT_MS = 5_000;
 export const GITHUB_FETCH_TIMEOUT_MS = 30_000;
 
+/**
+ * @typedef {(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>} Fetcher
+ * @typedef {RequestInit & { timeoutMs?: number, fetcher?: Fetcher, next?: unknown }} FetchWithTimeoutInit
+ */
+
 export class FetchTimeoutError extends Error {
+  /**
+   * @param {RequestInfo | URL} input
+   * @param {number} timeoutMs
+   */
   constructor(input, timeoutMs) {
     super(`fetch timed out after ${timeoutMs}ms: ${fetchInputLabel(input)}`);
     this.name = "FetchTimeoutError";
@@ -13,7 +22,7 @@ export class FetchTimeoutError extends Error {
 
 /**
  * @param {RequestInfo | URL} input
- * @param {RequestInit & { timeoutMs?: number, fetcher?: typeof fetch, next?: unknown }} [init]
+ * @param {FetchWithTimeoutInit} [init]
  * @returns {Promise<Response>}
  */
 export async function fetchWithTimeout(input, init = {}) {
@@ -30,6 +39,7 @@ export async function fetchWithTimeout(input, init = {}) {
 
   const controller = new AbortController();
   const timeoutError = new FetchTimeoutError(input, timeoutMs);
+  /** @type {ReturnType<typeof setTimeout> | null} */
   let timeout = null;
 
   const abortFromCaller = () => {
@@ -65,12 +75,14 @@ export async function fetchWithTimeout(input, init = {}) {
   }
 }
 
+/** @param {RequestInfo | URL} input */
 function fetchInputLabel(input) {
   if (typeof input === "string") return input;
   if (input instanceof URL) return input.toString();
   return input.url;
 }
 
+/** @param {unknown} error */
 function isAbortError(error) {
   return error instanceof DOMException && error.name === "AbortError";
 }
