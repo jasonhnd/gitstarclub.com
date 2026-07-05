@@ -20,10 +20,18 @@ jobs:
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
+      - run: bun run deps:audit
+      - run: bun run typecheck
+      - run: bun run typecheck:tests
       - run: bun run lint
-      - run: bunx tsc --noEmit -p tsconfig.json
       - run: bun run test
         env:
           # source.ts captures BLOB_BASE at module load; the readView unit tests need a
           # truthy base (fetch is mocked by path). Mirrors local .env.local.
           BLOB_BASE_URL: https://blob.example.com
+      - run: bun install --frozen-lockfile
+        working-directory: pipeline
+      - run: bun run typecheck
+        working-directory: pipeline
+      - run: bun run deps:audit
+        working-directory: pipeline

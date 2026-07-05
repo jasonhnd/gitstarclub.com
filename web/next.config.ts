@@ -2,39 +2,12 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
+import { buildSecurityHeaders } from "./lib/security";
 
 // Canonical URLs do not carry locale prefixes. Language is a cookie-backed in-page
 // preference, while repo pages mirror GitHub as /owner/name.
 const isProduction = process.env.NODE_ENV === "production";
-const scriptSrc =
-  isProduction
-    ? "'self' 'unsafe-inline'"
-    : `'self' 'unsafe-inline' 'unsafe-eval'`;
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  "object-src 'none'",
-  `script-src ${scriptSrc}`,
-  "script-src-attr 'none'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self'",
-  "connect-src 'self'",
-  "manifest-src 'self'",
-  "worker-src 'self'",
-  ...(isProduction ? ["upgrade-insecure-requests"] : []),
-].join("; ");
-
-const securityHeaders = [
-  { key: "Content-Security-Policy", value: contentSecurityPolicy },
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-];
+const securityHeaders = buildSecurityHeaders({ isProduction });
 
 const exportRoot = join(process.cwd(), "public", "data", "exports", "v1");
 
@@ -50,6 +23,11 @@ function latestDataExportDate(): string | null {
 }
 
 const nextConfig: NextConfig = {
+  experimental: {
+    sri: {
+      algorithm: "sha256",
+    },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

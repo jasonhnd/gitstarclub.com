@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { DateStr, NonNegativeInt, Period, OwnerType, SafeText, TimestampStr } from "./common";
+import { DateStr, HttpUrlString, MonthPeriod, NonNegativeInt, Period, OwnerType, SafeText, TimestampStr } from "./common";
 
 // entity/repo/{id}.json, entity/org/{login}.json, heatmap/*.json.
 // See docs/DATA-CONTRACTS.md §2.5–2.7.
 
 /** [period, adds, total_end] — historical monthly point. */
-export const MonthlyPoint = z.tuple([Period, z.number().int(), NonNegativeInt]);
+export const MonthlyPoint = z.tuple([MonthPeriod, z.number().int(), NonNegativeInt]);
 /** [date, net_adds] — recent daily point (net may be negative). */
 export const DailyPoint = z.tuple([DateStr, z.number().int()]);
 
@@ -26,8 +26,6 @@ export const Inflection = z.object({
 }).strict();
 export type Inflection = z.infer<typeof Inflection>;
 
-const UrlString = z.union([z.string().url(), z.literal("")]);
-
 export const RepoEntity = z.object({
   id: NonNegativeInt,
   full_name: SafeText,
@@ -46,14 +44,14 @@ export const RepoEntity = z.object({
     )
     .optional(),
   topics: z.array(SafeText),
-  homepage_url: UrlString.nullable().optional(),
+  homepage_url: HttpUrlString.nullable().optional(),
   license: SafeText.nullable().optional(),
   latest_release: z
     .object({
       name: SafeText.nullable().optional(),
       tag_name: SafeText,
       published_at: DateStr.nullable().optional(),
-      url: UrlString.nullable().optional(),
+      url: HttpUrlString.nullable().optional(),
     })
     .strict()
     .nullable()
@@ -69,7 +67,7 @@ export const RepoEntity = z.object({
   curve: Curve,
   monthly_table: z.array(
     z.object({
-      month: Period,
+      month: MonthPeriod,
       adds: z.number().int(),
       rank: NonNegativeInt.nullable(),
     }).strict(),
@@ -97,6 +95,22 @@ export const Heatmap = z.object({
     period: Period,
     generated_at: TimestampStr,
   }).strict(),
-  cells: z.array(z.tuple([z.string(), z.number().int()])),
-}).strict();
+  cells: z.array(z.union([z.tuple([DateStr, z.number().int()]), z.tuple([MonthPeriod, z.number().int()])])),
+}).strict().superRefine((heatmap, ctx) => {
+  if (heatmap.meta.scope === "year" && !/^\d{4}$/.test(heatmap.meta.period)) {
+    ctx.addIssue({ code: "custom", path: ["meta", "period"], message: "year heatmap period must be YYYY" });
+  }
+  if (heatmap.meta.scope === "month" && !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(heatmap.meta.period)) {
+    ctx.addIssue({ code: "custom", path: ["meta", "period"], message: "month heatmap period must be YYYY-MM" });
+  }
+  for (let i = 0; i < heatmap.cells.length; i++) {
+    const [period] = heatmap.cells[i];
+    if (heatmap.meta.scope === "year" && !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(period)) {
+      ctx.addIssue({ code: "custom", path: ["cells", i, 0], message: "year heatmap cells must use YYYY-MM" });
+    }
+    if (heatmap.meta.scope === "month" && !/^\d{4}-\d{2}-\d{2}$/.test(period)) {
+      ctx.addIssue({ code: "custom", path: ["cells", i, 0], message: "month heatmap cells must use YYYY-MM-DD" });
+    }
+  }
+});
 export type Heatmap = z.infer<typeof Heatmap>;

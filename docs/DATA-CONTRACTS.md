@@ -9,8 +9,10 @@
 
 ## 全局约定
 
-- **日期**：一律 UTC，`YYYY-MM-DD`。
-- **周期标识 `period`**：周 = ISO 周 `YYYY-Www`（如 `2024-W42`）；月 `YYYY-MM`；年 `YYYY`；全时 `all`。
+- **日期**：一律 UTC，`YYYY-MM-DD`，契约会拒绝不存在的日历日期（如 `2024-02-30`）。
+- **时间戳**：`generated_at` / `published_at` / checkpoint 时间戳必须是带时区的 ISO timestamp（如 `2024-06-01T00:00:00.000Z`）。
+- **周期标识 `period`**：周 = 有效 ISO 周 `YYYY-Www`（如 `2024-W42`）；月 `YYYY-MM`（01–12）；年 `YYYY`；全时 `all`。字段语义明确为月/周/年时使用对应专用 schema，而不是宽泛字符串。
+- **外部 URL**：契约只接受 `http://` / `https://`（以及历史兼容的空字符串 sentinel）；`javascript:` / `data:` / `file:` 等非 web 协议会被拒绝。渲染层也会在输出可点击外链前再次校验。
 - **主键**：repo = GitHub 数字 `repo_id`（不可变，跨改名稳定）；org = `owner` login 字符串。
 - **数值**：整数。`delta` / flow 在 seam 后为 net，**可为负**（取消 star）；stock（累计）非负。
 - **契约硬线**：`current_stars` / `current_stars_sum` / `stars` / count 类字段非负；`RankItem.value` 仍可为负（net flow）。`RankItem` 必须且只能携带 `id`（repo）或 `login`（org）之一。
@@ -48,12 +50,12 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 | `description` | string\|null | |
 | `language` | string\|null | 主语言 |
 | `topics` | string[] | |
-| `created_at` | string | repo 创建日 ISO |
+| `created_at` | string | repo 创建日 UTC `YYYY-MM-DD` |
 | `current_stars` | int | GraphQL 权威当前总数（**唯一必须精确的数**） |
 | `is_archived` | bool | |
 | `crossed_10k/50k/100k` | string\|null | 首破里程碑精确日期（供"历史上的今天"） |
 | `tracked_since` | string\|null | 进入白名单 / 开始追踪的日期。bootstrap 基线 repo 为 `null`（有完整历史）；新晋 repo = 发现日（页面据此标注，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10） |
-| `fetched_at` | string | 元数据抓取时刻 |
+| `fetched_at` | string | 元数据抓取时刻，带时区 ISO timestamp |
 
 ### 1.3 `meta`（→ `meta.json`）
 
@@ -260,7 +262,7 @@ Rules:
 - `languages`: optional GitHub language breakdown from GraphQL
   `Repository.languages`, sorted by byte size descending. Older published shards
   may omit it; pages fall back to the primary `language` field.
-- `homepage_url` / `license` / `latest_release`：可选 GitHub metadata 字段。页面只读 JSON 视图；这些字段由离线 metadata pipeline / cron 补齐，不在请求路径实时抓 GitHub。`homepage_url` 也可作为 repo JSON-LD `sameAs` 的 deterministic first-party identity source。
+- `homepage_url` / `license` / `latest_release`：可选 GitHub metadata 字段。`homepage_url` 与 `latest_release.url` 只允许 `http(s)` URL；页面只读 JSON 视图并在渲染前再次过滤，不安全 URL 不会成为可点击链接。这些字段由离线 metadata pipeline / cron 补齐，不在请求路径实时抓 GitHub。`homepage_url` 也可作为 repo JSON-LD `sameAs` 的 deterministic first-party identity source。
 - `curve.recent_daily`：`[date, net_adds]`——近 ~90 天日点（曲线尾部），可负。
 - `monthly_table`：近 N 月的新增 + 当月 flow 名次。
 - `rank_history`：可选，名次史（驱动"名次走势"）。

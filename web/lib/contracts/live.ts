@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { DateStr, NonNegativeInt, RankItem, TimestampStr } from "./common";
+import { DateStr, MonthPeriod, NonNegativeInt, RankItem, TimestampStr, YearPeriod } from "./common";
 
 // Live tail + hot snapshot, written daily by cron. See docs/DATA-CONTRACTS.md §2.8–2.9.
 
 /** current_month.json — in-progress month, append-only by UTC day. */
 export const CurrentMonth = z.object({
-  month: z.string(), // 'YYYY-MM'
+  month: MonthPeriod,
   updated: DateStr,
   daily_totals: z.array(z.tuple([DateStr, z.number().int()])),
   per_repo: z.record(z.string(), z.array(z.tuple([DateStr, z.number().int()]))),
@@ -23,7 +23,7 @@ const TopLists = z.object({
 export const HotSnapshot = z.object({
   generated_at: TimestampStr,
   home: z.object({
-    year_spine: z.array(z.tuple([z.string(), z.number().int()])),
+    year_spine: z.array(z.tuple([YearPeriod, z.number().int()])),
     current_month_top: TopLists,
     on_this_day: z.array(
       z.object({ id: NonNegativeInt, crossed: z.string(), date: DateStr }).strict(),

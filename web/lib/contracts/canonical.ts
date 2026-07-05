@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DateStr, NonNegativeInt, OwnerType, Period, SafeText, TimestampStr } from "./common";
+import { DateStr, MonthPeriod, NonNegativeInt, OwnerType, SafeText, TimestampStr, WeekPeriod, YearPeriod } from "./common";
 
 // canonical/v2/* — production canonical JSON shards that replace the bootstrap
 // star_daily.parquet as the production source of truth. See docs/DATA-CONTRACTS.md
@@ -10,8 +10,8 @@ export const CanonicalMeta = z.object({
   seam_date: DateStr,
   schema_ver: NonNegativeInt,
   folded_through: z.object({
-    month: Period,
-    week: Period,
+    month: MonthPeriod,
+    week: WeekPeriod,
   }).strict(),
 }).strict();
 export type CanonicalMeta = z.infer<typeof CanonicalMeta>;
@@ -37,13 +37,13 @@ export const ReposShardEntry = z.object({
     )
     .optional(),
   topics: z.array(SafeText).optional(),
-  created_at: z.string().optional(),
+  created_at: DateStr.optional(),
   current_stars: NonNegativeInt,
   is_archived: z.boolean().optional(),
-  crossed_10k: z.string().nullable().optional(),
-  crossed_50k: z.string().nullable().optional(),
-  crossed_100k: z.string().nullable().optional(),
-  tracked_since: z.string().nullable().optional(),
+  crossed_10k: DateStr.nullable().optional(),
+  crossed_50k: DateStr.nullable().optional(),
+  crossed_100k: DateStr.nullable().optional(),
+  tracked_since: DateStr.nullable().optional(),
   d: z.number().nonnegative().optional(),
   fetched_at: TimestampStr.optional(),
 }).strict();
@@ -54,12 +54,13 @@ export const ReposShard = z.record(z.string(), ReposShardEntry);
 export type ReposShard = z.infer<typeof ReposShard>;
 
 /** [period, flow] series per repo (seam-前 gross / 后 net). */
-const PeriodSeries = z.array(z.tuple([Period, z.number().int()]));
+const MonthlyPeriodSeries = z.array(z.tuple([MonthPeriod, z.number().int()]));
+const WeeklyPeriodSeries = z.array(z.tuple([WeekPeriod, z.number().int()]));
 /** canonical/v2/repo-monthly/<bucket>.json — { "<id>": [[month, flow], ...] }. */
-export const RepoMonthlyShard = z.record(z.string(), PeriodSeries);
+export const RepoMonthlyShard = z.record(z.string(), MonthlyPeriodSeries);
 export type RepoMonthlyShard = z.infer<typeof RepoMonthlyShard>;
 /** canonical/v2/repo-weekly/<bucket>.json — { "<id>": [["YYYY-Www", flow], ...] }. */
-export const RepoWeeklyShard = z.record(z.string(), PeriodSeries);
+export const RepoWeeklyShard = z.record(z.string(), WeeklyPeriodSeries);
 export type RepoWeeklyShard = z.infer<typeof RepoWeeklyShard>;
 
 /** [date, net_delta] recent daily tail per repo (≤~90d, can be negative). */
@@ -70,7 +71,7 @@ export type RepoRecentDailyShard = z.infer<typeof RepoRecentDailyShard>;
 
 /** canonical/v2/site-daily/<yyyy>.json — site-wide daily totals (heatmap source). */
 export const SiteDaily = z.object({
-  year: z.string().regex(/^\d{4}$/),
+  year: YearPeriod,
   cells: z.array(z.tuple([DateStr, z.number().int()])),
 }).strict();
 export type SiteDaily = z.infer<typeof SiteDaily>;
@@ -101,7 +102,7 @@ export type WhitelistSnapshot = z.infer<typeof WhitelistSnapshot>;
 
 /** canonical/v2/pending/<period>.json — frozen closed-period live tail awaiting fold (VERCEL-DATA-OPERATIONS §7.2). */
 export const PendingPeriod = z.object({
-  period: Period,
+  period: MonthPeriod,
   frozen_at: TimestampStr,
   daily_totals: z.array(z.tuple([DateStr, z.number().int()])),
   per_repo: z.record(z.string(), DailySeries),

@@ -72,7 +72,8 @@ const db = await DuckDBInstance.create();
 const con = await db.connect();
 const query = async (sql) => (await con.runAndReadAll(sql)).getRowObjects();
 
-const [{ hi }] = await query(`SELECT CAST(MAX(date) AS VARCHAR) hi FROM read_parquet('${SD}')`);
+const [{ hi: rawHi }] = await query(`SELECT CAST(MAX(date) AS VARCHAR) hi FROM read_parquet('${SD}')`);
+const hi = String(rawHi);
 const seamDate = addDays(hi, 1); // first day the daily cron tracks as net
 const recentCutoff = addDays(seamDate, -RECENT_DAYS);
 const [{ wk }] = await query(`SELECT strftime(DATE '${hi}','%G-W%V') wk`);
@@ -108,8 +109,9 @@ writeBucketSeries("canonical/v2/repo-recent-daily", bucketSeries(recent, (r) => 
 // site-daily per year
 const byYear = new Map();
 for (const r of site) {
-  const y = r.d.slice(0, 4);
-  (byYear.get(y) ?? byYear.set(y, []).get(y)).push([r.d, num(r.tot)]);
+  const d = String(r.d);
+  const y = d.slice(0, 4);
+  (byYear.get(y) ?? byYear.set(y, []).get(y)).push([d, num(r.tot)]);
 }
 for (const [year, cells] of byYear) writeJson(`canonical/v2/site-daily/${year}.json`, { year, cells });
 

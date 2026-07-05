@@ -4,11 +4,28 @@ import { z } from "zod";
 // Dates are UTC.
 
 /** ISO 'YYYY-MM-DD' (UTC). */
-export const DateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const DateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(isValidDate, "must be a valid UTC calendar date");
 /** ISO timestamp with timezone offset, e.g. Date#toISOString(). */
 export const TimestampStr = z.string().datetime({ offset: true });
+/** Month period id: 'YYYY-MM'. */
+export const MonthPeriod = z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/);
+/** ISO week period id: 'YYYY-Www'. */
+export const WeekPeriod = z.string().regex(/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/).refine(isValidIsoWeek, "must be a valid ISO week");
+/** Year period id: 'YYYY'. */
+export const YearPeriod = z.string().regex(/^\d{4}$/);
 /** Period id: week 'YYYY-Www' | month 'YYYY-MM' | year 'YYYY' | 'all'. */
-export const Period = z.string().regex(/^(?:\d{4}-W\d{2}|\d{4}-\d{2}|\d{4}|all)$/);
+export const Period = z.union([WeekPeriod, MonthPeriod, YearPeriod, z.literal("all")]);
+export const HttpUrlString = z.union([
+  z.string().url().refine((value) => {
+    try {
+      const protocol = new URL(value).protocol;
+      return protocol === "http:" || protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "must use http or https"),
+  z.literal(""),
+]);
 export const NonNegativeInt = z.number().int().nonnegative();
 export const PositiveRank = z.number().int().positive();
 export const SafeText = z
@@ -31,7 +48,7 @@ export const Meta = z.object({
   schema_ver: NonNegativeInt,
   generated_at: TimestampStr.optional(),
   backfilled_at: TimestampStr.optional(), // bootstrap-only
-  folded_through: z.object({ month: Period, week: Period }).strict().optional(), // live-overlay watermark
+  folded_through: z.object({ month: MonthPeriod, week: WeekPeriod }).strict().optional(), // live-overlay watermark
 }).strict();
 export type Meta = z.infer<typeof Meta>;
 
@@ -87,3 +104,29 @@ export const RankList = z
     }
   });
 export type RankList = z.infer<typeof RankList>;
+
+function isValidDate(value: string): boolean {
+  const parsed = Date.parse(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed)) return false;
+  return new Date(parsed).toISOString().slice(0, 10) === value;
+}
+
+function isValidIsoWeek(value: string): boolean {
+  const match = /^(\d{4})-W(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  return week >= 1 && week <= isoWeeksInYear(year);
+}
+
+function isoWeeksInYear(year: number): number {
+  return isoWeekNumber(new Date(Date.UTC(year, 11, 28)));
+}
+
+function isoWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}

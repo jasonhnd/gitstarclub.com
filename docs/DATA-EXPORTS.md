@@ -12,6 +12,8 @@ The exports use CC BY 4.0 and carry this attribution copy:
 
 CSV files repeat the license and attribution columns on every row. JSON files include the same license and attribution in the export metadata.
 
+CSV string cells are also neutralized for spreadsheet formula injection. Text values beginning with `=`, `+`, `-`, `@`, tab, carriage return, or line feed are prefixed with a single quote before normal CSV quoting. Numeric fields remain numeric; the neutralization applies only to textual cells.
+
 ## Export set
 
 The latest export set is available through stable alias URLs:

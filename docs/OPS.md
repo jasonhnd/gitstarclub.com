@@ -112,7 +112,7 @@ an explicit recovery procedure.
 | `GCP_PROJECT_ID` | GCP 项目 ID | 仅一次性回填 | GCP project ID 字符串 | **本地回填脚本**（仅一次性 BigQuery 回填） |
 | `NEXT_PUBLIC_SITE_URL` | 站点规范域名（canonical / sitemap / OG / JSON-LD 绝对 URL） | **必需**（生产） | `https://gitstarclub.com` 等绝对 URL（**无尾斜杠**） | `web/lib/sitemap.ts:26` · `web/app/robots.ts:5` · `web/app/_shell/RootShell.tsx:17` · `web/lib/jsonld.ts:4` · `web/app/_explore/Breadcrumbs.tsx:10` |
 | `NEXT_PUBLIC_GA_ID` | Optional Google Analytics 4 measurement ID. GA4 renders only when this non-empty value starts with `G-`; unset or invalid values emit no GA script. | Optional | `G-...` | `web/app/_shell/RootShell.tsx` |
-| `SEO_LIVE_BASE` | 集成测试拉取的活线 origin（默认 `https://www.gitstarclub.com`，留空可跳过测试） | 仅测试 | `https://www.gitstarclub.com` 或空串 | `web/lib/integration/seo.test.ts:23` |
+| `SEO_LIVE_BASE` | 集成测试拉取的活线 origin；未设置或空串时跳过 live SEO smoke，避免普通 CI 依赖外部线上状态 | 仅测试 | `https://www.gitstarclub.com` 或空串 | `web/lib/integration/seo.test.ts:23` |
 | `SEO_CANON_ORIGIN` | 集成测试断言的 canonical origin（默认 `https://gitstarclub.com`） | 仅测试 | 绝对 origin（**无尾斜杠**） | `web/lib/integration/seo.test.ts:25` |
 
 **约定**：

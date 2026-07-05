@@ -1,11 +1,18 @@
 import { test, expect, describe } from "bun:test";
 import {
   // common
+  DateStr,
+  HttpUrlString,
   Meta,
+  MonthPeriod,
+  Period,
   RankItem,
   RankList,
   OwnerType,
+  TimestampStr,
+  WeekPeriod,
   Window,
+  YearPeriod,
   Metric,
   // canonical
   CanonicalMeta,
@@ -64,6 +71,43 @@ function rejects(schema: { safeParse: (v: unknown) => { success: boolean } }, ba
 const TS = "2024-06-01T00:00:00.000Z";
 
 describe("common primitives", () => {
+  test("DateStr accepts valid UTC calendar dates and rejects impossible or malformed dates", () => {
+    expect(DateStr.parse("2024-02-29")).toBe("2024-02-29");
+    expect(DateStr.parse("2026-07-05")).toBe("2026-07-05");
+    for (const bad of ["", "2024-02-30", "2024-13-01", "2024-00-01", "2024-2-09", "20240209"]) {
+      expect(rejects(DateStr, bad)).toBe(true);
+    }
+  });
+
+  test("TimestampStr requires an ISO timestamp with timezone", () => {
+    expect(TimestampStr.parse("2024-06-01T00:00:00.000Z")).toBe("2024-06-01T00:00:00.000Z");
+    expect(TimestampStr.parse("2024-06-01T09:30:00+09:00")).toBe("2024-06-01T09:30:00+09:00");
+    for (const bad of ["", "2024-06-01", "2024-06-01T00:00:00", "not-a-timestamp"]) {
+      expect(rejects(TimestampStr, bad)).toBe(true);
+    }
+  });
+
+  test("MonthPeriod, WeekPeriod, YearPeriod, and Period reject malformed values", () => {
+    expect(MonthPeriod.parse("2024-12")).toBe("2024-12");
+    expect(WeekPeriod.parse("2020-W53")).toBe("2020-W53");
+    expect(YearPeriod.parse("2024")).toBe("2024");
+    expect(Period.parse("all")).toBe("all");
+
+    for (const bad of ["2024-00", "2024-13", "2024-1"]) expect(rejects(MonthPeriod, bad)).toBe(true);
+    for (const bad of ["2024-W00", "2024-W54", "2021-W53", "2024-W1"]) expect(rejects(WeekPeriod, bad)).toBe(true);
+    for (const bad of ["24", "2024-01", "abcd"]) expect(rejects(YearPeriod, bad)).toBe(true);
+    for (const bad of ["", "2024-Q1", "all-time", "2024-02-30"]) expect(rejects(Period, bad)).toBe(true);
+  });
+
+  test("HttpUrlString allows http(s) plus empty sentinel and rejects non-web protocols", () => {
+    expect(HttpUrlString.parse("https://example.com/repo")).toBe("https://example.com/repo");
+    expect(HttpUrlString.parse("http://example.com/repo")).toBe("http://example.com/repo");
+    expect(HttpUrlString.parse("")).toBe("");
+    for (const bad of ["javascript:alert(1)", "data:text/html;base64,abc", "file:///etc/passwd", "ftp://example.com/repo"]) {
+      expect(rejects(HttpUrlString, bad)).toBe(true);
+    }
+  });
+
   test("OwnerType enum: valid parses, bad enum rejects", () => {
     expect(OwnerType.parse("User")).toBe("User");
     expect(OwnerType.parse("Organization")).toBe("Organization");
@@ -202,10 +246,18 @@ describe("canonical shards", () => {
       language: "TypeScript",
       languages: [{ name: "TypeScript", size: 1200, color: "#3178c6" }],
       topics: ["react"],
+      created_at: "2016-10-05",
       crossed_10k: "2020-01-01",
+      tracked_since: null,
       d: 0.95,
     };
     expect(ReposShardEntry.parse(full).d).toBe(0.95);
+  });
+
+  test("ReposShardEntry rejects malformed date fields", () => {
+    expect(rejects(ReposShardEntry, { ...validEntry, created_at: "2016-02-30" })).toBe(true);
+    expect(rejects(ReposShardEntry, { ...validEntry, crossed_10k: "2020-13-01" })).toBe(true);
+    expect(rejects(ReposShardEntry, { ...validEntry, tracked_since: "not-a-date" })).toBe(true);
   });
 
   test("ReposShardEntry rejects bad owner_type enum", () => {
@@ -213,7 +265,8 @@ describe("canonical shards", () => {
   });
 
   test("ReposShardEntry rejects missing required full_name", () => {
-    const { full_name, ...missing } = validEntry;
+    const missing = { ...validEntry } as Partial<typeof validEntry>;
+    delete missing.full_name;
     expect(rejects(ReposShardEntry, missing)).toBe(true);
   });
 
@@ -234,12 +287,22 @@ describe("canonical shards", () => {
     expect(rejects(RepoMonthlyShard, { "1": [["2024-05", 1.5]] })).toBe(true);
   });
 
+  test("RepoMonthlyShard rejects malformed month periods", () => {
+    expect(rejects(RepoMonthlyShard, { "1": [["2024-13", 1]] })).toBe(true);
+    expect(rejects(RepoMonthlyShard, { "1": [["2024-W20", 1]] })).toBe(true);
+  });
+
   test("RepoWeeklyShard parses week tuples", () => {
     expect(RepoWeeklyShard.parse({ "1": [["2024-W20", 12]] })["1"][0][0]).toBe("2024-W20");
   });
 
   test("RepoWeeklyShard rejects 3-element tuple (wrong arity)", () => {
     expect(rejects(RepoWeeklyShard, { "1": [["2024-W20", 12, 99]] })).toBe(true);
+  });
+
+  test("RepoWeeklyShard rejects malformed ISO week periods", () => {
+    expect(rejects(RepoWeeklyShard, { "1": [["2021-W53", 12]] })).toBe(true);
+    expect(rejects(RepoWeeklyShard, { "1": [["2024-05", 12]] })).toBe(true);
   });
 
   test("RepoRecentDailyShard parses [date, net] tuples (net negative ok)", () => {
@@ -262,7 +325,8 @@ describe("canonical shards", () => {
   test("WhitelistEntry parses; rejects missing stars", () => {
     const w = { id: 1, node_id: "n", full_name: "a/b", owner: "a", name: "b", stars: 12000 };
     expect(WhitelistEntry.parse(w).stars).toBe(12000);
-    const { stars, ...bad } = w;
+    const bad = { ...w } as Partial<typeof w>;
+    delete bad.stars;
     expect(rejects(WhitelistEntry, bad)).toBe(true);
   });
 
@@ -433,12 +497,40 @@ describe("entity / view contracts", () => {
     expect(parsed.languages?.[0].name).toBe("TypeScript");
   });
 
+  test("RepoEntity accepts http(s) homepage and release links", () => {
+    const parsed = RepoEntity.parse({
+      ...repoEntity,
+      homepage_url: "http://example.com/project",
+      latest_release: {
+        name: "v1.0.0",
+        tag_name: "v1.0.0",
+        published_at: "2024-05-01",
+        url: "https://github.com/owner/repo/releases/tag/v1.0.0",
+      },
+    });
+    expect(parsed.homepage_url).toBe("http://example.com/project");
+    expect(parsed.latest_release?.url).toBe("https://github.com/owner/repo/releases/tag/v1.0.0");
+  });
+
+  test("RepoEntity rejects unsafe external link protocols", () => {
+    for (const homepage_url of ["javascript:alert(1)", "data:text/html,hi", "file:///tmp/repo", "ftp://example.com/repo"]) {
+      expect(rejects(RepoEntity, { ...repoEntity, homepage_url })).toBe(true);
+    }
+    expect(
+      rejects(RepoEntity, {
+        ...repoEntity,
+        latest_release: { name: "v1", tag_name: "v1", published_at: "2024-05-01", url: "javascript:alert(1)" },
+      }),
+    ).toBe(true);
+  });
+
   test("RepoEntity parses with optional rank_history record", () => {
     expect(RepoEntity.parse({ ...repoEntity, rank_history: { month: [["2024-05", 1]] } }).id).toBe(1);
   });
 
   test("RepoEntity rejects missing required milestones", () => {
-    const { milestones, ...bad } = repoEntity;
+    const bad = { ...repoEntity } as Partial<typeof repoEntity>;
+    delete bad.milestones;
     expect(rejects(RepoEntity, bad)).toBe(true);
   });
 
@@ -464,12 +556,20 @@ describe("entity / view contracts", () => {
   });
 
   test("Heatmap parses scope enum + cells", () => {
-    const h = { meta: { scope: "year", period: "2024", generated_at: TS }, cells: [["2024-01-01", 10] as [string, number]] };
+    const h = { meta: { scope: "year", period: "2024", generated_at: TS }, cells: [["2024-01", 10] as [string, number]] };
     expect(Heatmap.parse(h).meta.scope).toBe("year");
   });
 
   test("Heatmap rejects bad scope enum", () => {
     expect(rejects(Heatmap, { meta: { scope: "week", period: "2024", generated_at: "x" }, cells: [] })).toBe(true);
+  });
+
+  test("Heatmap validates period and cell grain by scope", () => {
+    expect(Heatmap.parse({ meta: { scope: "year", period: "2024", generated_at: TS }, cells: [["2024-01", 10]] }).cells[0][0]).toBe("2024-01");
+    expect(Heatmap.parse({ meta: { scope: "month", period: "2024-10", generated_at: TS }, cells: [["2024-10-01", 10]] }).cells[0][0]).toBe("2024-10-01");
+    expect(rejects(Heatmap, { meta: { scope: "year", period: "2024-10", generated_at: TS }, cells: [["2024-10", 10]] })).toBe(true);
+    expect(rejects(Heatmap, { meta: { scope: "month", period: "2024", generated_at: TS }, cells: [["2024-10-01", 10]] })).toBe(true);
+    expect(rejects(Heatmap, { meta: { scope: "month", period: "2024-10", generated_at: TS }, cells: [["2024-10", 10]] })).toBe(true);
   });
 });
 
@@ -487,6 +587,10 @@ describe("live contracts", () => {
 
   test("CurrentMonth rejects missing current_stars", () => {
     expect(rejects(CurrentMonth, { month: "2024-05", updated: "2024-05-31", daily_totals: [], per_repo: {} })).toBe(true);
+  });
+
+  test("CurrentMonth rejects malformed month periods", () => {
+    expect(rejects(CurrentMonth, { month: "2024-13", updated: "2024-05-31", daily_totals: [], per_repo: {}, current_stars: {} })).toBe(true);
   });
 
   test("HotSnapshot parses nested home/current/all_time", () => {
@@ -532,7 +636,8 @@ describe("search contracts", () => {
   });
 
   test("SearchDoc rejects missing full_name", () => {
-    const { full_name, ...bad } = doc;
+    const bad = { ...doc } as Partial<typeof doc>;
+    delete bad.full_name;
     expect(rejects(SearchDoc, bad)).toBe(true);
   });
 

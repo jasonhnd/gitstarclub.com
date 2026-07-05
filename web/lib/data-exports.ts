@@ -521,6 +521,10 @@ function hasMilestone(repo: RepoEntity): boolean {
 
 function csvCell(value: JsonValue | undefined): string {
   if (value == null) return "";
-  const text = String(value);
+  const text = typeof value === "string" ? neutralizeCsvFormula(value) : String(value);
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function neutralizeCsvFormula(value: string): string {
+  return /^[=+\-@\t\r\n]/.test(value) ? `'${value}` : value;
 }

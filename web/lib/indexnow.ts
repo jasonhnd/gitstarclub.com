@@ -11,7 +11,7 @@ export const INDEXNOW_MAX_URLS_PER_RUN = 200;
 export const INDEXNOW_MAX_ENTITY_DIFF_CANDIDATES = 200;
 const INDEXNOW_TIMEOUT_MS = 5000;
 
-type Fetcher = typeof fetch;
+type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type IndexNowContext = { source: string; runId?: string; job?: string };
 type VersionedReader = <T>(version: string, rel: string, schema: ZodType<T>) => Promise<T | null>;
 

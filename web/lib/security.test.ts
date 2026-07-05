@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { stringifyJsonForScript } from "./json-script";
-import { hasValidBearerToken, requireBearerToken } from "./security";
+import { THEME_INIT_SCRIPT } from "./theme-script";
+import {
+  buildContentSecurityPolicy,
+  buildSecurityHeaders,
+  googleAnalyticsInitScript,
+  hasValidBearerToken,
+  requireBearerToken,
+  safeExternalHref,
+  sha256CspHash,
+} from "./security";
 
 describe("stringifyJsonForScript", () => {
   test("escapes script-breaking and HTML-sensitive characters", () => {
@@ -33,6 +42,49 @@ describe("hasValidBearerToken", () => {
     expect(hasValidBearerToken("Bearer secret-value-extra", "secret-value")).toBe(false);
     expect(hasValidBearerToken("Bearer wrong-value", "secret-value")).toBe(false);
     expect(hasValidBearerToken("Bearer secret-value", "")).toBe(false);
+  });
+});
+
+describe("safeExternalHref", () => {
+  test("allows only http(s) external hrefs", () => {
+    expect(safeExternalHref("https://example.com/project")).toBe("https://example.com/project");
+    expect(safeExternalHref("http://example.com/project")).toBe("http://example.com/project");
+    expect(safeExternalHref("")).toBeNull();
+    expect(safeExternalHref(null)).toBeNull();
+    for (const value of ["javascript:alert(1)", "data:text/html,hi", "file:///tmp/repo", "ftp://example.com/repo", "/relative"]) {
+      expect(safeExternalHref(value)).toBeNull();
+    }
+  });
+});
+
+describe("Content Security Policy", () => {
+  test("production script-src omits broad unsafe-inline and allows only the theme hash plus approved script origins", () => {
+    const csp = buildContentSecurityPolicy({ isProduction: true, googleAnalyticsId: "G-ABC123" });
+    const scriptSrc = csp.split("; ").find((part) => part.startsWith("script-src ")) ?? "";
+
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
+    expect(scriptSrc).not.toContain("'unsafe-eval'");
+    expect(scriptSrc).toContain("'self'");
+    expect(scriptSrc).toContain(sha256CspHash(THEME_INIT_SCRIPT));
+    expect(scriptSrc).toContain(sha256CspHash(googleAnalyticsInitScript("G-ABC123")));
+    expect(scriptSrc).toContain("https://www.googletagmanager.com");
+    expect(csp).toContain("upgrade-insecure-requests");
+  });
+
+  test("development CSP keeps React debugging allowances out of production only", () => {
+    const csp = buildContentSecurityPolicy({ isProduction: false });
+    const scriptSrc = csp.split("; ").find((part) => part.startsWith("script-src ")) ?? "";
+
+    expect(scriptSrc).toContain("'unsafe-inline'");
+    expect(scriptSrc).toContain("'unsafe-eval'");
+    expect(csp).not.toContain("upgrade-insecure-requests");
+  });
+
+  test("security headers include the generated CSP header", () => {
+    expect(buildSecurityHeaders({ isProduction: true })).toContainEqual({
+      key: "Content-Security-Policy",
+      value: buildContentSecurityPolicy({ isProduction: true }),
+    });
   });
 });
 

@@ -7,7 +7,13 @@
 
 ## Current Automation
 
-GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test`.
+GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun install --frozen-lockfile`, `bun run deps:audit`, `bun run typecheck`, `bun run typecheck:tests`, `bun run lint`, and `bun run test`. It also installs `pipeline/` separately and runs `bun run typecheck` plus `bun run deps:audit` there.
+
+Dependency audit policy: CI fails on high-or-critical advisories via `bun audit --audit-level=high` in both `web/` and `pipeline/`. Moderate/low findings are reviewed during dependency updates but are not the current CI gate. When a direct dependency has no released safe range yet, a package-manager override may be used; the current web overrides pin transitive `undici` and `piscina` to audited fixed versions rather than ignoring advisories.
+
+Security header coverage: `web/lib/security.test.ts` snapshots the production CSP shape, including the absence of broad `unsafe-inline` in `script-src`, the static SHA-256 hashes for the theme initialization script and optional GA initialization script, and the approved optional GA script origin. Development keeps React debugging allowances (`unsafe-inline`/`unsafe-eval`) scoped out of production.
+
+Live SEO smoke coverage under `web/lib/integration/seo.test.ts` is explicit opt-in: set `SEO_LIVE_BASE=https://www.gitstarclub.com` to hit a live origin. The default `bun test lib/` path skips it so CI is not coupled to current production launch state or network availability.
 
 The visual, a11y, E2E, performance, and cross-browser sections below remain target coverage until their Playwright/Lighthouse/browser tooling is added. They should not be treated as current PR blockers.
 

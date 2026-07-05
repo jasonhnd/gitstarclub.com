@@ -151,6 +151,8 @@ them when appropriate, but do not treat them as the final deployment check.
 cd web
 bun run lint
 bun run typecheck
+bun run typecheck:tests
+bun run deps:audit
 bun test lib/
 bun run build
 ```
@@ -161,6 +163,14 @@ Targeted examples:
 bun test lib/categories/rules.test.ts
 bun test lib/contracts/contracts.test.ts
 bun test lib/workflows/recompute/entities.test.ts
+```
+
+Pipeline JavaScript is checked separately with TypeScript `checkJs`:
+
+```text
+cd pipeline
+bun run typecheck
+bun run deps:audit
 ```
 
 ## Pull Request Or Commit Checklist

@@ -18,6 +18,7 @@ import { pageMeta } from "@/lib/seo";
 import { repoLd, type FaqItem } from "@/lib/jsonld";
 import { exactRepoMilestones, type ExactRepoMilestone } from "@/lib/repo-milestones";
 import { resolveRepoRoute } from "@/lib/repo-route";
+import { safeExternalHref } from "@/lib/security";
 import { ANSWER_CAPSULE_SOURCE, resolveDataAsOfFromMeta, type AnswerCapsuleContent } from "@/lib/geo-capsules";
 import { absoluteSnippetUrl, type ShareableSnippetContent } from "@/lib/shareable-snippets";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
@@ -99,6 +100,8 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
   const faqItems = buildLocalizedRepoFaqs(t, locale, repo, asOf);
   const pagePath = `/${repo.full_name}`;
   const routePath = localizedPath(locale, pagePath);
+  const homepageHref = safeExternalHref(repo.homepage_url);
+  const latestReleaseHref = safeExternalHref(repo.latest_release?.url);
   const capsuleLabels = { ariaLabel: t.common.answerCapsule, eyebrow: t.common.answerCapsule, dataAsOf: t.common.dataAsOf, source: t.common.source };
   const snippetLabels = {
     eyebrow: t.share.snippet,
@@ -176,12 +179,12 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
                 <MetaRow label={languages.length > 1 ? t.repo.languages : t.repo.language} value={<LanguageLinks languages={languages} totalSize={languageTotalSize} locale={locale} />} wrap />
               )}
               {repo.license && <MetaRow label={t.repo.license} value={repo.license} />}
-              {repo.homepage_url && <MetaRow label={t.repo.homepage} value={repo.homepage_url.replace(/^https?:\/\//, "")} href={repo.homepage_url} external />}
+              {homepageHref && <MetaRow label={t.repo.homepage} value={homepageHref.replace(/^https?:\/\//, "")} href={homepageHref} external />}
               <MetaRow
                 label={t.repo.latestRelease}
                 value={repo.latest_release ? repo.latest_release.name || repo.latest_release.tag_name : t.repo.noRelease}
-                href={repo.latest_release?.url ?? undefined}
-                external={Boolean(repo.latest_release?.url)}
+                href={latestReleaseHref ?? undefined}
+                external={Boolean(latestReleaseHref)}
               />
             </dl>
             {repo.topics.length > 0 && (

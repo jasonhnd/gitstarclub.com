@@ -13,6 +13,7 @@ import {
   dataExportDownloadsFromManifest,
   readLatestStaticDataExportManifest,
   toCsv,
+  type ExportManifest,
   type JsonExport,
 } from "./data-exports";
 
@@ -141,6 +142,49 @@ describe("buildDataExportBundle", () => {
 
     expect(csv).toBe('name\n"quoted, ""repo""\nnext"\n');
   });
+
+  test("neutralizes spreadsheet formula prefixes in textual CSV cells", () => {
+    const csv = toCsv(
+      {
+        schema_version: DATA_EXPORT_SCHEMA_VERSION,
+        export_name: "sample",
+        title: "Sample",
+        export_date: "2026-06-24",
+        data_as_of: "2026-06-24T00:00:00.000Z",
+        license: DATA_EXPORT_LICENSE,
+        attribution: DATA_EXPORT_ATTRIBUTION,
+        generated_from: "Existing precomputed GitStarClub Blob views.",
+        source_views: ["sample.json"],
+        row_count: 8,
+        rows: [
+          { name: "=HYPERLINK(\"https://example.com\")", score: -10 },
+          { name: "+SUM(1,1)", score: 1 },
+          { name: "-cmd", score: 2 },
+          { name: "@repo", score: 3 },
+          { name: "\t=cmd", score: 4 },
+          { name: "\r=cmd", score: 5 },
+          { name: "\n=cmd", score: 6 },
+          { name: "normal, quoted", score: 7 },
+        ],
+      } satisfies JsonExport<{ name: string; score: number }>,
+      ["name", "score"],
+    );
+
+    expect(csv).toBe(
+      [
+        "name,score",
+        "\"'=HYPERLINK(\"\"https://example.com\"\")\",-10",
+        "\"'+SUM(1,1)\",1",
+        "'-cmd,2",
+        "'@repo,3",
+        "'\t=cmd,4",
+        "\"'\r=cmd\",5",
+        "\"'\n=cmd\",6",
+        "\"normal, quoted\",7",
+        "",
+      ].join("\n"),
+    );
+  });
 });
 
 describe("checked-in data export manifest", () => {
@@ -148,14 +192,7 @@ describe("checked-in data export manifest", () => {
     const generatedManifestPath = latestDatedManifestPath();
     expect(generatedManifestPath).not.toBeNull();
     expect(existsSync(generatedManifestPath ?? "")).toBe(true);
-    const manifest = JSON.parse(readFileSync(generatedManifestPath ?? "", "utf8")) as {
-      schema_version: number;
-      export_date: string;
-      data_as_of: string;
-      license: { name: string; url: string };
-      attribution: string;
-      files: Array<{ name: string; rows: number; latest_urls: Record<string, string>; dated_urls: Record<string, string> }>;
-    };
+    const manifest = JSON.parse(readFileSync(generatedManifestPath ?? "", "utf8")) as ExportManifest;
 
     expect(manifest.schema_version).toBe(DATA_EXPORT_SCHEMA_VERSION);
     expect(manifest.export_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
