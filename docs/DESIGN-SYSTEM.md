@@ -1,3 +1,15 @@
+---
+owner: design system
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - visual baseline
+  - design tokens
+  - typography
+  - chrome appearance
+  - accessibility notes
+---
+
 # Design System Baseline
 
 ## Scope
