@@ -11,6 +11,7 @@
 > 关联文档：渲染 / 页面分层 / ISR 见 [ARCHITECTURE.md](./ARCHITECTURE.md)；页面 / URL / i18n / 调性 / 配色见 [PRODUCT.md](./PRODUCT.md)；
 > 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.2.6**（App Router + Metadata API）。
 > AI answer-engine citation strategy is owned by [GEO.md](./GEO.md); this document stays focused on classic search crawl, canonical, metadata, sitemap, and internal-link mechanics.
+> Performance targets are owned by [TESTING.md](./TESTING.md); the issue #25 measured Lighthouse / Core Web Vitals baseline is supporting evidence in [perf/CWV-25.md](./perf/CWV-25.md).
 >
 > i18n rollout 口径：服务器端多语言 URL 已落地（见 [I18N.md](./I18N.md)）。English 保持无前缀，ja/zh/zh-TW/ko/es/fr 使用前缀 URL；页面正文、metadata、canonical、`hreflang` / `x-default`、sitemap 与语言切换导航都按 route locale 输出。`gsc_lang` cookie 仅保留为 middleware / `/api/lang` 的偏好重定向信号，不参与页面渲染。
 

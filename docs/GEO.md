@@ -8,6 +8,8 @@ GEO complements [SEO.md](./SEO.md). SEO owns crawlability, canonical URLs, metad
 
 Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only JSON from Vercel Blob, and implementation must remain deterministic and Vercel-first.
 
+Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate Vercel log reporting runbook. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
+
 ---
 
 ## 1. TL;DR / Strategic Thesis
