@@ -45,7 +45,7 @@ For deploy / rollback / cron / alerting see [OPS](docs/OPS.md). For category tax
 
 ## Repository layout
 
-```
+```text
 gitstarclub/
 ├── README.md
 ├── docs/                          Documentation (see docs/README.md for the index)
