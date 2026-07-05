@@ -8,7 +8,11 @@ function fmt(date, timeZone) {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   }).formatToParts(date);
-  const get = (t) => parts.find((p) => p.type === t).value;
+  const get = (t) => {
+    const part = parts.find((p) => p.type === t);
+    if (!part) throw new Error(`Missing formatted date part: ${t}`);
+    return part.value;
+  };
   return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
 }
 

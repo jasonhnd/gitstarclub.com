@@ -243,7 +243,7 @@ describe("datasetLd", () => {
       })),
     );
     expect(data.distribution).toHaveLength(1 + manifest!.files.reduce((count, file) => count + file.formats.length, 0));
-    expect(data.distribution.every((download) => download.contentUrl.startsWith("https://gitstarclub.com/data/exports/v1/latest/"))).toBe(true);
+    expect(data.distribution?.every((download) => download.contentUrl.startsWith("https://gitstarclub.com/data/exports/v1/latest/"))).toBe(true);
   });
 
   test("derives temporalCoverage from a real year spine", () => {

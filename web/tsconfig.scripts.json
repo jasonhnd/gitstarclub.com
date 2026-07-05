@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "incremental": false,
+    "target": "ES2022",
+    "lib": ["ES2022", "WebWorker"],
+    "types": ["node", "next"],
+    "noImplicitAny": false
+  },
+  "include": [
+    "../build.mjs",
+    "../render-assets.mjs",
+    "../pipeline/**/*.mjs",
+    "eslint.config.mjs",
+    "postcss.config.mjs",
+    "public/sw.js",
+    "lib/constants.mjs",
+    "scripts/**/*.ts"
+  ],
+  "exclude": ["node_modules", "../pipeline/node_modules"]
+}

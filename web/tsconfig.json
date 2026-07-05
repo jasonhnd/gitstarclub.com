@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2017",
     "lib": ["dom", "dom.iterable", "esnext"],
+    // Required while lib/constants.ts bridges the shared constants.mjs file.
+    // Other JS/MJS script coverage lives in tsconfig.scripts.json.
     "allowJs": true,
+    // Kept for compiler performance with Next/React dependency types.
+    // First-party app, test, and script files remain checked by the typecheck targets.
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
@@ -30,5 +34,10 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx", "lib/integration"]
+  "exclude": [
+    "node_modules",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "lib/integration"
+  ]
 }

@@ -7,7 +7,14 @@
 
 ## Current Automation
 
-GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, and `bun run test`.
+GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it installs both `web/` and `pipeline/` dependencies, then runs from `web/`: `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test`.
+
+TypeScript coverage is split intentionally:
+
+- `web/tsconfig.json` checks the app runtime. It excludes `**/*.test.ts`, `**/*.test.tsx`, and `lib/integration` because `web/tsconfig.tests.json` owns those files.
+- `web/tsconfig.tests.json` checks unit tests and integration tests with Bun and Node ambient types.
+- `web/tsconfig.scripts.json` checks root scripts, `web/scripts/**`, web config/service-worker JavaScript, and `pipeline/**/*.mjs` with `allowJs` + `checkJs`. Its only intentional loosened rule is `noImplicitAny: false` for legacy JavaScript migration; strict null/property checks remain enabled.
+- `allowJs` remains in `web/tsconfig.json` for the `lib/constants.ts` bridge to `lib/constants.mjs`. `skipLibCheck` remains enabled for Next/React dependency typecheck performance; first-party app, test, script, and pipeline files are covered by the targets above.
 
 The visual, a11y, E2E, performance, and cross-browser sections below remain target coverage until their Playwright/Lighthouse/browser tooling is added. They should not be treated as current PR blockers.
 

@@ -1,22 +1,27 @@
 // Minimal PWA service worker. Cache only immutable/static assets.
 // HTML and API responses depend on cookies, so they must always hit the network.
+/// <reference lib="webworker" />
+
+const worker = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (self));
 const CACHE = "gsc-static-v2";
 
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) =>
-  event.waitUntil(
+worker.addEventListener("install", () => worker.skipWaiting());
+worker.addEventListener("activate", (event) => {
+  const activateEvent = /** @type {ExtendableEvent} */ (event);
+  activateEvent.waitUntil(
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
-  ),
-);
+      .then(() => worker.clients.claim()),
+  );
+});
 
-self.addEventListener("fetch", (event) => {
-  const { request } = event;
+worker.addEventListener("fetch", (event) => {
+  const fetchEvent = /** @type {FetchEvent} */ (event);
+  const { request } = fetchEvent;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== worker.location.origin) return;
   if (request.mode === "navigate" || request.destination === "document" || url.pathname.startsWith("/api/")) return;
 
   const cacheable =
@@ -24,7 +29,7 @@ self.addEventListener("fetch", (event) => {
     ["font", "image", "manifest", "script", "style"].includes(request.destination);
   if (!cacheable) return;
 
-  event.respondWith(
+  fetchEvent.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const cached = await cache.match(request);
       const network = fetch(request)
@@ -32,8 +37,8 @@ self.addEventListener("fetch", (event) => {
           if (res && res.ok) cache.put(request, res.clone());
           return res;
         })
-        .catch(() => cached);
-      return cached || network;
+        .catch(() => cached ?? Response.error());
+      return cached ?? network;
     }),
   );
 });
