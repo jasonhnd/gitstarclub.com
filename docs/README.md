@@ -10,6 +10,8 @@ Vercel Web Analytics remains enabled through `<Analytics />` in `web/app/_shell/
 
 ## Reading order (new engineer)
 
+This section is the authoritative newcomer reading order. Update it when adding, removing, or reprioritizing core or satellite docs.
+
 1. [REQUIREMENTS.md](./REQUIREMENTS.md) — what the product is and the constraints it operates under.
 2. [ARCHITECTURE.md](./ARCHITECTURE.md) — system overview: tech stack, data flow, data model, rendering model, hard constraints.
 3. [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) — Blob layout, publish pointer, Workflow pipeline, live overlay, rollback, garbage collection.
