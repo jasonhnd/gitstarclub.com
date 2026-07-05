@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 
-// Share control: copy the page link (transient "Copied" feedback) + open an X (Twitter) intent.
-// Client-only; reads window.location at click time. Labels use default chrome text. (v0.2 §4)
-export function ShareButton({ text }: { text?: string }) {
-  const label = "Share";
-  const copied = "Copied";
-  const onX = "Share on X";
-  const opensNewTab = "opens in new tab";
+// Share control: copy the page link (transient feedback) + open an X (Twitter) intent.
+// Client-only; reads window.location at click time. Content pages pass route-localized labels.
+export type ShareButtonLabels = {
+  label: string;
+  copied: string;
+  onX: string;
+  opensNewTab: string;
+};
+
+export function ShareButton({ text, labels }: { text?: string; labels: ShareButtonLabels }) {
   const [done, setDone] = useState(false);
 
   const copy = async () => {
@@ -38,13 +41,13 @@ export function ShareButton({ text }: { text?: string }) {
           <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        {done ? copied : label}
+        {done ? labels.copied : labels.label}
       </button>
       <button
         type="button"
         onClick={shareX}
-        aria-label={`${onX} (${opensNewTab})`}
-        title={`${onX} (${opensNewTab})`}
+        aria-label={`${labels.onX} (${labels.opensNewTab})`}
+        title={`${labels.onX} (${labels.opensNewTab})`}
         className="inline-flex size-11 items-center justify-center rounded-full border border-outline-variant bg-surface-container text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
       >
         <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">

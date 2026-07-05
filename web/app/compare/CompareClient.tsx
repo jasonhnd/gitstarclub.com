@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type MiniSearch from "minisearch";
-import { useChrome } from "@/lib/i18n/client-runtime";
 import { fmtStars } from "@/lib/format";
 import type { CompareCurve, SearchDoc } from "@/lib/contracts";
 import type { SearchHit } from "@/lib/search/core";
@@ -25,7 +24,22 @@ interface Engine {
 
 const PICKER_LIMIT = 6;
 
-export function CompareClient() {
+export type CompareClientLabels = {
+  modeAbsolute: string;
+  modeAlign10k: string;
+  pickerPlaceholder: string;
+  legendLabel: string;
+  empty: string;
+  minHint: string;
+  limit: string;
+  remove: string;
+  pickerEmpty: string;
+  pickerLoading: string;
+  compareModesAria: string;
+  starHistoryOverlayAria: string;
+};
+
+export function CompareClient({ labels, comparePath = "/compare" }: { labels: CompareClientLabels; comparePath?: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const repos = useMemo(() => parseRepos(params?.get("repos")), [params]);
@@ -35,17 +49,6 @@ export function CompareClient() {
   const pendingRef = useRef<Set<string>>(new Set());
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
-
-  const labelAbs = useChrome("compare.modeAbsolute");
-  const labelAlign = useChrome("compare.modeAlign10k");
-  const placeholder = useChrome("compare.pickerPlaceholder");
-  const legendAria = useChrome("compare.legendLabel");
-  const emptyText = useChrome("compare.empty");
-  const minHint = useChrome("compare.minHint");
-  const limitText = useChrome("compare.limit");
-  const removeLabel = useChrome("compare.remove");
-  const pickerEmptyText = useChrome("search.empty");
-  const pickerLoadingText = useChrome("search.loading");
 
   // Load global search index once (same /search-index endpoint used by SearchBox).
   useEffect(() => {
@@ -107,10 +110,10 @@ export function CompareClient() {
   const updateRepos = useCallback(
     (next: string[]) => {
       const param = serializeRepos(next);
-      const url = param ? `/compare?repos=${encodeURIComponent(param)}` : "/compare";
+      const url = param ? `${comparePath}?repos=${encodeURIComponent(param)}` : comparePath;
       router.replace(url, { scroll: false });
     },
-    [router],
+    [comparePath, router],
   );
 
   const add = useCallback(
@@ -154,15 +157,15 @@ export function CompareClient() {
             type="search"
             value={q}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder={placeholder}
-            aria-label={placeholder}
+            placeholder={labels.pickerPlaceholder}
+            aria-label={labels.pickerPlaceholder}
             disabled={!canAdd}
             autoComplete="off"
             spellCheck={false}
             className="w-full bg-transparent font-mono text-[0.85rem] text-on-surface placeholder:text-on-surface-variant disabled:opacity-50"
           />
         </div>
-        {!canAdd && <p className="mt-2 font-mono text-[0.75rem] text-on-surface-variant">{limitText}</p>}
+        {!canAdd && <p className="mt-2 font-mono text-[0.75rem] text-on-surface-variant">{labels.limit}</p>}
         {q.trim() && hits.length > 0 && (
           <ul className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-high">
             {hits.map((h) => {
@@ -192,7 +195,7 @@ export function CompareClient() {
         )}
         {q.trim() && hits.length === 0 && (
           <p role="status" aria-live="polite" className="mt-2 px-3 font-mono text-[0.75rem] text-on-surface-variant">
-            {engine ? pickerEmptyText : pickerLoadingText}
+            {engine ? labels.pickerEmpty : labels.pickerLoading}
           </p>
         )}
         {repos.length > 0 && (
@@ -202,7 +205,7 @@ export function CompareClient() {
                 <button
                   type="button"
                   onClick={() => remove(name)}
-                  aria-label={`${removeLabel} ${name}`}
+                  aria-label={`${labels.remove} ${name}`}
                   className="inline-flex min-h-11 items-center gap-2 rounded-full bg-surface-container-high px-3 py-1 font-mono text-[0.78rem] text-on-surface transition-colors hover:bg-on-surface/10"
                 >
                   <span>{name}</span>
@@ -220,12 +223,13 @@ export function CompareClient() {
         {orderedCurves.length >= MIN_COMPARE ? (
           <CompareCurveChart
             curves={orderedCurves}
-            modeLabels={{ absolute: labelAbs, align10k: labelAlign }}
-            legendAria={legendAria}
+            modeLabels={{ absolute: labels.modeAbsolute, align10k: labels.modeAlign10k }}
+            legendAria={labels.legendLabel}
+            ariaLabels={{ compareModes: labels.compareModesAria, starHistoryOverlay: labels.starHistoryOverlayAria }}
           />
         ) : (
           <p className="rounded-2xl border border-dashed border-outline-variant px-4 py-8 text-center font-mono text-[0.85rem] text-on-surface-variant">
-            {orderedCurves.length === 1 ? minHint : emptyText}
+            {orderedCurves.length === 1 ? labels.minHint : labels.empty}
           </p>
         )}
       </div>

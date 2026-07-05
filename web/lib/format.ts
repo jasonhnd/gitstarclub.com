@@ -1,5 +1,7 @@
 // Display formatting helpers (UI-only, no data dependency).
 
+import type { Locale } from "@/lib/i18n";
+
 export function fmtK(n: number): string {
   return Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
@@ -11,12 +13,29 @@ export function fmtStars(n: number): string {
   return String(n);
 }
 
-const LOCALE_TAG: Record<string, string> = { en: "en-US", ja: "ja-JP", zh: "zh-CN" };
+const LOCALE_TAG: Record<Locale, string> = {
+  en: "en-US",
+  ja: "ja-JP",
+  zh: "zh-CN",
+  "zh-TW": "zh-TW",
+  ko: "ko-KR",
+  es: "es-ES",
+  fr: "fr-FR",
+};
+
+export function intlLocaleTag(locale: string): string {
+  return LOCALE_TAG[locale as Locale] ?? locale;
+}
+
+export function formatInteger(locale: string, value: number): string {
+  return value.toLocaleString(intlLocaleTag(locale));
+}
+
 const fmtCache = new Map<string, Intl.DateTimeFormat>();
 function dtf(locale: string, opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
   const key = `${locale}|${JSON.stringify(opts)}`;
   let f = fmtCache.get(key);
-  if (!f) fmtCache.set(key, (f = new Intl.DateTimeFormat(LOCALE_TAG[locale] ?? locale, { timeZone: "UTC", ...opts })));
+  if (!f) fmtCache.set(key, (f = new Intl.DateTimeFormat(intlLocaleTag(locale), { timeZone: "UTC", ...opts })));
   return f;
 }
 

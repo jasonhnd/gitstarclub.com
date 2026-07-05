@@ -180,16 +180,17 @@ test('周排名窗口跨月不丢日', () => {
 - **里程碑链接 → 月度页锚点**：repo 页里程碑点击落到对应月份的正确锚点
 - **榜单行 → 实体页**：榜单里 repo 名 → repo 页；org 名 → org 页
 
-### 4.1 i18n 下拉与 cookie
+### 4.1 i18n locale URL、语言下拉与 cookie 重定向
 
-- 无 `gsc_lang` cookie 访问 `/`、`/pulse`、`/rankings` 时应默认英文。
-- 语言切换器显示当前语言，展开后只列出其它语言；支持 `en`、`ja`、`zh`、`zh-TW`、`ko`、`es`、`fr`。
-- 点击任一语言后应立即写入 `gsc_lang`，刷新当前 RSC 视图并保持原 URL；URL 不应出现语言前缀。
-- 从任一非英文语言都必须能切回 English。
-- `/api/lang?lang=fr&next=//evil.example` 作为后备入口仍必须回退到 `/`，防止开放重定向。
-- Service worker 不得缓存 HTML 导航或 `/api/*` 响应；语言 cookie 改变后不能拿到旧页面缓存。
-- 切换语言后 `<html lang>` 与 UI 文案应一致；repo 名、语言、topic、数字等数据字段不得被翻译。
-- **语言中立 URL × cookie**：不存在语言前缀路由（无 `/ja/...`、`/zh/...`）。应测同一条语言中立 URL（`/`、`/rankings/2024/10`、`/:owner/:name`）在 `gsc_lang` cookie 取不同值时都返回 200，且 UI chrome 按 cookie 翻译、repo 名/语言/topic/数字等数据字段保持原文（数据语言中立）
+- 无 `gsc_lang` cookie 访问 `/`、`/pulse`、`/rankings` 时应渲染 English；带非默认 `Accept-Language` 首访 `/` 时 middleware 可 307 到对应 locale root。
+- 语言切换器显示当前 route locale，展开后列出 `en`、`ja`、`zh`、`zh-TW`、`ko`、`es`、`fr`；每一项都是普通 `<a>` 链接。
+- 从 English 点击 Japanese 应导航到 `/ja/...`；从 `/ja/...` 点击 English 应导航回无前缀 URL；从任一非英文语言都必须能切回 English。
+- `LanguageSwitcher` 不写 `gsc_lang`、不派发 `gsc:localechange`、不靠客户端刷新当前 RSC 视图；导航后由服务端返回对应语言 HTML。
+- `/api/lang?lang=fr&next=/rankings` 作为兼容入口应写入 `gsc_lang=fr` 并重定向到 `/fr/rankings`；`next=//evil.example` 必须回退到站内安全路径，防止开放重定向。
+- 带 `gsc_lang=ja` 访问未加前缀的页面导航（如 `/rankings`）应 307 到 `/ja/rankings`；显式 locale URL（如 `/fr/rankings`）必须优先于 cookie。
+- Service worker 不得缓存 HTML 导航或 `/api/*` 响应；middleware / `/api/lang` 的重定向不能被旧 HTML 缓存污染。
+- 切换语言后 `<html lang>`、UI 文案、canonical 与 `hreflang` alternate 应与 route locale 一致；repo 名、语言、topic、数字等数据字段不得被翻译。
+- **locale URL × 数据语言中立**：应测 `/`、`/ja`、`/rankings/2024/10`、`/zh-TW/rankings/2024/10`、`/:owner/:name`、`/fr/:owner/:name` 均返回 200（合法实体前提下），UI chrome 按 route locale 翻译，repo 名/语言/topic/数字等数据字段保持源数据形式。
 - 用确定性等待（等元素 / URL），**不用 timeout 硬等**，避免 flaky
 
 ---
@@ -257,7 +258,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 - [ ] golden file 覆盖 ≥3 个知名 repo 的里程碑与排名，值已人工核对冻结
 - [ ] 视觉回归：关键页 × 4 断点 × 明暗双主题，基准入库
 - [ ] axe 零 critical；键盘可达 + focus 可见；reduced-motion 生效；AA 对比；SVG 有 title/aria + 数据表 fallback
-- [ ] E2E：导航图 3 跳贯通、上下期导航、里程碑锚点、榜单跳转、i18n cookie 切换（URL 不变、chrome 翻译）
+- [ ] E2E：导航图 3 跳贯通、上下期导航、里程碑锚点、榜单跳转、i18n locale URL 导航（`<html lang>` / canonical / hreflang / chrome 翻译一致）
 - [ ] 内容页零客户端 JS（bundle 断言）+ HTML < 20KB + 字体子集 ≤ ~30KB
 - [ ] CWV 达标（LCP<2.5s / INP<200ms / CLS<0.1 / FCP<1.5s）
 - [ ] 跨浏览器关键页通过，View Transitions 优雅降级

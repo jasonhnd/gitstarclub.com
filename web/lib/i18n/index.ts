@@ -1,21 +1,9 @@
 import en, { type Dict } from "./dictionaries/en";
+import { type Locale } from "./locales";
 
 export type { Dict };
-export const LOCALES = ["en", "ja", "zh", "zh-TW", "ko", "es", "fr"] as const;
-export type Locale = (typeof LOCALES)[number];
-export const DEFAULT_LOCALE: Locale = "en";
-export const LANG_COOKIE = "gsc_lang";
-export const LANGUAGE_CHANGE_EVENT = "gsc:localechange";
-
-export const LANGUAGE_LABELS: Record<Locale, string> = {
-  en: "English",
-  ja: "日本語",
-  zh: "简体中文",
-  "zh-TW": "繁體中文",
-  ko: "한국어",
-  es: "Español",
-  fr: "Français",
-};
+export type { Locale };
+export { DEFAULT_LOCALE, LANG_COOKIE, LANGUAGE_LABELS, LOCALES, isLocale } from "./locales";
 
 const loaders: Record<Locale, () => Promise<Dict>> = {
   en: async () => en,
@@ -28,7 +16,3 @@ const loaders: Record<Locale, () => Promise<Dict>> = {
 };
 
 export const getDictionary = (locale: Locale): Promise<Dict> => loaders[locale]();
-
-export function isLocale(s: string): s is Locale {
-  return (LOCALES as readonly string[]).includes(s);
-}

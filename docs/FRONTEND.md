@@ -30,7 +30,7 @@
 
 ### 1.1 路由总表（页面 ↔ 文件 ↔ 渲染层）
 
-> 渲染层定义见 §2。站内 canonical URL 全部带语言前缀；旧 `/trending` 与旧 `/{year}` 这类**历史路径形态**已从路由树删除，不做形态兼容重定向。但 repo 改名是另一回事：repo 页对改名旧 slug **发 308 永久重定向**到当前 `full_name`（见 §2.3 / §3.2 alias 机制），这与「不做兼容重定向」不矛盾——前者指消失的路径形态，后者指仍在追踪的 repo 换了名字。
+> 渲染层定义见 §2。English canonical URL 保持无前缀；ja/zh/zh-TW/ko/es/fr 使用 locale 前缀并与 English 互发 `hreflang` / `x-default`。下表列出 English 无前缀路径；非默认 locale 通过 `(localized)/[locale]` 路由组复用同一 canonical path（例如 `/ja/rankings`、`/fr/facebook/react`）。旧 `/trending` 与旧 `/{year}` 这类**历史路径形态**已从路由树删除，不做形态兼容重定向。但 repo 改名是另一回事：repo 页对改名旧 slug **发 308 永久重定向**到当前 `full_name`（见 §2.3 / §3.2 alias 机制），这与「不做兼容重定向」不矛盾——前者指消失的路径形态，后者指仍在追踪的 repo 换了名字。
 
 | 页 | URL | 文件（相对 `web/app/`） | 渲染层 | `generateStaticParams` |
 |---|---|---|---|---|
@@ -69,21 +69,29 @@ OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
 
 **周榜是独立页面**，但归入总榜路径下：`/rankings/YYYY/W##`。月榜和周榜共用 `[period]` 段，在页面里按 `W` 前缀分流；旧的 `/{lang}/YYYY` 与 `/{lang}/YYYY/MM` 不再存在。
 
-### 1.2 i18n（页内偏好，不进 URL）
+### 1.2 i18n（locale URL + 服务端渲染）
 
-需求：默认英文，并提供 en / ja / zh / zh-TW / ko / es / fr 七种 UI 语言（[REQUIREMENTS](./REQUIREMENTS.md) §9、[PRODUCT](./PRODUCT.md) i18n、[SEO](./SEO.md) §10）。页内语言偏好:URL 不包含语言段,repo URL 与 GitHub 结构一致。
+需求：默认英文，并提供 en / ja / zh / zh-TW / ko / es / fr 七种 UI 语言（[REQUIREMENTS](./REQUIREMENTS.md) §9、[PRODUCT](./PRODUCT.md) i18n、[SEO](./SEO.md) §10）。English 使用无前缀 URL；非默认 locale 使用前缀 URL。repo URL 仍保留 GitHub 风格 canonical path，只在非默认 locale 前加语言段：`/facebook/react`、`/ja/facebook/react`、`/fr/facebook/react`。
 
 **路由文件布局**：
 
 ```
 app/
-  layout.tsx                 # 渲染默认英文（<html lang="en"> 静态），paint 前 lang/theme 脚本 + Footer；无全树 I18nProvider
-  page.tsx  pulse/page.tsx
-  [owner]/[name]/page.tsx    # GitHub 风格 repo URL
-  o/page.tsx  o/page/[page]/page.tsx  o/[login]/page.tsx
-  rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
-  about/page.tsx
-  api/lang/route.ts          # 直接访问时的语言 cookie 后备入口（写 cookie）
+  _shell/RootShell.tsx       # 两个 root layout 共享：fonts/global CSS/theme init/body/Footer
+  _localized/*.tsx           # route-locale 共享页面实现
+  (en)/
+    layout.tsx               # English 无前缀根布局，<html lang="en">
+    page.tsx  pulse/page.tsx
+    [owner]/[name]/page.tsx  # GitHub 风格 repo URL
+    o/page.tsx  o/page/[page]/page.tsx  o/[login]/page.tsx
+    rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
+    about/page.tsx  privacy/page.tsx  categories/**  compare/page.tsx
+  (localized)/[locale]/
+    layout.tsx               # 非默认 locale 根布局，<html lang={toHreflang(locale)}>
+    page.tsx  pulse/page.tsx
+    [owner]/[name]/page.tsx  # /ja/facebook/react 等 locale-prefixed repo URL
+    o/**  rankings/**  categories/**  compare/page.tsx  about/page.tsx  privacy/page.tsx
+  api/lang/route.ts          # 兼容入口：写 gsc_lang 后重定向到 locale URL
   search-index/route.ts      # 客户端搜索索引端点：服务端读版本化 search/index.json + s-maxage 走 CDN
   compare/page.tsx           # 多 repo 对比页：静态壳 + 客户端读 URL ?repos= → 取曲线 → CompareCurve；带参 noindex
   repo-curve/route.ts        # 对比瘦路由：服务端读版本化 entity/repo/<id>.json → 投影精简曲线 + s-maxage 走 CDN
@@ -92,9 +100,9 @@ app/
 
 要点：
 
-- **URL canonical 单一化**：`/facebook/react` 是唯一 repo URL；不存在 `/en/r/facebook/react` / `/zh/r/facebook/react` 形态。
-- **渲染模式见 §2.5**（静态基底 + 客户端译 chrome）。
-- **i18n 实现细节见 §7**（手写字典、服务端默认语言 `<T>`、`gsc_lang` cookie 只驱动语言小岛与 CSS 语言切换、`i18n/server.ts` 弃用）；数据字段不翻译。
+- **URL canonical 按 locale 自规范化**：`/facebook/react` 是 English URL；`/ja/facebook/react`、`/zh-TW/facebook/react` 等是对应 locale 的规范 URL；`/en/*` 不是规范形态，middleware 永久重定向到无前缀 English。
+- **渲染模式见 §2.5**（route locale → server dictionary → localized HTML；长尾仍按需 ISR）。
+- **i18n 实现细节见 §7**（手写字典、路由组选择 `<html lang>`、LanguageSwitcher 以 `<a>` 导航、`gsc_lang` 只作 middleware/API 偏好重定向信号）；数据字段不翻译。
 
 ---
 
@@ -106,7 +114,7 @@ app/
 
 | 层 | 页面 | 新鲜度（REQUIREMENTS §6） | Next 机制 |
 |---|---|---|---|
-| **核心** | `/` · `/pulse` · `/rankings` · 当年/当月的 `/rankings/...` | 头版：每日换 | 每日 cron `revalidatePath`；页面静态预渲染（默认英文），chrome 服务端渲染，只有搜索/语言/主题等叶子控件水合 |
+| **核心** | `/` · `/pulse` · `/rankings` · 当年/当月的 `/rankings/...`（非默认 locale 为对应前缀 URL） | 头版：每日换 | 每日 cron `revalidatePath`；核心 locale 页面静态/ISR 预渲染，chrome 服务端本地化，只有搜索/语言/主题等叶子控件水合 |
 | **长尾** | 历史年/月 · **周** · repo · org（~16k+）· 分类 | 编年史：冻结 / 标 as-of | **按需 ISR**：`dynamicParams=true` + 空（或注册表派生）`generateStaticParams`，首访生成、持久缓存。`revalidate` 按页分裂（见下脚注），均叠加 cron `revalidatePath` 定点失效 |
 | **mover** | 在 mover 集里的 repo/org + `/pulse` | 脉搏：事件驱动，只刷"在动的那一小撮" | 每周/每日 cron 对其 `revalidatePath` 定点失效 → 下次访问再生 |
 | **历史** | 已折叠入 Parquet 的过去周期 | 旧报纸：永不重印 | 纯静态命中 CDN；数据不变 = 不 revalidate |
@@ -130,7 +138,7 @@ export const dynamicParams = true            // 未列入的历史年 → 首访
 export async function generateStaticParams() {
   // 只预渲染「当前年」；历史年留给按需 ISR
   const Y = new Date().getUTCFullYear()
-  return [{ year: String(Y) }]               // 语言走页内 cookie，无 [lang] 段
+  return [{ year: String(Y) }]               // locale 由 (en) / (localized)/[locale] 路由组选择；不在这里交叉生成
 }
 export const revalidate = false              // 不轮询；每日 cron 用 revalidatePath 刷当年
 ```
@@ -187,17 +195,18 @@ export default nextConfig;
 
 > `app/api/cron/daily` 与 `app/api/cron/weekly` 通过 `revalidatePath` + `CRON_SECRET` 鉴权刷新热集。
 
-### 2.5 渲染模式：静态基底 + 客户端译 chrome
+### 2.5 渲染模式：route locale + 服务端本地化 HTML
 
-页面 BODY 与 chrome（顶栏 / 页脚 / 面包屑标签 / 区段标题）使用默认英文服务端静态渲染。`gsc_lang` cookie 只由语言小岛读取，用于设置 `documentElement.lang` 和 CSS 驱动的多语内容切换。整棵路由树命中 CDN（核心页 SSG、长尾按需 ISR），不进入按请求 SSR。
+页面 BODY 与 chrome（顶栏 / 页脚 / 面包屑标签 / 区段标题）都由 route locale 决定：English 无前缀路由渲染英文 HTML，非默认 locale 前缀路由渲染对应语言 HTML。`gsc_lang` cookie 不参与页面渲染，只在 middleware 和 `/api/lang` 中作为偏好重定向信号。整棵路由树继续命中静态 / ISR 缓存（核心页 SSG、长尾按需 ISR），不进入按请求 SSR。
 
 **实现要点**：
 
-- `web/app/layout.tsx`：不读 cookie；`<html lang="en">` 静态，paint 前 `LANG_INIT_SCRIPT` 可按 `gsc_lang` 调整 `documentElement.lang`；不再用全树 `<I18nProvider>` 包裹内容页。
-- `web/lib/i18n/client.tsx`：服务端安全的默认语言 `<T path="...">` / `chromeText()` / `resolveChromePath()`；供 RSC 页面和 chrome 组件直接渲染静态英文。
-- `web/lib/i18n/client-runtime.tsx`：保留 `I18nProvider` / `useDict()` / `useChrome()` 给真正 client 工具（目前主要是 `/compare` 交互面）使用；不会包住全站 layout。
-- `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` 为服务端组件；`SearchBox`、`LanguageSwitcher`、`ThemeToggle` 是顶栏内的最小 client islands。
-- 各页（`page.tsx` / `pulse` / `rankings*` / `about` / repo / org）：不读 cookie,BODY 用默认英文静态渲染,chrome 文本经 `<T>` 切换；repo/org 用 `generateStaticParams() => []` 转按需 ISR。
+- `web/app/(en)/layout.tsx`：English 无前缀 root layout，调用 `RootShell lang="en"`。
+- `web/app/(localized)/[locale]/layout.tsx`：验证非默认 locale，加载对应 dictionary，调用 `RootShell lang={toHreflang(locale)}`。
+- `web/app/_shell/RootShell.tsx`：两套 root layout 共享的 HTML/body 壳；只保留 theme init script，不再需要 `LANG_INIT_SCRIPT`。
+- `web/app/_localized/*`：共享服务端页面实现，接收 route locale / dictionary / canonical path 后渲染 localized chrome、metadata、JSON-LD 与确定性文案。
+- `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` 为服务端组件；`SearchBox`、`LanguageSwitcher`、`ThemeToggle` 是顶栏内的最小 client islands，其中 `LanguageSwitcher` 只生成 locale URL 链接。
+- 各页（`page.tsx` / `pulse` / `rankings*` / `about` / repo / org / category）：不读 cookie；repo/org 用 `generateStaticParams() => []` 转按需 ISR。
 - `web/lib/i18n/server.ts`：**弃用**——读 cookie 会破坏静态;保留仅供非页面服务端上下文,勿在 page/layout 调用。
 
 **构建路由表**（`cd web && bun run build`）：
@@ -208,8 +217,8 @@ export default nextConfig;
 | `/rankings/[year]` · `/rankings/[year]/[period]` | `●` SSG（当年/当月预渲染 + 其余按需） |
 | `/[owner]/[name]` · `/o/[login]` | `●` SSG（`[]` + `dynamicParams` → 全部按需 ISR） |
 
-- SSR/静态输出**完整可索引 HTML**（英文 chrome 直接进静态 HTML,SEO §3a 不受影响），数据语言中立。
-- 取舍依据：每页约 95% 是语言中立数据,仅少量 chrome 字符串需要翻译 → 静态基底 + 客户端译 chrome 同时保住**静态 CDN 扛量 + GitHub 风格 URL + 页内切语言**,吻合 SEO 口径（语言中立 canonical、英文默认、不发 hreflang,见 [SEO](./SEO.md) i18n 注）。
+- SSR/静态输出**完整可索引 HTML**（当前 route locale 的 chrome 与正文进入初始 HTML，SEO §3a 不受影响），数据语言中立。
+- 取舍依据：每页约 95% 是语言中立数据,仅少量 chrome 字符串需要翻译 → route-locale 服务端渲染 + 按需 ISR 同时保住**静态 CDN 扛量 + GitHub 风格 canonical path**；metadata、sitemap、正文、middleware 与语言切换导航已经统一到 locale URL / hreflang 架构。
 
 ---
 
@@ -366,7 +375,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步 |
 | OG 图渲染（站点 / repo / 月+周 / 年） | `opengraph-image.tsx` × 4 | RSC（next/og） | 动态生成 1200×630 PNG；`revalidate=86400`，共享 `lib/og-card.tsx`（石墨灰+金、stars 内联 SVG） |
 | 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 交互按钮（见 §4.2） |
-| 语言切换 LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | 写 `gsc_lang` cookie + 派发 `gsc:localechange`，不触发 RSC refresh（§7） |
+| 语言切换 LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | 根据当前 route locale 与 canonical path 生成 locale URL `<a>` 链接；导航后服务端返回对应语言 HTML（§7） |
 | 页面转场 Template | `template.tsx` | RSC | 重挂载淡入容器 |
 | SW 注册 RegisterSW | `_explore/RegisterSW.tsx` | **Client** | PWA（见 §4.2） |
 
@@ -385,7 +394,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | `Breadcrumbs` | `_explore/` | Home→年→月 / Home→owner→repo（[SEO](./SEO.md) §6.7） |
 | `Footer` | `_explore/` | 页脚导航 + 语言切换落点 |
 | `layout-tokens.ts` | `_explore/` | 共享页面横向 gutter：`PAD_X = px-[clamp(1.25rem,5vw,2.5rem)]`，对齐 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 锁定基线 |
-| `LanguageSwitcher` | `components/` | 当前语言 + 下拉切其它语言；en/ja/zh/zh-TW/ko/es/fr；写 cookie + 派发 `gsc:localechange` |
+| `LanguageSwitcher` | `components/` | 当前语言 + 下拉切其它语言；en/ja/zh/zh-TW/ko/es/fr；每项是对应 locale URL 的普通链接 |
 | `JsonLd` | `_explore/` | 注入 `CollectionPage`、`ItemList`、repo/org 实体等 JSON-LD |
 | `PrevNext`（`NavArrow`/`MonthArrow`） | 内联 | 上下月 / 上下年 / 上下周（年/月/周页）—— 可抽组件 |
 | `EntityCard` | 内联 | repo/org 卡片（pulse / rankings）—— 可抽组件 |
@@ -415,15 +424,15 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 > 这条直接决定字典只覆盖"界面词"，不碰任何来自 JSON 视图的数据字段。
 
-### 7.2 字典（手写；服务端默认英文 + 客户端按 cookie 切换）
+### 7.2 字典（手写；route locale 服务端选择）
 
 ```
 web/lib/i18n/
   dictionaries/
     en.ts   ja.ts   zh.ts   zh-tw.ts   ko.ts   es.ts   fr.ts
   index.ts                       # getDictionary(locale) — 懒加载字典
-  client.tsx                     # 服务端安全的默认语言 <T> / chromeText / resolveChromePath
-  client-runtime.tsx             # "use client" I18nProvider / useDict / useChrome（仅交互工具使用）
+  client.tsx                     # server-safe fallback helper；页面应优先使用 route dictionary
+  client-runtime.tsx             # "use client" I18nProvider / useDict / useChrome（仅交互工具兜底，不包内容页）
   server.ts                      # ⚠️ 弃用：getPreferredDictionary 读 cookie 会破坏静态；勿在 page/layout 调用
 ```
 
@@ -434,21 +443,23 @@ export type Locale = keyof typeof dicts;
 export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 ```
 
-- 根 `layout.tsx` 静态渲染 `<html lang="en">`，不包全树 provider，也不读 cookie。`LANG_INIT_SCRIPT` 在 paint 前按 `gsc_lang` 设置 `documentElement.lang`。
-- chrome 文本节点用服务端安全的 `<T path="...">`；`Chrome`/`Footer`/`Breadcrumbs` 直接渲染默认语言。Pulse 页面文案走 `nav.pulse` / `pulse.*`，避免旧“trending”命名继续混淆编辑语义。**数据**（数字/日期/repo 名）语言无关，按默认英文服务端渲染进静态 HTML。
+- `(en)/layout.tsx` 与 `(localized)/[locale]/layout.tsx` 选择 `<html lang>` 并把 route locale / dictionary 传入共享 shell；页面和 chrome 不读 cookie。
+- chrome 文本节点使用 route dictionary；`Chrome`/`Footer`/`Breadcrumbs` 接收 locale 与 dictionary 后服务端渲染当前语言。Pulse 页面文案走 `nav.pulse` / `pulse.*`，避免旧“trending”命名继续混淆编辑语义。**数据**（数字/日期/repo 名）语言无关，按源数据服务端渲染进静态 / ISR HTML。
 - 客户端 i18n resolver 缺键时先回退英文 `en[path]`，只有英文也缺失或路径指向对象节点时才返回原始 path，避免局部字典漏项直接暴露给用户。
-- `LanguageSwitcher` 默认英文，下拉切其它语言；客户端写 `gsc_lang` cookie 后派发 `gsc:localechange`，不触发 RSC refresh，不改 canonical URL。`/api/lang` 仍保留为直接访问后备。
-- 现有少量 SEO title/description + 静态 HTML chrome 仍以英文为主，这是单一 canonical URL 的刻意取舍。
+- `LanguageSwitcher` 展示当前 route locale，下拉项是对应 locale URL 的 `<a>` 链接；不写 cookie、不派发 `gsc:localechange`、不在客户端翻译当前页。`/api/lang` 仍保留为兼容入口：写 `gsc_lang` 后重定向到 locale URL。
+- SEO title/description、JSON-LD、FAQ、面包屑与确定性 narrative 随 route locale 由服务端选择；canonical 指当前 locale 自身 URL，`hreflang` / `x-default` 由 `pageMeta()` 输出。
 
-### 7.3 canonical（Metadata API）
+### 7.3 canonical / hreflang（Metadata API）
 
-语言不再是 URL 维度，所以不发 `hreflang` 矩阵。每页只声明无语言前缀的 canonical：
+服务器端多语言 URL 已落地：调用 `pageMeta()` 时传入 locale、无语言前缀的 canonical path、localized title / description；helper 负责生成当前 locale canonical、`og:url`、`og:locale` 与完整 `hreflang` 矩阵（含 `x-default` -> English 无前缀 URL）。页面正文、metadata、sitemap 与语言切换导航都以 locale URL 为准。
 
 ```ts
-return {
-  alternates: { canonical: path },
-  openGraph: { url: path },
-};
+return pageMeta({
+  locale,
+  path: "/rankings",
+  title,
+  description,
+});
 ```
 
 - `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`（[OPS](./OPS.md) 环境变量 / [SEO](./SEO.md) §2）以适配预览/生产。
@@ -461,10 +472,10 @@ return {
 
 1. **数据层**：`web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch Blob + parse + `cache()`）是页面读 JSON 视图的唯一入口。
 2. **段配置**：`rankings/[year]`/`[period]` 预渲染当前年/月 + `dynamicParams`;repo/org `generateStaticParams() => []` 转按需 ISR;未知 param `notFound()`。
-3. **`next.config.ts`**：无语言前缀跳转、无旧路径兼容重定向。
-4. **页面**：`pulse`/`rankings`/`rankings/[year]`/`[period]`/`[owner]/[name]`/`o/[login]`。
-5. **i18n**：客户端 chrome i18n（机制见 §7，渲染模式见 §2.5）。
-6. **SEO 配套**：`app/sitemap.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD。
+3. **middleware / `next.config.ts`**：middleware 负责 `/en/*` 规范化与 cookie/header 偏好重定向；`next.config.ts` 不做旧路径形态兼容重定向。
+4. **页面**：`(en)` 与 `(localized)/[locale]` 两套路由组调用 `_localized/*` 共享实现，覆盖 `pulse`/`rankings`/`rankings/[year]`/`[period]`/`[owner]/[name]`/`o/[login]`/`categories`/`compare`。
+5. **i18n**：route-locale 服务端渲染（机制见 §7，渲染模式见 §2.5）。
+6. **SEO 配套**：`app/sitemap.xml/route.ts`、`app/sitemap-*.xml/route.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD。
 7. **cron route**：`app/api/cron/{daily,weekly}`（`revalidatePath` + `CRON_SECRET`）。
 8. **共享组件 / token helper**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` 抽成共享组件；页面横向 padding 统一经 `_explore/layout-tokens.ts` 的 `PAD_X` 使用锁定基线 clamp 值；`PrevNext`/`EntityCard`/`YearSpine` 仍内联（§6.3）。
 
@@ -484,13 +495,13 @@ return {
 **路由**
 - 周榜 `/rankings/[year]/W[week]` 独立、与月榜共用 `[period]` 并按 `W` 前缀消歧
 - org `/o/[login]`、repo `/[owner]/[name]`、总榜 `/rankings`、脉搏 `/pulse`
-- i18n 页内切换：`gsc_lang` cookie；URL 不带语言前缀；支持 en/ja/zh/zh-TW/ko/es/fr（内容页 chrome 默认语言服务端渲染；语言小岛更新 `documentElement.lang`）
+- i18n URL：English 无前缀；ja/zh/zh-TW/ko/es/fr 使用前缀 URL；`/en/*` 308 到无前缀 English；支持完整 `hreflang` / `x-default` 矩阵
 
 **分层 ↔ 配置**
 - `cacheComponents` 保持关闭（`next.config.ts` 注释说明）
 - `rankings/[year]`/`[period]` 用 `generateStaticParams` 预渲染当年/当月 + `dynamicParams`
 - 数据变更靠 cron `revalidatePath`；`app/api/cron/{daily,weekly}` 带 `CRON_SECRET` 鉴权
-- 渲染模式：静态基底 + 客户端译 chrome（§2.5）→ 构建路由表保持 `○` 静态 / `●` SSG 按需 ISR
+- 渲染模式：route locale + 服务端本地化 HTML（§2.5）→ 构建路由表保持 `○` 静态 / `●` SSG 按需 ISR
 
 **数据消费**
 - `web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch+parse+`cache()`）是页面读 JSON 视图的唯一入口
@@ -503,8 +514,8 @@ return {
 
 **i18n**
 - 手写字典 `web/lib/i18n/`（en/ja/zh/zh-TW/ko/es/fr）；数据字段不翻译
-- chrome 默认语言服务端渲染：`i18n/client.tsx` 提供 server-safe `<T>`；`i18n/client-runtime.tsx` 仅供真正 client 工具读取 cookie / 字典；`i18n/server.ts` 弃用
-- 各页 `alternates.canonical` 指无语言前缀 canonical；不发 `alternates.languages`
+- chrome 按 route locale 服务端渲染：页面传入 dictionary；`i18n/client-runtime.tsx` 仅供真正 client 工具兜底；`i18n/server.ts` 弃用
+- 各页 `pageMeta()` 以无语言前缀 canonical path 为输入，输出当前 locale canonical 与完整 `alternates.languages`
 - `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`
 
 ---

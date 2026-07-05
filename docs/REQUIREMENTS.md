@@ -32,7 +32,7 @@
 | 脉搏页 | `/pulse` | 今日/本周大涨 + 复活/突刺 |
 | 关于 | `/about` | 数据口径声明 |
 
-- URL 语言中立、单一（无 `/ja`、`/zh` 等语言前缀）；语言走页内 `gsc_lang` cookie 偏好（不发 hreflang，见 [SEO.md](./SEO.md) §10）。
+- English URL 保持无前缀；非默认 locale 使用有前缀 URL，metadata / canonical / sitemap / hreflang 按 route locale 输出（当前 SEO 口径见 [SEO.md](./SEO.md) §10；架构见 [I18N.md](./I18N.md)）。
 - 月/年页 **repo 榜与 org 榜并列**展示。
 - **导航栏全站搜索**：顶栏 chrome 客户端 combobox，首次聚焦懒加载版本化 `search/index.json` + MiniSearch（zero 后端、走 CDN），typo 容错 + 按 stars 加权，直达 `/{owner}/{name}`；「按名字直达」入口，无 `/search?q=` 结果页。
 - **多 repo 对比**：`/compare` 静态壳 + URL 携带 `?repos=a/b,c/d`，前端按需取版本化曲线、叠图比较；归一化两模式（绝对值 / 对齐到破万）；上限 5 个；可对比集 = 已收录的 ≥1 万星 repo。任意 repo / ≥100 星下钻属未来工作，见 [ROADMAP.md](./ROADMAP.md)。
@@ -86,7 +86,7 @@
 
 ## 9. SEO / i18n
 
-- 每页 = 长尾落地页（标题含真实搜索词）；sitemap 分片（语言中立单一 ⇒ 不乘语言数，**权威 URL 规模见 [SEO.md](./SEO.md)** §1.3）；schema.org（Dataset/ItemList/Organization/BreadcrumbList…）；语言走页内 `gsc_lang` cookie 偏好、不进 URL、不发 hreflang（英文为默认 SEO 语言，见 [SEO.md](./SEO.md) §10）；OG 图（石墨灰+金，build 生成）；预览站 noindex。详见 [SEO.md](./SEO.md)。
+- 每页 = 长尾落地页（标题含真实搜索词）；sitemap 使用 index + per-locale XML，English 无前缀、非默认 locale 有前缀 URL 与 hreflang（**权威 URL 规模见 [SEO.md](./SEO.md)** §1.3 / §10）；schema.org（Dataset/ItemList/Organization/BreadcrumbList…）；OG 图（石墨灰+金，build 生成）；预览站 noindex。详见 [SEO.md](./SEO.md)。
 
 ## 10. 设计调性
 
@@ -109,6 +109,6 @@
 
 - [ ] 任意历史周期可回看，数据冻结精确。
 - [ ] `/pulse` 当天反映"谁在涨 / 老项目复活"。
-- [ ] repo/org/周/全时/脉搏 各页可达、SEO 友好、七种 UI 语言（页内 cookie 偏好、单一语言中立 URL）。
+- [ ] repo/org/周/全时/脉搏 各页可达、SEO 友好、七种 UI 语言（English 无前缀，非默认 locale 使用有前缀 URL）。
 - [ ] 排名矩阵全维度正确（含 org、flow/stock、增速、新晋）。
 - [ ] 运行时纯静态扛 10M/天；回填仅一次性 $10、日常零外部账单。

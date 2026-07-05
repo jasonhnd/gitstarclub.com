@@ -7,11 +7,13 @@ import { fmtStars } from "@/lib/format";
 import type { SearchDoc } from "@/lib/contracts";
 import type { SearchHit } from "@/lib/search/core";
 import { MAX_COMPARE } from "@/lib/compare/constants";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
+import { localizedPath } from "@/lib/i18n/routing";
 
 // Global repo search. The index (search/index.json, ~5k repos) is fetched on first focus;
 // MiniSearch indexing and querying run in a Web Worker to keep the main thread responsive.
 // Each result row also has a "+ compare" toggle (v0.2 §5): selections accumulate in a small set
-// and a footer CTA jumps to /compare?repos=… with everything chosen. Capped at MAX_COMPARE.
+// and a footer CTA jumps to the localized compare route with everything chosen. Capped at MAX_COMPARE.
 // See docs/FRONTEND.md (search + compare surfaces).
 
 const LIMIT = 8;
@@ -27,7 +29,7 @@ export interface SearchBoxLabels {
   openCompare: string;
 }
 
-export function SearchBox({ labels }: { labels: SearchBoxLabels }) {
+export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchBoxLabels; locale?: Locale }) {
   const router = useRouter();
   const label = labels.label;
   const placeholder = labels.placeholder;
@@ -139,11 +141,11 @@ export function SearchBox({ labels }: { labels: SearchBoxLabels }) {
   const openCompare = useCallback(() => {
     if (compareSet.size === 0) return;
     const param = encodeURIComponent([...compareSet].join(","));
-    router.push(`/compare?repos=${param}`);
+    router.push(`${localizedPath(locale, "/compare")}?repos=${param}`);
     setCompareSet(new Set());
     reset();
     inputRef.current?.blur();
-  }, [compareSet, router, reset]);
+  }, [compareSet, locale, router, reset]);
 
   const onChange = (value: string) => {
     setQ(value);
@@ -168,7 +170,7 @@ export function SearchBox({ labels }: { labels: SearchBoxLabels }) {
       const hit = hits[active];
       if (hit) {
         e.preventDefault();
-        router.push(`/${hit.full_name}`);
+        router.push(localizedPath(locale, `/${hit.full_name}`));
         inputRef.current?.blur();
         reset();
       }
@@ -243,7 +245,7 @@ export function SearchBox({ labels }: { labels: SearchBoxLabels }) {
                       }`}
                     >
                       <Link
-                        href={`/${h.full_name}`}
+                        href={localizedPath(locale, `/${h.full_name}`)}
                         onMouseEnter={() => setActive(i)}
                         onClick={reset}
                         className="grid min-h-11 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"

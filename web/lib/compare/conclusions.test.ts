@@ -37,6 +37,22 @@ describe("compare conclusions", () => {
     expect(conclusion?.result).toBe("vuejs/vue grew faster after 10k, gaining +8.0k stars in 2 months versus +6.5k for react/react.");
   });
 
+  test("localizes milestone month labels for rendered compare rows", () => {
+    const react = curve("react/react", "2015-05-01", [
+      ["2015-05", 10500],
+      ["2015-06", 13000],
+    ]);
+    const vue = curve("vuejs/vue", "2016-03-01", [
+      ["2016-03", 11000],
+      ["2016-04", 14000],
+    ]);
+
+    const conclusion = buildComparePairConclusion({ label: "React vs Vue", a: "react/react", b: "vuejs/vue" }, react, vue, "fr");
+
+    expect(conclusion?.repos[0].crossed10kLabel).toBe("mai 2015");
+    expect(conclusion?.repos[1].crossed10kLabel).toBe("mars 2016");
+  });
+
   test("omits pairs without a real shared post-10k window", () => {
     const onePoint = curve("a/a", "2020-01-01", [["2020-01", 10000]]);
     const missingMilestone = curve("b/b", null, [["2020-01", 10000], ["2020-02", 12000]]);
