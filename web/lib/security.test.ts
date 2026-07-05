@@ -1,6 +1,46 @@
+import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
+import { contentSecurityPolicyForEnvironment, THEME_INIT_SCRIPT_CSP_HASH } from "./csp";
 import { stringifyJsonForScript } from "./json-script";
 import { hasValidBearerToken, requireBearerToken } from "./security";
+import { THEME_INIT_SCRIPT } from "./theme-script";
+
+function cspDirective(csp: string, name: string): string {
+  return csp.split("; ").find((directive) => directive.startsWith(`${name} `)) ?? "";
+}
+
+describe("contentSecurityPolicyForEnvironment", () => {
+  test("does not allow broad inline scripts in production", () => {
+    const csp = contentSecurityPolicyForEnvironment("production");
+    const scriptSrc = cspDirective(csp, "script-src");
+
+    expect(scriptSrc).toBe(`script-src 'self' ${THEME_INIT_SCRIPT_CSP_HASH}`);
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
+    expect(scriptSrc).not.toContain("'unsafe-eval'");
+    expect(csp).toContain("upgrade-insecure-requests");
+  });
+
+  test("ties the production script hash to the rendered theme initializer", () => {
+    const expectedHash = `'sha256-${createHash("sha256").update(THEME_INIT_SCRIPT).digest("base64")}'`;
+
+    expect(THEME_INIT_SCRIPT_CSP_HASH).toBe(expectedHash);
+  });
+
+  test("keeps development script allowances scoped to development", () => {
+    const csp = contentSecurityPolicyForEnvironment("development");
+    const scriptSrc = cspDirective(csp, "script-src");
+
+    expect(scriptSrc).toBe("script-src 'self' 'unsafe-inline' 'unsafe-eval'");
+    expect(csp).not.toContain("upgrade-insecure-requests");
+  });
+
+  test("does not include eval allowances outside development", () => {
+    const scriptSrc = cspDirective(contentSecurityPolicyForEnvironment("test"), "script-src");
+
+    expect(scriptSrc).toBe("script-src 'self' 'unsafe-inline'");
+    expect(scriptSrc).not.toContain("'unsafe-eval'");
+  });
+});
 
 describe("stringifyJsonForScript", () => {
   test("escapes script-breaking and HTML-sensitive characters", () => {
