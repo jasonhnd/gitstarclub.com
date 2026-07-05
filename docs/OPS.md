@@ -1,3 +1,15 @@
+---
+owner: operations
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - branch topology
+  - staging and promotion
+  - deploy and rollback runbooks
+  - cron and workflow operations
+  - environment variables and alerting
+---
+
 # gitstarclub Operations Runbook
 
 > 运维与部署的唯一真相源。架构与数据流见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。

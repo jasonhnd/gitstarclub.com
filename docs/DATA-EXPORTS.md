@@ -1,3 +1,13 @@
+---
+owner: data exports
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - public data export set
+  - export regeneration commands
+  - export license and attribution
+---
+
 # GitStarClub data exports
 
 GitStarClub publishes small, deterministic CSV and JSON extracts for reuse and citation. They are generated from existing precomputed Vercel Blob views and checked in as static assets under `web/public/data/exports/v1/`.

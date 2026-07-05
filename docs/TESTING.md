@@ -1,3 +1,15 @@
+---
+owner: testing
+status: active
+last_reviewed: 2026-07-06
+source_of_truth_for:
+  - test pyramid
+  - contract tests
+  - recompute parity gates
+  - validation invariants
+  - smoke tests
+---
+
 # gitstarclub 测试策略
 
 > 精简的、决策导向的测试策略。核心原则：**数据正确性就是产品本身**——历史精度是卖点，错的数据比难看的页面更致命。
