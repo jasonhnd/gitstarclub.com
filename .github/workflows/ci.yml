@@ -36,3 +36,5 @@ jobs:
           BLOB_BASE_URL: https://blob.example.com
           # Keep PR CI deterministic; the live SEO suite is opt-out via an empty base.
           SEO_LIVE_BASE: ""
+      - run: bun x playwright install --with-deps chromium
+      - run: bun run test:overflow

@@ -42,7 +42,7 @@ export function StarCurve({
     .filter(({ p }) => p.label.endsWith("-01"));
 
   return (
-    <figure className="m-0 overflow-x-auto pb-2">
+    <figure className="m-0 max-w-full overflow-x-auto pb-2 [contain:inline-size]">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="aspect-[880/300] min-w-[38rem] w-full max-w-none"

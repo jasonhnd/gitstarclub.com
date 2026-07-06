@@ -38,7 +38,7 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
   const yTicks = [0, Math.round(chart.yMax / 2), chart.yMax];
 
   return (
-    <figure className="m-0 overflow-x-auto pb-2">
+    <figure className="m-0 max-w-full overflow-x-auto pb-2 [contain:inline-size]">
       <div
         role="group"
         aria-label={fill(ariaLabels.compareModes, { absolute: modeLabels.absolute, align10k: modeLabels.align10k })}

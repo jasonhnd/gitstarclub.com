@@ -79,7 +79,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
               {t.compare.serverHeading}
             </h2>
             <p className="mt-3 max-w-[72ch] text-[0.98rem] leading-relaxed text-on-surface">{conclusionText}</p>
-            <div className="mt-4 overflow-x-auto">
+            <div className="mt-4 max-w-full overflow-x-auto [contain:inline-size]">
               <table className="w-full min-w-[42rem] border-collapse text-left text-[0.86rem]">
                 <caption className="sr-only">{t.compare.serverCaption}</caption>
                 <thead className="border-y border-outline-variant font-mono text-[0.7rem] uppercase tracking-wider text-on-surface-variant">

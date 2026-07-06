@@ -23,13 +23,13 @@ Out of scope: development playbooks and local workflow live in [DEVELOPMENT.md](
 
 ## Current automation
 
-GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test`. PR tests set `SEO_LIVE_BASE=""` so the network-dependent live SEO suite stays out of the deterministic CI gate.
+GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, `bun run test`, and `bun run test:overflow`. PR tests set `SEO_LIVE_BASE=""` so the network-dependent live SEO suite stays out of the deterministic CI gate.
 
 Dependency audit is also a PR gate. CI runs `bun run audit:deps` in both `web/` and `pipeline/`, and that script is `bun audit --audit-level=high`; new high-severity advisories must be fixed by upgrading the direct dependency or documented as a temporary exception before merge. Moderate and low advisories are reviewed during dependency maintenance, but they do not fail CI unless the advisory affects a production server-side path or is escalated by maintainers.
 
 Temporary dependency-audit overrides live in the affected package manifest, next to the lockfile they protect. As of this policy, `web/package.json` pins `undici` above the high-advisory floor while `workflow` still ships a vulnerable transitive pin, and pins `piscina` to the first fixed 4.x release while `@swc/cli` has not released an updated dependency range. `find-up@7` is a compatibility pin, not a security exception: it keeps Vercel Bun resolving the ESM package required by `workflow` builders while eslint keeps its own compatible nested `find-up@5`.
 
-Those commands are the current PR/main CI blockers. `bun run typecheck` keeps the main Next.js app config focused on production code. `bun run typecheck:tests` uses `web/tsconfig.tests.json` for `*.test.ts(x)` and `web/lib/integration/**`, which stay excluded from the main app typecheck only to keep the production program narrow. `bun run typecheck:scripts` uses the root `tsconfig.scripts.json` with `checkJs` for root scripts, pipeline `.mjs` utilities, web `.mjs` configs/helpers, and `web/public/sw.js`. `bun run test` maps to `bun test lib/`; the CI job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. No committed Playwright, Lighthouse, axe, or cross-browser job is enforced today.
+Those commands are the current PR/main CI blockers. `bun run typecheck` keeps the main Next.js app config focused on production code. `bun run typecheck:tests` uses `web/tsconfig.tests.json` for `*.test.ts(x)` and `web/lib/integration/**`, which stay excluded from the main app typecheck only to keep the production program narrow. `bun run typecheck:scripts` uses the root `tsconfig.scripts.json` with `checkJs` for root scripts, pipeline `.mjs` utilities, web `.mjs` configs/helpers, and `web/public/sw.js`. `bun run test` maps to `bun test lib/`; the CI job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. `bun run test:overflow` builds and starts the production Next app, then runs a focused Chromium Playwright guard against page-level horizontal overflow on `/pulse`, `/rankings`, `/categories`, repo detail, org detail, and `/compare` at 390px and 360px using local deterministic Blob fixtures. No Lighthouse, axe, screenshot visual-regression, or cross-browser job is enforced today.
 
 `web/tsconfig.json` still has `allowJs` because first-party `.mjs` modules such as `web/lib/fetch-timeout.mjs` are shared with Node pipeline scripts. `skipLibCheck` remains enabled in the TypeScript configs to keep CI focused on first-party code and avoid framework/dependency declaration churn from Next, React, Bun, and Node type packages. App and test code stay under `strict`; `tsconfig.scripts.json` also runs `checkJs`, but intentionally leaves `noImplicitAny` off for archived `.mjs` pipeline utilities whose DuckDB/API row shapes are dynamic until they are migrated or annotated more deeply.
 
@@ -37,7 +37,7 @@ The Vercel Workflow `validate` step is a separate production-data publish gate: 
 
 ## Target coverage
 
-The visual, a11y, E2E, performance, and cross-browser sections below remain target coverage until their Playwright/Lighthouse/browser tooling is added. They should not be treated as current PR blockers. The status table in **Planned gates** is the source of truth for whether each check is `enforced`, `manual`, `report-only`, `planned`, or `not implemented`.
+The visual, a11y, broader E2E, performance, and cross-browser sections below remain target coverage until their Playwright/Lighthouse/browser tooling is added. Apart from the focused Playwright horizontal-overflow guard described above, they should not be treated as current PR blockers. The status table in **Planned gates** is the source of truth for whether each check is `enforced`, `manual`, `report-only`, `planned`, or `not implemented`.
 
 The issue #25 Lighthouse / Core Web Vitals baseline is archived in [perf/CWV-25.md](./perf/CWV-25.md). Treat that file as supporting evidence for one measured run; this document owns current performance targets and test expectations.
 
@@ -273,7 +273,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ## Planned gates
 
-> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/main CI 只强制 `bun run lint`、`bun run typecheck`、`bun run typecheck:tests`、`bun run typecheck:scripts`、`bun run test`。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Playwright / axe / Lighthouse / cross-browser gates 尚未提交自动化 tooling 时，都是 target coverage。
+> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/main CI 强制 `bun run lint`、`bun run typecheck`、`bun run typecheck:tests`、`bun run typecheck:scripts`、`bun run test`、`bun run test:overflow`。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ 除水平溢出 Playwright guard 外，Playwright / axe / Lighthouse / cross-browser gates 尚未提交自动化 tooling 时，都是 target coverage。
 
 状态含义：`enforced` = 当前自动化 gate 会阻断；`manual` = reviewer / operator 可手动检查但不自动阻断；`report-only` = 有报告或基线但不阻断；`planned` = 已定义目标，尚无提交的 gate；`not implemented` = 尚无当前 tooling。
 
@@ -284,6 +284,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 | TypeScript tests / integration | `enforced` | GitHub Actions PR/main：`bun run typecheck:tests` | Current PR blocker for `*.test.ts(x)` and `web/lib/integration/**` through `web/tsconfig.tests.json` |
 | TypeScript scripts / JS | `enforced` | GitHub Actions PR/main：`bun run typecheck:scripts` | Current PR blocker for root scripts, pipeline `.mjs`, web `.mjs`, and `web/public/sw.js` through `tsconfig.scripts.json` with `checkJs` |
 | `web/lib` test suite | `enforced` | GitHub Actions PR/main：`bun run test` → `bun test lib/` | 当前 PR blocker；覆盖纯逻辑、contracts、workflow validation、i18n/route/SEO helpers 等 |
+| Mobile horizontal overflow | `enforced` | GitHub Actions PR/main：`bun run test:overflow` | Chromium Playwright guard for listed pages at 390px and 360px; internal table/chart scroll is allowed, page-level scroll fails |
 | 1.1 聚合 / 排名单测 | `enforced` | `bun test lib/` 中的 recompute / ranking / window / integration suites | 覆盖目标仍以 §1.1 为准 |
 | 1.2 Zod schema 契约 | `enforced` | `bun test lib/` contract tests；Workflow `validate` 抽样 staging 视图 | 全量产物校验仍是 target coverage |
 | 1.3 sanity 不变量 | `enforced` | Workflow `validate` step；相关 unit tests | 当前自动化范围是 §1.5 列出的抽样断言；§1.3 全量清单仍是 target coverage |
@@ -300,9 +301,9 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 **节奏要点**：
 
-- **CI（每 PR / main push）**：当前只跑 `bun run lint`、`bun run typecheck`、`bun run typecheck:tests`、`bun run typecheck:scripts`、`bun run test`，这些检查必过。视觉 / a11y / E2E / Lighthouse / cross-browser 目前不在 PR CI 中运行，也不阻断 PR。
+- **CI（每 PR / main push）**：当前跑 `bun run lint`、`bun run typecheck`、`bun run typecheck:tests`、`bun run typecheck:scripts`、`bun run test`、`bun run test:overflow`，这些检查必过。除移动端水平溢出 guard 外，视觉 / a11y / E2E / Lighthouse / cross-browser 目前不在 PR CI 中运行，也不阻断 PR。
 - **Publish gate（Workflow `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 的当前抽样 Zod + sanity，任一当前断言失败即**不切 `views/latest.json` 指针**（线上仍上一版）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
-- **Planned browser/render gates**：视觉、a11y、E2E、Lighthouse、cross-browser 自动化需要先提交对应 Playwright/Lighthouse/axe/browser tooling。当前文档未记录专门 tooling issue link 或目标日期；开出后在本节补链接。
+- **Planned browser/render gates**：视觉、a11y、完整 E2E、Lighthouse、cross-browser 自动化需要先提交对应 Playwright/Lighthouse/axe/browser tooling；当前只落地移动端页面级水平溢出 guard。当前文档未记录专门 tooling issue link 或目标日期；开出后在本节补链接。
 - **每日 / 每周 cron**：不触发 deploy；cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后的活尾 schema/sanity 告警属于 ops 目标，不是当前 PR CI gate。
 - **本地 / manual**：改聚合逻辑先跑相关 `bun test lib/...`；改组件可按 Vercel 预览手动看相关页视觉、a11y、性能，但这些手动检查不是当前自动 PR blocker。
 
@@ -315,6 +316,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 - [ ] `web/` PR/main CI passes `bun run typecheck:tests`
 - [ ] `web/` PR/main CI passes `bun run typecheck:scripts`
 - [ ] `web/` PR/main CI passes `bun run test` (`bun test lib/`)
+- [ ] `web/` PR/main CI passes `bun run test:overflow`
 - [ ] 涉及生产数据发布时，Workflow `validate` 失败仍不切 `views/latest.json` 指针
 
 ### Target-state / planned checks

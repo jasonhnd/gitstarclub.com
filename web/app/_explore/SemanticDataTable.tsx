@@ -9,7 +9,7 @@ type RankingVariant = "gained" | "rate" | "crossed" | "total";
 type CellPosition = "first" | "last";
 
 const STAGGER_CAP_INDEX = 12;
-const tableWrapClass = "mt-[clamp(1rem,2vw,1.5rem)] overflow-x-auto pb-2";
+const tableWrapClass = "mt-[clamp(1rem,2vw,1.5rem)] max-w-full overflow-x-auto pb-2 [contain:inline-size]";
 const tableClass = "w-full min-w-[32rem] border-separate border-spacing-y-2 text-left";
 const captionClass = "mb-2 text-left font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant";
 const headClass = "px-2.5 pb-1 font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant sm:px-3";
