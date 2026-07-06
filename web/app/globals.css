@@ -42,6 +42,21 @@
   --chart-cat-3: #7c3aed;
   --chart-cat-4: #15803d;
   --chart-cat-5: #be123c;
+
+  /* Chronicle/Pulse semantic tokens, aliased to the locked M3 amber scheme. */
+  --ui-background: var(--md-sys-color-background);
+  --ui-surface: var(--md-sys-color-surface-container-lowest);
+  --ui-surface-secondary: var(--md-sys-color-surface-container-low);
+  --ui-text: var(--md-sys-color-on-background);
+  --ui-text-muted: var(--md-sys-color-on-surface-variant);
+  --ui-text-faint: color-mix(in oklab, var(--md-sys-color-on-surface-variant) 64%, var(--md-sys-color-surface) 36%);
+  --ui-line: var(--md-sys-color-outline-variant);
+  --ui-border: var(--md-sys-color-outline-variant);
+  --ui-gold: var(--md-sys-color-on-primary-container);
+  --ui-accent: var(--ui-gold);
+  --ui-gold-soft: color-mix(in oklab, var(--md-sys-color-primary-container) 18%, var(--md-sys-color-surface) 82%);
+  --ui-positive: var(--chart-cat-4);
+  --ui-shadow: 0 16px 40px rgb(var(--md-shadow-rgb) / 0.14);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -83,6 +98,19 @@
     --chart-cat-3: #a78bfa;
     --chart-cat-4: #4ade80;
     --chart-cat-5: #fb7185;
+    --ui-background: var(--md-sys-color-background);
+    --ui-surface: var(--md-sys-color-surface-container-low);
+    --ui-surface-secondary: var(--md-sys-color-surface-container);
+    --ui-text: var(--md-sys-color-on-background);
+    --ui-text-muted: var(--md-sys-color-on-surface-variant);
+    --ui-text-faint: color-mix(in oklab, var(--md-sys-color-on-surface-variant) 68%, var(--md-sys-color-surface) 32%);
+    --ui-line: var(--md-sys-color-outline-variant);
+    --ui-border: var(--md-sys-color-outline-variant);
+    --ui-gold: var(--md-sys-color-primary-fixed-dim);
+    --ui-accent: var(--ui-gold);
+    --ui-gold-soft: color-mix(in oklab, var(--md-sys-color-primary-container) 20%, var(--md-sys-color-surface-container) 80%);
+    --ui-positive: var(--chart-cat-4);
+    --ui-shadow: 0 18px 48px rgb(var(--md-shadow-rgb) / 0.32);
   }
 }
 
@@ -124,6 +152,19 @@
   --chart-cat-3: #a78bfa;
   --chart-cat-4: #4ade80;
   --chart-cat-5: #fb7185;
+  --ui-background: var(--md-sys-color-background);
+  --ui-surface: var(--md-sys-color-surface-container-low);
+  --ui-surface-secondary: var(--md-sys-color-surface-container);
+  --ui-text: var(--md-sys-color-on-background);
+  --ui-text-muted: var(--md-sys-color-on-surface-variant);
+  --ui-text-faint: color-mix(in oklab, var(--md-sys-color-on-surface-variant) 68%, var(--md-sys-color-surface) 32%);
+  --ui-line: var(--md-sys-color-outline-variant);
+  --ui-border: var(--md-sys-color-outline-variant);
+  --ui-gold: var(--md-sys-color-primary-fixed-dim);
+  --ui-accent: var(--ui-gold);
+  --ui-gold-soft: color-mix(in oklab, var(--md-sys-color-primary-container) 20%, var(--md-sys-color-surface-container) 80%);
+  --ui-positive: var(--chart-cat-4);
+  --ui-shadow: 0 18px 48px rgb(var(--md-shadow-rgb) / 0.32);
 }
 
 /* non-color design tokens */
@@ -161,6 +202,19 @@
   --color-surface-container-highest: var(--md-sys-color-surface-container-highest);
   --color-outline: var(--md-sys-color-outline);
   --color-outline-variant: var(--md-sys-color-outline-variant);
+  --color-ui-background: var(--ui-background);
+  --color-ui-surface: var(--ui-surface);
+  --color-ui-surface-secondary: var(--ui-surface-secondary);
+  --color-ui-text: var(--ui-text);
+  --color-ui-text-muted: var(--ui-text-muted);
+  --color-ui-text-faint: var(--ui-text-faint);
+  --color-ui-line: var(--ui-line);
+  --color-ui-border: var(--ui-border);
+  --color-ui-gold: var(--ui-gold);
+  --color-ui-accent: var(--ui-accent);
+  --color-ui-gold-soft: var(--ui-gold-soft);
+  --color-ui-positive: var(--ui-positive);
+  --shadow-ui: var(--ui-shadow);
 
   --font-sans: var(--font-plus-jakarta), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -249,6 +303,80 @@ main:focus {
 }
 [data-theme="dark"] .text-readable-gold {
   color: var(--md-sys-color-primary-fixed-dim);
+}
+
+/* Chronicle/Pulse typography helpers. */
+.page-eyebrow {
+  color: var(--ui-gold);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+.page-title {
+  color: var(--ui-text);
+  font-family: var(--font-plus-jakarta), system-ui, sans-serif;
+  font-size: clamp(2rem, 1.15rem + 3.25vw, 4.5rem);
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.02;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.page-lede,
+.lede {
+  color: var(--ui-text-muted);
+  font-family: var(--font-plus-jakarta), system-ui, sans-serif;
+  font-size: clamp(1rem, 0.94rem + 0.35vw, 1.25rem);
+  letter-spacing: 0;
+  line-height: 1.65;
+  max-width: 64ch;
+}
+.metadata-label {
+  color: var(--ui-text-muted);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+.metric-value {
+  color: var(--ui-gold);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: clamp(1.5rem, 1.08rem + 1.2vw, 2.4rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+}
+.rank-number {
+  color: var(--ui-text-faint);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: clamp(1.25rem, 0.95rem + 0.9vw, 1.9rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+}
+.repo-link,
+.org-link {
+  color: var(--ui-text);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-weight: 700;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.2em;
+  transition: color 160ms var(--ease-emphasized);
+}
+.repo-link:hover,
+.org-link:hover,
+.repo-link:focus-visible,
+.org-link:focus-visible {
+  color: var(--ui-gold);
 }
 /* sticky app bar clears the status bar / notch when standalone */
 .app-bar {
