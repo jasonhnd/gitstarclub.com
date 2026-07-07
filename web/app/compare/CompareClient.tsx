@@ -41,10 +41,17 @@ export type CompareClientLabels = {
   retry: string;
   compareModesAria: string;
   starHistoryOverlayAria: string;
+  currentStars: string;
+  tenKMonths: string;
+  repoCurveSource: string;
 };
 
 function formatRepoLabel(template: string, repo: string): string {
   return template.replace("{repo}", repo);
+}
+
+function formatCrossed10k(value: string | null | undefined): string {
+  return value ? value.slice(0, 7) : "-";
 }
 
 function logCompareClientError(message: string, error: unknown) {
@@ -169,6 +176,21 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
         .filter((entry): entry is { key: string; name: string } => Boolean(entry)),
     [repos, curveErrors],
   );
+  const selectedFacts = useMemo(
+    () =>
+      repos.map((name) => {
+        const key = name.toLowerCase();
+        const curve = curves.get(key);
+        const doc = engine?.byFullName.get(key);
+        return {
+          key,
+          name,
+          currentStars: curve?.current_stars ?? doc?.current_stars ?? null,
+          crossed10k: curve ? formatCrossed10k(curve.crossed_10k) : curveErrors.has(key) ? "-" : labels.pickerLoading,
+        };
+      }),
+    [repos, curves, engine, curveErrors, labels.pickerLoading],
+  );
 
   const updateRepos = useCallback(
     (next: string[]) => {
@@ -224,8 +246,8 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
   const canAdd = repos.length < MAX_COMPARE;
 
   return (
-    <div>
-      <div className="rounded-2xl border border-outline-variant bg-surface-container p-4">
+    <div className="grid gap-4 lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)] lg:items-start">
+      <section aria-label={labels.pickerPlaceholder} className="rounded-lg border border-outline-variant bg-surface-container p-4">
         <div className="flex min-h-11 items-center gap-2 rounded-full border border-outline-variant bg-surface px-3 py-2 transition-colors focus-within:border-primary">
           <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-on-surface-variant" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
@@ -323,22 +345,46 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
             ))}
           </ul>
         )}
-      </div>
+      </section>
 
-      <div className="mt-6">
-        {orderedCurves.length >= MIN_COMPARE ? (
-          <CompareCurveChart
-            curves={orderedCurves}
-            modeLabels={{ absolute: labels.modeAbsolute, align10k: labels.modeAlign10k }}
-            legendAria={labels.legendLabel}
-            ariaLabels={{ compareModes: labels.compareModesAria, starHistoryOverlay: labels.starHistoryOverlayAria }}
-          />
-        ) : (
-          <p className="rounded-2xl border border-dashed border-outline-variant px-4 py-8 text-center font-mono text-[0.85rem] text-on-surface-variant">
-            {orderedCurves.length === 1 ? labels.minHint : labels.empty}
-          </p>
+      <section className="min-w-0 overflow-hidden rounded-lg border border-outline-variant bg-surface-container px-4 py-4">
+        {selectedFacts.length > 0 && (
+          <dl aria-label={labels.repoCurveSource} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {selectedFacts.map((fact) => (
+              <div key={fact.key} className="min-w-0 rounded-lg bg-surface-container-high px-3 py-3">
+                <dt className="break-all font-mono text-[0.82rem] font-semibold text-on-surface">{fact.name}</dt>
+                <dd className="mt-2 grid grid-cols-2 gap-3 font-mono text-[0.72rem] text-on-surface-variant">
+                  <span className="min-w-0">
+                    <span className="block uppercase tracking-wider">{labels.currentStars}</span>
+                    <span className="mt-0.5 block text-[0.82rem] font-extrabold tabular-nums text-on-surface">
+                      {fact.currentStars === null ? labels.pickerLoading : `${fmtStars(fact.currentStars)} ★`}
+                    </span>
+                  </span>
+                  <span className="min-w-0 text-right">
+                    <span className="block uppercase tracking-wider">{labels.tenKMonths}</span>
+                    <span className="mt-0.5 block text-[0.82rem] font-extrabold tabular-nums text-on-surface">{fact.crossed10k}</span>
+                  </span>
+                </dd>
+              </div>
+            ))}
+          </dl>
         )}
-      </div>
+
+        <div className={selectedFacts.length > 0 ? "mt-5 min-w-0" : "min-w-0"}>
+          {orderedCurves.length >= MIN_COMPARE ? (
+            <CompareCurveChart
+              curves={orderedCurves}
+              modeLabels={{ absolute: labels.modeAbsolute, align10k: labels.modeAlign10k }}
+              legendAria={labels.legendLabel}
+              ariaLabels={{ compareModes: labels.compareModesAria, starHistoryOverlay: labels.starHistoryOverlayAria }}
+            />
+          ) : (
+            <p className="rounded-lg border border-dashed border-outline-variant px-4 py-8 text-center font-mono text-[0.85rem] text-on-surface-variant">
+              {orderedCurves.length === 1 ? labels.minHint : labels.empty}
+            </p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
