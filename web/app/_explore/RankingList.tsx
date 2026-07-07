@@ -19,6 +19,7 @@ export function RankingList({
   startRank = 1,
   tableCaption,
   labels,
+  compact = false,
 }: {
   rows: Row[];
   variant?: Variant;
@@ -26,6 +27,7 @@ export function RankingList({
   startRank?: number;
   tableCaption?: string;
   labels: RepositoryRankingTableLabels;
+  compact?: boolean;
 }) {
-  return <RepositoryRankingTable rows={rows} variant={variant} startRank={startRank} caption={tableCaption} labels={labels} locale={locale} />;
+  return <RepositoryRankingTable rows={rows} variant={variant} startRank={startRank} caption={tableCaption} labels={labels} locale={locale} compact={compact} />;
 }

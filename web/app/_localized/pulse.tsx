@@ -169,7 +169,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
         </div>
 
         <section className="mt-[clamp(2.5rem,5vw,4rem)] grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <div>
+          <div className="min-w-0">
             <div className="mb-3 flex items-end justify-between gap-4">
               <div>
                 <h2 className="text-[1.35rem] font-extrabold tracking-tight text-on-surface">{t.rankings.title}</h2>
@@ -188,7 +188,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
             )}
           </div>
 
-          <aside>
+          <aside className="min-w-0">
             <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{t.pulse.onThisDay}</h2>
             {onThisDay.length > 0 ? (
               <ul className="flex flex-col divide-y divide-outline-variant/50">
@@ -258,9 +258,7 @@ function PulsePanel({
         </div>
       </div>
       {rows.length > 0 ? (
-        <div className="max-w-full overflow-x-auto">
-          <RankingList rows={rows} variant="gained" labels={labels} locale={locale} />
-        </div>
+        <RankingList rows={rows} variant="gained" labels={labels} locale={locale} compact />
       ) : (
         <EmptyState message={emptyMessage} />
       )}
