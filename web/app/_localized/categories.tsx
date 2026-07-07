@@ -248,7 +248,7 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
                   <h3 id={`dimension-${dimension.id}`} className="text-[1.05rem] font-extrabold text-on-surface">
                     {dimension.label}
                   </h3>
-                  <Link href={href(categoryPath(dimension.id))} className="text-readable-gold font-mono text-[0.78rem] hover:underline">
+                  <Link href={href(categoryPath(dimension.id))} className="text-primary font-mono text-[0.78rem] hover:underline">
                     {t.categories.viewAll}
                   </Link>
                 </div>
