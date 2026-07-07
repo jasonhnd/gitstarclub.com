@@ -10,6 +10,8 @@ type CellPosition = "first" | "last";
 
 const STAGGER_CAP_INDEX = 12;
 const tableWrapClass = "mt-[clamp(1rem,2vw,1.5rem)] overflow-x-auto pb-2";
+const responsiveTableWrapClass = `${tableWrapClass} hidden sm:block`;
+const stackWrapClass = "mt-[clamp(1rem,2vw,1.5rem)]";
 const tableClass = "w-full min-w-[32rem] border-separate border-spacing-y-2 text-left";
 const captionClass = "mb-2 text-left font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant";
 const headClass = "px-2.5 pb-1 font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant sm:px-3";
@@ -79,6 +81,7 @@ export function RepositoryRankingTable({
   caption,
   labels,
   locale = DEFAULT_LOCALE,
+  compact = false,
 }: {
   rows: Row[];
   variant?: RankingVariant;
@@ -86,55 +89,63 @@ export function RepositoryRankingTable({
   caption?: string;
   labels: RepositoryRankingTableLabels;
   locale?: Locale;
+  compact?: boolean;
 }) {
   if (rows.length === 0) return null;
   const text = labels;
 
+  if (compact) {
+    return <RepositoryRankingStack rows={rows} variant={variant} startRank={startRank} caption={caption} labels={text} locale={locale} />;
+  }
+
   return (
-    <div className={tableWrapClass}>
-      <table className={tableClass} data-semantic-table="repository-rankings">
-        <caption className={captionClass}>{caption ?? text.caption}</caption>
-        <thead>
-          <tr>
-            <th scope="col" className={`${headClass} w-14 text-right`}>
-              {text.rank}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.repository}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.language}
-            </th>
-            {variant !== "total" && (
-              <th scope="col" className={`${headClass} text-right`}>
-                {metricHeader(variant, text)}
+    <>
+      <RepositoryRankingStack rows={rows} variant={variant} startRank={startRank} caption={caption} labels={text} locale={locale} className="sm:hidden" />
+      <div className={responsiveTableWrapClass}>
+        <table className={tableClass} data-semantic-table="repository-rankings">
+          <caption className={captionClass}>{caption ?? text.caption}</caption>
+          <thead>
+            <tr>
+              <th scope="col" className={`${headClass} w-14 text-right`}>
+                {text.rank}
               </th>
-            )}
-            <th scope="col" className={`${headClass} text-right`}>
-              {text.totalStars}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            const rank = startRank + index;
-            return (
-              <tr key={`${row.owner}/${row.name}`} className="group animate-rise" style={tableStaggerStyle(index)} aria-label={rowAriaLabel(row, rank, variant, text)}>
-                <td className={cellClass(rankCellClass, "first")}>{rank}</td>
-                <th scope="row" className={bodyCellClass}>
-                  <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={linkClass}>
-                    {row.owner}/{row.name}
-                  </Link>
+              <th scope="col" className={headClass}>
+                {text.repository}
+              </th>
+              <th scope="col" className={headClass}>
+                {text.language}
+              </th>
+              {variant !== "total" && (
+                <th scope="col" className={`${headClass} text-right`}>
+                  {metricHeader(variant, text)}
                 </th>
-                <td className={mutedCellClass}>{row.lang ?? text.unknown}</td>
-                {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant, text)}</td>}
-                <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>{fmtStars(row.total)}★</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+              )}
+              <th scope="col" className={`${headClass} text-right`}>
+                {text.totalStars}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => {
+              const rank = startRank + index;
+              return (
+                <tr key={`${row.owner}/${row.name}`} className="group animate-rise" style={tableStaggerStyle(index)} aria-label={rowAriaLabel(row, rank, variant, text)}>
+                  <td className={cellClass(rankCellClass, "first")}>{rank}</td>
+                  <th scope="row" className={bodyCellClass}>
+                    <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={linkClass}>
+                      {row.owner}/{row.name}
+                    </Link>
+                  </th>
+                  <td className={mutedCellClass}>{row.lang ?? text.unknown}</td>
+                  {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant, text)}</td>}
+                  <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>{fmtStars(row.total)}★</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -144,58 +155,67 @@ export function OrganizationRankingTable({
   caption,
   labels,
   locale = DEFAULT_LOCALE,
+  compact = false,
 }: {
   rows: OrganizationSummaryRow[];
   startRank?: number;
   caption?: string;
   labels: OrganizationRankingTableLabels;
   locale?: Locale;
+  compact?: boolean;
 }) {
   if (rows.length === 0) return null;
   const text = labels;
 
+  if (compact) {
+    return <OrganizationRankingStack rows={rows} startRank={startRank} caption={caption} labels={text} locale={locale} />;
+  }
+
   return (
-    <div className={tableWrapClass}>
-      <table className={tableClass} data-semantic-table="organization-rankings">
-        <caption className={captionClass}>{caption ?? text.caption}</caption>
-        <thead>
-          <tr>
-            <th scope="col" className={`${headClass} w-14 text-right`}>
-              {text.rank}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.owner}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.ownerType}
-            </th>
-            <th scope="col" className={`${headClass} text-right`}>
-              {text.trackedRepositories}
-            </th>
-            <th scope="col" className={`${headClass} text-right`}>
-              {text.totalStars}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={row.login} className="group animate-rise" style={tableStaggerStyle(index)}>
-              <td className={cellClass(rankCellClass, "first")}>{row.rank ?? startRank + index}</td>
-              <th scope="row" className={bodyCellClass}>
-                <Link href={localizedPath(locale, `/o/${row.login}`)} className={linkClass}>
-                  {row.login}
-                </Link>
+    <>
+      <OrganizationRankingStack rows={rows} startRank={startRank} caption={caption} labels={text} locale={locale} className="sm:hidden" />
+      <div className={responsiveTableWrapClass}>
+        <table className={tableClass} data-semantic-table="organization-rankings">
+          <caption className={captionClass}>{caption ?? text.caption}</caption>
+          <thead>
+            <tr>
+              <th scope="col" className={`${headClass} w-14 text-right`}>
+                {text.rank}
               </th>
-              <td className={mutedCellClass}>{row.owner_type ?? text.unknown}</td>
-              <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{row.repo_count}</td>
-              <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>
-                {fmtStars(row.current_stars_sum)}★
-              </td>
+              <th scope="col" className={headClass}>
+                {text.owner}
+              </th>
+              <th scope="col" className={headClass}>
+                {text.ownerType}
+              </th>
+              <th scope="col" className={`${headClass} text-right`}>
+                {text.trackedRepositories}
+              </th>
+              <th scope="col" className={`${headClass} text-right`}>
+                {text.totalStars}
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.login} className="group animate-rise" style={tableStaggerStyle(index)}>
+                <td className={cellClass(rankCellClass, "first")}>{row.rank ?? startRank + index}</td>
+                <th scope="row" className={bodyCellClass}>
+                  <Link href={localizedPath(locale, `/o/${row.login}`)} className={linkClass}>
+                    {row.login}
+                  </Link>
+                </th>
+                <td className={mutedCellClass}>{row.owner_type ?? text.unknown}</td>
+                <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{row.repo_count}</td>
+                <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>
+                  {fmtStars(row.current_stars_sum)}★
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -288,6 +308,113 @@ function metricValue(row: Row, variant: Exclude<RankingVariant, "total">, labels
 function rowAriaLabel(row: Row, rank: number, variant: RankingVariant, labels: RepositoryRankingTableLabels): string | undefined {
   if (variant !== "gained") return undefined;
   return fill(labels.rowStarsAdded, { rank: String(rank), stars: fmtK(row.gained ?? 0) });
+}
+
+function RepositoryRankingStack({
+  rows,
+  variant,
+  startRank,
+  caption,
+  labels,
+  locale,
+  className = "",
+}: {
+  rows: Row[];
+  variant: RankingVariant;
+  startRank: number;
+  caption?: string;
+  labels: RepositoryRankingTableLabels;
+  locale: Locale;
+  className?: string;
+}) {
+  return (
+    <div className={`${stackWrapClass} ${className}`} data-semantic-list="repository-rankings">
+      <p className={captionClass}>{caption ?? labels.caption}</p>
+      <ol className="space-y-2">
+        {rows.map((row, index) => {
+          const rank = startRank + index;
+          const metric = variant === "total" ? "" : metricValue(row, variant, labels);
+
+          return (
+            <li
+              key={`${row.owner}/${row.name}`}
+              className="group animate-rise rounded-2xl bg-surface-container px-3 py-3 transition-colors hover:bg-surface-container-high"
+              style={tableStaggerStyle(index)}
+            >
+              <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3">
+                <span className="text-readable-gold row-span-2 text-right text-[1.1rem] font-extrabold tabular-nums">{rank}</span>
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={`${linkClass} block min-w-0 truncate text-[0.84rem]`}>
+                      {row.owner}/{row.name}
+                    </Link>
+                    <span className="shrink-0 font-mono text-[0.9rem] font-extrabold tabular-nums text-on-surface">{fmtStars(row.total)}★</span>
+                  </div>
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    {metric !== "" && <span className="font-mono text-[0.76rem] font-semibold tabular-nums text-readable-gold">{metric}</span>}
+                    <span className="inline-flex max-w-full min-w-0 items-center rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">
+                      <span className="truncate">{row.lang ?? labels.unknown}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function OrganizationRankingStack({
+  rows,
+  startRank,
+  caption,
+  labels,
+  locale,
+  className = "",
+}: {
+  rows: OrganizationSummaryRow[];
+  startRank: number;
+  caption?: string;
+  labels: OrganizationRankingTableLabels;
+  locale: Locale;
+  className?: string;
+}) {
+  return (
+    <div className={`${stackWrapClass} ${className}`} data-semantic-list="organization-rankings">
+      <p className={captionClass}>{caption ?? labels.caption}</p>
+      <ol className="space-y-2">
+        {rows.map((row, index) => {
+          const rank = row.rank ?? startRank + index;
+
+          return (
+            <li key={row.login} className="group animate-rise rounded-2xl bg-surface-container px-3 py-3 transition-colors hover:bg-surface-container-high" style={tableStaggerStyle(index)}>
+              <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3">
+                <span className="text-readable-gold row-span-2 text-right text-[1.1rem] font-extrabold tabular-nums">{rank}</span>
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <Link href={localizedPath(locale, `/o/${row.login}`)} className={`${linkClass} block min-w-0 truncate text-[0.84rem]`}>
+                      {row.login}
+                    </Link>
+                    <span className="shrink-0 font-mono text-[0.9rem] font-extrabold tabular-nums text-on-surface">{fmtStars(row.current_stars_sum)}★</span>
+                  </div>
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="inline-flex max-w-full min-w-0 items-center rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">
+                      <span className="truncate">{row.owner_type ?? labels.unknown}</span>
+                    </span>
+                    <span className="font-mono text-[0.72rem] tabular-nums text-on-surface-variant">
+                      {row.repo_count} {labels.trackedRepositories}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
 }
 
 function tableStaggerStyle(i: number): CSSProperties | undefined {

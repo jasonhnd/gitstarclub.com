@@ -258,9 +258,7 @@ function PulsePanel({
         </div>
       </div>
       {rows.length > 0 ? (
-        <div className="max-w-full overflow-x-auto">
-          <RankingList rows={rows} variant="gained" labels={labels} locale={locale} />
-        </div>
+        <RankingList rows={rows} variant="gained" labels={labels} locale={locale} compact />
       ) : (
         <EmptyState message={emptyMessage} />
       )}
