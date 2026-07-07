@@ -2,32 +2,15 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 const ROUTES = [
-  // KNOWN-GAP: pulse (/pulse) has serious link-in-text-block violations on footer citation links.
-  { label: "pulse", path: "/pulse", axeKnownGap: "KNOWN-GAP: pulse (/pulse) has serious link-in-text-block violations on footer citation links." },
-  // KNOWN-GAP: rankings (/rankings) has serious link-in-text-block violations on footer citation links.
-  { label: "rankings", path: "/rankings", axeKnownGap: "KNOWN-GAP: rankings (/rankings) has serious link-in-text-block violations on footer citation links." },
-  // KNOWN-GAP: ranking detail (/rankings/2026) has serious link-in-text-block violations on footer citation links.
-  { label: "ranking detail", path: "/rankings/2026", axeKnownGap: "KNOWN-GAP: ranking detail (/rankings/2026) has serious link-in-text-block violations on footer citation links." },
-  // KNOWN-GAP: categories (/categories) has serious color-contrast issues in category preview rows and shared footer citation link-in-text-block violations.
-  {
-    label: "categories",
-    path: "/categories",
-    axeKnownGap: "KNOWN-GAP: categories (/categories) has serious color-contrast issues in category preview rows and shared footer citation link-in-text-block violations.",
-  },
-  // KNOWN-GAP: category detail (/categories/language/python) has serious link-in-text-block violations on footer citation links.
-  {
-    label: "category detail",
-    path: "/categories/language/python",
-    axeKnownGap: "KNOWN-GAP: category detail (/categories/language/python) has serious link-in-text-block violations on footer citation links.",
-  },
-  // KNOWN-GAP: repo detail (/facebook/react) has serious link-in-text-block violations on footer citation links.
-  { label: "repo detail", path: "/facebook/react", axeKnownGap: "KNOWN-GAP: repo detail (/facebook/react) has serious link-in-text-block violations on footer citation links." },
-  // KNOWN-GAP: org detail (/o/vercel) has serious link-in-text-block violations on footer citation links.
-  { label: "org detail", path: "/o/vercel", axeKnownGap: "KNOWN-GAP: org detail (/o/vercel) has serious link-in-text-block violations on footer citation links." },
-  // KNOWN-GAP: compare (/compare) has serious link-in-text-block violations on footer citation links.
-  { label: "compare", path: "/compare", axeKnownGap: "KNOWN-GAP: compare (/compare) has serious link-in-text-block violations on footer citation links." },
-  // KNOWN-GAP: about (/about) has serious link-in-text-block violations on about-page citation links.
-  { label: "about", path: "/about", axeKnownGap: "KNOWN-GAP: about (/about) has serious link-in-text-block violations on about-page citation links." },
+  { label: "pulse", path: "/pulse" },
+  { label: "rankings", path: "/rankings" },
+  { label: "ranking detail", path: "/rankings/2026" },
+  { label: "categories", path: "/categories" },
+  { label: "category detail", path: "/categories/language/python" },
+  { label: "repo detail", path: "/facebook/react" },
+  { label: "org detail", path: "/o/vercel" },
+  { label: "compare", path: "/compare" },
+  { label: "about", path: "/about" },
 ] as const;
 
 const VIEWPORTS = [
@@ -40,8 +23,6 @@ const VIEWPORTS = [
 test.describe("phase 7 accessibility", () => {
   for (const route of ROUTES) {
     test(`${route.label} has no serious or critical axe violations`, async ({ page }) => {
-      test.fixme(true, route.axeKnownGap);
-
       await gotoRoute(page, route.path);
 
       const results = await new AxeBuilder({ page }).analyze();
@@ -59,9 +40,6 @@ test.describe("phase 7 responsive layout", () => {
 
       for (const route of ROUTES) {
         test(`${route.label} has a visible main landmark and no page overflow`, async ({ page }) => {
-          const knownGap = responsiveKnownGap(viewport.label, route.path);
-          test.fixme(Boolean(knownGap), knownGap ?? "");
-
           await gotoRoute(page, route.path);
 
           const overflow = await page.evaluate(() => ({
@@ -99,12 +77,4 @@ function formatViolations(violations: Awaited<ReturnType<AxeBuilder["analyze"]>>
       summary: node.failureSummary,
     })),
   }));
-}
-
-function responsiveKnownGap(viewportLabel: string, path: string) {
-  if ((viewportLabel === "390px" || viewportLabel === "360px") && path === "/pulse") {
-    // KNOWN-GAP: pulse (/pulse) has page-level horizontal overflow at 390px and 360px.
-    return `KNOWN-GAP: pulse (/pulse) has page-level horizontal overflow at ${viewportLabel}.`;
-  }
-  return null;
 }

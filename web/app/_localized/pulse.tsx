@@ -179,7 +179,13 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
                 {t.rankings.title}
               </Link>
             </div>
-            {giants.length > 0 ? <RankingList rows={giants} variant="total" locale={locale} labels={repoLabels} /> : <EmptyState message={t.categories.rankingPending} />}
+            {giants.length > 0 ? (
+              <div className="max-w-full overflow-x-auto">
+                <RankingList rows={giants} variant="total" locale={locale} labels={repoLabels} />
+              </div>
+            ) : (
+              <EmptyState message={t.categories.rankingPending} />
+            )}
           </div>
 
           <aside>
@@ -251,7 +257,13 @@ function PulsePanel({
           </Link>
         </div>
       </div>
-      {rows.length > 0 ? <RankingList rows={rows} variant="gained" labels={labels} locale={locale} /> : <EmptyState message={emptyMessage} />}
+      {rows.length > 0 ? (
+        <div className="max-w-full overflow-x-auto">
+          <RankingList rows={rows} variant="gained" labels={labels} locale={locale} />
+        </div>
+      ) : (
+        <EmptyState message={emptyMessage} />
+      )}
     </section>
   );
 }
