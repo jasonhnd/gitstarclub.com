@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
+import { PageHero } from "@/app/_explore/PageHero";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CompareClient } from "@/app/compare/CompareClient";
 import { getMeta, getRepoCurve, getRepoIdByFullName } from "@/lib/data";
@@ -44,6 +46,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
   const faqItems = buildLocalizedCompareFaqs(locale, asOf);
   const pairConclusions = await loadPairConclusions(repoIds, locale);
   const conclusionText = asOf ? buildCompareConclusionText(asOf, pairConclusions) : null;
+  const hasServerSummary = Boolean(conclusionText && pairConclusions.length > 0);
   const compareClientLabels = {
     modeAbsolute: t.compare.modeAbsolute,
     modeAlign10k: t.compare.modeAlign10k,
@@ -60,20 +63,42 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
     retry: t.compare.retry,
     compareModesAria: t.a11y.compareModes,
     starHistoryOverlayAria: t.a11y.starHistoryOverlay,
+    currentStars: t.compare.currentStars,
+    tenKMonths: t.compare.tenKMonths,
+    repoCurveSource: t.compare.repoCurveSource,
   };
 
   return (
     <>
       <Chrome locale={locale} canonicalPath={COMPARE_PATH} dictionary={t} />
-      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
         <Breadcrumbs locale={locale} dictionary={t} items={[{ path: "nav.home", href: "/" }, { path: "compare.title" }]} />
-        <header className="mt-4 animate-rise">
-          <h1 className="font-mono text-[clamp(1.4rem,4vw,2.2rem)] font-semibold text-on-surface">{t.compare.title}</h1>
-          <p className="mt-3 max-w-[60ch] text-[clamp(1rem,1.5vw,1.1rem)] text-on-surface-variant">{t.compare.subtitle}</p>
-        </header>
+        <PageHero
+          className="mt-5"
+          eyebrow={t.nav.compare}
+          title={t.compare.title}
+          lede={t.compare.subtitle}
+          actions={
+            <HeroActions
+              links={[
+                { href: "#compare-workbench", label: t.compare.openCompare },
+                ...(hasServerSummary ? [{ href: "#server-compare-title", label: t.compare.serverHeading }] : []),
+              ]}
+            />
+          }
+          aside={
+            <CompareHeroFacts
+              items={[
+                ...(asOf ? [{ label: t.common.dataAsOf, value: asOf }] : []),
+                { label: t.common.source, value: t.compare.repoCurveSource },
+                { label: t.nav.compare, value: t.compare.limit },
+              ]}
+            />
+          }
+        />
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={answerCapsuleLabels(locale, t)} />}
-        {conclusionText && pairConclusions.length > 0 && (
-          <section aria-labelledby="server-compare-title" className="mt-[clamp(1.5rem,3vw,2.25rem)] rounded-2xl border border-outline-variant bg-surface-container px-4 py-4">
+        {hasServerSummary && (
+          <section aria-labelledby="server-compare-title" className="mt-[clamp(1.5rem,3vw,2.25rem)] rounded-lg border border-outline-variant bg-surface-container px-4 py-4">
             <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">{t.compare.serverEyebrow}</p>
             <h2 id="server-compare-title" className="mt-2 text-[clamp(1.15rem,2.2vw,1.45rem)] font-extrabold tracking-tight text-on-surface">
               {t.compare.serverHeading}
@@ -152,7 +177,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
             </dl>
           </section>
         )}
-        <section className="mt-[clamp(2rem,4vw,3rem)]">
+        <section id="compare-workbench" className="mt-[clamp(2.5rem,5vw,4rem)] scroll-mt-24">
           <CompareClient labels={compareClientLabels} comparePath={routePath} />
         </section>
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
@@ -173,4 +198,32 @@ async function loadPairConclusions(repoIds: Map<string, number>, locale: Locale)
     }),
   );
   return rows.filter((row): row is ComparePairConclusion => Boolean(row));
+}
+
+function HeroActions({ links }: { links: Array<{ href: string; label: string }> }) {
+  return (
+    <>
+      {links.map((link) => (
+        <a key={link.href} href={link.href} className={heroActionClass}>
+          {link.label}
+        </a>
+      ))}
+    </>
+  );
+}
+
+const heroActionClass =
+  "text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline";
+
+function CompareHeroFacts({ items }: { items: Array<{ label: string; value: ReactNode }> }) {
+  return (
+    <dl className="grid gap-3 rounded-lg border border-outline-variant bg-surface-container px-4 py-4">
+      {items.map((item) => (
+        <div key={item.label} className="min-w-0">
+          <dt className="font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{item.label}</dt>
+          <dd className="mt-1 break-words font-mono text-[0.95rem] font-extrabold text-on-surface">{item.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
