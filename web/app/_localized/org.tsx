@@ -10,6 +10,7 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { PageHero } from "@/app/_explore/PageHero";
 import { RelatedPages } from "@/app/_explore/RelatedPages";
 import { StarCurve } from "@/app/_explore/StarCurve";
+import { Star } from "@/app/_explore/Star";
 import type { Row } from "@/app/_explore/RankingList";
 import { RepositoryRankingTable } from "@/app/_explore/SemanticDataTable";
 import { ShareButton } from "@/app/_explore/ShareButton";
@@ -214,7 +215,8 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
                 <li key={date} className="rounded-lg bg-surface-container px-4 py-3">
                   <span className="block font-mono text-[0.72rem] text-on-surface-variant">{date}</span>
                   <span className={`mt-1 block font-mono text-[1rem] font-extrabold tabular-nums ${adds >= 0 ? "text-readable-gold" : "text-on-surface"}`}>
-                    {signedStars(adds)}★
+                    {signedStars(adds)}
+                    <Star />
                   </span>
                 </li>
               ))}
@@ -249,7 +251,7 @@ function OrgHeroStats({
 }) {
   return (
     <dl className="grid gap-3 rounded-lg bg-surface-container px-4 py-4">
-      <HeroStat label={ORG_UI.aggregateTrackedStars} value={`${aggregateStars}★`} note={ORG_UI.aggregateFootnote} emphasis />
+      <HeroStat label={ORG_UI.aggregateTrackedStars} value={<>{aggregateStars}<Star /></>} note={ORG_UI.aggregateFootnote} emphasis />
       <HeroStat label={ORG_UI.trackedRepoCount} value={formatInteger(locale, repoCount)} />
       <HeroStat label={ORG_UI.ownerType} value={ownerType} />
       <HeroStat label={ORG_UI.dataAsOf} value={dataAsOf ?? ORG_UI.notAvailable} />
@@ -298,7 +300,10 @@ function MobileTrackedRepositoryCards({
               <span className="text-readable-gold shrink-0 font-mono text-[1.15rem] font-extrabold tabular-nums">#{index + 1}</span>
               <span className="min-w-0 text-right">
                 <span className="block font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{labels.totalStars}</span>
-                <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">{fmtStars(row.total)}★</span>
+                <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">
+                  {fmtStars(row.total)}
+                  <Star />
+                </span>
               </span>
             </span>
             <span className="mt-2 block break-all font-mono text-[0.95rem] font-semibold text-on-surface">

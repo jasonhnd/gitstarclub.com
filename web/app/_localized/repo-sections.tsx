@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { ShareableSnippet, type ShareableSnippetLabels } from "@/app/_explore/ShareableSnippet";
+import { Star } from "@/app/_explore/Star";
 import { StarCurve, type CurveInflection, type Milestone } from "@/app/_explore/StarCurve";
 import type { RepoEntity } from "@/lib/contracts";
 import { safeExternalHref } from "@/lib/external-url";
@@ -37,7 +38,8 @@ export function RepoHeroSection({
       <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">
         <span className="text-readable-gold text-[1.6rem] font-extrabold tabular-nums">
           {fmtStars(repo.current_stars)}
-          <span className="text-[0.9rem] text-on-surface-variant"> ★</span>
+          {" "}
+          <Star />
         </span>
         {languages[0] && (
           <Link href={href(languageHref(languages[0].name))} className="text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]">
@@ -185,7 +187,9 @@ export function RepoLinkHub({
                     {entry.owner}/{entry.name}
                   </span>
                   <span className="mt-1 block font-mono text-[0.68rem] text-on-surface-variant">
-                    {fmtStars(entry.current_stars)}★{entry.language ? ` · ${entry.language}` : ""}
+                    {fmtStars(entry.current_stars)}
+                    <Star />
+                    {entry.language ? ` · ${entry.language}` : ""}
                   </span>
                 </Link>
               ))}

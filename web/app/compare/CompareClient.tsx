@@ -9,6 +9,7 @@ import type { SearchHit } from "@/lib/search/core";
 import { fetchRepoCurve } from "@/lib/compare/curve-fetch";
 import { MAX_COMPARE, MIN_COMPARE, parseRepos, serializeRepos } from "@/lib/compare/core";
 import { CompareCurve as CompareCurveChart } from "@/app/_explore/CompareCurve";
+import { Star } from "@/app/_explore/Star";
 
 // CompareClient (v0.2 §5) — the interactive shell that turns the static /compare page into a
 // usable overlay tool. URL is the only state: ?repos=owner/name,owner/name. On mount it lazy-
@@ -284,8 +285,8 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
                         <span className="font-semibold text-on-surface">{h.full_name.slice(h.owner.length + 1)}</span>
                       </span>
                     </span>
-                    <span className="text-readable-gold shrink-0 font-mono text-[0.72rem] tabular-nums">
-                      {fmtStars(h.current_stars)} ★
+                    <span className="shrink-0 font-mono text-[0.72rem] tabular-nums">
+                      {fmtStars(h.current_stars)} <Star />
                     </span>
                   </button>
                 </li>
@@ -357,7 +358,13 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
                   <span className="min-w-0">
                     <span className="block uppercase tracking-wider">{labels.currentStars}</span>
                     <span className="mt-0.5 block text-[0.82rem] font-extrabold tabular-nums text-on-surface">
-                      {fact.currentStars === null ? labels.pickerLoading : `${fmtStars(fact.currentStars)} ★`}
+                      {fact.currentStars === null ? (
+                        labels.pickerLoading
+                      ) : (
+                        <>
+                          {fmtStars(fact.currentStars)} <Star />
+                        </>
+                      )}
                     </span>
                   </span>
                   <span className="min-w-0 text-right">

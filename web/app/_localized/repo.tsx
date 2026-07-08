@@ -10,6 +10,7 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { PageHero } from "@/app/_explore/PageHero";
 import { RelatedPages, type RelatedPageItem } from "@/app/_explore/RelatedPages";
 import { ShareButton } from "@/app/_explore/ShareButton";
+import { Star } from "@/app/_explore/Star";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { DAILY_BASE_VIEW_TTL_MS, getRepoIdByFullNameDaily, getRepoEntityDaily, getAliasMapDaily, getReposLookupDaily, getCategoryAssignments, getCategoryRegistry, getMeta } from "@/lib/data";
 import type { RepoEntity } from "@/lib/contracts";
@@ -278,7 +279,8 @@ function RepoHeroFacts({
       <HeroFact label={REPO_ENTITY_UI.currentStars}>
         <span className="text-readable-gold text-[1.15rem] font-extrabold tabular-nums">
           {fmtStars(repo.current_stars)}
-          <span className="text-[0.86rem] text-on-surface-variant"> ★</span>
+          {" "}
+          <Star />
         </span>
       </HeroFact>
       <HeroFact label={REPO_ENTITY_UI.primaryLanguage}>
@@ -466,7 +468,15 @@ function RankingAppearancesSection({ appearances, locale, t }: { appearances: Ra
                     <span className="block truncate font-mono text-[0.9rem] font-semibold text-on-surface group-hover:underline group-hover:underline-offset-2">{monthYearFromPeriod(locale, entry.period)}</span>
                     <span className="mt-1 block font-mono text-[0.74rem] text-on-surface-variant">
                       {t.repo.rank} #{entry.rank}
-                      {typeof entry.adds === "number" ? ` · +${fmtStars(entry.adds)}★` : ""}
+                      {typeof entry.adds === "number" ? (
+                        <>
+                          {" · +"}
+                          {fmtStars(entry.adds)}
+                          <Star />
+                        </>
+                      ) : (
+                        ""
+                      )}
                     </span>
                   </span>
                   <span aria-hidden className="shrink-0 font-mono text-[1rem] text-on-surface-variant transition-colors group-hover:text-on-surface">

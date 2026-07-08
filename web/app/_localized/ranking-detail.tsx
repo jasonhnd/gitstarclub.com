@@ -14,6 +14,7 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { RelatedPages } from "@/app/_explore/RelatedPages";
 import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
 import { ShareButton } from "@/app/_explore/ShareButton";
+import { Star } from "@/app/_explore/Star";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
@@ -581,7 +582,17 @@ function RankingLeaderLinks({ rows, locale, emptyMessage }: { rows: Row[]; local
             {row.owner}/{row.name}
           </span>
           <span className="mt-1 block truncate font-mono text-[0.76rem] text-on-surface-variant">
-            {row.gained == null ? `${fmtStars(row.total)}★` : `+${fmtStars(row.gained)}★`}
+            {row.gained == null ? (
+              <>
+                {fmtStars(row.total)}
+                <Star />
+              </>
+            ) : (
+              <>
+                +{fmtStars(row.gained)}
+                <Star />
+              </>
+            )}
           </span>
         </Link>
       ))}
@@ -706,7 +717,10 @@ function NewcomerPanel({
                     <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className="block min-w-0 truncate font-mono text-[0.86rem] font-semibold text-on-surface hover:underline hover:underline-offset-2">
                       {row.owner}/{row.name}
                     </Link>
-                    <span className="shrink-0 whitespace-nowrap font-mono text-[0.86rem] font-extrabold tabular-nums text-readable-gold">{fmtStars(row.total)}★</span>
+                    <span className="shrink-0 whitespace-nowrap font-mono text-[0.86rem] font-extrabold tabular-nums">
+                      {fmtStars(row.total)}
+                      <Star />
+                    </span>
                   </div>
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="font-mono text-[0.72rem] tabular-nums text-on-surface-variant">
