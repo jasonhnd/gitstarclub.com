@@ -102,7 +102,7 @@ describe("IndexNow URL derivation", () => {
       seam_date: "2026-05-30",
       schema_ver: 1,
       generated_at: TS,
-      folded_through: { month: "2026-05", week: "2026-W22" },
+      folded_through: { month: "2026-06", week: "2026-W26" },
     });
     views.set("views/v1/meta.json", {
       seam_date: "2026-05-30",
@@ -124,14 +124,22 @@ describe("IndexNow URL derivation", () => {
     views.set("views/v2/entity/org/alpha.json", orgEntity("alpha", 110));
     views.set("views/v1/entity/org/alpha.json", orgEntity("alpha", 100));
 
-    const paths = await workflowPublishCanonicalPaths({ runId: "v2", prevVersion: "v1", publishedAt: TS, reader: readFixtureView });
+    const paths = await workflowPublishCanonicalPaths({
+      runId: "v2",
+      prevVersion: "v1",
+      publishedAt: "2026-07-08T00:00:00.000Z",
+      reader: readFixtureView,
+    });
 
     expect(paths).toContain("");
     expect(paths).toContain("/pulse");
     expect(paths).toContain("/rankings");
     expect(paths).toContain("/rankings/2026");
+    expect(paths).toContain("/rankings/2025/12");
     expect(paths).toContain("/rankings/2026/6");
     expect(paths).toContain("/rankings/2026/W26");
+    expect(paths).not.toContain("/rankings/2026/7");
+    expect(paths).not.toContain("/rankings/2026/W28");
     expect(paths).toContain("/alpha/one");
     expect(paths).toContain("/beta/two");
     expect(paths).toContain("/o/alpha");

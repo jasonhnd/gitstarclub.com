@@ -1,7 +1,7 @@
 import type { ZodType } from "zod";
 import { CategoriesLookup, Meta, OrgEntity, OrgsLookup, RankList, RepoEntity, ReposLookup } from "@/lib/contracts";
 import { currentUtcPeriods } from "@/lib/periods";
-import { absoluteCanonicalUrl, buildSitemapPaths, siteBaseUrl } from "@/lib/sitemap";
+import { absoluteCanonicalUrl, buildSitemapPaths, publishedRankingPeriodPaths, siteBaseUrl } from "@/lib/sitemap";
 
 export const INDEXNOW_KEY = "3a620d7fc7e043aa854c68841375d81b";
 export const INDEXNOW_KEY_PATH = `/${INDEXNOW_KEY}.txt`;
@@ -297,24 +297,32 @@ function rankCandidateViewPaths(meta: Meta | null, now: Date): string[] {
 }
 
 function periodPaths(meta: Meta | null, now: Date): string[] {
-  return periodIds(meta, now)
-    .map((period) => {
-      if (/^\d{4}$/.test(period)) return `/rankings/${period}`;
-      if (/^\d{4}-\d{2}$/.test(period)) return `/rankings/${period.slice(0, 4)}/${Number(period.slice(5, 7))}`;
-      const week = /^(\d{4})-W(\d{2})$/.exec(period);
-      return week ? `/rankings/${week[1]}/W${week[2]}` : "";
-    })
-    .filter(Boolean);
+  return publishedRankingPeriodPaths(meta, now);
 }
 
 function periodIds(meta: Meta | null, now: Date): string[] {
   const current = currentUtcPeriods(now);
-  const ids = new Set<string>([String(current.year), current.monthPeriod, current.weekPeriod]);
-  if (meta?.folded_through?.month) {
-    ids.add(meta.folded_through.month.slice(0, 4));
-    ids.add(meta.folded_through.month);
+  const foldedMonth = meta?.folded_through?.month;
+  const foldedWeek = meta?.folded_through?.week;
+  const hasFoldedBounds = !!foldedMonth || !!foldedWeek;
+  const ids = new Set<string>();
+
+  if (!hasFoldedBounds) {
+    ids.add(String(current.year));
+    ids.add(current.monthPeriod);
+    ids.add(current.weekPeriod);
+    return [...ids].sort();
   }
-  if (meta?.folded_through?.week) ids.add(meta.folded_through.week);
+
+  if (foldedMonth && /^\d{4}-\d{2}$/.test(foldedMonth)) {
+    ids.add(foldedMonth.slice(0, 4));
+    ids.add(foldedMonth);
+  }
+  if (foldedWeek && /^\d{4}-W\d{2}$/.test(foldedWeek)) {
+    ids.add(foldedWeek.slice(0, 4));
+    ids.add(foldedWeek);
+  }
+  if (ids.size === 0) ids.add(String(current.year));
   return [...ids].sort();
 }
 

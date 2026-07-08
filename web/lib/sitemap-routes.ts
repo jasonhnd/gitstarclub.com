@@ -42,7 +42,7 @@ async function readSitemapData() {
     readView("meta.json", Meta, base),
   ]);
   const lastModified = resolveSitemapLastModified(meta);
-  const paths = buildSitemapPaths({ repos, orgs, categories, now: lastModified });
+  const paths = buildSitemapPaths({ repos, orgs, categories, meta, now: lastModified });
 
   return { paths, categories, meta, lastModified };
 }
