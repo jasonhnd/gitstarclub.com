@@ -6,6 +6,7 @@ import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { PageHero } from "@/app/_explore/PageHero";
+import { Star } from "@/app/_explore/Star";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CompareClient } from "@/app/compare/CompareClient";
 import { getMeta, getRepoCurve, getRepoIdByFullName } from "@/lib/data";
@@ -146,7 +147,9 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
                     <div>
                       <dt className="uppercase tracking-wider text-on-surface-variant">{t.compare.currentStars}</dt>
                       <dd className="mt-0.5 tabular-nums text-on-surface">
-                        {fmtStars(row.repos[0].currentStars)}★ / {fmtStars(row.repos[1].currentStars)}★
+                        {fmtStars(row.repos[0].currentStars)}
+                        <Star /> / {fmtStars(row.repos[1].currentStars)}
+                        <Star />
                       </dd>
                     </div>
                   </dl>
@@ -207,7 +210,9 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
                         )}
                       </td>
                       <td className="py-3 pl-4 align-top font-mono text-[0.82rem] tabular-nums text-on-surface-variant">
-                        {fmtStars(row.repos[0].currentStars)}★ / {fmtStars(row.repos[1].currentStars)}★
+                        {fmtStars(row.repos[0].currentStars)}
+                        <Star /> / {fmtStars(row.repos[1].currentStars)}
+                        <Star />
                       </td>
                     </tr>
                   ))}
