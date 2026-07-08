@@ -8,6 +8,7 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { PageHero } from "@/app/_explore/PageHero";
 import { PeriodSwitcher } from "@/app/_explore/PeriodSwitcher";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
+import { Star } from "@/app/_explore/Star";
 import { OrganizationRankingTable, type OrganizationSummaryRow } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getAllTime, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
@@ -173,7 +174,10 @@ function MobileRepositoryRankingCards({
               <span className="text-readable-gold shrink-0 font-mono text-[1.2rem] font-extrabold tabular-nums">#{index + 1}</span>
               <span className="min-w-0 text-right">
                 <span className="block font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{labels.totalStars}</span>
-                <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">{fmtStars(row.total)}★</span>
+                <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">
+                  {fmtStars(row.total)}
+                  <Star />
+                </span>
               </span>
             </span>
             <span className="mt-2 block break-all font-mono text-[0.95rem] font-semibold text-on-surface">
@@ -208,7 +212,10 @@ function MobileOrganizationRankingCards({
               <span className="text-readable-gold shrink-0 font-mono text-[1.2rem] font-extrabold tabular-nums">#{row.rank ?? index + 1}</span>
               <span className="min-w-0 text-right">
                 <span className="block font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{labels.totalStars}</span>
-                <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">{fmtStars(row.current_stars_sum)}★</span>
+                <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">
+                  {fmtStars(row.current_stars_sum)}
+                  <Star />
+                </span>
               </span>
             </span>
             <span className="mt-2 block break-all font-mono text-[0.95rem] font-semibold text-on-surface">{row.login}</span>

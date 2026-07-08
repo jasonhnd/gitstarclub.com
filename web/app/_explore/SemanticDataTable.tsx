@@ -4,6 +4,7 @@ import { fmtK, fmtStars } from "@/lib/format";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 import { localizedPath } from "@/lib/i18n/routing";
 import type { Row } from "./RankingList";
+import { Star } from "./Star";
 
 type RankingVariant = "gained" | "rate" | "crossed" | "total";
 type CellPosition = "first" | "last";
@@ -25,7 +26,7 @@ const compactListClass = "space-y-2";
 const compactItemClass = "group animate-rise rounded-2xl bg-surface-container px-3 py-3 transition-colors hover:bg-surface-container-high";
 const compactRankClass = "text-readable-gold text-right text-[1.1rem] font-extrabold tabular-nums";
 const compactLinkClass = "block min-w-0 truncate font-mono text-[0.86rem] font-semibold text-on-surface hover:underline hover:underline-offset-2";
-const compactStarsClass = "shrink-0 whitespace-nowrap font-mono text-[0.86rem] font-extrabold tabular-nums text-readable-gold";
+const compactStarsClass = "shrink-0 whitespace-nowrap font-mono text-[0.86rem] font-extrabold tabular-nums";
 const compactMetaClass = "font-mono text-[0.72rem] tabular-nums text-on-surface-variant";
 const compactTagClass =
   "inline-flex max-w-full items-center rounded-full bg-surface-container-high px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant";
@@ -151,7 +152,10 @@ export function RepositoryRankingTable({
                     </th>
                     <td className={mutedCellClass}>{row.lang ?? text.unknown}</td>
                     {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant, text)}</td>}
-                    <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>{fmtStars(row.total)}★</td>
+                    <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>
+                      {fmtStars(row.total)}
+                      <Star />
+                    </td>
                   </tr>
                 );
               })}
@@ -220,7 +224,8 @@ export function OrganizationRankingTable({
                   <td className={mutedCellClass}>{row.owner_type ?? text.unknown}</td>
                   <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{row.repo_count}</td>
                   <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>
-                    {fmtStars(row.current_stars_sum)}★
+                    {fmtStars(row.current_stars_sum)}
+                    <Star />
                   </td>
                 </tr>
               ))}
@@ -263,7 +268,10 @@ function RepositoryRankingCompactList({
                   <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={compactLinkClass}>
                     {row.owner}/{row.name}
                   </Link>
-                  <span className={compactStarsClass}>{fmtStars(row.total)}★</span>
+                  <span className={compactStarsClass}>
+                    {fmtStars(row.total)}
+                    <Star />
+                  </span>
                 </div>
                 <span aria-hidden="true" />
                 <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -310,7 +318,10 @@ function OrganizationRankingCompactList({
                   <Link href={localizedPath(locale, `/o/${row.login}`)} className={compactLinkClass}>
                     {row.login}
                   </Link>
-                  <span className={compactStarsClass}>{fmtStars(row.current_stars_sum)}★</span>
+                  <span className={compactStarsClass}>
+                    {fmtStars(row.current_stars_sum)}
+                    <Star />
+                  </span>
                 </div>
                 <span aria-hidden="true" />
                 <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
