@@ -3,12 +3,18 @@ import type { RankList } from "@/lib/contracts";
 import { resolveAvailableRankPeriodsForTest } from "./rank-periods";
 
 const GENERATED_AT = "2026-06-21T00:00:00.000Z";
-const NOW = new Date("2026-07-08T12:00:00.000Z");
+const NOW_PERIODS = {
+  year: 2026,
+  month: 7,
+  monthPeriod: "2026-07",
+  week: { year: 2026, week: 28 },
+  weekPeriod: "2026-W28",
+};
 
 describe("resolveAvailableRankPeriods", () => {
   test("uses the current ISO week when that rank view exists", async () => {
     const periods = await resolveAvailableRankPeriodsForTest({
-      now: NOW,
+      nowPeriods: NOW_PERIODS,
       readMeta: async () => null,
       readRank: rankReader(["2026", "2026-07", "2026-W28"]),
     });
@@ -18,7 +24,7 @@ describe("resolveAvailableRankPeriods", () => {
 
   test("falls back to a recent available week when the calendar week is missing", async () => {
     const periods = await resolveAvailableRankPeriodsForTest({
-      now: NOW,
+      nowPeriods: NOW_PERIODS,
       readMeta: async () => null,
       readRank: rankReader(["2026", "2026-07", "2026-W26"]),
     });
@@ -28,7 +34,7 @@ describe("resolveAvailableRankPeriods", () => {
 
   test("falls back to the previous available month when the calendar month is missing", async () => {
     const periods = await resolveAvailableRankPeriodsForTest({
-      now: NOW,
+      nowPeriods: NOW_PERIODS,
       readMeta: async () => null,
       readRank: rankReader(["2026", "2026-06", "2026-W28"]),
     });
@@ -38,7 +44,7 @@ describe("resolveAvailableRankPeriods", () => {
 
   test("uses the newest year as a safe fallback when bounded month and week searches miss", async () => {
     const periods = await resolveAvailableRankPeriodsForTest({
-      now: NOW,
+      nowPeriods: NOW_PERIODS,
       readMeta: async () => null,
       readRank: rankReader(["2025"]),
       monthLookback: 2,
@@ -53,7 +59,7 @@ describe("resolveAvailableRankPeriods", () => {
 
   test("uses folded-through periods when bounded calendar fallback misses", async () => {
     const periods = await resolveAvailableRankPeriodsForTest({
-      now: NOW,
+      nowPeriods: NOW_PERIODS,
       readMeta: async () => ({ folded_through: { month: "2026-06", week: "2026-W26" } }),
       readRank: rankReader(["2026", "2026-06", "2026-W26"]),
       monthLookback: 1,

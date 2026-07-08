@@ -10,6 +10,7 @@ type RankReader = (window: RankWindow, period: string, dim: "repo", metric: "flo
 type MetaReader = () => Promise<{ folded_through?: { month: string; week: string } } | null>;
 type MonthPeriodKey = { year: number; month: number };
 type WeekPeriodKey = { year: number; week: number };
+type CurrentPeriods = ReturnType<typeof currentUtcPeriods>;
 
 export type AvailableRankFallback = {
   kind: "fallback";
@@ -56,6 +57,7 @@ export type AvailableRankPeriods = {
 
 type ResolveOptions = {
   now?: Date;
+  nowPeriods?: CurrentPeriods;
   readRank?: RankReader;
   readMeta?: MetaReader;
   monthLookback?: number;
@@ -77,12 +79,13 @@ const resolveAvailableRankPeriodsCached = cache((isoDate: string, cacheKey: stri
 
 export async function resolveAvailableRankPeriodsForTest({
   now = new Date(),
+  nowPeriods,
   readRank = getRank as RankReader,
   readMeta = getMeta as MetaReader,
   monthLookback = MONTH_LOOKBACK,
   weekLookback = WEEK_LOOKBACK,
 }: ResolveOptions = {}): Promise<AvailableRankPeriods> {
-  const current = currentUtcPeriods(now);
+  const current = nowPeriods ?? currentUtcPeriods(now);
   const meta = await readMeta();
   const foldedMonth = parseMonthPeriod(meta?.folded_through?.month);
   const foldedWeek = parseWeekPeriod(meta?.folded_through?.week);
