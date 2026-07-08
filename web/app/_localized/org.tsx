@@ -12,6 +12,7 @@ import { RelatedPages } from "@/app/_explore/RelatedPages";
 import { StarCurve } from "@/app/_explore/StarCurve";
 import type { Row } from "@/app/_explore/RankingList";
 import { RepositoryRankingTable } from "@/app/_explore/SemanticDataTable";
+import { ShareButton } from "@/app/_explore/ShareButton";
 import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { DAILY_BASE_VIEW_TTL_MS, getMeta, getOrgEntityDaily, getReposLookupDaily } from "@/lib/data";
@@ -44,6 +45,9 @@ const ORG_UI = {
   noTrackedRepos: "Tracked repository rows are waiting for the next published lookup.",
   notAvailable: "Unavailable",
 } as const;
+
+const ORG_HERO_ACTION_CLASS =
+  "text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline";
 
 export async function generateOrgMetadata({ locale, login: raw }: { locale: Locale; login: string }): Promise<Metadata> {
   const t = await getDictionary(locale);
@@ -101,6 +105,8 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
   );
   const repoLabels = repositoryTableLabels(t);
   const ownerType = orgOwnerTypeLabel(t, org.owner_type);
+  const shareText = fill(t.org.metaTitle, { login: org.login, kind: ownerType });
+  const shareUrl = absoluteSnippetUrl(routePath);
   const githubUrl = `https://github.com/${encodeURIComponent(org.login)}`;
   const heroLede = fill(t.org.metaDescription, {
     login: org.login,
@@ -136,13 +142,12 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
           title={<span className="break-all">{org.login}</span>}
           lede={heroLede}
           actions={
-            <a
-              href={githubUrl}
-              rel="noreferrer"
-              className="text-readable-gold rounded-lg border border-outline-variant px-3 py-2 font-mono text-[0.78rem] font-semibold hover:bg-surface-container hover:underline"
-            >
-              {ORG_UI.openGitHub}
-            </a>
+            <>
+              <a href={githubUrl} rel="noreferrer" className={ORG_HERO_ACTION_CLASS}>
+                {ORG_UI.openGitHub}
+              </a>
+              <ShareButton text={shareText} url={shareUrl} labels={t.share} />
+            </>
           }
           aside={
             <OrgHeroStats
