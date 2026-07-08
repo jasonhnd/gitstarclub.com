@@ -106,6 +106,20 @@ describe("buildSitemapPaths", () => {
     expect(paths).toContain("/rankings/2026/W53");
     expect(paths).not.toContain("/rankings/2027/W01");
   });
+
+  test("uses folded-through metadata instead of the calendar for ranking periods", () => {
+    const paths = buildSitemapPaths({
+      now: new Date("2026-07-08T12:00:00.000Z"),
+      meta: { folded_through: { month: "2026-06", week: "2026-W26" } },
+    });
+
+    expect(paths).toContain("/rankings/2026");
+    expect(paths).toContain("/rankings/2025/12");
+    expect(paths).toContain("/rankings/2026/6");
+    expect(paths).not.toContain("/rankings/2026/7");
+    expect(paths).toContain("/rankings/2026/W26");
+    expect(paths).not.toContain("/rankings/2026/W28");
+  });
 });
 
 describe("sitemap hints", () => {
