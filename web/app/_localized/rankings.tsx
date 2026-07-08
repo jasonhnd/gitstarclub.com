@@ -123,7 +123,7 @@ export async function RankingsPageView({ locale }: { locale: Locale }) {
               <>
                 <MobileRepositoryRankingCards rows={repoRows} labels={repoLabels} locale={locale} />
                 <div className="hidden md:block">
-                  <RankingList rows={repoRows} variant="total" locale={locale} tableCaption={repoLabels.caption} labels={repoLabels} />
+                  <RankingList rows={repoRows} variant="total" locale={locale} tableCaption={repoLabels.caption} labels={repoLabels} compact />
                 </div>
               </>
             ) : (
@@ -137,7 +137,7 @@ export async function RankingsPageView({ locale }: { locale: Locale }) {
               <>
                 <MobileOrganizationRankingCards rows={orgs} labels={orgLabels} locale={locale} />
                 <div className="hidden md:block">
-                  <OrganizationRankingTable rows={orgs} caption={orgLabels.caption} labels={orgLabels} locale={locale} />
+                  <OrganizationRankingTable rows={orgs} caption={orgLabels.caption} labels={orgLabels} locale={locale} compact />
                 </div>
               </>
             ) : (

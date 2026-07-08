@@ -672,7 +672,7 @@ function RankingTablePanel({
   return (
     <section className="min-w-0">
       <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-      {rows.length > 0 ? <RankingList rows={rows} variant={variant} locale={locale} tableCaption={tableCaption} labels={labels} /> : <EmptyState message={emptyMessage} />}
+      {rows.length > 0 ? <RankingList rows={rows} variant={variant} locale={locale} tableCaption={tableCaption} labels={labels} compact /> : <EmptyState message={emptyMessage} />}
     </section>
   );
 }
@@ -696,40 +696,30 @@ function NewcomerPanel({
     <section className="min-w-0">
       <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
       {rows.length > 0 ? (
-        <div className="mt-[clamp(1rem,2vw,1.5rem)] overflow-x-auto pb-2">
-          <table className="w-full min-w-[24rem] border-separate border-spacing-y-2 text-left">
-            <caption className="mb-2 text-left font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{caption}</caption>
-            <thead>
-              <tr>
-                <th scope="col" className="px-2.5 pb-1 font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant sm:px-3">
-                  {labels.repository}
-                </th>
-                <th scope="col" className="px-2.5 pb-1 text-right font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant sm:px-3">
-                  {labels.tenKCrossingDay}
-                </th>
-                <th scope="col" className="px-2.5 pb-1 text-right font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant sm:px-3">
-                  {labels.totalStars}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={`${row.owner}/${row.name}`} className="group animate-rise">
-                  <th scope="row" className="rounded-l-2xl bg-surface-container px-2.5 py-2.5 align-middle text-[0.86rem] text-on-surface transition-colors group-hover:bg-surface-container-high sm:px-3 sm:py-3">
-                    <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className="font-mono font-semibold text-on-surface hover:underline hover:underline-offset-2">
+        <div className="mt-[clamp(1rem,2vw,1.5rem)]">
+          <p className="mb-2 text-left font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{caption}</p>
+          <ol className="space-y-2" aria-label={caption}>
+            {rows.map((row, index) => (
+              <li key={`${row.owner}/${row.name}`} className="group animate-rise rounded-2xl bg-surface-container px-3 py-3 transition-colors hover:bg-surface-container-high" style={{ animationDelay: `${0.04 * Math.min(index, 12)}s` }}>
+                <div className="grid min-w-0 gap-2">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2">
+                    <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className="block min-w-0 truncate font-mono text-[0.86rem] font-semibold text-on-surface hover:underline hover:underline-offset-2">
                       {row.owner}/{row.name}
                     </Link>
-                  </th>
-                  <td className="bg-surface-container px-2.5 py-2.5 text-right align-middle font-mono text-[0.75rem] text-on-surface-variant transition-colors group-hover:bg-surface-container-high sm:px-3 sm:py-3">
-                    {row.crossedDate ?? ""}
-                  </td>
-                  <td className="rounded-r-2xl bg-surface-container px-2.5 py-2.5 text-right align-middle font-mono text-[0.86rem] font-extrabold tabular-nums text-on-surface transition-colors group-hover:bg-surface-container-high sm:px-3 sm:py-3">
-                    {fmtStars(row.total)}★
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <span className="shrink-0 whitespace-nowrap font-mono text-[0.86rem] font-extrabold tabular-nums text-readable-gold">{fmtStars(row.total)}★</span>
+                  </div>
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-mono text-[0.72rem] tabular-nums text-on-surface-variant">
+                      {labels.tenKCrossingDay}: {row.crossedDate ?? ""}
+                    </span>
+                    <span className="inline-flex max-w-full items-center rounded-full bg-surface-container-high px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">
+                      <span className="break-all">{row.lang ?? labels.unknown}</span>
+                    </span>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
         </div>
       ) : (
         <EmptyState message={emptyMessage} />
