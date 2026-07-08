@@ -8,6 +8,8 @@ import { getRank } from "./rank";
 type RankWindow = "year" | "month" | "week";
 type RankReader = (window: RankWindow, period: string, dim: "repo", metric: "flow") => Promise<RankList | null>;
 type MetaReader = () => Promise<{ folded_through?: { month: string; week: string } } | null>;
+type MonthPeriodKey = { year: number; month: number };
+type WeekPeriodKey = { year: number; week: number };
 
 export type AvailableRankFallback = {
   kind: "fallback";
@@ -138,8 +140,8 @@ export async function resolveAdjacentRankPeriod(
   if (window === "month") {
     if (current.month == null) return null;
     const latestMonth = latest.month.kind === "month" ? latest.month : null;
-    let candidate = shiftMonth(current.year, current.month, direction);
-    for (let step = 0; step < MONTH_LOOKBACK && candidate.year >= FIRST_YEAR; step++) {
+    let candidate: MonthPeriodKey | null | undefined = shiftMonth(current.year, current.month, direction);
+    for (let step = 0; candidate && step < MONTH_LOOKBACK && candidate.year >= FIRST_YEAR; step++) {
       if (direction > 0 && (!latestMonth || compareMonths(candidate, latestMonth) > 0)) return null;
       const rank = await getRank("month", formatMonthPeriod(candidate.year, candidate.month), "repo", "flow");
       if (rank) return monthRankPeriod(candidate.year, candidate.month, rank.meta.generated_at);
@@ -150,8 +152,8 @@ export async function resolveAdjacentRankPeriod(
 
   if (current.week == null) return null;
   const latestWeek = latest.week.kind === "week" ? latest.week : null;
-  let candidate = shiftIsoWeek(current.year, current.week, direction);
-  for (let step = 0; step < WEEK_LOOKBACK && candidate.year >= FIRST_YEAR; step++) {
+  let candidate: WeekPeriodKey | null | undefined = shiftIsoWeek(current.year, current.week, direction);
+  for (let step = 0; candidate && step < WEEK_LOOKBACK && candidate.year >= FIRST_YEAR; step++) {
     if (direction > 0 && (!latestWeek || compareIsoWeeks(candidate, latestWeek) > 0)) return null;
     const rank = await getRank("week", formatWeekPeriod(candidate.year, candidate.week), "repo", "flow");
     if (rank) return weekRankPeriod(candidate.year, candidate.week, rank.meta.generated_at);
@@ -169,12 +171,12 @@ async function findLatestYear(startYear: number, readRank: RankReader): Promise<
 }
 
 async function findLatestMonth(
-  start: { year: number; month: number },
+  start: MonthPeriodKey | null | undefined,
   readRank: RankReader,
   maxSteps: number,
 ): Promise<AvailableMonthRankPeriod | null> {
   let candidate = start;
-  for (let step = 0; step < maxSteps && candidate.year >= FIRST_YEAR; step++) {
+  for (let step = 0; candidate && step < maxSteps && candidate.year >= FIRST_YEAR; step++) {
     const rank = await readRank("month", formatMonthPeriod(candidate.year, candidate.month), "repo", "flow");
     if (rank) return monthRankPeriod(candidate.year, candidate.month, rank.meta.generated_at);
     candidate = shiftMonth(candidate.year, candidate.month, -1);
@@ -183,12 +185,12 @@ async function findLatestMonth(
 }
 
 async function findLatestWeek(
-  start: { year: number; week: number },
+  start: WeekPeriodKey | null | undefined,
   readRank: RankReader,
   maxSteps: number,
 ): Promise<AvailableWeekRankPeriod | null> {
   let candidate = start;
-  for (let step = 0; step < maxSteps && candidate.year >= FIRST_YEAR; step++) {
+  for (let step = 0; candidate && step < maxSteps && candidate.year >= FIRST_YEAR; step++) {
     const rank = await readRank("week", formatWeekPeriod(candidate.year, candidate.week), "repo", "flow");
     if (rank) return weekRankPeriod(candidate.year, candidate.week, rank.meta.generated_at);
     candidate = shiftIsoWeek(candidate.year, candidate.week, -1);

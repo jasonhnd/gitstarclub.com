@@ -107,13 +107,14 @@ describe("buildSitemapPaths", () => {
     expect(paths).not.toContain("/rankings/2027/W01");
   });
 
-  test("uses data-backed ranking availability instead of the calendar for current periods", () => {
+  test("uses folded-through metadata instead of the calendar for ranking periods", () => {
     const paths = buildSitemapPaths({
       now: new Date("2026-07-08T12:00:00.000Z"),
-      rankPeriods: availableRankPeriodsFixture(),
+      meta: { folded_through: { month: "2026-06", week: "2026-W26" } },
     });
 
     expect(paths).toContain("/rankings/2026");
+    expect(paths).toContain("/rankings/2025/12");
     expect(paths).toContain("/rankings/2026/6");
     expect(paths).not.toContain("/rankings/2026/7");
     expect(paths).toContain("/rankings/2026/W26");
@@ -131,16 +132,6 @@ describe("sitemap hints", () => {
     expect(sitemapPriority("/about")).toBe(0.4);
   });
 });
-
-function availableRankPeriodsFixture() {
-  return {
-    year: 2026,
-    yearLink: { kind: "year", year: 2026, href: "/rankings/2026", label: "2026" },
-    month: { kind: "month", year: 2026, month: 6, period: "2026-06", href: "/rankings/2026/6", label: "June 2026" },
-    week: { kind: "week", year: 2026, week: 26, period: "2026-W26", href: "/rankings/2026/W26", label: "2026-W26" },
-    allTime: { kind: "all-time", href: "/rankings", label: "Full history" },
-  } as const;
-}
 
 describe("localized sitemap urls", () => {
   const base = "https://gitstarclub.test";
