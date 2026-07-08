@@ -1,20 +1,6 @@
-// Keep literal so middleware can import this module without bundling node:crypto.
-export const THEME_INIT_SCRIPT_CSP_HASH = "'sha256-YsX2CatCw0tDjMMgMh7A2Boo2DvsDtHoRzNtzxVQCv0='";
-
 export function contentSecurityPolicyForEnvironment(nodeEnv = process.env.NODE_ENV): string {
   const isProduction = nodeEnv === "production";
-  const scriptSrc = isProduction
-    ? `'self' ${THEME_INIT_SCRIPT_CSP_HASH}`
-    : ["'self'", "'unsafe-inline'", ...(nodeEnv === "development" ? ["'unsafe-eval'"] : [])].join(" ");
-
-  return contentSecurityPolicy(scriptSrc, isProduction);
-}
-
-export function contentSecurityPolicyWithNonce(nonce: string, nodeEnv = process.env.NODE_ENV): string {
-  const isProduction = nodeEnv === "production";
-  const scriptSrc = isProduction
-    ? `'self' 'nonce-${nonce}' 'strict-dynamic' ${THEME_INIT_SCRIPT_CSP_HASH}`
-    : ["'self'", "'unsafe-inline'", ...(nodeEnv === "development" ? ["'unsafe-eval'"] : [])].join(" ");
+  const scriptSrc = ["'self'", "'unsafe-inline'", ...(nodeEnv === "development" ? ["'unsafe-eval'"] : [])].join(" ");
 
   return contentSecurityPolicy(scriptSrc, isProduction);
 }
@@ -39,6 +25,7 @@ function contentSecurityPolicy(scriptSrc: string, isProduction: boolean): string
 }
 
 export const securityHeaders = [
+  { key: "Content-Security-Policy", value: contentSecurityPolicyForEnvironment() },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

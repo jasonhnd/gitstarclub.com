@@ -1,33 +1,27 @@
-import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
-import { contentSecurityPolicyWithNonce, securityHeaders, THEME_INIT_SCRIPT_CSP_HASH } from "./csp";
+import { contentSecurityPolicyForEnvironment, securityHeaders } from "./csp";
 import { stringifyJsonForScript } from "./json-script";
 import { hasValidBearerToken, requireBearerToken } from "./security";
-import { THEME_INIT_SCRIPT } from "./theme-script";
 
 function cspDirective(csp: string, name: string): string {
   return csp.split("; ").find((directive) => directive.startsWith(`${name} `)) ?? "";
 }
 
-describe("contentSecurityPolicyWithNonce", () => {
-  test("does not allow broad inline scripts in production", () => {
-    const csp = contentSecurityPolicyWithNonce("test-nonce", "production");
+describe("contentSecurityPolicyForEnvironment", () => {
+  test("uses the static prerender-compatible script policy in production", () => {
+    const csp = contentSecurityPolicyForEnvironment("production");
     const scriptSrc = cspDirective(csp, "script-src");
 
-    expect(scriptSrc).toBe(`script-src 'self' 'nonce-test-nonce' 'strict-dynamic' ${THEME_INIT_SCRIPT_CSP_HASH}`);
-    expect(scriptSrc).not.toContain("'unsafe-inline'");
+    expect(scriptSrc).toBe("script-src 'self' 'unsafe-inline'");
+    expect(scriptSrc).not.toContain("'nonce-");
+    expect(scriptSrc).not.toContain("'strict-dynamic'");
+    expect(scriptSrc).not.toContain("'sha256-");
     expect(scriptSrc).not.toContain("'unsafe-eval'");
     expect(csp).toContain("upgrade-insecure-requests");
   });
 
-  test("ties the production script hash to the rendered theme initializer", () => {
-    const expectedHash = `'sha256-${createHash("sha256").update(THEME_INIT_SCRIPT).digest("base64")}'`;
-
-    expect(THEME_INIT_SCRIPT_CSP_HASH).toBe(expectedHash);
-  });
-
   test("keeps development script allowances scoped to development", () => {
-    const csp = contentSecurityPolicyWithNonce("test-nonce", "development");
+    const csp = contentSecurityPolicyForEnvironment("development");
     const scriptSrc = cspDirective(csp, "script-src");
 
     expect(scriptSrc).toBe("script-src 'self' 'unsafe-inline' 'unsafe-eval'");
@@ -35,7 +29,7 @@ describe("contentSecurityPolicyWithNonce", () => {
   });
 
   test("does not include eval allowances outside development", () => {
-    const scriptSrc = cspDirective(contentSecurityPolicyWithNonce("test-nonce", "test"), "script-src");
+    const scriptSrc = cspDirective(contentSecurityPolicyForEnvironment("test"), "script-src");
 
     expect(scriptSrc).toBe("script-src 'self' 'unsafe-inline'");
     expect(scriptSrc).not.toContain("'unsafe-eval'");
@@ -43,14 +37,19 @@ describe("contentSecurityPolicyWithNonce", () => {
 });
 
 describe("securityHeaders", () => {
-  test("keeps static security headers without a conflicting CSP entry", () => {
+  test("keeps the static CSP first with the other security headers", () => {
     expect(securityHeaders.map((header) => header.key)).toEqual([
+      "Content-Security-Policy",
       "X-Content-Type-Options",
       "X-Frame-Options",
       "Referrer-Policy",
       "Strict-Transport-Security",
       "Permissions-Policy",
     ]);
+    expect(securityHeaders[0]).toEqual({
+      key: "Content-Security-Policy",
+      value: contentSecurityPolicyForEnvironment(),
+    });
   });
 });
 

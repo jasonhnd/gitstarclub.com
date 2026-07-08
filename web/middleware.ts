@@ -1,43 +1,40 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { contentSecurityPolicyWithNonce } from "./lib/csp";
 import { DEFAULT_LOCALE, LANG_COOKIE, isLocale, type Locale } from "./lib/i18n";
 import { isNonDefaultLocale, localizedPath } from "./lib/i18n/routing";
 
 const PUBLIC_FILE = /\/[^/]+\.[^/]+$/;
 
 export function middleware(request: NextRequest) {
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const csp = contentSecurityPolicyWithNonce(nonce);
   const { nextUrl } = request;
   const { pathname, search } = nextUrl;
 
   if (shouldIgnorePath(pathname) || !isDocumentNavigation(request)) {
-    return nextWithCsp(csp);
+    return NextResponse.next();
   }
 
   const firstSegment = pathname.split("/").filter(Boolean)[0] ?? "";
 
   if (firstSegment === DEFAULT_LOCALE) {
-    return redirect(request, stripDefaultLocalePrefix(pathname) + search, 308, csp);
+    return redirect(request, stripDefaultLocalePrefix(pathname) + search, 308);
   }
 
   if (isNonDefaultLocale(firstSegment)) {
-    return nextDocumentWithNonce(request, nonce, csp);
+    return NextResponse.next();
   }
 
   const cookieLocale = request.cookies.get(LANG_COOKIE)?.value;
   if (cookieLocale && isNonDefaultLocale(cookieLocale)) {
-    return redirect(request, localizedPath(cookieLocale, pathname + search), 307, csp);
+    return redirect(request, localizedPath(cookieLocale, pathname + search), 307);
   }
 
   if (pathname === "/" && !request.cookies.has(LANG_COOKIE)) {
     const headerLocale = preferredLocale(request.headers.get("accept-language"));
     if (headerLocale && isNonDefaultLocale(headerLocale)) {
-      return redirect(request, localizedPath(headerLocale, pathname + search), 307, csp);
+      return redirect(request, localizedPath(headerLocale, pathname + search), 307);
     }
   }
 
-  return nextDocumentWithNonce(request, nonce, csp);
+  return NextResponse.next();
 }
 
 function shouldIgnorePath(pathname: string): boolean {
@@ -123,23 +120,6 @@ function matchLocaleTag(tag: string): Locale | null {
   return null;
 }
 
-function nextWithCsp(csp: string): NextResponse {
-  return withCsp(NextResponse.next(), csp);
-}
-
-function nextDocumentWithNonce(request: NextRequest, nonce: string, csp: string): NextResponse {
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nonce", nonce);
-  requestHeaders.set("Content-Security-Policy", csp);
-
-  return withCsp(NextResponse.next({ request: { headers: requestHeaders } }), csp);
-}
-
-function redirect(request: NextRequest, path: string, status: 307 | 308, csp: string) {
-  return withCsp(NextResponse.redirect(new URL(path, request.url), status), csp);
-}
-
-function withCsp(response: NextResponse, csp: string): NextResponse {
-  response.headers.set("Content-Security-Policy", csp);
-  return response;
+function redirect(request: NextRequest, path: string, status: 307 | 308) {
+  return NextResponse.redirect(new URL(path, request.url), status);
 }
