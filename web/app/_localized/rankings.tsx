@@ -39,12 +39,11 @@ export async function generateRankingsMetadata(locale: Locale): Promise<Metadata
   });
 }
 
-export async function RankingsPageView({ locale }: { locale: Locale }) {
+export async function RankingsPageView({ locale, now = new Date() }: { locale: Locale; now?: Date }) {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
   const routePath = localizedPath(locale, RANKINGS_PATH);
   const href = (path: string) => localizedPath(locale, path);
-  const now = new Date();
   const periods = currentUtcPeriods(now);
   const [repoRank, orgRank, repoLk, orgLk, snap, availablePeriods] = await Promise.all([
     getAllTime("repo"),

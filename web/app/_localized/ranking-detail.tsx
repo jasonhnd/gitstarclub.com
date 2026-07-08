@@ -122,12 +122,12 @@ export async function generateRankingPeriodMetadata(locale: Locale, params: Peri
   });
 }
 
-export async function RankingsYearPageView({ locale, year: yearValue }: { locale: Locale; year: string }) {
+export async function RankingsYearPageView({ locale, year: yearValue, now = new Date() }: { locale: Locale; year: string; now?: Date }) {
   const t = await getDictionary(locale);
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const year = Number(yearValue);
-  const availablePeriods = await resolveAvailableRankPeriods();
+  const availablePeriods = await resolveAvailableRankPeriods(now);
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > availablePeriods.year) notFound();
 
   const [rank, growth, newc, heat, lookup] = await Promise.all([

@@ -22,18 +22,6 @@ mock.module("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-mock.module("@/lib/periods", () => ({
-  FIRST_YEAR: 2015,
-  currentUtcPeriods: () => ({
-    year: 2026,
-    month: 7,
-    monthPeriod: "2026-07",
-    week: { year: 2026, week: 28 },
-    weekPeriod: "2026-W28",
-  }),
-  isoWeek,
-}));
-
 const { RankingsYearPageView } = await import("@/app/_localized/ranking-detail");
 const { RankingsPageView } = await import("@/app/_localized/rankings");
 const { getRank } = await import("@/lib/data/rank");
@@ -41,6 +29,7 @@ const { getRank } = await import("@/lib/data/rank");
 const BLOB_BASE_URL = "https://ranking-period-links.test";
 const VERSION = "ranking-period-links";
 const GENERATED_AT = "2026-06-21T00:00:00.000Z";
+const NOW = new Date("2026-07-08T12:00:00.000Z");
 const REPO_ID = 1;
 const ORG_LOGIN = "vercel";
 
@@ -53,8 +42,8 @@ beforeAll(() => {
 describe("ranking period internal links", () => {
   test("rankings surfaces do not render links to missing month or week rank views", async () => {
     const pages = await Promise.all([
-      renderPage(await RankingsPageView({ locale: "en" })),
-      renderPage(await RankingsYearPageView({ locale: "en", year: "2026" })),
+      renderPage(await RankingsPageView({ locale: "en", now: NOW })),
+      renderPage(await RankingsYearPageView({ locale: "en", year: "2026", now: NOW })),
     ]);
     const anchors = [...new Set(pages.flatMap(extractAnchors))];
     const periodAnchors = anchors.filter((href) => /^\/rankings\/\d{4}\/(?:\d{1,2}|W\d{2})$/.test(href));
@@ -209,11 +198,3 @@ const hotSnapshotFixture: HotSnapshot = {
     org: [{ rank: 1, login: ORG_LOGIN, value: 100_000, prev_rank: null }],
   },
 };
-
-function isoWeek(date: Date): { year: number; week: number } {
-  const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  target.setUTCDate(target.getUTCDate() + 4 - (target.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((target.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
-  return { year: target.getUTCFullYear(), week };
-}
