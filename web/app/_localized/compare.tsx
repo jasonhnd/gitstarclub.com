@@ -104,7 +104,56 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
               {t.compare.serverHeading}
             </h2>
             <p className="mt-3 max-w-[72ch] text-[0.98rem] leading-relaxed text-on-surface">{conclusionText}</p>
-            <div className="mt-4 overflow-x-auto">
+            <ol className="mt-4 divide-y divide-outline-variant border-y border-outline-variant md:hidden" aria-label={t.compare.serverCaption}>
+              {pairConclusions.map((row) => (
+                <li key={row.label} className="py-3">
+                  <div className="break-words font-mono text-[0.82rem] font-semibold text-on-surface">
+                    <Link href={localizedPath(locale, `/${row.repos[0].fullName}`)} className="hover:text-primary hover:underline hover:underline-offset-2">
+                      {row.repos[0].fullName}
+                    </Link>
+                    <span className="text-on-surface-variant"> {t.common.versus} </span>
+                    <Link href={localizedPath(locale, `/${row.repos[1].fullName}`)} className="hover:text-primary hover:underline hover:underline-offset-2">
+                      {row.repos[1].fullName}
+                    </Link>
+                  </div>
+                  <dl className="mt-3 grid gap-2 font-mono text-[0.75rem]">
+                    <div>
+                      <dt className="uppercase tracking-wider text-on-surface-variant">{t.compare.tenKMonths}</dt>
+                      <dd className="mt-0.5 break-words text-on-surface">{row.repos[0].crossed10kLabel} / {row.repos[1].crossed10kLabel}</dd>
+                    </div>
+                    <div>
+                      <dt className="uppercase tracking-wider text-on-surface-variant">{t.compare.sharedHorizon}</dt>
+                      <dd className="mt-0.5 break-words text-on-surface">{row.horizonLabel}</dd>
+                    </div>
+                    <div>
+                      <dt className="uppercase tracking-wider text-on-surface-variant">{t.compare.fasterAfter10k}</dt>
+                      <dd className="mt-0.5 break-words text-on-surface">
+                        {row.winner && row.loser ? (
+                          <>
+                            <span className="font-semibold">{row.winner.fullName}</span>
+                            <span className="text-on-surface-variant">
+                              {" "}
+                              {formatCompareGain(row.winner.gainedAfter10k)} {t.common.versus} {formatCompareGain(row.loser.gainedAfter10k)}
+                            </span>
+                          </>
+                        ) : (
+                          <span>
+                            {t.common.tiedAt} {formatCompareGain(row.repos[0].gainedAfter10k)}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="uppercase tracking-wider text-on-surface-variant">{t.compare.currentStars}</dt>
+                      <dd className="mt-0.5 tabular-nums text-on-surface">
+                        {fmtStars(row.repos[0].currentStars)}★ / {fmtStars(row.repos[1].currentStars)}★
+                      </dd>
+                    </div>
+                  </dl>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-4 hidden overflow-x-auto md:block">
               <table className="w-full min-w-[42rem] border-collapse text-left text-[0.86rem]">
                 <caption className="sr-only">{t.compare.serverCaption}</caption>
                 <thead className="border-y border-outline-variant font-mono text-[0.7rem] uppercase tracking-wider text-on-surface-variant">
@@ -158,7 +207,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
                         )}
                       </td>
                       <td className="py-3 pl-4 align-top font-mono text-[0.82rem] tabular-nums text-on-surface-variant">
-                        {fmtStars(row.repos[0].currentStars)} / {fmtStars(row.repos[1].currentStars)}
+                        {fmtStars(row.repos[0].currentStars)}★ / {fmtStars(row.repos[1].currentStars)}★
                       </td>
                     </tr>
                   ))}
