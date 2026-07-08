@@ -3,11 +3,15 @@ import type { ReactNode } from "react";
 
 export type PeriodSwitcherActivePeriod = "all-time" | "year" | "month" | "week";
 
+export type PeriodSwitcherTarget = {
+  href: string;
+  label: string;
+  value: ReactNode;
+  badge?: string;
+};
+
 export type PeriodSwitcherProps = {
-  allTimeHref: string;
-  currentYear: number;
-  currentMonth: number;
-  currentWeek: number;
+  links: Record<PeriodSwitcherActivePeriod, PeriodSwitcherTarget>;
   activePeriod: PeriodSwitcherActivePeriod;
 };
 
@@ -16,41 +20,26 @@ type PeriodLink = {
   href: string;
   label: string;
   value: ReactNode;
+  badge?: string;
 };
 
-export function PeriodSwitcher({
-  allTimeHref,
-  currentYear,
-  currentMonth,
-  currentWeek,
-  activePeriod,
-}: PeriodSwitcherProps) {
-  const rankingsHref = allTimeHref.replace(/\/+$/, "") || "/rankings";
-  const weekSegment = String(currentWeek).padStart(2, "0");
+export function PeriodSwitcher({ links: targets, activePeriod }: PeriodSwitcherProps) {
   const links: PeriodLink[] = [
     {
       period: "all-time",
-      href: rankingsHref,
-      label: "All-time",
-      value: "Full history",
+      ...targets["all-time"],
     },
     {
       period: "year",
-      href: `${rankingsHref}/${currentYear}`,
-      label: "Year",
-      value: currentYear,
+      ...targets.year,
     },
     {
       period: "month",
-      href: `${rankingsHref}/${currentYear}/${currentMonth}`,
-      label: "Month",
-      value: `${currentYear} / ${currentMonth}`,
+      ...targets.month,
     },
     {
       period: "week",
-      href: `${rankingsHref}/${currentYear}/W${weekSegment}`,
-      label: "Week",
-      value: `${currentYear} / W${weekSegment}`,
+      ...targets.week,
     },
   ];
 
@@ -74,6 +63,7 @@ function PeriodSwitcherLink({ link, active }: { link: PeriodLink; active: boolea
     >
       <span className={`font-mono text-[0.7rem] uppercase tracking-wider ${active ? "" : "text-on-surface-variant"}`}>{link.label}</span>
       <span className="mt-1 truncate text-[1rem] font-extrabold">{link.value}</span>
+      {link.badge && <span className={`mt-1 truncate font-mono text-[0.65rem] ${active ? "opacity-75" : "text-on-surface-variant"}`}>{link.badge}</span>}
     </Link>
   );
 }

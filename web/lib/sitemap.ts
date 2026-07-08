@@ -1,4 +1,5 @@
 import { FIRST_YEAR, isoWeek } from "./periods";
+import type { AvailableRankPeriods } from "./data/rank-periods";
 import { CATEGORY_DETAIL_PAGE_SIZE, ORG_INDEX_PAGE_SIZE, pageCount } from "./pagination";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "./i18n";
 import { localizedPath, toHreflang } from "./i18n/routing";
@@ -141,20 +142,21 @@ export function buildSitemapPaths(opts: {
   repos?: Record<string, RepoLike> | null;
   orgs?: Record<string, unknown> | null;
   categories?: CategoriesLike | null;
+  rankPeriods?: AvailableRankPeriods | null;
 } = {}): string[] {
   const now = opts.now ?? new Date();
-  const curYear = now.getUTCFullYear();
+  const curYear = opts.rankPeriods?.year ?? now.getUTCFullYear();
   const curWeek = isoWeek(now);
   const paths: string[] = ["", "/pulse", "/rankings", "/categories", "/categories/language", "/compare", "/about"];
 
   for (let y = FIRST_YEAR; y <= curYear; y++) {
     paths.push(`/rankings/${y}`);
-    const lastMonth = y === curYear ? now.getUTCMonth() + 1 : 12;
+    const lastMonth = latestSitemapMonthForYear(y, opts.rankPeriods, now);
     for (let m = 1; m <= lastMonth; m++) paths.push(`/rankings/${y}/${m}`);
   }
 
   for (let y = FIRST_YEAR; y <= curYear; y++) {
-    const lastWeek = y < curWeek.year ? weeksInIsoYear(y) : y === curWeek.year ? curWeek.week : 0;
+    const lastWeek = latestSitemapWeekForYear(y, opts.rankPeriods, curWeek);
     for (let w = 1; w <= lastWeek; w++) paths.push(`/rankings/${y}/W${String(w).padStart(2, "0")}`);
   }
 
@@ -179,6 +181,26 @@ export function buildSitemapPaths(opts: {
   }
 
   return [...new Set(paths)];
+}
+
+function latestSitemapMonthForYear(year: number, rankPeriods: AvailableRankPeriods | null | undefined, now: Date): number {
+  if (!rankPeriods) return year === now.getUTCFullYear() ? now.getUTCMonth() + 1 : 12;
+  if (rankPeriods.month.kind !== "month") return year < rankPeriods.year ? 12 : 0;
+  if (year < rankPeriods.month.year) return 12;
+  if (year === rankPeriods.month.year) return rankPeriods.month.month;
+  return 0;
+}
+
+function latestSitemapWeekForYear(
+  year: number,
+  rankPeriods: AvailableRankPeriods | null | undefined,
+  curWeek: { year: number; week: number },
+): number {
+  if (!rankPeriods) return year < curWeek.year ? weeksInIsoYear(year) : year === curWeek.year ? curWeek.week : 0;
+  if (rankPeriods.week.kind !== "week") return year < rankPeriods.year ? weeksInIsoYear(year) : 0;
+  if (year < rankPeriods.week.year) return weeksInIsoYear(year);
+  if (year === rankPeriods.week.year) return rankPeriods.week.week;
+  return 0;
 }
 
 export function sitemapChangeFrequency(path: string): SitemapFrequency {

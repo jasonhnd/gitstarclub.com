@@ -3,6 +3,7 @@
 export * from "./source";
 export * from "./lookup";
 export * from "./rank";
+export * from "./rank-periods";
 export * from "./entity";
 export * from "./heatmap";
 export * from "./snapshot";

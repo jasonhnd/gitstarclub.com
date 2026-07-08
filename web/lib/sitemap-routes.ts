@@ -1,5 +1,6 @@
 import { CategoriesLookup, Meta, OrgsLookup, ReposLookup } from "@/lib/contracts";
 import { readView } from "@/lib/data";
+import { resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
 import type { Locale } from "@/lib/i18n";
 import {
   buildLocaleSitemapEntries,
@@ -35,14 +36,15 @@ export function localeSitemapRoute(locale: Locale): () => Promise<Response> {
 
 async function readSitemapData() {
   const base = { base: true, versionTtlMs: SITEMAP_REVALIDATE_SECONDS * 1000 };
-  const [repos, orgs, categories, meta] = await Promise.all([
+  const [repos, orgs, categories, meta, rankPeriods] = await Promise.all([
     readView("lookup/repos.json", ReposLookup, base),
     readView("lookup/orgs.json", OrgsLookup, base),
     readView("lookup/categories.json", CategoriesLookup, base),
     readView("meta.json", Meta, base),
+    resolveAvailableRankPeriods(),
   ]);
   const lastModified = resolveSitemapLastModified(meta);
-  const paths = buildSitemapPaths({ repos, orgs, categories, now: lastModified });
+  const paths = buildSitemapPaths({ repos, orgs, categories, now: lastModified, rankPeriods });
 
   return { paths, categories, meta, lastModified };
 }
