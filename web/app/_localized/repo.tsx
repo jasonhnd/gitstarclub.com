@@ -12,13 +12,13 @@ import { RelatedPages, type RelatedPageItem } from "@/app/_explore/RelatedPages"
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { Star } from "@/app/_explore/Star";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { DAILY_BASE_VIEW_TTL_MS, getRepoIdByFullNameDaily, getRepoEntityDaily, getAliasMapDaily, getReposLookupDaily, getCategoryAssignments, getCategoryRegistry, getMeta } from "@/lib/data";
-import type { RepoEntity } from "@/lib/contracts";
+import { DAILY_BASE_VIEW_TTL_MS, getRepoIdByFullNameDaily, getRepoPageEntityDaily, getAliasMapDaily, getReposLookupDaily, getCategoryAssignments, getCategoryRegistry, getMeta } from "@/lib/data";
 import { fmtStars, ymParts, monthYearLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { repoLd, type FaqItem } from "@/lib/jsonld";
 import { exactRepoMilestones, type ExactRepoMilestone } from "@/lib/repo-milestones";
 import { resolveRepoRoute } from "@/lib/repo-route";
+import type { RepoPageEntity } from "@/lib/repo-readiness";
 import { ANSWER_CAPSULE_SOURCE, resolveDataAsOfFromMeta, type AnswerCapsuleContent } from "@/lib/geo-capsules";
 import { absoluteSnippetUrl, type ShareableSnippetContent } from "@/lib/shareable-snippets";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
@@ -40,6 +40,7 @@ const REPO_ENTITY_UI = {
   noDescription: "GitHub star history for this tracked repository.",
   noLicense: "No license metadata",
   noHomepage: "No homepage metadata",
+  noCreatedAt: "No creation date metadata",
   noLanguages: "No language breakdown available",
   noTopics: "No topics published",
   noCategories: "No category tags available",
@@ -74,7 +75,7 @@ export async function generateRepoMetadata({ locale, owner, name }: { locale: Lo
   const language = toBcp47Locale(locale);
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
   const id = await resolveRepoId(fullName, locale);
-  const repo = id !== undefined ? await getRepoEntityDaily(id) : null;
+  const repo = id !== undefined ? await getRepoPageEntityDaily(id) : null;
   if (!repo) {
     return pageMeta({
       title: `${fullName} — ${t.repo.starHistory}`,
@@ -102,7 +103,7 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
   const id = await resolveRepoId(fullName, locale);
   if (id === undefined) notFound();
   const [repo, lookup, assignments, registry, meta] = await Promise.all([
-    getRepoEntityDaily(id),
+    getRepoPageEntityDaily(id),
     getReposLookupDaily(),
     getCategoryAssignments(),
     getCategoryRegistry(),
@@ -120,8 +121,8 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
   const factLanguages: RepoLanguageFact[] =
     languages.length > 0 ? languages.map((language) => ({ ...language, href: languageHref(language.name) })) : repo.language ? [{ name: repo.language, size: null, color: null, href: null }] : [];
   const primaryLanguage = languages[0]?.name ?? repo.language;
-  const languageTotalSize = repo.languages?.reduce((sum, language) => sum + Math.max(0, language.size ?? 0), 0) ?? 0;
-  const created = ymParts(repo.created_at);
+  const languageTotalSize = repo.languages.reduce((sum, language) => sum + Math.max(0, language.size ?? 0), 0);
+  const created = repo.created_at ? ymParts(repo.created_at) : null;
   const categoryLinks = repoCategoryLinks(id, assignments, registry, languages);
   const related = relatedRepositories(repo, lookup);
   const rankingAppearances = repoRankingAppearances(repo);
@@ -183,7 +184,7 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
           }
           aside={
             <RepoHeroFacts
-              createdLabel={monthYearLabel(locale, created.y, created.m)}
+              createdLabel={created ? monthYearLabel(locale, created.y, created.m) : REPO_ENTITY_UI.noCreatedAt}
               license={repo.license}
               primaryLanguage={primaryLanguage}
               primaryLanguageHref={languages[0] ? href(languageHref(languages[0].name)) : null}
@@ -235,7 +236,7 @@ function RepoHeroActions({
   owner: string;
   githubHref: string;
   homepageHref: string | null;
-  repo: RepoEntity;
+  repo: RepoPageEntity;
   t: Dict;
 }) {
   return (
@@ -271,7 +272,7 @@ function RepoHeroFacts({
   license: string | null | undefined;
   primaryLanguage: string | null | undefined;
   primaryLanguageHref: string | null;
-  repo: RepoEntity;
+  repo: RepoPageEntity;
   t: Dict;
 }) {
   return (
@@ -330,7 +331,7 @@ function EntityFactPanel({
   languages: RepoLanguageFact[];
   locale: Locale;
   releaseHref: string | null;
-  repo: RepoEntity;
+  repo: RepoPageEntity;
   t: Dict;
 }) {
   const releaseLabel = repo.latest_release ? repo.latest_release.name || repo.latest_release.tag_name : t.repo.noRelease;
@@ -502,7 +503,7 @@ function EmptyState({ message }: { message: string }) {
   return <p className="mt-4 rounded-lg border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.9rem] text-on-surface-variant">{message}</p>;
 }
 
-function repoRankingAppearances(repo: RepoEntity): RankingAppearance[] {
+function repoRankingAppearances(repo: RepoPageEntity): RankingAppearance[] {
   const addsByPeriod = new Map(repo.monthly_table.map((row) => [row.month, row.adds] as const));
   const source = repo.rank_history?.month?.length
     ? repo.rank_history.month
@@ -547,7 +548,7 @@ function displayUrl(value: string): string {
   return value.replace(/^https?:\/\//i, "").replace(/\/$/g, "");
 }
 
-function buildLocalizedRepoCapsule(t: Dict, locale: Locale, repo: RepoEntity, asOf: string): AnswerCapsuleContent {
+function buildLocalizedRepoCapsule(t: Dict, locale: Locale, repo: RepoPageEntity, asOf: string): AnswerCapsuleContent {
   const latest = repo.monthly_table.at(-1);
   const language = repo.language ? `${repo.language} ` : "";
   const latestPhrase = latest
@@ -567,7 +568,7 @@ function buildLocalizedRepoCapsule(t: Dict, locale: Locale, repo: RepoEntity, as
   return { text: withSource(text), asOf, source: ANSWER_CAPSULE_SOURCE };
 }
 
-function buildLocalizedRepoFaqs(t: Dict, locale: Locale, repo: RepoEntity, asOf: string | null): FaqItem[] {
+function buildLocalizedRepoFaqs(t: Dict, locale: Locale, repo: RepoPageEntity, asOf: string | null): FaqItem[] {
   const latest = repo.curve.monthly.at(-1);
   const latestPhrase = latest
     ? fill(t.repo.latestMonthlyPoint, {
@@ -646,18 +647,18 @@ function buildLocalizedRepoMilestoneSnippet({
   });
 }
 
-function repoMilestonePhrase(t: Dict, locale: Locale, repo: RepoEntity): string {
+function repoMilestonePhrase(t: Dict, locale: Locale, repo: RepoPageEntity): string {
   const known = repoMilestoneLabels(t, locale, repo);
   return known.length > 0 ? listLabels(locale, known) : t.repo.milestoneFallback;
 }
 
-function repoMilestoneAnswer(t: Dict, locale: Locale, repo: RepoEntity): string {
+function repoMilestoneAnswer(t: Dict, locale: Locale, repo: RepoPageEntity): string {
   const known = repoMilestoneLabels(t, locale, repo);
   if (known.length === 0) return fill(t.repo.faqMilestonesAnswerNone, { repo: repo.full_name });
   return fill(t.repo.faqMilestonesAnswerSome, { repo: repo.full_name, milestones: listLabels(locale, known) });
 }
 
-function repoMilestoneLabels(t: Dict, locale: Locale, repo: RepoEntity): string[] {
+function repoMilestoneLabels(t: Dict, locale: Locale, repo: RepoPageEntity): string[] {
   const milestones = [
     ["10k", repo.milestones.crossed_10k],
     ["50k", repo.milestones.crossed_50k],

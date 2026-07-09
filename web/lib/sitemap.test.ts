@@ -120,6 +120,24 @@ describe("buildSitemapPaths", () => {
     expect(paths).toContain("/rankings/2026/W26");
     expect(paths).not.toContain("/rankings/2026/W28");
   });
+
+  test("omits malformed or explicitly non-renderable repo detail paths", () => {
+    const paths = buildSitemapPaths({
+      repos: {
+        "1": { full_name: "vuejs/vue" },
+        "2": { full_name: "missing-slash" },
+        "3": { full_name: "owner/name?debug=1" },
+        "4": { full_name: "fighting41love/funNLP" },
+      },
+      renderableRepoIds: new Set(["1", "2", "3"]),
+      now: new Date("2026-06-04T12:00:00.000Z"),
+    });
+
+    expect(paths).toContain("/vuejs/vue");
+    expect(paths).not.toContain("/missing-slash");
+    expect(paths).not.toContain("/owner/name?debug=1");
+    expect(paths).not.toContain("/fighting41love/funNLP");
+  });
 });
 
 describe("sitemap hints", () => {
