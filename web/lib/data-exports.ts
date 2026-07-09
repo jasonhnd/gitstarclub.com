@@ -382,7 +382,7 @@ function buildJsonExport<Row extends CsvRow>({
     data_as_of: dataAsOf,
     license: DATA_EXPORT_LICENSE,
     attribution: DATA_EXPORT_ATTRIBUTION,
-    generated_from: "Existing precomputed GitStarClub Blob views.",
+    generated_from: "Existing precomputed GitStarClub data.",
     source_views: sourceViews,
     row_count: rows.length,
     rows,
@@ -396,7 +396,7 @@ function buildManifest(exportDate: string, dataAsOf: string, files: ExportFileMa
     data_as_of: dataAsOf,
     license: DATA_EXPORT_LICENSE,
     attribution: DATA_EXPORT_ATTRIBUTION,
-    generated_from: "Existing precomputed GitStarClub Blob views.",
+    generated_from: "Existing precomputed GitStarClub data.",
     limits: DATA_EXPORT_LIMITS,
     files,
   };

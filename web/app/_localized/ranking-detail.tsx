@@ -52,11 +52,11 @@ const SECONDARY_PANEL_LIMIT = 10;
 const DETAIL_UI = {
   permanentArchive: "Permanent archive",
   yearHero:
-    "Permanent {year} archive of tracked GitHub repositories ranked by stars gained, with month-by-month movement from precomputed rank and heatmap JSON.",
+    "Permanent {year} archive of tracked GitHub repositories ranked by stars gained, with month-by-month movement from GitStarClub's precomputed ranking data.",
   monthHero:
-    "Permanent archive for {label}, ranking tracked GitHub repositories by stars gained during that calendar month from precomputed rank and heatmap JSON.",
+    "Permanent archive for {label}, ranking tracked GitHub repositories by stars gained during that calendar month from GitStarClub's precomputed ranking data.",
   weekHero:
-    "Permanent archive for exact ISO week {label}, ranking tracked GitHub repositories by stars gained during that week from precomputed rank JSON.",
+    "Permanent archive for exact ISO week {label}, ranking tracked GitHub repositories by stars gained during that week from GitStarClub's precomputed ranking data.",
   mostStarsAdded: "Most stars added",
   fastestGrowth: "Fastest growth",
   newcomers: "Newcomers",

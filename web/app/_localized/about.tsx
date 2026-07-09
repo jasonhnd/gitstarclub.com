@@ -34,9 +34,9 @@ const ABOUT_COPY = {
   heroLead:
     "GitStarClub is a static archive of public GitHub star history. This page documents what is tracked, how ranking and category views are produced, what the known limits are, and how to cite the derived dataset.",
   missingMetadata: "Published metadata timestamp unavailable",
-  dataModel: "Static JSON views",
+  dataModel: "Static data views",
   coverage: "Public GitHub repositories at 10k or more current stars, with history reconstructed from 2015 onward.",
-  runtime: "Pages read precomputed Blob JSON. They do not run live search, database queries, or AI generation during a visitor request.",
+  runtime: "Pages read GitStarClub's precomputed data. They do not run live search, database queries, or AI generation during a visitor request.",
   trackedHeading: "What GitStarClub tracks",
   trackedP1:
     "GitStarClub tracks public GitHub repositories that are in the current 10k-star-or-more set. Repository pages, organization pages, rankings, categories, Pulse, compare, and exports all read from the same published view family.",
@@ -44,7 +44,7 @@ const ABOUT_COPY = {
     "Rankings are archive pages, not endorsements. They expose source-backed star totals, period gains, milestones, owner aggregates, and category views so a reader can verify the field behind a claim.",
   rankingHeading: "How rankings are calculated",
   rankingP1:
-    "All-time repository rankings use current public GitHub star totals. Organization rankings sum current stars across that owner's tracked repositories. Period rankings use precomputed week, month, or year rank JSON where the visible value is stars gained in that UTC period.",
+    "All-time repository rankings use current public GitHub star totals. Organization rankings sum current stars across that owner's tracked repositories. Period rankings use GitStarClub's precomputed weekly, monthly, or yearly ranking data where the visible value is stars gained in that UTC period.",
   rankingP2:
     "Historical stock curves are seam-aware: pre-seam GH Archive gross additions are anchored to GitHub's authoritative star total, then post-seam net changes are added on top of the frozen anchor. Ranking pages render the published order from those precomputed views.",
   categoryHeading: "How categories are assigned",
@@ -54,7 +54,7 @@ const ABOUT_COPY = {
     "When metadata is missing or a rule does not meet the public category threshold, the category is omitted or shown through the explicit fallback used by that dimension. Category counts and links come from deterministic category rules over stored repository metadata.",
   archiveHeading: "Archive permanence",
   archiveP1:
-    "Public URLs are intended to remain citeable. Rankings, dated ranking periods, repository pages, organization pages, category pages, and dated export directories keep their canonical URL while newer JSON is published.",
+    "Public URLs are intended to remain citeable. Rankings, dated ranking periods, repository pages, organization pages, category pages, and dated export directories keep their canonical URL while newer data is published.",
   archiveP2:
     "The /data/exports/v1/latest/ files are convenience aliases to the newest export. For archival citation, prefer the page URL plus data-as-of date, or a dated export directory when using downloadable files.",
   cadenceP:
@@ -79,7 +79,7 @@ const ABOUT_COPY = {
   githubApi: "GitHub API documentation",
   faqWhatQ: "What does GitStarClub track?",
   faqWhatA:
-    "GitStarClub tracks public GitHub repositories in the current 10k-star-or-more set and publishes repository, organization, ranking, category, comparison, and export views from precomputed JSON.",
+    "GitStarClub tracks public GitHub repositories in the current 10k-star-or-more set and publishes repository, organization, ranking, category, comparison, and export views from precomputed data.",
   faqRankingQ: "How should I cite a ranking or chart?",
   faqRankingA:
     "Cite the GitStarClub page URL, title, data-as-of date when shown, and access date. For downloadable files, use the manifest or dated export directory.",
@@ -201,7 +201,7 @@ export async function AboutPageView({ locale }: { locale: Locale }) {
   const foldedMonth = formatDataAsOf(meta?.folded_through?.month, locale);
   const capsule: AnswerCapsuleContent | null = dataAsOf
     ? {
-        text: `As of ${dataAsOf}, GitStarClub documents a static-read archive of public GitHub star history. Rankings, categories, repository pages, organization totals, and exports are derived from GH Archive event history, public GitHub API totals, and precomputed JSON views; citation should name the page URL and date. - GitStarClub`,
+        text: `As of ${dataAsOf}, GitStarClub documents a static-read archive of public GitHub star history. Rankings, categories, repository pages, organization totals, and exports are derived from GH Archive event history, public GitHub API totals, and GitStarClub's precomputed data; citation should name the page URL and date. - GitStarClub`,
         asOf: dataAsOf,
         source: ANSWER_CAPSULE_SOURCE,
       }

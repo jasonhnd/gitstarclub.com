@@ -68,7 +68,7 @@ describe("compare conclusions", () => {
 
     expect(pair).not.toBeNull();
     expect(buildCompareConclusionText("June 24, 2026", pair ? [pair] : [])).toBe(
-      "As of June 24, 2026, a/a grew faster after 10k, gaining +3.0k stars in 1 month versus +2.0k for b/b. GitStarClub computes the table server-side from precomputed Blob repo-curve JSON; client-selected query pairs remain interactive only.",
+      "As of June 24, 2026, a/a grew faster after 10k, gaining +3.0k stars in 1 month versus +2.0k for b/b. GitStarClub computes the comparison table from GitStarClub's precomputed star-history data; client-selected query pairs remain interactive only.",
     );
     expect(buildCompareConclusionText("June 24, 2026", [])).toBeNull();
   });

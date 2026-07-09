@@ -94,7 +94,7 @@ describe("buildDataExportBundle", () => {
       data_as_of: "2026-06-24T03:00:00.000Z",
       license: DATA_EXPORT_LICENSE,
       attribution: DATA_EXPORT_ATTRIBUTION,
-      generated_from: "Existing precomputed GitStarClub Blob views.",
+      generated_from: "Existing precomputed GitStarClub data.",
     });
     expect(bundle.json.topRankings.rows.map((row) => `${row.ranking_scope}:${row.full_name}`)).toEqual([
       "current_month_repo_growth:beta/two",
@@ -132,7 +132,7 @@ describe("buildDataExportBundle", () => {
         data_as_of: "2026-06-24T00:00:00.000Z",
         license: DATA_EXPORT_LICENSE,
         attribution: DATA_EXPORT_ATTRIBUTION,
-        generated_from: "Existing precomputed GitStarClub Blob views.",
+        generated_from: "Existing precomputed GitStarClub data.",
         source_views: ["sample.json"],
         row_count: 1,
         rows: [{ name: 'quoted, "repo"\nnext' }],
@@ -153,7 +153,7 @@ describe("buildDataExportBundle", () => {
         data_as_of: "2026-06-24T00:00:00.000Z",
         license: DATA_EXPORT_LICENSE,
         attribution: DATA_EXPORT_ATTRIBUTION,
-        generated_from: "Existing precomputed GitStarClub Blob views.",
+        generated_from: "Existing precomputed GitStarClub data.",
         source_views: ["sample.json"],
         row_count: 8,
         rows: [

@@ -11,7 +11,7 @@ describe("answer capsule base", () => {
         dataAsOf: "July 6, 2026",
         source: "GitStarClub weekly rankings",
         href: "/rankings/2026/W27",
-        supportingFacts: ["+1.2k stars this week", "Computed from prebuilt ranking JSON"],
+        supportingFacts: ["+1.2k stars this week", "Computed from GitStarClub ranking data"],
       }),
     );
 

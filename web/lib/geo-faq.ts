@@ -9,15 +9,15 @@ export function buildRepoFaqs(repo: RepoEntity, asOf: string | null, locale = "e
   const latest = repo.curve.monthly.at(-1);
   const latestPhrase = latest
     ? `${monthLabel(latest[0], locale)} recorded ${signedStars(latest[1])} stars and ended at ${fmtStars(latest[2])} total stars`
-    : "the monthly curve is unavailable in the loaded repository JSON";
+    : "GitStarClub's precomputed repository data does not include a monthly curve";
   const language = repo.language ?? "an unspecified primary language";
 
   return [
     {
       question: `How many GitHub stars does ${repo.full_name} have?`,
       answer: asOf
-        ? `As of ${asOf}, ${repo.full_name} has ${fmtStars(repo.current_stars)} GitHub stars. GitStarClub reads that value from the precomputed repository entity JSON.`
-        : `${repo.full_name} has ${fmtStars(repo.current_stars)} GitHub stars in the loaded repository JSON. GitStarClub omits a dated claim when no real metadata watermark is available.`,
+        ? `As of ${asOf}, ${repo.full_name} has ${fmtStars(repo.current_stars)} GitHub stars. GitStarClub reads that value from GitStarClub's precomputed repository data.`
+        : `${repo.full_name} has ${fmtStars(repo.current_stars)} GitHub stars in GitStarClub's precomputed repository data. GitStarClub omits a dated claim when no real metadata watermark is available.`,
     },
     {
       question: `What language and owner does GitStarClub show for ${repo.full_name}?`,
@@ -33,7 +33,7 @@ export function buildRepoFaqs(repo: RepoEntity, asOf: string | null, locale = "e
     },
     {
       question: `Does this repository FAQ use live search or AI?`,
-      answer: `No. GitStarClub renders this repository FAQ from deterministic templates over Blob JSON already loaded by the server route, without runtime AI, search, or a database.`,
+      answer: `No. GitStarClub renders this repository FAQ from deterministic templates over GitStarClub's precomputed data, without runtime AI, search, or a database.`,
     },
   ];
 }
@@ -43,18 +43,18 @@ export function buildOrgFaqs(org: OrgEntity, members: readonly CapsuleRankRow[],
   const lead = members[0];
   const leadAnswer = lead
     ? `${repoName(lead)} is the top visible tracked repository for ${org.login} with ${rankValue(lead, "total")}.`
-    : `No member repository rows are available in the loaded lookup data for ${org.login}.`;
+    : `No member repository rows are available for ${org.login}.`;
 
   return [
     {
       question: `How many tracked stars does ${org.login} have?`,
       answer: asOf
         ? `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories.`
-        : `${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories in the loaded organization JSON.`,
+        : `${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories in GitStarClub's precomputed organization data.`,
     },
     {
       question: `Is ${org.login} an organization or developer page?`,
-      answer: `GitStarClub classifies ${org.login} as a GitHub ${kind} page using the owner type stored in the precomputed organization entity JSON.`,
+      answer: `GitStarClub classifies ${org.login} as a GitHub ${kind} page using the owner type from GitStarClub's precomputed organization data.`,
     },
     {
       question: `Which tracked repository leads ${org.login}?`,
@@ -86,7 +86,7 @@ export function buildAllTimeRankingFaqs({
       question: "What do the all-time GitHub star rankings show?",
       answer: asOf
         ? `As of ${asOf}, the all-time rankings list the largest tracked GitHub repositories and organizations by current total stars.`
-        : "The all-time rankings list the largest tracked GitHub repositories and organizations by current total stars from precomputed ranking JSON.",
+        : "The all-time rankings list the largest tracked GitHub repositories and organizations by current total stars from GitStarClub's precomputed ranking data.",
     },
     {
       question: "Which repository leads the all-time ranking?",
@@ -102,7 +102,7 @@ export function buildAllTimeRankingFaqs({
     },
     {
       question: "What data powers the all-time ranking FAQ?",
-      answer: "GitStarClub builds this FAQ from all-time rank JSON, repository lookup JSON, and organization lookup JSON already loaded by the server route.",
+      answer: "GitStarClub builds this FAQ from GitStarClub's precomputed all-time ranking, repository, and organization data.",
     },
   ];
 }
@@ -127,7 +127,7 @@ export function buildRankingFaqs({
       question: `What does ${title} rank?`,
       answer: asOf
         ? `As of ${asOf}, ${title} ranks tracked GitHub repositories by ${metricPhrase}.`
-        : `${title} ranks tracked GitHub repositories by ${metricPhrase} from precomputed rank JSON.`,
+        : `${title} ranks tracked GitHub repositories by ${metricPhrase} from GitStarClub's precomputed ranking data.`,
     },
     {
       question: `Which repository leads ${title}?`,
@@ -139,7 +139,7 @@ export function buildRankingFaqs({
     },
     {
       question: `Does ${title} use live database queries?`,
-      answer: `No. GitStarClub renders ${title} from Blob rank JSON plus repository lookup JSON already loaded by the server route.`,
+      answer: `No. GitStarClub renders ${title} from GitStarClub's precomputed ranking and repository data.`,
     },
   ];
 }
@@ -231,7 +231,7 @@ export function buildCategoryDetailFaqs({
     },
     {
       question: `How is the ${category.label} ranking generated?`,
-      answer: "GitStarClub combines deterministic category assignments, all-time stock ranking data, and repository lookup fields. The page does not call live search or AI.",
+      answer: "GitStarClub combines deterministic category assignments, all-time stock ranking data, and repository metadata. The page does not call live search or AI.",
     },
   ];
 }
@@ -257,7 +257,7 @@ export function buildPulseFaqs({
       question: "What does GitStarClub Pulse show?",
       answer: asOf
         ? `As of ${asOf}, GitStarClub Pulse summarizes current open-source momentum across tracked repositories.`
-        : "GitStarClub Pulse summarizes current open-source momentum from the loaded hot-snapshot and rank JSON.",
+        : "GitStarClub Pulse summarizes current open-source momentum from GitStarClub's precomputed activity and ranking data.",
     },
     {
       question: `Which repository leads the latest available week ${activeWeek}?`,
@@ -269,11 +269,11 @@ export function buildPulseFaqs({
       question: `Which repository leads the current month view ${activeMonth}?`,
       answer: monthLead
         ? `${repoName(monthLead)} leads ${activeMonth} with ${rankValue(monthLead, "gained")}.`
-        : `The ${activeMonth} monthly mover list is waiting for hot-snapshot rows.`,
+        : `The ${activeMonth} monthly mover list is waiting for activity data.`,
     },
     {
       question: "What data powers Pulse?",
-      answer: "Pulse uses hot-snapshot JSON, weekly rank JSON, all-time rank JSON, and repository lookup JSON already loaded by the server route.",
+      answer: "Pulse uses GitStarClub's precomputed activity, weekly ranking, all-time ranking, and repository data.",
     },
   ];
 }
@@ -283,8 +283,8 @@ export function buildCompareFaqs(asOf: string | null): FaqItem[] {
     {
       question: "What does GitStarClub Compare do?",
       answer: asOf
-        ? `As of ${asOf}, GitStarClub Compare lets readers overlay tracked repository star-history curves from precomputed repo-curve JSON.`
-        : "GitStarClub Compare lets readers overlay tracked repository star-history curves from precomputed repo-curve JSON.",
+        ? `As of ${asOf}, GitStarClub Compare lets readers overlay tracked repository star-history curves from GitStarClub's precomputed star-history data.`
+        : "GitStarClub Compare lets readers overlay tracked repository star-history curves from GitStarClub's precomputed star-history data.",
     },
     {
       question: "Which repositories can be compared?",
@@ -317,9 +317,9 @@ function repoMilestoneAnswer(repo: RepoEntity, locale: string): string {
   ] as const;
   const known = milestones.flatMap(([label, date]) => (date ? [`${label} in ${monthLabel(date, locale)}`] : []));
   if (known.length === 0) {
-    return `${repo.full_name} has no frozen 10k, 50k, or 100k milestone date in the loaded repository JSON.`;
+    return `${repo.full_name} has no frozen 10k, 50k, or 100k milestone date in GitStarClub's precomputed repository data.`;
   }
-  return `${repo.full_name} crossed ${listLabels(known)} according to frozen milestone fields in the repository JSON.`;
+  return `${repo.full_name} crossed ${listLabels(known)} according to frozen milestone fields in GitStarClub's precomputed repository data.`;
 }
 
 function monthLabel(value: string, locale: string): string {

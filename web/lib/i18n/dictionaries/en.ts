@@ -81,7 +81,7 @@ export const en = {
       "The goal is a consistent historical curve that can be compared across repositories without running a database, search engine, or live GitHub query during a visitor request. Current overlay data has been folded through ",
     anchorP2WithMonthSuffix: ".",
     anchorP2NoMonth:
-      "The goal is a consistent historical curve that can be compared across repositories without running a database, search engine, or live GitHub query during a visitor request. Published pages read the latest available precomputed JSON.",
+      "The goal is a consistent historical curve that can be compared across repositories without running a database, search engine, or live GitHub query during a visitor request. Published pages read the latest available precomputed data.",
     fieldsHeading: "Fields readers can cite",
     fieldCurrentStars: "The current public GitHub star total for a tracked repository.",
     fieldCurrentStarsSum: "The sum of current stars across an owner or organization's tracked repositories.",
@@ -91,9 +91,9 @@ export const en = {
     fieldMilestones: "Frozen first-known dates when a repository crossed the 10k, 50k, or 100k star thresholds.",
     refreshHeading: "Refresh cadence and page serving",
     refreshP1:
-      "GitStarClub publishes precomputed Blob JSON for repository pages, organization pages, rankings, categories, Pulse, and comparison views. Historical views are rebuilt by the data workflow, while live mover overlays are refreshed by the scheduled publishing path.",
+      "GitStarClub publishes precomputed data for repository pages, organization pages, rankings, categories, Pulse, and comparison views. Historical views are rebuilt by the data workflow, while live mover overlays are refreshed by the scheduled publishing path.",
     refreshP2:
-      "The website reads only those published JSON files at request and build time. It does not run a database, scoring engine, AI model, or external paid service while serving content pages.",
+      "The website reads only that published data at request and build time. It does not run a database, scoring engine, AI model, or external paid service while serving content pages.",
     sampleHeading: "Sample questions GitStarClub answers",
     sample1: "When did react/react first cross 100k GitHub stars?",
     sample2: "Which repositories gained the most GitHub stars this month?",
@@ -104,7 +104,7 @@ export const en = {
       "GitStarClub is a derived, reviewable presentation of public GitHub signals. Cite GitStarClub for the transformed rankings and charts, and credit GH Archive for the underlying public event archive when reusing event-derived history.",
     exportsHeading: "Downloadable data exports",
     exportsP1:
-      "GitStarClub publishes small static CSV and JSON extracts for top rankings, repository milestone crossings, and organization aggregates. The files are generated from existing precomputed Blob views, versioned under /data/exports/v1/, and dated from real view metadata.",
+      "GitStarClub publishes small static CSV and JSON extracts for top rankings, repository milestone crossings, and organization aggregates. The files are generated from existing precomputed data, versioned under /data/exports/v1/, and dated from real view metadata.",
     exportsP2:
       "The /data/exports/v1/latest/ links are stable aliases to the newest dated export directory, so downloads keep working without storing a duplicate latest snapshot.",
     exportsLicensePrefix: "License:",
@@ -159,24 +159,24 @@ export const en = {
     capsule:
       "As of {asOf}, {repo} has {stars} GitHub stars. GitStarClub tracks its {language}profile, {milestones}, and latest recorded month of {latest}, combining identity, milestone, current-star, and monthly curve fields for answerable repository history without runtime inference.",
     latestMonthlyPoint: "{month} recorded {stars} stars and ended at {total} total stars",
-    monthlyUnavailable: "the monthly curve is unavailable in the loaded repository JSON",
+    monthlyUnavailable: "GitStarClub's precomputed repository data does not include a monthly curve",
     unspecifiedLanguage: "an unspecified primary language",
     faqStarsQuestion: "How many GitHub stars does {repo} have?",
     faqStarsAnswerWithAsOf:
-      "As of {asOf}, {repo} has {stars} GitHub stars. GitStarClub reads that value from the precomputed repository entity JSON.",
+      "As of {asOf}, {repo} has {stars} GitHub stars. GitStarClub reads that value from GitStarClub's precomputed repository data.",
     faqStarsAnswerNoAsOf:
-      "{repo} has {stars} GitHub stars in the loaded repository JSON. GitStarClub omits a dated claim when no real metadata watermark is available.",
+      "{repo} has {stars} GitHub stars in GitStarClub's precomputed repository data. GitStarClub omits a dated claim when no real metadata watermark is available.",
     faqLanguageQuestion: "What language and owner does GitStarClub show for {repo}?",
     faqLanguageAnswer:
       "{repo} is shown as a {language} repository owned by {owner}. The page also links to the owner profile and matching category pages when those fields are present.",
     faqMilestonesQuestion: "When did {repo} cross major star milestones?",
-    faqMilestonesAnswerNone: "{repo} has no frozen 10k, 50k, or 100k milestone date in the loaded repository JSON.",
-    faqMilestonesAnswerSome: "{repo} crossed {milestones} according to frozen milestone fields in the repository JSON.",
+    faqMilestonesAnswerNone: "{repo} has no frozen 10k, 50k, or 100k milestone date in GitStarClub's precomputed repository data.",
+    faqMilestonesAnswerSome: "{repo} crossed {milestones} according to frozen milestone fields in GitStarClub's precomputed repository data.",
     faqLatestQuestion: "What is the latest monthly growth point for {repo}?",
     faqLatestAnswer: "The latest precomputed monthly point for {repo} says {latest}. The chart and recent table are rendered from the same curve fields.",
     faqNoLiveQuestion: "Does this repository FAQ use live search or AI?",
     faqNoLiveAnswer:
-      "No. GitStarClub renders this repository FAQ from deterministic templates over Blob JSON already loaded by the server route, without runtime AI, search, or a database.",
+      "No. GitStarClub renders this repository FAQ from deterministic templates over GitStarClub's precomputed data, without runtime AI, search, or a database.",
     milestoneIn: "{milestone} in {month}",
     milestoneFallback: "frozen 10k, 50k, and 100k milestone fields when available",
     milestoneSnippetTitle: "{repo} milestones",
@@ -199,15 +199,15 @@ export const en = {
     developer: "Developer",
     memberTableCaption: "{login} member repositories by current stars",
     capsule:
-      "As of {asOf}, {login} has {stars} total GitHub stars across {repos} tracked repositories. GitStarClub builds this {kind} page from precomputed organization JSON, member repository ids, current-star sums, and monthly curves so readers can cite organization momentum without a runtime database.",
+      "As of {asOf}, {login} has {stars} total GitHub stars across {repos} tracked repositories. GitStarClub builds this {kind} page from GitStarClub's precomputed organization data, member repository ids, current-star sums, and monthly curves so readers can cite organization momentum without a runtime database.",
     faqStarsQuestion: "How many tracked stars does {login} have?",
     faqStarsAnswerWithAsOf: "As of {asOf}, {login} has {stars} total GitHub stars across {repos} tracked repositories.",
-    faqStarsAnswerNoAsOf: "{login} has {stars} total GitHub stars across {repos} tracked repositories in the loaded organization JSON.",
+    faqStarsAnswerNoAsOf: "{login} has {stars} total GitHub stars across {repos} tracked repositories in GitStarClub's precomputed organization data.",
     faqKindQuestion: "Is {login} an organization or developer page?",
-    faqKindAnswer: "GitStarClub classifies {login} as a GitHub {kind} page using the owner type stored in the precomputed organization entity JSON.",
+    faqKindAnswer: "GitStarClub classifies {login} as a GitHub {kind} page using the owner type from GitStarClub's precomputed organization data.",
     faqLeadQuestion: "Which tracked repository leads {login}?",
     faqLeadAnswer: "{repo} is the top visible tracked repository for {login} with {stars} total stars.",
-    faqLeadFallback: "No member repository rows are available in the loaded lookup data for {login}.",
+    faqLeadFallback: "No member repository rows are available for {login}.",
     faqCalculationQuestion: "How is the organization star total calculated?",
     faqCalculationAnswer:
       "GitStarClub uses the precomputed organization aggregate, member repository ids, current-star sums, and monthly curves. It does not imply GitHub exposes a native organization star-count field.",
@@ -343,7 +343,7 @@ export const en = {
     sharedHorizon: "Shared horizon",
     fasterAfter10k: "Faster after 10k",
     currentStars: "Current stars",
-    repoCurveSource: "GitStarClub repo-curve JSON",
+    repoCurveSource: "GitStarClub star-history data",
   },
 };
 
