@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { fallbackRegistry } from "@/app/categories/category-page-data";
 import type { CategoryRegistry, OrgEntity, RepoEntity } from "@/lib/contracts";
 import en from "@/lib/i18n/dictionaries/en";
@@ -170,6 +173,19 @@ describe("GEO answer capsules", () => {
     }
   });
 
+  test("renders stable selectors for the visible answer capsule metadata", () => {
+    const html = renderToStaticMarkup(
+      createElement(AnswerCapsule, {
+        capsule: buildCategoryIndexCapsule(registry, asOf),
+        labels: { ariaLabel: en.common.answerCapsule, eyebrow: en.common.answerCapsule, dataAsOf: en.common.dataAsOf, source: en.common.source },
+      }),
+    );
+
+    expect(html).toContain('data-testid="answer-capsule"');
+    expect(html).toContain('data-testid="answer-capsule-data-as-of"');
+    expect(html).toContain('data-testid="answer-capsule-source"');
+  });
+
   test("snapshots visible repo capsule and data-as-of block", () => {
     expect(visibleCapsuleSnapshot(buildRepoCapsule(repo, asOf), visibleCapsuleLabels)).toBe(
       [
@@ -212,7 +228,7 @@ describe("GEO answer capsules", () => {
     expect(visibleCapsuleSnapshot(buildCategoryIndexCapsule(registry, asOf), visibleCapsuleLabels)).toBe(
       [
         "Answer capsule",
-        "As of June 24, 2026, GitStarClub organizes tracked GitHub repositories into 2 public categories across 3 dimensions, including languages, ecosystems, domains. These links come from deterministic category registry JSON and help readers reach focused repository lists without relying only on sitemap discovery. — GitStarClub",
+        "As of June 24, 2026, browse 2 public GitHub categories across 3 dimensions, including languages, ecosystems, domains. GitStarClub builds these category links from deterministic rules over repository metadata, not live search or AI, so readers can reach focused repository lists through crawlable pages. — GitStarClub",
         "Data as of: June 24, 2026",
         "Source: GitStarClub",
       ].join("\n"),
@@ -220,7 +236,7 @@ describe("GEO answer capsules", () => {
     expect(visibleCapsuleSnapshot(buildCategoryDimensionCapsule(registry.dimensions[0], asOf), visibleCapsuleLabels)).toBe(
       [
         "Answer capsule",
-        "As of June 24, 2026, GitStarClub lists 2 public categories in the languages dimension for tracked GitHub repositories. This dimension page is generated from category registry JSON, with deterministic counts and crawlable links so readers and answer engines can move from broad taxonomy to specific repository rankings. — GitStarClub",
+        "As of June 24, 2026, GitStarClub lists 2 public categories in the languages dimension for tracked GitHub repositories. This page uses deterministic rules over repository metadata, not live search or AI, with crawlable links that move readers and answer engines from broad taxonomy to specific repository rankings. — GitStarClub",
         "Data as of: June 24, 2026",
         "Source: GitStarClub",
       ].join("\n"),
@@ -228,7 +244,7 @@ describe("GEO answer capsules", () => {
     expect(visibleCapsuleSnapshot(buildCategoryDetailCapsule({ category: registry.dimensions[0].categories[0], asOf, rows: rankRows }), visibleCapsuleLabels)).toBe(
       [
         "Answer capsule",
-        "As of June 24, 2026, GitStarClub tracks 214 repositories in JavaScript. react/react leads with 246.0k total stars, followed by vuejs/vue and angular/angular. This category ranking is generated from deterministic category assignment JSON, all-time stock ranking data, and repository lookup fields, not live search or AI. — GitStarClub",
+        "As of June 24, 2026, GitStarClub tracks 214 repositories in JavaScript. react/react leads with 246.0k total stars, followed by vuejs/vue and angular/angular. This category ranking uses deterministic category assignments, all-time stock ranking data, and repository lookup fields, not live search or AI. — GitStarClub",
         "Data as of: June 24, 2026",
         "Source: GitStarClub",
       ].join("\n"),

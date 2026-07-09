@@ -266,7 +266,7 @@ describe("datasetLd", () => {
       name: "GitStarClub Categories Dataset",
       path: "/categories",
       locale: "en",
-      description: "Category registry and repository assignment data generated from precomputed Blob JSON.",
+      description: "GitStarClub category and repository assignment data generated from deterministic repository metadata rules.",
       dateModified: resolveDataAsOfValue("fallback"),
     });
     const collection = collectionLd("GitHub repository categories", "/categories", "en", {

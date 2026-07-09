@@ -397,6 +397,19 @@ footer span a[href] {
   padding-top: max(0.85rem, env(safe-area-inset-top));
 }
 
+.nav-scroll-affordance {
+  background:
+    linear-gradient(to left, color-mix(in oklab, var(--md-sys-color-surface) 92%, transparent) 30%, transparent) right center / 2.75rem 100% local,
+    linear-gradient(to left, color-mix(in oklab, var(--md-sys-color-primary-container) 42%, transparent), transparent) right center / 2.75rem 100% scroll;
+  background-repeat: no-repeat;
+}
+
+@media (min-width: 64rem) {
+  .nav-scroll-affordance {
+    background: none;
+  }
+}
+
 /* ===== M3E primitives that are awkward as pure utilities ===== */
 .hl {
   color: var(--md-sys-color-on-primary-container);

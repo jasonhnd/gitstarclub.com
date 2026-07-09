@@ -30,6 +30,7 @@ export function AnswerCapsuleBase({
       aria-label="Answer capsule"
       className={`rounded-2xl border border-outline-variant bg-surface-container px-4 py-4 text-on-surface shadow-[var(--elev-1)] ${className}`}
       data-answer-capsule=""
+      data-testid="answer-capsule"
     >
       <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">Answer</p>
@@ -55,11 +56,11 @@ export function AnswerCapsuleBase({
 
       <footer className="mt-4 border-t border-outline-variant pt-3">
         <dl className="grid gap-3 font-mono text-[0.75rem] sm:grid-cols-2">
-          <div>
+          <div data-testid="answer-capsule-data-as-of">
             <dt className="uppercase tracking-wider text-on-surface-variant">Data as of</dt>
             <dd className="mt-1 font-semibold text-on-surface">{hasDataAsOf ? dataAsOf : missingDataAsOf}</dd>
           </div>
-          <div>
+          <div data-testid="answer-capsule-source">
             <dt className="uppercase tracking-wider text-on-surface-variant">Source</dt>
             <dd className="mt-1 font-semibold text-on-surface">
               {hasSource && normalizedHref ? (

@@ -51,7 +51,7 @@ const ABOUT_COPY = {
   categoryP1:
     "Category assignment is deterministic. Rules use stored repository metadata such as primary language, language family, owner kind, curated topics, and keyword predicates. GitStarClub does not use a runtime classifier, LLM, or manual per-request decision for category pages.",
   categoryP2:
-    "When metadata is missing or a rule does not meet the public category threshold, the category is omitted or shown through the explicit fallback used by that dimension. Category counts and links come from category registry and assignment JSON.",
+    "When metadata is missing or a rule does not meet the public category threshold, the category is omitted or shown through the explicit fallback used by that dimension. Category counts and links come from deterministic category rules over stored repository metadata.",
   archiveHeading: "Archive permanence",
   archiveP1:
     "Public URLs are intended to remain citeable. Rankings, dated ranking periods, repository pages, organization pages, category pages, and dated export directories keep their canonical URL while newer JSON is published.",
@@ -88,7 +88,7 @@ const ABOUT_COPY = {
     "Historical GH Archive WatchEvent history is gross additions, while current daily movement is net and can decrease when stars are removed. GitStarClub documents that seam instead of hiding it.",
   faqCategoriesQ: "Are categories assigned by AI?",
   faqCategoriesA:
-    "No. Categories are generated from deterministic registry and assignment rules over stored repository metadata; missing metadata degrades through explicit fallbacks.",
+    "No. Categories are generated from deterministic rules over stored repository metadata; missing metadata degrades through explicit fallbacks.",
   faqRuntimeQ: "Does the About page use live GitHub queries?",
   faqRuntimeA:
     "No. The About page reads only published metadata through getMeta and otherwise renders static methodology, source, and citation copy.",
