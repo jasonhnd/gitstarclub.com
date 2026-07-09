@@ -1,4 +1,5 @@
 import { CategoriesLookup, Meta, OrgsLookup, ReposLookup } from "@/lib/contracts";
+import { resolveCategoryPageAvailabilityMap } from "@/lib/categories/availability";
 import { readView } from "@/lib/data";
 import type { Locale } from "@/lib/i18n";
 import {
@@ -42,7 +43,18 @@ async function readSitemapData() {
     readView("meta.json", Meta, base),
   ]);
   const lastModified = resolveSitemapLastModified(meta);
-  const paths = buildSitemapPaths({ repos, orgs, categories, meta, now: lastModified });
+  const categoryPages = categories
+    ? await resolveCategoryPageAvailabilityMap(
+        categories.dimensions.flatMap((dimension) =>
+          dimension.categories.map((category) => ({
+            dimension: dimension.id,
+            slug: category.slug,
+            count: category.count,
+          })),
+        ),
+      )
+    : null;
+  const paths = buildSitemapPaths({ repos, orgs, categories, meta, now: lastModified, categoryPages });
 
   return { paths, categories, meta, lastModified };
 }

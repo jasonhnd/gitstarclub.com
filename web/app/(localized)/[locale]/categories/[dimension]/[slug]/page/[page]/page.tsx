@@ -3,7 +3,7 @@ import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import {
   CategoryDetailPageView,
   generateCategoryDetailMetadataForLocale,
-  generateCategoryDetailStaticParams,
+  generateLocalizedCategoryDetailPageStaticParams,
 } from "@/app/_localized/categories";
 import { categoryPath } from "@/app/categories/category-page-data";
 import { localizedPath } from "@/lib/i18n/routing";
@@ -12,8 +12,8 @@ import { parsePositivePage } from "@/lib/pagination";
 export const dynamicParams = true;
 export const revalidate = 86400;
 
-export function generateStaticParams() {
-  return generateCategoryDetailStaticParams();
+export async function generateStaticParams() {
+  return generateLocalizedCategoryDetailPageStaticParams();
 }
 
 const route = createLocalizedPage<{ dimension: string; slug: string; page: string }>({
