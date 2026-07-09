@@ -8,7 +8,7 @@ import { localizedPath, stripLocale } from "@/lib/i18n/routing";
 
 const PAD_X = "px-[clamp(1.25rem,5vw,2.5rem)]";
 const NAV_LINK_BASE =
-  "inline-flex min-h-10 shrink-0 items-center rounded-full border px-3 font-mono text-[0.78rem] font-semibold transition-[background,border-color,color,box-shadow,transform] duration-200 ease-[var(--ease-emphasized)] hover:-translate-y-0.5";
+  "inline-flex min-h-11 shrink-0 items-center rounded-full border px-3 font-mono text-[0.78rem] font-semibold transition-[background,border-color,color,box-shadow,transform] duration-200 ease-[var(--ease-emphasized)] hover:-translate-y-0.5 lg:min-h-10";
 const NAV_LINK_IDLE = "border-transparent text-on-surface-variant hover:border-outline-variant hover:bg-surface-container-high hover:text-on-surface";
 const NAV_LINK_ACTIVE = "border-primary-container bg-primary-container text-on-primary-container shadow-[var(--elev-1)]";
 
@@ -86,7 +86,7 @@ export function Chrome({ tag, locale = DEFAULT_LOCALE, canonicalPath, dictionary
 
         <div className="flex min-w-0 items-center gap-2 lg:justify-end">
           <nav
-            className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-none lg:overflow-visible lg:py-0"
+            className="nav-scroll-affordance min-w-0 flex-1 overflow-x-auto overscroll-x-contain py-1 pr-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-none lg:overflow-visible lg:py-0 lg:pr-0"
             aria-label={label(dictionary, "a11y.primary")}
           >
             <div className="flex min-w-max items-center gap-1.5 lg:min-w-0 lg:flex-wrap lg:justify-end lg:gap-x-2 lg:gap-y-1.5">

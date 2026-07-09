@@ -16,6 +16,9 @@ describe("answer capsule base", () => {
     );
 
     expect(html).toContain('data-answer-capsule=""');
+    expect(html).toContain('data-testid="answer-capsule"');
+    expect(html).toContain('data-testid="answer-capsule-data-as-of"');
+    expect(html).toContain('data-testid="answer-capsule-source"');
     expect(html).toContain("React leads the tracked weekly movers.");
     expect(html).toContain("Data as of");
     expect(html).toContain("July 6, 2026");

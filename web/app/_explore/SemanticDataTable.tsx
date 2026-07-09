@@ -104,7 +104,7 @@ export function RepositoryRankingTable({
   const captionText = caption ?? text.caption;
 
   return (
-    <>
+    <div data-testid="ranking-table">
       <RepositoryRankingCompactList
         rows={rows}
         variant={variant}
@@ -163,7 +163,7 @@ export function RepositoryRankingTable({
           </table>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -187,7 +187,7 @@ export function OrganizationRankingTable({
   const captionText = caption ?? text.caption;
 
   return (
-    <>
+    <div data-testid="ranking-table">
       <OrganizationRankingCompactList rows={rows} startRank={startRank} caption={captionText} labels={text} locale={locale} className={compact ? undefined : "sm:hidden"} />
       {!compact && (
         <div className={`${tableWrapClass} hidden sm:block`}>
@@ -233,7 +233,7 @@ export function OrganizationRankingTable({
           </table>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
