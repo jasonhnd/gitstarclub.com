@@ -43,7 +43,7 @@ const REPO_ENTITY_UI = {
   noLanguages: "No language breakdown available",
   noTopics: "No topics published",
   noCategories: "No category tags available",
-  noRankingAppearances: "No monthly ranking appearances are available in the loaded repository JSON.",
+  noRankingAppearances: "No monthly ranking appearances are available in GitStarClub's precomputed repository data.",
 } as const;
 
 const HERO_ACTION_CLASS =

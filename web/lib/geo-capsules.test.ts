@@ -201,7 +201,7 @@ describe("GEO answer capsules", () => {
     expect(visibleCapsuleSnapshot(buildOrgCapsule(org, asOf), visibleCapsuleLabels)).toBe(
       [
         "Answer capsule",
-        "As of June 24, 2026, vercel has 400.0k total GitHub stars across 42 tracked repositories. GitStarClub builds this organization page from precomputed organization JSON, member repository ids, current-star sums, and monthly curves so readers can cite organization momentum without a runtime database. — GitStarClub",
+        "As of June 24, 2026, vercel has 400.0k total GitHub stars across 42 tracked repositories. GitStarClub builds this organization page from GitStarClub's precomputed organization data, member repository ids, current-star sums, and monthly curves so readers can cite organization momentum without a runtime database. — GitStarClub",
         "Data as of: June 24, 2026",
         "Source: GitStarClub",
       ].join("\n"),
@@ -209,7 +209,7 @@ describe("GEO answer capsules", () => {
     expect(visibleCapsuleSnapshot(buildRankingCapsule({ title: "June 2026 GitHub Star Rankings", asOf, rows: rankRows, metric: "gained" }), visibleCapsuleLabels)).toBe(
       [
         "Answer capsule",
-        "As of June 24, 2026, June 2026 GitHub Star Rankings ranks tracked GitHub repositories by stars gained. react/react leads with +1.2k stars, followed by vuejs/vue and angular/angular. GitStarClub generates this visible ranking from precomputed rank JSON and lookup joins, with no runtime search, database, or AI. — GitStarClub",
+        "As of June 24, 2026, June 2026 GitHub Star Rankings ranks tracked GitHub repositories by stars gained. react/react leads with +1.2k stars, followed by vuejs/vue and angular/angular. GitStarClub generates this visible ranking from GitStarClub's precomputed ranking and repository data, with no runtime search, database, or AI. — GitStarClub",
         "Data as of: June 24, 2026",
         "Source: GitStarClub",
       ].join("\n"),
@@ -217,7 +217,7 @@ describe("GEO answer capsules", () => {
     expect(visibleCapsuleSnapshot(buildAllTimeRankingCapsule({ asOf, repoRows: rankRows, orgRows: [{ login: "vercel", current_stars_sum: 400000, repo_count: 42 }] }), visibleCapsuleLabels)).toBe(
       [
         "Answer capsule",
-        "As of June 24, 2026, GitStarClub's all-time rankings summarize the largest tracked GitHub repositories and organizations. react/react leads repositories with 246.0k total stars, while vercel leads organizations with 400.0k total stars. The page is built from precomputed all-time rank JSON plus repository and organization lookup fields. — GitStarClub",
+        "As of June 24, 2026, GitStarClub's all-time rankings summarize the largest tracked GitHub repositories and organizations. react/react leads repositories with 246.0k total stars, while vercel leads organizations with 400.0k total stars. The page is built from GitStarClub's precomputed all-time ranking, repository, and organization data. — GitStarClub",
         "Data as of: June 24, 2026",
         "Source: GitStarClub",
       ].join("\n"),
@@ -244,7 +244,7 @@ describe("GEO answer capsules", () => {
     expect(visibleCapsuleSnapshot(buildCategoryDetailCapsule({ category: registry.dimensions[0].categories[0], asOf, rows: rankRows }), visibleCapsuleLabels)).toBe(
       [
         "Answer capsule",
-        "As of June 24, 2026, GitStarClub tracks 214 repositories in JavaScript. react/react leads with 246.0k total stars, followed by vuejs/vue and angular/angular. This category ranking uses deterministic category assignments, all-time stock ranking data, and repository lookup fields, not live search or AI. — GitStarClub",
+        "As of June 24, 2026, GitStarClub tracks 214 repositories in JavaScript. react/react leads with 246.0k total stars, followed by vuejs/vue and angular/angular. This category ranking uses deterministic category assignments, all-time stock ranking data, and repository metadata, not live search or AI. — GitStarClub",
         "Data as of: June 24, 2026",
         "Source: GitStarClub",
       ].join("\n"),
@@ -252,7 +252,7 @@ describe("GEO answer capsules", () => {
     expect(visibleCapsuleSnapshot(buildPulseCapsule({ asOf, weekRows: rankRows, monthRows: rankRows.slice().reverse() }), visibleCapsuleLabels)).toBe(
       [
         "Answer capsule",
-        "As of June 24, 2026, GitStarClub Pulse summarizes current open-source momentum across tracked repositories. react/react leads the latest available week with +1.2k stars, while angular/angular leads the current month-to-date list with +700 stars. The page is generated from hot-snapshot and rank JSON so the visible summary stays deterministic, dated, and free of runtime analysis. — GitStarClub",
+        "As of June 24, 2026, GitStarClub Pulse summarizes current open-source momentum across tracked repositories. react/react leads the latest available week with +1.2k stars, while angular/angular leads the current month-to-date list with +700 stars. The page is generated from GitStarClub's precomputed activity and ranking data so the visible summary stays deterministic, dated, and free of runtime analysis. — GitStarClub",
         "Data as of: June 24, 2026",
         "Source: GitStarClub",
       ].join("\n"),
@@ -260,7 +260,7 @@ describe("GEO answer capsules", () => {
     expect(visibleCapsuleSnapshot(buildCompareCapsule(asOf), visibleCapsuleLabels)).toBe(
       [
         "Answer capsule",
-        "As of June 24, 2026, GitStarClub Compare lets readers overlay tracked repository star-history curves from precomputed repo-curve JSON. The static page explains absolute calendar history and 10k-aligned comparison without claiming client-only query-state facts as server-rendered evidence, keeping citation copy deterministic and reviewable. — GitStarClub",
+        "As of June 24, 2026, GitStarClub Compare lets readers overlay tracked repository star-history curves from GitStarClub's precomputed star-history data. The static page explains absolute calendar history and 10k-aligned comparison without claiming client-only query-state facts as server-rendered evidence, keeping citation copy deterministic and reviewable. — GitStarClub",
         "Data as of: June 24, 2026",
         "Source: GitStarClub",
       ].join("\n"),

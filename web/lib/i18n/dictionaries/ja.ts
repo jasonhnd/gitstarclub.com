@@ -76,7 +76,7 @@ const ja: Dict = {
       "目的は、訪問時にデータベース、検索エンジン、ライブ GitHub クエリを動かさず、リポジトリ同士を比較できる一貫した履歴カーブを作ることです。現在のオーバーレイデータは ",
     anchorP2WithMonthSuffix: " まで折り込まれています。",
     anchorP2NoMonth:
-      "目的は、訪問時にデータベース、検索エンジン、ライブ GitHub クエリを動かさず、リポジトリ同士を比較できる一貫した履歴カーブを作ることです。公開ページは利用可能な最新の事前計算 JSON を読み込みます。",
+      "目的は、訪問時にデータベース、検索エンジン、ライブ GitHub クエリを動かさず、リポジトリ同士を比較できる一貫した履歴カーブを作ることです。公開ページは利用可能な最新の事前計算データを読み込みます。",
     fieldsHeading: "引用しやすいフィールド",
     fieldCurrentStars: "追跡対象リポジトリの現在の公開 GitHub スター数です。",
     fieldCurrentStarsSum: "オーナーまたは組織に属する追跡対象リポジトリの現在スター合計です。",
@@ -86,9 +86,9 @@ const ja: Dict = {
     fieldMilestones: "リポジトリが 1 万、5 万、10 万スターを初めて超えた既知の日付です。",
     refreshHeading: "更新頻度とページ配信",
     refreshP1:
-      "GitStarClub は、リポジトリ、組織、ランキング、カテゴリ、Pulse、比較ビュー向けに事前計算済み Blob JSON を公開します。履歴ビューはデータワークフローで再構築され、ライブな変動オーバーレイは定期公開パスで更新されます。",
+      "GitStarClub は、リポジトリ、組織、ランキング、カテゴリ、Pulse、比較ビュー向けに事前計算済みデータを公開します。履歴ビューはデータワークフローで再構築され、ライブな変動オーバーレイは定期公開パスで更新されます。",
     refreshP2:
-      "Web サイトはリクエスト時とビルド時に公開済み JSON だけを読みます。コンテンツページの配信中にデータベース、スコアリングエンジン、AI モデル、外部有料サービスは実行しません。",
+      "Web サイトはリクエスト時とビルド時に公開済みデータだけを読みます。コンテンツページの配信中にデータベース、スコアリングエンジン、AI モデル、外部有料サービスは実行しません。",
     sampleHeading: "GitStarClub が答える質問例",
     sample1: "react/react が初めて 10 万 GitHub スターを超えたのはいつか。",
     sample2: "今月最も GitHub スターを獲得したリポジトリはどれか。",
@@ -99,7 +99,7 @@ const ja: Dict = {
       "GitStarClub は公開 GitHub シグナルを派生・検証可能な形で提示するサイトです。変換済みランキングとチャートは GitStarClub を、イベント由来の履歴を再利用する場合は基礎となる公開イベントアーカイブとして GH Archive をクレジットしてください。",
     exportsHeading: "ダウンロード可能なデータ出力",
     exportsP1:
-      "GitStarClub は上位ランキング、リポジトリのマイルストーン到達、組織集計について、小さな静的 CSV と JSON 抽出を公開します。ファイルは既存の事前計算 Blob ビューから生成され、/data/exports/v1/ にバージョン管理され、実際のビュー metadata で日付付けされます。",
+      "GitStarClub は上位ランキング、リポジトリのマイルストーン到達、組織集計について、小さな静的 CSV と JSON 抽出を公開します。ファイルは既存の事前計算データから生成され、/data/exports/v1/ にバージョン管理され、実際のビュー metadata で日付付けされます。",
     exportsP2:
       "/data/exports/v1/latest/ のリンクは最新の日付付きエクスポートディレクトリへの安定したエイリアスなので、重複した latest スナップショットを保存しなくてもダウンロードが継続します。",
     exportsLicensePrefix: "ライセンス:",
@@ -154,24 +154,24 @@ const ja: Dict = {
     capsule:
       "{asOf} 時点で、{repo} は GitHub スター {stars} 件です。GitStarClub は {language}profile、{milestones}、最新記録月 {latest} を追跡し、識別情報、マイルストーン、現在スター、月次カーブの各フィールドを組み合わせて、実行時推論なしに答えられるリポジトリ履歴を作ります。",
     latestMonthlyPoint: "{month} は {stars} スターを記録し、{total} 総スターで終了しました",
-    monthlyUnavailable: "読み込まれたリポジトリ JSON では月次カーブを利用できません",
+    monthlyUnavailable: "GitStarClub の事前計算リポジトリデータには月次カーブがありません",
     unspecifiedLanguage: "主言語未指定",
     faqStarsQuestion: "{repo} の GitHub スター数はいくつですか？",
     faqStarsAnswerWithAsOf:
-      "{asOf} 時点で、{repo} は GitHub スター {stars} 件です。GitStarClub は事前計算済みのリポジトリエンティティ JSON からこの値を読みます。",
+      "{asOf} 時点で、{repo} は GitHub スター {stars} 件です。GitStarClub は事前計算済みリポジトリデータからこの値を読みます。",
     faqStarsAnswerNoAsOf:
-      "読み込まれたリポジトリ JSON では、{repo} は GitHub スター {stars} 件です。実際の metadata ウォーターマークがない場合、GitStarClub は日付付きの主張を省きます。",
+      "GitStarClub の事前計算リポジトリデータでは、{repo} は GitHub スター {stars} 件です。実際の metadata ウォーターマークがない場合、GitStarClub は日付付きの主張を省きます。",
     faqLanguageQuestion: "GitStarClub は {repo} の言語とオーナーをどう表示しますか？",
     faqLanguageAnswer:
       "{repo} は {owner} が所有する {language} リポジトリとして表示されます。該当フィールドがある場合、オーナープロフィールとカテゴリページにもリンクします。",
     faqMilestonesQuestion: "{repo} が主要スターのマイルストーンを超えたのはいつですか？",
-    faqMilestonesAnswerNone: "{repo} には、読み込まれたリポジトリ JSON 内に固定済みの 1 万、5 万、10 万スター到達日がありません。",
-    faqMilestonesAnswerSome: "{repo} はリポジトリ JSON の固定済みマイルストーンフィールドによると {milestones} を超えました。",
+    faqMilestonesAnswerNone: "GitStarClub の事前計算リポジトリデータには、{repo} の固定済みの 1 万、5 万、10 万スター到達日がありません。",
+    faqMilestonesAnswerSome: "GitStarClub の事前計算リポジトリデータによると、{repo} は {milestones} を超えました。",
     faqLatestQuestion: "{repo} の最新月次成長ポイントは何ですか？",
     faqLatestAnswer: "{repo} の最新の事前計算済み月次ポイントは {latest} です。チャートと直近テーブルは同じカーブフィールドからレンダリングされます。",
     faqNoLiveQuestion: "このリポジトリ FAQ はライブ検索や AI を使いますか？",
     faqNoLiveAnswer:
-      "いいえ。GitStarClub は、サーバールートで読み込まれた Blob JSON に対する決定的テンプレートからこのリポジトリ FAQ をレンダリングし、実行時 AI、検索、データベースは使いません。",
+      "いいえ。GitStarClub は、GitStarClub の事前計算データに対する決定的テンプレートからこのリポジトリ FAQ をレンダリングし、実行時 AI、検索、データベースは使いません。",
     milestoneIn: "{month} に {milestone}",
     milestoneFallback: "利用可能な固定済み 1 万、5 万、10 万スターのマイルストーンフィールド",
     milestoneSnippetTitle: "{repo} のマイルストーン",
@@ -194,15 +194,15 @@ const ja: Dict = {
     developer: "個人",
     memberTableCaption: "{login} のメンバーリポジトリを現在スター順に表示",
     capsule:
-      "{asOf} 時点で、{login} は {repos} 件の追跡対象リポジトリ全体で合計 {stars} GitHub スターを持ちます。GitStarClub は事前計算済み組織 JSON、メンバーリポジトリ ID、現在スター合計、月次カーブからこの {kind} ページを作り、実行時データベースなしで組織の動向を引用できるようにします。",
+      "{asOf} 時点で、{login} は {repos} 件の追跡対象リポジトリ全体で合計 {stars} GitHub スターを持ちます。GitStarClub は事前計算済み組織データ、メンバーリポジトリ ID、現在スター合計、月次カーブからこの {kind} ページを作り、実行時データベースなしで組織の動向を引用できるようにします。",
     faqStarsQuestion: "{login} の追跡対象スター合計はいくつですか？",
     faqStarsAnswerWithAsOf: "{asOf} 時点で、{login} は {repos} 件の追跡対象リポジトリ全体で合計 {stars} GitHub スターを持ちます。",
-    faqStarsAnswerNoAsOf: "読み込まれた組織 JSON では、{login} は {repos} 件の追跡対象リポジトリ全体で合計 {stars} GitHub スターを持ちます。",
+    faqStarsAnswerNoAsOf: "GitStarClub の事前計算組織データでは、{login} は {repos} 件の追跡対象リポジトリ全体で合計 {stars} GitHub スターを持ちます。",
     faqKindQuestion: "{login} は組織ページですか、個人ページですか？",
-    faqKindAnswer: "GitStarClub は、事前計算済み組織エンティティ JSON に保存された owner type を使い、{login} を GitHub の {kind} ページとして分類します。",
+    faqKindAnswer: "GitStarClub は、事前計算済み組織データの owner type を使い、{login} を GitHub の {kind} ページとして分類します。",
     faqLeadQuestion: "{login} で先頭の追跡対象リポジトリはどれですか？",
     faqLeadAnswer: "{repo} は {login} の可視追跡リポジトリの首位で、総スター {stars} 件です。",
-    faqLeadFallback: "{login} について、読み込まれた lookup データ内にメンバーリポジトリ行がありません。",
+    faqLeadFallback: "{login} について、メンバーリポジトリ行がありません。",
     faqCalculationQuestion: "組織スター合計はどのように計算されますか？",
     faqCalculationAnswer:
       "GitStarClub は、事前計算済み組織集計、メンバーリポジトリ ID、現在スター合計、月次カーブを使います。GitHub がネイティブな組織スター数フィールドを公開しているという意味ではありません。",
@@ -338,7 +338,7 @@ const ja: Dict = {
     sharedHorizon: "共通期間",
     fasterAfter10k: "1 万以降に速い",
     currentStars: "現在スター",
-    repoCurveSource: "GitStarClub repo-curve JSON",
+    repoCurveSource: "GitStarClub スター履歴データ",
   },
 };
 

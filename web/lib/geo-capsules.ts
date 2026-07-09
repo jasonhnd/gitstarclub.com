@@ -99,7 +99,7 @@ export function buildRepoCapsule(repo: RepoEntity, asOf: string, locale = "en"):
 export function buildOrgCapsule(org: OrgEntity, asOf: string, locale = "en"): AnswerCapsuleContent {
   const kind = org.owner_type === "Organization" ? "organization" : "developer";
   const text = withSource(
-    `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories. GitStarClub builds this ${kind} page from precomputed organization JSON, member repository ids, current-star sums, and monthly curves so readers can cite organization momentum without a runtime database.`,
+    `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories. GitStarClub builds this ${kind} page from GitStarClub's precomputed organization data, member repository ids, current-star sums, and monthly curves so readers can cite organization momentum without a runtime database.`,
   );
   return capsule(text, asOf);
 }
@@ -120,7 +120,7 @@ export function buildRankingCapsule({
   const followers = second && third ? `, followed by ${repoName(second)} and ${repoName(third)}` : "";
   const metricLabel = metric === "total" ? "current total stars" : "stars gained";
   const text = withSource(
-    `As of ${asOf}, ${title} ranks tracked GitHub repositories by ${metricLabel}. ${leader}${followers}. GitStarClub generates this visible ranking from precomputed rank JSON and lookup joins, with no runtime search, database, or AI.`,
+    `As of ${asOf}, ${title} ranks tracked GitHub repositories by ${metricLabel}. ${leader}${followers}. GitStarClub generates this visible ranking from GitStarClub's precomputed ranking and repository data, with no runtime search, database, or AI.`,
   );
   return capsule(text, asOf);
 }
@@ -137,7 +137,7 @@ export function buildAllTimeRankingCapsule({
   const repoLead = repoRows[0] ? `${repoName(repoRows[0])} leads repositories with ${rankValue(repoRows[0], "total")}` : "the repository list is waiting for rows";
   const orgLead = orgRows[0] ? `${orgRows[0].login} leads organizations with ${fmtStars(orgRows[0].current_stars_sum)} total stars` : "the organization list is waiting for rows";
   const text = withSource(
-    `As of ${asOf}, GitStarClub's all-time rankings summarize the largest tracked GitHub repositories and organizations. ${repoLead}, while ${orgLead}. The page is built from precomputed all-time rank JSON plus repository and organization lookup fields.`,
+    `As of ${asOf}, GitStarClub's all-time rankings summarize the largest tracked GitHub repositories and organizations. ${repoLead}, while ${orgLead}. The page is built from GitStarClub's precomputed all-time ranking, repository, and organization data.`,
   );
   return capsule(text, asOf);
 }
@@ -174,7 +174,7 @@ export function buildCategoryDetailCapsule({
   const leader = first ? `${repoName(first)} leads with ${rankValue(first, "total")}` : "the category list is waiting for ranking rows";
   const followers = second && third ? `, followed by ${repoName(second)} and ${repoName(third)}` : "";
   const text = withSource(
-    `As of ${asOf}, GitStarClub tracks ${formatInteger(locale, category.count)} repositories in ${category.label}. ${leader}${followers}. This category ranking uses deterministic category assignments, all-time stock ranking data, and repository lookup fields, not live search or AI.`,
+    `As of ${asOf}, GitStarClub tracks ${formatInteger(locale, category.count)} repositories in ${category.label}. ${leader}${followers}. This category ranking uses deterministic category assignments, all-time stock ranking data, and repository metadata, not live search or AI.`,
   );
   return capsule(text, asOf);
 }
@@ -191,14 +191,14 @@ export function buildPulseCapsule({
   const weekLead = weekRows[0] ? `${repoName(weekRows[0])} leads the latest available week with ${rankValue(weekRows[0], "gained")}` : "weekly movers are waiting for rank rows";
   const monthLead = monthRows[0] ? `${repoName(monthRows[0])} leads the current month-to-date list with ${rankValue(monthRows[0], "gained")}` : "monthly movers are waiting for rank rows";
   const text = withSource(
-    `As of ${asOf}, GitStarClub Pulse summarizes current open-source momentum across tracked repositories. ${weekLead}, while ${monthLead}. The page is generated from hot-snapshot and rank JSON so the visible summary stays deterministic, dated, and free of runtime analysis.`,
+    `As of ${asOf}, GitStarClub Pulse summarizes current open-source momentum across tracked repositories. ${weekLead}, while ${monthLead}. The page is generated from GitStarClub's precomputed activity and ranking data so the visible summary stays deterministic, dated, and free of runtime analysis.`,
   );
   return capsule(text, asOf);
 }
 
 export function buildCompareCapsule(asOf: string): AnswerCapsuleContent {
   const text = withSource(
-    `As of ${asOf}, GitStarClub Compare lets readers overlay tracked repository star-history curves from precomputed repo-curve JSON. The static page explains absolute calendar history and 10k-aligned comparison without claiming client-only query-state facts as server-rendered evidence, keeping citation copy deterministic and reviewable.`,
+    `As of ${asOf}, GitStarClub Compare lets readers overlay tracked repository star-history curves from GitStarClub's precomputed star-history data. The static page explains absolute calendar history and 10k-aligned comparison without claiming client-only query-state facts as server-rendered evidence, keeping citation copy deterministic and reviewable.`,
   );
   return capsule(text, asOf);
 }

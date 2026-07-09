@@ -70,7 +70,7 @@ export function buildComparePairConclusion(
 export function buildCompareConclusionText(asOf: string, conclusions: readonly ComparePairConclusion[]): string | null {
   const featured = conclusions[0];
   if (!featured) return null;
-  const source = "GitStarClub computes the table server-side from precomputed Blob repo-curve JSON; client-selected query pairs remain interactive only.";
+  const source = "GitStarClub computes the comparison table from GitStarClub's precomputed star-history data; client-selected query pairs remain interactive only.";
   return `As of ${asOf}, ${featured.result} ${source}`;
 }
 
