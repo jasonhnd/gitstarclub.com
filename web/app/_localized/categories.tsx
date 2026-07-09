@@ -13,7 +13,9 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { RelatedPages } from "@/app/_explore/RelatedPages";
 import { CategorySummaryTable } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
+import { resolveAvailableCategoryPages, resolveCategoryPageAvailabilityMap } from "@/lib/categories/availability";
 import { CATEGORY_DIMENSIONS, type CategoryDimension } from "@/lib/categories/rules";
+import { categoryPageAvailabilityKey } from "@/lib/categories/rank-pages";
 import type { CategoryDimensionRegistry, CategoryRegistry } from "@/lib/contracts";
 import { getCategoryAllTimePage, getCategoryRegistry, getMeta, getReposLookupDaily, joinRepoRank } from "@/lib/data";
 import { formatInteger } from "@/lib/format";
@@ -21,7 +23,7 @@ import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { getDictionary, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
-import { CATEGORY_DETAIL_PAGE_SIZE, pageCount, parsePositivePage } from "@/lib/pagination";
+import { CATEGORY_DETAIL_PAGE_SIZE, parsePositivePage } from "@/lib/pagination";
 import { pageMeta } from "@/lib/seo";
 import {
   CATEGORY_INDEX_PREVIEW_LIMIT,
@@ -31,6 +33,7 @@ import {
   findCategory,
   findDimension,
   isCategoryDimension,
+  publicCategoryPageStaticParams,
   publicCategoryEntries,
 } from "@/app/categories/category-page-data";
 import { repositoryTableLabels } from "./routing";
@@ -50,6 +53,8 @@ import {
 import { generateCoreLocaleStaticParams } from "./routing";
 
 type CategoryPageParams = { dimension: string; slug: string; page?: string };
+type CategoryDetailStaticParam = { dimension: string; slug: string };
+type CategoryDetailPageStaticParam = CategoryDetailStaticParam & { page: string };
 
 const DIMENSION_LABELS: Record<Locale, Record<CategoryDimension, string>> = {
   en: {
@@ -125,8 +130,34 @@ export function generateLocalizedCategoryDimensionStaticParams(): Array<{ locale
   return generateCoreLocaleStaticParams().flatMap(({ locale }) => CATEGORY_DIMENSIONS.map((dimension) => ({ locale, dimension })));
 }
 
-export function generateCategoryDetailStaticParams(): [] {
-  return [];
+export async function generateCategoryDetailStaticParams(): Promise<CategoryDetailStaticParam[]> {
+  const registry = await getCategoryRegistry();
+  if (!registry) return [];
+
+  const categories = publicCategoryEntries(registry);
+  const categoryPages = await resolveCategoryPageAvailabilityMap(categories);
+  return categories
+    .filter((category) => (categoryPages[categoryPageAvailabilityKey(category.dimension, category.slug)] ?? []).includes(1))
+    .map((category) => ({ dimension: category.dimension, slug: category.slug }));
+}
+
+export async function generateLocalizedCategoryDetailStaticParams(): Promise<Array<CategoryDetailStaticParam & { locale: Locale }>> {
+  const params = await generateCategoryDetailStaticParams();
+  return generateCoreLocaleStaticParams().flatMap(({ locale }) => params.map((param) => ({ locale, ...param })));
+}
+
+export async function generateCategoryDetailPageStaticParams(): Promise<CategoryDetailPageStaticParam[]> {
+  const registry = await getCategoryRegistry();
+  if (!registry) return [];
+
+  const categories = publicCategoryEntries(registry);
+  const categoryPages = await resolveCategoryPageAvailabilityMap(categories);
+  return publicCategoryPageStaticParams(registry, categoryPages);
+}
+
+export async function generateLocalizedCategoryDetailPageStaticParams(): Promise<Array<CategoryDetailPageStaticParam & { locale: Locale }>> {
+  const params = await generateCategoryDetailPageStaticParams();
+  return generateCoreLocaleStaticParams().flatMap(({ locale }) => params.map((param) => ({ locale, ...param })));
 }
 
 export async function generateCategoriesMetadata(locale: Locale): Promise<Metadata> {
@@ -372,16 +403,16 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
   if (!category) notFound();
 
   const dimensionEntry = findDimension(registry, dimension);
-  const [rank, firstPageRank, lookup, meta] = await Promise.all([
+  const [availability, rank, firstPageRank, lookup, meta] = await Promise.all([
+    resolveAvailableCategoryPages(dimension, slug, category.count),
     getCategoryAllTimePage(dimension, slug, page),
     page > 1 ? getCategoryAllTimePage(dimension, slug, 1) : null,
     getReposLookupDaily(),
     getMeta(),
   ]);
-  const totalRows = category.count;
-  const totalPages = pageCount(totalRows, CATEGORY_DETAIL_PAGE_SIZE);
-  if (page > totalPages && totalRows > 0) notFound();
-  if (page > 1 && totalRows === 0) notFound();
+  const totalRows = availability.totalRows;
+  const totalPages = availability.availablePages.length;
+  if (!availability.availablePages.includes(page)) notFound();
   if (totalRows > 0 && !rank) notFound();
   if (totalRows > 0 && page > 1 && !firstPageRank) notFound();
 

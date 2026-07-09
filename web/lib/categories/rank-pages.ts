@@ -2,6 +2,10 @@ import { CATEGORY_DETAIL_PAGE_SIZE } from "@/lib/pagination";
 
 export const CATEGORY_RANK_PAGE_SIZE = CATEGORY_DETAIL_PAGE_SIZE;
 
+export function categoryPageAvailabilityKey(dimension: string, slug: string): string {
+  return `${dimension}/${slug}`;
+}
+
 export function categoryAllTimeRankPath(dimension: string, slug: string, page = 1): string {
   return page <= 1
     ? `rank/category/${dimension}/${slug}/all-time/repo/stock.json`

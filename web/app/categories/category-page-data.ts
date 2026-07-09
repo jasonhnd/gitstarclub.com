@@ -6,7 +6,7 @@ import {
   type CategoryDimension,
 } from "@/lib/categories/rules";
 import type { CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts";
-import { CATEGORY_DETAIL_PAGE_SIZE, pageCount } from "@/lib/pagination";
+import { categoryPageAvailabilityKey } from "@/lib/categories/rank-pages";
 
 export const CATEGORY_INDEX_PREVIEW_LIMIT = 10;
 
@@ -102,13 +102,13 @@ export function publicCategoryStaticParams(registry?: CategoryRegistry | null) {
   return uniqueCategoryParams([...priorityLanguageStaticParams(), ...params]);
 }
 
-export function publicCategoryPageStaticParams(registry?: CategoryRegistry | null) {
+export function publicCategoryPageStaticParams(registry?: CategoryRegistry | null, categoryPages: Record<string, readonly number[]> = {}) {
   if (!registry) return [];
   return publicCategoryEntries(registry).flatMap((category) =>
-    Array.from({ length: Math.max(0, pageCount(category.count, CATEGORY_DETAIL_PAGE_SIZE) - 1) }, (_, index) => ({
+    (categoryPages[categoryPageAvailabilityKey(category.dimension, category.slug)] ?? []).filter((page) => page > 1).map((page) => ({
       dimension: category.dimension,
       slug: category.slug,
-      page: String(index + 2),
+      page: String(page),
     })),
   );
 }

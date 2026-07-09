@@ -1,5 +1,6 @@
 import { FIRST_YEAR, isoWeek } from "./periods";
-import { CATEGORY_DETAIL_PAGE_SIZE, ORG_INDEX_PAGE_SIZE, pageCount } from "./pagination";
+import { categoryPageAvailabilityKey } from "./categories/rank-pages";
+import { ORG_INDEX_PAGE_SIZE, pageCount } from "./pagination";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "./i18n";
 import { localizedPath, toHreflang } from "./i18n/routing";
 import { isRenderableRepoFullName } from "./repo-readiness";
@@ -144,6 +145,7 @@ export function buildSitemapPaths(opts: {
   categories?: CategoriesLike | null;
   meta?: SitemapMeta | null;
   renderableRepoIds?: ReadonlySet<string> | null;
+  categoryPages?: Record<string, readonly number[]> | null;
 } = {}): string[] {
   const now = opts.now ?? new Date();
   const paths: string[] = [
@@ -176,7 +178,8 @@ export function buildSitemapPaths(opts: {
       for (const category of dimension.categories) {
         if (category.sitemap === false) continue;
         paths.push(`/categories/${dimension.id}/${category.slug}`);
-        for (let page = 2; page <= pageCount(category.count, CATEGORY_DETAIL_PAGE_SIZE); page++) {
+        const availablePages = opts.categoryPages?.[categoryPageAvailabilityKey(dimension.id, category.slug)] ?? [];
+        for (const page of availablePages.filter((value) => value > 1)) {
           paths.push(`/categories/${dimension.id}/${category.slug}/page/${page}`);
         }
       }

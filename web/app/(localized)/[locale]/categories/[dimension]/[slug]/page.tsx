@@ -2,14 +2,14 @@ import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import {
   CategoryDetailPageView,
   generateCategoryDetailMetadataForLocale,
-  generateCategoryDetailStaticParams,
+  generateLocalizedCategoryDetailStaticParams,
 } from "@/app/_localized/categories";
 
 export const dynamicParams = true;
 export const revalidate = 86400;
 
-export function generateStaticParams() {
-  return generateCategoryDetailStaticParams();
+export async function generateStaticParams() {
+  return generateLocalizedCategoryDetailStaticParams();
 }
 
 const route = createLocalizedPage<{ dimension: string; slug: string }>({

@@ -73,6 +73,10 @@ describe("buildSitemapPaths", () => {
           },
         ],
       },
+      categoryPages: {
+        "language/python": [1, 2, 3],
+        "language/rust": [1],
+      },
     });
 
     expect(paths).toContain("");
@@ -98,6 +102,44 @@ describe("buildSitemapPaths", () => {
     expect(paths).toContain("/o");
     expect(paths).toContain("/o/page/2");
     expect(paths).toContain("/o/org-0");
+  });
+
+  test("does not infer category pagination paths from counts without shard availability", () => {
+    const paths = buildSitemapPaths({
+      now: new Date("2026-06-04T12:00:00.000Z"),
+      categories: {
+        dimensions: [
+          {
+            id: "language",
+            categories: [{ slug: "python", count: 250 }],
+          },
+        ],
+      },
+    });
+
+    expect(paths).toContain("/categories/language/python");
+    expect(paths).not.toContain("/categories/language/python/page/2");
+    expect(paths).not.toContain("/categories/language/python/page/3");
+  });
+
+  test("includes only category pagination paths with available rank shards", () => {
+    const paths = buildSitemapPaths({
+      now: new Date("2026-06-04T12:00:00.000Z"),
+      categories: {
+        dimensions: [
+          {
+            id: "language",
+            categories: [{ slug: "python", count: 250 }],
+          },
+        ],
+      },
+      categoryPages: {
+        "language/python": [1, 2],
+      },
+    });
+
+    expect(paths).toContain("/categories/language/python/page/2");
+    expect(paths).not.toContain("/categories/language/python/page/3");
   });
 
   test("does not enumerate future ISO-week years during a January previous-year ISO week", () => {
