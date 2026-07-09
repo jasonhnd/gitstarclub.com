@@ -8,7 +8,7 @@ import {
 export const dynamicParams = true;
 export const revalidate = 86400;
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
   return generateCategoryDetailStaticParams();
 }
 
