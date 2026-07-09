@@ -63,6 +63,7 @@ mock.module("@/lib/data", () => ({
     rankFixture(window, period, dim, metric),
   getRepoCurve: async (id: number) => (id === REPO_ID ? repoCurveFixture : null),
   getRepoEntityDaily: async (id: number) => (id === REPO_ID ? repoEntityFixture : null),
+  getRepoPageEntityDaily: async (id: number) => (id === REPO_ID ? repoEntityFixture : null),
   getRepoIdByFullName: async () => repoIdByFullNameFixture(),
   getRepoIdByFullNameDaily: async () => repoIdByFullNameFixture(),
   getReposLookup: async () => reposLookupFixture,
