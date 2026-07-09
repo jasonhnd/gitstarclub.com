@@ -153,7 +153,7 @@ export function buildCategoryIndexFaqs(registry: CategoryRegistry, asOf: string 
       question: "What are GitHub repository categories on GitStarClub?",
       answer: asOf
         ? `As of ${asOf}, GitStarClub organizes tracked repositories into ${formatInteger(locale, publicCategories.length)} public categories across ${formatInteger(locale, registry.dimensions.length)} dimensions.`
-        : `GitStarClub organizes tracked repositories into ${formatInteger(locale, publicCategories.length)} public categories across ${formatInteger(locale, registry.dimensions.length)} dimensions in the loaded registry JSON.`,
+        : `GitStarClub organizes tracked repositories into ${formatInteger(locale, publicCategories.length)} public categories across ${formatInteger(locale, registry.dimensions.length)} dimensions using deterministic category data.`,
     },
     {
       question: "Which category dimensions are available?",
@@ -161,7 +161,7 @@ export function buildCategoryIndexFaqs(registry: CategoryRegistry, asOf: string 
     },
     {
       question: "Where do category counts come from?",
-      answer: "Category counts come from deterministic category registry JSON generated from repository metadata and category rules, not from live search.",
+      answer: "Category counts come from GitStarClub's own category data: deterministic rules over repository metadata, not live search or AI.",
     },
     {
       question: "How can readers move from categories to repositories?",
@@ -181,13 +181,13 @@ export function buildCategoryDimensionFaqs(dimension: CategoryDimensionRegistry,
       question: `What does the ${dimension.label} category page include?`,
       answer: asOf
         ? `As of ${asOf}, the ${dimension.label} page lists ${formatInteger(locale, publicCategories.length)} public categories for tracked GitHub repositories.`
-        : `The ${dimension.label} page lists ${formatInteger(locale, publicCategories.length)} public categories for tracked GitHub repositories from registry JSON.`,
+        : `The ${dimension.label} page lists ${formatInteger(locale, publicCategories.length)} public categories for tracked GitHub repositories using deterministic category data.`,
     },
     {
       question: `Which ${dimension.label} category has the most tracked repositories?`,
       answer: largest
         ? `${largest.label} is the largest visible ${dimension.label} category with ${formatInteger(locale, largest.count)} tracked repositories.`
-        : `No public ${dimension.label} category counts are available in the loaded registry JSON.`,
+        : `No public ${dimension.label} category counts are available yet.`,
     },
     {
       question: `How are ${dimension.label} category links generated?`,
@@ -195,7 +195,7 @@ export function buildCategoryDimensionFaqs(dimension: CategoryDimensionRegistry,
     },
     {
       question: `Does the ${dimension.label} page run client-side filtering?`,
-      answer: `No. The ${dimension.label} page is server-rendered from Blob JSON and does not add client-side filtering logic for the visible FAQ or category links.`,
+      answer: `No. The ${dimension.label} page is server-rendered and does not add client-side filtering logic for the visible FAQ or category links.`,
     },
   ];
 }
@@ -231,7 +231,7 @@ export function buildCategoryDetailFaqs({
     },
     {
       question: `How is the ${category.label} ranking generated?`,
-      answer: "GitStarClub combines category assignment JSON, all-time stock ranking data, and repository lookup fields. The page does not call live search or AI.",
+      answer: "GitStarClub combines deterministic category assignments, all-time stock ranking data, and repository lookup fields. The page does not call live search or AI.",
     },
   ];
 }

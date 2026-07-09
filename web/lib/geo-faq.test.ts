@@ -157,6 +157,7 @@ describe("GEO FAQ helpers", () => {
   test("renders schema that exactly mirrors visible FAQ text", () => {
     for (const scenario of scenarios) {
       const html = renderFaq(scenario.items, scenario.path);
+      expect(html).toContain('data-testid="faq"');
       expect(schemaPairsFromHtml(html), scenario.name).toEqual(visiblePairsFromHtml(html));
       expect(schemaPairsFromHtml(html), scenario.name).toEqual(visibleFaqPairs(scenario.items));
     }
@@ -229,7 +230,7 @@ describe("GEO FAQ helpers", () => {
         "Which category dimensions are available?",
         "The visible category dimensions are Languages and Ecosystems.",
         "Where do category counts come from?",
-        "Category counts come from deterministic category registry JSON generated from repository metadata and category rules, not from live search.",
+        "Category counts come from GitStarClub's own category data: deterministic rules over repository metadata, not live search or AI.",
         "How can readers move from categories to repositories?",
         "Readers can open a dimension such as Languages, then follow a category link to a ranked repository list.",
       ].join("\n"),
@@ -245,7 +246,7 @@ describe("GEO FAQ helpers", () => {
         "How are Languages category links generated?",
         "GitStarClub renders Languages links from the category registry, using public flags, slugs, labels, and counts that were precomputed before the request.",
         "Does the Languages page run client-side filtering?",
-        "No. The Languages page is server-rendered from Blob JSON and does not add client-side filtering logic for the visible FAQ or category links.",
+        "No. The Languages page is server-rendered and does not add client-side filtering logic for the visible FAQ or category links.",
       ].join("\n"),
     );
   });

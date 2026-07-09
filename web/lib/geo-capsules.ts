@@ -146,7 +146,7 @@ export function buildCategoryIndexCapsule(registry: CategoryRegistry, asOf: stri
   const publicCategories = registry.dimensions.flatMap((dimension) => dimension.categories.filter((category) => category.public));
   const labels = registry.dimensions.slice(0, 3).map((dimension) => dimension.label.toLowerCase()).join(", ");
   const text = withSource(
-    `As of ${asOf}, GitStarClub organizes tracked GitHub repositories into ${formatInteger(locale, publicCategories.length)} public categories across ${formatInteger(locale, registry.dimensions.length)} dimensions, including ${labels}. These links come from deterministic category registry JSON and help readers reach focused repository lists without relying only on sitemap discovery.`,
+    `As of ${asOf}, browse ${formatInteger(locale, publicCategories.length)} public GitHub categories across ${formatInteger(locale, registry.dimensions.length)} dimensions, including ${labels}. GitStarClub builds these category links from deterministic rules over repository metadata, not live search or AI, so readers can reach focused repository lists through crawlable pages.`,
   );
   return capsule(text, asOf);
 }
@@ -154,7 +154,7 @@ export function buildCategoryIndexCapsule(registry: CategoryRegistry, asOf: stri
 export function buildCategoryDimensionCapsule(dimension: CategoryDimensionRegistry, asOf: string, locale = "en"): AnswerCapsuleContent {
   const publicCategories = dimension.categories.filter((category) => category.public);
   const text = withSource(
-    `As of ${asOf}, GitStarClub lists ${formatInteger(locale, publicCategories.length)} public categories in the ${dimension.label.toLowerCase()} dimension for tracked GitHub repositories. This dimension page is generated from category registry JSON, with deterministic counts and crawlable links so readers and answer engines can move from broad taxonomy to specific repository rankings.`,
+    `As of ${asOf}, GitStarClub lists ${formatInteger(locale, publicCategories.length)} public categories in the ${dimension.label.toLowerCase()} dimension for tracked GitHub repositories. This page uses deterministic rules over repository metadata, not live search or AI, with crawlable links that move readers and answer engines from broad taxonomy to specific repository rankings.`,
   );
   return capsule(text, asOf);
 }
@@ -174,7 +174,7 @@ export function buildCategoryDetailCapsule({
   const leader = first ? `${repoName(first)} leads with ${rankValue(first, "total")}` : "the category list is waiting for ranking rows";
   const followers = second && third ? `, followed by ${repoName(second)} and ${repoName(third)}` : "";
   const text = withSource(
-    `As of ${asOf}, GitStarClub tracks ${formatInteger(locale, category.count)} repositories in ${category.label}. ${leader}${followers}. This category ranking is generated from deterministic category assignment JSON, all-time stock ranking data, and repository lookup fields, not live search or AI.`,
+    `As of ${asOf}, GitStarClub tracks ${formatInteger(locale, category.count)} repositories in ${category.label}. ${leader}${followers}. This category ranking uses deterministic category assignments, all-time stock ranking data, and repository lookup fields, not live search or AI.`,
   );
   return capsule(text, asOf);
 }
