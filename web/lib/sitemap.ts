@@ -4,6 +4,7 @@ import { ORG_INDEX_PAGE_SIZE, pageCount } from "./pagination";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "./i18n";
 import { localizedPath, toHreflang } from "./i18n/routing";
 import { isRenderableRepoFullName } from "./repo-readiness";
+import type { AvailableRankPeriods } from "./data/rank-periods";
 
 type RepoLike = { full_name: string };
 type CategoriesLike = {
@@ -146,6 +147,7 @@ export function buildSitemapPaths(opts: {
   meta?: SitemapMeta | null;
   renderableRepoIds?: ReadonlySet<string> | null;
   categoryPages?: Record<string, readonly number[]> | null;
+  availableRankPeriods?: AvailableRankPeriods | null;
 } = {}): string[] {
   const now = opts.now ?? new Date();
   const paths: string[] = [
@@ -156,7 +158,7 @@ export function buildSitemapPaths(opts: {
     "/categories/language",
     "/compare",
     "/about",
-    ...publishedRankingPeriodPaths(opts.meta, now),
+    ...publishedRankingPeriodPaths(opts.meta, now, opts.availableRankPeriods),
   ];
 
   if (opts.repos) {
@@ -189,8 +191,12 @@ export function buildSitemapPaths(opts: {
   return [...new Set(paths)];
 }
 
-export function publishedRankingPeriodPaths(meta?: SitemapMeta | null, now = new Date()): string[] {
-  const bounds = publishedRankingBounds(meta, now);
+export function publishedRankingPeriodPaths(
+  meta?: SitemapMeta | null,
+  now = new Date(),
+  availableRankPeriods?: AvailableRankPeriods | null,
+): string[] {
+  const bounds = availableRankPeriods ? publishedRankingBoundsFromAvailablePeriods(availableRankPeriods) : publishedRankingBounds(meta, now);
   const paths: string[] = [];
 
   for (let y = FIRST_YEAR; y <= bounds.latestYear; y++) paths.push(`/rankings/${y}`);
@@ -210,6 +216,18 @@ export function publishedRankingPeriodPaths(meta?: SitemapMeta | null, now = new
   }
 
   return paths;
+}
+
+function publishedRankingBoundsFromAvailablePeriods(periods: AvailableRankPeriods): {
+  latestYear: number;
+  month: { year: number; month: number } | null;
+  week: { year: number; week: number } | null;
+} {
+  const month = periods.month.kind === "month" ? { year: periods.month.year, month: periods.month.month } : null;
+  const week = periods.week.kind === "week" ? { year: periods.week.year, week: periods.week.week } : null;
+  const latestYear = Math.max(periods.year, month?.year ?? FIRST_YEAR, week?.year ?? FIRST_YEAR);
+
+  return { latestYear, month, week };
 }
 
 function publishedRankingBounds(meta: SitemapMeta | null | undefined, now: Date): {
