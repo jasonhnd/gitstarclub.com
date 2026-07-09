@@ -2,6 +2,7 @@ import { FIRST_YEAR, isoWeek } from "./periods";
 import { CATEGORY_DETAIL_PAGE_SIZE, ORG_INDEX_PAGE_SIZE, pageCount } from "./pagination";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "./i18n";
 import { localizedPath, toHreflang } from "./i18n/routing";
+import { isRenderableRepoFullName } from "./repo-readiness";
 
 type RepoLike = { full_name: string };
 type CategoriesLike = {
@@ -142,6 +143,7 @@ export function buildSitemapPaths(opts: {
   orgs?: Record<string, unknown> | null;
   categories?: CategoriesLike | null;
   meta?: SitemapMeta | null;
+  renderableRepoIds?: ReadonlySet<string> | null;
 } = {}): string[] {
   const now = opts.now ?? new Date();
   const paths: string[] = [
@@ -155,7 +157,13 @@ export function buildSitemapPaths(opts: {
     ...publishedRankingPeriodPaths(opts.meta, now),
   ];
 
-  if (opts.repos) for (const e of Object.values(opts.repos)) paths.push(`/${e.full_name}`);
+  if (opts.repos) {
+    for (const [id, e] of Object.entries(opts.repos)) {
+      if (opts.renderableRepoIds && !opts.renderableRepoIds.has(id)) continue;
+      if (!isRenderableRepoFullName(e.full_name)) continue;
+      paths.push(`/${e.full_name}`);
+    }
+  }
   if (opts.orgs) {
     const logins = Object.keys(opts.orgs);
     paths.push("/o");

@@ -29,6 +29,8 @@ const VERSION = "route-smoke";
 const GENERATED_AT = "2026-06-04T12:00:00.000Z";
 const REPO_ID = 1;
 const REPO_FULL_NAME = "vuejs/vue";
+const BROKEN_REPO_ID = 259;
+const BROKEN_REPO_FULL_NAME = "fighting41love/funNLP";
 const ORG_LOGIN = "microsoft";
 
 type RouteCase = {
@@ -98,6 +100,12 @@ const routes: RouteCase[] = [
     path: `/${REPO_FULL_NAME}`,
     page: EnglishRepoPage,
     render: () => RepoPageView({ locale: "en", owner: "vuejs", name: "vue" }),
+  },
+  {
+    label: "malformed linked repo detail",
+    path: `/${BROKEN_REPO_FULL_NAME}`,
+    page: EnglishRepoPage,
+    render: () => RepoPageView({ locale: "en", owner: "fighting41love", name: "funNLP" }),
   },
   {
     label: "org detail",
@@ -195,6 +203,7 @@ function fixtureForView(path: string): unknown | null {
   if (path === "categories/registry.json") return categoryRegistryFixture;
   if (path === "categories/assignments.json") return categoryAssignmentsFixture;
   if (path === `entity/repo/${REPO_ID}.json`) return repoEntityFixture;
+  if (path === `entity/repo/${BROKEN_REPO_ID}.json`) return brokenRepoEntityFixture;
   if (path === `entity/org/${ORG_LOGIN}.json`) return orgEntityFixture;
 
   const liveRank = path.match(/^live\/rank\/(week|month)\/([^/]+)\/(repo|org)\/(flow|stock|growth|new)\.json$/);
@@ -290,6 +299,14 @@ const reposLookupFixture: ReposLookup = {
     language: "JavaScript",
     current_stars: 210_000,
   },
+  [String(BROKEN_REPO_ID)]: {
+    owner: "fighting41love",
+    name: "funNLP",
+    full_name: BROKEN_REPO_FULL_NAME,
+    owner_type: "User",
+    language: "Python",
+    current_stars: 10_000,
+  },
 };
 
 const orgsLookupFixture: OrgsLookup = {
@@ -340,6 +357,29 @@ const repoEntityFixture: RepoEntity = {
   monthly_table: [{ month: "2026-06", adds: 1_200, rank: 1 }],
   rank_history: {},
   inflections: [],
+};
+
+const brokenRepoEntityFixture = {
+  id: BROKEN_REPO_ID,
+  full_name: BROKEN_REPO_FULL_NAME,
+  owner: "fighting41love",
+  owner_type: "User",
+  name: "funNLP",
+  description: null,
+  language: "Python",
+  languages: "Python",
+  topics: null,
+  homepage_url: "javascript:alert(1)",
+  license: null,
+  latest_release: { tag_name: "v1", url: "ftp://example.test/release" },
+  created_at: "not-a-date",
+  current_stars: 10_000,
+  is_archived: false,
+  milestones: null,
+  curve: { monthly: null, recent_daily: "bad" },
+  monthly_table: null,
+  rank_history: { month: "bad" },
+  inflections: "bad",
 };
 
 const orgEntityFixture: OrgEntity = {

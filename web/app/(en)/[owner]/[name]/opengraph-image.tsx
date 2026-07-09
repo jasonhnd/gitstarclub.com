@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { getRepoIdByFullNameDaily, getRepoEntityDaily } from "@/lib/data";
+import { getRepoIdByFullNameDaily, getRepoPageEntityDaily } from "@/lib/data";
 import { fmtStars } from "@/lib/format";
 import { OG_COLORS, OG_SIZE, OG_STAR_PATH } from "@/lib/og-theme";
 
@@ -14,7 +14,7 @@ export default async function Image({ params }: { params: Promise<{ owner: strin
   const { owner, name } = await params;
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
   const id = (await getRepoIdByFullNameDaily()).get(fullName.toLowerCase());
-  const repo = id !== undefined ? await getRepoEntityDaily(id) : null;
+  const repo = id !== undefined ? await getRepoPageEntityDaily(id) : null;
   const titleSize = fullName.length > 28 ? 56 : fullName.length > 18 ? 72 : 88;
 
   return new ImageResponse(
