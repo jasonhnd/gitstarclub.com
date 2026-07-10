@@ -63,7 +63,7 @@ function PeriodSwitcherLink({ link, active }: { link: PeriodLink; active: boolea
     >
       <span className={`font-mono text-[0.7rem] uppercase tracking-wider ${active ? "" : "text-on-surface-variant"}`}>{link.label}</span>
       <span className="mt-1 truncate text-[1rem] font-extrabold">{link.value}</span>
-      {link.badge && <span className={`mt-1 truncate font-mono text-[0.65rem] ${active ? "opacity-75" : "text-on-surface-variant"}`}>{link.badge}</span>}
+      {link.badge && <span className={`mt-1 truncate font-mono text-[0.65rem] ${active ? "text-on-primary-container" : "text-on-surface-variant"}`}>{link.badge}</span>}
     </Link>
   );
 }
