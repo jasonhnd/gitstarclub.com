@@ -8,7 +8,7 @@ import {
 export const dynamicParams = true;
 export const revalidate = false;
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
   return generateRankingYearStaticParams();
 }
 

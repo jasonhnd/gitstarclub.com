@@ -14,14 +14,16 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { RelatedPages } from "@/app/_explore/RelatedPages";
 import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
 import { ShareButton } from "@/app/_explore/ShareButton";
+import { Star } from "@/app/_explore/Star";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { buildNarrative } from "@/lib/narrative";
-import { currentUtcPeriods, FIRST_YEAR, isoWeek } from "@/lib/periods";
+import { FIRST_YEAR } from "@/lib/periods";
 import { fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
+import { resolveAdjacentRankPeriod, resolveAdjacentRankYear, resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
 import { pageMeta } from "@/lib/seo";
 import { buildWeeklyMoversSnippet } from "@/lib/shareable-snippets";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
@@ -50,11 +52,11 @@ const SECONDARY_PANEL_LIMIT = 10;
 const DETAIL_UI = {
   permanentArchive: "Permanent archive",
   yearHero:
-    "Permanent {year} archive of tracked GitHub repositories ranked by stars gained, with month-by-month movement from precomputed rank and heatmap JSON.",
+    "Permanent {year} archive of tracked GitHub repositories ranked by stars gained, with month-by-month movement from GitStarClub's precomputed ranking data.",
   monthHero:
-    "Permanent archive for {label}, ranking tracked GitHub repositories by stars gained during that calendar month from precomputed rank and heatmap JSON.",
+    "Permanent archive for {label}, ranking tracked GitHub repositories by stars gained during that calendar month from GitStarClub's precomputed ranking data.",
   weekHero:
-    "Permanent archive for exact ISO week {label}, ranking tracked GitHub repositories by stars gained during that week from precomputed rank JSON.",
+    "Permanent archive for exact ISO week {label}, ranking tracked GitHub repositories by stars gained during that week from GitStarClub's precomputed ranking data.",
   mostStarsAdded: "Most stars added",
   fastestGrowth: "Fastest growth",
   newcomers: "Newcomers",
@@ -74,24 +76,27 @@ const DETAIL_UI = {
   noWeeklyNewcomers: "Weekly newcomer archives are not published for this period.",
 };
 
-export function generateRankingYearStaticParams(): YearParam[] {
-  return [{ year: String(currentUtcPeriods().year) }];
+export async function generateRankingYearStaticParams(): Promise<YearParam[]> {
+  const periods = await resolveAvailableRankPeriods();
+  return periods.yearLink.kind === "year" ? [{ year: String(periods.yearLink.year) }] : [];
 }
 
-export function generateLocalizedRankingYearStaticParams(): Array<YearParam & { locale: Locale }> {
-  return generateCoreLocaleStaticParams().flatMap(({ locale }) => generateRankingYearStaticParams().map((param) => ({ locale, ...param })));
+export async function generateLocalizedRankingYearStaticParams(): Promise<Array<YearParam & { locale: Locale }>> {
+  const params = await generateRankingYearStaticParams();
+  return generateCoreLocaleStaticParams().flatMap(({ locale }) => params.map((param) => ({ locale, ...param })));
 }
 
-export function generateRankingPeriodStaticParams(): PeriodParam[] {
-  const periods = currentUtcPeriods();
-  return [
-    { year: String(periods.year), period: String(periods.month) },
-    { year: String(periods.week.year), period: `W${String(periods.week.week).padStart(2, "0")}` },
-  ];
+export async function generateRankingPeriodStaticParams(): Promise<PeriodParam[]> {
+  const periods = await resolveAvailableRankPeriods();
+  const params: PeriodParam[] = [];
+  if (periods.month.kind === "month") params.push({ year: String(periods.month.year), period: String(periods.month.month) });
+  if (periods.week.kind === "week") params.push({ year: String(periods.week.year), period: `W${String(periods.week.week).padStart(2, "0")}` });
+  return params;
 }
 
-export function generateLocalizedRankingPeriodStaticParams(): Array<PeriodParam & { locale: Locale }> {
-  return generateCoreLocaleStaticParams().flatMap(({ locale }) => generateRankingPeriodStaticParams().map((param) => ({ locale, ...param })));
+export async function generateLocalizedRankingPeriodStaticParams(): Promise<Array<PeriodParam & { locale: Locale }>> {
+  const params = await generateRankingPeriodStaticParams();
+  return generateCoreLocaleStaticParams().flatMap(({ locale }) => params.map((param) => ({ locale, ...param })));
 }
 
 export async function generateRankingYearMetadata(locale: Locale, yearValue: string): Promise<Metadata> {
@@ -117,13 +122,13 @@ export async function generateRankingPeriodMetadata(locale: Locale, params: Peri
   });
 }
 
-export async function RankingsYearPageView({ locale, year: yearValue }: { locale: Locale; year: string }) {
+export async function RankingsYearPageView({ locale, year: yearValue, now = new Date() }: { locale: Locale; year: string; now?: Date }) {
   const t = await getDictionary(locale);
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const year = Number(yearValue);
-  const periods = currentUtcPeriods();
-  if (!Number.isInteger(year) || year < FIRST_YEAR || year > periods.year) notFound();
+  const availablePeriods = await resolveAvailableRankPeriods(now);
+  if (!Number.isInteger(year) || year < FIRST_YEAR || year > availablePeriods.year) notFound();
 
   const [rank, growth, newc, heat, lookup] = await Promise.all([
     getRank("year", String(year), "repo", "flow"),
@@ -142,10 +147,14 @@ export async function RankingsYearPageView({ locale, year: yearValue }: { locale
   const most = rankRows.slice(0, PRIMARY_PANEL_LIMIT);
   const fastest = toGrowthRows(growth?.items.slice(0, SECONDARY_PANEL_LIMIT) ?? [], lookup);
   const newcomers = toNewcomerRows(newc?.items.slice(0, SECONDARY_PANEL_LIMIT) ?? [], lookup, locale);
-  const movementCells = (heat?.cells ?? []).map(([period, total]) => {
+  const movementCandidates = (heat?.cells ?? []).map(([period, total]) => {
     const month = Number(String(period).slice(5, 7));
-    return { label: monthLabel(locale, month, "short"), gained: total, href: href(`/rankings/${year}/${month}`) };
+    return { month, period: `${year}-${String(month).padStart(2, "0")}`, total };
   });
+  const movementRankChecks = await Promise.all(movementCandidates.map((cell) => getRank("month", cell.period, "repo", "flow")));
+  const movementCells = movementCandidates.flatMap((cell, index) =>
+    movementRankChecks[index] ? [{ label: monthLabel(locale, cell.month, "short"), gained: cell.total, href: href(`/rankings/${year}/${cell.month}`) }] : [],
+  );
   const movementTotal = movementCells.reduce((sum, cell) => sum + cell.gained, 0);
   const asOf = resolveDataAsOfLabel(rank.meta.generated_at, heat?.meta.generated_at, growth?.meta.generated_at, newc?.meta.generated_at, { locale });
   const dateModified = resolveDataAsOfValue(rank.meta.generated_at, heat?.meta.generated_at, growth?.meta.generated_at, newc?.meta.generated_at);
@@ -159,8 +168,9 @@ export async function RankingsYearPageView({ locale, year: yearValue }: { locale
   });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: rankRows, metric: "gained" }) : null;
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: rankRows, metric: "gained" });
-  const previous = year > FIRST_YEAR ? { href: href(`/rankings/${year - 1}`), label: String(year - 1), eyebrow: t.common.previous } : null;
-  const next = year < periods.year ? { href: href(`/rankings/${year + 1}`), label: String(year + 1), eyebrow: t.common.next } : null;
+  const [previousYear, nextYear] = await Promise.all([resolveAdjacentRankYear(year, -1), resolveAdjacentRankYear(year, 1)]);
+  const previous = previousYear ? { href: href(previousYear.href), label: previousYear.label, eyebrow: t.common.previous } : null;
+  const next = nextYear ? { href: href(nextYear.href), label: nextYear.label, eyebrow: t.common.next } : null;
 
   return (
     <>
@@ -242,8 +252,12 @@ export async function RankingsYearPageView({ locale, year: yearValue }: { locale
 export async function RankingsPeriodPageView({ locale, year: yearValue, period: periodValue }: { locale: Locale; year: string; period: string }) {
   const t = await getDictionary(locale);
   const year = Number(yearValue);
-  const periods = currentUtcPeriods();
-  const maxYear = Math.max(periods.year, periods.week.year);
+  const periods = await resolveAvailableRankPeriods();
+  const maxYear = Math.max(
+    periods.year,
+    periods.month.kind === "month" ? periods.month.year : FIRST_YEAR,
+    periods.week.kind === "week" ? periods.week.year : FIRST_YEAR,
+  );
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > maxYear) notFound();
   const week = /^W(\d{1,2})$/i.exec(periodValue);
   if (week) return <WeekRankings locale={locale} t={t} year={year} week={Number(week[1])} />;
@@ -297,7 +311,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
     description: fill(text.rankingDatasetDescription, { label: pageLabel }),
     dateModified,
   });
-  const monthNav = monthNavigation(locale, t, year, month, href);
+  const monthNav = await monthNavigation(locale, t, year, month, href);
 
   return (
     <>
@@ -420,7 +434,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
     description: fill(text.rankingDatasetDescription, { label: period }),
     dateModified,
   });
-  const weekNav = weekNavigation(t, year, week, href);
+  const weekNav = await weekNavigation(t, year, week, href);
 
   return (
     <>
@@ -581,7 +595,17 @@ function RankingLeaderLinks({ rows, locale, emptyMessage }: { rows: Row[]; local
             {row.owner}/{row.name}
           </span>
           <span className="mt-1 block truncate font-mono text-[0.76rem] text-on-surface-variant">
-            {row.gained == null ? `${fmtStars(row.total)}★` : `+${fmtStars(row.gained)}★`}
+            {row.gained == null ? (
+              <>
+                {fmtStars(row.total)}
+                <Star />
+              </>
+            ) : (
+              <>
+                +{fmtStars(row.gained)}
+                <Star />
+              </>
+            )}
           </span>
         </Link>
       ))}
@@ -672,7 +696,7 @@ function RankingTablePanel({
   return (
     <section className="min-w-0">
       <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-      {rows.length > 0 ? <RankingList rows={rows} variant={variant} locale={locale} tableCaption={tableCaption} labels={labels} /> : <EmptyState message={emptyMessage} />}
+      {rows.length > 0 ? <RankingList rows={rows} variant={variant} locale={locale} tableCaption={tableCaption} labels={labels} compact /> : <EmptyState message={emptyMessage} />}
     </section>
   );
 }
@@ -696,40 +720,33 @@ function NewcomerPanel({
     <section className="min-w-0">
       <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
       {rows.length > 0 ? (
-        <div className="mt-[clamp(1rem,2vw,1.5rem)] overflow-x-auto pb-2">
-          <table className="w-full min-w-[24rem] border-separate border-spacing-y-2 text-left">
-            <caption className="mb-2 text-left font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{caption}</caption>
-            <thead>
-              <tr>
-                <th scope="col" className="px-2.5 pb-1 font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant sm:px-3">
-                  {labels.repository}
-                </th>
-                <th scope="col" className="px-2.5 pb-1 text-right font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant sm:px-3">
-                  {labels.tenKCrossingDay}
-                </th>
-                <th scope="col" className="px-2.5 pb-1 text-right font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant sm:px-3">
-                  {labels.totalStars}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={`${row.owner}/${row.name}`} className="group animate-rise">
-                  <th scope="row" className="rounded-l-2xl bg-surface-container px-2.5 py-2.5 align-middle text-[0.86rem] text-on-surface transition-colors group-hover:bg-surface-container-high sm:px-3 sm:py-3">
-                    <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className="font-mono font-semibold text-on-surface hover:underline hover:underline-offset-2">
+        <div className="mt-[clamp(1rem,2vw,1.5rem)]">
+          <p className="mb-2 text-left font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{caption}</p>
+          <ol className="space-y-2" aria-label={caption}>
+            {rows.map((row, index) => (
+              <li key={`${row.owner}/${row.name}`} className="group animate-rise rounded-2xl bg-surface-container px-3 py-3 transition-colors hover:bg-surface-container-high" style={{ animationDelay: `${0.04 * Math.min(index, 12)}s` }}>
+                <div className="grid min-w-0 gap-2">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2">
+                    <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className="block min-w-0 truncate font-mono text-[0.86rem] font-semibold text-on-surface hover:underline hover:underline-offset-2">
                       {row.owner}/{row.name}
                     </Link>
-                  </th>
-                  <td className="bg-surface-container px-2.5 py-2.5 text-right align-middle font-mono text-[0.75rem] text-on-surface-variant transition-colors group-hover:bg-surface-container-high sm:px-3 sm:py-3">
-                    {row.crossedDate ?? ""}
-                  </td>
-                  <td className="rounded-r-2xl bg-surface-container px-2.5 py-2.5 text-right align-middle font-mono text-[0.86rem] font-extrabold tabular-nums text-on-surface transition-colors group-hover:bg-surface-container-high sm:px-3 sm:py-3">
-                    {fmtStars(row.total)}★
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <span className="shrink-0 whitespace-nowrap font-mono text-[0.86rem] font-extrabold tabular-nums">
+                      {fmtStars(row.total)}
+                      <Star />
+                    </span>
+                  </div>
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-mono text-[0.72rem] tabular-nums text-on-surface-variant">
+                      {labels.tenKCrossingDay}: {row.crossedDate ?? ""}
+                    </span>
+                    <span className="inline-flex max-w-full items-center rounded-full bg-surface-container-high px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">
+                      <span className="break-all">{row.lang ?? labels.unknown}</span>
+                    </span>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
         </div>
       ) : (
         <EmptyState message={emptyMessage} />
@@ -822,74 +839,50 @@ function toNewcomerRows(items: Parameters<typeof joinRepoRank>[0], lookup: Param
   }));
 }
 
-function monthNavigation(locale: Locale, t: Dict, year: number, month: number, href: (path: string) => string): { previous: PeriodNavLink | null; next: PeriodNavLink | null } {
-  const current = currentUtcPeriods();
-  const previousMonth = shiftMonth(year, month, -1);
-  const nextMonth = shiftMonth(year, month, 1);
+async function monthNavigation(locale: Locale, t: Dict, year: number, month: number, href: (path: string) => string): Promise<{ previous: PeriodNavLink | null; next: PeriodNavLink | null }> {
+  const [previousMonth, nextMonth] = await Promise.all([
+    resolveAdjacentRankPeriod("month", { year, month }, -1),
+    resolveAdjacentRankPeriod("month", { year, month }, 1),
+  ]);
   return {
-    previous:
-      previousMonth.year >= FIRST_YEAR
-        ? {
-            href: href(`/rankings/${previousMonth.year}/${previousMonth.month}`),
-            label: monthYearLabel(locale, previousMonth.year, previousMonth.month),
-            eyebrow: t.common.previous,
-          }
-        : null,
-    next:
-      nextMonth.year < current.year || (nextMonth.year === current.year && nextMonth.month <= current.month)
-        ? {
-            href: href(`/rankings/${nextMonth.year}/${nextMonth.month}`),
-            label: monthYearLabel(locale, nextMonth.year, nextMonth.month),
-            eyebrow: t.common.next,
-          }
-        : null,
+    previous: previousMonth
+      ? {
+          href: href(previousMonth.href),
+          label: monthYearLabel(locale, previousMonth.year, previousMonth.month),
+          eyebrow: t.common.previous,
+        }
+      : null,
+    next: nextMonth
+      ? {
+          href: href(nextMonth.href),
+          label: monthYearLabel(locale, nextMonth.year, nextMonth.month),
+          eyebrow: t.common.next,
+        }
+      : null,
   };
 }
 
-function weekNavigation(t: Dict, year: number, week: number, href: (path: string) => string): { previous: PeriodNavLink | null; next: PeriodNavLink | null } {
-  const current = currentUtcPeriods().week;
-  const previousWeek = shiftIsoWeek(year, week, -1);
-  const nextWeek = shiftIsoWeek(year, week, 1);
+async function weekNavigation(t: Dict, year: number, week: number, href: (path: string) => string): Promise<{ previous: PeriodNavLink | null; next: PeriodNavLink | null }> {
+  const [previousWeek, nextWeek] = await Promise.all([
+    resolveAdjacentRankPeriod("week", { year, week }, -1),
+    resolveAdjacentRankPeriod("week", { year, week }, 1),
+  ]);
   return {
-    previous:
-      previousWeek.year >= FIRST_YEAR
-        ? {
-            href: href(`/rankings/${previousWeek.year}/W${String(previousWeek.week).padStart(2, "0")}`),
-            label: isoWeekLabel(previousWeek.year, previousWeek.week),
-            eyebrow: t.common.previous,
-          }
-        : null,
-    next:
-      compareIsoWeeks(nextWeek, current) <= 0
-        ? {
-            href: href(`/rankings/${nextWeek.year}/W${String(nextWeek.week).padStart(2, "0")}`),
-            label: isoWeekLabel(nextWeek.year, nextWeek.week),
-            eyebrow: t.common.next,
-          }
-        : null,
+    previous: previousWeek
+      ? {
+          href: href(previousWeek.href),
+          label: isoWeekLabel(previousWeek.year, previousWeek.week),
+          eyebrow: t.common.previous,
+        }
+      : null,
+    next: nextWeek
+      ? {
+          href: href(nextWeek.href),
+          label: isoWeekLabel(nextWeek.year, nextWeek.week),
+          eyebrow: t.common.next,
+        }
+      : null,
   };
-}
-
-function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
-  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
-  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
-}
-
-function shiftIsoWeek(year: number, week: number, delta: number): { year: number; week: number } {
-  const date = isoWeekStartDate(year, week);
-  date.setUTCDate(date.getUTCDate() + delta * 7);
-  return isoWeek(date);
-}
-
-function compareIsoWeeks(a: { year: number; week: number }, b: { year: number; week: number }): number {
-  return isoWeekStartDate(a.year, a.week).getTime() - isoWeekStartDate(b.year, b.week).getTime();
-}
-
-function isoWeekStartDate(year: number, week: number): Date {
-  const jan4 = new Date(Date.UTC(year, 0, 4));
-  const day = jan4.getUTCDay() || 7;
-  jan4.setUTCDate(jan4.getUTCDate() + 1 - day + (week - 1) * 7);
-  return jan4;
 }
 
 function isoWeekLabel(year: number, week: number): string {

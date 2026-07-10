@@ -4,6 +4,7 @@ import { useState } from "react";
 import { fmtStars } from "@/lib/format";
 import type { CompareCurve as CompareCurveData } from "@/lib/contracts";
 import { type CompareMode, buildChart } from "@/lib/compare/core";
+import { Star } from "./Star";
 
 // Multi-line overlay chart for /compare (v0.2 §5). Shares the SVG approach with StarCurve but:
 // - N lines instead of one, distinct colors from --chart-cat-1..5
@@ -143,7 +144,9 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
               style={{ background: `var(${line.colorVar})` }}
             />
             <span className="text-on-surface">{line.full_name}</span>
-            <span className="tabular-nums text-on-surface-variant">{fmtStars(line.current_stars)} ★</span>
+            <span className="tabular-nums text-on-surface-variant">
+              {fmtStars(line.current_stars)} <Star />
+            </span>
           </li>
         ))}
       </ul>

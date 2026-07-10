@@ -12,6 +12,7 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
     baseURL,
     serviceWorkers: "block",
+    screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
 });

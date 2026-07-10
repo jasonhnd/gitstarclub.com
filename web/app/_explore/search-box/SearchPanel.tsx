@@ -4,6 +4,7 @@ import type { SearchHit } from "@/lib/search/core";
 import { MAX_COMPARE } from "@/lib/compare/constants";
 import type { Locale } from "@/lib/i18n/locales";
 import { localizedPath } from "@/lib/i18n/routing";
+import { Star } from "../Star";
 import type { SearchBoxLabels } from "./types";
 
 export function SearchPanel({
@@ -168,7 +169,9 @@ function SearchResultRow({
           </span>
           <span className="flex shrink-0 items-center gap-2 font-mono text-[0.72rem] text-on-surface-variant">
             {hit.language && <span className="hidden sm:inline">{hit.language}</span>}
-            <span className="text-readable-gold tabular-nums">{fmtStars(hit.current_stars)} ★</span>
+            <span className="tabular-nums">
+              {fmtStars(hit.current_stars)} <Star />
+            </span>
           </span>
         </Link>
         <button

@@ -19,7 +19,7 @@ export function FaqBlock({
   return (
     <>
       <JsonLd data={faqPageLd(items, path, locale)} />
-      <section aria-labelledby="faq-heading" className={`mt-[clamp(2rem,4vw,3rem)] ${className}`}>
+      <section aria-labelledby="faq-heading" className={`mt-[clamp(2rem,4vw,3rem)] ${className}`} data-testid="faq">
         <h2 id="faq-heading" className="text-[1.25rem] font-extrabold tracking-tight text-on-surface">
           {heading}
         </h2>

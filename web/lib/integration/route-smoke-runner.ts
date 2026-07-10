@@ -1,4 +1,6 @@
-import { isValidElement, type ReactElement } from "react";
+import { createElement, isValidElement, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import EnglishHomePage from "@/app/(en)/page";
 import EnglishPulsePage from "@/app/(en)/pulse/page";
 import EnglishRankingsPage from "@/app/(en)/rankings/page";
@@ -7,6 +9,7 @@ import EnglishRankingPeriodPage from "@/app/(en)/rankings/[year]/[period]/page";
 import EnglishCategoriesPage from "@/app/(en)/categories/page";
 import EnglishCategoryDimensionPage from "@/app/(en)/categories/[dimension]/page";
 import EnglishCategoryDetailPage from "@/app/(en)/categories/[dimension]/[slug]/page";
+import EnglishCategoryDetailPagePage from "@/app/(en)/categories/[dimension]/[slug]/page/[page]/page";
 import EnglishRepoPage from "@/app/(en)/[owner]/[name]/page";
 import EnglishOrgPage from "@/app/(en)/o/[login]/page";
 import EnglishComparePage from "@/app/(en)/compare/page";
@@ -22,14 +25,31 @@ import { PulsePageView } from "@/app/_localized/pulse";
 import { RankingsPageView } from "@/app/_localized/rankings";
 import { RankingsPeriodPageView, RankingsYearPageView } from "@/app/_localized/ranking-detail";
 import { RepoPageView } from "@/app/_localized/repo";
-import type { CategoryAssignments, CategoryRankList, CategoryRegistry, HotSnapshot, Meta, OrgEntity, OrgsLookup, RankList, RepoEntity, ReposLookup } from "@/lib/contracts";
+import type {
+  CategoriesLookup,
+  CategoryAssignments,
+  CategoryRankList,
+  CategoryRegistry,
+  HotSnapshot,
+  Meta,
+  OrgEntity,
+  OrgsLookup,
+  RankList,
+  RepoEntity,
+  ReposLookup,
+} from "@/lib/contracts";
+import { CATEGORY_DETAIL_PAGE_SIZE } from "@/lib/pagination";
+import { localeSitemapRoute } from "@/lib/sitemap-routes";
 
 const BLOB_BASE_URL = "https://blob.test";
 const VERSION = "route-smoke";
 const GENERATED_AT = "2026-06-04T12:00:00.000Z";
 const REPO_ID = 1;
 const REPO_FULL_NAME = "vuejs/vue";
+const BROKEN_REPO_ID = 259;
+const BROKEN_REPO_FULL_NAME = "fighting41love/funNLP";
 const ORG_LOGIN = "microsoft";
+const CATEGORY_TOTAL_REPOS = CATEGORY_DETAIL_PAGE_SIZE + 3;
 
 type RouteCase = {
   label: string;
@@ -94,10 +114,28 @@ const routes: RouteCase[] = [
     render: () => CategoryDetailPageView({ locale: "en", dimension: "language", slug: "python", page: 1 }),
   },
   {
+    label: "category detail page 2",
+    path: "/categories/language/python/page/2",
+    page: EnglishCategoryDetailPagePage,
+    render: () => CategoryDetailPageView({ locale: "en", dimension: "language", slug: "python", page: 2 }),
+  },
+  {
+    label: "category detail with missing implied page shard",
+    path: "/categories/domain/ai-ml",
+    page: EnglishCategoryDetailPage,
+    render: () => CategoryDetailPageView({ locale: "en", dimension: "domain", slug: "ai-ml", page: 1 }),
+  },
+  {
     label: "repo detail",
     path: `/${REPO_FULL_NAME}`,
     page: EnglishRepoPage,
     render: () => RepoPageView({ locale: "en", owner: "vuejs", name: "vue" }),
+  },
+  {
+    label: "malformed linked repo detail",
+    path: `/${BROKEN_REPO_FULL_NAME}`,
+    page: EnglishRepoPage,
+    render: () => RepoPageView({ locale: "en", owner: "fighting41love", name: "funNLP" }),
   },
   {
     label: "org detail",
@@ -159,6 +197,9 @@ async function runRouteSmoke() {
     }
   }
 
+  await assertCategoryPaginationLinks();
+  await assertSitemapCategoryPaginationUrls();
+
   console.log(`route smoke OK: ${routes.length} routes`);
 }
 
@@ -190,11 +231,13 @@ function fixtureForView(path: string): unknown | null {
   if (path === "meta.json") return metaFixture;
   if (path === "lookup/repos.json") return reposLookupFixture;
   if (path === "lookup/orgs.json") return orgsLookupFixture;
+  if (path === "lookup/categories.json") return categoriesLookupFixture;
   if (path === "lookup/aliases.json") return {};
   if (path === "hot-snapshot.json") return hotSnapshotFixture;
   if (path === "categories/registry.json") return categoryRegistryFixture;
   if (path === "categories/assignments.json") return categoryAssignmentsFixture;
   if (path === `entity/repo/${REPO_ID}.json`) return repoEntityFixture;
+  if (path === `entity/repo/${BROKEN_REPO_ID}.json`) return brokenRepoEntityFixture;
   if (path === `entity/org/${ORG_LOGIN}.json`) return orgEntityFixture;
 
   const liveRank = path.match(/^live\/rank\/(week|month)\/([^/]+)\/(repo|org)\/(flow|stock|growth|new)\.json$/);
@@ -206,8 +249,8 @@ function fixtureForView(path: string): unknown | null {
   const allTimeRank = path.match(/^rank\/all-time\/(repo|org)\/stock\.json$/);
   if (allTimeRank) return rankFixture("all", "all", allTimeRank[1], "stock");
 
-  const categoryRank = path.match(/^rank\/category\/([^/]+)\/([^/]+)\/all-time\/repo\/stock(?:\/page\/\d+)?\.json$/);
-  if (categoryRank) return categoryRankFixture(categoryRank[1], categoryRank[2]);
+  const categoryRank = path.match(/^rank\/category\/([^/]+)\/([^/]+)\/all-time\/repo\/stock(?:\/page\/(\d+))?\.json$/);
+  if (categoryRank) return categoryRankFixture(categoryRank[1], categoryRank[2], Number(categoryRank[3] ?? "1"));
 
   const liveHeatmap = path.match(/^live\/heatmap\/(year|month)\/([^/]+)\.json$/);
   if (liveHeatmap) return heatmapFixture(liveHeatmap[1], liveHeatmap[2]);
@@ -238,7 +281,13 @@ function rankFixture(window: string, period: string, dim: string, metric: string
   };
 }
 
-function categoryRankFixture(dimension: string, slug: string): CategoryRankList {
+function categoryRankFixture(dimension: string, slug: string, page: number): CategoryRankList | null {
+  if (dimension === "domain" && slug === "ai-ml" && page > 1) return null;
+
+  const start = (page - 1) * CATEGORY_DETAIL_PAGE_SIZE + 1;
+  if (start > CATEGORY_TOTAL_REPOS) return null;
+  const length = Math.min(CATEGORY_DETAIL_PAGE_SIZE, CATEGORY_TOTAL_REPOS - start + 1);
+
   return {
     meta: {
       window: "all",
@@ -252,8 +301,104 @@ function categoryRankFixture(dimension: string, slug: string): CategoryRankList 
         slug,
       },
     },
-    items: [{ rank: 1, id: REPO_ID, value: 210_000, prev_rank: null }],
+    items: Array.from({ length }, (_, index) => {
+      const rank = start + index;
+      return { rank, id: rank, value: 300_000 - rank, prev_rank: null };
+    }),
   };
+}
+
+async function assertCategoryPaginationLinks() {
+  const pythonLinks = await categoryPaginationLinks("/categories/language/python");
+  if (!pythonLinks.includes("/categories/language/python/page/2")) {
+    throw new Error("/categories/language/python did not link its available page 2 shard");
+  }
+
+  const domainLinks = await categoryPaginationLinks("/categories/domain/ai-ml");
+  if (domainLinks.some((path) => path.startsWith("/categories/domain/ai-ml/page/"))) {
+    throw new Error(`/categories/domain/ai-ml linked unavailable pagination: ${domainLinks.join(", ")}`);
+  }
+
+  for (const path of [...pythonLinks, ...domainLinks]) await assertCategoryPaginationPathRenders(path, "linked pagination");
+}
+
+async function assertSitemapCategoryPaginationUrls() {
+  const response = await localeSitemapRoute("en")();
+  if (!response.ok) throw new Error(`sitemap-en.xml returned ${response.status}`);
+  const paths = categoryPaginationPathsFromSitemap(await response.text());
+
+  if (!paths.includes("/categories/language/python/page/2")) {
+    throw new Error("sitemap-en.xml omitted available category page /categories/language/python/page/2");
+  }
+  if (paths.includes("/categories/domain/ai-ml/page/2")) {
+    throw new Error("sitemap-en.xml included unavailable category page /categories/domain/ai-ml/page/2");
+  }
+
+  for (const path of paths) await assertCategoryPaginationPathRenders(path, "sitemap category pagination");
+}
+
+async function categoryPaginationLinks(path: string): Promise<string[]> {
+  const element = await renderCategoryPath(path);
+  return categoryPaginationPathsFromHtml(renderWithAppRouter(element));
+}
+
+async function assertCategoryPaginationPathRenders(path: string, source: string) {
+  try {
+    const element = await renderCategoryPath(path);
+    if (!isValidElement(element)) throw new Error("did not render a React element");
+  } catch (error) {
+    throw new Error(`${source} path ${path} did not render as 200: ${routeErrorLabel(error)}`);
+  }
+}
+
+async function renderCategoryPath(path: string): Promise<ReactElement> {
+  const match = /^\/categories\/([^/]+)\/([^/]+)(?:\/page\/([1-9]\d*))?$/.exec(path);
+  if (!match) throw new Error(`unsupported category path ${path}`);
+  return CategoryDetailPageView({
+    locale: "en",
+    dimension: match[1],
+    slug: match[2],
+    page: match[3] ? Number(match[3]) : 1,
+  });
+}
+
+function categoryPaginationPathsFromHtml(html: string): string[] {
+  const paths = new Set<string>();
+  const hrefs = html.matchAll(/href="([^"]+)"/g);
+  for (const match of hrefs) {
+    const href = decodeHtmlAttribute(match[1]);
+    const path = href.startsWith("http://") || href.startsWith("https://") ? new URL(href).pathname : href;
+    if (/^\/categories\/[^/]+\/[^/]+\/page\/[1-9]\d*$/.test(path)) paths.add(path);
+  }
+  return [...paths].sort();
+}
+
+function categoryPaginationPathsFromSitemap(xml: string): string[] {
+  const paths = new Set<string>();
+  const locs = xml.matchAll(/<loc>([^<]+)<\/loc>/g);
+  for (const match of locs) {
+    const path = new URL(decodeHtmlAttribute(match[1])).pathname;
+    if (/^\/categories\/[^/]+\/[^/]+\/page\/[1-9]\d*$/.test(path)) paths.add(path);
+  }
+  return [...paths].sort();
+}
+
+function decodeHtmlAttribute(value: string): string {
+  return value.replaceAll("&amp;", "&").replaceAll("&quot;", '"').replaceAll("&apos;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">");
+}
+
+const appRouterStub = {
+  back() {},
+  forward() {},
+  prefetch() {},
+  push() {},
+  replace() {},
+  refresh() {},
+  hmrRefresh() {},
+};
+
+function renderWithAppRouter(element: ReactElement): string {
+  return renderToStaticMarkup(createElement(AppRouterContext.Provider, { value: appRouterStub }, element));
 }
 
 function heatmapFixture(scope: string, period: string) {
@@ -281,14 +426,34 @@ const metaFixture: Meta = {
   folded_through: { month: "2026-06", week: "2026-W23" },
 };
 
+const categoryRepoLookupFixture = Object.fromEntries(
+  Array.from({ length: CATEGORY_TOTAL_REPOS }, (_, index) => {
+    const id = index + 1;
+    const owner = id === REPO_ID ? "vuejs" : `category-owner-${id}`;
+    const name = id === REPO_ID ? "vue" : `category-repo-${id}`;
+    return [
+      String(id),
+      {
+        owner,
+        name,
+        full_name: `${owner}/${name}`,
+        owner_type: "Organization",
+        language: "Python",
+        current_stars: 300_000 - id,
+      },
+    ];
+  }),
+) satisfies ReposLookup;
+
 const reposLookupFixture: ReposLookup = {
-  [String(REPO_ID)]: {
-    owner: "vuejs",
-    name: "vue",
-    full_name: REPO_FULL_NAME,
-    owner_type: "Organization",
-    language: "JavaScript",
-    current_stars: 210_000,
+  ...categoryRepoLookupFixture,
+  [String(BROKEN_REPO_ID)]: {
+    owner: "fighting41love",
+    name: "funNLP",
+    full_name: BROKEN_REPO_FULL_NAME,
+    owner_type: "User",
+    language: "Python",
+    current_stars: 10_000,
   },
 };
 
@@ -342,6 +507,29 @@ const repoEntityFixture: RepoEntity = {
   inflections: [],
 };
 
+const brokenRepoEntityFixture = {
+  id: BROKEN_REPO_ID,
+  full_name: BROKEN_REPO_FULL_NAME,
+  owner: "fighting41love",
+  owner_type: "User",
+  name: "funNLP",
+  description: null,
+  language: "Python",
+  languages: "Python",
+  topics: null,
+  homepage_url: "javascript:alert(1)",
+  license: null,
+  latest_release: { tag_name: "v1", url: "ftp://example.test/release" },
+  created_at: "not-a-date",
+  current_stars: 10_000,
+  is_archived: false,
+  milestones: null,
+  curve: { monthly: null, recent_daily: "bad" },
+  monthly_table: null,
+  rank_history: { month: "bad" },
+  inflections: "bad",
+};
+
 const orgEntityFixture: OrgEntity = {
   login: ORG_LOGIN,
   owner_type: "Organization",
@@ -371,7 +559,23 @@ const categoryRegistryFixture: CategoryRegistry = {
           dimension: "language",
           slug: "python",
           label: "Python",
-          count: 1,
+          count: CATEGORY_TOTAL_REPOS,
+          public: true,
+          sitemap: true,
+          minimum_repo_count: 1,
+        },
+      ],
+    },
+    {
+      id: "domain",
+      label: "Domain",
+      categories: [
+        {
+          id: "domain/ai-ml",
+          dimension: "domain",
+          slug: "ai-ml",
+          label: "AI / ML",
+          count: CATEGORY_TOTAL_REPOS,
           public: true,
           sitemap: true,
           minimum_repo_count: 1,
@@ -379,6 +583,24 @@ const categoryRegistryFixture: CategoryRegistry = {
       ],
     },
   ],
+};
+
+const categoriesLookupFixture: CategoriesLookup = {
+  rules_version: categoryRegistryFixture.rules_version,
+  generated_at: categoryRegistryFixture.generated_at,
+  dimensions: categoryRegistryFixture.dimensions.map((dimension) => ({
+    id: dimension.id,
+    label: dimension.label,
+    categories: dimension.categories
+      .filter((category) => category.public)
+      .map((category) => ({
+        id: category.id,
+        slug: category.slug,
+        label: category.label,
+        count: category.count,
+        sitemap: category.sitemap,
+      })),
+  })),
 };
 
 const categoryAssignmentsFixture: CategoryAssignments = {

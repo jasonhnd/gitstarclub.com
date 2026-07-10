@@ -1,20 +1,20 @@
 import { test, expect, describe, beforeAll } from "bun:test";
+import { DEFAULT_LOCALE, LOCALES, type Locale } from "../i18n";
+import { localizedPath, stripLocale, toHreflang } from "../i18n/routing";
 
 // Live SEO acceptance test (fetch-only, no browser) for the production site.
 //
-// This exercises the rendered HTML / metadata endpoints of https://www.gitstarclub.com
-// against the policy in docs/SEO.md:
-//   - single language-neutral URL per page (no /ja, /zh prefixes, NO hreflang matrix — SEO §10)
-//   - English default-locale metadata, <html lang="en"> (SEO §10 / §3)
+// This exercises rendered HTML / metadata and sitemap endpoints against docs/SEO.md:
+//   - self-referential locale canonicals plus the complete hreflang matrix (SEO §10)
+//   - English default-locale metadata and <html lang="en"> on unprefixed routes (SEO §10 / §3)
 //   - per-page <title> / <meta description> / canonical-to-self + Open Graph (SEO §2 / §13)
 //   - at least one valid schema.org JSON-LD block per page (SEO §6)
-//   - /sitemap.xml enumerates the long tail (SEO §4) and /robots.txt is well-formed (SEO §5 / §11)
+//   - /sitemap.xml indexes per-locale URL sets, which enumerate the long tail (SEO §4)
+//   - preview remains noindex while production is indexable (SEO §5 / §11)
 //
-// Because the suite hits the network, it is opt-out via SEO_LIVE_BASE="" and tolerant of the
-// site's launch state: docs/SEO.md §11 keeps the site noindex / robots `Disallow: /` until
-// SITE_INDEXABLE=1 at launch. Where the live state legitimately differs from the
-// fully-launched policy (robots advertising the sitemap; rankings OG image), the assertion
-// stays green but the gap is surfaced via console.warn so it shows up in the run output.
+// Because the suite hits the network, it is opt-out via SEO_LIVE_BASE="". Set
+// SEO_EXPECT_INDEXABLE=0 for preview or =1 for production; when omitted, the suite infers the
+// expectation by comparing SEO_LIVE_BASE with SEO_CANON_ORIGIN.
 //
 // Run: cd web && bun test lib/integration/seo.test.ts
 
@@ -25,6 +25,14 @@ const LIVE_SEO_ENABLED = BASE.trim().length > 0;
 const describeLive = LIVE_SEO_ENABLED ? describe : describe.skip;
 // The page's *own* canonical URL is built against the apex host the site canonicalizes to.
 const CANON_ORIGIN = (process.env.SEO_CANON_ORIGIN ?? "https://gitstarclub.com").replace(/\/+$/, "");
+const EXPECT_INDEXABLE = expectedIndexable();
+const describePreview = LIVE_SEO_ENABLED && !EXPECT_INDEXABLE ? describe : describe.skip;
+const describeProduction = LIVE_SEO_ENABLED && EXPECT_INDEXABLE ? describe : describe.skip;
+
+const NON_DEFAULT_LOCALE = LOCALES.find((locale) => locale !== DEFAULT_LOCALE);
+if (!NON_DEFAULT_LOCALE) throw new Error("live SEO acceptance requires at least one non-default locale");
+const CHILD_SITEMAP_LOCALES: Locale[] = [DEFAULT_LOCALE, NON_DEFAULT_LOCALE];
+const EXPECTED_HREFLANGS = ["x-default", ...LOCALES.map(toHreflang)];
 
 type SeoPage = { label: string; path: string; canonPath: string };
 
@@ -37,6 +45,19 @@ const PAGES: SeoPage[] = [
 const FETCH_TIMEOUT_MS = 30_000;
 
 type Fetched = { status: number; html: string; contentType: string };
+
+function expectedIndexable(): boolean {
+  const configured = process.env.SEO_EXPECT_INDEXABLE;
+  if (configured !== undefined && configured !== "0" && configured !== "1") {
+    throw new Error("SEO_EXPECT_INDEXABLE must be either 0 or 1");
+  }
+  if (configured !== undefined) return configured === "1";
+  if (!LIVE_SEO_ENABLED) return false;
+
+  const liveHost = new URL(BASE).hostname.replace(/^www\./, "");
+  const canonicalHost = new URL(CANON_ORIGIN).hostname.replace(/^www\./, "");
+  return liveHost === canonicalHost;
+}
 
 async function get(path: string): Promise<Fetched> {
   const res = await fetch(`${BASE}${path}`, {
@@ -89,7 +110,11 @@ function canonical(html: string): string | null {
 }
 
 function content(tag: string): string | null {
-  const m = /\bcontent=["']([^"']*)["']/i.exec(tag);
+  return attribute(tag, "content");
+}
+
+function attribute(tag: string, name: string): string | null {
+  const m = new RegExp(`\\b${name}=["']([^"']*)["']`, "i").exec(tag);
   return m ? m[1] : null;
 }
 
@@ -102,10 +127,106 @@ function ldJsonBlocks(html: string): string[] {
   return out;
 }
 
-/** Count of hreflang alternate links — policy (SEO §10) is zero. */
-function hreflangCount(html: string): number {
-  const matches = html.match(/<link\b[^>]*\brel=["']alternate["'][^>]*\bhreflang=/gi);
-  return matches ? matches.length : 0;
+type AlternateLink = { hreflang: string; href: string };
+
+/** hreflang alternate links from HTML or xhtml-prefixed sitemap markup. */
+function alternateLinks(markup: string): AlternateLink[] {
+  const tags = markup.match(/<(?:[a-z][\w.-]*:)?link\b[^>]*>/gi) ?? [];
+  return tags.flatMap((tag) => {
+    const rel = attribute(tag, "rel")?.toLowerCase().split(/\s+/) ?? [];
+    const hreflang = attribute(tag, "hreflang");
+    const href = attribute(tag, "href");
+    return rel.includes("alternate") && hreflang && href ? [{ hreflang, href }] : [];
+  });
+}
+
+function expectedAlternates(canonicalPath: string): AlternateLink[] {
+  const englishHref = canonicalUrl(localizedPath(DEFAULT_LOCALE, canonicalPath));
+  return [
+    { hreflang: "x-default", href: englishHref },
+    ...LOCALES.map((locale) => ({ hreflang: toHreflang(locale), href: canonicalUrl(localizedPath(locale, canonicalPath)) })),
+  ];
+}
+
+function canonicalUrl(path: string): string {
+  return path === "" || path === "/" ? CANON_ORIGIN : `${CANON_ORIGIN}${path}`;
+}
+
+function assertAlternateMatrix(actual: AlternateLink[], canonicalPath: string): void {
+  const expected = expectedAlternates(canonicalPath);
+  const codes = actual.map(({ hreflang }) => hreflang);
+  expect([...codes].sort()).toEqual([...EXPECTED_HREFLANGS].sort());
+  expect(new Set(codes).size).toBe(codes.length);
+  expect(Object.fromEntries(actual.map(({ hreflang, href }) => [hreflang, href]))).toEqual(
+    Object.fromEntries(expected.map(({ hreflang, href }) => [hreflang, href])),
+  );
+
+  // x-default intentionally aliases the unprefixed English URL. Locale-specific hrefs must
+  // otherwise remain unique so two languages never claim the same localized route.
+  const localizedHrefs = actual.filter(({ hreflang }) => hreflang !== "x-default").map(({ href }) => href);
+  expect(new Set(localizedHrefs).size).toBe(localizedHrefs.length);
+}
+
+function locUrls(xml: string): string[] {
+  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((match) => decodeXml(match[1].trim()));
+}
+
+function xmlBlocks(xml: string, name: "sitemap" | "url"): string[] {
+  return [...xml.matchAll(new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`, "gi"))].map((match) => match[1]);
+}
+
+function assertXmlShape(xml: string, root: "sitemapindex" | "urlset", item: "sitemap" | "url"): void {
+  const blocks = xmlBlocks(xml, item);
+  expect(xml.trimStart()).toMatch(/^<\?xml\s[^>]*\?>/i);
+  expect(xml.match(new RegExp(`<${root}\\b`, "gi"))?.length ?? 0).toBe(1);
+  expect(xml.match(new RegExp(`<\\/${root}>`, "gi"))?.length ?? 0).toBe(1);
+  expect(xml.match(new RegExp(`<${item}>`, "gi"))?.length ?? 0).toBe(blocks.length);
+  expect(xml.match(new RegExp(`<\\/${item}>`, "gi"))?.length ?? 0).toBe(blocks.length);
+  expect(blocks.every((block) => locUrls(block).length === 1)).toBe(true);
+}
+
+function decodeXml(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+function urlBlock(xml: string, expectedLoc: string): string {
+  const block = xmlBlocks(xml, "url").find((candidate) => locUrls(candidate)[0] === expectedLoc);
+  if (!block) throw new Error(`sitemap entry not found: ${expectedLoc}`);
+  return block;
+}
+
+function hasFutureRankingPeriod(url: string, now = new Date()): boolean {
+  const path = stripLocale(new URL(url).pathname).path;
+  const match = /^\/rankings\/(\d{4})(?:\/(\d{1,2})|\/W(\d{2}))?$/.exec(path);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  if (match[2]) {
+    const month = Number(match[2]);
+    return Date.UTC(year, month - 1, 1) > Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+  }
+  if (match[3]) return isoWeekStartUtc(year, Number(match[3])) > isoWeekStartUtc(...currentIsoWeek(now));
+  return year > now.getUTCFullYear();
+}
+
+function currentIsoWeek(date: Date): [number, number] {
+  const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - day);
+  const year = target.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  return [year, Math.ceil(((target.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7)];
+}
+
+function isoWeekStartUtc(year: number, week: number): number {
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  return Date.UTC(year, 0, 4 - jan4Day + 1 + (week - 1) * 7);
 }
 
 // --- shared fetch (one round trip per page, reused across assertions) ------------------------
@@ -132,7 +253,7 @@ const page = (path: string): Fetched => {
 // Per-page metadata: title / description / canonical-to-self / Open Graph / JSON-LD
 // --------------------------------------------------------------------------------------------
 
-describeLive.each(PAGES)("SEO basics — $label", ({ path, canonPath }) => {
+describeLive.each(PAGES)("rendered metadata acceptance — $label", ({ path, canonPath }) => {
   test("responds 200 with HTML", () => {
     const p = page(path);
     expect(p.status).toBe(200);
@@ -154,8 +275,7 @@ describeLive.each(PAGES)("SEO basics — $label", ({ path, canonPath }) => {
   test("has <link rel=canonical> pointing at this page's own URL", () => {
     const c = canonical(page(path).html);
     expect(c).toBeTruthy();
-    // Policy: language-neutral canonical to self (SEO §2 / §7). The live site canonicalizes
-    // to the apex host, so the expected canonical is apex + this page's path.
+    // English routes are unprefixed and canonicalize to the production origin in every environment.
     expect(c).toBe(`${CANON_ORIGIN}${canonPath}`);
   });
 
@@ -179,9 +299,15 @@ describeLive.each(PAGES)("SEO basics — $label", ({ path, canonPath }) => {
       expect(parsed["@context"]).toBeDefined();
     }
   });
+});
 
-  test("emits NO hreflang alternate matrix (policy: none — SEO §10)", () => {
-    expect(hreflangCount(page(path).html)).toBe(0);
+describeLive.each(PAGES)("hreflang matrix acceptance — $label", ({ path, canonPath }) => {
+  test("emits the exact locale matrix for the same logical page", () => {
+    assertAlternateMatrix(alternateLinks(page(path).html), canonPath || "/");
+  });
+
+  test("keeps the rendered locale canonical self-referential", () => {
+    expect(canonical(page(path).html)).toBe(canonicalUrl(canonPath));
   });
 });
 
@@ -224,10 +350,10 @@ describeLive("document language", () => {
 });
 
 // --------------------------------------------------------------------------------------------
-// /sitemap.xml — valid XML urlset enumerating home + rankings + repo URLs (SEO §4).
+// /sitemap.xml — sitemap index containing exactly one child per supported locale (SEO §4).
 // --------------------------------------------------------------------------------------------
 
-describeLive("/sitemap.xml", () => {
+describeLive("sitemap-index acceptance", () => {
   let xml = "";
   let status = 0;
   let ctype = "";
@@ -244,66 +370,125 @@ describeLive("/sitemap.xml", () => {
     expect(ctype.toLowerCase()).toMatch(/xml/);
   });
 
-  test("is a well-formed <urlset> document", () => {
-    expect(xml).toContain("<?xml");
-    expect(xml).toMatch(/<urlset[\s>]/);
-    expect(xml).toMatch(/<\/urlset>/);
+  test("is a structurally complete <sitemapindex> document", () => {
+    assertXmlShape(xml, "sitemapindex", "sitemap");
+    expect(xml).toMatch(/<sitemapindex\b[^>]*xmlns=["']http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9["']/i);
+    expect(xml).not.toMatch(/<urlset[\s>]/i);
   });
 
-  test("contains several <loc> entries", () => {
-    const locs = xml.match(/<loc>/gi) ?? [];
-    expect(locs.length).toBeGreaterThan(10);
-  });
-
-  test("enumerates the homepage + rankings + repo URLs", () => {
-    const locUrls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1].trim());
-    // homepage (apex, with or without trailing slash)
-    expect(locUrls.some((u) => u === CANON_ORIGIN || u === `${CANON_ORIGIN}/`)).toBe(true);
-    // a rankings month URL
-    expect(locUrls).toContain(`${CANON_ORIGIN}/rankings/2024/6`);
-    // a rankings year URL
-    expect(locUrls).toContain(`${CANON_ORIGIN}/rankings/2024`);
-    // a repo detail URL (long-tail discovery)
-    expect(locUrls).toContain(`${CANON_ORIGIN}/vuejs/vue`);
+  test("contains the exact locale sitemap set without duplicate locations", () => {
+    const actual = locUrls(xml);
+    const expected = LOCALES.map((locale) => `${CANON_ORIGIN}/sitemap-${locale}.xml`);
+    expect([...actual].sort()).toEqual([...expected].sort());
+    expect(new Set(actual).size).toBe(actual.length);
+    expect(xmlBlocks(xml, "sitemap").every((block) => locUrls(block).length === 1 && /<lastmod>[^<]+<\/lastmod>/i.test(block))).toBe(true);
   });
 });
 
 // --------------------------------------------------------------------------------------------
-// /robots.txt — 200 + well-formed. Sitemap reference is gated behind launch (SEO §11):
-// pre-launch the site is noindex with `Disallow: /` and no Sitemap line.
+// Child locale sitemaps — URL sets own long-tail discovery and hreflang alternates (SEO §4).
 // --------------------------------------------------------------------------------------------
 
-describeLive("/robots.txt", () => {
-  let txt = "";
-  let status = 0;
+const childSitemaps = new Map<Locale, Fetched>();
+const REPRESENTATIVE_SITEMAP_PATHS = [
+  { label: "core", path: "/" },
+  { label: "ranking", path: "/rankings/2024/6" },
+  { label: "repository", path: "/vuejs/vue" },
+  { label: "organization", path: "/o/microsoft" },
+  { label: "category", path: "/categories/language/python" },
+] as const;
+const UNAVAILABLE_CATEGORY_PATH = "/categories/language/python/page/999999";
 
+describeLive("child-sitemap URL acceptance", () => {
   beforeAll(async () => {
-    const r = await get("/robots.txt");
-    txt = r.html;
-    status = r.status;
+    const results = await Promise.all(
+      CHILD_SITEMAP_LOCALES.map(async (locale) => [locale, await get(`/sitemap-${locale}.xml`)] as const),
+    );
+    for (const [locale, result] of results) childSitemaps.set(locale, result);
   });
 
-  test("responds 200", () => {
-    expect(status).toBe(200);
+  test.each(CHILD_SITEMAP_LOCALES)("sitemap-%s.xml is a complete XML urlset", (locale) => {
+    const sitemap = childSitemaps.get(locale);
+    if (!sitemap) throw new Error(`child sitemap not fetched: ${locale}`);
+    expect(sitemap.status).toBe(200);
+    expect(sitemap.contentType.toLowerCase()).toMatch(/xml/);
+    assertXmlShape(sitemap.html, "urlset", "url");
+    expect(sitemap.html).toMatch(/<urlset\b[^>]*xmlns:xhtml=["']http:\/\/www\.w3\.org\/1999\/xhtml["']/i);
   });
 
-  test("is a well-formed robots file (declares a User-agent)", () => {
-    expect(txt).toMatch(/User-agent:/i);
-  });
+  test.each(CHILD_SITEMAP_LOCALES)("sitemap-%s.xml contains representative localized long-tail URLs", (locale) => {
+    const xml = childSitemaps.get(locale)?.html ?? "";
+    const locations = locUrls(xml);
 
-  test("references the sitemap once indexing is enabled (reported pre-launch)", () => {
-    const launched = /^\s*Allow:\s*\/\s*$/im.test(txt) && !/^\s*Disallow:\s*\/\s*$/im.test(txt);
-    if (launched) {
-      // Launched policy (SITE_INDEXABLE=1): robots advertises the sitemap.
-      expect(txt).toMatch(/Sitemap:\s*https?:\/\/\S+\/sitemap\.xml/i);
-    } else {
-      // Pre-launch private preview (SEO §11): whole-site Disallow, no sitemap advertised.
-      expect(txt).toMatch(/^\s*Disallow:\s*\/\s*$/im);
-      expect(txt).not.toMatch(/Sitemap:/i);
-      console.warn(
-        "[SEO][state] /robots.txt is in pre-launch noindex mode (`Disallow: /`, no Sitemap line). " +
-          "This is intentional per SEO §11; set SITE_INDEXABLE=1 at launch so robots advertises /sitemap.xml.",
-      );
+    for (const { label, path } of REPRESENTATIVE_SITEMAP_PATHS) {
+      const expectedLoc = canonicalUrl(localizedPath(locale, path));
+      expect(locations, `${label} URL missing from sitemap-${locale}.xml`).toContain(expectedLoc);
+      assertAlternateMatrix(alternateLinks(urlBlock(xml, expectedLoc)), path);
     }
+  });
+
+  test.each(CHILD_SITEMAP_LOCALES)("sitemap-%s.xml has no duplicate locations, future rankings, or unavailable category pages", async (locale) => {
+    const locations = locUrls(childSitemaps.get(locale)?.html ?? "");
+    const unavailablePath = localizedPath(locale, UNAVAILABLE_CATEGORY_PATH);
+    const unavailablePage = await get(unavailablePath);
+    expect(new Set(locations).size).toBe(locations.length);
+    expect(locations.filter((url) => hasFutureRankingPeriod(url))).toEqual([]);
+    expect(unavailablePage.status).toBe(404);
+    expect(locations).not.toContain(canonicalUrl(unavailablePath));
+  });
+});
+
+// --------------------------------------------------------------------------------------------
+// Preview and production indexing policies are intentionally different (SEO §5 / §11).
+// --------------------------------------------------------------------------------------------
+
+type RobotsResponse = { txt: string; status: number };
+let robotsResponse: RobotsResponse = { txt: "", status: 0 };
+
+beforeAll(async () => {
+  if (!LIVE_SEO_ENABLED) return;
+  const result = await get("/robots.txt");
+  robotsResponse = { txt: result.html, status: result.status };
+});
+
+describeLive("robots endpoint acceptance", () => {
+  test("responds 200 with a declared user agent", () => {
+    expect(robotsResponse.status).toBe(200);
+    expect(robotsResponse.txt).toMatch(/User-agent:/i);
+  });
+});
+
+describePreview("preview robots policy", () => {
+  test("rendered pages remain noindex, nofollow with production canonicals", () => {
+    for (const { path, canonPath } of PAGES) {
+      const directives = new Set((metaName(page(path).html, "robots") ?? "").toLowerCase().split(/\s*,\s*/));
+      expect(directives.has("noindex")).toBe(true);
+      expect(directives.has("nofollow")).toBe(true);
+      expect(canonical(page(path).html)).toBe(canonicalUrl(canonPath));
+    }
+  });
+
+  test("robots.txt disallows crawling and does not advertise a sitemap", () => {
+    expect(robotsResponse.txt).toMatch(/^\s*Disallow:\s*\/\s*$/im);
+    expect(robotsResponse.txt).not.toMatch(/^\s*Sitemap:/im);
+  });
+});
+
+describeProduction("production robots policy", () => {
+  test("rendered pages are indexable with self-referential production canonicals", () => {
+    for (const { path, canonPath } of PAGES) {
+      const directives = new Set((metaName(page(path).html, "robots") ?? "").toLowerCase().split(/\s*,\s*/));
+      expect(directives.has("index")).toBe(true);
+      expect(directives.has("follow")).toBe(true);
+      expect(directives.has("noindex")).toBe(false);
+      expect(directives.has("nofollow")).toBe(false);
+      expect(canonical(page(path).html)).toBe(canonicalUrl(canonPath));
+    }
+  });
+
+  test("robots.txt allows crawling and advertises the root sitemap", () => {
+    expect(robotsResponse.txt).toMatch(/^\s*Allow:\s*\/\s*$/im);
+    expect(robotsResponse.txt).not.toMatch(/^\s*Disallow:\s*\/\s*$/im);
+    expect(robotsResponse.txt).toMatch(new RegExp(`^\\s*Sitemap:\\s*${CANON_ORIGIN.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\/sitemap\\.xml\\s*$`, "im"));
   });
 });

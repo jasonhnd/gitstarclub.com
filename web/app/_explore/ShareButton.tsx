@@ -11,13 +11,15 @@ export type ShareButtonLabels = {
   opensNewTab: string;
 };
 
-export function ShareButton({ text, labels }: { text?: string; labels: ShareButtonLabels }) {
+export function ShareButton({ text, labels, url }: { text?: string; labels: ShareButtonLabels; url?: string }) {
   const [done, setDone] = useState(false);
+
+  const shareUrl = () => url ?? window.location.href;
 
   const copy = async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) return;
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      await navigator.clipboard.writeText(shareUrl());
       setDone(true);
       setTimeout(() => setDone(false), 1600);
     } catch {
@@ -26,8 +28,8 @@ export function ShareButton({ text, labels }: { text?: string; labels: ShareButt
   };
 
   const shareX = () => {
-    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text ?? "")}&url=${encodeURIComponent(window.location.href)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    const intentUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text ?? "")}&url=${encodeURIComponent(shareUrl())}`;
+    window.open(intentUrl, "_blank", "noopener,noreferrer");
   };
 
   return (

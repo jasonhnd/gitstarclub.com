@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { RankList } from "@/lib/contracts";
+import { resolveAvailableRankPeriodsForTest } from "./data/rank-periods";
 import {
   buildLocaleSitemapEntries,
   buildSitemapIndexEntries,
@@ -15,6 +17,8 @@ import {
   sitemapPriority,
   weeksInIsoYear,
 } from "./sitemap";
+
+const SITEMAP_RANK_GENERATED_AT = "2026-06-26T00:00:00.000Z";
 
 describe("resolveSitemapLastModified", () => {
   test("uses bootstrap backfilled_at when present", () => {
@@ -73,6 +77,10 @@ describe("buildSitemapPaths", () => {
           },
         ],
       },
+      categoryPages: {
+        "language/python": [1, 2, 3],
+        "language/rust": [1],
+      },
     });
 
     expect(paths).toContain("");
@@ -100,13 +108,121 @@ describe("buildSitemapPaths", () => {
     expect(paths).toContain("/o/org-0");
   });
 
+  test("does not infer category pagination paths from counts without shard availability", () => {
+    const paths = buildSitemapPaths({
+      now: new Date("2026-06-04T12:00:00.000Z"),
+      categories: {
+        dimensions: [
+          {
+            id: "language",
+            categories: [{ slug: "python", count: 250 }],
+          },
+        ],
+      },
+    });
+
+    expect(paths).toContain("/categories/language/python");
+    expect(paths).not.toContain("/categories/language/python/page/2");
+    expect(paths).not.toContain("/categories/language/python/page/3");
+  });
+
+  test("includes only category pagination paths with available rank shards", () => {
+    const paths = buildSitemapPaths({
+      now: new Date("2026-06-04T12:00:00.000Z"),
+      categories: {
+        dimensions: [
+          {
+            id: "language",
+            categories: [{ slug: "python", count: 250 }],
+          },
+        ],
+      },
+      categoryPages: {
+        "language/python": [1, 2],
+      },
+    });
+
+    expect(paths).toContain("/categories/language/python/page/2");
+    expect(paths).not.toContain("/categories/language/python/page/3");
+  });
+
   test("does not enumerate future ISO-week years during a January previous-year ISO week", () => {
     const paths = buildSitemapPaths({ now: new Date("2027-01-01T12:00:00.000Z") });
 
     expect(paths).toContain("/rankings/2026/W53");
     expect(paths).not.toContain("/rankings/2027/W01");
   });
+
+  test("uses folded-through metadata instead of the calendar for ranking periods", () => {
+    const paths = buildSitemapPaths({
+      now: new Date("2026-07-08T12:00:00.000Z"),
+      meta: { folded_through: { month: "2026-06", week: "2026-W26" } },
+    });
+
+    expect(paths).toContain("/rankings/2026");
+    expect(paths).toContain("/rankings/2025/12");
+    expect(paths).toContain("/rankings/2026/6");
+    expect(paths).not.toContain("/rankings/2026/7");
+    expect(paths).toContain("/rankings/2026/W26");
+    expect(paths).not.toContain("/rankings/2026/W28");
+  });
+
+  test("uses available rank resolver output for ranking period bounds", async () => {
+    const now = new Date("2026-07-08T12:00:00.000Z");
+    const meta = { folded_through: { month: "2026-05", week: "2026-W22" } };
+    const availableRankPeriods = await resolveAvailableRankPeriodsForTest({
+      now,
+      readMeta: async () => meta,
+      readRank: sitemapRankReader(["2026", "2026-06", "2026-W26"]),
+    });
+    const paths = buildSitemapPaths({ now, meta, availableRankPeriods });
+
+    expect(availableRankPeriods.month).toMatchObject({ kind: "month", href: "/rankings/2026/6" });
+    expect(availableRankPeriods.week).toMatchObject({ kind: "week", href: "/rankings/2026/W26" });
+    expect(paths).toContain("/rankings/2026");
+    expect(paths).toContain(availableRankPeriods.month.href);
+    expect(paths).toContain(availableRankPeriods.week.href);
+    expect(paths).not.toContain("/rankings/2026/7");
+    expect(paths).not.toContain("/rankings/2026/W28");
+  });
+
+  test("omits malformed or explicitly non-renderable repo detail paths", () => {
+    const paths = buildSitemapPaths({
+      repos: {
+        "1": { full_name: "vuejs/vue" },
+        "2": { full_name: "missing-slash" },
+        "3": { full_name: "owner/name?debug=1" },
+        "4": { full_name: "fighting41love/funNLP" },
+      },
+      renderableRepoIds: new Set(["1", "2", "3"]),
+      now: new Date("2026-06-04T12:00:00.000Z"),
+    });
+
+    expect(paths).toContain("/vuejs/vue");
+    expect(paths).not.toContain("/missing-slash");
+    expect(paths).not.toContain("/owner/name?debug=1");
+    expect(paths).not.toContain("/fighting41love/funNLP");
+  });
 });
+
+function sitemapRankReader(availablePeriods: string[]) {
+  const available = new Set(availablePeriods);
+  return async (window: "year" | "month" | "week", period: string): Promise<RankList | null> =>
+    available.has(period) ? sitemapRankFixture(window, period) : null;
+}
+
+function sitemapRankFixture(window: "year" | "month" | "week", period: string): RankList {
+  return {
+    meta: {
+      window,
+      period,
+      dim: "repo",
+      metric: "flow",
+      generated_at: SITEMAP_RANK_GENERATED_AT,
+    },
+    items: [{ rank: 1, id: 1, value: 100, prev_rank: null }],
+  };
+}
 
 describe("sitemap hints", () => {
   test("classifies crawl cadence and priority by path family", () => {

@@ -51,6 +51,7 @@ describe("semantic data tables", () => {
 
     expect(html).toContain("<table");
     expect(html).not.toContain("sr-only");
+    expect(html).toContain('data-testid="ranking-table"');
     expect(html).toContain('data-semantic-table="repository-rankings"');
     expect(html).toContain("<thead>");
     expect(html).toContain("<tbody>");
@@ -89,6 +90,7 @@ describe("semantic data tables", () => {
     );
 
     expect(html).toContain('data-semantic-table="organization-rankings"');
+    expect(html).toContain('data-testid="ranking-table"');
     expect(html).toContain('href="/o/vercel"');
     expect(html).toContain("vercel");
     expect(html).toContain("Tracked repositories");

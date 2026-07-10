@@ -1,21 +1,31 @@
-name: CI
+name: verify
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - pre
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
+  checks: read
   contents: read
 
 jobs:
-  verify:
+  static:
+    name: static
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -29,10 +39,151 @@ jobs:
       - run: bun run typecheck
       - run: bun run typecheck:tests
       - run: bun run typecheck:scripts
-      - run: bun run test
+      - name: Run tests
+        run: |
+          set -o pipefail
+          bun run test 2>&1 | tee test-output.txt
         env:
-          # source.ts captures BLOB_BASE at module load; the readView unit tests need a
-          # truthy base (fetch is mocked by path). Mirrors local .env.local.
+          # readView tests mock fetch but still require a syntactically valid read base.
           BLOB_BASE_URL: https://blob.example.com
-          # Keep PR CI deterministic; the live SEO suite is opt-out via an empty base.
+          # Keep the deterministic gate network-free; preview-e2e owns live checks.
           SEO_LIVE_BASE: ""
+      - name: Write static verification summary
+        if: ${{ always() }}
+        env:
+          TESTED_SHA: ${{ github.sha }}
+          SOURCE_EVENT: ${{ github.event_name }}
+          TARGET_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: |
+          passed=$(grep -oE '[0-9]+ pass' test-output.txt 2>/dev/null | tail -n 1 | cut -d ' ' -f 1 || true)
+          skipped=$(grep -oE '[0-9]+ skip' test-output.txt 2>/dev/null | tail -n 1 | cut -d ' ' -f 1 || true)
+          failed=$(grep -oE '[0-9]+ fail' test-output.txt 2>/dev/null | tail -n 1 | cut -d ' ' -f 1 || true)
+
+          {
+            echo "## Static verification"
+            echo
+            echo "- Tested commit: \`$TESTED_SHA\`"
+            echo "- Source event: \`$SOURCE_EVENT\`"
+            echo "- Target branch: \`$TARGET_BRANCH\`"
+            echo "- Bun version: \`$(bun --version)\`"
+            echo "- Node version: \`$(node --version)\`"
+            echo "- Tests: ${passed:-not run} passed, ${skipped:-not run} skipped, ${failed:-not run} failed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  production-build:
+    name: production-build
+    needs: static
+    runs-on: ubuntu-latest
+    env:
+      # The fixture server accepts only GET/HEAD and intentionally returns no live data.
+      BLOB_BASE_URL: http://127.0.0.1:4010
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Validate read-only build configuration
+        run: |
+          missing=()
+          for key in BLOB_BASE_URL; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("$key")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required read-only build variables: ${missing[*]}"
+            exit 1
+          fi
+          echo "Build data source: $BLOB_BASE_URL (local read-only fixture)"
+      - name: Build production application
+        run: |
+          bun scripts/ci-build-fixture-server.ts > "$RUNNER_TEMP/build-fixture.log" 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent "$BLOB_BASE_URL/_health" > /dev/null; then
+              bun run build
+              exit $?
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/build-fixture.log"
+          echo "::error::Read-only build fixture did not become ready"
+          exit 1
+      - name: Write production build summary
+        if: ${{ always() }}
+        env:
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "## Production build"
+            echo
+            echo "- Tested commit: \`$TESTED_SHA\`"
+            echo "- Data source: local read-only fixture"
+            echo "- Write-capable credentials: none"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  preview-e2e:
+    name: preview-e2e
+    needs: production-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Resolve exact Vercel deployment
+        id: deployment
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun scripts/resolve-vercel-preview.ts
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+      - name: Run accessibility and responsive release suites
+        env:
+          BASE_URL: ${{ steps.deployment.outputs.url }}
+        run: bunx playwright test e2e/accessibility-responsive.spec.ts e2e/horizontal-overflow.spec.ts
+      - name: Verify deployed SEO architecture
+        if: github.event_name == 'push'
+        env:
+          SEO_LIVE_BASE: ${{ steps.deployment.outputs.url }}
+          SEO_CANON_ORIGIN: https://gitstarclub.com
+          SEO_EXPECT_INDEXABLE: ${{ github.ref_name == 'main' && '1' || '0' }}
+        run: bun test lib/integration/seo.test.ts
+      - name: Write preview release summary
+        if: ${{ always() }}
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.url }}
+          TESTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          {
+            echo "## Preview browser release gate"
+            echo
+            echo "- Tested commit: \`$TESTED_SHA\`"
+            echo "- Deployment URL: ${DEPLOYMENT_URL:-not resolved}"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Playwright failure artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-release-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            web/playwright-report/
+            web/test-results/
+            web/release-metadata.json

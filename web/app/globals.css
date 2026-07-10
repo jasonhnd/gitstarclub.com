@@ -292,6 +292,20 @@ body {
 main:focus {
   outline: none;
 }
+
+main p a[href],
+main dd a[href],
+main figcaption a[href],
+main blockquote a[href],
+main ul.list-disc li > a[href],
+main ol.list-decimal li > a[href],
+footer span a[href] {
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.18em;
+  text-decoration-skip-ink: auto;
+}
+
 /* Readable amber text: light mode uses on-primary-container; dark mode keeps the locked brand gold. */
 .text-readable-gold {
   color: var(--md-sys-color-on-primary-container);
@@ -381,6 +395,19 @@ main:focus {
 /* sticky app bar clears the status bar / notch when standalone */
 .app-bar {
   padding-top: max(0.85rem, env(safe-area-inset-top));
+}
+
+.nav-scroll-affordance {
+  background:
+    linear-gradient(to left, color-mix(in oklab, var(--md-sys-color-surface) 92%, transparent) 30%, transparent) right center / 2.75rem 100% local,
+    linear-gradient(to left, color-mix(in oklab, var(--md-sys-color-primary-container) 42%, transparent), transparent) right center / 2.75rem 100% scroll;
+  background-repeat: no-repeat;
+}
+
+@media (min-width: 64rem) {
+  .nav-scroll-affordance {
+    background: none;
+  }
 }
 
 /* ===== M3E primitives that are awkward as pure utilities ===== */

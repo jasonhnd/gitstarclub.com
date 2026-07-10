@@ -198,7 +198,7 @@ export function repoLd(
     languages?: Array<{ name: string; size?: number | null; color?: string | null }>;
     description: string | null;
     homepage_url?: string | null;
-    created_at: string;
+    created_at?: string | null;
     current_stars: number;
   },
   path: string,
