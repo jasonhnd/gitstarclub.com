@@ -157,6 +157,7 @@ describe("GEO FAQ helpers", () => {
   test("renders schema that exactly mirrors visible FAQ text", () => {
     for (const scenario of scenarios) {
       const html = renderFaq(scenario.items, scenario.path);
+      expect(html).toContain('data-testid="faq"');
       expect(schemaPairsFromHtml(html), scenario.name).toEqual(visiblePairsFromHtml(html));
       expect(schemaPairsFromHtml(html), scenario.name).toEqual(visibleFaqPairs(scenario.items));
     }
@@ -195,15 +196,15 @@ describe("GEO FAQ helpers", () => {
       [
         "Frequently asked questions",
         "How many GitHub stars does react/react have?",
-        "As of June 24, 2026, react/react has 246.0k GitHub stars. GitStarClub reads that value from the precomputed repository entity JSON.",
+        "As of June 24, 2026, react/react has 246.0k GitHub stars. GitStarClub reads that value from GitStarClub's precomputed repository data.",
         "What language and owner does GitStarClub show for react/react?",
         "react/react is shown as a JavaScript repository owned by react. The page also links to the owner profile and matching category pages when those fields are present.",
         "When did react/react cross major star milestones?",
-        "react/react crossed 10k in May 2015, 50k in January 2017, and 100k in June 2018 according to frozen milestone fields in the repository JSON.",
+        "react/react crossed 10k in May 2015, 50k in January 2017, and 100k in June 2018 according to frozen milestone fields in GitStarClub's precomputed repository data.",
         "What is the latest monthly growth point for react/react?",
         "The latest precomputed monthly point for react/react says June 2026 recorded +1.2k stars and ended at 246.0k total stars. The chart and recent table are rendered from the same curve fields.",
         "Does this repository FAQ use live search or AI?",
-        "No. GitStarClub renders this repository FAQ from deterministic templates over Blob JSON already loaded by the server route, without runtime AI, search, or a database.",
+        "No. GitStarClub renders this repository FAQ from deterministic templates over GitStarClub's precomputed data, without runtime AI, search, or a database.",
       ].join("\n"),
     );
 
@@ -217,7 +218,7 @@ describe("GEO FAQ helpers", () => {
         "Which organization leads the all-time ranking?",
         "vercel leads the visible organization ranking with 400.0k total stars across 42 tracked repositories.",
         "What data powers the all-time ranking FAQ?",
-        "GitStarClub builds this FAQ from all-time rank JSON, repository lookup JSON, and organization lookup JSON already loaded by the server route.",
+        "GitStarClub builds this FAQ from GitStarClub's precomputed all-time ranking, repository, and organization data.",
       ].join("\n"),
     );
 
@@ -229,7 +230,7 @@ describe("GEO FAQ helpers", () => {
         "Which category dimensions are available?",
         "The visible category dimensions are Languages and Ecosystems.",
         "Where do category counts come from?",
-        "Category counts come from deterministic category registry JSON generated from repository metadata and category rules, not from live search.",
+        "Category counts come from GitStarClub's own category data: deterministic rules over repository metadata, not live search or AI.",
         "How can readers move from categories to repositories?",
         "Readers can open a dimension such as Languages, then follow a category link to a ranked repository list.",
       ].join("\n"),
@@ -245,7 +246,7 @@ describe("GEO FAQ helpers", () => {
         "How are Languages category links generated?",
         "GitStarClub renders Languages links from the category registry, using public flags, slugs, labels, and counts that were precomputed before the request.",
         "Does the Languages page run client-side filtering?",
-        "No. The Languages page is server-rendered from Blob JSON and does not add client-side filtering logic for the visible FAQ or category links.",
+        "No. The Languages page is server-rendered and does not add client-side filtering logic for the visible FAQ or category links.",
       ].join("\n"),
     );
   });

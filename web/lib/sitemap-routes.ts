@@ -1,5 +1,7 @@
 import { CategoriesLookup, Meta, OrgsLookup, ReposLookup } from "@/lib/contracts";
+import { resolveCategoryPageAvailabilityMap } from "@/lib/categories/availability";
 import { readView } from "@/lib/data";
+import { resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
 import type { Locale } from "@/lib/i18n";
 import {
   buildLocaleSitemapEntries,
@@ -35,6 +37,7 @@ export function localeSitemapRoute(locale: Locale): () => Promise<Response> {
 
 async function readSitemapData() {
   const base = { base: true, versionTtlMs: SITEMAP_REVALIDATE_SECONDS * 1000 };
+  const now = new Date();
   const [repos, orgs, categories, meta] = await Promise.all([
     readView("lookup/repos.json", ReposLookup, base),
     readView("lookup/orgs.json", OrgsLookup, base),
@@ -42,7 +45,21 @@ async function readSitemapData() {
     readView("meta.json", Meta, base),
   ]);
   const lastModified = resolveSitemapLastModified(meta);
-  const paths = buildSitemapPaths({ repos, orgs, categories, now: lastModified });
+  const [categoryPages, availableRankPeriods] = await Promise.all([
+    categories
+      ? resolveCategoryPageAvailabilityMap(
+          categories.dimensions.flatMap((dimension) =>
+            dimension.categories.map((category) => ({
+              dimension: dimension.id,
+              slug: category.slug,
+              count: category.count,
+            })),
+          ),
+        )
+      : Promise.resolve(null),
+    resolveAvailableRankPeriods(now),
+  ]);
+  const paths = buildSitemapPaths({ repos, orgs, categories, meta, now, categoryPages, availableRankPeriods });
 
   return { paths, categories, meta, lastModified };
 }

@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-10
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -23,13 +23,17 @@ Out of scope: development playbooks and local workflow live in [DEVELOPMENT.md](
 
 ## Current automation
 
-GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and `main` pushes it runs, from `web/`, `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test`. PR tests set `SEO_LIVE_BASE=""` so the network-dependent live SEO suite stays out of the deterministic CI gate.
+GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and pushes to `pre` or `main`, the `verify / static` job runs, from `web/`, `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test`. It sets `SEO_LIVE_BASE=""` so network-dependent suites stay out of the deterministic gate. `verify / production-build` then runs `next build` against a bounded local HTTP fixture that permits only `GET` and `HEAD`; it receives no Blob write, cron, Workflow, Vercel, or GitHub credential.
+
+After both jobs pass, `verify / preview-e2e` resolves the Vercel-owned preview check for the PR head or pushed SHA, waits for the preview alias to publish that exact SHA through `/.well-known/deployment`, and re-verifies the SHA on the immutable `*.vercel.app` deployment URL before running Chromium. It runs `e2e/accessibility-responsive.spec.ts` and `e2e/horizontal-overflow.spec.ts`; serious or critical axe findings, explicit contrast failures, response failures, or horizontal overflow fail the job. Failed runs retain traces and screenshots plus the HTML report and deployment metadata as a GitHub Actions artifact. On `pre` and `main` pushes the same job also runs `bun test lib/integration/seo.test.ts` against that immutable deployment; preview remains noindex while production must be indexable.
+
+The repository rule protecting `main` must require `verify / static`, `verify / production-build`, `verify / preview-e2e`, and Vercel's deployment check before a `pre` promotion can merge. Workflow files cannot create that GitHub-hosted rule; maintainers must update the required-check contexts in repository settings when this workflow lands and remove the superseded `verify` / `release-seo` contexts.
 
 Dependency audit is also a PR gate. CI runs `bun run audit:deps` in both `web/` and `pipeline/`, and that script is `bun audit --audit-level=high`; new high-severity advisories must be fixed by upgrading the direct dependency or documented as a temporary exception before merge. Moderate and low advisories are reviewed during dependency maintenance, but they do not fail CI unless the advisory affects a production server-side path or is escalated by maintainers.
 
 Temporary dependency-audit overrides live in the affected package manifest, next to the lockfile they protect. As of this policy, `web/package.json` pins `undici` above the high-advisory floor while `workflow` still ships a vulnerable transitive pin, and pins `piscina` to the first fixed 4.x release while `@swc/cli` has not released an updated dependency range. `find-up@7` is a compatibility pin, not a security exception: it keeps Vercel Bun resolving the ESM package required by `workflow` builders while eslint keeps its own compatible nested `find-up@5`.
 
-Those commands are the current PR/main CI blockers. `bun run typecheck` keeps the main Next.js app config focused on production code. `bun run typecheck:tests` uses `web/tsconfig.tests.json` for `*.test.ts(x)` and `web/lib/integration/**`, which stay excluded from the main app typecheck only to keep the production program narrow. `bun run typecheck:scripts` uses the root `tsconfig.scripts.json` with `checkJs` for root scripts, pipeline `.mjs` utilities, web `.mjs` configs/helpers, and `web/public/sw.js`. `bun run test` maps to `bun test lib/`; the CI job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. No committed Playwright, Lighthouse, axe, or cross-browser job is enforced today.
+Those commands are the current PR/`pre`/`main` static blockers; production build and Chromium browser acceptance are additional blockers. `bun run typecheck` keeps the main Next.js app config focused on production code. `bun run typecheck:tests` uses `web/tsconfig.tests.json` for `*.test.ts(x)` and `web/lib/integration/**`, which stay excluded from the main app typecheck only to keep the production program narrow. `bun run typecheck:scripts` uses the root `tsconfig.scripts.json` with `checkJs` for root scripts, pipeline `.mjs` utilities, web `.mjs` configs/helpers, and `web/public/sw.js`. `bun run test` maps to `bun test lib/`; the static job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. Lighthouse, visual-baseline, browser-flow, and multi-engine coverage remain unenforced.
 
 `web/tsconfig.json` still has `allowJs` because first-party `.mjs` modules such as `web/lib/fetch-timeout.mjs` are shared with Node pipeline scripts. `skipLibCheck` remains enabled in the TypeScript configs to keep CI focused on first-party code and avoid framework/dependency declaration churn from Next, React, Bun, and Node type packages. App and test code stay under `strict`; `tsconfig.scripts.json` also runs `checkJs`, but intentionally leaves `noImplicitAny` off for archived `.mjs` pipeline utilities whose DuckDB/API row shapes are dynamic until they are migrated or annotated more deeply.
 
@@ -37,7 +41,7 @@ The Vercel Workflow `validate` step is a separate production-data publish gate: 
 
 ## Target coverage
 
-The visual, a11y, E2E, performance, and cross-browser sections below remain target coverage until their Playwright/Lighthouse/browser tooling is added. They should not be treated as current PR blockers. The status table in **Planned gates** is the source of truth for whether each check is `enforced`, `manual`, `report-only`, `planned`, or `not implemented`.
+The responsive-overflow and serious/critical axe subset below is enforced in Chromium. Visual baselines, broader browser flows, performance, keyboard/manual accessibility checks, and cross-browser coverage remain targets until their tooling is added. The status table in **Planned gates** is the source of truth for whether each check is `enforced`, `manual`, `report-only`, `planned`, or `not implemented`.
 
 The issue #25 Lighthouse / Core Web Vitals baseline is archived in [perf/CWV-25.md](./perf/CWV-25.md). Treat that file as supporting evidence for one measured run; this document owns current performance targets and test expectations.
 
@@ -273,25 +277,29 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ## Planned gates
 
-> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/main CI 只强制 `bun run lint`、`bun run typecheck`、`bun run typecheck:tests`、`bun run typecheck:scripts`、`bun run test`。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Playwright / axe / Lighthouse / cross-browser gates 尚未提交自动化 tooling 时，都是 target coverage。
+> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/`pre`/`main` CI 分成 static、production-build、preview-e2e 三个 release checks；browser check 只覆盖已提交的 Chromium responsive/overflow/axe suites。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Lighthouse、视觉基线、完整 browser flows 与 multi-engine coverage 仍是 target coverage。
 
 状态含义：`enforced` = 当前自动化 gate 会阻断；`manual` = reviewer / operator 可手动检查但不自动阻断；`report-only` = 有报告或基线但不阻断；`planned` = 已定义目标，尚无提交的 gate；`not implemented` = 尚无当前 tooling。
 
 | 检查 | 状态 | 当前执行位置 | 说明 / 目标 gate |
 |---|---|---|---|
-| `lint` | `enforced` | GitHub Actions PR/main：`bun run lint` | 当前 PR blocker |
-| TypeScript app | `enforced` | GitHub Actions PR/main：`bun run typecheck` | Current PR blocker for production app code through `web/tsconfig.json` |
-| TypeScript tests / integration | `enforced` | GitHub Actions PR/main：`bun run typecheck:tests` | Current PR blocker for `*.test.ts(x)` and `web/lib/integration/**` through `web/tsconfig.tests.json` |
-| TypeScript scripts / JS | `enforced` | GitHub Actions PR/main：`bun run typecheck:scripts` | Current PR blocker for root scripts, pipeline `.mjs`, web `.mjs`, and `web/public/sw.js` through `tsconfig.scripts.json` with `checkJs` |
-| `web/lib` test suite | `enforced` | GitHub Actions PR/main：`bun run test` → `bun test lib/` | 当前 PR blocker；覆盖纯逻辑、contracts、workflow validation、i18n/route/SEO helpers 等 |
+| `lint` | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run lint` | 当前 PR blocker |
+| TypeScript app | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck` | Current PR blocker for production app code through `web/tsconfig.json` |
+| TypeScript tests / integration | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck:tests` | Current PR blocker for `*.test.ts(x)` and `web/lib/integration/**` through `web/tsconfig.tests.json` |
+| TypeScript scripts / JS | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck:scripts` | Current PR blocker for root scripts, pipeline `.mjs`, web `.mjs`, and `web/public/sw.js` through `tsconfig.scripts.json` with `checkJs` |
+| `web/lib` test suite | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run test` → `bun test lib/` | 当前 PR blocker；覆盖纯逻辑、contracts、workflow validation、i18n/route/SEO helpers 等 |
+| Production `next build` | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / production-build` | 使用本地 GET/HEAD-only bounded fixture；无 write-capable credentials |
+| Responsive / horizontal overflow | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / preview-e2e` | Chromium 对 exact-SHA immutable Vercel deployment 跑两个 committed suites |
+| Axe serious / critical | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / preview-e2e` | 关键 routes 明暗主题 serious/critical 必须为 0；失败上传 HTML、trace、screenshot 与 violation details |
+| Live SEO acceptance | `enforced` | GitHub Actions `pre`/`main` push：`verify / preview-e2e` → `bun test lib/integration/seo.test.ts` | 对 exact-SHA immutable deployment 验证 rendered metadata、hreflang、sitemap index/children，以及 preview/production robots 差异 |
 | 1.1 聚合 / 排名单测 | `enforced` | `bun test lib/` 中的 recompute / ranking / window / integration suites | 覆盖目标仍以 §1.1 为准 |
 | 1.2 Zod schema 契约 | `enforced` | `bun test lib/` contract tests；Workflow `validate` 抽样 staging 视图 | 全量产物校验仍是 target coverage |
 | 1.3 sanity 不变量 | `enforced` | Workflow `validate` step；相关 unit tests | 当前自动化范围是 §1.5 列出的抽样断言；§1.3 全量清单仍是 target coverage |
 | 1.4 golden file | `planned` | 无独立 gate | 已有 milestone 字段/展示逻辑测试；≥3 个知名 repo 的人工核对 golden baseline 尚未单独落地 |
 | 1.5 staging validate / pointer cut | `enforced` | Vercel Workflow `validate` step | `ok=false` 不切 `views/latest.json`；不是 PR 页面渲染 gate |
 | 1.5 full publish / rollback E2E | `planned` | 无独立 gate | 目标是发布、回滚、读侧原子性端到端验证 |
-| 2. 视觉回归 | `not implemented` | 无 Playwright screenshot job | 目标：关键页 × 4 断点 × 明暗双主题，基准入库 |
-| 3. a11y（axe + 键盘） | `not implemented` | 无 axe/browser a11y job | 目标：axe critical/serious 为 0 + 键盘/focus/reduced-motion/manual review |
+| 2. 视觉回归 | `not implemented` | 无 Playwright visual-baseline job | 失败截图已留档；目标仍是关键页 × 4 断点 × 明暗双主题，基准入库 |
+| 3. a11y（axe + 键盘） | `enforced` | `verify / preview-e2e` | 已强制 axe critical/serious 与 `/pulse` 对比度；键盘/focus/reduced-motion/manual review 仍是 target |
 | 4. E2E 导航 / i18n browser flows | `not implemented` | 无 Playwright browser E2E job | `web/lib` 有部分 fetch/unit 覆盖，但不是浏览器 E2E gate |
 | 5. Lighthouse / CWV | `report-only` | `docs/perf/CWV-25.md` historical baseline | 目标：代表性页面自动 Lighthouse/CWV 报告；字段 INP 需 RUM/CrUX |
 | 5. 零 JS / HTML / font budgets | `planned` | 无独立 budget gate | 目标：脚本化 structural checks，并在 gate 中阻断 |
@@ -300,9 +308,9 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 **节奏要点**：
 
-- **CI（每 PR / main push）**：当前只跑 `bun run lint`、`bun run typecheck`、`bun run typecheck:tests`、`bun run typecheck:scripts`、`bun run test`，这些检查必过。视觉 / a11y / E2E / Lighthouse / cross-browser 目前不在 PR CI 中运行，也不阻断 PR。
+- **CI（每 PR / `pre` push / `main` push）**：`verify / static` 跑 audit、lint、三套 typecheck 与 Bun tests；`verify / production-build` 对只读本地 fixture 跑 `next build`；`verify / preview-e2e` 对 exact-SHA immutable Vercel URL 跑 committed Chromium axe/responsive/overflow suites，并在 branch push 时加跑 live SEO。Lighthouse、视觉 baseline、完整 browser flows 与 multi-engine coverage 仍不阻断。
 - **Publish gate（Workflow `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 的当前抽样 Zod + sanity，任一当前断言失败即**不切 `views/latest.json` 指针**（线上仍上一版）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
-- **Planned browser/render gates**：视觉、a11y、E2E、Lighthouse、cross-browser 自动化需要先提交对应 Playwright/Lighthouse/axe/browser tooling。当前文档未记录专门 tooling issue link 或目标日期；开出后在本节补链接。
+- **Planned browser/render gates**：视觉 baseline、完整 E2E navigation、Lighthouse 与 cross-browser 自动化仍需要对应 tooling；a11y 的 axe serious/critical 和 responsive overflow subset 已提交并强制。
 - **每日 / 每周 cron**：不触发 deploy；cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后的活尾 schema/sanity 告警属于 ops 目标，不是当前 PR CI gate。
 - **本地 / manual**：改聚合逻辑先跑相关 `bun test lib/...`；改组件可按 Vercel 预览手动看相关页视觉、a11y、性能，但这些手动检查不是当前自动 PR blocker。
 
@@ -310,11 +318,14 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ### Required current checks
 
-- [ ] `web/` PR/main CI passes `bun run lint`
-- [ ] `web/` PR/main CI passes `bun run typecheck`
-- [ ] `web/` PR/main CI passes `bun run typecheck:tests`
-- [ ] `web/` PR/main CI passes `bun run typecheck:scripts`
-- [ ] `web/` PR/main CI passes `bun run test` (`bun test lib/`)
+- [ ] `web/` PR/`pre`/`main` CI passes `bun run lint`
+- [ ] `web/` PR/`pre`/`main` CI passes `bun run typecheck`
+- [ ] `web/` PR/`pre`/`main` CI passes `bun run typecheck:tests`
+- [ ] `web/` PR/`pre`/`main` CI passes `bun run typecheck:scripts`
+- [ ] `web/` PR/`pre`/`main` CI passes `bun run test` (`bun test lib/`)
+- [ ] `web/` PR/`pre`/`main` CI passes `next build` against the read-only fixture
+- [ ] exact-SHA immutable Vercel deployment passes both committed Playwright release suites
+- [ ] `pre`/`main` push release verification passes `bun test lib/integration/seo.test.ts` against that immutable deployment
 - [ ] 涉及生产数据发布时，Workflow `validate` 失败仍不切 `views/latest.json` 指针
 
 ### Target-state / planned checks

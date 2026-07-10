@@ -4,6 +4,7 @@ import { fmtK, fmtStars } from "@/lib/format";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 import { localizedPath } from "@/lib/i18n/routing";
 import type { Row } from "./RankingList";
+import { Star } from "./Star";
 
 type RankingVariant = "gained" | "rate" | "crossed" | "total";
 type CellPosition = "first" | "last";
@@ -20,6 +21,15 @@ const mutedCellClass =
 const rankCellClass =
   "text-readable-gold bg-surface-container px-2.5 py-2.5 text-right text-[1.15rem] font-extrabold tabular-nums transition-colors group-hover:bg-surface-container-high sm:px-3 sm:py-3 sm:text-[1.35rem]";
 const linkClass = "font-mono font-semibold text-on-surface hover:underline hover:underline-offset-2";
+const compactWrapClass = "mt-[clamp(1rem,2vw,1.5rem)]";
+const compactListClass = "space-y-2";
+const compactItemClass = "group animate-rise rounded-2xl bg-surface-container px-3 py-3 transition-colors hover:bg-surface-container-high";
+const compactRankClass = "text-readable-gold text-right text-[1.1rem] font-extrabold tabular-nums";
+const compactLinkClass = "block min-w-0 truncate font-mono text-[0.86rem] font-semibold text-on-surface hover:underline hover:underline-offset-2";
+const compactStarsClass = "shrink-0 whitespace-nowrap font-mono text-[0.86rem] font-extrabold tabular-nums";
+const compactMetaClass = "font-mono text-[0.72rem] tabular-nums text-on-surface-variant";
+const compactTagClass =
+  "inline-flex max-w-full items-center rounded-full bg-surface-container-high px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant";
 
 export type OrganizationSummaryRow = {
   rank?: number | null;
@@ -79,6 +89,7 @@ export function RepositoryRankingTable({
   caption,
   labels,
   locale = DEFAULT_LOCALE,
+  compact = false,
 }: {
   rows: Row[];
   variant?: RankingVariant;
@@ -86,54 +97,72 @@ export function RepositoryRankingTable({
   caption?: string;
   labels: RepositoryRankingTableLabels;
   locale?: Locale;
+  compact?: boolean;
 }) {
   if (rows.length === 0) return null;
   const text = labels;
+  const captionText = caption ?? text.caption;
 
   return (
-    <div className={tableWrapClass}>
-      <table className={tableClass} data-semantic-table="repository-rankings">
-        <caption className={captionClass}>{caption ?? text.caption}</caption>
-        <thead>
-          <tr>
-            <th scope="col" className={`${headClass} w-14 text-right`}>
-              {text.rank}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.repository}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.language}
-            </th>
-            {variant !== "total" && (
-              <th scope="col" className={`${headClass} text-right`}>
-                {metricHeader(variant, text)}
-              </th>
-            )}
-            <th scope="col" className={`${headClass} text-right`}>
-              {text.totalStars}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            const rank = startRank + index;
-            return (
-              <tr key={`${row.owner}/${row.name}`} className="group animate-rise" style={tableStaggerStyle(index)} aria-label={rowAriaLabel(row, rank, variant, text)}>
-                <td className={cellClass(rankCellClass, "first")}>{rank}</td>
-                <th scope="row" className={bodyCellClass}>
-                  <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={linkClass}>
-                    {row.owner}/{row.name}
-                  </Link>
+    <div data-testid="ranking-table">
+      <RepositoryRankingCompactList
+        rows={rows}
+        variant={variant}
+        startRank={startRank}
+        caption={captionText}
+        labels={text}
+        locale={locale}
+        className={compact ? undefined : "sm:hidden"}
+      />
+      {!compact && (
+        <div className={`${tableWrapClass} hidden sm:block`}>
+          <table className={tableClass} data-semantic-table="repository-rankings">
+            <caption className={captionClass}>{captionText}</caption>
+            <thead>
+              <tr>
+                <th scope="col" className={`${headClass} w-14 text-right`}>
+                  {text.rank}
                 </th>
-                <td className={mutedCellClass}>{row.lang ?? text.unknown}</td>
-                {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant, text)}</td>}
-                <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>{fmtStars(row.total)}★</td>
+                <th scope="col" className={headClass}>
+                  {text.repository}
+                </th>
+                <th scope="col" className={headClass}>
+                  {text.language}
+                </th>
+                {variant !== "total" && (
+                  <th scope="col" className={`${headClass} text-right`}>
+                    {metricHeader(variant, text)}
+                  </th>
+                )}
+                <th scope="col" className={`${headClass} text-right`}>
+                  {text.totalStars}
+                </th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => {
+                const rank = startRank + index;
+                return (
+                  <tr key={`${row.owner}/${row.name}`} className="group animate-rise" style={tableStaggerStyle(index)} aria-label={rowAriaLabel(row, rank, variant, text)}>
+                    <td className={cellClass(rankCellClass, "first")}>{rank}</td>
+                    <th scope="row" className={bodyCellClass}>
+                      <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={linkClass}>
+                        {row.owner}/{row.name}
+                      </Link>
+                    </th>
+                    <td className={mutedCellClass}>{row.lang ?? text.unknown}</td>
+                    {variant !== "total" && <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{metricValue(row, variant, text)}</td>}
+                    <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>
+                      {fmtStars(row.total)}
+                      <Star />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -144,57 +173,170 @@ export function OrganizationRankingTable({
   caption,
   labels,
   locale = DEFAULT_LOCALE,
+  compact = false,
 }: {
   rows: OrganizationSummaryRow[];
   startRank?: number;
   caption?: string;
   labels: OrganizationRankingTableLabels;
   locale?: Locale;
+  compact?: boolean;
 }) {
   if (rows.length === 0) return null;
   const text = labels;
+  const captionText = caption ?? text.caption;
 
   return (
-    <div className={tableWrapClass}>
-      <table className={tableClass} data-semantic-table="organization-rankings">
-        <caption className={captionClass}>{caption ?? text.caption}</caption>
-        <thead>
-          <tr>
-            <th scope="col" className={`${headClass} w-14 text-right`}>
-              {text.rank}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.owner}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.ownerType}
-            </th>
-            <th scope="col" className={`${headClass} text-right`}>
-              {text.trackedRepositories}
-            </th>
-            <th scope="col" className={`${headClass} text-right`}>
-              {text.totalStars}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={row.login} className="group animate-rise" style={tableStaggerStyle(index)}>
-              <td className={cellClass(rankCellClass, "first")}>{row.rank ?? startRank + index}</td>
-              <th scope="row" className={bodyCellClass}>
-                <Link href={localizedPath(locale, `/o/${row.login}`)} className={linkClass}>
-                  {row.login}
-                </Link>
-              </th>
-              <td className={mutedCellClass}>{row.owner_type ?? text.unknown}</td>
-              <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{row.repo_count}</td>
-              <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>
-                {fmtStars(row.current_stars_sum)}★
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div data-testid="ranking-table">
+      <OrganizationRankingCompactList rows={rows} startRank={startRank} caption={captionText} labels={text} locale={locale} className={compact ? undefined : "sm:hidden"} />
+      {!compact && (
+        <div className={`${tableWrapClass} hidden sm:block`}>
+          <table className={tableClass} data-semantic-table="organization-rankings">
+            <caption className={captionClass}>{captionText}</caption>
+            <thead>
+              <tr>
+                <th scope="col" className={`${headClass} w-14 text-right`}>
+                  {text.rank}
+                </th>
+                <th scope="col" className={headClass}>
+                  {text.owner}
+                </th>
+                <th scope="col" className={headClass}>
+                  {text.ownerType}
+                </th>
+                <th scope="col" className={`${headClass} text-right`}>
+                  {text.trackedRepositories}
+                </th>
+                <th scope="col" className={`${headClass} text-right`}>
+                  {text.totalStars}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={row.login} className="group animate-rise" style={tableStaggerStyle(index)}>
+                  <td className={cellClass(rankCellClass, "first")}>{row.rank ?? startRank + index}</td>
+                  <th scope="row" className={bodyCellClass}>
+                    <Link href={localizedPath(locale, `/o/${row.login}`)} className={linkClass}>
+                      {row.login}
+                    </Link>
+                  </th>
+                  <td className={mutedCellClass}>{row.owner_type ?? text.unknown}</td>
+                  <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>{row.repo_count}</td>
+                  <td className={cellClass(`${bodyCellClass} text-right font-mono font-extrabold tabular-nums`, "last")}>
+                    {fmtStars(row.current_stars_sum)}
+                    <Star />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RepositoryRankingCompactList({
+  rows,
+  variant,
+  startRank,
+  caption,
+  labels,
+  locale,
+  className = "",
+}: {
+  rows: Row[];
+  variant: RankingVariant;
+  startRank: number;
+  caption: string;
+  labels: RepositoryRankingTableLabels;
+  locale: Locale;
+  className?: string;
+}) {
+  return (
+    <div className={`${compactWrapClass} ${className}`}>
+      <p className={captionClass}>{caption}</p>
+      <ol className={compactListClass}>
+        {rows.map((row, index) => {
+          const rank = startRank + index;
+          return (
+            <li key={`${row.owner}/${row.name}`} className={compactItemClass} style={tableStaggerStyle(index)} aria-label={rowAriaLabel(row, rank, variant, labels)}>
+              <div className="grid min-w-0 grid-cols-[2.25rem_minmax(0,1fr)] gap-x-2 gap-y-1">
+                <span className={compactRankClass}>{rank}</span>
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2">
+                  <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className={compactLinkClass}>
+                    {row.owner}/{row.name}
+                  </Link>
+                  <span className={compactStarsClass}>
+                    {fmtStars(row.total)}
+                    <Star />
+                  </span>
+                </div>
+                <span aria-hidden="true" />
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  {variant !== "total" && <span className={`${compactMetaClass} shrink-0`}>{metricValue(row, variant, labels)}</span>}
+                  <span className={compactTagClass}>
+                    <span className="truncate">{row.lang ?? labels.unknown}</span>
+                  </span>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function OrganizationRankingCompactList({
+  rows,
+  startRank,
+  caption,
+  labels,
+  locale,
+  className = "",
+}: {
+  rows: OrganizationSummaryRow[];
+  startRank: number;
+  caption: string;
+  labels: OrganizationRankingTableLabels;
+  locale: Locale;
+  className?: string;
+}) {
+  return (
+    <div className={`${compactWrapClass} ${className}`}>
+      <p className={captionClass}>{caption}</p>
+      <ol className={compactListClass}>
+        {rows.map((row, index) => {
+          const rank = row.rank ?? startRank + index;
+          return (
+            <li key={row.login} className={compactItemClass} style={tableStaggerStyle(index)}>
+              <div className="grid min-w-0 grid-cols-[2.25rem_minmax(0,1fr)] gap-x-2 gap-y-1">
+                <span className={compactRankClass}>{rank}</span>
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2">
+                  <Link href={localizedPath(locale, `/o/${row.login}`)} className={compactLinkClass}>
+                    {row.login}
+                  </Link>
+                  <span className={compactStarsClass}>
+                    {fmtStars(row.current_stars_sum)}
+                    <Star />
+                  </span>
+                </div>
+                <span aria-hidden="true" />
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className={compactTagClass}>
+                    <span className="truncate">{row.owner_type ?? labels.unknown}</span>
+                  </span>
+                  <span className={compactMetaClass}>
+                    {row.repo_count} {labels.trackedRepositories}
+                  </span>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
@@ -203,62 +345,120 @@ export function CategorySummaryTable({
   rows,
   caption,
   labels,
+  compact = false,
 }: {
   rows: CategorySummaryRow[];
   caption?: string;
   labels: CategorySummaryTableLabels;
+  compact?: boolean;
 }) {
   if (rows.length === 0) return null;
   const text = labels;
+  const captionText = caption ?? text.caption;
 
   return (
-    <div className={tableWrapClass}>
-      <table className={tableClass} data-semantic-table="repository-categories">
-        <caption className={captionClass}>{caption ?? text.caption}</caption>
-        <thead>
-          <tr>
-            <th scope="col" className={headClass}>
-              {text.category}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.dimension}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.slug}
-            </th>
-            <th scope="col" className={`${headClass} text-right`}>
-              {text.trackedRepositories}
-            </th>
-            <th scope="col" className={headClass}>
-              {text.gitstarclubUrl}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            const path = categoryRowPath(row);
-            return (
-              <tr key={row.id} className="group animate-rise" style={tableStaggerStyle(index)}>
-                <th scope="row" className={cellClass(bodyCellClass, "first")}>
-                  <Link href={path} className={linkClass}>
+    <>
+      <CategorySummaryCompactList rows={rows} caption={captionText} labels={text} className={compact ? undefined : "sm:hidden"} />
+      {!compact && (
+        <div className={`${tableWrapClass} hidden sm:block`}>
+          <table className={tableClass} data-semantic-table="repository-categories">
+            <caption className={captionClass}>{captionText}</caption>
+            <thead>
+              <tr>
+                <th scope="col" className={headClass}>
+                  {text.category}
+                </th>
+                <th scope="col" className={headClass}>
+                  {text.dimension}
+                </th>
+                <th scope="col" className={headClass}>
+                  {text.slug}
+                </th>
+                <th scope="col" className={`${headClass} text-right`}>
+                  {text.trackedRepositories}
+                </th>
+                <th scope="col" className={headClass}>
+                  {text.gitstarclubUrl}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => {
+                const path = categoryRowPath(row);
+                return (
+                  <tr key={row.id} className="group animate-rise" style={tableStaggerStyle(index)}>
+                    <th scope="row" className={cellClass(bodyCellClass, "first")}>
+                      <Link href={path} className={linkClass}>
+                        {row.label}
+                      </Link>
+                    </th>
+                    <td className={mutedCellClass}>{row.dimension}</td>
+                    <td className={mutedCellClass}>{row.slug}</td>
+                    <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>
+                      {categoryCountLabel(row, text)}
+                    </td>
+                    <td className={cellClass(mutedCellClass, "last")}>
+                      <Link href={path} className="hover:text-on-surface hover:underline hover:underline-offset-2">
+                        {path}
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+function CategorySummaryCompactList({
+  rows,
+  caption,
+  labels,
+  className = "",
+}: {
+  rows: CategorySummaryRow[];
+  caption: string;
+  labels: CategorySummaryTableLabels;
+  className?: string;
+}) {
+  return (
+    <div className={`${compactWrapClass} ${className}`}>
+      <p className={captionClass}>{caption}</p>
+      <ol className={compactListClass}>
+        {rows.map((row, index) => {
+          const path = categoryRowPath(row);
+          return (
+            <li key={row.id} className={compactItemClass} style={tableStaggerStyle(index)}>
+              <div className="grid min-w-0 gap-2">
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+                  <Link href={path} className="block min-w-0 break-words font-mono text-[0.86rem] font-semibold text-on-surface hover:underline hover:underline-offset-2">
                     {row.label}
                   </Link>
-                </th>
-                <td className={mutedCellClass}>{row.dimension}</td>
-                <td className={mutedCellClass}>{row.slug}</td>
-                <td className={`${bodyCellClass} text-right font-mono tabular-nums`}>
-                  {row.count > 0 ? row.count : text.pendingCount}
-                </td>
-                <td className={cellClass(mutedCellClass, "last")}>
-                  <Link href={path} className="hover:text-on-surface hover:underline hover:underline-offset-2">
-                    {path}
-                  </Link>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  <span className="max-w-[10rem] text-right font-mono text-[0.78rem] font-extrabold leading-tight tabular-nums text-on-surface">{categoryCountSummary(row, labels)}</span>
+                </div>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className={`${compactTagClass} whitespace-normal`}>
+                    <span className="break-all">
+                      {labels.dimension}: {row.dimension}
+                    </span>
+                  </span>
+                  <span className={`${compactTagClass} whitespace-normal`}>
+                    <span className="break-all">
+                      {labels.slug}: {row.slug}
+                    </span>
+                  </span>
+                </div>
+                <Link href={path} className="break-all font-mono text-[0.72rem] text-on-surface-variant hover:text-on-surface hover:underline hover:underline-offset-2">
+                  {path}
+                </Link>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
@@ -297,6 +497,14 @@ function tableStaggerStyle(i: number): CSSProperties | undefined {
 
 function cellClass(base: string, position: CellPosition): string {
   return position === "first" ? `${base} rounded-l-2xl` : `${base} rounded-r-2xl`;
+}
+
+function categoryCountLabel(row: CategorySummaryRow, labels: CategorySummaryTableLabels): number | string {
+  return row.count > 0 ? row.count : labels.pendingCount;
+}
+
+function categoryCountSummary(row: CategorySummaryRow, labels: CategorySummaryTableLabels): string {
+  return row.count > 0 ? `${row.count} ${labels.trackedRepositories}` : labels.pendingCount;
 }
 
 function categoryRowPath(row: CategorySummaryRow): string {

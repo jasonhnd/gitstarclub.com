@@ -11,11 +11,14 @@ describe("answer capsule base", () => {
         dataAsOf: "July 6, 2026",
         source: "GitStarClub weekly rankings",
         href: "/rankings/2026/W27",
-        supportingFacts: ["+1.2k stars this week", "Computed from prebuilt ranking JSON"],
+        supportingFacts: ["+1.2k stars this week", "Computed from GitStarClub ranking data"],
       }),
     );
 
     expect(html).toContain('data-answer-capsule=""');
+    expect(html).toContain('data-testid="answer-capsule"');
+    expect(html).toContain('data-testid="answer-capsule-data-as-of"');
+    expect(html).toContain('data-testid="answer-capsule-source"');
     expect(html).toContain("React leads the tracked weekly movers.");
     expect(html).toContain("Data as of");
     expect(html).toContain("July 6, 2026");

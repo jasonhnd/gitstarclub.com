@@ -189,7 +189,7 @@ describe("datasetLd", () => {
       name: "GitStarClub June 2026 Rankings Dataset",
       path: "/rankings/2026/6",
       locale: "en",
-      description: "Monthly GitHub repository rankings generated from precomputed Blob rank and heatmap JSON.",
+      description: "Monthly GitHub repository rankings generated from GitStarClub's precomputed ranking data.",
       dateModified,
       variableMeasured: ["rank item value (flow stars added)", "current_stars"],
     });
@@ -266,7 +266,7 @@ describe("datasetLd", () => {
       name: "GitStarClub Categories Dataset",
       path: "/categories",
       locale: "en",
-      description: "Category registry and repository assignment data generated from precomputed Blob JSON.",
+      description: "GitStarClub category and repository assignment data generated from deterministic repository metadata rules.",
       dateModified: resolveDataAsOfValue("fallback"),
     });
     const collection = collectionLd("GitHub repository categories", "/categories", "en", {

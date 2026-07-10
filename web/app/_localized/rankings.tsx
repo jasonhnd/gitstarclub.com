@@ -6,11 +6,13 @@ import { ArchiveGrid, type ArchiveGridItem } from "@/app/_explore/ArchiveGrid";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PageHero } from "@/app/_explore/PageHero";
-import { PeriodSwitcher } from "@/app/_explore/PeriodSwitcher";
+import { PeriodSwitcher, type PeriodSwitcherTarget } from "@/app/_explore/PeriodSwitcher";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
+import { Star } from "@/app/_explore/Star";
 import { OrganizationRankingTable, type OrganizationSummaryRow } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getAllTime, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
+import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
 import { formatInteger, fmtStars } from "@/lib/format";
 import { getDictionary, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
@@ -37,25 +39,26 @@ export async function generateRankingsMetadata(locale: Locale): Promise<Metadata
   });
 }
 
-export async function RankingsPageView({ locale }: { locale: Locale }) {
+export async function RankingsPageView({ locale, now = new Date() }: { locale: Locale; now?: Date }) {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
   const routePath = localizedPath(locale, RANKINGS_PATH);
   const href = (path: string) => localizedPath(locale, path);
-  const periods = currentUtcPeriods();
-  const [repoRank, orgRank, repoLk, orgLk, snap] = await Promise.all([
+  const periods = currentUtcPeriods(now);
+  const [repoRank, orgRank, repoLk, orgLk, snap, availablePeriods] = await Promise.all([
     getAllTime("repo"),
     getAllTime("org"),
     getReposLookup(),
     getOrgsLookup(),
     getHotSnapshot(),
+    resolveAvailableRankPeriods(now),
   ]);
   const repoRows: Row[] =
     repoRank && repoLk
       ? joinRepoRank(repoRank.items, repoLk).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }))
       : [];
   const orgs = orgRank && orgLk ? joinOrgRank(orgRank.items, orgLk) : [];
-  const archiveItems = buildArchiveItems(snap?.home.year_spine ?? []);
+  const archiveItems = buildArchiveItems(snap?.home.year_spine ?? [], availablePeriods);
   const asOf = resolveDataAsOfLabel(repoRank?.meta.generated_at, orgRank?.meta.generated_at, snap?.generated_at, { locale });
   const dateModified = resolveDataAsOfValue(repoRank?.meta.generated_at, orgRank?.meta.generated_at, snap?.generated_at);
   const temporalCoverage = datasetTemporalCoverageFromYearSpine(snap?.home.year_spine);
@@ -97,13 +100,7 @@ export async function RankingsPageView({ locale }: { locale: Locale }) {
         <PageHero eyebrow={t.nav.rankings} title={t.rankings.title} lede={t.rankings.subtitle} />
 
         <div className="mt-[clamp(1.5rem,3vw,2.25rem)]">
-          <PeriodSwitcher
-            allTimeHref={href(RANKINGS_PATH)}
-            currentYear={periods.year}
-            currentMonth={periods.month}
-            currentWeek={periods.week.week}
-            activePeriod="all-time"
-          />
+          <PeriodSwitcher links={periodSwitcherLinks(availablePeriods, periods, href)} activePeriod="all-time" />
         </div>
 
         <section className="mt-[clamp(1.75rem,4vw,3rem)]">
@@ -123,7 +120,7 @@ export async function RankingsPageView({ locale }: { locale: Locale }) {
               <>
                 <MobileRepositoryRankingCards rows={repoRows} labels={repoLabels} locale={locale} />
                 <div className="hidden md:block">
-                  <RankingList rows={repoRows} variant="total" locale={locale} tableCaption={repoLabels.caption} labels={repoLabels} />
+                  <RankingList rows={repoRows} variant="total" locale={locale} tableCaption={repoLabels.caption} labels={repoLabels} compact />
                 </div>
               </>
             ) : (
@@ -137,7 +134,7 @@ export async function RankingsPageView({ locale }: { locale: Locale }) {
               <>
                 <MobileOrganizationRankingCards rows={orgs} labels={orgLabels} locale={locale} />
                 <div className="hidden md:block">
-                  <OrganizationRankingTable rows={orgs} caption={orgLabels.caption} labels={orgLabels} locale={locale} />
+                  <OrganizationRankingTable rows={orgs} caption={orgLabels.caption} labels={orgLabels} locale={locale} compact />
                 </div>
               </>
             ) : (
@@ -173,7 +170,10 @@ function MobileRepositoryRankingCards({
               <span className="text-readable-gold shrink-0 font-mono text-[1.2rem] font-extrabold tabular-nums">#{index + 1}</span>
               <span className="min-w-0 text-right">
                 <span className="block font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{labels.totalStars}</span>
-                <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">{fmtStars(row.total)}★</span>
+                <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">
+                  {fmtStars(row.total)}
+                  <Star />
+                </span>
               </span>
             </span>
             <span className="mt-2 block break-all font-mono text-[0.95rem] font-semibold text-on-surface">
@@ -208,7 +208,10 @@ function MobileOrganizationRankingCards({
               <span className="text-readable-gold shrink-0 font-mono text-[1.2rem] font-extrabold tabular-nums">#{row.rank ?? index + 1}</span>
               <span className="min-w-0 text-right">
                 <span className="block font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{labels.totalStars}</span>
-                <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">{fmtStars(row.current_stars_sum)}★</span>
+                <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">
+                  {fmtStars(row.current_stars_sum)}
+                  <Star />
+                </span>
               </span>
             </span>
             <span className="mt-2 block break-all font-mono text-[0.95rem] font-semibold text-on-surface">{row.login}</span>
@@ -239,7 +242,7 @@ function EmptyState({ message, className = "" }: { message: string; className?: 
 
 export function buildArchiveItems(
   yearSpine: readonly (readonly [string, number])[],
-  periods: ReturnType<typeof currentUtcPeriods> = currentUtcPeriods(),
+  availablePeriods: AvailableRankPeriods,
 ): ArchiveGridItem[] {
   const years = new Map<number, number>();
 
@@ -251,8 +254,8 @@ export function buildArchiveItems(
   return [...years.entries()]
     .sort(([a], [b]) => b - a)
     .map(([year, total]) => {
-      const latestMonth = latestMonthForYear(year, periods);
-      const latestWeek = latestWeekForYear(year, periods);
+      const latestMonth = latestMonthForYear(year, availablePeriods);
+      const latestWeek = latestWeekForYear(year, availablePeriods);
       const childrenLinks: ArchiveGridItem["childrenLinks"] = [
         { label: "Year", href: `/rankings/${year}` },
         ...(latestMonth ? [{ label: "Months", href: `/rankings/${year}/${latestMonth}`, count: latestMonth }] : []),
@@ -269,15 +272,52 @@ export function buildArchiveItems(
     });
 }
 
-function latestMonthForYear(year: number, periods: ReturnType<typeof currentUtcPeriods>): number | null {
-  if (year < periods.year) return 12;
-  if (year === periods.year) return periods.month;
+function periodSwitcherLinks(
+  periods: AvailableRankPeriods,
+  calendar: ReturnType<typeof currentUtcPeriods>,
+  href: (path: string) => string,
+): Record<"all-time" | "year" | "month" | "week", PeriodSwitcherTarget> {
+  return {
+    "all-time": { href: href(periods.allTime.href), label: "All-time", value: periods.allTime.label },
+    year: { href: href(periods.yearLink.href), label: "Year", value: periods.yearLink.label },
+    month: {
+      href: href(periods.month.href),
+      label: "Month",
+      value: periods.month.label,
+      badge: monthAvailabilityBadge(periods.month, calendar),
+    },
+    week: {
+      href: href(periods.week.href),
+      label: "Week",
+      value: periods.week.label,
+      badge: weekAvailabilityBadge(periods.week, calendar),
+    },
+  };
+}
+
+function monthAvailabilityBadge(period: AvailableRankPeriods["month"], calendar: ReturnType<typeof currentUtcPeriods>): string | undefined {
+  if (period.kind !== "month") return `Latest available: ${period.label}`;
+  return period.year === calendar.year && period.month === calendar.month ? undefined : `Latest available: ${period.label}`;
+}
+
+function weekAvailabilityBadge(period: AvailableRankPeriods["week"], calendar: ReturnType<typeof currentUtcPeriods>): string | undefined {
+  if (period.kind !== "week") return `Latest available: ${period.label}`;
+  return period.year === calendar.week.year && period.week === calendar.week.week ? undefined : `Latest available: ${period.label}`;
+}
+
+function latestMonthForYear(year: number, periods: AvailableRankPeriods): number | null {
+  if (periods.month.kind === "month") {
+    if (year < periods.month.year) return 12;
+    if (year === periods.month.year) return periods.month.month;
+  }
   return null;
 }
 
-function latestWeekForYear(year: number, periods: ReturnType<typeof currentUtcPeriods>): number | null {
-  if (year < periods.week.year) return weeksInIsoYear(year);
-  if (year === periods.week.year) return periods.week.week;
+function latestWeekForYear(year: number, periods: AvailableRankPeriods): number | null {
+  if (periods.week.kind === "week") {
+    if (year < periods.week.year) return weeksInIsoYear(year);
+    if (year === periods.week.year) return periods.week.week;
+  }
   return null;
 }
 

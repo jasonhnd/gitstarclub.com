@@ -1,14 +1,11 @@
-import { createHash } from "node:crypto";
-import { THEME_INIT_SCRIPT } from "./theme-script";
-
-export const THEME_INIT_SCRIPT_CSP_HASH = `'sha256-${createHash("sha256").update(THEME_INIT_SCRIPT).digest("base64")}'`;
-
 export function contentSecurityPolicyForEnvironment(nodeEnv = process.env.NODE_ENV): string {
   const isProduction = nodeEnv === "production";
-  const scriptSrc = isProduction
-    ? `'self' ${THEME_INIT_SCRIPT_CSP_HASH}`
-    : ["'self'", "'unsafe-inline'", ...(nodeEnv === "development" ? ["'unsafe-eval'"] : [])].join(" ");
+  const scriptSrc = ["'self'", "'unsafe-inline'", ...(nodeEnv === "development" ? ["'unsafe-eval'"] : [])].join(" ");
 
+  return contentSecurityPolicy(scriptSrc, isProduction);
+}
+
+function contentSecurityPolicy(scriptSrc: string, isProduction: boolean): string {
   return [
     "default-src 'self'",
     "base-uri 'self'",
