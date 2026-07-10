@@ -134,6 +134,8 @@ jobs:
     needs: production-build
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      IDENTITY_ORIGIN: ${{ github.event_name == 'push' && (github.ref_name == 'main' && 'https://gitstarclub.com' || 'https://pre.gitstarclub.com') || '' }}
     defaults:
       run:
         working-directory: web

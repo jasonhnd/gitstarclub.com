@@ -16,21 +16,32 @@ interface DeploymentIdentity {
 if (import.meta.main) await main();
 
 async function main(): Promise<void> {
-  const repository = required("GITHUB_REPOSITORY");
   const expectedSha = required("EXPECTED_SHA");
-  const githubToken = required("GITHUB_TOKEN");
   const outputPath = required("GITHUB_OUTPUT");
+  const discovery = selectDiscoveryMode(process.env.IDENTITY_ORIGIN);
+  const checkRunDiscovery =
+    discovery.kind === "check-run"
+      ? { repository: required("GITHUB_REPOSITORY"), githubToken: required("GITHUB_TOKEN") }
+      : null;
   const attempts = 60;
   const delayMs = 10_000;
 
   let previewHost: string | null = null;
+  let identityOrigin = discovery.kind === "identity-origin" ? discovery.origin : null;
   let lastObservedSha: string | null = null;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    previewHost ??= await findVercelPreviewHost(repository, expectedSha, githubToken);
+    if (!identityOrigin && checkRunDiscovery) {
+      previewHost ??= await findVercelPreviewHost(
+        checkRunDiscovery.repository,
+        expectedSha,
+        checkRunDiscovery.githubToken,
+      );
+      identityOrigin = previewHost ? `https://${previewHost}` : null;
+    }
 
-    if (previewHost) {
-      const aliasIdentity = await readIdentity(`https://${previewHost}`);
+    if (identityOrigin) {
+      const aliasIdentity = await readIdentity(identityOrigin);
       lastObservedSha = aliasIdentity?.commitSha ?? lastObservedSha;
 
       if (aliasIdentity?.commitSha === expectedSha && aliasIdentity.deploymentUrl) {
@@ -41,7 +52,7 @@ async function main(): Promise<void> {
           const metadata = {
             commitSha: expectedSha,
             deploymentUrl,
-            resolvedFrom: `https://${previewHost}`,
+            resolvedFrom: identityOrigin,
           };
           await Bun.write("release-metadata.json", `${JSON.stringify(metadata, null, 2)}\n`);
           appendFileSync(outputPath, `url=${deploymentUrl}\nsha=${expectedSha}\n`);
@@ -60,6 +71,11 @@ async function main(): Promise<void> {
     `Timed out waiting for a Vercel preview that identifies itself as ${expectedSha}. ` +
       `Last observed SHA: ${lastObservedSha ?? "none"}.`,
   );
+}
+
+export function selectDiscoveryMode(identityOrigin: string | undefined) {
+  const origin = identityOrigin?.trim();
+  return origin ? ({ kind: "identity-origin", origin } as const) : ({ kind: "check-run" } as const);
 }
 
 async function findVercelPreviewHost(repository: string, expectedSha: string, githubToken: string): Promise<string | null> {
