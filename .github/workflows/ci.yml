@@ -2,8 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - pre
   pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -29,10 +35,34 @@ jobs:
       - run: bun run typecheck
       - run: bun run typecheck:tests
       - run: bun run typecheck:scripts
-      - run: bun run test
+      - name: Run tests
+        run: |
+          set -o pipefail
+          bun run test 2>&1 | tee test-output.txt
         env:
           # source.ts captures BLOB_BASE at module load; the readView unit tests need a
           # truthy base (fetch is mocked by path). Mirrors local .env.local.
           BLOB_BASE_URL: https://blob.example.com
           # Keep PR CI deterministic; the live SEO suite is opt-out via an empty base.
           SEO_LIVE_BASE: ""
+      - name: Write CI summary
+        if: ${{ always() }}
+        env:
+          TESTED_SHA: ${{ github.sha }}
+          SOURCE_EVENT: ${{ github.event_name }}
+          TARGET_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: |
+          passed=$(grep -oE '[0-9]+ pass' test-output.txt 2>/dev/null | tail -n 1 | cut -d ' ' -f 1 || true)
+          skipped=$(grep -oE '[0-9]+ skip' test-output.txt 2>/dev/null | tail -n 1 | cut -d ' ' -f 1 || true)
+          failed=$(grep -oE '[0-9]+ fail' test-output.txt 2>/dev/null | tail -n 1 | cut -d ' ' -f 1 || true)
+
+          {
+            echo "## CI verification"
+            echo
+            echo "- Tested commit: \`$TESTED_SHA\`"
+            echo "- Source event: \`$SOURCE_EVENT\`"
+            echo "- Target branch: \`$TARGET_BRANCH\`"
+            echo "- Bun version: \`$(bun --version)\`"
+            echo "- Node version: \`$(node --version)\`"
+            echo "- Tests: ${passed:-not run} passed, ${skipped:-not run} skipped, ${failed:-not run} failed"
+          } >> "$GITHUB_STEP_SUMMARY"
