@@ -14,7 +14,7 @@ verifier:
   model: "claude-opus-4-8[1m]"
   reasoning_effort: max
 ci:
-  checks: [verify]       # required GitHub check that must be green
+  checks: [static, production-build, preview-e2e]  # release checks (renamed from verify in #266)
 verification:
   browser:
     enabled: auto        # browser-verify UI changes automatically
