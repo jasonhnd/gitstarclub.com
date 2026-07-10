@@ -13,52 +13,56 @@ interface DeploymentIdentity {
   deploymentUrl: string | null;
 }
 
-const repository = required("GITHUB_REPOSITORY");
-const expectedSha = required("EXPECTED_SHA");
-const githubToken = required("GITHUB_TOKEN");
-const outputPath = required("GITHUB_OUTPUT");
-const attempts = 60;
-const delayMs = 10_000;
+if (import.meta.main) await main();
 
-let previewHost: string | null = null;
-let lastObservedSha: string | null = null;
+async function main(): Promise<void> {
+  const repository = required("GITHUB_REPOSITORY");
+  const expectedSha = required("EXPECTED_SHA");
+  const githubToken = required("GITHUB_TOKEN");
+  const outputPath = required("GITHUB_OUTPUT");
+  const attempts = 60;
+  const delayMs = 10_000;
 
-for (let attempt = 1; attempt <= attempts; attempt++) {
-  previewHost ??= await findVercelPreviewHost();
+  let previewHost: string | null = null;
+  let lastObservedSha: string | null = null;
 
-  if (previewHost) {
-    const aliasIdentity = await readIdentity(`https://${previewHost}`);
-    lastObservedSha = aliasIdentity?.commitSha ?? lastObservedSha;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    previewHost ??= await findVercelPreviewHost(repository, expectedSha, githubToken);
 
-    if (aliasIdentity?.commitSha === expectedSha && aliasIdentity.deploymentUrl) {
-      const deploymentUrl = validateDeploymentUrl(aliasIdentity.deploymentUrl);
-      const immutableIdentity = await readIdentity(deploymentUrl);
+    if (previewHost) {
+      const aliasIdentity = await readIdentity(`https://${previewHost}`);
+      lastObservedSha = aliasIdentity?.commitSha ?? lastObservedSha;
 
-      if (immutableIdentity?.commitSha === expectedSha) {
-        const metadata = {
-          commitSha: expectedSha,
-          deploymentUrl,
-          resolvedFrom: `https://${previewHost}`,
-        };
-        await Bun.write("release-metadata.json", `${JSON.stringify(metadata, null, 2)}\n`);
-        appendFileSync(outputPath, `url=${deploymentUrl}\nsha=${expectedSha}\n`);
-        console.log(`Resolved Vercel deployment ${deploymentUrl} for ${expectedSha}.`);
-        process.exit(0);
+      if (aliasIdentity?.commitSha === expectedSha && aliasIdentity.deploymentUrl) {
+        const deploymentUrl = validateDeploymentUrl(aliasIdentity.deploymentUrl);
+        const immutableIdentity = await readIdentity(deploymentUrl);
+
+        if (immutableIdentity?.commitSha === expectedSha) {
+          const metadata = {
+            commitSha: expectedSha,
+            deploymentUrl,
+            resolvedFrom: `https://${previewHost}`,
+          };
+          await Bun.write("release-metadata.json", `${JSON.stringify(metadata, null, 2)}\n`);
+          appendFileSync(outputPath, `url=${deploymentUrl}\nsha=${expectedSha}\n`);
+          console.log(`Resolved Vercel deployment ${deploymentUrl} for ${expectedSha}.`);
+          process.exit(0);
+        }
       }
     }
+
+    const observed = lastObservedSha ? `; alias currently serves ${lastObservedSha}` : "";
+    console.log(`Waiting for Vercel deployment ${expectedSha} (${attempt}/${attempts})${observed}.`);
+    await Bun.sleep(delayMs);
   }
 
-  const observed = lastObservedSha ? `; alias currently serves ${lastObservedSha}` : "";
-  console.log(`Waiting for Vercel deployment ${expectedSha} (${attempt}/${attempts})${observed}.`);
-  await Bun.sleep(delayMs);
+  throw new Error(
+    `Timed out waiting for a Vercel preview that identifies itself as ${expectedSha}. ` +
+      `Last observed SHA: ${lastObservedSha ?? "none"}.`,
+  );
 }
 
-throw new Error(
-  `Timed out waiting for a Vercel preview that identifies itself as ${expectedSha}. ` +
-    `Last observed SHA: ${lastObservedSha ?? "none"}.`,
-);
-
-async function findVercelPreviewHost(): Promise<string | null> {
+async function findVercelPreviewHost(repository: string, expectedSha: string, githubToken: string): Promise<string | null> {
   const response = await fetch(`https://api.github.com/repos/${repository}/commits/${expectedSha}/check-runs?per_page=100`, {
     headers: {
       Accept: "application/vnd.github+json",
@@ -71,8 +75,21 @@ async function findVercelPreviewHost(): Promise<string | null> {
 
   const payload = (await response.json()) as { check_runs: CheckRun[] };
   const vercelCheck = payload.check_runs.find((check) => check.app?.slug === "vercel" && check.name === "Vercel Preview Comments");
-  const match = vercelCheck?.output.summary?.match(/https:\/\/vercel\.live\/open-feedback\/([a-z0-9.-]+\.vercel\.app)(?:\?|\))/i);
-  return match?.[1]?.toLowerCase() ?? null;
+  return extractVercelPreviewHost(vercelCheck?.output.summary);
+}
+
+export function extractVercelPreviewHost(summary: string | null | undefined): string | null {
+  const match = summary?.match(/https:\/\/vercel\.live\/open-feedback\/[^\s)]+/i);
+  if (!match) return null;
+
+  try {
+    const feedbackUrl = new URL(match[0]);
+    const previewUrl = new URL(`https://${feedbackUrl.pathname.slice("/open-feedback/".length)}`);
+    if (previewUrl.pathname !== "/" || previewUrl.port || previewUrl.username || previewUrl.password) return null;
+    return previewUrl.hostname.toLowerCase() || null;
+  } catch {
+    return null;
+  }
 }
 
 async function readIdentity(baseUrl: string): Promise<DeploymentIdentity | null> {
