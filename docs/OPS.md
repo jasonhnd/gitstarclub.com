@@ -125,6 +125,7 @@ an explicit recovery procedure.
 | `NEXT_PUBLIC_SITE_URL` | 站点规范域名（canonical / sitemap / OG / JSON-LD 绝对 URL） | **必需**（生产） | `https://gitstarclub.com` 等绝对 URL（**无尾斜杠**） | `web/lib/sitemap.ts:26` · `web/app/robots.ts:5` · `web/app/_shell/RootShell.tsx:17` · `web/lib/jsonld.ts:4` · `web/app/_explore/Breadcrumbs.tsx:10` |
 | `NEXT_PUBLIC_GA_ID` | Optional Google Analytics 4 measurement ID. GA4 renders only when this non-empty value starts with `G-`; unset or invalid values emit no GA script. | Optional | `G-...` | `web/app/_shell/RootShell.tsx` |
 | `SEO_LIVE_BASE` | 集成测试拉取的活线 origin（默认 `https://www.gitstarclub.com`，留空可跳过测试） | 仅测试 | `https://www.gitstarclub.com` 或空串 | `web/lib/integration/seo.test.ts:23` |
+| `SEO_EXPECT_INDEXABLE` | Live SEO 验收的环境策略（Preview `0`，Production `1`；未设时按 canonical host 推断） | 仅测试 | `0` 或 `1` | `web/lib/integration/seo.test.ts` · `.github/workflows/ci.yml` |
 | `SEO_CANON_ORIGIN` | 集成测试断言的 canonical origin（默认 `https://gitstarclub.com`） | 仅测试 | 绝对 origin（**无尾斜杠**） | `web/lib/integration/seo.test.ts:25` |
 
 **约定**：
