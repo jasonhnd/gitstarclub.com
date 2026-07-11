@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { DEFAULT_LOCALE, LANGUAGE_LABELS, LOCALES, type Locale } from "@/lib/i18n/locales";
-import { localizedPath, stripLocale } from "@/lib/i18n/routing";
+import { stripLocale } from "@/lib/i18n/routing";
 
 function shortLocale(locale: Locale): string {
   return locale === "zh-TW" ? "TW" : locale.toUpperCase();
@@ -32,7 +32,8 @@ export function LanguageSwitcher({ locale, canonicalPath, label }: { locale: Loc
         {LOCALES.map((l) => (
           <a
             key={l}
-            href={localizedPath(l, canonical)}
+            href={`/api/lang?lang=${encodeURIComponent(l)}&next=${encodeURIComponent(canonical)}`}
+            rel="nofollow"
             className={`flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 font-mono text-[0.75rem] transition-colors hover:bg-surface-container-high hover:text-on-surface ${
               l === locale ? "text-on-surface" : "text-on-surface-variant"
             }`}

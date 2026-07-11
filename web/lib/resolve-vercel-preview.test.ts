@@ -1,6 +1,19 @@
 import { describe, expect, test } from "bun:test";
 
-import { extractVercelPreviewHost } from "../scripts/resolve-vercel-preview";
+import { extractVercelPreviewHost, selectDiscoveryMode } from "../scripts/resolve-vercel-preview";
+
+describe("selectDiscoveryMode", () => {
+  test("uses the configured identity origin without check-run discovery", () => {
+    expect(selectDiscoveryMode("  https://gitstarclub.com  ")).toEqual({
+      kind: "identity-origin",
+      origin: "https://gitstarclub.com",
+    });
+  });
+
+  test.each([undefined, "", "   "])("uses check-run discovery when IDENTITY_ORIGIN is %p", (identityOrigin) => {
+    expect(selectDiscoveryMode(identityOrigin)).toEqual({ kind: "check-run" });
+  });
+});
 
 describe("extractVercelPreviewHost", () => {
   test.each([
