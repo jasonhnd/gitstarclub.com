@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import type { ReactElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
 import type { HotSnapshot, OrgsLookup, RankList, ReposLookup } from "@/lib/contracts";
@@ -32,11 +32,22 @@ const GENERATED_AT = "2026-06-21T00:00:00.000Z";
 const NOW = new Date("2026-07-08T12:00:00.000Z");
 const REPO_ID = 1;
 const ORG_LOGIN = "vercel";
+const originalFetch = globalThis.fetch;
+const originalBlobBase = process.env.BLOB_BASE_URL;
+const originalPublicBlobBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
 
 beforeAll(() => {
   process.env.BLOB_BASE_URL = BLOB_BASE_URL;
   delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   globalThis.fetch = fixtureFetch as typeof fetch;
+});
+
+afterAll(() => {
+  globalThis.fetch = originalFetch;
+  if (originalBlobBase === undefined) delete process.env.BLOB_BASE_URL;
+  else process.env.BLOB_BASE_URL = originalBlobBase;
+  if (originalPublicBlobBase === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  else process.env.NEXT_PUBLIC_BLOB_BASE_URL = originalPublicBlobBase;
 });
 
 describe("ranking period internal links", () => {

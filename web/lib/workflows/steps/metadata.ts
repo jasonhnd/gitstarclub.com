@@ -3,7 +3,13 @@ import { readView } from "@/lib/data/source";
 import { putView } from "@/lib/data/write";
 import { batchMetadata } from "@/lib/github";
 import { ReposShard, WhitelistSnapshot, type ReposShardEntry } from "@/lib/contracts";
+import { capSafeText } from "@/lib/contracts/common";
 import { repoBucket } from "../buckets";
+
+function capDescription(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  return capSafeText(value);
+}
 
 // Workflow step: build canonical/v2/repos/<bucket>.json for ONE bucket by SEEDING
 // from data already pulled at bootstrap — owner_type/language from
@@ -59,7 +65,7 @@ export async function refreshMetadataBucket(runId: string, bucket: number): Prom
       full_name: e.full_name,
       current_stars: e.stars, // whitelist: fresh from Search
       owner_type: g?.owner_type ?? lk?.owner_type ?? prev?.owner_type ?? "User",
-      description: g?.description ?? prev?.description ?? null,
+      description: capDescription(g?.description ?? prev?.description ?? null),
       language: g?.language ?? lk?.language ?? prev?.language ?? null,
       languages: g?.languages ?? prev?.languages ?? [],
       topics: g?.topics ?? prev?.topics ?? [],

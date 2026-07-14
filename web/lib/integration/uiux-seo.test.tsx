@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
@@ -175,6 +175,9 @@ const pageCases: PageCase[] = [
 
 let rendered = new Map<string, string>();
 let metadata = new Map<string, Metadata>();
+const originalFetch = globalThis.fetch;
+const originalBlobBase = process.env.BLOB_BASE_URL;
+const originalPublicBlobBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
 
 beforeAll(async () => {
   process.env.BLOB_BASE_URL = BLOB_BASE_URL;
@@ -190,6 +193,14 @@ beforeAll(async () => {
     pageCases.map(async (page) => [page.label, await page.metadata()] as const),
   );
   metadata = new Map(metadataEntries);
+});
+
+afterAll(() => {
+  globalThis.fetch = originalFetch;
+  if (originalBlobBase === undefined) delete process.env.BLOB_BASE_URL;
+  else process.env.BLOB_BASE_URL = originalBlobBase;
+  if (originalPublicBlobBase === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  else process.env.NEXT_PUBLIC_BLOB_BASE_URL = originalPublicBlobBase;
 });
 
 async function renderPage(element: ReactElement): Promise<string> {
