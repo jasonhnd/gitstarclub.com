@@ -36,14 +36,16 @@ test.describe("phase 7 accessibility", () => {
         expect(formatViolations(violations), `${route.path} has accessibility violations in ${theme} mode`).toEqual([]);
 
         if (route.path === "/pulse") {
-          const contrast = await activeBadgeContrast(page);
-          expect(contrast, `Active PeriodSwitcher badge contrast is ${contrast.toFixed(2)}:1 in ${theme} mode`).toBeGreaterThanOrEqual(4.5);
+          const contrast = await activePeriodContrast(page);
+          expect(contrast, `Active PeriodSwitcher control contrast is ${contrast.toFixed(2)}:1 in ${theme} mode`).toBeGreaterThanOrEqual(4.5);
         }
       }
 
       if (route.path === "/pulse") {
         await page.emulateMedia({ forcedColors: "active" });
-        await expect(activeBadge(page)).toBeVisible();
+        // Active period control is always present; "Latest available" badge only appears when
+        // the published period lags the calendar (absent once live data is current).
+        await expect(activePeriodControl(page)).toBeVisible();
       }
     });
   }
@@ -90,17 +92,28 @@ async function setTheme(page: Page, theme: (typeof THEMES)[number]) {
   }, theme);
 }
 
-function activeBadge(page: Page) {
-  return page.locator('nav[aria-label="Ranking period"] a[aria-current="page"] span').filter({ hasText: "Latest available:" });
+function activePeriodControl(page: Page) {
+  return page.locator('nav[aria-label="Ranking period"] a[aria-current="page"]');
 }
 
-async function activeBadgeContrast(page: Page) {
-  const badge = activeBadge(page);
-  await expect(badge).toHaveCount(1);
+function activeBadge(page: Page) {
+  return activePeriodControl(page).locator("span").filter({ hasText: "Latest available:" });
+}
 
-  return badge.evaluate((element) => {
-    const foreground = parseRgb(getComputedStyle(element).color);
-    const background = parseRgb(getComputedStyle(element.closest("a")!).backgroundColor);
+async function activePeriodContrast(page: Page) {
+  const control = activePeriodControl(page);
+  await expect(control).toHaveCount(1);
+
+  // Prefer the "Latest available" badge when present (stale-data state); otherwise measure
+  // the active period control itself (current-data state after live refresh recovered).
+  const badge = activeBadge(page);
+  const target = (await badge.count()) === 1 ? badge : control;
+
+  return target.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const anchor = element.closest("a") ?? element;
+    const foreground = parseRgb(style.color);
+    const background = parseRgb(getComputedStyle(anchor).backgroundColor);
     const luminance = ([red, green, blue]: number[]) => {
       const channels = [red, green, blue].map((channel) => {
         const value = channel / 255;
