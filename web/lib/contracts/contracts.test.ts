@@ -233,6 +233,11 @@ describe("canonical shards", () => {
     expect(ReposShardEntry.parse(validEntry).id).toBe(1);
   });
 
+  test("ReposShardEntry truncates oversized description instead of rejecting", () => {
+    const parsed = ReposShardEntry.parse({ ...validEntry, description: "x".repeat(5000) });
+    expect(parsed.description?.length).toBe(4096);
+  });
+
   test("ReposShardEntry parses with optional/nullable fields", () => {
     const full = {
       ...validEntry,
@@ -666,6 +671,15 @@ describe("search contracts", () => {
   test("SearchIndex parses generated_at + count + repos[]", () => {
     const idx = { generated_at: TS, count: 1, repos: [doc] };
     expect(SearchIndex.parse(idx).repos).toHaveLength(1);
+  });
+
+  test("SearchIndex normalizes legacy refresh run-id generated_at", () => {
+    const idx = SearchIndex.parse({
+      generated_at: "refresh-2026-06-21T06-00-05-520Z",
+      count: 1,
+      repos: [doc],
+    });
+    expect(idx.generated_at).toBe("2026-06-21T06:00:05.520Z");
   });
 
   test("SearchIndex rejects non-array repos", () => {
