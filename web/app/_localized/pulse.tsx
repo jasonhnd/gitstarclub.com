@@ -99,28 +99,15 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
       {includeWebsiteLd && <JsonLd data={webSiteLd(language, routePath, { dateModified, about: datasetRef(routePath) })} />}
       <JsonLd data={collectionLd(t.pulse.title, routePath, language, { dateModified, about: datasetRef(routePath) })} />
       <JsonLd data={dataset} />
-      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.25rem,3.5vw,2.75rem)] ${PAD_X}`}>
+        {/* Human-first hierarchy (#285): identity → period → repo discovery, then methodology/GEO. */}
         <PageHero eyebrow={t.nav.pulse} title={t.pulse.title} lede={t.pulse.subtitle} />
 
-        <div className="mt-[clamp(1.5rem,3vw,2.25rem)]">
+        <div className="mt-[clamp(1rem,2.5vw,1.5rem)]">
           <PeriodSwitcher links={periodSwitcherLinks(availablePeriods, periods, href)} activePeriod={availablePeriods.week.kind === "week" ? "week" : "all-time"} />
         </div>
 
-        {capsule && (
-          <div className="mt-[clamp(1.75rem,4vw,3rem)]">
-            <AnswerCapsule capsule={capsule} labels={answerCapsuleLabels(locale, t)} />
-            <PulseLeaderLinks
-              links={[
-                { label: t.week.label, href: href(availablePeriods.week.href), period: activeWeekLabel, row: weekRows[0] },
-                { label: t.month.label, href: href(availablePeriods.month.href), period: activeMonthLabel, row: monthRows[0] },
-                { label: t.year.label, href: href(availablePeriods.yearLink.href), period: availablePeriods.yearLink.label, row: yearRows[0] },
-              ]}
-              pendingLabel={t.categories.rankingPending}
-            />
-          </div>
-        )}
-
-        <div className="mt-[clamp(2rem,5vw,4rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
+        <div className="mt-[clamp(1.25rem,3vw,2rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel
             title={t.week.top}
             href={href(availablePeriods.week.href)}
@@ -160,7 +147,17 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           />
         </div>
 
-        <section className="mt-[clamp(2.5rem,5vw,4rem)] grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <PulseLeaderLinks
+          links={[
+            { label: t.week.label, href: href(availablePeriods.week.href), period: activeWeekLabel, row: weekRows[0] },
+            { label: t.month.label, href: href(availablePeriods.month.href), period: activeMonthLabel, row: monthRows[0] },
+            { label: t.year.label, href: href(availablePeriods.yearLink.href), period: availablePeriods.yearLink.label, row: yearRows[0] },
+          ]}
+          pendingLabel={t.categories.rankingPending}
+          className="mt-[clamp(1.25rem,3vw,2rem)]"
+        />
+
+        <section className="mt-[clamp(2rem,4.5vw,3.25rem)] grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0">
             <div className="mb-3 flex items-end justify-between gap-4">
               <div>
@@ -200,6 +197,12 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
             )}
           </aside>
         </section>
+
+        {capsule && (
+          <div className="mt-[clamp(2rem,4.5vw,3.25rem)]">
+            <AnswerCapsule capsule={capsule} labels={answerCapsuleLabels(locale, t)} />
+          </div>
+        )}
 
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
@@ -261,12 +264,14 @@ function PulsePanel({
 function PulseLeaderLinks({
   links,
   pendingLabel,
+  className = "mt-3",
 }: {
   links: Array<{ label: ReactNode; href: string; period: string; row?: Row }>;
   pendingLabel: string;
+  className?: string;
 }) {
   return (
-    <div className="mt-3 grid gap-2 md:grid-cols-3">
+    <div className={`${className} grid gap-2 md:grid-cols-3`}>
       {links.map((link) => (
         <Link
           key={link.href}
