@@ -189,7 +189,7 @@ slimmed `SearchIndex`.
 | Query | None |
 | Body | None |
 | Success | `200 application/json` |
-| Failure | Framework `500` if the Blob read or schema parse throws |
+| Failure | Structured `503` `{ "error": "search_index_unavailable", "retryable": true }` when Blob read or schema parse throws (`Cache-Control: no-store`) |
 | Hit cache | `Cache-Control: public, max-age=0, s-maxage=3600, stale-while-revalidate=86400` |
 | Empty fallback cache | `Cache-Control: public, max-age=0, s-maxage=60` |
 | Zod contract | [`SearchIndex` / `SearchDoc`](../web/lib/contracts/search.ts) |

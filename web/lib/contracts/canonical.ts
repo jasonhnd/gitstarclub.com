@@ -1,5 +1,15 @@
 import { z } from "zod";
-import { DateStr, MonthPeriod, NonNegativeInt, OwnerType, SafeText, TimestampStr, WeekPeriod, YearPeriod } from "./common";
+import {
+  DateStr,
+  MonthPeriod,
+  NonNegativeInt,
+  OwnerType,
+  SafeText,
+  TimestampStr,
+  TruncatingSafeText,
+  WeekPeriod,
+  YearPeriod,
+} from "./common";
 
 // canonical/v2/* — production canonical JSON shards that replace the bootstrap
 // star_daily.parquet as the production source of truth. See docs/DATA-CONTRACTS.md
@@ -25,7 +35,9 @@ export const ReposShardEntry = z.object({
   owner_type: OwnerType,
   name: SafeText,
   full_name: SafeText,
-  description: SafeText.nullable().optional(),
+  // Truncate on read: a few GitHub descriptions exceed SafeText's 4KB cap and
+  // previously crashed detectRenames / metadata when re-parsing stored shards.
+  description: TruncatingSafeText.nullable().optional(),
   language: SafeText.nullable().optional(),
   languages: z
     .array(
