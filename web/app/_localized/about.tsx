@@ -10,7 +10,7 @@ import { RelatedPages, type RelatedPageItem } from "@/app/_explore/RelatedPages"
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getMeta } from "@/lib/data";
 import { ANSWER_CAPSULE_SOURCE, formatDataAsOf, resolveDataAsOfLabel, resolveDataAsOfValue, type AnswerCapsuleContent } from "@/lib/geo-capsules";
-import { getDictionary, type Locale } from "@/lib/i18n";
+import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { datasetLd, type FaqItem } from "@/lib/jsonld";
 import { pageMeta } from "@/lib/seo";
@@ -27,72 +27,6 @@ const ABOUT_DATASET_VARIABLES = [
   "milestones.crossed_50k",
   "milestones.crossed_100k",
 ] as const;
-
-const ABOUT_COPY = {
-  heroRankings: "Open rankings",
-  heroCategories: "Open categories",
-  heroLead:
-    "GitStarClub is a static archive of public GitHub star history. This page documents what is tracked, how ranking and category views are produced, what the known limits are, and how to cite the derived dataset.",
-  missingMetadata: "Published metadata timestamp unavailable",
-  dataModel: "Static data views",
-  coverage: "Public GitHub repositories at 10k or more current stars, with history reconstructed from 2015 onward.",
-  runtime: "Pages read GitStarClub's precomputed data. They do not run live search, database queries, or AI generation during a visitor request.",
-  trackedHeading: "What GitStarClub tracks",
-  trackedP1:
-    "GitStarClub tracks public GitHub repositories that are in the current 10k-star-or-more set. Repository pages, organization pages, rankings, categories, Pulse, compare, and exports all read from the same published view family.",
-  trackedP2:
-    "Rankings are archive pages, not endorsements. They expose source-backed star totals, period gains, milestones, owner aggregates, and category views so a reader can verify the field behind a claim.",
-  rankingHeading: "How rankings are calculated",
-  rankingP1:
-    "All-time repository rankings use current public GitHub star totals. Organization rankings sum current stars across that owner's tracked repositories. Period rankings use GitStarClub's precomputed weekly, monthly, or yearly ranking data where the visible value is stars gained in that UTC period.",
-  rankingP2:
-    "Historical stock curves are seam-aware: pre-seam GH Archive gross additions are anchored to GitHub's authoritative star total, then post-seam net changes are added on top of the frozen anchor. Ranking pages render the published order from those precomputed views.",
-  categoryHeading: "How categories are assigned",
-  categoryP1:
-    "Category assignment is deterministic. Rules use stored repository metadata such as primary language, language family, owner kind, curated topics, and keyword predicates. GitStarClub does not use a runtime classifier, LLM, or manual per-request decision for category pages.",
-  categoryP2:
-    "When metadata is missing or a rule does not meet the public category threshold, the category is omitted or shown through the explicit fallback used by that dimension. Category counts and links come from deterministic category rules over stored repository metadata.",
-  archiveHeading: "Archive permanence",
-  archiveP1:
-    "Public URLs are intended to remain citeable. Rankings, dated ranking periods, repository pages, organization pages, category pages, and dated export directories keep their canonical URL while newer data is published.",
-  archiveP2:
-    "The /data/exports/v1/latest/ files are convenience aliases to the newest export. For archival citation, prefer the page URL plus data-as-of date, or a dated export directory when using downloadable files.",
-  cadenceP:
-    "Data dates are shown only when real metadata is available. Missing metadata does not invent freshness; the page falls back to the static methodology and visible source links.",
-  limitationsHeading: "Data limitations",
-  citationHeading: "How to cite GitStarClub",
-  citationP1:
-    "For a ranking, repository, organization, category, or comparison claim, cite the GitStarClub page URL, page title, data-as-of date when present, and access date. For downloadable files, cite the manifest or dated export directory rather than only the moving latest alias.",
-  citationP2:
-    "For star-history facts derived from public event history, credit GH Archive under CC BY 4.0. For transformed rankings, anchored curves, milestones, category pages, and export files, cite GitStarClub as the derived presentation.",
-  sourceHeading: "Contact and source links",
-  sourceP:
-    "Corrections and source review belong in the public repository. The linked methodology documents describe ranking definitions, category rules, data contracts, and export fields.",
-  relatedTitle: "Continue from methodology",
-  relatedDescription: "Open the permanent ranking and category entry points that use the methodology described here.",
-  sourceRepository: "Source repository",
-  corrections: "Corrections and issues",
-  rankingMethodology: "Ranking methodology",
-  categoryMethodology: "Category methodology",
-  dataContracts: "Data contracts",
-  dataExports: "Data export documentation",
-  githubApi: "GitHub API documentation",
-  faqWhatQ: "What does GitStarClub track?",
-  faqWhatA:
-    "GitStarClub tracks public GitHub repositories in the current 10k-star-or-more set and publishes repository, organization, ranking, category, comparison, and export views from precomputed data.",
-  faqRankingQ: "How should I cite a ranking or chart?",
-  faqRankingA:
-    "Cite the GitStarClub page URL, title, data-as-of date when shown, and access date. For downloadable files, use the manifest or dated export directory.",
-  faqGrossNetQ: "Why can recent daily movement differ from historical gains?",
-  faqGrossNetA:
-    "Historical GH Archive WatchEvent history is gross additions, while current daily movement is net and can decrease when stars are removed. GitStarClub documents that seam instead of hiding it.",
-  faqCategoriesQ: "Are categories assigned by AI?",
-  faqCategoriesA:
-    "No. Categories are generated from deterministic rules over stored repository metadata; missing metadata degrades through explicit fallbacks.",
-  faqRuntimeQ: "Does the About page use live GitHub queries?",
-  faqRuntimeA:
-    "No. The About page reads only published metadata through getMeta and otherwise renders static methodology, source, and citation copy.",
-} as const;
 
 export async function generateAboutMetadata(locale: Locale): Promise<Metadata> {
   const t = await getDictionary(locale);
@@ -138,14 +72,14 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
-function HeroActions({ locale }: { locale: Locale }) {
+function HeroActions({ locale, t }: { locale: Locale; t: Dict }) {
   return (
     <>
       <Link href={localizedPath(locale, "/rankings")} className={heroActionClass}>
-        {ABOUT_COPY.heroRankings}
+        {t.about.heroRankings}
       </Link>
       <Link href={localizedPath(locale, "/categories")} className={heroActionClass}>
-        {ABOUT_COPY.heroCategories}
+        {t.about.heroCategories}
       </Link>
     </>
   );
@@ -154,12 +88,20 @@ function HeroActions({ locale }: { locale: Locale }) {
 const heroActionClass =
   "text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline hover:underline-offset-2";
 
-function ArchiveSnapshot({ dataAsOf, foldedMonth }: { dataAsOf: string | null; foldedMonth: string | null }) {
+function ArchiveSnapshot({
+  t,
+  dataAsOf,
+  foldedMonth,
+}: {
+  t: Dict;
+  dataAsOf: string | null;
+  foldedMonth: string | null;
+}) {
   const rows = [
-    { label: "Data as of", value: dataAsOf ?? ABOUT_COPY.missingMetadata },
-    { label: "Coverage", value: ABOUT_COPY.coverage },
-    { label: "Runtime model", value: ABOUT_COPY.dataModel },
-    ...(foldedMonth ? [{ label: "Folded through", value: foldedMonth }] : []),
+    { label: t.about.snapshotDataAsOf, value: dataAsOf ?? t.about.missingMetadata },
+    { label: t.about.snapshotCoverage, value: t.about.coverage },
+    { label: t.about.snapshotRuntime, value: t.about.dataModel },
+    ...(foldedMonth ? [{ label: t.about.snapshotFoldedThrough, value: foldedMonth }] : []),
   ];
 
   return (
@@ -174,10 +116,10 @@ function ArchiveSnapshot({ dataAsOf, foldedMonth }: { dataAsOf: string | null; f
   );
 }
 
-function EmptyMetadataNotice() {
+function EmptyMetadataNotice({ text }: { text: string }) {
   return (
     <p className="mt-[clamp(1.75rem,3.5vw,2.5rem)] rounded-lg border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.95rem] leading-relaxed text-on-surface-variant">
-      {ABOUT_COPY.cadenceP}
+      {text}
     </p>
   );
 }
@@ -201,12 +143,12 @@ export async function AboutPageView({ locale }: { locale: Locale }) {
   const foldedMonth = formatDataAsOf(meta?.folded_through?.month, locale);
   const capsule: AnswerCapsuleContent | null = dataAsOf
     ? {
-        text: `As of ${dataAsOf}, GitStarClub documents a static-read archive of public GitHub star history. Rankings, categories, repository pages, organization totals, and exports are derived from GH Archive event history, public GitHub API totals, and GitStarClub's precomputed data; citation should name the page URL and date. - GitStarClub`,
+        text: t.about.capsuleText.replaceAll("{asOf}", dataAsOf),
         asOf: dataAsOf,
         source: ANSWER_CAPSULE_SOURCE,
       }
     : null;
-  const faqItems = buildAboutFaqs();
+  const faqItems = buildAboutFaqs(t);
   const relatedItems: RelatedPageItem[] = [
     { href: href("/rankings") as `/${string}`, label: t.nav.rankings },
     { href: href("/categories") as `/${string}`, label: t.nav.categories },
@@ -233,50 +175,46 @@ export async function AboutPageView({ locale }: { locale: Locale }) {
           eyebrow={t.nav.about}
           title={
             <>
-              Methodology, sources, and <span className="hl">citation</span>.
+              {t.about.heroTitlePre}
+              <span className="hl">{t.about.heroTitleAccent}</span>
+              {t.about.heroTitlePost}
             </>
           }
-          lede={ABOUT_COPY.heroLead}
-          actions={<HeroActions locale={locale} />}
-          aside={<ArchiveSnapshot dataAsOf={dataAsOf} foldedMonth={foldedMonth} />}
+          lede={t.about.heroLead}
+          actions={<HeroActions locale={locale} t={t} />}
+          aside={<ArchiveSnapshot t={t} dataAsOf={dataAsOf} foldedMonth={foldedMonth} />}
         />
 
         {capsule ? (
           <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={answerCapsuleLabels(locale, t)} />
         ) : (
-          <EmptyMetadataNotice />
+          <EmptyMetadataNotice text={t.about.cadenceP} />
         )}
 
-        <Section heading={ABOUT_COPY.trackedHeading}>
-          <p>{ABOUT_COPY.trackedP1}</p>
-          <p>{ABOUT_COPY.trackedP2}</p>
+        <Section heading={t.about.trackedHeading}>
+          <p>{t.about.trackedP1}</p>
+          <p>{t.about.trackedP2}</p>
           <BulletList items={[t.about.sample1, t.about.sample2, t.about.sample3, t.about.sample4, t.about.sample5]} />
         </Section>
 
         <Section heading={t.about.s1h}>
           <p>
             {t.about.s1pPre}
-            <ExternalLink href="https://www.gharchive.org/">
-              GH Archive
-            </ExternalLink>
+            <ExternalLink href="https://www.gharchive.org/">GH Archive</ExternalLink>
             {t.about.s1pPost}
           </p>
           <p>
             {t.about.ghArchiveCreditPre}
-            <ExternalLink href="https://www.gharchive.org/">
-              GH Archive
-            </ExternalLink>
+            <ExternalLink href="https://www.gharchive.org/">GH Archive</ExternalLink>
             {t.about.ghArchiveCreditMid}
-            <ExternalLink href="https://creativecommons.org/licenses/by/4.0/">
-              CC BY 4.0
-            </ExternalLink>
+            <ExternalLink href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</ExternalLink>
             {t.about.ghArchiveCreditPost}
           </p>
         </Section>
 
-        <Section heading={ABOUT_COPY.rankingHeading}>
-          <p>{ABOUT_COPY.rankingP1}</p>
-          <p>{ABOUT_COPY.rankingP2}</p>
+        <Section heading={t.about.rankingHeading}>
+          <p>{t.about.rankingP1}</p>
+          <p>{t.about.rankingP2}</p>
         </Section>
 
         <Section heading={t.about.anchorHeading}>
@@ -294,9 +232,9 @@ export async function AboutPageView({ locale }: { locale: Locale }) {
           </p>
         </Section>
 
-        <Section heading={ABOUT_COPY.categoryHeading}>
-          <p>{ABOUT_COPY.categoryP1}</p>
-          <p>{ABOUT_COPY.categoryP2}</p>
+        <Section heading={t.about.categoryHeading}>
+          <p>{t.about.categoryP1}</p>
+          <p>{t.about.categoryP2}</p>
           <p>
             <Link className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href={href("/categories")}>
               {t.nav.categories}
@@ -318,28 +256,28 @@ export async function AboutPageView({ locale }: { locale: Locale }) {
           />
         </Section>
 
-        <Section heading={ABOUT_COPY.archiveHeading}>
-          <p>{ABOUT_COPY.archiveP1}</p>
-          <p>{ABOUT_COPY.archiveP2}</p>
+        <Section heading={t.about.archiveHeading}>
+          <p>{t.about.archiveP1}</p>
+          <p>{t.about.archiveP2}</p>
           <p>
             <Link className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href={href("/rankings")}>
               {t.nav.rankings}
             </Link>{" "}
-            and{" "}
+            {t.about.archiveCrawlableMid}{" "}
             <Link className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href={href("/categories")}>
               {t.nav.categories}
             </Link>{" "}
-            are the crawlable entry points for the public archive.
+            {t.about.archiveCrawlablePost}
           </p>
         </Section>
 
         <Section heading={t.about.refreshHeading}>
           <p>{t.about.refreshP1}</p>
           <p>{t.about.refreshP2}</p>
-          <p>{ABOUT_COPY.cadenceP}</p>
+          <p>{t.about.cadenceP}</p>
         </Section>
 
-        <Section heading={ABOUT_COPY.limitationsHeading}>
+        <Section heading={t.about.limitationsHeading}>
           <p>
             <strong className="text-on-surface">{t.about.s2aStrong}</strong>
             {t.about.s2aBody}
@@ -354,16 +292,16 @@ export async function AboutPageView({ locale }: { locale: Locale }) {
           </p>
         </Section>
 
-        <Section heading={ABOUT_COPY.citationHeading} id="citation">
+        <Section heading={t.about.citationHeading} id="citation">
           <p>{t.about.s3p}</p>
           <p>{t.about.citeP}</p>
-          <p>{ABOUT_COPY.citationP1}</p>
-          <p>{ABOUT_COPY.citationP2}</p>
+          <p>{t.about.citationP1}</p>
+          <p>{t.about.citationP2}</p>
           <FieldList
             items={[
-              { name: "GitStarClub page", description: "Use the permanent URL, page title, and data-as-of date when available." },
-              { name: "GH Archive", description: "Credit the public event archive when reusing event-derived history or WatchEvent-based curves." },
-              { name: "GitHub public API", description: "Treat current star totals and repository metadata as public GitHub API facts surfaced through GitStarClub views." },
+              { name: "GitStarClub page", description: t.about.citeFieldPage },
+              { name: "GH Archive", description: t.about.citeFieldGhArchive },
+              { name: "GitHub public API", description: t.about.citeFieldGithubApi },
             ]}
           />
         </Section>
@@ -373,9 +311,7 @@ export async function AboutPageView({ locale }: { locale: Locale }) {
           <p>{t.about.exportsP2}</p>
           <p>
             {t.about.exportsLicensePrefix}{" "}
-            <ExternalLink href="https://creativecommons.org/licenses/by/4.0/">
-              CC BY 4.0
-            </ExternalLink>
+            <ExternalLink href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</ExternalLink>
             . {t.about.exportsAttribution}
           </p>
           <ul className="list-disc space-y-2 pl-6">
@@ -419,55 +355,55 @@ export async function AboutPageView({ locale }: { locale: Locale }) {
           </p>
         </Section>
 
-        <Section heading={ABOUT_COPY.sourceHeading}>
-          <p>{ABOUT_COPY.sourceP}</p>
+        <Section heading={t.about.sourceHeading}>
+          <p>{t.about.sourceP}</p>
           <FieldList
             items={[
               {
-                name: ABOUT_COPY.sourceRepository,
+                name: t.about.sourceRepository,
                 description: <ExternalLink href="https://github.com/jasonhnd/gitstarclub.com">github.com/jasonhnd/gitstarclub.com</ExternalLink>,
               },
               {
-                name: ABOUT_COPY.corrections,
+                name: t.about.corrections,
                 description: <ExternalLink href="https://github.com/jasonhnd/gitstarclub.com/issues">GitHub issues</ExternalLink>,
               },
               {
-                name: ABOUT_COPY.rankingMethodology,
+                name: t.about.rankingMethodology,
                 description: <ExternalLink href="https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/RANKING.md">docs/RANKING.md</ExternalLink>,
               },
               {
-                name: ABOUT_COPY.categoryMethodology,
+                name: t.about.categoryMethodology,
                 description: <ExternalLink href="https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/CATEGORIES.md">docs/CATEGORIES.md</ExternalLink>,
               },
               {
-                name: ABOUT_COPY.dataContracts,
+                name: t.about.dataContracts,
                 description: <ExternalLink href="https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/DATA-CONTRACTS.md">docs/DATA-CONTRACTS.md</ExternalLink>,
               },
               {
-                name: ABOUT_COPY.dataExports,
+                name: t.about.dataExports,
                 description: <ExternalLink href="https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/DATA-EXPORTS.md">docs/DATA-EXPORTS.md</ExternalLink>,
               },
               {
-                name: ABOUT_COPY.githubApi,
+                name: t.about.githubApi,
                 description: <ExternalLink href="https://docs.github.com/en/graphql">docs.github.com/en/graphql</ExternalLink>,
               },
             ]}
           />
         </Section>
 
-        <RelatedPages title={ABOUT_COPY.relatedTitle} description={ABOUT_COPY.relatedDescription} items={relatedItems} />
+        <RelatedPages title={t.about.relatedTitle} description={t.about.relatedDescription} items={relatedItems} />
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
     </>
   );
 }
 
-function buildAboutFaqs(): FaqItem[] {
+function buildAboutFaqs(t: Dict): FaqItem[] {
   return [
-    { question: ABOUT_COPY.faqWhatQ, answer: ABOUT_COPY.faqWhatA },
-    { question: ABOUT_COPY.faqRankingQ, answer: ABOUT_COPY.faqRankingA },
-    { question: ABOUT_COPY.faqGrossNetQ, answer: ABOUT_COPY.faqGrossNetA },
-    { question: ABOUT_COPY.faqCategoriesQ, answer: ABOUT_COPY.faqCategoriesA },
-    { question: ABOUT_COPY.faqRuntimeQ, answer: ABOUT_COPY.faqRuntimeA },
+    { question: t.about.faqWhatQ, answer: t.about.faqWhatA },
+    { question: t.about.faqRankingQ, answer: t.about.faqRankingA },
+    { question: t.about.faqGrossNetQ, answer: t.about.faqGrossNetA },
+    { question: t.about.faqCategoriesQ, answer: t.about.faqCategoriesA },
+    { question: t.about.faqRuntimeQ, answer: t.about.faqRuntimeA },
   ];
 }
