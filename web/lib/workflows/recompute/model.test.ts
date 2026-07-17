@@ -127,4 +127,13 @@ describe("buildModel", () => {
     newcomer.tracked_since = "2026-07-17";
     expect(buildModel(raw, seamDate).repos.get(10)?.d).toBe(0);
   });
+
+  test("separates active membership from retained historical repositories", () => {
+    const raw = rawFixture();
+    raw.repos["30"].active = false;
+    const next = buildModel(raw, seamDate);
+    expect(next.ids).toEqual([10, 20, 30]);
+    expect(next.activeIds).toEqual([10, 20]);
+    expect(next.orgs.get("alpha")).toMatchObject({ repo_count: 1, current_stars_sum: 100, members: [10] });
+  });
 });

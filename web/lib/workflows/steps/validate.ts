@@ -100,7 +100,14 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   else await putOwnedView({ runId, fencingToken }, canonicalManifestPath, canonicalReport.manifest);
   mergeValidationReport(
     { invariants, failures },
-    validateRepositoryMembership({ lookup, previousLookup, whitelist, canonicalRepoIds: canonicalReport.repoIds }),
+    validateRepositoryMembership({
+      lookup,
+      previousLookup,
+      whitelist,
+      canonicalRepoIds: canonicalReport.repoIds,
+      canonicalActiveRepoIds: canonicalReport.activeRepoIds,
+      meta,
+    }),
   );
 
   // aliases must point at still-tracked ids and must not shadow a live repo's current full_name.
@@ -142,6 +149,9 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
     if (ent) {
       invariants.sample_curve_months = ent.curve.monthly.length;
       if (ent.curve.monthly.length === 0) failures.push(`entity/repo/${topId}: empty curve`);
+      const trackingContract = typeof ent.active === "boolean" && "tracked_since" in ent;
+      invariants.sample_entity_tracking_contract = trackingContract;
+      if (!trackingContract) failures.push(`entity/repo/${topId}: missing active/tracked_since`);
     }
   }
 

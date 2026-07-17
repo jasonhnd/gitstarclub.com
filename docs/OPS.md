@@ -183,7 +183,7 @@ blob://
 │       ├── whitelist/                               #   Workflow step 1：≥10k 白名单（web/lib/workflows/steps/whitelist.ts）
 │       │   ├── <run_id>.json                        #     单次 run 快照（entries + diff.added/dropped）
 │       │   └── latest.json                          #     指针：{ run_id, ids } —— 下次 run 计算 diff 用
-│       ├── repos/{bucket}.json                      #   repo 维度 + 里程碑 + tracked_since + 冻结锚定因子 d
+│       ├── repos/{bucket}.json                      #   repo 维度 + active/history + tracked_since + 冻结锚定因子 d
 │       ├── repo-monthly/{bucket}.json · repo-weekly/{bucket}.json · repo-recent-daily/{bucket}.json
 │       ├── site-daily/{yyyy}.json
 │       └── pending/{period}.json                    #   已收口待折叠的周期活尾冻结快照（防重复 / 丢数据）
@@ -315,7 +315,7 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 
 > 承载历史 / 元数据 / canonical 全量刷新的长任务。本节只给**运维步骤**；**Workflow 设计与 step 清单见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §3**。
 >
-> 关键约束：**metadata seed 自 `lookup/repos.json`，GitHub 只补新晋**；旧 shard 缺少 GitHub `languages` breakdown 时允许一次性补齐，补完后不每周全量重拉，否则撞 GitHub 二级限流。
+> 关键约束：Search 只发现 membership；metadata 按 32 个 bucket 逐桶对全部 active repo 调 GraphQL `nodes()`，以 `stargazerCount` 写唯一权威 `current_stars`。单桶最多约两批请求并保留批间节流；任一 active repo 缺失 GraphQL 结果即停止发布，不能回退 Search stars。
 >
 > 接 cron：`/api/workflows/refresh/start` 在 `web/vercel.json` 的 `crons` 中，调度 `0 6 * * 0`（周日 06:00 UTC，独立于 daily / weekly）。
 
@@ -390,7 +390,7 @@ For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, 
    落 per-repo×天 事实表 → star_daily.parquet
    + 算里程碑（破 10k / 50k / 100k 精确日期）
 3. GraphQL（GITHUB_TOKEN）
-   抓元数据 + owner(+type) + current_stars（权威）→ repos.json
+   Search 发现成员（动态开放上界）；GraphQL 抓元数据 + owner(+type) + current_stars（唯一权威）→ repos.json
 4. DuckDB 预算所有 JSON 视图
    {周 / 月 / 年 / 全时}×{repo / org}×{flow / stock} + entity 曲线 + heatmap
 5. 上传 Vercel Blob（BLOB_READ_WRITE_TOKEN）

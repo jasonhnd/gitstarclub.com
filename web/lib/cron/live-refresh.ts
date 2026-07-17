@@ -61,7 +61,7 @@ export interface LiveRefreshOptions {
   };
 }
 
-type CurrentStarLookup = Record<string, { current_stars: number }>;
+type CurrentStarLookup = Record<string, { current_stars: number; active?: boolean }>;
 
 export function reconcileCurrentMonth(
   lookup: CurrentStarLookup,
@@ -71,6 +71,11 @@ export function reconcileCurrentMonth(
 ): { currentMonth: CurrentMonth; dayTotal: number } {
   const month = today.slice(0, 7);
   const carryMonth = existing?.month === month ? existing : null;
+  const activeIds = new Set(
+    Object.entries(lookup)
+      .filter(([, entry]) => entry.active !== false)
+      .map(([id]) => Number(id)),
+  );
 
   // Keep every prior series, including today's value for repos absent from a
   // partial GraphQL response. Only fetched repos are reconciled below.
@@ -80,13 +85,18 @@ export function reconcileCurrentMonth(
   }
 
   const mergedStars = new Map<number, number>(
-    Object.entries(lookup).map(([id, entry]) => [Number(id), entry.current_stars]),
+    Object.entries(lookup)
+      .filter(([, entry]) => entry.active !== false)
+      .map(([id, entry]) => [Number(id), entry.current_stars]),
   );
   if (existing) {
-    for (const [id, stars] of Object.entries(existing.current_stars)) mergedStars.set(Number(id), stars);
+    for (const [id, stars] of Object.entries(existing.current_stars)) {
+      if (activeIds.has(Number(id))) mergedStars.set(Number(id), stars);
+    }
   }
 
   for (const [id, latestStars] of fresh) {
+    if (!activeIds.has(id)) continue;
     const idKey = String(id);
     const previousObservedStars = existing?.current_stars[idKey] ?? lookup[idKey]?.current_stars;
     if (previousObservedStars == null) continue;
@@ -160,11 +170,14 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
     dependencies.getHeatmapBase("year", String(periods.year)),
   ]);
 
-  const refs: RepoRef[] = Object.entries(lookup).map(([id, entry]) => ({
-    id: Number(id),
-    owner: entry.owner,
-    name: entry.name,
-  }));
+  const refs: RepoRef[] = Object.entries(lookup)
+    .filter(([, entry]) => entry.active !== false)
+    .map(([id, entry]) => ({
+      id: Number(id),
+      owner: entry.owner,
+      name: entry.name,
+    }));
+  const activeIds = new Set(refs.map((ref) => ref.id));
   const canReuseToday = !dry && job === "weekly" && existingCM?.month === month && existingCM.updated === today;
   const fresh = canReuseToday ? new Map<number, number>() : await dependencies.fetchStarCounts(dry ? refs.slice(0, 50) : refs);
   if (!dry && !canReuseToday && refs.length > 0 && fresh.size === 0) {
@@ -177,11 +190,11 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
   const { currentMonth, dayTotal } = reconcileCurrentMonth(lookup, existingCM, fresh, today);
   const { per_repo: perRepo, daily_totals: dailyTotals } = currentMonth;
   const mergedStars = new Map<number, number>(Object.entries(currentMonth.current_stars).map(([id, stars]) => [Number(id), stars]));
-  const monthDeltas = repoDeltas(perRepo);
-  const weekDeltas = repoDeltas(perRepo, (date) => {
+  const monthDeltas = filterRepoDeltas(repoDeltas(perRepo), activeIds);
+  const weekDeltas = filterRepoDeltas(repoDeltas(perRepo, (date) => {
     const week = dependencies.isoWeek(new Date(`${date}T00:00:00.000Z`));
     return `${week.year}-W${String(week.week).padStart(2, "0")}` === weekPeriod;
-  });
+  }), activeIds);
 
   const allRepo = topByValue([...mergedStars].map(([id, value]) => ({ id, value })));
   const orgSum = new Map<string, number>();
@@ -191,8 +204,8 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
   }
   const allOrg = topByValue([...orgSum].map(([login, value]) => ({ login, value })));
 
-  const currentMonthFlow = topByValue(mergeRankFlow(monthRank?.items ?? [], monthDeltas));
-  const currentWeekFlow = topByValue(mergeRankFlow(weekRank?.items ?? [], weekDeltas));
+  const currentMonthFlow = topByValue(mergeRankFlow(monthRank?.items ?? [], monthDeltas, activeIds));
+  const currentWeekFlow = topByValue(mergeRankFlow(weekRank?.items ?? [], weekDeltas, activeIds));
   const currentMonthTop = {
     flow: currentMonthFlow,
     stock: topByValue([...mergedStars].map(([id, value]) => ({ id, value }))),
@@ -208,10 +221,15 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
 
   const currentYear = yearRank
     ? {
-        flow: topByValue(mergeRankFlow(yearRank.items, monthDeltas)),
+        flow: topByValue(mergeRankFlow(yearRank.items, monthDeltas, activeIds)),
         stock: currentMonthTop.stock,
       }
-    : (snap?.current_year ?? currentMonthTop);
+    : (snap
+        ? {
+            flow: filterTopRepos(snap.current_year.flow, activeIds),
+            stock: currentMonthTop.stock,
+          }
+        : currentMonthTop);
   const currentYearAsOf = yearRank
     ? earliestTimestamp(currentMonthAsOf, yearRank.meta.generated_at)
     : snapshotSectionAsOf(snap, "current_year");
@@ -374,13 +392,28 @@ function repoDeltas(perRepo: Record<string, [string, number][]>, includeDate?: (
   return out;
 }
 
-function mergeRankFlow(baseItems: RankItem[], deltas: Map<number, number>): { id: number; value: number }[] {
+function filterRepoDeltas(deltas: Map<number, number>, activeIds: ReadonlySet<number>): Map<number, number> {
+  return new Map([...deltas].filter(([id]) => activeIds.has(id)));
+}
+
+function mergeRankFlow(
+  baseItems: RankItem[],
+  deltas: Map<number, number>,
+  activeIds: ReadonlySet<number>,
+): { id: number; value: number }[] {
   const merged = new Map<number, number>();
   for (const item of baseItems) {
-    if (item.id != null) merged.set(item.id, item.value);
+    if (item.id != null && activeIds.has(item.id)) merged.set(item.id, item.value);
   }
   for (const [id, delta] of deltas) merged.set(id, (merged.get(id) ?? 0) + delta);
   return [...merged].map(([id, value]) => ({ id, value }));
+}
+
+function filterTopRepos(items: ReadonlyArray<RankItem | TopItem>, activeIds: ReadonlySet<number>): TopItem[] {
+  return items
+    .filter((item) => item.id != null && activeIds.has(item.id))
+    .slice(0, TOP_N)
+    .map((item, index) => ({ rank: index + 1, id: item.id, value: item.value, prev_rank: null }));
 }
 
 function topRepoIds(...lists: TopItem[][]): number[] {

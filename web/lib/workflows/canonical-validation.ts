@@ -30,9 +30,10 @@ export interface CanonicalValidationResult {
   invariants: Record<string, boolean | number>;
   failures: string[];
   repoIds: Set<string>;
+  activeRepoIds: Set<string>;
 }
 
-type AnchoringShard = Record<string, Pick<ReposShardEntry, "d" | "tracked_since">>;
+type AnchoringShard = Record<string, Pick<ReposShardEntry, "d" | "tracked_since" | "active">>;
 
 export function inspectAnchoringFactors(
   shards: AnchoringShard[],
@@ -92,6 +93,10 @@ export async function validateCanonicalGeneration(
   const failures: string[] = [];
   const repoShards: AnchoringShard[] = [];
   const repoIds = new Set<string>();
+  const activeRepoIds = new Set<string>();
+  let historicalRepos = 0;
+  let missingTrackingStatus = 0;
+  let missingTrackedSinceField = 0;
   let schemaFailures = 0;
 
   const results = await Promise.all(
@@ -114,7 +119,13 @@ export async function validateCanonicalGeneration(
           if (spec.kind === "repos") {
             const shard = parsed.data as AnchoringShard;
             repoShards.push(shard);
-            for (const id of Object.keys(shard)) repoIds.add(id);
+            for (const [id, repo] of Object.entries(shard)) {
+              repoIds.add(id);
+              if (repo.active === true) activeRepoIds.add(id);
+              else if (repo.active === false) historicalRepos++;
+              else missingTrackingStatus++;
+              if (!("tracked_since" in repo)) missingTrackedSinceField++;
+            }
           }
           return { path, kind: spec.kind, bucket, records, sha256: await checksum(parsed.data) };
         } catch (error) {
@@ -133,6 +144,12 @@ export async function validateCanonicalGeneration(
   const historicalMissing = Number(dInvariants.d_factor_historical_missing ?? 0);
   if (historicalMissing > 0) {
     failures.push(`canonical/v2/repos: ${historicalMissing} historical repo(s) are missing a finite anchoring factor d`);
+  }
+  if (missingTrackingStatus > 0) {
+    failures.push(`canonical/v2/repos: ${missingTrackingStatus} repo(s) are missing explicit active status`);
+  }
+  if (missingTrackedSinceField > 0) {
+    failures.push(`canonical/v2/repos: ${missingTrackedSinceField} repo(s) are missing explicit tracked_since provenance`);
   }
 
   const manifest = CanonicalGenerationManifest.parse({
@@ -154,9 +171,14 @@ export async function validateCanonicalGeneration(
       canonical_expected_shards: EXPECTED_CANONICAL_SHARDS,
       canonical_validated_shards: shards.length,
       canonical_total_records: manifest.total_records,
+      canonical_active_repos: activeRepoIds.size,
+      canonical_historical_repos: historicalRepos,
+      canonical_missing_tracking_status: missingTrackingStatus,
+      canonical_missing_tracked_since: missingTrackedSinceField,
       canonical_complete: manifest.complete,
     },
     failures,
     repoIds,
+    activeRepoIds,
   };
 }

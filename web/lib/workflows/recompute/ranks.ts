@@ -107,7 +107,8 @@ export function orgRankMatrix(ow: OrgWindow, w: Window, gen: string): Map<string
 }
 
 export function allTime(model: Model, gen: string): Map<string, RankView> {
-  const repoItems = [...model.repos.values()]
+  const repoItems = model.activeIds
+    .map((id) => model.repos.get(id)!)
     .sort((a, b) => b.current_stars - a.current_stars || a.id - b.id)
     .slice(0, TOP_N)
     .map((r, i) => ({ rank: i + 1, id: r.id, value: r.current_stars, prev_rank: null }));

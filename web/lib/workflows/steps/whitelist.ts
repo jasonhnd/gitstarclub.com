@@ -39,7 +39,11 @@ const defaultDeps: WhitelistDeps = {
   },
   readBootstrapIds: async () => {
     const lookup = await getReposLookup();
-    return lookup ? Object.keys(lookup).map(Number) : [];
+    return lookup
+      ? Object.entries(lookup)
+          .filter(([, entry]) => entry.active !== false)
+          .map(([id]) => Number(id))
+      : [];
   },
   search: searchWhitelist,
   createSnapshot: (runId, snapshot) => createView(`canonical/v2/whitelist/${runId}.json`, snapshot),

@@ -95,9 +95,21 @@ const SearchRepoSchema = z.object({
 }).passthrough();
 const SearchResultSchema = z.object({
   total_count: NonNegativeInt,
+  incomplete_results: z.boolean().optional(),
   items: z.array(SearchRepoSchema),
 }).passthrough();
-type SearchResult = z.infer<typeof SearchResultSchema>;
+export type SearchResult = z.infer<typeof SearchResultSchema>;
+export type RepositorySearch = (
+  params: Record<string, string | number>,
+  opts?: GitHubFetchOptions,
+) => Promise<SearchResult>;
+
+function requireCompleteSearch(result: SearchResult, query: string): SearchResult {
+  if (result.incomplete_results) {
+    throw new Error(`GitHub Search returned incomplete results for ${query}`);
+  }
+  return result;
+}
 
 async function restSearch(token: string, params: Record<string, string | number>, attempt = 1, opts: GitHubFetchOptions = {}): Promise<SearchResult> {
   const url = new URL(`${REST}/search/repositories`);
@@ -116,17 +128,41 @@ async function restSearch(token: string, params: Record<string, string | number>
   return SearchResultSchema.parse(await res.json());
 }
 
-/** Whitelist = repos with stars ≥ minStars, via adaptive star-range bucketing (Search caps at
- *  1000 results/query: split any bucket >1000 until it fits, then page). Sorted by stars desc.
- *  Ported from pipeline/lib/github.mjs; see docs/PIPELINE.md §1 / VERCEL-DATA-OPERATIONS §4. */
-export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 600000, opts: GitHubFetchOptions = {}): Promise<WhitelistEntryRecord[]> {
-  const token = requireGithubToken();
+/** Search-backed implementation with an injectable transport for contract tests. */
+export async function searchWhitelistWithSearch(
+  minStars: number,
+  search: RepositorySearch,
+  maxStars?: number,
+  opts: GitHubFetchOptions = {},
+): Promise<WhitelistEntryRecord[]> {
   const out = new Map<number, WhitelistEntryRecord>(); // dedups range-boundary overlap
-  const queue: Array<[number, number]> = [[minStars, maxStars]];
+
+  // GitHub Search needs finite ranges to work around its 1,000-result cap. Get
+  // the current maximum from an open-ended, stars-descending one-row query
+  // instead of encoding a product ceiling (the former 600,000 limit).
+  let observedMax = maxStars;
+  if (observedMax === undefined) {
+    const query = `stars:>=${minStars}`;
+    const top = requireCompleteSearch(
+      await search({ q: query, sort: "stars", order: "desc", per_page: 1, page: 1 }, opts),
+      query,
+    );
+    if (top.total_count === 0) return [];
+    observedMax = top.items[0]?.stargazers_count;
+    if (observedMax === undefined || observedMax < minStars) {
+      throw new Error("GitHub Search returned a non-empty whitelist without a valid maximum star count");
+    }
+  }
+  if (observedMax < minStars) return [];
+
+  const queue: Array<[number, number]> = [[minStars, observedMax]];
   while (queue.length) {
     const [low, high] = queue.pop()!;
     const q = `stars:${low}..${high}`;
-    const first = await restSearch(token, { q, sort: "stars", order: "desc", per_page: 100, page: 1 }, 1, opts);
+    const first = requireCompleteSearch(
+      await search({ q, sort: "stars", order: "desc", per_page: 100, page: 1 }, opts),
+      q,
+    );
     if (first.total_count > 1000 && high > low) {
       const mid = Math.floor((low + high) / 2);
       queue.push([low, mid], [mid + 1, high]);
@@ -137,7 +173,12 @@ export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 6
     }
     const pages = Math.min(Math.ceil(first.total_count / 100), 10);
     for (let page = 1; page <= pages; page++) {
-      const res = page === 1 ? first : await restSearch(token, { q, sort: "stars", order: "desc", per_page: 100, page }, 1, opts);
+      const res = page === 1
+        ? first
+        : requireCompleteSearch(
+            await search({ q, sort: "stars", order: "desc", per_page: 100, page }, opts),
+            `${q} page ${page}`,
+          );
       for (const r of res.items) {
         const entry = WhitelistEntry.parse({
           id: r.id,
@@ -152,6 +193,22 @@ export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 6
     }
   }
   return [...out.values()].sort((a, b) => b.stars - a.stars);
+}
+
+/** Whitelist = Search-discovered repos with stars ≥ minStars. Search determines
+ * membership only; GraphQL is authoritative for displayed/ranked star totals. */
+export async function searchWhitelist(
+  minStars = MIN_TRACKED_STARS,
+  maxStars?: number,
+  opts: GitHubFetchOptions = {},
+): Promise<WhitelistEntryRecord[]> {
+  const token = requireGithubToken();
+  return searchWhitelistWithSearch(
+    minStars,
+    (params, searchOpts) => restSearch(token, params, 1, searchOpts),
+    maxStars,
+    opts,
+  );
 }
 
 // --- GraphQL nodes(): repo metadata ---

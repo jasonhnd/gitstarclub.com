@@ -154,6 +154,37 @@ describe("refreshLiveViews", () => {
     expect(revalidated).toEqual([]);
   });
 
+  test("polls only active repositories while retaining dropped history outside live current stars", async () => {
+    lookup!["3"] = {
+      owner: "owner",
+      name: "historical",
+      full_name: "owner/historical",
+      owner_type: "Organization",
+      language: "TypeScript",
+      current_stars: 300,
+      active: false,
+      tracked_since: "2026-06-01",
+    };
+    existingCurrentMonth = state({
+      per_repo: {
+        "1": [[TODAY, 10]],
+        "2": [[TODAY, 5]],
+        "3": [["2026-07-16", 4]],
+      },
+      current_stars: { "1": 110, "2": 205, "3": 304 },
+    });
+
+    await refreshLiveViews("daily", false, publishOptions());
+
+    expect(fetchedRefs).toEqual([
+      { id: 1, owner: "owner", name: "one" },
+      { id: 2, owner: "owner", name: "two" },
+    ]);
+    expect(currentMonthWrite().per_repo["3"]).toEqual([["2026-07-16", 4]]);
+    expect(currentMonthWrite().current_stars["3"]).toBeUndefined();
+    expect(hotSnapshotWrite().all_time.repo.some((item) => item.id === 3)).toBe(false);
+  });
+
   test("an identical same-day retry preserves the full persisted day delta", async () => {
     existingCurrentMonth = state();
 

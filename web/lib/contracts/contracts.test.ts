@@ -353,11 +353,12 @@ describe("canonical shards", () => {
       topics: ["react"],
       created_at: "2020-01-01T00:00:00Z",
       crossed_10k: "2020-01-01",
+      active: false,
       tracked_since: "2024-06-01",
       d: 0.95,
       fetched_at: TS,
     };
-    expect(ReposShardEntry.parse(full).d).toBe(0.95);
+    expect(ReposShardEntry.parse(full)).toMatchObject({ active: false, tracked_since: "2024-06-01", d: 0.95 });
   });
 
   test("ReposShardEntry parses date-only created_at for bootstrap-compatible shards", () => {
@@ -592,7 +593,11 @@ describe("lookup contracts", () => {
   const repoEntry = { owner: "vercel", name: "next.js", full_name: "vercel/next.js", owner_type: "Organization", language: "TypeScript", current_stars: 120000 };
 
   test("RepoLookupEntry parses (language nullable)", () => {
-    expect(RepoLookupEntry.parse({ ...repoEntry, language: null }).language).toBeNull();
+    expect(RepoLookupEntry.parse({ ...repoEntry, language: null, active: false, tracked_since: "2024-06-01" })).toMatchObject({
+      language: null,
+      active: false,
+      tracked_since: "2024-06-01",
+    });
   });
 
   test("RepoLookupEntry rejects bad owner_type", () => {
@@ -640,6 +645,8 @@ describe("entity / view contracts", () => {
     topics: ["react"],
     created_at: "2016-10-05",
     current_stars: 120000,
+    active: true,
+    tracked_since: "2024-06-01",
     is_archived: false,
     milestones: { crossed_10k: "2018-01-01", crossed_50k: null, crossed_100k: null },
     curve,
@@ -650,6 +657,7 @@ describe("entity / view contracts", () => {
     const parsed = RepoEntity.parse(repoEntity);
     expect(parsed.id).toBe(1);
     expect(parsed.languages?.[0].name).toBe("TypeScript");
+    expect(parsed.tracked_since).toBe("2024-06-01");
   });
 
   test("RepoEntity parses with optional rank_history record", () => {
@@ -829,7 +837,7 @@ describe("live contracts", () => {
 });
 
 describe("search contracts", () => {
-  const doc = { id: 1, full_name: "vercel/next.js", owner: "vercel", language: "TypeScript", current_stars: 120000, description: "The React Framework" };
+  const doc = { id: 1, full_name: "vercel/next.js", owner: "vercel", language: "TypeScript", current_stars: 120000, description: "The React Framework", active: true, tracked_since: "2024-06-01" };
 
   test("SearchDoc parses; language/description nullable", () => {
     expect(SearchDoc.parse({ ...doc, language: null, description: null }).id).toBe(1);

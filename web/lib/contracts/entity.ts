@@ -66,6 +66,8 @@ export const RepoEntity = z.object({
     .optional(),
   created_at: DateStr,
   current_stars: NonNegativeInt,
+  active: z.boolean().optional(),
+  tracked_since: DateStr.nullable().optional(),
   is_archived: z.boolean(),
   milestones: z.object({
     crossed_10k: DateStr.nullable(),

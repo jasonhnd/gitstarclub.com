@@ -12,6 +12,7 @@
 // (If github.ts changes these helpers, keep the replicas in sync.) No fetch is
 // invoked and GITHUB_TOKEN is never set, so this suite makes zero network calls.
 import { test, expect, describe } from "bun:test";
+import { searchWhitelistWithSearch, type SearchResult } from "./github";
 
 const MAX_RETRIES = 4; // mirrors github.ts
 
@@ -110,6 +111,36 @@ function splitBucket(low: number, high: number): [number, number] {
 }
 
 describe("searchWhitelist star-range bucketing math (replicated)", () => {
+  test("discovers 599,999, 600,000, 600,001 and >1m without a fixed upper ceiling", async () => {
+    const repos = [599_999, 600_000, 600_001, 1_250_000].map((stars, index) => ({
+      id: index + 1,
+      node_id: `R_${index + 1}`,
+      full_name: `owner/repo-${index + 1}`,
+      name: `repo-${index + 1}`,
+      stargazers_count: stars,
+      owner: { login: "owner" },
+    }));
+    const queries: string[] = [];
+    const search = async (params: Record<string, string | number>): Promise<SearchResult> => {
+      const q = String(params.q);
+      queries.push(q);
+      if (q === "stars:>=599999") return { total_count: repos.length, items: [repos.at(-1)!] };
+      if (q === "stars:599999..1250000") return { total_count: repos.length, items: repos.toReversed() };
+      throw new Error(`unexpected query ${q}`);
+    };
+
+    const result = await searchWhitelistWithSearch(599_999, search);
+
+    expect(result.map((repo) => repo.stars)).toEqual([1_250_000, 600_001, 600_000, 599_999]);
+    expect(queries).toEqual(["stars:>=599999", "stars:599999..1250000"]);
+  });
+
+  test("fails closed instead of publishing an incomplete Search membership", async () => {
+    await expect(
+      searchWhitelistWithSearch(10_000, async () => ({ total_count: 1, incomplete_results: true, items: [] })),
+    ).rejects.toThrow("GitHub Search returned incomplete results");
+  });
+
   test("splits a wide bucket at the floored midpoint with no gap or overlap", () => {
     const [mid, next] = splitBucket(10000, 600000);
     expect(mid).toBe(305000);
