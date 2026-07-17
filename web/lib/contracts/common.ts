@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isWellFormedUnicode, truncateUnicodeText, unicodeCodePointLength } from "../unicode-text";
 
 // Shared primitives + ranking shapes. See docs/DATA-CONTRACTS.md.
 // Dates are UTC.
@@ -43,17 +44,18 @@ export const YearPeriod = z.string().regex(/^\d{4}$/);
 export const Period = z.union([WeekPeriod, MonthPeriod, YearPeriod, z.literal("all")]);
 export const NonNegativeInt = z.number().int().nonnegative();
 export const PositiveRank = z.number().int().positive();
-/** Shared cap for free-text fields stored in JSON shards and view contracts. */
+/** Shared code-point cap for free-text fields stored in JSON shards and view contracts. */
 export const SAFE_TEXT_MAX = 4096;
 
 /** Truncate free text to SafeText's max length (legacy / untrusted sources). */
 export function capSafeText(value: string, max = SAFE_TEXT_MAX): string {
-  return value.length <= max ? value : value.slice(0, max);
+  return truncateUnicodeText(value, max);
 }
 
 export const SafeText = z
   .string()
-  .max(SAFE_TEXT_MAX)
+  .refine(isWellFormedUnicode, "must contain only well-formed Unicode scalar values")
+  .refine((value) => unicodeCodePointLength(value) <= SAFE_TEXT_MAX, `must contain at most ${SAFE_TEXT_MAX} Unicode code points`)
   .refine(
     (value) => !/<\s*\/?\s*(?:script|iframe|object|embed|link|meta|style)\b/i.test(value),
     "must not contain active HTML tags",

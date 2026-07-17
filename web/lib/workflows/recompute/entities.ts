@@ -5,6 +5,7 @@
 import type { DateStr, Model } from "./model";
 import type { RepoWindow, OrgWindow } from "./windows";
 import { detectInflections, type Inflection } from "./inflections";
+import { truncateUnicodeText } from "@/lib/unicode-text";
 
 const MONTHLY_TABLE_MONTHS = 24;
 
@@ -116,7 +117,7 @@ const SEARCH_DESC_CAP = 200; // bound the client-loaded index; keywords live in 
 export function searchIndex(model: Model, gen: string): Map<string, unknown> {
   const repos = model.ids.map((id) => {
     const r = model.repos.get(id)!;
-    const desc = (r.description ?? "").slice(0, SEARCH_DESC_CAP);
+    const desc = truncateUnicodeText(r.description ?? "", SEARCH_DESC_CAP);
     return {
       id: r.id,
       full_name: r.full_name,

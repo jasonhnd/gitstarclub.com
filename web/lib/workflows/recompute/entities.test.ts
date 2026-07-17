@@ -4,6 +4,7 @@ import { test, expect, describe } from "bun:test";
 import { buildModel, type RawShards } from "./model";
 import { computeRepoWindow, computeOrgWindow } from "./windows";
 import { repoEntities, orgEntities, lookups, searchIndex } from "./entities";
+import { isWellFormedUnicode, unicodeCodePointLength } from "@/lib/unicode-text";
 
 // Two repos under org "alpha". Seam month = 2026-05, so 2026-06 is post-seam:
 //   repo 10 (d=0.8): gross 100 → stock round(100*0.8)=80; 2026-05 +50 → round(150*0.8)=120;
@@ -193,7 +194,7 @@ describe("searchIndex", () => {
   });
 
   test("description is head-capped to bound the client payload", () => {
-    const long = "x".repeat(500);
+    const long = `${"x".repeat(198)}\uD83E🦍tail`;
     const m = buildModel(
       {
         repos: { "1": { id: 1, owner: "o", owner_type: "User", name: "r", full_name: "o/r", description: long, current_stars: 5, d: 1 } },
@@ -205,7 +206,9 @@ describe("searchIndex", () => {
       "2026-05-30",
     );
     const doc = (searchIndex(m, generatedAt).get("search/index.json") as { repos: Array<{ description: string }> }).repos[0];
-    expect(doc.description.length).toBe(200);
+    expect(doc.description).toBe(`${"x".repeat(198)}�🦍`);
+    expect(unicodeCodePointLength(doc.description)).toBe(200);
+    expect(isWellFormedUnicode(doc.description)).toBe(true);
   });
 });
 

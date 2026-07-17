@@ -310,6 +310,36 @@ describe("canonical shards", () => {
     expect(parsed.description?.length).toBe(4096);
   });
 
+  test("ReposShardEntry truncates by code point and repairs malformed legacy Unicode", () => {
+    const boundary = `${"x".repeat(4095)}🦍tail`;
+    const parsedBoundary = ReposShardEntry.parse({ ...validEntry, description: boundary });
+    expect(parsedBoundary.description).toBe(`${"x".repeat(4095)}🦍`);
+
+    const parsedMalformed = ReposShardEntry.parse({ ...validEntry, description: "gorilla\uD83E" });
+    expect(parsedMalformed.description).toBe("gorilla�");
+  });
+
+  test("SafeText rejects unpaired surrogates on non-normalizing paths", () => {
+    expect(rejects(SearchDoc, {
+      id: 1,
+      full_name: "gorilla/mux",
+      owner: "gorilla",
+      current_stars: 10_000,
+      description: "invalid\uD83E",
+    })).toBe(true);
+  });
+
+  test("SafeText enforces its limit in Unicode code points", () => {
+    const doc = {
+      id: 1,
+      full_name: "emoji/repo",
+      owner: "emoji",
+      current_stars: 10_000,
+    };
+    expect(SearchDoc.parse({ ...doc, description: "🦍".repeat(4096) }).description).toHaveLength(8192);
+    expect(rejects(SearchDoc, { ...doc, description: "🦍".repeat(4097) })).toBe(true);
+  });
+
   test("ReposShardEntry parses with optional/nullable fields", () => {
     const full = {
       ...validEntry,
