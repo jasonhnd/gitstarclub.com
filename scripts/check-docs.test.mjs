@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
 import {
   checkDocs,
   extractRepoReferences,
@@ -12,21 +13,21 @@ describe("documentation consistency gate", () => {
       "Then run `bun web/scripts/validate-live-views.ts --bust 2026-07-17`.",
     ].join("\n");
 
-    expect(extractRepoReferences(markdown)).toEqual([
+    assert.deepEqual(extractRepoReferences(markdown), [
       "web/app/(en)/[locale]/[owner]/page.tsx",
       "web/scripts/validate-live-views.ts",
     ]);
   });
 
   test("historical path exemptions are explicit and reasoned", () => {
-    expect(historicalDocumentAllowlist.has("docs/CHANGELOG.md")).toBe(true);
-    expect(historicalDocumentAllowlist.has("docs/analysis/DATA-CORRECTNESS-21.md")).toBe(true);
+    assert.equal(historicalDocumentAllowlist.has("docs/CHANGELOG.md"), true);
+    assert.equal(historicalDocumentAllowlist.has("docs/analysis/DATA-CORRECTNESS-21.md"), true);
     for (const reason of historicalDocumentAllowlist.values()) {
-      expect(reason.length).toBeGreaterThan(10);
+      assert.ok(reason.length > 10);
     }
   });
 
   test("the checked-in repository satisfies all maintained doc contracts", () => {
-    expect(checkDocs(process.cwd())).toEqual([]);
+    assert.deepEqual(checkDocs(process.cwd()), []);
   });
 });
