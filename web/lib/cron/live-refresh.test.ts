@@ -30,6 +30,8 @@ mock.module("@/lib/github", () => ({
     fetchedRefs = refs;
     return new Map(freshCounts);
   },
+  batchMetadata: async () => new Map(),
+  searchWhitelist: async () => [],
 }));
 
 mock.module("@/lib/indexnow", () => ({
