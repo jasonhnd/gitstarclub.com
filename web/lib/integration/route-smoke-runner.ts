@@ -10,7 +10,7 @@ import EnglishCategoriesPage from "@/app/(en)/categories/page";
 import EnglishCategoryDimensionPage from "@/app/(en)/categories/[dimension]/page";
 import EnglishCategoryDetailPage from "@/app/(en)/categories/[dimension]/[slug]/page";
 import EnglishCategoryDetailPagePage from "@/app/(en)/categories/[dimension]/[slug]/page/[page]/page";
-import EnglishRepoPage from "@/app/(en)/[owner]/[name]/page";
+import EnglishRepoPage from "@/app/(en)/[locale]/[owner]/page";
 import EnglishOrgPage from "@/app/(en)/o/[login]/page";
 import EnglishComparePage from "@/app/(en)/compare/page";
 import EnglishAboutPage from "@/app/(en)/about/page";
@@ -24,7 +24,6 @@ import { OrgPageView } from "@/app/_localized/org";
 import { PulsePageView } from "@/app/_localized/pulse";
 import { RankingsPageView } from "@/app/_localized/rankings";
 import { RankingsPeriodPageView, RankingsYearPageView } from "@/app/_localized/ranking-detail";
-import { RepoPageView } from "@/app/_localized/repo";
 import type {
   CategoriesLookup,
   CategoryAssignments,
@@ -129,13 +128,13 @@ const routes: RouteCase[] = [
     label: "repo detail",
     path: `/${REPO_FULL_NAME}`,
     page: EnglishRepoPage,
-    render: () => RepoPageView({ locale: "en", owner: "vuejs", name: "vue" }),
+    render: () => EnglishRepoPage({ params: Promise.resolve({ locale: "vuejs", owner: "vue" }) }),
   },
   {
     label: "malformed linked repo detail",
     path: `/${BROKEN_REPO_FULL_NAME}`,
     page: EnglishRepoPage,
-    render: () => RepoPageView({ locale: "en", owner: "fighting41love", name: "funNLP" }),
+    render: () => EnglishRepoPage({ params: Promise.resolve({ locale: "fighting41love", owner: "funNLP" }) }),
   },
   {
     label: "org detail",
@@ -171,7 +170,7 @@ const routes: RouteCase[] = [
     label: "localized repo detail",
     path: `/fr/${REPO_FULL_NAME}`,
     page: LocalizedRepoPage,
-    render: () => RepoPageView({ locale: "fr", owner: "vuejs", name: "vue" }),
+    render: () => LocalizedRepoPage({ params: Promise.resolve({ locale: "fr", owner: "vuejs", name: "vue" }) }),
   },
 ];
 
