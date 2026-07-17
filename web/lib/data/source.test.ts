@@ -2,6 +2,7 @@ import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
 import { invalidatePublishedVersionMemo, readView } from "./source";
 import { PUBLISHED_VIEWS_CACHE_TAG } from "./publication-cache-contract";
+import { resolveCanonicalBlobPath } from "./bootstrap-publication";
 
 // Route a mocked global fetch by URL to simulate pointer + view fetches.
 // Date.now() is driven forward past the 1h TTL between scenarios to invalidate
@@ -60,6 +61,16 @@ function routeFor(url: string): FakeRoute {
     .sort((a, b) => b.length - a.length)[0];
   return key ? routes[key] : { status: 404 };
 }
+
+const bootstrapPointer = (generation = "bootstrap-20260717T120000Z") => ({
+  schema_ver: 1,
+  generation,
+  prefix: `bootstrap/generations/${generation}`,
+  previous_generation: null,
+  published_at: "2026-07-17T12:00:00.000Z",
+  base_manifest_sha256: "a".repeat(64),
+  canonical_manifest_sha256: "b".repeat(64),
+});
 
 beforeEach(() => {
   routes = {};
@@ -160,6 +171,53 @@ describe("readView — base:true version-prefix resolution", () => {
     expect(fetchInits[pointerCall]?.next?.tags).toContain(PUBLISHED_VIEWS_CACHE_TAG);
   });
 
+  test("uses the atomically published bootstrap generation when managed views are absent", async () => {
+    routes = {
+      "/views/latest.json": { status: 404 },
+      "/bootstrap/latest.json": { json: bootstrapPointer() },
+      "/bootstrap/generations/bootstrap-20260717T120000Z/views/data/bootstrap.json": {
+        json: { ok: true, tag: "bootstrap" },
+      },
+    };
+
+    const result = await readView("data/bootstrap.json", Doc, { base: true });
+
+    expect(result).toEqual({ ok: true, tag: "bootstrap" });
+    expect(fetchCalls.some((url) => url.includes("/bootstrap/latest.json"))).toBe(true);
+    expect(
+      fetchCalls.some((url) =>
+        url.includes("/bootstrap/generations/bootstrap-20260717T120000Z/views/data/bootstrap.json"),
+      ),
+    ).toBe(true);
+  });
+
+  test("managed views/latest.json takes precedence over the bootstrap base generation", async () => {
+    routes = {
+      "/views/latest.json": { json: { version: "refresh-current" } },
+      "/views/refresh-current/data/current.json": { json: { ok: true, tag: "managed" } },
+      "/bootstrap/latest.json": { json: bootstrapPointer() },
+    };
+
+    expect(await readView("data/current.json", Doc, { base: true })).toEqual({ ok: true, tag: "managed" });
+    expect(fetchCalls.some((url) => url.includes("/bootstrap/latest.json"))).toBe(true);
+  });
+
+  test("a newer bootstrap commit atomically supersedes an older managed base pointer", async () => {
+    routes = {
+      "/views/latest.json": {
+        json: { version: "refresh-old", published_at: "2026-07-16T12:00:00.000Z" },
+      },
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-new") },
+      "/views/refresh-old/data/priority.json": { json: { ok: true, tag: "managed-old" } },
+      "/bootstrap/generations/bootstrap-new/views/data/priority.json": {
+        json: { ok: true, tag: "bootstrap-new" },
+      },
+    };
+
+    expect(await readView("data/priority.json", Doc, { base: true })).toEqual({ ok: true, tag: "bootstrap-new" });
+    expect(fetchCalls.some((url) => url.includes("/views/refresh-old/data/priority.json"))).toBe(false);
+  });
+
   test("a warmed pointer memo can be invalidated immediately after publication", async () => {
     routes = {
       "/views/latest.json": { status: 200, json: { version: "v1" } },
@@ -191,6 +249,7 @@ describe("readView — base:true version-prefix resolution", () => {
 
     expect(result).toEqual({ ok: true, tag: "flat-after-throw" });
     expect(fetchCalls.some((u) => u.includes("/data/whatever.json") && !u.includes("/views/"))).toBe(true);
+    expect(fetchCalls.some((u) => u.includes("/bootstrap/latest.json"))).toBe(false);
   });
 
   test("falls back to flat <path> when the pointer stalls past the timeout", async () => {
@@ -213,6 +272,7 @@ describe("readView — base:true version-prefix resolution", () => {
     expect(result).toEqual({ ok: true, tag: "flat-after-timeout" });
     expect(pointerSignal?.aborted).toBe(true);
     expect(fetchCalls.some((u) => u.includes("/data/pointer-timeout.json") && !u.includes("/views/"))).toBe(true);
+    expect(fetchCalls.some((u) => u.includes("/bootstrap/latest.json"))).toBe(false);
   });
 
   test("returns null when the resolved base view itself is 404", async () => {
@@ -265,8 +325,47 @@ describe("readView — non-base (flat) reads", () => {
     await readView("views/latest.json", Doc);
     await readView("views/run/meta.json", Doc);
 
-    expect(fetchInits.slice(0, 3).map((init) => init.cache)).toEqual(["no-store", "no-store", "no-store"]);
-    expect(fetchInits[3]?.cache).toBe("force-cache");
+    const cacheFor = (path: string) => fetchInits[fetchCalls.findIndex((url) => url.includes(path))]?.cache;
+    expect(cacheFor("/bootstrap/latest.json")).toBe("no-store");
+    expect(cacheFor("/canonical/v2/meta.json")).toBe("no-store");
+    expect(cacheFor("/ops/workflows/run/manifest.json")).toBe("no-store");
+    expect(cacheFor("/views/latest.json")).toBe("no-store");
+    expect(cacheFor("/views/run/meta.json")).toBe("force-cache");
+  });
+
+  test("resolves every canonical read through the published bootstrap generation", async () => {
+    routes = {
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-canonical") },
+      "/bootstrap/generations/bootstrap-canonical/canonical/v2/meta.json": {
+        json: { ok: true, tag: "generation" },
+      },
+    };
+
+    expect(await readView("canonical/v2/meta.json", Doc)).toEqual({ ok: true, tag: "generation" });
+    expect(
+      fetchCalls.some((url) =>
+        url.includes("/bootstrap/generations/bootstrap-canonical/canonical/v2/meta.json"),
+      ),
+    ).toBe(true);
+    expect(fetchCalls.some((url) => new URL(url).pathname === "/canonical/v2/meta.json")).toBe(false);
+  });
+
+  test("canonical overlays are copy-on-write and take precedence over immutable bootstrap bytes", async () => {
+    routes = {
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-overlay") },
+      "/bootstrap/overlays/bootstrap-overlay/canonical/v2/meta.json": {
+        json: { ok: true, tag: "overlay" },
+      },
+      "/bootstrap/generations/bootstrap-overlay/canonical/v2/meta.json": {
+        json: { ok: true, tag: "sealed" },
+      },
+    };
+
+    expect(await readView("canonical/v2/meta.json", Doc)).toEqual({ ok: true, tag: "overlay" });
+    expect(fetchCalls.some((url) => url.includes("/bootstrap/generations/bootstrap-overlay/canonical/"))).toBe(false);
+    expect(await resolveCanonicalBlobPath("canonical/v2/meta.json")).toBe(
+      "bootstrap/overlays/bootstrap-overlay/canonical/v2/meta.json",
+    );
   });
 
   test("observes a canonical write in the same run while immutable views stay cacheable", async () => {
@@ -295,7 +394,9 @@ describe("readView — non-base (flat) reads", () => {
 
     expect(await readView("canonical/v2/state.json", Doc)).toEqual({ ok: true, tag: "canonical-after" });
     expect(await readView("views/run/state.json", Doc)).toEqual({ ok: true, tag: "view-before" });
-    expect(requestedUrls[0]).not.toBe(requestedUrls[2]);
+    const canonicalRequests = requestedUrls.filter((url) => new URL(url).pathname === "/canonical/v2/state.json");
+    expect(canonicalRequests).toHaveLength(2);
+    expect(canonicalRequests[0]).not.toBe(canonicalRequests[1]);
   });
 
   test("aborts stalled flat reads and surfaces a timeout after retries", async () => {

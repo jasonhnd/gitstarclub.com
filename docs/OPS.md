@@ -172,11 +172,20 @@ an explicit recovery procedure.
 
 ## Vercel Blob 布局
 
-使用**一个 PUBLIC store**：海量 JSON 视图由 build / 运行时按**直链 URL** 读取，公开读最省事、命中 CDN。canonical JSON shard 由 Workflow 读写；bootstrap Parquet 体积小、仅一次性 bootstrap 触碰。新布局完整定义见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4 与 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.11–2.13。
+使用**一个 PUBLIC store**：海量 JSON 视图由 build / 运行时按**直链 URL** 读取，公开读最省事、命中 CDN。首次 bootstrap 的 views + canonical 先封存在 immutable generation，由 `bootstrap/latest.json` 一次提交；后续 canonical 变更进入该 generation 的 copy-on-write overlay。新布局完整定义见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4 与 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.11–2.13。
 
 ```text
 blob://
-├── canonical/
+├── bootstrap/
+│   ├── latest.json                                  # atomic bootstrap pointer（current + previous generation）
+│   ├── generations/<bootstrap-generation>/          # create-only、manifest 封存后永不覆盖
+│   │   ├── manifests/{base,canonical}.json           # object path/bytes/SHA-256 完整性收据
+│   │   ├── views/**                                  # 首次 base views；views/latest 存在后由 managed views 优先
+│   │   └── canonical/
+│   │       ├── star_daily.parquet                    # bootstrap 归档
+│   │       └── v2/**                                 # immutable canonical seed
+│   └── overlays/<bootstrap-generation>/canonical/v2/** # recurring canonical copy-on-write 状态
+├── canonical/                                       # legacy flat layout：bootstrap pointer 不存在时才读写
 │   ├── star_daily.parquet                          # bootstrap 归档（仅一次性 / 灾难重建读写，非生产路径）
 │   └── v2/                                          # 生产 canonical JSON shard（见 VERCEL-DATA-OPERATIONS §4）
 │       ├── meta.json                                #   seam_date · schema_ver · folded_through（周/月水位）
@@ -260,6 +269,21 @@ blob://
 | **缓存传播** | 同路径覆盖最长 **60s** 才全网生效 | live 读侧只短缓存 `live/latest.json`（60s）；generation 路径不可变，不存在兄弟文件传播不同步问题 |
 
 > 之所以选 PUBLIC store：JSON 视图本就是要被 build / 运行时直接 `fetch` 的公开数据，公开读免去签名、天然走 CDN。canonical（JSON shard + bootstrap Parquet）虽也在同 store，但只有持 token 的 Workflow / bootstrap 会写它，不在 build / 运行时读路径。
+
+**安全删除（默认只预览）**：
+
+```bash
+cd web
+
+# 枚举完整 prefix，并输出精确 object count + bytes；不会删除
+bun scripts/blob-del-prefix.ts views/verify-123/
+
+# 只有 --execute 与逐字相同的 --confirm 同时存在才会删除
+bun scripts/blob-del-prefix.ts views/verify-123/ \
+  --execute --confirm views/verify-123/
+```
+
+脚本在 inventory 前及第一次 destructive call 前各读取一次 live protection state。`canonical/**`、`ops/**`、`live/**`、`current_month`、`hot-snapshot`、两个 latest pointer、当前 / rollback-target / active Workflow 的 view prefix，以及当前 / rollback bootstrap generation + overlay 都硬阻；`views/`、`bootstrap/generations/`、`bootstrap/overlays/` 等宽前缀也不能执行。自动 GC 复用同一个 protection helper。
 
 > **公开 JSON endpoint**：`/search-index`、`/repo-curve` 与静态 data export aliases 的 method/cache/status contract 见 [API.md](./API.md)；Blob 读取与物理布局仍以本节为准。
 
@@ -393,9 +417,11 @@ For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, 
    Search 发现成员（动态开放上界）；GraphQL 抓元数据 + owner(+type) + current_stars（唯一权威）→ repos.json
 4. DuckDB 预算所有 JSON 视图
    {周 / 月 / 年 / 全时}×{repo / org}×{flow / stock} + entity 曲线 + heatmap
-5. 上传 Vercel Blob（BLOB_READ_WRITE_TOKEN）
-   canonical/star_daily.parquet + lookup/*.json + rank/** + entity/** + heatmap/**
-   ⚠️ 批量 put() 节流到 < 75/s（见 Blob 写速率约束）
+5. 生成唯一 id，例如 `bootstrap-20260717T120000Z`；先运行
+   `06-upload.mjs --generation <id> --dry-run`，再以同 id stage / resume base phase
+6. 运行 `07-export-v2.mjs --generation <id> --stage-only` 检查 canonical phase；确认后重跑
+   不带 `--stage-only`。脚本复核 manifest + 远端 bytes/SHA-256，取得 Workflow CAS lease，
+   最后只切 `bootstrap/latest.json`。批量 create 节流到 < 75/s
 ```
 
 - **成本**：~$10（一次性）；回填完永不再碰 GCP。
@@ -427,6 +453,7 @@ For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, 
 ## 回滚
 
 - **指针回滚（Workflow 发布）**：不要直接覆盖 Blob。用稳定 idempotency key 调受保护 rollback API；它取得 fenced lease、固定 rollback intent、同步 recovery / whitelist pointer 并失效页面和 pointer cache。示例：`curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`。返回成功后在 **≤60s** 可见性 SLA 内核对页面与 `views/latest.json`。设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7。
+- **bootstrap generation 回滚**：先读取 `bootstrap/latest.previous_generation`，再执行 `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute`。显式 target 让 pointer 写成功但响应丢失后的同命令重试保持幂等，不会来回翻转。命令先复核两个 sealed manifest 与全部对象，再取得同一个 Workflow CAS lease，最后只切 `bootstrap/latest.json`；不要手改 pointer，也不要删除 current / previous generation 或 overlay。
 - **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment** 即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。
 - **每日活尾**：`live/generations/<run_id>/**` 不可变，`live/latest.json` 是唯一发布开关。提交前失败无需数据回滚（pointer 仍指向旧 generation）；提交后发现坏数据，将 pointer 的 `generation` 指回 `previous_generation`。回滚也必须先确认没有活跃 `lease` 并使用 ETag 条件写，避免覆盖正在发布的 cron。
 - **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。

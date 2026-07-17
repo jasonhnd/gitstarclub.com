@@ -1,7 +1,8 @@
 import { list, del } from "@vercel/blob";
 import { readView } from "@/lib/data/source";
-import { ViewsPointer } from "@/lib/contracts";
+import { BootstrapPublicationPointer, ViewsPointer, WorkflowLease } from "@/lib/contracts";
 import { requireBlobWriteToken } from "@/lib/runtime-config";
+import { assertBlobDeletionAllowed, type BlobDeletionContext } from "@/lib/blob-deletion";
 
 // Version GC. After publish, keep the newest KEEP versions plus the live pointer's
 // version + prev_version (the rollback target), and delete older orphan versions under views/.
@@ -17,12 +18,19 @@ export async function gcVersions(runId: string): Promise<{ deleted: string[]; ke
   try {
     const token = requireBlobWriteToken();
 
-    const pointer = await readView("views/latest.json", ViewsPointer, { bust: runId });
+    const [pointer, bootstrap, active] = await Promise.all([
+      readView("views/latest.json", ViewsPointer, { bust: runId }),
+      readView("bootstrap/latest.json", BootstrapPublicationPointer, { bust: runId }),
+      readView("ops/workflows/active.json", WorkflowLease, { bust: runId }),
+    ]);
     const keep = new Set<string>([runId]);
     if (pointer) {
       keep.add(pointer.version);
       if (pointer.prev_version) keep.add(pointer.prev_version);
     }
+    const activeWorkflowRun =
+      active?.status === "running" && Date.parse(active.expires_at) > Date.now() ? active.run_id : null;
+    if (activeWorkflowRun) keep.add(activeWorkflowRun);
 
     const { folders } = await list({ prefix: "views/", mode: "folded", token });
     const versions = [...new Set(folders.map((f) => f.slice("views/".length).replace(/\/+$/, "")).filter(Boolean))]
@@ -31,7 +39,17 @@ export async function gcVersions(runId: string): Promise<{ deleted: string[]; ke
     for (const v of versions.slice(0, KEEP)) keep.add(v);
 
     const toDelete = versions.filter((v) => !keep.has(v));
-    for (const v of toDelete) await deletePrefix(`views/${v}/`, token);
+    const protection: BlobDeletionContext = {
+      currentViewVersion: pointer?.version,
+      rollbackViewVersion: pointer?.prev_version,
+      activeWorkflowRun,
+      currentBootstrapGeneration: bootstrap?.generation,
+      rollbackBootstrapGeneration: bootstrap?.previous_generation,
+    };
+    for (const v of toDelete) {
+      const prefix = assertBlobDeletionAllowed(`views/${v}/`, protection);
+      await deletePrefix(prefix, token);
+    }
     return { deleted: toDelete, kept: versions.length - toDelete.length };
   } catch (err) {
     return { deleted: [], kept: 0, error: err instanceof Error ? err.message : String(err) };

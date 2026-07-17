@@ -1,7 +1,7 @@
 ---
 owner: bootstrap pipeline
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-17
 source_of_truth_for:
   - one-off bootstrap pipeline
   - archived backfill algorithms
@@ -44,8 +44,9 @@ source_of_truth_for:
 
 ```text
 01-whitelist → 02-extract(BigQuery) → 03-metadata(GraphQL)
-            → 04-rollup(DuckDB) → 05-precompute(DuckDB) → 06-upload(Blob)
-            → 07-export-v2(DuckDB → canonical/v2 JSON shards)
+            → 04-rollup(DuckDB) → 05-precompute(DuckDB)
+            → 06-upload(immutable base phase)
+            → 07-export-v2(immutable canonical phase → validate → one pointer commit)
 ```
 
 **01 whitelist** — GitHub Search `stars:>=MIN_TRACKED_STARS`（当前 `web/lib/constants.ts` = 10,000）只做成员发现。先用开放上界查询当前最高 star，再以该动态上界按 star 区间**自适应分桶**绕过 Search 1000 结果上限（区间 >1000 则二分）；没有 600k 固定上限。输出 `data/whitelist.json`：`{id, node_id, full_name, owner, name, stars}`；其中 Search `stars` 是发现审计值，不是展示总数。当前规模约 5,302，每周变动。
@@ -71,9 +72,30 @@ GROUP BY repo_id, day;
 
 **05 precompute views（DuckDB）** — 按榜单矩阵与实体 rollup，产出全部 JSON 视图（rank/entity/heatmap/lookup，DATA-CONTRACTS §2）。**stock 锚定**与口径见 [RANKING.md](./RANKING.md)。
 
-**06 upload（Blob）** — `star_daily.parquet` + `lookup/*` + `rank/**` + `entity/**` + `heatmap/**` + `meta.json`（含 `seam_date`）。批量 `put()` **节流 <75/s**（OPS Blob 限速）。
+**06 upload（Blob，只有 staging）** — 先用权威 Zod contracts 校验 `views/**`，再把 `star_daily.parquet` + `lookup/*` + `rank/**` + `entity/**` + `heatmap/**` + `meta.json` 以 create-only 方式写入 `bootstrap/generations/<generation>/**`。对象与 phase manifest 都不可覆盖；同 generation 的 byte-identical 重跑会校验已有对象并续传。此步**永不修改生产 pointer**。批量 `put()` **节流 <75/s**（OPS Blob 限速）。
 
-**07 export-v2（DuckDB → canonical/v2 JSON shards）** — 把 §1.1 的 8M 行日表**折叠 + 分桶**成 `canonical/v2/{meta,repos,repo-monthly,repo-weekly,repo-recent-daily,site-daily}/...` JSON shards（`<bucket>=repo_id % N`），让 Vercel Workflow 在无引擎环境下重算。冻结 `repos.d`（stock 锚定因子，IEEE double 全精度，`>= 0` 且可 `> 1`）+ 里程碑 `crossed_*`；fold 水位写 `canonical/v2/meta.json` 的 `folded_through`。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6 与 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4。
+**07 export-v2（DuckDB → canonical/v2 JSON shards → atomic commit）** — 把 §1.1 的 8M 行日表**折叠 + 分桶**成 `canonical/v2/{meta,repos,repo-monthly,repo-weekly,repo-recent-daily,site-daily}/...` JSON shards（`<bucket>=repo_id % N`），让 Vercel Workflow 在无引擎环境下重算。冻结 `repos.d`（stock 锚定因子，IEEE double 全精度，`>= 0` 且可 `> 1`）+ 里程碑 `crossed_*`；fold 水位写 `canonical/v2/meta.json` 的 `folded_through`。该步 create-only stage canonical phase，重新校验本地 views + 全部 128 个必需 canonical shards、逐对象核对远端 SHA-256，并取得共享 Workflow CAS lease；最后**只覆盖一个 `bootstrap/latest.json`**。任何上传 / 校验 / lease 失败都不会切生产。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6 与 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4。
+
+```bash
+cd pipeline
+export BLOB_READ_WRITE_TOKEN=vercel_blob_rw_...
+GEN=bootstrap-20260717T120000Z
+
+# 只预检；不上传
+node backfill/06-upload.mjs --generation "$GEN" --dry-run
+
+# create-only stage / 同 generation 断点续传
+node backfill/06-upload.mjs --generation "$GEN"
+
+# 导出 + stage canonical；需要先停在 commit 前检查时加 --stage-only
+node backfill/07-export-v2.mjs --generation "$GEN" --stage-only
+
+# 重跑同一命令会复核并 resume，校验全部通过后一次切 pointer
+node backfill/07-export-v2.mjs --generation "$GEN"
+
+# 从 bootstrap/latest.json 读取 previous_generation 后，显式指定回滚目标
+node backfill/07-export-v2.mjs --rollback bootstrap-20260710T120000Z --execute
+```
 
 ---
 
@@ -145,7 +167,8 @@ GROUP BY repo_id, day;
 
 ## 6. 幂等 / 错误 / 重跑
 
-- 每步可重跑：输出按 period/id 幂等覆盖；bootstrap 可分年/分批断点续跑；Workflow step 按 `(run_id, shard)` 幂等（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8）。
+- 每步可重跑：bootstrap 对同 generation 做逐对象 byte count + SHA-256 复核并只创建缺失对象；phase manifest 一旦写入即封存，内容不一致会 fail closed。Workflow step 按 `(run_id, shard)` 幂等（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8）。
+- **bootstrap 原子性**：`06` 不发布；`07` 只有在两 phase 远端完整、两套本地 validator 通过且取得 `ops/workflows/active.json` CAS lease 后，才单文件切 `bootstrap/latest.json`。generation 本体永不覆盖；recurring canonical 写入绑定 generation 的 copy-on-write overlay，旧 generation + overlay 可直接回滚。
 - **版本化产物**：Workflow 发布写 `views/<run_id>/`（version=run_id）→ 切 `views/latest.json` 指针（保留 `prev_version`），坏数据指回上一版即可（OPS 回滚）。
 - **校验闸门**：产出 JSON 后跑 Zod schema + sanity 不变量（TESTING §1.2/§1.3），不过不发布、不切指针。
 - **失败靠可核验状态**（Vercel Function logs + 可选 webhook + `sync-runs` + `ops/workflows/**`）；仓库当前没有 Sentry 集成。Workflow step 自带重试，跨配额用 `sleep` 等待，不空转。

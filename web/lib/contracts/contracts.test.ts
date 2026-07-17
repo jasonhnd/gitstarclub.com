@@ -26,6 +26,7 @@ import {
   PendingPeriod,
   // workflow
   ViewsPointer,
+  BootstrapPublicationPointer,
   WorkflowManifest,
   WorkflowLease,
   WorkflowStepCheckpoint,
@@ -507,6 +508,37 @@ describe("workflow contracts", () => {
 
   test("ViewsPointer rejects missing schema_ver", () => {
     expect(rejects(ViewsPointer, { version: "v3", run_id: "r3", published_at: "x", prev_version: null })).toBe(true);
+  });
+
+  test("BootstrapPublicationPointer parses immutable-generation commit metadata", () => {
+    const digest = "a".repeat(64);
+    const pointer = {
+      schema_ver: 1,
+      generation: "bootstrap-20260717T120000Z",
+      prefix: "bootstrap/generations/bootstrap-20260717T120000Z",
+      previous_generation: null,
+      published_at: TS,
+      base_manifest_sha256: digest,
+      canonical_manifest_sha256: digest,
+    };
+    expect(BootstrapPublicationPointer.parse(pointer)).toEqual(pointer);
+    expect(BootstrapPublicationPointer.parse({ ...pointer, previous_generation: "bootstrap-old" }).previous_generation).toBe(
+      "bootstrap-old",
+    );
+  });
+
+  test("BootstrapPublicationPointer rejects malformed manifest digests", () => {
+    expect(
+      rejects(BootstrapPublicationPointer, {
+        schema_ver: 1,
+        generation: "bootstrap-one",
+        prefix: "bootstrap/generations/bootstrap-one",
+        previous_generation: null,
+        published_at: TS,
+        base_manifest_sha256: "not-a-digest",
+        canonical_manifest_sha256: "a".repeat(64),
+      }),
+    ).toBe(true);
   });
 
   test("WorkflowManifest parses with status enum + nullable published_version", () => {
