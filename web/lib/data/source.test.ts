@@ -24,6 +24,22 @@ interface FakeRoute {
   status?: number;
   json?: unknown;
 }
+
+function livePointer(generation: string, lease: unknown = null) {
+  return {
+    schema_ver: 1,
+    generation,
+    run_id: generation,
+    idempotency_key: "daily:2026-07-17",
+    job: "daily",
+    day: "2026-07-17",
+    month: "2026-07",
+    week: "2026-W29",
+    published_at: "2026-07-17T03:00:00.000Z",
+    previous_generation: null,
+    lease,
+  };
+}
 // Map of exact-or-prefix URL (path portion, query stripped) → response.
 let routes: Record<string, FakeRoute> = {};
 let fetchCalls: string[] = [];
@@ -298,5 +314,77 @@ describe("readView — non-base (flat) reads", () => {
     expect(fetchCalls).toHaveLength(3);
     expect(signals).toHaveLength(3);
     expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+});
+
+describe("readView — atomic live generation resolution", () => {
+  test("all concurrent live reads share one pointer and one complete generation", async () => {
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("generation-a") },
+      "/live/generations/generation-a/current_month.json": { status: 200, json: { ok: true, tag: "a-current" } },
+      "/live/generations/generation-a/hot-snapshot.json": { status: 200, json: { ok: true, tag: "a-hot" } },
+      "/live/generations/generation-b/current_month.json": { status: 200, json: { ok: true, tag: "b-current" } },
+      "/live/generations/generation-b/hot-snapshot.json": { status: 200, json: { ok: true, tag: "b-hot" } },
+    };
+
+    const [current, hot] = await Promise.all([
+      readView("current_month.json", Doc, { live: true, legacyPath: "current_month.json" }),
+      readView("hot-snapshot.json", Doc, { live: true, legacyPath: "hot-snapshot.json" }),
+    ]);
+
+    expect([current?.tag, hot?.tag]).toEqual(["a-current", "a-hot"]);
+    expect(fetchCalls.filter((url) => url.includes("/live/latest.json"))).toHaveLength(1);
+    expect(fetchCalls.some((url) => url.includes("generation-b"))).toBe(false);
+  });
+
+  test("a pointer flip exposes either the old or new complete generation, never flat siblings", async () => {
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("generation-old") },
+      "/live/generations/generation-old/one.json": { status: 200, json: { ok: true, tag: "old-one" } },
+      "/live/generations/generation-old/two.json": { status: 200, json: { ok: true, tag: "old-two" } },
+      "/live/generations/generation-new/one.json": { status: 200, json: { ok: true, tag: "new-one" } },
+      "/live/generations/generation-new/two.json": { status: 200, json: { ok: true, tag: "new-two" } },
+      "/legacy/one.json": { status: 200, json: { ok: true, tag: "flat-one" } },
+      "/legacy/two.json": { status: 200, json: { ok: true, tag: "flat-two" } },
+    };
+
+    expect((await readView("one.json", Doc, { live: true, legacyPath: "legacy/one.json" }))?.tag).toBe("old-one");
+    routes["/live/latest.json"] = { status: 200, json: livePointer("generation-new") };
+    expect((await readView("two.json", Doc, { live: true, legacyPath: "legacy/two.json" }))?.tag).toBe("old-two");
+
+    clock += 61_000;
+    const [one, two] = await Promise.all([
+      readView("one.json", Doc, { live: true, legacyPath: "legacy/one.json" }),
+      readView("two.json", Doc, { live: true, legacyPath: "legacy/two.json" }),
+    ]);
+    expect([one?.tag, two?.tag]).toEqual(["new-one", "new-two"]);
+    expect(fetchCalls.some((url) => url.includes("/legacy/"))).toBe(false);
+  });
+
+  test("only a 404 pointer enables migration fallback to legacy flat paths", async () => {
+    process.env.BLOB_BASE_URL = "https://legacy-live.example.com";
+    routes = {
+      "/live/latest.json": { status: 404 },
+      "/legacy/current_month.json": { status: 200, json: { ok: true, tag: "legacy" } },
+    };
+
+    expect(
+      await readView("current_month.json", Doc, { live: true, legacyPath: "legacy/current_month.json" }),
+    ).toEqual({ ok: true, tag: "legacy" });
+  });
+
+  test("an unreachable pointer fails closed when no validated generation is cached", async () => {
+    process.env.BLOB_BASE_URL = "https://uncached-live.example.com";
+    globalThis.fetch = mock((input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input.toString();
+      fetchCalls.push(url);
+      if (url.includes("/live/latest.json")) return Promise.reject(new Error("network down"));
+      return Promise.resolve(makeRes({ status: 200, json: { ok: true, tag: "unsafe-flat" } }));
+    }) as unknown as typeof fetch;
+
+    await expect(
+      readView("current_month.json", Doc, { live: true, legacyPath: "legacy/current_month.json" }),
+    ).rejects.toThrow("live pointer fetch -> network down");
+    expect(fetchCalls.some((url) => url.includes("legacy/current_month.json"))).toBe(false);
   });
 });

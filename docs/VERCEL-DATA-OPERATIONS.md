@@ -58,7 +58,7 @@ gitstarclub 的运行时是**纯静态**:用户请求只读预算好的 JSON / B
 
 | 层 | 作业 | 跑在哪 | 触发 |
 |---|---|---|---|
-| **L1 每日 live** | poll current_stars → 写 `current_month.json` + `live/*` 当前周期覆盖层 + `hot-snapshot.json` → revalidate 热集 | **Vercel Function**(单函数,JSON-only,秒级) | Cron `0 3 * * *` |
+| **L1 每日 live** | poll current_stars → 写 immutable `live/generations/<run_id>/**` + manifest → fenced CAS 切 `live/latest.json` → revalidate 热集 | **Vercel Function**(单函数,JSON-only,秒级) | Cron `0 3 * * *` |
 | **L2 每周 live** | 复用 live refresh,覆盖写当前周 / 当前月 rank + 当月 heatmap + hot snapshot + `ops/sync-runs.json` | **Vercel Function**(单函数,JSON-only) | Cron `0 4 * * 0` |
 | **L3 Managed refresh** | canonical meta preflight → 白名单 diff → 元数据 shard → 改名检测 → 月+周折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布(切指针)→ 版本 GC(step 详见 §4) | **Vercel Workflow**(多 step,Blob checkpoint) | 每周 cron + 手动(调度见 [OPS.md](./OPS.md) §Cron) |
 | **L4 Bootstrap archive** | 11 年事件级历史首次回填(Search → BigQuery → DuckDB → JSON → Blob) | **本机 / 全 Node**(`pipeline/backfill`) | 手动,一次性 |
@@ -193,7 +193,7 @@ async function recomputeRank(runId: string) {
 
 ## 5. Blob 物理布局
 
-> 沿用 [OPS.md](./OPS.md) 的单一 PUBLIC store。下面只列**与 L3 Workflow 生命周期直接相关的前缀**(`canonical/v2/*`、`views/*`、`ops/workflows/*`,以及 L1/L2 活尾即 `live/*` / `current_month.json` / `hot-snapshot.json` 的位置点)。`lookup/`、`search/index.json`、`current_month.json` 是 L3 / L1 的**一级产物**故同列于此;**完整 Blob 树(含历史前缀 / 完整 `live/*` 子目录 / 归档残留)以 [OPS.md](./OPS.md) §Blob 布局为准**——本节与 OPS 冗余,以 OPS 为权威。`canonical/star_daily.parquet` 已降级为 bootstrap 归档(仍可留存,不在生产读路径)。
+> 沿用 [OPS.md](./OPS.md) 的单一 PUBLIC store。下面只列**与 L3 Workflow 生命周期直接相关的前缀**及 L1/L2 live generation。完整 Blob 树以 OPS 为权威；根级 `current_month.json` / `hot-snapshot.json` 只保留为首发迁移 fallback，新 cron 不再覆盖。`canonical/star_daily.parquet` 已降级为 bootstrap 归档。
 
 ```text
 blob://
@@ -222,9 +222,14 @@ blob://
 │   └── pending/<period>.json                # 已收口、待折叠的周期活尾冻结快照(cron 写、fold step 读,见 §7.2)
 │   # (同级 canonical/star_daily.parquet 是 bootstrap 归档,仅 L4 / 灾难重建用——见 OPS §Blob 布局)
 │
-├── live/                                    # L1/L2 活尾覆盖层(完整子目录见 OPS §Blob 布局)
-├── current_month.json                       # 当月 per_repo 活尾(L1 daily cron 维护,跨月落 pending,见 §7.2)
-├── hot-snapshot.json                        # 热榜活尾快照(L1/L2 cron 维护)
+├── live/                                    # L1/L2 原子活尾
+│   ├── latest.json                          # 当前完整 generation + ETag/CAS lease/fence
+│   └── generations/<run_id>/                # immutable；全部文件 + manifest 完成后才可发布
+│       ├── manifest.json
+│       ├── current_month.json
+│       ├── hot-snapshot.json
+│       ├── rank/** · heatmap/**
+│       └── rollover/<period>.json            # 跨月 pending 恢复副本（可选）
 │
 └── views/                                   # 发布层(指针切换)
     ├── latest.json                          # 指针:当前生效的版本前缀(version = run_id;见 §7)
@@ -262,12 +267,12 @@ category and every historical week/month/year.
 已折叠周期(period ≤ folded_through,base 已含):
     rank/heatmap:  直接读 V/* (不再叠 live,防重复)
 entity / lookup:    V/* (L3 发布版本)
-hot-snapshot / current_month: 直读 (L1/L2 活尾)
+hot-snapshot / current_month: 读 live/latest.json → live/generations/<generation>/*
 ```
 
-> base 视图(rank/all-time/entity/heatmap/meta/lookup)走 `readView(path, schema, { base:true })` → 读 `views/latest.json` 指针 → 解析 `<version>` → 读 `views/<version>/<path>`,**无指针时回退扁平布局**(首发前/异常时不致断站)。`live/*`、`current_month`、`hot-snapshot`、`canonical/*`、`ops/*` 仍走扁平(`base:false`)。对页面逻辑透明(数据层封装,组件不感知)。**「live vs base」判据按 `meta.folded_through` 水位收紧**(period ≤ `folded_through` 直读 base、未折叠周期叠 live,§7.2),防重复计数。
+> base 视图走 `views/latest.json`；live snapshot/rank/heatmap 走独立的 `live/latest.json`，再读 `live/generations/<generation>/<logical-path>`。live pointer 真正 404 时才回退旧 flat layout；pointer 无法访问/解析时复用缓存的已验证 generation，否则 fail closed，绝不猜 flat 路径。`canonical/*`、`ops/*` 仍走 flat。**「live vs base」判据按 `meta.folded_through` 水位收紧**，防重复计数。
 
-> ⚠️ **指针读取必须用「60s 重校验缓存」而非 `no-store`**:`resolveVersion()`(`web/lib/data/source.ts`)用 `fetch(views/latest.json, { next: { revalidate: 60 } })`。`no-store` 是动态 API——会让**按需 ISR 长尾页**(repo / org / rankings)在**冷函数实例**首渲时"由静态变动态",Next 抛 `Page changed from static to dynamic at runtime` → **首访 500**,内存 memo 暖后才恢复 200。60s 重校验保持同样 ≤60s 指针新鲜度、对静态/ISR 安全。
+> ⚠️ **两类指针读取都必须用重校验缓存而非 `no-store`**：base pointer 默认 1h（部分 daily 入口 1d），live pointer 60s。`resolveLiveGeneration()` 另有 single-flight，保证同一冷实例的并发 sibling 读取共享一个 pointer 结果。
 
 ### 5.2 分桶(bucket)策略
 
@@ -333,24 +338,45 @@ hot-snapshot / current_month: 直读 (L1/L2 活尾)
 
 ### 7.1 L1 / L2 live 覆盖层
 
-L1 daily cron / L2 weekly cron 写 `live/*` + `current_month.json` + `hot-snapshot.json`,提供**当前周期的活尾**。这些文件 KB 级、覆盖写、对读侧即时可见。读侧按 §5.1 与 base 视图叠合:
+L1 daily cron / L2 weekly cron 先取得 `live/latest.json` 内嵌 lease，再写一个完整 immutable generation；最后用同一 pointer ETag 做 fenced CAS 切换。获取 lease 只改 `lease`、不改 `generation`，因此任何对象写失败都不会暴露半套视图。读侧按 §5.1 与 base 视图叠合:
 
 - **当前/刚收口未折叠的周期**:读 `live/*` 覆盖层(若回退到 base,base 尚不含该期,会缺活尾)。
 - **已折叠的周期**:读 base(`views/<version>/*`),不再叠 live,避免重复计数。
 
-L1/L2 与 L3 写不同 Blob 前缀(`live/*` vs `canonical/v2/**` + `views/<run_id>/**`),前缀不重叠;L3 重算期间 L1/L2 照常刷活尾。
+L1/L2 与 L3 写不同 Blob 前缀(`live/generations/*` vs `canonical/v2/**` + `views/<run_id>/**`),前缀不重叠；L3 重算期间 L1/L2 照常刷活尾。默认幂等 key 为 `<job>:<UTC-day>`；同 key running/committed 分别 attach/直接返回，不同 key active 返回 409。手动同日追加刷新用显式新 key。
 
 ### 7.2 周期收口交接契约(防重复 / 丢数据)
 
-`current_month.json` 是**易失活尾**——live cron 跨月时直接初始化新月、覆盖旧月(`live-refresh.ts` 的 `carryMonth` 在 `month` 变化时为空)。所以必须定义谁在「重置前」把上一期数据落到持久区:
+generation 内的 `current_month.json` 会在跨月时初始化新月，所以必须在 pointer 切换前把上一期数据落到持久区:
 
 | 步骤 | 谁做 | 动作 |
 |---|---|---|
-| 1. 冻结上一期 | **L1/L2 cron**(跨期那次) | 检测到 `current_month.json.month ≠ 本次 month` → **先**把旧月完整 `per_repo` 写到 `canonical/v2/pending/<旧 period>.json`(幂等覆盖),**再**初始化新月活尾。绝不在未落 pending 前丢弃旧月。 |
+| 1. 冻结上一期 | **L1/L2 cron**(跨期那次) | 检测到旧 generation 的 month ≠ 本次 month → 以 UTC 日 00:00 固定 `frozen_at`，在 pointer commit 前写 `canonical/v2/pending/<旧 period>.json`，并把同一 payload 放入新 generation 的 `rollover/<period>.json`。重试字节等价；即使其后 generation 失败，旧 pointer 仍可读。 |
 | 2. 折叠 | **L3 fold step** | 只读 `canonical/v2/pending/<period>.json`(已冻结、不再变动)→ 折进 `repo-monthly`/`repo-weekly` → 标 `folded_through=period`(写 `canonical/v2/meta.json`)。 |
 | 3. 防重复 | **读路径 §5.1** | 已折叠周期(`≤ folded_through`)只读 base(已含该期);未折叠的当前/刚收口周期读 live 覆盖层。**同一周期绝不同时计 live + canonical。** |
 
 > 这样:① 上月最后一天 net 一定先进 pending 才被覆盖 → **不丢**;② base 与 live 按 `folded_through` 水位线**互斥**取数 → **不重复**;③ pending 是冻结快照,L3 折叠期间 cron 不再动它 → step 5 读到的是稳定输入。`folded_through` 同时是周/月两套水位(周收口比月早)。
+
+### 7.2a Live generation 原子发布与失败语义
+
+```text
+1. CAS live/latest.json，写入 15m lease（generation 保持旧值）
+2. 生成并 Zod 校验全部 payload
+3. 顺序写 live/generations/<run_id>/**（allowOverwrite:false）
+4. 最后写 immutable manifest.json
+5. 重读 live/latest.json，确认 lease/run_id/idempotency_key 且未过期
+6. 以最新 ETag 做 fenced CAS：generation=<run_id>, lease=null
+7. commit 成功后才 revalidatePath / IndexNow / sync-run log
+```
+
+- 任一 prerequisite/data/manifest/pointer 写入故障都让 reader 继续解析旧
+  `generation`；partial generation 是不可见 orphan。
+- 同 run 重试遇到已有 immutable 文件时只接受**完全相同字节**，内容冲突
+  fail closed。lease 过期或被替换的 writer 无权清 lease 或切 pointer。
+- `previous_generation` 保留一跳回滚目标。live GC 尚不在本 issue 内；不要删除
+  current/previous 或带 active lease 的 generation。
+- `hot-snapshot.freshness` 逐 section 标 source-as-of；carry-forward section 不得
+  使用本次运行时间。日期依赖的旧 `on_this_day` 不匹配当前 UTC 月日即清空。
 
 ### 7.3 发布指针模型(atomic pointer swap)
 

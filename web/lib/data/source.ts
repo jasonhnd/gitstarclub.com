@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import { LiveGenerationPointer } from "@/lib/contracts";
 import { BLOB_JSON_FETCH_TIMEOUT_MS, FetchTimeoutError, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
 import { requireBlobBaseUrl } from "@/lib/runtime-config";
 import { PUBLISHED_VIEWS_CACHE_TAG, PUBLICATION_VISIBILITY_SLA_MS } from "@/lib/data/publication-cache-contract";
@@ -7,7 +8,8 @@ import { PUBLISHED_VIEWS_CACHE_TAG, PUBLICATION_VISIBILITY_SLA_MS } from "@/lib/
 // BLOB_BASE_URL must point at the store base (set in Vercel project env + local .env.local).
 // Base views resolve through the publish pointer (views/latest.json → views/<version>/<path>)
 // with a flat-layout fallback, so the read side serves the validated version and rollback is a
-// single pointer write. Live-overlay / canonical / ops reads stay flat (base:false).
+// single pointer write. Live overlays resolve independently through live/latest.json to one
+// complete immutable generation. Canonical / ops reads stay flat.
 // See docs/OPS.md (Blob layout), docs/FRONTEND.md §3, docs/VERCEL-DATA-OPERATIONS.md §7.
 
 export interface ViewOpts {
@@ -18,16 +20,27 @@ export interface ViewOpts {
   base?: boolean;
   /** Override publish-pointer freshness for special read paths such as sitemap generation. */
   versionTtlMs?: number;
+  /** Resolve a logical live-overlay path through live/latest.json. A 404 pointer
+   * falls back to `legacyPath` during migration; an unreachable/invalid pointer
+   * fails closed unless a previously validated generation is cached. */
+  live?: boolean;
+  /** Pre-generation flat path used only when live/latest.json does not exist. */
+  legacyPath?: string;
+  /** Override live pointer freshness (default 60 seconds). */
+  liveTtlMs?: number;
   /** Override the per-request Blob JSON timeout. */
   timeoutMs?: number;
 }
 
 const VERSION_TTL_MS = 3_600_000;
+export const LIVE_POINTER_TTL_MS = 60_000;
 export const DAILY_BASE_VIEW_TTL_MS = 86_400_000;
 export const DAILY_BASE_VIEW_OPTS = { base: true, versionTtlMs: DAILY_BASE_VIEW_TTL_MS } as const satisfies ViewOpts;
 const READ_RETRIES = 2;
 const versionMemo = new Map<string, { version: string | null; at: number }>();
 let mutableReadSequence = 0;
+const liveGenerationMemo = new Map<string, { generation: string | null; at: number }>();
+const liveGenerationInflight = new Map<string, Promise<string | null>>();
 
 /** Clear this process's pointer memo after a publish/rollback in the same runtime. */
 export function invalidatePublishedVersionMemo(): void {
@@ -78,16 +91,68 @@ async function resolveVersion(blobBase: string, ttlMs = VERSION_TTL_MS, timeoutM
   return version;
 }
 
+/** Resolve the last complete live generation. Only a real 404 enables the
+ * legacy flat-layout fallback. Transient failures reuse a previously validated
+ * generation, or fail closed when no safe generation is known. */
+async function resolveLiveGeneration(
+  blobBase: string,
+  ttlMs = LIVE_POINTER_TTL_MS,
+  timeoutMs = BLOB_JSON_FETCH_TIMEOUT_MS,
+): Promise<string | null> {
+  const now = Date.now();
+  const memoKey = `${blobBase}\0${ttlMs}`;
+  const memo = liveGenerationMemo.get(memoKey);
+  if (memo && now - memo.at < ttlMs) return memo.generation;
+  const inflight = liveGenerationInflight.get(memoKey);
+  if (inflight) return inflight;
+
+  const resolving = (async () => {
+    try {
+      const res = await fetchWithTimeout(`${blobBase}/live/latest.json?v=${Math.floor(now / ttlMs)}`, {
+        next: { revalidate: ttlMs / 1000 },
+        timeoutMs,
+      });
+      if (res.status === 404) {
+        liveGenerationMemo.set(memoKey, { generation: null, at: now });
+        return null;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const pointer = LiveGenerationPointer.parse(await res.json());
+      liveGenerationMemo.set(memoKey, { generation: pointer.generation, at: now });
+      return pointer.generation;
+    } catch (error) {
+      // A stale, already validated generation remains a safe complete snapshot.
+      // Never guess the legacy flat layout after a pointer/network error.
+      if (memo?.generation) return memo.generation;
+      const detail = fetchErrorDetail(error);
+      throw new Error(`live pointer fetch -> ${detail}`);
+    } finally {
+      liveGenerationInflight.delete(memoKey);
+    }
+  })();
+  liveGenerationInflight.set(memoKey, resolving);
+  return resolving;
+}
+
 async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
   const blobBase = requireBlobBaseUrl();
   let key = path;
   let bust = opts.bust;
   const timeoutMs = opts.timeoutMs ?? BLOB_JSON_FETCH_TIMEOUT_MS;
+  if (opts.base && opts.live) throw new Error("a view cannot be both base and live");
   if (opts.base) {
     const version = await resolveVersion(blobBase, opts.versionTtlMs, timeoutMs);
     if (version) {
       key = `views/${version}/${path}`;
       bust ??= version; // versioned path is immutable
+    }
+  } else if (opts.live) {
+    const generation = await resolveLiveGeneration(blobBase, opts.liveTtlMs, timeoutMs);
+    if (generation) {
+      key = `live/generations/${generation}/${path}`;
+      bust = generation; // immutable path; pointer is the only mutable object
+    } else {
+      key = opts.legacyPath ?? path;
     }
   }
   const mutableWorkflowArtifact =

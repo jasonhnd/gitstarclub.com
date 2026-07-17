@@ -43,7 +43,7 @@ The same data layer also operates AI-free: features that look like they would ca
 | Styling | Tailwind 4 + Material 3 Expressive tokens (graphite + amber), hand-authored in `web/app/globals.css` following the M3 system color role taxonomy | |
 | Fonts | Plus Jakarta Sans (variable sans), Geist Mono (numerals, repo names) | |
 | Read-side data | Versioned JSON views in Vercel Blob, served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
-| Live-overlay data | Daily `current_month.json`, weekly `hot-snapshot.json`, written by cron | Append-only within a period |
+| Live-overlay data | Immutable `live/generations/<run_id>/**`, selected by `live/latest.json` | One complete generation per atomic pointer commit |
 | Recurring data refresh | Vercel Workflow (multi-step, Blob checkpoint) | |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
 | Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test` from `web/` on PRs and `main` pushes |
@@ -72,9 +72,9 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 ┌─ Daily cron (live overlay, JSON-only, seconds) ─────────────┐
 │  1. GraphQL: current_stars for tracked repos (~54 queries)  │
 │  2. Net daily delta = today − yesterday                     │
-│  3. Append to current_month.json                            │
-│  4. Recompute hot-snapshot.json (home + current-period top) │
-│  5. revalidatePath on hot surfaces                          │
+│  3. Validate a complete immutable live generation          │
+│  4. Fenced CAS live/latest.json (old or new, never mixed)   │
+│  5. Only after commit: revalidatePath + IndexNow            │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─ Weekly cron (live overlay) ────────────────────────────────┐
@@ -177,7 +177,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 ### Physical: JSON view artifacts
 
-Each (period × dim × metric) reduction produces a JSON view: rank tables, entity timelines (per repo, per org), heatmaps, lookup tables for build-time joins, and the client-side search index. Live-overlay paths produce `current_month.json` and `hot-snapshot.json`. The complete Blob layout is in [OPS.md](./OPS.md); per-view schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
+Each (period × dim × metric) reduction produces a JSON view: rank tables, entity timelines (per repo, per org), heatmaps, lookup tables for build-time joins, and the client-side search index. Live-overlay paths produce the same logical `current_month.json`, `hot-snapshot.json`, rank and heatmap files under one immutable generation; `live/latest.json` is the only publication switch. The complete Blob layout is in [OPS.md](./OPS.md); per-view schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
 
 Builds ingest these JSONs directly and bake them into static HTML. Adding a new view means adding a recompute step that produces JSON; the read path needs no engine.
 
@@ -208,7 +208,7 @@ Eleven thousand-plus pages cannot be built at deploy time within Vercel's 45-min
 
 | Tier | Surfaces | Refresh mechanism |
 |---|---|---|
-| **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy; daily cron writes `hot-snapshot.json` and calls `revalidatePath` on these surfaces |
+| **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy; daily cron atomically publishes a live generation then calls `revalidatePath` |
 | **Movers** (event-driven, daily) | Repos and orgs flagged as moving today (top-50 daily flow ∪ ≥ 5× their 90-day median with absolute floor ∪ milestone crossings) | Daily cron picks the set and calls `revalidatePath` on those entities + the pulse surface |
 | **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos and orgs not currently moving | `dynamicParams=true`, not enumerated in `generateStaticParams`; first request renders, then cached. `revalidate=false` (changes propagate via targeted `revalidatePath`) |
 | **Frozen** | Completed weekly / monthly / yearly pages | Rendered once and stamped "as of <date>"; only re-rendered when the recompute publishes a new pointer version |
@@ -216,8 +216,8 @@ Eleven thousand-plus pages cannot be built at deploy time within Vercel's 45-min
 Cadence:
 
 - **Deploys** (code or structural change): build the small core only; ISR resets and re-warms on first request. Long-tail surfaces are not enumerated at deploy.
-- **Daily cron**: update `current_month.json`, write `hot-snapshot.json`, recompute mover set, `revalidatePath` on hot surfaces. Untouched entities and historical surfaces are not touched.
-- **Weekly cron**: refresh the current week and month rank, current-month heatmap, hot snapshot, and `ops/sync-runs.json`.
+- **Daily cron**: acquire the date/job idempotency lease, build and validate all live files, atomically switch `live/latest.json`, then revalidate hot surfaces. A failed run leaves the previous complete generation selected.
+- **Weekly cron**: use the same generation protocol for current week/month rank, heatmap, hot snapshot, and then update `ops/sync-runs.json`.
 - **Workflow runs** (recompute → validate → publish): re-derive every `views/**` artifact, validate, and atomically swap the pointer. Old versions are reaped by the GC step.
 
 Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default — leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model); long-tail pages export `revalidate=false`; ISR rendering reads only KB-sized hot-snapshot JSON.

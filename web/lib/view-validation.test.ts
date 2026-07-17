@@ -41,6 +41,7 @@ describe("contractForViewPath", () => {
       "entity/org/example.json",
       "heatmap/year/2026.json",
       "live/rank/week/2026-W29/repo/flow.json",
+      "live/generations/daily-run/rank/week/2026-W29/repo/flow.json",
       "views/refresh-1/search/index.json",
     ];
     for (const path of paths) expect(contractForViewPath(path), path).not.toBeNull();

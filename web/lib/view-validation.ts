@@ -10,9 +10,11 @@ import {
   CurrentMonth,
   Heatmap,
   HotSnapshot,
+  LiveGenerationManifest,
   Meta,
   OrgsLookup,
   OrgEntity,
+  PendingPeriod,
   RankList,
   RepoEntity,
   ReposLookup,
@@ -59,8 +61,11 @@ function normalizeViewPath(path: string): string {
 export function contractForViewPath(path: string): ViewContract | null {
   const normalized = normalizeViewPath(path);
   const versionRelative = normalized.replace(/^views\/[^/]+\//, "");
-  const rel = versionRelative.startsWith("live/") ? versionRelative.slice("live/".length) : versionRelative;
+  const liveGeneration = /^live\/generations\/[^/]+\/(.+)$/.exec(versionRelative);
+  const rel = liveGeneration?.[1] ?? (versionRelative.startsWith("live/") ? versionRelative.slice("live/".length) : versionRelative);
 
+  if (liveGeneration && rel === "manifest.json") return { kind: "live/manifest", schema: LiveGenerationManifest };
+  if (liveGeneration && /^rollover\/[^/]+\.json$/.test(rel)) return { kind: "live/rollover", schema: PendingPeriod };
   if (rel === "meta.json") return { kind: "meta", schema: Meta };
   if (rel === "hot-snapshot.json") return { kind: "hot-snapshot", schema: HotSnapshot };
   if (rel === "current_month.json") return { kind: "current-month", schema: CurrentMonth };
@@ -145,4 +150,3 @@ export function validateViewDirectory(
     allowlistedFiles,
   };
 }
-
