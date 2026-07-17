@@ -39,8 +39,6 @@ Web traffic is measured with [Vercel Web Analytics](https://vercel.com/docs/anal
 via the `@vercel/analytics` package (`<Analytics />` in `app/_shell/RootShell.tsx`).
 Vercel Web Analytics is cookieless and collects no personal data. Collection only
 starts once **Web Analytics** is enabled for the project in the Vercel dashboard.
-
-Google Analytics 4 can run alongside it through the Next.js
-`@next/third-parties/google` `GoogleAnalytics` component. Set `NEXT_PUBLIC_GA_ID`
-to a non-empty measurement ID starting with `G-` to emit GA; when it is unset or
-invalid, no GA script is rendered. Do not hardcode GA measurement IDs.
+Its script and reporting endpoint are same-origin under `/_vercel/insights`, and
+the build fails if the Content Security Policy would block those endpoints.
+Google Analytics and other third-party tracking scripts are intentionally unsupported.
