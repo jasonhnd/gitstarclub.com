@@ -35,8 +35,8 @@ source_of_truth_for:
 | `REQ-I18N-001` | `(en)` root, `(localized)/[locale]`, `LanguageSwitcher`, `pageMeta()`, sitemap routes | Data fields stay language-neutral; only chrome/meta dictionaries localize | `P0-AC3`; i18n routing/proxy, SEO, sitemap tests |
 | `REQ-DATAOPS-001` | `api/cron/{daily,weekly}`, `api/workflows/refresh/start`, read-side version pointer handling | `views/latest.json`, `ops/workflows/**`, live artifacts | `P0-AC6`; workflow validate/start and cron tests |
 | `REQ-PERF-001` | RSC content pages, server-rendered SVG/DOM charts, limited client islands | Budgeted JSON view reads; no request-path engine access | `P0-AC5`; performance runbook and planned budget gates |
-| `REQ-SEARCH-001` | `SearchBox`, `/search-index`, MiniSearch worker protocol | `search/index.json` | search core, worker protocol, search-index contract tests |
-| `REQ-COMPARE-001` | `/compare`, `CompareClient`, `CompareCurve`, `/repo-curve` | entity repo curve projection via `/repo-curve?id=` | compare core, curve-fetch, planned E2E |
+| `REQ-SEARCH-001` | `SearchBox`, `/search-index`, MiniSearch worker protocol | `search/index.json` | search core, worker protocol, fetch/retry tests, Chromium keyboard + Axe E2E |
+| `REQ-COMPARE-001` | `/compare`, `CompareClient`, `CompareCurve`, `/repo-curve` | entity repo curve projection via `/repo-curve?id=` | compare core, curve-fetch/retry tests, Chromium recovery E2E |
 | `REQ-CATEGORY-001` | `categories/**`, `category-page-data.ts`, category ItemList JSON-LD | `categories/registry.json`, `lookup/categories.json`, `rank/category/**` | category recompute/rules and SEO tests |
 
 ---
@@ -358,7 +358,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 组件 | 文件 | 类型 | 角色 |
 |---|---|---|---|
 | 顶栏 Top App Bar | `_explore/Chrome.tsx` | RSC + islands | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse / Rankings · Categories `md+` · Compare `sm+` · About `sm+`）+ 语言/主题切换；Chrome 壳服务端渲染，SearchBox/LanguageSwitcher/ThemeToggle 水合 |
-| 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client island** | 导航栏搜索框；首次聚焦懒加载 `/search-index`，description 在 route 层截短，MiniSearch 建索引和查询在 Web Worker 内执行（prefix/fuzzy 0.2/按 stars 加权）；键盘 ↑↓/Enter/Esc + combobox a11y；placeholder/空态由服务端 Chrome 传默认语言 label。每条结果带「+对比」勾选 + 底部「对比 N 个 →」跳 `/compare?repos=...`（行点击仍跳 repo） |
+| 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client island** | 导航栏搜索框；首次聚焦以浏览器 revalidation 语义懒加载 `/search-index`，description 在 route 层截短，MiniSearch 建索引和查询在 Web Worker 内执行（prefix/fuzzy 0.2/按 stars 加权）。多动作结果使用命名的非模态 `dialog` + 普通 `list`：↑↓ 移动真实焦点，Enter 打开结果，Esc 关闭并把焦点还给输入框，Tab 保持原生链接→比较按钮顺序；比较选择只由按钮 `aria-pressed` 表达。失败重试用 cache reload，并中止/丢弃旧请求。每条结果带「+对比」勾选 + 底部「对比 N 个 →」跳 `/compare?repos=...`（行点击仍跳 repo） |
 | 分享 ShareButton | `_explore/ShareButton.tsx` | **Client** | 复制链接 + X 分享 intent；7 语 `share.*` chrome i18n；接 repo / 榜单月周 / 年页。榜单页另有动态 OG 卡（`rankings/[year]/[period]/opengraph-image.tsx` + `[year]/opengraph-image.tsx`，共享 `lib/og-card.tsx`） |
 | 月度叙事 Narrative | `_explore/Narrative.tsx` | RSC | 月榜顶部 7 语叙事；服务端一次渲染各 locale 文本，由 `html[lang]` CSS 显示当前语言。文案由月页**渲染时**用确定性模板（`lib/narrative.ts`）从榜单数据现拼——**无 AI / 无产物** |
 | 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
@@ -369,7 +369,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 | 结构化数据 JsonLd | `_explore/JsonLd.tsx` | RSC | 注入 `application/ld+json`（配 `@/lib/jsonld` 的 `CollectionPage` / `ItemList` / 实体 builder） |
 | 页脚 Footer | `_explore/Footer.tsx` | RSC + island | 默认语言服务端渲染；构建时间戳 + LanguageSwitcher 语言小岛 |
 | Pulse 视图 PulseView | `pulse/PulseView.tsx` | RSC | 首页与 `/pulse` 共享主体：本周/本月/本年脉搏、全时巨头桥接、"历史上的今天"。可选 `includeWebsiteLd` 注入 `WebSite` JSON-LD（仅首页用） |
-| 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步 |
+| 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步。索引和曲线默认 revalidate；首次索引失败可原地重试，单曲线失败可 cache-bypass 重试；每一类请求均中止旧请求并拒绝 stale completion 覆盖新状态 |
 | OG 图渲染（站点 / repo / 月+周 / 年） | `opengraph-image.tsx` × 4 | RSC（next/og） | 动态生成 1200×630 PNG；`revalidate=86400`，共享 `lib/og-card.tsx`（石墨灰+金、stars 内联 SVG） |
 | 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 交互按钮（见 §4.2） |
 | 语言切换 LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | 根据当前 route locale 与 canonical path 生成 locale URL `<a>` 链接；导航后服务端返回对应语言 HTML（§7） |

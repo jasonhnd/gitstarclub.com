@@ -429,22 +429,22 @@ describe("localized repo, org, ranking, category, and pulse regressions", () => 
 
       const errorHtml = await renderPage(
         <SearchPanel
-          active={-1}
           compareSet={new Set()}
           hits={[]}
           labels={{
             ...fr.search,
             addToCompare: fr.compare.addToCompare,
+            removeFromCompare: fr.compare.remove,
             openCompare: fr.compare.openCompare,
           }}
-          listId="localized-search"
           loading={false}
           locale="fr"
-          onActiveChange={() => undefined}
           onOpenCompare={() => undefined}
           onReset={() => undefined}
+          onResultKeyDown={() => undefined}
           onRetry={() => undefined}
           onToggleCompare={() => undefined}
+          panelId="localized-search"
           searchFailed
         />,
       );

@@ -25,7 +25,8 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const listId = useId();
+  const restoringFocusRef = useRef(false);
+  const panelId = useId();
 
   const { ensureEngine, hits, loadState, query, resetHits } = useSearchEngine({ limit: LIMIT });
   const { clearCompare, compareSet, toggleCompare } = useCompareSelection(MAX_COMPARE);
@@ -47,21 +48,33 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
     [hits, locale, resetShell, router],
   );
 
-  const { active, onKeyDown, resetActive, setActive } = useSearchKeyboardNavigation({
+  const focusResult = useCallback((index: number) => {
+    const focus = () => {
+      const result = rootRef.current?.querySelector<HTMLElement>(`[data-search-result-link][data-search-result-index="${index}"]`);
+      result?.focus();
+      return Boolean(result);
+    };
+    if (!focus()) requestAnimationFrame(focus);
+  }, []);
+
+  const closeAndRestoreInput = useCallback(() => {
+    setOpen(false);
+    if (inputRef.current && document.activeElement !== inputRef.current) {
+      restoringFocusRef.current = true;
+      inputRef.current.focus();
+      restoringFocusRef.current = false;
+    }
+  }, []);
+
+  const { onInputKeyDown, onResultKeyDown } = useSearchKeyboardNavigation({
     itemCount: hits.length,
     onCommit: commitHit,
-    onEscape: () => setOpen(false),
+    onEscape: closeAndRestoreInput,
+    onFocusItem: focusResult,
     onOpen: () => setOpen(true),
   });
 
-  const reset = useCallback(() => {
-    resetShell();
-    resetActive();
-  }, [resetActive, resetShell]);
-
-  useEffect(() => {
-    setActive(hits.length > 0 ? 0 : -1);
-  }, [hits, setActive]);
+  const reset = useCallback(() => resetShell(), [resetShell]);
 
   const retrySearch = useCallback(() => {
     setOpen(true);
@@ -110,41 +123,38 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
         <input
           ref={inputRef}
           type="search"
-          role="combobox"
-          aria-expanded={showPanel}
-          aria-controls={listId}
-          aria-autocomplete="list"
+          aria-haspopup="dialog"
+          aria-controls={showPanel ? panelId : undefined}
           aria-label={labels.label}
-          aria-activedescendant={showPanel && active >= 0 ? `${listId}-${active}` : undefined}
           enterKeyHint="go"
           autoComplete="off"
           spellCheck={false}
           placeholder={labels.placeholder}
           value={q}
           onFocus={() => {
+            if (restoringFocusRef.current) return;
             setOpen(true);
             void ensureEngine();
           }}
           onChange={(e) => onChange(e.target.value)}
-          onKeyDown={onKeyDown}
+          onKeyDown={onInputKeyDown}
           className="w-20 bg-transparent font-mono text-[0.8rem] text-on-surface placeholder:text-on-surface-variant min-[360px]:w-24 sm:w-44 lg:w-56"
         />
       </div>
 
       {showPanel && (
         <SearchPanel
-          active={active}
           compareSet={compareSet}
           hits={hits}
           labels={labels}
-          listId={listId}
           loading={loading}
           locale={locale}
-          onActiveChange={setActive}
           onOpenCompare={openCompare}
           onReset={reset}
+          onResultKeyDown={onResultKeyDown}
           onRetry={retrySearch}
           onToggleCompare={toggleCompare}
+          panelId={panelId}
           searchFailed={searchFailed}
         />
       )}

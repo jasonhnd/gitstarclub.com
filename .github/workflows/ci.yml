@@ -195,7 +195,7 @@ jobs:
       - name: Run accessibility and responsive release suites
         env:
           BASE_URL: ${{ steps.deployment.outputs.url }}
-        run: bunx playwright test e2e/accessibility-responsive.spec.ts e2e/horizontal-overflow.spec.ts
+        run: bunx playwright test e2e/accessibility-responsive.spec.ts e2e/horizontal-overflow.spec.ts e2e/search-compare-interactions.spec.ts
       - name: Verify deployed SEO architecture
         if: github.event_name == 'push'
         env:

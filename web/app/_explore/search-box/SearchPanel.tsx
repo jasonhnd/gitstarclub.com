@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { KeyboardEvent } from "react";
 import { fmtStars } from "@/lib/format";
 import type { SearchHit } from "@/lib/search/core";
 import { MAX_COMPARE } from "@/lib/compare/constants";
@@ -8,48 +9,49 @@ import { Star } from "../Star";
 import type { SearchBoxLabels } from "./types";
 
 export function SearchPanel({
-  active,
   compareSet,
   hits,
   labels,
-  listId,
   loading,
   locale,
-  onActiveChange,
   onOpenCompare,
   onReset,
+  onResultKeyDown,
   onRetry,
   onToggleCompare,
+  panelId,
   searchFailed,
 }: {
-  active: number;
   compareSet: Set<string>;
   hits: SearchHit[];
   labels: SearchBoxLabels;
-  listId: string;
   loading: boolean;
   locale: Locale;
-  onActiveChange: (index: number) => void;
   onOpenCompare: () => void;
   onReset: () => void;
+  onResultKeyDown: (event: KeyboardEvent<HTMLElement>, index: number) => void;
   onRetry: () => void;
   onToggleCompare: (fullName: string) => void;
+  panelId: string;
   searchFailed: boolean;
 }) {
   return (
-    <div className="absolute right-0 z-30 mt-2 w-[min(24rem,92vw)] overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-high shadow-[var(--elev-2)]">
+    <div
+      id={panelId}
+      role="dialog"
+      aria-label={labels.label}
+      className="absolute right-0 z-30 mt-2 w-[min(24rem,92vw)] overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-high shadow-[var(--elev-2)]"
+    >
       {searchFailed ? (
         <SearchError labels={labels} onRetry={onRetry} />
       ) : hits.length > 0 ? (
         <SearchResultList
-          active={active}
           compareSet={compareSet}
           hits={hits}
           labels={labels}
-          listId={listId}
           locale={locale}
-          onActiveChange={onActiveChange}
           onReset={onReset}
+          onResultKeyDown={onResultKeyDown}
           onToggleCompare={onToggleCompare}
         />
       ) : (
@@ -84,41 +86,35 @@ function SearchEmpty({ loading, labels }: { loading: boolean; labels: SearchBoxL
 }
 
 function SearchResultList({
-  active,
   compareSet,
   hits,
   labels,
-  listId,
   locale,
-  onActiveChange,
   onReset,
+  onResultKeyDown,
   onToggleCompare,
 }: {
-  active: number;
   compareSet: Set<string>;
   hits: SearchHit[];
   labels: SearchBoxLabels;
-  listId: string;
   locale: Locale;
-  onActiveChange: (index: number) => void;
   onReset: () => void;
+  onResultKeyDown: (event: KeyboardEvent<HTMLElement>, index: number) => void;
   onToggleCompare: (fullName: string) => void;
 }) {
   return (
-    <ul id={listId} role="listbox" aria-label={labels.label} className="max-h-[70vh] overflow-y-auto py-1">
+    <ul aria-label={labels.label} className="max-h-[70vh] overflow-y-auto py-1">
       {hits.map((hit, index) => (
         <SearchResultRow
           key={hit.id}
-          active={index === active}
           compareDisabled={!compareSet.has(hit.full_name) && compareSet.size >= MAX_COMPARE}
           hit={hit}
           index={index}
           inCompare={compareSet.has(hit.full_name)}
-          label={labels.addToCompare}
-          listId={listId}
+          labels={labels}
           locale={locale}
-          onActiveChange={onActiveChange}
           onReset={onReset}
+          onResultKeyDown={onResultKeyDown}
           onToggleCompare={onToggleCompare}
         />
       ))}
@@ -127,37 +123,37 @@ function SearchResultList({
 }
 
 function SearchResultRow({
-  active,
   compareDisabled,
   hit,
   index,
   inCompare,
-  label,
-  listId,
+  labels,
   locale,
-  onActiveChange,
   onReset,
+  onResultKeyDown,
   onToggleCompare,
 }: {
-  active: boolean;
   compareDisabled: boolean;
   hit: SearchHit;
   index: number;
   inCompare: boolean;
-  label: string;
-  listId: string;
+  labels: SearchBoxLabels;
   locale: Locale;
-  onActiveChange: (index: number) => void;
   onReset: () => void;
+  onResultKeyDown: (event: KeyboardEvent<HTMLElement>, index: number) => void;
   onToggleCompare: (fullName: string) => void;
 }) {
+  const compareLabel = inCompare ? labels.removeFromCompare : labels.addToCompare;
+
   return (
-    <li id={`${listId}-${index}`} role="option" aria-selected={active}>
-      <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-stretch transition-colors ${active ? "bg-on-surface/8" : "hover:bg-on-surface/5"}`}>
+    <li>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch transition-colors hover:bg-on-surface/5 focus-within:bg-on-surface/8">
         <Link
           href={localizedPath(locale, `/${hit.full_name}`)}
-          onMouseEnter={() => onActiveChange(index)}
+          data-search-result-link
+          data-search-result-index={index}
           onClick={onReset}
+          onKeyDown={(event) => onResultKeyDown(event, index)}
           className="grid min-h-11 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
         >
           <span className="min-w-0">
@@ -176,11 +172,13 @@ function SearchResultRow({
         </Link>
         <button
           type="button"
+          data-search-result-index={index}
           onClick={() => onToggleCompare(hit.full_name)}
+          onKeyDown={(event) => onResultKeyDown(event, index)}
           disabled={compareDisabled}
           aria-pressed={inCompare}
-          aria-label={`${label}: ${hit.full_name}`}
-          title={label}
+          aria-label={`${compareLabel}: ${hit.full_name}`}
+          title={compareLabel}
           className={`flex w-11 items-center justify-center font-mono text-[0.95rem] transition-colors ${
             inCompare
               ? "bg-primary-container text-on-primary-container"

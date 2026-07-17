@@ -6,5 +6,6 @@ export interface SearchBoxLabels {
   error: string;
   retry: string;
   addToCompare: string;
+  removeFromCompare: string;
   openCompare: string;
 }
