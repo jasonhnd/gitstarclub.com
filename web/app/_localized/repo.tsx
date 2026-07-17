@@ -36,9 +36,9 @@ const CHIP_CLASS =
 type RepoLanguageFact = RepoLanguage & { href?: string | null };
 type RankingAppearance = { period: string; rank: number; adds?: number | null };
 
-// Resolve a URL slug → repo id. On a miss, if the slug is a former name of a still-tracked repo
-// (GitHub rename, e.g. facebook/react → react/react), 308-redirect to its current slug; otherwise
-// return undefined so the caller can 404.
+// Resolve a URL slug → repo id. Search results, bookmarks, and external links can still carry a
+// former name after a GitHub rename (for example facebook/react → react/react), so a tracked alias
+// receives a 308 to its current canonical slug. Unknown names still fall through to the localized 404.
 async function resolveRepoId(fullName: string, locale: Locale): Promise<number | undefined> {
   const idsByFullName = await getRepoIdByFullNameDaily();
   const direct = resolveRepoRoute(fullName, idsByFullName, null, null);
