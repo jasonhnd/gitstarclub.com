@@ -28,8 +28,8 @@ These are non-negotiable for the production system. New features must respect al
 
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
 2. **Zero runtime database.** Read-side state lives in versioned Blob views resolved through a publish pointer; there is no SQL connection to open.
-3. **Vercel-first.** Deploy, cron, Blob, workflow, and Vercel Web Analytics stay on Vercel. Google Analytics 4 is optional and must stay env-gated through `NEXT_PUBLIC_GA_ID`.
-4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, service-worker registration, Vercel Web Analytics, and optional env-gated GA4.
+3. **Vercel-first.** Deploy, cron, Blob, workflow, and Vercel Web Analytics stay on Vercel. Google Analytics and other third-party tracking scripts are intentionally unsupported.
+4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, service-worker registration, and Vercel Web Analytics.
 5. **Recurring work on Vercel, not the laptop.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) runs as a Vercel Workflow. Local pipeline runs are reserved for one-off bootstrap.
 
 The same data layer also operates AI-free: features that look like they would call an LLM (summaries, classifications, narratives) ship as deterministic templates instead. The rationale and tradeoff are recorded in the team feedback memory.
@@ -43,11 +43,11 @@ The same data layer also operates AI-free: features that look like they would ca
 | Styling | Tailwind 4 + Material 3 Expressive tokens (graphite + amber), hand-authored in `web/app/globals.css` following the M3 system color role taxonomy | |
 | Fonts | Plus Jakarta Sans (variable sans), Geist Mono (numerals, repo names) | |
 | Read-side data | Versioned JSON views in Vercel Blob, served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
-| Live-overlay data | Daily `current_month.json`, weekly `hot-snapshot.json`, written by cron | Append-only within a period |
+| Live-overlay data | Immutable `live/generations/<run_id>/**`, selected by `live/latest.json` | One complete generation per atomic pointer commit |
 | Recurring data refresh | Vercel Workflow (multi-step, Blob checkpoint) | |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
 | Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test` from `web/` on PRs and `main` pushes |
-| Analytics | Vercel Web Analytics via `@vercel/analytics` remains enabled. Optional Google Analytics 4 uses Next.js `@next/third-parties/google` and renders only when `NEXT_PUBLIC_GA_ID` is a non-empty value starting with `G-`; unset or invalid values emit no GA script. | |
+| Analytics | Vercel Web Analytics via `@vercel/analytics` is the only analytics integration. It uses same-origin `/_vercel/insights` endpoints, and build-time policy checks keep CSP compatible. | No GA or third-party tracking scripts. |
 
 Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, tRPC, any LLM SDK. The reasoning is the constraints above.
 
@@ -72,9 +72,9 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 ┌─ Daily cron (live overlay, JSON-only, seconds) ─────────────┐
 │  1. GraphQL: current_stars for tracked repos (~54 queries)  │
 │  2. Net daily delta = today − yesterday                     │
-│  3. Append to current_month.json                            │
-│  4. Recompute hot-snapshot.json (home + current-period top) │
-│  5. revalidatePath on hot surfaces                          │
+│  3. Validate a complete immutable live generation          │
+│  4. Fenced CAS live/latest.json (old or new, never mixed)   │
+│  5. Only after commit: revalidatePath + IndexNow            │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─ Weekly cron (live overlay) ────────────────────────────────┐
@@ -124,8 +124,8 @@ Weekly rankings cross calendar months. Daily is the smallest grain that exactly 
 
 ### Honest data caveats (documented on the About page)
 
-- Historical curves are gross adds (GH Archive WatchEvents); live deltas are net (GraphQL). The seam introduces a small inconsistency. Current totals always reflect GitHub's authoritative count.
-- Survivorship bias: only repos that currently have ≥10,000 stars are backfilled. Projects that were once popular but dropped below the threshold are absent.
+- Historical curves are gross adds (GH Archive WatchEvents); live deltas are net (GraphQL). The seam introduces a small inconsistency. Current totals always reflect GitHub GraphQL's authoritative count.
+- Bootstrap history still has survivorship bias toward the initial ≥10,000-star set. After a repository is first tracked, later drops are retained as `active:false` historical entities rather than deleted.
 - Cumulative gross does not necessarily equal current total (stars get revoked); the current total is the authoritative anchor.
 - Repo renames keep their identity via `repo.id`; URLs use the current `full_name` with 308 redirects from the old.
 
@@ -135,7 +135,7 @@ GitHub's "watch" semantics changed in late 2012. By 2015 the WatchEvent stream i
 
 ### Whitelist
 
-The tracked set is repos with current stars ≥ 10,000 (a few thousand entries; the live count drifts slowly and lives in [REQUIREMENTS.md](./REQUIREMENTS.md) §2). New entrants are picked up by the workflow's whitelist diff and metadata seeding without manual intervention.
+The active tracked set is the open-ended GitHub Search discovery result for `stars:>=10000`; Search membership is snapshotted with an authoritative `count`, but GraphQL supplies every displayed/ranked current total. New entrants are picked up by the workflow diff. Drops become retained historical rows and stop polling; re-entry reactivates the same id while preserving its first `tracked_since`.
 
 ## Data model
 
@@ -144,8 +144,8 @@ There is no database. The logical model is a fact table over star events; the ph
 ### Logical model
 
 - **Fact: `star_daily(repo_id, date, delta)`** — per-repo, per-day star delta. Gross before the seam, net after. ~8M rows. In the bootstrap form this is a Parquet file; in the production form it is folded into monthly and weekly JSON shards.
-- **Dimension: `repos`** — owner, owner type, language, milestones, topics, etc. Primary key is the immutable integer `id` (rename-safe). `current_stars` is the authoritative GraphQL value.
-- **`meta`** — global metadata: `seam_date` (gross→net boundary), `schema_ver`, `folded_through` watermark, etc.
+- **Dimension: `repos`** — owner, owner type, language, milestones, topics, `active`, `tracked_since`, etc. Primary key is the immutable integer `id` (rename-safe). `current_stars` is the authoritative GraphQL value.
+- **`meta`** — global metadata: `seam_date` (gross→net boundary), `schema_ver`, `folded_through` watermark, `active_repo_count`, and `historical_repo_count`.
 
 Field-level schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
 
@@ -177,7 +177,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 ### Physical: JSON view artifacts
 
-Each (period × dim × metric) reduction produces a JSON view: rank tables, entity timelines (per repo, per org), heatmaps, lookup tables for build-time joins, and the client-side search index. Live-overlay paths produce `current_month.json` and `hot-snapshot.json`. The complete Blob layout is in [OPS.md](./OPS.md); per-view schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
+Each (period × dim × metric) reduction produces a JSON view: rank tables, entity timelines (per repo, per org), heatmaps, lookup tables for build-time joins, and the client-side search index. Live-overlay paths produce the same logical `current_month.json`, `hot-snapshot.json`, rank and heatmap files under one immutable generation; `live/latest.json` is the only publication switch. The complete Blob layout is in [OPS.md](./OPS.md); per-view schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
 
 Builds ingest these JSONs directly and bake them into static HTML. Adding a new view means adding a recompute step that produces JSON; the read path needs no engine.
 
@@ -208,19 +208,19 @@ Eleven thousand-plus pages cannot be built at deploy time within Vercel's 45-min
 
 | Tier | Surfaces | Refresh mechanism |
 |---|---|---|
-| **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy; daily cron writes `hot-snapshot.json` and calls `revalidatePath` on these surfaces |
+| **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy; daily cron atomically publishes a live generation then calls `revalidatePath` |
 | **Movers** (event-driven, daily) | Repos and orgs flagged as moving today (top-50 daily flow ∪ ≥ 5× their 90-day median with absolute floor ∪ milestone crossings) | Daily cron picks the set and calls `revalidatePath` on those entities + the pulse surface |
-| **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos and orgs not currently moving | `dynamicParams=true`, not enumerated in `generateStaticParams`; first request renders, then cached. `revalidate=false` (changes propagate via targeted `revalidatePath`) |
+| **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos and orgs not currently moving | `dynamicParams=true`, not fully enumerated in `generateStaticParams`; first request renders, then caches. Historical periods use `revalidate=false`; repo/org details use `revalidate=86400`, with targeted `revalidatePath` for movers. |
 | **Frozen** | Completed weekly / monthly / yearly pages | Rendered once and stamped "as of <date>"; only re-rendered when the recompute publishes a new pointer version |
 
 Cadence:
 
 - **Deploys** (code or structural change): build the small core only; ISR resets and re-warms on first request. Long-tail surfaces are not enumerated at deploy.
-- **Daily cron**: update `current_month.json`, write `hot-snapshot.json`, recompute mover set, `revalidatePath` on hot surfaces. Untouched entities and historical surfaces are not touched.
-- **Weekly cron**: refresh the current week and month rank, current-month heatmap, hot snapshot, and `ops/sync-runs.json`.
+- **Daily cron**: acquire the date/job idempotency lease, build and validate all live files, atomically switch `live/latest.json`, then revalidate hot surfaces. A failed run leaves the previous complete generation selected.
+- **Weekly cron**: use the same generation protocol for current week/month rank, heatmap, hot snapshot, and then update `ops/sync-runs.json`.
 - **Workflow runs** (recompute → validate → publish): re-derive every `views/**` artifact, validate, and atomically swap the pointer. Old versions are reaped by the GC step.
 
-Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default — leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model); long-tail pages export `revalidate=false`; ISR rendering reads only KB-sized hot-snapshot JSON.
+Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default — leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model); historical period routes use frozen caching while repo/org long-tail routes use daily ISR; rendering reads only bounded JSON views.
 
 ### GraphQL budget
 
@@ -232,7 +232,7 @@ The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per quer
 |---|---|
 | Static HTML for content pages | Function invocations stay at zero |
 | HTML under ~20 KB | Reduces bandwidth at scale |
-| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW, Vercel Web Analytics, and optional env-gated GA4 |
+| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW and Vercel Web Analytics. Third-party analytics are unsupported. |
 | `Cache-Control: s-maxage=86400, stale-while-revalidate` | Historical surfaces cached aggressively |
 | Subset fonts as woff2 | Plus Jakarta Sans subset ~30 KB |
 | Pre-rendered OG cards in Blob | No function cost on share embeds |
@@ -265,7 +265,7 @@ Two sources drift: GH Archive (gross) and GraphQL (authoritative net total).
 ### Compliance and attribution
 
 - **GH Archive**: historical WatchEvent data is credited to GH Archive (gharchive.org), licensed under CC BY 4.0, and disclosed as derived/transformed into GitStarClub ranking and curve views.
-- **GitHub**: repository metadata and current star totals are fetched through official GraphQL/Search APIs under ToS; only public data for public repos.
+- **GitHub**: Search discovers public-repository membership; GraphQL supplies repository metadata and the authoritative current star totals under ToS. Only public data for public repositories is stored.
 - The About page and footer document the data caveats (gross vs net, survivorship bias, 2015 start), attribution, and source links.
 
 ### Accessibility

@@ -3,8 +3,16 @@ import { WorkflowLease } from "@/lib/contracts";
 import { requireBlobWriteToken } from "@/lib/runtime-config";
 
 const ACTIVE_PATH = "ops/workflows/active.json";
-const LEASE_TTL_MS = 12 * 60 * 60 * 1000;
+export const LEASE_TTL_MS = 30 * 60 * 1000;
+export const LEASE_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_CAS_ATTEMPTS = 3;
+
+export class WorkflowLeaseOwnershipError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkflowLeaseOwnershipError";
+  }
+}
 
 export type WorkflowLeaseSnapshot = {
   lease: WorkflowLease | null;
@@ -29,6 +37,11 @@ type ClaimArgs = {
   trigger: string;
   now?: number;
   allowExistingRun?: boolean;
+};
+
+export type WorkflowOwnership = {
+  runId: string;
+  fencingToken: number;
 };
 
 async function streamText(stream: ReadableStream<Uint8Array>): Promise<string> {
@@ -93,13 +106,14 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
 
 export const blobWorkflowLeaseStore = new BlobWorkflowLeaseStore();
 
-export function workflowLease(args: ClaimArgs): WorkflowLease {
+export function workflowLease(args: ClaimArgs, fencingToken = 1): WorkflowLease {
   const now = args.now ?? Date.parse(args.acquiredAt);
   const lease = {
     run_id: args.runId,
     status: "running",
     acquired_at: args.acquiredAt,
     expires_at: new Date(now + LEASE_TTL_MS).toISOString(),
+    fencing_token: fencingToken,
     idempotency_key: args.idempotencyKey,
     trigger: args.trigger,
   };
@@ -108,12 +122,12 @@ export function workflowLease(args: ClaimArgs): WorkflowLease {
 
 export async function claimWorkflowLease(args: ClaimArgs, store: WorkflowLeaseStore = blobWorkflowLeaseStore): Promise<WorkflowLeaseClaim> {
   const now = args.now ?? Date.parse(args.acquiredAt);
-  const next = workflowLease({ ...args, now });
 
   for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
     const current = await store.read();
     const active = current.lease;
     if (!active) {
+      const next = workflowLease({ ...args, now }, 1);
       if (await store.create(next)) return { status: "acquired", lease: next };
       continue;
     }
@@ -126,6 +140,7 @@ export async function claimWorkflowLease(args: ClaimArgs, store: WorkflowLeaseSt
     if (running) return { status: "rejected", lease: active };
 
     if (!current.etag) throw new Error("active workflow lease is missing an ETag");
+    const next = workflowLease({ ...args, now }, active.fencing_token + 1);
     if (await store.compareAndSet(current.etag, next)) return { status: "acquired", lease: next };
   }
 
@@ -138,15 +153,51 @@ export async function claimWorkflowLease(args: ClaimArgs, store: WorkflowLeaseSt
   throw new Error("failed to acquire workflow lease after concurrent updates");
 }
 
+/**
+ * Renew a running lease while proving both its run id and fencing generation.
+ * Every protected mutation calls this immediately before writing.  A run that
+ * has expired or been superseded fails closed instead of resuming stale work.
+ */
+export async function renewWorkflowLease(
+  runId: string,
+  fencingToken: number,
+  store: WorkflowLeaseStore = blobWorkflowLeaseStore,
+  renewedAt = new Date().toISOString(),
+): Promise<WorkflowLease> {
+  const now = Date.parse(renewedAt);
+  for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
+    const current = await store.read();
+    const active = current.lease;
+    if (!active || active.status !== "running" || active.run_id !== runId || active.fencing_token !== fencingToken) {
+      throw new WorkflowLeaseOwnershipError(`workflow ${runId} no longer owns fencing token ${fencingToken}`);
+    }
+    if (Date.parse(active.expires_at) <= now) {
+      throw new WorkflowLeaseOwnershipError(`workflow ${runId} lease expired at ${active.expires_at}`);
+    }
+    if (!current.etag) throw new Error("active workflow lease is missing an ETag");
+    const renewed = WorkflowLease.parse({
+      ...active,
+      expires_at: new Date(now + LEASE_TTL_MS).toISOString(),
+    });
+    if (await store.compareAndSet(current.etag, renewed)) return renewed;
+  }
+  throw new WorkflowLeaseOwnershipError(`workflow ${runId} lost ownership while renewing fencing token ${fencingToken}`);
+}
+
 export async function releaseWorkflowLease(
   runId: string,
   status: "published" | "failed",
   store: WorkflowLeaseStore = blobWorkflowLeaseStore,
   releasedAt = new Date().toISOString(),
+  fencingToken?: number,
 ): Promise<boolean> {
   for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
     const current = await store.read();
-    if (!current.lease || current.lease.run_id !== runId) return false;
+    if (
+      !current.lease ||
+      current.lease.run_id !== runId ||
+      (fencingToken !== undefined && current.lease.fencing_token !== fencingToken)
+    ) return false;
     if (!current.etag) throw new Error("active workflow lease is missing an ETag");
     const lease = WorkflowLease.parse({
       ...current.lease,

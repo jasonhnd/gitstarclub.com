@@ -1,5 +1,15 @@
 import { z } from "zod";
-import { DateStr, MonthPeriod, NonNegativeInt, OwnerType, SafeText, TimestampStr, WeekPeriod, YearPeriod } from "./common";
+import {
+  DateStr,
+  MonthPeriod,
+  NonNegativeInt,
+  OwnerType,
+  SafeText,
+  TimestampStr,
+  TruncatingSafeText,
+  WeekPeriod,
+  YearPeriod,
+} from "./common";
 
 // canonical/v2/* — production canonical JSON shards that replace the bootstrap
 // star_daily.parquet as the production source of truth. See docs/DATA-CONTRACTS.md
@@ -13,6 +23,10 @@ export const CanonicalMeta = z.object({
     month: MonthPeriod,
     week: WeekPeriod,
   }).strict(),
+  // Active bootstrap and fold writers always emit this watermark. Keep it
+  // optional while legacy canonical generations without the field remain
+  // readable during rollout.
+  generated_at: TimestampStr.optional(),
 }).strict();
 export type CanonicalMeta = z.infer<typeof CanonicalMeta>;
 
@@ -25,7 +39,9 @@ export const ReposShardEntry = z.object({
   owner_type: OwnerType,
   name: SafeText,
   full_name: SafeText,
-  description: SafeText.nullable().optional(),
+  // Truncate on read: a few GitHub descriptions exceed SafeText's 4KB cap and
+  // previously crashed detectRenames / metadata when re-parsing stored shards.
+  description: TruncatingSafeText.nullable().optional(),
   language: SafeText.nullable().optional(),
   languages: z
     .array(
@@ -39,6 +55,10 @@ export const ReposShardEntry = z.object({
   topics: z.array(SafeText).optional(),
   created_at: z.union([DateStr, TimestampStr]).optional(),
   current_stars: NonNegativeInt,
+  // Omitted only by pre-contract bootstrap shards. Every managed refresh
+  // rewrites this explicitly so active polling and historical retention are
+  // separate states instead of being inferred from row presence.
+  active: z.boolean().optional(),
   is_archived: z.boolean().optional(),
   crossed_10k: DateStr.nullable().optional(),
   crossed_50k: DateStr.nullable().optional(),

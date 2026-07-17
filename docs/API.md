@@ -1,7 +1,7 @@
 ---
 owner: API / route contracts
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-17
 source_of_truth_for:
   - endpoint contracts
   - route handler auth and cache behavior
@@ -23,10 +23,9 @@ runbooks still live in [OPS.md](./OPS.md). SEO crawl policy still lives in
 
 ## Shared conventions
 
-- All endpoints in this document are `GET` endpoints. Request bodies are not
-  part of any contract here.
-- Non-`GET` requests are outside these app contracts; Next.js handles
-  unsupported methods at the framework layer.
+- Endpoints are `GET` unless a section explicitly states another method. The
+  fenced rollback operation is `POST` because it accepts a JSON target version.
+- Other unsupported methods are handled by Next.js at the framework layer.
 - Protected operations require `Authorization: Bearer <CRON_SECRET>`. Missing,
   malformed, mismatched, or unconfigured secrets return `401` with body
   `Unauthorized`.
@@ -44,13 +43,20 @@ runbooks still live in [OPS.md](./OPS.md). SEO crawl policy still lives in
 | `/api/cron/daily` | `web/app/api/cron/daily/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | `LiveRefreshResult` plus route fields |
 | `/api/cron/weekly` | `web/app/api/cron/weekly/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | `LiveRefreshResult` plus route fields |
 | `/api/workflows/refresh/start` | `web/app/api/workflows/refresh/start/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | workflow enqueue result |
+| `/api/workflows/refresh/revalidate` | `web/app/api/workflows/refresh/revalidate/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; internal callback | publication cache invalidation result |
+| `/api/workflows/refresh/rollback` | `web/app/api/workflows/refresh/rollback/route.ts` | Bearer `CRON_SECRET` + `idempotency-key` | `force-dynamic`; no explicit `Cache-Control` | fenced pointer rollback result |
 | `/api/lang` | `web/app/api/lang/route.ts` | Public | Redirect plus cookie mutation; no explicit `Cache-Control` | `307` redirect |
 | `/search-index` | `web/app/search-index/route.ts` | Public | CDN `s-maxage=3600`; empty fallback `s-maxage=60` | `SearchIndex` / `SearchDoc` |
 | `/repo-curve` | `web/app/repo-curve/route.ts` | Public | CDN `s-maxage=3600`; invalid/missing id `s-maxage=60` | `CompareCurve` or error JSON |
+| `/.well-known/deployment` | `web/app/.well-known/deployment/route.ts` | Public | `force-dynamic`; `no-store, max-age=0` | deployment identity JSON |
 | `/sitemap.xml` | `web/app/sitemap.xml/route.ts` | Public | `revalidate=86400`; CDN `s-maxage=86400` | XML sitemap index |
 | `/sitemap-{locale}.xml` | `web/app/sitemap-*.xml/route.ts` | Public | `revalidate=86400`; CDN `s-maxage=86400` | XML URL set |
 | `/robots.txt` | `web/app/robots.ts` | Public | Next metadata route; env-driven at build/deploy time | `MetadataRoute.Robots` |
 | `/manifest.webmanifest` | `web/app/manifest.ts` | Public | Next metadata route; static app manifest | `MetadataRoute.Manifest` |
+| `/opengraph-image` | `web/app/opengraph-image.tsx` | Public | ISR image route; `revalidate=86400` | site default `1200x630` PNG |
+| `/{owner}/{name}/opengraph-image` | `web/app/(en)/[locale]/[owner]/opengraph-image.tsx` | Public | ISR image route; `revalidate=86400` | repository `1200x630` PNG |
+| `/rankings/{year}/opengraph-image` | `web/app/(en)/rankings/[year]/opengraph-image.tsx` | Public | ISR image route; `revalidate=86400` | annual ranking `1200x630` PNG |
+| `/rankings/{year}/{period}/opengraph-image` | `web/app/(en)/rankings/[year]/[period]/opengraph-image.tsx` | Public | ISR image route; `revalidate=86400` | monthly/weekly ranking `1200x630` PNG |
 | `/data/exports/v1/latest/*.json` | `web/public/data/exports/v1/*` + `next.config.ts` rewrite | Public | Static asset; `latest` rewrites to newest dated export at build time | data export JSON |
 
 ## Protected operations
@@ -62,12 +68,12 @@ Runs the daily live overlay refresh.
 | Item | Contract |
 |---|---|
 | Auth | Required bearer `CRON_SECRET` |
-| Query | `dry=1` is optional and performs a dry run with no Blob writes, sync-run log write, alert, or health write |
+| Query | `dry=1` performs a no-write dry run. `idempotency_key` optionally overrides the default `<job>:<UTC-day>` key for an intentional additional same-day publication. |
 | Body | None |
 | Success | `200 application/json` |
-| Failure | `401 Unauthorized`; `500 {"ok":false,"runId":"daily-...","error":"Internal server error"}` |
+| Failure | `400` invalid idempotency key; `401 Unauthorized`; `409` another live writer owns the lease; `500 {"ok":false,"runId":"daily-...","error":"Internal server error"}` |
 | Cache | `dynamic = "force-dynamic"`; no explicit `Cache-Control`; callers should not cache |
-| Side effects | Non-dry runs update live Blob views, revalidate hot paths, submit live-overlay IndexNow URLs, and append `ops/sync-runs.json` |
+| Side effects | Non-dry runs acquire the fenced `live/latest.json` lease, write and validate one immutable `live/generations/<run_id>/**` generation, atomically flip the pointer, then revalidate/submit IndexNow and append `ops/sync-runs.json` |
 | Max duration | `800` seconds |
 | Type source | [`LiveRefreshResult`](../web/lib/cron/live-refresh.ts) |
 
@@ -76,6 +82,8 @@ Success response:
 ```json
 {
   "ok": true,
+  "status": "published",
+  "idempotency_key": "daily:2026-07-05",
   "job": "daily",
   "dry": false,
   "day": "2026-07-05",
@@ -84,19 +92,30 @@ Success response:
   "polled": 5302,
   "day_total": 1234,
   "writes": [
-    "current_month.json",
-    "hot-snapshot.json",
-    "live/rank/month/2026-07/repo/flow.json",
-    "live/rank/month/2026-07/repo/stock.json",
-    "live/rank/week/2026-W27/repo/flow.json",
-    "live/heatmap/month/2026-07.json"
+    "live/generations/daily-.../current_month.json",
+    "live/generations/daily-.../hot-snapshot.json",
+    "live/generations/daily-.../rank/month/2026-07/repo/flow.json",
+    "live/generations/daily-.../rank/month/2026-07/repo/stock.json",
+    "live/generations/daily-.../rank/week/2026-W27/repo/flow.json",
+    "live/generations/daily-.../heatmap/month/2026-07.json",
+    "live/generations/daily-.../manifest.json",
+    "live/latest.json"
   ],
   "all_time_repo_1": { "rank": 1, "id": 10270250, "value": 232000, "prev_rank": null },
   "current_week_flow_1": { "rank": 1, "id": 1296269, "value": 320, "prev_rank": null },
   "current_month_flow_1": { "rank": 1, "id": 1296269, "value": 1234, "prev_rank": null },
+  "generation": "daily-2026-07-05T03-00-00-000Z",
+  "previous_generation": "daily-2026-07-04T03-00-00-000Z",
+  "published_at": "2026-07-05T03:02:00.000Z",
+  "post_commit_errors": [],
   "log_error": null
 }
 ```
+
+Duplicate delivery with the same key returns `200 status=already-published`
+after commit or `202 status=attached` while that run is active. A different key
+returns `409 status=rejected` until the 15-minute lease expires. No
+revalidation or IndexNow submission occurs before the pointer commit.
 
 Operational example:
 
@@ -132,18 +151,50 @@ work continues in workflow steps.
 | Item | Contract |
 |---|---|
 | Auth | Required bearer `CRON_SECRET` |
-| Query | None |
+| Query | Optional `idempotency_key` (or legacy camel-case alias) and `trigger`; any `dry` parameter is rejected with `400` because managed refresh has no dry-run mode |
 | Body | None |
 | Success | `200 {"ok":true,"runId":"refresh-<timestamp>"}` |
-| Failure | `401 Unauthorized`; `500 {"ok":false,"runId":"refresh-...","error":"Internal server error"}` |
+| Failure | `400` for `dry` or unsupported query parameters; `401 Unauthorized`; `409` when another idempotency key owns the lease; `500 {"ok":false,"runId":"refresh-...","error":"Internal server error"}` |
 | Cache | `dynamic = "force-dynamic"`; no explicit `Cache-Control`; callers should not cache |
-| Side effects | Calls `start(refreshWorkflow, [runId])`; if enqueue fails, sends an alert and logs the failure |
+| Side effects | First parses `canonical/v2/meta.json` read-only; only then acquires the workflow lease and calls `start(refreshWorkflow, [runId])`. If enqueue fails, sends an alert and logs the failure |
 
 Operational example:
 
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" \
   "https://gitstarclub.com/api/workflows/refresh/start"
+```
+
+This endpoint is always mutating. It has no managed-workflow dry-run mode and
+rejects `dry=1` (as well as `dry=0` or any other `dry` value) before acquiring a
+lease or writing health state. Only `/api/cron/daily` and `/api/cron/weekly`
+support `dry=1`.
+
+### `POST /api/workflows/refresh/rollback`
+
+Moves the published pointer to an explicit retained version. The route acquires
+a fenced operation lease, persists immutable rollback intent, updates recovery
+and published-whitelist pointers, and invalidates the pointer tag and rendered
+routes. Reusing the same idempotency key and target replays the same operation.
+
+| Item | Contract |
+|---|---|
+| Auth | Required bearer `CRON_SECRET` |
+| Header | Required stable `idempotency-key` (or `x-idempotency-key`) |
+| Body | `{"target_version":"<retained version>"}` |
+| Success | `200 {"ok":true,"operationId":"rollback-...","version":"...","prev_version":"...","published_at":"..."}` |
+| Failure | `400` invalid request; `401` auth; `409` another operation owns the lease; `500` rollback failed |
+| Visibility | Active cache invalidation; all warm pointer memos converge within 60 seconds |
+
+Operational example:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Idempotency-Key: rollback-incident-123" \
+  -H "Content-Type: application/json" \
+  --data '{"target_version":"refresh-2026-07-12T06-00-00-000Z"}' \
+  "https://gitstarclub.com/api/workflows/refresh/rollback"
 ```
 
 ## Public app endpoints
@@ -189,7 +240,7 @@ slimmed `SearchIndex`.
 | Query | None |
 | Body | None |
 | Success | `200 application/json` |
-| Failure | Framework `500` if the Blob read or schema parse throws |
+| Failure | Structured `503` `{ "error": "search_index_unavailable", "retryable": true }` when Blob read or schema parse throws (`Cache-Control: no-store`) |
 | Hit cache | `Cache-Control: public, max-age=0, s-maxage=3600, stale-while-revalidate=86400` |
 | Empty fallback cache | `Cache-Control: public, max-age=0, s-maxage=60` |
 | Zod contract | [`SearchIndex` / `SearchDoc`](../web/lib/contracts/search.ts) |
@@ -218,6 +269,9 @@ Route behavior:
 - `description` is truncated to 96 characters by the route before returning.
 - Before the first publish, when the view is absent, the route returns
   `{"generated_at":"","count":0,"repos":[]}` with the empty fallback cache.
+- Browser clients use `cache: "no-cache"` for normal loads so the `max-age=0`
+  response is revalidated. An explicit user retry uses `cache: "reload"` to
+  bypass a malformed cached response and refresh the browser cache.
 
 ### `GET /repo-curve`
 
@@ -250,8 +304,33 @@ Response shape:
 
 `points` are `[period, total_end]` monthly points from the repo entity curve.
 `crossed_10k` comes from `entity.milestones.crossed_10k` and may be `null`.
+Compare uses `cache: "no-cache"` for normal curve loads and `cache: "reload"`
+for an explicit user retry. Obsolete requests are aborted, and a response is
+applied only while its request generation is still current.
 
 ## Public metadata endpoints
+
+### `GET /.well-known/deployment`
+
+Public, uncached deployment identity used by release gates to prove which commit
+an immutable Vercel deployment serves. It does not read Blob data or expose a
+secret.
+
+| Item | Contract |
+|---|---|
+| Auth | Public |
+| Query / body | None |
+| Success | `200 application/json` |
+| Cache | `Cache-Control: no-store, max-age=0`; `dynamic = "force-dynamic"` |
+| Source | `web/app/.well-known/deployment/route.ts` |
+| Platform inputs | `VERCEL_GIT_COMMIT_SHA`, `VERCEL_URL`; missing values become `null` |
+
+```json
+{
+  "commitSha": "0123456789abcdef0123456789abcdef01234567",
+  "deploymentUrl": "https://gitstarclub-abc-zkscio.vercel.app"
+}
+```
 
 ### `GET /sitemap.xml`
 
@@ -364,6 +443,15 @@ Response shape:
   ]
 }
 ```
+
+### `GET */opengraph-image`
+
+The site default, repository, annual-ranking, and period-ranking image routes
+are public `next/og` endpoints. All return `1200x630` PNG responses and export
+`revalidate=86400`. They render on request/ISR and are cached by Vercel; no
+pipeline-generated Blob image is involved. The exact route/source matrix is in
+[UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md), and card/content rules are
+in [SEO.md](./SEO.md#13-og--社交卡片石墨灰--星金).
 
 ## Static public JSON exports
 

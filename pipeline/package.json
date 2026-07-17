@@ -4,12 +4,14 @@
   "type": "module",
   "description": "One-time backfill + offline data jobs. Runs in full Node (not serverless). See docs/PIPELINE.md.",
   "scripts": {
+    "test": "bun test lib/*.test.mjs",
     "audit:deps": "bun audit --audit-level=high",
     "whitelist": "node backfill/01-whitelist.mjs",
     "metadata": "node backfill/03-metadata.mjs",
     "rollup": "node backfill/04-rollup.mjs",
     "precompute": "node --max-old-space-size=4096 backfill/05-precompute.mjs",
-    "upload": "node backfill/06-upload.mjs"
+    "upload": "node backfill/06-upload.mjs",
+    "export-v2": "node backfill/07-export-v2.mjs"
   },
   "dependencies": {
     "@duckdb/node-api": "1.5.3-r.2",

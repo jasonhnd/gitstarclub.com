@@ -23,7 +23,8 @@ export const getRankBaseDaily = cache((window: Window, period: string, dim: Dim,
 export const getRank = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
   const liveWindow = window === "month" || window === "week" ? window : null;
   if (liveWindow && hasLiveRank(window, dim, metric) && (await isLiveOverlayPeriod(liveWindow, period))) {
-    const live = await readView(`live/rank/${window}/${period}/${dim}/${metric}.json`, RankList, { bust: today() });
+    const path = `rank/${window}/${period}/${dim}/${metric}.json`;
+    const live = await readView(path, RankList, { live: true, legacyPath: `live/${path}`, bust: today() });
     if (live) return live;
   }
   return getRankBase(window, period, dim, metric);
@@ -31,7 +32,8 @@ export const getRank = cache(async (window: Window, period: string, dim: Dim, me
 export const getRankDaily = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
   const liveWindow = window === "month" || window === "week" ? window : null;
   if (liveWindow && hasLiveRank(window, dim, metric) && (await isLiveOverlayPeriod(liveWindow, period, DAILY_BASE_VIEW_TTL_MS))) {
-    const live = await readView(`live/rank/${window}/${period}/${dim}/${metric}.json`, RankList, { bust: today() });
+    const path = `rank/${window}/${period}/${dim}/${metric}.json`;
+    const live = await readView(path, RankList, { live: true, legacyPath: `live/${path}`, bust: today() });
     if (live) return live;
   }
   return getRankBaseDaily(window, period, dim, metric);

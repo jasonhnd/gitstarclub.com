@@ -11,8 +11,8 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getHotSnapshot, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
-import { fmtStars } from "@/lib/format";
-import { getDictionary, type Locale } from "@/lib/i18n";
+import { dateLabel, fmtStars, monthYearLabel } from "@/lib/format";
+import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { webSiteLd, collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine, siteOrganizationLd } from "@/lib/jsonld";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
@@ -64,8 +64,8 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
     availablePeriods.month.kind === "month" ? getRank("month", availablePeriods.month.period, "repo", "flow") : Promise.resolve(null),
   ]);
 
-  const activeWeekLabel = availablePeriods.week.kind === "week" ? availablePeriods.week.period : availablePeriods.week.label;
-  const activeMonthLabel = availablePeriods.month.kind === "month" ? availablePeriods.month.period : availablePeriods.month.label;
+  const activeWeekLabel = availablePeriodLabel(locale, t, availablePeriods.week);
+  const activeMonthLabel = availablePeriodLabel(locale, t, availablePeriods.month);
   const weekRows = lookup && activeWeekRank ? toRows(joinRepoRank(activeWeekRank.items.slice(0, 8), lookup)) : [];
   const monthRows = lookup && activeMonthRank ? toRows(joinRepoRank(activeMonthRank.items.slice(0, 8), lookup)) : [];
   const yearRows = snap && lookup ? toRows(joinRepoRank(snap.current_year.flow.slice(0, 8), lookup)) : [];
@@ -74,7 +74,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
   const dateModified = resolveDataAsOfValue(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at);
   const temporalCoverage = datasetTemporalCoverageFromYearSpine(snap?.home.year_spine);
   const dataset = datasetLd({
-    name: `${t.pulse.title} Dataset`,
+    name: t.pulse.datasetName,
     path: routePath,
     locale: language,
     description: t.meta.pulseDescription,
@@ -99,28 +99,15 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
       {includeWebsiteLd && <JsonLd data={webSiteLd(language, routePath, { dateModified, about: datasetRef(routePath) })} />}
       <JsonLd data={collectionLd(t.pulse.title, routePath, language, { dateModified, about: datasetRef(routePath) })} />
       <JsonLd data={dataset} />
-      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.25rem,3.5vw,2.75rem)] ${PAD_X}`}>
+        {/* Human-first hierarchy (#285): identity → period → repo discovery, then methodology/GEO. */}
         <PageHero eyebrow={t.nav.pulse} title={t.pulse.title} lede={t.pulse.subtitle} />
 
-        <div className="mt-[clamp(1.5rem,3vw,2.25rem)]">
-          <PeriodSwitcher links={periodSwitcherLinks(availablePeriods, periods, href)} activePeriod={availablePeriods.week.kind === "week" ? "week" : "all-time"} />
+        <div className="mt-[clamp(1rem,2.5vw,1.5rem)]">
+          <PeriodSwitcher links={periodSwitcherLinks(availablePeriods, periods, href, locale, t)} activePeriod={availablePeriods.week.kind === "week" ? "week" : "all-time"} ariaLabel={t.a11y.rankingPeriod} />
         </div>
 
-        {capsule && (
-          <div className="mt-[clamp(1.75rem,4vw,3rem)]">
-            <AnswerCapsule capsule={capsule} labels={answerCapsuleLabels(locale, t)} />
-            <PulseLeaderLinks
-              links={[
-                { label: t.week.label, href: href(availablePeriods.week.href), period: activeWeekLabel, row: weekRows[0] },
-                { label: t.month.label, href: href(availablePeriods.month.href), period: activeMonthLabel, row: monthRows[0] },
-                { label: t.year.label, href: href(availablePeriods.yearLink.href), period: availablePeriods.yearLink.label, row: yearRows[0] },
-              ]}
-              pendingLabel={t.categories.rankingPending}
-            />
-          </div>
-        )}
-
-        <div className="mt-[clamp(2rem,5vw,4rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
+        <div className="mt-[clamp(1.25rem,3vw,2rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel
             title={t.week.top}
             href={href(availablePeriods.week.href)}
@@ -160,7 +147,18 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           />
         </div>
 
-        <section className="mt-[clamp(2.5rem,5vw,4rem)] grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <PulseLeaderLinks
+          links={[
+            { label: t.week.label, href: href(availablePeriods.week.href), period: activeWeekLabel, row: weekRows[0] },
+            { label: t.month.label, href: href(availablePeriods.month.href), period: activeMonthLabel, row: monthRows[0] },
+            { label: t.year.label, href: href(availablePeriods.yearLink.href), period: availablePeriods.yearLink.label, row: yearRows[0] },
+          ]}
+          pendingLabel={t.categories.rankingPending}
+          locale={locale}
+          className="mt-[clamp(1.25rem,3vw,2rem)]"
+        />
+
+        <section className="mt-[clamp(2rem,4.5vw,3.25rem)] grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0">
             <div className="mb-3 flex items-end justify-between gap-4">
               <div>
@@ -189,7 +187,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
                     <Link href={href(`/${e.owner}/${e.name}`)} className="group block py-2.5 transition-colors hover:bg-on-surface/5">
                       <span className="block truncate font-mono text-[0.86rem] text-on-surface group-hover:underline group-hover:underline-offset-2">{e.full_name}</span>
                       <span className="font-mono text-[0.75rem] tabular-nums text-on-surface-variant">
-                        {t.pulse.crossed} <span className="text-readable-gold font-semibold">{e.crossed}</span> · {e.date}
+                        {t.pulse.crossed} <span className="text-readable-gold font-semibold">{e.crossed}</span> · {dateLabel(locale, e.date)}
                       </span>
                     </Link>
                   </li>
@@ -200,6 +198,12 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
             )}
           </aside>
         </section>
+
+        {capsule && (
+          <div className="mt-[clamp(2rem,4.5vw,3.25rem)]">
+            <AnswerCapsule capsule={capsule} labels={answerCapsuleLabels(locale, t)} />
+          </div>
+        )}
 
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
@@ -261,12 +265,16 @@ function PulsePanel({
 function PulseLeaderLinks({
   links,
   pendingLabel,
+  locale,
+  className = "mt-3",
 }: {
   links: Array<{ label: ReactNode; href: string; period: string; row?: Row }>;
   pendingLabel: string;
+  locale: Locale;
+  className?: string;
 }) {
   return (
-    <div className="mt-3 grid gap-2 md:grid-cols-3">
+    <div className={`${className} grid gap-2 md:grid-cols-3`}>
       {links.map((link) => (
         <Link
           key={link.href}
@@ -278,7 +286,7 @@ function PulseLeaderLinks({
             {link.row ? `${link.row.owner}/${link.row.name}` : pendingLabel}
           </span>
           <span className="mt-1 block truncate font-mono text-[0.76rem] text-on-surface-variant">
-            {link.row?.gained == null ? link.period : `${link.period} · +${fmtStars(link.row.gained)}`}
+            {link.row?.gained == null ? link.period : `${link.period} · +${fmtStars(link.row.gained, locale)}`}
           </span>
         </Link>
       ))}
@@ -298,31 +306,44 @@ function periodSwitcherLinks(
   periods: AvailableRankPeriods,
   calendar: ReturnType<typeof currentUtcPeriods>,
   href: (path: string) => string,
+  locale: Locale,
+  t: Dict,
 ): Record<"all-time" | "year" | "month" | "week", PeriodSwitcherTarget> {
   return {
-    "all-time": { href: href(periods.allTime.href), label: "All-time", value: periods.allTime.label },
-    year: { href: href(periods.yearLink.href), label: "Year", value: periods.yearLink.label },
+    "all-time": { href: href(periods.allTime.href), label: t.rankings.allTime, value: t.rankings.fullHistory },
+    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, t, periods.yearLink) },
     month: {
       href: href(periods.month.href),
-      label: "Month",
-      value: periods.month.label,
-      badge: monthAvailabilityBadge(periods.month, calendar),
+      label: t.month.label,
+      value: availablePeriodLabel(locale, t, periods.month),
+      badge: monthAvailabilityBadge(periods.month, calendar, locale, t),
     },
     week: {
       href: href(periods.week.href),
-      label: "Week",
-      value: periods.week.label,
-      badge: weekAvailabilityBadge(periods.week, calendar),
+      label: t.week.label,
+      value: availablePeriodLabel(locale, t, periods.week),
+      badge: weekAvailabilityBadge(periods.week, calendar, locale, t),
     },
   };
 }
 
-function monthAvailabilityBadge(period: AvailableRankPeriods["month"], calendar: ReturnType<typeof currentUtcPeriods>): string | undefined {
-  if (period.kind !== "month") return `Latest available: ${period.label}`;
-  return period.year === calendar.year && period.month === calendar.month ? undefined : `Latest available: ${period.label}`;
+function monthAvailabilityBadge(period: AvailableRankPeriods["month"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
+  if (period.kind !== "month") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
+  return period.year === calendar.year && period.month === calendar.month ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
 }
 
-function weekAvailabilityBadge(period: AvailableRankPeriods["week"], calendar: ReturnType<typeof currentUtcPeriods>): string | undefined {
-  if (period.kind !== "week") return `Latest available: ${period.label}`;
-  return period.year === calendar.week.year && period.week === calendar.week.week ? undefined : `Latest available: ${period.label}`;
+function weekAvailabilityBadge(period: AvailableRankPeriods["week"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
+  if (period.kind !== "week") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
+  return period.year === calendar.week.year && period.week === calendar.week.week ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
+}
+
+function availablePeriodLabel(locale: Locale, t: Dict, period: AvailableRankPeriods["month"] | AvailableRankPeriods["week"] | AvailableRankPeriods["yearLink"]): string {
+  if (period.kind === "month") return monthYearLabel(locale, period.year, period.month);
+  if (period.kind === "week") return period.period;
+  if (period.kind === "year") return String(period.year);
+  return t.rankings.fullHistory;
+}
+
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
 }

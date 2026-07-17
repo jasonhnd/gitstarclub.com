@@ -66,9 +66,22 @@ async function gql(query, variables = {}, opts = {}) {
 // Search caps at 1000 results/query → bucket by star ranges, splitting any
 // bucket >1000 until it fits, then page through each.
 // Returns [{ id, node_id, full_name, owner, name, stars }] sorted by stars desc.
-export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 600000, opts = {}) {
+export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars, opts = {}) {
   const out = new Map(); // id -> repo (dedups range-boundary overlap)
-  const queue = [[minStars, maxStars]];
+  let observedMax = maxStars;
+  if (observedMax === undefined) {
+    const top = await restGet("/search/repositories", {
+      q: `stars:>=${minStars}`, sort: "stars", order: "desc", per_page: 1, page: 1,
+    }, opts);
+    if (top.incomplete_results) throw new Error(`GitHub Search returned incomplete results for stars:>=${minStars}`);
+    if (top.total_count === 0) return [];
+    observedMax = top.items[0]?.stargazers_count;
+    if (!Number.isSafeInteger(observedMax) || observedMax < minStars) {
+      throw new Error("GitHub Search returned a non-empty whitelist without a valid maximum star count");
+    }
+  }
+  if (observedMax < minStars) return [];
+  const queue = [[minStars, observedMax]];
   while (queue.length) {
     const range = queue.pop();
     if (!range) break;
@@ -77,16 +90,21 @@ export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars = 6
     const first = await restGet("/search/repositories", {
       q, sort: "stars", order: "desc", per_page: 100, page: 1,
     }, opts);
+    if (first.incomplete_results) throw new Error(`GitHub Search returned incomplete results for ${q}`);
     if (first.total_count > 1000 && high > low) {
       const mid = Math.floor((low + high) / 2);
       queue.push([low, mid], [mid + 1, high]);
       continue;
+    }
+    if (first.total_count > 1000) {
+      throw new Error(`GitHub Search bucket ${q} has ${first.total_count} results and cannot be paged completely`);
     }
     const pages = Math.min(Math.ceil(first.total_count / 100), 10);
     for (let page = 1; page <= pages; page++) {
       const res = page === 1
         ? first
         : await restGet("/search/repositories", { q, sort: "stars", order: "desc", per_page: 100, page }, opts);
+      if (res.incomplete_results) throw new Error(`GitHub Search returned incomplete results for ${q} page ${page}`);
       for (const r of res.items) {
         out.set(r.id, {
           id: r.id,

@@ -27,26 +27,6 @@ import { safeExternalHref } from "@/lib/external-url";
 import { languageHref, relatedRepositories, repoCategoryLinks, repoLanguageEntries, type CategoryLink, type RelatedRepo, type RepoLanguage } from "@/lib/repo-page";
 import { RepoHistorySection, RepoMilestonesSection } from "./repo-sections";
 
-const REPO_ENTITY_UI = {
-  heroEyebrow: "Citable repository profile",
-  facts: "Repository facts",
-  currentStars: "Current stars",
-  primaryLanguage: "Primary language",
-  githubUrl: "GitHub URL",
-  categoryTags: "Category tags",
-  rankingAppearances: "Ranking appearances",
-  rankingDescription: "Monthly ranking periods where this repository appeared in the precomputed GitStarClub flow rankings.",
-  relatedDescription: "Owner, category, similar repository, and ranking-period routes connected to this repository.",
-  noDescription: "GitHub star history for this tracked repository.",
-  noLicense: "No license metadata",
-  noHomepage: "No homepage metadata",
-  noCreatedAt: "No creation date metadata",
-  noLanguages: "No language breakdown available",
-  noTopics: "No topics published",
-  noCategories: "No category tags available",
-  noRankingAppearances: "No monthly ranking appearances are available in GitStarClub's precomputed repository data.",
-} as const;
-
 const HERO_ACTION_CLASS =
   "text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline";
 const FACT_LINK_CLASS = "font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]";
@@ -56,9 +36,9 @@ const CHIP_CLASS =
 type RepoLanguageFact = RepoLanguage & { href?: string | null };
 type RankingAppearance = { period: string; rank: number; adds?: number | null };
 
-// Resolve a URL slug → repo id. On a miss, if the slug is a former name of a still-tracked repo
-// (GitHub rename, e.g. facebook/react → react/react), 308-redirect to its current slug; otherwise
-// return undefined so the caller can 404.
+// Resolve a URL slug → repo id. Search results, bookmarks, and external links can still carry a
+// former name after a GitHub rename (for example facebook/react → react/react), so a tracked alias
+// receives a 308 to its current canonical slug. Unknown names still fall through to the localized 404.
 async function resolveRepoId(fullName: string, locale: Locale): Promise<number | undefined> {
   const idsByFullName = await getRepoIdByFullNameDaily();
   const direct = resolveRepoRoute(fullName, idsByFullName, null, null);
@@ -163,14 +143,14 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
 
         <PageHero
           className="mt-5"
-          eyebrow={REPO_ENTITY_UI.heroEyebrow}
+          eyebrow={t.repo.profileEyebrow}
           title={
             <span className="block min-w-0 break-words [overflow-wrap:anywhere]">
               <span className="text-on-surface-variant">{repo.owner}/</span>
               {repo.name}
             </span>
           }
-          lede={repo.description || REPO_ENTITY_UI.noDescription}
+          lede={repo.description || t.repo.noDescription}
           actions={
             <RepoHeroActions
               compareHref={href(`/compare?repos=${encodeURIComponent(repo.full_name)}`)}
@@ -184,8 +164,9 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
           }
           aside={
             <RepoHeroFacts
-              createdLabel={created ? monthYearLabel(locale, created.y, created.m) : REPO_ENTITY_UI.noCreatedAt}
+              createdLabel={created ? monthYearLabel(locale, created.y, created.m) : t.repo.noCreatedAtMetadata}
               license={repo.license}
+              locale={locale}
               primaryLanguage={primaryLanguage}
               primaryLanguageHref={languages[0] ? href(languageHref(languages[0].name)) : null}
               repo={repo}
@@ -209,12 +190,12 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
         {capsule && <AnswerCapsule capsule={capsule} labels={capsuleLabels} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
 
         <div className="min-w-0 max-w-full">
-          <RepoHistorySection inflections={inflections} milestones={milestones} series={series} t={t} />
+          <RepoHistorySection inflections={inflections} milestones={milestones} series={series} locale={locale} t={t} />
           <RepoMilestonesSection locale={locale} milestoneSnippet={milestoneSnippet} milestones={milestones} snippetLabels={snippetLabels} t={t} />
           <RankingAppearancesSection appearances={rankingAppearances} locale={locale} t={t} />
         </div>
 
-        <RelatedPages title={t.repo.relatedPages} description={REPO_ENTITY_UI.relatedDescription} items={relatedItems} />
+        <RelatedPages title={t.repo.relatedPages} description={t.repo.relatedDescription} items={relatedItems} />
 
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
@@ -263,6 +244,7 @@ function RepoHeroActions({
 function RepoHeroFacts({
   createdLabel,
   license,
+  locale,
   primaryLanguage,
   primaryLanguageHref,
   repo,
@@ -270,6 +252,7 @@ function RepoHeroFacts({
 }: {
   createdLabel: string;
   license: string | null | undefined;
+  locale: Locale;
   primaryLanguage: string | null | undefined;
   primaryLanguageHref: string | null;
   repo: RepoPageEntity;
@@ -277,14 +260,14 @@ function RepoHeroFacts({
 }) {
   return (
     <dl className="grid gap-3 rounded-2xl border border-outline-variant bg-surface-container px-4 py-4">
-      <HeroFact label={REPO_ENTITY_UI.currentStars}>
+      <HeroFact label={t.repo.currentStars}>
         <span className="text-readable-gold text-[1.15rem] font-extrabold tabular-nums">
-          {fmtStars(repo.current_stars)}
+          {fmtStars(repo.current_stars, locale)}
           {" "}
           <Star />
         </span>
       </HeroFact>
-      <HeroFact label={REPO_ENTITY_UI.primaryLanguage}>
+      <HeroFact label={t.repo.primaryLanguage}>
         {primaryLanguage ? (
           primaryLanguageHref ? (
             <Link href={primaryLanguageHref} className={FACT_LINK_CLASS}>
@@ -298,8 +281,12 @@ function RepoHeroFacts({
         )}
       </HeroFact>
       <HeroFact label={t.repo.created}>{createdLabel}</HeroFact>
-      <HeroFact label={t.repo.license}>{license || REPO_ENTITY_UI.noLicense}</HeroFact>
-      {repo.is_archived && <HeroFact label="Status">{t.repo.archived}</HeroFact>}
+      <HeroFact label={t.repo.tracking}>
+        {repo.active !== false ? t.repo.trackingActive : t.repo.trackingHistorical}
+      </HeroFact>
+      {repo.tracked_since && <HeroFact label={t.repo.trackedSince}>{repo.tracked_since}</HeroFact>}
+      <HeroFact label={t.repo.license}>{license || t.repo.noLicenseMetadata}</HeroFact>
+      {repo.is_archived && <HeroFact label={t.common.status}>{t.repo.archived}</HeroFact>}
     </dl>
   );
 }
@@ -338,7 +325,7 @@ function EntityFactPanel({
   return (
     <section aria-labelledby="repo-facts" className="mt-[clamp(1.75rem,3.5vw,2.5rem)] rounded-2xl border border-outline-variant bg-surface-container/70 px-4 py-4">
       <h2 id="repo-facts" className="font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
-        {REPO_ENTITY_UI.facts}
+        {t.repo.facts}
       </h2>
       <dl className="mt-4 grid gap-x-6 gap-y-5 md:grid-cols-2">
         <FactRow label={t.repo.owner}>
@@ -347,12 +334,12 @@ function EntityFactPanel({
           </Link>
         </FactRow>
         <FactRow label={languages.length > 1 ? t.repo.languages : t.repo.language}>
-          <LanguageLinks languages={languages} totalSize={languageTotalSize} locale={locale} />
+          <LanguageLinks languages={languages} totalSize={languageTotalSize} locale={locale} t={t} />
         </FactRow>
         <FactRow label={t.repo.topics}>
-          <TopicTags topics={repo.topics} />
+          <TopicTags topics={repo.topics} t={t} />
         </FactRow>
-        <FactRow label={t.repo.license}>{repo.license || <EmptyFact>{REPO_ENTITY_UI.noLicense}</EmptyFact>}</FactRow>
+        <FactRow label={t.repo.license}>{repo.license || <EmptyFact>{t.repo.noLicenseMetadata}</EmptyFact>}</FactRow>
         <FactRow label={t.repo.latestRelease}>
           {repo.latest_release ? (
             releaseHref ? (
@@ -372,16 +359,16 @@ function EntityFactPanel({
               {displayUrl(homepageHref)}
             </a>
           ) : (
-            <EmptyFact>{REPO_ENTITY_UI.noHomepage}</EmptyFact>
+            <EmptyFact>{t.repo.noHomepageMetadata}</EmptyFact>
           )}
         </FactRow>
-        <FactRow label={REPO_ENTITY_UI.githubUrl}>
+        <FactRow label={t.repo.githubUrl}>
           <a href={githubHref} rel="noreferrer" className={`${FACT_LINK_CLASS} break-all`}>
             {displayUrl(githubHref)}
           </a>
         </FactRow>
-        <FactRow label={REPO_ENTITY_UI.categoryTags}>
-          <CategoryChips categories={categories} locale={locale} />
+        <FactRow label={t.repo.categoryTags}>
+          <CategoryChips categories={categories} locale={locale} t={t} />
         </FactRow>
       </dl>
     </section>
@@ -397,8 +384,8 @@ function FactRow({ label, children }: { label: ReactNode; children: ReactNode })
   );
 }
 
-function LanguageLinks({ languages, totalSize, locale }: { languages: RepoLanguageFact[]; totalSize: number; locale: Locale }) {
-  if (languages.length === 0) return <EmptyFact>{REPO_ENTITY_UI.noLanguages}</EmptyFact>;
+function LanguageLinks({ languages, totalSize, locale, t }: { languages: RepoLanguageFact[]; totalSize: number; locale: Locale; t: Dict }) {
+  if (languages.length === 0) return <EmptyFact>{t.repo.noLanguages}</EmptyFact>;
   const total = totalSize || languages.reduce((sum, language) => sum + Math.max(0, language.size ?? 0), 0);
   return (
     <div className="flex flex-wrap gap-2">
@@ -425,8 +412,8 @@ function LanguageLinks({ languages, totalSize, locale }: { languages: RepoLangua
   );
 }
 
-function TopicTags({ topics }: { topics: string[] }) {
-  if (topics.length === 0) return <EmptyFact>{REPO_ENTITY_UI.noTopics}</EmptyFact>;
+function TopicTags({ topics, t }: { topics: string[]; t: Dict }) {
+  if (topics.length === 0) return <EmptyFact>{t.repo.noTopics}</EmptyFact>;
   return (
     <div className="flex flex-wrap gap-2">
       {topics.slice(0, 12).map((topic) => (
@@ -438,8 +425,8 @@ function TopicTags({ topics }: { topics: string[] }) {
   );
 }
 
-function CategoryChips({ categories, locale }: { categories: CategoryLink[]; locale: Locale }) {
-  if (categories.length === 0) return <EmptyFact>{REPO_ENTITY_UI.noCategories}</EmptyFact>;
+function CategoryChips({ categories, locale, t }: { categories: CategoryLink[]; locale: Locale; t: Dict }) {
+  if (categories.length === 0) return <EmptyFact>{t.repo.noCategories}</EmptyFact>;
   return (
     <div className="flex flex-wrap gap-2">
       {categories.map((category) => (
@@ -455,8 +442,8 @@ function RankingAppearancesSection({ appearances, locale, t }: { appearances: Ra
   return (
     <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
       <div className="max-w-[64ch]">
-        <h2 className="text-[1.2rem] font-extrabold tracking-tight text-on-surface">{REPO_ENTITY_UI.rankingAppearances}</h2>
-        <p className="mt-2 text-[0.9rem] leading-relaxed text-on-surface-variant">{REPO_ENTITY_UI.rankingDescription}</p>
+        <h2 className="text-[1.2rem] font-extrabold tracking-tight text-on-surface">{t.repo.rankingAppearances}</h2>
+        <p className="mt-2 text-[0.9rem] leading-relaxed text-on-surface-variant">{t.repo.rankingDescription}</p>
       </div>
       {appearances.length > 0 ? (
         <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -472,7 +459,7 @@ function RankingAppearancesSection({ appearances, locale, t }: { appearances: Ra
                       {typeof entry.adds === "number" ? (
                         <>
                           {" · +"}
-                          {fmtStars(entry.adds)}
+                          {fmtStars(entry.adds, locale)}
                           <Star />
                         </>
                       ) : (
@@ -489,7 +476,7 @@ function RankingAppearancesSection({ appearances, locale, t }: { appearances: Ra
           })}
         </ul>
       ) : (
-        <EmptyState message={REPO_ENTITY_UI.noRankingAppearances} />
+        <EmptyState message={t.repo.noRankingAppearances} />
       )}
     </section>
   );
@@ -554,13 +541,13 @@ function buildLocalizedRepoCapsule(t: Dict, locale: Locale, repo: RepoPageEntity
   const latestPhrase = latest
     ? fill(t.repo.capsuleLatest, {
         month: monthYearFromPeriod(locale, latest.month),
-        stars: signedStars(latest.adds),
+        stars: signedStars(latest.adds, locale),
       })
     : t.repo.capsuleLatestFallback;
   const text = fill(t.repo.capsule, {
     asOf,
     repo: repo.full_name,
-    stars: fmtStars(repo.current_stars),
+    stars: fmtStars(repo.current_stars, locale),
     language,
     milestones: repoMilestonePhrase(t, locale, repo),
     latest: latestPhrase,
@@ -573,8 +560,8 @@ function buildLocalizedRepoFaqs(t: Dict, locale: Locale, repo: RepoPageEntity, a
   const latestPhrase = latest
     ? fill(t.repo.latestMonthlyPoint, {
         month: monthYearFromPeriod(locale, latest[0]),
-        stars: signedStars(latest[1]),
-        total: fmtStars(latest[2]),
+        stars: signedStars(latest[1], locale),
+        total: fmtStars(latest[2], locale),
       })
     : t.repo.monthlyUnavailable;
   const language = repo.language ?? t.repo.unspecifiedLanguage;
@@ -583,8 +570,8 @@ function buildLocalizedRepoFaqs(t: Dict, locale: Locale, repo: RepoPageEntity, a
     {
       question: fill(t.repo.faqStarsQuestion, { repo: repo.full_name }),
       answer: asOf
-        ? fill(t.repo.faqStarsAnswerWithAsOf, { asOf, repo: repo.full_name, stars: fmtStars(repo.current_stars) })
-        : fill(t.repo.faqStarsAnswerNoAsOf, { repo: repo.full_name, stars: fmtStars(repo.current_stars) }),
+        ? fill(t.repo.faqStarsAnswerWithAsOf, { asOf, repo: repo.full_name, stars: fmtStars(repo.current_stars, locale) })
+        : fill(t.repo.faqStarsAnswerNoAsOf, { repo: repo.full_name, stars: fmtStars(repo.current_stars, locale) }),
     },
     {
       question: fill(t.repo.faqLanguageQuestion, { repo: repo.full_name }),
@@ -719,9 +706,9 @@ function monthYearFromPeriod(locale: Locale, period: string): string {
   return monthYearLabel(locale, y, m);
 }
 
-function signedStars(value: number): string {
+function signedStars(value: number, locale: Locale): string {
   const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${fmtStars(Math.abs(value))}`;
+  return `${prefix}${fmtStars(Math.abs(value), locale)}`;
 }
 
 function listLabels(locale: Locale, values: readonly string[]): string {

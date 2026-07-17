@@ -12,21 +12,25 @@ import {
   OrgsLookup,
   RankList,
   RepoEntity,
-  ReposShard,
   ReposLookup,
   SearchIndex,
+  WhitelistSnapshot,
   WorkflowValidation,
 } from "@/lib/contracts";
-import { REPO_BUCKETS } from "@/lib/workflows/buckets";
+import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
+import { putOwnedView } from "@/lib/workflows/owned-write";
 import {
   validateAliases,
   validateAllTimeRanks,
   validateCategories,
   validateCategorySampleRanks,
   validateMeta,
+  validateRepositoryMembership,
   validateSearchIndex,
   type ValidationInvariantReport,
 } from "./validate-invariants";
+
+export { HIGH_D_FACTOR_WARN_THRESHOLD, inspectAnchoringFactors } from "@/lib/workflows/canonical-validation";
 
 // Publish gate. Reads key views from the freshly written version
 // (views/<run_id>/**) and checks Zod schema + sanity invariants. Throwing here aborts
@@ -35,9 +39,8 @@ import {
 // NOT assert last_stock == current_stars here. See docs/VERCEL-DATA-OPERATIONS.md §8.
 
 const MIN_LOOKUP = 1000;
-export const HIGH_D_FACTOR_WARN_THRESHOLD = 2;
 
-export async function validateVersion(runId: string): Promise<{ ok: boolean; checked: number; failures: string[] }> {
+export async function validateVersion(runId: string, fencingToken?: number): Promise<{ ok: boolean; checked: number; failures: string[] }> {
   "use step";
   const failures: string[] = [];
   const invariants: Record<string, boolean | number> = {};
@@ -68,9 +71,44 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
   const orgLookup = await read("lookup/orgs.json", OrgsLookup);
 
   mergeValidationReport({ invariants, failures }, validateAllTimeRanks({ allTime, allTimeOrg, lookup, minLookup: MIN_LOOKUP, orgLookup }));
-  const dFactorReport = await inspectCanonicalAnchoringFactors(runId);
-  checked += dFactorReport.checked;
-  Object.assign(invariants, dFactorReport.invariants);
+  let previousLookup: ReposLookup | null = null;
+  try {
+    previousLookup = await readView("lookup/repos.json", ReposLookup, { base: true, bust: runId });
+  } catch (error) {
+    schemaFailures++;
+    failures.push(`previous lookup/repos: read/schema — ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  checked++;
+  let whitelist: WhitelistSnapshot | null = null;
+  try {
+    whitelist = await readView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
+    if (!whitelist) failures.push(`canonical/v2/whitelist/${runId}.json: missing`);
+    else if (whitelist.run_id !== runId) failures.push(`canonical whitelist run_id ${whitelist.run_id} does not match ${runId}`);
+  } catch (error) {
+    schemaFailures++;
+    failures.push(`canonical/v2/whitelist/${runId}.json: schema — ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const canonicalReport = await validateCanonicalGeneration(runId);
+  checked += canonicalReport.checked;
+  schemaFailures += canonicalReport.schemaFailures;
+  Object.assign(invariants, canonicalReport.invariants);
+  failures.push(...canonicalReport.failures);
+  const canonicalManifestPath = `ops/workflows/${runId}/canonical-manifest.json`;
+  if (fencingToken === undefined) await putView(canonicalManifestPath, canonicalReport.manifest);
+  else await putOwnedView({ runId, fencingToken }, canonicalManifestPath, canonicalReport.manifest);
+  mergeValidationReport(
+    { invariants, failures },
+    validateRepositoryMembership({
+      lookup,
+      previousLookup,
+      whitelist,
+      canonicalRepoIds: canonicalReport.repoIds,
+      canonicalActiveRepoIds: canonicalReport.activeRepoIds,
+      meta,
+    }),
+  );
 
   // aliases must point at still-tracked ids and must not shadow a live repo's current full_name.
   const aliases = await read("lookup/aliases.json", AliasMap);
@@ -111,6 +149,9 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
     if (ent) {
       invariants.sample_curve_months = ent.curve.monthly.length;
       if (ent.curve.monthly.length === 0) failures.push(`entity/repo/${topId}: empty curve`);
+      const trackingContract = typeof ent.active === "boolean" && "tracked_since" in ent;
+      invariants.sample_entity_tracking_contract = trackingContract;
+      if (!trackingContract) failures.push(`entity/repo/${topId}: missing active/tracked_since`);
     }
   }
 
@@ -121,7 +162,8 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
   const ok = failures.length === 0;
   const validation = { run_id: runId, ok, checked, schema_failures: schemaFailures, invariants, failures };
   WorkflowValidation.parse(validation);
-  await putView(`ops/workflows/${runId}/validation.json`, validation);
+  if (fencingToken === undefined) await putView(`ops/workflows/${runId}/validation.json`, validation);
+  else await putOwnedView({ runId, fencingToken }, `ops/workflows/${runId}/validation.json`, validation);
   if (!ok) throw new Error(`validation failed (${failures.length}): ${failures.slice(0, 5).join("; ")}`);
   return { ok, checked, failures };
 }
@@ -129,63 +171,4 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
 function mergeValidationReport(target: ValidationInvariantReport, report: ValidationInvariantReport) {
   Object.assign(target.invariants, report.invariants);
   target.failures.push(...report.failures);
-}
-
-type AnchoringShard = Record<string, { d?: number | null }>;
-
-export function inspectAnchoringFactors(
-  shards: AnchoringShard[],
-  threshold = HIGH_D_FACTOR_WARN_THRESHOLD,
-): Record<string, boolean | number> {
-  let reposChecked = 0;
-  let reposWithD = 0;
-  let highCount = 0;
-  let maxD = 0;
-
-  for (const shard of shards) {
-    for (const repo of Object.values(shard)) {
-      reposChecked++;
-      if (typeof repo.d !== "number" || !Number.isFinite(repo.d)) continue;
-      reposWithD++;
-      maxD = Math.max(maxD, repo.d);
-      if (repo.d > threshold) highCount++;
-    }
-  }
-
-  return {
-    d_factor_warn_threshold: threshold,
-    d_factor_repos_checked: reposChecked,
-    d_factor_repos_with_d: reposWithD,
-    d_factor_high_count: highCount,
-    d_factor_max: Math.round(maxD * 1000) / 1000,
-    d_factor_warning: highCount > 0,
-  };
-}
-
-async function inspectCanonicalAnchoringFactors(
-  runId: string,
-): Promise<{ checked: number; invariants: Record<string, boolean | number> }> {
-  const shards: AnchoringShard[] = [];
-  let missing = 0;
-  let schemaErrors = 0;
-
-  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
-    try {
-      const shard = await readView(`canonical/v2/repos/${bucket}.json`, ReposShard, { bust: runId });
-      if (shard) shards.push(shard);
-      else missing++;
-    } catch {
-      schemaErrors++;
-    }
-  }
-
-  return {
-    checked: REPO_BUCKETS,
-    invariants: {
-      ...inspectAnchoringFactors(shards),
-      d_factor_canonical_shards: REPO_BUCKETS,
-      d_factor_canonical_missing: missing,
-      d_factor_canonical_schema_errors: schemaErrors,
-    },
-  };
 }

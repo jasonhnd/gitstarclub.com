@@ -190,6 +190,16 @@ describe("allTime", () => {
     ]);
   });
 
+  test("excludes a higher-star historical repository from current all-time ranks", () => {
+    const m = model([
+      repo(1, [], { current_stars: 100, active: true }),
+      repo(2, [], { current_stars: 1_000_000, active: false }),
+    ]);
+    expect(allTime(m, GEN).get("rank/all-time/repo/stock.json")!.items).toEqual([
+      { rank: 1, id: 1, value: 100, prev_rank: null },
+    ]);
+  });
+
   test("org top by current_stars_sum desc then login asc", () => {
     const m = model([
       // org "z" sums to 300; orgs "a" and "m" each sum to 150 → login asc a before m.

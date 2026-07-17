@@ -219,8 +219,10 @@ if (!BLOB_BASE) {
   // ── SEO endpoints ─────────────────────────────────────────────────────────
   describe("SEO endpoints return 200", () => {
     test("/sitemap.xml", async () => {
+      // Root sitemap is a per-locale index (sitemap-en.xml, sitemap-ja.xml, …), not a urlset.
       const xml = await getOk(`${SITE}/sitemap.xml`);
-      expect(xml).toContain("<urlset");
+      expect(xml).toContain("<sitemapindex");
+      expect(xml).toMatch(/<loc>[^<]*sitemap-[^<]+\.xml<\/loc>/);
     });
 
     test("/robots.txt", async () => {

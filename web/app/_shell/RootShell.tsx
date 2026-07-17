@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
-import { GoogleAnalytics } from "@next/third-parties/google";
 import { Analytics } from "@vercel/analytics/next";
 import "../globals.css";
 import { RegisterSW } from "../_explore/RegisterSW";
@@ -20,8 +19,6 @@ const description =
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
 const indexable = process.env.SITE_INDEXABLE === "1";
 const bingSiteVerification = process.env.BING_SITE_VERIFICATION;
-const googleAnalyticsId = process.env.NEXT_PUBLIC_GA_ID;
-const shouldRenderGoogleAnalytics = typeof googleAnalyticsId === "string" && googleAnalyticsId.startsWith("G-");
 
 export const rootMetadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -91,7 +88,6 @@ export function RootShell({
         </div>
         <RegisterSW />
         <Analytics />
-        {shouldRenderGoogleAnalytics ? <GoogleAnalytics gaId={googleAnalyticsId} /> : null}
       </body>
     </html>
   );

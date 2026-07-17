@@ -1,18 +1,5 @@
-// Unit tests for the dependency-free observability surface (alert.ts).
-// All best-effort exports must NEVER throw: webhook + Blob failures are swallowed.
-// We stub @/lib/data/write (putView) via mock.module, spy on console.error, and
-// swap global.fetch per-case. Env + mocks are reset between tests.
-import { test, expect, describe, mock, spyOn, beforeEach, afterEach } from "bun:test";
-
-// --- Stub the Blob writer so recordHealth never touches @vercel/blob. -----------
-// putView is reassigned per-test via this mutable ref; the module mock reads it lazily.
-let putViewImpl: (path: string, data: unknown) => Promise<void> = async () => {};
-mock.module("@/lib/data/write", () => ({
-  putView: (path: string, data: unknown) => putViewImpl(path, data),
-}));
-
-// Import AFTER registering the module mock so alert.ts binds to the stub.
-const { sendAlert, recordHealth } = await import("./alert");
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { sendAlert, type AlertFetcher } from "./alert";
 
 const SUMMARY = {
   pipeline: "cron-daily",
@@ -22,124 +9,147 @@ const SUMMARY = {
   error: "boom",
 } as const;
 
-const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_WEBHOOK = process.env.ALERT_WEBHOOK_URL;
-
 let errSpy: ReturnType<typeof spyOn>;
 
 beforeEach(() => {
   errSpy = spyOn(console, "error").mockImplementation(() => {});
-  putViewImpl = async () => {};
   delete process.env.ALERT_WEBHOOK_URL;
 });
 
 afterEach(() => {
   errSpy.mockRestore();
-  globalThis.fetch = ORIGINAL_FETCH;
   if (ORIGINAL_WEBHOOK === undefined) delete process.env.ALERT_WEBHOOK_URL;
   else process.env.ALERT_WEBHOOK_URL = ORIGINAL_WEBHOOK;
 });
 
 describe("sendAlert", () => {
-  test("always logs a greppable [ALERT] line", async () => {
+  test("always logs and reports disabled delivery when no webhook is configured", async () => {
     const fetchMock = mock(async () => new Response(null, { status: 200 }));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    await sendAlert(SUMMARY);
+    const result = await sendAlert(SUMMARY, { fetch: fetchMock as unknown as AlertFetcher });
 
-    expect(errSpy).toHaveBeenCalled();
-    const firstArg = errSpy.mock.calls[0]?.[0] as string;
-    expect(firstArg).toContain("[ALERT]");
-    expect(firstArg).toContain("cron-daily");
-  });
-
-  test("does NOT fetch when ALERT_WEBHOOK_URL is unset", async () => {
-    const fetchMock = mock(async () => new Response(null, { status: 200 }));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
-    // env deliberately left unset by beforeEach
-
-    await expect(sendAlert(SUMMARY)).resolves.toBeUndefined();
-
+    expect(result).toEqual({
+      status: "disabled",
+      attempts: 0,
+      status_code: null,
+      error: null,
+    });
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(String(errSpy.mock.calls[0]?.[0])).toContain("[ALERT] cron-daily failed");
   });
 
-  test("POSTs to ALERT_WEBHOOK_URL with a JSON body when set", async () => {
-    const url = "https://hooks.example.com/alert";
-    process.env.ALERT_WEBHOOK_URL = url;
-    const fetchMock = mock(async () => new Response(null, { status: 200 }));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  test("reports a successful 2xx delivery and sends the correlation payload", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const fetchMock = mock(async () => new Response(null, { status: 204 }));
 
-    await sendAlert(SUMMARY);
+    const result = await sendAlert(SUMMARY, {
+      fetch: fetchMock as unknown as AlertFetcher,
+      now: new Date("2026-07-17T03:00:00.000Z"),
+    });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [calledUrl, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(calledUrl).toBe(url);
+    expect(result).toEqual({
+      status: "delivered",
+      attempts: 1,
+      status_code: 204,
+      error: null,
+    });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://hooks.example.com/alert");
     expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>)["content-type"]).toBe("application/json");
-
-    const body = JSON.parse(init.body as string);
-    expect(body.pipeline).toBe("cron-daily");
-    expect(body.text).toContain("[ALERT]");
-    expect(body.text).toContain("managed refresh failed");
-    expect(body.run_id).toBe("run-123");
-    expect(body.step).toBe("fetchStarCounts");
-    expect(body.error).toBe("boom");
-    expect(typeof body.at).toBe("string");
+    expect(init.cache).toBe("no-store");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      pipeline: "cron-daily",
+      run_id: "run-123",
+      step: "fetchStarCounts",
+      error: "boom",
+      at: "2026-07-17T03:00:00.000Z",
+    });
   });
 
-  test("a webhook that rejects does NOT propagate", async () => {
+  test("treats a non-retryable 4xx response as failed delivery", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const fetchMock = mock(async () => new Response("unauthorized", { status: 401 }));
+
+    const result = await sendAlert(SUMMARY, {
+      fetch: fetchMock as unknown as AlertFetcher,
+      sleep: async () => {},
+    });
+
+    expect(result).toEqual({
+      status: "failed",
+      attempts: 1,
+      status_code: 401,
+      error: "HTTP 401",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("retries 5xx responses with bounded backoff and never reports success", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const delays: number[] = [];
+    const fetchMock = mock(async () => new Response(null, { status: 503 }));
+
+    const result = await sendAlert(SUMMARY, {
+      fetch: fetchMock as unknown as AlertFetcher,
+      sleep: async (milliseconds) => {
+        delays.push(milliseconds);
+      },
+    });
+
+    expect(result).toEqual({
+      status: "failed",
+      attempts: 3,
+      status_code: 503,
+      error: "HTTP 503",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(delays).toEqual([100, 250]);
+  });
+
+  test("retries a timeout and returns an explicit failed-delivery state", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const fetchMock = mock(
+      async (_input: string | URL | Request, init?: RequestInit): Promise<Response> =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
+    );
+
+    const result = await sendAlert(SUMMARY, {
+      fetch: fetchMock as unknown as AlertFetcher,
+      sleep: async () => {},
+      timeoutMs: 1,
+      maxAttempts: 2,
+    });
+
+    expect(result).toEqual({
+      status: "failed",
+      attempts: 2,
+      status_code: null,
+      error: "timeout",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("retries network failures and redacts URLs from diagnostics", async () => {
     process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
     const fetchMock = mock(async () => {
-      throw new Error("network down");
+      throw new Error("request to https://hooks.example.com/alert?token=secret failed");
     });
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    // sendAlert must still resolve (no throw) even though fetch rejected.
-    await expect(sendAlert(SUMMARY)).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    // It logged the delivery failure (in addition to the primary [ALERT] line).
-    const logged = (errSpy.mock.calls as unknown[][]).map((c) => String(c[0]));
-    expect(logged.some((l) => l.includes("webhook delivery failed"))).toBe(true);
-  });
+    const result = await sendAlert(SUMMARY, {
+      fetch: fetchMock as unknown as AlertFetcher,
+      sleep: async () => {},
+      maxAttempts: 2,
+    });
 
-  test("tolerates a summary with no optional fields (run_id/step/error)", async () => {
-    await expect(
-      sendAlert({ pipeline: "workflow-refresh", title: "bare" }),
-    ).resolves.toBeUndefined();
-    const firstArg = errSpy.mock.calls[0]?.[0] as string;
-    expect(firstArg).toContain("workflow-refresh");
-  });
-});
-
-describe("recordHealth", () => {
-  test("writes health.json via putView on the happy path", async () => {
-    const calls: Array<{ path: string; data: unknown }> = [];
-    putViewImpl = async (path, data) => {
-      calls.push({ path, data });
-    };
-
-    await expect(recordHealth("cron-weekly", "ok", { run_id: "r9" })).resolves.toBeUndefined();
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0].path).toBe("ops/workflows/health.json");
-    const data = calls[0].data as Record<string, unknown>;
-    expect(data.pipeline).toBe("cron-weekly");
-    expect(data.status).toBe("ok");
-    expect(data.run_id).toBe("r9");
-    expect(data.error).toBeNull();
-    expect(typeof data.at).toBe("string");
-  });
-
-  test("swallows a putView failure (does NOT propagate)", async () => {
-    putViewImpl = async () => {
-      throw new Error("blob write failed");
-    };
-
-    await expect(
-      recordHealth("cron-daily", "failed", { error: "upstream 500" }),
-    ).resolves.toBeUndefined();
-
-    const logged = (errSpy.mock.calls as unknown[][]).map((c) => String(c[0]));
-    expect(logged.some((l) => l.includes("health write failed"))).toBe(true);
+    expect(result.status).toBe("failed");
+    expect(result.attempts).toBe(2);
+    expect(result.error).toContain("[redacted-url]");
+    expect(result.error).not.toContain("hooks.example.com");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

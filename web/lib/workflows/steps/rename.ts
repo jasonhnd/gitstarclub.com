@@ -1,7 +1,7 @@
 import { readView } from "@/lib/data/source";
-import { putView } from "@/lib/data/write";
 import { ReposShard, RenameMap, WhitelistSnapshot, type RenameEntry } from "@/lib/contracts";
 import { repoBucket } from "../buckets";
+import { putOwnedView } from "@/lib/workflows/owned-write";
 
 // Workflow step: detect repo renames by comparing the run whitelist's full_name
 // (repo_id is stable across renames) against the previous repos shard. MUST run
@@ -13,7 +13,7 @@ export interface RenameResult {
   renames: number;
 }
 
-export async function detectRenames(runId: string): Promise<RenameResult> {
+export async function detectRenames(runId: string, fencingToken: number): Promise<RenameResult> {
   "use step";
 
   const wl = await readView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
@@ -41,6 +41,6 @@ export async function detectRenames(runId: string): Promise<RenameResult> {
 
   const map = { run_id: runId, generated_at: new Date().toISOString(), renames };
   RenameMap.parse(map);
-  await putView(`ops/workflows/${runId}/renames.json`, map);
+  await putOwnedView({ runId, fencingToken }, `ops/workflows/${runId}/renames.json`, map);
   return { renames: renames.length };
 }

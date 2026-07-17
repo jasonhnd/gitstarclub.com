@@ -57,4 +57,11 @@ describe("runtime config getters", () => {
     expect(() => requireBlobWriteToken()).toThrow("BLOB_READ_WRITE_TOKEN not set");
     expect(() => requireGithubToken()).toThrow("GITHUB_TOKEN not set");
   });
+
+  test("fresh-clone read-only configuration does not require a write token", () => {
+    const readOnlyEnv = { BLOB_BASE_URL: "https://blob.example.com" };
+
+    expect(requireBlobBaseUrl(readOnlyEnv)).toBe("https://blob.example.com");
+    expect(getBlobWriteToken(readOnlyEnv)).toBeUndefined();
+  });
 });
