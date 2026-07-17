@@ -18,6 +18,7 @@ import {
   WorkflowValidation,
 } from "@/lib/contracts";
 import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
+import { putOwnedView } from "@/lib/workflows/owned-write";
 import {
   validateAliases,
   validateAllTimeRanks,
@@ -39,7 +40,7 @@ export { HIGH_D_FACTOR_WARN_THRESHOLD, inspectAnchoringFactors } from "@/lib/wor
 
 const MIN_LOOKUP = 1000;
 
-export async function validateVersion(runId: string): Promise<{ ok: boolean; checked: number; failures: string[] }> {
+export async function validateVersion(runId: string, fencingToken?: number): Promise<{ ok: boolean; checked: number; failures: string[] }> {
   "use step";
   const failures: string[] = [];
   const invariants: Record<string, boolean | number> = {};
@@ -94,7 +95,9 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
   schemaFailures += canonicalReport.schemaFailures;
   Object.assign(invariants, canonicalReport.invariants);
   failures.push(...canonicalReport.failures);
-  await putView(`ops/workflows/${runId}/canonical-manifest.json`, canonicalReport.manifest);
+  const canonicalManifestPath = `ops/workflows/${runId}/canonical-manifest.json`;
+  if (fencingToken === undefined) await putView(canonicalManifestPath, canonicalReport.manifest);
+  else await putOwnedView({ runId, fencingToken }, canonicalManifestPath, canonicalReport.manifest);
   mergeValidationReport(
     { invariants, failures },
     validateRepositoryMembership({ lookup, previousLookup, whitelist, canonicalRepoIds: canonicalReport.repoIds }),
@@ -149,7 +152,8 @@ export async function validateVersion(runId: string): Promise<{ ok: boolean; che
   const ok = failures.length === 0;
   const validation = { run_id: runId, ok, checked, schema_failures: schemaFailures, invariants, failures };
   WorkflowValidation.parse(validation);
-  await putView(`ops/workflows/${runId}/validation.json`, validation);
+  if (fencingToken === undefined) await putView(`ops/workflows/${runId}/validation.json`, validation);
+  else await putOwnedView({ runId, fencingToken }, `ops/workflows/${runId}/validation.json`, validation);
   if (!ok) throw new Error(`validation failed (${failures.length}): ${failures.slice(0, 5).join("; ")}`);
   return { ok, checked, failures };
 }

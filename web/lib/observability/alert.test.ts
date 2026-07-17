@@ -9,6 +9,7 @@ import { test, expect, describe, mock, spyOn, beforeEach, afterEach } from "bun:
 let putViewImpl: (path: string, data: unknown) => Promise<void> = async () => {};
 mock.module("@/lib/data/write", () => ({
   putView: (path: string, data: unknown) => putViewImpl(path, data),
+  createView: async () => true,
 }));
 
 // Import AFTER registering the module mock so alert.ts binds to the stub.

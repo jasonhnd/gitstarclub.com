@@ -22,6 +22,7 @@ mock.module("@/lib/data/write", () => ({
   putView: async (path: string, data: unknown) => {
     putCalls.push({ path, data });
   },
+  createView: async () => true,
 }));
 
 mock.module("@/lib/github", () => ({

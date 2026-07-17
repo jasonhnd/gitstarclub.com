@@ -11,6 +11,8 @@ import {
 import { requireBlobWriteToken } from "@/lib/runtime-config";
 import { REPO_BUCKETS } from "../buckets";
 import { buildModel, type Model, type RawShards } from "./model";
+import { workflowHeartbeat } from "@/lib/workflows/owned-write";
+import type { WorkflowOwnership } from "@/lib/workflows/lease";
 
 // Blob I/O for the recompute steps: load the canonical/v2 model and write a versioned
 // view set (views/<run_id>/**). Reads bust Blob's short cache with the run id so a step
@@ -82,11 +84,12 @@ export async function loadCanonicalModel(bust: string): Promise<LoadedModel> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Write a view map under views/<run_id>/** with a concurrency pool + write-rate gate. */
-export async function writeVersion(runId: string, views: Map<string, unknown>): Promise<number> {
+export async function writeVersion(runId: string, views: Map<string, unknown>, owner?: WorkflowOwnership): Promise<number> {
   const token = requireBlobWriteToken();
   const items = [...views.entries()];
   let i = 0;
   let nextStart = 0;
+  const heartbeat = owner ? workflowHeartbeat(owner) : async () => {};
   const gate = async () => {
     const now = Date.now();
     const wait = Math.max(0, nextStart - now);
@@ -96,6 +99,7 @@ export async function writeVersion(runId: string, views: Map<string, unknown>): 
   async function worker() {
     while (i < items.length) {
       const [rel, obj] = items[i++];
+      await heartbeat();
       await gate();
       await put(`views/${runId}/${rel}`, JSON.stringify(obj), {
         access: "public",

@@ -1,7 +1,7 @@
 ---
 owner: frontend
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-17
 source_of_truth_for:
   - route catalog
   - rendering strategy
@@ -327,7 +327,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 - **每日更新的视图**（`current_month.json` / `hot-snapshot.json`）读取时带 `?v=<date>` cache-bust，规避 Blob 同路径覆盖最长 60s 传播窗口（[OPS](./OPS.md) §Blob 缓存传播）。
 - `meta.schema_ver`：build 启动校验版本匹配，不符 fail-fast（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §3）。
-- **base 视图版本指针**：base `rank/*` / `entity/*` / `heatmap/*` 通过「先读 `views/latest.json` 指针解析版本前缀，再读该前缀下视图」消费（[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7）。默认读侧指针 TTL 为 3600 秒；repo / categories / OG 等 1 天 ISR 路由使用 daily base 读取入口（86400 秒），避免 `views/latest.json` fetch 把 route TTL 降到 1h；sitemap 作为特殊爬虫入口也使用 86400 秒 TTL。这一步**封装在 `web/lib/data/`**，组件入参形状不变、**对页面透明**；「live 优先、回退 base」语义保留（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11）。
+- **base 视图版本指针**：base `rank/*` / `entity/*` / `heatmap/*` 通过「先读 `views/latest.json` 指针解析版本前缀，再读该前缀下视图」消费（[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7）。默认 data-cache TTL 为 3600 秒；repo / categories / OG 等 1 天 ISR 路由使用 daily base 读取入口（86400 秒），避免 pointer fetch 缩短 route TTL。pointer fetch 带共享 tag，publish / rollback 主动失效；所有进程内 memo 无论 data-cache TTL 多长都被 60 秒可见性 SLA 限制。这一步**封装在 `web/lib/data/`**，组件入参形状不变、**对页面透明**；「live 优先、回退 base」语义保留（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11）。
 
 ---
 

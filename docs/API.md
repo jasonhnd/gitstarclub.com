@@ -1,7 +1,7 @@
 ---
 owner: API / route contracts
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-17
 source_of_truth_for:
   - endpoint contracts
   - route handler auth and cache behavior
@@ -44,6 +44,8 @@ runbooks still live in [OPS.md](./OPS.md). SEO crawl policy still lives in
 | `/api/cron/daily` | `web/app/api/cron/daily/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | `LiveRefreshResult` plus route fields |
 | `/api/cron/weekly` | `web/app/api/cron/weekly/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | `LiveRefreshResult` plus route fields |
 | `/api/workflows/refresh/start` | `web/app/api/workflows/refresh/start/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | workflow enqueue result |
+| `/api/workflows/refresh/revalidate` | `web/app/api/workflows/refresh/revalidate/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; internal callback | publication cache invalidation result |
+| `/api/workflows/refresh/rollback` | `web/app/api/workflows/refresh/rollback/route.ts` | Bearer `CRON_SECRET` + `idempotency-key` | `force-dynamic`; no explicit `Cache-Control` | fenced pointer rollback result |
 | `/api/lang` | `web/app/api/lang/route.ts` | Public | Redirect plus cookie mutation; no explicit `Cache-Control` | `307` redirect |
 | `/search-index` | `web/app/search-index/route.ts` | Public | CDN `s-maxage=3600`; empty fallback `s-maxage=60` | `SearchIndex` / `SearchDoc` |
 | `/repo-curve` | `web/app/repo-curve/route.ts` | Public | CDN `s-maxage=3600`; invalid/missing id `s-maxage=60` | `CompareCurve` or error JSON |
@@ -150,6 +152,33 @@ This endpoint is always mutating. It has no managed-workflow dry-run mode and
 rejects `dry=1` (as well as `dry=0` or any other `dry` value) before acquiring a
 lease or writing health state. Only `/api/cron/daily` and `/api/cron/weekly`
 support `dry=1`.
+
+### `POST /api/workflows/refresh/rollback`
+
+Moves the published pointer to an explicit retained version. The route acquires
+a fenced operation lease, persists immutable rollback intent, updates recovery
+and published-whitelist pointers, and invalidates the pointer tag and rendered
+routes. Reusing the same idempotency key and target replays the same operation.
+
+| Item | Contract |
+|---|---|
+| Auth | Required bearer `CRON_SECRET` |
+| Header | Required stable `idempotency-key` (or `x-idempotency-key`) |
+| Body | `{"target_version":"<retained version>"}` |
+| Success | `200 {"ok":true,"operationId":"rollback-...","version":"...","prev_version":"...","published_at":"..."}` |
+| Failure | `400` invalid request; `401` auth; `409` another operation owns the lease; `500` rollback failed |
+| Visibility | Active cache invalidation; all warm pointer memos converge within 60 seconds |
+
+Operational example:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Idempotency-Key: rollback-incident-123" \
+  -H "Content-Type: application/json" \
+  --data '{"target_version":"refresh-2026-07-12T06-00-00-000Z"}' \
+  "https://gitstarclub.com/api/workflows/refresh/rollback"
+```
 
 ## Public app endpoints
 

@@ -1,16 +1,14 @@
-import { z } from "zod";
 import { getReposLookup } from "@/lib/data";
 import { readView } from "@/lib/data/source";
-import { putView } from "@/lib/data/write";
+import { createView } from "@/lib/data/write";
+import {
+  PublishedWhitelist,
+  ViewsPointer,
+  WhitelistSnapshot,
+  type WhitelistSnapshot as WhitelistSnapshotType,
+} from "@/lib/contracts";
 import { searchWhitelist } from "@/lib/github";
-import { WhitelistSnapshot } from "@/lib/contracts";
-
-// Workflow step: refresh the ≥10k whitelist via GitHub Search, diff against the
-// previously-tracked id set, and write canonical/v2/whitelist/<run_id>.json + a
-// latest pointer. Ported from pipeline/backfill/01-whitelist. See
-// docs/VERCEL-DATA-OPERATIONS.md §4 whitelist step.
-
-const WhitelistLatest = z.object({ run_id: z.string(), ids: z.array(z.number().int()) });
+import { renewWorkflowLease, type WorkflowOwnership } from "@/lib/workflows/lease";
 
 export interface WhitelistResult {
   count: number;
@@ -18,38 +16,103 @@ export interface WhitelistResult {
   dropped: number;
 }
 
-/** Previously-tracked ids: the v2 whitelist pointer if present, else the bootstrap
- *  lookup baseline (so existing repos are NOT treated as newcomers on the first v2 run). */
-async function previousIds(runId: string): Promise<number[]> {
-  const pointer = await readView("canonical/v2/whitelist/latest.json", WhitelistLatest, { bust: runId });
-  if (pointer) return pointer.ids;
-  const lookup = await getReposLookup();
-  return lookup ? Object.keys(lookup).map(Number) : [];
+export type WhitelistDeps = {
+  readSnapshot(runId: string): Promise<WhitelistSnapshotType | null>;
+  readPublishedRunId(): Promise<string | null>;
+  readLegacyIds(): Promise<number[] | null>;
+  readBootstrapIds(): Promise<number[]>;
+  search(): ReturnType<typeof searchWhitelist>;
+  createSnapshot(runId: string, snapshot: WhitelistSnapshotType): Promise<boolean>;
+  ensureOwnership(owner: WorkflowOwnership): Promise<void>;
+  now(): string;
+};
+
+const defaultDeps: WhitelistDeps = {
+  readSnapshot: (runId) => readView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot),
+  readPublishedRunId: async () => {
+    const pointer = await readView("views/latest.json", ViewsPointer);
+    return pointer?.run_id ?? null;
+  },
+  readLegacyIds: async () => {
+    const pointer = await readView("canonical/v2/whitelist/latest.json", PublishedWhitelist);
+    return pointer?.ids ?? null;
+  },
+  readBootstrapIds: async () => {
+    const lookup = await getReposLookup();
+    return lookup ? Object.keys(lookup).map(Number) : [];
+  },
+  search: searchWhitelist,
+  createSnapshot: (runId, snapshot) => createView(`canonical/v2/whitelist/${runId}.json`, snapshot),
+  ensureOwnership: (owner) => renewWorkflowLease(owner.runId, owner.fencingToken).then(() => undefined),
+  now: () => new Date().toISOString(),
+};
+
+function resultOf(snapshot: WhitelistSnapshotType): WhitelistResult {
+  return {
+    count: snapshot.count,
+    added: snapshot.diff.added.length,
+    dropped: snapshot.diff.dropped.length,
+  };
 }
 
-export async function refreshWhitelist(runId: string): Promise<WhitelistResult> {
+/**
+ * Resolve the baseline through the live publish pointer. A failed run has no
+ * way to alter this pointer, so its discovery snapshot cannot become the next
+ * run's baseline. The legacy pointer/bootstrap branches are migration-only.
+ */
+async function publishedIds(deps: WhitelistDeps): Promise<number[]> {
+  const publishedRunId = await deps.readPublishedRunId();
+  if (publishedRunId) {
+    const snapshot = await deps.readSnapshot(publishedRunId);
+    if (snapshot) return snapshot.entries.map((entry) => entry.id);
+  }
+  const legacy = await deps.readLegacyIds();
+  return legacy ?? deps.readBootstrapIds();
+}
+
+export async function refreshWhitelist(
+  runId: string,
+  fencingToken: number,
+): Promise<WhitelistResult> {
   "use step";
 
-  const entries = await searchWhitelist();
-  const ids = entries.map((e) => e.id);
+  return refreshWhitelistWithDeps(runId, fencingToken, defaultDeps);
+}
+
+export async function refreshWhitelistWithDeps(
+  runId: string,
+  fencingToken: number,
+  deps: WhitelistDeps,
+): Promise<WhitelistResult> {
+
+  // A run snapshot is immutable. Workflow SDK retries therefore reuse exactly
+  // the original entries and diff even when GitHub Search has changed.
+  const existing = await deps.readSnapshot(runId);
+  if (existing) return resultOf(existing);
+
+  const entries = await deps.search();
+  const ids = entries.map((entry) => entry.id);
   const idSet = new Set(ids);
-
-  const prevIds = await previousIds(runId);
+  const prevIds = await publishedIds(deps);
   const prevSet = new Set(prevIds);
-  const added = ids.filter((id) => !prevSet.has(id)); // newcomers
-  const dropped = prevIds.filter((id) => !idSet.has(id)); // fell out of ≥10k
 
-  const snapshot = {
+  const snapshot = WhitelistSnapshot.parse({
     run_id: runId,
-    generated_at: new Date().toISOString(),
+    generated_at: deps.now(),
     count: entries.length,
     entries,
-    diff: { added, dropped },
-  };
-  WhitelistSnapshot.parse(snapshot); // self-validate before publish
+    diff: {
+      added: ids.filter((id) => !prevSet.has(id)),
+      dropped: prevIds.filter((id) => !idSet.has(id)),
+    },
+  });
 
-  await putView(`canonical/v2/whitelist/${runId}.json`, snapshot);
-  await putView("canonical/v2/whitelist/latest.json", { run_id: runId, ids });
+  const owner = { runId, fencingToken };
+  await deps.ensureOwnership(owner);
+  const created = await deps.createSnapshot(runId, snapshot);
+  if (created) return resultOf(snapshot);
 
-  return { count: entries.length, added: added.length, dropped: dropped.length };
+  const raced = await deps.readSnapshot(runId);
+  if (!raced) throw new Error(`whitelist snapshot ${runId} conflicted but cannot be read`);
+  return resultOf(raced);
 }

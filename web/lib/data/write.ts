@@ -1,4 +1,4 @@
-import { put } from "@vercel/blob";
+import { BlobPreconditionFailedError, put } from "@vercel/blob";
 import { requireBlobWriteToken } from "@/lib/runtime-config";
 
 // Cron-side Blob writes (daily live tail). Reads stay public-URL fetches (source.ts);
@@ -14,4 +14,29 @@ export async function putView(path: string, data: unknown): Promise<void> {
     contentType: "application/json",
     cacheControlMaxAge: 60,
   });
+}
+
+function isBlobConflict(error: unknown): boolean {
+  if (error instanceof BlobPreconditionFailedError) return true;
+  if (!(error instanceof Error)) return false;
+  return /already exists|overwrite|precondition|conflict|409|412/i.test(`${error.name} ${error.message}`);
+}
+
+/** Create an immutable JSON artifact. Returns false when another retry already created it. */
+export async function createView(path: string, data: unknown): Promise<boolean> {
+  const token = requireBlobWriteToken();
+  try {
+    await put(path, JSON.stringify(data), {
+      access: "public",
+      token,
+      allowOverwrite: false,
+      addRandomSuffix: false,
+      contentType: "application/json",
+      cacheControlMaxAge: 31536000,
+    });
+    return true;
+  } catch (error) {
+    if (isBlobConflict(error)) return false;
+    throw error;
+  }
 }

@@ -32,6 +32,10 @@ export const WorkflowLease = z.object({
   status: WorkflowStatus,
   acquired_at: TimestampStr,
   expires_at: TimestampStr,
+  // Monotonically increases whenever ownership moves to a different run.  A
+  // default keeps leases written before fencing was introduced readable; new
+  // claims always persist an explicit positive token.
+  fencing_token: NonNegativeInt.default(0),
   idempotency_key: SafeText.optional(),
   trigger: SafeText.optional(),
 }).strict();
@@ -59,6 +63,24 @@ export const LatestSuccess = z.object({
   published_at: TimestampStr,
 }).strict();
 export type LatestSuccess = z.infer<typeof LatestSuccess>;
+
+/** ops/workflows/<run_id>/publish-intent.json — immutable retry state. */
+export const PublishIntent = z.object({
+  operation: z.enum(["publish", "rollback"]),
+  run_id: SafeText,
+  version: SafeText,
+  prev_version: SafeText.nullable(),
+  published_at: TimestampStr,
+  fencing_token: NonNegativeInt,
+}).strict();
+export type PublishIntent = z.infer<typeof PublishIntent>;
+
+/** canonical/v2/whitelist/latest.json — compatibility pointer advanced at publish. */
+export const PublishedWhitelist = z.object({
+  run_id: SafeText,
+  ids: z.array(NonNegativeInt),
+}).strict();
+export type PublishedWhitelist = z.infer<typeof PublishedWhitelist>;
 
 /** ops/workflows/<run_id>/validation.json — publish-gate report (§2.13). */
 export const WorkflowValidation = z.object({
