@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isAbortError, LatestRequestController } from "@/lib/client/latest-request";
 import type { SearchHit } from "@/lib/search/core";
+import { fetchSearchIndex } from "@/lib/search/index-fetch";
 import {
   createSearchWorkerError,
-  parseSearchIndexPayload,
   type SearchLoadState,
   type SearchWorkerError,
   type SearchWorkerOutMessage,
@@ -28,6 +29,7 @@ export function useSearchEngine({ limit }: { limit: number }) {
   const latestQueryRef = useRef("");
   const requestRef = useRef(0);
   const activeRequestRef = useRef(0);
+  const [loadRequests] = useState(() => new LatestRequestController());
 
   const setSearchLoadState = useCallback((state: SearchLoadState) => {
     loadStateRef.current = state;
@@ -85,23 +87,23 @@ export function useSearchEngine({ limit }: { limit: number }) {
         pendingRef.current = queuedQuery;
       }
       if ((workerRef.current || loadingRef.current) && !force) return;
-      if (force) stopWorker();
+      stopWorker();
+      const request = loadRequests.begin();
       loadingRef.current = true;
       readyRef.current = false;
       setSearchLoadState("loading");
       setHits([]);
       try {
-        const res = await fetch("/search-index", { cache: "force-cache" });
-        if (!res.ok) throw new Error(`Search index request failed with ${res.status}`);
-        const data = await res.json();
-        const parsed = parseSearchIndexPayload(data);
-        if (!parsed.ok) {
-          failSearch(parsed.error);
+        const result = await fetchSearchIndex({ cache: force ? "reload" : "no-cache", signal: request.signal });
+        if (!loadRequests.isCurrent(request.id)) return;
+        if (!result.ok) {
+          failSearch(result.error);
           return;
         }
         const worker = new Worker(new URL("../search-worker.ts", import.meta.url), { type: "module" });
         workerRef.current = worker;
         worker.onmessage = (event: MessageEvent<SearchWorkerOutMessage>) => {
+          if (!loadRequests.isCurrent(request.id) || workerRef.current !== worker) return;
           const message = event.data;
           if (message.type === "ready") {
             readyRef.current = true;
@@ -123,21 +125,26 @@ export function useSearchEngine({ limit }: { limit: number }) {
           }
         };
         worker.onerror = (event) => {
+          if (!loadRequests.isCurrent(request.id) || workerRef.current !== worker) return;
           failSearch(createSearchWorkerError("worker-init", event.message || event.error));
         };
-        worker.postMessage({ type: "init", repos: parsed.repos });
+        worker.postMessage({ type: "init", repos: result.repos });
       } catch (error) {
+        if (!loadRequests.isCurrent(request.id) || isAbortError(error)) return;
         failSearch(createSearchWorkerError("load-failed", error));
+      } finally {
+        loadRequests.finish(request.id);
       }
     },
-    [failSearch, query, setSearchLoadState, stopWorker],
+    [failSearch, loadRequests, query, setSearchLoadState, stopWorker],
   );
 
   useEffect(() => {
     return () => {
+      loadRequests.cancel();
       stopWorker();
     };
-  }, [stopWorker]);
+  }, [loadRequests, stopWorker]);
 
   return {
     ensureEngine,

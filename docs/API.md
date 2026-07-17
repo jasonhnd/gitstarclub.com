@@ -269,6 +269,9 @@ Route behavior:
 - `description` is truncated to 96 characters by the route before returning.
 - Before the first publish, when the view is absent, the route returns
   `{"generated_at":"","count":0,"repos":[]}` with the empty fallback cache.
+- Browser clients use `cache: "no-cache"` for normal loads so the `max-age=0`
+  response is revalidated. An explicit user retry uses `cache: "reload"` to
+  bypass a malformed cached response and refresh the browser cache.
 
 ### `GET /repo-curve`
 
@@ -301,6 +304,9 @@ Response shape:
 
 `points` are `[period, total_end]` monthly points from the repo entity curve.
 `crossed_10k` comes from `entity.milestones.crossed_10k` and may be `null`.
+Compare uses `cache: "no-cache"` for normal curve loads and `cache: "reload"`
+for an explicit user retry. Obsolete requests are aborted, and a response is
+applied only while its request generation is still current.
 
 ## Public metadata endpoints
 
