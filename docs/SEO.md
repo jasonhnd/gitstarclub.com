@@ -899,7 +899,7 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 - **Twitter card**：`pageMeta` 设 `twitter.card = "summary_large_image"`；`twitter.title` / `twitter.description` / `twitter.images` 复用各页 meta 与上述卡片路由。
 - **Open Graph**：`pageMeta` 输出 `og:title` / `og:description` / `og:url`（canonical）/ `og:image`（指卡片路由）/ `og:locale`。`og:type`（`website` vs `article`+published/modified time）与 `og:site_name` 由根 `app/layout.tsx` 的 metadata 统一提供，未在 `pageMeta` 内逐页设。
 - **alt 文本**：各 `opengraph-image.tsx` 导出 `alt`（站点卡 `GitStarClub.com — A Chronicle of Open Source`；repo 卡 `GitHub star history`；排名卡 `GitHub star rankings`）。
-- **静态 fallback 资产**：`assets/og.html` / `assets/icon.html` 是唯一渲染源，字体从锁定的 Next 依赖本地读取，不访问外部字体服务。先在 `web/` 执行 `bunx playwright install chromium`，再于根目录执行 `bun run assets:render`；该命令使用仓库锁定的 Playwright Chromium 生成 `assets/{og, favicon, apple-touch-icon}.png` 并同步 `web/public/`。`bun run assets:check` 会重新渲染并校验 1200×630 / 64×64 / 180×180 尺寸、源图漂移、缺失文件及 deployed-copy 字节漂移；提交前需人工查看三张生成图。`build.mjs` 也通过同一同步函数维护 Next 部署目录与被忽略的 legacy teaser `public/`。wordmark 与计数需保持 `GitStarClub.com` / `5,300+`，避免与动态 `opengraph-image.tsx` 分叉。
+- **静态 fallback 资产**：`assets/og.svg` / `assets/favicon.svg` 是唯一渲染源；所需 Geist 字体及其 OFL 许可证固定在 `assets/fonts/`，渲染时不读取系统字体或访问外部字体服务。在 `web/` 执行 `bun install --frozen-lockfile` 后，于根目录运行 `bun run assets:render`；该命令使用精确锁定的 `@resvg/resvg-wasm` 生成 `assets/{og, favicon, apple-touch-icon}.png` 并同步 `web/public/`，避免 Chromium 在 CoreText / FreeType 间产生跨平台文字栅格差异。`bun run assets:check` 会重新渲染并严格校验 1200×630 / 64×64 / 180×180 尺寸、源图字节漂移、缺失文件及 deployed-copy 字节漂移；提交前仍需人工查看三张生成图。`build.mjs` 也通过同一同步函数维护 Next 部署目录与被忽略的 legacy teaser `public/`。wordmark 与计数需保持 `GitStarClub.com` / `5,300+`，避免与动态 `opengraph-image.tsx` 分叉。
 
 ---
 

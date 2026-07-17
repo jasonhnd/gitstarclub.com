@@ -3,8 +3,10 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  ASSET_FONT_PATHS,
   inspectAssetCopies,
   pngDimensions,
+  RENDER_TARGETS,
   REPO_ROOT,
   STATIC_ASSETS,
   syncAssetCopies,
@@ -28,6 +30,30 @@ function assetFixture(): string {
 }
 
 describe("asset generation contract", () => {
+  test("renderer inputs are repository-owned SVGs and fonts", () => {
+    expect(RENDER_TARGETS.every(({ source }) => source.endsWith(".svg"))).toBe(true);
+    for (const path of [
+      ...new Set(RENDER_TARGETS.map(({ source }) => source)),
+      ...ASSET_FONT_PATHS,
+    ]) {
+      expect(readFileSync(join(REPO_ROOT, path)).byteLength).toBeGreaterThan(0);
+    }
+  });
+
+  test("two isolated resvg renders reproduce the canonical bytes", () => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = Bun.spawnSync({
+        cmd: [process.execPath, join(REPO_ROOT, "render-assets.mjs"), "--check"],
+        cwd: REPO_ROOT,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(result.stderr.toString()).toBe("");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.toString()).toContain("deterministic resvg renders");
+    }
+  });
+
   test("checked-in PNG dimensions match every served contract", () => {
     expect(pngDimensions(readFileSync(join(REPO_ROOT, "assets", "favicon.png")))).toEqual({ width: 64, height: 64 });
     expect(pngDimensions(readFileSync(join(REPO_ROOT, "assets", "apple-touch-icon.png")))).toEqual({ width: 180, height: 180 });
