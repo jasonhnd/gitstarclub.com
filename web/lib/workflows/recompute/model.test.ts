@@ -104,4 +104,36 @@ describe("buildModel", () => {
     expect(model.seam).toEqual(seamPeriods(seamDate));
     expect(model.seam).toEqual({ month: "2026-05", week: "2026-W22" });
   });
+
+  test("fails before recompute when a historical repository has no finite d", () => {
+    const raw = rawFixture();
+    delete (raw.repos["10"] as { d?: number }).d;
+    expect(() => buildModel(raw, seamDate)).toThrow("historical repo 10 is missing a finite anchoring factor d");
+  });
+
+  test.each([NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "fails before recompute when a historical repository has non-finite d=%p",
+    (d) => {
+      const raw = rawFixture();
+      (raw.repos["10"] as { d?: number }).d = d;
+      expect(() => buildModel(raw, seamDate)).toThrow("historical repo 10 is missing a finite anchoring factor d");
+    },
+  );
+
+  test("models a newcomer without historical anchoring as explicit d=0", () => {
+    const raw = rawFixture();
+    const newcomer = raw.repos["10"] as { d?: number; tracked_since?: string | null };
+    delete newcomer.d;
+    newcomer.tracked_since = "2026-07-17";
+    expect(buildModel(raw, seamDate).repos.get(10)?.d).toBe(0);
+  });
+
+  test("separates active membership from retained historical repositories", () => {
+    const raw = rawFixture();
+    raw.repos["30"].active = false;
+    const next = buildModel(raw, seamDate);
+    expect(next.ids).toEqual([10, 20, 30]);
+    expect(next.activeIds).toEqual([10, 20]);
+    expect(next.orgs.get("alpha")).toMatchObject({ repo_count: 1, current_stars_sum: 100, members: [10] });
+  });
 });

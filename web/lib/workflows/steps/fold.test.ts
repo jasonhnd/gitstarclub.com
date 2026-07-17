@@ -5,7 +5,7 @@
 // We do NOT test foldCanonical/foldMonth/foldWeeks here — those need Blob reads/writes.
 import { test, expect, describe } from "bun:test";
 import type { PendingPeriod } from "@/lib/contracts";
-import { computeWeekRows, nextMonth, type WeekRow } from "./fold";
+import { computeWeekRows, foldedCanonicalMeta, nextMonth, type WeekRow } from "./fold";
 
 // repo→bucket is id % 32, so ids 1 and 33 share bucket 1 and id 2 is bucket 2. The pure core
 // doesn't bucket, but using these ids keeps the fixtures aligned with the I/O layer's grouping.
@@ -64,6 +64,29 @@ describe("nextMonth", () => {
     expect(nextMonth("2026-08")).toBe("2026-09");
     expect(nextMonth("2026-09")).toBe("2026-10"); // single → double digit
     expect(nextMonth("2026-11")).toBe("2026-12");
+  });
+});
+
+describe("foldedCanonicalMeta", () => {
+  test("fold writer output round-trips through CanonicalMeta", () => {
+    expect(
+      foldedCanonicalMeta(
+        {
+          seam_date: "2026-05-30",
+          schema_ver: 1,
+          folded_through: { month: "2026-05", week: "2026-W22" },
+          generated_at: "2026-06-02T14:32:57.214Z",
+        },
+        "2026-06",
+        "2026-W26",
+        "2026-07-01T00:00:00.000Z",
+      ),
+    ).toEqual({
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      folded_through: { month: "2026-06", week: "2026-W26" },
+      generated_at: "2026-07-01T00:00:00.000Z",
+    });
   });
 });
 

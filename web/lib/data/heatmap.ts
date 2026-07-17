@@ -11,7 +11,8 @@ export const getHeatmapBase = cache((scope: "year" | "month", period: string) =>
 
 export const getHeatmap = cache(async (scope: "year" | "month", period: string) => {
   if (scope === "month" && (await isLiveOverlayPeriod("month", period))) {
-    const live = await readView(`live/heatmap/${scope}/${period}.json`, Heatmap, { bust: today() });
+    const path = `heatmap/${scope}/${period}.json`;
+    const live = await readView(path, Heatmap, { live: true, legacyPath: `live/${path}`, bust: today() });
     if (live) return live;
   }
   return getHeatmapBase(scope, period);

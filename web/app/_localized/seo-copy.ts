@@ -418,8 +418,8 @@ export function buildLocalizedPulseCapsule({
   activeMonth: string;
 }): AnswerCapsuleContent {
   const c = copy[locale];
-  const weekLead = weekRows[0] ? fill(c.pulseWeekLead, rankValues(weekRows[0], { period: activeWeek, metric: "gained" })) : c.pulseWeekFallback;
-  const monthLead = monthRows[0] ? fill(c.pulseMonthLead, rankValues(monthRows[0], { period: activeMonth, metric: "gained" })) : c.pulseMonthFallback;
+  const weekLead = weekRows[0] ? fill(c.pulseWeekLead, rankValues(weekRows[0], locale, { period: activeWeek, metric: "gained" })) : c.pulseWeekFallback;
+  const monthLead = monthRows[0] ? fill(c.pulseMonthLead, rankValues(monthRows[0], locale, { period: activeMonth, metric: "gained" })) : c.pulseMonthFallback;
   return capsule(locale, fill(c.pulseCapsule, { asOf, weekLead, monthLead }), asOf);
 }
 
@@ -435,13 +435,13 @@ export function buildLocalizedPulseFaqs(locale: Locale, input: PulseFaqInput): F
     {
       question: fill(c.pulseWeekQ, { period: input.activeWeek }),
       answer: weekLead
-        ? fill(c.pulseWeekA, rankValues(weekLead, { period: input.activeWeek, metric: "gained" }))
+        ? fill(c.pulseWeekA, rankValues(weekLead, locale, { period: input.activeWeek, metric: "gained" }))
         : fill(c.pulseWeekFallbackA, { period: input.activeWeek }),
     },
     {
       question: fill(c.pulseMonthQ, { period: input.activeMonth }),
       answer: monthLead
-        ? fill(c.pulseMonthA, rankValues(monthLead, { period: input.activeMonth, metric: "gained" }))
+        ? fill(c.pulseMonthA, rankValues(monthLead, locale, { period: input.activeMonth, metric: "gained" }))
         : fill(c.pulseMonthFallbackA, { period: input.activeMonth }),
     },
     { question: c.pulseDataQ, answer: c.pulseDataA },
@@ -460,7 +460,7 @@ export function buildLocalizedAllTimeRankingCapsule({
   orgRows: readonly CapsuleOrgRankRow[];
 }): AnswerCapsuleContent {
   const c = copy[locale];
-  const repoLead = repoRows[0] ? fill(c.rankingsRepoLead, rankValues(repoRows[0], { metric: "total" })) : c.rankingsRepoFallback;
+  const repoLead = repoRows[0] ? fill(c.rankingsRepoLead, rankValues(repoRows[0], locale, { metric: "total" })) : c.rankingsRepoFallback;
   const orgLead = orgRows[0] ? fill(c.rankingsOrgLead, orgValues(orgRows[0], locale)) : c.rankingsOrgFallback;
   return capsule(locale, fill(c.rankingsCapsule, { asOf, repoLead, orgLead }), asOf);
 }
@@ -476,7 +476,7 @@ export function buildLocalizedAllTimeRankingFaqs(locale: Locale, input: Rankings
     },
     {
       question: c.rankingsRepoQ,
-      answer: repoLead ? fill(c.rankingsRepoA, rankValues(repoLead, { metric: "total" })) : c.rankingsRepoFallbackA,
+      answer: repoLead ? fill(c.rankingsRepoA, rankValues(repoLead, locale, { metric: "total" })) : c.rankingsRepoFallbackA,
     },
     {
       question: c.rankingsOrgQ,
@@ -507,25 +507,25 @@ function capsule(locale: Locale, text: string, asOf: string): AnswerCapsuleConte
   return { text: `${text}${copy[locale].sourceSuffix}`, asOf, source: ANSWER_CAPSULE_SOURCE };
 }
 
-function rankValues(row: CapsuleRankRow, opts: { period?: string; metric: "gained" | "total" }): Record<string, string> {
+function rankValues(row: CapsuleRankRow, locale: Locale, opts: { period?: string; metric: "gained" | "total" }): Record<string, string> {
   return {
     repo: `${row.owner}/${row.name}`,
     period: opts.period ?? "",
-    value: opts.metric === "total" ? fmtStars(row.total ?? 0) : signedStars(row.gained ?? 0),
+    value: opts.metric === "total" ? fmtStars(row.total ?? 0, locale) : signedStars(row.gained ?? 0, locale),
   };
 }
 
 function orgValues(row: CapsuleOrgRankRow, locale: Locale): Record<string, string> {
   return {
     org: row.login,
-    value: fmtStars(row.current_stars_sum),
+    value: fmtStars(row.current_stars_sum, locale),
     repos: formatInteger(locale, row.repo_count),
   };
 }
 
-function signedStars(value: number): string {
+function signedStars(value: number, locale: Locale): string {
   const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${fmtStars(Math.abs(value))}`;
+  return `${prefix}${fmtStars(Math.abs(value), locale)}`;
 }
 
 function fill(template: string, values: Record<string, string>): string {

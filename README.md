@@ -94,7 +94,11 @@ bun install
 bun dev
 ```
 
-Required environment for local development is documented in [docs/OPS.md](docs/OPS.md) and `.env.example`. Reads against production Blob require `BLOB_BASE_URL` and `BLOB_READ_WRITE_TOKEN`; writes (cron / workflow) additionally require `CRON_SECRET` and `GITHUB_TOKEN`.
+Required environment for local development is documented in [docs/OPS.md](docs/OPS.md)
+and `.env.example`. Copy the template to `web/.env.local`. Read-only development
+and builds require only `BLOB_BASE_URL`; `BLOB_READ_WRITE_TOKEN` is required only
+for mutation paths. Cron and managed workflow execution additionally require
+`CRON_SECRET` and `GITHUB_TOKEN`.
 
 ## Common commands
 

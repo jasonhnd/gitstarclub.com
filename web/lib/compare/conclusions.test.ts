@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CompareCurve } from "@/lib/contracts";
+import fr from "@/lib/i18n/dictionaries/fr";
 import { buildCompareConclusionText, buildComparePairConclusion } from "./conclusions";
 
 const curve = (
@@ -47,10 +48,13 @@ describe("compare conclusions", () => {
       ["2016-04", 14000],
     ]);
 
-    const conclusion = buildComparePairConclusion({ label: "React vs Vue", a: "react/react", b: "vuejs/vue" }, react, vue, "fr");
+    const conclusion = buildComparePairConclusion({ label: "React vs Vue", a: "react/react", b: "vuejs/vue" }, react, vue, "fr", fr.compare);
 
     expect(conclusion?.repos[0].crossed10kLabel).toBe("mai 2015");
     expect(conclusion?.repos[1].crossed10kLabel).toBe("mars 2016");
+    expect(conclusion?.horizonLabel).toBe("1 mois");
+    expect(conclusion?.result).toBe("vuejs/vue a grandi plus vite après 10k, avec +3 k étoiles en 1 mois, contre +2,5 k pour react/react.");
+    expect(buildCompareConclusionText("24 juin 2026", conclusion ? [conclusion] : [], fr.compare)).toStartWith("Au 24 juin 2026,");
   });
 
   test("omits pairs without a real shared post-10k window", () => {

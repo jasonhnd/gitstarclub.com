@@ -1102,7 +1102,7 @@ function rankingMetricLabel(locale: Locale, metric: RankingMetric): string {
 function rankValues(row: CapsuleRankRow, locale: Locale, metric: RankingMetric): Record<string, string> {
   return {
     repo: repoName(row),
-    value: metric === "total" ? fill(detailText(locale).totalStarsValue, { value: fmtStars(row.total ?? 0) }) : fill(detailText(locale).gainedStarsValue, { value: signedStars(row.gained ?? 0) }),
+    value: metric === "total" ? fill(detailText(locale).totalStarsValue, { value: fmtStars(row.total ?? 0, locale) }) : fill(detailText(locale).gainedStarsValue, { value: signedStars(row.gained ?? 0, locale) }),
   };
 }
 
@@ -1110,9 +1110,9 @@ function repoName(row: CapsuleRankRow): string {
   return `${row.owner}/${row.name}`;
 }
 
-function signedStars(value: number): string {
+function signedStars(value: number, locale: Locale): string {
   const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${fmtStars(Math.abs(value))}`;
+  return `${prefix}${fmtStars(Math.abs(value), locale)}`;
 }
 
 function count(locale: Locale, value: number): string {

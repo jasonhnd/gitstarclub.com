@@ -13,10 +13,11 @@ const whitelist = JSON.parse(readFileSync(`${dataDir}/whitelist.json`, "utf8"));
 const meta = await batchMetadata(whitelist.map((r) => r.node_id));
 
 const repos = [];
+const missing = [];
 for (const r of whitelist) {
   const m = meta.get(r.id);
   if (!m) {
-    console.warn(`no metadata for ${r.full_name} (${r.id})`);
+    missing.push(`${r.full_name} (${r.id})`);
     continue;
   }
   repos.push({
@@ -31,9 +32,17 @@ for (const r of whitelist) {
     topics: m.topics,
     created_at: m.created_at,
     current_stars: m.current_stars, // GraphQL authoritative
+    active: true,
+    tracked_since: null,
     is_archived: m.is_archived,
     fetched_at: new Date().toISOString(),
   });
+}
+
+if (missing.length > 0) {
+  throw new Error(
+    `GraphQL metadata missing for ${missing.length} active repository(s): ${missing.slice(0, 5).join(", ")}`,
+  );
 }
 
 writeFileSync(`${dataDir}/repos.json`, JSON.stringify(repos));

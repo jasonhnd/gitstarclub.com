@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isWellFormedUnicode, truncateUnicodeText, unicodeCodePointLength } from "../unicode-text";
 
 // Shared primitives + ranking shapes. See docs/DATA-CONTRACTS.md.
 // Dates are UTC.
@@ -43,15 +44,33 @@ export const YearPeriod = z.string().regex(/^\d{4}$/);
 export const Period = z.union([WeekPeriod, MonthPeriod, YearPeriod, z.literal("all")]);
 export const NonNegativeInt = z.number().int().nonnegative();
 export const PositiveRank = z.number().int().positive();
+/** Shared code-point cap for free-text fields stored in JSON shards and view contracts. */
+export const SAFE_TEXT_MAX = 4096;
+
+/** Truncate free text to SafeText's max length (legacy / untrusted sources). */
+export function capSafeText(value: string, max = SAFE_TEXT_MAX): string {
+  return truncateUnicodeText(value, max);
+}
+
 export const SafeText = z
   .string()
-  .max(4096)
+  .refine(isWellFormedUnicode, "must contain only well-formed Unicode scalar values")
+  .refine((value) => unicodeCodePointLength(value) <= SAFE_TEXT_MAX, `must contain at most ${SAFE_TEXT_MAX} Unicode code points`)
   .refine(
     (value) => !/<\s*\/?\s*(?:script|iframe|object|embed|link|meta|style)\b/i.test(value),
     "must not contain active HTML tags",
   )
   .refine((value) => !/\bon[a-z]+\s*=/i.test(value), "must not contain inline event handlers")
   .refine((value) => !/javascript:/i.test(value), "must not contain javascript: URLs");
+
+/**
+ * Like SafeText, but silently truncates oversized input before validation.
+ * Use on read paths that must tolerate historical blobs (e.g. multi-KB GitHub descriptions).
+ */
+export const TruncatingSafeText = z.preprocess(
+  (value) => (typeof value === "string" ? capSafeText(value) : value),
+  SafeText,
+);
 
 export const OwnerType = z.enum(["User", "Organization"]);
 export type OwnerType = z.infer<typeof OwnerType>;
@@ -61,6 +80,10 @@ export type OwnerType = z.infer<typeof OwnerType>;
 export const Meta = z.object({
   seam_date: DateStr,
   schema_ver: NonNegativeInt,
+  // Current membership is the active Search-discovered set. Historical rows
+  // remain readable but are counted separately and are not polled.
+  active_repo_count: NonNegativeInt.optional(),
+  historical_repo_count: NonNegativeInt.optional(),
   generated_at: TimestampStr.optional(),
   backfilled_at: TimestampStr.optional(), // bootstrap-only
   folded_through: z.object({ month: MonthPeriod, week: WeekPeriod }).strict().optional(), // live-overlay watermark

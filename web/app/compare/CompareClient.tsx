@@ -3,13 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type MiniSearch from "minisearch";
+import { isAbortError, LatestRequestController } from "@/lib/client/latest-request";
 import { fmtStars } from "@/lib/format";
 import type { CompareCurve, SearchDoc } from "@/lib/contracts";
 import type { SearchHit } from "@/lib/search/core";
+import { fetchSearchIndex } from "@/lib/search/index-fetch";
 import { fetchRepoCurve } from "@/lib/compare/curve-fetch";
 import { MAX_COMPARE, MIN_COMPARE, parseRepos, serializeRepos } from "@/lib/compare/core";
 import { CompareCurve as CompareCurveChart } from "@/app/_explore/CompareCurve";
 import { Star } from "@/app/_explore/Star";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 
 // CompareClient (v0.2 §5) — the interactive shell that turns the static /compare page into a
 // usable overlay tool. URL is the only state: ?repos=owner/name,owner/name. On mount it lazy-
@@ -23,6 +26,8 @@ interface Engine {
   query: (ms: MiniSearch<SearchDoc>, q: string, limit?: number) => SearchHit[];
   byFullName: Map<string, SearchDoc>;
 }
+
+type PickerLoadState = "loading" | "ready" | "error";
 
 const PICKER_LIMIT = 6;
 
@@ -61,7 +66,7 @@ function logCompareClientError(message: string, error: unknown) {
   }
 }
 
-export function CompareClient({ labels, comparePath = "/compare" }: { labels: CompareClientLabels; comparePath?: string }) {
+export function CompareClient({ labels, comparePath = "/compare", locale = DEFAULT_LOCALE }: { labels: CompareClientLabels; comparePath?: string; locale?: Locale }) {
   const router = useRouter();
   const params = useSearchParams();
   const repos = useMemo(() => parseRepos(params?.get("repos")), [params]);
@@ -69,47 +74,69 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
   const [engine, setEngine] = useState<Engine | null>(null);
   const [curves, setCurves] = useState<Map<string, CompareCurve>>(new Map());
   const [curveErrors, setCurveErrors] = useState<Map<string, string>>(new Map());
-  const pendingRef = useRef<Set<string>>(new Set());
+  const [indexRequests] = useState(() => new LatestRequestController());
+  const [curveRequests] = useState(() => new LatestRequestController());
+  const retryCurveKeysRef = useRef<Set<string>>(new Set());
   const [q, setQ] = useState("");
-  const [hits, setHits] = useState<SearchHit[]>([]);
-  const [pickerError, setPickerError] = useState(false);
+  const [pickerLoadState, setPickerLoadState] = useState<PickerLoadState>("loading");
 
-  // Load global search index once (same /search-index endpoint used by SearchBox).
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  const loadSearchEngine = useCallback(
+    async ({ revalidate = false }: { revalidate?: boolean } = {}) => {
+      const request = indexRequests.begin();
+      setPickerLoadState("loading");
+      setEngine(null);
       try {
-        const [core, res] = await Promise.all([
+        const [core, result] = await Promise.all([
           import("@/lib/search/core"),
-          fetch("/search-index", { cache: "force-cache" }),
+          fetchSearchIndex({ cache: revalidate ? "reload" : "no-cache", signal: request.signal }),
         ]);
-        if (!res.ok) throw new Error(`search index request failed: ${res.status}`);
-        const data = (await res.json()) as { repos?: SearchDoc[] };
-        if (cancelled) return;
-        const docs = data.repos ?? [];
-        const byFullName = new Map<string, SearchDoc>(docs.map((d) => [d.full_name.toLowerCase(), d]));
-        setEngine({ ms: core.createIndex(docs), query: core.queryIndex, byFullName });
-        setPickerError(false);
+        if (!indexRequests.isCurrent(request.id)) return;
+        if (!result.ok) {
+          logCompareClientError("[compare] failed to load search index", result.error);
+          setPickerLoadState("error");
+          return;
+        }
+        const byFullName = new Map<string, SearchDoc>(result.repos.map((doc) => [doc.full_name.toLowerCase(), doc]));
+        setEngine({ ms: core.createIndex(result.repos), query: core.queryIndex, byFullName });
+        setPickerLoadState("ready");
       } catch (error) {
+        if (!indexRequests.isCurrent(request.id) || isAbortError(error)) return;
         logCompareClientError("[compare] failed to load search index", error);
-        if (!cancelled) setPickerError(true);
+        setPickerLoadState("error");
+      } finally {
+        indexRequests.finish(request.id);
       }
-    })();
+    },
+    [indexRequests],
+  );
+
+  // Load the global search index once; the visible retry starts a cache-bypassing reload.
+  useEffect(() => {
+    let disposed = false;
+    void Promise.resolve().then(() => {
+      if (!disposed) return loadSearchEngine();
+    });
     return () => {
-      cancelled = true;
+      disposed = true;
+      indexRequests.cancel();
     };
-  }, []);
+  }, [indexRequests, loadSearchEngine]);
+
+  const hits = useMemo<SearchHit[]>(() => {
+    if (!engine || !q.trim()) return [];
+    return engine.query(engine.ms, q, PICKER_LIMIT);
+  }, [engine, q]);
 
   // Fetch curves for selected repos we don't have yet.
   useEffect(() => {
     if (!engine) return;
     const need = repos.filter((name) => {
       const key = name.toLowerCase();
-      return !curves.has(key) && !curveErrors.has(key) && !pendingRef.current.has(key);
+      return !curves.has(key) && !curveErrors.has(key);
     });
     if (need.length === 0) return;
-    need.forEach((n) => pendingRef.current.add(n.toLowerCase()));
-    let cancelled = false;
+    const request = curveRequests.begin();
+    const retryKeys = new Set(need.map((name) => name.toLowerCase()).filter((key) => retryCurveKeysRef.current.has(key)));
 
     void (async () => {
       try {
@@ -118,10 +145,13 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
             const key = name.toLowerCase();
             const doc = engine.byFullName.get(key);
             if (!doc) return { ok: false as const, name, key, reason: "missing-repo" };
-            return fetchRepoCurve(name, doc.id);
+            return fetchRepoCurve(name, doc.id, {
+              cache: retryKeys.has(key) ? "reload" : "no-cache",
+              signal: request.signal,
+            });
           }),
         );
-        if (cancelled) return;
+        if (!curveRequests.isCurrent(request.id)) return;
 
         setCurves((prev) => {
           const next = new Map(prev);
@@ -144,23 +174,25 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
           return next;
         });
       } catch (error) {
+        if (!curveRequests.isCurrent(request.id) || isAbortError(error)) return;
         logCompareClientError("[compare] unexpected curve batch failure", error);
-        if (!cancelled) {
-          setCurveErrors((prev) => {
-            const next = new Map(prev);
-            need.forEach((name) => next.set(name.toLowerCase(), name));
-            return next;
-          });
-        }
+        setCurveErrors((prev) => {
+          const next = new Map(prev);
+          need.forEach((name) => next.set(name.toLowerCase(), name));
+          return next;
+        });
       } finally {
-        need.forEach((n) => pendingRef.current.delete(n.toLowerCase()));
+        if (curveRequests.isCurrent(request.id)) {
+          retryKeys.forEach((key) => retryCurveKeysRef.current.delete(key));
+          curveRequests.finish(request.id);
+        }
       }
     })();
 
     return () => {
-      cancelled = true;
+      curveRequests.cancel(request.id);
     };
-  }, [engine, repos, curves, curveErrors]);
+  }, [curveErrors, curveRequests, curves, engine, repos]);
 
   const orderedCurves = useMemo(
     () => repos.map((n) => curves.get(n.toLowerCase())).filter((c): c is CompareCurve => Boolean(c)),
@@ -206,19 +238,26 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
     (fullName: string) => {
       if (repos.length >= MAX_COMPARE) return;
       if (repos.some((n) => n.toLowerCase() === fullName.toLowerCase())) return;
+      const key = fullName.toLowerCase();
+      setCurves((prev) => {
+        const next = new Map(prev);
+        next.delete(key);
+        return next;
+      });
       updateRepos([...repos, fullName]);
       setQ("");
-      setHits([]);
     },
     [repos, updateRepos],
   );
 
   const remove = useCallback(
     (fullName: string) => {
+      const key = fullName.toLowerCase();
       updateRepos(repos.filter((n) => n.toLowerCase() !== fullName.toLowerCase()));
+      retryCurveKeysRef.current.delete(key);
       setCurveErrors((prev) => {
         const next = new Map(prev);
-        next.delete(fullName.toLowerCase());
+        next.delete(key);
         return next;
       });
     },
@@ -227,22 +266,13 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
 
   const retry = useCallback((fullName: string) => {
     const key = fullName.toLowerCase();
-    pendingRef.current.delete(key);
+    retryCurveKeysRef.current.add(key);
     setCurveErrors((prev) => {
       const next = new Map(prev);
       next.delete(key);
       return next;
     });
   }, []);
-
-  const onQueryChange = (v: string) => {
-    setQ(v);
-    if (!engine || !v.trim()) {
-      setHits([]);
-      return;
-    }
-    setHits(engine.query(engine.ms, v, PICKER_LIMIT));
-  };
 
   const canAdd = repos.length < MAX_COMPARE;
 
@@ -257,7 +287,7 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
           <input
             type="search"
             value={q}
-            onChange={(e) => onQueryChange(e.target.value)}
+            onChange={(e) => setQ(e.target.value)}
             placeholder={labels.pickerPlaceholder}
             aria-label={labels.pickerPlaceholder}
             disabled={!canAdd}
@@ -267,6 +297,18 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
           />
         </div>
         {!canAdd && <p className="mt-2 font-mono text-[0.75rem] text-on-surface-variant">{labels.limit}</p>}
+        {pickerLoadState === "error" && (
+          <div role="status" aria-live="polite" className="mt-2 flex flex-wrap items-center justify-between gap-2 px-3 font-mono text-[0.75rem] text-on-surface-variant">
+            <span>{labels.pickerLoadError}</span>
+            <button
+              type="button"
+              onClick={() => void loadSearchEngine({ revalidate: true })}
+              className="min-h-9 rounded-full bg-primary-container px-3 py-1 font-semibold text-on-primary-container transition-colors hover:brightness-110"
+            >
+              {labels.retry}
+            </button>
+          </div>
+        )}
         {q.trim() && hits.length > 0 && (
           <ul className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-high">
             {hits.map((h) => {
@@ -286,7 +328,7 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
                       </span>
                     </span>
                     <span className="shrink-0 font-mono text-[0.72rem] tabular-nums">
-                      {fmtStars(h.current_stars)} <Star />
+                      {fmtStars(h.current_stars, locale)} <Star />
                     </span>
                   </button>
                 </li>
@@ -294,9 +336,9 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
             })}
           </ul>
         )}
-        {q.trim() && hits.length === 0 && (
+        {q.trim() && hits.length === 0 && pickerLoadState !== "error" && (
           <p role="status" aria-live="polite" className="mt-2 px-3 font-mono text-[0.75rem] text-on-surface-variant">
-            {pickerError ? labels.pickerLoadError : engine ? labels.pickerEmpty : labels.pickerLoading}
+            {pickerLoadState === "ready" ? labels.pickerEmpty : labels.pickerLoading}
           </p>
         )}
         {repos.length > 0 && (
@@ -362,7 +404,7 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
                         labels.pickerLoading
                       ) : (
                         <>
-                          {fmtStars(fact.currentStars)} <Star />
+                          {fmtStars(fact.currentStars, locale)} <Star />
                         </>
                       )}
                     </span>
@@ -384,6 +426,7 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
               modeLabels={{ absolute: labels.modeAbsolute, align10k: labels.modeAlign10k }}
               legendAria={labels.legendLabel}
               ariaLabels={{ compareModes: labels.compareModesAria, starHistoryOverlay: labels.starHistoryOverlayAria }}
+              locale={locale}
             />
           ) : (
             <p className="rounded-lg border border-dashed border-outline-variant px-4 py-8 text-center font-mono text-[0.85rem] text-on-surface-variant">

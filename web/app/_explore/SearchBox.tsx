@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { MAX_COMPARE } from "@/lib/compare/constants";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 import { localizedPath } from "@/lib/i18n/routing";
+import { searchHitForCommit } from "@/lib/search/result-state";
 import { SearchPanel } from "./search-box/SearchPanel";
 import type { SearchBoxLabels } from "./search-box/types";
 import { useCompareSelection } from "./search-box/useCompareSelection";
@@ -25,43 +26,58 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const listId = useId();
+  const currentQueryRef = useRef("");
+  const restoringFocusRef = useRef(false);
+  const panelId = useId();
 
-  const { ensureEngine, hits, loadState, query, resetHits } = useSearchEngine({ limit: LIMIT });
+  const { ensureEngine, hits, loadState, query, resetHits, results } = useSearchEngine({ limit: LIMIT });
   const { clearCompare, compareSet, toggleCompare } = useCompareSelection(MAX_COMPARE);
 
   const resetShell = useCallback(() => {
     setOpen(false);
     setQ("");
+    currentQueryRef.current = "";
     resetHits();
   }, [resetHits]);
 
   const commitHit = useCallback(
     (index: number) => {
-      const hit = hits[index];
+      const hit = searchHitForCommit(results, currentQueryRef.current, index);
       if (!hit) return;
       router.push(localizedPath(locale, `/${hit.full_name}`));
       inputRef.current?.blur();
       resetShell();
     },
-    [hits, locale, resetShell, router],
+    [locale, resetShell, results, router],
   );
 
-  const { active, onKeyDown, resetActive, setActive } = useSearchKeyboardNavigation({
+  const focusResult = useCallback((index: number) => {
+    const focus = () => {
+      const result = rootRef.current?.querySelector<HTMLElement>(`[data-search-result-link][data-search-result-index="${index}"]`);
+      result?.focus();
+      return Boolean(result);
+    };
+    if (!focus()) requestAnimationFrame(focus);
+  }, []);
+
+  const closeAndRestoreInput = useCallback(() => {
+    setOpen(false);
+    if (inputRef.current && document.activeElement !== inputRef.current) {
+      restoringFocusRef.current = true;
+      inputRef.current.focus();
+      restoringFocusRef.current = false;
+    }
+  }, []);
+
+  const { onInputKeyDown, onResultKeyDown } = useSearchKeyboardNavigation({
     itemCount: hits.length,
     onCommit: commitHit,
-    onEscape: () => setOpen(false),
+    onEscape: closeAndRestoreInput,
+    onFocusItem: focusResult,
     onOpen: () => setOpen(true),
   });
 
-  const reset = useCallback(() => {
-    resetShell();
-    resetActive();
-  }, [resetActive, resetShell]);
-
-  useEffect(() => {
-    setActive(hits.length > 0 ? 0 : -1);
-  }, [hits, setActive]);
+  const reset = useCallback(() => resetShell(), [resetShell]);
 
   const retrySearch = useCallback(() => {
     setOpen(true);
@@ -79,6 +95,7 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
 
   const onChange = useCallback(
     (value: string) => {
+      currentQueryRef.current = value;
       setQ(value);
       setOpen(true);
       if (!query(value) && loadState !== "error") void ensureEngine();
@@ -111,40 +128,39 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
           ref={inputRef}
           type="search"
           role="combobox"
+          aria-haspopup="dialog"
           aria-expanded={showPanel}
-          aria-controls={listId}
-          aria-autocomplete="list"
+          aria-controls={showPanel ? panelId : undefined}
           aria-label={labels.label}
-          aria-activedescendant={showPanel && active >= 0 ? `${listId}-${active}` : undefined}
           enterKeyHint="go"
           autoComplete="off"
           spellCheck={false}
           placeholder={labels.placeholder}
           value={q}
           onFocus={() => {
+            if (restoringFocusRef.current) return;
             setOpen(true);
             void ensureEngine();
           }}
           onChange={(e) => onChange(e.target.value)}
-          onKeyDown={onKeyDown}
+          onKeyDown={onInputKeyDown}
           className="w-20 bg-transparent font-mono text-[0.8rem] text-on-surface placeholder:text-on-surface-variant min-[360px]:w-24 sm:w-44 lg:w-56"
         />
       </div>
 
       {showPanel && (
         <SearchPanel
-          active={active}
           compareSet={compareSet}
           hits={hits}
           labels={labels}
-          listId={listId}
           loading={loading}
           locale={locale}
-          onActiveChange={setActive}
           onOpenCompare={openCompare}
           onReset={reset}
+          onResultKeyDown={onResultKeyDown}
           onRetry={retrySearch}
           onToggleCompare={toggleCompare}
+          panelId={panelId}
           searchFailed={searchFailed}
         />
       )}

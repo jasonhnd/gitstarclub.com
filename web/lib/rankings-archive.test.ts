@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { buildArchiveItems } from "@/app/_localized/rankings";
+import en from "@/lib/i18n/dictionaries/en";
+import ja from "@/lib/i18n/dictionaries/ja";
 
 describe("rankings archive items", () => {
   test("lists every tracked year from the year spine", () => {
@@ -10,6 +12,8 @@ describe("rankings archive items", () => {
         ["2025", 2_000],
       ],
       availablePeriodsFixture(),
+      "en",
+      en,
     );
 
     expect(items.map((item) => item.href)).toEqual(["/rankings/2026", "/rankings/2025", "/rankings/2024"]);
@@ -17,6 +21,14 @@ describe("rankings archive items", () => {
     expect(items[0].childrenLinks?.map((link) => link.href)).toContain("/rankings/2026/7");
     expect(items[0].childrenLinks?.map((link) => link.href)).toContain("/rankings/2026/W27");
     expect(items[1].childrenLinks?.map((link) => link.href)).toContain("/rankings/2025/12");
+  });
+
+  test("localizes archive chrome and compact totals", () => {
+    const [item] = buildArchiveItems([["2026", 12_300]], availablePeriodsFixture(), "ja", ja);
+
+    expect(item.description).toBe("年別アーカイブ");
+    expect(item.count).toBe("1.2万 スター獲得");
+    expect(item.childrenLinks?.map((link) => link.label)).toEqual(["年", "月", "週"]);
   });
 });
 

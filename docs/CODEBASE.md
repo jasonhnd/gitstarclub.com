@@ -1,10 +1,9 @@
 ---
 owner: codebase architecture
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-17
 source_of_truth_for:
   - code map
-  - route ownership
   - data layer ownership
   - workflow module ownership
 ---
@@ -21,7 +20,9 @@ This is not a replacement for the owning docs:
 
 - Data shapes live in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
 - Production data operations live in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) and [OPS.md](./OPS.md).
-- Routes and rendering details live in [FRONTEND.md](./FRONTEND.md).
+- The maintained route/source inventory lives in
+  [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md); rendering strategy lives
+  in [FRONTEND.md](./FRONTEND.md).
 - Category rules live in [CATEGORIES.md](./CATEGORIES.md).
 
 ## Runtime Shape
@@ -67,26 +68,10 @@ renderer), and the SEO helpers listed under [SEO And Discovery](#seo-and-discove
 
 ## Route Map
 
-| Route | Source | Primary data |
-|---|---|---|
-| `/` | `web/app/page.tsx` | `hot-snapshot`, rank, heatmap, narratives |
-| `/pulse` | `web/app/pulse/page.tsx`, `PulseView.tsx` | live month/week views |
-| `/rankings` | `web/app/rankings/page.tsx` | all-time rank |
-| `/rankings/[year]` | `web/app/rankings/[year]/page.tsx` | yearly rank |
-| `/rankings/[year]/[period]` | `web/app/rankings/[year]/[period]/page.tsx` | month/week rank |
-| `/:owner/:name` | `web/app/[owner]/[name]/page.tsx` | repo entity, lookup, JSON-LD |
-| `/o/:login` | `web/app/o/[login]/page.tsx` | org entity |
-| `/compare` | `web/app/compare/page.tsx`, `CompareClient.tsx` | repo curves via route handler |
-| `/categories` | `web/app/categories/page.tsx` | category registry |
-| `/categories/[dimension]` | `web/app/categories/[dimension]/page.tsx` | category registry |
-| `/categories/[dimension]/[slug]` | `web/app/categories/[dimension]/[slug]/page.tsx` | category rank + repo lookup |
-| `/about` | `web/app/about/page.tsx` | static page: data sources & methodology |
-| `/api/cron/daily` | `web/app/api/cron/daily/route.ts` → `web/lib/cron/handlers.ts` | live-overlay refresh |
-| `/api/cron/weekly` | `web/app/api/cron/weekly/route.ts` → `web/lib/cron/handlers.ts` | live-overlay refresh |
-| `/api/workflows/refresh/start` | `web/app/api/workflows/refresh/start/route.ts` | managed refresh enqueue |
-| `/api/lang` | `web/app/api/lang/route.ts` | sets the language preference cookie, then redirects to the locale URL |
-| `/repo-curve` | `web/app/repo-curve/route.ts` | compare curve endpoint |
-| `/search-index` | `web/app/search-index/route.ts` | search payload |
+The route/source matrix is maintained only in
+[UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md). Public and protected
+endpoint contracts are maintained in [API.md](./API.md). This codebase map owns
+module boundaries, so it intentionally does not copy the per-route table.
 
 ## Read Side
 
@@ -95,8 +80,10 @@ directly.
 
 Important files:
 
-- `source.ts`: resolves `views/latest.json` with a 60-second TTL and validates
-  versioned reads. Do not change pointer caching without reading
+- `source.ts`: resolves `views/latest.json` through a tagged data cache, caps
+  every process-local pointer memo at the 60-second publication SLA, uses
+  `no-store` for mutable canonical/ops artifacts, and validates versioned reads.
+  Do not change pointer caching without reading
   [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md).
 - `rank.ts`, `entity.ts`, `lookup.ts`, `heatmap.ts`, `categories.ts`,
   `compare.ts`, `search.ts`: typed read helpers for page code. `lookup.ts` also
@@ -159,8 +146,8 @@ Rules:
 
 Shared UI is in `web/app/_explore/`. These are mostly server components and
 should stay near-zero-client-JS unless a workflow requires client interactivity.
-The explicit global client islands are `RegisterSW`, Vercel Web Analytics, and
-optional env-gated Google Analytics 4 from `web/app/_shell/RootShell.tsx`.
+The explicit global client islands are `RegisterSW` and Vercel Web Analytics
+from `web/app/_shell/RootShell.tsx`. Third-party tracking scripts are unsupported.
 
 Common components:
 

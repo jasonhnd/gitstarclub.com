@@ -14,6 +14,9 @@ export const en = {
     json: "JSON",
     previous: "Previous",
     next: "Next",
+    notAvailable: "Unavailable",
+    status: "Status",
+    latestAvailable: "Latest available: {period}",
   },
   a11y: {
     primary: "Primary",
@@ -27,6 +30,8 @@ export const en = {
     starHistory: "Star history - rises to {stars} stars over {months} months",
     starHistoryOverlay: "Star history overlay of {count} repositories ({mode})",
     starsAdded: "{label}: {stars} stars added",
+    rankingPeriod: "Ranking period",
+    topRepositoryLinks: "Top repository links",
   },
   meta: {
     homeTitle: "Open Source Pulse & GitHub Star History",
@@ -52,12 +57,51 @@ export const en = {
     heroPre: "A factual ",
     heroAccent: "history",
     heroPost: ".",
+    heroTitlePre: "Methodology, sources, and ",
+    heroTitleAccent: "citation",
+    heroTitlePost: ".",
+    heroRankings: "Open rankings",
+    heroCategories: "Open categories",
+    heroLead:
+      "GitStarClub is a static archive of public GitHub star history. This page documents what is tracked, how ranking and category views are produced, what the known limits are, and how to cite the derived dataset.",
     lead: "GitStarClub indexes public repositories with more than 10,000 stars and reconstructs how they gained stars over time, month by month and year by year, since 2015.",
+    snapshotDataAsOf: "Data as of",
+    snapshotCoverage: "Coverage",
+    snapshotRuntime: "Runtime model",
+    snapshotFoldedThrough: "Folded through",
+    missingMetadata: "Published metadata timestamp unavailable",
+    dataModel: "Static data views",
+    coverage: "Public GitHub repositories at 10k or more current stars, with history reconstructed from 2015 onward.",
+    capsuleText:
+      "As of {asOf}, GitStarClub documents a static-read archive of public GitHub star history. Rankings, categories, repository pages, organization totals, and exports are derived from GH Archive event history, public GitHub API totals, and GitStarClub's precomputed data; citation should name the page URL and date. - GitStarClub",
+    trackedHeading: "What GitStarClub tracks",
+    trackedP1:
+      "GitStarClub tracks public GitHub repositories that are in the current 10k-star-or-more set. Repository pages, organization pages, rankings, categories, Pulse, compare, and exports all read from the same published view family.",
+    trackedP2:
+      "Rankings are archive pages, not endorsements. They expose source-backed star totals, period gains, milestones, owner aggregates, and category views so a reader can verify the field behind a claim.",
     s1h: "Data sources",
     s1pPre: "Historical trends are reconstructed from ",
     s1pPost:
-      " (public GitHub event data since 2015). Current totals come from the official GitHub GraphQL and Search APIs. We display only public data for public repositories.",
+      " (public GitHub event data since 2015). GitHub Search discovers current membership; official GitHub GraphQL stargazerCount is the sole source for displayed and ranked current totals. Dropped repositories remain as labeled historical records but stop polling. We display only public data for public repositories.",
+    rankingHeading: "How rankings are calculated",
+    rankingP1:
+      "All-time repository rankings use current public GitHub star totals. Organization rankings sum current stars across that owner's tracked repositories. Period rankings use GitStarClub's precomputed weekly, monthly, or yearly ranking data where the visible value is stars gained in that UTC period.",
+    rankingP2:
+      "Historical stock curves are seam-aware: pre-seam GH Archive gross additions are anchored to GitHub's authoritative star total, then post-seam net changes are added on top of the frozen anchor. Ranking pages render the published order from those precomputed views.",
+    categoryHeading: "How categories are assigned",
+    categoryP1:
+      "Category assignment is deterministic. Rules use stored repository metadata such as primary language, language family, owner kind, curated topics, and keyword predicates. GitStarClub does not use a runtime classifier, LLM, or manual per-request decision for category pages.",
+    categoryP2:
+      "When metadata is missing or a rule does not meet the public category threshold, the category is omitted or shown through the explicit fallback used by that dimension. Category counts and links come from deterministic category rules over stored repository metadata.",
+    archiveHeading: "Archive permanence",
+    archiveP1:
+      "Public URLs are intended to remain citeable. Rankings, dated ranking periods, repository pages, organization pages, category pages, and dated export directories keep their canonical URL while newer data is published.",
+    archiveP2:
+      "The /data/exports/v1/latest/ files are convenience aliases to the newest export. For archival citation, prefer the page URL plus data-as-of date, or a dated export directory when using downloadable files.",
+    archiveCrawlableMid: "and",
+    archiveCrawlablePost: "are the crawlable entry points for the public archive.",
     s2h: "Methodological caveats",
+    limitationsHeading: "Data limitations",
     s2aStrong: "Two different measures.",
     s2aBody:
       " Historical trends use gross stars added based on GH Archive watch events. The current daily change is net, so it can decrease when stars are removed. This creates a small inconsistency at the boundary between the two measures. Current totals always use GitHub's authoritative star count.",
@@ -69,6 +113,26 @@ export const en = {
       " Before late 2012, GitHub watch events were not equivalent to stars. By 2015, the data is sufficiently consistent for long-term comparison.",
     s3h: "Time",
     s3p: "All data is stored in UTC and aggregated by UTC day. When an exact timestamp is shown, both UTC and JST (Japan Standard Time) are displayed.",
+    citationHeading: "How to cite GitStarClub",
+    citationP1:
+      "For a ranking, repository, organization, category, or comparison claim, cite the GitStarClub page URL, page title, data-as-of date when present, and access date. For downloadable files, cite the manifest or dated export directory rather than only the moving latest alias.",
+    citationP2:
+      "For star-history facts derived from public event history, credit GH Archive under CC BY 4.0. For transformed rankings, anchored curves, milestones, category pages, and export files, cite GitStarClub as the derived presentation.",
+    citeFieldPage: "Use the permanent URL, page title, and data-as-of date when available.",
+    citeFieldGhArchive: "Credit the public event archive when reusing event-derived history or WatchEvent-based curves.",
+    citeFieldGithubApi: "Treat current star totals and repository metadata as public GitHub API facts surfaced through GitStarClub views.",
+    sourceHeading: "Contact and source links",
+    sourceP:
+      "Corrections and source review belong in the public repository. The linked methodology documents describe ranking definitions, category rules, data contracts, and export fields.",
+    relatedTitle: "Continue from methodology",
+    relatedDescription: "Open the permanent ranking and category entry points that use the methodology described here.",
+    sourceRepository: "Source repository",
+    corrections: "Corrections and issues",
+    rankingMethodology: "Ranking methodology",
+    categoryMethodology: "Category methodology",
+    dataContracts: "Data contracts",
+    dataExports: "Data export documentation",
+    githubApi: "GitHub API documentation",
     back: "Back to the history",
     ghArchiveCreditPre: "Historical event data is credited to ",
     ghArchiveCreditMid: ", licensed under ",
@@ -94,6 +158,8 @@ export const en = {
       "GitStarClub publishes precomputed data for repository pages, organization pages, rankings, categories, Pulse, and comparison views. Historical views are rebuilt by the data workflow, while live mover overlays are refreshed by the scheduled publishing path.",
     refreshP2:
       "The website reads only that published data at request and build time. It does not run a database, scoring engine, AI model, or external paid service while serving content pages.",
+    cadenceP:
+      "Data dates are shown only when real metadata is available. Missing metadata does not invent freshness; the page falls back to the static methodology and visible source links.",
     sampleHeading: "Sample questions GitStarClub answers",
     sample1: "When did react/react first cross 100k GitHub stars?",
     sample2: "Which repositories gained the most GitHub stars this month?",
@@ -114,6 +180,21 @@ export const en = {
     repoMilestonesCsv: "Repository milestones CSV",
     orgAggregatesCsv: "Organization aggregates CSV",
     dataExportsDocPrefix: "See DATA-EXPORTS.md for fields, source views, and regeneration notes.",
+    faqWhatQ: "What does GitStarClub track?",
+    faqWhatA:
+      "GitStarClub tracks public GitHub repositories in the current 10k-star-or-more set and publishes repository, organization, ranking, category, comparison, and export views from precomputed data.",
+    faqRankingQ: "How should I cite a ranking or chart?",
+    faqRankingA:
+      "Cite the GitStarClub page URL, title, data-as-of date when shown, and access date. For downloadable files, use the manifest or dated export directory.",
+    faqGrossNetQ: "Why can recent daily movement differ from historical gains?",
+    faqGrossNetA:
+      "Historical GH Archive WatchEvent history is gross additions, while current daily movement is net and can decrease when stars are removed. GitStarClub documents that seam instead of hiding it.",
+    faqCategoriesQ: "Are categories assigned by AI?",
+    faqCategoriesA:
+      "No. Categories are generated from deterministic rules over stored repository metadata; missing metadata degrades through explicit fallbacks.",
+    faqRuntimeQ: "Does the About page use live GitHub queries?",
+    faqRuntimeA:
+      "No. The About page reads only published metadata through getMeta and otherwise renders static methodology, source, and citation copy.",
   },
   year: {
     label: "Year",
@@ -142,6 +223,10 @@ export const en = {
     recent: "Recent activity",
     created: "created",
     archived: "archived",
+    tracking: "Tracking status",
+    trackingActive: "Active",
+    trackingHistorical: "Historical retention",
+    trackedSince: "Tracked since",
     github: "Open on GitHub",
     rank: "rank",
     owner: "Owner",
@@ -184,6 +269,23 @@ export const en = {
       "As of {asOf}, GitStarClub records {repo} crossing {milestones}. These milestone dates come from frozen repository fields and link back to the matching monthly ranking pages. Source: GitStarClub repository star history.",
     starHistoryLink: "{repo} star history",
     milestoneRankingMonth: "{milestone} ranking month",
+    profileEyebrow: "Citable repository profile",
+    facts: "Repository facts",
+    currentStars: "Current stars",
+    primaryLanguage: "Primary language",
+    githubUrl: "GitHub URL",
+    categoryTags: "Category tags",
+    rankingAppearances: "Ranking appearances",
+    rankingDescription: "Monthly ranking periods where this repository appeared in the precomputed GitStarClub flow rankings.",
+    relatedDescription: "Owner, category, similar repository, and ranking-period routes connected to this repository.",
+    noDescription: "GitHub star history for this tracked repository.",
+    noLicenseMetadata: "No license metadata",
+    noHomepageMetadata: "No homepage metadata",
+    noCreatedAtMetadata: "No creation date metadata",
+    noLanguages: "No language breakdown available",
+    noTopics: "No topics published",
+    noCategories: "No category tags available",
+    noRankingAppearances: "No monthly ranking appearances are available in GitStarClub's precomputed repository data.",
   },
   org: {
     starRanking: "GitHub Star Ranking",
@@ -224,6 +326,18 @@ export const en = {
     indexPageTitle: "GitHub Organization Index - Page {page}",
     indexCaption: "GitHub organization index page {page}",
     indexPagination: "Organizations pagination",
+    aggregateTrackedStars: "Aggregate tracked stars",
+    aggregateFootnote: "Sum of current stars across tracked GitHub repositories; not a native GitHub organization field.",
+    openGitHub: "Open GitHub",
+    chartSummary: "Chart summary",
+    trendSummary:
+      "{login} moved from {start} aggregate tracked stars in {startPeriod} to {end} in {endPeriod}. The latest monthly point changed by {change} stars.",
+    trendUnavailable: "Combined monthly trend data is waiting for the next published recompute.",
+    recentMovement: "Recent movement",
+    recentMovementDescription: "Latest daily net star changes from the organization curve.",
+    relatedTitle: "Related organization links",
+    relatedDescription: "Permanent rankings and tracked repository pages connected to this owner.",
+    noTrackedRepos: "Tracked repository rows are waiting for the next published lookup.",
   },
   categories: {
     eyebrow: "Categories",
@@ -251,6 +365,30 @@ export const en = {
     organizations: "Organizations",
     repos: "repositories",
     allTime: "All-time",
+    datasetName: "All-time rankings dataset",
+    fullHistory: "Full history",
+    permanentArchive: "Permanent archive",
+    yearHero:
+      "Permanent {year} archive of tracked GitHub repositories ranked by stars gained, with month-by-month movement from GitStarClub's precomputed ranking data.",
+    monthHero:
+      "Permanent archive for {label}, ranking tracked GitHub repositories by stars gained during that calendar month from GitStarClub's precomputed ranking data.",
+    weekHero:
+      "Permanent archive for exact ISO week {label}, ranking tracked GitHub repositories by stars gained during that week from GitStarClub's precomputed ranking data.",
+    monthlyMovement: "Monthly movement",
+    dailyMovement: "Daily movement",
+    periodNavigation: "Period navigation",
+    relatedTitle: "Related ranking links",
+    relatedDescription: "Permanent archive routes and current activity views connected to this ranking period.",
+    visibleRows: "Visible rows",
+    noMovement: "Movement data is waiting for the next published recompute.",
+    noGrowth: "Growth-rate data is waiting for the next published recompute.",
+    noNewcomers: "Newcomer data is waiting for the next published recompute.",
+    noWeeklyGrowth: "Weekly growth-rate archives are not published for this period.",
+    noWeeklyNewcomers: "Weekly newcomer archives are not published for this period.",
+    archiveMonths: "Months",
+    archiveWeeks: "Weeks",
+    archiveDescription: "Year archive",
+    archiveStarsAdded: "{stars} stars added",
   },
   pulse: {
     title: "Open-source activity",
@@ -259,6 +397,7 @@ export const en = {
     onThisDay: "On this day",
     crossed: "crossed",
     open: "Open",
+    datasetName: "Open-source activity dataset",
   },
   footer: {
     madeIn: "Made in Tokyo",
@@ -344,6 +483,16 @@ export const en = {
     fasterAfter10k: "Faster after 10k",
     currentStars: "Current stars",
     repoCurveSource: "GitStarClub star-history data",
+    horizonMonth: "{count} month",
+    horizonMonths: "{count} months",
+    horizonYear: "{count} year",
+    horizonYears: "{count} years",
+    horizonYearMonths: "{years} {months}",
+    conclusionWinner: "{winner} grew faster after 10k, gaining {winnerGain} stars in {horizon} versus {loserGain} for {loser}.",
+    conclusionTie: "Both repositories gained {gain} stars in {horizon} after 10k.",
+    conclusionSummary: "As of {asOf}, {result} {source}",
+    conclusionSource:
+      "GitStarClub computes the comparison table from GitStarClub's precomputed star-history data; client-selected query pairs remain interactive only.",
   },
 };
 

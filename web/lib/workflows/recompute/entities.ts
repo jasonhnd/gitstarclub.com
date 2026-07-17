@@ -5,6 +5,7 @@
 import type { DateStr, Model } from "./model";
 import type { RepoWindow, OrgWindow } from "./windows";
 import { detectInflections, type Inflection } from "./inflections";
+import { truncateUnicodeText } from "@/lib/unicode-text";
 
 const MONTHLY_TABLE_MONTHS = 24;
 
@@ -20,6 +21,8 @@ export interface RepoEntity {
   topics: string[];
   created_at: string;
   current_stars: number;
+  active: boolean;
+  tracked_since: string | null;
   is_archived: boolean;
   milestones: { crossed_10k: string | null; crossed_50k: string | null; crossed_100k: string | null };
   curve: { monthly: Array<[string, number, number]>; recent_daily: Array<[string, number]> };
@@ -50,6 +53,8 @@ export function repoEntities(model: Model, monthWin: RepoWindow): { views: Map<s
       topics: meta.topics ?? [],
       created_at: (meta.created_at ?? "").slice(0, 10),
       current_stars: meta.current_stars,
+      active: meta.active !== false,
+      tracked_since: meta.tracked_since ?? null,
       is_archived: !!meta.is_archived,
       milestones: {
         crossed_10k: meta.crossed_10k ?? null,
@@ -116,7 +121,7 @@ const SEARCH_DESC_CAP = 200; // bound the client-loaded index; keywords live in 
 export function searchIndex(model: Model, gen: string): Map<string, unknown> {
   const repos = model.ids.map((id) => {
     const r = model.repos.get(id)!;
-    const desc = (r.description ?? "").slice(0, SEARCH_DESC_CAP);
+    const desc = truncateUnicodeText(r.description ?? "", SEARCH_DESC_CAP);
     return {
       id: r.id,
       full_name: r.full_name,
@@ -124,6 +129,8 @@ export function searchIndex(model: Model, gen: string): Map<string, unknown> {
       language: r.language ?? null,
       current_stars: r.current_stars,
       description: desc || null,
+      active: r.active !== false,
+      tracked_since: r.tracked_since ?? null,
     };
   });
   return new Map<string, unknown>([["search/index.json", { generated_at: gen, count: repos.length, repos }]]);
@@ -139,6 +146,8 @@ export function lookups(model: Model): Map<string, unknown> {
       owner_type: r.owner_type,
       language: r.language ?? null,
       current_stars: r.current_stars,
+      active: r.active !== false,
+      tracked_since: r.tracked_since ?? null,
     };
   const orgLk: Record<string, unknown> = {};
   for (const o of model.orgs.values())

@@ -1,10 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SearchHit } from "@/lib/search/core";
+import { isAbortError, LatestRequestController } from "@/lib/client/latest-request";
+import { fetchSearchIndex } from "@/lib/search/index-fetch";
+import {
+  acceptSearchResults,
+  startSearchQuery,
+  type SearchResultSnapshot,
+} from "@/lib/search/result-state";
 import {
   createSearchWorkerError,
-  parseSearchIndexPayload,
   type SearchLoadState,
   type SearchWorkerError,
   type SearchWorkerOutMessage,
@@ -17,7 +22,7 @@ function logSearchFailure(error: SearchWorkerError) {
 }
 
 export function useSearchEngine({ limit }: { limit: number }) {
-  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [results, setResults] = useState<SearchResultSnapshot>(() => startSearchQuery(""));
   const [loadState, setLoadState] = useState<SearchLoadState>("idle");
 
   const workerRef = useRef<Worker | null>(null);
@@ -28,6 +33,8 @@ export function useSearchEngine({ limit }: { limit: number }) {
   const latestQueryRef = useRef("");
   const requestRef = useRef(0);
   const activeRequestRef = useRef(0);
+  const activeQueryRef = useRef("");
+  const [loadRequests] = useState(() => new LatestRequestController());
 
   const setSearchLoadState = useCallback((state: SearchLoadState) => {
     loadStateRef.current = state;
@@ -42,7 +49,7 @@ export function useSearchEngine({ limit }: { limit: number }) {
   }, []);
 
   const resetHits = useCallback(() => {
-    setHits([]);
+    setResults(startSearchQuery(""));
   }, []);
 
   const failSearch = useCallback(
@@ -50,7 +57,7 @@ export function useSearchEngine({ limit }: { limit: number }) {
       logSearchFailure(error);
       pendingRef.current = latestQueryRef.current;
       stopWorker();
-      setHits([]);
+      setResults(startSearchQuery(latestQueryRef.current));
       setSearchLoadState("error");
     },
     [setSearchLoadState, stopWorker],
@@ -62,6 +69,7 @@ export function useSearchEngine({ limit }: { limit: number }) {
       if (!worker || !readyRef.current) return false;
       const id = ++requestRef.current;
       activeRequestRef.current = id;
+      activeQueryRef.current = value;
       worker.postMessage({ type: "query", id, q: value, limit });
       return true;
     },
@@ -71,6 +79,7 @@ export function useSearchEngine({ limit }: { limit: number }) {
   const query = useCallback(
     (value: string) => {
       latestQueryRef.current = value;
+      setResults(startSearchQuery(value));
       if (postQuery(value)) return true;
       pendingRef.current = value;
       return false;
@@ -83,25 +92,26 @@ export function useSearchEngine({ limit }: { limit: number }) {
       if (queuedQuery !== undefined) {
         latestQueryRef.current = queuedQuery;
         pendingRef.current = queuedQuery;
+        setResults(startSearchQuery(queuedQuery));
       }
       if ((workerRef.current || loadingRef.current) && !force) return;
-      if (force) stopWorker();
+      stopWorker();
+      const request = loadRequests.begin();
       loadingRef.current = true;
       readyRef.current = false;
       setSearchLoadState("loading");
-      setHits([]);
+      setResults(startSearchQuery(latestQueryRef.current));
       try {
-        const res = await fetch("/search-index", { cache: "force-cache" });
-        if (!res.ok) throw new Error(`Search index request failed with ${res.status}`);
-        const data = await res.json();
-        const parsed = parseSearchIndexPayload(data);
-        if (!parsed.ok) {
-          failSearch(parsed.error);
+        const result = await fetchSearchIndex({ cache: force ? "reload" : "no-cache", signal: request.signal });
+        if (!loadRequests.isCurrent(request.id)) return;
+        if (!result.ok) {
+          failSearch(result.error);
           return;
         }
         const worker = new Worker(new URL("../search-worker.ts", import.meta.url), { type: "module" });
         workerRef.current = worker;
         worker.onmessage = (event: MessageEvent<SearchWorkerOutMessage>) => {
+          if (!loadRequests.isCurrent(request.id) || workerRef.current !== worker) return;
           const message = event.data;
           if (message.type === "ready") {
             readyRef.current = true;
@@ -115,7 +125,7 @@ export function useSearchEngine({ limit }: { limit: number }) {
             return;
           }
           if (message.type === "results" && message.id === activeRequestRef.current) {
-            setHits(message.hits);
+            setResults(acceptSearchResults(activeQueryRef.current, message.hits));
             return;
           }
           if (message.type === "error") {
@@ -123,27 +133,33 @@ export function useSearchEngine({ limit }: { limit: number }) {
           }
         };
         worker.onerror = (event) => {
+          if (!loadRequests.isCurrent(request.id) || workerRef.current !== worker) return;
           failSearch(createSearchWorkerError("worker-init", event.message || event.error));
         };
-        worker.postMessage({ type: "init", repos: parsed.repos });
+        worker.postMessage({ type: "init", repos: result.repos });
       } catch (error) {
+        if (!loadRequests.isCurrent(request.id) || isAbortError(error)) return;
         failSearch(createSearchWorkerError("load-failed", error));
+      } finally {
+        loadRequests.finish(request.id);
       }
     },
-    [failSearch, query, setSearchLoadState, stopWorker],
+    [failSearch, loadRequests, query, setSearchLoadState, stopWorker],
   );
 
   useEffect(() => {
     return () => {
+      loadRequests.cancel();
       stopWorker();
     };
-  }, [stopWorker]);
+  }, [loadRequests, stopWorker]);
 
   return {
     ensureEngine,
-    hits,
+    hits: results.hits,
     loadState,
     query,
     resetHits,
+    results,
   };
 }

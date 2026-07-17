@@ -1,21 +1,10 @@
-import { putView } from "@/lib/data/write";
+import type { AlertPipeline } from "@/lib/contracts";
 
-// Minimal, dependency-free observability for the data pipelines (Vercel-first).
-//
-// Two surfaces, both best-effort and non-throwing:
-//   1. sendAlert() — always emits a greppable "[ALERT]" structured log (shows up in
-//      Vercel function logs) and, IF process.env.ALERT_WEBHOOK_URL is set, POSTs a
-//      short JSON payload to it. A no-op (log only) when the env var is unset.
-//   2. recordHealth() — writes ops/workflows/health.json so the last run status/time
-//      of each pipeline is queryable from Blob alongside the other ops artifacts.
-//
-// Alerting must NEVER break the pipeline: every export swallows its own errors.
+const WEBHOOK_TIMEOUT_MS = 5_000;
+const WEBHOOK_MAX_ATTEMPTS = 3;
+const RETRY_DELAYS_MS = [100, 250] as const;
 
-const WEBHOOK_TIMEOUT_MS = 5000;
-const HEALTH_PATH = "ops/workflows/health.json";
-
-/** Which automated pipeline produced this signal (used for grep + dashboards). */
-export type AlertPipeline = "workflow-refresh" | "cron-daily" | "cron-weekly";
+export type { AlertPipeline } from "@/lib/contracts";
 
 export type AlertSummary = {
   pipeline: AlertPipeline;
@@ -29,29 +18,103 @@ export type AlertSummary = {
   error?: string;
 };
 
-export type HealthStatus = "ok" | "failed" | "attached" | "rejected";
+export type AlertDeliveryResult = {
+  status: "disabled" | "delivered" | "failed";
+  attempts: number;
+  status_code: number | null;
+  error: string | null;
+};
+
+export type AlertFetcher = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
+type AlertDeliveryOptions = {
+  fetch?: AlertFetcher;
+  sleep?: (milliseconds: number) => Promise<void>;
+  timeoutMs?: number;
+  maxAttempts?: number;
+  now?: Date;
+};
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function retryableStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function safeDeliveryError(error: unknown, timedOut: boolean): string {
+  if (timedOut || (error instanceof Error && error.name === "AbortError")) return "timeout";
+  if (!(error instanceof Error)) return "network failure";
+  const safeMessage = error.message
+    .replaceAll(/https?:\/\/\S+/gi, "[redacted-url]")
+    .replaceAll(/(token|key|secret)=[^\s&]+/gi, "$1=[redacted]")
+    .slice(0, 300);
+  return safeMessage ? `${error.name}: ${safeMessage}` : error.name || "network failure";
+}
+
+function failedDelivery(
+  summary: AlertSummary,
+  attempts: number,
+  statusCode: number | null,
+  error: string,
+): AlertDeliveryResult {
+  const result: AlertDeliveryResult = {
+    status: "failed",
+    attempts,
+    status_code: statusCode,
+    error,
+  };
+  console.error("[ALERT] webhook delivery failed", {
+    pipeline: summary.pipeline,
+    run_id: summary.run_id ?? null,
+    ...result,
+  });
+  return result;
+}
 
 /**
- * Emit a failure alert. Always logs a greppable "[ALERT]" line; additionally POSTs
- * to ALERT_WEBHOOK_URL when that env var is set. Never throws.
+ * Emit a failure alert. The structured log is unconditional. An optional
+ * webhook is bounded by timeout and retries, checks HTTP status, returns an
+ * explicit delivery result, and never throws into the data pipeline.
  */
-export async function sendAlert(summary: AlertSummary): Promise<void> {
-  // (a) Structured, greppable log — surfaces in Vercel function logs even with no webhook.
+export async function sendAlert(
+  summary: AlertSummary,
+  options: AlertDeliveryOptions = {},
+): Promise<AlertDeliveryResult> {
   console.error(`[ALERT] ${summary.pipeline} failed`, {
     run_id: summary.run_id ?? null,
     step: summary.step ?? null,
     error: summary.error ?? null,
   });
 
-  // (b) Optional env-gated webhook. No-op (and no error) when ALERT_WEBHOOK_URL is unset.
   const url = process.env.ALERT_WEBHOOK_URL;
-  if (!url) return;
+  if (!url) {
+    return { status: "disabled", attempts: 0, status_code: null, error: null };
+  }
 
-  try {
+  const fetcher = options.fetch ?? globalThis.fetch;
+  const sleeper = options.sleep ?? delay;
+  const timeoutMs = options.timeoutMs ?? WEBHOOK_TIMEOUT_MS;
+  const requestedAttempts = options.maxAttempts ?? WEBHOOK_MAX_ATTEMPTS;
+  const maxAttempts = Number.isFinite(requestedAttempts)
+    ? Math.min(5, Math.max(1, Math.floor(requestedAttempts)))
+    : WEBHOOK_MAX_ATTEMPTS;
+  const at = (options.now ?? new Date()).toISOString();
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+
     try {
-      await fetch(url, {
+      const response = await fetcher(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -60,39 +123,36 @@ export async function sendAlert(summary: AlertSummary): Promise<void> {
           run_id: summary.run_id ?? null,
           step: summary.step ?? null,
           error: summary.error ?? null,
-          at: new Date().toISOString(),
+          at,
         }),
         signal: controller.signal,
         cache: "no-store",
       });
+
+      if (response.ok) {
+        return {
+          status: "delivered",
+          attempts: attempt,
+          status_code: response.status,
+          error: null,
+        };
+      }
+
+      const error = `HTTP ${response.status}`;
+      if (!retryableStatus(response.status) || attempt === maxAttempts) {
+        return failedDelivery(summary, attempt, response.status, error);
+      }
+    } catch (error) {
+      const diagnostic = safeDeliveryError(error, timedOut);
+      if (attempt === maxAttempts) {
+        return failedDelivery(summary, attempt, null, diagnostic);
+      }
     } finally {
       clearTimeout(timer);
     }
-  } catch (err) {
-    // Alerting failures must not propagate into the pipeline; just note it.
-    console.error("[ALERT] webhook delivery failed", err instanceof Error ? err.message : String(err));
-  }
-}
 
-/**
- * Update ops/workflows/health.json with the latest status of one pipeline. Best-effort:
- * a Blob write failure here never propagates (the run's own checkpoint is the source of truth).
- */
-export async function recordHealth(
-  pipeline: AlertPipeline,
-  status: HealthStatus,
-  detail: { run_id?: string; error?: string; idempotency_key?: string } = {},
-): Promise<void> {
-  try {
-    await putView(HEALTH_PATH, {
-      pipeline,
-      status,
-      run_id: detail.run_id ?? null,
-      idempotency_key: detail.idempotency_key ?? null,
-      error: detail.error ?? null,
-      at: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error("[ALERT] health write failed", err instanceof Error ? err.message : String(err));
+    await sleeper(RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)] ?? 250);
   }
+
+  return failedDelivery(summary, maxAttempts, null, "delivery attempts exhausted");
 }

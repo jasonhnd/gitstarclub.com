@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { fmtStars } from "@/lib/format";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 
 type Cell = { label: string; gained: number; href?: string };
 export type HeatmapLabels = {
@@ -16,12 +17,14 @@ export function Heatmap({
   columns,
   square = false,
   labels,
+  locale = DEFAULT_LOCALE,
 }: {
   cells: Cell[];
   max: number;
   columns?: number;
   square?: boolean;
   labels: HeatmapLabels;
+  locale?: Locale;
 }) {
   const cols = columns ?? cells.length;
   const heatmapStyle = {
@@ -39,7 +42,7 @@ export function Heatmap({
       >
         {cells.map((c, i) => {
           const t = Math.max(0.08, Math.min(1, c.gained / max));
-          const label = fillTemplate(labels.starsAdded, { label: c.label, stars: fmtStars(c.gained) });
+          const label = fillTemplate(labels.starsAdded, { label: c.label, stars: fmtStars(c.gained, locale) });
           const fill = `color-mix(in oklab, var(--md-sys-color-primary-fixed-dim) ${Math.round(
             t * 100,
           )}%, var(--md-sys-color-surface-container))`;

@@ -17,8 +17,9 @@ const links: PeriodSwitcherProps["links"] = {
 
 describe("PeriodSwitcher", () => {
   test("renders an active badge with an opaque semantic foreground token", () => {
-    const html = renderToStaticMarkup(createElement(PeriodSwitcher, { links, activePeriod: "week" }));
+    const html = renderToStaticMarkup(createElement(PeriodSwitcher, { links, activePeriod: "week", ariaLabel: "Période de classement" }));
 
+    expect(html).toContain('aria-label="Période de classement"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('class="mt-1 truncate font-mono text-[0.65rem] text-on-primary-container"');
     expect(html).toContain("Latest available: 2026-W26");
