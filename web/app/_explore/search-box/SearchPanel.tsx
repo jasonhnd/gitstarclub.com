@@ -170,7 +170,7 @@ function SearchResultRow({
           <span className="flex shrink-0 items-center gap-2 font-mono text-[0.72rem] text-on-surface-variant">
             {hit.language && <span className="hidden sm:inline">{hit.language}</span>}
             <span className="tabular-nums">
-              {fmtStars(hit.current_stars)} <Star />
+              {fmtStars(hit.current_stars, locale)} <Star />
             </span>
           </span>
         </Link>

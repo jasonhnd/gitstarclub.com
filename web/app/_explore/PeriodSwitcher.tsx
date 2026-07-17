@@ -13,6 +13,7 @@ export type PeriodSwitcherTarget = {
 export type PeriodSwitcherProps = {
   links: Record<PeriodSwitcherActivePeriod, PeriodSwitcherTarget>;
   activePeriod: PeriodSwitcherActivePeriod;
+  ariaLabel: string;
 };
 
 type PeriodLink = {
@@ -23,7 +24,7 @@ type PeriodLink = {
   badge?: string;
 };
 
-export function PeriodSwitcher({ links: targets, activePeriod }: PeriodSwitcherProps) {
+export function PeriodSwitcher({ links: targets, activePeriod, ariaLabel }: PeriodSwitcherProps) {
   const links: PeriodLink[] = [
     {
       period: "all-time",
@@ -44,7 +45,7 @@ export function PeriodSwitcher({ links: targets, activePeriod }: PeriodSwitcherP
   ];
 
   return (
-    <nav aria-label="Ranking period" className="grid gap-2 sm:grid-cols-4">
+    <nav aria-label={ariaLabel} className="grid gap-2 sm:grid-cols-4">
       {links.map((link) => (
         <PeriodSwitcherLink key={link.period} link={link} active={link.period === activePeriod} />
       ))}

@@ -13,8 +13,8 @@ import { OrganizationRankingTable, type OrganizationSummaryRow } from "@/app/_ex
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getAllTime, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
-import { formatInteger, fmtStars } from "@/lib/format";
-import { getDictionary, type Locale } from "@/lib/i18n";
+import { formatInteger, fmtStars, monthYearLabel } from "@/lib/format";
+import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine, itemListLd } from "@/lib/jsonld";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
@@ -58,12 +58,12 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
       ? joinRepoRank(repoRank.items, repoLk).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }))
       : [];
   const orgs = orgRank && orgLk ? joinOrgRank(orgRank.items, orgLk) : [];
-  const archiveItems = buildArchiveItems(snap?.home.year_spine ?? [], availablePeriods);
+  const archiveItems = buildArchiveItems(snap?.home.year_spine ?? [], availablePeriods, locale, t);
   const asOf = resolveDataAsOfLabel(repoRank?.meta.generated_at, orgRank?.meta.generated_at, snap?.generated_at, { locale });
   const dateModified = resolveDataAsOfValue(repoRank?.meta.generated_at, orgRank?.meta.generated_at, snap?.generated_at);
   const temporalCoverage = datasetTemporalCoverageFromYearSpine(snap?.home.year_spine);
   const dataset = datasetLd({
-    name: `${t.rankings.title} Dataset`,
+    name: t.rankings.datasetName,
     path: routePath,
     locale: language,
     description: t.rankings.subtitle,
@@ -85,7 +85,7 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
           `${t.rankings.title} ${t.rankings.repositories}`,
           routePath,
           language,
-          repoRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
+          repoRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: localizedPath(locale, `/${repo.owner}/${repo.name}`) })),
         )}
       />
       <JsonLd
@@ -93,14 +93,14 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
           `${t.rankings.title} ${t.rankings.organizations}`,
           routePath,
           language,
-          orgs.map((org) => ({ name: org.login, path: `/o/${org.login}` })),
+          orgs.map((org) => ({ name: org.login, path: localizedPath(locale, `/o/${org.login}`) })),
         )}
       />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
         <PageHero eyebrow={t.nav.rankings} title={t.rankings.title} lede={t.rankings.subtitle} />
 
         <div className="mt-[clamp(1.5rem,3vw,2.25rem)]">
-          <PeriodSwitcher links={periodSwitcherLinks(availablePeriods, periods, href)} activePeriod="all-time" />
+          <PeriodSwitcher links={periodSwitcherLinks(availablePeriods, periods, href, locale, t)} activePeriod="all-time" ariaLabel={t.a11y.rankingPeriod} />
         </div>
 
         <section className="mt-[clamp(1.75rem,4vw,3rem)]">
@@ -171,7 +171,7 @@ function MobileRepositoryRankingCards({
               <span className="min-w-0 text-right">
                 <span className="block font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{labels.totalStars}</span>
                 <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">
-                  {fmtStars(row.total)}
+                  {fmtStars(row.total, locale)}
                   <Star />
                 </span>
               </span>
@@ -209,7 +209,7 @@ function MobileOrganizationRankingCards({
               <span className="min-w-0 text-right">
                 <span className="block font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{labels.totalStars}</span>
                 <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">
-                  {fmtStars(row.current_stars_sum)}
+                  {fmtStars(row.current_stars_sum, locale)}
                   <Star />
                 </span>
               </span>
@@ -243,6 +243,8 @@ function EmptyState({ message, className = "" }: { message: string; className?: 
 export function buildArchiveItems(
   yearSpine: readonly (readonly [string, number])[],
   availablePeriods: AvailableRankPeriods,
+  locale: Locale,
+  t: Dict,
 ): ArchiveGridItem[] {
   const years = new Map<number, number>();
 
@@ -257,16 +259,16 @@ export function buildArchiveItems(
       const latestMonth = latestMonthForYear(year, availablePeriods);
       const latestWeek = latestWeekForYear(year, availablePeriods);
       const childrenLinks: ArchiveGridItem["childrenLinks"] = [
-        { label: "Year", href: `/rankings/${year}` },
-        ...(latestMonth ? [{ label: "Months", href: `/rankings/${year}/${latestMonth}`, count: latestMonth }] : []),
-        ...(latestWeek ? [{ label: "Weeks", href: `/rankings/${year}/W${String(latestWeek).padStart(2, "0")}`, count: latestWeek }] : []),
+        { label: t.year.label, href: `/rankings/${year}` },
+        ...(latestMonth ? [{ label: t.rankings.archiveMonths, href: `/rankings/${year}/${latestMonth}`, count: latestMonth }] : []),
+        ...(latestWeek ? [{ label: t.rankings.archiveWeeks, href: `/rankings/${year}/W${String(latestWeek).padStart(2, "0")}`, count: latestWeek }] : []),
       ];
 
       return {
         label: String(year),
-        description: "Year archive",
+        description: t.rankings.archiveDescription,
         href: `/rankings/${year}`,
-        count: `${fmtStars(total)} stars added`,
+        count: fill(t.rankings.archiveStarsAdded, { stars: fmtStars(total, locale) }),
         childrenLinks,
       };
     });
@@ -276,33 +278,46 @@ function periodSwitcherLinks(
   periods: AvailableRankPeriods,
   calendar: ReturnType<typeof currentUtcPeriods>,
   href: (path: string) => string,
+  locale: Locale,
+  t: Dict,
 ): Record<"all-time" | "year" | "month" | "week", PeriodSwitcherTarget> {
   return {
-    "all-time": { href: href(periods.allTime.href), label: "All-time", value: periods.allTime.label },
-    year: { href: href(periods.yearLink.href), label: "Year", value: periods.yearLink.label },
+    "all-time": { href: href(periods.allTime.href), label: t.rankings.allTime, value: t.rankings.fullHistory },
+    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, t, periods.yearLink) },
     month: {
       href: href(periods.month.href),
-      label: "Month",
-      value: periods.month.label,
-      badge: monthAvailabilityBadge(periods.month, calendar),
+      label: t.month.label,
+      value: availablePeriodLabel(locale, t, periods.month),
+      badge: monthAvailabilityBadge(periods.month, calendar, locale, t),
     },
     week: {
       href: href(periods.week.href),
-      label: "Week",
-      value: periods.week.label,
-      badge: weekAvailabilityBadge(periods.week, calendar),
+      label: t.week.label,
+      value: availablePeriodLabel(locale, t, periods.week),
+      badge: weekAvailabilityBadge(periods.week, calendar, locale, t),
     },
   };
 }
 
-function monthAvailabilityBadge(period: AvailableRankPeriods["month"], calendar: ReturnType<typeof currentUtcPeriods>): string | undefined {
-  if (period.kind !== "month") return `Latest available: ${period.label}`;
-  return period.year === calendar.year && period.month === calendar.month ? undefined : `Latest available: ${period.label}`;
+function monthAvailabilityBadge(period: AvailableRankPeriods["month"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
+  if (period.kind !== "month") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
+  return period.year === calendar.year && period.month === calendar.month ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
 }
 
-function weekAvailabilityBadge(period: AvailableRankPeriods["week"], calendar: ReturnType<typeof currentUtcPeriods>): string | undefined {
-  if (period.kind !== "week") return `Latest available: ${period.label}`;
-  return period.year === calendar.week.year && period.week === calendar.week.week ? undefined : `Latest available: ${period.label}`;
+function weekAvailabilityBadge(period: AvailableRankPeriods["week"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
+  if (period.kind !== "week") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
+  return period.year === calendar.week.year && period.week === calendar.week.week ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
+}
+
+function availablePeriodLabel(locale: Locale, t: Dict, period: AvailableRankPeriods["month"] | AvailableRankPeriods["week"] | AvailableRankPeriods["yearLink"]): string {
+  if (period.kind === "month") return monthYearLabel(locale, period.year, period.month);
+  if (period.kind === "week") return period.period;
+  if (period.kind === "year") return String(period.year);
+  return t.rankings.fullHistory;
+}
+
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
 }
 
 function latestMonthForYear(year: number, periods: AvailableRankPeriods): number | null {

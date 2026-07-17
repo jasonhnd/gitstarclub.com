@@ -10,6 +10,7 @@ import { fetchRepoCurve } from "@/lib/compare/curve-fetch";
 import { MAX_COMPARE, MIN_COMPARE, parseRepos, serializeRepos } from "@/lib/compare/core";
 import { CompareCurve as CompareCurveChart } from "@/app/_explore/CompareCurve";
 import { Star } from "@/app/_explore/Star";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 
 // CompareClient (v0.2 §5) — the interactive shell that turns the static /compare page into a
 // usable overlay tool. URL is the only state: ?repos=owner/name,owner/name. On mount it lazy-
@@ -61,7 +62,7 @@ function logCompareClientError(message: string, error: unknown) {
   }
 }
 
-export function CompareClient({ labels, comparePath = "/compare" }: { labels: CompareClientLabels; comparePath?: string }) {
+export function CompareClient({ labels, comparePath = "/compare", locale = DEFAULT_LOCALE }: { labels: CompareClientLabels; comparePath?: string; locale?: Locale }) {
   const router = useRouter();
   const params = useSearchParams();
   const repos = useMemo(() => parseRepos(params?.get("repos")), [params]);
@@ -286,7 +287,7 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
                       </span>
                     </span>
                     <span className="shrink-0 font-mono text-[0.72rem] tabular-nums">
-                      {fmtStars(h.current_stars)} <Star />
+                      {fmtStars(h.current_stars, locale)} <Star />
                     </span>
                   </button>
                 </li>
@@ -362,7 +363,7 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
                         labels.pickerLoading
                       ) : (
                         <>
-                          {fmtStars(fact.currentStars)} <Star />
+                          {fmtStars(fact.currentStars, locale)} <Star />
                         </>
                       )}
                     </span>
@@ -384,6 +385,7 @@ export function CompareClient({ labels, comparePath = "/compare" }: { labels: Co
               modeLabels={{ absolute: labels.modeAbsolute, align10k: labels.modeAlign10k }}
               legendAria={labels.legendLabel}
               ariaLabels={{ compareModes: labels.compareModesAria, starHistoryOverlay: labels.starHistoryOverlayAria }}
+              locale={locale}
             />
           ) : (
             <p className="rounded-lg border border-dashed border-outline-variant px-4 py-8 text-center font-mono text-[0.85rem] text-on-surface-variant">
