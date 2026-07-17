@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { MAX_COMPARE } from "@/lib/compare/constants";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 import { localizedPath } from "@/lib/i18n/routing";
+import { searchHitForCommit } from "@/lib/search/result-state";
 import { SearchPanel } from "./search-box/SearchPanel";
 import type { SearchBoxLabels } from "./search-box/types";
 import { useCompareSelection } from "./search-box/useCompareSelection";
@@ -25,27 +26,29 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const currentQueryRef = useRef("");
   const restoringFocusRef = useRef(false);
   const panelId = useId();
 
-  const { ensureEngine, hits, loadState, query, resetHits } = useSearchEngine({ limit: LIMIT });
+  const { ensureEngine, hits, loadState, query, resetHits, results } = useSearchEngine({ limit: LIMIT });
   const { clearCompare, compareSet, toggleCompare } = useCompareSelection(MAX_COMPARE);
 
   const resetShell = useCallback(() => {
     setOpen(false);
     setQ("");
+    currentQueryRef.current = "";
     resetHits();
   }, [resetHits]);
 
   const commitHit = useCallback(
     (index: number) => {
-      const hit = hits[index];
+      const hit = searchHitForCommit(results, currentQueryRef.current, index);
       if (!hit) return;
       router.push(localizedPath(locale, `/${hit.full_name}`));
       inputRef.current?.blur();
       resetShell();
     },
-    [hits, locale, resetShell, router],
+    [locale, resetShell, results, router],
   );
 
   const focusResult = useCallback((index: number) => {
@@ -92,6 +95,7 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
 
   const onChange = useCallback(
     (value: string) => {
+      currentQueryRef.current = value;
       setQ(value);
       setOpen(true);
       if (!query(value) && loadState !== "error") void ensureEngine();
@@ -123,7 +127,9 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
         <input
           ref={inputRef}
           type="search"
+          role="combobox"
           aria-haspopup="dialog"
+          aria-expanded={showPanel}
           aria-controls={showPanel ? panelId : undefined}
           aria-label={labels.label}
           enterKeyHint="go"
