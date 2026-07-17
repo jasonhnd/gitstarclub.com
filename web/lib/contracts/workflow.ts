@@ -14,6 +14,25 @@ export const ViewsPointer = z.object({
 }).strict();
 export type ViewsPointer = z.infer<typeof ViewsPointer>;
 
+/** bootstrap/latest.json — atomic commit point for one complete bootstrap generation. */
+const BootstrapGeneration = z.string().regex(/^bootstrap-[A-Za-z0-9][A-Za-z0-9._-]{2,120}$/);
+export const BootstrapPublicationPointer = z
+  .object({
+    schema_ver: NonNegativeInt,
+    generation: BootstrapGeneration,
+    prefix: z.string().regex(/^bootstrap\/generations\/bootstrap-[A-Za-z0-9][A-Za-z0-9._-]{2,120}$/),
+    previous_generation: BootstrapGeneration.nullable(),
+    published_at: TimestampStr,
+    base_manifest_sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    canonical_manifest_sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict()
+  .refine((pointer) => pointer.prefix === `bootstrap/generations/${pointer.generation}`, {
+    path: ["prefix"],
+    message: "prefix must match generation",
+  });
+export type BootstrapPublicationPointer = z.infer<typeof BootstrapPublicationPointer>;
+
 export const WorkflowStatus = z.enum(["running", "published", "failed"]);
 export type WorkflowStatus = z.infer<typeof WorkflowStatus>;
 

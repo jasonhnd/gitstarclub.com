@@ -197,6 +197,14 @@ async function recomputeRank(runId: string) {
 
 ```text
 blob://
+├── bootstrap/
+│   ├── latest.json                          # L4 单文件 commit/rollback pointer
+│   ├── generations/<generation>/            # sealed bootstrap payload；create-only
+│   │   ├── manifests/{base,canonical}.json  # exact object count/bytes/SHA-256
+│   │   ├── views/**                         # 初始 base view generation
+│   │   └── canonical/{star_daily.parquet,v2/**}
+│   └── overlays/<generation>/canonical/v2/** # L1/L3 canonical copy-on-write 状态
+│
 ├── ops/workflows/                           # L3 Workflow checkpoints + 元信息
 │   ├── <run_id>/
 │   │   ├── manifest.json                    # run 元信息:触发时间、step 列表、整体状态
@@ -273,7 +281,7 @@ entity / lookup:    V/* (L3 发布版本)
 hot-snapshot / current_month: 读 live/latest.json → live/generations/<generation>/*
 ```
 
-> base 视图走 `views/latest.json`；live snapshot/rank/heatmap 走独立的 `live/latest.json`，再读 `live/generations/<generation>/<logical-path>`。live pointer 真正 404 时才回退旧 flat layout；pointer 无法访问/解析时复用缓存的已验证 generation，否则 fail closed，绝不猜 flat 路径。`canonical/*`、`ops/*` 仍走 flat。**「live vs base」判据按 `meta.folded_through` 水位收紧**，防重复计数。
+> base 视图(rank/all-time/entity/heatmap/meta/lookup)走 `readView(path, schema, { base:true })`，读取 `views/latest.json` 与 `bootstrap/latest.json` 后选择 `published_at` 更新的完整 generation：managed publish 后读 `views/<version>/<path>`；更新的 bootstrap commit / rollback 后读 sealed `bootstrap/generations/<generation>/views/<path>`。managed pointer 不可达时保持原 legacy flat fallback，不会误跳到旧 bootstrap；两个 pointer 都确认 404 才回退 flat。live snapshot/rank/heatmap 走独立的 `live/latest.json`，再读 `live/generations/<generation>/<logical-path>`；live pointer 真正 404 时才回退旧 flat layout，pointer 无法访问/解析时复用缓存的已验证 generation，否则 fail closed。logical `canonical/*` 在 bootstrap pointer 存在时先读 `bootstrap/overlays/<generation>/canonical/*`，单对象 404 才回退 immutable generation seed；写入一律进入 overlay。这样 recurring mutation 不改 sealed payload，bootstrap rollback 会同时恢复对应 generation 的 canonical overlay。`ops/*` 仍走 flat。**「live vs base」判据按 `meta.folded_through` 水位收紧**(period ≤ `folded_through` 直读 base、未折叠周期叠 live,§7.2),防重复计数。
 
 > ⚠️ **两类指针读取都必须用重校验缓存而非 `no-store`**：base pointer 默认 1h（部分 daily 入口 1d），live pointer 60s。`resolveLiveGeneration()` 另有 single-flight，保证同一冷实例的并发 sibling 读取共享一个 pointer 结果。
 
@@ -417,6 +425,26 @@ generation 内的 `current_month.json` 会在跨月时初始化新月，所以�
 - **可见性 SLA**:`PUBLICATION_VISIBILITY_SLA_MS = 60_000` 限制所有进程内 memo，即使页面为避免降低 ISR 寿命而使用 1h / 24h pointer data-cache TTL。publish / rollback 主动失效共享 tag 与 route；无法接收本次主动信号的既有实例也会在 ≤60s 重新解析 pointer。
 - **mutable read**:`canonical/**`、`ops/**` 和直接 `views/latest.json` 读取固定使用 `cache:'no-store'` + per-read cache-bust（同时绕过 Blob CDN 的短覆盖缓存）；只有 immutable `views/<version>/**` 保留 `force-cache`。
 
+### 7.5 L4 bootstrap publication pointer
+
+`06-upload` 与 `07-export-v2` 不再覆盖 flat production paths。两步共用一个显式 `bootstrap-<id>`，分别 create-only stage `base` / `canonical` phase；每个 phase 的 sealed manifest 固定 object path、精确 bytes 与 SHA-256。同 generation 遇到网络失败时只补缺失对象，已有对象必须 byte-identical，否则 fail closed。
+
+`07` 在 commit 前完成以下顺序：复核两个远端 manifest 及每个对象 → 用 Zod 校验全部本地 views、canonical meta/site-daily 与 `4 × 32` 个必需 shards → 对 `ops/workflows/active.json` 做 ETag CAS 取得与 managed refresh 共用的 fenced lease → 单文件覆盖 `bootstrap/latest.json`。只有最后一步改变读侧；任何更早失败都留下不可见 generation，线上仍完整指向旧状态。
+
+```jsonc
+{
+  "schema_ver": 1,
+  "generation": "bootstrap-20260717T120000Z",
+  "prefix": "bootstrap/generations/bootstrap-20260717T120000Z",
+  "previous_generation": "bootstrap-20260710T120000Z",
+  "published_at": "2026-07-17T12:10:00.000Z",
+  "base_manifest_sha256": "<64 lowercase hex>",
+  "canonical_manifest_sha256": "<64 lowercase hex>"
+}
+```
+
+读侧会先看与 generation 绑定的 copy-on-write canonical overlay，再回退 sealed seed；因此 generation 本体永不改变，而 pointer rollback 会恢复旧 generation 及其 overlay。回滚命令必须显式指定 target：`node backfill/07-export-v2.mjs --rollback <generation> --execute`。它同样先复核对象并取得 CAS lease，最后只切此 pointer；若 pointer 写成功但响应丢失，同 target 重试返回 `already-rolled-back`，不会反向翻转。
+
 ---
 
 ## 8. 校验门(validate)
@@ -496,7 +524,7 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
 | 校验未过(未发布) | 无需回滚:指针从未切,线上一直是上一版;孤儿 `views/<run_id>` 留存排查。 |
 | 部署层问题 | Vercel 保留历史部署,Promote 上一个正常 deployment(见 [OPS.md](./OPS.md) 回滚)。 |
 
-- **保留份数**:`views/<version>` 保留近 N 份(如 4 份),旧版本 / 孤儿由 GC 清(脚本 `web/scripts/blob-del-prefix.ts <prefix>` 按前缀删,已用于清理临时 verify-* 版本)。
+- **保留份数**:`views/<version>` 保留近 N 份(如 4 份),旧版本 / 孤儿由 GC 清。手动工具 `web/scripts/blob-del-prefix.ts <prefix>` 默认只输出完整 inventory 的精确 count/bytes；删除必须额外提供 `--execute --confirm <同一 prefix>`。
 - **顺序**:先走 rollback API → 在 60s SLA 内用 cache-bust 核对 pointer / 页面 → 必要时再 redeploy → 核对 workflow artifacts 与漂移恢复正常。
 
 ### 9.4 版本垃圾回收(GC)
@@ -504,9 +532,9 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
 step 11(`gc`)在 publish 成功后跑,负责回收旧版本前缀:
 
 - **保留策略**:最新 4 版 `views/<version>` + 当前指针 + `prev_version`(回滚目标)。
-- **删除目标**:`list(views/)` 列出所有 `<version>` 前缀,排除保留集,逐前缀 `del`。
+- **删除目标**:`list(views/)` 列出所有 `<version>` 前缀,排除保留集,再通过共享 protection helper 逐前缀 `del`。current、`prev_version` 与 active run 会在 destructive call 前再次硬阻。
 - **best-effort,绝不抛错**:清理失败只记日志,不拖垮已发布的 run。下次 run 会重试清同一批孤儿。
-- **手动清理**:`web/scripts/blob-del-prefix.ts <prefix>` 按前缀删任意残留(临时 verify-* 版本、卡死的孤儿 run 等)。
+- **手动清理**:`web/scripts/blob-del-prefix.ts <prefix>` 仅 preview；确认精确 count/bytes 后，用 `--execute --confirm <prefix>` 删除允许的临时 verify / orphan generation。工具拒绝 canonical、ops、live、pointer、宽容器，以及 current / active / rollback-target 的 view、bootstrap payload 与 overlay。
 
 ---
 

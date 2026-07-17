@@ -1,12 +1,14 @@
 import { BlobPreconditionFailedError, put } from "@vercel/blob";
 import { requireBlobWriteToken } from "@/lib/runtime-config";
+import { resolveCanonicalBlobPath } from "@/lib/data/bootstrap-publication";
 
 // Cron-side Blob writes (daily live tail). Reads stay public-URL fetches (source.ts);
 // only the cron writes, with BLOB_READ_WRITE_TOKEN. Short cache — readers cache-bust with ?v=.
 
 export async function putView(path: string, data: unknown): Promise<void> {
   const token = requireBlobWriteToken();
-  await put(path, JSON.stringify(data), {
+  const physicalPath = await resolveCanonicalBlobPath(path);
+  await put(physicalPath, JSON.stringify(data), {
     access: "public",
     token,
     allowOverwrite: true,
@@ -25,8 +27,9 @@ function isBlobConflict(error: unknown): boolean {
 /** Create an immutable JSON artifact. Returns false when another retry already created it. */
 export async function createView(path: string, data: unknown): Promise<boolean> {
   const token = requireBlobWriteToken();
+  const physicalPath = await resolveCanonicalBlobPath(path);
   try {
-    await put(path, JSON.stringify(data), {
+    await put(physicalPath, JSON.stringify(data), {
       access: "public",
       token,
       allowOverwrite: false,

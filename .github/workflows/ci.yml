@@ -41,6 +41,9 @@ jobs:
         working-directory: pipeline
       - run: bun run audit:deps
         working-directory: pipeline
+      - name: Run pipeline publication tests
+        working-directory: pipeline
+        run: bun run test
       - name: Validate documentation contracts
         working-directory: .
         run: bun run lint:docs

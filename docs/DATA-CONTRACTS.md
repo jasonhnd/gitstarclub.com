@@ -27,7 +27,7 @@ source_of_truth_for:
 | `REQ-PULSE-001` | `live/latest.json`, `live/generations/{run_id}/**`, `ops/sync-runs.json` | Daily movers and pulse pages consume one complete, freshness-labelled live generation independent of full recompute. |
 | `REQ-RANKING-001` | `rank/{window}/{period}/{dim}/{metric}.json`, `rank/all-time/{dim}/stock.json`, derived `growth` / `new` rank files | Rank item shape, metric semantics, id-vs-login exclusivity, ordering, continuity, and top-N rules are schema-visible. |
 | `REQ-I18N-001` | All data views; no translated repo/org data fields | Data contracts remain language-neutral so frontend locale routes can localize chrome/meta without mutating source facts. |
-| `REQ-DATAOPS-001` | `views/latest.json`, `ops/workflows/{run_id}/manifest.json`, `ops/workflows/{run_id}/validation.json`, `ops/workflows/latest-success.json` | Published versions, validation gates, checkpoints, and rollback pointers are explicit artifacts. |
+| `REQ-DATAOPS-001` | `bootstrap/latest.json`, bootstrap phase manifests, `views/latest.json`, `ops/workflows/{run_id}/manifest.json`, `ops/workflows/{run_id}/validation.json`, `ops/workflows/latest-success.json` | Bootstrap and recurring published versions, validation gates, checkpoints, and rollback pointers are explicit artifacts. |
 | `REQ-PERF-001` | Budgeted JSON service views, lookup-only rank joins, `/repo-curve` projection | Frontend reads small, precomputed views instead of loading engines or full canonical shards on request paths. |
 | `REQ-SEARCH-001` | `search/index.json` | Search has a versioned, compact client index with one document per tracked repo. |
 | `REQ-COMPARE-001` | `/repo-curve?id=<id>` projection from `entity/repo/{id}.json` | Compare reuses entity curves and returns only the slim curve payload needed by the client. |
@@ -170,6 +170,9 @@ ops/sync-runs.json                             # cron 运行记录（cron 写，
 meta.json
 canonical/v2/whitelist/latest.json             # { run_id, ids[] }：已发布 baseline 的兼容 pointer（publish / rollback 写；whitelist step 不推进）
 # ── Vercel-only 发布层（见 §2.11–2.13）──
+bootstrap/latest.json                          # 冷启动 generation 的 atomic commit / rollback pointer
+bootstrap/generations/{generation}/**          # sealed base + canonical payload 与 phase manifests
+bootstrap/overlays/{generation}/canonical/**   # recurring canonical copy-on-write 状态
 views/latest.json                              # 发布指针（读侧据此解析版本前缀；version = run_id）
 views/{run_id}/…                               # 一个 run 的完整视图版本（version=run_id，无独立 staging/published）
 ops/workflows/{run_id}/manifest.json           # Workflow run 元信息
@@ -479,6 +482,28 @@ base + 当前月重算；无法重算的 `on_this_day` 只保留与本 UTC 月�
 - 回滚必须走 fenced rollback API / `rollbackVersion()`，不能只手改 Blob；它会同步 recovery、published whitelist pointer 和 cache invalidation。
 - publish 前先写 immutable `ops/workflows/<run_id>/publish-intent.json`；其中固定首次观察到的 `prev_version`，因此局部成功后的重试不会生成自指 rollback。
 
+### 2.11a `bootstrap/latest.json` — 冷启动 generation 指针
+
+一次性 `pipeline/backfill` 不直接覆盖任何线上 views / canonical 对象。`06-upload` 与 `07-export-v2` 先 create-only 写入 `bootstrap/generations/<generation>/**`；两个 phase manifest 分别记录该 phase 每个对象的 logical path、byte count 与 SHA-256。只有远端逐对象复核、本地 Zod 校验和共享 Workflow lease 全部通过，才单文件覆盖此 pointer。
+
+```json
+{
+  "schema_ver": 1,
+  "generation": "bootstrap-20260717T120000Z",
+  "prefix": "bootstrap/generations/bootstrap-20260717T120000Z",
+  "previous_generation": "bootstrap-20260710T120000Z",
+  "published_at": "2026-07-17T12:10:00.000Z",
+  "base_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "canonical_manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}
+```
+
+- `generation` 必须匹配 `^bootstrap-[A-Za-z0-9][A-Za-z0-9._-]{2,120}$`；`prefix` 必须严格等于 `bootstrap/generations/<generation>`。
+- 两个 manifest digest 都是 64 位 lowercase hex；pointer 使用 strict Zod object，未知字段拒绝。
+- base 读比较 `views/latest.published_at` 与 `bootstrap/latest.published_at`，使用更新的完整 generation；因此新 bootstrap commit / rollback 能一次切 base + canonical，之后更新的 managed publish 会重新接管 base。managed pointer 不可达时不会跳到可能更旧的 bootstrap；两个 pointer 都确认 404 才使用 legacy flat。
+- canonical 读先查 `bootstrap/overlays/<generation>/canonical/**`，对象不存在时回退 sealed generation；canonical writer 只写 overlay，不覆盖 generation。`previous_generation` 因而同时恢复旧 seed 与其 overlay。
+- 同 generation 的 resume 必须 byte-identical；validation / upload / active lease 失败时 pointer 不变。rollback 也先复核 sealed manifests，再只覆盖此 pointer。
+
 ### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json` — Workflow checkpoint
 
 业务可读的 run 进度账本（Workflow SDK 自身另有持久化）。
@@ -606,7 +631,7 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
 
 ## 3. 版本 / 缓存 / 原子性
 
-- **原子切换**：base 发布写 `views/<run_id>/...` → validate → 更新 `views/latest.json`（§2.11）；live 发布写 `live/generations/<run_id>/...` → manifest → fenced CAS 更新 `live/latest.json`（§2.9a）。两者读侧都只消费指针指向的不可变完整版本。
+- **原子切换**：冷启动写 sealed `bootstrap/generations/<generation>/**` → validate → 更新 `bootstrap/latest.json`（§2.11a）；recurring base 发布写 `views/<run_id>/...` → validate → 更新 `views/latest.json`（§2.11）；live 发布写 `live/generations/<run_id>/...` → manifest → fenced CAS 更新 `live/latest.json`（§2.9a）。三条路径都只有一个 logical commit point，读侧只消费指针指向的不可变完整版本。
 - `meta.schema_ver`：破坏性 schema 改动 bump，build 启动校验版本匹配，不符 fail-fast。
 - live 指针 60s 短缓存可能读到上一完整 generation，但不会读到混合 generation；pointer 非 404 错误时读侧使用已缓存的旧 generation 或 fail closed，只有真正 404 才允许迁移期 flat fallback。
 
