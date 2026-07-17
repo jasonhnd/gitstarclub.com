@@ -5,7 +5,7 @@ import { fetchStarCounts, type RepoRef } from "@/lib/github";
 import { submitLiveOverlayIndexNow } from "@/lib/indexnow";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
 import { PendingPeriod } from "@/lib/contracts";
-import type { Heatmap, RankItem, RankList } from "@/lib/contracts";
+import type { CurrentMonth, Heatmap, RankItem, RankList } from "@/lib/contracts";
 
 const TOP_N = 20;
 
@@ -27,11 +27,81 @@ export type LiveRefreshResult = {
   current_month_flow_1: TopItem | null;
 };
 
-export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promise<LiveRefreshResult> {
+export interface LiveRefreshOptions {
+  now?: Date;
+}
+
+type CurrentStarLookup = Record<string, { current_stars: number }>;
+
+export function reconcileCurrentMonth(
+  lookup: CurrentStarLookup,
+  existing: CurrentMonth | null,
+  fresh: ReadonlyMap<number, number>,
+  today: string,
+): { currentMonth: CurrentMonth; dayTotal: number } {
+  const month = today.slice(0, 7);
+  const carryMonth = existing?.month === month ? existing : null;
+
+  // Keep every prior series, including today's value for repos absent from a
+  // partial GraphQL response. Only fetched repos are reconciled below.
+  const perRepo: CurrentMonth["per_repo"] = {};
+  if (carryMonth) {
+    for (const [id, series] of Object.entries(carryMonth.per_repo)) perRepo[id] = [...series];
+  }
+
+  const mergedStars = new Map<number, number>(
+    Object.entries(lookup).map(([id, entry]) => [Number(id), entry.current_stars]),
+  );
+  if (existing) {
+    for (const [id, stars] of Object.entries(existing.current_stars)) mergedStars.set(Number(id), stars);
+  }
+
+  for (const [id, latestStars] of fresh) {
+    const idKey = String(id);
+    const previousObservedStars = existing?.current_stars[idKey] ?? lookup[idKey]?.current_stars;
+    if (previousObservedStars == null) continue;
+
+    // On a same-day retry, current_stars is already the latest observation.
+    // Subtract the previously persisted day delta to recover the stable UTC
+    // start-of-day baseline, then recompute the full day delta from it.
+    const previousTodayDelta =
+      carryMonth?.updated === today
+        ? (carryMonth.per_repo[idKey]?.find(([date]) => date === today)?.[1] ?? 0)
+        : 0;
+    const startOfDayStars = previousObservedStars - previousTodayDelta;
+    const fullDayDelta = latestStars - startOfDayStars;
+    const withoutToday = (perRepo[idKey] ?? []).filter(([date]) => date !== today);
+    if (fullDayDelta === 0) {
+      if (withoutToday.length === 0) delete perRepo[idKey];
+      else perRepo[idKey] = withoutToday;
+    } else {
+      perRepo[idKey] = upsert(withoutToday, today, fullDayDelta);
+    }
+    mergedStars.set(id, latestStars);
+  }
+
+  let dayTotal = 0;
+  for (const series of Object.values(perRepo)) {
+    dayTotal += series.find(([date]) => date === today)?.[1] ?? 0;
+  }
+
+  return {
+    currentMonth: {
+      month,
+      updated: today,
+      daily_totals: upsert(carryMonth?.daily_totals ?? [], today, dayTotal),
+      per_repo: perRepo,
+      current_stars: Object.fromEntries(mergedStars),
+    },
+    dayTotal,
+  };
+}
+
+export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: LiveRefreshOptions = {}): Promise<LiveRefreshResult> {
   const lookup = await getReposLookup();
   if (!lookup) throw new Error("lookup unavailable");
 
-  const now = new Date();
+  const now = opts.now ?? new Date();
   const today = now.toISOString().slice(0, 10);
   const month = today.slice(0, 7);
   const periods = currentUtcPeriods(now);
@@ -52,34 +122,16 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promi
   }));
   const canReuseToday = !dry && job === "weekly" && existingCM?.month === month && existingCM.updated === today;
   const fresh = canReuseToday ? new Map<number, number>() : await fetchStarCounts(dry ? refs.slice(0, 50) : refs);
-  const recalculatesToday = fresh.size > 0;
+  if (!dry && !canReuseToday && refs.length > 0 && fresh.size === 0) {
+    throw new Error("GitHub returned no star counts; refusing to replace live state");
+  }
 
   // Month rollover: the closing month's daily per_repo must be frozen to pending BEFORE
   // current_month.json is overwritten, else the L3 fold loses it (VERCEL-DATA-OPERATIONS §7.2).
   const rolledOver = !!existingCM && existingCM.month !== month;
-  const carryMonth = existingCM?.month === month ? existingCM : undefined;
-  const prevStars = (id: number) => existingCM?.current_stars?.[String(id)] ?? lookup[String(id)].current_stars;
-  const mergedStars = new Map<number, number>(refs.map((ref) => [ref.id, lookup[String(ref.id)].current_stars]));
-  if (existingCM) for (const [id, stars] of Object.entries(existingCM.current_stars)) mergedStars.set(Number(id), stars);
-  for (const [id, stars] of fresh) mergedStars.set(id, stars);
-
-  const perRepo: Record<string, [string, number][]> = {};
-  if (carryMonth) {
-    for (const [id, series] of Object.entries(carryMonth.per_repo)) {
-      perRepo[id] = recalculatesToday ? series.filter(([date]) => date !== today) : series;
-    }
-  }
-
-  let dayTotal = carryMonth?.daily_totals.find(([date]) => date === today)?.[1] ?? 0;
-  if (recalculatesToday) {
-    dayTotal = 0;
-    for (const [id, stars] of fresh) {
-      const delta = stars - prevStars(id);
-      dayTotal += delta;
-      if (delta !== 0) perRepo[String(id)] = upsert(perRepo[String(id)] ?? [], today, delta);
-    }
-  }
-  const dailyTotals = recalculatesToday ? upsert(carryMonth?.daily_totals ?? [], today, dayTotal) : carryMonth?.daily_totals ?? [];
+  const { currentMonth, dayTotal } = reconcileCurrentMonth(lookup, existingCM, fresh, today);
+  const { per_repo: perRepo, daily_totals: dailyTotals } = currentMonth;
+  const mergedStars = new Map<number, number>(Object.entries(currentMonth.current_stars).map(([id, stars]) => [Number(id), stars]));
   const monthDeltas = repoDeltas(perRepo);
   const weekDeltas = repoDeltas(perRepo, (date) => {
     const week = isoWeek(new Date(`${date}T00:00:00.000Z`));
@@ -101,13 +153,6 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean): Promi
     stock: topByValue([...mergedStars].map(([id, value]) => ({ id, value }))),
   };
 
-  const currentMonth = {
-    month,
-    updated: today,
-    daily_totals: dailyTotals,
-    per_repo: perRepo,
-    current_stars: Object.fromEntries(mergedStars),
-  };
   const hotSnapshot = {
     generated_at: now.toISOString(),
     home: {
@@ -262,13 +307,15 @@ function mergeMonthHeatmap(base: Heatmap | null, period: string, dailyTotals: [s
 }
 
 function revalidateLivePaths(periods: ReturnType<typeof currentUtcPeriods>): void {
+  const [calendarYear, calendarMonth] = periods.monthPeriod.split("-");
+  const [weekYear, weekNumber] = periods.weekPeriod.split("-W");
   const suffixes = [
     "",
     "/pulse",
     "/rankings",
-    `/rankings/${periods.year}`,
-    `/rankings/${periods.year}/${periods.month}`,
-    `/rankings/${periods.week.year}/W${String(periods.week.week).padStart(2, "0")}`,
+    `/rankings/${calendarYear}`,
+    `/rankings/${calendarYear}/${Number(calendarMonth)}`,
+    `/rankings/${weekYear}/W${weekNumber}`,
   ];
   for (const suffix of suffixes) revalidatePath(suffix || "/");
 }

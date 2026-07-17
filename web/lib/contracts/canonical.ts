@@ -23,6 +23,10 @@ export const CanonicalMeta = z.object({
     month: MonthPeriod,
     week: WeekPeriod,
   }).strict(),
+  // Active bootstrap and fold writers always emit this watermark. Keep it
+  // optional while legacy canonical generations without the field remain
+  // readable during rollout.
+  generated_at: TimestampStr.optional(),
 }).strict();
 export type CanonicalMeta = z.infer<typeof CanonicalMeta>;
 

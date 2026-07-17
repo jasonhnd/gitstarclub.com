@@ -20,6 +20,20 @@ export function nextMonth(m: string): string {
   return mo >= 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
 }
 
+export function foldedCanonicalMeta(
+  meta: CanonicalMeta,
+  foldedThroughMonth: string,
+  foldedThroughWeek: string,
+  generatedAt: string,
+): CanonicalMeta {
+  return CanonicalMeta.parse({
+    seam_date: meta.seam_date,
+    schema_ver: meta.schema_ver,
+    folded_through: { month: foldedThroughMonth, week: foldedThroughWeek },
+    generated_at: generatedAt,
+  });
+}
+
 export async function foldCanonical(runId: string): Promise<{ folded: string[]; foldedWeeks: string[] }> {
   "use step";
   const meta = await readView("canonical/v2/meta.json", CanonicalMeta, { bust: runId });
@@ -44,12 +58,10 @@ export async function foldCanonical(runId: string): Promise<{ folded: string[]; 
 
   // Write meta ONCE with both advances (month from the loop, week from foldWeeks).
   if (folded.length || foldedWeeks.length) {
-    await putView("canonical/v2/meta.json", {
-      seam_date: meta.seam_date,
-      schema_ver: meta.schema_ver,
-      folded_through: { month: foldedThroughMonth, week: foldedThroughWeek },
-      generated_at: new Date().toISOString(),
-    });
+    await putView(
+      "canonical/v2/meta.json",
+      foldedCanonicalMeta(meta, foldedThroughMonth, foldedThroughWeek, new Date().toISOString()),
+    );
   }
   return { folded, foldedWeeks };
 }

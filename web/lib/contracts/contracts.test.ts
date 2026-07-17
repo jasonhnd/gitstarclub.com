@@ -1,4 +1,5 @@
 import { test, expect, describe } from "bun:test";
+import { buildCanonicalMeta } from "../../../pipeline/lib/canonical-meta.mjs";
 import {
   // common
   Meta,
@@ -206,6 +207,43 @@ describe("CanonicalMeta", () => {
   test("parses seam_date + schema_ver + folded_through{month,week}", () => {
     const meta = { seam_date: "2024-01-01", schema_ver: 2, folded_through: { month: "2024-05", week: "2024-W20" } };
     expect(CanonicalMeta.parse(meta)).toEqual(meta);
+  });
+
+  test("parses the current production shape with generated_at", () => {
+    const meta = {
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      folded_through: { month: "2026-05", week: "2026-W22" },
+      generated_at: "2026-06-02T14:32:57.214Z",
+    };
+    expect(CanonicalMeta.parse(meta)).toEqual(meta);
+  });
+
+  test("bootstrap writer output round-trips through the authoritative reader", () => {
+    const meta = buildCanonicalMeta({
+      seamDate: "2026-05-30",
+      schemaVer: 1,
+      foldedThroughMonth: "2026-05",
+      foldedThroughWeek: "2026-W22",
+      generatedAt: "2026-06-02T14:32:57.214Z",
+    });
+    expect(CanonicalMeta.parse(meta)).toEqual(meta);
+  });
+
+  test("keeps legacy metadata without generated_at readable during rollout", () => {
+    const legacy = { seam_date: "2024-01-01", schema_ver: 1, folded_through: { month: "2024-05", week: "2024-W20" } };
+    expect(CanonicalMeta.parse(legacy)).toEqual(legacy);
+  });
+
+  test("rejects an invalid generated_at timestamp", () => {
+    expect(
+      rejects(CanonicalMeta, {
+        seam_date: "2024-01-01",
+        schema_ver: 1,
+        folded_through: { month: "2024-05", week: "2024-W20" },
+        generated_at: "not-a-timestamp",
+      }),
+    ).toBe(true);
   });
 
   test("rejects missing folded_through (required here, unlike Meta)", () => {

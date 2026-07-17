@@ -132,12 +132,12 @@ work continues in workflow steps.
 | Item | Contract |
 |---|---|
 | Auth | Required bearer `CRON_SECRET` |
-| Query | None |
+| Query | Optional `idempotency_key` (or legacy camel-case alias) and `trigger`; any `dry` parameter is rejected with `400` because managed refresh has no dry-run mode |
 | Body | None |
 | Success | `200 {"ok":true,"runId":"refresh-<timestamp>"}` |
-| Failure | `401 Unauthorized`; `500 {"ok":false,"runId":"refresh-...","error":"Internal server error"}` |
+| Failure | `400` for `dry` or unsupported query parameters; `401 Unauthorized`; `409` when another idempotency key owns the lease; `500 {"ok":false,"runId":"refresh-...","error":"Internal server error"}` |
 | Cache | `dynamic = "force-dynamic"`; no explicit `Cache-Control`; callers should not cache |
-| Side effects | Calls `start(refreshWorkflow, [runId])`; if enqueue fails, sends an alert and logs the failure |
+| Side effects | First parses `canonical/v2/meta.json` read-only; only then acquires the workflow lease and calls `start(refreshWorkflow, [runId])`. If enqueue fails, sends an alert and logs the failure |
 
 Operational example:
 
@@ -145,6 +145,11 @@ Operational example:
 curl -H "Authorization: Bearer $CRON_SECRET" \
   "https://gitstarclub.com/api/workflows/refresh/start"
 ```
+
+This endpoint is always mutating. It has no managed-workflow dry-run mode and
+rejects `dry=1` (as well as `dry=0` or any other `dry` value) before acquiring a
+lease or writing health state. Only `/api/cron/daily` and `/api/cron/weekly`
+support `dry=1`.
 
 ## Public app endpoints
 

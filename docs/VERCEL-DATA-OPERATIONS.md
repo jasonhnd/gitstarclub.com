@@ -60,7 +60,7 @@ gitstarclub 的运行时是**纯静态**:用户请求只读预算好的 JSON / B
 |---|---|---|---|
 | **L1 每日 live** | poll current_stars → 写 `current_month.json` + `live/*` 当前周期覆盖层 + `hot-snapshot.json` → revalidate 热集 | **Vercel Function**(单函数,JSON-only,秒级) | Cron `0 3 * * *` |
 | **L2 每周 live** | 复用 live refresh,覆盖写当前周 / 当前月 rank + 当月 heatmap + hot snapshot + `ops/sync-runs.json` | **Vercel Function**(单函数,JSON-only) | Cron `0 4 * * 0` |
-| **L3 Managed refresh** | 白名单 diff → 元数据 shard → 改名检测 → 月+周折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布(切指针)→ 版本 GC(step 详见 §4) | **Vercel Workflow**(多 step,Blob checkpoint) | 每周 cron + 手动(调度见 [OPS.md](./OPS.md) §Cron) |
+| **L3 Managed refresh** | canonical meta preflight → 白名单 diff → 元数据 shard → 改名检测 → 月+周折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布(切指针)→ 版本 GC(step 详见 §4) | **Vercel Workflow**(多 step,Blob checkpoint) | 每周 cron + 手动(调度见 [OPS.md](./OPS.md) §Cron) |
 | **L4 Bootstrap archive** | 11 年事件级历史首次回填(Search → BigQuery → DuckDB → JSON → Blob) | **本机 / 全 Node**(`pipeline/backfill`) | 手动,一次性 |
 
 > 上表「触发」列只标各层的调度归属;**三条 cron 的权威调度(`0 3` / `0 4` / `0 6` 及 `vercel.json` 声明)见 [OPS.md](./OPS.md) §Cron**。
@@ -80,8 +80,9 @@ gitstarclub 的运行时是**纯静态**:用户请求只读预算好的 JSON / B
 
 ```text
 Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
-  └─ route 只做一件事:鉴权 + 启动 workflow,立即返回 run_id(不阻塞)
+  └─ route:鉴权 + 只读 canonical meta preflight + 取得 lease + 启动 workflow,立即返回 run_id(不阻塞)
        └─ Vercel Workflow('use workflow'):编排下列 steps,可 pause/resume、跨部署存活
+            ├─ step 0  canonical meta preflight             ('use step'; read-only)
             ├─ step 1  refresh whitelist                 ('use step')
             ├─ step 2  rename detection(先于 metadata,读旧 full_name)
             ├─ step 3  metadata shards(按 bucket 循环,含 newcomer-aware `tracked_since`)
@@ -98,10 +99,10 @@ Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
 ```
 
 > 上图 step 顺序与实现源码 `web/lib/workflows/refresh.ts` L27–60 一致:
-> `whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`。
+> `preflight → whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`。
 > Workflow 编排到 `gc` 即结束,**不主动调 `revalidatePath`**——读侧通过 `views/latest.json` 指针 + 60s TTL 自然拾取(§7.4),按需 ISR 接管长尾;若要把传播窗口从 60s 压到秒级,由 live-overlay cron handler 单独负责 revalidate(职责分离,不在 L3 workflow 内)。
 
-**为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 仅「鉴权 + 启动 workflow + 返回」,把真正的长任务交给 Workflow runtime 异步编排。
+**为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 只做「鉴权 + canonical meta 只读 preflight + lease + 启动 workflow + 返回」,把真正的长任务交给 Workflow runtime 异步编排。preflight 在 lease 和 enqueue 之前先挡住生产形状不兼容；workflow 的 step 0 再解析一次，防止 enqueue 到执行之间对象变化。
 
 ### 3.2 Workflow SDK 落地形态
 
@@ -120,6 +121,7 @@ Vercel Workflow([Workflows Concepts](https://vercel.com/docs/workflows/concepts)
 export async function refreshWorkflow(runId: string) {
   'use workflow';
 
+  await preflightCanonical(runId);                       // step 0(read-only schema gate)
   await refreshWhitelist(runId);                       // step 1
   await detectRenames(runId);                          // step 2(先于 metadata,读旧 full_name)
   for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
@@ -167,6 +169,7 @@ async function recomputeRank(runId: string) {
 
 | # | step | 读 | 写 | 说明 |
 |---|---|---|---|---|
+| 0 | canonical meta preflight | `canonical/v2/meta.json` | 无 | 在任何 whitelist/canonical mutation 前用权威 `CanonicalMeta` 解析已部署对象；缺失或 schema 不兼容立即终止。active writer 总是写 `generated_at`，reader 在 rollout 期间兼容缺少该字段的 legacy generation。 |
 | 1 | refresh whitelist | GitHub Search `stars:>=10000` | `canonical/v2/whitelist/<run_id>.json` + diff | 自适应分桶绕过 Search 1000 上限(逻辑同 `01-whitelist`,但跑在 Vercel)。算出**新晋**(新 id)与**跌出**(旧 id 不再 ≥10k)。 |
 | 2 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo:记录旧→新映射,其增量由后续 build-aliases step 并集成 `lookup/aliases.json`,供 repo 页 308 重定向(见 [FRONTEND.md](./FRONTEND.md))。**先于 metadata 跑**——metadata 会覆盖 `full_name`,改名检测必须在覆盖前读到旧值。canonical 按 `repo_id` 归并,改名不丢历史。 |
 | 3 | metadata shards(**按 bucket,1 step/桶**,内含 newcomer 追踪) | bootstrap `lookup/repos.json`(owner_type/language)+ run whitelist(node_id、新鲜 current_stars、rename-aware full_name) | `canonical/v2/repos/<bucket>.json`(含 `tracked_since` + GitHub `languages`) | **存量 repo 从 bootstrap seed,不重拉 GitHub**;GitHub GraphQL `nodes()` 只补"既不在 prev shard 也不在 lookup"的真新晋(~12)，以及缺少 `languages` breakdown 的旧 shard repo（一次性补齐后不再每周全量重拉）。**newcomer 追踪不是独立 step**——发现新 id 时同步写 `tracked_since`(默认方案 A,见 §10)。⚠️ **不可每次全量重拉所有 repo**——会撞 GitHub 二级限流(已实测)。每桶一个短 step,幂等。milestones/description/topics 留待 entity 富化。 |
@@ -181,7 +184,7 @@ async function recomputeRank(runId: string) {
 | 10 | publish | `views/<run_id>/**` | `views/latest.json` 指针 + `ops/workflows/latest-success.json` | 原子切指针(version=run_id):读侧从此读新版本(见 §7)。 |
 | 11 | gc | `views/latest.json` + `list(views/)` | `del views/<旧 version>/**` | **版本 GC**(`gc.ts`,发布后跑):保留最新 4 版 + 当前 / `prev_version` 指针(回滚目标),删更旧的孤儿版本。**best-effort、绝不抛错**——清理失败不拖垮已发布的 run。 |
 
-> 上表是**逻辑职责**枚举,顺序与 `web/lib/workflows/refresh.ts` L27–60 完全一致。**细粒度 = 12 个真实 step-function**:`whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`(无 `revalidate`、无独立 `newcomer` step——workflow 不调 `revalidatePath`,newcomer 追踪折进 metadata 的 `tracked_since`)。运行 manifest 把这 12 步归并为 9 个 checkpoint step(`whitelist / rename / metadata / fold / recompute / buildAliases / validate / publish / gc`),见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12。
+> 上表是**逻辑职责**枚举,顺序与 `web/lib/workflows/refresh.ts` 完全一致。**细粒度 = 13 个真实 step-function**:`preflight → whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`(无 `revalidate`、无独立 `newcomer` step——workflow 不调 `revalidatePath`,newcomer 追踪折进 metadata 的 `tracked_since`)。运行 manifest 把这些职责归并为 10 个 checkpoint step(`preflight / whitelist / rename / metadata / fold / recompute / buildAliases / validate / publish / gc`),见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12。
 >
 > ⚠️ **workflow 不调 `revalidatePath`**:发布后读侧通过 `views/latest.json` 指针 + 60s TTL 自然拾取新版本(§7.4);若要把传播窗口从 60s 压到秒级,由 live-overlay cron handler 负责 revalidate,不在 L3 workflow 路径内(职责分离 / 可独立 GC)。
 

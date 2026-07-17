@@ -285,13 +285,13 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 
 **手动触发 runbook**：
 
-1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → 拿 `run_id`（route 仅鉴权 + `start(refreshWorkflow)` + 返回，不阻塞）。
+1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 先只读解析 `canonical/v2/meta.json`，通过后才取得 lease 并 `start(refreshWorkflow)`，随即返回 `run_id`（不阻塞）。schema preflight 失败时不会 enqueue 或取得 lease。
 2. 在 **Vercel Dashboard → Observability → Workflows** 看 run；或 `bun x workflow inspect runs`。
 3. 看 `ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`views/<run_id>/lookup/aliases.json`（buildAliases，recompute 之后 / validate 之前）、`latest-success.json`。
 4. 校验白名单数、repos shard 分桶齐全、diff / rename 合理。
-5. cron 已接入（`/api/workflows/refresh/start`，`0 6 * * 0`，独立于 daily / weekly 排程）；手动验证某次部署时可先用 `?dry=1` 或单次触发再观察。
+5. cron 已接入（`/api/workflows/refresh/start`，`0 6 * * 0`，独立于 daily / weekly 排程）。该 managed Workflow **没有 dry-run 模式**；任何 `dry` query 都会在取得 lease 或写入状态前返回 `400`。需要无写入探测时只能使用 `/api/cron/daily?dry=1` 或 `/api/cron/weekly?dry=1`；手动触发 managed refresh 必须按上述步骤观察完整真实运行。
 
-> 全链路 step：`fold`（月 + 周）、`recompute`、`buildAliases`（→ `lookup/aliases.json`）、`validate` 发布闸门、`publish` 切 `views/latest.json` 指针 / 回滚、`gc` 版本回收（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
+> 全链路 step：`preflight`（再次解析 canonical meta）→ `fold`（月 + 周）→ `recompute` → `buildAliases`（→ `lookup/aliases.json`）→ `validate` 发布闸门 → `publish` 切 `views/latest.json` 指针 / 回滚 → `gc` 版本回收（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
 
 **鉴权 / 凭证**：`CRON_SECRET`（触发）、`GITHUB_TOKEN`（Search / GraphQL）、`BLOB_READ_WRITE_TOKEN`（读写 canonical / staging / published）。**Workflow 全程 0 GCP**（GCP 仅 bootstrap）。
 
