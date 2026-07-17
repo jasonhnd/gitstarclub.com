@@ -271,6 +271,7 @@ describe("startRefreshWorkflowRoute", () => {
         {
           now: new Date("2026-07-05T06:00:00.000Z"),
           leaseStore: store,
+          preflight: passPreflight,
           recordHealth: async () => {},
           sendAlert: async (summary) => {
             alerts.push(summary.error ?? "");
