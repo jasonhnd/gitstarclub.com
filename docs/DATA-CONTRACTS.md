@@ -420,7 +420,7 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 }
 ```
 
-> `steps[]` 为 **manifest 分组**（9 项，对应进度账本，含真实 `buildAliases` 阶段）；**细粒度 12 步**（whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。Workflow SDK 自身持久化 step 结果；`steps/<step>.json` 是保留的业务可读 checkpoint 形状，当前 web/lib 实现只写 manifest / validation / error / latest-success 等 run 级账本。
+> `steps[]` 为 **manifest 分组**（9 项，对应进度账本，含真实 `buildAliases` 阶段）；**细粒度 12 步**（whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。Workflow SDK 自身持久化 step 结果；`validate` 另写 `canonical-manifest.json`（全部必需 canonical shard 的路径、bucket、记录数、SHA-256 与完整性结论）及 `validation.json`。
 
 `ops/workflows/active.json` 是 refresh workflow 的互斥 lease。start 路由和 workflow body 都通过 Blob ETag 条件写更新该文件；同一周 cron idempotency key 的重复投递会 attach 到已有 `run_id`，不同 key 的并发触发会返回 409 并写 health。
 
@@ -449,8 +449,8 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 
 ### 2.13 `ops/workflows/{run_id}/validation.json` — 校验报告
 
-step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity 的结果（[TESTING.md](./TESTING.md) §1.2/§1.3）；`ok=false` 则不切指针。
-**`checked` 是抽样读的视图数（非全量逐文件）**：闸门只抽查关键视图（`meta` / `rank/all-time` / `lookup/repos` / `search/index` / category registry/assignments/lookup / category all-time rank sample / 抽样 top-repo entity / 去年 heatmap）作 schema + 不变量断言，`checked` 即这些抽样次数。
+step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity，并对全部必需 canonical bucket 跑 schema / ID / anchoring 完整性；`ok=false` 则不切指针。
+**`checked` = 关键派生视图抽样读次数 + 全部必需 canonical shard 数**。派生视图仍抽查 `meta` / `rank/all-time` / lookup / search / categories / top-repo entity / 去年 heatmap；canonical 的 `repos`、`repo-monthly`、`repo-weekly`、`repo-recent-daily` 则逐 bucket 全量读取，并另写 `canonical-manifest.json`。
 
 ```json
 {

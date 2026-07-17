@@ -39,6 +39,8 @@ jobs:
       - run: bun run typecheck
       - run: bun run typecheck:tests
       - run: bun run typecheck:scripts
+      - name: Validate generated-view contract fixture
+        run: bun run validate:views -- scripts/fixtures/views
       - name: Run tests
         run: |
           set -o pipefail
