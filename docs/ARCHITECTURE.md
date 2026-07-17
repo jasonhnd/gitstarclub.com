@@ -124,8 +124,8 @@ Weekly rankings cross calendar months. Daily is the smallest grain that exactly 
 
 ### Honest data caveats (documented on the About page)
 
-- Historical curves are gross adds (GH Archive WatchEvents); live deltas are net (GraphQL). The seam introduces a small inconsistency. Current totals always reflect GitHub's authoritative count.
-- Survivorship bias: only repos that currently have ≥10,000 stars are backfilled. Projects that were once popular but dropped below the threshold are absent.
+- Historical curves are gross adds (GH Archive WatchEvents); live deltas are net (GraphQL). The seam introduces a small inconsistency. Current totals always reflect GitHub GraphQL's authoritative count.
+- Bootstrap history still has survivorship bias toward the initial ≥10,000-star set. After a repository is first tracked, later drops are retained as `active:false` historical entities rather than deleted.
 - Cumulative gross does not necessarily equal current total (stars get revoked); the current total is the authoritative anchor.
 - Repo renames keep their identity via `repo.id`; URLs use the current `full_name` with 308 redirects from the old.
 
@@ -135,7 +135,7 @@ GitHub's "watch" semantics changed in late 2012. By 2015 the WatchEvent stream i
 
 ### Whitelist
 
-The tracked set is repos with current stars ≥ 10,000 (a few thousand entries; the live count drifts slowly and lives in [REQUIREMENTS.md](./REQUIREMENTS.md) §2). New entrants are picked up by the workflow's whitelist diff and metadata seeding without manual intervention.
+The active tracked set is the open-ended GitHub Search discovery result for `stars:>=10000`; Search membership is snapshotted with an authoritative `count`, but GraphQL supplies every displayed/ranked current total. New entrants are picked up by the workflow diff. Drops become retained historical rows and stop polling; re-entry reactivates the same id while preserving its first `tracked_since`.
 
 ## Data model
 
@@ -144,8 +144,8 @@ There is no database. The logical model is a fact table over star events; the ph
 ### Logical model
 
 - **Fact: `star_daily(repo_id, date, delta)`** — per-repo, per-day star delta. Gross before the seam, net after. ~8M rows. In the bootstrap form this is a Parquet file; in the production form it is folded into monthly and weekly JSON shards.
-- **Dimension: `repos`** — owner, owner type, language, milestones, topics, etc. Primary key is the immutable integer `id` (rename-safe). `current_stars` is the authoritative GraphQL value.
-- **`meta`** — global metadata: `seam_date` (gross→net boundary), `schema_ver`, `folded_through` watermark, etc.
+- **Dimension: `repos`** — owner, owner type, language, milestones, topics, `active`, `tracked_since`, etc. Primary key is the immutable integer `id` (rename-safe). `current_stars` is the authoritative GraphQL value.
+- **`meta`** — global metadata: `seam_date` (gross→net boundary), `schema_ver`, `folded_through` watermark, `active_repo_count`, and `historical_repo_count`.
 
 Field-level schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
 
@@ -265,7 +265,7 @@ Two sources drift: GH Archive (gross) and GraphQL (authoritative net total).
 ### Compliance and attribution
 
 - **GH Archive**: historical WatchEvent data is credited to GH Archive (gharchive.org), licensed under CC BY 4.0, and disclosed as derived/transformed into GitStarClub ranking and curve views.
-- **GitHub**: repository metadata and current star totals are fetched through official GraphQL/Search APIs under ToS; only public data for public repos.
+- **GitHub**: Search discovers public-repository membership; GraphQL supplies repository metadata and the authoritative current star totals under ToS. Only public data for public repositories is stored.
 - The About page and footer document the data caveats (gross vs net, survivorship bias, 2015 start), attribution, and source links.
 
 ### Accessibility

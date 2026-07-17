@@ -34,13 +34,15 @@ export async function refreshWorkflow(runId: string) {
     const rename = await detectRenames(runId, fencingToken);
 
     let repos = 0;
+    let historical = 0;
     let fromGithub = 0;
     for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
       const r = await refreshMetadataBucket(runId, bucket, fencingToken);
       repos += r.repos;
+      historical += r.historical;
       fromGithub += r.from_github;
     }
-    const metadata = { repos, buckets: REPO_BUCKETS, from_github: fromGithub };
+    const metadata = { repos, active: repos, historical, buckets: REPO_BUCKETS, from_github: fromGithub };
 
     // fold any closed months (live overlay → canonical) so the recompute below includes them.
     const fold = await foldCanonical(runId, fencingToken);

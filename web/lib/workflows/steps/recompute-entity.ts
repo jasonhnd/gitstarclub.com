@@ -19,7 +19,7 @@ export async function recomputeOrgEntities(runId: string, fencingToken: number):
   "use step";
   const { model } = await loadCanonicalModel(runId);
   const monthWin = computeRepoWindow(model, "month");
-  const monthOrg = computeOrgWindow(model, monthWin);
+  const monthOrg = computeOrgWindow(model, monthWin, { activeOnly: true });
   const { views, anchorDrift } = orgEntities(model, monthOrg);
   const merged = new Map<string, unknown>([...views, ...lookups(model), ...searchIndex(model, new Date().toISOString())]);
   const files = await writeVersion(runId, merged, { runId, fencingToken });

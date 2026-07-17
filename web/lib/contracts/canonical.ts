@@ -55,6 +55,10 @@ export const ReposShardEntry = z.object({
   topics: z.array(SafeText).optional(),
   created_at: z.union([DateStr, TimestampStr]).optional(),
   current_stars: NonNegativeInt,
+  // Omitted only by pre-contract bootstrap shards. Every managed refresh
+  // rewrites this explicitly so active polling and historical retention are
+  // separate states instead of being inferred from row presence.
+  active: z.boolean().optional(),
   is_archived: z.boolean().optional(),
   crossed_10k: DateStr.nullable().optional(),
   crossed_50k: DateStr.nullable().optional(),

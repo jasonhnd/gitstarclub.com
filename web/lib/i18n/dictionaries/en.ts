@@ -82,7 +82,7 @@ export const en = {
     s1h: "Data sources",
     s1pPre: "Historical trends are reconstructed from ",
     s1pPost:
-      " (public GitHub event data since 2015). Current totals come from the official GitHub GraphQL and Search APIs. We display only public data for public repositories.",
+      " (public GitHub event data since 2015). GitHub Search discovers current membership; official GitHub GraphQL stargazerCount is the sole source for displayed and ranked current totals. Dropped repositories remain as labeled historical records but stop polling. We display only public data for public repositories.",
     rankingHeading: "How rankings are calculated",
     rankingP1:
       "All-time repository rankings use current public GitHub star totals. Organization rankings sum current stars across that owner's tracked repositories. Period rankings use GitStarClub's precomputed weekly, monthly, or yearly ranking data where the visible value is stars gained in that UTC period.",
@@ -223,6 +223,10 @@ export const en = {
     recent: "Recent activity",
     created: "created",
     archived: "archived",
+    tracking: "Tracking status",
+    trackingActive: "Active",
+    trackingHistorical: "Historical retention",
+    trackedSince: "Tracked since",
     github: "Open on GitHub",
     rank: "rank",
     owner: "Owner",

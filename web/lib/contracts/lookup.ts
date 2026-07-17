@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NonNegativeInt, OwnerType, SafeText } from "./common";
+import { DateStr, NonNegativeInt, OwnerType, SafeText } from "./common";
 
 // lookup/*.json — minimal join tables read by build to render rank lists/cards.
 // Full metadata lives in entity/*. See docs/DATA-CONTRACTS.md §2.1–2.2.
@@ -11,6 +11,10 @@ export const RepoLookupEntry = z.object({
   owner_type: OwnerType,
   language: SafeText.nullable(),
   current_stars: NonNegativeInt,
+  // Optional only for compatibility with an already-published legacy view.
+  // New producers and the publish gate require both fields explicitly.
+  active: z.boolean().optional(),
+  tracked_since: DateStr.nullable().optional(),
 }).strict();
 export type RepoLookupEntry = z.infer<typeof RepoLookupEntry>;
 

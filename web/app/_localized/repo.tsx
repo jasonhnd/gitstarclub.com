@@ -281,6 +281,10 @@ function RepoHeroFacts({
         )}
       </HeroFact>
       <HeroFact label={t.repo.created}>{createdLabel}</HeroFact>
+      <HeroFact label={t.repo.tracking}>
+        {repo.active !== false ? t.repo.trackingActive : t.repo.trackingHistorical}
+      </HeroFact>
+      {repo.tracked_since && <HeroFact label={t.repo.trackedSince}>{repo.tracked_since}</HeroFact>}
       <HeroFact label={t.repo.license}>{license || t.repo.noLicenseMetadata}</HeroFact>
       {repo.is_archived && <HeroFact label={t.common.status}>{t.repo.archived}</HeroFact>}
     </dl>

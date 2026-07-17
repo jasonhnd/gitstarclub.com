@@ -171,14 +171,14 @@ async function recomputeRank(runId: string) {
 | # | step | 读 | 写 | 说明 |
 |---|---|---|---|---|
 | 0 | canonical meta preflight | `canonical/v2/meta.json` | 无 | 在任何 whitelist/canonical mutation 前用权威 `CanonicalMeta` 解析已部署对象；缺失或 schema 不兼容立即终止。active writer 总是写 `generated_at`，reader 在 rollout 期间兼容缺少该字段的 legacy generation。 |
-| 1 | refresh whitelist | GitHub Search `stars:>=10000` + 当前已发布 run 的 whitelist snapshot | immutable `canonical/v2/whitelist/<run_id>.json` + diff | 同一 run 重试直接复用 snapshot，不重新搜索或改 diff；失败 run 不推进 baseline。兼容 pointer `whitelist/latest.json` 只在 publish 成功时更新。 |
+| 1 | refresh whitelist | GitHub Search `stars:>=10000` + 当前已发布 run 的 whitelist snapshot | immutable `canonical/v2/whitelist/<run_id>.json` + diff | Search 仅做成员发现：开放上界查询当前最高 star 后动态分桶，无 600k ceiling；snapshot `count` 是本 run 权威 active 数。同一 run 重试复用 snapshot；失败 run 不推进 baseline。 |
 | 2 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo:记录旧→新映射,其增量由后续 build-aliases step 并集成 `lookup/aliases.json`,供 repo 页 308 重定向(见 [FRONTEND.md](./FRONTEND.md))。**先于 metadata 跑**——metadata 会覆盖 `full_name`,改名检测必须在覆盖前读到旧值。canonical 按 `repo_id` 归并,改名不丢历史。 |
-| 3 | metadata shards(**按 bucket,1 step/桶**,内含 newcomer 追踪) | bootstrap `lookup/repos.json`(owner_type/language)+ run whitelist(node_id、新鲜 current_stars、rename-aware full_name) | `canonical/v2/repos/<bucket>.json`(含 `tracked_since` + GitHub `languages`) | **存量 repo 从 bootstrap seed,不重拉 GitHub**;GitHub GraphQL `nodes()` 只补"既不在 prev shard 也不在 lookup"的真新晋(~12)，以及缺少 `languages` breakdown 的旧 shard repo（一次性补齐后不再每周全量重拉）。**newcomer 追踪不是独立 step**——发现新 id 时同步写 `tracked_since`(默认方案 A,见 §10)。⚠️ **不可每次全量重拉所有 repo**——会撞 GitHub 二级限流(已实测)。每桶一个短 step,幂等。milestones/description/topics 留待 entity 富化。 |
+| 3 | metadata shards(**按 bucket,1 step/桶**,内含 lifecycle) | run whitelist(Search membership/node_id/rename-aware identity)+ previous canonical/lookup | `canonical/v2/repos/<bucket>.json`(`active`/`tracked_since`/GraphQL metadata) | 对**每个 active repo**用 GraphQL `nodes()` 批量取 metadata + 权威 `stargazerCount`；任一 active id 缺失 GraphQL 结果即 fail closed，绝不回退 Search stars。previous row 先标 `active:false`，本次 entries 再激活；drop 历史保留、re-entry 保留首次 `tracked_since`、首次 newcomer 写 snapshot discovery date。每桶最多约 165 repo（2 个 GraphQL batch），逐桶 step/节流，避免二级限流。 |
 | 4 | canonical fold | 已收口周期的**冻结快照** `canonical/v2/pending/<period>.json` | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` + `meta.json.folded_through` | **折叠**:周期收口时把活尾 net delta 折进月/周 rollup shard;append 站点日总量。**交接靠水位标记防重复/丢数据**——见 §7.2(H1):cron 跨期重置 `current_month.json` 前先把上一期完整 `per_repo` 落到 `canonical/v2/pending/<period>.json`,fold 只读 pending、折叠后标记 `folded_through=period`。`repo-recent-daily` 不参与 recurring fold（见 §6.2 / issue #3）。跌出者保留历史 shard、停止 poll。 |
 | 5 | rank recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`/`meta` shard | `views/<run_id>/rank/**` | 载入全部 monthly/weekly 桶建「period→repos」索引,按 period 算 flow/stock + all-time,幂等写 staging。**growth**:期初 stock = monthly `stock_est` 的上一有数据期值(§6.3),floor 期初 ≥20k;**new**:直接用 `repos.crossed_10k` 落当期判定(**不另用 stock_est 重算**,口径同 [RANKING.md](./RANKING.md) §4)。stock 锚定见 §6.3 / [RANKING.md](./RANKING.md) §3。 |
 | 5a | category artifacts(**same gather as rank**) | `repos` + rank inputs already loaded by step 5 | `views/<run_id>/categories/**` + `lookup/categories.json` + `rank/category/**/all-time/repo/stock*.json` | Phase-1 deterministic category registry, repo assignments, public category lookup, and bounded page slices for all-time category stock ranks. Windowed category ranks stay out of Phase 1 to avoid a large view-count expansion. |
 | 6a | entity/repo recompute(**桶内独立**) | 单桶 `repo-monthly`/`repo-weekly`/`repo-recent-daily`/`repos` | `views/<run_id>/entity/repo/**` | 每个 repo 只依赖自己那桶,可按桶并行分 step。 |
-| 6b | entity/org recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`(owner→members) | `views/<run_id>/entity/org/**` + `lookup/**` + `search/index.json` | **不能按桶算**(成员散落各桶,C2):先全量载入 monthly/weekly 桶,按 `owner` 聚合;org stock 须先对每个成员做 `首次事件期→末期` **carry-forward** 再求和(空期沿用上一期累计),终点对齐 `current_stars_sum`(口径同 [RANKING.md](./RANKING.md) §5)。同步从 `repos` 维度派生 `search/index.json`(客户端搜索索引,见 [DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.14)。 |
+| 6b | entity/org recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`(owner→members) | `views/<run_id>/entity/org/**` + `lookup/**` + `search/index.json` | **不能按桶算**：当前 org aggregate/curve 只用 active members，历史 period rank 仍可保留已 drop repo 的历史贡献；active member stock 先 carry-forward 再求和，终点对齐 active `current_stars_sum`。repo lookup/search/entity 同时保留 historical rows 并传播 `active` / `tracked_since`。 |
 | 7 | heatmap update | `site-daily` shard(+ 派生月总量) | `views/<run_id>/heatmap/**` | 站点级日 / 月总量(月总量 = site-daily 当月求和)。 |
 | 8 | build aliases | 所有保留的 `ops/workflows/<run>/renames.json` + 本 run `lookup/repos.json` | `views/<run_id>/lookup/aliases.json` | 旧 full_name → 当前 id 的累积别名表,供 repo 页 308 重定向改名旧 URL。并集历史 renames 增量(gc 不删 ops/),自愈,自动覆盖更早 run 的改名；剔除 dangling/自指/与活仓库撞名项。 |
 | 9 | validate | `views/<run_id>/**` | `ops/workflows/<run_id>/validation.json` | Zod schema + sanity 不变量(见 §8 实测清单)。**不过不发布**。 |
@@ -217,7 +217,7 @@ blob://
 │   ├── meta.json                            # seam_date · schema_ver · folded_through(周/月水位,见 §6.3/§7.2)
 │   ├── whitelist/<run_id>.json              # 白名单快照 + diff(每次 whitelist step 产出)
 │   ├── whitelist/latest.json                # 兼容 pointer；只在成功 publish / rollback 时推进
-│   ├── repos/<bucket>.json                  # repo 维度 + 里程碑 + tracked_since + 冻结锚定因子 d(按 id 分桶)
+│   ├── repos/<bucket>.json                  # repo 维度 + active/history + tracked_since + 冻结锚定因子 d
 │   ├── repo-monthly/<bucket>.json           # per-repo 月 flow 序列(驱动月榜 + 月曲线)
 │   ├── repo-weekly/<bucket>.json            # per-repo ISO 周 flow 序列(驱动历史周榜)
 │   ├── repo-recent-daily/<bucket>.json      # per-repo 近 ~90 天日点(曲线尾 + 周边界)
@@ -237,12 +237,12 @@ blob://
 └── views/                                   # 发布层(指针切换)
     ├── latest.json                          # 指针:当前生效的版本前缀(version = run_id;见 §7)
     └── <run_id>/                            # 一个 run 的完整视图版本(version=run_id,无独立 staging/published)
-        ├── meta.json                        # 该版本元信息(含 seam_date,validate 必读)
+        ├── meta.json                        # seam/fold 水位 + active_repo_count/historical_repo_count
         ├── rank/**                          # 全周期 flow/stock + all-time(repo + org)
         ├── entity/repo/<id>.json            # per-repo entity(曲线 monthly + recent_daily + 里程碑)
         ├── entity/org/<login>.json          # per-org entity(carry-forward 后求和)
         ├── heatmap/year/<yyyy>.json         # 年度热力图
-        ├── lookup/repos.json                # repo 维度查询表(owner_type / language / full_name 等)
+        ├── lookup/repos.json                # active + historical 查询表(含 tracked_since)
         ├── search/index.json                # 客户端搜索索引(见 DATA-CONTRACTS §2.14)
         └── current_month.json               # 该版本快照下的当月活尾投影(读侧可用作回退)
         # 写完→validate→指针指向它即上线
@@ -443,13 +443,13 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
   - **`meta.folded_through` 单调**:若上一发布版本有 `folded_through`,新版本的 month/week 不得倒退;
   - **rank 列表完整性**:staging `all-time` repo/org rank 检查 rank 从 1 连续、`value` 非递增、无重复 rank、无重复 `id/login`;
   - **引用完整性**:repo rank item 的 `id` 必须存在于 `lookup/repos.json`;org rank item 的 `login` 必须存在于 `lookup/orgs.json`;
-  - **`lookup/repos.json`**:条目数 ≥ `MIN_LOOKUP`(=1000)，ID 与本 run canonical repo 集合完全一致；相对上一发布版只允许 whitelist `diff.added` 新增，dropped 历史 repo 继续保留;
+  - **repository lifecycle**:`lookup/repos.json` 全部 ID 与 canonical 完全一致；whitelist entries、canonical `active:true`、lookup `active:true` 三个集合完全相等；`meta.active_repo_count == whitelist.count`，`meta.historical_repo_count == lookup active:false`；drop 必须保留且为 historical，inactive re-entry 可作为 `diff.added` 重新激活;
   - **`lookup/aliases.json`**:无 dangling / live-shadow,且相对上一发布版本 alias count 不倒退（buildAliases 必须扫描所有 workflow run folder;读取错误会失败,缺失 `renames.json` 视为空增量）;
   - **canonical 完整性**:`repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 全部 bucket 必须存在且通过 schema；输出 `canonical-manifest.json`（记录数 + SHA-256）；任一缺失或错误阻断发布;
   - **`canonical/v2/repos/*` 的 `d`**:`d > 2` 仅 warning；历史 repo 缺少有限 `d` 为硬失败；带 `tracked_since` 的新晋 repo 明确以 `d=0` 起步;
-  - **`search/index.json`**:`count ≥ MIN_LOOKUP`(=1000)且 `count === repos.length`;
+  - **`search/index.json`**:`count ≥ MIN_LOOKUP`(=1000)、`count === repos.length`，每条显式传播 `active` / `tracked_since`;
   - **category views**:`registry` 非空且有 public categories;assignments 覆盖 ≥ `MIN_LOOKUP`;`language`/`language_family` 每 repo 至少一个,`owner_kind` 每 repo 单值;assignment 引用都存在于 registry;抽样 category rank 的 repo 都属于该 category;
-  - **top repo entity**:`entity/repo/<allTime.items[0].id>.json` 的 `curve.monthly` 长度 > 0;
+  - **top repo entity**:`entity/repo/<allTime.items[0].id>.json` 的 `curve.monthly` 长度 > 0，且显式传播 `active` / `tracked_since`;
   - **上一公历年 heatmap 存在**:`heatmap/year/<UTCFullYear - 1>.json` 能读到(prior calendar year 总是已收口)。
 - **输出**:`ops/workflows/<run_id>/canonical-manifest.json` + `validation.json`（后者契约 `WorkflowValidation`,含 `run_id` / `ok` / `checked` / `schema_failures` / `invariants` / `failures`）。任一完整性 / sanity 失败 → `failures` 非空 → 抛错;publish step 不会启动,版本前缀留作孤儿待 GC。
 

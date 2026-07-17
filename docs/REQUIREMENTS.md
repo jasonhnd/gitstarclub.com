@@ -89,9 +89,10 @@ Requirement ID 是跨 BRD/PRD/FSD/UX/测试追踪的稳定键。新增或调整�
 ## 5. 数据来源与口径
 
 - **历史回填（一次性）**：BigQuery 查 GH Archive WatchEvent（含稳定 `repo.id`），~$10。（免费方案 ClickHouse 公共实例 1000 行上限、自建 4–12TB 均已评估排除。）
-- **日常监测**：GitHub GraphQL 每日批量查 `current_stars`（约 5,302 repo，`ceil(5302/100)=54` 查询，**< 1 MB / 秒级 / ~1% 额度**）→ diff 出 net 日增。
+- **成员与日常监测**：GitHub Search 的开放上界 `stars:>=10000` 只发现 active 集合（动态最高值分桶，无 600k ceiling）；GitHub GraphQL 每日只批量查 active repo 的 `current_stars`（每 100 repo 一批）→ diff 出 net 日增。
 - **元数据**：GraphQL（owner + owner_type、language、topics、createdAt、current_stars、isArchived）。
 - **口径**：历史 = gross（GH Archive 无取消事件）/ 上线后 = net（含取消，可负）；**seam** 分界。**`current_stars` 是唯一必须精确的数**；历史 stock = gross 累加 × 锚定因子 `d` 对齐到 current_stars（估算，标 as-of；`d >= 0` 且可 `> 1`）。
+- **生命周期**：whitelist `count` = 当前 active tracked 数；drop 保留 entity/history 但停止轮询与当前榜聚合；re-entry 重新激活并保留首次 `tracked_since`。publish 前必须让 whitelist、canonical、lookup、meta 的 active 集合/计数一致。
 
 ## 6. 新鲜度模型 ⭐（核心）
 

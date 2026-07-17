@@ -9,6 +9,7 @@ const historicalRepo = {
   name: "repo",
   full_name: "example/repo",
   current_stars: 100,
+  active: true,
   tracked_since: null,
   d: 0.8,
 };
@@ -32,6 +33,7 @@ describe("validateCanonicalGeneration", () => {
     expect(result.manifest.shards).toHaveLength(EXPECTED_CANONICAL_SHARDS);
     expect(result.manifest.shards.every((shard) => /^[a-f0-9]{64}$/.test(shard.sha256))).toBe(true);
     expect(result.repoIds).toEqual(new Set(["1"]));
+    expect(result.activeRepoIds).toEqual(new Set(["1"]));
   });
 
   test("reports missing, invalid, and unanchored historical repositories", async () => {

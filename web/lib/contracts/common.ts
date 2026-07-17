@@ -80,6 +80,10 @@ export type OwnerType = z.infer<typeof OwnerType>;
 export const Meta = z.object({
   seam_date: DateStr,
   schema_ver: NonNegativeInt,
+  // Current membership is the active Search-discovered set. Historical rows
+  // remain readable but are counted separately and are not polled.
+  active_repo_count: NonNegativeInt.optional(),
+  historical_repo_count: NonNegativeInt.optional(),
   generated_at: TimestampStr.optional(),
   backfilled_at: TimestampStr.optional(), // bootstrap-only
   folded_through: z.object({ month: MonthPeriod, week: WeekPeriod }).strict().optional(), // live-overlay watermark

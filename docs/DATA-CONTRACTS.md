@@ -76,18 +76,28 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 | `topics` | string[] | |
 | `created_at` | DateStr\|TimestampStr | repo 创建日期；canonical shard 可保留 GitHub `createdAt` timestamp，entity 视图裁成 `YYYY-MM-DD` |
 | `current_stars` | int | GraphQL 权威当前总数（**唯一必须精确的数**） |
+| `active` | bool | 是否属于本次 GitHub Search 发现集。`false` = 仅历史保留，不参与当前轮询、当前总量或全时/分类榜 |
 | `is_archived` | bool | |
 | `crossed_10k/50k/100k` | DateStr\|null | 首破里程碑精确日期（供"历史上的今天"） |
-| `tracked_since` | DateStr\|null | 进入白名单 / 开始追踪的日期。bootstrap 基线 repo 为 `null`（有完整历史）；新晋 repo = 发现日（页面据此标注，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10） |
+| `tracked_since` | DateStr\|null | 首次进入白名单 / 开始追踪的日期。bootstrap 基线 repo 为 `null`（有完整历史）；新晋 repo = 首次发现日；drop 后 re-entry 保留原日期（页面据此标注，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10） |
 | `fetched_at` | TimestampStr | 元数据抓取时刻 |
+
+#### Repository tracking contract（权威）
+
+1. GitHub Search 只负责**成员发现**。发现先执行开放上界的 `stars:>=MIN_TRACKED_STARS`、按 stars 降序读取当前最高值，再以该动态上界自适应分桶；不存在 600,000 或其他产品级最高星数截断。
+2. GraphQL `Repository.stargazerCount` 是 `current_stars`、当前总量及当前/全时排名的唯一权威来源。Search 返回的 `stargazers_count` 只保留在 immutable whitelist snapshot 中用于发现审计，不写入 canonical `current_stars`。
+3. `WhitelistSnapshot.count === entries.length` 是本 run 的权威 active tracked count。publish gate 要求该集合与 canonical `active:true`、`lookup/repos.json active:true`、`meta.active_repo_count` 完全一致。
+4. drop 不删除：canonical、lookup、search 与 repo entity 继续保留，并写 `active:false`；daily/weekly cron、当前 org/category 聚合和 all-time 榜只使用 active rows。
+5. re-entry 由下一次 whitelist `diff.added` 重新激活，GraphQL 重新取权威总数，并保留首次 `tracked_since`。首次 newcomer 才把 immutable whitelist snapshot 的 UTC 日期写入 `tracked_since`。
 
 ### 1.3 `meta`（→ `meta.json`）
 
 ```json
-{ "seam_date": "2026-05-30", "backfilled_at": "...", "schema_ver": 1, "generated_at": "..." }
+{ "seam_date": "2026-05-30", "backfilled_at": "...", "schema_ver": 1,
+  "active_repo_count": 5302, "historical_repo_count": 17, "generated_at": "..." }
 ```
 
-`seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。`Meta` 契约同时接受**扁平 bootstrap meta**（含 `backfilled_at`）与**版本化 meta**（含 `folded_through`，无 `backfilled_at`）——二者皆 optional。
+`seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。版本化 writer 还写 `active_repo_count` / `historical_repo_count`；publish gate 与 whitelist / lookup 交叉校验。`Meta` 契约同时接受**扁平 bootstrap meta**（含 `backfilled_at`）与**版本化 meta**（含 `folded_through`，无 `backfilled_at`）；计数字段在 legacy 读取期间 optional，但新 publish 必须存在且匹配。
 
 ### 1.4 生产 canonical JSON shard
 
@@ -110,7 +120,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 ```json
 { "1296269": { "id": 1296269, "node_id": "...", "owner": "vuejs", "owner_type": "Organization",
                "name": "vue", "full_name": "vuejs/vue", "language": "TypeScript",
-               "current_stars": 207000, "crossed_10k": "2016-10-04", "tracked_since": null,
+               "current_stars": 207000, "active": true, "crossed_10k": "2016-10-04", "tracked_since": null,
                "d": 0.9123 } }
 ```
 
@@ -190,9 +200,12 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 ```json
 {
   "1296269": { "owner": "vuejs", "name": "vue", "full_name": "vuejs/vue",
-               "owner_type": "Organization", "language": "TypeScript", "current_stars": 207000 }
+               "owner_type": "Organization", "language": "TypeScript", "current_stars": 207000,
+               "active": true, "tracked_since": null }
 }
 ```
+
+lookup 保留 active 与 historical 两类 repo，供旧 URL / 历史 entity 继续解析；调用方不得用“row 存在”推断当前成员。
 
 ### 2.2 `lookup/orgs.json`
 
@@ -234,7 +247,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 
 ### 2.4 `rank/all-time/{dim}/stock.json`
 
-`items` 形状同上；全时仅 `stock`（repo = `current_stars` 排序，org = `current_stars_sum` 排序）。
+`items` 形状同上；全时仅 `stock`（仅 `active:true`；repo = GraphQL `current_stars` 排序，org = active 成员的 `current_stars_sum` 排序）。
 
 ### 2.4a `rank/category/<dimension>/<slug>/all-time/repo/stock*.json`
 
@@ -282,7 +295,8 @@ Rules:
   "topics": ["vue","framework"],
   "homepage_url": "https://vuejs.org/", "license": "MIT",
   "latest_release": { "name": "v3.5.0", "tag_name": "v3.5.0", "published_at": "2024-09-01", "url": "https://github.com/vuejs/core/releases/tag/v3.5.0" },
-  "created_at": "2013-07-29", "current_stars": 207000, "is_archived": true,
+  "created_at": "2013-07-29", "current_stars": 207000,
+  "active": true, "tracked_since": "2026-07-17", "is_archived": true,
   "milestones": { "crossed_10k": "2016-10-04", "crossed_50k": "2017-12-09", "crossed_100k": "2018-10-26" },
   "curve": {
     "monthly": [ ["2015-01", 1200, 18000], ["2015-02", 1500, 19500] ],
@@ -295,6 +309,7 @@ Rules:
 ```
 
 - `curve.monthly`：`[period, adds, total_end]`——历史走月点（11 年≈132 点）。
+- `active` / `tracked_since`：明确展示当前追踪状态与 newcomer provenance；historical entity 不删除，repo 页显示“历史保留”及可用的首次追踪日期。
 - `languages`: optional GitHub language breakdown from GraphQL
   `Repository.languages`, sorted by byte size descending. Older published shards
   may omit it; pages fall back to the primary `language` field.
@@ -348,6 +363,7 @@ Rules:
 - 同一 UTC 日重跑时，日初基线由 `current_stars - 已记录今日 delta` 重建，再以最新 GraphQL 数值计算完整当日 delta；相同输入产生相同日状态，后续增长或回落仍保留相对日初的完整差值。
 - GitHub 对删除/改名仓库可返回 partial data。cron 明确支持这种 partial publication：只更新成功返回的 repo，缺失 repo 的 `per_repo` 今日值和 `current_stars` 原样保留；若非复用路径一个 repo 都未返回则 fail closed，不覆盖 live state。
 - `current_stars`：每日 GraphQL 最新权威值（也用于锚定）。
+- `current_stars` map 只含 active repo；已 drop repo 的既有 `per_repo` 日序列保留供月末 fold，但不再发出 GraphQL 请求，也不进入 current rank。
 - 每日/每周 Vercel cron 在同一 immutable generation 内写活尾、当前周/月 rank 与当月 heatmap；所有对象及 `manifest.json` 写完并通过 schema 后才切 `live/latest.json`。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（月+周折叠 `fold.ts`，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6/§7.2）；交接靠 `canonical/v2/pending/<period>.json` + generation 内 `rollover/<period>.json` 恢复副本 + `folded_through` 水位防重复/丢数据。
 
 ### 2.9 `live/generations/{run_id}/hot-snapshot.json`（cron 写，热集 ISR 读）
@@ -568,7 +584,8 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
   "generated_at": "2026-06-02T00:00:00.000Z",
   "count": 5302,
   "repos": [
-    { "id": 1296269, "full_name": "vuejs/vue", "owner": "vuejs", "language": "JavaScript", "current_stars": 207000, "description": "..." }
+    { "id": 1296269, "full_name": "vuejs/vue", "owner": "vuejs", "language": "JavaScript",
+      "current_stars": 207000, "description": "...", "active": true, "tracked_since": null }
   ]
 }
 ```

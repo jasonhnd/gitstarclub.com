@@ -20,6 +20,7 @@ export interface RepoMeta {
   topics?: string[];
   created_at?: string;
   current_stars: number;
+  active?: boolean;
   is_archived?: boolean;
   crossed_10k?: string | null;
   crossed_50k?: string | null;
@@ -52,7 +53,8 @@ export interface Model {
   recentDaily: Map<number, DailySeries>;
   siteDaily: DailySeries; // all years, date-asc
   orgs: Map<string, OrgAgg>; // login -> aggregate
-  ids: number[]; // repo ids, ascending
+  ids: number[]; // all retained repo ids, ascending
+  activeIds: number[]; // current Search membership, ascending
   seam: SeamPeriods; // immutable gross/net boundary (periods ≤ seam are gross × d)
 }
 
@@ -77,7 +79,11 @@ export function buildModel(raw: RawShards, seamDate: DateStr): Model {
     if ((typeof d !== "number" || !Number.isFinite(d)) && v.tracked_since == null) {
       throw new Error(`historical repo ${id} is missing a finite anchoring factor d`);
     }
-    repos.set(id, { ...v, d: typeof d === "number" && Number.isFinite(d) ? d : 0 });
+    repos.set(id, {
+      ...v,
+      active: v.active ?? true, // legacy bootstrap shards represented only active rows
+      d: typeof d === "number" && Number.isFinite(d) ? d : 0,
+    });
   }
 
   const toSeriesMap = <T>(rec: Record<string, T>): Map<number, T> => {
@@ -94,9 +100,11 @@ export function buildModel(raw: RawShards, seamDate: DateStr): Model {
   for (const { cells } of Object.values(raw.siteDailyByYear)) siteCells.push(...cells);
   siteCells.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 
-  // org aggregate (mirror precompute exportLookups: sum current_stars over owner).
+  // Organization totals are a current read model, so only active membership
+  // contributes. Historical repo entities remain available independently.
   const orgs = new Map<string, OrgAgg>();
   for (const r of repos.values()) {
+    if (r.active === false) continue;
     let o = orgs.get(r.owner);
     if (!o) {
       o = { login: r.owner, owner_type: r.owner_type, repo_count: 0, current_stars_sum: 0, members: [] };
@@ -108,7 +116,8 @@ export function buildModel(raw: RawShards, seamDate: DateStr): Model {
   }
 
   const ids = [...repos.keys()].sort((a, b) => a - b);
-  return { repos, monthly, weekly, recentDaily, siteDaily: siteCells, orgs, ids, seam: seamPeriods(seamDate) };
+  const activeIds = ids.filter((id) => repos.get(id)?.active !== false);
+  return { repos, monthly, weekly, recentDaily, siteDaily: siteCells, orgs, ids, activeIds, seam: seamPeriods(seamDate) };
 }
 
 /** ISO week / month / year period strings sort lexically in chronological order. */

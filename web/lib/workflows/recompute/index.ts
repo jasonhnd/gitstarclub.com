@@ -55,7 +55,7 @@ export function computeAllViews(model: Model, opts: RecomputeOpts): ViewBundle {
   const views = new Map<string, unknown>();
 
   const monthWin = computeRepoWindow(model, "month");
-  const monthOrg = computeOrgWindow(model, monthWin);
+  const monthOrg = computeOrgWindow(model, monthWin, { activeOnly: true });
   const weekWin = computeRepoWindow(model, "week");
   const yearWin = deriveYearWindow(model, monthWin);
 
@@ -83,6 +83,8 @@ export function computeAllViews(model: Model, opts: RecomputeOpts): ViewBundle {
   views.set("meta.json", {
     seam_date: opts.seamDate,
     schema_ver: 1,
+    active_repo_count: model.activeIds.length,
+    historical_repo_count: model.ids.length - model.activeIds.length,
     folded_through: opts.foldedThrough,
     generated_at: gen,
   });

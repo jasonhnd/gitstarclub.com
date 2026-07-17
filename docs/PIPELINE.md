@@ -48,7 +48,7 @@ source_of_truth_for:
             → 07-export-v2(DuckDB → canonical/v2 JSON shards)
 ```
 
-**01 whitelist** — GitHub Search `stars:>=MIN_TRACKED_STARS`（当前 `web/lib/constants.ts` = 10,000），按 star 区间**自适应分桶**绕过 Search 1000 结果上限（区间 >1000 则二分），输出 `data/whitelist.json`：`{id, node_id, full_name, owner, name, stars}`。当前规模约 5,302，每周变动。
+**01 whitelist** — GitHub Search `stars:>=MIN_TRACKED_STARS`（当前 `web/lib/constants.ts` = 10,000）只做成员发现。先用开放上界查询当前最高 star，再以该动态上界按 star 区间**自适应分桶**绕过 Search 1000 结果上限（区间 >1000 则二分）；没有 600k 固定上限。输出 `data/whitelist.json`：`{id, node_id, full_name, owner, name, stars}`；其中 Search `stars` 是发现审计值，不是展示总数。当前规模约 5,302，每周变动。
 
 > **新晋基线（首个 v2 run）**：Workflow 的 whitelist step（`whitelist.ts:24-28`）用 `canonical/v2/whitelist/latest.json` 的 id 集作新晋 diff 基线；该指针**首 run 尚不存在时回退 bootstrap `lookup/repos.json` 的 id 集**——否则首 run 会把全部既有 repo 误判为「新晋」。之后每 run 写回 `latest.json` 作为下一 run 的基线。
 
@@ -81,7 +81,7 @@ GROUP BY repo_id, day;
 
 ```text
 1. 校验 Authorization: Bearer CRON_SECRET（否则 401）
-2. GraphQL 批量查约 5,302 repo current_stars（~54 查询）
+2. 从 `lookup/repos.json` 仅选择 `active:true`，GraphQL 批量查 current_stars（每 100 repo 一批）
 3. net 日增 = 今日 current_stars − current_month.json 里昨日值
 4. upsert current_month.json：按 UTC 日写 daily_totals + per_repo + current_stars（append-only，幂等）
 5. 挑 mover 集（deltas 已在手，免费）：今日涨幅前 ~50 ∪（今日 ≥ 其 90d 日均 5× 且当日净增 ≥200）∪ 破里程碑
@@ -100,7 +100,7 @@ GROUP BY repo_id, day;
 
 ```text
 1. 校验 Authorization: Bearer CRON_SECRET
-2. GraphQL 批量刷新 current_stars
+2. 仅对 `active:true` repo 用 GraphQL 批量刷新 current_stars
 3. upsert current_month.json
 4. 覆盖写当前月 repo flow/stock、当前周 repo flow、当前月 heatmap、hot-snapshot
 5. revalidatePath 核心页与当前周/月页

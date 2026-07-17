@@ -10,7 +10,14 @@ export async function recomputeHeatmap(runId: string, fencingToken: number): Pro
   const { model, seamDate, foldedThrough } = await loadCanonicalModel(runId);
   const gen = new Date().toISOString();
   const views = new Map<string, unknown>(heatmaps(model.siteDaily, gen));
-  views.set("meta.json", { seam_date: seamDate, schema_ver: 1, folded_through: foldedThrough, generated_at: gen });
+  views.set("meta.json", {
+    seam_date: seamDate,
+    schema_ver: 1,
+    active_repo_count: model.activeIds.length,
+    historical_repo_count: model.ids.length - model.activeIds.length,
+    folded_through: foldedThrough,
+    generated_at: gen,
+  });
   const files = await writeVersion(runId, views, { runId, fencingToken });
   return { files };
 }

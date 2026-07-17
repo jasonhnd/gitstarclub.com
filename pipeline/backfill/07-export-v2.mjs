@@ -139,6 +139,7 @@ for (const r of repos) {
     topics: r.topics ?? [],
     created_at: r.created_at,
     current_stars: r.current_stars,
+    active: true,
     is_archived: !!r.is_archived,
     crossed_10k: r.crossed_10k ?? null,
     crossed_50k: r.crossed_50k ?? null,

@@ -72,7 +72,9 @@ export function relatedRepositories(
   limit = 6,
 ): RelatedRepo[] {
   if (!lookup) return [];
-  const rows = Object.values(lookup).filter((entry) => entry.full_name !== repo.full_name);
+  const rows = Object.values(lookup).filter(
+    (entry) => entry.active !== false && entry.full_name !== repo.full_name,
+  );
   const sort = (a: RepoLookupEntry, b: RepoLookupEntry) => b.current_stars - a.current_stars || a.full_name.localeCompare(b.full_name);
   const seen = new Set<string>();
   const related: RelatedRepo[] = [];

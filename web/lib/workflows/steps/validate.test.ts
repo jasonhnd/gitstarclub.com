@@ -44,11 +44,13 @@ describe("validateRepositoryMembership", () => {
       previousLookup: { "1": repoLookup("owner/one", 100), "2": repoLookup("owner/two", 80) },
       lookup: {
         "1": repoLookup("owner/one", 100),
-        "2": repoLookup("owner/two", 80),
+        "2": { ...repoLookup("owner/two", 80), active: false },
         "3": repoLookup("owner/three", 100),
       },
       whitelist,
       canonicalRepoIds: new Set(["1", "2", "3"]),
+      canonicalActiveRepoIds: new Set(["1", "3"]),
+      meta: { seam_date: "2026-01-01", schema_ver: 1, active_repo_count: 2, historical_repo_count: 1 },
     });
     expect(report.failures).toEqual([]);
     expect(report.invariants).toMatchObject({
@@ -65,6 +67,8 @@ describe("validateRepositoryMembership", () => {
       lookup: { "1": repoLookup("owner/one", 100), "4": repoLookup("owner/four", 10) },
       whitelist,
       canonicalRepoIds: new Set(["1", "2", "3"]),
+      canonicalActiveRepoIds: new Set(["1", "3"]),
+      meta: { seam_date: "2026-01-01", schema_ver: 1, active_repo_count: 2, historical_repo_count: 0 },
     });
     expect(report.failures).toEqual(
       expect.arrayContaining([
@@ -75,6 +79,30 @@ describe("validateRepositoryMembership", () => {
         expect.stringContaining("contains 1 unapproved new id(s)"),
       ]),
     );
+  });
+
+  test("accepts re-entry when the added repository already exists as inactive history", () => {
+    const reentryWhitelist = {
+      ...whitelist,
+      count: 2,
+      entries: [whitelist.entries[0], { ...whitelist.entries[1], id: 2, node_id: "R_2", full_name: "owner/two", name: "two" }],
+      diff: { added: [2], dropped: [] },
+    };
+    const report = validateRepositoryMembership({
+      previousLookup: {
+        "1": repoLookup("owner/one", 100),
+        "2": { ...repoLookup("owner/two", 80), active: false, tracked_since: "2026-06-01" },
+      },
+      lookup: {
+        "1": repoLookup("owner/one", 100),
+        "2": { ...repoLookup("owner/two", 90), active: true, tracked_since: "2026-06-01" },
+      },
+      whitelist: reentryWhitelist,
+      canonicalRepoIds: new Set(["1", "2"]),
+      canonicalActiveRepoIds: new Set(["1", "2"]),
+      meta: { seam_date: "2026-01-01", schema_ver: 1, active_repo_count: 2, historical_repo_count: 0 },
+    });
+    expect(report.failures).toEqual([]);
   });
 });
 
@@ -138,12 +166,12 @@ describe("validateSearchIndex", () => {
         {
           generated_at: "2026-01-01T00:00:00.000Z",
           count: 1,
-          repos: [{ id: 1, full_name: "owner/repo", owner: "owner", language: "TypeScript", current_stars: 10, description: null }],
+          repos: [{ id: 1, full_name: "owner/repo", owner: "owner", language: "TypeScript", current_stars: 10, description: null, active: true, tracked_since: null }],
         },
         2,
       ),
     ).toEqual({
-      invariants: { search_repos: 1 },
+      invariants: { search_repos: 1, search_missing_tracking_contract: 0 },
       failures: ["search/index: only 1 repos"],
     });
   });
@@ -206,5 +234,5 @@ describe("validateCategories", () => {
 
 function repoLookup(full_name: string, current_stars: number) {
   const [owner, name] = full_name.split("/");
-  return { owner, name, full_name, owner_type: "Organization" as const, language: "TypeScript", current_stars };
+  return { owner, name, full_name, owner_type: "Organization" as const, language: "TypeScript", current_stars, active: true, tracked_since: null };
 }
