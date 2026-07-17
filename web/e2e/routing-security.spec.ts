@@ -10,6 +10,24 @@ const NOT_FOUND_TITLES = {
   fr: "Page introuvable",
 } as const;
 
+test("analytics stays same-origin and compatible with the response CSP", async ({ page }) => {
+  const googleTrackingRequests: string[] = [];
+  page.on("request", (request) => {
+    if (/google-analytics\.com|googletagmanager\.com/.test(request.url())) {
+      googleTrackingRequests.push(request.url());
+    }
+  });
+
+  const response = await page.goto("/privacy", { waitUntil: "networkidle" });
+  const csp = response?.headers()["content-security-policy"] ?? "";
+
+  expect(csp).toContain("script-src 'self'");
+  expect(csp).toContain("connect-src 'self'");
+  expect(csp).not.toContain("googletagmanager.com");
+  expect(csp).not.toContain("google-analytics.com");
+  expect(googleTrackingRequests).toEqual([]);
+});
+
 test("the language endpoint never redirects cross-origin", async ({ request, baseURL }) => {
   const response = await request.get(
     `${baseURL}/api/lang?lang=en&next=/%5C%5Cexample.com/path`,

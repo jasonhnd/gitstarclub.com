@@ -25,7 +25,6 @@
     "test:cov": "bun test lib/ --coverage && node ../scripts/check-coverage-threshold.mjs coverage/lcov.info"
   },
   "dependencies": {
-    "@next/third-parties": "16.2.10",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.5.0",
     "find-up": "7.0.0",

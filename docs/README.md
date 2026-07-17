@@ -16,7 +16,7 @@ This page is the navigation index for `docs/`. For a project overview, start at 
 
 ## Analytics
 
-Vercel Web Analytics remains enabled through `<Analytics />` in `web/app/_shell/RootShell.tsx`. Google Analytics 4 is optional and env-gated: set `NEXT_PUBLIC_GA_ID` to a non-empty measurement ID starting with `G-` to render the Next.js `GoogleAnalytics` component; when unset or invalid, no GA script is emitted.
+Vercel Web Analytics is the only analytics integration and remains enabled through `<Analytics />` in `web/app/_shell/RootShell.tsx`. It uses same-origin `/_vercel/insights` endpoints, and the build asserts that CSP permits them. Google Analytics and other third-party tracking scripts are intentionally unsupported, matching the public privacy statement.
 
 ## Reading order (new engineer)
 
