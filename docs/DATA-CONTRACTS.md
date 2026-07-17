@@ -494,6 +494,30 @@ base + 当前月重算；无法重算的 `on_this_day` 只保留与本 UTC 月�
 }
 ```
 
+#### 2.12.1 `ops/workflows/health/{pipeline}.json` — 独立健康状态
+
+`pipeline` 固定为 `workflow-refresh`、`cron-daily` 或 `cron-weekly`。每条 pipeline 使用独立对象和 ETag compare-and-set，避免并发运行互相覆盖。
+
+```json
+{
+  "schema_version": 2,
+  "pipeline": "cron-daily",
+  "status": "ok",
+  "at": "2026-07-17T03:02:11.000Z",
+  "correlation_id": "daily-2026-07-17T03-00-00-000Z",
+  "run_id": "daily-2026-07-17T03-00-00-000Z",
+  "idempotency_key": null,
+  "error": null,
+  "last_success": { "at": "2026-07-17T03:02:11.000Z", "correlation_id": "daily-2026-07-17T03-00-00-000Z", "run_id": "daily-2026-07-17T03-00-00-000Z", "idempotency_key": null, "error": null },
+  "last_failure": null,
+  "freshness": { "last_success_at": "2026-07-17T03:02:11.000Z", "expected_within_seconds": 129600, "stale_after": "2026-07-18T15:02:11.000Z" }
+}
+```
+
+- `status` 是最新时间信号（`ok | failed | attached | rejected`）。较旧的迟到写不能倒退 latest。
+- `last_success` 与 `last_failure` 独立保留；恢复成功不会抹掉上次失败的诊断。
+- `freshness.stale_after` 是依据 pipeline 频率计算的绝对时间，读取者无需相信写入时的静态 age 值。
+
 ```json
 // steps/recompute.json
 {

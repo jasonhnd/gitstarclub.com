@@ -199,7 +199,10 @@ blob://
 │   └── workflows/
 │       ├── latest-success.json                      #   最近一次成功 run 的恢复点：{ run_id, version, published_at }
 │       ├── active.json                              #   当前 refresh/rollback lease（ETag CAS；idempotency_key + fencing_token + expiry）
-│       ├── health.json                              #   pipeline 健康灯（workflow ok/failed/attached/rejected；cron 失败路径写 failed）
+│       ├── health/                                  #   每条 pipeline 独立的 CAS 健康状态
+│       │   ├── workflow-refresh.json                #     latest + last_success + last_failure + freshness
+│       │   ├── cron-daily.json                      #     每次非 dry 成功/失败都更新
+│       │   └── cron-weekly.json                     #     每次非 dry 成功/失败都更新
 │       └── <run_id>/                                #   Workflow 单次 run checkpoint
 │           ├── manifest.json                        #     步骤清单 + 状态（running / published / failed）
 │           ├── canonical-manifest.json              #     必需 canonical shard 的记录数、SHA-256 与完整性收据
@@ -300,7 +303,7 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 
 **鉴权 / 凭证**：`CRON_SECRET`（触发）、`GITHUB_TOKEN`（Search / GraphQL）、`BLOB_READ_WRITE_TOKEN`（读写 canonical / staging / published）。**Workflow 全程 0 GCP**（GCP 仅 bootstrap）。
 
-**告警**：Workflow 失败 / 卡死 → Sentry + `ops/workflows/<run_id>` 状态；因不切指针，线上始终是上一版，可从容排查。
+**告警**：Workflow 失败会写结构化 Vercel Function log、可选 webhook、run checkpoint 和独立 health 状态；仓库当前没有 Sentry SDK 或 Marketplace 集成。失败发生在 publish 前时不会切换线上指针。
 
 ## Deploy Hook 使用（可选）
 
@@ -314,28 +317,28 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 
 | 关注 | 工具 | 触发 |
 |---|---|---|
-| 运行时 / build / cron 异常 | **Sentry**（Vercel Marketplace 接入） | 未捕获异常、route 报错、build 失败 |
+| 运行时 / build 异常 | Vercel build / function logs | 未捕获异常、route 报错、build 失败；当前没有 Sentry 集成 |
 | pipeline 运行记录 | **`ops/sync-runs.json` 日志**（每次每日 / 每周 job 落一条：开始 / 结束时刻、查询数、写入路径、状态） | 供对账与回溯 |
 | **数据漂移** | 比对 GraphQL 权威总数 vs adds 累加总数 | **漂移 > 阈值（如 2%）告警**，并以 GraphQL 为锚点重锚（见 ARCHITECTURE「数据校验 / 对账」） |
-| **Cron 失败** | Sentry + `sync_runs` 状态 | **任一 cron 失败立即告警**——因无自动重试，漏一次每日 job = 活尾缺一天，必须人工补跑 |
+| **Cron 失败** | `[ALERT]` function log + 可选 `ALERT_WEBHOOK_URL` + `sync-runs` + pipeline health | webhook 投递为 best-effort；失败或未配置时以日志和 health 为准，必要时人工补跑 |
 | 单日突刺 | pipeline sanity check | 单日新增极端突刺打日志告警（net 允许为负） |
 
 For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, use [geo/ai-log-reporting.md](./geo/ai-log-reporting.md). That appendix owns the operator command and taxonomy; this runbook owns the production log and alerting context.
 
-**告警通道**：Sentry 告警直发（邮件 / Slack 任一）。重点盯**两类无重试的失效**：cron 没跑 / 跑失败、数据漂移越界。
+**告警通道**：Vercel Function logs 始终存在；`ALERT_WEBHOOK_URL` 可接 Slack / Discord 等接收 JSON POST 的端点。重点盯 cron 没跑 / 跑失败和数据漂移越界。Webhook 不是可靠队列，不应作为唯一状态来源。
 
-> `sync_runs` 不需要数据库：当前实现覆盖写 Blob 上的 `ops/sync-runs.json`，保留最近 100 次运行；需要更强告警时再把同一条结构化事件同步到 Sentry / Slack。
+> `sync_runs` 不需要数据库：当前实现覆盖写 Blob 上的 `ops/sync-runs.json`，保留最近 100 次运行。需要可靠投递或 paging 时，应另接带持久重试的告警服务；当前代码没有声明该能力。
 
 ### 告警 webhook（`ALERT_WEBHOOK_URL`，可选）
 
 数据 pipeline（Vercel Workflow 全量刷新 + 每日 / 每周 cron）失败时调用 `sendAlert`（`web/lib/observability/alert.ts`）。`sendAlert` 有两条投递面，都是**尽力而为、绝不抛错**（告警失败不能拖垮 pipeline）：
 
 1. **永远**写一条可 grep 的结构化日志 `[ALERT] <pipeline> failed`（含 `run_id` / `step` / `error`）到 **Vercel function logs**——即便没配 webhook 也看得到。
-2. **当且仅当**设置了环境变量 `ALERT_WEBHOOK_URL` 时，额外向该 URL `POST` 一段 JSON 失败摘要（`{ text, pipeline, run_id, step, error, at }`，5s 超时）。**未设置 = 仅日志**（no-op，不报错）。
+2. **当且仅当**设置了环境变量 `ALERT_WEBHOOK_URL` 时，额外向该 URL `POST` 一段 JSON 失败摘要（`{ text, pipeline, run_id, step, error, at }`，单次 5s 超时）。只有 HTTP 2xx 才算成功；408 / 425 / 429 / 5xx、超时和网络错误最多尝试 3 次（100ms / 250ms backoff），其他 4xx 立即标为投递失败。最终结果含 `delivered` / `failed` / `disabled`、attempt 数和安全诊断，并写入结构化日志；不会把 webhook 错误抛回 pipeline。
 
 **一行接入**：在 Vercel 项目 Settings → Environment Variables 加 `ALERT_WEBHOOK_URL`，值指向一个能收 JSON POST 的端点——Slack / Discord incoming webhook，或调试用的 `https://webhook.site/...`。配上即生效，无需改代码；留空则保持纯日志模式。
 
-> `ops/workflows/health.json` 由 `recordHealth` 写入：Workflow 成功 / 失败都会写 `workflow-refresh` 的 `ok` / `failed`；refresh start 路由遇到同一周幂等重试会写 `attached`，遇到不同 idempotency key 的并发 active run 会写 `rejected`；每日 / 每周 cron 当前只在失败路径写 `cron-daily` / `cron-weekly` 的 `failed`（成功记录仍以 `ops/sync-runs.json` 为准）。因此排查 cron 最近成功时间时，先看 `ops/sync-runs.json`，不要把 health.json 没有 cron `ok` 误判成成功灯缺失。
+> `recordHealth` 分别写 `ops/workflows/health/{workflow-refresh|cron-daily|cron-weekly}.json`。每条记录用 ETag compare-and-set 更新，保留 `last_success`、`last_failure`、`correlation_id` / `run_id` / `idempotency_key`，并给出 `freshness.stale_after`。每日和每周 cron 的每次非 dry 成功与失败都会更新；`attached` / `rejected` 只改变该 pipeline 的 latest signal，不删除历史成功或失败。不同 pipeline 的并发运行不能互相覆盖。
 
 ## 一次性 bootstrap Runbook（归档 / 非日常路径）
 

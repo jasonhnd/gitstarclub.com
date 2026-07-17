@@ -148,4 +148,4 @@ GROUP BY repo_id, day;
 - 每步可重跑：输出按 period/id 幂等覆盖；bootstrap 可分年/分批断点续跑；Workflow step 按 `(run_id, shard)` 幂等（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8）。
 - **版本化产物**：Workflow 发布写 `views/<run_id>/`（version=run_id）→ 切 `views/latest.json` 指针（保留 `prev_version`），坏数据指回上一版即可（OPS 回滚）。
 - **校验闸门**：产出 JSON 后跑 Zod schema + sanity 不变量（TESTING §1.2/§1.3），不过不发布、不切指针。
-- **失败靠告警**（Sentry + `sync_runs` + `ops/workflows/**`）；Workflow step 自带重试，跨配额用 `sleep` 等待，不空转。
+- **失败靠可核验状态**（Vercel Function logs + 可选 webhook + `sync-runs` + `ops/workflows/**`）；仓库当前没有 Sentry 集成。Workflow step 自带重试，跨配额用 `sleep` 等待，不空转。

@@ -208,7 +208,10 @@ blob://
 │   │   └── error.json                       # 失败时写入(markFailed,含 step + message,便于排查)
 │   ├── active.json                          # 当前 lease(ETag CAS + idempotency key + fencing_token + expiry)
 │   ├── latest-success.json                  # 最近一次成功发布的 run_id(恢复点)
-│   └── health.json                          # 整体健康状态(最近 run 摘要,供运维 / 监控查询)
+│   └── health/                              # 每条 pipeline 独立的 ETag-CAS 健康状态
+│       ├── workflow-refresh.json            # latest + last_success + last_failure + freshness
+│       ├── cron-daily.json
+│       └── cron-weekly.json
 │
 ├── canonical/v2/                            # 生产 canonical(JSON shard)
 │   ├── meta.json                            # seam_date · schema_ver · folded_through(周/月水位,见 §6.3/§7.2)
