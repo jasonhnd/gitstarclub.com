@@ -57,8 +57,10 @@ test.describe("search accessibility and recovery", () => {
     await gotoCompare(page);
     await index.ready;
 
-    const search = page.getByRole("searchbox", { name: "Search", exact: true });
+    const search = page.getByRole("combobox", { name: "Search", exact: true });
+    await expect(search).toHaveAttribute("aria-expanded", "false");
     await search.fill("facebook");
+    await expect(search).toHaveAttribute("aria-expanded", "true");
 
     const dialog = page.getByRole("dialog", { name: "Search" });
     const firstLink = dialog.getByRole("link", { name: /^facebook\/react /i });
@@ -77,6 +79,7 @@ test.describe("search accessibility and recovery", () => {
     await expect(lastLink).toBeFocused();
     await lastLink.press("Escape");
     await expect(dialog).toBeHidden();
+    await expect(search).toHaveAttribute("aria-expanded", "false");
     await expect(search).toBeFocused();
 
     await search.press("ArrowDown");
@@ -101,7 +104,7 @@ test.describe("search accessibility and recovery", () => {
     await gotoCompare(page);
     await index.ready;
 
-    await page.getByRole("searchbox", { name: "Search", exact: true }).fill("facebook");
+    await page.getByRole("combobox", { name: "Search", exact: true }).fill("facebook");
     const dialog = page.getByRole("dialog", { name: "Search" });
     await expect(dialog.getByRole("link", { name: /^facebook\/react /i })).toBeVisible();
 
@@ -114,6 +117,31 @@ test.describe("search accessibility and recovery", () => {
         targets: violation.nodes.map((node) => node.target),
       })),
     ).toEqual([]);
+  });
+
+  test("Enter cannot commit old hits before the new worker response", async ({ page }) => {
+    const index = await serveSearchIndex(page);
+    await gotoCompare(page);
+    await index.ready;
+
+    const search = page.getByRole("combobox", { name: "Search", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Search" });
+    await search.fill("facebook");
+    await expect(dialog.getByRole("link", { name: /^facebook\/react /i })).toBeVisible();
+
+    // Keep the input event and Enter in one browser task. The worker cannot deliver
+    // the vue result between them, so Enter must not observe the old facebook hits.
+    await search.evaluate((element) => {
+      const input = element as HTMLInputElement;
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (!valueSetter) throw new Error("HTMLInputElement value setter is unavailable");
+      valueSetter.call(input, "vue");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
+    });
+
+    await expect(dialog.getByRole("link", { name: /^vuejs\/vue /i })).toBeVisible();
+    await expect(page).toHaveURL(/\/compare$/);
   });
 });
 
