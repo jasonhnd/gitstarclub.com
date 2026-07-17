@@ -189,7 +189,7 @@ export const revalidate = false              // org：仅靠 cron 定点失效�
 ```ts
 // 例：app/pulse/page.tsx
 export const revalidate = false              // 不靠时间轮询
-// Vercel cron 写 hot-snapshot.json / 当前周月 rank 后 revalidatePath('/pulse')
+// Vercel cron 原子切 live/latest.json 后 revalidatePath('/pulse')
 ```
 
 ### 2.3 `next.config.ts`：必须的全局开关
@@ -217,7 +217,7 @@ export default nextConfig;
 
 ### 2.4 数据变更如何到达页面（无 deploy）
 
-- **每日 cron**（`/api/cron/daily`，[API](./API.md) / [OPS](./OPS.md) §Cron）：写 `current_month.json` + `hot-snapshot.json` + `live/rank/*` 当前月/当前周覆盖层 + `live/heatmap/*` 当月覆盖层 → `revalidatePath` 核心热集（首页 / pulse / rankings / 当年 / 当月 / 当前周）。
+- **每日 cron**（`/api/cron/daily`，[API](./API.md) / [OPS](./OPS.md) §Cron）：把 `current_month` / `hot-snapshot` / 当前月周 rank / 当月 heatmap 写入同一 immutable `live/generations/<run_id>/`，manifest 完成后 fenced CAS 切 `live/latest.json`，**再** `revalidatePath` 核心热集。
 - **每周 cron**（`/api/cron/weekly`，[API](./API.md)）：同样在 Vercel 内做 live refresh，保证周榜和月榜即使没有全量历史重算也不会断档；全量历史刷新另走 Vercel Workflow 分片，不做 16k 全量 build。
 - **deploy**：仅代码/结构变更触发；会重置 ISR store，长尾首访冷生成一次（见 [ARCHITECTURE](./ARCHITECTURE.md)）。
 
@@ -298,16 +298,16 @@ export const getRepoEntity = cache(async (id: number) => {
 
 | 页面 | 主要读取 | 说明 |
 |---|---|---|
-| 首页 `/` | `hot-snapshot.json`（`home`：`year_spine` / `current_month_top` / `on_this_day`） | 热集 ISR 只读 KB 级快照，**绝不**加载大文件（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.9） |
-| 年页（当年） | `hot-snapshot.json`（`current_year`） + `heatmap/year/{Y}.json`（12 月格） | 当年走热快照 |
+| 首页 `/` | live generation 的 `hot-snapshot.json`（`home`：`year_spine` / `current_month_top` / `on_this_day`） | 热集 ISR 只读 KB 级快照；分区 source-as-of 见 `freshness` |
+| 年页（当年） | live generation 的 `hot-snapshot.json`（`current_year`） + base `heatmap/year/{Y}.json` | 当年走热快照 |
 | 年榜（历史） | `rank/year/{Y}/{repo,org}/{flow,stock}.json` + `heatmap/year/{Y}.json` | 冻结视图 |
-| 月榜（当月） | `live/rank/month/{period}/repo/{flow,stock}.json` + `live/heatmap/month/{period}.json`，缺失时回退基础 `rank/*` / `heatmap/*` | 当月 live 视图来自 Vercel cron 活尾 |
+| 月榜（当月） | generation 内 `rank/month/{period}/repo/{flow,stock}.json` + `heatmap/month/{period}.json`，缺失时回退 base | 所有 live siblings 由同一个 pointer 选择 |
 | 月榜（历史） | `rank/month/{period}/{repo,org}/{flow,stock}.json` + `heatmap/month/{period}.json` | 三大榜 + 日热力 |
-| 周榜 | 当前周优先 `live/rank/week/{period}/repo/flow.json`，历史周读基础 `rank/week/*` | 独立页 |
+| 周榜 | 当前周优先 generation 内 `rank/week/{period}/repo/flow.json`，历史周读 base | 独立页 |
 | repo 页 | `entity/repo/{id}.json`（`curve`/`milestones`/`monthly_table`/`rank_history`） | mover 当日刷新（curve 含 `recent_daily`） |
 | org 页 | `entity/org/{login}.json`（`members`/`curve`/`rank_history`） | 成员聚合曲线 |
 | 全时榜 `/rankings` | `rank/all-time/{repo,org}/stock.json`（或 `hot-snapshot.all_time`） | repo 榜 + org 榜并列 |
-| 脉搏 `/pulse` | `hot-snapshot.json` + 当前周 `live/rank/week/<current>/repo/flow.json` | 每日/每周 Vercel cron 重写 |
+| 脉搏 `/pulse` | 同一 live generation 的 `hot-snapshot.json` + 当前周 rank | 每日/每周原子切 generation |
 | 全部榜单页 | + `lookup/repos.json` / `lookup/orgs.json` | **lookup-join**，见 §3.4 |
 
 ### 3.4 lookup-join 模式（榜单只存 id，build join 出展示字段）
@@ -325,7 +325,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 ### 3.5 缓存一致性
 
-- **每日更新的视图**（`current_month.json` / `hot-snapshot.json`）读取时带 `?v=<date>` cache-bust，规避 Blob 同路径覆盖最长 60s 传播窗口（[OPS](./OPS.md) §Blob 缓存传播）。
+- **live generation 指针**：所有 live reader 先以 60s revalidate + in-memory single-flight 解析 `live/latest.json`，再读不可变 `live/generations/<generation>/<logical-path>`。真正 404 才启用 legacy flat fallback；pointer 错误时使用已验证旧 generation 或 fail closed，避免混代。
 - `meta.schema_ver`：build 启动校验版本匹配，不符 fail-fast（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §3）。
 - **base 视图版本指针**：base `rank/*` / `entity/*` / `heatmap/*` 通过「先读 `views/latest.json` 指针解析版本前缀，再读该前缀下视图」消费（[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7）。默认 data-cache TTL 为 3600 秒；repo / categories / OG 等 1 天 ISR 路由使用 daily base 读取入口（86400 秒），避免 pointer fetch 缩短 route TTL。pointer fetch 带共享 tag，publish / rollback 主动失效；所有进程内 memo 无论 data-cache TTL 多长都被 60 秒可见性 SLA 限制。这一步**封装在 `web/lib/data/`**，组件入参形状不变、**对页面透明**；「live 优先、回退 base」语义保留（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11）。
 

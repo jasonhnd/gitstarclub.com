@@ -49,6 +49,8 @@ import {
   // live
   CurrentMonth,
   HotSnapshot,
+  LiveGenerationManifest,
+  LiveGenerationPointer,
   // search
   SearchDoc,
   SearchIndex,
@@ -767,6 +769,62 @@ describe("live contracts", () => {
         current_month: topLists,
       }),
     ).toBe(true);
+  });
+
+  test("HotSnapshot accepts explicit per-section freshness without requiring it on legacy blobs", () => {
+    const topLists = { flow: [], stock: [] };
+    const legacy = {
+      generated_at: TS,
+      home: { year_spine: [], current_month_top: topLists, on_this_day: [] },
+      current_year: topLists,
+      current_month: topLists,
+      all_time: { repo: [], org: [] },
+    };
+    expect(HotSnapshot.parse(legacy).freshness).toBeUndefined();
+    expect(HotSnapshot.parse({
+      ...legacy,
+      freshness: {
+        current_month: TS,
+        current_year: TS,
+        year_spine: null,
+        on_this_day: null,
+        all_time: TS,
+      },
+    }).freshness?.year_spine).toBeNull();
+  });
+
+  test("live generation pointer and manifest require complete safe publication metadata", () => {
+    const pointer = {
+      schema_ver: 1,
+      generation: "daily-run",
+      run_id: "daily-run",
+      idempotency_key: "daily:2026-07-17",
+      job: "daily",
+      day: "2026-07-17",
+      month: "2026-07",
+      week: "2026-W29",
+      published_at: "2026-07-17T03:00:00.000Z",
+      previous_generation: null,
+      lease: null,
+    };
+    expect(LiveGenerationPointer.parse(pointer).generation).toBe("daily-run");
+    expect(rejects(LiveGenerationPointer, { ...pointer, day: null })).toBe(true);
+
+    const manifest = {
+      schema_ver: 1,
+      generation: "daily-run",
+      run_id: "daily-run",
+      idempotency_key: "daily:2026-07-17",
+      job: "daily",
+      day: "2026-07-17",
+      month: "2026-07",
+      week: "2026-W29",
+      created_at: "2026-07-17T03:00:00.000Z",
+      previous_generation: null,
+      files: ["current_month.json", "rank/month/2026-07/repo/flow.json"],
+    };
+    expect(LiveGenerationManifest.parse(manifest).files).toHaveLength(2);
+    expect(rejects(LiveGenerationManifest, { ...manifest, files: ["../escape.json"] })).toBe(true);
   });
 });
 

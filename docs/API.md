@@ -64,12 +64,12 @@ Runs the daily live overlay refresh.
 | Item | Contract |
 |---|---|
 | Auth | Required bearer `CRON_SECRET` |
-| Query | `dry=1` is optional and performs a dry run with no Blob writes, sync-run log write, alert, or health write |
+| Query | `dry=1` performs a no-write dry run. `idempotency_key` optionally overrides the default `<job>:<UTC-day>` key for an intentional additional same-day publication. |
 | Body | None |
 | Success | `200 application/json` |
-| Failure | `401 Unauthorized`; `500 {"ok":false,"runId":"daily-...","error":"Internal server error"}` |
+| Failure | `400` invalid idempotency key; `401 Unauthorized`; `409` another live writer owns the lease; `500 {"ok":false,"runId":"daily-...","error":"Internal server error"}` |
 | Cache | `dynamic = "force-dynamic"`; no explicit `Cache-Control`; callers should not cache |
-| Side effects | Non-dry runs update live Blob views, revalidate hot paths, submit live-overlay IndexNow URLs, and append `ops/sync-runs.json` |
+| Side effects | Non-dry runs acquire the fenced `live/latest.json` lease, write and validate one immutable `live/generations/<run_id>/**` generation, atomically flip the pointer, then revalidate/submit IndexNow and append `ops/sync-runs.json` |
 | Max duration | `800` seconds |
 | Type source | [`LiveRefreshResult`](../web/lib/cron/live-refresh.ts) |
 
@@ -78,6 +78,8 @@ Success response:
 ```json
 {
   "ok": true,
+  "status": "published",
+  "idempotency_key": "daily:2026-07-05",
   "job": "daily",
   "dry": false,
   "day": "2026-07-05",
@@ -86,19 +88,30 @@ Success response:
   "polled": 5302,
   "day_total": 1234,
   "writes": [
-    "current_month.json",
-    "hot-snapshot.json",
-    "live/rank/month/2026-07/repo/flow.json",
-    "live/rank/month/2026-07/repo/stock.json",
-    "live/rank/week/2026-W27/repo/flow.json",
-    "live/heatmap/month/2026-07.json"
+    "live/generations/daily-.../current_month.json",
+    "live/generations/daily-.../hot-snapshot.json",
+    "live/generations/daily-.../rank/month/2026-07/repo/flow.json",
+    "live/generations/daily-.../rank/month/2026-07/repo/stock.json",
+    "live/generations/daily-.../rank/week/2026-W27/repo/flow.json",
+    "live/generations/daily-.../heatmap/month/2026-07.json",
+    "live/generations/daily-.../manifest.json",
+    "live/latest.json"
   ],
   "all_time_repo_1": { "rank": 1, "id": 10270250, "value": 232000, "prev_rank": null },
   "current_week_flow_1": { "rank": 1, "id": 1296269, "value": 320, "prev_rank": null },
   "current_month_flow_1": { "rank": 1, "id": 1296269, "value": 1234, "prev_rank": null },
+  "generation": "daily-2026-07-05T03-00-00-000Z",
+  "previous_generation": "daily-2026-07-04T03-00-00-000Z",
+  "published_at": "2026-07-05T03:02:00.000Z",
+  "post_commit_errors": [],
   "log_error": null
 }
 ```
+
+Duplicate delivery with the same key returns `200 status=already-published`
+after commit or `202 status=attached` while that run is active. A different key
+returns `409 status=rejected` until the 15-minute lease expires. No
+revalidation or IndexNow submission occurs before the pointer commit.
 
 Operational example:
 

@@ -162,9 +162,14 @@ blob://
 │   ├── repo/{id}.json                               # 曲线 + 里程碑 + 历期表 + 名次史
 │   └── org/{login}.json
 ├── heatmap/{year|month}/{period}.json
-├── live/                                            # 当前周期活尾覆盖层（每日 / 每周 cron 写）
-│   ├── rank/{week|month}/{current}/repo/{flow|stock}.json
-│   └── heatmap/month/{current}.json
+├── live/                                            # 当前周期原子活尾（每日 / 每周 cron 写）
+│   ├── latest.json                                  #   唯一可变控制对象：完整 generation 指针 + ETag/CAS lease
+│   └── generations/<run_id>/                        #   不可变；manifest 写完后才允许切 latest
+│       ├── manifest.json                            #     完整文件清单 + idempotency key + previous generation
+│       ├── current_month.json · hot-snapshot.json
+│       ├── rank/{week|month}/{current}/repo/{flow|stock}.json
+│       ├── heatmap/month/{current}.json
+│       └── rollover/{period}.json                   #     跨月 pending 的 generation 内恢复副本（仅跨月时）
 ├── views/                                           # 发布层：latest.json 指针 + <run_id>/（version=run_id）
 │   ├── latest.json                                  #   pointer：{ version, run_id, published_at, prev_version, schema_ver }
 │   └── <run_id>/                                    #   版本化输出（writeVersion → views/<run_id>/<rel>）
@@ -201,8 +206,8 @@ blob://
 │           ├── validation.json                      #     发布闸门结果（ok · checked · invariants · failures）
 │           ├── renames.json                         #     rename step 输出（old_full_name → new_full_name，web 层 308）
 │           └── error.json                           #     失败时写入（run_id · error · at）
-├── current_month.json                               # 当月活尾（KB 级，每日 cron append-only 覆盖写）
-└── hot-snapshot.json                                # 热集聚合（首页 / 当年 / 当月，每日 cron 重写，热集 ISR 读）
+├── current_month.json                               # 迁移期 legacy fallback；新 cron 不再覆盖
+└── hot-snapshot.json                                # 迁移期 legacy fallback；新 cron 不再覆盖
 ```
 
 **Blob 操作约束（写 pipeline 时必须遵守）**：
@@ -213,8 +218,8 @@ blob://
 | 单文件上限 | 5TB | 远超需求（数据仅几十 MB） |
 | Pro 容量 | ~5GB 存储 + 100GB 传输/月 | 数据几十 MB，宽裕 |
 | **写速率** | **4,500 次/分（75/s）** | **批量 `put()` 必须节流**（限并发 + 间隔），尤其 bootstrap 上传 / Workflow 重算写上万 entity JSON 时 |
-| 同路径覆盖 | 需 `allowOverwrite: true` | 覆盖写视图 / 活尾时显式带上 |
-| **缓存传播** | 同路径覆盖最长 **60s** 才全网生效 | **每日更新的视图（活尾 / hot-snapshot）读取时带 query 参数 cache-bust**（如 `?v=<date>`），避免读到旧副本 |
+| 同路径覆盖 | 需 `allowOverwrite: true` | 仅 pointer / lease / 运维状态可覆盖；live generation 对象必须 `allowOverwrite:false` |
+| **缓存传播** | 同路径覆盖最长 **60s** 才全网生效 | live 读侧只短缓存 `live/latest.json`（60s）；generation 路径不可变，不存在兄弟文件传播不同步问题 |
 
 > 之所以选 PUBLIC store：JSON 视图本就是要被 build / 运行时直接 `fetch` 的公开数据，公开读免去签名、天然走 CDN。canonical（JSON shard + bootstrap Parquet）虽也在同 store，但只有持 token 的 Workflow / bootstrap 会写它，不在 build / 运行时读路径。
 
@@ -228,8 +233,8 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 
 | Job | 调度（UTC） | 动作 | 触发 deploy？ |
 |---|---|---|---|
-| **每日** | `0 3 * * *`（~03:00） | **Vercel Function / JSON-only**：GraphQL 查 current_stars → append `current_month.json` → 重算 `hot-snapshot.json`、当前月 / 当前周 rank、当月 heatmap → `revalidatePath` 热集页 | **否**（不碰 Parquet / 引擎 / deploy） |
-| **每周** | `0 4 * * 0`（周日 ~04:00） | **Vercel Function / 增量刷新**：复用 live refresh，把当前周、当前月与热集重新覆盖写入 Blob，并落 `ops/sync-runs.json` | **否**（长尾按需 ISR；不做全量 build） |
+| **每日** | `0 3 * * *`（~03:00） | **Vercel Function / JSON-only**：GraphQL 查 current_stars → 生成并校验完整 immutable live generation → 原子切 `live/latest.json` → `revalidatePath` 热集页 | **否**（不碰 Parquet / 引擎 / deploy） |
+| **每周** | `0 4 * * 0`（周日 ~04:00） | **Vercel Function / 增量刷新**：复用同一 generation/pointer 发布协议，并落 `ops/sync-runs.json` | **否**（长尾按需 ISR；不做全量 build） |
 | **每周 refresh workflow** | `0 6 * * 0`（周日 06:00） | **Vercel Workflow / 全量刷新**：`/api/workflows/refresh/start` 鉴权后启动 `refreshWorkflow`——白名单 → 改名 → 元数据 → 折叠 → rank / entity / heatmap 重算 → 校验 → 发布（切指针）→ 版本 GC | **否**（发布只切指针；排程独立于 daily / weekly） |
 
 ```jsonc
@@ -243,7 +248,7 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 }
 ```
 
-> **Vercel-only cron 实现**：每日 job = `web/app/api/cron/daily/route.ts`，每周 job = `web/app/api/cron/weekly/route.ts`，两者都委托 `web/lib/cron/handlers.ts` 并支持 `?dry=1`。CRON_SECRET 鉴权 → GraphQL 拉 current_stars（`web/lib/github.ts`，按 owner / name 批量）→ `web/lib/cron/live-refresh.ts` 幂等 upsert `current_month.json`（按 UTC 日）→ 重算 `hot-snapshot.json`、`live/rank/month/<current>/repo/{flow,stock}.json`、`live/rank/week/<current>/repo/flow.json`、`live/heatmap/month/<current>.json` → `revalidatePath` 核心页 → `ops/sync-runs.json` 记录运行。普通 Vercel Function 不承载一次性 DuckDB / Parquet 全量重算；若需要把历史全量刷新也放进 Vercel，必须拆成 Vercel Workflow 分片步骤，而不是单个 Function。
+> **Vercel-only cron 实现**：每日 job = `web/app/api/cron/daily/route.ts`，每周 job = `web/app/api/cron/weekly/route.ts`，两者都委托 `web/lib/cron/handlers.ts` 并支持 `?dry=1`。CRON_SECRET 鉴权 → 以 `<job>:<UTC-day>` 幂等 key 在 `live/latest.json` 取得 15 分钟 ETag/CAS lease → GraphQL 拉 current_stars → `live-refresh.ts` 幂等重建当日状态 → 校验全部 JSON → 写 `live/generations/<run_id>/**` 与 manifest → 同一个控制对象做 fenced CAS 切 generation → **之后**才 `revalidatePath` / IndexNow / `ops/sync-runs.json`。不同 key 并发返回 409；同 key 运行中返回 202 attached，已提交返回 200 already-published。手动同日再次刷新须提供新的 `idempotency_key`。
 
 **鉴权模式（CRON_SECRET）**：
 
@@ -253,8 +258,9 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 **幂等（关键约束）**：
 
 > Vercel Cron **无自动重试**，且**同一次可能触发两次**。两个 handler **必须幂等**：
-> - 每日：`current_month.json` 当月内 **append-only + 覆盖写**，按「今天 UTC 日期」作 upsert 键——重复执行只是用同一份 GraphQL 结果覆盖同一天，不会重复累加。
-> - 每周：当前周、当前月与热集视图按「目标周期」幂等覆盖；`ops/sync-runs.json` 保留最近 100 次运行；`revalidatePath` 天然幂等（重复调用无害）。
+> - 每日 / 每周：默认 key 为 `<job>:<UTC-day>`；同 key 最多发布一次。租约、当前 generation 和 fencing token 共存于 `live/latest.json`，所以失去 lease 的旧进程不能晚到覆盖新指针。
+> - generation 文件不可变；对象写到任意一步失败，`generation` 字段仍指向上一完整版本。部分失败后释放/过期 lease 即可用同 key 重试，已存在的同字节 immutable 对象可安全复用。
+> - `current_month` 内仍按 UTC 日 upsert，保证显式新 key 的同日追加刷新不会重复累计。
 > - 失败靠**告警**兜底（见下），不靠重试。
 
 **时长**：cron route 是 Function，default 300s / **max 800s**。每日 / 每周 Vercel cron 都只读写 JSON，但 GraphQL 全量轮询需要按批次 pacing；本地全量模拟约 131s，Vercel 实跑必须预留数分钟并控制在 800s 内。DuckDB / Parquet 的历史全量重算不得放进单个 Function；要 Vercel-only 时拆成 Workflow 分片，逐步读写 Blob checkpoint。
@@ -262,10 +268,10 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 **Daily cron 实跑 runbook**：
 
 1. 先在 Vercel production-target URL 调 `GET /api/cron/daily?dry=1`，带 `Authorization: Bearer <CRON_SECRET>`；若日志出现 GitHub GraphQL `403`、`Retry-After` 或 rate-limit remaining 接近 0，停止实跑，先继续降批次 / 加等待。
-2. 实跑前记录两个 Blob 对象状态：`current_month.json`、`hot-snapshot.json`。若返回 `404`，记录为「原本不存在」；若存在，下载到本地备份目录再继续。
+2. 实跑前记录 `live/latest.json`（尤其 `generation` / `previous_generation` / `lease`）。不需要逐个备份 immutable generation 文件。
 3. 真实触发 `GET /api/cron/daily`，同样带 `Authorization: Bearer <CRON_SECRET>`。客户端连接可能比函数完成更早关闭；以 Blob 写入和 Vercel logs 为准。
-4. 写后运行 `cd web && bun scripts/validate-live-views.ts --bust <UTC day>`，确认 `current_month.json` 包含本次 UTC day，`hot-snapshot.json` schema 可被现有 contracts 校验；再检查 `/`、`/pulse` 仍可访问且保持 noindex。
-5. 若再次失败且两个 Blob 仍为 `404`，视为无写入失败，无需数据回滚；若任一对象已写入但校验失败，按 §回滚「每日活尾」处理。
+4. 写后运行 `cd web && bun scripts/validate-live-views.ts --bust <UTC day>`；脚本先解析 `live/latest.json`，再校验同一 generation 的 `current_month` / `hot-snapshot` 与 freshness。再检查 `/`、`/pulse`。
+5. 若失败，确认 pointer 的 `generation` 未变；已写但未引用的 partial generation 不影响线上，可留待后续 GC。若已提交内容有误，把 `generation` 指回 `previous_generation`（同时使用 ETag 条件写，勿覆盖活跃 lease）。
 
 ## Vercel Workflow runbook
 
@@ -382,5 +388,5 @@ For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, 
 
 - **指针回滚（Workflow 发布）**：不要直接覆盖 Blob。用稳定 idempotency key 调受保护 rollback API；它取得 fenced lease、固定 rollback intent、同步 recovery / whitelist pointer 并失效页面和 pointer cache。示例：`curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`。返回成功后在 **≤60s** 可见性 SLA 内核对页面与 `views/latest.json`。设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7。
 - **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment** 即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。
-- **每日活尾**：`current_month.json` 当月 append-only、覆盖写；`hot-snapshot.json` 由同次 daily cron 重写。实跑前先备份已存在对象；若失败前两者原本不存在，回滚就是保持 / 恢复为不存在；若已存在且新写入校验失败，用备份覆盖回 `current_month.json` 与 `hot-snapshot.json`，再用 cache-bust 读取确认。
+- **每日活尾**：`live/generations/<run_id>/**` 不可变，`live/latest.json` 是唯一发布开关。提交前失败无需数据回滚（pointer 仍指向旧 generation）；提交后发现坏数据，将 pointer 的 `generation` 指回 `previous_generation`。回滚也必须先确认没有活跃 `lease` 并使用 ETag 条件写，避免覆盖正在发布的 cron。
 - **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。

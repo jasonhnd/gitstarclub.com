@@ -24,7 +24,7 @@ source_of_truth_for:
 | Requirement ID | Contract artifacts | Contract responsibility |
 |---|---|---|
 | `REQ-CHRONICLE-001` | `rank/**`, `entity/repo/{id}.json`, `entity/org/{login}.json`, `heatmap/{year|month}/{period}.json`, `lookup/**` | Historical and entity pages can join stable ids/logins to versioned ranking, curve, heatmap, and lookup views. |
-| `REQ-PULSE-001` | `current_month.json`, `hot-snapshot.json`, `live/rank/**`, `live/heatmap/**`, `ops/sync-runs.json` | Daily movers and pulse pages have a bounded, fresh live-overlay contract independent of full recompute. |
+| `REQ-PULSE-001` | `live/latest.json`, `live/generations/{run_id}/**`, `ops/sync-runs.json` | Daily movers and pulse pages consume one complete, freshness-labelled live generation independent of full recompute. |
 | `REQ-RANKING-001` | `rank/{window}/{period}/{dim}/{metric}.json`, `rank/all-time/{dim}/stock.json`, derived `growth` / `new` rank files | Rank item shape, metric semantics, id-vs-login exclusivity, ordering, continuity, and top-N rules are schema-visible. |
 | `REQ-I18N-001` | All data views; no translated repo/org data fields | Data contracts remain language-neutral so frontend locale routes can localize chrome/meta without mutating source facts. |
 | `REQ-DATAOPS-001` | `views/latest.json`, `ops/workflows/{run_id}/manifest.json`, `ops/workflows/{run_id}/validation.json`, `ops/workflows/latest-success.json` | Published versions, validation gates, checkpoints, and rollback pointers are explicit artifacts. |
@@ -145,13 +145,17 @@ lookup/aliases.json                            # 改名旧 full_name → 当前 
 search/index.json                              # 客户端全站搜索索引（recompute 派生）
 rank/{week|month|year}/{period}/{repo|org}/{flow|stock}.json
 rank/all-time/{repo|org}/stock.json
-live/rank/{week|month}/{period}/repo/{flow|stock}.json
-live/heatmap/month/{period}.json
+live/latest.json                              # live generation 指针 + fenced lease（§2.9a）
+live/generations/{run_id}/manifest.json       # generation 完整性清单
+live/generations/{run_id}/rank/{week|month}/{period}/repo/{flow|stock}.json
+live/generations/{run_id}/heatmap/month/{period}.json
+live/generations/{run_id}/current_month.json  # 活尾（cron 写，§2.8）
+live/generations/{run_id}/hot-snapshot.json   # 热集（cron 写，ISR 读，§2.9）
 entity/repo/{id}.json
 entity/org/{login}.json
 heatmap/{year|month}/{period}.json
-current_month.json                             # 活尾（cron 写）
-hot-snapshot.json                              # 热集（cron 写，ISR 读）
+current_month.json                             # 迁移期 flat fallback（新 cron 不再覆盖）
+hot-snapshot.json                              # 迁移期 flat fallback（新 cron 不再覆盖）
 ops/sync-runs.json                             # cron 运行记录（cron 写，运维读）
 meta.json
 canonical/v2/whitelist/latest.json             # { run_id, ids[] }：已发布 baseline 的兼容 pointer（publish / rollback 写；whitelist step 不推进）
@@ -327,7 +331,7 @@ Rules:
 - `heatmap/year/2024.json` → 该年 12 个月总量（年页月格子），`cells` 用 `["2024-10", 总量]`。
 - 进行中当月的日总量来自 `current_month.json`，build 合并。
 
-### 2.8 `current_month.json`（活尾——Vercel cron 写）
+### 2.8 `live/generations/{run_id}/current_month.json`（活尾——Vercel cron 写）
 
 `month` 字段是 `MonthPeriod`；`updated` / `daily_totals` / `per_repo` 日期字段是 `DateStr`。
 
@@ -344,15 +348,22 @@ Rules:
 - 同一 UTC 日重跑时，日初基线由 `current_stars - 已记录今日 delta` 重建，再以最新 GraphQL 数值计算完整当日 delta；相同输入产生相同日状态，后续增长或回落仍保留相对日初的完整差值。
 - GitHub 对删除/改名仓库可返回 partial data。cron 明确支持这种 partial publication：只更新成功返回的 repo，缺失 repo 的 `per_repo` 今日值和 `current_stars` 原样保留；若非复用路径一个 repo 都未返回则 fail closed，不覆盖 live state。
 - `current_stars`：每日 GraphQL 最新权威值（也用于锚定）。
-- 每日/每周 Vercel cron 写活尾，并同步覆盖 `live/rank/*` 当前周/月 rank 与 `live/heatmap/*` 当月 heatmap。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（月+周折叠 `fold.ts`，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6/§7.2）；交接靠 `canonical/v2/pending/<period>.json` + `folded_through` 水位防重复/丢数据。
+- 每日/每周 Vercel cron 在同一 immutable generation 内写活尾、当前周/月 rank 与当月 heatmap；所有对象及 `manifest.json` 写完并通过 schema 后才切 `live/latest.json`。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（月+周折叠 `fold.ts`，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6/§7.2）；交接靠 `canonical/v2/pending/<period>.json` + generation 内 `rollover/<period>.json` 恢复副本 + `folded_through` 水位防重复/丢数据。
 
-### 2.9 `hot-snapshot.json`（cron 写，热集 ISR 读）
+### 2.9 `live/generations/{run_id}/hot-snapshot.json`（cron 写，热集 ISR 读）
 
 KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 
 ```json
 {
-  "generated_at": "...",
+  "generated_at": "2026-05-30T03:00:00.000Z",
+  "freshness": {
+    "current_month": "2026-07-17T03:00:00.000Z",
+    "current_year": "2026-05-30T03:00:00.000Z",
+    "year_spine": "2026-05-30T03:00:00.000Z",
+    "on_this_day": null,
+    "all_time": "2026-07-17T03:00:00.000Z"
+  },
   "home": {
     "year_spine": [ ["2015", 1200000], ["2016", 1800000] ],
     "current_month_top": { "flow": [ {"rank":1,"id":1296269,"value":1234} ], "stock": [ ... ] },
@@ -363,6 +374,42 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
   "all_time": { "repo": [ ... ], "org": [ ... ] }
 }
 ```
+
+`freshness` 是各 section 的 source-as-of，`null` 表示 writer 无法证明该
+section 当前有效；legacy flat snapshot 可暂时缺此字段。`generated_at` 为已知
+section 中最保守的时间，不能把 carry-forward 的旧 `year_spine` /
+`current_year` 冒充为本次刷新。cron 有 year rank/heatmap base 时会用
+base + 当前月重算；无法重算的 `on_this_day` 只保留与本 UTC 月日匹配的条目，
+否则发布空数组且 `freshness.on_this_day=null`。
+
+### 2.9a `live/latest.json` + generation manifest（原子 live 发布）
+
+`live/latest.json` 是唯一可变 live 控制对象，同时保存当前完整 generation 与
+15 分钟 lease。lease 获取与最终发布都使用 Blob ETag CAS；获取 lease 只改变
+`lease`，不会改变 `generation`，因此读者始终看到旧完整版本或新完整版本。
+
+```json
+{
+  "schema_ver": 1,
+  "generation": "daily-2026-07-17T03-00-00-000Z",
+  "run_id": "daily-2026-07-17T03-00-00-000Z",
+  "idempotency_key": "daily:2026-07-17",
+  "job": "daily",
+  "day": "2026-07-17",
+  "month": "2026-07",
+  "week": "2026-W29",
+  "published_at": "2026-07-17T03:02:00.000Z",
+  "previous_generation": "daily-2026-07-16T03-00-00-000Z",
+  "lease": null
+}
+```
+
+运行中 `lease={run_id,idempotency_key,job,acquired_at,expires_at}`；首发前
+`generation` 及发布元数据可为 `null`。manifest 重复上述 run/period 元数据并
+列出 generation 内全部相对 `files[]`。默认幂等 key 为 `<job>:<UTC-day>`；
+同 key running→attached，committed→直接返回已发布，不同 key active→409。
+对象写或验证失败只留下未引用的 orphan generation，pointer 不变；revalidate
+和 IndexNow 必须在 pointer CAS 成功之后执行。
 
 ### 2.10 `ops/sync-runs.json`（cron 运行记录）
 
@@ -385,7 +432,13 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
         "month": "2026-06",
         "week": "2026-W23",
         "polled": 5249,
-        "writes": ["current_month.json", "hot-snapshot.json"]
+        "generation": "daily-2026-06-02T03-00-00-000Z",
+        "previous_generation": "daily-2026-06-01T03-00-00-000Z",
+        "writes": [
+          "live/generations/daily-2026-06-02T03-00-00-000Z/current_month.json",
+          "live/generations/daily-2026-06-02T03-00-00-000Z/hot-snapshot.json",
+          "live/latest.json"
+        ]
       }
     }
   ]
@@ -512,9 +565,9 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
 
 ## 3. 版本 / 缓存 / 原子性
 
-- **原子切换**：生产发布写 `views/<run_id>/...` → validate → 更新 `views/latest.json` 指针（§2.11），读侧读指针指向的版本；当期活尾仍用覆盖写 + `?v=<date>` cache-bust（见 [OPS.md](./OPS.md) Blob 60s 传播）。
+- **原子切换**：base 发布写 `views/<run_id>/...` → validate → 更新 `views/latest.json`（§2.11）；live 发布写 `live/generations/<run_id>/...` → manifest → fenced CAS 更新 `live/latest.json`（§2.9a）。两者读侧都只消费指针指向的不可变完整版本。
 - `meta.schema_ver`：破坏性 schema 改动 bump，build 启动校验版本匹配，不符 fail-fast。
-- 活尾 `current_month.json` 覆盖写最坏读到滞后一天，无半写风险。
+- live 指针 60s 短缓存可能读到上一完整 generation，但不会读到混合 generation；pointer 非 404 错误时读侧使用已缓存的旧 generation 或 fail closed，只有真正 404 才允许迁移期 flat fallback。
 
 ## 4. 类型来源（单一事实源）
 

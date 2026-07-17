@@ -1,11 +1,15 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentMonth, getHeatmapBase, getHotSnapshot, getRankBase, getReposLookup } from "@/lib/data";
-import { putView } from "@/lib/data/write";
 import { fetchStarCounts, type RepoRef } from "@/lib/github";
 import { submitLiveOverlayIndexNow } from "@/lib/indexnow";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
-import { PendingPeriod } from "@/lib/contracts";
-import type { CurrentMonth, Heatmap, RankItem, RankList } from "@/lib/contracts";
+import { CurrentMonth, Heatmap, HotSnapshot, PendingPeriod, RankList } from "@/lib/contracts";
+import type { HotSnapshot as HotSnapshotData, HotSnapshotFreshness, RankItem } from "@/lib/contracts";
+import {
+  publishLiveGeneration,
+  type LivePublicationArtifact,
+  type LivePublicationStore,
+} from "./live-publication";
 
 const TOP_N = 20;
 
@@ -25,10 +29,36 @@ export type LiveRefreshResult = {
   all_time_repo_1: TopItem | null;
   current_week_flow_1: TopItem | null;
   current_month_flow_1: TopItem | null;
+  generation: string | null;
+  previous_generation: string | null;
+  published_at: string | null;
+  post_commit_errors: string[];
 };
+
+export interface LiveRefreshDependencies {
+  getReposLookup: typeof getReposLookup;
+  getCurrentMonth: typeof getCurrentMonth;
+  getHotSnapshot: typeof getHotSnapshot;
+  getRankBase: typeof getRankBase;
+  getHeatmapBase: typeof getHeatmapBase;
+  fetchStarCounts: typeof fetchStarCounts;
+  submitLiveOverlayIndexNow: typeof submitLiveOverlayIndexNow;
+  revalidatePath: typeof revalidatePath;
+  currentUtcPeriods: typeof currentUtcPeriods;
+  isoWeek: typeof isoWeek;
+}
 
 export interface LiveRefreshOptions {
   now?: Date;
+  /** Test seam for the atomic publisher. Production always uses the Blob CAS implementation. */
+  publisher?: typeof publishLiveGeneration;
+  /** Test seam; production uses the imported read/network/cache functions. */
+  dependencies?: Partial<LiveRefreshDependencies>;
+  publication?: {
+    runId: string;
+    idempotencyKey: string;
+    store?: LivePublicationStore;
+  };
 }
 
 type CurrentStarLookup = Record<string, { current_stars: number }>;
@@ -98,21 +128,36 @@ export function reconcileCurrentMonth(
 }
 
 export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: LiveRefreshOptions = {}): Promise<LiveRefreshResult> {
-  const lookup = await getReposLookup();
+  const dependencies: LiveRefreshDependencies = {
+    getReposLookup,
+    getCurrentMonth,
+    getHotSnapshot,
+    getRankBase,
+    getHeatmapBase,
+    fetchStarCounts,
+    submitLiveOverlayIndexNow,
+    revalidatePath,
+    currentUtcPeriods,
+    isoWeek,
+    ...opts.dependencies,
+  };
+  const lookup = await dependencies.getReposLookup();
   if (!lookup) throw new Error("lookup unavailable");
 
   const now = opts.now ?? new Date();
   const today = now.toISOString().slice(0, 10);
   const month = today.slice(0, 7);
-  const periods = currentUtcPeriods(now);
+  const periods = dependencies.currentUtcPeriods(now);
   const weekPeriod = periods.weekPeriod;
 
-  const [existingCM, snap, monthRank, weekRank, monthHeat] = await Promise.all([
-    getCurrentMonth(),
-    getHotSnapshot(),
-    getRankBase("month", month, "repo", "flow"),
-    getRankBase("week", weekPeriod, "repo", "flow"),
-    getHeatmapBase("month", month),
+  const [existingCM, snap, monthRank, weekRank, yearRank, monthHeat, yearHeat] = await Promise.all([
+    dependencies.getCurrentMonth(),
+    dependencies.getHotSnapshot(),
+    dependencies.getRankBase("month", month, "repo", "flow"),
+    dependencies.getRankBase("week", weekPeriod, "repo", "flow"),
+    dependencies.getRankBase("year", String(periods.year), "repo", "flow"),
+    dependencies.getHeatmapBase("month", month),
+    dependencies.getHeatmapBase("year", String(periods.year)),
   ]);
 
   const refs: RepoRef[] = Object.entries(lookup).map(([id, entry]) => ({
@@ -121,7 +166,7 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
     name: entry.name,
   }));
   const canReuseToday = !dry && job === "weekly" && existingCM?.month === month && existingCM.updated === today;
-  const fresh = canReuseToday ? new Map<number, number>() : await fetchStarCounts(dry ? refs.slice(0, 50) : refs);
+  const fresh = canReuseToday ? new Map<number, number>() : await dependencies.fetchStarCounts(dry ? refs.slice(0, 50) : refs);
   if (!dry && !canReuseToday && refs.length > 0 && fresh.size === 0) {
     throw new Error("GitHub returned no star counts; refusing to replace live state");
   }
@@ -134,7 +179,7 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
   const mergedStars = new Map<number, number>(Object.entries(currentMonth.current_stars).map(([id, stars]) => [Number(id), stars]));
   const monthDeltas = repoDeltas(perRepo);
   const weekDeltas = repoDeltas(perRepo, (date) => {
-    const week = isoWeek(new Date(`${date}T00:00:00.000Z`));
+    const week = dependencies.isoWeek(new Date(`${date}T00:00:00.000Z`));
     return `${week.year}-W${String(week.week).padStart(2, "0")}` === weekPeriod;
   });
 
@@ -152,29 +197,92 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
     flow: currentMonthFlow,
     stock: topByValue([...mergedStars].map(([id, value]) => ({ id, value }))),
   };
+  const nowIso = now.toISOString();
+  const fullPoll = !canReuseToday && fresh.size === refs.length;
+  const currentMonthAsOf = fullPoll
+    ? nowIso
+    : (snapshotSectionAsOf(snap, "current_month") ?? `${today}T00:00:00.000Z`);
+  const monthRankAsOf = earliestTimestamp(currentMonthAsOf, monthRank?.meta.generated_at ?? currentMonthAsOf);
+  const weekRankAsOf = earliestTimestamp(currentMonthAsOf, weekRank?.meta.generated_at ?? currentMonthAsOf);
+  const monthHeatAsOf = earliestTimestamp(currentMonthAsOf, monthHeat?.meta.generated_at ?? currentMonthAsOf);
 
-  const hotSnapshot = {
-    generated_at: now.toISOString(),
+  const currentYear = yearRank
+    ? {
+        flow: topByValue(mergeRankFlow(yearRank.items, monthDeltas)),
+        stock: currentMonthTop.stock,
+      }
+    : (snap?.current_year ?? currentMonthTop);
+  const currentYearAsOf = yearRank
+    ? earliestTimestamp(currentMonthAsOf, yearRank.meta.generated_at)
+    : snapshotSectionAsOf(snap, "current_year");
+  const { values: yearSpine, asOf: yearSpineAsOf } = yearHeat
+    ? {
+        values: mergeYearSpine(snap?.home.year_spine ?? [], yearHeat, String(periods.year), month, dailyTotals),
+        asOf: earliestTimestamp(currentMonthAsOf, yearHeat.meta.generated_at),
+      }
+    : {
+        values: snap?.home.year_spine ?? [],
+        asOf: snapshotSectionAsOf(snap, "year_spine"),
+      };
+  const onThisDay = validOnThisDay(snap, today);
+  const freshness: HotSnapshotFreshness = {
+    current_month: currentMonthAsOf,
+    current_year: currentYearAsOf,
+    year_spine: yearSpineAsOf,
+    on_this_day: onThisDay.asOf,
+    all_time: fullPoll ? nowIso : snapshotSectionAsOf(snap, "all_time"),
+  };
+  const hotSnapshot = HotSnapshot.parse({
+    // This global timestamp is deliberately conservative. Consumers that need
+    // section precision use `freshness`; legacy consumers never see a date
+    // newer than any known carried source.
+    generated_at: earliestKnownTimestamp(freshness) ?? nowIso,
+    freshness,
     home: {
-      year_spine: snap?.home.year_spine ?? [],
+      year_spine: yearSpine,
       current_month_top: currentMonthTop,
-      on_this_day: snap?.home.on_this_day ?? [],
+      on_this_day: onThisDay.items,
     },
-    current_year: snap?.current_year ?? currentMonthTop,
+    current_year: currentYear,
     current_month: currentMonthTop,
     all_time: { repo: allRepo, org: allOrg },
-  };
-  const monthHeatmap = mergeMonthHeatmap(monthHeat, month, dailyTotals, now);
+  });
+  const monthHeatmap = Heatmap.parse(mergeMonthHeatmap(monthHeat, month, dailyTotals, monthHeatAsOf));
+  const parsedCurrentMonth = CurrentMonth.parse(currentMonth);
+  const monthFlowList = RankList.parse(rankList("month", month, "repo", "flow", currentMonthFlow, monthRankAsOf));
+  const monthStockList = RankList.parse(rankList("month", month, "repo", "stock", currentMonthTop.stock, currentMonthAsOf));
+  const weekFlowList = RankList.parse(rankList("week", weekPeriod, "repo", "flow", currentWeekFlow, weekRankAsOf));
 
-  const writes = [
-    ...(rolledOver ? [`canonical/v2/pending/${existingCM!.month}.json`] : []),
-    "current_month.json",
-    "hot-snapshot.json",
-    `live/rank/month/${month}/repo/flow.json`,
-    `live/rank/month/${month}/repo/stock.json`,
-    `live/rank/week/${weekPeriod}/repo/flow.json`,
-    `live/heatmap/month/${month}.json`,
+  const artifacts: LivePublicationArtifact[] = [
+    { path: "current_month.json", data: parsedCurrentMonth },
+    { path: "hot-snapshot.json", data: hotSnapshot },
+    { path: `rank/month/${month}/repo/flow.json`, data: monthFlowList },
+    { path: `rank/month/${month}/repo/stock.json`, data: monthStockList },
+    { path: `rank/week/${weekPeriod}/repo/flow.json`, data: weekFlowList },
+    { path: `heatmap/month/${month}.json`, data: monthHeatmap },
   ];
+  const prerequisites: LivePublicationArtifact[] = [];
+  if (rolledOver) {
+    const pending = PendingPeriod.parse({
+      period: existingCM!.month,
+      // Stable across retries for the same UTC-day idempotency key.
+      frozen_at: `${today}T00:00:00.000Z`,
+      daily_totals: existingCM!.daily_totals,
+      per_repo: existingCM!.per_repo,
+    });
+    prerequisites.push({ path: `canonical/v2/pending/${existingCM!.month}.json`, data: pending });
+    artifacts.push({ path: `rollover/${existingCM!.month}.json`, data: pending });
+  }
+
+  const generation = opts.publication?.runId ?? null;
+  const writes = generation
+    ? [
+        ...prerequisites.map(({ path }) => path),
+        ...artifacts.map(({ path }) => `live/generations/${generation}/${path}`),
+        `live/generations/${generation}/manifest.json`,
+        "live/latest.json",
+      ]
+    : [];
 
   const result: LiveRefreshResult = {
     job,
@@ -188,42 +296,56 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
     all_time_repo_1: allRepo[0] ?? null,
     current_week_flow_1: currentWeekFlow[0] ?? null,
     current_month_flow_1: currentMonthFlow[0] ?? null,
+    generation: null,
+    previous_generation: null,
+    published_at: null,
+    post_commit_errors: [],
   };
 
   if (dry) return result;
+  if (!opts.publication) throw new Error("non-dry live refresh requires an acquired publication lease");
 
-  // freeze the closing month FIRST (before current_month.json is overwritten below).
-  if (rolledOver) {
-    const pending = PendingPeriod.parse({
-      period: existingCM!.month,
-      frozen_at: now.toISOString(),
-      daily_totals: existingCM!.daily_totals,
-      per_repo: existingCM!.per_repo,
-    });
-    await putView(`canonical/v2/pending/${existingCM!.month}.json`, pending);
+  const publication = await (opts.publisher ?? publishLiveGeneration)(
+    {
+      runId: opts.publication.runId,
+      idempotencyKey: opts.publication.idempotencyKey,
+      job,
+      day: today,
+      month,
+      week: weekPeriod,
+      createdAt: nowIso,
+      artifacts,
+      prerequisites,
+    },
+    opts.publication.store,
+  );
+  result.generation = publication.generation;
+  result.previous_generation = publication.previous_generation;
+  result.published_at = publication.published_at;
+
+  // These effects must never run before the pointer commits, and a transient
+  // post-commit failure must not misreport the already-published generation as
+  // an uncommitted refresh.
+  try {
+    revalidateLivePaths(periods, dependencies.revalidatePath);
+  } catch (error) {
+    result.post_commit_errors.push(`revalidate: ${errorMessage(error)}`);
   }
-
-  await Promise.all([
-    putView("current_month.json", currentMonth),
-    putView("hot-snapshot.json", hotSnapshot),
-    putView(`live/rank/month/${month}/repo/flow.json`, rankList("month", month, "repo", "flow", currentMonthFlow, now)),
-    putView(`live/rank/month/${month}/repo/stock.json`, rankList("month", month, "repo", "stock", currentMonthTop.stock, now)),
-    putView(`live/rank/week/${weekPeriod}/repo/flow.json`, rankList("week", weekPeriod, "repo", "flow", currentWeekFlow, now)),
-    putView(`live/heatmap/month/${month}.json`, monthHeatmap),
-  ]);
-
-  revalidateLivePaths(periods);
   const moverRepoIds = topRepoIds(currentMonthFlow, currentWeekFlow);
-  await submitLiveOverlayIndexNow({
-    job,
-    day: today,
-    year: periods.year,
-    monthPeriod: month,
-    weekPeriod,
-    repos: lookup,
-    repoIds: moverRepoIds,
-    orgLogins: ownerLoginsForRepoIds(moverRepoIds, lookup),
-  });
+  try {
+    await dependencies.submitLiveOverlayIndexNow({
+      job,
+      day: today,
+      year: periods.year,
+      monthPeriod: month,
+      weekPeriod,
+      repos: lookup,
+      repoIds: moverRepoIds,
+      orgLogins: ownerLoginsForRepoIds(moverRepoIds, lookup),
+    });
+  } catch (error) {
+    result.post_commit_errors.push(`indexnow: ${errorMessage(error)}`);
+  }
   return result;
 }
 
@@ -276,7 +398,7 @@ function rankList(
   dim: "repo",
   metric: "flow" | "stock",
   items: RankItem[],
-  now: Date,
+  generatedAt: string,
 ): RankList {
   return {
     meta: {
@@ -284,13 +406,13 @@ function rankList(
       period,
       dim,
       metric,
-      generated_at: now.toISOString(),
+      generated_at: generatedAt,
     },
     items,
   };
 }
 
-function mergeMonthHeatmap(base: Heatmap | null, period: string, dailyTotals: [string, number][], now: Date): Heatmap {
+function mergeMonthHeatmap(base: Heatmap | null, period: string, dailyTotals: [string, number][], generatedAt: string): Heatmap {
   const cells = new Map<string, number>();
   if (base?.meta.period === period) {
     for (const [date, value] of base.cells) cells.set(date, value);
@@ -300,13 +422,69 @@ function mergeMonthHeatmap(base: Heatmap | null, period: string, dailyTotals: [s
     meta: {
       scope: "month",
       period,
-      generated_at: now.toISOString(),
+      generated_at: generatedAt,
     },
     cells: [...cells].sort(([a], [b]) => a.localeCompare(b)),
   };
 }
 
-function revalidateLivePaths(periods: ReturnType<typeof currentUtcPeriods>): void {
+function mergeYearSpine(
+  existing: [string, number][],
+  base: Heatmap,
+  year: string,
+  currentMonth: string,
+  currentMonthDailyTotals: [string, number][],
+): [string, number][] {
+  const cells = new Map<string, number>();
+  for (const [date, value] of base.cells) {
+    // Year heatmaps store month keys (YYYY-MM); tolerate historical daily-key
+    // fixtures too. Replace either representation for the active month.
+    if (date !== currentMonth && !date.startsWith(`${currentMonth}-`)) cells.set(date, value);
+  }
+  for (const [date, value] of currentMonthDailyTotals) cells.set(date, value);
+  const total = [...cells.values()].reduce((sum, value) => sum + value, 0);
+  return [...existing.filter(([candidate]) => candidate !== year), [year, total] as [string, number]]
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
+function snapshotSectionAsOf(
+  snapshot: HotSnapshotData | null,
+  section: keyof HotSnapshotFreshness,
+): string | null {
+  if (!snapshot) return null;
+  return snapshot.freshness ? snapshot.freshness[section] : snapshot.generated_at;
+}
+
+function validOnThisDay(
+  snapshot: HotSnapshotData | null,
+  today: string,
+): { items: HotSnapshotData["home"]["on_this_day"]; asOf: string | null } {
+  if (!snapshot) return { items: [], asOf: null };
+  const monthDay = today.slice(5);
+  const items = snapshot.home.on_this_day.filter((item) => item.date.slice(5) === monthDay);
+  const sourceAsOf = snapshotSectionAsOf(snapshot, "on_this_day");
+  // A non-empty matching list is immutable historical milestone data. An
+  // empty list is only authoritative if it was actually generated today.
+  const asOf = items.length > 0 || sourceAsOf?.slice(0, 10) === today ? sourceAsOf : null;
+  return { items, asOf };
+}
+
+function earliestTimestamp(...timestamps: string[]): string {
+  return timestamps.reduce((earliest, candidate) =>
+    Date.parse(candidate) < Date.parse(earliest) ? candidate : earliest,
+  );
+}
+
+function earliestKnownTimestamp(freshness: HotSnapshotFreshness): string | null {
+  const timestamps = Object.values(freshness).filter((value): value is string => value !== null);
+  return timestamps.length > 0 ? timestamps.reduce((earliest, candidate) => earliestTimestamp(earliest, candidate)) : null;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unexpected failure";
+}
+
+function revalidateLivePaths(periods: ReturnType<typeof currentUtcPeriods>, invalidate: typeof revalidatePath): void {
   const [calendarYear, calendarMonth] = periods.monthPeriod.split("-");
   const [weekYear, weekNumber] = periods.weekPeriod.split("-W");
   const suffixes = [
@@ -317,5 +495,5 @@ function revalidateLivePaths(periods: ReturnType<typeof currentUtcPeriods>): voi
     `/rankings/${calendarYear}/${Number(calendarMonth)}`,
     `/rankings/${weekYear}/W${weekNumber}`,
   ];
-  for (const suffix of suffixes) revalidatePath(suffix || "/");
+  for (const suffix of suffixes) invalidate(suffix || "/");
 }
