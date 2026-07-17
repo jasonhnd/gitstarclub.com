@@ -95,8 +95,10 @@ test.describe("search accessibility and recovery", () => {
     await lastLink.press("Escape");
     await expect(search).toBeFocused();
 
-    await search.press("Enter");
-    await page.waitForURL(/\/facebook\/react$/);
+    // The local fixture still serves the historical facebook/react slug, while
+    // managed preview data canonically redirects that repository to react/react.
+    // This interaction test only needs to prove that Enter commits the hit.
+    await Promise.all([page.waitForURL(/\/(?:facebook|react)\/react$/), search.press("Enter")]);
   });
 
   test("open populated Search dialog has no serious or critical Axe violations", async ({ page }) => {
