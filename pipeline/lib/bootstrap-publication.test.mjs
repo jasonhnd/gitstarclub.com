@@ -2,6 +2,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   BOOTSTRAP_POINTER_PATH,
+  LEGACY_FLAT_REQUIRED_PATHS,
+  LEGACY_FLAT_TARGET,
   commitBootstrapGeneration,
   rollbackBootstrapGeneration,
   stageBootstrapPhase,
@@ -14,9 +16,12 @@ import {
 
 class MemoryStore {
   objects = new Map();
+  etags = new Map();
+  version = 0;
   creates = 0;
   failCreateAt = null;
   failPutAfterWrite = false;
+  failDeleteAfterWrite = false;
 
   async read(path) {
     const value = this.objects.get(path);
@@ -37,6 +42,35 @@ class MemoryStore {
       this.failPutAfterWrite = false;
       throw new Error("injected response loss after pointer write");
     }
+  }
+
+  async delete(path) {
+    this.objects.delete(path);
+    if (this.failDeleteAfterWrite) {
+      this.failDeleteAfterWrite = false;
+      throw new Error("injected response loss after pointer delete");
+    }
+  }
+
+  async readSnapshot(path) {
+    return {
+      body: await this.read(path),
+      etag: this.etags.get(path) ?? null,
+    };
+  }
+
+  async createMutable(path, body) {
+    if (this.objects.has(path)) return false;
+    this.objects.set(path, Buffer.from(body));
+    this.etags.set(path, `etag-${++this.version}`);
+    return true;
+  }
+
+  async compareAndSet(path, etag, body) {
+    if (this.etags.get(path) !== etag) return false;
+    this.objects.set(path, Buffer.from(body));
+    this.etags.set(path, `etag-${++this.version}`);
+    return true;
   }
 }
 
@@ -75,6 +109,20 @@ const items = (phase, suffix = "") => {
 async function stageComplete(store, generation) {
   await stageBootstrapPhase({ generation, phase: "base", items: items("views"), store, concurrency: 1 });
   await stageBootstrapPhase({ generation, phase: "canonical", items: items("canonical"), store, concurrency: 1 });
+}
+
+function seedLegacyFlat(store) {
+  for (const path of LEGACY_FLAT_REQUIRED_PATHS) {
+    let value = { path };
+    if (path === "meta.json" || path === "canonical/v2/meta.json") {
+      value = { seam_date: "2026-07-01", schema_ver: 1 };
+    } else if (path.startsWith("lookup/")) {
+      value = { one: { ok: true } };
+    } else if (path.startsWith("rank/")) {
+      value = { items: [] };
+    }
+    store.objects.set(path, Buffer.from(JSON.stringify(value)));
+  }
 }
 
 describe("bootstrap publication", () => {
@@ -156,8 +204,43 @@ describe("bootstrap publication", () => {
     expect(await store.read(BOOTSTRAP_POINTER_PATH)).toEqual(before);
   });
 
+  test("first publication requires a verified legacy-flat rollback target", async () => {
+    const store = new MemoryStore();
+    await stageComplete(store, "bootstrap-requires-legacy");
+    await expect(
+      withBootstrapPublicationLease({
+        store,
+        generation: "bootstrap-requires-legacy",
+        operation: "publish",
+        run: (assertCanCommit) =>
+          commitBootstrapGeneration({
+            generation: "bootstrap-requires-legacy",
+            store,
+            assertCanCommit,
+          }),
+      }),
+    ).rejects.toThrow("required legacy-flat recovery artifact is missing");
+    expect(await store.read(BOOTSTRAP_POINTER_PATH)).toBeNull();
+
+    seedLegacyFlat(store);
+    const published = await withBootstrapPublicationLease({
+      store,
+      generation: "bootstrap-requires-legacy",
+      operation: "publish",
+      run: (assertCanCommit) =>
+        commitBootstrapGeneration({
+          generation: "bootstrap-requires-legacy",
+          store,
+          assertCanCommit,
+        }),
+    });
+    expect(published.status).toBe("published");
+    expect(published.pointer.previous_generation).toBeNull();
+  });
+
   test("one pointer commit is resumable and rollback restores the previous generation", async () => {
     const store = new MemoryStore();
+    seedLegacyFlat(store);
     await stageComplete(store, "bootstrap-one");
     const first = await commitBootstrapGeneration({
       generation: "bootstrap-one",
@@ -195,6 +278,7 @@ describe("bootstrap publication", () => {
 
   test("retries safely when the pointer write succeeded but its response was lost", async () => {
     const store = new MemoryStore();
+    seedLegacyFlat(store);
     await stageComplete(store, "bootstrap-network");
     store.failPutAfterWrite = true;
     await expect(
@@ -207,14 +291,71 @@ describe("bootstrap publication", () => {
     await commitBootstrapGeneration({ generation: "bootstrap-next", store });
     store.failPutAfterWrite = true;
     await expect(
-      rollbackBootstrapGeneration({ store, targetGeneration: "bootstrap-network" }),
+      withBootstrapPublicationLease({
+        store,
+        generation: "bootstrap-network",
+        operation: "rollback",
+        run: (assertCanCommit) =>
+          rollbackBootstrapGeneration({
+            store,
+            targetGeneration: "bootstrap-network",
+            assertCanCommit,
+          }),
+      }),
     ).rejects.toThrow("response loss");
-    const rollbackReplay = await rollbackBootstrapGeneration({
+    const rollbackReplay = await withBootstrapPublicationLease({
       store,
-      targetGeneration: "bootstrap-network",
+      generation: "bootstrap-network",
+      operation: "rollback",
+      run: (assertCanCommit) =>
+        rollbackBootstrapGeneration({
+          store,
+          targetGeneration: "bootstrap-network",
+          assertCanCommit,
+        }),
     });
     expect(rollbackReplay.status).toBe("already-rolled-back");
     expect(rollbackReplay.pointer.previous_generation).toBe("bootstrap-next");
+  });
+
+  test("first publication can roll back to legacy-flat and retry a response-lost pointer delete", async () => {
+    const store = new MemoryStore();
+    seedLegacyFlat(store);
+    await stageComplete(store, "bootstrap-first");
+    const first = await commitBootstrapGeneration({ generation: "bootstrap-first", store });
+    expect(first.pointer.previous_generation).toBeNull();
+
+    store.failDeleteAfterWrite = true;
+    await expect(
+      withBootstrapPublicationLease({
+        store,
+        generation: LEGACY_FLAT_TARGET,
+        operation: "rollback",
+        run: (assertCanCommit) =>
+          rollbackBootstrapGeneration({
+            store,
+            targetGeneration: LEGACY_FLAT_TARGET,
+            assertCanCommit,
+          }),
+      }),
+    ).rejects.toThrow("response loss after pointer delete");
+    expect(await store.read(BOOTSTRAP_POINTER_PATH)).toBeNull();
+
+    const replay = await withBootstrapPublicationLease({
+      store,
+      generation: LEGACY_FLAT_TARGET,
+      operation: "rollback",
+      run: (assertCanCommit) =>
+        rollbackBootstrapGeneration({
+          store,
+          targetGeneration: LEGACY_FLAT_TARGET,
+          assertCanCommit,
+        }),
+    });
+    expect(replay.status).toBe("already-rolled-back");
+    expect(replay.target).toBe(LEGACY_FLAT_TARGET);
+    expect(replay.pointer).toBeNull();
+    expect(replay.verified.objectCount).toBe(LEGACY_FLAT_REQUIRED_PATHS.length);
   });
 
   test("shares the active Workflow lease across bootstrap commit and release", async () => {

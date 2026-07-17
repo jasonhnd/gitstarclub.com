@@ -16,11 +16,15 @@ import {
   type WorkflowLease as WorkflowLeaseType,
 } from "@/lib/contracts";
 import {
-  assertBlobDeletionAllowed,
   executeBlobDeletionPlan,
   planBlobPrefixDeletion,
   type BlobDeletionContext,
 } from "@/lib/blob-deletion";
+import {
+  claimWorkflowLease,
+  releaseWorkflowLease,
+  renewWorkflowLease,
+} from "@/lib/workflows/lease";
 import type { ZodType } from "zod";
 
 const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
@@ -101,10 +105,42 @@ try {
     throw new Error(`--confirm must exactly equal "${plan.prefix}"`);
   }
 
-  // Resolve protection state again immediately before the first destructive call.
-  assertBlobDeletionAllowed(plan.prefix, await protectionContext());
-  const deleted = await executeBlobDeletionPlan(plan, confirmation, deleteUrls);
-  console.log(`done: deleted ${deleted} objects (${plan.totalBytes} bytes) under "${plan.prefix}"`);
+  const acquiredAt = new Date().toISOString();
+  const operationId = `blob-delete-${acquiredAt.replaceAll(/[:.]/g, "-")}-${process.pid}`;
+  const claim = await claimWorkflowLease({
+    runId: operationId,
+    acquiredAt,
+    idempotencyKey: `blob-delete:${plan.prefix}:${operationId}`,
+    trigger: "blob-delete-cli",
+  });
+  if (claim.status !== "acquired") {
+    throw new Error(
+      `cannot delete while workflow ${claim.lease.run_id} owns the shared lease until ${claim.lease.expires_at}`,
+    );
+  }
+
+  let succeeded = false;
+  try {
+    const guard = {
+      ensureOwnership: () =>
+        renewWorkflowLease(claim.lease.run_id, claim.lease.fencing_token).then(() => undefined),
+      readContext: protectionContext,
+    };
+    const deleted = await executeBlobDeletionPlan(plan, confirmation, guard, deleteUrls);
+    succeeded = true;
+    console.log(`done: deleted ${deleted} objects (${plan.totalBytes} bytes) under "${plan.prefix}"`);
+  } finally {
+    const released = await releaseWorkflowLease(
+      claim.lease.run_id,
+      succeeded ? "published" : "failed",
+      undefined,
+      undefined,
+      claim.lease.fencing_token,
+    );
+    if (!released) {
+      throw new Error(`blob deletion lost workflow lease ${claim.lease.fencing_token} before release`);
+    }
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);

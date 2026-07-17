@@ -82,13 +82,40 @@ export async function releaseBootstrapLease({ store, lease, status, now = Date.n
   return false;
 }
 
+export async function renewBootstrapLease({ store, lease, now = Date.now() }) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const snapshot = await store.readSnapshot(ACTIVE_WORKFLOW_PATH);
+    const current = parseLease(snapshot.body);
+    if (
+      !current ||
+      current.status !== "running" ||
+      current.run_id !== lease.run_id ||
+      current.fencing_token !== lease.fencing_token ||
+      !snapshot.etag
+    ) {
+      throw new Error(`bootstrap operation no longer owns workflow lease ${lease.fencing_token}`);
+    }
+    if (Date.parse(current.expires_at) <= now) {
+      throw new Error(`bootstrap workflow lease ${lease.fencing_token} expired at ${current.expires_at}`);
+    }
+    const renewed = {
+      ...current,
+      expires_at: new Date(now + BOOTSTRAP_LEASE_TTL_MS).toISOString(),
+    };
+    if (await store.compareAndSet(ACTIVE_WORKFLOW_PATH, snapshot.etag, leaseBody(renewed))) return renewed;
+  }
+  throw new Error(`bootstrap operation lost workflow lease ${lease.fencing_token} while renewing`);
+}
+
 export async function withBootstrapPublicationLease({ store, generation, operation, run }) {
   /** @type {any} */
   let lease = null;
   let succeeded = false;
   try {
     const result = await run(async () => {
-      lease = await acquireBootstrapLease({ store, generation, operation });
+      lease = lease
+        ? await renewBootstrapLease({ store, lease })
+        : await acquireBootstrapLease({ store, generation, operation });
     });
     if (!lease) throw new Error(`bootstrap ${operation} did not acquire the shared workflow lease`);
     succeeded = true;

@@ -281,7 +281,7 @@ entity / lookup:    V/* (L3 发布版本)
 hot-snapshot / current_month: 读 live/latest.json → live/generations/<generation>/*
 ```
 
-> base 视图(rank/all-time/entity/heatmap/meta/lookup)走 `readView(path, schema, { base:true })`，读取 `views/latest.json` 与 `bootstrap/latest.json` 后选择 `published_at` 更新的完整 generation：managed publish 后读 `views/<version>/<path>`；更新的 bootstrap commit / rollback 后读 sealed `bootstrap/generations/<generation>/views/<path>`。managed pointer 不可达时保持原 legacy flat fallback，不会误跳到旧 bootstrap；两个 pointer 都确认 404 才回退 flat。live snapshot/rank/heatmap 走独立的 `live/latest.json`，再读 `live/generations/<generation>/<logical-path>`；live pointer 真正 404 时才回退旧 flat layout，pointer 无法访问/解析时复用缓存的已验证 generation，否则 fail closed。logical `canonical/*` 在 bootstrap pointer 存在时先读 `bootstrap/overlays/<generation>/canonical/*`，单对象 404 才回退 immutable generation seed；写入一律进入 overlay。这样 recurring mutation 不改 sealed payload，bootstrap rollback 会同时恢复对应 generation 的 canonical overlay。`ops/*` 仍走 flat。**「live vs base」判据按 `meta.folded_through` 水位收紧**(period ≤ `folded_through` 直读 base、未折叠周期叠 live,§7.2),防重复计数。
+> base 视图(rank/all-time/entity/heatmap/meta/lookup)走 `readView(path, schema, { base:true })`。managed pointer 成功返回 version 时才读取 bootstrap pointer，并按 `published_at` 选择更新的完整 generation：managed publish 后读 `views/<version>/<path>`；更新的 bootstrap commit / rollback 后读 sealed `bootstrap/generations/<generation>/views/<path>`。managed pointer 超时、非 404 失败或形状不可用时 fail-safe 保持 legacy flat 且不查询 bootstrap；只有 managed 明确 404 才查询 bootstrap，bootstrap 也明确 404 时继续 flat。live snapshot/rank/heatmap 走独立的 `live/latest.json`，再读 `live/generations/<generation>/<logical-path>`；live pointer 真正 404 时才回退旧 flat layout，pointer 无法访问/解析时复用缓存的已验证 generation，否则 fail closed。logical `canonical/*` 在 bootstrap pointer 存在时先读 `bootstrap/overlays/<generation>/canonical/*`，单对象 404 才回退 immutable generation seed；写入一律进入 overlay。这样 recurring mutation 不改 sealed payload，bootstrap rollback 会同时恢复对应 generation 的 canonical overlay。`ops/*` 仍走 flat。**「live vs base」判据按 `meta.folded_through` 水位收紧**(period ≤ `folded_through` 直读 base、未折叠周期叠 live,§7.2),防重复计数。
 
 > ⚠️ **两类指针读取都必须用重校验缓存而非 `no-store`**：base pointer 默认 1h（部分 daily 入口 1d），live pointer 60s。`resolveLiveGeneration()` 另有 single-flight，保证同一冷实例的并发 sibling 读取共享一个 pointer 结果。
 
@@ -429,7 +429,7 @@ generation 内的 `current_month.json` 会在跨月时初始化新月，所以�
 
 `06-upload` 与 `07-export-v2` 不再覆盖 flat production paths。两步共用一个显式 `bootstrap-<id>`，分别 create-only stage `base` / `canonical` phase；每个 phase 的 sealed manifest 固定 object path、精确 bytes 与 SHA-256。同 generation 遇到网络失败时只补缺失对象，已有对象必须 byte-identical，否则 fail closed。
 
-`07` 在 commit 前完成以下顺序：复核两个远端 manifest 及每个对象 → 用 Zod 校验全部本地 views、canonical meta/site-daily 与 `4 × 32` 个必需 shards → 对 `ops/workflows/active.json` 做 ETag CAS 取得与 managed refresh 共用的 fenced lease → 单文件覆盖 `bootstrap/latest.json`。只有最后一步改变读侧；任何更早失败都留下不可见 generation，线上仍完整指向旧状态。
+`07` 在 commit 前完成以下顺序：复核两个远端 manifest 及每个对象 → 用 Zod 校验全部本地 views、canonical meta/site-daily 与 `4 × 32` 个必需 shards → 对 `ops/workflows/active.json` 做 ETag CAS 取得与 managed refresh 共用的 fenced lease → lease 内重读 current pointer；首次 commit 还要验证 legacy flat 的关键 base artifacts 与全部 bucketed canonical families → 单文件覆盖 `bootstrap/latest.json`。只有最后一步改变读侧；任何更早失败都留下不可见 generation，线上仍完整指向旧状态。
 
 ```jsonc
 {
@@ -443,7 +443,7 @@ generation 内的 `current_month.json` 会在跨月时初始化新月，所以�
 }
 ```
 
-读侧会先看与 generation 绑定的 copy-on-write canonical overlay，再回退 sealed seed；因此 generation 本体永不改变，而 pointer rollback 会恢复旧 generation 及其 overlay。回滚命令必须显式指定 target：`node backfill/07-export-v2.mjs --rollback <generation> --execute`。它同样先复核对象并取得 CAS lease，最后只切此 pointer；若 pointer 写成功但响应丢失，同 target 重试返回 `already-rolled-back`，不会反向翻转。
+读侧会先看与 generation 绑定的 copy-on-write canonical overlay，再回退 sealed seed；因此 generation 本体永不改变，而 pointer rollback 会恢复旧 generation 及其 overlay。`previous_generation:null` 不表示无恢复点，而是保留的 `legacy-flat` recovery edge。回滚命令必须显式指定 target：`--rollback <generation> --execute`，或首次发布后用 `--rollback legacy-flat --execute`。sealed generation 在 lease 前验证；mutable legacy flat 在 lease 内复核后，通过原子删除 pointer 恢复。写/删 pointer 已成功但响应丢失时，同 target 重试返回 `already-rolled-back`，不会反向翻转。
 
 ---
 
@@ -529,12 +529,12 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
 
 ### 9.4 版本垃圾回收(GC)
 
-step 11(`gc`)在 publish 成功后跑,负责回收旧版本前缀:
+step 11(`gc`)在 pointer publish 后、所属 refresh lease 释放前跑，负责回收旧版本前缀：
 
 - **保留策略**:最新 4 版 `views/<version>` + 当前指针 + `prev_version`(回滚目标)。
-- **删除目标**:`list(views/)` 列出所有 `<version>` 前缀,排除保留集,再通过共享 protection helper 逐前缀 `del`。current、`prev_version` 与 active run 会在 destructive call 前再次硬阻。
+- **删除目标**:`list(views/)` 列出所有 `<version>` 前缀,排除保留集,再通过共享 protection helper 逐前缀 `del`。每个 chunk 在同一 fenced lease 内 renew、重读 current / rollback protection、再次证明 ownership 后才删除；publish / rollback 无法在检查与 `del` 之间切入。
 - **best-effort,绝不抛错**:清理失败只记日志,不拖垮已发布的 run。下次 run 会重试清同一批孤儿。
-- **手动清理**:`web/scripts/blob-del-prefix.ts <prefix>` 仅 preview；确认精确 count/bytes 后，用 `--execute --confirm <prefix>` 删除允许的临时 verify / orphan generation。工具拒绝 canonical、ops、live、pointer、宽容器，以及 current / active / rollback-target 的 view、bootstrap payload 与 overlay。
+- **手动清理**:`web/scripts/blob-del-prefix.ts <prefix>` 仅 preview；确认精确 count/bytes 后，用 `--execute --confirm <prefix>` 删除允许的临时 verify / orphan generation。execute 会取得相同的 fenced lease，并逐 chunk 重检 protection。工具拒绝 canonical、ops、live、pointer、宽容器，以及 current / active / rollback-target 的 view、bootstrap payload 与 overlay。
 
 ---
 

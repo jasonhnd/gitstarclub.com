@@ -1,4 +1,4 @@
-import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
+import { BlobPreconditionFailedError, del, get, put } from "@vercel/blob";
 
 function isConflict(error) {
   if (error instanceof BlobPreconditionFailedError) return true;
@@ -82,6 +82,9 @@ export function createBlobBootstrapStore(token) {
         contentType,
         cacheControlMaxAge: 60,
       });
+    },
+    async delete(path) {
+      await del(path, { token });
     },
   };
 }

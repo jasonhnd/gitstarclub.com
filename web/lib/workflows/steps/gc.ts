@@ -2,7 +2,12 @@ import { list, del } from "@vercel/blob";
 import { readView } from "@/lib/data/source";
 import { BootstrapPublicationPointer, ViewsPointer, WorkflowLease } from "@/lib/contracts";
 import { requireBlobWriteToken } from "@/lib/runtime-config";
-import { assertBlobDeletionAllowed, type BlobDeletionContext } from "@/lib/blob-deletion";
+import {
+  executeBlobDeletionPlan,
+  planBlobPrefixDeletion,
+  type BlobDeletionContext,
+} from "@/lib/blob-deletion";
+import { renewWorkflowLease } from "@/lib/workflows/lease";
 
 // Version GC. After publish, keep the newest KEEP versions plus the live pointer's
 // version + prev_version (the rollback target), and delete older orphan versions under views/.
@@ -13,24 +18,37 @@ const KEEP = 4;
 const DEL_CHUNK = 100;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function gcVersions(runId: string): Promise<{ deleted: string[]; kept: number; error?: string }> {
+async function readProtectionContext(runId: string): Promise<BlobDeletionContext> {
+  const [pointer, bootstrap, active] = await Promise.all([
+    readView("views/latest.json", ViewsPointer, { bust: runId }),
+    readView("bootstrap/latest.json", BootstrapPublicationPointer, { bust: runId }),
+    readView("ops/workflows/active.json", WorkflowLease, { bust: runId }),
+  ]);
+  const activeWorkflowRun =
+    active?.status === "running" && Date.parse(active.expires_at) > Date.now() ? active.run_id : null;
+  return {
+    currentViewVersion: pointer?.version,
+    rollbackViewVersion: pointer?.prev_version,
+    activeWorkflowRun,
+    currentBootstrapGeneration: bootstrap?.generation,
+    rollbackBootstrapGeneration: bootstrap?.previous_generation,
+  };
+}
+
+export async function gcVersions(
+  runId: string,
+  fencingToken: number,
+): Promise<{ deleted: string[]; kept: number; error?: string }> {
   "use step";
   try {
     const token = requireBlobWriteToken();
-
-    const [pointer, bootstrap, active] = await Promise.all([
-      readView("views/latest.json", ViewsPointer, { bust: runId }),
-      readView("bootstrap/latest.json", BootstrapPublicationPointer, { bust: runId }),
-      readView("ops/workflows/active.json", WorkflowLease, { bust: runId }),
-    ]);
+    const ensureOwnership = () => renewWorkflowLease(runId, fencingToken).then(() => undefined);
+    await ensureOwnership();
+    const protection = await readProtectionContext(runId);
     const keep = new Set<string>([runId]);
-    if (pointer) {
-      keep.add(pointer.version);
-      if (pointer.prev_version) keep.add(pointer.prev_version);
-    }
-    const activeWorkflowRun =
-      active?.status === "running" && Date.parse(active.expires_at) > Date.now() ? active.run_id : null;
-    if (activeWorkflowRun) keep.add(activeWorkflowRun);
+    if (protection.currentViewVersion) keep.add(protection.currentViewVersion);
+    if (protection.rollbackViewVersion) keep.add(protection.rollbackViewVersion);
+    if (protection.activeWorkflowRun) keep.add(protection.activeWorkflowRun);
 
     const { folders } = await list({ prefix: "views/", mode: "folded", token });
     const versions = [...new Set(folders.map((f) => f.slice("views/".length).replace(/\/+$/, "")).filter(Boolean))]
@@ -39,16 +57,16 @@ export async function gcVersions(runId: string): Promise<{ deleted: string[]; ke
     for (const v of versions.slice(0, KEEP)) keep.add(v);
 
     const toDelete = versions.filter((v) => !keep.has(v));
-    const protection: BlobDeletionContext = {
-      currentViewVersion: pointer?.version,
-      rollbackViewVersion: pointer?.prev_version,
-      activeWorkflowRun,
-      currentBootstrapGeneration: bootstrap?.generation,
-      rollbackBootstrapGeneration: bootstrap?.previous_generation,
+    const guard = {
+      ensureOwnership,
+      readContext: () => readProtectionContext(runId),
     };
     for (const v of toDelete) {
-      const prefix = assertBlobDeletionAllowed(`views/${v}/`, protection);
-      await deletePrefix(prefix, token);
+      const prefix = `views/${v}/`;
+      const plan = await planBlobPrefixDeletion(prefix, await readProtectionContext(runId), ({ cursor, limit }) =>
+        list({ prefix, cursor, limit, token }),
+      );
+      await executeBlobDeletionPlan(plan, plan.prefix, guard, (urls) => deleteUrls(urls, token), DEL_CHUNK);
     }
     return { deleted: toDelete, kept: versions.length - toDelete.length };
   } catch (err) {
@@ -56,27 +74,19 @@ export async function gcVersions(runId: string): Promise<{ deleted: string[]; ke
   }
 }
 
-async function deletePrefix(prefix: string, token: string): Promise<void> {
-  let cursor: string | undefined;
-  do {
-    const res = await list({ prefix, cursor, limit: 1000, token });
-    for (let i = 0; i < res.blobs.length; i += DEL_CHUNK) {
-      const urls = res.blobs.slice(i, i + DEL_CHUNK).map((b) => b.url);
-      for (let attempt = 0; ; attempt++) {
-        try {
-          await del(urls, { token });
-          break;
-        } catch (err) {
-          const retryAfter = (err as { retryAfter?: number })?.retryAfter;
-          if (retryAfter && attempt < 5) {
-            await sleep((retryAfter + 1) * 1000);
-            continue;
-          }
-          throw err;
-        }
+async function deleteUrls(urls: string[], token: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await del(urls, { token });
+      break;
+    } catch (err) {
+      const retryAfter = (err as { retryAfter?: number })?.retryAfter;
+      if (retryAfter && attempt < 5) {
+        await sleep((retryAfter + 1) * 1000);
+        continue;
       }
-      await sleep(250); // throttle under the Blob delete-rate limit
+      throw err;
     }
-    cursor = res.cursor;
-  } while (cursor);
+  }
+  await sleep(250); // throttle under the Blob delete-rate limit
 }

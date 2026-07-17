@@ -500,9 +500,10 @@ base + 当前月重算；无法重算的 `on_this_day` 只保留与本 UTC 月�
 
 - `generation` 必须匹配 `^bootstrap-[A-Za-z0-9][A-Za-z0-9._-]{2,120}$`；`prefix` 必须严格等于 `bootstrap/generations/<generation>`。
 - 两个 manifest digest 都是 64 位 lowercase hex；pointer 使用 strict Zod object，未知字段拒绝。
-- base 读比较 `views/latest.published_at` 与 `bootstrap/latest.published_at`，使用更新的完整 generation；因此新 bootstrap commit / rollback 能一次切 base + canonical，之后更新的 managed publish 会重新接管 base。managed pointer 不可达时不会跳到可能更旧的 bootstrap；两个 pointer 都确认 404 才使用 legacy flat。
+- `previous_generation:null` 是明确的 `legacy-flat` recovery edge。首次 commit 必须在共享 lease 内验证 legacy `meta` / lookup / all-time rank 与全部 `4 × 32` canonical shard families；`--rollback legacy-flat --execute` 在同一 lease 内复核这些 mutable artifacts 后原子删除 pointer。删除成功但响应丢失的同命令重试是 no-op success。
+- base 读在 managed pointer 成功返回 version 时再读取 bootstrap pointer，并按 `published_at` 使用更新的完整 generation；因此新 bootstrap commit / rollback 能一次切 base + canonical，之后更新的 managed publish 会重新接管 base。managed pointer 若超时、非 404 失败或形状不可用，则 fail-safe 保持 legacy flat 且不查询 bootstrap，避免误跳到旧 generation；只有 managed pointer 明确 404 时才查询 bootstrap，而 bootstrap 也明确 404 时继续使用 legacy flat。
 - canonical 读先查 `bootstrap/overlays/<generation>/canonical/**`，对象不存在时回退 sealed generation；canonical writer 只写 overlay，不覆盖 generation。`previous_generation` 因而同时恢复旧 seed 与其 overlay。
-- 同 generation 的 resume 必须 byte-identical；validation / upload / active lease 失败时 pointer 不变。rollback 也先复核 sealed manifests，再只覆盖此 pointer。
+- 同 generation 的 resume 必须 byte-identical；validation / upload / active lease 失败时 pointer 不变。generation rollback 在 lease 前复核 sealed target，再在 lease 内重读 pointer；legacy rollback 的 target 验证必须在 lease 内完成。
 
 ### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json` — Workflow checkpoint
 

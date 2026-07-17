@@ -177,7 +177,7 @@ an explicit recovery procedure.
 ```text
 blob://
 ├── bootstrap/
-│   ├── latest.json                                  # atomic bootstrap pointer（current + previous generation）
+│   ├── latest.json                                  # atomic bootstrap pointer（previous=null 表示 legacy-flat）
 │   ├── generations/<bootstrap-generation>/          # create-only、manifest 封存后永不覆盖
 │   │   ├── manifests/{base,canonical}.json           # object path/bytes/SHA-256 完整性收据
 │   │   ├── views/**                                  # 首次 base views；views/latest 存在后由 managed views 优先
@@ -283,7 +283,7 @@ bun scripts/blob-del-prefix.ts views/verify-123/ \
   --execute --confirm views/verify-123/
 ```
 
-脚本在 inventory 前及第一次 destructive call 前各读取一次 live protection state。`canonical/**`、`ops/**`、`live/**`、`current_month`、`hot-snapshot`、两个 latest pointer、当前 / rollback-target / active Workflow 的 view prefix，以及当前 / rollback bootstrap generation + overlay 都硬阻；`views/`、`bootstrap/generations/`、`bootstrap/overlays/` 等宽前缀也不能执行。自动 GC 复用同一个 protection helper。
+preview inventory 不持有写锁，也不删除。执行模式会先取得与 managed/bootstrap publish、rollback 共用的 `ops/workflows/active.json` fenced lease；每个 delete chunk 前按 `renew → 重读 live protection state → 再次核对 fencing → del` 执行，最后才释放 lease。因此 current / rollback target 不可能在 protection check 与 destructive call 之间被切入。`canonical/**`、`ops/**`、`live/**`、`current_month`、`hot-snapshot`、两个 latest pointer、当前 / rollback-target / active Workflow 的 view prefix，以及当前 / rollback bootstrap generation + overlay 都硬阻；`views/`、`bootstrap/generations/`、`bootstrap/overlays/` 等宽前缀也不能执行。自动 GC 在所属 refresh lease 释放前复用同一个 guard。
 
 > **公开 JSON endpoint**：`/search-index`、`/repo-curve` 与静态 data export aliases 的 method/cache/status contract 见 [API.md](./API.md)；Blob 读取与物理布局仍以本节为准。
 
@@ -453,7 +453,7 @@ For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, 
 ## 回滚
 
 - **指针回滚（Workflow 发布）**：不要直接覆盖 Blob。用稳定 idempotency key 调受保护 rollback API；它取得 fenced lease、固定 rollback intent、同步 recovery / whitelist pointer 并失效页面和 pointer cache。示例：`curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`。返回成功后在 **≤60s** 可见性 SLA 内核对页面与 `views/latest.json`。设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7。
-- **bootstrap generation 回滚**：先读取 `bootstrap/latest.previous_generation`，再执行 `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute`。显式 target 让 pointer 写成功但响应丢失后的同命令重试保持幂等，不会来回翻转。命令先复核两个 sealed manifest 与全部对象，再取得同一个 Workflow CAS lease，最后只切 `bootstrap/latest.json`；不要手改 pointer，也不要删除 current / previous generation 或 overlay。
+- **bootstrap generation / legacy 回滚**：先读取 `bootstrap/latest.previous_generation`。值为 generation 时执行 `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute`；首次 publish 的值为 `null`，其明确含义是执行 `--rollback legacy-flat --execute`。generation target 在 lease 前复核 sealed manifests 与全部对象；mutable legacy target 在取得同一个 Workflow CAS lease 后验证关键 flat base artifacts 和全部 `4 × 32` canonical shards。随后命令在 lease 内重读 pointer，只做一次 pointer 覆盖；legacy target 则原子删除 `bootstrap/latest.json`。写/删 pointer 已成功但响应丢失时，同 target 重试返回 `already-rolled-back`。不要手改 pointer，也不要删除 current / previous generation 或 overlay。
 - **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment** 即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。
 - **每日活尾**：`live/generations/<run_id>/**` 不可变，`live/latest.json` 是唯一发布开关。提交前失败无需数据回滚（pointer 仍指向旧 generation）；提交后发现坏数据，将 pointer 的 `generation` 指回 `previous_generation`。回滚也必须先确认没有活跃 `lease` 并使用 ETag 条件写，避免覆盖正在发布的 cron。
 - **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。

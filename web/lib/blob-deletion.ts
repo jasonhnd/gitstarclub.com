@@ -24,6 +24,13 @@ export interface BlobDeletionPlan {
   totalBytes: number;
 }
 
+export interface BlobDeletionLeaseGuard {
+  /** Renew/prove ownership of ops/workflows/active.json. */
+  ensureOwnership(): Promise<void>;
+  /** Read current/rollback protection state while that ownership is held. */
+  readContext(): Promise<BlobDeletionContext>;
+}
+
 export type BlobInventoryLister = (args: {
   prefix: string;
   cursor?: string;
@@ -142,6 +149,7 @@ export async function planBlobPrefixDeletion(
 export async function executeBlobDeletionPlan(
   plan: BlobDeletionPlan,
   confirmation: string,
+  guard: BlobDeletionLeaseGuard,
   deleteUrls: (urls: string[]) => Promise<void>,
   chunkSize = 100,
 ): Promise<number> {
@@ -152,6 +160,14 @@ export async function executeBlobDeletionPlan(
   for (let index = 0; index < plan.objects.length; index += chunkSize) {
     const urls = plan.objects.slice(index, index + chunkSize).map((blob) => blob.url);
     if (urls.length === 0) continue;
+    // Publication and rollback use the same workflow lease. Renew before the
+    // protection read, re-resolve both pointers, then prove fencing ownership
+    // once more immediately before the destructive call. A target that became
+    // current/rollback after preview is rejected, and a publisher cannot enter
+    // the checked-to-delete interval.
+    await guard.ensureOwnership();
+    assertBlobDeletionAllowed(plan.prefix, await guard.readContext());
+    await guard.ensureOwnership();
     await deleteUrls(urls);
     deleted += urls.length;
   }
