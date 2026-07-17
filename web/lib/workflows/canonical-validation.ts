@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { ZodType } from "zod";
 import { readView } from "@/lib/data/source";
 import {
@@ -79,8 +78,10 @@ function stableJson(value: unknown): string {
   return `{${Object.keys(record).toSorted().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
 }
 
-function checksum(value: unknown): string {
-  return createHash("sha256").update(stableJson(value)).digest("hex");
+async function checksum(value: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(stableJson(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function validateCanonicalGeneration(
@@ -115,7 +116,7 @@ export async function validateCanonicalGeneration(
             repoShards.push(shard);
             for (const id of Object.keys(shard)) repoIds.add(id);
           }
-          return { path, kind: spec.kind, bucket, records, sha256: checksum(parsed.data) };
+          return { path, kind: spec.kind, bucket, records, sha256: await checksum(parsed.data) };
         } catch (error) {
           schemaFailures++;
           failures.push(`${path}: schema/read — ${error instanceof Error ? error.message : String(error)}`);
