@@ -11,6 +11,6 @@
     "assets:check": "bun ./render-assets.mjs --check",
     "build": "bun ./build.mjs",
     "lint:md": "bun ./scripts/check-markdown-code-fences.mjs",
-    "lint:docs": "bun run lint:md && bun test ./scripts/check-docs.test.mjs && bun ./scripts/check-docs.mjs"
+    "lint:docs": "bun run lint:md && node --test ./scripts/check-docs.test.mjs && bun ./scripts/check-docs.mjs"
   }
 }
