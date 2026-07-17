@@ -1,0 +1,339 @@
+import { SearchIndex } from "@/lib/contracts";
+import { currentUtcPeriods } from "@/lib/periods";
+
+// Live product release gates for #286.
+// These checks hit a real deployment URL + the public Blob store. They are meant
+// to fail closed when RELEASE_GATE_REQUIRE_LIVE=1 (CI product-gates job).
+
+/** Production public Blob base (not a secret — store is public-read). Overridable. */
+export const DEFAULT_PUBLIC_BLOB_BASE = "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com";
+
+/**
+ * Live weeks known to be missing after the 2026-06-30 token outage window.
+ * Remove entries only after a verified backfill lands in Blob.
+ */
+export const KNOWN_MISSING_LIVE_WEEKS = ["2026-W27"] as const;
+
+export const SYNC_RUN_MAX_AGE_MS = 4 * 24 * 60 * 60 * 1000;
+export const BASE_PUBLISH_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+export const EXPORT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+export const SEARCH_MIN_REPOS = 1000;
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+export type GateFinding = {
+  id: string;
+  ok: boolean;
+  summary: string;
+  observed?: Record<string, string | number | boolean | null>;
+};
+
+export type LiveGateConfig = {
+  siteBase: string;
+  blobBase: string;
+  now?: Date;
+  knownMissingWeeks?: readonly string[];
+};
+
+export type GateEnv = Record<string, string | undefined>;
+
+export function resolveLiveGateConfig(env: GateEnv = process.env): LiveGateConfig | { error: string } {
+  const siteBase = (env.RELEASE_GATE_SITE ?? env.SEO_LIVE_BASE ?? env.LIVE_SMOKE_SITE_URL ?? "").replace(/\/+$/, "");
+  const blobBase = (env.RELEASE_GATE_BLOB_BASE ?? env.BLOB_BASE_URL ?? DEFAULT_PUBLIC_BLOB_BASE).replace(/\/+$/, "");
+  if (!siteBase) {
+    return { error: "RELEASE_GATE_SITE (or SEO_LIVE_BASE) is required for live product gates" };
+  }
+  if (!blobBase || blobBase.includes("blob.example.com") || blobBase.includes("127.0.0.1")) {
+    return { error: `RELEASE_GATE_BLOB_BASE must be a real public Blob base, got ${blobBase || "(empty)"}` };
+  }
+  return { siteBase, blobBase };
+}
+
+export function liveGatesRequired(env: GateEnv = process.env): boolean {
+  return env.RELEASE_GATE_REQUIRE_LIVE === "1" || env.RELEASE_GATE_REQUIRE_LIVE === "true";
+}
+
+async function fetchText(url: string): Promise<{ status: number; text: string }> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: { "user-agent": "gitstarclub-release-gates", accept: "*/*" },
+      redirect: "follow",
+      cache: "no-store",
+    });
+  } catch (error) {
+    throw new Error(`UNREACHABLE ${url}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return { status: res.status, text: await res.text() };
+}
+
+async function fetchJson(url: string): Promise<{ status: number; json: unknown }> {
+  const { status, text } = await fetchText(url);
+  if (status !== 200) return { status, json: null };
+  try {
+    return { status, json: JSON.parse(text) as unknown };
+  } catch {
+    throw new Error(`expected JSON from ${url}`);
+  }
+}
+
+function ageMs(iso: string | null | undefined, now: Date): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return now.getTime() - t;
+}
+
+function previousIsoWeek(period: string): string {
+  const match = /^(\d{4})-W(\d{2})$/.exec(period);
+  if (!match) throw new Error(`bad week period ${period}`);
+  let year = Number(match[1]);
+  let week = Number(match[2]) - 1;
+  if (week < 1) {
+    year -= 1;
+    // ISO weeks in year: 52 or 53 — use 52 as safe prior when scanning recent gaps.
+    week = 52;
+  }
+  return `${year}-W${String(week).padStart(2, "0")}`;
+}
+
+/** Recent closed ISO weeks ending before the current UTC week (exclusive). */
+export function recentClosedWeeks(now = new Date(), count = 4): string[] {
+  const current = currentUtcPeriods(now).weekPeriod;
+  const weeks: string[] = [];
+  let cursor = previousIsoWeek(current);
+  for (let i = 0; i < count; i++) {
+    weeks.push(cursor);
+    cursor = previousIsoWeek(cursor);
+  }
+  return weeks;
+}
+
+export async function checkDeployedSearchIndex(siteBase: string): Promise<GateFinding> {
+  const url = `${siteBase}/search-index`;
+  const { status, text } = await fetchText(url);
+  if (status !== 200) {
+    return { id: "search-index-http", ok: false, summary: `${url} returned HTTP ${status}`, observed: { status } };
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return { id: "search-index-json", ok: false, summary: `${url} body is not JSON` };
+  }
+  const parsed = SearchIndex.safeParse(json);
+  if (!parsed.success) {
+    return {
+      id: "search-index-schema",
+      ok: false,
+      summary: `${url} failed SearchIndex contract: ${parsed.error.issues[0]?.message ?? "invalid"}`,
+    };
+  }
+  const index = parsed.data;
+  if (index.count < SEARCH_MIN_REPOS || index.repos.length !== index.count) {
+    return {
+      id: "search-index-count",
+      ok: false,
+      summary: `${url} count/repos mismatch or too small`,
+      observed: { count: index.count, repos: index.repos.length },
+    };
+  }
+  const hit = index.repos.some((repo) => repo.full_name.toLowerCase().includes("hummingbot"));
+  if (!hit) {
+    return {
+      id: "search-index-hit",
+      ok: false,
+      summary: `${url} missing representative hit hummingbot/*`,
+      observed: { count: index.count, generated_at: index.generated_at },
+    };
+  }
+  return {
+    id: "search-index",
+    ok: true,
+    summary: `${url} ok (${index.count} repos)`,
+    observed: { count: index.count, generated_at: index.generated_at },
+  };
+}
+
+export async function checkSyncRunsFresh(blobBase: string, now = new Date()): Promise<GateFinding> {
+  const url = `${blobBase}/ops/sync-runs.json`;
+  const { status, json } = await fetchJson(url);
+  if (status !== 200 || !json || typeof json !== "object") {
+    return { id: "sync-runs-http", ok: false, summary: `${url} returned HTTP ${status}` };
+  }
+  const runs = ((json as { runs?: Array<{ id?: string; status?: string; finished_at?: string; dry?: boolean }> }).runs ?? []).filter(
+    (run) => !run.dry,
+  );
+  if (runs.length === 0) {
+    return { id: "sync-runs-empty", ok: false, summary: `${url} has no non-dry runs` };
+  }
+  const newest = [...runs].sort((a, b) => String(b.finished_at ?? "").localeCompare(String(a.finished_at ?? "")))[0];
+  const finishedAt = newest.finished_at ?? null;
+  const age = ageMs(finishedAt, now);
+  if (newest.status !== "ok") {
+    return {
+      id: "sync-runs-status",
+      ok: false,
+      summary: `newest sync run ${newest.id ?? "?"} status=${newest.status}`,
+      observed: { id: newest.id ?? null, status: newest.status ?? null, finished_at: finishedAt },
+    };
+  }
+  if (age == null || age > SYNC_RUN_MAX_AGE_MS) {
+    return {
+      id: "sync-runs-age",
+      ok: false,
+      summary: `newest ok sync run is too old (age_ms=${age})`,
+      observed: { id: newest.id ?? null, finished_at: finishedAt, age_ms: age, max_age_ms: SYNC_RUN_MAX_AGE_MS },
+    };
+  }
+  return {
+    id: "sync-runs",
+    ok: true,
+    summary: `newest ok sync run ${newest.id} within ${SYNC_RUN_MAX_AGE_MS}ms`,
+    observed: { id: newest.id ?? null, finished_at: finishedAt, age_ms: age },
+  };
+}
+
+export async function checkBasePublishFreshness(blobBase: string, now = new Date()): Promise<GateFinding> {
+  const url = `${blobBase}/views/latest.json`;
+  const { status, json } = await fetchJson(url);
+  if (status !== 200 || !json || typeof json !== "object") {
+    return { id: "base-pointer-http", ok: false, summary: `${url} returned HTTP ${status}` };
+  }
+  const pointer = json as { version?: string; published_at?: string };
+  const publishedAt = pointer.published_at ?? null;
+  const age = ageMs(publishedAt, now);
+  if (age == null || age > BASE_PUBLISH_MAX_AGE_MS) {
+    return {
+      id: "base-pointer-age",
+      ok: false,
+      summary: `base publish pointer is stale (About/search/export share this watermark)`,
+      observed: {
+        version: pointer.version ?? null,
+        published_at: publishedAt,
+        age_ms: age,
+        max_age_ms: BASE_PUBLISH_MAX_AGE_MS,
+      },
+    };
+  }
+  return {
+    id: "base-pointer",
+    ok: true,
+    summary: `base pointer ${pointer.version} fresh`,
+    observed: { version: pointer.version ?? null, published_at: publishedAt, age_ms: age },
+  };
+}
+
+export async function checkExportManifestFreshness(siteBase: string, now = new Date()): Promise<GateFinding> {
+  const url = `${siteBase}/data/exports/v1/latest/manifest.json`;
+  const { status, json } = await fetchJson(url);
+  if (status !== 200 || !json || typeof json !== "object") {
+    return { id: "export-manifest-http", ok: false, summary: `${url} returned HTTP ${status}` };
+  }
+  const manifest = json as { data_as_of?: string; export_date?: string };
+  const stamp = manifest.data_as_of ?? null;
+  const age = ageMs(stamp, now);
+  if (age == null || age > EXPORT_MAX_AGE_MS) {
+    return {
+      id: "export-manifest-age",
+      ok: false,
+      summary: `export manifest data_as_of is stale`,
+      observed: { data_as_of: stamp, export_date: manifest.export_date ?? null, age_ms: age, max_age_ms: EXPORT_MAX_AGE_MS },
+    };
+  }
+  return {
+    id: "export-manifest",
+    ok: true,
+    summary: `export manifest fresh (${stamp})`,
+    observed: { data_as_of: stamp, export_date: manifest.export_date ?? null, age_ms: age },
+  };
+}
+
+export async function checkLiveWeekContinuity(
+  blobBase: string,
+  now = new Date(),
+  knownMissing: readonly string[] = KNOWN_MISSING_LIVE_WEEKS,
+): Promise<GateFinding> {
+  const weeks = recentClosedWeeks(now, 4);
+  const missing: string[] = [];
+  const present: string[] = [];
+  const unexpected: string[] = [];
+  for (const week of weeks) {
+    const url = `${blobBase}/live/rank/week/${week}/repo/flow.json`;
+    const { status } = await fetchText(url);
+    if (status === 200) present.push(week);
+    else {
+      missing.push(week);
+      if (!knownMissing.includes(week)) unexpected.push(week);
+    }
+  }
+  // Known gaps must still be listed; if a known gap reappears as present, that's fine.
+  const stillMissingKnown = knownMissing.filter((week) => missing.includes(week));
+  if (unexpected.length > 0) {
+    return {
+      id: "live-week-continuity",
+      ok: false,
+      summary: `unexpected missing live weeks: ${unexpected.join(", ")}`,
+      observed: {
+        scanned: weeks.join(","),
+        present: present.join(","),
+        missing: missing.join(","),
+        known_missing_still_absent: stillMissingKnown.join(","),
+      },
+    };
+  }
+  return {
+    id: "live-week-continuity",
+    ok: true,
+    summary:
+      stillMissingKnown.length > 0
+        ? `live weeks ok with documented gaps: ${stillMissingKnown.join(", ")}`
+        : `live weeks continuous for ${weeks.join(", ")}`,
+    observed: {
+      scanned: weeks.join(","),
+      present: present.join(","),
+      documented_gaps: stillMissingKnown.join(","),
+    },
+  };
+}
+
+export async function checkCurrentLivePeriods(blobBase: string, now = new Date()): Promise<GateFinding> {
+  const { weekPeriod, monthPeriod } = currentUtcPeriods(now);
+  // Prefer the latest closed/current live artifacts that the site uses — current week/month ids.
+  const targets = [
+    { label: "week", path: `live/rank/week/${weekPeriod}/repo/flow.json` },
+    { label: "month", path: `live/rank/month/${monthPeriod}/repo/flow.json` },
+  ];
+  const missing: string[] = [];
+  for (const target of targets) {
+    const { status } = await fetchText(`${blobBase}/${target.path}`);
+    if (status !== 200) missing.push(`${target.label}:${target.path}`);
+  }
+  if (missing.length > 0) {
+    return {
+      id: "live-current-periods",
+      ok: false,
+      summary: `current live rank shards missing: ${missing.join("; ")}`,
+      observed: { weekPeriod, monthPeriod },
+    };
+  }
+  return {
+    id: "live-current-periods",
+    ok: true,
+    summary: `current live week ${weekPeriod} and month ${monthPeriod} present`,
+    observed: { weekPeriod, monthPeriod },
+  };
+}
+
+export async function runAllLiveGates(config: LiveGateConfig): Promise<GateFinding[]> {
+  const now = config.now ?? new Date();
+  const known = config.knownMissingWeeks ?? KNOWN_MISSING_LIVE_WEEKS;
+  return [
+    await checkDeployedSearchIndex(config.siteBase),
+    await checkSyncRunsFresh(config.blobBase, now),
+    await checkBasePublishFreshness(config.blobBase, now),
+    await checkExportManifestFreshness(config.siteBase, now),
+    await checkCurrentLivePeriods(config.blobBase, now),
+    await checkLiveWeekContinuity(config.blobBase, now, known),
+  ];
+}
