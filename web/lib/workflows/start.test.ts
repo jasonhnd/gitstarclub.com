@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { WorkflowLease } from "@/lib/contracts";
-import type { HealthStatus } from "@/lib/observability/alert";
+import type { HealthStatus } from "@/lib/contracts";
 import type { WorkflowLeaseSnapshot, WorkflowLeaseStore } from "./lease";
 import { startRefreshWorkflowRoute } from "./start";
 

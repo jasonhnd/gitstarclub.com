@@ -1,5 +1,6 @@
 import { WorkflowManifest } from "@/lib/contracts";
-import { recordHealth, sendAlert } from "@/lib/observability/alert";
+import { sendAlert } from "@/lib/observability/alert";
+import { recordHealth } from "@/lib/observability/health";
 import { claimWorkflowLease, releaseWorkflowLease } from "@/lib/workflows/lease";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 

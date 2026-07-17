@@ -5,7 +5,8 @@ import {
   type LivePublicationStore,
 } from "@/lib/cron/live-publication";
 import { completedRun, failedRun, safeRecordSyncRun, syncRunId } from "@/lib/cron/sync-runs";
-import { recordHealth, sendAlert } from "@/lib/observability/alert";
+import { sendAlert } from "@/lib/observability/alert";
+import { recordHealth } from "@/lib/observability/health";
 import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 
@@ -15,14 +16,16 @@ function requireLiveRefreshRuntimeConfig(dry: boolean): void {
   if (!dry) requireBlobWriteToken();
 }
 
-function isRuntimeConfigError(error: unknown): boolean {
-  return error instanceof Error && /^(BLOB_BASE_URL|BLOB_READ_WRITE_TOKEN|GITHUB_TOKEN) not set/.test(error.message);
-}
-
 export interface LiveRefreshRouteOptions {
   now?: Date;
   publicationStore?: LivePublicationStore;
   refresh?: typeof refreshLiveViews;
+  claimPublication?: typeof claimLivePublication;
+  releasePublication?: typeof releaseLivePublication;
+  recordSyncRun?: typeof safeRecordSyncRun;
+  recordHealth?: typeof recordHealth;
+  sendAlert?: typeof sendAlert;
+  requireRuntimeConfig?: typeof requireLiveRefreshRuntimeConfig;
 }
 
 function liveIdempotencyKey(url: URL, job: LiveRefreshJob, day: string): string | null {
@@ -34,25 +37,32 @@ function liveIdempotencyKey(url: URL, job: LiveRefreshJob, day: string): string 
 export async function runLiveRefreshRoute(
   req: Request,
   job: LiveRefreshJob,
-  opts: LiveRefreshRouteOptions = {},
+  options: LiveRefreshRouteOptions = {},
 ): Promise<Response> {
   const unauthorized = requireBearerToken(req.headers.get("authorization"));
   if (unauthorized) return unauthorized;
 
   const url = new URL(req.url);
   const dry = url.searchParams.get("dry") === "1";
-  const startedAt = opts.now ?? new Date();
+  const startedAt = options.now ?? new Date();
   const id = syncRunId(job, startedAt);
   const idempotencyKey = liveIdempotencyKey(url, job, startedAt.toISOString().slice(0, 10));
   if (!idempotencyKey) {
     return Response.json({ ok: false, error: "Invalid idempotency_key" }, { status: 400 });
   }
+
+  const refresh = options.refresh ?? refreshLiveViews;
+  const claimPublication = options.claimPublication ?? claimLivePublication;
+  const releasePublication = options.releasePublication ?? releaseLivePublication;
+  const recordSyncRun = options.recordSyncRun ?? safeRecordSyncRun;
+  const health = options.recordHealth ?? recordHealth;
+  const alert = options.sendAlert ?? sendAlert;
   let acquired = false;
 
   try {
-    requireLiveRefreshRuntimeConfig(dry);
+    (options.requireRuntimeConfig ?? requireLiveRefreshRuntimeConfig)(dry);
     if (!dry) {
-      const claim = await claimLivePublication(
+      const claim = await claimPublication(
         {
           runId: id,
           idempotencyKey,
@@ -60,9 +70,13 @@ export async function runLiveRefreshRoute(
           acquiredAt: startedAt.toISOString(),
           now: startedAt.getTime(),
         },
-        opts.publicationStore,
+        options.publicationStore,
       );
       if (claim.status === "committed") {
+        await health(`cron-${job}`, "ok", {
+          run_id: claim.pointer.run_id ?? undefined,
+          idempotency_key: idempotencyKey,
+        });
         return Response.json({
           ok: true,
           status: "already-published",
@@ -73,6 +87,10 @@ export async function runLiveRefreshRoute(
         });
       }
       if (claim.status === "attached") {
+        await health(`cron-${job}`, "attached", {
+          run_id: claim.lease.run_id,
+          idempotency_key: idempotencyKey,
+        });
         return Response.json(
           {
             ok: true,
@@ -86,6 +104,12 @@ export async function runLiveRefreshRoute(
         );
       }
       if (claim.status === "rejected") {
+        const error = `Live publication already running until ${claim.lease.expires_at}`;
+        await health(`cron-${job}`, "rejected", {
+          run_id: claim.lease.run_id,
+          idempotency_key: idempotencyKey,
+          error,
+        });
         return Response.json(
           {
             ok: false,
@@ -101,11 +125,27 @@ export async function runLiveRefreshRoute(
       acquired = true;
     }
 
-    const result = await (opts.refresh ?? refreshLiveViews)(job, dry, {
+    const result = await refresh(job, dry, {
       now: startedAt,
-      ...(!dry ? { publication: { runId: id, idempotencyKey, store: opts.publicationStore } } : {}),
+      ...(!dry
+        ? {
+            publication: {
+              runId: id,
+              idempotencyKey,
+              store: options.publicationStore,
+            },
+          }
+        : {}),
     });
-    const log_error = dry ? null : await safeRecordSyncRun(completedRun(id, job, dry, startedAt, result));
+    const log_error = dry
+      ? null
+      : await recordSyncRun(completedRun(id, job, dry, startedAt, result));
+    if (!dry) {
+      await health(`cron-${job}`, "ok", {
+        run_id: id,
+        idempotency_key: idempotencyKey,
+      });
+    }
     return Response.json({
       ok: true,
       status: dry ? "dry-run" : "published",
@@ -117,22 +157,33 @@ export async function runLiveRefreshRoute(
   } catch (error) {
     if (acquired) {
       try {
-        await releaseLivePublication(id, opts.publicationStore);
+        await releasePublication(id, options.publicationStore);
       } catch (releaseError) {
         console.error(`[cron-${job}] failed to release live publication lease`, {
           run_id: id,
-          error: releaseError instanceof Error ? releaseError.message : "Unexpected lease release failure",
+          error:
+            releaseError instanceof Error
+              ? releaseError.message
+              : "Unexpected lease release failure",
         });
       }
     }
     const run = failedRun(id, job, dry, startedAt, error);
-    const log_error = dry ? null : await safeRecordSyncRun(run);
+    const log_error = dry ? null : await recordSyncRun(run);
     const pipeline = `cron-${job}` as const;
 
-    // Surface the failure: greppable log + optional webhook + health beacon (all non-throwing).
-    if (!dry && !isRuntimeConfigError(error)) {
-      await sendAlert({ pipeline, title: `${job} live refresh failed`, run_id: id, error: run.error });
-      await recordHealth(pipeline, "failed", { run_id: id, error: run.error });
+    if (!dry) {
+      await alert({
+        pipeline,
+        title: `${job} live refresh failed`,
+        run_id: id,
+        error: run.error,
+      });
+      await health(pipeline, "failed", {
+        run_id: id,
+        idempotency_key: idempotencyKey,
+        error: run.error,
+      });
     }
     console.error(`[cron-${job}] failed`, { run_id: id, error: run.error, log_error });
     return Response.json(internalFailurePayload(id), { status: 500 });

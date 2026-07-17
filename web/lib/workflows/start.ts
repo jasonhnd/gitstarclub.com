@@ -1,4 +1,6 @@
-import { recordHealth, sendAlert, type AlertSummary, type HealthStatus } from "@/lib/observability/alert";
+import type { HealthStatus } from "@/lib/contracts";
+import { sendAlert, type AlertSummary } from "@/lib/observability/alert";
+import { recordHealth } from "@/lib/observability/health";
 import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 import { claimWorkflowLease, releaseWorkflowLease, type WorkflowLeaseStore } from "@/lib/workflows/lease";
