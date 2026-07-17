@@ -1,0 +1,6 @@
+[test]
+# CI invokes coverage explicitly; ../scripts/check-coverage-threshold.mjs
+# enforces the aggregate line/function threshold from this LCOV output.
+coverageSkipTestFiles = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
