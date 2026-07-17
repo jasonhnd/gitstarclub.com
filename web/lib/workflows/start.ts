@@ -2,6 +2,7 @@ import { recordHealth, sendAlert, type AlertSummary, type HealthStatus } from "@
 import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 import { claimWorkflowLease, releaseWorkflowLease, type WorkflowLeaseStore } from "@/lib/workflows/lease";
+import { readCanonicalPreflight } from "@/lib/workflows/canonical-preflight";
 
 export type RefreshWorkflowStarter = (runId: string) => Promise<void>;
 type HealthRecorder = typeof recordHealth;
@@ -12,7 +13,31 @@ type StartRouteOptions = {
   leaseStore?: WorkflowLeaseStore;
   recordHealth?: HealthRecorder;
   sendAlert?: AlertSender;
+  preflight?: typeof readCanonicalPreflight;
 };
+
+const SUPPORTED_START_QUERY = new Set(["idempotency_key", "idempotencyKey", "trigger"]);
+
+function invalidStartQuery(req: Request): Response | null {
+  const params = new URL(req.url).searchParams;
+  if (params.has("dry")) {
+    return Response.json(
+      {
+        ok: false,
+        error: "Managed refresh does not support dry-run. Use the daily or weekly cron dry-run endpoint instead.",
+      },
+      { status: 400 },
+    );
+  }
+  const unsupported = [...new Set([...params.keys()].filter((key) => !SUPPORTED_START_QUERY.has(key)))];
+  if (unsupported.length > 0) {
+    return Response.json(
+      { ok: false, error: `Unsupported query parameter${unsupported.length === 1 ? "" : "s"}: ${unsupported.join(", ")}` },
+      { status: 400 },
+    );
+  }
+  return null;
+}
 
 function pad2(value: number): string {
   return String(value).padStart(2, "0");
@@ -69,6 +94,11 @@ export async function startRefreshWorkflowRoute(
   const unauthorized = requireBearerToken(req.headers.get("authorization"));
   if (unauthorized) return unauthorized;
 
+  // Reject ambiguous requests before runtime preflight, lease acquisition,
+  // health writes, or workflow enqueue. Managed refresh has no dry-run mode.
+  const invalidQuery = invalidStartQuery(req);
+  if (invalidQuery) return invalidQuery;
+
   const now = opts.now ?? new Date();
   const acquiredAt = now.toISOString();
   const runId = refreshRunId(now);
@@ -81,6 +111,14 @@ export async function startRefreshWorkflowRoute(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[workflow-refresh] invalid runtime config", { run_id: runId, error: message });
+    return Response.json(internalFailurePayload(runId), { status: 500 });
+  }
+
+  try {
+    await (opts.preflight ?? readCanonicalPreflight)(runId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[workflow-refresh] canonical preflight failed", { run_id: runId, error: message });
     return Response.json(internalFailurePayload(runId), { status: 500 });
   }
 
@@ -136,4 +174,3 @@ export async function startRefreshWorkflowRoute(
 
   return Response.json({ ok: true, runId, idempotencyKey, status: "started" });
 }
-

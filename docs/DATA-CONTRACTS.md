@@ -97,11 +97,13 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 ```json
 { "seam_date": "2026-05-30", "schema_ver": 1,
-  "folded_through": { "month": "2026-05", "week": "2026-W22" } }
+  "folded_through": { "month": "2026-05", "week": "2026-W22" },
+  "generated_at": "2026-06-02T14:32:57.214Z" }
 ```
 
 - `seam_date`：gross→net 边界，stock 锚定据此分段（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3）。
 - `folded_through`：已折叠进 base 的最末周/月周期；读路径据此判某周期归 live 还是 base（防重复，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）。
+- `generated_at`：bootstrap 与 recurring fold writer 都必须写入的 UTC timestamp。reader 在迁移期仍接受没有该字段的 legacy generation；managed refresh 的首个 preflight step 会在任何 canonical mutation 前用 `CanonicalMeta` 解析线上对象。
 
 **`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`、`fetched_at`（元数据抓取时刻）；外加 `d` = 冻结锚定因子（`>= 0`，GitHub Archive 低计时可 `> 1`），bootstrap 算定，**存全精度 IEEE double**——舍入会让 JS 重算的 `stock_est` 与 DuckDB 差 ±1）：
 
@@ -339,6 +341,8 @@ Rules:
 ```
 
 - 当月内 **append-only + 按 UTC 日 upsert**（幂等，见 [OPS.md](./OPS.md)）。
+- 同一 UTC 日重跑时，日初基线由 `current_stars - 已记录今日 delta` 重建，再以最新 GraphQL 数值计算完整当日 delta；相同输入产生相同日状态，后续增长或回落仍保留相对日初的完整差值。
+- GitHub 对删除/改名仓库可返回 partial data。cron 明确支持这种 partial publication：只更新成功返回的 repo，缺失 repo 的 `per_repo` 今日值和 `current_stars` 原样保留；若非复用路径一个 repo 都未返回则 fail closed，不覆盖 live state。
 - `current_stars`：每日 GraphQL 最新权威值（也用于锚定）。
 - 每日/每周 Vercel cron 写活尾，并同步覆盖 `live/rank/*` 当前周/月 rank 与 `live/heatmap/*` 当月 heatmap。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（月+周折叠 `fold.ts`，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6/§7.2）；交接靠 `canonical/v2/pending/<period>.json` + `folded_through` 水位防重复/丢数据。
 
@@ -415,12 +419,12 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
   "run_id": "refresh-2026-06-02T04-00-00-000Z",
   "started_at": "2026-06-02T04:00:00.000Z",
   "status": "running",                          // running | published | failed
-  "steps": ["whitelist","rename","metadata","fold","recompute","buildAliases","validate","publish","gc"],  // manifest 分组（细粒度步骤见 VERCEL-DATA-OPERATIONS §4）
+  "steps": ["preflight","whitelist","rename","metadata","fold","recompute","buildAliases","validate","publish","gc"],  // manifest 分组（细粒度步骤见 VERCEL-DATA-OPERATIONS §4）
   "published_version": null
 }
 ```
 
-> `steps[]` 为 **manifest 分组**（9 项，对应进度账本，含真实 `buildAliases` 阶段）；**细粒度 12 步**（whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。Workflow SDK 自身持久化 step 结果；`validate` 另写 `canonical-manifest.json`（全部必需 canonical shard 的路径、bucket、记录数、SHA-256 与完整性结论）及 `validation.json`。
+> `steps[]` 为 **manifest 分组**（10 项，对应进度账本，含 read-only `preflight` 与真实 `buildAliases` 阶段）；**细粒度 13 步**（preflight/whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。Workflow SDK 自身持久化 step 结果；`validate` 另写 `canonical-manifest.json`（全部必需 canonical shard 的路径、bucket、记录数、SHA-256 与完整性结论）及 `validation.json`，其余 run 级账本包括 manifest / error / latest-success。
 
 `ops/workflows/active.json` 是 refresh workflow 的互斥 lease。start 路由和 workflow body 都通过 Blob ETag 条件写更新该文件；同一周 cron idempotency key 的重复投递会 attach 到已有 `run_id`，不同 key 的并发触发会返回 409 并写 health。
 

@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "n
 import { fileURLToPath } from "node:url";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { put } from "@vercel/blob";
+import { buildCanonicalMeta } from "../lib/canonical-meta.mjs";
 
 try {
   process.loadEnvFile(fileURLToPath(new URL("../.env", import.meta.url)));
@@ -95,12 +96,16 @@ const discRows = await query(`SELECT repo_id, d FROM disc`);
 const dById = new Map(discRows.map((r) => [num(r.repo_id), num(r.d)]));
 
 // --- write shards ---
-writeJson("canonical/v2/meta.json", {
-  seam_date: seamDate,
-  schema_ver: SCHEMA_VER,
-  folded_through: { month: hi.slice(0, 7), week: wk },
-  generated_at: GEN,
-});
+writeJson(
+  "canonical/v2/meta.json",
+  buildCanonicalMeta({
+    seamDate,
+    schemaVer: SCHEMA_VER,
+    foldedThroughMonth: hi.slice(0, 7),
+    foldedThroughWeek: wk,
+    generatedAt: GEN,
+  }),
+);
 
 writeBucketSeries("canonical/v2/repo-monthly", bucketSeries(monthly, (r) => [r.period, num(r.flow)]));
 writeBucketSeries("canonical/v2/repo-weekly", bucketSeries(weekly, (r) => [r.period, num(r.flow)]));
