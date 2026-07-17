@@ -11,7 +11,7 @@ source_of_truth_for:
 
 ## Scope
 
-This document is the **UX navigation narrative — a reader's map** of how the site hangs together. It is **not** the canonical route table: the authoritative route ↔ file ↔ render-layer listing lives in [FRONTEND.md](./FRONTEND.md) §1.1. Read this to understand how a visitor moves through the site; read FRONTEND to extend it.
+This document is the **UX navigation narrative — a reader's map** of how the site hangs together. It is **not** the canonical route table: the maintained route/source/render listing lives in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md). Read this to understand how a visitor moves through the site; use [FRONTEND.md](./FRONTEND.md) for rendering and component strategy.
 
 ## Two User Questions
 

@@ -115,7 +115,9 @@ Docs-only changes are allowed when the code already implements the behavior.
 
 ### Change Repo Or Org Detail Pages
 
-1. Start from `web/app/[owner]/[name]/page.tsx` or `web/app/o/[login]/page.tsx`.
+1. Start from the shared views `web/app/_localized/repo.tsx` or
+   `web/app/_localized/org.tsx`; route adapters are listed in
+   [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md).
 2. Confirm the needed fields exist in `RepoEntity` or `OrgEntity`.
 3. Derive UI-only projections in the page when they can be computed from
    existing entity data.

@@ -21,7 +21,7 @@ source_of_truth_for:
 > **SEO 不是加分项，是目标成立的前提**——本站没有品牌词流量、没有社交裂变引擎,唯一的规模化获客是「每一页都精确命中一条长尾查询」。
 >
 > 关联文档：渲染 / 页面分层 / ISR 见 [ARCHITECTURE.md](./ARCHITECTURE.md)；页面 / URL / i18n / 调性 / 配色见 [PRODUCT.md](./PRODUCT.md)；
-> 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.2.6**（App Router + Metadata API）。
+> 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.2.10**（App Router + Metadata API）。
 > AI answer-engine citation strategy is owned by [GEO.md](./GEO.md); this document stays focused on classic search crawl, canonical, metadata, sitemap, and internal-link mechanics.
 > Performance targets are owned by [TESTING.md](./TESTING.md); the issue #25 measured Lighthouse / Core Web Vitals baseline is supporting evidence in [perf/CWV-25.md](./perf/CWV-25.md).
 >
@@ -89,7 +89,7 @@ source_of_truth_for:
 **全局约定**：
 
 - `metadataBase = new URL(process.env.NEXT_PUBLIC_SITE_URL)`（见 [OPS.md](./OPS.md)，生产 = `https://gitstarclub.com`），所有相对 URL 据此解析为绝对 URL。
-- 根 `app/layout.tsx` 设 `title.template = '%s · GitStarClub'` + `title.default = 'GitStarClub — A Chronicle of Open Source'`；各页用 `title`（字符串）或 `title.absolute`（首页用 absolute，避免重复后缀）。各页 metadata 由 `web/lib/seo.ts` 的 `pageMeta(...)` 工具统一构造（注入 `canonical` / `openGraph.url` / `twitter.images` / 默认 OG card）。
+- 共享 `web/app/_shell/RootShell.tsx` 与两个 route-group layout 设置站点 metadata 基础；各页用 `title`（字符串）或 `title.absolute`（首页用 absolute，避免重复后缀）。各页 metadata 由 `web/lib/seo.ts` 的 `pageMeta(...)` 工具统一构造（注入 `canonical` / `openGraph.url` / `twitter.images` / 默认 OG card）。
 - 根 layout 还根据 `SITE_INDEXABLE` 全局发 `robots: { index, follow }`：默认 `false`（预发期 noindex），见 §5 / §11。
 - **每页 canonical 指向当前 locale 自身规范 URL**：English 保持无前缀，非默认 locale 使用前缀；`pageMeta()` 统一输出 `hreflang` / `x-default` alternate（见 §10）。
 - 标题含**真实搜索词**：`star history` / `trending` / 年份 / repo / org 名 / `ranking`。描述 ≤ 155 字符、含数字与具体实体、首句即价值。
@@ -98,7 +98,7 @@ source_of_truth_for:
 
 ### 2.1 首页 `/`
 
-实际实现（`web/app/page.tsx`，经 `pageMeta(...)` 工具构造，`absoluteTitle: true` 跳过站点后缀模板；Pulse title/description 副本来自 `web/lib/site-copy.ts`）：
+实际实现（`web/app/(en)/page.tsx` + `web/app/_localized/pulse.tsx`，经 `pageMeta(...)` 工具构造，`absoluteTitle: true` 跳过站点后缀模板；Pulse title/description 副本来自 `web/lib/site-copy.ts`）：
 
 | 字段 | 值 |
 |---|---|
@@ -110,7 +110,7 @@ source_of_truth_for:
 
 ### 2.1a 脉搏页 `/pulse`
 
-实际实现（`web/app/pulse/page.tsx`，`export const revalidate = false`，渲染与首页同源的 `PulseView`，但**不带** `includeWebsiteLd` ⇒ 无 `WebSite` JSON-LD，见 §6.1；title/description 副本来自 `web/lib/site-copy.ts`）：
+实际实现（`web/app/(en)/pulse/page.tsx` + `web/app/_localized/pulse.tsx`，`export const revalidate = false`，与首页复用同一 view，但**不带** `includeWebsiteLd` ⇒ 无 `WebSite` JSON-LD，见 §6.1；title/description 副本来自 `web/lib/site-copy.ts`）：
 
 | 字段 | 值 |
 |---|---|
@@ -136,7 +136,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 ### 2.2 年度页 `/rankings/2024`
 
-实际实现（`web/app/rankings/[year]/page.tsx`）：
+实际实现（`web/app/(en)/rankings/[year]/page.tsx` + `web/app/_localized/ranking-detail.tsx`）：
 
 | 字段 | 模板（以 2024 为例） |
 |---|---|
@@ -162,7 +162,7 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
 
 ### 2.3 月度页 / 周页 `/rankings/2024/10` · `/rankings/2024/W41`
 
-实际实现（`web/app/rankings/[year]/[period]/page.tsx`，`[period]` 段同时承载月与周，由 `^W(\d{1,2})$/i` 分流）：
+实际实现（`web/app/(en)/rankings/[year]/[period]/page.tsx` + `web/app/_localized/ranking-detail.tsx`，`[period]` 段同时承载月与周，由 `^W(\d{1,2})$/i` 分流）：
 
 | 字段 | 模板（2024-10） | 模板（2024-W41） |
 |---|---|---|
@@ -191,7 +191,7 @@ export async function generateMetadata({ params }: { params: Promise<{ year: str
 
 ### 2.4 Repo 详情页 `/:owner/:name`
 
-实际实现（`web/app/[owner]/[name]/page.tsx`）：
+实际实现（English adapter `web/app/(en)/[locale]/[owner]/page.tsx`、localized adapter `web/app/(localized)/[locale]/[owner]/[name]/page.tsx`、共享 `web/app/_localized/repo.tsx`）：
 
 | 字段 | 模板（`anthropics/claude-code`，已找到 entity） |
 |---|---|
@@ -225,7 +225,7 @@ export async function generateMetadata({ params }: { params: Promise<{ owner: st
 
 ### 2.5 Org 详情页 `/o/:login`
 
-实际实现（`web/app/o/[login]/page.tsx`，按 `owner_type` 切换 `Organization` / `Developer`）：
+实际实现（`web/app/(en)/o/[login]/page.tsx` + `web/app/_localized/org.tsx`，按 `owner_type` 切换 `Organization` / `Developer`）：
 
 | 字段 | 模板（`vercel`，`owner_type=Organization`） | 模板（`tj`，`owner_type=User`） |
 |---|---|---|
@@ -256,7 +256,7 @@ export async function generateMetadata({ params }: { params: Promise<{ login: st
 
 ### 2.6 全时榜 `/rankings`
 
-实际实现（`web/app/rankings/page.tsx`，静态 + 每日 revalidate）：
+实际实现（`web/app/(en)/rankings/page.tsx` + `web/app/_localized/rankings.tsx`，静态 + 每日 revalidate）：
 
 | 字段 | 值 |
 |---|---|
@@ -280,7 +280,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 ### 2.7 关于页 `/about`
 
-实际实现（`web/app/about/page.tsx`）：
+实际实现（`web/app/(en)/about/page.tsx` + `web/app/_localized/about.tsx`）：
 
 | 字段 | 值 |
 |---|---|
@@ -329,7 +329,7 @@ export async function generateStaticParams() {
 
 ### 2.8 对比页 `/compare`
 
-实际实现（`web/app/compare/page.tsx`，`export const dynamic = "force-static"`，全量静态壳 + 客户端读 `?repos=` 渲染）：
+实际实现（`web/app/(en)/compare/page.tsx` + `web/app/_localized/compare.tsx`，`export const dynamic = "force-static"`，全量静态壳 + 客户端读 `?repos=` 渲染）：
 
 | 字段 | 值 |
 |---|---|
@@ -580,7 +580,7 @@ Disallow: /
 
 ### 6.1 首页：`WebSite`（仅首页，不在根 layout）
 
-**实际实现**：`WebSite` JSON-LD **只在首页 `/` 注入**，通过 `PulseView` 组件的 `includeWebsiteLd` prop 控制（`web/app/page.tsx` 传 `includeWebsiteLd`；`web/app/pulse/PulseView.tsx` 内 `{includeWebsiteLd && <JsonLd data={webSiteLd(...)}/>}`）。**根 layout 不注入** `WebSite`——历史 / repo / org / `/rankings` 等其它页面没有 `WebSite` ld，只各自挂自己的 `CollectionPage` / `SoftwareSourceCode` / `Organization` / `Person`（见 §6.3–6.6）。
+**实际实现**：`WebSite` JSON-LD **只在首页 `/` 注入**，通过共享 `web/app/_localized/pulse.tsx` 的 `includeWebsiteLd` prop 控制；`web/app/(en)/page.tsx` 传入该标记，`/pulse` 不传。**根 layout 不注入** `WebSite`——历史 / repo / org / `/rankings` 等其它页面没有 `WebSite` ld，只各自挂自己的 `CollectionPage` / `SoftwareSourceCode` / `Organization` / `Person`（见 §6.3–6.6）。
 
 实际输出（`web/lib/jsonld.ts` 的 `webSiteLd(locale, path)`）：
 
@@ -827,7 +827,7 @@ org 索引 /o 与 /o/page/N
 | **预览保持 PRIVATE** | Vercel 项目预览部署设为非公开（Deployment Protection），从源头不可被匿名爬虫访问 |
 | **canonical 不外泄** | Preview 的 `NEXT_PUBLIC_SITE_URL` 仍指生产域名 ⇒ 即便 meta 误放出，canonical 也指向生产、不让 `*.vercel.app` / `pre.gitstarclub.com` 成规范 URL |
 
-代码（`web/app/layout.tsx`）：
+代码（`web/app/_shell/RootShell.tsx`）：
 
 ```ts
 const indexable = process.env.SITE_INDEXABLE === "1";
@@ -890,9 +890,9 @@ SSG + 零客户端 JS + HTML < 20KB 天然满足（见 [ARCHITECTURE.md](./ARCHI
 | 页面 | OG 卡片 | 实现位置 | 内容（1200×630，flex 布局） | 文案搜索词对齐 |
 |---|---|---|---|---|
 | 站点默认 / 首页 / `/pulse` | **站点卡** | `web/app/opengraph-image.tsx`（`revalidate=86400`） | `GitStarClub.com` 大标题 + 「A chronicle of open source — more than a decade of GitHub star history across 5,300+ projects.」 | star history |
-| Repo 页 | **repo 卡** | `web/app/[owner]/[name]/opengraph-image.tsx`（`revalidate=86400`） | `owner/name` 大字 + 当前 star 数（`fmtStars`）+ 主语言（按 repo 现场读取，未知 repo 仅出名） | <repo> star history |
-| 年度页 | **排名卡** | `web/app/rankings/[year]/opengraph-image.tsx`（`revalidate=86400`，共用 `og-card.tsx` 的 `rankingCard`） | 「<Year>」特大字 + 当年 stars-gained TOP 3 repo（金色 + `+N`） | github <year> trending |
-| 月度页 / 周页 | **排名卡** | `web/app/rankings/[year]/[period]/opengraph-image.tsx`（`revalidate=86400`，共用 `rankingCard`，按 `^W(\d+)$` 分流月/周） | 「<Month Year>」/「<Year> · Week N」+ 该期 stars-gained TOP 3 | top github repos october 2024 |
+| Repo 页 | **repo 卡** | `web/app/(en)/[locale]/[owner]/opengraph-image.tsx`（`revalidate=86400`） | `owner/name` 大字 + 当前 star 数（`fmtStars`）+ 主语言（按 repo 现场读取，未知 repo 仅出名） | <repo> star history |
+| 年度页 | **排名卡** | `web/app/(en)/rankings/[year]/opengraph-image.tsx`（`revalidate=86400`，共用 `og-card.tsx` 的 `rankingCard`） | 「<Year>」特大字 + 当年 stars-gained TOP 3 repo（金色 + `+N`） | github <year> trending |
+| 月度页 / 周页 | **排名卡** | `web/app/(en)/rankings/[year]/[period]/opengraph-image.tsx`（`revalidate=86400`，共用 `rankingCard`，按 `^W(\d+)$` 分流月/周） | 「<Month Year>」/「<Year> · Week N」+ 该期 stars-gained TOP 3 | top github repos october 2024 |
 | Org 页 | **（回退站点卡）** | 无专属路由（`pageMeta` 不传 `ogImage`） | 同站点卡 | <org> github stars |
 | 全时榜 `/rankings` | **（回退站点卡）** | 无专属路由（`pageMeta` 不传 `ogImage`） | 同站点卡 | most starred github repos |
 

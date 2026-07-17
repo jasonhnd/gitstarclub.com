@@ -210,7 +210,7 @@ Eleven thousand-plus pages cannot be built at deploy time within Vercel's 45-min
 |---|---|---|
 | **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy; daily cron atomically publishes a live generation then calls `revalidatePath` |
 | **Movers** (event-driven, daily) | Repos and orgs flagged as moving today (top-50 daily flow ∪ ≥ 5× their 90-day median with absolute floor ∪ milestone crossings) | Daily cron picks the set and calls `revalidatePath` on those entities + the pulse surface |
-| **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos and orgs not currently moving | `dynamicParams=true`, not enumerated in `generateStaticParams`; first request renders, then cached. `revalidate=false` (changes propagate via targeted `revalidatePath`) |
+| **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos and orgs not currently moving | `dynamicParams=true`, not fully enumerated in `generateStaticParams`; first request renders, then caches. Historical periods use `revalidate=false`; repo/org details use `revalidate=86400`, with targeted `revalidatePath` for movers. |
 | **Frozen** | Completed weekly / monthly / yearly pages | Rendered once and stamped "as of <date>"; only re-rendered when the recompute publishes a new pointer version |
 
 Cadence:
@@ -220,7 +220,7 @@ Cadence:
 - **Weekly cron**: use the same generation protocol for current week/month rank, heatmap, hot snapshot, and then update `ops/sync-runs.json`.
 - **Workflow runs** (recompute → validate → publish): re-derive every `views/**` artifact, validate, and atomically swap the pointer. Old versions are reaped by the GC step.
 
-Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default — leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model); long-tail pages export `revalidate=false`; ISR rendering reads only KB-sized hot-snapshot JSON.
+Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default — leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model); historical period routes use frozen caching while repo/org long-tail routes use daily ISR; rendering reads only bounded JSON views.
 
 ### GraphQL budget
 
@@ -232,7 +232,7 @@ The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per quer
 |---|---|
 | Static HTML for content pages | Function invocations stay at zero |
 | HTML under ~20 KB | Reduces bandwidth at scale |
-| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW, Vercel Web Analytics, and optional env-gated GA4 |
+| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW and Vercel Web Analytics. Third-party analytics are unsupported. |
 | `Cache-Control: s-maxage=86400, stale-while-revalidate` | Historical surfaces cached aggressively |
 | Subset fonts as woff2 | Plus Jakarta Sans subset ~30 KB |
 | Pre-rendered OG cards in Blob | No function cost on share embeds |

@@ -10,6 +10,7 @@
     "assets:sync": "bun ./render-assets.mjs --sync-only",
     "assets:check": "bun ./render-assets.mjs --check",
     "build": "bun ./build.mjs",
-    "lint:md": "bun ./scripts/check-markdown-code-fences.mjs"
+    "lint:md": "bun ./scripts/check-markdown-code-fences.mjs",
+    "lint:docs": "bun run lint:md && bun test ./scripts/check-docs.test.mjs && bun ./scripts/check-docs.mjs"
   }
 }

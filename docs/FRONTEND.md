@@ -3,7 +3,6 @@ owner: frontend
 status: active
 last_reviewed: 2026-07-17
 source_of_truth_for:
-  - route catalog
   - rendering strategy
   - component catalog
   - data access layer
@@ -12,9 +11,9 @@ source_of_truth_for:
 
 # gitstarclub 前端设计（Next.js 16 Web 应用）
 
-> **前端层的唯一真相源**——把 [REQUIREMENTS](./REQUIREMENTS.md)（做什么）、[ARCHITECTURE](./ARCHITECTURE.md)（页面分层 / ISR / 节奏）、[DATA-CONTRACTS](./DATA-CONTRACTS.md)（消费的 JSON 视图 schema）、[DESIGN-SYSTEM](./DESIGN-SYSTEM.md)（M3E token / 组件 / 动效）落到 `web/` 这个 **Next.js 16 App Router** 应用的**路由 / 渲染配置 / 数据消费 / 组件 / i18n**。
+> **前端实现真相源**——把 [REQUIREMENTS](./REQUIREMENTS.md)（做什么）、[ARCHITECTURE](./ARCHITECTURE.md)（页面分层 / ISR / 节奏）、[DATA-CONTRACTS](./DATA-CONTRACTS.md)（消费的 JSON 视图 schema）、[DESIGN-SYSTEM](./DESIGN-SYSTEM.md)（M3E token / 组件 / 动效）落到 `web/` 这个 **Next.js 16 App Router** 应用的**渲染配置 / 数据消费 / 组件 / i18n**。路由与源文件清单只在 [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md) 维护。
 > SEO 元数据 / sitemap / canonical 细节见 [SEO.md](./SEO.md)；Route Handler 与公开 JSON endpoint 契约见 [API.md](./API.md)；Blob 布局 / 环境变量 / 部署拓扑见 [OPS.md](./OPS.md)。
-> 技术事实基于 **Next.js 16.2.6 · React 19.2 · TypeScript 6 · Tailwind 4 · Zod 4 · 包管理器 bun**（见 `web/package.json`）。
+> 技术事实基于 **Next.js 16.2.10 · React 19.2.4 · TypeScript 6 · Tailwind 4 · Zod 4 · 包管理器 bun 1.3.14**（见 `web/package.json` 与根 `package.json`）。
 
 ---
 
@@ -33,7 +32,7 @@ source_of_truth_for:
 | `REQ-CHRONICLE-001` | `(en)` / `(localized)` 的 `rankings/**`、`[owner]/[name]`、`o/**`、`_localized/rankings.tsx` | `rank/**`, `entity/**`, `heatmap/**`, `lookup/**` | `P0-AC1`, `P0-AC3`; routing, SEO, recompute, fold tests |
 | `REQ-PULSE-001` | `/`, `/pulse`, `_localized/pulse.tsx`, `pulse/PulseView.tsx`, cron-triggered `revalidatePath` | `hot-snapshot.json`, `current_month.json`, `live/*`, `ops/sync-runs.json` | `P0-AC2`, `P0-AC3`; live-refresh tests |
 | `REQ-RANKING-001` | `/rankings`, `/rankings/[year]`, `/rankings/[year]/[period]`, `RankingList` | `rank/{week|month|year|all-time}/**` plus derived `growth`/`new` | `P0-AC4`; ranking, contract, recompute tests |
-| `REQ-I18N-001` | `(en)` root, `(localized)/[locale]`, `LanguageSwitcher`, `pageMeta()`, sitemap routes | Data fields stay language-neutral; only chrome/meta dictionaries localize | `P0-AC3`; i18n routing/middleware, SEO, sitemap tests |
+| `REQ-I18N-001` | `(en)` root, `(localized)/[locale]`, `LanguageSwitcher`, `pageMeta()`, sitemap routes | Data fields stay language-neutral; only chrome/meta dictionaries localize | `P0-AC3`; i18n routing/proxy, SEO, sitemap tests |
 | `REQ-DATAOPS-001` | `api/cron/{daily,weekly}`, `api/workflows/refresh/start`, read-side version pointer handling | `views/latest.json`, `ops/workflows/**`, live artifacts | `P0-AC6`; workflow validate/start and cron tests |
 | `REQ-PERF-001` | RSC content pages, server-rendered SVG/DOM charts, limited client islands | Budgeted JSON view reads; no request-path engine access | `P0-AC5`; performance runbook and planned budget gates |
 | `REQ-SEARCH-001` | `SearchBox`, `/search-index`, MiniSearch worker protocol | `search/index.json` | search core, worker protocol, search-index contract tests |
@@ -56,46 +55,18 @@ source_of_truth_for:
 
 ## 1. 路由（App Router）
 
-### 1.1 路由总表（页面 ↔ 文件 ↔ 渲染层）
+### 1.1 路由与渲染边界
 
-> 渲染层定义见 §2。English canonical URL 保持无前缀；ja/zh/zh-TW/ko/es/fr 使用 locale 前缀并与 English 互发 `hreflang` / `x-default`。下表列出 English 无前缀路径；非默认 locale 通过 `(localized)/[locale]` 路由组复用同一 canonical path（例如 `/ja/rankings`、`/fr/facebook/react`）。旧 `/trending` 与旧 `/{year}` 这类**历史路径形态**已从路由树删除，不做形态兼容重定向。但 repo 改名是另一回事：repo 页对改名旧 slug **发 308 永久重定向**到当前 `full_name`（见 §2.3 / §3.2 alias 机制），这与「不做兼容重定向」不矛盾——前者指消失的路径形态，后者指仍在追踪的 repo 换了名字。
+页面、endpoint、metadata route、源文件、sitemap 与数据加载器的完整矩阵只在
+[UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md) 维护。Endpoint 的 method、
+auth、response 与 cache contract 由 [API.md](./API.md) 维护。本文只维护跨路由的
+渲染策略。
 
-| 页 | URL | 文件（相对 `web/app/`） | 渲染层 | `generateStaticParams` |
-|---|---|---|---|---|
-| 首页 | `/` | `page.tsx` | 核心 Pulse | — |
-| **脉搏页** | `/pulse` | `pulse/page.tsx` | 核心（每日 revalidate，事件驱动） | — |
-| **总榜** | `/rankings` | `rankings/page.tsx` | 核心（每日 revalidate） | — |
-| 年榜 | `/rankings/[year]` | `rankings/[year]/page.tsx` | 当年核心 / 历史按需 ISR | 当前年 |
-| 月榜 | `/rankings/[year]/[month]` | `rankings/[year]/[period]/page.tsx` | 当月核心 / 历史按需 ISR | 当前月 |
-| 周榜 | `/rankings/[year]/W[week]` | `rankings/[year]/[period]/page.tsx` | 当周 mover / 过去周冻结 | `[]`（长尾） |
-| repo 页 | `/[owner]/[name]` | `[owner]/[name]/page.tsx` | 按需 ISR（`revalidate=86400`，mover 当日 `revalidatePath`） | `[]`（长尾） |
-| **org 索引** | `/o`、`/o/page/[page]` | `o/page.tsx`、`o/page/[page]/page.tsx` | 组织目录 ISR（`revalidate=3600`） | org 页数 |
-| **org 页** | `/o/[login]` | `o/[login]/page.tsx` | 按需 ISR（`revalidate=false`，mover 当日刷新） | `[]`（长尾） |
-| **对比页** | `/compare` | `compare/page.tsx` + `compare/CompareClient.tsx` | 静态壳（`force-static`），客户端读 `?repos=` + 取曲线 | — |
-| 关于 | `/about` | `about/page.tsx` | 核心 | — |
-| **分类索引** | `/categories` | `categories/page.tsx` | `revalidate=86400` ISR | — |
-| **分类维度** | `/categories/[dimension]` | `categories/[dimension]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 各维度名 |
-| **分类详情** | `/categories/[dimension]/[slug]`、`/categories/[dimension]/[slug]/page/[page]` | `categories/[dimension]/[slug]/page.tsx`、`categories/[dimension]/[slug]/page/[page]/page.tsx` | `revalidate=86400` ISR，`dynamicParams=true` | 公开分类 + 分类页数 |
-
-**路由处理器（route handlers）**：下表只保留前端路由树定位；endpoint contract（method / auth / params / response / cache / status codes）由 [API.md](./API.md) 统一维护。
-
-| 路径 | 文件 | 用途 |
-|---|---|---|
-| `/api/cron/daily` | `api/cron/daily/route.ts` | 每日 live overlay（`current_month.json` + `hot-snapshot.json`） |
-| `/api/cron/weekly` | `api/cron/weekly/route.ts` | 每周 live overlay refresh |
-| `/api/workflows/refresh/start` | `api/workflows/refresh/start/route.ts` | 触发 L3 全量重算 Workflow |
-| `/api/lang` | `api/lang/route.ts` | 直接访问时的语言 cookie 后备入口 |
-| `/search-index` | `search-index/route.ts` | 客户端搜索索引端点 |
-| `/repo-curve` | `repo-curve/route.ts` | 对比页瘦路由（按 id 投影 entity 曲线） |
-
-OG 图路由（`opengraph-image.tsx`，next/og 动态渲染）：
-- 站点级 `/opengraph-image`（`app/opengraph-image.tsx`，`web/lib/og-card.tsx`）
-- repo 页 `/[owner]/[name]/opengraph-image`（`[owner]/[name]/opengraph-image.tsx`）
-- 年榜 `/rankings/[year]/opengraph-image`（`rankings/[year]/opengraph-image.tsx`）
-- 月/周榜 `/rankings/[year]/[period]/opengraph-image`（`rankings/[year]/[period]/opengraph-image.tsx`）
-四类 OG 路由均 `revalidate=86400`，对齐每日 live cron；生成路径只读 Blob JSON，不触发运行时引擎。
-
-**周榜是独立页面**，但归入总榜路径下：`/rankings/YYYY/W##`。月榜和周榜共用 `[period]` 段，在页面里按 `W` 前缀分流；旧的 `/{lang}/YYYY` 与 `/{lang}/YYYY/MM` 不再存在。
+English canonical URL 无前缀；ja/zh/zh-TW/ko/es/fr 使用 locale 前缀并与
+English 互发 `hreflang` / `x-default`。旧 `/trending` 与旧 `/{year}` 路径不做
+兼容重定向；仍在追踪的 repo 改名则通过 alias map 308 到当前 `full_name`。
+四类 `next/og` 路由均在请求/ISR 时生成并使用 `revalidate=86400`；它们不由
+pipeline 生成，也不存 Blob。
 
 ### 1.2 i18n（locale URL + 服务端渲染）
 
@@ -110,7 +81,7 @@ app/
   (en)/
     layout.tsx               # English 无前缀根布局，<html lang="en">
     page.tsx  pulse/page.tsx
-    [owner]/[name]/page.tsx  # GitHub 风格 repo URL
+    [locale]/[owner]/page.tsx # 参数名与 localized tree 对齐；URL 仍为 /owner/name
     o/page.tsx  o/page/[page]/page.tsx  o/[login]/page.tsx
     rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
     about/page.tsx  privacy/page.tsx  categories/**  compare/page.tsx
@@ -121,16 +92,15 @@ app/
     o/**  rankings/**  categories/**  compare/page.tsx  about/page.tsx  privacy/page.tsx
   api/lang/route.ts          # 兼容入口：写 gsc_lang 后重定向到 locale URL
   search-index/route.ts      # 客户端搜索索引端点（contract 见 API.md）
-  compare/page.tsx           # 多 repo 对比页：静态壳 + 客户端读 URL ?repos= → 取曲线 → CompareCurve；带参 noindex
   repo-curve/route.ts        # 对比瘦路由（contract 见 API.md）
   robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
 ```
 
 要点：
 
-- **URL canonical 按 locale 自规范化**：`/facebook/react` 是 English URL；`/ja/facebook/react`、`/zh-TW/facebook/react` 等是对应 locale 的规范 URL；`/en/*` 不是规范形态，middleware 永久重定向到无前缀 English。
+- **URL canonical 按 locale 自规范化**：`/facebook/react` 是 English URL；`/ja/facebook/react`、`/zh-TW/facebook/react` 等是对应 locale 的规范 URL；`/en/*` 不是规范形态，`web/proxy.ts` 永久重定向到无前缀 English。
 - **渲染模式见 §2.5**（route locale → server dictionary → localized HTML；长尾仍按需 ISR）。
-- **i18n 实现细节见 §7**（手写字典、路由组选择 `<html lang>`、LanguageSwitcher 以 `<a>` 导航、`gsc_lang` 只作 middleware/API 偏好重定向信号）；数据字段不翻译。
+- **i18n 实现细节见 §7**（手写字典、路由组选择 `<html lang>`、LanguageSwitcher 以 `<a>` 导航、`gsc_lang` 只作 proxy/API 偏好重定向信号）；数据字段不翻译。
 
 ---
 
@@ -152,7 +122,7 @@ app/
 > **长尾 `revalidate` 不是一刀切 `false`**（按文件分裂，以代码为准）：
 > - **repo `/[owner]/[name]`** = `86400`（`page.tsx:22`）——首访生成 + 每 1 天后台再生，叠加 mover 当日 `revalidatePath`。
 > - **org 索引 `/o` / `/o/page/[page]`** = `3600`——提供可爬的 owner 目录层，按 `lookup/orgs.json` 页数预渲染。
-> - **org `/o/[login]`** = `false`（`page.tsx:19`）——纯靠 cron 定点失效，不做时间轮询。
+> - **org `/o/[login]`** = `86400`——首访生成 + 每 1 天后台再生，叠加 mover 定点失效。
 > - **分类 `/categories*`** = `86400`——新发布的注册表分类无需重新部署即可在 1 天内出现；分类详情 page 2+ 通过 `/categories/[dimension]/[slug]/page/[page]` 自规范化。
 > - 历史年/月/周仍走 §2.2「核心页」混合文件里的 `revalidate=false` 段（当年/当月预渲染、历史按需）。
 
@@ -174,14 +144,13 @@ export const revalidate = false              // 不轮询；每日 cron 用 reva
 **长尾页（repo / org / 周 / 历史年月）** —— 不在 deploy 构建：
 
 ```ts
-// 例：app/o/[login]/page.tsx（org 页 revalidate=false 的范式）
+// 例：app/o/[login]/page.tsx（repo / org 详情页范式）
 export const dynamicParams = true            // 默认值；空列表 + 此项 = 全部按需生成
 export async function generateStaticParams() {
   return []                                  // repo/org 页返回 [] → 全部按需 ISR
 }
-export const revalidate = false              // org：仅靠 cron 定点失效（每周重算 / mover 当日刷新）
-// 注意：repo 页（app/[owner]/[name]/page.tsx）相同的 [] + dynamicParams，但 revalidate=86400
-// （首访生成后每 1 天后台再生 + cron 定点失效叠加），与 org 的 false 不同——见 §2.1 长尾行脚注。
+export const revalidate = 86400              // 每日 ISR + cron 定点失效
+// repo 与 org 详情均为空 static params；首访按需生成，随后每日 ISR。
 ```
 
 **全时榜 / 脉搏（单页、每日新鲜）**：
@@ -225,7 +194,7 @@ export default nextConfig;
 
 ### 2.5 渲染模式：route locale + 服务端本地化 HTML
 
-页面 BODY 与 chrome（顶栏 / 页脚 / 面包屑标签 / 区段标题）都由 route locale 决定：English 无前缀路由渲染英文 HTML，非默认 locale 前缀路由渲染对应语言 HTML。`gsc_lang` cookie 不参与页面渲染，只在 middleware 和 `/api/lang` 中作为偏好重定向信号。整棵路由树继续命中静态 / ISR 缓存（核心页 SSG、长尾按需 ISR），不进入按请求 SSR。
+页面 BODY 与 chrome（顶栏 / 页脚 / 面包屑标签 / 区段标题）都由 route locale 决定：English 无前缀路由渲染英文 HTML，非默认 locale 前缀路由渲染对应语言 HTML。`gsc_lang` cookie 不参与页面渲染，只在 `web/proxy.ts` 和 `/api/lang` 中作为偏好重定向信号。整棵路由树继续命中静态 / ISR 缓存（核心页 SSG、长尾按需 ISR），不进入按请求 SSR。
 
 **实现要点**：
 
@@ -246,7 +215,7 @@ export default nextConfig;
 | `/[owner]/[name]` · `/o/[login]` | `●` SSG（`[]` + `dynamicParams` → 全部按需 ISR） |
 
 - SSR/静态输出**完整可索引 HTML**（当前 route locale 的 chrome 与正文进入初始 HTML，SEO §3a 不受影响），数据语言中立。
-- 取舍依据：每页约 95% 是语言中立数据,仅少量 chrome 字符串需要翻译 → route-locale 服务端渲染 + 按需 ISR 同时保住**静态 CDN 扛量 + GitHub 风格 canonical path**；metadata、sitemap、正文、middleware 与语言切换导航已经统一到 locale URL / hreflang 架构。
+- 取舍依据：每页约 95% 是语言中立数据,仅少量 chrome 字符串需要翻译 → route-locale 服务端渲染 + 按需 ISR 同时保住**静态 CDN 扛量 + GitHub 风格 canonical path**；metadata、sitemap、正文、proxy 与语言切换导航已经统一到 locale URL / hreflang 架构。
 
 ---
 
@@ -500,7 +469,7 @@ return pageMeta({
 
 1. **数据层**：`web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch Blob + parse + `cache()`）是页面读 JSON 视图的唯一入口。
 2. **段配置**：`rankings/[year]`/`[period]` 预渲染当前年/月 + `dynamicParams`;repo/org `generateStaticParams() => []` 转按需 ISR;未知 param `notFound()`。
-3. **middleware / `next.config.ts`**：middleware 负责 `/en/*` 规范化与 cookie/header 偏好重定向；`next.config.ts` 不做旧路径形态兼容重定向。
+3. **`web/proxy.ts` / `next.config.ts`**：proxy 负责 `/en/*` 规范化与 cookie/header 偏好重定向；`next.config.ts` 不做旧路径形态兼容重定向。
 4. **页面**：`(en)` 与 `(localized)/[locale]` 两套路由组调用 `_localized/*` 共享实现，覆盖 `pulse`/`rankings`/`rankings/[year]`/`[period]`/`[owner]/[name]`/`o/[login]`/`categories`/`compare`。
 5. **i18n**：route-locale 服务端渲染（机制见 §7，渲染模式见 §2.5）。
 6. **SEO 配套**：`app/sitemap.xml/route.ts`、`app/sitemap-*.xml/route.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD。
