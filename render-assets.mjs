@@ -1,54 +1,118 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
-import { resolve, join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { createRequire } from "node:module";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
+import {
+  inspectAssetCopies,
+  pngDimensions,
+  RENDER_TARGETS,
+  REPO_ROOT,
+  sha256,
+  syncAssetCopies,
+} from "./scripts/assets.mjs";
 
-// Renders the M3E OG card + favicons from their HTML sources via headless
-// Chrome. PNG products are committed to assets/; re-run only when og.html /
-// icon.html change. CHROME_PATH overrides auto-detection.
-const CHROME =
-  process.env.CHROME_PATH ||
-  [
-    'C:/Program Files/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-  ].find(existsSync);
-
-if (!CHROME) {
-  console.error('Chrome not found — set CHROME_PATH to chrome.exe');
-  process.exit(1);
+const args = new Set(process.argv.slice(2));
+const checkMode = args.has("--check");
+const syncOnly = args.has("--sync-only");
+const unknown = [...args].filter((arg) => arg !== "--check" && arg !== "--sync-only");
+if (unknown.length > 0 || (checkMode && syncOnly)) {
+  console.error("usage: bun render-assets.mjs [--check | --sync-only]");
+  process.exit(2);
 }
 
-const targets = [
-  { src: 'assets/og.html', out: 'assets/og.png', w: 1200, h: 630 },
-  { src: 'assets/icon.html', out: 'assets/favicon.png', w: 64, h: 64 },
-  { src: 'assets/icon.html', out: 'assets/apple-touch-icon.png', w: 180, h: 180 },
-];
-
-for (const t of targets) {
-  const url = pathToFileURL(resolve(t.src)).href;
-  // Fresh profile per render so back-to-back invocations don't attach to a
-  // running Chrome instance and inherit a stale window size.
-  const profile = mkdtempSync(join(tmpdir(), 'gsc-render-'));
+async function loadChromium() {
+  const requireFromWeb = createRequire(resolve(REPO_ROOT, "web/package.json"));
   try {
-    execFileSync(
-      CHROME,
-      [
-        '--headless',
-        '--disable-gpu',
-        '--hide-scrollbars',
-        '--force-device-scale-factor=1',
-        '--default-background-color=00000000', // transparent for icon corners
-        `--user-data-dir=${profile}`,
-        `--window-size=${t.w},${t.h}`,
-        '--virtual-time-budget=5000', // let Google Fonts load before capture
-        `--screenshot=${resolve(t.out)}`,
-        url,
-      ],
-      { stdio: 'inherit' },
-    );
-    console.log(`Rendered ${t.out} (${t.w}x${t.h})`);
-  } finally {
-    rmSync(profile, { recursive: true, force: true });
+    const playwright = requireFromWeb("playwright");
+    return playwright.chromium;
+  } catch (error) {
+    throw new Error(`Playwright is unavailable; run 'cd web && bun install --frozen-lockfile': ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+
+async function renderTargets(outputDirectory) {
+  const chromium = await loadChromium();
+  let browser;
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        "--allow-file-access-from-files",
+        "--disable-gpu",
+        "--disable-lcd-text",
+        "--font-render-hinting=none",
+        "--force-color-profile=srgb",
+      ],
+    });
+  } catch (error) {
+    throw new Error(`Playwright Chromium is unavailable; run 'cd web && bunx playwright install chromium': ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  try {
+    for (const target of RENDER_TARGETS) {
+      const context = await browser.newContext({
+        viewport: { width: target.width, height: target.height },
+        deviceScaleFactor: 1,
+        colorScheme: "dark",
+        reducedMotion: "reduce",
+      });
+      try {
+        const page = await context.newPage();
+        await page.goto(pathToFileURL(resolve(REPO_ROOT, target.source)).href, { waitUntil: "load" });
+        await page.evaluate(() => document.fonts.ready);
+        if ("fonts" in target) {
+          const missingFonts = await page.evaluate((fonts) => fonts.filter((font) => !document.fonts.check(`16px "${font}"`)), target.fonts);
+          if (missingFonts.length > 0) throw new Error(`${target.asset}: local font(s) failed to load: ${missingFonts.join(", ")}`);
+        }
+        const output = resolve(outputDirectory, target.asset);
+        await page.screenshot({ path: output, animations: "disabled", omitBackground: true });
+        const dimensions = pngDimensions(readFileSync(output));
+        if (dimensions.width !== target.width || dimensions.height !== target.height) {
+          throw new Error(`${target.asset}: rendered ${dimensions.width}x${dimensions.height}, expected ${target.width}x${target.height}`);
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+async function main() {
+  if (syncOnly) {
+    syncAssetCopies(REPO_ROOT);
+    console.log("Synchronized canonical assets to web/public");
+    return;
+  }
+
+  const temporary = mkdtempSync(join(tmpdir(), "gsc-assets-"));
+  try {
+    await renderTargets(temporary);
+    if (checkMode) {
+      const issues = inspectAssetCopies(REPO_ROOT);
+      for (const target of RENDER_TARGETS) {
+        const rendered = readFileSync(resolve(temporary, target.asset));
+        const canonical = readFileSync(resolve(REPO_ROOT, "assets", target.asset));
+        if (!rendered.equals(canonical)) {
+          issues.push(`${target.asset}: rendered source drift (rendered ${sha256(rendered)}, assets ${sha256(canonical)})`);
+        }
+      }
+      if (issues.length > 0) throw new Error(`asset check failed:\n- ${issues.join("\n- ")}`);
+      console.log(`Asset check passed: ${RENDER_TARGETS.length} deterministic renders and all deployed copies match`);
+      return;
+    }
+
+    for (const target of RENDER_TARGETS) {
+      copyFileSync(resolve(temporary, target.asset), resolve(REPO_ROOT, "assets", target.asset));
+      console.log(`Rendered assets/${target.asset} (${target.width}x${target.height})`);
+    }
+    syncAssetCopies(REPO_ROOT);
+    console.log("Synchronized canonical assets to web/public");
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+await main();

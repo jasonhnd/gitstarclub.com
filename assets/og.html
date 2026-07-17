@@ -2,10 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
+  @font-face {
+    font-family: "GSC Sans";
+    src: url("../web/node_modules/next/dist/next-devtools/server/font/geist-latin.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: "GSC Mono";
+    src: url("../web/node_modules/next/dist/next-devtools/server/font/geist-mono-latin.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+  }
   /* ===== Material 3 Expressive — graphite surfaces + star-gold accent ===== */
   :root {
     --md-sys-color-primary-container: #f2a900;
@@ -22,8 +31,8 @@
 
     --shape-m: 12px;
     --shape-full: 999px;
-    --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
-    --font-mono: "Geist Mono", ui-monospace, monospace;
+    --font-sans: "GSC Sans", sans-serif;
+    --font-mono: "GSC Mono", monospace;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }

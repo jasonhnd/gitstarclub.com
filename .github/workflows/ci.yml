@@ -182,6 +182,9 @@ jobs:
         run: bun scripts/resolve-vercel-preview.ts
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
+      - name: Verify deterministic generated assets
+        working-directory: .
+        run: bun run assets:check
       - name: Run accessibility and responsive release suites
         env:
           BASE_URL: ${{ steps.deployment.outputs.url }}
