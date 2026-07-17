@@ -1,14 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import en from "@/lib/i18n/dictionaries/en";
 import { getDictionary, LOCALES, type Locale } from "@/lib/i18n";
 import { SearchIndex } from "@/lib/contracts";
+import {
+  liveGatesRequired,
+  recentClosedWeeks,
+  resolveLiveGateConfig,
+  runAllLiveGates,
+} from "./release-gates-live";
 
-// Product-level release gates (#286): localization completeness, search contract
-// resilience, and optional live freshness/search checks when a real Blob base is
-// available (web/.env.local). CI sets a fake BLOB_BASE_URL for unit tests — do not
-// treat that as permission to hit production.
+// Product-level release gates (#286).
+//
+// Offline checks always run in `static` CI.
+// Live checks run when RELEASE_GATE_REQUIRE_LIVE=1 (product-gates CI job) and
+// fail closed if site/blob config is missing or any finding is not ok.
+// They never silently no-op under REQUIRE_LIVE.
 
 const ABOUT_MARKER_KEYS = [
   "trackedHeading",
@@ -21,18 +27,6 @@ const ABOUT_MARKER_KEYS = [
 ] as const;
 
 const NON_EN = LOCALES.filter((locale): locale is Exclude<Locale, "en"> => locale !== "en");
-
-function readLocalBlobBase(): string | null {
-  const envPath = join(import.meta.dir, "..", "..", ".env.local");
-  if (!existsSync(envPath)) return null;
-  try {
-    const raw = readFileSync(envPath, "utf8");
-    const match = raw.match(/^\s*BLOB_BASE_URL\s*=\s*"?([^"\r\n]+)"?\s*$/m);
-    return match ? match[1].trim().replace(/\/+$/, "") : null;
-  } catch {
-    return null;
-  }
-}
 
 describe("release gate: about localization completeness (#284 / #286)", () => {
   test("every locale dictionary carries the full about key surface", async () => {
@@ -74,34 +68,47 @@ describe("release gate: search index contract resilience (#283 / #286)", () => {
   });
 });
 
-const BLOB = readLocalBlobBase();
-const SITE = process.env.LIVE_SMOKE_SITE_URL ?? "https://gitstarclub.com";
+describe("release gate: live helper pure functions (#286)", () => {
+  test("recentClosedWeeks returns previous ISO weeks before the current week", () => {
+    const weeks = recentClosedWeeks(new Date("2026-07-15T12:00:00.000Z"), 4);
+    expect(weeks[0]).toBe("2026-W28");
+    expect(weeks).toHaveLength(4);
+    expect(weeks).not.toContain("2026-W29");
+  });
+});
 
-if (BLOB) {
-  describe("release gate: live data freshness and search (#280 / #286)", () => {
-    test("production /search-index returns a non-empty schema-valid index", async () => {
-      const res = await fetch(`${SITE}/search-index`, { headers: { accept: "application/json" } });
-      expect(res.status).toBe(200);
-      const body = SearchIndex.parse(await res.json());
-      expect(body.count).toBeGreaterThan(1000);
-      expect(body.repos.length).toBe(body.count);
-      expect(body.repos.some((repo) => repo.full_name.includes("hummingbot"))).toBe(true);
-    }, 30_000);
+const requireLive = liveGatesRequired();
+const liveConfig = resolveLiveGateConfig();
 
-    test("newest non-dry sync run is ok and younger than 4 days", async () => {
-      const res = await fetch(`${BLOB}/ops/sync-runs.json`);
-      expect(res.status).toBe(200);
-      const json = (await res.json()) as {
-        runs?: Array<{ id?: string; status?: string; finished_at?: string; dry?: boolean }>;
-      };
-      const runs = (json.runs ?? []).filter((run) => !run.dry);
-      expect(runs.length).toBeGreaterThan(0);
-      const newest = [...runs].sort((a, b) => String(b.finished_at).localeCompare(String(a.finished_at)))[0];
-      expect(newest.status).toBe("ok");
-      const finishedAt = Date.parse(newest.finished_at ?? "");
-      expect(Number.isFinite(finishedAt)).toBe(true);
-      const ageMs = Date.now() - finishedAt;
-      expect(ageMs).toBeLessThan(4 * 24 * 60 * 60 * 1000);
-    }, 30_000);
+if (requireLive) {
+  describe("release gate: live product deployment (#286, required)", () => {
+    test("configuration is present (fail closed)", () => {
+      if ("error" in liveConfig) {
+        throw new Error(liveConfig.error);
+      }
+      expect(liveConfig.siteBase.length).toBeGreaterThan(0);
+      expect(liveConfig.blobBase.length).toBeGreaterThan(0);
+    });
+
+    test("deployed search, freshness, export, and week continuity gates all pass", async () => {
+      if ("error" in liveConfig) throw new Error(liveConfig.error);
+      const findings = await runAllLiveGates(liveConfig);
+      const failed = findings.filter((finding) => !finding.ok);
+      if (failed.length > 0) {
+        const detail = failed.map((finding) => `${finding.id}: ${finding.summary} ${JSON.stringify(finding.observed ?? {})}`).join("\n");
+        throw new Error(`live product gates failed:\n${detail}`);
+      }
+      for (const finding of findings) {
+        expect(finding.ok, finding.summary).toBe(true);
+      }
+    }, 120_000);
+  });
+} else {
+  describe("release gate: live product deployment (#286, optional locally)", () => {
+    test("skips live checks unless RELEASE_GATE_REQUIRE_LIVE=1", () => {
+      // Documented opt-in: local developers can run
+      // RELEASE_GATE_REQUIRE_LIVE=1 RELEASE_GATE_SITE=https://gitstarclub.com bun test lib/integration/release-gates.test.ts
+      expect(requireLive).toBe(false);
+    });
   });
 }
