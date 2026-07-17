@@ -22,7 +22,7 @@
     "validate:views": "bun scripts/validate-views.ts",
     "audit:deps": "bun audit --audit-level=high",
     "test": "bun test lib/",
-    "test:cov": "bun test lib/ --coverage"
+    "test:cov": "bun test lib/ --coverage && node ../scripts/check-coverage-threshold.mjs coverage/lcov.info"
   },
   "dependencies": {
     "@next/third-parties": "16.2.10",
