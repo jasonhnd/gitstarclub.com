@@ -1,14 +1,18 @@
 import { getReposLookup } from "@/lib/data";
 import { readView } from "@/lib/data/source";
-import { putView } from "@/lib/data/write";
 import { batchMetadata } from "@/lib/github";
 import { ReposShard, WhitelistSnapshot, type ReposShardEntry } from "@/lib/contracts";
 import { capSafeText } from "@/lib/contracts/common";
 import { repoBucket } from "../buckets";
+import { putOwnedView } from "@/lib/workflows/owned-write";
 
 function capDescription(value: string | null | undefined): string | null {
   if (value == null) return null;
   return capSafeText(value);
+}
+
+export function whitelistDiscoveryDate(snapshot: WhitelistSnapshot): string {
+  return snapshot.generated_at.slice(0, 10);
 }
 
 // Workflow step: build canonical/v2/repos/<bucket>.json for ONE bucket by SEEDING
@@ -28,7 +32,7 @@ export interface MetadataBucketResult {
   from_github: number;
 }
 
-export async function refreshMetadataBucket(runId: string, bucket: number): Promise<MetadataBucketResult> {
+export async function refreshMetadataBucket(runId: string, bucket: number, fencingToken: number): Promise<MetadataBucketResult> {
   "use step";
 
   const wl = await readView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
@@ -40,7 +44,9 @@ export async function refreshMetadataBucket(runId: string, bucket: number): Prom
   const lookup = (await getReposLookup()) ?? {};
   const prevShard = (await readView(`canonical/v2/repos/${bucket}.json`, ReposShard, { bust: runId })) ?? {};
   const newcomers = new Set(wl.diff.added);
-  const trackedSince = new Date().toISOString().slice(0, 10);
+  // Pin newcomer provenance to the immutable discovery snapshot. A Workflow
+  // retry on a later day must not rewrite tracked_since.
+  const trackedSince = whitelistDiscoveryDate(wl);
   const fetchedAt = new Date().toISOString();
 
   // Only genuine newcomers and repos missing the GitHub language breakdown need
@@ -82,6 +88,6 @@ export async function refreshMetadataBucket(runId: string, bucket: number): Prom
   }
 
   ReposShard.parse(shard);
-  await putView(`canonical/v2/repos/${bucket}.json`, shard);
+  await putOwnedView({ runId, fencingToken }, `canonical/v2/repos/${bucket}.json`, shard);
   return { bucket, repos: entries.length, from_github: needGitHub.length };
 }

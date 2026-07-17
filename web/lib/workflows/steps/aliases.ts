@@ -1,9 +1,9 @@
 import { list } from "@vercel/blob";
 import { readView } from "@/lib/data/source";
-import { putView } from "@/lib/data/write";
 import { RenameMap, ReposLookup, AliasMap } from "@/lib/contracts";
 import { requireBlobWriteToken } from "@/lib/runtime-config";
 import { buildAliasMap } from "../recompute/aliases";
+import { putOwnedView } from "@/lib/workflows/owned-write";
 
 // Workflow step (after recompute, before validate): build views/<run_id>/lookup/aliases.json —
 // old (renamed-away) full_name → current repo id — so the repo route can 308-redirect a stale
@@ -20,7 +20,7 @@ export interface AliasResult {
   runs_scanned: number;
 }
 
-export async function buildAliases(runId: string): Promise<AliasResult> {
+export async function buildAliases(runId: string, fencingToken: number): Promise<AliasResult> {
   "use step";
   const token = requireBlobWriteToken();
 
@@ -38,7 +38,7 @@ export async function buildAliases(runId: string): Promise<AliasResult> {
 
   const aliases = buildAliasMap(renameEntries, lookup);
   AliasMap.parse(aliases);
-  await putView(`views/${runId}/lookup/aliases.json`, aliases);
+  await putOwnedView({ runId, fencingToken }, `views/${runId}/lookup/aliases.json`, aliases);
 
   return { aliases: Object.keys(aliases).length, runs_scanned: folders.length };
 }

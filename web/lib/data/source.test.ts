@@ -1,6 +1,7 @@
 import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
-import { readView } from "./source";
+import { invalidatePublishedVersionMemo, readView } from "./source";
+import { PUBLISHED_VIEWS_CACHE_TAG } from "./publication-cache-contract";
 
 // Route a mocked global fetch by URL to simulate pointer + view fetches.
 // Date.now() is driven forward past the 1h TTL between scenarios to invalidate
@@ -26,6 +27,7 @@ interface FakeRoute {
 // Map of exact-or-prefix URL (path portion, query stripped) → response.
 let routes: Record<string, FakeRoute> = {};
 let fetchCalls: string[] = [];
+let fetchInits: Array<RequestInit & { next?: { revalidate?: number; tags?: string[] } }> = [];
 
 const makeRes = (route: FakeRoute): Response =>
   ({
@@ -46,13 +48,15 @@ function routeFor(url: string): FakeRoute {
 beforeEach(() => {
   routes = {};
   fetchCalls = [];
+  fetchInits = [];
   process.env.BLOB_BASE_URL = BLOB;
   delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   advancePastTtl(); // ensure each test starts with an expired version memo
   Date.now = () => clock;
-  globalThis.fetch = mock((input: string | URL | Request) => {
+  globalThis.fetch = mock((input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     fetchCalls.push(url);
+    fetchInits.push((init ?? {}) as RequestInit & { next?: { revalidate?: number; tags?: string[] } });
     return Promise.resolve(makeRes(routeFor(url)));
   }) as unknown as typeof fetch;
 });
@@ -136,6 +140,24 @@ describe("readView — base:true version-prefix resolution", () => {
     // Flat key was read; no versioned views/<version>/ path was attempted.
     expect(fetchCalls.some((u) => u.includes("/rank/month/2026-05/org/stock.json"))).toBe(true);
     expect(fetchCalls.some((u) => /\/views\/[^/]+\/rank\//.test(u))).toBe(false);
+    const pointerCall = fetchCalls.findIndex((u) => u.includes("/views/latest.json"));
+    expect(fetchInits[pointerCall]?.next?.tags).toContain(PUBLISHED_VIEWS_CACHE_TAG);
+  });
+
+  test("a warmed pointer memo can be invalidated immediately after publication", async () => {
+    routes = {
+      "/views/latest.json": { status: 200, json: { version: "v1" } },
+      "/views/v1/data/warm.json": { status: 200, json: { ok: true, tag: "one" } },
+    };
+    expect(await readView("data/warm.json", Doc, { base: true })).toEqual({ ok: true, tag: "one" });
+
+    routes = {
+      "/views/latest.json": { status: 200, json: { version: "v2" } },
+      "/views/v2/data/warm.json": { status: 200, json: { ok: true, tag: "two" } },
+    };
+    invalidatePublishedVersionMemo();
+
+    expect(await readView("data/warm.json", Doc, { base: true })).toEqual({ ok: true, tag: "two" });
   });
 
   test("falls back to flat <path> when the pointer is unreachable (fetch throws)", async () => {
@@ -212,6 +234,52 @@ describe("readView — non-base (flat) reads", () => {
     routes = {};
     const result = await readView("live/rank/week/2099-W01/repo/flow.json", Doc);
     expect(result).toBeNull();
+  });
+
+  test("bypasses caches for mutable canonical, ops, and pointer artifacts", async () => {
+    routes = {
+      "/canonical/v2/meta.json": { status: 200, json: { ok: true, tag: "canonical" } },
+      "/ops/workflows/run/manifest.json": { status: 200, json: { ok: true, tag: "ops" } },
+      "/views/latest.json": { status: 200, json: { ok: true, tag: "pointer" } },
+      "/views/run/meta.json": { status: 200, json: { ok: true, tag: "immutable" } },
+    };
+
+    await readView("canonical/v2/meta.json", Doc);
+    await readView("ops/workflows/run/manifest.json", Doc);
+    await readView("views/latest.json", Doc);
+    await readView("views/run/meta.json", Doc);
+
+    expect(fetchInits.slice(0, 3).map((init) => init.cache)).toEqual(["no-store", "no-store", "no-store"]);
+    expect(fetchInits[3]?.cache).toBe("force-cache");
+  });
+
+  test("observes a canonical write in the same run while immutable views stay cacheable", async () => {
+    const backing = new Map<string, FakeRoute>([
+      ["/canonical/v2/state.json", { json: { ok: true, tag: "canonical-before" } }],
+      ["/views/run/state.json", { json: { ok: true, tag: "view-before" } }],
+    ]);
+    const simulatedDataCache = new Map<string, FakeRoute>();
+    const requestedUrls: string[] = [];
+    globalThis.fetch = mock((input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      requestedUrls.push(url);
+      const path = new URL(url).pathname;
+      const cached = simulatedDataCache.get(path);
+      if (init?.cache === "force-cache" && cached) return Promise.resolve(makeRes(cached));
+      const route = backing.get(path) ?? { status: 404 };
+      if (init?.cache === "force-cache") simulatedDataCache.set(path, structuredClone(route));
+      return Promise.resolve(makeRes(route));
+    }) as unknown as typeof fetch;
+
+    expect(await readView("canonical/v2/state.json", Doc)).toEqual({ ok: true, tag: "canonical-before" });
+    expect(await readView("views/run/state.json", Doc)).toEqual({ ok: true, tag: "view-before" });
+
+    backing.set("/canonical/v2/state.json", { json: { ok: true, tag: "canonical-after" } });
+    backing.set("/views/run/state.json", { json: { ok: true, tag: "view-after" } });
+
+    expect(await readView("canonical/v2/state.json", Doc)).toEqual({ ok: true, tag: "canonical-after" });
+    expect(await readView("views/run/state.json", Doc)).toEqual({ ok: true, tag: "view-before" });
+    expect(requestedUrls[0]).not.toBe(requestedUrls[2]);
   });
 
   test("aborts stalled flat reads and surfaces a timeout after retries", async () => {

@@ -1,6 +1,7 @@
 import type { ZodType } from "zod";
 import { BLOB_JSON_FETCH_TIMEOUT_MS, FetchTimeoutError, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
 import { requireBlobBaseUrl } from "@/lib/runtime-config";
+import { PUBLISHED_VIEWS_CACHE_TAG, PUBLICATION_VISIBILITY_SLA_MS } from "@/lib/data/publication-cache-contract";
 
 // View source: reads JSON views by direct URL from the Vercel Blob store (public).
 // BLOB_BASE_URL must point at the store base (set in Vercel project env + local .env.local).
@@ -26,6 +27,12 @@ export const DAILY_BASE_VIEW_TTL_MS = 86_400_000;
 export const DAILY_BASE_VIEW_OPTS = { base: true, versionTtlMs: DAILY_BASE_VIEW_TTL_MS } as const satisfies ViewOpts;
 const READ_RETRIES = 2;
 const versionMemo = new Map<string, { version: string | null; at: number }>();
+let mutableReadSequence = 0;
+
+/** Clear this process's pointer memo after a publish/rollback in the same runtime. */
+export function invalidatePublishedVersionMemo(): void {
+  versionMemo.clear();
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -44,7 +51,10 @@ async function resolveVersion(blobBase: string, ttlMs = VERSION_TTL_MS, timeoutM
   const now = Date.now();
   const memoKey = `${blobBase}\0${ttlMs}`;
   const memo = versionMemo.get(memoKey);
-  if (memo && now - memo.at < ttlMs) return memo.version;
+  // Long-lived pages may use a 24h data-cache TTL, but a process-local memo must
+  // never extend the publication visibility SLA. The publisher invalidates the
+  // shared Next cache tag; cold/other instances catch up within this bound.
+  if (memo && now - memo.at < Math.min(ttlMs, PUBLICATION_VISIBILITY_SLA_MS)) return memo.version;
   let version: string | null = null;
   if (blobBase) {
     try {
@@ -53,7 +63,7 @@ async function resolveVersion(blobBase: string, ttlMs = VERSION_TTL_MS, timeoutM
       // generation, before the in-memory memo warms). A revalidated fetch keeps bounded pointer
       // freshness while staying static/ISR-safe. The rotating ?v= still busts the Blob CDN.
       const res = await fetchWithTimeout(`${blobBase}/views/latest.json?v=${Math.floor(now / ttlMs)}`, {
-        next: { revalidate: ttlMs / 1000 },
+        next: { revalidate: ttlMs / 1000, tags: [PUBLISHED_VIEWS_CACHE_TAG] },
         timeoutMs,
       });
       if (res.ok) {
@@ -80,12 +90,18 @@ async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
       bust ??= version; // versioned path is immutable
     }
   }
+  const mutableWorkflowArtifact =
+    key.startsWith("canonical/") || key.startsWith("ops/") || key === "views/latest.json";
+  // no-store bypasses the framework cache; a per-read query also bypasses the
+  // public Blob CDN's short overwrite cache so a same-run read cannot receive
+  // the value that existed immediately before its own write.
+  if (mutableWorkflowArtifact) bust = `${Date.now().toString(36)}-${++mutableReadSequence}`;
   const url = `${blobBase}/${key}${bust ? `?v=${encodeURIComponent(bust)}` : ""}`;
   let res: Response | null = null;
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= READ_RETRIES + 1; attempt++) {
     try {
-      res = await fetchWithTimeout(url, { cache: "force-cache", timeoutMs });
+      res = await fetchWithTimeout(url, { cache: mutableWorkflowArtifact ? "no-store" : "force-cache", timeoutMs });
     } catch (err) {
       lastError = err;
       if (attempt > READ_RETRIES) break;

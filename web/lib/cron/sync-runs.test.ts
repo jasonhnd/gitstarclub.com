@@ -5,6 +5,7 @@ let putCalls: Array<{ path: string; data: unknown }> = [];
 
 mock.module("@/lib/data/write", () => ({
   putView: (path: string, data: unknown) => putImpl(path, data),
+  createView: async () => true,
 }));
 
 const { completedRun, failedRun, safeRecordSyncRun, syncRunId } = await import("./sync-runs");

@@ -1,7 +1,7 @@
 ---
 owner: data contracts
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-17
 source_of_truth_for:
   - canonical JSON shard schemas
   - JSON view schemas
@@ -154,7 +154,7 @@ current_month.json                             # 活尾（cron 写）
 hot-snapshot.json                              # 热集（cron 写，ISR 读）
 ops/sync-runs.json                             # cron 运行记录（cron 写，运维读）
 meta.json
-canonical/v2/whitelist/latest.json             # { run_id, ids[] }：上一 run 已追踪的 id 基线（whitelist step 写，供新晋 diff；首 run 缺失则回退 bootstrap lookup/repos.json）
+canonical/v2/whitelist/latest.json             # { run_id, ids[] }：已发布 baseline 的兼容 pointer（publish / rollback 写；whitelist step 不推进）
 # ── Vercel-only 发布层（见 §2.11–2.13）──
 views/latest.json                              # 发布指针（读侧据此解析版本前缀；version = run_id）
 views/{run_id}/…                               # 一个 run 的完整视图版本（version=run_id，无独立 staging/published）
@@ -406,8 +406,9 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 }
 ```
 
-- 读侧带短缓存 / cache-bust（规避 Blob 60s 传播）；解析 `version` → 读 `views/<version>/**`（version = run_id；无指针时回退扁平布局）。
-- 回滚 = 把 `version` 写回 `prev_version`（旧版本仍在 `views/<prev>`）。
+- 读侧 pointer fetch 带 `published-views-pointer` cache tag；解析 `version` → 读 immutable `views/<version>/**`（无指针时回退扁平布局）。publish / rollback 主动失效 tag + 根 layout，其他暖实例的 memo 也被 60s SLA 上限约束。
+- 回滚必须走 fenced rollback API / `rollbackVersion()`，不能只手改 Blob；它会同步 recovery、published whitelist pointer 和 cache invalidation。
+- publish 前先写 immutable `ops/workflows/<run_id>/publish-intent.json`；其中固定首次观察到的 `prev_version`，因此局部成功后的重试不会生成自指 rollback。
 
 ### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json` — Workflow checkpoint
 
@@ -426,14 +427,15 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 
 > `steps[]` 为 **manifest 分组**（10 项，对应进度账本，含 read-only `preflight` 与真实 `buildAliases` 阶段）；**细粒度 13 步**（preflight/whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。Workflow SDK 自身持久化 step 结果；`validate` 另写 `canonical-manifest.json`（全部必需 canonical shard 的路径、bucket、记录数、SHA-256 与完整性结论）及 `validation.json`，其余 run 级账本包括 manifest / error / latest-success。
 
-`ops/workflows/active.json` 是 refresh workflow 的互斥 lease。start 路由和 workflow body 都通过 Blob ETag 条件写更新该文件；同一周 cron idempotency key 的重复投递会 attach 到已有 `run_id`，不同 key 的并发触发会返回 409 并写 health。
+`ops/workflows/active.json` 是 refresh / rollback 的互斥 lease。start 路由和执行体都通过 Blob ETag 条件写更新；takeover 会递增 `fencing_token`。lease 30 分钟到期，长写入每 ≤5 分钟 heartbeat；canonical、checkpoint 和 publish pointer 写前必须同时核对 `run_id` 与 token。
 
 ```json
 {
   "run_id": "refresh-2026-06-07T06-00-00-000Z",
   "status": "running",
   "acquired_at": "2026-06-07T06:00:00.000Z",
-  "expires_at": "2026-06-07T18:00:00.000Z",
+  "expires_at": "2026-06-07T06:30:00.000Z",
+  "fencing_token": 12,
   "idempotency_key": "workflow-refresh:2026-W23",
   "trigger": "manual-or-cron"
 }
@@ -450,6 +452,21 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
 ```
 
 `ops/workflows/latest-success.json` = `{ "run_id": "...", "version": "...", "published_at": "..." }`（恢复点）。
+
+`ops/workflows/<run_id>/publish-intent.json` 是 immutable retry state：
+
+```json
+{
+  "operation": "publish",
+  "run_id": "refresh-2026-06-07T06-00-00-000Z",
+  "version": "refresh-2026-06-07T06-00-00-000Z",
+  "prev_version": "refresh-2026-05-31T06-00-00-000Z",
+  "published_at": "2026-06-07T06:18:00.000Z",
+  "fencing_token": 12
+}
+```
+
+同一 operation retry 必须重放该对象；不能重新读取 pointer 后覆盖 `prev_version`。`operation` 也可为 `rollback`。
 
 ### 2.13 `ops/workflows/{run_id}/validation.json` — 校验报告
 

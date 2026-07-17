@@ -165,8 +165,9 @@ export async function startRefreshWorkflowRoute(
   try {
     await startWorkflow(runId);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await releaseWorkflowLease(runId, "failed", opts.leaseStore);
+    let message = error instanceof Error ? error.message : String(error);
+    const released = await releaseWorkflowLease(runId, "failed", opts.leaseStore, new Date().toISOString(), claim.lease.fencing_token);
+    if (!released) message += `; failed to release fencing token ${claim.lease.fencing_token}`;
     await alerter({ pipeline: "workflow-refresh", title: "failed to enqueue managed refresh", run_id: runId, step: "start", error: message });
     console.error("[workflow-refresh] failed to enqueue", { run_id: runId, error: message });
     return Response.json(internalFailurePayload(runId), { status: 500 });

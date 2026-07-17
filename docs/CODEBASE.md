@@ -1,7 +1,7 @@
 ---
 owner: codebase architecture
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-17
 source_of_truth_for:
   - code map
   - route ownership
@@ -95,8 +95,10 @@ directly.
 
 Important files:
 
-- `source.ts`: resolves `views/latest.json` with a 60-second TTL and validates
-  versioned reads. Do not change pointer caching without reading
+- `source.ts`: resolves `views/latest.json` through a tagged data cache, caps
+  every process-local pointer memo at the 60-second publication SLA, uses
+  `no-store` for mutable canonical/ops artifacts, and validates versioned reads.
+  Do not change pointer caching without reading
   [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md).
 - `rank.ts`, `entity.ts`, `lookup.ts`, `heatmap.ts`, `categories.ts`,
   `compare.ts`, `search.ts`: typed read helpers for page code. `lookup.ts` also

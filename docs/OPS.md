@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-07-17
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -193,7 +193,7 @@ blob://
 │   ├── sync-runs.json                               # live cron 运行记录（保留最近 100 次）
 │   └── workflows/
 │       ├── latest-success.json                      #   最近一次成功 run 的恢复点：{ run_id, version, published_at }
-│       ├── active.json                              #   当前 refresh lease（ETag 条件写；含 idempotency_key）
+│       ├── active.json                              #   当前 refresh/rollback lease（ETag CAS；idempotency_key + fencing_token + expiry）
 │       ├── health.json                              #   pipeline 健康灯（workflow ok/failed/attached/rejected；cron 失败路径写 failed）
 │       └── <run_id>/                                #   Workflow 单次 run checkpoint
 │           ├── manifest.json                        #     步骤清单 + 状态（running / published / failed）
@@ -286,7 +286,7 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 
 1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 先只读解析 `canonical/v2/meta.json`，通过后才取得 lease 并 `start(refreshWorkflow)`，随即返回 `run_id`（不阻塞）。schema preflight 失败时不会 enqueue 或取得 lease。
 2. 在 **Vercel Dashboard → Observability → Workflows** 看 run；或 `bun x workflow inspect runs`。
-3. 看 `ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`views/<run_id>/lookup/aliases.json`（buildAliases，recompute 之后 / validate 之前）、`latest-success.json`。
+3. 看 `ops/workflows/active.json` 的 `(run_id, fencing_token, expires_at)`、`ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`views/<run_id>/lookup/aliases.json`、`publish-intent.json` 与 `latest-success.json`。
 4. 校验白名单数、repos shard 分桶齐全、diff / rename 合理。
 5. cron 已接入（`/api/workflows/refresh/start`，`0 6 * * 0`，独立于 daily / weekly 排程）。该 managed Workflow **没有 dry-run 模式**；任何 `dry` query 都会在取得 lease 或写入状态前返回 `400`。需要无写入探测时只能使用 `/api/cron/daily?dry=1` 或 `/api/cron/weekly?dry=1`；手动触发 managed refresh 必须按上述步骤观察完整真实运行。
 
@@ -380,7 +380,7 @@ For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, 
 
 ## 回滚
 
-- **指针回滚（Workflow 发布）**：base 视图由 Workflow 写 `views/<run_id>/`（version=run_id）→ validate → 切 `views/latest.json` 指针发布。坏数据把指针的 `version` 指回 `prev_version` 即秒级回退（旧版本仍在 `views/<prev>`），见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7。重跑触发：`GET https://www.gitstarclub.com/api/workflows/refresh/start`（Bearer `CRON_SECRET`）。
+- **指针回滚（Workflow 发布）**：不要直接覆盖 Blob。用稳定 idempotency key 调受保护 rollback API；它取得 fenced lease、固定 rollback intent、同步 recovery / whitelist pointer 并失效页面和 pointer cache。示例：`curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`。返回成功后在 **≤60s** 可见性 SLA 内核对页面与 `views/latest.json`。设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7。
 - **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment** 即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。
 - **每日活尾**：`current_month.json` 当月 append-only、覆盖写；`hot-snapshot.json` 由同次 daily cron 重写。实跑前先备份已存在对象；若失败前两者原本不存在，回滚就是保持 / 恢复为不存在；若已存在且新写入校验失败，用备份覆盖回 `current_month.json` 与 `hot-snapshot.json`，再用 cache-bust 读取确认。
 - **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。

@@ -30,6 +30,8 @@ import {
   WorkflowLease,
   WorkflowStepCheckpoint,
   LatestSuccess,
+  PublishIntent,
+  PublishedWhitelist,
   WorkflowValidation,
   CanonicalGenerationManifest,
   RenameMap,
@@ -526,6 +528,7 @@ describe("workflow contracts", () => {
       trigger: "manual-or-cron",
     });
     expect(lease.idempotency_key).toBe("workflow-refresh:2026-W27");
+    expect(lease.fencing_token).toBe(0); // backward-compatible read of a pre-fencing lease
   });
 
   test("WorkflowStepCheckpoint parses with StepStatus enum", () => {
@@ -540,6 +543,19 @@ describe("workflow contracts", () => {
   test("LatestSuccess parses; rejects missing version", () => {
     expect(LatestSuccess.parse({ run_id: "r1", version: "v1", published_at: TS }).version).toBe("v1");
     expect(rejects(LatestSuccess, { run_id: "r1", published_at: "x" })).toBe(true);
+  });
+
+  test("PublishIntent and PublishedWhitelist preserve retry state", () => {
+    const intent = PublishIntent.parse({
+      operation: "publish",
+      run_id: "r2",
+      version: "v2",
+      prev_version: "v1",
+      published_at: TS,
+      fencing_token: 3,
+    });
+    expect(intent.prev_version).toBe("v1");
+    expect(PublishedWhitelist.parse({ run_id: "r2", ids: [1, 2] }).ids).toEqual([1, 2]);
   });
 
   test("WorkflowValidation parses with invariants union(bool|number)", () => {

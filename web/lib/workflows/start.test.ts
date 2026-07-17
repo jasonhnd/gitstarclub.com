@@ -36,6 +36,12 @@ class MemoryLeaseStore implements WorkflowLeaseStore {
   }
 }
 
+class FailingReleaseStore extends MemoryLeaseStore {
+  override async compareAndSet(): Promise<boolean> {
+    return false;
+  }
+}
+
 const originalSecret = process.env.CRON_SECRET;
 const originalBlobBase = process.env.BLOB_BASE_URL;
 const originalBlobToken = process.env.BLOB_READ_WRITE_TOKEN;
@@ -250,5 +256,33 @@ describe("startRefreshWorkflowRoute", () => {
     expect(startWorkflow).not.toHaveBeenCalled();
     expect(health[0]?.status).toBe("rejected");
     expect(health[0]?.detail.idempotency_key).toBe("manual-1");
+  });
+
+  test("surfaces a lease release failure when enqueueing fails", async () => {
+    const store = new FailingReleaseStore();
+    const alerts: string[] = [];
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await startRefreshWorkflowRoute(
+        request(),
+        async () => {
+          throw new Error("enqueue unavailable");
+        },
+        {
+          now: new Date("2026-07-05T06:00:00.000Z"),
+          leaseStore: store,
+          recordHealth: async () => {},
+          sendAlert: async (summary) => {
+            alerts.push(summary.error ?? "");
+          },
+        },
+      );
+
+      expect(response.status).toBe(500);
+      expect(alerts).toEqual(["enqueue unavailable; failed to release fencing token 1"]);
+      expect(store.lease?.status).toBe("running");
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
