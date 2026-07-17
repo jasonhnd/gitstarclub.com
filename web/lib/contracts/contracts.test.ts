@@ -30,6 +30,7 @@ import {
   WorkflowStepCheckpoint,
   LatestSuccess,
   WorkflowValidation,
+  CanonicalGenerationManifest,
   RenameMap,
   // lookup
   RepoLookupEntry,
@@ -214,6 +215,39 @@ describe("CanonicalMeta", () => {
   test("rejects folded_through missing week", () => {
     expect(
       rejects(CanonicalMeta, { seam_date: "2024-01-01", schema_ver: 2, folded_through: { month: "2024-05" } }),
+    ).toBe(true);
+  });
+});
+
+describe("CanonicalGenerationManifest", () => {
+  const valid = {
+    run_id: "run-1",
+    generated_at: TS,
+    expected_shards: 128,
+    validated_shards: 128,
+    total_records: 42,
+    complete: true,
+    shards: [
+      {
+        path: "canonical/repos/00.json",
+        kind: "repos",
+        bucket: 0,
+        records: 42,
+        sha256: "a".repeat(64),
+      },
+    ],
+  };
+
+  test("parses a complete run receipt", () => {
+    expect(CanonicalGenerationManifest.parse(valid)).toEqual(valid);
+  });
+
+  test("rejects malformed shard checksums", () => {
+    expect(
+      rejects(CanonicalGenerationManifest, {
+        ...valid,
+        shards: [{ ...valid.shards[0], sha256: "not-a-sha256" }],
+      }),
     ).toBe(true);
   });
 });

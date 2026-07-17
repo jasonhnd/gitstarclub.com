@@ -198,6 +198,7 @@ blob://
 │   │   ├── manifest.json                    # run 元信息:触发时间、step 列表、整体状态
 │   │   ├── steps/<step>.json                # 每个 step 的 checkpoint(状态 + 产物 + 计数)
 │   │   ├── renames.json                     # 改名映射(rename step 产出)
+│   │   ├── canonical-manifest.json           # 全部必需 canonical shard 的记录数 + SHA-256 完整性收据
 │   │   ├── validation.json                  # 校验报告(validate step 产出,见 §8)
 │   │   └── error.json                       # 失败时写入(markFailed,含 step + message,便于排查)
 │   ├── active.json                          # 当前 refresh lease(ETag 条件写 + weekly idempotency key)
@@ -402,14 +403,15 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
   - **`meta.folded_through` 单调**:若上一发布版本有 `folded_through`,新版本的 month/week 不得倒退;
   - **rank 列表完整性**:staging `all-time` repo/org rank 检查 rank 从 1 连续、`value` 非递增、无重复 rank、无重复 `id/login`;
   - **引用完整性**:repo rank item 的 `id` 必须存在于 `lookup/repos.json`;org rank item 的 `login` 必须存在于 `lookup/orgs.json`;
-  - **`lookup/repos.json`**:条目数 ≥ `MIN_LOOKUP`(=1000);
+  - **`lookup/repos.json`**:条目数 ≥ `MIN_LOOKUP`(=1000)，ID 与本 run canonical repo 集合完全一致；相对上一发布版只允许 whitelist `diff.added` 新增，dropped 历史 repo 继续保留;
   - **`lookup/aliases.json`**:无 dangling / live-shadow,且相对上一发布版本 alias count 不倒退（buildAliases 必须扫描所有 workflow run folder;读取错误会失败,缺失 `renames.json` 视为空增量）;
-  - **`canonical/v2/repos/*` 的 `d` 告警报告**:统计 `d > 2` 的 repo 数和最大值,写入 `d_factor_*` invariants;这是 warning 级报告,不进入 `failures`,不阻断发布;
+  - **canonical 完整性**:`repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 全部 bucket 必须存在且通过 schema；输出 `canonical-manifest.json`（记录数 + SHA-256）；任一缺失或错误阻断发布;
+  - **`canonical/v2/repos/*` 的 `d`**:`d > 2` 仅 warning；历史 repo 缺少有限 `d` 为硬失败；带 `tracked_since` 的新晋 repo 明确以 `d=0` 起步;
   - **`search/index.json`**:`count ≥ MIN_LOOKUP`(=1000)且 `count === repos.length`;
   - **category views**:`registry` 非空且有 public categories;assignments 覆盖 ≥ `MIN_LOOKUP`;`language`/`language_family` 每 repo 至少一个,`owner_kind` 每 repo 单值;assignment 引用都存在于 registry;抽样 category rank 的 repo 都属于该 category;
   - **top repo entity**:`entity/repo/<allTime.items[0].id>.json` 的 `curve.monthly` 长度 > 0;
   - **上一公历年 heatmap 存在**:`heatmap/year/<UTCFullYear - 1>.json` 能读到(prior calendar year 总是已收口)。
-- **输出**:`ops/workflows/<run_id>/validation.json`(契约 `WorkflowValidation`,含 `run_id` / `ok` / `checked` / `schema_failures` / `invariants` / `failures`)。任一 sanity 失败 → `failures` 非空 → 抛错;publish step 不会启动,版本前缀留作孤儿待 GC。
+- **输出**:`ops/workflows/<run_id>/canonical-manifest.json` + `validation.json`（后者契约 `WorkflowValidation`,含 `run_id` / `ok` / `checked` / `schema_failures` / `invariants` / `failures`）。任一完整性 / sanity 失败 → `failures` 非空 → 抛错;publish step 不会启动,版本前缀留作孤儿待 GC。
 
 校验不通过 = 指针从未切 = 线上一直是上一版,**无半发布风险**。
 

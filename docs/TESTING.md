@@ -112,7 +112,7 @@ test('周排名窗口跨月不丢日', () => {
 - 字段类型 / 必填 / 枚举（`owner_type ∈ {User, Org}`、`metric ∈ {flow, stock}`、`window ∈ {week,month,year,all-time}`）
 - 引用完整性：榜单里每个 `repo_id` 在 `lookup/repos.json` 有对应条目
 - Zod schema 即 build 读 JSON 的 TS 类型来源（single source of truth，避免 schema 与类型漂移）
-- **实现**：`web/scripts/validate-views.ts`（`bun scripts/validate-views.ts` 全量校验 `pipeline/data/views/**` 对契约，失败非零退出）。bootstrap precompute 全部产物跑 Zod 契约校验,期望 0 失败；这与离线 parity 是两个不同指标——**离线 parity 测试**比对生成的视图与 DuckDB 重算结果逐字节一致（`web/lib/integration/recompute.test.ts`），勿混淆文件契约校验与字节对拍。**Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/<run_id>/**`**（§1.5，**抽样关键视图**而非全量逐文件），逻辑同源、只换运行位置。
+- **实现**：`web/scripts/validate-views.ts`（`bun run validate:views -- <viewsDir>` 全量校验目录内每个 JSON 对契约，未知路径、畸形 JSON 或 schema mismatch 均失败；只有 `web/lib/view-validation.ts` 中带理由的窄 allowlist 可豁免）。CI 对覆盖所有已注册视图家族的只读 fixture 执行同一命令。bootstrap precompute 全部产物也必须运行该门禁，期望 `skipped=0`、`failed=0`；这与离线 parity 是两个不同指标——**离线 parity 测试**比对生成的视图与 DuckDB 重算结果逐字节一致（`web/lib/integration/recompute.test.ts`），勿混淆文件契约校验与字节对拍。**Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/<run_id>/**`**（§1.5，运行时另加完整性/跨视图不变量），逻辑同源、只换运行位置。
 
 ### 1.3 Sanity 不变量（数据级断言，对全量产物跑）
 
@@ -148,11 +148,12 @@ test('周排名窗口跨月不丢日', () => {
 |---|---|
 | `meta.json` | `seam_date` 存在 |
 | 全时 stock 总榜 | repo/org all-time rank 均读 schema；`items` 非空、`rank[0]==1`、`value` 非递增；rank 从 1 连续、无重复 rank、无重复 `id/login` |
-| `lookup/repos.json` | 条目数 ≥ 1000（防止下游 join 表崩塌） |
+| `lookup/repos.json` | 条目数 ≥ 1000；ID 集合必须与本 run canonical repos 完全一致，且相对上一发布版只能出现 whitelist `diff.added` 批准的新 ID（跌出白名单的历史 repo 保留） |
 | rank 引用完整性 | staging all-time rank item 的 repo `id` 必须在 `lookup/repos.json`；org `login` 必须在 `lookup/orgs.json` |
 | `meta.folded_through` | 相对上一发布版本不倒退（month/week 单调） |
 | `lookup/aliases.json` | 别名完整性：无 dangling（每个别名 id 仍在 `lookup/repos.json` 内）、无 live-shadow（别名旧名不得撞当前某 repo 的 `full_name`）、alias count 不小于上一发布版本 |
-| `canonical/v2/repos/*` `d` 因子 | warning 级报告：统计 `d > 2` 的 repo 数和最大值，写入 `d_factor_*` invariants，不进入 `failures` |
+| canonical 完整性 | `repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 的全部 bucket 必须存在并通过 schema；写含路径、记录数、SHA-256 的 `canonical-manifest.json` |
+| `canonical/v2/repos/*` `d` 因子 | `d > 2` 仍是 warning；历史 repo 缺少有限 `d` 为硬失败，新晋 repo（有 `tracked_since`）显式按 `d=0` 建模 |
 | `search/index.json` | `count` ≥ 1000 且 `count == repos.length`（防止索引漂移） |
 | `categories/registry.json` | 非空；至少一个 `public` 分类 |
 | `categories/assignments.json` | 条目数 ≥ 1000；每 repo `language`/`language_family` 各 ≥1、`owner_kind` 恰 1；无 unknown 分类引用（assignment 里每个分类 id 在 registry 内） |
@@ -163,7 +164,7 @@ test('周排名窗口跨月不丢日', () => {
 
 | 测试 | 在哪跑 | 断言 | 失败动作 |
 |---|---|---|---|
-| **staging 校验闸门** | Workflow `validate` step（Vercel） | 上表全部抽样断言（含 alias 完整性 + category 套件），对 `views/<run_id>/**` | `ok=false` → **不切指针**；线上仍是上一版；staging 版本保留供排查；写 `ops/workflows/<run_id>/validation.json` |
+| **staging 校验闸门** | Workflow `validate` step（Vercel） | 上表视图抽样断言 + 全量 canonical shard/ID 完整性 | `ok=false` → **不切指针**；线上仍是上一版；staging 版本保留供排查；写 `canonical-manifest.json` 与 `validation.json` |
 | **canonical shard 等价性** | 单测（CI）+ Workflow step | 「JSON shard 纯 JS 聚合」结果 == 「bootstrap DuckDB 同口径」结果（容差 0）；DuckDB parity 只作为 `folded_through <= seam` 的 legacy 等价对拍,不是 post-seam oracle | CI 阻断 / step error |
 | **发布指针原子性** | 集成测试 | 切指针前后读侧拿到的版本自洽；切到一半的请求拿旧版（不拿半发布） | CI 阻断 |
 | **回滚可逆** | 集成测试 | 把 `views/latest.json.version` 指回 `prev_version` 后，读侧立即拿回上一版；`views/<prev>` 仍在 | CI 阻断 |

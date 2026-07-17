@@ -71,6 +71,26 @@ export const WorkflowValidation = z.object({
 }).strict();
 export type WorkflowValidation = z.infer<typeof WorkflowValidation>;
 
+export const CanonicalShardManifestEntry = z.object({
+  path: SafeText,
+  kind: SafeText,
+  bucket: NonNegativeInt,
+  records: NonNegativeInt,
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict();
+
+/** Run-scoped receipt proving every required canonical shard parsed before publication. */
+export const CanonicalGenerationManifest = z.object({
+  run_id: SafeText,
+  generated_at: TimestampStr,
+  expected_shards: NonNegativeInt,
+  validated_shards: NonNegativeInt,
+  total_records: NonNegativeInt,
+  complete: z.boolean(),
+  shards: z.array(CanonicalShardManifestEntry),
+}).strict();
+export type CanonicalGenerationManifest = z.infer<typeof CanonicalGenerationManifest>;
+
 /** One full_name change (repo_id is stable across renames). */
 export const RenameEntry = z.object({
   id: NonNegativeInt,

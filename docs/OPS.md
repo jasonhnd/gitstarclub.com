@@ -198,6 +198,7 @@ blob://
 │       ├── health.json                              #   pipeline 健康灯（workflow ok/failed/attached/rejected；cron 失败路径写 failed）
 │       └── <run_id>/                                #   Workflow 单次 run checkpoint
 │           ├── manifest.json                        #     步骤清单 + 状态（running / published / failed）
+│           ├── canonical-manifest.json              #     必需 canonical shard 的记录数、SHA-256 与完整性收据
 │           ├── validation.json                      #     发布闸门结果（ok · checked · invariants · failures）
 │           ├── renames.json                         #     rename step 输出（old_full_name → new_full_name，web 层 308）
 │           └── error.json                           #     失败时写入（run_id · error · at）

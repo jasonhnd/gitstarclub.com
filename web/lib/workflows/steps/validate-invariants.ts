@@ -12,6 +12,7 @@ import type {
   RankList,
   ReposLookup,
   SearchIndex,
+  WhitelistSnapshot,
 } from "@/lib/contracts";
 
 export type ValidationInvariants = Record<string, boolean | number>;
@@ -68,6 +69,79 @@ export function validateAllTimeRanks({
 
   if (allTime && lookup) mergeReport({ invariants, failures }, inspectRank("all-time/repo", allTime, { lookup }));
   if (allTimeOrg && orgLookup) mergeReport({ invariants, failures }, inspectRank("all-time/org", allTimeOrg, { orgLookup }));
+
+  return { invariants, failures };
+}
+
+export function validateRepositoryMembership({
+  lookup,
+  previousLookup,
+  whitelist,
+  canonicalRepoIds,
+}: {
+  lookup: ReposLookup | null;
+  previousLookup: ReposLookup | null;
+  whitelist: WhitelistSnapshot | null;
+  canonicalRepoIds: ReadonlySet<string>;
+}): ValidationInvariantReport {
+  const invariants: ValidationInvariants = {};
+  const failures: string[] = [];
+  if (!lookup) return { invariants, failures };
+
+  const currentIds = new Set(Object.keys(lookup));
+  const canonicalMissing = [...canonicalRepoIds].filter((id) => !currentIds.has(id));
+  const canonicalUnexpected = [...currentIds].filter((id) => !canonicalRepoIds.has(id));
+  invariants.membership_current_repos = currentIds.size;
+  invariants.membership_canonical_repos = canonicalRepoIds.size;
+  invariants.membership_canonical_missing = canonicalMissing.length;
+  invariants.membership_canonical_unexpected = canonicalUnexpected.length;
+  if (canonicalMissing.length > 0) {
+    failures.push(`lookup/repos: missing ${canonicalMissing.length} canonical id(s), e.g. ${canonicalMissing.slice(0, 5).join(",")}`);
+  }
+  if (canonicalUnexpected.length > 0) {
+    failures.push(`lookup/repos: contains ${canonicalUnexpected.length} id(s) absent from canonical, e.g. ${canonicalUnexpected.slice(0, 5).join(",")}`);
+  }
+
+  if (whitelist) {
+    const activeIds = new Set(whitelist.entries.map((entry) => String(entry.id)));
+    const activeMissing = [...activeIds].filter((id) => !currentIds.has(id));
+    invariants.membership_active_whitelist = activeIds.size;
+    invariants.membership_active_missing = activeMissing.length;
+    if (activeMissing.length > 0) {
+      failures.push(`lookup/repos: missing ${activeMissing.length} active whitelist id(s), e.g. ${activeMissing.slice(0, 5).join(",")}`);
+    }
+
+    const added = new Set(whitelist.diff.added.map(String));
+    const dropped = new Set(whitelist.diff.dropped.map(String));
+    const addedNotActive = [...added].filter((id) => !activeIds.has(id));
+    const droppedStillActive = [...dropped].filter((id) => activeIds.has(id));
+    invariants.membership_added_not_active = addedNotActive.length;
+    invariants.membership_dropped_still_active = droppedStillActive.length;
+    if (addedNotActive.length > 0) failures.push(`whitelist diff: ${addedNotActive.length} added id(s) are absent from entries`);
+    if (droppedStillActive.length > 0) failures.push(`whitelist diff: ${droppedStillActive.length} dropped id(s) remain active`);
+
+    if (previousLookup) {
+      const previousIds = new Set(Object.keys(previousLookup));
+      const expectedIds = new Set(previousIds);
+      for (const id of added) expectedIds.add(id);
+      // Dropped repositories remain in the Chronicle read model; only active polling stops.
+      const missingExpected = [...expectedIds].filter((id) => !currentIds.has(id));
+      const unapproved = [...currentIds].filter((id) => !expectedIds.has(id));
+      const addedAlreadyPresent = [...added].filter((id) => previousIds.has(id));
+      invariants.membership_previous_repos = previousIds.size;
+      invariants.membership_expected_repos = expectedIds.size;
+      invariants.membership_missing_expected = missingExpected.length;
+      invariants.membership_unapproved_additions = unapproved.length;
+      invariants.membership_added_already_present = addedAlreadyPresent.length;
+      if (missingExpected.length > 0) {
+        failures.push(`lookup/repos: lost ${missingExpected.length} previously tracked/approved id(s), e.g. ${missingExpected.slice(0, 5).join(",")}`);
+      }
+      if (unapproved.length > 0) {
+        failures.push(`lookup/repos: contains ${unapproved.length} unapproved new id(s), e.g. ${unapproved.slice(0, 5).join(",")}`);
+      }
+      if (addedAlreadyPresent.length > 0) failures.push(`whitelist diff: ${addedAlreadyPresent.length} added id(s) already existed previously`);
+    }
+  }
 
   return { invariants, failures };
 }

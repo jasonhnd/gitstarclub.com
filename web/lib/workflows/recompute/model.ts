@@ -71,7 +71,14 @@ export interface RawShards {
  *  seamDate (canonical/v2/meta.seam_date) fixes the gross/net boundary for stock anchoring. */
 export function buildModel(raw: RawShards, seamDate: DateStr): Model {
   const repos = new Map<number, RepoMeta>();
-  for (const [k, v] of Object.entries(raw.repos)) repos.set(numId(k), v);
+  for (const [k, v] of Object.entries(raw.repos)) {
+    const id = numId(k);
+    const d = v.d;
+    if ((typeof d !== "number" || !Number.isFinite(d)) && v.tracked_since == null) {
+      throw new Error(`historical repo ${id} is missing a finite anchoring factor d`);
+    }
+    repos.set(id, { ...v, d: typeof d === "number" && Number.isFinite(d) ? d : 0 });
+  }
 
   const toSeriesMap = <T>(rec: Record<string, T>): Map<number, T> => {
     const m = new Map<number, T>();

@@ -1,0 +1,1 @@
+{"rules_version":"fixture-v1","generated_at":"2026-07-17T00:00:00.000Z","dimensions":[{"id":"language","label":"Language","categories":[{"id":"language/typescript","dimension":"language","slug":"typescript","label":"TypeScript","count":1,"public":true,"sitemap":true,"minimum_repo_count":1}]}]}
