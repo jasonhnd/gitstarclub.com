@@ -23,7 +23,7 @@ Out of scope: development playbooks and local workflow live in [DEVELOPMENT.md](
 
 ## Current automation
 
-GitHub Actions is committed at `.github/workflows/ci.yml`. Every job installs Node from `.node-version` (major 24) and Bun from the root `packageManager` pin (`1.3.14`), then runs `scripts/assert-runtime-versions.mjs`; a mismatch fails before project work starts. On PRs and pushes to `pre` or `main`, `verify / static` runs root `bun run lint:md`, then from `web/` runs dependency audits, `bun run lint`, all three typechecks, exhaustive view-fixture validation, and `bun run test:cov`. It sets `SEO_LIVE_BASE=""` so network-dependent suites stay out of the deterministic gate. `verify / production-build` then runs `next build` against a bounded local HTTP fixture that permits only `GET` and `HEAD`; it receives no Blob write, cron, Workflow, Vercel, or GitHub credential.
+GitHub Actions is committed at `.github/workflows/ci.yml`. Every job installs Node from `.node-version` (major 24) and Bun from the root `packageManager` pin (`1.3.14`), then runs `scripts/assert-runtime-versions.mjs`; a mismatch fails before project work starts. On PRs and pushes to `pre` or `main`, `verify / static` runs root `bun run lint:docs` (Markdown/frontmatter, maintained repository paths, env inventory, route/API ownership, pinned facts), then from `web/` runs dependency audits, `bun run lint`, all three typechecks, exhaustive view-fixture validation, and `bun run test:cov`. It sets `SEO_LIVE_BASE=""` so network-dependent suites stay out of the deterministic gate. `verify / production-build` then runs `next build` against a bounded local HTTP fixture that permits only `GET` and `HEAD`; it receives no Blob write, cron, Workflow, Vercel, or GitHub credential, and explicitly rejects `BLOB_READ_WRITE_TOKEN`.
 
 After both jobs pass, `verify / preview-e2e` resolves the Vercel-owned preview check for the PR head or pushed SHA, waits for the preview alias to publish that exact SHA through `/.well-known/deployment`, and re-verifies the SHA on the immutable `*.vercel.app` deployment URL before running Chromium. It runs `e2e/accessibility-responsive.spec.ts` and `e2e/horizontal-overflow.spec.ts`; serious or critical axe findings, explicit contrast failures, response failures, or horizontal overflow fail the job. Failed runs retain traces and screenshots plus the HTML report and deployment metadata as a GitHub Actions artifact. On `pre` and `main` pushes the same job also runs `bun test lib/integration/seo.test.ts` against that immutable deployment; preview remains noindex while production must be indexable.
 
@@ -285,7 +285,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 | 检查 | 状态 | 当前执行位置 | 说明 / 目标 gate |
 |---|---|---|---|
 | Node/Bun runtime pins | `enforced` | 全部 GitHub Actions jobs：setup + `assert-runtime-versions.mjs` | Node 24.x、Bun 1.3.14；任一 mismatch 在执行项目命令前失败 |
-| Markdown / docs metadata | `enforced` | `verify / static`：root `bun run lint:md` | 无语言 fence、缺失/非法 docs frontmatter 均阻断 |
+| Documentation contracts | `enforced` | `verify / static`：root `bun run lint:docs` | 无语言 fence、缺失/非法 frontmatter、失效 backtick 路径、漏记 env、重复 route owner、API 路由/版本漂移均阻断；历史路径仅允许显式 reasoned allowlist |
 | `lint` | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run lint` | 当前 PR blocker |
 | TypeScript app | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck` | Current PR blocker for production app code through `web/tsconfig.json` |
 | TypeScript tests / integration | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck:tests` | Current PR blocker for `*.test.ts(x)` and `web/lib/integration/**` through `web/tsconfig.tests.json` |
@@ -322,7 +322,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 ### Required current checks
 
 - [ ] every CI job reports Node 24.x and Bun 1.3.14 after `assert-runtime-versions.mjs`
-- [ ] root `bun run lint:md` passes Markdown fence and docs-frontmatter validation
+- [ ] root `bun run lint:docs` passes Markdown/frontmatter, repository-path, env-inventory, route/API ownership, and pinned-fact validation
 - [ ] `web/` PR/`pre`/`main` CI passes `bun run lint`
 - [ ] `web/` PR/`pre`/`main` CI passes `bun run typecheck`
 - [ ] `web/` PR/`pre`/`main` CI passes `bun run typecheck:tests`

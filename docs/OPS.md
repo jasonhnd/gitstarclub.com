@@ -108,7 +108,11 @@ an explicit recovery procedure.
 
 ## 环境变量与密钥
 
-集中在 `zkscio/gitstarclub.com` 项目的 Vercel 环境变量里配置；本地用 `.env`（见仓库根目录 `.env.example`，**勿提交真实值**）。
+集中在 `zkscio/gitstarclub.com` 项目的 Vercel 环境变量里配置。本地把仓库根
+`.env.example` 复制为 `web/.env.local`；`web/scripts/lib/env.ts` 只加载该文件，
+**勿提交真实值**。读路径与写路径遵循最小权限：只浏览或构建不需要写令牌。
+
+<!-- env-inventory:start -->
 
 | 变量 | 用途 | 必需 / 可选 | 格式 | 谁用（path:line） |
 |---|---|---|---|---|
@@ -123,14 +127,45 @@ an explicit recovery procedure.
 | `GOOGLE_APPLICATION_CREDENTIALS` | GCP 服务账号 key 路径 | 仅一次性回填 | 本机文件路径，例 `./gcp-key.json` | **本地回填脚本**（仅一次性 BigQuery 回填） |
 | `GCP_PROJECT_ID` | GCP 项目 ID | 仅一次性回填 | GCP project ID 字符串 | **本地回填脚本**（仅一次性 BigQuery 回填） |
 | `NEXT_PUBLIC_SITE_URL` | 站点规范域名（canonical / sitemap / OG / JSON-LD 绝对 URL） | **必需**（生产） | `https://gitstarclub.com` 等绝对 URL（**无尾斜杠**） | `web/lib/sitemap.ts:26` · `web/app/robots.ts:5` · `web/app/_shell/RootShell.tsx:17` · `web/lib/jsonld.ts:4` · `web/app/_explore/Breadcrumbs.tsx:10` |
+| `BING_SITE_VERIFICATION` | Bing `msvalidate.01` token | 可选（生产） | Bing 提供的 token | `web/app/_shell/RootShell.tsx` 输出 verification meta；不需要 XML 文件 |
+| `INDEXNOW_ENABLED` | IndexNow post-commit 提交开关 | 可选（默认关闭） | 字符串 `1` 才启用 | live cron 提交 pointer 后调用 IndexNow；dry-run / pre-commit 不调用 |
 | `SEO_LIVE_BASE` | 集成测试拉取的活线 origin（默认 `https://www.gitstarclub.com`，留空可跳过测试） | 仅测试 | `https://www.gitstarclub.com` 或空串 | `web/lib/integration/seo.test.ts:23` |
 | `SEO_EXPECT_INDEXABLE` | Live SEO 验收的环境策略（Preview `0`，Production `1`；未设时按 canonical host 推断） | 仅测试 | `0` 或 `1` | `web/lib/integration/seo.test.ts` · `.github/workflows/ci.yml` |
 | `SEO_CANON_ORIGIN` | 集成测试断言的 canonical origin（默认 `https://gitstarclub.com`） | 仅测试 | 绝对 origin（**无尾斜杠**） | `web/lib/integration/seo.test.ts:25` |
 
+平台和开发工具变量也属于受维护清单；它们不应被误当作应用密钥：
+
+| 变量 | 范围 | 用途 |
+|---|---|---|
+| `VERCEL_ENV` | Vercel 注入 | 区分 Production / Preview / Development 行为 |
+| `VERCEL_URL` | Vercel 注入 | `/.well-known/deployment` 返回当前不可变 deployment URL |
+| `VERCEL_GIT_COMMIT_SHA` | Vercel 注入 | `/.well-known/deployment` 返回当前部署 commit |
+| `NODE_ENV` | runtime/tooling | Next.js 与测试的标准运行模式 |
+| `CI` | CI | 启用 CI 专用超时、输出与安全门禁 |
+| `PORT` | 本地工具 | 本地 fixture/dev server 监听端口 |
+| `BASE_URL` | Playwright/release | 浏览器测试 origin；通常由 deployment resolver 注入 |
+| `PLAYWRIGHT_BASE_URL` | Playwright | `BASE_URL` 的显式 Playwright override |
+| `IDENTITY_ORIGIN` | release gate | 校验目标部署 canonical identity |
+| `LIVE_SMOKE_SITE_URL` | live smoke | live smoke 的目标 origin |
+| `RUN_LIVE_SMOKE` | live smoke | 字符串 `1` 才启用显式网络 smoke |
+| `BASELINE_SCREENSHOT_DIR` | visual tooling | baseline 截图输出目录 |
+| `BASELINE_SCREENSHOT_LOCALES` | visual tooling | baseline locale 子集 |
+| `BASELINE_SCREENSHOT_ROUTE_IDS` | visual tooling | baseline route 子集 |
+| `BASELINE_SCREENSHOT_YEAR` | visual tooling | baseline 年份参数 |
+| `BASELINE_SCREENSHOT_MONTH` | visual tooling | baseline 月份参数 |
+| `BASELINE_SCREENSHOT_WEEK` | visual tooling | baseline 周参数 |
+| `BASELINE_SCREENSHOT_REPO` | visual tooling | baseline repo 参数 |
+| `BASELINE_SCREENSHOT_ORG` | visual tooling | baseline org 参数 |
+| `BASELINE_SCREENSHOT_CATEGORY` | visual tooling | baseline category 参数 |
+
+<!-- env-inventory:end -->
+
 **约定**：
 
 - `NEXT_PUBLIC_*` 会进客户端 bundle，**只放非敏感值**；其余一律 Server-only。
-- `BLOB_BASE_URL`、`CRON_SECRET`、`BLOB_READ_WRITE_TOKEN`、`GITHUB_TOKEN` 需要同时配置到 Production 与 Preview，**绝不写进仓库或客户端**。
+- Production 与 Preview 的页面/build 读路径只要求 `BLOB_BASE_URL`。只有 cron /
+  Workflow mutation 环境才配置 `BLOB_READ_WRITE_TOKEN`、`CRON_SECRET`、
+  `GITHUB_TOKEN`；它们**绝不写进仓库或客户端**。
 - 写入 Vercel 变量时必须去掉首尾空白和 BOM；`CRON_SECRET` 带空白会让 Cron header 非法，`BLOB_BASE_URL` 带 BOM 会让 Next.js build 在 sitemap 阶段报 `ERR_INVALID_URL`。
 - **GCP 两项仅本地一次性回填用**：用 BigQuery 查 GH Archive（约 $10，含稳定 repo.id）。回填一次后这两个变量即可弃用——**日常运营 0 GCP、0 外部账单**。（为何不用免费的 ClickHouse 公共实例 / 自建：见 ARCHITECTURE「为什么回填用 BigQuery」。）
 - 启动时校验必需密钥存在，缺失则 fail-fast（不静默吞）。
@@ -273,7 +308,7 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 1. 先在 Vercel production-target URL 调 `GET /api/cron/daily?dry=1`，带 `Authorization: Bearer <CRON_SECRET>`；若日志出现 GitHub GraphQL `403`、`Retry-After` 或 rate-limit remaining 接近 0，停止实跑，先继续降批次 / 加等待。
 2. 实跑前记录 `live/latest.json`（尤其 `generation` / `previous_generation` / `lease`）。不需要逐个备份 immutable generation 文件。
 3. 真实触发 `GET /api/cron/daily`，同样带 `Authorization: Bearer <CRON_SECRET>`。客户端连接可能比函数完成更早关闭；以 Blob 写入和 Vercel logs 为准。
-4. 写后运行 `cd web && bun scripts/validate-live-views.ts --bust <UTC day>`；脚本先解析 `live/latest.json`，再校验同一 generation 的 `current_month` / `hot-snapshot` 与 freshness。再检查 `/`、`/pulse`。
+4. 写后从仓库根运行 `bun web/scripts/validate-live-views.ts --bust <UTC day>`；脚本先解析 `live/latest.json`，再校验同一 generation 的 `current_month` / `hot-snapshot` 与 freshness。再检查 `/`、`/pulse`。
 5. 若失败，确认 pointer 的 `generation` 未变；已写但未引用的 partial generation 不影响线上，可留待后续 GC。若已提交内容有误，把 `generation` 指回 `previous_generation`（同时使用 ETag 条件写，勿覆盖活跃 lease）。
 
 ## Vercel Workflow runbook
@@ -373,7 +408,9 @@ For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, 
 
 - 长尾页（历史 repo / org 详情）走**按需 ISR**，不在 deploy 时构建（见 ARCHITECTURE「页面分层」）。
 - 长尾（历史 / repo / org / 周页）**不在 deploy 构建**，按需 ISR 懒生成、存持久 ISR store；数据变更靠 cron `revalidatePath`，不做全量 build。
-- OG 图**不在每次 build 生成**：仅数据变化时（pipeline 侧）增量出图存 Blob，历史页 OG 永不重生成。
+- OG 图**不在每次 build 全量生成**：四类 `next/og` route 在请求/ISR 时现绘，
+  `revalidate=86400` 后由 Vercel ISR/CDN 缓存；没有 pipeline 侧 OG 生成或 Blob
+  `og/*` 产物。
 - build 只读预算好的 JSON 视图直接渲染——**不聚合、不带引擎、不碰原生模块**。
 
 **Function 资源（ISR / cron）核对**：

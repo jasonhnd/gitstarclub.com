@@ -20,7 +20,7 @@ The canonical Vercel project is `zkscio/gitstarclub.com`.
 - Root Directory: `web`
 - Framework: Next.js
 - Production: `gitstarclub.com` / `www.gitstarclub.com`
-- Preview: `pre.gitstarclub.com` with Vercel Preview Protection
+- Preview: public `pre.gitstarclub.com`, always noindex
 
 Run deploy commands from the repository root, not from `web/`, because the
 Vercel project already appends the `web` root directory.
@@ -30,8 +30,10 @@ vercel deploy . --prod --yes --scope zkscio --project gitstarclub.com
 vercel deploy . --yes --scope zkscio --project gitstarclub.com
 ```
 
-Production and Preview both need `BLOB_BASE_URL`, `BLOB_READ_WRITE_TOKEN`,
-`CRON_SECRET`, and `GITHUB_TOKEN`.
+Production and Preview read paths need `BLOB_BASE_URL`. Mutation paths additionally
+need `BLOB_READ_WRITE_TOKEN`; scheduled cron/workflow execution also needs
+`CRON_SECRET` and `GITHUB_TOKEN`. Preview Protection is a dashboard-managed option,
+not a repository-enforced property; the current fixed staging domain is public.
 
 ## Analytics
 

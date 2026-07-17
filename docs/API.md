@@ -23,10 +23,9 @@ runbooks still live in [OPS.md](./OPS.md). SEO crawl policy still lives in
 
 ## Shared conventions
 
-- All endpoints in this document are `GET` endpoints. Request bodies are not
-  part of any contract here.
-- Non-`GET` requests are outside these app contracts; Next.js handles
-  unsupported methods at the framework layer.
+- Endpoints are `GET` unless a section explicitly states another method. The
+  fenced rollback operation is `POST` because it accepts a JSON target version.
+- Other unsupported methods are handled by Next.js at the framework layer.
 - Protected operations require `Authorization: Bearer <CRON_SECRET>`. Missing,
   malformed, mismatched, or unconfigured secrets return `401` with body
   `Unauthorized`.
@@ -49,10 +48,15 @@ runbooks still live in [OPS.md](./OPS.md). SEO crawl policy still lives in
 | `/api/lang` | `web/app/api/lang/route.ts` | Public | Redirect plus cookie mutation; no explicit `Cache-Control` | `307` redirect |
 | `/search-index` | `web/app/search-index/route.ts` | Public | CDN `s-maxage=3600`; empty fallback `s-maxage=60` | `SearchIndex` / `SearchDoc` |
 | `/repo-curve` | `web/app/repo-curve/route.ts` | Public | CDN `s-maxage=3600`; invalid/missing id `s-maxage=60` | `CompareCurve` or error JSON |
+| `/.well-known/deployment` | `web/app/.well-known/deployment/route.ts` | Public | `force-dynamic`; `no-store, max-age=0` | deployment identity JSON |
 | `/sitemap.xml` | `web/app/sitemap.xml/route.ts` | Public | `revalidate=86400`; CDN `s-maxage=86400` | XML sitemap index |
 | `/sitemap-{locale}.xml` | `web/app/sitemap-*.xml/route.ts` | Public | `revalidate=86400`; CDN `s-maxage=86400` | XML URL set |
 | `/robots.txt` | `web/app/robots.ts` | Public | Next metadata route; env-driven at build/deploy time | `MetadataRoute.Robots` |
 | `/manifest.webmanifest` | `web/app/manifest.ts` | Public | Next metadata route; static app manifest | `MetadataRoute.Manifest` |
+| `/opengraph-image` | `web/app/opengraph-image.tsx` | Public | ISR image route; `revalidate=86400` | site default `1200x630` PNG |
+| `/{owner}/{name}/opengraph-image` | `web/app/(en)/[locale]/[owner]/opengraph-image.tsx` | Public | ISR image route; `revalidate=86400` | repository `1200x630` PNG |
+| `/rankings/{year}/opengraph-image` | `web/app/(en)/rankings/[year]/opengraph-image.tsx` | Public | ISR image route; `revalidate=86400` | annual ranking `1200x630` PNG |
+| `/rankings/{year}/{period}/opengraph-image` | `web/app/(en)/rankings/[year]/[period]/opengraph-image.tsx` | Public | ISR image route; `revalidate=86400` | monthly/weekly ranking `1200x630` PNG |
 | `/data/exports/v1/latest/*.json` | `web/public/data/exports/v1/*` + `next.config.ts` rewrite | Public | Static asset; `latest` rewrites to newest dated export at build time | data export JSON |
 
 ## Protected operations
@@ -300,6 +304,28 @@ Response shape:
 
 ## Public metadata endpoints
 
+### `GET /.well-known/deployment`
+
+Public, uncached deployment identity used by release gates to prove which commit
+an immutable Vercel deployment serves. It does not read Blob data or expose a
+secret.
+
+| Item | Contract |
+|---|---|
+| Auth | Public |
+| Query / body | None |
+| Success | `200 application/json` |
+| Cache | `Cache-Control: no-store, max-age=0`; `dynamic = "force-dynamic"` |
+| Source | `web/app/.well-known/deployment/route.ts` |
+| Platform inputs | `VERCEL_GIT_COMMIT_SHA`, `VERCEL_URL`; missing values become `null` |
+
+```json
+{
+  "commitSha": "0123456789abcdef0123456789abcdef01234567",
+  "deploymentUrl": "https://gitstarclub-abc-zkscio.vercel.app"
+}
+```
+
 ### `GET /sitemap.xml`
 
 Public XML sitemap index.
@@ -411,6 +437,15 @@ Response shape:
   ]
 }
 ```
+
+### `GET */opengraph-image`
+
+The site default, repository, annual-ranking, and period-ranking image routes
+are public `next/og` endpoints. All return `1200x630` PNG responses and export
+`revalidate=86400`. They render on request/ISR and are cached by Vercel; no
+pipeline-generated Blob image is involved. The exact route/source matrix is in
+[UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md), and card/content rules are
+in [SEO.md](./SEO.md#13-og--社交卡片石墨灰--星金).
 
 ## Static public JSON exports
 

@@ -137,7 +137,8 @@ Before opening a PR:
 - Confirm the owning document from [docs/README.md](./README.md).
 - Keep the branch scoped to the issue.
 - Run the requested validation commands.
-- For Markdown changes, run `bun run lint:md`.
+- For Markdown or documented-contract changes, run `bun run lint:docs` from the
+  repository root.
 - Write a PR body that states summary, issue linkage, scope boundaries,
   validation results, and reviewer notes.
 - Use `Closes #N` only for issues fully completed by the PR.
