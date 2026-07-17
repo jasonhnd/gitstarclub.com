@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import type { AlertSummary } from "@/lib/observability/alert";
 import type { AlertPipeline, HealthStatus } from "@/lib/contracts";
 import type { LiveRefreshResult } from "./live-refresh";
-import { runLiveRefreshRoute } from "./handlers";
+import { runLiveRefreshRoute, type LiveRefreshRouteOptions } from "./handlers";
 
 const ORIGINAL_SECRET = process.env.CRON_SECRET;
 
@@ -34,8 +34,27 @@ function successfulRefresh(job: "daily" | "weekly", dry: boolean): Promise<LiveR
     all_time_repo_1: null,
     current_week_flow_1: null,
     current_month_flow_1: null,
+    generation: dry ? null : "test-generation",
+    previous_generation: null,
+    published_at: dry ? null : "2026-07-17T03:00:00.000Z",
+    post_commit_errors: [],
   });
 }
+
+const claimPublication: NonNullable<LiveRefreshRouteOptions["claimPublication"]> = async (args) => ({
+  status: "acquired",
+  lease: {
+    run_id: args.runId,
+    idempotency_key: args.idempotencyKey,
+    job: args.job,
+    acquired_at: args.acquiredAt,
+    expires_at: "2026-07-17T03:15:00.000Z",
+  },
+  previous_generation: null,
+});
+
+const releasePublication: NonNullable<LiveRefreshRouteOptions["releasePublication"]> =
+  async () => true;
 
 describe("runLiveRefreshRoute health", () => {
   for (const job of ["daily", "weekly"] as const) {
@@ -49,6 +68,8 @@ describe("runLiveRefreshRoute health", () => {
       const response = await runLiveRefreshRoute(request(job), job, {
         now: new Date("2026-07-17T03:00:00.000Z"),
         requireRuntimeConfig: () => {},
+        claimPublication,
+        releasePublication,
         refresh: successfulRefresh,
         recordSyncRun: async () => null,
         recordHealth: async (pipeline, status, detail) => {
@@ -75,6 +96,8 @@ describe("runLiveRefreshRoute health", () => {
       const response = await runLiveRefreshRoute(request("daily"), "daily", {
         now: new Date("2026-07-17T03:00:00.000Z"),
         requireRuntimeConfig: () => {},
+        claimPublication,
+        releasePublication,
         refresh: async () => {
           throw new Error("GitHub unavailable");
         },
