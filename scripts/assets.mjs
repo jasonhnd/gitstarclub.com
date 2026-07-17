@@ -5,10 +5,17 @@ import { fileURLToPath } from "node:url";
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+export const ASSET_FONT_PATHS = [
+  "assets/fonts/Geist-Regular.ttf",
+  "assets/fonts/Geist-SemiBold.ttf",
+  "assets/fonts/Geist-ExtraBold.ttf",
+  "assets/fonts/GeistMono-Medium.ttf",
+];
+
 export const RENDER_TARGETS = [
-  { source: "assets/og.html", asset: "og.png", width: 1200, height: 630, fonts: ["GSC Sans", "GSC Mono"] },
-  { source: "assets/icon.html", asset: "favicon.png", width: 64, height: 64 },
-  { source: "assets/icon.html", asset: "apple-touch-icon.png", width: 180, height: 180 },
+  { source: "assets/og.svg", asset: "og.png", width: 1200, height: 630 },
+  { source: "assets/favicon.svg", asset: "favicon.png", width: 64, height: 64 },
+  { source: "assets/favicon.svg", asset: "apple-touch-icon.png", width: 180, height: 180 },
 ];
 
 export const STATIC_ASSETS = [

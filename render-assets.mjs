@@ -1,9 +1,10 @@
 import { createRequire } from "node:module";
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import {
+  ASSET_FONT_PATHS,
   inspectAssetCopies,
   pngDimensions,
   RENDER_TARGETS,
@@ -21,62 +22,53 @@ if (unknown.length > 0 || (checkMode && syncOnly)) {
   process.exit(2);
 }
 
-async function loadChromium() {
+async function loadRenderer() {
   const requireFromWeb = createRequire(resolve(REPO_ROOT, "web/package.json"));
   try {
-    const playwright = requireFromWeb("playwright");
-    return playwright.chromium;
+    const modulePath = requireFromWeb.resolve("@resvg/resvg-wasm");
+    const wasmPath = requireFromWeb.resolve("@resvg/resvg-wasm/index_bg.wasm");
+    const imported = await import(pathToFileURL(modulePath).href);
+    const renderer = imported.Resvg ? imported : imported.default;
+    if (!renderer?.Resvg || !renderer?.initWasm) throw new Error("package exports are incomplete");
+    await renderer.initWasm(readFileSync(wasmPath));
+    return renderer.Resvg;
   } catch (error) {
-    throw new Error(`Playwright is unavailable; run 'cd web && bun install --frozen-lockfile': ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`resvg-wasm is unavailable; run 'cd web && bun install --frozen-lockfile': ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 async function renderTargets(outputDirectory) {
-  const chromium = await loadChromium();
-  let browser;
-  try {
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        "--allow-file-access-from-files",
-        "--disable-gpu",
-        "--disable-lcd-text",
-        "--font-render-hinting=none",
-        "--force-color-profile=srgb",
-      ],
-    });
-  } catch (error) {
-    throw new Error(`Playwright Chromium is unavailable; run 'cd web && bunx playwright install chromium': ${error instanceof Error ? error.message : String(error)}`);
-  }
+  const Resvg = await loadRenderer();
+  const fontBuffers = ASSET_FONT_PATHS.map((fontPath) => readFileSync(resolve(REPO_ROOT, fontPath)));
 
-  try {
-    for (const target of RENDER_TARGETS) {
-      const context = await browser.newContext({
-        viewport: { width: target.width, height: target.height },
-        deviceScaleFactor: 1,
-        colorScheme: "dark",
-        reducedMotion: "reduce",
-      });
+  for (const target of RENDER_TARGETS) {
+    const renderer = new Resvg(readFileSync(resolve(REPO_ROOT, target.source)), {
+      font: {
+        fontBuffers,
+        defaultFontFamily: "Geist",
+        sansSerifFamily: "Geist",
+        monospaceFamily: "Geist Mono",
+      },
+      fitTo: { mode: "width", value: target.width },
+      shapeRendering: 2,
+      textRendering: 2,
+    });
+    try {
+      const renderedImage = renderer.render();
       try {
-        const page = await context.newPage();
-        await page.goto(pathToFileURL(resolve(REPO_ROOT, target.source)).href, { waitUntil: "load" });
-        await page.evaluate(() => document.fonts.ready);
-        if ("fonts" in target) {
-          const missingFonts = await page.evaluate((fonts) => fonts.filter((font) => !document.fonts.check(`16px "${font}"`)), target.fonts);
-          if (missingFonts.length > 0) throw new Error(`${target.asset}: local font(s) failed to load: ${missingFonts.join(", ")}`);
-        }
         const output = resolve(outputDirectory, target.asset);
-        await page.screenshot({ path: output, animations: "disabled", omitBackground: true });
-        const dimensions = pngDimensions(readFileSync(output));
+        const png = Buffer.from(renderedImage.asPng());
+        writeFileSync(output, png);
+        const dimensions = pngDimensions(png);
         if (dimensions.width !== target.width || dimensions.height !== target.height) {
           throw new Error(`${target.asset}: rendered ${dimensions.width}x${dimensions.height}, expected ${target.width}x${target.height}`);
         }
       } finally {
-        await context.close();
+        renderedImage.free();
       }
+    } finally {
+      renderer.free();
     }
-  } finally {
-    await browser.close();
   }
 }
 
@@ -100,7 +92,7 @@ async function main() {
         }
       }
       if (issues.length > 0) throw new Error(`asset check failed:\n- ${issues.join("\n- ")}`);
-      console.log(`Asset check passed: ${RENDER_TARGETS.length} deterministic renders and all deployed copies match`);
+      console.log(`Asset check passed: ${RENDER_TARGETS.length} deterministic resvg renders and all deployed copies match`);
       return;
     }
 
