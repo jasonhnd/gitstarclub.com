@@ -1,4 +1,5 @@
 import { fmtK } from "@/lib/format";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 
 type Point = { label: string; total: number };
 export type Milestone = { stars: number; label: string; monthIndex: number; date: string };
@@ -15,11 +16,13 @@ export function StarCurve({
   milestones,
   inflections = [],
   labels,
+  locale = DEFAULT_LOCALE,
 }: {
   series: Point[];
   milestones: Milestone[];
   inflections?: CurveInflection[];
   labels: StarCurveLabels;
+  locale?: Locale;
 }) {
   const W = 880;
   const H = 300;
@@ -47,7 +50,7 @@ export function StarCurve({
         viewBox={`0 0 ${W} ${H}`}
         className="aspect-[880/300] min-w-[38rem] w-full max-w-none"
         role="img"
-        aria-label={fill(labels.ariaLabel, { stars: fmtK(max), months: String(n) })}
+        aria-label={fill(labels.ariaLabel, { stars: fmtK(max, locale), months: String(n) })}
         preserveAspectRatio="xMidYMid meet"
       >
         <defs>
@@ -126,7 +129,7 @@ export function StarCurve({
               style={{ fill: "var(--md-sys-color-tertiary)", stroke: "var(--md-sys-color-surface)" }}
               strokeWidth={2}
             >
-              <title>{`${inf.label} · +${fmtK(inf.flow)} ★`}</title>
+              <title>{`${inf.label} · +${fmtK(inf.flow, locale)} ★`}</title>
             </circle>
           );
         })}

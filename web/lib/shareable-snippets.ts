@@ -132,9 +132,9 @@ export function buildWeeklyMoversSnippet({
 
   const copy = WEEKLY_SNIPPET_COPY[locale];
   const leader = top[0];
-  const followers = top.slice(1).map((row) => `${repoName(row)} (${signedStars(row.gained ?? 0)})`);
+  const followers = top.slice(1).map((row) => `${repoName(row)} (${signedStars(row.gained ?? 0, locale)})`);
   const text = [
-    fill(copy.leader, { asOf, repo: repoName(leader), period, value: signedStars(leader.gained ?? 0) }),
+    fill(copy.leader, { asOf, repo: repoName(leader), period, value: signedStars(leader.gained ?? 0, locale) }),
     followers.length ? fill(copy.followers, { followers: joinItems(followers, locale) }) : copy.noFollowers,
     fill(copy.source, { period }),
   ].join(" ");
@@ -196,8 +196,8 @@ export function buildOrgTotalSnippet({
   if (!asOf) return null;
 
   const top = members.slice(0, 3);
-  const leaders = top.length ? ` Top tracked repositories include ${readableList(top.map((row) => `${repoName(row)} (${fmtStars(row.total ?? 0)} stars)`), locale)}.` : "";
-  const text = `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories on GitStarClub.${leaders} Source: GitStarClub organization star history.`;
+  const leaders = top.length ? ` Top tracked repositories include ${readableList(top.map((row) => `${repoName(row)} (${fmtStars(row.total ?? 0, locale)} stars)`), locale)}.` : "";
+  const text = `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum, locale)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories on GitStarClub.${leaders} Source: GitStarClub organization star history.`;
 
   return snippet({
     kind: "org-total",
@@ -253,9 +253,9 @@ function repoPath(row: { owner: string; name: string }): string {
   return `/${repoName(row)}`;
 }
 
-function signedStars(value: number): string {
+function signedStars(value: number, locale: Locale): string {
   const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${fmtStars(Math.abs(value))}`;
+  return `${prefix}${fmtStars(Math.abs(value), locale)}`;
 }
 
 function monthYearFromDate(date: string, locale: Locale): string {

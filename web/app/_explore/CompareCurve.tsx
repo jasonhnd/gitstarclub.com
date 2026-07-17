@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { fmtStars } from "@/lib/format";
 import type { CompareCurve as CompareCurveData } from "@/lib/contracts";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 import { type CompareMode, buildChart } from "@/lib/compare/core";
 import { Star } from "./Star";
 
@@ -22,6 +23,7 @@ interface CompareCurveProps {
     compareModes: string;
     starHistoryOverlay: string;
   };
+  locale?: Locale;
 }
 
 const W = 880;
@@ -31,7 +33,7 @@ const PAD_R = 12;
 const PAD_T = 12;
 const PAD_B = 30;
 
-export function CompareCurve({ curves, initialMode = "absolute", modeLabels, legendAria, ariaLabels }: CompareCurveProps) {
+export function CompareCurve({ curves, initialMode = "absolute", modeLabels, legendAria, ariaLabels, locale = DEFAULT_LOCALE }: CompareCurveProps) {
   const [mode, setMode] = useState<CompareMode>(initialMode);
   const chart = buildChart(curves, mode);
   const x = (v: number) => PAD_L + (v / Math.max(1, chart.xMax)) * (W - PAD_L - PAD_R);
@@ -97,7 +99,7 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
               fontSize={11}
               style={{ fill: "var(--md-sys-color-on-surface-variant)", fontFamily: "var(--font-mono)" }}
             >
-              {fmtStars(v)}
+              {fmtStars(v, locale)}
             </text>
           </g>
         ))}
@@ -145,7 +147,7 @@ export function CompareCurve({ curves, initialMode = "absolute", modeLabels, leg
             />
             <span className="text-on-surface">{line.full_name}</span>
             <span className="tabular-nums text-on-surface-variant">
-              {fmtStars(line.current_stars)} <Star />
+              {fmtStars(line.current_stars, locale)} <Star />
             </span>
           </li>
         ))}

@@ -37,7 +37,7 @@ export function RepoHeroSection({
       {repo.description && <p className="mt-3 max-w-[52ch] text-[clamp(1rem,1.7vw,1.2rem)] text-on-surface-variant">{repo.description}</p>}
       <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[0.8rem] text-on-surface-variant">
         <span className="text-readable-gold text-[1.6rem] font-extrabold tabular-nums">
-          {fmtStars(repo.current_stars)}
+          {fmtStars(repo.current_stars, locale)}
           {" "}
           <Star />
         </span>
@@ -187,7 +187,7 @@ export function RepoLinkHub({
                     {entry.owner}/{entry.name}
                   </span>
                   <span className="mt-1 block font-mono text-[0.68rem] text-on-surface-variant">
-                    {fmtStars(entry.current_stars)}
+                    {fmtStars(entry.current_stars, locale)}
                     <Star />
                     {entry.language ? ` · ${entry.language}` : ""}
                   </span>
@@ -203,11 +203,13 @@ export function RepoLinkHub({
 
 export function RepoHistorySection({
   inflections,
+  locale,
   milestones,
   series,
   t,
 }: {
   inflections: CurveInflection[];
+  locale: Locale;
   milestones: Milestone[];
   series: RepoSeriesPoint[];
   t: Dict;
@@ -216,7 +218,7 @@ export function RepoHistorySection({
   return (
     <section className="mt-[clamp(2rem,4vw,3rem)]">
       <h2 className="mb-3 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">{t.repo.history}</h2>
-      <StarCurve series={series} milestones={milestones} inflections={inflections} labels={{ ariaLabel: t.a11y.starHistory }} />
+      <StarCurve series={series} milestones={milestones} inflections={inflections} labels={{ ariaLabel: t.a11y.starHistory }} locale={locale} />
     </section>
   );
 }
@@ -277,7 +279,7 @@ export function RepoRecentSection({ locale, monthly, t }: { locale: Locale; mont
                 <span className="font-mono text-[0.78rem] tabular-nums text-on-surface-variant sm:text-[0.85rem]">
                   {row.rank != null ? <>{t.repo.rank} #{row.rank}</> : ""}
                 </span>
-                <span className="font-semibold tabular-nums text-on-surface sm:w-20 sm:text-right">+{fmtStars(row.adds)}</span>
+                <span className="font-semibold tabular-nums text-on-surface sm:w-20 sm:text-right">+{fmtStars(row.adds, locale)}</span>
               </Link>
             </li>
           );

@@ -806,9 +806,9 @@ org 索引 /o 与 /o/page/N
 |---|---|
 | URL | English 保持无前缀（`/rankings/2024/10`、`/owner/name`）；非默认 locale 使用前缀（`/ja/rankings`、`/zh-TW/owner/name`） |
 | canonical | 指当前 locale 自身规范 URL；`x-default` 指 English 无前缀 URL |
-| SEO 语言 | English 是默认 / `x-default`；非默认 locale URL 的页面正文、meta / OG 文案、JSON-LD `inLanguage` 与 chrome 由 route dictionary 服务端输出 |
+| SEO 语言 | English 是默认 / `x-default`；非默认 locale URL 的页面正文、meta / OG 文案、JSON-LD `inLanguage` 与 chrome 由 route dictionary 服务端输出；JSON-LD 页面 URL、Dataset `@id`、BreadcrumbList 与内部 ItemList 子项都使用当前 locale 的规范 URL，外部 identity / 下载 URL 保持语言中立 |
 | 其它语言 | en/ja/zh/zh-TW/ko/es/fr 有独立 URL 与 hreflang alternate；同一 canonical path 的所有 locale URL 互指 |
-| 翻译范围 | UI chrome / 导航 / 年度标签 / About / 面包屑名 / 确定性 Narrative；**不翻译** repo 名 / 描述 / 语言 / topic / 数字（数据语言中立）。产品功能名 **GitStarClub Pulse** / **GitStarClub Compare** 作为品牌名不翻译 |
+| 翻译范围 | UI chrome / 导航 / 年度标签 / About / 面包屑名 / 确定性 Narrative；**不翻译** repo 名 / 描述 / 语言 / topic / 数值本身（数据语言中立），但可见数字与日期按 active locale 格式化。产品功能名 **GitStarClub Pulse** / **GitStarClub Compare** 作为品牌名不翻译 |
 | og:locale | 由 `web/lib/i18n/routing.ts` 映射：`en_US`、`ja_JP`、`zh_CN`、`zh_TW`、`ko_KR`、`es_ES`、`fr_FR` |
 
 ---

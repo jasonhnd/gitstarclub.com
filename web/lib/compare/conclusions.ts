@@ -1,6 +1,31 @@
 import type { CompareCurve } from "@/lib/contracts";
-import { fmtStars, monthYearLabel } from "@/lib/format";
+import { fmtStars, formatInteger, monthYearLabel } from "@/lib/format";
 import type { Locale } from "@/lib/i18n";
+
+export type CompareConclusionLabels = {
+  horizonMonth: string;
+  horizonMonths: string;
+  horizonYear: string;
+  horizonYears: string;
+  horizonYearMonths: string;
+  conclusionWinner: string;
+  conclusionTie: string;
+  conclusionSummary: string;
+  conclusionSource: string;
+};
+
+const ENGLISH_CONCLUSION_LABELS: CompareConclusionLabels = {
+  horizonMonth: "{count} month",
+  horizonMonths: "{count} months",
+  horizonYear: "{count} year",
+  horizonYears: "{count} years",
+  horizonYearMonths: "{years} {months}",
+  conclusionWinner: "{winner} grew faster after 10k, gaining {winnerGain} stars in {horizon} versus {loserGain} for {loser}.",
+  conclusionTie: "Both repositories gained {gain} stars in {horizon} after 10k.",
+  conclusionSummary: "As of {asOf}, {result} {source}",
+  conclusionSource:
+    "GitStarClub computes the comparison table from GitStarClub's precomputed star-history data; client-selected query pairs remain interactive only.",
+};
 
 export type ComparePairSpec = {
   label: string;
@@ -39,6 +64,7 @@ export function buildComparePairConclusion(
   a: CompareCurve,
   b: CompareCurve,
   locale: Locale = "en",
+  labels: CompareConclusionLabels = ENGLISH_CONCLUSION_LABELS,
 ): ComparePairConclusion | null {
   const aOrigin = aligned10kOrigin(a);
   const bOrigin = aligned10kOrigin(b);
@@ -52,7 +78,7 @@ export function buildComparePairConclusion(
   const comparison = aResult.gainedAfter10k - bResult.gainedAfter10k;
   const winner = comparison === 0 ? null : comparison > 0 ? aResult : bResult;
   const loser = comparison === 0 ? null : comparison > 0 ? bResult : aResult;
-  const horizonLabel = formatMonthSpan(horizonMonths);
+  const horizonLabel = formatMonthSpan(horizonMonths, locale, labels);
 
   return {
     label: spec.label,
@@ -61,22 +87,35 @@ export function buildComparePairConclusion(
     horizonLabel,
     winner,
     loser,
-    result: winner && loser
-      ? `${winner.fullName} grew faster after 10k, gaining ${formatCompareGain(winner.gainedAfter10k)} stars in ${horizonLabel} versus ${formatCompareGain(loser.gainedAfter10k)} for ${loser.fullName}.`
-      : `Both repositories gained ${formatCompareGain(aResult.gainedAfter10k)} stars in ${horizonLabel} after 10k.`,
+    result:
+      winner && loser
+        ? fill(labels.conclusionWinner, {
+            winner: winner.fullName,
+            winnerGain: formatCompareGain(winner.gainedAfter10k, locale),
+            horizon: horizonLabel,
+            loserGain: formatCompareGain(loser.gainedAfter10k, locale),
+            loser: loser.fullName,
+          })
+        : fill(labels.conclusionTie, {
+            gain: formatCompareGain(aResult.gainedAfter10k, locale),
+            horizon: horizonLabel,
+          }),
   };
 }
 
-export function buildCompareConclusionText(asOf: string, conclusions: readonly ComparePairConclusion[]): string | null {
+export function buildCompareConclusionText(
+  asOf: string,
+  conclusions: readonly ComparePairConclusion[],
+  labels: CompareConclusionLabels = ENGLISH_CONCLUSION_LABELS,
+): string | null {
   const featured = conclusions[0];
   if (!featured) return null;
-  const source = "GitStarClub computes the comparison table from GitStarClub's precomputed star-history data; client-selected query pairs remain interactive only.";
-  return `As of ${asOf}, ${featured.result} ${source}`;
+  return fill(labels.conclusionSummary, { asOf, result: featured.result, source: labels.conclusionSource });
 }
 
-export function formatCompareGain(value: number): string {
+export function formatCompareGain(value: number, locale: Locale = "en"): string {
   const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${fmtStars(Math.abs(value))}`;
+  return `${prefix}${fmtStars(Math.abs(value), locale)}`;
 }
 
 function aligned10kOrigin(curve: CompareCurve): number | null {
@@ -106,11 +145,16 @@ function monthLabel(value: string, locale: Locale): string {
   return monthYearLabel(locale, year, month);
 }
 
-function formatMonthSpan(months: number): string {
+function formatMonthSpan(months: number, locale: Locale, labels: CompareConclusionLabels): string {
   const years = Math.floor(months / 12);
   const remainingMonths = months % 12;
-  if (years === 0) return `${months} ${months === 1 ? "month" : "months"}`;
-  const yearPart = `${years} ${years === 1 ? "year" : "years"}`;
+  if (years === 0) return fill(months === 1 ? labels.horizonMonth : labels.horizonMonths, { count: formatInteger(locale, months) });
+  const yearPart = fill(years === 1 ? labels.horizonYear : labels.horizonYears, { count: formatInteger(locale, years) });
   if (remainingMonths === 0) return yearPart;
-  return `${yearPart} ${remainingMonths} ${remainingMonths === 1 ? "month" : "months"}`;
+  const monthPart = fill(remainingMonths === 1 ? labels.horizonMonth : labels.horizonMonths, { count: formatInteger(locale, remainingMonths) });
+  return fill(labels.horizonYearMonths, { years: yearPart, months: monthPart });
+}
+
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
 }
