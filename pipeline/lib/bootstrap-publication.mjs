@@ -3,6 +3,21 @@ import { createHash } from "node:crypto";
 export const BOOTSTRAP_POINTER_PATH = "bootstrap/latest.json";
 export const BOOTSTRAP_SCHEMA_VER = 1;
 export const BOOTSTRAP_PHASES = ["base", "canonical"];
+export const LEGACY_FLAT_TARGET = "legacy-flat";
+export const LEGACY_FLAT_REQUIRED_PATHS = [
+  "meta.json",
+  "lookup/repos.json",
+  "lookup/orgs.json",
+  "rank/all-time/repo/stock.json",
+  "rank/all-time/org/stock.json",
+  "canonical/v2/meta.json",
+  ...Array.from({ length: 32 }, (_, bucket) => [
+    `canonical/v2/repos/${bucket}.json`,
+    `canonical/v2/repo-monthly/${bucket}.json`,
+    `canonical/v2/repo-weekly/${bucket}.json`,
+    `canonical/v2/repo-recent-daily/${bucket}.json`,
+  ]).flat(),
+];
 
 export function assertBootstrapGeneration(value) {
   if (!/^bootstrap-[A-Za-z0-9][A-Za-z0-9._-]{2,120}$/.test(value ?? "")) {
@@ -141,6 +156,40 @@ async function mapPool(items, concurrency, worker) {
 }
 
 /**
+ * Prove the pre-bootstrap flat layout is still a usable recovery target. The
+ * bootstrap process never overwrites these paths; rollback removes only the
+ * bootstrap pointer after representative base views and every required
+ * bucketed canonical family parse successfully.
+ */
+export async function verifyLegacyFlatTarget({ store, concurrency = 12 }) {
+  const files = await mapPool(LEGACY_FLAT_REQUIRED_PATHS, concurrency, async (path) => {
+    const body = await store.read(path);
+    if (!body) throw new Error(`${path}: required legacy-flat recovery artifact is missing`);
+    const parsed = parseJson(body, path);
+    if (parsed === null || typeof parsed !== "object") {
+      throw new Error(`${path}: invalid legacy-flat recovery artifact`);
+    }
+    if (Array.isArray(parsed)) throw new Error(`${path}: legacy-flat recovery artifact must be an object`);
+    if (path === "meta.json" || path === "canonical/v2/meta.json") {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(parsed.seam_date ?? "") || !Number.isInteger(parsed.schema_ver)) {
+        throw new Error(`${path}: invalid legacy-flat recovery metadata`);
+      }
+    } else if (path.startsWith("lookup/") && Object.keys(parsed).length === 0) {
+      throw new Error(`${path}: legacy-flat recovery lookup cannot be empty`);
+    } else if (path.startsWith("rank/") && !Array.isArray(parsed.items)) {
+      throw new Error(`${path}: invalid legacy-flat recovery ranking`);
+    }
+    return { path, bytes: body.byteLength, sha256: sha256Bytes(body) };
+  });
+  return {
+    target: LEGACY_FLAT_TARGET,
+    objectCount: files.length,
+    totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
+    files,
+  };
+}
+
+/**
  * Create one immutable generation phase. Existing byte-identical objects are
  * reused, which makes the same generation safe to resume after interruption.
  */
@@ -242,6 +291,13 @@ export async function commitBootstrapGeneration({
   await validate(verified);
   await assertCanCommit();
   const current = parsePointer(await store.read(BOOTSTRAP_POINTER_PATH));
+  // null is an explicit legacy-flat recovery edge, not "no rollback". Prove
+  // that mutable flat state while holding the shared writer lease before the
+  // first pointer can hide it.
+  if (!current) {
+    await verifyLegacyFlatTarget({ store });
+    await assertCanCommit();
+  }
   if (current?.generation === generation) {
     if (
       current.base_manifest_sha256 !== verified.base.sha256 ||
@@ -270,10 +326,43 @@ export async function rollbackBootstrapGeneration({
   assertCanCommit = async () => {},
   now = () => new Date().toISOString(),
 }) {
+  if (targetGeneration === LEGACY_FLAT_TARGET) {
+    // Unlike sealed generations, legacy-flat canonical paths are mutable.
+    // Acquire the shared writer lease first, validate while managed refresh is
+    // excluded, then read the pointer and retain ownership through deletion or
+    // the idempotent no-pointer retry decision.
+    await assertCanCommit();
+    const verified = await verifyLegacyFlatTarget({ store });
+    await assertCanCommit();
+    const current = parsePointer(await store.read(BOOTSTRAP_POINTER_PATH));
+    if (!current) {
+      return {
+        status: "already-rolled-back",
+        target: LEGACY_FLAT_TARGET,
+        pointer: null,
+        previousPointer: null,
+        verified,
+      };
+    }
+    if (typeof store.delete !== "function") throw new Error("bootstrap store does not support atomic pointer deletion");
+    await store.delete(BOOTSTRAP_POINTER_PATH);
+    return {
+      status: "rolled-back",
+      target: LEGACY_FLAT_TARGET,
+      pointer: null,
+      previousPointer: current,
+      verified,
+    };
+  }
+
+  const target = assertBootstrapGeneration(targetGeneration);
+  // Sealed target verification is read-only and can be expensive, so do it
+  // before taking the lease. Once acquired, re-read the live pointer and keep
+  // ownership through the single write and every no-op retry decision.
+  const verified = await verifyBootstrapGeneration({ generation: target, store });
+  await assertCanCommit();
   const current = parsePointer(await store.read(BOOTSTRAP_POINTER_PATH));
   if (!current) throw new Error("cannot roll back before the first bootstrap publication");
-  const target = assertBootstrapGeneration(targetGeneration);
-  const verified = await verifyBootstrapGeneration({ generation: target, store });
   if (target === current.generation) {
     if (
       current.base_manifest_sha256 !== verified.base.sha256 ||
@@ -281,9 +370,8 @@ export async function rollbackBootstrapGeneration({
     ) {
       throw new Error(`${BOOTSTRAP_POINTER_PATH}: current generation manifest digest changed`);
     }
-    return { status: "already-rolled-back", pointer: current, verified };
+    return { status: "already-rolled-back", target, pointer: current, previousPointer: current, verified };
   }
-  await assertCanCommit();
   const pointer = {
     schema_ver: BOOTSTRAP_SCHEMA_VER,
     generation: target,
@@ -294,5 +382,5 @@ export async function rollbackBootstrapGeneration({
     canonical_manifest_sha256: verified.canonical.sha256,
   };
   await store.put(BOOTSTRAP_POINTER_PATH, Buffer.from(JSON.stringify(pointer)), "application/json");
-  return { status: "rolled-back", pointer, verified };
+  return { status: "rolled-back", target, pointer, previousPointer: current, verified };
 }

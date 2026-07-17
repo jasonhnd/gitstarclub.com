@@ -10,6 +10,7 @@
 // Run (from pipeline/):  node backfill/07-export-v2.mjs --generation bootstrap-YYYYMMDDTHHMMSSZ
 //                        node backfill/07-export-v2.mjs --no-upload  (export + local validation only)
 //                        node backfill/07-export-v2.mjs --rollback bootstrap-<id> --execute
+//                        node backfill/07-export-v2.mjs --rollback legacy-flat --execute
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -21,6 +22,7 @@ import { withBootstrapPublicationLease } from "../lib/bootstrap-lease.mjs";
 import {
   buildBootstrapPhaseManifest,
   commitBootstrapGeneration,
+  LEGACY_FLAT_TARGET,
   rollbackBootstrapGeneration,
   sha256Bytes,
   stageBootstrapPhase,
@@ -48,7 +50,11 @@ const noUpload = args.includes("--no-upload");
 const stageOnly = args.includes("--stage-only");
 const rollbackIndex = args.indexOf("--rollback");
 const rollbackRequested = rollbackIndex >= 0;
-const rollbackTarget = rollbackRequested && args[rollbackIndex + 1]?.startsWith("bootstrap-") ? args[rollbackIndex + 1] : undefined;
+const rollbackValue = rollbackRequested ? args[rollbackIndex + 1] : undefined;
+const rollbackTarget =
+  rollbackValue === LEGACY_FLAT_TARGET || rollbackValue?.startsWith("bootstrap-")
+    ? rollbackValue
+    : undefined;
 const BUCKETS = 32;
 const RECENT_DAYS = 90;
 const SCHEMA_VER = 1;
@@ -109,7 +115,9 @@ const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 if (rollbackRequested) {
   if (!args.includes("--execute")) throw new Error("bootstrap rollback requires --execute");
   if (!rollbackTarget) {
-    throw new Error("bootstrap rollback requires an explicit target: --rollback bootstrap-<id> --execute");
+    throw new Error(
+      "bootstrap rollback requires an explicit target: --rollback <bootstrap-id|legacy-flat> --execute",
+    );
   }
   if (!TOKEN) throw new Error("BLOB_READ_WRITE_TOKEN not set");
   const store = createBlobBootstrapStore(TOKEN);
@@ -124,8 +132,9 @@ if (rollbackRequested) {
         assertCanCommit,
       }),
   });
+  const previous = result.pointer?.previous_generation ?? result.previousPointer?.generation ?? "none";
   console.log(
-    `rollback committed: generation=${result.pointer.generation} previous=${result.pointer.previous_generation} objects=${result.verified.objectCount} bytes=${result.verified.totalBytes}`,
+    `rollback ${result.status}: target=${result.target} previous=${previous} objects=${result.verified.objectCount} bytes=${result.verified.totalBytes}`,
   );
   process.exit(0);
 }

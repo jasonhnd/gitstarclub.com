@@ -66,8 +66,11 @@ export async function refreshWorkflow(runId: string) {
     const validation = await validateVersion(runId, fencingToken);
     const publish = await publishVersion(runId, fencingToken);
 
+    // GC is best-effort, but its destructive calls stay inside this run's
+    // shared publication lease. markPublished releases that lease only after
+    // GC has finished or failed closed.
+    const gc = await gcVersions(runId, fencingToken);
     await markPublished(runId, startedAt, fencingToken);
-    const gc = await gcVersions(runId); // best-effort cleanup of old versions; never fails the run
     if (gc.error) await sendAlert({ pipeline: "workflow-refresh", title: "version gc failed", run_id: runId, step: "gc", error: gc.error });
     return { runId, ok: true, preflight, whitelist, rename, metadata, fold, recompute, aliases, validation, publish, gc };
   } catch (err) {

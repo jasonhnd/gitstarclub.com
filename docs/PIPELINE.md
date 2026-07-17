@@ -93,8 +93,11 @@ node backfill/07-export-v2.mjs --generation "$GEN" --stage-only
 # 重跑同一命令会复核并 resume，校验全部通过后一次切 pointer
 node backfill/07-export-v2.mjs --generation "$GEN"
 
-# 从 bootstrap/latest.json 读取 previous_generation 后，显式指定回滚目标
+# previous_generation 为 generation 时，显式指定该 generation
 node backfill/07-export-v2.mjs --rollback bootstrap-20260710T120000Z --execute
+
+# 首次 publish 的 previous_generation:null 明确定义为 legacy-flat
+node backfill/07-export-v2.mjs --rollback legacy-flat --execute
 ```
 
 ---
@@ -168,7 +171,7 @@ node backfill/07-export-v2.mjs --rollback bootstrap-20260710T120000Z --execute
 ## 6. 幂等 / 错误 / 重跑
 
 - 每步可重跑：bootstrap 对同 generation 做逐对象 byte count + SHA-256 复核并只创建缺失对象；phase manifest 一旦写入即封存，内容不一致会 fail closed。Workflow step 按 `(run_id, shard)` 幂等（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8）。
-- **bootstrap 原子性**：`06` 不发布；`07` 只有在两 phase 远端完整、两套本地 validator 通过且取得 `ops/workflows/active.json` CAS lease 后，才单文件切 `bootstrap/latest.json`。generation 本体永不覆盖；recurring canonical 写入绑定 generation 的 copy-on-write overlay，旧 generation + overlay 可直接回滚。
+- **bootstrap 原子性**：`06` 不发布；`07` 只有在两 phase 远端完整、两套本地 validator 通过且取得 `ops/workflows/active.json` CAS lease 后，才单文件切 `bootstrap/latest.json`。首次 commit 还会在 lease 内验证未被 bootstrap 改写的 legacy flat base/canonical recovery artifacts；`previous_generation:null` 表示可执行的 `legacy-flat` 回滚目标。generation 本体永不覆盖；recurring canonical 写入绑定 generation 的 copy-on-write overlay，旧 generation + overlay 可直接回滚。
 - **版本化产物**：Workflow 发布写 `views/<run_id>/`（version=run_id）→ 切 `views/latest.json` 指针（保留 `prev_version`），坏数据指回上一版即可（OPS 回滚）。
 - **校验闸门**：产出 JSON 后跑 Zod schema + sanity 不变量（TESTING §1.2/§1.3），不过不发布、不切指针。
 - **失败靠可核验状态**（Vercel Function logs + 可选 webhook + `sync-runs` + `ops/workflows/**`）；仓库当前没有 Sentry 集成。Workflow step 自带重试，跨配额用 `sleep` 等待，不空转。
