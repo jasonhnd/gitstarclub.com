@@ -49,6 +49,7 @@ function parseArgs(argv: string[]): Args {
   }
   if (!WEEK_RE.test(week)) throw new Error(`Invalid --week ${week}`);
   if (date && !DATE_RE.test(date)) throw new Error(`Invalid --date ${date}`);
+  if (date && finalize) throw new Error("Use either --date or --finalize, not both");
   return { week, dry, date, finalize };
 }
 
@@ -102,16 +103,25 @@ function saveDayCounts(week: string, date: string, counts: Map<number, number>):
   writeFileSync(dayStatePath(week, date), JSON.stringify(obj));
 }
 
+async function fetchJsonWithTimeout(url: string, timeoutMs = 30_000): Promise<unknown> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) {
+    try {
+      await res.body?.cancel();
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`${url} -> ${res.status}`);
+  }
+  return res.json();
+}
+
 async function loadTrackedRepoIds(blobBase: string): Promise<Set<number>> {
-  const pointer = (await fetch(`${blobBase}/views/latest.json`).then((r) => {
-    if (!r.ok) throw new Error(`views/latest.json -> ${r.status}`);
-    return r.json();
-  })) as { version?: string };
+  const pointer = (await fetchJsonWithTimeout(`${blobBase}/views/latest.json`)) as { version?: string };
   if (!pointer.version) throw new Error("views/latest.json missing version");
-  const lookup = (await fetch(`${blobBase}/views/${pointer.version}/lookup/repos.json`).then((r) => {
-    if (!r.ok) throw new Error(`lookup/repos.json -> ${r.status}`);
-    return r.json();
-  })) as Record<string, unknown>;
+  const lookup = (await fetchJsonWithTimeout(
+    `${blobBase}/views/${pointer.version}/lookup/repos.json`,
+  )) as Record<string, unknown>;
   return new Set(Object.keys(lookup).map(Number).filter((n) => Number.isFinite(n)));
 }
 
@@ -119,9 +129,17 @@ async function countWatchEventsInHour(date: string, hour: number, tracked: Set<n
   const url = `https://data.gharchive.org/${date}-${hour}.json.gz`;
   let lastErr: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
+    let res: Response | null = null;
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(180_000) });
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      res = await fetch(url, { signal: AbortSignal.timeout(180_000) });
+      if (!res.ok || !res.body) {
+        try {
+          await res.body?.cancel();
+        } catch {
+          /* ignore */
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
       const counts = new Map<number, number>();
       // Node/web stream types diverge under tsc; cast via unknown for Readable.fromWeb.
       const nodeStream = Readable.fromWeb(res.body as unknown as import("node:stream/web").ReadableStream);
@@ -143,6 +161,11 @@ async function countWatchEventsInHour(date: string, hour: number, tracked: Set<n
       return counts;
     } catch (err) {
       lastErr = err;
+      try {
+        await res?.body?.cancel();
+      } catch {
+        /* ignore */
+      }
       await new Promise((r) => setTimeout(r, 1500 * attempt));
     }
   }

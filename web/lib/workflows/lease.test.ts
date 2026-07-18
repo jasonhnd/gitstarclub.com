@@ -193,4 +193,62 @@ describe("workflow lease acquisition", () => {
     await expect(renewWorkflowLease("refresh-a", 3, store, "2026-07-05T06:20:00.000Z")).rejects.toThrow("lease expired");
     expect(store.lease?.expires_at).toBe("2026-07-05T06:20:00.000Z");
   });
+
+  test("delayed start of an old run cannot attach after a successor lease is acquired", async () => {
+    const store = new MemoryLeaseStore(
+      runningLease("refresh-old", "2026-07-05T05:00:00.000Z", "2026-07-05T05:30:00.000Z", "run:refresh-old", 2),
+    );
+    await claimWorkflowLease(
+      {
+        runId: "refresh-new",
+        acquiredAt: "2026-07-05T06:00:00.000Z",
+        idempotencyKey: "workflow-refresh:2026-W28",
+        trigger: "cron",
+        now: Date.parse("2026-07-05T06:00:00.000Z"),
+      },
+      store,
+    );
+
+    const late = await claimWorkflowLease(
+      {
+        runId: "refresh-old",
+        acquiredAt: "2026-07-05T06:00:30.000Z",
+        idempotencyKey: "run:refresh-old",
+        trigger: "workflow",
+        allowExistingRun: true,
+        now: Date.parse("2026-07-05T06:00:30.000Z"),
+      },
+      store,
+    );
+    expect(late.status).toBe("rejected");
+    expect(late.lease.run_id).toBe("refresh-new");
+  });
+
+  test("late failed release of an old run does not overwrite the successor lease", async () => {
+    const store = new MemoryLeaseStore(
+      runningLease("refresh-new", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "workflow-refresh:2026-W28", 7),
+    );
+    expect(await releaseWorkflowLease("refresh-old", "failed", store, "2026-07-05T06:05:00.000Z", 6)).toBe(false);
+    expect(store.lease?.run_id).toBe("refresh-new");
+    expect(store.lease?.status).toBe("running");
+    expect(store.lease?.fencing_token).toBe(7);
+  });
+
+  test("two overlapping claims with different keys only one acquires", async () => {
+    const store = new MemoryLeaseStore(null, 2);
+    const now = Date.parse("2026-07-05T06:00:00.000Z");
+    const [a, b] = await Promise.all([
+      claimWorkflowLease(
+        { runId: "refresh-a", acquiredAt: "2026-07-05T06:00:00.000Z", idempotencyKey: "k-a", trigger: "t", now },
+        store,
+      ),
+      claimWorkflowLease(
+        { runId: "refresh-b", acquiredAt: "2026-07-05T06:00:00.000Z", idempotencyKey: "k-b", trigger: "t", now },
+        store,
+      ),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual(["acquired", "rejected"]);
+    expect(store.lease?.status).toBe("running");
+  });
 });

@@ -105,18 +105,31 @@ export function utcMonthPeriod(date: Date): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
-function previousIsoWeek(period: string): string {
+/** Number of ISO weeks in a year (52 or 53). Thursday of ISO week 1 is in `year`. */
+export function isoWeeksInYear(year: number): 52 | 53 {
+  // A year has 53 ISO weeks if Jan 1 or Dec 31 is a Thursday (ISO day 4).
+  const jan1 = new Date(Date.UTC(year, 0, 1)).getUTCDay() || 7;
+  const dec31 = new Date(Date.UTC(year, 11, 31)).getUTCDay() || 7;
+  return jan1 === 4 || dec31 === 4 ? 53 : 52;
+}
+
+export function previousIsoWeek(period: string): string {
   const match = /^(\d{4})-W(\d{2})$/.exec(period);
   if (!match) throw new Error(`bad week period ${period}`);
   let year = Number(match[1]);
   let week = Number(match[2]) - 1;
   if (week < 1) {
     year -= 1;
-    // ISO weeks in year: 52 or 53 — use 52 as safe prior when scanning recent gaps.
-    week = 52;
+    week = isoWeeksInYear(year);
   }
   return `${year}-W${String(week).padStart(2, "0")}`;
 }
+
+/**
+ * Grace after UTC midnight before current week/month shards are required.
+ * Aligns with vercel.json daily cron `0 3 * * *` (03:00 UTC).
+ */
+export const PUBLICATION_SCHEDULE_GRACE_MS = 3 * 60 * 60 * 1000;
 
 /** Recent closed ISO weeks ending before the current UTC week (exclusive). */
 export function recentClosedWeeks(now = new Date(), count = 4): string[] {
@@ -318,32 +331,53 @@ export async function checkLiveWeekContinuity(
   };
 }
 
+export function withinPublicationScheduleGrace(now: Date, graceMs = PUBLICATION_SCHEDULE_GRACE_MS): {
+  weekGrace: boolean;
+  monthGrace: boolean;
+} {
+  const msIntoUtcDay =
+    ((now.getUTCHours() * 60 + now.getUTCMinutes()) * 60 + now.getUTCSeconds()) * 1000 + now.getUTCMilliseconds();
+  const earlyDay = msIntoUtcDay < graceMs;
+  // Monday 00:00–grace: new ISO week may not exist until daily cron (0 3 * * *).
+  const weekGrace = earlyDay && now.getUTCDay() === 1;
+  // 1st of month 00:00–grace: new month shard may not exist yet.
+  const monthGrace = earlyDay && now.getUTCDate() === 1;
+  return { weekGrace, monthGrace };
+}
+
 export async function checkCurrentLivePeriods(blobBase: string, now = new Date()): Promise<GateFinding> {
   const weekPeriod = isoWeekPeriodUtc(now);
   const monthPeriod = utcMonthPeriod(now);
+  const grace = withinPublicationScheduleGrace(now);
   // Prefer the latest closed/current live artifacts that the site uses — current week/month ids.
   const targets = [
-    { label: "week", path: `live/rank/week/${weekPeriod}/repo/flow.json` },
-    { label: "month", path: `live/rank/month/${monthPeriod}/repo/flow.json` },
+    { label: "week" as const, path: `live/rank/week/${weekPeriod}/repo/flow.json`, grace: grace.weekGrace },
+    { label: "month" as const, path: `live/rank/month/${monthPeriod}/repo/flow.json`, grace: grace.monthGrace },
   ];
   const missing: string[] = [];
+  const deferred: string[] = [];
   for (const target of targets) {
     const { status } = await fetchText(`${blobBase}/${target.path}`);
-    if (status !== 200) missing.push(`${target.label}:${target.path}`);
+    if (status === 200) continue;
+    if (target.grace) deferred.push(`${target.label}:${target.path}`);
+    else missing.push(`${target.label}:${target.path}`);
   }
   if (missing.length > 0) {
     return {
       id: "live-current-periods",
       ok: false,
       summary: `current live rank shards missing: ${missing.join("; ")}`,
-      observed: { weekPeriod, monthPeriod },
+      observed: { weekPeriod, monthPeriod, deferred: deferred.join(",") || null },
     };
   }
   return {
     id: "live-current-periods",
     ok: true,
-    summary: `current live week ${weekPeriod} and month ${monthPeriod} present`,
-    observed: { weekPeriod, monthPeriod },
+    summary:
+      deferred.length > 0
+        ? `current live periods ok (within schedule grace: ${deferred.join("; ")})`
+        : `current live week ${weekPeriod} and month ${monthPeriod} present`,
+    observed: { weekPeriod, monthPeriod, deferred: deferred.join(",") || null },
   };
 }
 
