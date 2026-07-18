@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { readView } from "@/lib/data/source";
 import { putView } from "@/lib/data/write";
 import { LatestSuccess, ViewsPointer } from "@/lib/contracts";
@@ -8,6 +9,9 @@ import { submitWorkflowPublishIndexNow } from "@/lib/indexnow";
 // overwrite), after which the read side resolves the new version. prev_version is retained
 // so rollback is one pointer write back. Runs only after validateVersion passes.
 // See docs/VERCEL-DATA-OPERATIONS.md §7.
+
+/** Paths that read the base publish pointer and must not serve a pre-publish ISR shell. */
+const REVALIDATE_AFTER_PUBLISH = ["/", "/about", "/search-index", "/rankings", "/pulse", "/categories", "/o"];
 
 export async function publishVersion(runId: string): Promise<{ version: string; prev_version: string | null; published_at: string }> {
   "use step";
@@ -30,6 +34,20 @@ export async function publishVersion(runId: string): Promise<{ version: string; 
   LatestSuccess.parse(recovery);
   await putView("ops/workflows/latest-success.json", recovery);
   await submitWorkflowPublishIndexNow({ runId, prevVersion, publishedAt });
+
+  // Best-effort: drop ISR / data-cache shells that still resolve the previous version.
+  // Failures must never undo a successful pointer flip.
+  for (const path of REVALIDATE_AFTER_PUBLISH) {
+    try {
+      revalidatePath(path);
+    } catch (error) {
+      console.warn("[workflow-publish] revalidatePath failed", {
+        path,
+        run_id: runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   return { version: runId, prev_version: prevVersion, published_at: publishedAt };
 }

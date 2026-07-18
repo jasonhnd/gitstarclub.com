@@ -9,6 +9,7 @@ class MemoryLeaseStore implements WorkflowLeaseStore {
   private blockedReads = 0;
   private releaseReads: (() => void) | null = null;
   private readonly readGate: Promise<void> | null;
+  forceWrite?: (lease: WorkflowLease) => Promise<void>;
 
   constructor(initial: WorkflowLease | null = null, barrierReads = 0) {
     this.lease = initial ? structuredClone(initial) : null;
@@ -132,6 +133,27 @@ describe("workflow lease acquisition", () => {
 
     expect(result.status).toBe("attached");
     expect(result.lease.run_id).toBe("refresh-existing");
+  });
+
+  test("release falls back to forceWrite when CAS keeps conflicting", async () => {
+    const store = new MemoryLeaseStore(
+      runningLease("refresh-stuck", "2026-07-18T02:00:00.000Z", "2026-07-18T14:00:00.000Z", "recovery-1"),
+    );
+    // Simulate perpetual CAS conflict (edge etag thrash) while still owning the run.
+    store.compareAndSet = async () => false;
+    let forced: WorkflowLease | null = null;
+    store.forceWrite = async (lease: WorkflowLease) => {
+      forced = structuredClone(lease);
+      store.lease = structuredClone(lease);
+      store.etag = `"forced"`;
+    };
+
+    const { releaseWorkflowLease } = await import("./lease");
+    const ok = await releaseWorkflowLease("refresh-stuck", "published", store, "2026-07-18T02:30:00.000Z");
+    expect(ok).toBe(true);
+    expect(forced).not.toBeNull();
+    expect(forced!.status).toBe("published");
+    expect(store.lease?.status).toBe("published");
   });
 });
 
