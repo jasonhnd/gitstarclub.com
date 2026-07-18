@@ -70,9 +70,10 @@ describe("release gate: search index contract resilience (#283 / #286)", () => {
 
 describe("release gate: live helper pure functions (#286)", () => {
   test("recentClosedWeeks returns previous ISO weeks before the current week", () => {
-    const weeks = recentClosedWeeks(new Date("2026-07-15T12:00:00.000Z"), 4);
-    expect(weeks[0]).toBe("2026-W28");
-    expect(weeks).toHaveLength(4);
+    // Fixed UTC instant — must not depend on process TZ or leaked period mocks.
+    const now = new Date(Date.UTC(2026, 6, 15, 12, 0, 0)); // 2026-07-15 → ISO week 29
+    const weeks = recentClosedWeeks(now, 4);
+    expect(weeks).toEqual(["2026-W28", "2026-W27", "2026-W26", "2026-W25"]);
     expect(weeks).not.toContain("2026-W29");
   });
 });
