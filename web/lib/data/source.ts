@@ -21,7 +21,13 @@ export interface ViewOpts {
   timeoutMs?: number;
 }
 
-const VERSION_TTL_MS = 3_600_000;
+/** Publish-pointer poll interval. Kept short so About/search catch a new managed refresh
+ *  without waiting an hour for Next's fetch Data Cache to expire. */
+const VERSION_TTL_MS = 5 * 60_000;
+/** Bump to invalidate any previously cached views/latest.json fetch entries. */
+const POINTER_CACHE_GEN = 2;
+/** Cache tag so publish can revalidateTag the pointer immediately after flipping it. */
+export const VIEWS_LATEST_POINTER_TAG = "blob-views-latest-pointer";
 export const DAILY_BASE_VIEW_TTL_MS = 86_400_000;
 export const DAILY_BASE_VIEW_OPTS = { base: true, versionTtlMs: DAILY_BASE_VIEW_TTL_MS } as const satisfies ViewOpts;
 const READ_RETRIES = 2;
@@ -52,10 +58,14 @@ async function resolveVersion(blobBase: string, ttlMs = VERSION_TTL_MS, timeoutM
       // render time ("Page changed from static to dynamic at runtime" → 500 on the first cold
       // generation, before the in-memory memo warms). A revalidated fetch keeps bounded pointer
       // freshness while staying static/ISR-safe. The rotating ?v= still busts the Blob CDN.
-      const res = await fetchWithTimeout(`${blobBase}/views/latest.json?v=${Math.floor(now / ttlMs)}`, {
-        next: { revalidate: ttlMs / 1000 },
-        timeoutMs,
-      });
+      // Tagged so publishVersion can revalidateTag(VIEWS_LATEST_POINTER_TAG) after the flip.
+      const res = await fetchWithTimeout(
+        `${blobBase}/views/latest.json?v=${POINTER_CACHE_GEN}-${Math.floor(now / ttlMs)}`,
+        {
+          next: { revalidate: Math.max(1, Math.floor(ttlMs / 1000)), tags: [VIEWS_LATEST_POINTER_TAG] },
+          timeoutMs,
+        },
+      );
       if (res.ok) {
         const j = (await res.json()) as { version?: unknown };
         if (typeof j.version === "string") version = j.version;
