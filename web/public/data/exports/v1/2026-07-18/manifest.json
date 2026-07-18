@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "export_date": "2026-07-18",
+  "data_as_of": "2026-07-18T02:16:15.977Z",
+  "license": {
+    "name": "CC BY 4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "attribution": "Data from GH Archive, derived by GitStarClub.",
+  "generated_from": "Existing precomputed GitStarClub data.",
+  "limits": {
+    "topRankingRowsPerList": 50,
+    "milestoneSourceRepos": 100,
+    "orgRows": 50
+  },
+  "files": [
+    {
+      "name": "top-rankings",
+      "title": "GitStarClub top repository rankings",
+      "formats": [
+        "json",
+        "csv"
+      ],
+      "rows": 70,
+      "source_views": [
+        "rank/month/2026-07/repo/flow.json",
+        "rank/all-time/repo/stock.json",
+        "lookup/repos.json"
+      ],
+      "latest_urls": {
+        "json": "/data/exports/v1/latest/top-rankings.json",
+        "csv": "/data/exports/v1/latest/top-rankings.csv"
+      },
+      "dated_urls": {
+        "json": "/data/exports/v1/2026-07-18/top-rankings.json",
+        "csv": "/data/exports/v1/2026-07-18/top-rankings.csv"
+      }
+    },
+    {
+      "name": "top-repo-milestones",
+      "title": "GitStarClub top repository milestone crossings",
+      "formats": [
+        "json",
+        "csv"
+      ],
+      "rows": 100,
+      "source_views": [
+        "rank/all-time/repo/stock.json",
+        "lookup/repos.json",
+        "entity/repo/{id}.json"
+      ],
+      "latest_urls": {
+        "json": "/data/exports/v1/latest/top-repo-milestones.json",
+        "csv": "/data/exports/v1/latest/top-repo-milestones.csv"
+      },
+      "dated_urls": {
+        "json": "/data/exports/v1/2026-07-18/top-repo-milestones.json",
+        "csv": "/data/exports/v1/2026-07-18/top-repo-milestones.csv"
+      }
+    },
+    {
+      "name": "top-org-aggregates",
+      "title": "GitStarClub top organization aggregates",
+      "formats": [
+        "json",
+        "csv"
+      ],
+      "rows": 50,
+      "source_views": [
+        "rank/all-time/org/stock.json",
+        "lookup/orgs.json"
+      ],
+      "latest_urls": {
+        "json": "/data/exports/v1/latest/top-org-aggregates.json",
+        "csv": "/data/exports/v1/latest/top-org-aggregates.csv"
+      },
+      "dated_urls": {
+        "json": "/data/exports/v1/2026-07-18/top-org-aggregates.json",
+        "csv": "/data/exports/v1/2026-07-18/top-org-aggregates.csv"
+      }
+    }
+  ]
+}
