@@ -42,7 +42,9 @@ const VERSION_TTL_MS = 3_600_000;
 export const LIVE_POINTER_TTL_MS = 60_000;
 export const DAILY_BASE_VIEW_TTL_MS = 86_400_000;
 export const DAILY_BASE_VIEW_OPTS = { base: true, versionTtlMs: DAILY_BASE_VIEW_TTL_MS } as const satisfies ViewOpts;
-const READ_RETRIES = 2;
+// Extra retries absorb intermittent Vercel Blob WAF 403s (`x-vercel-mitigated: deny`)
+// observed during large preview SSG (thousands of concurrent public CDN reads).
+const READ_RETRIES = 4;
 type VersionResolution = { version: string | null; publishedAt: string | null; confirmedAbsent: boolean };
 const versionMemo = new Map<string, VersionResolution & { at: number }>();
 let mutableReadSequence = 0;
@@ -57,13 +59,16 @@ export function invalidatePublishedVersionMemo(): void {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function retryDelayMs(res: Response, attempt: number): number {
-  const retryAfter = Number(res.headers.get("retry-after"));
+  const retryAfter = Number(res.headers?.get("retry-after"));
   if (Number.isFinite(retryAfter) && retryAfter > 0) return Math.min(retryAfter * 1000, 10_000);
+  // 403 from Blob WAF is often a short deny; back off a bit longer than ordinary 5xx.
+  if (res.status === 403) return Math.min(400 * 2 ** (attempt - 1), 3_000);
   return Math.min(250 * 2 ** (attempt - 1), 2_000);
 }
 
 function shouldRetry(status: number): boolean {
-  return status === 429 || status >= 500;
+  // 403: public Blob CDN occasionally returns WAF denials under SSG load.
+  return status === 403 || status === 429 || status >= 500;
 }
 
 /** Resolve views/latest; only a confirmed 404 is allowed to activate bootstrap fallback. */
@@ -223,6 +228,11 @@ async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
       await sleep(retryDelayMs(res, attempt));
     }
     if (res?.status === 404) continue;
+    // After retries, treat persistent WAF 403 as an absent view so a single
+    // mitigated object cannot fail the entire Next.js SSG export. Callers already
+    // map null → notFound()/empty UI. Never attach BLOB_READ_WRITE_TOKEN to the
+    // public CDN URL (that can itself produce 403).
+    if (res?.status === 403) continue;
     if (!res?.ok) {
       const detail = res ? String(res.status) : fetchErrorDetail(lastError);
       throw new Error(`view fetch ${key} -> ${detail}`);
