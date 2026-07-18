@@ -123,7 +123,8 @@ async function countWatchEventsInHour(date: string, hour: number, tracked: Set<n
       const res = await fetch(url, { signal: AbortSignal.timeout(180_000) });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
       const counts = new Map<number, number>();
-      const nodeStream = Readable.fromWeb(res.body as import("node:stream/web").ReadableStream);
+      // Node/web stream types diverge under tsc; cast via unknown for Readable.fromWeb.
+      const nodeStream = Readable.fromWeb(res.body as unknown as import("node:stream/web").ReadableStream);
       const gunzip = createGunzip();
       const rl = createInterface({ input: nodeStream.pipe(gunzip), crlfDelay: Infinity });
       for await (const line of rl) {
