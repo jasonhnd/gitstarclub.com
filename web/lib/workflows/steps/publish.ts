@@ -1,5 +1,5 @@
-import { revalidatePath } from "next/cache";
-import { readView } from "@/lib/data/source";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { readView, VIEWS_LATEST_POINTER_TAG } from "@/lib/data/source";
 import { putView } from "@/lib/data/write";
 import { LatestSuccess, ViewsPointer } from "@/lib/contracts";
 import { SCHEMA_VER } from "@/lib/data/meta";
@@ -35,8 +35,18 @@ export async function publishVersion(runId: string): Promise<{ version: string; 
   await putView("ops/workflows/latest-success.json", recovery);
   await submitWorkflowPublishIndexNow({ runId, prevVersion, publishedAt });
 
-  // Best-effort: drop ISR / data-cache shells that still resolve the previous version.
-  // Failures must never undo a successful pointer flip.
+  // Best-effort: drop ISR shells + the tagged publish-pointer fetch cache so
+  // About/search resolve the new version immediately. Failures must never undo
+  // a successful pointer flip.
+  try {
+    revalidateTag(VIEWS_LATEST_POINTER_TAG, "max");
+  } catch (error) {
+    console.warn("[workflow-publish] revalidateTag failed", {
+      tag: VIEWS_LATEST_POINTER_TAG,
+      run_id: runId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   for (const path of REVALIDATE_AFTER_PUBLISH) {
     try {
       revalidatePath(path);
