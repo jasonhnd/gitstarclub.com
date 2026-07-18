@@ -1,9 +1,12 @@
 import { SearchIndex } from "@/lib/contracts";
-import { currentUtcPeriods } from "@/lib/periods";
 
 // Live product release gates for #286.
 // These checks hit a real deployment URL + the public Blob store. They are meant
 // to fail closed when RELEASE_GATE_REQUIRE_LIVE=1 (CI product-gates job).
+//
+// Week/period math is intentionally local (not imported from @/lib/periods) so
+// full-suite runs cannot be poisoned by mock.module("@/lib/periods") leaks from
+// other test files (e.g. uiux-seo / watermark).
 
 /** Production public Blob base (not a secret — store is public-read). Overridable. */
 export const DEFAULT_PUBLIC_BLOB_BASE = "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com";
@@ -84,6 +87,23 @@ function ageMs(iso: string | null | undefined, now: Date): number | null {
   return now.getTime() - t;
 }
 
+/** ISO week id for a UTC calendar day (same algorithm as web/lib/periods.ts). */
+export function isoWeekPeriodUtc(date: Date): string {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  const year = d.getUTCFullYear();
+  return `${year}-W${String(week).padStart(2, "0")}`;
+}
+
+export function utcMonthPeriod(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
 function previousIsoWeek(period: string): string {
   const match = /^(\d{4})-W(\d{2})$/.exec(period);
   if (!match) throw new Error(`bad week period ${period}`);
@@ -99,7 +119,7 @@ function previousIsoWeek(period: string): string {
 
 /** Recent closed ISO weeks ending before the current UTC week (exclusive). */
 export function recentClosedWeeks(now = new Date(), count = 4): string[] {
-  const current = currentUtcPeriods(now).weekPeriod;
+  const current = isoWeekPeriodUtc(now);
   const weeks: string[] = [];
   let cursor = previousIsoWeek(current);
   for (let i = 0; i < count; i++) {
@@ -298,7 +318,8 @@ export async function checkLiveWeekContinuity(
 }
 
 export async function checkCurrentLivePeriods(blobBase: string, now = new Date()): Promise<GateFinding> {
-  const { weekPeriod, monthPeriod } = currentUtcPeriods(now);
+  const weekPeriod = isoWeekPeriodUtc(now);
+  const monthPeriod = utcMonthPeriod(now);
   // Prefer the latest closed/current live artifacts that the site uses — current week/month ids.
   const targets = [
     { label: "week", path: `live/rank/week/${weekPeriod}/repo/flow.json` },

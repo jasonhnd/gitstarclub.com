@@ -207,6 +207,16 @@ describe("CanonicalMeta", () => {
     expect(CanonicalMeta.parse(meta)).toEqual(meta);
   });
 
+  test("accepts optional generated_at watermark used by fold/bootstrap writers", () => {
+    const meta = {
+      seam_date: "2024-01-01",
+      schema_ver: 2,
+      folded_through: { month: "2024-05", week: "2024-W20" },
+      generated_at: "2026-06-02T14:32:57.214Z",
+    };
+    expect(CanonicalMeta.parse(meta)).toEqual(meta);
+  });
+
   test("rejects missing folded_through (required here, unlike Meta)", () => {
     expect(rejects(CanonicalMeta, { seam_date: "2024-01-01", schema_ver: 2 })).toBe(true);
   });
