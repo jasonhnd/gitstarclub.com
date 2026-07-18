@@ -220,20 +220,30 @@ blob://
 
 > **公开 JSON endpoint**：`/search-index`、`/repo-curve` 与静态 data export aliases 的 method/cache/status contract 见 [API.md](./API.md)；Blob 读取与物理布局仍以本节为准。
 
-### Known live-rank gap: `2026-W27`
+### Live-rank recovery: `2026-W27`
 
-During the `GITHUB_TOKEN` outage (**2026-06-30 → ~2026-07-12**, issue #280) daily/weekly live refresh failed, so **no `live/rank/week/2026-W27/**` shard was ever written**. After the token rotation, refresh resumed at W28+. Production therefore serves:
+During the `GITHUB_TOKEN` outage (**2026-06-30 → ~2026-07-12**, issue #280) daily/weekly live refresh failed, so no `live/rank/week/2026-W27/**` was written by cron, and `current_month` / pending never recorded **2026-06-29 … 2026-07-05** (ISO week W27).
 
-| Week | Live shard |
+**Backfill (landed):** `web/scripts/backfill-live-week.ts` rebuilt `live/rank/week/2026-W27/repo/flow.json` from [GH Archive](https://www.gharchive.org/) hourly `WatchEvent` rows for the tracked ≥10k set (Mon–Sun UTC).
+
+| Caveat | Detail |
 |---|---|
-| 2026-W26 | present |
-| **2026-W27** | **missing (404)** |
-| 2026-W28 | present |
-| 2026-W29+ | present |
+| Metric | **Gross** star additions (WatchEvent count), not GraphQL **net** deltas used by normal live cron |
+| Completeness | GH Archive `WatchEvent` volume in mid-2026 is **far lower** than 2024 samples for the same hour-of-day (~80× fewer in a spot check). Treat W27 ranks as **ordering best-effort / lower-bound**, not comparable in magnitude to W26/W28 live shards |
+| Scope | Top-20 flow only (same shape as live cron) |
+| Base ranks | Still absent under `views/<version>/rank/week/2026-W27/**` until July is frozen and fold advances `folded_through.week` past W27 (needs July pending) |
 
-This is a **chronicle continuity hole**, not a routing bug. Site navigation already omits weeks without rank views. Product release gates (`product-gates` CI job / `web/lib/integration/release-gates-live.ts`) treat `2026-W27` as a **documented exception** in `KNOWN_MISSING_LIVE_WEEKS`. Remove that allowlist entry only after a verified backfill lands (or after an explicit product decision that the week stays permanently unrecoverable without historical GraphQL rebuild).
+Re-run:
 
-Cross-dataset staleness (About / search base pointer / exports stuck on an old `views/latest` while live week/month advance) means the **managed refresh workflow** has not published successfully since the last base version — re-run `GET /api/workflows/refresh/start` (Bearer `CRON_SECRET`) after the code path that blocked publish is fixed, then re-check `views/latest.json` and `/data/exports/v1/latest/manifest.json`.
+```bash
+cd web
+# one day at a time (resumable state under $TMPDIR/gitstarclub-backfill-<week>/)
+bun run scripts/backfill-live-week.ts --week 2026-W27 --date 2026-06-29
+# …
+bun run scripts/backfill-live-week.ts --week 2026-W27 --finalize
+```
+
+`KNOWN_MISSING_LIVE_WEEKS` is empty after this backfill. Product gates expect `live/rank/week/2026-W27/repo/flow.json` **200**.
 
 ## Cron 调度
 
