@@ -49,7 +49,7 @@ describe("workflow checkpoints", () => {
     await markFailed("refresh-test-2", "2026-07-18T00:00:00.000Z", "startRun blew up");
 
     expect(release).toHaveBeenCalledWith("refresh-test-2", "failed");
-    expect(putView.mock.calls.map((c) => c[0])).toEqual([
+    expect(putView.mock.calls.map((c: unknown[]) => c[0])).toEqual([
       "ops/workflows/refresh-test-2/manifest.json",
       "ops/workflows/refresh-test-2/error.json",
     ]);
