@@ -93,3 +93,23 @@ Also touch both sides (auto-merge candidates): `.github/workflows/ci.yml`, `docs
 3. PR into **pre only**
 4. Ruleset update only after product-gates green once
 5. No production promotion
+
+## Conflict resolution decisions (Phase 2)
+
+| File | Decision |
+|------|----------|
+| `web/lib/contracts/canonical.ts` | **pre**: optional `generated_at` (same as main) with pre comment wording |
+| `web/lib/contracts/contracts.test.ts` | **pre**: fuller generated_at round-trip tests |
+| `web/lib/data/source.ts` | **pre**: bootstrap/managed dual pointer + `PUBLISHED_VIEWS_CACHE_TAG` + 60s SLA (supersedes main’s gen-2 tag alone) |
+| `web/lib/workflows/checkpoint.ts` | **pre**: fencing token + owned writes; re-claim with allowExistingRun is ownership revalidation |
+| `web/lib/workflows/lease.ts` | **pre**: 30m TTL, heartbeat, fencing, CAS-only release; **reject** main `forceWrite` |
+| `web/lib/workflows/lease.test.ts` | **pre** + added successor/overlap cases |
+| `web/lib/workflows/refresh.ts` | **pre**: preflight + fencingToken through steps |
+| `web/lib/workflows/steps/publish.ts` | **pre**: publication-core + `revalidateTag(..., { expire: 0 })` + layout revalidate |
+
+## Phase 3 follow-ups landed on recon branch
+
+- Live-only recovered weeks survive fold watermark (`getRank` fallback)
+- ISO W53 rollover + publication schedule grace for current period gates
+- Backfill: timeouts, body cancel, reject --date+--finalize
+- Lease concurrency tests for delayed old run / late release / overlap
