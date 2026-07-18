@@ -1,10 +1,10 @@
-import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
+import { BlobNotFoundError, BlobPreconditionFailedError, head, put } from "@vercel/blob";
 import { WorkflowLease } from "@/lib/contracts";
 import { requireBlobWriteToken } from "@/lib/runtime-config";
 
 const ACTIVE_PATH = "ops/workflows/active.json";
 const LEASE_TTL_MS = 12 * 60 * 60 * 1000;
-const MAX_CAS_ATTEMPTS = 3;
+const MAX_CAS_ATTEMPTS = 5;
 
 export type WorkflowLeaseSnapshot = {
   lease: WorkflowLease | null;
@@ -31,10 +31,6 @@ type ClaimArgs = {
   allowExistingRun?: boolean;
 };
 
-async function streamText(stream: ReadableStream<Uint8Array>): Promise<string> {
-  return new Response(stream).text();
-}
-
 function isBlobConflict(error: unknown): boolean {
   if (error instanceof BlobPreconditionFailedError) return true;
   if (!(error instanceof Error)) return false;
@@ -43,13 +39,39 @@ function isBlobConflict(error: unknown): boolean {
 }
 
 export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
+  /**
+   * Read lease state via the Blob control-plane APIs (head + authorized body fetch),
+   * not the public CDN edge. Public `get()` can return a body/etag pair that is up to
+   * cacheControlMaxAge (floor 60s) stale — enough to break CAS right after the start
+   * route writes a new lease.
+   */
   async read(): Promise<WorkflowLeaseSnapshot> {
-    const result = await get(ACTIVE_PATH, { access: "public", token: requireBlobWriteToken() });
-    if (!result) return { lease: null, etag: null };
-    if (result.statusCode !== 200 || !result.stream) throw new Error(`lease read ${ACTIVE_PATH} -> ${result.statusCode}`);
+    const token = requireBlobWriteToken();
+    let meta;
+    try {
+      meta = await head(ACTIVE_PATH, { token });
+    } catch (error) {
+      if (error instanceof BlobNotFoundError) return { lease: null, etag: null };
+      if (error instanceof Error && /not found|404/i.test(error.message)) return { lease: null, etag: null };
+      throw error;
+    }
+
+    // Bust any intermediate caches: head etag is authoritative for ifMatch CAS.
+    const url = new URL(meta.url);
+    url.searchParams.set("lease_bust", `${Date.now()}`);
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
+      cache: "no-store",
+    });
+    if (res.status === 404) return { lease: null, etag: null };
+    if (!res.ok) throw new Error(`lease read ${ACTIVE_PATH} -> ${res.status}`);
     return {
-      lease: WorkflowLease.parse(JSON.parse(await streamText(result.stream))),
-      etag: result.blob.etag,
+      lease: WorkflowLease.parse(JSON.parse(await res.text())),
+      etag: meta.etag,
     };
   }
 
@@ -62,6 +84,7 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
         allowOverwrite: false,
         addRandomSuffix: false,
         contentType: "application/json",
+        // Floor is 60s on Blob; keep minimum so stale edge copies age out ASAP.
         cacheControlMaxAge: 60,
       });
       return true;

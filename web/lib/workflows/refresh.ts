@@ -24,8 +24,11 @@ import { sendAlert } from "@/lib/observability/alert";
 export async function refreshWorkflow(runId: string) {
   "use workflow";
 
-  const startedAt = await startRun(runId);
+  // startedAt is only known after startRun; if startRun itself throws we still must
+  // release the route-held lease via markFailed so a 12h dead lease cannot form.
+  let startedAt: string | undefined;
   try {
+    startedAt = await startRun(runId);
     const whitelist = await refreshWhitelist(runId);
     const rename = await detectRenames(runId);
 
@@ -65,7 +68,7 @@ export async function refreshWorkflow(runId: string) {
     if (gc.error) await sendAlert({ pipeline: "workflow-refresh", title: "version gc failed", run_id: runId, step: "gc", error: gc.error });
     return { runId, ok: true, whitelist, rename, metadata, fold, recompute, aliases, validation, publish, gc };
   } catch (err) {
-    await markFailed(runId, startedAt, err instanceof Error ? err.message : String(err));
+    await markFailed(runId, startedAt ?? new Date().toISOString(), err instanceof Error ? err.message : String(err));
     throw err;
   }
 }
