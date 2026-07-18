@@ -228,3 +228,60 @@ jobs:
             web/playwright-report/
             web/test-results/
             web/release-metadata.json
+
+  # Product-level live gates (#286). Fail closed: real deployed /search-index,
+  # sync-run freshness, base publish age, export manifest age, live period
+  # continuity (with documented W27 gap). Does not use .env.local.
+  product-gates:
+    name: product-gates
+    needs: preview-e2e
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      IDENTITY_ORIGIN: ${{ github.event_name == 'push' && (github.ref_name == 'main' && 'https://gitstarclub.com' || 'https://pre.gitstarclub.com') || '' }}
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Resolve exact Vercel deployment
+        id: deployment
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun scripts/resolve-vercel-preview.ts
+      - name: Run live product release gates
+        env:
+          RELEASE_GATE_REQUIRE_LIVE: "1"
+          RELEASE_GATE_SITE: ${{ steps.deployment.outputs.url }}
+          # Public Blob store base (public-read). Override via repo variable when set.
+          RELEASE_GATE_BLOB_BASE: ${{ vars.BLOB_BASE_URL }}
+        run: |
+          if [ -z "${RELEASE_GATE_BLOB_BASE}" ]; then
+            # Default public production Blob base — not a secret (store is public).
+            export RELEASE_GATE_BLOB_BASE="https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com"
+          fi
+          echo "product-gates site=${RELEASE_GATE_SITE}"
+          echo "product-gates blob_host=$(node -e "console.log(new URL(process.env.RELEASE_GATE_BLOB_BASE).host)")"
+          bun test lib/integration/release-gates.test.ts lib/integration/release-gates-live.test.ts
+      - name: Write product gates summary
+        if: ${{ always() }}
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.url }}
+          TESTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          {
+            echo "## Product release gates (#286)"
+            echo
+            echo "- Tested commit: \`$TESTED_SHA\`"
+            echo "- Deployment URL: ${DEPLOYMENT_URL:-not resolved}"
+            echo "- Live checks: required (search-index, sync-runs, base pointer, exports, week continuity)"
+            echo "- Documented live gap: 2026-W27 (token outage window)"
+          } >> "$GITHUB_STEP_SUMMARY"

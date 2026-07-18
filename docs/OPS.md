@@ -287,6 +287,31 @@ preview inventory 不持有写锁，也不删除。执行模式会先取得与 m
 
 > **公开 JSON endpoint**：`/search-index`、`/repo-curve` 与静态 data export aliases 的 method/cache/status contract 见 [API.md](./API.md)；Blob 读取与物理布局仍以本节为准。
 
+### Live-rank recovery: `2026-W27`
+
+During the `GITHUB_TOKEN` outage (**2026-06-30 → ~2026-07-12**, issue #280) daily/weekly live refresh failed, so no `live/rank/week/2026-W27/**` was written by cron, and `current_month` / pending never recorded **2026-06-29 … 2026-07-05** (ISO week W27).
+
+**Backfill (landed):** `web/scripts/backfill-live-week.ts` rebuilt `live/rank/week/2026-W27/repo/flow.json` from [GH Archive](https://www.gharchive.org/) hourly `WatchEvent` rows for the tracked ≥10k set (Mon–Sun UTC).
+
+| Caveat | Detail |
+|---|---|
+| Metric | **Gross** star additions (WatchEvent count), not GraphQL **net** deltas used by normal live cron |
+| Completeness | GH Archive `WatchEvent` volume in mid-2026 is **far lower** than 2024 samples for the same hour-of-day (~80× fewer in a spot check). Treat W27 ranks as **ordering best-effort / lower-bound**, not comparable in magnitude to W26/W28 live shards |
+| Scope | Top-20 flow only (same shape as live cron) |
+| Base ranks | Still absent under `views/<version>/rank/week/2026-W27/**` until July is frozen and fold advances `folded_through.week` past W27 (needs July pending) |
+
+Re-run:
+
+```bash
+cd web
+# one day at a time (resumable state under $TMPDIR/gitstarclub-backfill-<week>/)
+bun run scripts/backfill-live-week.ts --week 2026-W27 --date 2026-06-29
+# …
+bun run scripts/backfill-live-week.ts --week 2026-W27 --finalize
+```
+
+`KNOWN_MISSING_LIVE_WEEKS` is empty after this backfill. Product gates expect `live/rank/week/2026-W27/repo/flow.json` **200**.
+
 ## Cron 调度
 
 `web/vercel.json` 声明 `crons[]`；Pro 计划 **100 job / 项目**、最小 1 次 / 分。三条 job：
