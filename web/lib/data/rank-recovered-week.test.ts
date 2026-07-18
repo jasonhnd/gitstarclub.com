@@ -1,9 +1,12 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import { selectRankPayload } from "./rank";
 
-// When fold watermark advances past a recovered live-only week (e.g. 2026-W27),
-// getRank must still resolve that week from the live shard if base is absent.
+// Recovered live-only weeks (e.g. 2026-W27 GH Archive WatchEvent backfill) must
+// remain readable after folded_through advances past them when base has no view.
+// Pure selection avoids mock.module on source/watermark — those mocks poison the
+// shared Bun process and broke source.test.ts / watermark.test.ts on CI.
 
-const livePayload = {
+const liveW27 = {
   meta: {
     window: "week" as const,
     period: "2026-W27",
@@ -14,45 +17,35 @@ const livePayload = {
   items: [{ rank: 1, id: 1, value: 10, prev_rank: null }],
 };
 
-let foldWeek = "2026-W26";
-const readView = mock(async (path: string, _schema: unknown, opts?: { live?: boolean; legacyPath?: string }) => {
-  if (opts?.live || opts?.legacyPath?.startsWith("live/")) {
-    if (path.includes("2026-W27") || opts?.legacyPath?.includes("2026-W27")) return livePayload;
-    return null;
-  }
-  // base rank path
-  return null;
-});
+const baseW27 = {
+  meta: { ...liveW27.meta, generated_at: "2026-07-20T00:00:00.000Z" },
+  items: [{ rank: 1, id: 2, value: 99, prev_rank: null }],
+};
 
-mock.module("./source", () => ({
-  readView,
-  DAILY_BASE_VIEW_OPTS: { base: true, versionTtlMs: 86_400_000 },
-  DAILY_BASE_VIEW_TTL_MS: 86_400_000,
-}));
-
-mock.module("./watermark", () => ({
-  isLiveOverlayPeriod: async (_w: string, period: string) => period > foldWeek,
-}));
-
-afterEach(() => {
-  readView.mockClear();
-  foldWeek = "2026-W26";
-});
-
-describe("recovered week durability", () => {
-  test("serves live W27 while fold watermark is still W26", async () => {
-    foldWeek = "2026-W26";
-    const { getRank } = await import(`./rank?w26=${Date.now()}`);
-    const rank = await getRank("week", "2026-W27", "repo", "flow");
-    expect(rank?.meta.period).toBe("2026-W27");
-    expect(rank?.items[0]?.value).toBe(10);
+describe("recovered week durability (selectRankPayload)", () => {
+  test("serves live W27 while the period is still a live overlay", () => {
+    expect(
+      selectRankPayload({ live: liveW27, base: null, isLiveOverlay: true }),
+    ).toEqual(liveW27);
   });
 
-  test("still serves live W27 after fold watermark advances past W27 when base is missing", async () => {
-    foldWeek = "2026-W28";
-    const { getRank } = await import(`./rank?w28=${Date.now()}`);
-    const rank = await getRank("week", "2026-W27", "repo", "flow");
-    expect(rank?.meta.period).toBe("2026-W27");
-    expect(rank?.items[0]?.id).toBe(1);
+  test("still serves live W27 after fold advances when base is missing", () => {
+    // fold watermark past W27 ⇒ isLiveOverlay=false; base absent ⇒ keep live.
+    expect(
+      selectRankPayload({ live: liveW27, base: null, isLiveOverlay: false }),
+    ).toEqual(liveW27);
+    expect(selectRankPayload({ live: liveW27, base: null, isLiveOverlay: false })?.meta.period).toBe(
+      "2026-W27",
+    );
+  });
+
+  test("prefers base once fold has materialised the period into base views", () => {
+    expect(
+      selectRankPayload({ live: liveW27, base: baseW27, isLiveOverlay: false }),
+    ).toEqual(baseW27);
+  });
+
+  test("returns null when neither live nor base exists", () => {
+    expect(selectRankPayload({ live: null, base: null, isLiveOverlay: false })).toBeNull();
   });
 });
