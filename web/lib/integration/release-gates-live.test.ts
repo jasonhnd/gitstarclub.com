@@ -34,8 +34,9 @@ describe("release-gates-live config", () => {
     expect(resolved.blobBase).toBe(DEFAULT_PUBLIC_BLOB_BASE);
   });
 
-  test("documents the W27 outage gap explicitly", () => {
-    expect(KNOWN_MISSING_LIVE_WEEKS).toContain("2026-W27");
+  test("W27 is no longer a documented missing live week after GH Archive backfill", () => {
+    expect(KNOWN_MISSING_LIVE_WEEKS).not.toContain("2026-W27");
+    // Continuity scan still includes the week itself as a period to check.
     const scanned = recentClosedWeeks(new Date("2026-07-15T00:00:00.000Z"), 4);
     expect(scanned).toContain("2026-W27");
   });

@@ -13,9 +13,10 @@ export const DEFAULT_PUBLIC_BLOB_BASE = "https://cdv7ejjwmzbbdj8w.public.blob.ve
 
 /**
  * Live weeks known to be missing after the 2026-06-30 token outage window.
- * Remove entries only after a verified backfill lands in Blob.
+ * Empty after the 2026-W27 GH Archive WatchEvent backfill (see docs/OPS.md).
+ * Re-add only if a verified hole reappears.
  */
-export const KNOWN_MISSING_LIVE_WEEKS = ["2026-W27"] as const;
+export const KNOWN_MISSING_LIVE_WEEKS = [] as const;
 
 export const SYNC_RUN_MAX_AGE_MS = 4 * 24 * 60 * 60 * 1000;
 export const BASE_PUBLISH_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
