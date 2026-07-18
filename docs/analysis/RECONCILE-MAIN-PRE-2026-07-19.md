@@ -1,3 +1,11 @@
+---
+owner: release engineering
+status: active
+last_reviewed: 2026-07-19
+source_of_truth_for:
+  - main/pre reconciliation inventory and conflict decisions for release-line recovery
+---
+
 # Inventory: main ↔ pre reconciliation (2026-07-19)
 
 ## SHAs (after fetch)
