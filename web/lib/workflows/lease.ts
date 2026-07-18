@@ -15,6 +15,8 @@ export type WorkflowLeaseStore = {
   read(): Promise<WorkflowLeaseSnapshot>;
   create(lease: WorkflowLease): Promise<boolean>;
   compareAndSet(etag: string, lease: WorkflowLease): Promise<boolean>;
+  /** Unconditional overwrite used only as a last-resort release fallback. */
+  forceWrite?(lease: WorkflowLease): Promise<void>;
 };
 
 export type WorkflowLeaseClaim =
@@ -112,6 +114,18 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
       throw error;
     }
   }
+
+  async forceWrite(lease: WorkflowLease): Promise<void> {
+    WorkflowLease.parse(lease);
+    await put(ACTIVE_PATH, JSON.stringify(lease), {
+      access: "public",
+      token: requireBlobWriteToken(),
+      allowOverwrite: true,
+      addRandomSuffix: false,
+      contentType: "application/json",
+      cacheControlMaxAge: 60,
+    });
+  }
 }
 
 export const blobWorkflowLeaseStore = new BlobWorkflowLeaseStore();
@@ -179,5 +193,21 @@ export async function releaseWorkflowLease(
     });
     if (await store.compareAndSet(current.etag, lease)) return true;
   }
-  return false;
+
+  // Last resort: if we still own the lease after CAS thrash (public-edge etag races),
+  // force-write the terminal status so the next cron is not blocked for the full TTL.
+  const current = await store.read();
+  if (!current.lease || current.lease.run_id !== runId) return false;
+  if (current.lease.status === status && Date.parse(current.lease.expires_at) <= Date.parse(releasedAt)) {
+    return true;
+  }
+  if (!store.forceWrite) return false;
+  const lease = WorkflowLease.parse({
+    ...current.lease,
+    status,
+    acquired_at: releasedAt,
+    expires_at: releasedAt,
+  });
+  await store.forceWrite(lease);
+  return true;
 }
