@@ -23,6 +23,9 @@ export const CanonicalMeta = z.object({
     month: MonthPeriod,
     week: WeekPeriod,
   }).strict(),
+  // Writers (bootstrap / fold) emit this watermark. Optional so older generations
+  // without the field remain readable; .strict() would otherwise reject live Blob meta.
+  generated_at: TimestampStr.optional(),
 }).strict();
 export type CanonicalMeta = z.infer<typeof CanonicalMeta>;
 
