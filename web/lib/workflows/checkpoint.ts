@@ -1,7 +1,7 @@
 import { putView } from "@/lib/data/write";
 import { WorkflowManifest } from "@/lib/contracts";
 import { recordHealth, sendAlert } from "@/lib/observability/alert";
-import { claimWorkflowLease, releaseWorkflowLease } from "@/lib/workflows/lease";
+import { releaseWorkflowLease } from "@/lib/workflows/lease";
 
 // Business-readable run checkpoints (ops/workflows/<run_id>/...). The Workflow SDK
 // already persists step results + observability; these are the operator-facing
@@ -10,20 +10,18 @@ import { claimWorkflowLease, releaseWorkflowLease } from "@/lib/workflows/lease"
 
 const STEPS = ["whitelist", "rename", "metadata", "fold", "recompute", "buildAliases", "validate", "publish", "gc"];
 
-/** Write the initial manifest (status=running); returns started_at for later updates. */
+/**
+ * Write the initial manifest (status=running); returns started_at for later updates.
+ *
+ * IMPORTANT: do NOT re-claim the Blob lease here. The HTTP start route already
+ * acquired ops/workflows/active.json for this runId. A second claim races the
+ * public Blob edge cache (cacheControlMaxAge floor is 60s) and fails with
+ * "failed to acquire workflow lease after concurrent updates" — leaving the
+ * route-held lease stuck for the full TTL while no ops artifacts are written.
+ */
 export async function startRun(runId: string): Promise<string> {
   "use step";
   const startedAt = new Date().toISOString();
-  const claim = await claimWorkflowLease({
-    runId,
-    acquiredAt: startedAt,
-    idempotencyKey: `run:${runId}`,
-    trigger: "workflow",
-    allowExistingRun: true,
-  });
-  if (claim.lease.run_id !== runId || claim.status === "rejected") {
-    throw new Error(`workflow ${claim.lease.run_id} is already running until ${claim.lease.expires_at}`);
-  }
   const manifest = { run_id: runId, started_at: startedAt, status: "running", steps: STEPS, published_version: null };
   WorkflowManifest.parse(manifest);
   await putView(`ops/workflows/${runId}/manifest.json`, manifest);
