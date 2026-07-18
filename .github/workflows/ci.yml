@@ -161,7 +161,8 @@ jobs:
     name: preview-e2e
     needs: production-build
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Allow long Vercel preview builds (often 9–14 min) plus Playwright suites.
+    timeout-minutes: 40
     env:
       IDENTITY_ORIGIN: ${{ github.event_name == 'push' && (github.ref_name == 'main' && 'https://gitstarclub.com' || 'https://pre.gitstarclub.com') || '' }}
     defaults:

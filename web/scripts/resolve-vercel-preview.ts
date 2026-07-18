@@ -23,7 +23,10 @@ async function main(): Promise<void> {
     discovery.kind === "check-run"
       ? { repository: required("GITHUB_REPOSITORY"), githubToken: required("GITHUB_TOKEN") }
       : null;
-  const attempts = 60;
+  // Full Next.js preview builds commonly take 9–14 minutes (3500+ static pages
+  // + Blob reads). 10 minutes was too tight and caused false preview-e2e timeouts
+  // while Vercel was still building a healthy deployment.
+  const attempts = 120;
   const delayMs = 10_000;
 
   let previewHost: string | null = null;
