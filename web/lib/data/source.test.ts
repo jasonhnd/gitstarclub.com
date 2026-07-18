@@ -50,6 +50,7 @@ const makeRes = (route: FakeRoute): Response =>
   ({
     ok: (route.status ?? 200) >= 200 && (route.status ?? 200) < 300,
     status: route.status ?? 200,
+    headers: new Headers(),
     json: async () => route.json,
   }) as unknown as Response;
 
@@ -412,10 +413,30 @@ describe("readView — non-base (flat) reads", () => {
 
     await expect(readView("live/stalled.json", Doc, { timeoutMs: 5 })).rejects.toThrow("view fetch live/stalled.json -> timeout after 5ms");
 
-    expect(fetchCalls).toHaveLength(3);
-    expect(signals).toHaveLength(3);
+    // READ_RETRIES + 1 attempts (currently 4 + 1).
+    expect(fetchCalls).toHaveLength(5);
+    expect(signals).toHaveLength(5);
     expect(signals.every((signal) => signal.aborted)).toBe(true);
   });
+
+  test(
+    "retries Blob WAF 403 then treats persistent 403 as absent (null)",
+    async () => {
+      advancePastTtl();
+      let hits = 0;
+      globalThis.fetch = mock((input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input.toString();
+        fetchCalls.push(url);
+        hits += 1;
+        return Promise.resolve(makeRes({ status: 403, json: { error: "Forbidden" } }));
+      }) as unknown as typeof fetch;
+
+      expect(await readView("entity/repo/1.json", Doc)).toBeNull();
+      // All retry attempts were used before giving up as absent.
+      expect(hits).toBe(5);
+    },
+    { timeout: 20_000 },
+  );
 });
 
 describe("readView — atomic live generation resolution", () => {

@@ -20,21 +20,59 @@ export const getRankBaseDaily = cache((window: Window, period: string, dim: Dim,
   readView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList, DAILY_BASE_VIEW_OPTS),
 );
 
+async function readLiveRank(window: "week" | "month", period: string, dim: Dim, metric: Metric, versionTtlMs?: number) {
+  const path = `rank/${window}/${period}/${dim}/${metric}.json`;
+  return readView(path, RankList, {
+    live: true,
+    legacyPath: `live/${path}`,
+    bust: today(),
+    ...(versionTtlMs != null ? { liveTtlMs: versionTtlMs } : {}),
+  });
+}
+
+/**
+ * Prefer live overlay while the period is still open relative to folded_through.
+ * If the fold watermark has advanced but base still has no view (e.g. 2026-W27
+ * GH Archive recovery with no pending fold input), keep serving the live shard
+ * so recovered weeks do not 404 after July freeze.
+ *
+ * Pure selection is exported for unit tests so recovered-week durability does not
+ * require mock.module on source/watermark (those mocks leak across Bun's process).
+ */
+export function selectRankPayload<T>(args: {
+  live: T | null | undefined;
+  base: T | null | undefined;
+  isLiveOverlay: boolean;
+}): T | null {
+  const { live, base, isLiveOverlay } = args;
+  if (live && isLiveOverlay) return live;
+  if (live && !base) return live;
+  return base ?? null;
+}
+
 export const getRank = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
   const liveWindow = window === "month" || window === "week" ? window : null;
-  if (liveWindow && hasLiveRank(window, dim, metric) && (await isLiveOverlayPeriod(liveWindow, period))) {
-    const path = `rank/${window}/${period}/${dim}/${metric}.json`;
-    const live = await readView(path, RankList, { live: true, legacyPath: `live/${path}`, bust: today() });
-    if (live) return live;
+  if (liveWindow && hasLiveRank(window, dim, metric)) {
+    const live = await readLiveRank(liveWindow, period, dim, metric);
+    if (live) {
+      const isLiveOverlay = await isLiveOverlayPeriod(liveWindow, period);
+      if (isLiveOverlay) return live;
+      const base = await getRankBase(window, period, dim, metric);
+      return selectRankPayload({ live, base, isLiveOverlay: false });
+    }
   }
   return getRankBase(window, period, dim, metric);
 });
 export const getRankDaily = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
   const liveWindow = window === "month" || window === "week" ? window : null;
-  if (liveWindow && hasLiveRank(window, dim, metric) && (await isLiveOverlayPeriod(liveWindow, period, DAILY_BASE_VIEW_TTL_MS))) {
-    const path = `rank/${window}/${period}/${dim}/${metric}.json`;
-    const live = await readView(path, RankList, { live: true, legacyPath: `live/${path}`, bust: today() });
-    if (live) return live;
+  if (liveWindow && hasLiveRank(window, dim, metric)) {
+    const live = await readLiveRank(liveWindow, period, dim, metric, DAILY_BASE_VIEW_TTL_MS);
+    if (live) {
+      const isLiveOverlay = await isLiveOverlayPeriod(liveWindow, period, DAILY_BASE_VIEW_TTL_MS);
+      if (isLiveOverlay) return live;
+      const base = await getRankBaseDaily(window, period, dim, metric);
+      return selectRankPayload({ live, base, isLiveOverlay: false });
+    }
   }
   return getRankBaseDaily(window, period, dim, metric);
 });
