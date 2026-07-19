@@ -160,8 +160,8 @@ is only just above the WCAG AA threshold for normal text.
 
 ## Typography
 
-The baseline font families are loaded in `web/app/layout.tsx` at commit
-`689605c` and mapped in `globals.css`.
+The baseline font families are loaded in `web/app/_shell/RootShell.tsx` and
+mapped in `web/app/globals.css`.
 
 | Role | Baseline |
 |---|---|

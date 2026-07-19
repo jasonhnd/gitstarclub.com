@@ -23,8 +23,9 @@ export const CanonicalMeta = z.object({
     month: MonthPeriod,
     week: WeekPeriod,
   }).strict(),
-  // Writers (bootstrap / fold) emit this watermark. Optional so older generations
-  // without the field remain readable; .strict() would otherwise reject live Blob meta.
+  // Active bootstrap and fold writers always emit this watermark. Keep it
+  // optional while legacy canonical generations without the field remain
+  // readable during rollout.
   generated_at: TimestampStr.optional(),
 }).strict();
 export type CanonicalMeta = z.infer<typeof CanonicalMeta>;
@@ -54,6 +55,10 @@ export const ReposShardEntry = z.object({
   topics: z.array(SafeText).optional(),
   created_at: z.union([DateStr, TimestampStr]).optional(),
   current_stars: NonNegativeInt,
+  // Omitted only by pre-contract bootstrap shards. Every managed refresh
+  // rewrites this explicitly so active polling and historical retention are
+  // separate states instead of being inferred from row presence.
+  active: z.boolean().optional(),
   is_archived: z.boolean().optional(),
   crossed_10k: DateStr.nullable().optional(),
   crossed_50k: DateStr.nullable().optional(),

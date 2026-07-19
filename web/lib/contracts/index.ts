@@ -9,3 +9,4 @@ export * from "./workflow";
 export * from "./search";
 export * from "./compare";
 export * from "./categories";
+export * from "./observability";

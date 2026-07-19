@@ -1,10 +1,18 @@
-import { BlobNotFoundError, BlobPreconditionFailedError, head, put } from "@vercel/blob";
+import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
 import { WorkflowLease } from "@/lib/contracts";
 import { requireBlobWriteToken } from "@/lib/runtime-config";
 
 const ACTIVE_PATH = "ops/workflows/active.json";
-const LEASE_TTL_MS = 12 * 60 * 60 * 1000;
-const MAX_CAS_ATTEMPTS = 5;
+export const LEASE_TTL_MS = 30 * 60 * 1000;
+export const LEASE_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
+const MAX_CAS_ATTEMPTS = 3;
+
+export class WorkflowLeaseOwnershipError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkflowLeaseOwnershipError";
+  }
+}
 
 export type WorkflowLeaseSnapshot = {
   lease: WorkflowLease | null;
@@ -15,8 +23,6 @@ export type WorkflowLeaseStore = {
   read(): Promise<WorkflowLeaseSnapshot>;
   create(lease: WorkflowLease): Promise<boolean>;
   compareAndSet(etag: string, lease: WorkflowLease): Promise<boolean>;
-  /** Unconditional overwrite used only as a last-resort release fallback. */
-  forceWrite?(lease: WorkflowLease): Promise<void>;
 };
 
 export type WorkflowLeaseClaim =
@@ -33,6 +39,15 @@ type ClaimArgs = {
   allowExistingRun?: boolean;
 };
 
+export type WorkflowOwnership = {
+  runId: string;
+  fencingToken: number;
+};
+
+async function streamText(stream: ReadableStream<Uint8Array>): Promise<string> {
+  return new Response(stream).text();
+}
+
 function isBlobConflict(error: unknown): boolean {
   if (error instanceof BlobPreconditionFailedError) return true;
   if (!(error instanceof Error)) return false;
@@ -41,39 +56,13 @@ function isBlobConflict(error: unknown): boolean {
 }
 
 export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
-  /**
-   * Read lease state via the Blob control-plane APIs (head + authorized body fetch),
-   * not the public CDN edge. Public `get()` can return a body/etag pair that is up to
-   * cacheControlMaxAge (floor 60s) stale — enough to break CAS right after the start
-   * route writes a new lease.
-   */
   async read(): Promise<WorkflowLeaseSnapshot> {
-    const token = requireBlobWriteToken();
-    let meta;
-    try {
-      meta = await head(ACTIVE_PATH, { token });
-    } catch (error) {
-      if (error instanceof BlobNotFoundError) return { lease: null, etag: null };
-      if (error instanceof Error && /not found|404/i.test(error.message)) return { lease: null, etag: null };
-      throw error;
-    }
-
-    // Bust any intermediate caches: head etag is authoritative for ifMatch CAS.
-    const url = new URL(meta.url);
-    url.searchParams.set("lease_bust", `${Date.now()}`);
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
-      },
-      cache: "no-store",
-    });
-    if (res.status === 404) return { lease: null, etag: null };
-    if (!res.ok) throw new Error(`lease read ${ACTIVE_PATH} -> ${res.status}`);
+    const result = await get(ACTIVE_PATH, { access: "public", token: requireBlobWriteToken() });
+    if (!result) return { lease: null, etag: null };
+    if (result.statusCode !== 200 || !result.stream) throw new Error(`lease read ${ACTIVE_PATH} -> ${result.statusCode}`);
     return {
-      lease: WorkflowLease.parse(JSON.parse(await res.text())),
-      etag: meta.etag,
+      lease: WorkflowLease.parse(JSON.parse(await streamText(result.stream))),
+      etag: result.blob.etag,
     };
   }
 
@@ -86,7 +75,6 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
         allowOverwrite: false,
         addRandomSuffix: false,
         contentType: "application/json",
-        // Floor is 60s on Blob; keep minimum so stale edge copies age out ASAP.
         cacheControlMaxAge: 60,
       });
       return true;
@@ -114,29 +102,18 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
       throw error;
     }
   }
-
-  async forceWrite(lease: WorkflowLease): Promise<void> {
-    WorkflowLease.parse(lease);
-    await put(ACTIVE_PATH, JSON.stringify(lease), {
-      access: "public",
-      token: requireBlobWriteToken(),
-      allowOverwrite: true,
-      addRandomSuffix: false,
-      contentType: "application/json",
-      cacheControlMaxAge: 60,
-    });
-  }
 }
 
 export const blobWorkflowLeaseStore = new BlobWorkflowLeaseStore();
 
-export function workflowLease(args: ClaimArgs): WorkflowLease {
+export function workflowLease(args: ClaimArgs, fencingToken = 1): WorkflowLease {
   const now = args.now ?? Date.parse(args.acquiredAt);
   const lease = {
     run_id: args.runId,
     status: "running",
     acquired_at: args.acquiredAt,
     expires_at: new Date(now + LEASE_TTL_MS).toISOString(),
+    fencing_token: fencingToken,
     idempotency_key: args.idempotencyKey,
     trigger: args.trigger,
   };
@@ -145,12 +122,12 @@ export function workflowLease(args: ClaimArgs): WorkflowLease {
 
 export async function claimWorkflowLease(args: ClaimArgs, store: WorkflowLeaseStore = blobWorkflowLeaseStore): Promise<WorkflowLeaseClaim> {
   const now = args.now ?? Date.parse(args.acquiredAt);
-  const next = workflowLease({ ...args, now });
 
   for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
     const current = await store.read();
     const active = current.lease;
     if (!active) {
+      const next = workflowLease({ ...args, now }, 1);
       if (await store.create(next)) return { status: "acquired", lease: next };
       continue;
     }
@@ -163,6 +140,7 @@ export async function claimWorkflowLease(args: ClaimArgs, store: WorkflowLeaseSt
     if (running) return { status: "rejected", lease: active };
 
     if (!current.etag) throw new Error("active workflow lease is missing an ETag");
+    const next = workflowLease({ ...args, now }, active.fencing_token + 1);
     if (await store.compareAndSet(current.etag, next)) return { status: "acquired", lease: next };
   }
 
@@ -175,15 +153,51 @@ export async function claimWorkflowLease(args: ClaimArgs, store: WorkflowLeaseSt
   throw new Error("failed to acquire workflow lease after concurrent updates");
 }
 
+/**
+ * Renew a running lease while proving both its run id and fencing generation.
+ * Every protected mutation calls this immediately before writing.  A run that
+ * has expired or been superseded fails closed instead of resuming stale work.
+ */
+export async function renewWorkflowLease(
+  runId: string,
+  fencingToken: number,
+  store: WorkflowLeaseStore = blobWorkflowLeaseStore,
+  renewedAt = new Date().toISOString(),
+): Promise<WorkflowLease> {
+  const now = Date.parse(renewedAt);
+  for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
+    const current = await store.read();
+    const active = current.lease;
+    if (!active || active.status !== "running" || active.run_id !== runId || active.fencing_token !== fencingToken) {
+      throw new WorkflowLeaseOwnershipError(`workflow ${runId} no longer owns fencing token ${fencingToken}`);
+    }
+    if (Date.parse(active.expires_at) <= now) {
+      throw new WorkflowLeaseOwnershipError(`workflow ${runId} lease expired at ${active.expires_at}`);
+    }
+    if (!current.etag) throw new Error("active workflow lease is missing an ETag");
+    const renewed = WorkflowLease.parse({
+      ...active,
+      expires_at: new Date(now + LEASE_TTL_MS).toISOString(),
+    });
+    if (await store.compareAndSet(current.etag, renewed)) return renewed;
+  }
+  throw new WorkflowLeaseOwnershipError(`workflow ${runId} lost ownership while renewing fencing token ${fencingToken}`);
+}
+
 export async function releaseWorkflowLease(
   runId: string,
   status: "published" | "failed",
   store: WorkflowLeaseStore = blobWorkflowLeaseStore,
   releasedAt = new Date().toISOString(),
+  fencingToken?: number,
 ): Promise<boolean> {
   for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
     const current = await store.read();
-    if (!current.lease || current.lease.run_id !== runId) return false;
+    if (
+      !current.lease ||
+      current.lease.run_id !== runId ||
+      (fencingToken !== undefined && current.lease.fencing_token !== fencingToken)
+    ) return false;
     if (!current.etag) throw new Error("active workflow lease is missing an ETag");
     const lease = WorkflowLease.parse({
       ...current.lease,
@@ -193,21 +207,5 @@ export async function releaseWorkflowLease(
     });
     if (await store.compareAndSet(current.etag, lease)) return true;
   }
-
-  // Last resort: if we still own the lease after CAS thrash (public-edge etag races),
-  // force-write the terminal status so the next cron is not blocked for the full TTL.
-  const current = await store.read();
-  if (!current.lease || current.lease.run_id !== runId) return false;
-  if (current.lease.status === status && Date.parse(current.lease.expires_at) <= Date.parse(releasedAt)) {
-    return true;
-  }
-  if (!store.forceWrite) return false;
-  const lease = WorkflowLease.parse({
-    ...current.lease,
-    status,
-    acquired_at: releasedAt,
-    expires_at: releasedAt,
-  });
-  await store.forceWrite(lease);
-  return true;
+  return false;
 }

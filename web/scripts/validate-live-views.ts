@@ -5,7 +5,7 @@
 
 import { fileURLToPath } from "node:url";
 import type { ZodType } from "zod";
-import { CurrentMonth, HotSnapshot } from "../lib/contracts/index";
+import { CurrentMonth, HotSnapshot, LiveGenerationPointer } from "../lib/contracts/index";
 import type { RankItem } from "../lib/contracts/index";
 import { loadWebEnvFiles, warnEnvFileDiagnostic } from "./lib/env";
 
@@ -210,12 +210,29 @@ async function checkView<T>(
   };
 }
 
+async function resolveLiveRoot(base: URL, bust: string): Promise<{ root: string; generation: string | null; legacy: boolean }> {
+  const response = await fetch(viewUrl(base, "live/latest.json", bust), {
+    cache: "no-store",
+    headers: { accept: "application/json" },
+  });
+  if (response.status === 404) return { root: "", generation: null, legacy: true };
+  if (!response.ok) throw new Error(`live/latest.json -> HTTP ${response.status}`);
+  const pointer = LiveGenerationPointer.parse(await response.json());
+  if (!pointer.generation) return { root: "", generation: null, legacy: true };
+  return {
+    root: `live/generations/${pointer.generation}/`,
+    generation: pointer.generation,
+    legacy: false,
+  };
+}
+
 async function main(): Promise<void> {
   const bust = parseArgs(process.argv.slice(2));
   const { base, envKey } = resolveBlobBase();
+  const live = await resolveLiveRoot(base, bust);
 
   const views = await Promise.all([
-    checkView(base, bust, "current_month.json", CurrentMonth, (data) => ({
+    checkView(base, bust, `${live.root}current_month.json`, CurrentMonth, (data) => ({
       month: data.month,
       updated: data.updated,
       daily_total_days: data.daily_totals.length,
@@ -224,8 +241,9 @@ async function main(): Promise<void> {
       current_stars_count: Object.keys(data.current_stars).length,
       current_stars_top: topCurrentStars(data.current_stars),
     })),
-    checkView(base, bust, "hot-snapshot.json", HotSnapshot, (data) => ({
+    checkView(base, bust, `${live.root}hot-snapshot.json`, HotSnapshot, (data) => ({
       generated_at: data.generated_at,
+      freshness: data.freshness ?? null,
       current_month_flow_top: topRankItems(data.current_month.flow),
       current_month_stock_top: topRankItems(data.current_month.stock),
       current_year_flow_top: topRankItems(data.current_year.flow),
@@ -239,6 +257,8 @@ async function main(): Promise<void> {
     ok: views.every((view) => view.ok),
     bust,
     blob_base_env: envKey,
+    generation: live.generation,
+    legacy_layout: live.legacy,
     views,
   };
 

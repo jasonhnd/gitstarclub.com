@@ -1,13 +1,21 @@
-// Backfill step 6 — upload all precomputed views (+ canonical parquet) to Vercel Blob.
-// Mirrors data/views/** to the Blob layout in docs/OPS.md (public store, stable paths, overwrite).
-// Throttled to stay under the Blob write cap (75/s) and retries transient failures.
-// Needs env BLOB_READ_WRITE_TOKEN (put it in pipeline/.env or pass inline). Prereq: step 05.
-// Run (from pipeline/):  node backfill/06-upload.mjs        (real upload)
-//                        node backfill/06-upload.mjs --dry-run   (preview, no token needed)
+// Backfill step 6 — validate and stage the complete base-view phase under an
+// immutable bootstrap generation. This step NEVER updates a production path or
+// pointer. Step 07 stages canonical shards, validates both phases, and performs
+// the one-file bootstrap/latest.json commit.
+//
+// Preview:
+//   node backfill/06-upload.mjs --generation bootstrap-2026-07-17 --dry-run
+// Stage/resume:
+//   node backfill/06-upload.mjs --generation bootstrap-2026-07-17
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { put } from "@vercel/blob";
+import { createBlobBootstrapStore } from "../lib/blob-bootstrap-store.mjs";
+import {
+  bootstrapGenerationPrefix,
+  stageBootstrapPhase,
+} from "../lib/bootstrap-publication.mjs";
 
 try {
   process.loadEnvFile(fileURLToPath(new URL("../.env", import.meta.url)));
@@ -18,24 +26,29 @@ try {
 const dataDir = fileURLToPath(new URL("../data", import.meta.url));
 const VIEWS = `${dataDir}/views`;
 const PARQUET = `${dataDir}/star_daily.parquet`;
-
-const DRY = process.argv.includes("--dry-run");
+const VALIDATE_VIEWS = fileURLToPath(new URL("../../web/scripts/validate-views.ts", import.meta.url));
+const args = process.argv.slice(2);
+const generationIndex = args.indexOf("--generation");
+const generation = generationIndex >= 0 ? args[generationIndex + 1] : undefined;
+const DRY = args.includes("--dry-run");
 const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-if (!DRY && !TOKEN)
-  throw new Error("BLOB_READ_WRITE_TOKEN not set — add it to pipeline/.env or pass inline (or use --dry-run to preview).");
 
-const MAX_PER_SEC = 60; // OPS Blob write cap is 75/s; stay safely under
+if (!generation) throw new Error("--generation bootstrap-<specific-id> is required for preview, staging, and resume");
+const generationPrefix = bootstrapGenerationPrefix(generation);
+if (!DRY && !TOKEN) {
+  throw new Error("BLOB_READ_WRITE_TOKEN not set — add it to pipeline/.env or use --dry-run");
+}
+
+const MAX_PER_SEC = 60;
 const CONCURRENCY = 16;
 const RETRIES = 4;
-const CACHE_MAX_AGE = 300; // overwritten paths must repropagate; cron views use ?v= cache-bust
-
 const CONTENT_TYPE = { json: "application/json", parquet: "application/vnd.apache.parquet" };
 const ctOf = (path) => CONTENT_TYPE[path.slice(path.lastIndexOf(".") + 1)] ?? "application/octet-stream";
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function walk(dir) {
   const out = [];
-  for (const name of readdirSync(dir)) {
+  for (const name of readdirSync(dir).sort()) {
     const full = `${dir}/${name}`;
     if (statSync(full).isDirectory()) out.push(...walk(full));
     else out.push(full);
@@ -43,7 +56,12 @@ function walk(dir) {
   return out;
 }
 
-// rate gate: space out put() starts to ~MAX_PER_SEC regardless of concurrency
+function validateViews() {
+  const result = spawnSync("bun", [VALIDATE_VIEWS, VIEWS], { stdio: "inherit" });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`view validation failed with exit ${result.status}`);
+}
+
 let nextStart = 0;
 async function gate() {
   const now = Date.now();
@@ -52,67 +70,69 @@ async function gate() {
   if (wait > 0) await sleep(wait);
 }
 
-async function uploadOne(item) {
-  const body = readFileSync(item.abs);
-  for (let attempt = 1; ; attempt++) {
-    await gate();
-    try {
-      await put(item.rel, body, {
-        access: "public",
-        token: TOKEN,
-        allowOverwrite: true,
-        addRandomSuffix: false,
-        contentType: ctOf(item.rel),
-        cacheControlMaxAge: CACHE_MAX_AGE,
-      });
-      return body.length;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (attempt > RETRIES) throw new Error(`put ${item.rel} failed after ${RETRIES} retries: ${message}`);
-      await sleep(500 * 2 ** (attempt - 1));
-    }
-  }
+function withUploadRetry(store) {
+  return {
+    read: (path) => store.read(path),
+    put: (path, body, contentType) => store.put(path, body, contentType),
+    async create(path, body, contentType) {
+      for (let attempt = 1; ; attempt++) {
+        await gate();
+        try {
+          return await store.create(path, body, contentType);
+        } catch (error) {
+          if (attempt > RETRIES) throw error;
+          await sleep(500 * 2 ** (attempt - 1));
+        }
+      }
+    },
+  };
 }
 
-async function runPool(items) {
-  let i = 0;
-  let done = 0;
-  let bytes = 0;
-  async function worker() {
-    while (i < items.length) {
-      const item = items[i++];
-      bytes += await uploadOne(item);
-      if (++done % 500 === 0) console.log(`  uploaded ${done}/${items.length} (${(bytes / 1e6).toFixed(1)} MB)`);
-    }
-  }
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  return { done, bytes };
-}
-
-// --- build upload list: all views (paths relative to VIEWS) + canonical parquet ---
 try {
   statSync(VIEWS);
 } catch {
-  throw new Error(`${VIEWS} not found — run 05-precompute first.`);
-}
-const items = walk(VIEWS).map((abs) => ({ abs, rel: abs.slice(VIEWS.length + 1).replaceAll("\\", "/") }));
-try {
-  if (statSync(PARQUET).isFile()) items.push({ abs: PARQUET, rel: "canonical/star_daily.parquet" });
-} catch {
-  console.warn("note: data/star_daily.parquet missing — skipping canonical upload.");
+  throw new Error(`${VIEWS} not found — run 05-precompute first`);
 }
 
-const totalBytes = items.reduce((s, it) => s + statSync(it.abs).size, 0);
-console.log(`upload: ${items.length} objects, ${(totalBytes / 1e6).toFixed(1)} MB → Vercel Blob (public, ≤${MAX_PER_SEC}/s)`);
+const items = walk(VIEWS).map((abs) => {
+  const rel = abs.slice(VIEWS.length + 1).replaceAll("\\", "/");
+  return { path: `views/${rel}`, body: readFileSync(abs), contentType: ctOf(rel) };
+});
+try {
+  if (statSync(PARQUET).isFile()) {
+    items.push({
+      path: "canonical/star_daily.parquet",
+      body: readFileSync(PARQUET),
+      contentType: "application/vnd.apache.parquet",
+    });
+  }
+} catch {
+  console.warn("note: data/star_daily.parquet missing — bootstrap phase will not contain it");
+}
+
+const totalBytes = items.reduce((sum, item) => sum + item.body.byteLength, 0);
+console.log(`bootstrap base: generation=${generation} objects=${items.length} bytes=${totalBytes}`);
+console.log(`staging prefix: ${generationPrefix}/ (immutable; production pointer unchanged)`);
+validateViews();
 
 if (DRY) {
-  const sample = items.filter((it) => /^(meta\.json|lookup|canonical|rank\/all-time|heatmap)/.test(it.rel)).slice(0, 8);
-  for (const it of sample) console.log(`  e.g. ${it.rel}`);
-  console.log("dry-run: nothing uploaded. Set BLOB_READ_WRITE_TOKEN and run without --dry-run.");
+  for (const item of items.slice(0, 8)) console.log(`  ${item.path} (${item.body.byteLength} bytes)`);
+  console.log("dry-run: validation passed; nothing uploaded and no pointer changed");
   process.exit(0);
 }
 
-const t0 = Date.now();
-const { done, bytes } = await runPool(items);
-console.log(`done: ${done} objects, ${(bytes / 1e6).toFixed(1)} MB in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
-process.exit(0);
+const store = withUploadRetry(createBlobBootstrapStore(TOKEN));
+const result = await stageBootstrapPhase({
+  generation,
+  phase: "base",
+  items,
+  store,
+  concurrency: CONCURRENCY,
+  onProgress: ({ completed, total }) => {
+    if (completed % 500 === 0 || completed === total) console.log(`  staged/verified ${completed}/${total}`);
+  },
+});
+console.log(
+  `base ${result.status}: objects=${result.manifest.object_count} bytes=${result.manifest.total_bytes} created=${result.created} reused=${result.reused}`,
+);
+console.log(`next: run 07-export-v2.mjs with --generation ${generation} to validate and commit`);

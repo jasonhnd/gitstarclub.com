@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-const root = process.cwd();
 const requiredDocMetadataFields = [
   "owner",
   "status",
@@ -23,7 +23,7 @@ const ignoredDirs = new Set([
   "node_modules",
 ]);
 
-function listMarkdownFiles(dir) {
+export function listMarkdownFiles(dir) {
   const entries = readdirSync(dir, { withFileTypes: true });
   const files = [];
 
@@ -50,11 +50,11 @@ function closingFencePattern(char, length) {
   return new RegExp(`^ {0,3}${escaped}{${length},}\\s*$`);
 }
 
-function repoPath(file) {
+function repoPath(file, root) {
   return relative(root, file).replaceAll("\\", "/");
 }
 
-function checkFile(file) {
+export function checkFile(file, root) {
   const content = readFileSync(file, "utf8");
   const lines = content.split(/\r?\n/);
   const issues = [];
@@ -78,7 +78,7 @@ function checkFile(file) {
     const marker = match[1];
     const info = match[2].trim();
     if (!info) {
-      issues.push(`${repoPath(file)}:${index + 1}`);
+      issues.push(`${repoPath(file, root)}:${index + 1}`);
     }
 
     fence = {
@@ -89,10 +89,10 @@ function checkFile(file) {
   return issues;
 }
 
-function checkDocMetadata(file) {
+export function checkDocMetadata(file, root) {
   const content = readFileSync(file, "utf8");
   const lines = content.split(/\r?\n/);
-  const path = repoPath(file);
+  const path = repoPath(file, root);
   const issues = [];
 
   if (lines[0] !== "---") {
@@ -138,29 +138,35 @@ function checkDocMetadata(file) {
   return issues;
 }
 
-const markdownFiles = listMarkdownFiles(root).filter((file) =>
-  statSync(file).isFile(),
-);
-const codeFenceIssues = markdownFiles.flatMap(checkFile);
-const metadataIssues = markdownFiles
-  .filter((file) => repoPath(file).startsWith("docs/"))
-  .flatMap(checkDocMetadata);
+export function checkMarkdownTree(root) {
+  const markdownFiles = listMarkdownFiles(root).filter((file) => statSync(file).isFile());
+  const codeFenceIssues = markdownFiles.flatMap((file) => checkFile(file, root));
+  const metadataIssues = markdownFiles
+    .filter((file) => repoPath(file, root).startsWith("docs/"))
+    .flatMap((file) => checkDocMetadata(file, root));
+  return { codeFenceIssues, metadataIssues };
+}
 
-if (codeFenceIssues.length > 0) {
-  console.error("Markdown code fences must include a language tag:");
-  for (const issue of codeFenceIssues) {
-    console.error(`- ${issue}`);
+function run(root) {
+  const { codeFenceIssues, metadataIssues } = checkMarkdownTree(root);
+  if (codeFenceIssues.length > 0) {
+    console.error("Markdown code fences must include a language tag:");
+    for (const issue of codeFenceIssues) {
+      console.error(`- ${issue}`);
+    }
   }
-}
 
-if (metadataIssues.length > 0) {
-  console.error("Docs markdown files must include metadata frontmatter:");
-  for (const issue of metadataIssues) {
-    console.error(`- ${issue}`);
+  if (metadataIssues.length > 0) {
+    console.error("Docs markdown files must include metadata frontmatter:");
+    for (const issue of metadataIssues) {
+      console.error(`- ${issue}`);
+    }
   }
+
+  return codeFenceIssues.length === 0 && metadataIssues.length === 0;
 }
 
-if (codeFenceIssues.length > 0 || metadataIssues.length > 0) {
-  process.exit(1);
+const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
+if (import.meta.url === invokedPath && !run(process.cwd())) {
+  process.exitCode = 1;
 }
-

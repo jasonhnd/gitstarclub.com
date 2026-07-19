@@ -2,11 +2,20 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
+import { assertAnalyticsCspCompatibility } from "./lib/analytics-policy";
 import { securityHeaders } from "./lib/csp";
 
 // Canonical URLs do not carry locale prefixes. Language is a cookie-backed in-page
 // preference, while repo pages mirror GitHub as /owner/name.
 const exportRoot = join(process.cwd(), "public", "data", "exports", "v1");
+const contentSecurityPolicy = securityHeaders.find(
+  (header) => header.key === "Content-Security-Policy",
+);
+
+if (!contentSecurityPolicy) {
+  throw new Error("Content-Security-Policy header is required");
+}
+assertAnalyticsCspCompatibility(contentSecurityPolicy.value);
 
 function latestDataExportDate(): string | null {
   if (!existsSync(exportRoot)) return null;

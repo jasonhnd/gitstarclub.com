@@ -26,23 +26,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+      - name: Assert pinned runtime versions
+        working-directory: .
+        run: node scripts/assert-runtime-versions.mjs
       - run: bun install --frozen-lockfile
       - run: bun run audit:deps
       - run: bun install --frozen-lockfile
         working-directory: pipeline
       - run: bun run audit:deps
         working-directory: pipeline
+      - name: Run pipeline publication tests
+        working-directory: pipeline
+        run: bun run test
+      - name: Validate documentation contracts
+        working-directory: .
+        run: bun run lint:docs
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run typecheck:tests
       - run: bun run typecheck:scripts
+      - name: Validate generated-view contract fixture
+        run: bun run validate:views -- scripts/fixtures/views
       - name: Run tests
         run: |
           set -o pipefail
-          bun run test 2>&1 | tee test-output.txt
+          bun run test:cov 2>&1 | tee test-output.txt
         env:
           # readView tests mock fetch but still require a syntactically valid read base.
           BLOB_BASE_URL: https://blob.example.com
@@ -58,6 +72,7 @@ jobs:
           passed=$(grep -oE '[0-9]+ pass' test-output.txt 2>/dev/null | tail -n 1 | cut -d ' ' -f 1 || true)
           skipped=$(grep -oE '[0-9]+ skip' test-output.txt 2>/dev/null | tail -n 1 | cut -d ' ' -f 1 || true)
           failed=$(grep -oE '[0-9]+ fail' test-output.txt 2>/dev/null | tail -n 1 | cut -d ' ' -f 1 || true)
+          coverage=$(grep -E '^All files[[:space:]]+\|' test-output.txt 2>/dev/null | tail -n 1 || true)
 
           {
             echo "## Static verification"
@@ -68,6 +83,7 @@ jobs:
             echo "- Bun version: \`$(bun --version)\`"
             echo "- Node version: \`$(node --version)\`"
             echo "- Tests: ${passed:-not run} passed, ${skipped:-not run} skipped, ${failed:-not run} failed"
+            echo "- Coverage (functions | lines): \`${coverage:-not run}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   production-build:
@@ -84,12 +100,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+      - name: Assert pinned runtime versions
+        working-directory: .
+        run: node scripts/assert-runtime-versions.mjs
       - run: bun install --frozen-lockfile
       - name: Validate read-only build configuration
         run: |
+          if [ -n "${BLOB_READ_WRITE_TOKEN:-}" ]; then
+            echo "::error::Read-only production build must not receive BLOB_READ_WRITE_TOKEN"
+            exit 1
+          fi
           missing=()
           for key in BLOB_BASE_URL; do
             if [ -z "${!key:-}" ]; then
@@ -125,6 +151,8 @@ jobs:
             echo "## Production build"
             echo
             echo "- Tested commit: \`$TESTED_SHA\`"
+            echo "- Node version: \`$(node --version)\`"
+            echo "- Bun version: \`$(bun --version)\`"
             echo "- Data source: local read-only fixture"
             echo "- Write-capable credentials: none"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -133,7 +161,8 @@ jobs:
     name: preview-e2e
     needs: production-build
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Allow long Vercel preview builds (often 9–14 min) plus Playwright suites.
+    timeout-minutes: 40
     env:
       IDENTITY_ORIGIN: ${{ github.event_name == 'push' && (github.ref_name == 'main' && 'https://gitstarclub.com' || 'https://pre.gitstarclub.com') || '' }}
     defaults:
@@ -143,9 +172,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+      - name: Assert pinned runtime versions
+        working-directory: .
+        run: node scripts/assert-runtime-versions.mjs
       - run: bun install --frozen-lockfile
       - name: Resolve exact Vercel deployment
         id: deployment
@@ -155,10 +190,13 @@ jobs:
         run: bun scripts/resolve-vercel-preview.ts
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
+      - name: Verify deterministic generated assets
+        working-directory: .
+        run: bun run assets:check
       - name: Run accessibility and responsive release suites
         env:
           BASE_URL: ${{ steps.deployment.outputs.url }}
-        run: bunx playwright test e2e/accessibility-responsive.spec.ts e2e/horizontal-overflow.spec.ts
+        run: bunx playwright test e2e/accessibility-responsive.spec.ts e2e/horizontal-overflow.spec.ts e2e/search-compare-interactions.spec.ts
       - name: Verify deployed SEO architecture
         if: github.event_name == 'push'
         env:
@@ -176,6 +214,8 @@ jobs:
             echo "## Preview browser release gate"
             echo
             echo "- Tested commit: \`$TESTED_SHA\`"
+            echo "- Node version: \`$(node --version)\`"
+            echo "- Bun version: \`$(bun --version)\`"
             echo "- Deployment URL: ${DEPLOYMENT_URL:-not resolved}"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Playwright failure artifacts

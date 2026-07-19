@@ -653,8 +653,8 @@ Bing Webmaster verification steps:
 
 1. Add `https://gitstarclub.com` in Bing Webmaster Tools.
 2. Preferred repo-free option: import verification from the already verified Google Search Console property, or use DNS verification in Cloudflare.
-3. Repo-hosted file option: download Bing's verification XML file and commit it under `web/public/` so it is served from the site root. The expected path is usually `web/public/BingSiteAuth.xml`, which becomes `https://gitstarclub.com/BingSiteAuth.xml`.
-4. Meta-tag option: set `BING_SITE_VERIFICATION=<Bing msvalidate.01 token>` in the Vercel Production environment. `web/app/layout.tsx` emits `<meta name="msvalidate.01" content="...">` when that variable is present.
+3. Repo-hosted file option: download Bing's verification XML file and commit it under `web/public/` so it is served from the site root. No Bing XML verification file is currently checked in.
+4. Meta-tag option: set `BING_SITE_VERIFICATION=<Bing msvalidate.01 token>` in the Vercel Production environment. `web/app/_shell/RootShell.tsx` emits `<meta name="msvalidate.01" content="...">` when that variable is present.
 5. After verification, submit `https://gitstarclub.com/sitemap.xml` in Bing Webmaster Tools.
 
 IndexNow runtime configuration:

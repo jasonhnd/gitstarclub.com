@@ -4,6 +4,7 @@ import { test, expect, describe } from "bun:test";
 import { buildModel, type RawShards } from "./model";
 import { computeRepoWindow, computeOrgWindow } from "./windows";
 import { repoEntities, orgEntities, lookups, searchIndex } from "./entities";
+import { isWellFormedUnicode, unicodeCodePointLength } from "@/lib/unicode-text";
 
 // Two repos under org "alpha". Seam month = 2026-05, so 2026-06 is post-seam:
 //   repo 10 (d=0.8): gross 100 → stock round(100*0.8)=80; 2026-05 +50 → round(150*0.8)=120;
@@ -15,7 +16,7 @@ function syntheticModel(): ReturnType<typeof buildModel> {
       "10": {
         id: 10, owner: "alpha", owner_type: "Organization", name: "one", full_name: "alpha/one",
         description: "first", language: "TypeScript", languages: [{ name: "TypeScript", size: 1200, color: "#3178c6" }, { name: "JavaScript", size: 300, color: "#f1e05a" }], topics: ["cli"], created_at: "2020-01-15T09:00:00Z",
-        current_stars: 150, is_archived: false, crossed_10k: "2024-03-01", d: 0.8,
+        current_stars: 150, active: true, tracked_since: "2026-07-17", is_archived: false, crossed_10k: "2024-03-01", d: 0.8,
       },
       "30": {
         id: 30, owner: "alpha", owner_type: "Organization", name: "two", full_name: "alpha/two",
@@ -53,6 +54,8 @@ describe("repoEntities", () => {
     expect(e.languages).toEqual([{ name: "TypeScript", size: 1200, color: "#3178c6" }, { name: "JavaScript", size: 300, color: "#f1e05a" }]);
     expect(e.topics).toEqual(["cli"]);
     expect(e.created_at).toBe("2020-01-15"); // sliced to YYYY-MM-DD
+    expect(e.active).toBe(true);
+    expect(e.tracked_since).toBe("2026-07-17");
     expect(e.milestones).toEqual({ crossed_10k: "2024-03-01", crossed_50k: null, crossed_100k: null });
   });
 
@@ -139,6 +142,8 @@ describe("lookups", () => {
       owner_type: "Organization",
       language: "TypeScript",
       current_stars: 150,
+      active: true,
+      tracked_since: "2026-07-17",
     });
     expect(repoLk["30"].language).toBeNull(); // missing language → null
   });
@@ -178,6 +183,8 @@ describe("searchIndex", () => {
       language: "TypeScript",
       current_stars: 150,
       description: "first",
+      active: true,
+      tracked_since: "2026-07-17",
     });
   });
 
@@ -189,11 +196,13 @@ describe("searchIndex", () => {
       language: null,
       current_stars: 60,
       description: null,
+      active: true,
+      tracked_since: null,
     });
   });
 
   test("description is head-capped to bound the client payload", () => {
-    const long = "x".repeat(500);
+    const long = `${"x".repeat(198)}\uD83E🦍tail`;
     const m = buildModel(
       {
         repos: { "1": { id: 1, owner: "o", owner_type: "User", name: "r", full_name: "o/r", description: long, current_stars: 5, d: 1 } },
@@ -205,7 +214,9 @@ describe("searchIndex", () => {
       "2026-05-30",
     );
     const doc = (searchIndex(m, generatedAt).get("search/index.json") as { repos: Array<{ description: string }> }).repos[0];
-    expect(doc.description.length).toBe(200);
+    expect(doc.description).toBe(`${"x".repeat(198)}�🦍`);
+    expect(unicodeCodePointLength(doc.description)).toBe(200);
+    expect(isWellFormedUnicode(doc.description)).toBe(true);
   });
 });
 
@@ -227,5 +238,32 @@ describe("repoEntities — inflections (v0.2 §3)", () => {
     const model = buildModel(raw, "2026-05-30");
     const { views } = repoEntities(model, computeRepoWindow(model, "month"));
     expect(views.get("entity/repo/5.json")!.inflections).toEqual([{ period: "2020-04", flow: 3000, kind: "peak" }]);
+  });
+});
+
+describe("historical retention", () => {
+  test("keeps inactive repositories in reader views while excluding them from current org aggregates", () => {
+    const model = buildModel(
+      {
+        repos: {
+          "1": { id: 1, owner: "active", owner_type: "Organization", name: "one", full_name: "active/one", current_stars: 20_000, active: true, tracked_since: "2026-07-17", d: 1 },
+          "2": { id: 2, owner: "history", owner_type: "Organization", name: "two", full_name: "history/two", current_stars: 19_000, active: false, tracked_since: "2026-06-01", d: 1 },
+        },
+        monthly: { "1": [], "2": [] },
+        weekly: { "1": [], "2": [] },
+        recentDaily: {},
+        siteDailyByYear: {},
+      } as unknown as RawShards,
+      "2026-05-30",
+    );
+    const month = computeRepoWindow(model, "month");
+    const entities = repoEntities(model, month).views;
+    const lookup = lookups(model).get("lookup/repos.json") as Record<string, Record<string, unknown>>;
+    const search = searchIndex(model, "2026-07-17T00:00:00.000Z").get("search/index.json") as { repos: Array<Record<string, unknown>> };
+
+    expect(entities.get("entity/repo/2.json")).toMatchObject({ active: false, tracked_since: "2026-06-01" });
+    expect(lookup["2"]).toMatchObject({ active: false, tracked_since: "2026-06-01" });
+    expect(search.repos.find((repo) => repo.id === 2)).toMatchObject({ active: false, tracked_since: "2026-06-01" });
+    expect(model.orgs.has("history")).toBe(false);
   });
 });

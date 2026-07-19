@@ -1,4 +1,5 @@
 import { test, expect, describe } from "bun:test";
+import { buildCanonicalMeta } from "../../../pipeline/lib/canonical-meta.mjs";
 import {
   // common
   Meta,
@@ -25,11 +26,15 @@ import {
   PendingPeriod,
   // workflow
   ViewsPointer,
+  BootstrapPublicationPointer,
   WorkflowManifest,
   WorkflowLease,
   WorkflowStepCheckpoint,
   LatestSuccess,
+  PublishIntent,
+  PublishedWhitelist,
   WorkflowValidation,
+  CanonicalGenerationManifest,
   RenameMap,
   // lookup
   RepoLookupEntry,
@@ -45,6 +50,8 @@ import {
   // live
   CurrentMonth,
   HotSnapshot,
+  LiveGenerationManifest,
+  LiveGenerationPointer,
   // search
   SearchDoc,
   SearchIndex,
@@ -207,14 +214,41 @@ describe("CanonicalMeta", () => {
     expect(CanonicalMeta.parse(meta)).toEqual(meta);
   });
 
-  test("accepts optional generated_at watermark used by fold/bootstrap writers", () => {
+  test("parses the current production shape with generated_at", () => {
     const meta = {
-      seam_date: "2024-01-01",
-      schema_ver: 2,
-      folded_through: { month: "2024-05", week: "2024-W20" },
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      folded_through: { month: "2026-05", week: "2026-W22" },
       generated_at: "2026-06-02T14:32:57.214Z",
     };
     expect(CanonicalMeta.parse(meta)).toEqual(meta);
+  });
+
+  test("bootstrap writer output round-trips through the authoritative reader", () => {
+    const meta = buildCanonicalMeta({
+      seamDate: "2026-05-30",
+      schemaVer: 1,
+      foldedThroughMonth: "2026-05",
+      foldedThroughWeek: "2026-W22",
+      generatedAt: "2026-06-02T14:32:57.214Z",
+    });
+    expect(CanonicalMeta.parse(meta)).toEqual(meta);
+  });
+
+  test("keeps legacy metadata without generated_at readable during rollout", () => {
+    const legacy = { seam_date: "2024-01-01", schema_ver: 1, folded_through: { month: "2024-05", week: "2024-W20" } };
+    expect(CanonicalMeta.parse(legacy)).toEqual(legacy);
+  });
+
+  test("rejects an invalid generated_at timestamp", () => {
+    expect(
+      rejects(CanonicalMeta, {
+        seam_date: "2024-01-01",
+        schema_ver: 1,
+        folded_through: { month: "2024-05", week: "2024-W20" },
+        generated_at: "not-a-timestamp",
+      }),
+    ).toBe(true);
   });
 
   test("rejects missing folded_through (required here, unlike Meta)", () => {
@@ -224,6 +258,39 @@ describe("CanonicalMeta", () => {
   test("rejects folded_through missing week", () => {
     expect(
       rejects(CanonicalMeta, { seam_date: "2024-01-01", schema_ver: 2, folded_through: { month: "2024-05" } }),
+    ).toBe(true);
+  });
+});
+
+describe("CanonicalGenerationManifest", () => {
+  const valid = {
+    run_id: "run-1",
+    generated_at: TS,
+    expected_shards: 128,
+    validated_shards: 128,
+    total_records: 42,
+    complete: true,
+    shards: [
+      {
+        path: "canonical/repos/00.json",
+        kind: "repos",
+        bucket: 0,
+        records: 42,
+        sha256: "a".repeat(64),
+      },
+    ],
+  };
+
+  test("parses a complete run receipt", () => {
+    expect(CanonicalGenerationManifest.parse(valid)).toEqual(valid);
+  });
+
+  test("rejects malformed shard checksums", () => {
+    expect(
+      rejects(CanonicalGenerationManifest, {
+        ...valid,
+        shards: [{ ...valid.shards[0], sha256: "not-a-sha256" }],
+      }),
     ).toBe(true);
   });
 });
@@ -248,6 +315,36 @@ describe("canonical shards", () => {
     expect(parsed.description?.length).toBe(4096);
   });
 
+  test("ReposShardEntry truncates by code point and repairs malformed legacy Unicode", () => {
+    const boundary = `${"x".repeat(4095)}🦍tail`;
+    const parsedBoundary = ReposShardEntry.parse({ ...validEntry, description: boundary });
+    expect(parsedBoundary.description).toBe(`${"x".repeat(4095)}🦍`);
+
+    const parsedMalformed = ReposShardEntry.parse({ ...validEntry, description: "gorilla\uD83E" });
+    expect(parsedMalformed.description).toBe("gorilla�");
+  });
+
+  test("SafeText rejects unpaired surrogates on non-normalizing paths", () => {
+    expect(rejects(SearchDoc, {
+      id: 1,
+      full_name: "gorilla/mux",
+      owner: "gorilla",
+      current_stars: 10_000,
+      description: "invalid\uD83E",
+    })).toBe(true);
+  });
+
+  test("SafeText enforces its limit in Unicode code points", () => {
+    const doc = {
+      id: 1,
+      full_name: "emoji/repo",
+      owner: "emoji",
+      current_stars: 10_000,
+    };
+    expect(SearchDoc.parse({ ...doc, description: "🦍".repeat(4096) }).description).toHaveLength(8192);
+    expect(rejects(SearchDoc, { ...doc, description: "🦍".repeat(4097) })).toBe(true);
+  });
+
   test("ReposShardEntry parses with optional/nullable fields", () => {
     const full = {
       ...validEntry,
@@ -257,11 +354,12 @@ describe("canonical shards", () => {
       topics: ["react"],
       created_at: "2020-01-01T00:00:00Z",
       crossed_10k: "2020-01-01",
+      active: false,
       tracked_since: "2024-06-01",
       d: 0.95,
       fetched_at: TS,
     };
-    expect(ReposShardEntry.parse(full).d).toBe(0.95);
+    expect(ReposShardEntry.parse(full)).toMatchObject({ active: false, tracked_since: "2024-06-01", d: 0.95 });
   });
 
   test("ReposShardEntry parses date-only created_at for bootstrap-compatible shards", () => {
@@ -412,6 +510,37 @@ describe("workflow contracts", () => {
     expect(rejects(ViewsPointer, { version: "v3", run_id: "r3", published_at: "x", prev_version: null })).toBe(true);
   });
 
+  test("BootstrapPublicationPointer parses immutable-generation commit metadata", () => {
+    const digest = "a".repeat(64);
+    const pointer = {
+      schema_ver: 1,
+      generation: "bootstrap-20260717T120000Z",
+      prefix: "bootstrap/generations/bootstrap-20260717T120000Z",
+      previous_generation: null,
+      published_at: TS,
+      base_manifest_sha256: digest,
+      canonical_manifest_sha256: digest,
+    };
+    expect(BootstrapPublicationPointer.parse(pointer)).toEqual(pointer);
+    expect(BootstrapPublicationPointer.parse({ ...pointer, previous_generation: "bootstrap-old" }).previous_generation).toBe(
+      "bootstrap-old",
+    );
+  });
+
+  test("BootstrapPublicationPointer rejects malformed manifest digests", () => {
+    expect(
+      rejects(BootstrapPublicationPointer, {
+        schema_ver: 1,
+        generation: "bootstrap-one",
+        prefix: "bootstrap/generations/bootstrap-one",
+        previous_generation: null,
+        published_at: TS,
+        base_manifest_sha256: "not-a-digest",
+        canonical_manifest_sha256: "a".repeat(64),
+      }),
+    ).toBe(true);
+  });
+
   test("WorkflowManifest parses with status enum + nullable published_version", () => {
     const m = { run_id: "r1", started_at: TS, status: "running", steps: ["a", "b"], published_version: null };
     expect(WorkflowManifest.parse(m).status).toBe("running");
@@ -434,6 +563,7 @@ describe("workflow contracts", () => {
       trigger: "manual-or-cron",
     });
     expect(lease.idempotency_key).toBe("workflow-refresh:2026-W27");
+    expect(lease.fencing_token).toBe(0); // backward-compatible read of a pre-fencing lease
   });
 
   test("WorkflowStepCheckpoint parses with StepStatus enum", () => {
@@ -448,6 +578,19 @@ describe("workflow contracts", () => {
   test("LatestSuccess parses; rejects missing version", () => {
     expect(LatestSuccess.parse({ run_id: "r1", version: "v1", published_at: TS }).version).toBe("v1");
     expect(rejects(LatestSuccess, { run_id: "r1", published_at: "x" })).toBe(true);
+  });
+
+  test("PublishIntent and PublishedWhitelist preserve retry state", () => {
+    const intent = PublishIntent.parse({
+      operation: "publish",
+      run_id: "r2",
+      version: "v2",
+      prev_version: "v1",
+      published_at: TS,
+      fencing_token: 3,
+    });
+    expect(intent.prev_version).toBe("v1");
+    expect(PublishedWhitelist.parse({ run_id: "r2", ids: [1, 2] }).ids).toEqual([1, 2]);
   });
 
   test("WorkflowValidation parses with invariants union(bool|number)", () => {
@@ -482,7 +625,11 @@ describe("lookup contracts", () => {
   const repoEntry = { owner: "vercel", name: "next.js", full_name: "vercel/next.js", owner_type: "Organization", language: "TypeScript", current_stars: 120000 };
 
   test("RepoLookupEntry parses (language nullable)", () => {
-    expect(RepoLookupEntry.parse({ ...repoEntry, language: null }).language).toBeNull();
+    expect(RepoLookupEntry.parse({ ...repoEntry, language: null, active: false, tracked_since: "2024-06-01" })).toMatchObject({
+      language: null,
+      active: false,
+      tracked_since: "2024-06-01",
+    });
   });
 
   test("RepoLookupEntry rejects bad owner_type", () => {
@@ -530,6 +677,8 @@ describe("entity / view contracts", () => {
     topics: ["react"],
     created_at: "2016-10-05",
     current_stars: 120000,
+    active: true,
+    tracked_since: "2024-06-01",
     is_archived: false,
     milestones: { crossed_10k: "2018-01-01", crossed_50k: null, crossed_100k: null },
     curve,
@@ -540,6 +689,7 @@ describe("entity / view contracts", () => {
     const parsed = RepoEntity.parse(repoEntity);
     expect(parsed.id).toBe(1);
     expect(parsed.languages?.[0].name).toBe("TypeScript");
+    expect(parsed.tracked_since).toBe("2024-06-01");
   });
 
   test("RepoEntity parses with optional rank_history record", () => {
@@ -660,10 +810,66 @@ describe("live contracts", () => {
       }),
     ).toBe(true);
   });
+
+  test("HotSnapshot accepts explicit per-section freshness without requiring it on legacy blobs", () => {
+    const topLists = { flow: [], stock: [] };
+    const legacy = {
+      generated_at: TS,
+      home: { year_spine: [], current_month_top: topLists, on_this_day: [] },
+      current_year: topLists,
+      current_month: topLists,
+      all_time: { repo: [], org: [] },
+    };
+    expect(HotSnapshot.parse(legacy).freshness).toBeUndefined();
+    expect(HotSnapshot.parse({
+      ...legacy,
+      freshness: {
+        current_month: TS,
+        current_year: TS,
+        year_spine: null,
+        on_this_day: null,
+        all_time: TS,
+      },
+    }).freshness?.year_spine).toBeNull();
+  });
+
+  test("live generation pointer and manifest require complete safe publication metadata", () => {
+    const pointer = {
+      schema_ver: 1,
+      generation: "daily-run",
+      run_id: "daily-run",
+      idempotency_key: "daily:2026-07-17",
+      job: "daily",
+      day: "2026-07-17",
+      month: "2026-07",
+      week: "2026-W29",
+      published_at: "2026-07-17T03:00:00.000Z",
+      previous_generation: null,
+      lease: null,
+    };
+    expect(LiveGenerationPointer.parse(pointer).generation).toBe("daily-run");
+    expect(rejects(LiveGenerationPointer, { ...pointer, day: null })).toBe(true);
+
+    const manifest = {
+      schema_ver: 1,
+      generation: "daily-run",
+      run_id: "daily-run",
+      idempotency_key: "daily:2026-07-17",
+      job: "daily",
+      day: "2026-07-17",
+      month: "2026-07",
+      week: "2026-W29",
+      created_at: "2026-07-17T03:00:00.000Z",
+      previous_generation: null,
+      files: ["current_month.json", "rank/month/2026-07/repo/flow.json"],
+    };
+    expect(LiveGenerationManifest.parse(manifest).files).toHaveLength(2);
+    expect(rejects(LiveGenerationManifest, { ...manifest, files: ["../escape.json"] })).toBe(true);
+  });
 });
 
 describe("search contracts", () => {
-  const doc = { id: 1, full_name: "vercel/next.js", owner: "vercel", language: "TypeScript", current_stars: 120000, description: "The React Framework" };
+  const doc = { id: 1, full_name: "vercel/next.js", owner: "vercel", language: "TypeScript", current_stars: 120000, description: "The React Framework", active: true, tracked_since: "2024-06-01" };
 
   test("SearchDoc parses; language/description nullable", () => {
     expect(SearchDoc.parse({ ...doc, language: null, description: null }).id).toBe(1);

@@ -18,7 +18,7 @@ import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { DAILY_BASE_VIEW_TTL_MS, getMeta, getOrgEntityDaily, getReposLookupDaily } from "@/lib/data";
 import type { OrgEntity } from "@/lib/contracts";
-import { formatInteger, fmtStars } from "@/lib/format";
+import { dateLabel, formatInteger, fmtStars } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { orgLd, type FaqItem } from "@/lib/jsonld";
 import { ANSWER_CAPSULE_SOURCE, resolveDataAsOfFromMeta, resolveDataAsOfValue, type AnswerCapsuleContent } from "@/lib/geo-capsules";
@@ -26,26 +26,6 @@ import { absoluteSnippetUrl, type ShareableSnippetContent } from "@/lib/shareabl
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { repositoryTableLabels } from "./routing";
-
-const ORG_UI = {
-  aggregateTrackedStars: "Aggregate tracked stars",
-  aggregateFootnote: "Sum of current stars across tracked GitHub repositories; not a native GitHub organization field.",
-  trackedRepoCount: "Tracked repositories",
-  ownerType: "Owner type",
-  dataAsOf: "Data as of",
-  githubUrl: "GitHub URL",
-  openGitHub: "Open GitHub",
-  chartSummary: "Chart summary",
-  trendSummary:
-    "{login} moved from {start} aggregate tracked stars in {startPeriod} to {end} in {endPeriod}. The latest monthly point changed by {change} stars.",
-  trendUnavailable: "Combined monthly trend data is waiting for the next published recompute.",
-  recentMovement: "Recent movement",
-  recentMovementDescription: "Latest daily net star changes from the organization curve.",
-  relatedTitle: "Related organization links",
-  relatedDescription: "Permanent rankings and tracked repository pages connected to this owner.",
-  noTrackedRepos: "Tracked repository rows are waiting for the next published lookup.",
-  notAvailable: "Unavailable",
-} as const;
 
 const ORG_HERO_ACTION_CLASS =
   "text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline";
@@ -114,7 +94,7 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
     repos: formatInteger(language, org.repo_count),
     stars: formatInteger(language, org.current_stars_sum),
   });
-  const trendSummary = buildOrgTrendSummary(org, language);
+  const trendSummary = buildOrgTrendSummary(t, org, language);
   const recentMovement = [...org.curve.recent_daily].slice(-7).reverse();
   const relatedItems = [
     relatedItem(localizedPath(locale, "/rankings"), t.rankings.title),
@@ -145,20 +125,21 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
           actions={
             <>
               <a href={githubUrl} rel="noreferrer" className={ORG_HERO_ACTION_CLASS}>
-                {ORG_UI.openGitHub}
+                {t.org.openGitHub}
               </a>
               <ShareButton text={shareText} url={shareUrl} labels={t.share} />
             </>
           }
           aside={
             <OrgHeroStats
-              aggregateStars={fmtStars(org.current_stars_sum)}
+              aggregateStars={fmtStars(org.current_stars_sum, locale)}
               dataAsOf={asOf}
               githubLabel={`github.com/${org.login}`}
               githubUrl={githubUrl}
               locale={locale}
               ownerType={ownerType}
               repoCount={org.repo_count}
+              t={t}
             />
           }
         />
@@ -171,14 +152,14 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
             <h2 className="font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">{t.org.history}</h2>
             {trendSummary && (
               <p className="mt-2 text-[0.95rem] leading-relaxed text-on-surface-variant">
-                <span className="font-semibold text-on-surface">{ORG_UI.chartSummary}:</span> {trendSummary}
+                <span className="font-semibold text-on-surface">{t.org.chartSummary}:</span> {trendSummary}
               </p>
             )}
           </div>
           {series.length > 1 ? (
-            <StarCurve series={series} milestones={[]} labels={{ ariaLabel: t.a11y.starHistory }} />
+            <StarCurve series={series} milestones={[]} labels={{ ariaLabel: t.a11y.starHistory }} locale={locale} />
           ) : (
-            <EmptyState message={ORG_UI.trendUnavailable} className="mt-0" />
+            <EmptyState message={t.org.trendUnavailable} className="mt-0" />
           )}
         </section>
 
@@ -200,22 +181,22 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
               </div>
             </>
           ) : (
-            <EmptyState message={ORG_UI.noTrackedRepos} />
+            <EmptyState message={t.org.noTrackedRepos} />
           )}
         </section>
 
         {recentMovement.length > 0 && (
           <section className="mt-[clamp(2rem,4vw,3rem)]">
             <div className="mb-3 max-w-[64ch]">
-              <h2 className="text-[1.2rem] font-extrabold tracking-tight text-on-surface">{ORG_UI.recentMovement}</h2>
-              <p className="mt-1 text-[0.9rem] text-on-surface-variant">{ORG_UI.recentMovementDescription}</p>
+              <h2 className="text-[1.2rem] font-extrabold tracking-tight text-on-surface">{t.org.recentMovement}</h2>
+              <p className="mt-1 text-[0.9rem] text-on-surface-variant">{t.org.recentMovementDescription}</p>
             </div>
             <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {recentMovement.map(([date, adds]) => (
                 <li key={date} className="rounded-lg bg-surface-container px-4 py-3">
-                  <span className="block font-mono text-[0.72rem] text-on-surface-variant">{date}</span>
+                  <span className="block font-mono text-[0.72rem] text-on-surface-variant">{dateLabel(locale, date)}</span>
                   <span className={`mt-1 block font-mono text-[1rem] font-extrabold tabular-nums ${adds >= 0 ? "text-readable-gold" : "text-on-surface"}`}>
-                    {signedStars(adds)}
+                    {signedStars(adds, locale)}
                     <Star />
                   </span>
                 </li>
@@ -224,7 +205,7 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
           </section>
         )}
 
-        <RelatedPages title={ORG_UI.relatedTitle} description={ORG_UI.relatedDescription} items={relatedItems} />
+        <RelatedPages title={t.org.relatedTitle} description={t.org.relatedDescription} items={relatedItems} />
 
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
@@ -240,6 +221,7 @@ function OrgHeroStats({
   locale,
   ownerType,
   repoCount,
+  t,
 }: {
   aggregateStars: string;
   dataAsOf: string | null;
@@ -248,15 +230,16 @@ function OrgHeroStats({
   locale: Locale;
   ownerType: string;
   repoCount: number;
+  t: Dict;
 }) {
   return (
     <dl className="grid gap-3 rounded-lg bg-surface-container px-4 py-4">
-      <HeroStat label={ORG_UI.aggregateTrackedStars} value={<>{aggregateStars}<Star /></>} note={ORG_UI.aggregateFootnote} emphasis />
-      <HeroStat label={ORG_UI.trackedRepoCount} value={formatInteger(locale, repoCount)} />
-      <HeroStat label={ORG_UI.ownerType} value={ownerType} />
-      <HeroStat label={ORG_UI.dataAsOf} value={dataAsOf ?? ORG_UI.notAvailable} />
+      <HeroStat label={t.org.aggregateTrackedStars} value={<>{aggregateStars}<Star /></>} note={t.org.aggregateFootnote} emphasis />
+      <HeroStat label={t.tables.trackedRepositories} value={formatInteger(locale, repoCount)} />
+      <HeroStat label={t.tables.ownerType} value={ownerType} />
+      <HeroStat label={t.common.dataAsOf} value={dataAsOf ?? t.common.notAvailable} />
       <HeroStat
-        label={ORG_UI.githubUrl}
+        label={t.repo.githubUrl}
         value={
           <a href={githubUrl} rel="noreferrer" className="break-all text-readable-gold hover:underline hover:underline-offset-2">
             {githubLabel}
@@ -301,7 +284,7 @@ function MobileTrackedRepositoryCards({
               <span className="min-w-0 text-right">
                 <span className="block font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{labels.totalStars}</span>
                 <span className="block font-mono text-[0.95rem] font-extrabold tabular-nums text-on-surface">
-                  {fmtStars(row.total)}
+                  {fmtStars(row.total, locale)}
                   <Star />
                 </span>
               </span>
@@ -317,18 +300,18 @@ function MobileTrackedRepositoryCards({
   );
 }
 
-function buildOrgTrendSummary(org: OrgEntity, language: string): string | null {
+function buildOrgTrendSummary(t: Dict, org: OrgEntity, language: string): string | null {
   const first = org.curve.monthly[0];
   const latest = org.curve.monthly.at(-1);
   if (!first || !latest || org.curve.monthly.length < 2) return null;
 
-  return fill(ORG_UI.trendSummary, {
+  return fill(t.org.trendSummary, {
     login: org.login,
     start: formatInteger(language, first[2]),
     startPeriod: first[0],
     end: formatInteger(language, latest[2]),
     endPeriod: latest[0],
-    change: signedStars(latest[1]),
+    change: signedStars(latest[1], language),
   });
 }
 
@@ -338,9 +321,9 @@ function orgOwnerTypeLabel(t: Dict, ownerType: string | null | undefined): strin
   return t.tables.unknown;
 }
 
-function signedStars(value: number): string {
+function signedStars(value: number, locale: string): string {
   const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${fmtStars(Math.abs(value))}`;
+  return `${prefix}${fmtStars(Math.abs(value), locale)}`;
 }
 
 function relatedItem(href: string, label: string) {
@@ -360,7 +343,7 @@ function buildLocalizedOrgCapsule(t: Dict, language: string, org: OrgEntity, asO
   const text = fill(t.org.capsule, {
     asOf,
     login: org.login,
-    stars: fmtStars(org.current_stars_sum),
+    stars: fmtStars(org.current_stars_sum, language),
     repos: org.repo_count.toLocaleString(language),
     kind,
   });
@@ -371,7 +354,7 @@ function buildLocalizedOrgFaqs(t: Dict, language: string, org: OrgEntity, member
   const kind = org.owner_type === "Organization" ? t.org.organization : t.org.developer;
   const lead = members[0];
   const leadAnswer = lead
-    ? fill(t.org.faqLeadAnswer, { repo: repoName(lead), login: org.login, stars: fmtStars(lead.total) })
+    ? fill(t.org.faqLeadAnswer, { repo: repoName(lead), login: org.login, stars: fmtStars(lead.total, language) })
     : fill(t.org.faqLeadFallback, { login: org.login });
 
   return [
@@ -381,12 +364,12 @@ function buildLocalizedOrgFaqs(t: Dict, language: string, org: OrgEntity, member
         ? fill(t.org.faqStarsAnswerWithAsOf, {
             asOf,
             login: org.login,
-            stars: fmtStars(org.current_stars_sum),
+            stars: fmtStars(org.current_stars_sum, language),
             repos: org.repo_count.toLocaleString(language),
           })
         : fill(t.org.faqStarsAnswerNoAsOf, {
             login: org.login,
-            stars: fmtStars(org.current_stars_sum),
+            stars: fmtStars(org.current_stars_sum, language),
             repos: org.repo_count.toLocaleString(language),
           }),
     },
@@ -426,14 +409,14 @@ function buildLocalizedOrgTotalSnippet({
     ? fill(t.org.totalSnippetLeaders, {
         repos: listLabels(
           language,
-          top.map((row) => fill(t.org.totalSnippetLeader, { repo: repoName(row), stars: fmtStars(row.total) })),
+          top.map((row) => fill(t.org.totalSnippetLeader, { repo: repoName(row), stars: fmtStars(row.total, language) })),
         ),
       })
     : "";
   const text = fill(t.org.totalSnippetText, {
     asOf,
     login: org.login,
-    stars: fmtStars(org.current_stars_sum),
+    stars: fmtStars(org.current_stars_sum, language),
     repos: org.repo_count.toLocaleString(language),
     leaders,
   });

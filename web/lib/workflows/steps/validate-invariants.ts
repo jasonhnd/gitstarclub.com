@@ -12,6 +12,7 @@ import type {
   RankList,
   ReposLookup,
   SearchIndex,
+  WhitelistSnapshot,
 } from "@/lib/contracts";
 
 export type ValidationInvariants = Record<string, boolean | number>;
@@ -69,6 +70,160 @@ export function validateAllTimeRanks({
   if (allTime && lookup) mergeReport({ invariants, failures }, inspectRank("all-time/repo", allTime, { lookup }));
   if (allTimeOrg && orgLookup) mergeReport({ invariants, failures }, inspectRank("all-time/org", allTimeOrg, { orgLookup }));
 
+  if (allTime && lookup) {
+    let inactive = 0;
+    let valueMismatch = 0;
+    for (const item of allTime.items) {
+      if (item.id == null) continue;
+      const repo = lookup[String(item.id)];
+      if (!repo) continue;
+      if (repo.active !== true) inactive++;
+      if (item.value !== repo.current_stars) valueMismatch++;
+    }
+    invariants.all_time_repo_inactive = inactive;
+    invariants.all_time_repo_current_stars_mismatch = valueMismatch;
+    if (inactive > 0) failures.push(`all-time/repo: ${inactive} item(s) are not active`);
+    if (valueMismatch > 0) failures.push(`all-time/repo: ${valueMismatch} item(s) differ from lookup current_stars`);
+  }
+
+  if (allTimeOrg && orgLookup) {
+    let valueMismatch = 0;
+    for (const item of allTimeOrg.items) {
+      if (!item.login) continue;
+      const org = orgLookup[item.login];
+      if (org && item.value !== org.current_stars_sum) valueMismatch++;
+    }
+    invariants.all_time_org_current_stars_mismatch = valueMismatch;
+    if (valueMismatch > 0) failures.push(`all-time/org: ${valueMismatch} item(s) differ from lookup current_stars_sum`);
+  }
+
+  return { invariants, failures };
+}
+
+export function validateRepositoryMembership({
+  lookup,
+  previousLookup,
+  whitelist,
+  canonicalRepoIds,
+  canonicalActiveRepoIds,
+  meta,
+}: {
+  lookup: ReposLookup | null;
+  previousLookup: ReposLookup | null;
+  whitelist: WhitelistSnapshot | null;
+  canonicalRepoIds: ReadonlySet<string>;
+  canonicalActiveRepoIds: ReadonlySet<string>;
+  meta: Meta | null;
+}): ValidationInvariantReport {
+  const invariants: ValidationInvariants = {};
+  const failures: string[] = [];
+  if (!lookup) return { invariants, failures };
+
+  const currentIds = new Set(Object.keys(lookup));
+  const lookupActiveIds = new Set(
+    Object.entries(lookup).flatMap(([id, entry]) => (entry.active === true ? [id] : [])),
+  );
+  const missingTrackingStatus = Object.values(lookup).filter((entry) => typeof entry.active !== "boolean").length;
+  const missingTrackedSince = Object.values(lookup).filter((entry) => !("tracked_since" in entry)).length;
+  const historicalCount = Object.values(lookup).filter((entry) => entry.active === false).length;
+  const canonicalMissing = [...canonicalRepoIds].filter((id) => !currentIds.has(id));
+  const canonicalUnexpected = [...currentIds].filter((id) => !canonicalRepoIds.has(id));
+  invariants.membership_current_repos = currentIds.size;
+  invariants.membership_canonical_repos = canonicalRepoIds.size;
+  invariants.membership_canonical_missing = canonicalMissing.length;
+  invariants.membership_canonical_unexpected = canonicalUnexpected.length;
+  invariants.membership_lookup_active = lookupActiveIds.size;
+  invariants.membership_lookup_historical = historicalCount;
+  invariants.membership_lookup_missing_tracking_status = missingTrackingStatus;
+  invariants.membership_lookup_missing_tracked_since = missingTrackedSince;
+  if (missingTrackingStatus > 0) {
+    failures.push(`lookup/repos: ${missingTrackingStatus} repo(s) are missing explicit active status`);
+  }
+  if (missingTrackedSince > 0) {
+    failures.push(`lookup/repos: ${missingTrackedSince} repo(s) are missing explicit tracked_since provenance`);
+  }
+  if (canonicalMissing.length > 0) {
+    failures.push(`lookup/repos: missing ${canonicalMissing.length} canonical id(s), e.g. ${canonicalMissing.slice(0, 5).join(",")}`);
+  }
+  if (canonicalUnexpected.length > 0) {
+    failures.push(`lookup/repos: contains ${canonicalUnexpected.length} id(s) absent from canonical, e.g. ${canonicalUnexpected.slice(0, 5).join(",")}`);
+  }
+
+  if (whitelist) {
+    const activeIds = new Set(whitelist.entries.map((entry) => String(entry.id)));
+    const activeMissing = [...activeIds].filter((id) => !lookupActiveIds.has(id));
+    const activeUnexpected = [...lookupActiveIds].filter((id) => !activeIds.has(id));
+    const canonicalActiveMissing = [...activeIds].filter((id) => !canonicalActiveRepoIds.has(id));
+    const canonicalActiveUnexpected = [...canonicalActiveRepoIds].filter((id) => !activeIds.has(id));
+    invariants.membership_active_whitelist = activeIds.size;
+    invariants.membership_active_missing = activeMissing.length;
+    invariants.membership_active_unexpected = activeUnexpected.length;
+    invariants.membership_canonical_active = canonicalActiveRepoIds.size;
+    invariants.membership_canonical_active_missing = canonicalActiveMissing.length;
+    invariants.membership_canonical_active_unexpected = canonicalActiveUnexpected.length;
+    if (activeMissing.length > 0) {
+      failures.push(`lookup/repos: missing ${activeMissing.length} active whitelist id(s), e.g. ${activeMissing.slice(0, 5).join(",")}`);
+    }
+    if (activeUnexpected.length > 0) {
+      failures.push(`lookup/repos: contains ${activeUnexpected.length} active id(s) absent from whitelist, e.g. ${activeUnexpected.slice(0, 5).join(",")}`);
+    }
+    if (canonicalActiveMissing.length > 0) {
+      failures.push(`canonical repos: missing ${canonicalActiveMissing.length} active whitelist id(s), e.g. ${canonicalActiveMissing.slice(0, 5).join(",")}`);
+    }
+    if (canonicalActiveUnexpected.length > 0) {
+      failures.push(`canonical repos: contains ${canonicalActiveUnexpected.length} active id(s) absent from whitelist, e.g. ${canonicalActiveUnexpected.slice(0, 5).join(",")}`);
+    }
+
+    if (meta) {
+      invariants.meta_active_repo_count_matches = meta.active_repo_count === activeIds.size;
+      invariants.meta_historical_repo_count_matches = meta.historical_repo_count === historicalCount;
+      if (meta.active_repo_count !== activeIds.size) {
+        failures.push(`meta.active_repo_count ${String(meta.active_repo_count)} does not match whitelist count ${activeIds.size}`);
+      }
+      if (meta.historical_repo_count !== historicalCount) {
+        failures.push(`meta.historical_repo_count ${String(meta.historical_repo_count)} does not match lookup history count ${historicalCount}`);
+      }
+    }
+
+    const added = new Set(whitelist.diff.added.map(String));
+    const dropped = new Set(whitelist.diff.dropped.map(String));
+    const addedNotActive = [...added].filter((id) => !activeIds.has(id));
+    const droppedStillActive = [...dropped].filter((id) => activeIds.has(id));
+    const droppedNotHistorical = [...dropped].filter((id) => lookup[id]?.active !== false);
+    invariants.membership_added_not_active = addedNotActive.length;
+    invariants.membership_dropped_still_active = droppedStillActive.length;
+    invariants.membership_dropped_not_historical = droppedNotHistorical.length;
+    if (addedNotActive.length > 0) failures.push(`whitelist diff: ${addedNotActive.length} added id(s) are absent from entries`);
+    if (droppedStillActive.length > 0) failures.push(`whitelist diff: ${droppedStillActive.length} dropped id(s) remain active`);
+    if (droppedNotHistorical.length > 0) failures.push(`lookup/repos: ${droppedNotHistorical.length} dropped id(s) are not retained as historical`);
+
+    if (previousLookup) {
+      const previousIds = new Set(Object.keys(previousLookup));
+      const expectedIds = new Set(previousIds);
+      for (const id of added) expectedIds.add(id);
+      // Dropped repositories remain in the Chronicle read model; only active polling stops.
+      const missingExpected = [...expectedIds].filter((id) => !currentIds.has(id));
+      const unapproved = [...currentIds].filter((id) => !expectedIds.has(id));
+      // A repository returning after a drop is an approved re-entry: it is in
+      // diff.added and already exists as an inactive historical row.
+      const addedAlreadyPresent = [...added].filter(
+        (id) => previousIds.has(id) && previousLookup[id]?.active !== false,
+      );
+      invariants.membership_previous_repos = previousIds.size;
+      invariants.membership_expected_repos = expectedIds.size;
+      invariants.membership_missing_expected = missingExpected.length;
+      invariants.membership_unapproved_additions = unapproved.length;
+      invariants.membership_added_already_present = addedAlreadyPresent.length;
+      if (missingExpected.length > 0) {
+        failures.push(`lookup/repos: lost ${missingExpected.length} previously tracked/approved id(s), e.g. ${missingExpected.slice(0, 5).join(",")}`);
+      }
+      if (unapproved.length > 0) {
+        failures.push(`lookup/repos: contains ${unapproved.length} unapproved new id(s), e.g. ${unapproved.slice(0, 5).join(",")}`);
+      }
+      if (addedAlreadyPresent.length > 0) failures.push(`whitelist diff: ${addedAlreadyPresent.length} added id(s) already existed previously`);
+    }
+  }
+
   return { invariants, failures };
 }
 
@@ -78,7 +233,11 @@ export function validateAliases(aliases: AliasMap | null, lookup: ReposLookup | 
   if (!aliases || !lookup) return { invariants, failures };
 
   const trackedIds = new Set(Object.keys(lookup));
-  const liveNames = new Set(Object.values(lookup).map((entry) => entry.full_name.toLowerCase()));
+  const liveNames = new Set(
+    Object.values(lookup)
+      .filter((entry) => entry.active !== false)
+      .map((entry) => entry.full_name.toLowerCase()),
+  );
   let dangling = 0;
   let colliding = 0;
   for (const [oldName, id] of Object.entries(aliases)) {
@@ -108,7 +267,12 @@ export function validateSearchIndex(search: SearchIndex | null, minLookup: numbe
   if (!search) return { invariants, failures };
 
   invariants.search_repos = search.count;
+  const missingTracking = search.repos.filter(
+    (repo) => typeof repo.active !== "boolean" || !("tracked_since" in repo),
+  ).length;
+  invariants.search_missing_tracking_contract = missingTracking;
   if (search.count < minLookup) failures.push(`search/index: only ${search.count} repos`);
+  if (missingTracking > 0) failures.push(`search/index: ${missingTracking} repo(s) are missing active/tracked_since`);
   return { invariants, failures };
 }
 

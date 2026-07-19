@@ -61,7 +61,10 @@ function buildAssignments(model: Model, generatedAt: string): BuiltAssignments {
   const counts = new Map<string, number>();
   const languageLabels = new Map<string, string>();
 
-  for (const id of model.ids) {
+  // Categories are a current discovery surface. Historical repositories stay
+  // reachable through entity/search views but no longer affect current counts
+  // or all-time category rankings.
+  for (const id of model.activeIds) {
     const repo = model.repos.get(id)!;
     for (const language of languageCategoriesFromRepository(repo)) languageLabels.set(language.slug, language.label);
 

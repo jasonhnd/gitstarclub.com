@@ -79,6 +79,7 @@ export function Chrome({ tag, locale = DEFAULT_LOCALE, canonicalPath, dictionary
               error: label(dictionary, "search.error"),
               retry: label(dictionary, "search.retry"),
               addToCompare: label(dictionary, "compare.addToCompare"),
+              removeFromCompare: label(dictionary, "compare.remove"),
               openCompare: label(dictionary, "compare.openCompare"),
             }}
           />

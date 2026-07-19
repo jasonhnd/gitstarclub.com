@@ -16,6 +16,7 @@ import {
   buildCompareConclusionText,
   buildComparePairConclusion,
   formatCompareGain,
+  type CompareConclusionLabels,
   type ComparePairConclusion,
 } from "@/lib/compare/conclusions";
 import { fmtStars } from "@/lib/format";
@@ -45,8 +46,8 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
   const asOf = resolveDataAsOfFromMeta(meta, { locale });
   const capsule = asOf ? buildLocalizedCompareCapsule(locale, asOf) : null;
   const faqItems = buildLocalizedCompareFaqs(locale, asOf);
-  const pairConclusions = await loadPairConclusions(repoIds, locale);
-  const conclusionText = asOf ? buildCompareConclusionText(asOf, pairConclusions) : null;
+  const pairConclusions = await loadPairConclusions(repoIds, locale, t.compare);
+  const conclusionText = asOf ? buildCompareConclusionText(asOf, pairConclusions, t.compare) : null;
   const hasServerSummary = Boolean(conclusionText && pairConclusions.length > 0);
   const compareClientLabels = {
     modeAbsolute: t.compare.modeAbsolute,
@@ -134,12 +135,12 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
                             <span className="font-semibold">{row.winner.fullName}</span>
                             <span className="text-on-surface-variant">
                               {" "}
-                              {formatCompareGain(row.winner.gainedAfter10k)} {t.common.versus} {formatCompareGain(row.loser.gainedAfter10k)}
+                              {formatCompareGain(row.winner.gainedAfter10k, locale)} {t.common.versus} {formatCompareGain(row.loser.gainedAfter10k, locale)}
                             </span>
                           </>
                         ) : (
                           <span>
-                            {t.common.tiedAt} {formatCompareGain(row.repos[0].gainedAfter10k)}
+                            {t.common.tiedAt} {formatCompareGain(row.repos[0].gainedAfter10k, locale)}
                           </span>
                         )}
                       </dd>
@@ -147,8 +148,8 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
                     <div>
                       <dt className="uppercase tracking-wider text-on-surface-variant">{t.compare.currentStars}</dt>
                       <dd className="mt-0.5 tabular-nums text-on-surface">
-                        {fmtStars(row.repos[0].currentStars)}
-                        <Star /> / {fmtStars(row.repos[1].currentStars)}
+                        {fmtStars(row.repos[0].currentStars, locale)}
+                        <Star /> / {fmtStars(row.repos[1].currentStars, locale)}
                         <Star />
                       </dd>
                     </div>
@@ -200,18 +201,18 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
                             <span className="font-semibold">{row.winner.fullName}</span>
                             <span className="text-on-surface-variant">
                               {" "}
-                              {formatCompareGain(row.winner.gainedAfter10k)} {t.common.versus} {formatCompareGain(row.loser.gainedAfter10k)}
+                              {formatCompareGain(row.winner.gainedAfter10k, locale)} {t.common.versus} {formatCompareGain(row.loser.gainedAfter10k, locale)}
                             </span>
                           </>
                         ) : (
                           <span>
-                            {t.common.tiedAt} {formatCompareGain(row.repos[0].gainedAfter10k)}
+                            {t.common.tiedAt} {formatCompareGain(row.repos[0].gainedAfter10k, locale)}
                           </span>
                         )}
                       </td>
                       <td className="py-3 pl-4 align-top font-mono text-[0.82rem] tabular-nums text-on-surface-variant">
-                        {fmtStars(row.repos[0].currentStars)}
-                        <Star /> / {fmtStars(row.repos[1].currentStars)}
+                        {fmtStars(row.repos[0].currentStars, locale)}
+                        <Star /> / {fmtStars(row.repos[1].currentStars, locale)}
                         <Star />
                       </td>
                     </tr>
@@ -232,7 +233,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
           </section>
         )}
         <section id="compare-workbench" className="mt-[clamp(2.5rem,5vw,4rem)] scroll-mt-24">
-          <CompareClient labels={compareClientLabels} comparePath={routePath} />
+          <CompareClient labels={compareClientLabels} comparePath={routePath} locale={locale} />
         </section>
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
@@ -240,7 +241,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
   );
 }
 
-async function loadPairConclusions(repoIds: Map<string, number>, locale: Locale): Promise<ComparePairConclusion[]> {
+async function loadPairConclusions(repoIds: Map<string, number>, locale: Locale, labels: CompareConclusionLabels): Promise<ComparePairConclusion[]> {
   const rows = await Promise.all(
     COMMON_COMPARE_PAIRS.map(async (pair) => {
       const aId = repoIds.get(pair.a.toLowerCase());
@@ -248,7 +249,7 @@ async function loadPairConclusions(repoIds: Map<string, number>, locale: Locale)
       if (aId === undefined || bId === undefined) return null;
       const [a, b] = await Promise.all([getRepoCurve(aId), getRepoCurve(bId)]);
       if (!a || !b) return null;
-      return buildComparePairConclusion(pair, a, b, locale);
+      return buildComparePairConclusion(pair, a, b, locale, labels);
     }),
   );
   return rows.filter((row): row is ComparePairConclusion => Boolean(row));

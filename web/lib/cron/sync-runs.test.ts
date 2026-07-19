@@ -5,6 +5,7 @@ let putCalls: Array<{ path: string; data: unknown }> = [];
 
 mock.module("@/lib/data/write", () => ({
   putView: (path: string, data: unknown) => putImpl(path, data),
+  createView: async () => true,
 }));
 
 const { completedRun, failedRun, safeRecordSyncRun, syncRunId } = await import("./sync-runs");
@@ -45,6 +46,10 @@ describe("sync run helpers", () => {
       all_time_repo_1: null,
       current_week_flow_1: null,
       current_month_flow_1: null,
+      generation: null,
+      previous_generation: null,
+      published_at: null,
+      post_commit_errors: [],
     });
 
     await expect(safeRecordSyncRun(run)).resolves.toBeNull();

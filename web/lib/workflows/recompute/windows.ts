@@ -129,7 +129,11 @@ export function deriveYearWindow(model: Model, monthWin: RepoWindow): RepoWindow
 }
 
 /** Org window: forward-fill each member's stock across idle periods, then sum per owner. */
-export function computeOrgWindow(model: Model, repoWindow: RepoWindow): OrgWindow {
+export function computeOrgWindow(
+  model: Model,
+  repoWindow: RepoWindow,
+  options: { activeOnly?: boolean } = {},
+): OrgWindow {
   const globalPeriods = repoWindow.periods; // sorted asc
   const periodIndex = new Map<Period, number>();
   globalPeriods.forEach((p, i) => periodIndex.set(p, i));
@@ -139,6 +143,7 @@ export function computeOrgWindow(model: Model, repoWindow: RepoWindow): OrgWindo
   const ownerOf = (id: number) => model.repos.get(id)!.owner;
 
   for (const [id, rows] of repoWindow.byRepo) {
+    if (options.activeOnly && model.repos.get(id)?.active === false) continue;
     if (rows.length === 0) continue;
     const login = ownerOf(id);
     let bucket = acc.get(login);
