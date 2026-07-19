@@ -50,29 +50,41 @@ export function selectRankPayload<T>(args: {
   return base ?? null;
 }
 
+/**
+ * Live-capable periods only:
+ * 1. While still open relative to folded_through → read live first.
+ * 2. After fold advances → read base first (no live hop for normal history).
+ * 3. If base is missing after fold (recovered live-only weeks) → fall back to live.
+ */
 export const getRank = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
   const liveWindow = window === "month" || window === "week" ? window : null;
   if (liveWindow && hasLiveRank(window, dim, metric)) {
-    const live = await readLiveRank(liveWindow, period, dim, metric);
-    if (live) {
-      const isLiveOverlay = await isLiveOverlayPeriod(liveWindow, period);
-      if (isLiveOverlay) return live;
-      const base = await getRankBase(window, period, dim, metric);
-      return selectRankPayload({ live, base, isLiveOverlay: false });
+    const isLiveOverlay = await isLiveOverlayPeriod(liveWindow, period);
+    if (isLiveOverlay) {
+      const live = await readLiveRank(liveWindow, period, dim, metric);
+      if (live) return live;
+      return getRankBase(window, period, dim, metric);
     }
+    const base = await getRankBase(window, period, dim, metric);
+    if (base) return base;
+    const live = await readLiveRank(liveWindow, period, dim, metric);
+    return selectRankPayload({ live, base: null, isLiveOverlay: false });
   }
   return getRankBase(window, period, dim, metric);
 });
 export const getRankDaily = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
   const liveWindow = window === "month" || window === "week" ? window : null;
   if (liveWindow && hasLiveRank(window, dim, metric)) {
-    const live = await readLiveRank(liveWindow, period, dim, metric, DAILY_BASE_VIEW_TTL_MS);
-    if (live) {
-      const isLiveOverlay = await isLiveOverlayPeriod(liveWindow, period, DAILY_BASE_VIEW_TTL_MS);
-      if (isLiveOverlay) return live;
-      const base = await getRankBaseDaily(window, period, dim, metric);
-      return selectRankPayload({ live, base, isLiveOverlay: false });
+    const isLiveOverlay = await isLiveOverlayPeriod(liveWindow, period, DAILY_BASE_VIEW_TTL_MS);
+    if (isLiveOverlay) {
+      const live = await readLiveRank(liveWindow, period, dim, metric, DAILY_BASE_VIEW_TTL_MS);
+      if (live) return live;
+      return getRankBaseDaily(window, period, dim, metric);
     }
+    const base = await getRankBaseDaily(window, period, dim, metric);
+    if (base) return base;
+    const live = await readLiveRank(liveWindow, period, dim, metric, DAILY_BASE_VIEW_TTL_MS);
+    return selectRankPayload({ live, base: null, isLiveOverlay: false });
   }
   return getRankBaseDaily(window, period, dim, metric);
 });

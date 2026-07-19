@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
   DEFAULT_PUBLIC_BLOB_BASE,
   KNOWN_MISSING_LIVE_WEEKS,
+  checkBasePublishFreshness,
   isoWeeksInYear,
   liveGatesRequired,
   previousIsoWeek,
@@ -9,6 +10,12 @@ import {
   resolveLiveGateConfig,
   withinPublicationScheduleGrace,
 } from "./release-gates-live";
+
+const realFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
 
 describe("release-gates-live config", () => {
   test("require flag is off by default", () => {
@@ -73,5 +80,18 @@ describe("publication schedule grace", () => {
   test("mid-day Monday requires current week", () => {
     const mon1200 = new Date("2026-07-20T12:00:00.000Z");
     expect(withinPublicationScheduleGrace(mon1200)).toEqual({ weekGrace: false, monthGrace: false });
+  });
+});
+
+describe("structured gate findings for non-JSON bodies", () => {
+  test("200 HTML from Blob becomes a GateFinding, not an uncaught throw", async () => {
+    globalThis.fetch = mock(async () =>
+      new Response("<html>Forbidden</html>", { status: 200, headers: { "content-type": "text/html" } }),
+    ) as unknown as typeof fetch;
+
+    const finding = await checkBasePublishFreshness("https://blob.example-public.test");
+    expect(finding.ok).toBe(false);
+    expect(finding.id).toBe("base-pointer-json");
+    expect(finding.summary).toContain("expected JSON");
   });
 });
