@@ -93,17 +93,22 @@ async function resolveVersion(
       // render time ("Page changed from static to dynamic at runtime" → 500 on the first cold
       // generation, before the in-memory memo warms). A revalidated fetch keeps bounded pointer
       // freshness while staying static/ISR-safe. The rotating ?v= still busts the Blob CDN.
-      const res = await fetchWithTimeout(`${blobBase}/views/latest.json?v=${Math.floor(now / ttlMs)}`, {
-        next: { revalidate: ttlMs / 1000, tags: [PUBLISHED_VIEWS_CACHE_TAG] },
-        timeoutMs,
-      });
-      if (res.ok) {
+      let res: Response | null = null;
+      for (let attempt = 1; attempt <= READ_RETRIES + 1; attempt++) {
+        res = await fetchWithTimeout(`${blobBase}/views/latest.json?v=${Math.floor(now / ttlMs)}`, {
+          next: { revalidate: ttlMs / 1000, tags: [PUBLISHED_VIEWS_CACHE_TAG] },
+          timeoutMs,
+        });
+        if (res.ok || res.status === 404 || !shouldRetry(res.status) || attempt > READ_RETRIES) break;
+        await sleep(retryDelayMs(res, attempt));
+      }
+      if (res?.ok) {
         const j = (await res.json()) as { version?: unknown; published_at?: unknown };
         if (typeof j.version === "string") resolution.version = j.version;
         if (typeof j.published_at === "string" && Number.isFinite(Date.parse(j.published_at))) {
           resolution.publishedAt = j.published_at;
         }
-      } else if (res.status === 404) {
+      } else if (res?.status === 404) {
         resolution.confirmedAbsent = true;
       }
     } catch {
@@ -132,10 +137,25 @@ async function resolveLiveGeneration(
 
   const resolving = (async () => {
     try {
-      const res = await fetchWithTimeout(`${blobBase}/live/latest.json?v=${Math.floor(now / ttlMs)}`, {
-        next: { revalidate: ttlMs / 1000 },
-        timeoutMs,
-      });
+      let res: Response | null = null;
+      let lastError: unknown = null;
+      for (let attempt = 1; attempt <= READ_RETRIES + 1; attempt++) {
+        try {
+          res = await fetchWithTimeout(`${blobBase}/live/latest.json?v=${Math.floor(now / ttlMs)}`, {
+            next: { revalidate: ttlMs / 1000 },
+            timeoutMs,
+          });
+        } catch (err) {
+          lastError = err;
+          if (attempt > READ_RETRIES) break;
+          await sleep(Math.min(400 * 2 ** (attempt - 1), 3_000));
+          continue;
+        }
+        if (res.status === 404 || res.ok) break;
+        if (!shouldRetry(res.status) || attempt > READ_RETRIES) break;
+        await sleep(retryDelayMs(res, attempt));
+      }
+      if (!res) throw lastError instanceof Error ? lastError : new Error("no response");
       if (res.status === 404) {
         liveGenerationMemo.set(memoKey, { generation: null, at: now });
         return null;

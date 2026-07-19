@@ -71,13 +71,15 @@ async function fetchText(url: string): Promise<{ status: number; text: string }>
   return { status: res.status, text: await res.text() };
 }
 
-async function fetchJson(url: string): Promise<{ status: number; json: unknown }> {
+async function fetchJson(url: string): Promise<{ status: number; json: unknown; parseError?: string }> {
   const { status, text } = await fetchText(url);
   if (status !== 200) return { status, json: null };
   try {
     return { status, json: JSON.parse(text) as unknown };
   } catch {
-    throw new Error(`expected JSON from ${url}`);
+    // Keep structured GateFinding paths: never throw past runAllLiveGates for a
+    // 200 HTML/CDN body (WAF/mitigated pages sometimes surface as text/html).
+    return { status, json: null, parseError: `expected JSON from ${url}` };
   }
 }
 
@@ -191,7 +193,8 @@ export async function checkDeployedSearchIndex(siteBase: string): Promise<GateFi
 
 export async function checkSyncRunsFresh(blobBase: string, now = new Date()): Promise<GateFinding> {
   const url = `${blobBase}/ops/sync-runs.json`;
-  const { status, json } = await fetchJson(url);
+  const { status, json, parseError } = await fetchJson(url);
+  if (parseError) return { id: "sync-runs-json", ok: false, summary: parseError, observed: { status } };
   if (status !== 200 || !json || typeof json !== "object") {
     return { id: "sync-runs-http", ok: false, summary: `${url} returned HTTP ${status}` };
   }
@@ -230,7 +233,8 @@ export async function checkSyncRunsFresh(blobBase: string, now = new Date()): Pr
 
 export async function checkBasePublishFreshness(blobBase: string, now = new Date()): Promise<GateFinding> {
   const url = `${blobBase}/views/latest.json`;
-  const { status, json } = await fetchJson(url);
+  const { status, json, parseError } = await fetchJson(url);
+  if (parseError) return { id: "base-pointer-json", ok: false, summary: parseError, observed: { status } };
   if (status !== 200 || !json || typeof json !== "object") {
     return { id: "base-pointer-http", ok: false, summary: `${url} returned HTTP ${status}` };
   }
@@ -260,7 +264,8 @@ export async function checkBasePublishFreshness(blobBase: string, now = new Date
 
 export async function checkExportManifestFreshness(siteBase: string, now = new Date()): Promise<GateFinding> {
   const url = `${siteBase}/data/exports/v1/latest/manifest.json`;
-  const { status, json } = await fetchJson(url);
+  const { status, json, parseError } = await fetchJson(url);
+  if (parseError) return { id: "export-manifest-json", ok: false, summary: parseError, observed: { status } };
   if (status !== 200 || !json || typeof json !== "object") {
     return { id: "export-manifest-http", ok: false, summary: `${url} returned HTTP ${status}` };
   }
