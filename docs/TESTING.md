@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-07-10
+last_reviewed: 2026-07-17
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -23,9 +23,9 @@ Out of scope: development playbooks and local workflow live in [DEVELOPMENT.md](
 
 ## Current automation
 
-GitHub Actions is committed at `.github/workflows/ci.yml`. On PRs and pushes to `pre` or `main`, the `verify / static` job runs, from `web/`, `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test`. It sets `SEO_LIVE_BASE=""` so network-dependent suites stay out of the deterministic gate. `verify / production-build` then runs `next build` against a bounded local HTTP fixture that permits only `GET` and `HEAD`; it receives no Blob write, cron, Workflow, Vercel, or GitHub credential.
+GitHub Actions is committed at `.github/workflows/ci.yml`. Every job installs Node from `.node-version` (major 24) and Bun from the root `packageManager` pin (`1.3.14`), then runs `scripts/assert-runtime-versions.mjs`; a mismatch fails before project work starts. On PRs and pushes to `pre` or `main`, `verify / static` runs root `bun run lint:docs` (Markdown/frontmatter, maintained repository paths, env inventory, route/API ownership, pinned facts); from `pipeline/` it runs the dependency audit and `bun run test`; and from `web/` it runs the dependency audit, `bun run lint`, all three typechecks, exhaustive view-fixture validation, and `bun run test:cov`. It sets `SEO_LIVE_BASE=""` so network-dependent suites stay out of the deterministic gate. `verify / production-build` then runs `next build` against a bounded local HTTP fixture that permits only `GET` and `HEAD`; it receives no Blob write, cron, Workflow, Vercel, or GitHub credential, and explicitly rejects `BLOB_READ_WRITE_TOKEN`.
 
-After both jobs pass, `verify / preview-e2e` resolves the Vercel-owned preview check for the PR head or pushed SHA, waits for the preview alias to publish that exact SHA through `/.well-known/deployment`, and re-verifies the SHA on the immutable `*.vercel.app` deployment URL before running Chromium. It runs `e2e/accessibility-responsive.spec.ts` and `e2e/horizontal-overflow.spec.ts`; serious or critical axe findings, explicit contrast failures, response failures, or horizontal overflow fail the job. Failed runs retain traces and screenshots plus the HTML report and deployment metadata as a GitHub Actions artifact. On `pre` and `main` pushes the same job also runs `bun test lib/integration/seo.test.ts` against that immutable deployment; preview remains noindex while production must be indexable.
+After both jobs pass, `verify / preview-e2e` resolves the Vercel-owned preview check for the PR head or pushed SHA, waits for the preview alias to publish that exact SHA through `/.well-known/deployment`, and re-verifies the SHA on the immutable `*.vercel.app` deployment URL before running Chromium. It runs `e2e/accessibility-responsive.spec.ts`, `e2e/horizontal-overflow.spec.ts`, and `e2e/search-compare-interactions.spec.ts`; serious or critical axe findings, explicit contrast failures, response failures, horizontal overflow, Search keyboard/focus regressions, or Search/Compare retry failures fail the job. Failed runs retain traces and screenshots plus the HTML report and deployment metadata as a GitHub Actions artifact. On `pre` and `main` pushes the same job also runs `bun test lib/integration/seo.test.ts` against that immutable deployment; preview remains noindex while production must be indexable.
 
 The repository rule protecting `main` must require `verify / static`, `verify / production-build`, `verify / preview-e2e`, and Vercel's deployment check before a `pre` promotion can merge. Workflow files cannot create that GitHub-hosted rule; maintainers must update the required-check contexts in repository settings when this workflow lands and remove the superseded `verify` / `release-seo` contexts.
 
@@ -33,7 +33,7 @@ Dependency audit is also a PR gate. CI runs `bun run audit:deps` in both `web/` 
 
 Temporary dependency-audit overrides live in the affected package manifest, next to the lockfile they protect. As of this policy, `web/package.json` pins `undici` above the high-advisory floor while `workflow` still ships a vulnerable transitive pin, and pins `piscina` to the first fixed 4.x release while `@swc/cli` has not released an updated dependency range. `find-up@7` is a compatibility pin, not a security exception: it keeps Vercel Bun resolving the ESM package required by `workflow` builders while eslint keeps its own compatible nested `find-up@5`.
 
-Those commands are the current PR/`pre`/`main` static blockers; production build and Chromium browser acceptance are additional blockers. `bun run typecheck` keeps the main Next.js app config focused on production code. `bun run typecheck:tests` uses `web/tsconfig.tests.json` for `*.test.ts(x)` and `web/lib/integration/**`, which stay excluded from the main app typecheck only to keep the production program narrow. `bun run typecheck:scripts` uses the root `tsconfig.scripts.json` with `checkJs` for root scripts, pipeline `.mjs` utilities, web `.mjs` configs/helpers, and `web/public/sw.js`. `bun run test` maps to `bun test lib/`; the static job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. Lighthouse, visual-baseline, browser-flow, and multi-engine coverage remain unenforced.
+Those commands are the current PR/`pre`/`main` static blockers; production build and Chromium browser acceptance are additional blockers. `bun run typecheck` keeps the main Next.js app config focused on production code. `bun run typecheck:tests` uses `web/tsconfig.tests.json` for `*.test.ts(x)` and `web/lib/integration/**`, which stay excluded from the main app typecheck only to keep the production program narrow. `bun run typecheck:scripts` uses the root `tsconfig.scripts.json` with `checkJs` for root scripts, pipeline `.mjs` utilities, web `.mjs` configs/helpers, and `web/public/sw.js`. The `bun run test` command in `pipeline/` exercises the extracted bootstrap publication core, including interrupted uploads, deterministic resume, validation failure, pointer commit/rollback replay, and the shared publication lease. The `bun run test:cov` command in `web/` maps to `bun test lib/ --coverage` followed by `scripts/check-coverage-threshold.mjs`; the latter sums the generated LCOV records and exits non-zero when aggregate line or function coverage is below 80%. The measured web scope is every first-party module loaded by the `web/lib` suite, including directly imported pure helpers under `pipeline/lib`; destructive/offline `pipeline/backfill` entrypoints remain covered by typecheck, the publication-core tests, contract/parity tests, and fixture validation rather than artificial line execution. The static job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. Each job summary records exact Node/Bun versions, and the static summary records the aggregate function/line coverage row. Lighthouse, visual-baseline, browser-flow, and multi-engine coverage remain unenforced.
 
 `web/tsconfig.json` still has `allowJs` because first-party `.mjs` modules such as `web/lib/fetch-timeout.mjs` are shared with Node pipeline scripts. `skipLibCheck` remains enabled in the TypeScript configs to keep CI focused on first-party code and avoid framework/dependency declaration churn from Next, React, Bun, and Node type packages. App and test code stay under `strict`; `tsconfig.scripts.json` also runs `checkJs`, but intentionally leaves `noImplicitAny` off for archived `.mjs` pipeline utilities whose DuckDB/API row shapes are dynamic until they are migrated or annotated more deeply.
 
@@ -41,7 +41,7 @@ The Vercel Workflow `validate` step is a separate production-data publish gate: 
 
 ## Target coverage
 
-The responsive-overflow and serious/critical axe subset below is enforced in Chromium. Visual baselines, broader browser flows, performance, keyboard/manual accessibility checks, and cross-browser coverage remain targets until their tooling is added. The status table in **Planned gates** is the source of truth for whether each check is `enforced`, `manual`, `report-only`, `planned`, or `not implemented`.
+The responsive-overflow, serious/critical axe, and Search/Compare interaction subset below is enforced in Chromium. Visual baselines, broader browser flows, performance, keyboard/manual accessibility outside the Search/Compare flow, and cross-browser coverage remain targets until their tooling is added. The status table in **Planned gates** is the source of truth for whether each check is `enforced`, `manual`, `report-only`, `planned`, or `not implemented`.
 
 The issue #25 Lighthouse / Core Web Vitals baseline is archived in [perf/CWV-25.md](./perf/CWV-25.md). Treat that file as supporting evidence for one measured run; this document owns current performance targets and test expectations.
 
@@ -55,10 +55,10 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | `REQ-PULSE-001` | `P0-AC2`, `P0-AC3` | `web/lib/cron/live-refresh.test.ts`, workflow/live smoke tests, SEO/routing tests | Daily cron runbook validation and Preview `/pulse` freshness check |
 | `REQ-RANKING-001` | `P0-AC4` | `web/lib/workflows/recompute/ranks.test.ts`, `web/lib/workflows/recompute/windows.test.ts`, `web/lib/contracts/contracts.test.ts`, `web/lib/integration/recompute.test.ts`, Workflow `validate` step | Golden-file milestones and full publish/rollback E2E |
 | `REQ-I18N-001` | `P0-AC3` | `web/lib/i18n/routing.test.ts`, `web/lib/i18n/middleware.test.ts`, `web/lib/seo.test.ts`, `web/lib/sitemap.test.ts`, `web/lib/integration/seo.test.ts` | Browser language-switcher E2E and locale smoke on Preview |
-| `REQ-DATAOPS-001` | `P0-AC6` | `web/lib/cron/live-refresh.test.ts`, `web/lib/workflows/steps/validate.test.ts`, `web/lib/workflows/steps/week-dates.test.ts`, workflow start/lease tests | Vercel logs / Blob ops artifact review from OPS runbooks |
+| `REQ-DATAOPS-001` | `P0-AC6` | `pipeline/lib/bootstrap-publication.test.mjs`, `web/lib/blob-deletion.test.ts`, `web/lib/cron/live-refresh.test.ts`, `web/lib/workflows/steps/validate.test.ts`, `web/lib/workflows/steps/week-dates.test.ts`, workflow start/lease tests | Vercel logs / Blob ops artifact review from OPS runbooks |
 | `REQ-PERF-001` | `P0-AC5` | Current CI does not enforce browser/perf budgets; supporting baseline lives in `docs/perf/CWV-25.md` | Lighthouse/CWV, zero-JS, HTML-size, and cross-browser gates in §5/§6 |
-| `REQ-SEARCH-001` | P1 catalog criteria | `web/lib/search/core.test.ts`, `web/lib/search/worker-protocol.test.ts`, `web/lib/workflows/recompute/entities.test.ts`, search contracts | Browser combobox E2E once Playwright exists |
-| `REQ-COMPARE-001` | P1 catalog criteria | `web/lib/compare/core.test.ts`, `web/lib/compare/curve-fetch.test.ts`, `web/lib/compare/conclusions.test.ts` | Browser `/compare?repos=...` flow and URL-share E2E |
+| `REQ-SEARCH-001` | P1 catalog criteria | Search core/worker/fetch/keyboard unit tests plus `web/e2e/search-compare-interactions.spec.ts` keyboard, focus, compare-toggle, and populated-dialog Axe coverage | Cross-browser and visual coverage |
+| `REQ-COMPARE-001` | P1 catalog criteria | Compare core, curve-fetch/retry tests, and `web/e2e/search-compare-interactions.spec.ts` first-failure/second-success recovery | URL-share, cross-browser, and visual coverage |
 | `REQ-CATEGORY-001` | P1 catalog criteria | `web/lib/workflows/recompute/categories.test.ts`, `web/lib/categories/rules.test.ts`, category SEO/route tests | Category browser E2E and pagination visual checks |
 
 本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。
@@ -112,7 +112,7 @@ test('周排名窗口跨月不丢日', () => {
 - 字段类型 / 必填 / 枚举（`owner_type ∈ {User, Org}`、`metric ∈ {flow, stock}`、`window ∈ {week,month,year,all-time}`）
 - 引用完整性：榜单里每个 `repo_id` 在 `lookup/repos.json` 有对应条目
 - Zod schema 即 build 读 JSON 的 TS 类型来源（single source of truth，避免 schema 与类型漂移）
-- **实现**：`web/scripts/validate-views.ts`（`bun scripts/validate-views.ts` 全量校验 `pipeline/data/views/**` 对契约，失败非零退出）。bootstrap precompute 全部产物跑 Zod 契约校验,期望 0 失败；这与离线 parity 是两个不同指标——**离线 parity 测试**比对生成的视图与 DuckDB 重算结果逐字节一致（`web/lib/integration/recompute.test.ts`），勿混淆文件契约校验与字节对拍。**Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/<run_id>/**`**（§1.5，**抽样关键视图**而非全量逐文件），逻辑同源、只换运行位置。
+- **实现**：`web/scripts/validate-views.ts`（`bun run validate:views -- <viewsDir>` 全量校验目录内每个 JSON 对契约，未知路径、畸形 JSON 或 schema mismatch 均失败；只有 `web/lib/view-validation.ts` 中带理由的窄 allowlist 可豁免）。CI 对覆盖所有已注册视图家族的只读 fixture 执行同一命令。bootstrap precompute 全部产物也必须运行该门禁，期望 `skipped=0`、`failed=0`；这与离线 parity 是两个不同指标——**离线 parity 测试**比对生成的视图与 DuckDB 重算结果逐字节一致（`web/lib/integration/recompute.test.ts`），勿混淆文件契约校验与字节对拍。**Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/<run_id>/**`**（§1.5，运行时另加完整性/跨视图不变量），逻辑同源、只换运行位置。
 
 ### 1.3 Sanity 不变量（数据级断言，对全量产物跑）
 
@@ -148,11 +148,12 @@ test('周排名窗口跨月不丢日', () => {
 |---|---|
 | `meta.json` | `seam_date` 存在 |
 | 全时 stock 总榜 | repo/org all-time rank 均读 schema；`items` 非空、`rank[0]==1`、`value` 非递增；rank 从 1 连续、无重复 rank、无重复 `id/login` |
-| `lookup/repos.json` | 条目数 ≥ 1000（防止下游 join 表崩塌） |
+| `lookup/repos.json` | 条目数 ≥ 1000；ID 集合必须与本 run canonical repos 完全一致，且相对上一发布版只能出现 whitelist `diff.added` 批准的新 ID（跌出白名单的历史 repo 保留） |
 | rank 引用完整性 | staging all-time rank item 的 repo `id` 必须在 `lookup/repos.json`；org `login` 必须在 `lookup/orgs.json` |
 | `meta.folded_through` | 相对上一发布版本不倒退（month/week 单调） |
 | `lookup/aliases.json` | 别名完整性：无 dangling（每个别名 id 仍在 `lookup/repos.json` 内）、无 live-shadow（别名旧名不得撞当前某 repo 的 `full_name`）、alias count 不小于上一发布版本 |
-| `canonical/v2/repos/*` `d` 因子 | warning 级报告：统计 `d > 2` 的 repo 数和最大值，写入 `d_factor_*` invariants，不进入 `failures` |
+| canonical 完整性 | `repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 的全部 bucket 必须存在并通过 schema；写含路径、记录数、SHA-256 的 `canonical-manifest.json` |
+| `canonical/v2/repos/*` `d` 因子 | `d > 2` 仍是 warning；历史 repo 缺少有限 `d` 为硬失败，新晋 repo（有 `tracked_since`）显式按 `d=0` 建模 |
 | `search/index.json` | `count` ≥ 1000 且 `count == repos.length`（防止索引漂移） |
 | `categories/registry.json` | 非空；至少一个 `public` 分类 |
 | `categories/assignments.json` | 条目数 ≥ 1000；每 repo `language`/`language_family` 各 ≥1、`owner_kind` 恰 1；无 unknown 分类引用（assignment 里每个分类 id 在 registry 内） |
@@ -163,7 +164,7 @@ test('周排名窗口跨月不丢日', () => {
 
 | 测试 | 在哪跑 | 断言 | 失败动作 |
 |---|---|---|---|
-| **staging 校验闸门** | Workflow `validate` step（Vercel） | 上表全部抽样断言（含 alias 完整性 + category 套件），对 `views/<run_id>/**` | `ok=false` → **不切指针**；线上仍是上一版；staging 版本保留供排查；写 `ops/workflows/<run_id>/validation.json` |
+| **staging 校验闸门** | Workflow `validate` step（Vercel） | 上表视图抽样断言 + 全量 canonical shard/ID 完整性 | `ok=false` → **不切指针**；线上仍是上一版；staging 版本保留供排查；写 `canonical-manifest.json` 与 `validation.json` |
 | **canonical shard 等价性** | 单测（CI）+ Workflow step | 「JSON shard 纯 JS 聚合」结果 == 「bootstrap DuckDB 同口径」结果（容差 0）；DuckDB parity 只作为 `folded_through <= seam` 的 legacy 等价对拍,不是 post-seam oracle | CI 阻断 / step error |
 | **发布指针原子性** | 集成测试 | 切指针前后读侧拿到的版本自洽；切到一半的请求拿旧版（不拿半发布） | CI 阻断 |
 | **回滚可逆** | 集成测试 | 把 `views/latest.json.version` 指回 `prev_version` 后，读侧立即拿回上一版；`views/<prev>` 仍在 | CI 阻断 |
@@ -277,20 +278,24 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ## Planned gates
 
-> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/`pre`/`main` CI 分成 static、production-build、preview-e2e 三个 release checks；browser check 只覆盖已提交的 Chromium responsive/overflow/axe suites。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Lighthouse、视觉基线、完整 browser flows 与 multi-engine coverage 仍是 target coverage。
+> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/`pre`/`main` CI 分成 static、production-build、preview-e2e 三个 release checks；browser check 只覆盖已提交的 Chromium responsive/overflow/axe 和 Search/Compare interaction suites。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Lighthouse、视觉基线、其余完整 browser flows 与 multi-engine coverage 仍是 target coverage。
 
 状态含义：`enforced` = 当前自动化 gate 会阻断；`manual` = reviewer / operator 可手动检查但不自动阻断；`report-only` = 有报告或基线但不阻断；`planned` = 已定义目标，尚无提交的 gate；`not implemented` = 尚无当前 tooling。
 
 | 检查 | 状态 | 当前执行位置 | 说明 / 目标 gate |
 |---|---|---|---|
+| Node/Bun runtime pins | `enforced` | 全部 GitHub Actions jobs：setup + `assert-runtime-versions.mjs` | Node 24.x、Bun 1.3.14；任一 mismatch 在执行项目命令前失败 |
+| Documentation contracts | `enforced` | `verify / static`：root `bun run lint:docs` | 无语言 fence、缺失/非法 frontmatter、失效 backtick 路径、漏记 env、重复 route owner、API 路由/版本漂移均阻断；历史路径仅允许显式 reasoned allowlist |
 | `lint` | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run lint` | 当前 PR blocker |
 | TypeScript app | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck` | Current PR blocker for production app code through `web/tsconfig.json` |
 | TypeScript tests / integration | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck:tests` | Current PR blocker for `*.test.ts(x)` and `web/lib/integration/**` through `web/tsconfig.tests.json` |
 | TypeScript scripts / JS | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck:scripts` | Current PR blocker for root scripts, pipeline `.mjs`, web `.mjs`, and `web/public/sw.js` through `tsconfig.scripts.json` with `checkJs` |
-| `web/lib` test suite | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run test` → `bun test lib/` | 当前 PR blocker；覆盖纯逻辑、contracts、workflow validation、i18n/route/SEO helpers 等 |
+| Pipeline publication tests | `enforced` | GitHub Actions PR/`pre`/`main`：在 `pipeline/` 运行 `bun run test` | Interrupted uploads, resume, validation failure, lease fencing, single-pointer commit, and explicit rollback replay |
+| Logic tests + coverage | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run test:cov` | `web/lib` suite 及其直接加载的 `pipeline/lib` pure helpers；lines/functions 均不得低于 80% |
 | Production `next build` | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / production-build` | 使用本地 GET/HEAD-only bounded fixture；无 write-capable credentials |
-| Responsive / horizontal overflow | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / preview-e2e` | Chromium 对 exact-SHA immutable Vercel deployment 跑两个 committed suites |
-| Axe serious / critical | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / preview-e2e` | 关键 routes 明暗主题 serious/critical 必须为 0；失败上传 HTML、trace、screenshot 与 violation details |
+| Responsive / horizontal overflow | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / preview-e2e` | Chromium 对 exact-SHA immutable Vercel deployment 跑 committed responsive/overflow suites |
+| Axe serious / critical | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / preview-e2e` | 关键 routes 明暗主题以及打开且有结果的 Search dialog，serious/critical 必须为 0；失败上传 HTML、trace、screenshot 与 violation details |
+| Search / Compare interaction recovery | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / preview-e2e` | Search Arrow/Enter/Escape/Tab、焦点/compare toggle，以及 Compare index/curve retry 均为 Chromium blocker |
 | Live SEO acceptance | `enforced` | GitHub Actions `pre`/`main` push：`verify / preview-e2e` → `bun test lib/integration/seo.test.ts` | 对 exact-SHA immutable deployment 验证 rendered metadata、hreflang、sitemap index/children，以及 preview/production robots 差异 |
 | 1.1 聚合 / 排名单测 | `enforced` | `bun test lib/` 中的 recompute / ranking / window / integration suites | 覆盖目标仍以 §1.1 为准 |
 | 1.2 Zod schema 契约 | `enforced` | `bun test lib/` contract tests；Workflow `validate` 抽样 staging 视图 | 全量产物校验仍是 target coverage |
@@ -299,8 +304,8 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 | 1.5 staging validate / pointer cut | `enforced` | Vercel Workflow `validate` step | `ok=false` 不切 `views/latest.json`；不是 PR 页面渲染 gate |
 | 1.5 full publish / rollback E2E | `planned` | 无独立 gate | 目标是发布、回滚、读侧原子性端到端验证 |
 | 2. 视觉回归 | `not implemented` | 无 Playwright visual-baseline job | 失败截图已留档；目标仍是关键页 × 4 断点 × 明暗双主题，基准入库 |
-| 3. a11y（axe + 键盘） | `enforced` | `verify / preview-e2e` | 已强制 axe critical/serious 与 `/pulse` 对比度；键盘/focus/reduced-motion/manual review 仍是 target |
-| 4. E2E 导航 / i18n browser flows | `not implemented` | 无 Playwright browser E2E job | `web/lib` 有部分 fetch/unit 覆盖，但不是浏览器 E2E gate |
+| 3. a11y（axe + 键盘） | `enforced` | `verify / preview-e2e` | 已强制 axe critical/serious、`/pulse` 对比度和 Search 键盘/焦点；其余键盘、reduced-motion 和 manual review 仍是 target |
+| 4. E2E 导航 / i18n browser flows | `not implemented` | Search/Compare 子集已在 `preview-e2e`；无完整 navigation/i18n suite | Search/Compare 恢复流已阻断；其余站内导航与 i18n browser flows 尚未实现 |
 | 5. Lighthouse / CWV | `report-only` | `docs/perf/CWV-25.md` historical baseline | 目标：代表性页面自动 Lighthouse/CWV 报告；字段 INP 需 RUM/CrUX |
 | 5. 零 JS / HTML / font budgets | `planned` | 无独立 budget gate | 目标：脚本化 structural checks，并在 gate 中阻断 |
 | 6. 跨浏览器 | `not implemented` | 无 Playwright multi-engine job | 目标：chromium / firefox / webkit 关键页与渐进增强 fallback |
@@ -308,7 +313,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 **节奏要点**：
 
-- **CI（每 PR / `pre` push / `main` push）**：`verify / static` 跑 audit、lint、三套 typecheck 与 Bun tests；`verify / production-build` 对只读本地 fixture 跑 `next build`；`verify / preview-e2e` 对 exact-SHA immutable Vercel URL 跑 committed Chromium axe/responsive/overflow suites，并在 branch push 时加跑 live SEO。Lighthouse、视觉 baseline、完整 browser flows 与 multi-engine coverage 仍不阻断。
+- **CI（每 PR / `pre` push / `main` push）**：三个 jobs 都锁定并断言 Node 24.x / Bun 1.3.14；`verify / static` 跑 audit、Markdown/frontmatter、lint、三套 typecheck、view fixture 与带 80% 双阈值的 coverage tests；`verify / production-build` 对只读本地 fixture 跑 `next build`；`verify / preview-e2e` 对 exact-SHA immutable Vercel URL 跑 committed Chromium axe/responsive/overflow 和 Search/Compare interaction suites，并在 branch push 时加跑 live SEO。Lighthouse、视觉 baseline、其余完整 browser flows 与 multi-engine coverage 仍不阻断。
 - **Publish gate（Workflow `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 的当前抽样 Zod + sanity，任一当前断言失败即**不切 `views/latest.json` 指针**（线上仍上一版）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
 - **Planned browser/render gates**：视觉 baseline、完整 E2E navigation、Lighthouse 与 cross-browser 自动化仍需要对应 tooling；a11y 的 axe serious/critical 和 responsive overflow subset 已提交并强制。
 - **每日 / 每周 cron**：不触发 deploy；cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后的活尾 schema/sanity 告警属于 ops 目标，不是当前 PR CI gate。
@@ -318,13 +323,15 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ### Required current checks
 
+- [ ] every CI job reports Node 24.x and Bun 1.3.14 after `assert-runtime-versions.mjs`
+- [ ] root `bun run lint:docs` passes Markdown/frontmatter, repository-path, env-inventory, route/API ownership, and pinned-fact validation
 - [ ] `web/` PR/`pre`/`main` CI passes `bun run lint`
 - [ ] `web/` PR/`pre`/`main` CI passes `bun run typecheck`
 - [ ] `web/` PR/`pre`/`main` CI passes `bun run typecheck:tests`
 - [ ] `web/` PR/`pre`/`main` CI passes `bun run typecheck:scripts`
-- [ ] `web/` PR/`pre`/`main` CI passes `bun run test` (`bun test lib/`)
+- [ ] `web/` PR/`pre`/`main` CI passes `bun run test:cov`, with line and function coverage both ≥ 80%
 - [ ] `web/` PR/`pre`/`main` CI passes `next build` against the read-only fixture
-- [ ] exact-SHA immutable Vercel deployment passes both committed Playwright release suites
+- [ ] exact-SHA immutable Vercel deployment passes all three committed Playwright release suites
 - [ ] `pre`/`main` push release verification passes `bun test lib/integration/seo.test.ts` against that immutable deployment
 - [ ] 涉及生产数据发布时，Workflow `validate` 失败仍不切 `views/latest.json` 指针
 
@@ -341,4 +348,3 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 - [ ] 内容页零客户端 JS（bundle 断言）+ HTML < 20KB + 字体子集 ≤ ~30KB
 - [ ] CWV 达标（LCP<2.5s / INP<200ms / CLS<0.1 / FCP<1.5s）
 - [ ] 跨浏览器关键页通过，View Transitions 优雅降级
-- [ ] 逻辑代码覆盖率 ≥ 80%

@@ -11,6 +11,8 @@ import {
 import { requireBlobWriteToken } from "@/lib/runtime-config";
 import { REPO_BUCKETS } from "../buckets";
 import { buildModel, type Model, type RawShards } from "./model";
+import { workflowHeartbeat } from "@/lib/workflows/owned-write";
+import type { WorkflowOwnership } from "@/lib/workflows/lease";
 
 // Blob I/O for the recompute steps: load the canonical/v2 model and write a versioned
 // view set (views/<run_id>/**). Reads bust Blob's short cache with the run id so a step
@@ -26,10 +28,28 @@ async function mergeBuckets<T extends Record<string, unknown>>(
   bust: string,
 ): Promise<Record<string, T[string]>> {
   const shards = await Promise.all(
-    Array.from({ length: REPO_BUCKETS }, (_, b) => readView(`canonical/v2/${kind}/${b}.json`, schema, { bust })),
+    Array.from({ length: REPO_BUCKETS }, async (_, bucket) => {
+      const path = `canonical/v2/${kind}/${bucket}.json`;
+      try {
+        return await readView(path, schema, { bust });
+      } catch (error) {
+        throw new Error(`${path}: schema/read failure — ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      }
+    }),
   );
+  return mergeCompleteBucketShards(kind, shards);
+}
+
+export function mergeCompleteBucketShards<T extends Record<string, unknown>>(
+  kind: string,
+  shards: Array<T | null>,
+): Record<string, T[string]> {
+  const missing = shards.flatMap((shard, bucket) => (shard === null ? [bucket] : []));
+  if (missing.length > 0) {
+    throw new Error(`canonical/v2/${kind}: missing required shard(s) ${missing.join(",")}`);
+  }
   const out: Record<string, unknown> = {};
-  for (const shard of shards) if (shard) Object.assign(out, shard);
+  for (const shard of shards) Object.assign(out, shard);
   return out as Record<string, T[string]>;
 }
 
@@ -64,11 +84,12 @@ export async function loadCanonicalModel(bust: string): Promise<LoadedModel> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Write a view map under views/<run_id>/** with a concurrency pool + write-rate gate. */
-export async function writeVersion(runId: string, views: Map<string, unknown>): Promise<number> {
+export async function writeVersion(runId: string, views: Map<string, unknown>, owner?: WorkflowOwnership): Promise<number> {
   const token = requireBlobWriteToken();
   const items = [...views.entries()];
   let i = 0;
   let nextStart = 0;
+  const heartbeat = owner ? workflowHeartbeat(owner) : async () => {};
   const gate = async () => {
     const now = Date.now();
     const wait = Math.max(0, nextStart - now);
@@ -78,6 +99,7 @@ export async function writeVersion(runId: string, views: Map<string, unknown>): 
   async function worker() {
     while (i < items.length) {
       const [rel, obj] = items[i++];
+      await heartbeat();
       await gate();
       await put(`views/${runId}/${rel}`, JSON.stringify(obj), {
         access: "public",

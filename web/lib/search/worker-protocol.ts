@@ -1,4 +1,5 @@
 import { SearchDoc as SearchDocSchema, type SearchDoc } from "@/lib/contracts";
+import { truncateUnicodeText } from "../unicode-text";
 import type { SearchHit } from "./core";
 
 export type SearchLoadState = "idle" | "loading" | "ready" | "error";
@@ -43,7 +44,7 @@ export function createSearchWorkerError(code: SearchWorkerErrorCode, error?: unk
   return {
     code,
     message: ERROR_MESSAGES[code],
-    ...(isDevelopment() && details ? { details: details.slice(0, 2000) } : {}),
+    ...(isDevelopment() && details ? { details: truncateUnicodeText(details, 2000) } : {}),
   };
 }
 

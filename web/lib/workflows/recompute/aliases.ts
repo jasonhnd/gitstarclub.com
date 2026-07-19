@@ -8,7 +8,7 @@
 // See aliases.test.ts for the full contract and docs/DATA-CONTRACTS.md.
 
 type RenameDelta = { id: number; old_full_name: string };
-type LookupEntry = { full_name: string };
+type LookupEntry = { full_name: string; active?: boolean };
 
 export function buildAliasMap(
   renameEntries: ReadonlyArray<RenameDelta>,
@@ -19,7 +19,7 @@ export function buildAliasMap(
   for (const [id, entry] of Object.entries(currentLookup)) {
     const lower = entry.full_name.toLowerCase();
     currentById.set(Number(id), lower);
-    liveNames.add(lower);
+    if (entry.active !== false) liveNames.add(lower);
   }
 
   // Deterministic order: duplicate old names across runs resolve identically regardless of

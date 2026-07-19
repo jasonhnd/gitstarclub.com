@@ -1,9 +1,9 @@
 import { readView } from "@/lib/data/source";
-import { putView } from "@/lib/data/write";
 import { CanonicalMeta, PendingPeriod, RepoMonthlyShard, RepoWeeklyShard, SiteDaily } from "@/lib/contracts";
 import { repoBucket } from "../buckets";
 import { currentUtcPeriods } from "@/lib/periods";
 import { addDays, endOfMonth, monthsBetween, sundayOfWeekId, weekIdOf } from "./week-dates";
+import { putOwnedView } from "@/lib/workflows/owned-write";
 
 // Canonical fold. Folds CLOSED months (those with a frozen pending
 // snapshot, after folded_through.month and before the current month) into canonical/v2:
@@ -20,7 +20,21 @@ export function nextMonth(m: string): string {
   return mo >= 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
 }
 
-export async function foldCanonical(runId: string): Promise<{ folded: string[]; foldedWeeks: string[] }> {
+export function foldedCanonicalMeta(
+  meta: CanonicalMeta,
+  foldedThroughMonth: string,
+  foldedThroughWeek: string,
+  generatedAt: string,
+): CanonicalMeta {
+  return CanonicalMeta.parse({
+    seam_date: meta.seam_date,
+    schema_ver: meta.schema_ver,
+    folded_through: { month: foldedThroughMonth, week: foldedThroughWeek },
+    generated_at: generatedAt,
+  });
+}
+
+export async function foldCanonical(runId: string, fencingToken: number): Promise<{ folded: string[]; foldedWeeks: string[] }> {
   "use step";
   const meta = await readView("canonical/v2/meta.json", CanonicalMeta, { bust: runId });
   if (!meta) throw new Error("canonical/v2/meta.json missing");
@@ -32,29 +46,28 @@ export async function foldCanonical(runId: string): Promise<{ folded: string[]; 
   for (let m = nextMonth(foldedThroughMonth); m < currentMonth; m = nextMonth(m)) {
     const pending = await readView(`canonical/v2/pending/${m}.json`, PendingPeriod, { bust: runId });
     if (!pending) break; // keep the watermark contiguous — stop at the first un-frozen month
-    await foldMonth(m, pending, runId);
+    await foldMonth(m, pending, runId, fencingToken);
     foldedThroughMonth = m;
     folded.push(m);
   }
 
   // Weeks fold AFTER months: a closed ISO week is foldable only once ALL its days live in frozen
   // months (its Sunday's month ≤ foldedThroughMonth). Cross-month weeks pull days from two pendings.
-  const foldedWeeks = await foldWeeks(foldedThroughMonth, meta.folded_through.week, runId);
+  const foldedWeeks = await foldWeeks(foldedThroughMonth, meta.folded_through.week, runId, fencingToken);
   const foldedThroughWeek = foldedWeeks.length ? foldedWeeks[foldedWeeks.length - 1] : meta.folded_through.week;
 
   // Write meta ONCE with both advances (month from the loop, week from foldWeeks).
   if (folded.length || foldedWeeks.length) {
-    await putView("canonical/v2/meta.json", {
-      seam_date: meta.seam_date,
-      schema_ver: meta.schema_ver,
-      folded_through: { month: foldedThroughMonth, week: foldedThroughWeek },
-      generated_at: new Date().toISOString(),
-    });
+    await putOwnedView(
+      { runId, fencingToken },
+      "canonical/v2/meta.json",
+      foldedCanonicalMeta(meta, foldedThroughMonth, foldedThroughWeek, new Date().toISOString()),
+    );
   }
   return { folded, foldedWeeks };
 }
 
-async function foldMonth(month: string, pending: PendingPeriod, runId: string): Promise<void> {
+async function foldMonth(month: string, pending: PendingPeriod, runId: string, fencingToken: number): Promise<void> {
   // month flow per repo = Σ daily deltas in the frozen pending snapshot, grouped by bucket.
   const byBucket = new Map<number, Array<[number, number]>>();
   for (const [idStr, series] of Object.entries(pending.per_repo)) {
@@ -76,7 +89,7 @@ async function foldMonth(month: string, pending: PendingPeriod, runId: string): 
       series.sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0));
       shard[String(id)] = series;
     }
-    await putView(`canonical/v2/repo-monthly/${b}.json`, shard);
+    await putOwnedView({ runId, fencingToken }, `canonical/v2/repo-monthly/${b}.json`, shard);
   }
 
   // append the month's daily site totals to site-daily/<year> (heatmap source), upsert by date.
@@ -84,7 +97,7 @@ async function foldMonth(month: string, pending: PendingPeriod, runId: string): 
   const site = (await readView(`canonical/v2/site-daily/${year}.json`, SiteDaily, { bust: runId })) ?? { year, cells: [] };
   const cells = new Map<string, number>(site.cells.map(([d, t]) => [d, t]));
   for (const [date, total] of pending.daily_totals) cells.set(date, total);
-  await putView(`canonical/v2/site-daily/${year}.json`, {
+  await putOwnedView({ runId, fencingToken }, `canonical/v2/site-daily/${year}.json`, {
     year,
     cells: [...cells.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1)),
   });
@@ -137,7 +150,12 @@ export function computeWeekRows(pendings: PendingPeriod[], fromWeekExclusive: st
   return rows;
 }
 
-async function foldWeeks(foldedThroughMonth: string, fromWeekExclusive: string, runId: string): Promise<string[]> {
+async function foldWeeks(
+  foldedThroughMonth: string,
+  fromWeekExclusive: string,
+  runId: string,
+  fencingToken: number,
+): Promise<string[]> {
   // Which frozen month pendings can hold a candidate week's days? From the month of the first
   // candidate week's start (day after fromWeek's Sunday) through the last frozen month, inclusive.
   // A boundary week straddling fromWeek's own month is impossible here (its days end on fromWeek's
@@ -180,7 +198,7 @@ async function foldWeeks(foldedThroughMonth: string, fromWeekExclusive: string, 
         shard[String(id)] = series;
       }
     }
-    await putView(`canonical/v2/repo-weekly/${b}.json`, shard);
+    await putOwnedView({ runId, fencingToken }, `canonical/v2/repo-weekly/${b}.json`, shard);
   }
 
   return rows.map((r) => r.week); // ascending + contiguous; caller advances folded_through.week to last

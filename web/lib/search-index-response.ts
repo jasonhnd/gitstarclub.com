@@ -1,4 +1,5 @@
 import type { SearchIndex } from "@/lib/contracts";
+import { truncateUnicodeText } from "@/lib/unicode-text";
 
 // Pure response builder for GET /search-index. Kept free of Next/React imports so unit
 // tests can exercise success, empty, and failure paths without mocking @/lib/data
@@ -15,7 +16,7 @@ export function slimSearchIndex(index: SearchIndex, descriptionCap = SEARCH_INDE
     ...index,
     repos: index.repos.map((repo) => ({
       ...repo,
-      description: repo.description ? repo.description.slice(0, descriptionCap) : null,
+      description: repo.description ? truncateUnicodeText(repo.description, descriptionCap) : null,
     })),
   };
 }

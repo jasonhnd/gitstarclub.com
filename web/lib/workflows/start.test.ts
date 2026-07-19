@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { WorkflowLease } from "@/lib/contracts";
-import type { HealthStatus } from "@/lib/observability/alert";
+import type { HealthStatus } from "@/lib/contracts";
 import type { WorkflowLeaseSnapshot, WorkflowLeaseStore } from "./lease";
 import { startRefreshWorkflowRoute } from "./start";
 
@@ -33,6 +33,12 @@ class MemoryLeaseStore implements WorkflowLeaseStore {
     this.lease = structuredClone(lease);
     this.etag = `"${++this.version}"`;
     return true;
+  }
+}
+
+class FailingReleaseStore extends MemoryLeaseStore {
+  override async compareAndSet(): Promise<boolean> {
+    return false;
   }
 }
 
@@ -74,7 +80,82 @@ function runningLease(runId: string, idempotencyKey: string): WorkflowLease {
   });
 }
 
+async function passPreflight() {
+  return {
+    seam_date: "2026-05-30",
+    schema_ver: 1,
+    folded_through: { month: "2026-05", week: "2026-W22" },
+    generated_at: "2026-06-02T14:32:57.214Z",
+  };
+}
+
 describe("startRefreshWorkflowRoute", () => {
+  test.each(["1", "0", "false", "unexpected"])(
+    "rejects dry=%s before config checks, lease acquisition, health writes, or enqueue",
+    async (dry) => {
+      delete process.env.BLOB_BASE_URL;
+      delete process.env.BLOB_READ_WRITE_TOKEN;
+      delete process.env.GITHUB_TOKEN;
+      const store = new MemoryLeaseStore();
+      const startWorkflow = mock(async () => {});
+      const recordHealth = mock(async () => {});
+      const sendAlert = mock(async () => {});
+
+      const response = await startRefreshWorkflowRoute(
+        request(`https://gitstarclub.com/api/workflows/refresh/start?dry=${dry}`),
+        startWorkflow,
+        { leaseStore: store, recordHealth, sendAlert },
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Managed refresh does not support dry-run. Use the daily or weekly cron dry-run endpoint instead.",
+      });
+      expect(startWorkflow).not.toHaveBeenCalled();
+      expect(recordHealth).not.toHaveBeenCalled();
+      expect(sendAlert).not.toHaveBeenCalled();
+      expect(store.lease).toBeNull();
+    },
+  );
+
+  test("rejects unsupported query parameters without acquiring a lease", async () => {
+    const store = new MemoryLeaseStore();
+    const startWorkflow = mock(async () => {});
+
+    const response = await startRefreshWorkflowRoute(
+      request("https://gitstarclub.com/api/workflows/refresh/start?preview=1"),
+      startWorkflow,
+      { leaseStore: store, recordHealth: async () => {} },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: "Unsupported query parameter: preview" });
+    expect(startWorkflow).not.toHaveBeenCalled();
+    expect(store.lease).toBeNull();
+  });
+
+  test("accepts documented trigger and idempotency query parameters", async () => {
+    const store = new MemoryLeaseStore();
+    const startWorkflow = mock(async () => {});
+
+    const response = await startRefreshWorkflowRoute(
+      request("https://gitstarclub.com/api/workflows/refresh/start?trigger=operator&idempotency_key=manual-2026-07-17"),
+      startWorkflow,
+      {
+        now: new Date("2026-07-17T06:00:00.000Z"),
+        leaseStore: store,
+        recordHealth: async () => {},
+        preflight: passPreflight,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "started", idempotencyKey: "manual-2026-07-17" });
+    expect(startWorkflow).toHaveBeenCalledTimes(1);
+    expect(store.lease).toMatchObject({ trigger: "operator", idempotency_key: "manual-2026-07-17" });
+  });
+
   test("fails before acquiring a lease when required runtime config is missing", async () => {
     delete process.env.GITHUB_TOKEN;
     const store = new MemoryLeaseStore();
@@ -96,14 +177,37 @@ describe("startRefreshWorkflowRoute", () => {
     }
   });
 
+  test("fails canonical preflight before acquiring a lease or enqueueing", async () => {
+    const store = new MemoryLeaseStore();
+    const startWorkflow = mock(async () => {});
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const response = await startRefreshWorkflowRoute(request(), startWorkflow, {
+        now: new Date("2026-07-05T06:00:00.000Z"),
+        leaseStore: store,
+        recordHealth: async () => {},
+        preflight: async () => {
+          throw new Error("canonical schema mismatch");
+        },
+      });
+
+      expect(response.status).toBe(500);
+      expect(startWorkflow).not.toHaveBeenCalled();
+      expect(store.lease).toBeNull();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   test("two simultaneous route calls do not both enqueue refresh workflows", async () => {
     const store = new MemoryLeaseStore();
     const startWorkflow = mock(async () => {});
     const now = new Date("2026-07-05T06:00:00.000Z");
 
     const responses = await Promise.all([
-      startRefreshWorkflowRoute(request(), startWorkflow, { now, leaseStore: store, recordHealth: async () => {} }),
-      startRefreshWorkflowRoute(request(), startWorkflow, { now, leaseStore: store, recordHealth: async () => {} }),
+      startRefreshWorkflowRoute(request(), startWorkflow, { now, leaseStore: store, recordHealth: async () => {}, preflight: passPreflight }),
+      startRefreshWorkflowRoute(request(), startWorkflow, { now, leaseStore: store, recordHealth: async () => {}, preflight: passPreflight }),
     ]);
     const bodies = await Promise.all(responses.map((response) => response.json() as Promise<{ status: string; runId: string }>));
 
@@ -120,6 +224,7 @@ describe("startRefreshWorkflowRoute", () => {
     const response = await startRefreshWorkflowRoute(request(), startWorkflow, {
       now: new Date("2026-07-05T06:01:00.000Z"),
       leaseStore: store,
+      preflight: passPreflight,
       recordHealth: async (_pipeline, status, detail) => {
         health.push({ status, detail: detail ?? {} });
       },
@@ -139,6 +244,7 @@ describe("startRefreshWorkflowRoute", () => {
     const response = await startRefreshWorkflowRoute(request("https://gitstarclub.com/api/workflows/refresh/start?idempotency_key=manual-1"), startWorkflow, {
       now: new Date("2026-07-05T06:01:00.000Z"),
       leaseStore: store,
+      preflight: passPreflight,
       recordHealth: async (_pipeline, status, detail) => {
         health.push({ status, detail: detail ?? {} });
       },
@@ -150,5 +256,34 @@ describe("startRefreshWorkflowRoute", () => {
     expect(startWorkflow).not.toHaveBeenCalled();
     expect(health[0]?.status).toBe("rejected");
     expect(health[0]?.detail.idempotency_key).toBe("manual-1");
+  });
+
+  test("surfaces a lease release failure when enqueueing fails", async () => {
+    const store = new FailingReleaseStore();
+    const alerts: string[] = [];
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await startRefreshWorkflowRoute(
+        request(),
+        async () => {
+          throw new Error("enqueue unavailable");
+        },
+        {
+          now: new Date("2026-07-05T06:00:00.000Z"),
+          leaseStore: store,
+          preflight: passPreflight,
+          recordHealth: async () => {},
+          sendAlert: async (summary) => {
+            alerts.push(summary.error ?? "");
+          },
+        },
+      );
+
+      expect(response.status).toBe(500);
+      expect(alerts).toEqual(["enqueue unavailable; failed to release fencing token 1"]);
+      expect(store.lease?.status).toBe("running");
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

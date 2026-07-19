@@ -208,6 +208,8 @@ function exportLookups() {
       owner_type: r.owner_type,
       language: r.language ?? null,
       current_stars: r.current_stars,
+      active: r.active !== false,
+      tracked_since: r.tracked_since ?? null,
     };
   }
   writeJson("lookup/repos.json", repoLk);
@@ -267,6 +269,8 @@ async function exportRepoEntities() {
       topics: meta.topics ?? [],
       created_at: (meta.created_at ?? "").slice(0, 10),
       current_stars: meta.current_stars,
+      active: meta.active !== false,
+      tracked_since: meta.tracked_since ?? null,
       is_archived: !!meta.is_archived,
       milestones: {
         crossed_10k: meta.crossed_10k ?? null,
@@ -419,7 +423,14 @@ await exportHeatmaps();
 const repoStats = await exportRepoEntities();
 const orgStats = await exportOrgEntities(orgAgg);
 await exportHotSnapshot();
-writeJson("meta.json", { seam_date: seamDate, backfilled_at: GEN, schema_ver: 1, generated_at: GEN });
+writeJson("meta.json", {
+  seam_date: seamDate,
+  backfilled_at: GEN,
+  schema_ver: 1,
+  active_repo_count: repos.filter((repo) => repo.active !== false).length,
+  historical_repo_count: repos.filter((repo) => repo.active === false).length,
+  generated_at: GEN,
+});
 
 // --- sanity ---
 if (repoStats.count !== repos.length) throw new Error(`entity count ${repoStats.count} != ${repos.length}`);

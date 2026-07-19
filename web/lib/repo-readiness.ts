@@ -29,6 +29,8 @@ export type RepoPageEntity = {
   } | null;
   created_at: string | null;
   current_stars: number;
+  active: boolean;
+  tracked_since: string | null;
   is_archived: boolean;
   milestones: RepoPageMilestones;
   curve: {
@@ -72,6 +74,8 @@ export function normalizeRepoPageEntity(value: unknown, expectedId?: number): Re
     latest_release: normalizeLatestRelease(value.latest_release),
     created_at: validDateString(value.created_at),
     current_stars: currentStars,
+    active: typeof value.active === "boolean" ? value.active : true,
+    tracked_since: validDateString(value.tracked_since),
     is_archived: typeof value.is_archived === "boolean" ? value.is_archived : false,
     milestones: normalizeMilestones(value.milestones),
     curve: {

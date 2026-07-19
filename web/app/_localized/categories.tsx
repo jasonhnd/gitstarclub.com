@@ -264,7 +264,7 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
         <section className="mt-[clamp(2.5rem,5vw,4rem)]">
           <SectionIntro title={text.categorySummaryCaption} description={text.categoryIndexDatasetDescription} />
           {categoryRows.length > 0 ? (
-            <CategorySummaryTable rows={categoryRows} caption={text.categorySummaryCaption} labels={categoryTableLabels(locale, t)} />
+            <CategorySummaryTable rows={categoryRows} caption={text.categorySummaryCaption} labels={categoryTableLabels(locale, t)} locale={locale} />
           ) : (
             <EmptyState message={t.categories.empty} />
           )}
@@ -374,7 +374,7 @@ export async function CategoryDimensionPageView({ locale, dimension }: { locale:
         <section className="mt-[clamp(2.5rem,5vw,4rem)]">
           <SectionIntro title={fill(text.categoryDimensionSummaryCaption, { label: entryLabel })} description={fill(text.categoryLinksA, { label: entryLabel })} />
           {categoryRows.length > 0 ? (
-            <CategorySummaryTable rows={categoryRows} caption={fill(text.categoryDimensionSummaryCaption, { label: entryLabel })} labels={categoryTableLabels(locale, t)} />
+            <CategorySummaryTable rows={categoryRows} caption={fill(text.categoryDimensionSummaryCaption, { label: entryLabel })} labels={categoryTableLabels(locale, t)} locale={locale} />
           ) : (
             <EmptyState message={t.categories.empty} />
           )}
@@ -450,7 +450,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
           fill(text.categoryDetailItemListName, { label: category.label }),
           routePath,
           language,
-          pageRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
+          pageRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: localizedPath(locale, `/${repo.owner}/${repo.name}`) })),
           startRank,
         )}
       />

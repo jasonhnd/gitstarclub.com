@@ -21,7 +21,7 @@ import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { buildNarrative } from "@/lib/narrative";
 import { FIRST_YEAR } from "@/lib/periods";
-import { fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
+import { dateLabel, fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
 import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { resolveAdjacentRankPeriod, resolveAdjacentRankYear, resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
 import { pageMeta } from "@/lib/seo";
@@ -48,33 +48,6 @@ type PeriodNavLink = { href: string; label: string; eyebrow: string };
 const RANKING_DETAIL_ROW_LIMIT = 100;
 const PRIMARY_PANEL_LIMIT = 18;
 const SECONDARY_PANEL_LIMIT = 10;
-
-const DETAIL_UI = {
-  permanentArchive: "Permanent archive",
-  yearHero:
-    "Permanent {year} archive of tracked GitHub repositories ranked by stars gained, with month-by-month movement from GitStarClub's precomputed ranking data.",
-  monthHero:
-    "Permanent archive for {label}, ranking tracked GitHub repositories by stars gained during that calendar month from GitStarClub's precomputed ranking data.",
-  weekHero:
-    "Permanent archive for exact ISO week {label}, ranking tracked GitHub repositories by stars gained during that week from GitStarClub's precomputed ranking data.",
-  mostStarsAdded: "Most stars added",
-  fastestGrowth: "Fastest growth",
-  newcomers: "Newcomers",
-  monthlyMovement: "Monthly movement",
-  dailyMovement: "Daily movement",
-  topRepositoryLinks: "Top repository links",
-  periodNavigation: "Period navigation",
-  relatedTitle: "Related ranking links",
-  relatedDescription: "Permanent archive routes and current activity views connected to this ranking period.",
-  visibleRows: "Visible rows",
-  starsAdded: "Stars added",
-  noRankingRows: "Ranking data is waiting for the next published recompute.",
-  noMovement: "Movement data is waiting for the next published recompute.",
-  noGrowth: "Growth-rate data is waiting for the next published recompute.",
-  noNewcomers: "Newcomer data is waiting for the next published recompute.",
-  noWeeklyGrowth: "Weekly growth-rate archives are not published for this period.",
-  noWeeklyNewcomers: "Weekly newcomer archives are not published for this period.",
-};
 
 export async function generateRankingYearStaticParams(): Promise<YearParam[]> {
   const periods = await resolveAvailableRankPeriods();
@@ -182,7 +155,7 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
           fill(text.rankingItemListName, { label: String(year) }),
           routePath,
           language,
-          rankRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
+          rankRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: localizedPath(locale, `/${repo.owner}/${repo.name}`) })),
         )}
       />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
@@ -190,23 +163,23 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
 
         <PageHero
           className="mt-5"
-          eyebrow={`${t.year.label} - ${DETAIL_UI.permanentArchive}`}
+          eyebrow={`${t.year.label} - ${t.rankings.permanentArchive}`}
           title={year}
-          lede={fill(DETAIL_UI.yearHero, { year })}
+          lede={fill(t.rankings.yearHero, { year })}
           actions={<HeroActions backHref={href("/rankings")} backLabel={t.nav.rankings} shareText={title} shareLabels={shareButtonLabels(locale, t)} completeLabel={text.completeRanking} />}
           aside={
             <PeriodStats
               items={[
-                { label: DETAIL_UI.starsAdded, value: movementCells.length > 0 ? `+${fmtStars(movementTotal)}` : DETAIL_UI.noMovement },
-                { label: DETAIL_UI.visibleRows, value: `${formatInteger(locale, rankRows.length)} ${t.rankings.repos}` },
+                { label: t.tables.starsGained, value: movementCells.length > 0 ? `+${fmtStars(movementTotal, locale)}` : t.rankings.noMovement },
+                { label: t.rankings.visibleRows, value: `${formatInteger(locale, rankRows.length)} ${t.rankings.repos}` },
               ]}
             />
           }
         />
 
-        <AnswerBlock capsule={capsule} rows={rankRows} locale={locale} labels={answerCapsuleLabels(locale, t)} emptyMessage={DETAIL_UI.noRankingRows} />
+        <AnswerBlock capsule={capsule} rows={rankRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
 
-        <MovementSection title={DETAIL_UI.monthlyMovement} cells={movementCells} emptyMessage={DETAIL_UI.noMovement} labels={{ starsAdded: t.a11y.starsAdded }} />
+        <MovementSection title={t.rankings.monthlyMovement} cells={movementCells} emptyMessage={t.rankings.noMovement} labels={{ starsAdded: t.a11y.starsAdded }} locale={locale} />
 
         <RankingMetricGrid
           locale={locale}
@@ -214,15 +187,15 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
           mostRows={most}
           fastestRows={fastest}
           newcomerRows={newcomers}
-          mostTitle={DETAIL_UI.mostStarsAdded}
-          fastestTitle={DETAIL_UI.fastestGrowth}
-          newcomersTitle={DETAIL_UI.newcomers}
+          mostTitle={t.month.most}
+          fastestTitle={t.month.fastest}
+          newcomersTitle={t.month.newcomers}
           gainedCaption={fill(text.gainedCaption, { label: String(year) })}
           growthCaption={fill(text.growthCaption, { label: String(year) })}
           newcomerCaption={fill(text.crossedCaption, { label: String(year) })}
-          emptyRanking={DETAIL_UI.noRankingRows}
-          emptyGrowth={DETAIL_UI.noGrowth}
-          emptyNewcomers={DETAIL_UI.noNewcomers}
+          emptyRanking={t.categories.rankingPending}
+          emptyGrowth={t.rankings.noGrowth}
+          emptyNewcomers={t.rankings.noNewcomers}
         />
 
         <CompleteRankingSection
@@ -231,13 +204,13 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
           tableCaption={fill(text.completeRepositoryRankingsCaption, { label: String(year) })}
           labels={tableLabels}
           title={text.completeRanking}
-          emptyMessage={DETAIL_UI.noRankingRows}
+          emptyMessage={t.categories.rankingPending}
         />
 
-        <PeriodNavigation title={DETAIL_UI.periodNavigation} previous={previous} next={next} />
+        <PeriodNavigation title={t.rankings.periodNavigation} previous={previous} next={next} />
         <RelatedPages
-          title={DETAIL_UI.relatedTitle}
-          description={DETAIL_UI.relatedDescription}
+          title={t.rankings.relatedTitle}
+          description={t.rankings.relatedDescription}
           items={[
             relatedItem(href("/rankings"), t.rankings.title),
             relatedItem(href("/pulse"), t.nav.pulse),
@@ -323,7 +296,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
           fill(text.rankingItemListName, { label: pageLabel }),
           routePath,
           language,
-          flowRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
+          flowRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: localizedPath(locale, `/${repo.owner}/${repo.name}`) })),
         )}
       />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
@@ -340,21 +313,21 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
 
         <PageHero
           className="mt-5"
-          eyebrow={`${t.month.label} - ${DETAIL_UI.permanentArchive}`}
+          eyebrow={`${t.month.label} - ${t.rankings.permanentArchive}`}
           title={pageLabel}
-          lede={fill(DETAIL_UI.monthHero, { label: pageLabel })}
+          lede={fill(t.rankings.monthHero, { label: pageLabel })}
           actions={<HeroActions backHref={href(`/rankings/${year}`)} backLabel={String(year)} shareText={title} shareLabels={shareButtonLabels(locale, t)} completeLabel={text.completeRanking} />}
           aside={
             <PeriodStats
               items={[
-                { label: DETAIL_UI.starsAdded, value: movementCells.length > 0 ? `+${fmtStars(movementTotal)}` : DETAIL_UI.noMovement },
-                { label: DETAIL_UI.visibleRows, value: `${formatInteger(locale, flowRows.length)} ${t.rankings.repos}` },
+                { label: t.tables.starsGained, value: movementCells.length > 0 ? `+${fmtStars(movementTotal, locale)}` : t.rankings.noMovement },
+                { label: t.rankings.visibleRows, value: `${formatInteger(locale, flowRows.length)} ${t.rankings.repos}` },
               ]}
             />
           }
         />
 
-        <AnswerBlock capsule={capsule} rows={flowRows} locale={locale} labels={answerCapsuleLabels(locale, t)} emptyMessage={DETAIL_UI.noRankingRows} />
+        <AnswerBlock capsule={capsule} rows={flowRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
 
         {narrative && (
           <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)]">
@@ -363,7 +336,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
           </section>
         )}
 
-        <MovementSection title={DETAIL_UI.dailyMovement} cells={movementCells} emptyMessage={DETAIL_UI.noMovement} square columns={Math.min(16, Math.max(1, movementCells.length))} labels={{ starsAdded: t.a11y.starsAdded }} />
+        <MovementSection title={t.rankings.dailyMovement} cells={movementCells} emptyMessage={t.rankings.noMovement} square columns={Math.min(16, Math.max(1, movementCells.length))} labels={{ starsAdded: t.a11y.starsAdded }} locale={locale} />
 
         <RankingMetricGrid
           locale={locale}
@@ -377,9 +350,9 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
           gainedCaption={fill(text.gainedCaption, { label: pageLabel })}
           growthCaption={fill(text.growthCaption, { label: pageLabel })}
           newcomerCaption={fill(text.crossedCaption, { label: pageLabel })}
-          emptyRanking={DETAIL_UI.noRankingRows}
-          emptyGrowth={DETAIL_UI.noGrowth}
-          emptyNewcomers={DETAIL_UI.noNewcomers}
+          emptyRanking={t.categories.rankingPending}
+          emptyGrowth={t.rankings.noGrowth}
+          emptyNewcomers={t.rankings.noNewcomers}
         />
 
         <CompleteRankingSection
@@ -388,13 +361,13 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
           tableCaption={fill(text.completeRepositoryRankingsCaption, { label: pageLabel })}
           labels={tableLabels}
           title={text.completeRanking}
-          emptyMessage={DETAIL_UI.noRankingRows}
+          emptyMessage={t.categories.rankingPending}
         />
 
-        <PeriodNavigation title={DETAIL_UI.periodNavigation} previous={monthNav.previous} next={monthNav.next} />
+        <PeriodNavigation title={t.rankings.periodNavigation} previous={monthNav.previous} next={monthNav.next} />
         <RelatedPages
-          title={DETAIL_UI.relatedTitle}
-          description={DETAIL_UI.relatedDescription}
+          title={t.rankings.relatedTitle}
+          description={t.rankings.relatedDescription}
           items={[
             relatedItem(href(`/rankings/${year}`), String(year)),
             relatedItem(href("/rankings"), t.rankings.title),
@@ -446,7 +419,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
           fill(text.rankingItemListName, { label: period }),
           routePath,
           language,
-          rankRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: `/${repo.owner}/${repo.name}` })),
+          rankRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: localizedPath(locale, `/${repo.owner}/${repo.name}`) })),
         )}
       />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
@@ -462,20 +435,20 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
         />
         <PageHero
           className="mt-5"
-          eyebrow={`${t.week.label} - ${DETAIL_UI.permanentArchive}`}
+          eyebrow={`${t.week.label} - ${t.rankings.permanentArchive}`}
           title={period}
-          lede={fill(DETAIL_UI.weekHero, { label: period })}
+          lede={fill(t.rankings.weekHero, { label: period })}
           actions={<HeroActions backHref={href(`/rankings/${year}`)} backLabel={String(year)} shareText={title} shareLabels={shareButtonLabels(locale, t)} completeLabel={text.completeRanking} />}
           aside={
             <PeriodStats
               items={[
                 { label: t.week.label, value: period },
-                { label: DETAIL_UI.visibleRows, value: `${formatInteger(locale, rankRows.length)} ${t.rankings.repos}` },
+                { label: t.rankings.visibleRows, value: `${formatInteger(locale, rankRows.length)} ${t.rankings.repos}` },
               ]}
             />
           }
         />
-        <AnswerBlock capsule={capsule} rows={rankRows} locale={locale} labels={answerCapsuleLabels(locale, t)} emptyMessage={DETAIL_UI.noRankingRows} />
+        <AnswerBlock capsule={capsule} rows={rankRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
         {snippet && <ShareableSnippet snippet={snippet} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={shareableSnippetLabels(t)} />}
 
         <RankingMetricGrid
@@ -484,15 +457,15 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
           mostRows={most}
           fastestRows={[]}
           newcomerRows={[]}
-          mostTitle={DETAIL_UI.mostStarsAdded}
-          fastestTitle={DETAIL_UI.fastestGrowth}
-          newcomersTitle={DETAIL_UI.newcomers}
+          mostTitle={t.month.most}
+          fastestTitle={t.month.fastest}
+          newcomersTitle={t.month.newcomers}
           gainedCaption={fill(text.gainedCaption, { label: period })}
           growthCaption={fill(text.growthCaption, { label: period })}
           newcomerCaption={fill(text.crossedCaption, { label: period })}
-          emptyRanking={DETAIL_UI.noRankingRows}
-          emptyGrowth={DETAIL_UI.noWeeklyGrowth}
-          emptyNewcomers={DETAIL_UI.noWeeklyNewcomers}
+          emptyRanking={t.categories.rankingPending}
+          emptyGrowth={t.rankings.noWeeklyGrowth}
+          emptyNewcomers={t.rankings.noWeeklyNewcomers}
         />
 
         <CompleteRankingSection
@@ -501,12 +474,12 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
           tableCaption={fill(text.completeRepositoryRankingsCaption, { label: period })}
           labels={tableLabels}
           title={text.completeRanking}
-          emptyMessage={DETAIL_UI.noRankingRows}
+          emptyMessage={t.categories.rankingPending}
         />
-        <PeriodNavigation title={DETAIL_UI.periodNavigation} previous={weekNav.previous} next={weekNav.next} />
+        <PeriodNavigation title={t.rankings.periodNavigation} previous={weekNav.previous} next={weekNav.next} />
         <RelatedPages
-          title={DETAIL_UI.relatedTitle}
-          description={DETAIL_UI.relatedDescription}
+          title={t.rankings.relatedTitle}
+          description={t.rankings.relatedDescription}
           items={[
             relatedItem(href(`/rankings/${year}`), String(year)),
             relatedItem(href("/rankings"), t.rankings.title),
@@ -563,27 +536,29 @@ function AnswerBlock({
   rows,
   locale,
   labels,
+  leaderLinksLabel,
   emptyMessage,
 }: {
   capsule: Parameters<typeof AnswerCapsule>[0]["capsule"] | null;
   rows: Row[];
   locale: Locale;
   labels: Parameters<typeof AnswerCapsule>[0]["labels"];
+  leaderLinksLabel: string;
   emptyMessage: string;
 }) {
   if (!capsule) return null;
   return (
     <div className="mt-[clamp(1.75rem,4vw,3rem)]">
       <AnswerCapsule capsule={capsule} labels={labels} />
-      <RankingLeaderLinks rows={rows.slice(0, 3)} locale={locale} emptyMessage={emptyMessage} />
+      <RankingLeaderLinks rows={rows.slice(0, 3)} locale={locale} ariaLabel={leaderLinksLabel} emptyMessage={emptyMessage} />
     </div>
   );
 }
 
-function RankingLeaderLinks({ rows, locale, emptyMessage }: { rows: Row[]; locale: Locale; emptyMessage: string }) {
+function RankingLeaderLinks({ rows, locale, ariaLabel, emptyMessage }: { rows: Row[]; locale: Locale; ariaLabel: string; emptyMessage: string }) {
   if (rows.length === 0) return <EmptyState message={emptyMessage} className="mt-3" />;
   return (
-    <nav aria-label={DETAIL_UI.topRepositoryLinks} className="mt-3 grid gap-2 md:grid-cols-3">
+    <nav aria-label={ariaLabel} className="mt-3 grid gap-2 md:grid-cols-3">
       {rows.map((row, index) => (
         <Link
           key={`${row.owner}/${row.name}`}
@@ -597,12 +572,12 @@ function RankingLeaderLinks({ rows, locale, emptyMessage }: { rows: Row[]; local
           <span className="mt-1 block truncate font-mono text-[0.76rem] text-on-surface-variant">
             {row.gained == null ? (
               <>
-                {fmtStars(row.total)}
+                {fmtStars(row.total, locale)}
                 <Star />
               </>
             ) : (
               <>
-                +{fmtStars(row.gained)}
+                +{fmtStars(row.gained, locale)}
                 <Star />
               </>
             )}
@@ -618,6 +593,7 @@ function MovementSection({
   cells,
   emptyMessage,
   labels,
+  locale,
   square = false,
   columns,
 }: {
@@ -625,13 +601,14 @@ function MovementSection({
   cells: HeatmapCell[];
   emptyMessage: string;
   labels: { starsAdded: string };
+  locale: Locale;
   square?: boolean;
   columns?: number;
 }) {
   return (
     <section className="mt-[clamp(2rem,4vw,3rem)]">
       <h2 className="mb-3 text-[1.25rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-      {cells.length > 0 ? <Heatmap cells={cells} max={Math.max(1, ...cells.map((cell) => cell.gained))} columns={columns ?? cells.length} square={square} labels={labels} /> : <EmptyState message={emptyMessage} />}
+      {cells.length > 0 ? <Heatmap cells={cells} max={Math.max(1, ...cells.map((cell) => cell.gained))} columns={columns ?? cells.length} square={square} labels={labels} locale={locale} /> : <EmptyState message={emptyMessage} />}
     </section>
   );
 }
@@ -731,7 +708,7 @@ function NewcomerPanel({
                       {row.owner}/{row.name}
                     </Link>
                     <span className="shrink-0 whitespace-nowrap font-mono text-[0.86rem] font-extrabold tabular-nums">
-                      {fmtStars(row.total)}
+                      {fmtStars(row.total, locale)}
                       <Star />
                     </span>
                   </div>
@@ -908,9 +885,4 @@ function periodLabel(locale: Locale, yearValue: string, rawPeriod: string): stri
   if (week) return `${year}-W${String(Number(week[1])).padStart(2, "0")}`;
   const month = Number(rawPeriod);
   return Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12 ? monthYearLabel(locale, year, month) : `${yearValue}/${rawPeriod}`;
-}
-
-function dateLabel(locale: Locale, value: string): string {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Intl.DateTimeFormat(toBcp47Locale(locale), { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" }).format(Date.UTC(year, month - 1, day));
 }

@@ -1,45 +1,50 @@
 "use client";
 
-import { useCallback, useState, type KeyboardEvent } from "react";
+import { useCallback, type KeyboardEvent } from "react";
+import { inputSearchKeyboardAction, panelSearchKeyboardAction, type SearchKeyboardAction } from "@/lib/search/keyboard";
 
 export function useSearchKeyboardNavigation({
   itemCount,
   onCommit,
   onEscape,
+  onFocusItem,
   onOpen,
 }: {
   itemCount: number;
   onCommit: (index: number) => void;
   onEscape: () => void;
+  onFocusItem: (index: number) => void;
   onOpen: () => void;
 }) {
-  const [active, setActive] = useState(-1);
-
-  const resetActive = useCallback(() => {
-    setActive(-1);
-  }, []);
-
-  const onKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        onOpen();
-        setActive((index) => (itemCount > 0 ? Math.min(index + 1, itemCount - 1) : -1));
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setActive((index) => (itemCount > 0 ? Math.max(index - 1, 0) : -1));
-      } else if (e.key === "Enter") {
-        if (active >= 0 && active < itemCount) {
-          e.preventDefault();
-          onCommit(active);
-        }
-      } else if (e.key === "Escape") {
+  const handleAction = useCallback(
+    (event: KeyboardEvent<HTMLElement>, action: SearchKeyboardAction) => {
+      if (action.type === "native") return;
+      event.preventDefault();
+      if (action.type === "close") {
         onEscape();
-        resetActive();
+      } else if (action.type === "commit") {
+        onCommit(action.index);
+      } else {
+        onOpen();
+        onFocusItem(action.index);
       }
     },
-    [active, itemCount, onCommit, onEscape, onOpen, resetActive],
+    [onCommit, onEscape, onFocusItem, onOpen],
   );
 
-  return { active, onKeyDown, resetActive, setActive };
+  const onInputKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      handleAction(event, inputSearchKeyboardAction(event.key, itemCount));
+    },
+    [handleAction, itemCount],
+  );
+
+  const onResultKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLElement>, index: number) => {
+      handleAction(event, panelSearchKeyboardAction(event.key, index, itemCount));
+    },
+    [handleAction, itemCount],
+  );
+
+  return { onInputKeyDown, onResultKeyDown };
 }

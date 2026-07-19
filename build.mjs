@@ -1,4 +1,6 @@
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { REPO_ROOT, STATIC_ASSETS, syncAssetCopies } from './scripts/assets.mjs';
 
 const now = new Date();
 
@@ -25,17 +27,15 @@ const utc = fmt(now, 'UTC');
 const jst = fmt(now, 'Asia/Tokyo');
 const iso = now.toISOString();
 
-let html = readFileSync('src/index.html', 'utf8')
+let html = readFileSync(resolve(REPO_ROOT, 'src/index.html'), 'utf8')
   .replaceAll('{{BUILD_UTC}}', utc)
   .replaceAll('{{BUILD_JST}}', jst)
   .replaceAll('{{BUILD_ISO}}', iso);
 
-mkdirSync('public', { recursive: true });
-writeFileSync('public/index.html', html);
+const legacyPublic = resolve(REPO_ROOT, 'public');
+mkdirSync(legacyPublic, { recursive: true });
+writeFileSync(resolve(legacyPublic, 'index.html'), html);
 
-const staticAssets = ['favicon.svg', 'favicon.png', 'apple-touch-icon.png', 'og.png'];
-for (const file of staticAssets) {
-  copyFileSync(`assets/${file}`, `public/${file}`);
-}
+syncAssetCopies(REPO_ROOT, { includeLegacyPublic: true });
 
-console.log(`Built public/index.html (+${staticAssets.length} assets) — ${utc} UTC · ${jst} JST`);
+console.log(`Built public/index.html and synchronized ${STATIC_ASSETS.length} canonical assets to web/public — ${utc} UTC · ${jst} JST`);

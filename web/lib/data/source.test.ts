@@ -1,6 +1,8 @@
 import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
-import { readView } from "./source";
+import { invalidatePublishedVersionMemo, readView } from "./source";
+import { PUBLISHED_VIEWS_CACHE_TAG } from "./publication-cache-contract";
+import { resolveCanonicalBlobPath } from "./bootstrap-publication";
 
 // Route a mocked global fetch by URL to simulate pointer + view fetches.
 // Date.now() is driven forward past the 1h TTL between scenarios to invalidate
@@ -23,14 +25,32 @@ interface FakeRoute {
   status?: number;
   json?: unknown;
 }
+
+function livePointer(generation: string, lease: unknown = null) {
+  return {
+    schema_ver: 1,
+    generation,
+    run_id: generation,
+    idempotency_key: "daily:2026-07-17",
+    job: "daily",
+    day: "2026-07-17",
+    month: "2026-07",
+    week: "2026-W29",
+    published_at: "2026-07-17T03:00:00.000Z",
+    previous_generation: null,
+    lease,
+  };
+}
 // Map of exact-or-prefix URL (path portion, query stripped) → response.
 let routes: Record<string, FakeRoute> = {};
 let fetchCalls: string[] = [];
+let fetchInits: Array<RequestInit & { next?: { revalidate?: number; tags?: string[] } }> = [];
 
 const makeRes = (route: FakeRoute): Response =>
   ({
     ok: (route.status ?? 200) >= 200 && (route.status ?? 200) < 300,
     status: route.status ?? 200,
+    headers: new Headers(),
     json: async () => route.json,
   }) as unknown as Response;
 
@@ -43,16 +63,28 @@ function routeFor(url: string): FakeRoute {
   return key ? routes[key] : { status: 404 };
 }
 
+const bootstrapPointer = (generation = "bootstrap-20260717T120000Z") => ({
+  schema_ver: 1,
+  generation,
+  prefix: `bootstrap/generations/${generation}`,
+  previous_generation: null,
+  published_at: "2026-07-17T12:00:00.000Z",
+  base_manifest_sha256: "a".repeat(64),
+  canonical_manifest_sha256: "b".repeat(64),
+});
+
 beforeEach(() => {
   routes = {};
   fetchCalls = [];
+  fetchInits = [];
   process.env.BLOB_BASE_URL = BLOB;
   delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   advancePastTtl(); // ensure each test starts with an expired version memo
   Date.now = () => clock;
-  globalThis.fetch = mock((input: string | URL | Request) => {
+  globalThis.fetch = mock((input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     fetchCalls.push(url);
+    fetchInits.push((init ?? {}) as RequestInit & { next?: { revalidate?: number; tags?: string[] } });
     return Promise.resolve(makeRes(routeFor(url)));
   }) as unknown as typeof fetch;
 });
@@ -136,6 +168,71 @@ describe("readView — base:true version-prefix resolution", () => {
     // Flat key was read; no versioned views/<version>/ path was attempted.
     expect(fetchCalls.some((u) => u.includes("/rank/month/2026-05/org/stock.json"))).toBe(true);
     expect(fetchCalls.some((u) => /\/views\/[^/]+\/rank\//.test(u))).toBe(false);
+    const pointerCall = fetchCalls.findIndex((u) => u.includes("/views/latest.json"));
+    expect(fetchInits[pointerCall]?.next?.tags).toContain(PUBLISHED_VIEWS_CACHE_TAG);
+  });
+
+  test("uses the atomically published bootstrap generation when managed views are absent", async () => {
+    routes = {
+      "/views/latest.json": { status: 404 },
+      "/bootstrap/latest.json": { json: bootstrapPointer() },
+      "/bootstrap/generations/bootstrap-20260717T120000Z/views/data/bootstrap.json": {
+        json: { ok: true, tag: "bootstrap" },
+      },
+    };
+
+    const result = await readView("data/bootstrap.json", Doc, { base: true });
+
+    expect(result).toEqual({ ok: true, tag: "bootstrap" });
+    expect(fetchCalls.some((url) => url.includes("/bootstrap/latest.json"))).toBe(true);
+    expect(
+      fetchCalls.some((url) =>
+        url.includes("/bootstrap/generations/bootstrap-20260717T120000Z/views/data/bootstrap.json"),
+      ),
+    ).toBe(true);
+  });
+
+  test("managed views/latest.json takes precedence over the bootstrap base generation", async () => {
+    routes = {
+      "/views/latest.json": { json: { version: "refresh-current" } },
+      "/views/refresh-current/data/current.json": { json: { ok: true, tag: "managed" } },
+      "/bootstrap/latest.json": { json: bootstrapPointer() },
+    };
+
+    expect(await readView("data/current.json", Doc, { base: true })).toEqual({ ok: true, tag: "managed" });
+    expect(fetchCalls.some((url) => url.includes("/bootstrap/latest.json"))).toBe(true);
+  });
+
+  test("a newer bootstrap commit atomically supersedes an older managed base pointer", async () => {
+    routes = {
+      "/views/latest.json": {
+        json: { version: "refresh-old", published_at: "2026-07-16T12:00:00.000Z" },
+      },
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-new") },
+      "/views/refresh-old/data/priority.json": { json: { ok: true, tag: "managed-old" } },
+      "/bootstrap/generations/bootstrap-new/views/data/priority.json": {
+        json: { ok: true, tag: "bootstrap-new" },
+      },
+    };
+
+    expect(await readView("data/priority.json", Doc, { base: true })).toEqual({ ok: true, tag: "bootstrap-new" });
+    expect(fetchCalls.some((url) => url.includes("/views/refresh-old/data/priority.json"))).toBe(false);
+  });
+
+  test("a warmed pointer memo can be invalidated immediately after publication", async () => {
+    routes = {
+      "/views/latest.json": { status: 200, json: { version: "v1" } },
+      "/views/v1/data/warm.json": { status: 200, json: { ok: true, tag: "one" } },
+    };
+    expect(await readView("data/warm.json", Doc, { base: true })).toEqual({ ok: true, tag: "one" });
+
+    routes = {
+      "/views/latest.json": { status: 200, json: { version: "v2" } },
+      "/views/v2/data/warm.json": { status: 200, json: { ok: true, tag: "two" } },
+    };
+    invalidatePublishedVersionMemo();
+
+    expect(await readView("data/warm.json", Doc, { base: true })).toEqual({ ok: true, tag: "two" });
   });
 
   test("falls back to flat <path> when the pointer is unreachable (fetch throws)", async () => {
@@ -153,6 +250,7 @@ describe("readView — base:true version-prefix resolution", () => {
 
     expect(result).toEqual({ ok: true, tag: "flat-after-throw" });
     expect(fetchCalls.some((u) => u.includes("/data/whatever.json") && !u.includes("/views/"))).toBe(true);
+    expect(fetchCalls.some((u) => u.includes("/bootstrap/latest.json"))).toBe(false);
   });
 
   test("falls back to flat <path> when the pointer stalls past the timeout", async () => {
@@ -175,6 +273,7 @@ describe("readView — base:true version-prefix resolution", () => {
     expect(result).toEqual({ ok: true, tag: "flat-after-timeout" });
     expect(pointerSignal?.aborted).toBe(true);
     expect(fetchCalls.some((u) => u.includes("/data/pointer-timeout.json") && !u.includes("/views/"))).toBe(true);
+    expect(fetchCalls.some((u) => u.includes("/bootstrap/latest.json"))).toBe(false);
   });
 
   test("returns null when the resolved base view itself is 404", async () => {
@@ -214,6 +313,93 @@ describe("readView — non-base (flat) reads", () => {
     expect(result).toBeNull();
   });
 
+  test("bypasses caches for mutable canonical, ops, and pointer artifacts", async () => {
+    routes = {
+      "/canonical/v2/meta.json": { status: 200, json: { ok: true, tag: "canonical" } },
+      "/ops/workflows/run/manifest.json": { status: 200, json: { ok: true, tag: "ops" } },
+      "/views/latest.json": { status: 200, json: { ok: true, tag: "pointer" } },
+      "/views/run/meta.json": { status: 200, json: { ok: true, tag: "immutable" } },
+    };
+
+    await readView("canonical/v2/meta.json", Doc);
+    await readView("ops/workflows/run/manifest.json", Doc);
+    await readView("views/latest.json", Doc);
+    await readView("views/run/meta.json", Doc);
+
+    const cacheFor = (path: string) => fetchInits[fetchCalls.findIndex((url) => url.includes(path))]?.cache;
+    expect(cacheFor("/bootstrap/latest.json")).toBe("no-store");
+    expect(cacheFor("/canonical/v2/meta.json")).toBe("no-store");
+    expect(cacheFor("/ops/workflows/run/manifest.json")).toBe("no-store");
+    expect(cacheFor("/views/latest.json")).toBe("no-store");
+    expect(cacheFor("/views/run/meta.json")).toBe("force-cache");
+  });
+
+  test("resolves every canonical read through the published bootstrap generation", async () => {
+    routes = {
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-canonical") },
+      "/bootstrap/generations/bootstrap-canonical/canonical/v2/meta.json": {
+        json: { ok: true, tag: "generation" },
+      },
+    };
+
+    expect(await readView("canonical/v2/meta.json", Doc)).toEqual({ ok: true, tag: "generation" });
+    expect(
+      fetchCalls.some((url) =>
+        url.includes("/bootstrap/generations/bootstrap-canonical/canonical/v2/meta.json"),
+      ),
+    ).toBe(true);
+    expect(fetchCalls.some((url) => new URL(url).pathname === "/canonical/v2/meta.json")).toBe(false);
+  });
+
+  test("canonical overlays are copy-on-write and take precedence over immutable bootstrap bytes", async () => {
+    routes = {
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-overlay") },
+      "/bootstrap/overlays/bootstrap-overlay/canonical/v2/meta.json": {
+        json: { ok: true, tag: "overlay" },
+      },
+      "/bootstrap/generations/bootstrap-overlay/canonical/v2/meta.json": {
+        json: { ok: true, tag: "sealed" },
+      },
+    };
+
+    expect(await readView("canonical/v2/meta.json", Doc)).toEqual({ ok: true, tag: "overlay" });
+    expect(fetchCalls.some((url) => url.includes("/bootstrap/generations/bootstrap-overlay/canonical/"))).toBe(false);
+    expect(await resolveCanonicalBlobPath("canonical/v2/meta.json")).toBe(
+      "bootstrap/overlays/bootstrap-overlay/canonical/v2/meta.json",
+    );
+  });
+
+  test("observes a canonical write in the same run while immutable views stay cacheable", async () => {
+    const backing = new Map<string, FakeRoute>([
+      ["/canonical/v2/state.json", { json: { ok: true, tag: "canonical-before" } }],
+      ["/views/run/state.json", { json: { ok: true, tag: "view-before" } }],
+    ]);
+    const simulatedDataCache = new Map<string, FakeRoute>();
+    const requestedUrls: string[] = [];
+    globalThis.fetch = mock((input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      requestedUrls.push(url);
+      const path = new URL(url).pathname;
+      const cached = simulatedDataCache.get(path);
+      if (init?.cache === "force-cache" && cached) return Promise.resolve(makeRes(cached));
+      const route = backing.get(path) ?? { status: 404 };
+      if (init?.cache === "force-cache") simulatedDataCache.set(path, structuredClone(route));
+      return Promise.resolve(makeRes(route));
+    }) as unknown as typeof fetch;
+
+    expect(await readView("canonical/v2/state.json", Doc)).toEqual({ ok: true, tag: "canonical-before" });
+    expect(await readView("views/run/state.json", Doc)).toEqual({ ok: true, tag: "view-before" });
+
+    backing.set("/canonical/v2/state.json", { json: { ok: true, tag: "canonical-after" } });
+    backing.set("/views/run/state.json", { json: { ok: true, tag: "view-after" } });
+
+    expect(await readView("canonical/v2/state.json", Doc)).toEqual({ ok: true, tag: "canonical-after" });
+    expect(await readView("views/run/state.json", Doc)).toEqual({ ok: true, tag: "view-before" });
+    const canonicalRequests = requestedUrls.filter((url) => new URL(url).pathname === "/canonical/v2/state.json");
+    expect(canonicalRequests).toHaveLength(2);
+    expect(canonicalRequests[0]).not.toBe(canonicalRequests[1]);
+  });
+
   test("aborts stalled flat reads and surfaces a timeout after retries", async () => {
     advancePastTtl();
     const signals: AbortSignal[] = [];
@@ -227,8 +413,106 @@ describe("readView — non-base (flat) reads", () => {
 
     await expect(readView("live/stalled.json", Doc, { timeoutMs: 5 })).rejects.toThrow("view fetch live/stalled.json -> timeout after 5ms");
 
-    expect(fetchCalls).toHaveLength(3);
-    expect(signals).toHaveLength(3);
+    // READ_RETRIES + 1 attempts (currently 4 + 1).
+    expect(fetchCalls).toHaveLength(5);
+    expect(signals).toHaveLength(5);
     expect(signals.every((signal) => signal.aborted)).toBe(true);
   });
+
+  test(
+    "retries Blob WAF 403 then treats persistent 403 as absent (null)",
+    async () => {
+      advancePastTtl();
+      let hits = 0;
+      globalThis.fetch = mock((input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input.toString();
+        fetchCalls.push(url);
+        hits += 1;
+        return Promise.resolve(makeRes({ status: 403, json: { error: "Forbidden" } }));
+      }) as unknown as typeof fetch;
+
+      expect(await readView("entity/repo/1.json", Doc)).toBeNull();
+      // All retry attempts were used before giving up as absent.
+      expect(hits).toBe(5);
+    },
+    { timeout: 20_000 },
+  );
+});
+
+describe("readView — atomic live generation resolution", () => {
+  test("all concurrent live reads share one pointer and one complete generation", async () => {
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("generation-a") },
+      "/live/generations/generation-a/current_month.json": { status: 200, json: { ok: true, tag: "a-current" } },
+      "/live/generations/generation-a/hot-snapshot.json": { status: 200, json: { ok: true, tag: "a-hot" } },
+      "/live/generations/generation-b/current_month.json": { status: 200, json: { ok: true, tag: "b-current" } },
+      "/live/generations/generation-b/hot-snapshot.json": { status: 200, json: { ok: true, tag: "b-hot" } },
+    };
+
+    const [current, hot] = await Promise.all([
+      readView("current_month.json", Doc, { live: true, legacyPath: "current_month.json" }),
+      readView("hot-snapshot.json", Doc, { live: true, legacyPath: "hot-snapshot.json" }),
+    ]);
+
+    expect([current?.tag, hot?.tag]).toEqual(["a-current", "a-hot"]);
+    expect(fetchCalls.filter((url) => url.includes("/live/latest.json"))).toHaveLength(1);
+    expect(fetchCalls.some((url) => url.includes("generation-b"))).toBe(false);
+  });
+
+  test("a pointer flip exposes either the old or new complete generation, never flat siblings", async () => {
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("generation-old") },
+      "/live/generations/generation-old/one.json": { status: 200, json: { ok: true, tag: "old-one" } },
+      "/live/generations/generation-old/two.json": { status: 200, json: { ok: true, tag: "old-two" } },
+      "/live/generations/generation-new/one.json": { status: 200, json: { ok: true, tag: "new-one" } },
+      "/live/generations/generation-new/two.json": { status: 200, json: { ok: true, tag: "new-two" } },
+      "/legacy/one.json": { status: 200, json: { ok: true, tag: "flat-one" } },
+      "/legacy/two.json": { status: 200, json: { ok: true, tag: "flat-two" } },
+    };
+
+    expect((await readView("one.json", Doc, { live: true, legacyPath: "legacy/one.json" }))?.tag).toBe("old-one");
+    routes["/live/latest.json"] = { status: 200, json: livePointer("generation-new") };
+    expect((await readView("two.json", Doc, { live: true, legacyPath: "legacy/two.json" }))?.tag).toBe("old-two");
+
+    clock += 61_000;
+    const [one, two] = await Promise.all([
+      readView("one.json", Doc, { live: true, legacyPath: "legacy/one.json" }),
+      readView("two.json", Doc, { live: true, legacyPath: "legacy/two.json" }),
+    ]);
+    expect([one?.tag, two?.tag]).toEqual(["new-one", "new-two"]);
+    expect(fetchCalls.some((url) => url.includes("/legacy/"))).toBe(false);
+  });
+
+  test("only a 404 pointer enables migration fallback to legacy flat paths", async () => {
+    process.env.BLOB_BASE_URL = "https://legacy-live.example.com";
+    routes = {
+      "/live/latest.json": { status: 404 },
+      "/legacy/current_month.json": { status: 200, json: { ok: true, tag: "legacy" } },
+    };
+
+    expect(
+      await readView("current_month.json", Doc, { live: true, legacyPath: "legacy/current_month.json" }),
+    ).toEqual({ ok: true, tag: "legacy" });
+  });
+
+  test(
+    "an unreachable pointer fails closed when no validated generation is cached",
+    async () => {
+      process.env.BLOB_BASE_URL = "https://uncached-live.example.com";
+      globalThis.fetch = mock((input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input.toString();
+        fetchCalls.push(url);
+        if (url.includes("/live/latest.json")) return Promise.reject(new Error("network down"));
+        return Promise.resolve(makeRes({ status: 200, json: { ok: true, tag: "unsafe-flat" } }));
+      }) as unknown as typeof fetch;
+
+      await expect(
+        readView("current_month.json", Doc, { live: true, legacyPath: "legacy/current_month.json" }),
+      ).rejects.toThrow("live pointer fetch -> network down");
+      // Pointer is retried on transient failures; legacy flat must never be guessed.
+      expect(fetchCalls.filter((url) => url.includes("/live/latest.json")).length).toBeGreaterThan(1);
+      expect(fetchCalls.some((url) => url.includes("legacy/current_month.json"))).toBe(false);
+    },
+    { timeout: 20_000 },
+  );
 });

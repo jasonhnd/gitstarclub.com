@@ -2,9 +2,23 @@ import { NextResponse, type NextRequest } from "next/server";
 import { DEFAULT_LOCALE, LANG_COOKIE, isLocale, type Locale } from "./lib/i18n";
 import { isNonDefaultLocale, localizedPath } from "./lib/i18n/routing";
 
-const PUBLIC_FILE = /\/[^/]+\.[^/]+$/;
+const STATIC_ROOT_FILES = new Set([
+  "/3a620d7fc7e043aa854c68841375d81b.txt",
+  "/apple-touch-icon.png",
+  "/favicon.ico",
+  "/favicon.png",
+  "/favicon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/llms.txt",
+  "/manifest.webmanifest",
+  "/og.png",
+  "/robots.txt",
+  "/sw.js",
+]);
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { nextUrl } = request;
   const { pathname, search } = nextUrl;
 
@@ -37,19 +51,24 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-function shouldIgnorePath(pathname: string): boolean {
-  if (pathname === "/robots.txt") return true;
+export function shouldIgnorePath(pathname: string): boolean {
+  if (STATIC_ROOT_FILES.has(pathname)) return true;
   if (pathname === "/search-index" || pathname.startsWith("/search-index/")) return true;
   if (pathname === "/repo-curve" || pathname.startsWith("/repo-curve/")) return true;
-  if (pathname.startsWith("/_next/") || pathname === "/api" || pathname.startsWith("/api/")) return true;
+  if (
+    pathname.startsWith("/_next/") ||
+    pathname === "/api" ||
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/.well-known/") ||
+    pathname.startsWith("/data/")
+  ) {
+    return true;
+  }
 
   const segments = pathname.split("/").filter(Boolean);
   const firstSegment = segments[0] ?? "";
-  if (firstSegment.startsWith("sitemap")) return true;
-  if (firstSegment.startsWith("favicon.")) return true;
-  if (segments.includes("opengraph-image")) return true;
-
-  return PUBLIC_FILE.test(pathname);
+  if (/^sitemap(?:-[^/]+)?\.xml$/.test(firstSegment)) return true;
+  return segments.includes("opengraph-image");
 }
 
 function isDocumentNavigation(request: NextRequest): boolean {

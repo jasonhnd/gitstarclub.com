@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NonNegativeInt, SafeText, TimestampStr } from "./common";
+import { DateStr, NonNegativeInt, SafeText, TimestampStr } from "./common";
 
 // search/index.json — flat client-side search index derived from the repos shard during
 // recompute (one doc per tracked repo). Lazy-loaded by the SearchBox on first focus and fed
@@ -14,6 +14,8 @@ export const SearchDoc = z.object({
   language: SafeText.nullable().optional(),
   current_stars: NonNegativeInt,
   description: SafeText.nullable().optional(),
+  active: z.boolean().optional(),
+  tracked_since: DateStr.nullable().optional(),
 }).strict();
 export type SearchDoc = z.infer<typeof SearchDoc>;
 

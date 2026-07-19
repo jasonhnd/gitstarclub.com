@@ -10,8 +10,8 @@ export const contentType = "image/png";
 export const alt = "GitHub star history";
 export const revalidate = 86400;
 
-export default async function Image({ params }: { params: Promise<{ owner: string; name: string }> }) {
-  const { owner, name } = await params;
+export default async function Image({ params }: { params: Promise<{ locale: string; owner: string }> }) {
+  const { locale: owner, owner: name } = await params;
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
   const id = (await getRepoIdByFullNameDaily()).get(fullName.toLowerCase());
   const repo = id !== undefined ? await getRepoPageEntityDaily(id) : null;
