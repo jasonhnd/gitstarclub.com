@@ -495,18 +495,24 @@ describe("readView — atomic live generation resolution", () => {
     ).toEqual({ ok: true, tag: "legacy" });
   });
 
-  test("an unreachable pointer fails closed when no validated generation is cached", async () => {
-    process.env.BLOB_BASE_URL = "https://uncached-live.example.com";
-    globalThis.fetch = mock((input: string | URL | Request) => {
-      const url = typeof input === "string" ? input : input.toString();
-      fetchCalls.push(url);
-      if (url.includes("/live/latest.json")) return Promise.reject(new Error("network down"));
-      return Promise.resolve(makeRes({ status: 200, json: { ok: true, tag: "unsafe-flat" } }));
-    }) as unknown as typeof fetch;
+  test(
+    "an unreachable pointer fails closed when no validated generation is cached",
+    async () => {
+      process.env.BLOB_BASE_URL = "https://uncached-live.example.com";
+      globalThis.fetch = mock((input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input.toString();
+        fetchCalls.push(url);
+        if (url.includes("/live/latest.json")) return Promise.reject(new Error("network down"));
+        return Promise.resolve(makeRes({ status: 200, json: { ok: true, tag: "unsafe-flat" } }));
+      }) as unknown as typeof fetch;
 
-    await expect(
-      readView("current_month.json", Doc, { live: true, legacyPath: "legacy/current_month.json" }),
-    ).rejects.toThrow("live pointer fetch -> network down");
-    expect(fetchCalls.some((url) => url.includes("legacy/current_month.json"))).toBe(false);
-  });
+      await expect(
+        readView("current_month.json", Doc, { live: true, legacyPath: "legacy/current_month.json" }),
+      ).rejects.toThrow("live pointer fetch -> network down");
+      // Pointer is retried on transient failures; legacy flat must never be guessed.
+      expect(fetchCalls.filter((url) => url.includes("/live/latest.json")).length).toBeGreaterThan(1);
+      expect(fetchCalls.some((url) => url.includes("legacy/current_month.json"))).toBe(false);
+    },
+    { timeout: 20_000 },
+  );
 });
