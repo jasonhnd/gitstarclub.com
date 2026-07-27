@@ -59,6 +59,13 @@ const liveGenerationInflight = new Map<string, Promise<string | null>>();
 const liveManifestMemo = new Map<string, Promise<unknown | null>>();
 const MAX_LIVE_MANIFEST_MEMO_ENTRIES = 256;
 
+class PublishedLiveHistoryUnavailableError extends Error {
+  constructor(key: string) {
+    super(`view fetch ${key} -> 403`);
+    this.name = "PublishedLiveHistoryUnavailableError";
+  }
+}
+
 /** Clear this process's pointer memo after a publish/rollback in the same runtime. */
 export function invalidatePublishedVersionMemo(): void {
   versionMemo.clear();
@@ -118,7 +125,10 @@ async function readBlobJsonKey(args: {
   // Existing snapshot/base reads tolerate a persistent Blob WAF denial during
   // SSG. A history walk disables that tolerance: denied current bytes must not
   // silently select an older generation.
-  if (res?.status === 403 && allowForbiddenAsMissing) return null;
+  if (res?.status === 403) {
+    if (allowForbiddenAsMissing) return null;
+    throw new PublishedLiveHistoryUnavailableError(key);
+  }
   if (!res?.ok) {
     const detail = res ? String(res.status) : fetchErrorDetail(lastError);
     throw new Error(`view fetch ${key} -> ${detail}`);
@@ -304,34 +314,43 @@ async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
   } else if (opts.live) {
     const generation = await resolveLiveGeneration(blobBase, opts.liveTtlMs, timeoutMs);
     if (opts.liveHistory) {
-      const resolved = await resolveLiveArtifactFromHistory({
-        headGeneration: generation,
-        logicalPath: path,
-        legacyPath: opts.legacyPath,
-        reader: {
-          readGenerationArtifact: (candidateGeneration, logicalPath) =>
-            readBlobJsonKey({
-              blobBase,
-              key: `live/generations/${candidateGeneration}/${logicalPath}`,
-              bust: candidateGeneration,
-              timeoutMs,
-              mutableWorkflowArtifact: false,
-              allowForbiddenAsMissing: false,
-            }),
-          readGenerationManifest: (candidateGeneration) =>
-            readLiveGenerationManifest(blobBase, candidateGeneration, timeoutMs),
-          readLegacyArtifact: (legacyPath) =>
-            readBlobJsonKey({
-              blobBase,
-              key: legacyPath,
-              bust: opts.bust,
-              timeoutMs,
-              mutableWorkflowArtifact: false,
-              allowForbiddenAsMissing: false,
-            }),
-        },
-      });
-      return resolved?.value ?? null;
+      try {
+        const resolved = await resolveLiveArtifactFromHistory({
+          headGeneration: generation,
+          logicalPath: path,
+          legacyPath: opts.legacyPath,
+          reader: {
+            readGenerationArtifact: (candidateGeneration, logicalPath) =>
+              readBlobJsonKey({
+                blobBase,
+                key: `live/generations/${candidateGeneration}/${logicalPath}`,
+                bust: candidateGeneration,
+                timeoutMs,
+                mutableWorkflowArtifact: false,
+                allowForbiddenAsMissing: false,
+              }),
+            readGenerationManifest: (candidateGeneration) =>
+              readLiveGenerationManifest(blobBase, candidateGeneration, timeoutMs),
+            readLegacyArtifact: (legacyPath) =>
+              readBlobJsonKey({
+                blobBase,
+                key: legacyPath,
+                bust: opts.bust,
+                timeoutMs,
+                mutableWorkflowArtifact: false,
+                allowForbiddenAsMissing: false,
+              }),
+          },
+        });
+        return resolved?.value ?? null;
+      } catch (error) {
+        // A persistent public-CDN WAF denial during high-concurrency SSG is not
+        // confirmed absence and therefore must never advance to an older live
+        // generation. Stop the live lookup so callers can use base/notFound,
+        // matching the existing published-page resilience without stale bytes.
+        if (error instanceof PublishedLiveHistoryUnavailableError) return null;
+        throw error;
+      }
     }
     if (generation) {
       keys = [`live/generations/${generation}/${path}`];
