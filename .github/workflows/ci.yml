@@ -232,7 +232,7 @@ jobs:
 
   # Product-level live gates (#286). Fail closed: real deployed /search-index,
   # sync-run freshness, base publish age, export manifest age, live period
-  # continuity (with documented W27 gap). Does not use .env.local.
+  # continuity through validated generation history. Does not use .env.local.
   product-gates:
     name: product-gates
     needs: preview-e2e
@@ -283,6 +283,6 @@ jobs:
             echo
             echo "- Tested commit: \`$TESTED_SHA\`"
             echo "- Deployment URL: ${DEPLOYMENT_URL:-not resolved}"
-            echo "- Live checks: required (search-index, sync-runs, base pointer, exports, week continuity)"
-            echo "- Documented live gap: 2026-W27 (token outage window)"
+            echo "- Live checks: required (search-index, sync-runs, base pointer, exports, generation-aware period continuity)"
+            echo "- Live history: bounded validated manifest chain, then legacy migration edge"
           } >> "$GITHUB_STEP_SUMMARY"
