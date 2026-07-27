@@ -1,7 +1,6 @@
-import { getReposLookup } from "@/lib/data";
-import { readView } from "@/lib/data/source";
+import { readRequiredView } from "@/lib/data/source";
 import { batchMetadata, type RepoMetadata } from "@/lib/github";
-import { ReposShard, WhitelistSnapshot, type ReposLookup, type ReposShardEntry, type WhitelistEntry } from "@/lib/contracts";
+import { ReposLookup, ReposShard, WhitelistSnapshot, type ReposShardEntry, type WhitelistEntry } from "@/lib/contracts";
 import { capSafeText } from "@/lib/contracts/common";
 import { repoBucket } from "../buckets";
 import { putOwnedView } from "@/lib/workflows/owned-write";
@@ -100,12 +99,11 @@ export function buildMetadataShard(input: BuildMetadataShardInput): Record<strin
 export async function refreshMetadataBucket(runId: string, bucket: number, fencingToken: number): Promise<MetadataBucketResult> {
   "use step";
 
-  const wl = await readView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
-  if (!wl) throw new Error(`whitelist for run ${runId} not found`);
+  const wl = await readRequiredView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
 
   const entries = wl.entries.filter((e) => repoBucket(e.id) === bucket);
-  const lookup = (await getReposLookup()) ?? {};
-  const prevShard = (await readView(`canonical/v2/repos/${bucket}.json`, ReposShard, { bust: runId })) ?? {};
+  const lookup = await readRequiredView("lookup/repos.json", ReposLookup, { base: true, bust: runId });
+  const prevShard = await readRequiredView(`canonical/v2/repos/${bucket}.json`, ReposShard, { bust: runId });
   const newcomers = new Set(wl.diff.added);
   // Pin newcomer provenance to the immutable discovery snapshot. A Workflow
   // retry on a later day must not rewrite tracked_since.

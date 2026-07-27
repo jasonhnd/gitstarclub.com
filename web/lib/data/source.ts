@@ -54,6 +54,7 @@ const READ_RETRIES = 4;
 const LIVE_HISTORY_FORBIDDEN_RETRIES = 1;
 const LIVE_HISTORY_FORBIDDEN_TTL_MS = 60_000;
 type VersionResolution = { version: string | null; publishedAt: string | null; confirmedAbsent: boolean };
+type ReadMode = "published" | "authoritative";
 const versionMemo = new Map<string, VersionResolution & { at: number }>();
 let mutableReadSequence = 0;
 const liveGenerationMemo = new Map<string, { generation: string | null; at: number }>();
@@ -63,10 +64,10 @@ const liveHistoryForbiddenMemo = new Map<string, number>();
 const MAX_LIVE_MANIFEST_MEMO_ENTRIES = 256;
 const MAX_LIVE_HISTORY_FORBIDDEN_MEMO_ENTRIES = 256;
 
-class PublishedLiveHistoryUnavailableError extends Error {
+class StrictBlobReadForbiddenError extends Error {
   constructor(key: string) {
     super(`view fetch ${key} -> 403`);
-    this.name = "PublishedLiveHistoryUnavailableError";
+    this.name = "StrictBlobReadForbiddenError";
   }
 }
 
@@ -129,12 +130,12 @@ async function readBlobJsonKey(args: {
     await sleep(retryDelayMs(res, attempt));
   }
   if (res?.status === 404) return null;
-  // Existing snapshot/base reads tolerate a persistent Blob WAF denial during
-  // SSG. A history walk disables that tolerance: denied current bytes must not
-  // silently select an older generation.
+  // Published page reads tolerate a persistent Blob WAF denial during SSG.
+  // Strict history and authoritative reads disable that tolerance: denied
+  // current bytes must not silently select older or sealed bytes.
   if (res?.status === 403) {
     if (allowForbiddenAsMissing) return null;
-    throw new PublishedLiveHistoryUnavailableError(key);
+    throw new StrictBlobReadForbiddenError(key);
   }
   if (!res?.ok) {
     const detail = res ? String(res.status) : fetchErrorDetail(lastError);
@@ -153,7 +154,7 @@ async function readLiveHistoryJsonKey(args: {
   const memoKey = `${blobBase}\0${key}`;
   const forbiddenUntil = liveHistoryForbiddenMemo.get(memoKey);
   if (forbiddenUntil !== undefined) {
-    if (forbiddenUntil > Date.now()) throw new PublishedLiveHistoryUnavailableError(key);
+    if (forbiddenUntil > Date.now()) throw new StrictBlobReadForbiddenError(key);
     liveHistoryForbiddenMemo.delete(memoKey);
   }
   try {
@@ -167,7 +168,7 @@ async function readLiveHistoryJsonKey(args: {
       forbiddenRetries: LIVE_HISTORY_FORBIDDEN_RETRIES,
     });
   } catch (error) {
-    if (error instanceof PublishedLiveHistoryUnavailableError) {
+    if (error instanceof StrictBlobReadForbiddenError) {
       liveHistoryForbiddenMemo.set(memoKey, Date.now() + LIVE_HISTORY_FORBIDDEN_TTL_MS);
       if (liveHistoryForbiddenMemo.size > MAX_LIVE_HISTORY_FORBIDDEN_MEMO_ENTRIES) {
         const oldest = liveHistoryForbiddenMemo.keys().next().value;
@@ -216,9 +217,10 @@ async function resolveVersion(
   blobBase: string,
   ttlMs = VERSION_TTL_MS,
   timeoutMs = BLOB_JSON_FETCH_TIMEOUT_MS,
+  mode: ReadMode = "published",
 ): Promise<VersionResolution> {
   const now = Date.now();
-  const memoKey = `${blobBase}\0${ttlMs}`;
+  const memoKey = `${blobBase}\0${ttlMs}\0${mode}`;
   const memo = versionMemo.get(memoKey);
   // Long-lived pages may use a 24h data-cache TTL, but a process-local memo must
   // never extend the publication visibility SLA. The publisher invalidates the
@@ -248,10 +250,18 @@ async function resolveVersion(
         if (typeof j.published_at === "string" && Number.isFinite(Date.parse(j.published_at))) {
           resolution.publishedAt = j.published_at;
         }
+        if (mode === "authoritative" && resolution.version === null) {
+          throw new Error("missing version");
+        }
       } else if (res?.status === 404) {
         resolution.confirmedAbsent = true;
+      } else if (mode === "authoritative") {
+        throw new Error(res ? `HTTP ${res.status}` : "no response");
       }
-    } catch {
+    } catch (error) {
+      if (mode === "authoritative") {
+        throw new Error(`views pointer fetch -> ${fetchErrorDetail(error)}`, { cause: error });
+      }
       // Pointer unreachable: preserve the legacy flat fallback, but never jump
       // to an older bootstrap generation unless absence was confirmed by 404.
     }
@@ -318,7 +328,7 @@ async function resolveLiveGeneration(
   return resolving;
 }
 
-async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
+async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<unknown | null> {
   const blobBase = requireBlobBaseUrl();
   let keys = [path];
   let bust = opts.bust;
@@ -326,12 +336,18 @@ async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
   if (opts.base && opts.live) throw new Error("a view cannot be both base and live");
   if (opts.liveHistory && !opts.live) throw new Error("liveHistory requires live:true");
   if (opts.base) {
-    const { version, publishedAt, confirmedAbsent } = await resolveVersion(blobBase, opts.versionTtlMs, timeoutMs);
+    const { version, publishedAt, confirmedAbsent } = await resolveVersion(
+      blobBase,
+      opts.versionTtlMs,
+      timeoutMs,
+      mode,
+    );
     if (version) {
       let bootstrap = null;
       try {
         bootstrap = await readBootstrapPublicationPointer({ published: true, timeoutMs });
-      } catch {
+      } catch (error) {
+        if (mode === "authoritative") throw error;
         // A valid managed pointer is a complete fallback if the bootstrap
         // pointer is unavailable; never degrade to legacy flat in this case.
       }
@@ -384,7 +400,7 @@ async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
         // confirmed absence and therefore must never advance to an older live
         // generation. Stop the live lookup so callers can use base/notFound,
         // matching the existing published-page resilience without stale bytes.
-        if (error instanceof PublishedLiveHistoryUnavailableError) return null;
+        if (mode === "published" && error instanceof StrictBlobReadForbiddenError) return null;
         throw error;
       }
     }
@@ -413,6 +429,7 @@ async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
       bust,
       timeoutMs,
       mutableWorkflowArtifact,
+      allowForbiddenAsMissing: mode === "published",
     });
     if (value !== null) return value;
   }
@@ -426,6 +443,31 @@ function fetchErrorDetail(error: unknown): string {
 
 /** Read + Zod-validate a view. Returns null when the view is absent (caller → notFound()). */
 export async function readView<T>(path: string, schema: ZodType<T>, opts: ViewOpts = {}): Promise<T | null> {
-  const json = await rawRead(path, opts);
+  const json = await rawRead(path, opts, "published");
   return json === null ? null : schema.parse(json);
+}
+
+/**
+ * Read a workflow/control-plane view without turning transport failures into
+ * absence or falling back from an inaccessible overlay to older sealed bytes.
+ * Only a confirmed 404 returns null.
+ */
+export async function readAuthoritativeView<T>(
+  path: string,
+  schema: ZodType<T>,
+  opts: ViewOpts = {},
+): Promise<T | null> {
+  const json = await rawRead(path, opts, "authoritative");
+  return json === null ? null : schema.parse(json);
+}
+
+/** Authoritative read for a workflow artifact that must already exist. */
+export async function readRequiredView<T>(
+  path: string,
+  schema: ZodType<T>,
+  opts: ViewOpts = {},
+): Promise<T> {
+  const value = await readAuthoritativeView(path, schema, opts);
+  if (value === null) throw new Error(`${path} missing`);
+  return value;
 }

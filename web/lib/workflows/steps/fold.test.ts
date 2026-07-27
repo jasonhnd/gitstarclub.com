@@ -5,7 +5,13 @@
 // We do NOT test foldCanonical/foldMonth/foldWeeks here — those need Blob reads/writes.
 import { test, expect, describe } from "bun:test";
 import type { PendingPeriod } from "@/lib/contracts";
-import { computeWeekRows, foldedCanonicalMeta, nextMonth, type WeekRow } from "./fold";
+import {
+  computeWeekRows,
+  foldedCanonicalMeta,
+  nextMonth,
+  requireCompletePendingPeriods,
+  type WeekRow,
+} from "./fold";
 
 // repo→bucket is id % 32, so ids 1 and 33 share bucket 1 and id 2 is bucket 2. The pure core
 // doesn't bucket, but using these ids keeps the fixtures aligned with the I/O layer's grouping.
@@ -189,6 +195,26 @@ describe("computeWeekRows — resume semantics (idempotent re-run from a later f
   test("when no candidate week's Sunday fits the frozen month, no rows are produced", () => {
     // fromWeek = W30 but foldedMonth = July: the first candidate (W31) ends Aug 2 > Jul 31.
     expect(computeWeekRows(pendings, "2026-W30", "2026-07")).toEqual([]);
+  });
+});
+
+describe("requireCompletePendingPeriods", () => {
+  test("fails closed when a frozen month needed by the weekly fold is absent", () => {
+    expect(() =>
+      requireCompletePendingPeriods(
+        ["2026-06", "2026-07"],
+        [pendingJun, null],
+      ),
+    ).toThrow("canonical/v2/pending: missing required frozen period(s) 2026-07");
+  });
+
+  test("returns all frozen pendings in period order when coverage is complete", () => {
+    expect(
+      requireCompletePendingPeriods(
+        ["2026-06", "2026-07"],
+        [pendingJun, pendingJul],
+      ),
+    ).toEqual([pendingJun, pendingJul]);
   });
 });
 
