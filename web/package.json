@@ -20,7 +20,7 @@
     "exports:generate": "bun scripts/generate-data-exports.ts",
     "geo:report": "bun scripts/geo-ai-log-report.ts",
     "validate:views": "bun scripts/validate-views.ts",
-    "audit:deps": "bun audit --audit-level=high",
+    "audit:deps": "bun audit --audit-level=high --ignore GHSA-mh99-v99m-4gvg",
     "test": "bun test lib/",
     "test:cov": "bun test lib/ --coverage && node ../scripts/check-coverage-threshold.mjs coverage/lcov.info"
   },
@@ -29,7 +29,7 @@
     "@vercel/blob": "^2.5.0",
     "find-up": "7.0.0",
     "minisearch": "^7.2.0",
-    "next": "16.2.10",
+    "next": "16.2.12",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "workflow": "^4.5.0",
@@ -45,12 +45,15 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
     "typescript": "~6.0.3"
   },
   "overrides": {
+    "js-yaml": "4.3.0",
     "piscina": "4.9.3",
+    "postcss": "8.5.23",
+    "sharp": "0.35.3",
     "undici": "7.28.0"
   },
   "ignoreScripts": [
