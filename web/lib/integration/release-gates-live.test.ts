@@ -3,6 +3,8 @@ import {
   DEFAULT_PUBLIC_BLOB_BASE,
   KNOWN_MISSING_LIVE_WEEKS,
   checkBasePublishFreshness,
+  checkCurrentLivePeriods,
+  checkLiveWeekContinuity,
   isoWeeksInYear,
   liveGatesRequired,
   previousIsoWeek,
@@ -12,10 +14,62 @@ import {
 } from "./release-gates-live";
 
 const realFetch = globalThis.fetch;
+let fetchCalls: string[] = [];
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  fetchCalls = [];
 });
+
+type JsonRoute = { status?: number; json?: unknown; body?: string };
+
+function installJsonRoutes(routes: Record<string, JsonRoute>): void {
+  globalThis.fetch = mock(async (input: string | URL | Request) => {
+    const url = typeof input === "string" ? input : input.toString();
+    fetchCalls.push(url);
+    const route = routes[new URL(url).pathname] ?? { status: 404 };
+    const status = route.status ?? 200;
+    const body =
+      route.body ??
+      (route.json === undefined ? null : JSON.stringify(route.json));
+    return new Response(body, {
+      status,
+      headers: body === null ? undefined : { "content-type": "application/json" },
+    });
+  }) as unknown as typeof fetch;
+}
+
+function livePointer(generation: string, previousGeneration: string | null) {
+  return {
+    schema_ver: 1,
+    generation,
+    run_id: generation,
+    idempotency_key: "daily:2026-07-27",
+    job: "daily",
+    day: "2026-07-27",
+    month: "2026-07",
+    week: "2026-W31",
+    published_at: "2026-07-27T03:05:00.000Z",
+    previous_generation: previousGeneration,
+    lease: null,
+  };
+}
+
+function liveManifest(generation: string, previousGeneration: string | null, files: string[]) {
+  return {
+    schema_ver: 1,
+    generation,
+    run_id: generation,
+    idempotency_key: "daily:2026-07-27",
+    job: "daily",
+    day: "2026-07-27",
+    month: "2026-07",
+    week: "2026-W31",
+    created_at: "2026-07-27T03:05:00.000Z",
+    previous_generation: previousGeneration,
+    files,
+  };
+}
 
 describe("release-gates-live config", () => {
   test("require flag is off by default", () => {
@@ -93,5 +147,79 @@ describe("structured gate findings for non-JSON bodies", () => {
     expect(finding.ok).toBe(false);
     expect(finding.id).toBe("base-pointer-json");
     expect(finding.summary).toContain("expected JSON");
+  });
+});
+
+describe("generation-aware live period gates", () => {
+  test("finds current shards in the head, a closed week in history, and older weeks in legacy flat", async () => {
+    const currentWeek = "rank/week/2026-W31/repo/flow.json";
+    const currentMonth = "rank/month/2026-07/repo/flow.json";
+    const previousWeek = "rank/week/2026-W30/repo/flow.json";
+    installJsonRoutes({
+      "/live/latest.json": { json: livePointer("generation-w31", "generation-w30") },
+      [`/live/generations/generation-w31/${currentWeek}`]: { json: { items: [] } },
+      [`/live/generations/generation-w31/${currentMonth}`]: { json: { items: [] } },
+      "/live/generations/generation-w31/manifest.json": {
+        json: liveManifest("generation-w31", "generation-w30", [
+          currentWeek,
+          currentMonth,
+          "current_month.json",
+        ]),
+      },
+      "/live/generations/generation-w30/manifest.json": {
+        json: liveManifest("generation-w30", null, [previousWeek]),
+      },
+      [`/live/generations/generation-w30/${previousWeek}`]: { json: { items: [] } },
+      "/live/rank/week/2026-W29/repo/flow.json": { json: { items: [] } },
+      "/live/rank/week/2026-W28/repo/flow.json": { json: { items: [] } },
+      "/live/rank/week/2026-W27/repo/flow.json": { json: { items: [] } },
+    });
+
+    const now = new Date("2026-07-27T12:00:00.000Z");
+    const current = await checkCurrentLivePeriods("https://blob.test", now);
+    const continuity = await checkLiveWeekContinuity("https://blob.test", now);
+
+    expect(current.ok).toBe(true);
+    expect(current.observed?.sources).toContain("week:generation-w31");
+    expect(continuity.ok).toBe(true);
+    expect(continuity.observed?.sources).toContain("2026-W30:generation-w30");
+    expect(continuity.observed?.sources).toContain("2026-W29:legacy-flat");
+    expect(
+      fetchCalls.some((url) => new URL(url).pathname === "/live/rank/week/2026-W30/repo/flow.json"),
+    ).toBe(false);
+  });
+
+  test("reports a structured failure when a manifest-listed shard is missing", async () => {
+    const previousWeek = "rank/week/2026-W30/repo/flow.json";
+    installJsonRoutes({
+      "/live/latest.json": { json: livePointer("generation-broken", null) },
+      "/live/generations/generation-broken/manifest.json": {
+        json: liveManifest("generation-broken", null, [previousWeek]),
+      },
+    });
+
+    const finding = await checkLiveWeekContinuity(
+      "https://blob.test",
+      new Date("2026-07-27T12:00:00.000Z"),
+    );
+    expect(finding.ok).toBe(false);
+    expect(finding.id).toBe("live-week-continuity");
+    expect(finding.summary).toContain("manifest-listed artifact missing");
+  });
+
+  test("reports an invalid live pointer as a structured fail-closed finding", async () => {
+    installJsonRoutes({
+      "/live/latest.json": {
+        json: { schema_ver: 1, generation: "generation-without-required-metadata" },
+      },
+    });
+
+    const finding = await checkCurrentLivePeriods(
+      "https://blob.test",
+      new Date("2026-07-27T12:00:00.000Z"),
+    );
+    expect(finding.ok).toBe(false);
+    expect(finding.id).toBe("live-current-periods");
+    expect(finding.summary).toContain("live pointer invalid");
   });
 });

@@ -190,6 +190,8 @@ export default nextConfig;
 - **每周 cron**（`/api/cron/weekly`，[API](./API.md)）：同样在 Vercel 内做 live refresh，保证周榜和月榜即使没有全量历史重算也不会断档；全量历史刷新另走 Vercel Workflow 分片，不做 16k 全量 build。
 - **deploy**：仅代码/结构变更触发；会重置 ISR store，长尾首访冷生成一次（见 [ARCHITECTURE](./ARCHITECTURE.md)）。
 
+每个 generation 只声明该次发布生成的当前周期文件，不复制此前尚未折叠的周/月文件。rank / month heatmap 读者在当前 generation 对象确认 404 后，会按 manifest 的 `previous_generation` 有界回溯；链完整走到 `null` 后才读迁移期 flat `live/*`。`current_month` / `hot-snapshot` 是可变语义快照，始终只读 pointer 当前 generation，不沿历史回退成陈旧快照。
+
 > `app/api/cron/daily` 与 `app/api/cron/weekly` 通过 `revalidatePath` + `CRON_SECRET` 鉴权刷新热集。
 
 ### 2.5 渲染模式：route locale + 服务端本地化 HTML
@@ -294,7 +296,7 @@ const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 
 ### 3.5 缓存一致性
 
-- **live generation 指针**：所有 live reader 先以 60s revalidate + in-memory single-flight 解析 `live/latest.json`，再读不可变 `live/generations/<generation>/<logical-path>`。真正 404 才启用 legacy flat fallback；pointer 错误时使用已验证旧 generation 或 fail closed，避免混代。
+- **live generation 指针**：所有 live reader 先以 60s revalidate + in-memory single-flight 解析 `live/latest.json`，再读不可变 `live/generations/<generation>/<logical-path>`。rank / month heatmap 等周期型文件在当前对象确认 404 后，最多沿 64 个经 Zod 校验、无环且 generation id 匹配的 manifest 回溯；manifest 声明存在但对象 404、manifest/transport/schema 异常、环或超界均 fail closed，只有完整链到 `previous_generation:null` 才启用 legacy flat migration edge。高并发 SSG 下 public CDN 持续 403 不算 404：页面读立即停止 live 链并走 base / `notFound`，绝不选旧代；required product gate 仍把 403 判失败。`current_month` / `hot-snapshot` 不走历史链。pointer 错误时使用已验证的当前 generation memo，否则 fail closed，避免混代。
 - `meta.schema_ver`：build 启动校验版本匹配，不符 fail-fast（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §3）。
 - **base 视图版本指针**：base `rank/*` / `entity/*` / `heatmap/*` 通过「先读 `views/latest.json` 指针解析版本前缀，再读该前缀下视图」消费（[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7）。默认 data-cache TTL 为 3600 秒；repo / categories / OG 等 1 天 ISR 路由使用 daily base 读取入口（86400 秒），避免 pointer fetch 缩短 route TTL。pointer fetch 带共享 tag，publish / rollback 主动失效；所有进程内 memo 无论 data-cache TTL 多长都被 60 秒可见性 SLA 限制。这一步**封装在 `web/lib/data/`**，组件入参形状不变、**对页面透明**；「live 优先、回退 base」语义保留（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11）。
 

@@ -354,6 +354,8 @@ L1 daily cron / L2 weekly cron 先取得 `live/latest.json` 内嵌 lease，再�
 - **当前/刚收口未折叠的周期**:读 `live/*` 覆盖层(若回退到 base,base 尚不含该期,会缺活尾)。
 - **已折叠的周期**:读 base(`views/<version>/*`),不再叠 live,避免重复计数。
 
+每个 live generation 只含本次刷新生成的当前周/月文件，不是全部未折叠周期的复制。周期型 rank / heatmap 先读 pointer 当前 generation；对象确认 404 时，读侧沿 immutable manifest 的 `previous_generation` 有界回溯（最多 64 代、cycle detection、manifest generation/files 一致性校验），链到 `null` 后才尝试迁移期 flat `live/*`。manifest 声明文件却读到 404，或 pointer/manifest/transport/schema 异常，一律 fail closed。高并发 SSG 的 public-CDN 403 不是缺失：页面读停止整个 live 链并交给 base / `notFound`，不能借机取旧代；required product gate 则保持失败。`current_month` / `hot-snapshot` 仍是单 generation 快照，禁止历史回退。
+
 L1/L2 与 L3 写不同 Blob 前缀(`live/generations/*` vs `canonical/v2/**` + `views/<run_id>/**`),前缀不重叠；L3 重算期间 L1/L2 照常刷活尾。默认幂等 key 为 `<job>:<UTC-day>`；同 key running/committed 分别 attach/直接返回，不同 key active 返回 409。手动同日追加刷新用显式新 key。
 
 ### 7.2 周期收口交接契约(防重复 / 丢数据)
@@ -384,8 +386,10 @@ generation 内的 `current_month.json` 会在跨月时初始化新月，所以�
   `generation`；partial generation 是不可见 orphan。
 - 同 run 重试遇到已有 immutable 文件时只接受**完全相同字节**，内容冲突
   fail closed。lease 过期或被替换的 writer 无权清 lease 或切 pointer。
-- `previous_generation` 保留一跳回滚目标。live GC 尚不在本 issue 内；不要删除
-  current/previous 或带 active lease 的 generation。
+- pointer 的 `previous_generation` 保留一跳运维回滚目标；每个 immutable manifest
+  的同名字段同时组成周期文件的读侧历史链。读侧回溯是有界查询，不改变回滚命令
+  仍只接受显式一跳 target 的语义。live GC 尚不在本 issue 内；不要删除历史链可能
+  引用、current/previous 或带 active lease 的 generation。
 - `hot-snapshot.freshness` 逐 section 标 source-as-of；carry-forward section 不得
   使用本次运行时间。日期依赖的旧 `on_this_day` 不匹配当前 UTC 月日即清空。
 

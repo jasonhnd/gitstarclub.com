@@ -41,6 +41,22 @@ function livePointer(generation: string, lease: unknown = null) {
     lease,
   };
 }
+
+function liveManifest(generation: string, previousGeneration: string | null, files: string[]) {
+  return {
+    schema_ver: 1,
+    generation,
+    run_id: generation,
+    idempotency_key: "daily:2026-07-17",
+    job: "daily",
+    day: "2026-07-17",
+    month: "2026-07",
+    week: "2026-W29",
+    created_at: "2026-07-17T03:00:00.000Z",
+    previous_generation: previousGeneration,
+    files,
+  };
+}
 // Map of exact-or-prefix URL (path portion, query stripped) → response.
 let routes: Record<string, FakeRoute> = {};
 let fetchCalls: string[] = [];
@@ -494,6 +510,107 @@ describe("readView — atomic live generation resolution", () => {
       await readView("current_month.json", Doc, { live: true, legacyPath: "legacy/current_month.json" }),
     ).toEqual({ ok: true, tag: "legacy" });
   });
+
+  test("period-scoped reads walk previous generations before the legacy migration edge", async () => {
+    const path = "rank/week/2026-W30/repo/flow.json";
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("history-head") },
+      "/live/generations/history-head/manifest.json": {
+        status: 200,
+        json: liveManifest("history-head", "history-previous", ["current_month.json"]),
+      },
+      "/live/generations/history-previous/manifest.json": {
+        status: 200,
+        json: liveManifest("history-previous", null, [path]),
+      },
+      [`/live/generations/history-previous/${path}`]: {
+        status: 200,
+        json: { ok: true, tag: "previous-week" },
+      },
+      [`/live/${path}`]: { status: 200, json: { ok: true, tag: "legacy" } },
+    };
+
+    expect(
+      await readView(path, Doc, {
+        live: true,
+        liveHistory: true,
+        legacyPath: `live/${path}`,
+      }),
+    ).toEqual({ ok: true, tag: "previous-week" });
+    expect(fetchCalls.some((url) => url.includes(`/live/${path}`))).toBe(false);
+  });
+
+  test("period-scoped reads use legacy only after a validated history reaches null", async () => {
+    const path = "rank/week/2026-W29/repo/flow.json";
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("history-first") },
+      "/live/generations/history-first/manifest.json": {
+        status: 200,
+        json: liveManifest("history-first", null, ["current_month.json"]),
+      },
+      [`/live/${path}`]: { status: 200, json: { ok: true, tag: "legacy-week" } },
+    };
+
+    expect(
+      await readView(path, Doc, {
+        live: true,
+        liveHistory: true,
+        legacyPath: `live/${path}`,
+      }),
+    ).toEqual({ ok: true, tag: "legacy-week" });
+  });
+
+  test("snapshot reads never fall back to stale history or flat bytes after a generation resolves", async () => {
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("snapshot-head") },
+      "/live/generations/snapshot-head/current_month.json": { status: 404 },
+      "/legacy/current_month.json": { status: 200, json: { ok: true, tag: "stale" } },
+    };
+
+    expect(
+      await readView("current_month.json", Doc, {
+        live: true,
+        legacyPath: "legacy/current_month.json",
+      }),
+    ).toBeNull();
+    expect(fetchCalls.some((url) => url.includes("/legacy/current_month.json"))).toBe(false);
+  });
+
+  test(
+    "a persistent WAF 403 stops history without selecting older or legacy bytes",
+    async () => {
+      const path = "heatmap/month/2026-07.json";
+      routes = {
+        "/live/latest.json": { status: 200, json: livePointer("history-waf-head") },
+        [`/live/generations/history-waf-head/${path}`]: {
+          status: 403,
+          json: { error: "Forbidden" },
+        },
+        "/live/generations/history-waf-head/manifest.json": {
+          status: 200,
+          json: liveManifest("history-waf-head", "history-waf-previous", ["current_month.json"]),
+        },
+        [`/live/generations/history-waf-previous/${path}`]: {
+          status: 200,
+          json: { ok: true, tag: "stale-generation" },
+        },
+        [`/live/${path}`]: { status: 200, json: { ok: true, tag: "stale-legacy" } },
+      };
+
+      expect(
+        await readView(path, Doc, {
+          live: true,
+          liveHistory: true,
+          legacyPath: `live/${path}`,
+        }),
+      ).toBeNull();
+      expect(fetchCalls.filter((url) => url.includes(`/history-waf-head/${path}`))).toHaveLength(5);
+      expect(fetchCalls.some((url) => url.includes("/history-waf-head/manifest.json"))).toBe(false);
+      expect(fetchCalls.some((url) => url.includes("history-waf-previous"))).toBe(false);
+      expect(fetchCalls.some((url) => url.includes(`/live/${path}`))).toBe(false);
+    },
+    { timeout: 20_000 },
+  );
 
   test(
     "an unreachable pointer fails closed when no validated generation is cached",
