@@ -16,7 +16,13 @@ const historicalRepo = {
 
 describe("validateCanonicalGeneration", () => {
   test("produces a complete checksummed receipt for every required shard", async () => {
-    const reader: CanonicalShardReader = async (path) => (path.endsWith("repos/0.json") ? { "1": historicalRepo } : {});
+    const reader: CanonicalShardReader = async (path) => {
+      if (path.endsWith("repos/1.json")) return { "1": historicalRepo };
+      if (path.endsWith("repo-monthly/1.json")) return { "1": [["2026-06", 1]] };
+      if (path.endsWith("repo-weekly/1.json")) return { "1": [["2026-W26", 1]] };
+      if (path.endsWith("repo-recent-daily/1.json")) return { "1": [["2026-06-30", 1]] };
+      return {};
+    };
     const result = await validateCanonicalGeneration("refresh-test", {
       reader,
       generatedAt: "2026-07-17T00:00:00.000Z",
@@ -34,6 +40,45 @@ describe("validateCanonicalGeneration", () => {
     expect(result.manifest.shards.every((shard) => /^[a-f0-9]{64}$/.test(shard.sha256))).toBe(true);
     expect(result.repoIds).toEqual(new Set(["1"]));
     expect(result.activeRepoIds).toEqual(new Set(["1"]));
+  });
+
+  test("rejects a populated repo inventory with empty time-series families", async () => {
+    const reader: CanonicalShardReader = async (path) =>
+      path.endsWith("repos/1.json") ? { "1": historicalRepo } : {};
+
+    const result = await validateCanonicalGeneration("refresh-empty-series", {
+      reader,
+      generatedAt: "2026-07-17T00:00:00.000Z",
+    });
+
+    expect(result.manifest.complete).toBe(false);
+    expect(result.failures).toEqual(
+      expect.arrayContaining([
+        "canonical/v2/repo-monthly: no repository records for 1 canonical repo(s)",
+        "canonical/v2/repo-weekly: no repository records for 1 canonical repo(s)",
+        "canonical/v2/repo-recent-daily: no repository records for 1 canonical repo(s)",
+      ]),
+    );
+  });
+
+  test("rejects time-series records whose repository is absent from repos shards", async () => {
+    const reader: CanonicalShardReader = async (path) => {
+      if (path.endsWith("repos/1.json")) return { "1": historicalRepo };
+      if (path.endsWith("repo-monthly/7.json")) return { "999": [["2026-06", 1]] };
+      if (path.endsWith("repo-weekly/1.json")) return { "1": [["2026-W26", 1]] };
+      if (path.endsWith("repo-recent-daily/1.json")) return { "1": [["2026-06-30", 1]] };
+      return {};
+    };
+
+    const result = await validateCanonicalGeneration("refresh-orphan-series", {
+      reader,
+      generatedAt: "2026-07-17T00:00:00.000Z",
+    });
+
+    expect(result.manifest.complete).toBe(false);
+    expect(result.failures).toContain(
+      "canonical/v2/repo-monthly: 1 record(s) reference repositories absent from canonical/v2/repos",
+    );
   });
 
   test("reports missing, invalid, and unanchored historical repositories", async () => {

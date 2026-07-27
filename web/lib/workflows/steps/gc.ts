@@ -1,5 +1,5 @@
 import { list, del } from "@vercel/blob";
-import { readView } from "@/lib/data/source";
+import { readAuthoritativeView } from "@/lib/data/source";
 import { BootstrapPublicationPointer, ViewsPointer, WorkflowLease } from "@/lib/contracts";
 import { requireBlobWriteToken } from "@/lib/runtime-config";
 import {
@@ -20,9 +20,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function readProtectionContext(runId: string): Promise<BlobDeletionContext> {
   const [pointer, bootstrap, active] = await Promise.all([
-    readView("views/latest.json", ViewsPointer, { bust: runId }),
-    readView("bootstrap/latest.json", BootstrapPublicationPointer, { bust: runId }),
-    readView("ops/workflows/active.json", WorkflowLease, { bust: runId }),
+    readAuthoritativeView("views/latest.json", ViewsPointer, { bust: runId }),
+    readAuthoritativeView("bootstrap/latest.json", BootstrapPublicationPointer, { bust: runId }),
+    readAuthoritativeView("ops/workflows/active.json", WorkflowLease, { bust: runId }),
   ]);
   const activeWorkflowRun =
     active?.status === "running" && Date.parse(active.expires_at) > Date.now() ? active.run_id : null;

@@ -1,15 +1,18 @@
 import { cache } from "react";
 import { ReposLookup, OrgsLookup, AliasMap } from "@/lib/contracts";
-import { DAILY_BASE_VIEW_OPTS, readView } from "./source";
+import { DAILY_BASE_VIEW_OPTS, readAuthoritativeView, readView } from "./source";
 
 // Join tables (id/login → display fields). Rank lists store only ids; build joins these in.
 
 // base:true → versioned lookup via the publish pointer; flat fallback when no pointer (first run).
-// The metadata workflow step also calls these: pre-publish it reads the previous version (or flat
-// bootstrap on the very first run), both valid owner_type/language seeds. See VERCEL-DATA-OPERATIONS §7.
+// Page getters retain published-read fallback semantics. Mutation paths use the
+// authoritative variant below. See VERCEL-DATA-OPERATIONS §7.
 export const getReposLookup = cache(() => readView("lookup/repos.json", ReposLookup, { base: true }));
 export const getOrgsLookup = cache(() => readView("lookup/orgs.json", OrgsLookup, { base: true }));
 export const getReposLookupDaily = cache(() => readView("lookup/repos.json", ReposLookup, DAILY_BASE_VIEW_OPTS));
+/** Mutation-path lookup: transport/pointer failures must not become an empty live refresh input. */
+export const getReposLookupAuthoritative = () =>
+  readAuthoritativeView("lookup/repos.json", ReposLookup, { base: true });
 
 /** lookup/aliases.json — old full_name (lowercased) → current repo id. Consulted by the repo
  *  route on a slug miss to 308-redirect a renamed repo's stale URL. Absent before the first
