@@ -436,8 +436,9 @@ generation 是“本次发布文件集合”的完整快照，不会复制此前
 `files[]`、无环和深度。manifest 已列出的对象若 404 即违反完整性并 fail closed；
 只有有效链走到 `null` 才允许查迁移期 flat `live/*`。`current_month` 与
 `hot-snapshot` 不使用历史链，以免用旧代快照冒充当前状态。public CDN 在高并发
-SSG 下持续 403 时，页面读停止 live 链并回退 base / `notFound`（不选旧代）；
-required product gate 仍将该 transport failure 判为失败。
+SSG 下持续 403 时，页面读至多尝试同一历史对象 2 次，并按 Blob/key 熔断 60 秒
+后停止 live 链、回退 base / `notFound`（不选旧代）；熔断自动恢复，required
+product gate 仍将该 transport failure 判为失败。
 
 ### 2.10 `ops/sync-runs.json`（cron 运行记录）
 

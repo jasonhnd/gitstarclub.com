@@ -51,13 +51,17 @@ export const DAILY_BASE_VIEW_OPTS = { base: true, versionTtlMs: DAILY_BASE_VIEW_
 // Extra retries absorb intermittent Vercel Blob WAF 403s (`x-vercel-mitigated: deny`)
 // observed during large preview SSG (thousands of concurrent public CDN reads).
 const READ_RETRIES = 4;
+const LIVE_HISTORY_FORBIDDEN_RETRIES = 1;
+const LIVE_HISTORY_FORBIDDEN_TTL_MS = 60_000;
 type VersionResolution = { version: string | null; publishedAt: string | null; confirmedAbsent: boolean };
 const versionMemo = new Map<string, VersionResolution & { at: number }>();
 let mutableReadSequence = 0;
 const liveGenerationMemo = new Map<string, { generation: string | null; at: number }>();
 const liveGenerationInflight = new Map<string, Promise<string | null>>();
 const liveManifestMemo = new Map<string, Promise<unknown | null>>();
+const liveHistoryForbiddenMemo = new Map<string, number>();
 const MAX_LIVE_MANIFEST_MEMO_ENTRIES = 256;
+const MAX_LIVE_HISTORY_FORBIDDEN_MEMO_ENTRIES = 256;
 
 class PublishedLiveHistoryUnavailableError extends Error {
   constructor(key: string) {
@@ -93,6 +97,7 @@ async function readBlobJsonKey(args: {
   timeoutMs: number;
   mutableWorkflowArtifact: boolean;
   allowForbiddenAsMissing?: boolean;
+  forbiddenRetries?: number;
 }): Promise<unknown | null> {
   const {
     blobBase,
@@ -101,6 +106,7 @@ async function readBlobJsonKey(args: {
     timeoutMs,
     mutableWorkflowArtifact,
     allowForbiddenAsMissing = true,
+    forbiddenRetries = READ_RETRIES,
   } = args;
   const url = `${blobBase}/${key}${bust ? `?v=${encodeURIComponent(bust)}` : ""}`;
   let res: Response | null = null;
@@ -118,7 +124,8 @@ async function readBlobJsonKey(args: {
       continue;
     }
     if (res.status === 404 || res.ok) break;
-    if (!shouldRetry(res.status) || attempt > READ_RETRIES) break;
+    const retryLimit = res.status === 403 ? forbiddenRetries : READ_RETRIES;
+    if (!shouldRetry(res.status) || attempt > retryLimit) break;
     await sleep(retryDelayMs(res, attempt));
   }
   if (res?.status === 404) return null;
@@ -136,6 +143,41 @@ async function readBlobJsonKey(args: {
   return res.json();
 }
 
+async function readLiveHistoryJsonKey(args: {
+  blobBase: string;
+  key: string;
+  bust?: string;
+  timeoutMs: number;
+}): Promise<unknown | null> {
+  const { blobBase, key, bust, timeoutMs } = args;
+  const memoKey = `${blobBase}\0${key}`;
+  const forbiddenUntil = liveHistoryForbiddenMemo.get(memoKey);
+  if (forbiddenUntil !== undefined) {
+    if (forbiddenUntil > Date.now()) throw new PublishedLiveHistoryUnavailableError(key);
+    liveHistoryForbiddenMemo.delete(memoKey);
+  }
+  try {
+    return await readBlobJsonKey({
+      blobBase,
+      key,
+      bust,
+      timeoutMs,
+      mutableWorkflowArtifact: false,
+      allowForbiddenAsMissing: false,
+      forbiddenRetries: LIVE_HISTORY_FORBIDDEN_RETRIES,
+    });
+  } catch (error) {
+    if (error instanceof PublishedLiveHistoryUnavailableError) {
+      liveHistoryForbiddenMemo.set(memoKey, Date.now() + LIVE_HISTORY_FORBIDDEN_TTL_MS);
+      if (liveHistoryForbiddenMemo.size > MAX_LIVE_HISTORY_FORBIDDEN_MEMO_ENTRIES) {
+        const oldest = liveHistoryForbiddenMemo.keys().next().value;
+        if (typeof oldest === "string" && oldest !== memoKey) liveHistoryForbiddenMemo.delete(oldest);
+      }
+    }
+    throw error;
+  }
+}
+
 function readLiveGenerationManifest(
   blobBase: string,
   generation: string,
@@ -145,13 +187,11 @@ function readLiveGenerationManifest(
   const memo = liveManifestMemo.get(memoKey);
   if (memo) return memo;
   const key = `live/generations/${generation}/manifest.json`;
-  const reading = readBlobJsonKey({
+  const reading = readLiveHistoryJsonKey({
     blobBase,
     key,
     bust: generation,
     timeoutMs,
-    mutableWorkflowArtifact: false,
-    allowForbiddenAsMissing: false,
   });
   const retained = reading.then(
     (value) => {
@@ -321,24 +361,20 @@ async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
           legacyPath: opts.legacyPath,
           reader: {
             readGenerationArtifact: (candidateGeneration, logicalPath) =>
-              readBlobJsonKey({
+              readLiveHistoryJsonKey({
                 blobBase,
                 key: `live/generations/${candidateGeneration}/${logicalPath}`,
                 bust: candidateGeneration,
                 timeoutMs,
-                mutableWorkflowArtifact: false,
-                allowForbiddenAsMissing: false,
               }),
             readGenerationManifest: (candidateGeneration) =>
               readLiveGenerationManifest(blobBase, candidateGeneration, timeoutMs),
             readLegacyArtifact: (legacyPath) =>
-              readBlobJsonKey({
+              readLiveHistoryJsonKey({
                 blobBase,
                 key: legacyPath,
                 bust: opts.bust,
                 timeoutMs,
-                mutableWorkflowArtifact: false,
-                allowForbiddenAsMissing: false,
               }),
           },
         });
