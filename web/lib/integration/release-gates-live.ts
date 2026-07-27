@@ -1,4 +1,8 @@
-import { SearchIndex } from "@/lib/contracts";
+import { LiveGenerationPointer, SearchIndex } from "@/lib/contracts";
+import {
+  resolveLiveArtifactFromHistory,
+  type LiveArtifactResolution,
+} from "@/lib/data/live-generation-history";
 
 // Live product release gates for #286.
 // These checks hit a real deployment URL + the public Blob store. They are meant
@@ -81,6 +85,69 @@ async function fetchJson(url: string): Promise<{ status: number; json: unknown; 
     // 200 HTML/CDN body (WAF/mitigated pages sometimes surface as text/html).
     return { status, json: null, parseError: `expected JSON from ${url}` };
   }
+}
+
+type LiveArtifactProbe = (
+  logicalPath: string,
+  legacyPath: string,
+) => Promise<LiveArtifactResolution<unknown> | null>;
+
+function errorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Build one fail-closed resolver per gate so all requested periods share the
+ * validated live pointer and immutable manifest cache. */
+async function createLiveArtifactProbe(blobBase: string): Promise<LiveArtifactProbe> {
+  const pointerUrl = `${blobBase}/live/latest.json?v=${Date.now()}`;
+  const pointerResponse = await fetchJson(pointerUrl);
+  if (pointerResponse.parseError) throw new Error(pointerResponse.parseError);
+  if (pointerResponse.status !== 200 && pointerResponse.status !== 404) {
+    throw new Error(`${pointerUrl} returned HTTP ${pointerResponse.status}`);
+  }
+  let pointer: LiveGenerationPointer | null = null;
+  if (pointerResponse.status === 200) {
+    const parsedPointer = LiveGenerationPointer.safeParse(pointerResponse.json);
+    if (!parsedPointer.success) {
+      const issue = parsedPointer.error.issues[0];
+      const location = issue?.path.length ? ` at ${issue.path.join(".")}` : "";
+      throw new Error(`live pointer invalid${location}: ${issue?.message ?? "schema mismatch"}`);
+    }
+    pointer = parsedPointer.data;
+  }
+  const manifestMemo = new Map<string, Promise<unknown | null>>();
+
+  const readJsonKey = async (key: string): Promise<unknown | null> => {
+    const url = `${blobBase}/${key}`;
+    const response = await fetchJson(url);
+    if (response.status === 404) return null;
+    if (response.parseError) throw new Error(response.parseError);
+    if (response.status !== 200) throw new Error(`${url} returned HTTP ${response.status}`);
+    if (response.json === null) throw new Error(`expected non-null JSON from ${url}`);
+    return response.json;
+  };
+
+  const readManifest = (generation: string): Promise<unknown | null> => {
+    const memo = manifestMemo.get(generation);
+    if (memo) return memo;
+    const reading = readJsonKey(`live/generations/${generation}/manifest.json`);
+    manifestMemo.set(generation, reading);
+    void reading.catch(() => manifestMemo.delete(generation));
+    return reading;
+  };
+
+  return (logicalPath, legacyPath) =>
+    resolveLiveArtifactFromHistory({
+      headGeneration: pointer?.generation ?? null,
+      logicalPath,
+      legacyPath,
+      reader: {
+        readGenerationArtifact: (generation, candidatePath) =>
+          readJsonKey(`live/generations/${generation}/${candidatePath}`),
+        readGenerationManifest: readManifest,
+        readLegacyArtifact: readJsonKey,
+      },
+    });
 }
 
 function ageMs(iso: string | null | undefined, now: Date): number | null {
@@ -297,14 +364,47 @@ export async function checkLiveWeekContinuity(
   const missing: string[] = [];
   const present: string[] = [];
   const unexpected: string[] = [];
+  const sources: string[] = [];
+  const resolutionErrors: string[] = [];
+  let probe: LiveArtifactProbe;
+  try {
+    probe = await createLiveArtifactProbe(blobBase);
+  } catch (error) {
+    return {
+      id: "live-week-continuity",
+      ok: false,
+      summary: `live generation pointer unavailable: ${errorDetail(error)}`,
+      observed: { scanned: weeks.join(",") },
+    };
+  }
   for (const week of weeks) {
-    const url = `${blobBase}/live/rank/week/${week}/repo/flow.json`;
-    const { status } = await fetchText(url);
-    if (status === 200) present.push(week);
-    else {
+    const path = `rank/week/${week}/repo/flow.json`;
+    try {
+      const resolved = await probe(path, `live/${path}`);
+      if (resolved) {
+        present.push(week);
+        sources.push(
+          `${week}:${resolved.source === "generation" ? resolved.generation : "legacy-flat"}`,
+        );
+        continue;
+      }
       missing.push(week);
       if (!knownMissing.includes(week)) unexpected.push(week);
+    } catch (error) {
+      resolutionErrors.push(`${week}:${errorDetail(error)}`);
     }
+  }
+  if (resolutionErrors.length > 0) {
+    return {
+      id: "live-week-continuity",
+      ok: false,
+      summary: `live week resolution failed: ${resolutionErrors.join("; ")}`,
+      observed: {
+        scanned: weeks.join(","),
+        present: present.join(","),
+        sources: sources.join(","),
+      },
+    };
   }
   // Known gaps must still be listed; if a known gap reappears as present, that's fine.
   const stillMissingKnown = knownMissing.filter((week) => missing.includes(week));
@@ -318,6 +418,7 @@ export async function checkLiveWeekContinuity(
         present: present.join(","),
         missing: missing.join(","),
         known_missing_still_absent: stillMissingKnown.join(","),
+        sources: sources.join(","),
       },
     };
   }
@@ -332,6 +433,7 @@ export async function checkLiveWeekContinuity(
       scanned: weeks.join(","),
       present: present.join(","),
       documented_gaps: stillMissingKnown.join(","),
+      sources: sources.join(","),
     },
   };
 }
@@ -354,16 +456,44 @@ export async function checkCurrentLivePeriods(blobBase: string, now = new Date()
   const weekPeriod = isoWeekPeriodUtc(now);
   const monthPeriod = utcMonthPeriod(now);
   const grace = withinPublicationScheduleGrace(now);
-  // Prefer the latest closed/current live artifacts that the site uses — current week/month ids.
+  // Resolve the current week/month exactly as page readers do: current immutable
+  // generation first, then validated history, then the legacy migration edge.
   const targets = [
-    { label: "week" as const, path: `live/rank/week/${weekPeriod}/repo/flow.json`, grace: grace.weekGrace },
-    { label: "month" as const, path: `live/rank/month/${monthPeriod}/repo/flow.json`, grace: grace.monthGrace },
+    { label: "week" as const, path: `rank/week/${weekPeriod}/repo/flow.json`, grace: grace.weekGrace },
+    { label: "month" as const, path: `rank/month/${monthPeriod}/repo/flow.json`, grace: grace.monthGrace },
   ];
   const missing: string[] = [];
   const deferred: string[] = [];
+  const sources: string[] = [];
+  let probe: LiveArtifactProbe;
+  try {
+    probe = await createLiveArtifactProbe(blobBase);
+  } catch (error) {
+    return {
+      id: "live-current-periods",
+      ok: false,
+      summary: `live generation pointer unavailable: ${errorDetail(error)}`,
+      observed: { weekPeriod, monthPeriod },
+    };
+  }
   for (const target of targets) {
-    const { status } = await fetchText(`${blobBase}/${target.path}`);
-    if (status === 200) continue;
+    let resolved: LiveArtifactResolution<unknown> | null;
+    try {
+      resolved = await probe(target.path, `live/${target.path}`);
+    } catch (error) {
+      return {
+        id: "live-current-periods",
+        ok: false,
+        summary: `${target.label} live rank resolution failed: ${errorDetail(error)}`,
+        observed: { weekPeriod, monthPeriod, sources: sources.join(",") },
+      };
+    }
+    if (resolved) {
+      sources.push(
+        `${target.label}:${resolved.source === "generation" ? resolved.generation : "legacy-flat"}`,
+      );
+      continue;
+    }
     if (target.grace) deferred.push(`${target.label}:${target.path}`);
     else missing.push(`${target.label}:${target.path}`);
   }
@@ -372,7 +502,12 @@ export async function checkCurrentLivePeriods(blobBase: string, now = new Date()
       id: "live-current-periods",
       ok: false,
       summary: `current live rank shards missing: ${missing.join("; ")}`,
-      observed: { weekPeriod, monthPeriod, deferred: deferred.join(",") || null },
+      observed: {
+        weekPeriod,
+        monthPeriod,
+        deferred: deferred.join(",") || null,
+        sources: sources.join(","),
+      },
     };
   }
   return {
@@ -382,7 +517,12 @@ export async function checkCurrentLivePeriods(blobBase: string, now = new Date()
       deferred.length > 0
         ? `current live periods ok (within schedule grace: ${deferred.join("; ")})`
         : `current live week ${weekPeriod} and month ${monthPeriod} present`,
-    observed: { weekPeriod, monthPeriod, deferred: deferred.join(",") || null },
+    observed: {
+      weekPeriod,
+      monthPeriod,
+      deferred: deferred.join(",") || null,
+      sources: sources.join(","),
+    },
   };
 }
 

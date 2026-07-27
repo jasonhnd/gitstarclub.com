@@ -8,14 +8,16 @@ import {
   resolveBootstrapBaseBlobPath,
   resolveCanonicalReadBlobPaths,
 } from "@/lib/data/bootstrap-publication";
+import { resolveLiveArtifactFromHistory } from "@/lib/data/live-generation-history";
 
 // View source: reads JSON views by direct URL from the Vercel Blob store (public).
 // BLOB_BASE_URL must point at the store base (set in Vercel project env + local .env.local).
 // Base views compare the managed and bootstrap publication timestamps, then use the newest
 // complete generation; when neither pointer exists they use the legacy flat layout. Canonical
 // reads resolve through bootstrap/latest.json. Live overlays resolve independently through
-// live/latest.json to one complete immutable generation. Every publication switches with one
-// pointer write; operational reads remain flat.
+// live/latest.json to one complete immutable generation. Period-scoped views may walk the
+// validated immutable generation history until base folding catches up. Every publication
+// switches with one pointer write; operational reads remain flat.
 // See docs/OPS.md (Blob layout), docs/FRONTEND.md §3, docs/VERCEL-DATA-OPERATIONS.md §7.
 
 export interface ViewOpts {
@@ -30,7 +32,11 @@ export interface ViewOpts {
    * falls back to `legacyPath` during migration; an unreachable/invalid pointer
    * fails closed unless a previously validated generation is cached. */
   live?: boolean;
-  /** Pre-generation flat path used only when live/latest.json does not exist. */
+  /** For immutable period-scoped rank/heatmap views only: after a current-generation
+   * 404, walk validated manifest previous_generation links with a bounded depth. */
+  liveHistory?: boolean;
+  /** Pre-generation flat path. Snapshot reads use it only when live/latest.json
+   * does not exist; liveHistory reads use it after a valid chain is exhausted. */
   legacyPath?: string;
   /** Override live pointer freshness (default 60 seconds). */
   liveTtlMs?: number;
@@ -45,11 +51,24 @@ export const DAILY_BASE_VIEW_OPTS = { base: true, versionTtlMs: DAILY_BASE_VIEW_
 // Extra retries absorb intermittent Vercel Blob WAF 403s (`x-vercel-mitigated: deny`)
 // observed during large preview SSG (thousands of concurrent public CDN reads).
 const READ_RETRIES = 4;
+const LIVE_HISTORY_FORBIDDEN_RETRIES = 1;
+const LIVE_HISTORY_FORBIDDEN_TTL_MS = 60_000;
 type VersionResolution = { version: string | null; publishedAt: string | null; confirmedAbsent: boolean };
 const versionMemo = new Map<string, VersionResolution & { at: number }>();
 let mutableReadSequence = 0;
 const liveGenerationMemo = new Map<string, { generation: string | null; at: number }>();
 const liveGenerationInflight = new Map<string, Promise<string | null>>();
+const liveManifestMemo = new Map<string, Promise<unknown | null>>();
+const liveHistoryForbiddenMemo = new Map<string, number>();
+const MAX_LIVE_MANIFEST_MEMO_ENTRIES = 256;
+const MAX_LIVE_HISTORY_FORBIDDEN_MEMO_ENTRIES = 256;
+
+class PublishedLiveHistoryUnavailableError extends Error {
+  constructor(key: string) {
+    super(`view fetch ${key} -> 403`);
+    this.name = "PublishedLiveHistoryUnavailableError";
+  }
+}
 
 /** Clear this process's pointer memo after a publish/rollback in the same runtime. */
 export function invalidatePublishedVersionMemo(): void {
@@ -69,6 +88,127 @@ function retryDelayMs(res: Response, attempt: number): number {
 function shouldRetry(status: number): boolean {
   // 403: public Blob CDN occasionally returns WAF denials under SSG load.
   return status === 403 || status === 429 || status >= 500;
+}
+
+async function readBlobJsonKey(args: {
+  blobBase: string;
+  key: string;
+  bust?: string;
+  timeoutMs: number;
+  mutableWorkflowArtifact: boolean;
+  allowForbiddenAsMissing?: boolean;
+  forbiddenRetries?: number;
+}): Promise<unknown | null> {
+  const {
+    blobBase,
+    key,
+    bust,
+    timeoutMs,
+    mutableWorkflowArtifact,
+    allowForbiddenAsMissing = true,
+    forbiddenRetries = READ_RETRIES,
+  } = args;
+  const url = `${blobBase}/${key}${bust ? `?v=${encodeURIComponent(bust)}` : ""}`;
+  let res: Response | null = null;
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= READ_RETRIES + 1; attempt++) {
+    try {
+      res = await fetchWithTimeout(url, {
+        cache: mutableWorkflowArtifact ? "no-store" : "force-cache",
+        timeoutMs,
+      });
+    } catch (err) {
+      lastError = err;
+      if (attempt > READ_RETRIES) break;
+      await sleep(Math.min(250 * 2 ** (attempt - 1), 2_000));
+      continue;
+    }
+    if (res.status === 404 || res.ok) break;
+    const retryLimit = res.status === 403 ? forbiddenRetries : READ_RETRIES;
+    if (!shouldRetry(res.status) || attempt > retryLimit) break;
+    await sleep(retryDelayMs(res, attempt));
+  }
+  if (res?.status === 404) return null;
+  // Existing snapshot/base reads tolerate a persistent Blob WAF denial during
+  // SSG. A history walk disables that tolerance: denied current bytes must not
+  // silently select an older generation.
+  if (res?.status === 403) {
+    if (allowForbiddenAsMissing) return null;
+    throw new PublishedLiveHistoryUnavailableError(key);
+  }
+  if (!res?.ok) {
+    const detail = res ? String(res.status) : fetchErrorDetail(lastError);
+    throw new Error(`view fetch ${key} -> ${detail}`);
+  }
+  return res.json();
+}
+
+async function readLiveHistoryJsonKey(args: {
+  blobBase: string;
+  key: string;
+  bust?: string;
+  timeoutMs: number;
+}): Promise<unknown | null> {
+  const { blobBase, key, bust, timeoutMs } = args;
+  const memoKey = `${blobBase}\0${key}`;
+  const forbiddenUntil = liveHistoryForbiddenMemo.get(memoKey);
+  if (forbiddenUntil !== undefined) {
+    if (forbiddenUntil > Date.now()) throw new PublishedLiveHistoryUnavailableError(key);
+    liveHistoryForbiddenMemo.delete(memoKey);
+  }
+  try {
+    return await readBlobJsonKey({
+      blobBase,
+      key,
+      bust,
+      timeoutMs,
+      mutableWorkflowArtifact: false,
+      allowForbiddenAsMissing: false,
+      forbiddenRetries: LIVE_HISTORY_FORBIDDEN_RETRIES,
+    });
+  } catch (error) {
+    if (error instanceof PublishedLiveHistoryUnavailableError) {
+      liveHistoryForbiddenMemo.set(memoKey, Date.now() + LIVE_HISTORY_FORBIDDEN_TTL_MS);
+      if (liveHistoryForbiddenMemo.size > MAX_LIVE_HISTORY_FORBIDDEN_MEMO_ENTRIES) {
+        const oldest = liveHistoryForbiddenMemo.keys().next().value;
+        if (typeof oldest === "string" && oldest !== memoKey) liveHistoryForbiddenMemo.delete(oldest);
+      }
+    }
+    throw error;
+  }
+}
+
+function readLiveGenerationManifest(
+  blobBase: string,
+  generation: string,
+  timeoutMs: number,
+): Promise<unknown | null> {
+  const memoKey = `${blobBase}\0${generation}`;
+  const memo = liveManifestMemo.get(memoKey);
+  if (memo) return memo;
+  const key = `live/generations/${generation}/manifest.json`;
+  const reading = readLiveHistoryJsonKey({
+    blobBase,
+    key,
+    bust: generation,
+    timeoutMs,
+  });
+  const retained = reading.then(
+    (value) => {
+      if (value === null) liveManifestMemo.delete(memoKey);
+      return value;
+    },
+    (error) => {
+      liveManifestMemo.delete(memoKey);
+      throw error;
+    },
+  );
+  liveManifestMemo.set(memoKey, retained);
+  if (liveManifestMemo.size > MAX_LIVE_MANIFEST_MEMO_ENTRIES) {
+    const oldest = liveManifestMemo.keys().next().value;
+    if (typeof oldest === "string" && oldest !== memoKey) liveManifestMemo.delete(oldest);
+  }
+  return retained;
 }
 
 /** Resolve views/latest; only a confirmed 404 is allowed to activate bootstrap fallback. */
@@ -184,6 +324,7 @@ async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
   let bust = opts.bust;
   const timeoutMs = opts.timeoutMs ?? BLOB_JSON_FETCH_TIMEOUT_MS;
   if (opts.base && opts.live) throw new Error("a view cannot be both base and live");
+  if (opts.liveHistory && !opts.live) throw new Error("liveHistory requires live:true");
   if (opts.base) {
     const { version, publishedAt, confirmedAbsent } = await resolveVersion(blobBase, opts.versionTtlMs, timeoutMs);
     if (version) {
@@ -212,6 +353,41 @@ async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
     }
   } else if (opts.live) {
     const generation = await resolveLiveGeneration(blobBase, opts.liveTtlMs, timeoutMs);
+    if (opts.liveHistory) {
+      try {
+        const resolved = await resolveLiveArtifactFromHistory({
+          headGeneration: generation,
+          logicalPath: path,
+          legacyPath: opts.legacyPath,
+          reader: {
+            readGenerationArtifact: (candidateGeneration, logicalPath) =>
+              readLiveHistoryJsonKey({
+                blobBase,
+                key: `live/generations/${candidateGeneration}/${logicalPath}`,
+                bust: candidateGeneration,
+                timeoutMs,
+              }),
+            readGenerationManifest: (candidateGeneration) =>
+              readLiveGenerationManifest(blobBase, candidateGeneration, timeoutMs),
+            readLegacyArtifact: (legacyPath) =>
+              readLiveHistoryJsonKey({
+                blobBase,
+                key: legacyPath,
+                bust: opts.bust,
+                timeoutMs,
+              }),
+          },
+        });
+        return resolved?.value ?? null;
+      } catch (error) {
+        // A persistent public-CDN WAF denial during high-concurrency SSG is not
+        // confirmed absence and therefore must never advance to an older live
+        // generation. Stop the live lookup so callers can use base/notFound,
+        // matching the existing published-page resilience without stale bytes.
+        if (error instanceof PublishedLiveHistoryUnavailableError) return null;
+        throw error;
+      }
+    }
     if (generation) {
       keys = [`live/generations/${generation}/${path}`];
       bust ??= generation; // immutable path; pointer is the only mutable object
@@ -231,33 +407,14 @@ async function rawRead(path: string, opts: ViewOpts): Promise<unknown | null> {
   // the value that existed immediately before its own write.
   if (mutableWorkflowArtifact) bust = `${Date.now().toString(36)}-${++mutableReadSequence}`;
   for (const key of keys) {
-    const url = `${blobBase}/${key}${bust ? `?v=${encodeURIComponent(bust)}` : ""}`;
-    let res: Response | null = null;
-    let lastError: unknown = null;
-    for (let attempt = 1; attempt <= READ_RETRIES + 1; attempt++) {
-      try {
-        res = await fetchWithTimeout(url, { cache: mutableWorkflowArtifact ? "no-store" : "force-cache", timeoutMs });
-      } catch (err) {
-        lastError = err;
-        if (attempt > READ_RETRIES) break;
-        await sleep(Math.min(250 * 2 ** (attempt - 1), 2_000));
-        continue;
-      }
-      if (res.status === 404 || res.ok) break;
-      if (!shouldRetry(res.status) || attempt > READ_RETRIES) break;
-      await sleep(retryDelayMs(res, attempt));
-    }
-    if (res?.status === 404) continue;
-    // After retries, treat persistent WAF 403 as an absent view so a single
-    // mitigated object cannot fail the entire Next.js SSG export. Callers already
-    // map null → notFound()/empty UI. Never attach BLOB_READ_WRITE_TOKEN to the
-    // public CDN URL (that can itself produce 403).
-    if (res?.status === 403) continue;
-    if (!res?.ok) {
-      const detail = res ? String(res.status) : fetchErrorDetail(lastError);
-      throw new Error(`view fetch ${key} -> ${detail}`);
-    }
-    return res.json();
+    const value = await readBlobJsonKey({
+      blobBase,
+      key,
+      bust,
+      timeoutMs,
+      mutableWorkflowArtifact,
+    });
+    if (value !== null) return value;
   }
   return null;
 }
