@@ -1,5 +1,5 @@
 import { put } from "@vercel/blob";
-import { readView } from "@/lib/data/source";
+import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import {
   CanonicalMeta,
   ReposShard,
@@ -24,14 +24,14 @@ const SITE_YEAR_MIN = 2010;
 
 async function mergeBuckets<T extends Record<string, unknown>>(
   kind: string,
-  schema: Parameters<typeof readView<T>>[1],
+  schema: Parameters<typeof readAuthoritativeView<T>>[1],
   bust: string,
 ): Promise<Record<string, T[string]>> {
   const shards = await Promise.all(
     Array.from({ length: REPO_BUCKETS }, async (_, bucket) => {
       const path = `canonical/v2/${kind}/${bucket}.json`;
       try {
-        return await readView(path, schema, { bust });
+        return await readAuthoritativeView(path, schema, { bust });
       } catch (error) {
         throw new Error(`${path}: schema/read failure — ${error instanceof Error ? error.message : String(error)}`, { cause: error });
       }
@@ -61,8 +61,7 @@ export interface LoadedModel {
 
 /** Load the full canonical/v2 model from Blob (repos + monthly + weekly + recent + site-daily). */
 export async function loadCanonicalModel(bust: string): Promise<LoadedModel> {
-  const meta = await readView("canonical/v2/meta.json", CanonicalMeta, { bust });
-  if (!meta) throw new Error("canonical/v2/meta.json not found");
+  const meta = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust });
 
   const thisYear = new Date().getUTCFullYear() + 1;
   const years = Array.from({ length: thisYear - SITE_YEAR_MIN + 1 }, (_, i) => String(SITE_YEAR_MIN + i));
@@ -71,7 +70,7 @@ export async function loadCanonicalModel(bust: string): Promise<LoadedModel> {
     mergeBuckets("repo-monthly", RepoMonthlyShard, bust),
     mergeBuckets("repo-weekly", RepoWeeklyShard, bust),
     mergeBuckets("repo-recent-daily", RepoRecentDailyShard, bust),
-    Promise.all(years.map((y) => readView(`canonical/v2/site-daily/${y}.json`, SiteDaily, { bust }))),
+    Promise.all(years.map((y) => readAuthoritativeView(`canonical/v2/site-daily/${y}.json`, SiteDaily, { bust }))),
   ]);
 
   const siteDailyByYear: RawShards["siteDailyByYear"] = {};

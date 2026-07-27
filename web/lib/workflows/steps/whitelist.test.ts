@@ -88,6 +88,17 @@ describe("published whitelist baseline", () => {
     expect(state.snapshots.get("next-run")?.diff).toEqual({ added: [3], dropped: [1] });
   });
 
+  test("a published pointer with no snapshot fails instead of falling back to a stale baseline", async () => {
+    const { state, deps } = fakeWhitelist();
+    state.snapshots.delete("published-old");
+
+    await expect(refreshWhitelistWithDeps("next-run", 2, deps)).rejects.toThrow(
+      "published whitelist snapshot for run published-old is missing",
+    );
+    expect(state.searchCalls).toBe(0);
+    expect(state.snapshots.has("next-run")).toBe(false);
+  });
+
   test("newcomer provenance is pinned to immutable snapshot discovery time", () => {
     const discovered = snapshot("run", [7], "2026-07-17T23:59:59.000Z");
     expect(whitelistDiscoveryDate(discovered)).toBe("2026-07-17");

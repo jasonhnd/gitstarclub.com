@@ -1,4 +1,4 @@
-import { readView } from "@/lib/data/source";
+import { readRequiredView } from "@/lib/data/source";
 import { ReposShard, RenameMap, WhitelistSnapshot, type RenameEntry } from "@/lib/contracts";
 import { repoBucket } from "../buckets";
 import { putOwnedView } from "@/lib/workflows/owned-write";
@@ -16,8 +16,7 @@ export interface RenameResult {
 export async function detectRenames(runId: string, fencingToken: number): Promise<RenameResult> {
   "use step";
 
-  const wl = await readView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
-  if (!wl) throw new Error(`whitelist for run ${runId} not found`);
+  const wl = await readRequiredView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
 
   const byBucket = new Map<number, typeof wl.entries>();
   for (const e of wl.entries) {
@@ -29,8 +28,7 @@ export async function detectRenames(runId: string, fencingToken: number): Promis
 
   const renames: RenameEntry[] = [];
   for (const [b, entries] of byBucket) {
-    const prev = await readView(`canonical/v2/repos/${b}.json`, ReposShard, { bust: runId });
-    if (!prev) continue; // no previous shard → first run, nothing renamed
+    const prev = await readRequiredView(`canonical/v2/repos/${b}.json`, ReposShard, { bust: runId });
     for (const e of entries) {
       const p = prev[String(e.id)];
       if (p && p.full_name !== e.full_name) {
