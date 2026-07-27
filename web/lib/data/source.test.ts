@@ -577,6 +577,42 @@ describe("readView — atomic live generation resolution", () => {
   });
 
   test(
+    "a persistent WAF 403 stops history without selecting older or legacy bytes",
+    async () => {
+      const path = "heatmap/month/2026-07.json";
+      routes = {
+        "/live/latest.json": { status: 200, json: livePointer("history-waf-head") },
+        [`/live/generations/history-waf-head/${path}`]: {
+          status: 403,
+          json: { error: "Forbidden" },
+        },
+        "/live/generations/history-waf-head/manifest.json": {
+          status: 200,
+          json: liveManifest("history-waf-head", "history-waf-previous", ["current_month.json"]),
+        },
+        [`/live/generations/history-waf-previous/${path}`]: {
+          status: 200,
+          json: { ok: true, tag: "stale-generation" },
+        },
+        [`/live/${path}`]: { status: 200, json: { ok: true, tag: "stale-legacy" } },
+      };
+
+      expect(
+        await readView(path, Doc, {
+          live: true,
+          liveHistory: true,
+          legacyPath: `live/${path}`,
+        }),
+      ).toBeNull();
+      expect(fetchCalls.filter((url) => url.includes(`/history-waf-head/${path}`))).toHaveLength(5);
+      expect(fetchCalls.some((url) => url.includes("/history-waf-head/manifest.json"))).toBe(false);
+      expect(fetchCalls.some((url) => url.includes("history-waf-previous"))).toBe(false);
+      expect(fetchCalls.some((url) => url.includes(`/live/${path}`))).toBe(false);
+    },
+    { timeout: 20_000 },
+  );
+
+  test(
     "an unreachable pointer fails closed when no validated generation is cached",
     async () => {
       process.env.BLOB_BASE_URL = "https://uncached-live.example.com";
