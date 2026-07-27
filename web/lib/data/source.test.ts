@@ -577,7 +577,7 @@ describe("readView — atomic live generation resolution", () => {
   });
 
   test(
-    "a persistent WAF 403 stops history without selecting older or legacy bytes",
+    "a persistent WAF 403 briefly circuits history without selecting older or legacy bytes",
     async () => {
       const path = "heatmap/month/2026-07.json";
       routes = {
@@ -604,10 +604,37 @@ describe("readView — atomic live generation resolution", () => {
           legacyPath: `live/${path}`,
         }),
       ).toBeNull();
-      expect(fetchCalls.filter((url) => url.includes(`/history-waf-head/${path}`))).toHaveLength(5);
+      expect(fetchCalls.filter((url) => url.includes(`/history-waf-head/${path}`))).toHaveLength(2);
+
+      // Repeated page work in the same SSG worker fails closed without paying
+      // the retry backoff again while the short per-key circuit is open.
+      expect(
+        await readView(path, Doc, {
+          live: true,
+          liveHistory: true,
+          legacyPath: `live/${path}`,
+        }),
+      ).toBeNull();
+      expect(fetchCalls.filter((url) => url.includes(`/history-waf-head/${path}`))).toHaveLength(2);
       expect(fetchCalls.some((url) => url.includes("/history-waf-head/manifest.json"))).toBe(false);
       expect(fetchCalls.some((url) => url.includes("history-waf-previous"))).toBe(false);
       expect(fetchCalls.some((url) => url.includes(`/live/${path}`))).toBe(false);
+
+      // The circuit is temporary: after one pointer TTL, a healthy immutable
+      // object is read normally instead of remaining process-poisoned.
+      clock += 61_000;
+      routes[`/live/generations/history-waf-head/${path}`] = {
+        status: 200,
+        json: { ok: true, tag: "recovered-head" },
+      };
+      expect(
+        await readView(path, Doc, {
+          live: true,
+          liveHistory: true,
+          legacyPath: `live/${path}`,
+        }),
+      ).toEqual({ ok: true, tag: "recovered-head" });
+      expect(fetchCalls.filter((url) => url.includes(`/history-waf-head/${path}`))).toHaveLength(3);
     },
     { timeout: 20_000 },
   );
