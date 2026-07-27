@@ -1,6 +1,11 @@
 import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
-import { invalidatePublishedVersionMemo, readView } from "./source";
+import {
+  invalidatePublishedVersionMemo,
+  readAuthoritativeView,
+  readRequiredView,
+  readView,
+} from "./source";
 import { PUBLISHED_VIEWS_CACHE_TAG } from "./publication-cache-contract";
 import { resolveCanonicalBlobPath } from "./bootstrap-publication";
 
@@ -453,6 +458,51 @@ describe("readView — non-base (flat) reads", () => {
     },
     { timeout: 20_000 },
   );
+
+  test(
+    "an authoritative canonical read fails on overlay 403 without falling back to sealed bytes",
+    async () => {
+      routes = {
+        "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-strict") },
+        "/bootstrap/overlays/bootstrap-strict/canonical/v2/meta.json": {
+          status: 403,
+          json: { error: "Forbidden" },
+        },
+        "/bootstrap/generations/bootstrap-strict/canonical/v2/meta.json": {
+          json: { ok: true, tag: "sealed-stale" },
+        },
+      };
+
+      await expect(readAuthoritativeView("canonical/v2/meta.json", Doc)).rejects.toThrow(
+        "view fetch bootstrap/overlays/bootstrap-strict/canonical/v2/meta.json -> 403",
+      );
+      expect(
+        fetchCalls.some((url) =>
+          url.includes("/bootstrap/generations/bootstrap-strict/canonical/v2/meta.json"),
+        ),
+      ).toBe(false);
+    },
+    { timeout: 20_000 },
+  );
+
+  test("an authoritative base read never falls back to flat bytes after a pointer error", async () => {
+    routes = {
+      "/views/latest.json": { status: 401, json: { error: "Unauthorized" } },
+      "/lookup/repos.json": { json: { ok: true, tag: "flat-stale" } },
+    };
+
+    await expect(readAuthoritativeView("lookup/repos.json", Doc, { base: true })).rejects.toThrow(
+      "views pointer fetch -> HTTP 401",
+    );
+    expect(fetchCalls.some((url) => new URL(url).pathname === "/lookup/repos.json")).toBe(false);
+  });
+
+  test("a required authoritative view rejects a confirmed 404", async () => {
+    routes = {};
+    await expect(readRequiredView("ops/workflows/run/manifest.json", Doc)).rejects.toThrow(
+      "ops/workflows/run/manifest.json missing",
+    );
+  });
 });
 
 describe("readView — atomic live generation resolution", () => {

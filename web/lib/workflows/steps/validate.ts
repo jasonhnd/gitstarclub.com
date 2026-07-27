@@ -1,4 +1,4 @@
-import { readView } from "@/lib/data/source";
+import { readAuthoritativeView } from "@/lib/data/source";
 import { putView } from "@/lib/data/write";
 import { CATEGORY_RANK_PAGE_SIZE, categoryAllTimeRankPath } from "@/lib/categories/rank-pages";
 import {
@@ -47,10 +47,13 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   let checked = 0;
   let schemaFailures = 0;
 
-  const read = async <T>(rel: string, schema: Parameters<typeof readView<T>>[1]): Promise<T | null> => {
+  const read = async <T>(
+    rel: string,
+    schema: Parameters<typeof readAuthoritativeView<T>>[1],
+  ): Promise<T | null> => {
     checked++;
     try {
-      const v = await readView<T>(`views/${runId}/${rel}`, schema, { bust: runId });
+      const v = await readAuthoritativeView<T>(`views/${runId}/${rel}`, schema, { bust: runId });
       if (v === null) failures.push(`${rel}: missing`);
       return v;
     } catch (err) {
@@ -61,7 +64,7 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   };
 
   const meta = await read("meta.json", Meta);
-  const previousMeta = await readView("meta.json", Meta, { base: true, bust: runId });
+  const previousMeta = await readAuthoritativeView("meta.json", Meta, { base: true, bust: runId });
   mergeValidationReport({ invariants, failures }, validateMeta(meta, previousMeta));
 
   const allTime = await read("rank/all-time/repo/stock.json", RankList);
@@ -73,7 +76,7 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   mergeValidationReport({ invariants, failures }, validateAllTimeRanks({ allTime, allTimeOrg, lookup, minLookup: MIN_LOOKUP, orgLookup }));
   let previousLookup: ReposLookup | null = null;
   try {
-    previousLookup = await readView("lookup/repos.json", ReposLookup, { base: true, bust: runId });
+    previousLookup = await readAuthoritativeView("lookup/repos.json", ReposLookup, { base: true, bust: runId });
   } catch (error) {
     schemaFailures++;
     failures.push(`previous lookup/repos: read/schema — ${error instanceof Error ? error.message : String(error)}`);
@@ -82,7 +85,7 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   checked++;
   let whitelist: WhitelistSnapshot | null = null;
   try {
-    whitelist = await readView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
+    whitelist = await readAuthoritativeView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
     if (!whitelist) failures.push(`canonical/v2/whitelist/${runId}.json: missing`);
     else if (whitelist.run_id !== runId) failures.push(`canonical whitelist run_id ${whitelist.run_id} does not match ${runId}`);
   } catch (error) {
@@ -112,7 +115,10 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
 
   // aliases must point at still-tracked ids and must not shadow a live repo's current full_name.
   const aliases = await read("lookup/aliases.json", AliasMap);
-  const previousAliases = aliases && lookup ? await readView("lookup/aliases.json", AliasMap, { base: true, bust: runId }) : null;
+  const previousAliases =
+    aliases && lookup
+      ? await readAuthoritativeView("lookup/aliases.json", AliasMap, { base: true, bust: runId })
+      : null;
   mergeValidationReport({ invariants, failures }, validateAliases(aliases, lookup, previousAliases));
 
   const search = await read("search/index.json", SearchIndex);

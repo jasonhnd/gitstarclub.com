@@ -1,5 +1,5 @@
 import type { ZodType } from "zod";
-import { readView } from "@/lib/data/source";
+import { readAuthoritativeView } from "@/lib/data/source";
 import {
   CanonicalGenerationManifest,
   RepoMonthlyShard,
@@ -8,7 +8,7 @@ import {
   RepoWeeklyShard,
   type ReposShardEntry,
 } from "@/lib/contracts";
-import { REPO_BUCKETS } from "./buckets";
+import { REPO_BUCKETS, repoBucket } from "./buckets";
 
 export const HIGH_D_FACTOR_WARN_THRESHOLD = 2;
 
@@ -87,20 +87,32 @@ async function checksum(value: unknown): Promise<string> {
 
 export async function validateCanonicalGeneration(
   runId: string,
-  options: { reader?: CanonicalShardReader; generatedAt?: string } = {},
+  options: {
+    reader?: CanonicalShardReader;
+    generatedAt?: string;
+    scope?: "repositories" | "full";
+  } = {},
 ): Promise<CanonicalValidationResult> {
-  const reader = options.reader ?? ((path, schema) => readView(path, schema, { bust: runId }));
+  const reader = options.reader ?? ((path, schema) => readAuthoritativeView(path, schema, { bust: runId }));
+  const specs = options.scope === "repositories" ? SHARD_SPECS.slice(0, 1) : SHARD_SPECS;
+  const expectedShards = specs.length * REPO_BUCKETS;
   const failures: string[] = [];
   const repoShards: AnchoringShard[] = [];
   const repoIds = new Set<string>();
   const activeRepoIds = new Set<string>();
+  const seriesRepoIds = new Map<string, Set<string>>(
+    SHARD_SPECS.slice(1).map((spec) => [spec.kind, new Set<string>()]),
+  );
+  const recordsByKind = new Map<string, number>(SHARD_SPECS.map((spec) => [spec.kind, 0]));
   let historicalRepos = 0;
   let missingTrackingStatus = 0;
   let missingTrackedSinceField = 0;
+  let bucketPlacementFailures = 0;
+  let repoIdentityFailures = 0;
   let schemaFailures = 0;
 
   const results = await Promise.all(
-    SHARD_SPECS.flatMap((spec) =>
+    specs.flatMap((spec) =>
       Array.from({ length: REPO_BUCKETS }, async (_, bucket) => {
         const path = `canonical/v2/${spec.kind}/${bucket}.json`;
         try {
@@ -116,15 +128,31 @@ export async function validateCanonicalGeneration(
             return null;
           }
           const records = Object.keys(parsed.data as Record<string, unknown>).length;
+          recordsByKind.set(spec.kind, (recordsByKind.get(spec.kind) ?? 0) + records);
           if (spec.kind === "repos") {
-            const shard = parsed.data as AnchoringShard;
+            const shard = parsed.data as Record<string, ReposShardEntry>;
             repoShards.push(shard);
             for (const [id, repo] of Object.entries(shard)) {
+              const numericId = Number(id);
+              if (!Number.isSafeInteger(numericId) || numericId < 0 || repo.id !== numericId) {
+                repoIdentityFailures++;
+              } else if (repoBucket(numericId) !== bucket) {
+                bucketPlacementFailures++;
+              }
               repoIds.add(id);
               if (repo.active === true) activeRepoIds.add(id);
               else if (repo.active === false) historicalRepos++;
               else missingTrackingStatus++;
               if (!("tracked_since" in repo)) missingTrackedSinceField++;
+            }
+          } else {
+            const ids = seriesRepoIds.get(spec.kind)!;
+            for (const id of Object.keys(parsed.data as Record<string, unknown>)) {
+              ids.add(id);
+              const numericId = Number(id);
+              if (!Number.isSafeInteger(numericId) || numericId < 0 || repoBucket(numericId) !== bucket) {
+                bucketPlacementFailures++;
+              }
             }
           }
           return { path, kind: spec.kind, bucket, records, sha256: await checksum(parsed.data) };
@@ -151,30 +179,60 @@ export async function validateCanonicalGeneration(
   if (missingTrackedSinceField > 0) {
     failures.push(`canonical/v2/repos: ${missingTrackedSinceField} repo(s) are missing explicit tracked_since provenance`);
   }
+  if (repoIds.size === 0) {
+    failures.push("canonical/v2/repos: no repository records");
+  }
+  if (repoIdentityFailures > 0) {
+    failures.push(`canonical/v2/repos: ${repoIdentityFailures} record key(s) do not match their repository id`);
+  }
+  if (bucketPlacementFailures > 0) {
+    failures.push(`canonical/v2: ${bucketPlacementFailures} record(s) are stored in the wrong bucket`);
+  }
+
+  if (options.scope !== "repositories") {
+    for (const spec of SHARD_SPECS.slice(1)) {
+      const records = recordsByKind.get(spec.kind) ?? 0;
+      if (repoIds.size > 0 && records === 0) {
+        failures.push(`canonical/v2/${spec.kind}: no repository records for ${repoIds.size} canonical repo(s)`);
+      }
+      const orphanRecords = [...(seriesRepoIds.get(spec.kind) ?? [])].filter((id) => !repoIds.has(id)).length;
+      if (orphanRecords > 0) {
+        failures.push(
+          `canonical/v2/${spec.kind}: ${orphanRecords} record(s) reference repositories absent from canonical/v2/repos`,
+        );
+      }
+    }
+  }
 
   const manifest = CanonicalGenerationManifest.parse({
     run_id: runId,
     generated_at: options.generatedAt ?? new Date().toISOString(),
-    expected_shards: EXPECTED_CANONICAL_SHARDS,
+    expected_shards: expectedShards,
     validated_shards: shards.length,
     total_records: shards.reduce((sum, shard) => sum + shard.records, 0),
-    complete: shards.length === EXPECTED_CANONICAL_SHARDS && failures.length === 0,
+    complete: shards.length === expectedShards && failures.length === 0,
     shards,
   });
 
   return {
     manifest,
-    checked: EXPECTED_CANONICAL_SHARDS,
+    checked: expectedShards,
     schemaFailures,
     invariants: {
       ...dInvariants,
-      canonical_expected_shards: EXPECTED_CANONICAL_SHARDS,
+      canonical_expected_shards: expectedShards,
       canonical_validated_shards: shards.length,
       canonical_total_records: manifest.total_records,
+      canonical_repo_records: recordsByKind.get("repos") ?? 0,
+      canonical_repo_monthly_records: recordsByKind.get("repo-monthly") ?? 0,
+      canonical_repo_weekly_records: recordsByKind.get("repo-weekly") ?? 0,
+      canonical_repo_recent_daily_records: recordsByKind.get("repo-recent-daily") ?? 0,
       canonical_active_repos: activeRepoIds.size,
       canonical_historical_repos: historicalRepos,
       canonical_missing_tracking_status: missingTrackingStatus,
       canonical_missing_tracked_since: missingTrackedSinceField,
+      canonical_repo_identity_failures: repoIdentityFailures,
+      canonical_bucket_placement_failures: bucketPlacementFailures,
       canonical_complete: manifest.complete,
     },
     failures,

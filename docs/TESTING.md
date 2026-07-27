@@ -154,7 +154,7 @@ test('周排名窗口跨月不丢日', () => {
 | rank 引用完整性 | staging all-time rank item 的 repo `id` 必须在 `lookup/repos.json`；org `login` 必须在 `lookup/orgs.json` |
 | `meta.folded_through` | 相对上一发布版本不倒退（month/week 单调） |
 | `lookup/aliases.json` | 别名完整性：无 dangling（每个别名 id 仍在 `lookup/repos.json` 内）、无 live-shadow（别名旧名不得撞当前某 repo 的 `full_name`）、alias count 不小于上一发布版本 |
-| canonical 完整性 | `repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 的全部 bucket 必须存在并通过 schema；写含路径、记录数、SHA-256 的 `canonical-manifest.json` |
+| canonical 完整性 | `repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 的全部 bucket 必须存在并通过 schema；repo key/id/bucket 必须一致；三类时间序列不能整体为空或引用未知 repo；写含路径、记录数、SHA-256 的 `canonical-manifest.json` |
 | `canonical/v2/repos/*` `d` 因子 | `d > 2` 仍是 warning；历史 repo 缺少有限 `d` 为硬失败，新晋 repo（有 `tracked_since`）显式按 `d=0` 建模 |
 | `search/index.json` | `count` ≥ 1000 且 `count == repos.length`（防止索引漂移） |
 | `categories/registry.json` | 非空；至少一个 `public` 分类 |
@@ -171,6 +171,8 @@ test('周排名窗口跨月不丢日', () => {
 | **发布指针原子性** | 集成测试 | 切指针前后读侧拿到的版本自洽；切到一半的请求拿旧版（不拿半发布） | CI 阻断 |
 | **回滚可逆** | 集成测试 | 把 `views/latest.json.version` 指回 `prev_version` 后，读侧立即拿回上一版；`views/<prev>` 仍在 | CI 阻断 |
 | **step 幂等** | 单测 | 同 `(run_id, shard)` 重跑 step → 覆盖同一份产物，不重复累加（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8） | CI 阻断 |
+| **权威 Blob 读取** | 单测 + Workflow preflight | 页面读取保留 WAF 容错；Workflow/control-plane 及 daily/weekly cron mutation input 对 403、超时、pointer/schema 错误 fail closed，overlay 非 404 错误不得回退 sealed bytes；required shard 的 404 也必须中止 | CI 阻断 / 不取得 lease 或不进入 mutation step |
+| **fold pending 完整性** | 单测 + Workflow step | weekly fold 需要的所有 frozen month pending 必须存在且 `period` 与路径一致；缺失时不生成零值周、不推进 watermark | CI 阻断 / step error |
 
 - **fixture**：§1.1 的真切片同样导出成 **canonical JSON shard fixture**（与 Parquet 切片同源），单测「shard 重算」与「DuckDB 重算」对拍。
 - **隔离**：Workflow 校验只读 staging、不碰 `live/*` 活尾；活尾校验仍由每日/每周 cron 后置（见下「节奏」）。

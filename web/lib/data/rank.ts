@@ -1,7 +1,12 @@
 import { cache } from "react";
 import type { Window, Dim, Metric, RankItem, RepoLookupEntry, OrgLookupEntry } from "@/lib/contracts";
 import { RankList } from "@/lib/contracts";
-import { DAILY_BASE_VIEW_OPTS, DAILY_BASE_VIEW_TTL_MS, readView } from "./source";
+import {
+  DAILY_BASE_VIEW_OPTS,
+  DAILY_BASE_VIEW_TTL_MS,
+  readAuthoritativeView,
+  readView,
+} from "./source";
 import { isLiveOverlayPeriod } from "./watermark";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -19,6 +24,9 @@ export const getRankBase = cache((window: Window, period: string, dim: Dim, metr
 export const getRankBaseDaily = cache((window: Window, period: string, dim: Dim, metric: Metric) =>
   readView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList, DAILY_BASE_VIEW_OPTS),
 );
+/** Cron mutation input; never reinterpret a pointer/transport error as a missing base rank. */
+export const getRankBaseAuthoritative = (window: Window, period: string, dim: Dim, metric: Metric) =>
+  readAuthoritativeView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList, { base: true });
 
 async function readLiveRank(window: "week" | "month", period: string, dim: Dim, metric: Metric, versionTtlMs?: number) {
   const path = `rank/${window}/${period}/${dim}/${metric}.json`;
