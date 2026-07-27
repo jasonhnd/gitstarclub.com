@@ -14,7 +14,7 @@ verifier:
   model: "claude-opus-4-8[1m]"
   reasoning_effort: max
 ci:
-  checks: [static, production-build, preview-e2e, product-gates]  # product-gates = live #286 search/freshness
+  checks: [static, production-build, preview-e2e, product-gates]  # product-gates = live #286 search/freshness/continuity
 verification:
   browser:
     enabled: auto        # browser-verify UI changes automatically
