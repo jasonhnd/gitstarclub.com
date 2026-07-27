@@ -24,6 +24,7 @@ async function readLiveRank(window: "week" | "month", period: string, dim: Dim, 
   const path = `rank/${window}/${period}/${dim}/${metric}.json`;
   return readView(path, RankList, {
     live: true,
+    liveHistory: true,
     legacyPath: `live/${path}`,
     bust: today(),
     ...(versionTtlMs != null ? { liveTtlMs: versionTtlMs } : {}),
