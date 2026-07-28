@@ -32,6 +32,7 @@ export interface CanonicalLifecycleExecutionDeps {
     bucket: number,
     value: ReposShardType,
   ): Promise<void>;
+  waitForShardReadConsistency?(delayMs: number): Promise<void>;
   validateFull(): Promise<CanonicalLifecycleValidationResult>;
 }
 
@@ -62,6 +63,38 @@ export function classifyCanonicalLifecycleShard(
   if (currentSha256 === beforeSha256) return "before";
   throw new Error(
     `canonical shard drift: current ${currentSha256} matches neither before ${beforeSha256} nor after ${afterSha256}`,
+  );
+}
+
+const SHARD_READ_VERIFICATION_ATTEMPTS = 8;
+const SHARD_READ_VERIFICATION_BASE_DELAY_MS = 250;
+const SHARD_READ_VERIFICATION_MAX_DELAY_MS = 2_000;
+
+async function verifyCanonicalLifecycleShardWrite(
+  deps: CanonicalLifecycleExecutionDeps,
+  bucket: number,
+  expectedSha256: string,
+  operation: "write" | "rollback",
+): Promise<void> {
+  let observedSha256 = "";
+  for (let attempt = 1; attempt <= SHARD_READ_VERIFICATION_ATTEMPTS; attempt++) {
+    const written = ReposShard.parse(await deps.readRepoShard(bucket));
+    observedSha256 = await sha256Json(written);
+    if (observedSha256 === expectedSha256) return;
+    if (attempt === SHARD_READ_VERIFICATION_ATTEMPTS) break;
+
+    const delayMs = Math.min(
+      SHARD_READ_VERIFICATION_BASE_DELAY_MS * 2 ** (attempt - 1),
+      SHARD_READ_VERIFICATION_MAX_DELAY_MS,
+    );
+    if (deps.waitForShardReadConsistency) {
+      await deps.waitForShardReadConsistency(delayMs);
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw new Error(
+    `canonical shard ${bucket} ${operation} verification failed: ${observedSha256}`,
   );
 }
 
@@ -198,13 +231,12 @@ export async function executeCanonicalLifecycleMigration(
       }
       const after = bundle.after.find((entry) => entry.bucket === bucketPlan.bucket)!;
       await deps.writeRepoShard(owner, bucketPlan.bucket, after.value);
-      const written = ReposShard.parse(await deps.readRepoShard(bucketPlan.bucket));
-      const writtenSha256 = await sha256Json(written);
-      if (writtenSha256 !== bucketPlan.after_sha256) {
-        throw new Error(
-          `canonical shard ${bucketPlan.bucket} write verification failed: ${writtenSha256}`,
-        );
-      }
+      await verifyCanonicalLifecycleShardWrite(
+        deps,
+        bucketPlan.bucket,
+        bucketPlan.after_sha256,
+        "write",
+      );
       appliedBuckets++;
     }
 
@@ -273,13 +305,12 @@ export async function rollbackCanonicalLifecycleMigration(
       }
       const before = bundle.before.find((entry) => entry.bucket === bucketPlan.bucket)!;
       await deps.writeRepoShard(owner, bucketPlan.bucket, before.value);
-      const written = ReposShard.parse(await deps.readRepoShard(bucketPlan.bucket));
-      const writtenSha256 = await sha256Json(written);
-      if (writtenSha256 !== bucketPlan.before_sha256) {
-        throw new Error(
-          `canonical shard ${bucketPlan.bucket} rollback verification failed: ${writtenSha256}`,
-        );
-      }
+      await verifyCanonicalLifecycleShardWrite(
+        deps,
+        bucketPlan.bucket,
+        bucketPlan.before_sha256,
+        "rollback",
+      );
       rolledBackBuckets++;
     }
     await deps.assertSource(bundle.plan);
