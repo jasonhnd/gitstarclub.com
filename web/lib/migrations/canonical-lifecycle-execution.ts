@@ -106,19 +106,22 @@ async function releaseAfterFailure(
   owner: WorkflowOwnership,
   original: unknown,
 ): Promise<never> {
+  const originalMessage = original instanceof Error ? original.message : String(original);
   let released: boolean;
   try {
     released = await deps.release(owner, "failed");
   } catch (releaseError) {
+    const releaseMessage =
+      releaseError instanceof Error ? releaseError.message : String(releaseError);
     throw new AggregateError(
       [original, releaseError],
-      "canonical lifecycle migration failed and its failed lease release threw",
+      `canonical lifecycle migration failed: ${originalMessage}; failed lease release threw: ${releaseMessage}`,
     );
   }
   if (!released) {
     throw new AggregateError(
       [original, new Error(`migration lost lease ${owner.fencingToken} before failed release`)],
-      "canonical lifecycle migration failed and could not release its lease",
+      `canonical lifecycle migration failed: ${originalMessage}; could not release its lease`,
     );
   }
   throw original;
