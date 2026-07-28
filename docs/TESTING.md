@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-07-27
+last_reviewed: 2026-07-28
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -320,6 +320,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 - **CI（每 PR / `pre` push / `main` push）**：三个 jobs 都锁定并断言 Node 24.x / Bun 1.3.14；`verify / static` 跑 audit、Markdown/frontmatter、lint、三套 typecheck、view fixture 与带 80% 双阈值的 coverage tests；`verify / production-build` 对只读本地 fixture 跑 `next build`；`verify / preview-e2e` 对 exact-SHA immutable Vercel URL 跑 committed Chromium axe/responsive/overflow 和 Search/Compare interaction suites，并在 branch push 时加跑 live SEO。Lighthouse、视觉 baseline、其余完整 browser flows 与 multi-engine coverage 仍不阻断。
 - **Publish gate（Workflow `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 的当前抽样 Zod + sanity，任一当前断言失败即**不切 `views/latest.json` 指针**（线上仍上一版）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
+- **Issue #326 lifecycle migration**：`web/lib/migrations/canonical-lifecycle.test.ts` 覆盖 published-whitelist membership、immutable history 首次出现日、bootstrap-vs-newcomer 判别、deterministic plan SHA、零 anchor 猜测、full repository preflight、source/shard drift、exact confirmation、fenced execution、partial retry、validation failure、lease loss 与 rollback。`web/scripts/migrate-canonical-lifecycle.ts` 的生产 dry-run 是人工 reviewed evidence，不放进 CI 的 live/network gate；默认路径必须报告 `production_writes=0`，且不加载写 token。执行/回滚 runbook 见 [OPS.md](./OPS.md)。
 - **Planned browser/render gates**：视觉 baseline、完整 E2E navigation、Lighthouse 与 cross-browser 自动化仍需要对应 tooling；a11y 的 axe serious/critical 和 responsive overflow subset 已提交并强制。
 - **每日 / 每周 cron**：不触发 deploy；cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后的活尾 schema/sanity 告警属于 ops 目标，不是当前 PR CI gate。
 - **本地 / manual**：改聚合逻辑先跑相关 `bun test lib/...`；改组件可按 Vercel 预览手动看相关页视觉、a11y、性能，但这些手动检查不是当前自动 PR blocker。
@@ -339,6 +340,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 - [ ] exact-SHA immutable Vercel deployment passes all three committed Playwright release suites
 - [ ] `pre`/`main` push release verification passes `bun test lib/integration/seo.test.ts` against that immutable deployment
 - [ ] 涉及生产数据发布时，Workflow `validate` 失败仍不切 `views/latest.json` 指针
+- [ ] Issue #326 执行前的 reviewed dry-run 保持 exact plan SHA；执行后 full canonical validation complete，且重复 dry-run 为 0 changes
 
 ### Target-state / planned checks
 
