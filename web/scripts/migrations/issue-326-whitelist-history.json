@@ -1,0 +1,121 @@
+{
+  "schema_ver": 1,
+  "issue": 326,
+  "expected_bootstrap_generation": null,
+  "snapshots": [
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-02T11-25-44-733Z.json",
+      "run_id": "refresh-2026-06-02T11-25-44-733Z",
+      "generated_at": "2026-06-02T11:29:56.969Z",
+      "sha256": "c95e197e58b0083df86a6fd5967f3cdf13838ba5669cd9e599525f71ab7ebcbb"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-02T11-58-56-168Z.json",
+      "run_id": "refresh-2026-06-02T11-58-56-168Z",
+      "generated_at": "2026-06-02T12:03:35.478Z",
+      "sha256": "f216e6d150494ba8fbda09b9b853bfa109dd61027cd15626e3a9601ef6c230e6"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-02T12-42-09-701Z.json",
+      "run_id": "refresh-2026-06-02T12-42-09-701Z",
+      "generated_at": "2026-06-02T12:47:06.151Z",
+      "sha256": "f642b6b9a5671c9486cd00407c95c4235b24cfb9f8b79c2202430ce076cc0487"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-02T15-48-35-661Z.json",
+      "run_id": "refresh-2026-06-02T15-48-35-661Z",
+      "generated_at": "2026-06-02T15:53:51.772Z",
+      "sha256": "f71fc5d422f5c8bc3134c0610c4e1a9d8daf54d8673989cafa3e5753206896c6"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-03T00-02-34-606Z.json",
+      "run_id": "refresh-2026-06-03T00-02-34-606Z",
+      "generated_at": "2026-06-03T00:11:47.069Z",
+      "sha256": "9daebaf2923c276c6e04030bac3cb674a9d0aa1c13b3d4c9f88ca3209180f91b"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-03T06-52-40-133Z.json",
+      "run_id": "refresh-2026-06-03T06-52-40-133Z",
+      "generated_at": "2026-06-03T06:56:32.397Z",
+      "sha256": "cc65f684bb175cb76c780bbed5c16ce122fc30f06b9961556046a622abdc2e5c"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-03T10-39-35-197Z.json",
+      "run_id": "refresh-2026-06-03T10-39-35-197Z",
+      "generated_at": "2026-06-03T10:44:02.723Z",
+      "sha256": "36f5f8fc88a85576cba1df22f5c466c1308a2ab47c70d1ff0bb9e24feb88eee2"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-07T02-37-00-836Z.json",
+      "run_id": "refresh-2026-06-07T02-37-00-836Z",
+      "generated_at": "2026-06-07T02:39:58.309Z",
+      "sha256": "4db6f03d2c83cb4b1eb6c6d8ce2f2b63262b3feadca5fe630208b9eed1945028"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-07T05-45-24-911Z.json",
+      "run_id": "refresh-2026-06-07T05-45-24-911Z",
+      "generated_at": "2026-06-07T05:48:34.726Z",
+      "sha256": "01792f170f65ca863bf6eee2d16e18a9920008126c7057e8fa14fcb2b08eef98"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-07T06-00-25-311Z.json",
+      "run_id": "refresh-2026-06-07T06-00-25-311Z",
+      "generated_at": "2026-06-07T06:03:37.515Z",
+      "sha256": "ac89261ebd33d12a60b3a43bf3ba02633c8b2dbb20951ec07bdead807a6b1807"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-07T06-46-38-668Z.json",
+      "run_id": "refresh-2026-06-07T06-46-38-668Z",
+      "generated_at": "2026-06-07T06:49:53.624Z",
+      "sha256": "b9ecd39040935d1dd4060f6611537dedd316247eecf42a1ab225dbf7a0d5cd13"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-14T06-00-31-694Z.json",
+      "run_id": "refresh-2026-06-14T06-00-31-694Z",
+      "generated_at": "2026-06-14T06:03:39.462Z",
+      "sha256": "cf48444d7a254824b45e2f83f0a432c15682602e23f44a897fdf3872c1cf4ba4"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-20T03-46-51-757Z.json",
+      "run_id": "refresh-2026-06-20T03-46-51-757Z",
+      "generated_at": "2026-06-20T03:50:02.787Z",
+      "sha256": "4169d357855503ae9980bcb9f84eb2d355883262cca37405d5b99f647ca3124f"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-21T06-00-05-520Z.json",
+      "run_id": "refresh-2026-06-21T06-00-05-520Z",
+      "generated_at": "2026-06-21T06:03:23.354Z",
+      "sha256": "1b2fe3a09385758fef63ff52d1ee6b7919d962e4af69b6f9cbb31241fe334133"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-06-28T06-00-43-621Z.json",
+      "run_id": "refresh-2026-06-28T06-00-43-621Z",
+      "generated_at": "2026-06-28T06:04:06.248Z",
+      "sha256": "881608d1652c5c20f65b3f8d8fb857a8699284f08da9762bc4bd24861ee5f68c"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-07-12T12-44-42-748Z.json",
+      "run_id": "refresh-2026-07-12T12-44-42-748Z",
+      "generated_at": "2026-07-12T12:48:03.355Z",
+      "sha256": "b64427c2ae77d621860cf8c11fa67d54a27b034f2b7903de57d4d51ab4f0187e"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-07-17T16-24-02-269Z.json",
+      "run_id": "refresh-2026-07-17T16-24-02-269Z",
+      "generated_at": "2026-07-17T16:27:37.133Z",
+      "sha256": "9fc2e539d6e26129327bde3b88492b1866fffb27a21fc852e37022bd87300bc1"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-07-18T02-11-52-710Z.json",
+      "run_id": "refresh-2026-07-18T02-11-52-710Z",
+      "generated_at": "2026-07-18T02:15:07.018Z",
+      "sha256": "e74cd1f335ee108a62ecfd7c36e22a7f42c6e7b04e9d7f0a0f4d9c0b7b1a6745"
+    },
+    {
+      "path": "canonical/v2/whitelist/refresh-2026-07-19T06-00-18-509Z.json",
+      "run_id": "refresh-2026-07-19T06-00-18-509Z",
+      "generated_at": "2026-07-19T06:03:28.079Z",
+      "sha256": "3549810c667a3d27c7ce052457fca7b1ad00c5ada0ae4564c638dcb19ddc404d"
+    }
+  ]
+}
