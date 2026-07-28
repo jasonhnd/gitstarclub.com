@@ -13,9 +13,8 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { RelatedPages } from "@/app/_explore/RelatedPages";
 import { CategorySummaryTable } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { resolveAvailableCategoryPages, resolveCategoryPageAvailabilityMap } from "@/lib/categories/availability";
+import { resolveAvailableCategoryPages } from "@/lib/categories/availability";
 import { CATEGORY_DIMENSIONS, type CategoryDimension } from "@/lib/categories/rules";
-import { categoryPageAvailabilityKey } from "@/lib/categories/rank-pages";
 import type { CategoryDimensionRegistry, CategoryRegistry } from "@/lib/contracts";
 import { getCategoryAllTimePage, getCategoryRegistry, getMeta, getReposLookupDaily, joinRepoRank } from "@/lib/data";
 import { formatInteger } from "@/lib/format";
@@ -33,8 +32,8 @@ import {
   findCategory,
   findDimension,
   isCategoryDimension,
-  publicCategoryPageStaticParams,
   publicCategoryEntries,
+  priorityLanguageStaticParams,
 } from "@/app/categories/category-page-data";
 import { repositoryTableLabels } from "./routing";
 import {
@@ -130,33 +129,21 @@ export function generateLocalizedCategoryDimensionStaticParams(): Array<{ locale
   return generateCoreLocaleStaticParams().flatMap(({ locale }) => CATEGORY_DIMENSIONS.map((dimension) => ({ locale, dimension })));
 }
 
-export async function generateCategoryDetailStaticParams(): Promise<CategoryDetailStaticParam[]> {
-  const registry = await getCategoryRegistry();
-  if (!registry) return [];
-
-  const categories = publicCategoryEntries(registry);
-  const categoryPages = await resolveCategoryPageAvailabilityMap(categories);
-  return categories
-    .filter((category) => (categoryPages[categoryPageAvailabilityKey(category.dimension, category.slug)] ?? []).includes(1))
-    .map((category) => ({ dimension: category.dimension, slug: category.slug }));
+export function generateCategoryDetailStaticParams(): CategoryDetailStaticParam[] {
+  return priorityLanguageStaticParams();
 }
 
-export async function generateLocalizedCategoryDetailStaticParams(): Promise<Array<CategoryDetailStaticParam & { locale: Locale }>> {
-  const params = await generateCategoryDetailStaticParams();
+export function generateLocalizedCategoryDetailStaticParams(): Array<CategoryDetailStaticParam & { locale: Locale }> {
+  const params = generateCategoryDetailStaticParams();
   return generateCoreLocaleStaticParams().flatMap(({ locale }) => params.map((param) => ({ locale, ...param })));
 }
 
-export async function generateCategoryDetailPageStaticParams(): Promise<CategoryDetailPageStaticParam[]> {
-  const registry = await getCategoryRegistry();
-  if (!registry) return [];
-
-  const categories = publicCategoryEntries(registry);
-  const categoryPages = await resolveCategoryPageAvailabilityMap(categories);
-  return publicCategoryPageStaticParams(registry, categoryPages);
+export function generateCategoryDetailPageStaticParams(): CategoryDetailPageStaticParam[] {
+  return [];
 }
 
-export async function generateLocalizedCategoryDetailPageStaticParams(): Promise<Array<CategoryDetailPageStaticParam & { locale: Locale }>> {
-  const params = await generateCategoryDetailPageStaticParams();
+export function generateLocalizedCategoryDetailPageStaticParams(): Array<CategoryDetailPageStaticParam & { locale: Locale }> {
+  const params = generateCategoryDetailPageStaticParams();
   return generateCoreLocaleStaticParams().flatMap(({ locale }) => params.map((param) => ({ locale, ...param })));
 }
 
