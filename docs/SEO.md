@@ -319,12 +319,12 @@ export async function generateMetadata(): Promise<Metadata> {
 export const revalidate = 86400;
 export const dynamicParams = true;
 export async function generateStaticParams() {
-  return publicCategoryStaticParams(await getCategoryRegistry());
+  return priorityLanguageStaticParams();
 }
 ```
 
 - `/categories`、公开维度页、公开 category 详情页与详情分页页进入 sitemap。
-- 详情页预渲染 priority language slugs 加公开 registry category；分页页按 category count 预渲染 page 2+，`dynamicParams = true` 保持后续公开 registry category 可按需生成。
+- 详情页在 deploy 时仅预渲染有限的 priority language slugs；其他公开 registry category 与全部 page 2+ 均通过按需 ISR 生成，`dynamicParams = true` 保持后续公开 registry category 可访问。
 - 不公开或低量 category 不应返回 200；页面逻辑通过 registry `public` 标记决定是否 `notFound()`。
 
 ### 2.8 对比页 `/compare`

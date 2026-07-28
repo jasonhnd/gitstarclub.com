@@ -29,8 +29,9 @@ export interface ViewOpts {
   /** Override publish-pointer freshness for special read paths such as sitemap generation. */
   versionTtlMs?: number;
   /** Resolve a logical live-overlay path through live/latest.json. A 404 pointer
-   * falls back to `legacyPath` during migration; an unreachable/invalid pointer
-   * fails closed unless a previously validated generation is cached. */
+   * falls back to `legacyPath` during migration. An unreachable/invalid pointer
+   * reuses a previously validated generation; otherwise published reads omit
+   * the live overlay while authoritative reads fail closed. */
   live?: boolean;
   /** For immutable period-scoped rank/heatmap views only: after a current-generation
    * 404, walk validated manifest previous_generation links with a bounded depth. */
@@ -59,8 +60,10 @@ const versionMemo = new Map<string, VersionResolution & { at: number }>();
 let mutableReadSequence = 0;
 const liveGenerationMemo = new Map<string, { generation: string | null; at: number }>();
 const liveGenerationInflight = new Map<string, Promise<string | null>>();
+const liveGenerationFailureMemo = new Map<string, { error: Error; at: number }>();
 const liveManifestMemo = new Map<string, Promise<unknown | null>>();
 const liveHistoryForbiddenMemo = new Map<string, number>();
+const MAX_LIVE_POINTER_FAILURE_MEMO_ENTRIES = 32;
 const MAX_LIVE_MANIFEST_MEMO_ENTRIES = 256;
 const MAX_LIVE_HISTORY_FORBIDDEN_MEMO_ENTRIES = 256;
 
@@ -272,7 +275,8 @@ async function resolveVersion(
 
 /** Resolve the last complete live generation. Only a real 404 enables the
  * legacy flat-layout fallback. Transient failures reuse a previously validated
- * generation, or fail closed when no safe generation is known. */
+ * generation, or throw when no safe generation is known. The short failure
+ * memo prevents every page in one SSG worker from repeating the same backoff. */
 async function resolveLiveGeneration(
   blobBase: string,
   ttlMs = LIVE_POINTER_TTL_MS,
@@ -282,6 +286,11 @@ async function resolveLiveGeneration(
   const memoKey = `${blobBase}\0${ttlMs}`;
   const memo = liveGenerationMemo.get(memoKey);
   if (memo && now - memo.at < ttlMs) return memo.generation;
+  const failed = liveGenerationFailureMemo.get(memoKey);
+  if (failed) {
+    if (now - failed.at < ttlMs) throw failed.error;
+    liveGenerationFailureMemo.delete(memoKey);
+  }
   const inflight = liveGenerationInflight.get(memoKey);
   if (inflight) return inflight;
 
@@ -307,19 +316,30 @@ async function resolveLiveGeneration(
       }
       if (!res) throw lastError instanceof Error ? lastError : new Error("no response");
       if (res.status === 404) {
+        liveGenerationFailureMemo.delete(memoKey);
         liveGenerationMemo.set(memoKey, { generation: null, at: now });
         return null;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const pointer = LiveGenerationPointer.parse(await res.json());
+      liveGenerationFailureMemo.delete(memoKey);
       liveGenerationMemo.set(memoKey, { generation: pointer.generation, at: now });
       return pointer.generation;
     } catch (error) {
       // A stale, already validated generation remains a safe complete snapshot.
       // Never guess the legacy flat layout after a pointer/network error.
-      if (memo?.generation) return memo.generation;
+      if (memo?.generation) {
+        liveGenerationMemo.set(memoKey, { generation: memo.generation, at: now });
+        return memo.generation;
+      }
       const detail = fetchErrorDetail(error);
-      throw new Error(`live pointer fetch -> ${detail}`);
+      const failure = new Error(`live pointer fetch -> ${detail}`);
+      liveGenerationFailureMemo.set(memoKey, { error: failure, at: now });
+      if (liveGenerationFailureMemo.size > MAX_LIVE_POINTER_FAILURE_MEMO_ENTRIES) {
+        const oldest = liveGenerationFailureMemo.keys().next().value;
+        if (typeof oldest === "string" && oldest !== memoKey) liveGenerationFailureMemo.delete(oldest);
+      }
+      throw failure;
     } finally {
       liveGenerationInflight.delete(memoKey);
     }
@@ -368,7 +388,16 @@ async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<un
       if (key !== path) bust ??= key.split("/")[2];
     }
   } else if (opts.live) {
-    const generation = await resolveLiveGeneration(blobBase, opts.liveTtlMs, timeoutMs);
+    let generation: string | null;
+    try {
+      generation = await resolveLiveGeneration(blobBase, opts.liveTtlMs, timeoutMs);
+    } catch (error) {
+      // A pointer transport/WAF failure is not proof that the migration-era
+      // flat layout is safe. Published pages omit this live overlay so their
+      // caller can render base/empty-state data; mutation inputs still abort.
+      if (mode === "published") return null;
+      throw error;
+    }
     if (opts.liveHistory) {
       try {
         const resolved = await resolveLiveArtifactFromHistory({
