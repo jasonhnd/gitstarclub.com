@@ -437,7 +437,11 @@ function executionDeps(
 ): CanonicalLifecycleExecutionDeps {
   async function readCanonicalExact<T>(path: string, schema: ZodType<T>): Promise<T> {
     for (const physicalPath of await canonicalPhysicalPaths(path, plan)) {
-      const loaded = await readStoredJson(physicalPath, schema, token, true);
+      // Canonical shards are mutable. The token-backed Blob get() path may
+      // still return the bytes from immediately before our own overwrite, so
+      // classification and write verification must use the cache-busted
+      // authoritative reader shared with dry-run/source validation.
+      const loaded = await readPublicJson(physicalPath, schema, { optional: true });
       if (loaded) return loaded.value;
     }
     throw new Error(`${path} missing`);
@@ -485,7 +489,9 @@ function executionDeps(
         {
           reader: async (path, schema) => {
             for (const physicalPath of await canonicalPhysicalPaths(path, plan)) {
-              const loaded = await readStoredJson(physicalPath, schema, token, true);
+              const loaded = await readPublicJson(physicalPath, schema, {
+                optional: true,
+              });
               if (loaded) return loaded.value;
             }
             return null;
