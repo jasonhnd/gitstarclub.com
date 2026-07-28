@@ -27,6 +27,10 @@ test.describe("phase 7 accessibility", () => {
     test(`${route.label} has no serious or critical axe violations`, async ({ page }) => {
       await gotoRoute(page, route.path);
 
+      // Theme changes animate body colors for sighted users. Axe must inspect
+      // the settled palette instead of a transient frame from that transition.
+      await page.emulateMedia({ reducedMotion: "reduce" });
+
       for (const theme of THEMES) {
         await setTheme(page, theme);
 
@@ -42,7 +46,7 @@ test.describe("phase 7 accessibility", () => {
       }
 
       if (route.path === "/pulse") {
-        await page.emulateMedia({ forcedColors: "active" });
+        await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
         // Active period control is always present; "Latest available" badge only appears when
         // the published period lags the calendar (absent once live data is current).
         await expect(activePeriodControl(page)).toBeVisible();
