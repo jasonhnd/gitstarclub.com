@@ -613,8 +613,9 @@ Deliverables:
   `maturity` dimension and detail pages through the generic category routes.
 - Category index page groups public categories by dimension in a scan-friendly
   order.
-- Detail-page static params include priority languages plus public categories
-  from the published registry.
+- Detail-page deploy-time static params include only priority languages; other
+  public categories and all detail pagination remain addressable through
+  on-demand ISR.
 - Sitemap enumeration honors lookup `sitemap` flags.
 
 Acceptance criteria:
