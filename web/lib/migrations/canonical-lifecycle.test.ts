@@ -309,6 +309,12 @@ class MemoryExecution {
   validationComplete = true;
   releaseResult = true;
   releaseError: Error | null = null;
+  postWriteStaleReads = 0;
+  readConsistencyWaits = 0;
+  readonly staleReads = new Map<
+    number,
+    { remaining: number; value: ReposShard }
+  >();
 
   constructor(readonly bundle: CanonicalLifecycleMigrationBundle) {
     for (const shard of bundle.before) {
@@ -340,13 +346,30 @@ class MemoryExecution {
           this.stored.set(path, structuredClone(value));
         }
       },
-      readRepoShard: async (bucket) => structuredClone(this.current.get(bucket) ?? {}),
+      readRepoShard: async (bucket) => {
+        const stale = this.staleReads.get(bucket);
+        if (stale && stale.remaining > 0) {
+          stale.remaining--;
+          return structuredClone(stale.value);
+        }
+        return structuredClone(this.current.get(bucket) ?? {});
+      },
       writeRepoShard: async (_owner, bucket, value) => {
         if (this.failWriteBucket === bucket) {
           if (this.failWriteOnce) this.failWriteBucket = null;
           throw new Error(`interrupted at bucket ${bucket}`);
         }
+        const previous = structuredClone(this.current.get(bucket) ?? {});
         this.current.set(bucket, structuredClone(value));
+        if (this.postWriteStaleReads > 0) {
+          this.staleReads.set(bucket, {
+            remaining: this.postWriteStaleReads,
+            value: previous,
+          });
+        }
+      },
+      waitForShardReadConsistency: async () => {
+        this.readConsistencyWaits++;
       },
       validateFull: async () => ({
         complete: this.validationComplete,
@@ -401,6 +424,34 @@ describe("canonical lifecycle migration execution", () => {
       memory.stored.has(canonicalLifecycleShardReceiptPath(bundle.planSha256, "after", 31)),
     ).toBe(true);
     await expectCurrentState(memory, bundle.after);
+  });
+
+  test("retries transient stale reads after a successful canonical overwrite", async () => {
+    const bundle = await buildCanonicalLifecycleMigration(await fixtureInput());
+    const memory = new MemoryExecution(bundle);
+    memory.postWriteStaleReads = 2;
+
+    const result = await executeCanonicalLifecycleMigration(
+      bundle,
+      bundle.planSha256,
+      memory.deps(),
+    );
+
+    expect(result.applied_buckets).toBe(bundle.plan.counts.changed_buckets);
+    expect(memory.readConsistencyWaits).toBe(bundle.plan.counts.changed_buckets * 2);
+    expect(memory.releaseStatuses).toEqual(["published"]);
+    await expectCurrentState(memory, bundle.after);
+  });
+
+  test("fails closed when stale reads outlast bounded write verification", async () => {
+    const bundle = await buildCanonicalLifecycleMigration(await fixtureInput());
+    const memory = new MemoryExecution(bundle);
+    memory.postWriteStaleReads = 100;
+
+    await expect(
+      executeCanonicalLifecycleMigration(bundle, bundle.planSha256, memory.deps()),
+    ).rejects.toThrow("canonical shard 0 write verification failed");
+    expect(memory.releaseStatuses).toEqual(["failed"]);
   });
 
   test("retries an interrupted partial application idempotently", async () => {
