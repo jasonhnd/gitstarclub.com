@@ -1,13 +1,69 @@
 import { describe, expect, test } from "bun:test";
 import { WorkflowLease } from "@/lib/contracts";
 import {
+  BlobWorkflowLeaseStore,
+  LEASE_READ_YOUR_WRITES_MS,
   LEASE_TTL_MS,
+  WorkflowLeaseWriteCache,
   claimWorkflowLease,
   releaseWorkflowLease,
   renewWorkflowLease,
   type WorkflowLeaseSnapshot,
   type WorkflowLeaseStore,
 } from "./lease";
+
+describe("workflow lease read-your-writes cache", () => {
+  test("returns the exact recent lease and ETag until the Blob cache window has passed", () => {
+    let now = 1_000;
+    const cache = new WorkflowLeaseWriteCache(() => now);
+    const lease = runningLease(
+      "refresh-new",
+      "2026-07-05T06:00:00.000Z",
+      "2026-07-05T06:30:00.000Z",
+      "manual-new",
+      2,
+    );
+
+    cache.remember(lease, '"new"');
+    expect(cache.read()).toEqual({ lease, etag: '"new"' });
+
+    now += LEASE_READ_YOUR_WRITES_MS;
+    expect(cache.read()).toBeNull();
+  });
+
+  test("the Blob store reads its successful write before consulting the stale CDN", async () => {
+    const cache = new WorkflowLeaseWriteCache();
+    const lease = runningLease(
+      "refresh-new",
+      "2026-07-05T06:00:00.000Z",
+      "2026-07-05T06:30:00.000Z",
+      "manual-new",
+      2,
+    );
+    cache.remember(lease, '"new"');
+
+    const store = new BlobWorkflowLeaseStore(cache);
+    expect(await store.read()).toEqual({ lease, etag: '"new"' });
+  });
+
+  test("only clears the cached generation whose conditional write conflicted", () => {
+    const cache = new WorkflowLeaseWriteCache();
+    const lease = runningLease(
+      "refresh-new",
+      "2026-07-05T06:00:00.000Z",
+      "2026-07-05T06:30:00.000Z",
+      "manual-new",
+      2,
+    );
+
+    cache.remember(lease, '"new"');
+    cache.forgetIfEtag('"old"');
+    expect(cache.read()?.etag).toBe('"new"');
+
+    cache.forgetIfEtag('"new"');
+    expect(cache.read()).toBeNull();
+  });
+});
 
 class MemoryLeaseStore implements WorkflowLeaseStore {
   lease: WorkflowLease | null;
