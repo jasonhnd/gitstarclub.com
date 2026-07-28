@@ -507,6 +507,9 @@ describe("canonical lifecycle migration execution", () => {
       throw new Error("expected migration failure");
     } catch (error) {
       expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).message).toContain(
+        "source drift; failed lease release threw: release transport failed",
+      );
       expect((error as AggregateError).errors).toEqual([
         memory.sourceError,
         memory.releaseError,
