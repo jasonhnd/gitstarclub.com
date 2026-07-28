@@ -310,7 +310,9 @@ class MemoryExecution {
   releaseResult = true;
   releaseError: Error | null = null;
   postWriteStaleReads = 0;
+  postWriteDrift = false;
   readConsistencyWaits = 0;
+  readConsistencyDelayMs = 0;
   readonly staleReads = new Map<
     number,
     { remaining: number; value: ReposShard }
@@ -361,15 +363,21 @@ class MemoryExecution {
         }
         const previous = structuredClone(this.current.get(bucket) ?? {});
         this.current.set(bucket, structuredClone(value));
-        if (this.postWriteStaleReads > 0) {
+        if (this.postWriteDrift) {
+          const drift = structuredClone(value);
+          const firstId = Object.keys(drift)[0];
+          if (firstId) drift[firstId].current_stars++;
+          this.staleReads.set(bucket, { remaining: 1, value: drift });
+        } else if (this.postWriteStaleReads > 0) {
           this.staleReads.set(bucket, {
             remaining: this.postWriteStaleReads,
             value: previous,
           });
         }
       },
-      waitForShardReadConsistency: async () => {
+      waitForShardReadConsistency: async (delayMs) => {
         this.readConsistencyWaits++;
+        this.readConsistencyDelayMs += delayMs;
       },
       validateFull: async () => ({
         complete: this.validationComplete,
@@ -451,6 +459,19 @@ describe("canonical lifecycle migration execution", () => {
     await expect(
       executeCanonicalLifecycleMigration(bundle, bundle.planSha256, memory.deps()),
     ).rejects.toThrow("canonical shard 0 write verification failed");
+    expect(memory.readConsistencyDelayMs).toBeGreaterThan(60_000);
+    expect(memory.releaseStatuses).toEqual(["failed"]);
+  });
+
+  test("rejects a third checksum immediately during write verification", async () => {
+    const bundle = await buildCanonicalLifecycleMigration(await fixtureInput());
+    const memory = new MemoryExecution(bundle);
+    memory.postWriteDrift = true;
+
+    await expect(
+      executeCanonicalLifecycleMigration(bundle, bundle.planSha256, memory.deps()),
+    ).rejects.toThrow("canonical shard 0 write verification failed");
+    expect(memory.readConsistencyWaits).toBe(0);
     expect(memory.releaseStatuses).toEqual(["failed"]);
   });
 

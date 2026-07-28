@@ -505,8 +505,10 @@ shard 和 32 个 after shard create-only 封存到
 `ops/migrations/canonical-lifecycle/<plan-sha256>/`。plan receipt 最后创建；此后每个
 canonical write 只接受两种状态：checksum 等于 reviewed before（待写）或 reviewed after
 （重试时已完成）。任何第三种 bytes、pointer drift、lease loss 或 full canonical
-validation failure 都中止。所有写经 `putOwnedView` 在写前续租；成功后 full 128-shard
-canonical validation 必须 `complete=true`。
+validation failure 都中止。Public Blob overwrite 最多可在 CDN 继续暴露旧 bytes 60 秒，
+因此写后 exact-after checksum 验证使用覆盖该窗口的有界退避；期间只允许看到 reviewed
+before，超出窗口或出现第三种 bytes 仍会失败释放 lease。所有写经 `putOwnedView` 在写前
+续租；成功后 full 128-shard canonical validation 必须 `complete=true`。
 
 中断后用**同一条 execute 命令和同一 digest**重试；执行器读取 immutable receipt，跳过已
 达到 after checksum 的 bucket。不要生成一个基于 partial state 的新确认 digest。
