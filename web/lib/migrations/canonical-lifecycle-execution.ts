@@ -66,14 +66,18 @@ export function classifyCanonicalLifecycleShard(
   );
 }
 
-const SHARD_READ_VERIFICATION_ATTEMPTS = 8;
+// Public Blob overwrites may serve the previous CDN bytes for up to 60 seconds.
+// Keep the checksum gate strict, but give exact reviewed writes the full
+// documented propagation window plus a small request-time grace period.
+const SHARD_READ_VERIFICATION_ATTEMPTS = 17;
 const SHARD_READ_VERIFICATION_BASE_DELAY_MS = 250;
-const SHARD_READ_VERIFICATION_MAX_DELAY_MS = 2_000;
+const SHARD_READ_VERIFICATION_MAX_DELAY_MS = 5_000;
 
 async function verifyCanonicalLifecycleShardWrite(
   deps: CanonicalLifecycleExecutionDeps,
   bucket: number,
   expectedSha256: string,
+  transientSha256: string,
   operation: "write" | "rollback",
 ): Promise<void> {
   let observedSha256 = "";
@@ -81,6 +85,7 @@ async function verifyCanonicalLifecycleShardWrite(
     const written = ReposShard.parse(await deps.readRepoShard(bucket));
     observedSha256 = await sha256Json(written);
     if (observedSha256 === expectedSha256) return;
+    if (observedSha256 !== transientSha256) break;
     if (attempt === SHARD_READ_VERIFICATION_ATTEMPTS) break;
 
     const delayMs = Math.min(
@@ -235,6 +240,7 @@ export async function executeCanonicalLifecycleMigration(
         deps,
         bucketPlan.bucket,
         bucketPlan.after_sha256,
+        bucketPlan.before_sha256,
         "write",
       );
       appliedBuckets++;
@@ -309,6 +315,7 @@ export async function rollbackCanonicalLifecycleMigration(
         deps,
         bucketPlan.bucket,
         bucketPlan.before_sha256,
+        bucketPlan.after_sha256,
         "rollback",
       );
       rolledBackBuckets++;
