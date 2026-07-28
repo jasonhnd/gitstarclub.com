@@ -528,13 +528,13 @@ Routes:
 - `/categories` renders the registry-driven category index.
 - `/categories/[dimension]` renders one dimension index, such as
   `/categories/language`.
-- `/categories/[dimension]/[slug]` renders a category detail page. Static params
-  include priority language slugs plus any public category found in the
-  published registry; `dynamicParams = true` keeps future public registry
-  categories addressable.
+- `/categories/[dimension]/[slug]` renders a category detail page. Deploy-time
+  static params include only the finite priority-language set; every other
+  public registry category is generated through on-demand ISR.
 - `/categories/[dimension]/[slug]/page/[page]` renders page 2+ of large
   categories from precomputed category rank page artifacts + `lookup/repos.json`.
-  Page 1 stays canonical at `/categories/[dimension]/[slug]`.
+  Page 1 stays canonical at `/categories/[dimension]/[slug]`; page 2+ has empty
+  deploy-time static params and is generated through on-demand ISR.
 
 Data and rendering:
 
