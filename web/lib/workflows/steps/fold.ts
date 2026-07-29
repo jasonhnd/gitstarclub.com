@@ -1,4 +1,4 @@
-import { readView } from "@/lib/data/source";
+import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import { CanonicalMeta, PendingPeriod, RepoMonthlyShard, RepoWeeklyShard, SiteDaily } from "@/lib/contracts";
 import { repoBucket } from "../buckets";
 import { currentUtcPeriods } from "@/lib/periods";
@@ -36,16 +36,18 @@ export function foldedCanonicalMeta(
 
 export async function foldCanonical(runId: string, fencingToken: number): Promise<{ folded: string[]; foldedWeeks: string[] }> {
   "use step";
-  const meta = await readView("canonical/v2/meta.json", CanonicalMeta, { bust: runId });
-  if (!meta) throw new Error("canonical/v2/meta.json missing");
+  const meta = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust: runId });
 
   const currentMonth = currentUtcPeriods().monthPeriod;
   const folded: string[] = [];
   let foldedThroughMonth = meta.folded_through.month;
 
   for (let m = nextMonth(foldedThroughMonth); m < currentMonth; m = nextMonth(m)) {
-    const pending = await readView(`canonical/v2/pending/${m}.json`, PendingPeriod, { bust: runId });
+    const pending = await readAuthoritativeView(`canonical/v2/pending/${m}.json`, PendingPeriod, { bust: runId });
     if (!pending) break; // keep the watermark contiguous — stop at the first un-frozen month
+    if (pending.period !== m) {
+      throw new Error(`canonical/v2/pending/${m}.json: period ${pending.period} does not match ${m}`);
+    }
     await foldMonth(m, pending, runId, fencingToken);
     foldedThroughMonth = m;
     folded.push(m);
@@ -82,7 +84,7 @@ async function foldMonth(month: string, pending: PendingPeriod, runId: string, f
   }
 
   for (const [b, entries] of byBucket) {
-    const shard = (await readView(`canonical/v2/repo-monthly/${b}.json`, RepoMonthlyShard, { bust: runId })) ?? {};
+    const shard = await readRequiredView(`canonical/v2/repo-monthly/${b}.json`, RepoMonthlyShard, { bust: runId });
     for (const [id, flow] of entries) {
       const series = (shard[String(id)] ?? []).filter(([p]) => p !== month); // upsert → idempotent
       series.push([month, flow]);
@@ -94,7 +96,10 @@ async function foldMonth(month: string, pending: PendingPeriod, runId: string, f
 
   // append the month's daily site totals to site-daily/<year> (heatmap source), upsert by date.
   const year = month.slice(0, 4);
-  const site = (await readView(`canonical/v2/site-daily/${year}.json`, SiteDaily, { bust: runId })) ?? { year, cells: [] };
+  const site = (await readAuthoritativeView(`canonical/v2/site-daily/${year}.json`, SiteDaily, { bust: runId })) ?? {
+    year,
+    cells: [],
+  };
   const cells = new Map<string, number>(site.cells.map(([d, t]) => [d, t]));
   for (const [date, total] of pending.daily_totals) cells.set(date, total);
   await putOwnedView({ runId, fencingToken }, `canonical/v2/site-daily/${year}.json`, {
@@ -107,6 +112,30 @@ async function foldMonth(month: string, pending: PendingPeriod, runId: string, f
 export interface WeekRow {
   week: string;
   perRepo: Map<number, number>;
+}
+
+/** A weekly fold may span several already-frozen months. Missing any one of
+ * those immutable handoff artifacts would turn real deltas into zero rows, so
+ * validate the complete period set before computing or writing weekly data. */
+export function requireCompletePendingPeriods(
+  periods: string[],
+  values: Array<PendingPeriod | null>,
+): PendingPeriod[] {
+  if (periods.length !== values.length) {
+    throw new Error("canonical/v2/pending: period/read count mismatch");
+  }
+  const missing = periods.filter((_, index) => values[index] === null);
+  if (missing.length > 0) {
+    throw new Error(`canonical/v2/pending: missing required frozen period(s) ${missing.join(",")}`);
+  }
+  return values.map((pending, index) => {
+    if (pending!.period !== periods[index]) {
+      throw new Error(
+        `canonical/v2/pending/${periods[index]}.json: period ${pending!.period} does not match ${periods[index]}`,
+      );
+    }
+    return pending!;
+  });
 }
 
 /** PURE core (no I/O) of the week fold — the testable seam. Given the FROZEN month pendings that
@@ -165,11 +194,10 @@ async function foldWeeks(
   if (firstMonday > lastFoldableDay) return []; // not even one full candidate week is frozen yet
 
   const months = monthsBetween(firstMonday, lastFoldableDay);
-  const pendings: PendingPeriod[] = [];
-  for (const m of months) {
-    const pending = await readView(`canonical/v2/pending/${m}.json`, PendingPeriod, { bust: runId });
-    if (pending) pendings.push(pending); // a month with no frozen pending contributes no days
-  }
+  const pendingReads = await Promise.all(
+    months.map((m) => readAuthoritativeView(`canonical/v2/pending/${m}.json`, PendingPeriod, { bust: runId })),
+  );
+  const pendings = requireCompletePendingPeriods(months, pendingReads);
 
   const rows = computeWeekRows(pendings, fromWeekExclusive, foldedThroughMonth);
   if (rows.length === 0) return [];
@@ -188,7 +216,7 @@ async function foldWeeks(
   }
 
   for (const [b, weekRows] of byBucket) {
-    const shard = (await readView(`canonical/v2/repo-weekly/${b}.json`, RepoWeeklyShard, { bust: runId })) ?? {};
+    const shard = await readRequiredView(`canonical/v2/repo-weekly/${b}.json`, RepoWeeklyShard, { bust: runId });
     for (const row of weekRows) {
       for (const [id, flow] of row.perRepo) {
         if (repoBucket(id) !== b) continue;
