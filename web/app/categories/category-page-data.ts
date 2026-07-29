@@ -6,7 +6,6 @@ import {
   type CategoryDimension,
 } from "@/lib/categories/rules";
 import type { CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts";
-import { categoryPageAvailabilityKey } from "@/lib/categories/rank-pages";
 
 export const CATEGORY_INDEX_PREVIEW_LIMIT = 10;
 
@@ -93,32 +92,4 @@ export function findDimension(registry: CategoryRegistry, dimension: string) {
 
 export function priorityLanguageStaticParams() {
   return PRIORITY_LANGUAGE_SLUGS.map((slug) => ({ dimension: "language", slug }));
-}
-
-export function publicCategoryStaticParams(registry?: CategoryRegistry | null) {
-  const params = registry
-    ? publicCategoryEntries(registry).map((category) => ({ dimension: category.dimension, slug: category.slug }))
-    : [];
-  return uniqueCategoryParams([...priorityLanguageStaticParams(), ...params]);
-}
-
-export function publicCategoryPageStaticParams(registry?: CategoryRegistry | null, categoryPages: Record<string, readonly number[]> = {}) {
-  if (!registry) return [];
-  return publicCategoryEntries(registry).flatMap((category) =>
-    (categoryPages[categoryPageAvailabilityKey(category.dimension, category.slug)] ?? []).filter((page) => page > 1).map((page) => ({
-      dimension: category.dimension,
-      slug: category.slug,
-      page: String(page),
-    })),
-  );
-}
-
-function uniqueCategoryParams(params: Array<{ dimension: string; slug: string }>) {
-  const seen = new Set<string>();
-  return params.filter((param) => {
-    const key = `${param.dimension}/${param.slug}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }

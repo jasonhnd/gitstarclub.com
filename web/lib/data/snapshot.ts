@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { HotSnapshot, CurrentMonth } from "@/lib/contracts";
-import { readView } from "./source";
+import { readAuthoritativeView, readView } from "./source";
 
 // Daily live tail (written by cron, M4). All reads resolve through the same
 // live/latest.json generation pointer. A missing pointer falls back to the old
@@ -14,3 +14,17 @@ export const getHotSnapshot = cache(() =>
 export const getCurrentMonth = cache(() =>
   readView("current_month.json", CurrentMonth, { live: true, legacyPath: "current_month.json", bust: today() }),
 );
+
+/** Cron mutation inputs: only a confirmed 404 may be represented as null. */
+export const getHotSnapshotAuthoritative = () =>
+  readAuthoritativeView("hot-snapshot.json", HotSnapshot, {
+    live: true,
+    legacyPath: "hot-snapshot.json",
+    bust: today(),
+  });
+export const getCurrentMonthAuthoritative = () =>
+  readAuthoritativeView("current_month.json", CurrentMonth, {
+    live: true,
+    legacyPath: "current_month.json",
+    bust: today(),
+  });

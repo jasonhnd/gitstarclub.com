@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-28
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -377,13 +377,13 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 
 **手动触发 runbook**：
 
-1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 先只读解析 `canonical/v2/meta.json`，通过后才取得 lease 并 `start(refreshWorkflow)`，随即返回 `run_id`（不阻塞）。schema preflight 失败时不会 enqueue 或取得 lease。
+1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 先只读校验 `canonical/v2/meta.json` 与全部 32 个 `repos` shard（含 `active` / `tracked_since` / `d`、key/id/bucket），通过后才取得 lease 并 `start(refreshWorkflow)`，随即返回 `run_id`（不阻塞）。preflight 失败时不会 enqueue 或取得 lease；workflow step 0 会在任何 canonical mutation 前再全量校验 128 个必需 shard。
 2. 在 **Vercel Dashboard → Observability → Workflows** 看 run；或 `bun x workflow inspect runs`。
 3. 看 `ops/workflows/active.json` 的 `(run_id, fencing_token, expires_at)`、`ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`views/<run_id>/lookup/aliases.json`、`publish-intent.json` 与 `latest-success.json`。
 4. 校验白名单数、repos shard 分桶齐全、diff / rename 合理。
 5. cron 已接入（`/api/workflows/refresh/start`，`0 6 * * 0`，独立于 daily / weekly 排程）。该 managed Workflow **没有 dry-run 模式**；任何 `dry` query 都会在取得 lease 或写入状态前返回 `400`。需要无写入探测时只能使用 `/api/cron/daily?dry=1` 或 `/api/cron/weekly?dry=1`；手动触发 managed refresh 必须按上述步骤观察完整真实运行。
 
-> 全链路 step：`preflight`（再次解析 canonical meta）→ `fold`（月 + 周）→ `recompute` → `buildAliases`（→ `lookup/aliases.json`）→ `validate` 发布闸门 → `publish` 切 `views/latest.json` 指针 / 回滚 → `gc` 版本回收（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
+> 全链路 step：`preflight`（再次校验全部 canonical shard）→ `fold`（月 + 周）→ `recompute` → `buildAliases`（→ `lookup/aliases.json`）→ `validate` 发布闸门 → `publish` 切 `views/latest.json` 指针 / 回滚 → `gc` 版本回收（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
 
 **鉴权 / 凭证**：`CRON_SECRET`（触发）、`GITHUB_TOKEN`（Search / GraphQL）、`BLOB_READ_WRITE_TOKEN`（读写 canonical / staging / published）。**Workflow 全程 0 GCP**（GCP 仅 bootstrap）。
 
@@ -452,6 +452,84 @@ For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, 
 - **成本**：~$10（一次性）；回填完永不再碰 GCP。
 - 口径瑕疵（gross vs net、幸存者偏差、起点 2015）见 ARCHITECTURE，About 页注明。
 - 回填完成后 GCP 两个变量即可弃用，日常运营回到 0 GCP。
+
+## 一次性 canonical lifecycle provenance 迁移（Issue #326）
+
+> 这是为 legacy canonical rows 补齐 lifecycle provenance 的**一次性受控迁移**，不是
+> bootstrap 重跑，也不是 recurring Workflow。实现 PR 只交付工具、测试和 dry-run
+> 证据；没有明确的生产执行授权时，禁止使用 `--execute`。
+
+2026-07-28 的只读盘点证明：5,393 个 canonical repo row 都缺显式
+`active`；当前已发布 whitelist 有 5,389 个 id，因此计划结果是 5,389 个
+`active:true`、4 个 retained historical `active:false`。另有 79 个 row 同时为
+`tracked_since:null` 且无 `d`。它们不属于 bootstrap historical rows：legacy
+`lookup/repos.json` 不含这些 id，而 19 个 immutable whitelist snapshot 能完整恢复首次
+出现日（12 个 `2026-06-02`、18 个 `2026-06-28`、49 个 `2026-07-12`）。因此迁移只补
+`tracked_since`，**绝不猜测 `d=1`，也不以可变的 current stars 重算 anchor**。
+
+### Dry-run（默认、零生产写）
+
+```bash
+cd web
+bun scripts/migrate-canonical-lifecycle.ts
+```
+
+Dry-run 只加载 `BLOB_BASE_URL`，不需要 `BLOB_READ_WRITE_TOKEN`，也不会调用 Blob
+create / put / delete。评审至少核对：
+
+- `production_writes=0`；
+- source layout / `views/latest.run_id` / 19 个 snapshot hash 均与评审证据一致；
+- `canonical_repositories=5393`、`active_true=5389`、`active_false=4`；
+- `tracked_since_recovered=79`、`anchors_invented=0`、`changed_buckets=32`；
+- 输出的 `plan_sha256` 在重复 dry-run 中不变。
+
+如需保存完整 changed-id / per-bucket checksum 计划，使用
+`--plan-out <new-local-file>`；工具只创建新文件，遇到内容不同的既有文件会拒绝覆盖。
+`bootstrap/latest.json`、published whitelist pointer、任一 snapshot 或 repo shard 发生漂移
+都会产生新计划或直接 fail closed，必须重新评审。
+
+### Execute（必须单独授权）
+
+只有完整 plan 已人工评审、确认当前没有 planned `pre → main` promotion，并取得明确生产
+执行授权后，才能运行：
+
+```bash
+cd web
+bun scripts/migrate-canonical-lifecycle.ts \
+  --execute \
+  --confirm <exact-reviewed-plan-sha256>
+```
+
+执行器先取得 `ops/workflows/active.json` 的 shared fenced lease，再把 plan、32 个 before
+shard 和 32 个 after shard create-only 封存到
+`ops/migrations/canonical-lifecycle/<plan-sha256>/`。plan receipt 最后创建；此后每个
+canonical write 只接受两种状态：checksum 等于 reviewed before（待写）或 reviewed after
+（重试时已完成）。任何第三种 bytes、pointer drift、lease loss 或 full canonical
+validation failure 都中止。Public Blob overwrite 最多可在 CDN 继续暴露旧 bytes 60 秒，
+因此写后 exact-after checksum 验证使用覆盖该窗口的有界退避；期间只允许看到 reviewed
+before，超出窗口或出现第三种 bytes 仍会失败释放 lease。所有写经 `putOwnedView` 在写前
+续租；成功后 full 128-shard canonical validation 必须 `complete=true`。
+
+中断后用**同一条 execute 命令和同一 digest**重试；执行器读取 immutable receipt，跳过已
+达到 after checksum 的 bucket。不要生成一个基于 partial state 的新确认 digest。
+
+### Rollback
+
+Rollback 只接受原 plan receipt，且 current shard 必须仍等于该 plan 的 before 或 after
+checksum；后续 Workflow 已改写的第三种状态会被硬阻：
+
+```bash
+cd web
+bun scripts/migrate-canonical-lifecycle.ts \
+  --rollback <exact-reviewed-plan-sha256> \
+  --execute \
+  --confirm <exact-reviewed-plan-sha256>
+```
+
+Rollback 恢复 immutable before shards，因此会重新恢复 #320 preflight 所阻断的 legacy
+状态；它用于迁移事故恢复，不代表 canonical readiness 已通过。迁移成功后的正常验收是：
+再次 dry-run 得到 `changed_repositories=0`，再运行 full canonical preflight / product
+gates，最后才重新评估 `pre → main`。
 
 ## Build 约束
 

@@ -1,7 +1,7 @@
 ---
 owner: data operations / workflows
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-07-28
 source_of_truth_for:
   - production data lifecycle
   - Vercel Blob publish model
@@ -60,7 +60,7 @@ gitstarclub 的运行时是**纯静态**:用户请求只读预算好的 JSON / B
 |---|---|---|---|
 | **L1 每日 live** | poll current_stars → 写 immutable `live/generations/<run_id>/**` + manifest → fenced CAS 切 `live/latest.json` → revalidate 热集 | **Vercel Function**(单函数,JSON-only,秒级) | Cron `0 3 * * *` |
 | **L2 每周 live** | 复用 live refresh,覆盖写当前周 / 当前月 rank + 当月 heatmap + hot snapshot + `ops/sync-runs.json` | **Vercel Function**(单函数,JSON-only) | Cron `0 4 * * 0` |
-| **L3 Managed refresh** | canonical meta preflight → 白名单 diff → 元数据 shard → 改名检测 → 月+周折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布(切指针)→ 版本 GC(step 详见 §4) | **Vercel Workflow**(多 step,Blob checkpoint) | 每周 cron + 手动(调度见 [OPS.md](./OPS.md) §Cron) |
+| **L3 Managed refresh** | canonical readiness preflight → 白名单 diff → 元数据 shard → 改名检测 → 月+周折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布(切指针)→ 版本 GC(step 详见 §4) | **Vercel Workflow**(多 step,Blob checkpoint) | 每周 cron + 手动(调度见 [OPS.md](./OPS.md) §Cron) |
 | **L4 Bootstrap archive** | 11 年事件级历史首次回填(Search → BigQuery → DuckDB → JSON → Blob) | **本机 / 全 Node**(`pipeline/backfill`) | 手动,一次性 |
 
 > 上表「触发」列只标各层的调度归属;**三条 cron 的权威调度(`0 3` / `0 4` / `0 6` 及 `vercel.json` 声明)见 [OPS.md](./OPS.md) §Cron**。
@@ -80,9 +80,9 @@ gitstarclub 的运行时是**纯静态**:用户请求只读预算好的 JSON / B
 
 ```text
 Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
-  └─ route:鉴权 + 只读 canonical meta preflight + 取得 lease + 启动 workflow,立即返回 run_id(不阻塞)
+  └─ route:鉴权 + 只读 canonical meta/repos preflight + 取得 lease + 启动 workflow,立即返回 run_id(不阻塞)
        └─ Vercel Workflow('use workflow'):编排下列 steps,可 pause/resume、跨部署存活
-            ├─ step 0  canonical meta preflight             ('use step'; read-only)
+            ├─ step 0  full canonical preflight          ('use step'; read-only)
             ├─ step 1  refresh whitelist                 ('use step')
             ├─ step 2  rename detection(先于 metadata,读旧 full_name)
             ├─ step 3  metadata shards(按 bucket 循环,含 newcomer-aware `tracked_since`)
@@ -102,7 +102,7 @@ Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
 > `preflight → whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`。
 > Workflow 发布会对 `published-views-pointer` cache tag 和根 layout 主动失效；其他已暖函数实例的进程内 pointer memo 上限为 60s，因此 publish / rollback 的可见性 SLA 为 **≤60s**（§7.4）。
 
-**为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 只做「鉴权 + canonical meta 只读 preflight + lease + 启动 workflow + 返回」,把真正的长任务交给 Workflow runtime 异步编排。preflight 在 lease 和 enqueue 之前先挡住生产形状不兼容；workflow 的 step 0 再解析一次，防止 enqueue 到执行之间对象变化。
+**为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 只做「鉴权 + canonical meta/32 个 repos shard 只读 preflight + lease + 启动 workflow + 返回」,把真正的长任务交给 Workflow runtime 异步编排。route gate 会在 lease 和 enqueue 前检查 `active` / `tracked_since` / `d`、repo key/id 与 bucket；workflow 的 step 0 再全量校验 128 个必需 shard，防止 enqueue 到执行之间对象变化，并在任何 canonical mutation 前阻断空时间序列、孤立 repo ID、缺失 shard 或读取错误。
 
 ### 3.2 Workflow SDK 落地形态
 
@@ -170,7 +170,7 @@ async function recomputeRank(runId: string) {
 
 | # | step | 读 | 写 | 说明 |
 |---|---|---|---|---|
-| 0 | canonical meta preflight | `canonical/v2/meta.json` | 无 | 在任何 whitelist/canonical mutation 前用权威 `CanonicalMeta` 解析已部署对象；缺失或 schema 不兼容立即终止。active writer 总是写 `generated_at`，reader 在 rollout 期间兼容缺少该字段的 legacy generation。 |
+| 0 | canonical readiness preflight | route：`meta.json` + 32 个 `repos` shard；workflow：全部 128 个必需 shard | 无 | route 在 lease/enqueue 前验证当前模型必需的 repo lifecycle/anchoring/bucket 契约；workflow 在任何 whitelist/canonical mutation 前复核全部 shard、时间序列非空和 repo ID 引用完整性。Workflow 与 daily/weekly cron 的 mutation input 均用权威读取：只有确认 404 可表示缺失；403、超时、schema/pointer 错误全部 fail closed。2026-07 legacy lifecycle remediation 只走 [OPS](./OPS.md) §一次性 canonical lifecycle provenance 迁移：先 reviewed dry-run，再以 exact plan digest + shared fenced lease 执行；不得把 preflight 放宽成兼容 fallback。 |
 | 1 | refresh whitelist | GitHub Search `stars:>=10000` + 当前已发布 run 的 whitelist snapshot | immutable `canonical/v2/whitelist/<run_id>.json` + diff | Search 仅做成员发现：开放上界查询当前最高 star 后动态分桶，无 600k ceiling；snapshot `count` 是本 run 权威 active 数。同一 run 重试复用 snapshot；失败 run 不推进 baseline。 |
 | 2 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo:记录旧→新映射,其增量由后续 build-aliases step 并集成 `lookup/aliases.json`,供 repo 页 308 重定向(见 [FRONTEND.md](./FRONTEND.md))。**先于 metadata 跑**——metadata 会覆盖 `full_name`,改名检测必须在覆盖前读到旧值。canonical 按 `repo_id` 归并,改名不丢历史。 |
 | 3 | metadata shards(**按 bucket,1 step/桶**,内含 lifecycle) | run whitelist(Search membership/node_id/rename-aware identity)+ previous canonical/lookup | `canonical/v2/repos/<bucket>.json`(`active`/`tracked_since`/GraphQL metadata) | 对**每个 active repo**用 GraphQL `nodes()` 批量取 metadata + 权威 `stargazerCount`；任一 active id 缺失 GraphQL 结果即 fail closed，绝不回退 Search stars。previous row 先标 `active:false`，本次 entries 再激活；drop 历史保留、re-entry 保留首次 `tracked_since`、首次 newcomer 写 snapshot discovery date。每桶最多约 165 repo（2 个 GraphQL batch），逐桶 step/节流，避免二级限流。 |
@@ -281,7 +281,7 @@ entity / lookup:    V/* (L3 发布版本)
 hot-snapshot / current_month: 读 live/latest.json → live/generations/<generation>/*
 ```
 
-> base 视图(rank/all-time/entity/heatmap/meta/lookup)走 `readView(path, schema, { base:true })`。managed pointer 成功返回 version 时才读取 bootstrap pointer，并按 `published_at` 选择更新的完整 generation：managed publish 后读 `views/<version>/<path>`；更新的 bootstrap commit / rollback 后读 sealed `bootstrap/generations/<generation>/views/<path>`。managed pointer 超时、非 404 失败或形状不可用时 fail-safe 保持 legacy flat 且不查询 bootstrap；只有 managed 明确 404 才查询 bootstrap，bootstrap 也明确 404 时继续 flat。live snapshot/rank/heatmap 走独立的 `live/latest.json`，再读 `live/generations/<generation>/<logical-path>`；live pointer 真正 404 时才回退旧 flat layout，pointer 无法访问/解析时复用缓存的已验证 generation，否则 fail closed。logical `canonical/*` 在 bootstrap pointer 存在时先读 `bootstrap/overlays/<generation>/canonical/*`，单对象 404 才回退 immutable generation seed；写入一律进入 overlay。这样 recurring mutation 不改 sealed payload，bootstrap rollback 会同时恢复对应 generation 的 canonical overlay。`ops/*` 仍走 flat。**「live vs base」判据按 `meta.folded_through` 水位收紧**(period ≤ `folded_through` 直读 base、未折叠周期叠 live,§7.2),防重复计数。
+> 页面 base 视图(rank/all-time/entity/heatmap/meta/lookup)走 `readView(path, schema, { base:true })`。managed pointer 成功返回 version 时才读取 bootstrap pointer，并按 `published_at` 选择更新的完整 generation：managed publish 后读 `views/<version>/<path>`；更新的 bootstrap commit / rollback 后读 sealed `bootstrap/generations/<generation>/views/<path>`。页面读取在 managed pointer 超时、非 404 失败或形状不可用时保持既有 legacy flat 容错；Workflow/control-plane 及 daily/weekly cron 的 mutation input 改走 `readAuthoritativeView` / `readRequiredView`，pointer 或对象 403/超时/解析失败一律抛错，只有确认 404 才能表示缺失，且 overlay 非 404 错误绝不回退 sealed bytes。live snapshot/rank/heatmap 走独立的 `live/latest.json`，再读 `live/generations/<generation>/<logical-path>`；live pointer 真正 404 时才回退旧 flat layout，pointer 无法访问/解析时复用缓存的已验证 generation，否则 fail closed。logical `canonical/*` 在 bootstrap pointer 存在时先读 `bootstrap/overlays/<generation>/canonical/*`，单对象 404 才回退 immutable generation seed；写入一律进入 overlay。这样 recurring mutation 不改 sealed payload，bootstrap rollback 会同时恢复对应 generation 的 canonical overlay。`ops/*` 仍走 flat。**「live vs base」判据按 `meta.folded_through` 水位收紧**(period ≤ `folded_through` 直读 base、未折叠周期叠 live,§7.2),防重复计数。
 
 > ⚠️ **两类指针读取都必须用重校验缓存而非 `no-store`**：base pointer 默认 1h（部分 daily 入口 1d），live pointer 60s。`resolveLiveGeneration()` 另有 single-flight，保证同一冷实例的并发 sibling 读取共享一个 pointer 结果。
 
@@ -354,6 +354,8 @@ L1 daily cron / L2 weekly cron 先取得 `live/latest.json` 内嵌 lease，再�
 - **当前/刚收口未折叠的周期**:读 `live/*` 覆盖层(若回退到 base,base 尚不含该期,会缺活尾)。
 - **已折叠的周期**:读 base(`views/<version>/*`),不再叠 live,避免重复计数。
 
+每个 live generation 只含本次刷新生成的当前周/月文件，不是全部未折叠周期的复制。周期型 rank / heatmap 先读 pointer 当前 generation；对象确认 404 时，读侧沿 immutable manifest 的 `previous_generation` 有界回溯（最多 64 代、cycle detection、manifest generation/files 一致性校验），链到 `null` 后才尝试迁移期 flat `live/*`。manifest 声明文件却读到 404，或 pointer/manifest/transport/schema 异常，一律 fail closed。高并发 SSG 的 public-CDN 403 不是缺失：页面读至多尝试同一历史对象 2 次，并按 Blob/key 熔断 60 秒后停止整个 live 链、交给 base / `notFound`；熔断会自动恢复，且不能借机取旧代。required product gate 仍保持失败。`current_month` / `hot-snapshot` 仍是单 generation 快照，禁止历史回退。
+
 L1/L2 与 L3 写不同 Blob 前缀(`live/generations/*` vs `canonical/v2/**` + `views/<run_id>/**`),前缀不重叠；L3 重算期间 L1/L2 照常刷活尾。默认幂等 key 为 `<job>:<UTC-day>`；同 key running/committed 分别 attach/直接返回，不同 key active 返回 409。手动同日追加刷新用显式新 key。
 
 ### 7.2 周期收口交接契约(防重复 / 丢数据)
@@ -384,8 +386,10 @@ generation 内的 `current_month.json` 会在跨月时初始化新月，所以�
   `generation`；partial generation 是不可见 orphan。
 - 同 run 重试遇到已有 immutable 文件时只接受**完全相同字节**，内容冲突
   fail closed。lease 过期或被替换的 writer 无权清 lease 或切 pointer。
-- `previous_generation` 保留一跳回滚目标。live GC 尚不在本 issue 内；不要删除
-  current/previous 或带 active lease 的 generation。
+- pointer 的 `previous_generation` 保留一跳运维回滚目标；每个 immutable manifest
+  的同名字段同时组成周期文件的读侧历史链。读侧回溯是有界查询，不改变回滚命令
+  仍只接受显式一跳 target 的语义。live GC 尚不在本 issue 内；不要删除历史链可能
+  引用、current/previous 或带 active lease 的 generation。
 - `hot-snapshot.freshness` 逐 section 标 source-as-of；carry-forward section 不得
   使用本次运行时间。日期依赖的旧 `on_this_day` 不匹配当前 UTC 月日即清空。
 
@@ -473,7 +477,7 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
   - **引用完整性**:repo rank item 的 `id` 必须存在于 `lookup/repos.json`;org rank item 的 `login` 必须存在于 `lookup/orgs.json`;
   - **repository lifecycle**:`lookup/repos.json` 全部 ID 与 canonical 完全一致；whitelist entries、canonical `active:true`、lookup `active:true` 三个集合完全相等；`meta.active_repo_count == whitelist.count`，`meta.historical_repo_count == lookup active:false`；drop 必须保留且为 historical，inactive re-entry 可作为 `diff.added` 重新激活;
   - **`lookup/aliases.json`**:无 dangling / live-shadow,且相对上一发布版本 alias count 不倒退（buildAliases 必须扫描所有 workflow run folder;读取错误会失败,缺失 `renames.json` 视为空增量）;
-  - **canonical 完整性**:`repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 全部 bucket 必须存在且通过 schema；输出 `canonical-manifest.json`（记录数 + SHA-256）；任一缺失或错误阻断发布;
+  - **canonical 完整性**:`repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 全部 bucket 必须存在且通过 schema；repo key 必须等于 row `id` 且落在正确 bucket；三类时间序列不能整体为空，也不能引用 `repos` 之外的 ID；输出 `canonical-manifest.json`（记录数 + SHA-256）；任一缺失或错误阻断发布;
   - **`canonical/v2/repos/*` 的 `d`**:`d > 2` 仅 warning；历史 repo 缺少有限 `d` 为硬失败；带 `tracked_since` 的新晋 repo 明确以 `d=0` 起步;
   - **`search/index.json`**:`count ≥ MIN_LOOKUP`(=1000)、`count === repos.length`，每条显式传播 `active` / `tracked_since`;
   - **category views**:`registry` 非空且有 public categories;assignments 覆盖 ≥ `MIN_LOOKUP`;`language`/`language_family` 每 repo 至少一个,`owner_kind` 每 repo 单值;assignment 引用都存在于 registry;抽样 category rank 的 repo 都属于该 category;

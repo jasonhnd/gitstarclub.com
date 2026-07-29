@@ -113,7 +113,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 - `seam_date`：gross→net 边界，stock 锚定据此分段（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3）。
 - `folded_through`：已折叠进 base 的最末周/月周期；读路径据此判某周期归 live 还是 base（防重复，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）。
-- `generated_at`：bootstrap 与 recurring fold writer 都必须写入的 UTC timestamp。reader 在迁移期仍接受没有该字段的 legacy generation；managed refresh 的首个 preflight step 会在任何 canonical mutation 前用 `CanonicalMeta` 解析线上对象。
+- `generated_at`：bootstrap 与 recurring fold writer 都必须写入的 UTC timestamp。reader 在迁移期仍接受没有该字段的 legacy generation；managed refresh route 会在 lease 前检查 `meta` + 全部 `repos` shard，workflow 首个 step 再在任何 canonical mutation 前校验全部 128 个必需 shard。
 
 **`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`、`fetched_at`（元数据抓取时刻）；外加 `d` = 冻结锚定因子（`>= 0`，GitHub Archive 低计时可 `> 1`），bootstrap 算定，**存全精度 IEEE double**——舍入会让 JS 重算的 `stock_est` 与 DuckDB 差 ±1）：
 
@@ -430,6 +430,16 @@ base + 当前月重算；无法重算的 `on_this_day` 只保留与本 UTC 月�
 对象写或验证失败只留下未引用的 orphan generation，pointer 不变；revalidate
 和 IndexNow 必须在 pointer CAS 成功之后执行。
 
+generation 是“本次发布文件集合”的完整快照，不会复制此前尚未折叠的周期文件。
+因此周期型 rank / heatmap 读侧在当前对象确认 404 后，按各 manifest 的
+`previous_generation` 最多回溯 64 代；每一代都校验 schema、generation id、
+`files[]`、无环和深度。manifest 已列出的对象若 404 即违反完整性并 fail closed；
+只有有效链走到 `null` 才允许查迁移期 flat `live/*`。`current_month` 与
+`hot-snapshot` 不使用历史链，以免用旧代快照冒充当前状态。public CDN 在高并发
+SSG 下持续 403 时，页面读至多尝试同一历史对象 2 次，并按 Blob/key 熔断 60 秒
+后停止 live 链、回退 base / `notFound`（不选旧代）；熔断自动恢复，required
+product gate 仍将该 transport failure 判为失败。
+
 ### 2.10 `ops/sync-runs.json`（cron 运行记录）
 
 轻量运维日志；由 Vercel cron 覆盖写，保留最近 100 次运行。
@@ -589,7 +599,7 @@ base + 当前月重算；无法重算的 `on_this_day` 只保留与本 UTC 月�
 
 ### 2.13 `ops/workflows/{run_id}/validation.json` — 校验报告
 
-step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity，并对全部必需 canonical bucket 跑 schema / ID / anchoring 完整性；`ok=false` 则不切指针。
+step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity，并对全部必需 canonical bucket 跑 schema / ID / anchoring 完整性；同时校验 repo key/id/bucket、时间序列非空及无孤立 repo ID；`ok=false` 则不切指针。
 **`checked` = 关键派生视图抽样读次数 + 全部必需 canonical shard 数**。派生视图仍抽查 `meta` / `rank/all-time` / lookup / search / categories / top-repo entity / 去年 heatmap；canonical 的 `repos`、`repo-monthly`、`repo-weekly`、`repo-recent-daily` 则逐 bucket 全量读取，并另写 `canonical-manifest.json`。
 
 ```json

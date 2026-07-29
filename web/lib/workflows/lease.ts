@@ -5,6 +5,12 @@ import { requireBlobWriteToken } from "@/lib/runtime-config";
 const ACTIVE_PATH = "ops/workflows/active.json";
 export const LEASE_TTL_MS = 30 * 60 * 1000;
 export const LEASE_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
+// Blob overwrites may continue serving the previous bytes from the public CDN
+// during its short cache window. Keep the exact ETag returned by our own
+// successful write long enough for same-process renew/release calls to observe
+// their write immediately. Every subsequent mutation still uses ifMatch, so a
+// competing writer invalidates the cached snapshot instead of being overwritten.
+export const LEASE_READ_YOUR_WRITES_MS = 2 * 60 * 1000;
 const MAX_CAS_ATTEMPTS = 3;
 
 export class WorkflowLeaseOwnershipError extends Error {
@@ -24,6 +30,43 @@ export type WorkflowLeaseStore = {
   create(lease: WorkflowLease): Promise<boolean>;
   compareAndSet(etag: string, lease: WorkflowLease): Promise<boolean>;
 };
+
+type RecentWorkflowLeaseWrite = WorkflowLeaseSnapshot & {
+  writtenAt: number;
+};
+
+export class WorkflowLeaseWriteCache {
+  private recent: RecentWorkflowLeaseWrite | null = null;
+
+  constructor(
+    private readonly now: () => number = Date.now,
+    private readonly ttlMs = LEASE_READ_YOUR_WRITES_MS,
+  ) {}
+
+  read(): WorkflowLeaseSnapshot | null {
+    if (!this.recent) return null;
+    if (this.now() - this.recent.writtenAt >= this.ttlMs) {
+      this.recent = null;
+      return null;
+    }
+    return {
+      lease: this.recent.lease ? structuredClone(this.recent.lease) : null,
+      etag: this.recent.etag,
+    };
+  }
+
+  remember(lease: WorkflowLease, etag: string): void {
+    this.recent = {
+      lease: structuredClone(lease),
+      etag,
+      writtenAt: this.now(),
+    };
+  }
+
+  forgetIfEtag(etag: string): void {
+    if (this.recent?.etag === etag) this.recent = null;
+  }
+}
 
 export type WorkflowLeaseClaim =
   | { status: "acquired"; lease: WorkflowLease }
@@ -56,7 +99,12 @@ function isBlobConflict(error: unknown): boolean {
 }
 
 export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
+  constructor(private readonly writeCache = new WorkflowLeaseWriteCache()) {}
+
   async read(): Promise<WorkflowLeaseSnapshot> {
+    const recent = this.writeCache.read();
+    if (recent) return recent;
+
     const result = await get(ACTIVE_PATH, { access: "public", token: requireBlobWriteToken() });
     if (!result) return { lease: null, etag: null };
     if (result.statusCode !== 200 || !result.stream) throw new Error(`lease read ${ACTIVE_PATH} -> ${result.statusCode}`);
@@ -69,7 +117,7 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
   async create(lease: WorkflowLease): Promise<boolean> {
     WorkflowLease.parse(lease);
     try {
-      await put(ACTIVE_PATH, JSON.stringify(lease), {
+      const written = await put(ACTIVE_PATH, JSON.stringify(lease), {
         access: "public",
         token: requireBlobWriteToken(),
         allowOverwrite: false,
@@ -77,6 +125,7 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
         contentType: "application/json",
         cacheControlMaxAge: 60,
       });
+      this.writeCache.remember(lease, written.etag);
       return true;
     } catch (error) {
       if (isBlobConflict(error)) return false;
@@ -87,7 +136,7 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
   async compareAndSet(etag: string, lease: WorkflowLease): Promise<boolean> {
     WorkflowLease.parse(lease);
     try {
-      await put(ACTIVE_PATH, JSON.stringify(lease), {
+      const written = await put(ACTIVE_PATH, JSON.stringify(lease), {
         access: "public",
         token: requireBlobWriteToken(),
         allowOverwrite: true,
@@ -96,9 +145,13 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
         cacheControlMaxAge: 60,
         ifMatch: etag,
       });
+      this.writeCache.remember(lease, written.etag);
       return true;
     } catch (error) {
-      if (isBlobConflict(error)) return false;
+      if (isBlobConflict(error)) {
+        this.writeCache.forgetIfEtag(etag);
+        return false;
+      }
       throw error;
     }
   }

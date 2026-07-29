@@ -1,5 +1,6 @@
 import { CanonicalMeta } from "@/lib/contracts";
-import { readView } from "@/lib/data/source";
+import { readRequiredView } from "@/lib/data/source";
+import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
 
 export interface CanonicalPreflightResult {
   seam_date: string;
@@ -13,8 +14,19 @@ export async function readCanonicalPreflight(
   runId: string,
   phase: "route" | "workflow" = "route",
 ): Promise<CanonicalPreflightResult> {
-  const meta = await readView("canonical/v2/meta.json", CanonicalMeta, { bust: `${runId}-${phase}-preflight` });
-  if (!meta) throw new Error("canonical/v2/meta.json missing");
+  const bust = `${runId}-${phase}-preflight`;
+  const meta = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust });
+  // Keep the synchronous route gate bounded to the relatively small repos
+  // inventory while still rejecting legacy rows that the current model cannot
+  // consume. The Workflow step rechecks all 128 shards before any mutation.
+  const canonical = await validateCanonicalGeneration(bust, {
+    scope: phase === "route" ? "repositories" : "full",
+  });
+  if (!canonical.manifest.complete) {
+    throw new Error(
+      `canonical preflight failed (${canonical.failures.length}): ${canonical.failures.slice(0, 5).join("; ")}`,
+    );
+  }
   return {
     seam_date: meta.seam_date,
     schema_ver: meta.schema_ver,

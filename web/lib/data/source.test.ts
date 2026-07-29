@@ -1,6 +1,11 @@
 import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
-import { invalidatePublishedVersionMemo, readView } from "./source";
+import {
+  invalidatePublishedVersionMemo,
+  readAuthoritativeView,
+  readRequiredView,
+  readView,
+} from "./source";
 import { PUBLISHED_VIEWS_CACHE_TAG } from "./publication-cache-contract";
 import { resolveCanonicalBlobPath } from "./bootstrap-publication";
 
@@ -39,6 +44,22 @@ function livePointer(generation: string, lease: unknown = null) {
     published_at: "2026-07-17T03:00:00.000Z",
     previous_generation: null,
     lease,
+  };
+}
+
+function liveManifest(generation: string, previousGeneration: string | null, files: string[]) {
+  return {
+    schema_ver: 1,
+    generation,
+    run_id: generation,
+    idempotency_key: "daily:2026-07-17",
+    job: "daily",
+    day: "2026-07-17",
+    month: "2026-07",
+    week: "2026-W29",
+    created_at: "2026-07-17T03:00:00.000Z",
+    previous_generation: previousGeneration,
+    files,
   };
 }
 // Map of exact-or-prefix URL (path portion, query stripped) → response.
@@ -437,6 +458,51 @@ describe("readView — non-base (flat) reads", () => {
     },
     { timeout: 20_000 },
   );
+
+  test(
+    "an authoritative canonical read fails on overlay 403 without falling back to sealed bytes",
+    async () => {
+      routes = {
+        "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-strict") },
+        "/bootstrap/overlays/bootstrap-strict/canonical/v2/meta.json": {
+          status: 403,
+          json: { error: "Forbidden" },
+        },
+        "/bootstrap/generations/bootstrap-strict/canonical/v2/meta.json": {
+          json: { ok: true, tag: "sealed-stale" },
+        },
+      };
+
+      await expect(readAuthoritativeView("canonical/v2/meta.json", Doc)).rejects.toThrow(
+        "view fetch bootstrap/overlays/bootstrap-strict/canonical/v2/meta.json -> 403",
+      );
+      expect(
+        fetchCalls.some((url) =>
+          url.includes("/bootstrap/generations/bootstrap-strict/canonical/v2/meta.json"),
+        ),
+      ).toBe(false);
+    },
+    { timeout: 20_000 },
+  );
+
+  test("an authoritative base read never falls back to flat bytes after a pointer error", async () => {
+    routes = {
+      "/views/latest.json": { status: 401, json: { error: "Unauthorized" } },
+      "/lookup/repos.json": { json: { ok: true, tag: "flat-stale" } },
+    };
+
+    await expect(readAuthoritativeView("lookup/repos.json", Doc, { base: true })).rejects.toThrow(
+      "views pointer fetch -> HTTP 401",
+    );
+    expect(fetchCalls.some((url) => new URL(url).pathname === "/lookup/repos.json")).toBe(false);
+  });
+
+  test("a required authoritative view rejects a confirmed 404", async () => {
+    routes = {};
+    await expect(readRequiredView("ops/workflows/run/manifest.json", Doc)).rejects.toThrow(
+      "ops/workflows/run/manifest.json missing",
+    );
+  });
 });
 
 describe("readView — atomic live generation resolution", () => {
@@ -495,8 +561,136 @@ describe("readView — atomic live generation resolution", () => {
     ).toEqual({ ok: true, tag: "legacy" });
   });
 
+  test("period-scoped reads walk previous generations before the legacy migration edge", async () => {
+    const path = "rank/week/2026-W30/repo/flow.json";
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("history-head") },
+      "/live/generations/history-head/manifest.json": {
+        status: 200,
+        json: liveManifest("history-head", "history-previous", ["current_month.json"]),
+      },
+      "/live/generations/history-previous/manifest.json": {
+        status: 200,
+        json: liveManifest("history-previous", null, [path]),
+      },
+      [`/live/generations/history-previous/${path}`]: {
+        status: 200,
+        json: { ok: true, tag: "previous-week" },
+      },
+      [`/live/${path}`]: { status: 200, json: { ok: true, tag: "legacy" } },
+    };
+
+    expect(
+      await readView(path, Doc, {
+        live: true,
+        liveHistory: true,
+        legacyPath: `live/${path}`,
+      }),
+    ).toEqual({ ok: true, tag: "previous-week" });
+    expect(fetchCalls.some((url) => url.includes(`/live/${path}`))).toBe(false);
+  });
+
+  test("period-scoped reads use legacy only after a validated history reaches null", async () => {
+    const path = "rank/week/2026-W29/repo/flow.json";
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("history-first") },
+      "/live/generations/history-first/manifest.json": {
+        status: 200,
+        json: liveManifest("history-first", null, ["current_month.json"]),
+      },
+      [`/live/${path}`]: { status: 200, json: { ok: true, tag: "legacy-week" } },
+    };
+
+    expect(
+      await readView(path, Doc, {
+        live: true,
+        liveHistory: true,
+        legacyPath: `live/${path}`,
+      }),
+    ).toEqual({ ok: true, tag: "legacy-week" });
+  });
+
+  test("snapshot reads never fall back to stale history or flat bytes after a generation resolves", async () => {
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("snapshot-head") },
+      "/live/generations/snapshot-head/current_month.json": { status: 404 },
+      "/legacy/current_month.json": { status: 200, json: { ok: true, tag: "stale" } },
+    };
+
+    expect(
+      await readView("current_month.json", Doc, {
+        live: true,
+        legacyPath: "legacy/current_month.json",
+      }),
+    ).toBeNull();
+    expect(fetchCalls.some((url) => url.includes("/legacy/current_month.json"))).toBe(false);
+  });
+
   test(
-    "an unreachable pointer fails closed when no validated generation is cached",
+    "a persistent WAF 403 briefly circuits history without selecting older or legacy bytes",
+    async () => {
+      const path = "heatmap/month/2026-07.json";
+      routes = {
+        "/live/latest.json": { status: 200, json: livePointer("history-waf-head") },
+        [`/live/generations/history-waf-head/${path}`]: {
+          status: 403,
+          json: { error: "Forbidden" },
+        },
+        "/live/generations/history-waf-head/manifest.json": {
+          status: 200,
+          json: liveManifest("history-waf-head", "history-waf-previous", ["current_month.json"]),
+        },
+        [`/live/generations/history-waf-previous/${path}`]: {
+          status: 200,
+          json: { ok: true, tag: "stale-generation" },
+        },
+        [`/live/${path}`]: { status: 200, json: { ok: true, tag: "stale-legacy" } },
+      };
+
+      expect(
+        await readView(path, Doc, {
+          live: true,
+          liveHistory: true,
+          legacyPath: `live/${path}`,
+        }),
+      ).toBeNull();
+      expect(fetchCalls.filter((url) => url.includes(`/history-waf-head/${path}`))).toHaveLength(2);
+
+      // Repeated page work in the same SSG worker fails closed without paying
+      // the retry backoff again while the short per-key circuit is open.
+      expect(
+        await readView(path, Doc, {
+          live: true,
+          liveHistory: true,
+          legacyPath: `live/${path}`,
+        }),
+      ).toBeNull();
+      expect(fetchCalls.filter((url) => url.includes(`/history-waf-head/${path}`))).toHaveLength(2);
+      expect(fetchCalls.some((url) => url.includes("/history-waf-head/manifest.json"))).toBe(false);
+      expect(fetchCalls.some((url) => url.includes("history-waf-previous"))).toBe(false);
+      expect(fetchCalls.some((url) => url.includes(`/live/${path}`))).toBe(false);
+
+      // The circuit is temporary: after one pointer TTL, a healthy immutable
+      // object is read normally instead of remaining process-poisoned.
+      clock += 61_000;
+      routes[`/live/generations/history-waf-head/${path}`] = {
+        status: 200,
+        json: { ok: true, tag: "recovered-head" },
+      };
+      expect(
+        await readView(path, Doc, {
+          live: true,
+          liveHistory: true,
+          legacyPath: `live/${path}`,
+        }),
+      ).toEqual({ ok: true, tag: "recovered-head" });
+      expect(fetchCalls.filter((url) => url.includes(`/history-waf-head/${path}`))).toHaveLength(3);
+    },
+    { timeout: 20_000 },
+  );
+
+  test(
+    "an unreachable pointer omits the published live overlay without guessing legacy bytes",
     async () => {
       process.env.BLOB_BASE_URL = "https://uncached-live.example.com";
       globalThis.fetch = mock((input: string | URL | Request) => {
@@ -506,13 +700,74 @@ describe("readView — atomic live generation resolution", () => {
         return Promise.resolve(makeRes({ status: 200, json: { ok: true, tag: "unsafe-flat" } }));
       }) as unknown as typeof fetch;
 
-      await expect(
-        readView("current_month.json", Doc, { live: true, legacyPath: "legacy/current_month.json" }),
-      ).rejects.toThrow("live pointer fetch -> network down");
+      expect(
+        await readView("current_month.json", Doc, { live: true, legacyPath: "legacy/current_month.json" }),
+      ).toBeNull();
       // Pointer is retried on transient failures; legacy flat must never be guessed.
       expect(fetchCalls.filter((url) => url.includes("/live/latest.json")).length).toBeGreaterThan(1);
       expect(fetchCalls.some((url) => url.includes("legacy/current_month.json"))).toBe(false);
     },
     { timeout: 20_000 },
   );
+
+  test(
+    "a persistent pointer WAF 403 is briefly circuited for published reads",
+    async () => {
+      process.env.BLOB_BASE_URL = "https://waf-live.example.com";
+      let pointerDenied = true;
+      globalThis.fetch = mock((input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input.toString();
+        fetchCalls.push(url);
+        if (url.includes("/live/latest.json")) {
+          if (!pointerDenied) {
+            return Promise.resolve(makeRes({ status: 200, json: livePointer("waf-recovered") }));
+          }
+          return Promise.resolve({
+            ...makeRes({ status: 403, json: { error: "Forbidden" } }),
+            headers: new Headers({ "retry-after": "0.001" }),
+          } as Response);
+        }
+        if (url.includes("/live/generations/waf-recovered/hot-snapshot.json")) {
+          return Promise.resolve(makeRes({ status: 200, json: { ok: true, tag: "recovered" } }));
+        }
+        return Promise.resolve(makeRes({ status: 200, json: { ok: true, tag: "unsafe-flat" } }));
+      }) as unknown as typeof fetch;
+
+      expect(
+        await readView("current_month.json", Doc, { live: true, legacyPath: "legacy/current_month.json" }),
+      ).toBeNull();
+      const pointerAttempts = fetchCalls.filter((url) => url.includes("/live/latest.json")).length;
+      expect(pointerAttempts).toBeGreaterThan(1);
+
+      expect(
+        await readView("hot-snapshot.json", Doc, { live: true, legacyPath: "legacy/hot-snapshot.json" }),
+      ).toBeNull();
+      expect(fetchCalls.filter((url) => url.includes("/live/latest.json"))).toHaveLength(pointerAttempts);
+      expect(fetchCalls.some((url) => url.includes("/legacy/"))).toBe(false);
+
+      pointerDenied = false;
+      clock += 61_000;
+      expect(
+        await readView("hot-snapshot.json", Doc, { live: true, legacyPath: "legacy/hot-snapshot.json" }),
+      ).toEqual({ ok: true, tag: "recovered" });
+      expect(fetchCalls.some((url) => url.includes("/live/generations/waf-recovered/hot-snapshot.json"))).toBe(true);
+    },
+    { timeout: 20_000 },
+  );
+
+  test("an authoritative live read still fails on an unavailable pointer", async () => {
+    process.env.BLOB_BASE_URL = "https://authoritative-live.example.com";
+    routes = {
+      "/live/latest.json": { status: 401, json: { error: "Unauthorized" } },
+      "/legacy/current_month.json": { status: 200, json: { ok: true, tag: "unsafe-flat" } },
+    };
+
+    await expect(
+      readAuthoritativeView("current_month.json", Doc, {
+        live: true,
+        legacyPath: "legacy/current_month.json",
+      }),
+    ).rejects.toThrow("live pointer fetch -> HTTP 401");
+    expect(fetchCalls.some((url) => url.includes("legacy/current_month.json"))).toBe(false);
+  });
 });

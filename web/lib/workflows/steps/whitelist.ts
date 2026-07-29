@@ -1,8 +1,8 @@
-import { getReposLookup } from "@/lib/data";
-import { readView } from "@/lib/data/source";
+import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import { createView } from "@/lib/data/write";
 import {
   PublishedWhitelist,
+  ReposLookup,
   ViewsPointer,
   WhitelistSnapshot,
   type WhitelistSnapshot as WhitelistSnapshotType,
@@ -28,22 +28,21 @@ export type WhitelistDeps = {
 };
 
 const defaultDeps: WhitelistDeps = {
-  readSnapshot: (runId) => readView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot),
+  readSnapshot: (runId) =>
+    readAuthoritativeView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot),
   readPublishedRunId: async () => {
-    const pointer = await readView("views/latest.json", ViewsPointer);
+    const pointer = await readAuthoritativeView("views/latest.json", ViewsPointer);
     return pointer?.run_id ?? null;
   },
   readLegacyIds: async () => {
-    const pointer = await readView("canonical/v2/whitelist/latest.json", PublishedWhitelist);
+    const pointer = await readAuthoritativeView("canonical/v2/whitelist/latest.json", PublishedWhitelist);
     return pointer?.ids ?? null;
   },
   readBootstrapIds: async () => {
-    const lookup = await getReposLookup();
-    return lookup
-      ? Object.entries(lookup)
-          .filter(([, entry]) => entry.active !== false)
-          .map(([id]) => Number(id))
-      : [];
+    const lookup = await readRequiredView("lookup/repos.json", ReposLookup, { base: true });
+    return Object.entries(lookup)
+      .filter(([, entry]) => entry.active !== false)
+      .map(([id]) => Number(id));
   },
   search: searchWhitelist,
   createSnapshot: (runId, snapshot) => createView(`canonical/v2/whitelist/${runId}.json`, snapshot),
@@ -68,7 +67,10 @@ async function publishedIds(deps: WhitelistDeps): Promise<number[]> {
   const publishedRunId = await deps.readPublishedRunId();
   if (publishedRunId) {
     const snapshot = await deps.readSnapshot(publishedRunId);
-    if (snapshot) return snapshot.entries.map((entry) => entry.id);
+    if (!snapshot) {
+      throw new Error(`published whitelist snapshot for run ${publishedRunId} is missing`);
+    }
+    return snapshot.entries.map((entry) => entry.id);
   }
   const legacy = await deps.readLegacyIds();
   return legacy ?? deps.readBootstrapIds();
@@ -94,10 +96,13 @@ export async function refreshWhitelistWithDeps(
   const existing = await deps.readSnapshot(runId);
   if (existing) return resultOf(existing);
 
+  // Resolve the published baseline before contacting GitHub. A broken commit
+  // point must fail closed instead of spending a Search request and then
+  // silently comparing against a migration fallback.
+  const prevIds = await publishedIds(deps);
   const entries = await deps.search();
   const ids = entries.map((entry) => entry.id);
   const idSet = new Set(ids);
-  const prevIds = await publishedIds(deps);
   const prevSet = new Set(prevIds);
 
   const snapshot = WhitelistSnapshot.parse({

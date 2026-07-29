@@ -1,5 +1,11 @@
 import { revalidatePath } from "next/cache";
-import { getCurrentMonth, getHeatmapBase, getHotSnapshot, getRankBase, getReposLookup } from "@/lib/data";
+import {
+  getCurrentMonthAuthoritative as getCurrentMonth,
+  getHeatmapBaseAuthoritative as getHeatmapBase,
+  getHotSnapshotAuthoritative as getHotSnapshot,
+  getRankBaseAuthoritative as getRankBase,
+  getReposLookupAuthoritative as getReposLookup,
+} from "@/lib/data";
 import { fetchStarCounts, type RepoRef } from "@/lib/github";
 import { submitLiveOverlayIndexNow } from "@/lib/indexnow";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";

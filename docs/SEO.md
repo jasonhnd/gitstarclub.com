@@ -21,7 +21,7 @@ source_of_truth_for:
 > **SEO 不是加分项，是目标成立的前提**——本站没有品牌词流量、没有社交裂变引擎,唯一的规模化获客是「每一页都精确命中一条长尾查询」。
 >
 > 关联文档：渲染 / 页面分层 / ISR 见 [ARCHITECTURE.md](./ARCHITECTURE.md)；页面 / URL / i18n / 调性 / 配色见 [PRODUCT.md](./PRODUCT.md)；
-> 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.2.10**（App Router + Metadata API）。
+> 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.2.12**（App Router + Metadata API）。
 > AI answer-engine citation strategy is owned by [GEO.md](./GEO.md); this document stays focused on classic search crawl, canonical, metadata, sitemap, and internal-link mechanics.
 > Performance targets are owned by [TESTING.md](./TESTING.md); the issue #25 measured Lighthouse / Core Web Vitals baseline is supporting evidence in [perf/CWV-25.md](./perf/CWV-25.md).
 >
@@ -319,12 +319,12 @@ export async function generateMetadata(): Promise<Metadata> {
 export const revalidate = 86400;
 export const dynamicParams = true;
 export async function generateStaticParams() {
-  return publicCategoryStaticParams(await getCategoryRegistry());
+  return priorityLanguageStaticParams();
 }
 ```
 
 - `/categories`、公开维度页、公开 category 详情页与详情分页页进入 sitemap。
-- 详情页预渲染 priority language slugs 加公开 registry category；分页页按 category count 预渲染 page 2+，`dynamicParams = true` 保持后续公开 registry category 可按需生成。
+- 详情页在 deploy 时仅预渲染有限的 priority language slugs；其他公开 registry category 与全部 page 2+ 均通过按需 ISR 生成，`dynamicParams = true` 保持后续公开 registry category 可访问。
 - 不公开或低量 category 不应返回 200；页面逻辑通过 registry `public` 标记决定是否 `notFound()`。
 
 ### 2.8 对比页 `/compare`
