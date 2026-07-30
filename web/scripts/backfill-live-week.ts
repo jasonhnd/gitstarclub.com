@@ -8,7 +8,7 @@
 // One day (writes partial state under /tmp, merge with --finalize):
 //   bun run scripts/backfill-live-week.ts --week 2026-W27 --date 2026-06-29
 //   bun run scripts/backfill-live-week.ts --week 2026-W27 --finalize
-/* eslint-disable no-console */
+
 import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
