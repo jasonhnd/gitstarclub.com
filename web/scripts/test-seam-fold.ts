@@ -2,7 +2,7 @@
 // Verifies: pre-seam periods use round(cumGross × d); post-seam periods add net on top of the
 // frozen anchor (NOT × d), including negative net; year stock derives from the monthly window.
 //   bun run scripts/test-seam-fold.ts
-/* eslint-disable no-console */
+
 import { buildModel, type RawShards } from "../lib/workflows/recompute/model";
 import { computeRepoWindow, deriveYearWindow } from "../lib/workflows/recompute/windows";
 
