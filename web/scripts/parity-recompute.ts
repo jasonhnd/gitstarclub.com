@@ -2,7 +2,7 @@
 // shards and structurally diff against the DuckDB precompute output (pipeline/data/views).
 // Proves the pure-JS recompute core is equivalent before any Blob/read-path change.
 // Run from web/:  bun run scripts/parity-recompute.ts
-/* eslint-disable no-console */
+
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { buildModel, type RawShards } from "../lib/workflows/recompute/model";

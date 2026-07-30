@@ -5,7 +5,7 @@
 // seam-aware recompute, and asserts the folded month/week land in the view matrix with the correct
 // seam-aware stock (anchor + net, NOT × d) while pre-seam periods stay unchanged.
 //   bun run scripts/test-fold-integration.ts
-/* eslint-disable no-console */
+
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { buildModel, computeRepoWindow, computeAllViews, type RawShards } from "../lib/workflows/recompute";
