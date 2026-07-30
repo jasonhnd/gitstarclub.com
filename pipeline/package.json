@@ -14,7 +14,7 @@
     "export-v2": "node backfill/07-export-v2.mjs"
   },
   "dependencies": {
-    "@duckdb/node-api": "1.5.3-r.2",
-    "@vercel/blob": "^2.5.0"
+    "@duckdb/node-api": "1.5.5-r.2",
+    "@vercel/blob": "^2.6.1"
   }
 }
