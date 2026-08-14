@@ -7,9 +7,10 @@ import {
 } from "@/app/_localized/categories";
 import { categoryPath } from "@/app/categories/category-page-data";
 import { parsePositivePage } from "@/lib/pagination";
+import { LONG_TAIL_REVALIDATE_SECONDS } from "@/lib/data/publication-cache-contract";
 
 export const dynamicParams = true;
-export const revalidate = 86400;
+export const revalidate = LONG_TAIL_REVALIDATE_SECONDS;
 
 export async function generateStaticParams() {
   return generateCategoryDetailPageStaticParams();

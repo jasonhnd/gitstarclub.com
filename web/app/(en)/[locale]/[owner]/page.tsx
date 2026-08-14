@@ -1,8 +1,9 @@
 import { createEnglishPage } from "@/app/_localized/page-adapter";
 import { generateRepoMetadata, RepoPageView } from "@/app/_localized/repo";
+import { LONG_TAIL_REVALIDATE_SECONDS } from "@/lib/data/publication-cache-contract";
 
 export const dynamicParams = true;
-export const revalidate = 86400;
+export const revalidate = LONG_TAIL_REVALIDATE_SECONDS;
 
 // The repo set is large and versioned. Keep this empty so repo pages are generated
 // on first request and then served through ISR instead of deploy-time SSG.

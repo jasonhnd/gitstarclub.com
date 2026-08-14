@@ -137,8 +137,10 @@ an explicit recovery procedure.
 
 | 变量 | 范围 | 用途 |
 |---|---|---|
+| `VERCEL` | Vercel 注入 | `1` on Vercel; enables the shared Next Data Cache for bootstrap pointer 404s |
 | `VERCEL_ENV` | Vercel 注入 | 区分 Production / Preview / Development 行为 |
 | `VERCEL_URL` | Vercel 注入 | `/.well-known/deployment` 返回当前不可变 deployment URL |
+| `NEXT_RUNTIME` | Next.js 注入 | `nodejs` / `edge`; enables the shared bootstrap pointer Data Cache |
 | `VERCEL_GIT_COMMIT_SHA` | Vercel 注入 | `/.well-known/deployment` 返回当前部署 commit |
 | `NODE_ENV` | runtime/tooling | Next.js 与测试的标准运行模式 |
 | `CI` | CI | 启用 CI 专用超时、输出与安全门禁 |
@@ -553,10 +555,39 @@ gates，最后才重新评估 `pre → main`。
 
 > 每日 cron 与热集 ISR 都只读写 KB 级 JSON，远不触及上述任何上限。读大文件一律走 Blob（绕过 4.5MB 响应体限制）。**全量重算超出单 Function 上限，必须走 Vercel Workflow 分片**（见 §Vercel Workflow runbook）。
 
+## Vercel Firewall bot rules (pre-app)
+
+`robots.txt` is not a security boundary and still incurs Edge/middleware cost
+if the request reaches the deployment. Apply these **Vercel Firewall** rules
+on project `gitstarclub.com` (`prj_V9RVqspNWPXXiytX7Fj3wlMT9wNw`, scope
+`zkscio`) so blocked crawlers never enter Fluid/ISR/Blob:
+
+| Rule | Condition | Action |
+|---|---|---|
+| Block Meta external agent | User-Agent contains `meta-externalagent` OR `facebookexternalhit` | Deny |
+| Block GoogleOther | User-Agent contains `GoogleOther` | Deny |
+| Block GPTBot training | User-Agent contains `GPTBot` and does **not** contain `OAI-SearchBot` or `ChatGPT-User` | Deny |
+| Block SEO scrapers | User-Agent contains `AhrefsBot` OR `Amazonbot` OR `PetalBot` OR `Bytespider` OR `SemrushBot` OR `DotBot` OR `CCBot` | Deny |
+| Rate-limit remaining unknown bots | `bot_category` is `unclassified` or `tool`, path matches `/:locale(ja\|zh\|zh-TW\|ko\|es\|fr)?/:owner/:name` | Challenge or 30 req/min/IP |
+
+Do not implement these blocks as application middleware 403s; that still
+bills Edge invocations. Keep `Googlebot` and `Bingbot` unblocked.
+
+Operator command for the missing bootstrap pointer (dry-run first):
+
+```text
+cd web && bun scripts/ensure-bootstrap-pointer.ts
+cd web && bun scripts/ensure-bootstrap-pointer.ts --execute
+```
+
+`--execute` only writes when a sealed `bootstrap/generations/<id>` already
+exists. If none exists, the plan is `leave-legacy-flat` and no pointer is
+invented.
+
 ## 回滚
 
 - **指针回滚（Workflow 发布）**：不要直接覆盖 Blob。用稳定 idempotency key 调受保护 rollback API；它取得 fenced lease、固定 rollback intent、同步 recovery / whitelist pointer 并失效页面和 pointer cache。示例：`curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`。返回成功后在 **≤60s** 可见性 SLA 内核对页面与 `views/latest.json`。设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7。
 - **bootstrap generation / legacy 回滚**：先读取 `bootstrap/latest.previous_generation`。值为 generation 时执行 `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute`；首次 publish 的值为 `null`，其明确含义是执行 `--rollback legacy-flat --execute`。generation target 在 lease 前复核 sealed manifests 与全部对象；mutable legacy target 在取得同一个 Workflow CAS lease 后验证关键 flat base artifacts 和全部 `4 × 32` canonical shards。随后命令在 lease 内重读 pointer，只做一次 pointer 覆盖；legacy target 则原子删除 `bootstrap/latest.json`。写/删 pointer 已成功但响应丢失时，同 target 重试返回 `already-rolled-back`。不要手改 pointer，也不要删除 current / previous generation 或 overlay。
-- **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment** 即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。
+- **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment** 即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。Cost-control changes (robots, pointer cache, long-tail ISR, proxy matcher) rollback the same way: promote the previous Ready production deployment, then revert any Firewall deny rules that were added in the same change window.
 - **每日活尾**：`live/generations/<run_id>/**` 不可变，`live/latest.json` 是唯一发布开关。提交前失败无需数据回滚（pointer 仍指向旧 generation）；提交后发现坏数据，将 pointer 的 `generation` 指回 `previous_generation`。回滚也必须先确认没有活跃 `lease` 并使用 ETag 条件写，避免覆盖正在发布的 cron。
 - **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。
