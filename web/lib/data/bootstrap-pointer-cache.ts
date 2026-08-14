@@ -1,5 +1,10 @@
 import type { BootstrapPublicationPointer as BootstrapPointer } from "@/lib/contracts";
-import { BOOTSTRAP_POINTER_NEGATIVE_TTL_MS } from "@/lib/data/publication-cache-contract";
+import {
+  BOOTSTRAP_POINTER_CACHE_KEY,
+  BOOTSTRAP_POINTER_CACHE_TAG,
+  BOOTSTRAP_POINTER_NEGATIVE_TTL_MS,
+  BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS,
+} from "@/lib/data/publication-cache-contract";
 
 export type CachedBootstrapPointer =
   | { state: "present"; pointer: BootstrapPointer }
@@ -18,19 +23,22 @@ export function invalidateBootstrapPointerCache(): void {
   inflight = null;
 }
 
-/** Test/process helper. */
+/** Test/process helper. Does not clear the shared Next Data Cache. */
 export function resetBootstrapPointerCacheForTests(): void {
   invalidateBootstrapPointerCache();
 }
 
 /**
- * Cross-request cache for the published bootstrap pointer.
- * Confirmed 404s are stored as `absent`. Transport/WAF/5xx errors must throw
- * from `load` so they never become a legacy-flat sentinel.
+ * Cache the published bootstrap pointer, including a confirmed 404.
  *
- * This stays in-process on purpose: importing `next/cache` from the page data
- * graph makes `next build` require `@opentelemetry/api`. Cross-isolate sharing
- * uses the tagged fetch in `bootstrap-publication.ts`.
+ * Production is a long-lived legacy-flat layout: `bootstrap/latest.json` is
+ * expected to be missing. That absence is a normal state, not an error to
+ * re-probe on every view read. A 404 sentinel therefore lives in:
+ *   1. in-flight coalesce (same render / concurrent callers)
+ *   2. process memory (same isolate, TTL)
+ *   3. Next Data Cache (cross-request / cross-instance, tagged)
+ *
+ * 403 / 429 / 5xx / network failures must throw from `load` and are never stored.
  */
 export async function readCachedBootstrapPointer(
   load: () => Promise<CachedBootstrapPointer>,
@@ -40,7 +48,7 @@ export async function readCachedBootstrapPointer(
   if (inflight) return inflight;
 
   const pending = (async () => {
-    const value = await load();
+    const value = await loadThroughSharedCache(load);
     memory = { value, expiresAt: Date.now() + BOOTSTRAP_POINTER_NEGATIVE_TTL_MS };
     return value;
   })();
@@ -49,5 +57,27 @@ export async function readCachedBootstrapPointer(
     return await pending;
   } finally {
     if (inflight === pending) inflight = null;
+  }
+}
+
+async function loadThroughSharedCache(
+  load: () => Promise<CachedBootstrapPointer>,
+): Promise<CachedBootstrapPointer> {
+  // Call the Data Cache only on a live Next request. `next build` still
+  // bundles this import; @opentelemetry/api is a direct dependency so that
+  // graph resolves. Tests keep the in-process 404 sentinel only.
+  if (process.env.NEXT_RUNTIME !== "nodejs" && process.env.NEXT_RUNTIME !== "edge") {
+    return load();
+  }
+  try {
+    const nextCache = await import("next/cache");
+    if (typeof nextCache.unstable_cache !== "function") return load();
+    const cachedLoad = nextCache.unstable_cache(load, [BOOTSTRAP_POINTER_CACHE_KEY], {
+      revalidate: BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS,
+      tags: [BOOTSTRAP_POINTER_CACHE_TAG],
+    });
+    return await cachedLoad();
+  } catch {
+    return load();
   }
 }

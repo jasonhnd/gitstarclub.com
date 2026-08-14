@@ -137,6 +137,7 @@ an explicit recovery procedure.
 
 | 变量 | 范围 | 用途 |
 |---|---|---|
+| `NEXT_RUNTIME` | Next.js 注入 | `nodejs` / `edge`; enables the shared Data Cache 404 sentinel for `bootstrap/latest.json` |
 | `VERCEL_ENV` | Vercel 注入 | 区分 Production / Preview / Development 行为 |
 | `VERCEL_URL` | Vercel 注入 | `/.well-known/deployment` 返回当前不可变 deployment URL |
 | `VERCEL_GIT_COMMIT_SHA` | Vercel 注入 | `/.well-known/deployment` 返回当前部署 commit |
@@ -580,7 +581,9 @@ cd web && bun scripts/ensure-bootstrap-pointer.ts --execute
 
 `--execute` only writes when a sealed `bootstrap/generations/<id>` already
 exists. If none exists, the plan is `leave-legacy-flat` and no pointer is
-invented.
+invented. Creating a pointer is not the root-cost fix: a missing pointer is a
+normal long-lived legacy state and must stay negatively cached with coalesced
+reads even if the object disappears again.
 
 ## 回滚
 
