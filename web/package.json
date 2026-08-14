@@ -25,6 +25,7 @@
     "test:cov": "bun test lib/ --coverage && node ../scripts/check-coverage-threshold.mjs coverage/lcov.info"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.1.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.6.1",
     "find-up": "7.0.0",

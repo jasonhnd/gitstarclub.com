@@ -195,6 +195,22 @@ describe("readView — base:true version-prefix resolution", () => {
     expect(fetchInits[pointerCall]?.next?.tags).toContain(PUBLISHED_VIEWS_CACHE_TAG);
   });
 
+  test("one page of sequential base views probes the missing bootstrap pointer only once", async () => {
+    routes = {
+      "/views/latest.json": { json: { version: "v-live", published_at: "2026-07-19T06:00:00.000Z" } },
+      "/views/v-live/rank/all-time/repo/stock.json": { json: { ok: true, tag: "stock" } },
+      "/views/v-live/lookup/repos.json": { json: { ok: true, tag: "lookup" } },
+      "/views/v-live/entity/repo/1.json": { json: { ok: true, tag: "entity" } },
+      "/bootstrap/latest.json": { status: 404 },
+    };
+
+    expect(await readView("rank/all-time/repo/stock.json", Doc, { base: true })).toEqual({ ok: true, tag: "stock" });
+    expect(await readView("lookup/repos.json", Doc, { base: true })).toEqual({ ok: true, tag: "lookup" });
+    expect(await readView("entity/repo/1.json", Doc, { base: true })).toEqual({ ok: true, tag: "entity" });
+
+    expect(fetchCalls.filter((url) => url.includes("/bootstrap/latest.json"))).toHaveLength(1);
+  });
+
   test("coalesces 100 concurrent base reads to one bootstrap pointer fetch in a 404 window", async () => {
     routes = {
       "/views/latest.json": { status: 404 },

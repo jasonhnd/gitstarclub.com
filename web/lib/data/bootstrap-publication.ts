@@ -34,6 +34,11 @@ function authoritativePointerUrl(blobBase: string): string {
   return `${blobBase}/${BOOTSTRAP_POINTER_PATH}?v=${Date.now().toString(36)}-${++pointerReadSequence}`;
 }
 
+/**
+ * Origin read for the one-file bootstrap commit point.
+ * A 404 means "legacy flat is the current layout" and is cached as `absent`.
+ * It is not a per-request error and must not be re-confirmed on every view.
+ */
 async function fetchPointerFromOrigin(
   blobBase: string,
   options: PointerReadOptions,
