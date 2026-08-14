@@ -4,6 +4,7 @@ import { BLOB_JSON_FETCH_TIMEOUT_MS, FetchTimeoutError, fetchWithTimeout } from 
 import { requireBlobBaseUrl } from "@/lib/runtime-config";
 import { PUBLISHED_VIEWS_CACHE_TAG, PUBLICATION_VISIBILITY_SLA_MS } from "@/lib/data/publication-cache-contract";
 import {
+  invalidateBootstrapPointerCache,
   readBootstrapPublicationPointer,
   resolveBootstrapBaseBlobPath,
   resolveCanonicalReadBlobPaths,
@@ -77,6 +78,7 @@ class StrictBlobReadForbiddenError extends Error {
 /** Clear this process's pointer memo after a publish/rollback in the same runtime. */
 export function invalidatePublishedVersionMemo(): void {
   versionMemo.clear();
+  invalidateBootstrapPointerCache();
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

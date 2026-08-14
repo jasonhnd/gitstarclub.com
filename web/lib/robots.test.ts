@@ -1,24 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import robots from "../app/robots";
+import { ALLOWED_CRAWLER_USER_AGENTS, BLOCKED_CRAWLER_USER_AGENTS } from "./robots-policy";
 
 const originalSiteIndexable = process.env.SITE_INDEXABLE;
 const originalSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-
-const explicitCrawlerUserAgents = [
-  "GPTBot",
-  "OAI-SearchBot",
-  "ChatGPT-User",
-  "PerplexityBot",
-  "Perplexity-User",
-  "ClaudeBot",
-  "Claude-SearchBot",
-  "anthropic-ai",
-  "Google-Extended",
-  "Applebot-Extended",
-  "Bingbot",
-  "CCBot",
-] as const;
 
 function restoreEnv(): void {
   if (originalSiteIndexable === undefined) {
@@ -54,7 +40,7 @@ describe("robots", () => {
     expect(robots()).toEqual({ rules: [{ userAgent: "*", disallow: "/" }] });
   });
 
-  test("lists explicit production crawler rules and preserves /api/ disallow", () => {
+  test("blocks cost-amplifying crawlers and keeps retrieval plus search agents", () => {
     process.env.SITE_INDEXABLE = "1";
 
     const result = robots();
@@ -63,11 +49,22 @@ describe("robots", () => {
     expect(result.sitemap).toBe("https://gitstarclub.test/sitemap.xml");
     expect(result.host).toBe("https://gitstarclub.test");
     expect(rules.map((rule) => rule.userAgent)).toEqual([
-      ...explicitCrawlerUserAgents,
+      ...BLOCKED_CRAWLER_USER_AGENTS,
+      ...ALLOWED_CRAWLER_USER_AGENTS,
       "*",
     ]);
 
-    for (const userAgent of explicitCrawlerUserAgents) {
+    for (const userAgent of BLOCKED_CRAWLER_USER_AGENTS) {
+      expect(rules).toContainEqual({ userAgent, disallow: "/" });
+    }
+    expect(BLOCKED_CRAWLER_USER_AGENTS).toContain("GPTBot");
+    expect(BLOCKED_CRAWLER_USER_AGENTS).toContain("GoogleOther");
+    expect(BLOCKED_CRAWLER_USER_AGENTS).toContain("meta-externalagent");
+    expect(ALLOWED_CRAWLER_USER_AGENTS).toContain("OAI-SearchBot");
+    expect(ALLOWED_CRAWLER_USER_AGENTS).toContain("Bingbot");
+    expect(ALLOWED_CRAWLER_USER_AGENTS).not.toContain("GPTBot");
+
+    for (const userAgent of ALLOWED_CRAWLER_USER_AGENTS) {
       expect(rules).toContainEqual({
         userAgent,
         allow: "/",
