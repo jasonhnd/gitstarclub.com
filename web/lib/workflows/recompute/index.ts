@@ -95,4 +95,18 @@ export function computeAllViews(model: Model, opts: RecomputeOpts): ViewBundle {
   };
 }
 
+/**
+ * Lookup maps and all-time stock ranks from one in-memory model.
+ *
+ * Validate requires all-time rank `value` === lookup `current_stars` /
+ * `current_stars_sum`. Those files must not be written from separate
+ * `loadCanonicalModel()` calls: each canonical read uses a unique Blob CDN
+ * bust, so two steps can observe different `current_stars` after metadata.
+ */
+export function computePublishedStockViews(model: Model, gen: string): Map<string, unknown> {
+  const out = new Map<string, unknown>(lookups(model));
+  for (const [path, view] of allTime(model, gen)) out.set(path, view);
+  return out;
+}
+
 export { repoEntities, orgEntities, lookups, searchIndex, heatmaps, computeCategoryViews };
