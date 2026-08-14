@@ -54,7 +54,9 @@ export async function readCachedBootstrapPointer(
 }
 
 function sharedDataCacheEnabled(): boolean {
-  return process.env.NEXT_RUNTIME === "nodejs" || process.env.NEXT_RUNTIME === "edge" || process.env.VERCEL === "1";
+  // NEXT_RUNTIME is set for live requests, not during `next build`. Using
+  // VERCEL=1 here would import next/cache into the page graph at build time.
+  return process.env.NEXT_RUNTIME === "nodejs" || process.env.NEXT_RUNTIME === "edge";
 }
 
 async function loadThroughSharedCache(
