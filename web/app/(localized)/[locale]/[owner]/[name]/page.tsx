@@ -4,7 +4,7 @@ import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import { generateRepoMetadata, RepoPageView } from "@/app/_localized/repo";
 
 export const dynamicParams = true;
-export const revalidate = 86400;
+export const revalidate = 604800;
 
 // Do not prebuild the repo x locale cross-product. Localized repo pages are
 // generated on demand and then served through ISR.

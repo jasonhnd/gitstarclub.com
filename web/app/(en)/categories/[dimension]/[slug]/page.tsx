@@ -6,7 +6,7 @@ import {
 } from "@/app/_localized/categories";
 
 export const dynamicParams = true;
-export const revalidate = 86400;
+export const revalidate = 604800;
 
 export async function generateStaticParams() {
   return generateCategoryDetailStaticParams();

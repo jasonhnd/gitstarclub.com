@@ -1,8 +1,7 @@
 import { createEnglishPage } from "@/app/_localized/page-adapter";
 import { generateOrgMetadata, OrgPageView } from "@/app/_localized/org";
-
 export const dynamicParams = true;
-export const revalidate = 86400;
+export const revalidate = 604800;
 
 // The org set is large and versioned. Keep this empty so org pages are generated
 // on first request and then refreshed by targeted invalidation.
