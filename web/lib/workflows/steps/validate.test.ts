@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { HIGH_D_FACTOR_WARN_THRESHOLD, inspectAnchoringFactors } from "./validate";
-import { validateAliases, validateCategories, validateMeta, validateRepositoryMembership, validateSearchIndex } from "./validate-invariants";
+import { validateAliases, validateAllTimeRanks, validateCategories, validateMeta, validateRepositoryMembership, validateSearchIndex } from "./validate-invariants";
 
 describe("inspectAnchoringFactors", () => {
   test("reports high anchoring factors without producing publish failures", () => {
@@ -103,6 +103,55 @@ describe("validateRepositoryMembership", () => {
       meta: { seam_date: "2026-01-01", schema_ver: 1, active_repo_count: 2, historical_repo_count: 0 },
     });
     expect(report.failures).toEqual([]);
+  });
+});
+
+describe("validateAllTimeRanks", () => {
+  const generatedAt = "2026-08-02T00:00:00.000Z";
+
+  test("fails when all-time rank values diverge from lookup current_stars", () => {
+    const report = validateAllTimeRanks({
+      allTime: {
+        meta: { window: "all", period: "all", dim: "repo", metric: "stock", generated_at: generatedAt },
+        items: [{ rank: 1, id: 1, value: 452060, prev_rank: null }],
+      },
+      allTimeOrg: {
+        meta: { window: "all", period: "all", dim: "org", metric: "stock", generated_at: generatedAt },
+        items: [{ rank: 1, login: "freeCodeCamp", value: 452060, prev_rank: null }],
+      },
+      lookup: { "1": repoLookup("freeCodeCamp/freeCodeCamp", 453333) },
+      orgLookup: { freeCodeCamp: { login: "freeCodeCamp", owner_type: "Organization", repo_count: 1, current_stars_sum: 453333 } },
+      minLookup: 1,
+    });
+    expect(report.failures).toEqual([
+      "all-time/repo: 1 item(s) differ from lookup current_stars",
+      "all-time/org: 1 item(s) differ from lookup current_stars_sum",
+    ]);
+    expect(report.invariants).toMatchObject({
+      all_time_repo_current_stars_mismatch: 1,
+      all_time_org_current_stars_mismatch: 1,
+    });
+  });
+
+  test("accepts all-time ranks written from the same snapshot as lookup", () => {
+    const report = validateAllTimeRanks({
+      allTime: {
+        meta: { window: "all", period: "all", dim: "repo", metric: "stock", generated_at: generatedAt },
+        items: [{ rank: 1, id: 1, value: 453333, prev_rank: null }],
+      },
+      allTimeOrg: {
+        meta: { window: "all", period: "all", dim: "org", metric: "stock", generated_at: generatedAt },
+        items: [{ rank: 1, login: "freeCodeCamp", value: 453333, prev_rank: null }],
+      },
+      lookup: { "1": repoLookup("freeCodeCamp/freeCodeCamp", 453333) },
+      orgLookup: { freeCodeCamp: { login: "freeCodeCamp", owner_type: "Organization", repo_count: 1, current_stars_sum: 453333 } },
+      minLookup: 1,
+    });
+    expect(report.failures).toEqual([]);
+    expect(report.invariants).toMatchObject({
+      all_time_repo_current_stars_mismatch: 0,
+      all_time_org_current_stars_mismatch: 0,
+    });
   });
 });
 

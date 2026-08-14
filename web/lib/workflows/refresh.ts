@@ -48,6 +48,7 @@ export async function refreshWorkflow(runId: string) {
     const fold = await foldCanonical(runId, fencingToken);
 
     // recompute the full view matrix into the run's versioned prefix (does not touch live).
+    // Org-entity is the last writer of lookup + all-time stock ranks (one model).
     const rank = await recomputeRank(runId, fencingToken);
     const repoEntities = await recomputeRepoEntities(runId, fencingToken);
     const orgEntities = await recomputeOrgEntities(runId, fencingToken);
