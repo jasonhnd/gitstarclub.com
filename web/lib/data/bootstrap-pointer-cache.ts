@@ -1,10 +1,5 @@
 import type { BootstrapPublicationPointer as BootstrapPointer } from "@/lib/contracts";
-import {
-  BOOTSTRAP_POINTER_CACHE_KEY,
-  BOOTSTRAP_POINTER_CACHE_TAG,
-  BOOTSTRAP_POINTER_NEGATIVE_TTL_MS,
-  BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS,
-} from "@/lib/data/publication-cache-contract";
+import { BOOTSTRAP_POINTER_NEGATIVE_TTL_MS } from "@/lib/data/publication-cache-contract";
 
 export type CachedBootstrapPointer =
   | { state: "present"; pointer: BootstrapPointer }
@@ -23,7 +18,7 @@ export function invalidateBootstrapPointerCache(): void {
   inflight = null;
 }
 
-/** Test/process helper. Does not touch the shared Next Data Cache. */
+/** Test/process helper. */
 export function resetBootstrapPointerCacheForTests(): void {
   invalidateBootstrapPointerCache();
 }
@@ -32,6 +27,10 @@ export function resetBootstrapPointerCacheForTests(): void {
  * Cross-request cache for the published bootstrap pointer.
  * Confirmed 404s are stored as `absent`. Transport/WAF/5xx errors must throw
  * from `load` so they never become a legacy-flat sentinel.
+ *
+ * This stays in-process on purpose: importing `next/cache` from the page data
+ * graph makes `next build` require `@opentelemetry/api`. Cross-isolate sharing
+ * uses the tagged fetch in `bootstrap-publication.ts`.
  */
 export async function readCachedBootstrapPointer(
   load: () => Promise<CachedBootstrapPointer>,
@@ -41,7 +40,7 @@ export async function readCachedBootstrapPointer(
   if (inflight) return inflight;
 
   const pending = (async () => {
-    const value = await loadThroughSharedCache(load);
+    const value = await load();
     memory = { value, expiresAt: Date.now() + BOOTSTRAP_POINTER_NEGATIVE_TTL_MS };
     return value;
   })();
@@ -50,28 +49,5 @@ export async function readCachedBootstrapPointer(
     return await pending;
   } finally {
     if (inflight === pending) inflight = null;
-  }
-}
-
-function sharedDataCacheEnabled(): boolean {
-  // NEXT_RUNTIME is set for live requests, not during `next build`. Using
-  // VERCEL=1 here would import next/cache into the page graph at build time.
-  return process.env.NEXT_RUNTIME === "nodejs" || process.env.NEXT_RUNTIME === "edge";
-}
-
-async function loadThroughSharedCache(
-  load: () => Promise<CachedBootstrapPointer>,
-): Promise<CachedBootstrapPointer> {
-  if (!sharedDataCacheEnabled()) return load();
-  try {
-    const nextCache = await import("next/cache");
-    if (typeof nextCache.unstable_cache !== "function") return load();
-    const cachedLoad = nextCache.unstable_cache(load, [BOOTSTRAP_POINTER_CACHE_KEY], {
-      revalidate: BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS,
-      tags: [BOOTSTRAP_POINTER_CACHE_TAG],
-    });
-    return await cachedLoad();
-  } catch {
-    return load();
   }
 }
