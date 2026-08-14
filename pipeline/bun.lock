@@ -5,33 +5,33 @@
     "": {
       "name": "gitstarclub-pipeline",
       "dependencies": {
-        "@duckdb/node-api": "1.5.3-r.2",
-        "@vercel/blob": "^2.5.0",
+        "@duckdb/node-api": "1.5.5-r.2",
+        "@vercel/blob": "^2.6.1",
       },
     },
   },
   "packages": {
-    "@duckdb/node-api": ["@duckdb/node-api@1.5.3-r.2", "", { "dependencies": { "@duckdb/node-bindings": "1.5.3-r.2" } }, "sha512-xjn6W9n8Sn9PaYmzrB6ayidNLQHpqNKdaRz4gx3yVoLUkrsIebQC1M1jV3BR8KqXj5P0RX4wLs8Tg/fK2ZQmNA=="],
+    "@duckdb/node-api": ["@duckdb/node-api@1.5.5-r.2", "", { "dependencies": { "@duckdb/node-bindings": "1.5.5-r.2" } }, "sha512-PhpjvblIQV36IlnWGOWcLCVhCBPALJ+gu2d4MR5VIveVS57Bx1Hpvoe9BZqPcMzMeqWc3sQOpcr8DoZ/hKB2PQ=="],
 
-    "@duckdb/node-bindings": ["@duckdb/node-bindings@1.5.3-r.2", "", { "dependencies": { "detect-libc": "^2.1.2" }, "optionalDependencies": { "@duckdb/node-bindings-darwin-arm64": "1.5.3-r.2", "@duckdb/node-bindings-darwin-x64": "1.5.3-r.2", "@duckdb/node-bindings-linux-arm64": "1.5.3-r.2", "@duckdb/node-bindings-linux-arm64-musl": "1.5.3-r.2", "@duckdb/node-bindings-linux-x64": "1.5.3-r.2", "@duckdb/node-bindings-linux-x64-musl": "1.5.3-r.2", "@duckdb/node-bindings-win32-arm64": "1.5.3-r.2", "@duckdb/node-bindings-win32-x64": "1.5.3-r.2" } }, "sha512-bveKx+LfqRazcH8/MuCkMsbLVQKqr/EyuYRzaKpBcEvRYenw/TqK5+1N4fkMyoTv8ZukA4UYobymNYHqJUpdOA=="],
+    "@duckdb/node-bindings": ["@duckdb/node-bindings@1.5.5-r.2", "", { "dependencies": { "detect-libc": "^2.1.2" }, "optionalDependencies": { "@duckdb/node-bindings-darwin-arm64": "1.5.5-r.2", "@duckdb/node-bindings-darwin-x64": "1.5.5-r.2", "@duckdb/node-bindings-linux-arm64": "1.5.5-r.2", "@duckdb/node-bindings-linux-arm64-musl": "1.5.5-r.2", "@duckdb/node-bindings-linux-x64": "1.5.5-r.2", "@duckdb/node-bindings-linux-x64-musl": "1.5.5-r.2", "@duckdb/node-bindings-win32-arm64": "1.5.5-r.2", "@duckdb/node-bindings-win32-x64": "1.5.5-r.2" } }, "sha512-sdLrfvfOxhFA6igCMiToaYSYaffd7D5j00ooy7Y1ACJ1PZKTVENwHV91RfECyNrlGGZItNbfqVR/yHL1jiHMcQ=="],
 
-    "@duckdb/node-bindings-darwin-arm64": ["@duckdb/node-bindings-darwin-arm64@1.5.3-r.2", "", { "os": "darwin", "cpu": "arm64" }, "sha512-5RQ3+fUZn+OvIJEfa1i/KngJHo5d6ilpjunsHfHdQy5F7r5pewDkPxRQno4xInPqGukMibKDoMdpzCKnymFJtw=="],
+    "@duckdb/node-bindings-darwin-arm64": ["@duckdb/node-bindings-darwin-arm64@1.5.5-r.2", "", { "os": "darwin", "cpu": "arm64" }, "sha512-huZfnM/awM62hpPlK7ckx0u0twW3zc00Bs0qfY8ldhjwVn+Jf764pxFdMmUujYWtMdsSZIk4FvMy8ZQijALOPg=="],
 
-    "@duckdb/node-bindings-darwin-x64": ["@duckdb/node-bindings-darwin-x64@1.5.3-r.2", "", { "os": "darwin", "cpu": "x64" }, "sha512-E7Pc+do8kj82+hHXkp4mxfw9Kqfe6V5FUT2EMoRsacbvhuoM1AeZxOj9jknh23IoNxPtn3S2tKnD1krL0v0I7A=="],
+    "@duckdb/node-bindings-darwin-x64": ["@duckdb/node-bindings-darwin-x64@1.5.5-r.2", "", { "os": "darwin", "cpu": "x64" }, "sha512-/TlqNBOqg2EbBJ2MjVDkJg6IKQHE1SkCC41cn4e5CaJVxj7re1A77W6o1V7Xa/25jftO1HxvGBlHGP15dmjMxQ=="],
 
-    "@duckdb/node-bindings-linux-arm64": ["@duckdb/node-bindings-linux-arm64@1.5.3-r.2", "", { "os": "linux", "cpu": "arm64" }, "sha512-R8RKkNgVL4kHodot1krfbB4XQ+bA90LPsnN1Lm5J03QJlFgNlezul0H2U1UuvEaKUBPWDQj8g9Yt4hhKKKX0zw=="],
+    "@duckdb/node-bindings-linux-arm64": ["@duckdb/node-bindings-linux-arm64@1.5.5-r.2", "", { "os": "linux", "cpu": "arm64" }, "sha512-hlyuOvjOShhgsTguCGv9A6M5QZf9NiFW/fmq9aZO7lhlz0P0cBVOiCca+CAhcnePrbZmzeGZ21fwiBs6T12StA=="],
 
-    "@duckdb/node-bindings-linux-arm64-musl": ["@duckdb/node-bindings-linux-arm64-musl@1.5.3-r.2", "", { "os": "linux", "cpu": "arm64" }, "sha512-P9lTyML8M6pS300fJbnMNFSBhojC0xJcvGvuR44xd//NqaHk9EwcPIs4+r2ek4LP5uugm7konVZ3VMr0BOKujw=="],
+    "@duckdb/node-bindings-linux-arm64-musl": ["@duckdb/node-bindings-linux-arm64-musl@1.5.5-r.2", "", { "os": "linux", "cpu": "arm64" }, "sha512-78lhr3GBzscZXA3iHqOIIo5+zRbtSA+lNHUBHZPLUICn0+boeGic4JP/KE3Y2MTNAe4OqG4ctfl8CX1tBArjQA=="],
 
-    "@duckdb/node-bindings-linux-x64": ["@duckdb/node-bindings-linux-x64@1.5.3-r.2", "", { "os": "linux", "cpu": "x64" }, "sha512-6vYTXgIqnWEjlNZX/AveTU7EzicuGATOdy8ncUbBIDxoC9cIrjoIqQc37COKEyT5IHjLIt25MllJtags96vvxA=="],
+    "@duckdb/node-bindings-linux-x64": ["@duckdb/node-bindings-linux-x64@1.5.5-r.2", "", { "os": "linux", "cpu": "x64" }, "sha512-e8SypIiYX3wzvB2CfEr3zTfoCOqkqt0zvcc025ukVno95W+hnH37NJOEdhC7RfSCEwgaPrkWGChhZ3x3EVZsTg=="],
 
-    "@duckdb/node-bindings-linux-x64-musl": ["@duckdb/node-bindings-linux-x64-musl@1.5.3-r.2", "", { "os": "linux", "cpu": "x64" }, "sha512-V9kPvbMoJENvPo82LOzfhZ+KilFe1K8TKrksFmHe1Sy2pduNUVnxC+T4OQuOu4sqyCCVqVYRXe3pqTzKa/hCYg=="],
+    "@duckdb/node-bindings-linux-x64-musl": ["@duckdb/node-bindings-linux-x64-musl@1.5.5-r.2", "", { "os": "linux", "cpu": "x64" }, "sha512-eKvMBSEyd3Vq4CiPGTXAb4Ww+l9XPuTR3WzXbHQMwJjEEGbnFhnHaqjtLyr3Chqg0iDWe41empP3IC7XWPBpiQ=="],
 
-    "@duckdb/node-bindings-win32-arm64": ["@duckdb/node-bindings-win32-arm64@1.5.3-r.2", "", { "os": "win32", "cpu": "arm64" }, "sha512-CjKqTI0WfRxwLgz8FV4fej/wkijPQnRgDk93aQlWQ+/+EwB9EnwQW3yfUy4Rs8cFjQkxkwlL5azoSR973l8U6w=="],
+    "@duckdb/node-bindings-win32-arm64": ["@duckdb/node-bindings-win32-arm64@1.5.5-r.2", "", { "os": "win32", "cpu": "arm64" }, "sha512-87wuGkEjc4VwcDZI09rSm6FXc8F9oHZWYE7so8p2l4qtmGCfsoLwSSlnhi9MHGefGqUBxshfJ0O9Zvg7A0//ag=="],
 
-    "@duckdb/node-bindings-win32-x64": ["@duckdb/node-bindings-win32-x64@1.5.3-r.2", "", { "os": "win32", "cpu": "x64" }, "sha512-/oxN8ZFf2LxhForL+Uc+lEqnzHNvhSEsu3blnk3zu73rKTbD/WvPYIecrenb1ysApRK9ElGxitIYFx8PBuVKxg=="],
+    "@duckdb/node-bindings-win32-x64": ["@duckdb/node-bindings-win32-x64@1.5.5-r.2", "", { "os": "win32", "cpu": "x64" }, "sha512-r5V6Q0zcv5HSHGDXsd6M+t3jakhm6S11TNH5vydKGeq8JBWj4v3ZTof/mF3R8Rly+90Z205KoI9ujblg/jN04g=="],
 
-    "@vercel/blob": ["@vercel/blob@2.5.0", "", { "dependencies": { "@vercel/oidc": "^3.6.1", "async-retry": "^1.3.3", "is-buffer": "^2.0.5", "is-node-process": "^1.2.0", "throttleit": "^2.1.0", "undici": "^6.23.0" } }, "sha512-ke6WnMMYlUu9nBFmyjwEkC2o03Ku2X7QIeJ3KtlOJzblS/8Xau209zt0ic76rd7IvV5nrKCH/BzP4MkFmoSLuw=="],
+    "@vercel/blob": ["@vercel/blob@2.6.1", "", { "dependencies": { "@vercel/oidc": "^3.6.1", "async-retry": "^1.3.3", "is-buffer": "^2.0.5", "is-node-process": "^1.2.0", "throttleit": "^2.1.0", "undici": "^6.23.0" } }, "sha512-KTJytw85j1XQBxjN5d6UXI7fIWNQe1jotn4nWN+0hePqLs+Qi1B3jHdQcSKFGF0m2rsy9uhPT6GOXMtHe3qNzg=="],
 
     "@vercel/cli-config": ["@vercel/cli-config@0.2.0", "", { "dependencies": { "xdg-app-paths": "5", "zod": "4.1.11" } }, "sha512-fJRRRB7734BDuXZ89yBEaA2ncYhH7bWX30mk04W80J6VAfQc+4iB8lyzAdaGpFV3/vNlkt9VZt+/uoQoWX6UsQ=="],
 

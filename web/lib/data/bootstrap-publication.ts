@@ -1,15 +1,23 @@
 import { BootstrapPublicationPointer, type BootstrapPublicationPointer as BootstrapPointer } from "@/lib/contracts";
+import {
+  readCachedBootstrapPointer,
+  invalidateBootstrapPointerCache,
+  type CachedBootstrapPointer,
+} from "@/lib/data/bootstrap-pointer-cache";
+import {
+  BOOTSTRAP_POINTER_CACHE_TAG,
+  BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS,
+} from "@/lib/data/publication-cache-contract";
 import { BLOB_JSON_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
 import { requireBlobBaseUrl } from "@/lib/runtime-config";
 
 export const BOOTSTRAP_POINTER_PATH = "bootstrap/latest.json";
-const BOOTSTRAP_POINTER_REVALIDATE_SECONDS = 60;
+export { invalidateBootstrapPointerCache };
+
 let pointerReadSequence = 0;
 
-// Canonical validation loads many shards concurrently. Coalesce only reads
-// which are already in flight; do not retain a process-local value after the
-// request settles. A newly committed or rolled-back pointer is therefore used
-// by the next operation, while one Promise.all wave sees one generation.
+// Authoritative reads coalesce only in-flight work so a newly committed or
+// rolled-back pointer is visible to the next operation.
 const authoritativeReads = new Map<string, Promise<BootstrapPointer | null>>();
 
 type PointerReadOptions = {
@@ -18,20 +26,27 @@ type PointerReadOptions = {
   timeoutMs?: number;
 };
 
-function pointerUrl(blobBase: string, published: boolean): string {
-  const token = published
-    ? Math.floor(Date.now() / (BOOTSTRAP_POINTER_REVALIDATE_SECONDS * 1000))
-    : `${Date.now().toString(36)}-${++pointerReadSequence}`;
-  return `${blobBase}/${BOOTSTRAP_POINTER_PATH}?v=${token}`;
+function publishedPointerUrl(blobBase: string): string {
+  return `${blobBase}/${BOOTSTRAP_POINTER_PATH}`;
 }
 
-async function fetchPointer(blobBase: string, options: PointerReadOptions): Promise<BootstrapPointer | null> {
+function authoritativePointerUrl(blobBase: string): string {
+  return `${blobBase}/${BOOTSTRAP_POINTER_PATH}?v=${Date.now().toString(36)}-${++pointerReadSequence}`;
+}
+
+async function fetchPointerFromOrigin(
+  blobBase: string,
+  options: PointerReadOptions,
+): Promise<CachedBootstrapPointer> {
   const published = options.published ?? false;
   const res = await fetchWithTimeout(
-    pointerUrl(blobBase, published),
+    published ? publishedPointerUrl(blobBase) : authoritativePointerUrl(blobBase),
     published
       ? {
-          next: { revalidate: BOOTSTRAP_POINTER_REVALIDATE_SECONDS },
+          next: {
+            revalidate: BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS,
+            tags: [BOOTSTRAP_POINTER_CACHE_TAG],
+          },
           timeoutMs: options.timeoutMs ?? BLOB_JSON_FETCH_TIMEOUT_MS,
         }
       : {
@@ -39,14 +54,21 @@ async function fetchPointer(blobBase: string, options: PointerReadOptions): Prom
           timeoutMs: options.timeoutMs ?? BLOB_JSON_FETCH_TIMEOUT_MS,
         },
   );
-  if (res.status === 404) return null; // confirmed legacy flat layout
+  if (res.status === 404) return { state: "absent" };
+  if (res.status === 403 || res.status === 429 || res.status >= 500) {
+    throw new Error(`bootstrap pointer fetch -> ${res.status}`);
+  }
   if (!res.ok) throw new Error(`bootstrap pointer fetch -> ${res.status}`);
   const pointer = BootstrapPublicationPointer.parse(await res.json());
   const expectedPrefix = `bootstrap/generations/${pointer.generation}`;
   if (pointer.prefix !== expectedPrefix) {
     throw new Error(`${BOOTSTRAP_POINTER_PATH}: prefix must equal ${expectedPrefix}`);
   }
-  return pointer;
+  return { state: "present", pointer };
+}
+
+function cachedValue(entry: CachedBootstrapPointer): BootstrapPointer | null {
+  return entry.state === "present" ? entry.pointer : null;
 }
 
 /** Read the one-file bootstrap commit point without recursing through readView. */
@@ -54,12 +76,15 @@ export async function readBootstrapPublicationPointer(
   options: PointerReadOptions = {},
 ): Promise<BootstrapPointer | null> {
   const blobBase = requireBlobBaseUrl();
-  if (options.published) return fetchPointer(blobBase, options);
+  if (options.published) {
+    const cached = await readCachedBootstrapPointer(() => fetchPointerFromOrigin(blobBase, options));
+    return cachedValue(cached);
+  }
 
   const key = `${blobBase}\0${options.timeoutMs ?? BLOB_JSON_FETCH_TIMEOUT_MS}`;
   const existing = authoritativeReads.get(key);
   if (existing) return existing;
-  const pending = fetchPointer(blobBase, options);
+  const pending = fetchPointerFromOrigin(blobBase, options).then(cachedValue);
   authoritativeReads.set(key, pending);
   try {
     return await pending;

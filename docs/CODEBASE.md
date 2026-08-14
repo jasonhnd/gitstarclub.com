@@ -193,6 +193,7 @@ SEO helpers live in:
 - `web/app/sitemap.xml/route.ts`
 - `web/app/sitemap-*.xml/route.ts`
 - `web/app/robots.ts`
+- `web/lib/robots-policy.ts`
 - route-level `opengraph-image.tsx`
 
 Changes to routes, canonical URLs, indexability, JSON-LD, OG images, or sitemap

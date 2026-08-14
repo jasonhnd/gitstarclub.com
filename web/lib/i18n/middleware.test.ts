@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { NextRequest } from "next/server";
 import { GET as setLanguage } from "../../app/api/lang/route";
-import { proxy, shouldIgnorePath } from "../../proxy";
+import { config, proxy, shouldIgnorePath } from "../../proxy";
 
 function redirectFor(path: string, headers: Record<string, string> = {}) {
   const request = new NextRequest(new URL(path, "https://gitstarclub.com"), {
@@ -90,6 +90,15 @@ describe("locale proxy redirects", () => {
     expect(shouldIgnorePath("/rankings/2026/opengraph-image")).toBe(true);
     expect(shouldIgnorePath("/_next/static/chunks/app.js")).toBe(true);
     expect(shouldIgnorePath("/api/lang")).toBe(true);
+  });
+
+  test("matcher excludes static and API traffic before the locale proxy runs", () => {
+    const source = config.matcher[0];
+    expect(source).toContain("api/");
+    expect(source).toContain("_next/");
+    expect(source).toContain("robots\\.txt");
+    expect(source).toContain("search-index");
+    expect(source).toContain("repo-curve");
   });
 });
 
