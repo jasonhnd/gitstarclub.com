@@ -3,7 +3,7 @@
 // the validate step against it. Proves io.ts + validate + the Blob path end-to-end without
 // flipping views/latest.json (nothing reads the throwaway version). Run from web/:
 //   bun run scripts/verify-recompute-live.ts
-/* eslint-disable no-console */
+
 import { loadCanonicalModel, writeVersion } from "../lib/workflows/recompute/io";
 import { computeAllViews } from "../lib/workflows/recompute";
 import { validateVersion } from "../lib/workflows/steps/validate";

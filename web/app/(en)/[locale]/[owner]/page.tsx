@@ -1,8 +1,7 @@
 import { createEnglishPage } from "@/app/_localized/page-adapter";
 import { generateRepoMetadata, RepoPageView } from "@/app/_localized/repo";
-
 export const dynamicParams = true;
-export const revalidate = 86400;
+export const revalidate = 604800;
 
 // The repo set is large and versioned. Keep this empty so repo pages are generated
 // on first request and then served through ISR instead of deploy-time SSG.

@@ -406,10 +406,11 @@ User-Agent: *
 Disallow: /
 ```
 
-When `SITE_INDEXABLE === "1"`, the response allows the site, disallows
-`/api/`, and advertises `Sitemap: <NEXT_PUBLIC_SITE_URL>/sitemap.xml` plus
-`Host: <NEXT_PUBLIC_SITE_URL>`. The route applies the same `/api/` disallow to
-the explicit crawler user agents listed in `web/app/robots.ts` and to `*`.
+When `SITE_INDEXABLE === "1"`, the response advertises
+`Sitemap: <NEXT_PUBLIC_SITE_URL>/sitemap.xml` plus
+`Host: <NEXT_PUBLIC_SITE_URL>`. Bulk/training crawlers listed in
+`web/lib/robots-policy.ts` receive `Disallow: /`. Retrieval/search crawlers
+and `*` receive `Allow: /` and `Disallow: /api/`.
 
 ### `GET /manifest.webmanifest`
 

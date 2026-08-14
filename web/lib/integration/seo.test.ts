@@ -487,8 +487,9 @@ describeProduction("production robots policy", () => {
   });
 
   test("robots.txt allows crawling and advertises the root sitemap", () => {
-    expect(robotsResponse.txt).toMatch(/^\s*Allow:\s*\/\s*$/im);
-    expect(robotsResponse.txt).not.toMatch(/^\s*Disallow:\s*\/\s*$/im);
+    expect(robotsResponse.txt).toMatch(/User-agent:\s*\*\s*[\s\S]*?Allow:\s*\//i);
+    expect(robotsResponse.txt).toMatch(/User-agent:\s*GPTBot\s*[\s\S]*?Disallow:\s*\//i);
+    expect(robotsResponse.txt).toMatch(/User-agent:\s*OAI-SearchBot\s*[\s\S]*?Allow:\s*\//i);
     expect(robotsResponse.txt).toMatch(new RegExp(`^\\s*Sitemap:\\s*${CANON_ORIGIN.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\/sitemap\\.xml\\s*$`, "im"));
   });
 });

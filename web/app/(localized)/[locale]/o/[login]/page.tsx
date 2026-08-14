@@ -1,8 +1,7 @@
 import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import { generateOrgMetadata, OrgPageView } from "@/app/_localized/org";
-
 export const dynamicParams = true;
-export const revalidate = 86400;
+export const revalidate = 604800;
 
 // Do not prebuild the org x locale cross-product. Localized org pages are
 // generated on demand and then refreshed by targeted invalidation.

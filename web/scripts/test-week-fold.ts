@@ -5,7 +5,7 @@
 //   (c) contiguity + the frozen-month boundary (W31 ends Aug 2 → excluded while M=2026-07), and a
 //       zero-flow week (W30) is still emitted so the watermark stays gap-free.
 //   bun run scripts/test-week-fold.ts
-/* eslint-disable no-console */
+
 import type { PendingPeriod } from "../lib/contracts";
 import { computeWeekRows } from "../lib/workflows/steps/fold";
 import { sundayOfWeekId, weekIdOf } from "../lib/workflows/steps/week-dates";

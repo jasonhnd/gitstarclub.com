@@ -381,6 +381,7 @@ describe("canonical shards", () => {
 
   test("ReposShardEntry rejects missing required full_name", () => {
     const { full_name, ...missing } = validEntry;
+    void full_name;
     expect(rejects(ReposShardEntry, missing)).toBe(true);
   });
 
@@ -452,6 +453,7 @@ describe("canonical shards", () => {
     const w = { id: 1, node_id: "n", full_name: "a/b", owner: "a", name: "b", stars: 12000 };
     expect(WhitelistEntry.parse(w).stars).toBe(12000);
     const { stars, ...bad } = w;
+    void stars;
     expect(rejects(WhitelistEntry, bad)).toBe(true);
   });
 
@@ -716,6 +718,7 @@ describe("entity / view contracts", () => {
 
   test("RepoEntity rejects missing required milestones", () => {
     const { milestones, ...bad } = repoEntity;
+    void milestones;
     expect(rejects(RepoEntity, bad)).toBe(true);
   });
 
@@ -881,6 +884,7 @@ describe("search contracts", () => {
 
   test("SearchDoc rejects missing full_name", () => {
     const { full_name, ...bad } = doc;
+    void full_name;
     expect(rejects(SearchDoc, bad)).toBe(true);
   });
 

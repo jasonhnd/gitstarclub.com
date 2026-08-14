@@ -142,3 +142,11 @@ function matchLocaleTag(tag: string): Locale | null {
 function redirect(request: NextRequest, path: string, status: 307 | 308) {
   return NextResponse.redirect(new URL(path, request.url), status);
 }
+
+// Compile-time constant so Next can skip static/API/asset traffic before
+// invoking locale proxy. Document navigations still match.
+export const config = {
+  matcher: [
+    "/((?!_next/|api/|\\.well-known/|data/|search-index|repo-curve|favicon|icon-|apple-touch-icon|robots\\.txt|sitemap|manifest\\.webmanifest|sw\\.js|llms\\.txt|og\\.png|.*\\.(?:png|ico|svg|txt|webmanifest|js|xml)$).*)",
+  ],
+};
