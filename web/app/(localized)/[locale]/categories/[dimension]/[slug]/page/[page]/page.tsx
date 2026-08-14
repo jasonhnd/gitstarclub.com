@@ -8,10 +8,8 @@ import {
 import { categoryPath } from "@/app/categories/category-page-data";
 import { localizedPath } from "@/lib/i18n/routing";
 import { parsePositivePage } from "@/lib/pagination";
-import { LONG_TAIL_REVALIDATE_SECONDS } from "@/lib/data/publication-cache-contract";
-
 export const dynamicParams = true;
-export const revalidate = LONG_TAIL_REVALIDATE_SECONDS;
+export const revalidate = 604800;
 
 export async function generateStaticParams() {
   return generateLocalizedCategoryDetailPageStaticParams();

@@ -1,9 +1,7 @@
 import { createLocalizedPage } from "@/app/_localized/page-adapter";
 import { generateOrgMetadata, OrgPageView } from "@/app/_localized/org";
-import { LONG_TAIL_REVALIDATE_SECONDS } from "@/lib/data/publication-cache-contract";
-
 export const dynamicParams = true;
-export const revalidate = LONG_TAIL_REVALIDATE_SECONDS;
+export const revalidate = 604800;
 
 // Do not prebuild the org x locale cross-product. Localized org pages are
 // generated on demand and then refreshed by targeted invalidation.
