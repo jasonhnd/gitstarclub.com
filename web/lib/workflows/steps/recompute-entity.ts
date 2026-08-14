@@ -1,5 +1,5 @@
 import { loadCanonicalModel, writeVersion } from "../recompute/io";
-import { computeOrgWindow, computeRepoWindow, lookups, orgEntities, repoEntities, searchIndex } from "../recompute";
+import { computeOrgWindow, computeRepoWindow, computePublishedStockViews, orgEntities, repoEntities, searchIndex } from "../recompute";
 
 // Steps 7a/7b — entity recompute. Both need the global month window: a repo's
 // monthly_table.rank / rank_history is its cross-repo flow rank, so entity/repo is NOT
@@ -20,8 +20,15 @@ export async function recomputeOrgEntities(runId: string, fencingToken: number):
   const { model } = await loadCanonicalModel(runId);
   const monthWin = computeRepoWindow(model, "month");
   const monthOrg = computeOrgWindow(model, monthWin, { activeOnly: true });
+  const generatedAt = new Date().toISOString();
   const { views, anchorDrift } = orgEntities(model, monthOrg);
-  const merged = new Map<string, unknown>([...views, ...lookups(model), ...searchIndex(model, new Date().toISOString())]);
+  // Last writer of lookup + all-time ranks must share this model. Rank step
+  // also emits all-time files; this overwrite is what validate reads.
+  const merged = new Map<string, unknown>([
+    ...views,
+    ...computePublishedStockViews(model, generatedAt),
+    ...searchIndex(model, generatedAt),
+  ]);
   const files = await writeVersion(runId, merged, { runId, fencingToken });
   return { files, anchorDrift };
 }
