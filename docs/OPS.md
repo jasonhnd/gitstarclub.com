@@ -139,7 +139,6 @@ an explicit recovery procedure.
 |---|---|---|
 | `VERCEL_ENV` | Vercel 注入 | 区分 Production / Preview / Development 行为 |
 | `VERCEL_URL` | Vercel 注入 | `/.well-known/deployment` 返回当前不可变 deployment URL |
-| `NEXT_RUNTIME` | Next.js 注入 | `nodejs` / `edge`; enables the shared bootstrap pointer Data Cache |
 | `VERCEL_GIT_COMMIT_SHA` | Vercel 注入 | `/.well-known/deployment` 返回当前部署 commit |
 | `NODE_ENV` | runtime/tooling | Next.js 与测试的标准运行模式 |
 | `CI` | CI | 启用 CI 专用超时、输出与安全门禁 |
