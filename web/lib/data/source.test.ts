@@ -8,6 +8,7 @@ import {
 } from "./source";
 import { PUBLISHED_VIEWS_CACHE_TAG } from "./publication-cache-contract";
 import { resolveCanonicalBlobPath } from "./bootstrap-publication";
+import { resetBootstrapPointerCacheForTests } from "./bootstrap-pointer-cache";
 
 // Route a mocked global fetch by URL to simulate pointer + view fetches.
 // Date.now() is driven forward past the 1h TTL between scenarios to invalidate
@@ -98,6 +99,7 @@ beforeEach(() => {
   routes = {};
   fetchCalls = [];
   fetchInits = [];
+  resetBootstrapPointerCacheForTests();
   process.env.BLOB_BASE_URL = BLOB;
   delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   advancePastTtl(); // ensure each test starts with an expired version memo
@@ -191,6 +193,21 @@ describe("readView — base:true version-prefix resolution", () => {
     expect(fetchCalls.some((u) => /\/views\/[^/]+\/rank\//.test(u))).toBe(false);
     const pointerCall = fetchCalls.findIndex((u) => u.includes("/views/latest.json"));
     expect(fetchInits[pointerCall]?.next?.tags).toContain(PUBLISHED_VIEWS_CACHE_TAG);
+  });
+
+  test("coalesces 100 concurrent base reads to one bootstrap pointer fetch in a 404 window", async () => {
+    routes = {
+      "/views/latest.json": { status: 404 },
+      "/rank/all-time/repo/stock.json": { json: { ok: true, tag: "flat" } },
+    };
+
+    const results = await Promise.all(
+      Array.from({ length: 100 }, () => readView("rank/all-time/repo/stock.json", Doc, { base: true })),
+    );
+
+    expect(results.every((value) => value?.tag === "flat")).toBe(true);
+    expect(fetchCalls.filter((url) => url.includes("/bootstrap/latest.json"))).toHaveLength(1);
+    expect(fetchCalls.filter((url) => url.includes("/views/latest.json")).length).toBeGreaterThan(0);
   });
 
   test("uses the atomically published bootstrap generation when managed views are absent", async () => {

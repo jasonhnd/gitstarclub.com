@@ -588,7 +588,16 @@ GEO implementation should make the policy explicit:
 
 ```txt
 User-agent: GPTBot
-Allow: /
+Disallow: /
+
+User-agent: GoogleOther
+Disallow: /
+
+User-agent: meta-externalagent
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
 
 User-agent: OAI-SearchBot
 Allow: /
@@ -620,9 +629,6 @@ Allow: /
 User-agent: Bingbot
 Allow: /
 
-User-agent: CCBot
-Allow: /
-
 User-agent: *
 Allow: /
 Disallow: /api/
@@ -634,7 +640,7 @@ Policy notes:
 
 - Retrieval/user-action crawlers (`OAI-SearchBot`, `ChatGPT-User`, `Perplexity-User`, `Claude-SearchBot`) directly support cited answers and should be allowed.
 - Search crawlers (`Bingbot`, Google crawlers) remain essential because answer engines often retrieve from classic indexes.
-- Training crawlers (`GPTBot`, `Google-Extended`, `Applebot-Extended`, `CCBot`, and similar) are a product/legal policy choice. The recommended default for GitStarClub is to allow them while the project is in growth mode because the published HTML is derived from public GitHub/GH Archive data and the citation benefit outweighs the moat loss. If bandwidth abuse or rights constraints appear, change this through a documented issue.
+- Training and bulk crawlers (`GPTBot`, `CCBot`, `GoogleOther`, `meta-externalagent`, Ahrefs/Amazon/Petal and similar) are blocked after the 2026-08 Vercel cost spike, where bot traffic was about 93% of incoming requests. Retrieval/user-action agents stay allowed. Revisit the block list only with a measured cost and citation review.
 - `robots.txt` is a crawler-traffic convention, not a security boundary; `/api/` disallow does not protect private data and must not be treated as access control.
 
 ### 8.2 Bing Webmaster Tools and IndexNow
