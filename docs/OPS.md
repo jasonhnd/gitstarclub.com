@@ -137,7 +137,6 @@ an explicit recovery procedure.
 
 | 变量 | 范围 | 用途 |
 |---|---|---|
-| `VERCEL` | Vercel 注入 | `1` on Vercel; enables the shared Next Data Cache for bootstrap pointer 404s |
 | `VERCEL_ENV` | Vercel 注入 | 区分 Production / Preview / Development 行为 |
 | `VERCEL_URL` | Vercel 注入 | `/.well-known/deployment` 返回当前不可变 deployment URL |
 | `NEXT_RUNTIME` | Next.js 注入 | `nodejs` / `edge`; enables the shared bootstrap pointer Data Cache |
