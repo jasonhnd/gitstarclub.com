@@ -17,6 +17,7 @@ const ko: Dict = {
     notAvailable: "사용 불가",
     status: "상태",
     latestAvailable: "최신 사용 가능: {period}",
+    periodAsOf: "{period} · {asOf} 기준",
   },
   a11y: {
     primary: "기본",
@@ -35,9 +36,9 @@ const ko: Dict = {
   },
   meta: {
     homeTitle: "오픈소스 펄스와 GitHub 스타 히스토리",
-    homeDescription: "이번 주, 이번 달, 올해 가장 빠르게 상승한 GitHub 프로젝트와 역대 스타 순위를 확인하세요.",
+    homeDescription: "GitStarClub 사전 계산 데이터에서 사용 가능한 최신 주간·월간·연간 상승과 역대 스타 순위를 확인하세요.",
     pulseTitle: "오픈소스 펄스와 GitHub 스타 히스토리",
-    pulseDescription: "이번 주, 이번 달, 올해 가장 빠르게 상승한 GitHub 프로젝트와 역대 스타 순위를 확인하세요.",
+    pulseDescription: "GitStarClub 사전 계산 데이터에서 사용 가능한 최신 주간·월간·연간 상승과 역대 스타 순위를 확인하세요.",
     rankingsTitle: "역대 GitHub 스타 순위 — 최다 스타 저장소와 조직",
     rankingsDescriptionPrefix: "역대 가장 많은 스타를 받은 GitHub 저장소와 조직입니다. ",
     rankingsDescriptionSuffix: "년 동안의 총 스타 기준 Top 100입니다.",
@@ -173,7 +174,7 @@ const ko: Dict = {
     gained: "추적 저장소가 획득한 스타 수",
     narrative: "이번 달 이야기",
   },
-  week: { label: "주", top: "이번 주 상위 저장소" },
+  week: { label: "주", top: "주간 상위 저장소" },
   repo: {
     starHistory: "스타 히스토리",
     metaTitleSuffix: "스타 히스토리와 타임라인",
@@ -353,8 +354,8 @@ const ko: Dict = {
   },
   pulse: {
     title: "오픈소스 펄스",
-    subtitle: "추적 중인 오픈소스 저장소에서 이번 주, 이번 달, 올해 무엇이 변하고 있는지 보여줍니다.",
-    surging: "이번 달 상승",
+    subtitle: "GitStarClub 사전 계산 순위에서 사용 가능한 최신 주간·월간·연간 상승을 보여줍니다.",
+    surging: "월간 상위 저장소",
     onThisDay: "오늘의 기록",
     crossed: "돌파",
     open: "열기",

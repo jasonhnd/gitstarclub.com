@@ -15,11 +15,12 @@ import { getAllTime, getCategoryAssignments, getCategoryRegistry, getHotSnapshot
 import { rankingCategoryExits } from "@/lib/ranking-category-exits";
 import { RankingCategoryExits } from "./ranking-category-exits";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
-import { formatInteger, fmtStars, monthYearLabel } from "@/lib/format";
+import { formatInteger, fmtStars } from "@/lib/format";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine, itemListLd } from "@/lib/jsonld";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
+import { availablePeriodLabel, isFallbackMonthPeriod, isFallbackWeekPeriod } from "@/lib/rank-period-labels";
 import { pageMeta } from "@/lib/seo";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { answerCapsuleLabels } from "./detail-copy";
@@ -285,39 +286,27 @@ function periodSwitcherLinks(
   locale: Locale,
   t: Dict,
 ): Record<"all-time" | "year" | "month" | "week", PeriodSwitcherTarget> {
+  const labelCopy = { fullHistory: t.rankings.fullHistory };
   return {
     "all-time": { href: href(periods.allTime.href), label: t.rankings.allTime, value: t.rankings.fullHistory },
-    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, t, periods.yearLink) },
+    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, periods.yearLink, labelCopy) },
     month: {
       href: href(periods.month.href),
       label: t.month.label,
-      value: availablePeriodLabel(locale, t, periods.month),
-      badge: monthAvailabilityBadge(periods.month, calendar, locale, t),
+      value: availablePeriodLabel(locale, periods.month, labelCopy),
+      badge: isFallbackMonthPeriod(periods.month, calendar)
+        ? fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, periods.month, labelCopy) })
+        : undefined,
     },
     week: {
       href: href(periods.week.href),
       label: t.week.label,
-      value: availablePeriodLabel(locale, t, periods.week),
-      badge: weekAvailabilityBadge(periods.week, calendar, locale, t),
+      value: availablePeriodLabel(locale, periods.week, labelCopy),
+      badge: isFallbackWeekPeriod(periods.week, calendar)
+        ? fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, periods.week, labelCopy) })
+        : undefined,
     },
   };
-}
-
-function monthAvailabilityBadge(period: AvailableRankPeriods["month"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
-  if (period.kind !== "month") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-  return period.year === calendar.year && period.month === calendar.month ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-}
-
-function weekAvailabilityBadge(period: AvailableRankPeriods["week"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
-  if (period.kind !== "week") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-  return period.year === calendar.week.year && period.week === calendar.week.week ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-}
-
-function availablePeriodLabel(locale: Locale, t: Dict, period: AvailableRankPeriods["month"] | AvailableRankPeriods["week"] | AvailableRankPeriods["yearLink"]): string {
-  if (period.kind === "month") return monthYearLabel(locale, period.year, period.month);
-  if (period.kind === "week") return period.period;
-  if (period.kind === "year") return String(period.year);
-  return t.rankings.fullHistory;
 }
 
 function fill(template: string, values: Record<string, string>): string {
