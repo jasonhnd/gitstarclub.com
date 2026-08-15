@@ -742,10 +742,12 @@ Dataset enrichment details, including future `DataDownload` `distribution` entri
 年度页 /rankings/YYYY
  ├─ 12 个月份格子 ─────────────────────→ 月度页 /rankings/YYYY/MM （1 跳到任意月）
  ├─ 年度 TOP 行（repo 名）──────────────→ repo 详情页 /:owner/:name
+ ├─ 领先行公开分类 ─────────────────────→ /categories/{dimension}/{slug}（registry public）
  └─ Complete ranking 锚点 ─────────────→ 同页完整榜单
 
 月度页 /rankings/YYYY/MM
  ├─ 三大榜单每行 repo 名 ───────────────→ repo 详情页 /:owner/:name
+ ├─ 领先行公开分类 ─────────────────────→ /categories/{dimension}/{slug}（registry public）
  └─ Complete ranking 锚点 ─────────────→ 同页完整 flow 榜单
 
 repo 详情页 /:owner/:name

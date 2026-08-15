@@ -22,7 +22,9 @@ import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { buildNarrative } from "@/lib/narrative";
 import { FIRST_YEAR } from "@/lib/periods";
 import { dateLabel, fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
-import { getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
+import { getCategoryAssignments, getCategoryRegistry, getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
+import { rankingCategoryExits } from "@/lib/ranking-category-exits";
+import { RankingCategoryExits } from "./ranking-category-exits";
 import { resolveAdjacentRankPeriod, resolveAdjacentRankYear, resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
 import { pageMeta } from "@/lib/seo";
 import { buildWeeklyMoversSnippet } from "@/lib/shareable-snippets";
@@ -103,12 +105,14 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
   const availablePeriods = await resolveAvailableRankPeriods(now);
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > availablePeriods.year) notFound();
 
-  const [rank, growth, newc, heat, lookup] = await Promise.all([
+  const [rank, growth, newc, heat, lookup, registry, assignments] = await Promise.all([
     getRank("year", String(year), "repo", "flow"),
     getRank("year", String(year), "repo", "growth"),
     getRank("year", String(year), "repo", "new"),
     getHeatmap("year", String(year)),
     getReposLookup(),
+    getCategoryRegistry(),
+    getCategoryAssignments(),
   ]);
   if (!rank || !lookup) notFound();
 
@@ -118,6 +122,7 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
   const title = fill(text.yearMetaTitle, { year });
   const rankRows = toGainedRows(rank.items.slice(0, RANKING_DETAIL_ROW_LIMIT), lookup);
   const most = rankRows.slice(0, PRIMARY_PANEL_LIMIT);
+  const categoryLinks = rankingCategoryExits(joinRepoRank(rank.items.slice(0, PRIMARY_PANEL_LIMIT), lookup), registry, assignments);
   const fastest = toGrowthRows(growth?.items.slice(0, SECONDARY_PANEL_LIMIT) ?? [], lookup);
   const newcomers = toNewcomerRows(newc?.items.slice(0, SECONDARY_PANEL_LIMIT) ?? [], lookup, locale);
   const movementCandidates = (heat?.cells ?? []).map(([period, total]) => {
@@ -208,12 +213,14 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
         />
 
         <PeriodNavigation title={t.rankings.periodNavigation} previous={previous} next={next} />
+        <RankingCategoryExits locale={locale} links={categoryLinks} t={t} />
         <RelatedPages
           title={t.rankings.relatedTitle}
           description={t.rankings.relatedDescription}
           items={[
             relatedItem(href("/rankings"), t.rankings.title),
             relatedItem(href("/pulse"), t.nav.pulse),
+            ...categoryLinks.slice(0, 3).map((category) => relatedItem(href(category.href), category.label)),
           ]}
         />
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
@@ -244,12 +251,14 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = `${year}-${String(month).padStart(2, "0")}`;
-  const [flow, growth, newc, heat, lookup] = await Promise.all([
+  const [flow, growth, newc, heat, lookup, registry, assignments] = await Promise.all([
     getRank("month", period, "repo", "flow"),
     getRank("month", period, "repo", "growth"),
     getRank("month", period, "repo", "new"),
     getHeatmap("month", period),
     getReposLookup(),
+    getCategoryRegistry(),
+    getCategoryAssignments(),
   ]);
   if (!flow || !lookup) notFound();
 
@@ -260,6 +269,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const href = (path: string) => localizedPath(locale, path);
   const flowRows = toGainedRows(flow.items.slice(0, RANKING_DETAIL_ROW_LIMIT), lookup);
   const most = flowRows.slice(0, PRIMARY_PANEL_LIMIT);
+  const categoryLinks = rankingCategoryExits(joinRepoRank(flow.items.slice(0, PRIMARY_PANEL_LIMIT), lookup), registry, assignments);
   const fastest = toGrowthRows(growth?.items.slice(0, SECONDARY_PANEL_LIMIT) ?? [], lookup);
   const newcomers = toNewcomerRows(newc?.items.slice(0, SECONDARY_PANEL_LIMIT) ?? [], lookup, locale);
   const movementCells = (heat?.cells ?? []).map(([date, total]) => ({ label: String(Number(String(date).slice(8, 10))), gained: total }));
@@ -365,6 +375,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
         />
 
         <PeriodNavigation title={t.rankings.periodNavigation} previous={monthNav.previous} next={monthNav.next} />
+        <RankingCategoryExits locale={locale} links={categoryLinks} t={t} />
         <RelatedPages
           title={t.rankings.relatedTitle}
           description={t.rankings.relatedDescription}
@@ -372,6 +383,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
             relatedItem(href(`/rankings/${year}`), String(year)),
             relatedItem(href("/rankings"), t.rankings.title),
             relatedItem(href("/pulse"), t.nav.pulse),
+            ...categoryLinks.slice(0, 3).map((category) => relatedItem(href(category.href), category.label)),
           ]}
         />
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
@@ -385,7 +397,12 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = isoWeekLabel(year, week);
-  const [flow, lookup] = await Promise.all([getRank("week", period, "repo", "flow"), getReposLookup()]);
+  const [flow, lookup, registry, assignments] = await Promise.all([
+    getRank("week", period, "repo", "flow"),
+    getReposLookup(),
+    getCategoryRegistry(),
+    getCategoryAssignments(),
+  ]);
   if (!flow || !lookup) notFound();
 
   const pagePath = `/rankings/${year}/W${String(week).padStart(2, "0")}`;
@@ -393,6 +410,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const href = (path: string) => localizedPath(locale, path);
   const rankRows = toGainedRows(flow.items.slice(0, RANKING_DETAIL_ROW_LIMIT), lookup);
   const most = rankRows.slice(0, PRIMARY_PANEL_LIMIT);
+  const categoryLinks = rankingCategoryExits(joinRepoRank(flow.items.slice(0, PRIMARY_PANEL_LIMIT), lookup), registry, assignments);
   const title = fill(text.periodMetaTitle, { label: period });
   const asOf = resolveDataAsOfLabel(flow.meta.generated_at, { locale });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: rankRows, metric: "gained" }) : null;
@@ -477,6 +495,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
           emptyMessage={t.categories.rankingPending}
         />
         <PeriodNavigation title={t.rankings.periodNavigation} previous={weekNav.previous} next={weekNav.next} />
+        <RankingCategoryExits locale={locale} links={categoryLinks} t={t} />
         <RelatedPages
           title={t.rankings.relatedTitle}
           description={t.rankings.relatedDescription}
@@ -484,6 +503,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
             relatedItem(href(`/rankings/${year}`), String(year)),
             relatedItem(href("/rankings"), t.rankings.title),
             relatedItem(href("/pulse"), t.nav.pulse),
+            ...categoryLinks.slice(0, 3).map((category) => relatedItem(href(category.href), category.label)),
           ]}
         />
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />

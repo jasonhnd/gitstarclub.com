@@ -339,7 +339,10 @@ const es: Dict = {
     dailyMovement: "Movimiento diario",
     periodNavigation: "Navegación por periodos",
     relatedTitle: "Enlaces de ranking relacionados",
-    relatedDescription: "Archivos permanentes y vistas de actividad actual vinculados a este periodo de ranking.",
+    relatedDescription: "Archivos permanentes, páginas de categorías públicas y vistas de actividad actual vinculados a este periodo de ranking.",
+    categoryExitsTitle: "Categorías públicas entre los líderes",
+    categoryExits:
+      "Cortes públicos precomputados del conjunto rastreado ≥10k que aparecen entre las filas líderes de este tablero. Son páginas de categoría, no una búsqueda en vivo de GitHub.",
     visibleRows: "Filas visibles",
     noMovement: "Los datos de movimiento esperan la próxima recomputación publicada.",
     noGrowth: "Los datos de tasa de crecimiento esperan la próxima recomputación publicada.",

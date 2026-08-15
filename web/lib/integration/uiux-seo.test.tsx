@@ -470,6 +470,13 @@ describe("Phase 7 UI/UX internal-link anchors", () => {
     expect(expectAnchors(htmlFor("ranking year")).some((href) => /^\/rankings\/2024\/\d+$/.test(href))).toBe(true);
   });
 
+  test("all-time and period rankings link to a public category", () => {
+    expect(expectAnchors(htmlFor("rankings"))).toContain(`/categories/${CATEGORY_DIMENSION}/${CATEGORY_SLUG}`);
+    expect(expectAnchors(htmlFor("ranking year"))).toContain(`/categories/${CATEGORY_DIMENSION}/${CATEGORY_SLUG}`);
+    expect(expectAnchors(htmlFor("ranking month"))).toContain(`/categories/${CATEGORY_DIMENSION}/${CATEGORY_SLUG}`);
+    expect(normalizedText(htmlFor("rankings")).toLowerCase()).not.toContain("filter github");
+  });
+
   test("category detail links to a repository with a real anchor", () => {
     expect(expectAnchors(htmlFor("category detail"))).toContain(`/${REPO_FULL_NAME}`);
   });
