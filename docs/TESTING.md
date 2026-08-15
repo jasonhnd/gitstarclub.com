@@ -65,6 +65,7 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | Repo hub (#356 / #363) | Owner, public category, compare, non-all-time ranking period, bounded related repos | `web/lib/repo-page.test.ts`, `web/lib/repo-hub-contract.test.tsx` (fails if a #356 link type disappears from `RepoPageView`) | Manual Preview of `/{owner}/{name}` |
 | Repo milestone → month (#364) | Frozen `crossed_*` dates link `/rankings/{year}/{month}` only when the UTC month is a valid ranking route | `rankingMonthHrefIfRoutable` in `web/lib/repo-page.test.ts`, `web/lib/repo-milestones.test.ts` | Manual Preview of a pre-2015 10k crossing |
 | Org hub (#356 / #366) | Public categories from members, compare of top members, ranking month only if `rank_history` exists | `web/lib/org-page.test.ts`, `web/lib/org-hub-contract.test.tsx` | Manual Preview of `/o/{login}` |
+| Related-repo empty / fallback (#367) | Owner-first, language fallback explained, inactive excluded, empty dashed-box copy in all locales | `web/lib/repo-page.test.ts`, `web/lib/repo-related-empty.test.tsx` | Manual Preview of a solo-owner repo |
 
 本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。
 

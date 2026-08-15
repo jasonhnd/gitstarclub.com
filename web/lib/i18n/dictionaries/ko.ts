@@ -201,6 +201,10 @@ const ko: Dict = {
     languages: "언어",
     relatedPages: "관련 페이지 탐색",
     relatedRepositories: "관련 저장소",
+    relatedByOwner: "같은 소유자의 다른 활성 추적 저장소이며, 현재 스타 수 순입니다.",
+    relatedByLanguage: "이 소유자의 다른 추적 저장소가 없습니다. 이미 추적 중인 가장 큰 활성 {language} 저장소입니다.",
+    relatedByOwnerAndLanguage: "같은 소유자의 활성 추적 저장소 다음에, 현재 스타 수 기준으로 가장 큰 활성 {language} 피어를 보여 줍니다.",
+    relatedEmpty: "이 소유자나 주 언어를 공유하는 다른 활성 추적 저장소가 없습니다.",
     capsuleLatest: "{month}에 {stars} 스타",
     capsuleLatestFallback: "최신 사전 계산 월간 행",
     capsule:

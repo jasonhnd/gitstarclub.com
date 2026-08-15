@@ -22,6 +22,8 @@ describe("locale dictionary contract", () => {
     for (const locale of ["ja", "zh", "zh-TW", "ko", "es", "fr"] as const) {
       const dictionary = dictionaries[locale];
       expect(dictionary.repo.profileEyebrow, `${locale}.repo.profileEyebrow`).not.toBe(en.repo.profileEyebrow);
+      expect(dictionary.repo.relatedEmpty, `${locale}.repo.relatedEmpty`).not.toBe(en.repo.relatedEmpty);
+      expect(dictionary.repo.relatedByLanguage, `${locale}.repo.relatedByLanguage`).not.toBe(en.repo.relatedByLanguage);
       expect(dictionary.org.aggregateTrackedStars, `${locale}.org.aggregateTrackedStars`).not.toBe(en.org.aggregateTrackedStars);
       expect(dictionary.org.compareMembers, `${locale}.org.compareMembers`).not.toBe(en.org.compareMembers);
       expect(dictionary.org.categoryTags, `${locale}.org.categoryTags`).not.toBe(en.org.categoryTags);

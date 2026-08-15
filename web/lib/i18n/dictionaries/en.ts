@@ -239,6 +239,12 @@ export const en = {
     languages: "Languages",
     relatedPages: "Explore related pages",
     relatedRepositories: "Related repositories",
+    relatedByOwner: "Other active tracked repositories from the same owner, ordered by current stars.",
+    relatedByLanguage:
+      "No other tracked repositories from this owner are in the active set. These are the largest active {language} repositories GitStarClub already tracks.",
+    relatedByOwnerAndLanguage:
+      "Other active tracked repositories from the same owner, then the largest active {language} peers, ordered by current stars.",
+    relatedEmpty: "No other active tracked repositories share this owner or primary language.",
     capsuleLatest: "{month} with {stars} stars",
     capsuleLatestFallback: "its latest precomputed monthly row",
     capsule:
