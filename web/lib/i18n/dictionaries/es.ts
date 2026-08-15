@@ -292,7 +292,9 @@ const es: Dict = {
     recentMovement: "Movimiento reciente",
     recentMovementDescription: "Últimos cambios netos diarios de estrellas en la curva de la organización.",
     relatedTitle: "Enlaces de organización relacionados",
-    relatedDescription: "Rankings permanentes y páginas de repositorios monitoreados vinculados a este propietario.",
+    relatedDescription: "Rankings permanentes, categorías públicas y páginas de repositorios monitoreados vinculados a este propietario.",
+    compareMembers: "Comparar repositorios principales",
+    categoryTags: "Categorías públicas",
     noTrackedRepos: "Las filas de repositorios monitoreados esperan el próximo lookup publicado.",
   },
   categories: {

@@ -290,7 +290,9 @@ const zh: Dict = {
     recentMovement: "近期变化",
     recentMovementDescription: "组织曲线中最新的每日净星标变化。",
     relatedTitle: "相关组织链接",
-    relatedDescription: "与此所有者相关的永久排名和已追踪仓库页面。",
+    relatedDescription: "与此所有者相关的永久排名、公开分类和已追踪仓库页面。",
+    compareMembers: "对比热门仓库",
+    categoryTags: "公开分类",
     noTrackedRepos: "已追踪仓库行正在等待下一次发布的 lookup。",
   },
   categories: {
