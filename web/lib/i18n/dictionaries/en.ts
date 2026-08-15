@@ -17,6 +17,7 @@ export const en = {
     notAvailable: "Unavailable",
     status: "Status",
     latestAvailable: "Latest available: {period}",
+    periodAsOf: "{period} · as of {asOf}",
   },
   a11y: {
     primary: "Primary",
@@ -36,10 +37,10 @@ export const en = {
   meta: {
     homeTitle: "Open Source Pulse & GitHub Star History",
     homeDescription:
-      "See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.",
+      "See open-source momentum from GitStarClub's precomputed data: the latest available weekly, monthly, and yearly movers, plus all-time star rankings.",
     pulseTitle: "Open Source Pulse & GitHub Star History",
     pulseDescription:
-      "See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.",
+      "See open-source momentum from GitStarClub's precomputed data: the latest available weekly, monthly, and yearly movers, plus all-time star rankings.",
     rankingsTitle: "All-Time GitHub Star Rankings — Most-Starred Repos & Orgs",
     rankingsDescriptionPrefix: "The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across ",
     rankingsDescriptionSuffix: " years.",
@@ -210,7 +211,7 @@ export const en = {
     gained: "Tracked repositories added",
     narrative: "This month",
   },
-  week: { label: "Week", top: "Top repositories this week" },
+  week: { label: "Week", top: "Top weekly repositories" },
   repo: {
     starHistory: "Star history",
     metaTitleSuffix: "Star History & Timeline",
@@ -407,8 +408,8 @@ export const en = {
   },
   pulse: {
     title: "Open-source activity",
-    subtitle: "What is changing this week, this month, and this year across tracked open-source repositories.",
-    surging: "Rising this month",
+    subtitle: "Latest available weekly, monthly, and yearly movers across tracked open-source repositories from GitStarClub's precomputed rankings.",
+    surging: "Top monthly repositories",
     onThisDay: "On this day",
     crossed: "crossed",
     open: "Open",
