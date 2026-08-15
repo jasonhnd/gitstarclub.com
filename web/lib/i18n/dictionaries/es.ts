@@ -413,6 +413,7 @@ const es: Dict = {
     loading: "Cargando…",
     error: "No se pudo cargar la búsqueda.",
     retry: "Reintentar",
+    historical: "Histórico",
   },
   share: {
     label: "Compartir",
