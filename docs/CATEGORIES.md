@@ -1,7 +1,7 @@
 ---
 owner: categories
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-08-16
 source_of_truth_for:
   - category taxonomy
   - deterministic classification rules
@@ -26,6 +26,8 @@ architecture:
 
 - Use deterministic rules and precomputed JSON artifacts.
 - Use the current tracked whitelist as input.
+- Thin category pages (few assigned repos) must say they are a rule slice of
+  that whitelist, not a complete GitHub language or topic catalog.
 - Avoid request-time database queries.
 - Avoid arbitrary multi-filter combinations until the analytical data layer is
   designed.

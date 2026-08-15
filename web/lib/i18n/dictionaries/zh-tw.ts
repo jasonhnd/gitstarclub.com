@@ -317,6 +317,8 @@ const zhTw: Dict = {
     allTimeStars: "歷史總星標",
     rankingPending: "排名資料正在等待下一次已發布的重算結果。",
     relatedCategories: "相關分類",
+    scopeNote: "GitStarClub 分類是對 ≥10,000 星白名單的確定性規則切片，不是 GitHub 上該語言或主題的完整目錄。",
+    thinSliceNotice: "只有 {count} 個已追蹤倉庫符合此 {label} 規則。這是白名單切片的規模，不是 GitHub 上 {label} 的規模。",
   },
   rankings: {
     title: "歷史總榜",

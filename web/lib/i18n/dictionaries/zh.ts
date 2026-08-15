@@ -317,6 +317,8 @@ const zh: Dict = {
     allTimeStars: "历史总星标",
     rankingPending: "排名数据正在等待下一次已发布的重算结果。",
     relatedCategories: "相关分类",
+    scopeNote: "GitStarClub 分类是对 ≥10,000 星白名单的确定性规则切片，不是 GitHub 上该语言或主题的完整目录。",
+    thinSliceNotice: "只有 {count} 个已追踪仓库符合此 {label} 规则。这是白名单切片的规模，不是 GitHub 上 {label} 的规模。",
   },
   rankings: {
     title: "历史总榜",
