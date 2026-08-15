@@ -24,6 +24,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 ### Changed
 
 - **Org pages gained hub exits.** `/o/{login}` now links public categories derived from member assignments, and compares the owner's top tracked repositories. Member rows still go to repo hubs. Org ranking-month links appear only when the published org entity already has `rank_history`.
+- **Repo related-repository lists state why peers appear.** Same-owner repos stay first. When that set is empty, the page says the list is the largest active same-language peers already tracked. Inactive historical repos stay out. A dashed empty state is shown when neither set exists.
 - **Repo-page star milestones use frozen exact crossings.** The per-repo milestone list and curve markers now read `entity/repo.milestones.crossed_10k/50k/100k`; higher thresholds are hidden until a frozen first-crossing field exists, so estimated curve-derived dates are not presented as exact newcomer evidence.
 
 ### Fixed

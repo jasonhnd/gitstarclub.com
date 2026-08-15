@@ -202,6 +202,12 @@ const ja: Dict = {
     languages: "言語",
     relatedPages: "関連ページを見る",
     relatedRepositories: "関連リポジトリ",
+    relatedByOwner: "同じオーナーの、現在追跡中の他のリポジトリです。現行スター数順です。",
+    relatedByLanguage:
+      "このオーナーの他の追跡中リポジトリはありません。表示しているのは、すでに追跡している最大の現行 {language} リポジトリです。",
+    relatedByOwnerAndLanguage:
+      "同じオーナーの追跡中リポジトリのあと、最大の現行 {language} ピアを現行スター数順で示します。",
+    relatedEmpty: "同じオーナーまたは主言語を共有する、他の現行追跡リポジトリはありません。",
     capsuleLatest: "{month} に {stars} スター",
     capsuleLatestFallback: "最新の事前計算済み月次行",
     capsule:

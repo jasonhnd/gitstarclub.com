@@ -9,6 +9,7 @@ import {
   rankingMonthHref,
   rankingMonthHrefIfRoutable,
   relatedRepositories,
+  relatedRepositoriesResult,
   repoCategoryLinks,
   repoHubPresentLinkTypes,
   repoLanguageEntries,
@@ -109,6 +110,43 @@ describe("relatedRepositories", () => {
     expect(related.map((entry) => entry.full_name)).toEqual(["org/a", "org/b", "org/c", "org/d", "org/e", "org/f"]);
     expect(related).toHaveLength(REPO_HUB_RELATED_LIMIT);
     expect(related.map((entry) => entry.full_name)).not.toContain("org/old");
+  });
+
+  test("owner-only when the owner already fills the list", () => {
+    const lookup: ReposLookup = {
+      "1": repo("org/current", "org", "current", "TypeScript", 100),
+      "2": repo("org/sibling", "org", "sibling", "Go", 80),
+      "3": repo("other/top-ts", "other", "top-ts", "TypeScript", 200),
+    };
+    const result = relatedRepositoriesResult({ full_name: "org/current", owner: "org", language: "TypeScript" }, lookup, 1);
+    expect(result.source).toBe("owner");
+    expect(result.items.map((entry) => entry.full_name)).toEqual(["org/sibling"]);
+  });
+
+  test("explains language fallback when the owner has no other active repos", () => {
+    const lookup: ReposLookup = {
+      "1": repo("solo/current", "solo", "current", "TypeScript", 100),
+      "2": { ...repo("solo/old", "solo", "old", "TypeScript", 90), active: false },
+      "3": repo("other/top-ts", "other", "top-ts", "TypeScript", 200),
+      "4": repo("other/go", "other", "go", "Go", 300),
+    };
+    const result = relatedRepositoriesResult({ full_name: "solo/current", owner: "solo", language: "TypeScript" }, lookup);
+    expect(result.source).toBe("language");
+    expect(result.items.map((entry) => entry.full_name)).toEqual(["other/top-ts"]);
+  });
+
+  test("is empty when no active owner or language peers exist", () => {
+    const lookup: ReposLookup = {
+      "1": repo("solo/current", "solo", "current", "TypeScript", 100),
+      "2": { ...repo("other/old-ts", "other", "old-ts", "TypeScript", 90), active: false },
+      "3": repo("other/go", "other", "go", "Go", 300),
+    };
+    expect(relatedRepositoriesResult({ full_name: "solo/current", owner: "solo", language: "TypeScript" }, lookup)).toEqual({
+      items: [],
+      ownerCount: 0,
+      languageCount: 0,
+      source: "empty",
+    });
   });
 });
 
