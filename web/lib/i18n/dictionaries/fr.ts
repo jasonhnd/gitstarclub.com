@@ -292,7 +292,9 @@ const fr: Dict = {
     recentMovement: "Évolution récente",
     recentMovementDescription: "Dernières variations nettes quotidiennes d'étoiles sur la courbe de l'organisation.",
     relatedTitle: "Liens d'organisation associés",
-    relatedDescription: "Classements permanents et pages de dépôts suivis liés à ce propriétaire.",
+    relatedDescription: "Classements permanents, catégories publiques et pages de dépôts suivis liés à ce propriétaire.",
+    compareMembers: "Comparer les dépôts principaux",
+    categoryTags: "Catégories publiques",
     noTrackedRepos: "Les lignes de dépôts suivis attendent le prochain lookup publié.",
   },
   categories: {

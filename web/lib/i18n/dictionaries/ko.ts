@@ -290,7 +290,9 @@ const ko: Dict = {
     recentMovement: "최근 변동",
     recentMovementDescription: "조직 곡선의 최신 일별 순 스타 변동입니다.",
     relatedTitle: "관련 조직 링크",
-    relatedDescription: "이 소유자와 연결된 영구 순위 및 추적 저장소 페이지입니다.",
+    relatedDescription: "이 소유자와 연결된 영구 순위, 공개 카테고리 및 추적 저장소 페이지입니다.",
+    compareMembers: "상위 저장소 비교",
+    categoryTags: "공개 카테고리",
     noTrackedRepos: "추적 저장소 행은 다음 게시된 lookup을 기다리고 있습니다.",
   },
   categories: {

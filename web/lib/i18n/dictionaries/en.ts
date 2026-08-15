@@ -336,7 +336,9 @@ export const en = {
     recentMovement: "Recent movement",
     recentMovementDescription: "Latest daily net star changes from the organization curve.",
     relatedTitle: "Related organization links",
-    relatedDescription: "Permanent rankings and tracked repository pages connected to this owner.",
+    relatedDescription: "Permanent rankings, public categories, and tracked repository pages connected to this owner.",
+    compareMembers: "Compare top repositories",
+    categoryTags: "Public categories",
     noTrackedRepos: "Tracked repository rows are waiting for the next published lookup.",
   },
   categories: {
