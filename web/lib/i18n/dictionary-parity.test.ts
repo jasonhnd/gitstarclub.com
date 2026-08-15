@@ -27,6 +27,8 @@ describe("locale dictionary contract", () => {
       expect(dictionary.org.aggregateTrackedStars, `${locale}.org.aggregateTrackedStars`).not.toBe(en.org.aggregateTrackedStars);
       expect(dictionary.org.compareMembers, `${locale}.org.compareMembers`).not.toBe(en.org.compareMembers);
       expect(dictionary.org.categoryTags, `${locale}.org.categoryTags`).not.toBe(en.org.categoryTags);
+      expect(dictionary.categories.thinSliceNotice, `${locale}.categories.thinSliceNotice`).not.toBe(en.categories.thinSliceNotice);
+      expect(dictionary.categories.scopeNote, `${locale}.categories.scopeNote`).not.toBe(en.categories.scopeNote);
       expect(dictionary.rankings.permanentArchive, `${locale}.rankings.permanentArchive`).not.toBe(en.rankings.permanentArchive);
       expect(dictionary.rankings.categoryExits, `${locale}.rankings.categoryExits`).not.toBe(en.rankings.categoryExits);
       expect(dictionary.rankings.noMovement, `${locale}.rankings.noMovement`).not.toBe(en.rankings.noMovement);

@@ -8,6 +8,9 @@ import {
 import type { CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts";
 
 export const CATEGORY_INDEX_PREVIEW_LIMIT = 10;
+export const RELATED_PUBLIC_CATEGORY_LIMIT = 8;
+/** Registry counts at or below this are a thin slice and must not read as a complete GitHub catalog. */
+export const THIN_CATEGORY_REPO_COUNT = 24;
 
 export function isCategoryDimension(value: string): value is CategoryDimension {
   return (CATEGORY_DIMENSIONS as readonly string[]).includes(value);
@@ -68,6 +71,18 @@ export function dimensionLabel(dimension: CategoryDimension): string {
 
 export function publicCategoryEntries(registry: CategoryRegistry): CategoryRegistryEntry[] {
   return registry.dimensions.flatMap((dimension) => dimension.categories.filter((category) => category.public));
+}
+
+export function isThinCategoryCount(count: number): boolean {
+  return count > 0 && count <= THIN_CATEGORY_REPO_COUNT;
+}
+
+export function relatedPublicCategories(
+  categories: readonly CategoryRegistryEntry[],
+  currentId: string,
+  limit = RELATED_PUBLIC_CATEGORY_LIMIT,
+): CategoryRegistryEntry[] {
+  return categories.filter((entry) => entry.public && entry.id !== currentId).slice(0, limit);
 }
 
 function publicCategoriesForDimension(dimension: { categories: CategoryRegistryEntry[] }): CategoryRegistryEntry[] {
