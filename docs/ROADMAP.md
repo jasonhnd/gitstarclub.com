@@ -90,13 +90,15 @@ The inbound URL for most long-tail traffic is `/{owner}/{name}` or `/o/{login}`.
 - No new client JS on the content body. No extra Blob probes per related card beyond views already required for the page.
 - Docs: [SEO.md](./SEO.md) §9 and [FRONTEND.md](./FRONTEND.md) stay true after the change.
 
-**Later splits (not filed yet)**
+**Children**
 
-- Related-repo module and empty states
-- Category chips from assignments
-- Milestone → month/year ranking deep links
-- Org page member → repo hub symmetry
-- Internal-link crawl checks / snapshots
+| Issue | Work | Order |
+|---|---|---|
+| [#363](https://github.com/jasonhnd/gitstarclub.com/issues/363) | Lock the repo-hub contract with tests | First |
+| [#364](https://github.com/jasonhnd/gitstarclub.com/issues/364) | Link milestone dates to ranking months | After #363 |
+| [#365](https://github.com/jasonhnd/gitstarclub.com/issues/365) | Surface week and year ranking appearances | After #363; close if views lack the data |
+| [#366](https://github.com/jasonhnd/gitstarclub.com/issues/366) | Org page hub parity | After #363 |
+| [#367](https://github.com/jasonhnd/gitstarclub.com/issues/367) | Related-repo empty states and tests | After #363 |
 
 ### A2. Categories as a topic entry, not a third leaderboard
 
@@ -118,11 +120,13 @@ Categories are already the scoped, static-read system in [CATEGORIES.md](./CATEG
 - Category copy does not imply live GitHub search or multi-facet query.
 - Still no request-time classification. Still no combinatorial filter UI.
 
-**Later splits**
+**Children**
 
-- Ranking-page “in this language / ecosystem” exits
-- Category empty/thin-page honesty
-- Registry / assignment doc and test updates
+| Issue | Work |
+|---|---|
+| [#368](https://github.com/jasonhnd/gitstarclub.com/issues/368) | Ranking pages exit to public categories |
+| [#369](https://github.com/jasonhnd/gitstarclub.com/issues/369) | Honest copy on thin category pages |
+| [#370](https://github.com/jasonhnd/gitstarclub.com/issues/370) | Bidirectional repo↔category assignment tests |
 
 ### A3. Pulse as the reason to return
 
@@ -144,11 +148,13 @@ Home is already the Pulse experience ([INFORMATION-ARCHITECTURE.md](./INFORMATIO
 - At least one path from a pulse mover to that repo’s hub and to the matching weekly or monthly ranking page.
 - Content HTML stays inside the existing low-JS / ISR contract.
 
-**Later splits**
+**Children**
 
-- Revival/spike wording and as-of labels
-- Mover → ranking period links
-- Home vs `/pulse` duplication cleanup if any remains
+| Issue | Work |
+|---|---|
+| [#371](https://github.com/jasonhnd/gitstarclub.com/issues/371) | Pulse panels state the actual period |
+| [#372](https://github.com/jasonhnd/gitstarclub.com/issues/372) | Pulse movers link to the matching ranking period |
+| [#373](https://github.com/jasonhnd/gitstarclub.com/issues/373) | Confirm home and `/pulse` share one view |
 
 ### A4. Search stays “go to a name”; citation stays honest
 
@@ -170,11 +176,13 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 - Export `data_as_of` continues to move only after a successful views publish (product-gates already enforce age).
 - Capsules and about copy do not claim request-time freshness.
 
-**Later splits**
+**Children**
 
-- Search empty / typo / historical-inactive repo behavior
-- Export regenerate runbook after weekly publish
-- GEO capsule / FAQ gaps on high-value routes
+| Issue | Work |
+|---|---|
+| [#374](https://github.com/jasonhnd/gitstarclub.com/issues/374) | Search empty, typo, and inactive-repo edges |
+| [#375](https://github.com/jasonhnd/gitstarclub.com/issues/375) | Export regenerate runbook after weekly publish |
+| [#376](https://github.com/jasonhnd/gitstarclub.com/issues/376) | GEO capsule gaps on high-value routes |
 
 ---
 
@@ -196,12 +204,14 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 
 Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blob 404s, product-gates remain required on `pre`/`main`.
 
-**Later splits**
+**Children**
 
-- Delete or stop writing the legacy health file
-- Dependabot `pre` + bun lockfile convention
-- Firewall ticket (only if spend justifies it)
-- Validate/alert gaps found in the next failed Sunday run
+| Issue | Work |
+|---|---|
+| [#377](https://github.com/jasonhnd/gitstarclub.com/issues/377) | Retire stale `health.json` as the operator signal |
+| [#378](https://github.com/jasonhnd/gitstarclub.com/issues/378) | Dependabot targets `pre` + bun lockfile convention |
+| [#379](https://github.com/jasonhnd/gitstarclub.com/issues/379) | Sunday refresh failure runbook |
+| [#380](https://github.com/jasonhnd/gitstarclub.com/issues/380) | Firewall only if crawler spend justifies it |
 
 ---
 
@@ -239,11 +249,15 @@ A formal selection (option compare + must-prove list + optional isolated POC + d
 - Lists which hard constraints would change if a query plane is introduced (and which pages would still be view-only).
 - If a POC is approved: isolated from content HTML, no weekly-refresh rewrite, success/fail metrics written before code.
 
-**Later splits (only after the record exists)**
+**Children (decision only — no #362 implementation)**
 
-- POC harness
-- Constraint amendment PRs to README / ARCHITECTURE
-- Then, and only then, child epics for the four items below
+| Issue | Work | Due |
+|---|---|---|
+| [#381](https://github.com/jasonhnd/gitstarclub.com/issues/381) | Write the data-layer decision draft | ~2026-08-29 |
+| [#382](https://github.com/jasonhnd/gitstarclub.com/issues/382) | Write POC must-prove list (or close if defer) | with / after #381 |
+| [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) | Decide or defer | **2026-09-12** |
+
+POC harness and constraint-amendment PRs are filed only if #383 chooses build.
 
 ---
 
@@ -279,18 +293,18 @@ Offline embeddings + a query-time vector index. Not an extension of MiniSearch.
 
 ## Issue map
 
-GitHub epics should match this table. Child implementation issues are split from an epic, not from chat.
+GitHub epics match this table. Child implementation issues are split from an epic, not from chat. **#362 has no implementation children.**
 
-| Track | Epic | Issue | Status |
-|---|---|---|---|
-| — | Iteration program (this map) | #354 | Open |
-| A | Product depth on the current ≥10k set | #355 | Open; children A1–A4 |
-| A1 | Repo and org pages as hubs | #356 | First implementation epic |
-| A2 | Categories as topic entry | #357 | After A1 inbound links exist |
-| A3 | Pulse as return engine | #358 | After or beside A2, not before A1 |
-| A4 | Search stays go-to-name; citation stays honest | #359 | After A1 |
-| B | Production as product | #360 | Open; standing |
-| C | Analytical data-layer decision | #361 | Open; clock started 2026-08-15 |
-| — | Blocked expansion backlog | #362 | No impl until #361 |
+| Track | Epic | Issue | Children | Status |
+|---|---|---|---|---|
+| — | Iteration program (this map) | #354 | — | Open |
+| A | Product depth on the current ≥10k set | #355 | A1–A4 | Open |
+| A1 | Repo and org pages as hubs | #356 | #363 #364 #365 #366 #367 | First implementation epic; start at #363 |
+| A2 | Categories as topic entry | #357 | #368 #369 #370 | After A1 inbound links exist |
+| A3 | Pulse as return engine | #358 | #371 #372 #373 | After or beside A2, not before A1 |
+| A4 | Search stays go-to-name; citation stays honest | #359 | #374 #375 #376 | After A1 |
+| B | Production as product | #360 | #377 #378 #379 #380 | Open; standing |
+| C | Analytical data-layer decision | #361 | #381 #382 #383 | Open; clock started 2026-08-15 |
+| — | Blocked expansion backlog | #362 | none | No impl until #361 / #383 |
 
 When an epic is done, update this table and [CHANGELOG.md](./CHANGELOG.md) in the same change set as the last child.
