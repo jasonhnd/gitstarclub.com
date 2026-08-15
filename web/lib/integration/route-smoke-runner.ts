@@ -394,6 +394,7 @@ const appRouterStub = {
   replace() {},
   refresh() {},
   hmrRefresh() {},
+  bfcacheId: "0",
 };
 
 function renderWithAppRouter(element: ReactElement): string {
