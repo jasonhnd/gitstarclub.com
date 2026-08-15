@@ -299,7 +299,9 @@ const ja: Dict = {
     recentMovement: "最近の動き",
     recentMovementDescription: "組織曲線における最新の日次純スター変化です。",
     relatedTitle: "関連する組織リンク",
-    relatedDescription: "この所有者に関連する恒久ランキングと追跡リポジトリページです。",
+    relatedDescription: "この所有者に関連する恒久ランキング、公開カテゴリ、追跡リポジトリページです。",
+    compareMembers: "上位リポジトリを比較",
+    categoryTags: "公開カテゴリ",
     noTrackedRepos: "追跡リポジトリ行は次回の公開 lookup を待っています。",
   },
   categories: {
