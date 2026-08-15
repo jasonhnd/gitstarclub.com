@@ -17,6 +17,7 @@ const ja: Dict = {
     notAvailable: "利用不可",
     status: "ステータス",
     latestAvailable: "利用可能な最新: {period}",
+    periodAsOf: "{period} · {asOf} 時点",
   },
   a11y: {
     primary: "主要",
@@ -35,9 +36,9 @@ const ja: Dict = {
   },
   meta: {
     homeTitle: "オープンソースの動向と GitHub スター履歴",
-    homeDescription: "今週・今月・今年に伸びている GitHub プロジェクトと、通算スターランキングを確認できます。",
+    homeDescription: "GitStarClub の事前計算データから、利用可能な最新の週次・月次・年次上昇と通算スターランキングを確認できます。",
     pulseTitle: "オープンソースの動向と GitHub スター履歴",
-    pulseDescription: "今週・今月・今年に伸びている GitHub プロジェクトと、通算スターランキングを確認できます。",
+    pulseDescription: "GitStarClub の事前計算データから、利用可能な最新の週次・月次・年次上昇と通算スターランキングを確認できます。",
     rankingsTitle: "通算 GitHub スターランキング — 最多スターのリポジトリと組織",
     rankingsDescriptionPrefix: "通算で最もスターを集めた GitHub リポジトリと組織。対象期間 ",
     rankingsDescriptionSuffix: " 年分の合計スター上位 100 件です。",
@@ -173,7 +174,7 @@ const ja: Dict = {
     gained: "対象リポジトリの獲得スター数",
     narrative: "今月の動き",
   },
-  week: { label: "週", top: "今週の上位リポジトリ" },
+  week: { label: "週", top: "週次の上位リポジトリ" },
   repo: {
     starHistory: "スター履歴",
     metaTitleSuffix: "スター履歴とタイムライン",
@@ -367,8 +368,8 @@ const ja: Dict = {
   },
   pulse: {
     title: "オープンソースの動向",
-    subtitle: "追跡対象のオープンソースから、今週・今月・今年に変化しているプロジェクトを示します。",
-    surging: "今月の上昇",
+    subtitle: "GitStarClub の事前計算ランキングから、利用可能な最新の週次・月次・年次上昇を示します。",
+    surging: "月次の上位リポジトリ",
     onThisDay: "この日の節目",
     crossed: "突破",
     open: "開く",

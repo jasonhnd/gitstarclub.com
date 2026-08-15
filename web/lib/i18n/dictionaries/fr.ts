@@ -17,6 +17,7 @@ const fr: Dict = {
     notAvailable: "Indisponible",
     status: "Statut",
     latestAvailable: "Dernière période disponible : {period}",
+    periodAsOf: "{period} · au {asOf}",
   },
   a11y: {
     primary: "Principal",
@@ -35,9 +36,9 @@ const fr: Dict = {
   },
   meta: {
     homeTitle: "Activité open source et historique des étoiles GitHub",
-    homeDescription: "Suivez l'activité actuelle de l'open source : les projets GitHub qui montent le plus cette semaine, ce mois-ci et cette année, ainsi que les classements historiques.",
+    homeDescription: "Suivez la dynamique open source à partir des données précalculées de GitStarClub : les progressions hebdomadaires, mensuelles et annuelles les plus récentes disponibles, ainsi que les classements historiques.",
     pulseTitle: "Activité open source et historique des étoiles GitHub",
-    pulseDescription: "Suivez l'activité actuelle de l'open source : les projets GitHub qui montent le plus cette semaine, ce mois-ci et cette année, ainsi que les classements historiques.",
+    pulseDescription: "Suivez la dynamique open source à partir des données précalculées de GitStarClub : les progressions hebdomadaires, mensuelles et annuelles les plus récentes disponibles, ainsi que les classements historiques.",
     rankingsTitle: "Classements historiques des étoiles GitHub — dépôts et organisations les plus étoilés",
     rankingsDescriptionPrefix: "Les dépôts et organisations GitHub les plus étoilés de tous les temps. Top 100 par étoiles totales sur ",
     rankingsDescriptionSuffix: " ans.",
@@ -173,7 +174,7 @@ const fr: Dict = {
     gained: "Les dépôts suivis ont ajouté",
     narrative: "Ce mois-ci",
   },
-  week: { label: "Semaine", top: "Dépôts principaux cette semaine" },
+  week: { label: "Semaine", top: "Dépôts principaux hebdomadaires" },
   repo: {
     starHistory: "Historique des étoiles",
     metaTitleSuffix: "Historique des étoiles et chronologie",
@@ -360,8 +361,8 @@ const fr: Dict = {
   },
   pulse: {
     title: "Activité open source",
-    subtitle: "Ce qui change cette semaine, ce mois-ci et cette année dans les dépôts open source suivis.",
-    surging: "En hausse ce mois-ci",
+    subtitle: "Progressions hebdomadaires, mensuelles et annuelles les plus récentes disponibles dans les dépôts open source suivis, d'après les classements précalculés de GitStarClub.",
+    surging: "Dépôts principaux mensuels",
     onThisDay: "En ce jour",
     crossed: "a dépassé",
     open: "Ouvrir",

@@ -17,6 +17,7 @@ const zh: Dict = {
     notAvailable: "不可用",
     status: "状态",
     latestAvailable: "最新可用：{period}",
+    periodAsOf: "{period} · 截至 {asOf}",
   },
   a11y: {
     primary: "主导航",
@@ -35,9 +36,9 @@ const zh: Dict = {
   },
   meta: {
     homeTitle: "开源脉搏与 GitHub 星标历史",
-    homeDescription: "查看本周、本月、本年增长最快的 GitHub 项目，以及历史总星标排行榜。",
+    homeDescription: "基于 GitStarClub 预计算数据，查看最新可用的周度、月度与年度上涨，以及历史总星标排行榜。",
     pulseTitle: "开源脉搏与 GitHub 星标历史",
-    pulseDescription: "查看本周、本月、本年增长最快的 GitHub 项目，以及历史总星标排行榜。",
+    pulseDescription: "基于 GitStarClub 预计算数据，查看最新可用的周度、月度与年度上涨，以及历史总星标排行榜。",
     rankingsTitle: "GitHub 历史星标排行榜 — 最多星标仓库与组织",
     rankingsDescriptionPrefix: "历史上星标最多的 GitHub 仓库与组织。覆盖 ",
     rankingsDescriptionSuffix: " 年的总星标 Top 100。",
@@ -173,7 +174,7 @@ const zh: Dict = {
     gained: "追踪仓库新增",
     narrative: "本月叙事",
   },
-  week: { label: "周", top: "本周领先仓库" },
+  week: { label: "周", top: "周度领先仓库" },
   repo: {
     starHistory: "星标历史",
     metaTitleSuffix: "星标历史与时间线",
@@ -353,8 +354,8 @@ const zh: Dict = {
   },
   pulse: {
     title: "开源脉搏",
-    subtitle: "追踪范围内本周、本月与本年变化最明显的开源项目。",
-    surging: "本月上涨领先",
+    subtitle: "基于 GitStarClub 预计算排名，展示最新可用的周度、月度与年度上涨。",
+    surging: "月度领先仓库",
     onThisDay: "历史上的今天",
     crossed: "突破",
     open: "打开",

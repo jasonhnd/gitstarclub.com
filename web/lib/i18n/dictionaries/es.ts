@@ -17,6 +17,7 @@ const es: Dict = {
     notAvailable: "No disponible",
     status: "Estado",
     latestAvailable: "Último disponible: {period}",
+    periodAsOf: "{period} · a fecha de {asOf}",
   },
   a11y: {
     primary: "Principal",
@@ -35,9 +36,9 @@ const es: Dict = {
   },
   meta: {
     homeTitle: "Pulso de código abierto e historial de estrellas de GitHub",
-    homeDescription: "Consulta el pulso actual del código abierto: los proyectos de GitHub que más crecen esta semana, este mes y este año, más rankings históricos de estrellas.",
+    homeDescription: "Consulta el impulso del código abierto desde los datos precalculados de GitStarClub: los movimientos semanales, mensuales y anuales más recientes disponibles, más rankings históricos de estrellas.",
     pulseTitle: "Pulso de código abierto e historial de estrellas de GitHub",
-    pulseDescription: "Consulta el pulso actual del código abierto: los proyectos de GitHub que más crecen esta semana, este mes y este año, más rankings históricos de estrellas.",
+    pulseDescription: "Consulta el impulso del código abierto desde los datos precalculados de GitStarClub: los movimientos semanales, mensuales y anuales más recientes disponibles, más rankings históricos de estrellas.",
     rankingsTitle: "Rankings históricos de estrellas de GitHub — repositorios y organizaciones con más estrellas",
     rankingsDescriptionPrefix: "Los repositorios y organizaciones de GitHub con más estrellas históricas. Top 100 por estrellas totales a lo largo de ",
     rankingsDescriptionSuffix: " años.",
@@ -173,7 +174,7 @@ const es: Dict = {
     gained: "Los repositorios monitoreados añadieron",
     narrative: "Este mes",
   },
-  week: { label: "Semana", top: "Repositorios principales de esta semana" },
+  week: { label: "Semana", top: "Repositorios principales semanales" },
   repo: {
     starHistory: "Historial de estrellas",
     metaTitleSuffix: "Historial de estrellas y línea de tiempo",
@@ -360,8 +361,8 @@ const es: Dict = {
   },
   pulse: {
     title: "Actividad de código abierto",
-    subtitle: "Qué está cambiando esta semana, este mes y este año en los repositorios de código abierto monitoreados.",
-    surging: "En alza este mes",
+    subtitle: "Movimientos semanales, mensuales y anuales más recientes disponibles en repositorios de código abierto monitoreados, según los rankings precalculados de GitStarClub.",
+    surging: "Repositorios principales mensuales",
     onThisDay: "En este día",
     crossed: "superó",
     open: "Abrir",
