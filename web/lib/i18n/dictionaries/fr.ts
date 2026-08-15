@@ -413,6 +413,7 @@ const fr: Dict = {
     loading: "Chargement…",
     error: "La recherche n'a pas pu charger.",
     retry: "Réessayer",
+    historical: "Historique",
   },
   share: {
     label: "Partager",

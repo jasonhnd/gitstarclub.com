@@ -405,6 +405,7 @@ const zhTw: Dict = {
     loading: "載入中…",
     error: "搜尋載入失敗。",
     retry: "重試",
+    historical: "歷史",
   },
   share: {
     label: "分享",
