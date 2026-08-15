@@ -281,16 +281,16 @@ Offline embeddings + a query-time vector index. Not an extension of MiniSearch.
 
 GitHub epics should match this table. Child implementation issues are split from an epic, not from chat.
 
-| Track | Epic | Status |
-|---|---|---|
-| — | Iteration program (this map) | Open first |
-| A | Product depth on the current ≥10k set | Open; children A1–A4 |
-| A1 | Repo and org pages as hubs | First implementation epic |
-| A2 | Categories as topic entry | After A1 inbound links exist |
-| A3 | Pulse as return engine | After or beside A2, not before A1 |
-| A4 | Search stays go-to-name; citation stays honest | After A1 |
-| B | Production as product | Open; standing |
-| C | Analytical data-layer decision | Open the same day; clock starts |
-| — | Blocked expansion backlog | Single tracker; no impl until C |
+| Track | Epic | Issue | Status |
+|---|---|---|---|
+| — | Iteration program (this map) | #354 | Open |
+| A | Product depth on the current ≥10k set | #355 | Open; children A1–A4 |
+| A1 | Repo and org pages as hubs | #356 | First implementation epic |
+| A2 | Categories as topic entry | #357 | After A1 inbound links exist |
+| A3 | Pulse as return engine | #358 | After or beside A2, not before A1 |
+| A4 | Search stays go-to-name; citation stays honest | #359 | After A1 |
+| B | Production as product | #360 | Open; standing |
+| C | Analytical data-layer decision | #361 | Open; clock started 2026-08-15 |
+| — | Blocked expansion backlog | #362 | No impl until #361 |
 
 When an epic is done, update this table and [CHANGELOG.md](./CHANGELOG.md) in the same change set as the last child.
