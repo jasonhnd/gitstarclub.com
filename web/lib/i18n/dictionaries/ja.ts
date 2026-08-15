@@ -423,6 +423,7 @@ const ja: Dict = {
     loading: "読み込み中…",
     error: "検索を読み込めませんでした。",
     retry: "再試行",
+    historical: "履歴",
   },
   share: {
     label: "共有",

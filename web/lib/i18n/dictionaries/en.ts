@@ -463,6 +463,7 @@ export const en = {
     loading: "Loading…",
     error: "Search could not load.",
     retry: "Retry",
+    historical: "Historical",
   },
   share: {
     label: "Share",

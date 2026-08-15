@@ -405,6 +405,7 @@ const ko: Dict = {
     loading: "불러오는 중…",
     error: "검색을 불러오지 못했습니다.",
     retry: "다시 시도",
+    historical: "기록",
   },
   share: {
     label: "공유",

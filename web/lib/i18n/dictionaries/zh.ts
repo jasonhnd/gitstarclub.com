@@ -405,6 +405,7 @@ const zh: Dict = {
     loading: "加载中…",
     error: "搜索加载失败。",
     retry: "重试",
+    historical: "历史",
   },
   share: {
     label: "分享",
