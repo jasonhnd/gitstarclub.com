@@ -1,7 +1,7 @@
 ---
 owner: SEO
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-08-15
 source_of_truth_for:
   - per-page SEO templates
   - sitemap structure
@@ -749,7 +749,7 @@ Dataset enrichment details, including future `DataDownload` `distribution` entri
  └─ Complete ranking 锚点 ─────────────→ 同页完整 flow 榜单
 
 repo 详情页 /:owner/:name
- ├─ 里程碑（每 50k stars）──────────────→ 对应月度页锚点 /rankings/YYYY/MM#..
+ ├─ 里程碑（冻结 crossed_10k/50k/100k）──→ 对应月度页 /rankings/YYYY/MM（早于 2015 或晚于当前 UTC 月则只展示、不链）
  ├─ 月度表现表（近 N 月，每行）──────────→ 对应月度页
  ├─ owner 链接 ─────────────────────────→ org 详情页 /o/owner    （repo↔org 互链）
  ├─ category links ─────────────────────→ 所属 language / topic category

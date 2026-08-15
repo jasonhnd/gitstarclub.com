@@ -10,7 +10,7 @@ import { fmtStars, monthLabel, ymParts } from "@/lib/format";
 import type { Dict, Locale } from "@/lib/i18n";
 import { localizedPath } from "@/lib/i18n/routing";
 import type { ShareableSnippetContent } from "@/lib/shareable-snippets";
-import { languageHref, type CategoryLink, type RelatedRepo, type RepoLanguage } from "@/lib/repo-page";
+import { languageHref, rankingMonthHrefIfRoutable, type CategoryLink, type RelatedRepo, type RepoLanguage } from "@/lib/repo-page";
 
 type RepoSeriesPoint = { label: string; total: number };
 
@@ -244,14 +244,26 @@ export function RepoMilestonesSection({
       <ul className="flex flex-wrap gap-2">
         {milestones.map((milestone) => {
           const d = ymParts(milestone.date);
+          const rankingHref = rankingMonthHrefIfRoutable(milestone.date);
+          const chip = (
+            <>
+              <span className="text-readable-gold font-extrabold">{milestone.label}</span>
+              <span className="font-mono text-[0.8rem] text-on-surface-variant">
+                {monthLabel(locale, d.m, "short")} {d.y}
+              </span>
+            </>
+          );
           return (
             <li key={milestone.stars}>
-              <Link href={href(`/rankings/${d.y}/${d.m}`)} className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-4 py-2 transition-colors hover:bg-surface-container-high">
-                <span className="text-readable-gold font-extrabold">{milestone.label}</span>
-                <span className="font-mono text-[0.8rem] text-on-surface-variant">
-                  {monthLabel(locale, d.m, "short")} {d.y}
+              {rankingHref ? (
+                <Link href={href(rankingHref)} className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-4 py-2 transition-colors hover:bg-surface-container-high">
+                  {chip}
+                </Link>
+              ) : (
+                <span className="inline-flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-4 py-2">
+                  {chip}
                 </span>
-              </Link>
+              )}
             </li>
           );
         })}
