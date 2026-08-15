@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-07-28
+last_reviewed: 2026-08-16
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -389,6 +389,26 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 **鉴权 / 凭证**：`CRON_SECRET`（触发）、`GITHUB_TOKEN`（Search / GraphQL）、`BLOB_READ_WRITE_TOKEN`（读写 canonical / staging / published）。**Workflow 全程 0 GCP**（GCP 仅 bootstrap）。
 
 **告警**：Workflow 失败会写结构化 Vercel Function log、可选 webhook、run checkpoint 和独立 health 状态；仓库当前没有 Sentry SDK 或 Marketplace 集成。失败发生在 publish 前时不会切换线上指针。
+
+### Post-publish checklist: static data exports
+
+Workflow publish only cuts the Blob pointer. Committed static exports under
+`web/public/data/exports/v1/` do **not** update automatically. Product-gates
+`export-manifest-age` requires the deployed manifest `data_as_of` within
+**14 days** (`EXPORT_MAX_AGE_MS`). Full copy-paste runbook:
+[DATA-EXPORTS.md](./DATA-EXPORTS.md) §After a successful weekly publish.
+
+After a successful `views/latest.json` publish (cron or manual):
+
+1. Confirm `views/latest.json` has the intended `version` / `published_at`.
+2. On a branch from `pre`: `cd web && bun run exports:generate`
+   (needs `BLOB_BASE_URL` / `NEXT_PUBLIC_BLOB_BASE_URL`).
+3. PR the new dated directory `web/public/data/exports/v1/YYYY-MM-DD/` **into
+   `pre`**. Do not commit a `latest/` tree; do not push straight to `main`.
+4. Verify Preview
+   `https://pre.gitstarclub.com/data/exports/v1/latest/manifest.json`.
+5. Promote `pre` → `main` through the normal PR path only — no silent
+   production overwrite and no runtime export regenerate endpoint.
 
 ## Deploy Hook 使用（可选）
 
