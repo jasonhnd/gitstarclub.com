@@ -201,6 +201,10 @@ const zhTw: Dict = {
     languages: "語言",
     relatedPages: "瀏覽相關頁面",
     relatedRepositories: "相關倉庫",
+    relatedByOwner: "同一擁有者下其他正在追蹤的倉庫，按目前星標排序。",
+    relatedByLanguage: "該擁有者沒有其他正在追蹤的倉庫。以下是本站已追蹤、目前仍活躍的最大 {language} 倉庫。",
+    relatedByOwnerAndLanguage: "先列出同一擁有者下正在追蹤的倉庫，再按目前星標列出最大的活躍 {language} 同類倉庫。",
+    relatedEmpty: "沒有其他正在追蹤的活躍倉庫與此擁有者或主語言相同。",
     capsuleLatest: "{month} 新增 {stars} 星",
     capsuleLatestFallback: "最新的預先計算月度列",
     capsule:

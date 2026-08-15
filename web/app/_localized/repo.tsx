@@ -216,6 +216,12 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
           <RepoHistorySection inflections={inflections} milestones={milestones} series={series} locale={locale} t={t} />
           <RepoMilestonesSection locale={locale} milestoneSnippet={milestoneSnippet} milestones={milestones} snippetLabels={snippetLabels} t={t} />
           <RankingAppearancesSection appearances={rankingAppearances} locale={locale} t={t} />
+          <RelatedRepositoriesSection
+            explanation={relatedRepositoriesExplanation(t, hub.relatedSource, repo.language)}
+            locale={locale}
+            related={related}
+            t={t}
+          />
         </div>
 
         <RelatedPages title={t.repo.relatedPages} description={t.repo.relatedDescription} items={relatedItems} />
@@ -512,6 +518,59 @@ function EmptyFact({ children }: { children: ReactNode }) {
 
 function EmptyState({ message }: { message: string }) {
   return <p className="mt-4 rounded-lg border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.9rem] text-on-surface-variant">{message}</p>;
+}
+
+function RelatedRepositoriesSection({
+  explanation,
+  locale,
+  related,
+  t,
+}: {
+  explanation: string;
+  locale: Locale;
+  related: RelatedRepo[];
+  t: Dict;
+}) {
+  return (
+    <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
+      <div className="max-w-[64ch]">
+        <h2 className="text-[1.2rem] font-extrabold tracking-tight text-on-surface">{t.repo.relatedRepositories}</h2>
+        {related.length > 0 && <p className="mt-2 text-[0.9rem] leading-relaxed text-on-surface-variant">{explanation}</p>}
+      </div>
+      {related.length > 0 ? (
+        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+          {related.map((entry) => (
+            <li key={entry.full_name}>
+              <Link href={localizedPath(locale, `/${entry.full_name}`)} className="group flex h-full min-h-16 items-center justify-between gap-3 rounded-lg bg-surface-container px-4 py-3 transition-colors hover:bg-surface-container-high">
+                <span className="min-w-0">
+                  <span className="block truncate font-mono text-[0.9rem] font-semibold text-on-surface group-hover:underline group-hover:underline-offset-2" title={entry.full_name}>
+                    {entry.owner}/{entry.name}
+                  </span>
+                  <span className="mt-1 block font-mono text-[0.74rem] text-on-surface-variant">
+                    {fmtStars(entry.current_stars, locale)}
+                    <Star />
+                    {entry.language ? ` · ${entry.language}` : ""}
+                  </span>
+                </span>
+                <span aria-hidden className="shrink-0 font-mono text-[1rem] text-on-surface-variant transition-colors group-hover:text-on-surface">
+                  &rarr;
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <EmptyState message={t.repo.relatedEmpty} />
+      )}
+    </section>
+  );
+}
+
+function relatedRepositoriesExplanation(t: Dict, source: "owner" | "language" | "mixed" | "empty", language: string | null): string {
+  if (source === "empty") return t.repo.relatedEmpty;
+  if (source === "language") return fill(t.repo.relatedByLanguage, { language: language ?? t.repo.unspecifiedLanguage });
+  if (source === "mixed") return fill(t.repo.relatedByOwnerAndLanguage, { language: language ?? t.repo.unspecifiedLanguage });
+  return t.repo.relatedByOwner;
 }
 
 function buildRepoRelatedItems({

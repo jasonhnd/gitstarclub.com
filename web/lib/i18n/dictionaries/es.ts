@@ -202,6 +202,12 @@ const es: Dict = {
     languages: "Lenguajes",
     relatedPages: "Explorar páginas relacionadas",
     relatedRepositories: "Repositorios relacionados",
+    relatedByOwner: "Otros repositorios rastreados activos del mismo propietario, ordenados por estrellas actuales.",
+    relatedByLanguage:
+      "No hay otros repositorios rastreados de este propietario. Estos son los repositorios {language} activos más grandes que GitStarClub ya sigue.",
+    relatedByOwnerAndLanguage:
+      "Otros repositorios rastreados activos del mismo propietario y, a continuación, los pares {language} activos más grandes, ordenados por estrellas actuales.",
+    relatedEmpty: "Ningún otro repositorio rastreado activo comparte este propietario o lenguaje principal.",
     capsuleLatest: "{month} con {stars} estrellas",
     capsuleLatestFallback: "su última fila mensual precalculada",
     capsule:
