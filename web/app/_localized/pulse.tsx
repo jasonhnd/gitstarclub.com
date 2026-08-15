@@ -205,15 +205,15 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
 
         <section className="mt-[clamp(2rem,4.5vw,3.25rem)] grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0">
-            <div className="mb-3 flex items-end justify-between gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
+            <div className="mb-3 flex min-w-0 flex-wrap items-end justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <h2 className="text-[1.35rem] font-extrabold tracking-tight text-on-surface">{t.rankings.title}</h2>
-                  <span className="rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">{allTimeMeta}</span>
+                  <PulsePeriodMeta>{allTimeMeta}</PulsePeriodMeta>
                 </div>
                 <p className="mt-1 text-[0.9rem] text-on-surface-variant">{t.rankings.subtitle}</p>
               </div>
-              <Link href={href("/rankings")} className="text-readable-gold font-mono text-[0.78rem] hover:underline">
+              <Link href={href("/rankings")} className="text-readable-gold shrink-0 font-mono text-[0.78rem] hover:underline">
                 {t.rankings.title}
               </Link>
             </div>
@@ -227,9 +227,9 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           </div>
 
           <aside className="min-w-0">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
               <h2 className="text-[1.15rem] font-extrabold tracking-tight text-on-surface">{t.pulse.onThisDay}</h2>
-              <span className="rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">{onThisDayMeta}</span>
+              <PulsePeriodMeta>{onThisDayMeta}</PulsePeriodMeta>
             </div>
             {onThisDay.length > 0 ? (
               <ul className="flex flex-col divide-y divide-outline-variant/50">
@@ -295,11 +295,11 @@ function PulsePanel({
 }) {
   return (
     <section className="min-w-0">
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
         <h2 className="min-w-0 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-        <div className="flex shrink-0 items-center gap-2">
-          {meta && <span className="rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">{meta}</span>}
-          <Link href={href} aria-label={linkLabel} className="text-readable-gold font-mono text-[0.72rem] hover:underline">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+          {meta && <PulsePeriodMeta>{meta}</PulsePeriodMeta>}
+          <Link href={href} aria-label={linkLabel} className="text-readable-gold shrink-0 font-mono text-[0.72rem] hover:underline">
             {openLabel}
           </Link>
         </div>
@@ -336,12 +336,20 @@ function PulseLeaderLinks({
           <span className="mt-1 block truncate font-mono text-[0.92rem] font-extrabold text-on-surface">
             {link.row ? `${link.row.owner}/${link.row.name}` : pendingLabel}
           </span>
-          <span className="mt-1 block truncate font-mono text-[0.76rem] text-on-surface-variant">
+          <span className="mt-1 block max-w-full break-words font-mono text-[0.76rem] text-on-surface-variant [overflow-wrap:anywhere]">
             {link.row?.gained == null ? link.period : `${link.period} · +${fmtStars(link.row.gained, locale)}`}
           </span>
         </Link>
       ))}
     </div>
+  );
+}
+
+function PulsePeriodMeta({ children }: { children: ReactNode }) {
+  return (
+    <span className="min-w-0 max-w-full break-words rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] leading-snug text-on-surface-variant [overflow-wrap:anywhere]">
+      {children}
+    </span>
   );
 }
 
