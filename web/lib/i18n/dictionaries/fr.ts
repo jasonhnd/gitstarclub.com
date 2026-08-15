@@ -321,6 +321,10 @@ const fr: Dict = {
     allTimeStars: "Étoiles historiques",
     rankingPending: "Les données de classement attendent la prochaine recomputation publiée.",
     relatedCategories: "Catégories liées",
+    scopeNote:
+      "Les catégories GitStarClub sont des tranches déterministes de la liste blanche ≥10 000 étoiles. Ce n'est pas un catalogue GitHub complet d'un langage ou d'un thème.",
+    thinSliceNotice:
+      "Seuls {count} dépôts suivis correspondent à cette règle {label}. C'est la taille de la tranche de liste blanche, pas celle de {label} sur GitHub.",
   },
   rankings: {
     title: "Classements historiques",

@@ -328,6 +328,10 @@ const ja: Dict = {
     allTimeStars: "通算スター",
     rankingPending: "ランキングデータは次回の公開済み再計算を待っています。",
     relatedCategories: "関連カテゴリ",
+    scopeNote:
+      "GitStarClub のカテゴリは、星 10,000 以上のホワイトリストに対する決定的なルール切片です。GitHub 上の言語やトピックの完全な一覧ではありません。",
+    thinSliceNotice:
+      "この {label} ルールに一致する追跡リポジトリは {count} 件だけです。これはホワイトリスト切片の大きさであり、GitHub 上の {label} 全体の大きさではありません。",
   },
   rankings: {
     title: "通算ランキング",

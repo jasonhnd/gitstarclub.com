@@ -317,6 +317,8 @@ const ko: Dict = {
     allTimeStars: "역대 스타",
     rankingPending: "순위 데이터는 다음 게시된 재계산을 기다리고 있습니다.",
     relatedCategories: "관련 카테고리",
+    scopeNote: "GitStarClub 카테고리는 별 10,000개 이상 화이트리스트의 결정적 규칙 슬라이스이며, GitHub의 완전한 언어·주제 목록이 아닙니다.",
+    thinSliceNotice: "이 {label} 규칙에 맞는 추적 저장소는 {count}개뿐입니다. 화이트리스트 슬라이스 크기이지 GitHub의 {label} 크기가 아닙니다.",
   },
   rankings: {
     title: "역대 순위",
