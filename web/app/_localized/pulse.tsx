@@ -11,12 +11,20 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getHotSnapshot, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
-import { dateLabel, fmtStars, monthYearLabel } from "@/lib/format";
+import { dateLabel, fmtStars } from "@/lib/format";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { webSiteLd, collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine, siteOrganizationLd } from "@/lib/jsonld";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { currentUtcPeriods } from "@/lib/periods";
+import {
+  availablePeriodLabel,
+  formatPulseListMeta,
+  isFallbackMonthPeriod,
+  isFallbackWeekPeriod,
+  periodAsOfCandidate,
+  type PulseListMetaCopy,
+} from "@/lib/rank-period-labels";
 import { pageMeta } from "@/lib/seo";
 import { repositoryTableLabels } from "./routing";
 import { buildLocalizedPulseCapsule, buildLocalizedPulseFaqs } from "./seo-copy";
@@ -64,14 +72,51 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
     availablePeriods.month.kind === "month" ? getRank("month", availablePeriods.month.period, "repo", "flow") : Promise.resolve(null),
   ]);
 
-  const activeWeekLabel = availablePeriodLabel(locale, t, availablePeriods.week);
-  const activeMonthLabel = availablePeriodLabel(locale, t, availablePeriods.month);
+  const labelCopy = { fullHistory: t.rankings.fullHistory };
+  const metaCopy = pulseListMetaCopy(t);
+  const activeWeekLabel = availablePeriodLabel(locale, availablePeriods.week, labelCopy);
+  const activeMonthLabel = availablePeriodLabel(locale, availablePeriods.month, labelCopy);
+  const activeYearLabel = availablePeriodLabel(locale, availablePeriods.yearLink, labelCopy);
   const weekRows = lookup && activeWeekRank ? toRows(joinRepoRank(activeWeekRank.items.slice(0, 8), lookup)) : [];
   const monthRows = lookup && activeMonthRank ? toRows(joinRepoRank(activeMonthRank.items.slice(0, 8), lookup)) : [];
   const yearRows = snap && lookup ? toRows(joinRepoRank(snap.current_year.flow.slice(0, 8), lookup)) : [];
   const giants = snap && lookup ? toRows(joinRepoRank(snap.all_time.repo.slice(0, 6), lookup), "total") : [];
   const asOf = resolveDataAsOfLabel(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at, { locale });
   const dateModified = resolveDataAsOfValue(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at);
+  const weekMeta = formatPulseListMeta({
+    periodLabel: activeWeekLabel,
+    isFallback: isFallbackWeekPeriod(availablePeriods.week, periods),
+    asOf: periodAsOfCandidate(availablePeriods.week) ?? activeWeekRank?.meta.generated_at ?? snap?.generated_at,
+    locale,
+    copy: metaCopy,
+  });
+  const monthMeta = formatPulseListMeta({
+    periodLabel: activeMonthLabel,
+    isFallback: isFallbackMonthPeriod(availablePeriods.month, periods),
+    asOf: periodAsOfCandidate(availablePeriods.month) ?? activeMonthRank?.meta.generated_at ?? snap?.generated_at,
+    locale,
+    copy: metaCopy,
+  });
+  const yearMeta = formatPulseListMeta({
+    periodLabel: activeYearLabel,
+    isFallback: availablePeriods.yearLink.kind !== "year" || availablePeriods.yearLink.year !== periods.year,
+    asOf: periodAsOfCandidate(availablePeriods.yearLink) ?? snap?.freshness?.current_year ?? snap?.generated_at,
+    locale,
+    copy: metaCopy,
+  });
+  const allTimeMeta = formatPulseListMeta({
+    periodLabel: t.rankings.fullHistory,
+    asOf: snap?.freshness?.all_time ?? snap?.generated_at,
+    locale,
+    copy: metaCopy,
+  });
+  const todayIso = now.toISOString().slice(0, 10);
+  const onThisDayMeta = formatPulseListMeta({
+    periodLabel: dateLabel(locale, todayIso, "long"),
+    asOf: snap?.freshness?.on_this_day ?? snap?.generated_at,
+    locale,
+    copy: metaCopy,
+  });
   const temporalCoverage = datasetTemporalCoverageFromYearSpine(snap?.home.year_spine);
   const dataset = datasetLd({
     name: t.pulse.datasetName,
@@ -111,7 +156,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           <PulsePanel
             title={t.week.top}
             href={href(availablePeriods.week.href)}
-            meta={activeWeekLabel}
+            meta={weekMeta}
             rows={weekRows}
             labels={repoLabels}
             openLabel={openRankingLabel}
@@ -122,7 +167,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           <PulsePanel
             title={t.pulse.surging}
             href={href(availablePeriods.month.href)}
-            meta={activeMonthLabel}
+            meta={monthMeta}
             rows={monthRows}
             labels={repoLabels}
             openLabel={openRankingLabel}
@@ -133,15 +178,15 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           <PulsePanel
             title={
               <>
-                {t.year.top} {availablePeriods.yearLink.label}
+                {t.year.top} {activeYearLabel}
               </>
             }
             href={href(availablePeriods.yearLink.href)}
-            meta={availablePeriods.yearLink.label}
+            meta={yearMeta}
             rows={yearRows}
             labels={repoLabels}
             openLabel={openRankingLabel}
-            linkLabel={`${openRankingLabel}: ${availablePeriods.yearLink.label}`}
+            linkLabel={`${openRankingLabel}: ${activeYearLabel}`}
             emptyMessage={t.categories.rankingPending}
             locale={locale}
           />
@@ -149,9 +194,9 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
 
         <PulseLeaderLinks
           links={[
-            { label: t.week.label, href: href(availablePeriods.week.href), period: activeWeekLabel, row: weekRows[0] },
-            { label: t.month.label, href: href(availablePeriods.month.href), period: activeMonthLabel, row: monthRows[0] },
-            { label: t.year.label, href: href(availablePeriods.yearLink.href), period: availablePeriods.yearLink.label, row: yearRows[0] },
+            { label: t.week.label, href: href(availablePeriods.week.href), period: weekMeta, row: weekRows[0] },
+            { label: t.month.label, href: href(availablePeriods.month.href), period: monthMeta, row: monthRows[0] },
+            { label: t.year.label, href: href(availablePeriods.yearLink.href), period: yearMeta, row: yearRows[0] },
           ]}
           pendingLabel={t.categories.rankingPending}
           locale={locale}
@@ -162,7 +207,10 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           <div className="min-w-0">
             <div className="mb-3 flex items-end justify-between gap-4">
               <div>
-                <h2 className="text-[1.35rem] font-extrabold tracking-tight text-on-surface">{t.rankings.title}</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-[1.35rem] font-extrabold tracking-tight text-on-surface">{t.rankings.title}</h2>
+                  <span className="rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">{allTimeMeta}</span>
+                </div>
                 <p className="mt-1 text-[0.9rem] text-on-surface-variant">{t.rankings.subtitle}</p>
               </div>
               <Link href={href("/rankings")} className="text-readable-gold font-mono text-[0.78rem] hover:underline">
@@ -179,7 +227,10 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           </div>
 
           <aside className="min-w-0">
-            <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{t.pulse.onThisDay}</h2>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <h2 className="text-[1.15rem] font-extrabold tracking-tight text-on-surface">{t.pulse.onThisDay}</h2>
+              <span className="rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">{onThisDayMeta}</span>
+            </div>
             {onThisDay.length > 0 ? (
               <ul className="flex flex-col divide-y divide-outline-variant/50">
                 {onThisDay.slice(0, 8).map((e) => (
@@ -309,39 +360,35 @@ function periodSwitcherLinks(
   locale: Locale,
   t: Dict,
 ): Record<"all-time" | "year" | "month" | "week", PeriodSwitcherTarget> {
+  const labelCopy = { fullHistory: t.rankings.fullHistory };
   return {
     "all-time": { href: href(periods.allTime.href), label: t.rankings.allTime, value: t.rankings.fullHistory },
-    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, t, periods.yearLink) },
+    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, periods.yearLink, labelCopy) },
     month: {
       href: href(periods.month.href),
       label: t.month.label,
-      value: availablePeriodLabel(locale, t, periods.month),
-      badge: monthAvailabilityBadge(periods.month, calendar, locale, t),
+      value: availablePeriodLabel(locale, periods.month, labelCopy),
+      badge: isFallbackMonthPeriod(periods.month, calendar)
+        ? fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, periods.month, labelCopy) })
+        : undefined,
     },
     week: {
       href: href(periods.week.href),
       label: t.week.label,
-      value: availablePeriodLabel(locale, t, periods.week),
-      badge: weekAvailabilityBadge(periods.week, calendar, locale, t),
+      value: availablePeriodLabel(locale, periods.week, labelCopy),
+      badge: isFallbackWeekPeriod(periods.week, calendar)
+        ? fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, periods.week, labelCopy) })
+        : undefined,
     },
   };
 }
 
-function monthAvailabilityBadge(period: AvailableRankPeriods["month"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
-  if (period.kind !== "month") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-  return period.year === calendar.year && period.month === calendar.month ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-}
-
-function weekAvailabilityBadge(period: AvailableRankPeriods["week"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
-  if (period.kind !== "week") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-  return period.year === calendar.week.year && period.week === calendar.week.week ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-}
-
-function availablePeriodLabel(locale: Locale, t: Dict, period: AvailableRankPeriods["month"] | AvailableRankPeriods["week"] | AvailableRankPeriods["yearLink"]): string {
-  if (period.kind === "month") return monthYearLabel(locale, period.year, period.month);
-  if (period.kind === "week") return period.period;
-  if (period.kind === "year") return String(period.year);
-  return t.rankings.fullHistory;
+function pulseListMetaCopy(t: Dict): PulseListMetaCopy {
+  return {
+    fullHistory: t.rankings.fullHistory,
+    latestAvailable: t.common.latestAvailable,
+    periodAsOf: t.common.periodAsOf,
+  };
 }
 
 function fill(template: string, values: Record<string, string>): string {
