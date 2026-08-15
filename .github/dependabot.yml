@@ -1,9 +1,11 @@
 # Dependabot version updates + security PRs (alerts/security updates enabled at repo settings).
 # Keep ecosystems separate from one-shot dependency PRs so upgrade risk stays reviewable.
+# Target `pre` so dependency PRs land on the staging branch (promote pre → main); see docs/DEVELOPMENT.md.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "pre"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -14,6 +16,7 @@ updates:
 
   - package-ecosystem: "npm"
     directory: "/web"
+    target-branch: "pre"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -34,6 +37,7 @@ updates:
 
   - package-ecosystem: "npm"
     directory: "/pipeline"
+    target-branch: "pre"
     schedule:
       interval: "weekly"
       day: "monday"
