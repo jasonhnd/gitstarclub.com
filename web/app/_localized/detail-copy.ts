@@ -201,8 +201,10 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailCapsule:
       "As of {asOf}, GitStarClub tracks {count} repositories in {label}. {leader}{followers}. This category ranking uses deterministic category assignments, all-time ranking data, and repository metadata.",
     categoryDetailQ: "What repositories are included in {label}?",
-    categoryDetailAWithAsOf: "As of {asOf}, {label} includes {count} tracked repositories according to the category registry.",
-    categoryDetailANoAsOf: "{label} includes {count} tracked repositories according to the loaded category registry.",
+    categoryDetailAWithAsOf:
+      "As of {asOf}, {label} includes {count} repositories from GitStarClub's ≥10k whitelist — a deterministic rule slice, not a complete GitHub catalog.",
+    categoryDetailANoAsOf:
+      "{label} includes {count} repositories from GitStarClub's ≥10k whitelist according to the loaded category registry — a rule slice, not a complete GitHub catalog.",
     categoryDetailLeaderQ: "Which repository leads {label}?",
     categoryDetailLeaderA: "{repo} leads {label} with {value}.",
     categoryDetailLeaderFallbackA: "The {label} ranking is waiting for category rank rows.",
@@ -211,7 +213,8 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailRunnerA: "{repo} follows in {label} with {value}.",
     categoryDetailRunnerFallbackA: "Runner-up repositories appear when category ranking rows are available.",
     categoryDetailDataQ: "How is the {label} ranking generated?",
-    categoryDetailDataA: "GitStarClub combines deterministic category assignments, all-time ranking data, and repository metadata. The page does not call live search or AI.",
+    categoryDetailDataA:
+      "GitStarClub combines deterministic category assignments, all-time ranking data, and repository metadata over the ≥10k whitelist. The page is not a complete GitHub language or topic listing, and it does not call live search or AI.",
     totalStarsValue: "{value} total stars",
     gainedStarsValue: "{value} stars",
   },
@@ -303,8 +306,10 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailCapsule:
       "{asOf} 時点で、GitStarClub は {label} に {count} 件のリポジトリを追跡しています。{leader}{followers}。このカテゴリランキングは決定的なカテゴリ割り当て、通算ランキングデータ、リポジトリ項目から生成されます。",
     categoryDetailQ: "{label} にはどのリポジトリが含まれますか？",
-    categoryDetailAWithAsOf: "{asOf} 時点で、{label} にはカテゴリレジストリにもとづく追跡リポジトリ {count} 件が含まれます。",
-    categoryDetailANoAsOf: "{label} には読み込まれたカテゴリレジストリにもとづく追跡リポジトリ {count} 件が含まれます。",
+    categoryDetailAWithAsOf:
+      "{asOf} 時点で、{label} には GitStarClub の ≥10k ホワイトリストから {count} 件が含まれます。決定的なルール切片であり、GitHub の完全な一覧ではありません。",
+    categoryDetailANoAsOf:
+      "{label} には読み込まれたカテゴリレジストリにもとづき、≥10k ホワイトリストから {count} 件が含まれます。ルール切片であり、GitHub の完全な一覧ではありません。",
     categoryDetailLeaderQ: "{label} の首位リポジトリは？",
     categoryDetailLeaderA: "{repo} が {label} を {value} でリードしています。",
     categoryDetailLeaderFallbackA: "{label} ランキングはカテゴリランキング行を待っています。",
@@ -313,7 +318,8 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailRunnerA: "{repo} が {label} で続き、{value} です。",
     categoryDetailRunnerFallbackA: "カテゴリランキング行が利用できる場合、次点リポジトリが表示されます。",
     categoryDetailDataQ: "{label} ランキングはどう生成されますか？",
-    categoryDetailDataA: "GitStarClub は決定的なカテゴリ割り当て、通算ランキングデータ、リポジトリ項目を組み合わせます。このページはライブ検索や AI を呼び出しません。",
+    categoryDetailDataA:
+      "GitStarClub は ≥10k ホワイトリスト上の決定的なカテゴリ割り当て、通算ランキングデータ、リポジトリ項目を組み合わせます。GitHub の言語やトピックの完全な一覧ではなく、ライブ検索や AI も呼び出しません。",
     totalStarsValue: "{value} 総スター",
     gainedStarsValue: "{value} スター",
   },
@@ -405,8 +411,8 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailCapsule:
       "截至 {asOf}，GitStarClub 在 {label} 中追踪 {count} 个仓库。{leader}{followers}。该分类排名由确定性分类分配、历史总榜数据和仓库字段生成。",
     categoryDetailQ: "{label} 中包含哪些仓库？",
-    categoryDetailAWithAsOf: "截至 {asOf}，根据分类注册表，{label} 包含 {count} 个已追踪仓库。",
-    categoryDetailANoAsOf: "根据已加载的分类注册表，{label} 包含 {count} 个已追踪仓库。",
+    categoryDetailAWithAsOf: "截至 {asOf}，{label} 包含 GitStarClub ≥10k 白名单中的 {count} 个仓库——这是确定性规则切片，不是完整的 GitHub 目录。",
+    categoryDetailANoAsOf: "根据已加载的分类注册表，{label} 包含 ≥10k 白名单中的 {count} 个仓库——这是规则切片，不是完整的 GitHub 目录。",
     categoryDetailLeaderQ: "{label} 的领先仓库是哪个？",
     categoryDetailLeaderA: "{repo} 以 {value} 领先 {label}。",
     categoryDetailLeaderFallbackA: "{label} 排名正在等待分类排名行。",
@@ -415,7 +421,7 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailRunnerA: "{repo} 在 {label} 中随后，当前为 {value}。",
     categoryDetailRunnerFallbackA: "分类排名行可用时会显示后续仓库。",
     categoryDetailDataQ: "{label} 排名如何生成？",
-    categoryDetailDataA: "GitStarClub 组合确定性分类分配、历史总榜数据和仓库字段。该页面不会调用实时搜索或 AI。",
+    categoryDetailDataA: "GitStarClub 在 ≥10k 白名单上组合确定性分类分配、历史总榜数据和仓库字段。这不是完整的 GitHub 语言或主题列表，也不会调用实时搜索或 AI。",
     totalStarsValue: "{value} 总星标",
     gainedStarsValue: "{value} 星",
   },
@@ -507,8 +513,8 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailCapsule:
       "截至 {asOf}，GitStarClub 在 {label} 中追蹤 {count} 個倉庫。{leader}{followers}。此分類排名由確定性分類分配、歷史總榜資料和倉庫欄位產生。",
     categoryDetailQ: "{label} 中包含哪些倉庫？",
-    categoryDetailAWithAsOf: "截至 {asOf}，根據分類註冊表，{label} 包含 {count} 個已追蹤倉庫。",
-    categoryDetailANoAsOf: "根據已載入的分類註冊表，{label} 包含 {count} 個已追蹤倉庫。",
+    categoryDetailAWithAsOf: "截至 {asOf}，{label} 包含 GitStarClub ≥10k 白名單中的 {count} 個倉庫——這是確定性規則切片，不是完整的 GitHub 目錄。",
+    categoryDetailANoAsOf: "根據已載入的分類註冊表，{label} 包含 ≥10k 白名單中的 {count} 個倉庫——這是規則切片，不是完整的 GitHub 目錄。",
     categoryDetailLeaderQ: "{label} 的領先倉庫是哪個？",
     categoryDetailLeaderA: "{repo} 以 {value} 領先 {label}。",
     categoryDetailLeaderFallbackA: "{label} 排名正在等待分類排名列。",
@@ -517,7 +523,7 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailRunnerA: "{repo} 在 {label} 中隨後，目前為 {value}。",
     categoryDetailRunnerFallbackA: "分類排名列可用時會顯示後續倉庫。",
     categoryDetailDataQ: "{label} 排名如何產生？",
-    categoryDetailDataA: "GitStarClub 組合確定性分類分配、歷史總榜資料和倉庫欄位。此頁面不會呼叫即時搜尋或 AI。",
+    categoryDetailDataA: "GitStarClub 在 ≥10k 白名單上組合確定性分類分配、歷史總榜資料和倉庫欄位。這不是完整的 GitHub 語言或主題列表，也不會呼叫即時搜尋或 AI。",
     totalStarsValue: "{value} 總星標",
     gainedStarsValue: "{value} 星",
   },
@@ -609,8 +615,10 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailCapsule:
       "{asOf} 기준으로 GitStarClub은 {label}에서 저장소 {count}개를 추적합니다. {leader}{followers}. 이 카테고리 순위는 결정적 카테고리 할당, 역대 순위 데이터, 저장소 필드에서 생성됩니다.",
     categoryDetailQ: "{label}에는 어떤 저장소가 포함되나요?",
-    categoryDetailAWithAsOf: "{asOf} 기준으로 {label}에는 카테고리 레지스트리에 따른 추적 저장소 {count}개가 포함됩니다.",
-    categoryDetailANoAsOf: "{label}에는 로드된 카테고리 레지스트리에 따른 추적 저장소 {count}개가 포함됩니다.",
+    categoryDetailAWithAsOf:
+      "{asOf} 기준으로 {label}에는 GitStarClub ≥10k 화이트리스트의 저장소 {count}개가 포함됩니다. 결정적 규칙 슬라이스이며 GitHub 전체 목록이 아닙니다.",
+    categoryDetailANoAsOf:
+      "{label}에는 로드된 카테고리 레지스트리에 따라 ≥10k 화이트리스트의 저장소 {count}개가 포함됩니다. 규칙 슬라이스이며 GitHub 전체 목록이 아닙니다.",
     categoryDetailLeaderQ: "{label}을 이끄는 저장소는 무엇인가요?",
     categoryDetailLeaderA: "{repo}가 {value}로 {label}을 이끌고 있습니다.",
     categoryDetailLeaderFallbackA: "{label} 순위는 카테고리 순위 행을 기다리고 있습니다.",
@@ -619,7 +627,8 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailRunnerA: "{repo}가 {label}에서 뒤따르며 {value}입니다.",
     categoryDetailRunnerFallbackA: "카테고리 순위 행이 있으면 후속 저장소가 표시됩니다.",
     categoryDetailDataQ: "{label} 순위는 어떻게 생성되나요?",
-    categoryDetailDataA: "GitStarClub은 결정적 카테고리 할당, 역대 순위 데이터, 저장소 필드를 결합합니다. 이 페이지는 실시간 검색이나 AI를 호출하지 않습니다.",
+    categoryDetailDataA:
+      "GitStarClub은 ≥10k 화이트리스트 위에서 결정적 카테고리 할당, 역대 순위 데이터, 저장소 필드를 결합합니다. GitHub의 완전한 언어·주제 목록이 아니며 실시간 검색이나 AI도 호출하지 않습니다.",
     totalStarsValue: "{value} 총 스타",
     gainedStarsValue: "{value} 스타",
   },
@@ -711,8 +720,10 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailCapsule:
       "Al {asOf}, GitStarClub monitorea {count} repositorios en {label}. {leader}{followers}. Este ranking de categoría usa asignaciones deterministas de categoría, datos de ranking histórico y campos de repositorio.",
     categoryDetailQ: "¿Qué repositorios se incluyen en {label}?",
-    categoryDetailAWithAsOf: "Al {asOf}, {label} incluye {count} repositorios monitoreados según el registro de categorías.",
-    categoryDetailANoAsOf: "{label} incluye {count} repositorios monitoreados según el registro de categorías cargado.",
+    categoryDetailAWithAsOf:
+      "Al {asOf}, {label} incluye {count} repositorios de la lista blanca ≥10k de GitStarClub: un corte de reglas, no un catálogo completo de GitHub.",
+    categoryDetailANoAsOf:
+      "{label} incluye {count} repositorios de la lista blanca ≥10k según el registro cargado: un corte de reglas, no un catálogo completo de GitHub.",
     categoryDetailLeaderQ: "¿Qué repositorio lidera {label}?",
     categoryDetailLeaderA: "{repo} lidera {label} con {value}.",
     categoryDetailLeaderFallbackA: "El ranking {label} espera filas de ranking de categoría.",
@@ -721,7 +732,8 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailRunnerA: "{repo} sigue en {label} con {value}.",
     categoryDetailRunnerFallbackA: "Los repositorios siguientes aparecen cuando hay filas de ranking de categoría disponibles.",
     categoryDetailDataQ: "¿Cómo se genera el ranking {label}?",
-    categoryDetailDataA: "GitStarClub combina asignaciones deterministas de categoría, ranking histórico y campos de repositorio. La página no llama búsqueda en vivo ni IA.",
+    categoryDetailDataA:
+      "GitStarClub combina asignaciones deterministas de categoría, ranking histórico y campos de repositorio sobre la lista blanca ≥10k. No es un listado completo de GitHub ni llama búsqueda en vivo o IA.",
     totalStarsValue: "{value} estrellas totales",
     gainedStarsValue: "{value} estrellas",
   },
@@ -813,8 +825,10 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailCapsule:
       "Au {asOf}, GitStarClub suit {count} dépôts dans {label}. {leader}{followers}. Ce classement de catégorie utilise des affectations de catégorie déterministes, des données de classement historique et des champs de dépôts.",
     categoryDetailQ: "Quels dépôts sont inclus dans {label} ?",
-    categoryDetailAWithAsOf: "Au {asOf}, {label} inclut {count} dépôts suivis selon le registre de catégories.",
-    categoryDetailANoAsOf: "{label} inclut {count} dépôts suivis selon le registre de catégories chargé.",
+    categoryDetailAWithAsOf:
+      "Au {asOf}, {label} inclut {count} dépôts de la liste blanche ≥10k de GitStarClub — une tranche de règles, pas un catalogue GitHub complet.",
+    categoryDetailANoAsOf:
+      "{label} inclut {count} dépôts de la liste blanche ≥10k selon le registre chargé — une tranche de règles, pas un catalogue GitHub complet.",
     categoryDetailLeaderQ: "Quel dépôt mène {label} ?",
     categoryDetailLeaderA: "{repo} mène {label} avec {value}.",
     categoryDetailLeaderFallbackA: "Le classement {label} attend des lignes de classement de catégorie.",
@@ -823,7 +837,8 @@ const TEXT: Record<Locale, DetailText> = {
     categoryDetailRunnerA: "{repo} suit dans {label} avec {value}.",
     categoryDetailRunnerFallbackA: "Les dépôts suivants apparaissent lorsque des lignes de classement de catégorie sont disponibles.",
     categoryDetailDataQ: "Comment le classement {label} est-il généré ?",
-    categoryDetailDataA: "GitStarClub combine des affectations de catégorie déterministes, des données de classement historique et des champs de dépôts. La page n'appelle ni recherche en direct ni IA.",
+    categoryDetailDataA:
+      "GitStarClub combine des affectations déterministes, des classements historiques et des champs de dépôts sur la liste blanche ≥10k. Ce n'est pas un listing GitHub complet, et la page n'appelle ni recherche en direct ni IA.",
     totalStarsValue: "{value} étoiles totales",
     gainedStarsValue: "{value} étoiles",
   },

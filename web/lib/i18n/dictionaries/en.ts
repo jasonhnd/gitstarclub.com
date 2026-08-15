@@ -365,6 +365,10 @@ export const en = {
     allTimeStars: "All-time stars",
     rankingPending: "Ranking data is waiting for the next published recompute.",
     relatedCategories: "Related categories",
+    scopeNote:
+      "GitStarClub categories are deterministic rule slices of the ≥10,000-star whitelist. They are not a complete GitHub language or topic catalog.",
+    thinSliceNotice:
+      "Only {count} tracked repositories match this {label} rule. That is the size of the whitelist slice, not the size of {label} on GitHub.",
   },
   rankings: {
     title: "All-time rankings",

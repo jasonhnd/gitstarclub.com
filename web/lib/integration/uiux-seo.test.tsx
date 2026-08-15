@@ -481,6 +481,13 @@ describe("Phase 7 UI/UX internal-link anchors", () => {
     expect(expectAnchors(htmlFor("category detail"))).toContain(`/${REPO_FULL_NAME}`);
   });
 
+  test("thin category detail states whitelist-slice honesty", () => {
+    const text = normalizedText(htmlFor("category detail"));
+    expect(text).toContain("whitelist slice");
+    expect(text.toLowerCase()).not.toContain("complete language ecosystem");
+    expect(text.toLowerCase()).not.toContain("complete github catalog of");
+  });
+
   test("repo detail links to its owner with a real anchor", () => {
     expect(expectAnchors(htmlFor("repo detail"))).toContain(`/o/${REPO_OWNER}`);
   });
