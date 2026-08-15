@@ -290,7 +290,9 @@ const zhTw: Dict = {
     recentMovement: "近期變化",
     recentMovementDescription: "組織曲線中最新的每日淨星標變化。",
     relatedTitle: "相關組織連結",
-    relatedDescription: "與此擁有者相關的永久排名和已追蹤倉庫頁面。",
+    relatedDescription: "與此擁有者相關的永久排名、公開分類和已追蹤倉庫頁面。",
+    compareMembers: "對比熱門倉庫",
+    categoryTags: "公開分類",
     noTrackedRepos: "已追蹤倉庫列正在等待下一次發布的 lookup。",
   },
   categories: {

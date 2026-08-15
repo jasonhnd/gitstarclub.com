@@ -758,8 +758,10 @@ repo 详情页 /:owner/:name
 
 org 详情页 /o/login
  ├─ top repo 列表（每行）───────────────→ repo 详情页 /login/:name （org→repo）
+ ├─ 成员公开分类芯片 ───────────────────→ /categories/{dimension}/{slug}（registry public + member assignments）
+ ├─ 对比热门成员 ───────────────────────→ /compare?repos=（当前星标前最多 5 个成员）
  ├─ 月度 org 表现 ──────────────────────→ 对应月度页
- └─ 全时 org 名次 ──────────────────────→ /rankings
+ └─ 全时 org 名次 / 名次史（若 entity 有 rank_history）→ /rankings 或 /rankings/YYYY/MM
 
 org 索引 /o 与 /o/page/N
  ├─ 每行 owner ─────────────────────────→ org 详情页 /o/login
