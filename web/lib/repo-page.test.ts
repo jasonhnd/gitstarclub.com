@@ -7,6 +7,7 @@ import {
   compareHref,
   ownerHref,
   rankingMonthHref,
+  rankingMonthHrefIfRoutable,
   relatedRepositories,
   repoCategoryLinks,
   repoHubPresentLinkTypes,
@@ -135,6 +136,24 @@ describe("repoRankingAppearances", () => {
         ],
       }),
     ).toEqual([{ period: "2026-06", rank: 3, adds: 20 }]);
+  });
+});
+
+describe("rankingMonthHrefIfRoutable", () => {
+  const now = new Date("2026-08-15T12:00:00.000Z");
+
+  test("maps a frozen milestone date to that UTC month ranking path", () => {
+    expect(rankingMonthHrefIfRoutable("2020-03-15", now)).toBe("/rankings/2020/3");
+    expect(rankingMonthHrefIfRoutable("2015-01-01", now)).toBe("/rankings/2015/1");
+    expect(rankingMonthHrefIfRoutable("2026-08-02", now)).toBe("/rankings/2026/8");
+  });
+
+  test("returns null for missing, malformed, or out-of-range months", () => {
+    expect(rankingMonthHrefIfRoutable("", now)).toBeNull();
+    expect(rankingMonthHrefIfRoutable("not-a-date", now)).toBeNull();
+    expect(rankingMonthHrefIfRoutable("2026-13-01", now)).toBeNull();
+    expect(rankingMonthHrefIfRoutable("2014-12-31", now)).toBeNull();
+    expect(rankingMonthHrefIfRoutable("2026-09-01", now)).toBeNull();
   });
 });
 

@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { RepoMilestonesSection } from "@/app/_localized/repo-sections";
+import { getDictionary } from "@/lib/i18n";
 import { exactRepoMilestones } from "./repo-milestones";
 
 describe("exactRepoMilestones", () => {
@@ -36,5 +40,29 @@ describe("exactRepoMilestones", () => {
         crossed_100k: null,
       }),
     ).toEqual([{ stars: 50_000, label: "50k", date: "2024-03-05", monthIndex: 2 }]);
+  });
+});
+
+describe("RepoMilestonesSection ranking links", () => {
+  test("links in-range crossings and leaves pre-2015 dates unlinked", async () => {
+    const t = await getDictionary("en");
+    const html = renderToStaticMarkup(
+      createElement(RepoMilestonesSection, {
+        locale: "en",
+        milestoneSnippet: null,
+        snippetLabels: { eyebrow: "s", copy: "c", copied: "d", embed: "e", embedCopied: "f" },
+        t,
+        milestones: [
+          { stars: 10_000, label: "10k", date: "2014-02-01", monthIndex: 0 },
+          { stars: 50_000, label: "50k", date: "2020-03-15", monthIndex: 1 },
+        ],
+      }),
+    );
+
+    expect(html).toContain("10k");
+    expect(html).toContain("50k");
+    expect(html).toContain('href="/rankings/2020/3"');
+    expect(html).not.toContain("/rankings/2014/");
+    expect(html).not.toContain('href="/rankings/2014/2"');
   });
 });

@@ -1,6 +1,7 @@
 import { CATEGORY_DIMENSIONS, categoryLanguageNamesFromRepository, slugifyCategoryPart } from "@/lib/categories/rules";
 import type { CategoryAssignments, CategoryRegistry, RepoLookupEntry } from "@/lib/contracts";
 import { ymParts } from "@/lib/format";
+import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 
 export type RepoLanguage = { name: string; size?: number | null; color?: string | null };
 export type CategoryLink = { id: string; label: string; href: string };
@@ -93,6 +94,21 @@ export function compareHref(fullName: string): string {
 export function rankingMonthHref(period: string): string {
   const { y, m } = ymParts(period);
   return `/rankings/${y}/${m}`;
+}
+
+const YEAR_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** Ranking month path when the UTC month is a valid `/rankings/{year}/{month}` route, else null.
+ *  Does not probe Blob for a published rank view. */
+export function rankingMonthHrefIfRoutable(periodOrDate: string, now = new Date()): string | null {
+  const period = periodOrDate.length >= 7 ? periodOrDate.slice(0, 7) : periodOrDate;
+  if (!YEAR_MONTH_RE.test(period)) return null;
+  const { y, m } = ymParts(period);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return null;
+  const current = currentUtcPeriods(now);
+  if (y < FIRST_YEAR) return null;
+  if (y > current.year || (y === current.year && m > current.month)) return null;
+  return rankingMonthHref(period);
 }
 
 export function repoRankingAppearances(

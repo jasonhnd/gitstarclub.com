@@ -29,6 +29,7 @@ import {
   languageHref,
   ownerHref,
   rankingMonthHref,
+  rankingMonthHrefIfRoutable,
   repoLanguageEntries,
   type CategoryLink,
   type RelatedRepo,
@@ -631,12 +632,16 @@ function buildLocalizedRepoMilestoneSnippet({
     text: fill(t.repo.milestoneSnippetText, { asOf, repo: repo.full_name, milestones: milestoneText }),
     links: [
       { label: fill(t.repo.starHistoryLink, { repo: repo.full_name }), href: localizedPath(locale, `/${repo.full_name}`) },
-      ...milestones.map((milestone) => {
-        const [year, month] = milestone.date.slice(0, 7).split("-");
-        return {
-          label: fill(t.repo.milestoneRankingMonth, { milestone: milestone.label }),
-          href: localizedPath(locale, `/rankings/${year}/${Number(month)}`),
-        };
+      ...milestones.flatMap((milestone) => {
+        const rankingHref = rankingMonthHrefIfRoutable(milestone.date);
+        return rankingHref
+          ? [
+              {
+                label: fill(t.repo.milestoneRankingMonth, { milestone: milestone.label }),
+                href: localizedPath(locale, rankingHref),
+              },
+            ]
+          : [];
       }),
     ],
     sourceLabel: t.common.source,
