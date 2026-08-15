@@ -13,7 +13,7 @@ source_of_truth_for:
 
 > **前端实现真相源**——把 [REQUIREMENTS](./REQUIREMENTS.md)（做什么）、[ARCHITECTURE](./ARCHITECTURE.md)（页面分层 / ISR / 节奏）、[DATA-CONTRACTS](./DATA-CONTRACTS.md)（消费的 JSON 视图 schema）、[DESIGN-SYSTEM](./DESIGN-SYSTEM.md)（M3E token / 组件 / 动效）落到 `web/` 这个 **Next.js 16 App Router** 应用的**渲染配置 / 数据消费 / 组件 / i18n**。路由与源文件清单只在 [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md) 维护。
 > SEO 元数据 / sitemap / canonical 细节见 [SEO.md](./SEO.md)；Route Handler 与公开 JSON endpoint 契约见 [API.md](./API.md)；Blob 布局 / 环境变量 / 部署拓扑见 [OPS.md](./OPS.md)。
-> 技术事实基于 **Next.js 16.2.12 · React 19.2.4 · TypeScript 6 · Tailwind 4 · Zod 4 · 包管理器 bun 1.3.14**（见 `web/package.json` 与根 `package.json`）。
+> 技术事实基于 **Next.js 16.3.0 · React 19.2.4 · TypeScript 6 · Tailwind 4 · Zod 4 · 包管理器 bun 1.3.14**（见 `web/package.json` 与根 `package.json`）。
 
 ---
 
