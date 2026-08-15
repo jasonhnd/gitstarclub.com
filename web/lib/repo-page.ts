@@ -6,6 +6,13 @@ import { currentUtcPeriods, FIRST_YEAR } from "@/lib/periods";
 export type RepoLanguage = { name: string; size?: number | null; color?: string | null };
 export type CategoryLink = { id: string; label: string; href: string };
 export type RelatedRepo = Pick<RepoLookupEntry, "full_name" | "owner" | "name" | "language" | "current_stars">;
+export type RelatedRepoSource = "owner" | "language" | "mixed" | "empty";
+export type RelatedRepositoriesResult = {
+  items: RelatedRepo[];
+  ownerCount: number;
+  languageCount: number;
+  source: RelatedRepoSource;
+};
 export type RepoHubRankingAppearance = { period: string; rank: number; adds?: number | null };
 export type RepoHub = {
   owner: { login: string; href: string };
@@ -13,6 +20,7 @@ export type RepoHub = {
   categories: CategoryLink[];
   rankingAppearances: RepoHubRankingAppearance[];
   related: RelatedRepo[];
+  relatedSource: RelatedRepoSource;
 };
 
 /** #356 hub link types. Tests fail if any type disappears from a complete fixture or the rendered page. */
@@ -142,6 +150,10 @@ export function buildRepoHub(input: {
   registry: CategoryRegistry | null;
   lookup: Record<string, RepoLookupEntry> | null;
 }): RepoHub {
+  const related = relatedRepositoriesResult(
+    { full_name: input.fullName, owner: input.owner, language: input.language },
+    input.lookup,
+  );
   return {
     owner: { login: input.owner, href: ownerHref(input.owner) },
     compare: { href: compareHref(input.fullName) },
@@ -150,11 +162,16 @@ export function buildRepoHub(input: {
       rank_history: input.rankHistory,
       monthly_table: input.monthlyTable,
     }),
-    related: relatedRepositories(
-      { full_name: input.fullName, owner: input.owner, language: input.language },
-      input.lookup,
-    ),
+    related: related.items,
+    relatedSource: related.source,
   };
+}
+
+function relatedSourceFromCounts(ownerCount: number, languageCount: number): RelatedRepoSource {
+  if (ownerCount > 0 && languageCount > 0) return "mixed";
+  if (ownerCount > 0) return "owner";
+  if (languageCount > 0) return "language";
+  return "empty";
 }
 
 export function repoHubPresentLinkTypes(hub: RepoHub): RepoHubLinkType[] {
@@ -165,12 +182,12 @@ export function repoHubPresentLinkTypes(hub: RepoHub): RepoHubLinkType[] {
   return types;
 }
 
-export function relatedRepositories(
+export function relatedRepositoriesResult(
   repo: { full_name: string; owner: string; language: string | null },
   lookup: Record<string, RepoLookupEntry> | null,
   limit = REPO_HUB_RELATED_LIMIT,
-): RelatedRepo[] {
-  if (!lookup) return [];
+): RelatedRepositoriesResult {
+  if (!lookup) return { items: [], ownerCount: 0, languageCount: 0, source: "empty" };
   const rows = Object.values(lookup).filter(
     (entry) => entry.active !== false && entry.full_name !== repo.full_name,
   );
@@ -193,5 +210,16 @@ export function relatedRepositories(
     }
   }
 
-  return related.slice(0, limit);
+  const items = related.slice(0, limit);
+  const ownerCount = items.filter((entry) => entry.owner === repo.owner).length;
+  const languageCount = items.length - ownerCount;
+  return { items, ownerCount, languageCount, source: relatedSourceFromCounts(ownerCount, languageCount) };
+}
+
+export function relatedRepositories(
+  repo: { full_name: string; owner: string; language: string | null },
+  lookup: Record<string, RepoLookupEntry> | null,
+  limit = REPO_HUB_RELATED_LIMIT,
+): RelatedRepo[] {
+  return relatedRepositoriesResult(repo, lookup, limit).items;
 }

@@ -201,6 +201,10 @@ const zh: Dict = {
     languages: "语言",
     relatedPages: "浏览相关页面",
     relatedRepositories: "相关仓库",
+    relatedByOwner: "同一所有者下其他正在追踪的仓库，按当前星标排序。",
+    relatedByLanguage: "该所有者没有其他正在追踪的仓库。以下是本站已追踪、当前仍活跃的最大 {language} 仓库。",
+    relatedByOwnerAndLanguage: "先列出同一所有者下正在追踪的仓库，再按当前星标列出最大的活跃 {language} 同类仓库。",
+    relatedEmpty: "没有其他正在追踪的活跃仓库与此所有者或主语言相同。",
     capsuleLatest: "{month} 新增 {stars} 星",
     capsuleLatestFallback: "最新的预计算月度行",
     capsule:

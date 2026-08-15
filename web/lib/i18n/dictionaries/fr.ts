@@ -202,6 +202,12 @@ const fr: Dict = {
     languages: "Langages",
     relatedPages: "Explorer les pages liées",
     relatedRepositories: "Dépôts liés",
+    relatedByOwner: "Autres dépôts suivis actifs du même propriétaire, classés par étoiles actuelles.",
+    relatedByLanguage:
+      "Aucun autre dépôt suivi de ce propriétaire. Voici les plus grands dépôts {language} actifs déjà suivis par GitStarClub.",
+    relatedByOwnerAndLanguage:
+      "Autres dépôts suivis actifs du même propriétaire, puis les plus grands pairs {language} actifs, classés par étoiles actuelles.",
+    relatedEmpty: "Aucun autre dépôt suivi actif ne partage ce propriétaire ou ce langage principal.",
     capsuleLatest: "{month} avec {stars} étoiles",
     capsuleLatestFallback: "sa dernière ligne mensuelle précalculée",
     capsule:
