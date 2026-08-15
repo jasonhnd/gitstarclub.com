@@ -386,7 +386,10 @@ export const en = {
     dailyMovement: "Daily movement",
     periodNavigation: "Period navigation",
     relatedTitle: "Related ranking links",
-    relatedDescription: "Permanent archive routes and current activity views connected to this ranking period.",
+    relatedDescription: "Permanent archive routes, public category pages, and current activity views connected to this ranking period.",
+    categoryExitsTitle: "Public categories among the leaders",
+    categoryExits:
+      "Precomputed public slices of the tracked ≥10k set that appear among this board's leading rows. These are category pages, not a live GitHub search.",
     visibleRows: "Visible rows",
     noMovement: "Movement data is waiting for the next published recompute.",
     noGrowth: "Growth-rate data is waiting for the next published recompute.",

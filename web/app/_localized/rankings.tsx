@@ -11,7 +11,9 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { Star } from "@/app/_explore/Star";
 import { OrganizationRankingTable, type OrganizationSummaryRow } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getAllTime, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
+import { getAllTime, getCategoryAssignments, getCategoryRegistry, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
+import { rankingCategoryExits } from "@/lib/ranking-category-exits";
+import { RankingCategoryExits } from "./ranking-category-exits";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
 import { formatInteger, fmtStars, monthYearLabel } from "@/lib/format";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
@@ -45,18 +47,19 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
   const routePath = localizedPath(locale, RANKINGS_PATH);
   const href = (path: string) => localizedPath(locale, path);
   const periods = currentUtcPeriods(now);
-  const [repoRank, orgRank, repoLk, orgLk, snap, availablePeriods] = await Promise.all([
+  const [repoRank, orgRank, repoLk, orgLk, snap, availablePeriods, registry, assignments] = await Promise.all([
     getAllTime("repo"),
     getAllTime("org"),
     getReposLookup(),
     getOrgsLookup(),
     getHotSnapshot(),
     resolveAvailableRankPeriods(now),
+    getCategoryRegistry(),
+    getCategoryAssignments(),
   ]);
-  const repoRows: Row[] =
-    repoRank && repoLk
-      ? joinRepoRank(repoRank.items, repoLk).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }))
-      : [];
+  const rankedRepos = repoRank && repoLk ? joinRepoRank(repoRank.items, repoLk) : [];
+  const repoRows: Row[] = rankedRepos.map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }));
+  const categoryLinks = rankingCategoryExits(rankedRepos, registry, assignments);
   const orgs = orgRank && orgLk ? joinOrgRank(orgRank.items, orgLk) : [];
   const archiveItems = buildArchiveItems(snap?.home.year_spine ?? [], availablePeriods, locale, t);
   const asOf = resolveDataAsOfLabel(repoRank?.meta.generated_at, orgRank?.meta.generated_at, snap?.generated_at, { locale });
@@ -112,6 +115,7 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
         </section>
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" labels={answerCapsuleLabels(locale, t)} />}
+        <RankingCategoryExits locale={locale} links={categoryLinks} t={t} />
 
         <div className="mt-[clamp(2.5rem,5vw,4rem)] grid gap-x-10 gap-y-10 lg:grid-cols-2">
           <section className="min-w-0">

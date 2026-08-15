@@ -346,7 +346,10 @@ const ja: Dict = {
     dailyMovement: "日別の動き",
     periodNavigation: "期間ナビゲーション",
     relatedTitle: "関連するランキングリンク",
-    relatedDescription: "このランキング期間に関連する恒久アーカイブと現在のアクティビティページです。",
+    relatedDescription: "このランキング期間に関連する恒久アーカイブ、公開カテゴリ、現在のアクティビティページです。",
+    categoryExitsTitle: "上位行に現れる公開カテゴリ",
+    categoryExits:
+      "このボード上位行に現れる、追跡中の ≥10k 集合の事前計算された公開スライスです。GitHub をライブ検索するフィルタではありません。",
     visibleRows: "表示行数",
     noMovement: "変動データは次回の公開再計算を待っています。",
     noGrowth: "成長率データは次回の公開再計算を待っています。",
