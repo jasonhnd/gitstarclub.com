@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-08-15
+last_reviewed: 2026-08-16
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -61,7 +61,7 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | `REQ-PERF-001` | `P0-AC5` | Current CI does not enforce browser/perf budgets; supporting baseline lives in `docs/perf/CWV-25.md` | Lighthouse/CWV, zero-JS, HTML-size, and cross-browser gates in §5/§6 |
 | `REQ-SEARCH-001` | P1 catalog criteria | Search core/worker/fetch/keyboard unit tests plus `web/e2e/search-compare-interactions.spec.ts` keyboard, focus, compare-toggle, and populated-dialog Axe coverage | Cross-browser and visual coverage |
 | `REQ-COMPARE-001` | P1 catalog criteria | Compare core, curve-fetch/retry tests, and `web/e2e/search-compare-interactions.spec.ts` first-failure/second-success recovery | URL-share, cross-browser, and visual coverage |
-| `REQ-CATEGORY-001` | P1 catalog criteria | `web/lib/workflows/recompute/categories.test.ts`, `web/lib/categories/rules.test.ts`, category SEO/route tests, `web/lib/repo-page.test.ts` hub category chips | Category browser E2E and pagination visual checks |
+| `REQ-CATEGORY-001` | P1 catalog criteria | `web/lib/workflows/recompute/categories.test.ts`, `web/lib/categories/rules.test.ts`, category SEO/route tests, `web/lib/repo-page.test.ts` hub category chips, `web/lib/category-bidirectional.test.ts` (public assignment ↔ repo chip and category rank / pagination path) | Category browser E2E and pagination visual checks |
 | Repo hub (#356 / #363) | Owner, public category, compare, non-all-time ranking period, bounded related repos | `web/lib/repo-page.test.ts`, `web/lib/repo-hub-contract.test.tsx` (fails if a #356 link type disappears from `RepoPageView`) | Manual Preview of `/{owner}/{name}` |
 | Repo milestone → month (#364) | Frozen `crossed_*` dates link `/rankings/{year}/{month}` only when the UTC month is a valid ranking route | `rankingMonthHrefIfRoutable` in `web/lib/repo-page.test.ts`, `web/lib/repo-milestones.test.ts` | Manual Preview of a pre-2015 10k crossing |
 | Org hub (#356 / #366) | Public categories from members, compare of top members, ranking month only if `rank_history` exists | `web/lib/org-page.test.ts`, `web/lib/org-hub-contract.test.tsx` | Manual Preview of `/o/{login}` |
