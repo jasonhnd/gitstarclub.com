@@ -13,6 +13,11 @@ const LIVE_POINTER_PATH = "live/latest.json";
 const LEASE_TTL_MS = 15 * 60 * 1000;
 const MAX_CAS_ATTEMPTS = 5;
 
+/** Page readers still cache `live/latest.json` for 60s. Claim / publish / release
+ * must see the lease they just wrote, so control-plane gets bypass the CDN.
+ * Sunday weekly reuse publishes in ~1–2s and otherwise reads the pre-lease pointer. */
+export const LIVE_POINTER_READ_OPTIONS = { access: "public" as const, useCache: false };
+
 export type LiveControlSnapshot = {
   pointer: LiveGenerationPointerData | null;
   etag: string | null;
@@ -85,7 +90,7 @@ async function putJson(path: string, data: unknown, options: { overwrite: boolea
 
 export class BlobLivePublicationStore implements LivePublicationStore {
   async readControl(): Promise<LiveControlSnapshot> {
-    const result = await get(LIVE_POINTER_PATH, { access: "public", token: requireBlobWriteToken() });
+    const result = await get(LIVE_POINTER_PATH, { ...LIVE_POINTER_READ_OPTIONS, token: requireBlobWriteToken() });
     if (!result) return { pointer: null, etag: null };
     if (result.statusCode !== 200 || !result.stream) {
       throw new Error(`live pointer read ${LIVE_POINTER_PATH} -> ${result.statusCode}`);
