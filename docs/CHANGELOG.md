@@ -19,6 +19,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Added
 
+- **Track C data-layer decision draft.** Comparative write-up of Tinybird, Vercel Postgres / Neon, extra JSON views, and a six-month deferral, plus the POC must-prove list. Overall lean is defer; **POC allowed: no.** Formal choose-or-defer remains #383 on 2026-09-12. See [ROADMAP.md](./ROADMAP.md) Track C and [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md).
 - **Vercel Web Analytics.** Enabled cookieless aggregate page-view measurement through Vercel Web Analytics and corrected the privacy page copy to reflect that no analytics cookies or personal data are collected.
 
 ### Changed
