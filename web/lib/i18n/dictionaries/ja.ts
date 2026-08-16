@@ -373,6 +373,7 @@ const ja: Dict = {
     onThisDay: "この日の節目",
     crossed: "突破",
     open: "開く",
+    fullBoard: "全順位",
     datasetName: "オープンソース活動データセット",
   },
   footer: {
