@@ -548,7 +548,7 @@ product gate 仍将该 transport failure 判为失败。
 
 #### 2.12.1 `ops/workflows/health/{pipeline}.json` — 独立健康状态
 
-`pipeline` 固定为 `workflow-refresh`、`cron-daily` 或 `cron-weekly`。每条 pipeline 使用独立对象和 ETag compare-and-set，避免并发运行互相覆盖。
+`pipeline` 固定为 `workflow-refresh`、`cron-daily` 或 `cron-weekly`。每条 pipeline 使用独立对象和 ETag compare-and-set，避免并发运行互相覆盖。Sunday 06:00 的唯一 operator signal 是 `ops/workflows/health/workflow-refresh.json`。退役的扁平 `ops/workflows/health.json` **不要读**（Jul 2026 成功记录可能在后续 stall 后仍挂着）。
 
 ```json
 {

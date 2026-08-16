@@ -216,8 +216,8 @@ blob://
 │   │   └── error.json                       # 失败时写入(markFailed,含 step + message,便于排查)
 │   ├── active.json                          # 当前 lease(ETag CAS + idempotency key + fencing_token + expiry)
 │   ├── latest-success.json                  # 最近一次成功发布的 run_id(恢复点)
-│   └── health/                              # 每条 pipeline 独立的 ETag-CAS 健康状态
-│       ├── workflow-refresh.json            # latest + last_success + last_failure + freshness
+│   └── health/                              # 每条 pipeline 独立的 ETag-CAS 健康状态（无扁平 health.json）
+│       ├── workflow-refresh.json            # Sunday 06:00 唯一 operator signal
 │       ├── cron-daily.json
 │       └── cron-weekly.json
 │

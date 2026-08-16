@@ -196,7 +196,7 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 
 | Item | Why it exists | Done looks like |
 |---|---|---|
-| Weekly managed refresh stays visible when it fails | Aug 2026 publish stalled for weeks because validate and enqueue failures were easy to miss | `ops/workflows/health/workflow-refresh.json` is the operator signal; stale `ops/workflows/health.json` is removed or redirected in docs |
+| Weekly managed refresh stays visible when it fails | Aug 2026 publish stalled for weeks because validate and enqueue failures were easy to miss | `ops/workflows/health/workflow-refresh.json` is the only live operator signal; retired `ops/workflows/health.json` is not read |
 | New pages must not re-probe missing Blob objects | Crawler-driven 404 amplification on `bootstrap/latest.json` | Pointer 404 remains a cached legacy state; no new per-request existence probes |
 | Dependabot + bun lockfiles | npm Dependabot PRs against `main` fail `bun install --frozen-lockfile` | Next Dependabot wave is retargeted or immediately replaced with a `pre` + lockfile PR (pattern from #351) |
 | Product-gates stay fail-closed | 14-day base pointer and export SLAs are the live contract (#286) | Do not skip or loosen the job to land features |
