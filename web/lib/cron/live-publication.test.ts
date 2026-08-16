@@ -72,6 +72,10 @@ class MemoryStore implements LivePublicationStore {
     this.objects.set(path, JSON.stringify(data));
   }
 
+  async headEtag(): Promise<string | null> {
+    return this.pointer ? String(this.etag) : null;
+  }
+
   resetFault(failWriteAt: number | null): void {
     this.writes = 0;
     this.failWriteAt = failWriteAt;
@@ -197,6 +201,26 @@ describe("publishLiveGeneration", () => {
     await expect(publishLiveGeneration(publishArgs(), store)).rejects.toThrow("fenced before commit");
     expect(store.pointer.generation).toBe("old-generation");
     expect(leased?.lease?.run_id).toBe("daily-2026-07-17-run");
+  });
+
+  test("publish succeeds when the public pointer body is stale but origin etag is unchanged", async () => {
+    const store = new MemoryStore();
+    const claim = await acquire(store);
+    expect(claim.status).toBe("acquired");
+    if (claim.status !== "acquired") throw new Error("expected acquire");
+    store.pointer = publishedPointer();
+
+    await publishLiveGeneration(
+      {
+        ...publishArgs(),
+        claimedEtag: claim.etag,
+        claimedPreviousGeneration: claim.previous_generation,
+      },
+      store,
+    );
+
+    expect(store.pointer.generation).toBe("daily-2026-07-17-run");
+    expect(store.pointer.lease).toBeNull();
   });
 
   test("a stolen or expired lease cannot flip the pointer", async () => {
