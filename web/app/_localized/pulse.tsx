@@ -147,12 +147,14 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
       <JsonLd data={collectionLd(t.pulse.title, routePath, language, { dateModified, about: datasetRef(routePath) })} />
       <JsonLd data={dataset} />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.25rem,3.5vw,2.75rem)] ${PAD_X}`}>
-        {/* Human-first hierarchy (#285): identity → period → repo discovery, then methodology/GEO. */}
+        {/* Human-first hierarchy (#285 / #376): identity → period → compact GEO capsule → repo discovery, then methodology/FAQ. */}
         <PageHero eyebrow={t.nav.pulse} title={t.pulse.title} lede={t.pulse.subtitle} />
 
         <div className="mt-[clamp(1rem,2.5vw,1.5rem)]">
           <PeriodSwitcher links={periodSwitcherLinks(availablePeriods, periods, href, locale, t)} activePeriod={availablePeriods.week.kind === "week" ? "week" : "all-time"} ariaLabel={t.a11y.rankingPeriod} />
         </div>
+
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.25rem,3vw,2rem)]" labels={answerCapsuleLabels(locale, t)} />}
 
         <div className="mt-[clamp(1.25rem,3vw,2rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel
@@ -255,12 +257,6 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
             )}
           </aside>
         </section>
-
-        {capsule && (
-          <div className="mt-[clamp(2rem,4.5vw,3.25rem)]">
-            <AnswerCapsule capsule={capsule} labels={answerCapsuleLabels(locale, t)} />
-          </div>
-        )}
 
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
