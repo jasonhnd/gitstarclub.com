@@ -68,6 +68,7 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | Related-repo empty / fallback (#367) | Owner-first, language fallback explained, inactive excluded, empty dashed-box copy in all locales | `web/lib/repo-page.test.ts`, `web/lib/repo-related-empty.test.tsx` | Manual Preview of a solo-owner repo |
 | Ranking → public category (#368) | All-time / year / month / week boards exit to registry-public language and ecosystem pages from leading rows | `web/lib/ranking-category-exits.test.ts`, `web/lib/integration/uiux-seo.test.tsx` | Manual Preview of `/rankings` and a month board |
 | Thin category honesty (#369) | Few-repo category pages state they are a ≥10k whitelist rule slice; related categories stay public and bounded | `web/lib/category-page-data.test.ts`, `web/lib/integration/uiux-seo.test.tsx` | Manual Preview of a low-count category |
+| Weekly live origin-etag fence (#402) | Weekly reuse publish must not false-fence on a CDN-stale `live/latest.json` body; a changed origin `head()` etag still fences | `web/lib/cron/live-publication.test.ts` | Sunday weekly `ops/sync-runs.json` newest non-dry run is `ok` |
 
 本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。
 
