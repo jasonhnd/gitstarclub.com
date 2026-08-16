@@ -212,6 +212,7 @@ Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blo
 | [#378](https://github.com/jasonhnd/gitstarclub.com/issues/378) | Dependabot targets `pre` + bun lockfile convention |
 | [#379](https://github.com/jasonhnd/gitstarclub.com/issues/379) | Sunday refresh failure runbook |
 | [#380](https://github.com/jasonhnd/gitstarclub.com/issues/380) | Firewall only if crawler spend justifies it |
+| [#402](https://github.com/jasonhnd/gitstarclub.com/issues/402) | Weekly live publish must not false-fence on a CDN-stale `live/latest.json` |
 
 ---
 
@@ -303,7 +304,7 @@ GitHub epics match this table. Child implementation issues are split from an epi
 | A2 | Categories as topic entry | #357 | #368 #369 #370 | After A1 inbound links exist |
 | A3 | Pulse as return engine | #358 | #371 #372 #373 | After or beside A2, not before A1 |
 | A4 | Search stays go-to-name; citation stays honest | #359 | #374 #375 #376 | After A1 |
-| B | Production as product | #360 | #377 #378 #379 #380 | Open; standing |
+| B | Production as product | #360 | #377 #378 #379 #380 #402 | Open; standing |
 | C | Analytical data-layer decision | #361 | #381 #382 #383 | Open; clock started 2026-08-15 |
 | — | Blocked expansion backlog | #362 | none | No impl until #361 / #383 |
 
