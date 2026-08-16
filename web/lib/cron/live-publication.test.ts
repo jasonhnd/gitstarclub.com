@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { LiveGenerationPointer, type LiveGenerationPointer as Pointer } from "@/lib/contracts";
 import {
+  LIVE_POINTER_READ_OPTIONS,
   claimLivePublication,
   publishLiveGeneration,
   releaseLivePublication,
@@ -176,6 +177,22 @@ describe("publishLiveGeneration", () => {
     expect(store.pointer?.generation).toBe("daily-2026-07-17-run");
     expect(store.pointer?.lease).toBeNull();
     expect(store.objects.has("live/generations/daily-2026-07-17-run/manifest.json")).toBe(true);
+  });
+
+  test("control-plane pointer reads disable the public CDN cache", () => {
+    expect(LIVE_POINTER_READ_OPTIONS).toEqual({ access: "public", useCache: false });
+  });
+
+  test("a publish that re-reads the pre-lease pointer is fenced (stale CDN)", async () => {
+    const store = new MemoryStore();
+    expect((await acquire(store)).status).toBe("acquired");
+    const leased = structuredClone(store.pointer);
+    store.pointer = publishedPointer();
+    store.etag++;
+
+    await expect(publishLiveGeneration(publishArgs(), store)).rejects.toThrow("fenced before commit");
+    expect(store.pointer.generation).toBe("old-generation");
+    expect(leased?.lease?.run_id).toBe("daily-2026-07-17-run");
   });
 
   test("a stolen or expired lease cannot flip the pointer", async () => {
