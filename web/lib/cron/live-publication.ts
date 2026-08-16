@@ -14,10 +14,10 @@ const LIVE_POINTER_PATH = "live/latest.json";
 const LEASE_TTL_MS = 15 * 60 * 1000;
 const MAX_CAS_ATTEMPTS = 5;
 
-/** Pointer writes must not sit on the public CDN. `@vercel/blob` `useCache: false`
- * only applies to private blobs; this object is public, so claim/publish/release
- * fetch a unique URL and store the pointer with max-age=0. Page readers still
- * memoize generation for 60s in `source.ts`. */
+/** Pointer writes use max-age=0. Public GET cannot fence: this store is public
+ * (`useCache: false` is private-only) and the CDN is path-keyed (`?v=` does not
+ * bust). Publish/release use Blob API `head()` etag from lease acquire. Page
+ * readers still memoize generation for 60s in `source.ts`. */
 export const LIVE_POINTER_CACHE_CONTROL_MAX_AGE = 0;
 
 export function livePointerReadUrl(blobBase: string, now = Date.now()): string {
@@ -248,12 +248,28 @@ export async function claimLivePublication(
   throw new Error("failed to acquire live publication lease after concurrent updates");
 }
 
+export type ReleaseLivePublicationOptions = {
+  /** Origin etag from immediately after this process acquired the lease. */
+  claimedEtag?: string;
+};
+
 /** Release only this run's still-current lease. A fenced writer cannot clear a
- * successor's lease. */
+ * successor's lease. Prefer `claimedEtag` so a CDN-stale public body cannot
+ * skip the clear and leave the lease stuck until expiry. */
 export async function releaseLivePublication(
   runId: string,
   store: LivePublicationStore = blobLivePublicationStore,
+  options: ReleaseLivePublicationOptions = {},
 ): Promise<boolean> {
+  if (options.claimedEtag) {
+    const originEtag = await store.headEtag();
+    if (!originEtag || normalizeEtag(originEtag) !== normalizeEtag(options.claimedEtag)) return false;
+    const current = await store.readControl();
+    if (!current.pointer) return false;
+    const next = LiveGenerationPointer.parse({ ...current.pointer, lease: null });
+    return store.compareAndSetControl(originEtag, next);
+  }
+
   for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
     const current = await store.readControl();
     if (!current.pointer || current.pointer.lease?.run_id !== runId) return false;

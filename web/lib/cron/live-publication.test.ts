@@ -223,6 +223,49 @@ describe("publishLiveGeneration", () => {
     expect(store.pointer.lease).toBeNull();
   });
 
+  test("origin etag change fences a claimedEtag publisher (no steal)", async () => {
+    const store = new MemoryStore();
+    const claim = await acquire(store);
+    expect(claim.status).toBe("acquired");
+    if (claim.status !== "acquired") throw new Error("expected acquire");
+    store.etag++;
+
+    await expect(
+      publishLiveGeneration(
+        {
+          ...publishArgs(),
+          claimedEtag: claim.etag,
+          claimedPreviousGeneration: claim.previous_generation,
+        },
+        store,
+      ),
+    ).rejects.toThrow("fenced before commit");
+    expect(store.pointer?.lease?.run_id).toBe("daily-2026-07-17-run");
+  });
+
+  test("release with claimedEtag clears a CDN-stale body when origin etag still matches", async () => {
+    const store = new MemoryStore();
+    const claim = await acquire(store);
+    expect(claim.status).toBe("acquired");
+    if (claim.status !== "acquired") throw new Error("expected acquire");
+    store.pointer = publishedPointer();
+
+    expect(await releaseLivePublication("daily-2026-07-17-run", store, { claimedEtag: claim.etag })).toBe(true);
+    expect(store.pointer.lease).toBeNull();
+    expect(store.pointer.generation).toBe("old-generation");
+  });
+
+  test("release with claimedEtag does not clear a successor lease", async () => {
+    const store = new MemoryStore();
+    const claim = await acquire(store);
+    expect(claim.status).toBe("acquired");
+    if (claim.status !== "acquired") throw new Error("expected acquire");
+    store.etag++;
+
+    expect(await releaseLivePublication("daily-2026-07-17-run", store, { claimedEtag: claim.etag })).toBe(false);
+    expect(store.pointer?.lease?.run_id).toBe("daily-2026-07-17-run");
+  });
+
   test("a stolen or expired lease cannot flip the pointer", async () => {
     const store = new MemoryStore();
     expect((await acquire(store)).status).toBe("acquired");
