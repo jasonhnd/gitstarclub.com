@@ -267,7 +267,7 @@ blob://
 | Pro 容量 | ~5GB 存储 + 100GB 传输/月 | 数据几十 MB，宽裕 |
 | **写速率** | **4,500 次/分（75/s）** | **批量 `put()` 必须节流**（限并发 + 间隔），尤其 bootstrap 上传 / Workflow 重算写上万 entity JSON 时 |
 | 同路径覆盖 | 需 `allowOverwrite: true` | 仅 pointer / lease / 运维状态可覆盖；live generation 对象必须 `allowOverwrite:false` |
-| **缓存传播** | 同路径覆盖最长 **60s** 才全网生效 | live 读侧只短缓存 `live/latest.json`（60s）；generation 路径不可变，不存在兄弟文件传播不同步问题 |
+| **缓存传播** | 同路径覆盖最长 **60s** 才全网生效 | 页面读侧短缓存 `live/latest.json`（60s）；**claim / publish / release 走 origin `get({ useCache: false })`**，否则周日 weekly 快路径会在 1–2s 内读到写 lease 前的指针并误判 fence。generation 路径不可变，不存在兄弟文件传播不同步问题 |
 
 > 之所以选 PUBLIC store：JSON 视图本就是要被 build / 运行时直接 `fetch` 的公开数据，公开读免去签名、天然走 CDN。canonical（JSON shard + bootstrap Parquet）虽也在同 store，但只有持 token 的 Workflow / bootstrap 会写它，不在 build / 运行时读路径。
 

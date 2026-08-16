@@ -377,7 +377,7 @@ generation 内的 `current_month.json` 会在跨月时初始化新月，所以�
 2. 生成并 Zod 校验全部 payload
 3. 顺序写 live/generations/<run_id>/**（allowOverwrite:false）
 4. 最后写 immutable manifest.json
-5. 重读 live/latest.json，确认 lease/run_id/idempotency_key 且未过期
+5. 重读 live/latest.json（control-plane `get({ useCache: false })`），确认 lease/run_id/idempotency_key 且未过期
 6. 以最新 ETag 做 fenced CAS：generation=<run_id>, lease=null
 7. commit 成功后才 revalidatePath / IndexNow / sync-run log
 ```
