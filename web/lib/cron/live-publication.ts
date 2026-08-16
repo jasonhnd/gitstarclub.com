@@ -1,4 +1,4 @@
-import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
+import { BlobNotFoundError, BlobPreconditionFailedError, get, head, put } from "@vercel/blob";
 import {
   LiveGenerationManifest,
   LiveGenerationPointer,
@@ -31,6 +31,8 @@ export type LiveControlSnapshot = {
 
 export interface LivePublicationStore {
   readControl(): Promise<LiveControlSnapshot>;
+  /** Origin metadata etag. Public GET of this store is CDN-cached and cannot fence. */
+  headEtag(): Promise<string | null>;
   createControl(pointer: LiveGenerationPointerData): Promise<boolean>;
   compareAndSetControl(etag: string, pointer: LiveGenerationPointerData): Promise<boolean>;
   putImmutable(path: string, data: unknown): Promise<void>;
@@ -38,7 +40,7 @@ export interface LivePublicationStore {
 }
 
 export type LivePublicationClaim =
-  | { status: "acquired"; lease: LivePublicationLeaseData; previous_generation: string | null }
+  | { status: "acquired"; lease: LivePublicationLeaseData; previous_generation: string | null; etag: string }
   | { status: "attached"; lease: LivePublicationLeaseData; generation: string | null }
   | { status: "rejected"; lease: LivePublicationLeaseData; generation: string | null }
   | { status: "committed"; pointer: LiveGenerationPointerData };
@@ -59,6 +61,9 @@ export type PublishLiveGenerationArgs = {
    * mixed live view. */
   prerequisites?: LivePublicationArtifact[];
   now?: number;
+  /** Origin etag from immediately after this process acquired the lease. */
+  claimedEtag?: string;
+  claimedPreviousGeneration?: string | null;
 };
 
 function json(data: unknown): string {
@@ -153,6 +158,16 @@ export class BlobLivePublicationStore implements LivePublicationStore {
   async putMutable(path: string, data: unknown): Promise<void> {
     await putJson(path, data, { overwrite: true });
   }
+
+  async headEtag(): Promise<string | null> {
+    try {
+      const result = await head(LIVE_POINTER_PATH, { token: requireBlobWriteToken() });
+      return result.etag || null;
+    } catch (error) {
+      if (error instanceof BlobNotFoundError) return null;
+      throw error;
+    }
+  }
 }
 
 export const blobLivePublicationStore = new BlobLivePublicationStore();
@@ -223,7 +238,11 @@ export async function claimLivePublication(
     const won = pointer
       ? !!current.etag && await store.compareAndSetControl(current.etag, next)
       : await store.createControl(next);
-    if (won) return { status: "acquired", lease, previous_generation: pointer?.generation ?? null };
+    if (won) {
+      const etag = await store.headEtag();
+      if (!etag) throw new Error("live publication pointer is missing an ETag after lease acquire");
+      return { status: "acquired", lease, previous_generation: pointer?.generation ?? null, etag };
+    }
   }
 
   throw new Error("failed to acquire live publication lease after concurrent updates");
@@ -256,12 +275,7 @@ export async function publishLiveGeneration(
   const paths = args.artifacts.map((artifact) => artifact.path);
   if (new Set(paths).size !== paths.length) throw new Error("live generation contains duplicate artifact paths");
 
-  const control = await store.readControl();
-  const pointer = control.pointer;
-  if (!pointer || pointer.lease?.run_id !== args.runId || pointer.lease.idempotency_key !== args.idempotencyKey) {
-    throw new Error("live publication lease was fenced before commit");
-  }
-  if (!leaseIsActive(pointer.lease, args.now ?? Date.now())) throw new Error("live publication lease expired before commit");
+  const previousGeneration = await assertHeldLease(store, args);
 
   const manifestPath = `${root}/manifest.json`;
   const manifest = LiveGenerationManifest.parse({
@@ -274,7 +288,7 @@ export async function publishLiveGeneration(
     month: args.month,
     week: args.week,
     created_at: args.createdAt,
-    previous_generation: pointer.generation,
+    previous_generation: previousGeneration,
     files: paths,
   });
 
@@ -291,19 +305,11 @@ export async function publishLiveGeneration(
   }
   await store.putImmutable(manifestPath, manifest);
 
-  // Re-read after the manifest write so takeover/expiry during a slow upload is
-  // fenced by the latest pointer ETag, not the pre-upload snapshot.
-  const commitControl = await store.readControl();
-  if (
-    !commitControl.pointer ||
-    commitControl.pointer.lease?.run_id !== args.runId ||
-    commitControl.pointer.lease.idempotency_key !== args.idempotencyKey
-  ) {
-    throw new Error("live publication lease was fenced before pointer commit");
-  }
+  // Fence with the origin etag, not a public GET of the pointer body. The public
+  // object is CDN-cached; a same-process weekly reuse would otherwise re-read
+  // the pre-lease body and false-fence.
+  const commitEtag = await requireUnchangedOriginEtag(store, args, "live publication lease was fenced before pointer commit");
   const commitNow = args.now ?? Date.now();
-  if (!leaseIsActive(commitControl.pointer.lease, commitNow)) throw new Error("live publication lease expired before pointer commit");
-  if (!commitControl.etag) throw new Error("live publication pointer is missing an ETag");
 
   const publishedAt = new Date(commitNow).toISOString();
   const next = LiveGenerationPointer.parse({
@@ -316,12 +322,59 @@ export async function publishLiveGeneration(
     month: args.month,
     week: args.week,
     published_at: publishedAt,
-    previous_generation: commitControl.pointer.generation,
+    previous_generation: previousGeneration,
     lease: null,
   });
-  if (!(await store.compareAndSetControl(commitControl.etag, next))) {
+  if (!(await store.compareAndSetControl(commitEtag, next))) {
     throw new Error("live publication pointer commit lost its fencing CAS");
   }
 
   return { generation, manifest: manifestPath, previous_generation: next.previous_generation, published_at: publishedAt };
+}
+
+async function assertHeldLease(store: LivePublicationStore, args: PublishLiveGenerationArgs): Promise<string | null> {
+  if (args.claimedEtag) {
+    await requireUnchangedOriginEtag(store, args, "live publication lease was fenced before commit");
+    return args.claimedPreviousGeneration ?? null;
+  }
+
+  const control = await store.readControl();
+  const pointer = control.pointer;
+  if (!pointer || pointer.lease?.run_id !== args.runId || pointer.lease.idempotency_key !== args.idempotencyKey) {
+    throw new Error("live publication lease was fenced before commit");
+  }
+  if (!leaseIsActive(pointer.lease, args.now ?? Date.now())) throw new Error("live publication lease expired before commit");
+  return pointer.generation;
+}
+
+async function requireUnchangedOriginEtag(
+  store: LivePublicationStore,
+  args: PublishLiveGenerationArgs,
+  message: string,
+): Promise<string> {
+  const originEtag = await store.headEtag();
+  if (!originEtag) throw new Error("live publication pointer is missing an ETag");
+  if (args.claimedEtag && normalizeEtag(originEtag) !== normalizeEtag(args.claimedEtag)) {
+    throw new Error(message);
+  }
+  if (!args.claimedEtag) {
+    const control = await store.readControl();
+    if (
+      !control.pointer ||
+      control.pointer.lease?.run_id !== args.runId ||
+      control.pointer.lease.idempotency_key !== args.idempotencyKey
+    ) {
+      throw new Error(message);
+    }
+    if (!leaseIsActive(control.pointer.lease, args.now ?? Date.now())) {
+      throw new Error("live publication lease expired before pointer commit");
+    }
+    if (!control.etag) throw new Error("live publication pointer is missing an ETag");
+    return control.etag;
+  }
+  return originEtag;
+}
+
+function normalizeEtag(etag: string): string {
+  return etag.replaceAll(/^"+|"+$/g, "");
 }

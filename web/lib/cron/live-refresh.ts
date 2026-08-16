@@ -64,6 +64,8 @@ export interface LiveRefreshOptions {
     runId: string;
     idempotencyKey: string;
     store?: LivePublicationStore;
+    claimedEtag?: string;
+    claimedPreviousGeneration?: string | null;
   };
 }
 
@@ -333,6 +335,8 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
     {
       runId: opts.publication.runId,
       idempotencyKey: opts.publication.idempotencyKey,
+      claimedEtag: opts.publication.claimedEtag,
+      claimedPreviousGeneration: opts.publication.claimedPreviousGeneration,
       job,
       day: today,
       month,
