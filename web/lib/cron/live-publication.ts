@@ -6,17 +6,23 @@ import {
   type LiveGenerationPointer as LiveGenerationPointerData,
   type LivePublicationLease as LivePublicationLeaseData,
 } from "@/lib/contracts";
-import { requireBlobWriteToken } from "@/lib/runtime-config";
+import { BLOB_JSON_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
+import { requireBlobBaseUrl, requireBlobWriteToken } from "@/lib/runtime-config";
 import type { LiveRefreshJob } from "./live-refresh";
 
 const LIVE_POINTER_PATH = "live/latest.json";
 const LEASE_TTL_MS = 15 * 60 * 1000;
 const MAX_CAS_ATTEMPTS = 5;
 
-/** Page readers still cache `live/latest.json` for 60s. Claim / publish / release
- * must see the lease they just wrote, so control-plane gets bypass the CDN.
- * Sunday weekly reuse publishes in ~1–2s and otherwise reads the pre-lease pointer. */
-export const LIVE_POINTER_READ_OPTIONS = { access: "public" as const, useCache: false };
+/** Pointer writes must not sit on the public CDN. `@vercel/blob` `useCache: false`
+ * only applies to private blobs; this object is public, so claim/publish/release
+ * fetch a unique URL and store the pointer with max-age=0. Page readers still
+ * memoize generation for 60s in `source.ts`. */
+export const LIVE_POINTER_CACHE_CONTROL_MAX_AGE = 0;
+
+export function livePointerReadUrl(blobBase: string, now = Date.now()): string {
+  return `${blobBase.replace(/\/+$/, "")}/${LIVE_POINTER_PATH}?v=${now}`;
+}
 
 export type LiveControlSnapshot = {
   pointer: LiveGenerationPointerData | null;
@@ -76,35 +82,41 @@ async function readBlobText(path: string): Promise<string | null> {
   return streamText(result.stream);
 }
 
-async function putJson(path: string, data: unknown, options: { overwrite: boolean; ifMatch?: string; immutable?: boolean }): Promise<void> {
+async function putJson(
+  path: string,
+  data: unknown,
+  options: { overwrite: boolean; ifMatch?: string; immutable?: boolean; cacheControlMaxAge?: number },
+): Promise<void> {
   await put(path, json(data), {
     access: "public",
     token: requireBlobWriteToken(),
     allowOverwrite: options.overwrite,
     addRandomSuffix: false,
     contentType: "application/json",
-    cacheControlMaxAge: options.immutable ? 31_536_000 : 60,
+    cacheControlMaxAge: options.cacheControlMaxAge ?? (options.immutable ? 31_536_000 : 60),
     ...(options.ifMatch ? { ifMatch: options.ifMatch } : {}),
   });
 }
 
 export class BlobLivePublicationStore implements LivePublicationStore {
   async readControl(): Promise<LiveControlSnapshot> {
-    const result = await get(LIVE_POINTER_PATH, { ...LIVE_POINTER_READ_OPTIONS, token: requireBlobWriteToken() });
-    if (!result) return { pointer: null, etag: null };
-    if (result.statusCode !== 200 || !result.stream) {
-      throw new Error(`live pointer read ${LIVE_POINTER_PATH} -> ${result.statusCode}`);
-    }
+    const res = await fetchWithTimeout(livePointerReadUrl(requireBlobBaseUrl()), {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+      timeoutMs: BLOB_JSON_FETCH_TIMEOUT_MS,
+    });
+    if (res.status === 404) return { pointer: null, etag: null };
+    if (!res.ok) throw new Error(`live pointer read ${LIVE_POINTER_PATH} -> ${res.status}`);
     return {
-      pointer: LiveGenerationPointer.parse(JSON.parse(await streamText(result.stream))),
-      etag: result.blob.etag,
+      pointer: LiveGenerationPointer.parse(await res.json()),
+      etag: res.headers.get("etag"),
     };
   }
 
   async createControl(pointer: LiveGenerationPointerData): Promise<boolean> {
     LiveGenerationPointer.parse(pointer);
     try {
-      await putJson(LIVE_POINTER_PATH, pointer, { overwrite: false });
+      await putJson(LIVE_POINTER_PATH, pointer, { overwrite: false, cacheControlMaxAge: LIVE_POINTER_CACHE_CONTROL_MAX_AGE });
       return true;
     } catch (error) {
       if (isBlobConflict(error)) return false;
@@ -115,7 +127,11 @@ export class BlobLivePublicationStore implements LivePublicationStore {
   async compareAndSetControl(etag: string, pointer: LiveGenerationPointerData): Promise<boolean> {
     LiveGenerationPointer.parse(pointer);
     try {
-      await putJson(LIVE_POINTER_PATH, pointer, { overwrite: true, ifMatch: etag });
+      await putJson(LIVE_POINTER_PATH, pointer, {
+        overwrite: true,
+        ifMatch: etag,
+        cacheControlMaxAge: LIVE_POINTER_CACHE_CONTROL_MAX_AGE,
+      });
       return true;
     } catch (error) {
       if (isBlobConflict(error)) return false;
