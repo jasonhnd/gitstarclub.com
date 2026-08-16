@@ -359,6 +359,7 @@ const zh: Dict = {
     onThisDay: "历史上的今天",
     crossed: "突破",
     open: "打开",
+    fullBoard: "完整榜单",
     datasetName: "开源活动数据集",
   },
   footer: {

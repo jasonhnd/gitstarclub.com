@@ -359,6 +359,7 @@ const zhTw: Dict = {
     onThisDay: "歷史上的今天",
     crossed: "突破",
     open: "開啟",
+    fullBoard: "完整榜單",
     datasetName: "開源活動資料集",
   },
   footer: {
