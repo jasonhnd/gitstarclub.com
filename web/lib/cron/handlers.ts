@@ -58,11 +58,12 @@ export async function runLiveRefreshRoute(
   const health = options.recordHealth ?? recordHealth;
   const alert = options.sendAlert ?? sendAlert;
   let acquired = false;
+  let claim: Awaited<ReturnType<typeof claimLivePublication>> | undefined;
 
   try {
     (options.requireRuntimeConfig ?? requireLiveRefreshRuntimeConfig)(dry);
     if (!dry) {
-      const claim = await claimPublication(
+      claim = await claimPublication(
         {
           runId: id,
           idempotencyKey,
@@ -133,6 +134,8 @@ export async function runLiveRefreshRoute(
               runId: id,
               idempotencyKey,
               store: options.publicationStore,
+              claimedEtag: claim?.status === "acquired" ? claim.etag : undefined,
+              claimedPreviousGeneration: claim?.status === "acquired" ? claim.previous_generation : undefined,
             },
           }
         : {}),
