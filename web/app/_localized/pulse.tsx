@@ -17,6 +17,7 @@ import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { webSiteLd, collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine, siteOrganizationLd } from "@/lib/jsonld";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { currentUtcPeriods } from "@/lib/periods";
+import { localizedPulseBoardHrefs } from "@/lib/pulse-board-links";
 import {
   availablePeriodLabel,
   formatPulseListMeta,
@@ -53,14 +54,14 @@ type PulseViewProps = {
   locale: Locale;
   canonicalPath: "/" | "/pulse";
   includeWebsiteLd?: boolean;
+  now?: Date;
 };
 
-export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = false }: PulseViewProps) {
+export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = false, now = new Date() }: PulseViewProps) {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
   const routePath = localizedPath(locale, canonicalPath);
   const href = (path: string) => localizedPath(locale, path);
-  const now = new Date();
   const periods = currentUtcPeriods(now);
   const [snap, lookup, availablePeriods] = await Promise.all([
     getHotSnapshot(),
@@ -135,7 +136,8 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
     return m ? [{ ...e, full_name: m.full_name, owner: m.owner, name: m.name }] : [];
   });
   const repoLabels = repositoryTableLabels(t);
-  const openRankingLabel = `${t.pulse.open} ${t.nav.rankings}`;
+  const boards = localizedPulseBoardHrefs(locale, availablePeriods);
+  const fullBoardLabel = t.pulse.fullBoard;
 
   return (
     <>
@@ -155,23 +157,23 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
         <div className="mt-[clamp(1.25rem,3vw,2rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel
             title={t.week.top}
-            href={href(availablePeriods.week.href)}
+            href={boards.week}
             meta={weekMeta}
             rows={weekRows}
             labels={repoLabels}
-            openLabel={openRankingLabel}
-            linkLabel={`${openRankingLabel}: ${activeWeekLabel}`}
+            openLabel={fullBoardLabel}
+            linkLabel={`${fullBoardLabel}: ${activeWeekLabel}`}
             emptyMessage={t.categories.rankingPending}
             locale={locale}
           />
           <PulsePanel
             title={t.pulse.surging}
-            href={href(availablePeriods.month.href)}
+            href={boards.month}
             meta={monthMeta}
             rows={monthRows}
             labels={repoLabels}
-            openLabel={openRankingLabel}
-            linkLabel={`${openRankingLabel}: ${activeMonthLabel}`}
+            openLabel={fullBoardLabel}
+            linkLabel={`${fullBoardLabel}: ${activeMonthLabel}`}
             emptyMessage={t.categories.rankingPending}
             locale={locale}
           />
@@ -181,12 +183,12 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
                 {t.year.top} {activeYearLabel}
               </>
             }
-            href={href(availablePeriods.yearLink.href)}
+            href={boards.year}
             meta={yearMeta}
             rows={yearRows}
             labels={repoLabels}
-            openLabel={openRankingLabel}
-            linkLabel={`${openRankingLabel}: ${activeYearLabel}`}
+            openLabel={fullBoardLabel}
+            linkLabel={`${fullBoardLabel}: ${activeYearLabel}`}
             emptyMessage={t.categories.rankingPending}
             locale={locale}
           />
@@ -194,9 +196,9 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
 
         <PulseLeaderLinks
           links={[
-            { label: t.week.label, href: href(availablePeriods.week.href), period: weekMeta, row: weekRows[0] },
-            { label: t.month.label, href: href(availablePeriods.month.href), period: monthMeta, row: monthRows[0] },
-            { label: t.year.label, href: href(availablePeriods.yearLink.href), period: yearMeta, row: yearRows[0] },
+            { label: t.week.label, href: boards.week, period: weekMeta, row: weekRows[0] },
+            { label: t.month.label, href: boards.month, period: monthMeta, row: monthRows[0] },
+            { label: t.year.label, href: boards.year, period: yearMeta, row: yearRows[0] },
           ]}
           pendingLabel={t.categories.rankingPending}
           locale={locale}
@@ -213,8 +215,12 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
                 </div>
                 <p className="mt-1 text-[0.9rem] text-on-surface-variant">{t.rankings.subtitle}</p>
               </div>
-              <Link href={href("/rankings")} className="text-readable-gold shrink-0 font-mono text-[0.78rem] hover:underline">
-                {t.rankings.title}
+              <Link
+                href={boards.allTime}
+                aria-label={`${fullBoardLabel}: ${t.rankings.fullHistory}`}
+                className="text-readable-gold shrink-0 font-mono text-[0.78rem] hover:underline"
+              >
+                {fullBoardLabel}
               </Link>
             </div>
             {giants.length > 0 ? (

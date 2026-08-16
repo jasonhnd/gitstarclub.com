@@ -27,6 +27,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 - **Repo related-repository lists state why peers appear.** Same-owner repos stay first. When that set is empty, the page says the list is the largest active same-language peers already tracked. Inactive historical repos stay out. A dashed empty state is shown when neither set exists.
 - **Ranking boards exit into public categories.** All-time, year, month, and week ranking pages link precomputed public language and ecosystem slices that appear among the leading rows. Copy does not describe this as a live GitHub filter.
 - **Thin category pages state their whitelist scope.** Category detail pages with few assigned repos say they are a rule slice of the ≥10,000-star set, not a complete GitHub language or topic catalog. Related categories stay public and bounded.
+- **Pulse movers open the matching ranking board.** Each Pulse week, month, year, and all-time panel has one Full board link to the already-resolved ranking route, including locale prefixes. Row clicks stay on the repo hub.
 - **Repo-page star milestones use frozen exact crossings.** The per-repo milestone list and curve markers now read `entity/repo.milestones.crossed_10k/50k/100k`; higher thresholds are hidden until a frozen first-crossing field exists, so estimated curve-derived dates are not presented as exact newcomer evidence.
 
 ### Fixed

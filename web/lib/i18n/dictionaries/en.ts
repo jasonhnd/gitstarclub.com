@@ -413,6 +413,7 @@ export const en = {
     onThisDay: "On this day",
     crossed: "crossed",
     open: "Open",
+    fullBoard: "Full board",
     datasetName: "Open-source activity dataset",
   },
   footer: {

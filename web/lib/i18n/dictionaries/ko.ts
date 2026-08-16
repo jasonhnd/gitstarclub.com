@@ -359,6 +359,7 @@ const ko: Dict = {
     onThisDay: "오늘의 기록",
     crossed: "돌파",
     open: "열기",
+    fullBoard: "전체 순위",
     datasetName: "오픈소스 활동 데이터세트",
   },
   footer: {

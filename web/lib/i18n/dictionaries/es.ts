@@ -366,6 +366,7 @@ const es: Dict = {
     onThisDay: "En este día",
     crossed: "superó",
     open: "Abrir",
+    fullBoard: "Tabla completa",
     datasetName: "Conjunto de datos de actividad de código abierto",
   },
   footer: {
