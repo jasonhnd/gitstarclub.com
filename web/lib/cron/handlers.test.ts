@@ -51,6 +51,7 @@ const claimPublication: NonNullable<LiveRefreshRouteOptions["claimPublication"]>
     expires_at: "2026-07-17T03:15:00.000Z",
   },
   previous_generation: null,
+  etag: "test-etag",
 });
 
 const releasePublication: NonNullable<LiveRefreshRouteOptions["releasePublication"]> =
