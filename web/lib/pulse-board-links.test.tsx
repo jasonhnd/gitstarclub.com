@@ -1,7 +1,7 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import type { ReactElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
-import type { HotSnapshot, RankList, ReposLookup } from "@/lib/contracts";
+import type { HotSnapshot, OrgsLookup, RankList, ReposLookup } from "@/lib/contracts";
 import type { AvailableRankPeriods } from "@/lib/data/rank-periods";
 import { localizedPulseBoardHrefs, pulseBoardHrefs } from "./pulse-board-links";
 
@@ -24,9 +24,16 @@ mock.module("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+const { PulsePageView } = await import("@/app/_localized/pulse");
+
+const BLOB_BASE_URL = "https://pulse-board-links.test";
+const VERSION = "pulse-board-links";
 const GENERATED_AT = "2026-06-21T00:00:00.000Z";
-const REPO_ID = 1;
 const NOW = new Date("2026-07-08T12:00:00.000Z");
+const REPO_ID = 1;
+const originalFetch = globalThis.fetch;
+const originalBlobBase = process.env.BLOB_BASE_URL;
+const originalPublicBlobBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
 
 const availablePeriods: AvailableRankPeriods = {
   year: 2026,
@@ -52,22 +59,19 @@ const availablePeriods: AvailableRankPeriods = {
   allTime: { kind: "all-time", href: "/rankings", label: "Full history" },
 };
 
-mock.module("@/lib/data/rank-periods", () => ({
-  resolveAvailableRankPeriods: async () => availablePeriods,
-}));
+beforeAll(() => {
+  process.env.BLOB_BASE_URL = BLOB_BASE_URL;
+  delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  globalThis.fetch = fixtureFetch as typeof fetch;
+});
 
-mock.module("@/lib/data", () => ({
-  getHotSnapshot: async () => hotSnapshotFixture,
-  getReposLookup: async () => reposLookupFixture,
-  getRank: async (window: "year" | "month" | "week", period: string) => {
-    if (window === "week" && period === "2026-W26") return rankFixture("week", period);
-    if (window === "month" && period === "2026-06") return rankFixture("month", period);
-    return null;
-  },
-  joinRepoRank,
-}));
-
-const { PulsePageView } = await import("@/app/_localized/pulse");
+afterAll(() => {
+  globalThis.fetch = originalFetch;
+  if (originalBlobBase === undefined) delete process.env.BLOB_BASE_URL;
+  else process.env.BLOB_BASE_URL = originalBlobBase;
+  if (originalPublicBlobBase === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  else process.env.NEXT_PUBLIC_BLOB_BASE_URL = originalPublicBlobBase;
+});
 
 describe("pulseBoardHrefs", () => {
   test("maps each pulse panel to the already-resolved ranking route", () => {
@@ -135,61 +139,6 @@ describe("PulsePageView board exits", () => {
   });
 });
 
-function joinRepoRank(items: RankList["items"], lookup: ReposLookup) {
-  return items.flatMap((item) => {
-    const meta = item.id != null ? lookup[String(item.id)] : undefined;
-    return meta ? [{ ...item, ...meta, id: item.id! }] : [];
-  });
-}
-
-function rankFixture(window: "month" | "week", period: string): RankList {
-  return {
-    meta: {
-      window,
-      period: period as RankList["meta"]["period"],
-      dim: "repo",
-      metric: "flow",
-      generated_at: GENERATED_AT,
-    },
-    items: [{ rank: 1, id: REPO_ID, value: 100, prev_rank: null }],
-  };
-}
-
-const reposLookupFixture: ReposLookup = {
-  [String(REPO_ID)]: {
-    owner: "vercel",
-    name: "next.js",
-    full_name: "vercel/next.js",
-    owner_type: "Organization",
-    language: "TypeScript",
-    current_stars: 100_000,
-  },
-};
-
-const hotSnapshotFixture: HotSnapshot = {
-  generated_at: GENERATED_AT,
-  home: {
-    year_spine: [["2026", 100]],
-    current_month_top: {
-      flow: [{ rank: 1, id: REPO_ID, value: 100, prev_rank: null }],
-      stock: [{ rank: 1, id: REPO_ID, value: 100_000, prev_rank: null }],
-    },
-    on_this_day: [],
-  },
-  current_year: {
-    flow: [{ rank: 1, id: REPO_ID, value: 100, prev_rank: null }],
-    stock: [{ rank: 1, id: REPO_ID, value: 100_000, prev_rank: null }],
-  },
-  current_month: {
-    flow: [{ rank: 1, id: REPO_ID, value: 100, prev_rank: null }],
-    stock: [{ rank: 1, id: REPO_ID, value: 100_000, prev_rank: null }],
-  },
-  all_time: {
-    repo: [{ rank: 1, id: REPO_ID, value: 100_000, prev_rank: null }],
-    org: [],
-  },
-};
-
 async function renderPage(element: ReactElement): Promise<string> {
   const stream = await renderToReadableStream(element);
   await stream.allReady;
@@ -222,3 +171,108 @@ function decodeHtml(value: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&");
 }
+
+async function fixtureFetch(input: RequestInfo | URL): Promise<Response> {
+  const body = fixtureForView(viewKey(input));
+  if (body === null) return new Response("not found", { status: 404 });
+  return Response.json(body);
+}
+
+function viewKey(input: RequestInfo | URL): string {
+  const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+  let path = url.pathname.replace(/^\/+/, "");
+  const versionPrefix = `views/${VERSION}/`;
+  if (path.startsWith(versionPrefix)) path = path.slice(versionPrefix.length);
+  return path;
+}
+
+function fixtureForView(path: string): unknown | null {
+  if (path === "views/latest.json") return { version: VERSION, run_id: VERSION, published_at: GENERATED_AT, prev_version: null, schema_ver: 1 };
+  if (path === "meta.json") {
+    return {
+      seam_date: "2026-06-01",
+      schema_ver: 1,
+      generated_at: GENERATED_AT,
+      folded_through: { month: "2026-06", week: "2026-W26" },
+    };
+  }
+  if (path === "hot-snapshot.json") return hotSnapshotFixture;
+  if (path === "lookup/repos.json") return reposLookupFixture;
+  if (path === "lookup/orgs.json") return orgsLookupFixture;
+  if (path === "rank/all-time/repo/stock.json") return rankFixture("all", "all", "repo", "stock");
+
+  const liveRank = path.match(/^live\/rank\/(month|week)\/([^/]+)\/repo\/flow\.json$/);
+  if (liveRank) return null;
+
+  const rank = path.match(/^rank\/(year|month|week)\/([^/]+)\/(repo|org)\/(flow|stock|growth|new)\.json$/);
+  if (rank) {
+    const [, window, period, dim, metric] = rank;
+    if (period === "2026-07" || period === "2026-W28" || period === "2026-W27") return null;
+    if (period === "2026" || period === "2025" || period === "2026-06" || period === "2026-W26") {
+      return rankFixture(window, period, dim, metric);
+    }
+  }
+
+  return null;
+}
+
+function rankFixture(window: string, period: string, dim: string, metric: string): RankList {
+  return {
+    meta: {
+      window: window as RankList["meta"]["window"],
+      period: period as RankList["meta"]["period"],
+      dim: dim as RankList["meta"]["dim"],
+      metric: metric as RankList["meta"]["metric"],
+      generated_at: GENERATED_AT,
+    },
+    items: [
+      dim === "repo"
+        ? { rank: 1, id: REPO_ID, value: metric === "stock" ? 100_000 : 100, prev_rank: null }
+        : { rank: 1, login: "vercel", value: 100_000, prev_rank: null },
+    ],
+  };
+}
+
+const reposLookupFixture: ReposLookup = {
+  [String(REPO_ID)]: {
+    owner: "vercel",
+    name: "next.js",
+    full_name: "vercel/next.js",
+    owner_type: "Organization",
+    language: "TypeScript",
+    current_stars: 100_000,
+  },
+};
+
+const orgsLookupFixture: OrgsLookup = {
+  vercel: {
+    login: "vercel",
+    owner_type: "Organization",
+    repo_count: 1,
+    current_stars_sum: 100_000,
+  },
+};
+
+const hotSnapshotFixture: HotSnapshot = {
+  generated_at: GENERATED_AT,
+  home: {
+    year_spine: [["2026", 100]],
+    current_month_top: {
+      flow: [{ rank: 1, id: REPO_ID, value: 100, prev_rank: null }],
+      stock: [{ rank: 1, id: REPO_ID, value: 100_000, prev_rank: null }],
+    },
+    on_this_day: [],
+  },
+  current_year: {
+    flow: [{ rank: 1, id: REPO_ID, value: 100, prev_rank: null }],
+    stock: [{ rank: 1, id: REPO_ID, value: 100_000, prev_rank: null }],
+  },
+  current_month: {
+    flow: [{ rank: 1, id: REPO_ID, value: 100, prev_rank: null }],
+    stock: [{ rank: 1, id: REPO_ID, value: 100_000, prev_rank: null }],
+  },
+  all_time: {
+    repo: [{ rank: 1, id: REPO_ID, value: 100_000, prev_rank: null }],
+    org: [],
+  },
+};
