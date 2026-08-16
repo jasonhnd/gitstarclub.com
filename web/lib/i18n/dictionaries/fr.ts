@@ -366,6 +366,7 @@ const fr: Dict = {
     onThisDay: "En ce jour",
     crossed: "a dépassé",
     open: "Ouvrir",
+    fullBoard: "Classement complet",
     datasetName: "Jeu de données de l'activité open source",
   },
   footer: {

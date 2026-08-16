@@ -33,6 +33,7 @@ describe("locale dictionary contract", () => {
       expect(dictionary.rankings.categoryExits, `${locale}.rankings.categoryExits`).not.toBe(en.rankings.categoryExits);
       expect(dictionary.rankings.noMovement, `${locale}.rankings.noMovement`).not.toBe(en.rankings.noMovement);
       expect(dictionary.a11y.rankingPeriod, `${locale}.a11y.rankingPeriod`).not.toBe(en.a11y.rankingPeriod);
+      expect(dictionary.pulse.fullBoard, `${locale}.pulse.fullBoard`).not.toBe(en.pulse.fullBoard);
     }
   });
 });
