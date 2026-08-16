@@ -267,7 +267,7 @@ blob://
 | Pro 容量 | ~5GB 存储 + 100GB 传输/月 | 数据几十 MB，宽裕 |
 | **写速率** | **4,500 次/分（75/s）** | **批量 `put()` 必须节流**（限并发 + 间隔），尤其 bootstrap 上传 / Workflow 重算写上万 entity JSON 时 |
 | 同路径覆盖 | 需 `allowOverwrite: true` | 仅 pointer / lease / 运维状态可覆盖；live generation 对象必须 `allowOverwrite:false` |
-| **缓存传播** | 同路径覆盖最长 **60s** 才全网生效 | 页面进程内仍 memo `live/latest.json` 60s。**指针对象本身 `max-age=0`**；claim / publish / release 用 `?v=<now>` + `Cache-Control: no-cache` 读。`@vercel/blob` 的 `useCache: false` 只对 private blob 生效，不能用来读这个 public 指针。周日 weekly 快路径 1–2s，吃到 CDN 就会误判 fence。generation 路径不可变 |
+| **缓存传播** | 同路径覆盖最长 **60s** 才全网生效 | 页面进程内仍 memo `live/latest.json` 60s。指针写入 `max-age=0`。**publish 用 Blob API `head()` etag（claim 当时记下的 origin etag）做 fence**，不再用 public GET 判断是否仍持有 lease。public store 不能 private get；CDN 按 path 缓存，`?v=` 无效。周日 weekly 快路径 1–2s 否则会读到 `lease: null`。generation 路径不可变 |
 
 > 之所以选 PUBLIC store：JSON 视图本就是要被 build / 运行时直接 `fetch` 的公开数据，公开读免去签名、天然走 CDN。canonical（JSON shard + bootstrap Parquet）虽也在同 store，但只有持 token 的 Workflow / bootstrap 会写它，不在 build / 运行时读路径。
 
