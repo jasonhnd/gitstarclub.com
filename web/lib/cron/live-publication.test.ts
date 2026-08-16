@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { LiveGenerationPointer, type LiveGenerationPointer as Pointer } from "@/lib/contracts";
 import {
-  LIVE_POINTER_READ_OPTIONS,
+  LIVE_POINTER_CACHE_CONTROL_MAX_AGE,
+  livePointerReadUrl,
   claimLivePublication,
   publishLiveGeneration,
   releaseLivePublication,
@@ -179,8 +180,11 @@ describe("publishLiveGeneration", () => {
     expect(store.objects.has("live/generations/daily-2026-07-17-run/manifest.json")).toBe(true);
   });
 
-  test("control-plane pointer reads disable the public CDN cache", () => {
-    expect(LIVE_POINTER_READ_OPTIONS).toEqual({ access: "public", useCache: false });
+  test("control-plane pointer reads cache-bust the public URL (useCache:false is private-only)", () => {
+    expect(LIVE_POINTER_CACHE_CONTROL_MAX_AGE).toBe(0);
+    expect(livePointerReadUrl("https://blob.example", 1_776_297_908_310)).toBe(
+      "https://blob.example/live/latest.json?v=1776297908310",
+    );
   });
 
   test("a publish that re-reads the pre-lease pointer is fenced (stale CDN)", async () => {
