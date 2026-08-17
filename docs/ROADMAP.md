@@ -52,9 +52,9 @@ A proposal that cannot pass this list belongs in Track C, not Track A.
 
 ### Sequence
 
-- **Weeks 1–4:** Track A step 1 (repo/org hub). Track B hygiene. Track C writes the decision draft and POC must-prove list only.
-- **Weeks 5–6:** Track A step 2 or 3 (categories as topic entry, or pulse as return engine). Track C must **decide or defer**.
-- **After the decision:** either an isolated Track C POC that still keeps content pages on views, or the four expansion items stay dated-deferred and Track A continues with search/citation.
+- **Weeks 1–4 (done on `pre`):** Track A A1–A4 children shipped. Track B hygiene except Firewall (#380). Track C draft + must-prove (#381 / #382); **POC allowed: no**.
+- **Through 2026-09-12:** Track C must **decide or defer** (#383). Missing that date **is** a six-month deferral of #362. No new Track A implementation stream until that date unless a child is split from an open epic.
+- **After the decision:** either an isolated Track C POC that still keeps content pages on views, or the four expansion items stay dated-deferred and further Track A work is filed as a new child of a new or reopened Track A epic — not invented beside this map.
 
 ---
 
@@ -66,7 +66,7 @@ A proposal that cannot pass this list belongs in Track C, not Track A.
 
 **Done when.** From a typical repo page, three clicks can tell a story (who moved in the same period, who is larger in the same language, how this curve compares). Pulse gives a reason to return. Category pages read as rule-based slices, not as a third ranking product. Citation surfaces (as-of, export, GEO capsules) stay honest.
 
-Work this track in order. Do not open all four steps as parallel implementation streams.
+Work this track in order. Do not open all four steps as parallel implementation streams. **A1–A4 first-pass children are closed on `pre`.** New Track A work needs a new child under an open epic; do not invent tickets beside this map.
 
 ### A1. Repo and org pages as hubs
 
@@ -302,14 +302,14 @@ GitHub epics match this table. Child implementation issues are split from an epi
 
 | Track | Epic | Issue | Children | Status |
 |---|---|---|---|---|
-| — | Iteration program (this map) | #354 | — | Open |
-| A | Product depth on the current ≥10k set | #355 | A1–A4 | Open |
-| A1 | Repo and org pages as hubs | #356 | #363 #364 #365 #366 #367 | First implementation epic; start at #363 |
-| A2 | Categories as topic entry | #357 | #368 #369 #370 | After A1 inbound links exist |
-| A3 | Pulse as return engine | #358 | #371 #372 #373 | After or beside A2, not before A1 |
-| A4 | Search stays go-to-name; citation stays honest | #359 | #374 #375 #376 | After A1 |
-| B | Production as product | #360 | #377 #378 #379 #380 #402 | Open; standing |
-| C | Analytical data-layer decision | #361 | #381 #382 #383 | Open; clock started 2026-08-15; draft in [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md); #383 still decides 2026-09-12 |
+| — | Iteration program (this map) | #354 | — | Closed (map shipped) |
+| A | Product depth on the current ≥10k set | #355 | A1–A4 | First pass done on `pre`; epic closes with A1–A4 |
+| A1 | Repo and org pages as hubs | #356 | #363 #364 #365 #366 #367 | Done on `pre` |
+| A2 | Categories as topic entry | #357 | #368 #369 #370 | Done on `pre` |
+| A3 | Pulse as return engine | #358 | #371 #372 #373 | Done on `pre` |
+| A4 | Search stays go-to-name; citation stays honest | #359 | #374 #375 #376 | Done on `pre` |
+| B | Production as product | #360 | #377 #378 #379 #380 #402 | Open; standing. #380 still open (Firewall unconfigured) |
+| C | Analytical data-layer decision | #361 | #381 #382 #383 | Open; draft shipped; #383 still decides 2026-09-12 |
 | — | Blocked expansion backlog | #362 | none | No impl until #361 / #383 |
 
 When an epic is done, update this table and [CHANGELOG.md](./CHANGELOG.md) in the same change set as the last child.
