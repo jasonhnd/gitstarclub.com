@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-08-16
+last_reviewed: 2026-08-17
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -244,8 +244,8 @@ blob://
 │   └── workflows/
 │       ├── latest-success.json                      #   最近一次成功 run 的恢复点：{ run_id, version, published_at }
 │       ├── active.json                              #   当前 refresh/rollback lease（ETag CAS；idempotency_key + fencing_token + expiry）
-│       ├── health/                                  #   每条 pipeline 独立的 CAS 健康状态
-│       │   ├── workflow-refresh.json                #     latest + last_success + last_failure + freshness
+│       ├── health/                                  #   每条 pipeline 独立的 CAS 健康状态（无扁平 health.json）
+│       │   ├── workflow-refresh.json                #     Sunday 06:00 唯一 operator signal
 │       │   ├── cron-daily.json                      #     每次非 dry 成功/失败都更新
 │       │   └── cron-weekly.json                     #     每次非 dry 成功/失败都更新
 │       └── <run_id>/                                #   Workflow 单次 run checkpoint
@@ -338,7 +338,24 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 
 > **Vercel-only cron 实现**：每日 job = `web/app/api/cron/daily/route.ts`，每周 job = `web/app/api/cron/weekly/route.ts`，两者都委托 `web/lib/cron/handlers.ts` 并支持 `?dry=1`。CRON_SECRET 鉴权 → 以 `<job>:<UTC-day>` 幂等 key 在 `live/latest.json` 取得 15 分钟 ETag/CAS lease → GraphQL 拉 current_stars → `live-refresh.ts` 幂等重建当日状态 → 校验全部 JSON → 写 `live/generations/<run_id>/**` 与 manifest → 同一个控制对象做 fenced CAS 切 generation → **之后**才 `revalidatePath` / IndexNow / `ops/sync-runs.json`。不同 key 并发返回 409；同 key 运行中返回 202 attached，已提交返回 200 already-published。手动同日再次刷新须提供新的 `idempotency_key`。Publish / release fence with the Blob API `head()` etag captured at acquire — not a public GET of the pointer body (#402).
 
-**Failed weekly / leftover lease:** A false-fence (or any failure after acquire) used to leave `lease` on `live/latest.json` until `expires_at` (~15 min) because release also read the CDN-stale `lease: null` body and skipped the clear. Release now CAS-clears when `claimedEtag` still matches origin `head()`. If an old deploy left a lease stuck, wait until `expires_at` before the next acquire; do not skip that wait by writing `main` or calling production cron unless the user said push main. Sunday **workflow-refresh** failures are #379, not this path.
+**Failed weekly / leftover lease:** A false-fence (or any failure after acquire) used to leave `lease` on `live/latest.json` until `expires_at` (~15 min) because release also read the CDN-stale `lease: null` body and skipped the clear. Release now CAS-clears when `claimedEtag` still matches origin `head()`. If an old deploy left a lease stuck, wait until `expires_at` before the next acquire; do not skip that wait by writing `main` or calling production cron unless the user said push main. Sunday **workflow-refresh** failures are the next section, not this path.
+
+### Sunday 06:00 UTC workflow-refresh failure
+
+Schedule: `0 6 * * 0` UTC → `GET /api/workflows/refresh/start` (managed Workflow). This is **not** the Sunday 04:00 weekly live cron above. A leftover `live/latest.json` lease is that other path (#402).
+
+Paging already exists — do not invent new alerts. `markFailed` in `web/lib/workflows/checkpoint.ts` calls `recordHealth("workflow-refresh", "failed", …)` and `sendAlert`. Start-route lease/enqueue failures in `web/lib/workflows/start.ts` also `sendAlert`. `sendAlert` always writes a structured `[ALERT] workflow-refresh failed` function log; it POSTs a webhook only when `ALERT_WEBHOOK_URL` is set.
+
+1. Read **`ops/workflows/health/workflow-refresh.json`** (`status`, `last_failure`, `freshness.stale_after`). **Do not read** retired `ops/workflows/health.json`.
+2. Grep Vercel function logs for `[ALERT] workflow-refresh`.
+3. Check `ops/workflows/active.json` (`run_id`, `expires_at`, `fencing_token`, `idempotency_key`). Default Sunday key is week-scoped (`workflow-refresh:YYYY-Www`). Same-key retries attach; a different active trigger is 409.
+4. Check `ops/workflows/<run_id>/manifest.json`, `error.json`, and `validation.json`. Validate is fail-closed; do not relax invariants.
+5. Check `views/latest.json`. If the failure was before publish, the pointer must be unchanged. Do not hand-edit the pointer.
+6. Enqueue with a **new** Idempotency-Key only after leftover lease `expires_at`, and only if same-week attach is not the right move. How: authenticated `GET /api/workflows/refresh/start` with a new `Idempotency-Key`. There is **no** dry-run for managed refresh.
+7. Hard stops: no validate-invariant relaxation; no inventing `bootstrap/latest.json`; do not push `main` or call production cron unless the user said push main; wait leftover lease; product-gates stay fail-closed.
+8. After a successful publish, static exports still need the [DATA-EXPORTS.md](./DATA-EXPORTS.md) regenerate path (#375). Do not duplicate that runbook here.
+
+**Optional — retire the stale flat object (do not run unless the user authorized a production Blob write).** Writers no longer touch `ops/workflows/health.json`. `blob-del-prefix.ts` hard-blocks `ops/**`. If the Jul-2026 object is still confusing operators, overwrite or delete that **single** pathname from the Vercel Blob dashboard after confirming `healthPath` still has no flat-file writer. Do not prefix-delete `ops/`. Do not call production cron to “refresh” it.
 
 **鉴权模式（CRON_SECRET）**：
 
@@ -445,7 +462,7 @@ For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, 
 
 **一行接入**：在 Vercel 项目 Settings → Environment Variables 加 `ALERT_WEBHOOK_URL`，值指向一个能收 JSON POST 的端点——Slack / Discord incoming webhook，或调试用的 `https://webhook.site/...`。配上即生效，无需改代码；留空则保持纯日志模式。
 
-> `recordHealth` 分别写 `ops/workflows/health/{workflow-refresh|cron-daily|cron-weekly}.json`。每条记录用 ETag compare-and-set 更新，保留 `last_success`、`last_failure`、`correlation_id` / `run_id` / `idempotency_key`，并给出 `freshness.stale_after`。每日和每周 cron 的每次非 dry 成功与失败都会更新；`attached` / `rejected` 只改变该 pipeline 的 latest signal，不删除历史成功或失败。不同 pipeline 的并发运行不能互相覆盖。
+> `recordHealth` 分别写 `ops/workflows/health/{workflow-refresh|cron-daily|cron-weekly}.json`。Sunday 06:00 的唯一 operator signal 是 `ops/workflows/health/workflow-refresh.json`。扁平 `ops/workflows/health.json` 已退役，不要读。每条记录用 ETag compare-and-set 更新，保留 `last_success`、`last_failure`、`correlation_id` / `run_id` / `idempotency_key`，并给出 `freshness.stale_after`。每日和每周 cron 的每次非 dry 成功与失败都会更新；`attached` / `rejected` 只改变该 pipeline 的 latest signal，不删除历史成功或失败。不同 pipeline 的并发运行不能互相覆盖。
 
 ## 一次性 bootstrap Runbook（归档 / 非日常路径）
 

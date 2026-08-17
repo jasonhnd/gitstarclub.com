@@ -1,7 +1,7 @@
 ---
 owner: roadmap
 status: active
-last_reviewed: 2026-08-15
+last_reviewed: 2026-08-17
 source_of_truth_for:
   - open work
   - architectural decisions
@@ -196,7 +196,7 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 
 | Item | Why it exists | Done looks like |
 |---|---|---|
-| Weekly managed refresh stays visible when it fails | Aug 2026 publish stalled for weeks because validate and enqueue failures were easy to miss | `ops/workflows/health/workflow-refresh.json` is the operator signal; stale `ops/workflows/health.json` is removed or redirected in docs |
+| Weekly managed refresh stays visible when it fails | Aug 2026 publish stalled for weeks because validate and enqueue failures were easy to miss | `ops/workflows/health/workflow-refresh.json` is the only live operator signal; retired `ops/workflows/health.json` is not read |
 | New pages must not re-probe missing Blob objects | Crawler-driven 404 amplification on `bootstrap/latest.json` | Pointer 404 remains a cached legacy state; no new per-request existence probes |
 | Dependabot + bun lockfiles | npm Dependabot PRs against `main` fail `bun install --frozen-lockfile` | Next Dependabot wave is retargeted or immediately replaced with a `pre` + lockfile PR (pattern from #351) |
 | Product-gates stay fail-closed | 14-day base pointer and export SLAs are the live contract (#286) | Do not skip or loosen the job to land features |
@@ -231,17 +231,21 @@ Several recurring requests cannot be served by static JSON shards behind a publi
 
 All four need filtering, aggregation, or vector query over a large repo × time matrix. That is one gate, not four features.
 
-### Options (unchanged until the decision record replaces them)
+### Options (draft compare is linked; formal choose/defer is still #383 on 2026-09-12)
+
+The comparative **draft** is [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). It is not the 2026-09-12 decision. [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) still owns choose-or-defer. Missing that date **is** a six-month deferral of [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362).
+
+Draft recommendation leans (not a decision): Tinybird **no**; Vercel Postgres / Neon **no**; more JSON views **only-if** (tiny finite extra shard, not open faceting); self-hosted ClickHouse **ruled out, do not reopen**; defer 6 months **yes**. **POC allowed: no.**
 
 | Option | Trade-off |
 |---|---|
-| **Tinybird (managed ClickHouse)** | Strong analytics. External billing and a non-Vercel runtime dependency. Conflicts with Vercel-first and static-read defaults. |
-| **Vercel Postgres / Neon** | Stays on Vercel. Relational storage is a poor fit for this analytical shape and scale. |
-| **More precomputed JSON views** | No database. Combinatorial filter/sort/aggregate does not fit a finite shard set. |
-| **Self-hosted ClickHouse** | Cheap to run in theory, expensive to operate. Already ruled out in [ARCHITECTURE.md](./ARCHITECTURE.md). |
-| **Defer 6 months** | Valid outcome. Track A continues. The four items stay paused with a review date. |
+| **Tinybird (managed ClickHouse)** | Strong analytics. External billing and a non-Vercel runtime dependency. Conflicts with Vercel-first and static-read defaults. Draft lean: **no**. |
+| **Vercel Postgres / Neon** | Stays on Vercel. Relational storage is a poor fit for this analytical shape and scale. Draft lean: **no**. |
+| **More precomputed JSON views** | No database. Combinatorial filter/sort/aggregate does not fit a finite shard set. Draft lean: **only-if** a tiny finite extra shard. |
+| **Self-hosted ClickHouse** | Cheap to run in theory, expensive to operate. Already ruled out in [ARCHITECTURE.md](./ARCHITECTURE.md). Do not reopen. |
+| **Defer 6 months** | Valid outcome. Track A continues. The four items stay paused with a review date. Draft lean: **yes**. |
 
-A formal selection (option compare + must-prove list + optional isolated POC + decision record) must precede any production work below. Finite category pages stay **outside** this decision.
+A formal selection (accept, amend, or replace the draft + dated choose/defer) must precede any production work below. Finite category pages stay **outside** this decision.
 
 ### Decision-record acceptance
 
@@ -305,7 +309,7 @@ GitHub epics match this table. Child implementation issues are split from an epi
 | A3 | Pulse as return engine | #358 | #371 #372 #373 | After or beside A2, not before A1 |
 | A4 | Search stays go-to-name; citation stays honest | #359 | #374 #375 #376 | After A1 |
 | B | Production as product | #360 | #377 #378 #379 #380 #402 | Open; standing |
-| C | Analytical data-layer decision | #361 | #381 #382 #383 | Open; clock started 2026-08-15 |
+| C | Analytical data-layer decision | #361 | #381 #382 #383 | Open; clock started 2026-08-15; draft in [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md); #383 still decides 2026-09-12 |
 | — | Blocked expansion backlog | #362 | none | No impl until #361 / #383 |
 
 When an epic is done, update this table and [CHANGELOG.md](./CHANGELOG.md) in the same change set as the last child.
