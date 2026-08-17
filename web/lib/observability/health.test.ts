@@ -1,8 +1,8 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import type {
+import {
   AlertPipeline,
-  HealthStatus,
-  PipelineHealth,
+  type HealthStatus,
+  type PipelineHealth,
 } from "@/lib/contracts";
 import {
   healthPath,
@@ -55,6 +55,23 @@ test("health paths are isolated by pipeline", () => {
   expect(healthPath("workflow-refresh")).toBe(
     "ops/workflows/health/workflow-refresh.json",
   );
+});
+
+test("healthPath never returns the retired flat operator file", () => {
+  for (const pipeline of AlertPipeline.options) {
+    const path = healthPath(pipeline);
+    expect(path).toBe(`ops/workflows/health/${pipeline}.json`);
+    expect(path).not.toBe("ops/workflows/health.json");
+    expect(path.endsWith("/health.json")).toBe(false);
+  }
+});
+
+test("health writers only target the per-pipeline path", async () => {
+  const source = await Bun.file(new URL("./health.ts", import.meta.url)).text();
+  const withoutComments = source.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  expect(withoutComments).not.toMatch(/ops\/workflows\/health\.json/);
+  expect(withoutComments).toContain("ops/workflows/health/${pipeline}.json");
+  expect(withoutComments.match(/put\(healthPath\(pipeline\)/g)?.length).toBe(2);
 });
 
 describe("mergePipelineHealth", () => {

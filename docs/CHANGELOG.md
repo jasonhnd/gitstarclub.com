@@ -19,10 +19,12 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Added
 
+- **Track C data-layer decision draft.** Comparative write-up of Tinybird, Vercel Postgres / Neon, extra JSON views, and a six-month deferral, plus the POC must-prove list. Overall lean is defer; **POC allowed: no.** Formal choose-or-defer remains #383 on 2026-09-12. See [ROADMAP.md](./ROADMAP.md) Track C and [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md).
 - **Vercel Web Analytics.** Enabled cookieless aggregate page-view measurement through Vercel Web Analytics and corrected the privacy page copy to reflect that no analytics cookies or personal data are collected.
 
 ### Changed
 
+- **Sunday operator signal is per-pipeline health only.** Read `ops/workflows/health/workflow-refresh.json`, not the retired flat `ops/workflows/health.json`. OPS.md now has a one-screen Sunday 06:00 UTC refresh-failure runbook.
 - **Org pages gained hub exits.** `/o/{login}` now links public categories derived from member assignments, and compares the owner's top tracked repositories. Member rows still go to repo hubs. Org ranking-month links appear only when the published org entity already has `rank_history`.
 - **Repo related-repository lists state why peers appear.** Same-owner repos stay first. When that set is empty, the page says the list is the largest active same-language peers already tracked. Inactive historical repos stay out. A dashed empty state is shown when neither set exists.
 - **Ranking boards exit into public categories.** All-time, year, month, and week ranking pages link precomputed public language and ecosystem slices that appear among the leading rows. Copy does not describe this as a live GitHub filter.
