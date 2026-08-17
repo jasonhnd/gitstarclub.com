@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-08-16
+last_reviewed: 2026-08-17
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -70,6 +70,7 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | Thin category honesty (#369) | Few-repo category pages state they are a ≥10k whitelist rule slice; related categories stay public and bounded | `web/lib/category-page-data.test.ts`, `web/lib/integration/uiux-seo.test.tsx` | Manual Preview of a low-count category |
 | Weekly live origin-etag fence (#402) | Weekly reuse publish must not false-fence on a CDN-stale `live/latest.json` body; a changed origin `head()` etag still fences | `web/lib/cron/live-publication.test.ts` | Sunday weekly `ops/sync-runs.json` newest non-dry run is `ok` |
 | Pulse movers → ranking period (#372) | Week / month / year / all-time panels link the resolved ranking route; rows stay on repo hubs; locale prefixes apply | `web/lib/pulse-board-links.test.tsx` | Manual Preview of `/` and `/ja` |
+| GEO capsule gaps (#376) | High-value routes keep a dated, attributed capsule and FAQ; Pulse capsule is after the period switcher and before ranking panels; compare capsule stays generic | `web/lib/geo-capsules.test.ts`, `web/lib/geo-faq.test.ts`, `web/lib/pulse-board-links.test.tsx`, `web/lib/integration/uiux-seo.test.tsx` | Manual Preview of `/` and `/pulse` |
 | Sunday refresh health path (#377 / #379) | Operator signal is only `ops/workflows/health/workflow-refresh.json`; never the retired flat `ops/workflows/health.json` | `web/lib/observability/health.test.ts` | Sunday runbook in [OPS.md](./OPS.md) |
 
 本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。

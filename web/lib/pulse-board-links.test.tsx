@@ -139,6 +139,29 @@ describe("PulsePageView board exits", () => {
   });
 });
 
+describe("PulsePageView GEO capsule placement", () => {
+  test.each(["/", "/pulse"] as const)("%s renders a dated capsule after the period switcher and before ranking panels", async (canonicalPath) => {
+    const html = await renderPage(await PulsePageView({ locale: "en", canonicalPath, now: NOW }));
+    const periodSwitcher = html.indexOf('aria-label="Ranking period"');
+    const capsule = html.indexOf('data-testid="answer-capsule"');
+    const asOf = html.indexOf('data-testid="answer-capsule-data-as-of"');
+    const source = html.indexOf('data-testid="answer-capsule-source"');
+    const weekPanel = html.indexOf("Top weekly repositories");
+    const faq = html.indexOf('data-testid="faq"');
+
+    expect(periodSwitcher).toBeGreaterThan(-1);
+    expect(capsule).toBeGreaterThan(periodSwitcher);
+    expect(asOf).toBeGreaterThan(capsule);
+    expect(source).toBeGreaterThan(capsule);
+    expect(weekPanel).toBeGreaterThan(capsule);
+    expect(faq).toBeGreaterThan(weekPanel);
+    expect(html).toContain("June 21, 2026");
+    expect(html).toContain("GitStarClub");
+    expect(html).toContain("vercel/next.js");
+    expect(html).toContain("Frequently asked questions");
+  });
+});
+
 async function renderPage(element: ReactElement): Promise<string> {
   const stream = await renderToReadableStream(element);
   await stream.allReady;
