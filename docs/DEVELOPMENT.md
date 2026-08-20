@@ -1,7 +1,7 @@
 ---
 owner: development process
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-08-16
 source_of_truth_for:
   - developer workflow
   - documentation ownership practice
@@ -177,6 +177,28 @@ bun test lib/categories/rules.test.ts
 bun test lib/contracts/contracts.test.ts
 bun test lib/workflows/recompute/entities.test.ts
 ```
+
+Install and CI use Bun with frozen lockfiles (`bun install --frozen-lockfile`
+in `web/` and `pipeline/`). Do not switch the site off Bun.
+
+## Dependabot And Lockfiles
+
+Dependabot is configured in `.github/dependabot.yml` for `web/`, `pipeline/`
+(npm ecosystem, Bun lockfiles), and GitHub Actions. All three target branch
+`pre` so dependency PRs follow the same staging path as feature work.
+
+If a Dependabot PR updates `package.json` but omits the matching `bun.lock`,
+**do not merge it**. Close the PR and open a replacement that includes the
+lockfile (same pattern as the #351 replacement for #342–#344). CI will fail
+`bun install --frozen-lockfile` on package.json-only bumps.
+
+When reviewing or authoring a lockfile replacement:
+
+1. Branch from `pre`.
+2. Apply the intended version bumps, then run `bun install` in the affected
+   package directory so `bun.lock` updates.
+3. Confirm `bun install --frozen-lockfile` and the usual lint/typecheck/tests
+   pass before merge into `pre`.
 
 ## Pull Request Or Commit Checklist
 

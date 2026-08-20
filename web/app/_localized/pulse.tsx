@@ -11,12 +11,21 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getHotSnapshot, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
-import { dateLabel, fmtStars, monthYearLabel } from "@/lib/format";
+import { dateLabel, fmtStars } from "@/lib/format";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { webSiteLd, collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine, siteOrganizationLd } from "@/lib/jsonld";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { currentUtcPeriods } from "@/lib/periods";
+import { localizedPulseBoardHrefs } from "@/lib/pulse-board-links";
+import {
+  availablePeriodLabel,
+  formatPulseListMeta,
+  isFallbackMonthPeriod,
+  isFallbackWeekPeriod,
+  periodAsOfCandidate,
+  type PulseListMetaCopy,
+} from "@/lib/rank-period-labels";
 import { pageMeta } from "@/lib/seo";
 import { repositoryTableLabels } from "./routing";
 import { buildLocalizedPulseCapsule, buildLocalizedPulseFaqs } from "./seo-copy";
@@ -45,14 +54,14 @@ type PulseViewProps = {
   locale: Locale;
   canonicalPath: "/" | "/pulse";
   includeWebsiteLd?: boolean;
+  now?: Date;
 };
 
-export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = false }: PulseViewProps) {
+export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = false, now = new Date() }: PulseViewProps) {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
   const routePath = localizedPath(locale, canonicalPath);
   const href = (path: string) => localizedPath(locale, path);
-  const now = new Date();
   const periods = currentUtcPeriods(now);
   const [snap, lookup, availablePeriods] = await Promise.all([
     getHotSnapshot(),
@@ -64,14 +73,51 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
     availablePeriods.month.kind === "month" ? getRank("month", availablePeriods.month.period, "repo", "flow") : Promise.resolve(null),
   ]);
 
-  const activeWeekLabel = availablePeriodLabel(locale, t, availablePeriods.week);
-  const activeMonthLabel = availablePeriodLabel(locale, t, availablePeriods.month);
+  const labelCopy = { fullHistory: t.rankings.fullHistory };
+  const metaCopy = pulseListMetaCopy(t);
+  const activeWeekLabel = availablePeriodLabel(locale, availablePeriods.week, labelCopy);
+  const activeMonthLabel = availablePeriodLabel(locale, availablePeriods.month, labelCopy);
+  const activeYearLabel = availablePeriodLabel(locale, availablePeriods.yearLink, labelCopy);
   const weekRows = lookup && activeWeekRank ? toRows(joinRepoRank(activeWeekRank.items.slice(0, 8), lookup)) : [];
   const monthRows = lookup && activeMonthRank ? toRows(joinRepoRank(activeMonthRank.items.slice(0, 8), lookup)) : [];
   const yearRows = snap && lookup ? toRows(joinRepoRank(snap.current_year.flow.slice(0, 8), lookup)) : [];
   const giants = snap && lookup ? toRows(joinRepoRank(snap.all_time.repo.slice(0, 6), lookup), "total") : [];
   const asOf = resolveDataAsOfLabel(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at, { locale });
   const dateModified = resolveDataAsOfValue(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at);
+  const weekMeta = formatPulseListMeta({
+    periodLabel: activeWeekLabel,
+    isFallback: isFallbackWeekPeriod(availablePeriods.week, periods),
+    asOf: periodAsOfCandidate(availablePeriods.week) ?? activeWeekRank?.meta.generated_at ?? snap?.generated_at,
+    locale,
+    copy: metaCopy,
+  });
+  const monthMeta = formatPulseListMeta({
+    periodLabel: activeMonthLabel,
+    isFallback: isFallbackMonthPeriod(availablePeriods.month, periods),
+    asOf: periodAsOfCandidate(availablePeriods.month) ?? activeMonthRank?.meta.generated_at ?? snap?.generated_at,
+    locale,
+    copy: metaCopy,
+  });
+  const yearMeta = formatPulseListMeta({
+    periodLabel: activeYearLabel,
+    isFallback: availablePeriods.yearLink.kind !== "year" || availablePeriods.yearLink.year !== periods.year,
+    asOf: periodAsOfCandidate(availablePeriods.yearLink) ?? snap?.freshness?.current_year ?? snap?.generated_at,
+    locale,
+    copy: metaCopy,
+  });
+  const allTimeMeta = formatPulseListMeta({
+    periodLabel: t.rankings.fullHistory,
+    asOf: snap?.freshness?.all_time ?? snap?.generated_at,
+    locale,
+    copy: metaCopy,
+  });
+  const todayIso = now.toISOString().slice(0, 10);
+  const onThisDayMeta = formatPulseListMeta({
+    periodLabel: dateLabel(locale, todayIso, "long"),
+    asOf: snap?.freshness?.on_this_day ?? snap?.generated_at,
+    locale,
+    copy: metaCopy,
+  });
   const temporalCoverage = datasetTemporalCoverageFromYearSpine(snap?.home.year_spine);
   const dataset = datasetLd({
     name: t.pulse.datasetName,
@@ -90,7 +136,8 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
     return m ? [{ ...e, full_name: m.full_name, owner: m.owner, name: m.name }] : [];
   });
   const repoLabels = repositoryTableLabels(t);
-  const openRankingLabel = `${t.pulse.open} ${t.nav.rankings}`;
+  const boards = localizedPulseBoardHrefs(locale, availablePeriods);
+  const fullBoardLabel = t.pulse.fullBoard;
 
   return (
     <>
@@ -100,48 +147,50 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
       <JsonLd data={collectionLd(t.pulse.title, routePath, language, { dateModified, about: datasetRef(routePath) })} />
       <JsonLd data={dataset} />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.25rem,3.5vw,2.75rem)] ${PAD_X}`}>
-        {/* Human-first hierarchy (#285): identity → period → repo discovery, then methodology/GEO. */}
+        {/* Human-first hierarchy (#285 / #376): identity → period → compact GEO capsule → repo discovery, then methodology/FAQ. */}
         <PageHero eyebrow={t.nav.pulse} title={t.pulse.title} lede={t.pulse.subtitle} />
 
         <div className="mt-[clamp(1rem,2.5vw,1.5rem)]">
           <PeriodSwitcher links={periodSwitcherLinks(availablePeriods, periods, href, locale, t)} activePeriod={availablePeriods.week.kind === "week" ? "week" : "all-time"} ariaLabel={t.a11y.rankingPeriod} />
         </div>
 
+        {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.25rem,3vw,2rem)]" labels={answerCapsuleLabels(locale, t)} />}
+
         <div className="mt-[clamp(1.25rem,3vw,2rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel
             title={t.week.top}
-            href={href(availablePeriods.week.href)}
-            meta={activeWeekLabel}
+            href={boards.week}
+            meta={weekMeta}
             rows={weekRows}
             labels={repoLabels}
-            openLabel={openRankingLabel}
-            linkLabel={`${openRankingLabel}: ${activeWeekLabel}`}
+            openLabel={fullBoardLabel}
+            linkLabel={`${fullBoardLabel}: ${activeWeekLabel}`}
             emptyMessage={t.categories.rankingPending}
             locale={locale}
           />
           <PulsePanel
             title={t.pulse.surging}
-            href={href(availablePeriods.month.href)}
-            meta={activeMonthLabel}
+            href={boards.month}
+            meta={monthMeta}
             rows={monthRows}
             labels={repoLabels}
-            openLabel={openRankingLabel}
-            linkLabel={`${openRankingLabel}: ${activeMonthLabel}`}
+            openLabel={fullBoardLabel}
+            linkLabel={`${fullBoardLabel}: ${activeMonthLabel}`}
             emptyMessage={t.categories.rankingPending}
             locale={locale}
           />
           <PulsePanel
             title={
               <>
-                {t.year.top} {availablePeriods.yearLink.label}
+                {t.year.top} {activeYearLabel}
               </>
             }
-            href={href(availablePeriods.yearLink.href)}
-            meta={availablePeriods.yearLink.label}
+            href={boards.year}
+            meta={yearMeta}
             rows={yearRows}
             labels={repoLabels}
-            openLabel={openRankingLabel}
-            linkLabel={`${openRankingLabel}: ${availablePeriods.yearLink.label}`}
+            openLabel={fullBoardLabel}
+            linkLabel={`${fullBoardLabel}: ${activeYearLabel}`}
             emptyMessage={t.categories.rankingPending}
             locale={locale}
           />
@@ -149,9 +198,9 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
 
         <PulseLeaderLinks
           links={[
-            { label: t.week.label, href: href(availablePeriods.week.href), period: activeWeekLabel, row: weekRows[0] },
-            { label: t.month.label, href: href(availablePeriods.month.href), period: activeMonthLabel, row: monthRows[0] },
-            { label: t.year.label, href: href(availablePeriods.yearLink.href), period: availablePeriods.yearLink.label, row: yearRows[0] },
+            { label: t.week.label, href: boards.week, period: weekMeta, row: weekRows[0] },
+            { label: t.month.label, href: boards.month, period: monthMeta, row: monthRows[0] },
+            { label: t.year.label, href: boards.year, period: yearMeta, row: yearRows[0] },
           ]}
           pendingLabel={t.categories.rankingPending}
           locale={locale}
@@ -160,13 +209,20 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
 
         <section className="mt-[clamp(2rem,4.5vw,3.25rem)] grid gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0">
-            <div className="mb-3 flex items-end justify-between gap-4">
-              <div>
-                <h2 className="text-[1.35rem] font-extrabold tracking-tight text-on-surface">{t.rankings.title}</h2>
+            <div className="mb-3 flex min-w-0 flex-wrap items-end justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h2 className="text-[1.35rem] font-extrabold tracking-tight text-on-surface">{t.rankings.title}</h2>
+                  <PulsePeriodMeta>{allTimeMeta}</PulsePeriodMeta>
+                </div>
                 <p className="mt-1 text-[0.9rem] text-on-surface-variant">{t.rankings.subtitle}</p>
               </div>
-              <Link href={href("/rankings")} className="text-readable-gold font-mono text-[0.78rem] hover:underline">
-                {t.rankings.title}
+              <Link
+                href={boards.allTime}
+                aria-label={`${fullBoardLabel}: ${t.rankings.fullHistory}`}
+                className="text-readable-gold shrink-0 font-mono text-[0.78rem] hover:underline"
+              >
+                {fullBoardLabel}
               </Link>
             </div>
             {giants.length > 0 ? (
@@ -179,7 +235,10 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           </div>
 
           <aside className="min-w-0">
-            <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{t.pulse.onThisDay}</h2>
+            <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
+              <h2 className="text-[1.15rem] font-extrabold tracking-tight text-on-surface">{t.pulse.onThisDay}</h2>
+              <PulsePeriodMeta>{onThisDayMeta}</PulsePeriodMeta>
+            </div>
             {onThisDay.length > 0 ? (
               <ul className="flex flex-col divide-y divide-outline-variant/50">
                 {onThisDay.slice(0, 8).map((e) => (
@@ -198,12 +257,6 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
             )}
           </aside>
         </section>
-
-        {capsule && (
-          <div className="mt-[clamp(2rem,4.5vw,3.25rem)]">
-            <AnswerCapsule capsule={capsule} labels={answerCapsuleLabels(locale, t)} />
-          </div>
-        )}
 
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
@@ -244,11 +297,11 @@ function PulsePanel({
 }) {
   return (
     <section className="min-w-0">
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
         <h2 className="min-w-0 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-        <div className="flex shrink-0 items-center gap-2">
-          {meta && <span className="rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">{meta}</span>}
-          <Link href={href} aria-label={linkLabel} className="text-readable-gold font-mono text-[0.72rem] hover:underline">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+          {meta && <PulsePeriodMeta>{meta}</PulsePeriodMeta>}
+          <Link href={href} aria-label={linkLabel} className="text-readable-gold shrink-0 font-mono text-[0.72rem] hover:underline">
             {openLabel}
           </Link>
         </div>
@@ -285,12 +338,20 @@ function PulseLeaderLinks({
           <span className="mt-1 block truncate font-mono text-[0.92rem] font-extrabold text-on-surface">
             {link.row ? `${link.row.owner}/${link.row.name}` : pendingLabel}
           </span>
-          <span className="mt-1 block truncate font-mono text-[0.76rem] text-on-surface-variant">
+          <span className="mt-1 block max-w-full break-words font-mono text-[0.76rem] text-on-surface-variant [overflow-wrap:anywhere]">
             {link.row?.gained == null ? link.period : `${link.period} · +${fmtStars(link.row.gained, locale)}`}
           </span>
         </Link>
       ))}
     </div>
+  );
+}
+
+function PulsePeriodMeta({ children }: { children: ReactNode }) {
+  return (
+    <span className="min-w-0 max-w-full break-words rounded-full border border-outline-variant px-2 py-0.5 font-mono text-[0.68rem] leading-snug text-on-surface-variant [overflow-wrap:anywhere]">
+      {children}
+    </span>
   );
 }
 
@@ -309,39 +370,35 @@ function periodSwitcherLinks(
   locale: Locale,
   t: Dict,
 ): Record<"all-time" | "year" | "month" | "week", PeriodSwitcherTarget> {
+  const labelCopy = { fullHistory: t.rankings.fullHistory };
   return {
     "all-time": { href: href(periods.allTime.href), label: t.rankings.allTime, value: t.rankings.fullHistory },
-    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, t, periods.yearLink) },
+    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, periods.yearLink, labelCopy) },
     month: {
       href: href(periods.month.href),
       label: t.month.label,
-      value: availablePeriodLabel(locale, t, periods.month),
-      badge: monthAvailabilityBadge(periods.month, calendar, locale, t),
+      value: availablePeriodLabel(locale, periods.month, labelCopy),
+      badge: isFallbackMonthPeriod(periods.month, calendar)
+        ? fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, periods.month, labelCopy) })
+        : undefined,
     },
     week: {
       href: href(periods.week.href),
       label: t.week.label,
-      value: availablePeriodLabel(locale, t, periods.week),
-      badge: weekAvailabilityBadge(periods.week, calendar, locale, t),
+      value: availablePeriodLabel(locale, periods.week, labelCopy),
+      badge: isFallbackWeekPeriod(periods.week, calendar)
+        ? fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, periods.week, labelCopy) })
+        : undefined,
     },
   };
 }
 
-function monthAvailabilityBadge(period: AvailableRankPeriods["month"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
-  if (period.kind !== "month") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-  return period.year === calendar.year && period.month === calendar.month ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-}
-
-function weekAvailabilityBadge(period: AvailableRankPeriods["week"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
-  if (period.kind !== "week") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-  return period.year === calendar.week.year && period.week === calendar.week.week ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-}
-
-function availablePeriodLabel(locale: Locale, t: Dict, period: AvailableRankPeriods["month"] | AvailableRankPeriods["week"] | AvailableRankPeriods["yearLink"]): string {
-  if (period.kind === "month") return monthYearLabel(locale, period.year, period.month);
-  if (period.kind === "week") return period.period;
-  if (period.kind === "year") return String(period.year);
-  return t.rankings.fullHistory;
+function pulseListMetaCopy(t: Dict): PulseListMetaCopy {
+  return {
+    fullHistory: t.rankings.fullHistory,
+    latestAvailable: t.common.latestAvailable,
+    periodAsOf: t.common.periodAsOf,
+  };
 }
 
 function fill(template: string, values: Record<string, string>): string {

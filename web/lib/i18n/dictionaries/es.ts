@@ -17,6 +17,7 @@ const es: Dict = {
     notAvailable: "No disponible",
     status: "Estado",
     latestAvailable: "Último disponible: {period}",
+    periodAsOf: "{period} · a fecha de {asOf}",
   },
   a11y: {
     primary: "Principal",
@@ -35,9 +36,9 @@ const es: Dict = {
   },
   meta: {
     homeTitle: "Pulso de código abierto e historial de estrellas de GitHub",
-    homeDescription: "Consulta el pulso actual del código abierto: los proyectos de GitHub que más crecen esta semana, este mes y este año, más rankings históricos de estrellas.",
+    homeDescription: "Consulta el impulso del código abierto desde los datos precalculados de GitStarClub: los movimientos semanales, mensuales y anuales más recientes disponibles, más rankings históricos de estrellas.",
     pulseTitle: "Pulso de código abierto e historial de estrellas de GitHub",
-    pulseDescription: "Consulta el pulso actual del código abierto: los proyectos de GitHub que más crecen esta semana, este mes y este año, más rankings históricos de estrellas.",
+    pulseDescription: "Consulta el impulso del código abierto desde los datos precalculados de GitStarClub: los movimientos semanales, mensuales y anuales más recientes disponibles, más rankings históricos de estrellas.",
     rankingsTitle: "Rankings históricos de estrellas de GitHub — repositorios y organizaciones con más estrellas",
     rankingsDescriptionPrefix: "Los repositorios y organizaciones de GitHub con más estrellas históricas. Top 100 por estrellas totales a lo largo de ",
     rankingsDescriptionSuffix: " años.",
@@ -173,7 +174,7 @@ const es: Dict = {
     gained: "Los repositorios monitoreados añadieron",
     narrative: "Este mes",
   },
-  week: { label: "Semana", top: "Repositorios principales de esta semana" },
+  week: { label: "Semana", top: "Repositorios principales semanales" },
   repo: {
     starHistory: "Historial de estrellas",
     metaTitleSuffix: "Historial de estrellas y línea de tiempo",
@@ -202,6 +203,12 @@ const es: Dict = {
     languages: "Lenguajes",
     relatedPages: "Explorar páginas relacionadas",
     relatedRepositories: "Repositorios relacionados",
+    relatedByOwner: "Otros repositorios rastreados activos del mismo propietario, ordenados por estrellas actuales.",
+    relatedByLanguage:
+      "No hay otros repositorios rastreados de este propietario. Estos son los repositorios {language} activos más grandes que GitStarClub ya sigue.",
+    relatedByOwnerAndLanguage:
+      "Otros repositorios rastreados activos del mismo propietario y, a continuación, los pares {language} activos más grandes, ordenados por estrellas actuales.",
+    relatedEmpty: "Ningún otro repositorio rastreado activo comparte este propietario o lenguaje principal.",
     capsuleLatest: "{month} con {stars} estrellas",
     capsuleLatestFallback: "su última fila mensual precalculada",
     capsule:
@@ -292,7 +299,9 @@ const es: Dict = {
     recentMovement: "Movimiento reciente",
     recentMovementDescription: "Últimos cambios netos diarios de estrellas en la curva de la organización.",
     relatedTitle: "Enlaces de organización relacionados",
-    relatedDescription: "Rankings permanentes y páginas de repositorios monitoreados vinculados a este propietario.",
+    relatedDescription: "Rankings permanentes, categorías públicas y páginas de repositorios monitoreados vinculados a este propietario.",
+    compareMembers: "Comparar repositorios principales",
+    categoryTags: "Categorías públicas",
     noTrackedRepos: "Las filas de repositorios monitoreados esperan el próximo lookup publicado.",
   },
   categories: {
@@ -313,6 +322,10 @@ const es: Dict = {
     allTimeStars: "Estrellas históricas",
     rankingPending: "Los datos de ranking esperan la próxima recomputación publicada.",
     relatedCategories: "Categorías relacionadas",
+    scopeNote:
+      "Las categorías de GitStarClub son cortes deterministas de la lista blanca de ≥10.000 estrellas. No son un catálogo completo de lenguajes o temas de GitHub.",
+    thinSliceNotice:
+      "Solo {count} repositorios rastreados coinciden con esta regla de {label}. Ese es el tamaño del corte de la lista blanca, no el de {label} en GitHub.",
   },
   rankings: {
     title: "Rankings históricos",
@@ -331,7 +344,10 @@ const es: Dict = {
     dailyMovement: "Movimiento diario",
     periodNavigation: "Navegación por periodos",
     relatedTitle: "Enlaces de ranking relacionados",
-    relatedDescription: "Archivos permanentes y vistas de actividad actual vinculados a este periodo de ranking.",
+    relatedDescription: "Archivos permanentes, páginas de categorías públicas y vistas de actividad actual vinculados a este periodo de ranking.",
+    categoryExitsTitle: "Categorías públicas entre los líderes",
+    categoryExits:
+      "Cortes públicos precomputados del conjunto rastreado ≥10k que aparecen entre las filas líderes de este tablero. Son páginas de categoría, no una búsqueda en vivo de GitHub.",
     visibleRows: "Filas visibles",
     noMovement: "Los datos de movimiento esperan la próxima recomputación publicada.",
     noGrowth: "Los datos de tasa de crecimiento esperan la próxima recomputación publicada.",
@@ -345,11 +361,12 @@ const es: Dict = {
   },
   pulse: {
     title: "Actividad de código abierto",
-    subtitle: "Qué está cambiando esta semana, este mes y este año en los repositorios de código abierto monitoreados.",
-    surging: "En alza este mes",
+    subtitle: "Movimientos semanales, mensuales y anuales más recientes disponibles en repositorios de código abierto monitoreados, según los rankings precalculados de GitStarClub.",
+    surging: "Repositorios principales mensuales",
     onThisDay: "En este día",
     crossed: "superó",
     open: "Abrir",
+    fullBoard: "Tabla completa",
     datasetName: "Conjunto de datos de actividad de código abierto",
   },
   footer: {
@@ -397,6 +414,7 @@ const es: Dict = {
     loading: "Cargando…",
     error: "No se pudo cargar la búsqueda.",
     retry: "Reintentar",
+    historical: "Histórico",
   },
   share: {
     label: "Compartir",

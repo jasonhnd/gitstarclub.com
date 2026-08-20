@@ -11,13 +11,16 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { Star } from "@/app/_explore/Star";
 import { OrganizationRankingTable, type OrganizationSummaryRow } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getAllTime, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
+import { getAllTime, getCategoryAssignments, getCategoryRegistry, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
+import { rankingCategoryExits } from "@/lib/ranking-category-exits";
+import { RankingCategoryExits } from "./ranking-category-exits";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
-import { formatInteger, fmtStars, monthYearLabel } from "@/lib/format";
+import { formatInteger, fmtStars } from "@/lib/format";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine, itemListLd } from "@/lib/jsonld";
 import { currentUtcPeriods, isoWeek } from "@/lib/periods";
+import { availablePeriodLabel, isFallbackMonthPeriod, isFallbackWeekPeriod } from "@/lib/rank-period-labels";
 import { pageMeta } from "@/lib/seo";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { answerCapsuleLabels } from "./detail-copy";
@@ -45,18 +48,19 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
   const routePath = localizedPath(locale, RANKINGS_PATH);
   const href = (path: string) => localizedPath(locale, path);
   const periods = currentUtcPeriods(now);
-  const [repoRank, orgRank, repoLk, orgLk, snap, availablePeriods] = await Promise.all([
+  const [repoRank, orgRank, repoLk, orgLk, snap, availablePeriods, registry, assignments] = await Promise.all([
     getAllTime("repo"),
     getAllTime("org"),
     getReposLookup(),
     getOrgsLookup(),
     getHotSnapshot(),
     resolveAvailableRankPeriods(now),
+    getCategoryRegistry(),
+    getCategoryAssignments(),
   ]);
-  const repoRows: Row[] =
-    repoRank && repoLk
-      ? joinRepoRank(repoRank.items, repoLk).map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }))
-      : [];
+  const rankedRepos = repoRank && repoLk ? joinRepoRank(repoRank.items, repoLk) : [];
+  const repoRows: Row[] = rankedRepos.map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }));
+  const categoryLinks = rankingCategoryExits(rankedRepos, registry, assignments);
   const orgs = orgRank && orgLk ? joinOrgRank(orgRank.items, orgLk) : [];
   const archiveItems = buildArchiveItems(snap?.home.year_spine ?? [], availablePeriods, locale, t);
   const asOf = resolveDataAsOfLabel(repoRank?.meta.generated_at, orgRank?.meta.generated_at, snap?.generated_at, { locale });
@@ -112,6 +116,7 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
         </section>
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" labels={answerCapsuleLabels(locale, t)} />}
+        <RankingCategoryExits locale={locale} links={categoryLinks} t={t} />
 
         <div className="mt-[clamp(2.5rem,5vw,4rem)] grid gap-x-10 gap-y-10 lg:grid-cols-2">
           <section className="min-w-0">
@@ -281,39 +286,27 @@ function periodSwitcherLinks(
   locale: Locale,
   t: Dict,
 ): Record<"all-time" | "year" | "month" | "week", PeriodSwitcherTarget> {
+  const labelCopy = { fullHistory: t.rankings.fullHistory };
   return {
     "all-time": { href: href(periods.allTime.href), label: t.rankings.allTime, value: t.rankings.fullHistory },
-    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, t, periods.yearLink) },
+    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, periods.yearLink, labelCopy) },
     month: {
       href: href(periods.month.href),
       label: t.month.label,
-      value: availablePeriodLabel(locale, t, periods.month),
-      badge: monthAvailabilityBadge(periods.month, calendar, locale, t),
+      value: availablePeriodLabel(locale, periods.month, labelCopy),
+      badge: isFallbackMonthPeriod(periods.month, calendar)
+        ? fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, periods.month, labelCopy) })
+        : undefined,
     },
     week: {
       href: href(periods.week.href),
       label: t.week.label,
-      value: availablePeriodLabel(locale, t, periods.week),
-      badge: weekAvailabilityBadge(periods.week, calendar, locale, t),
+      value: availablePeriodLabel(locale, periods.week, labelCopy),
+      badge: isFallbackWeekPeriod(periods.week, calendar)
+        ? fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, periods.week, labelCopy) })
+        : undefined,
     },
   };
-}
-
-function monthAvailabilityBadge(period: AvailableRankPeriods["month"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
-  if (period.kind !== "month") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-  return period.year === calendar.year && period.month === calendar.month ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-}
-
-function weekAvailabilityBadge(period: AvailableRankPeriods["week"], calendar: ReturnType<typeof currentUtcPeriods>, locale: Locale, t: Dict): string | undefined {
-  if (period.kind !== "week") return fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-  return period.year === calendar.week.year && period.week === calendar.week.week ? undefined : fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, t, period) });
-}
-
-function availablePeriodLabel(locale: Locale, t: Dict, period: AvailableRankPeriods["month"] | AvailableRankPeriods["week"] | AvailableRankPeriods["yearLink"]): string {
-  if (period.kind === "month") return monthYearLabel(locale, period.year, period.month);
-  if (period.kind === "week") return period.period;
-  if (period.kind === "year") return String(period.year);
-  return t.rankings.fullHistory;
 }
 
 function fill(template: string, values: Record<string, string>): string {

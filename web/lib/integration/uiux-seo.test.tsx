@@ -330,6 +330,51 @@ describe("Phase 7 UI/UX JSON-LD and FAQ preservation", () => {
   }
 });
 
+describe("GEO high-value answer capsules", () => {
+  const asOfLabel = "June 4, 2026";
+
+  for (const page of pageCases) {
+    test(`${page.label} has a dated GitStarClub capsule from published metadata`, () => {
+      const html = htmlFor(page.label);
+      const visibleText = normalizedText(html);
+      const capsule = html.indexOf('data-testid="answer-capsule"');
+      const asOf = html.indexOf('data-testid="answer-capsule-data-as-of"');
+      const source = html.indexOf('data-testid="answer-capsule-source"');
+
+      expect(capsule, `${page.label} capsule`).toBeGreaterThan(-1);
+      expect(asOf, `${page.label} data-as-of`).toBeGreaterThan(capsule);
+      expect(source, `${page.label} source`).toBeGreaterThan(capsule);
+      expect(visibleText, `${page.label} as-of date`).toContain(asOfLabel);
+      expect(visibleText, `${page.label} attribution`).toContain("GitStarClub");
+    });
+  }
+
+  test("pulse capsule sits after the period switcher and before ranking panels", () => {
+    const html = htmlFor("pulse");
+    const periodSwitcher = html.indexOf('aria-label="Ranking period"');
+    const capsule = html.indexOf('data-testid="answer-capsule"');
+    const weekPanel = html.indexOf("Top weekly repositories");
+    const faq = html.indexOf('data-testid="faq"');
+
+    expect(periodSwitcher).toBeGreaterThan(-1);
+    expect(capsule).toBeGreaterThan(periodSwitcher);
+    expect(weekPanel).toBeGreaterThan(capsule);
+    expect(faq).toBeGreaterThan(weekPanel);
+  });
+
+  test("compare capsule stays generic and does not interpolate client query selections", () => {
+    const html = htmlFor("compare");
+    const start = html.indexOf('data-testid="answer-capsule"');
+    const end = html.indexOf("</section>", start);
+    const capsuleHtml = html.slice(start, end);
+    expect(start).toBeGreaterThan(-1);
+    expect(capsuleHtml).toContain("without claiming client-only query-state facts as server-rendered evidence");
+    expect(capsuleHtml).not.toMatch(/\?repos=/);
+    expect(capsuleHtml).not.toContain("vuejs/vue");
+    expect(capsuleHtml).not.toContain("react/react");
+  });
+});
+
 describe("localized repo, org, ranking, category, and pulse regressions", () => {
   const englishUiPhrases = [
     "Aggregate tracked stars",
@@ -470,8 +515,22 @@ describe("Phase 7 UI/UX internal-link anchors", () => {
     expect(expectAnchors(htmlFor("ranking year")).some((href) => /^\/rankings\/2024\/\d+$/.test(href))).toBe(true);
   });
 
+  test("all-time and period rankings link to a public category", () => {
+    expect(expectAnchors(htmlFor("rankings"))).toContain(`/categories/${CATEGORY_DIMENSION}/${CATEGORY_SLUG}`);
+    expect(expectAnchors(htmlFor("ranking year"))).toContain(`/categories/${CATEGORY_DIMENSION}/${CATEGORY_SLUG}`);
+    expect(expectAnchors(htmlFor("ranking month"))).toContain(`/categories/${CATEGORY_DIMENSION}/${CATEGORY_SLUG}`);
+    expect(normalizedText(htmlFor("rankings")).toLowerCase()).not.toContain("filter github");
+  });
+
   test("category detail links to a repository with a real anchor", () => {
     expect(expectAnchors(htmlFor("category detail"))).toContain(`/${REPO_FULL_NAME}`);
+  });
+
+  test("thin category detail states whitelist-slice honesty", () => {
+    const text = normalizedText(htmlFor("category detail"));
+    expect(text).toContain("whitelist slice");
+    expect(text.toLowerCase()).not.toContain("complete language ecosystem");
+    expect(text.toLowerCase()).not.toContain("complete github catalog of");
   });
 
   test("repo detail links to its owner with a real anchor", () => {

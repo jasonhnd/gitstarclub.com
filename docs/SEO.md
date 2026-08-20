@@ -1,7 +1,7 @@
 ---
 owner: SEO
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-08-15
 source_of_truth_for:
   - per-page SEO templates
   - sitemap structure
@@ -21,7 +21,7 @@ source_of_truth_for:
 > **SEO 不是加分项，是目标成立的前提**——本站没有品牌词流量、没有社交裂变引擎,唯一的规模化获客是「每一页都精确命中一条长尾查询」。
 >
 > 关联文档：渲染 / 页面分层 / ISR 见 [ARCHITECTURE.md](./ARCHITECTURE.md)；页面 / URL / i18n / 调性 / 配色见 [PRODUCT.md](./PRODUCT.md)；
-> 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.3.0**（App Router + Metadata API）。
+> 域名拓扑 / Blob / 环境变量见 [OPS.md](./OPS.md)。技术事实基于 **Next.js 16.3.1**（App Router + Metadata API）。
 > AI answer-engine citation strategy is owned by [GEO.md](./GEO.md); this document stays focused on classic search crawl, canonical, metadata, sitemap, and internal-link mechanics.
 > Performance targets are owned by [TESTING.md](./TESTING.md); the issue #25 measured Lighthouse / Core Web Vitals baseline is supporting evidence in [perf/CWV-25.md](./perf/CWV-25.md).
 >
@@ -742,14 +742,16 @@ Dataset enrichment details, including future `DataDownload` `distribution` entri
 年度页 /rankings/YYYY
  ├─ 12 个月份格子 ─────────────────────→ 月度页 /rankings/YYYY/MM （1 跳到任意月）
  ├─ 年度 TOP 行（repo 名）──────────────→ repo 详情页 /:owner/:name
+ ├─ 领先行公开分类 ─────────────────────→ /categories/{dimension}/{slug}（registry public）
  └─ Complete ranking 锚点 ─────────────→ 同页完整榜单
 
 月度页 /rankings/YYYY/MM
  ├─ 三大榜单每行 repo 名 ───────────────→ repo 详情页 /:owner/:name
+ ├─ 领先行公开分类 ─────────────────────→ /categories/{dimension}/{slug}（registry public）
  └─ Complete ranking 锚点 ─────────────→ 同页完整 flow 榜单
 
 repo 详情页 /:owner/:name
- ├─ 里程碑（每 50k stars）──────────────→ 对应月度页锚点 /rankings/YYYY/MM#..
+ ├─ 里程碑（冻结 crossed_10k/50k/100k）──→ 对应月度页 /rankings/YYYY/MM（早于 2015 或晚于当前 UTC 月则只展示、不链）
  ├─ 月度表现表（近 N 月，每行）──────────→ 对应月度页
  ├─ owner 链接 ─────────────────────────→ org 详情页 /o/owner    （repo↔org 互链）
  ├─ category links ─────────────────────→ 所属 language / topic category
@@ -758,8 +760,10 @@ repo 详情页 /:owner/:name
 
 org 详情页 /o/login
  ├─ top repo 列表（每行）───────────────→ repo 详情页 /login/:name （org→repo）
+ ├─ 成员公开分类芯片 ───────────────────→ /categories/{dimension}/{slug}（registry public + member assignments）
+ ├─ 对比热门成员 ───────────────────────→ /compare?repos=（当前星标前最多 5 个成员）
  ├─ 月度 org 表现 ──────────────────────→ 对应月度页
- └─ 全时 org 名次 ──────────────────────→ /rankings
+ └─ 全时 org 名次 / 名次史（若 entity 有 rank_history）→ /rankings 或 /rankings/YYYY/MM
 
 org 索引 /o 与 /o/page/N
  ├─ 每行 owner ─────────────────────────→ org 详情页 /o/login

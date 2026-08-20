@@ -17,6 +17,7 @@ const zhTw: Dict = {
     notAvailable: "無法使用",
     status: "狀態",
     latestAvailable: "最新可用：{period}",
+    periodAsOf: "{period} · 截至 {asOf}",
   },
   a11y: {
     primary: "主導覽",
@@ -35,9 +36,9 @@ const zhTw: Dict = {
   },
   meta: {
     homeTitle: "開源脈搏與 GitHub 星標歷史",
-    homeDescription: "查看本週、本月、本年成長最快的 GitHub 專案，以及歷史總星標排行榜。",
+    homeDescription: "基於 GitStarClub 預計算資料，查看最新可用的週度、月度與年度上升，以及歷史總星標排行榜。",
     pulseTitle: "開源脈搏與 GitHub 星標歷史",
-    pulseDescription: "查看本週、本月、本年成長最快的 GitHub 專案，以及歷史總星標排行榜。",
+    pulseDescription: "基於 GitStarClub 預計算資料，查看最新可用的週度、月度與年度上升，以及歷史總星標排行榜。",
     rankingsTitle: "GitHub 歷史星標排行榜 — 最多星標倉庫與組織",
     rankingsDescriptionPrefix: "歷史上星標最多的 GitHub 倉庫與組織。涵蓋 ",
     rankingsDescriptionSuffix: " 年的總星標 Top 100。",
@@ -173,7 +174,7 @@ const zhTw: Dict = {
     gained: "追蹤倉庫新增",
     narrative: "本月敘事",
   },
-  week: { label: "週", top: "本週領先倉庫" },
+  week: { label: "週", top: "週度領先倉庫" },
   repo: {
     starHistory: "星標歷史",
     metaTitleSuffix: "星標歷史與時間線",
@@ -201,6 +202,10 @@ const zhTw: Dict = {
     languages: "語言",
     relatedPages: "瀏覽相關頁面",
     relatedRepositories: "相關倉庫",
+    relatedByOwner: "同一擁有者下其他正在追蹤的倉庫，按目前星標排序。",
+    relatedByLanguage: "該擁有者沒有其他正在追蹤的倉庫。以下是本站已追蹤、目前仍活躍的最大 {language} 倉庫。",
+    relatedByOwnerAndLanguage: "先列出同一擁有者下正在追蹤的倉庫，再按目前星標列出最大的活躍 {language} 同類倉庫。",
+    relatedEmpty: "沒有其他正在追蹤的活躍倉庫與此擁有者或主語言相同。",
     capsuleLatest: "{month} 新增 {stars} 星",
     capsuleLatestFallback: "最新的預先計算月度列",
     capsule:
@@ -290,7 +295,9 @@ const zhTw: Dict = {
     recentMovement: "近期變化",
     recentMovementDescription: "組織曲線中最新的每日淨星標變化。",
     relatedTitle: "相關組織連結",
-    relatedDescription: "與此擁有者相關的永久排名和已追蹤倉庫頁面。",
+    relatedDescription: "與此擁有者相關的永久排名、公開分類和已追蹤倉庫頁面。",
+    compareMembers: "對比熱門倉庫",
+    categoryTags: "公開分類",
     noTrackedRepos: "已追蹤倉庫列正在等待下一次發布的 lookup。",
   },
   categories: {
@@ -311,6 +318,8 @@ const zhTw: Dict = {
     allTimeStars: "歷史總星標",
     rankingPending: "排名資料正在等待下一次已發布的重算結果。",
     relatedCategories: "相關分類",
+    scopeNote: "GitStarClub 分類是對 ≥10,000 星白名單的確定性規則切片，不是 GitHub 上該語言或主題的完整目錄。",
+    thinSliceNotice: "只有 {count} 個已追蹤倉庫符合此 {label} 規則。這是白名單切片的規模，不是 GitHub 上 {label} 的規模。",
   },
   rankings: {
     title: "歷史總榜",
@@ -329,7 +338,9 @@ const zhTw: Dict = {
     dailyMovement: "每日變化",
     periodNavigation: "週期導覽",
     relatedTitle: "相關排名連結",
-    relatedDescription: "與此排名週期相關的永久封存和目前活動頁面。",
+    relatedDescription: "與此排名週期相關的永久封存、公開分類和目前活動頁面。",
+    categoryExitsTitle: "領先列中的公開分類",
+    categoryExits: "本榜領先列所屬的、已預先計算的 ≥10k 白名單公開切片。這是分類頁，不是即時 GitHub 搜尋。",
     visibleRows: "可見列數",
     noMovement: "變化資料正在等待下一次已發布的重算結果。",
     noGrowth: "成長率資料正在等待下一次已發布的重算結果。",
@@ -343,11 +354,12 @@ const zhTw: Dict = {
   },
   pulse: {
     title: "開源脈搏",
-    subtitle: "追蹤範圍內本週、本月與本年變化最明顯的開源專案。",
-    surging: "本月上升領先",
+    subtitle: "基於 GitStarClub 預計算排名，展示最新可用的週度、月度與年度上升。",
+    surging: "月度領先倉庫",
     onThisDay: "歷史上的今天",
     crossed: "突破",
     open: "開啟",
+    fullBoard: "完整榜單",
     datasetName: "開源活動資料集",
   },
   footer: {
@@ -394,6 +406,7 @@ const zhTw: Dict = {
     loading: "載入中…",
     error: "搜尋載入失敗。",
     retry: "重試",
+    historical: "歷史",
   },
   share: {
     label: "分享",

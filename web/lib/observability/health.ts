@@ -44,6 +44,7 @@ export type RecordHealthOptions = {
   now?: Date;
 };
 
+/** Per-pipeline Blob path. Never the retired flat `ops/workflows/health.json`. */
 export function healthPath(pipeline: AlertPipeline): string {
   return `ops/workflows/health/${pipeline}.json`;
 }

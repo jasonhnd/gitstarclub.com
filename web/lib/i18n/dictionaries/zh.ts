@@ -17,6 +17,7 @@ const zh: Dict = {
     notAvailable: "不可用",
     status: "状态",
     latestAvailable: "最新可用：{period}",
+    periodAsOf: "{period} · 截至 {asOf}",
   },
   a11y: {
     primary: "主导航",
@@ -35,9 +36,9 @@ const zh: Dict = {
   },
   meta: {
     homeTitle: "开源脉搏与 GitHub 星标历史",
-    homeDescription: "查看本周、本月、本年增长最快的 GitHub 项目，以及历史总星标排行榜。",
+    homeDescription: "基于 GitStarClub 预计算数据，查看最新可用的周度、月度与年度上涨，以及历史总星标排行榜。",
     pulseTitle: "开源脉搏与 GitHub 星标历史",
-    pulseDescription: "查看本周、本月、本年增长最快的 GitHub 项目，以及历史总星标排行榜。",
+    pulseDescription: "基于 GitStarClub 预计算数据，查看最新可用的周度、月度与年度上涨，以及历史总星标排行榜。",
     rankingsTitle: "GitHub 历史星标排行榜 — 最多星标仓库与组织",
     rankingsDescriptionPrefix: "历史上星标最多的 GitHub 仓库与组织。覆盖 ",
     rankingsDescriptionSuffix: " 年的总星标 Top 100。",
@@ -173,7 +174,7 @@ const zh: Dict = {
     gained: "追踪仓库新增",
     narrative: "本月叙事",
   },
-  week: { label: "周", top: "本周领先仓库" },
+  week: { label: "周", top: "周度领先仓库" },
   repo: {
     starHistory: "星标历史",
     metaTitleSuffix: "星标历史与时间线",
@@ -201,6 +202,10 @@ const zh: Dict = {
     languages: "语言",
     relatedPages: "浏览相关页面",
     relatedRepositories: "相关仓库",
+    relatedByOwner: "同一所有者下其他正在追踪的仓库，按当前星标排序。",
+    relatedByLanguage: "该所有者没有其他正在追踪的仓库。以下是本站已追踪、当前仍活跃的最大 {language} 仓库。",
+    relatedByOwnerAndLanguage: "先列出同一所有者下正在追踪的仓库，再按当前星标列出最大的活跃 {language} 同类仓库。",
+    relatedEmpty: "没有其他正在追踪的活跃仓库与此所有者或主语言相同。",
     capsuleLatest: "{month} 新增 {stars} 星",
     capsuleLatestFallback: "最新的预计算月度行",
     capsule:
@@ -290,7 +295,9 @@ const zh: Dict = {
     recentMovement: "近期变化",
     recentMovementDescription: "组织曲线中最新的每日净星标变化。",
     relatedTitle: "相关组织链接",
-    relatedDescription: "与此所有者相关的永久排名和已追踪仓库页面。",
+    relatedDescription: "与此所有者相关的永久排名、公开分类和已追踪仓库页面。",
+    compareMembers: "对比热门仓库",
+    categoryTags: "公开分类",
     noTrackedRepos: "已追踪仓库行正在等待下一次发布的 lookup。",
   },
   categories: {
@@ -311,6 +318,8 @@ const zh: Dict = {
     allTimeStars: "历史总星标",
     rankingPending: "排名数据正在等待下一次已发布的重算结果。",
     relatedCategories: "相关分类",
+    scopeNote: "GitStarClub 分类是对 ≥10,000 星白名单的确定性规则切片，不是 GitHub 上该语言或主题的完整目录。",
+    thinSliceNotice: "只有 {count} 个已追踪仓库符合此 {label} 规则。这是白名单切片的规模，不是 GitHub 上 {label} 的规模。",
   },
   rankings: {
     title: "历史总榜",
@@ -329,7 +338,9 @@ const zh: Dict = {
     dailyMovement: "每日变化",
     periodNavigation: "周期导航",
     relatedTitle: "相关排名链接",
-    relatedDescription: "与此排名周期相关的永久存档和当前活动页面。",
+    relatedDescription: "与此排名周期相关的永久存档、公开分类和当前活动页面。",
+    categoryExitsTitle: "领先行中的公开分类",
+    categoryExits: "本榜领先行所属的、已预先计算的 ≥10k 白名单公开切片。这是分类页，不是实时 GitHub 搜索。",
     visibleRows: "可见行数",
     noMovement: "变化数据正在等待下一次已发布的重算结果。",
     noGrowth: "增长率数据正在等待下一次已发布的重算结果。",
@@ -343,11 +354,12 @@ const zh: Dict = {
   },
   pulse: {
     title: "开源脉搏",
-    subtitle: "追踪范围内本周、本月与本年变化最明显的开源项目。",
-    surging: "本月上涨领先",
+    subtitle: "基于 GitStarClub 预计算排名，展示最新可用的周度、月度与年度上涨。",
+    surging: "月度领先仓库",
     onThisDay: "历史上的今天",
     crossed: "突破",
     open: "打开",
+    fullBoard: "完整榜单",
     datasetName: "开源活动数据集",
   },
   footer: {
@@ -394,6 +406,7 @@ const zh: Dict = {
     loading: "加载中…",
     error: "搜索加载失败。",
     retry: "重试",
+    historical: "历史",
   },
   share: {
     label: "分享",
