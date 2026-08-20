@@ -52,7 +52,7 @@ A proposal that cannot pass this list belongs in Track C, not Track A.
 
 ### Sequence
 
-- **Weeks 1–4 (done on `pre`):** Track A A1–A4 children shipped. Track B hygiene including Firewall Deny rules (#380). Track C draft + must-prove (#381 / #382); **POC allowed: no**.
+- **Weeks 1–4 (done on `pre`):** Track A A1–A4 children shipped. Track B hygiene. #380 measured crawlers then **left Firewall empty** (operator chose to allow them). Track C draft + must-prove (#381 / #382); **POC allowed: no**.
 - **Through 2026-09-12:** Track C must **decide or defer** (#383). Missing that date **is** a six-month deferral of #362. No new Track A implementation stream until that date unless a child is split from an open epic.
 - **After the decision:** either an isolated Track C POC that still keeps content pages on views, or the four expansion items stay dated-deferred and further Track A work is filed as a new child of a new or reopened Track A epic — not invented beside this map.
 
@@ -200,7 +200,7 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 | New pages must not re-probe missing Blob objects | Crawler-driven 404 amplification on `bootstrap/latest.json` | Pointer 404 remains a cached legacy state; no new per-request existence probes |
 | Dependabot + bun lockfiles | npm Dependabot PRs against `main` fail `bun install --frozen-lockfile` | Next Dependabot wave is retargeted or immediately replaced with a `pre` + lockfile PR (pattern from #351) |
 | Product-gates stay fail-closed | 14-day base pointer and export SLAs are the live contract (#286) | Do not skip or loosen the job to land features |
-| Vercel Firewall | Optional extra crawler control after robots | Four production Deny rules live 2026-08-20 ([OPS.md](./OPS.md)); unclassified/tool rate-limit skipped (needs Security Plus) |
+| Vercel Firewall | Optional extra crawler control after robots | Recipe in [OPS.md](./OPS.md). 2026-08-20: denies published then removed the same day; operator chose to allow crawlers. Zero custom rules live. |
 
 Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blob 404s, product-gates remain required on `pre`/`main`.
 
