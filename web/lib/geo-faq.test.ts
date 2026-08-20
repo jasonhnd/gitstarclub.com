@@ -250,6 +250,23 @@ describe("GEO FAQ helpers", () => {
       ].join("\n"),
     );
   });
+
+  test("compare FAQ stays generic and does not treat client query state as server-rendered evidence", () => {
+    const items = buildCompareFaqs(asOf);
+    const snapshot = visibleFaqSnapshot(items);
+    expect(snapshot).toContain("As of June 24, 2026");
+    expect(snapshot).toContain("GitStarClub Compare");
+    expect(snapshot).toContain("without claiming client-only query selections as server-rendered evidence");
+    expect(snapshot).not.toMatch(/\?repos=/);
+    expect(items.some((item) => item.answer.includes("react/react") && item.answer.includes("selected"))).toBe(false);
+  });
+
+  test("high-value FAQ builders keep a dated GitStarClub answer when as-of metadata exists", () => {
+    for (const scenario of scenarios) {
+      expect(scenario.items.some((item) => item.answer.includes(asOf) || item.answer.includes("GitStarClub")), scenario.name).toBe(true);
+      expect(scenario.items.some((item) => item.answer.includes("?repos=")), scenario.name).toBe(false);
+    }
+  });
 });
 
 function renderFaq(items: readonly FaqItem[], path: string, locale = "en"): string {

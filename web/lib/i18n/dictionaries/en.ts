@@ -17,6 +17,7 @@ export const en = {
     notAvailable: "Unavailable",
     status: "Status",
     latestAvailable: "Latest available: {period}",
+    periodAsOf: "{period} · as of {asOf}",
   },
   a11y: {
     primary: "Primary",
@@ -36,10 +37,10 @@ export const en = {
   meta: {
     homeTitle: "Open Source Pulse & GitHub Star History",
     homeDescription:
-      "See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.",
+      "See open-source momentum from GitStarClub's precomputed data: the latest available weekly, monthly, and yearly movers, plus all-time star rankings.",
     pulseTitle: "Open Source Pulse & GitHub Star History",
     pulseDescription:
-      "See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.",
+      "See open-source momentum from GitStarClub's precomputed data: the latest available weekly, monthly, and yearly movers, plus all-time star rankings.",
     rankingsTitle: "All-Time GitHub Star Rankings — Most-Starred Repos & Orgs",
     rankingsDescriptionPrefix: "The all-time most-starred GitHub repositories and organizations. Top 100 by total stars across ",
     rankingsDescriptionSuffix: " years.",
@@ -210,7 +211,7 @@ export const en = {
     gained: "Tracked repositories added",
     narrative: "This month",
   },
-  week: { label: "Week", top: "Top repositories this week" },
+  week: { label: "Week", top: "Top weekly repositories" },
   repo: {
     starHistory: "Star history",
     metaTitleSuffix: "Star History & Timeline",
@@ -239,6 +240,12 @@ export const en = {
     languages: "Languages",
     relatedPages: "Explore related pages",
     relatedRepositories: "Related repositories",
+    relatedByOwner: "Other active tracked repositories from the same owner, ordered by current stars.",
+    relatedByLanguage:
+      "No other tracked repositories from this owner are in the active set. These are the largest active {language} repositories GitStarClub already tracks.",
+    relatedByOwnerAndLanguage:
+      "Other active tracked repositories from the same owner, then the largest active {language} peers, ordered by current stars.",
+    relatedEmpty: "No other active tracked repositories share this owner or primary language.",
     capsuleLatest: "{month} with {stars} stars",
     capsuleLatestFallback: "its latest precomputed monthly row",
     capsule:
@@ -336,7 +343,9 @@ export const en = {
     recentMovement: "Recent movement",
     recentMovementDescription: "Latest daily net star changes from the organization curve.",
     relatedTitle: "Related organization links",
-    relatedDescription: "Permanent rankings and tracked repository pages connected to this owner.",
+    relatedDescription: "Permanent rankings, public categories, and tracked repository pages connected to this owner.",
+    compareMembers: "Compare top repositories",
+    categoryTags: "Public categories",
     noTrackedRepos: "Tracked repository rows are waiting for the next published lookup.",
   },
   categories: {
@@ -357,6 +366,10 @@ export const en = {
     allTimeStars: "All-time stars",
     rankingPending: "Ranking data is waiting for the next published recompute.",
     relatedCategories: "Related categories",
+    scopeNote:
+      "GitStarClub categories are deterministic rule slices of the ≥10,000-star whitelist. They are not a complete GitHub language or topic catalog.",
+    thinSliceNotice:
+      "Only {count} tracked repositories match this {label} rule. That is the size of the whitelist slice, not the size of {label} on GitHub.",
   },
   rankings: {
     title: "All-time rankings",
@@ -378,7 +391,10 @@ export const en = {
     dailyMovement: "Daily movement",
     periodNavigation: "Period navigation",
     relatedTitle: "Related ranking links",
-    relatedDescription: "Permanent archive routes and current activity views connected to this ranking period.",
+    relatedDescription: "Permanent archive routes, public category pages, and current activity views connected to this ranking period.",
+    categoryExitsTitle: "Public categories among the leaders",
+    categoryExits:
+      "Precomputed public slices of the tracked ≥10k set that appear among this board's leading rows. These are category pages, not a live GitHub search.",
     visibleRows: "Visible rows",
     noMovement: "Movement data is waiting for the next published recompute.",
     noGrowth: "Growth-rate data is waiting for the next published recompute.",
@@ -392,11 +408,12 @@ export const en = {
   },
   pulse: {
     title: "Open-source activity",
-    subtitle: "What is changing this week, this month, and this year across tracked open-source repositories.",
-    surging: "Rising this month",
+    subtitle: "Latest available weekly, monthly, and yearly movers across tracked open-source repositories from GitStarClub's precomputed rankings.",
+    surging: "Top monthly repositories",
     onThisDay: "On this day",
     crossed: "crossed",
     open: "Open",
+    fullBoard: "Full board",
     datasetName: "Open-source activity dataset",
   },
   footer: {
@@ -447,6 +464,7 @@ export const en = {
     loading: "Loading…",
     error: "Search could not load.",
     retry: "Retry",
+    historical: "Historical",
   },
   share: {
     label: "Share",

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { KeyboardEvent } from "react";
 import { fmtStars } from "@/lib/format";
 import type { SearchHit } from "@/lib/search/core";
+import { presentSearchChromeBody, searchHitIsActive } from "@/lib/search/result-state";
 import { MAX_COMPARE } from "@/lib/compare/constants";
 import type { Locale } from "@/lib/i18n/locales";
 import { localizedPath } from "@/lib/i18n/routing";
@@ -35,6 +36,8 @@ export function SearchPanel({
   panelId: string;
   searchFailed: boolean;
 }) {
+  const body = presentSearchChromeBody({ searchFailed, loading, hits });
+
   return (
     <div
       id={panelId}
@@ -42,12 +45,12 @@ export function SearchPanel({
       aria-label={labels.label}
       className="absolute right-0 z-30 mt-2 w-[min(24rem,92vw)] overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-high shadow-[var(--elev-2)]"
     >
-      {searchFailed ? (
+      {body.kind === "error" ? (
         <SearchError labels={labels} onRetry={onRetry} />
-      ) : hits.length > 0 ? (
+      ) : body.kind === "results" ? (
         <SearchResultList
           compareSet={compareSet}
-          hits={hits}
+          hits={body.hits}
           labels={labels}
           locale={locale}
           onReset={onReset}
@@ -55,7 +58,7 @@ export function SearchPanel({
           onToggleCompare={onToggleCompare}
         />
       ) : (
-        <SearchEmpty loading={loading} labels={labels} />
+        <SearchEmpty loading={body.kind === "loading"} labels={labels} />
       )}
       {compareSet.size > 0 && <SearchCompareFooter count={compareSet.size} label={labels.openCompare} onOpenCompare={onOpenCompare} />}
     </div>
@@ -144,10 +147,16 @@ function SearchResultRow({
   onToggleCompare: (fullName: string) => void;
 }) {
   const compareLabel = inCompare ? labels.removeFromCompare : labels.addToCompare;
+  const historical = !searchHitIsActive(hit);
 
   return (
     <li>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch transition-colors hover:bg-on-surface/5 focus-within:bg-on-surface/8">
+      <div
+        data-search-hit-active={historical ? "false" : "true"}
+        className={`grid grid-cols-[minmax(0,1fr)_auto] items-stretch transition-colors hover:bg-on-surface/5 focus-within:bg-on-surface/8 ${
+          historical ? "opacity-80" : ""
+        }`}
+      >
         <Link
           href={localizedPath(locale, `/${hit.full_name}`)}
           data-search-result-link
@@ -157,9 +166,16 @@ function SearchResultRow({
           className="grid min-h-11 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
         >
           <span className="min-w-0">
-            <span className="block truncate font-mono text-[0.82rem]">
-              <span className="text-on-surface-variant">{hit.owner}/</span>
-              <span className="font-semibold text-on-surface">{hit.full_name.slice(hit.owner.length + 1)}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="block min-w-0 truncate font-mono text-[0.82rem]">
+                <span className="text-on-surface-variant">{hit.owner}/</span>
+                <span className="font-semibold text-on-surface">{hit.full_name.slice(hit.owner.length + 1)}</span>
+              </span>
+              {historical ? (
+                <span className="shrink-0 rounded-full border border-outline-variant px-1.5 py-0.5 font-mono text-[0.62rem] font-semibold uppercase tracking-wide text-on-surface-variant">
+                  {labels.historical}
+                </span>
+              ) : null}
             </span>
             {hit.description && <span className="mt-0.5 block truncate text-[0.72rem] text-on-surface-variant">{hit.description}</span>}
           </span>

@@ -266,4 +266,33 @@ describe("GEO answer capsules", () => {
       ].join("\n"),
     );
   });
+
+  test("every capsule carries a real as-of date, GitStarClub attribution, and a GitStarClub-only statistic", () => {
+    for (const capsule of capsules) {
+      expect(capsule.asOf).toBe(asOf);
+      expect(capsule.source).toBe("GitStarClub");
+      expect(capsule.text).toContain(asOf);
+      expect(capsule.text).toContain("GitStarClub");
+      expect(capsule.text.endsWith("— GitStarClub")).toBe(true);
+      expect(capsule.text).not.toMatch(/\?repos=/);
+    }
+  });
+
+  test("as-of labels come from supplied metadata, not hardcoded freshness dates", () => {
+    const later = dataAsOfLabel("2026-07-02T09:00:00Z");
+    expect(later).toBe("July 2, 2026");
+    expect(buildCompareCapsule(later).text).toContain(later);
+    expect(buildCompareCapsule(later).text).not.toContain(asOf);
+    expect(buildPulseCapsule({ asOf: later, weekRows: rankRows, monthRows: rankRows }).asOf).toBe(later);
+    expect(buildRepoCapsule(repo, later).asOf).toBe(later);
+  });
+
+  test("compare capsule stays generic and does not interpolate client query selections", () => {
+    const capsule = buildCompareCapsule(asOf);
+    expect(capsule.text).toContain("without claiming client-only query-state facts as server-rendered evidence");
+    expect(capsule.text).not.toContain("react/react");
+    expect(capsule.text).not.toContain("vuejs/vue");
+    expect(capsule.text).not.toMatch(/\?repos=/);
+    expect(capsule.text).not.toMatch(/selected repositor/i);
+  });
 });

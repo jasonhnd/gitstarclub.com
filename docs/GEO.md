@@ -1,7 +1,7 @@
 ---
 owner: GEO
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-08-17
 source_of_truth_for:
   - answer-engine citation strategy
   - answer capsules
@@ -292,7 +292,8 @@ Implementation notes:
 
 - The capsule must not imply current week/month data is final.
 - Use "week-to-date" or "month-to-date" for live periods.
-- Home and `/pulse` can share the same deterministic capsule generator but should avoid duplicate long FAQ if both pages are indexed.
+- Home and `/pulse` share `PulsePageView` and the same deterministic capsule generator. The compact capsule is rendered immediately after PageHero and PeriodSwitcher, before the week/month/year ranking panels, so extractors see a dated summary without scrolling past tables. The human-first order stays identity → period → compact capsule → repo discovery; FAQ remains at the bottom.
+- Home and `/pulse` can share the same deterministic capsule generator but should avoid duplicate long FAQ if both pages are indexed. Both URLs are indexed today and still share the long Pulse FAQ. Splitting that FAQ is deferred: `docs/geo/queries.md` cites `/pulse`, and #373 still owns the shared-view contract. Do not invent a second Pulse page.
 
 ### 5.6 Compare page: `/compare`
 

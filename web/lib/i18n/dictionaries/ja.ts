@@ -17,6 +17,7 @@ const ja: Dict = {
     notAvailable: "利用不可",
     status: "ステータス",
     latestAvailable: "利用可能な最新: {period}",
+    periodAsOf: "{period} · {asOf} 時点",
   },
   a11y: {
     primary: "主要",
@@ -35,9 +36,9 @@ const ja: Dict = {
   },
   meta: {
     homeTitle: "オープンソースの動向と GitHub スター履歴",
-    homeDescription: "今週・今月・今年に伸びている GitHub プロジェクトと、通算スターランキングを確認できます。",
+    homeDescription: "GitStarClub の事前計算データから、利用可能な最新の週次・月次・年次上昇と通算スターランキングを確認できます。",
     pulseTitle: "オープンソースの動向と GitHub スター履歴",
-    pulseDescription: "今週・今月・今年に伸びている GitHub プロジェクトと、通算スターランキングを確認できます。",
+    pulseDescription: "GitStarClub の事前計算データから、利用可能な最新の週次・月次・年次上昇と通算スターランキングを確認できます。",
     rankingsTitle: "通算 GitHub スターランキング — 最多スターのリポジトリと組織",
     rankingsDescriptionPrefix: "通算で最もスターを集めた GitHub リポジトリと組織。対象期間 ",
     rankingsDescriptionSuffix: " 年分の合計スター上位 100 件です。",
@@ -173,7 +174,7 @@ const ja: Dict = {
     gained: "対象リポジトリの獲得スター数",
     narrative: "今月の動き",
   },
-  week: { label: "週", top: "今週の上位リポジトリ" },
+  week: { label: "週", top: "週次の上位リポジトリ" },
   repo: {
     starHistory: "スター履歴",
     metaTitleSuffix: "スター履歴とタイムライン",
@@ -202,6 +203,12 @@ const ja: Dict = {
     languages: "言語",
     relatedPages: "関連ページを見る",
     relatedRepositories: "関連リポジトリ",
+    relatedByOwner: "同じオーナーの、現在追跡中の他のリポジトリです。現行スター数順です。",
+    relatedByLanguage:
+      "このオーナーの他の追跡中リポジトリはありません。表示しているのは、すでに追跡している最大の現行 {language} リポジトリです。",
+    relatedByOwnerAndLanguage:
+      "同じオーナーの追跡中リポジトリのあと、最大の現行 {language} ピアを現行スター数順で示します。",
+    relatedEmpty: "同じオーナーまたは主言語を共有する、他の現行追跡リポジトリはありません。",
     capsuleLatest: "{month} に {stars} スター",
     capsuleLatestFallback: "最新の事前計算済み月次行",
     capsule:
@@ -299,7 +306,9 @@ const ja: Dict = {
     recentMovement: "最近の動き",
     recentMovementDescription: "組織曲線における最新の日次純スター変化です。",
     relatedTitle: "関連する組織リンク",
-    relatedDescription: "この所有者に関連する恒久ランキングと追跡リポジトリページです。",
+    relatedDescription: "この所有者に関連する恒久ランキング、公開カテゴリ、追跡リポジトリページです。",
+    compareMembers: "上位リポジトリを比較",
+    categoryTags: "公開カテゴリ",
     noTrackedRepos: "追跡リポジトリ行は次回の公開 lookup を待っています。",
   },
   categories: {
@@ -320,6 +329,10 @@ const ja: Dict = {
     allTimeStars: "通算スター",
     rankingPending: "ランキングデータは次回の公開済み再計算を待っています。",
     relatedCategories: "関連カテゴリ",
+    scopeNote:
+      "GitStarClub のカテゴリは、星 10,000 以上のホワイトリストに対する決定的なルール切片です。GitHub 上の言語やトピックの完全な一覧ではありません。",
+    thinSliceNotice:
+      "この {label} ルールに一致する追跡リポジトリは {count} 件だけです。これはホワイトリスト切片の大きさであり、GitHub 上の {label} 全体の大きさではありません。",
   },
   rankings: {
     title: "通算ランキング",
@@ -338,7 +351,10 @@ const ja: Dict = {
     dailyMovement: "日別の動き",
     periodNavigation: "期間ナビゲーション",
     relatedTitle: "関連するランキングリンク",
-    relatedDescription: "このランキング期間に関連する恒久アーカイブと現在のアクティビティページです。",
+    relatedDescription: "このランキング期間に関連する恒久アーカイブ、公開カテゴリ、現在のアクティビティページです。",
+    categoryExitsTitle: "上位行に現れる公開カテゴリ",
+    categoryExits:
+      "このボード上位行に現れる、追跡中の ≥10k 集合の事前計算された公開スライスです。GitHub をライブ検索するフィルタではありません。",
     visibleRows: "表示行数",
     noMovement: "変動データは次回の公開再計算を待っています。",
     noGrowth: "成長率データは次回の公開再計算を待っています。",
@@ -352,11 +368,12 @@ const ja: Dict = {
   },
   pulse: {
     title: "オープンソースの動向",
-    subtitle: "追跡対象のオープンソースから、今週・今月・今年に変化しているプロジェクトを示します。",
-    surging: "今月の上昇",
+    subtitle: "GitStarClub の事前計算ランキングから、利用可能な最新の週次・月次・年次上昇を示します。",
+    surging: "月次の上位リポジトリ",
     onThisDay: "この日の節目",
     crossed: "突破",
     open: "開く",
+    fullBoard: "全順位",
     datasetName: "オープンソース活動データセット",
   },
   footer: {
@@ -407,6 +424,7 @@ const ja: Dict = {
     loading: "読み込み中…",
     error: "検索を読み込めませんでした。",
     retry: "再試行",
+    historical: "履歴",
   },
   share: {
     label: "共有",

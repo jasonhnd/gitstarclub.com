@@ -16,9 +16,11 @@ import { RepositoryRankingTable } from "@/app/_explore/SemanticDataTable";
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { DAILY_BASE_VIEW_TTL_MS, getMeta, getOrgEntityDaily, getReposLookupDaily } from "@/lib/data";
+import { DAILY_BASE_VIEW_TTL_MS, getCategoryAssignments, getCategoryRegistry, getMeta, getOrgEntityDaily, getReposLookupDaily } from "@/lib/data";
 import type { OrgEntity } from "@/lib/contracts";
-import { dateLabel, formatInteger, fmtStars } from "@/lib/format";
+import { dateLabel, formatInteger, fmtStars, monthYearLabel, ymParts } from "@/lib/format";
+import { buildOrgHub } from "@/lib/org-page";
+import { rankingMonthHref } from "@/lib/repo-page";
 import { pageMeta } from "@/lib/seo";
 import { orgLd, type FaqItem } from "@/lib/jsonld";
 import { ANSWER_CAPSULE_SOURCE, resolveDataAsOfFromMeta, resolveDataAsOfValue, type AnswerCapsuleContent } from "@/lib/geo-capsules";
@@ -60,7 +62,13 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
   const login = decodeURIComponent(raw);
-  const [org, lookup, meta] = await Promise.all([getOrgEntityDaily(login), getReposLookupDaily(), getMeta(DAILY_BASE_VIEW_TTL_MS)]);
+  const [org, lookup, assignments, registry, meta] = await Promise.all([
+    getOrgEntityDaily(login),
+    getReposLookupDaily(),
+    getCategoryAssignments(),
+    getCategoryRegistry(),
+    getMeta(DAILY_BASE_VIEW_TTL_MS),
+  ]);
   if (!org) notFound();
 
   const series = org.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
@@ -73,6 +81,14 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
     })
     .filter((r): r is Row => r !== null)
     .sort((a, b) => b.total - a.total);
+  const hub = buildOrgHub({
+    memberIds: org.members,
+    memberFullNames: members.map((row) => repoName(row)),
+    memberLanguages: members.map((row) => row.lang),
+    assignments,
+    registry,
+    rankHistory: org.rank_history,
+  });
   const snippet = buildLocalizedOrgTotalSnippet({ t, locale, org, asOf, members });
   const faqItems = buildLocalizedOrgFaqs(t, language, org, members, asOf);
   const pagePath = `/o/${org.login}`;
@@ -99,6 +115,11 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
   const relatedItems = [
     relatedItem(localizedPath(locale, "/rankings"), t.rankings.title),
     relatedItem(localizedPath(locale, "/o"), t.org.indexTitle),
+    ...hub.categories.slice(0, 4).map((category) => relatedItem(localizedPath(locale, category.href), category.label)),
+    ...hub.rankingAppearances.slice(0, 2).map((appearance) => {
+      const { y, m } = ymParts(appearance.period);
+      return relatedItem(localizedPath(locale, rankingMonthHref(appearance.period)), `${monthYearLabel(locale, y, m)} #${appearance.rank}`);
+    }),
     ...members.slice(0, 4).map((row) => relatedItem(localizedPath(locale, `/${repoName(row)}`), repoName(row))),
   ];
   const capsuleLabels = { ariaLabel: t.common.answerCapsule, eyebrow: t.common.answerCapsule, dataAsOf: t.common.dataAsOf, source: t.common.source };
@@ -124,6 +145,11 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
           lede={heroLede}
           actions={
             <>
+              {hub.compare && (
+                <Link href={localizedPath(locale, hub.compare.href)} className={ORG_HERO_ACTION_CLASS}>
+                  {t.org.compareMembers}
+                </Link>
+              )}
               <a href={githubUrl} rel="noreferrer" className={ORG_HERO_ACTION_CLASS}>
                 {t.org.openGitHub}
               </a>
@@ -143,6 +169,25 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
             />
           }
         />
+
+        {hub.categories.length > 0 && (
+          <section aria-labelledby="org-categories" className="mt-[clamp(1.75rem,3.5vw,2.5rem)]">
+            <h2 id="org-categories" className="font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">
+              {t.org.categoryTags}
+            </h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {hub.categories.map((category) => (
+                <Link
+                  key={category.id}
+                  href={localizedPath(locale, category.href)}
+                  className="inline-flex max-w-full items-center rounded-full bg-surface-container-high px-2.5 py-1 font-mono text-[0.72rem] text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-primary"
+                >
+                  <span className="truncate">{category.label}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {capsule && <AnswerCapsule capsule={capsule} labels={capsuleLabels} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
         {snippet && <ShareableSnippet snippet={snippet} labels={snippetLabels} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}

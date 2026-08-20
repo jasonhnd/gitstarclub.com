@@ -24,7 +24,18 @@ import { absoluteSnippetUrl, type ShareableSnippetContent } from "@/lib/shareabl
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { safeExternalHref } from "@/lib/external-url";
-import { languageHref, relatedRepositories, repoCategoryLinks, repoLanguageEntries, type CategoryLink, type RelatedRepo, type RepoLanguage } from "@/lib/repo-page";
+import {
+  buildRepoHub,
+  languageHref,
+  ownerHref,
+  rankingMonthHref,
+  rankingMonthHrefIfRoutable,
+  repoLanguageEntries,
+  type CategoryLink,
+  type RelatedRepo,
+  type RepoHubRankingAppearance,
+  type RepoLanguage,
+} from "@/lib/repo-page";
 import { RepoHistorySection, RepoMilestonesSection } from "./repo-sections";
 
 const HERO_ACTION_CLASS =
@@ -34,7 +45,6 @@ const CHIP_CLASS =
   "inline-flex max-w-full items-center gap-2 rounded-full bg-surface-container-high px-2.5 py-1 font-mono text-[0.72rem] text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-primary";
 
 type RepoLanguageFact = RepoLanguage & { href?: string | null };
-type RankingAppearance = { period: string; rank: number; adds?: number | null };
 
 // Resolve a URL slug → repo id. Search results, bookmarks, and external links can still carry a
 // former name after a GitHub rename (for example facebook/react → react/react), so a tracked alias
@@ -103,9 +113,21 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
   const primaryLanguage = languages[0]?.name ?? repo.language;
   const languageTotalSize = repo.languages.reduce((sum, language) => sum + Math.max(0, language.size ?? 0), 0);
   const created = repo.created_at ? ymParts(repo.created_at) : null;
-  const categoryLinks = repoCategoryLinks(id, assignments, registry, languages);
-  const related = relatedRepositories(repo, lookup);
-  const rankingAppearances = repoRankingAppearances(repo);
+  const hub = buildRepoHub({
+    repoId: id,
+    owner: repo.owner,
+    fullName: repo.full_name,
+    language: repo.language,
+    languages,
+    rankHistory: repo.rank_history,
+    monthlyTable: repo.monthly_table,
+    assignments,
+    registry,
+    lookup,
+  });
+  const categoryLinks = hub.categories;
+  const related = hub.related;
+  const rankingAppearances = hub.rankingAppearances;
   const asOf = resolveDataAsOfFromMeta(meta, repo.curve.recent_daily.at(-1)?.[0], repo.curve.monthly.at(-1)?.[0], { locale });
   const capsule = asOf ? buildLocalizedRepoCapsule(t, locale, repo, asOf) : null;
   const milestoneSnippet = buildLocalizedRepoMilestoneSnippet({ t, locale, repo, asOf, milestones });
@@ -153,8 +175,8 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
           lede={repo.description || t.repo.noDescription}
           actions={
             <RepoHeroActions
-              compareHref={href(`/compare?repos=${encodeURIComponent(repo.full_name)}`)}
-              ownerHref={href(`/o/${repo.owner}`)}
+              compareHref={href(hub.compare.href)}
+              ownerHref={href(hub.owner.href)}
               owner={repo.owner}
               githubHref={githubHref}
               homepageHref={homepageHref}
@@ -182,6 +204,7 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
           languageTotalSize={languageTotalSize}
           languages={factLanguages}
           locale={locale}
+          ownerHref={href(hub.owner.href)}
           releaseHref={releaseHref}
           repo={repo}
           t={t}
@@ -193,6 +216,12 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
           <RepoHistorySection inflections={inflections} milestones={milestones} series={series} locale={locale} t={t} />
           <RepoMilestonesSection locale={locale} milestoneSnippet={milestoneSnippet} milestones={milestones} snippetLabels={snippetLabels} t={t} />
           <RankingAppearancesSection appearances={rankingAppearances} locale={locale} t={t} />
+          <RelatedRepositoriesSection
+            explanation={relatedRepositoriesExplanation(t, hub.relatedSource, repo.language)}
+            locale={locale}
+            related={related}
+            t={t}
+          />
         </div>
 
         <RelatedPages title={t.repo.relatedPages} description={t.repo.relatedDescription} items={relatedItems} />
@@ -307,6 +336,7 @@ function EntityFactPanel({
   languageTotalSize,
   languages,
   locale,
+  ownerHref,
   releaseHref,
   repo,
   t,
@@ -317,6 +347,7 @@ function EntityFactPanel({
   languageTotalSize: number;
   languages: RepoLanguageFact[];
   locale: Locale;
+  ownerHref: string;
   releaseHref: string | null;
   repo: RepoPageEntity;
   t: Dict;
@@ -329,7 +360,7 @@ function EntityFactPanel({
       </h2>
       <dl className="mt-4 grid gap-x-6 gap-y-5 md:grid-cols-2">
         <FactRow label={t.repo.owner}>
-          <Link href={localizedPath(locale, `/o/${repo.owner}`)} className={FACT_LINK_CLASS}>
+          <Link href={ownerHref} className={FACT_LINK_CLASS}>
             {repo.owner}
           </Link>
         </FactRow>
@@ -438,7 +469,7 @@ function CategoryChips({ categories, locale, t }: { categories: CategoryLink[]; 
   );
 }
 
-function RankingAppearancesSection({ appearances, locale, t }: { appearances: RankingAppearance[]; locale: Locale; t: Dict }) {
+function RankingAppearancesSection({ appearances, locale, t }: { appearances: RepoHubRankingAppearance[]; locale: Locale; t: Dict }) {
   return (
     <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
       <div className="max-w-[64ch]">
@@ -448,10 +479,9 @@ function RankingAppearancesSection({ appearances, locale, t }: { appearances: Ra
       {appearances.length > 0 ? (
         <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {appearances.map((entry) => {
-            const d = ymParts(entry.period);
             return (
               <li key={entry.period}>
-                <Link href={localizedPath(locale, `/rankings/${d.y}/${d.m}`)} className="group flex h-full min-h-16 items-center justify-between gap-3 rounded-lg bg-surface-container px-4 py-3 transition-colors hover:bg-surface-container-high">
+                <Link href={localizedPath(locale, rankingMonthHref(entry.period))} className="group flex h-full min-h-16 items-center justify-between gap-3 rounded-lg bg-surface-container px-4 py-3 transition-colors hover:bg-surface-container-high">
                   <span className="min-w-0">
                     <span className="block truncate font-mono text-[0.9rem] font-semibold text-on-surface group-hover:underline group-hover:underline-offset-2">{monthYearFromPeriod(locale, entry.period)}</span>
                     <span className="mt-1 block font-mono text-[0.74rem] text-on-surface-variant">
@@ -490,17 +520,57 @@ function EmptyState({ message }: { message: string }) {
   return <p className="mt-4 rounded-lg border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.9rem] text-on-surface-variant">{message}</p>;
 }
 
-function repoRankingAppearances(repo: RepoPageEntity): RankingAppearance[] {
-  const addsByPeriod = new Map(repo.monthly_table.map((row) => [row.month, row.adds] as const));
-  const source = repo.rank_history?.month?.length
-    ? repo.rank_history.month
-    : repo.monthly_table.flatMap((row) => (row.rank == null ? [] : ([[row.month, row.rank]] as Array<[string, number]>)));
+function RelatedRepositoriesSection({
+  explanation,
+  locale,
+  related,
+  t,
+}: {
+  explanation: string;
+  locale: Locale;
+  related: RelatedRepo[];
+  t: Dict;
+}) {
+  return (
+    <section className="mt-[clamp(2rem,4vw,3rem)] min-w-0">
+      <div className="max-w-[64ch]">
+        <h2 className="text-[1.2rem] font-extrabold tracking-tight text-on-surface">{t.repo.relatedRepositories}</h2>
+        {related.length > 0 && <p className="mt-2 text-[0.9rem] leading-relaxed text-on-surface-variant">{explanation}</p>}
+      </div>
+      {related.length > 0 ? (
+        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+          {related.map((entry) => (
+            <li key={entry.full_name}>
+              <Link href={localizedPath(locale, `/${entry.full_name}`)} className="group flex h-full min-h-16 items-center justify-between gap-3 rounded-lg bg-surface-container px-4 py-3 transition-colors hover:bg-surface-container-high">
+                <span className="min-w-0">
+                  <span className="block truncate font-mono text-[0.9rem] font-semibold text-on-surface group-hover:underline group-hover:underline-offset-2" title={entry.full_name}>
+                    {entry.owner}/{entry.name}
+                  </span>
+                  <span className="mt-1 block font-mono text-[0.74rem] text-on-surface-variant">
+                    {fmtStars(entry.current_stars, locale)}
+                    <Star />
+                    {entry.language ? ` · ${entry.language}` : ""}
+                  </span>
+                </span>
+                <span aria-hidden className="shrink-0 font-mono text-[1rem] text-on-surface-variant transition-colors group-hover:text-on-surface">
+                  &rarr;
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <EmptyState message={t.repo.relatedEmpty} />
+      )}
+    </section>
+  );
+}
 
-  return source
-    .filter(([, rank]) => Number.isFinite(rank))
-    .map(([period, rank]) => ({ period, rank, adds: addsByPeriod.get(period) }))
-    .sort((a, b) => b.period.localeCompare(a.period))
-    .slice(0, 12);
+function relatedRepositoriesExplanation(t: Dict, source: "owner" | "language" | "mixed" | "empty", language: string | null): string {
+  if (source === "empty") return t.repo.relatedEmpty;
+  if (source === "language") return fill(t.repo.relatedByLanguage, { language: language ?? t.repo.unspecifiedLanguage });
+  if (source === "mixed") return fill(t.repo.relatedByOwnerAndLanguage, { language: language ?? t.repo.unspecifiedLanguage });
+  return t.repo.relatedByOwner;
 }
 
 function buildRepoRelatedItems({
@@ -514,15 +584,14 @@ function buildRepoRelatedItems({
   owner: string;
   categories: CategoryLink[];
   related: RelatedRepo[];
-  rankingAppearances: RankingAppearance[];
+  rankingAppearances: RepoHubRankingAppearance[];
 }): RelatedPageItem[] {
   const items = new Map<string, RelatedPageItem>();
-  addRelatedItem(items, localizedPath(locale, `/o/${owner}`), `/o/${owner}`);
+  addRelatedItem(items, localizedPath(locale, ownerHref(owner)), `/o/${owner}`);
   for (const category of categories.slice(0, 4)) addRelatedItem(items, localizedPath(locale, category.href), category.label);
   for (const repo of related.slice(0, 4)) addRelatedItem(items, localizedPath(locale, `/${repo.full_name}`), repo.full_name);
   for (const appearance of rankingAppearances.slice(0, 3)) {
-    const d = ymParts(appearance.period);
-    addRelatedItem(items, localizedPath(locale, `/rankings/${d.y}/${d.m}`), `${monthYearFromPeriod(locale, appearance.period)} #${appearance.rank}`);
+    addRelatedItem(items, localizedPath(locale, rankingMonthHref(appearance.period)), `${monthYearFromPeriod(locale, appearance.period)} #${appearance.rank}`);
   }
   return [...items.values()];
 }
@@ -622,12 +691,16 @@ function buildLocalizedRepoMilestoneSnippet({
     text: fill(t.repo.milestoneSnippetText, { asOf, repo: repo.full_name, milestones: milestoneText }),
     links: [
       { label: fill(t.repo.starHistoryLink, { repo: repo.full_name }), href: localizedPath(locale, `/${repo.full_name}`) },
-      ...milestones.map((milestone) => {
-        const [year, month] = milestone.date.slice(0, 7).split("-");
-        return {
-          label: fill(t.repo.milestoneRankingMonth, { milestone: milestone.label }),
-          href: localizedPath(locale, `/rankings/${year}/${Number(month)}`),
-        };
+      ...milestones.flatMap((milestone) => {
+        const rankingHref = rankingMonthHrefIfRoutable(milestone.date);
+        return rankingHref
+          ? [
+              {
+                label: fill(t.repo.milestoneRankingMonth, { milestone: milestone.label }),
+                href: localizedPath(locale, rankingHref),
+              },
+            ]
+          : [];
       }),
     ],
     sourceLabel: t.common.source,

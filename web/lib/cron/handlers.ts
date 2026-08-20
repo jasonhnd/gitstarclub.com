@@ -160,7 +160,9 @@ export async function runLiveRefreshRoute(
   } catch (error) {
     if (acquired) {
       try {
-        await releasePublication(id, options.publicationStore);
+        await releasePublication(id, options.publicationStore, {
+          claimedEtag: claim?.status === "acquired" ? claim.etag : undefined,
+        });
       } catch (releaseError) {
         console.error(`[cron-${job}] failed to release live publication lease`, {
           run_id: id,

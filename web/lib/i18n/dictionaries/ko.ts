@@ -17,6 +17,7 @@ const ko: Dict = {
     notAvailable: "사용 불가",
     status: "상태",
     latestAvailable: "최신 사용 가능: {period}",
+    periodAsOf: "{period} · {asOf} 기준",
   },
   a11y: {
     primary: "기본",
@@ -35,9 +36,9 @@ const ko: Dict = {
   },
   meta: {
     homeTitle: "오픈소스 펄스와 GitHub 스타 히스토리",
-    homeDescription: "이번 주, 이번 달, 올해 가장 빠르게 상승한 GitHub 프로젝트와 역대 스타 순위를 확인하세요.",
+    homeDescription: "GitStarClub 사전 계산 데이터에서 사용 가능한 최신 주간·월간·연간 상승과 역대 스타 순위를 확인하세요.",
     pulseTitle: "오픈소스 펄스와 GitHub 스타 히스토리",
-    pulseDescription: "이번 주, 이번 달, 올해 가장 빠르게 상승한 GitHub 프로젝트와 역대 스타 순위를 확인하세요.",
+    pulseDescription: "GitStarClub 사전 계산 데이터에서 사용 가능한 최신 주간·월간·연간 상승과 역대 스타 순위를 확인하세요.",
     rankingsTitle: "역대 GitHub 스타 순위 — 최다 스타 저장소와 조직",
     rankingsDescriptionPrefix: "역대 가장 많은 스타를 받은 GitHub 저장소와 조직입니다. ",
     rankingsDescriptionSuffix: "년 동안의 총 스타 기준 Top 100입니다.",
@@ -173,7 +174,7 @@ const ko: Dict = {
     gained: "추적 저장소가 획득한 스타 수",
     narrative: "이번 달 이야기",
   },
-  week: { label: "주", top: "이번 주 상위 저장소" },
+  week: { label: "주", top: "주간 상위 저장소" },
   repo: {
     starHistory: "스타 히스토리",
     metaTitleSuffix: "스타 히스토리와 타임라인",
@@ -201,6 +202,10 @@ const ko: Dict = {
     languages: "언어",
     relatedPages: "관련 페이지 탐색",
     relatedRepositories: "관련 저장소",
+    relatedByOwner: "같은 소유자의 다른 활성 추적 저장소이며, 현재 스타 수 순입니다.",
+    relatedByLanguage: "이 소유자의 다른 추적 저장소가 없습니다. 이미 추적 중인 가장 큰 활성 {language} 저장소입니다.",
+    relatedByOwnerAndLanguage: "같은 소유자의 활성 추적 저장소 다음에, 현재 스타 수 기준으로 가장 큰 활성 {language} 피어를 보여 줍니다.",
+    relatedEmpty: "이 소유자나 주 언어를 공유하는 다른 활성 추적 저장소가 없습니다.",
     capsuleLatest: "{month}에 {stars} 스타",
     capsuleLatestFallback: "최신 사전 계산 월간 행",
     capsule:
@@ -290,7 +295,9 @@ const ko: Dict = {
     recentMovement: "최근 변동",
     recentMovementDescription: "조직 곡선의 최신 일별 순 스타 변동입니다.",
     relatedTitle: "관련 조직 링크",
-    relatedDescription: "이 소유자와 연결된 영구 순위 및 추적 저장소 페이지입니다.",
+    relatedDescription: "이 소유자와 연결된 영구 순위, 공개 카테고리 및 추적 저장소 페이지입니다.",
+    compareMembers: "상위 저장소 비교",
+    categoryTags: "공개 카테고리",
     noTrackedRepos: "추적 저장소 행은 다음 게시된 lookup을 기다리고 있습니다.",
   },
   categories: {
@@ -311,6 +318,8 @@ const ko: Dict = {
     allTimeStars: "역대 스타",
     rankingPending: "순위 데이터는 다음 게시된 재계산을 기다리고 있습니다.",
     relatedCategories: "관련 카테고리",
+    scopeNote: "GitStarClub 카테고리는 별 10,000개 이상 화이트리스트의 결정적 규칙 슬라이스이며, GitHub의 완전한 언어·주제 목록이 아닙니다.",
+    thinSliceNotice: "이 {label} 규칙에 맞는 추적 저장소는 {count}개뿐입니다. 화이트리스트 슬라이스 크기이지 GitHub의 {label} 크기가 아닙니다.",
   },
   rankings: {
     title: "역대 순위",
@@ -329,7 +338,9 @@ const ko: Dict = {
     dailyMovement: "일별 변동",
     periodNavigation: "기간 탐색",
     relatedTitle: "관련 순위 링크",
-    relatedDescription: "이 순위 기간과 연결된 영구 아카이브 및 현재 활동 페이지입니다.",
+    relatedDescription: "이 순위 기간과 연결된 영구 아카이브, 공개 카테고리 및 현재 활동 페이지입니다.",
+    categoryExitsTitle: "선두 행의 공개 카테고리",
+    categoryExits: "이 보드 선두 행에 나타나는 추적 ≥10k 집합의 미리 계산된 공개 슬라이스입니다. GitHub 실시간 검색이 아닙니다.",
     visibleRows: "표시 행",
     noMovement: "변동 데이터는 다음 게시된 재계산을 기다리고 있습니다.",
     noGrowth: "성장률 데이터는 다음 게시된 재계산을 기다리고 있습니다.",
@@ -343,11 +354,12 @@ const ko: Dict = {
   },
   pulse: {
     title: "오픈소스 펄스",
-    subtitle: "추적 중인 오픈소스 저장소에서 이번 주, 이번 달, 올해 무엇이 변하고 있는지 보여줍니다.",
-    surging: "이번 달 상승",
+    subtitle: "GitStarClub 사전 계산 순위에서 사용 가능한 최신 주간·월간·연간 상승을 보여줍니다.",
+    surging: "월간 상위 저장소",
     onThisDay: "오늘의 기록",
     crossed: "돌파",
     open: "열기",
+    fullBoard: "전체 순위",
     datasetName: "오픈소스 활동 데이터세트",
   },
   footer: {
@@ -394,6 +406,7 @@ const ko: Dict = {
     loading: "불러오는 중…",
     error: "검색을 불러오지 못했습니다.",
     retry: "다시 시도",
+    historical: "기록",
   },
   share: {
     label: "공유",

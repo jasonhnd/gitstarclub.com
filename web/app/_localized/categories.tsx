@@ -27,6 +27,8 @@ import { pageMeta } from "@/lib/seo";
 import {
   CATEGORY_INDEX_PREVIEW_LIMIT,
   categoryDetailPagePath,
+  isThinCategoryCount,
+  relatedPublicCategories,
   categoryPath,
   fallbackRegistry,
   findCategory,
@@ -409,7 +411,8 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
   const startRank = (page - 1) * CATEGORY_DETAIL_PAGE_SIZE + 1;
   const first = totalRows > 0 ? startRank : 0;
   const last = first + pageRows.length - 1;
-  const siblingCategories = (dimensionEntry?.categories ?? []).filter((entry) => entry.public && entry.id !== category.id).slice(0, 8);
+  const siblingCategories = relatedPublicCategories(dimensionEntry?.categories ?? [], category.id);
+  const thin = isThinCategoryCount(category.count);
   const dimensionLabel = localizedDimensionLabel(locale, dimension, dimensionEntry?.label ?? dimension);
   const asOf = resolveDataAsOfLabel(rank?.meta.generated_at, registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
   const pagePath = categoryDetailPagePath(dimension, slug, page);
@@ -457,7 +460,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
           className="mt-5"
           eyebrow={dimensionLabel}
           title={<span className="break-words [overflow-wrap:anywhere]">{category.label}</span>}
-          lede={text.categoryDetailDataA}
+          lede={thin ? fill(t.categories.thinSliceNotice, { count: formatInteger(locale, category.count), label: category.label }) : t.categories.scopeNote}
           actions={
             <HeroActions
               links={[
@@ -480,7 +483,10 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
           }
         />
 
-        <DeterministicNote title={fill(text.categoryDetailDataQ, { label: category.label })} body={`${text.categoryDetailDataA} ${text.categoryCountsA}`} />
+        <DeterministicNote
+          title={fill(text.categoryDetailDataQ, { label: category.label })}
+          body={`${text.categoryDetailDataA} ${t.categories.scopeNote} ${text.categoryCountsA}`}
+        />
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" labels={answerCapsuleLabels(locale, t)} />}
 

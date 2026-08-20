@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-07-28
+last_reviewed: 2026-08-17
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -61,7 +61,17 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | `REQ-PERF-001` | `P0-AC5` | Current CI does not enforce browser/perf budgets; supporting baseline lives in `docs/perf/CWV-25.md` | Lighthouse/CWV, zero-JS, HTML-size, and cross-browser gates in §5/§6 |
 | `REQ-SEARCH-001` | P1 catalog criteria | Search core/worker/fetch/keyboard unit tests plus `web/e2e/search-compare-interactions.spec.ts` keyboard, focus, compare-toggle, and populated-dialog Axe coverage | Cross-browser and visual coverage |
 | `REQ-COMPARE-001` | P1 catalog criteria | Compare core, curve-fetch/retry tests, and `web/e2e/search-compare-interactions.spec.ts` first-failure/second-success recovery | URL-share, cross-browser, and visual coverage |
-| `REQ-CATEGORY-001` | P1 catalog criteria | `web/lib/workflows/recompute/categories.test.ts`, `web/lib/categories/rules.test.ts`, category SEO/route tests | Category browser E2E and pagination visual checks |
+| `REQ-CATEGORY-001` | P1 catalog criteria | `web/lib/workflows/recompute/categories.test.ts`, `web/lib/categories/rules.test.ts`, category SEO/route tests, `web/lib/repo-page.test.ts` hub category chips, `web/lib/category-bidirectional.test.ts` (public assignment ↔ repo chip and category rank / pagination path) | Category browser E2E and pagination visual checks |
+| Repo hub (#356 / #363) | Owner, public category, compare, non-all-time ranking period, bounded related repos | `web/lib/repo-page.test.ts`, `web/lib/repo-hub-contract.test.tsx` (fails if a #356 link type disappears from `RepoPageView`) | Manual Preview of `/{owner}/{name}` |
+| Repo milestone → month (#364) | Frozen `crossed_*` dates link `/rankings/{year}/{month}` only when the UTC month is a valid ranking route | `rankingMonthHrefIfRoutable` in `web/lib/repo-page.test.ts`, `web/lib/repo-milestones.test.ts` | Manual Preview of a pre-2015 10k crossing |
+| Org hub (#356 / #366) | Public categories from members, compare of top members, ranking month only if `rank_history` exists | `web/lib/org-page.test.ts`, `web/lib/org-hub-contract.test.tsx` | Manual Preview of `/o/{login}` |
+| Related-repo empty / fallback (#367) | Owner-first, language fallback explained, inactive excluded, empty dashed-box copy in all locales | `web/lib/repo-page.test.ts`, `web/lib/repo-related-empty.test.tsx` | Manual Preview of a solo-owner repo |
+| Ranking → public category (#368) | All-time / year / month / week boards exit to registry-public language and ecosystem pages from leading rows | `web/lib/ranking-category-exits.test.ts`, `web/lib/integration/uiux-seo.test.tsx` | Manual Preview of `/rankings` and a month board |
+| Thin category honesty (#369) | Few-repo category pages state they are a ≥10k whitelist rule slice; related categories stay public and bounded | `web/lib/category-page-data.test.ts`, `web/lib/integration/uiux-seo.test.tsx` | Manual Preview of a low-count category |
+| Weekly live origin-etag fence (#402) | Weekly reuse publish must not false-fence on a CDN-stale `live/latest.json` body; a changed origin `head()` etag still fences | `web/lib/cron/live-publication.test.ts` | Sunday weekly `ops/sync-runs.json` newest non-dry run is `ok` |
+| Pulse movers → ranking period (#372) | Week / month / year / all-time panels link the resolved ranking route; rows stay on repo hubs; locale prefixes apply | `web/lib/pulse-board-links.test.tsx` | Manual Preview of `/` and `/ja` |
+| GEO capsule gaps (#376) | High-value routes keep a dated, attributed capsule and FAQ; Pulse capsule is after the period switcher and before ranking panels; compare capsule stays generic | `web/lib/geo-capsules.test.ts`, `web/lib/geo-faq.test.ts`, `web/lib/pulse-board-links.test.tsx`, `web/lib/integration/uiux-seo.test.tsx` | Manual Preview of `/` and `/pulse` |
+| Sunday refresh health path (#377 / #379) | Operator signal is only `ops/workflows/health/workflow-refresh.json`; never the retired flat `ops/workflows/health.json` | `web/lib/observability/health.test.ts` | Sunday runbook in [OPS.md](./OPS.md) |
 
 本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。
 
