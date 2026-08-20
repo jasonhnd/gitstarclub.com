@@ -611,6 +611,16 @@ on project `gitstarclub.com` (`prj_V9RVqspNWPXXiytX7Fj3wlMT9wNw`, scope
 Do not implement these blocks as application middleware 403s; that still
 bills Edge invocations. Keep `Googlebot` and `Bingbot` unblocked.
 
+**Applied 2026-08-20** on production (`environment equals production` on every
+rule) after measured crawler volume: 14-day `firewall_action` counts still
+showed ~1.25M `ai_crawler` allows after robots (Meta `meta-externalagent`
+~1.06M, `GoogleOther` ~234k, `GPTBot` ~130k, plus Ahrefs/Amazon/Petal). The
+four Deny rules above are live. The fifth (rate-limit `bot_category`
+unclassified/tool) needs Vercel Security Plus; staging it returned 401, so it
+is **not** published. Rollback: `vercel firewall rules disable` / `remove`
+then `publish` (same project/scope). `OAI-SearchBot`, `ChatGPT-User`,
+`Googlebot`, and `Bingbot` stay unblocked.
+
 Operator command for the missing bootstrap pointer (dry-run first):
 
 ```text
