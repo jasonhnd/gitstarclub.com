@@ -5,7 +5,13 @@
 
 import { fileURLToPath } from "node:url";
 import type { ZodType } from "zod";
-import { CurrentMonth, HotSnapshot, LiveGenerationPointer } from "../lib/contracts/index";
+import {
+  CurrentMonthDocument,
+  CurrentMonthShard,
+  HotSnapshot,
+  LiveGenerationPointer,
+} from "../lib/contracts/index";
+import { assembleCurrentMonth, currentMonthShardPath, isCurrentMonthIndex } from "../lib/data/current-month-shards";
 import type { RankItem } from "../lib/contracts/index";
 import { loadWebEnvFiles, warnEnvFileDiagnostic } from "./lib/env";
 
@@ -110,6 +116,15 @@ function viewUrl(base: URL, path: string, bust: string): URL {
   return url;
 }
 
+async function readBlobJson(base: URL, path: string, bust: string): Promise<unknown> {
+  const response = await fetch(viewUrl(base, path, bust), {
+    cache: "no-store",
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`${path} -> HTTP ${response.status}`);
+  return response.json();
+}
+
 function issueSummary(error: { issues: Array<{ path: PropertyKey[]; message: string }> }): string[] {
   return error.issues.slice(0, 5).map((issue) => {
     const path = issue.path.length ? issue.path.join(".") : "(root)";
@@ -144,7 +159,7 @@ async function checkView<T>(
   bust: string,
   path: string,
   schema: ZodType<T>,
-  summarize: (data: T) => JsonObject,
+  summarize: (data: T) => JsonObject | Promise<JsonObject>,
 ): Promise<ViewResult> {
   const url = viewUrl(base, path, bust);
   let response: Response;
@@ -206,7 +221,7 @@ async function checkView<T>(
     path,
     status: response.status,
     notFound: false,
-    ...summarize(parsed.data),
+    ...(await summarize(parsed.data)),
   };
 }
 
@@ -232,15 +247,30 @@ async function main(): Promise<void> {
   const live = await resolveLiveRoot(base, bust);
 
   const views = await Promise.all([
-    checkView(base, bust, `${live.root}current_month.json`, CurrentMonth, (data) => ({
-      month: data.month,
-      updated: data.updated,
-      daily_total_days: data.daily_totals.length,
-      last_daily_total: data.daily_totals.at(-1) ?? null,
-      repo_count: Object.keys(data.per_repo).length,
-      current_stars_count: Object.keys(data.current_stars).length,
-      current_stars_top: topCurrentStars(data.current_stars),
-    })),
+    checkView(base, bust, `${live.root}current_month.json`, CurrentMonthDocument, async (data) => {
+      const month = isCurrentMonthIndex(data)
+        ? assembleCurrentMonth(
+            data,
+            await Promise.all(
+              Array.from({ length: data.shard_count }, async (_, bucket) =>
+                CurrentMonthShard.parse(
+                  await readBlobJson(base, `${live.root}${currentMonthShardPath(bucket)}`, bust),
+                ),
+              ),
+            ),
+          )
+        : data;
+      return {
+        schema: isCurrentMonthIndex(data) ? "v2-index" : "v1",
+        month: month.month,
+        updated: month.updated,
+        daily_total_days: month.daily_totals.length,
+        last_daily_total: month.daily_totals.at(-1) ?? null,
+        repo_count: Object.keys(month.per_repo).length,
+        current_stars_count: Object.keys(month.current_stars).length,
+        current_stars_top: topCurrentStars(month.current_stars),
+      };
+    }),
     checkView(base, bust, `${live.root}hot-snapshot.json`, HotSnapshot, (data) => ({
       generated_at: data.generated_at,
       freshness: data.freshness ?? null,

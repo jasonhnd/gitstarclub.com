@@ -15,7 +15,9 @@ import {
 // star_daily.parquet as the production source of truth. See docs/DATA-CONTRACTS.md
 // §1.4 and docs/VERCEL-DATA-OPERATIONS.md §5. <bucket> = repo_id % N.
 
-/** canonical/v2/meta.json — stock-anchoring seam + period fold watermarks. */
+/** canonical/v2/meta.json — stock-anchoring seam + period fold watermarks.
+ *  Membership counts (`active_repo_count` / `historical_repo_count`) belong on
+ *  views/meta.json (`Meta`), not here. `.strict()` keeps that split visible. */
 export const CanonicalMeta = z.object({
   seam_date: DateStr,
   schema_ver: NonNegativeInt,
