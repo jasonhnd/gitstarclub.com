@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { CurrentMonth, Heatmap, HotSnapshot, RankList, ReposLookup } from "@/lib/contracts";
+import { CurrentMonthShard } from "@/lib/contracts";
+import { assembleCurrentMonth, isCurrentMonthIndex } from "@/lib/data/current-month-shards";
 import type { PublishLiveGenerationArgs } from "./live-publication";
 import type { LiveRefreshDependencies } from "./live-refresh";
 
@@ -23,9 +25,14 @@ const NOW = new Date("2026-07-17T03:00:00.000Z");
 const TODAY = "2026-07-17";
 
 function currentMonthWrite(): CurrentMonth {
-  const call = publicationCalls.at(-1)?.artifacts.find(({ path }) => path === "current_month.json");
-  if (!call) throw new Error("current_month.json was not written");
-  return call.data as CurrentMonth;
+  const artifacts = publicationCalls.at(-1)?.artifacts ?? [];
+  const index = artifacts.find(({ path }) => path === "current_month.json");
+  if (!index) throw new Error("current_month.json was not written");
+  if (!isCurrentMonthIndex(index.data)) return index.data as CurrentMonth;
+  const shards = artifacts
+    .filter(({ path }) => path.startsWith("current_month/shards/"))
+    .map(({ data }) => CurrentMonthShard.parse(data));
+  return assembleCurrentMonth(index.data, shards);
 }
 
 function hotSnapshotWrite(): HotSnapshot {
@@ -141,6 +148,15 @@ describe("refreshLiveViews", () => {
     lookup = null;
 
     await expect(refreshLiveViews("daily", true, dryOptions())).rejects.toThrow("lookup unavailable");
+  });
+
+  test("publishes a current_month index plus 32 shards instead of one oversized file", async () => {
+    await refreshLiveViews("daily", false, publishOptions());
+    const artifacts = publicationCalls.at(-1)?.artifacts ?? [];
+    const index = artifacts.find(({ path }) => path === "current_month.json");
+    expect(isCurrentMonthIndex(index?.data)).toBe(true);
+    expect(artifacts.filter(({ path }) => path.startsWith("current_month/shards/"))).toHaveLength(32);
+    expect(currentMonthWrite().current_stars).toEqual({ "1": 110, "2": 205 });
   });
 
   test("dry runs poll a sample but write no Blob views and revalidate no paths", async () => {

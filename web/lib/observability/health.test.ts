@@ -145,7 +145,7 @@ describe("recordHealth", () => {
           pipeline,
           status,
           { run_id, error: status === "failed" ? `${run_id}-error` : undefined },
-          { store, now: new Date(at) },
+          { store, now: new Date(at), sleep: async () => {} },
         ),
       ),
     );
@@ -160,6 +160,33 @@ describe("recordHealth", () => {
     expect(weekly?.last_failure?.run_id).toBe("w-fail");
     expect(workflow?.status).toBe("ok");
     expect(workflow?.last_failure).toBeNull();
+  });
+
+  test("retries a contended compare-and-set with backoff instead of spinning", async () => {
+    const delays: number[] = [];
+    const store: HealthStore = {
+      read: async () => ({
+        health: mergePipelineHealth(null, "cron-daily", "ok", { run_id: "existing" }, new Date("2026-07-17T01:00:00.000Z")),
+        etag: `"1"`,
+      }),
+      create: async () => false,
+      compareAndSet: async () => false,
+    };
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await recordHealth("cron-daily", "ok", { run_id: "next" }, {
+        store,
+        now: new Date("2026-07-17T02:00:00.000Z"),
+        sleep: async (ms) => {
+          delays.push(ms);
+        },
+        random: () => 0,
+      });
+      expect(delays).toEqual([40, 80, 160, 320]);
+      expect(String(errorSpy.mock.calls[0]?.[1])).toContain("health CAS exhausted");
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   test("a store failure is diagnostic but never breaks the pipeline", async () => {

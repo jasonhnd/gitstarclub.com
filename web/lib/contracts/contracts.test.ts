@@ -49,6 +49,8 @@ import {
   Inflection,
   // live
   CurrentMonth,
+  CurrentMonthIndex,
+  CurrentMonthShard,
   HotSnapshot,
   LiveGenerationManifest,
   LiveGenerationPointer,
@@ -150,6 +152,28 @@ describe("Meta — accepts BOTH bootstrap flat meta AND Phase 4 versioned meta",
 
   test("minimal meta (only required) parses", () => {
     expect(Meta.parse({ seam_date: "2024-01-01", schema_ver: 1 }).schema_ver).toBe(1);
+  });
+
+  test("legacy meta without membership counts still parses", () => {
+    const legacy = { seam_date: "2024-01-01", schema_ver: 1, generated_at: TS };
+    expect(Meta.parse(legacy).active_repo_count).toBeUndefined();
+    expect(Meta.parse(legacy).historical_repo_count).toBeUndefined();
+  });
+
+  test("published meta with official membership counts parses", () => {
+    const published = {
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      active_repo_count: 5503,
+      historical_repo_count: 7,
+      folded_through: { month: "2026-07", week: "2026-W30" },
+      generated_at: TS,
+    };
+    expect(Meta.parse(published)).toEqual(published);
+  });
+
+  test("does not accept unknown keys (no passthrough)", () => {
+    expect(rejects(Meta, { seam_date: "2024-01-01", schema_ver: 1, extra: true })).toBe(true);
   });
 
   test("rejects missing seam_date", () => {
@@ -258,6 +282,18 @@ describe("CanonicalMeta", () => {
   test("rejects folded_through missing week", () => {
     expect(
       rejects(CanonicalMeta, { seam_date: "2024-01-01", schema_ver: 2, folded_through: { month: "2024-05" } }),
+    ).toBe(true);
+  });
+
+  test("rejects views/meta membership counts — those fields belong on Meta", () => {
+    expect(
+      rejects(CanonicalMeta, {
+        seam_date: "2026-05-30",
+        schema_ver: 1,
+        folded_through: { month: "2026-07", week: "2026-W30" },
+        active_repo_count: 5503,
+        historical_repo_count: 7,
+      }),
     ).toBe(true);
   });
 });
@@ -634,6 +670,11 @@ describe("lookup contracts", () => {
     });
   });
 
+  test("RepoLookupEntry still parses legacy rows without active/tracked_since", () => {
+    expect(RepoLookupEntry.parse(repoEntry).active).toBeUndefined();
+    expect(RepoLookupEntry.parse(repoEntry).tracked_since).toBeUndefined();
+  });
+
   test("RepoLookupEntry rejects bad owner_type", () => {
     expect(rejects(RepoLookupEntry, { ...repoEntry, owner_type: "Robot" })).toBe(true);
   });
@@ -692,6 +733,13 @@ describe("entity / view contracts", () => {
     expect(parsed.id).toBe(1);
     expect(parsed.languages?.[0].name).toBe("TypeScript");
     expect(parsed.tracked_since).toBe("2024-06-01");
+  });
+
+  test("RepoEntity still parses legacy entities without active/tracked_since", () => {
+    const { active, tracked_since, ...legacy } = repoEntity;
+    void active;
+    void tracked_since;
+    expect(RepoEntity.parse(legacy).active).toBeUndefined();
   });
 
   test("RepoEntity parses with optional rank_history record", () => {
@@ -782,6 +830,30 @@ describe("live contracts", () => {
     expect(rejects(CurrentMonth, { ...cm, month: "2024-W20" })).toBe(true);
     expect(rejects(CurrentMonth, { ...cm, updated: "2024-02-30" })).toBe(true);
     expect(rejects(CurrentMonth, { ...cm, daily_totals: [["2024-05-32", 42]] })).toBe(true);
+  });
+
+  test("CurrentMonthIndex is a small pointer without per_repo", () => {
+    const index = {
+      schema_version: 2,
+      month: "2026-08",
+      updated: "2026-08-23",
+      daily_totals: [["2026-08-23", 4] as [string, number]],
+      shard_count: 32,
+    };
+    expect(CurrentMonthIndex.parse(index).shard_count).toBe(32);
+    expect(rejects(CurrentMonthIndex, { ...index, per_repo: {} })).toBe(true);
+    expect(rejects(CurrentMonth, index)).toBe(true);
+  });
+
+  test("CurrentMonthShard parses a bucket slice", () => {
+    const shard = {
+      schema_version: 2,
+      bucket: 1,
+      per_repo: { "1": [["2026-08-23", 1] as [string, number]] },
+      current_stars: { "1": 100 },
+    };
+    expect(CurrentMonthShard.parse(shard).bucket).toBe(1);
+    expect(rejects(CurrentMonthShard, { ...shard, bucket: 32 })).toBe(true);
   });
 
   test("HotSnapshot parses nested home/current/all_time", () => {

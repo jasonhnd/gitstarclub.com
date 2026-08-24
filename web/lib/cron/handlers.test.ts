@@ -122,6 +122,41 @@ describe("runLiveRefreshRoute health", () => {
     }
   });
 
+  test("skips Sunday daily so weekly owns that day's live publication", async () => {
+    const health: Array<{ pipeline: AlertPipeline; status: HealthStatus }> = [];
+    const claimPublication = mock(async () => {
+      throw new Error("Sunday daily must not claim a lease");
+    });
+    const response = await runLiveRefreshRoute(request("daily"), "daily", {
+      now: new Date("2026-08-23T03:00:00.000Z"),
+      requireRuntimeConfig: () => {},
+      claimPublication,
+      refresh: successfulRefresh,
+      recordSyncRun: async () => null,
+      recordHealth: async (pipeline, status) => {
+        health.push({ pipeline, status });
+      },
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, status: "skipped", reason: "weekly-owns-sunday" });
+    expect(claimPublication).not.toHaveBeenCalled();
+    expect(health).toEqual([{ pipeline: "cron-daily", status: "ok" }]);
+  });
+
+  test("Sunday weekly still publishes", async () => {
+    const response = await runLiveRefreshRoute(request("weekly"), "weekly", {
+      now: new Date("2026-08-23T04:00:00.000Z"),
+      requireRuntimeConfig: () => {},
+      claimPublication,
+      refresh: successfulRefresh,
+      recordSyncRun: async () => null,
+      recordHealth: async () => {},
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, status: "published" });
+  });
+
   test("dry runs do not mutate operational health", async () => {
     const recordHealth = mock(async () => {});
     const response = await runLiveRefreshRoute(request("daily", "?dry=1"), "daily", {

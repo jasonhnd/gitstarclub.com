@@ -28,6 +28,7 @@ describe("contractForViewPath", () => {
       "meta.json",
       "hot-snapshot.json",
       "current_month.json",
+      "current_month/shards/0.json",
       "lookup/repos.json",
       "lookup/orgs.json",
       "lookup/aliases.json",
