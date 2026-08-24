@@ -10,6 +10,14 @@ import {
 import { requireBlobWriteToken } from "@/lib/runtime-config";
 
 const MAX_CAS_ATTEMPTS = 5;
+const CAS_BACKOFF_CAP_MS = 1_500;
+
+function casDelayMs(attempt: number, random = Math.random): number {
+  const base = 40 * 2 ** attempt;
+  return Math.min(base + Math.floor(random() * base), CAS_BACKOFF_CAP_MS);
+}
+
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const EXPECTED_INTERVAL_SECONDS: Record<AlertPipeline, number> = {
   "cron-daily": 36 * 60 * 60,
@@ -42,6 +50,8 @@ export type HealthStore = {
 export type RecordHealthOptions = {
   store?: HealthStore;
   now?: Date;
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
 };
 
 /** Per-pipeline Blob path. Never the retired flat `ops/workflows/health.json`. */
@@ -201,6 +211,8 @@ export async function recordHealth(
 ): Promise<void> {
   const store = options.store ?? blobHealthStore;
   const now = options.now ?? new Date();
+  const sleep = options.sleep ?? defaultSleep;
+  const random = options.random ?? Math.random;
 
   try {
     for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
@@ -209,10 +221,11 @@ export async function recordHealth(
 
       if (!current.health) {
         if (await store.create(pipeline, next)) return;
-        continue;
+      } else {
+        if (!current.etag) throw new Error(`${pipeline} health object is missing an ETag`);
+        if (await store.compareAndSet(pipeline, current.etag, next)) return;
       }
-      if (!current.etag) throw new Error(`${pipeline} health object is missing an ETag`);
-      if (await store.compareAndSet(pipeline, current.etag, next)) return;
+      if (attempt + 1 < MAX_CAS_ATTEMPTS) await sleep(casDelayMs(attempt, random));
     }
     throw new Error(`${pipeline} health CAS exhausted after ${MAX_CAS_ATTEMPTS} attempts`);
   } catch (error) {

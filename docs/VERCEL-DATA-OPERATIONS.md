@@ -1,7 +1,7 @@
 ---
 owner: data operations / workflows
 status: active
-last_reviewed: 2026-07-28
+last_reviewed: 2026-08-24
 source_of_truth_for:
   - production data lifecycle
   - Vercel Blob publish model
@@ -237,7 +237,8 @@ blob://
 │   ├── latest.json                          # 当前完整 generation + ETag/CAS lease/fence
 │   └── generations/<run_id>/                # immutable；全部文件 + manifest 完成后才可发布
 │       ├── manifest.json
-│       ├── current_month.json
+│       ├── current_month.json               # v2 index (schema_version=2, no per_repo)
+│       ├── current_month/shards/<0-31>.json # repo_id % 32；reader 组装成 CurrentMonth
 │       ├── hot-snapshot.json
 │       ├── rank/** · heatmap/**
 │       └── rollover/<period>.json            # 跨月 pending 恢复副本（可选）
