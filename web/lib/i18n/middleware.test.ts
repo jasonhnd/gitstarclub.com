@@ -69,6 +69,8 @@ describe("locale proxy redirects", () => {
     expect(redirectFor("/opengraph-image", { cookie: "gsc_lang=ja" })).toBeNull();
     expect(redirectFor("/search-index", { cookie: "gsc_lang=ja" })).toBeNull();
     expect(redirectFor("/repo-curve", { cookie: "gsc_lang=ja" })).toBeNull();
+    expect(redirectFor("/cockpit", { cookie: "gsc_lang=zh" })).toBeNull();
+    expect(redirectFor("/cockpit", { cookie: "gsc_lang=ja" })).toBeNull();
     expect(redirectFor("/manifest.webmanifest", { cookie: "gsc_lang=ja" })).toBeNull();
     expect(redirectFor("/llms.txt", { cookie: "gsc_lang=ja" })).toBeNull();
     expect(redirectFor("/sw.js", { cookie: "gsc_lang=ja" })).toBeNull();
@@ -82,6 +84,7 @@ describe("locale proxy redirects", () => {
   });
 
   test("uses explicit framework, metadata, and public-asset exclusions", () => {
+    expect(shouldIgnorePath("/cockpit")).toBe(true);
     expect(shouldIgnorePath("/mrdoob/three.js")).toBe(false);
     expect(shouldIgnorePath("/mozilla/pdf.worker.min.js")).toBe(false);
     expect(shouldIgnorePath("/favicon.svg")).toBe(true);
