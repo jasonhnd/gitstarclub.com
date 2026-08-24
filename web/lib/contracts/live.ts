@@ -3,15 +3,48 @@ import { DateStr, MonthPeriod, NonNegativeInt, RankItem, TimestampStr, WeekPerio
 
 // Live tail + hot snapshot, written daily by cron. See docs/DATA-CONTRACTS.md §2.8–2.9.
 
-/** current_month.json — in-progress month, append-only by UTC day. */
+const DailySeries = z.array(z.tuple([DateStr, z.number().int()]));
+const CurrentStarsMap = z.record(z.string(), NonNegativeInt);
+const PerRepoMap = z.record(z.string(), DailySeries);
+
+/** Assembled in-progress month. Callers always see this shape after the reader
+ *  joins v1 monoliths or v2 index+shards. */
 export const CurrentMonth = z.object({
   month: MonthPeriod,
   updated: DateStr,
-  daily_totals: z.array(z.tuple([DateStr, z.number().int()])),
-  per_repo: z.record(z.string(), z.array(z.tuple([DateStr, z.number().int()]))),
-  current_stars: z.record(z.string(), NonNegativeInt),
+  daily_totals: DailySeries,
+  per_repo: PerRepoMap,
+  current_stars: CurrentStarsMap,
 }).strict();
 export type CurrentMonth = z.infer<typeof CurrentMonth>;
+
+/** Number of `current_month/shards/<bucket>.json` files in a v2 generation.
+ *  Same modulus as canonical repo buckets. */
+export const CURRENT_MONTH_SHARD_COUNT = 32;
+export const CURRENT_MONTH_SCHEMA_VERSION = 2;
+
+/** v2 index written at `current_month.json`. Small enough for Next.js Data Cache. */
+export const CurrentMonthIndex = z.object({
+  schema_version: z.literal(CURRENT_MONTH_SCHEMA_VERSION),
+  month: MonthPeriod,
+  updated: DateStr,
+  daily_totals: DailySeries,
+  shard_count: z.literal(CURRENT_MONTH_SHARD_COUNT),
+}).strict();
+export type CurrentMonthIndex = z.infer<typeof CurrentMonthIndex>;
+
+/** One `current_month/shards/<bucket>.json` file. `bucket` = repo id % 32. */
+export const CurrentMonthShard = z.object({
+  schema_version: z.literal(CURRENT_MONTH_SCHEMA_VERSION),
+  bucket: z.number().int().min(0).max(CURRENT_MONTH_SHARD_COUNT - 1),
+  per_repo: PerRepoMap,
+  current_stars: CurrentStarsMap,
+}).strict();
+export type CurrentMonthShard = z.infer<typeof CurrentMonthShard>;
+
+/** On-disk `current_month.json`: legacy full document or v2 index. */
+export const CurrentMonthDocument = z.union([CurrentMonthIndex, CurrentMonth]);
+export type CurrentMonthDocument = z.infer<typeof CurrentMonthDocument>;
 
 const TopLists = z.object({
   flow: z.array(RankItem),

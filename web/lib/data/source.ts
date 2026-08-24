@@ -10,6 +10,7 @@ import {
   resolveCanonicalReadBlobPaths,
 } from "@/lib/data/bootstrap-publication";
 import { resolveLiveArtifactFromHistory } from "@/lib/data/live-generation-history";
+import { parseView } from "@/lib/data/parse-view";
 
 // View source: reads JSON views by direct URL from the Vercel Blob store (public).
 // BLOB_BASE_URL must point at the store base (set in Vercel project env + local .env.local).
@@ -44,6 +45,12 @@ export interface ViewOpts {
   liveTtlMs?: number;
   /** Override the per-request Blob JSON timeout. */
   timeoutMs?: number;
+  /**
+   * Skip Next.js Data Cache for this Blob GET. Use only on already-dynamic
+   * routes (cron, `/search-index`) where the Blob/CDN cache is the real cache.
+   * Never set this on ISR pages: `no-store` flips the page to dynamic at runtime.
+   */
+  skipNextDataCache?: boolean;
 }
 
 const VERSION_TTL_MS = 3_600_000;
@@ -102,6 +109,7 @@ async function readBlobJsonKey(args: {
   bust?: string;
   timeoutMs: number;
   mutableWorkflowArtifact: boolean;
+  skipNextDataCache?: boolean;
   allowForbiddenAsMissing?: boolean;
   forbiddenRetries?: number;
 }): Promise<unknown | null> {
@@ -111,6 +119,7 @@ async function readBlobJsonKey(args: {
     bust,
     timeoutMs,
     mutableWorkflowArtifact,
+    skipNextDataCache = false,
     allowForbiddenAsMissing = true,
     forbiddenRetries = READ_RETRIES,
   } = args;
@@ -120,7 +129,7 @@ async function readBlobJsonKey(args: {
   for (let attempt = 1; attempt <= READ_RETRIES + 1; attempt++) {
     try {
       res = await fetchWithTimeout(url, {
-        cache: mutableWorkflowArtifact ? "no-store" : "force-cache",
+        cache: mutableWorkflowArtifact || skipNextDataCache ? "no-store" : "force-cache",
         timeoutMs,
       });
     } catch (err) {
@@ -460,6 +469,7 @@ async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<un
       bust,
       timeoutMs,
       mutableWorkflowArtifact,
+      skipNextDataCache: opts.skipNextDataCache === true,
       allowForbiddenAsMissing: mode === "published",
     });
     if (value !== null) return value;
@@ -475,7 +485,7 @@ function fetchErrorDetail(error: unknown): string {
 /** Read + Zod-validate a view. Returns null when the view is absent (caller → notFound()). */
 export async function readView<T>(path: string, schema: ZodType<T>, opts: ViewOpts = {}): Promise<T | null> {
   const json = await rawRead(path, opts, "published");
-  return json === null ? null : schema.parse(json);
+  return json === null ? null : parseView(json, schema, { path, version: opts.bust ?? null });
 }
 
 /**
@@ -489,7 +499,7 @@ export async function readAuthoritativeView<T>(
   opts: ViewOpts = {},
 ): Promise<T | null> {
   const json = await rawRead(path, opts, "authoritative");
-  return json === null ? null : schema.parse(json);
+  return json === null ? null : parseView(json, schema, { path, version: opts.bust ?? null });
 }
 
 /** Authoritative read for a workflow artifact that must already exist. */
