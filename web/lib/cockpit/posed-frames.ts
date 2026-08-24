@@ -149,10 +149,10 @@ const FILL_DOMAINS: DomainGroup[] = ["ai", "ai", "ai", "web", "infra", "database
 
 function filler(i: number): PosedNode {
   const domain = FILL_DOMAINS[i % FILL_DOMAINS.length];
-  const born = Math.floor(rand() * 48);
-  const start = 6_000 + Math.floor(rand() * 24_000);
-  const end = start + 8_000 + Math.floor(rand() ** 1.4 * 90_000);
-  const pos = place(domain, 0.12 + rand() * 0.34, 0.08, rand);
+  const born = rand() < 0.72 ? 0 : Math.floor(8 + rand() * 40);
+  const start = 2_000 + Math.floor(rand() * 12_000);
+  const end = start + 4_000 + Math.floor(rand() ** 1.35 * 70_000);
+  const pos = place(domain, 0.08 + rand() * 0.38, 0.1, rand);
   return {
     id: `posed/${domain}-${i}`,
     domain,
@@ -166,7 +166,7 @@ function filler(i: number): PosedNode {
   };
 }
 
-export const NODES: readonly PosedNode[] = [...ANCHORS, ...Array.from({ length: 193 }, (_, i) => filler(i))];
+export const NODES: readonly PosedNode[] = [...ANCHORS, ...Array.from({ length: 320 }, (_, i) => filler(i))];
 
 export const HEADLINES = {
   movingNow: "huggingface/transformers",
