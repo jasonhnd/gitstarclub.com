@@ -1,7 +1,7 @@
 ---
 owner: frontend
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-08-24
 source_of_truth_for:
   - rendering strategy
   - component catalog
@@ -186,7 +186,7 @@ export default nextConfig;
 
 ### 2.4 数据变更如何到达页面（无 deploy）
 
-- **每日 cron**（`/api/cron/daily`，[API](./API.md) / [OPS](./OPS.md) §Cron）：把 `current_month` / `hot-snapshot` / 当前月周 rank / 当月 heatmap 写入同一 immutable `live/generations/<run_id>/`，manifest 完成后 fenced CAS 切 `live/latest.json`，**再** `revalidatePath` 核心热集。
+- **每日 cron**（`/api/cron/daily`，[API](./API.md) / [OPS](./OPS.md) §Cron）：把 `current_month`（v2 = 小 index + 32 个 repo shard）/ `hot-snapshot` / 当前月周 rank / 当月 heatmap 写入同一 immutable `live/generations/<run_id>/`，manifest 完成后 fenced CAS 切 `live/latest.json`，**再** `revalidatePath` 核心热集。UTC 周日 daily 跳过，由 weekly 04:00 独占 live 写入。热集页只读 `hot-snapshot.json`，不加载 `current_month` 分片。
 - **每周 cron**（`/api/cron/weekly`，[API](./API.md)）：同样在 Vercel 内做 live refresh，保证周榜和月榜即使没有全量历史重算也不会断档；全量历史刷新另走 Vercel Workflow 分片，不做 16k 全量 build。
 - **deploy**：仅代码/结构变更触发；会重置 ISR store，长尾首访冷生成一次（见 [ARCHITECTURE](./ARCHITECTURE.md)）。
 
@@ -238,7 +238,7 @@ web/lib/
     lookup.ts  entity.ts  live.ts  canonical.ts  categories.ts
     compare.ts  search.ts  workflow.ts
   data/             # 读取器（fetch Blob + schema.parse + React cache 去重），barrel = index.ts
-    source.ts       # readView：拼 Blob 直链 URL + fetch + parse（见 OPS Blob 布局）
+    source.ts       # readView：拼 Blob 直链 URL + fetch + parse-once（按 path+generation 去重 ZodError）
     lookup.ts  rank.ts  entity.ts  heatmap.ts  snapshot.ts  meta.ts
     search.ts  compare.ts  categories.ts  watermark.ts
   search/           # 客户端检索纯核心（MiniSearch 配置 + 查询；SearchBox 懒加载到 Web Worker）

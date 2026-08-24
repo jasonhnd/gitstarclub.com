@@ -7,7 +7,8 @@ import {
   CategoryAssignments,
   CategoryRankList,
   CategoryRegistry,
-  CurrentMonth,
+  CurrentMonthDocument,
+  CurrentMonthShard,
   Heatmap,
   HotSnapshot,
   LiveGenerationManifest,
@@ -68,7 +69,8 @@ export function contractForViewPath(path: string): ViewContract | null {
   if (liveGeneration && /^rollover\/[^/]+\.json$/.test(rel)) return { kind: "live/rollover", schema: PendingPeriod };
   if (rel === "meta.json") return { kind: "meta", schema: Meta };
   if (rel === "hot-snapshot.json") return { kind: "hot-snapshot", schema: HotSnapshot };
-  if (rel === "current_month.json") return { kind: "current-month", schema: CurrentMonth };
+  if (rel === "current_month.json") return { kind: "current-month", schema: CurrentMonthDocument };
+  if (/^current_month\/shards\/\d+\.json$/.test(rel)) return { kind: "current-month-shard", schema: CurrentMonthShard };
   if (rel === "lookup/repos.json") return { kind: "lookup/repos", schema: ReposLookup };
   if (rel === "lookup/orgs.json") return { kind: "lookup/orgs", schema: OrgsLookup };
   if (rel === "lookup/aliases.json") return { kind: "lookup/aliases", schema: AliasMap };

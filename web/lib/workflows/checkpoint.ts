@@ -1,6 +1,7 @@
 import { WorkflowManifest } from "@/lib/contracts";
 import { sendAlert } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
+import { logViewParseErrorSummary } from "@/lib/data/parse-view";
 import { claimWorkflowLease, releaseWorkflowLease } from "@/lib/workflows/lease";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 
@@ -42,6 +43,7 @@ export async function markPublished(runId: string, startedAt: string, fencingTok
   if (!released) throw new Error(`workflow ${runId} lost fencing token ${fencingToken} before published release`);
   // Best-effort health beacon for the success path (never throws).
   await recordHealth("workflow-refresh", "ok", { run_id: runId });
+  logViewParseErrorSummary("[workflow-refresh]");
 }
 
 /** Mark the run failed; line on Blob does not flip latest-success (line stays at last good run). */
@@ -57,4 +59,5 @@ export async function markFailed(runId: string, startedAt: string, error: string
   // Surface the failure: greppable log + optional webhook + health beacon. None of these throw.
   await sendAlert({ pipeline: "workflow-refresh", title: "managed refresh failed", run_id: runId, error });
   await recordHealth("workflow-refresh", "failed", { run_id: runId, error });
+  logViewParseErrorSummary("[workflow-refresh]");
 }

@@ -62,6 +62,18 @@ export async function runLiveRefreshRoute(
 
   try {
     (options.requireRuntimeConfig ?? requireLiveRefreshRuntimeConfig)(dry);
+    // Weekly owns Sunday live publication. Daily would otherwise start at 03:00 UTC
+    // and still be writing health / live/latest.json when weekly starts at 04:00.
+    if (!dry && job === "daily" && startedAt.getUTCDay() === 0) {
+      await health("cron-daily", "ok", { run_id: id, idempotency_key: idempotencyKey });
+      return Response.json({
+        ok: true,
+        status: "skipped",
+        reason: "weekly-owns-sunday",
+        runId: id,
+        idempotency_key: idempotencyKey,
+      });
+    }
     if (!dry) {
       claim = await claimPublication(
         {

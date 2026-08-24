@@ -16,6 +16,7 @@ import {
   type LivePublicationArtifact,
   type LivePublicationStore,
 } from "./live-publication";
+import { currentMonthPublicationArtifacts } from "@/lib/data/current-month-shards";
 
 const TOP_N = 20;
 
@@ -280,7 +281,7 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
   const weekFlowList = RankList.parse(rankList("week", weekPeriod, "repo", "flow", currentWeekFlow, weekRankAsOf));
 
   const artifacts: LivePublicationArtifact[] = [
-    { path: "current_month.json", data: parsedCurrentMonth },
+    ...currentMonthPublicationArtifacts(parsedCurrentMonth),
     { path: "hot-snapshot.json", data: hotSnapshot },
     { path: `rank/month/${month}/repo/flow.json`, data: monthFlowList },
     { path: `rank/month/${month}/repo/stock.json`, data: monthStockList },
