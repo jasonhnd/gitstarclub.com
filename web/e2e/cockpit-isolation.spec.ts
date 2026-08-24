@@ -15,13 +15,21 @@ test("/cockpit is isolated from the live reading surfaces", async ({ page }) => 
 
   await expect(page.getByTestId("cockpit-timeline")).toBeVisible();
   await expect(page.getByTestId("cockpit-month")).toHaveText("2026-08");
+  const todayStars = await page.getByTestId("cockpit-stars").innerText();
 
   const rail = page.getByTestId("cockpit-timeline");
   await rail.focus();
   await rail.press("Home");
-  await expect(page.getByTestId("cockpit-month")).not.toHaveText("2026-08");
-  await rail.press("End");
-  await expect(page.getByTestId("cockpit-month")).toHaveText("2026-08");
+  await expect(page.getByTestId("cockpit-month")).toHaveText("2015-01");
+  await expect(page.getByTestId("cockpit-stars")).not.toHaveText(todayStars);
+
+  const box = await rail.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width * 0.12, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.92, box!.y + box!.height / 2);
+  await page.mouse.up();
+  await expect(page.getByTestId("cockpit-month")).not.toHaveText("2015-01");
 });
 
 test("/pulse does not download a three.js chunk", async ({ page }) => {
