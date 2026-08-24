@@ -42,6 +42,7 @@ const STATIC_PROTECTED_PATHS = [
   "categories/",
   "canonical/",
   "current_month.json",
+  "current_month/",
   "entity/",
   "heatmap/",
   "hot-snapshot.json",

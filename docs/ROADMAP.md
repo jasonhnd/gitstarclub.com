@@ -52,7 +52,7 @@ A proposal that cannot pass this list belongs in Track C, not Track A.
 
 ### Sequence
 
-- **Weeks 1–4 (done on `pre`):** Track A A1–A4 children shipped. Track B hygiene except Firewall (#380). Track C draft + must-prove (#381 / #382); **POC allowed: no**.
+- **Weeks 1–4 (done on `pre`):** Track A A1–A4 children shipped. Track B hygiene. #380 measured crawlers then **left Firewall empty** (operator chose to allow them). Track C draft + must-prove (#381 / #382); **POC allowed: no**.
 - **Through 2026-09-12:** Track C must **decide or defer** (#383). Missing that date **is** a six-month deferral of #362. No new Track A implementation stream until that date unless a child is split from an open epic.
 - **After the decision:** either an isolated Track C POC that still keeps content pages on views, or the four expansion items stay dated-deferred and further Track A work is filed as a new child of a new or reopened Track A epic — not invented beside this map.
 
@@ -200,7 +200,7 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 | New pages must not re-probe missing Blob objects | Crawler-driven 404 amplification on `bootstrap/latest.json` | Pointer 404 remains a cached legacy state; no new per-request existence probes |
 | Dependabot + bun lockfiles | npm Dependabot PRs against `main` fail `bun install --frozen-lockfile` | Next Dependabot wave is retargeted or immediately replaced with a `pre` + lockfile PR (pattern from #351) |
 | Product-gates stay fail-closed | 14-day base pointer and export SLAs are the live contract (#286) | Do not skip or loosen the job to land features |
-| Vercel Firewall | Optional extra crawler control after robots | Configure only with a measured bill; runbook already in [OPS.md](./OPS.md) |
+| Vercel Firewall | Optional extra crawler control after robots | Recipe in [OPS.md](./OPS.md). 2026-08-20: denies published then removed the same day; operator chose to allow crawlers. Zero custom rules live. |
 
 Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blob 404s, product-gates remain required on `pre`/`main`.
 
@@ -308,7 +308,7 @@ GitHub epics match this table. Child implementation issues are split from an epi
 | A2 | Categories as topic entry | #357 | #368 #369 #370 | Done on `pre` |
 | A3 | Pulse as return engine | #358 | #371 #372 #373 | Done on `pre` |
 | A4 | Search stays go-to-name; citation stays honest | #359 | #374 #375 #376 | Done on `pre` |
-| B | Production as product | #360 | #377 #378 #379 #380 #402 | Open; standing. #380 still open (Firewall unconfigured) |
+| B | Production as product | #360 | #377 #378 #379 #380 #402 | Open; standing. Children including #380 done |
 | C | Analytical data-layer decision | #361 | #381 #382 #383 | Open; draft shipped; #383 still decides 2026-09-12 |
 | — | Blocked expansion backlog | #362 | none | No impl until #361 / #383 |
 

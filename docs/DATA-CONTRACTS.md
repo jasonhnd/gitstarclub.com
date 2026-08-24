@@ -1,7 +1,7 @@
 ---
 owner: data contracts
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-08-24
 source_of_truth_for:
   - canonical JSON shard schemas
   - JSON view schemas
@@ -97,7 +97,16 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
   "active_repo_count": 5302, "historical_repo_count": 17, "generated_at": "..." }
 ```
 
-`seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。版本化 writer 还写 `active_repo_count` / `historical_repo_count`；publish gate 与 whitelist / lookup 交叉校验。`Meta` 契约同时接受**扁平 bootstrap meta**（含 `backfilled_at`）与**版本化 meta**（含 `folded_through`，无 `backfilled_at`）；计数字段在 legacy 读取期间 optional，但新 publish 必须存在且匹配。
+`seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。版本化 writer 还写 `active_repo_count` / `historical_repo_count`；publish gate 与 whitelist / lookup 交叉校验。`Meta` 契约同时接受**扁平 bootstrap meta**（含 `backfilled_at`）与**版本化 meta**（含 `folded_through`，无 `backfilled_at`）；计数字段在 legacy 读取期间 optional，但新 publish 必须存在且匹配。`schema_ver` 即该视图的 schema version。这四个生命周期字段的归属：
+
+| Field | Type | Produced by | Official on |
+|---|---|---|---|
+| `active` | bool | metadata / recompute | `ReposShardEntry`, `RepoLookupEntry`, `SearchDoc`, `RepoEntity`（legacy optional） |
+| `tracked_since` | DateStr\|null | metadata | same |
+| `active_repo_count` | int | recompute `views/meta.json` | `Meta` only |
+| `historical_repo_count` | int | recompute `views/meta.json` | `Meta` only |
+
+它们**不属于** `canonical/v2/meta.json`（`CanonicalMeta` 保持 `.strict()`，不含计数字段）。读取端不使用 `.passthrough()`。
 
 ### 1.4 生产 canonical JSON shard
 
@@ -352,6 +361,31 @@ Rules:
 ### 2.8 `live/generations/{run_id}/current_month.json`（活尾——Vercel cron 写）
 
 `month` 字段是 `MonthPeriod`；`updated` / `daily_totals` / `per_repo` 日期字段是 `DateStr`。
+
+生产 `current_month` 在月末会超过 Next.js Data Cache 的 2MB 条目上限（`JSON.stringify` 转义后；2026-08-23 实测单体约 1.90MB raw / 2.13MB cache entry）。新 generation 写成 **index + 32 个 repo 分片**，页面/cron 组装后再当原来的 `CurrentMonth` 用。Reader 同时接受旧的单体文件。
+
+**v2 index**（`current_month.json`，KB 级）：
+
+```json
+{
+  "schema_version": 2,
+  "month": "2026-08", "updated": "2026-08-23",
+  "daily_totals": [ ["2026-08-01", 80000], ["2026-08-23", 76000] ],
+  "shard_count": 32
+}
+```
+
+**v2 shard**（`current_month/shards/<bucket>.json`，`bucket = repo_id % 32`）：
+
+```json
+{
+  "schema_version": 2, "bucket": 1,
+  "per_repo": { "1296269": [ ["2026-08-01", 30], ["2026-08-23", -5] ] },
+  "current_stars": { "1296269": 207000 }
+}
+```
+
+**v1 单体**（已发布 generation 仍可读）：
 
 ```json
 {

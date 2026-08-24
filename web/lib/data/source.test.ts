@@ -9,6 +9,7 @@ import {
 import { PUBLISHED_VIEWS_CACHE_TAG } from "./publication-cache-contract";
 import { resolveCanonicalBlobPath } from "./bootstrap-publication";
 import { resetBootstrapPointerCacheForTests } from "./bootstrap-pointer-cache";
+import { resetViewParseStateForTests } from "./parse-view";
 
 // Route a mocked global fetch by URL to simulate pointer + view fetches.
 // Date.now() is driven forward past the 1h TTL between scenarios to invalidate
@@ -100,6 +101,7 @@ beforeEach(() => {
   fetchCalls = [];
   fetchInits = [];
   resetBootstrapPointerCacheForTests();
+  resetViewParseStateForTests();
   process.env.BLOB_BASE_URL = BLOB;
   delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   advancePastTtl(); // ensure each test starts with an expired version memo
@@ -386,6 +388,12 @@ describe("readView — non-base (flat) reads", () => {
     expect(cacheFor("/ops/workflows/run/manifest.json")).toBe("no-store");
     expect(cacheFor("/views/latest.json")).toBe("no-store");
     expect(cacheFor("/views/run/meta.json")).toBe("force-cache");
+  });
+
+  test("skipNextDataCache uses no-store so oversized Blob JSON is not copied into Next Data Cache", async () => {
+    routes = { "/search/index.json": { json: { ok: true, tag: "search" } } };
+    await readView("search/index.json", Doc, { skipNextDataCache: true });
+    expect(fetchInits.at(-1)?.cache).toBe("no-store");
   });
 
   test("resolves every canonical read through the published bootstrap generation", async () => {
