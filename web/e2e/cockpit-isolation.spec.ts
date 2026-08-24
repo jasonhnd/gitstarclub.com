@@ -1,0 +1,38 @@
+import { expect, test } from "@playwright/test";
+
+const PRIMARY_NAV = ["Pulse", "Rankings", "Categories", "Compare", "About"] as const;
+
+test("/cockpit is isolated from the live reading surfaces", async ({ page }) => {
+  const response = await page.goto("/cockpit", { waitUntil: "domcontentloaded" });
+  expect(response?.status()).toBe(200);
+  await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute("content", /noindex/i);
+
+  const nav = page.getByRole("navigation", { name: "Primary" });
+  for (const label of PRIMARY_NAV) {
+    await expect(nav.getByRole("link", { name: label, exact: true })).toBeVisible();
+  }
+  await expect(nav.getByRole("link", { name: "Cockpit", exact: true })).toHaveCount(0);
+
+  await expect(page.getByTestId("cockpit-timeline")).toBeVisible();
+  await expect(page.getByTestId("cockpit-month")).toHaveText("2026-08");
+
+  const rail = page.getByTestId("cockpit-timeline");
+  await rail.focus();
+  await rail.press("Home");
+  await expect(page.getByTestId("cockpit-month")).not.toHaveText("2026-08");
+  await rail.press("End");
+  await expect(page.getByTestId("cockpit-month")).toHaveText("2026-08");
+});
+
+test("/pulse does not download a three.js chunk", async ({ page }) => {
+  const threeRequests: string[] = [];
+  page.on("request", (request) => {
+    if (/three/i.test(request.url()) && !request.url().includes("mrdoob")) {
+      threeRequests.push(request.url());
+    }
+  });
+
+  const response = await page.goto("/pulse", { waitUntil: "networkidle" });
+  expect(response?.status()).toBe(200);
+  expect(threeRequests).toEqual([]);
+});
