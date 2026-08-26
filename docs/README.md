@@ -40,7 +40,7 @@ This section is the authoritative newcomer reading order. Update it when adding,
 16. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting.
 17. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
-Supporting docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [DATA-EXPORTS.md](./DATA-EXPORTS.md) for public export files; [I18N.md](./I18N.md) for the shipped locale URL architecture decision record.
+Supporting docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [COCKPIT.md](./COCKPIT.md) for the unshipped Cockpit content contract and pre spike; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [DATA-EXPORTS.md](./DATA-EXPORTS.md) for public export files; [I18N.md](./I18N.md) for the shipped locale URL architecture decision record.
 
 Status and history: [CHANGELOG.md](./CHANGELOG.md). Open work and architectural decisions: [ROADMAP.md](./ROADMAP.md).
 
@@ -95,6 +95,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | OPS | Branch topology / staging, deploy / rollback / cron / workflow runbooks, Blob layout, env vars, alerting, failure modes |
 | TESTING | Test pyramid, contract tests, recompute parity, validation invariants, smoke tests |
 | PRODUCT | Product framing: identity, page surfaces, tone, data-honesty posture, i18n posture |
+| COCKPIT | Unshipped Cockpit content contract and pre-only `/cockpit` spike |
 | CATEGORIES | Category taxonomy, deterministic classification rules, category data artifacts, category route rollout |
 | INFORMATION-ARCHITECTURE | UX navigation narrative (reader's map); the authoritative route/source table is in UIUX-ROUTE-INVENTORY |
 | DATA-EXPORTS | Public data export files, regeneration commands, license, and attribution |
@@ -129,6 +130,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Color tokens / design vocabulary | DESIGN-SYSTEM |
 | Ranking algorithms (seam, stock anchoring, derived rankings) | RANKING |
 | Repo identity / rename → redirect posture | PRODUCT (§Repo 身份与改名) |
+| Cockpit content / timeline / radar spike | [COCKPIT.md](./COCKPIT.md) |
 | Code module map / module ownership | CODEBASE |
 | Issue workflow / PR gates / visual guardrails | WORKFLOW |
 | Development change playbooks | DEVELOPMENT |
