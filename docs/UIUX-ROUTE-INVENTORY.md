@@ -1,7 +1,7 @@
 ---
 owner: frontend / docs
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-08-22
 source_of_truth_for:
   - route and source inventory
 ---
@@ -38,6 +38,7 @@ redirects it to the unprefixed URL.
 | Compare | `/compare` with optional client state `?repos={owner/name,...}` | `/compare?repos=facebook/react,vuejs/vue` | `web/app/(en)/compare/page.tsx`, `web/app/(localized)/[locale]/compare/page.tsx`, `web/app/_localized/compare.tsx`, `web/app/compare/CompareClient.tsx` | Static shell (`dynamic="force-static"`, `revalidate=false`) | `/{locale}/compare`; query state is preserved client-side | Yes for `/compare` only; query combinations are not enumerated | Server: `getMeta()`, `getRepoIdByFullName()`, `getRepoCurve()` for curated pairs. Client: `/search-index` and `/repo-curve?id={id}` |
 | About | `/about` | `/about` | `web/app/(en)/about/page.tsx`, `web/app/(localized)/[locale]/about/page.tsx`, `web/app/_localized/about.tsx` | Static (`revalidate=false`) | `/{locale}/about` | Yes, `/about` in `web/lib/sitemap.ts` | `getMeta()` plus static dictionary copy and public export links; Blob view `meta.json` |
 | Privacy | `/privacy` | `/privacy` | `web/app/(en)/privacy/page.tsx`, `web/app/(localized)/[locale]/privacy/page.tsx`, `web/app/_localized/privacy.tsx` | Static (`revalidate=false`) | `/{locale}/privacy` | No, `web/lib/sitemap.ts` does not include `/privacy` | Static dictionary copy only |
+| Cockpit spike (pre) | `/cockpit` | `/cockpit` | `web/app/(en)/cockpit/page.tsx`, `web/app/(en)/cockpit/CockpitClient.tsx`, `web/lib/cockpit/**` | Static (`dynamic="force-static"`, `revalidate=false`); client island for the timeline/radar | English only in this spike; `/{locale}/cockpit` is not implemented | **No.** Hard `robots: noindex`. Not in `web/lib/sitemap.ts`. Not in chrome nav | Posed in-repo frames (`web/lib/cockpit/posed-frames.ts`). No Blob / rank / entity reads |
 
 ## Public Endpoints And Metadata Routes
 
