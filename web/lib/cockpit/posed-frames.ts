@@ -200,6 +200,78 @@ export function nodeById(id: string): PosedNode {
   return found;
 }
 
+export type MotionWindow = "week" | "month" | "year";
+
+export const DOMAIN_LEGEND: ReadonlyArray<{ id: Exclude<DomainGroup, "other">; label: string }> = [
+  { id: "ai", label: "AI / ML" },
+  { id: "devtools", label: "Dev Tools" },
+  { id: "database", label: "Database" },
+  { id: "infra", label: "Infra" },
+  { id: "web", label: "Web" },
+];
+
+export function windowDelta(node: PosedNode, at: number, motion: MotionWindow): number {
+  const asOf = monthIndex(AS_OF);
+  const monthFlow = at === asOf ? (THIS_MONTH_DELTAS[node.id] ?? flowAt(node, at)) : flowAt(node, at);
+  if (motion === "month") return monthFlow;
+  if (motion === "week") return Math.round(monthFlow / 4);
+  const yearAgo = Math.max(node.born, at - 12);
+  return stockAt(node, at) - stockAt(node, yearAgo);
+}
+
+export function previousWindowDelta(node: PosedNode, at: number, motion: MotionWindow): number {
+  if (at <= 0) return 0;
+  if (motion === "year") {
+    const end = Math.max(node.born, at - 12);
+    const start = Math.max(node.born, at - 24);
+    return stockAt(node, end) - stockAt(node, start);
+  }
+  return windowDelta(node, at - 1, motion);
+}
+
+export function sparkValues(node: PosedNode, at: number, steps = 4): number[] {
+  const start = Math.max(node.born, at - (steps - 1));
+  return Array.from({ length: steps }, (_, i) => stockAt(node, Math.min(at, start + i)));
+}
+
+export function isClimbing(node: PosedNode, at: number): boolean {
+  if (at < 2) return false;
+  return flowAt(node, at) > 0 && flowAt(node, at - 1) > 0 && flowAt(node, at - 2) > 0;
+}
+
+export function isFaster(node: PosedNode, at: number, motion: MotionWindow): boolean {
+  return windowDelta(node, at, motion) > 0 && windowDelta(node, at, motion) > previousWindowDelta(node, at, motion);
+}
+
+const CATEGORY_PLACE: Record<string, readonly [number, number]> = {
+  "huggingface/transformers": [2, 4],
+  "langchain-ai/langchain": [4, 6],
+  "ollama/ollama": [3, 8],
+  "facebook/react": [1, 1],
+  "vuejs/vue": [2, 3],
+  "kubernetes/kubernetes": [1, 1],
+  "rust-lang/rust": [1, 2],
+};
+
+export function inCategory(node: PosedNode): { label: string; rank: number; prev: number } | null {
+  const legend = DOMAIN_LEGEND.find((item) => item.id === node.domain);
+  const place = CATEGORY_PLACE[node.id];
+  if (!legend || !place) return null;
+  return { label: `In ${legend.label}`, rank: place[0], prev: place[1] };
+}
+
+export function nearbyOf(id: string): string[] {
+  const node = nodeById(id);
+  const labeled = NODES.filter((item) => item.label && item.id !== id);
+  const same = labeled.filter((item) => item.domain === node.domain);
+  const rest = labeled.filter((item) => item.domain !== node.domain);
+  return [...same, ...rest].slice(0, 3).map((item) => item.id);
+}
+
+export function isTrackedRepo(id: string): boolean {
+  return id.includes("/") && !id.startsWith("posed/");
+}
+
 function node(
   id: string,
   label: string,

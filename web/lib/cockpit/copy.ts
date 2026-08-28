@@ -22,6 +22,11 @@ export const COPY = {
   radar: "Open source this month",
   timeline: "Star history timeline",
   playhead: "Timeline playhead",
+  search: "Find a repository",
+  searchHint: "Search tracked repositories",
+  empty: "—",
+  climbing: "3rd month climbing",
+  stars: "stars",
 } as const;
 
 export const FORBIDDEN_GLASS_TERMS = [
