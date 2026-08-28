@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeAll } from "bun:test";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "../i18n";
 import { localizedPath, stripLocale, toHreflang } from "../i18n/routing";
-import { vercelProtectionBypassHeaders } from "../vercel-protection-bypass";
+import { fetchWithVercelProtectionBypass, vercelProtectionBypassHeaders } from "../vercel-protection-bypass";
 
 // Live SEO acceptance test (fetch-only, no browser) for the production site.
 //
@@ -67,24 +67,10 @@ const SEO_FETCH_HEADERS = {
 };
 
 async function get(path: string): Promise<Fetched> {
-  const res = await fetch(`${BASE}${path}`, {
-    redirect: "manual",
+  const res = await fetchWithVercelProtectionBypass(`${BASE}${path}`, {
     headers: SEO_FETCH_HEADERS,
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
-  // A canonicalization redirect (www -> apex, trailing slash, etc.) still resolves to the same
-  // page; follow it once so we assert on the real document rather than a 3xx shell.
-  if (res.status >= 300 && res.status < 400) {
-    const loc = res.headers.get("location");
-    if (loc) {
-      const next = await fetch(loc.startsWith("http") ? loc : `${BASE}${loc}`, {
-        redirect: "follow",
-        headers: SEO_FETCH_HEADERS,
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-      return { status: next.status, html: await next.text(), contentType: next.headers.get("content-type") ?? "" };
-    }
-  }
   return { status: res.status, html: await res.text(), contentType: res.headers.get("content-type") ?? "" };
 }
 
