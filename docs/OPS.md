@@ -135,6 +135,7 @@ an explicit recovery procedure.
 | `SEO_LIVE_BASE` | 集成测试拉取的活线 origin（默认 `https://www.gitstarclub.com`，留空可跳过测试） | 仅测试 | `https://www.gitstarclub.com` 或空串 | `web/lib/integration/seo.test.ts:23` |
 | `SEO_EXPECT_INDEXABLE` | Live SEO 验收的环境策略（Preview `0`，Production `1`；未设时按 canonical host 推断） | 仅测试 | `0` 或 `1` | `web/lib/integration/seo.test.ts` · `.github/workflows/ci.yml` |
 | `SEO_CANON_ORIGIN` | 集成测试断言的 canonical origin（默认 `https://gitstarclub.com`） | 仅测试 | 绝对 origin（**无尾斜杠**） | `web/lib/integration/seo.test.ts:25` |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | Preview Vercel Authentication 的 CI bypass（`x-vercel-protection-bypass`） | **必需**（GitHub Actions preview-e2e / product-gates） | Vercel Protection Bypass for Automation token | `web/lib/vercel-protection-bypass.ts` · `web/scripts/resolve-vercel-preview.ts`；不进浏览器、不进生产页面 |
 
 平台和开发工具变量也属于受维护清单；它们不应被误当作应用密钥：
 
