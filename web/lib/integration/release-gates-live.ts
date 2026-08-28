@@ -1,4 +1,5 @@
 import { LiveGenerationPointer, SearchIndex } from "@/lib/contracts";
+import { fetchWithVercelProtectionBypass } from "@/lib/vercel-protection-bypass";
 import {
   resolveLiveArtifactFromHistory,
   type LiveArtifactResolution,
@@ -63,10 +64,12 @@ export function liveGatesRequired(env: GateEnv = process.env): boolean {
 async function fetchText(url: string): Promise<{ status: number; text: string }> {
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetchWithVercelProtectionBypass(url, {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      headers: { "user-agent": "gitstarclub-release-gates", accept: "*/*" },
-      redirect: "follow",
+      headers: {
+        "user-agent": "gitstarclub-release-gates",
+        accept: "*/*",
+      },
       cache: "no-store",
     });
   } catch (error) {

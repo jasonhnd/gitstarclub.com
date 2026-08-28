@@ -24,6 +24,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
+- **Preview deployments require Vercel Authentication.** `ssoProtection` is `preview` only: `pre.gitstarclub.com` and PR preview URLs are login-gated; `gitstarclub.com` stays public. CI uses the automation bypass secret. This stops AI crawlers from billing Fluid duration on public staging.
 - **Track A first pass is complete on `pre`.** A1–A4 children (#363–#376) are closed. Repo/org hubs, category topic entries, Pulse period + board exits, and honest search/citation are the shipped loop. Track C still waits on #383 (2026-09-12).
 - **Production Firewall custom rules are empty.** Four Deny rules (Meta, GoogleOther, GPTBot training, SEO scrapers) were published 2026-08-20 and removed the same day after the operator chose to allow those crawlers. Facebook/WhatsApp link previews work again. The unclassified/tool rate-limit was never published.
 - **Sunday operator signal is per-pipeline health only.** Read `ops/workflows/health/workflow-refresh.json`, not the retired flat `ops/workflows/health.json`. OPS.md now has a one-screen Sunday 06:00 UTC refresh-failure runbook.
@@ -37,6 +38,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Fixed
 
+- **Preview identity reads follow the Vercel bypass cookie.** Protection Bypass 307s with `_vercel_jwt`; CI fetch now replays that cookie so `preview-e2e` and `product-gates` can resolve `/.well-known/deployment` after Preview was locked.
+- **Static data exports regenerated for 2026-08-28.** `web/public/data/exports/v1/2026-08-28/` refreshes `data_as_of` so `export-manifest-age` stays inside 14 days.
 - **Observability cost: stop re-parsing and re-logging the same view.** `readView` memoizes Zod parse per path+generation and logs each error fingerprint once (later hits increment a counter; workflow end prints a summary). Official lifecycle fields stay on their contracts as optional for old blobs: `active` / `tracked_since` on lookup/search/entity/canonical repos; `active_repo_count` / `historical_repo_count` on `Meta` only — not on `CanonicalMeta`, and not via `.passthrough()`.
 - **Live `current_month` no longer exceeds the 2MB Next.js Data Cache limit.** Cron now publishes a small index plus 32 repo shards (`current_month/shards/<id%32>.json`). Readers still accept the legacy monolith. `/search-index` skips Next Data Cache and relies on the Blob/CDN `s-maxage` response. Sunday daily live refresh is skipped so weekly owns that day's `live/latest.json` write; health CAS uses exponential backoff with jitter instead of spinning.
 - **Sunday weekly live refresh no longer fences itself on a stale pointer read.** Publish fences with the Blob API `head()` etag captured at lease acquire, not a public GET of `live/latest.json`. Release with that same etag can clear a CDN-stale body so the lease does not sit until expiry. The public pointer is CDN-cached (query strings do not bust a path key; `useCache: false` is private-only). Weekly reuse publishes in 1–2s and otherwise re-read `lease: null`. Pointer writes use `max-age=0`. Page readers still memoize generation for 60s.
