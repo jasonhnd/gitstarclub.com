@@ -57,7 +57,7 @@ describe("fetchWithVercelProtectionBypass", () => {
         commitSha: "deadbeef",
         deploymentUrl: "https://example.vercel.app",
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     try {
       const response = await fetchWithVercelProtectionBypass(
@@ -87,7 +87,7 @@ describe("fetchWithVercelProtectionBypass", () => {
         status: 302,
         headers: { Location: "https://vercel.com/sso?url=https://preview.example" },
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     try {
       const response = await fetchWithVercelProtectionBypass("https://preview.example/");
