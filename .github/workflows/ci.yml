@@ -165,6 +165,8 @@ jobs:
     timeout-minutes: 40
     env:
       IDENTITY_ORIGIN: ${{ github.event_name == 'push' && (github.ref_name == 'main' && 'https://gitstarclub.com' || 'https://pre.gitstarclub.com') || '' }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
     defaults:
       run:
         working-directory: web
@@ -241,6 +243,7 @@ jobs:
     timeout-minutes: 15
     env:
       IDENTITY_ORIGIN: ${{ github.event_name == 'push' && (github.ref_name == 'main' && 'https://gitstarclub.com' || 'https://pre.gitstarclub.com') || '' }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
     defaults:
       run:
         working-directory: web

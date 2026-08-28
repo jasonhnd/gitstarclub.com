@@ -1,6 +1,7 @@
 import { test, expect, describe, beforeAll } from "bun:test";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "../i18n";
 import { localizedPath, stripLocale, toHreflang } from "../i18n/routing";
+import { vercelProtectionBypassHeaders } from "../vercel-protection-bypass";
 
 // Live SEO acceptance test (fetch-only, no browser) for the production site.
 //
@@ -59,10 +60,16 @@ function expectedIndexable(): boolean {
   return liveHost === canonicalHost;
 }
 
+const SEO_FETCH_HEADERS = {
+  accept: "text/html,application/xhtml+xml",
+  "user-agent": "gitstarclub-seo-acceptance/1.0",
+  ...vercelProtectionBypassHeaders(),
+};
+
 async function get(path: string): Promise<Fetched> {
   const res = await fetch(`${BASE}${path}`, {
     redirect: "manual",
-    headers: { accept: "text/html,application/xhtml+xml", "user-agent": "gitstarclub-seo-acceptance/1.0" },
+    headers: SEO_FETCH_HEADERS,
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   // A canonicalization redirect (www -> apex, trailing slash, etc.) still resolves to the same
@@ -72,7 +79,7 @@ async function get(path: string): Promise<Fetched> {
     if (loc) {
       const next = await fetch(loc.startsWith("http") ? loc : `${BASE}${loc}`, {
         redirect: "follow",
-        headers: { accept: "text/html,application/xhtml+xml", "user-agent": "gitstarclub-seo-acceptance/1.0" },
+        headers: SEO_FETCH_HEADERS,
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       return { status: next.status, html: await next.text(), contentType: next.headers.get("content-type") ?? "" };

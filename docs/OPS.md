@@ -61,11 +61,14 @@ content="noindex,nofollow">` and `robots.txt` returns `User-Agent: *` with
 `Disallow: /`. Preview still reads production Blob data because `BLOB_*`
 variables are set for Preview.
 
-Access: `pre` is currently public. Project-level Vercel Authentication /
-`ssoProtection` was disabled on 2026-07-02, so Preview deployments are publicly
-reachable but remain noindex. Production is unaffected. If staging must become
-private again, re-enable Vercel Authentication and issue a
-Protection-Bypass-for-Automation token for curl, CI, or other automated checks.
+Access: Preview is locked. Project-level Vercel Authentication
+(`ssoProtection.deploymentType=preview`) was re-enabled 2026-08-28 so
+`pre.gitstarclub.com`, PR `*.vercel.app` URLs, and leftover preview deployments
+require a Vercel team login. Production domains (`gitstarclub.com` /
+`www.gitstarclub.com`) stay public. CI uses the existing Protection Bypass for
+Automation secret (`VERCEL_AUTOMATION_BYPASS_SECRET` / header
+`x-vercel-protection-bypass`) to read identity and run preview-e2e. Humans open
+staging while logged into Vercel.
 
 Development flow: feature work targets `pre` through PRs into `pre`. Verify the
 merged Preview deployment at `https://pre.gitstarclub.com`. Promotion to

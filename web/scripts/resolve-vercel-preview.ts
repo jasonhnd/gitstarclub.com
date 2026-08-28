@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 
 import { appendFileSync } from "node:fs";
+import { vercelProtectionBypassHeaders } from "../lib/vercel-protection-bypass";
 
 interface CheckRun {
   app: { slug: string } | null;
@@ -114,7 +115,7 @@ export function extractVercelPreviewHost(summary: string | null | undefined): st
 async function readIdentity(baseUrl: string): Promise<DeploymentIdentity | null> {
   try {
     const response = await fetch(`${baseUrl}/.well-known/deployment`, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", ...vercelProtectionBypassHeaders() },
       redirect: "follow",
       signal: AbortSignal.timeout(15_000),
     });
