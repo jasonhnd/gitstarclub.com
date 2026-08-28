@@ -19,6 +19,11 @@ if (import.meta.main) await main();
 async function main(): Promise<void> {
   const expectedSha = required("EXPECTED_SHA");
   const outputPath = required("GITHUB_OUTPUT");
+  if (!process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()) {
+    throw new Error(
+      "VERCEL_AUTOMATION_BYPASS_SECRET is required to read Preview identity after Vercel Authentication was enabled",
+    );
+  }
   const discovery = selectDiscoveryMode(process.env.IDENTITY_ORIGIN);
   const checkRunDiscovery =
     discovery.kind === "check-run"
@@ -45,6 +50,7 @@ async function main(): Promise<void> {
     }
 
     if (identityOrigin) {
+      if (attempt === 1) console.log(`Probing identity at ${identityOrigin}`);
       const aliasIdentity = await readIdentity(identityOrigin);
       lastObservedSha = aliasIdentity?.commitSha ?? lastObservedSha;
 
@@ -114,11 +120,27 @@ export function extractVercelPreviewHost(summary: string | null | undefined): st
 
 async function readIdentity(baseUrl: string): Promise<DeploymentIdentity | null> {
   try {
-    const response = await fetch(`${baseUrl}/.well-known/deployment`, {
+    const url = new URL("/.well-known/deployment", `${baseUrl.replace(/\/+$/, "")}/`);
+    const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+    if (bypass) url.searchParams.set("x-vercel-protection-bypass", bypass);
+    const response = await fetch(url, {
       headers: { Accept: "application/json", ...vercelProtectionBypassHeaders() },
-      redirect: "follow",
+      redirect: "manual",
       signal: AbortSignal.timeout(15_000),
     });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location") ?? "";
+      if (/vercel\.com\/sso/i.test(location)) return null;
+      const next = new URL(location, url);
+      if (bypass) next.searchParams.set("x-vercel-protection-bypass", bypass);
+      const followed = await fetch(next, {
+        headers: { Accept: "application/json", ...vercelProtectionBypassHeaders() },
+        redirect: "follow",
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!followed.ok) return null;
+      return (await followed.json()) as DeploymentIdentity;
+    }
     if (!response.ok) return null;
     return (await response.json()) as DeploymentIdentity;
   } catch {
