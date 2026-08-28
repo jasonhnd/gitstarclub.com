@@ -9,10 +9,17 @@ import {
   flowAt,
   formatDelta,
   formatStars,
+  inCategory,
+  isClimbing,
+  isFaster,
+  isTrackedRepo,
   lerpStock,
   monthIndex,
+  nearbyOf,
   nodeById,
+  sparkValues,
   stockAt,
+  windowDelta,
 } from "./posed-frames";
 
 describe("posed cockpit frames", () => {
@@ -71,5 +78,45 @@ describe("posed cockpit frames", () => {
     expect(formatStars(164_100)).toBe("164.1k");
     expect(formatStars(900)).toBe("900");
     expect(formatDelta(9_200)).toBe("+9.2k");
+  });
+
+  test("windowDelta uses posed this-month figures only at as-of", () => {
+    const node = nodeById("huggingface/transformers");
+    const asOf = monthIndex(AS_OF);
+    expect(windowDelta(node, asOf, "month")).toBe(9_200);
+    expect(windowDelta(node, asOf, "week")).toBe(2_300);
+    expect(windowDelta(node, asOf, "year")).toBe(stockAt(node, asOf) - stockAt(node, asOf - 12));
+    expect(windowDelta(node, monthIndex("2021-06"), "month")).toBe(flowAt(node, monthIndex("2021-06")));
+  });
+
+  test("sparkValues walks the last four monthly stocks", () => {
+    const node = nodeById("huggingface/transformers");
+    const asOf = monthIndex(AS_OF);
+    const values = sparkValues(node, asOf);
+    expect(values).toHaveLength(4);
+    expect(values.at(-1)).toBe(164_100);
+    expect(values[0]).toBe(stockAt(node, asOf - 3));
+  });
+
+  test("isClimbing is three consecutive positive months", () => {
+    const node = nodeById("huggingface/transformers");
+    expect(isClimbing(node, monthIndex(AS_OF))).toBe(true);
+    expect(isClimbing(node, node.born)).toBe(false);
+  });
+
+  test("nearby peers are labeled posed nodes, not invented names", () => {
+    const nearby = nearbyOf("huggingface/transformers");
+    expect(nearby).toEqual(["ollama/ollama", "langchain-ai/langchain", "facebook/react"]);
+    for (const id of nearby) {
+      expect(nodeById(id).label).toBeTruthy();
+    }
+  });
+
+  test("category caption follows the domain legend", () => {
+    expect(inCategory(nodeById("huggingface/transformers"))).toEqual({ label: "In AI / ML", rank: 2, prev: 4 });
+    expect(inCategory(nodeById("facebook/react"))).toEqual({ label: "In Web", rank: 1, prev: 1 });
+    expect(isTrackedRepo("huggingface/transformers")).toBe(true);
+    expect(isTrackedRepo("posed/ai-0")).toBe(false);
+    expect(isFaster(nodeById("huggingface/transformers"), monthIndex(AS_OF), "month")).toBe(true);
   });
 });
