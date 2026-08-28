@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 
 import { appendFileSync } from "node:fs";
-import { vercelProtectionBypassHeaders } from "../lib/vercel-protection-bypass";
+import { fetchWithVercelProtectionBypass } from "../lib/vercel-protection-bypass";
 
 interface CheckRun {
   app: { slug: string } | null;
@@ -121,26 +121,10 @@ export function extractVercelPreviewHost(summary: string | null | undefined): st
 async function readIdentity(baseUrl: string): Promise<DeploymentIdentity | null> {
   try {
     const url = new URL("/.well-known/deployment", `${baseUrl.replace(/\/+$/, "")}/`);
-    const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
-    if (bypass) url.searchParams.set("x-vercel-protection-bypass", bypass);
-    const response = await fetch(url, {
-      headers: { Accept: "application/json", ...vercelProtectionBypassHeaders() },
-      redirect: "manual",
+    const response = await fetchWithVercelProtectionBypass(url, {
+      headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(15_000),
     });
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location") ?? "";
-      if (/vercel\.com\/sso/i.test(location)) return null;
-      const next = new URL(location, url);
-      if (bypass) next.searchParams.set("x-vercel-protection-bypass", bypass);
-      const followed = await fetch(next, {
-        headers: { Accept: "application/json", ...vercelProtectionBypassHeaders() },
-        redirect: "follow",
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!followed.ok) return null;
-      return (await followed.json()) as DeploymentIdentity;
-    }
     if (!response.ok) return null;
     return (await response.json()) as DeploymentIdentity;
   } catch {
