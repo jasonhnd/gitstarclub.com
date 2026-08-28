@@ -139,7 +139,7 @@ Preferred production verification sequence:
 
 1. Merge the feature PR into `pre`.
 2. Wait for the fixed staging domain, `https://pre.gitstarclub.com`, to serve the
-   Preview deployment.
+   Preview deployment (Vercel Authentication: log in with a team account).
 3. Verify the affected staging URL or behavior on `pre`.
 4. Promote by merging `pre` into `main`.
 5. Wait for the Vercel production deployment to serve the new HTML or behavior.
