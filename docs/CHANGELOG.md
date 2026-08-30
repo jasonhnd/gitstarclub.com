@@ -38,6 +38,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Fixed
 
+- **Preview/production builds no longer dynamically `readdir` the repo root for data-export JSON-LD.** Dataset pages read the checked-in `public/data/exports/v1` folder through a statically scoped path, so Turbopack does not trace the whole project.
 - **Category assignments no longer exceed the 2MB Next.js Data Cache limit.** Recompute writes a small index plus 32 repo-id shards at `categories/assignments/shards/<id%32>.json`. Readers still accept the v1 monolith. The publish gate checks real UTF-8 JSON byte length; each ISR-cached view must stay under 1.50 MiB. Repo, org, and ranking pages keep daily ISR cache — they are not switched to `no-store`.
 - **Entity stock counts cannot go negative.** `computeRepoWindow` still uses seam-aware `anchor + cumNet`, but published `stock_est` is `max(0, formula)` so `d=0` newcomers and first-period unstars cannot fail `MonthlyPoint` `NonNegativeInt`. Every `RepoEntity` / `OrgEntity` is Zod-parsed before Blob write; validate re-parses the full lookup set, not only the top repo.
 - **Published bootstrap pointer 403s no longer storm origin.** 403/429/5xx retry with exponential backoff and jitter; 403 is never stored as a 404; published reads reuse last-known-good pointer or the managed generation; `unstable_cache` loader failures do not call `load()` again; one structured error is logged per TTL.
