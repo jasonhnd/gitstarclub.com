@@ -62,6 +62,33 @@ export const CategoryAssignments = z.object({
 }).strict();
 export type CategoryAssignments = z.infer<typeof CategoryAssignments>;
 
+/** Number of `categories/assignments/shards/<bucket>.json` files. Same modulus as canonical repo buckets. */
+export const CATEGORY_ASSIGNMENT_SHARD_COUNT = 32;
+export const CATEGORY_ASSIGNMENT_SCHEMA_VERSION = 2;
+
+/** v2 index written at `categories/assignments.json`. Small enough for Next.js Data Cache. */
+export const CategoryAssignmentsIndex = z.object({
+  schema_version: z.literal(CATEGORY_ASSIGNMENT_SCHEMA_VERSION),
+  rules_version: SafeText,
+  generated_at: TimestampStr,
+  shard_count: z.literal(CATEGORY_ASSIGNMENT_SHARD_COUNT),
+}).strict();
+export type CategoryAssignmentsIndex = z.infer<typeof CategoryAssignmentsIndex>;
+
+/** One `categories/assignments/shards/<bucket>.json` file. `bucket` = repo id % 32. */
+export const CategoryAssignmentsShard = z.object({
+  schema_version: z.literal(CATEGORY_ASSIGNMENT_SCHEMA_VERSION),
+  bucket: z.number().int().min(0).max(CATEGORY_ASSIGNMENT_SHARD_COUNT - 1),
+  rules_version: SafeText,
+  generated_at: TimestampStr,
+  repositories: z.record(z.string(), RepositoryCategoryAssignment),
+}).strict();
+export type CategoryAssignmentsShard = z.infer<typeof CategoryAssignmentsShard>;
+
+/** On-disk `categories/assignments.json`: legacy full document or v2 index. */
+export const CategoryAssignmentsDocument = z.union([CategoryAssignmentsIndex, CategoryAssignments]);
+export type CategoryAssignmentsDocument = z.infer<typeof CategoryAssignmentsDocument>;
+
 export const CategoriesLookup = z.object({
   rules_version: SafeText,
   generated_at: TimestampStr,

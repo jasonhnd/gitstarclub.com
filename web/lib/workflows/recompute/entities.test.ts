@@ -20,6 +20,7 @@ function syntheticModel(): ReturnType<typeof buildModel> {
       },
       "30": {
         id: 30, owner: "alpha", owner_type: "Organization", name: "two", full_name: "alpha/two",
+        created_at: "2021-02-01T00:00:00Z",
         current_stars: 60, d: 1,
       },
     },
@@ -229,7 +230,7 @@ describe("repoEntities — inflections (v0.2 §3)", () => {
 
   test("a breakout month surfaces as a peak inflection on the entity", () => {
     const raw = {
-      repos: { "5": { id: 5, owner: "x", owner_type: "User", name: "r", full_name: "x/r", current_stars: 3300, d: 1 } },
+      repos: { "5": { id: 5, owner: "x", owner_type: "User", name: "r", full_name: "x/r", created_at: "2019-01-01T00:00:00Z", current_stars: 3300, d: 1 } },
       monthly: { "5": [["2020-01", 100], ["2020-02", 100], ["2020-03", 100], ["2020-04", 3000]] },
       weekly: { "5": [] },
       recentDaily: {},
@@ -241,13 +242,47 @@ describe("repoEntities — inflections (v0.2 §3)", () => {
   });
 });
 
+describe("negative stock is clamped before RepoEntity/OrgEntity parse", () => {
+  test("d=0 newcomer first-period unstars still produce Zod-valid entities", () => {
+    const model = buildModel(
+      {
+        repos: {
+          "7": {
+            id: 7,
+            owner: "astrid-runtime",
+            owner_type: "Organization",
+            name: "runtime",
+            full_name: "astrid-runtime/runtime",
+            created_at: "2026-06-01T00:00:00Z",
+            current_stars: 4,
+            d: 0,
+            tracked_since: "2026-06-01",
+          },
+        },
+        monthly: { "7": [["2026-06", -8], ["2026-07", 12]] },
+        weekly: { "7": [] },
+        recentDaily: {},
+        siteDailyByYear: {},
+      } as unknown as RawShards,
+      "2026-05-30",
+    );
+    const month = computeRepoWindow(model, "month");
+    const { views: repoViews } = repoEntities(model, month);
+    const { views: orgViews } = orgEntities(model, computeOrgWindow(model, month, { activeOnly: true }));
+    const repo = repoViews.get("entity/repo/7.json")!;
+    const org = orgViews.get("entity/org/astrid-runtime.json")!;
+    expect(repo.curve.monthly.map((point) => point[2])).toEqual([0, 4]);
+    expect(org.curve.monthly.map((point) => point[2]).every((stock) => stock >= 0)).toBe(true);
+  });
+});
+
 describe("historical retention", () => {
   test("keeps inactive repositories in reader views while excluding them from current org aggregates", () => {
     const model = buildModel(
       {
         repos: {
-          "1": { id: 1, owner: "active", owner_type: "Organization", name: "one", full_name: "active/one", current_stars: 20_000, active: true, tracked_since: "2026-07-17", d: 1 },
-          "2": { id: 2, owner: "history", owner_type: "Organization", name: "two", full_name: "history/two", current_stars: 19_000, active: false, tracked_since: "2026-06-01", d: 1 },
+          "1": { id: 1, owner: "active", owner_type: "Organization", name: "one", full_name: "active/one", created_at: "2020-01-01T00:00:00Z", current_stars: 20_000, active: true, tracked_since: "2026-07-17", d: 1 },
+          "2": { id: 2, owner: "history", owner_type: "Organization", name: "two", full_name: "history/two", created_at: "2020-01-01T00:00:00Z", current_stars: 19_000, active: false, tracked_since: "2026-06-01", d: 1 },
         },
         monthly: { "1": [], "2": [] },
         weekly: { "1": [], "2": [] },
