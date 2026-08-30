@@ -13,6 +13,7 @@ import {
 } from "@/lib/categories/rules";
 import { CATEGORY_RANK_PAGE_SIZE, categoryAllTimeRankPath } from "@/lib/categories/rank-pages";
 import type { CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts/categories";
+import { categoryAssignmentsPublicationArtifacts } from "@/lib/data/category-assignment-shards";
 import type { Model, Period } from "./model";
 
 const DIMENSION_LABELS: Record<CategoryDimension, string> = {
@@ -212,7 +213,9 @@ export function computeCategoryViews(model: Model, generatedAt: string): Map<str
   const { registry, publicCategories } = buildRegistry(generatedAt, assignments);
 
   views.set("categories/registry.json", registry);
-  views.set("categories/assignments.json", assignments.payload);
+  for (const { path, data } of categoryAssignmentsPublicationArtifacts(assignments.payload)) {
+    views.set(path, data);
+  }
   views.set("lookup/categories.json", buildCategoriesLookup(registry));
 
   for (const category of publicCategories) {

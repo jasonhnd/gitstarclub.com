@@ -55,6 +55,8 @@ export function shouldIgnorePath(pathname: string): boolean {
   if (STATIC_ROOT_FILES.has(pathname)) return true;
   if (pathname === "/search-index" || pathname.startsWith("/search-index/")) return true;
   if (pathname === "/repo-curve" || pathname.startsWith("/repo-curve/")) return true;
+  // English-only pre spike. Do not send cookie locales to /zh/cockpit (no localized route).
+  if (pathname === "/cockpit" || pathname.startsWith("/cockpit/")) return true;
   if (
     pathname.startsWith("/_next/") ||
     pathname === "/api" ||

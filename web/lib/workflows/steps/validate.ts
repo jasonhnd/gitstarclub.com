@@ -5,6 +5,8 @@ import {
   AliasMap,
   CategoriesLookup,
   CategoryAssignments,
+  CategoryAssignmentsDocument,
+  CategoryAssignmentsShard,
   CategoryRankList,
   CategoryRegistry,
   Heatmap,
@@ -17,8 +19,15 @@ import {
   WhitelistSnapshot,
   WorkflowValidation,
 } from "@/lib/contracts";
+import {
+  assembleCategoryAssignments,
+  categoryAssignmentsShardPath,
+  isCategoryAssignmentsIndex,
+} from "@/lib/data/category-assignment-shards";
+import { assertPublishedViewJsonSize } from "@/lib/view-size";
 import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
 import { putOwnedView } from "@/lib/workflows/owned-write";
+import { validateGeneratedEntities } from "./validate-entities";
 import {
   validateAliases,
   validateAllTimeRanks,
@@ -125,7 +134,7 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   mergeValidationReport({ invariants, failures }, validateSearchIndex(search, MIN_LOOKUP));
 
   const categoryRegistry = await read("categories/registry.json", CategoryRegistry);
-  const categoryAssignments = await read("categories/assignments.json", CategoryAssignments);
+  const categoryAssignments = await readCategoryAssignments(read, failures);
   const categoriesLookup = await read("lookup/categories.json", CategoriesLookup);
   const categoryReport = validateCategories({ categoryAssignments, categoryRegistry, categoriesLookup, minLookup: MIN_LOOKUP });
   mergeValidationReport({ invariants, failures }, categoryReport);
@@ -161,6 +170,9 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
     }
   }
 
+  const entityReport = await validateGeneratedEntities(read, lookup, orgLookup);
+  Object.assign(invariants, entityReport.invariants);
+
   // a heatmap year that must exist (prior calendar year is always complete).
   const lastYear = String(new Date().getUTCFullYear() - 1);
   await read(`heatmap/year/${lastYear}.json`, Heatmap);
@@ -177,4 +189,39 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
 function mergeValidationReport(target: ValidationInvariantReport, report: ValidationInvariantReport) {
   Object.assign(target.invariants, report.invariants);
   target.failures.push(...report.failures);
+}
+
+async function readCategoryAssignments(
+  read: <T>(rel: string, schema: Parameters<typeof readAuthoritativeView<T>>[1]) => Promise<T | null>,
+  failures: string[],
+): Promise<CategoryAssignments | null> {
+  const document = await read("categories/assignments.json", CategoryAssignmentsDocument);
+  if (document === null) return null;
+  try {
+    assertPublishedViewJsonSize("categories/assignments.json", document);
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error));
+  }
+  if (!isCategoryAssignmentsIndex(document)) return CategoryAssignments.parse(document);
+
+  const shards = await Promise.all(
+    Array.from({ length: document.shard_count }, (_, bucket) =>
+      read(categoryAssignmentsShardPath(bucket), CategoryAssignmentsShard),
+    ),
+  );
+  const missing = shards.flatMap((shard, bucket) => (shard === null ? [bucket] : []));
+  if (missing.length > 0) {
+    failures.push(`categories/assignments missing shard bucket(s) ${missing.join(",")}`);
+    return null;
+  }
+  const present = shards.map((shard, bucket) => {
+    if (shard === null) throw new Error(`categories/assignments shard ${bucket} disappeared after presence check`);
+    try {
+      assertPublishedViewJsonSize(categoryAssignmentsShardPath(bucket), shard);
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+    return shard;
+  });
+  return assembleCategoryAssignments(document, present);
 }

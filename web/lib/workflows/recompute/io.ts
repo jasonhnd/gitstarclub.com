@@ -1,5 +1,12 @@
 import { put } from "@vercel/blob";
+import {
+  CategoryAssignmentsDocument,
+  CategoryAssignmentsShard,
+  OrgEntity,
+  RepoEntity,
+} from "@/lib/contracts";
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
+import { assertPublishedViewJsonSize } from "@/lib/view-size";
 import {
   CanonicalMeta,
   ReposShard,
@@ -100,7 +107,10 @@ export async function writeVersion(runId: string, views: Map<string, unknown>, o
       const [rel, obj] = items[i++];
       await heartbeat();
       await gate();
-      await put(`views/${runId}/${rel}`, JSON.stringify(obj), {
+      assertGeneratedView(rel, obj);
+      const payload = JSON.stringify(obj);
+      assertPublishedViewJsonSize(rel, payload);
+      await put(`views/${runId}/${rel}`, payload, {
         access: "public",
         token,
         allowOverwrite: true,
@@ -112,4 +122,21 @@ export async function writeVersion(runId: string, views: Map<string, unknown>, o
   }
   await Promise.all(Array.from({ length: WRITE_CONCURRENCY }, worker));
   return items.length;
+}
+
+function assertGeneratedView(rel: string, obj: unknown): void {
+  const schema = rel.startsWith("entity/repo/")
+    ? RepoEntity
+    : rel.startsWith("entity/org/")
+      ? OrgEntity
+      : rel === "categories/assignments.json"
+        ? CategoryAssignmentsDocument
+        : /^categories\/assignments\/shards\/\d+\.json$/.test(rel)
+          ? CategoryAssignmentsShard
+          : null;
+  if (!schema) return;
+  const parsed = schema.safeParse(obj);
+  if (!parsed.success) {
+    throw new Error(`${rel}: schema — ${parsed.error.message}`);
+  }
 }

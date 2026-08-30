@@ -1,7 +1,7 @@
 ---
 owner: frontend
 status: active
-last_reviewed: 2026-08-24
+last_reviewed: 2026-08-30
 source_of_truth_for:
   - rendering strategy
   - component catalog
@@ -264,6 +264,8 @@ export const getRepoEntity = cache(async (id: number) => {
 
 - **运行时只 `fetch` + `parse`**——不聚合、不带引擎（[ARCHITECTURE](./ARCHITECTURE.md) 渲染策略）。
 - **未知 param → `notFound()`**（404，禁软 200，见 [SEO](./SEO.md) §3.2）。`[owner]/[name]/page.tsx` 先 `getRepoIdByFullName()` 查 id；查不到再查 `lookup/aliases.json`（`getAliasMap`），命中改名别名则 `permanentRedirect`（308）到当前 `full_name`；仍无则 `notFound()`，再 `getRepoEntity(id)`、为空再 `notFound()`。
+- **`categories/assignments`**：新 generation 是 index + 32 个 repo-id 分片。`getCategoryAssignments()` 组装后再交给 repo/org/ranking 页。ISR 保持 `force-cache` / daily revalidate，禁止 `no-store`。已发布的 v1 单体仍可读。
+- **`bootstrap/latest.json`**：页面读到 403/429/5xx 时 bounded retry + jitter，不把 403 当成 404。失败则用 last-known-good pointer 或 managed `views/latest.json`。同一 TTL 内只记一次结构化错误。
 
 ### 3.3 每页读哪些视图（页面 ↔ JSON 契约映射）
 

@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 
 import { appendFileSync } from "node:fs";
+import { fetchWithVercelProtectionBypass } from "../lib/vercel-protection-bypass";
 
 interface CheckRun {
   app: { slug: string } | null;
@@ -18,6 +19,11 @@ if (import.meta.main) await main();
 async function main(): Promise<void> {
   const expectedSha = required("EXPECTED_SHA");
   const outputPath = required("GITHUB_OUTPUT");
+  if (!process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()) {
+    throw new Error(
+      "VERCEL_AUTOMATION_BYPASS_SECRET is required to read Preview identity after Vercel Authentication was enabled",
+    );
+  }
   const discovery = selectDiscoveryMode(process.env.IDENTITY_ORIGIN);
   const checkRunDiscovery =
     discovery.kind === "check-run"
@@ -44,6 +50,7 @@ async function main(): Promise<void> {
     }
 
     if (identityOrigin) {
+      if (attempt === 1) console.log(`Probing identity at ${identityOrigin}`);
       const aliasIdentity = await readIdentity(identityOrigin);
       lastObservedSha = aliasIdentity?.commitSha ?? lastObservedSha;
 
@@ -113,9 +120,9 @@ export function extractVercelPreviewHost(summary: string | null | undefined): st
 
 async function readIdentity(baseUrl: string): Promise<DeploymentIdentity | null> {
   try {
-    const response = await fetch(`${baseUrl}/.well-known/deployment`, {
+    const url = new URL("/.well-known/deployment", `${baseUrl.replace(/\/+$/, "")}/`);
+    const response = await fetchWithVercelProtectionBypass(url, {
       headers: { Accept: "application/json" },
-      redirect: "follow",
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) return null;
