@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-08-24
+last_reviewed: 2026-08-30
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -74,6 +74,9 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | Sunday refresh health path (#377 / #379) | Operator signal is only `ops/workflows/health/workflow-refresh.json`; never the retired flat `ops/workflows/health.json` | `web/lib/observability/health.test.ts` | Sunday runbook in [OPS.md](./OPS.md) |
 | View parse-once + Zod fingerprints | Same path+generation is parsed once; unrecognized lifecycle keys are not `.passthrough()`; old and new Meta/lookup/entity shapes both parse | `web/lib/data/parse-view.test.ts`, `web/lib/contracts/contracts.test.ts` | 24h `ZodError` volume drops; no per-request repeat of the same fingerprint |
 | current_month shards under Data Cache limit | Writer emits index + 32 shards; reader accepts v1 monolith and v2 index; Sunday daily does not claim live lease | `web/lib/cron/current-month-shards.test.ts`, `web/lib/cron/live-refresh.test.ts`, `web/lib/cron/handlers.test.ts` | `items over 2MB can not be cached` is 0 after the next live publish |
+| category assignments shards under Data Cache limit | Writer emits index + 32 repo-id shards; reader accepts v1 monolith; publish gate checks UTF-8 JSON byte length < 1.50 MiB; ISR stays cached | `web/lib/data/category-assignment-shards.test.ts`, `web/lib/workflows/recompute/categories.test.ts`, `web/lib/view-size.test.ts` | `items over 2MB can not be cached` is 0 after the next base publish |
+| non-negative entity stock | `computeRepoWindow` clamps published `stock_est` to ≥ 0; every RepoEntity/OrgEntity is Zod-parsed before Blob write and again at publish | `web/lib/workflows/recompute/windows.test.ts`, `web/lib/workflows/recompute/entities.test.ts` | `/o/astrid-runtime` and locale routes return 200; no negative `MonthlyPoint` |
+| bootstrap pointer 403 is not a 404 | Bounded retry + jitter; last-known-good pointer; one structured error per TTL; `unstable_cache` loader failures do not call `load()` again | `web/lib/data/bootstrap-pointer-cache.test.ts` | bootstrap pointer 403 does not form a repeat storm |
 
 本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。
 
@@ -170,10 +173,10 @@ test('周排名窗口跨月不丢日', () => {
 | `canonical/v2/repos/*` `d` 因子 | `d > 2` 仍是 warning；历史 repo 缺少有限 `d` 为硬失败，新晋 repo（有 `tracked_since`）显式按 `d=0` 建模 |
 | `search/index.json` | `count` ≥ 1000 且 `count == repos.length`（防止索引漂移） |
 | `categories/registry.json` | 非空；至少一个 `public` 分类 |
-| `categories/assignments.json` | 条目数 ≥ 1000；每 repo `language`/`language_family` 各 ≥1、`owner_kind` 恰 1；无 unknown 分类引用（assignment 里每个分类 id 在 registry 内） |
+| `categories/assignments.json` | v2 index 或 v1 单体；组装后条目数 ≥ 1000；每 repo `language`/`language_family` 各 ≥1、`owner_kind` 恰 1；无 unknown 分类引用；index + 每个 shard UTF-8 JSON < 1.50 MiB |
 | `lookup/categories.json` | 非空 |
 | 抽样 category-rank | 取首个 public 分类的 `rank/category/<dim>/<slug>/all-time/repo/stock.json`，其每个 item 都已在 assignments 中归入该分类 |
-| 头部 repo entity | 全时榜 #1 的 `entity/repo/<id>.json` 的 `curve.monthly` 非空 |
+| 全量 entity | lookup 内每个 repo/org entity 通过 `RepoEntity` / `OrgEntity`；`stock_est` ≥ 0；头部 repo 的 `curve.monthly` 非空 |
 | 上一年 heatmap | `heatmap/year/<Y-1>.json` 可读、字段齐 |
 
 | 测试 | 在哪跑 | 断言 | 失败动作 |

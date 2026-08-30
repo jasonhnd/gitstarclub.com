@@ -105,7 +105,7 @@ Common contract groups:
 
 - `canonical.ts`: canonical/v2 shard inputs.
 - `entity.ts`: repo/org entity views.
-- `categories.ts`: category registry, assignments, and category ranks.
+- `categories.ts`: category registry, assignment index/shards (v1 monolith still readable), and category ranks.
 - `workflow.ts`: publish pointer, manifests, validation, rename map.
 - `rank`, `lookup`, `search`, `live`, `compare`: read-side view contracts.
 

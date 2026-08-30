@@ -1,7 +1,7 @@
 ---
 owner: data operations / workflows
 status: active
-last_reviewed: 2026-08-24
+last_reviewed: 2026-08-30
 source_of_truth_for:
   - production data lifecycle
   - Vercel Blob publish model
@@ -260,7 +260,8 @@ blob://
 Phase-1 category outputs under `views/<run_id>/`:
 
 - `categories/registry.json`
-- `categories/assignments.json`
+- `categories/assignments.json` (v2 index; v1 monolith is still readable)
+- `categories/assignments/shards/<0..31>.json`
 - `lookup/categories.json`
 - `rank/category/<dimension>/<slug>/all-time/repo/stock.json`
 - `rank/category/<dimension>/<slug>/all-time/repo/stock/page/<page>.json` for page 2+
@@ -466,10 +467,12 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
   - `views/<run_id>/lookup/orgs.json`(契约 `OrgsLookup`)
   - `views/<run_id>/search/index.json`(契约 `SearchIndex`)
   - `views/<run_id>/categories/registry.json`(契约 `CategoryRegistry`)
-  - `views/<run_id>/categories/assignments.json`(契约 `CategoryAssignments`)
+  - `views/<run_id>/categories/assignments.json`(契约 `CategoryAssignmentsDocument`：v2 index 或 v1 单体)
+  - `views/<run_id>/categories/assignments/shards/<bucket>.json`(契约 `CategoryAssignmentsShard`；UTF-8 JSON **< 1.50 MiB**)
   - `views/<run_id>/lookup/categories.json`(契约 `CategoriesLookup`)
   - `views/<run_id>/rank/category/<sample>/all-time/repo/stock.json`(契约 `CategoryRankList`)
-  - `views/<run_id>/entity/repo/<topId>.json`(契约 `RepoEntity`,top repo 抽样)
+  - `views/<run_id>/entity/repo/<id>.json`(契约 `RepoEntity`，lookup 全量；top repo 另抽曲线非空)
+  - `views/<run_id>/entity/org/<login>.json`(契约 `OrgEntity`，lookup 全量)
   - `views/<run_id>/heatmap/year/<lastYear>.json`(契约 `Heatmap`,上一公历年抽样)
 - **Sanity 不变量**(在 schema 校验之外另行 assert,失败即抛错终止 workflow):
   - **`meta.seam_date` 存在**(布尔 truthy);
@@ -481,8 +484,8 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
   - **canonical 完整性**:`repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 全部 bucket 必须存在且通过 schema；repo key 必须等于 row `id` 且落在正确 bucket；三类时间序列不能整体为空，也不能引用 `repos` 之外的 ID；输出 `canonical-manifest.json`（记录数 + SHA-256）；任一缺失或错误阻断发布;
   - **`canonical/v2/repos/*` 的 `d`**:`d > 2` 仅 warning；历史 repo 缺少有限 `d` 为硬失败；带 `tracked_since` 的新晋 repo 明确以 `d=0` 起步;
   - **`search/index.json`**:`count ≥ MIN_LOOKUP`(=1000)、`count === repos.length`，每条显式传播 `active` / `tracked_since`;
-  - **category views**:`registry` 非空且有 public categories;assignments 覆盖 ≥ `MIN_LOOKUP`;`language`/`language_family` 每 repo 至少一个,`owner_kind` 每 repo 单值;assignment 引用都存在于 registry;抽样 category rank 的 repo 都属于该 category;
-  - **top repo entity**:`entity/repo/<allTime.items[0].id>.json` 的 `curve.monthly` 长度 > 0，且显式传播 `active` / `tracked_since`;
+  - **category views**:`registry` 非空且有 public categories;assignments 覆盖 ≥ `MIN_LOOKUP`;`language`/`language_family` 每 repo 至少一个,`owner_kind` 每 repo 单值;assignment 引用都存在于 registry;抽样 category rank 的 repo 都属于该 category;index 与每个 shard 的真实 JSON byte length < 1.50 MiB;
+  - **entities**: recompute 写 Blob 前全量 Zod-parse 每个 `RepoEntity` / `OrgEntity`；validate 再按 lookup 全量读取。`stock_est` 不得为负（不得放宽 `MonthlyPoint`）。top repo 另要求 `curve.monthly` 长度 > 0，且显式传播 `active` / `tracked_since`;
   - **上一公历年 heatmap 存在**:`heatmap/year/<UTCFullYear - 1>.json` 能读到(prior calendar year 总是已收口)。
 - **输出**:`ops/workflows/<run_id>/canonical-manifest.json` + `validation.json`（后者契约 `WorkflowValidation`,含 `run_id` / `ok` / `checked` / `schema_failures` / `invariants` / `failures`）。任一完整性 / sanity 失败 → `failures` 非空 → 抛错;publish step 不会启动,版本前缀留作孤儿待 GC。
 

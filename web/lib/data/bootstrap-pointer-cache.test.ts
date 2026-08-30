@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   readBootstrapPublicationPointer,
   invalidateBootstrapPointerCache,
+  setBootstrapPointerRetryHooksForTests,
 } from "./bootstrap-publication";
 import { resetBootstrapPointerCacheForTests } from "./bootstrap-pointer-cache";
 import { BOOTSTRAP_POINTER_NEGATIVE_TTL_MS } from "./publication-cache-contract";
@@ -44,6 +45,7 @@ beforeEach(() => {
   routes = {};
   clock = 1_000_000;
   resetBootstrapPointerCacheForTests();
+  setBootstrapPointerRetryHooksForTests({ sleep: async () => {}, random: () => 0 });
   process.env.BLOB_BASE_URL = BLOB;
   delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   Date.now = () => clock;
@@ -63,6 +65,7 @@ afterEach(() => {
   globalThis.fetch = realFetch;
   Date.now = realNow;
   resetBootstrapPointerCacheForTests();
+  setBootstrapPointerRetryHooksForTests(null);
   if (originalBase === undefined) delete process.env.BLOB_BASE_URL;
   else process.env.BLOB_BASE_URL = originalBase;
   if (originalPublicBase === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
@@ -154,7 +157,36 @@ describe("published bootstrap pointer cache", () => {
   test("does not treat 403 as a missing pointer", async () => {
     routes = { "/bootstrap/latest.json": { status: 403 } };
     await expect(readBootstrapPublicationPointer({ published: true })).rejects.toThrow("403");
-    expect(await readBootstrapPublicationPointer({ published: true }).catch((error) => error)).toBeInstanceOf(Error);
+    const firstHits = fetchCalls.filter((url) => url.includes("/bootstrap/latest.json")).length;
+    expect(firstHits).toBe(5);
+    await expect(readBootstrapPublicationPointer({ published: true })).rejects.toThrow("403");
+    expect(fetchCalls.filter((url) => url.includes("/bootstrap/latest.json"))).toHaveLength(firstHits);
+  });
+
+  test("retries a transient 403 then returns the pointer", async () => {
+    let hits = 0;
+    globalThis.fetch = mock((input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input.toString();
+      fetchCalls.push(url);
+      hits += 1;
+      if (hits < 3) return Promise.resolve(makeRes({ status: 403 }));
+      return Promise.resolve(makeRes({ json: pointer() }));
+    }) as unknown as typeof fetch;
+    const result = await readBootstrapPublicationPointer({ published: true });
+    expect(result?.generation).toBe("bootstrap-20260717T120000Z");
+    expect(hits).toBe(3);
+  });
+
+  test("reuses last-known-good pointer when a later fetch is 403", async () => {
+    routes = { "/bootstrap/latest.json": { json: pointer() } };
+    expect((await readBootstrapPublicationPointer({ published: true }))?.generation).toBe(
+      "bootstrap-20260717T120000Z",
+    );
+    clock += BOOTSTRAP_POINTER_NEGATIVE_TTL_MS + 1;
+    routes = { "/bootstrap/latest.json": { status: 403 } };
+    expect((await readBootstrapPublicationPointer({ published: true }))?.generation).toBe(
+      "bootstrap-20260717T120000Z",
+    );
   });
 
   test("does not treat 429 as a missing pointer", async () => {

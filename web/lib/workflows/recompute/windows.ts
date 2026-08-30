@@ -52,8 +52,10 @@ function finalizeWindow(byRepo: Map<number, RepoRow[]>, rowsByPeriod: Map<Period
 
 /** Month/week repo window. Seam-aware stock: pre-seam periods (≤ model.seam[w]) accumulate gross
  *  and stock = round(cumGross × d); post-seam periods add net on top of the frozen seam anchor
- *  round(cumGross@seam × d) — net is not scaled by d (RANKING §3). `cumgross` is the running total
- *  used only as the flow_rank tiebreak; it equals the gross cumsum while all data is pre-seam. */
+ *  round(cumGross@seam × d) — net is not scaled by d (RANKING §3). Published stock_est is
+ *  max(0, formula): star count cannot be negative when d=0 / newcomer / first-period unstars.
+ *  `cumgross` is the running total used only as the flow_rank tiebreak; it equals the gross
+ *  cumsum while all data is pre-seam. */
 export function computeRepoWindow(model: Model, w: "month" | "week"): RepoWindow {
   const seamPeriod = model.seam[w];
   const byRepo = new Map<number, RepoRow[]>();
@@ -80,6 +82,11 @@ export function computeRepoWindow(model: Model, w: "month" | "week"): RepoWindow
         cumNet += flow;
         stock_est = anchor + cumNet;
       }
+      // stock is an estimated star COUNT (RANKING §2/§8). Flow may be negative;
+      // d=0 newcomers and first-period unstars can take the formula below 0.
+      // Keep running cumGross/cumNet/anchor unclamped so later periods can recover
+      // toward current_stars; only the published count is floored.
+      stock_est = Math.max(0, stock_est);
       const cumgross = cumGross + cumNet; // running total for the tiebreak (= cumGross pre-seam)
       rows.push({ period, flow, cumgross, stock_est, flow_rank: 0 });
       let bucket = rowsByPeriod.get(period);

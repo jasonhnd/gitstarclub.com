@@ -4,7 +4,8 @@ import type { ZodType } from "zod";
 import {
   AliasMap,
   CategoriesLookup,
-  CategoryAssignments,
+  CategoryAssignmentsDocument,
+  CategoryAssignmentsShard,
   CategoryRankList,
   CategoryRegistry,
   CurrentMonthDocument,
@@ -76,7 +77,10 @@ export function contractForViewPath(path: string): ViewContract | null {
   if (rel === "lookup/aliases.json") return { kind: "lookup/aliases", schema: AliasMap };
   if (rel === "lookup/categories.json") return { kind: "lookup/categories", schema: CategoriesLookup };
   if (rel === "categories/registry.json") return { kind: "categories/registry", schema: CategoryRegistry };
-  if (rel === "categories/assignments.json") return { kind: "categories/assignments", schema: CategoryAssignments };
+  if (rel === "categories/assignments.json") return { kind: "categories/assignments", schema: CategoryAssignmentsDocument };
+  if (/^categories\/assignments\/shards\/\d+\.json$/.test(rel)) {
+    return { kind: "categories/assignments-shard", schema: CategoryAssignmentsShard };
+  }
   if (rel === "search/index.json") return { kind: "search/index", schema: SearchIndex };
   if (/^rank\/category\/.+\.json$/.test(rel)) return { kind: "rank/category", schema: CategoryRankList };
   if (/^rank\/.+\.json$/.test(rel)) return { kind: "rank", schema: RankList };
