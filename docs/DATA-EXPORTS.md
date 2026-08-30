@@ -1,7 +1,7 @@
 ---
 owner: data exports
 status: active
-last_reviewed: 2026-08-16
+last_reviewed: 2026-08-30
 source_of_truth_for:
   - public data export set
   - export regeneration commands
@@ -13,7 +13,7 @@ source_of_truth_for:
 
 GitStarClub publishes small, deterministic CSV and JSON extracts for reuse and citation. They are generated from existing precomputed Vercel Blob views and checked in as static assets under `web/public/data/exports/v1/`.
 
-Exports are stored once, in dated directories such as `web/public/data/exports/v1/YYYY-MM-DD/`. The public `/data/exports/v1/latest/*` URLs are stable aliases rewritten by Next.js to the newest dated directory at build time; `latest/` is not a second copy of the CSV or JSON payloads.
+Exports are stored once, in dated directories such as `web/public/data/exports/v1/YYYY-MM-DD/`. The public `/data/exports/v1/latest/*` URLs are stable aliases rewritten by Next.js to the newest dated directory at build time; `latest/` is not a second copy of the CSV or JSON payloads. Dataset JSON-LD reads that same `public/data/exports/v1` folder through a statically scoped path so the Next/Turbopack build does not `readdir` the repository root.
 
 There is **no runtime export endpoint**. Exports are static files only; regeneration is an operator job that lands through a PR.
 
