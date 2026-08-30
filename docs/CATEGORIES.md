@@ -1,7 +1,7 @@
 ---
 owner: categories
 status: active
-last_reviewed: 2026-08-16
+last_reviewed: 2026-08-30
 source_of_truth_for:
   - category taxonomy
   - deterministic classification rules
@@ -391,7 +391,8 @@ Suggested shape:
 Suggested view path:
 
 ```text
-categories/assignments.json
+categories/assignments.json                  # v2 index, or v1 monolith during migration reads
+categories/assignments/shards/<bucket>.json  # bucket = repo_id % 32
 ```
 
 Purpose:
@@ -399,24 +400,22 @@ Purpose:
 - Records category IDs assigned to each repository.
 - Allows category rank generation to validate that every ranked repository
   belongs to the requested category.
+- Keeps each ISR-cached JSON file under 1.50 MiB (the v1 monolith exceeded the
+  Next.js Data Cache 2 MiB limit).
 
-Suggested shape:
+New generations write the v2 index + 32 shards. Readers still accept the v1
+monolith `{ rules_version, generated_at, repositories }` and assemble shards
+into that same caller-facing shape. ISR pages must not switch this read to
+`no-store`.
+
+Suggested v2 index:
 
 ```json
 {
+  "schema_version": 2,
   "rules_version": "2026-06-07.2",
   "generated_at": "2026-06-04T00:00:00.000Z",
-  "repositories": {
-    "123456": {
-      "language": ["language/python"],
-      "language_family": ["language_family/python"],
-      "domain": ["domain/ai-ml"],
-      "project_type": ["project_type/library"],
-      "ecosystem": ["ecosystem/python"],
-      "owner_kind": ["owner_kind/organization"],
-      "maturity": ["maturity/star-10k", "maturity/active"]
-    }
-  }
+  "shard_count": 32
 }
 ```
 

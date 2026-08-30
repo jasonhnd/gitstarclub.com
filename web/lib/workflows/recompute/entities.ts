@@ -2,6 +2,7 @@
 // exportOrgEntities / exportLookups. Repo entity = anchored monthly curve + recent
 // daily tail + monthly table + rank history. Org entity = aggregated member curve.
 
+import { OrgEntity as OrgEntitySchema, RepoEntity as RepoEntitySchema } from "@/lib/contracts";
 import type { DateStr, Model } from "./model";
 import type { RepoWindow, OrgWindow } from "./windows";
 import { detectInflections, type Inflection } from "./inflections";
@@ -70,7 +71,11 @@ export function repoEntities(model: Model, monthWin: RepoWindow): { views: Map<s
     };
     const inflections = detectInflections(mrows.map((r) => [r.period, r.flow] as [string, number]));
     if (inflections.length) entity.inflections = inflections;
-    views.set(`entity/repo/${id}.json`, entity);
+    const parsed = RepoEntitySchema.safeParse(entity);
+    if (!parsed.success) {
+      throw new Error(`entity/repo/${id}.json failed RepoEntity parse: ${parsed.error.message}`);
+    }
+    views.set(`entity/repo/${id}.json`, parsed.data as RepoEntity);
   }
   return { views, anchorDrift };
 }
@@ -99,7 +104,7 @@ export function orgEntities(model: Model, monthOrg: OrgWindow): { views: Map<str
     const mrows = monthOrg.byLogin.get(login) ?? [];
     const last = mrows.at(-1);
     if (last) anchorDrift = Math.max(anchorDrift, Math.abs(last.stock_est - agg.current_stars_sum));
-    views.set(`entity/org/${login}.json`, {
+    const entity = {
       login,
       owner_type: agg.owner_type,
       current_stars_sum: agg.current_stars_sum,
@@ -109,7 +114,12 @@ export function orgEntities(model: Model, monthOrg: OrgWindow): { views: Map<str
         monthly: mrows.map((r) => [r.period, r.flow, r.stock_est] as [string, number, number]),
         recent_daily: orgRecentDaily(model, agg.members).map((r) => [r[0], r[1]] as [string, number]),
       },
-    });
+    };
+    const parsed = OrgEntitySchema.safeParse(entity);
+    if (!parsed.success) {
+      throw new Error(`entity/org/${login}.json failed OrgEntity parse: ${parsed.error.message}`);
+    }
+    views.set(`entity/org/${login}.json`, parsed.data as OrgEntity);
   }
   return { views, anchorDrift };
 }

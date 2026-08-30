@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-08-24
+last_reviewed: 2026-08-30
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -230,7 +230,8 @@ blob://
 │       │   └── categories.json                      #     category step 派生：公开分类目录（validate 校验非空）
 │       ├── categories/                              #     category step 派生（registry + 每仓分配，validate 校验）
 │       │   ├── registry.json                        #       分类登记表（dimensions × categories，含 public 标记）
-│       │   └── assignments.json                     #       每仓分类分配（language / language_family / owner_kind → category id）
+│       │   ├── assignments.json                     #       v2 index（或迁移期可读的 v1 单体）
+│       │   └── assignments/shards/{0..31}.json      #       repo_id % 32 分片（单文件 < 1.50 MiB）
 │       ├── search/
 │       │   └── index.json                           #     客户端搜索索引（entity step 派生，validate 闸门校验条目数）
 │       ├── rank/                                    #     rank 矩阵（窗口 × 维度 × 指标）

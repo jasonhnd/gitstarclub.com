@@ -35,6 +35,7 @@ describe("contractForViewPath", () => {
       "lookup/categories.json",
       "categories/registry.json",
       "categories/assignments.json",
+      "categories/assignments/shards/0.json",
       "search/index.json",
       "rank/month/2026-07/repo/flow.json",
       "rank/category/language/typescript/all-time/repo/stock.json",

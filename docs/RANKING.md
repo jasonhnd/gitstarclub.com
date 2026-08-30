@@ -1,7 +1,7 @@
 ---
 owner: ranking
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-08-30
 source_of_truth_for:
   - ranking definitions
   - stock anchoring
@@ -47,7 +47,8 @@ stock_est[repo, date] = round(cumgross[repo, date] × d[repo])   # 锚定估算
 ```
 
 - **锚定因子**把 GitHub Archive 低计或取消 star 的差异统一锚定到 `current_stars`，因此 `d` 可能小于、等于或大于 1。
-- **seam 后**：stock 由每日 `current_stars` 精确跟踪，不再估算。
+- **seam 后**：stock 由每日 `current_stars` 精确跟踪，不再估算。`computeRepoWindow` 仍用冻结 `anchor + cumNet`；若该公式为负（`d=0` 新晋、首段负流量），**发布的** `stock_est` 钳到 0，flow 保持有符号。
+- 写 Blob 前对全部 `RepoEntity` / `OrgEntity` 做 Zod parse；不得放宽 `MonthlyPoint` 的 `NonNegativeInt`。
 - `entity/repo.curve.monthly` 的 `total_end` = 月末 `stock_est`（历史）/ 精确（seam 后）。
 - **年窗口 stock 锚定到该年最后有数据月**：年榜的 stock **不**在年粒度独立重算 gross/net，而是直接取该年**最后一个有数据月**的月度 `stock_est`（年 flow = 该年有数据月 flow 之和）。这样跨 seam 那一年内部已被月度逻辑解掉的"年内接缝拆分"会原样继承进年窗口，避免双重锚定（`web/lib/workflows/recompute/windows.ts` `deriveYearWindow`）。
 - **精度边界**：假设取消率随时间均匀（实际会变），是 MVP 可接受估算；About 页注明"历史曲线为锚定估算，终点精确"。star-history.com 同类做法。
@@ -103,6 +104,7 @@ org 榜不抓新数据——把 per-repo 按 `owner` 分组求和：
 | 平手（同 value）— all-time org stock | `current_stars_sum` 降序 → `login` 升序 |
 | 实体在窗口无数据 | 不入该窗口榜（区别于 flow=0） |
 | 新 repo（创建于窗口内） | 仅从创建日起有数据；stock 从 0 起 |
+| `stock_est` would go negative (`d=0` newcomer, first-period unstars, opening negative flow) | Clamp the **published** count to 0. Flow stays signed. Running `cumGross` / `cumNet` / `anchor` stay unclamped so later periods can recover. Do not relax `MonthlyPoint` `NonNegativeInt`. |
 | repo 跌出 ≥10k 白名单 | 保留历史（编年史不删），停止每日轮询；是否仍进当前榜 = PRODUCT 取舍（默认：当前榜按当前白名单，历史榜保留） |
 | 改名/迁移 | 按 `repo.id` 归并（PIPELINE §4）；显示用当前 `full_name` |
 

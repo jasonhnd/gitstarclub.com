@@ -1,7 +1,7 @@
 ---
 owner: release history
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-08-30
 source_of_truth_for:
   - versioned release history
   - shipped changes
@@ -38,6 +38,10 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Fixed
 
+- **Category assignments no longer exceed the 2MB Next.js Data Cache limit.** Recompute writes a small index plus 32 repo-id shards at `categories/assignments/shards/<id%32>.json`. Readers still accept the v1 monolith. The publish gate checks real UTF-8 JSON byte length; each ISR-cached view must stay under 1.50 MiB. Repo, org, and ranking pages keep daily ISR cache — they are not switched to `no-store`.
+- **Entity stock counts cannot go negative.** `computeRepoWindow` still uses seam-aware `anchor + cumNet`, but published `stock_est` is `max(0, formula)` so `d=0` newcomers and first-period unstars cannot fail `MonthlyPoint` `NonNegativeInt`. Every `RepoEntity` / `OrgEntity` is Zod-parsed before Blob write; validate re-parses the full lookup set, not only the top repo.
+- **Published bootstrap pointer 403s no longer storm origin.** 403/429/5xx retry with exponential backoff and jitter; 403 is never stored as a 404; published reads reuse last-known-good pointer or the managed generation; `unstable_cache` loader failures do not call `load()` again; one structured error is logged per TTL.
+- **Issue 25 CWV report no longer publishes an immutable Vercel deployment URL.** The lab baseline is the public production host. Retired `*.vercel.app` deployment URLs are not kept in docs so crawlers and uptime checks cannot pin traffic to old immutable deployments.
 - **Preview identity reads follow the Vercel bypass cookie.** Protection Bypass 307s with `_vercel_jwt`; CI fetch now replays that cookie so `preview-e2e` and `product-gates` can resolve `/.well-known/deployment` after Preview was locked.
 - **Static data exports regenerated for 2026-08-28.** `web/public/data/exports/v1/2026-08-28/` refreshes `data_as_of` so `export-manifest-age` stays inside 14 days.
 - **Observability cost: stop re-parsing and re-logging the same view.** `readView` memoizes Zod parse per path+generation and logs each error fingerprint once (later hits increment a counter; workflow end prints a summary). Official lifecycle fields stay on their contracts as optional for old blobs: `active` / `tracked_since` on lookup/search/entity/canonical repos; `active_repo_count` / `historical_repo_count` on `Meta` only — not on `CanonicalMeta`, and not via `.passthrough()`.

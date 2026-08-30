@@ -1,7 +1,7 @@
 ---
 owner: TESTING / performance
 status: baseline
-last_reviewed: 2026-07-06
+last_reviewed: 2026-08-30
 source_of_truth_for:
   - issue 25 Core Web Vitals baseline evidence
 ---
@@ -22,11 +22,9 @@ This report records the pre-launch Lighthouse and Core Web Vitals lab baseline f
 | Lighthouse | `13.4.0` |
 | Node / Bun | Node `v24.15.0`, Bun `1.3.14` |
 | Measured target | `https://www.gitstarclub.com` |
-| Measured deployment | `https://gitstarclub-qelf5kuqz-zkscio.vercel.app` |
-| Excluded target | `https://gitstarclub-3glmn3afp-zkscio.vercel.app` |
 | Local artifacts | `C:\Users\owner\AppData\Local\Temp\gsc-lighthouse-25-prod` |
 
-The Vercel preview deployment was created successfully, but its `.vercel.app` URL was protected and injected Vercel toolbar / auth assets into Lighthouse runs. Those runs were excluded because they measured Vercel shell JavaScript rather than the app. The public production domain was used for the valid run because it exercised the real Vercel CDN path without changing `SITE_INDEXABLE`. `vercel inspect --logs` confirmed the measured production deployment cloned `github.com/jasonhnd/gitstarclub.com` branch `main` at commit `c05a087`.
+Do not publish or bookmark immutable `*.vercel.app` deployment URLs for this baseline. Those URLs keep serving the frozen commit after production has moved on, and external Lighthouse / uptime / webhook traffic against them shows up as runtime errors on a retired deployment. The public production host is the only durable measurement target. A protected Preview URL was created for this issue but injected Vercel toolbar / auth assets into Lighthouse runs, so those runs were excluded. `vercel inspect --logs` confirmed the measured production host cloned `github.com/jasonhnd/gitstarclub.com` branch `main` at commit `c05a087` at the time of the lab run.
 
 Commands used:
 

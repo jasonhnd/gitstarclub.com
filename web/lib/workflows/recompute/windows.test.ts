@@ -96,6 +96,21 @@ describe("computeRepoWindow — month (seam-aware stock)", () => {
     const m = makeModel([{ id: 1, owner: "o", current_stars: 10, d: 1, monthly: [] }]);
     expect(computeRepoWindow(m, "month").byRepo.get(1)).toEqual([]);
   });
+
+  test("d=0 newcomer with first-period negative net publishes stock 0, not a negative count", () => {
+    const m = makeModel([{ id: 1, owner: "o", current_stars: 4, d: 0, monthly: [["2026-06", -8], ["2026-07", 12]] }]);
+    const rows = computeRepoWindow(m, "month").byRepo.get(1)!;
+    // Entirely post-seam, anchor = round(0×0)=0. Unclamped formula is -8 then 4;
+    // published stock is a count so the first point floors at 0, then recovers to 4.
+    expect(rows.map((r) => r.stock_est)).toEqual([0, 4]);
+    expect(rows.every((r) => r.stock_est >= 0)).toBe(true);
+  });
+
+  test("pre-seam negative opening flow does not emit negative stock", () => {
+    const m = makeModel([{ id: 1, owner: "o", current_stars: 15, d: 1, monthly: [["2026-04", -5], ["2026-05", 20]] }]);
+    const rows = computeRepoWindow(m, "month").byRepo.get(1)!;
+    expect(rows.map((r) => r.stock_est)).toEqual([0, 15]);
+  });
 });
 
 describe("computeRepoWindow — week (seam-aware stock)", () => {
