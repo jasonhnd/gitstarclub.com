@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { OrgLookupEntry, RankItem, RankList, RepoEntity, RepoLookupEntry } from "@/lib/contracts";
 
@@ -444,31 +444,37 @@ export function dataExportDownloadsFromManifest(manifest: Pick<ExportManifest, "
   ];
 }
 
+// Literal cwd segments keep Turbopack file tracing inside this folder.
+// A dynamic root (cwd + optional "web/" prefix) makes readdirSync trace the
+// whole project and prints "Dynamic filesystem access causes tracing of the whole project".
+const STATIC_EXPORT_V1_ROOT = join(process.cwd(), "public", "data", "exports", "v1");
+
 export function readLatestStaticDataExportManifest(): ExportManifest | null {
-  const root = staticExportRoot();
-  if (!root) return null;
-  const latestDate = readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name))
-    .map((entry) => entry.name)
-    .sort()
-    .at(-1);
+  let dates: string[];
+  try {
+    dates = readdirSync(/* turbopackIgnore: true */ STATIC_EXPORT_V1_ROOT, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name))
+      .map((entry) => entry.name)
+      .sort();
+  } catch {
+    return null;
+  }
+  const latestDate = dates.at(-1);
   if (!latestDate) return null;
 
-  const manifestPath = join(root, latestDate, "manifest.json");
-  if (!existsSync(manifestPath)) return null;
-  return JSON.parse(readFileSync(manifestPath, "utf8")) as ExportManifest;
+  try {
+    const source = readFileSync(
+      /* turbopackIgnore: true */ join(STATIC_EXPORT_V1_ROOT, latestDate, "manifest.json"),
+      "utf8",
+    );
+    return JSON.parse(source) as ExportManifest;
+  } catch {
+    return null;
+  }
 }
 
 function canonicalExportUrl(path: string): string {
   return `${DATA_EXPORT_SITE_URL}${path.startsWith("/") ? path : `/${path}`}`;
-}
-
-function staticExportRoot(): string | null {
-  const candidates = [
-    join(process.cwd(), "public", "data", "exports", "v1"),
-    join(process.cwd(), "web", "public", "data", "exports", "v1"),
-  ];
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
 function latestTimestamp(...values: string[]): string {
