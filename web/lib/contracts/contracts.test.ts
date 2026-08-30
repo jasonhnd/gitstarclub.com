@@ -65,6 +65,9 @@ import {
   CategoryRegistry,
   RepositoryCategoryAssignment,
   CategoryAssignments,
+  CategoryAssignmentsDocument,
+  CategoryAssignmentsIndex,
+  CategoryAssignmentsShard,
   CategoriesLookup,
   CategoryRankList,
 } from "./index";
@@ -1036,6 +1039,23 @@ describe("category contracts", () => {
   test("CategoryAssignments parses record keyed by repo id", () => {
     const payload = { rules_version: "2026-06-05.1", generated_at: TS, repositories: { "1": assignment } };
     expect(CategoryAssignments.parse(payload).repositories["1"].ecosystem).toEqual(["ecosystem/python"]);
+  });
+
+  test("CategoryAssignmentsDocument accepts a v1 monolith and a v2 index", () => {
+    const monolith = { rules_version: "2026-06-05.1", generated_at: TS, repositories: { "1": assignment } };
+    const index = { schema_version: 2, rules_version: "2026-06-05.1", generated_at: TS, shard_count: 32 };
+    expect(CategoryAssignmentsDocument.parse(monolith).rules_version).toBe("2026-06-05.1");
+    expect(CategoryAssignmentsIndex.parse(index).shard_count).toBe(32);
+    expect(rejects(CategoryAssignmentsIndex, monolith)).toBe(true);
+    expect(
+      CategoryAssignmentsShard.parse({
+        schema_version: 2,
+        bucket: 1,
+        rules_version: "2026-06-05.1",
+        generated_at: TS,
+        repositories: { "1": assignment },
+      }).bucket,
+    ).toBe(1);
   });
 
   test("CategoriesLookup parses public category metadata", () => {
