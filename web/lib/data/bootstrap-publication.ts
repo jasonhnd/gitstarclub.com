@@ -15,6 +15,31 @@ export const BOOTSTRAP_POINTER_PATH = "bootstrap/latest.json";
 export { invalidateBootstrapPointerCache };
 
 let pointerReadSequence = 0;
+const POINTER_READ_RETRIES = 4;
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+let sleepImpl = defaultSleep;
+let randomImpl = Math.random;
+
+/** Test seam so 403 retry tests do not wait on real backoff. */
+export function setBootstrapPointerRetryHooksForTests(
+  hooks: { sleep?: (ms: number) => Promise<void>; random?: () => number } | null,
+): void {
+  sleepImpl = hooks?.sleep ?? defaultSleep;
+  randomImpl = hooks?.random ?? Math.random;
+}
+
+function shouldRetryPointerStatus(status: number): boolean {
+  return status === 403 || status === 429 || status >= 500;
+}
+
+function pointerRetryDelayMs(status: number, attempt: number, random = randomImpl): number {
+  const retryAfterCap = 10_000;
+  const base = status === 403 ? 400 : 250;
+  const cap = status === 403 ? 3_000 : 2_000;
+  const exp = Math.min(base * 2 ** (attempt - 1), cap);
+  const jitter = Math.floor(random() * 0.25 * exp);
+  return Math.min(exp + jitter, retryAfterCap);
+}
 
 // Authoritative reads coalesce only in-flight work so a newly committed or
 // rolled-back pointer is visible to the next operation.
@@ -44,26 +69,42 @@ async function fetchPointerFromOrigin(
   options: PointerReadOptions,
 ): Promise<CachedBootstrapPointer> {
   const published = options.published ?? false;
-  const res = await fetchWithTimeout(
-    published ? publishedPointerUrl(blobBase) : authoritativePointerUrl(blobBase),
-    published
-      ? {
-          next: {
-            revalidate: BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS,
-            tags: [BOOTSTRAP_POINTER_CACHE_TAG],
-          },
-          timeoutMs: options.timeoutMs ?? BLOB_JSON_FETCH_TIMEOUT_MS,
-        }
-      : {
-          cache: "no-store",
-          timeoutMs: options.timeoutMs ?? BLOB_JSON_FETCH_TIMEOUT_MS,
+  const timeoutMs = options.timeoutMs ?? BLOB_JSON_FETCH_TIMEOUT_MS;
+  const init = published
+    ? {
+        next: {
+          revalidate: BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS,
+          tags: [BOOTSTRAP_POINTER_CACHE_TAG],
         },
-  );
-  if (res.status === 404) return { state: "absent" };
-  if (res.status === 403 || res.status === 429 || res.status >= 500) {
+        timeoutMs,
+      }
+    : {
+        cache: "no-store" as const,
+        timeoutMs,
+      };
+  let res: Response | null = null;
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= POINTER_READ_RETRIES + 1; attempt++) {
+    try {
+      res = await fetchWithTimeout(published ? publishedPointerUrl(blobBase) : authoritativePointerUrl(blobBase), init);
+    } catch (error) {
+      lastError = error;
+      if (attempt > POINTER_READ_RETRIES) break;
+      await sleepImpl(pointerRetryDelayMs(500, attempt));
+      continue;
+    }
+    if (res.status === 404 || res.ok) break;
+    if (!shouldRetryPointerStatus(res.status) || attempt > POINTER_READ_RETRIES) break;
+    await sleepImpl(pointerRetryDelayMs(res.status, attempt));
+  }
+  if (res?.status === 404) return { state: "absent" };
+  if (res?.status === 403 || res?.status === 429 || (res != null && res.status >= 500)) {
     throw new Error(`bootstrap pointer fetch -> ${res.status}`);
   }
-  if (!res.ok) throw new Error(`bootstrap pointer fetch -> ${res.status}`);
+  if (!res?.ok) {
+    const detail = res ? String(res.status) : lastError instanceof Error ? lastError.message : "no response";
+    throw new Error(`bootstrap pointer fetch -> ${detail}`);
+  }
   const pointer = BootstrapPublicationPointer.parse(await res.json());
   const expectedPrefix = `bootstrap/generations/${pointer.generation}`;
   if (pointer.prefix !== expectedPrefix) {

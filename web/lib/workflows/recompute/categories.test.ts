@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { CATEGORY_RANK_PAGE_SIZE, categoryAllTimeRankPath } from "../../categories/rank-pages";
+import {
+  assembleCategoryAssignments,
+  isCategoryAssignmentsIndex,
+} from "../../data/category-assignment-shards";
+import {
+  CATEGORY_ASSIGNMENT_SHARD_COUNT,
+  CategoryAssignmentsIndex,
+  CategoryAssignmentsShard,
+} from "../../contracts/categories";
 import { buildModel, type RawShards, type RepoMeta } from "./model";
 import { computeCategoryViews } from "./categories";
 
@@ -91,9 +100,16 @@ function largePythonModel(count: number) {
 describe("computeCategoryViews", () => {
   const views = computeCategoryViews(fixtureModel(), GEN);
 
-  test("emits registry, assignments, and lookup artifacts", () => {
+  test("emits registry, assignment index+shards, and lookup artifacts", () => {
     expect(views.has("categories/registry.json")).toBe(true);
     expect(views.has("categories/assignments.json")).toBe(true);
+    expect(isCategoryAssignmentsIndex(views.get("categories/assignments.json"))).toBe(true);
+    expect(CategoryAssignmentsIndex.parse(views.get("categories/assignments.json")).shard_count).toBe(
+      CATEGORY_ASSIGNMENT_SHARD_COUNT,
+    );
+    for (let bucket = 0; bucket < CATEGORY_ASSIGNMENT_SHARD_COUNT; bucket++) {
+      expect(views.has(`categories/assignments/shards/${bucket}.json`)).toBe(true);
+    }
     expect(views.has("lookup/categories.json")).toBe(true);
   });
 
@@ -136,9 +152,11 @@ describe("computeCategoryViews", () => {
   });
 
   test("assignments include every required single-value dimension", () => {
-    const assignments = views.get("categories/assignments.json") as {
-      repositories: Record<string, { language: string[]; language_family: string[]; owner_kind: string[]; domain: string[] }>;
-    };
+    const index = CategoryAssignmentsIndex.parse(views.get("categories/assignments.json"));
+    const shards = Array.from({ length: index.shard_count }, (_, bucket) =>
+      CategoryAssignmentsShard.parse(views.get(`categories/assignments/shards/${bucket}.json`)),
+    );
+    const assignments = assembleCategoryAssignments(index, shards);
     expect(Object.keys(assignments.repositories).sort()).toEqual(["1", "2", "3"]);
     expect(assignments.repositories["1"].language).toEqual(["language/python"]);
     expect(assignments.repositories["1"].language_family).toEqual(["language_family/python"]);

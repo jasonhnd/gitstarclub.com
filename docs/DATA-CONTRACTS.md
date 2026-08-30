@@ -1,7 +1,7 @@
 ---
 owner: data contracts
 status: active
-last_reviewed: 2026-08-24
+last_reviewed: 2026-08-30
 source_of_truth_for:
   - canonical JSON shard schemas
   - JSON view schemas
@@ -31,7 +31,7 @@ source_of_truth_for:
 | `REQ-PERF-001` | Budgeted JSON service views, lookup-only rank joins, `/repo-curve` projection | Frontend reads small, precomputed views instead of loading engines or full canonical shards on request paths. |
 | `REQ-SEARCH-001` | `search/index.json` | Search has a versioned, compact client index with one document per tracked repo. |
 | `REQ-COMPARE-001` | `/repo-curve?id=<id>` projection from `entity/repo/{id}.json` | Compare reuses entity curves and returns only the slim curve payload needed by the client. |
-| `REQ-CATEGORY-001` | `categories/registry.json`, `categories/assignments.json`, `lookup/categories.json`, `rank/category/**` | Category pages are driven by public registry and assignment artifacts, with paged all-time rank views. |
+| `REQ-CATEGORY-001` | `categories/registry.json`, `categories/assignments.json`, `categories/assignments/shards/*.json`, `lookup/categories.json`, `rank/category/**` | Category pages are driven by public registry and assignment artifacts, with paged all-time rank views. New generations shard assignments so each Data Cache entry stays under 1.50 MiB. |
 
 ## 全局约定
 
@@ -194,7 +194,8 @@ ops/workflows/latest-success.json              # 最近一次成功发布的 run
 Phase 1 category views also live under `views/<run_id>/`:
 
 - `categories/registry.json` - public category registry and counts.
-- `categories/assignments.json` - repo id to category id assignments.
+- `categories/assignments.json` - v2 index (`schema_version: 2`, `shard_count: 32`) or, for already-published generations, the v1 monolith `{ rules_version, generated_at, repositories }`.
+- `categories/assignments/shards/<bucket>.json` - v2 repo-id buckets (`bucket = repo_id % 32`). Readers assemble these into the original `CategoryAssignments` shape. ISR pages must not `no-store` this path.
 - `lookup/categories.json` - small client/build lookup for public categories;
   category entries may carry `sitemap` eligibility so route discovery can omit
   explicitly hidden categories.
@@ -291,8 +292,46 @@ Rules:
 - `metric` is `stock` for the Phase-1 all-time view.
 - Each category rank file is capped to `CATEGORY_DETAIL_PAGE_SIZE` rows; ranks
   continue across page files (`101`, `102`, ... on page 2).
-- Every `item.id` must be assigned to `meta.category.id` in `categories/assignments.json`.
+- Every `item.id` must be assigned to `meta.category.id` in the assembled `categories/assignments` map (v2 shards or v1 monolith).
 - Windowed `flow`/`stock` category ranks are future work; avoid emitting them until the category route phase has accepted the extra view count.
+
+### 2.4b `categories/assignments.json`（index + repo-id shards）
+
+Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,986 bytes). New generations write a small index plus 32 repo-id shards. ISR pages keep `force-cache` / daily revalidate — they must not flip to `no-store`. The publish gate checks **UTF-8 JSON byte length** of the index and every shard; each file must be **< 1.50 MiB**.
+
+**v2 index** (`categories/assignments.json`, KB-scale):
+
+```json
+{
+  "schema_version": 2,
+  "rules_version": "2026-06-07.2",
+  "generated_at": "2026-06-04T00:00:00.000Z",
+  "shard_count": 32
+}
+```
+
+**v2 shard** (`categories/assignments/shards/<bucket>.json`, `bucket = repo_id % 32`):
+
+```json
+{
+  "schema_version": 2, "bucket": 1,
+  "rules_version": "2026-06-07.2",
+  "generated_at": "2026-06-04T00:00:00.000Z",
+  "repositories": {
+    "123456": {
+      "language": ["language/python"],
+      "language_family": ["language_family/python"],
+      "domain": ["domain/ai-ml"],
+      "project_type": ["project_type/library"],
+      "ecosystem": ["ecosystem/python"],
+      "owner_kind": ["owner_kind/organization"],
+      "maturity": ["maturity/star-10k"]
+    }
+  }
+}
+```
+
+**v1 monolith** (already-published generations remain readable): the previous `{ rules_version, generated_at, repositories }` document at `categories/assignments.json`. Readers accept either shape and assemble shards before callers see `CategoryAssignments`.
 
 ### 2.5 `entity/repo/{id}.json`
 
@@ -320,7 +359,7 @@ Rules:
 }
 ```
 
-- `curve.monthly`：`[period, adds, total_end]`——历史走月点（11 年≈132 点）。
+- `curve.monthly`：`[period, adds, total_end]`——历史走月点（11 年≈132 点）。`total_end` is `stock_est` and **must be ≥ 0** (`MonthlyPoint` uses `NonNegativeInt`). Flow (`adds`) may be negative. Writers clamp `stock_est = max(0, formula)` in `computeRepoWindow` so `d=0` newcomers / first-period unstars cannot publish a negative star count; running `cumGross`/`cumNet`/`anchor` stay unclamped so later periods can recover toward `current_stars`. Recompute Zod-parses every `RepoEntity` / `OrgEntity` before Blob write; the publish gate re-parses every entity from lookup, not only the top repo.
 - `active` / `tracked_since`：明确展示当前追踪状态与 newcomer provenance；historical entity 不删除，repo 页显示“历史保留”及可用的首次追踪日期。
 - `languages`: optional GitHub language breakdown from GraphQL
   `Repository.languages`, sorted by byte size descending. Older published shards
@@ -343,7 +382,7 @@ Rules:
 ```
 
 - `members`：该 org 的白名单（≥10k）repo id 列表。
-- `curve` = 成员聚合（∑ 成员 delta；stock = ∑ 成员累计）。
+- `curve` = 成员聚合（∑ 成员 delta；stock = ∑ 成员累计）。Org `stock_est` is also ≥ 0 because it sums clamped member stocks.
 
 ### 2.7 `heatmap/{year|month}/{period}.json`
 
