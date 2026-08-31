@@ -1,23 +1,24 @@
 ---
 owner: track-c / data-layer
-status: draft
-last_reviewed: 2026-08-17
+status: active
+last_reviewed: 2026-08-31
 source_of_truth_for:
-  - Track C data-layer decision draft
-  - option comparison and recommendation leans
-  - POC must-prove criteria if a later decision chooses build
+  - Track C data-layer option comparison
+  - POC must-prove criteria if a later dated record chooses build
 ---
 
-# Data-layer decision draft (Track C)
+# Data-layer option analysis (Track C)
 
-This is a **draft**. It is not the 2026-09-12 choose-or-defer record.
+**Accepted without amendment.** [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) recorded the outcome on 2026-08-31, ahead of its 2026-09-12 deadline: **defer six months, review 2027-03-12, no POC.** The dated record lives in [ROADMAP.md](../ROADMAP.md) Track C and is the decision; this file is the comparison behind it and stays the standing reference for any future reopening.
 
 - **Clock started:** 2026-08-15 ([#361](https://github.com/jasonhnd/gitstarclub.com/issues/361)).
-- **Draft due:** ~2026-08-29 ([#381](https://github.com/jasonhnd/gitstarclub.com/issues/381)).
-- **Formal decide-or-defer owner:** [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) on **2026-09-12**. Missing that date **is** a six-month deferral of the [blocked expansion backlog](https://github.com/jasonhnd/gitstarclub.com/issues/362).
-- **Map:** [ROADMAP.md](../ROADMAP.md) Track C remains the iteration index. This file is the comparative write-up that #383 will accept, amend, or replace.
+- **Draft delivered:** 2026-08-17 ([#381](https://github.com/jasonhnd/gitstarclub.com/issues/381), [#382](https://github.com/jasonhnd/gitstarclub.com/issues/382)).
+- **Decision recorded:** 2026-08-31 ([#383](https://github.com/jasonhnd/gitstarclub.com/issues/383)), review **2027-03-12**.
+- **Map:** [ROADMAP.md](../ROADMAP.md) Track C remains the iteration index and owns the decision.
 
-**POC allowed: no.** No POC. No isolated POC repository is authorized by this draft.
+Sections below are unchanged from the accepted draft. "Lean" reads as the recommendation that the record adopted.
+
+**POC allowed: no.** No POC. No isolated POC repository is authorized.
 
 This document does not implement [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362). It does not authorize ≥100-star drill-down, arbitrary-repo compare, open faceting, or semantic search. Finite [CATEGORIES.md](../CATEGORIES.md) pages stay **outside** this decision.
 
@@ -69,7 +70,7 @@ Self-hosted ClickHouse is included only as **ruled out — do not reopen**.
 | Defer 6 months | no | yes | Zero incremental platform cost; Track A keeps using the current views | **yes** |
 | Self-hosted ClickHouse | yes | no | Cheap machine theory, expensive operations; already rejected | **no** (ruled out, do not reopen) |
 
-Leans are recommendations for #383, not a decision.
+These leans are what #383 adopted on 2026-08-31.
 
 ## 4. Option notes
 
@@ -201,7 +202,7 @@ Do not reopen. A future #383 “build” cannot be “we will run ClickHouse our
 | Defer 6 months | **yes** |
 | Self-hosted ClickHouse | **no** (ruled out, do not reopen) |
 
-This is a recommendation for [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383), not the decision. #383 may still choose build. Until it does, the four [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362) items stay paused and have no implementation children.
+[#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) adopted this lean on 2026-08-31 with a 2027-03-12 review. The four [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362) items stay paused until then and have no implementation children.
 
 Nothing in ARCHITECTURE, ROADMAP, or PRODUCT forced a build lean: there is no shipped product that already requires a request-path engine, and Track A’s surfaces are explicitly finite views.
 
@@ -211,11 +212,11 @@ Nothing in ARCHITECTURE, ROADMAP, or PRODUCT forced a build lean: there is no sh
 
 **no POC.**
 
-This draft does not authorize a POC repository, a Tinybird workspace, a Neon/Postgres instance, a vector index, or a query engine in the `web/` serving path. Track C’s remaining child is #383 (choose or defer). POC harness and constraint-amendment PRs are filed only if #383 chooses build.
+Nothing here authorizes a POC repository, a Tinybird workspace, a Neon/Postgres instance, a vector index, or a query engine in the `web/` serving path. #383 recorded defer, so no POC harness and no constraint-amendment PR is authorized. Those are filed only if a future dated record in [ROADMAP.md](../ROADMAP.md) Track C chooses build.
 
-## 7. If #383 later chooses build, the must-prove list would be
+## 7. If a future record chooses build, the must-prove list would be
 
-No POC is authorized now. If #383 later chooses build, these metrics and constraints must be written and accepted **before** any POC repository exists. Success/fail is defined here so 2026-09-12 has criteria; it is not a green light.
+No POC is authorized. If the 2027-03-12 review (or an earlier evidence-backed reopening) chooses build, these metrics and constraints must be written and accepted **before** any POC repository exists. Success/fail is defined here so the review has criteria; it is not a green light.
 
 | Must-prove | Why it exists | Fail looks like |
 |---|---|---|
@@ -230,11 +231,11 @@ No POC is authorized now. If #383 later chooses build, these metrics and constra
 | Product-gates | 14-day base pointer and export SLAs stay fail-closed. No new serving pointer beside `views/latest.json`. | Weakening gates, or adding a new request-path existence probe / extra serving pointer, to land the POC. |
 | Isolation | POC stays out of weekly refresh and out of content HTML. No rewrite of the Workflow. | Folding the warehouse into `recompute` / `validate` / `publish` before the must-prove list is green. |
 
-A later build decision would still have to list which README / ARCHITECTURE hard constraints it is amending. This draft’s lean is that none of them should be amended in 2026.
+A later build decision would still have to list which README / ARCHITECTURE hard constraints it is amending. The accepted position is that none of them are amended in 2026.
 
-## 8. What this draft does not do
+## 8. What this document does not do
 
-- Does not close or decide [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) or [#361](https://github.com/jasonhnd/gitstarclub.com/issues/361).
-- Does not implement or split [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362).
+- Does not implement or split [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362). The four items stay paused until 2027-03-12.
 - Does not change CATEGORIES.md, product-gates, or the current publish pointer.
 - Does not add a query engine to `web/`.
+- Does not carry the decision itself. [ROADMAP.md](../ROADMAP.md) Track C owns the dated record; amend it there, not here.
