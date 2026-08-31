@@ -14,7 +14,13 @@ test("/cockpit is isolated from the live reading surfaces", async ({ page }) => 
   await expect(nav.getByRole("link", { name: "Cockpit", exact: true })).toHaveCount(0);
 
   await expect(page.getByTestId("cockpit-timeline")).toBeVisible();
+  await expect(page.getByTestId("cockpit-search")).toBeVisible();
+  await expect(page.getByTestId("cockpit-chip-month")).toBeVisible();
+  await expect(page.getByTestId("cockpit-spark").first()).toBeVisible();
+  await expect(page.getByText("Moving now")).toBeVisible();
+  await expect(page.getByText("This month").first()).toBeVisible();
   await expect(page.getByTestId("cockpit-month")).toHaveText("2026-08");
+  await expect(page.getByTestId("cockpit-window-delta")).toHaveText("+9.2k");
   const todayStars = await page.getByTestId("cockpit-stars").innerText();
 
   const rail = page.getByTestId("cockpit-timeline");
@@ -22,6 +28,15 @@ test("/cockpit is isolated from the live reading surfaces", async ({ page }) => 
   await rail.press("Home");
   await expect(page.getByTestId("cockpit-month")).toHaveText("2015-01");
   await expect(page.getByTestId("cockpit-stars")).not.toHaveText(todayStars);
+  await expect(page.getByTestId("cockpit-window-delta")).toHaveText("+9.2k");
+
+  await page.getByTestId("cockpit-chip-week").click();
+  await expect(page.getByTestId("cockpit-chip-week")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("cockpit-window-delta")).toHaveText("+2.3k");
+
+  await page.getByTestId("cockpit-search").fill("react");
+  await page.getByTestId("cockpit-search").press("Enter");
+  await expect(page.getByText("facebook/react").first()).toBeVisible();
 
   const box = await rail.boundingBox();
   expect(box).toBeTruthy();
