@@ -1,12 +1,13 @@
 ---
 owner: roadmap
 status: active
-last_reviewed: 2026-08-17
+last_reviewed: 2026-08-31
 source_of_truth_for:
   - open work
   - architectural decisions
   - backlog
   - iteration tracks
+  - Track C dated data-layer decision
 ---
 
 # Roadmap
@@ -15,7 +16,7 @@ How the site iterates from here. For what has shipped, see [CHANGELOG.md](./CHAN
 
 This document is the **iteration map**. GitHub issues that implement it must stay inside a track below. Smaller child issues are split from the track epics; they are not invented beside the map.
 
-It is not a sprint board. It records (1) the operating rule for doing three kinds of work without collapsing them, (2) Track A product depth on the current ≥10k universe, (3) Track B production-as-product hygiene, (4) Track C analytical-layer decision, and (5) the feature backlog that stays **paused** until Track C lands.
+It is not a sprint board. It records (1) the operating rule for doing three kinds of work without collapsing them, (2) Track A product depth on the current ≥10k universe, (3) Track B production-as-product hygiene, (4) the Track C analytical-layer decision, now **recorded as a six-month deferral with a 2027-03-12 review**, and (5) the feature backlog that stays **paused** until that review.
 
 ## Operating rule
 
@@ -53,8 +54,8 @@ A proposal that cannot pass this list belongs in Track C, not Track A.
 ### Sequence
 
 - **Weeks 1–4 (done on `pre`):** Track A A1–A4 children shipped. Track B hygiene. #380 measured crawlers then **left Firewall empty** (operator chose to allow them). Track C draft + must-prove (#381 / #382); **POC allowed: no**.
-- **Through 2026-09-12:** Track C must **decide or defer** (#383). Missing that date **is** a six-month deferral of #362. No new Track A implementation stream until that date unless a child is split from an open epic.
-- **After the decision:** either an isolated Track C POC that still keeps content pages on views, or the four expansion items stay dated-deferred and further Track A work is filed as a new child of a new or reopened Track A epic — not invented beside this map.
+- **Through 2026-09-12 (settled):** Track C decided ahead of the deadline (#383) — **defer six months, review 2027-03-12, no POC**. See [Track C](#track-c--analytical-data-layer-decision).
+- **Now:** the four #362 expansion items stay dated-deferred. Further Track A work is filed as a new child of a new or reopened Track A epic — not invented beside this map. Track B stays standing.
 
 ---
 
@@ -218,6 +219,8 @@ Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blo
 
 ## Track C — Analytical data-layer decision
 
+**Decided: defer six months. Review 2027-03-12. No POC.** The record is [Decision — defer six months](#decision--defer-six-months) below.
+
 **Goal.** A written decision, dated, in-repo, that either opens a narrow POC or defers the expansion backlog for a stated period (default: six months).
 
 **Deadline.** Draft in two weeks from the epic open date. Decide or defer within four weeks. Missing the deadline **is** a deferral of the four blocked items.
@@ -231,11 +234,36 @@ Several recurring requests cannot be served by static JSON shards behind a publi
 
 All four need filtering, aggregation, or vector query over a large repo × time matrix. That is one gate, not four features.
 
-### Options (draft compare is linked; formal choose/defer is still #383 on 2026-09-12)
+### Decision — defer six months
 
-The comparative **draft** is [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). It is not the 2026-09-12 decision. [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) still owns choose-or-defer. Missing that date **is** a six-month deferral of [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362).
+This is the dated record [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) owns. It accepts [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md) as written.
 
-Draft recommendation leans (not a decision): Tinybird **no**; Vercel Postgres / Neon **no**; more JSON views **only-if** (tiny finite extra shard, not open faceting); self-hosted ClickHouse **ruled out, do not reopen**; defer 6 months **yes**. **POC allowed: no.**
+| Field | Record |
+|---|---|
+| Recorded | 2026-08-31, ahead of the 2026-09-12 deadline |
+| Outcome | **Defer.** No analytical query plane is adopted. |
+| Review on | **2027-03-12** (six months from the Track C deadline, not from the recording date) |
+| POC authorized | **No.** |
+| Hard constraints changed | **None.** |
+| Basis | [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md), accepted without amendment |
+
+Rejected for this cycle: Tinybird (**no**), Vercel Postgres / Neon (**no**), self-hosted ClickHouse (**no — ruled out, do not reopen**). More precomputed JSON views stays **only-if**: a tiny, finite, whitelist-derived shard in the same rule family as the existing rank / category / lookup views is Track A work and needs no Track C decision. Stretching that option into open faceting or ≥100-star coverage is a Track C build and is not authorized.
+
+What the deferral means in practice:
+
+- The four [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362) items stay paused and keep **no implementation children**. #362 stays open carrying the 2027-03-12 review date.
+- Every rule in [Hard constraints](#hard-constraints-do-not-renegotiate-in-feature-prs) stands unchanged. No request-path engine, no runtime database, no vector index in the serving image, no second vendor bill.
+- No POC repository, Tinybird workspace, Neon/Postgres instance, or embedding index is authorized. The must-prove list in the draft §7 stays criteria-in-waiting, not a green light.
+- Track A continues on the current ~5.3k ≥10k-star universe. Finite [CATEGORIES.md](./CATEGORIES.md) pages were always outside this decision and are unaffected.
+- Product-gates stay fail-closed. Nothing here loosens the 14-day base-pointer or export SLAs, and nothing adds a serving pointer beside `views/latest.json`.
+
+What would reopen this before 2027-03-12: reader demand the current whitelist demonstrably cannot serve — not a request for the capability itself. Reopening means a new dated record in this section that names the evidence, the option chosen, and each hard constraint being amended. A feature PR is not a reopening mechanism.
+
+### Options (compare that produced the decision)
+
+The comparative draft is [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). The decision above accepted its overall lean.
+
+Recorded outcome per option: Tinybird **no**; Vercel Postgres / Neon **no**; more JSON views **only-if** (tiny finite extra shard, not open faceting); self-hosted ClickHouse **ruled out, do not reopen**; defer 6 months **chosen**. **POC allowed: no.**
 
 | Option | Trade-off |
 |---|---|
@@ -243,32 +271,36 @@ Draft recommendation leans (not a decision): Tinybird **no**; Vercel Postgres / 
 | **Vercel Postgres / Neon** | Stays on Vercel. Relational storage is a poor fit for this analytical shape and scale. Draft lean: **no**. |
 | **More precomputed JSON views** | No database. Combinatorial filter/sort/aggregate does not fit a finite shard set. Draft lean: **only-if** a tiny finite extra shard. |
 | **Self-hosted ClickHouse** | Cheap to run in theory, expensive to operate. Already ruled out in [ARCHITECTURE.md](./ARCHITECTURE.md). Do not reopen. |
-| **Defer 6 months** | Valid outcome. Track A continues. The four items stay paused with a review date. Draft lean: **yes**. |
+| **Defer 6 months** | Valid outcome. Track A continues. The four items stay paused with a review date. **Chosen** — review 2027-03-12. |
 
-A formal selection (accept, amend, or replace the draft + dated choose/defer) must precede any production work below. Finite category pages stay **outside** this decision.
+The selection is recorded above. Finite category pages stay **outside** this decision.
 
 ### Decision-record acceptance
 
-- In-repo markdown (extend this file or add a dated decision note linked from here).
-- States the chosen option **or** an explicit defer-until date.
-- Lists which hard constraints would change if a query plane is introduced (and which pages would still be view-only).
-- If a POC is approved: isolated from content HTML, no weekly-refresh rewrite, success/fail metrics written before code.
+The record above satisfies each requirement:
+
+| Requirement | Where it is met |
+|---|---|
+| In-repo markdown (extend this file or add a dated decision note linked from here) | [Decision — defer six months](#decision--defer-six-months) extends this file |
+| States the chosen option **or** an explicit defer-until date | Defer, review 2027-03-12 |
+| Lists which hard constraints would change if a query plane is introduced (and which pages would still be view-only) | None change under this outcome; per-option constraint deltas stay in the draft §4 for any future reopening |
+| If a POC is approved: isolated from content HTML, no weekly-refresh rewrite, success/fail metrics written before code | Not applicable — no POC authorized. Criteria stay in the draft §7 |
 
 **Children (decision only — no #362 implementation)**
 
-| Issue | Work | Due |
-|---|---|---|
-| [#381](https://github.com/jasonhnd/gitstarclub.com/issues/381) | Write the data-layer decision draft | ~2026-08-29 |
-| [#382](https://github.com/jasonhnd/gitstarclub.com/issues/382) | Write POC must-prove list (or close if defer) | with / after #381 |
-| [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) | Decide or defer | **2026-09-12** |
+| Issue | Work | Due | Status |
+|---|---|---|---|
+| [#381](https://github.com/jasonhnd/gitstarclub.com/issues/381) | Write the data-layer decision draft | ~2026-08-29 | Done |
+| [#382](https://github.com/jasonhnd/gitstarclub.com/issues/382) | Write POC must-prove list (or close if defer) | with / after #381 | Done |
+| [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) | Decide or defer | **2026-09-12** | Decided: defer, review 2027-03-12 |
 
-POC harness and constraint-amendment PRs are filed only if #383 chooses build.
+POC harness and constraint-amendment PRs are filed only if a future dated record chooses build. None is authorized now.
 
 ---
 
-## Backlog (blocked on Track C)
+## Backlog (deferred to 2027-03-12)
 
-Do not file implementation issues for these until Track C is decided in favor of building.
+Track C [decided to defer](#decision--defer-six-months). Do not file implementation issues for these before the 2027-03-12 review, and do not land them as "small" Track A additions. Tracker: [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362).
 
 ### Drill-down to ≥100 stars
 
@@ -309,7 +341,7 @@ GitHub epics match this table. Child implementation issues are split from an epi
 | A3 | Pulse as return engine | #358 | #371 #372 #373 | Done on `pre` |
 | A4 | Search stays go-to-name; citation stays honest | #359 | #374 #375 #376 | Done on `pre` |
 | B | Production as product | #360 | #377 #378 #379 #380 #402 | Open; standing. Children including #380 done |
-| C | Analytical data-layer decision | #361 | #381 #382 #383 | Open; draft shipped; #383 still decides 2026-09-12 |
-| — | Blocked expansion backlog | #362 | none | No impl until #361 / #383 |
+| C | Analytical data-layer decision | #361 | #381 #382 #383 | Decided: defer six months, review 2027-03-12, no POC. Epic closes with #383 |
+| — | Deferred expansion backlog | #362 | none | No impl before 2027-03-12. Stays open carrying the review date |
 
 When an epic is done, update this table and [CHANGELOG.md](./CHANGELOG.md) in the same change set as the last child.
