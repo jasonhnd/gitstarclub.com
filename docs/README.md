@@ -1,7 +1,7 @@
 ---
 owner: docs / maintenance
 status: active
-last_reviewed: 2026-08-17
+last_reviewed: 2026-08-31
 source_of_truth_for:
   - documentation index
   - documentation ownership map
@@ -61,11 +61,11 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | [geo/queries.md](./geo/queries.md) | active | GEO measurement / citation review | Target queries, review cadence, page-type coverage, or miss classifications change. Re-run affected high-priority checks after schema, robots, sitemap, answer-capsule, ranking, category, methodology, or data-export changes. | Operational registry; [GEO.md](./GEO.md) remains the source of truth for strategy, metrics, and measurement intent. |
 | [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) | active | GEO crawler and AI-referrer reporting | `geo:report` inputs, output fields, taxonomy, privacy rules, or operator commands change. | Operational runbook; [GEO.md](./GEO.md) owns the reporting intent, and [OPS.md](./OPS.md) owns production log/operations practice. |
 
-### Decision drafts
+### Decision analyses
 
 | Document | Status | Owner / topic | Update when | Truth role |
 |---|---|---|---|---|
-| [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md) | draft | Track C analytical data-layer decision | When #383 accepts, amends, or replaces the draft on 2026-09-12, or when a later dated decision supersedes it. | Comparative draft and POC must-prove list only. [ROADMAP.md](./ROADMAP.md) Track C remains the iteration index. #383 owns choose-or-defer. |
+| [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md) | active | Track C analytical data-layer option analysis | When the 2027-03-12 review, or an earlier evidence-backed reopening, changes the option compare or the must-prove list. | Option comparison and POC must-prove list only. The dated decision (defer, review 2027-03-12) lives in [ROADMAP.md](./ROADMAP.md) Track C, which remains the iteration index. |
 
 ### Historical analyses
 
@@ -104,7 +104,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | geo/queries | Active GEO target-query registry and citation-review worksheet |
 | geo/ai-log-reporting | Active aggregate AI crawler / AI-referrer log reporting runbook |
 | analysis/DATA-CORRECTNESS-21 | Historical data-correctness analysis for issue #21 / #36 follow-up planning |
-| analysis/DATA-LAYER-DECISION | Track C data-layer decision draft and POC must-prove list; not the 2026-09-12 decision |
+| analysis/DATA-LAYER-DECISION | Track C data-layer option comparison and POC must-prove list; the dated decision itself lives in ROADMAP Track C |
 | CHANGELOG | Versioned release history (what shipped and when) |
 | ROADMAP | Open work, architectural decisions, backlog |
 
@@ -138,7 +138,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | GEO crawler / AI-referrer aggregate reporting | GEO and OPS; appendix maintained in [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) |
 | Core Web Vitals baseline evidence | TESTING owns current targets; appendix baseline in [perf/CWV-25.md](./perf/CWV-25.md) |
 | Historical data-correctness analysis | Current behavior lives in RANKING, DATA-CONTRACTS, and TESTING; appendix evidence in [analysis/DATA-CORRECTNESS-21.md](./analysis/DATA-CORRECTNESS-21.md) |
-| Track C data-layer decision draft | Draft compare and must-prove list in [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md); ROADMAP Track C stays the index; #383 owns choose-or-defer |
+| Track C data-layer decision | Dated record in [ROADMAP.md](./ROADMAP.md) Track C (defer, review 2027-03-12); option compare and must-prove list in [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md) |
 | Release history | CHANGELOG |
 | Open work / architectural decisions | ROADMAP |
 
