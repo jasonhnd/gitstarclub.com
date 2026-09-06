@@ -1,13 +1,13 @@
 ---
 owner: roadmap
 status: active
-last_reviewed: 2026-08-31
+last_reviewed: 2026-09-06
 source_of_truth_for:
   - open work
   - architectural decisions
   - backlog
   - iteration tracks
-  - Track C dated data-layer decision
+  - Track C dated data-layer decision (product lock-002)
 ---
 
 # Roadmap
@@ -16,7 +16,7 @@ How the site iterates from here. For what has shipped, see [CHANGELOG.md](./CHAN
 
 This document is the **iteration map**. GitHub issues that implement it must stay inside a track below. Smaller child issues are split from the track epics; they are not invented beside the map.
 
-It is not a sprint board. It records (1) the operating rule for doing three kinds of work without collapsing them, (2) Track A product depth on the current ≥10k universe, (3) Track B production-as-product hygiene, (4) the Track C analytical-layer decision, now **recorded as a six-month deferral with a 2027-03-12 review**, and (5) the feature backlog that stays **paused** until that review.
+It is not a sprint board. It records (1) the operating rule for doing three kinds of work without collapsing them, (2) Track A product depth on the current ≥10k universe, (3) Track B production-as-product hygiene, (4) the Track C analytical-layer decision, now **recorded as product lock-002: a permanent product veto of the request-path query plane**, and (5) the expansion backlog that stays **paused** until a constitution-level revision amends the hard constraints.
 
 ## Operating rule
 
@@ -29,15 +29,15 @@ The site is past “does the surface exist?”. Chronicle, pulse, rankings, sear
 
 Differentiation stays what [REQUIREMENTS.md](./REQUIREMENTS.md) already states: GitHub Trending is only today, star-history.com is one repo at a time, gitstar-ranking.com is current totals. GitStarClub is **retrospective + structured + pulse**.
 
-Three tracks exist at once. Only **one track owns most of any given week**.
+Two tracks remain in flight. Only **one of those tracks owns most of any given week**. Track C is closed as a build track.
 
 | Track | Share of weeks | Purpose | Hard stop |
 |---|---|---|---|
-| **A — Current-universe product** | ~60% | Make the existing ≥10k chronicle and pulse denser to read and cite | No whitelist expansion, no query engine, no request-path ranking |
+| **A — Current-universe product** | ~80% | Make the existing ≥10k chronicle and pulse denser to read and cite | No whitelist expansion, no query engine, no request-path ranking |
 | **B — Production as product** | ~20%, standing | Freshness, cost, publish gates, lockfile hygiene | Not a feature factory |
-| **C — Analytical-layer decision** | ~20%, timeboxed | Written decision + POC criteria; choose or formally defer | No production PRs for ≥100-star drill-down, arbitrary compare, open faceting, or semantic search until the decision lands |
+| **C — Analytical-layer decision** | closed | Written decision: product veto of request-path live computation (lock-002) | No production PRs for ≥100-star drill-down, arbitrary compare, open faceting, semantic search, or a request-path query plane. Reopening requires a constitution-level revision, not a feature PR and not a calendar date. |
 
-Track A edits pages and precomputed views. Track C writes a decision record and at most an isolated POC. Track B moves on a fixed window or when something is on fire.
+Track A edits pages and precomputed views. Track C does not authorize a POC, a query plane, or a revisit date. Track B moves on a fixed window or when something is on fire.
 
 ### Hard constraints (do not renegotiate in feature PRs)
 
@@ -46,16 +46,17 @@ From [README.md](../README.md) and [ARCHITECTURE.md](./ARCHITECTURE.md):
 - Zero runtime engine in the request path (no DuckDB / ClickHouse / Postgres / vector index in the serving image).
 - Zero runtime database. Read-side state is versioned Blob views behind a publish pointer.
 - Static content pages. Near-zero client JavaScript on content surfaces. Named exceptions stay in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
-- Vercel-first. Deploy, cron, Blob, workflow, and any future analytics stay on Vercel unless Track C explicitly changes this.
+- Vercel-first. Deploy, cron, Blob, workflow, and any future analytics stay on Vercel unless a constitution-level revision amends this constraint.
 - AI-free product copy. No LLM-generated summaries or classifications at request time.
 
-A proposal that cannot pass this list belongs in Track C, not Track A.
+A proposal that cannot pass this list is vetoed. It is not a Track A ticket, not a Track C POC, and not a feature PR.
 
 ### Sequence
 
 - **Weeks 1–4 (done on `pre`):** Track A A1–A4 children shipped. Track B hygiene. #380 measured crawlers then **left Firewall empty** (operator chose to allow them). Track C draft + must-prove (#381 / #382); **POC allowed: no**.
-- **Through 2026-09-12 (settled):** Track C decided ahead of the deadline (#383) — **defer six months, review 2027-03-12, no POC**. See [Track C](#track-c--analytical-data-layer-decision).
-- **Now:** the four #362 expansion items stay dated-deferred. Further Track A work is filed as a new child of a new or reopened Track A epic — not invented beside this map. Track B stays standing.
+- **Through 2026-09-12 (superseded):** Track C #383 recorded defer six months, review 2027-03-12, no POC. That dated auto-review is **void**.
+- **2026-09-06 (lock-002):** Track C is a **product veto** of the request-path query plane / live computation on the request path. No POC. No calendar revisit. Reopening requires a constitution-level revision. See [Track C](#track-c--analytical-data-layer-decision).
+- **Now:** the four #362 expansion items stay vetoed. Further Track A work is filed as a new child of a new or reopened Track A epic — not invented beside this map. Track B stays standing.
 
 ---
 
@@ -163,7 +164,7 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 
 **Intent**
 
-- Do not turn search into a server query product (that is Track C / semantic search).
+- Do not turn search into a server query product (that is a vetoed request-path query plane, not Track A).
 - Make numbers quotable: data-as-of, export alias, answer capsules, without inventing live stars.
 
 **Likely surfaces**
@@ -219,11 +220,11 @@ Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blo
 
 ## Track C — Analytical data-layer decision
 
-**Decided: defer six months. Review 2027-03-12. No POC.** The record is [Decision — defer six months](#decision--defer-six-months) below.
+**Decided: product veto (lock-002). No request-path query plane. No live computation on the request path. No POC. No dated auto-review.** The record is [Decision — product veto (lock-002)](#decision--product-veto-lock-002) below.
 
-**Goal.** A written decision, dated, in-repo, that either opens a narrow POC or defers the expansion backlog for a stated period (default: six months).
+**Goal (closed).** A written decision, dated, in-repo. That decision is a **permanent product veto** of the request-path analytical query plane. Track C does not authorize a POC, a query engine, or a calendar reminder to reopen the question.
 
-**Deadline.** Draft in two weeks from the epic open date. Decide or defer within four weeks. Missing the deadline **is** a deferral of the four blocked items.
+The 2026-08-31 [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) record (defer six months, review 2027-03-12) is **superseded**. There is no 2027-03-12 review and no other automatic revisit date.
 
 Several recurring requests cannot be served by static JSON shards behind a publish pointer:
 
@@ -232,38 +233,39 @@ Several recurring requests cannot be served by static JSON shards behind a publi
 - **Open topic / language / year clustering.** Arbitrary and pairwise slices. Different from finite [CATEGORIES.md](./CATEGORIES.md) pages.
 - **Semantic search.** Embeddings over descriptions/topics/READMEs. Separate from `/search-index`.
 
-All four need filtering, aggregation, or vector query over a large repo × time matrix. That is one gate, not four features.
+All four need filtering, aggregation, or vector query over a large repo × time matrix. That is one gate, not four features. Lock-002 vetoes that gate.
 
-### Decision — defer six months
+### Decision — product veto (lock-002)
 
-This is the dated record [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) owns. It accepts [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md) as written.
+This is the dated record [#430](https://github.com/jasonhnd/gitstarclub.com/issues/430) owns. It keeps [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md) as the option-comparison history and records the product outcome as a **veto**, not a deferral.
 
 | Field | Record |
 |---|---|
-| Recorded | 2026-08-31, ahead of the 2026-09-12 deadline |
-| Outcome | **Defer.** No analytical query plane is adopted. |
-| Review on | **2027-03-12** (six months from the Track C deadline, not from the recording date) |
+| Recorded | 2026-09-06 (lock-002), superseding the 2026-08-31 #383 deferral |
+| Outcome | **Veto.** No analytical query plane. No live computation on the request path. |
+| Review on | **None.** No dated auto-review. No calendar reminder. |
 | POC authorized | **No.** |
 | Hard constraints changed | **None.** |
-| Basis | [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md), accepted without amendment |
+| Reopen by | A **constitution-level revision**: a new dated constitutional record that amends the hard constraints. Not a feature PR. Not a Track C POC. Not a calendar date. |
+| Basis | [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md), accepted as comparison history; product outcome is veto |
 
-Rejected for this cycle: Tinybird (**no**), Vercel Postgres / Neon (**no**), self-hosted ClickHouse (**no — ruled out, do not reopen**). More precomputed JSON views stays **only-if**: a tiny, finite, whitelist-derived shard in the same rule family as the existing rank / category / lookup views is Track A work and needs no Track C decision. Stretching that option into open faceting or ≥100-star coverage is a Track C build and is not authorized.
+Rejected: Tinybird (**no**), Vercel Postgres / Neon (**no**), self-hosted ClickHouse (**no — ruled out, do not reopen**). More precomputed JSON views stays **only-if**: a tiny, finite, whitelist-derived shard in the same rule family as the existing rank / category / lookup views is Track A work and needs no Track C decision. Stretching that option into open faceting or ≥100-star coverage is a request-path analytical plane and is **vetoed**.
 
-What the deferral means in practice:
+What the veto means in practice:
 
-- The four [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362) items stay paused and keep **no implementation children**. #362 stays open carrying the 2027-03-12 review date.
+- The four [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362) items stay paused and keep **no implementation children**. #362 is not a review-date carrier; it is a vetoed expansion backlog.
 - Every rule in [Hard constraints](#hard-constraints-do-not-renegotiate-in-feature-prs) stands unchanged. No request-path engine, no runtime database, no vector index in the serving image, no second vendor bill.
-- No POC repository, Tinybird workspace, Neon/Postgres instance, or embedding index is authorized. The must-prove list in the draft §7 stays criteria-in-waiting, not a green light.
+- No POC repository, Tinybird workspace, Neon/Postgres instance, or embedding index is authorized. The must-prove list in the draft §7 is historical criteria, not a green light and not a scheduled review checklist.
 - Track A continues on the current ~5.3k ≥10k-star universe. Finite [CATEGORIES.md](./CATEGORIES.md) pages were always outside this decision and are unaffected.
 - Product-gates stay fail-closed. Nothing here loosens the 14-day base-pointer or export SLAs, and nothing adds a serving pointer beside `views/latest.json`.
 
-What would reopen this before 2027-03-12: reader demand the current whitelist demonstrably cannot serve — not a request for the capability itself. Reopening means a new dated record in this section that names the evidence, the option chosen, and each hard constraint being amended. A feature PR is not a reopening mechanism.
+What would reopen this: a constitution-level revision — a new dated constitutional record that names each hard constraint being amended and why. A feature PR is not a reopening mechanism. A calendar reminder is not a reopening mechanism. Reader demand alone does not reopen it.
 
 ### Options (compare that produced the decision)
 
-The comparative draft is [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). The decision above accepted its overall lean.
+The comparative draft is [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). Lock-002 keeps its option rejects and replaces the 2026-08-31 deferral with a product veto.
 
-Recorded outcome per option: Tinybird **no**; Vercel Postgres / Neon **no**; more JSON views **only-if** (tiny finite extra shard, not open faceting); self-hosted ClickHouse **ruled out, do not reopen**; defer 6 months **chosen**. **POC allowed: no.**
+Recorded outcome per option: Tinybird **no**; Vercel Postgres / Neon **no**; more JSON views **only-if** (tiny finite extra shard, not open faceting); self-hosted ClickHouse **ruled out, do not reopen**; defer 6 months **superseded**; product veto (lock-002) **chosen**. **POC allowed: no.**
 
 | Option | Trade-off |
 |---|---|
@@ -271,7 +273,8 @@ Recorded outcome per option: Tinybird **no**; Vercel Postgres / Neon **no**; mor
 | **Vercel Postgres / Neon** | Stays on Vercel. Relational storage is a poor fit for this analytical shape and scale. Draft lean: **no**. |
 | **More precomputed JSON views** | No database. Combinatorial filter/sort/aggregate does not fit a finite shard set. Draft lean: **only-if** a tiny finite extra shard. |
 | **Self-hosted ClickHouse** | Cheap to run in theory, expensive to operate. Already ruled out in [ARCHITECTURE.md](./ARCHITECTURE.md). Do not reopen. |
-| **Defer 6 months** | Valid outcome. Track A continues. The four items stay paused with a review date. **Chosen** — review 2027-03-12. |
+| **Defer 6 months** | Historical lean of the 2026-08-17 draft, recorded by #383. **Superseded** by lock-002. The dated 2027-03-12 review is void. |
+| **Product veto (lock-002)** | **Chosen.** No request-path query plane. No live computation on the request path. No POC. No auto-review. Reopen only by constitution-level revision. |
 
 The selection is recorded above. Finite category pages stay **outside** this decision.
 
@@ -281,10 +284,10 @@ The record above satisfies each requirement:
 
 | Requirement | Where it is met |
 |---|---|
-| In-repo markdown (extend this file or add a dated decision note linked from here) | [Decision — defer six months](#decision--defer-six-months) extends this file |
-| States the chosen option **or** an explicit defer-until date | Defer, review 2027-03-12 |
-| Lists which hard constraints would change if a query plane is introduced (and which pages would still be view-only) | None change under this outcome; per-option constraint deltas stay in the draft §4 for any future reopening |
-| If a POC is approved: isolated from content HTML, no weekly-refresh rewrite, success/fail metrics written before code | Not applicable — no POC authorized. Criteria stay in the draft §7 |
+| In-repo markdown (extend this file or add a dated decision note linked from here) | [Decision — product veto (lock-002)](#decision--product-veto-lock-002) extends this file |
+| States the chosen option **or** an explicit defer-until date | **Veto.** No defer-until date. No auto-review. |
+| Lists which hard constraints would change if a query plane is introduced (and which pages would still be view-only) | None change. Amending them requires a constitution-level revision. Per-option constraint deltas stay in the draft §4 as history. |
+| If a POC is approved: isolated from content HTML, no weekly-refresh rewrite, success/fail metrics written before code | Not applicable — no POC authorized. Criteria stay in the draft §7 as historical must-prove language, not a green light. |
 
 **Children (decision only — no #362 implementation)**
 
@@ -292,15 +295,15 @@ The record above satisfies each requirement:
 |---|---|---|---|
 | [#381](https://github.com/jasonhnd/gitstarclub.com/issues/381) | Write the data-layer decision draft | ~2026-08-29 | Done |
 | [#382](https://github.com/jasonhnd/gitstarclub.com/issues/382) | Write POC must-prove list (or close if defer) | with / after #381 | Done |
-| [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) | Decide or defer | **2026-09-12** | Decided: defer, review 2027-03-12 |
+| [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) | Decide or defer | **2026-09-12** | Superseded: #383 recorded defer + 2027-03-12 review; lock-002 ([#430](https://github.com/jasonhnd/gitstarclub.com/issues/430)) vetoes the query plane with no auto-review |
 
-POC harness and constraint-amendment PRs are filed only if a future dated record chooses build. None is authorized now.
+POC harness and constraint-amendment PRs are not authorized. A constitution-level revision is the only reopening path.
 
 ---
 
-## Backlog (deferred to 2027-03-12)
+## Backlog (vetoed expansion — no auto-review)
 
-Track C [decided to defer](#decision--defer-six-months). Do not file implementation issues for these before the 2027-03-12 review, and do not land them as "small" Track A additions. Tracker: [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362).
+Track C [vetoed the request-path query plane](#decision--product-veto-lock-002). Do not file implementation issues for these, and do not land them as "small" Track A additions. Tracker: [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362). Reopening requires a constitution-level revision, not a calendar date.
 
 ### Drill-down to ≥100 stars
 
@@ -341,7 +344,7 @@ GitHub epics match this table. Child implementation issues are split from an epi
 | A3 | Pulse as return engine | #358 | #371 #372 #373 | Done on `pre` |
 | A4 | Search stays go-to-name; citation stays honest | #359 | #374 #375 #376 | Done on `pre` |
 | B | Production as product | #360 | #377 #378 #379 #380 #402 | Open; standing. Children including #380 done |
-| C | Analytical data-layer decision | #361 | #381 #382 #383 | Decided: defer six months, review 2027-03-12, no POC. Epic closes with #383 |
-| — | Deferred expansion backlog | #362 | none | No impl before 2027-03-12. Stays open carrying the review date |
+| C | Analytical data-layer decision | #361 | #381 #382 #383 | Decided: product veto (lock-002, #430). No POC. No dated auto-review. Epic is closed as a build track. |
+| — | Vetoed expansion backlog | #362 | none | No impl. Not a review-date carrier. Reopen only by constitution-level revision |
 
 When an epic is done, update this table and [CHANGELOG.md](./CHANGELOG.md) in the same change set as the last child.
