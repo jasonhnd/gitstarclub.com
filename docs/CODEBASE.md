@@ -1,7 +1,7 @@
 ---
 owner: codebase architecture
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-09-16
 source_of_truth_for:
   - code map
   - data layer ownership
@@ -58,6 +58,7 @@ GitHub APIs
 | `web/lib/compare/` | Compare-page normalization and curve logic |
 | `web/lib/search/` | Search index/query core |
 | `web/lib/observability/` | Health and alert helpers for cron/workflow failure alerting |
+| `web/lib/storage/` | Injectable object-store port (`vercel-blob` \| `r2-s3`) for write/CAS/list/del; default remains Blob |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
 | `docs/` | Product, architecture, data, operations, frontend, SEO, testing, and development docs |
 
@@ -90,7 +91,11 @@ Important files:
   exposes `getAliasMap` for `aliases` (`lookup/aliases.json`, old full_name ->
   current id for rename redirects).
 - `write.ts`: write helper for workflow, cron, and ops paths. Page code should
-  not write.
+  not write. Both helpers go through `web/lib/storage` (`STORAGE_WRITE_DRIVER`,
+  default `blob`).
+- `web/lib/storage/`: object-store port used by write, live publication, lease,
+  health, recompute I/O, aliases list, and version GC. R2 is opt-in and
+  non-production only; see [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
 
 Rule: if a page needs a new view, add or extend the Zod schema in
 `web/lib/contracts/`, then add the read helper in `web/lib/data/`.
