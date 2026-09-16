@@ -78,7 +78,8 @@ export type OwnerType = z.infer<typeof OwnerType>;
 /** meta.json — gross→net seam + period fold watermark. Accepts the flat bootstrap meta
  *  (backfilled_at, no folded_through) and the Phase 4 versioned meta (folded_through).
  *  `active_repo_count` / `historical_repo_count` are official on this view, not on
- *  canonical/v2/meta.json (CanonicalMeta). */
+ *  canonical/v2/meta.json (CanonicalMeta). Issue #438 locks that split — do not fold
+ *  these membership counts into CanonicalMeta. */
 export const Meta = z.object({
   seam_date: DateStr,
   schema_ver: NonNegativeInt,

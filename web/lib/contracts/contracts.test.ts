@@ -79,6 +79,10 @@ function rejects(schema: { safeParse: (v: unknown) => { success: boolean } }, ba
   return schema.safeParse(bad).success === false;
 }
 
+function unrecognizedKeys(error: { issues: ReadonlyArray<{ code: string; keys?: readonly string[] }> }): string[] {
+  return error.issues.flatMap((issue) => (issue.code === "unrecognized_keys" && issue.keys ? [...issue.keys] : []));
+}
+
 const TS = "2024-06-01T00:00:00.000Z";
 
 describe("common primitives", () => {
@@ -164,6 +168,7 @@ describe("Meta — accepts BOTH bootstrap flat meta AND Phase 4 versioned meta",
   });
 
   test("published meta with official membership counts parses", () => {
+    // Issue #438 lock: views Meta must keep accepting current Blob membership counts.
     const published = {
       seam_date: "2026-05-30",
       schema_ver: 1,
@@ -289,15 +294,82 @@ describe("CanonicalMeta", () => {
   });
 
   test("rejects views/meta membership counts — those fields belong on Meta", () => {
-    expect(
-      rejects(CanonicalMeta, {
-        seam_date: "2026-05-30",
-        schema_ver: 1,
-        folded_through: { month: "2026-07", week: "2026-W30" },
-        active_repo_count: 5503,
-        historical_repo_count: 7,
-      }),
-    ).toBe(true);
+    // Issue #438 lock: do not weaken this reject or add counts onto CanonicalMeta.
+    const withCounts = {
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      folded_through: { month: "2026-07", week: "2026-W30" },
+      active_repo_count: 5503,
+      historical_repo_count: 7,
+    };
+    expect(rejects(CanonicalMeta, withCounts)).toBe(true);
+    const result = CanonicalMeta.safeParse(withCounts);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(unrecognizedKeys(result.error)).toEqual(
+      expect.arrayContaining(["active_repo_count", "historical_repo_count"]),
+    );
+  });
+});
+
+describe("Issue #438 lock — views Meta counts + Repos active; CanonicalMeta stays count-free", () => {
+  test("Meta.parse accepts the current views meta fixture with membership counts", () => {
+    const fixture = {
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      active_repo_count: 5503,
+      historical_repo_count: 7,
+      folded_through: { month: "2026-07", week: "2026-W30" },
+      generated_at: TS,
+    };
+    expect(Meta.parse(fixture)).toEqual(fixture);
+    expect(Meta.parse(fixture).active_repo_count).toBe(5503);
+    expect(Meta.parse(fixture).historical_repo_count).toBe(7);
+  });
+
+  test("ReposShardEntry and ReposShard accept active true|false with tracked_since", () => {
+    const base = {
+      id: 1,
+      node_id: "MDEwOlJlcG9z",
+      owner: "vercel",
+      owner_type: "Organization" as const,
+      name: "next.js",
+      full_name: "vercel/next.js",
+      current_stars: 120000,
+    };
+    const activeEntry = { ...base, active: true, tracked_since: "2024-06-01" };
+    const historicalEntry = {
+      ...base,
+      id: 2,
+      name: "historical",
+      full_name: "vercel/historical",
+      active: false,
+      tracked_since: "2024-06-01",
+    };
+
+    expect(ReposShardEntry.parse(activeEntry)).toMatchObject({ active: true, tracked_since: "2024-06-01" });
+    expect(ReposShardEntry.parse(historicalEntry)).toMatchObject({ active: false, tracked_since: "2024-06-01" });
+
+    const shard = ReposShard.parse({ "1": activeEntry, "2": historicalEntry });
+    expect(shard["1"].active).toBe(true);
+    expect(shard["2"].active).toBe(false);
+    expect(shard["1"].tracked_since).toBe("2024-06-01");
+    expect(shard["2"].tracked_since).toBe("2024-06-01");
+  });
+
+  test("CanonicalMeta still rejects membership counts (unrecognized_keys)", () => {
+    const result = CanonicalMeta.safeParse({
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      folded_through: { month: "2026-07", week: "2026-W30" },
+      active_repo_count: 5503,
+      historical_repo_count: 7,
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(unrecognizedKeys(result.error)).toEqual(
+      expect.arrayContaining(["active_repo_count", "historical_repo_count"]),
+    );
   });
 });
 
