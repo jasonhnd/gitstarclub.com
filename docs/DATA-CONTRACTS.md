@@ -590,7 +590,7 @@ product gate 仍将该 transport failure 判为失败。
 
 ### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json` — Workflow checkpoint
 
-业务可读的 run 进度账本（Workflow SDK 自身另有持久化）。
+业务可读的 run 进度账本（编排 runtime 用 Queue / HTTP 链推进；不再依赖 Workflow SDK 持久化）。
 
 ```json
 // manifest.json
@@ -603,7 +603,7 @@ product gate 仍将该 transport failure 判为失败。
 }
 ```
 
-> `steps[]` 为 **manifest 分组**（10 项，对应进度账本，含 read-only `preflight` 与真实 `buildAliases` 阶段）；**细粒度 13 步**（preflight/whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。Workflow SDK 自身持久化 step 结果；`validate` 另写 `canonical-manifest.json`（全部必需 canonical shard 的路径、bucket、记录数、SHA-256 与完整性结论）及 `validation.json`，其余 run 级账本包括 manifest / error / latest-success。
+> `steps[]` 为 **manifest 分组**（10 项，对应进度账本，含 read-only `preflight` 与真实 `buildAliases` 阶段）；**细粒度 13 步**（preflight/whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。编排 runtime 另写 `ops/workflows/<run_id>/steps/<step>.json`；`validate` 另写 `canonical-manifest.json`（全部必需 canonical shard 的路径、bucket、记录数、SHA-256 与完整性结论）及 `validation.json`，其余 run 级账本包括 manifest / error / latest-success。
 
 `ops/workflows/active.json` 是 refresh / rollback 的互斥 lease。start 路由和执行体都通过 Blob ETag 条件写更新；takeover 会递增 `fencing_token`。lease 30 分钟到期，长写入每 ≤5 分钟 heartbeat；canonical、checkpoint 和 publish pointer 写前必须同时核对 `run_id` 与 token。
 

@@ -12,7 +12,6 @@ export async function publishVersion(
   runId: string,
   fencingToken: number,
 ): Promise<PublicationResult> {
-  "use step";
 
   return publishVersionWithDeps(runId, fencingToken, productionPublicationDeps);
 }

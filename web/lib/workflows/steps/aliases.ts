@@ -20,7 +20,6 @@ export interface AliasResult {
 }
 
 export async function buildAliases(runId: string, fencingToken: number): Promise<AliasResult> {
-  "use step";
   const store = getWriteObjectStore();
 
   // Current repo lookup written earlier this run (id → full_name + fields); the redirect target

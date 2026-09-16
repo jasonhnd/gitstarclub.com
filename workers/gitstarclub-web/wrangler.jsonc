@@ -1,0 +1,47 @@
+{
+  "name": "gitstarclub-web",
+  "main": "src/index.ts",
+  "account_id": "00f850e853e4c7f9627233d51a6e30a1",
+  "compatibility_date": "2026-09-16",
+  "observability": {
+    "enabled": true
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "JOBS",
+        "queue": "gitstarclub-jobs"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "gitstarclub-jobs",
+        "max_batch_size": 1,
+        "max_retries": 2
+      }
+    ]
+  },
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "gitstarclub-assets"
+    }
+  ],
+  // Production CF Cron stays off. Vercel cron in web/vercel.json remains the
+  // production scheduler until Jason approves a cutover. Enable crons only on
+  // the nonprod environment below.
+  "triggers": {
+    "crons": []
+  },
+  "env": {
+    "nonprod": {
+      "name": "gitstarclub-web-nonprod",
+      "triggers": {
+        "crons": ["0 6 * * 0"]
+      },
+      "vars": {
+        "WORKFLOW_FIXTURE": "1"
+      }
+    }
+  }
+}

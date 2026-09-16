@@ -38,7 +38,6 @@ export async function gcVersions(
   runId: string,
   fencingToken: number,
 ): Promise<{ deleted: string[]; kept: number; error?: string }> {
-  "use step";
   try {
     const store = getWriteObjectStore();
     const ensureOwnership = () => renewWorkflowLease(runId, fencingToken).then(() => undefined);

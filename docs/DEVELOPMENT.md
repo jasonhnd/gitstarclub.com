@@ -87,8 +87,8 @@ Docs-only changes are allowed when the code already implements the behavior.
 
 ### Change A Workflow Step
 
-1. Read `web/lib/workflows/refresh.ts` to confirm step order.
-2. Keep steps idempotent and retry-safe.
+1. Read `web/lib/workflows/refresh.ts` and `web/lib/workflows/runtime/graph.ts` to confirm step order.
+2. Keep steps idempotent and retry-safe. Do not reintroduce `"use workflow"` / `"use step"`.
 3. Write new artifacts under `views/<run_id>/` until validation passes.
 4. Update `web/lib/workflows/steps/validate.ts` when a new published invariant
    should block bad data.
