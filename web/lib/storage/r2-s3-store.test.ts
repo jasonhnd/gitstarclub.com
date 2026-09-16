@@ -83,4 +83,13 @@ describe("R2 S3 driver", () => {
     expect(await store.get("missing.json")).toBeNull();
     expect(await store.head("missing.json")).toBeNull();
   });
+
+  test("batch delete posts S3 DeleteObjects XML under the prefix", async () => {
+    const { store, calls } = storeWithFetch(() => new Response("<DeleteResult></DeleteResult>", { status: 200 }));
+    await store.del(["views/a.json", "views/b.json"]);
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.url).toContain("delete=");
+    expect(calls[0]?.body).toContain("<Key>migrate-dev/views/a.json</Key>");
+    expect(calls[0]?.body).toContain("<Key>migrate-dev/views/b.json</Key>");
+  });
 });

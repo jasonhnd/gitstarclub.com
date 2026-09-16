@@ -11,23 +11,40 @@ import type {
   ObjectStore,
 } from "./types";
 
+export type VercelBlobClient = {
+  put: typeof put;
+  get: typeof get;
+  head: typeof head;
+  list: typeof list;
+  del: typeof del;
+};
+
+const defaultClient: VercelBlobClient = { put, get, head, list, del };
+
 async function streamText(stream: ReadableStream<Uint8Array>): Promise<string> {
   return new Response(stream).text();
 }
 
+function isNamedError(error: unknown, name: string): boolean {
+  return error instanceof Error && error.name === name;
+}
+
 function rethrowBlobConflict(error: unknown): never {
-  if (error instanceof BlobPreconditionFailedError) {
-    throw new ObjectStorePreconditionFailedError(error.message);
+  if (error instanceof BlobPreconditionFailedError || isNamedError(error, "BlobPreconditionFailedError")) {
+    throw new ObjectStorePreconditionFailedError(error instanceof Error ? error.message : "precondition failed");
   }
   throw error;
 }
 
 export class VercelBlobObjectStore implements ObjectStore {
-  constructor(private readonly token = requireBlobWriteToken) {}
+  constructor(
+    private readonly token = requireBlobWriteToken,
+    private readonly client: VercelBlobClient = defaultClient,
+  ) {}
 
   async put(path: string, body: string | Uint8Array, options: ObjectPutOptions = {}): Promise<ObjectPutResult> {
     try {
-      const written = await put(path, body, {
+      const written = await this.client.put(path, body, {
         access: "public",
         token: this.token(),
         allowOverwrite: options.allowOverwrite ?? true,
@@ -43,7 +60,7 @@ export class VercelBlobObjectStore implements ObjectStore {
   }
 
   async get(path: string): Promise<ObjectGetResult | null> {
-    const result = await get(path, { access: "public", token: this.token() });
+    const result = await this.client.get(path, { access: "public", token: this.token() });
     if (!result) return null;
     if (result.statusCode !== 200 || !result.stream) {
       throw new Error(`blob read ${path} -> ${result.statusCode}`);
@@ -58,7 +75,7 @@ export class VercelBlobObjectStore implements ObjectStore {
 
   async head(path: string): Promise<ObjectHeadResult | null> {
     try {
-      const result = await head(path, { token: this.token() });
+      const result = await this.client.head(path, { token: this.token() });
       return {
         etag: result.etag || null,
         contentType: result.contentType,
@@ -66,13 +83,13 @@ export class VercelBlobObjectStore implements ObjectStore {
         url: result.url,
       };
     } catch (error) {
-      if (error instanceof BlobNotFoundError) return null;
+      if (error instanceof BlobNotFoundError || isNamedError(error, "BlobNotFoundError")) return null;
       throw error;
     }
   }
 
   async list(options: ObjectListOptions): Promise<ObjectListResult> {
-    const result = await list({
+    const result = await this.client.list({
       prefix: options.prefix,
       cursor: options.cursor,
       limit: options.limit,
@@ -93,6 +110,6 @@ export class VercelBlobObjectStore implements ObjectStore {
   }
 
   async del(pathsOrUrls: string | string[]): Promise<void> {
-    await del(pathsOrUrls, { token: this.token() });
+    await this.client.del(pathsOrUrls, { token: this.token() });
   }
 }

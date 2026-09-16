@@ -9,15 +9,6 @@ export class ObjectStorePreconditionFailedError extends Error {
   }
 }
 
-export class ObjectStoreNotFoundError extends Error {
-  readonly status = 404;
-
-  constructor(message = "object store object not found") {
-    super(message);
-    this.name = "ObjectStoreNotFoundError";
-  }
-}
-
 export function isObjectStoreConflict(error: unknown): boolean {
   if (error instanceof ObjectStorePreconditionFailedError) return true;
   if (error instanceof BlobPreconditionFailedError) return true;
