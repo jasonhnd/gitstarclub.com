@@ -97,7 +97,7 @@ export async function startRefreshWorkflowRoute(
   if (unauthorized) return unauthorized;
 
   // Reject ambiguous requests before runtime preflight, lease acquisition,
-  // health writes, or workflow enqueue. Managed refresh has no dry-run mode.
+  // health writes, or refresh enqueue. Managed refresh has no dry-run mode.
   const invalidQuery = invalidStartQuery(req);
   if (invalidQuery) return invalidQuery;
 

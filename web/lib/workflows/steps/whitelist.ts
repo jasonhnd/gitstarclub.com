@@ -80,7 +80,6 @@ export async function refreshWhitelist(
   runId: string,
   fencingToken: number,
 ): Promise<WhitelistResult> {
-  "use step";
 
   return refreshWhitelistWithDeps(runId, fencingToken, defaultDeps);
 }
@@ -91,7 +90,7 @@ export async function refreshWhitelistWithDeps(
   deps: WhitelistDeps,
 ): Promise<WhitelistResult> {
 
-  // A run snapshot is immutable. Workflow SDK retries therefore reuse exactly
+  // A run snapshot is immutable. Explicit step retries therefore reuse exactly
   // the original entries and diff even when GitHub Search has changed.
   const existing = await deps.readSnapshot(runId);
   if (existing) return resultOf(existing);
