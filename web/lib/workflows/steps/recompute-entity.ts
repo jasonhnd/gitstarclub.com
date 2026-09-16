@@ -7,7 +7,6 @@ import { computeOrgWindow, computeRepoWindow, computePublishedStockViews, orgEnt
 // See docs/VERCEL-DATA-OPERATIONS.md §3.1 (entity/repo and entity/org steps) / §3.3.
 
 export async function recomputeRepoEntities(runId: string, fencingToken: number): Promise<{ files: number; anchorDrift: number }> {
-  "use step";
   const { model } = await loadCanonicalModel(runId);
   const monthWin = computeRepoWindow(model, "month");
   const { views, anchorDrift } = repoEntities(model, monthWin);
@@ -16,7 +15,6 @@ export async function recomputeRepoEntities(runId: string, fencingToken: number)
 }
 
 export async function recomputeOrgEntities(runId: string, fencingToken: number): Promise<{ files: number; anchorDrift: number }> {
-  "use step";
   const { model } = await loadCanonicalModel(runId);
   const monthWin = computeRepoWindow(model, "month");
   const monthOrg = computeOrgWindow(model, monthWin, { activeOnly: true });

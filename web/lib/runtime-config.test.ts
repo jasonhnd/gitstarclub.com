@@ -8,9 +8,14 @@ import {
   getR2KeyPrefix,
   getStorageReadDriver,
   getStorageWriteDriver,
+  getWorkflowQueueEnqueueUrl,
+  getWorkflowRuntimeKind,
+  getWorkflowStepBaseUrl,
   requireBlobBaseUrl,
   requireBlobWriteToken,
+  requireCronSecret,
   requireGithubToken,
+  requireWorkflowQueueEnqueueUrl,
 } from "./runtime-config";
 
 const originalEnv = {
@@ -108,5 +113,29 @@ describe("storage driver config", () => {
     expect(() => assertR2WritesAllowed({ R2_PREFIX: "" })).toThrow("non-production");
     expect(() => assertR2WritesAllowed({ R2_PREFIX: "views/" })).toThrow("non-production");
     expect(() => assertR2WritesAllowed({ R2_PREFIX: "migrate-dev/" })).not.toThrow();
+  });
+});
+
+describe("workflow runtime config", () => {
+  test("defaults the refresh runtime to http", () => {
+    expect(getWorkflowRuntimeKind({})).toBe("http");
+    expect(getWorkflowRuntimeKind({ WORKFLOW_RUNTIME: "cf-queue" })).toBe("cf-queue");
+    expect(() => getWorkflowRuntimeKind({ WORKFLOW_RUNTIME: "vercel-workflow" })).toThrow("WORKFLOW_RUNTIME");
+  });
+
+  test("requires a queue enqueue URL only for the CF adapter", () => {
+    expect(getWorkflowQueueEnqueueUrl({})).toBeUndefined();
+    expect(() => requireWorkflowQueueEnqueueUrl({})).toThrow("WORKFLOW_QUEUE_ENQUEUE_URL");
+    expect(requireWorkflowQueueEnqueueUrl({ WORKFLOW_QUEUE_ENQUEUE_URL: "https://worker.example/enqueue" })).toBe(
+      "https://worker.example/enqueue",
+    );
+  });
+
+  test("derives the step base URL from VERCEL_URL when unset", () => {
+    expect(getWorkflowStepBaseUrl({ VERCEL_URL: "pre.example.vercel.app" })).toBe("https://pre.example.vercel.app");
+    expect(getWorkflowStepBaseUrl({ WORKFLOW_STEP_BASE_URL: "https://pre.gitstarclub.com/" })).toBe(
+      "https://pre.gitstarclub.com",
+    );
+    expect(() => requireCronSecret({})).toThrow("CRON_SECRET not set");
   });
 });

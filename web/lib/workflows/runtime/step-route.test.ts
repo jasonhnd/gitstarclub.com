@@ -1,0 +1,79 @@
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { firstRefreshJob } from "./types";
+import { runRefreshStepRoute } from "./step-route";
+
+const originalSecret = process.env.CRON_SECRET;
+const originalRuntime = process.env.WORKFLOW_RUNTIME;
+
+beforeEach(() => {
+  process.env.CRON_SECRET = "secret";
+  process.env.WORKFLOW_RUNTIME = "memory";
+});
+
+afterEach(() => {
+  if (originalSecret === undefined) delete process.env.CRON_SECRET;
+  else process.env.CRON_SECRET = originalSecret;
+  if (originalRuntime === undefined) delete process.env.WORKFLOW_RUNTIME;
+  else process.env.WORKFLOW_RUNTIME = originalRuntime;
+});
+
+function post(body: unknown, url = "https://gitstarclub.com/api/workflows/refresh/step"): Request {
+  return new Request(url, {
+    method: "POST",
+    headers: { authorization: "Bearer secret", "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("runRefreshStepRoute", () => {
+  test("rejects missing bearer tokens", async () => {
+    const response = await runRefreshStepRoute(
+      new Request("https://gitstarclub.com/api/workflows/refresh/step", { method: "POST", body: "{}" }),
+    );
+    expect(response.status).toBe(401);
+  });
+
+  test("rejects fixture jobs on the HTTP route", async () => {
+    const executeFixture = mock(async () => ({ name: "startRun" }));
+    const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      recordCheckpoint: async () => {},
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: "Fixture refresh is not allowed on this runtime" });
+    expect(executeFixture).not.toHaveBeenCalled();
+  });
+
+  test("executes one full step and completes it", async () => {
+    const executeFull = mock(async () => ({ name: "startRun", startedAt: "2026-09-16T00:00:00.000Z", fencingToken: 4 }));
+    const complete: string[] = [];
+    const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1")), {
+      kind: "memory",
+      executeFull,
+      recordCheckpoint: async (job) => {
+        complete.push(`checkpoint:${job.name}`);
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, runId: "refresh-1", step: "startRun" });
+    expect(executeFull).toHaveBeenCalledTimes(1);
+    expect(complete).toEqual(["checkpoint:startRun"]);
+  });
+
+  test("records a failed full step after retries are exhausted", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1")), {
+        kind: "memory",
+        retry: { retries: 0, delaysMs: [] },
+        executeFull: async () => {
+          throw new Error("boom");
+        },
+        recordCheckpoint: async () => {},
+      });
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({ ok: false, runId: "refresh-1" });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});

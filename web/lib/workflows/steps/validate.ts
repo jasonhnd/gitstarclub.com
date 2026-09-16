@@ -50,7 +50,6 @@ export { HIGH_D_FACTOR_WARN_THRESHOLD, inspectAnchoringFactors } from "@/lib/wor
 const MIN_LOOKUP = 1000;
 
 export async function validateVersion(runId: string, fencingToken?: number): Promise<{ ok: boolean; checked: number; failures: string[] }> {
-  "use step";
   const failures: string[] = [];
   const invariants: Record<string, boolean | number> = {};
   let checked = 0;

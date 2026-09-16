@@ -97,7 +97,6 @@ export function buildMetadataShard(input: BuildMetadataShardInput): Record<strin
 }
 
 export async function refreshMetadataBucket(runId: string, bucket: number, fencingToken: number): Promise<MetadataBucketResult> {
-  "use step";
 
   const wl = await readRequiredView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
 
@@ -105,7 +104,7 @@ export async function refreshMetadataBucket(runId: string, bucket: number, fenci
   const lookup = await readRequiredView("lookup/repos.json", ReposLookup, { base: true, bust: runId });
   const prevShard = await readRequiredView(`canonical/v2/repos/${bucket}.json`, ReposShard, { bust: runId });
   const newcomers = new Set(wl.diff.added);
-  // Pin newcomer provenance to the immutable discovery snapshot. A Workflow
+  // Pin newcomer provenance to the immutable discovery snapshot. A step
   // retry on a later day must not rewrite tracked_since.
   const trackedSince = whitelistDiscoveryDate(wl);
   const fetchedAt = new Date().toISOString();

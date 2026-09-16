@@ -35,7 +35,6 @@ export function foldedCanonicalMeta(
 }
 
 export async function foldCanonical(runId: string, fencingToken: number): Promise<{ folded: string[]; foldedWeeks: string[] }> {
-  "use step";
   const meta = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust: runId });
 
   const currentMonth = currentUtcPeriods().monthPeriod;
