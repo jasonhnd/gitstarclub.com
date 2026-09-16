@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { DualReadObjectStore } from "./dual-read-store";
-import { createReadObjectStore, createWriteObjectStore, describeStorageDrivers, r2StoreConfigFromEnv } from "./object-store";
+import {
+  createReadObjectStore,
+  createWriteObjectStore,
+  describeStorageDrivers,
+  getReadObjectStore,
+  getWriteObjectStore,
+  r2StoreConfigFromEnv,
+} from "./object-store";
 import { R2S3ObjectStore } from "./r2-s3-store";
 import { VercelBlobObjectStore } from "./vercel-blob-store";
 
@@ -34,6 +41,26 @@ describe("object store factory", () => {
       R2_ACCOUNT_ID: "00f850e853e4c7f9627233d51a6e30a1",
     });
     expect(store).toBeInstanceOf(DualReadObjectStore);
+  });
+
+  test("getReadObjectStore and getWriteObjectStore match the factory", () => {
+    expect(getReadObjectStore({ STORAGE_READ_DRIVER: "blob" })).toBeInstanceOf(VercelBlobObjectStore);
+    expect(getWriteObjectStore({ STORAGE_WRITE_DRIVER: "blob" })).toBeInstanceOf(VercelBlobObjectStore);
+  });
+
+  test("createReadObjectStore can build a pure R2 reader", () => {
+    const store = createReadObjectStore({
+      STORAGE_READ_DRIVER: "r2",
+      R2_ACCESS_KEY_ID: "id",
+      R2_SECRET_ACCESS_KEY: "secret",
+      R2_BUCKET: "gitstarclub-assets",
+      R2_ACCOUNT_ID: "00f850e853e4c7f9627233d51a6e30a1",
+    });
+    expect(store).toBeInstanceOf(R2S3ObjectStore);
+  });
+
+  test("R2 config fails closed without credentials", () => {
+    expect(() => r2StoreConfigFromEnv({})).toThrow("R2 driver requires");
   });
 
   test("non-production R2 write uses the migrate-dev prefix", () => {

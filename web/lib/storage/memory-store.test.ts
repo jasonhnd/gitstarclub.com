@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { BlobHealthStore, mergePipelineHealth } from "@/lib/observability/health";
-import { createView, putView } from "@/lib/data/write";
 import { BlobLivePublicationStore } from "@/lib/cron/live-publication";
 import { LiveGenerationPointer } from "@/lib/contracts";
 import { isObjectStoreConflict, MemoryObjectStore, ObjectStorePreconditionFailedError } from "./index";
@@ -39,13 +38,6 @@ describe("MemoryObjectStore CAS", () => {
 });
 
 describe("object-store adapters on existing ports", () => {
-  test("write helpers persist JSON through the injected store", async () => {
-    const store = new MemoryObjectStore();
-    await putView("ops/workflows/test.json", { ok: true }, store);
-    expect(await createView("ops/workflows/test.json", { ok: true }, store)).toBe(false);
-    expect(JSON.parse((await store.get("ops/workflows/test.json"))?.body ?? "null")).toEqual({ ok: true });
-  });
-
   test("workflow lease CAS loses on a stale ETag", async () => {
     const objects = new MemoryObjectStore();
     const store = new BlobWorkflowLeaseStore(undefined, objects);

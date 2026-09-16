@@ -32,4 +32,22 @@ describe("DualReadObjectStore", () => {
     await expect(store.put("x.json", "{}")).rejects.toThrow("read-only");
     await expect(store.del("x.json")).rejects.toThrow("read-only");
   });
+
+  test("list returns primary contents, then falls back when primary is empty or throws", async () => {
+    const primary = new MemoryObjectStore({ "views/a.json": "{}" });
+    const fallback = new MemoryObjectStore({ "views/b.json": "{}" });
+    expect((await new DualReadObjectStore(primary, fallback).list({ prefix: "views/" })).blobs.map((blob) => blob.pathname)).toEqual([
+      "views/a.json",
+    ]);
+    expect((await new DualReadObjectStore(new MemoryObjectStore(), fallback).list({ prefix: "views/" })).blobs.map((blob) => blob.pathname)).toEqual([
+      "views/b.json",
+    ]);
+    const broken = new MemoryObjectStore();
+    broken.list = async () => {
+      throw new Error("r2 list failed");
+    };
+    expect((await new DualReadObjectStore(broken, fallback).list({ prefix: "views/" })).blobs.map((blob) => blob.pathname)).toEqual([
+      "views/b.json",
+    ]);
+  });
 });

@@ -3,6 +3,7 @@ import type {
   ObjectHeadResult,
   ObjectListOptions,
   ObjectListResult,
+  ObjectPutOptions,
   ObjectPutResult,
   ObjectStore,
 } from "./types";
@@ -17,11 +18,15 @@ export class DualReadObjectStore implements ObjectStore {
     private readonly fallback: ObjectStore,
   ) {}
 
-  async put(): Promise<ObjectPutResult> {
+  async put(path: string, body: string | Uint8Array, options?: ObjectPutOptions): Promise<ObjectPutResult> {
+    void path;
+    void body;
+    void options;
     throw new Error("DualReadObjectStore is read-only; writes use getWriteObjectStore()");
   }
 
-  async del(): Promise<void> {
+  async del(pathsOrUrls: string | string[]): Promise<void> {
+    void pathsOrUrls;
     throw new Error("DualReadObjectStore is read-only; deletes use getWriteObjectStore()");
   }
 

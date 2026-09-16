@@ -1,5 +1,5 @@
 export { DualReadObjectStore } from "./dual-read-store";
-export { isObjectStoreConflict, ObjectStoreNotFoundError, ObjectStorePreconditionFailedError } from "./errors";
+export { isObjectStoreConflict, ObjectStorePreconditionFailedError } from "./errors";
 export { MemoryObjectStore } from "./memory-store";
 export {
   createR2S3ObjectStore,
