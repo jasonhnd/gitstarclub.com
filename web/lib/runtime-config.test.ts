@@ -1,34 +1,44 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  assertR2WritesAllowed,
   getBlobBaseUrl,
   getBlobWriteToken,
   getGithubToken,
+  getPublicReadBases,
+  getR2KeyPrefix,
+  getStorageReadDriver,
+  getStorageWriteDriver,
   requireBlobBaseUrl,
   requireBlobWriteToken,
   requireGithubToken,
 } from "./runtime-config";
 
-const originalBlobBase = process.env.BLOB_BASE_URL;
-const originalPublicBlobBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
-const originalBlobToken = process.env.BLOB_READ_WRITE_TOKEN;
-const originalGithubToken = process.env.GITHUB_TOKEN;
+const originalEnv = {
+  BLOB_BASE_URL: process.env.BLOB_BASE_URL,
+  NEXT_PUBLIC_BLOB_BASE_URL: process.env.NEXT_PUBLIC_BLOB_BASE_URL,
+  BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+  GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+  STORAGE_READ_DRIVER: process.env.STORAGE_READ_DRIVER,
+  STORAGE_WRITE_DRIVER: process.env.STORAGE_WRITE_DRIVER,
+  READ_DRIVER: process.env.READ_DRIVER,
+  WRITE_DRIVER: process.env.WRITE_DRIVER,
+  R2_PREFIX: process.env.R2_PREFIX,
+  R2_PUBLIC_BASE_URL: process.env.R2_PUBLIC_BASE_URL,
+  VERCEL_ENV: process.env.VERCEL_ENV,
+};
+
+const STORAGE_KEYS = Object.keys(originalEnv) as Array<keyof typeof originalEnv>;
 
 beforeEach(() => {
-  delete process.env.BLOB_BASE_URL;
-  delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
-  delete process.env.BLOB_READ_WRITE_TOKEN;
-  delete process.env.GITHUB_TOKEN;
+  for (const key of STORAGE_KEYS) delete process.env[key];
 });
 
 afterEach(() => {
-  if (originalBlobBase === undefined) delete process.env.BLOB_BASE_URL;
-  else process.env.BLOB_BASE_URL = originalBlobBase;
-  if (originalPublicBlobBase === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
-  else process.env.NEXT_PUBLIC_BLOB_BASE_URL = originalPublicBlobBase;
-  if (originalBlobToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
-  else process.env.BLOB_READ_WRITE_TOKEN = originalBlobToken;
-  if (originalGithubToken === undefined) delete process.env.GITHUB_TOKEN;
-  else process.env.GITHUB_TOKEN = originalGithubToken;
+  for (const key of STORAGE_KEYS) {
+    const value = originalEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
 
 describe("runtime config getters", () => {
@@ -63,5 +73,40 @@ describe("runtime config getters", () => {
 
     expect(requireBlobBaseUrl(readOnlyEnv)).toBe("https://blob.example.com");
     expect(getBlobWriteToken(readOnlyEnv)).toBeUndefined();
+  });
+});
+
+describe("storage driver config", () => {
+  test("defaults read and write drivers to blob", () => {
+    expect(getStorageReadDriver()).toBe("blob");
+    expect(getStorageWriteDriver()).toBe("blob");
+    expect(getR2KeyPrefix()).toBe("migrate-dev/");
+  });
+
+  test("accepts READ_DRIVER / WRITE_DRIVER aliases", () => {
+    expect(getStorageReadDriver({ READ_DRIVER: "r2_then_blob" })).toBe("r2_then_blob");
+    expect(getStorageWriteDriver({ WRITE_DRIVER: "r2" })).toBe("r2");
+  });
+
+  test("public reads stay on Blob unless an R2 public base is configured", () => {
+    expect(getPublicReadBases({ BLOB_BASE_URL: "https://blob.example.com" })).toEqual([
+      "https://blob.example.com",
+    ]);
+    expect(
+      getPublicReadBases({
+        STORAGE_READ_DRIVER: "r2_then_blob",
+        BLOB_BASE_URL: "https://blob.example.com",
+        R2_PUBLIC_BASE_URL: "https://r2.example.com/",
+      }),
+    ).toEqual(["https://r2.example.com", "https://blob.example.com"]);
+  });
+
+  test("refuses production R2 writes and empty/root prefixes", () => {
+    expect(() => assertR2WritesAllowed({ VERCEL_ENV: "production", R2_PREFIX: "migrate-dev/" })).toThrow(
+      "VERCEL_ENV=production",
+    );
+    expect(() => assertR2WritesAllowed({ R2_PREFIX: "" })).toThrow("non-production");
+    expect(() => assertR2WritesAllowed({ R2_PREFIX: "views/" })).toThrow("non-production");
+    expect(() => assertR2WritesAllowed({ R2_PREFIX: "migrate-dev/" })).not.toThrow();
   });
 });

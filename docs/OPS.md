@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-08-30
+last_reviewed: 2026-09-16
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -120,9 +120,26 @@ an explicit recovery procedure.
 | 变量 | 用途 | 必需 / 可选 | 格式 | 谁用（path:line） |
 |---|---|---|---|---|
 | `GITHUB_TOKEN` | GitHub GraphQL / Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | **必需**（cron / Workflow） | `ghp_…` PAT 字符串 | `web/lib/github.ts:5`；每日 cron · 每周 cron · Workflow whitelist/metadata step · 一次性回填 |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts:6` · `web/lib/workflows/recompute/io.ts:18` · `web/lib/workflows/steps/gc.ts:10`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本 |
-| `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/data/source.ts:10` · `web/lib/cron/sync-runs.ts:83`；Next.js build · ISR 视图直读 · live cron 读发布指针 |
-| `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/data/source.ts:10` · `web/lib/cron/sync-runs.ts:83`；客户端 bundle 中读取 |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本 |
+| `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；Next.js build · ISR 视图直读 · live cron 读发布指针 |
+| `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；客户端 bundle 中读取 |
+| `STORAGE_READ_DRIVER` | 对象存储读驱动 | 可选（默认 `blob`） | `blob` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`；P0 默认仍读 Vercel Blob，见 [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) |
+| `READ_DRIVER` | `STORAGE_READ_DRIVER` 别名 | 可选 | 同 `STORAGE_READ_DRIVER` | `web/lib/runtime-config.ts` |
+| `STORAGE_WRITE_DRIVER` | 对象存储写驱动 | 可选（默认 `blob`） | `blob` \| `r2` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`；`r2` 仅允许非生产 `migrate-*` 前缀，且拒绝 `VERCEL_ENV=production` |
+| `WRITE_DRIVER` | `STORAGE_WRITE_DRIVER` 别名 | 可选 | 同 `STORAGE_WRITE_DRIVER` | `web/lib/runtime-config.ts` |
+| `R2_ACCOUNT_ID` | Cloudflare 账户 ID（拼 S3 endpoint） | 仅 R2 驱动 | 32 位 hex | `web/lib/runtime-config.ts`；已备账户 `00f850e853e4c7f9627233d51a6e30a1` |
+| `R2_S3_ENDPOINT` | R2 S3 兼容 endpoint | 仅 R2 驱动 | `https://<account>.r2.cloudflarestorage.com` | `web/lib/runtime-config.ts` |
+| `AWS_ENDPOINT_URL` | `R2_S3_ENDPOINT` 别名 | 仅 R2 驱动 | 同 `R2_S3_ENDPOINT` | `web/lib/runtime-config.ts` |
+| `R2_ACCESS_KEY_ID` | R2 S3 access key | 仅 R2 驱动 | Cloudflare R2 API token | `web/lib/runtime-config.ts` |
+| `AWS_ACCESS_KEY_ID` | `R2_ACCESS_KEY_ID` 别名 | 仅 R2 驱动 | 同 `R2_ACCESS_KEY_ID` | `web/lib/runtime-config.ts` |
+| `R2_SECRET_ACCESS_KEY` | R2 S3 secret | 仅 R2 驱动 | secret | `web/lib/runtime-config.ts` |
+| `AWS_SECRET_ACCESS_KEY` | `R2_SECRET_ACCESS_KEY` 别名 | 仅 R2 驱动 | 同 `R2_SECRET_ACCESS_KEY` | `web/lib/runtime-config.ts` |
+| `R2_BUCKET` | R2 桶名 | 仅 R2 驱动 | `gitstarclub-assets` | `web/lib/runtime-config.ts` |
+| `AWS_S3_BUCKET` | `R2_BUCKET` 别名 | 仅 R2 驱动 | 同 `R2_BUCKET` | `web/lib/runtime-config.ts` |
+| `R2_REGION` | SigV4 region | 可选（默认 `auto`） | `auto` | `web/lib/runtime-config.ts` |
+| `AWS_REGION` | `R2_REGION` 别名 | 可选 | 同 `R2_REGION` | `web/lib/runtime-config.ts` |
+| `R2_PREFIX` | 非生产对象前缀 | 可选（默认 `migrate-dev/`） | `migrate-dev/` / `migrate-test/` / `migrate-preview/` | `web/lib/runtime-config.ts`；空前缀与生产 key 空间禁止写入 |
+| `R2_PUBLIC_BASE_URL` | R2 公开读 base URL | 仅 `r2` / `r2_then_blob` 页面读 | 无尾斜杠的 https origin | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` |
 | `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | **必需** | 随机串（≥32 字符，**无首尾空白**） | `web/lib/cron/handlers.ts` · `web/app/api/workflows/refresh/start/route.ts:13`；每日 / 每周 cron · Workflow 触发 |
 | `VERCEL_DEPLOY_HOOK_URL` | Deploy Hook URL（触发一次核心 rebuild，用于代码 / 结构变更或手动全量刷新） | 可选 | `https://api.vercel.com/v1/integrations/deploy/<id>` | 手动 / CI（数据更新不需要它，长尾走 ISR） |
 | `ALERT_WEBHOOK_URL` | 失败告警 webhook（Slack / Discord incoming webhook 或 `https://webhook.site/...`，POST JSON 摘要；**不设则仅日志**） | 可选 | `https://…` 可接收 JSON POST 的端点 | `web/lib/observability/alert.ts:45`；Workflow `sendAlert` · 每日 / 每周 cron 失败投递 |
@@ -174,6 +191,7 @@ an explicit recovery procedure.
 - 写入 Vercel 变量时必须去掉首尾空白和 BOM；`CRON_SECRET` 带空白会让 Cron header 非法，`BLOB_BASE_URL` 带 BOM 会让 Next.js build 在 sitemap 阶段报 `ERR_INVALID_URL`。
 - **GCP 两项仅本地一次性回填用**：用 BigQuery 查 GH Archive（约 $10，含稳定 repo.id）。回填一次后这两个变量即可弃用——**日常运营 0 GCP、0 外部账单**。（为何不用免费的 ClickHouse 公共实例 / 自建：见 ARCHITECTURE「为什么回填用 BigQuery」。）
 - 启动时校验必需密钥存在，缺失则 fail-fast（不静默吞）。
+- Cloudflare R2 P0 适配（双读开关、非生产写守卫、回滚）见 [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md)。默认仍读/写 Vercel Blob；**不切 DNS**。
 
 ## Vercel Blob 布局
 
