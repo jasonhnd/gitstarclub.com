@@ -42,7 +42,8 @@ runbooks still live in [OPS.md](./OPS.md). SEO crawl policy still lives in
 |---|---|---|---|---|
 | `/api/cron/daily` | `web/app/api/cron/daily/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | `LiveRefreshResult` plus route fields |
 | `/api/cron/weekly` | `web/app/api/cron/weekly/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | `LiveRefreshResult` plus route fields |
-| `/api/workflows/refresh/start` | `web/app/api/workflows/refresh/start/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | workflow enqueue result |
+| `/api/workflows/refresh/start` | `web/app/api/workflows/refresh/start/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | refresh enqueue result |
+| `/api/workflows/refresh/step` | `web/app/api/workflows/refresh/step/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | one refresh step result |
 | `/api/workflows/refresh/revalidate` | `web/app/api/workflows/refresh/revalidate/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; internal callback | publication cache invalidation result |
 | `/api/workflows/refresh/rollback` | `web/app/api/workflows/refresh/rollback/route.ts` | Bearer `CRON_SECRET` + `idempotency-key` | `force-dynamic`; no explicit `Cache-Control` | fenced pointer rollback result |
 | `/api/lang` | `web/app/api/lang/route.ts` | Public | Redirect plus cookie mutation; no explicit `Cache-Control` | `307` redirect |
@@ -145,8 +146,9 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 
 ### `GET /api/workflows/refresh/start`
 
-Enqueues the managed refresh Vercel Workflow and returns immediately. The long
-work continues in workflow steps.
+Enqueues the managed refresh through the workflows runtime and returns
+immediately. The long work continues as ordinary async steps. Production
+scheduling for this path remains the Vercel cron in `web/vercel.json`.
 
 | Item | Contract |
 |---|---|
@@ -156,7 +158,23 @@ work continues in workflow steps.
 | Success | `200 {"ok":true,"runId":"refresh-<timestamp>"}` |
 | Failure | `400` for `dry` or unsupported query parameters; `401 Unauthorized`; `409` when another idempotency key owns the lease; `500 {"ok":false,"runId":"refresh-...","error":"Internal server error"}` |
 | Cache | `dynamic = "force-dynamic"`; no explicit `Cache-Control`; callers should not cache |
-| Side effects | First parses `canonical/v2/meta.json` read-only; only then acquires the workflow lease and calls `start(refreshWorkflow, [runId])`. If enqueue fails, sends an alert and logs the failure |
+| Side effects | First parses `canonical/v2/meta.json` read-only; only then acquires the workflow lease and calls `startRefresh(runId)`. If enqueue fails, sends an alert and logs the failure |
+
+### `POST /api/workflows/refresh/step`
+
+Runs exactly one managed-refresh step, then enqueues the next. Used by the
+HTTP chain and by a non-production CF Queue consumer. Not a `vercel.json` cron.
+
+| Item | Contract |
+|---|---|
+| Auth | Required bearer `CRON_SECRET` |
+| Query | None |
+| Body | Refresh step job `{ v: 1, graph, runId, name, attempt, cursor }` |
+| Success | `200 {"ok":true,"runId":"refresh-...","step":"..."}` |
+| Failure | `400` invalid job or fixture on this runtime; `401 Unauthorized`; `405` non-POST; `500 {"ok":false,"runId":"refresh-...","error":"Internal server error"}` |
+| Cache | `dynamic = "force-dynamic"`; no explicit `Cache-Control`; callers should not cache |
+| Side effects | Executes one step through the P0 object-store port, writes `ops/workflows/<run_id>/steps/<step>.json`, then `completeStep` enqueues the successor |
+| Max duration | `800` seconds |
 
 Operational example:
 

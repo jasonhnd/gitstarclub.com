@@ -30,7 +30,7 @@ These are non-negotiable for the production system. New features must respect al
 2. **Zero runtime database.** Read-side state lives in versioned Blob views resolved through a publish pointer; there is no SQL connection to open.
 3. **Vercel-first.** Deploy, cron, Blob, workflow, and Vercel Web Analytics stay on Vercel. Google Analytics and other third-party tracking scripts are intentionally unsupported.
 4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, service-worker registration, and Vercel Web Analytics.
-5. **Recurring work on Vercel, not the laptop.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) runs as a Vercel Workflow. Local pipeline runs are reserved for one-off bootstrap.
+5. **Recurring work on Vercel, not the laptop.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) is scheduled by Vercel cron and runs as ordinary async steps. Local pipeline runs are reserved for one-off bootstrap.
 
 The same data layer also operates AI-free: features that look like they would call an LLM (summaries, classifications, narratives) ship as deterministic templates instead. The rationale and tradeoff are recorded in the team feedback memory.
 
@@ -44,7 +44,7 @@ The same data layer also operates AI-free: features that look like they would ca
 | Fonts | Plus Jakarta Sans (variable sans), Geist Mono (numerals, repo names) | |
 | Read-side data | Versioned JSON views in Vercel Blob, served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
 | Live-overlay data | Immutable `live/generations/<run_id>/**`, selected by `live/latest.json` | Atomic current snapshot; period files use bounded validated manifest history until folded |
-| Recurring data refresh | Vercel Workflow (multi-step, Blob checkpoint) | |
+| Recurring data refresh | Vercel cron + step runtime (multi-step, Blob checkpoint; no Workflow SDK) | Production schedule stays in `web/vercel.json` |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
 | Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test` from `web/` on PRs and `main` pushes |
 | Analytics | Vercel Web Analytics via `@vercel/analytics` is the only analytics integration. It uses same-origin `/_vercel/insights` endpoints, and build-time policy checks keep CSP compatible. | No GA or third-party tracking scripts. |
@@ -61,7 +61,7 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 │  Upload     →   Vercel Blob                                  │
 └─────────────────────────────────────────────────────────────┘
 
-┌─ Recurring recompute (Vercel Workflow) ─────────────────────┐
+┌─ Recurring recompute (Vercel cron + step runtime) ──────────┐
 │  whitelist → rename → metadata (per bucket) → fold (month/  │
 │  week) → recompute (rank, entity, heatmap, search index     │
 │  written to views/<run_id>/**) → validate → publish (swap   │
