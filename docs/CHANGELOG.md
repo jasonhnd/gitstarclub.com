@@ -1,7 +1,7 @@
 ---
 owner: release history
 status: active
-last_reviewed: 2026-08-30
+last_reviewed: 2026-09-06
 source_of_truth_for:
   - versioned release history
   - shipped changes
@@ -19,13 +19,15 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Added
 
-- **Track C data-layer decision draft.** Comparative write-up of Tinybird, Vercel Postgres / Neon, extra JSON views, and a six-month deferral, plus the POC must-prove list. Overall lean is defer; **POC allowed: no.** Formal choose-or-defer remains #383 on 2026-09-12. See [ROADMAP.md](./ROADMAP.md) Track C and [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md).
+- **Track C data-layer option analysis.** Comparative write-up of Tinybird, Vercel Postgres / Neon, extra JSON views, a six-month deferral, and the later lock-002 product veto, plus the historical POC must-prove list. Draft lean was defer; product outcome is **veto**. **POC allowed: no.** See [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). The dated lock-002 record is under Changed below.
 - **Vercel Web Analytics.** Enabled cookieless aggregate page-view measurement through Vercel Web Analytics and corrected the privacy page copy to reflect that no analytics cookies or personal data are collected.
 
 ### Changed
 
+- **Track C lock-002: product veto of the request-path query plane.** No live computation on the request path. No POC. No dated auto-review (the 2027-03-12 #383 revisit is void). Reopening requires a constitution-level revision that amends the hard constraints, not a feature PR and not a calendar reminder. The four #362 expansion items stay paused with no implementation children. Dated record: [ROADMAP.md](./ROADMAP.md) Track C; comparison history: [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). Closes #430.
+- **Track C #383 deferral (six months, review 2027-03-12, no POC) is superseded by lock-002.** Recorded 2026-08-31 ahead of the #383 deadline, accepting [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md) as comparison history. Tinybird, Vercel Postgres / Neon, and self-hosted ClickHouse remain rejected; extra precomputed JSON views stay allowed only as tiny finite whitelist-derived shards. No hard constraint changes.
 - **Preview deployments require Vercel Authentication.** `ssoProtection` is `preview` only: `pre.gitstarclub.com` and PR preview URLs are login-gated; `gitstarclub.com` stays public. CI uses the automation bypass secret. This stops AI crawlers from billing Fluid duration on public staging.
-- **Track A first pass is complete on `pre`.** A1–A4 children (#363–#376) are closed. Repo/org hubs, category topic entries, Pulse period + board exits, and honest search/citation are the shipped loop. Track C still waits on #383 (2026-09-12).
+- **Track A first pass is complete on `pre`.** A1–A4 children (#363–#376) are closed. Repo/org hubs, category topic entries, Pulse period + board exits, and honest search/citation are the shipped loop.
 - **Production Firewall custom rules are empty.** Four Deny rules (Meta, GoogleOther, GPTBot training, SEO scrapers) were published 2026-08-20 and removed the same day after the operator chose to allow those crawlers. Facebook/WhatsApp link previews work again. The unclassified/tool rate-limit was never published.
 - **Sunday operator signal is per-pipeline health only.** Read `ops/workflows/health/workflow-refresh.json`, not the retired flat `ops/workflows/health.json`. OPS.md now has a one-screen Sunday 06:00 UTC refresh-failure runbook.
 - **Org pages gained hub exits.** `/o/{login}` now links public categories derived from member assignments, and compares the owner's top tracked repositories. Member rows still go to repo hubs. Org ranking-month links appear only when the published org entity already has `rank_history`.
