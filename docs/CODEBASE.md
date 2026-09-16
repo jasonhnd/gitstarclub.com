@@ -50,7 +50,8 @@ GitHub APIs
 | `web/app/_explore/` | Shared server-rendered UI components used by product pages |
 | `web/lib/data/` | Read-side accessors for Blob views; all page data should go through this layer |
 | `web/lib/contracts/` | Zod schemas for every persisted view and public read contract |
-| `web/lib/workflows/` | Vercel Workflow orchestration and refresh steps |
+| `web/lib/workflows/` | Managed refresh orchestration and refresh steps (no Workflow SDK) |
+| `web/lib/workflows/runtime/` | `startRefresh` / `enqueueStep` / `completeStep` port: memory, HTTP chain, CF Queue |
 | `web/lib/workflows/recompute/` | Pure recompute core: ranks, entities, heatmaps, categories, windows |
 | `web/lib/categories/` | Deterministic category taxonomy and classification rules |
 | `web/lib/cron/` | Shared daily/weekly live-overlay route handlers and refresh logic |
@@ -117,6 +118,7 @@ Common contract groups:
 ## Workflow Side
 
 The managed refresh entry point is `web/lib/workflows/refresh.ts`.
+The queue-schedulable runtime lives in `web/lib/workflows/runtime/`.
 
 Current step order:
 

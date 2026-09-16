@@ -14,7 +14,6 @@ export interface RenameResult {
 }
 
 export async function detectRenames(runId: string, fencingToken: number): Promise<RenameResult> {
-  "use step";
 
   const wl = await readRequiredView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId });
 

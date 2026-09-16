@@ -70,6 +70,7 @@ semantics remain in [API.md](./API.md).
 | `/api/cron/daily` | `web/app/api/cron/daily/route.ts` | Daily immutable live generation |
 | `/api/cron/weekly` | `web/app/api/cron/weekly/route.ts` | Weekly immutable live generation |
 | `/api/workflows/refresh/start` | `web/app/api/workflows/refresh/start/route.ts` | Start managed refresh |
+| `/api/workflows/refresh/step` | `web/app/api/workflows/refresh/step/route.ts` | Execute one managed refresh step |
 | `/api/workflows/refresh/revalidate` | `web/app/api/workflows/refresh/revalidate/route.ts` | Authenticated post-publish invalidation callback |
 | `/api/workflows/refresh/rollback` | `web/app/api/workflows/refresh/rollback/route.ts` | Fenced rollback to a retained view version |
 

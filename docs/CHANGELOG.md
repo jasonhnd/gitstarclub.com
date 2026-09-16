@@ -19,6 +19,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Added
 
+- **Cloudflare migrate P1 workflow runtime.** Managed refresh no longer hard-depends on the Vercel Workflow SDK (`workflow/api`, `"use workflow"`, `"use step"`). Steps are ordinary async functions with explicit retry, scheduled by `startRefresh` / `enqueueStep` / `completeStep`. Tests drain an in-memory shrink fixture through the P0 storage port (lease CAS + views). Non-production CF Cron/Queue lives in `workers/gitstarclub-web/`. Production scheduling stays the three Vercel crons in `web/vercel.json`. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Does not cut DNS.
+
 - **Cloudflare migrate P0 storage port.** Injectable `vercel-blob` / `r2-s3` drivers for write, live-publication CAS, workflow lease, health CAS, recompute I/O, aliases list, and version GC. Default read/write remains Vercel Blob. R2 writes require an explicit non-production `migrate-*` prefix and are refused when `VERCEL_ENV=production`. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). Does not cut DNS.
 
 - **Track C data-layer option analysis.** Comparative write-up of Tinybird, Vercel Postgres / Neon, extra JSON views, a six-month deferral, and the later lock-002 product veto, plus the historical POC must-prove list. Draft lean was defer; product outcome is **veto**. **POC allowed: no.** See [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). The dated lock-002 record is under Changed below.

@@ -23,8 +23,10 @@ This document owns the P0 storage port added in `web/lib/storage/`:
 - Writes stay on Vercel Blob unless `STORAGE_WRITE_DRIVER=r2` **and** the target is a non-production prefix
 - Rollback: unset the driver switches (or set them back to `blob`)
 
-Out of scope: Workflow SDK / ISR / Preview bypass rewrites, Workers hosting of the
-full vinext app, DNS, paid R2/Workers plan purchases, emptying production Blob.
+Out of scope: ISR / Preview bypass rewrites, Workers hosting of the
+full Next app, DNS, paid R2/Workers plan purchases, emptying production Blob.
+Workflow SDK removal and non-production CF Cron/Queue are P1; see
+[CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md).
 
 Prepared Cloudflare resources (documentation only; this PR still reads Vercel Blob
 by default):

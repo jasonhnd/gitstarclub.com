@@ -148,3 +148,46 @@ export function getPublicReadBases(env: RuntimeEnv = process.env): string[] {
     }
   }
 }
+
+export type WorkflowRuntimeKind = "http" | "memory" | "cf-queue";
+
+export function getWorkflowRuntimeKind(env: RuntimeEnv = process.env): WorkflowRuntimeKind {
+  const raw = normalizeDriver(env.WORKFLOW_RUNTIME);
+  if (!raw || raw === "http") return "http";
+  if (raw === "memory") return "memory";
+  if (raw === "cf-queue") return "cf-queue";
+  throw new Error(`WORKFLOW_RUNTIME must be http | memory | cf-queue (got ${raw})`);
+}
+
+export function getWorkflowQueueEnqueueUrl(env: RuntimeEnv = process.env): string | undefined {
+  const value = (env.WORKFLOW_QUEUE_ENQUEUE_URL ?? "").trim();
+  return value || undefined;
+}
+
+export function requireWorkflowQueueEnqueueUrl(env: RuntimeEnv = process.env): string {
+  const value = getWorkflowQueueEnqueueUrl(env);
+  if (!value) throw new Error("WORKFLOW_QUEUE_ENQUEUE_URL not set for WORKFLOW_RUNTIME=cf-queue");
+  return value;
+}
+
+export function getWorkflowStepBaseUrl(env: RuntimeEnv = process.env): string | undefined {
+  const explicit = (env.WORKFLOW_STEP_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  if (explicit) return explicit;
+  const vercelUrl = env.VERCEL_URL?.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  if (vercelUrl) return `https://${vercelUrl}`;
+  return undefined;
+}
+
+export function getCronSecret(env: RuntimeEnv = process.env): string | undefined {
+  return env.CRON_SECRET || undefined;
+}
+
+export function requireCronSecret(env: RuntimeEnv = process.env): string {
+  const value = getCronSecret(env);
+  if (!value) throw new Error("CRON_SECRET not set");
+  return value;
+}
+
+export function getVercelAutomationBypassSecret(env: RuntimeEnv = process.env): string | undefined {
+  return env.VERCEL_AUTOMATION_BYPASS_SECRET || undefined;
+}

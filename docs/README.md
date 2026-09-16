@@ -10,7 +10,7 @@ source_of_truth_for:
 
 # gitstarclub 文档索引
 
-A browsable history of GitHub open-source activity. The site is fully static-read at runtime: JSON in Vercel Blob behind a publish pointer, no runtime database, no engine in the request path. Recurring data refresh runs on Vercel Workflow.
+A browsable history of GitHub open-source activity. The site is fully static-read at runtime: JSON in Vercel Blob behind a publish pointer, no runtime database, no engine in the request path. Recurring data refresh is scheduled by Vercel cron; P1 orchestration no longer uses the Workflow SDK.
 
 This page is the navigation index for `docs/`. For a project overview, start at [../README.md](../README.md). For what shipped when, see [CHANGELOG.md](./CHANGELOG.md). For what isn't built yet, see [ROADMAP.md](./ROADMAP.md).
 
@@ -37,7 +37,7 @@ This section is the authoritative newcomer reading order. Update it when adding,
 13. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) - locked visual baseline, tokens, typography, Chrome appearance, accessibility notes.
 14. [SEO.md](./SEO.md) — per-page SEO templates, sitemap structure, robots policy.
 15. [GEO.md](./GEO.md) — answer-engine citation strategy: answer capsules, schema, crawler hygiene, freshness, and measurement.
-16. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting. Cloudflare R2 P0 adapter details live in [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
+16. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting. Cloudflare R2 P0 adapter details live in [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). P1 workflow/cron details live in [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md).
 17. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
 Supporting docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [COCKPIT.md](./COCKPIT.md) for the unshipped Cockpit content contract and pre spike; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [DATA-EXPORTS.md](./DATA-EXPORTS.md) for public export files; [I18N.md](./I18N.md) for the shipped locale URL architecture decision record.
@@ -61,6 +61,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | [geo/queries.md](./geo/queries.md) | active | GEO measurement / citation review | Target queries, review cadence, page-type coverage, or miss classifications change. Re-run affected high-priority checks after schema, robots, sitemap, answer-capsule, ranking, category, methodology, or data-export changes. | Operational registry; [GEO.md](./GEO.md) remains the source of truth for strategy, metrics, and measurement intent. |
 | [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) | active | GEO crawler and AI-referrer reporting | `geo:report` inputs, output fields, taxonomy, privacy rules, or operator commands change. | Operational runbook; [GEO.md](./GEO.md) owns the reporting intent, and [OPS.md](./OPS.md) owns production log/operations practice. |
 | [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) | active | Cloudflare R2 P0 storage adapter | Driver names, env, write guards, or rollback steps change. | P0 Blob→R2 adapter only; [OPS.md](./OPS.md) still owns the production Blob layout and env inventory. |
+| [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) | active | Cloudflare migrate P1 workflow runtime | Runtime kinds, CF Cron/Queue non-prod proof, or dual-scheduler rollback change. | P1 orchestration only; production cron table stays in [OPS.md](./OPS.md) / `web/vercel.json`. |
 
 ### Decision analyses
 
