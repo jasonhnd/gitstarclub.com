@@ -1,7 +1,7 @@
 import type { ZodType } from "zod";
 import { LiveGenerationPointer } from "@/lib/contracts";
 import { BLOB_JSON_FETCH_TIMEOUT_MS, FetchTimeoutError, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
-import { requireBlobBaseUrl } from "@/lib/runtime-config";
+import { getPublicReadBases } from "@/lib/runtime-config";
 import { PUBLISHED_VIEWS_CACHE_TAG, PUBLICATION_VISIBILITY_SLA_MS } from "@/lib/data/publication-cache-contract";
 import {
   invalidateBootstrapPointerCache,
@@ -103,7 +103,7 @@ function shouldRetry(status: number): boolean {
   return status === 403 || status === 429 || status >= 500;
 }
 
-async function readBlobJsonKey(args: {
+async function readBlobJsonKeyOnce(args: {
   blobBase: string;
   key: string;
   bust?: string;
@@ -158,13 +158,37 @@ async function readBlobJsonKey(args: {
   return res.json();
 }
 
+async function readBlobJsonKey(args: {
+  blobBase: string;
+  fallbackBases?: string[];
+  key: string;
+  bust?: string;
+  timeoutMs: number;
+  mutableWorkflowArtifact: boolean;
+  skipNextDataCache?: boolean;
+  allowForbiddenAsMissing?: boolean;
+  forbiddenRetries?: number;
+}): Promise<unknown | null> {
+  const bases = [args.blobBase, ...(args.fallbackBases ?? [])].filter((base, index, all) => all.indexOf(base) === index);
+  for (let index = 0; index < bases.length; index++) {
+    try {
+      const value = await readBlobJsonKeyOnce({ ...args, blobBase: bases[index] });
+      if (value !== null) return value;
+    } catch (error) {
+      if (index === bases.length - 1) throw error;
+    }
+  }
+  return null;
+}
+
 async function readLiveHistoryJsonKey(args: {
   blobBase: string;
+  fallbackBases?: string[];
   key: string;
   bust?: string;
   timeoutMs: number;
 }): Promise<unknown | null> {
-  const { blobBase, key, bust, timeoutMs } = args;
+  const { blobBase, fallbackBases, key, bust, timeoutMs } = args;
   const memoKey = `${blobBase}\0${key}`;
   const forbiddenUntil = liveHistoryForbiddenMemo.get(memoKey);
   if (forbiddenUntil !== undefined) {
@@ -174,6 +198,7 @@ async function readLiveHistoryJsonKey(args: {
   try {
     return await readBlobJsonKey({
       blobBase,
+      fallbackBases,
       key,
       bust,
       timeoutMs,
@@ -360,19 +385,33 @@ async function resolveLiveGeneration(
 }
 
 async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<unknown | null> {
-  const blobBase = requireBlobBaseUrl();
+  const readBases = getPublicReadBases();
+  const blobBase = readBases[0];
+  const fallbackBases = readBases.slice(1);
   let keys = [path];
   let bust = opts.bust;
   const timeoutMs = opts.timeoutMs ?? BLOB_JSON_FETCH_TIMEOUT_MS;
   if (opts.base && opts.live) throw new Error("a view cannot be both base and live");
   if (opts.liveHistory && !opts.live) throw new Error("liveHistory requires live:true");
   if (opts.base) {
-    const { version, publishedAt, confirmedAbsent } = await resolveVersion(
+    let { version, publishedAt, confirmedAbsent } = await resolveVersion(
       blobBase,
       opts.versionTtlMs,
       timeoutMs,
       mode,
     );
+    if (!version) {
+      for (const fallback of fallbackBases) {
+        const next = await resolveVersion(fallback, opts.versionTtlMs, timeoutMs, mode);
+        if (next.version) {
+          version = next.version;
+          publishedAt = next.publishedAt;
+          confirmedAbsent = next.confirmedAbsent;
+          break;
+        }
+        if (!next.confirmedAbsent) confirmedAbsent = false;
+      }
+    }
     if (version) {
       let bootstrap = null;
       try {
@@ -402,6 +441,12 @@ async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<un
     let generation: string | null;
     try {
       generation = await resolveLiveGeneration(blobBase, opts.liveTtlMs, timeoutMs);
+      if (generation === null) {
+        for (const fallback of fallbackBases) {
+          generation = await resolveLiveGeneration(fallback, opts.liveTtlMs, timeoutMs);
+          if (generation) break;
+        }
+      }
     } catch (error) {
       // A pointer transport/WAF failure is not proof that the migration-era
       // flat layout is safe. Published pages omit this live overlay so their
@@ -419,6 +464,7 @@ async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<un
             readGenerationArtifact: (candidateGeneration, logicalPath) =>
               readLiveHistoryJsonKey({
                 blobBase,
+                fallbackBases,
                 key: `live/generations/${candidateGeneration}/${logicalPath}`,
                 bust: candidateGeneration,
                 timeoutMs,
@@ -428,6 +474,7 @@ async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<un
             readLegacyArtifact: (legacyPath) =>
               readLiveHistoryJsonKey({
                 blobBase,
+                fallbackBases,
                 key: legacyPath,
                 bust: opts.bust,
                 timeoutMs,
@@ -465,6 +512,7 @@ async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<un
   for (const key of keys) {
     const value = await readBlobJsonKey({
       blobBase,
+      fallbackBases,
       key,
       bust,
       timeoutMs,

@@ -33,3 +33,118 @@ export function requireGithubToken(env?: RuntimeEnv): string {
   if (!value) throw new Error("GITHUB_TOKEN not set");
   return value;
 }
+
+export type StorageReadDriver = "blob" | "r2" | "r2_then_blob";
+export type StorageWriteDriver = "blob" | "r2";
+
+const DEFAULT_R2_PREFIX = "migrate-dev/";
+const NON_PRODUCTION_R2_PREFIX = /^migrate-(dev|test|preview)\/$/;
+
+function normalizeDriver(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+export function getStorageReadDriver(env: RuntimeEnv = process.env): StorageReadDriver {
+  const raw = normalizeDriver(env.STORAGE_READ_DRIVER ?? env.READ_DRIVER);
+  if (!raw || raw === "blob") return "blob";
+  if (raw === "r2") return "r2";
+  if (raw === "r2_then_blob") return "r2_then_blob";
+  throw new Error(`STORAGE_READ_DRIVER must be blob | r2 | r2_then_blob (got ${raw})`);
+}
+
+export function getStorageWriteDriver(env: RuntimeEnv = process.env): StorageWriteDriver {
+  const raw = normalizeDriver(env.STORAGE_WRITE_DRIVER ?? env.WRITE_DRIVER);
+  if (!raw || raw === "blob") return "blob";
+  if (raw === "r2") return "r2";
+  throw new Error(`STORAGE_WRITE_DRIVER must be blob | r2 (got ${raw})`);
+}
+
+export function getR2AccountId(env: RuntimeEnv = process.env): string | undefined {
+  return env.R2_ACCOUNT_ID || undefined;
+}
+
+export function getR2AccessKeyId(env: RuntimeEnv = process.env): string | undefined {
+  return env.R2_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID || undefined;
+}
+
+export function getR2SecretAccessKey(env: RuntimeEnv = process.env): string | undefined {
+  return env.R2_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY || undefined;
+}
+
+export function getR2Bucket(env: RuntimeEnv = process.env): string | undefined {
+  return env.R2_BUCKET || env.AWS_S3_BUCKET || undefined;
+}
+
+export function getR2Region(env: RuntimeEnv = process.env): string {
+  return (env.R2_REGION || env.AWS_REGION || "auto").trim() || "auto";
+}
+
+export function getR2S3Endpoint(env: RuntimeEnv = process.env): string {
+  const explicit = (env.R2_S3_ENDPOINT || env.AWS_ENDPOINT_URL || "").replace(/\/+$/, "");
+  if (explicit) return explicit;
+  const accountId = getR2AccountId(env);
+  return accountId ? `https://${accountId}.r2.cloudflarestorage.com` : "";
+}
+
+export function normalizeR2KeyPrefix(value: string): string {
+  const trimmed = value.trim().replaceAll("\\", "/").replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!trimmed) return "";
+  if (trimmed.includes("..") || trimmed.includes("://")) {
+    throw new Error(`refusing unsafe R2_PREFIX "${value}"`);
+  }
+  return `${trimmed}/`;
+}
+
+export function getR2KeyPrefix(env: RuntimeEnv = process.env): string {
+  if (env.R2_PREFIX === undefined) return DEFAULT_R2_PREFIX;
+  return normalizeR2KeyPrefix(env.R2_PREFIX);
+}
+
+export function getR2PublicBaseUrl(env: RuntimeEnv = process.env): string {
+  return (env.R2_PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
+}
+
+export function isVercelProduction(env: RuntimeEnv = process.env): boolean {
+  return env.VERCEL_ENV === "production";
+}
+
+export function isNonProductionR2Prefix(prefix: string): boolean {
+  return NON_PRODUCTION_R2_PREFIX.test(prefix);
+}
+
+export function assertR2WritesAllowed(env: RuntimeEnv = process.env): void {
+  if (isVercelProduction(env)) {
+    throw new Error("refusing R2 writes: VERCEL_ENV=production (P0 forbids production R2 write)");
+  }
+  const prefix = getR2KeyPrefix(env);
+  if (!isNonProductionR2Prefix(prefix)) {
+    throw new Error(
+      `refusing R2 writes: R2_PREFIX must be a non-production migrate-* prefix (got "${prefix || "(empty root)"}")`,
+    );
+  }
+}
+
+export function getPublicReadBases(env: RuntimeEnv = process.env): string[] {
+  const driver = getStorageReadDriver(env);
+  const blob = getBlobBaseUrl(env);
+  const r2 = getR2PublicBaseUrl(env);
+  switch (driver) {
+    case "blob":
+      if (!blob) throw new Error("BLOB_BASE_URL not set — point it at the Vercel Blob store base URL.");
+      return [blob];
+    case "r2":
+      if (!r2) throw new Error("R2_PUBLIC_BASE_URL not set — public r2 reads need an R2 public base URL.");
+      return [r2];
+    case "r2_then_blob": {
+      const bases = [r2, blob].filter(Boolean);
+      if (bases.length === 0) {
+        throw new Error("BLOB_BASE_URL not set — point it at the Vercel Blob store base URL.");
+      }
+      return bases;
+    }
+    default: {
+      const _exhaustive: never = driver;
+      throw new Error(`unsupported storage read driver: ${String(_exhaustive)}`);
+    }
+  }
+}

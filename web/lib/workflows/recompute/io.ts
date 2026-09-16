@@ -1,4 +1,3 @@
-import { put } from "@vercel/blob";
 import {
   CategoryAssignmentsDocument,
   CategoryAssignmentsShard,
@@ -15,7 +14,7 @@ import {
   RepoRecentDailyShard,
   SiteDaily,
 } from "@/lib/contracts";
-import { requireBlobWriteToken } from "@/lib/runtime-config";
+import { getWriteObjectStore } from "@/lib/storage";
 import { REPO_BUCKETS } from "../buckets";
 import { buildModel, type Model, type RawShards } from "./model";
 import { workflowHeartbeat } from "@/lib/workflows/owned-write";
@@ -91,7 +90,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Write a view map under views/<run_id>/** with a concurrency pool + write-rate gate. */
 export async function writeVersion(runId: string, views: Map<string, unknown>, owner?: WorkflowOwnership): Promise<number> {
-  const token = requireBlobWriteToken();
+  const store = getWriteObjectStore();
   const items = [...views.entries()];
   let i = 0;
   let nextStart = 0;
@@ -110,11 +109,8 @@ export async function writeVersion(runId: string, views: Map<string, unknown>, o
       assertGeneratedView(rel, obj);
       const payload = JSON.stringify(obj);
       assertPublishedViewJsonSize(rel, payload);
-      await put(`views/${runId}/${rel}`, payload, {
-        access: "public",
-        token,
+      await store.put(`views/${runId}/${rel}`, payload, {
         allowOverwrite: true,
-        addRandomSuffix: false,
         contentType: "application/json",
         cacheControlMaxAge: 31536000, // versioned path is immutable → cache hard
       });

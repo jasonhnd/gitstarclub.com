@@ -1,7 +1,7 @@
 ---
 owner: development process
 status: active
-last_reviewed: 2026-08-16
+last_reviewed: 2026-09-16
 source_of_truth_for:
   - developer workflow
   - documentation ownership practice
@@ -50,6 +50,7 @@ Docs-only changes are allowed when the code already implements the behavior.
 | Product scope, tracked-set assumptions | `REQUIREMENTS.md` |
 | System architecture, hard constraints | `ARCHITECTURE.md` |
 | Blob layout, workflow lifecycle, publish/rollback | `VERCEL-DATA-OPERATIONS.md`, `OPS.md` |
+| Cloudflare R2 P0 storage drivers / dual-read | `R2-MIGRATION-P0.md` |
 | JSON schema or persisted field | `DATA-CONTRACTS.md` |
 | Bootstrap pipeline behavior | `PIPELINE.md` |
 | Ranking algorithm or tie-breaking | `RANKING.md` |
