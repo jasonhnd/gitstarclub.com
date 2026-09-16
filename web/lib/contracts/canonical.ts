@@ -17,7 +17,8 @@ import {
 
 /** canonical/v2/meta.json — stock-anchoring seam + period fold watermarks.
  *  Membership counts (`active_repo_count` / `historical_repo_count`) belong on
- *  views/meta.json (`Meta`), not here. `.strict()` keeps that split visible. */
+ *  views/meta.json (`Meta`), not here. `.strict()` keeps that split visible.
+ *  Issue #438: do not add those counts to CanonicalMeta. */
 export const CanonicalMeta = z.object({
   seam_date: DateStr,
   schema_ver: NonNegativeInt,

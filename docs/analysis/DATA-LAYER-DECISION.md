@@ -1,23 +1,25 @@
 ---
 owner: track-c / data-layer
-status: draft
-last_reviewed: 2026-08-17
+status: active
+last_reviewed: 2026-09-06
 source_of_truth_for:
-  - Track C data-layer decision draft
-  - option comparison and recommendation leans
-  - POC must-prove criteria if a later decision chooses build
+  - Track C data-layer option comparison
+  - historical POC must-prove criteria (not an authorization)
 ---
 
-# Data-layer decision draft (Track C)
+# Data-layer option analysis (Track C)
 
-This is a **draft**. It is not the 2026-09-12 choose-or-defer record.
+**Accepted as comparison history. Product outcome: veto (lock-002).** [#430](https://github.com/jasonhnd/gitstarclub.com/issues/430) recorded lock-002 on 2026-09-06: **permanent product veto of the request-path analytical query plane / live computation on the request path. No POC. No dated auto-review.** The 2026-08-31 [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) deferral (review 2027-03-12) is **superseded**; that date is void. The dated record lives in [ROADMAP.md](../ROADMAP.md) Track C and is the decision; this file is the comparison behind it.
 
 - **Clock started:** 2026-08-15 ([#361](https://github.com/jasonhnd/gitstarclub.com/issues/361)).
-- **Draft due:** ~2026-08-29 ([#381](https://github.com/jasonhnd/gitstarclub.com/issues/381)).
-- **Formal decide-or-defer owner:** [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) on **2026-09-12**. Missing that date **is** a six-month deferral of the [blocked expansion backlog](https://github.com/jasonhnd/gitstarclub.com/issues/362).
-- **Map:** [ROADMAP.md](../ROADMAP.md) Track C remains the iteration index. This file is the comparative write-up that #383 will accept, amend, or replace.
+- **Draft delivered:** 2026-08-17 ([#381](https://github.com/jasonhnd/gitstarclub.com/issues/381), [#382](https://github.com/jasonhnd/gitstarclub.com/issues/382)).
+- **First decision recorded:** 2026-08-31 ([#383](https://github.com/jasonhnd/gitstarclub.com/issues/383)) as defer six months (**superseded**).
+- **Product lock-002 recorded:** 2026-09-06 ([#430](https://github.com/jasonhnd/gitstarclub.com/issues/430)) — veto, no POC, no auto-review.
+- **Map:** [ROADMAP.md](../ROADMAP.md) Track C remains the iteration index and owns the decision.
 
-**POC allowed: no.** No POC. No isolated POC repository is authorized by this draft.
+Sections 3–5 below keep the 2026-08-17 draft comparison. "Lean" is the recommendation the first record adopted. Lock-002 keeps those option rejects and replaces the deferral outcome with a **product veto**. Reopening is not a feature PR and not a calendar reminder; it requires a constitution-level revision that amends the hard constraints.
+
+**POC allowed: no.** No POC. No isolated POC repository is authorized.
 
 This document does not implement [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362). It does not authorize ≥100-star drill-down, arbitrary-repo compare, open faceting, or semantic search. Finite [CATEGORIES.md](../CATEGORIES.md) pages stay **outside** this decision.
 
@@ -66,10 +68,11 @@ Self-hosted ClickHouse is included only as **ruled out — do not reopen**.
 | Tinybird (managed ClickHouse) | yes, if it answers the four blocked items | no | Second vendor: ingest + storage + query; paid whether or not the four products exist | **no** |
 | Vercel Postgres / Neon | yes | partial | Row store + compute for an analytical matrix; idle can sleep, cold start hits the request path | **no** |
 | More precomputed JSON views | no | yes | Blob + weekly recompute, linear in shard count; combinatorial slices explode | **only-if** a tiny finite extra shard, not open faceting |
-| Defer 6 months | no | yes | Zero incremental platform cost; Track A keeps using the current views | **yes** |
+| Defer 6 months | no | yes | Zero incremental platform cost; Track A keeps using the current views | historical lean (**superseded** by lock-002) |
+| Product veto (lock-002) | no | yes | Zero incremental platform cost; Track A keeps using the current views | **yes — chosen** |
 | Self-hosted ClickHouse | yes | no | Cheap machine theory, expensive operations; already rejected | **no** (ruled out, do not reopen) |
 
-Leans are recommendations for #383, not a decision.
+#383 adopted the draft leans on 2026-08-31, including defer-6-months. Lock-002 (2026-09-06) keeps Tinybird / Neon / ClickHouse as **no**, extra JSON views as **only-if**, and replaces the deferral with a **product veto**. The 2027-03-12 review date is void.
 
 ## 4. Option notes
 
@@ -157,13 +160,13 @@ Finite [CATEGORIES.md](../CATEGORIES.md) pages already use this pattern. They ar
 
 **Lean: only-if** for a tiny finite extra shard that Track A can name and bound (for example one more precomputed rank or lookup the current whitelist already supports). **Not** for open faceting, not for unindexed compare, not for ≥100-star history.
 
-### 4.4 Defer 6 months — lean: **yes**
+### 4.4 Defer 6 months — historical lean: **yes** (superseded by lock-002)
 
 **Request-path engine?** No.
 
 **Vercel-first?** Yes. Status quo.
 
-**Cost shape.** Zero new platform cost. The cost of deferral is opportunity cost on the four blocked items, not a bill.
+**Cost shape.** Zero new platform cost. The cost of the 2026-08-31 deferral was opportunity cost on the four blocked items, not a bill.
 
 **What happens to the current plane.**
 
@@ -177,9 +180,9 @@ Finite [CATEGORIES.md](../CATEGORIES.md) pages already use this pattern. They ar
 
 **Hard constraints that would change.** None.
 
-**Lean: yes.** The four blocked items remain one unproven gate. Nothing in [PRODUCT.md](../PRODUCT.md) or current traffic shape shows that Track A cannot serve the chronicle + pulse loop on ~5.3k repos. Spending Track C weeks on a query plane before that demand exists would trade a working static-read site for an architecture project.
+**Lean (draft / #383):** yes. The four blocked items remain one unproven gate. Nothing in [PRODUCT.md](../PRODUCT.md) or current traffic shape shows that Track A cannot serve the chronicle + pulse loop on ~5.3k repos. Spending Track C weeks on a query plane before that demand exists would trade a working static-read site for an architecture project.
 
-If #383 accepts this lean on 2026-09-12, the default review date is six months later (**~2027-03-12**). #383 owns that date. This draft does not set it.
+#383 adopted this lean on 2026-08-31 with a 2027-03-12 review. **Lock-002 (2026-09-06) supersedes that deferral.** The review date is void. The product outcome is a **veto** of the request-path query plane, not a six-month pause and not a calendar reminder.
 
 ### 4.5 Self-hosted ClickHouse — lean: **no** (ruled out, do not reopen)
 
@@ -187,23 +190,38 @@ Already rejected in [ARCHITECTURE.md](../ARCHITECTURE.md): cheap to run in theor
 
 **Request-path engine?** Yes. **Vercel-first?** No. **Cost shape?** Operator time dominates any machine-hour story.
 
-Do not reopen. A future #383 “build” cannot be “we will run ClickHouse ourselves.”
+Do not reopen. A constitution-level revision cannot be “we will run ClickHouse ourselves.”
+
+### 4.6 Product veto (lock-002) — lean: **yes** (chosen)
+
+**Request-path engine?** No. Live computation on the request path is vetoed.
+
+**Vercel-first?** Yes. Status quo.
+
+**Cost shape.** Zero new platform cost. The four blocked items stay unbuilt.
+
+**What happens to the current plane.** Same as §4.4: MiniSearch, sitemap / ISR, weekly refresh, and product-gates stay as they are. Track A continues on the current whitelist.
+
+**Hard constraints that would change.** None. Amending them requires a constitution-level revision, not a feature PR and not a calendar reminder.
+
+**Lean: yes — chosen.** Replaces the §4.4 deferral. No analytical query plane. No POC. No dated auto-review.
 
 ## 5. Overall lean
 
-**Defer 6 months.**
+**Product veto (lock-002).** The 2026-08-17 draft leaned defer-6-months; [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) recorded that lean. Lock-002 keeps the option rejects and replaces the deferral with a permanent product veto of the request-path analytical query plane.
 
 | Option | Lean |
 |---|---|
 | Tinybird | **no** |
 | Vercel Postgres / Neon | **no** |
 | More precomputed JSON views | **only-if** (tiny finite extra shard, not open faceting) |
-| Defer 6 months | **yes** |
+| Defer 6 months | historical (**superseded**; 2027-03-12 review is void) |
+| Product veto (lock-002) | **yes** |
 | Self-hosted ClickHouse | **no** (ruled out, do not reopen) |
 
-This is a recommendation for [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383), not the decision. #383 may still choose build. Until it does, the four [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362) items stay paused and have no implementation children.
+[#430](https://github.com/jasonhnd/gitstarclub.com/issues/430) recorded lock-002 on 2026-09-06. The four [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362) items stay paused with no implementation children and no review date.
 
-Nothing in ARCHITECTURE, ROADMAP, or PRODUCT forced a build lean: there is no shipped product that already requires a request-path engine, and Track A’s surfaces are explicitly finite views.
+Nothing in ARCHITECTURE, ROADMAP, or PRODUCT forced a build lean: there is no shipped product that already requires a request-path engine, and Track A’s surfaces are explicitly finite views. Live computation on the request path is vetoed.
 
 ## 6. POC authorization
 
@@ -211,11 +229,11 @@ Nothing in ARCHITECTURE, ROADMAP, or PRODUCT forced a build lean: there is no sh
 
 **no POC.**
 
-This draft does not authorize a POC repository, a Tinybird workspace, a Neon/Postgres instance, a vector index, or a query engine in the `web/` serving path. Track C’s remaining child is #383 (choose or defer). POC harness and constraint-amendment PRs are filed only if #383 chooses build.
+Nothing here authorizes a POC repository, a Tinybird workspace, a Neon/Postgres instance, a vector index, or a query engine in the `web/` serving path. Lock-002 recorded a product veto, so no POC harness and no constraint-amendment feature PR is authorized. A constitution-level revision — a new dated constitutional record amending the hard constraints — is the only reopening path. A calendar reminder is not a reopening path.
 
-## 7. If #383 later chooses build, the must-prove list would be
+## 7. Historical must-prove list (not an authorization)
 
-No POC is authorized now. If #383 later chooses build, these metrics and constraints must be written and accepted **before** any POC repository exists. Success/fail is defined here so 2026-09-12 has criteria; it is not a green light.
+No POC is authorized. There is no 2027-03-12 review and no other automatic revisit. If a constitution-level revision amends the hard constraints and then chooses build, these metrics and constraints must be written and accepted **before** any POC repository exists. Success/fail is defined here as historical criteria; it is not a green light.
 
 | Must-prove | Why it exists | Fail looks like |
 |---|---|---|
@@ -230,11 +248,12 @@ No POC is authorized now. If #383 later chooses build, these metrics and constra
 | Product-gates | 14-day base pointer and export SLAs stay fail-closed. No new serving pointer beside `views/latest.json`. | Weakening gates, or adding a new request-path existence probe / extra serving pointer, to land the POC. |
 | Isolation | POC stays out of weekly refresh and out of content HTML. No rewrite of the Workflow. | Folding the warehouse into `recompute` / `validate` / `publish` before the must-prove list is green. |
 
-A later build decision would still have to list which README / ARCHITECTURE hard constraints it is amending. This draft’s lean is that none of them should be amended in 2026.
+A later constitution-level revision would still have to list which README / ARCHITECTURE hard constraints it is amending. The accepted position is that none of them are amended. A feature PR cannot amend them.
 
-## 8. What this draft does not do
+## 8. What this document does not do
 
-- Does not close or decide [#383](https://github.com/jasonhnd/gitstarclub.com/issues/383) or [#361](https://github.com/jasonhnd/gitstarclub.com/issues/361).
-- Does not implement or split [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362).
+- Does not implement or split [#362](https://github.com/jasonhnd/gitstarclub.com/issues/362). The four items stay paused with no auto-review date.
 - Does not change CATEGORIES.md, product-gates, or the current publish pointer.
 - Does not add a query engine to `web/`.
+- Does not authorize live computation on the request path.
+- Does not carry the decision itself. [ROADMAP.md](../ROADMAP.md) Track C owns the dated lock-002 record; a constitution-level revision is the only amendment path.
