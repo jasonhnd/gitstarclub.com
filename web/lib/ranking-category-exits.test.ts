@@ -40,7 +40,7 @@ describe("rankingCategoryExits", () => {
       registryFixture(),
       null,
     );
-    expect(links.map((link) => link.id)).toEqual(["language/typescript", "language/go"]);
+    expect(links.map((link) => link.id)).toEqual(["language/go", "language/typescript"]);
   });
 
   test("returns nothing without a registry and stays bounded", () => {
