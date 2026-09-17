@@ -331,8 +331,10 @@ applied only while its request generation is still current.
 ### `GET /.well-known/deployment`
 
 Public, uncached deployment identity used by release gates to prove which commit
-an immutable Vercel deployment serves. It does not read Blob data or expose a
-secret.
+a deployment serves. It does not read Blob data or expose a secret. On Vercel
+the body stays `{ commitSha, deploymentUrl }`. On the P3 CF Workers host
+(`HOSTING_TARGET=cf`) the Worker shell (or the Next route) also returns
+`target: "cf"` and `host`.
 
 | Item | Contract |
 |---|---|
@@ -340,8 +342,8 @@ secret.
 | Query / body | None |
 | Success | `200 application/json` |
 | Cache | `Cache-Control: no-store, max-age=0`; `dynamic = "force-dynamic"` |
-| Source | `web/app/.well-known/deployment/route.ts` |
-| Platform inputs | `VERCEL_GIT_COMMIT_SHA`, `VERCEL_URL`; missing values become `null` |
+| Source | `web/app/.well-known/deployment/route.ts`, `web/lib/deployment-identity.ts`; Worker intercept on `workers/gitstarclub-web` |
+| Platform inputs | `VERCEL_GIT_COMMIT_SHA`, `VERCEL_URL`, `CF_PREVIEW_COMMIT_SHA`, `HOSTING_TARGET`; missing values become `null` |
 
 ```json
 {
