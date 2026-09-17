@@ -23,9 +23,9 @@
     "audit:deps": "bun audit --audit-level=high",
     "test": "bun test lib/",
     "test:cov": "bun test lib/ --coverage && node ../scripts/check-coverage-threshold.mjs coverage/lcov.info",
-    "cf:build": "opennextjs-cloudflare build --config ../workers/gitstarclub-web/wrangler.jsonc",
+    "cf:build": "bun scripts/cf-opennext-build.ts",
     "cf:preview": "wrangler dev --config ../workers/gitstarclub-web/wrangler.jsonc --port 8787 --ip 127.0.0.1",
-    "cf:dry-run": "opennextjs-cloudflare build --config ../workers/gitstarclub-web/wrangler.jsonc && wrangler deploy --dry-run --config ../workers/gitstarclub-web/wrangler.jsonc",
+    "cf:dry-run": "bun run cf:build && wrangler deploy --dry-run --config ../workers/gitstarclub-web/wrangler.jsonc",
     "cf:smoke": "bun scripts/cf-workers-host-smoke.ts"
   },
   "dependencies": {
