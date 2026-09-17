@@ -11,10 +11,11 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { Star } from "@/app/_explore/Star";
 import { OrganizationRankingTable, type OrganizationSummaryRow } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getAllTime, getCategoryAssignments, getCategoryRegistry, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
-import { rankingCategoryExits } from "@/lib/ranking-category-exits";
+import { getAllTime, getCategoryAssignmentsForRepos, getCategoryRegistry, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
+import { RANKING_CATEGORY_LEAD_LIMIT, rankingCategoryExits } from "@/lib/ranking-category-exits";
 import { RankingCategoryExits } from "./ranking-category-exits";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
+import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { formatInteger, fmtStars } from "@/lib/format";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
@@ -48,7 +49,10 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
   const routePath = localizedPath(locale, RANKINGS_PATH);
   const href = (path: string) => localizedPath(locale, path);
   const periods = currentUtcPeriods(now);
-  const [repoRank, orgRank, repoLk, orgLk, snap, availablePeriods, registry, assignments] = await Promise.all([
+  // Core views first. On CF, skip assignment shards entirely: free Workers count
+  // total subrequests (~50), and wave-1 Blob + OpenNext ASSETS GETs already
+  // spend most of that budget. Language exits stay; Vercel still loads leads.
+  const [repoRank, orgRank, repoLk, orgLk, snap, availablePeriods, registry] = await Promise.all([
     getAllTime("repo"),
     getAllTime("org"),
     getReposLookup(),
@@ -56,10 +60,12 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
     getHotSnapshot(),
     resolveAvailableRankPeriods(now),
     getCategoryRegistry(),
-    getCategoryAssignments(),
   ]);
   const rankedRepos = repoRank && repoLk ? joinRepoRank(repoRank.items, repoLk) : [];
   const repoRows: Row[] = rankedRepos.map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }));
+  const assignments = isCloudflareWorkersHost()
+    ? null
+    : await getCategoryAssignmentsForRepos(rankedRepos.slice(0, RANKING_CATEGORY_LEAD_LIMIT).map((row) => row.id));
   const categoryLinks = rankingCategoryExits(rankedRepos, registry, assignments);
   const orgs = orgRank && orgLk ? joinOrgRank(orgRank.items, orgLk) : [];
   const archiveItems = buildArchiveItems(snap?.home.year_spine ?? [], availablePeriods, locale, t);

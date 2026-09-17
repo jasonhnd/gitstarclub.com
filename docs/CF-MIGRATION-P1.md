@@ -32,7 +32,8 @@ This document owns the P1 orchestration change added in
 
 Out of scope: DNS / orange-cloud, deleting production Blob, production read
 primary R2, P2 ISR/Preview gates (see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md)),
-P3 full-site Workers hosting, paid-plan purchases, promoting to `main`.
+P3 full-site Workers hosting (see [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md)),
+paid-plan purchases, promoting to `main`.
 
 Prepared Cloudflare resources (documentation only; production scheduling is
 still Vercel):
@@ -111,5 +112,6 @@ deployed as a shell.
 
 - Production scheduler is still Vercel cron.
 - Apex / www DNS and Cloudflare orange-cloud are unchanged.
-- The Worker `MEDIA` binding is not the production read primary.
+- The Worker `MEDIA` binding is not the production read primary (P3 may read
+  Blob or R2 through the P0 port on the preview host only).
 - Jason still has to approve any later cut of Sunday 06:00 from Vercel to CF.

@@ -22,10 +22,11 @@ import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { buildNarrative } from "@/lib/narrative";
 import { FIRST_YEAR } from "@/lib/periods";
 import { dateLabel, fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
-import { getCategoryAssignments, getCategoryRegistry, getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
+import { getCategoryAssignmentsForRepos, getCategoryRegistry, getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
 import { rankingCategoryExits } from "@/lib/ranking-category-exits";
 import { RankingCategoryExits } from "./ranking-category-exits";
 import { resolveAdjacentRankPeriod, resolveAdjacentRankYear, resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
+import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { pageMeta } from "@/lib/seo";
 import { buildWeeklyMoversSnippet } from "@/lib/shareable-snippets";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
@@ -105,16 +106,16 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
   const availablePeriods = await resolveAvailableRankPeriods(now);
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > availablePeriods.year) notFound();
 
-  const [rank, growth, newc, heat, lookup, registry, assignments] = await Promise.all([
+  const [rank, growth, newc, heat, lookup, registry] = await Promise.all([
     getRank("year", String(year), "repo", "flow"),
     getRank("year", String(year), "repo", "growth"),
     getRank("year", String(year), "repo", "new"),
     getHeatmap("year", String(year)),
     getReposLookup(),
     getCategoryRegistry(),
-    getCategoryAssignments(),
   ]);
   if (!rank || !lookup) notFound();
+  const assignments = await loadPageCategoryAssignments(leadAssignmentRepoIds(rank.items));
 
   const pagePath = `/rankings/${year}`;
   const routePath = localizedPath(locale, pagePath);
@@ -251,16 +252,16 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = `${year}-${String(month).padStart(2, "0")}`;
-  const [flow, growth, newc, heat, lookup, registry, assignments] = await Promise.all([
+  const [flow, growth, newc, heat, lookup, registry] = await Promise.all([
     getRank("month", period, "repo", "flow"),
     getRank("month", period, "repo", "growth"),
     getRank("month", period, "repo", "new"),
     getHeatmap("month", period),
     getReposLookup(),
     getCategoryRegistry(),
-    getCategoryAssignments(),
   ]);
   if (!flow || !lookup) notFound();
+  const assignments = await loadPageCategoryAssignments(leadAssignmentRepoIds(flow.items));
 
   const pageLabel = monthYearLabel(locale, year, month);
   const title = fill(text.periodMetaTitle, { label: pageLabel });
@@ -397,13 +398,13 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = isoWeekLabel(year, week);
-  const [flow, lookup, registry, assignments] = await Promise.all([
+  const [flow, lookup, registry] = await Promise.all([
     getRank("week", period, "repo", "flow"),
     getReposLookup(),
     getCategoryRegistry(),
-    getCategoryAssignments(),
   ]);
   if (!flow || !lookup) notFound();
+  const assignments = await loadPageCategoryAssignments(leadAssignmentRepoIds(flow.items));
 
   const pagePath = `/rankings/${year}/W${String(week).padStart(2, "0")}`;
   const routePath = localizedPath(locale, pagePath);
@@ -510,6 +511,16 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
       </main>
     </>
   );
+}
+
+function loadPageCategoryAssignments(repoIds: readonly number[]) {
+  // CF free Workers count total subrequests (~50). Full 32-shard assignment
+  // fan-out plus OpenNext ASSETS GETs blows the budget. Language exits stay.
+  return isCloudflareWorkersHost() ? Promise.resolve(null) : getCategoryAssignmentsForRepos(repoIds);
+}
+
+function leadAssignmentRepoIds(items: readonly { id?: number | null }[]): number[] {
+  return items.slice(0, PRIMARY_PANEL_LIMIT).flatMap((item) => (item.id == null ? [] : [item.id]));
 }
 
 function HeroActions({

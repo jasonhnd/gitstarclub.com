@@ -36,6 +36,7 @@ mock.module("@/lib/data", () => ({
   DAILY_BASE_VIEW_TTL_MS: 86_400_000,
   getAliasMapDaily: async () => ({}),
   getCategoryAssignments: async () => assignments,
+  getCategoryAssignmentsForRepos: async () => assignments,
   getCategoryRegistry: async () => registry,
   getMeta: async () => meta,
   getRepoPageEntityDaily: async (id: number) => (id === REPO_ID ? entity : null),

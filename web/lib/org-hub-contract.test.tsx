@@ -31,6 +31,7 @@ const SECOND_ID = 2;
 mock.module("@/lib/data", () => ({
   DAILY_BASE_VIEW_TTL_MS: 86_400_000,
   getCategoryAssignments: async () => assignments,
+  getCategoryAssignmentsForRepos: async () => assignments,
   getCategoryRegistry: async () => registry,
   getMeta: async () => meta,
   getOrgEntityDaily: async (login: string) => (login === ORG_LOGIN ? org : null),
