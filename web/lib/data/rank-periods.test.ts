@@ -1,6 +1,28 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { RankList } from "@/lib/contracts";
-import { resolveAvailableRankPeriodsForTest } from "./rank-periods";
+import {
+  MONTH_LOOKBACK,
+  MONTH_LOOKBACK_CF,
+  WEEK_LOOKBACK,
+  WEEK_LOOKBACK_CF,
+  rankPeriodLookbackLimits,
+  resolveAvailableRankPeriodsForTest,
+} from "./rank-periods";
+
+const originalHostingTarget = process.env.HOSTING_TARGET;
+const originalVercelEnv = process.env.VERCEL_ENV;
+
+beforeEach(() => {
+  delete process.env.HOSTING_TARGET;
+  delete process.env.VERCEL_ENV;
+});
+
+afterEach(() => {
+  if (originalHostingTarget === undefined) delete process.env.HOSTING_TARGET;
+  else process.env.HOSTING_TARGET = originalHostingTarget;
+  if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
+  else process.env.VERCEL_ENV = originalVercelEnv;
+});
 
 const GENERATED_AT = "2026-06-21T00:00:00.000Z";
 const NOW_PERIODS = {
@@ -55,6 +77,36 @@ describe("resolveAvailableRankPeriods", () => {
     expect(periods.yearLink).toMatchObject({ kind: "year", href: "/rankings/2025" });
     expect(periods.month).toMatchObject({ kind: "year", href: "/rankings/2025" });
     expect(periods.week).toMatchObject({ kind: "year", href: "/rankings/2025" });
+  });
+
+  test("caps month and week lookback to 1 on the CF Workers host", () => {
+    expect(rankPeriodLookbackLimits({})).toEqual({ monthLookback: MONTH_LOOKBACK, weekLookback: WEEK_LOOKBACK });
+    expect(rankPeriodLookbackLimits({ HOSTING_TARGET: "cf" })).toEqual({
+      monthLookback: MONTH_LOOKBACK_CF,
+      weekLookback: WEEK_LOOKBACK_CF,
+    });
+    expect(rankPeriodLookbackLimits({ HOSTING_TARGET: "cf", VERCEL_ENV: "production" })).toEqual({
+      monthLookback: MONTH_LOOKBACK,
+      weekLookback: WEEK_LOOKBACK,
+    });
+  });
+
+  test("CF lookback of 1 does not storm missing month and week views", async () => {
+    process.env.HOSTING_TARGET = "cf";
+    const probed: string[] = [];
+    const periods = await resolveAvailableRankPeriodsForTest({
+      nowPeriods: NOW_PERIODS,
+      readMeta: async () => null,
+      readRank: async (window, period) => {
+        probed.push(`${window}:${period}`);
+        return window === "year" && period === "2026" ? rankFixture(window, period) : null;
+      },
+    });
+
+    expect(probed.filter((entry) => entry.startsWith("month:"))).toEqual(["month:2026-07"]);
+    expect(probed.filter((entry) => entry.startsWith("week:"))).toEqual(["week:2026-W28"]);
+    expect(periods.month).toMatchObject({ kind: "year", href: "/rankings/2026" });
+    expect(periods.week).toMatchObject({ kind: "year", href: "/rankings/2026" });
   });
 
   test("uses folded-through periods when bounded calendar fallback misses", async () => {

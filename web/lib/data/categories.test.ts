@@ -12,6 +12,7 @@ import {
   categoryAssignmentShardReadConcurrency,
   loadCategoryAssignments,
   resetCategoryAssignmentsMemoForTests,
+  shouldSkipCategoryAssignmentShardFanOut,
 } from "./categories";
 import {
   categoryAssignmentsShardPath,
@@ -104,6 +105,17 @@ describe("loadCategoryAssignments shard fan-out", () => {
     expect(result?.repositories["1"]?.language).toEqual(["language/python"]);
     expect(result?.repositories["32"]?.language).toEqual(["language/rust"]);
     expect(result?.repositories["33"]?.language).toEqual(["language/python"]);
+  });
+
+  test("CF host skips rankings-style repo-id selection with 0 shard reads", async () => {
+    process.env.HOSTING_TARGET = "cf";
+    expect(shouldSkipCategoryAssignmentShardFanOut({ repoIds: [1, 33, 32] })).toBe(true);
+    expect(shouldSkipCategoryAssignmentShardFanOut()).toBe(false);
+    const { maxInFlight, shardReads, paths, result } = await loadWithProbe({ repoIds: [1, 33, 32] });
+    expect(result).toBeNull();
+    expect(shardReads).toBe(0);
+    expect(maxInFlight).toBe(0);
+    expect(paths).toEqual([]);
   });
 
   test("empty repo-id selection reads the index only", async () => {
