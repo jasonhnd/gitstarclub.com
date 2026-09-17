@@ -84,15 +84,15 @@ describe("CF Preview probe", () => {
   });
 
   test("invalidates the / and /pulse hot paths on the Worker stub", async () => {
-    let posted: { url: string; auth: string | null; accessId: string | null; body: unknown } | null = null;
+    const posted: Array<{ url: string; auth: string | null; accessId: string | null; body: unknown }> = [];
     const result = await invalidateCfPreviewHotPaths(env, async (input, init) => {
       const headers = new Headers(init?.headers);
-      posted = {
+      posted.push({
         url: String(input),
         auth: headers.get("authorization"),
         accessId: headers.get("CF-Access-Client-Id"),
         body: JSON.parse(String(init?.body)),
-      };
+      });
       return Response.json({
         ok: true,
         recorded: [
@@ -101,19 +101,21 @@ describe("CF Preview probe", () => {
         ],
       });
     });
-    expect(posted).toEqual({
-      url: "https://gitstarclub-web.worldgo.workers.dev/preview/invalidate",
-      auth: "Bearer cron-secret",
-      accessId: "access-id",
-      body: {
-        v: 1,
-        driver: "cf-stub",
-        ops: [
-          { kind: "path", path: "/" },
-          { kind: "path", path: "/pulse" },
-        ],
+    expect(posted).toEqual([
+      {
+        url: "https://gitstarclub-web.worldgo.workers.dev/preview/invalidate",
+        auth: "Bearer cron-secret",
+        accessId: "access-id",
+        body: {
+          v: 1,
+          driver: "cf-stub",
+          ops: [
+            { kind: "path", path: "/" },
+            { kind: "path", path: "/pulse" },
+          ],
+        },
       },
-    });
+    ]);
     expect(result.ok).toBe(true);
     expect(result.recorded.map((op) => op.path)).toEqual(["/", "/pulse"]);
   });

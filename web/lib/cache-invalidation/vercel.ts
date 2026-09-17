@@ -21,6 +21,6 @@ export class VercelCacheInvalidation implements CacheInvalidationPort {
 
   async revalidateTag(tag: string, options?: RevalidateTagOptions): Promise<void> {
     const nextCache = this.nextCache ?? (await loadNextCache());
-    nextCache.revalidateTag(tag, options);
+    nextCache.revalidateTag(tag, options ?? { expire: 0 });
   }
 }

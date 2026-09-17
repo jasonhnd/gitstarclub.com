@@ -5,16 +5,18 @@ import type { CacheInvalidationOp, CacheInvalidationPort, RevalidateTagOptions, 
 
 export type CacheInvalidationFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
+export type CacheInvalidationEnv = Record<string, string | undefined>;
+
 export type CfStubCacheInvalidationOptions = {
   recorder?: MemoryCacheInvalidation;
   purgeUrl?: string;
   secret?: string;
-  env?: NodeJS.ProcessEnv;
+  env?: CacheInvalidationEnv;
   fetchImpl?: CacheInvalidationFetch;
   log?: (line: string) => void;
 };
 
-function headerRecord(env: NodeJS.ProcessEnv | undefined): Record<string, string> {
+function headerRecord(env: CacheInvalidationEnv | undefined): Record<string, string> {
   return cloudflareAccessHeaders({
     CF_ACCESS_CLIENT_ID: getCfAccessClientId(env),
     CF_ACCESS_CLIENT_SECRET: getCfAccessClientSecret(env),
@@ -31,7 +33,7 @@ export class CfStubCacheInvalidation implements CacheInvalidationPort {
   readonly recorder: MemoryCacheInvalidation;
   private readonly purgeUrl?: string;
   private readonly secret?: string;
-  private readonly env?: NodeJS.ProcessEnv;
+  private readonly env?: CacheInvalidationEnv;
   private readonly fetchImpl: CacheInvalidationFetch;
   private readonly log: (line: string) => void;
 

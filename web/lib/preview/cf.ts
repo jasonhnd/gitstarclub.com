@@ -18,12 +18,14 @@ export function cfPreviewHeaders(env: Record<string, string | undefined> = proce
   };
 }
 
-export function cfPreviewUrl(path: string, env: NodeJS.ProcessEnv = process.env): string {
+export type PreviewEnv = Record<string, string | undefined>;
+
+export function cfPreviewUrl(path: string, env: PreviewEnv = process.env): string {
   return new URL(path, `${getCfPreviewOrigin(env)}/`).toString();
 }
 
 export async function readCfPreviewIdentity(
-  env: NodeJS.ProcessEnv = process.env,
+  env: PreviewEnv = process.env,
   fetchImpl: PreviewFetch = fetch,
 ): Promise<PreviewIdentity | null> {
   assertPreviewTargetAllowed(env);
@@ -58,7 +60,7 @@ export type CfHotPathInvalidation = {
 
 /** POST `/` and `/pulse` to the Worker invalidate stub (Access + optional CRON_SECRET). */
 export async function invalidateCfPreviewHotPaths(
-  env: NodeJS.ProcessEnv = process.env,
+  env: PreviewEnv = process.env,
   fetchImpl: PreviewFetch = fetch,
 ): Promise<CfHotPathInvalidation> {
   const secret = env.CRON_SECRET?.trim();
