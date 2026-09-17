@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import "../globals.css";
 import { RegisterSW } from "../_explore/RegisterSW";
 import { Footer } from "../_explore/Footer";
+import { analyticsProvidersForEnvironment } from "@/lib/analytics-policy";
 import { DEFAULT_LOCALE, type Dict, type Locale } from "@/lib/i18n";
 import { chromeText, resolveChromePath } from "@/lib/i18n/client";
 import { THEME_INIT_SCRIPT } from "@/lib/theme-script";
@@ -87,7 +88,7 @@ export function RootShell({
           <Footer locale={locale} dictionary={dictionary} />
         </div>
         <RegisterSW />
-        <Analytics />
+        {analyticsProvidersForEnvironment().includes("vercel-web-analytics") ? <Analytics /> : null}
       </body>
     </html>
   );

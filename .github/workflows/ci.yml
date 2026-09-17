@@ -342,3 +342,62 @@ jobs:
             echo "- Access: Service Token headers CF-Access-Client-Id / CF-Access-Client-Secret"
             echo "- Production gates remain verify / static, production-build, preview-e2e, product-gates on Vercel"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Optional CF Workers host preview build (P3 / OpenNext). NOT a production required check.
+  # Do not add this job name to .delivery.yml or GitHub required status checks.
+  # Enable with repo variable CF_WORKERS_HOST_ENABLED=1. Does not require Access.
+  cf-workers-host:
+    name: cf-workers-host
+    if: ${{ vars.CF_WORKERS_HOST_ENABLED == '1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BLOB_BASE_URL: http://127.0.0.1:4010
+      HOSTING_TARGET: cf
+      NODE_OPTIONS: --max-old-space-size=8192
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Assert pinned runtime versions
+        working-directory: .
+        run: node scripts/assert-runtime-versions.mjs
+      - run: bun install --frozen-lockfile
+      - name: Build OpenNext Worker preview (fixture, no Access)
+        run: |
+          bun scripts/ci-build-fixture-server.ts > "$RUNNER_TEMP/cf-host-fixture.log" 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent "$BLOB_BASE_URL/_health" > /dev/null; then
+              bun run cf:dry-run
+              exit $?
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/cf-host-fixture.log"
+          echo "::error::Read-only OpenNext fixture did not become ready"
+          exit 1
+      - name: Write CF Workers host summary
+        if: ${{ always() }}
+        env:
+          TESTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          {
+            echo "## CF Workers host preview (optional; not a production required check)"
+            echo
+            echo "- Tested commit: \`$TESTED_SHA\`"
+            echo "- Adapter: OpenNext (\`@opennextjs/cloudflare\`) wrapping \`workers/gitstarclub-web\`"
+            echo "- Access: not required for this build"
+            echo "- Deploy: dry-run only (does not cut DNS, does not replace Vercel production)"
+            echo "- Production gates remain verify / static, production-build, preview-e2e, product-gates on Vercel"
+          } >> "$GITHUB_STEP_SUMMARY"

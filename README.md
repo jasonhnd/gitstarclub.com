@@ -41,7 +41,7 @@ gitstarclub/
 │   ├── backfill/                  Step scripts 01-whitelist → 07-export-v2
 │   ├── data/                      Bootstrap inputs/outputs (gitignored)
 │   └── lib/                       Shared bootstrap utilities
-├── workers/gitstarclub-web/       Non-production CF Cron / Queue / Preview shell (P1–P2; production cron and Preview gates stay Vercel)
+├── workers/gitstarclub-web/       Non-production CF Worker: P1–P2 Cron/Queue/Preview shell + P3 OpenNext Next host (production apex/www stay Vercel)
 └── web/                           Next.js 16 application
     ├── app/
     │   ├── page.tsx               Home (Pulse)
@@ -63,6 +63,7 @@ gitstarclub/
     │   ├── components/            ThemeToggle, LanguageSwitcher (interactive client controls)
     │   ├── opengraph-image.tsx    Site-level OG card (next/og)
     │   ├── robots.ts  sitemap.ts  manifest.ts  layout.tsx  template.tsx  globals.css
+    ├── open-next.config.ts        OpenNext Cloudflare adapter (P3 preview only)
     ├── lib/
     │   ├── contracts/             Zod schemas (build-side type source of truth)
     │   ├── data/                  Read layer: fetch Blob + Zod parse + React cache
