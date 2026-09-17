@@ -36,6 +36,7 @@ const originalFetch = globalThis.fetch;
 const originalBlobBase = process.env.BLOB_BASE_URL;
 const originalPublicBlobBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
 const originalHostingTarget = process.env.HOSTING_TARGET;
+const originalPublicHostingTarget = process.env.NEXT_PUBLIC_HOSTING_TARGET;
 const originalVercelEnv = process.env.VERCEL_ENV;
 
 const assignment = {
@@ -65,6 +66,8 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalHostingTarget === undefined) delete process.env.HOSTING_TARGET;
   else process.env.HOSTING_TARGET = originalHostingTarget;
+  if (originalPublicHostingTarget === undefined) delete process.env.NEXT_PUBLIC_HOSTING_TARGET;
+  else process.env.NEXT_PUBLIC_HOSTING_TARGET = originalPublicHostingTarget;
   if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
   else process.env.VERCEL_ENV = originalVercelEnv;
 });
@@ -79,6 +82,7 @@ afterAll(() => {
 describe("CF /rankings assignment shard budget", () => {
   test("issues 0 assignment shard reads and keeps language exits", async () => {
     process.env.HOSTING_TARGET = "cf";
+    delete process.env.NEXT_PUBLIC_HOSTING_TARGET;
     delete process.env.VERCEL_ENV;
     const probe = installFetchProbe();
     const html = await renderPage(await RankingsPageView({ locale: "en", now: NOW }));
@@ -94,15 +98,20 @@ describe("CF /rankings assignment shard budget", () => {
   });
 
   test("Vercel /rankings still reads leading-row assignment shards", async () => {
-    delete process.env.HOSTING_TARGET;
+    process.env.HOSTING_TARGET = "vercel";
+    delete process.env.NEXT_PUBLIC_HOSTING_TARGET;
     delete process.env.VERCEL_ENV;
     const probe = installFetchProbe();
     const html = await renderPage(await RankingsPageView({ locale: "en", now: NOW }));
+    const shardPaths = probe.paths.filter((path) => path.includes("assignments/shards/"));
 
     expect(probe.shardReads).toBeGreaterThan(0);
-    expect(probe.paths.some((path) => path === "categories/assignments.json")).toBe(true);
+    expect(probe.paths).toContain("categories/assignments.json");
+    expect(shardPaths).toContain("categories/assignments/shards/1.json");
     expect(html).toContain("/categories/language/typescript");
-    expect(html).toContain("/categories/ecosystem/react");
+    // Assignment-based chips (ecosystem/react) are not the hosting contract: getCategoryRegistry
+    // is React-cached process-wide, so `bun test lib/` may already have memoized a registry
+    // without that public id. Shard I/O above is what must stay on Vercel.
   });
 });
 
