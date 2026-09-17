@@ -2,6 +2,7 @@ import { cache } from "react";
 import type { RankList } from "@/lib/contracts";
 import { monthYearLabel } from "@/lib/format";
 import { currentUtcPeriods, FIRST_YEAR, isoWeek } from "@/lib/periods";
+import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { getMeta } from "./meta";
 import { getRank } from "./rank";
 
@@ -64,8 +65,20 @@ type ResolveOptions = {
   weekLookback?: number;
 };
 
-const MONTH_LOOKBACK = 18;
-const WEEK_LOOKBACK = 12;
+export const MONTH_LOOKBACK = 18;
+export const WEEK_LOOKBACK = 12;
+/** CF free-tier: one calendar probe, then trust meta `folded_through`. */
+export const MONTH_LOOKBACK_CF = 1;
+export const WEEK_LOOKBACK_CF = 1;
+
+export function rankPeriodLookbackLimits(
+  env: Parameters<typeof isCloudflareWorkersHost>[0] = process.env,
+): { monthLookback: number; weekLookback: number } {
+  if (isCloudflareWorkersHost(env)) {
+    return { monthLookback: MONTH_LOOKBACK_CF, weekLookback: WEEK_LOOKBACK_CF };
+  }
+  return { monthLookback: MONTH_LOOKBACK, weekLookback: WEEK_LOOKBACK };
+}
 
 export function resolveAvailableRankPeriods(now = new Date()): Promise<AvailableRankPeriods> {
   const cacheKey = process.env.BLOB_BASE_URL ?? process.env.NEXT_PUBLIC_BLOB_BASE_URL ?? "";
@@ -82,9 +95,12 @@ export async function resolveAvailableRankPeriodsForTest({
   nowPeriods,
   readRank = getRank as RankReader,
   readMeta = getMeta as MetaReader,
-  monthLookback = MONTH_LOOKBACK,
-  weekLookback = WEEK_LOOKBACK,
+  monthLookback,
+  weekLookback,
 }: ResolveOptions = {}): Promise<AvailableRankPeriods> {
+  const limits = rankPeriodLookbackLimits();
+  const monthSteps = monthLookback ?? limits.monthLookback;
+  const weekSteps = weekLookback ?? limits.weekLookback;
   const current = nowPeriods ?? currentUtcPeriods(now);
   const meta = await readMeta();
   const foldedMonth = parseMonthPeriod(meta?.folded_through?.month);
@@ -96,8 +112,8 @@ export async function resolveAvailableRankPeriodsForTest({
   const weekStart = current.week;
 
   const [boundedMonth, boundedWeek] = await Promise.all([
-    findLatestMonth(monthStart, readRank, monthLookback),
-    findLatestWeek(weekStart, readRank, weekLookback),
+    findLatestMonth(monthStart, readRank, monthSteps),
+    findLatestWeek(weekStart, readRank, weekSteps),
   ]);
   const [foldedMonthRank, foldedWeekRank] = await Promise.all([
     boundedMonth || !foldedMonth ? Promise.resolve(null) : findLatestMonth(foldedMonth, readRank, 1),
