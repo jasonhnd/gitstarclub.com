@@ -405,7 +405,10 @@ Purpose:
 
 New generations write the v2 index + 32 shards. Readers still accept the v1
 monolith `{ rules_version, generated_at, repositories }` and assemble shards
-into that same caller-facing shape. ISR pages must not switch this read to
+into that same caller-facing shape. Index-mode readers batch shard GETs
+(concurrency 6, or 4 on `HOSTING_TARGET=cf`) so one OpenNext `/rankings`
+invocation stays under the CF Workers subrequest cap; `/rankings` only
+fetches shards for leading rows. ISR pages must not switch this read to
 `no-store`.
 
 Suggested v2 index:

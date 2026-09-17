@@ -48,6 +48,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Fixed
 
+- **OpenNext `/rankings` no longer fans out 32 assignment-shard reads in one Worker invocation.** `loadCategoryAssignments` batches shard GETs (concurrency 6, 4 on `HOSTING_TARGET=cf`) and memoizes a full assemble per isolate. `/rankings` loads assignments after the core views and only the shards needed for leading rows. Avoids `Too many subrequests by single Worker invocation`. Does not cut DNS.
 - **Static data exports regenerated after `refresh-2026-09-06`.** `web/public/data/exports/v1/2026-09-06/` tracks Blob view `generated_at` (`data_as_of` 2026-09-06T06:37:28.831Z) so live `export-manifest-age` stays inside 14 days. No invented freshness date.
 - **Preview/production builds no longer dynamically `readdir` the repo root for data-export JSON-LD.** Dataset pages read the checked-in `public/data/exports/v1` folder through a statically scoped path, so Turbopack does not trace the whole project.
 - **Category assignments no longer exceed the 2MB Next.js Data Cache limit.** Recompute writes a small index plus 32 repo-id shards at `categories/assignments/shards/<id%32>.json`. Readers still accept the v1 monolith. The publish gate checks real UTF-8 JSON byte length; each ISR-cached view must stay under 1.50 MiB. Repo, org, and ranking pages keep daily ISR cache — they are not switched to `no-store`.
