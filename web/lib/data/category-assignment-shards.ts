@@ -13,8 +13,21 @@ export const CATEGORY_ASSIGNMENTS_INDEX_PATH = "categories/assignments.json";
 export const categoryAssignmentsShardPath = (bucket: number): string =>
   `categories/assignments/shards/${bucket}.json`;
 
-function repoShard(id: number): number {
+export function categoryAssignmentShardForRepoId(id: number): number {
   return id % CATEGORY_ASSIGNMENT_SHARD_COUNT;
+}
+
+/** Unique assignment shard buckets for a repo-id set, sorted. Invalid ids are skipped. */
+export function categoryAssignmentShardBucketsForRepoIds(
+  repoIds: readonly number[],
+  shardCount = CATEGORY_ASSIGNMENT_SHARD_COUNT,
+): number[] {
+  const unique = new Set<number>();
+  for (const id of repoIds) {
+    if (!Number.isInteger(id) || id < 0) continue;
+    unique.add(id % shardCount);
+  }
+  return [...unique].sort((a, b) => a - b);
 }
 
 export type CategoryAssignmentsShardArtifact = { path: string; data: CategoryAssignmentsShardData };
@@ -39,7 +52,7 @@ export function splitCategoryAssignments(assignments: CategoryAssignmentsData): 
   );
 
   for (const [id, assignment] of Object.entries(parsed.repositories)) {
-    buckets[repoShard(Number(id))].repositories[id] = assignment;
+    buckets[categoryAssignmentShardForRepoId(Number(id))].repositories[id] = assignment;
   }
 
   return {
@@ -53,16 +66,15 @@ export function splitCategoryAssignments(assignments: CategoryAssignmentsData): 
   };
 }
 
-export function assembleCategoryAssignments(
+function mergeCategoryAssignmentShards(
   index: CategoryAssignmentsIndexData,
   shards: readonly CategoryAssignmentsShardData[],
-): CategoryAssignmentsData {
+): {
+  parsedIndex: CategoryAssignmentsIndexData;
+  repositories: CategoryAssignmentsData["repositories"];
+  seen: Set<number>;
+} {
   const parsedIndex = CategoryAssignmentsIndex.parse(index);
-  if (shards.length !== parsedIndex.shard_count) {
-    throw new Error(
-      `categories/assignments expected ${parsedIndex.shard_count} shards, received ${shards.length}`,
-    );
-  }
   const repositories: CategoryAssignmentsData["repositories"] = {};
   const seen = new Set<number>();
   for (const shard of shards) {
@@ -74,6 +86,33 @@ export function assembleCategoryAssignments(
     }
     Object.assign(repositories, parsed.repositories);
   }
+  return { parsedIndex, repositories, seen };
+}
+
+/** Merge any subset of shards. Used when a page only needs leading-row buckets. */
+export function assembleCategoryAssignmentsPartial(
+  index: CategoryAssignmentsIndexData,
+  shards: readonly CategoryAssignmentsShardData[],
+): CategoryAssignmentsData {
+  const { parsedIndex, repositories } = mergeCategoryAssignmentShards(index, shards);
+  return CategoryAssignments.parse({
+    rules_version: parsedIndex.rules_version,
+    generated_at: parsedIndex.generated_at,
+    repositories,
+  });
+}
+
+export function assembleCategoryAssignments(
+  index: CategoryAssignmentsIndexData,
+  shards: readonly CategoryAssignmentsShardData[],
+): CategoryAssignmentsData {
+  const parsedIndex = CategoryAssignmentsIndex.parse(index);
+  if (shards.length !== parsedIndex.shard_count) {
+    throw new Error(
+      `categories/assignments expected ${parsedIndex.shard_count} shards, received ${shards.length}`,
+    );
+  }
+  const { repositories, seen } = mergeCategoryAssignmentShards(parsedIndex, shards);
   if (seen.size !== parsedIndex.shard_count) {
     const missing = Array.from({ length: parsedIndex.shard_count }, (_, bucket) => bucket).filter(
       (bucket) => !seen.has(bucket),

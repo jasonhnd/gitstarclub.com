@@ -11,12 +11,16 @@ import {
   getCacheInvalidationKind,
   getCfPreviewOrigin,
   getCfPreviewRequireSha,
+  getHostingTarget,
   getPreviewTarget,
+  isCloudflareWorkersHost,
+  runWithCloudflareWorkersHostForTests,
   getWorkflowQueueEnqueueUrl,
   getWorkflowRuntimeKind,
   getWorkflowStepBaseUrl,
   assertCacheInvalidationAllowed,
   assertPreviewTargetAllowed,
+  assertHostingTargetAllowed,
   DEFAULT_CF_PREVIEW_ORIGIN,
   requireBlobBaseUrl,
   requireBlobWriteToken,
@@ -166,5 +170,41 @@ describe("P2 cache-invalidation and preview config", () => {
     expect(() => assertPreviewTargetAllowed({ PREVIEW_TARGET: "cf", VERCEL_ENV: "production" })).toThrow("PREVIEW_TARGET");
     expect(() => assertCacheInvalidationAllowed({ VERCEL_ENV: "production" })).not.toThrow();
     expect(() => assertPreviewTargetAllowed({ VERCEL_ENV: "production" })).not.toThrow();
+  });
+});
+
+describe("P3 hosting target", () => {
+  test("defaults hosting to Vercel and accepts cf only off production", () => {
+    expect(getHostingTarget({})).toBe("vercel");
+    expect(getHostingTarget({ HOSTING_TARGET: "cf" })).toBe("cf");
+    expect(isCloudflareWorkersHost({ HOSTING_TARGET: "cf" })).toBe(true);
+    expect(isCloudflareWorkersHost({ HOSTING_TARGET: "cf", VERCEL_ENV: "production" })).toBe(false);
+  });
+
+  test("refuses HOSTING_TARGET=cf as the Vercel production source of truth", () => {
+    expect(() => assertHostingTargetAllowed({ HOSTING_TARGET: "cf", VERCEL_ENV: "production" })).toThrow(
+      "HOSTING_TARGET",
+    );
+    expect(() => assertHostingTargetAllowed({ VERCEL_ENV: "production" })).not.toThrow();
+  });
+
+  test("async-local override isolates host detection from process.env", async () => {
+    const previous = process.env.HOSTING_TARGET;
+    process.env.HOSTING_TARGET = "cf";
+    try {
+      expect(isCloudflareWorkersHost()).toBe(true);
+      await runWithCloudflareWorkersHostForTests(false, async () => {
+        expect(isCloudflareWorkersHost()).toBe(false);
+        expect(isCloudflareWorkersHost({ HOSTING_TARGET: "cf" })).toBe(true);
+      });
+      await runWithCloudflareWorkersHostForTests(true, async () => {
+        process.env.HOSTING_TARGET = "vercel";
+        expect(isCloudflareWorkersHost()).toBe(true);
+        expect(isCloudflareWorkersHost({ HOSTING_TARGET: "vercel" })).toBe(false);
+      });
+    } finally {
+      if (previous === undefined) delete process.env.HOSTING_TARGET;
+      else process.env.HOSTING_TARGET = previous;
+    }
   });
 });

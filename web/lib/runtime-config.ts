@@ -1,8 +1,21 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 // Runtime configuration boundary for server-side data and workflow modules.
 // Keep process.env reads here so tests and route handlers can change config
 // without relying on module reloads.
 
 type RuntimeEnv = Record<string, string | undefined>;
+
+const cloudflareWorkersHostOverride = new AsyncLocalStorage<boolean>();
+
+/**
+ * Pin `isCloudflareWorkersHost()` for the current async scope.
+ * Explicit env objects still win. Used so bun test files that mutate
+ * `process.env.HOSTING_TARGET` cannot flip a sibling rankings/detail probe.
+ */
+export function runWithCloudflareWorkersHostForTests<T>(isCf: boolean, fn: () => T): T {
+  return cloudflareWorkersHostOverride.run(isCf, fn);
+}
 
 export function getBlobBaseUrl(env: RuntimeEnv = process.env): string {
   return (env.BLOB_BASE_URL ?? env.NEXT_PUBLIC_BLOB_BASE_URL ?? "").replace(/\/+$/, "");
@@ -194,6 +207,7 @@ export function getVercelAutomationBypassSecret(env: RuntimeEnv = process.env): 
 
 export type CacheInvalidationKind = "vercel" | "memory" | "cf-stub";
 export type PreviewTarget = "vercel" | "cf";
+export type HostingTarget = "vercel" | "cf";
 
 export const DEFAULT_CF_PREVIEW_ORIGIN = "https://gitstarclub-web.worldgo.workers.dev";
 
@@ -264,4 +278,27 @@ export function requireCfAccessCredentials(env: RuntimeEnv = process.env): {
     );
   }
   return { clientId, clientSecret };
+}
+
+export function getHostingTarget(env: RuntimeEnv = process.env): HostingTarget {
+  const raw = normalizeDriver(env.HOSTING_TARGET ?? env.NEXT_PUBLIC_HOSTING_TARGET);
+  if (!raw || raw === "vercel") return "vercel";
+  if (raw === "cf") return "cf";
+  throw new Error(`HOSTING_TARGET must be vercel | cf (got ${raw})`);
+}
+
+export function isCloudflareWorkersHost(env?: RuntimeEnv): boolean {
+  if (env !== undefined) {
+    return getHostingTarget(env) === "cf" && !isVercelProduction(env);
+  }
+  const override = cloudflareWorkersHostOverride.getStore();
+  if (override !== undefined) return override;
+  return getHostingTarget(process.env) === "cf" && !isVercelProduction(process.env);
+}
+
+export function assertHostingTargetAllowed(env: RuntimeEnv = process.env): void {
+  const target = getHostingTarget(env);
+  if (!isVercelProduction(env)) return;
+  if (target === "vercel") return;
+  throw new Error("refusing HOSTING_TARGET=cf: VERCEL_ENV=production stays on Vercel (P3)");
 }

@@ -37,7 +37,8 @@ This document owns the P2 change added in `web/lib/cache-invalidation/`,
 Out of scope: DNS / orange-cloud, Access on apex/www/`pre.gitstarclub.com`,
 deleting production Blob, making R2 the production read primary, changing
 production Vercel Authentication, replacing `preview-e2e` / `product-gates`,
-P3 full-site Workers hosting, paid-plan purchases, promoting to `main`.
+P3 full-site Workers hosting (see [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md)),
+paid-plan purchases, promoting to `main`.
 
 Prepared Cloudflare resources (documentation only; production Preview and
 product-gates stay on Vercel):
