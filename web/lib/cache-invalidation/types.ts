@@ -15,5 +15,6 @@ export type CacheInvalidationPort = {
 
 export type NextCacheApi = {
   revalidatePath(path: string, type?: RevalidateType): void;
-  revalidateTag(tag: string, options?: RevalidateTagOptions): void;
+  /** Next.js 16 requires a cache-life profile; `{ expire: 0 }` is an immediate purge. */
+  revalidateTag(tag: string, profile: string | RevalidateTagOptions): void;
 };

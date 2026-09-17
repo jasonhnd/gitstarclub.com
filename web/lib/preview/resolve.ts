@@ -1,7 +1,7 @@
 import { assertPreviewTargetAllowed, getPreviewTarget, type PreviewTarget } from "@/lib/runtime-config";
 
 export type ResolvePreviewTargetOptions = {
-  env?: NodeJS.ProcessEnv;
+  env?: Record<string, string | undefined>;
   target?: PreviewTarget;
 };
 

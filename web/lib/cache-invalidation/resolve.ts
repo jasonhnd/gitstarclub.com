@@ -9,7 +9,7 @@ import type { CacheInvalidationPort } from "./types";
 import { VercelCacheInvalidation } from "./vercel";
 
 export type ResolveCacheInvalidationOptions = {
-  env?: NodeJS.ProcessEnv;
+  env?: Record<string, string | undefined>;
   kind?: CacheInvalidationKind;
   vercel?: VercelCacheInvalidation;
   memory?: MemoryCacheInvalidation;
