@@ -331,7 +331,7 @@ Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,
 }
 ```
 
-**v1 monolith** (already-published generations remain readable): the previous `{ rules_version, generated_at, repositories }` document at `categories/assignments.json`. Readers accept either shape and assemble shards before callers see `CategoryAssignments`.
+**v1 monolith** (already-published generations remain readable): the previous `{ rules_version, generated_at, repositories }` document at `categories/assignments.json`. Readers accept either shape and assemble shards before callers see `CategoryAssignments`. Index-mode assemble batches shard reads (≤6 concurrent, ≤4 on CF Workers) because a single `Promise.all` of 32 shards plus other `/rankings` Blob GETs exceeds the Workers subrequest cap.
 
 ### 2.5 `entity/repo/{id}.json`
 

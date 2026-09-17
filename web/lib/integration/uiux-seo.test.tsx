@@ -60,6 +60,7 @@ mock.module("@/lib/data", () => ({
   getAllTime: async (dim: "repo" | "org") => rankFixture("all", "all", dim, "stock"),
   getCategoryAllTimePage: async (dimension: string, slug: string) => categoryRankFixture(dimension, slug),
   getCategoryAssignments: async () => (fixtureMode === "repo-empty" ? emptyCategoryAssignmentsFixture() : categoryAssignmentsFixture),
+  getCategoryAssignmentsForRepos: async () => (fixtureMode === "repo-empty" ? emptyCategoryAssignmentsFixture() : categoryAssignmentsFixture),
   getCategoryRegistry: async () => (fixtureMode === "category-empty" ? emptyCategoryRegistryFixture() : categoryRegistryFixture),
   getHeatmap: async (scope: "year" | "month", period: string) => (fixtureMode === "ranking-empty" ? { ...heatmapFixture(scope, period), cells: [] } : heatmapFixture(scope, period)),
   getHotSnapshot: async () => (fixtureMode === "pulse-empty" ? emptyHotSnapshotFixture() : hotSnapshotFixture),
