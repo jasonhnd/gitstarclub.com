@@ -1,7 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { NextConfig } from "next";
-import { withWorkflow } from "workflow/next";
 import { assertAnalyticsCspCompatibility } from "./lib/analytics-policy";
 import { securityHeaders } from "./lib/csp";
 
@@ -48,5 +47,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-// withWorkflow enables the "use workflow" / "use step" directives (Vercel Workflow SDK).
-export default withWorkflow(nextConfig);
+export default nextConfig;

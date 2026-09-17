@@ -1,4 +1,3 @@
-import { BlobNotFoundError, BlobPreconditionFailedError, get, head, put } from "@vercel/blob";
 import {
   LiveGenerationManifest,
   LiveGenerationPointer,
@@ -6,8 +5,7 @@ import {
   type LiveGenerationPointer as LiveGenerationPointerData,
   type LivePublicationLease as LivePublicationLeaseData,
 } from "@/lib/contracts";
-import { BLOB_JSON_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
-import { requireBlobBaseUrl, requireBlobWriteToken } from "@/lib/runtime-config";
+import { getWriteObjectStore, isObjectStoreConflict, type ObjectStore } from "@/lib/storage";
 import type { LiveRefreshJob } from "./live-refresh";
 
 const LIVE_POINTER_PATH = "live/latest.json";
@@ -70,61 +68,33 @@ function json(data: unknown): string {
   return JSON.stringify(data);
 }
 
-async function streamText(stream: ReadableStream<Uint8Array>): Promise<string> {
-  return new Response(stream).text();
-}
-
-function isBlobConflict(error: unknown): boolean {
-  if (error instanceof BlobPreconditionFailedError) return true;
-  if (!(error instanceof Error)) return false;
-  return /already exists|overwrite|precondition|conflict|409|412/i.test(`${error.name} ${error.message}`);
-}
-
-async function readBlobText(path: string): Promise<string | null> {
-  const result = await get(path, { access: "public", token: requireBlobWriteToken() });
-  if (!result) return null;
-  if (result.statusCode !== 200 || !result.stream) throw new Error(`blob read ${path} -> ${result.statusCode}`);
-  return streamText(result.stream);
-}
-
-async function putJson(
-  path: string,
-  data: unknown,
-  options: { overwrite: boolean; ifMatch?: string; immutable?: boolean; cacheControlMaxAge?: number },
-): Promise<void> {
-  await put(path, json(data), {
-    access: "public",
-    token: requireBlobWriteToken(),
-    allowOverwrite: options.overwrite,
-    addRandomSuffix: false,
-    contentType: "application/json",
-    cacheControlMaxAge: options.cacheControlMaxAge ?? (options.immutable ? 31_536_000 : 60),
-    ...(options.ifMatch ? { ifMatch: options.ifMatch } : {}),
-  });
-}
-
 export class BlobLivePublicationStore implements LivePublicationStore {
+  constructor(private readonly objects?: ObjectStore) {}
+
+  private store(): ObjectStore {
+    return this.objects ?? getWriteObjectStore();
+  }
+
   async readControl(): Promise<LiveControlSnapshot> {
-    const res = await fetchWithTimeout(livePointerReadUrl(requireBlobBaseUrl()), {
-      cache: "no-store",
-      headers: { "Cache-Control": "no-cache" },
-      timeoutMs: BLOB_JSON_FETCH_TIMEOUT_MS,
-    });
-    if (res.status === 404) return { pointer: null, etag: null };
-    if (!res.ok) throw new Error(`live pointer read ${LIVE_POINTER_PATH} -> ${res.status}`);
+    const result = await this.store().get(LIVE_POINTER_PATH);
+    if (!result) return { pointer: null, etag: null };
     return {
-      pointer: LiveGenerationPointer.parse(await res.json()),
-      etag: res.headers.get("etag"),
+      pointer: LiveGenerationPointer.parse(JSON.parse(result.body)),
+      etag: result.etag,
     };
   }
 
   async createControl(pointer: LiveGenerationPointerData): Promise<boolean> {
     LiveGenerationPointer.parse(pointer);
     try {
-      await putJson(LIVE_POINTER_PATH, pointer, { overwrite: false, cacheControlMaxAge: LIVE_POINTER_CACHE_CONTROL_MAX_AGE });
+      await this.store().put(LIVE_POINTER_PATH, json(pointer), {
+        allowOverwrite: false,
+        contentType: "application/json",
+        cacheControlMaxAge: LIVE_POINTER_CACHE_CONTROL_MAX_AGE,
+      });
       return true;
     } catch (error) {
-      if (isBlobConflict(error)) return false;
+      if (isObjectStoreConflict(error)) return false;
       throw error;
     }
   }
@@ -132,14 +102,15 @@ export class BlobLivePublicationStore implements LivePublicationStore {
   async compareAndSetControl(etag: string, pointer: LiveGenerationPointerData): Promise<boolean> {
     LiveGenerationPointer.parse(pointer);
     try {
-      await putJson(LIVE_POINTER_PATH, pointer, {
-        overwrite: true,
+      await this.store().put(LIVE_POINTER_PATH, json(pointer), {
+        allowOverwrite: true,
         ifMatch: etag,
+        contentType: "application/json",
         cacheControlMaxAge: LIVE_POINTER_CACHE_CONTROL_MAX_AGE,
       });
       return true;
     } catch (error) {
-      if (isBlobConflict(error)) return false;
+      if (isObjectStoreConflict(error)) return false;
       throw error;
     }
   }
@@ -147,26 +118,29 @@ export class BlobLivePublicationStore implements LivePublicationStore {
   async putImmutable(path: string, data: unknown): Promise<void> {
     const payload = json(data);
     try {
-      await putJson(path, data, { overwrite: false, immutable: true });
+      await this.store().put(path, payload, {
+        allowOverwrite: false,
+        contentType: "application/json",
+        cacheControlMaxAge: 31_536_000,
+      });
     } catch (error) {
-      if (!isBlobConflict(error)) throw error;
-      const existing = await readBlobText(path);
-      if (existing !== payload) throw new Error(`immutable live object conflict: ${path}`);
+      if (!isObjectStoreConflict(error)) throw error;
+      const existing = await this.store().get(path);
+      if (existing?.body !== payload) throw new Error(`immutable live object conflict: ${path}`);
     }
   }
 
   async putMutable(path: string, data: unknown): Promise<void> {
-    await putJson(path, data, { overwrite: true });
+    await this.store().put(path, json(data), {
+      allowOverwrite: true,
+      contentType: "application/json",
+      cacheControlMaxAge: 60,
+    });
   }
 
   async headEtag(): Promise<string | null> {
-    try {
-      const result = await head(LIVE_POINTER_PATH, { token: requireBlobWriteToken() });
-      return result.etag || null;
-    } catch (error) {
-      if (error instanceof BlobNotFoundError) return null;
-      throw error;
-    }
+    const result = await this.store().head(LIVE_POINTER_PATH);
+    return result?.etag ?? null;
   }
 }
 

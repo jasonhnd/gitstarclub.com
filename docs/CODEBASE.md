@@ -1,7 +1,7 @@
 ---
 owner: codebase architecture
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-09-17
 source_of_truth_for:
   - code map
   - data layer ownership
@@ -50,7 +50,8 @@ GitHub APIs
 | `web/app/_explore/` | Shared server-rendered UI components used by product pages |
 | `web/lib/data/` | Read-side accessors for Blob views; all page data should go through this layer |
 | `web/lib/contracts/` | Zod schemas for every persisted view and public read contract |
-| `web/lib/workflows/` | Vercel Workflow orchestration and refresh steps |
+| `web/lib/workflows/` | Managed refresh orchestration and refresh steps (no Workflow SDK) |
+| `web/lib/workflows/runtime/` | `startRefresh` / `enqueueStep` / `completeStep` port: memory, HTTP chain, CF Queue |
 | `web/lib/workflows/recompute/` | Pure recompute core: ranks, entities, heatmaps, categories, windows |
 | `web/lib/categories/` | Deterministic category taxonomy and classification rules |
 | `web/lib/cron/` | Shared daily/weekly live-overlay route handlers and refresh logic |
@@ -58,6 +59,9 @@ GitHub APIs
 | `web/lib/compare/` | Compare-page normalization and curve logic |
 | `web/lib/search/` | Search index/query core |
 | `web/lib/observability/` | Health and alert helpers for cron/workflow failure alerting |
+| `web/lib/storage/` | Injectable object-store port (`vercel-blob` \| `r2-s3`) for write/CAS/list/del; default remains Blob |
+| `web/lib/cache-invalidation/` | ISR invalidation port (`vercel` \| `memory` \| `cf-stub`); default remains Next `revalidatePath/Tag` |
+| `web/lib/preview/` | Pluggable Preview target (`vercel` \| `cf`) and Cloudflare Access Service Token headers |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
 | `docs/` | Product, architecture, data, operations, frontend, SEO, testing, and development docs |
 
@@ -90,7 +94,16 @@ Important files:
   exposes `getAliasMap` for `aliases` (`lookup/aliases.json`, old full_name ->
   current id for rename redirects).
 - `write.ts`: write helper for workflow, cron, and ops paths. Page code should
-  not write.
+  not write. Both helpers go through `web/lib/storage` (`STORAGE_WRITE_DRIVER`,
+  default `blob`).
+- `web/lib/storage/`: object-store port used by write, live publication, lease,
+  health, recompute I/O, aliases list, and version GC. R2 is opt-in and
+  non-production only; see [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
+- `web/lib/cache-invalidation/`: publication and live-cron ISR invalidation.
+  Default is Vercel `next/cache`. The CF stub is non-production and testable;
+  see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
+- `web/lib/preview/`: Preview discovery for Vercel (required gates) and
+  optional CF Access on `gitstarclub-web.worldgo.workers.dev`.
 
 Rule: if a page needs a new view, add or extend the Zod schema in
 `web/lib/contracts/`, then add the read helper in `web/lib/data/`.
@@ -112,6 +125,7 @@ Common contract groups:
 ## Workflow Side
 
 The managed refresh entry point is `web/lib/workflows/refresh.ts`.
+The queue-schedulable runtime lives in `web/lib/workflows/runtime/`.
 
 Current step order:
 

@@ -17,6 +17,8 @@ import { resetViewParseStateForTests } from "./parse-view";
 const BLOB = "https://blob.example.com";
 const originalBase = process.env.BLOB_BASE_URL;
 const originalPublicBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+const originalReadDriver = process.env.STORAGE_READ_DRIVER;
+const originalR2Public = process.env.R2_PUBLIC_BASE_URL;
 
 const Doc = z.object({ ok: z.boolean(), tag: z.string() });
 
@@ -104,6 +106,8 @@ beforeEach(() => {
   resetViewParseStateForTests();
   process.env.BLOB_BASE_URL = BLOB;
   delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  delete process.env.STORAGE_READ_DRIVER;
+  delete process.env.R2_PUBLIC_BASE_URL;
   advancePastTtl(); // ensure each test starts with an expired version memo
   Date.now = () => clock;
   globalThis.fetch = mock((input: string | URL | Request, init?: RequestInit) => {
@@ -121,6 +125,10 @@ afterEach(() => {
   else process.env.BLOB_BASE_URL = originalBase;
   if (originalPublicBase === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   else process.env.NEXT_PUBLIC_BLOB_BASE_URL = originalPublicBase;
+  if (originalReadDriver === undefined) delete process.env.STORAGE_READ_DRIVER;
+  else process.env.STORAGE_READ_DRIVER = originalReadDriver;
+  if (originalR2Public === undefined) delete process.env.R2_PUBLIC_BASE_URL;
+  else process.env.R2_PUBLIC_BASE_URL = originalR2Public;
 });
 
 describe("readView — runtime Blob config", () => {
@@ -161,6 +169,19 @@ describe("readView — runtime Blob config", () => {
     await expect(readView("flat/runtime.json", Doc)).rejects.toThrow("BLOB_BASE_URL not set");
 
     expect(fetchCalls).toEqual([]);
+  });
+
+  test("r2_then_blob public reads fall back to Blob on an R2 miss", async () => {
+    process.env.STORAGE_READ_DRIVER = "r2_then_blob";
+    process.env.R2_PUBLIC_BASE_URL = "https://r2.example.com";
+    routes = {
+      "https://r2.example.com/flat/runtime.json": { status: 404 },
+      "/flat/runtime.json": { status: 200, json: { ok: true, tag: "blob" } },
+    };
+
+    expect(await readView("flat/runtime.json", Doc)).toEqual({ ok: true, tag: "blob" });
+    expect(fetchCalls.some((url) => url.startsWith("https://r2.example.com/flat/runtime.json"))).toBe(true);
+    expect(fetchCalls.some((url) => url.startsWith("https://blob.example.com/flat/runtime.json"))).toBe(true);
   });
 });
 

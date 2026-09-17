@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-08-30
+last_reviewed: 2026-09-17
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -27,11 +27,11 @@ GitHub Actions is committed at `.github/workflows/ci.yml`. Every job installs No
 
 After both jobs pass, `verify / preview-e2e` resolves the Vercel-owned preview check for the PR head or pushed SHA, waits for the preview alias to publish that exact SHA through `/.well-known/deployment` (using `VERCEL_AUTOMATION_BYPASS_SECRET` and following the bypass `_vercel_jwt` cookie because Preview is Vercel-authenticated), and re-verifies the SHA on the immutable `*.vercel.app` deployment URL before running Chromium. It runs `e2e/accessibility-responsive.spec.ts`, `e2e/horizontal-overflow.spec.ts`, and `e2e/search-compare-interactions.spec.ts`; serious or critical axe findings, explicit contrast failures, response failures, horizontal overflow, Search keyboard/focus regressions, or Search/Compare retry failures fail the job. Failed runs retain traces and screenshots plus the HTML report and deployment metadata as a GitHub Actions artifact. On `pre` and `main` pushes the same job also runs `bun test lib/integration/seo.test.ts` against that immutable deployment; preview remains noindex while production must be indexable.
 
-The repository rule protecting `main` must require `verify / static`, `verify / production-build`, `verify / preview-e2e`, and Vercel's deployment check before a `pre` promotion can merge. Workflow files cannot create that GitHub-hosted rule; maintainers must update the required-check contexts in repository settings when this workflow lands and remove the superseded `verify` / `release-seo` contexts.
+The repository rule protecting `main` must require `verify / static`, `verify / production-build`, `verify / preview-e2e`, and Vercel's deployment check before a `pre` promotion can merge. Workflow files cannot create that GitHub-hosted rule; maintainers must update the required-check contexts in repository settings when this workflow lands and remove the superseded `verify` / `release-seo` contexts. Do **not** add `verify / cf-preview` to that required-check set: it is an optional Cloudflare dual-run (P2) gated by `vars.CF_PREVIEW_ENABLED` and is omitted from `.delivery.yml`. Production Preview resolution stays `web/scripts/resolve-vercel-preview.ts`. See [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
 
 Dependency audit is also a PR gate. CI runs `bun run audit:deps` in both `web/` and `pipeline/`, with `bun audit --audit-level=high` as the default policy; new high-severity advisories must be fixed by upgrading the direct dependency or documented as a temporary exception before merge. Moderate and low advisories are reviewed during dependency maintenance, but they do not fail CI unless the advisory affects a production server-side path or is escalated by maintainers.
 
-Temporary dependency-audit overrides live in the affected package manifest, next to the lockfile they protect. As of this policy, `web/package.json` pins `undici` to `7.29.0` and `js-yaml` to `4.3.2` above their current high-advisory floors, pins `nanoid` to `5.1.16` because `@workflow/core` exact-pins `5.1.6` and Bun will not rewrite that nest with a major-line override, pins `piscina` to the first fixed 4.x release while `@swc/cli` has not released an updated dependency range, and pins `postcss` to `8.5.23` and `sharp` to `0.35.4` while their parents retain older compatible ranges. `find-up@7` is a compatibility pin, not a security exception: it keeps Vercel Bun resolving the ESM package required by `workflow` builders while eslint keeps its own compatible nested `find-up@5`.
+Temporary dependency-audit overrides live in the affected package manifest, next to the lockfile they protect. As of this policy, `web/package.json` pins `undici` to `7.29.0` and `js-yaml` to `4.3.2` above their current high-advisory floors, pins `nanoid` to `5.1.16` so transitive exact pins cannot drop to the advisory-vulnerable 5.1.6 line, pins `piscina` to the first fixed 4.x release while `@swc/cli` has not released an updated dependency range, and pins `postcss` to `8.5.23` and `sharp` to `0.35.4` while their parents retain older compatible ranges. `find-up@7` is a compatibility pin, not a security exception: it keeps Vercel Bun resolving the ESM package while eslint keeps its own compatible nested `find-up@5`. The `workflow` package is no longer a web dependency.
 
 `web` no longer ignores any advisory in `bun audit`. Major-line overrides keep `brace-expansion` on the security backports `1.1.18`, `2.1.4`, and `5.0.9`. Legacy ESLint / SWC CLI / file-list tooling still require the callable CommonJS 1.x/2.x export, so a global 5.x override would break `bun run lint`. The public advisory now recognizes those backports, so the previous `GHSA-mh99-v99m-4gvg` ignore was removed (issue #321).
 
@@ -72,6 +72,8 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | Pulse movers → ranking period (#372) | Week / month / year / all-time panels link the resolved ranking route; rows stay on repo hubs; locale prefixes apply | `web/lib/pulse-board-links.test.tsx` | Manual Preview of `/` and `/ja` |
 | GEO capsule gaps (#376) | High-value routes keep a dated, attributed capsule and FAQ; Pulse capsule is after the period switcher and before ranking panels; compare capsule stays generic | `web/lib/geo-capsules.test.ts`, `web/lib/geo-faq.test.ts`, `web/lib/pulse-board-links.test.tsx`, `web/lib/integration/uiux-seo.test.tsx` | Manual Preview of `/` and `/pulse` |
 | Sunday refresh health path (#377 / #379) | Operator signal is only `ops/workflows/health/workflow-refresh.json`; never the retired flat `ops/workflows/health.json` | `web/lib/observability/health.test.ts` | Sunday runbook in [OPS.md](./OPS.md) |
+| CF migrate P1 refresh runtime (#446) | Refresh main path runs without Workflow SDK; memory runtime drains a shrink fixture; lease CAS still wins/loses on ETag | `web/lib/workflows/runtime/*.test.ts`, `web/lib/workflows/lease.test.ts`, `web/lib/workflows/start.test.ts` | Production cron table unchanged; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
+| Cloudflare R2 P0 adapter (#444) | Default Blob drivers; R2 CAS 412 / list prefix / production write guard; no real production bucket token | `web/lib/storage/*.test.ts`, `web/lib/runtime-config.test.ts` | Dry-run `web/scripts/sync-blob-to-r2.ts` against `migrate-dev/` only |
 | View parse-once + Zod fingerprints | Same path+generation is parsed once; unrecognized lifecycle keys are not `.passthrough()`; old and new Meta/lookup/entity shapes both parse | `web/lib/data/parse-view.test.ts`, `web/lib/contracts/contracts.test.ts` | 24h `ZodError` volume drops; no per-request repeat of the same fingerprint |
 | current_month shards under Data Cache limit | Writer emits index + 32 shards; reader accepts v1 monolith and v2 index; Sunday daily does not claim live lease | `web/lib/cron/current-month-shards.test.ts`, `web/lib/cron/live-refresh.test.ts`, `web/lib/cron/handlers.test.ts` | `items over 2MB can not be cached` is 0 after the next live publish |
 | category assignments shards under Data Cache limit | Writer emits index + 32 repo-id shards; reader accepts v1 monolith; publish gate checks UTF-8 JSON byte length < 1.50 MiB; ISR stays cached | `web/lib/data/category-assignment-shards.test.ts`, `web/lib/workflows/recompute/categories.test.ts`, `web/lib/view-size.test.ts` | `items over 2MB can not be cached` is 0 after the next base publish |
@@ -157,7 +159,7 @@ test('周排名窗口跨月不丢日', () => {
 
 ### 1.5 Workflow 发布闸门 / staging 校验 / 回滚
 
-> **数据校验的"最后闸门"位于 Vercel Workflow 内的 `validate` step**——对 `views/<run_id>/**` 跑**抽样断言**，**通过才切 `views/latest.json` 指针**（实现 `web/lib/workflows/steps/validate.ts`、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md)）。
+> **数据校验的"最后闸门"位于 managed refresh 的 `validate` step**——对 `views/<run_id>/**` 跑**抽样断言**，**通过才切 `views/latest.json` 指针**（实现 `web/lib/workflows/steps/validate.ts`、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md)）。
 
 **当前实际断言的不变量**（与 §1.3 完整清单的差距见下表）：
 
@@ -297,7 +299,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ## Planned gates
 
-> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/`pre`/`main` CI 分成 static、production-build、preview-e2e、product-gates 四个 release checks；browser check 只覆盖已提交的 Chromium responsive/overflow/axe 和 Search/Compare interaction suites，product-gates 对 exact-SHA preview 与 public Blob 做只读产品连续性检查。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Lighthouse、视觉基线、其余完整 browser flows 与 multi-engine coverage 仍是 target coverage。
+> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/`pre`/`main` CI 分成 static、production-build、preview-e2e、product-gates **四个 release checks**；browser check 只覆盖已提交的 Chromium responsive/overflow/axe 和 Search/Compare interaction suites，product-gates 对 exact-SHA **Vercel** preview 与 public Blob 做只读产品连续性检查。可选 `verify / cf-preview` 是迁 CF P2 双跑草案，**不是**生产唯一必过。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Lighthouse、视觉基线、其余完整 browser flows 与 multi-engine coverage 仍是 target coverage。
 
 状态含义：`enforced` = 当前自动化 gate 会阻断；`manual` = reviewer / operator 可手动检查但不自动阻断；`report-only` = 有报告或基线但不阻断；`planned` = 已定义目标，尚无提交的 gate；`not implemented` = 尚无当前 tooling。
 
@@ -330,11 +332,12 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 | 5. 零 JS / HTML / font budgets | `planned` | 无独立 budget gate | 目标：脚本化 structural checks，并在 gate 中阻断 |
 | 6. 跨浏览器 | `not implemented` | 无 Playwright multi-engine job | 目标：chromium / firefox / webkit 关键页与渐进增强 fallback |
 | Vercel preview visual/perf review | `manual` | Reviewer 按改动页面检查 | 不是当前自动 gate；适合在 browser tooling 落地前补充 review 信号 |
+| CF Preview Access dual-run | `report-only` | 可选 `verify / cf-preview`（`CF_PREVIEW_ENABLED=1`） | Access Service Token 探 `gitstarclub-web.worldgo.workers.dev`；**不得**替换 `preview-e2e` / `product-gates`；见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
 
 **节奏要点**：
 
 - **CI（每 PR / `pre` push / `main` push）**：三个 jobs 都锁定并断言 Node 24.x / Bun 1.3.14；`verify / static` 跑 audit、Markdown/frontmatter、lint、三套 typecheck、view fixture 与带 80% 双阈值的 coverage tests；`verify / production-build` 对只读本地 fixture 跑 `next build`；`verify / preview-e2e` 对 exact-SHA immutable Vercel URL 跑 committed Chromium axe/responsive/overflow 和 Search/Compare interaction suites，并在 branch push 时加跑 live SEO。Lighthouse、视觉 baseline、其余完整 browser flows 与 multi-engine coverage 仍不阻断。
-- **Publish gate（Workflow `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 的当前抽样 Zod + sanity，任一当前断言失败即**不切 `views/latest.json` 指针**（线上仍上一版）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
+- **Publish gate（refresh `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 的当前抽样 Zod + sanity，任一当前断言失败即**不切 `views/latest.json` 指针**（线上仍上一版）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
 - **Issue #326 lifecycle migration**：`web/lib/migrations/canonical-lifecycle.test.ts` 覆盖 published-whitelist membership、immutable history 首次出现日、bootstrap-vs-newcomer 判别、deterministic plan SHA、零 anchor 猜测、full repository preflight、source/shard drift、exact confirmation、fenced execution、partial retry、validation failure、lease loss 与 rollback。`web/scripts/migrate-canonical-lifecycle.ts` 的生产 dry-run 是人工 reviewed evidence，不放进 CI 的 live/network gate；默认路径必须报告 `production_writes=0`，且不加载写 token。执行/回滚 runbook 见 [OPS.md](./OPS.md)。
 - **Planned browser/render gates**：视觉 baseline、完整 E2E navigation、Lighthouse 与 cross-browser 自动化仍需要对应 tooling；a11y 的 axe serious/critical 和 responsive overflow subset 已提交并强制。
 - **每日 / 每周 cron**：不触发 deploy；cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后的活尾 schema/sanity 告警属于 ops 目标，不是当前 PR CI gate。

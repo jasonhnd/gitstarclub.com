@@ -79,11 +79,11 @@ gitstarclub 的运行时是**纯静态**:用户请求只读预算好的 JSON / B
 ### 3.1 Workflow 与 Cron / Function 的职责切分
 
 ```text
-Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
-  └─ route:鉴权 + 只读 canonical meta/repos preflight + 取得 lease + 启动 workflow,立即返回 run_id(不阻塞)
-       └─ Vercel Workflow('use workflow'):编排下列 steps,可 pause/resume、跨部署存活
-            ├─ step 0  full canonical preflight          ('use step'; read-only)
-            ├─ step 1  refresh whitelist                 ('use step')
+Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)  ← 生产排程真源，P1 不改 vercel.json
+  └─ route:鉴权 + 只读 canonical meta/repos preflight + 取得 lease + startRefresh,立即返回 run_id(不阻塞)
+       └─ workflows runtime(startRefresh / enqueueStep / completeStep；无 Workflow SDK)
+            ├─ step 0  full canonical preflight          (plain async + explicit retry; read-only)
+            ├─ step 1  refresh whitelist                 (plain async + explicit retry)
             ├─ step 2  rename detection(先于 metadata,读旧 full_name)
             ├─ step 3  metadata shards(按 bucket 循环,含 newcomer-aware `tracked_since`)
             ├─ step 4  canonical fold(月+周折叠已收口周期)
@@ -104,23 +104,21 @@ Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)
 
 **为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 只做「鉴权 + canonical meta/32 个 repos shard 只读 preflight + lease + 启动 workflow + 返回」,把真正的长任务交给 Workflow runtime 异步编排。route gate 会在 lease 和 enqueue 前检查 `active` / `tracked_since` / `d`、repo key/id 与 bucket；workflow 的 step 0 再全量校验 128 个必需 shard，防止 enqueue 到执行之间对象变化，并在任何 canonical mutation 前阻断空时间序列、孤立 repo ID、缺失 shard 或读取错误。
 
-### 3.2 Workflow SDK 落地形态
+### 3.2 P1 runtime 落地形态
 
-Vercel Workflow([Workflows Concepts](https://vercel.com/docs/workflows/concepts))用两个指令把普通 async 函数变成持久化工作流:
+P1 去掉 Vercel Workflow SDK。step 是普通 async 函数，由 `web/lib/workflows/runtime/` 显式重试并调度：
 
-- **`'use workflow'`**:标记 workflow 函数——有状态、记住进度、崩溃 / 部署后**确定性重放**从断点恢复。
-- **`'use step'`**:标记 step 函数——无状态的一个持久工作单元,**内建重试**,能扛网络错误 / 进程崩溃;step 执行时 workflow 挂起、不占资源;step 完成后自动恢复。
-- **`sleep('...')`**(来自 `workflow` 包):暂停若干分钟到若干月,不占资源——用于 GitHub rate-limit 窗口等待(见 §10)。
+- **`startRefresh(runId)`**:取得 lease 之后入队第一步。
+- **`enqueueStep(job)`**:把一步交给 memory queue、HTTP `/api/workflows/refresh/step`，或非生产 CF Queue。
+- **`completeStep(job, result)`**:写 `ops/workflows/<run_id>/steps/<step>.json`，再入队下一步。
 
-> 安装:`bun i workflow`(在 `web/` 项目内,因 Workflow 由 Vercel Functions 执行,与 Next.js 同部署)。
+生产调度仍是 `web/vercel.json` 的周日 06:00 Vercel cron。CF Cron/Queue 只用于非生产证明；回滚见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)（停 CF Cron，生产仍 Vercel）。
 
-骨架示意(**结构示意;实现见 `web/lib/workflows/refresh.ts` + `steps/*`,函数名以代码为准**):
+骨架示意(**结构示意;实现见 `web/lib/workflows/refresh.ts` + `runtime/*` + `steps/*`,函数名以代码为准**):
 
 ```ts
 // web/lib/workflows/refresh.ts
 export async function refreshWorkflow(runId: string) {
-  'use workflow';
-
   await preflightCanonical(runId);                       // step 0(read-only schema gate)
   await refreshWhitelist(runId);                       // step 1
   await detectRenames(runId);                          // step 2(先于 metadata,读旧 full_name)
@@ -141,7 +139,7 @@ export async function refreshWorkflow(runId: string) {
 
 // web/lib/workflows/steps/recompute-rank.ts
 async function recomputeRank(runId: string) {
-  'use step';                            // 独立 Function 路由、内建重试、幂等
+  // 独立 step、显式重试、幂等
   // 载入全部 canonical/v2 月/周 shard(Blob 直链)建 period 索引 → 算 rank → 写 views/<runId>/rank/**
   // ⚠️ 跨桶:rank/all-time/org 都需全部 repo,不能按桶切(见 §3.3 两类重算形状)
 }
@@ -155,7 +153,7 @@ async function recomputeRank(runId: string) {
 |---|---|
 | **每个 step 短小** | 单 step 控制在 Function 时长 / 内存内(< 800s、< 4GB)。重算按 **shard 分批**:rank 重算每 step 处理 1 个周期或 1 个 period 批,不是「一次算完所有周期」。 |
 | **每个 step 幂等** | step 输入 = `(run_id, shard 范围)`;输出按确定路径覆盖写 `views/<run_id>/`。重跑同 `run_id` = 覆盖同一份产物,不重复累加(见 §11)。 |
-| **step 之间用 Blob checkpoint** | 每个 step 完成后写 `ops/workflows/<run_id>/steps/<step>.json`(状态 + 产物清单 + 计数)。Workflow SDK 自身也持久化 step 结果;checkpoint 是**业务可读**的进度账本,供运维 / 恢复用。 |
+| **step 之间用 Blob checkpoint** | 每个 step 完成后写 `ops/workflows/<run_id>/steps/<step>.json`(状态 + 产物清单 + 计数)。checkpoint 是**业务可读**的进度账本,供运维 / 恢复用。 |
 | **大数据走 Blob 直链** | step 间不通过 Workflow 传大 payload(受 4.5MB 限)。step 只传 `run_id` / shard key 等小标识;数据落 Blob,下一 step 从 Blob 直链读。 |
 | **长等待用 sleep** | 命中 GitHub secondary rate limit / `Retry-After` 时,step 内短等待;跨小时级配额恢复用 workflow `sleep('1 hour')`,不空转占资源。 |
 | **所有权可隔离** | `active.json` lease 带递增 `fencing_token`，30 分钟到期、活跃写入最多每 5 分钟 heartbeat；canonical、checkpoint 和 publish pointer 每次写前都续租并核对 `(run_id, fencing_token)`。被 takeover 的旧 run fail closed。 |
@@ -520,9 +518,9 @@ validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不�
 
 ### 9.2 恢复路径
 
-- **某 step 失败**:Workflow SDK 内建 step 重试(网络错 / 崩溃自动重试)。业务侧每 step 写 `ops/workflows/<run_id>/steps/<step>.json` checkpoint,Workflow 重放时跳过已完成 step、从断点继续。
+- **某 step 失败**:runtime 对普通 async step 做显式重试(网络错)。业务侧每 step 写 `ops/workflows/<run_id>/steps/<step>.json` checkpoint。lease ownership 错误 fail closed，不重试。
 - **整个 run 卡死 / 超时**:lease 30 分钟到期，活跃写入每 ≤5 分钟 heartbeat。新 run CAS takeover 后 fencing token 递增；旧 run 的下一次写或 publish 会 fail closed。运维据 manifest / active lease 看 owner，不要人工复用旧 token。
-- **GitHub 限流**:step 内遇 `403` / secondary limit / `Retry-After`,短等待重试;跨小时配额用 workflow `sleep` 等待后继续,不空转。
+- **GitHub 限流**:step 内遇 `403` / secondary limit / `Retry-After`,短等待重试;不要空转。
 
 ### 9.3 回滚
 

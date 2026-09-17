@@ -9,7 +9,6 @@ import { computeCategoryViews, computeRankViews } from "../recompute";
 // See docs/VERCEL-DATA-OPERATIONS.md §4 / §3.3.
 
 export async function recomputeRank(runId: string, fencingToken: number): Promise<{ files: number }> {
-  "use step";
   const { model } = await loadCanonicalModel(runId);
   const generatedAt = new Date().toISOString();
   const views = new Map<string, unknown>(computeRankViews(model, generatedAt));

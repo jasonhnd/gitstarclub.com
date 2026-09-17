@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NonNegativeInt, SafeText, TimestampStr } from "./common";
 
-// Workflow checkpoint + publish-pointer contracts (Vercel Workflow, Phase 2+).
+// Workflow checkpoint + publish-pointer contracts (managed refresh, Phase 2+).
 // See docs/DATA-CONTRACTS.md §2.11–2.13 and docs/VERCEL-DATA-OPERATIONS.md §7–8.
 
 /** views/latest.json — publish pointer; the read side resolves the live version. */
