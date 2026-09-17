@@ -2,12 +2,26 @@
   "name": "gitstarclub-web",
   "main": "src/index.ts",
   "account_id": "00f850e853e4c7f9627233d51a6e30a1",
-  "compatibility_date": "2026-09-16",
-  // Workers Observability is the CF dual-run log surface (P2). Production
+  "compatibility_date": "2026-09-17",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  // Workers Observability is the CF dual-run log surface (P2/P3). Production
   // operators should not depend on the Vercel Workflows product UI.
   "observability": {
     "enabled": true
   },
+  "assets": {
+    "directory": "../../web/.open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "gitstarclub-web"
+    }
+  ],
   "queues": {
     "producers": [
       {
@@ -29,9 +43,12 @@
       "bucket_name": "gitstarclub-assets"
     }
   ],
+  "vars": {
+    "HOSTING_TARGET": "cf"
+  },
   // Production CF Cron stays off. Vercel cron in web/vercel.json remains the
   // production scheduler until Jason approves a cutover. Enable crons only on
-  // the nonprod environment below.
+  // the nonprod environment below. Do not attach apex/www routes here.
   "triggers": {
     "crons": []
   },
@@ -42,6 +59,7 @@
         "crons": ["0 6 * * 0"]
       },
       "vars": {
+        "HOSTING_TARGET": "cf",
         "WORKFLOW_FIXTURE": "1"
       }
     }

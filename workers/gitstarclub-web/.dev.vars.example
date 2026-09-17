@@ -1,0 +1,7 @@
+# Local wrangler / OpenNext preview only. Copy to .dev.vars — do not commit secrets.
+NEXTJS_ENV=production
+HOSTING_TARGET=cf
+# Public Blob read base (same store the Vercel site reads). Not a write token.
+BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+# Optional. Needed only to POST /preview/invalidate or /start during local smoke.
+CRON_SECRET=replace-with-local-preview-secret
