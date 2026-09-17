@@ -107,17 +107,16 @@ describe("CF /rankings assignment shard budget", () => {
 });
 
 function installFetchProbe(): { paths: string[]; shardReads: number } {
-  const paths: string[] = [];
-  let shardReads = 0;
+  const probe = { paths: [] as string[], shardReads: 0 };
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const key = viewKey(input);
-    paths.push(key);
-    if (key.includes("/shards/")) shardReads += 1;
+    probe.paths.push(key);
+    if (key.includes("assignments/shards/")) probe.shardReads += 1;
     const body = fixtureForView(key);
     if (body === null) return new Response("not found", { status: 404 });
     return Response.json(body);
   }) as typeof fetch;
-  return { paths, shardReads };
+  return probe;
 }
 
 async function renderPage(element: ReactElement): Promise<string> {
