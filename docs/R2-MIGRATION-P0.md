@@ -102,5 +102,6 @@ bun scripts/sync-blob-to-r2.ts --prefix views/ --execute
 
 - Production read primary is still Vercel Blob.
 - Apex / www DNS and Cloudflare orange-cloud are unchanged.
-- The Worker `MEDIA` binding is recorded for later P3 hosting work; this adapter
-  talks S3 from the existing Vercel Node runtime.
+- The Worker `MEDIA` binding is used by the P3 host (`workers/gitstarclub-web`);
+  this adapter still talks S3 from Node when `STORAGE_READ_DRIVER` selects R2.
+  See [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md). Production reads stay Blob.

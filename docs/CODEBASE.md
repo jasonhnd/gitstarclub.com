@@ -62,6 +62,9 @@ GitHub APIs
 | `web/lib/storage/` | Injectable object-store port (`vercel-blob` \| `r2-s3`) for write/CAS/list/del; default remains Blob |
 | `web/lib/cache-invalidation/` | ISR invalidation port (`vercel` \| `memory` \| `cf-stub`); default remains Next `revalidatePath/Tag` |
 | `web/lib/preview/` | Pluggable Preview target (`vercel` \| `cf`) and Cloudflare Access Service Token headers |
+| `web/lib/workers-host/` | P3 Worker path classification and local/remote smoke origin |
+| `web/open-next.config.ts` | OpenNext Cloudflare adapter (static-assets incremental cache; preview only) |
+| `workers/gitstarclub-web/` | Non-production CF Worker: P1–P2 shell + P3 OpenNext Next host |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
 | `docs/` | Product, architecture, data, operations, frontend, SEO, testing, and development docs |
 
@@ -104,6 +107,9 @@ Important files:
   see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
 - `web/lib/preview/`: Preview discovery for Vercel (required gates) and
   optional CF Access on `gitstarclub-web.worldgo.workers.dev`.
+- `web/lib/workers-host/` + `workers/gitstarclub-web/`: P3 OpenNext host
+  wraps the P1–P2 shell. `/` is the Next homepage; production origin stays
+  Vercel. See [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md).
 
 Rule: if a page needs a new view, add or extend the Zod schema in
 `web/lib/contracts/`, then add the read helper in `web/lib/data/`.

@@ -16,12 +16,33 @@ describe("analyticsProvidersForEnvironment", () => {
       "vercel-web-analytics",
     ]);
   });
+
+  test("disables Vercel Web Analytics on the CF Workers preview host", () => {
+    expect(analyticsProvidersForEnvironment({ HOSTING_TARGET: "cf" })).toEqual([]);
+    expect(
+      analyticsProvidersForEnvironment({ NEXT_PUBLIC_HOSTING_TARGET: "cf", NEXT_PUBLIC_GA_ID: "G-1234567890" }),
+    ).toEqual([]);
+  });
+
+  test("keeps Vercel Web Analytics on Vercel production if HOSTING_TARGET is mis-set", () => {
+    expect(
+      analyticsProvidersForEnvironment({ HOSTING_TARGET: "cf", VERCEL_ENV: "production" }),
+    ).toEqual(["vercel-web-analytics"]);
+  });
 });
 
 describe("assertAnalyticsCspCompatibility", () => {
   test("accepts the production same-origin policy", () => {
     expect(() =>
       assertAnalyticsCspCompatibility(contentSecurityPolicyForEnvironment("production")),
+    ).not.toThrow();
+  });
+
+  test("skips the Vercel insights CSP check on the CF Workers host", () => {
+    expect(() =>
+      assertAnalyticsCspCompatibility("default-src 'none'; script-src 'none'; connect-src 'none'", {
+        HOSTING_TARGET: "cf",
+      }),
     ).not.toThrow();
   });
 
