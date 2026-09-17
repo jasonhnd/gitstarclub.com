@@ -1,4 +1,3 @@
-import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
 import {
   PipelineHealth,
   capSafeText,
@@ -7,7 +6,7 @@ import {
   type HealthStatus,
   type PipelineHealth as PipelineHealthType,
 } from "@/lib/contracts";
-import { requireBlobWriteToken } from "@/lib/runtime-config";
+import { getWriteObjectStore, isObjectStoreConflict, type ObjectStore } from "@/lib/storage";
 
 const MAX_CAS_ATTEMPTS = 5;
 const CAS_BACKOFF_CAP_MS = 1_500;
@@ -59,46 +58,34 @@ export function healthPath(pipeline: AlertPipeline): string {
   return `ops/workflows/health/${pipeline}.json`;
 }
 
-async function streamText(stream: ReadableStream<Uint8Array>): Promise<string> {
-  return new Response(stream).text();
-}
-
-function isBlobConflict(error: unknown): boolean {
-  if (error instanceof BlobPreconditionFailedError) return true;
-  if (!(error instanceof Error)) return false;
-  return /already exists|overwrite|precondition|conflict|409|412/i.test(
-    `${error.name} ${error.message}`,
-  );
-}
-
 export class BlobHealthStore implements HealthStore {
+  constructor(private readonly objects?: ObjectStore) {}
+
+  private store(): ObjectStore {
+    return this.objects ?? getWriteObjectStore();
+  }
+
   async read(pipeline: AlertPipeline): Promise<HealthSnapshot> {
     const path = healthPath(pipeline);
-    const result = await get(path, { access: "public", token: requireBlobWriteToken() });
+    const result = await this.store().get(path);
     if (!result) return { health: null, etag: null };
-    if (result.statusCode !== 200 || !result.stream) {
-      throw new Error(`health read ${path} -> ${result.statusCode}`);
-    }
     return {
-      health: PipelineHealth.parse(JSON.parse(await streamText(result.stream))),
-      etag: result.blob.etag,
+      health: PipelineHealth.parse(JSON.parse(result.body)),
+      etag: result.etag,
     };
   }
 
   async create(pipeline: AlertPipeline, health: PipelineHealthType): Promise<boolean> {
     PipelineHealth.parse(health);
     try {
-      await put(healthPath(pipeline), JSON.stringify(health), {
-        access: "public",
-        token: requireBlobWriteToken(),
+      await this.store().put(healthPath(pipeline), JSON.stringify(health), {
         allowOverwrite: false,
-        addRandomSuffix: false,
         contentType: "application/json",
         cacheControlMaxAge: 60,
       });
       return true;
     } catch (error) {
-      if (isBlobConflict(error)) return false;
+      if (isObjectStoreConflict(error)) return false;
       throw error;
     }
   }
@@ -110,18 +97,15 @@ export class BlobHealthStore implements HealthStore {
   ): Promise<boolean> {
     PipelineHealth.parse(health);
     try {
-      await put(healthPath(pipeline), JSON.stringify(health), {
-        access: "public",
-        token: requireBlobWriteToken(),
+      await this.store().put(healthPath(pipeline), JSON.stringify(health), {
         allowOverwrite: true,
-        addRandomSuffix: false,
         contentType: "application/json",
         cacheControlMaxAge: 60,
         ifMatch: etag,
       });
       return true;
     } catch (error) {
-      if (isBlobConflict(error)) return false;
+      if (isObjectStoreConflict(error)) return false;
       throw error;
     }
   }

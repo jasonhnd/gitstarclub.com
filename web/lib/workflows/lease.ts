@@ -1,6 +1,5 @@
-import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
 import { WorkflowLease } from "@/lib/contracts";
-import { requireBlobWriteToken } from "@/lib/runtime-config";
+import { getWriteObjectStore, isObjectStoreConflict, type ObjectStore } from "@/lib/storage";
 
 const ACTIVE_PATH = "ops/workflows/active.json";
 export const LEASE_TTL_MS = 30 * 60 * 1000;
@@ -87,48 +86,40 @@ export type WorkflowOwnership = {
   fencingToken: number;
 };
 
-async function streamText(stream: ReadableStream<Uint8Array>): Promise<string> {
-  return new Response(stream).text();
-}
-
-function isBlobConflict(error: unknown): boolean {
-  if (error instanceof BlobPreconditionFailedError) return true;
-  if (!(error instanceof Error)) return false;
-  const text = `${error.name} ${error.message}`;
-  return /already exists|overwrite|precondition|conflict|409|412/i.test(text);
-}
-
 export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
-  constructor(private readonly writeCache = new WorkflowLeaseWriteCache()) {}
+  constructor(
+    private readonly writeCache = new WorkflowLeaseWriteCache(),
+    private readonly objects?: ObjectStore,
+  ) {}
+
+  private store(): ObjectStore {
+    return this.objects ?? getWriteObjectStore();
+  }
 
   async read(): Promise<WorkflowLeaseSnapshot> {
     const recent = this.writeCache.read();
     if (recent) return recent;
 
-    const result = await get(ACTIVE_PATH, { access: "public", token: requireBlobWriteToken() });
+    const result = await this.store().get(ACTIVE_PATH);
     if (!result) return { lease: null, etag: null };
-    if (result.statusCode !== 200 || !result.stream) throw new Error(`lease read ${ACTIVE_PATH} -> ${result.statusCode}`);
     return {
-      lease: WorkflowLease.parse(JSON.parse(await streamText(result.stream))),
-      etag: result.blob.etag,
+      lease: WorkflowLease.parse(JSON.parse(result.body)),
+      etag: result.etag,
     };
   }
 
   async create(lease: WorkflowLease): Promise<boolean> {
     WorkflowLease.parse(lease);
     try {
-      const written = await put(ACTIVE_PATH, JSON.stringify(lease), {
-        access: "public",
-        token: requireBlobWriteToken(),
+      const written = await this.store().put(ACTIVE_PATH, JSON.stringify(lease), {
         allowOverwrite: false,
-        addRandomSuffix: false,
         contentType: "application/json",
         cacheControlMaxAge: 60,
       });
       this.writeCache.remember(lease, written.etag);
       return true;
     } catch (error) {
-      if (isBlobConflict(error)) return false;
+      if (isObjectStoreConflict(error)) return false;
       throw error;
     }
   }
@@ -136,11 +127,8 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
   async compareAndSet(etag: string, lease: WorkflowLease): Promise<boolean> {
     WorkflowLease.parse(lease);
     try {
-      const written = await put(ACTIVE_PATH, JSON.stringify(lease), {
-        access: "public",
-        token: requireBlobWriteToken(),
+      const written = await this.store().put(ACTIVE_PATH, JSON.stringify(lease), {
         allowOverwrite: true,
-        addRandomSuffix: false,
         contentType: "application/json",
         cacheControlMaxAge: 60,
         ifMatch: etag,
@@ -148,7 +136,7 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
       this.writeCache.remember(lease, written.etag);
       return true;
     } catch (error) {
-      if (isBlobConflict(error)) {
+      if (isObjectStoreConflict(error)) {
         this.writeCache.forgetIfEtag(etag);
         return false;
       }

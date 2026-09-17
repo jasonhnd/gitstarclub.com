@@ -2,6 +2,5 @@ import { readCanonicalPreflight, type CanonicalPreflightResult } from "@/lib/wor
 
 /** Parse the deployed canonical metadata before any canonical mutation step. */
 export async function preflightCanonical(runId: string): Promise<CanonicalPreflightResult> {
-  "use step";
   return readCanonicalPreflight(runId, "workflow");
 }

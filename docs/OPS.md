@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-08-30
+last_reviewed: 2026-09-17
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -21,7 +21,7 @@ source_of_truth_for:
 
 数据运营分层：
 - **每日 / 每周 live cron**——见 §Cron 调度。
-- **历史 / 元数据 / canonical 全量刷新（Vercel Workflow）**——见 §Vercel Workflow runbook（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)）。
+- **历史 / 元数据 / canonical 全量刷新（Vercel cron + 无 SDK 编排）**——见 §Vercel Workflow runbook（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)；P1 双调度见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)）。
 - **一次性 BigQuery + DuckDB bootstrap 回填**——见 §一次性 bootstrap Runbook（归档，非日常路径）。
 
 ## 部署拓扑（单一 Vercel 项目）
@@ -120,10 +120,37 @@ an explicit recovery procedure.
 | 变量 | 用途 | 必需 / 可选 | 格式 | 谁用（path:line） |
 |---|---|---|---|---|
 | `GITHUB_TOKEN` | GitHub GraphQL / Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | **必需**（cron / Workflow） | `ghp_…` PAT 字符串 | `web/lib/github.ts:5`；每日 cron · 每周 cron · Workflow whitelist/metadata step · 一次性回填 |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts:6` · `web/lib/workflows/recompute/io.ts:18` · `web/lib/workflows/steps/gc.ts:10`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本 |
-| `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/data/source.ts:10` · `web/lib/cron/sync-runs.ts:83`；Next.js build · ISR 视图直读 · live cron 读发布指针 |
-| `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/data/source.ts:10` · `web/lib/cron/sync-runs.ts:83`；客户端 bundle 中读取 |
-| `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | **必需** | 随机串（≥32 字符，**无首尾空白**） | `web/lib/cron/handlers.ts` · `web/app/api/workflows/refresh/start/route.ts:13`；每日 / 每周 cron · Workflow 触发 |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本 |
+| `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；Next.js build · ISR 视图直读 · live cron 读发布指针 |
+| `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；客户端 bundle 中读取 |
+| `STORAGE_READ_DRIVER` | 对象存储读驱动 | 可选（默认 `blob`） | `blob` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`；P0 默认仍读 Vercel Blob，见 [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) |
+| `READ_DRIVER` | `STORAGE_READ_DRIVER` 别名 | 可选 | 同 `STORAGE_READ_DRIVER` | `web/lib/runtime-config.ts` |
+| `STORAGE_WRITE_DRIVER` | 对象存储写驱动 | 可选（默认 `blob`） | `blob` \| `r2` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`；`r2` 仅允许非生产 `migrate-*` 前缀，且拒绝 `VERCEL_ENV=production` |
+| `WRITE_DRIVER` | `STORAGE_WRITE_DRIVER` 别名 | 可选 | 同 `STORAGE_WRITE_DRIVER` | `web/lib/runtime-config.ts` |
+| `R2_ACCOUNT_ID` | Cloudflare 账户 ID（拼 S3 endpoint） | 仅 R2 驱动 | 32 位 hex | `web/lib/runtime-config.ts`；已备账户 `00f850e853e4c7f9627233d51a6e30a1` |
+| `R2_S3_ENDPOINT` | R2 S3 兼容 endpoint | 仅 R2 驱动 | `https://<account>.r2.cloudflarestorage.com` | `web/lib/runtime-config.ts` |
+| `AWS_ENDPOINT_URL` | `R2_S3_ENDPOINT` 别名 | 仅 R2 驱动 | 同 `R2_S3_ENDPOINT` | `web/lib/runtime-config.ts` |
+| `R2_ACCESS_KEY_ID` | R2 S3 access key | 仅 R2 驱动 | Cloudflare R2 API token | `web/lib/runtime-config.ts` |
+| `AWS_ACCESS_KEY_ID` | `R2_ACCESS_KEY_ID` 别名 | 仅 R2 驱动 | 同 `R2_ACCESS_KEY_ID` | `web/lib/runtime-config.ts` |
+| `R2_SECRET_ACCESS_KEY` | R2 S3 secret | 仅 R2 驱动 | secret | `web/lib/runtime-config.ts` |
+| `AWS_SECRET_ACCESS_KEY` | `R2_SECRET_ACCESS_KEY` 别名 | 仅 R2 驱动 | 同 `R2_SECRET_ACCESS_KEY` | `web/lib/runtime-config.ts` |
+| `R2_BUCKET` | R2 桶名 | 仅 R2 驱动 | `gitstarclub-assets` | `web/lib/runtime-config.ts` |
+| `AWS_S3_BUCKET` | `R2_BUCKET` 别名 | 仅 R2 驱动 | 同 `R2_BUCKET` | `web/lib/runtime-config.ts` |
+| `R2_REGION` | SigV4 region | 可选（默认 `auto`） | `auto` | `web/lib/runtime-config.ts` |
+| `AWS_REGION` | `R2_REGION` 别名 | 可选 | 同 `R2_REGION` | `web/lib/runtime-config.ts` |
+| `R2_PREFIX` | 非生产对象前缀 | 可选（默认 `migrate-dev/`） | `migrate-dev/` / `migrate-test/` / `migrate-preview/` | `web/lib/runtime-config.ts`；空前缀与生产 key 空间禁止写入 |
+| `R2_PUBLIC_BASE_URL` | R2 公开读 base URL | 仅 `r2` / `r2_then_blob` 页面读 | 无尾斜杠的 https origin | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` |
+| `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | **必需** | 随机串（≥32 字符，**无首尾空白**） | `web/lib/cron/handlers.ts` · `web/lib/security.ts` · `web/lib/runtime-config.ts` · `web/app/api/workflows/refresh/start/route.ts` · `web/app/api/workflows/refresh/step/route.ts`；每日 / 每周 cron · refresh start / step |
+| `WORKFLOW_RUNTIME` | Managed refresh 编排后端 | 可选（默认 `http`） | `http` \| `memory` \| `cf-queue` | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/resolve.ts`；生产默认 HTTP 自链，`cf-queue` 仅非生产 |
+| `WORKFLOW_QUEUE_ENQUEUE_URL` | CF Queue 入队 URL（Worker `/enqueue`） | 仅 `WORKFLOW_RUNTIME=cf-queue` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/cf-queue.ts` |
+| `WORKFLOW_STEP_BASE_URL` | step 路由 origin 覆盖 | 可选 | 无尾斜杠 https origin | `web/lib/runtime-config.ts`；未设时用请求 origin 或 `VERCEL_URL` |
+| `CACHE_INVALIDATION_DRIVER` | ISR 失效端口 | 可选（默认 `vercel`） | `vercel` \| `memory` \| `cf-stub` | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/`；生产默认 Next `revalidatePath/Tag`，`cf-stub` 仅非生产，见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
+| `CF_CACHE_PURGE_URL` | CF stub 双跑 POST URL（Worker `/preview/invalidate`） | 仅 `CACHE_INVALIDATION_DRIVER=cf-stub` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/cf-stub.ts`；不是 Cloudflare Cache Purge |
+| `PREVIEW_TARGET` | Preview 解析后端 | 可选（默认 `vercel`） | `vercel` \| `cf` | `web/lib/runtime-config.ts` · `web/lib/preview/`；生产门禁仍走 Vercel |
+| `CF_PREVIEW_ORIGIN` | 非生产 CF Preview origin | 可选（默认 `https://gitstarclub-web.worldgo.workers.dev`） | 无尾斜杠 https origin | `web/lib/runtime-config.ts`；Access 只护这个 host，不绑 apex/www |
+| `CF_ACCESS_CLIENT_ID` | CF Access Service Token id（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client ID | `web/lib/preview/access.ts`；GitHub secret 名与此相同；token 名 `gitstarclub-cca-ci`，密钥不进仓 |
+| `CF_ACCESS_CLIENT_SECRET` | CF Access Service Token secret（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client Secret | `web/lib/preview/access.ts`；头 `CF-Access-Client-Secret` |
+| `CF_PREVIEW_REQUIRE_SHA` | CF Preview 是否要求 identity SHA 对齐 | 可选（默认关闭） | 字符串 `1` 才强制 | `web/lib/runtime-config.ts` · `web/scripts/resolve-preview.ts`；Worker 未设 `CF_PREVIEW_COMMIT_SHA` 时不要开 |
 | `VERCEL_DEPLOY_HOOK_URL` | Deploy Hook URL（触发一次核心 rebuild，用于代码 / 结构变更或手动全量刷新） | 可选 | `https://api.vercel.com/v1/integrations/deploy/<id>` | 手动 / CI（数据更新不需要它，长尾走 ISR） |
 | `ALERT_WEBHOOK_URL` | 失败告警 webhook（Slack / Discord incoming webhook 或 `https://webhook.site/...`，POST JSON 摘要；**不设则仅日志**） | 可选 | `https://…` 可接收 JSON POST 的端点 | `web/lib/observability/alert.ts:45`；Workflow `sendAlert` · 每日 / 每周 cron 失败投递 |
 | `SITE_INDEXABLE` | 生产 indexing 开关——`"1"` 解除 pre-launch noindex 并开放 sitemap | 可选（默认 noindex） | 字符串 `"1"` 才生效，其他值 / 未设 = noindex | `web/app/robots.ts:6` · `web/app/_shell/RootShell.tsx:18`；上线时单点切换 |
@@ -174,6 +201,9 @@ an explicit recovery procedure.
 - 写入 Vercel 变量时必须去掉首尾空白和 BOM；`CRON_SECRET` 带空白会让 Cron header 非法，`BLOB_BASE_URL` 带 BOM 会让 Next.js build 在 sitemap 阶段报 `ERR_INVALID_URL`。
 - **GCP 两项仅本地一次性回填用**：用 BigQuery 查 GH Archive（约 $10，含稳定 repo.id）。回填一次后这两个变量即可弃用——**日常运营 0 GCP、0 外部账单**。（为何不用免费的 ClickHouse 公共实例 / 自建：见 ARCHITECTURE「为什么回填用 BigQuery」。）
 - 启动时校验必需密钥存在，缺失则 fail-fast（不静默吞）。
+- Cloudflare R2 P0 适配（双读开关、非生产写守卫、回滚）见 [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md)。默认仍读/写 Vercel Blob；**不切 DNS**。
+- Cloudflare migrate P1 编排（去掉 Workflow SDK、非生产 CF Cron/Queue、双调度回滚）见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)。**生产周更仍是 Vercel cron**，直至 Jason 批切流。
+- Cloudflare migrate P2（ISR 失效端口、可插 Preview、Access 只护 `gitstarclub-web.worldgo.workers.dev`、可选 `cf-preview` job）见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md)。**生产 Preview / product-gates / `revalidatePath` 仍是 Vercel**。勿切 DNS，勿把 Access 绑到 apex/www。
 
 ## Vercel Blob 布局
 
@@ -328,7 +358,7 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 |---|---|---|---|
 | **每日** | `0 3 * * *`（~03:00） | **Vercel Function / JSON-only**：GraphQL 查 current_stars → 生成并校验完整 immutable live generation → 原子切 `live/latest.json` → `revalidatePath` 热集页 | **否**（不碰 Parquet / 引擎 / deploy） |
 | **每周** | `0 4 * * 0`（周日 ~04:00） | **Vercel Function / 增量刷新**：复用同一 generation/pointer 发布协议，并落 `ops/sync-runs.json` | **否**（长尾按需 ISR；不做全量 build） |
-| **每周 refresh workflow** | `0 6 * * 0`（周日 06:00） | **Vercel Workflow / 全量刷新**：`/api/workflows/refresh/start` 鉴权后启动 `refreshWorkflow`——白名单 → 改名 → 元数据 → 折叠 → rank / entity / heatmap 重算 → 校验 → 发布（切指针）→ 版本 GC | **否**（发布只切指针；排程独立于 daily / weekly） |
+| **每周 refresh workflow** | `0 6 * * 0`（周日 06:00） | **Vercel cron + 无 SDK 编排 / 全量刷新**：`/api/workflows/refresh/start` 鉴权后取得 lease 并 `startRefresh`——白名单 → 改名 → 元数据 → 折叠 → rank / entity / heatmap 重算 → 校验 → 发布（切指针）→ 版本 GC。默认 HTTP 自链到 `/api/workflows/refresh/step`；生产排程仍是本表，不是 CF Cron | **否**（发布只切指针；排程独立于 daily / weekly） |
 
 ```jsonc
 // web/vercel.json — all scheduled entrypoints run on Vercel Production
@@ -347,7 +377,7 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 
 ### Sunday 06:00 UTC workflow-refresh failure
 
-Schedule: `0 6 * * 0` UTC → `GET /api/workflows/refresh/start` (managed Workflow). This is **not** the Sunday 04:00 weekly live cron above. A leftover `live/latest.json` lease is that other path (#402).
+Schedule: `0 6 * * 0` UTC → `GET /api/workflows/refresh/start` (managed refresh, no Workflow SDK). This is **not** the Sunday 04:00 weekly live cron above. A leftover `live/latest.json` lease is that other path (#402). Production scheduling stays on Vercel; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) for dual-scheduler rollback (stop CF Cron, leave these three Vercel crons).
 
 Paging already exists — do not invent new alerts. `markFailed` in `web/lib/workflows/checkpoint.ts` calls `recordHealth("workflow-refresh", "failed", …)` and `sendAlert`. Start-route lease/enqueue failures in `web/lib/workflows/start.ts` also `sendAlert`. `sendAlert` always writes a structured `[ALERT] workflow-refresh failed` function log; it POSTs a webhook only when `ALERT_WEBHOOK_URL` is set.
 
@@ -393,24 +423,54 @@ Paging already exists — do not invent new alerts. `markFailed` in `web/lib/wor
 >
 > 接 cron：`/api/workflows/refresh/start` 在 `web/vercel.json` 的 `crons` 中，调度 `0 6 * * 0`（周日 06:00 UTC，独立于 daily / weekly）。
 
-**为什么用 Workflow 而非单 Function**：单 Function 上限 800s / 4GB / bundle 250MB / 响应体 4.5MB（[Functions Limits](https://vercel.com/docs/functions/limitations)），装不下 DuckDB 全量重算；官方建议超长任务用 [Vercel Workflows](https://vercel.com/docs/workflows)（无单函数时长上限，可 pause / resume / checkpoint）。
+**为什么拆 step 而不是单 Function**：单 Function 上限 800s / 4GB / bundle 250MB / 响应体 4.5MB（[Functions Limits](https://vercel.com/docs/functions/limitations)），装不下 DuckDB 全量重算。P1 不再依赖 Vercel Workflow SDK；每步是普通 async + 显式重试，由 HTTP 自链或非生产 CF Queue 推进。生产排程仍是 Vercel cron，不要为了新编排去关 Fluid。
 
 **部署前置**：
-- **Fluid Compute 必须开启**（Workflow 依赖；Vercel 项目 Settings → Functions）。
-- env：`CRON_SECRET`、`GITHUB_TOKEN`、`BLOB_READ_WRITE_TOKEN`、`BLOB_BASE_URL` 同时配 Production 与 Preview。
+- Fluid Compute 可保持开启（P1 **禁止**为了赌新编排而关掉它）。
+- env：`CRON_SECRET`、`GITHUB_TOKEN`、`BLOB_READ_WRITE_TOKEN`、`BLOB_BASE_URL` 同时配 Production 与 Preview。`WORKFLOW_RUNTIME` 默认 `http`。
 - 部署：`vercel deploy . --yes --scope zkscio --project gitstarclub.com`（preview，从仓库根；Root Directory=web）。
 
 **手动触发 runbook**：
 
-1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 先只读校验 `canonical/v2/meta.json` 与全部 32 个 `repos` shard（含 `active` / `tracked_since` / `d`、key/id/bucket），通过后才取得 lease 并 `start(refreshWorkflow)`，随即返回 `run_id`（不阻塞）。preflight 失败时不会 enqueue 或取得 lease；workflow step 0 会在任何 canonical mutation 前再全量校验 128 个必需 shard。
-2. 在 **Vercel Dashboard → Observability → Workflows** 看 run；或 `bun x workflow inspect runs`。
+1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 先只读校验 `canonical/v2/meta.json` 与全部 32 个 `repos` shard（含 `active` / `tracked_since` / `d`、key/id/bucket），通过后才取得 lease 并 `startRefresh`，随即返回 `run_id`（不阻塞）。preflight 失败时不会 enqueue 或取得 lease；step `preflight` 会在任何 canonical mutation 前再全量校验 128 个必需 shard。
+2. 看 `ops/workflows/active.json` 与 `ops/workflows/<run_id>/steps/<step>.json`。**不要**把 Vercel Dashboard → Observability → Workflows / `workflow inspect` 当操作面（P1 已去掉 Workflow SDK）。生产对照自建 run 日志与 health JSON；CF 双跑另看 Workers Observability（见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md)）。
 3. 看 `ops/workflows/active.json` 的 `(run_id, fencing_token, expires_at)`、`ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`views/<run_id>/lookup/aliases.json`、`publish-intent.json` 与 `latest-success.json`。
 4. 校验白名单数、repos shard 分桶齐全、diff / rename 合理。
 5. cron 已接入（`/api/workflows/refresh/start`，`0 6 * * 0`，独立于 daily / weekly 排程）。该 managed Workflow **没有 dry-run 模式**；任何 `dry` query 都会在取得 lease 或写入状态前返回 `400`。需要无写入探测时只能使用 `/api/cron/daily?dry=1` 或 `/api/cron/weekly?dry=1`；手动触发 managed refresh 必须按上述步骤观察完整真实运行。
 
 > 全链路 step：`preflight`（再次校验全部 canonical shard）→ `fold`（月 + 周）→ `recompute` → `buildAliases`（→ `lookup/aliases.json`）→ `validate` 发布闸门 → `publish` 切 `views/latest.json` 指针 / 回滚 → `gc` 版本回收（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
 
-**鉴权 / 凭证**：`CRON_SECRET`（触发）、`GITHUB_TOKEN`（Search / GraphQL）、`BLOB_READ_WRITE_TOKEN`（读写 canonical / staging / published）。**Workflow 全程 0 GCP**（GCP 仅 bootstrap）。
+**鉴权 / 凭证**：`CRON_SECRET`（触发）、`GITHUB_TOKEN`（Search / GraphQL）、`BLOB_READ_WRITE_TOKEN`（读写 canonical / staging / published）。**refresh 全程 0 GCP**（GCP 仅 bootstrap）。
+
+### Dual-scheduler rollback (P1)
+
+Production Sunday refresh is still the Vercel cron row above. A non-production
+CF Cron on `gitstarclub-web` may also call start or enqueue a shrink fixture.
+If that CF path is enabled and must be abandoned:
+
+1. Stop the Worker cron (`triggers.crons` empty; do not keep `env.nonprod` crons).
+2. Set `WORKFLOW_RUNTIME=http` (or unset it) on the Next deployment.
+3. Leave `web/vercel.json` exactly as committed — daily / weekly / start stay Vercel.
+4. Do not cut DNS. Do not delete production Blob.
+
+Full write-up: [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md).
+
+### Dual-run rollback (P2 ISR / Preview)
+
+Production Preview gates and ISR invalidation stay on Vercel. A non-production
+CF Preview host (`gitstarclub-web.worldgo.workers.dev`) plus optional
+`verify / cf-preview` may dual-run Access + a cache-invalidation stub.
+
+If that CF path is enabled and must be abandoned:
+
+1. Unset GitHub variable `CF_PREVIEW_ENABLED` so `verify / cf-preview` is skipped.
+   Do not add or keep that job in `.delivery.yml` / required checks.
+2. Set `PREVIEW_TARGET=vercel` and `CACHE_INVALIDATION_DRIVER=vercel` (or unset both).
+3. Leave Vercel Authentication, `VERCEL_AUTOMATION_BYPASS_SECRET`, and
+   `web/vercel.json` exactly as committed.
+4. Do not cut DNS. Do not attach Access to apex/www. Do not delete production Blob.
+
+Full write-up: [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
 
 **告警**：Workflow 失败会写结构化 Vercel Function log、可选 webhook、run checkpoint 和独立 health 状态；仓库当前没有 Sentry SDK 或 Marketplace 集成。失败发生在 publish 前时不会切换线上指针。
 
@@ -446,8 +506,9 @@ After a successful `views/latest.json` publish (cron or manual):
 
 | 关注 | 工具 | 触发 |
 |---|---|---|
-| 运行时 / build 异常 | Vercel build / function logs | 未捕获异常、route 报错、build 失败；当前没有 Sentry 集成 |
-| pipeline 运行记录 | **`ops/sync-runs.json` 日志**（每次每日 / 每周 job 落一条：开始 / 结束时刻、查询数、写入路径、状态） | 供对账与回溯 |
+| 运行时 / build 异常 | Vercel build / function logs | 未捕获异常、route 报错、build 失败；当前没有 Sentry 集成。**不要**依赖 Vercel Workflows UI |
+| pipeline 运行记录 | **`ops/sync-runs.json` 日志**（每次每日 / 每周 job 落一条：开始 / 结束时刻、查询数、写入路径、状态） | 供对账与回溯；与 `ops/workflows/<run_id>/steps/*.json` 一起构成自建 run 日志 |
+| CF Preview 双跑 | Workers Observability（`gitstarclub-web`）+ Worker JSON `event` 行 | 仅非生产；Access 只护 `gitstarclub-web.worldgo.workers.dev`，见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
 | **数据漂移** | 比对 GraphQL 权威总数 vs adds 累加总数 | **漂移 > 阈值（如 2%）告警**，并以 GraphQL 为锚点重锚（见 ARCHITECTURE「数据校验 / 对账」） |
 | **Cron 失败** | `[ALERT]` function log + 可选 `ALERT_WEBHOOK_URL` + `sync-runs` + pipeline health | webhook 投递为 best-effort；失败或未配置时以日志和 health 为准，必要时人工补跑 |
 | 单日突刺 | pipeline sanity check | 单日新增极端突刺打日志告警（net 允许为负） |

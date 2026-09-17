@@ -1,7 +1,7 @@
 ---
 owner: release history
 status: active
-last_reviewed: 2026-09-06
+last_reviewed: 2026-09-17
 source_of_truth_for:
   - versioned release history
   - shipped changes
@@ -18,6 +18,12 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 ## Unreleased
 
 ### Added
+
+- **Cloudflare migrate P2 ISR / Preview / observability.** Injectable `cache-invalidation` port wraps `revalidatePath` / `revalidateTag` (Vercel default; `cf-stub` is non-production and testable). Preview resolution accepts `PREVIEW_TARGET=vercel|cf`; production gates stay on Vercel. Optional `verify / cf-preview` job is **not** a required check. Access is documented only for `gitstarclub-web.worldgo.workers.dev` (`gitstarclub-web-preview`, `@zksc.io` OTP, CI Service Token env names `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`). Operators use Workers Observability + self-built run logs instead of the Vercel Workflows UI. See [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md). Does not cut DNS.
+
+- **Cloudflare migrate P1 workflow runtime.** Managed refresh no longer hard-depends on the Vercel Workflow SDK (`workflow/api`, `"use workflow"`, `"use step"`). Steps are ordinary async functions with explicit retry, scheduled by `startRefresh` / `enqueueStep` / `completeStep`. Tests drain an in-memory shrink fixture through the P0 storage port (lease CAS + views). Non-production CF Cron/Queue lives in `workers/gitstarclub-web/`. Production scheduling stays the three Vercel crons in `web/vercel.json`. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Does not cut DNS.
+
+- **Cloudflare migrate P0 storage port.** Injectable `vercel-blob` / `r2-s3` drivers for write, live-publication CAS, workflow lease, health CAS, recompute I/O, aliases list, and version GC. Default read/write remains Vercel Blob. R2 writes require an explicit non-production `migrate-*` prefix and are refused when `VERCEL_ENV=production`. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). Does not cut DNS.
 
 - **Track C data-layer option analysis.** Comparative write-up of Tinybird, Vercel Postgres / Neon, extra JSON views, a six-month deferral, and the later lock-002 product veto, plus the historical POC must-prove list. Draft lean was defer; product outcome is **veto**. **POC allowed: no.** See [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). The dated lock-002 record is under Changed below.
 - **Vercel Web Analytics.** Enabled cookieless aggregate page-view measurement through Vercel Web Analytics and corrected the privacy page copy to reflect that no analytics cookies or personal data are collected.
@@ -40,6 +46,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Fixed
 
+- **Static data exports regenerated after `refresh-2026-09-06`.** `web/public/data/exports/v1/2026-09-06/` tracks Blob view `generated_at` (`data_as_of` 2026-09-06T06:37:28.831Z) so live `export-manifest-age` stays inside 14 days. No invented freshness date.
 - **Preview/production builds no longer dynamically `readdir` the repo root for data-export JSON-LD.** Dataset pages read the checked-in `public/data/exports/v1` folder through a statically scoped path, so Turbopack does not trace the whole project.
 - **Category assignments no longer exceed the 2MB Next.js Data Cache limit.** Recompute writes a small index plus 32 repo-id shards at `categories/assignments/shards/<id%32>.json`. Readers still accept the v1 monolith. The publish gate checks real UTF-8 JSON byte length; each ISR-cached view must stay under 1.50 MiB. Repo, org, and ranking pages keep daily ISR cache — they are not switched to `no-store`.
 - **Entity stock counts cannot go negative.** `computeRepoWindow` still uses seam-aware `anchor + cumNet`, but published `stock_est` is `max(0, formula)` so `d=0` newcomers and first-period unstars cannot fail `MonthlyPoint` `NonNegativeInt`. Every `RepoEntity` / `OrgEntity` is Zod-parsed before Blob write; validate re-parses the full lookup set, not only the top repo.

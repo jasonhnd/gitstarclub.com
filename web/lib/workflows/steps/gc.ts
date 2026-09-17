@@ -1,7 +1,6 @@
-import { list, del } from "@vercel/blob";
 import { readAuthoritativeView } from "@/lib/data/source";
 import { BootstrapPublicationPointer, ViewsPointer, WorkflowLease } from "@/lib/contracts";
-import { requireBlobWriteToken } from "@/lib/runtime-config";
+import { getWriteObjectStore } from "@/lib/storage";
 import {
   executeBlobDeletionPlan,
   planBlobPrefixDeletion,
@@ -39,9 +38,8 @@ export async function gcVersions(
   runId: string,
   fencingToken: number,
 ): Promise<{ deleted: string[]; kept: number; error?: string }> {
-  "use step";
   try {
-    const token = requireBlobWriteToken();
+    const store = getWriteObjectStore();
     const ensureOwnership = () => renewWorkflowLease(runId, fencingToken).then(() => undefined);
     await ensureOwnership();
     const protection = await readProtectionContext(runId);
@@ -50,7 +48,7 @@ export async function gcVersions(
     if (protection.rollbackViewVersion) keep.add(protection.rollbackViewVersion);
     if (protection.activeWorkflowRun) keep.add(protection.activeWorkflowRun);
 
-    const { folders } = await list({ prefix: "views/", mode: "folded", token });
+    const { folders } = await store.list({ prefix: "views/", mode: "folded" });
     const versions = [...new Set(folders.map((f) => f.slice("views/".length).replace(/\/+$/, "")).filter(Boolean))]
       .sort()
       .reverse(); // newest first (run_id timestamps sort lexically)
@@ -64,9 +62,9 @@ export async function gcVersions(
     for (const v of toDelete) {
       const prefix = `views/${v}/`;
       const plan = await planBlobPrefixDeletion(prefix, await readProtectionContext(runId), ({ cursor, limit }) =>
-        list({ prefix, cursor, limit, token }),
+        store.list({ prefix, cursor, limit }),
       );
-      await executeBlobDeletionPlan(plan, plan.prefix, guard, (urls) => deleteUrls(urls, token), DEL_CHUNK);
+      await executeBlobDeletionPlan(plan, plan.prefix, guard, (urls) => deleteUrls(urls, store), DEL_CHUNK);
     }
     return { deleted: toDelete, kept: versions.length - toDelete.length };
   } catch (err) {
@@ -74,10 +72,10 @@ export async function gcVersions(
   }
 }
 
-async function deleteUrls(urls: string[], token: string): Promise<void> {
+async function deleteUrls(urls: string[], store: ReturnType<typeof getWriteObjectStore>): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
-      await del(urls, { token });
+      await store.del(urls);
       break;
     } catch (err) {
       const retryAfter = (err as { retryAfter?: number })?.retryAfter;

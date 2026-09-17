@@ -1,7 +1,7 @@
 ---
 owner: development process
 status: active
-last_reviewed: 2026-08-16
+last_reviewed: 2026-09-17
 source_of_truth_for:
   - developer workflow
   - documentation ownership practice
@@ -50,6 +50,9 @@ Docs-only changes are allowed when the code already implements the behavior.
 | Product scope, tracked-set assumptions | `REQUIREMENTS.md` |
 | System architecture, hard constraints | `ARCHITECTURE.md` |
 | Blob layout, workflow lifecycle, publish/rollback | `VERCEL-DATA-OPERATIONS.md`, `OPS.md` |
+| Cloudflare R2 P0 storage drivers / dual-read | `R2-MIGRATION-P0.md` |
+| Cloudflare P1 workflow runtime / CF Cron | `CF-MIGRATION-P1.md` |
+| Cloudflare P2 ISR port / CF Preview / Access | `CF-MIGRATION-P2.md` |
 | JSON schema or persisted field | `DATA-CONTRACTS.md` |
 | Bootstrap pipeline behavior | `PIPELINE.md` |
 | Ranking algorithm or tie-breaking | `RANKING.md` |
@@ -86,8 +89,8 @@ Docs-only changes are allowed when the code already implements the behavior.
 
 ### Change A Workflow Step
 
-1. Read `web/lib/workflows/refresh.ts` to confirm step order.
-2. Keep steps idempotent and retry-safe.
+1. Read `web/lib/workflows/refresh.ts` and `web/lib/workflows/runtime/graph.ts` to confirm step order.
+2. Keep steps idempotent and retry-safe. Do not reintroduce `"use workflow"` / `"use step"`.
 3. Write new artifacts under `views/<run_id>/` until validation passes.
 4. Update `web/lib/workflows/steps/validate.ts` when a new published invariant
    should block bad data.
