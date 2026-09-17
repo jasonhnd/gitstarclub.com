@@ -6,6 +6,9 @@ import {
 } from "@/lib/contracts";
 import {
   assembleCategoryAssignments,
+  assembleCategoryAssignmentsPartial,
+  categoryAssignmentShardBucketsForRepoIds,
+  categoryAssignmentShardForRepoId,
   categoryAssignmentsPublicationArtifacts,
   categoryAssignmentsShardPath,
   isCategoryAssignmentsIndex,
@@ -61,5 +64,20 @@ describe("category assignment shards", () => {
 
   test("does not treat a v1 monolith as a v2 index", () => {
     expect(isCategoryAssignmentsIndex(assignments)).toBe(false);
+  });
+
+  test("partial assemble keeps only the supplied buckets", () => {
+    const { index, shards } = splitCategoryAssignments(assignments);
+    const partial = assembleCategoryAssignmentsPartial(index, [shards[1]!.data]);
+    expect(partial.repositories["1"]?.language).toEqual(["language/python"]);
+    expect(partial.repositories["33"]?.language).toEqual(["language/python"]);
+    expect(partial.repositories["32"]).toBeUndefined();
+  });
+
+  test("repo-id bucket set is unique and modulus-32", () => {
+    expect(categoryAssignmentShardForRepoId(1)).toBe(1);
+    expect(categoryAssignmentShardForRepoId(32)).toBe(0);
+    expect(categoryAssignmentShardBucketsForRepoIds([1, 33, 32, 1, -4])).toEqual([0, 1]);
+    expect(categoryAssignmentShardBucketsForRepoIds([])).toEqual([]);
   });
 });

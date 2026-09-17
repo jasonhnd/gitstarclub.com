@@ -175,6 +175,7 @@ Known limits (write these on the PR; they are not a DNS-cut claim):
 | OpenNext R2 cache populate + Access | helper Worker `open-next-cache-populate` is Access-blocked | P3 uses Static Assets incremental cache instead |
 | OpenNext Node `proxy.ts` + `@opentelemetry/api` | NFT traces CJS only; esbuild `module` condition looks for missing `build/esm` | `cf:build` rewrites the traced package.json to the CJS entry |
 | Category long tail | already bounded at build | Do not pre-render every category page on the Worker |
+| Worker subrequests | 50 free / 1 000 paid per invocation | `loadCategoryAssignments` must not `Promise.all` all 32 assignment shards; it batches ≤6 reads (≤4 on `HOSTING_TARGET=cf`). `/rankings` loads assignments after core views and only the shards for leading rows. v1 monolith stays a single GET. |
 
 This PR does **not** claim the Worker is ready to take apex/www traffic.
 
