@@ -11,8 +11,8 @@ import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { Star } from "@/app/_explore/Star";
 import { OrganizationRankingTable, type OrganizationSummaryRow } from "@/app/_explore/SemanticDataTable";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getAllTime, getCategoryAssignments, getCategoryRegistry, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
-import { rankingCategoryExits } from "@/lib/ranking-category-exits";
+import { getAllTime, getCategoryAssignmentsForRepos, getCategoryRegistry, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
+import { RANKING_CATEGORY_LEAD_LIMIT, rankingCategoryExits } from "@/lib/ranking-category-exits";
 import { RankingCategoryExits } from "./ranking-category-exits";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
 import { formatInteger, fmtStars } from "@/lib/format";
@@ -48,7 +48,9 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
   const routePath = localizedPath(locale, RANKINGS_PATH);
   const href = (path: string) => localizedPath(locale, path);
   const periods = currentUtcPeriods(now);
-  const [repoRank, orgRank, repoLk, orgLk, snap, availablePeriods, registry, assignments] = await Promise.all([
+  // Core views first. Assignment shards are a second wave so OpenNext /rankings
+  // does not stack 32 shard GETs on top of all-time / lookup / hot / periods.
+  const [repoRank, orgRank, repoLk, orgLk, snap, availablePeriods, registry] = await Promise.all([
     getAllTime("repo"),
     getAllTime("org"),
     getReposLookup(),
@@ -56,10 +58,12 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
     getHotSnapshot(),
     resolveAvailableRankPeriods(now),
     getCategoryRegistry(),
-    getCategoryAssignments(),
   ]);
   const rankedRepos = repoRank && repoLk ? joinRepoRank(repoRank.items, repoLk) : [];
   const repoRows: Row[] = rankedRepos.map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }));
+  const assignments = await getCategoryAssignmentsForRepos(
+    rankedRepos.slice(0, RANKING_CATEGORY_LEAD_LIMIT).map((row) => row.id),
+  );
   const categoryLinks = rankingCategoryExits(rankedRepos, registry, assignments);
   const orgs = orgRank && orgLk ? joinOrgRank(orgRank.items, orgLk) : [];
   const archiveItems = buildArchiveItems(snap?.home.year_spine ?? [], availablePeriods, locale, t);
