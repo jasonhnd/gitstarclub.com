@@ -44,14 +44,14 @@ export type LoadCategoryAssignmentsOptions = {
 
 /**
  * CF free Workers count total subrequests (~50), not peak concurrency.
- * Rankings-style `repoIds` selection must not fan out shards (or even the index)
- * on that host; language exits do not need assignments.
+ * Full 32-shard assemble and repo-id selection must not fan out shards
+ * (or even the index) on that host; language exits do not need assignments.
  */
 export function shouldSkipCategoryAssignmentShardFanOut(
-  selection?: LoadCategoryAssignmentsOptions,
+  _selection?: LoadCategoryAssignmentsOptions,
   env: Parameters<typeof isCloudflareWorkersHost>[0] = process.env,
 ): boolean {
-  return selection?.repoIds != null && isCloudflareWorkersHost(env);
+  return isCloudflareWorkersHost(env);
 }
 
 type AssignmentsMemo = { key: string; value: CategoryAssignmentsData };

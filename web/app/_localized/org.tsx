@@ -16,7 +16,8 @@ import { RepositoryRankingTable } from "@/app/_explore/SemanticDataTable";
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { DAILY_BASE_VIEW_TTL_MS, getCategoryAssignments, getCategoryRegistry, getMeta, getOrgEntityDaily, getReposLookupDaily } from "@/lib/data";
+import { DAILY_BASE_VIEW_TTL_MS, getCategoryAssignmentsForRepos, getCategoryRegistry, getMeta, getOrgEntityDaily, getReposLookupDaily } from "@/lib/data";
+import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import type { OrgEntity } from "@/lib/contracts";
 import { dateLabel, formatInteger, fmtStars, monthYearLabel, ymParts } from "@/lib/format";
 import { buildOrgHub } from "@/lib/org-page";
@@ -62,14 +63,15 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
   const login = decodeURIComponent(raw);
-  const [org, lookup, assignments, registry, meta] = await Promise.all([
+  const [org, lookup, registry, meta] = await Promise.all([
     getOrgEntityDaily(login),
     getReposLookupDaily(),
-    getCategoryAssignments(),
     getCategoryRegistry(),
     getMeta(DAILY_BASE_VIEW_TTL_MS),
   ]);
   if (!org) notFound();
+  // CF: skip assignment shards (member language chips stay). Vercel: member buckets only.
+  const assignments = isCloudflareWorkersHost() ? null : await getCategoryAssignmentsForRepos(org.members);
 
   const series = org.curve.monthly.map(([period, , totalEnd]) => ({ label: period, total: totalEnd }));
   const asOf = resolveDataAsOfFromMeta(meta, org.curve.recent_daily.at(-1)?.[0], org.curve.monthly.at(-1)?.[0], { locale });
