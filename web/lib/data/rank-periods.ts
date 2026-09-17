@@ -72,7 +72,7 @@ export const MONTH_LOOKBACK_CF = 1;
 export const WEEK_LOOKBACK_CF = 1;
 
 export function rankPeriodLookbackLimits(
-  env: Parameters<typeof isCloudflareWorkersHost>[0] = process.env,
+  env?: Parameters<typeof isCloudflareWorkersHost>[0],
 ): { monthLookback: number; weekLookback: number } {
   if (isCloudflareWorkersHost(env)) {
     return { monthLookback: MONTH_LOOKBACK_CF, weekLookback: WEEK_LOOKBACK_CF };

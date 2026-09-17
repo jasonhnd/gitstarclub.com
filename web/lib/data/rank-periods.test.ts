@@ -92,7 +92,6 @@ describe("resolveAvailableRankPeriods", () => {
   });
 
   test("CF lookback of 1 does not storm missing month and week views", async () => {
-    process.env.HOSTING_TARGET = "cf";
     const probed: string[] = [];
     const periods = await resolveAvailableRankPeriodsForTest({
       nowPeriods: NOW_PERIODS,
@@ -101,6 +100,8 @@ describe("resolveAvailableRankPeriods", () => {
         probed.push(`${window}:${period}`);
         return window === "year" && period === "2026" ? rankFixture(window, period) : null;
       },
+      monthLookback: MONTH_LOOKBACK_CF,
+      weekLookback: WEEK_LOOKBACK_CF,
     });
 
     expect(probed.filter((entry) => entry.startsWith("month:"))).toEqual(["month:2026-07"]);

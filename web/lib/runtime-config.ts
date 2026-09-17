@@ -1,8 +1,21 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 // Runtime configuration boundary for server-side data and workflow modules.
 // Keep process.env reads here so tests and route handlers can change config
 // without relying on module reloads.
 
 type RuntimeEnv = Record<string, string | undefined>;
+
+const cloudflareWorkersHostOverride = new AsyncLocalStorage<boolean>();
+
+/**
+ * Pin `isCloudflareWorkersHost()` for the current async scope.
+ * Explicit env objects still win. Used so bun test files that mutate
+ * `process.env.HOSTING_TARGET` cannot flip a sibling rankings/detail probe.
+ */
+export function runWithCloudflareWorkersHostForTests<T>(isCf: boolean, fn: () => T): T {
+  return cloudflareWorkersHostOverride.run(isCf, fn);
+}
 
 export function getBlobBaseUrl(env: RuntimeEnv = process.env): string {
   return (env.BLOB_BASE_URL ?? env.NEXT_PUBLIC_BLOB_BASE_URL ?? "").replace(/\/+$/, "");
@@ -274,8 +287,13 @@ export function getHostingTarget(env: RuntimeEnv = process.env): HostingTarget {
   throw new Error(`HOSTING_TARGET must be vercel | cf (got ${raw})`);
 }
 
-export function isCloudflareWorkersHost(env: RuntimeEnv = process.env): boolean {
-  return getHostingTarget(env) === "cf" && !isVercelProduction(env);
+export function isCloudflareWorkersHost(env?: RuntimeEnv): boolean {
+  if (env !== undefined) {
+    return getHostingTarget(env) === "cf" && !isVercelProduction(env);
+  }
+  const override = cloudflareWorkersHostOverride.getStore();
+  if (override !== undefined) return override;
+  return getHostingTarget(process.env) === "cf" && !isVercelProduction(process.env);
 }
 
 export function assertHostingTargetAllowed(env: RuntimeEnv = process.env): void {
