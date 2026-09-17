@@ -155,6 +155,10 @@ bun run cf:smoke            # defaults to localhost without Access
 bun run cf:dry-run          # OpenNext build + wrangler deploy --dry-run
 ```
 
+`cf:build` wraps `opennextjs-cloudflare build` so the Next 16 Node
+`proxy.ts` bundle can resolve `@opentelemetry/api` (direct dependency for
+the `next/cache` graph). That rewrite is preview-host only.
+
 `cf:build` / `cf:dry-run` do **not** need Cloudflare Access. Remote
 `workers.dev` human checks may still hit Access (`gitstarclub-web-preview`)
 until Jason removes that wall.
@@ -169,6 +173,7 @@ Known limits (write these on the PR; they are not a DNS-cut claim):
 | Static assets | separate from script size | Home / rankings prerender live here |
 | `next build` heap | CI uses `NODE_OPTIONS=--max-old-space-size=8192` on the optional job | Same class of memory as `verify / production-build` |
 | OpenNext R2 cache populate + Access | helper Worker `open-next-cache-populate` is Access-blocked | P3 uses Static Assets incremental cache instead |
+| OpenNext Node `proxy.ts` + `@opentelemetry/api` | NFT traces CJS only; esbuild `module` condition looks for missing `build/esm` | `cf:build` rewrites the traced package.json to the CJS entry |
 | Category long tail | already bounded at build | Do not pre-render every category page on the Worker |
 
 This PR does **not** claim the Worker is ready to take apex/www traffic.
