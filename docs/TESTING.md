@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-09-16
+last_reviewed: 2026-09-17
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -27,7 +27,7 @@ GitHub Actions is committed at `.github/workflows/ci.yml`. Every job installs No
 
 After both jobs pass, `verify / preview-e2e` resolves the Vercel-owned preview check for the PR head or pushed SHA, waits for the preview alias to publish that exact SHA through `/.well-known/deployment` (using `VERCEL_AUTOMATION_BYPASS_SECRET` and following the bypass `_vercel_jwt` cookie because Preview is Vercel-authenticated), and re-verifies the SHA on the immutable `*.vercel.app` deployment URL before running Chromium. It runs `e2e/accessibility-responsive.spec.ts`, `e2e/horizontal-overflow.spec.ts`, and `e2e/search-compare-interactions.spec.ts`; serious or critical axe findings, explicit contrast failures, response failures, horizontal overflow, Search keyboard/focus regressions, or Search/Compare retry failures fail the job. Failed runs retain traces and screenshots plus the HTML report and deployment metadata as a GitHub Actions artifact. On `pre` and `main` pushes the same job also runs `bun test lib/integration/seo.test.ts` against that immutable deployment; preview remains noindex while production must be indexable.
 
-The repository rule protecting `main` must require `verify / static`, `verify / production-build`, `verify / preview-e2e`, and Vercel's deployment check before a `pre` promotion can merge. Workflow files cannot create that GitHub-hosted rule; maintainers must update the required-check contexts in repository settings when this workflow lands and remove the superseded `verify` / `release-seo` contexts.
+The repository rule protecting `main` must require `verify / static`, `verify / production-build`, `verify / preview-e2e`, and Vercel's deployment check before a `pre` promotion can merge. Workflow files cannot create that GitHub-hosted rule; maintainers must update the required-check contexts in repository settings when this workflow lands and remove the superseded `verify` / `release-seo` contexts. Do **not** add `verify / cf-preview` to that required-check set: it is an optional Cloudflare dual-run (P2) gated by `vars.CF_PREVIEW_ENABLED` and is omitted from `.delivery.yml`. Production Preview resolution stays `web/scripts/resolve-vercel-preview.ts`. See [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
 
 Dependency audit is also a PR gate. CI runs `bun run audit:deps` in both `web/` and `pipeline/`, with `bun audit --audit-level=high` as the default policy; new high-severity advisories must be fixed by upgrading the direct dependency or documented as a temporary exception before merge. Moderate and low advisories are reviewed during dependency maintenance, but they do not fail CI unless the advisory affects a production server-side path or is escalated by maintainers.
 
@@ -299,7 +299,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 
 ## Planned gates
 
-> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/`pre`/`main` CI 分成 static、production-build、preview-e2e、product-gates 四个 release checks；browser check 只覆盖已提交的 Chromium responsive/overflow/axe 和 Search/Compare interaction suites，product-gates 对 exact-SHA preview 与 public Blob 做只读产品连续性检查。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Lighthouse、视觉基线、其余完整 browser flows 与 multi-engine coverage 仍是 target coverage。
+> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/`pre`/`main` CI 分成 static、production-build、preview-e2e、product-gates **四个 release checks**；browser check 只覆盖已提交的 Chromium responsive/overflow/axe 和 Search/Compare interaction suites，product-gates 对 exact-SHA **Vercel** preview 与 public Blob 做只读产品连续性检查。可选 `verify / cf-preview` 是迁 CF P2 双跑草案，**不是**生产唯一必过。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Lighthouse、视觉基线、其余完整 browser flows 与 multi-engine coverage 仍是 target coverage。
 
 状态含义：`enforced` = 当前自动化 gate 会阻断；`manual` = reviewer / operator 可手动检查但不自动阻断；`report-only` = 有报告或基线但不阻断；`planned` = 已定义目标，尚无提交的 gate；`not implemented` = 尚无当前 tooling。
 
@@ -332,6 +332,7 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 | 5. 零 JS / HTML / font budgets | `planned` | 无独立 budget gate | 目标：脚本化 structural checks，并在 gate 中阻断 |
 | 6. 跨浏览器 | `not implemented` | 无 Playwright multi-engine job | 目标：chromium / firefox / webkit 关键页与渐进增强 fallback |
 | Vercel preview visual/perf review | `manual` | Reviewer 按改动页面检查 | 不是当前自动 gate；适合在 browser tooling 落地前补充 review 信号 |
+| CF Preview Access dual-run | `report-only` | 可选 `verify / cf-preview`（`CF_PREVIEW_ENABLED=1`） | Access Service Token 探 `gitstarclub-web.worldgo.workers.dev`；**不得**替换 `preview-e2e` / `product-gates`；见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
 
 **节奏要点**：
 

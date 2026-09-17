@@ -1,7 +1,7 @@
 ---
 owner: operations / workflows
 status: active
-last_reviewed: 2026-09-16
+last_reviewed: 2026-09-17
 source_of_truth_for:
   - Cloudflare migrate P1 workflow runtime
   - non-production CF Cron / Queue orchestration
@@ -31,8 +31,8 @@ This document owns the P1 orchestration change added in
   storage port
 
 Out of scope: DNS / orange-cloud, deleting production Blob, production read
-primary R2, P2 ISR/Preview gates, P3 full-site Workers hosting, paid-plan
-purchases, promoting to `main`.
+primary R2, P2 ISR/Preview gates (see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md)),
+P3 full-site Workers hosting, paid-plan purchases, promoting to `main`.
 
 Prepared Cloudflare resources (documentation only; production scheduling is
 still Vercel):

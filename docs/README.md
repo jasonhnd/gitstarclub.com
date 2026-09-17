@@ -1,7 +1,7 @@
 ---
 owner: docs / maintenance
 status: active
-last_reviewed: 2026-09-16
+last_reviewed: 2026-09-17
 source_of_truth_for:
   - documentation index
   - documentation ownership map
@@ -37,7 +37,7 @@ This section is the authoritative newcomer reading order. Update it when adding,
 13. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) - locked visual baseline, tokens, typography, Chrome appearance, accessibility notes.
 14. [SEO.md](./SEO.md) — per-page SEO templates, sitemap structure, robots policy.
 15. [GEO.md](./GEO.md) — answer-engine citation strategy: answer capsules, schema, crawler hygiene, freshness, and measurement.
-16. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting. Cloudflare R2 P0 adapter details live in [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). P1 workflow/cron details live in [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md).
+16. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout, env vars, alerting. Cloudflare R2 P0 adapter details live in [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). P1 workflow/cron details live in [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). P2 ISR/Preview/observability details live in [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
 17. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants.
 
 Supporting docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [COCKPIT.md](./COCKPIT.md) for the unshipped Cockpit content contract and pre spike; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [DATA-EXPORTS.md](./DATA-EXPORTS.md) for public export files; [I18N.md](./I18N.md) for the shipped locale URL architecture decision record.
@@ -62,6 +62,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) | active | GEO crawler and AI-referrer reporting | `geo:report` inputs, output fields, taxonomy, privacy rules, or operator commands change. | Operational runbook; [GEO.md](./GEO.md) owns the reporting intent, and [OPS.md](./OPS.md) owns production log/operations practice. |
 | [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) | active | Cloudflare R2 P0 storage adapter | Driver names, env, write guards, or rollback steps change. | P0 Blob→R2 adapter only; [OPS.md](./OPS.md) still owns the production Blob layout and env inventory. |
 | [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) | active | Cloudflare migrate P1 workflow runtime | Runtime kinds, CF Cron/Queue non-prod proof, or dual-scheduler rollback change. | P1 orchestration only; production cron table stays in [OPS.md](./OPS.md) / `web/vercel.json`. |
+| [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) | active | Cloudflare migrate P2 ISR / Preview / observability | Cache-invalidation drivers, CF Preview + Access, optional `cf-preview` job, or P2 rollback change. | P2 only; production Preview/product-gates/`revalidatePath` stay Vercel. |
 
 ### Decision analyses
 
@@ -96,6 +97,8 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | GEO | Answer-engine citation strategy, page-type answer capsules, GEO schema plan, AI crawler hygiene, freshness, and measurement |
 | OPS | Branch topology / staging, deploy / rollback / cron / workflow runbooks, Blob layout, env vars, alerting, failure modes |
 | R2-MIGRATION-P0 | Cloudflare migrate P0 Blob→R2 adapter: drivers, dual-read, non-production write guard, rollback |
+| CF-MIGRATION-P1 | Cloudflare migrate P1 workflow runtime: HTTP/memory/CF Queue, non-prod Cron, dual-scheduler rollback |
+| CF-MIGRATION-P2 | Cloudflare migrate P2 ISR port, CF Preview/Access, optional CI dual-run, Workers Observability |
 | TESTING | Test pyramid, contract tests, recompute parity, validation invariants, smoke tests |
 | PRODUCT | Product framing: identity, page surfaces, tone, data-honesty posture, i18n posture |
 | COCKPIT | Unshipped Cockpit content contract and pre-only `/cockpit` spike |
@@ -122,6 +125,8 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Endpoint contracts (method / auth / params / response / cache / status codes) | [API.md](./API.md) |
 | Blob layout | OPS (§Vercel Blob 布局) |
 | Cloudflare R2 P0 adapter | [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) |
+| Cloudflare migrate P1 workflow runtime | [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
+| Cloudflare migrate P2 ISR / Preview / observability | [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
 | Branch topology / staging / promotion | [OPS.md](./OPS.md) (§Branch topology / staging) |
 | Cron schedule | OPS (§Cron 调度) |
 | Workflow step enumeration | VERCEL-DATA-OPERATIONS |

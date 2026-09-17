@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 
 import { appendFileSync } from "node:fs";
+import { extractVercelPreviewHost, selectDiscoveryMode, validateVercelDeploymentUrl } from "../lib/preview/vercel-discovery";
 import { fetchWithVercelProtectionBypass } from "../lib/vercel-protection-bypass";
 
 interface CheckRun {
@@ -14,9 +15,9 @@ interface DeploymentIdentity {
   deploymentUrl: string | null;
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) await resolveVercelPreview();
 
-async function main(): Promise<void> {
+export async function resolveVercelPreview(): Promise<void> {
   const expectedSha = required("EXPECTED_SHA");
   const outputPath = required("GITHUB_OUTPUT");
   if (!process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()) {
@@ -55,7 +56,7 @@ async function main(): Promise<void> {
       lastObservedSha = aliasIdentity?.commitSha ?? lastObservedSha;
 
       if (aliasIdentity?.commitSha === expectedSha && aliasIdentity.deploymentUrl) {
-        const deploymentUrl = validateDeploymentUrl(aliasIdentity.deploymentUrl);
+        const deploymentUrl = validateVercelDeploymentUrl(aliasIdentity.deploymentUrl);
         const immutableIdentity = await readIdentity(deploymentUrl);
 
         if (immutableIdentity?.commitSha === expectedSha) {
@@ -83,10 +84,7 @@ async function main(): Promise<void> {
   );
 }
 
-export function selectDiscoveryMode(identityOrigin: string | undefined) {
-  const origin = identityOrigin?.trim();
-  return origin ? ({ kind: "identity-origin", origin } as const) : ({ kind: "check-run" } as const);
-}
+export { extractVercelPreviewHost, selectDiscoveryMode } from "../lib/preview/vercel-discovery";
 
 async function findVercelPreviewHost(repository: string, expectedSha: string, githubToken: string): Promise<string | null> {
   const response = await fetch(`https://api.github.com/repos/${repository}/commits/${expectedSha}/check-runs?per_page=100`, {
@@ -104,20 +102,6 @@ async function findVercelPreviewHost(repository: string, expectedSha: string, gi
   return extractVercelPreviewHost(vercelCheck?.output.summary);
 }
 
-export function extractVercelPreviewHost(summary: string | null | undefined): string | null {
-  const match = summary?.match(/https:\/\/vercel\.live\/open-feedback\/[^\s)]+/i);
-  if (!match) return null;
-
-  try {
-    const feedbackUrl = new URL(match[0]);
-    const previewUrl = new URL(`https://${feedbackUrl.pathname.slice("/open-feedback/".length)}`);
-    if (previewUrl.pathname !== "/" || previewUrl.port || previewUrl.username || previewUrl.password) return null;
-    return previewUrl.hostname.toLowerCase() || null;
-  } catch {
-    return null;
-  }
-}
-
 async function readIdentity(baseUrl: string): Promise<DeploymentIdentity | null> {
   try {
     const url = new URL("/.well-known/deployment", `${baseUrl.replace(/\/+$/, "")}/`);
@@ -130,14 +114,6 @@ async function readIdentity(baseUrl: string): Promise<DeploymentIdentity | null>
   } catch {
     return null;
   }
-}
-
-function validateDeploymentUrl(value: string): string {
-  const url = new URL(value);
-  if (url.protocol !== "https:" || !url.hostname.endsWith(".vercel.app") || url.pathname !== "/") {
-    throw new Error(`Rejected unexpected Vercel deployment URL: ${value}`);
-  }
-  return url.origin;
 }
 
 function required(key: string): string {
