@@ -14,6 +14,7 @@ import {
   getHostingTarget,
   getPreviewTarget,
   isCloudflareWorkersHost,
+  runWithCloudflareWorkersHostForTests,
   getWorkflowQueueEnqueueUrl,
   getWorkflowRuntimeKind,
   getWorkflowStepBaseUrl,
@@ -185,5 +186,25 @@ describe("P3 hosting target", () => {
       "HOSTING_TARGET",
     );
     expect(() => assertHostingTargetAllowed({ VERCEL_ENV: "production" })).not.toThrow();
+  });
+
+  test("async-local override isolates host detection from process.env", async () => {
+    const previous = process.env.HOSTING_TARGET;
+    process.env.HOSTING_TARGET = "cf";
+    try {
+      expect(isCloudflareWorkersHost()).toBe(true);
+      await runWithCloudflareWorkersHostForTests(false, async () => {
+        expect(isCloudflareWorkersHost()).toBe(false);
+        expect(isCloudflareWorkersHost({ HOSTING_TARGET: "cf" })).toBe(true);
+      });
+      await runWithCloudflareWorkersHostForTests(true, async () => {
+        process.env.HOSTING_TARGET = "vercel";
+        expect(isCloudflareWorkersHost()).toBe(true);
+        expect(isCloudflareWorkersHost({ HOSTING_TARGET: "vercel" })).toBe(false);
+      });
+    } finally {
+      if (previous === undefined) delete process.env.HOSTING_TARGET;
+      else process.env.HOSTING_TARGET = previous;
+    }
   });
 });

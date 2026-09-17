@@ -45,30 +45,30 @@ describe("CF ranking-detail / repo / org skip full assignment fan-out", () => {
   });
 
   test("CF host short-circuits full and page-id loads with 0 reader I/O", async () => {
-    process.env.HOSTING_TARGET = "cf";
+    const env = { HOSTING_TARGET: "cf" };
     const reads: string[] = [];
     const read = async (rel: string) => {
       reads.push(rel);
       throw new Error(`unexpected assignment read ${rel}`);
     };
 
-    expect(shouldSkipCategoryAssignmentShardFanOut()).toBe(true);
-    expect(shouldSkipCategoryAssignmentShardFanOut({ repoIds: [1] })).toBe(true);
-    expect(await loadCategoryAssignments(read as never, {}, "omit")).toBeNull();
-    expect(await loadCategoryAssignments(read as never, {}, "omit", { repoIds: [1] })).toBeNull();
+    expect(shouldSkipCategoryAssignmentShardFanOut(undefined, env)).toBe(true);
+    expect(shouldSkipCategoryAssignmentShardFanOut({ repoIds: [1] }, env)).toBe(true);
+    expect(await loadCategoryAssignments(read as never, {}, "omit", undefined, env)).toBeNull();
+    expect(await loadCategoryAssignments(read as never, {}, "omit", { repoIds: [1] }, env)).toBeNull();
     expect(reads).toEqual([]);
   });
 
   test("Vercel still performs reader I/O for a page-id selection", async () => {
-    process.env.HOSTING_TARGET = "vercel";
+    const env = { HOSTING_TARGET: "vercel" };
     const reads: string[] = [];
     const read = async (rel: string) => {
       reads.push(rel);
       return null;
     };
 
-    expect(shouldSkipCategoryAssignmentShardFanOut()).toBe(false);
-    expect(await loadCategoryAssignments(read as never, {}, "omit", { repoIds: [1] })).toBeNull();
+    expect(shouldSkipCategoryAssignmentShardFanOut(undefined, env)).toBe(false);
+    expect(await loadCategoryAssignments(read as never, {}, "omit", { repoIds: [1] }, env)).toBeNull();
     expect(reads).toContain("categories/assignments.json");
     expect(reads.some((path) => path.includes("assignments/shards/"))).toBe(false);
   });
