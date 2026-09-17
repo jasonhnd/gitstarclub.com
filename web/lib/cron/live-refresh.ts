@@ -1,4 +1,4 @@
-import { revalidatePath } from "next/cache";
+import { resolveCacheInvalidation } from "@/lib/cache-invalidation";
 import {
   getCurrentMonthAuthoritative as getCurrentMonth,
   getHeatmapBaseAuthoritative as getHeatmapBase,
@@ -50,7 +50,7 @@ export interface LiveRefreshDependencies {
   getHeatmapBase: typeof getHeatmapBase;
   fetchStarCounts: typeof fetchStarCounts;
   submitLiveOverlayIndexNow: typeof submitLiveOverlayIndexNow;
-  revalidatePath: typeof revalidatePath;
+  revalidatePath: (path: string) => void | Promise<void>;
   currentUtcPeriods: typeof currentUtcPeriods;
   isoWeek: typeof isoWeek;
 }
@@ -155,7 +155,7 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
     getHeatmapBase,
     fetchStarCounts,
     submitLiveOverlayIndexNow,
-    revalidatePath,
+    revalidatePath: (path) => resolveCacheInvalidation().revalidatePath(path),
     currentUtcPeriods,
     isoWeek,
     ...opts.dependencies,
@@ -356,7 +356,7 @@ export async function refreshLiveViews(job: LiveRefreshJob, dry: boolean, opts: 
   // post-commit failure must not misreport the already-published generation as
   // an uncommitted refresh.
   try {
-    revalidateLivePaths(periods, dependencies.revalidatePath);
+    await revalidateLivePaths(periods, dependencies.revalidatePath);
   } catch (error) {
     result.post_commit_errors.push(`revalidate: ${errorMessage(error)}`);
   }
@@ -528,7 +528,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unexpected failure";
 }
 
-function revalidateLivePaths(periods: ReturnType<typeof currentUtcPeriods>, invalidate: typeof revalidatePath): void {
+async function revalidateLivePaths(
+  periods: ReturnType<typeof currentUtcPeriods>,
+  invalidate: (path: string) => void | Promise<void>,
+): Promise<void> {
   const [calendarYear, calendarMonth] = periods.monthPeriod.split("-");
   const [weekYear, weekNumber] = periods.weekPeriod.split("-W");
   const suffixes = [
@@ -539,5 +542,5 @@ function revalidateLivePaths(periods: ReturnType<typeof currentUtcPeriods>, inva
     `/rankings/${calendarYear}/${Number(calendarMonth)}`,
     `/rankings/${weekYear}/W${weekNumber}`,
   ];
-  for (const suffix of suffixes) invalidate(suffix || "/");
+  for (const suffix of suffixes) await invalidate(suffix || "/");
 }

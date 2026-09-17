@@ -3,6 +3,8 @@
   "main": "src/index.ts",
   "account_id": "00f850e853e4c7f9627233d51a6e30a1",
   "compatibility_date": "2026-09-16",
+  // Workers Observability is the CF dual-run log surface (P2). Production
+  // operators should not depend on the Vercel Workflows product UI.
   "observability": {
     "enabled": true
   },

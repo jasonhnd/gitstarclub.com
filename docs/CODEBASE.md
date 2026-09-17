@@ -1,7 +1,7 @@
 ---
 owner: codebase architecture
 status: active
-last_reviewed: 2026-09-16
+last_reviewed: 2026-09-17
 source_of_truth_for:
   - code map
   - data layer ownership
@@ -60,6 +60,8 @@ GitHub APIs
 | `web/lib/search/` | Search index/query core |
 | `web/lib/observability/` | Health and alert helpers for cron/workflow failure alerting |
 | `web/lib/storage/` | Injectable object-store port (`vercel-blob` \| `r2-s3`) for write/CAS/list/del; default remains Blob |
+| `web/lib/cache-invalidation/` | ISR invalidation port (`vercel` \| `memory` \| `cf-stub`); default remains Next `revalidatePath/Tag` |
+| `web/lib/preview/` | Pluggable Preview target (`vercel` \| `cf`) and Cloudflare Access Service Token headers |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
 | `docs/` | Product, architecture, data, operations, frontend, SEO, testing, and development docs |
 
@@ -97,6 +99,11 @@ Important files:
 - `web/lib/storage/`: object-store port used by write, live publication, lease,
   health, recompute I/O, aliases list, and version GC. R2 is opt-in and
   non-production only; see [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
+- `web/lib/cache-invalidation/`: publication and live-cron ISR invalidation.
+  Default is Vercel `next/cache`. The CF stub is non-production and testable;
+  see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
+- `web/lib/preview/`: Preview discovery for Vercel (required gates) and
+  optional CF Access on `gitstarclub-web.worldgo.workers.dev`.
 
 Rule: if a page needs a new view, add or extend the Zod schema in
 `web/lib/contracts/`, then add the read helper in `web/lib/data/`.
