@@ -175,7 +175,7 @@ Known limits (write these on the PR; they are not a DNS-cut claim):
 | OpenNext R2 cache populate + Access | helper Worker `open-next-cache-populate` is Access-blocked | P3 uses Static Assets incremental cache instead |
 | OpenNext Node `proxy.ts` + `@opentelemetry/api` | NFT traces CJS only; esbuild `module` condition looks for missing `build/esm` | `cf:build` rewrites the traced package.json to the CJS entry |
 | Category long tail | already bounded at build | Do not pre-render every category page on the Worker |
-| Worker subrequests | 50 free / 1 000 paid per invocation | Free-tier budget is **total** subrequests per invocation, not peak concurrency. Each OpenNext Blob `fetch` also does an ASSETS incremental-cache GET. After #455 `mapLimit`, CF `/rankings` still blew the cap on assignment shards; it now skips assignment fan-out (language exits remain) and caps month/week lookback at 1. Full 32-shard pages remain residual. v1 monolith stays a single GET. |
+| Worker subrequests | 50 free / 1 000 paid per invocation | Free-tier budget is **total** subrequests per invocation, not peak concurrency. Each OpenNext Blob `fetch` also does an ASSETS incremental-cache GET. After #455 `mapLimit`, CF `/rankings` still blew the cap on assignment shards; it now skips assignment fan-out (language exits remain) and caps month/week lookback at 1. After #458, ranking-detail / repo / org also skip full 32-shard assignment fan-out on CF (prefer page-id `getCategoryAssignmentsForRepos`; otherwise `assignments=null`; language exits remain). Full `getCategoryAssignments` / `loadCategoryAssignments` omit-path is hard-short-circuited on the CF host. v1 monolith stays a single GET. |
 
 This PR does **not** claim the Worker is ready to take apex/www traffic.
 

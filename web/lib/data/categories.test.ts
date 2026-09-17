@@ -79,12 +79,14 @@ describe("loadCategoryAssignments shard fan-out", () => {
     expect(result).toEqual(assignments);
   });
 
-  test("CF host never starts more than the tighter shard concurrency", async () => {
-    process.env.HOSTING_TARGET = "cf";
-    const { maxInFlight, shardReads } = await loadWithProbe();
-    expect(maxInFlight).toBeLessThanOrEqual(CATEGORY_ASSIGNMENT_SHARD_READ_CONCURRENCY_CF);
-    expect(maxInFlight).toBe(CATEGORY_ASSIGNMENT_SHARD_READ_CONCURRENCY_CF);
-    expect(shardReads).toBe(CATEGORY_ASSIGNMENT_SHARD_COUNT);
+  test("CF host skips a full 32-shard assemble with 0 index or shard reads", async () => {
+    const env = { HOSTING_TARGET: "cf" };
+    expect(shouldSkipCategoryAssignmentShardFanOut(undefined, env)).toBe(true);
+    const { maxInFlight, shardReads, paths, result } = await loadWithProbe({ env });
+    expect(result).toBeNull();
+    expect(shardReads).toBe(0);
+    expect(maxInFlight).toBe(0);
+    expect(paths).toEqual([]);
   });
 
   test("v1 monolith is used as-is and starts no shard reads", async () => {
@@ -108,10 +110,11 @@ describe("loadCategoryAssignments shard fan-out", () => {
   });
 
   test("CF host skips rankings-style repo-id selection with 0 shard reads", async () => {
-    process.env.HOSTING_TARGET = "cf";
-    expect(shouldSkipCategoryAssignmentShardFanOut({ repoIds: [1, 33, 32] })).toBe(true);
-    expect(shouldSkipCategoryAssignmentShardFanOut()).toBe(false);
-    const { maxInFlight, shardReads, paths, result } = await loadWithProbe({ repoIds: [1, 33, 32] });
+    const env = { HOSTING_TARGET: "cf" };
+    expect(shouldSkipCategoryAssignmentShardFanOut({ repoIds: [1, 33, 32] }, env)).toBe(true);
+    expect(shouldSkipCategoryAssignmentShardFanOut(undefined, env)).toBe(true);
+    expect(shouldSkipCategoryAssignmentShardFanOut(undefined, { HOSTING_TARGET: "vercel" })).toBe(false);
+    const { maxInFlight, shardReads, paths, result } = await loadWithProbe({ repoIds: [1, 33, 32], env });
     expect(result).toBeNull();
     expect(shardReads).toBe(0);
     expect(maxInFlight).toBe(0);
@@ -152,6 +155,7 @@ async function loadWithProbe(args?: {
   document?: CategoryAssignmentsData | CategoryAssignmentsIndexData;
   repoIds?: readonly number[];
   resetMemo?: boolean;
+  env?: { HOSTING_TARGET?: string; VERCEL_ENV?: string };
 }): Promise<{
   maxInFlight: number;
   shardReads: number;
@@ -180,7 +184,13 @@ async function loadWithProbe(args?: {
     return schema.parse(shard);
   };
 
-  const result = await loadCategoryAssignments(read, {}, "omit", args?.repoIds ? { repoIds: args.repoIds } : undefined);
+  const result = await loadCategoryAssignments(
+    read,
+    {},
+    "omit",
+    args?.repoIds ? { repoIds: args.repoIds } : undefined,
+    args?.env,
+  );
   return { maxInFlight, shardReads, paths, result };
 }
 
