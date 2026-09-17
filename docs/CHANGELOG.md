@@ -1,7 +1,7 @@
 ---
 owner: release history
 status: active
-last_reviewed: 2026-09-06
+last_reviewed: 2026-09-17
 source_of_truth_for:
   - versioned release history
   - shipped changes
@@ -18,6 +18,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 ## Unreleased
 
 ### Added
+
+- **Cloudflare migrate P2 ISR / Preview / observability.** Injectable `cache-invalidation` port wraps `revalidatePath` / `revalidateTag` (Vercel default; `cf-stub` is non-production and testable). Preview resolution accepts `PREVIEW_TARGET=vercel|cf`; production gates stay on Vercel. Optional `verify / cf-preview` job is **not** a required check. Access is documented only for `gitstarclub-web.worldgo.workers.dev` (`gitstarclub-web-preview`, `@zksc.io` OTP, CI Service Token env names `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`). Operators use Workers Observability + self-built run logs instead of the Vercel Workflows UI. See [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md). Does not cut DNS.
 
 - **Cloudflare migrate P1 workflow runtime.** Managed refresh no longer hard-depends on the Vercel Workflow SDK (`workflow/api`, `"use workflow"`, `"use step"`). Steps are ordinary async functions with explicit retry, scheduled by `startRefresh` / `enqueueStep` / `completeStep`. Tests drain an in-memory shrink fixture through the P0 storage port (lease CAS + views). Non-production CF Cron/Queue lives in `workers/gitstarclub-web/`. Production scheduling stays the three Vercel crons in `web/vercel.json`. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Does not cut DNS.
 

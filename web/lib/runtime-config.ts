@@ -191,3 +191,77 @@ export function requireCronSecret(env: RuntimeEnv = process.env): string {
 export function getVercelAutomationBypassSecret(env: RuntimeEnv = process.env): string | undefined {
   return env.VERCEL_AUTOMATION_BYPASS_SECRET || undefined;
 }
+
+export type CacheInvalidationKind = "vercel" | "memory" | "cf-stub";
+export type PreviewTarget = "vercel" | "cf";
+
+export const DEFAULT_CF_PREVIEW_ORIGIN = "https://gitstarclub-web.worldgo.workers.dev";
+
+export function getCacheInvalidationKind(env: RuntimeEnv = process.env): CacheInvalidationKind {
+  const raw = normalizeDriver(env.CACHE_INVALIDATION_DRIVER);
+  if (!raw || raw === "vercel") return "vercel";
+  if (raw === "memory") return "memory";
+  if (raw === "cf-stub") return "cf-stub";
+  throw new Error(`CACHE_INVALIDATION_DRIVER must be vercel | memory | cf-stub (got ${raw})`);
+}
+
+export function getCfCachePurgeUrl(env: RuntimeEnv = process.env): string | undefined {
+  const value = (env.CF_CACHE_PURGE_URL ?? "").trim();
+  return value || undefined;
+}
+
+export function assertCacheInvalidationAllowed(env: RuntimeEnv = process.env): void {
+  const kind = getCacheInvalidationKind(env);
+  if (!isVercelProduction(env)) return;
+  if (kind === "vercel") return;
+  throw new Error(
+    `refusing CACHE_INVALIDATION_DRIVER=${kind}: VERCEL_ENV=production keeps Next revalidatePath/Tag (P2)`,
+  );
+}
+
+export function getPreviewTarget(env: RuntimeEnv = process.env): PreviewTarget {
+  const raw = normalizeDriver(env.PREVIEW_TARGET);
+  if (!raw || raw === "vercel") return "vercel";
+  if (raw === "cf") return "cf";
+  throw new Error(`PREVIEW_TARGET must be vercel | cf (got ${raw})`);
+}
+
+export function assertPreviewTargetAllowed(env: RuntimeEnv = process.env): void {
+  const target = getPreviewTarget(env);
+  if (!isVercelProduction(env)) return;
+  if (target === "vercel") return;
+  throw new Error("refusing PREVIEW_TARGET=cf: VERCEL_ENV=production keeps Vercel preview/product-gates (P2)");
+}
+
+export function getCfPreviewOrigin(env: RuntimeEnv = process.env): string {
+  const explicit = (env.CF_PREVIEW_ORIGIN ?? "").trim().replace(/\/+$/, "");
+  return explicit || DEFAULT_CF_PREVIEW_ORIGIN;
+}
+
+export function getCfAccessClientId(env: RuntimeEnv = process.env): string | undefined {
+  const value = (env.CF_ACCESS_CLIENT_ID ?? "").trim();
+  return value || undefined;
+}
+
+export function getCfAccessClientSecret(env: RuntimeEnv = process.env): string | undefined {
+  const value = (env.CF_ACCESS_CLIENT_SECRET ?? "").trim();
+  return value || undefined;
+}
+
+export function getCfPreviewRequireSha(env: RuntimeEnv = process.env): boolean {
+  return env.CF_PREVIEW_REQUIRE_SHA === "1";
+}
+
+export function requireCfAccessCredentials(env: RuntimeEnv = process.env): {
+  clientId: string;
+  clientSecret: string;
+} {
+  const clientId = getCfAccessClientId(env);
+  const clientSecret = getCfAccessClientSecret(env);
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET are required to reach the Access-protected CF Preview host",
+    );
+  }
+  return { clientId, clientSecret };
+}

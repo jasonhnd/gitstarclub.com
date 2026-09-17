@@ -14,7 +14,7 @@ verifier:
   model: "claude-opus-4-8[1m]"
   reasoning_effort: max
 ci:
-  checks: [static, production-build, preview-e2e, product-gates]  # product-gates = live #286 search/freshness/continuity
+  checks: [static, production-build, preview-e2e, product-gates]  # product-gates = live #286; cf-preview is optional dual-run and MUST NOT be added here
 verification:
   browser:
     enabled: auto        # browser-verify UI changes automatically

@@ -41,7 +41,7 @@ gitstarclub/
 │   ├── backfill/                  Step scripts 01-whitelist → 07-export-v2
 │   ├── data/                      Bootstrap inputs/outputs (gitignored)
 │   └── lib/                       Shared bootstrap utilities
-├── workers/gitstarclub-web/       Non-production CF Cron / Queue shell (P1; production cron stays Vercel)
+├── workers/gitstarclub-web/       Non-production CF Cron / Queue / Preview shell (P1–P2; production cron and Preview gates stay Vercel)
 └── web/                           Next.js 16 application
     ├── app/
     │   ├── page.tsx               Home (Pulse)
@@ -72,6 +72,8 @@ gitstarclub/
     │   ├── compare/               Compare normalization core (URL parse, alignment, palette)
     │   ├── i18n/                  Seven-locale chrome dictionaries + client runtime hooks
     │   ├── observability/         Health and alert helpers
+    │   ├── cache-invalidation/    ISR port (Vercel default; CF stub is non-production)
+    │   ├── preview/               Pluggable Vercel|CF Preview + Access headers
     │   ├── cron/                  Live-refresh helpers
     │   └── integration/           Cross-module integration + smoke tests
     └── vercel.json                Cron schedule

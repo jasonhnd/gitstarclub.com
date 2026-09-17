@@ -8,9 +8,16 @@ import {
   getR2KeyPrefix,
   getStorageReadDriver,
   getStorageWriteDriver,
+  getCacheInvalidationKind,
+  getCfPreviewOrigin,
+  getCfPreviewRequireSha,
+  getPreviewTarget,
   getWorkflowQueueEnqueueUrl,
   getWorkflowRuntimeKind,
   getWorkflowStepBaseUrl,
+  assertCacheInvalidationAllowed,
+  assertPreviewTargetAllowed,
+  DEFAULT_CF_PREVIEW_ORIGIN,
   requireBlobBaseUrl,
   requireBlobWriteToken,
   requireCronSecret,
@@ -137,5 +144,27 @@ describe("workflow runtime config", () => {
       "https://pre.gitstarclub.com",
     );
     expect(() => requireCronSecret({})).toThrow("CRON_SECRET not set");
+  });
+});
+
+describe("P2 cache-invalidation and preview config", () => {
+  test("defaults cache invalidation and preview target to Vercel", () => {
+    expect(getCacheInvalidationKind({})).toBe("vercel");
+    expect(getPreviewTarget({})).toBe("vercel");
+    expect(getCfPreviewOrigin({})).toBe(DEFAULT_CF_PREVIEW_ORIGIN);
+    expect(getCfPreviewOrigin({ CF_PREVIEW_ORIGIN: "https://example.workers.dev/" })).toBe(
+      "https://example.workers.dev",
+    );
+    expect(getCfPreviewRequireSha({})).toBe(false);
+    expect(getCfPreviewRequireSha({ CF_PREVIEW_REQUIRE_SHA: "1" })).toBe(true);
+  });
+
+  test("refuses CF-only drivers as the production source of truth", () => {
+    expect(() => assertCacheInvalidationAllowed({ CACHE_INVALIDATION_DRIVER: "cf-stub", VERCEL_ENV: "production" })).toThrow(
+      "CACHE_INVALIDATION_DRIVER",
+    );
+    expect(() => assertPreviewTargetAllowed({ PREVIEW_TARGET: "cf", VERCEL_ENV: "production" })).toThrow("PREVIEW_TARGET");
+    expect(() => assertCacheInvalidationAllowed({ VERCEL_ENV: "production" })).not.toThrow();
+    expect(() => assertPreviewTargetAllowed({ VERCEL_ENV: "production" })).not.toThrow();
   });
 });
