@@ -79,12 +79,14 @@ describe("loadCategoryAssignments shard fan-out", () => {
     expect(result).toEqual(assignments);
   });
 
-  test("CF host never starts more than the tighter shard concurrency", async () => {
+  test("CF host skips a full 32-shard assemble with 0 index or shard reads", async () => {
     process.env.HOSTING_TARGET = "cf";
-    const { maxInFlight, shardReads } = await loadWithProbe();
-    expect(maxInFlight).toBeLessThanOrEqual(CATEGORY_ASSIGNMENT_SHARD_READ_CONCURRENCY_CF);
-    expect(maxInFlight).toBe(CATEGORY_ASSIGNMENT_SHARD_READ_CONCURRENCY_CF);
-    expect(shardReads).toBe(CATEGORY_ASSIGNMENT_SHARD_COUNT);
+    expect(shouldSkipCategoryAssignmentShardFanOut()).toBe(true);
+    const { maxInFlight, shardReads, paths, result } = await loadWithProbe();
+    expect(result).toBeNull();
+    expect(shardReads).toBe(0);
+    expect(maxInFlight).toBe(0);
+    expect(paths).toEqual([]);
   });
 
   test("v1 monolith is used as-is and starts no shard reads", async () => {
@@ -110,7 +112,8 @@ describe("loadCategoryAssignments shard fan-out", () => {
   test("CF host skips rankings-style repo-id selection with 0 shard reads", async () => {
     process.env.HOSTING_TARGET = "cf";
     expect(shouldSkipCategoryAssignmentShardFanOut({ repoIds: [1, 33, 32] })).toBe(true);
-    expect(shouldSkipCategoryAssignmentShardFanOut()).toBe(false);
+    expect(shouldSkipCategoryAssignmentShardFanOut()).toBe(true);
+    expect(shouldSkipCategoryAssignmentShardFanOut(undefined, { HOSTING_TARGET: "vercel" })).toBe(false);
     const { maxInFlight, shardReads, paths, result } = await loadWithProbe({ repoIds: [1, 33, 32] });
     expect(result).toBeNull();
     expect(shardReads).toBe(0);
