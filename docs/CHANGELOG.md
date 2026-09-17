@@ -48,6 +48,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Fixed
 
+- **OpenNext ranking-detail / repo / org skip full assignment-shard fan-out on the CF host.** After #457, `/rankings` is 200 but those three pages still called `getCategoryAssignments()` (32 shards). CF now skips that fan-out (language exits remain); Vercel loads only the page's repo-id shards. Full omit-path `loadCategoryAssignments` is hard-short-circuited on `HOSTING_TARGET=cf`. Does not cut DNS.
 - **OpenNext `/rankings` skips assignment-shard fan-out on the CF host (v2).** Free Workers count total subrequests (~50), not peak concurrency; each Blob `fetch` also does an OpenNext ASSETS cache GET. CF `/rankings` no longer calls the leading-row assignment loader (language exits remain) and caps month/week lookback at 1. Vercel `/rankings` is unchanged. Does not cut DNS.
 - **OpenNext `/rankings` no longer fans out 32 assignment-shard reads in one Worker invocation.** `loadCategoryAssignments` batches shard GETs (concurrency 6, 4 on `HOSTING_TARGET=cf`) and memoizes a full assemble per isolate. `/rankings` loads assignments after the core views and only the shards needed for leading rows. Avoids `Too many subrequests by single Worker invocation`. Does not cut DNS.
 - **Static data exports regenerated after `refresh-2026-09-06`.** `web/public/data/exports/v1/2026-09-06/` tracks Blob view `generated_at` (`data_as_of` 2026-09-06T06:37:28.831Z) so live `export-manifest-age` stays inside 14 days. No invented freshness date.

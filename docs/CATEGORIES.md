@@ -409,7 +409,8 @@ into that same caller-facing shape. Index-mode readers batch shard GETs
 (concurrency 6, or 4 on `HOSTING_TARGET=cf`). Vercel `/rankings` only
 fetches shards for leading rows; CF `/rankings` skips assignment fan-out
 because free Workers count total subrequests (~50) and OpenNext ASSETS
-cache GETs already spend the first wave. ISR pages must not switch this read to
+cache GETs already spend the first wave. Ranking-detail / repo / org do the
+same on CF (page-id shards on Vercel; language exits remain). ISR pages must not switch this read to
 `no-store`.
 
 Suggested v2 index:

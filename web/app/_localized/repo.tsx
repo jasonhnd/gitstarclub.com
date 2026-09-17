@@ -12,7 +12,8 @@ import { RelatedPages, type RelatedPageItem } from "@/app/_explore/RelatedPages"
 import { ShareButton } from "@/app/_explore/ShareButton";
 import { Star } from "@/app/_explore/Star";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { DAILY_BASE_VIEW_TTL_MS, getRepoIdByFullNameDaily, getRepoPageEntityDaily, getAliasMapDaily, getReposLookupDaily, getCategoryAssignments, getCategoryRegistry, getMeta } from "@/lib/data";
+import { DAILY_BASE_VIEW_TTL_MS, getRepoIdByFullNameDaily, getRepoPageEntityDaily, getAliasMapDaily, getReposLookupDaily, getCategoryAssignmentsForRepos, getCategoryRegistry, getMeta } from "@/lib/data";
+import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { fmtStars, ymParts, monthYearLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { repoLd, type FaqItem } from "@/lib/jsonld";
@@ -92,10 +93,11 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
   const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
   const id = await resolveRepoId(fullName, locale);
   if (id === undefined) notFound();
+  // CF: skip assignment shards (language chips stay). Vercel: this repo's bucket only.
   const [repo, lookup, assignments, registry, meta] = await Promise.all([
     getRepoPageEntityDaily(id),
     getReposLookupDaily(),
-    getCategoryAssignments(),
+    isCloudflareWorkersHost() ? Promise.resolve(null) : getCategoryAssignmentsForRepos([id]),
     getCategoryRegistry(),
     getMeta(DAILY_BASE_VIEW_TTL_MS),
   ]);
