@@ -42,6 +42,18 @@ export type LoadCategoryAssignmentsOptions = {
   repoIds?: readonly number[];
 };
 
+/**
+ * CF free Workers count total subrequests (~50), not peak concurrency.
+ * Rankings-style `repoIds` selection must not fan out shards (or even the index)
+ * on that host; language exits do not need assignments.
+ */
+export function shouldSkipCategoryAssignmentShardFanOut(
+  selection?: LoadCategoryAssignmentsOptions,
+  env: Parameters<typeof isCloudflareWorkersHost>[0] = process.env,
+): boolean {
+  return selection?.repoIds != null && isCloudflareWorkersHost(env);
+}
+
 type AssignmentsMemo = { key: string; value: CategoryAssignmentsData };
 let assembledAssignmentsMemo: AssignmentsMemo | null = null;
 
@@ -64,6 +76,7 @@ export async function loadCategoryAssignments(
   missingShards: "omit" | "throw",
   selection?: LoadCategoryAssignmentsOptions,
 ): Promise<CategoryAssignmentsData | null> {
+  if (shouldSkipCategoryAssignmentShardFanOut(selection)) return null;
   const document = await read("categories/assignments.json", CategoryAssignmentsDocument, opts);
   if (document === null) return null;
   // v1 monolith (or any non-index document): one GET, no shard fan-out. Prefer this on CF when Blob still has it.

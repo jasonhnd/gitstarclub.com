@@ -31,6 +31,18 @@ describe("rankingCategoryExits", () => {
     expect(links.map((link) => link.id)).toEqual([]);
   });
 
+  test("keeps language exits when assignments are null", () => {
+    const links = rankingCategoryExits(
+      [
+        { id: 1, language: "TypeScript" },
+        { id: 2, language: "Go" },
+      ],
+      registryFixture(),
+      null,
+    );
+    expect(links.map((link) => link.id)).toEqual(["language/go", "language/typescript"]);
+  });
+
   test("returns nothing without a registry and stays bounded", () => {
     expect(rankingCategoryExits([{ language: "TypeScript" }], null)).toEqual([]);
     const many = Array.from({ length: 20 }, (_, index) => ({ id: index + 1, language: `Lang${index}` }));
