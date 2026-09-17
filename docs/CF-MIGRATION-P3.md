@@ -169,7 +169,7 @@ Known limits (write these on the PR; they are not a DNS-cut claim):
 |---|---|---|
 | Worker isolate memory | 128 MiB | Large view reads stay on Blob/CDN; do not load the search index into a second Data Cache |
 | Worker CPU | tens of seconds on paid; much less on free | Preview only; production cron stays Vercel |
-| Worker script size | 3 MiB gzip free / 10 MiB gzip paid | OpenNext server bundle + wrapper; static HTML is **assets**, not script |
+| Worker script size | 3 MiB gzip free / 10 MiB gzip paid | Measured dry-run (2026-09-17): **27 520 KiB / gzip 5 608 KiB** — over free, under paid. Static HTML is **assets**, not script |
 | Static assets | separate from script size | Home / rankings prerender live here |
 | `next build` heap | CI uses `NODE_OPTIONS=--max-old-space-size=8192` on the optional job | Same class of memory as `verify / production-build` |
 | OpenNext R2 cache populate + Access | helper Worker `open-next-cache-populate` is Access-blocked | P3 uses Static Assets incremental cache instead |
