@@ -41,7 +41,7 @@ gitstarclub/
 │   ├── backfill/                  Step scripts 01-whitelist → 07-export-v2
 │   ├── data/                      Bootstrap inputs/outputs (gitignored)
 │   └── lib/                       Shared bootstrap utilities
-├── workers/gitstarclub-web/       Non-production CF Worker: P1–P2 Cron/Queue/Preview shell + P3 OpenNext Next host (production apex/www stay Vercel)
+├── workers/gitstarclub-web/       CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (pre). Apex/www stay Vercel.
 └── web/                           Next.js 16 application
     ├── app/
     │   ├── page.tsx               Home (Pulse)
@@ -89,6 +89,15 @@ gitstarclub/
 | `/api/workflows/refresh/start` | `0 6 * * 0` | Full recompute (no Workflow SDK): whitelist → rename → metadata → fold → recompute → buildAliases → validate → publish → gc |
 
 See [docs/OPS.md](docs/OPS.md) for details and the manual-trigger runbook.
+
+## Cloudflare Workers (`main` / `pre`)
+
+| Git branch | Cloudflare Worker | Rule |
+|---|---|---|
+| `main` | `gitstarclub-web` | Production Worker only. GitHub Actions must not `wrangler deploy` this name except `--dry-run`. Production `gitstarclub-web.worldgo.workers.dev` is closed. |
+| `pre` | `gitstarclub-web-pre` | Preview Worker (`wrangler` env `pre`). Optional CI probe / dry-run only. |
+
+`CF_PREVIEW_ORIGIN` defaults to `https://gitstarclub-web-pre.worldgo.workers.dev` (equivalent documented preview entry: `https://pre.gitstarclub.com`). Optional `verify / cf-preview` and `verify / cf-workers-host` jobs are **not** required checks. See [docs/OPS.md](docs/OPS.md).
 
 ## Running locally
 

@@ -1,7 +1,7 @@
 ---
 owner: docs / maintenance
 status: active
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-18
 source_of_truth_for:
   - documentation index
   - documentation ownership map
@@ -182,7 +182,8 @@ source_of_truth_for:
 - When a piece of open work moves into the backlog or its blocking decision changes, update ROADMAP.
 - Core owner docs that describe current behavior open with a `## Scope` section that states their responsibility and what is out of scope. Appendices, changelogs, and decision records must make their status clear in frontmatter and their first section.
 - `bun run lint:docs` validates Markdown/frontmatter, backticked repository paths,
-  environment-variable coverage, route ownership, API route coverage, and pinned
-  framework facts. Historical path references are exempt only through the
-  reasoned allowlist in `scripts/check-docs.mjs`; current-state docs cannot opt
-  out silently.
+  environment-variable coverage, route ownership, API route coverage, pinned
+  framework facts, and the CF CI gates in `scripts/assert-cf-ci-gates.mjs`
+  (preview Worker `gitstarclub-web-pre`; no live GHA deploy of `gitstarclub-web`).
+  Historical path references are exempt only through the reasoned allowlist in
+  `scripts/check-docs.mjs`; current-state docs cannot opt out silently.
