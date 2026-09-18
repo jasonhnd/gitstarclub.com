@@ -1,7 +1,7 @@
 ---
 owner: operations / workflows
 status: active
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-18
 source_of_truth_for:
   - Cloudflare migrate P1 workflow runtime
   - non-production CF Cron / Queue orchestration
@@ -25,8 +25,9 @@ This document owns the P1 orchestration change added in
 - In-memory implementation for tests
 - HTTP self-chain for the existing Vercel start route
 - Optional CF Queues adapter (`WORKFLOW_RUNTIME=cf-queue`)
-- Non-production Worker (`gitstarclub-web`) that can Cron/manual-start and
-  consume one Queue message
+- Preview Worker (`gitstarclub-web-pre`, wrangler env `pre`) that can
+  Cron/manual-start and consume one Queue message. Production Worker name
+  remains `gitstarclub-web` (main only).
 - Shrink fixture (`graph: "fixture"`) that writes lease + views through the P0
   storage port
 
@@ -85,7 +86,7 @@ mean Vercel Blob, which is enough to accept the orchestration.
 If a non-production CF Cron or Queue consumer is enabled and misbehaves:
 
 1. Disable the Worker cron (empty `triggers.crons` on `gitstarclub-web`, or
-   remove the `nonprod` cron schedule). Do not delete the Queue.
+   remove the `pre` cron schedule). Do not delete the Queue.
 2. Leave `web/vercel.json` as the production schedule. Sunday 06:00 still hits
    `/api/workflows/refresh/start` on Vercel.
 3. Set `WORKFLOW_RUNTIME=http` (or unset it) on the Next deployment so start
@@ -102,7 +103,7 @@ deployed as a shell.
 - Tests: `web/lib/workflows/runtime/*.test.ts` drain a shrink fixture through
   `MemoryObjectStore` + `BlobWorkflowLeaseStore`. Lease CAS still wins/loses
   on ETag. No `workflow` package is required.
-- Worker `env.nonprod`: CF Cron or `GET /start` with `CRON_SECRET` enqueues
+- Worker `env.pre` (`gitstarclub-web-pre`): CF Cron or `GET /start` with `CRON_SECRET` enqueues
   one fixture job; the Queue consumer advances one step per message.
 - Manual start against a Preview deployment: `GET /api/workflows/refresh/start`
   with `Authorization: Bearer <CRON_SECRET>` still returns immediately after

@@ -155,6 +155,8 @@ describe("P2 cache-invalidation and preview config", () => {
   test("defaults cache invalidation and preview target to Vercel", () => {
     expect(getCacheInvalidationKind({})).toBe("vercel");
     expect(getPreviewTarget({})).toBe("vercel");
+    expect(DEFAULT_CF_PREVIEW_ORIGIN).toBe("https://gitstarclub-web-pre.worldgo.workers.dev");
+    expect(DEFAULT_CF_PREVIEW_ORIGIN).not.toBe("https://gitstarclub-web.worldgo.workers.dev");
     expect(getCfPreviewOrigin({})).toBe(DEFAULT_CF_PREVIEW_ORIGIN);
     expect(getCfPreviewOrigin({ CF_PREVIEW_ORIGIN: "https://example.workers.dev/" })).toBe(
       "https://example.workers.dev",
