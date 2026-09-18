@@ -209,7 +209,9 @@ export type CacheInvalidationKind = "vercel" | "memory" | "cf-stub";
 export type PreviewTarget = "vercel" | "cf";
 export type HostingTarget = "vercel" | "cf";
 
-export const DEFAULT_CF_PREVIEW_ORIGIN = "https://gitstarclub-web.worldgo.workers.dev";
+// Preview Worker gitstarclub-web-pre only. Production workers.dev
+// (gitstarclub-web.worldgo.workers.dev) is closed and must not be the default.
+export const DEFAULT_CF_PREVIEW_ORIGIN = "https://gitstarclub-web-pre.worldgo.workers.dev";
 
 export function getCacheInvalidationKind(env: RuntimeEnv = process.env): CacheInvalidationKind {
   const raw = normalizeDriver(env.CACHE_INVALIDATION_DRIVER);

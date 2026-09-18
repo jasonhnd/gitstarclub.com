@@ -36,6 +36,9 @@ jobs:
       - name: Assert pinned runtime versions
         working-directory: .
         run: node scripts/assert-runtime-versions.mjs
+      - name: Assert CF CI deploy gates
+        working-directory: .
+        run: node scripts/assert-cf-ci-gates.mjs
       - run: bun install --frozen-lockfile
       - run: bun run audit:deps
       - run: bun install --frozen-lockfile
@@ -293,14 +296,16 @@ jobs:
   # Optional CF Preview dual-run (P2). NOT a production required check.
   # Do not add this job name to .delivery.yml or GitHub required status checks.
   # Enable with repo variable CF_PREVIEW_ENABLED=1 and Access Service Token secrets.
+  # Allowlist: `pre` branch or PRs targeting `pre` only. Probe the preview Worker
+  # gitstarclub-web-pre — never the closed production workers.dev host.
   cf-preview:
     name: cf-preview
-    if: ${{ vars.CF_PREVIEW_ENABLED == '1' }}
+    if: ${{ vars.CF_PREVIEW_ENABLED == '1' && (github.ref_name == 'pre' || github.base_ref == 'pre') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       PREVIEW_TARGET: cf
-      CF_PREVIEW_ORIGIN: ${{ vars.CF_PREVIEW_ORIGIN || 'https://gitstarclub-web.worldgo.workers.dev' }}
+      CF_PREVIEW_ORIGIN: ${{ vars.CF_PREVIEW_ORIGIN || 'https://gitstarclub-web-pre.worldgo.workers.dev' }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -321,6 +326,15 @@ jobs:
         working-directory: .
         run: node scripts/assert-runtime-versions.mjs
       - run: bun install --frozen-lockfile
+      - name: Assert CF preview origin is not closed production workers.dev
+        run: |
+          case "${CF_PREVIEW_ORIGIN}" in
+            https://gitstarclub-web.worldgo.workers.dev|https://gitstarclub-web.worldgo.workers.dev/)
+              echo "::error::CF_PREVIEW_ORIGIN must not point at the closed production workers.dev host"
+              exit 1
+              ;;
+          esac
+          echo "CF_PREVIEW_ORIGIN=${CF_PREVIEW_ORIGIN}"
       - name: Resolve CF Preview identity
         id: deployment
         env:
@@ -339,16 +353,23 @@ jobs:
             echo
             echo "- Tested commit: \`$TESTED_SHA\`"
             echo "- CF Preview origin: ${DEPLOYMENT_URL:-not resolved}"
+            echo "- Default probe: https://gitstarclub-web-pre.worldgo.workers.dev (Worker gitstarclub-web-pre)"
             echo "- Access: Service Token headers CF-Access-Client-Id / CF-Access-Client-Secret"
             echo "- Production gates remain verify / static, production-build, preview-e2e, product-gates on Vercel"
+            echo "- Do not add this job to required checks"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Optional CF Workers host preview build (P3 / OpenNext). NOT a production required check.
   # Do not add this job name to .delivery.yml or GitHub required status checks.
   # Enable with repo variable CF_WORKERS_HOST_ENABLED=1. Does not require Access.
+  # Allowlist: `pre` branch or PRs targeting `pre` only. bun run cf:dry-run is
+  # wrangler deploy --dry-run --env pre (Worker gitstarclub-web-pre). Removing
+  # --dry-run must not target production Worker gitstarclub-web; the wrapper
+  # refuses a live deploy of that name. GHA must never wrangler deploy without
+  # --dry-run.
   cf-workers-host:
     name: cf-workers-host
-    if: ${{ vars.CF_WORKERS_HOST_ENABLED == '1' }}
+    if: ${{ vars.CF_WORKERS_HOST_ENABLED == '1' && (github.ref_name == 'pre' || github.base_ref == 'pre') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -397,7 +418,9 @@ jobs:
             echo
             echo "- Tested commit: \`$TESTED_SHA\`"
             echo "- Adapter: OpenNext (\`@opennextjs/cloudflare\`) wrapping \`workers/gitstarclub-web\`"
+            echo "- Wrangler env: \`pre\` (Worker \`gitstarclub-web-pre\`)"
             echo "- Access: not required for this build"
-            echo "- Deploy: dry-run only (does not cut DNS, does not replace Vercel production)"
+            echo "- Deploy: dry-run only via \`scripts/cf-wrangler-dry-run.mjs\` (never live-deploys \`gitstarclub-web\`)"
             echo "- Production gates remain verify / static, production-build, preview-e2e, product-gates on Vercel"
+            echo "- Do not add this job to required checks"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -1,7 +1,7 @@
 ---
 owner: operations / preview
 status: active
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-18
 source_of_truth_for:
   - Cloudflare migrate P2 cache-invalidation port
   - non-production CF Preview + Access login path
@@ -30,7 +30,8 @@ This document owns the P2 change added in `web/lib/cache-invalidation/`,
 - Vercel driver remains the default (production and unset env)
 - CF driver is a testable stub (`cf-stub`); it does not call Cache Purge
 - Preview target `PREVIEW_TARGET=vercel` (default) or `cf`
-- Cloudflare Access on `gitstarclub-web.worldgo.workers.dev` only
+- Cloudflare Access on `gitstarclub-web-pre.worldgo.workers.dev` only
+  (preview Worker `gitstarclub-web-pre`; production workers.dev is closed)
 - Optional GitHub Actions job `verify / cf-preview` (not a production required check)
 - Workers Observability + structured Worker run logs
 
@@ -44,10 +45,11 @@ Prepared Cloudflare resources (documentation only; production Preview and
 product-gates stay on Vercel):
 
 - Access application: `gitstarclub-web-preview`
-- Protected host: `gitstarclub-web.worldgo.workers.dev` (no apex / www)
+- Protected host: `gitstarclub-web-pre.worldgo.workers.dev` (no apex / www)
 - Allow: `@zksc.io` via the existing OTP IdP
 - CI Service Token name: `gitstarclub-cca-ci` (secrets stay in GitHub / CF; not in git)
-- Worker: `gitstarclub-web` (`observability.enabled` already on)
+- Worker: production `gitstarclub-web` (main); preview `gitstarclub-web-pre`
+  (`observability.enabled` already on)
 
 ## Production source of truth
 
@@ -92,7 +94,7 @@ replace the stub. Dual-run optional POST body:
 
 Humans (non-production only):
 
-1. Open `https://gitstarclub-web.worldgo.workers.dev/preview/identity`
+1. Open `https://gitstarclub-web-pre.worldgo.workers.dev/preview/identity`
    (or `/preview/health`).
 2. Cloudflare Access prompts for the existing OTP IdP.
 3. Sign in with an `@zksc.io` mailbox. Access application name:
@@ -129,16 +131,16 @@ Worker routes behind Access:
 ## Optional CI job
 
 `verify / cf-preview` in `.github/workflows/ci.yml` runs **only** when the
-repository variable `CF_PREVIEW_ENABLED` is `1`. It is omitted from
-`.delivery.yml` and must not be added to the GitHub required-check ruleset
-that protects `pre` / `main`.
+repository variable `CF_PREVIEW_ENABLED` is `1` **and** the event is on `pre`
+or a PR targeting `pre`. It is omitted from `.delivery.yml` and must not be
+added to the GitHub required-check ruleset that protects `pre` / `main`.
 
 When enabled, configure:
 
 | Name | Where | Purpose |
 |---|---|---|
 | `CF_PREVIEW_ENABLED` | GitHub Actions variable | `"1"` to run the job |
-| `CF_PREVIEW_ORIGIN` | GitHub Actions variable (optional) | Default `https://gitstarclub-web.worldgo.workers.dev` |
+| `CF_PREVIEW_ORIGIN` | GitHub Actions variable (optional) | Default `https://gitstarclub-web-pre.worldgo.workers.dev` |
 | `CF_ACCESS_CLIENT_ID` | GitHub Actions secret | Service Token id (`gitstarclub-cca-ci`) |
 | `CF_ACCESS_CLIENT_SECRET` | GitHub Actions secret | Service Token secret |
 | `CRON_SECRET` | GitHub Actions secret (optional) | Enables the hot-path invalidate POST |
@@ -155,7 +157,7 @@ Prefer these surfaces over the Vercel Workflows product UI (removed in P1):
    `[ALERT]` Function logs. Sunday 06:00 still uses
    `ops/workflows/health/workflow-refresh.json`.
 2. **Workers Observability (CF dual-run):** Cloudflare dashboard → Workers →
-   `gitstarclub-web` → Observability. The Worker emits JSON lines
+   `gitstarclub-web-pre` → Observability. The Worker emits JSON lines
    (`event=preview.identity` / `cache.invalidate` / `workflow.step`).
    `wrangler.jsonc` already has `observability.enabled: true`.
 3. **Do not** treat Vercel Dashboard → Observability → Workflows /

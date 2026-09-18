@@ -1,7 +1,7 @@
 ---
 owner: codebase architecture
 status: active
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-18
 source_of_truth_for:
   - code map
   - data layer ownership
@@ -64,7 +64,7 @@ GitHub APIs
 | `web/lib/preview/` | Pluggable Preview target (`vercel` \| `cf`) and Cloudflare Access Service Token headers |
 | `web/lib/workers-host/` | P3 Worker path classification and local/remote smoke origin |
 | `web/open-next.config.ts` | OpenNext Cloudflare adapter (static-assets incremental cache; preview only) |
-| `workers/gitstarclub-web/` | Non-production CF Worker: P1–P2 shell + P3 OpenNext Next host |
+| `workers/gitstarclub-web/` | CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (`env.pre`) |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
 | `docs/` | Product, architecture, data, operations, frontend, SEO, testing, and development docs |
 
@@ -106,7 +106,7 @@ Important files:
   Default is Vercel `next/cache`. The CF stub is non-production and testable;
   see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
 - `web/lib/preview/`: Preview discovery for Vercel (required gates) and
-  optional CF Access on `gitstarclub-web.worldgo.workers.dev`.
+  optional CF Access on `gitstarclub-web-pre.worldgo.workers.dev`.
 - `web/lib/workers-host/` + `workers/gitstarclub-web/`: P3 OpenNext host
   wraps the P1–P2 shell. `/` is the Next homepage; production origin stays
   Vercel. See [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md).
