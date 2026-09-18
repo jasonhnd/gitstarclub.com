@@ -1,7 +1,7 @@
 ---
 owner: operations / hosting
 status: active
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-18
 source_of_truth_for:
   - Cloudflare migrate P3 Workers hosting of the Next app
   - vinext vs OpenNext adapter choice
@@ -12,7 +12,7 @@ source_of_truth_for:
 # Cloudflare migrate P3 (Workers host / OpenNext preview)
 
 > Cloudflare migrate **P3** only: run the existing Next.js 16 app on the
-> `gitstarclub-web` Worker as a **non-production preview**. This does **not**
+> `gitstarclub-web-pre` Worker as a **non-production preview**. This does **not**
 > cut DNS, does **not** orange-cloud apex/www, does **not** make Workers the
 > production origin, does **not** change `web/vercel.json` cron, and does
 > **not** replace `.delivery.yml` required checks.
@@ -44,7 +44,8 @@ Prepared Cloudflare resources (documentation only; production apex/www stay
 Vercel):
 
 - account_id: `00f850e853e4c7f9627233d51a6e30a1`
-- Worker: `gitstarclub-web` (`gitstarclub-web.worldgo.workers.dev`)
+- Production Worker: `gitstarclub-web` (main; production workers.dev is closed)
+- Preview Worker: `gitstarclub-web-pre` (`gitstarclub-web-pre.worldgo.workers.dev`, wrangler env `pre`)
 - R2: `gitstarclub-assets` binding `MEDIA`
 - Queue: `gitstarclub-jobs` binding `JOBS`
 - Access application `gitstarclub-web-preview` may still cover workers.dev.
@@ -106,7 +107,7 @@ The Worker entry `src/index.ts` under `workers/gitstarclub-web/` classifies each
 | `GET /preview/identity`, `GET /.well-known/deployment` | Worker shell | none after Access |
 | `POST /preview/invalidate` | Worker shell | `Authorization: Bearer $CRON_SECRET` |
 | `GET\|POST /start`, `POST /enqueue` | Worker shell | `CRON_SECRET` |
-| Queue consumer / nonprod Cron | Worker shell | n/a |
+| Queue consumer / `pre` Cron | Worker shell | n/a |
 
 `GET /` is the Next homepage. The P1 start route is **`/start` only**. The
 pre-P3 shell also accepted `/` as start; that would steal the homepage.
@@ -118,7 +119,7 @@ Bindings (names only; secrets stay out of git):
 | `MEDIA` | R2 `gitstarclub-assets` | P0 object-store port / later binding reads |
 | `JOBS` | Queue `gitstarclub-jobs` | P1 refresh enqueue / consume |
 | `ASSETS` | OpenNext static assets | prerendered HTML + `/_next/static` |
-| `WORKER_SELF_REFERENCE` | `gitstarclub-web` | OpenNext self-fetch |
+| `WORKER_SELF_REFERENCE` | `gitstarclub-web` (production) / `gitstarclub-web-pre` (`env.pre`) | OpenNext self-fetch |
 
 Incremental cache is **Workers Static Assets** (`staticAssetsIncrementalCache`),
 not an R2 incremental-cache bucket. That avoids `populateCache remote`, which
@@ -152,7 +153,7 @@ From `web/`:
 bun run cf:build
 bun run cf:preview          # wrangler dev on :8787
 bun run cf:smoke            # defaults to localhost without Access
-bun run cf:dry-run          # OpenNext build + wrangler deploy --dry-run
+bun run cf:dry-run          # OpenNext build + wrangler deploy --dry-run --env pre (never live-deploys gitstarclub-web)
 ```
 
 `cf:build` wraps `opennextjs-cloudflare build` so the Next 16 Node
@@ -182,8 +183,11 @@ This PR does **not** claim the Worker is ready to take apex/www traffic.
 ## Optional CI job
 
 `verify / cf-workers-host` in `.github/workflows/ci.yml` runs **only** when
-`CF_WORKERS_HOST_ENABLED=1`. It is omitted from `.delivery.yml` and must not
-be added to the GitHub required-check ruleset that protects `pre` / `main`.
+`CF_WORKERS_HOST_ENABLED=1` **and** the event is on `pre` or a PR targeting
+`pre`. It is omitted from `.delivery.yml` and must not be added to the GitHub
+required-check ruleset that protects `pre` / `main`. The job calls
+`bun run cf:dry-run`, which is `wrangler deploy --dry-run --env pre` via
+`scripts/cf-wrangler-dry-run.mjs`. It must not live-deploy `gitstarclub-web`.
 
 When enabled:
 
@@ -204,7 +208,8 @@ If the Workers preview or optional job misbehaves:
 1. Unset GitHub variable `CF_WORKERS_HOST_ENABLED` (or delete it). The optional
    job is skipped. Do not touch `.delivery.yml` required checks.
 2. Leave the Worker deployed as a shell, or `wrangler rollback` the
-   `gitstarclub-web` Worker only. Do not change Vercel production.
+   `gitstarclub-web-pre` Worker only. Do not change Vercel production. Do not
+   roll back production `gitstarclub-web` from a preview incident.
 3. Set `HOSTING_TARGET=vercel` (or unset) on any Next deployment that
    accidentally received it.
 4. Leave `web/vercel.json`, Vercel Authentication, and production DNS exactly

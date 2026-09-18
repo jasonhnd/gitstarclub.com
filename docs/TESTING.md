@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-18
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -23,7 +23,7 @@ Out of scope: development playbooks and local workflow live in [DEVELOPMENT.md](
 
 ## Current automation
 
-GitHub Actions is committed at `.github/workflows/ci.yml`. Every job installs Node from `.node-version` (major 24) and Bun from the root `packageManager` pin (`1.3.14`), then runs `scripts/assert-runtime-versions.mjs`; a mismatch fails before project work starts. On PRs and pushes to `pre` or `main`, `verify / static` runs root `bun run lint:docs` (Markdown/frontmatter, maintained repository paths, env inventory, route/API ownership, pinned facts); from `pipeline/` it runs the dependency audit and `bun run test`; and from `web/` it runs the dependency audit, `bun run lint`, all three typechecks, exhaustive view-fixture validation, and `bun run test:cov`. It sets `SEO_LIVE_BASE=""` so network-dependent suites stay out of the deterministic gate. `verify / production-build` then runs `next build` against a bounded local HTTP fixture that permits only `GET` and `HEAD`; it receives no Blob write, cron, Workflow, Vercel, or GitHub credential, and explicitly rejects `BLOB_READ_WRITE_TOKEN`.
+GitHub Actions is committed at `.github/workflows/ci.yml`. Every job installs Node from `.node-version` (major 24) and Bun from the root `packageManager` pin (`1.3.14`), then runs `scripts/assert-runtime-versions.mjs`; a mismatch fails before project work starts. On PRs and pushes to `pre` or `main`, `verify / static` runs `scripts/assert-cf-ci-gates.mjs` (preview Worker `gitstarclub-web-pre`, no live `wrangler deploy` to `gitstarclub-web`, `CF_PREVIEW_ORIGIN` defaults to the preview host) and root `bun run lint:docs` (Markdown/frontmatter, maintained repository paths, env inventory, route/API ownership, pinned facts); from `pipeline/` it runs the dependency audit and `bun run test`; and from `web/` it runs the dependency audit, `bun run lint`, all three typechecks, exhaustive view-fixture validation, and `bun run test:cov`. It sets `SEO_LIVE_BASE=""` so network-dependent suites stay out of the deterministic gate. `verify / production-build` then runs `next build` against a bounded local HTTP fixture that permits only `GET` and `HEAD`; it receives no Blob write, cron, Workflow, Vercel, or GitHub credential, and explicitly rejects `BLOB_READ_WRITE_TOKEN`.
 
 After both jobs pass, `verify / preview-e2e` resolves the Vercel-owned preview check for the PR head or pushed SHA, waits for the preview alias to publish that exact SHA through `/.well-known/deployment` (using `VERCEL_AUTOMATION_BYPASS_SECRET` and following the bypass `_vercel_jwt` cookie because Preview is Vercel-authenticated), and re-verifies the SHA on the immutable `*.vercel.app` deployment URL before running Chromium. It runs `e2e/accessibility-responsive.spec.ts`, `e2e/horizontal-overflow.spec.ts`, and `e2e/search-compare-interactions.spec.ts`; serious or critical axe findings, explicit contrast failures, response failures, horizontal overflow, Search keyboard/focus regressions, or Search/Compare retry failures fail the job. Failed runs retain traces and screenshots plus the HTML report and deployment metadata as a GitHub Actions artifact. On `pre` and `main` pushes the same job also runs `bun test lib/integration/seo.test.ts` against that immutable deployment; preview remains noindex while production must be indexable.
 
@@ -336,8 +336,8 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 | 5. 零 JS / HTML / font budgets | `planned` | 无独立 budget gate | 目标：脚本化 structural checks，并在 gate 中阻断 |
 | 6. 跨浏览器 | `not implemented` | 无 Playwright multi-engine job | 目标：chromium / firefox / webkit 关键页与渐进增强 fallback |
 | Vercel preview visual/perf review | `manual` | Reviewer 按改动页面检查 | 不是当前自动 gate；适合在 browser tooling 落地前补充 review 信号 |
-| CF Preview Access dual-run | `report-only` | 可选 `verify / cf-preview`（`CF_PREVIEW_ENABLED=1`） | Access Service Token 探 `gitstarclub-web.worldgo.workers.dev`；**不得**替换 `preview-e2e` / `product-gates`；见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
-| CF Workers host OpenNext dry-run | `report-only` | 可选 `verify / cf-workers-host`（`CF_WORKERS_HOST_ENABLED=1`） | fixture + OpenNext + `wrangler deploy --dry-run`；**不需要 Access**；不得替换生产必过；见 [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
+| CF Preview Access dual-run | `report-only` | 可选 `verify / cf-preview`（`CF_PREVIEW_ENABLED=1`，仅 `pre`） | Access Service Token 探 `gitstarclub-web-pre.worldgo.workers.dev`；**不得**替换 `preview-e2e` / `product-gates`；**不得**加入 required checks；见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
+| CF Workers host OpenNext dry-run | `report-only` | 可选 `verify / cf-workers-host`（`CF_WORKERS_HOST_ENABLED=1`，仅 `pre`） | fixture + OpenNext + `wrangler deploy --dry-run --env pre`（Worker `gitstarclub-web-pre`）；**不需要 Access**；不得 live-deploy `gitstarclub-web`；不得替换生产必过；见 [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
 
 **节奏要点**：
 

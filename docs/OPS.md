@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-18
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -73,6 +73,26 @@ staging while logged into Vercel.
 Development flow: feature work targets `pre` through PRs into `pre`. Verify the
 merged Preview deployment at `https://pre.gitstarclub.com`. Promotion to
 production is a merge from `pre` to `main`.
+
+### Cloudflare Workers (`main` → production, `pre` → preview)
+
+These are **Cloudflare Worker names**, not the retired Vercel project also
+historically called `gitstarclub-web`. Apex / www and `pre.gitstarclub.com`
+stay on Vercel unless Jason later approves a DNS cut.
+
+| Git branch | Cloudflare Worker | wrangler env | Deploy rule |
+|---|---|---|---|
+| `main` | `gitstarclub-web` | top-level (default) | Production Worker only. GHA must never `wrangler deploy` this name except `--dry-run`. Production `gitstarclub-web.worldgo.workers.dev` is closed. |
+| `pre` | `gitstarclub-web-pre` | `pre` | Preview Worker. Optional CI dry-run / probe only; do not live-deploy from GHA. |
+
+`CF_PREVIEW_ORIGIN` (and `web/lib/runtime-config.ts` `DEFAULT_CF_PREVIEW_ORIGIN`)
+defaults to `https://gitstarclub-web-pre.worldgo.workers.dev`.
+`https://pre.gitstarclub.com` is an allowed equivalent override. Do not default
+probe/dry-run at the closed production workers.dev host.
+
+Optional `verify / cf-preview` and `verify / cf-workers-host` run only on `pre`
+(or PRs targeting `pre`). **Do not** add those job names to `.delivery.yml` or
+the GitHub required-check ruleset.
 
 **域名命名约定**：
 
@@ -147,7 +167,7 @@ an explicit recovery procedure.
 | `CACHE_INVALIDATION_DRIVER` | ISR 失效端口 | 可选（默认 `vercel`） | `vercel` \| `memory` \| `cf-stub` | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/`；生产默认 Next `revalidatePath/Tag`，`cf-stub` 仅非生产，见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
 | `CF_CACHE_PURGE_URL` | CF stub 双跑 POST URL（Worker `/preview/invalidate`） | 仅 `CACHE_INVALIDATION_DRIVER=cf-stub` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/cf-stub.ts`；不是 Cloudflare Cache Purge |
 | `PREVIEW_TARGET` | Preview 解析后端 | 可选（默认 `vercel`） | `vercel` \| `cf` | `web/lib/runtime-config.ts` · `web/lib/preview/`；生产门禁仍走 Vercel |
-| `CF_PREVIEW_ORIGIN` | 非生产 CF Preview origin | 可选（默认 `https://gitstarclub-web.worldgo.workers.dev`） | 无尾斜杠 https origin | `web/lib/runtime-config.ts`；Access 只护这个 host，不绑 apex/www |
+| `CF_PREVIEW_ORIGIN` | 非生产 CF Preview origin | 可选（默认 `https://gitstarclub-web-pre.worldgo.workers.dev`） | 无尾斜杠 https origin | `web/lib/runtime-config.ts`；默认预发 Worker `gitstarclub-web-pre`，不要指向已关的生产 `gitstarclub-web.worldgo.workers.dev`；Access 只护这个 host，不绑 apex/www |
 | `CF_ACCESS_CLIENT_ID` | CF Access Service Token id（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client ID | `web/lib/preview/access.ts`；GitHub secret 名与此相同；token 名 `gitstarclub-cca-ci`，密钥不进仓 |
 | `CF_ACCESS_CLIENT_SECRET` | CF Access Service Token secret（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client Secret | `web/lib/preview/access.ts`；头 `CF-Access-Client-Secret` |
 | `CF_PREVIEW_REQUIRE_SHA` | CF Preview 是否要求 identity SHA 对齐 | 可选（默认关闭） | 字符串 `1` 才强制 | `web/lib/runtime-config.ts` · `web/scripts/resolve-preview.ts`；Worker 未设 `CF_PREVIEW_COMMIT_SHA` 时不要开 |
@@ -454,7 +474,7 @@ Production Sunday refresh is still the Vercel cron row above. A non-production
 CF Cron on `gitstarclub-web` may also call start or enqueue a shrink fixture.
 If that CF path is enabled and must be abandoned:
 
-1. Stop the Worker cron (`triggers.crons` empty; do not keep `env.nonprod` crons).
+1. Stop the Worker cron (`triggers.crons` empty; do not keep `env.pre` crons).
 2. Set `WORKFLOW_RUNTIME=http` (or unset it) on the Next deployment.
 3. Leave `web/vercel.json` exactly as committed — daily / weekly / start stay Vercel.
 4. Do not cut DNS. Do not delete production Blob.
@@ -464,8 +484,9 @@ Full write-up: [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md).
 ### Dual-run rollback (P2 ISR / Preview)
 
 Production Preview gates and ISR invalidation stay on Vercel. A non-production
-CF Preview host (`gitstarclub-web.worldgo.workers.dev`) plus optional
-`verify / cf-preview` may dual-run Access + a cache-invalidation stub.
+CF Preview host (`gitstarclub-web-pre.worldgo.workers.dev`, Worker
+`gitstarclub-web-pre`) plus optional `verify / cf-preview` may dual-run Access
++ a cache-invalidation stub.
 
 If that CF path is enabled and must be abandoned:
 
@@ -481,15 +502,16 @@ Full write-up: [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
 ### Workers host rollback (P3 OpenNext preview)
 
 Production apex/www stay on Vercel. A non-production OpenNext host on
-`gitstarclub-web.worldgo.workers.dev` (or `wrangler preview`) may serve the
-Next app behind the existing Worker shell.
+`gitstarclub-web-pre.worldgo.workers.dev` (or `wrangler preview` with
+`--env pre`) may serve the Next app behind the existing Worker shell.
 
 If that CF host misbehaves:
 
 1. Unset GitHub variable `CF_WORKERS_HOST_ENABLED` so `verify / cf-workers-host`
    is skipped. Do not add that job to `.delivery.yml` / required checks.
-2. `wrangler rollback` the `gitstarclub-web` Worker if a bad preview version
-   was promoted. Do not change Vercel production.
+2. `wrangler rollback` the `gitstarclub-web-pre` Worker if a bad preview version
+   was promoted. Do not change Vercel production. Do not roll back production
+   `gitstarclub-web` from a preview incident.
 3. Set `HOSTING_TARGET=vercel` (or unset) on any Next deployment.
 4. Leave `web/vercel.json`, Vercel Authentication, and production DNS exactly
    as committed.
@@ -533,7 +555,7 @@ After a successful `views/latest.json` publish (cron or manual):
 |---|---|---|
 | 运行时 / build 异常 | Vercel build / function logs | 未捕获异常、route 报错、build 失败；当前没有 Sentry 集成。**不要**依赖 Vercel Workflows UI |
 | pipeline 运行记录 | **`ops/sync-runs.json` 日志**（每次每日 / 每周 job 落一条：开始 / 结束时刻、查询数、写入路径、状态） | 供对账与回溯；与 `ops/workflows/<run_id>/steps/*.json` 一起构成自建 run 日志 |
-| CF Preview 双跑 | Workers Observability（`gitstarclub-web`）+ Worker JSON `event` 行 | 仅非生产；Access 只护 `gitstarclub-web.worldgo.workers.dev`，见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
+| CF Preview 双跑 | Workers Observability（`gitstarclub-web-pre`）+ Worker JSON `event` 行 | 仅预发；Access 只护 `gitstarclub-web-pre.worldgo.workers.dev`，见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
 | CF Workers host 预览 | 同上 + OpenNext `/` `/rankings` | 仅非生产；生产仍 Vercel，见 [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
 | **数据漂移** | 比对 GraphQL 权威总数 vs adds 累加总数 | **漂移 > 阈值（如 2%）告警**，并以 GraphQL 为锚点重锚（见 ARCHITECTURE「数据校验 / 对账」） |
 | **Cron 失败** | `[ALERT]` function log + 可选 `ALERT_WEBHOOK_URL` + `sync-runs` + pipeline health | webhook 投递为 best-effort；失败或未配置时以日志和 health 为准，必要时人工补跑 |

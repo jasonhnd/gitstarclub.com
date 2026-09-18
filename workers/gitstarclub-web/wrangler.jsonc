@@ -48,16 +48,25 @@
   },
   // Production CF Cron stays off. Vercel cron in web/vercel.json remains the
   // production scheduler until Jason approves a cutover. Enable crons only on
-  // the nonprod environment below. Do not attach apex/www routes here.
+  // wrangler env `pre` (Worker gitstarclub-web-pre). The top-level name
+  // gitstarclub-web is production-only: GHA must never wrangler deploy it
+  // except --dry-run, and repo scripts refuse a live deploy of that name.
+  // Do not attach apex/www routes here.
   "triggers": {
     "crons": []
   },
   "env": {
-    "nonprod": {
-      "name": "gitstarclub-web-nonprod",
+    "pre": {
+      "name": "gitstarclub-web-pre",
       "triggers": {
         "crons": ["0 6 * * 0"]
       },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "gitstarclub-web-pre"
+        }
+      ],
       "vars": {
         "HOSTING_TARGET": "cf",
         "WORKFLOW_FIXTURE": "1"
