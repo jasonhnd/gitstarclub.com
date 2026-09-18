@@ -41,16 +41,14 @@ describe("Cloudflare Access Service Token headers", () => {
 
 describe("CF Preview probe", () => {
   const env = {
-    CF_PREVIEW_ORIGIN: "https://gitstarclub-web.worldgo.workers.dev",
+    CF_PREVIEW_ORIGIN: DEFAULT_CF_PREVIEW_ORIGIN,
     CF_ACCESS_CLIENT_ID: "access-id",
     CF_ACCESS_CLIENT_SECRET: "access-secret",
     CRON_SECRET: "cron-secret",
   };
 
-  test("defaults the Access-protected workers.dev origin", () => {
-    expect(cfPreviewUrl("/preview/identity", env)).toBe(
-      "https://gitstarclub-web.worldgo.workers.dev/preview/identity",
-    );
+  test("defaults the Access-protected preview Worker origin", () => {
+    expect(cfPreviewUrl("/preview/identity", env)).toBe(`${DEFAULT_CF_PREVIEW_ORIGIN}/preview/identity`);
     expect(cfPreviewUrl("/preview/identity", {})).toBe(`${DEFAULT_CF_PREVIEW_ORIGIN}/preview/identity`);
   });
 
@@ -67,19 +65,19 @@ describe("CF Preview probe", () => {
       }
       return Response.json({
         commitSha: "abc123",
-        deploymentUrl: "https://gitstarclub-web.worldgo.workers.dev",
-        host: "gitstarclub-web.worldgo.workers.dev",
+        deploymentUrl: DEFAULT_CF_PREVIEW_ORIGIN,
+        host: new URL(DEFAULT_CF_PREVIEW_ORIGIN).host,
       });
     });
     expect(calls).toEqual([
-      "https://gitstarclub-web.worldgo.workers.dev/preview/identity",
-      "https://gitstarclub-web.worldgo.workers.dev/.well-known/deployment",
+      `${DEFAULT_CF_PREVIEW_ORIGIN}/preview/identity`,
+      `${DEFAULT_CF_PREVIEW_ORIGIN}/.well-known/deployment`,
     ]);
     expect(identity).toEqual({
       commitSha: "abc123",
-      deploymentUrl: "https://gitstarclub-web.worldgo.workers.dev",
+      deploymentUrl: DEFAULT_CF_PREVIEW_ORIGIN,
       target: "cf",
-      host: "gitstarclub-web.worldgo.workers.dev",
+      host: new URL(DEFAULT_CF_PREVIEW_ORIGIN).host,
     });
   });
 
@@ -103,7 +101,7 @@ describe("CF Preview probe", () => {
     });
     expect(posted).toEqual([
       {
-        url: "https://gitstarclub-web.worldgo.workers.dev/preview/invalidate",
+        url: `${DEFAULT_CF_PREVIEW_ORIGIN}/preview/invalidate`,
         auth: "Bearer cron-secret",
         accessId: "access-id",
         body: {
