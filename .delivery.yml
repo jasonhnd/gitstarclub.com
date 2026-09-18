@@ -14,7 +14,7 @@ verifier:
   model: "claude-opus-4-8[1m]"
   reasoning_effort: max
 ci:
-  checks: [static, production-build, preview-e2e, product-gates]  # product-gates = live #286; cf-preview / cf-workers-host are optional CF dual-runs and MUST NOT be added here
+  checks: [static, production-build, preview-e2e, product-gates]  # product-gates = live #286; cf-preview / cf-workers-host are optional CF dual-runs and MUST NOT be added here (not ruleset required)
 verification:
   browser:
     enabled: auto        # browser-verify UI changes automatically
