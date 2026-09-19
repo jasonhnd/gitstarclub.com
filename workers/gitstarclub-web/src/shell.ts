@@ -1,3 +1,8 @@
+import {
+  cronHttpUrl,
+  planCronDispatch,
+  resolveRefreshStartUrl,
+} from "./cron-dispatch";
 import type { InvalidateBody, InvalidateOp, RefreshJob, WorkerEnv } from "./env";
 
 const FIXTURE_NEXT: Record<string, string | null> = {
@@ -37,12 +42,11 @@ function recordedOps(body: InvalidateBody): InvalidateOp[] {
   return ops;
 }
 
-async function triggerStart(env: WorkerEnv): Promise<Response> {
-  const startUrl = env.REFRESH_START_URL;
-  if (!startUrl || !env.CRON_SECRET) {
-    return Response.json({ ok: false, error: "REFRESH_START_URL and CRON_SECRET are required" }, { status: 500 });
+async function triggerAuthorizedGet(env: WorkerEnv, url: string): Promise<Response> {
+  if (!env.CRON_SECRET) {
+    return Response.json({ ok: false, error: "CRON_SECRET is required" }, { status: 500 });
   }
-  const response = await fetch(startUrl, {
+  const response = await fetch(url, {
     method: "GET",
     headers: { authorization: `Bearer ${env.CRON_SECRET}` },
   });
@@ -51,6 +55,17 @@ async function triggerStart(env: WorkerEnv): Promise<Response> {
     status: response.status,
     headers: { "content-type": response.headers.get("content-type") ?? "application/json" },
   });
+}
+
+async function triggerStart(env: WorkerEnv): Promise<Response> {
+  let startUrl: string;
+  try {
+    startUrl = resolveRefreshStartUrl(env);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "REFRESH_START_URL or CF_CRON_ORIGIN is required";
+    return Response.json({ ok: false, error: message }, { status: 500 });
+  }
+  return triggerAuthorizedGet(env, startUrl);
 }
 
 export async function enqueueJob(env: WorkerEnv, job: RefreshJob): Promise<void> {
@@ -142,16 +157,46 @@ export async function handleShellFetch(request: Request, env: WorkerEnv): Promis
   return Response.json({ ok: false, error: "Not found" }, { status: 404 });
 }
 
-export async function handleScheduled(env: WorkerEnv): Promise<void> {
-  if (env.WORKFLOW_FIXTURE === "1") {
-    const runId = `fixture-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
-    await enqueueJob(env, { v: 1, graph: "fixture", runId, name: "startRun", attempt: 0, cursor: {} });
-    emitRunLog({ event: "workflow.cron", runId, graph: "fixture" });
-    return;
-  }
-  const response = await triggerStart(env);
-  if (!response.ok) {
-    throw new Error(`CF cron start failed: HTTP ${response.status}`);
+async function enqueueFixtureStart(env: WorkerEnv, cron: string): Promise<void> {
+  const runId = `fixture-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
+  await enqueueJob(env, { v: 1, graph: "fixture", runId, name: "startRun", attempt: 0, cursor: {} });
+  emitRunLog({ event: "workflow.cron", cron, runId, graph: "fixture", kind: "refresh" });
+}
+
+async function assertCronHttpOk(kind: "daily" | "weekly" | "refresh", response: Response): Promise<void> {
+  if (response.ok) return;
+  throw new Error(`CF cron ${kind} failed: HTTP ${response.status}`);
+}
+
+export async function handleScheduled(event: { cron: string }, env: WorkerEnv): Promise<void> {
+  const plan = planCronDispatch(event.cron);
+  switch (plan.kind) {
+    case "daily":
+    case "weekly": {
+      const url = cronHttpUrl(env, plan.path);
+      const response = await triggerAuthorizedGet(env, url);
+      emitRunLog({ event: "workflow.cron", cron: event.cron, kind: plan.kind, status: response.status, url });
+      await assertCronHttpOk(plan.kind, response);
+      return;
+    }
+    case "refresh": {
+      if (env.WORKFLOW_FIXTURE === "1") {
+        await enqueueFixtureStart(env, event.cron);
+        return;
+      }
+      const response = await triggerStart(env);
+      emitRunLog({ event: "workflow.cron", cron: event.cron, kind: "refresh", status: response.status });
+      await assertCronHttpOk("refresh", response);
+      return;
+    }
+    case "unknown": {
+      emitRunLog({ event: "workflow.cron", cron: event.cron, kind: "unknown", ok: false });
+      throw new Error(`unknown CF cron expression: ${event.cron}`);
+    }
+    default: {
+      const _exhaustive: never = plan;
+      throw new Error(`unhandled CF cron dispatch: ${JSON.stringify(_exhaustive)}`);
+    }
   }
 }
 
