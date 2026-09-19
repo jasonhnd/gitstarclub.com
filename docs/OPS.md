@@ -139,8 +139,8 @@ an explicit recovery procedure.
 
 | 变量 | 用途 | 必需 / 可选 | 格式 | 谁用（path:line） |
 |---|---|---|---|---|
-| `GITHUB_TOKEN` | GitHub GraphQL / Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | **必需**（cron / Workflow） | `ghp_…` PAT 字符串 | `web/lib/github.ts:5`；每日 cron · 每周 cron · Workflow whitelist/metadata step · 一次性回填 |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本 |
+| `GITHUB_TOKEN` | GitHub GraphQL / Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | **必需**（cron / Workflow） | `ghp_…` PAT 字符串 | `web/lib/github.ts`；每日 cron · 每周 cron · Workflow whitelist/metadata step · 一次性回填。GraphQL 与 REST 均带 `User-Agent: gitstarclub` 与 `Accept: application/vnd.github+json` |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/storage/vercel-blob-fetch-client.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本。CF Workers 走 runtime `fetch`，不走 `@vercel/blob`/undici |
 | `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；Next.js build · ISR 视图直读 · live cron 读发布指针 |
 | `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；客户端 bundle 中读取 |
 | `STORAGE_READ_DRIVER` | 对象存储读驱动 | 可选（默认 `blob`） | `blob` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`；P0 默认仍读 Vercel Blob，见 [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) |
@@ -405,6 +405,8 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 Worker `scheduled` 按 `event.cron` 分发到上表三条路径（见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)）。weekly / refresh 同时认周日 `0` 与 `7`（及文档 `SUN`）；daily 仍是 `0 3 * * *`。生产 `wrangler.jsonc` `triggers.crons` **必须保持 `[]`**。预发 `env.pre` 可写三条表达式草案，**不等于**已在 Cloudflare 打开 schedules。本仓不启用平台 schedules，也不自称生产 cron 已打开。
 
 注 `CRON_SECRET` / `REFRESH_*_URL`、以及 `PUT .../schedules`（先 `gitstarclub-web-pre`）是**另开的运维执行单**。本仓不写 secret 值，也不自称生产 cron 已启用。停 Vercel Cron 更在 CF 预发绿且 Jason 批切之后。
+
+**CF 上全量 daily / refresh 依赖 Blob 写路径修复**：`HOSTING_TARGET=cf` 下 lease/write 必须用 `web/lib/storage/vercel-blob-fetch-client.ts`（runtime `fetch` → `https://vercel.com/api/blob`），不能用会触发 `options.ALPNProtocols option is not implemented` 的 `@vercel/blob` undici/Node TLS。`?dry=1` 不写对象，可以在该修复前就 200。复测步骤见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)。生产 `triggers.crons` 仍必须是 `[]`。
 
 > **Vercel-only cron 实现**：每日 job = `web/app/api/cron/daily/route.ts`，每周 job = `web/app/api/cron/weekly/route.ts`，两者都委托 `web/lib/cron/handlers.ts` 并支持 `?dry=1`。CRON_SECRET 鉴权 → 以 `<job>:<UTC-day>` 幂等 key 在 `live/latest.json` 取得 15 分钟 ETag/CAS lease → GraphQL 拉 current_stars → `live-refresh.ts` 幂等重建当日状态 → 校验全部 JSON → 写 `live/generations/<run_id>/**`（`current_month.json` v2 index + `current_month/shards/<0-31>.json`）与 manifest → 同一个控制对象做 fenced CAS 切 generation → **之后**才 `revalidatePath` / IndexNow / `ops/sync-runs.json`。UTC 周日 daily 在取得 lease 前返回 `skipped: weekly-owns-sunday`，避免与 04:00 weekly 争 live/health。不同 key 并发返回 409；同 key 运行中返回 202 attached，已提交返回 200 already-published。手动同日再次刷新须提供新的 `idempotency_key`。Publish / release fence with the Blob API `head()` etag captured at acquire — not a public GET of the pointer body (#402). Health CAS 最多 5 次，指数退避 + 抖动；不要靠加次数解决持续冲突。
 

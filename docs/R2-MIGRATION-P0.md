@@ -1,7 +1,7 @@
 ---
 owner: operations / storage
 status: active
-last_reviewed: 2026-09-16
+last_reviewed: 2026-09-19
 source_of_truth_for:
   - Cloudflare R2 P0 storage adapter
   - Blob/R2 dual-read and write-driver switches
@@ -45,7 +45,11 @@ Unset drivers mean:
 - Public page reads still use `BLOB_BASE_URL`
 - Cron / Workflow CAS still uses `BLOB_READ_WRITE_TOKEN`
 
-Existing Vercel Blob behavior is the production path.
+Existing Vercel Blob behavior is the production path. The Blob **driver** now
+calls the Blob HTTP API with runtime `fetch` (`web/lib/storage/vercel-blob-fetch-client.ts`)
+instead of importing `@vercel/blob` on the request path, so Cloudflare Workers
+do not hit `ALPNProtocols`. R2 writes were already fetch-signed. See
+[CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) for CF cron full-sync dependence.
 
 ## Environment variables
 

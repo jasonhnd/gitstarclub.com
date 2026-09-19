@@ -24,3 +24,13 @@ export type {
   ObjectStore,
 } from "./types";
 export { VercelBlobObjectStore } from "./vercel-blob-store";
+export type { VercelBlobClient } from "./vercel-blob-store";
+export {
+  BlobFetchNotFoundError,
+  BlobFetchPreconditionFailedError,
+  createVercelBlobFetchClient,
+  parseVercelBlobStoreId,
+  VERCEL_BLOB_API_URL,
+  VERCEL_BLOB_API_VERSION,
+  vercelBlobPublicUrl,
+} from "./vercel-blob-fetch-client";

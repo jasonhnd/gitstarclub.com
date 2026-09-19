@@ -12,6 +12,22 @@ const REST = "https://api.github.com";
 const MAX_RETRIES = 4;
 const BATCH_PAUSE_MS = 2000;
 
+/** GitHub rejects Workers/edge clients that omit User-Agent (administrative 403). */
+export const GITHUB_USER_AGENT = "gitstarclub";
+export const GITHUB_ACCEPT = "application/vnd.github+json";
+
+export function githubApiHeaders(
+  token: string,
+  extra: Record<string, string> = {},
+): Record<string, string> {
+  return {
+    Authorization: `bearer ${token}`,
+    Accept: GITHUB_ACCEPT,
+    "User-Agent": GITHUB_USER_AGENT,
+    ...extra,
+  };
+}
+
 export interface RepoRef {
   id: number;
   owner: string;
@@ -46,7 +62,7 @@ function secondaryLimitDelayMs(status: number, text: string): number | null {
 async function gql<T>(token: string, query: string, schema: z.ZodType<T>, attempt = 1, opts: GitHubFetchOptions = {}): Promise<T> {
   const res = await fetchWithTimeout(ENDPOINT, {
     method: "POST",
-    headers: { Authorization: `bearer ${token}`, "Content-Type": "application/json" },
+    headers: githubApiHeaders(token, { "Content-Type": "application/json" }),
     body: JSON.stringify({ query }),
     cache: "no-store",
     timeoutMs: opts.timeoutMs ?? GITHUB_FETCH_TIMEOUT_MS,
@@ -115,7 +131,7 @@ async function restSearch(token: string, params: Record<string, string | number>
   const url = new URL(`${REST}/search/repositories`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   const res = await fetchWithTimeout(url, {
-    headers: { Authorization: `bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "gitstarclub" },
+    headers: githubApiHeaders(token),
     cache: "no-store",
     timeoutMs: opts.timeoutMs ?? GITHUB_FETCH_TIMEOUT_MS,
   });

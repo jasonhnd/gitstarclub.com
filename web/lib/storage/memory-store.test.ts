@@ -90,6 +90,9 @@ describe("object-store adapters on existing ports", () => {
 
   test("isObjectStoreConflict recognizes 412", () => {
     expect(isObjectStoreConflict(new ObjectStorePreconditionFailedError())).toBe(true);
+    const named = new Error("ETag mismatch");
+    named.name = "BlobPreconditionFailedError";
+    expect(isObjectStoreConflict(named)).toBe(true);
     expect(isObjectStoreConflict(new Error("precondition 412"))).toBe(true);
     expect(isObjectStoreConflict(new Error("boom"))).toBe(false);
   });
