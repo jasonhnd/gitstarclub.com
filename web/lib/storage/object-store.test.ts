@@ -9,6 +9,7 @@ import {
   r2StoreConfigFromEnv,
 } from "./object-store";
 import { R2S3ObjectStore } from "./r2-s3-store";
+import { createVercelBlobFetchClient } from "./vercel-blob-fetch-client";
 import { VercelBlobObjectStore } from "./vercel-blob-store";
 
 describe("object store factory", () => {
@@ -16,6 +17,24 @@ describe("object store factory", () => {
     expect(describeStorageDrivers({})).toEqual({ read: "blob", write: "blob" });
     expect(createWriteObjectStore({ STORAGE_WRITE_DRIVER: "blob" })).toBeInstanceOf(VercelBlobObjectStore);
     expect(createReadObjectStore({ STORAGE_READ_DRIVER: "blob" })).toBeInstanceOf(VercelBlobObjectStore);
+  });
+
+  test("HOSTING_TARGET=cf blob writes go through runtime fetch, not Node TLS", async () => {
+    const calls: RequestInit[] = [];
+    const client = createVercelBlobFetchClient({
+      fetch: async (_input, init = {}) => {
+        calls.push(init);
+        return new Response(JSON.stringify({ etag: '"cf1"', url: "https://blob.example.com/ops/a.json" }), { status: 200 });
+      },
+    });
+    const store = new VercelBlobObjectStore(() => "vercel_blob_rw_cdv7ejjwmzbbdj8w_testsecret", client);
+    expect(createWriteObjectStore({ HOSTING_TARGET: "cf", STORAGE_WRITE_DRIVER: "blob" })).toBeInstanceOf(VercelBlobObjectStore);
+    expect(await store.put("ops/a.json", "{}", { allowOverwrite: true })).toEqual({
+      etag: '"cf1"',
+      url: "https://blob.example.com/ops/a.json",
+    });
+    expect(calls[0]).not.toHaveProperty("ALPNProtocols");
+    expect(JSON.stringify(calls[0])).not.toContain("ALPN");
   });
 
   test("refuses a production R2 write driver without talking to a bucket", () => {
