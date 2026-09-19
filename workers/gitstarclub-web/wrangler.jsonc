@@ -44,11 +44,16 @@
     }
   ],
   "vars": {
-    "HOSTING_TARGET": "cf"
+    "HOSTING_TARGET": "cf",
+    // Production HTTP origin for cron dispatch. Preview overrides this.
+    // Secrets (CRON_SECRET, REFRESH_*_URL) are platform-injected, not committed.
+    "CF_CRON_ORIGIN": "https://gitstarclub.com"
   },
-  // Production CF Cron stays off. Vercel cron in web/vercel.json remains the
-  // production scheduler until Jason approves a cutover. Enable crons only on
-  // wrangler env `pre` (Worker gitstarclub-web-pre). The top-level name
+  // Production CF Cron stays off. `triggers.crons` MUST remain []. Vercel cron
+  // in web/vercel.json remains the production scheduler until Jason approves a
+  // cutover. Writing three expressions under env.pre is a repo draft only —
+  // it does not enable Cloudflare schedules. Enable schedules / inject
+  // CRON_SECRET via an ops runbook after deploy. The top-level name
   // gitstarclub-web is production-only: GHA must never wrangler deploy it
   // except --dry-run, and repo scripts refuse a live deploy of that name.
   // Do not attach apex/www routes here.
@@ -59,7 +64,9 @@
     "pre": {
       "name": "gitstarclub-web-pre",
       "triggers": {
-        "crons": ["0 6 * * 0"]
+        // Draft only. Platform PUT .../schedules (or wrangler deploy of this
+        // env) is an ops step; this PR does not enable preview cron.
+        "crons": ["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]
       },
       "services": [
         {
@@ -69,7 +76,8 @@
       ],
       "vars": {
         "HOSTING_TARGET": "cf",
-        "WORKFLOW_FIXTURE": "1"
+        "WORKFLOW_FIXTURE": "1",
+        "CF_CRON_ORIGIN": "https://pre.gitstarclub.com"
       }
     }
   }

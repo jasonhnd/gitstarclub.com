@@ -4,6 +4,9 @@ import {
   ALLOWED_CF_PREVIEW_ORIGINS,
   CLOSED_PRODUCTION_WORKERS_DEV_ORIGIN,
   DEFAULT_CF_PREVIEW_ORIGIN,
+  PREVIEW_CRON_ORIGIN,
+  PREVIEW_CRON_TRIGGERS,
+  PRODUCTION_CRON_ORIGIN,
   assertCfCiGates,
   assertRepositoryCfCiGates,
   findWranglerDeployInvocations,
@@ -107,9 +110,35 @@ describe("CF CI gates", () => {
     assert.ok(ALLOWED_CF_PREVIEW_ORIGINS.includes(DEFAULT_CF_PREVIEW_ORIGIN));
   });
 
+  test("rejects production cron triggers and mixed-environment cron origins", () => {
+    const issues = assertCfCiGates({
+      wranglerSource: `{
+        "name": "gitstarclub-web",
+        "triggers": { "crons": ["0 6 * * 0"] },
+        "vars": { "CF_CRON_ORIGIN": "https://pre.gitstarclub.com" },
+        "env": {
+          "pre": {
+            "name": "gitstarclub-web-pre",
+            "triggers": { "crons": ["0 6 * * 0"] },
+            "vars": { "CF_CRON_ORIGIN": "https://gitstarclub.com" }
+          }
+        }
+      }`,
+      ciYml: validCi,
+      deliveryYml: validDelivery,
+      webPackageSource: validPackage,
+      runtimeConfigSource: validRuntime,
+    });
+    assert.ok(issues.some((issue) => issue.includes("top-level triggers.crons must stay []")));
+    assert.ok(issues.some((issue) => issue.includes("three Vercel-parity expressions")));
+    assert.ok(issues.some((issue) => issue.includes(`top-level vars.CF_CRON_ORIGIN must be ${PRODUCTION_CRON_ORIGIN}`)));
+    assert.ok(issues.some((issue) => issue.includes(`env.pre vars.CF_CRON_ORIGIN must be ${PREVIEW_CRON_ORIGIN}`)));
+  });
+
   test("the checked-in repository satisfies the CF CI gates", () => {
     const summary = assertRepositoryCfCiGates(process.cwd());
     assert.equal(summary.previewWorker, "gitstarclub-web-pre");
     assert.equal(summary.previewOrigin, DEFAULT_CF_PREVIEW_ORIGIN);
+    assert.deepEqual([...PREVIEW_CRON_TRIGGERS], ["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]);
   });
 });
