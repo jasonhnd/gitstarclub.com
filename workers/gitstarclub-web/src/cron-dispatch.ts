@@ -1,10 +1,18 @@
 export const CRON_DAILY = "0 3 * * *";
 export const CRON_WEEKLY = "0 4 * * 0";
+export const CRON_WEEKLY_CF = "0 4 * * 7";
+export const CRON_WEEKLY_SUN = "0 4 * * SUN";
 export const CRON_REFRESH = "0 6 * * 0";
+export const CRON_REFRESH_CF = "0 6 * * 7";
+export const CRON_REFRESH_SUN = "0 6 * * SUN";
 
 export const CRON_DAILY_PATH = "/api/cron/daily";
 export const CRON_WEEKLY_PATH = "/api/cron/weekly";
 export const CRON_REFRESH_PATH = "/api/workflows/refresh/start";
+
+/** Unix Sunday=0, CF Schedules Sunday=7, and the unambiguous SUN token. */
+export const CRON_WEEKLY_ALIASES = Object.freeze([CRON_WEEKLY, CRON_WEEKLY_CF, CRON_WEEKLY_SUN]);
+export const CRON_REFRESH_ALIASES = Object.freeze([CRON_REFRESH, CRON_REFRESH_CF, CRON_REFRESH_SUN]);
 
 /** Public production origin. Never use this as a preview fallback. */
 export const PRODUCTION_CRON_ORIGIN = "https://gitstarclub.com";
@@ -21,8 +29,23 @@ export type CronDispatchPlan =
   | { kind: "refresh"; path: typeof CRON_REFRESH_PATH }
   | { kind: "unknown"; cron: string };
 
+const SUNDAY_DOW = /^(?:0|7|SUN)$/i;
+
+/**
+ * Map Sunday DoW aliases to Unix `0` so weekly/refresh accept both Vercel
+ * (`0`) and Cloudflare Schedules (`7` / `SUN`). Daily stays `0 3 * * *`.
+ * Quartz `1` (Sunday in some CF docs) is intentionally not accepted.
+ */
+export function canonicalSundayCron(cron: string): string {
+  const parts = cron.split(" ");
+  if (parts.length !== 5) return cron;
+  const [minute, hour, dayOfMonth, month, dow] = parts;
+  if (!dow || !SUNDAY_DOW.test(dow)) return cron;
+  return `${minute} ${hour} ${dayOfMonth} ${month} 0`;
+}
+
 export function planCronDispatch(cron: string): CronDispatchPlan {
-  switch (cron) {
+  switch (canonicalSundayCron(cron)) {
     case CRON_DAILY:
       return { kind: "daily", path: CRON_DAILY_PATH };
     case CRON_WEEKLY:

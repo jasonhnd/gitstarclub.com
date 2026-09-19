@@ -13,6 +13,7 @@ export const ALLOWED_CF_PREVIEW_ORIGINS = Object.freeze([
 ]);
 export const PRODUCTION_CRON_ORIGIN = "https://gitstarclub.com";
 export const PREVIEW_CRON_ORIGIN = "https://pre.gitstarclub.com";
+// Repo draft stays Vercel-parity (Sunday=0). Dispatch also accepts CF 7 / SUN.
 export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]);
 
 const LEGACY_PREVIEW_WORKER_NAME = "gitstarclub-web-nonprod";
