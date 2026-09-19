@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-09-18
+last_reviewed: 2026-09-19
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -168,6 +168,9 @@ an explicit recovery procedure.
 | `CF_CACHE_PURGE_URL` | CF stub 双跑 POST URL（Worker `/preview/invalidate`） | 仅 `CACHE_INVALIDATION_DRIVER=cf-stub` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/cf-stub.ts`；不是 Cloudflare Cache Purge |
 | `PREVIEW_TARGET` | Preview 解析后端 | 可选（默认 `vercel`） | `vercel` \| `cf` | `web/lib/runtime-config.ts` · `web/lib/preview/`；生产门禁仍走 Vercel |
 | `CF_PREVIEW_ORIGIN` | 非生产 CF Preview origin | 可选（默认 `https://gitstarclub-web-pre.worldgo.workers.dev`） | 无尾斜杠 https origin | `web/lib/runtime-config.ts`；默认预发 Worker `gitstarclub-web-pre`，不要指向已关的生产 `gitstarclub-web.worldgo.workers.dev`；Access 只护这个 host，不绑 apex/www |
+| `CF_CRON_ORIGIN` | CF Worker `scheduled` 打 Next cron 路由的 HTTP origin | Worker 分发必需（wrangler var） | 无尾斜杠 https origin；预发 `https://pre.gitstarclub.com`，生产 `https://gitstarclub.com` | Worker `env.CF_CRON_ORIGIN`；禁止写死错环境、禁止用已关的生产 `workers.dev`；值不是 secret，但须分 Worker 注入 |
+| `REFRESH_START_URL` | refresh cron / `/start` 覆盖 URL | 可选（缺省则 `{CF_CRON_ORIGIN}/api/workflows/refresh/start`） | 绝对 URL | Worker `env.REFRESH_START_URL`；平台注入，不进仓 |
+| `REFRESH_STEP_URL` | Queue consumer 推进 refresh step 的 URL | 消费 refresh step 时必需 | 绝对 URL | Worker `env.REFRESH_STEP_URL`；平台注入，不进仓 |
 | `CF_ACCESS_CLIENT_ID` | CF Access Service Token id（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client ID | `web/lib/preview/access.ts`；GitHub secret 名与此相同；token 名 `gitstarclub-cca-ci`，密钥不进仓 |
 | `CF_ACCESS_CLIENT_SECRET` | CF Access Service Token secret（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client Secret | `web/lib/preview/access.ts`；头 `CF-Access-Client-Secret` |
 | `CF_PREVIEW_REQUIRE_SHA` | CF Preview 是否要求 identity SHA 对齐 | 可选（默认关闭） | 字符串 `1` 才强制 | `web/lib/runtime-config.ts` · `web/scripts/resolve-preview.ts`；Worker 未设 `CF_PREVIEW_COMMIT_SHA` 时不要开 |
@@ -396,6 +399,12 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
   ]
 }
 ```
+
+### CF Cron 分发草案（仓内代码；平台未启用）
+
+Worker `scheduled` 按 `event.cron` 分发到上表三条路径（见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)）。生产 `wrangler.jsonc` `triggers.crons` **必须保持 `[]`**。预发 `env.pre` 可写三条表达式草案，**不等于**已在 Cloudflare 打开 schedules。
+
+注 `CRON_SECRET` / `REFRESH_*_URL`、以及 `PUT .../schedules`（先 `gitstarclub-web-pre`）是**另开的运维执行单**。本仓不写 secret 值，也不自称生产 cron 已启用。停 Vercel Cron 更在 CF 预发绿且 Jason 批切之后。
 
 > **Vercel-only cron 实现**：每日 job = `web/app/api/cron/daily/route.ts`，每周 job = `web/app/api/cron/weekly/route.ts`，两者都委托 `web/lib/cron/handlers.ts` 并支持 `?dry=1`。CRON_SECRET 鉴权 → 以 `<job>:<UTC-day>` 幂等 key 在 `live/latest.json` 取得 15 分钟 ETag/CAS lease → GraphQL 拉 current_stars → `live-refresh.ts` 幂等重建当日状态 → 校验全部 JSON → 写 `live/generations/<run_id>/**`（`current_month.json` v2 index + `current_month/shards/<0-31>.json`）与 manifest → 同一个控制对象做 fenced CAS 切 generation → **之后**才 `revalidatePath` / IndexNow / `ops/sync-runs.json`。UTC 周日 daily 在取得 lease 前返回 `skipped: weekly-owns-sunday`，避免与 04:00 weekly 争 live/health。不同 key 并发返回 409；同 key 运行中返回 202 attached，已提交返回 200 already-published。手动同日再次刷新须提供新的 `idempotency_key`。Publish / release fence with the Blob API `head()` etag captured at acquire — not a public GET of the pointer body (#402). Health CAS 最多 5 次，指数退避 + 抖动；不要靠加次数解决持续冲突。
 

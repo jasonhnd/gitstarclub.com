@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-09-18
+last_reviewed: 2026-09-19
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -73,6 +73,7 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | GEO capsule gaps (#376) | High-value routes keep a dated, attributed capsule and FAQ; Pulse capsule is after the period switcher and before ranking panels; compare capsule stays generic | `web/lib/geo-capsules.test.ts`, `web/lib/geo-faq.test.ts`, `web/lib/pulse-board-links.test.tsx`, `web/lib/integration/uiux-seo.test.tsx` | Manual Preview of `/` and `/pulse` |
 | Sunday refresh health path (#377 / #379) | Operator signal is only `ops/workflows/health/workflow-refresh.json`; never the retired flat `ops/workflows/health.json` | `web/lib/observability/health.test.ts` | Sunday runbook in [OPS.md](./OPS.md) |
 | CF migrate P1 refresh runtime (#446) | Refresh main path runs without Workflow SDK; memory runtime drains a shrink fixture; lease CAS still wins/loses on ETag | `web/lib/workflows/runtime/*.test.ts`, `web/lib/workflows/lease.test.ts`, `web/lib/workflows/start.test.ts` | Production cron table unchanged; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
+| CF Cron scheduled dispatch (#466) | `event.cron` maps daily / weekly / refresh; unknown cron throws; production wrangler crons stay empty; origins stay env-specific | `web/lib/workers-host/cron-dispatch.test.ts`, `scripts/cf-ci-gates.test.mjs` | Ops injects secrets and enables preview schedules later; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
 | CF migrate P3 Workers host (#452) | OpenNext selected over vinext; `/` is Next; shell keeps `/preview/*` + `/start`; Analytics off on `HOSTING_TARGET=cf` | `web/lib/workers-host/*.test.ts`, `web/lib/analytics-policy.test.ts`, `web/lib/deployment-identity.test.ts`, `web/lib/runtime-config.test.ts` | Optional `verify / cf-workers-host` dry-run; local `bun run cf:smoke`; production stays Vercel; see [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
 | Cloudflare R2 P0 adapter (#444) | Default Blob drivers; R2 CAS 412 / list prefix / production write guard; no real production bucket token | `web/lib/storage/*.test.ts`, `web/lib/runtime-config.test.ts` | Dry-run `web/scripts/sync-blob-to-r2.ts` against `migrate-dev/` only |
 | View parse-once + Zod fingerprints | Same path+generation is parsed once; unrecognized lifecycle keys are not `.passthrough()`; old and new Meta/lookup/entity shapes both parse | `web/lib/data/parse-view.test.ts`, `web/lib/contracts/contracts.test.ts` | 24h `ZodError` volume drops; no per-request repeat of the same fingerprint |
