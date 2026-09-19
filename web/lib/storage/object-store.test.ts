@@ -18,6 +18,35 @@ describe("object store factory", () => {
     expect(createReadObjectStore({ STORAGE_READ_DRIVER: "blob" })).toBeInstanceOf(VercelBlobObjectStore);
   });
 
+  test("HOSTING_TARGET=cf blob writes go through runtime fetch, not Node TLS", async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: RequestInit[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(init ?? {});
+      return new Response(JSON.stringify({ etag: '"cf1"', url: "https://blob.example.com/ops/a.json" }), { status: 200 });
+    }) as typeof fetch;
+    const previousToken = process.env.BLOB_READ_WRITE_TOKEN;
+    const previousHost = process.env.HOSTING_TARGET;
+    process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_cdv7ejjwmzbbdj8w_testsecret";
+    process.env.HOSTING_TARGET = "cf";
+    try {
+      const store = createWriteObjectStore({ HOSTING_TARGET: "cf", STORAGE_WRITE_DRIVER: "blob" });
+      expect(store).toBeInstanceOf(VercelBlobObjectStore);
+      expect(await store.put("ops/a.json", "{}", { allowOverwrite: true })).toEqual({
+        etag: '"cf1"',
+        url: "https://blob.example.com/ops/a.json",
+      });
+      expect(calls[0]).not.toHaveProperty("ALPNProtocols");
+      expect(JSON.stringify(calls[0])).not.toContain("ALPN");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+      else process.env.BLOB_READ_WRITE_TOKEN = previousToken;
+      if (previousHost === undefined) delete process.env.HOSTING_TARGET;
+      else process.env.HOSTING_TARGET = previousHost;
+    }
+  });
+
   test("refuses a production R2 write driver without talking to a bucket", () => {
     expect(() =>
       createWriteObjectStore({

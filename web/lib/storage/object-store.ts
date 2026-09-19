@@ -20,6 +20,8 @@ import { VercelBlobObjectStore } from "./vercel-blob-store";
 export type ObjectStoreFactoryEnv = Record<string, string | undefined>;
 
 export function createVercelBlobObjectStore(): ObjectStore {
+  // Fetch/HTTP client — not `@vercel/blob` / undici. Required on
+  // HOSTING_TARGET=cf so lease/write does not throw ALPNProtocols.
   return new VercelBlobObjectStore();
 }
 

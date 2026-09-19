@@ -5,6 +5,7 @@ last_reviewed: 2026-09-19
 source_of_truth_for:
   - Cloudflare migrate P1 workflow runtime
   - non-production CF Cron / Queue orchestration
+  - CF Workers Blob fetch write path for full cron / refresh lease
   - dual-scheduler rollback (CF Cron off, production stays Vercel)
 ---
 
@@ -128,6 +129,41 @@ production cron is on.
 
 Lease and view writes still go through `web/lib/storage` (P0). Unset drivers
 mean Vercel Blob, which is enough to accept the orchestration.
+
+## CF Workers Blob write path (full cron / refresh)
+
+Preview dry cron (`daily?dry=1` / `weekly?dry=1`) can return 200 without
+writing. Full daily and `GET /api/workflows/refresh/start` must claim a Blob
+lease (`ops/workflows/active.json` or `live/latest.json`) and write
+generations. On `HOSTING_TARGET=cf`, the `@vercel/blob` SDK's undici/Node TLS
+transport throws `options.ALPNProtocols option is not implemented` and those
+routes 500 / stall.
+
+The default Blob driver now uses `web/lib/storage/vercel-blob-fetch-client.ts`:
+runtime `fetch` to `https://vercel.com/api/blob` with the same CAS headers as
+the official SDK (`x-allow-overwrite`, `x-if-match`, `x-api-version`). That is
+the Workers-safe path. Optional alternative: `STORAGE_WRITE_DRIVER=r2` already
+signs S3 with `fetch` (`web/lib/storage/r2-s3-store.ts`) under a non-production
+`migrate-*` prefix. Default CF preview stays on Vercel Blob so lease/views
+remain on the public store `BLOB_BASE_URL` already serves.
+
+**Full CF daily / refresh depends on this fetch write path.** This change does
+not enable Cloudflare schedules. Production `wrangler.jsonc` `triggers.crons`
+must remain `[]` until a later approved cutover. Vercel cron stays the
+production scheduler.
+
+### Suggested CF retest (preview Worker only)
+
+1. Redeploy `gitstarclub-web-pre` with this build. Do **not** PUT production
+   schedules and do **not** stop Vercel cron.
+2. No Bearer → `/api/cron/daily` and `/api/workflows/refresh/start` → 401.
+3. Bearer `GET /api/cron/daily?dry=1` and `/api/cron/weekly?dry=1` → 200.
+4. Bearer `GET /api/workflows/refresh/start` → **2xx** (acquired / attached /
+   rejected). Must not 500 with `ALPNProtocols` or `fetch failed`.
+5. Bearer full `GET /api/cron/daily` may run long; it must not fail immediately
+   with the TLS/ALPN error (timeout from work length is a separate limit).
+6. Workers Observability: no `options.ALPNProtocols option is not implemented`.
+7. Confirm production Worker `triggers.crons` is still `[]`.
 
 ## Dual-scheduler rollback
 
