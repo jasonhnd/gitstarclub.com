@@ -12,7 +12,13 @@
 // (If github.ts changes these helpers, keep the replicas in sync.) No fetch is
 // invoked and GITHUB_TOKEN is never set, so this suite makes zero network calls.
 import { test, expect, describe } from "bun:test";
-import { searchWhitelistWithSearch, type SearchResult } from "./github";
+import {
+  GITHUB_ACCEPT,
+  GITHUB_USER_AGENT,
+  githubApiHeaders,
+  searchWhitelistWithSearch,
+  type SearchResult,
+} from "./github";
 
 const MAX_RETRIES = 4; // mirrors github.ts
 
@@ -197,6 +203,26 @@ describe("searchWhitelist star-range bucketing math (replicated)", () => {
 });
 
 // --- MAX_RETRIES boundary used by gql()/restSearch() (attempt <= MAX_RETRIES) ---
+describe("githubApiHeaders (GraphQL + REST)", () => {
+  test("sends User-Agent gitstarclub and the GitHub Accept header", () => {
+    expect(GITHUB_USER_AGENT).toBe("gitstarclub");
+    expect(GITHUB_ACCEPT).toBe("application/vnd.github+json");
+    expect(githubApiHeaders("tok")).toEqual({
+      Authorization: "bearer tok",
+      Accept: GITHUB_ACCEPT,
+      "User-Agent": GITHUB_USER_AGENT,
+    });
+  });
+
+  test("GraphQL extras keep UA + Accept and add Content-Type", () => {
+    const headers = githubApiHeaders("tok", { "Content-Type": "application/json" });
+    expect(headers["User-Agent"]).toBe("gitstarclub");
+    expect(headers.Accept).toBe("application/vnd.github+json");
+    expect(headers["Content-Type"]).toBe("application/json");
+    expect(headers.Authorization).toBe("bearer tok");
+  });
+});
+
 describe("retry attempt boundary (MAX_RETRIES)", () => {
   test("retries while attempt <= MAX_RETRIES, stops after", () => {
     const shouldRetry = (attempt: number) => attempt <= MAX_RETRIES;
