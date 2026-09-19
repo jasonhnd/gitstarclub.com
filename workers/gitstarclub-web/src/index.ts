@@ -13,8 +13,8 @@ export default {
     return handleNextRequest(request, env, ctx);
   },
 
-  async scheduled(_event: ScheduledEvent, env: WorkerEnv): Promise<void> {
-    await handleScheduled(env);
+  async scheduled(event: ScheduledEvent, env: WorkerEnv): Promise<void> {
+    await handleScheduled(event, env);
   },
 
   async queue(batch: { messages: Array<{ body: RefreshJob }> }, env: WorkerEnv): Promise<void> {
