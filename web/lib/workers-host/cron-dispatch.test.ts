@@ -20,6 +20,10 @@ import { handleScheduled } from "../../../workers/gitstarclub-web/src/shell";
 
 const originalFetch = globalThis.fetch;
 
+function stubFetch(impl: typeof fetch): void {
+  globalThis.fetch = impl;
+}
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
 });
@@ -78,11 +82,13 @@ describe("CF cron origin", () => {
 describe("handleScheduled dispatch", () => {
   test("daily and weekly call the matching Next routes with Bearer CRON_SECRET", async () => {
     const calls: Array<{ url: string; auth: string | null }> = [];
-    globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
-      calls.push({ url: String(input), auth: headers.get("authorization") });
-      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    }) as typeof fetch;
+    stubFetch(
+      mock((input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        calls.push({ url: String(input), auth: headers.get("authorization") });
+        return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+      }) as unknown as typeof fetch,
+    );
 
     await handleScheduled({ cron: CRON_DAILY }, makeEnv());
     await handleScheduled(
@@ -99,10 +105,12 @@ describe("handleScheduled dispatch", () => {
   test("WORKFLOW_FIXTURE does not hijack daily or weekly", async () => {
     const queued: RefreshJob[] = [];
     const calls: string[] = [];
-    globalThis.fetch = mock((input: RequestInfo | URL) => {
-      calls.push(String(input));
-      return Promise.resolve(new Response("{}", { status: 200 }));
-    }) as typeof fetch;
+    stubFetch(
+      mock((input: RequestInfo | URL) => {
+        calls.push(String(input));
+        return Promise.resolve(new Response("{}", { status: 200 }));
+      }) as unknown as typeof fetch,
+    );
 
     await handleScheduled(
       { cron: CRON_DAILY },
@@ -119,10 +127,12 @@ describe("handleScheduled dispatch", () => {
   test("refresh uses triggerStart or the fixture queue", async () => {
     const queued: RefreshJob[] = [];
     const calls: string[] = [];
-    globalThis.fetch = mock((input: RequestInfo | URL) => {
-      calls.push(String(input));
-      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    }) as typeof fetch;
+    stubFetch(
+      mock((input: RequestInfo | URL) => {
+        calls.push(String(input));
+        return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+      }) as unknown as typeof fetch,
+    );
 
     await handleScheduled(
       { cron: CRON_REFRESH },
@@ -146,7 +156,7 @@ describe("handleScheduled dispatch", () => {
   });
 
   test("unknown cron and failed HTTP are observable failures", async () => {
-    globalThis.fetch = mock(() => Promise.resolve(new Response("nope", { status: 401 }))) as typeof fetch;
+    stubFetch(mock(() => Promise.resolve(new Response("nope", { status: 401 }))) as unknown as typeof fetch);
 
     await expect(handleScheduled({ cron: "15 1 * * *" }, makeEnv())).rejects.toThrow(
       "unknown CF cron expression: 15 1 * * *",

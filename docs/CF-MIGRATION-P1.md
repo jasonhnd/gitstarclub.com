@@ -108,7 +108,7 @@ production cron is on.
 
 1. Deploy `gitstarclub-web-pre` with the dispatch build (keep production Worker off this PR).
 2. Inject per-environment vars/secrets (names only here): `CRON_SECRET`, `CF_CRON_ORIGIN`, optional `REFRESH_START_URL` / `REFRESH_STEP_URL`. Preview origin must stay `https://pre.gitstarclub.com`.
-3. Enable **preview** schedules only (`PUT .../workers/scripts/gitstarclub-web-pre/schedules` or deploy `env.pre` with the three crons). Confirm `GET .../schedules` matches the three strings.
+3. Enable **preview** schedules only (Cloudflare schedules API for Worker `gitstarclub-web-pre`, or deploy wrangler env `pre` with the three crons). Confirm the platform schedule list matches the three strings.
 4. Accept on preview: unauthenticated daily/weekly 401; Bearer daily + weekly 2xx; refresh start or fixture path 2xx; `/` and `/rankings` still 200.
 5. Keep Vercel production crons running. Do **not** enable `gitstarclub-web` schedules until Jason approves a later cutover. Production `triggers.crons` must remain `[]` in this repo until that approval.
 
