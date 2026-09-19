@@ -29,6 +29,7 @@ export type WorkerEnv = {
   ASSETS?: { fetch(request: Request): Promise<Response> };
   WORKER_SELF_REFERENCE?: { fetch(request: Request): Promise<Response> };
   CRON_SECRET?: string;
+  CF_CRON_ORIGIN?: string;
   REFRESH_START_URL?: string;
   REFRESH_STEP_URL?: string;
   WORKFLOW_FIXTURE?: string;

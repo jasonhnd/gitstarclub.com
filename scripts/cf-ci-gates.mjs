@@ -11,6 +11,9 @@ export const ALLOWED_CF_PREVIEW_ORIGINS = Object.freeze([
   DEFAULT_CF_PREVIEW_ORIGIN,
   "https://pre.gitstarclub.com",
 ]);
+export const PRODUCTION_CRON_ORIGIN = "https://gitstarclub.com";
+export const PREVIEW_CRON_ORIGIN = "https://pre.gitstarclub.com";
+export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]);
 
 const LEGACY_PREVIEW_WORKER_NAME = "gitstarclub-web-nonprod";
 const WRANGLER_CONFIG_REL = "workers/gitstarclub-web/wrangler.jsonc";
@@ -195,6 +198,27 @@ export function assertCfCiGates(sources) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} is required`);
   } else if (preview.name !== PREVIEW_WORKER_NAME) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV}.name must be ${PREVIEW_WORKER_NAME}`);
+  }
+
+  const productionCrons = wrangler.triggers?.crons;
+  if (productionCrons !== undefined && (!Array.isArray(productionCrons) || productionCrons.length > 0)) {
+    issues.push("wrangler top-level triggers.crons must stay [] until Jason approves production CF Cron");
+  }
+  const previewCrons = preview?.triggers?.crons;
+  if (previewCrons !== undefined && JSON.stringify(previewCrons) !== JSON.stringify([...PREVIEW_CRON_TRIGGERS])) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} triggers.crons must be the three Vercel-parity expressions ${JSON.stringify(
+        [...PREVIEW_CRON_TRIGGERS],
+      )} (repo draft only; platform enable is ops)`,
+    );
+  }
+  const productionOrigin = wrangler.vars?.CF_CRON_ORIGIN;
+  if (productionOrigin !== undefined && productionOrigin !== PRODUCTION_CRON_ORIGIN) {
+    issues.push(`wrangler top-level vars.CF_CRON_ORIGIN must be ${PRODUCTION_CRON_ORIGIN} when set`);
+  }
+  const previewOriginVar = preview?.vars?.CF_CRON_ORIGIN;
+  if (previewOriginVar !== undefined && previewOriginVar !== PREVIEW_CRON_ORIGIN) {
+    issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} vars.CF_CRON_ORIGIN must be ${PREVIEW_CRON_ORIGIN} when set`);
   }
 
   const defaultOrigin = readDefaultCfPreviewOrigin(runtimeConfigSource);
