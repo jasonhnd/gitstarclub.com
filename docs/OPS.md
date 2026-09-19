@@ -402,7 +402,7 @@ Endpoint method、auth、query、response、cache 与 status contract 见 [API.m
 
 ### CF Cron 分发草案（仓内代码；平台未启用）
 
-Worker `scheduled` 按 `event.cron` 分发到上表三条路径（见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)）。生产 `wrangler.jsonc` `triggers.crons` **必须保持 `[]`**。预发 `env.pre` 可写三条表达式草案，**不等于**已在 Cloudflare 打开 schedules。
+Worker `scheduled` 按 `event.cron` 分发到上表三条路径（见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)）。weekly / refresh 同时认周日 `0` 与 `7`（及文档 `SUN`）；daily 仍是 `0 3 * * *`。生产 `wrangler.jsonc` `triggers.crons` **必须保持 `[]`**。预发 `env.pre` 可写三条表达式草案，**不等于**已在 Cloudflare 打开 schedules。本仓不启用平台 schedules，也不自称生产 cron 已打开。
 
 注 `CRON_SECRET` / `REFRESH_*_URL`、以及 `PUT .../schedules`（先 `gitstarclub-web-pre`）是**另开的运维执行单**。本仓不写 secret 值，也不自称生产 cron 已启用。停 Vercel Cron 更在 CF 预发绿且 Jason 批切之后。
 
