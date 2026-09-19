@@ -33,18 +33,21 @@ describe("GitHub fetch timeouts", () => {
   });
 
   test("uses GITHUB_TOKEN changes made after github.ts is imported", async () => {
-    let authorization: string | undefined;
+    let headers: Record<string, string> | undefined;
     process.env.GITHUB_TOKEN = "runtime-token";
     globalThis.fetch = mock((_input: RequestInfo | URL, init?: RequestInit) => {
       fetchCalls += 1;
-      authorization = (init?.headers as Record<string, string> | undefined)?.Authorization;
+      headers = init?.headers as Record<string, string> | undefined;
       return Promise.resolve(new Response(JSON.stringify({ data: { r0: { stargazerCount: 42 } } }), { status: 200 }));
     }) as unknown as typeof fetch;
 
     const result = await fetchStarCounts([{ id: 1, owner: "owner", name: "repo" }]);
 
     expect(result.get(1)).toBe(42);
-    expect(authorization).toBe("bearer runtime-token");
+    expect(headers?.Authorization).toBe("bearer runtime-token");
+    expect(headers?.["User-Agent"]).toBe("gitstarclub");
+    expect(headers?.Accept).toBe("application/vnd.github+json");
+    expect(headers?.["Content-Type"]).toBe("application/json");
     expect(fetchCalls).toBe(1);
   });
 
