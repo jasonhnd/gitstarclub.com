@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import {
   ALLOWED_CF_PREVIEW_ORIGINS,
@@ -140,5 +141,7 @@ describe("CF CI gates", () => {
     assert.equal(summary.previewWorker, "gitstarclub-web-pre");
     assert.equal(summary.previewOrigin, DEFAULT_CF_PREVIEW_ORIGIN);
     assert.deepEqual([...PREVIEW_CRON_TRIGGERS], ["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]);
+    const wrangler = parseWranglerJsonc(readFileSync("workers/gitstarclub-web/wrangler.jsonc", "utf8"));
+    assert.deepEqual(wrangler.triggers.crons, []);
   });
 });

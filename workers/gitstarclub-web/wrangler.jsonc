@@ -66,6 +66,7 @@
       "triggers": {
         // Draft only. Platform PUT .../schedules (or wrangler deploy of this
         // env) is an ops step; this PR does not enable preview cron.
+        // Dispatch also accepts CF Sunday DoW 7 / SUN for weekly + refresh.
         "crons": ["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]
       },
       "services": [

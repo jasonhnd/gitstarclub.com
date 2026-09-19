@@ -4,9 +4,15 @@ import {
   CRON_DAILY,
   CRON_DAILY_PATH,
   CRON_REFRESH,
+  CRON_REFRESH_ALIASES,
+  CRON_REFRESH_CF,
   CRON_REFRESH_PATH,
+  CRON_REFRESH_SUN,
   CRON_WEEKLY,
+  CRON_WEEKLY_ALIASES,
+  CRON_WEEKLY_CF,
   CRON_WEEKLY_PATH,
+  CRON_WEEKLY_SUN,
   cronHttpUrl,
   planCronDispatch,
   PREVIEW_CRON_ORIGIN,
@@ -46,8 +52,25 @@ describe("CF cron dispatch plan", () => {
     expect([...PREVIEW_CRON_TRIGGERS]).toEqual([CRON_DAILY, CRON_WEEKLY, CRON_REFRESH]);
   });
 
+  test("weekly and refresh accept Sunday DoW 0, 7, and SUN", () => {
+    expect([...CRON_WEEKLY_ALIASES]).toEqual([CRON_WEEKLY, CRON_WEEKLY_CF, CRON_WEEKLY_SUN]);
+    expect([...CRON_REFRESH_ALIASES]).toEqual([CRON_REFRESH, CRON_REFRESH_CF, CRON_REFRESH_SUN]);
+    for (const cron of CRON_WEEKLY_ALIASES) {
+      expect(planCronDispatch(cron)).toEqual({ kind: "weekly", path: CRON_WEEKLY_PATH });
+    }
+    for (const cron of CRON_REFRESH_ALIASES) {
+      expect(planCronDispatch(cron)).toEqual({ kind: "refresh", path: CRON_REFRESH_PATH });
+    }
+    expect(planCronDispatch("0 4 * * sun")).toEqual({ kind: "weekly", path: CRON_WEEKLY_PATH });
+    expect(planCronDispatch("0 6 * * Sun")).toEqual({ kind: "refresh", path: CRON_REFRESH_PATH });
+    expect(planCronDispatch(CRON_DAILY)).toEqual({ kind: "daily", path: CRON_DAILY_PATH });
+  });
+
   test("treats unknown expressions as an observable failure plan", () => {
     expect(planCronDispatch("0 1 * * *")).toEqual({ kind: "unknown", cron: "0 1 * * *" });
+    expect(planCronDispatch("0 4 * * 1")).toEqual({ kind: "unknown", cron: "0 4 * * 1" });
+    expect(planCronDispatch("0 4 * * 6")).toEqual({ kind: "unknown", cron: "0 4 * * 6" });
+    expect(planCronDispatch("0 3 * * 7")).toEqual({ kind: "unknown", cron: "0 3 * * 7" });
     expect(planCronDispatch("")).toEqual({ kind: "unknown", cron: "" });
   });
 });
@@ -95,10 +118,14 @@ describe("handleScheduled dispatch", () => {
       { cron: CRON_WEEKLY },
       makeEnv({ CF_CRON_ORIGIN: PRODUCTION_CRON_ORIGIN }),
     );
+    await handleScheduled({ cron: CRON_WEEKLY_CF }, makeEnv());
+    await handleScheduled({ cron: CRON_WEEKLY_SUN }, makeEnv());
 
     expect(calls).toEqual([
       { url: `${PREVIEW_CRON_ORIGIN}${CRON_DAILY_PATH}`, auth: "Bearer test-cron-secret" },
       { url: `${PRODUCTION_CRON_ORIGIN}${CRON_WEEKLY_PATH}`, auth: "Bearer test-cron-secret" },
+      { url: `${PREVIEW_CRON_ORIGIN}${CRON_WEEKLY_PATH}`, auth: "Bearer test-cron-secret" },
+      { url: `${PREVIEW_CRON_ORIGIN}${CRON_WEEKLY_PATH}`, auth: "Bearer test-cron-secret" },
     ]);
   });
 
@@ -139,8 +166,10 @@ describe("handleScheduled dispatch", () => {
       makeEnv({ REFRESH_START_URL: "https://pre.gitstarclub.com/custom/start" }),
     );
     await handleScheduled({ cron: CRON_REFRESH }, makeEnv());
+    await handleScheduled({ cron: CRON_REFRESH_CF }, makeEnv());
+    await handleScheduled({ cron: CRON_REFRESH_SUN }, makeEnv());
     await handleScheduled(
-      { cron: CRON_REFRESH },
+      { cron: CRON_REFRESH_CF },
       makeEnv({
         WORKFLOW_FIXTURE: "1",
         JOBS: { send: async (job) => { queued.push(job); } },
@@ -149,6 +178,8 @@ describe("handleScheduled dispatch", () => {
 
     expect(calls).toEqual([
       "https://pre.gitstarclub.com/custom/start",
+      `${PREVIEW_CRON_ORIGIN}${CRON_REFRESH_PATH}`,
+      `${PREVIEW_CRON_ORIGIN}${CRON_REFRESH_PATH}`,
       `${PREVIEW_CRON_ORIGIN}${CRON_REFRESH_PATH}`,
     ]);
     expect(queued).toHaveLength(1);

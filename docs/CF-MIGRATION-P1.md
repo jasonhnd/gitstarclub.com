@@ -79,9 +79,15 @@ refresh start.
 | `event.cron` (UTC) | Worker action | Auth |
 |---|---|---|
 | `0 3 * * *` | `GET {CF_CRON_ORIGIN}/api/cron/daily` | Bearer `CRON_SECRET` |
-| `0 4 * * 0` | `GET {CF_CRON_ORIGIN}/api/cron/weekly` | Bearer `CRON_SECRET` |
-| `0 6 * * 0` | existing `triggerStart` (`REFRESH_START_URL`, or `{CF_CRON_ORIGIN}/api/workflows/refresh/start`). `WORKFLOW_FIXTURE=1` still enqueues the shrink fixture **only** on this expression | Bearer `CRON_SECRET` |
+| `0 4 * * 0` or `0 4 * * 7` (or `SUN`) | `GET {CF_CRON_ORIGIN}/api/cron/weekly` | Bearer `CRON_SECRET` |
+| `0 6 * * 0` or `0 6 * * 7` (or `SUN`) | existing `triggerStart` (`REFRESH_START_URL`, or `{CF_CRON_ORIGIN}/api/workflows/refresh/start`). `WORKFLOW_FIXTURE=1` still enqueues the shrink fixture **only** on these expressions | Bearer `CRON_SECRET` |
 | anything else | structured `workflow.cron` log with `kind: "unknown"` and a thrown error (failed scheduled invocation) | n/a |
+
+Sunday DoW `0` (Vercel / Unix) and `7` (Cloudflare Schedules preview mount) are
+dispatch aliases, plus the unambiguous `SUN` token if a schedule uses the
+documented name. Daily stays `0 3 * * *`. Accepting `7` does **not** enable
+platform schedules and does **not** put expressions on production
+`triggers.crons`.
 
 `CF_CRON_ORIGIN` is a wrangler var, not a hardcoded single host:
 
@@ -145,10 +151,10 @@ deployed as a shell.
 - Tests: `web/lib/workflows/runtime/*.test.ts` drain a shrink fixture through
   `MemoryObjectStore` + `BlobWorkflowLeaseStore`. Lease CAS still wins/loses
   on ETag. No `workflow` package is required.
-- Worker `env.pre` (`gitstarclub-web-pre`): `0 6 * * 0` with `WORKFLOW_FIXTURE=1` or
-  `GET /start` with `CRON_SECRET` enqueues one fixture job; the Queue consumer
-  advances one step per message. Daily/weekly crons HTTP to
-  `https://pre.gitstarclub.com` and do not use the fixture queue.
+- Worker `env.pre` (`gitstarclub-web-pre`): `0 6 * * 0` or `0 6 * * 7` with
+  `WORKFLOW_FIXTURE=1` or `GET /start` with `CRON_SECRET` enqueues one fixture
+  job; the Queue consumer advances one step per message. Daily/weekly crons
+  HTTP to `https://pre.gitstarclub.com` and do not use the fixture queue.
 - Unit tests: `web/lib/workers-host/cron-dispatch.test.ts` plus CF CI gates that
   keep production `triggers.crons` empty.
 - Manual start against a Preview deployment: `GET /api/workflows/refresh/start`
