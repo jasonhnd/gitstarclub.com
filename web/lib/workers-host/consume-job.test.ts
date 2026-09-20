@@ -88,7 +88,7 @@ describe("CF Queue consumeJob successor", () => {
               foldedWeeks: [],
               nextFoldPhase: "month",
               nextFoldMonth: "2026-08",
-              nextFoldOffset: 4,
+              nextFoldOffset: 1,
               nextFoldSeq: 1,
               foldAcc: {
                 folded: [],
@@ -102,7 +102,7 @@ describe("CF Queue consumeJob successor", () => {
       },
     };
     await consumeJob(env, foldJob());
-    expect(queued).toMatchObject([{ name: "fold", cursor: { foldPhase: "month", foldMonth: "2026-08", foldOffset: 4 } }]);
+    expect(queued).toMatchObject([{ name: "fold", cursor: { foldPhase: "month", foldMonth: "2026-08", foldOffset: 1 } }]);
   });
 
   test("advances fold → recomputeRank from the successor header when the body is lost to OOM", async () => {
