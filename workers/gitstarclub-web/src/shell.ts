@@ -1,3 +1,4 @@
+import { successorJobAfterRefreshStep } from "../../../web/lib/workers-host/queue-advance";
 import { fetchRefreshStep, refreshStepFetchVia } from "../../../web/lib/workers-host/refresh-step-fetch";
 import {
   cronHttpUrl,
@@ -93,8 +94,10 @@ export async function consumeJob(env: WorkerEnv, job: RefreshJob): Promise<void>
     return;
   }
   const response = await fetchRefreshStep(env, job);
-  if (!response.ok) {
-    throw new Error(`refresh step ${job.name} failed: HTTP ${response.status}`);
+  const next = await successorJobAfterRefreshStep(job, response);
+  if (next) {
+    await enqueueJob(env, next);
+    emitRunLog({ event: "workflow.advance", runId: job.runId, step: job.name, next: next.name });
   }
 }
 

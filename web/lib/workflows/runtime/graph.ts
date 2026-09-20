@@ -1,4 +1,4 @@
-import { REPO_BUCKETS } from "@/lib/workflows/buckets";
+import { REPO_BUCKETS } from "../buckets";
 import type {
   CanonicalPreflightCursorAcc,
   FixtureRefreshStepName,

@@ -16,6 +16,9 @@ export class CfQueueWorkflowRuntime implements WorkflowRuntime {
   }
 
   async completeStep(job: RefreshStepJob, result: RefreshStepResult): Promise<void> {
+    // Fallback for a direct POST /step (no queue-advance header). The CF Queue
+    // consumer owns the successor after a 200 body so fold does not depend on
+    // this public /enqueue hop from an exhausted OpenNext isolate.
     const next = nextRefreshJob(job, result);
     if (next) await this.enqueueStep(next);
   }
