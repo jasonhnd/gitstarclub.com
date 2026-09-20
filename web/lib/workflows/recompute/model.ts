@@ -69,39 +69,27 @@ export interface RawShards {
   siteDailyByYear: Record<string, { year: string; cells: DailySeries }>;
 }
 
-/** Merge bucket shards (already combined into flat records) into a compute Model.
- *  seamDate (canonical/v2/meta.seam_date) fixes the gross/net boundary for stock anchoring. */
-export function buildModel(raw: RawShards, seamDate: DateStr): Model {
-  const repos = new Map<number, RepoMeta>();
-  for (const [k, v] of Object.entries(raw.repos)) {
-    const id = numId(k);
-    const d = v.d;
-    if ((typeof d !== "number" || !Number.isFinite(d)) && v.tracked_since == null) {
-      throw new Error(`historical repo ${id} is missing a finite anchoring factor d`);
-    }
-    repos.set(id, {
-      ...v,
-      active: v.active ?? true, // legacy bootstrap shards represented only active rows
-      d: typeof d === "number" && Number.isFinite(d) ? d : 0,
-    });
+export function normalizeRepoMeta(id: number, v: RepoMeta): RepoMeta {
+  const d = v.d;
+  if ((typeof d !== "number" || !Number.isFinite(d)) && v.tracked_since == null) {
+    throw new Error(`historical repo ${id} is missing a finite anchoring factor d`);
   }
-
-  const toSeriesMap = <T>(rec: Record<string, T>): Map<number, T> => {
-    const m = new Map<number, T>();
-    for (const [k, v] of Object.entries(rec)) m.set(numId(k), v);
-    return m;
+  return {
+    ...v,
+    active: v.active ?? true, // legacy bootstrap shards represented only active rows
+    d: typeof d === "number" && Number.isFinite(d) ? d : 0,
   };
-  const monthly = toSeriesMap(raw.monthly);
-  const weekly = toSeriesMap(raw.weekly);
-  const recentDaily = toSeriesMap(raw.recentDaily);
+}
 
-  // site-daily: concat all year shards, sort by date.
-  const siteCells: Array<readonly [DateStr, number]> = [];
-  for (const { cells } of Object.values(raw.siteDailyByYear)) siteCells.push(...cells);
-  siteCells.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-
-  // Organization totals are a current read model, so only active membership
-  // contributes. Historical repo entities remain available independently.
+/** Assemble Maps already keyed by repo id. CF hops pass only the families they need. */
+export function assembleModel(
+  repos: Map<number, RepoMeta>,
+  monthly: Map<number, Series>,
+  weekly: Map<number, Series>,
+  recentDaily: Map<number, DailySeries>,
+  siteDaily: DailySeries,
+  seamDate: DateStr,
+): Model {
   const orgs = new Map<string, OrgAgg>();
   for (const r of repos.values()) {
     if (r.active === false) continue;
@@ -117,7 +105,33 @@ export function buildModel(raw: RawShards, seamDate: DateStr): Model {
 
   const ids = [...repos.keys()].sort((a, b) => a - b);
   const activeIds = ids.filter((id) => repos.get(id)?.active !== false);
-  return { repos, monthly, weekly, recentDaily, siteDaily: siteCells, orgs, ids, activeIds, seam: seamPeriods(seamDate) };
+  return { repos, monthly, weekly, recentDaily, siteDaily, orgs, ids, activeIds, seam: seamPeriods(seamDate) };
+}
+
+/** Merge bucket shards (already combined into flat records) into a compute Model.
+ *  seamDate (canonical/v2/meta.seam_date) fixes the gross/net boundary for stock anchoring. */
+export function buildModel(raw: RawShards, seamDate: DateStr): Model {
+  const repos = new Map<number, RepoMeta>();
+  for (const [k, v] of Object.entries(raw.repos)) repos.set(numId(k), normalizeRepoMeta(numId(k), v));
+
+  const toSeriesMap = <T>(rec: Record<string, T>): Map<number, T> => {
+    const m = new Map<number, T>();
+    for (const [k, v] of Object.entries(rec)) m.set(numId(k), v);
+    return m;
+  };
+
+  const siteCells: Array<readonly [DateStr, number]> = [];
+  for (const { cells } of Object.values(raw.siteDailyByYear)) siteCells.push(...cells);
+  siteCells.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+
+  return assembleModel(
+    repos,
+    toSeriesMap(raw.monthly),
+    toSeriesMap(raw.weekly),
+    toSeriesMap(raw.recentDaily),
+    siteCells,
+    seamDate,
+  );
 }
 
 /** ISO week / month / year period strings sort lexically in chronological order. */

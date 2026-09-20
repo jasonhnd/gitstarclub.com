@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  CANONICAL_SHARD_READ_CONCURRENCY,
-  CANONICAL_SHARD_READ_CONCURRENCY_CF,
-} from "@/lib/workflows/canonical-validation";
-import { canonicalModelLoadPlan, mergeCompleteBucketShards, WRITE_CONCURRENCY_CF } from "./io";
+import { CANONICAL_SHARD_READ_CONCURRENCY } from "@/lib/workflows/canonical-validation";
+import { canonicalModelLoadPlan, mergeCompleteBucketShards, wantedCanonicalFamilies, WRITE_CONCURRENCY_CF } from "./io";
 
 describe("mergeCompleteBucketShards", () => {
   test("merges every complete shard", () => {
@@ -28,10 +25,15 @@ describe("canonicalModelLoadPlan", () => {
       writeConcurrency: 12,
     });
     expect(canonicalModelLoadPlan({ HOSTING_TARGET: "cf" })).toEqual({
-      shardConcurrency: CANONICAL_SHARD_READ_CONCURRENCY_CF,
+      shardConcurrency: 1,
       parallelFamilies: false,
       writeConcurrency: WRITE_CONCURRENCY_CF,
     });
     expect(canonicalModelLoadPlan({ HOSTING_TARGET: "cf", VERCEL_ENV: "production" }).parallelFamilies).toBe(true);
+  });
+
+  test("wantedCanonicalFamilies defaults to every family and honors a hop subset", () => {
+    expect([...wantedCanonicalFamilies()]).toEqual(["repos", "monthly", "weekly", "recentDaily", "siteDaily"]);
+    expect([...wantedCanonicalFamilies({ families: ["repos", "weekly"] })]).toEqual(["repos", "weekly"]);
   });
 });

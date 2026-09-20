@@ -4,9 +4,11 @@ import { CANONICAL_SHARD_READ_CONCURRENCY_CF } from "@/lib/workflows/canonical-v
 
 let inflight = 0;
 let maxInflight = 0;
+const reads: string[] = [];
 
 mock.module("@/lib/data/source", () => ({
   readAuthoritativeView: async (path: string) => {
+    reads.push(path);
     inflight += 1;
     maxInflight = Math.max(maxInflight, inflight);
     await new Promise((resolve) => setTimeout(resolve, 1));
@@ -31,9 +33,21 @@ describe("loadCanonicalModel CF budget", () => {
   test("does not fan out all 128 canonical shards at once on the CF host", async () => {
     inflight = 0;
     maxInflight = 0;
+    reads.length = 0;
     const loaded = await runWithCloudflareWorkersHostForTests(true, () => loadCanonicalModel("refresh-cf-recompute"));
     expect(loaded.seamDate).toBe("2026-05-30");
     expect(maxInflight).toBeGreaterThan(0);
     expect(maxInflight).toBeLessThanOrEqual(CANONICAL_SHARD_READ_CONCURRENCY_CF);
+  });
+
+  test("a month hop does not read weekly or recent-daily families", async () => {
+    reads.length = 0;
+    await runWithCloudflareWorkersHostForTests(true, () =>
+      loadCanonicalModel("refresh-cf-recompute", { families: ["repos", "monthly"] }),
+    );
+    expect(reads.some((path) => path.includes("repo-weekly/"))).toBe(false);
+    expect(reads.some((path) => path.includes("repo-recent-daily/"))).toBe(false);
+    expect(reads.some((path) => path.includes("repo-monthly/"))).toBe(true);
+    expect(reads.some((path) => path.includes("repos/"))).toBe(true);
   });
 });

@@ -32,6 +32,7 @@ export type CanonicalPreflightCursorAcc = {
 };
 
 export type FoldPhase = "month" | "week";
+export type RecomputePhase = "month" | "week" | "rest";
 
 export type FoldCursorAcc = {
   folded: string[];
@@ -56,6 +57,7 @@ export type RefreshCursor = {
   foldOffset?: number;
   foldSeq?: number;
   foldAcc?: FoldCursorAcc;
+  recomputePhase?: RecomputePhase;
 };
 
 export type RefreshStepJob =
