@@ -132,6 +132,35 @@ describe("refresh step graph", () => {
     expect(done?.cursor.foldAcc).toBeUndefined();
   });
 
+  test("recomputeRank stays on recompute until the rest hop finishes", () => {
+    const month = nextRefreshJob(full("recomputeRank", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 }), {
+      name: "recomputeRank",
+      files: 10,
+      nextRecomputePhase: "week",
+    });
+    expect(month).toMatchObject({
+      name: "recomputeRank",
+      cursor: { recomputePhase: "week", fencingToken: 22 },
+    });
+
+    const rest = nextRefreshJob(month!, {
+      name: "recomputeRank",
+      files: 4,
+      nextRecomputePhase: "rest",
+    });
+    expect(rest).toMatchObject({
+      name: "recomputeRank",
+      cursor: { recomputePhase: "rest", fencingToken: 22 },
+    });
+
+    const done = nextRefreshJob(rest!, { name: "recomputeRank", files: 8 });
+    expect(done).toMatchObject({
+      name: "recomputeRepoEntities",
+      cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
+    });
+    expect(done?.cursor.recomputePhase).toBeUndefined();
+  });
+
   test("fold result walks to recomputeRank and keeps the fencing token", () => {
     const next = nextRefreshJob(full("fold", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 }), {
       name: "fold",

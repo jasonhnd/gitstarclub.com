@@ -565,6 +565,15 @@ describe("readView — non-base (flat) reads", () => {
       "ops/workflows/run/manifest.json missing",
     );
   });
+
+  test("skipSchemaParse returns the raw JSON without a Zod clone", async () => {
+    routes = {
+      "/ops/workflows/run/raw.json": { json: { ok: true, tag: "raw", extra: 1 } },
+    };
+    const Strict = z.object({ ok: z.boolean(), tag: z.string() }).strict();
+    const value = await readAuthoritativeView("ops/workflows/run/raw.json", Strict, { skipSchemaParse: true });
+    expect(value as { ok: boolean; tag: string; extra: number }).toEqual({ ok: true, tag: "raw", extra: 1 });
+  });
 });
 
 describe("readView — atomic live generation resolution", () => {
