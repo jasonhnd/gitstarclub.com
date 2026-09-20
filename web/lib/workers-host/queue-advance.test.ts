@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   QUEUE_ADVANCE_CONSUMER,
   QUEUE_ADVANCE_HEADER,
+  QUEUE_SUCCESSOR_HEADER,
+  encodeSuccessorJobHeader,
   isRefreshStepSuccessPayload,
   queueAdvanceFromConsumer,
   successorJobAfterRefreshStep,
+  successorJobFromResponseHeaders,
 } from "./queue-advance";
 
 const foldJob = {
@@ -59,6 +62,25 @@ describe("successorJobAfterRefreshStep", () => {
     await expect(successorJobAfterRefreshStep(foldJob, Response.json({ ok: true }))).rejects.toThrow("result-less");
     expect(isRefreshStepSuccessPayload({ ok: true, result: { name: "fold" } })).toBe(true);
     expect(isRefreshStepSuccessPayload({ ok: false, result: { name: "fold" } })).toBe(false);
+  });
+
+  test("encodes the successor job on the response header for an OOM-after-body fallback", () => {
+    const next = {
+      v: 1 as const,
+      graph: "full" as const,
+      runId: foldJob.runId,
+      name: "recomputeRank" as const,
+      attempt: 0,
+      cursor: foldJob.cursor,
+    };
+    expect(encodeSuccessorJobHeader(null)).toBeNull();
+    expect(successorJobFromResponseHeaders(new Headers())).toBeNull();
+    expect(
+      successorJobFromResponseHeaders(new Headers({ [QUEUE_SUCCESSOR_HEADER]: encodeSuccessorJobHeader(next)! })),
+    ).toEqual(next);
+    expect(() => successorJobFromResponseHeaders(new Headers({ [QUEUE_SUCCESSOR_HEADER]: "not-json" }))).toThrow(
+      "successor header is not JSON",
+    );
   });
 
   test("returns null at the end of the graph", async () => {

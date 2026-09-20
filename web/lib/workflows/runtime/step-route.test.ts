@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { QUEUE_ADVANCE_CONSUMER, QUEUE_ADVANCE_HEADER } from "@/lib/workers-host/queue-advance";
+import { QUEUE_ADVANCE_CONSUMER, QUEUE_ADVANCE_HEADER, QUEUE_SUCCESSOR_HEADER } from "@/lib/workers-host/queue-advance";
 import { firstRefreshJob } from "./types";
 import { refreshStepCheckpointName, runRefreshStepRoute } from "./step-route";
 
@@ -82,6 +82,29 @@ describe("runRefreshStepRoute", () => {
     expect(names).toEqual(["preflight-8"]);
   });
 
+  test("names fold checkpoints by phase and sequence", () => {
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "fold",
+        attempt: 0,
+        cursor: { foldPhase: "week", foldSeq: 3 },
+      }),
+    ).toBe("fold-week-3");
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "fold",
+        attempt: 0,
+        cursor: {},
+      }),
+    ).toBe("fold-month-0");
+  });
+
   test("cf-queue consumer header skips completeStep after fold so the isolate does not POST /enqueue", async () => {
     const enqueues: unknown[] = [];
     const job = {
@@ -121,6 +144,10 @@ describe("runRefreshStepRoute", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, runId: "refresh-1", step: "fold" });
     expect(enqueues).toEqual([]);
+    expect(JSON.parse(response.headers.get(QUEUE_SUCCESSOR_HEADER) ?? "null")).toMatchObject({
+      name: "recomputeRank",
+      runId: "refresh-1",
+    });
   });
 
   test("cf-queue direct POST still completeSteps fold → recomputeRank", async () => {

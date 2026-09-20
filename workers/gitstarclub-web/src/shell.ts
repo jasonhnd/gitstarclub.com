@@ -1,4 +1,7 @@
-import { successorJobAfterRefreshStep } from "../../../web/lib/workers-host/queue-advance";
+import {
+  successorJobAfterRefreshStep,
+  successorJobFromResponseHeaders,
+} from "../../../web/lib/workers-host/queue-advance";
 import { fetchRefreshStep, refreshStepFetchVia } from "../../../web/lib/workers-host/refresh-step-fetch";
 import {
   cronHttpUrl,
@@ -94,10 +97,43 @@ export async function consumeJob(env: WorkerEnv, job: RefreshJob): Promise<void>
     return;
   }
   const response = await fetchRefreshStep(env, job);
-  const next = await successorJobAfterRefreshStep(job, response);
-  if (next) {
-    await enqueueJob(env, next);
-    emitRunLog({ event: "workflow.advance", runId: job.runId, step: job.name, next: next.name });
+  let headerNext: ReturnType<typeof successorJobFromResponseHeaders> = null;
+  try {
+    headerNext = successorJobFromResponseHeaders(response.headers);
+  } catch (error) {
+    emitRunLog({
+      event: "workflow.advance_error",
+      runId: job.runId,
+      step: job.name,
+      via: "successor-header",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  try {
+    const next = await successorJobAfterRefreshStep(job, response);
+    if (next) {
+      await enqueueJob(env, next);
+      emitRunLog({ event: "workflow.advance", runId: job.runId, step: job.name, next: next.name });
+    }
+  } catch (error) {
+    if (headerNext && (response.ok || response.status >= 500)) {
+      await enqueueJob(env, headerNext);
+      emitRunLog({
+        event: "workflow.advance",
+        runId: job.runId,
+        step: job.name,
+        next: headerNext.name,
+        via: "successor-header",
+      });
+      return;
+    }
+    emitRunLog({
+      event: "workflow.advance_error",
+      runId: job.runId,
+      step: job.name,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
 }
 

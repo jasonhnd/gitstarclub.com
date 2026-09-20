@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { RefreshJob, WorkerEnv } from "../../../workers/gitstarclub-web/src/env";
 import { consumeJob } from "../../../workers/gitstarclub-web/src/shell";
-import { QUEUE_ADVANCE_CONSUMER, QUEUE_ADVANCE_HEADER } from "./queue-advance";
+import { QUEUE_ADVANCE_CONSUMER, QUEUE_ADVANCE_HEADER, QUEUE_SUCCESSOR_HEADER } from "./queue-advance";
 
 const STEP = "https://pre.gitstarclub.com/api/workflows/refresh/step";
 
@@ -67,6 +67,70 @@ describe("CF Queue consumeJob successor", () => {
         cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
       },
     ]);
+  });
+
+  test("enqueues the next fold window when fold is not finished", async () => {
+    const queued: RefreshJob[] = [];
+    const env: WorkerEnv = {
+      JOBS: { send: async (job) => { queued.push(job); } },
+      MEDIA: null,
+      REFRESH_STEP_URL: STEP,
+      CRON_SECRET: "secret",
+      WORKER_SELF_REFERENCE: {
+        async fetch() {
+          return Response.json({
+            ok: true,
+            runId: "refresh-2026-09-20T09-39-26-949Z",
+            step: "fold",
+            result: {
+              name: "fold",
+              folded: [],
+              foldedWeeks: [],
+              nextFoldPhase: "month",
+              nextFoldMonth: "2026-08",
+              nextFoldOffset: 4,
+              nextFoldSeq: 1,
+              foldAcc: {
+                folded: [],
+                foldedWeeks: [],
+                foldedThroughMonth: "2026-07",
+                foldedThroughWeek: "2026-W30",
+              },
+            },
+          });
+        },
+      },
+    };
+    await consumeJob(env, foldJob());
+    expect(queued).toMatchObject([{ name: "fold", cursor: { foldPhase: "month", foldMonth: "2026-08", foldOffset: 4 } }]);
+  });
+
+  test("advances fold → recomputeRank from the successor header when the body is lost to OOM", async () => {
+    const queued: RefreshJob[] = [];
+    const successor = {
+      v: 1 as const,
+      graph: "full" as const,
+      runId: "refresh-2026-09-20T09-39-26-949Z",
+      name: "recomputeRank",
+      attempt: 0,
+      cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
+    };
+    const env: WorkerEnv = {
+      JOBS: { send: async (job) => { queued.push(job); } },
+      MEDIA: null,
+      REFRESH_STEP_URL: STEP,
+      CRON_SECRET: "secret",
+      WORKER_SELF_REFERENCE: {
+        async fetch() {
+          return new Response("Worker exceeded memory limit.", {
+            status: 500,
+            headers: { [QUEUE_SUCCESSOR_HEADER]: JSON.stringify(successor) },
+          });
+        },
+      },
+    };
+    await consumeJob(env, foldJob());
+    expect(queued).toEqual([successor]);
   });
 
   test("does not enqueue when the step body is missing and does not treat headers-only 200 as success", async () => {
