@@ -10,6 +10,7 @@ import {
   foldedCanonicalMeta,
   nextMonth,
   requireCompletePendingPeriods,
+  utcMonthPeriod,
   type WeekRow,
 } from "./fold";
 
@@ -58,6 +59,13 @@ const pendings = [pendingJun, pendingJul];
 const asObj = (row: WeekRow): { week: string; perRepo: Record<number, number> } => ({
   week: row.week,
   perRepo: Object.fromEntries([...row.perRepo.entries()].sort((a, b) => a[0] - b[0])),
+});
+
+describe("utcMonthPeriod", () => {
+  test("uses UTC month so an injected clock is independent of @/lib/periods", () => {
+    expect(utcMonthPeriod(new Date("2026-09-15T00:00:00.000Z"))).toBe("2026-09");
+    expect(utcMonthPeriod(new Date("2026-07-31T23:59:59.999Z"))).toBe("2026-07");
+  });
 });
 
 describe("nextMonth", () => {

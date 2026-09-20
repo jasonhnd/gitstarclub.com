@@ -2,7 +2,6 @@ import { z } from "zod";
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import { CanonicalMeta, PendingPeriod, RepoMonthlyShard, RepoWeeklyShard, SiteDaily } from "@/lib/contracts";
 import { REPO_BUCKETS, repoBucket } from "../buckets";
-import { currentUtcPeriods } from "@/lib/periods";
 import { addDays, endOfMonth, monthsBetween, sundayOfWeekId, weekIdOf } from "./week-dates";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 import type { FoldCursorAcc, FoldPhase, RefreshCursor } from "@/lib/workflows/runtime/types";
@@ -73,6 +72,13 @@ export function nextMonth(m: string): string {
   return mo >= 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
 }
 
+/** UTC 'YYYY-MM' of `now`. Local so the closed-month gate follows the injected clock,
+ *  not `@/lib/periods` — `mock.module` of that specifier leaks across `bun test lib/`
+ *  (uiux-seo / watermark) and would skip a still-closed month. */
+export function utcMonthPeriod(now: Date): string {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 export function foldedCanonicalMeta(
   meta: CanonicalMeta,
   foldedThroughMonth: string,
@@ -135,7 +141,7 @@ export async function runFoldStep(
   const meta = await io.readMeta();
   const acc = copyFoldAcc(cursor.foldAcc ?? emptyFoldAcc(meta));
   const seq = cursor.foldSeq ?? 0;
-  const currentMonth = currentUtcPeriods(opts.now).monthPeriod;
+  const currentMonth = utcMonthPeriod(opts.now ?? new Date());
   const phase: FoldPhase = cursor.foldPhase === "week" ? "week" : "month";
 
   if (phase === "month") {
