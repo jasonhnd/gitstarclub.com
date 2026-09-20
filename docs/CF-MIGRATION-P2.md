@@ -64,7 +64,8 @@ Production ISR invalidation is still Next.js on Vercel:
   `web/scripts/resolve-vercel-preview.ts` path used by `preview-e2e` and
   `product-gates`
 - `.delivery.yml` `ci.checks` stays
-  `[static, production-build, preview-e2e, product-gates]`
+  `[static, production-build]` (GitHub required). `preview-e2e` /
+  `product-gates` soft-skip without a Vercel Preview and are not required.
 - `web/vercel.json` cron rows are unchanged
 - Vercel Authentication stays on Preview (`pre.gitstarclub.com` / `*.vercel.app`);
   production `gitstarclub.com` / `www.gitstarclub.com` stay public
@@ -146,7 +147,9 @@ When enabled, configure:
 | `CRON_SECRET` | GitHub Actions secret (optional) | Enables the hot-path invalidate POST |
 
 `preview-e2e` and `product-gates` keep calling
-`web/scripts/resolve-vercel-preview.ts`. They are unchanged production gates.
+`web/scripts/resolve-vercel-preview.ts`. They soft-skip when Ignored Build
+leaves no Vercel Preview and are **not** GitHub required checks. Do not add
+`cf-preview` to the required-check set.
 
 ## Observability
 
