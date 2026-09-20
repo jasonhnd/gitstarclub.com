@@ -173,7 +173,7 @@ HTTP chain and by a non-production CF Queue consumer. Not a `vercel.json` cron.
 | Success | `200 {"ok":true,"runId":"refresh-...","step":"..."}` |
 | Failure | `400` invalid job or fixture on this runtime; `401 Unauthorized`; `405` non-POST; `500 {"ok":false,"runId":"refresh-...","error":"Internal server error"}` |
 | Cache | `dynamic = "force-dynamic"`; no explicit `Cache-Control`; callers should not cache |
-| Side effects | Executes one step through the P0 object-store port, writes `ops/workflows/<run_id>/steps/<step>.json`, then `completeStep` enqueues the successor |
+| Side effects | Executes one step through the P0 object-store port, writes `ops/workflows/<run_id>/steps/<step>.json`. HTTP / direct POST then `completeStep` enqueues the successor. A CF Queue consumer sends `x-gitstarclub-queue-advance: consumer` and `JOBS.send`s the successor after reading the JSON body (so fold does not POST public `/enqueue` from the exhausted isolate) |
 | Max duration | `800` seconds |
 
 Operational example:

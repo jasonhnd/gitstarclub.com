@@ -8,6 +8,7 @@ source_of_truth_for:
   - CF Workers Blob fetch write path for full cron / refresh lease
   - CF refresh preflight 1102 budget (batched shard windows)
   - CF refresh lease renew / fencing-token CAS (CDN ETag + Queue overlap)
+  - CF refresh fold→recompute stall (Queue consumer successor / public /enqueue hop)
   - dual-scheduler rollback (CF Cron off, production stays Vercel)
 ---
 
@@ -260,6 +261,66 @@ Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
 6. If whitelist is still running (GitHub Search), `active.json` stays
    `status=running` for the same `run_id` / token. A Queue retry of
    `whitelist` must not release that lease.
+7. Confirm production Worker `triggers.crons` is still `[]`.
+
+## CF refresh fold → recompute (Queue successor)
+
+Preview evidence after #475 (CRON-PRE-PR475-RUN-FINAL-001): Bearer start
+200, preflight windows → whitelist → rename → metadata-0..31 → **`fold` ok**
+@ 09:59:07Z. Then **recompute never started**: Observability `queue` origin
+silent after fold, lease `expires_at` lapsed with `status=running`, no
+`error.json`, no `recomputeRank` / `aliases` / `validate` / `publish` / `gc`.
+
+Root cause (all three together):
+
+1. **Successor enqueue lived in the fold isolate.** After writing
+   `steps/fold.json`, `completeStep` POSTed `WORKFLOW_QUEUE_ENQUEUE_URL`
+   (`https://pre.gitstarclub.com/enqueue`) with global `fetch`. That is the
+   same public hop #475 removed from consumer→step. Fold is the first step
+   that already spent the isolate on 32 monthly + 32 weekly shards. The extra
+   hop never became a consumed Queue message.
+2. **The Queue consumer only checked `response.ok`.** `await binding.fetch()`
+   resolves when headers exist, not when the JSON body exists. Cloudflare
+   **terminates a service-bound child when the parent stops awaiting**. After
+   fold the consumer acked and returned; the child died before `/enqueue`
+   landed. No `error.json` because `failRefreshJob` never ran.
+3. **`max_retries: 2` plus a silent ack.** Once fold looked successful, the
+   queue went quiet. The lease stopped renewing until it expired.
+
+Fix (keeps `WORKFLOW_RUNTIME=cf-queue`; does not roll back to HTTP):
+
+- Queue consumer reads the step JSON body (keeps the child alive), then
+  `JOBS.send(nextRefreshJob)` — Queue binding, not the public `/enqueue` hop.
+- Consumer sets `x-gitstarclub-queue-advance: consumer`. On `cf-queue` the
+  step isolate skips `completeStep`. Direct POST `/step` still enqueues.
+- `loadCanonicalModel` uses the same CF shard-read cap as preflight
+  (`mapLimit` 2, sequential families) so `recomputeRank` does not immediately
+  1102 on the old 128-way fan-out.
+
+Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
+
+### Suggested CF fold→recompute retest (preview Worker only)
+
+1. Keep `WORKFLOW_RUNTIME=cf-queue` and
+   `WORKFLOW_QUEUE_ENQUEUE_URL=https://pre.gitstarclub.com/enqueue`. Do **not**
+   PUT production schedules and do **not** stop Vercel cron.
+2. Wait for any active lease to expire, or use a new idempotency key
+   (`?idempotency_key=` / `Idempotency-Key`).
+3. Bearer `GET https://pre.gitstarclub.com/api/workflows/refresh/start` → **200**
+   `started` with a `run_id`.
+4. Workers Observability: `queue` consume continues **after** `fold`. Step log
+   `workflow.advance` should show `fold` → `recomputeRank` (then
+   `recomputeRepoEntities` → `recomputeOrgEntities` → `recomputeHeatmap` →
+   `aliases` → `validate` → `publish` → `gc` → `markPublished`). No silent
+   gap after `fold.json`.
+5. Blob: `ops/workflows/<run_id>/steps/fold.json` (ok) then
+   `steps/recomputeRank.json` (and later `aliases.json`, `validate.json`,
+   `publish.json`; `gc.json` if that step ran). Checkpoint names are the
+   runtime step names, not the 10-name manifest aliases `recompute` /
+   `buildAliases`.
+6. `active.json` should reach `published` (or at least stay `running` with a
+   renewing `expires_at` while recompute writes). A fold-then-silence stall
+   with expired lease and no `error.json` is the old failure mode.
 7. Confirm production Worker `triggers.crons` is still `[]`.
 
 ### Suggested CF retest (preview Worker only)
