@@ -1,7 +1,7 @@
 ---
 owner: operations / hosting
 status: active
-last_reviewed: 2026-09-19
+last_reviewed: 2026-09-20
 source_of_truth_for:
   - Cloudflare migrate P3 Workers hosting of the Next app
   - vinext vs OpenNext adapter choice
@@ -179,6 +179,7 @@ Known limits (write these on the PR; they are not a DNS-cut claim):
 | OpenNext Node `proxy.ts` + `@opentelemetry/api` | NFT traces CJS only; esbuild `module` condition looks for missing `build/esm` | `cf:build` rewrites the traced package.json to the CJS entry |
 | Category long tail | already bounded at build | Do not pre-render every category page on the Worker |
 | Worker subrequests | 50 free / 1 000 paid per invocation | Free-tier budget is **total** subrequests per invocation, not peak concurrency. Each OpenNext Blob `fetch` also does an ASSETS incremental-cache GET. After #455 `mapLimit`, CF `/rankings` still blew the cap on assignment shards; it now skips assignment fan-out (language exits remain) and caps month/week lookback at 1. After #458, ranking-detail / repo / org also skip full 32-shard assignment fan-out on CF (prefer page-id `getCategoryAssignmentsForRepos`; otherwise `assignments=null`; language exits remain). Full `getCategoryAssignments` / `loadCategoryAssignments` omit-path is hard-short-circuited on the CF host. v1 monolith stays a single GET. |
+| Refresh preflight 1102 | Worker CPU / memory / wall-clock (1102 ~13s) | Workflow `preflight` must not read all 128 canonical shards in one invocation. CF preview splits 4-bucket windows at concurrency 2 and keeps `WORKFLOW_RUNTIME=cf-queue`. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). |
 
 This PR does **not** claim the Worker is ready to take apex/www traffic.
 

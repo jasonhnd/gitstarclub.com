@@ -1,7 +1,7 @@
 ---
 owner: data contracts
 status: active
-last_reviewed: 2026-08-30
+last_reviewed: 2026-09-20
 source_of_truth_for:
   - canonical JSON shard schemas
   - JSON view schemas
@@ -122,7 +122,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 - `seam_date`：gross→net 边界，stock 锚定据此分段（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3）。
 - `folded_through`：已折叠进 base 的最末周/月周期；读路径据此判某周期归 live 还是 base（防重复，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）。
-- `generated_at`：bootstrap 与 recurring fold writer 都必须写入的 UTC timestamp。reader 在迁移期仍接受没有该字段的 legacy generation；managed refresh route 会在 lease 前检查 `meta` + 全部 `repos` shard，workflow 首个 step 再在任何 canonical mutation 前校验全部 128 个必需 shard。
+- `generated_at`：bootstrap 与 recurring fold writer 都必须写入的 UTC timestamp。reader 在迁移期仍接受没有该字段的 legacy generation；managed refresh route 会在 lease 前检查 `meta` + 全部 `repos` shard，workflow 首个 step 再在任何 canonical mutation 前校验全部 128 个必需 shard（CF / HTTP 编排按 4-bucket 窗口拆 invocation，语义仍是全量 gate）。
 
 **`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`、`fetched_at`（元数据抓取时刻）；外加 `d` = 冻结锚定因子（`>= 0`，GitHub Archive 低计时可 `> 1`），bootstrap 算定，**存全精度 IEEE double**——舍入会让 JS 重算的 `stock_est` 与 DuckDB 差 ±1）：
 

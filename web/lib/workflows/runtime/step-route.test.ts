@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { firstRefreshJob } from "./types";
-import { runRefreshStepRoute } from "./step-route";
+import { refreshStepCheckpointName, runRefreshStepRoute } from "./step-route";
 
 const originalSecret = process.env.CRON_SECRET;
 const originalRuntime = process.env.WORKFLOW_RUNTIME;
@@ -57,6 +57,28 @@ describe("runRefreshStepRoute", () => {
     expect(await response.json()).toMatchObject({ ok: true, runId: "refresh-1", step: "startRun" });
     expect(executeFull).toHaveBeenCalledTimes(1);
     expect(complete).toEqual(["checkpoint:startRun"]);
+  });
+
+  test("names preflight checkpoints by bucket window", async () => {
+    const names: string[] = [];
+    const job = {
+      v: 1 as const,
+      graph: "full" as const,
+      runId: "refresh-1",
+      name: "preflight" as const,
+      attempt: 0,
+      cursor: { preflightOffset: 8 },
+    };
+    expect(refreshStepCheckpointName(job)).toBe("preflight-8");
+    const response = await runRefreshStepRoute(post(job), {
+      kind: "memory",
+      executeFull: async () => ({ name: "preflight", nextPreflightOffset: 12 }),
+      recordCheckpoint: async (current) => {
+        names.push(refreshStepCheckpointName(current));
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(names).toEqual(["preflight-8"]);
   });
 
   test("records a failed full step after retries are exhausted", async () => {
