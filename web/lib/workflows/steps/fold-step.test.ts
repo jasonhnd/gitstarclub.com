@@ -8,11 +8,15 @@ import {
   foldCanonical,
   foldStepCheckpointName,
   hasNextFoldWindow,
+  monthPlanFromPending,
   pendingFlowsForBuckets,
   runFoldStep,
   type FoldIo,
+  type FoldMonthPlan,
+  type FoldStepFields,
   type FoldWeekPlan,
 } from "./fold";
+import type { RefreshCursor } from "@/lib/workflows/runtime/types";
 
 const META: CanonicalMeta = {
   seam_date: "2026-05-30",
@@ -55,8 +59,11 @@ function memoryFoldIo(): FoldIo & {
   weekly: Map<number, RepoWeeklyShard>;
   site: Map<string, SiteDaily>;
   meta: CanonicalMeta;
+  monthPlan: FoldMonthPlan | null;
   weekPlan: FoldWeekPlan | null;
   pendingReads: string[];
+  monthlyReads: number[];
+  weeklyReads: number[];
   maxInflight: number;
 } {
   let inflight = 0;
@@ -68,8 +75,11 @@ function memoryFoldIo(): FoldIo & {
     weekly,
     site,
     meta: structuredClone(META),
+    monthPlan: null as FoldMonthPlan | null,
     weekPlan: null as FoldWeekPlan | null,
     pendingReads: [] as string[],
+    monthlyReads: [] as number[],
+    weeklyReads: [] as number[],
     maxInflight: 0,
     async readMeta() {
       return structuredClone(io.meta);
@@ -84,9 +94,11 @@ function memoryFoldIo(): FoldIo & {
       return null;
     },
     async readMonthlyShard(bucket: number) {
+      io.monthlyReads.push(bucket);
       return structuredClone(monthly.get(bucket) ?? emptyShard());
     },
     async readWeeklyShard(bucket: number) {
+      io.weeklyReads.push(bucket);
       return structuredClone(weekly.get(bucket) ?? emptyShard());
     },
     async readSiteDaily(year: string) {
@@ -104,6 +116,12 @@ function memoryFoldIo(): FoldIo & {
     async writeMeta(next: CanonicalMeta) {
       io.meta = structuredClone(next);
     },
+    async readMonthPlan() {
+      return io.monthPlan ? structuredClone(io.monthPlan) : null;
+    },
+    async writeMonthPlan(plan: FoldMonthPlan) {
+      io.monthPlan = structuredClone(plan);
+    },
     async readWeekPlan() {
       return io.weekPlan ? structuredClone(io.weekPlan) : null;
     },
@@ -114,11 +132,21 @@ function memoryFoldIo(): FoldIo & {
   return io;
 }
 
+function cursorFrom(step: FoldStepFields): RefreshCursor {
+  return {
+    foldPhase: step.nextFoldPhase,
+    foldMonth: step.nextFoldMonth,
+    foldOffset: step.nextFoldOffset,
+    foldSeq: step.nextFoldSeq,
+    foldAcc: step.foldAcc,
+  };
+}
+
 describe("fold window helpers", () => {
-  test("splits buckets into 4-wide windows", () => {
-    expect(FOLD_BUCKETS_PER_JOB).toBe(4);
-    expect(foldBucketWindow(0, 8)).toEqual([0, 1, 2, 3]);
-    expect(foldBucketWindow(4, 8)).toEqual([4, 5, 6, 7]);
+  test("splits buckets into 1-wide windows", () => {
+    expect(FOLD_BUCKETS_PER_JOB).toBe(1);
+    expect(foldBucketWindow(0, 8)).toEqual([0]);
+    expect(foldBucketWindow(4, 8)).toEqual([4]);
     expect(() => foldBucketWindow(8, 8)).toThrow("outside 8 buckets");
   });
 
@@ -138,51 +166,77 @@ describe("fold window helpers", () => {
     dropPendingReposOutsideBuckets(pending, [1]);
     expect(Object.keys(pending.per_repo)).toEqual(["1"]);
   });
+
+  test("monthPlanFromPending drops per_repo as it walks and keeps only non-zero flows", () => {
+    const pending = structuredClone(pendingAug);
+    pending.per_repo["2"] = [["2026-08-01", 0]];
+    const plan = monthPlanFromPending(pending, 8);
+    expect(pending.per_repo).toEqual({});
+    expect(plan.month).toBe("2026-08");
+    expect(plan.daily_totals).toEqual(pendingAug.daily_totals);
+    expect(plan.buckets[1]).toEqual([[1, 14]]);
+    expect(plan.buckets[4]).toEqual([[4, 4]]);
+    expect(plan.buckets[2]).toEqual([]);
+  });
 });
 
 describe("runFoldStep windows", () => {
   const now = new Date("2026-09-15T00:00:00.000Z");
 
-  test("first month window does not write meta and asks for the next month buckets", async () => {
+  test("first month hop writes a compact plan and does not touch monthly shards", async () => {
     const io = memoryFoldIo();
     const first = await runFoldStep("refresh-fold", 1, {}, { io, now, buckets: 8 });
     expect(first.nextFoldPhase).toBe("month");
     expect(first.nextFoldMonth).toBe("2026-08");
-    expect(first.nextFoldOffset).toBe(4);
+    expect(first.nextFoldOffset).toBe(0);
     expect(first.folded).toEqual([]);
     expect(io.meta.folded_through.month).toBe("2026-07");
-    expect(io.monthly.get(1)?.["1"]).toEqual([["2026-08", 14]]);
-    expect(io.monthly.get(4)).toBeUndefined();
+    expect(io.monthPlan?.month).toBe("2026-08");
+    expect(io.monthPlan?.buckets[1]).toEqual([[1, 14]]);
+    expect(io.monthPlan?.buckets[4]).toEqual([[4, 4]]);
+    expect(io.monthlyReads).toEqual([]);
+    expect(io.monthly.size).toBe(0);
+    expect(io.pendingReads).toEqual(["2026-08"]);
   });
 
-  test("last month window hands off to week-0 without computing weeks in the same isolate", async () => {
+  test("a retry after the month plan exists writes one shard and does not reread pending", async () => {
     const io = memoryFoldIo();
-    const first = await runFoldStep("refresh-fold", 1, {}, { io, now, buckets: 8 });
-    const lastMonth = await runFoldStep(
-      "refresh-fold",
-      1,
-      {
-        foldPhase: first.nextFoldPhase,
-        foldMonth: first.nextFoldMonth,
-        foldOffset: first.nextFoldOffset,
-        foldSeq: first.nextFoldSeq,
-        foldAcc: first.foldAcc,
-      },
-      { io, now, buckets: 8 },
-    );
-    expect(lastMonth.nextFoldPhase).toBe("week");
-    expect(lastMonth.nextFoldOffset).toBe(0);
-    expect(lastMonth.folded).toEqual(["2026-08"]);
+    const planHop = await runFoldStep("refresh-fold", 1, {}, { io, now, buckets: 8 });
+    io.pendingReads = [];
+    const shard0 = await runFoldStep("refresh-fold", 1, cursorFrom(planHop), { io, now, buckets: 8 });
+    expect(io.pendingReads).toEqual([]);
+    expect(io.monthlyReads).toEqual([0]);
+    expect(shard0.nextFoldPhase).toBe("month");
+    expect(shard0.nextFoldMonth).toBe("2026-08");
+    expect(shard0.nextFoldOffset).toBe(1);
+    expect(io.monthly.get(1)).toBeUndefined();
+  });
+
+  test("last month window writes site-daily and hands off to week without computing weeks", async () => {
+    const io = memoryFoldIo();
+    let cursor: RefreshCursor = {};
+    let last = await runFoldStep("refresh-fold", 1, cursor, { io, now, buckets: 8 });
+    for (let offset = 0; offset < 8; offset++) {
+      expect(last.nextFoldPhase).toBe("month");
+      cursor = cursorFrom(last);
+      last = await runFoldStep("refresh-fold", 1, cursor, { io, now, buckets: 8 });
+    }
+    expect(last.nextFoldPhase).toBe("week");
+    expect(last.nextFoldOffset).toBe(0);
+    expect(last.folded).toEqual(["2026-08"]);
+    expect(io.monthly.get(1)?.["1"]).toEqual([["2026-08", 14]]);
     expect(io.monthly.get(4)?.["4"]).toEqual([["2026-08", 4]]);
     expect(io.site.get("2026")?.cells).toEqual([
       ["2026-08-03", 10],
       ["2026-08-15", 4],
     ]);
     expect(io.weekPlan).toBeNull();
+    expect(io.weeklyReads).toEqual([]);
     expect(io.meta.folded_through.month).toBe("2026-07");
+    expect(io.monthlyReads).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
   });
 
-  test("week-0 reads pendings one at a time, writes a compact plan, and does not finish the graph", async () => {
+  test("week-0 reads pendings one at a time, writes a compact plan, and does not write weekly shards", async () => {
     const io = memoryFoldIo();
     const acc: FoldCursorAcc = {
       folded: ["2026-08"],
@@ -202,8 +256,33 @@ describe("runFoldStep windows", () => {
       true,
     );
     expect(week0.nextFoldPhase).toBe("week");
-    expect(week0.nextFoldOffset).toBe(4);
+    expect(week0.nextFoldOffset).toBe(0);
+    expect(week0.foldedWeeks[0]).toBe("2026-W31");
+    expect(io.weeklyReads).toEqual([]);
+    expect(io.weekly.size).toBe(0);
     expect(io.meta.folded_through.week).toBe("2026-W30");
+  });
+
+  test("a retry after the week plan exists writes one weekly shard and does not reread pending", async () => {
+    const io = memoryFoldIo();
+    const acc: FoldCursorAcc = {
+      folded: ["2026-08"],
+      foldedWeeks: [],
+      foldedThroughMonth: "2026-08",
+      foldedThroughWeek: "2026-W30",
+    };
+    const planHop = await runFoldStep(
+      "refresh-fold",
+      1,
+      { foldPhase: "week", foldOffset: 0, foldSeq: 2, foldAcc: acc },
+      { io, now, buckets: 8 },
+    );
+    io.pendingReads = [];
+    const shard0 = await runFoldStep("refresh-fold", 1, cursorFrom(planHop), { io, now, buckets: 8 });
+    expect(io.pendingReads).toEqual([]);
+    expect(io.weeklyReads).toEqual([0]);
+    expect(shard0.nextFoldPhase).toBe("week");
+    expect(shard0.nextFoldOffset).toBe(1);
   });
 
   test("foldCanonical drains windows and commits both watermarks", async () => {
@@ -215,6 +294,8 @@ describe("runFoldStep windows", () => {
     expect(io.meta.folded_through).toEqual({ month: "2026-08", week: "2026-W35" });
     expect(io.weekly.get(1)?.["1"]?.find(([week]) => week === "2026-W32")).toEqual(["2026-W32", 10]);
     expect(io.weekly.get(4)?.["4"]?.find(([week]) => week === "2026-W33")).toEqual(["2026-W33", 4]);
+    expect(io.monthlyReads).toHaveLength(8);
+    expect(io.weeklyReads).toHaveLength(8);
   });
 
   test("a fold with nothing to do returns empty lists and does not write meta", async () => {
@@ -227,6 +308,7 @@ describe("runFoldStep windows", () => {
     expect(hasNextFoldWindow(result)).toBe(false);
     expect(result).toEqual({ folded: [], foldedWeeks: [] });
     expect(io.meta.folded_through).toEqual({ month: "2026-08", week: "2026-W35" });
+    expect(io.monthPlan).toBeNull();
     expect(io.weekPlan).toBeNull();
   });
 });

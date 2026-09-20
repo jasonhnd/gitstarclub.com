@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import { CanonicalMeta, PendingPeriod, RepoMonthlyShard, RepoWeeklyShard, SiteDaily } from "@/lib/contracts";
 import { REPO_BUCKETS, repoBucket } from "../buckets";
@@ -16,11 +17,15 @@ import type { FoldCursorAcc, FoldPhase, RefreshCursor } from "@/lib/workflows/ru
 // metadata, before recompute, so the recompute turns the folded weeks into top-100 week rankings.
 // See VERCEL-DATA-OPERATIONS §7.2 for the period closeout handoff.
 //
-// CF Workers (128 MiB): one invocation must not keep every pending + 32 monthly + 32 weekly
-// shards in the isolate. The CF/HTTP graph calls runFoldStep (4-bucket windows, sequential
-// pending absorb, compact week plan). foldCanonical still loops those windows in-process.
+// CF Workers (128 MiB): one invocation must not keep a frozen pending + several
+// monthly/weekly shards. #479's 4-bucket window still OOM'd after fold-month-0
+// (preview run refresh-2026-09-20T14-03-08-908Z): each later window reloaded the
+// full pending, and isolate reuse / response serialization sat on top of 4 shards.
+// CF/HTTP now: 1-bucket windows; compact month + week plans so shard jobs do not
+// reload pending; plan-build is its own hop (retry after the plan exists is cheap).
+// foldCanonical still drains those windows in-process.
 
-export const FOLD_BUCKETS_PER_JOB = 4;
+export const FOLD_BUCKETS_PER_JOB = 1;
 
 const FoldWeekPlanView = z
   .object({
@@ -36,6 +41,16 @@ const FoldWeekPlanView = z
   .strict();
 
 export type FoldWeekPlan = z.infer<typeof FoldWeekPlanView>;
+
+const FoldMonthPlanView = z
+  .object({
+    month: z.string(),
+    daily_totals: z.array(z.tuple([z.string(), z.number().int()])),
+    buckets: z.array(z.array(z.tuple([z.number().int(), z.number().int()]))),
+  })
+  .strict();
+
+export type FoldMonthPlan = z.infer<typeof FoldMonthPlanView>;
 
 export type FoldStepFields = {
   folded: string[];
@@ -57,6 +72,8 @@ export type FoldIo = {
   writeWeeklyShard(bucket: number, shard: RepoWeeklyShard): Promise<void>;
   writeSiteDaily(year: string, site: SiteDaily): Promise<void>;
   writeMeta(meta: CanonicalMeta): Promise<void>;
+  readMonthPlan(): Promise<FoldMonthPlan | null>;
+  writeMonthPlan(plan: FoldMonthPlan): Promise<void>;
   readWeekPlan(): Promise<FoldWeekPlan | null>;
   writeWeekPlan(plan: FoldWeekPlan): Promise<void>;
 };
@@ -138,6 +155,7 @@ export async function runFoldStep(
 ): Promise<FoldStepFields> {
   const bucketsTotal = opts.buckets ?? REPO_BUCKETS;
   const io = opts.io ?? createDefaultFoldIo(runId, fencingToken);
+  clearViewParseMemo();
   const meta = await io.readMeta();
   const acc = copyFoldAcc(cursor.foldAcc ?? emptyFoldAcc(meta));
   const seq = cursor.foldSeq ?? 0;
@@ -149,21 +167,33 @@ export async function runFoldStep(
     if (month >= currentMonth) {
       return runWeekPhase(io, meta, acc, seq, 0, bucketsTotal);
     }
-    const pending = await io.readPending(month);
-    if (!pending) {
-      return runWeekPhase(io, meta, acc, seq, 0, bucketsTotal);
-    }
-    if (pending.period !== month) {
-      throw new Error(`canonical/v2/pending/${month}.json: period ${pending.period} does not match ${month}`);
-    }
     const offset = cursor.foldOffset ?? 0;
+    let plan = await loadMonthPlan(io, month, bucketsTotal);
+    if (!plan) {
+      const pending = await io.readPending(month);
+      if (!pending) {
+        return runWeekPhase(io, meta, acc, seq, 0, bucketsTotal);
+      }
+      if (pending.period !== month) {
+        throw new Error(`canonical/v2/pending/${month}.json: period ${pending.period} does not match ${month}`);
+      }
+      plan = monthPlanFromPending(pending, bucketsTotal);
+      await io.writeMonthPlan(plan);
+      clearViewParseMemo();
+      // Plan hop only: do not also hold monthly shards in this isolate.
+      // A Queue retry after the plan exists skips pending and writes one shard.
+      if (offset === 0) {
+        return continueFold(acc, seq, { phase: "month", month, offset: 0 });
+      }
+    }
     const window = foldBucketWindow(offset, bucketsTotal);
-    await writeMonthlyBucketWindow(month, pending, window, io);
+    const dailyTotals = plan.daily_totals;
+    await writeMonthlyBucketWindow(month, monthPlanFlowsForBuckets(plan, window), window, io);
     const nextOffset = offset + window.length;
     if (nextOffset < bucketsTotal) {
       return continueFold(acc, seq, { phase: "month", month, offset: nextOffset });
     }
-    await writeSiteDailyForPending(pending, io);
+    await writeSiteDailyFromTotals(month, dailyTotals, io);
     acc.foldedThroughMonth = month;
     acc.folded.push(month);
     const following = nextMonth(month);
@@ -191,6 +221,8 @@ function createDefaultFoldIo(runId: string, fencingToken: number): FoldIo {
     writeWeeklyShard: (bucket, shard) => putOwnedView(owner, `canonical/v2/repo-weekly/${bucket}.json`, shard),
     writeSiteDaily: (year, site) => putOwnedView(owner, `canonical/v2/site-daily/${year}.json`, site),
     writeMeta: (next) => putOwnedView(owner, "canonical/v2/meta.json", next),
+    readMonthPlan: () => readAuthoritativeView(`ops/workflows/${runId}/fold-month-plan.json`, FoldMonthPlanView, { bust }),
+    writeMonthPlan: (plan) => putOwnedView(owner, `ops/workflows/${runId}/fold-month-plan.json`, plan),
     readWeekPlan: () => readAuthoritativeView(`ops/workflows/${runId}/fold-week-plan.json`, FoldWeekPlanView, { bust }),
     writeWeekPlan: (plan) => putOwnedView(owner, `ops/workflows/${runId}/fold-week-plan.json`, plan),
   };
@@ -242,8 +274,8 @@ async function runWeekPhase(
   offset: number,
   bucketsTotal: number,
 ): Promise<FoldStepFields> {
-  let plan = offset === 0 ? null : await io.readWeekPlan();
-  if (offset === 0) {
+  let plan = await loadWeekPlan(io, acc.foldedThroughMonth);
+  if (!plan) {
     const firstMonday = addDays(sundayOfWeekId(acc.foldedThroughWeek), 1);
     const lastFoldableDay = endOfMonth(acc.foldedThroughMonth);
     if (firstMonday > lastFoldableDay) {
@@ -262,8 +294,11 @@ async function runWeekPhase(
         throw new Error(`canonical/v2/pending/${month}.json: period ${pending.period} does not match ${month}`);
       }
       absorbPendingIntoByDate(byDate, pending);
+      pending.per_repo = {};
+      clearViewParseMemo();
     }
     const rows = weekRowsFromByDate(byDate, fromWeekExclusive, acc.foldedThroughMonth);
+    byDate.clear();
     acc.foldedWeeks = rows.map((row) => row.week);
     if (rows.length > 0) acc.foldedThroughWeek = rows[rows.length - 1]!.week;
     if (rows.length === 0) {
@@ -276,18 +311,38 @@ async function runWeekPhase(
       weeks: weekPlanFromRows(rows),
     };
     await io.writeWeekPlan(plan);
+    clearViewParseMemo();
+    if (offset === 0) {
+      return continueFold(acc, seq, { phase: "week", offset: 0 });
+    }
   }
-  if (!plan) {
-    throw new Error("canonical/v2 pending week fold: missing compact week plan");
-  }
+  applyWeekPlanToAcc(acc, plan);
   const window = foldBucketWindow(offset, bucketsTotal);
-  await writeWeeklyBucketWindow(plan, window, io);
+  await writeWeeklyBucketWindow(weekPlanForBuckets(plan, window), window, io);
   const nextOffset = offset + window.length;
   if (nextOffset < bucketsTotal) {
     return continueFold(acc, seq, { phase: "week", offset: nextOffset });
   }
   await commitMetaIfNeeded(io, meta, acc);
   return finishFold(acc);
+}
+
+async function loadMonthPlan(io: FoldIo, month: string, bucketsTotal: number): Promise<FoldMonthPlan | null> {
+  const plan = await io.readMonthPlan();
+  if (!plan || plan.month !== month || plan.buckets.length !== bucketsTotal) return null;
+  return plan;
+}
+
+async function loadWeekPlan(io: FoldIo, foldedThroughMonth: string): Promise<FoldWeekPlan | null> {
+  const plan = await io.readWeekPlan();
+  if (!plan || plan.foldedThroughMonth !== foldedThroughMonth) return null;
+  return plan;
+}
+
+function applyWeekPlanToAcc(acc: FoldCursorAcc, plan: FoldWeekPlan): void {
+  if (acc.foldedWeeks.length > 0) return;
+  acc.foldedWeeks = plan.weeks.map((row) => row.week);
+  if (plan.weeks.length > 0) acc.foldedThroughWeek = plan.weeks[plan.weeks.length - 1]!.week;
 }
 
 async function commitMetaIfNeeded(io: FoldIo, meta: CanonicalMeta, acc: FoldCursorAcc): Promise<void> {
@@ -327,14 +382,40 @@ export function dropPendingReposOutsideBuckets(pending: PendingPeriod, buckets: 
   }
 }
 
+/** Compact month plan: [repo_id, month flow] per bucket. Deletes pending.per_repo as it walks. */
+export function monthPlanFromPending(pending: PendingPeriod, bucketsTotal: number): FoldMonthPlan {
+  const buckets: Array<Array<[number, number]>> = Array.from({ length: bucketsTotal }, () => []);
+  for (const idStr of Object.keys(pending.per_repo)) {
+    const series = pending.per_repo[idStr]!;
+    const id = Number(idStr);
+    let flow = 0;
+    for (const [, delta] of series) flow += delta;
+    delete pending.per_repo[idStr];
+    if (flow === 0) continue;
+    const bucket = repoBucket(id);
+    if (bucket >= 0 && bucket < bucketsTotal) buckets[bucket]!.push([id, flow]);
+  }
+  return { month: pending.period, daily_totals: pending.daily_totals, buckets };
+}
+
+export function monthPlanFlowsForBuckets(
+  plan: FoldMonthPlan,
+  buckets: readonly number[],
+): Map<number, Array<[number, number]>> {
+  const byBucket = new Map<number, Array<[number, number]>>();
+  for (const bucket of buckets) {
+    const rows = plan.buckets[bucket];
+    if (rows?.length) byBucket.set(bucket, rows);
+  }
+  return byBucket;
+}
+
 async function writeMonthlyBucketWindow(
   month: string,
-  pending: PendingPeriod,
+  byBucket: Map<number, Array<[number, number]>>,
   buckets: readonly number[],
   io: FoldIo,
 ): Promise<void> {
-  dropPendingReposOutsideBuckets(pending, buckets);
-  const byBucket = pendingFlowsForBuckets(pending, buckets);
   for (const bucket of buckets) {
     const shard = await io.readMonthlyShard(bucket);
     for (const [id, flow] of byBucket.get(bucket) ?? []) {
@@ -343,14 +424,19 @@ async function writeMonthlyBucketWindow(
       shard[String(id)] = sortPeriodSeries(series);
     }
     await io.writeMonthlyShard(bucket, shard);
+    clearViewParseMemo();
   }
 }
 
-async function writeSiteDailyForPending(pending: PendingPeriod, io: FoldIo): Promise<void> {
-  const year = pending.period.slice(0, 4);
+async function writeSiteDailyFromTotals(
+  month: string,
+  dailyTotals: ReadonlyArray<[string, number]>,
+  io: FoldIo,
+): Promise<void> {
+  const year = month.slice(0, 4);
   const site = (await io.readSiteDaily(year)) ?? { year, cells: [] };
   const cells = new Map<string, number>(site.cells.map(([date, total]) => [date, total]));
-  for (const [date, total] of pending.daily_totals) cells.set(date, total);
+  for (const [date, total] of dailyTotals) cells.set(date, total);
   await io.writeSiteDaily(year, {
     year,
     cells: [...cells.entries()].sort((left, right) => (left[0] < right[0] ? -1 : 1)),
@@ -364,19 +450,31 @@ export function weekPlanFromRows(rows: WeekRow[]): FoldWeekPlan["weeks"] {
   }));
 }
 
-async function writeWeeklyBucketWindow(plan: FoldWeekPlan, buckets: readonly number[], io: FoldIo): Promise<void> {
+export function weekPlanForBuckets(plan: FoldWeekPlan, buckets: readonly number[]): FoldWeekPlan {
   const wanted = new Set(buckets);
+  return {
+    foldedThroughMonth: plan.foldedThroughMonth,
+    fromWeekExclusive: plan.fromWeekExclusive,
+    weeks: plan.weeks.map((row) => ({
+      week: row.week,
+      repos: row.repos.filter(([id]) => wanted.has(repoBucket(id))),
+    })),
+  };
+}
+
+async function writeWeeklyBucketWindow(plan: FoldWeekPlan, buckets: readonly number[], io: FoldIo): Promise<void> {
   for (const bucket of buckets) {
     const shard = await io.readWeeklyShard(bucket);
     for (const row of plan.weeks) {
       for (const [id, flow] of row.repos) {
-        if (!wanted.has(repoBucket(id))) continue;
+        if (repoBucket(id) !== bucket) continue;
         const series = (shard[String(id)] ?? []).filter(([period]) => period !== row.week);
         series.push([row.week, flow]);
         shard[String(id)] = sortPeriodSeries(series);
       }
     }
     await io.writeWeeklyShard(bucket, shard);
+    clearViewParseMemo();
   }
 }
 

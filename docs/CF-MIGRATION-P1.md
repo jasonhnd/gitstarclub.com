@@ -10,6 +10,7 @@ source_of_truth_for:
   - CF refresh lease renew / fencing-token CAS (CDN ETag + Queue overlap)
   - CF refresh fold→recompute stall (Queue consumer successor / public /enqueue hop)
   - CF refresh fold Worker memory limit (windowed fold + successor header)
+  - CF refresh fold still OOM after fold-month-0 (1-bucket + month/week plan hops)
   - dual-scheduler rollback (CF Cron off, production stays Vercel)
 ---
 
@@ -341,6 +342,73 @@ Fix (keeps `WORKFLOW_RUNTIME=cf-queue`; does not roll back to HTTP):
   also writes `steps/fold.json` so ops still sees a terminal fold file.
 
 Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
+
+## CF refresh fold still OOM after fold-month-0
+
+Preview evidence after #479 (CRON-PRE-PR479-RETEST-PARTIAL-001): Bearer start
+200, preflight → whitelist → rename → metadata-0..31 → **`fold` +
+`fold-month-0` ok** @ 14:24:09Z. Then **no later fold window**: no
+`fold-week-*`, no `recomputeRank` / publish / gc. Observability `queue`
+origin silent after ~14:24:33Z; fetch-origin **`Worker exceeded memory
+limit.` ×3** (14:20–14:35). Lease `expires_at` stuck at 14:53Z,
+`successor` needle 0, no `error.json`.
+
+Root cause relative to #479 (OOM still causes the advance failure):
+
+1. **Each 4-bucket window still reloaded the full pending month.**
+   `fold-month-0` parsed every `per_repo` daily series, then kept four
+   monthly shards. Later windows did the same. The first window wrote a
+   checkpoint; the next isolate (or a Queue retry of the same job) sat on
+   OpenNext leftover heap and died before `fold-month-1`.
+2. **Plan-build was mixed with the first shard window.** Week plan already
+   existed, but month windows had no compact plan, so retries were never
+   cheaper than the first hop.
+3. **`max_retries: 2` plus the same heavy body.** Three memory-limit
+   events match one attempt + two retries. After that the queue went
+   quiet. `failRefreshJob` never ran.
+
+Fix (keeps `WORKFLOW_RUNTIME=cf-queue`; does not roll back to HTTP):
+
+- `FOLD_BUCKETS_PER_JOB = 1`. Each shard hop holds one monthly or weekly
+  shard, not four.
+- Compact `ops/workflows/<runId>/fold-month-plan.json` (per-bucket
+  `[repo_id, flow]` + `daily_totals`). The first month hop writes only
+  that plan. Later hops do not reread pending.
+- Week-0 also writes only `fold-week-plan.json`. Later week hops do not
+  reread pending. A retry after either plan exists writes one shard.
+- `clearViewParseMemo()` at the start of each `runFoldStep` and after
+  each shard write. Pending `per_repo` is deleted while the month plan
+  is built.
+- Successor header / consumer path from #477/#479 stay. Checkpoints
+  remain `fold-month-<seq>` / `fold-week-<seq>`; the last window still
+  writes `steps/fold.json`.
+
+Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
+
+### Suggested CF fold-month-0 follow-up retest (preview Worker only)
+
+1. Keep `WORKFLOW_RUNTIME=cf-queue` and
+   `WORKFLOW_QUEUE_ENQUEUE_URL=https://pre.gitstarclub.com/enqueue`. Do **not**
+   PUT production schedules and do **not** stop Vercel cron.
+2. Wait for any active lease to expire, or use a new idempotency key
+   (`?idempotency_key=` / `Idempotency-Key`).
+3. Bearer `GET https://pre.gitstarclub.com/api/workflows/refresh/start` → **200**
+   `started` with a `run_id`.
+4. Workers Observability: `queue` consume continues **after** `fold-month-0`.
+   `workflow.advance` should show several `fold` → `fold` hops (plan, then
+   1-bucket month windows, week plan, week windows) → `recomputeRank` →
+   `recomputeRepoEntities` → `recomputeOrgEntities` → `recomputeHeatmap` →
+   `aliases` → `validate` → `publish` → `gc` → `markPublished`. No silent
+   gap after the first month checkpoint. Fetch-origin `Worker exceeded
+   memory limit` must not be a stable last event.
+5. Blob: `ops/workflows/<run_id>/fold-month-plan.json`, then more than one
+   `steps/fold-month-*`, then `fold-week-plan.json` / `fold-week-*`, then
+   terminal `steps/fold.json` (ok), then `steps/recomputeRank.json` (and
+   later `publish.json`; `gc.json` if that step ran).
+6. `active.json` should reach `published` (or at least stay `running` with a
+   renewing `expires_at` while later steps write). A fold-month-0-then-silence
+   stall with expired lease and no `error.json` is the #479 failure mode.
+7. Confirm production Worker `triggers.crons` is still `[]`.
 
 ### Suggested CF fold memory / advance retest (preview Worker only)
 
