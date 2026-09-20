@@ -7,6 +7,7 @@ source_of_truth_for:
   - non-production CF Cron / Queue orchestration
   - CF Workers Blob fetch write path for full cron / refresh lease
   - CF refresh preflight 1102 budget (batched shard windows)
+  - CF refresh lease renew / fencing-token CAS (CDN ETag + Queue overlap)
   - dual-scheduler rollback (CF Cron off, production stays Vercel)
 ---
 
@@ -198,6 +199,67 @@ Route start preflight is unchanged (meta + 32 `repos` shards only). Production
    (and later `preflight-4.json` …) plus a subsequent step such as
    `whitelist.json` or `rename.json`. Stuck-only-`startRun` is the old 1102
    failure mode.
+7. Confirm production Worker `triggers.crons` is still `[]`.
+
+## CF refresh lease renew (fencing token)
+
+Preview evidence after #473 (CRON-PRE-RETEST-004): Bearer start 200, all eight
+`preflight-*` checkpoints ok, Queue origin live — then the run wrote
+`error.json` with `lost ownership while renewing fencing token 21` (~3 min
+after `preflight-28`) and never produced whitelist. That string was **CAS
+exhaustion** (`compareAndSet` 412 × 3, no backoff), not a successor
+`fencing_token`. `markFailed` could still renew (same run still owned) and
+release the lease as failed.
+
+Root cause (all three together):
+
+1. **Public CDN GET used as the ifMatch ETag.** `BlobWorkflowLeaseStore.read()`
+   went through the public Blob URL (`cacheControlMaxAge: 60`). Same class of
+   bug as weekly live pointer #402: origin `head()` is the fence, public GET
+   is path-cached (`?v=` does not bust). Three instant retries replay the same
+   stale ETag.
+2. **Same-owner overlap on cf-queue.** Queue consumer `fetch(REFRESH_STEP_URL)`
+   hops `https://pre.gitstarclub.com` (Cloudflare proxy 524 at ~100–125s).
+   Whitelist GitHub Search runs longer. The consumer throws, `max_retries: 2`
+   redelivers, and the first isolate may still be in Search. Two renews hit
+   one generation; the loser used to fail closed and `markFailed` poisoned
+   the winner.
+3. **Read-your-writes cache is isolate-local (2 min).** After preflight
+   batching, whitelist is a new isolate and Search exceeds that window.
+
+Fix (keeps `WORKFLOW_RUNTIME=cf-queue`; does not roll back to HTTP):
+
+- Lease read: Blob API `head()` etag; withhold CAS when CDN GET and origin
+  etag diverge; `cache: "no-store"` + `cf.cacheTtl=0` on public GET.
+- Lease writes: `max-age=0`.
+- Renew: 5 CAS attempts, health-style backoff, coalesce onto a peer
+  same-owner renew, throw retryable `WorkflowLeaseCasError` instead of
+  ownership loss while we still own the token.
+- Whitelist: prove the fence **before** Search and again before the snapshot.
+- Queue consumer: `WORKER_SELF_REFERENCE.fetch` so the step hop does not
+  take the public 524 path.
+
+Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
+
+### Suggested CF lease-renew retest (preview Worker only)
+
+1. Keep `WORKFLOW_RUNTIME=cf-queue` and
+   `WORKFLOW_QUEUE_ENQUEUE_URL=https://pre.gitstarclub.com/enqueue`. Do **not**
+   PUT production schedules and do **not** stop Vercel cron.
+2. Wait for any active lease to expire, or use a new idempotency key.
+3. Bearer `GET https://pre.gitstarclub.com/api/workflows/refresh/start` → **200**
+   `started` with a `run_id`.
+4. Workers Observability: `queue` consume for `startRun`, then `preflight`
+   windows, then `whitelist`. Step log should show `via: "self-reference"`.
+   No `lost ownership while renewing fencing token`. No Cloudflare 524 on
+   the public step hop.
+5. Blob within a few minutes: `ops/workflows/<run_id>/steps/preflight-0.json`
+   … `preflight-28.json` (ok), then `steps/whitelist.json` (ok) or a later
+   step. `active.json` must not flip to `failed` with a renew-ownership error
+   while `fencing_token` is still this run.
+6. If whitelist is still running (GitHub Search), `active.json` stays
+   `status=running` for the same `run_id` / token. A Queue retry of
+   `whitelist` must not release that lease.
 7. Confirm production Worker `triggers.crons` is still `[]`.
 
 ### Suggested CF retest (preview Worker only)
