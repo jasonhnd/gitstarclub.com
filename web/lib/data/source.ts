@@ -51,6 +51,12 @@ export interface ViewOpts {
    * Never set this on ISR pages: `no-store` flips the page to dynamic at runtime.
    */
   skipNextDataCache?: boolean;
+  /**
+   * Return the JSON body without a Zod clone. CF fold/recompute hops use this
+   * after preflight already validated canonical shards — a second full parse of
+   * weekly (~33 MiB) is what OOM'd the isolate after a no-op fold.
+   */
+  skipSchemaParse?: boolean;
 }
 
 const VERSION_TTL_MS = 3_600_000;
@@ -530,10 +536,15 @@ function fetchErrorDetail(error: unknown): string {
   return error instanceof Error ? error.message : "no response";
 }
 
+function parsedOrRaw<T>(json: unknown, schema: ZodType<T>, path: string, opts: ViewOpts): T {
+  if (opts.skipSchemaParse) return json as T;
+  return parseView(json, schema, { path, version: opts.bust ?? null, memo: !opts.bust });
+}
+
 /** Read + Zod-validate a view. Returns null when the view is absent (caller → notFound()). */
 export async function readView<T>(path: string, schema: ZodType<T>, opts: ViewOpts = {}): Promise<T | null> {
   const json = await rawRead(path, opts, "published");
-  return json === null ? null : parseView(json, schema, { path, version: opts.bust ?? null, memo: !opts.bust });
+  return json === null ? null : parsedOrRaw(json, schema, path, opts);
 }
 
 /**
@@ -547,7 +558,7 @@ export async function readAuthoritativeView<T>(
   opts: ViewOpts = {},
 ): Promise<T | null> {
   const json = await rawRead(path, opts, "authoritative");
-  return json === null ? null : parseView(json, schema, { path, version: opts.bust ?? null, memo: !opts.bust });
+  return json === null ? null : parsedOrRaw(json, schema, path, opts);
 }
 
 /** Authoritative read for a workflow artifact that must already exist. */

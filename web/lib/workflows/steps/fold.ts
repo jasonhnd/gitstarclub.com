@@ -2,6 +2,7 @@ import { z } from "zod";
 import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import { CanonicalMeta, PendingPeriod, RepoMonthlyShard, RepoWeeklyShard, SiteDaily } from "@/lib/contracts";
+import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { REPO_BUCKETS, repoBucket } from "../buckets";
 import { addDays, endOfMonth, monthsBetween, sundayOfWeekId, weekIdOf } from "./week-dates";
 import { putOwnedView } from "@/lib/workflows/owned-write";
@@ -23,7 +24,9 @@ import type { FoldCursorAcc, FoldPhase, RefreshCursor } from "@/lib/workflows/ru
 // full pending, and isolate reuse / response serialization sat on top of 4 shards.
 // CF/HTTP now: 1-bucket windows; compact month + week plans so shard jobs do not
 // reload pending; plan-build is its own hop (retry after the plan exists is cheap).
-// foldCanonical still drains those windows in-process.
+// The first hop always writes fold-decision.json so a no-op (already folded
+// through the last closed month) is visible and is not mistaken for a missing
+// plan. foldCanonical still drains those windows in-process.
 
 export const FOLD_BUCKETS_PER_JOB = 1;
 
@@ -52,6 +55,20 @@ const FoldMonthPlanView = z
 
 export type FoldMonthPlan = z.infer<typeof FoldMonthPlanView>;
 
+const FoldDecisionView = z
+  .object({
+    currentMonth: z.string(),
+    foldedThroughMonth: z.string(),
+    foldedThroughWeek: z.string(),
+    nextFoldMonth: z.string().nullable(),
+    monthPlan: z.boolean(),
+    weekPlan: z.boolean(),
+    reason: z.enum(["month_plan", "no_closed_month", "pending_missing", "week_only", "nothing_to_fold"]),
+  })
+  .strict();
+
+export type FoldDecision = z.infer<typeof FoldDecisionView>;
+
 export type FoldStepFields = {
   folded: string[];
   foldedWeeks: string[];
@@ -76,6 +93,7 @@ export type FoldIo = {
   writeMonthPlan(plan: FoldMonthPlan): Promise<void>;
   readWeekPlan(): Promise<FoldWeekPlan | null>;
   writeWeekPlan(plan: FoldWeekPlan): Promise<void>;
+  writeDecision(decision: FoldDecision): Promise<void>;
 };
 
 export type FoldStepOptions = {
@@ -165,14 +183,26 @@ export async function runFoldStep(
   if (phase === "month") {
     const month = cursor.foldMonth ?? nextMonth(acc.foldedThroughMonth);
     if (month >= currentMonth) {
-      return runWeekPhase(io, meta, acc, seq, 0, bucketsTotal);
+      return runWeekPhase(io, meta, acc, seq, 0, bucketsTotal, currentMonth, false, "no_closed_month");
     }
     const offset = cursor.foldOffset ?? 0;
     let plan = await loadMonthPlan(io, month, bucketsTotal);
     if (!plan) {
       const pending = await io.readPending(month);
       if (!pending) {
-        return runWeekPhase(io, meta, acc, seq, 0, bucketsTotal);
+        if (seq === 0) {
+          await io.writeDecision(
+            foldDecision({
+              currentMonth,
+              acc,
+              nextFoldMonth: month,
+              monthPlan: false,
+              weekPlan: false,
+              reason: "pending_missing",
+            }),
+          );
+        }
+        return runWeekPhase(io, meta, acc, seq, 0, bucketsTotal, currentMonth, true);
       }
       if (pending.period !== month) {
         throw new Error(`canonical/v2/pending/${month}.json: period ${pending.period} does not match ${month}`);
@@ -180,6 +210,18 @@ export async function runFoldStep(
       plan = monthPlanFromPending(pending, bucketsTotal);
       await io.writeMonthPlan(plan);
       clearViewParseMemo();
+      if (seq === 0) {
+        await io.writeDecision(
+          foldDecision({
+            currentMonth,
+            acc,
+            nextFoldMonth: month,
+            monthPlan: true,
+            weekPlan: false,
+            reason: "month_plan",
+          }),
+        );
+      }
       // Plan hop only: do not also hold monthly shards in this isolate.
       // A Queue retry after the plan exists skips pending and writes one shard.
       if (offset === 0) {
@@ -203,7 +245,7 @@ export async function runFoldStep(
     return continueFold(acc, seq, { phase: "week", offset: 0 });
   }
 
-  return runWeekPhase(io, meta, acc, seq, cursor.foldOffset ?? 0, bucketsTotal);
+  return runWeekPhase(io, meta, acc, seq, cursor.foldOffset ?? 0, bucketsTotal, currentMonth, false);
 }
 
 function createDefaultFoldIo(runId: string, fencingToken: number): FoldIo {
@@ -211,7 +253,6 @@ function createDefaultFoldIo(runId: string, fencingToken: number): FoldIo {
   const bust = runId;
   return {
     readMeta: () => readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust }),
-    readPending: (month) => readAuthoritativeView(`canonical/v2/pending/${month}.json`, PendingPeriod, { bust }),
     readMonthlyShard: (bucket) =>
       readRequiredView(`canonical/v2/repo-monthly/${bucket}.json`, RepoMonthlyShard, { bust }),
     readWeeklyShard: (bucket) =>
@@ -225,7 +266,61 @@ function createDefaultFoldIo(runId: string, fencingToken: number): FoldIo {
     writeMonthPlan: (plan) => putOwnedView(owner, `ops/workflows/${runId}/fold-month-plan.json`, plan),
     readWeekPlan: () => readAuthoritativeView(`ops/workflows/${runId}/fold-week-plan.json`, FoldWeekPlanView, { bust }),
     writeWeekPlan: (plan) => putOwnedView(owner, `ops/workflows/${runId}/fold-week-plan.json`, plan),
+    writeDecision: (decision) => putOwnedView(owner, `ops/workflows/${runId}/fold-decision.json`, decision),
+    readPending: (month) => readPendingForFold(month, bust),
   };
+}
+
+async function readPendingForFold(month: string, bust: string): Promise<PendingPeriod | null> {
+  const skipSchemaParse = isCloudflareWorkersHost();
+  const json = await readAuthoritativeView(`canonical/v2/pending/${month}.json`, PendingPeriod, {
+    bust,
+    skipSchemaParse,
+  });
+  if (json === null) return null;
+  return skipSchemaParse ? coercePendingPeriod(json, month) : json;
+}
+
+function foldDecision(input: {
+  currentMonth: string;
+  acc: FoldCursorAcc;
+  nextFoldMonth: string | null;
+  monthPlan: boolean;
+  weekPlan: boolean;
+  reason: FoldDecision["reason"];
+}): FoldDecision {
+  return FoldDecisionView.parse({
+    currentMonth: input.currentMonth,
+    foldedThroughMonth: input.acc.foldedThroughMonth,
+    foldedThroughWeek: input.acc.foldedThroughWeek,
+    nextFoldMonth: input.nextFoldMonth,
+    monthPlan: input.monthPlan,
+    weekPlan: input.weekPlan,
+    reason: input.reason,
+  });
+}
+
+/** Light pending gate for CF: avoid a second Zod walk of every daily series. */
+export function coercePendingPeriod(json: unknown, month: string): PendingPeriod {
+  if (!json || typeof json !== "object") {
+    throw new Error(`canonical/v2/pending/${month}.json: not an object`);
+  }
+  const rec = json as {
+    period?: unknown;
+    frozen_at?: unknown;
+    daily_totals?: unknown;
+    per_repo?: unknown;
+  };
+  if (rec.period !== month) {
+    throw new Error(`canonical/v2/pending/${month}.json: period ${String(rec.period)} does not match ${month}`);
+  }
+  if (typeof rec.frozen_at !== "string") {
+    throw new Error(`canonical/v2/pending/${month}.json: missing frozen_at`);
+  }
+  if (!Array.isArray(rec.daily_totals) || !rec.per_repo || typeof rec.per_repo !== "object") {
+    throw new Error(`canonical/v2/pending/${month}.json: missing daily_totals/per_repo`);
+  }
+  return rec as PendingPeriod;
 }
 
 function emptyFoldAcc(meta: CanonicalMeta): FoldCursorAcc {
@@ -273,12 +368,27 @@ async function runWeekPhase(
   seq: number,
   offset: number,
   bucketsTotal: number,
+  currentMonth: string,
+  wroteMonthDecision: boolean,
+  emptyReason: FoldDecision["reason"] = "nothing_to_fold",
 ): Promise<FoldStepFields> {
   let plan = await loadWeekPlan(io, acc.foldedThroughMonth);
   if (!plan) {
     const firstMonday = addDays(sundayOfWeekId(acc.foldedThroughWeek), 1);
     const lastFoldableDay = endOfMonth(acc.foldedThroughMonth);
     if (firstMonday > lastFoldableDay) {
+      if (seq === 0 && !wroteMonthDecision) {
+        await io.writeDecision(
+          foldDecision({
+            currentMonth,
+            acc,
+            nextFoldMonth: null,
+            monthPlan: false,
+            weekPlan: false,
+            reason: emptyReason,
+          }),
+        );
+      }
       await commitMetaIfNeeded(io, meta, acc);
       return finishFold(acc);
     }
@@ -299,12 +409,36 @@ async function runWeekPhase(
     }
     const rows = weekRowsFromByDate(byDate, fromWeekExclusive, acc.foldedThroughMonth);
     byDate.clear();
-    acc.foldedWeeks = rows.map((row) => row.week);
-    if (rows.length > 0) acc.foldedThroughWeek = rows[rows.length - 1]!.week;
     if (rows.length === 0) {
+      if (seq === 0 && !wroteMonthDecision) {
+        await io.writeDecision(
+          foldDecision({
+            currentMonth,
+            acc,
+            nextFoldMonth: null,
+            monthPlan: false,
+            weekPlan: false,
+            reason: emptyReason,
+          }),
+        );
+      }
       await commitMetaIfNeeded(io, meta, acc);
       return finishFold(acc);
     }
+    if (seq === 0 && !wroteMonthDecision) {
+      await io.writeDecision(
+        foldDecision({
+          currentMonth,
+          acc,
+          nextFoldMonth: null,
+          monthPlan: false,
+          weekPlan: true,
+          reason: "week_only",
+        }),
+      );
+    }
+    acc.foldedWeeks = rows.map((row) => row.week);
+    acc.foldedThroughWeek = rows[rows.length - 1]!.week;
     plan = {
       foldedThroughMonth: acc.foldedThroughMonth,
       fromWeekExclusive,

@@ -9,6 +9,7 @@ import {
   queueAdvanceFromConsumer,
 } from "@/lib/workers-host/queue-advance";
 import { foldStepCheckpointName, hasNextFoldWindow } from "@/lib/workflows/steps/fold";
+import { hasNextRecomputeWindow, recomputeStepCheckpointName } from "@/lib/workflows/steps/recompute-rank";
 import { nextRefreshJob } from "./graph";
 import { withStepRetry, type RetryPolicy } from "./retry";
 import { resolveWorkflowRuntime, type ResolveWorkflowRuntimeOptions } from "./resolve";
@@ -25,6 +26,7 @@ export function refreshStepCheckpointName(job: RefreshStepJob): string {
   if (job.graph === "full" && job.name === "metadata") return `metadata-${job.cursor.bucket ?? 0}`;
   if (job.graph === "full" && job.name === "preflight") return `preflight-${job.cursor.preflightOffset ?? 0}`;
   if (job.graph === "full" && job.name === "fold") return foldStepCheckpointName(job.cursor);
+  if (job.graph === "full" && job.name === "recomputeRank") return recomputeStepCheckpointName(job.cursor);
   return job.name;
 }
 
@@ -44,6 +46,12 @@ async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult)
     await putView(
       `ops/workflows/${job.runId}/steps/fold.json`,
       WorkflowStepCheckpoint.parse({ ...checkpoint, step: "fold" }),
+    );
+  }
+  if (job.graph === "full" && job.name === "recomputeRank" && !hasNextRecomputeWindow(result)) {
+    await putView(
+      `ops/workflows/${job.runId}/steps/recomputeRank.json`,
+      WorkflowStepCheckpoint.parse({ ...checkpoint, step: "recomputeRank" }),
     );
   }
 }

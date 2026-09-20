@@ -9,7 +9,7 @@ import { runPreflightStep } from "@/lib/workflows/steps/preflight";
 import { publishVersion } from "@/lib/workflows/steps/publish";
 import { recomputeOrgEntities, recomputeRepoEntities } from "@/lib/workflows/steps/recompute-entity";
 import { recomputeHeatmap } from "@/lib/workflows/steps/recompute-heatmap";
-import { recomputeRank } from "@/lib/workflows/steps/recompute-rank";
+import { runRecomputeRankStep } from "@/lib/workflows/steps/recompute-rank";
 import { detectRenames } from "@/lib/workflows/steps/rename";
 import { validateVersion } from "@/lib/workflows/steps/validate";
 import { refreshWhitelist } from "@/lib/workflows/steps/whitelist";
@@ -43,7 +43,7 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
     case "fold":
       return { name, ...(await runFoldStep(runId, requireToken(job), job.cursor)) };
     case "recomputeRank":
-      return { name, ...(await recomputeRank(runId, requireToken(job))) };
+      return { name, ...(await runRecomputeRankStep(runId, requireToken(job), job.cursor)) };
     case "recomputeRepoEntities":
       return { name, ...(await recomputeRepoEntities(runId, requireToken(job))) };
     case "recomputeOrgEntities":

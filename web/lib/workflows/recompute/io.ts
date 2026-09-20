@@ -19,7 +19,7 @@ import {
 import { getWriteObjectStore } from "@/lib/storage";
 import { canonicalShardReadConcurrency } from "@/lib/workflows/canonical-validation";
 import { REPO_BUCKETS } from "../buckets";
-import { buildModel, type Model, type RawShards } from "./model";
+import { assembleModel, normalizeRepoMeta, type DailySeries, type Model, type RepoMeta, type Series } from "./model";
 import { workflowHeartbeat } from "@/lib/workflows/owned-write";
 import type { WorkflowOwnership } from "@/lib/workflows/lease";
 
@@ -33,6 +33,13 @@ const WRITE_CONCURRENCY = 12;
 export const WRITE_CONCURRENCY_CF = 4;
 const SITE_YEAR_MIN = 2010;
 
+export const CANONICAL_MODEL_FAMILIES = ["repos", "monthly", "weekly", "recentDaily", "siteDaily"] as const;
+export type CanonicalModelFamily = (typeof CANONICAL_MODEL_FAMILIES)[number];
+
+export type LoadCanonicalModelOptions = {
+  families?: readonly CanonicalModelFamily[];
+};
+
 export function canonicalModelLoadPlan(env?: Parameters<typeof isCloudflareWorkersHost>[0]): {
   shardConcurrency: number;
   parallelFamilies: boolean;
@@ -40,25 +47,43 @@ export function canonicalModelLoadPlan(env?: Parameters<typeof isCloudflareWorke
 } {
   const cf = isCloudflareWorkersHost(env);
   return {
-    shardConcurrency: canonicalShardReadConcurrency(env),
+    // CF recompute hops hold one shard JSON at a time. Weekly family is ~33 MiB;
+    // concurrency 2 plus Zod clones is what OOM'd after fold.json.
+    shardConcurrency: cf ? 1 : canonicalShardReadConcurrency(env),
     parallelFamilies: !cf,
     writeConcurrency: cf ? WRITE_CONCURRENCY_CF : WRITE_CONCURRENCY,
   };
 }
 
-async function mergeBuckets<T extends Record<string, unknown>>(
+export function wantedCanonicalFamilies(opts?: LoadCanonicalModelOptions): Set<CanonicalModelFamily> {
+  return new Set(opts?.families ?? CANONICAL_MODEL_FAMILIES);
+}
+
+async function absorbIdShards<T extends Record<string, unknown>>(
   kind: string,
   schema: Parameters<typeof readAuthoritativeView<T>>[1],
   bust: string,
   shardConcurrency: number,
-): Promise<Record<string, T[string]>> {
-  const shards = await mapLimit(
+  skipSchemaParse: boolean,
+  mapValue: (id: number, value: T[string]) => T[string],
+): Promise<Map<number, T[string]>> {
+  const out = new Map<number, T[string]>();
+  const missing: number[] = [];
+  await mapLimit(
     Array.from({ length: REPO_BUCKETS }, (_, bucket) => bucket),
     shardConcurrency,
     async (bucket) => {
       const path = `canonical/v2/${kind}/${bucket}.json`;
       try {
-        return await readAuthoritativeView(path, schema, { bust });
+        const shard = await readAuthoritativeView(path, schema, { bust, skipSchemaParse });
+        if (shard === null) {
+          missing.push(bucket);
+          return;
+        }
+        for (const [key, value] of Object.entries(shard)) {
+          const id = Number(key);
+          out.set(id, mapValue(id, value as T[string]));
+        }
       } catch (error) {
         throw new Error(`${path}: schema/read failure — ${error instanceof Error ? error.message : String(error)}`, {
           cause: error,
@@ -66,7 +91,11 @@ async function mergeBuckets<T extends Record<string, unknown>>(
       }
     },
   );
-  return mergeCompleteBucketShards(kind, shards);
+  if (missing.length > 0) {
+    missing.sort((left, right) => left - right);
+    throw new Error(`canonical/v2/${kind}: missing required shard(s) ${missing.join(",")}`);
+  }
+  return out;
 }
 
 export function mergeCompleteBucketShards<T extends Record<string, unknown>>(
@@ -88,43 +117,127 @@ export interface LoadedModel {
   foldedThrough: { month: string; week: string };
 }
 
-/** Load the full canonical/v2 model from Blob (repos + monthly + weekly + recent + site-daily). */
-export async function loadCanonicalModel(bust: string): Promise<LoadedModel> {
+function identitySeries<T>(_id: number, value: T): T {
+  return value;
+}
+
+/** Load selected canonical families into Maps. CF hops omit unused families (weekly is ~33 MiB). */
+export async function loadCanonicalModel(bust: string, opts?: LoadCanonicalModelOptions): Promise<LoadedModel> {
   const meta = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust });
   const plan = canonicalModelLoadPlan();
+  const wanted = wantedCanonicalFamilies(opts);
+  const skipSchemaParse = isCloudflareWorkersHost();
 
-  const thisYear = new Date().getUTCFullYear() + 1;
-  const years = Array.from({ length: thisYear - SITE_YEAR_MIN + 1 }, (_, i) => String(SITE_YEAR_MIN + i));
-  const readSiteYear = (year: string) => readAuthoritativeView(`canonical/v2/site-daily/${year}.json`, SiteDaily, { bust });
+  const loadRepos = async (): Promise<Map<number, RepoMeta>> => {
+    const raw = await absorbIdShards("repos", ReposShard, bust, plan.shardConcurrency, skipSchemaParse, identitySeries);
+    const repos = new Map<number, RepoMeta>();
+    for (const [id, value] of raw) repos.set(id, normalizeRepoMeta(id, value as unknown as RepoMeta));
+    return repos;
+  };
+  const loadMonthly = () =>
+    absorbIdShards("repo-monthly", RepoMonthlyShard, bust, plan.shardConcurrency, skipSchemaParse, identitySeries) as Promise<
+      Map<number, Series>
+    >;
+  const loadWeekly = () =>
+    absorbIdShards("repo-weekly", RepoWeeklyShard, bust, plan.shardConcurrency, skipSchemaParse, identitySeries) as Promise<
+      Map<number, Series>
+    >;
+  const loadRecent = () =>
+    absorbIdShards(
+      "repo-recent-daily",
+      RepoRecentDailyShard,
+      bust,
+      plan.shardConcurrency,
+      skipSchemaParse,
+      identitySeries,
+    ) as Promise<Map<number, DailySeries>>;
+  const loadSite = async (): Promise<DailySeries> => {
+    const thisYear = new Date().getUTCFullYear() + 1;
+    const years = Array.from({ length: thisYear - SITE_YEAR_MIN + 1 }, (_, i) => String(SITE_YEAR_MIN + i));
+    const siteShards = await mapLimit(years, plan.shardConcurrency, (year) =>
+      readAuthoritativeView(`canonical/v2/site-daily/${year}.json`, SiteDaily, { bust, skipSchemaParse }),
+    );
+    const cells: Array<readonly [string, number]> = [];
+    for (const shard of siteShards) if (shard) cells.push(...shard.cells);
+    cells.sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0));
+    return cells;
+  };
 
-  // CF: sequential families + mapLimit(2). The old Promise.all of 4×32 shards
-  // is the same 128-way fan-out that 1102'd preflight. Vercel still overlaps families.
-  let repos: Record<string, unknown>;
-  let monthly: Record<string, unknown>;
-  let weekly: Record<string, unknown>;
-  let recentDaily: Record<string, unknown>;
-  let siteShards: Array<SiteDaily | null>;
-  if (plan.parallelFamilies) {
-    [repos, monthly, weekly, recentDaily, siteShards] = await Promise.all([
-      mergeBuckets("repos", ReposShard, bust, plan.shardConcurrency),
-      mergeBuckets("repo-monthly", RepoMonthlyShard, bust, plan.shardConcurrency),
-      mergeBuckets("repo-weekly", RepoWeeklyShard, bust, plan.shardConcurrency),
-      mergeBuckets("repo-recent-daily", RepoRecentDailyShard, bust, plan.shardConcurrency),
-      mapLimit(years, plan.shardConcurrency, readSiteYear),
-    ]);
-  } else {
-    repos = await mergeBuckets("repos", ReposShard, bust, plan.shardConcurrency);
-    monthly = await mergeBuckets("repo-monthly", RepoMonthlyShard, bust, plan.shardConcurrency);
-    weekly = await mergeBuckets("repo-weekly", RepoWeeklyShard, bust, plan.shardConcurrency);
-    recentDaily = await mergeBuckets("repo-recent-daily", RepoRecentDailyShard, bust, plan.shardConcurrency);
-    siteShards = await mapLimit(years, plan.shardConcurrency, readSiteYear);
+  let repos = new Map<number, RepoMeta>();
+  let monthly = new Map<number, Series>();
+  let weekly = new Map<number, Series>();
+  let recentDaily = new Map<number, DailySeries>();
+  let siteDaily: DailySeries = [];
+
+  const jobs: Array<Promise<void>> = [];
+  const take = (job: Promise<void>) => {
+    if (plan.parallelFamilies) jobs.push(job);
+    return job;
+  };
+
+  if (wanted.has("repos")) {
+    const job = loadRepos().then((value) => {
+      repos = value;
+    });
+    if (!plan.parallelFamilies) await job;
+    else take(job);
   }
+  if (wanted.has("monthly")) {
+    const job = loadMonthly().then((value) => {
+      monthly = value;
+    });
+    if (!plan.parallelFamilies) await job;
+    else take(job);
+  }
+  if (wanted.has("weekly")) {
+    const job = loadWeekly().then((value) => {
+      weekly = value;
+    });
+    if (!plan.parallelFamilies) await job;
+    else take(job);
+  }
+  if (wanted.has("recentDaily")) {
+    const job = loadRecent().then((value) => {
+      recentDaily = value;
+    });
+    if (!plan.parallelFamilies) await job;
+    else take(job);
+  }
+  if (wanted.has("siteDaily")) {
+    const job = loadSite().then((value) => {
+      siteDaily = value;
+    });
+    if (!plan.parallelFamilies) await job;
+    else take(job);
+  }
+  if (jobs.length > 0) await Promise.all(jobs);
 
-  const siteDailyByYear: RawShards["siteDailyByYear"] = {};
-  for (const s of siteShards) if (s) siteDailyByYear[s.year] = s;
+  return {
+    model: assembleModel(repos, monthly, weekly, recentDaily, siteDaily, meta.seam_date),
+    seamDate: meta.seam_date,
+    foldedThrough: meta.folded_through,
+  };
+}
 
-  const raw = { repos, monthly, weekly, recentDaily, siteDailyByYear } as unknown as RawShards;
-  return { model: buildModel(raw, meta.seam_date), seamDate: meta.seam_date, foldedThrough: meta.folded_through };
+export const ENTITY_WRITE_CHUNK = 32;
+
+export async function writeVersionChunks(
+  runId: string,
+  entries: Iterable<readonly [string, unknown]>,
+  owner?: WorkflowOwnership,
+  chunkSize = ENTITY_WRITE_CHUNK,
+): Promise<number> {
+  const batch = new Map<string, unknown>();
+  let files = 0;
+  for (const [path, view] of entries) {
+    batch.set(path, view);
+    if (batch.size >= chunkSize) {
+      files += await writeVersion(runId, batch, owner);
+      batch.clear();
+    }
+  }
+  if (batch.size > 0) files += await writeVersion(runId, batch, owner);
+  return files;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

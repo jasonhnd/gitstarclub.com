@@ -5,6 +5,7 @@ import type {
   FoldCursorAcc,
   FoldPhase,
   FullRefreshStepName,
+  RecomputePhase,
   RefreshCursor,
   RefreshStepJob,
   RefreshStepResult,
@@ -49,6 +50,11 @@ function asFoldAcc(value: unknown): FoldCursorAcc | undefined {
 
 function asFoldPhase(value: unknown): FoldPhase | undefined {
   if (value === "month" || value === "week") return value;
+  return undefined;
+}
+
+function asRecomputePhase(value: unknown): RecomputePhase | undefined {
+  if (value === "month" || value === "week" || value === "rest") return value;
   return undefined;
 }
 
@@ -211,6 +217,22 @@ export function nextRefreshJob(
       ...rest
     } = cursor;
     return { v: 1, graph: "full", runId: job.runId, name: "recomputeRank", attempt: 0, cursor: rest };
+  }
+
+  if (job.name === "recomputeRank") {
+    const nextPhase = asRecomputePhase(result.nextRecomputePhase);
+    if (nextPhase) {
+      return {
+        v: 1,
+        graph: "full",
+        runId: job.runId,
+        name: "recomputeRank",
+        attempt: 0,
+        cursor: { ...cursor, recomputePhase: nextPhase },
+      };
+    }
+    const { recomputePhase: _recomputePhase, ...rest } = cursor;
+    return { v: 1, graph: "full", runId: job.runId, name: "recomputeRepoEntities", attempt: 0, cursor: rest };
   }
 
   const name = nextFullName(job.name);
