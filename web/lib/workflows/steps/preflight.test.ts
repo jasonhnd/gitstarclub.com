@@ -62,7 +62,7 @@ beforeEach(() => {
  * Import after installing the source mock: both the preflight reader and the
  * canonical validator must exercise the same authoritative read contract.
  */
-const { preflightCanonical } = await import("./preflight");
+const { preflightCanonical, runPreflightStep, PREFLIGHT_BUCKETS_PER_JOB } = await import("./preflight");
 const { readCanonicalPreflight } = await import("../canonical-preflight");
 
 describe("preflightCanonical", () => {
@@ -139,6 +139,43 @@ describe("preflightCanonical", () => {
     await expect(readCanonicalPreflight("refresh-incompatible")).rejects.toThrow(
       "historical repo(s) are missing a finite anchoring factor d",
     );
+  });
+
+  test("workflow preflight step reads one bucket window and defers the next offset", async () => {
+    value = {
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      folded_through: { month: "2026-05", week: "2026-W22" },
+      generated_at: "2026-06-02T14:32:57.214Z",
+    };
+    reads = [];
+
+    const first = await runPreflightStep("refresh-window");
+    expect(first.nextPreflightOffset).toBe(PREFLIGHT_BUCKETS_PER_JOB);
+    expect(first.preflight).toBeUndefined();
+    expect(first.bucketStart).toBe(0);
+    expect(first.bucketCount).toBe(PREFLIGHT_BUCKETS_PER_JOB);
+    expect(reads.filter(({ path }) => path === "canonical/v2/meta.json")).toEqual([]);
+    expect(reads.filter(({ path }) => path.startsWith("canonical/v2/")).length).toBe(PREFLIGHT_BUCKETS_PER_JOB * 4);
+
+    const last = await runPreflightStep("refresh-window", {
+      preflightOffset: 28,
+      preflightAcc: {
+        repoRecords: 1,
+        monthlyRecords: 1,
+        weeklyRecords: 1,
+        recentDailyRecords: 1,
+        validatedShards: 112,
+        schemaFailures: 0,
+      },
+    });
+    expect(last.nextPreflightOffset).toBeUndefined();
+    expect(last.preflight).toEqual({
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      folded_through: { month: "2026-05", week: "2026-W22" },
+      generated_at: "2026-06-02T14:32:57.214Z",
+    });
   });
 
   test("workflow preflight rejects empty time-series families before mutation steps", async () => {

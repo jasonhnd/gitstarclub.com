@@ -1,7 +1,7 @@
 ---
 owner: release history
 status: active
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-20
 source_of_truth_for:
   - versioned release history
   - shipped changes
@@ -34,6 +34,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
+- **CF refresh preflight no longer fans out 128 canonical shards in one Worker invocation.** Workflow step `preflight` now reads 4-bucket windows (16 shards) at concurrency 2 on `HOSTING_TARGET=cf`, skips SHA-256 until `validate`, and re-enqueues via cf-queue / HTTP until all 128 shards pass. Avoids Cloudflare 1102 on preview `POST /api/workflows/refresh/step` preflight (~13s wall clock). Production `triggers.crons` stays `[]`. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Does not roll back cf-queue, stop Vercel cron, or cut DNS.
 - **CF Cron Sunday DoW 0/7 alias.** Worker dispatch treats weekly `0 4 * * 0` / `0 4 * * 7` (and `SUN`) and refresh `0 6 * * 0` / `0 6 * * 7` (and `SUN`) as the same jobs. Daily stays `0 3 * * *`. Production `triggers.crons` stays `[]`. This does not enable Cloudflare schedules, inject secrets, or stop Vercel. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md).
 - **CF CI gates + preview Worker name.** In-repo preview Worker is `gitstarclub-web-pre` (`wrangler` env `pre`; replaces `gitstarclub-web-nonprod`). `CF_PREVIEW_ORIGIN` defaults to `https://gitstarclub-web-pre.worldgo.workers.dev`. GitHub Actions may dry-run `env.pre` only and must not live-deploy production Worker `gitstarclub-web`. Optional `cf-preview` / `cf-workers-host` stay off the required-check list. See [OPS.md](./OPS.md).
 - **Track C lock-002: product veto of the request-path query plane.** No live computation on the request path. No POC. No dated auto-review (the 2027-03-12 #383 revisit is void). Reopening requires a constitution-level revision that amends the hard constraints, not a feature PR and not a calendar reminder. The four #362 expansion items stay paused with no implementation children. Dated record: [ROADMAP.md](./ROADMAP.md) Track C; comparison history: [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). Closes #430.

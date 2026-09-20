@@ -22,6 +22,15 @@ export type FullRefreshStepName = (typeof FULL_REFRESH_STEPS)[number];
 export type FixtureRefreshStepName = (typeof FIXTURE_REFRESH_STEPS)[number];
 export type RefreshGraph = "full" | "fixture";
 
+export type CanonicalPreflightCursorAcc = {
+  repoRecords: number;
+  monthlyRecords: number;
+  weeklyRecords: number;
+  recentDailyRecords: number;
+  validatedShards: number;
+  schemaFailures: number;
+};
+
 export type RefreshCursor = {
   startedAt?: string;
   fencingToken?: number;
@@ -31,6 +40,8 @@ export type RefreshCursor = {
     historical: number;
     fromGithub: number;
   };
+  preflightOffset?: number;
+  preflightAcc?: CanonicalPreflightCursorAcc;
 };
 
 export type RefreshStepJob =

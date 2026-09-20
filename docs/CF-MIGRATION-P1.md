@@ -1,11 +1,12 @@
 ---
 owner: operations / workflows
 status: active
-last_reviewed: 2026-09-19
+last_reviewed: 2026-09-20
 source_of_truth_for:
   - Cloudflare migrate P1 workflow runtime
   - non-production CF Cron / Queue orchestration
   - CF Workers Blob fetch write path for full cron / refresh lease
+  - CF refresh preflight 1102 budget (batched shard windows)
   - dual-scheduler rollback (CF Cron off, production stays Vercel)
 ---
 
@@ -151,6 +152,53 @@ remain on the public store `BLOB_BASE_URL` already serves.
 not enable Cloudflare schedules. Production `wrangler.jsonc` `triggers.crons`
 must remain `[]` until a later approved cutover. Vercel cron stays the
 production scheduler.
+
+## CF refresh preflight budget (1102)
+
+Preview evidence (cf-queue already on): Bearer `refresh/start` is 200, Queue
+consumes `startRun`, and `POST /enqueue` of `preflight` is 200 queued — but a
+direct `POST /api/workflows/refresh/step` with `name=preflight` returned
+**503 Cloudflare 1102** at ~13.6s. Error 1102 is a Worker resource/CPU/memory
+kill, not auth or ALPN.
+
+The hotspot was `validateCanonicalGeneration` inside workflow preflight: one
+invocation `Promise.all`'d all **128** required canonical shards (4 families ×
+32 buckets), parsed each with Zod, and SHA-256'd the stable JSON. On OpenNext
+each Blob GET can also take an ASSETS cache subrequest, so the isolate ran out
+of budget before any checkpoint after `startRun`.
+
+Workflow preflight now stays on **cf-queue** (do not roll back to HTTP as the
+preview primary) and splits the same 128-shard gate:
+
+| Knob | Value |
+|---|---|
+| Bucket window | 4 buckets / invocation (16 shards) |
+| Read concurrency | 4 on Vercel; **2** on `HOSTING_TARGET=cf` |
+| SHA-256 receipts | deferred to step `validate` |
+| Family emptiness | counted across windows; checked on the last batch |
+| Checkpoints | `preflight-0` … `preflight-28` |
+
+Route start preflight is unchanged (meta + 32 `repos` shards only). Production
+`triggers.crons` stays `[]`. Vercel cron is not stopped.
+
+### Suggested CF preflight retest (preview Worker only)
+
+1. Keep `WORKFLOW_RUNTIME=cf-queue` and
+   `WORKFLOW_QUEUE_ENQUEUE_URL=https://pre.gitstarclub.com/enqueue`. Do **not**
+   PUT production schedules and do **not** stop Vercel cron.
+2. Wait for any active lease to expire, or use a new idempotency key.
+3. Bearer `GET https://pre.gitstarclub.com/api/workflows/refresh/start` → **200**
+   `started` with a `run_id`.
+4. Workers Observability: `queue` consume for `startRun`, then `preflight`
+   (repeated windows). No 1102 on the step origin.
+5. Direct Bearer `POST /api/workflows/refresh/step` with a `preflight` job for
+   one window (`cursor.preflightOffset` 0, 4, …) → **not** 503/1102 (2xx, or
+   a JSON 4xx/5xx from the app — not Cloudflare 1102).
+6. Blob within a few minutes: `ops/workflows/<run_id>/steps/preflight-0.json`
+   (and later `preflight-4.json` …) plus a subsequent step such as
+   `whitelist.json` or `rename.json`. Stuck-only-`startRun` is the old 1102
+   failure mode.
+7. Confirm production Worker `triggers.crons` is still `[]`.
 
 ### Suggested CF retest (preview Worker only)
 

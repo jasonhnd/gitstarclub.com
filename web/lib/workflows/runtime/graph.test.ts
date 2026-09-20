@@ -45,6 +45,42 @@ describe("refresh step graph", () => {
     ]);
   });
 
+  test("splits preflight across bucket windows until the last batch", () => {
+    const acc = {
+      repoRecords: 1,
+      monthlyRecords: 1,
+      weeklyRecords: 1,
+      recentDailyRecords: 1,
+      validatedShards: 16,
+      schemaFailures: 0,
+    };
+    const first = nextRefreshJob(full("startRun"), {
+      name: "startRun",
+      startedAt: "2026-09-20T00:00:00.000Z",
+      fencingToken: 3,
+    });
+    expect(first).toMatchObject({ name: "preflight", cursor: { startedAt: "2026-09-20T00:00:00.000Z", fencingToken: 3 } });
+    expect(first?.cursor.preflightOffset).toBeUndefined();
+
+    const mid = nextRefreshJob(first!, {
+      name: "preflight",
+      nextPreflightOffset: 4,
+      preflightAcc: acc,
+    });
+    expect(mid).toMatchObject({
+      name: "preflight",
+      cursor: { preflightOffset: 4, preflightAcc: acc, fencingToken: 3 },
+    });
+
+    const done = nextRefreshJob(mid!, {
+      name: "preflight",
+      preflight: { seam_date: "2026-05-30", schema_ver: 1 },
+    });
+    expect(done).toMatchObject({ name: "whitelist", cursor: { fencingToken: 3 } });
+    expect(done?.cursor.preflightOffset).toBeUndefined();
+    expect(done?.cursor.preflightAcc).toBeUndefined();
+  });
+
   test("carries fencing token and startedAt through later jobs", () => {
     const next = nextRefreshJob(full("startRun"), {
       name: "startRun",
