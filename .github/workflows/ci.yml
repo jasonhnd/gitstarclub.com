@@ -15,6 +15,7 @@ concurrency:
 permissions:
   checks: read
   contents: read
+  statuses: read
 
 jobs:
   static:
@@ -64,7 +65,7 @@ jobs:
         env:
           # readView tests mock fetch but still require a syntactically valid read base.
           BLOB_BASE_URL: https://blob.example.com
-          # Keep the deterministic gate network-free; preview-e2e owns live checks.
+          # Keep the deterministic gate network-free; live Preview checks are optional.
           SEO_LIVE_BASE: ""
       - name: Write static verification summary
         if: ${{ always() }}
@@ -161,10 +162,16 @@ jobs:
             echo "- Write-capable credentials: none"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Soft gate: Chromium against an exact-SHA Vercel Preview when one exists.
+  # Ignored Build / no Preview URL → resolve exits 0 with skipped=true (job stays green).
+  # Not a GitHub required check. Required merge gates are static + production-build.
+  # Do not add cf-preview / cf-workers-host to required checks.
   preview-e2e:
     name: preview-e2e
     needs: production-build
     runs-on: ubuntu-latest
+    outputs:
+      skipped: ${{ steps.deployment.outputs.skipped }}
     # Allow long Vercel preview builds (often 9–14 min) plus Playwright suites.
     timeout-minutes: 40
     env:
@@ -194,16 +201,19 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: bun scripts/resolve-vercel-preview.ts
       - name: Install Chromium
+        if: steps.deployment.outputs.skipped != 'true'
         run: bunx playwright install --with-deps chromium
       - name: Verify deterministic generated assets
+        if: steps.deployment.outputs.skipped != 'true'
         working-directory: .
         run: bun run assets:check
       - name: Run accessibility and responsive release suites
+        if: steps.deployment.outputs.skipped != 'true'
         env:
           BASE_URL: ${{ steps.deployment.outputs.url }}
         run: bunx playwright test e2e/accessibility-responsive.spec.ts e2e/horizontal-overflow.spec.ts e2e/search-compare-interactions.spec.ts
       - name: Verify deployed SEO architecture
-        if: github.event_name == 'push'
+        if: ${{ github.event_name == 'push' && steps.deployment.outputs.skipped != 'true' }}
         env:
           SEO_LIVE_BASE: ${{ steps.deployment.outputs.url }}
           SEO_CANON_ORIGIN: https://gitstarclub.com
@@ -214,6 +224,8 @@ jobs:
         env:
           DEPLOYMENT_URL: ${{ steps.deployment.outputs.url }}
           TESTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SKIPPED: ${{ steps.deployment.outputs.skipped }}
+          SKIP_REASON: ${{ steps.deployment.outputs.skip_reason }}
         run: |
           {
             echo "## Preview browser release gate"
@@ -221,7 +233,14 @@ jobs:
             echo "- Tested commit: \`$TESTED_SHA\`"
             echo "- Node version: \`$(node --version)\`"
             echo "- Bun version: \`$(bun --version)\`"
-            echo "- Deployment URL: ${DEPLOYMENT_URL:-not resolved}"
+            echo "- Required GitHub gates: verify / static, verify / production-build"
+            echo "- This job is not a required merge gate"
+            echo "- Skipped: ${SKIPPED:-false}"
+            if [ "${SKIPPED}" = "true" ]; then
+              echo "- Skip reason: ${SKIP_REASON:-no Vercel Preview}"
+            else
+              echo "- Deployment URL: ${DEPLOYMENT_URL:-not resolved}"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Playwright failure artifacts
         if: ${{ failure() }}
@@ -235,13 +254,13 @@ jobs:
             web/test-results/
             web/release-metadata.json
 
-  # Product-level live gates (#286). Fail closed: real deployed /search-index,
-  # sync-run freshness, base publish age, export manifest age, live period
-  # continuity through validated generation history. Does not use .env.local.
+  # Product-level live gates (#286). Fail closed when a Vercel Preview exists.
+  # Same skip as preview-e2e: Ignored Build / no Preview → job skipped (not red).
+  # Not a GitHub required check. Required merge gates are static + production-build.
   product-gates:
     name: product-gates
     needs: preview-e2e
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    if: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && needs.preview-e2e.result == 'success' && needs.preview-e2e.outputs.skipped != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -265,6 +284,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: bun scripts/resolve-vercel-preview.ts
       - name: Run live product release gates
+        if: steps.deployment.outputs.skipped != 'true'
         env:
           RELEASE_GATE_REQUIRE_LIVE: "1"
           RELEASE_GATE_SITE: ${{ steps.deployment.outputs.url }}
@@ -283,14 +303,23 @@ jobs:
         env:
           DEPLOYMENT_URL: ${{ steps.deployment.outputs.url }}
           TESTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SKIPPED: ${{ steps.deployment.outputs.skipped }}
+          SKIP_REASON: ${{ steps.deployment.outputs.skip_reason }}
         run: |
           {
             echo "## Product release gates (#286)"
             echo
             echo "- Tested commit: \`$TESTED_SHA\`"
-            echo "- Deployment URL: ${DEPLOYMENT_URL:-not resolved}"
-            echo "- Live checks: required (search-index, sync-runs, base pointer, exports, generation-aware period continuity)"
-            echo "- Live history: bounded validated manifest chain, then legacy migration edge"
+            echo "- Required GitHub gates: verify / static, verify / production-build"
+            echo "- This job is not a required merge gate"
+            echo "- Skipped: ${SKIPPED:-false}"
+            if [ "${SKIPPED}" = "true" ]; then
+              echo "- Skip reason: ${SKIP_REASON:-no Vercel Preview}"
+            else
+              echo "- Deployment URL: ${DEPLOYMENT_URL:-not resolved}"
+              echo "- Live checks: required when a Vercel Preview exists (search-index, sync-runs, base pointer, exports, generation-aware period continuity)"
+              echo "- Live history: bounded validated manifest chain, then legacy migration edge"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Optional CF Preview dual-run (P2). NOT a production required check.
@@ -355,7 +384,8 @@ jobs:
             echo "- CF Preview origin: ${DEPLOYMENT_URL:-not resolved}"
             echo "- Default probe: https://gitstarclub-web-pre.worldgo.workers.dev (Worker gitstarclub-web-pre)"
             echo "- Access: Service Token headers CF-Access-Client-Id / CF-Access-Client-Secret"
-            echo "- Production gates remain verify / static, production-build, preview-e2e, product-gates on Vercel"
+            echo "- Required GitHub gates remain verify / static, production-build"
+            echo "- preview-e2e / product-gates soft-skip without a Vercel Preview; they are not required"
             echo "- Do not add this job to required checks"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -421,6 +451,7 @@ jobs:
             echo "- Wrangler env: \`pre\` (Worker \`gitstarclub-web-pre\`)"
             echo "- Access: not required for this build"
             echo "- Deploy: dry-run only via \`scripts/cf-wrangler-dry-run.mjs\` (never live-deploys \`gitstarclub-web\`)"
-            echo "- Production gates remain verify / static, production-build, preview-e2e, product-gates on Vercel"
+            echo "- Required GitHub gates remain verify / static, production-build"
+            echo "- preview-e2e / product-gates soft-skip without a Vercel Preview; they are not required"
             echo "- Do not add this job to required checks"
           } >> "$GITHUB_STEP_SUMMARY"
