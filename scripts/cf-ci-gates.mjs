@@ -262,8 +262,21 @@ export function assertCfCiGates(sources) {
   }
   const checksMatch = deliveryYml.match(/checks:\s*\[([^\]]+)\]/);
   const requiredChecks = checksMatch?.[1] ?? "";
+  const requiredNames = requiredChecks
+    .split(",")
+    .map((name) => name.replace(/#.*$/, "").trim())
+    .filter(Boolean);
+  if (!requiredNames.includes("static") || !requiredNames.includes("production-build")) {
+    issues.push(".delivery.yml ci.checks must keep static and production-build as required gates");
+  }
+  if (requiredNames.includes("preview-e2e") || requiredNames.includes("product-gates")) {
+    issues.push(".delivery.yml ci.checks must not require preview-e2e or product-gates (they soft-skip without Vercel Preview)");
+  }
   if (/\bcf-preview\b/.test(requiredChecks) || /\bcf-workers-host\b/.test(requiredChecks)) {
     issues.push(".delivery.yml ci.checks must not require cf-preview or cf-workers-host");
+  }
+  if (!ciYml.includes("steps.deployment.outputs.skipped") || !ciYml.includes("needs.preview-e2e.outputs.skipped")) {
+    issues.push("ci.yml must soft-skip preview-e2e follow-up steps and product-gates when Vercel Preview is skipped");
   }
 
   for (const jobId of ["cf-preview", "cf-workers-host"]) {
