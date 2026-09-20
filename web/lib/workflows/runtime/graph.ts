@@ -1,11 +1,28 @@
 import { REPO_BUCKETS } from "@/lib/workflows/buckets";
 import type {
+  CanonicalPreflightCursorAcc,
   FixtureRefreshStepName,
   FullRefreshStepName,
   RefreshCursor,
   RefreshStepJob,
   RefreshStepResult,
 } from "./types";
+
+function asPreflightAcc(value: unknown): CanonicalPreflightCursorAcc | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const acc = value as CanonicalPreflightCursorAcc;
+  if (
+    typeof acc.repoRecords !== "number" ||
+    typeof acc.monthlyRecords !== "number" ||
+    typeof acc.weeklyRecords !== "number" ||
+    typeof acc.recentDailyRecords !== "number" ||
+    typeof acc.validatedShards !== "number" ||
+    typeof acc.schemaFailures !== "number"
+  ) {
+    return undefined;
+  }
+  return acc;
+}
 
 function mergeCursor(job: RefreshStepJob, result: RefreshStepResult): RefreshCursor {
   return {
@@ -79,6 +96,25 @@ export function nextRefreshJob(
     const name = nextFixtureName(job.name);
     if (!name) return null;
     return { v: 1, graph: "fixture", runId: job.runId, name, attempt: 0, cursor };
+  }
+
+  if (job.name === "preflight") {
+    if (typeof result.nextPreflightOffset === "number") {
+      return {
+        v: 1,
+        graph: "full",
+        runId: job.runId,
+        name: "preflight",
+        attempt: 0,
+        cursor: {
+          ...cursor,
+          preflightOffset: result.nextPreflightOffset,
+          preflightAcc: asPreflightAcc(result.preflightAcc) ?? cursor.preflightAcc,
+        },
+      };
+    }
+    const { preflightOffset: _offset, preflightAcc: _acc, ...rest } = cursor;
+    return { v: 1, graph: "full", runId: job.runId, name: "whitelist", attempt: 0, cursor: rest };
   }
 
   if (job.name === "metadata") {

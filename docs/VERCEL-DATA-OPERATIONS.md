@@ -1,7 +1,7 @@
 ---
 owner: data operations / workflows
 status: active
-last_reviewed: 2026-08-30
+last_reviewed: 2026-09-20
 source_of_truth_for:
   - production data lifecycle
   - Vercel Blob publish model
@@ -82,7 +82,7 @@ gitstarclub 的运行时是**纯静态**:用户请求只读预算好的 JSON / B
 Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)  ← 生产排程真源，P1 不改 vercel.json
   └─ route:鉴权 + 只读 canonical meta/repos preflight + 取得 lease + startRefresh,立即返回 run_id(不阻塞)
        └─ workflows runtime(startRefresh / enqueueStep / completeStep；无 Workflow SDK)
-            ├─ step 0  full canonical preflight          (plain async + explicit retry; read-only)
+            ├─ step 0  full canonical preflight          (4-bucket windows on CF/HTTP; read-only)
             ├─ step 1  refresh whitelist                 (plain async + explicit retry)
             ├─ step 2  rename detection(先于 metadata,读旧 full_name)
             ├─ step 3  metadata shards(按 bucket 循环,含 newcomer-aware `tracked_since`)
@@ -102,7 +102,7 @@ Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)  ← 生产排程�
 > `preflight → whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`。
 > Workflow 发布会对 `published-views-pointer` cache tag 和根 layout 主动失效；其他已暖函数实例的进程内 pointer memo 上限为 60s，因此 publish / rollback 的可见性 SLA 为 **≤60s**（§7.4）。
 
-**为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 只做「鉴权 + canonical meta/32 个 repos shard 只读 preflight + lease + 启动 workflow + 返回」,把真正的长任务交给 Workflow runtime 异步编排。route gate 会在 lease 和 enqueue 前检查 `active` / `tracked_since` / `d`、repo key/id 与 bucket；workflow 的 step 0 再全量校验 128 个必需 shard，防止 enqueue 到执行之间对象变化，并在任何 canonical mutation 前阻断空时间序列、孤立 repo ID、缺失 shard 或读取错误。
+**为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 只做「鉴权 + canonical meta/32 个 repos shard 只读 preflight + lease + 启动 workflow + 返回」,把真正的长任务交给 Workflow runtime 异步编排。route gate 会在 lease 和 enqueue 前检查 `active` / `tracked_since` / `d`、repo key/id 与 bucket；workflow 的 step 0 再校验全部 128 个必需 shard（CF / HTTP 上按 4-bucket 窗口拆 invocation，避免 Workers 1102），防止 enqueue 到执行之间对象变化，并在任何 canonical mutation 前阻断空时间序列、孤立 repo ID、缺失 shard 或读取错误。
 
 ### 3.2 P1 runtime 落地形态
 
@@ -168,7 +168,7 @@ async function recomputeRank(runId: string) {
 
 | # | step | 读 | 写 | 说明 |
 |---|---|---|---|---|
-| 0 | canonical readiness preflight | route：`meta.json` + 32 个 `repos` shard；workflow：全部 128 个必需 shard | 无 | route 在 lease/enqueue 前验证当前模型必需的 repo lifecycle/anchoring/bucket 契约；workflow 在任何 whitelist/canonical mutation 前复核全部 shard、时间序列非空和 repo ID 引用完整性。Workflow 与 daily/weekly cron 的 mutation input 均用权威读取：只有确认 404 可表示缺失；403、超时、schema/pointer 错误全部 fail closed。2026-07 legacy lifecycle remediation 只走 [OPS](./OPS.md) §一次性 canonical lifecycle provenance 迁移：先 reviewed dry-run，再以 exact plan digest + shared fenced lease 执行；不得把 preflight 放宽成兼容 fallback。 |
+| 0 | canonical readiness preflight | route：`meta.json` + 32 个 `repos` shard；workflow：全部 128 个必需 shard（运行时按 4-bucket 窗口拆步） | 无 | route 在 lease/enqueue 前验证当前模型必需的 repo lifecycle/anchoring/bucket 契约；workflow 在任何 whitelist/canonical mutation 前复核全部 shard、时间序列非空和 repo ID 引用完整性。CF Workers 不得在单次 invocation 读齐 128 个 shard（1102）。Workflow 与 daily/weekly cron 的 mutation input 均用权威读取：只有确认 404 可表示缺失；403、超时、schema/pointer 错误全部 fail closed。2026-07 legacy lifecycle remediation 只走 [OPS](./OPS.md) §一次性 canonical lifecycle provenance 迁移：先 reviewed dry-run，再以 exact plan digest + shared fenced lease 执行；不得把 preflight 放宽成兼容 fallback。 |
 | 1 | refresh whitelist | GitHub Search `stars:>=10000` + 当前已发布 run 的 whitelist snapshot | immutable `canonical/v2/whitelist/<run_id>.json` + diff | Search 仅做成员发现：开放上界查询当前最高 star 后动态分桶，无 600k ceiling；snapshot `count` 是本 run 权威 active 数。同一 run 重试复用 snapshot；失败 run 不推进 baseline。 |
 | 2 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo:记录旧→新映射,其增量由后续 build-aliases step 并集成 `lookup/aliases.json`,供 repo 页 308 重定向(见 [FRONTEND.md](./FRONTEND.md))。**先于 metadata 跑**——metadata 会覆盖 `full_name`,改名检测必须在覆盖前读到旧值。canonical 按 `repo_id` 归并,改名不丢历史。 |
 | 3 | metadata shards(**按 bucket,1 step/桶**,内含 lifecycle) | run whitelist(Search membership/node_id/rename-aware identity)+ previous canonical/lookup | `canonical/v2/repos/<bucket>.json`(`active`/`tracked_since`/GraphQL metadata) | 对**每个 active repo**用 GraphQL `nodes()` 批量取 metadata + 权威 `stargazerCount`；任一 active id 缺失 GraphQL 结果即 fail closed，绝不回退 Search stars。previous row 先标 `active:false`，本次 entries 再激活；drop 历史保留、re-entry 保留首次 `tracked_since`、首次 newcomer 写 snapshot discovery date。每桶最多约 165 repo（2 个 GraphQL batch），逐桶 step/节流，避免二级限流。 |

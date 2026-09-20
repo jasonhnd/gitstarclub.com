@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-09-19
+last_reviewed: 2026-09-20
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -76,6 +76,7 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | CF Cron scheduled dispatch (#466) | `event.cron` maps daily / weekly / refresh; unknown cron throws; production wrangler crons stay empty; origins stay env-specific | `web/lib/workers-host/cron-dispatch.test.ts`, `scripts/cf-ci-gates.test.mjs` | Ops injects secrets and enables preview schedules later; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
 | CF Cron Sunday DoW 0/7 alias (#468) | weekly accepts `0 4 * * 0` and `0 4 * * 7` (and `SUN`); refresh accepts `0 6 * * 0` and `0 6 * * 7` (and `SUN`); daily stays `0 3 * * *`; production `triggers.crons` stays `[]` | `web/lib/workers-host/cron-dispatch.test.ts`, `scripts/cf-ci-gates.test.mjs` | Platform schedules stay off; production cron is not enabled; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
 | CF Cron GraphQL UA + Blob fetch write (#470) | GraphQL `gql()` sends `User-Agent: gitstarclub` and `Accept: application/vnd.github+json`; Blob lease/write on `HOSTING_TARGET=cf` uses runtime `fetch` (no `ALPNProtocols`) | `web/lib/github.test.ts`, `web/lib/github-timeout.test.ts`, `web/lib/storage/vercel-blob-fetch-client.test.ts`, `web/lib/storage/object-store.test.ts` | Preview Bearer `refresh/start` is 2xx; full daily must not 500 on ALPN; production `triggers.crons` stays `[]`; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
+| CF refresh preflight 1102 (#472) | Workflow preflight reads 4-bucket windows (16 shards) at CF concurrency 2; SHA-256 deferred to `validate`; graph re-enqueues until 128 shards pass; cf-queue stays the preview runtime | `web/lib/workflows/canonical-validation.test.ts`, `web/lib/workflows/steps/preflight.test.ts`, `web/lib/workflows/runtime/graph.test.ts`, `web/lib/workflows/runtime/step-route.test.ts` | After CF preview deploy: Bearer start 200 → queue consume → step `preflight` is **not** 503/1102; Blob shows `preflight-0` then a later step; production `triggers.crons` stays `[]`; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
 | CF migrate P3 Workers host (#452) | OpenNext selected over vinext; `/` is Next; shell keeps `/preview/*` + `/start`; Analytics off on `HOSTING_TARGET=cf` | `web/lib/workers-host/*.test.ts`, `web/lib/analytics-policy.test.ts`, `web/lib/deployment-identity.test.ts`, `web/lib/runtime-config.test.ts` | Optional `verify / cf-workers-host` dry-run; local `bun run cf:smoke`; production stays Vercel; see [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
 | Cloudflare R2 P0 adapter (#444) | Default Blob drivers; R2 CAS 412 / list prefix / production write guard; no real production bucket token | `web/lib/storage/*.test.ts`, `web/lib/runtime-config.test.ts` | Dry-run `web/scripts/sync-blob-to-r2.ts` against `migrate-dev/` only |
 | View parse-once + Zod fingerprints | Same path+generation is parsed once; unrecognized lifecycle keys are not `.passthrough()`; old and new Meta/lookup/entity shapes both parse | `web/lib/data/parse-view.test.ts`, `web/lib/contracts/contracts.test.ts` | 24h `ZodError` volume drops; no per-request repeat of the same fingerprint |

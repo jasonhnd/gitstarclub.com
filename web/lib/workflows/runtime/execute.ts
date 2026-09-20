@@ -5,7 +5,7 @@ import { buildAliases } from "@/lib/workflows/steps/aliases";
 import { foldCanonical } from "@/lib/workflows/steps/fold";
 import { gcVersions } from "@/lib/workflows/steps/gc";
 import { refreshMetadataBucket } from "@/lib/workflows/steps/metadata";
-import { preflightCanonical } from "@/lib/workflows/steps/preflight";
+import { runPreflightStep } from "@/lib/workflows/steps/preflight";
 import { publishVersion } from "@/lib/workflows/steps/publish";
 import { recomputeOrgEntities, recomputeRepoEntities } from "@/lib/workflows/steps/recompute-entity";
 import { recomputeHeatmap } from "@/lib/workflows/steps/recompute-heatmap";
@@ -31,7 +31,7 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
       return { name, startedAt: started.startedAt, fencingToken: started.fencingToken };
     }
     case "preflight":
-      return { name, preflight: await preflightCanonical(runId) };
+      return { name, ...(await runPreflightStep(runId, job.cursor)) };
     case "whitelist":
       return { name, ...(await refreshWhitelist(runId, requireToken(job))) };
     case "rename":
