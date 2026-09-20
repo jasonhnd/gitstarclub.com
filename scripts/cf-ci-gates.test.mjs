@@ -25,6 +25,11 @@ const validWrangler = `{
 
 const validRuntime = 'export const DEFAULT_CF_PREVIEW_ORIGIN = "https://gitstarclub-web-pre.worldgo.workers.dev";';
 const validCi = `
+  preview-e2e:
+    steps:
+      - if: steps.deployment.outputs.skipped != 'true'
+  product-gates:
+    if: \${{ needs.preview-e2e.outputs.skipped != 'true' }}
   cf-preview:
     if: \${{ vars.CF_PREVIEW_ENABLED == '1' && (github.ref_name == 'pre' || github.base_ref == 'pre') }}
     env:
@@ -34,7 +39,7 @@ const validCi = `
     steps:
       - run: bun run cf:dry-run
 `;
-const validDelivery = "checks: [static, production-build, preview-e2e, product-gates]  # cf-preview / cf-workers-host MUST NOT be added";
+const validDelivery = "checks: [static, production-build]  # cf-preview / cf-workers-host MUST NOT be added";
 const validPackage = `{
   "scripts": {
     "cf:dry-run": "bun run cf:build && node ../scripts/cf-wrangler-dry-run.mjs"
@@ -94,6 +99,18 @@ describe("CF CI gates", () => {
     assert.ok(issues.some((issue) => issue.includes("env.nonprod")));
     assert.ok(issues.some((issue) => issue.includes("closed production")));
     assert.ok(issues.some((issue) => issue.includes("bare wrangler deploy")));
+  });
+
+  test("rejects retired Vercel preview jobs as required delivery checks", () => {
+    const issues = assertCfCiGates({
+      wranglerSource: validWrangler,
+      ciYml: validCi.replace("steps.deployment.outputs.skipped", "steps.deployment.outputs.url"),
+      deliveryYml: "checks: [static, production-build, preview-e2e, product-gates]  # cf-preview / cf-workers-host MUST NOT be added",
+      webPackageSource: validPackage,
+      runtimeConfigSource: validRuntime,
+    });
+    assert.ok(issues.some((issue) => issue.includes("must not require preview-e2e or product-gates")));
+    assert.ok(issues.some((issue) => issue.includes("soft-skip preview-e2e")));
   });
 
   test("accepts the aligned preview contract", () => {
