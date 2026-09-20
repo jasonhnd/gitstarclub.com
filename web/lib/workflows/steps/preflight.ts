@@ -54,6 +54,9 @@ export async function runPreflightStep(runId: string, cursor: RefreshCursor = {}
     throw new Error(`canonical preflight offset ${bucketStart} is outside ${REPO_BUCKETS} buckets`);
   }
   const buckets = Array.from({ length: bucketCount }, (_, index) => bucketStart + index);
+  if (bucketStart === 0) {
+    await readCanonicalMeta(runId, "workflow");
+  }
   const bust = `${runId}-workflow-preflight`;
   const batch = await validateCanonicalGeneration(bust, {
     scope: "full",

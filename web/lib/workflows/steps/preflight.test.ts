@@ -81,6 +81,7 @@ describe("preflightCanonical", () => {
     expect(reads.filter(({ path }) => path === "canonical/v2/meta.json").map(({ bust }) => bust)).toEqual([
       "refresh-test-route-preflight",
       "refresh-test-workflow-preflight",
+      "refresh-test-workflow-preflight",
     ]);
   });
 
@@ -100,6 +101,7 @@ describe("preflightCanonical", () => {
       generated_at: "2026-06-02T14:32:57.214Z",
     });
     expect(reads.filter(({ path }) => path === "canonical/v2/meta.json")).toEqual([
+      { path: "canonical/v2/meta.json", bust: "refresh-test-workflow-preflight" },
       { path: "canonical/v2/meta.json", bust: "refresh-test-workflow-preflight" },
     ]);
   });
@@ -155,8 +157,12 @@ describe("preflightCanonical", () => {
     expect(first.preflight).toBeUndefined();
     expect(first.bucketStart).toBe(0);
     expect(first.bucketCount).toBe(PREFLIGHT_BUCKETS_PER_JOB);
-    expect(reads.filter(({ path }) => path === "canonical/v2/meta.json")).toEqual([]);
-    expect(reads.filter(({ path }) => path.startsWith("canonical/v2/")).length).toBe(PREFLIGHT_BUCKETS_PER_JOB * 4);
+    expect(reads.filter(({ path }) => path === "canonical/v2/meta.json")).toEqual([
+      { path: "canonical/v2/meta.json", bust: "refresh-window-workflow-preflight" },
+    ]);
+    expect(reads.filter(({ path }) => path.startsWith("canonical/v2/") && path !== "canonical/v2/meta.json").length).toBe(
+      PREFLIGHT_BUCKETS_PER_JOB * 4,
+    );
 
     const last = await runPreflightStep("refresh-window", {
       preflightOffset: 28,
