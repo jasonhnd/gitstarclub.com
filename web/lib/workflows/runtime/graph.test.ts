@@ -88,10 +88,23 @@ describe("refresh step graph", () => {
       foldedThroughMonth: "2026-08",
       foldedThroughWeek: "2026-W30",
     };
+    const planHop = nextRefreshJob(full("fold", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 }), {
+      name: "fold",
+      nextFoldPhase: "month",
+      nextFoldMonth: "2026-08",
+      nextFoldOffset: 0,
+      nextFoldSeq: 1,
+      foldAcc: acc,
+    });
+    expect(planHop).toMatchObject({
+      name: "fold",
+      cursor: { foldPhase: "month", foldMonth: "2026-08", foldOffset: 0, foldSeq: 1, foldAcc: acc },
+    });
+
     const mid = nextRefreshJob(full("fold", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 }), {
       name: "fold",
       nextFoldPhase: "week",
-      nextFoldOffset: 4,
+      nextFoldOffset: 1,
       nextFoldSeq: 3,
       foldAcc: acc,
     });
@@ -99,7 +112,7 @@ describe("refresh step graph", () => {
       name: "fold",
       cursor: {
         foldPhase: "week",
-        foldOffset: 4,
+        foldOffset: 1,
         foldSeq: 3,
         foldAcc: acc,
         fencingToken: 22,

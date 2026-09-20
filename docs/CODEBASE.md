@@ -62,7 +62,7 @@ GitHub APIs
 | `web/lib/storage/` | Injectable object-store port (`vercel-blob` \| `r2-s3`) for write/CAS/list/del; default remains Blob |
 | `web/lib/cache-invalidation/` | ISR invalidation port (`vercel` \| `memory` \| `cf-stub`); default remains Next `revalidatePath/Tag` |
 | `web/lib/preview/` | Pluggable Preview target (`vercel` \| `cf`) and Cloudflare Access Service Token headers |
-| `web/lib/workers-host/` | Worker path classification, smoke origin, step self-fetch, Queue successor after fold (body + `x-gitstarclub-queue-successor`) |
+| `web/lib/workers-host/` | Worker path classification, smoke origin, step self-fetch, Queue successor after fold (body + `x-gitstarclub-queue-successor`; fold uses 1-bucket windows + compact month/week plans) |
 | `web/open-next.config.ts` | OpenNext Cloudflare adapter (static-assets incremental cache; preview only) |
 | `workers/gitstarclub-web/` | CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (`env.pre`) |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
