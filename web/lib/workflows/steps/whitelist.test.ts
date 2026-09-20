@@ -30,6 +30,7 @@ function fakeWhitelist() {
     snapshots: new Map<string, WhitelistSnapshot>([["published-old", snapshot("published-old", [1])]]),
     searchEntries: [entry(1), entry(2)],
     searchCalls: 0,
+    ownershipCalls: 0,
     creates: 0,
     now: "2026-07-17T02:00:00.000Z",
   };
@@ -48,7 +49,9 @@ function fakeWhitelist() {
       state.creates++;
       return true;
     },
-    ensureOwnership: async () => {},
+    ensureOwnership: async () => {
+      state.ownershipCalls += 1;
+    },
     now: () => state.now,
   };
   return { state, deps };
@@ -95,6 +98,44 @@ describe("published whitelist baseline", () => {
     await expect(refreshWhitelistWithDeps("next-run", 2, deps)).rejects.toThrow(
       "published whitelist snapshot for run published-old is missing",
     );
+    expect(state.searchCalls).toBe(0);
+    expect(state.snapshots.has("next-run")).toBe(false);
+  });
+
+  test("proves fencing ownership before GitHub Search and again before the snapshot write", async () => {
+    const { state, deps } = fakeWhitelist();
+    const order: string[] = [];
+    deps.ensureOwnership = async () => {
+      state.ownershipCalls += 1;
+      order.push("own");
+    };
+    deps.search = async () => {
+      order.push("search");
+      state.searchCalls += 1;
+      return structuredClone(state.searchEntries);
+    };
+    deps.createSnapshot = async (runId, next) => {
+      order.push("write");
+      state.snapshots.set(runId, structuredClone(next));
+      state.creates += 1;
+      return true;
+    };
+
+    await refreshWhitelistWithDeps("next-run", 21, deps);
+
+    expect(state.ownershipCalls).toBe(2);
+    expect(order).toEqual(["own", "search", "own", "write"]);
+  });
+
+  test("a lost fence before Search does not spend GitHub quota", async () => {
+    const { state, deps } = fakeWhitelist();
+    deps.ensureOwnership = async () => {
+      state.ownershipCalls += 1;
+      throw new Error("lost fence");
+    };
+
+    await expect(refreshWhitelistWithDeps("next-run", 21, deps)).rejects.toThrow("lost fence");
+    expect(state.ownershipCalls).toBe(1);
     expect(state.searchCalls).toBe(0);
     expect(state.snapshots.has("next-run")).toBe(false);
   });

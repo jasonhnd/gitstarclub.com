@@ -95,6 +95,12 @@ export async function refreshWhitelistWithDeps(
   const existing = await deps.readSnapshot(runId);
   if (existing) return resultOf(existing);
 
+  // Prove the fence before GitHub Search. Search can run several minutes on
+  // CF; a late-only renew then hits a CDN-stale ETag / overlapping Queue retry
+  // and used to fail closed as "lost ownership while renewing".
+  const owner = { runId, fencingToken };
+  await deps.ensureOwnership(owner);
+
   // Resolve the published baseline before contacting GitHub. A broken commit
   // point must fail closed instead of spending a Search request and then
   // silently comparing against a migration fallback.
@@ -115,7 +121,6 @@ export async function refreshWhitelistWithDeps(
     },
   });
 
-  const owner = { runId, fencingToken };
   await deps.ensureOwnership(owner);
   const created = await deps.createSnapshot(runId, snapshot);
   if (created) return resultOf(snapshot);

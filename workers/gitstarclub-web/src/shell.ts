@@ -1,3 +1,4 @@
+import { fetchRefreshStep, refreshStepFetchVia } from "../../../web/lib/workers-host/refresh-step-fetch";
 import {
   cronHttpUrl,
   planCronDispatch,
@@ -79,24 +80,19 @@ function nextFixtureJob(job: RefreshJob): RefreshJob | null {
 }
 
 export async function consumeJob(env: WorkerEnv, job: RefreshJob): Promise<void> {
-  emitRunLog({ event: "workflow.step", runId: job.runId, step: job.name, graph: job.graph });
+  emitRunLog({
+    event: "workflow.step",
+    runId: job.runId,
+    step: job.name,
+    graph: job.graph,
+    via: refreshStepFetchVia(env),
+  });
   if (env.WORKFLOW_FIXTURE === "1" && job.graph === "fixture") {
     const next = nextFixtureJob(job);
     if (next) await enqueueJob(env, next);
     return;
   }
-  const stepUrl = env.REFRESH_STEP_URL;
-  if (!stepUrl || !env.CRON_SECRET) {
-    throw new Error("REFRESH_STEP_URL and CRON_SECRET are required to consume a refresh step");
-  }
-  const response = await fetch(stepUrl, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.CRON_SECRET}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(job),
-  });
+  const response = await fetchRefreshStep(env, job);
   if (!response.ok) {
     throw new Error(`refresh step ${job.name} failed: HTTP ${response.status}`);
   }
