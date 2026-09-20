@@ -201,10 +201,10 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 | Weekly managed refresh stays visible when it fails | Aug 2026 publish stalled for weeks because validate and enqueue failures were easy to miss | `ops/workflows/health/workflow-refresh.json` is the only live operator signal; retired `ops/workflows/health.json` is not read |
 | New pages must not re-probe missing Blob objects | Crawler-driven 404 amplification on `bootstrap/latest.json` | Pointer 404 remains a cached legacy state; no new per-request existence probes |
 | Dependabot + bun lockfiles | npm Dependabot PRs against `main` fail `bun install --frozen-lockfile` | Next Dependabot wave is retargeted or immediately replaced with a `pre` + lockfile PR (pattern from #351) |
-| Product-gates stay fail-closed | 14-day base pointer and export SLAs are the live contract (#286) | Do not skip or loosen the job to land features |
+| Product-gates stay fail-closed when they run | 14-day base pointer and export SLAs are the live contract (#286) | Do not loosen live assertions to land features. Ignored Build / no Vercel Preview is a separate CI soft-skip; the job is not a GitHub required check |
 | Vercel Firewall | Optional extra crawler control after robots | Recipe in [OPS.md](./OPS.md). 2026-08-20: denies published then removed the same day; operator chose to allow crawlers. Zero custom rules live. |
 
-Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blob 404s, product-gates remain required on `pre`/`main`.
+Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blob 404s. GitHub required CI gates are `static` + `production-build` only; product-gates stay fail-closed when a Vercel Preview exists and soft-skip otherwise.
 
 **Children**
 
