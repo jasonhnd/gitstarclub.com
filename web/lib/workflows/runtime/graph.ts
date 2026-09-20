@@ -2,6 +2,8 @@ import { REPO_BUCKETS } from "../buckets";
 import type {
   CanonicalPreflightCursorAcc,
   FixtureRefreshStepName,
+  FoldCursorAcc,
+  FoldPhase,
   FullRefreshStepName,
   RefreshCursor,
   RefreshStepJob,
@@ -22,6 +24,32 @@ function asPreflightAcc(value: unknown): CanonicalPreflightCursorAcc | undefined
     return undefined;
   }
   return acc;
+}
+
+function asFoldAcc(value: unknown): FoldCursorAcc | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const acc = value as FoldCursorAcc;
+  if (
+    !Array.isArray(acc.folded) ||
+    !Array.isArray(acc.foldedWeeks) ||
+    typeof acc.foldedThroughMonth !== "string" ||
+    typeof acc.foldedThroughWeek !== "string"
+  ) {
+    return undefined;
+  }
+  if (!acc.folded.every((item) => typeof item === "string")) return undefined;
+  if (!acc.foldedWeeks.every((item) => typeof item === "string")) return undefined;
+  return {
+    folded: [...acc.folded],
+    foldedWeeks: [...acc.foldedWeeks],
+    foldedThroughMonth: acc.foldedThroughMonth,
+    foldedThroughWeek: acc.foldedThroughWeek,
+  };
+}
+
+function asFoldPhase(value: unknown): FoldPhase | undefined {
+  if (value === "month" || value === "week") return value;
+  return undefined;
 }
 
 function mergeCursor(job: RefreshStepJob, result: RefreshStepResult): RefreshCursor {
@@ -153,6 +181,36 @@ export function nextRefreshJob(
       attempt: 0,
       cursor: { ...cursor, bucket: 0, metadata: { repos: 0, historical: 0, fromGithub: 0 } },
     };
+  }
+
+  if (job.name === "fold") {
+    const nextPhase = asFoldPhase(result.nextFoldPhase);
+    if (nextPhase || typeof result.nextFoldOffset === "number") {
+      return {
+        v: 1,
+        graph: "full",
+        runId: job.runId,
+        name: "fold",
+        attempt: 0,
+        cursor: {
+          ...cursor,
+          foldPhase: nextPhase ?? cursor.foldPhase ?? "month",
+          foldMonth: typeof result.nextFoldMonth === "string" ? result.nextFoldMonth : cursor.foldMonth,
+          foldOffset: typeof result.nextFoldOffset === "number" ? result.nextFoldOffset : 0,
+          foldSeq: typeof result.nextFoldSeq === "number" ? result.nextFoldSeq : (cursor.foldSeq ?? 0) + 1,
+          foldAcc: asFoldAcc(result.foldAcc) ?? cursor.foldAcc,
+        },
+      };
+    }
+    const {
+      foldPhase: _foldPhase,
+      foldMonth: _foldMonth,
+      foldOffset: _foldOffset,
+      foldSeq: _foldSeq,
+      foldAcc: _foldAcc,
+      ...rest
+    } = cursor;
+    return { v: 1, graph: "full", runId: job.runId, name: "recomputeRank", attempt: 0, cursor: rest };
   }
 
   const name = nextFullName(job.name);

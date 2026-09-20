@@ -533,7 +533,7 @@ function fetchErrorDetail(error: unknown): string {
 /** Read + Zod-validate a view. Returns null when the view is absent (caller → notFound()). */
 export async function readView<T>(path: string, schema: ZodType<T>, opts: ViewOpts = {}): Promise<T | null> {
   const json = await rawRead(path, opts, "published");
-  return json === null ? null : parseView(json, schema, { path, version: opts.bust ?? null });
+  return json === null ? null : parseView(json, schema, { path, version: opts.bust ?? null, memo: !opts.bust });
 }
 
 /**
@@ -547,7 +547,7 @@ export async function readAuthoritativeView<T>(
   opts: ViewOpts = {},
 ): Promise<T | null> {
   const json = await rawRead(path, opts, "authoritative");
-  return json === null ? null : parseView(json, schema, { path, version: opts.bust ?? null });
+  return json === null ? null : parseView(json, schema, { path, version: opts.bust ?? null, memo: !opts.bust });
 }
 
 /** Authoritative read for a workflow artifact that must already exist. */
