@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
+import { WorkflowLeaseCasError, WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
 import { withStepRetry } from "./retry";
 
 describe("withStepRetry", () => {
@@ -51,5 +51,21 @@ describe("withStepRetry", () => {
       ),
     ).rejects.toThrow("lost fence");
     expect(attempts).toBe(1);
+  });
+
+  test("retries a lease CAS exhaustion then succeeds", async () => {
+    let attempts = 0;
+    const result = await withStepRetry(
+      "whitelist",
+      async () => {
+        attempts += 1;
+        if (attempts === 1) throw new WorkflowLeaseCasError("CAS exhausted while renewing fencing token 21");
+        return "owned";
+      },
+      { retries: 2, delaysMs: [1, 1] },
+      async () => {},
+    );
+    expect(result).toBe("owned");
+    expect(attempts).toBe(2);
   });
 });

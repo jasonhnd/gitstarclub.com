@@ -133,6 +133,9 @@ describe("createVercelBlobFetchClient", () => {
 
     const got = await client.get("ops/a.json", { access: "public", token: TOKEN });
     expect(got?.blob.etag).toBe('"g1"');
+    const publicGet = calls.find((call) => call.url.startsWith("https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com/"));
+    expect(publicGet?.init.cache).toBe("no-store");
+    expect((publicGet?.init as RequestInit & { cf?: { cacheTtl: number } }).cf?.cacheTtl).toBe(0);
     expect(await client.head("ops/a.json", { token: TOKEN })).toEqual({
       etag: '"h1"',
       contentType: "application/json",
