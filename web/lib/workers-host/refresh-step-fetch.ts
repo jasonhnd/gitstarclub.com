@@ -1,3 +1,5 @@
+import { QUEUE_ADVANCE_CONSUMER, QUEUE_ADVANCE_HEADER } from "./queue-advance";
+
 export type RefreshStepFetchEnv = {
   REFRESH_STEP_URL?: string;
   CRON_SECRET?: string;
@@ -17,6 +19,8 @@ export function refreshStepFetchVia(env: RefreshStepFetchEnv): RefreshStepFetchV
  * the Queue consumer does not hop `pre.gitstarclub.com` (Cloudflare 524 ~100–125s
  * on the public proxy). A 524 retries the Queue message while the first isolate
  * is still in GitHub Search and two consumers then fight the same fencing token.
+ * Marks the request so the step isolate skips completeStep; the consumer reads
+ * the JSON body and JOBS.send(next) (fold→recompute must not use public /enqueue).
  */
 export async function fetchRefreshStep(
   env: RefreshStepFetchEnv,
@@ -31,6 +35,7 @@ export async function fetchRefreshStep(
     headers: {
       authorization: `Bearer ${env.CRON_SECRET}`,
       "content-type": "application/json",
+      [QUEUE_ADVANCE_HEADER]: QUEUE_ADVANCE_CONSUMER,
     },
     body: JSON.stringify(job),
     cache: "no-store",
