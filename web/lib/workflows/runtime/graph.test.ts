@@ -81,6 +81,19 @@ describe("refresh step graph", () => {
     expect(done?.cursor.preflightAcc).toBeUndefined();
   });
 
+  test("fold result walks to recomputeRank and keeps the fencing token", () => {
+    const next = nextRefreshJob(full("fold", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 }), {
+      name: "fold",
+      folded: ["2026-08"],
+      foldedWeeks: ["2026-W35"],
+    });
+    expect(next).toMatchObject({
+      name: "recomputeRank",
+      cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
+    });
+    expect(next?.cursor.bucket).toBeUndefined();
+  });
+
   test("carries fencing token and startedAt through later jobs", () => {
     const next = nextRefreshJob(full("startRun"), {
       name: "startRun",

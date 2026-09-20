@@ -1,7 +1,8 @@
 import { WorkflowStepCheckpoint } from "@/lib/contracts";
 import { putView } from "@/lib/data/write";
-import { isVercelProduction } from "@/lib/runtime-config";
+import { getWorkflowRuntimeKind, isVercelProduction } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
+import { queueAdvanceFromConsumer } from "@/lib/workers-host/queue-advance";
 import { withStepRetry, type RetryPolicy } from "./retry";
 import { resolveWorkflowRuntime, type ResolveWorkflowRuntimeOptions } from "./resolve";
 import { isRefreshStepJob, type RefreshStepJob, type RefreshStepResult } from "./types";
@@ -73,14 +74,21 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
       opts.retry,
     );
     await (opts.recordCheckpoint ?? defaultCheckpoint)(job, result);
+    const kind = opts.kind ?? getWorkflowRuntimeKind(opts.env);
     const runtime = resolveWorkflowRuntime({
       requestUrl: req.url,
       schedule: opts.schedule,
       fetchImpl: opts.fetchImpl,
       env: opts.env,
-      kind: opts.kind,
+      kind,
     });
-    await runtime.completeStep(job, result);
+    // CF Queue consumer advances via JOBS.send after reading this body. Doing
+    // completeStep here POSTs the public /enqueue hop from the same isolate
+    // that just finished fold — that hop never landed (queue silent, no
+    // error.json). Direct POST /step still completeSteps.
+    if (!(kind === "cf-queue" && queueAdvanceFromConsumer(req.headers))) {
+      await runtime.completeStep(job, result);
+    }
     return Response.json({ ok: true, runId: job.runId, step: job.name, result });
   } catch (error) {
     try {

@@ -4,7 +4,9 @@ import {
   OrgEntity,
   RepoEntity,
 } from "@/lib/contracts";
+import { mapLimit } from "@/lib/data/map-limit";
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
+import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { assertPublishedViewJsonSize } from "@/lib/view-size";
 import {
   CanonicalMeta,
@@ -15,6 +17,7 @@ import {
   SiteDaily,
 } from "@/lib/contracts";
 import { getWriteObjectStore } from "@/lib/storage";
+import { canonicalShardReadConcurrency } from "@/lib/workflows/canonical-validation";
 import { REPO_BUCKETS } from "../buckets";
 import { buildModel, type Model, type RawShards } from "./model";
 import { workflowHeartbeat } from "@/lib/workflows/owned-write";
@@ -26,22 +29,42 @@ import type { WorkflowOwnership } from "@/lib/workflows/lease";
 
 const WRITE_PER_SEC = 60; // Blob write-rate budget (OPS §Blob)
 const WRITE_CONCURRENCY = 12;
+/** Tighter write pool on OpenNext — each Blob PUT also does an ASSETS cache GET. */
+export const WRITE_CONCURRENCY_CF = 4;
 const SITE_YEAR_MIN = 2010;
+
+export function canonicalModelLoadPlan(env?: Parameters<typeof isCloudflareWorkersHost>[0]): {
+  shardConcurrency: number;
+  parallelFamilies: boolean;
+  writeConcurrency: number;
+} {
+  const cf = isCloudflareWorkersHost(env);
+  return {
+    shardConcurrency: canonicalShardReadConcurrency(env),
+    parallelFamilies: !cf,
+    writeConcurrency: cf ? WRITE_CONCURRENCY_CF : WRITE_CONCURRENCY,
+  };
+}
 
 async function mergeBuckets<T extends Record<string, unknown>>(
   kind: string,
   schema: Parameters<typeof readAuthoritativeView<T>>[1],
   bust: string,
+  shardConcurrency: number,
 ): Promise<Record<string, T[string]>> {
-  const shards = await Promise.all(
-    Array.from({ length: REPO_BUCKETS }, async (_, bucket) => {
+  const shards = await mapLimit(
+    Array.from({ length: REPO_BUCKETS }, (_, bucket) => bucket),
+    shardConcurrency,
+    async (bucket) => {
       const path = `canonical/v2/${kind}/${bucket}.json`;
       try {
         return await readAuthoritativeView(path, schema, { bust });
       } catch (error) {
-        throw new Error(`${path}: schema/read failure — ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+        throw new Error(`${path}: schema/read failure — ${error instanceof Error ? error.message : String(error)}`, {
+          cause: error,
+        });
       }
-    }),
+    },
   );
   return mergeCompleteBucketShards(kind, shards);
 }
@@ -68,16 +91,34 @@ export interface LoadedModel {
 /** Load the full canonical/v2 model from Blob (repos + monthly + weekly + recent + site-daily). */
 export async function loadCanonicalModel(bust: string): Promise<LoadedModel> {
   const meta = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust });
+  const plan = canonicalModelLoadPlan();
 
   const thisYear = new Date().getUTCFullYear() + 1;
   const years = Array.from({ length: thisYear - SITE_YEAR_MIN + 1 }, (_, i) => String(SITE_YEAR_MIN + i));
-  const [repos, monthly, weekly, recentDaily, siteShards] = await Promise.all([
-    mergeBuckets("repos", ReposShard, bust),
-    mergeBuckets("repo-monthly", RepoMonthlyShard, bust),
-    mergeBuckets("repo-weekly", RepoWeeklyShard, bust),
-    mergeBuckets("repo-recent-daily", RepoRecentDailyShard, bust),
-    Promise.all(years.map((y) => readAuthoritativeView(`canonical/v2/site-daily/${y}.json`, SiteDaily, { bust }))),
-  ]);
+  const readSiteYear = (year: string) => readAuthoritativeView(`canonical/v2/site-daily/${year}.json`, SiteDaily, { bust });
+
+  // CF: sequential families + mapLimit(2). The old Promise.all of 4×32 shards
+  // is the same 128-way fan-out that 1102'd preflight. Vercel still overlaps families.
+  let repos: Record<string, unknown>;
+  let monthly: Record<string, unknown>;
+  let weekly: Record<string, unknown>;
+  let recentDaily: Record<string, unknown>;
+  let siteShards: Array<SiteDaily | null>;
+  if (plan.parallelFamilies) {
+    [repos, monthly, weekly, recentDaily, siteShards] = await Promise.all([
+      mergeBuckets("repos", ReposShard, bust, plan.shardConcurrency),
+      mergeBuckets("repo-monthly", RepoMonthlyShard, bust, plan.shardConcurrency),
+      mergeBuckets("repo-weekly", RepoWeeklyShard, bust, plan.shardConcurrency),
+      mergeBuckets("repo-recent-daily", RepoRecentDailyShard, bust, plan.shardConcurrency),
+      mapLimit(years, plan.shardConcurrency, readSiteYear),
+    ]);
+  } else {
+    repos = await mergeBuckets("repos", ReposShard, bust, plan.shardConcurrency);
+    monthly = await mergeBuckets("repo-monthly", RepoMonthlyShard, bust, plan.shardConcurrency);
+    weekly = await mergeBuckets("repo-weekly", RepoWeeklyShard, bust, plan.shardConcurrency);
+    recentDaily = await mergeBuckets("repo-recent-daily", RepoRecentDailyShard, bust, plan.shardConcurrency);
+    siteShards = await mapLimit(years, plan.shardConcurrency, readSiteYear);
+  }
 
   const siteDailyByYear: RawShards["siteDailyByYear"] = {};
   for (const s of siteShards) if (s) siteDailyByYear[s.year] = s;
@@ -116,7 +157,7 @@ export async function writeVersion(runId: string, views: Map<string, unknown>, o
       });
     }
   }
-  await Promise.all(Array.from({ length: WRITE_CONCURRENCY }, worker));
+  await Promise.all(Array.from({ length: canonicalModelLoadPlan().writeConcurrency }, worker));
   return items.length;
 }
 

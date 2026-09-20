@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { QUEUE_ADVANCE_CONSUMER, QUEUE_ADVANCE_HEADER } from "@/lib/workers-host/queue-advance";
 import { firstRefreshJob } from "./types";
 import { refreshStepCheckpointName, runRefreshStepRoute } from "./step-route";
 
@@ -79,6 +80,84 @@ describe("runRefreshStepRoute", () => {
     });
     expect(response.status).toBe(200);
     expect(names).toEqual(["preflight-8"]);
+  });
+
+  test("cf-queue consumer header skips completeStep after fold so the isolate does not POST /enqueue", async () => {
+    const enqueues: unknown[] = [];
+    const job = {
+      v: 1 as const,
+      graph: "full" as const,
+      runId: "refresh-1",
+      name: "fold" as const,
+      attempt: 0,
+      cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
+    };
+    const headers = {
+      authorization: "Bearer secret",
+      "content-type": "application/json",
+      [QUEUE_ADVANCE_HEADER]: QUEUE_ADVANCE_CONSUMER,
+    };
+    const response = await runRefreshStepRoute(
+      new Request("https://pre.gitstarclub.com/api/workflows/refresh/step", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(job),
+      }),
+      {
+        kind: "cf-queue",
+        env: {
+          ...process.env,
+          CRON_SECRET: "secret",
+          WORKFLOW_QUEUE_ENQUEUE_URL: "https://pre.gitstarclub.com/enqueue",
+        },
+        fetchImpl: async (_url, init) => {
+          enqueues.push(JSON.parse(String(init?.body)));
+          return new Response("queued", { status: 200 });
+        },
+        executeFull: async () => ({ name: "fold", folded: ["2026-08"], foldedWeeks: [] }),
+        recordCheckpoint: async () => {},
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, runId: "refresh-1", step: "fold" });
+    expect(enqueues).toEqual([]);
+  });
+
+  test("cf-queue direct POST still completeSteps fold → recomputeRank", async () => {
+    const enqueues: unknown[] = [];
+    const job = {
+      v: 1 as const,
+      graph: "full" as const,
+      runId: "refresh-1",
+      name: "fold" as const,
+      attempt: 0,
+      cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
+    };
+    const response = await runRefreshStepRoute(post(job), {
+      kind: "cf-queue",
+      env: {
+        ...process.env,
+        CRON_SECRET: "secret",
+        WORKFLOW_QUEUE_ENQUEUE_URL: "https://pre.gitstarclub.com/enqueue",
+      },
+      fetchImpl: async (_url, init) => {
+        enqueues.push(JSON.parse(String(init?.body)));
+        return new Response("queued", { status: 200 });
+      },
+      executeFull: async () => ({ name: "fold", folded: [], foldedWeeks: [] }),
+      recordCheckpoint: async () => {},
+    });
+    expect(response.status).toBe(200);
+    expect(enqueues).toEqual([
+      {
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "recomputeRank",
+        attempt: 0,
+        cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
+      },
+    ]);
   });
 
   test("records a failed full step after retries are exhausted", async () => {

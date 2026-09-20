@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { QUEUE_ADVANCE_CONSUMER, QUEUE_ADVANCE_HEADER } from "./queue-advance";
 import { fetchRefreshStep, refreshStepFetchVia } from "./refresh-step-fetch";
 
 const STEP = "https://pre.gitstarclub.com/api/workflows/refresh/step";
@@ -11,7 +12,9 @@ describe("refresh step fetch", () => {
       CRON_SECRET: "secret",
       WORKER_SELF_REFERENCE: {
         async fetch(request: Request) {
-          calls.push(`self:${request.method}:${request.url}:${request.headers.get("authorization")}`);
+          calls.push(
+            `self:${request.method}:${request.url}:${request.headers.get("authorization")}:${request.headers.get(QUEUE_ADVANCE_HEADER)}`,
+          );
           expect(await request.json()).toEqual({ name: "whitelist" });
           return new Response("ok", { status: 200 });
         },
@@ -25,7 +28,9 @@ describe("refresh step fetch", () => {
     expect(refreshStepFetchVia(env)).toBe("self-reference");
     const response = await fetchRefreshStep(env, { name: "whitelist" }, fetchImpl);
     expect(response.status).toBe(200);
-    expect(calls).toEqual(["self:POST:https://pre.gitstarclub.com/api/workflows/refresh/step:Bearer secret"]);
+    expect(calls).toEqual([
+      `self:POST:https://pre.gitstarclub.com/api/workflows/refresh/step:Bearer secret:${QUEUE_ADVANCE_CONSUMER}`,
+    ]);
   });
 
   test("falls back to public fetch when the self-reference binding is missing", async () => {
@@ -35,6 +40,7 @@ describe("refresh step fetch", () => {
       const request = input instanceof Request ? input : new Request(input);
       expect(request.cache).toBe("no-store");
       expect(request.url).toBe(STEP);
+      expect(request.headers.get(QUEUE_ADVANCE_HEADER)).toBe(QUEUE_ADVANCE_CONSUMER);
       return new Response("queued", { status: 200 });
     });
     expect(response.status).toBe(200);
