@@ -1,7 +1,7 @@
 ---
 owner: operations / workflows
 status: active
-last_reviewed: 2026-09-20
+last_reviewed: 2026-09-21
 source_of_truth_for:
   - Cloudflare migrate P1 workflow runtime
   - non-production CF Cron / Queue orchestration
@@ -11,6 +11,7 @@ source_of_truth_for:
   - CF refresh fold→recompute stall (Queue consumer successor / public /enqueue hop)
   - CF refresh fold Worker memory limit (windowed fold + successor header)
   - CF refresh fold still OOM after fold-month-0 (1-bucket + month/week plan hops)
+  - CF refresh plan hop skip + recompute OOM after #484 (fold-decision + rank family hops)
   - dual-scheduler rollback (CF Cron off, production stays Vercel)
 ---
 
@@ -384,6 +385,82 @@ Fix (keeps `WORKFLOW_RUNTIME=cf-queue`; does not roll back to HTTP):
   writes `steps/fold.json`.
 
 Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
+
+## CF refresh plan hop did not land after #484
+
+Preview evidence after #484 (CRON-PRE-PR484-RETEST-001): Bearer start 200,
+preflight → whitelist → rename → metadata-0..31 → **`fold-month-0` + `fold.json`
+ok** at the same instant `2026-09-20T15:32:57.670Z`. Then **no**
+`fold-month-plan.json`, no later `fold-month-*` / `fold-week-*`, no
+`recomputeRank` / publish. Observability fetch-origin **`Worker exceeded
+memory limit.` ×3**; queue silent after ~15:33Z.
+
+Root cause relative to #484 (the plan hop was **not** skipped by a bug, and
+it did **not** OOM before writing the plan):
+
+1. **There was no closed month to fold.** Live `canonical/v2/meta.json` is
+   already `folded_through: { month: "2026-08", week: "2026-W35" }`
+   (`generated_at` 2026-09-06). Current UTC month on the retest was
+   `2026-09`. `nextMonth("2026-08") >= currentMonth` sends the first hop
+   straight to week phase. August pending still exists (~2.4 MiB, 5519
+   repos) as the frozen snapshot; monthly/weekly shards already contain
+   `2026-08` / `2026-W35`.
+2. **Week phase also had no work.** First Monday after W35 is 2026-08-31;
+   no ISO week has Sunday ≤ end-of-August after that. `rows.length === 0`
+   → `finishFold` without `fold-week-plan.json`.
+3. **`fold-month-0` + terminal `fold.json` at the same timestamp** is
+   `defaultCheckpoint` on that empty first hop (`hasNextFoldWindow` is
+   false). #484's plan file is only written when a pending month is
+   actually compacted.
+4. **The OOM ×3 is the `recomputeRank` successor**, not fold. One isolate
+   loaded every canonical family, including **~33 MiB of weekly shards**,
+   then Zod-cloned them, then built month+week+year windows. Queue
+   `max_retries: 2` matches three memory-limit events; no `recomputeRank.json`.
+
+Fix (keeps `WORKFLOW_RUNTIME=cf-queue`; does not roll back to HTTP):
+
+- First fold hop always writes `ops/workflows/<runId>/fold-decision.json`
+  (`month_plan` / `pending_missing` / `week_only` / `no_closed_month` /
+  `nothing_to_fold`) so a no-op fold is visible on Blob and is not mistaken
+  for a missing plan hop.
+- CF pending reads skip a second Zod walk of every daily series
+  (`skipSchemaParse` + `coercePendingPeriod`); `monthPlanFromPending` still
+  deletes `per_repo` as it walks.
+- `recomputeRank` is three hops: month+year (repos+monthly), week
+  (repos+weekly), rest (repos → all-time / newcomers / categories). CF
+  model load is one shard at a time and does not Zod-clone preflighted
+  shards. Entity/heatmap steps load only the families they need and write
+  entities in chunks.
+
+Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
+
+### Suggested CF fold-decision + recompute follow-up retest (preview Worker only)
+
+1. Keep `WORKFLOW_RUNTIME=cf-queue` and
+   `WORKFLOW_QUEUE_ENQUEUE_URL=https://pre.gitstarclub.com/enqueue`. Do **not**
+   PUT production schedules and do **not** stop Vercel cron.
+2. Wait for any active lease to expire, or use a new idempotency key
+   (`?idempotency_key=` / `Idempotency-Key`).
+3. Bearer `GET https://pre.gitstarclub.com/api/workflows/refresh/start` → **200**
+   `started` with a `run_id`.
+4. Workers Observability: `queue` consume continues **after** `fold.json`.
+   `workflow.advance` should show `fold` → `recomputeRank` → `recomputeRank`
+   (month → week → rest) → `recomputeRepoEntities` → … → `publish` → `gc`
+   → `markPublished`. Fetch-origin `Worker exceeded memory limit` must not
+   be a stable last event.
+5. Blob: `ops/workflows/<run_id>/fold-decision.json` is always present.
+   If `reason=month_plan`, also expect `fold-month-plan.json` and more than
+   one `steps/fold-month-*`, then `fold-week-plan.json` / `fold-week-*`.
+   If `reason=no_closed_month` (current preview: already folded through
+   2026-08 / 2026-W35), there is no month/week plan — that is the skip,
+   not a stall. Then terminal `steps/fold.json` (ok), then
+   `steps/recomputeRank-month.json`, `recomputeRank-week.json`,
+   `recomputeRank-rest.json`, terminal `recomputeRank.json`, then
+   `publish.json` (`gc.json` if that step ran).
+6. `active.json` should reach `published` (or stay `running` with a renewing
+   `expires_at` while later steps write). A fold-then-silence stall with
+   expired lease and no `error.json` is still the #479/#484 failure mode.
+7. Confirm production Worker `triggers.crons` is still `[]`.
 
 ### Suggested CF fold-month-0 follow-up retest (preview Worker only)
 

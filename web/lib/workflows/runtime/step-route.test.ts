@@ -82,6 +82,29 @@ describe("runRefreshStepRoute", () => {
     expect(names).toEqual(["preflight-8"]);
   });
 
+  test("names recompute checkpoints by phase", () => {
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "recomputeRank",
+        attempt: 0,
+        cursor: {},
+      }),
+    ).toBe("recomputeRank-month");
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "recomputeRank",
+        attempt: 0,
+        cursor: { recomputePhase: "week" },
+      }),
+    ).toBe("recomputeRank-week");
+  });
+
   test("names fold checkpoints by phase and sequence", () => {
     expect(
       refreshStepCheckpointName({

@@ -3,6 +3,7 @@ import type { CanonicalMeta, PendingPeriod, RepoMonthlyShard, RepoWeeklyShard, S
 import type { FoldCursorAcc } from "@/lib/workflows/runtime/types";
 import {
   FOLD_BUCKETS_PER_JOB,
+  coercePendingPeriod,
   dropPendingReposOutsideBuckets,
   foldBucketWindow,
   foldCanonical,
@@ -11,6 +12,7 @@ import {
   monthPlanFromPending,
   pendingFlowsForBuckets,
   runFoldStep,
+  type FoldDecision,
   type FoldIo,
   type FoldMonthPlan,
   type FoldStepFields,
@@ -61,6 +63,7 @@ function memoryFoldIo(): FoldIo & {
   meta: CanonicalMeta;
   monthPlan: FoldMonthPlan | null;
   weekPlan: FoldWeekPlan | null;
+  decision: FoldDecision | null;
   pendingReads: string[];
   monthlyReads: number[];
   weeklyReads: number[];
@@ -77,6 +80,7 @@ function memoryFoldIo(): FoldIo & {
     meta: structuredClone(META),
     monthPlan: null as FoldMonthPlan | null,
     weekPlan: null as FoldWeekPlan | null,
+    decision: null as FoldDecision | null,
     pendingReads: [] as string[],
     monthlyReads: [] as number[],
     weeklyReads: [] as number[],
@@ -127,6 +131,9 @@ function memoryFoldIo(): FoldIo & {
     },
     async writeWeekPlan(plan: FoldWeekPlan) {
       io.weekPlan = structuredClone(plan);
+    },
+    async writeDecision(decision: FoldDecision) {
+      io.decision = structuredClone(decision);
     },
   };
   return io;
@@ -194,6 +201,15 @@ describe("runFoldStep windows", () => {
     expect(io.monthPlan?.month).toBe("2026-08");
     expect(io.monthPlan?.buckets[1]).toEqual([[1, 14]]);
     expect(io.monthPlan?.buckets[4]).toEqual([[4, 4]]);
+    expect(io.decision).toEqual({
+      currentMonth: "2026-09",
+      foldedThroughMonth: "2026-07",
+      foldedThroughWeek: "2026-W30",
+      nextFoldMonth: "2026-08",
+      monthPlan: true,
+      weekPlan: false,
+      reason: "month_plan",
+    });
     expect(io.monthlyReads).toEqual([]);
     expect(io.monthly.size).toBe(0);
     expect(io.pendingReads).toEqual(["2026-08"]);
@@ -310,5 +326,68 @@ describe("runFoldStep windows", () => {
     expect(io.meta.folded_through).toEqual({ month: "2026-08", week: "2026-W35" });
     expect(io.monthPlan).toBeNull();
     expect(io.weekPlan).toBeNull();
+    expect(io.decision).toEqual({
+      currentMonth: "2026-09",
+      foldedThroughMonth: "2026-08",
+      foldedThroughWeek: "2026-W35",
+      nextFoldMonth: null,
+      monthPlan: false,
+      weekPlan: false,
+      reason: "no_closed_month",
+    });
+  });
+
+  test("first hop with a current-month watermark and remaining weeks writes week_only", async () => {
+    const io = memoryFoldIo();
+    io.meta = {
+      ...META,
+      folded_through: { month: "2026-08", week: "2026-W30" },
+    };
+    const first = await runFoldStep("refresh-fold", 1, {}, { io, now, buckets: 8 });
+    expect(first.nextFoldPhase).toBe("week");
+    expect(first.nextFoldOffset).toBe(0);
+    expect(io.monthPlan).toBeNull();
+    expect(io.weekPlan?.weeks.length).toBeGreaterThan(0);
+    expect(io.decision).toEqual({
+      currentMonth: "2026-09",
+      foldedThroughMonth: "2026-08",
+      foldedThroughWeek: "2026-W30",
+      nextFoldMonth: null,
+      monthPlan: false,
+      weekPlan: true,
+      reason: "week_only",
+    });
+  });
+
+  test("missing closed pending writes pending_missing and still finishes the hop", async () => {
+    const io = memoryFoldIo();
+    io.readPending = async (month: string) => {
+      io.pendingReads.push(month);
+      if (month === "2026-07") return structuredClone(pendingJul);
+      return null;
+    };
+    const first = await runFoldStep("refresh-fold", 1, {}, { io, now, buckets: 8 });
+    expect(hasNextFoldWindow(first)).toBe(false);
+    expect(io.monthPlan).toBeNull();
+    expect(io.decision).toEqual({
+      currentMonth: "2026-09",
+      foldedThroughMonth: "2026-07",
+      foldedThroughWeek: "2026-W30",
+      nextFoldMonth: "2026-08",
+      monthPlan: false,
+      weekPlan: false,
+      reason: "pending_missing",
+    });
+  });
+
+  test("coercePendingPeriod checks shape without walking daily series", () => {
+    const raw = {
+      period: "2026-08",
+      frozen_at: "2026-09-01T00:00:00.000Z",
+      daily_totals: [["2026-08-01", 1]],
+      per_repo: { "1": [["2026-08-01", 1]] },
+    };
+    expect(coercePendingPeriod(raw, "2026-08").per_repo["1"]).toEqual([["2026-08-01", 1]]);
+    expect(() => coercePendingPeriod({ period: "2026-07" }, "2026-08")).toThrow("does not match");
   });
 });
