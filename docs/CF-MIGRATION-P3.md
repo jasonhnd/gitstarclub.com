@@ -88,7 +88,8 @@ Production apex / www stay on Vercel:
 - `gitstarclub.com` / `www.gitstarclub.com` DNS is unchanged
 - `web/vercel.json` cron rows are unchanged
 - `.delivery.yml` `ci.checks` stays
-  `[static, production-build, preview-e2e, product-gates]`
+  `[static, production-build]` (GitHub required). `preview-e2e` /
+  `product-gates` soft-skip without a Vercel Preview and are not required.
 - `HOSTING_TARGET` unset or `vercel` on Vercel
 - `VERCEL_ENV=production` refuses `HOSTING_TARGET=cf` so a mis-set flag cannot
   become the production origin switch
