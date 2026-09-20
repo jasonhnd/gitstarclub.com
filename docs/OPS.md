@@ -477,7 +477,7 @@ Paging already exists — do not invent new alerts. `markFailed` in `web/lib/wor
 4. 校验白名单数、repos shard 分桶齐全、diff / rename 合理。
 5. cron 已接入（`/api/workflows/refresh/start`，`0 6 * * 0`，独立于 daily / weekly 排程）。该 managed Workflow **没有 dry-run 模式**；任何 `dry` query 都会在取得 lease 或写入状态前返回 `400`。需要无写入探测时只能使用 `/api/cron/daily?dry=1` 或 `/api/cron/weekly?dry=1`；手动触发 managed refresh 必须按上述步骤观察完整真实运行。
 
-> 全链路 step：`preflight`（再次校验全部 canonical shard）→ `fold`（月 + 周）→ `recompute` → `buildAliases`（→ `lookup/aliases.json`）→ `validate` 发布闸门 → `publish` 切 `views/latest.json` 指针 / 回滚 → `gc` 版本回收（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。CF 预发 Blob 文件名是运行时 step：`fold.json` 之后应出现 `recomputeRank.json`（不是清单别名 `recompute.json`）。`WORKFLOW_RUNTIME=cf-queue` 时由 Queue consumer 读 step JSON 再 `JOBS.send` 下一步；fold 成功后队列沉默、无 `error.json`、租约过期是旧卡死（见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)）。
+> 全链路 step：`preflight`（再次校验全部 canonical shard）→ `fold`（月 + 周，CF 上按 4-bucket 窗口拆成 `fold-month-*` / `fold-week-*`，最后仍写 `fold.json`）→ `recompute` → `buildAliases`（→ `lookup/aliases.json`）→ `validate` 发布闸门 → `publish` 切 `views/latest.json` 指针 / 回滚 → `gc` 版本回收（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。CF 预发 Blob 文件名是运行时 step：fold 窗口之后应出现 `recomputeRank.json`（不是清单别名 `recompute.json`）。`WORKFLOW_RUNTIME=cf-queue` 时由 Queue consumer 读 step JSON（或 `x-gitstarclub-queue-successor`）再 `JOBS.send` 下一步；fold 成功后队列沉默、fetch 源 `Worker exceeded memory limit`、无 `error.json`、租约过期是旧卡死（见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)）。
 
 **鉴权 / 凭证**：`CRON_SECRET`（触发）、`GITHUB_TOKEN`（Search / GraphQL）、`BLOB_READ_WRITE_TOKEN`（读写 canonical / staging / published）。**refresh 全程 0 GCP**（GCP 仅 bootstrap）。
 

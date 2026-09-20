@@ -20,6 +20,8 @@ const MAX_LOGGED_ISSUES = 8;
 export type ViewParseContext = {
   path: string;
   version?: string | null;
+  /** Published ISR reads memoize. Workflow bust reads must not — fold kept 64 shards + pendings in the isolate after `fold.json` and the consumer then died on OOM. */
+  memo?: boolean;
 };
 
 function memoKey(path: string, version: string, schema: ZodType): string {
@@ -54,6 +56,15 @@ export function viewParseErrorFingerprint(error: z.ZodError): string {
 export function resetViewParseStateForTests(): void {
   parseMemo.clear();
   errorCounts.clear();
+}
+
+/** Drop parsed views so a CF step isolate can return JSON after a heavy fold/recompute. */
+export function clearViewParseMemo(): void {
+  parseMemo.clear();
+}
+
+export function viewParseMemoSize(): number {
+  return parseMemo.size;
 }
 
 export function viewParseErrorSummary(): Array<{
@@ -106,7 +117,7 @@ function recordParseFailure(path: string, version: string, error: z.ZodError): v
  */
 export function parseView<T>(json: unknown, schema: ZodType<T>, context: ViewParseContext): T {
   const version = context.version ?? "";
-  const shouldMemo = version.length > 0;
+  const shouldMemo = context.memo !== false && version.length > 0;
   const key = memoKey(context.path, version, schema);
   const cached = shouldMemo ? parseMemo.get(key) : undefined;
   if (cached) {

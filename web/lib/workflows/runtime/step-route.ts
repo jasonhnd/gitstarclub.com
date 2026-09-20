@@ -1,8 +1,15 @@
 import { WorkflowStepCheckpoint } from "@/lib/contracts";
+import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { putView } from "@/lib/data/write";
 import { getWorkflowRuntimeKind, isVercelProduction } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
-import { queueAdvanceFromConsumer } from "@/lib/workers-host/queue-advance";
+import {
+  encodeSuccessorJobHeader,
+  QUEUE_SUCCESSOR_HEADER,
+  queueAdvanceFromConsumer,
+} from "@/lib/workers-host/queue-advance";
+import { foldStepCheckpointName, hasNextFoldWindow } from "@/lib/workflows/steps/fold";
+import { nextRefreshJob } from "./graph";
 import { withStepRetry, type RetryPolicy } from "./retry";
 import { resolveWorkflowRuntime, type ResolveWorkflowRuntimeOptions } from "./resolve";
 import { isRefreshStepJob, type RefreshStepJob, type RefreshStepResult } from "./types";
@@ -17,6 +24,7 @@ export type RefreshStepRouteOptions = ResolveWorkflowRuntimeOptions & {
 export function refreshStepCheckpointName(job: RefreshStepJob): string {
   if (job.graph === "full" && job.name === "metadata") return `metadata-${job.cursor.bucket ?? 0}`;
   if (job.graph === "full" && job.name === "preflight") return `preflight-${job.cursor.preflightOffset ?? 0}`;
+  if (job.graph === "full" && job.name === "fold") return foldStepCheckpointName(job.cursor);
   return job.name;
 }
 
@@ -32,6 +40,12 @@ async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult)
     error: result.error ?? null,
   });
   await putView(`ops/workflows/${job.runId}/steps/${step}.json`, checkpoint);
+  if (job.graph === "full" && job.name === "fold" && !hasNextFoldWindow(result)) {
+    await putView(
+      `ops/workflows/${job.runId}/steps/fold.json`,
+      WorkflowStepCheckpoint.parse({ ...checkpoint, step: "fold" }),
+    );
+  }
 }
 
 export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOptions = {}): Promise<Response> {
@@ -73,6 +87,7 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
       },
       opts.retry,
     );
+    clearViewParseMemo();
     await (opts.recordCheckpoint ?? defaultCheckpoint)(job, result);
     const kind = opts.kind ?? getWorkflowRuntimeKind(opts.env);
     const runtime = resolveWorkflowRuntime({
@@ -89,8 +104,15 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
     if (!(kind === "cf-queue" && queueAdvanceFromConsumer(req.headers))) {
       await runtime.completeStep(job, result);
     }
-    return Response.json({ ok: true, runId: job.runId, step: job.name, result });
+    const headers = new Headers({ "content-type": "application/json" });
+    const successor = encodeSuccessorJobHeader(nextRefreshJob(job, result));
+    if (successor) headers.set(QUEUE_SUCCESSOR_HEADER, successor);
+    return new Response(JSON.stringify({ ok: true, runId: job.runId, step: job.name, result }), {
+      status: 200,
+      headers,
+    });
   } catch (error) {
+    clearViewParseMemo();
     try {
       const { failRefreshJob } = await import("./execute");
       await failRefreshJob(job, error);

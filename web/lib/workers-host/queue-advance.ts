@@ -8,9 +8,31 @@ import {
 /** Set by the CF Queue consumer so the step isolate does not POST /enqueue. */
 export const QUEUE_ADVANCE_HEADER = "x-gitstarclub-queue-advance";
 export const QUEUE_ADVANCE_CONSUMER = "consumer";
+/** Set on the step Response before the body so an OOM after fold.json can still enqueue. */
+export const QUEUE_SUCCESSOR_HEADER = "x-gitstarclub-queue-successor";
 
 export function queueAdvanceFromConsumer(headers: Headers): boolean {
   return headers.get(QUEUE_ADVANCE_HEADER)?.trim().toLowerCase() === QUEUE_ADVANCE_CONSUMER;
+}
+
+export function encodeSuccessorJobHeader(job: RefreshStepJob | null): string | null {
+  if (!job) return null;
+  return JSON.stringify(job);
+}
+
+export function successorJobFromResponseHeaders(headers: Headers): RefreshStepJob | null {
+  const raw = headers.get(QUEUE_SUCCESSOR_HEADER)?.trim();
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("refresh step successor header is not JSON");
+  }
+  if (!isRefreshStepJob(parsed)) {
+    throw new Error("refresh step successor header is not a valid step job");
+  }
+  return parsed;
 }
 
 export function isRefreshStepSuccessPayload(value: unknown): value is {
