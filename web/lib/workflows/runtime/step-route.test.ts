@@ -106,6 +106,7 @@ describe("runRefreshStepRoute", () => {
       {
         kind: "cf-queue",
         env: {
+          ...process.env,
           CRON_SECRET: "secret",
           WORKFLOW_QUEUE_ENQUEUE_URL: "https://pre.gitstarclub.com/enqueue",
         },
@@ -135,6 +136,7 @@ describe("runRefreshStepRoute", () => {
     const response = await runRefreshStepRoute(post(job), {
       kind: "cf-queue",
       env: {
+        ...process.env,
         CRON_SECRET: "secret",
         WORKFLOW_QUEUE_ENQUEUE_URL: "https://pre.gitstarclub.com/enqueue",
       },
