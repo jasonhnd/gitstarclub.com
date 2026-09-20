@@ -2,7 +2,7 @@ import { sendAlert } from "@/lib/observability/alert";
 import { markFailed, markPublished, startRun } from "@/lib/workflows/checkpoint";
 import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
 import { buildAliases } from "@/lib/workflows/steps/aliases";
-import { foldCanonical } from "@/lib/workflows/steps/fold";
+import { runFoldStep } from "@/lib/workflows/steps/fold";
 import { gcVersions } from "@/lib/workflows/steps/gc";
 import { refreshMetadataBucket } from "@/lib/workflows/steps/metadata";
 import { runPreflightStep } from "@/lib/workflows/steps/preflight";
@@ -41,7 +41,7 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
       return { name, ...(await refreshMetadataBucket(runId, bucket, requireToken(job))) };
     }
     case "fold":
-      return { name, ...(await foldCanonical(runId, requireToken(job))) };
+      return { name, ...(await runFoldStep(runId, requireToken(job), job.cursor)) };
     case "recomputeRank":
       return { name, ...(await recomputeRank(runId, requireToken(job))) };
     case "recomputeRepoEntities":

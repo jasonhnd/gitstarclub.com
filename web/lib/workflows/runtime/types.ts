@@ -31,6 +31,15 @@ export type CanonicalPreflightCursorAcc = {
   schemaFailures: number;
 };
 
+export type FoldPhase = "month" | "week";
+
+export type FoldCursorAcc = {
+  folded: string[];
+  foldedWeeks: string[];
+  foldedThroughMonth: string;
+  foldedThroughWeek: string;
+};
+
 export type RefreshCursor = {
   startedAt?: string;
   fencingToken?: number;
@@ -42,6 +51,11 @@ export type RefreshCursor = {
   };
   preflightOffset?: number;
   preflightAcc?: CanonicalPreflightCursorAcc;
+  foldPhase?: FoldPhase;
+  foldMonth?: string;
+  foldOffset?: number;
+  foldSeq?: number;
+  foldAcc?: FoldCursorAcc;
 };
 
 export type RefreshStepJob =

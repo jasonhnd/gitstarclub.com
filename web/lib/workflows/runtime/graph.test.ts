@@ -81,6 +81,44 @@ describe("refresh step graph", () => {
     expect(done?.cursor.preflightAcc).toBeUndefined();
   });
 
+  test("fold windows stay on fold until the last batch", () => {
+    const acc = {
+      folded: ["2026-08"],
+      foldedWeeks: [],
+      foldedThroughMonth: "2026-08",
+      foldedThroughWeek: "2026-W30",
+    };
+    const mid = nextRefreshJob(full("fold", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 }), {
+      name: "fold",
+      nextFoldPhase: "week",
+      nextFoldOffset: 4,
+      nextFoldSeq: 3,
+      foldAcc: acc,
+    });
+    expect(mid).toMatchObject({
+      name: "fold",
+      cursor: {
+        foldPhase: "week",
+        foldOffset: 4,
+        foldSeq: 3,
+        foldAcc: acc,
+        fencingToken: 22,
+      },
+    });
+
+    const done = nextRefreshJob(mid!, {
+      name: "fold",
+      folded: ["2026-08"],
+      foldedWeeks: ["2026-W31"],
+    });
+    expect(done).toMatchObject({
+      name: "recomputeRank",
+      cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
+    });
+    expect(done?.cursor.foldPhase).toBeUndefined();
+    expect(done?.cursor.foldAcc).toBeUndefined();
+  });
+
   test("fold result walks to recomputeRank and keeps the fencing token", () => {
     const next = nextRefreshJob(full("fold", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 }), {
       name: "fold",
