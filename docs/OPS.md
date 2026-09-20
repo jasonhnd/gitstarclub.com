@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-09-19
+last_reviewed: 2026-09-20
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -469,7 +469,7 @@ Paging already exists — do not invent new alerts. `markFailed` in `web/lib/wor
 
 **手动触发 runbook**：
 
-1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 先只读校验 `canonical/v2/meta.json` 与全部 32 个 `repos` shard（含 `active` / `tracked_since` / `d`、key/id/bucket），通过后才取得 lease 并 `startRefresh`，随即返回 `run_id`（不阻塞）。preflight 失败时不会 enqueue 或取得 lease；step `preflight` 会在任何 canonical mutation 前再全量校验 128 个必需 shard。
+1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 先只读校验 `canonical/v2/meta.json` 与全部 32 个 `repos` shard（含 `active` / `tracked_since` / `d`、key/id/bucket），通过后才取得 lease 并 `startRefresh`，随即返回 `run_id`（不阻塞）。preflight 失败时不会 enqueue 或取得 lease；step `preflight` 会在任何 canonical mutation 前再校验全部 128 个必需 shard。CF / HTTP 编排把这次复核拆成 4-bucket 窗口（每窗口 16 个 shard，`ops/workflows/<run_id>/steps/preflight-0.json` … `preflight-28.json`），避免 Workers 一次读齐 128 个对象触发 1102。
 2. 看 `ops/workflows/active.json` 与 `ops/workflows/<run_id>/steps/<step>.json`。**不要**把 Vercel Dashboard → Observability → Workflows / `workflow inspect` 当操作面（P1 已去掉 Workflow SDK）。生产对照自建 run 日志与 health JSON；CF 双跑另看 Workers Observability（见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md)）。
 3. 看 `ops/workflows/active.json` 的 `(run_id, fencing_token, expires_at)`、`ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`views/<run_id>/lookup/aliases.json`、`publish-intent.json` 与 `latest-success.json`。
 4. 校验白名单数、repos shard 分桶齐全、diff / rename 合理。

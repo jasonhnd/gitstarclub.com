@@ -13,8 +13,14 @@ export type RefreshStepRouteOptions = ResolveWorkflowRuntimeOptions & {
   retry?: RetryPolicy;
 };
 
+export function refreshStepCheckpointName(job: RefreshStepJob): string {
+  if (job.graph === "full" && job.name === "metadata") return `metadata-${job.cursor.bucket ?? 0}`;
+  if (job.graph === "full" && job.name === "preflight") return `preflight-${job.cursor.preflightOffset ?? 0}`;
+  return job.name;
+}
+
 async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult): Promise<void> {
-  const step = job.name === "metadata" ? `metadata-${job.cursor.bucket ?? 0}` : job.name;
+  const step = refreshStepCheckpointName(job);
   const now = new Date().toISOString();
   const checkpoint = WorkflowStepCheckpoint.parse({
     step,

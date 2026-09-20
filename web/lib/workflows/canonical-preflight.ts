@@ -9,28 +9,39 @@ export interface CanonicalPreflightResult {
   generated_at: string | null;
 }
 
-/** Read and parse the deployed canonical metadata without mutating Blob state. */
-export async function readCanonicalPreflight(
+export async function readCanonicalMeta(
   runId: string,
   phase: "route" | "workflow" = "route",
 ): Promise<CanonicalPreflightResult> {
   const bust = `${runId}-${phase}-preflight`;
   const meta = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust });
-  // Keep the synchronous route gate bounded to the relatively small repos
-  // inventory while still rejecting legacy rows that the current model cannot
-  // consume. The Workflow step rechecks all 128 shards before any mutation.
-  const canonical = await validateCanonicalGeneration(bust, {
-    scope: phase === "route" ? "repositories" : "full",
-  });
-  if (!canonical.manifest.complete) {
-    throw new Error(
-      `canonical preflight failed (${canonical.failures.length}): ${canonical.failures.slice(0, 5).join("; ")}`,
-    );
-  }
   return {
     seam_date: meta.seam_date,
     schema_ver: meta.schema_ver,
     folded_through: meta.folded_through,
     generated_at: meta.generated_at ?? null,
   };
+}
+
+/** Read and parse the deployed canonical metadata without mutating Blob state. */
+export async function readCanonicalPreflight(
+  runId: string,
+  phase: "route" | "workflow" = "route",
+): Promise<CanonicalPreflightResult> {
+  const meta = await readCanonicalMeta(runId, phase);
+  const bust = `${runId}-${phase}-preflight`;
+  // Keep the synchronous route gate bounded to the relatively small repos
+  // inventory while still rejecting legacy rows that the current model cannot
+  // consume. The Workflow step rechecks all 128 shards in 4-bucket windows
+  // (`runPreflightStep`) before any mutation so CF Workers stay under 1102.
+  const canonical = await validateCanonicalGeneration(bust, {
+    scope: phase === "route" ? "repositories" : "full",
+    checksum: false,
+  });
+  if (!canonical.manifest.complete) {
+    throw new Error(
+      `canonical preflight failed (${canonical.failures.length}): ${canonical.failures.slice(0, 5).join("; ")}`,
+    );
+  }
+  return meta;
 }
