@@ -158,10 +158,15 @@ export function createVercelBlobFetchClient(options: VercelBlobFetchClientOption
     async get(path: string, getOptions: VercelBlobFetchTokenOptions & { access: "public" | "private" }) {
       const token = getOptions.token ?? "";
       const url = vercelBlobPublicUrl(path, token, options.publicBaseUrl);
-      const response = await fetchImpl(url, {
+      const init: RequestInit & { cf?: { cacheTtl: number; cacheEverything: boolean } } = {
         method: "GET",
         headers: { authorization: `Bearer ${token}` },
-      });
+        cache: "no-store",
+        // Workers fetch cache otherwise honors the Blob CDN Cache-Control and
+        // can replay a stale ETag into lease ifMatch (see lease renew / #402).
+        cf: { cacheTtl: 0, cacheEverything: false },
+      };
+      const response = await fetchImpl(url, init);
       if (response.status === 404) return null;
       if (!response.ok || !response.body) {
         throw new Error(`Failed to fetch blob: ${response.status} ${response.statusText}`);

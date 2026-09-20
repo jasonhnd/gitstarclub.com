@@ -1,11 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { WorkflowLease } from "@/lib/contracts";
+import type { ObjectStore } from "@/lib/storage";
 import {
   BlobWorkflowLeaseStore,
+  LEASE_CACHE_CONTROL_MAX_AGE,
+  LEASE_CAS_ATTEMPTS,
   LEASE_READ_YOUR_WRITES_MS,
+  LEASE_RENEW_COALESCE_MS,
   LEASE_TTL_MS,
+  WorkflowLeaseCasError,
   WorkflowLeaseWriteCache,
   claimWorkflowLease,
+  leaseCasDelayMs,
+  normalizeLeaseEtag,
   releaseWorkflowLease,
   renewWorkflowLease,
   type WorkflowLeaseSnapshot,
@@ -62,6 +69,32 @@ describe("workflow lease read-your-writes cache", () => {
 
     cache.forgetIfEtag('"new"');
     expect(cache.read()).toBeNull();
+  });
+
+  test("forget() clears any cached generation", () => {
+    const cache = new WorkflowLeaseWriteCache();
+    cache.remember(
+      runningLease("refresh-new", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-new", 2),
+      '"new"',
+    );
+    cache.forget();
+    expect(cache.read()).toBeNull();
+  });
+});
+
+describe("lease ETag normalize", () => {
+  test("strips a weak validator so CDN GET and origin head can match", () => {
+    expect(normalizeLeaseEtag('W/"abc"')).toBe('"abc"');
+    expect(normalizeLeaseEtag('w/"abc"')).toBe('"abc"');
+    expect(normalizeLeaseEtag('"abc"')).toBe('"abc"');
+    expect(normalizeLeaseEtag("  ")).toBeNull();
+    expect(normalizeLeaseEtag(undefined)).toBeNull();
+  });
+
+  test("CAS backoff grows then caps", () => {
+    expect(leaseCasDelayMs(0, () => 0)).toBe(40);
+    expect(leaseCasDelayMs(1, () => 0)).toBe(80);
+    expect(leaseCasDelayMs(10, () => 0)).toBe(1_500);
   });
 });
 
@@ -308,3 +341,236 @@ describe("workflow lease acquisition", () => {
     expect(store.lease?.status).toBe("running");
   });
 });
+
+describe("workflow lease renew under CF-style contention", () => {
+  const timing = { sleep: async () => {}, random: () => 0 };
+
+  test("overlapping same-owner renews both succeed on one generation", async () => {
+    const store = new MemoryLeaseStore(
+      runningLease("refresh-a", "2026-07-05T06:00:00.000Z", "2026-07-05T06:20:00.000Z", "manual-a", 21),
+    );
+
+    const [first, second] = await Promise.all([
+      renewWorkflowLease("refresh-a", 21, store, "2026-07-05T06:10:00.000Z", timing),
+      renewWorkflowLease("refresh-a", 21, store, "2026-07-05T06:10:00.000Z", timing),
+    ]);
+
+    expect(first.fencing_token).toBe(21);
+    expect(second.fencing_token).toBe(21);
+    expect(store.lease?.run_id).toBe("refresh-a");
+    expect(store.lease?.status).toBe("running");
+  });
+
+  test("a stale ETag then a fresh origin ETag renews instead of failing closed", async () => {
+    const lease = runningLease("refresh-a", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-a", 21);
+    const store = new StaleThenFreshLeaseStore(lease);
+    const sleeps: number[] = [];
+
+    const renewed = await renewWorkflowLease("refresh-a", 21, store, "2026-07-05T06:04:00.000Z", {
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+      random: () => 0,
+    });
+
+    expect(renewed.fencing_token).toBe(21);
+    expect(store.writes).toBe(1);
+    expect(sleeps.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("a peer same-owner renew is coalesced after CAS conflict", async () => {
+    const store = new PeerRenewLeaseStore(
+      runningLease("refresh-a", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-a", 21),
+      "2026-07-05T06:40:00.000Z",
+    );
+
+    const renewed = await renewWorkflowLease("refresh-a", 21, store, "2026-07-05T06:10:00.000Z", timing);
+
+    expect(renewed.expires_at).toBe("2026-07-05T06:40:00.000Z");
+    expect(renewed.fencing_token).toBe(21);
+    expect(store.writes).toBe(0);
+    expect(Date.parse(renewed.expires_at) - Date.parse("2026-07-05T06:10:00.000Z")).toBeGreaterThanOrEqual(
+      LEASE_TTL_MS - LEASE_RENEW_COALESCE_MS,
+    );
+  });
+
+  test("CAS exhaustion while still owning is retryable, not ownership loss", async () => {
+    const store = new AlwaysConflictLeaseStore(
+      runningLease("refresh-a", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-a", 21),
+    );
+    const sleeps: number[] = [];
+
+    await expect(
+      renewWorkflowLease("refresh-a", 21, store, "2026-07-05T06:10:00.000Z", {
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+        random: () => 0,
+      }),
+    ).rejects.toBeInstanceOf(WorkflowLeaseCasError);
+    await expect(
+      renewWorkflowLease("refresh-a", 21, store, "2026-07-05T06:10:00.000Z", timing),
+    ).rejects.toThrow("CAS exhausted while renewing fencing token 21");
+    expect(sleeps).toHaveLength(LEASE_CAS_ATTEMPTS - 1);
+    expect(store.lease.status).toBe("running");
+    expect(store.lease.fencing_token).toBe(21);
+  });
+
+  test("withholds a CDN-stale GET ETag from Blob lease CAS", async () => {
+    const lease = runningLease("refresh-a", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-a", 21);
+    const objects = new DivergentCdnObjectStore(lease, '"cdn-old"', '"origin"');
+    const store = new BlobWorkflowLeaseStore(new WorkflowLeaseWriteCache(() => 1, 0), objects);
+
+    const snapshot = await store.read();
+    expect(snapshot.lease?.run_id).toBe("refresh-a");
+    expect(snapshot.etag).toBeNull();
+  });
+
+  test("uses the origin ETag when a weak CDN GET matches after normalize", async () => {
+    const lease = runningLease("refresh-a", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-a", 21);
+    const objects = new DivergentCdnObjectStore(lease, 'W/"origin"', '"origin"');
+    const store = new BlobWorkflowLeaseStore(new WorkflowLeaseWriteCache(() => 1, 0), objects);
+
+    expect(await store.read()).toEqual({ lease, etag: '"origin"' });
+  });
+
+  test("lease create/CAS writes use max-age 0 so the public CDN cannot fence", async () => {
+    const lease = runningLease("refresh-a", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-a", 1);
+    const objects = new RecordingObjectStore();
+    const store = new BlobWorkflowLeaseStore(new WorkflowLeaseWriteCache(), objects);
+
+    expect(await store.create(lease)).toBe(true);
+    expect(objects.puts[0]?.cacheControlMaxAge).toBe(LEASE_CACHE_CONTROL_MAX_AGE);
+    expect(LEASE_CACHE_CONTROL_MAX_AGE).toBe(0);
+    expect(await store.compareAndSet(objects.puts[0]!.etag, lease)).toBe(true);
+    expect(objects.puts[1]?.cacheControlMaxAge).toBe(0);
+  });
+});
+
+class StaleThenFreshLeaseStore implements WorkflowLeaseStore {
+  writes = 0;
+  private reads = 0;
+
+  constructor(public lease: WorkflowLease) {}
+
+  async read(): Promise<WorkflowLeaseSnapshot> {
+    this.reads += 1;
+    return {
+      lease: structuredClone(this.lease),
+      etag: this.reads === 1 ? '"stale"' : '"fresh"',
+    };
+  }
+
+  async create(): Promise<boolean> {
+    return false;
+  }
+
+  async compareAndSet(etag: string, lease: WorkflowLease): Promise<boolean> {
+    if (etag !== '"fresh"') return false;
+    this.lease = structuredClone(lease);
+    this.writes += 1;
+    return true;
+  }
+}
+
+class PeerRenewLeaseStore implements WorkflowLeaseStore {
+  writes = 0;
+  etag = '"1"';
+
+  constructor(
+    public lease: WorkflowLease,
+    private readonly peerExpiresAt: string,
+  ) {}
+
+  async read(): Promise<WorkflowLeaseSnapshot> {
+    return { lease: structuredClone(this.lease), etag: this.etag };
+  }
+
+  async create(): Promise<boolean> {
+    return false;
+  }
+
+  async compareAndSet(): Promise<boolean> {
+    this.lease = WorkflowLease.parse({ ...this.lease, expires_at: this.peerExpiresAt });
+    this.etag = '"2"';
+    return false;
+  }
+}
+
+class AlwaysConflictLeaseStore implements WorkflowLeaseStore {
+  constructor(public lease: WorkflowLease) {}
+
+  async read(): Promise<WorkflowLeaseSnapshot> {
+    return { lease: structuredClone(this.lease), etag: '"held"' };
+  }
+
+  async create(): Promise<boolean> {
+    return false;
+  }
+
+  async compareAndSet(): Promise<boolean> {
+    return false;
+  }
+}
+
+class DivergentCdnObjectStore implements ObjectStore {
+  constructor(
+    private readonly lease: WorkflowLease,
+    private readonly getEtag: string,
+    private readonly headEtag: string,
+  ) {}
+
+  async put(): Promise<{ etag: string; url?: string }> {
+    throw new Error("unexpected put");
+  }
+
+  async get(): Promise<{ body: string; etag: string | null }> {
+    return { body: JSON.stringify(this.lease), etag: this.getEtag };
+  }
+
+  async head(): Promise<{ etag: string | null; contentType?: string; size?: number; url?: string }> {
+    return { etag: this.headEtag, contentType: "application/json", size: 1 };
+  }
+
+  async list(): Promise<{ blobs: []; folders: []; hasMore: false }> {
+    return { blobs: [], folders: [], hasMore: false };
+  }
+
+  async del(): Promise<void> {}
+}
+
+class RecordingObjectStore implements ObjectStore {
+  puts: Array<{ etag: string; cacheControlMaxAge?: number; ifMatch?: string }> = [];
+  private version = 0;
+  private body: string | null = null;
+
+  async put(
+    _path: string,
+    body: string | Uint8Array,
+    options: { cacheControlMaxAge?: number; ifMatch?: string; allowOverwrite?: boolean } = {},
+  ): Promise<{ etag: string }> {
+    if (options.ifMatch && options.ifMatch !== this.puts.at(-1)?.etag) {
+      throw Object.assign(new Error("precondition failed"), { name: "ObjectStorePreconditionFailedError" });
+    }
+    this.body = typeof body === "string" ? body : new TextDecoder().decode(body);
+    const etag = `"v${++this.version}"`;
+    this.puts.push({ etag, cacheControlMaxAge: options.cacheControlMaxAge, ifMatch: options.ifMatch });
+    return { etag };
+  }
+
+  async get(): Promise<{ body: string; etag: string | null } | null> {
+    if (!this.body) return null;
+    return { body: this.body, etag: this.puts.at(-1)?.etag ?? null };
+  }
+
+  async head(): Promise<{ etag: string | null } | null> {
+    if (!this.body) return null;
+    return { etag: this.puts.at(-1)?.etag ?? null };
+  }
+
+  async list(): Promise<{ blobs: []; folders: []; hasMore: false }> {
+    return { blobs: [], folders: [], hasMore: false };
+  }
+
+  async del(): Promise<void> {}
+}

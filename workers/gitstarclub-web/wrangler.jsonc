@@ -33,6 +33,9 @@
       {
         "queue": "gitstarclub-jobs",
         "max_batch_size": 1,
+        // 2 is enough for a real step 5xx. Do not raise this to “fix” lease
+        // renew: overlapping whitelist retries were the poison path. The
+        // consumer must self-reference the step (not the public 524 hop).
         "max_retries": 2
       }
     ]
