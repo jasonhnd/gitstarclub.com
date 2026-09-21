@@ -32,7 +32,10 @@ export type CanonicalPreflightCursorAcc = {
 };
 
 export type FoldPhase = "month" | "week";
-export type RecomputePhase = "month" | "week" | "rest";
+/** CF rank hops. #486's month/week/rest still held object windows + org/year in one isolate. */
+export const RECOMPUTE_PHASES = ["month", "monthOrg", "year", "yearOrg", "week", "weekOrg", "rest"] as const;
+export type RecomputePhase = (typeof RECOMPUTE_PHASES)[number];
+export const RECOMPUTE_PHASE_SET: ReadonlySet<string> = new Set(RECOMPUTE_PHASES);
 
 export type FoldCursorAcc = {
   folded: string[];

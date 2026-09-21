@@ -37,6 +37,41 @@ export interface OrgWindow {
 
 type PeriodCell = { id: number; flow: number; cumgross: number; stock_est: number };
 
+/** Running seam-aware stock. Mutates `acc`; published `stock_est` is floored at 0. */
+export type SeamStockAcc = {
+  cumGross: number;
+  cumNet: number;
+  anchor: number | null;
+};
+
+export function createSeamStockAcc(): SeamStockAcc {
+  return { cumGross: 0, cumNet: 0, anchor: null };
+}
+
+export function advanceSeamStock(
+  period: Period,
+  flow: number,
+  seamPeriod: Period,
+  d: number,
+  acc: SeamStockAcc,
+): { stock_est: number; cumgross: number } {
+  let stock_est: number;
+  if (period <= seamPeriod) {
+    acc.cumGross += flow;
+    stock_est = Math.round(acc.cumGross * d);
+  } else {
+    if (acc.anchor === null) acc.anchor = Math.round(acc.cumGross * d);
+    acc.cumNet += flow;
+    stock_est = acc.anchor + acc.cumNet;
+  }
+  // stock is an estimated star COUNT (RANKING §2/§8). Flow may be negative;
+  // d=0 newcomers and first-period unstars can take the formula below 0.
+  // Keep running cumGross/cumNet/anchor unclamped so later periods can recover
+  // toward current_stars; only the published count is floored.
+  stock_est = Math.max(0, stock_est);
+  return { stock_est, cumgross: acc.cumGross + acc.cumNet };
+}
+
 /** Assign per-period flow_rank (flow desc, cumgross desc, repo_id asc — matches rm_<w>.flow_rank). */
 function finalizeWindow(byRepo: Map<number, RepoRow[]>, rowsByPeriod: Map<Period, PeriodCell[]>): RepoWindow {
   const rankIndex = new Map<Period, Map<number, number>>();
@@ -68,26 +103,10 @@ export function computeRepoWindow(model: Model, w: "month" | "week"): RepoWindow
       continue;
     }
     const d = model.repos.get(id)?.d ?? 0;
-    let cumGross = 0;
-    let cumNet = 0;
-    let anchor: number | null = null; // round(cumGross@seam × d), frozen at the first post-seam period
+    const acc = createSeamStockAcc();
     const rows: RepoRow[] = [];
     for (const [period, flow] of series) {
-      let stock_est: number;
-      if (period <= seamPeriod) {
-        cumGross += flow;
-        stock_est = Math.round(cumGross * d);
-      } else {
-        if (anchor === null) anchor = Math.round(cumGross * d);
-        cumNet += flow;
-        stock_est = anchor + cumNet;
-      }
-      // stock is an estimated star COUNT (RANKING §2/§8). Flow may be negative;
-      // d=0 newcomers and first-period unstars can take the formula below 0.
-      // Keep running cumGross/cumNet/anchor unclamped so later periods can recover
-      // toward current_stars; only the published count is floored.
-      stock_est = Math.max(0, stock_est);
-      const cumgross = cumGross + cumNet; // running total for the tiebreak (= cumGross pre-seam)
+      const { stock_est, cumgross } = advanceSeamStock(period, flow, seamPeriod, d, acc);
       rows.push({ period, flow, cumgross, stock_est, flow_rank: 0 });
       let bucket = rowsByPeriod.get(period);
       if (!bucket) rowsByPeriod.set(period, (bucket = []));
