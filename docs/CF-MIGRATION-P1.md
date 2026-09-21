@@ -13,6 +13,7 @@ source_of_truth_for:
   - CF refresh fold still OOM after fold-month-0 (1-bucket + month/week plan hops)
   - CF refresh plan hop skip + recompute OOM after #484 (fold-decision + rank family hops)
   - CF refresh recompute still OOM after #486 (packed window + finer rank hops)
+  - CF refresh week-start OOM after #497 (streamed week period hops)
   - CF preview page 500: H1 same-isolate OOM vs H2 liveHistory (#496)
   - CF preview Bearer full-refresh acceptance matrix (fold-decision / recompute hops / silence-is-fail)
   - dual-scheduler rollback (CF Cron off, production stays Vercel)
@@ -493,6 +494,50 @@ Fix (keeps `WORKFLOW_RUNTIME=cf-queue`; does not roll back to HTTP):
 
 Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
 
+## CF refresh week-start OOM after #497
+
+Preview evidence after #497 (CRON-PRE-PR497-RETEST-001): Bearer start 200,
+preflight → whitelist → rename → metadata → **`fold-decision.json`
+`reason=no_closed_month`** → `recompute-enqueued.json`. Packed hops completed
+`recomputeRank-month` / `monthOrg` / `year` / `yearOrg` and wrote
+`recompute/{month,week}-win/0..31`. Then **`recomputeRank-week-start`** stayed
+`running` for 21+ min. No `recomputeRank-week` / weekOrg / rest / terminal
+`recomputeRank` / `publish` / `gc`. Observability fetch-origin **`Worker
+exceeded memory limit.` ×3**; queue silent after ~02:04:40Z. Pages stayed 200
+(#496 fail-soft).
+
+Root cause relative to #497 (the seven packed hops did **not** get the week
+isolate under the 128 MiB limit):
+
+1. **Week cells are ~4× month cells.** The month hop fits a packed typed-array
+   window. The week hop writes `recomputeRank-week-start` then
+   `loadPackedRepoWindow("week")`. Building from weekly shards
+   (`finalize` doubles ~every repo × every ISO week) or **re-assembling all 32
+   persisted `week-win` JSON shards at once** (v1 nested `[periodIdx, flow,
+   cum, stock]` arrays) plus the typed copy is what kills the fetch-origin
+   isolate before `recomputeRank-week.json`.
+2. **Queue `max_retries: 2`** matches three memory-limit events. After
+   week-start the consumer never sees a JSON body or successor header, so
+   there is no `workflow.advance` into weekOrg / rest / publish.
+3. **`week-win/0..31` on Blob is not success.** Persist can finish (or a
+   retry can see a completed persist) and the next assemble/rank still OOM.
+   Score **X1** / **X2**, not “still packing”.
+
+Fix (keeps `WORKFLOW_RUNTIME=cf-queue`; does not roll back to HTTP):
+
+- Week pack is its own hop (`recomputeRank-week-pack`). It collects period
+  names, then packs **one repo-bucket at a time** into a flat v2 persist
+  (`recompute/week-win/{bucket}.json`) and never assembles the full week
+  window.
+- Week / weekOrg **stream one persist bucket** and rank an 8-period window
+  (`recomputeRank-week-0`, `recomputeRank-week-8`, …). Prev-rank / org stock
+  carry is a small `week-{repo,org}-carry.json`. Last window still writes
+  terminal `recomputeRank-week.json` / `recomputeRank-weekOrg.json`.
+- Month / monthOrg / year / yearOrg stay on the #497 packed full-window path
+  (those hops already passed on preview).
+
+Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
+
 ## Preview Bearer full refresh acceptance matrix
 
 预发 Bearer 全量 refresh 验收矩阵。This table is the current pass/fail gate
@@ -524,8 +569,8 @@ secrets, stop Vercel cron, or deploy production `gitstarclub-web`.
 | F2 | `no_closed_month` | `reason=no_closed_month` **and** no `fold-month-plan.json` **and** no `fold-week-plan.json` is **normal**. Current preview evidence after #484: `folded_through` already `2026-08` / `2026-W35` while UTC month is `2026-09`. Same-timestamp `fold-month-0` + terminal `fold.json` is the empty first hop, not a missing plan | Treating absent month/week plans as a stall when `reason=no_closed_month` |
 | F3 | `month_plan` | If `reason=month_plan`: `fold-month-plan.json` plus more than one `steps/fold-month-*`, then `fold-week-plan.json` / `fold-week-*` when week work exists, then terminal `steps/fold.json` (`ok`) | `reason=month_plan` but no month plan / no later month windows |
 | F4 | Other reasons | `week_only`: week plan present, month plan absent. `pending_missing` / `nothing_to_fold`: no month/week plan. All still require **F1** + terminal `fold.json` | Missing `fold.json` after a written decision |
-| R1 | recompute hops | Queue consume continues after `fold.json`. Blob has `recompute-enqueued.json` then `steps/recomputeRank-month-start.json` (and later `*-start.json`). Checkpoints: `recomputeRank-month.json`, `recomputeRank-monthOrg.json`, `recomputeRank-year.json`, `recomputeRank-yearOrg.json`, `recomputeRank-week.json`, `recomputeRank-weekOrg.json`, `recomputeRank-rest.json`, then terminal `recomputeRank.json` (runtime names, not manifest aliases `recompute` / `buildAliases`) | Missing the enqueue/start evidence, missing any hop, or silent after `fold.json` |
-| R2 | Families | Packed window (not object `RepoWindow`) from repos+monthly or repos+weekly, one product per hop (month repo+growth / month org / year repo+growth / year org / week repo / week org / rest repos). Later: `recomputeRepoEntities` → `recomputeOrgEntities` → `recomputeHeatmap` → `aliases` → `validate` | One isolate loading every family, or one isolate holding month+year+org object windows (the #486 OOM) |
+| R1 | recompute hops | Queue consume continues after `fold.json`. Blob has `recompute-enqueued.json` then `steps/recomputeRank-month-start.json` (and later `*-start.json`). Checkpoints: `recomputeRank-month.json`, `recomputeRank-monthOrg.json`, `recomputeRank-year.json`, `recomputeRank-yearOrg.json`, `recomputeRank-week-start.json` + `recomputeRank-week-pack.json` + `recomputeRank-week-0.json` (and later `recomputeRank-week-*` period windows), terminal `recomputeRank-week.json`, `recomputeRank-weekOrg-0.json` (and later `recomputeRank-weekOrg-*`), terminal `recomputeRank-weekOrg.json`, `recomputeRank-rest.json`, then terminal `recomputeRank.json` (runtime names, not manifest aliases `recompute` / `buildAliases`) | Missing the enqueue/start evidence, missing any hop, silent after `fold.json`, or stuck on `recomputeRank-week-start` with no `recomputeRank-week-pack` / `recomputeRank-week-*` |
+| R2 | Families | Packed window (not object `RepoWindow`) from repos+monthly or repos+weekly. Month/year hops still one product per isolate. Week hops must **not** assemble the full week packed window: pack is per-bucket persist, rank is streamed persist + 8-period windows. Later: `recomputeRepoEntities` → `recomputeOrgEntities` → `recomputeHeatmap` → `aliases` → `validate` | One isolate loading every family, one isolate holding month+year+org object windows (the #486 OOM), or one isolate assembling all `week-win` shards / every week cell (the #497 week-start OOM) |
 | R3 | publish / gc | `steps/publish.json` (`ok`) then `steps/gc.json` (`ok`, or a written best-effort `error` field — `gc` never throws). `active.json` reaches `published`, or stays `running` with a **renewing** `expires_at` while later steps write. `markPublished` is the graph tail | No `publish.json` after rest; lease `status=running` with expired `expires_at` |
 | H1 | Pages vs health (OOM isolate) | After fold, `/` and `/rankings` 500 while `/preview/health` 200 **and** **X1** is red is the **same** fetch-origin OOM isolate (OpenNext vs Worker shell), not a published-view rewrite. After a passing run (**X1** green) those pages stay 200 | Treating that page 500 as a separate rankings / liveHistory bug while **X1** is red |
 | H2 | Pages vs health (liveHistory) | Independently, a page 500 with `live generation history exceeds 64 entries` (or a requested week/month newer than the hop) is the **#496** class. This branch already fail-softs those walks (merged from `pre`): pages fall back to base / previous / empty and stay 200. Score **H2** only when **X1** is green | Scoring a liveHistory 500 as **H1**/**X1** after a passing refresh, or requiring a published-view rewrite to explain it |
@@ -553,8 +598,9 @@ secrets, stop Vercel cron, or deploy production `gitstarclub-web`.
    (`?idempotency_key=` / `Idempotency-Key`).
 3. Bearer `GET https://pre.gitstarclub.com/api/workflows/refresh/start` → score **A1**.
 4. Workers Observability: `queue` consume after `fold.json`; `workflow.advance`
-   shows `fold` → `recomputeRank` (month → monthOrg → year → yearOrg → week →
-   weekOrg → rest) → entities → `publish` → `gc` → `markPublished`. Score
+   shows `fold` → `recomputeRank` (month → monthOrg → year → yearOrg →
+   week-pack → week period windows → weekOrg period windows → rest) →
+   entities → `publish` → `gc` → `markPublished`. Score
    **R1**, **R2**, **X1**, **X2**, **H1**, **H2**.
 5. Blob: score **F1**–**F4**, **R1**, **R3**.
 6. Confirm **P1** / **P2** on the committed wrangler file and the Vercel cron
@@ -577,7 +623,8 @@ the matrix is pass/fail.
    `started` with a `run_id`.
 4. Workers Observability: `queue` consume continues **after** `fold.json`.
    `workflow.advance` should show `fold` → `recomputeRank` (month →
-   monthOrg → year → yearOrg → week → weekOrg → rest) →
+   monthOrg → year → yearOrg → week-pack → week period windows →
+   weekOrg period windows → rest) →
    `recomputeRepoEntities` → … → `publish` → `gc` → `markPublished`.
    Fetch-origin `Worker exceeded memory limit` must not be a stable last
    event. `/` and `/rankings` 500 with health 200 after fold **while X1
@@ -593,12 +640,46 @@ the matrix is pass/fail.
    `recompute-enqueued.json`, `steps/recomputeRank-month-start.json`,
    `recomputeRank-month.json`, `recomputeRank-monthOrg.json`,
    `recomputeRank-year.json`, `recomputeRank-yearOrg.json`,
-   `recomputeRank-week.json`, `recomputeRank-weekOrg.json`,
-   `recomputeRank-rest.json`, terminal `recomputeRank.json`, then
-   `publish.json` (`gc.json` if that step ran).
+   `recomputeRank-week-start.json`, `recomputeRank-week-pack.json`,
+   `recomputeRank-week-0.json` (and later `recomputeRank-week-*`),
+   terminal `recomputeRank-week.json`, `recomputeRank-weekOrg-0.json`
+   (and later `recomputeRank-weekOrg-*`), terminal
+   `recomputeRank-weekOrg.json`, `recomputeRank-rest.json`, terminal
+   `recomputeRank.json`, then `publish.json` (`gc.json` if that step ran).
 6. `active.json` should reach `published` (or stay `running` with a renewing
    `expires_at` while later steps write). A fold-then-silence stall with
    expired lease and no `error.json` is still the #479/#484 failure mode.
+7. Confirm production Worker `triggers.crons` is still `[]`.
+
+### Suggested CF week-start follow-up retest (preview Worker only)
+
+Score the run against the [acceptance matrix](#preview-bearer-full-refresh-acceptance-matrix).
+This is the operator procedure after #497 stalled on `recomputeRank-week-start`.
+
+1. Keep `WORKFLOW_RUNTIME=cf-queue` and
+   `WORKFLOW_QUEUE_ENQUEUE_URL=https://pre.gitstarclub.com/enqueue`. Do **not**
+   PUT production schedules and do **not** stop Vercel cron.
+2. Wait for any active lease to expire, or use a new idempotency key
+   (`?idempotency_key=` / `Idempotency-Key`).
+3. Bearer `GET https://pre.gitstarclub.com/api/workflows/refresh/start` → **200**
+   `started` with a `run_id`.
+4. Workers Observability: `queue` consume continues **after**
+   `recomputeRank-week-start`. `workflow.advance` should show `recomputeRank`
+   week-pack → `recomputeRank` week period windows → weekOrg windows → rest →
+   entities → `publish` → `gc` → `markPublished`. Fetch-origin `Worker
+   exceeded memory limit` must not be a stable last event. Queue silence after
+   week-start is **X2**.
+5. Blob: `recompute-enqueued.json`, month/year hop files as in **R1**, then
+   `steps/recomputeRank-week-start.json`, `recomputeRank-week-pack.json`,
+   `recomputeRank-week-0.json` (and later `recomputeRank-week-*`), terminal
+   `recomputeRank-week.json`, `recomputeRank-weekOrg-0.json` (and later
+   `recomputeRank-weekOrg-*`), terminal `recomputeRank-weekOrg.json`,
+   `recomputeRank-rest.json`, terminal `recomputeRank.json`, then
+   `publish.json` (`gc.json` if that step ran). `week-win/0..31` alone is
+   **not** a pass.
+6. `active.json` should reach `published` (or stay `running` with a renewing
+   `expires_at` while later steps write). A week-start-then-silence stall with
+   expired lease and no `error.json` is the #497 failure mode.
 7. Confirm production Worker `triggers.crons` is still `[]`.
 
 ### Suggested CF fold-month-0 follow-up retest (preview Worker only)

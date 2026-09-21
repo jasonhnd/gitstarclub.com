@@ -3,10 +3,15 @@ import { buildModel, type RawShards, type RepoMeta } from "./model";
 import { computeOrgWindow, computeRepoWindow, deriveYearWindow } from "./windows";
 import { growth, orgRankMatrix, repoRankMatrix } from "./ranks";
 import {
+  absorbOrgPeriodRowsFromBucket,
+  appendRepoPeriodRowsFromBucket,
   assemblePackedWindow,
   assignPackedFlowRanks,
+  coercePackedWindowBucket,
   createPackedWindowBuilder,
   derivePackedYearWindow,
+  orgRankViewsFromPeriodRows,
+  orgRowsFromAbsorbed,
   packedBucketFile,
   packedGrowthViews,
   packedMetaFile,
@@ -14,6 +19,9 @@ import {
   packedOrgRankViewsForPeriod,
   packedRepoRankViewsForPeriod,
   packedRepoRows,
+  packedWindowAsFlatBucket,
+  repoRankViewsFromPeriodRows,
+  type PackedPeriodRepoRow,
   type PackedRepoWindow,
 } from "./packed-window";
 
@@ -214,6 +222,70 @@ describe("packed ranks match object-window ranks", () => {
     for (const [path, view] of object) {
       expect(packed.get(path)).toEqual(view);
     }
+  });
+});
+
+describe("week stream extract matches assembled window ranks", () => {
+  test("v1 and v2 buckets yield the same repo and org ranks as the full packed window", () => {
+    const model = makeModel([
+      { id: 1, owner: "org", owner_type: "Organization", current_stars: 50, d: 1, weekly: [["2026-W20", 10], ["2026-W21", 20], ["2026-W22", 5], ["2026-W23", 8]] },
+      { id: 2, owner: "org", owner_type: "Organization", current_stars: 70, d: 1, weekly: [["2026-W20", 70], ["2026-W22", 4]] },
+      { id: 33, owner: "solo", current_stars: 12, d: 1, weekly: [["2026-W21", 3], ["2026-W22", 9], ["2026-W23", 1]] },
+    ]);
+    const packed = packFromModel(model, "week");
+    const v1 = packedBucketFile(packed, 0, 1);
+    const v2 = packedWindowAsFlatBucket(packed);
+    expect(coercePackedWindowBucket(v2)?.v).toBe(2);
+
+    const fromFull = packedRepoRankMap(packed, "week");
+    const fromOrg = packedOrgRankMap(packed, "week");
+
+    for (const shard of [v1, v2]) {
+      const repoRows = packed.periods.map(() => [] as PackedPeriodRepoRow[]);
+      appendRepoPeriodRowsFromBucket(shard, 0, packed.periods.length, repoRows);
+      const orgCarry = new Map<number, number>();
+      const orgAcc = packed.periods.map(() => new Map<string, { flow: number; stock_est: number }>());
+      absorbOrgPeriodRowsFromBucket(shard, 0, packed.periods.length, orgCarry, orgAcc);
+
+      let prevFlow: Map<string, number> | undefined;
+      let prevStock: Map<string, number> | undefined;
+      const streamedRepo = new Map<string, unknown>();
+      for (let i = 0; i < packed.periods.length; i++) {
+        const ranked = repoRankViewsFromPeriodRows(packed.periods[i]!, repoRows[i]!, "week", GEN, prevFlow, prevStock);
+        for (const [path, view] of ranked.views) streamedRepo.set(path, view);
+        prevFlow = ranked.nextFlow;
+        prevStock = ranked.nextStock;
+      }
+      expect(streamedRepo).toEqual(fromFull);
+
+      prevFlow = undefined;
+      prevStock = undefined;
+      const streamedOrg = new Map<string, unknown>();
+      for (let i = 0; i < packed.periods.length; i++) {
+        const ranked = orgRankViewsFromPeriodRows(packed.periods[i]!, orgRowsFromAbsorbed(orgAcc[i]!), "week", GEN, prevFlow, prevStock);
+        for (const [path, view] of ranked.views) streamedOrg.set(path, view);
+        prevFlow = ranked.nextFlow;
+        prevStock = ranked.nextStock;
+      }
+      expect(streamedOrg).toEqual(fromOrg);
+    }
+  });
+
+  test("period windows keep prev_rank and org idle-member stock carry", () => {
+    const model = makeModel([
+      { id: 1, owner: "org", owner_type: "Organization", current_stars: 50, d: 1, weekly: [["2026-W20", 30], ["2026-W21", 20], ["2026-W22", 10]] },
+      { id: 2, owner: "org", owner_type: "Organization", current_stars: 70, d: 1, weekly: [["2026-W20", 70]] },
+    ]);
+    const packed = packFromModel(model, "week");
+    const shard = packedWindowAsFlatBucket(packed);
+    const carry = new Map<number, number>();
+    const firstAcc = [new Map<string, { flow: number; stock_est: number }>()];
+    absorbOrgPeriodRowsFromBucket(shard, 0, 1, carry, firstAcc);
+    const secondAcc = [new Map<string, { flow: number; stock_est: number }>(), new Map<string, { flow: number; stock_est: number }>()];
+    absorbOrgPeriodRowsFromBucket(shard, 1, 3, carry, secondAcc);
+    expect(orgRowsFromAbsorbed(firstAcc[0]!)).toEqual([{ login: "org", flow: 100, stock_est: 100 }]);
+    expect(orgRowsFromAbsorbed(secondAcc[0]!)).toEqual([{ login: "org", flow: 20, stock_est: 120 }]);
+    expect(orgRowsFromAbsorbed(secondAcc[1]!)).toEqual([{ login: "org", flow: 10, stock_est: 130 }]);
   });
 });
 

@@ -61,6 +61,8 @@ export type RefreshCursor = {
   foldSeq?: number;
   foldAcc?: FoldCursorAcc;
   recomputePhase?: RecomputePhase;
+  /** Week/weekOrg period-window start. Pack hop leaves this unset. */
+  recomputeOffset?: number;
 };
 
 export type RefreshStepJob =
