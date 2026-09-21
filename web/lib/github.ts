@@ -1,10 +1,17 @@
 // GitHub client: GraphQL (daily cron star counts) + REST Search (whitelist) +
 // GraphQL nodes() (metadata). Server-only; needs env GITHUB_TOKEN. See docs/OPS.md.
 import { z } from "zod";
-import { WhitelistEntry } from "@/lib/contracts";
+import {
+  WhitelistEntry,
+  type WhitelistEntry as WhitelistEntryRecord,
+  type WhitelistSearchProgress,
+} from "@/lib/contracts";
 import { GITHUB_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
-import { getMinTrackedStars, requireGithubToken } from "@/lib/runtime-config";
-import type { WhitelistEntry as WhitelistEntryRecord } from "@/lib/contracts";
+import {
+  getMinTrackedStars,
+  requireGithubToken,
+  WHITELIST_SEARCH_YIELD_SLACK_MS,
+} from "@/lib/runtime-config";
 
 const ENDPOINT = "https://api.github.com/graphql";
 const REST = "https://api.github.com";
@@ -143,41 +150,121 @@ async function restSearch(token: string, params: Record<string, string | number>
   return SearchResultSchema.parse(await res.json());
 }
 
-/** Search-backed implementation with an injectable transport for contract tests. */
-export async function searchWhitelistWithSearch(
-  minStars: number,
-  search: RepositorySearch,
-  maxStars?: number,
-  opts: GitHubFetchOptions = {},
-): Promise<WhitelistEntryRecord[]> {
-  const out = new Map<number, WhitelistEntryRecord>(); // dedups range-boundary overlap
+export type WhitelistSearchHopResult = {
+  done: boolean;
+  progress: WhitelistSearchProgress;
+  entries: WhitelistEntryRecord[];
+  requests: number;
+};
 
-  // GitHub Search needs finite ranges to work around its 1,000-result cap. Get
-  // the current maximum from an open-ended, stars-descending one-row query
-  // instead of encoding a product ceiling (the former 600,000 limit).
-  let observedMax = maxStars;
-  if (observedMax === undefined) {
-    const query = `stars:>=${minStars}`;
-    const top = requireCompleteSearch(
-      await search({ q: query, sort: "stars", order: "desc", per_page: 1, page: 1 }, opts),
-      query,
-    );
-    if (top.total_count === 0) return [];
-    observedMax = top.items[0]?.stargazers_count;
-    if (observedMax === undefined || observedMax < minStars) {
-      throw new Error("GitHub Search returned a non-empty whitelist without a valid maximum star count");
-    }
+export type SearchWhitelistHopOptions = {
+  minStars: number;
+  search: RepositorySearch;
+  progress?: WhitelistSearchProgress | null;
+  budgetMs: number;
+  maxStars?: number;
+  opts?: GitHubFetchOptions;
+  now?: () => number;
+  yieldSlackMs?: number;
+};
+
+function sortedWhitelistEntries(entries: Iterable<WhitelistEntryRecord>): WhitelistEntryRecord[] {
+  return [...entries].sort((a, b) => b.stars - a.stars || a.id - b.id);
+}
+
+function canStartSearch(nowMs: number, deadlineMs: number, slackMs: number): boolean {
+  if (!Number.isFinite(deadlineMs)) return true;
+  return nowMs + slackMs < deadlineMs;
+}
+
+function ingestSearchPage(out: Map<number, WhitelistEntryRecord>, result: SearchResult): void {
+  for (const r of result.items) {
+    const entry = WhitelistEntry.parse({
+      id: r.id,
+      node_id: r.node_id,
+      full_name: r.full_name,
+      owner: r.owner.login,
+      name: r.name,
+      stars: r.stargazers_count,
+    });
+    out.set(r.id, entry);
   }
-  if (observedMax < minStars) return [];
+}
 
-  const queue: Array<[number, number]> = [[minStars, observedMax]];
-  while (queue.length) {
+function snapshotProgress(
+  minStars: number,
+  observedMax: number,
+  queue: Array<[number, number]>,
+  out: Map<number, WhitelistEntryRecord>,
+): WhitelistSearchProgress {
+  return {
+    v: 1,
+    minStars,
+    observedMax,
+    queue: queue.map(([low, high]) => ({ low, high })),
+    entries: sortedWhitelistEntries(out.values()),
+  };
+}
+
+/**
+ * One Search hop: discover the open upper bound if needed, then drain star
+ * ranges until the hop budget. Yields between ranges so one CF Queue isolate
+ * stays under the 15 min consumer wall. A started range (split or page-all)
+ * finishes before the next budget check.
+ */
+export async function searchWhitelistHop(args: SearchWhitelistHopOptions): Promise<WhitelistSearchHopResult> {
+  const now = args.now ?? Date.now;
+  const slack = args.yieldSlackMs ?? WHITELIST_SEARCH_YIELD_SLACK_MS;
+  const deadline = now() + args.budgetMs;
+  const out = new Map<number, WhitelistEntryRecord>();
+  let requests = 0;
+
+  const runSearch = async (params: Record<string, string | number>, query: string): Promise<SearchResult> => {
+    requests += 1;
+    return requireCompleteSearch(await args.search(params, args.opts), query);
+  };
+
+  let minStars = args.minStars;
+  let observedMax = args.maxStars;
+  let queue: Array<[number, number]> = [];
+
+  if (args.progress) {
+    if (args.progress.minStars !== minStars) {
+      throw new Error(
+        `whitelist search progress minStars ${args.progress.minStars} does not match ${minStars}`,
+      );
+    }
+    minStars = args.progress.minStars;
+    observedMax = args.progress.observedMax;
+    queue = args.progress.queue.map((range) => [range.low, range.high]);
+    for (const entry of args.progress.entries) out.set(entry.id, entry);
+  } else {
+    if (!canStartSearch(now(), deadline, slack)) {
+      throw new Error("whitelist search hop budget is too small to start");
+    }
+    if (observedMax === undefined) {
+      const query = `stars:>=${minStars}`;
+      const top = await runSearch({ q: query, sort: "stars", order: "desc", per_page: 1, page: 1 }, query);
+      if (top.total_count === 0) {
+        const progress = snapshotProgress(minStars, minStars - 1, [], out);
+        return { done: true, progress, entries: [], requests };
+      }
+      observedMax = top.items[0]?.stargazers_count;
+      if (observedMax === undefined || observedMax < minStars) {
+        throw new Error("GitHub Search returned a non-empty whitelist without a valid maximum star count");
+      }
+    }
+    if (observedMax >= minStars) queue = [[minStars, observedMax]];
+  }
+
+  if (observedMax === undefined) {
+    throw new Error("whitelist search hop is missing observedMax");
+  }
+
+  while (queue.length && canStartSearch(now(), deadline, slack)) {
     const [low, high] = queue.pop()!;
     const q = `stars:${low}..${high}`;
-    const first = requireCompleteSearch(
-      await search({ q, sort: "stars", order: "desc", per_page: 100, page: 1 }, opts),
-      q,
-    );
+    const first = await runSearch({ q, sort: "stars", order: "desc", per_page: 100, page: 1 }, q);
     if (first.total_count > 1000 && high > low) {
       const mid = Math.floor((low + high) / 2);
       queue.push([low, mid], [mid + 1, high]);
@@ -190,24 +277,41 @@ export async function searchWhitelistWithSearch(
     for (let page = 1; page <= pages; page++) {
       const res = page === 1
         ? first
-        : requireCompleteSearch(
-            await search({ q, sort: "stars", order: "desc", per_page: 100, page }, opts),
-            `${q} page ${page}`,
-          );
-      for (const r of res.items) {
-        const entry = WhitelistEntry.parse({
-          id: r.id,
-          node_id: r.node_id,
-          full_name: r.full_name,
-          owner: r.owner.login,
-          name: r.name,
-          stars: r.stargazers_count,
-        });
-        out.set(r.id, entry);
-      }
+        : await runSearch({ q, sort: "stars", order: "desc", per_page: 100, page }, `${q} page ${page}`);
+      ingestSearchPage(out, res);
     }
   }
-  return [...out.values()].sort((a, b) => b.stars - a.stars);
+
+  const progress = snapshotProgress(minStars, observedMax, queue, out);
+  return {
+    done: queue.length === 0,
+    progress,
+    entries: progress.entries,
+    requests,
+  };
+}
+
+/** Search-backed implementation with an injectable transport for contract tests. */
+export async function searchWhitelistWithSearch(
+  minStars: number,
+  search: RepositorySearch,
+  maxStars?: number,
+  opts: GitHubFetchOptions = {},
+): Promise<WhitelistEntryRecord[]> {
+  const hop = await searchWhitelistHop({
+    minStars,
+    search,
+    maxStars,
+    opts,
+    budgetMs: Number.POSITIVE_INFINITY,
+    yieldSlackMs: 0,
+  });
+  return hop.entries;
+}
+
+export function githubRepositorySearch(opts: GitHubFetchOptions = {}): RepositorySearch {
+  const token = requireGithubToken();
+  return (params, searchOpts) => restSearch(token, params, 1, searchOpts ?? opts);
 }
 
 /** Whitelist = Search-discovered repos with stars ≥ minStars. Search determines
@@ -217,13 +321,7 @@ export async function searchWhitelist(
   maxStars?: number,
   opts: GitHubFetchOptions = {},
 ): Promise<WhitelistEntryRecord[]> {
-  const token = requireGithubToken();
-  return searchWhitelistWithSearch(
-    minStars,
-    (params, searchOpts) => restSearch(token, params, 1, searchOpts),
-    maxStars,
-    opts,
-  );
+  return searchWhitelistWithSearch(minStars, githubRepositorySearch(opts), maxStars, opts);
 }
 
 // --- GraphQL nodes(): repo metadata ---

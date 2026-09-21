@@ -123,6 +123,19 @@ export const WhitelistSnapshot = z.object({
 }).strict().refine((snapshot) => snapshot.count === snapshot.entries.length, "count must match entries length");
 export type WhitelistSnapshot = z.infer<typeof WhitelistSnapshot>;
 
+/** ops/workflows/<run_id>/whitelist-search.json — resumable Search queue (not a snapshot). */
+export const WhitelistSearchProgress = z.object({
+  v: z.literal(1),
+  minStars: NonNegativeInt,
+  observedMax: z.number().int(),
+  queue: z.array(z.object({
+    low: z.number().int(),
+    high: z.number().int(),
+  }).strict()),
+  entries: z.array(WhitelistEntry),
+}).strict();
+export type WhitelistSearchProgress = z.infer<typeof WhitelistSearchProgress>;
+
 /** canonical/v2/pending/<period>.json — frozen closed-period live tail awaiting fold (VERCEL-DATA-OPERATIONS §7.2). */
 export const PendingPeriod = z.object({
   period: MonthPeriod,

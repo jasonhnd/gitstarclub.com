@@ -152,6 +152,24 @@ export function nextRefreshJob(
     return { v: 1, graph: "full", runId: job.runId, name: "whitelist", attempt: 0, cursor: rest };
   }
 
+  if (job.name === "whitelist") {
+    if (typeof result.nextWhitelistSearchSeq === "number") {
+      return {
+        v: 1,
+        graph: "full",
+        runId: job.runId,
+        name: "whitelist",
+        attempt: 0,
+        cursor: {
+          ...cursor,
+          whitelistSearchSeq: result.nextWhitelistSearchSeq,
+        },
+      };
+    }
+    const { whitelistSearchSeq: _seq, ...rest } = cursor;
+    return { v: 1, graph: "full", runId: job.runId, name: "rename", attempt: 0, cursor: rest };
+  }
+
   if (job.name === "metadata") {
     const bucket = job.cursor.bucket ?? 0;
     const metadata = {

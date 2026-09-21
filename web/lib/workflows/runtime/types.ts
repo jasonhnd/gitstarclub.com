@@ -63,6 +63,8 @@ export type RefreshCursor = {
   recomputePhase?: RecomputePhase;
   /** Week/weekOrg period-window start. Pack hop leaves this unset. */
   recomputeOffset?: number;
+  /** Whitelist Search hop index when WHITELIST_SEARCH_SHARDS=1. */
+  whitelistSearchSeq?: number;
 };
 
 export type RefreshStepJob =

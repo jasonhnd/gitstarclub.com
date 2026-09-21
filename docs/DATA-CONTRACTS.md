@@ -84,7 +84,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 #### Repository tracking contract（权威）
 
-1. GitHub Search 只负责**成员发现**。发现先执行开放上界的 `stars:>=MIN_TRACKED_STARS`（默认 10,000；`getMinTrackedStars()` 读 `MIN_TRACKED_STARS`，预发 = 1,000）、按 stars 降序读取当前最高值，再以该动态上界自适应分桶；不存在 600,000 或其他产品级最高星数截断。页开不现算，成员变化只经 refresh → 预计算视图。
+1. GitHub Search 只负责**成员发现**。发现先执行开放上界的 `stars:>=MIN_TRACKED_STARS`（默认 10,000；`getMinTrackedStars()` 读 `MIN_TRACKED_STARS`，预发 = 1,000）、按 stars 降序读取当前最高值，再以该动态上界自适应分桶；不存在 600,000 或其他产品级最高星数截断。预发 `WHITELIST_SEARCH_SHARDS=1` 时 Search 按 hop 恢复队列（`ops/workflows/<run_id>/whitelist-search.json`），完成前不写 snapshot。页开不现算，成员变化只经 refresh → 预计算视图。
 2. GraphQL `Repository.stargazerCount` 是 `current_stars`、当前总量及当前/全时排名的唯一权威来源。Search 返回的 `stargazers_count` 只保留在 immutable whitelist snapshot 中用于发现审计，不写入 canonical `current_stars`。
 3. `WhitelistSnapshot.count === entries.length` 是本 run 的权威 active tracked count。publish gate 要求该集合与 canonical `active:true`、`lookup/repos.json active:true`、`meta.active_repo_count` 完全一致。
 4. drop 不删除：canonical、lookup、search 与 repo entity 继续保留，并写 `active:false`；daily/weekly cron、当前 org/category 聚合和 all-time 榜只使用 active rows。
