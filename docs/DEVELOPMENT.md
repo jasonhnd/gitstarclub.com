@@ -214,6 +214,8 @@ Before finishing:
 - User-visible route/content changes update `FRONTEND.md` or `SEO.md`.
 - Category/ranking/data behavior changes update the owning doc.
 - Production verification plan is clear.
+- GitHub required CI is `static` + `production-build` only; `preview-e2e` /
+  `product-gates` are optional and skip without a Vercel Preview.
 - No secrets are printed or committed.
 
 ## Drift Handling

@@ -1,7 +1,7 @@
 ---
 owner: API / route contracts
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-09-21
 source_of_truth_for:
   - endpoint contracts
   - route handler auth and cache behavior
@@ -330,7 +330,8 @@ applied only while its request generation is still current.
 
 ### `GET /.well-known/deployment`
 
-Public, uncached deployment identity used by release gates to prove which commit
+Public, uncached deployment identity used by optional `preview-e2e` /
+`product-gates` (when a Vercel Preview exists) to prove which commit
 a deployment serves. It does not read Blob data or expose a secret. On Vercel
 the body stays `{ commitSha, deploymentUrl }`. On the P3 CF Workers host
 (`HOSTING_TARGET=cf`) the Worker shell (or the Next route) also returns
