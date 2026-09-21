@@ -1,6 +1,6 @@
 ---
 name: cursor-ops
-description: Cursor Cloud Agents / Environments 运维与阻碍排查；不是业务开发 Lead。
+description: 当需要排查 Cursor Cloud Agents 或 Environments 运维阻碍时使用。不用于当业务开发 Lead、代业务仓写功能代码，或把 FINISHED 说成已合并。
 model: inherit
 ---
 

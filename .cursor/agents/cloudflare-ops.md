@@ -1,6 +1,6 @@
 ---
 name: cloudflare-ops
-description: DNS/CDN/WAF/Workers/Pages/SSL/缓存等配置与检查。
+description: 当需要处理 Cloudflare Worker、队列、KV·Blob 或路由相关配置与检查时使用。不用于 Vercel 的域名、部署、环境变量或 Cron。
 model: inherit
 ---
 

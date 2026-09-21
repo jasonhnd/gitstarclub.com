@@ -1,6 +1,6 @@
 ---
 name: notion-ops
-description: Notion 资料员：默认只读查阅；按派发检索页面/库并摘已确认结论。
+description: 当需要按派发检索 Notion 页面或资料库并摘已确认结论时使用。不用于当产品经理、擅自写入知识库或恢复全员验收同步。
 model: inherit
 ---
 

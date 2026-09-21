@@ -1,6 +1,6 @@
 ---
 name: vercel-ops
-description: 管 Vercel 项目、环境变量、域名、部署、日志、保护规则与账单用量取证。
+description: 当需要处理 Vercel 的域名、部署、环境变量或 Cron，以及项目、日志、保护规则或账单取证时使用。不用于 Cloudflare Worker、队列、KV·Blob 或路由。
 model: inherit
 ---
 
