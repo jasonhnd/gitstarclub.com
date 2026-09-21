@@ -22,6 +22,7 @@ import {
   RepoRecentDailyShard,
   SiteDaily,
   WhitelistEntry,
+  WhitelistSearchProgress,
   WhitelistSnapshot,
   PendingPeriod,
   // workflow
@@ -577,6 +578,18 @@ describe("canonical shards", () => {
       diff: { added: [2], dropped: [3] },
     };
     expect(WhitelistSnapshot.parse(snap).diff.added).toEqual([2]);
+  });
+
+  test("WhitelistSearchProgress parses a resumable Search queue", () => {
+    const progress = WhitelistSearchProgress.parse({
+      v: 1,
+      minStars: 1000,
+      observedMax: 50000,
+      queue: [{ low: 1000, high: 9999 }],
+      entries: [{ id: 1, node_id: "n", full_name: "a/b", owner: "a", name: "b", stars: 12000 }],
+    });
+    expect(progress.queue).toHaveLength(1);
+    expect(rejects(WhitelistSearchProgress, { v: 2, minStars: 1000, observedMax: 1, queue: [], entries: [] })).toBe(true);
   });
 
   test("WhitelistSnapshot rejects diff.added with non-int ids", () => {

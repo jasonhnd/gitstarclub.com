@@ -81,6 +81,30 @@ describe("refresh step graph", () => {
     expect(done?.cursor.preflightAcc).toBeUndefined();
   });
 
+  test("whitelist Search hops stay on whitelist until the last shard", () => {
+    const mid = nextRefreshJob(full("whitelist", { startedAt: "2026-09-21T14:05:09.247Z", fencingToken: 29 }), {
+      name: "whitelist",
+      nextWhitelistSearchSeq: 1,
+      count: 20_000,
+    });
+    expect(mid).toMatchObject({
+      name: "whitelist",
+      cursor: { whitelistSearchSeq: 1, fencingToken: 29 },
+    });
+
+    const done = nextRefreshJob(mid!, {
+      name: "whitelist",
+      count: 65_014,
+      added: 59_480,
+      dropped: 0,
+    });
+    expect(done).toMatchObject({
+      name: "rename",
+      cursor: { startedAt: "2026-09-21T14:05:09.247Z", fencingToken: 29 },
+    });
+    expect(done?.cursor.whitelistSearchSeq).toBeUndefined();
+  });
+
   test("fold windows stay on fold until the last batch", () => {
     const acc = {
       folded: ["2026-08"],

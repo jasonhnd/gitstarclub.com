@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { WhitelistEntry, WhitelistSnapshot } from "@/lib/contracts";
 import { whitelistDiscoveryDate } from "./metadata";
-import { refreshWhitelistWithDeps, type WhitelistDeps } from "./whitelist";
+import type { WhitelistSearchProgress } from "@/lib/contracts";
+import { refreshWhitelistWithDeps, runWhitelistStepWithDeps, type WhitelistDeps } from "./whitelist";
 
 function entry(id: number): WhitelistEntry {
   return {
@@ -43,6 +44,14 @@ function fakeWhitelist() {
       state.searchCalls++;
       return structuredClone(state.searchEntries);
     },
+    searchHop: async () => {
+      throw new Error("searchHop should not run when shards are off");
+    },
+    readProgress: async () => null,
+    writeProgress: async () => {
+      throw new Error("writeProgress should not run when shards are off");
+    },
+    searchSharded: () => false,
     createSnapshot: async (runId, next) => {
       if (state.snapshots.has(runId)) return false;
       state.snapshots.set(runId, structuredClone(next));
@@ -143,5 +152,103 @@ describe("published whitelist baseline", () => {
   test("newcomer provenance is pinned to immutable snapshot discovery time", () => {
     const discovered = snapshot("run", [7], "2026-07-17T23:59:59.000Z");
     expect(whitelistDiscoveryDate(discovered)).toBe("2026-07-17");
+  });
+
+  test("sharded Search yields before the snapshot and resumes to the same diff", async () => {
+    const { state, deps } = fakeWhitelist();
+    const progressWrites: WhitelistSearchProgress[] = [];
+    let hops = 0;
+    deps.searchSharded = () => true;
+    deps.searchHop = async (progress) => {
+      hops += 1;
+      if (!progress) {
+        return {
+          done: false,
+          requests: 2,
+          entries: [entry(2)],
+          progress: {
+            v: 1,
+            minStars: 1000,
+            observedMax: 50_000,
+            queue: [{ low: 1000, high: 9_999 }],
+            entries: [entry(2)],
+          },
+        };
+      }
+      return {
+        done: true,
+        requests: 3,
+        entries: structuredClone(state.searchEntries),
+        progress: {
+          v: 1,
+          minStars: 1000,
+          observedMax: 50_000,
+          queue: [],
+          entries: structuredClone(state.searchEntries),
+        },
+      };
+    };
+    deps.writeProgress = async (_owner, progress) => {
+      progressWrites.push(structuredClone(progress));
+    };
+    deps.readProgress = async () => progressWrites.at(-1) ?? null;
+
+    const mid = await runWhitelistStepWithDeps("sharded-run", 4, {}, deps);
+    expect(mid.nextWhitelistSearchSeq).toBe(1);
+    expect(mid.count).toBe(1);
+    expect(state.snapshots.has("sharded-run")).toBe(false);
+    expect(progressWrites).toHaveLength(1);
+    expect(state.searchCalls).toBe(0);
+
+    const done = await runWhitelistStepWithDeps("sharded-run", 4, { whitelistSearchSeq: 1 }, deps);
+    expect(done).toMatchObject({ count: 2, added: 1, dropped: 0 });
+    expect(done.nextWhitelistSearchSeq).toBeUndefined();
+    expect(state.snapshots.get("sharded-run")?.diff.added).toEqual([2]);
+    expect(hops).toBe(2);
+  });
+
+  test("in-process drain still finishes a sharded Search as one whitelist result", async () => {
+    const { state, deps } = fakeWhitelist();
+    let hops = 0;
+    deps.searchSharded = () => true;
+    deps.searchHop = async (progress) => {
+      hops += 1;
+      if (!progress) {
+        return {
+          done: false,
+          requests: 1,
+          entries: [],
+          progress: {
+            v: 1,
+            minStars: 1000,
+            observedMax: 12_000,
+            queue: [{ low: 1000, high: 12_000 }],
+            entries: [],
+          },
+        };
+      }
+      return {
+        done: true,
+        requests: 1,
+        entries: structuredClone(state.searchEntries),
+        progress: {
+          v: 1,
+          minStars: 1000,
+          observedMax: 12_000,
+          queue: [],
+          entries: structuredClone(state.searchEntries),
+        },
+      };
+    };
+    const writes: WhitelistSearchProgress[] = [];
+    deps.writeProgress = async (_owner, progress) => {
+      writes.push(structuredClone(progress));
+    };
+    deps.readProgress = async () => writes.at(-1) ?? null;
+
+    const result = await refreshWhitelistWithDeps("drain-run", 5, deps);
+    expect(result).toEqual({ count: 2, added: 1, dropped: 0 });
+    expect(hops).toBe(2);
+    expect(state.snapshots.get("drain-run")?.count).toBe(2);
   });
 });

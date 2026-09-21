@@ -12,7 +12,7 @@ import { recomputeHeatmap } from "@/lib/workflows/steps/recompute-heatmap";
 import { runRecomputeRankStep } from "@/lib/workflows/steps/recompute-rank";
 import { detectRenames } from "@/lib/workflows/steps/rename";
 import { validateVersion } from "@/lib/workflows/steps/validate";
-import { refreshWhitelist } from "@/lib/workflows/steps/whitelist";
+import { runWhitelistStep } from "@/lib/workflows/steps/whitelist";
 import type { FullRefreshStepName, RefreshStepJob, RefreshStepResult } from "./types";
 
 function requireToken(job: RefreshStepJob): number {
@@ -33,7 +33,7 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
     case "preflight":
       return { name, ...(await runPreflightStep(runId, job.cursor)) };
     case "whitelist":
-      return { name, ...(await refreshWhitelist(runId, requireToken(job))) };
+      return { name, ...(await runWhitelistStep(runId, requireToken(job), job.cursor)) };
     case "rename":
       return { name, ...(await detectRenames(runId, requireToken(job))) };
     case "metadata": {

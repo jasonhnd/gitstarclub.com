@@ -53,6 +53,35 @@ export function getMinTrackedStars(env: RuntimeEnv = process.env): number {
   return resolveMinTrackedStars(env.MIN_TRACKED_STARS);
 }
 
+/**
+ * Multi-hop GitHub Search for whitelist. Off by default (single hop).
+ * Preview wrangler `env.pre` sets `1` so ≥1k Search stays inside the
+ * `gitstarclub-jobs-pre` 15 min Queue wall. `0` / unset restores #508 single-hop.
+ */
+export function isWhitelistSearchSharded(env: RuntimeEnv = process.env): boolean {
+  return env.WHITELIST_SEARCH_SHARDS === "1";
+}
+
+/** Default hop budget: 10 min. Queue consumer wall is 15 min. */
+export const DEFAULT_WHITELIST_SEARCH_HOP_BUDGET_MS = 10 * 60 * 1000;
+/** Stop starting Search requests this far before the hop deadline. */
+export const WHITELIST_SEARCH_YIELD_SLACK_MS = 90 * 1000;
+const MIN_WHITELIST_SEARCH_HOP_BUDGET_MS = 60 * 1000;
+const MAX_WHITELIST_SEARCH_HOP_BUDGET_MS = 14 * 60 * 1000;
+
+/** Per-hop Search wall. Must stay below the 15 min Queue consumer wall. */
+export function getWhitelistSearchHopBudgetMs(env: RuntimeEnv = process.env): number {
+  const raw = env.WHITELIST_SEARCH_HOP_BUDGET_MS;
+  if (raw == null || raw.trim() === "") return DEFAULT_WHITELIST_SEARCH_HOP_BUDGET_MS;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < MIN_WHITELIST_SEARCH_HOP_BUDGET_MS || value > MAX_WHITELIST_SEARCH_HOP_BUDGET_MS) {
+    throw new Error(
+      `WHITELIST_SEARCH_HOP_BUDGET_MS must be an integer ${MIN_WHITELIST_SEARCH_HOP_BUDGET_MS}..${MAX_WHITELIST_SEARCH_HOP_BUDGET_MS} (got ${JSON.stringify(raw)})`,
+    );
+  }
+  return value;
+}
+
 export type StorageReadDriver = "blob" | "r2" | "r2_then_blob";
 export type StorageWriteDriver = "blob" | "r2";
 

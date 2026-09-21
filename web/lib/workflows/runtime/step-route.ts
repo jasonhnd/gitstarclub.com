@@ -9,6 +9,7 @@ import {
   queueAdvanceFromConsumer,
 } from "@/lib/workers-host/queue-advance";
 import { foldStepCheckpointName, hasNextFoldWindow } from "@/lib/workflows/steps/fold";
+import { hasNextWhitelistSearch, whitelistStepCheckpointName } from "@/lib/workflows/steps/whitelist";
 import {
   extraRecomputeCheckpointSteps,
   recomputeStepCheckpointName,
@@ -29,6 +30,7 @@ export type RefreshStepRouteOptions = ResolveWorkflowRuntimeOptions & {
 export function refreshStepCheckpointName(job: RefreshStepJob): string {
   if (job.graph === "full" && job.name === "metadata") return `metadata-${job.cursor.bucket ?? 0}`;
   if (job.graph === "full" && job.name === "preflight") return `preflight-${job.cursor.preflightOffset ?? 0}`;
+  if (job.graph === "full" && job.name === "whitelist") return whitelistStepCheckpointName(job.cursor);
   if (job.graph === "full" && job.name === "fold") return foldStepCheckpointName(job.cursor);
   if (job.graph === "full" && job.name === "recomputeRank") return recomputeStepCheckpointName(job.cursor);
   return job.name;
@@ -46,6 +48,12 @@ async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult)
     error: result.error ?? null,
   });
   await putView(`ops/workflows/${job.runId}/steps/${step}.json`, checkpoint);
+  if (job.graph === "full" && job.name === "whitelist" && !hasNextWhitelistSearch(result)) {
+    await putView(
+      `ops/workflows/${job.runId}/steps/whitelist.json`,
+      WorkflowStepCheckpoint.parse({ ...checkpoint, step: "whitelist" }),
+    );
+  }
   if (job.graph === "full" && job.name === "fold" && !hasNextFoldWindow(result)) {
     await putView(
       `ops/workflows/${job.runId}/steps/fold.json`,

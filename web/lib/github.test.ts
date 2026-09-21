@@ -16,6 +16,7 @@ import {
   GITHUB_ACCEPT,
   GITHUB_USER_AGENT,
   githubApiHeaders,
+  searchWhitelistHop,
   searchWhitelistWithSearch,
   type SearchResult,
 } from "./github";
@@ -184,6 +185,48 @@ describe("searchWhitelist star-range bucketing math (replicated)", () => {
     expect(pages(150)).toBe(2);
     expect(pages(1000)).toBe(10);
     expect(pages(5000)).toBe(10); // clamped
+  });
+
+  test("a budgeted hop yields remaining star ranges and resumes to the same set", async () => {
+    const repos = [12_000, 3_000, 1_500].map((stars, index) => ({
+      id: index + 1,
+      node_id: `R_${index + 1}`,
+      full_name: `owner/repo-${index + 1}`,
+      name: `repo-${index + 1}`,
+      stargazers_count: stars,
+      owner: { login: "owner" },
+    }));
+    let nowMs = 0;
+    const search = async (params: Record<string, string | number>): Promise<SearchResult> => {
+      const q = String(params.q);
+      nowMs += 1_000;
+      if (q === "stars:>=1000") return { total_count: 3, items: [repos[0]!] };
+      if (q === "stars:1000..12000") return { total_count: 3, items: repos };
+      throw new Error(`unexpected query ${q}`);
+    };
+
+    const first = await searchWhitelistHop({
+      minStars: 1_000,
+      search,
+      budgetMs: 500,
+      yieldSlackMs: 0,
+      now: () => nowMs,
+    });
+    expect(first.done).toBe(false);
+    expect(first.progress.queue).toEqual([{ low: 1_000, high: 12_000 }]);
+    expect(first.entries).toEqual([]);
+
+    const second = await searchWhitelistHop({
+      minStars: 1_000,
+      search,
+      progress: first.progress,
+      budgetMs: Number.POSITIVE_INFINITY,
+      yieldSlackMs: 0,
+      now: () => nowMs,
+    });
+    expect(second.done).toBe(true);
+    expect(second.entries.map((repo) => repo.stars)).toEqual([12_000, 3_000, 1_500]);
+    expect(await searchWhitelistWithSearch(1_000, search)).toEqual(second.entries);
   });
 
   test("whitelist entries dedup by id and sort by stars desc", () => {
