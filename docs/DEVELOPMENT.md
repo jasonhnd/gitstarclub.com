@@ -1,7 +1,7 @@
 ---
 owner: development process
 status: active
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-21
 source_of_truth_for:
   - developer workflow
   - documentation ownership practice
@@ -51,7 +51,7 @@ Docs-only changes are allowed when the code already implements the behavior.
 | System architecture, hard constraints | `ARCHITECTURE.md` |
 | Blob layout, workflow lifecycle, publish/rollback | `VERCEL-DATA-OPERATIONS.md`, `OPS.md` |
 | Cloudflare R2 P0 storage drivers / dual-read | `R2-MIGRATION-P0.md` |
-| Cloudflare P1 workflow runtime / CF Cron | `CF-MIGRATION-P1.md` |
+| Cloudflare P1 workflow runtime / CF Cron / preview Bearer refresh acceptance | `CF-MIGRATION-P1.md` |
 | Cloudflare P2 ISR port / CF Preview / Access | `CF-MIGRATION-P2.md` |
 | Cloudflare P3 Workers host / OpenNext preview | `CF-MIGRATION-P3.md` |
 | JSON schema or persisted field | `DATA-CONTRACTS.md` |
@@ -214,6 +214,8 @@ Before finishing:
 - User-visible route/content changes update `FRONTEND.md` or `SEO.md`.
 - Category/ranking/data behavior changes update the owning doc.
 - Production verification plan is clear.
+- GitHub required CI is `static` + `production-build` only; `preview-e2e` /
+  `product-gates` are optional and skip without a Vercel Preview.
 - No secrets are printed or committed.
 
 ## Drift Handling
