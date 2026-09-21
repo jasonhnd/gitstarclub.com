@@ -1,7 +1,7 @@
 ---
 owner: issue and PR workflow
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-09-21
 source_of_truth_for:
   - document-driven issue workflow
   - role boundaries
@@ -68,6 +68,12 @@ staging. Feature PRs target `pre`, staging verification uses
 `https://pre.gitstarclub.com`, and production promotion is a merge from `pre` to
 `main`.
 
+GitHub required merge gates are only `verify / static` and
+`verify / production-build` (see [TESTING.md](./TESTING.md)). `preview-e2e` and
+`product-gates` are optional and skip when there is no Vercel Preview. Do not
+treat them as required, and do not add `cf-preview` / `cf-workers-host` to the
+required-check set.
+
 ### 1. Should This Merge? (是否该合并)
 
 This pass decides whether the change belongs in the project.
@@ -79,7 +85,7 @@ Reviewers check:
   routes, operations, copy, or visual rules changed.
 - The hard constraints still hold: zero runtime engine/database, near-zero client JS
   on content pages with explicit global islands, AI-free deterministic behavior, and Vercel-first operations.
-- Validation is green for the required commands.
+- Validation is green for the required commands (`static` + `production-build`).
 - The PR avoids unrelated code, docs, formatting, generated files, and broad
   rewrites.
 - Partially completed issues are described as partial work and do not use a
@@ -92,7 +98,9 @@ verified in production.
 
 Reviewers check:
 
-- The Vercel preview or build signal is sufficient for the change type.
+- Staging or production verification is sufficient for the change type
+  (`https://pre.gitstarclub.com` or the production URL). A Vercel Preview job
+  is optional, not a required GitHub check.
 - Data or workflow changes have a clear recompute, cron, rollback, or publish
   plan.
 - Production verification identifies the exact page, Blob view, workflow run,

@@ -14,7 +14,7 @@ verifier:
   model: "claude-opus-4-8[1m]"
   reasoning_effort: max
 ci:
-  checks: [static, production-build]  # GitHub required merge gates only. preview-e2e / product-gates soft-skip without a Vercel Preview. cf-preview / cf-workers-host MUST NOT be added (not ruleset required)
+  checks: [static, production-build]  # 必过 = static + production-build. preview-e2e / product-gates optional / skippable (Ignored Build / no Preview). cf-preview / cf-workers-host MUST NOT be added (not ruleset required)
   # Named by scripts/assert-cf-ci-gates.mjs (keep these Worker names in sync):
   #   main → gitstarclub-web (production; wrangler top-level triggers.crons MUST stay [])
   #   pre  → gitstarclub-web-pre (wrangler env pre)

@@ -106,7 +106,8 @@ Important files:
 - `web/lib/cache-invalidation/`: publication and live-cron ISR invalidation.
   Default is Vercel `next/cache`. The CF stub is non-production and testable;
   see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
-- `web/lib/preview/`: Preview discovery for Vercel (required gates) and
+- `web/lib/preview/`: Preview discovery for Vercel (optional `preview-e2e` /
+  `product-gates`; skippable without a Preview; not a GitHub required gate) and
   optional CF Access on `gitstarclub-web-pre.worldgo.workers.dev`.
 - `web/lib/workers-host/` + `workers/gitstarclub-web/`: P3 OpenNext host
   wraps the P1–P2 shell. `/` is the Next homepage; production origin stays

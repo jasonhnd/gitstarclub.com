@@ -12,6 +12,7 @@ source_of_truth_for:
   - CF refresh fold Worker memory limit (windowed fold + successor header)
   - CF refresh fold still OOM after fold-month-0 (1-bucket + month/week plan hops)
   - CF refresh plan hop skip + recompute OOM after #484 (fold-decision + rank family hops)
+  - CF preview Bearer full-refresh acceptance matrix (fold-decision / recompute hops / silence-is-fail)
   - dual-scheduler rollback (CF Cron off, production stays Vercel)
 ---
 
@@ -434,7 +435,77 @@ Fix (keeps `WORKFLOW_RUNTIME=cf-queue`; does not roll back to HTTP):
 
 Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
 
+## Preview Bearer full refresh acceptance matrix
+
+预发 Bearer 全量 refresh 验收矩阵。This table is the current pass/fail gate
+for a **preview Worker** (`gitstarclub-web-pre`) Bearer full refresh after
+#486. Historical per-bug retest lists later in this document are evidence of
+earlier stalls; they do not replace this matrix. Unit coverage lives in
+[TESTING.md](./TESTING.md) (`#485` / `#488`).
+
+This section does **not** enable Cloudflare production schedules, inject
+secrets, stop Vercel cron, or deploy production `gitstarclub-web`.
+
+### Hard constraints (every row)
+
+| Constraint | Required state |
+|---|---|
+| Runtime | `WORKFLOW_RUNTIME=cf-queue` and `WORKFLOW_QUEUE_ENQUEUE_URL=https://pre.gitstarclub.com/enqueue` |
+| Host | Preview only: `https://pre.gitstarclub.com` / Worker `gitstarclub-web-pre` |
+| Auth | `Authorization: Bearer <CRON_SECRET>` (name only; never commit the value) |
+| Production Worker `triggers.crons` | stays `[]` in top-level `wrangler.jsonc` (Worker `gitstarclub-web`) |
+| Vercel production cron | `web/vercel.json` three rows stay scheduled. **Do not** stop Vercel cron |
+| Production CF schedules | **Do not** `PUT` Cloudflare schedules on `gitstarclub-web` |
+
+### Matrix
+
+| ID | Surface | Pass | Fail |
+|---|---|---|---|
+| A1 | Bearer start | `GET https://pre.gitstarclub.com/api/workflows/refresh/start` → **200** `started` with a `run_id` (or `attached` to the same-week lease). Unauthenticated → 401 | 5xx, `ALPNProtocols` / `fetch failed`, Cloudflare 1102/503, or a start that never writes a lease |
+| F1 | `fold-decision.json` | After the first fold hop, Blob **always** has `ops/workflows/<run_id>/fold-decision.json` with `reason` ∈ `month_plan` / `no_closed_month` / `pending_missing` / `week_only` / `nothing_to_fold` | Missing decision file after `fold-month-0` / `fold.json` |
+| F2 | `no_closed_month` | `reason=no_closed_month` **and** no `fold-month-plan.json` **and** no `fold-week-plan.json` is **normal**. Current preview evidence after #484: `folded_through` already `2026-08` / `2026-W35` while UTC month is `2026-09`. Same-timestamp `fold-month-0` + terminal `fold.json` is the empty first hop, not a missing plan | Treating absent month/week plans as a stall when `reason=no_closed_month` |
+| F3 | `month_plan` | If `reason=month_plan`: `fold-month-plan.json` plus more than one `steps/fold-month-*`, then `fold-week-plan.json` / `fold-week-*` when week work exists, then terminal `steps/fold.json` (`ok`) | `reason=month_plan` but no month plan / no later month windows |
+| F4 | Other reasons | `week_only`: week plan present, month plan absent. `pending_missing` / `nothing_to_fold`: no month/week plan. All still require **F1** + terminal `fold.json` | Missing `fold.json` after a written decision |
+| R1 | recompute hops | Queue consume continues after `fold.json`. Checkpoints: `steps/recomputeRank-month.json`, `recomputeRank-week.json`, `recomputeRank-rest.json`, then terminal `recomputeRank.json` (runtime names, not manifest aliases `recompute` / `buildAliases`) | Missing any of the three hops, or silent after `fold.json` |
+| R2 | Families | month hop loads repos+monthly (month+year ranks); week hop loads repos+weekly; rest hop loads repos (all-time / newcomers / categories). Later: `recomputeRepoEntities` → `recomputeOrgEntities` → `recomputeHeatmap` → `aliases` → `validate` | One isolate loading every family (the #484 OOM) |
+| R3 | publish / gc | `steps/publish.json` (`ok`) then `steps/gc.json` (`ok`, or a written best-effort `error` field — `gc` never throws). `active.json` reaches `published`, or stays `running` with a **renewing** `expires_at` while later steps write. `markPublished` is the graph tail | No `publish.json` after rest; lease `status=running` with expired `expires_at` |
+| X1 | OOM = fail | Fetch-origin `Worker exceeded memory limit` must **not** be a stable last event | Memory-limit ×N (Queue `max_retries: 2` → three events) then quiet |
+| X2 | Queue silence = fail | Queue origin keeps consuming until `markPublished` or a written `ops/workflows/<run_id>/error.json` / `active.json` `failed` | Queue silent after fold or a recompute hop; no `error.json`; lease expires. **Do not** treat that as “still running” |
+| P1 | Production crons | Top-level `triggers.crons` is `[]`. Preview `env.pre` may list three **draft** expressions; that is not platform enablement | Any production cron string, or a Cloudflare schedule on Worker `gitstarclub-web` |
+| P2 | Vercel stays on | Production daily / weekly / start remain the three `web/vercel.json` rows | Stopping, emptying, or disabling Vercel cron as part of this acceptance |
+
+### fold-decision reasons (quick key)
+
+| `reason` | `monthPlan` / `weekPlan` | Month/week plan files | Notes |
+|---|---|---|---|
+| `month_plan` | true / false until week work | `fold-month-plan.json` required | Closed pending month compacted |
+| `no_closed_month` | false / false | **none — normal** | `nextMonth(folded_through.month) >=` current UTC month; week rows also empty |
+| `pending_missing` | false / false | none | Next closed month has no pending snapshot; hop goes to week |
+| `week_only` | false / true | `fold-week-plan.json` only | No month work; week rows exist |
+| `nothing_to_fold` | false / false | none | Week phase empty (no Sunday ≤ end-of-month after `folded_through.week`) |
+
+### Operator procedure (scores the matrix)
+
+1. Keep `WORKFLOW_RUNTIME=cf-queue` and
+   `WORKFLOW_QUEUE_ENQUEUE_URL=https://pre.gitstarclub.com/enqueue`. Do **not**
+   PUT production schedules and do **not** stop Vercel cron.
+2. Wait for any active lease to expire, or use a new idempotency key
+   (`?idempotency_key=` / `Idempotency-Key`).
+3. Bearer `GET https://pre.gitstarclub.com/api/workflows/refresh/start` → score **A1**.
+4. Workers Observability: `queue` consume after `fold.json`; `workflow.advance`
+   shows `fold` → `recomputeRank` (month → week → rest) → entities → `publish`
+   → `gc` → `markPublished`. Score **R1**, **R2**, **X1**, **X2**.
+5. Blob: score **F1**–**F4**, **R1**, **R3**.
+6. Confirm **P1** / **P2** on the committed wrangler file and the Vercel cron
+   table (do not deploy production `gitstarclub-web` to “check”).
+7. Any **Fail** cell fails the run. Silence without `error.json` is **X2**, not
+   inconclusive.
+
 ### Suggested CF fold-decision + recompute follow-up retest (preview Worker only)
+
+Score the run against the [acceptance matrix](#preview-bearer-full-refresh-acceptance-matrix).
+The steps below are the historical operator procedure for the #486 follow-up;
+the matrix is pass/fail.
 
 1. Keep `WORKFLOW_RUNTIME=cf-queue` and
    `WORKFLOW_QUEUE_ENQUEUE_URL=https://pre.gitstarclub.com/enqueue`. Do **not**

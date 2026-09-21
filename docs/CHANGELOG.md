@@ -1,7 +1,7 @@
 ---
 owner: release history
 status: active
-last_reviewed: 2026-09-20
+last_reviewed: 2026-09-21
 source_of_truth_for:
   - versioned release history
   - shipped changes
@@ -19,6 +19,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Added
 
+- **CF preview Bearer full-refresh acceptance matrix.** After #486, docs now have a pass/fail table for preview Worker Bearer full refresh: `fold-decision.json` is required; `reason=no_closed_month` without month/week plans is normal; recompute is month/week/rest then `publish`/`gc`; fetch-origin OOM or Queue silence is fail; production `triggers.crons` stays `[]` and Vercel cron is not stopped. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Docs only; does not enable production CF Cron or stop Vercel.
+
 - **CF Cron scheduled dispatch (preview draft).** Worker `scheduled` / `handleScheduled` now branches on `event.cron`: daily and weekly GET `{CF_CRON_ORIGIN}/api/cron/{daily,weekly}` with Bearer `CRON_SECRET`; Sunday 06:00 keeps `triggerStart` (or the preview fixture). Unknown expressions fail observably. Preview wrangler may list the three cron strings; production `triggers.crons` stays `[]`. Secrets and platform schedule enablement are ops follow-ups, not this change. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Does not enable production CF Cron or stop Vercel.
 
 - **Cloudflare migrate P3 Workers host (OpenNext preview).** The existing `gitstarclub-web` Worker now wraps `@opennextjs/cloudflare` so `/`, `/rankings`, and other Next routes can be previewed on workers.dev or `wrangler preview`. Adapter choice is OpenNext (same `next build` as Vercel); `vinext check` was 92% and is recorded, not adopted. R2 `MEDIA` and Queue `JOBS` stay bound. Vercel Web Analytics is off on `HOSTING_TARGET=cf`. Optional `verify / cf-workers-host` is **not** a required check and does not need Access. Production apex/www stay Vercel. See [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md). Does not cut DNS.
@@ -35,6 +37,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 ### Changed
 
 - **CF CI gates keep preview Worker `gitstarclub-web-pre` and refuse a live production hit.** `.delivery.yml` and `scripts/assert-cf-ci-gates.mjs` use the same names (`main` → `gitstarclub-web`, `pre` → `gitstarclub-web-pre`). Production `triggers.crons` must be an explicit `[]`. Probe origins are allowlisted; `--dry-run=false` and `wrangler versions upload` count as live deploys. Repo automation must not PUT Cloudflare schedules. See [OPS.md](./OPS.md).
+- **Docs: remaining "preview-e2e / product-gates are required" copy is gone.** Current required GitHub CI is still only `static` + `production-build`. `preview-e2e` / `product-gates` stay optional and skippable. Does not change the GitHub Ruleset, reopen Vercel Preview, add `cf-preview` as required, stop Cron, or touch fold/recompute. Closes #489.
 - **Required GitHub CI gates are only `static` + `production-build`.** Vercel Ignored Build no longer creates Preview URLs, so `preview-e2e` and `product-gates` soft-skip (exit 0 / job skip) instead of failing red. Cloudflare preview acceptance stays ops / manual on `pre.gitstarclub.com`; do **not** add `cf-preview` / `cf-workers-host` to required checks. Ruleset edit is GitHub ops (not this PR). Closes #480.
 - **CF refresh lease renew no longer fail-closes a still-owned fencing token.** After #473 preflight batching, preview died on `lost ownership while renewing fencing token` (CAS 412 × 3 against a CDN GET ETag, often overlapping a Queue retry of long whitelist Search). Renew now fences with origin `head()` , backs off, coalesces same-owner renews, and throws retryable `WorkflowLeaseCasError`. Whitelist proves the fence before Search. Queue consumer uses `WORKER_SELF_REFERENCE` instead of the public 524 hop. Production `triggers.crons` stays `[]`. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Does not roll back cf-queue, stop Vercel cron, or cut DNS.
 - **CF refresh preflight no longer fans out 128 canonical shards in one Worker invocation.** Workflow step `preflight` now reads 4-bucket windows (16 shards) at concurrency 2 on `HOSTING_TARGET=cf`, skips SHA-256 until `validate`, and re-enqueues via cf-queue / HTTP until all 128 shards pass. Avoids Cloudflare 1102 on preview `POST /api/workflows/refresh/step` preflight (~13s wall clock). Production `triggers.crons` stays `[]`. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Does not roll back cf-queue, stop Vercel cron, or cut DNS.
