@@ -180,6 +180,7 @@ an explicit recovery procedure.
 | `CF_ACCESS_CLIENT_SECRET` | CF Access Service Token secret（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client Secret | `web/lib/preview/access.ts`；头 `CF-Access-Client-Secret` |
 | `CF_PREVIEW_REQUIRE_SHA` | CF Preview 是否要求 identity SHA 对齐 | 可选（默认关闭） | 字符串 `1` 才强制 | `web/lib/runtime-config.ts` · `web/scripts/resolve-preview.ts`；Worker 未设 `CF_PREVIEW_COMMIT_SHA` 时不要开 |
 | `CF_PREVIEW_COMMIT_SHA` | CF Preview / Workers host 部署 SHA | 可选 | git SHA | `web/lib/deployment-identity.ts` · Worker `env.CF_PREVIEW_COMMIT_SHA`；未设时 identity 的 `commitSha` 为 null |
+| `MIN_TRACKED_STARS` | 白名单 / refresh 发现下限（星数） | 可选（默认 `10000`） | 正整数字符串；预发 wrangler `env.pre` 为 `1000`，生产 top-level 不得设成 `1000` | `web/lib/runtime-config.ts` · `web/lib/github.ts` · `web/lib/constants.mjs`；GitHub Search `stars:>=N`；回滚 = 去掉或改回 `10000` |
 | `HOSTING_TARGET` | Next 托管目标 | 可选（默认 `vercel`） | `vercel` \| `cf` | `web/lib/runtime-config.ts` · `web/lib/analytics-policy.ts`；`cf` 仅非生产 Workers 预览，见 [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
 | `NEXT_PUBLIC_HOSTING_TARGET` | `HOSTING_TARGET` 的公开别名 | 可选 | 同 `HOSTING_TARGET` | `web/lib/runtime-config.ts`；不要在 Vercel Production 设为 `cf` |
 | `CF_WORKERS_HOST_ORIGIN` | P3 Workers host 冒烟 origin | 可选 | 无尾斜杠 http(s) origin | `web/lib/workers-host/smoke-origin.ts` · `web/scripts/cf-workers-host-smoke.ts` |

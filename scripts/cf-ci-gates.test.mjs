@@ -9,7 +9,9 @@ import {
   DEFAULT_CF_PREVIEW_ORIGIN,
   PREVIEW_CRON_ORIGIN,
   PREVIEW_CRON_TRIGGERS,
+  PREVIEW_MIN_TRACKED_STARS,
   PRODUCTION_CRON_ORIGIN,
+  PRODUCTION_MIN_TRACKED_STARS,
   PRODUCTION_WORKER_NAME,
   assertAllowedCfPreviewOrigin,
   assertCfCiGates,
@@ -25,7 +27,10 @@ const validWrangler = `{
   "name": "gitstarclub-web",
   "triggers": { "crons": [] },
   "env": {
-    "pre": { "name": "gitstarclub-web-pre" }
+    "pre": {
+      "name": "gitstarclub-web-pre",
+      "vars": { "MIN_TRACKED_STARS": "1000" }
+    }
   }
 }`;
 
@@ -208,6 +213,33 @@ describe("CF CI gates", () => {
     assert.ok(issues.some((issue) => issue.includes(`env.pre vars.CF_CRON_ORIGIN must be ${PREVIEW_CRON_ORIGIN}`)));
   });
 
+  test("requires preview MIN_TRACKED_STARS=1000 and refuses production ≥1k", () => {
+    const missingPreview = assertCfCiGates(alignedSources({ wranglerSource: `{
+      "name": "gitstarclub-web",
+      "triggers": { "crons": [] },
+      "env": { "pre": { "name": "gitstarclub-web-pre" } }
+    }` }));
+    assert.ok(
+      missingPreview.some((issue) =>
+        issue.includes(`env.pre vars.MIN_TRACKED_STARS must be ${PREVIEW_MIN_TRACKED_STARS}`),
+      ),
+    );
+
+    const productionExpanded = assertCfCiGates(alignedSources({ wranglerSource: `{
+      "name": "gitstarclub-web",
+      "triggers": { "crons": [] },
+      "vars": { "MIN_TRACKED_STARS": "1000" },
+      "env": {
+        "pre": { "name": "gitstarclub-web-pre", "vars": { "MIN_TRACKED_STARS": "1000" } }
+      }
+    }` }));
+    assert.ok(
+      productionExpanded.some((issue) =>
+        issue.includes(`top-level vars.MIN_TRACKED_STARS must be unset or ${PRODUCTION_MIN_TRACKED_STARS}`),
+      ),
+    );
+  });
+
   test("allowlists only preview Worker origins", () => {
     assert.equal(assertAllowedCfPreviewOrigin(`${DEFAULT_CF_PREVIEW_ORIGIN}/`), DEFAULT_CF_PREVIEW_ORIGIN);
     assert.equal(assertAllowedCfPreviewOrigin("https://pre.gitstarclub.com"), "https://pre.gitstarclub.com");
@@ -247,5 +279,7 @@ describe("CF CI gates", () => {
     const wrangler = parseWranglerJsonc(readFileSync("workers/gitstarclub-web/wrangler.jsonc", "utf8"));
     assert.deepEqual(wrangler.triggers.crons, []);
     assert.equal(wrangler.env.pre.name, "gitstarclub-web-pre");
+    assert.equal(wrangler.env.pre.vars.MIN_TRACKED_STARS, PREVIEW_MIN_TRACKED_STARS);
+    assert.equal(wrangler.vars.MIN_TRACKED_STARS, undefined);
   });
 });
