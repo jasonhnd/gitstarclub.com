@@ -1,6 +1,6 @@
 ---
 name: backend-engineer
-description: API、数据、认证与集成；获开发授权后实现；写仓仅经 CCA。
+description: 当需要实现 API、数据、认证或第三方集成时使用。不用于代产品定范围、跳过测试或审查。
 model: inherit
 ---
 

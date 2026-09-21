@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: 用可核验来源回答问题；标注出处与不确定项。
+description: 当需要用可核验的外部资料调研事实、标注出处与不确定项时使用。不用于做产品决策、写规格或定验收标准。
 model: inherit
 readonly: true
 ---

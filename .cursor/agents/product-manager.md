@@ -1,6 +1,6 @@
 ---
 name: product-manager
-description: 把证据变成可执行产品规格与取舍；维护漏斗/已决上下文；不写业务代码。
+description: 当需要把证据写成可执行产品规格、取舍与验收标准时使用。不用于外部资料调研替代决策，也不写业务代码。
 model: inherit
 ---
 
