@@ -2,9 +2,8 @@
 // GraphQL nodes() (metadata). Server-only; needs env GITHUB_TOKEN. See docs/OPS.md.
 import { z } from "zod";
 import { WhitelistEntry } from "@/lib/contracts";
-import { MIN_TRACKED_STARS } from "@/lib/constants";
 import { GITHUB_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
-import { requireGithubToken } from "@/lib/runtime-config";
+import { getMinTrackedStars, requireGithubToken } from "@/lib/runtime-config";
 import type { WhitelistEntry as WhitelistEntryRecord } from "@/lib/contracts";
 
 const ENDPOINT = "https://api.github.com/graphql";
@@ -214,7 +213,7 @@ export async function searchWhitelistWithSearch(
 /** Whitelist = Search-discovered repos with stars ≥ minStars. Search determines
  * membership only; GraphQL is authoritative for displayed/ranked star totals. */
 export async function searchWhitelist(
-  minStars = MIN_TRACKED_STARS,
+  minStars = getMinTrackedStars(),
   maxStars?: number,
   opts: GitHubFetchOptions = {},
 ): Promise<WhitelistEntryRecord[]> {

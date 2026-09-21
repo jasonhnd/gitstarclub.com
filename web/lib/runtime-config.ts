@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { resolveMinTrackedStars } from "./constants.mjs";
 
 // Runtime configuration boundary for server-side data and workflow modules.
 // Keep process.env reads here so tests and route handlers can change config
@@ -45,6 +46,11 @@ export function requireGithubToken(env?: RuntimeEnv): string {
   const value = getGithubToken(env);
   if (!value) throw new Error("GITHUB_TOKEN not set");
   return value;
+}
+
+/** Search / refresh membership floor. Default 10_000; pre sets MIN_TRACKED_STARS=1000. */
+export function getMinTrackedStars(env: RuntimeEnv = process.env): number {
+  return resolveMinTrackedStars(env.MIN_TRACKED_STARS);
 }
 
 export type StorageReadDriver = "blob" | "r2" | "r2_then_blob";

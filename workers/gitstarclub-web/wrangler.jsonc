@@ -81,7 +81,9 @@
       "vars": {
         "HOSTING_TARGET": "cf",
         "WORKFLOW_FIXTURE": "1",
-        "CF_CRON_ORIGIN": "https://pre.gitstarclub.com"
+        "CF_CRON_ORIGIN": "https://pre.gitstarclub.com",
+        // Jason 2026-09-21: ≥1k on pre only. Production top-level stays unset → 10_000.
+        "MIN_TRACKED_STARS": "1000"
       }
     }
   }

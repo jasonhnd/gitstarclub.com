@@ -1,7 +1,7 @@
 // GitHub API client — native fetch, no deps. Needs env GITHUB_TOKEN
 // (classic or fine-grained PAT, public repo read). Shared by backfill + weekly.
 
-import { MIN_TRACKED_STARS } from "../../web/lib/constants.mjs";
+import { resolveMinTrackedStars } from "../../web/lib/constants.mjs";
 import { GITHUB_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../../web/lib/fetch-timeout.mjs";
 
 const TOKEN = process.env.GITHUB_TOKEN;
@@ -66,7 +66,7 @@ async function gql(query, variables = {}, opts = {}) {
 // Search caps at 1000 results/query → bucket by star ranges, splitting any
 // bucket >1000 until it fits, then page through each.
 // Returns [{ id, node_id, full_name, owner, name, stars }] sorted by stars desc.
-export async function searchWhitelist(minStars = MIN_TRACKED_STARS, maxStars, opts = {}) {
+export async function searchWhitelist(minStars = resolveMinTrackedStars(process.env.MIN_TRACKED_STARS), maxStars, opts = {}) {
   const out = new Map(); // id -> repo (dedups range-boundary overlap)
   let observedMax = maxStars;
   if (observedMax === undefined) {
