@@ -38,4 +38,6 @@ export type WorkerEnv = {
   HOSTING_TARGET?: string;
   BLOB_BASE_URL?: string;
   MIN_TRACKED_STARS?: string;
+  WHITELIST_SEARCH_SHARDS?: string;
+  WHITELIST_SEARCH_HOP_BUDGET_MS?: string;
 };

@@ -13,6 +13,9 @@ import {
   getCfPreviewRequireSha,
   getHostingTarget,
   getMinTrackedStars,
+  getWhitelistSearchHopBudgetMs,
+  isWhitelistSearchSharded,
+  DEFAULT_WHITELIST_SEARCH_HOP_BUDGET_MS,
   getPreviewTarget,
   isCloudflareWorkersHost,
   runWithCloudflareWorkersHostForTests,
@@ -73,6 +76,17 @@ describe("runtime config getters", () => {
     expect(getMinTrackedStars({ MIN_TRACKED_STARS: " 1000 " })).toBe(1_000);
     expect(() => getMinTrackedStars({ MIN_TRACKED_STARS: "1e3" })).toThrow("positive integer");
     expect(() => getMinTrackedStars({ MIN_TRACKED_STARS: "0" })).toThrow("positive integer");
+  });
+
+  test("WHITELIST_SEARCH_SHARDS is off unless exactly 1", () => {
+    expect(isWhitelistSearchSharded({})).toBe(false);
+    expect(isWhitelistSearchSharded({ WHITELIST_SEARCH_SHARDS: "0" })).toBe(false);
+    expect(isWhitelistSearchSharded({ WHITELIST_SEARCH_SHARDS: "true" })).toBe(false);
+    expect(isWhitelistSearchSharded({ WHITELIST_SEARCH_SHARDS: "1" })).toBe(true);
+    expect(getWhitelistSearchHopBudgetMs({})).toBe(DEFAULT_WHITELIST_SEARCH_HOP_BUDGET_MS);
+    expect(getWhitelistSearchHopBudgetMs({ WHITELIST_SEARCH_HOP_BUDGET_MS: "480000" })).toBe(480_000);
+    expect(() => getWhitelistSearchHopBudgetMs({ WHITELIST_SEARCH_HOP_BUDGET_MS: "1000" })).toThrow("integer");
+    expect(() => getWhitelistSearchHopBudgetMs({ WHITELIST_SEARCH_HOP_BUDGET_MS: "900000" })).toThrow("integer");
   });
 
   test("reads Blob and GitHub tokens at call time", () => {

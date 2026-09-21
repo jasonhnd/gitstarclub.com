@@ -125,6 +125,29 @@ describe("runRefreshStepRoute", () => {
     ).toBe("recomputeRank-week-8");
   });
 
+  test("names whitelist Search hops by sequence", () => {
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "whitelist",
+        attempt: 0,
+        cursor: {},
+      }),
+    ).toBe("whitelist-0");
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "whitelist",
+        attempt: 0,
+        cursor: { whitelistSearchSeq: 2 },
+      }),
+    ).toBe("whitelist-2");
+  });
+
   test("names fold checkpoints by phase and sequence", () => {
     expect(
       refreshStepCheckpointName({
