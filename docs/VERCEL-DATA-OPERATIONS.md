@@ -156,7 +156,7 @@ async function recomputeRank(runId: string) {
 | **step 之间用 Blob checkpoint** | 每个 step 完成后写 `ops/workflows/<run_id>/steps/<step>.json`(状态 + 产物清单 + 计数)。checkpoint 是**业务可读**的进度账本,供运维 / 恢复用。 |
 | **大数据走 Blob 直链** | step 间不通过 Workflow 传大 payload(受 4.5MB 限)。step 只传 `run_id` / shard key 等小标识;数据落 Blob,下一 step 从 Blob 直链读。 |
 | **长等待用 sleep** | 命中 GitHub secondary rate limit / `Retry-After` 时,step 内短等待;跨小时级配额恢复用 workflow `sleep('1 hour')`,不空转占资源。 |
-| **所有权可隔离** | `active.json` lease 带递增 `fencing_token`，30 分钟到期、活跃写入最多每 5 分钟 heartbeat；canonical、checkpoint 和 publish pointer 每次写前都续租并核对 `(run_id, fencing_token)`。续租用 Blob API `head()` origin etag 做 ifMatch（与 live pointer #402 同类：public GET / CDN 不能 fence）；同代 CAS 412 退避并合并到 peer same-owner renew，不把仍持有 token 的冲突写成 ownership loss。被 takeover 的旧 run fail closed。 |
+| **所有权可隔离** | `active.json` lease 带递增 `fencing_token`，30 分钟到期、活跃写入最多每 5 分钟 heartbeat；canonical、checkpoint 和 publish pointer 每次写前都续租并核对 `(run_id, fencing_token)`。续租用 origin `getOrigin()` 的同一响应 body+etag 做 ifMatch（与 live pointer #402 / #475 同类：public GET / CDN 不能 fence；#499 week hop 跨 isolate 时不能只对 `head()` 与 CDN GET 对拍后丢 etag）。同代 CAS 412 退避并合并到 peer same-owner renew，不把仍持有 token 的冲突写成 ownership loss。被 takeover 的旧 run fail closed。 |
 
 > ⚠️ **两类重算形状(实现者必读)**:shard 按 `repo_id % N` 分桶,但**不是所有重算都桶内自洽**——
 > - **桶内独立(可按桶并行分批)**:**entity/repo** —— 每个 repo 的 entity 文件只依赖它自己那一桶的数据(monthly/weekly/recent-daily/meta),天然可按桶分 step。

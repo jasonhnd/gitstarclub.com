@@ -37,6 +37,9 @@ describe("VercelBlobObjectStore", () => {
       url: "https://blob.example.com/ops/a.json",
     });
     expect((await store.get("ops/a.json"))?.etag).toBe('"g1"');
+    expect(client.get).toHaveBeenCalledWith("ops/a.json", { access: "public", token: "blob-token" });
+    expect((await store.getOrigin("ops/a.json"))?.etag).toBe('"g1"');
+    expect(client.get).toHaveBeenCalledWith("ops/a.json", { access: "private", token: "blob-token" });
     expect((await store.head("ops/a.json"))?.etag).toBe('"h1"');
     expect((await store.list({ prefix: "views/", mode: "folded" })).folders).toEqual(["views/run-a/"]);
     await store.del(["https://blob.example.com/views/a.json"]);

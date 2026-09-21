@@ -135,14 +135,44 @@ export class BlobWorkflowLeaseStore implements WorkflowLeaseStore {
   }
 
   /**
-   * Prefer a consistent (body, origin etag) pair. Public GET may be CDN-stale
-   * relative to Blob API `head()`; a mismatched pair must not be used for ifMatch
-   * (stale body + origin etag would overwrite a successor lease).
+   * Prefer a consistent (body, origin etag) pair.
+   *
+   * #475: public GET may be CDN-stale relative to Blob API `head()`. A mismatched
+   * pair must not be used for ifMatch (stale body + origin etag would overwrite
+   * a successor). That path withheld etag=null and retried.
+   *
+   * #500 / #499 week hops: each hop is a new isolate, so the 2 min write cache
+   * is empty. Public GET stays stale for the Blob CDN window; 5 short CAS
+   * retries still see etag=null and fail a still-owned token
+   * (`could not read a consistent origin ETag while renewing`). Origin
+   * `getOrigin()` is one HTTP response (body + etag) and is the fence.
    */
   async read(): Promise<WorkflowLeaseSnapshot> {
     const recent = this.writeCache.read();
     if (recent) return recent;
 
+    const origin = await this.readOriginSnapshot();
+    if (origin && (!origin.lease || origin.etag)) return origin;
+
+    return this.readCdnSnapshot();
+  }
+
+  private async readOriginSnapshot(): Promise<WorkflowLeaseSnapshot | null> {
+    const store = this.store();
+    if (!store.getOrigin) return null;
+    try {
+      const result = await store.getOrigin(ACTIVE_PATH);
+      if (!result) return { lease: null, etag: null };
+      return {
+        lease: WorkflowLease.parse(JSON.parse(result.body)),
+        etag: normalizeLeaseEtag(result.etag),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async readCdnSnapshot(): Promise<WorkflowLeaseSnapshot> {
     const result = await this.store().get(ACTIVE_PATH);
     if (!result) return { lease: null, etag: null };
     const lease = WorkflowLease.parse(JSON.parse(result.body));
@@ -258,7 +288,9 @@ function ownsRunningLease(lease: WorkflowLease | null, runId: string, fencingTok
  * CAS 412 while we still own the token is not ownership loss: CF queue retries
  * and a CDN-stale public GET can collide on the same generation. Those retries
  * back off, coalesce onto a peer same-owner renew, and throw a retryable
- * {@link WorkflowLeaseCasError} instead of failing the run closed.
+ * {@link WorkflowLeaseCasError} instead of failing the run closed. After #499
+ * week hops, read prefers origin `getOrigin()` so isolate boundaries do not
+ * exhaust the null-etag path.
  */
 export async function renewWorkflowLease(
   runId: string,
