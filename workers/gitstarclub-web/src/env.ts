@@ -37,4 +37,5 @@ export type WorkerEnv = {
   CF_PREVIEW_ORIGIN?: string;
   HOSTING_TARGET?: string;
   BLOB_BASE_URL?: string;
+  MIN_TRACKED_STARS?: string;
 };

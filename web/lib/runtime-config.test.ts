@@ -12,6 +12,7 @@ import {
   getCfPreviewOrigin,
   getCfPreviewRequireSha,
   getHostingTarget,
+  getMinTrackedStars,
   getPreviewTarget,
   isCloudflareWorkersHost,
   runWithCloudflareWorkersHostForTests,
@@ -64,6 +65,14 @@ describe("runtime config getters", () => {
 
     process.env.BLOB_BASE_URL = "https://private.example.com///";
     expect(getBlobBaseUrl()).toBe("https://private.example.com");
+  });
+
+  test("MIN_TRACKED_STARS defaults to 10000 and resolves at call time", () => {
+    expect(getMinTrackedStars({})).toBe(10_000);
+    expect(getMinTrackedStars({ MIN_TRACKED_STARS: "1000" })).toBe(1_000);
+    expect(getMinTrackedStars({ MIN_TRACKED_STARS: " 1000 " })).toBe(1_000);
+    expect(() => getMinTrackedStars({ MIN_TRACKED_STARS: "1e3" })).toThrow("positive integer");
+    expect(() => getMinTrackedStars({ MIN_TRACKED_STARS: "0" })).toThrow("positive integer");
   });
 
   test("reads Blob and GitHub tokens at call time", () => {

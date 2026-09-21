@@ -49,7 +49,7 @@ source_of_truth_for:
             → 07-export-v2(immutable canonical phase → validate → one pointer commit)
 ```
 
-**01 whitelist** — GitHub Search `stars:>=MIN_TRACKED_STARS`（当前 `web/lib/constants.ts` = 10,000）只做成员发现。先用开放上界查询当前最高 star，再以该动态上界按 star 区间**自适应分桶**绕过 Search 1000 结果上限（区间 >1000 则二分）；没有 600k 固定上限。输出 `data/whitelist.json`：`{id, node_id, full_name, owner, name, stars}`；其中 Search `stars` 是发现审计值，不是展示总数。当前规模约 5,302，每周变动。
+**01 whitelist** — GitHub Search `stars:>=MIN_TRACKED_STARS`（默认 `web/lib/constants.ts` = 10,000；运行时 `MIN_TRACKED_STARS` 可覆盖，预发 wrangler `env.pre` = 1,000）只做成员发现。先用开放上界查询当前最高 star，再以该动态上界按 star 区间**自适应分桶**绕过 Search 1000 结果上限（区间 >1000 则二分）；没有 600k 固定上限。输出 `data/whitelist.json`：`{id, node_id, full_name, owner, name, stars}`；其中 Search `stars` 是发现审计值，不是展示总数。默认 ≥10k 规模约 5.3k，每周变动。
 
 > **新晋基线（首个 v2 run）**：Workflow 的 whitelist step（`whitelist.ts:24-28`）用 `canonical/v2/whitelist/latest.json` 的 id 集作新晋 diff 基线；该指针**首 run 尚不存在时回退 bootstrap `lookup/repos.json` 的 id 集**——否则首 run 会把全部既有 repo 误判为「新晋」。之后每 run 写回 `latest.json` 作为下一 run 的基线。
 

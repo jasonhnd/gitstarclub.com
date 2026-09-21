@@ -15,6 +15,8 @@ export const PRODUCTION_CRON_ORIGIN = "https://gitstarclub.com";
 export const PREVIEW_CRON_ORIGIN = "https://pre.gitstarclub.com";
 // Repo draft stays Vercel-parity (Sunday=0). Dispatch also accepts CF 7 / SUN.
 export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]);
+export const PREVIEW_MIN_TRACKED_STARS = "1000";
+export const PRODUCTION_MIN_TRACKED_STARS = "10000";
 export const ASSERT_SCRIPT_REL = "scripts/assert-cf-ci-gates.mjs";
 
 const LEGACY_PREVIEW_WORKER_NAME = "gitstarclub-web-nonprod";
@@ -289,6 +291,18 @@ export function assertCfCiGates(sources) {
   const previewOriginVar = preview?.vars?.CF_CRON_ORIGIN;
   if (previewOriginVar !== undefined && previewOriginVar !== PREVIEW_CRON_ORIGIN) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} vars.CF_CRON_ORIGIN must be ${PREVIEW_CRON_ORIGIN} when set`);
+  }
+  const previewMinTracked = preview?.vars?.MIN_TRACKED_STARS;
+  if (previewMinTracked !== PREVIEW_MIN_TRACKED_STARS) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.MIN_TRACKED_STARS must be ${PREVIEW_MIN_TRACKED_STARS} (Jason 2026-09-21 ≥1k on pre)`,
+    );
+  }
+  const productionMinTracked = wrangler.vars?.MIN_TRACKED_STARS;
+  if (productionMinTracked !== undefined && productionMinTracked !== PRODUCTION_MIN_TRACKED_STARS) {
+    issues.push(
+      `wrangler top-level vars.MIN_TRACKED_STARS must be unset or ${PRODUCTION_MIN_TRACKED_STARS} (production stays ≥10k)`,
+    );
   }
 
   const defaultOrigin = readDefaultCfPreviewOrigin(runtimeConfigSource);
