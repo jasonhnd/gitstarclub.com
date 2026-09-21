@@ -45,6 +45,34 @@ export function vercelBlobPublicUrl(pathname: string, token: string, publicBaseU
   return `https://${parseVercelBlobStoreId(token)}.public.blob.vercel-storage.com/${path}`;
 }
 
+/** Store-owner origin hostname. Public CDN GET cannot fence lease CAS (#402 / #475 / #500). */
+export function vercelBlobOriginUrl(pathname: string, token: string): string {
+  const path = pathname.replace(/^\/+/, "");
+  return `https://${parseVercelBlobStoreId(token)}.private.blob.vercel-storage.com/${path}`;
+}
+
+export function vercelBlobReadUrl(
+  pathname: string,
+  token: string,
+  access: "public" | "private",
+  publicBaseUrl?: string,
+): string {
+  switch (access) {
+    case "public":
+      return vercelBlobPublicUrl(pathname, token, publicBaseUrl);
+    case "private": {
+      const url = new URL(vercelBlobOriginUrl(pathname, token));
+      // Same bust the official SDK uses for private + useCache:false.
+      url.searchParams.set("cache", "0");
+      return url.toString();
+    }
+    default: {
+      const _exhaustive: never = access;
+      throw new Error(`unsupported blob access: ${String(_exhaustive)}`);
+    }
+  }
+}
+
 function assertNoNodeTlsOptions(init: RequestInit): void {
   const record = init as RequestInit & { ALPNProtocols?: unknown; dispatcher?: unknown };
   if (record.ALPNProtocols !== undefined || record.dispatcher !== undefined) {
@@ -157,7 +185,7 @@ export function createVercelBlobFetchClient(options: VercelBlobFetchClientOption
 
     async get(path: string, getOptions: VercelBlobFetchTokenOptions & { access: "public" | "private" }) {
       const token = getOptions.token ?? "";
-      const url = vercelBlobPublicUrl(path, token, options.publicBaseUrl);
+      const url = vercelBlobReadUrl(path, token, getOptions.access, options.publicBaseUrl);
       const init: RequestInit & { cf?: { cacheTtl: number; cacheEverything: boolean } } = {
         method: "GET",
         headers: { authorization: `Bearer ${token}` },

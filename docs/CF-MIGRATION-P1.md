@@ -8,6 +8,7 @@ source_of_truth_for:
   - CF Workers Blob fetch write path for full cron / refresh lease
   - CF refresh preflight 1102 budget (batched shard windows)
   - CF refresh lease renew / fencing-token CAS (CDN ETag + Queue overlap)
+  - CF refresh lease origin-body renew after #499 week hops (ETag consistency)
   - CF refresh fold→recompute stall (Queue consumer successor / public /enqueue hop)
   - CF refresh fold Worker memory limit (windowed fold + successor header)
   - CF refresh fold still OOM after fold-month-0 (1-bucket + month/week plan hops)
@@ -269,6 +270,66 @@ Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
    `status=running` for the same `run_id` / token. A Queue retry of
    `whitelist` must not release that lease.
 7. Confirm production Worker `triggers.crons` is still `[]`.
+
+## CF refresh lease origin-body renew after #499 week hops
+
+Preview evidence after #499 (CRON-PRE-PR499-RETEST-001): Bearer start 200,
+OOM×0, fold `no_closed_month`, packed month/year hops, week-pack, streamed
+`recomputeRank-week-{0,8,16,24,32}` and `week-repo-carry` all `ok`. Queue
+stayed live. Then `error.json` at 03:35:02Z:
+
+`could not read a consistent origin ETag while renewing fencing token 28`
+
+`active.json` → `failed` (same `run_id`, token 28). No terminal week /
+weekOrg / rest / `recomputeRank` / `publish` / `gc`.
+
+Root cause relative to #475 / #499:
+
+1. **#475 withheld CAS when public GET and origin `head()` diverged.** That
+   stops stale CDN body + origin etag from overwriting a successor. Correct
+   safety. It is not a consistent `(body, etag)` pair.
+2. **#499 week hops are new queue isolates.** The 2 min read-your-writes
+   cache is isolate-local. After `week-32` / `week-repo-carry` the next hop
+   has an empty cache. Public GET stays on the previous lease generation for
+   the Blob CDN window (`?v=` does not bust).
+3. **Five short CAS retries (~seconds) still see `etag: null`.**
+   `WorkflowLeaseCasError` is retryable, but step retry (250 ms / 1 s) is
+   still inside that window. `markFailed` later renewed (same token still
+   owned) and released `failed`.
+
+Fix (keeps `WORKFLOW_RUNTIME=cf-queue` and the #499 week stream; does not
+roll back to HTTP):
+
+- Lease read prefers `ObjectStore.getOrigin()` — one private Blob GET
+  (`{storeId}.private.blob.vercel-storage.com` + `cache=0`) so body and etag
+  come from the same origin response.
+- Public GET + `head()` remains the fallback when `getOrigin` is absent
+  (memory / R2) or throws. Divergent CDN/origin pairs still withhold etag.
+- A successor on origin still fails closed (ownership loss). Same-owner
+  overlap still coalesces / throws retryable `WorkflowLeaseCasError`.
+
+Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
+
+### Suggested CF origin-ETag renew retest (preview Worker only)
+
+Score the [acceptance matrix](#preview-bearer-full-refresh-acceptance-matrix)
+including **L1**. The week stream from #499 stays; this retest must pass
+**week hops → weekOrg → rest → publish** (prefer `gc`).
+
+1. Keep `WORKFLOW_RUNTIME=cf-queue` and
+   `WORKFLOW_QUEUE_ENQUEUE_URL=https://pre.gitstarclub.com/enqueue`. Do **not**
+   PUT production schedules and do **not** stop Vercel cron.
+2. Wait for any active lease to expire, or use a new idempotency key.
+3. Bearer `GET https://pre.gitstarclub.com/api/workflows/refresh/start` → **200**
+   `started` with a `run_id`.
+4. Blob: week-pack + `recomputeRank-week-{0,8,…}` + `week-repo-carry` then
+   terminal `recomputeRank-week.json`, `recomputeRank-weekOrg-*` /
+   `recomputeRank-weekOrg.json`, `recomputeRank-rest.json`,
+   `recomputeRank.json`, `publish.json` (prefer `gc.json`).
+5. `active.json` stays `running` with this `fencing_token` until publish /
+   `markPublished`. Must **not** write `error.json` with
+   `could not read a consistent origin ETag while renewing`.
+6. Confirm production Worker `triggers.crons` is still `[]`.
 
 ## CF refresh fold → recompute (Queue successor)
 
@@ -572,6 +633,7 @@ secrets, stop Vercel cron, or deploy production `gitstarclub-web`.
 | R1 | recompute hops | Queue consume continues after `fold.json`. Blob has `recompute-enqueued.json` then `steps/recomputeRank-month-start.json` (and later `*-start.json`). Checkpoints: `recomputeRank-month.json`, `recomputeRank-monthOrg.json`, `recomputeRank-year.json`, `recomputeRank-yearOrg.json`, `recomputeRank-week-start.json` + `recomputeRank-week-pack.json` + `recomputeRank-week-0.json` (and later `recomputeRank-week-*` period windows), terminal `recomputeRank-week.json`, `recomputeRank-weekOrg-0.json` (and later `recomputeRank-weekOrg-*`), terminal `recomputeRank-weekOrg.json`, `recomputeRank-rest.json`, then terminal `recomputeRank.json` (runtime names, not manifest aliases `recompute` / `buildAliases`) | Missing the enqueue/start evidence, missing any hop, silent after `fold.json`, or stuck on `recomputeRank-week-start` with no `recomputeRank-week-pack` / `recomputeRank-week-*` |
 | R2 | Families | Packed window (not object `RepoWindow`) from repos+monthly or repos+weekly. Month/year hops still one product per isolate. Week hops must **not** assemble the full week packed window: pack is per-bucket persist, rank is streamed persist + 8-period windows. Later: `recomputeRepoEntities` → `recomputeOrgEntities` → `recomputeHeatmap` → `aliases` → `validate` | One isolate loading every family, one isolate holding month+year+org object windows (the #486 OOM), or one isolate assembling all `week-win` shards / every week cell (the #497 week-start OOM) |
 | R3 | publish / gc | `steps/publish.json` (`ok`) then `steps/gc.json` (`ok`, or a written best-effort `error` field — `gc` never throws). `active.json` reaches `published`, or stays `running` with a **renewing** `expires_at` while later steps write. `markPublished` is the graph tail | No `publish.json` after rest; lease `status=running` with expired `expires_at` |
+| L1 | Lease renew after week hops | Same `fencing_token` stays `running` through week-repo-carry → weekOrg → rest → publish. Origin body+etag is the fence; no `could not read a consistent origin ETag while renewing` | That error, or `active=failed` with this token after week hops while the run still owned it |
 | H1 | Pages vs health (OOM isolate) | After fold, `/` and `/rankings` 500 while `/preview/health` 200 **and** **X1** is red is the **same** fetch-origin OOM isolate (OpenNext vs Worker shell), not a published-view rewrite. After a passing run (**X1** green) those pages stay 200 | Treating that page 500 as a separate rankings / liveHistory bug while **X1** is red |
 | H2 | Pages vs health (liveHistory) | Independently, a page 500 with `live generation history exceeds 64 entries` (or a requested week/month newer than the hop) is the **#496** class. This branch already fail-softs those walks (merged from `pre`): pages fall back to base / previous / empty and stay 200. Score **H2** only when **X1** is green | Scoring a liveHistory 500 as **H1**/**X1** after a passing refresh, or requiring a published-view rewrite to explain it |
 | X1 | OOM = fail | Fetch-origin `Worker exceeded memory limit` must **not** be a stable last event | Memory-limit ×N (Queue `max_retries: 2` → three events) then quiet |
@@ -601,8 +663,8 @@ secrets, stop Vercel cron, or deploy production `gitstarclub-web`.
    shows `fold` → `recomputeRank` (month → monthOrg → year → yearOrg →
    week-pack → week period windows → weekOrg period windows → rest) →
    entities → `publish` → `gc` → `markPublished`. Score
-   **R1**, **R2**, **X1**, **X2**, **H1**, **H2**.
-5. Blob: score **F1**–**F4**, **R1**, **R3**.
+   **R1**, **R2**, **X1**, **X2**, **H1**, **H2**, **L1**.
+5. Blob: score **F1**–**F4**, **R1**, **R3**, **L1**.
 6. Confirm **P1** / **P2** on the committed wrangler file and the Vercel cron
    table (do not deploy production `gitstarclub-web` to “check”).
 7. Any **Fail** cell fails the run. Silence without `error.json` is **X2**, not

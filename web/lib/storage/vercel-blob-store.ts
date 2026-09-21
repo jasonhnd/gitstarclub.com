@@ -62,10 +62,18 @@ export class VercelBlobObjectStore implements ObjectStore {
   }
 
   async get(path: string): Promise<ObjectGetResult | null> {
-    const result = await this.client.get(path, { access: "public", token: this.token() });
+    return this.getWithAccess(path, "public");
+  }
+
+  async getOrigin(path: string): Promise<ObjectGetResult | null> {
+    return this.getWithAccess(path, "private");
+  }
+
+  private async getWithAccess(path: string, access: "public" | "private"): Promise<ObjectGetResult | null> {
+    const result = await this.client.get(path, { access, token: this.token() });
     if (!result) return null;
     if (result.statusCode !== 200 || !result.stream) {
-      throw new Error(`blob read ${path} -> ${result.statusCode}`);
+      throw new Error(`blob ${access === "private" ? "origin " : ""}read ${path} -> ${result.statusCode}`);
     }
     return {
       body: await streamText(result.stream),
