@@ -13,6 +13,7 @@ source_of_truth_for:
   - CF refresh fold still OOM after fold-month-0 (1-bucket + month/week plan hops)
   - CF refresh plan hop skip + recompute OOM after #484 (fold-decision + rank family hops)
   - CF refresh recompute still OOM after #486 (packed window + finer rank hops)
+  - CF preview page 500: H1 same-isolate OOM vs H2 liveHistory (#496)
   - CF preview Bearer full-refresh acceptance matrix (fold-decision / recompute hops / silence-is-fail)
   - dual-scheduler rollback (CF Cron off, production stays Vercel)
 ---
@@ -460,11 +461,19 @@ recompute hop onto Blob):
 2. **Queue `max_retries: 2`** matches three memory-limit events. The
    consumer never saw a JSON body or successor header from a completed
    month hop, so there is no `workflow.advance` after fold.
-3. **`/` and `/rankings` 500 are the same isolate.** Those routes are
-   OpenNext (`classifyWorkerRequest` → `next`). `/preview/health` is
-   Worker shell. A fetch-origin step OOM recycles the shared Worker
-   isolate; published `views/latest.json` is not rewritten until
-   `publish`. This is not a separate homepage data bug.
+3. **`/` and `/rankings` 500 are two causes, not one.**
+   - **H1 (this issue / #494):** Those routes are OpenNext
+     (`classifyWorkerRequest` → `next`). `/preview/health` is Worker
+     shell. A fetch-origin step OOM recycles the shared Worker isolate;
+     published `views/latest.json` is not rewritten until `publish`.
+     Score **H1** only when **X1** is red. This is not a homepage data
+     rewrite.
+   - **H2 (#496, now on this branch via `pre`):** Period-scoped
+     `liveHistory` used to throw when the chain exceeded 64 hops or the
+     requested week/month was newer than the hop. That 500s `/` and
+     `/rankings` with health 200 **without** a refresh OOM. #496
+     fail-softs those walks (base / previous / empty). Cycle / schema /
+     listed-but-missing still fail closed.
 
 Fix (keeps `WORKFLOW_RUNTIME=cf-queue`; does not roll back to HTTP):
 
@@ -518,7 +527,8 @@ secrets, stop Vercel cron, or deploy production `gitstarclub-web`.
 | R1 | recompute hops | Queue consume continues after `fold.json`. Blob has `recompute-enqueued.json` then `steps/recomputeRank-month-start.json` (and later `*-start.json`). Checkpoints: `recomputeRank-month.json`, `recomputeRank-monthOrg.json`, `recomputeRank-year.json`, `recomputeRank-yearOrg.json`, `recomputeRank-week.json`, `recomputeRank-weekOrg.json`, `recomputeRank-rest.json`, then terminal `recomputeRank.json` (runtime names, not manifest aliases `recompute` / `buildAliases`) | Missing the enqueue/start evidence, missing any hop, or silent after `fold.json` |
 | R2 | Families | Packed window (not object `RepoWindow`) from repos+monthly or repos+weekly, one product per hop (month repo+growth / month org / year repo+growth / year org / week repo / week org / rest repos). Later: `recomputeRepoEntities` → `recomputeOrgEntities` → `recomputeHeatmap` → `aliases` → `validate` | One isolate loading every family, or one isolate holding month+year+org object windows (the #486 OOM) |
 | R3 | publish / gc | `steps/publish.json` (`ok`) then `steps/gc.json` (`ok`, or a written best-effort `error` field — `gc` never throws). `active.json` reaches `published`, or stays `running` with a **renewing** `expires_at` while later steps write. `markPublished` is the graph tail | No `publish.json` after rest; lease `status=running` with expired `expires_at` |
-| H1 | Pages vs health | `/` and `/rankings` 500 while `/preview/health` 200 after fold is the **same** fetch-origin OOM isolate (OpenNext vs Worker shell), not a published-view rewrite. After a passing run both pages stay 200 | Treating page 500 as a separate rankings bug while X1 is red |
+| H1 | Pages vs health (OOM isolate) | After fold, `/` and `/rankings` 500 while `/preview/health` 200 **and** **X1** is red is the **same** fetch-origin OOM isolate (OpenNext vs Worker shell), not a published-view rewrite. After a passing run (**X1** green) those pages stay 200 | Treating that page 500 as a separate rankings / liveHistory bug while **X1** is red |
+| H2 | Pages vs health (liveHistory) | Independently, a page 500 with `live generation history exceeds 64 entries` (or a requested week/month newer than the hop) is the **#496** class. This branch already fail-softs those walks (merged from `pre`): pages fall back to base / previous / empty and stay 200. Score **H2** only when **X1** is green | Scoring a liveHistory 500 as **H1**/**X1** after a passing refresh, or requiring a published-view rewrite to explain it |
 | X1 | OOM = fail | Fetch-origin `Worker exceeded memory limit` must **not** be a stable last event | Memory-limit ×N (Queue `max_retries: 2` → three events) then quiet |
 | X2 | Queue silence = fail | Queue origin keeps consuming until `markPublished` or a written `ops/workflows/<run_id>/error.json` / `active.json` `failed` | Queue silent after fold or a recompute hop; no `error.json`; lease expires. **Do not** treat that as “still running” |
 | P1 | Production crons | Top-level `triggers.crons` is `[]`. Preview `env.pre` may list three **draft** expressions; that is not platform enablement | Any production cron string, or a Cloudflare schedule on Worker `gitstarclub-web` |
@@ -545,7 +555,7 @@ secrets, stop Vercel cron, or deploy production `gitstarclub-web`.
 4. Workers Observability: `queue` consume after `fold.json`; `workflow.advance`
    shows `fold` → `recomputeRank` (month → monthOrg → year → yearOrg → week →
    weekOrg → rest) → entities → `publish` → `gc` → `markPublished`. Score
-   **R1**, **R2**, **X1**, **X2**, **H1**.
+   **R1**, **R2**, **X1**, **X2**, **H1**, **H2**.
 5. Blob: score **F1**–**F4**, **R1**, **R3**.
 6. Confirm **P1** / **P2** on the committed wrangler file and the Vercel cron
    table (do not deploy production `gitstarclub-web` to “check”).
@@ -570,8 +580,10 @@ the matrix is pass/fail.
    monthOrg → year → yearOrg → week → weekOrg → rest) →
    `recomputeRepoEntities` → … → `publish` → `gc` → `markPublished`.
    Fetch-origin `Worker exceeded memory limit` must not be a stable last
-   event. `/` and `/rankings` 500 with health 200 after fold scores **H1**
-   / **X1**, not a separate page bug.
+   event. `/` and `/rankings` 500 with health 200 after fold **while X1
+   is red** scores **H1** / **X1**, not a rankings rewrite. If **X1** is
+   green and those pages still 500, score **H2** (`liveHistory` >64 /
+   newer-than-head) — already fail-soft on this branch via #496.
 5. Blob: `ops/workflows/<run_id>/fold-decision.json` is always present.
    If `reason=month_plan`, also expect `fold-month-plan.json` and more than
    one `steps/fold-month-*`, then `fold-week-plan.json` / `fold-week-*`.
