@@ -36,7 +36,9 @@ export interface ViewOpts {
    * the live overlay while authoritative reads fail closed. */
   live?: boolean;
   /** For immutable period-scoped rank/heatmap views only: after a current-generation
-   * 404, walk validated manifest previous_generation links with a bounded depth. */
+   * 404, walk validated manifest previous_generation links with a bounded depth.
+   * A hop bound or a request newer than the hop's declared week/month returns
+   * null so published pages can use base / empty instead of 500. */
   liveHistory?: boolean;
   /** Pre-generation flat path. Snapshot reads use it only when live/latest.json
    * does not exist; liveHistory reads use it after a valid chain is exhausted. */
