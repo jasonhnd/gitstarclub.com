@@ -22,6 +22,7 @@ const ignoredDirectories = new Set([
 export const historicalDocumentAllowlist = new Map([
   ["docs/CHANGELOG.md", "release entries are immutable historical records"],
   ["docs/analysis/DATA-CORRECTNESS-21.md", "closed point-in-time analysis"],
+  ["docs/analysis/RECONCILE-MAIN-PRE-2026-07-19.md", "2026-07-19 main/pre reconciliation snapshot, not current required-check policy"],
   ["docs/perf/CWV-25.md", "frozen performance baseline"],
 ]);
 
@@ -244,13 +245,28 @@ export function checkMaintainedFacts(root) {
   if (!ops.includes("`web/.env.local`")) issues.push("docs/OPS.md: local env location must be web/.env.local");
   if (/本地用 `\.env`/.test(ops)) issues.push("docs/OPS.md: root .env is not loaded by the web scripts");
 
-  const activeDocs = walk(resolve(root, "docs"))
+  const workflow = readFileSync(resolve(root, "docs/WORKFLOW.md"), "utf8");
+  if (!workflow.includes("verify / static") || !workflow.includes("verify / production-build")) {
+    issues.push("docs/WORKFLOW.md: merge gates must state GitHub required checks are static + production-build");
+  }
+  if (!/preview-e2e/.test(workflow) || !/optional/.test(workflow)) {
+    issues.push("docs/WORKFLOW.md: merge gates must state preview-e2e / product-gates are optional");
+  }
+
+  const currentStateDocs = walk(resolve(root, "docs"))
     .filter((file) => file.endsWith(".md"))
     .filter((file) => !historicalDocumentAllowlist.has(toRepoPath(file, root)));
-  for (const file of activeDocs) {
+  for (const file of currentStateDocs) {
+    const path = toRepoPath(file, root);
     const content = readFileSync(file, "utf8");
+    if (/Preview discovery for Vercel \(required gates\)/.test(content)) {
+      issues.push(`${path}: Vercel preview discovery is optional / skippable, not a required gate`);
+    }
+    if (/已提交并强制/.test(content) && /preview-e2e|axe serious/.test(content)) {
+      issues.push(`${path}: preview-e2e suites are soft / optional, not enforced merge gates`);
+    }
     if (content.includes("web/middleware.ts")) {
-      issues.push(`${toRepoPath(file, root)}: stale middleware path; the active entrypoint is web/proxy.ts`);
+      issues.push(`${path}: stale middleware path; the active entrypoint is web/proxy.ts`);
     }
   }
 

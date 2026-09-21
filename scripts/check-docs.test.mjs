@@ -22,6 +22,7 @@ describe("documentation consistency gate", () => {
   test("historical path exemptions are explicit and reasoned", () => {
     assert.equal(historicalDocumentAllowlist.has("docs/CHANGELOG.md"), true);
     assert.equal(historicalDocumentAllowlist.has("docs/analysis/DATA-CORRECTNESS-21.md"), true);
+    assert.equal(historicalDocumentAllowlist.has("docs/analysis/RECONCILE-MAIN-PRE-2026-07-19.md"), true);
     for (const reason of historicalDocumentAllowlist.values()) {
       assert.ok(reason.length > 10);
     }

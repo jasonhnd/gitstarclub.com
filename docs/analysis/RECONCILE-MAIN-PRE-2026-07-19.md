@@ -1,12 +1,18 @@
 ---
 owner: release engineering
-status: active
-last_reviewed: 2026-07-19
+status: historical
+last_reviewed: 2026-09-21
 source_of_truth_for:
-  - main/pre reconciliation inventory and conflict decisions for release-line recovery
+  - 2026-07-19 main/pre reconciliation inventory and conflict decisions
 ---
 
 # Inventory: main ↔ pre reconciliation (2026-07-19)
+
+> **Current policy (after #481 / #489):** GitHub required merge gates are only
+> `static` + `production-build`. `preview-e2e` / `product-gates` are optional
+> and skip when there is no Vercel Preview. The governance table below is the
+> **2026-07-19 snapshot** and is not current required-check policy. See
+> [TESTING.md](../TESTING.md).
 
 ## SHAs (after fetch)
 
