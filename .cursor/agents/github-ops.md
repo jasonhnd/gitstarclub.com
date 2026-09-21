@@ -1,6 +1,6 @@
 ---
 name: github-ops
-description: 跨仓盘点、卫生、只读状态速览；不写业务代码。删仓须确认。
+description: 当需要跨仓盘点、仓库卫生或只读查看 Issue/PR/分支/权限状态时使用。不用于写业务代码、擅自删仓或改权限。
 model: inherit
 ---
 
