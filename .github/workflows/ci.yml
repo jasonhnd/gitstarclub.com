@@ -162,7 +162,7 @@ jobs:
             echo "- Write-capable credentials: none"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Soft gate: Chromium against an exact-SHA Vercel Preview when one exists.
+  # Optional / skippable: Chromium against an exact-SHA Vercel Preview when one exists.
   # Ignored Build / no Preview URL → resolve exits 0 with skipped=true (job stays green).
   # Not a GitHub required check. Required merge gates are static + production-build.
   # Do not add cf-preview / cf-workers-host to required checks.
@@ -254,7 +254,7 @@ jobs:
             web/test-results/
             web/release-metadata.json
 
-  # Product-level live gates (#286). Fail closed when a Vercel Preview exists.
+  # Optional / skippable product-level live gates (#286). Fail closed when a Vercel Preview exists.
   # Same skip as preview-e2e: Ignored Build / no Preview → job skipped (not red).
   # Not a GitHub required check. Required merge gates are static + production-build.
   product-gates:
