@@ -1,7 +1,7 @@
 ---
 owner: codebase architecture
 status: active
-last_reviewed: 2026-09-18
+last_reviewed: 2026-09-21
 source_of_truth_for:
   - code map
   - data layer ownership
@@ -65,6 +65,7 @@ GitHub APIs
 | `web/lib/workers-host/` | Worker path classification, smoke origin, step self-fetch, Queue successor after fold (body + `x-gitstarclub-queue-successor`; fold writes `fold-decision.json` then 1-bucket windows + compact plans when there is closed-period work; recomputeRank is month/week/rest hops) |
 | `web/open-next.config.ts` | OpenNext Cloudflare adapter (static-assets incremental cache; preview only) |
 | `workers/gitstarclub-web/` | CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (`env.pre`) |
+| `scripts/assert-cf-ci-gates.mjs` | CF CI gate: `pre` → `gitstarclub-web-pre`; no live deploy of `gitstarclub-web`; production `triggers.crons` stays `[]` |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
 | `docs/` | Product, architecture, data, operations, frontend, SEO, testing, and development docs |
 
