@@ -6,7 +6,9 @@ import { type Model, type Period, type RepoMeta } from "./model";
 import { GROWTH_FLOOR_STARS } from "@/lib/constants";
 import type { OrgWindow, RepoWindow, Window } from "./windows";
 
-const TOP_N = 100;
+/** Top-N per period. Packed-window hops must use the same cap. */
+export const RANK_TOP_N = 100;
+const TOP_N = RANK_TOP_N;
 
 export interface RankView {
   meta: { window: string; period: string; dim: string; metric: string; generated_at: string };

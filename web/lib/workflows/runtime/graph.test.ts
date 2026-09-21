@@ -136,18 +136,27 @@ describe("refresh step graph", () => {
     const month = nextRefreshJob(full("recomputeRank", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 }), {
       name: "recomputeRank",
       files: 10,
-      nextRecomputePhase: "week",
+      nextRecomputePhase: "monthOrg",
     });
     expect(month).toMatchObject({
       name: "recomputeRank",
-      cursor: { recomputePhase: "week", fencingToken: 22 },
+      cursor: { recomputePhase: "monthOrg", fencingToken: 22 },
     });
 
-    const rest = nextRefreshJob(month!, {
+    const year = nextRefreshJob(month!, {
       name: "recomputeRank",
       files: 4,
-      nextRecomputePhase: "rest",
+      nextRecomputePhase: "year",
     });
+    expect(year).toMatchObject({
+      name: "recomputeRank",
+      cursor: { recomputePhase: "year", fencingToken: 22 },
+    });
+
+    const rest = nextRefreshJob(
+      full("recomputeRank", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22, recomputePhase: "weekOrg" }),
+      { name: "recomputeRank", files: 3, nextRecomputePhase: "rest" },
+    );
     expect(rest).toMatchObject({
       name: "recomputeRank",
       cursor: { recomputePhase: "rest", fencingToken: 22 },

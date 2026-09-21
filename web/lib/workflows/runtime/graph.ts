@@ -1,14 +1,15 @@
 import { REPO_BUCKETS } from "../buckets";
-import type {
-  CanonicalPreflightCursorAcc,
-  FixtureRefreshStepName,
-  FoldCursorAcc,
-  FoldPhase,
-  FullRefreshStepName,
-  RecomputePhase,
-  RefreshCursor,
-  RefreshStepJob,
-  RefreshStepResult,
+import {
+  RECOMPUTE_PHASE_SET,
+  type CanonicalPreflightCursorAcc,
+  type FixtureRefreshStepName,
+  type FoldCursorAcc,
+  type FoldPhase,
+  type FullRefreshStepName,
+  type RecomputePhase,
+  type RefreshCursor,
+  type RefreshStepJob,
+  type RefreshStepResult,
 } from "./types";
 
 function asPreflightAcc(value: unknown): CanonicalPreflightCursorAcc | undefined {
@@ -54,7 +55,7 @@ function asFoldPhase(value: unknown): FoldPhase | undefined {
 }
 
 function asRecomputePhase(value: unknown): RecomputePhase | undefined {
-  if (value === "month" || value === "week" || value === "rest") return value;
+  if (typeof value === "string" && RECOMPUTE_PHASE_SET.has(value)) return value as RecomputePhase;
   return undefined;
 }
 

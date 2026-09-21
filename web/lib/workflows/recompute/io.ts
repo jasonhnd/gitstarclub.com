@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   CategoryAssignmentsDocument,
   CategoryAssignmentsShard,
@@ -5,6 +6,7 @@ import {
   RepoEntity,
 } from "@/lib/contracts";
 import { mapLimit } from "@/lib/data/map-limit";
+import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { assertPublishedViewJsonSize } from "@/lib/view-size";
@@ -19,14 +21,27 @@ import {
 import { getWriteObjectStore } from "@/lib/storage";
 import { canonicalShardReadConcurrency } from "@/lib/workflows/canonical-validation";
 import { REPO_BUCKETS } from "../buckets";
-import { assembleModel, normalizeRepoMeta, type DailySeries, type Model, type RepoMeta, type Series } from "./model";
-import { workflowHeartbeat } from "@/lib/workflows/owned-write";
+import { assembleModel, normalizeRepoMeta, seamPeriods, type DailySeries, type Model, type OwnerType, type RepoMeta, type Series } from "./model";
+import { putOwnedView, workflowHeartbeat } from "@/lib/workflows/owned-write";
 import type { WorkflowOwnership } from "@/lib/workflows/lease";
+import {
+  assemblePackedWindow,
+  coercePackedWindowBucket,
+  coercePackedWindowMeta,
+  createPackedWindowBuilder,
+  packedBucketFile,
+  packedMetaFile,
+  packedWindowBucketPath,
+  packedWindowMetaPath,
+  type PackedRepoWindow,
+  type PackedWindowKind,
+} from "./packed-window";
 
 // Blob I/O for the recompute steps: load the canonical/v2 model and write a versioned
 // view set (views/<run_id>/**). Reads bust Blob's short cache with the run id so a step
 // sees the canonical shards written earlier in the same run. See VERCEL-DATA-OPERATIONS §3/§7.
 
+const UnknownJson = z.unknown();
 const WRITE_PER_SEC = 60; // Blob write-rate budget (OPS §Blob)
 const WRITE_CONCURRENCY = 12;
 /** Tighter write pool on OpenNext — each Blob PUT also does an ASSETS cache GET. */
@@ -57,6 +72,184 @@ export function canonicalModelLoadPlan(env?: Parameters<typeof isCloudflareWorke
 
 export function wantedCanonicalFamilies(opts?: LoadCanonicalModelOptions): Set<CanonicalModelFamily> {
   return new Set(opts?.families ?? CANONICAL_MODEL_FAMILIES);
+}
+
+export type LoadedPackedWindow = {
+  packed: PackedRepoWindow;
+  seamDate: string;
+  foldedThrough: { month: string; week: string };
+  kind: PackedWindowKind;
+  fromPersist: boolean;
+};
+
+export type LoadPackedWindowOptions = {
+  owner?: WorkflowOwnership;
+  persist?: boolean;
+};
+
+/** Rank hops only need identity + d + milestones. Drop description/languages/topics. */
+export function slimRankRepoMeta(id: number, value: unknown): RepoMeta {
+  if (!value || typeof value !== "object") {
+    throw new Error(`canonical/v2/repos: repo ${id} is not an object`);
+  }
+  const raw = value as Record<string, unknown>;
+  const ownerType: OwnerType = raw.owner_type === "Organization" ? "Organization" : "User";
+  const owner = String(raw.owner ?? "");
+  const name = String(raw.name ?? `r${id}`);
+  return normalizeRepoMeta(id, {
+    id,
+    owner,
+    owner_type: ownerType,
+    name,
+    full_name: String(raw.full_name ?? `${owner || "unknown"}/${name}`),
+    current_stars: typeof raw.current_stars === "number" ? raw.current_stars : Number(raw.current_stars ?? 0),
+    active: raw.active === false ? false : true,
+    d: raw.d as number,
+    created_at: typeof raw.created_at === "string" ? raw.created_at : undefined,
+    crossed_10k: raw.crossed_10k === null || typeof raw.crossed_10k === "string" ? raw.crossed_10k : undefined,
+    crossed_50k: raw.crossed_50k === null || typeof raw.crossed_50k === "string" ? raw.crossed_50k : undefined,
+    crossed_100k: raw.crossed_100k === null || typeof raw.crossed_100k === "string" ? raw.crossed_100k : undefined,
+    tracked_since: raw.tracked_since === null || typeof raw.tracked_since === "string" ? raw.tracked_since : undefined,
+  });
+}
+
+function asSeries(value: unknown): Series {
+  return Array.isArray(value) ? (value as Series) : [];
+}
+
+export async function persistPackedWindow(
+  runId: string,
+  kind: PackedWindowKind,
+  seamPeriod: string,
+  packed: PackedRepoWindow,
+  owner: WorkflowOwnership,
+): Promise<void> {
+  const heartbeat = workflowHeartbeat(owner);
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    await heartbeat();
+    await putOwnedView(owner, packedWindowBucketPath(runId, kind, bucket), packedBucketFile(packed, bucket, REPO_BUCKETS));
+    clearViewParseMemo();
+  }
+  await heartbeat();
+  await putOwnedView(owner, packedWindowMetaPath(runId, kind), packedMetaFile(kind, seamPeriod, packed, REPO_BUCKETS));
+}
+
+export async function readPersistedPackedWindow(
+  bust: string,
+  kind: PackedWindowKind,
+): Promise<PackedRepoWindow | null> {
+  const rawMeta = await readAuthoritativeView(packedWindowMetaPath(bust, kind), UnknownJson, {
+    bust,
+    skipSchemaParse: true,
+  });
+  const meta = coercePackedWindowMeta(rawMeta);
+  if (!meta || meta.kind !== kind || meta.buckets !== REPO_BUCKETS) return null;
+  const shards = [];
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    const raw = await readAuthoritativeView(packedWindowBucketPath(bust, kind, bucket), UnknownJson, {
+      bust,
+      skipSchemaParse: true,
+    });
+    const shard = coercePackedWindowBucket(raw);
+    if (!shard) return null;
+    shards.push(shard);
+    clearViewParseMemo();
+  }
+  return assemblePackedWindow(meta, shards);
+}
+
+async function buildPackedWindowFromShards(
+  bust: string,
+  kind: PackedWindowKind,
+  seamPeriod: string,
+  owner?: WorkflowOwnership,
+): Promise<PackedRepoWindow> {
+  const skipSchemaParse = isCloudflareWorkersHost();
+  const heartbeat = owner ? workflowHeartbeat(owner) : async () => {};
+  const builder = createPackedWindowBuilder(seamPeriod);
+  const seriesKind = kind === "week" ? "repo-weekly" : "repo-monthly";
+  const seriesSchema = kind === "week" ? RepoWeeklyShard : RepoMonthlyShard;
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    await heartbeat();
+    const reposPath = `canonical/v2/repos/${bucket}.json`;
+    const seriesPath = `canonical/v2/${seriesKind}/${bucket}.json`;
+    const reposShard = await readAuthoritativeView(reposPath, ReposShard, { bust, skipSchemaParse });
+    if (reposShard === null) throw new Error(`${reposPath}: missing required shard`);
+    const seriesShard = await readAuthoritativeView(seriesPath, seriesSchema, { bust, skipSchemaParse });
+    if (seriesShard === null) throw new Error(`${seriesPath}: missing required shard`);
+    const slim = new Map<number, RepoMeta>();
+    for (const [key, value] of Object.entries(reposShard)) {
+      const id = Number(key);
+      slim.set(id, slimRankRepoMeta(id, value));
+    }
+    for (const [key, value] of Object.entries(seriesShard)) {
+      const id = Number(key);
+      const meta = slim.get(id);
+      if (!meta) {
+        throw new Error(`${seriesPath}: repo ${id} missing from ${reposPath}`);
+      }
+      builder.absorb(id, meta.owner, meta.active !== false, meta.d, asSeries(value));
+    }
+    slim.clear();
+    clearViewParseMemo();
+  }
+  return builder.finalize();
+}
+
+/** Stream one repo-bucket pair at a time into a packed window. Prefer a completed persist. */
+export async function loadPackedRepoWindow(
+  bust: string,
+  kind: PackedWindowKind,
+  opts: LoadPackedWindowOptions = {},
+): Promise<LoadedPackedWindow> {
+  const meta = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust });
+  const seamPeriod = seamPeriods(meta.seam_date)[kind];
+  const persisted = await readPersistedPackedWindow(bust, kind);
+  if (persisted) {
+    return {
+      packed: persisted,
+      seamDate: meta.seam_date,
+      foldedThrough: meta.folded_through,
+      kind,
+      fromPersist: true,
+    };
+  }
+  const packed = await buildPackedWindowFromShards(bust, kind, seamPeriod, opts.owner);
+  if (opts.persist && opts.owner) {
+    await persistPackedWindow(bust, kind, seamPeriod, packed, opts.owner);
+  }
+  return {
+    packed,
+    seamDate: meta.seam_date,
+    foldedThrough: meta.folded_through,
+    kind,
+    fromPersist: false,
+  };
+}
+
+export async function loadFullReposBucket(bust: string, bucket: number): Promise<Map<number, RepoMeta>> {
+  const skipSchemaParse = isCloudflareWorkersHost();
+  const path = `canonical/v2/repos/${bucket}.json`;
+  const shard = await readAuthoritativeView(path, ReposShard, { bust, skipSchemaParse });
+  if (shard === null) throw new Error(`${path}: missing required shard`);
+  const out = new Map<number, RepoMeta>();
+  for (const [key, value] of Object.entries(shard)) {
+    const id = Number(key);
+    out.set(id, normalizeRepoMeta(id, value as unknown as RepoMeta));
+  }
+  return out;
+}
+
+export async function loadRecentDailyBucket(bust: string, bucket: number): Promise<Map<number, DailySeries>> {
+  const skipSchemaParse = isCloudflareWorkersHost();
+  const path = `canonical/v2/repo-recent-daily/${bucket}.json`;
+  const shard = await readAuthoritativeView(path, RepoRecentDailyShard, { bust, skipSchemaParse });
+  if (shard === null) throw new Error(`${path}: missing required shard`);
+  const out = new Map<number, DailySeries>();
+  for (const [key, value] of Object.entries(shard)) {
+    out.set(Number(key), (value as DailySeries) ?? []);
+  }
+  return out;
 }
 
 async function absorbIdShards<T extends Record<string, unknown>>(
@@ -272,6 +465,17 @@ export async function writeVersion(runId: string, views: Map<string, unknown>, o
   }
   await Promise.all(Array.from({ length: canonicalModelLoadPlan().writeConcurrency }, worker));
   return items.length;
+}
+
+export async function writeVersionAndClear(
+  runId: string,
+  views: Map<string, unknown>,
+  owner?: WorkflowOwnership,
+): Promise<number> {
+  if (views.size === 0) return 0;
+  const files = await writeVersion(runId, views, owner);
+  views.clear();
+  return files;
 }
 
 function assertGeneratedView(rel: string, obj: unknown): void {
