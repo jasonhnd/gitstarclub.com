@@ -9,7 +9,11 @@ import {
   queueAdvanceFromConsumer,
 } from "@/lib/workers-host/queue-advance";
 import { foldStepCheckpointName, hasNextFoldWindow } from "@/lib/workflows/steps/fold";
-import { hasNextRecomputeWindow, recomputeStepCheckpointName } from "@/lib/workflows/steps/recompute-rank";
+import {
+  hasNextRecomputeWindow,
+  recomputeStepCheckpointName,
+  writeRecomputeEnqueued,
+} from "@/lib/workflows/steps/recompute-rank";
 import { nextRefreshJob } from "./graph";
 import { withStepRetry, type RetryPolicy } from "./retry";
 import { resolveWorkflowRuntime, type ResolveWorkflowRuntimeOptions } from "./resolve";
@@ -47,6 +51,7 @@ async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult)
       `ops/workflows/${job.runId}/steps/fold.json`,
       WorkflowStepCheckpoint.parse({ ...checkpoint, step: "fold" }),
     );
+    await writeRecomputeEnqueued(job.runId);
   }
   if (job.graph === "full" && job.name === "recomputeRank" && !hasNextRecomputeWindow(result)) {
     await putView(

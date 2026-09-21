@@ -100,6 +100,16 @@ describe("runRefreshStepRoute", () => {
         runId: "refresh-1",
         name: "recomputeRank",
         attempt: 0,
+        cursor: { recomputePhase: "monthOrg" },
+      }),
+    ).toBe("recomputeRank-monthOrg");
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "recomputeRank",
+        attempt: 0,
         cursor: { recomputePhase: "week" },
       }),
     ).toBe("recomputeRank-week");

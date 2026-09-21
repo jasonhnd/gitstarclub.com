@@ -27,7 +27,7 @@ mock.module("@/lib/data/source", () => ({
   }),
 }));
 
-const { loadCanonicalModel } = await import("./io");
+const { loadCanonicalModel, loadPackedRepoWindow, slimRankRepoMeta } = await import("./io");
 
 describe("loadCanonicalModel CF budget", () => {
   test("does not fan out all 128 canonical shards at once on the CF host", async () => {
@@ -49,5 +49,44 @@ describe("loadCanonicalModel CF budget", () => {
     expect(reads.some((path) => path.includes("repo-recent-daily/"))).toBe(false);
     expect(reads.some((path) => path.includes("repo-monthly/"))).toBe(true);
     expect(reads.some((path) => path.includes("repos/"))).toBe(true);
+  });
+
+  test("packed month load pairs one repo shard with one monthly shard and skips weekly", async () => {
+    inflight = 0;
+    maxInflight = 0;
+    reads.length = 0;
+    const loaded = await runWithCloudflareWorkersHostForTests(true, () => loadPackedRepoWindow("refresh-cf-recompute", "month"));
+    expect(loaded.kind).toBe("month");
+    expect(loaded.fromPersist).toBe(false);
+    expect(maxInflight).toBe(1);
+    expect(reads.some((path) => path.includes("repo-weekly/"))).toBe(false);
+    expect(reads.some((path) => path.includes("repo-recent-daily/"))).toBe(false);
+    expect(reads.some((path) => path.includes("repo-monthly/"))).toBe(true);
+    expect(reads.some((path) => path.includes("repos/"))).toBe(true);
+  });
+});
+
+describe("slimRankRepoMeta", () => {
+  test("keeps rank fields and drops description/languages/topics", () => {
+    const slim = slimRankRepoMeta(7, {
+      id: 7,
+      owner: "acme",
+      owner_type: "Organization",
+      name: "cli",
+      full_name: "acme/cli",
+      description: "a very long readme that must not stay in a rank hop",
+      language: "Go",
+      languages: [{ name: "Go", size: 100 }],
+      topics: ["cli", "tools"],
+      current_stars: 12000,
+      d: 1,
+      active: true,
+    });
+    expect(slim.owner).toBe("acme");
+    expect(slim.d).toBe(1);
+    expect(slim.current_stars).toBe(12000);
+    expect(slim.description).toBeUndefined();
+    expect(slim.languages).toBeUndefined();
+    expect(slim.topics).toBeUndefined();
   });
 });

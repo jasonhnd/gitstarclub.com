@@ -69,7 +69,7 @@ describe("CF Queue consumeJob successor", () => {
     ]);
   });
 
-  test("enqueues the week recompute hop after the month rank window", async () => {
+  test("enqueues the monthOrg recompute hop after the month rank window", async () => {
     const queued: RefreshJob[] = [];
     const env: WorkerEnv = {
       JOBS: { send: async (job) => { queued.push(job); } },
@@ -82,7 +82,7 @@ describe("CF Queue consumeJob successor", () => {
             ok: true,
             runId: "refresh-2026-09-20T09-39-26-949Z",
             step: "recomputeRank",
-            result: { name: "recomputeRank", files: 12, nextRecomputePhase: "week" },
+            result: { name: "recomputeRank", files: 12, nextRecomputePhase: "monthOrg" },
           });
         },
       },
@@ -95,7 +95,7 @@ describe("CF Queue consumeJob successor", () => {
       attempt: 0,
       cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
     });
-    expect(queued).toMatchObject([{ name: "recomputeRank", cursor: { recomputePhase: "week" } }]);
+    expect(queued).toMatchObject([{ name: "recomputeRank", cursor: { recomputePhase: "monthOrg" } }]);
   });
 
   test("enqueues the next fold window when fold is not finished", async () => {
