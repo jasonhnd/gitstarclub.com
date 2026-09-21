@@ -97,7 +97,7 @@ See [docs/OPS.md](docs/OPS.md) for details and the manual-trigger runbook.
 | `main` | `gitstarclub-web` | Production Worker only. GitHub Actions must not `wrangler deploy` this name except `--dry-run`. Production `gitstarclub-web.worldgo.workers.dev` is closed. |
 | `pre` | `gitstarclub-web-pre` | Preview Worker (`wrangler` env `pre`). Optional CI probe / dry-run only. |
 
-`CF_PREVIEW_ORIGIN` defaults to `https://gitstarclub-web-pre.worldgo.workers.dev` (equivalent documented preview entry: `https://pre.gitstarclub.com`). Optional `verify / cf-preview` and `verify / cf-workers-host` jobs are **not** required checks. See [docs/OPS.md](docs/OPS.md).
+`CF_PREVIEW_ORIGIN` defaults to `https://gitstarclub-web-pre.worldgo.workers.dev` (equivalent documented preview entry: `https://pre.gitstarclub.com`). Production `triggers.crons` must stay `[]`. `.delivery.yml` and `scripts/assert-cf-ci-gates.mjs` use these Worker names. Optional `verify / cf-preview` and `verify / cf-workers-host` jobs are **not** required checks. See [docs/OPS.md](docs/OPS.md).
 
 ## Running locally
 

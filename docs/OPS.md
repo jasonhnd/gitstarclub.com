@@ -94,7 +94,10 @@ probe/dry-run at the closed production workers.dev host.
 
 Optional `verify / cf-preview` and `verify / cf-workers-host` run only on `pre`
 (or PRs targeting `pre`). **Do not** add those job names to `.delivery.yml` or
-the GitHub required-check ruleset.
+the GitHub required-check ruleset. `.delivery.yml` and `scripts/assert-cf-ci-gates.mjs`
+use the same names: `main` → `gitstarclub-web` (production `triggers.crons` must
+stay `[]`); `pre` → `gitstarclub-web-pre`. GHA and repo scripts must not
+live-deploy `gitstarclub-web` or PUT production schedules.
 
 **域名命名约定**：
 
@@ -233,7 +236,7 @@ an explicit recovery procedure.
 - 启动时校验必需密钥存在，缺失则 fail-fast（不静默吞）。
 - Cloudflare R2 P0 适配（双读开关、非生产写守卫、回滚）见 [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md)。默认仍读/写 Vercel Blob；**不切 DNS**。
 - Cloudflare migrate P1 编排（去掉 Workflow SDK、非生产 CF Cron/Queue、双调度回滚）见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)。**生产周更仍是 Vercel cron**，直至 Jason 批切流。
-- Cloudflare migrate P2（ISR 失效端口、可插 Preview、Access 只护 `gitstarclub-web.worldgo.workers.dev`、可选 `cf-preview` job）见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md)。**生产 Preview / product-gates / `revalidatePath` 仍是 Vercel**。勿切 DNS，勿把 Access 绑到 apex/www。
+- Cloudflare migrate P2（ISR 失效端口、可插 Preview、Access 只护 `gitstarclub-web-pre.worldgo.workers.dev`、可选 `cf-preview` job）见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md)。**生产 Preview / product-gates / `revalidatePath` 仍是 Vercel**。勿切 DNS，勿把 Access 绑到 apex/www。
 - Cloudflare migrate P3（OpenNext 把 Next 挂到 `gitstarclub-web` 预览、可选 `cf-workers-host` dry-run）见 [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md)。**生产 apex/www 仍是 Vercel**。勿切 DNS，勿把 Worker 当唯一入口。
 
 ## Vercel Blob 布局
