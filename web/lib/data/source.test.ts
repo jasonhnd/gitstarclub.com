@@ -51,16 +51,21 @@ function livePointer(generation: string, lease: unknown = null) {
   };
 }
 
-function liveManifest(generation: string, previousGeneration: string | null, files: string[]) {
+function liveManifest(
+  generation: string,
+  previousGeneration: string | null,
+  files: string[],
+  periods?: { week?: string; month?: string; day?: string },
+) {
   return {
     schema_ver: 1,
     generation,
     run_id: generation,
     idempotency_key: "daily:2026-07-17",
     job: "daily",
-    day: "2026-07-17",
-    month: "2026-07",
-    week: "2026-W29",
+    day: periods?.day ?? "2026-07-17",
+    month: periods?.month ?? "2026-07",
+    week: periods?.week ?? "2026-W29",
     created_at: "2026-07-17T03:00:00.000Z",
     previous_generation: previousGeneration,
     files,
@@ -638,11 +643,13 @@ describe("readView — atomic live generation resolution", () => {
       "/live/latest.json": { status: 200, json: livePointer("history-head") },
       "/live/generations/history-head/manifest.json": {
         status: 200,
-        json: liveManifest("history-head", "history-previous", ["current_month.json"]),
+        json: liveManifest("history-head", "history-previous", ["current_month.json"], {
+          week: "2026-W31",
+        }),
       },
       "/live/generations/history-previous/manifest.json": {
         status: 200,
-        json: liveManifest("history-previous", null, [path]),
+        json: liveManifest("history-previous", null, [path], { week: "2026-W30" }),
       },
       [`/live/generations/history-previous/${path}`]: {
         status: 200,
@@ -659,6 +666,67 @@ describe("readView — atomic live generation resolution", () => {
       }),
     ).toEqual({ ok: true, tag: "previous-week" });
     expect(fetchCalls.some((url) => url.includes(`/live/${path}`))).toBe(false);
+  });
+
+  test("period-scoped published reads truncate after 64 hops instead of 500", async () => {
+    const path = "rank/week/2026-W29/repo/flow.json";
+    const manifests: Record<string, FakeRoute> = {};
+    for (let index = 0; index < 65; index++) {
+      const generation = `history-long-${index}`;
+      manifests[`/live/generations/${generation}/manifest.json`] = {
+        status: 200,
+        json: liveManifest(generation, `history-long-${index + 1}`, ["current_month.json"]),
+      };
+    }
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("history-long-0") },
+      ...manifests,
+      [`/live/${path}`]: { status: 200, json: { ok: true, tag: "unsafe-legacy" } },
+    };
+
+    expect(
+      await readView(path, Doc, {
+        live: true,
+        liveHistory: true,
+        legacyPath: `live/${path}`,
+      }),
+    ).toBeNull();
+    expect(fetchCalls.filter((url) => url.includes("/manifest.json"))).toHaveLength(64);
+    expect(fetchCalls.some((url) => url.includes("history-long-64"))).toBe(false);
+    expect(fetchCalls.some((url) => url.includes(`/live/${path}`))).toBe(false);
+  });
+
+  test("period-scoped published reads omit a week newer than the head generation", async () => {
+    const path = "rank/week/2026-W39/repo/flow.json";
+    routes = {
+      "/live/latest.json": { status: 200, json: livePointer("history-w38") },
+      "/live/generations/history-w38/manifest.json": {
+        status: 200,
+        json: liveManifest("history-w38", "history-w37", ["rank/week/2026-W38/repo/flow.json"], {
+          week: "2026-W38",
+          month: "2026-09",
+          day: "2026-09-20",
+        }),
+      },
+      "/live/generations/history-w37/manifest.json": {
+        status: 200,
+        json: liveManifest("history-w37", null, ["rank/week/2026-W37/repo/flow.json"], {
+          week: "2026-W37",
+          month: "2026-09",
+          day: "2026-09-13",
+        }),
+      },
+      [`/live/${path}`]: { status: 200, json: { ok: true, tag: "legacy-w39" } },
+    };
+
+    expect(
+      await readView(path, Doc, {
+        live: true,
+        liveHistory: true,
+        legacyPath: `live/${path}`,
+      }),
+    ).toEqual({ ok: true, tag: "legacy-w39" });
+    expect(fetchCalls.some((url) => url.includes("history-w37"))).toBe(false);
   });
 
   test("period-scoped reads use legacy only after a validated history reaches null", async () => {
