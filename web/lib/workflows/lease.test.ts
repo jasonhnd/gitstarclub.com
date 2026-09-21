@@ -416,6 +416,19 @@ describe("workflow lease renew under CF-style contention", () => {
     expect(store.lease.fencing_token).toBe(21);
   });
 
+  test("without getOrigin, a divergent CDN/origin pair still exhausts as CasError", async () => {
+    const lease = runningLease("refresh-a", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-a", 28);
+    const objects = new DivergentCdnObjectStore(lease, '"cdn-old"', '"origin"');
+    const store = new BlobWorkflowLeaseStore(new WorkflowLeaseWriteCache(() => 1, 0), objects);
+
+    await expect(renewWorkflowLease("refresh-a", 28, store, "2026-07-05T06:10:00.000Z", timing)).rejects.toBeInstanceOf(
+      WorkflowLeaseCasError,
+    );
+    await expect(renewWorkflowLease("refresh-a", 28, store, "2026-07-05T06:10:00.000Z", timing)).rejects.toThrow(
+      "could not read a consistent origin ETag while renewing fencing token 28",
+    );
+  });
+
   test("withholds a CDN-stale GET ETag from Blob lease CAS", async () => {
     const lease = runningLease("refresh-a", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-a", 21);
     const objects = new DivergentCdnObjectStore(lease, '"cdn-old"', '"origin"');
@@ -432,6 +445,34 @@ describe("workflow lease renew under CF-style contention", () => {
     const store = new BlobWorkflowLeaseStore(new WorkflowLeaseWriteCache(() => 1, 0), objects);
 
     expect(await store.read()).toEqual({ lease, etag: '"origin"' });
+  });
+
+  test("an empty write cache renews from origin body+etag when CDN GET and head diverge", async () => {
+    const lease = runningLease("refresh-a", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-a", 28);
+    const objects = new OriginRescueObjectStore(lease, '"cdn-old"', '"origin-28"');
+    const store = new BlobWorkflowLeaseStore(new WorkflowLeaseWriteCache(() => 1, 0), objects);
+
+    const snapshot = await store.read();
+    expect(snapshot).toEqual({ lease, etag: '"origin-28"' });
+    expect(objects.originReads).toBe(1);
+    expect(objects.publicGets).toBe(0);
+
+    const renewed = await renewWorkflowLease("refresh-a", 28, store, "2026-07-05T06:10:00.000Z", timing);
+    expect(renewed.fencing_token).toBe(28);
+    expect(objects.puts).toBe(1);
+    expect(objects.lastIfMatch).toBe('"origin-28"');
+  });
+
+  test("origin body showing a successor fails closed instead of CAS with the stale CDN lease", async () => {
+    const ours = runningLease("refresh-old", "2026-07-05T06:00:00.000Z", "2026-07-05T06:30:00.000Z", "manual-old", 28);
+    const successor = runningLease("refresh-new", "2026-07-05T06:20:00.000Z", "2026-07-05T06:50:00.000Z", "manual-new", 29);
+    const objects = new OriginRescueObjectStore(ours, '"cdn-old"', '"origin-29"', successor);
+    const store = new BlobWorkflowLeaseStore(new WorkflowLeaseWriteCache(() => 1, 0), objects);
+
+    await expect(renewWorkflowLease("refresh-old", 28, store, "2026-07-05T06:21:00.000Z", timing)).rejects.toThrow(
+      "no longer owns fencing token 28",
+    );
+    expect(objects.puts).toBe(0);
   });
 
   test("lease create/CAS writes use max-age 0 so the public CDN cannot fence", async () => {
@@ -530,6 +571,54 @@ class DivergentCdnObjectStore implements ObjectStore {
 
   async head(): Promise<{ etag: string | null; contentType?: string; size?: number; url?: string }> {
     return { etag: this.headEtag, contentType: "application/json", size: 1 };
+  }
+
+  async list(): Promise<{ blobs: []; folders: []; hasMore: false }> {
+    return { blobs: [], folders: [], hasMore: false };
+  }
+
+  async del(): Promise<void> {}
+}
+
+/** CDN GET/head diverge like preview after a week hop; origin GET is consistent. */
+class OriginRescueObjectStore implements ObjectStore {
+  originReads = 0;
+  publicGets = 0;
+  puts = 0;
+  lastIfMatch: string | undefined;
+
+  constructor(
+    private readonly cdnLease: WorkflowLease,
+    private readonly getEtag: string,
+    private readonly originEtag: string,
+    private readonly originLease: WorkflowLease = cdnLease,
+  ) {}
+
+  async put(
+    _path: string,
+    _body: string | Uint8Array,
+    options: { ifMatch?: string } = {},
+  ): Promise<{ etag: string }> {
+    if (options.ifMatch !== this.originEtag) {
+      throw Object.assign(new Error("precondition failed"), { name: "ObjectStorePreconditionFailedError" });
+    }
+    this.puts += 1;
+    this.lastIfMatch = options.ifMatch;
+    return { etag: '"origin-written"' };
+  }
+
+  async get(): Promise<{ body: string; etag: string | null }> {
+    this.publicGets += 1;
+    return { body: JSON.stringify(this.cdnLease), etag: this.getEtag };
+  }
+
+  async getOrigin(): Promise<{ body: string; etag: string | null }> {
+    this.originReads += 1;
+    return { body: JSON.stringify(this.originLease), etag: this.originEtag };
+  }
+
+  async head(): Promise<{ etag: string | null; contentType?: string; size?: number; url?: string }> {
+    return { etag: this.originEtag, contentType: "application/json", size: 1 };
   }
 
   async list(): Promise<{ blobs: []; folders: []; hasMore: false }> {

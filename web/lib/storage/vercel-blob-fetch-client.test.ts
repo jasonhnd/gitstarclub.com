@@ -9,7 +9,9 @@ import {
   parseVercelBlobStoreId,
   VERCEL_BLOB_API_URL,
   VERCEL_BLOB_API_VERSION,
+  vercelBlobOriginUrl,
   vercelBlobPublicUrl,
+  vercelBlobReadUrl,
 } from "./vercel-blob-fetch-client";
 import { VercelBlobObjectStore } from "./vercel-blob-store";
 
@@ -51,6 +53,18 @@ describe("parseVercelBlobStoreId / public URL", () => {
 
   test("fails closed on a token without a store id", () => {
     expect(() => parseVercelBlobStoreId("not-a-blob-token")).toThrow("unable to extract store ID");
+  });
+
+  test("origin URL is the private store hostname and private reads bust cache", () => {
+    expect(vercelBlobOriginUrl("ops/workflows/active.json", TOKEN)).toBe(
+      "https://cdv7ejjwmzbbdj8w.private.blob.vercel-storage.com/ops/workflows/active.json",
+    );
+    expect(vercelBlobReadUrl("ops/workflows/active.json", TOKEN, "private")).toBe(
+      "https://cdv7ejjwmzbbdj8w.private.blob.vercel-storage.com/ops/workflows/active.json?cache=0",
+    );
+    expect(vercelBlobReadUrl("ops/a.json", TOKEN, "public", "https://blob.example.com/")).toBe(
+      "https://blob.example.com/ops/a.json",
+    );
   });
 });
 
@@ -154,6 +168,28 @@ describe("createVercelBlobFetchClient", () => {
   test("get returns null on 404 so lease reads can start empty", async () => {
     const { client } = clientWithFetch(() => new Response(null, { status: 404 }));
     expect(await client.get("ops/workflows/active.json", { access: "public", token: TOKEN })).toBeNull();
+  });
+
+  test("private get uses the origin hostname and does not set ALPNProtocols", async () => {
+    const { client, calls } = clientWithFetch((request) => {
+      if (request.url.includes("private.blob.vercel-storage.com")) {
+        return new Response('{"run_id":"refresh-cf"}', {
+          status: 200,
+          headers: { etag: '"origin-28"', "content-type": "application/json" },
+        });
+      }
+      return new Response(null, { status: 500 });
+    });
+
+    const got = await client.get("ops/workflows/active.json", { access: "private", token: TOKEN });
+    expect(got?.blob.etag).toBe('"origin-28"');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(
+      "https://cdv7ejjwmzbbdj8w.private.blob.vercel-storage.com/ops/workflows/active.json?cache=0",
+    );
+    expect(calls[0]?.init.cache).toBe("no-store");
+    expect((calls[0]?.init as RequestInit & { cf?: { cacheTtl: number } }).cf?.cacheTtl).toBe(0);
+    expect(calls[0]?.init).not.toHaveProperty("ALPNProtocols");
   });
 });
 

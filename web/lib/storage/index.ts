@@ -32,5 +32,7 @@ export {
   parseVercelBlobStoreId,
   VERCEL_BLOB_API_URL,
   VERCEL_BLOB_API_VERSION,
+  vercelBlobOriginUrl,
   vercelBlobPublicUrl,
+  vercelBlobReadUrl,
 } from "./vercel-blob-fetch-client";
