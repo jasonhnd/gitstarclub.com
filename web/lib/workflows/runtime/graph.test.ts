@@ -168,6 +168,42 @@ describe("refresh step graph", () => {
       cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
     });
     expect(done?.cursor.recomputePhase).toBeUndefined();
+    expect(done?.cursor.recomputeOffset).toBeUndefined();
+  });
+
+  test("recomputeRank week pack and period windows stay on recomputeRank", () => {
+    const pack = nextRefreshJob(full("recomputeRank", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22, recomputePhase: "week" }), {
+      name: "recomputeRank",
+      files: 0,
+      nextRecomputePhase: "week",
+      nextRecomputeOffset: 0,
+    });
+    expect(pack).toMatchObject({
+      name: "recomputeRank",
+      cursor: { recomputePhase: "week", recomputeOffset: 0, fencingToken: 22 },
+    });
+
+    const mid = nextRefreshJob(pack!, {
+      name: "recomputeRank",
+      files: 16,
+      nextRecomputePhase: "week",
+      nextRecomputeOffset: 8,
+    });
+    expect(mid).toMatchObject({
+      name: "recomputeRank",
+      cursor: { recomputePhase: "week", recomputeOffset: 8, fencingToken: 22 },
+    });
+
+    const toOrg = nextRefreshJob(mid!, {
+      name: "recomputeRank",
+      files: 4,
+      nextRecomputePhase: "weekOrg",
+      nextRecomputeOffset: 0,
+    });
+    expect(toOrg).toMatchObject({
+      name: "recomputeRank",
+      cursor: { recomputePhase: "weekOrg", recomputeOffset: 0, fencingToken: 22 },
+    });
   });
 
   test("fold result walks to recomputeRank and keeps the fencing token", () => {

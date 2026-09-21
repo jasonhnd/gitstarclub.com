@@ -98,6 +98,35 @@ describe("CF Queue consumeJob successor", () => {
     expect(queued).toMatchObject([{ name: "recomputeRank", cursor: { recomputePhase: "monthOrg" } }]);
   });
 
+  test("enqueues the next week period window after week-pack", async () => {
+    const queued: RefreshJob[] = [];
+    const env: WorkerEnv = {
+      JOBS: { send: async (job) => { queued.push(job); } },
+      MEDIA: null,
+      REFRESH_STEP_URL: STEP,
+      CRON_SECRET: "secret",
+      WORKER_SELF_REFERENCE: {
+        async fetch() {
+          return Response.json({
+            ok: true,
+            runId: "refresh-2026-09-20T09-39-26-949Z",
+            step: "recomputeRank",
+            result: { name: "recomputeRank", files: 0, nextRecomputePhase: "week", nextRecomputeOffset: 0 },
+          });
+        },
+      },
+    };
+    await consumeJob(env, {
+      v: 1,
+      graph: "full",
+      runId: "refresh-2026-09-20T09-39-26-949Z",
+      name: "recomputeRank",
+      attempt: 0,
+      cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22, recomputePhase: "week" },
+    });
+    expect(queued).toMatchObject([{ name: "recomputeRank", cursor: { recomputePhase: "week", recomputeOffset: 0 } }]);
+  });
+
   test("enqueues the next fold window when fold is not finished", async () => {
     const queued: RefreshJob[] = [];
     const env: WorkerEnv = {
