@@ -61,7 +61,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | [geo/queries.md](./geo/queries.md) | active | GEO measurement / citation review | Target queries, review cadence, page-type coverage, or miss classifications change. Re-run affected high-priority checks after schema, robots, sitemap, answer-capsule, ranking, category, methodology, or data-export changes. | Operational registry; [GEO.md](./GEO.md) remains the source of truth for strategy, metrics, and measurement intent. |
 | [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) | active | GEO crawler and AI-referrer reporting | `geo:report` inputs, output fields, taxonomy, privacy rules, or operator commands change. | Operational runbook; [GEO.md](./GEO.md) owns the reporting intent, and [OPS.md](./OPS.md) owns production log/operations practice. |
 | [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) | active | Cloudflare R2 P0 storage adapter | Driver names, env, write guards, or rollback steps change. | P0 Blob→R2 adapter only; [OPS.md](./OPS.md) still owns the production Blob layout and env inventory. |
-| [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) | active | Cloudflare migrate P1 workflow runtime | Runtime kinds, CF Cron dispatch / Queue non-prod proof, Blob fetch write path, or dual-scheduler rollback change. | P1 orchestration only; production cron table stays in [OPS.md](./OPS.md) / `web/vercel.json`. Production Worker crons stay empty until an approved cutover. Full CF daily/refresh depends on the fetch Blob client. |
+| [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) | active | Cloudflare migrate P1 workflow runtime | Runtime kinds, CF Cron dispatch / Queue non-prod proof, Blob fetch write path, dual-scheduler rollback, or the preview Bearer full-refresh acceptance matrix change. | P1 orchestration only; production cron table stays in [OPS.md](./OPS.md) / `web/vercel.json`. Production Worker crons stay empty until an approved cutover. Preview Bearer full refresh is scored by the P1 acceptance matrix (`fold-decision` / recompute hops / silence-is-fail). Full CF daily/refresh depends on the fetch Blob client. |
 | [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) | active | Cloudflare migrate P2 ISR / Preview / observability | Cache-invalidation drivers, CF Preview + Access, optional `cf-preview` job, or P2 rollback change. | P2 only; production Preview/product-gates/`revalidatePath` stay Vercel. |
 | [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) | active | Cloudflare migrate P3 Workers host | OpenNext adapter, workers.dev preview, optional `cf-workers-host` job, or P3 rollback change. | P3 only; production apex/www stay Vercel. Do not cut DNS. |
 
@@ -99,7 +99,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | GEO | Answer-engine citation strategy, page-type answer capsules, GEO schema plan, AI crawler hygiene, freshness, and measurement |
 | OPS | Branch topology / staging, deploy / rollback / cron / workflow runbooks, Blob layout, env vars, alerting, failure modes |
 | R2-MIGRATION-P0 | Cloudflare migrate P0 Blob→R2 adapter: drivers, dual-read, non-production write guard, rollback |
-| CF-MIGRATION-P1 | Cloudflare migrate P1 workflow runtime: HTTP/memory/CF Queue, non-prod Cron, Blob fetch write path, dual-scheduler rollback |
+| CF-MIGRATION-P1 | Cloudflare migrate P1 workflow runtime: HTTP/memory/CF Queue, non-prod Cron, Blob fetch write path, preview Bearer full-refresh acceptance matrix, dual-scheduler rollback |
 | CF-MIGRATION-P2 | Cloudflare migrate P2 ISR port, CF Preview/Access, optional CI dual-run, Workers Observability |
 | CF-MIGRATION-P3 | Cloudflare migrate P3 Workers host: OpenNext preview, R2/Queue bindings, rollback, no DNS cut |
 | TESTING | Test pyramid, contract tests, recompute parity, validation invariants, smoke tests; GitHub required CI is `static` + `production-build` |
@@ -130,6 +130,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Blob layout | OPS (§Vercel Blob 布局) |
 | Cloudflare R2 P0 adapter | [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) |
 | Cloudflare migrate P1 workflow runtime | [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
+| CF preview Bearer full-refresh acceptance matrix | [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
 | Cloudflare migrate P2 ISR / Preview / observability | [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
 | Cloudflare migrate P3 Workers host | [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
 | Branch topology / staging / promotion | [OPS.md](./OPS.md) (§Branch topology / staging) |

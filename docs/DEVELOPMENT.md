@@ -51,7 +51,7 @@ Docs-only changes are allowed when the code already implements the behavior.
 | System architecture, hard constraints | `ARCHITECTURE.md` |
 | Blob layout, workflow lifecycle, publish/rollback | `VERCEL-DATA-OPERATIONS.md`, `OPS.md` |
 | Cloudflare R2 P0 storage drivers / dual-read | `R2-MIGRATION-P0.md` |
-| Cloudflare P1 workflow runtime / CF Cron | `CF-MIGRATION-P1.md` |
+| Cloudflare P1 workflow runtime / CF Cron / preview Bearer refresh acceptance | `CF-MIGRATION-P1.md` |
 | Cloudflare P2 ISR port / CF Preview / Access | `CF-MIGRATION-P2.md` |
 | Cloudflare P3 Workers host / OpenNext preview | `CF-MIGRATION-P3.md` |
 | JSON schema or persisted field | `DATA-CONTRACTS.md` |
