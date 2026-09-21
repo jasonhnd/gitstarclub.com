@@ -52,7 +52,7 @@ GitHub APIs
 | `web/lib/contracts/` | Zod schemas for every persisted view and public read contract |
 | `web/lib/workflows/` | Managed refresh orchestration and refresh steps (no Workflow SDK) |
 | `web/lib/workflows/runtime/` | `startRefresh` / `enqueueStep` / `completeStep` port: memory, HTTP chain, CF Queue |
-| `web/lib/workflows/recompute/` | Pure recompute core: ranks, entities, heatmaps, categories, windows |
+| `web/lib/workflows/recompute/` | Pure recompute core: ranks, entities, heatmaps, categories, windows, packed CF windows |
 | `web/lib/categories/` | Deterministic category taxonomy and classification rules |
 | `web/lib/cron/` | Shared daily/weekly live-overlay route handlers and refresh logic |
 | `web/lib/i18n/` | Server/client dictionaries and locale helpers |
@@ -62,7 +62,7 @@ GitHub APIs
 | `web/lib/storage/` | Injectable object-store port (`vercel-blob` \| `r2-s3`) for write/CAS/list/del; default remains Blob |
 | `web/lib/cache-invalidation/` | ISR invalidation port (`vercel` \| `memory` \| `cf-stub`); default remains Next `revalidatePath/Tag` |
 | `web/lib/preview/` | Pluggable Preview target (`vercel` \| `cf`) and Cloudflare Access Service Token headers |
-| `web/lib/workers-host/` | Worker path classification, smoke origin, step self-fetch, Queue successor after fold (body + `x-gitstarclub-queue-successor`; fold writes `fold-decision.json` then 1-bucket windows + compact plans when there is closed-period work; recomputeRank is month/week/rest hops) |
+| `web/lib/workers-host/` | Worker path classification, smoke origin, step self-fetch, Queue successor after fold (body + `x-gitstarclub-queue-successor`; fold writes `fold-decision.json` then 1-bucket windows + compact plans when there is closed-period work; recomputeRank is packed month/monthOrg/year/yearOrg/week/weekOrg/rest hops) |
 | `web/open-next.config.ts` | OpenNext Cloudflare adapter (static-assets incremental cache; preview only) |
 | `workers/gitstarclub-web/` | CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (`env.pre`) |
 | `scripts/assert-cf-ci-gates.mjs` | CF CI gate: `pre` → `gitstarclub-web-pre`; no live deploy of `gitstarclub-web`; production `triggers.crons` stays `[]` |
