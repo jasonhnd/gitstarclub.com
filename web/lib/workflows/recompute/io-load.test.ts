@@ -27,7 +27,7 @@ mock.module("@/lib/data/source", () => ({
   }),
 }));
 
-const { loadCanonicalModel, loadPackedRepoWindow, slimRankRepoMeta } = await import("./io");
+const { collectSeriesPeriods, loadCanonicalModel, loadPackedRepoWindow, slimRankRepoMeta } = await import("./io");
 
 describe("loadCanonicalModel CF budget", () => {
   test("does not fan out all 128 canonical shards at once on the CF host", async () => {
@@ -63,6 +63,18 @@ describe("loadCanonicalModel CF budget", () => {
     expect(reads.some((path) => path.includes("repo-recent-daily/"))).toBe(false);
     expect(reads.some((path) => path.includes("repo-monthly/"))).toBe(true);
     expect(reads.some((path) => path.includes("repos/"))).toBe(true);
+  });
+
+  test("week period collection reads weekly shards one at a time and skips recent-daily", async () => {
+    inflight = 0;
+    maxInflight = 0;
+    reads.length = 0;
+    const periods = await runWithCloudflareWorkersHostForTests(true, () => collectSeriesPeriods("refresh-cf-recompute", "week"));
+    expect(periods).toEqual([]);
+    expect(maxInflight).toBe(1);
+    expect(reads.some((path) => path.includes("repo-weekly/"))).toBe(true);
+    expect(reads.some((path) => path.includes("repo-monthly/"))).toBe(false);
+    expect(reads.some((path) => path.includes("repo-recent-daily/"))).toBe(false);
   });
 });
 

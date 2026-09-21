@@ -112,7 +112,17 @@ describe("runRefreshStepRoute", () => {
         attempt: 0,
         cursor: { recomputePhase: "week" },
       }),
-    ).toBe("recomputeRank-week");
+    ).toBe("recomputeRank-week-pack");
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "recomputeRank",
+        attempt: 0,
+        cursor: { recomputePhase: "week", recomputeOffset: 8 },
+      }),
+    ).toBe("recomputeRank-week-8");
   });
 
   test("names fold checkpoints by phase and sequence", () => {

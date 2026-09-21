@@ -222,17 +222,21 @@ export function nextRefreshJob(
 
   if (job.name === "recomputeRank") {
     const nextPhase = asRecomputePhase(result.nextRecomputePhase);
-    if (nextPhase) {
+    if (nextPhase || typeof result.nextRecomputeOffset === "number") {
       return {
         v: 1,
         graph: "full",
         runId: job.runId,
         name: "recomputeRank",
         attempt: 0,
-        cursor: { ...cursor, recomputePhase: nextPhase },
+        cursor: {
+          ...cursor,
+          recomputePhase: nextPhase ?? cursor.recomputePhase ?? "month",
+          recomputeOffset: typeof result.nextRecomputeOffset === "number" ? result.nextRecomputeOffset : undefined,
+        },
       };
     }
-    const { recomputePhase: _recomputePhase, ...rest } = cursor;
+    const { recomputePhase: _recomputePhase, recomputeOffset: _recomputeOffset, ...rest } = cursor;
     return { v: 1, graph: "full", runId: job.runId, name: "recomputeRepoEntities", attempt: 0, cursor: rest };
   }
 

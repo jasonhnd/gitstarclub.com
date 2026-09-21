@@ -25,16 +25,23 @@ import { assembleModel, normalizeRepoMeta, seamPeriods, type DailySeries, type M
 import { putOwnedView, workflowHeartbeat } from "@/lib/workflows/owned-write";
 import type { WorkflowOwnership } from "@/lib/workflows/lease";
 import {
-  assemblePackedWindow,
+  absorbOrgPeriodRowsFromBucket,
+  appendRepoPeriodRowsFromBucket,
   coercePackedWindowBucket,
   coercePackedWindowMeta,
+  createPackedWindowAssembler,
   createPackedWindowBuilder,
+  orgRowsFromAbsorbed,
   packedBucketFile,
   packedMetaFile,
+  packedWindowAsFlatBucket,
   packedWindowBucketPath,
   packedWindowMetaPath,
+  type PackedPeriodOrgRow,
+  type PackedPeriodRepoRow,
   type PackedRepoWindow,
   type PackedWindowKind,
+  type PackedWindowMetaFile,
 } from "./packed-window";
 
 // Blob I/O for the recompute steps: load the canonical/v2 model and write a versioned
@@ -134,17 +141,23 @@ export async function persistPackedWindow(
   await putOwnedView(owner, packedWindowMetaPath(runId, kind), packedMetaFile(kind, seamPeriod, packed, REPO_BUCKETS));
 }
 
-export async function readPersistedPackedWindow(
-  bust: string,
-  kind: PackedWindowKind,
-): Promise<PackedRepoWindow | null> {
+export async function readPackedWindowMeta(bust: string, kind: PackedWindowKind): Promise<PackedWindowMetaFile | null> {
   const rawMeta = await readAuthoritativeView(packedWindowMetaPath(bust, kind), UnknownJson, {
     bust,
     skipSchemaParse: true,
   });
   const meta = coercePackedWindowMeta(rawMeta);
   if (!meta || meta.kind !== kind || meta.buckets !== REPO_BUCKETS) return null;
-  const shards = [];
+  return meta;
+}
+
+export async function readPersistedPackedWindow(
+  bust: string,
+  kind: PackedWindowKind,
+): Promise<PackedRepoWindow | null> {
+  const meta = await readPackedWindowMeta(bust, kind);
+  if (!meta) return null;
+  const assembler = createPackedWindowAssembler(meta);
   for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
     const raw = await readAuthoritativeView(packedWindowBucketPath(bust, kind, bucket), UnknownJson, {
       bust,
@@ -152,10 +165,10 @@ export async function readPersistedPackedWindow(
     });
     const shard = coercePackedWindowBucket(raw);
     if (!shard) return null;
-    shards.push(shard);
+    assembler.absorb(shard);
     clearViewParseMemo();
   }
-  return assemblePackedWindow(meta, shards);
+  return assembler.finalize();
 }
 
 async function buildPackedWindowFromShards(
@@ -225,6 +238,221 @@ export async function loadPackedRepoWindow(
     kind,
     fromPersist: false,
   };
+}
+
+export function collectPeriodsFromSeriesShard(shard: unknown, into: Set<string>): void {
+  if (!shard || typeof shard !== "object") return;
+  for (const value of Object.values(shard as Record<string, unknown>)) {
+    if (!Array.isArray(value)) continue;
+    for (const cell of value) {
+      if (Array.isArray(cell) && typeof cell[0] === "string" && typeof cell[1] === "number") into.add(cell[0]);
+    }
+  }
+}
+
+export async function collectSeriesPeriods(bust: string, kind: PackedWindowKind): Promise<string[]> {
+  const skipSchemaParse = isCloudflareWorkersHost();
+  const seriesKind = kind === "week" ? "repo-weekly" : "repo-monthly";
+  const seriesSchema = kind === "week" ? RepoWeeklyShard : RepoMonthlyShard;
+  const periods = new Set<string>();
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    const seriesPath = `canonical/v2/${seriesKind}/${bucket}.json`;
+    const seriesShard = await readAuthoritativeView(seriesPath, seriesSchema, { bust, skipSchemaParse });
+    if (seriesShard === null) throw new Error(`${seriesPath}: missing required shard`);
+    collectPeriodsFromSeriesShard(seriesShard, periods);
+    clearViewParseMemo();
+  }
+  return [...periods].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
+async function packOneSeriesBucket(
+  bust: string,
+  kind: PackedWindowKind,
+  seamPeriod: string,
+  periods: readonly string[],
+  bucket: number,
+): Promise<PackedRepoWindow> {
+  const skipSchemaParse = isCloudflareWorkersHost();
+  const seriesKind = kind === "week" ? "repo-weekly" : "repo-monthly";
+  const seriesSchema = kind === "week" ? RepoWeeklyShard : RepoMonthlyShard;
+  const reposPath = `canonical/v2/repos/${bucket}.json`;
+  const seriesPath = `canonical/v2/${seriesKind}/${bucket}.json`;
+  const reposShard = await readAuthoritativeView(reposPath, ReposShard, { bust, skipSchemaParse });
+  if (reposShard === null) throw new Error(`${reposPath}: missing required shard`);
+  const seriesShard = await readAuthoritativeView(seriesPath, seriesSchema, { bust, skipSchemaParse });
+  if (seriesShard === null) throw new Error(`${seriesPath}: missing required shard`);
+  const builder = createPackedWindowBuilder(seamPeriod, periods);
+  const slim = new Map<number, RepoMeta>();
+  for (const [key, value] of Object.entries(reposShard)) {
+    const id = Number(key);
+    slim.set(id, slimRankRepoMeta(id, value));
+  }
+  for (const [key, value] of Object.entries(seriesShard)) {
+    const id = Number(key);
+    const meta = slim.get(id);
+    if (!meta) {
+      throw new Error(`${seriesPath}: repo ${id} missing from ${reposPath}`);
+    }
+    builder.absorb(id, meta.owner, meta.active !== false, meta.d, asSeries(value));
+  }
+  slim.clear();
+  clearViewParseMemo();
+  return builder.finalize();
+}
+
+/** Pack and persist one repo-bucket at a time. Never assemble the full week window. */
+export async function persistPackedWindowIncrementally(
+  bust: string,
+  kind: PackedWindowKind,
+  owner: WorkflowOwnership,
+): Promise<PackedWindowMetaFile> {
+  const canonical = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust });
+  const seamPeriod = seamPeriods(canonical.seam_date)[kind];
+  const periods = await collectSeriesPeriods(bust, kind);
+  const heartbeat = workflowHeartbeat(owner);
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    await heartbeat();
+    const packed = await packOneSeriesBucket(bust, kind, seamPeriod, periods, bucket);
+    await putOwnedView(owner, packedWindowBucketPath(bust, kind, bucket), packedWindowAsFlatBucket(packed));
+    clearViewParseMemo();
+  }
+  const meta = packedMetaFile(kind, seamPeriod, { periods }, REPO_BUCKETS);
+  await heartbeat();
+  await putOwnedView(owner, packedWindowMetaPath(bust, kind), meta);
+  return meta;
+}
+
+export async function ensurePackedWindowPersisted(
+  bust: string,
+  kind: PackedWindowKind,
+  owner: WorkflowOwnership,
+): Promise<PackedWindowMetaFile> {
+  const existing = await readPackedWindowMeta(bust, kind);
+  if (existing) return existing;
+  return persistPackedWindowIncrementally(bust, kind, owner);
+}
+
+export async function streamPackedRepoPeriodRows(
+  bust: string,
+  kind: PackedWindowKind,
+  periodFrom: number,
+  periodTo: number,
+  owner?: WorkflowOwnership,
+): Promise<PackedPeriodRepoRow[][]> {
+  const into = Array.from({ length: Math.max(0, periodTo - periodFrom) }, () => [] as PackedPeriodRepoRow[]);
+  if (into.length === 0) return into;
+  const heartbeat = owner ? workflowHeartbeat(owner) : async () => {};
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    await heartbeat();
+    const raw = await readAuthoritativeView(packedWindowBucketPath(bust, kind, bucket), UnknownJson, {
+      bust,
+      skipSchemaParse: true,
+    });
+    const shard = coercePackedWindowBucket(raw);
+    if (!shard) throw new Error(`${packedWindowBucketPath(bust, kind, bucket)}: missing persist shard`);
+    appendRepoPeriodRowsFromBucket(shard, periodFrom, periodTo, into);
+    clearViewParseMemo();
+  }
+  return into;
+}
+
+export async function streamPackedOrgPeriodRows(
+  bust: string,
+  kind: PackedWindowKind,
+  periodFrom: number,
+  periodTo: number,
+  carry: Map<number, number>,
+  owner?: WorkflowOwnership,
+): Promise<PackedPeriodOrgRow[][]> {
+  const acc = Array.from({ length: Math.max(0, periodTo - periodFrom) }, () => new Map<string, { flow: number; stock_est: number }>());
+  if (acc.length === 0) return [];
+  const heartbeat = owner ? workflowHeartbeat(owner) : async () => {};
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    await heartbeat();
+    const raw = await readAuthoritativeView(packedWindowBucketPath(bust, kind, bucket), UnknownJson, {
+      bust,
+      skipSchemaParse: true,
+    });
+    const shard = coercePackedWindowBucket(raw);
+    if (!shard) throw new Error(`${packedWindowBucketPath(bust, kind, bucket)}: missing persist shard`);
+    absorbOrgPeriodRowsFromBucket(shard, periodFrom, periodTo, carry, acc);
+    clearViewParseMemo();
+  }
+  return acc.map(orgRowsFromAbsorbed);
+}
+
+export type RankCarryFile = {
+  v: 1;
+  kind: PackedWindowKind;
+  dim: "repo" | "org";
+  nextPeriod: number;
+  flow: Array<[string, number]>;
+  stock: Array<[string, number]>;
+  orgStock?: Array<[number, number]>;
+};
+
+export function rankCarryPath(runId: string, kind: PackedWindowKind, dim: "repo" | "org"): string {
+  return `ops/workflows/${runId}/recompute/${kind}-${dim}-carry.json`;
+}
+
+function coerceRankCarry(json: unknown, kind: PackedWindowKind, dim: "repo" | "org"): RankCarryFile | null {
+  if (!json || typeof json !== "object") return null;
+  const rec = json as {
+    v?: unknown;
+    kind?: unknown;
+    dim?: unknown;
+    nextPeriod?: unknown;
+    flow?: unknown;
+    stock?: unknown;
+    orgStock?: unknown;
+  };
+  if (rec.v !== 1 || rec.kind !== kind || rec.dim !== dim || typeof rec.nextPeriod !== "number") return null;
+  if (!Array.isArray(rec.flow) || !Array.isArray(rec.stock)) return null;
+  const flow: Array<[string, number]> = [];
+  const stock: Array<[string, number]> = [];
+  for (const row of rec.flow) {
+    if (!Array.isArray(row) || typeof row[0] !== "string" || typeof row[1] !== "number") return null;
+    flow.push([row[0], row[1]]);
+  }
+  for (const row of rec.stock) {
+    if (!Array.isArray(row) || typeof row[0] !== "string" || typeof row[1] !== "number") return null;
+    stock.push([row[0], row[1]]);
+  }
+  let orgStock: Array<[number, number]> | undefined;
+  if (rec.orgStock !== undefined) {
+    if (!Array.isArray(rec.orgStock)) return null;
+    orgStock = [];
+    for (const row of rec.orgStock) {
+      if (!Array.isArray(row) || typeof row[0] !== "number" || typeof row[1] !== "number") return null;
+      orgStock.push([row[0], row[1]]);
+    }
+  }
+  return { v: 1, kind, dim, nextPeriod: rec.nextPeriod, flow, stock, orgStock };
+}
+
+export async function readRankCarry(
+  runId: string,
+  kind: PackedWindowKind,
+  dim: "repo" | "org",
+): Promise<RankCarryFile | null> {
+  const raw = await readAuthoritativeView(rankCarryPath(runId, kind, dim), UnknownJson, {
+    bust: runId,
+    skipSchemaParse: true,
+  });
+  return coerceRankCarry(raw, kind, dim);
+}
+
+export async function writeRankCarry(owner: WorkflowOwnership, carry: RankCarryFile): Promise<void> {
+  await putOwnedView(owner, rankCarryPath(owner.runId, carry.kind, carry.dim), carry);
+}
+
+export function pairsToRankMap(pairs: Array<[string, number]> | undefined): Map<string, number> | undefined {
+  if (!pairs || pairs.length === 0) return undefined;
+  return new Map(pairs);
+}
+
+export function orgStockToMap(pairs: Array<[number, number]> | undefined): Map<number, number> {
+  return new Map(pairs ?? []);
 }
 
 export async function loadFullReposBucket(bust: string, bucket: number): Promise<Map<number, RepoMeta>> {

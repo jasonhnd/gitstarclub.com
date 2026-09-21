@@ -57,10 +57,27 @@ export type PackedWindowBucketRepo = {
   cells: Array<readonly [number, number, number, number]>;
 };
 
-export type PackedWindowBucketFile = {
+export type PackedWindowBucketFileV1 = {
   v: 1;
   repos: PackedWindowBucketRepo[];
 };
+
+/** Flat typed-array JSON. One week-win v1 bucket is ~every repo × every week as nested
+ *  `[periodIdx, flow, cum, stock]` arrays; assembling 32 of those is the #497 week-start OOM. */
+export type PackedWindowBucketFileV2 = {
+  v: 2;
+  ids: number[];
+  owners: string[];
+  active: number[];
+  start: number[];
+  len: number[];
+  periodIdx: number[];
+  flow: number[];
+  cumgross: number[];
+  stock: number[];
+};
+
+export type PackedWindowBucketFile = PackedWindowBucketFileV1 | PackedWindowBucketFileV2;
 
 type RankRow = {
   key: string;
@@ -85,7 +102,7 @@ function growCapacity<T extends Uint16Array | Uint32Array | Float64Array>(
   return next;
 }
 
-export function createPackedWindowBuilder(seamPeriod: Period): PackedWindowBuilder {
+export function createPackedWindowBuilder(seamPeriod: Period, knownPeriods?: readonly string[]): PackedWindowBuilder {
   const intern = new Map<string, number>();
   const periods: string[] = [];
   const ids: number[] = [];
@@ -109,6 +126,10 @@ export function createPackedWindowBuilder(seamPeriod: Period): PackedWindowBuild
     periods.push(period);
     return idx;
   };
+
+  if (knownPeriods) {
+    for (const period of knownPeriods) internPeriod(period);
+  }
 
   const grow = () => {
     cap *= 2;
@@ -206,6 +227,101 @@ export function packedRepoPeriodRows(packed: PackedRepoWindow, periodIndex: numb
       stock_est: packed.stock[cell]!,
     });
   }
+  return rows;
+}
+
+export function forEachPackedBucketRepo(
+  shard: PackedWindowBucketFile,
+  visit: (repo: {
+    id: number;
+    owner: string;
+    active: boolean;
+    firstPeriod: number;
+    cells: Iterable<readonly [number, number, number, number]>;
+  }) => void,
+): void {
+  if (shard.v === 1) {
+    for (const repo of shard.repos) {
+      visit({
+        id: repo.id,
+        owner: repo.owner,
+        active: repo.active,
+        firstPeriod: repo.cells[0]?.[0] ?? Number.POSITIVE_INFINITY,
+        cells: repo.cells,
+      });
+    }
+    return;
+  }
+  for (let repo = 0; repo < shard.ids.length; repo++) {
+    const start = shard.start[repo]!;
+    const len = shard.len[repo]!;
+    visit({
+      id: shard.ids[repo]!,
+      owner: shard.owners[repo]!,
+      active: shard.active[repo] === 1,
+      firstPeriod: len > 0 ? shard.periodIdx[start]! : Number.POSITIVE_INFINITY,
+      cells: {
+        *[Symbol.iterator]() {
+          for (let cell = start; cell < start + len; cell++) {
+            yield [shard.periodIdx[cell]!, shard.flow[cell]!, shard.cumgross[cell]!, shard.stock[cell]!];
+          }
+        },
+      },
+    });
+  }
+}
+
+export function appendRepoPeriodRowsFromBucket(
+  shard: PackedWindowBucketFile,
+  periodFrom: number,
+  periodTo: number,
+  into: PackedPeriodRepoRow[][],
+): void {
+  forEachPackedBucketRepo(shard, (repo) => {
+    for (const cell of repo.cells) {
+      const periodIndex = cell[0];
+      if (periodIndex < periodFrom || periodIndex >= periodTo) continue;
+      into[periodIndex - periodFrom]!.push({
+        id: repo.id,
+        flow: cell[1],
+        cumgross: cell[2],
+        stock_est: cell[3],
+      });
+    }
+  });
+}
+
+export function absorbOrgPeriodRowsFromBucket(
+  shard: PackedWindowBucketFile,
+  periodFrom: number,
+  periodTo: number,
+  carry: Map<number, number>,
+  into: Array<Map<string, { flow: number; stock_est: number }>>,
+): void {
+  forEachPackedBucketRepo(shard, (repo) => {
+    const present = new Map<number, readonly [number, number, number, number]>();
+    for (const cell of repo.cells) present.set(cell[0], cell);
+    for (let periodIndex = periodFrom; periodIndex < periodTo; periodIndex++) {
+      if (periodIndex < repo.firstPeriod) continue;
+      const cell = present.get(periodIndex);
+      const flow = cell ? cell[1] : 0;
+      if (cell) carry.set(repo.id, cell[3]);
+      const stock = carry.get(repo.id) ?? 0;
+      const slot = into[periodIndex - periodFrom]!;
+      const cur = slot.get(repo.owner);
+      if (cur) {
+        cur.flow += flow;
+        cur.stock_est += stock;
+      } else {
+        slot.set(repo.owner, { flow, stock_est: stock });
+      }
+    }
+  });
+}
+
+export function orgRowsFromAbsorbed(acc: Map<string, { flow: number; stock_est: number }>): PackedPeriodOrgRow[] {
+  const rows: PackedPeriodOrgRow[] = [];
+  for (const [login, value] of acc) rows.push({ login, flow: value.flow, stock_est: value.stock_est });
   return rows;
 }
 
@@ -373,9 +489,9 @@ function rankTopN(
   return { view: { meta, items }, fullRank };
 }
 
-export function packedRepoRankViewsForPeriod(
-  packed: PackedRepoWindow,
-  periodIndex: number,
+export function repoRankViewsFromPeriodRows(
+  period: string,
+  rows: PackedPeriodRepoRow[],
   w: Window,
   gen: string,
   prevFlow: Map<string, number> | undefined,
@@ -385,8 +501,6 @@ export function packedRepoRankViewsForPeriod(
   nextFlow: Map<string, number>;
   nextStock: Map<string, number>;
 } {
-  const period = packed.periods[periodIndex]!;
-  const rows = packedRepoPeriodRows(packed, periodIndex);
   const flowRows: RankRow[] = rows.map((row) => ({
     key: String(row.id),
     id: row.id,
@@ -423,12 +537,11 @@ export function packedRepoRankViewsForPeriod(
   };
 }
 
-export function packedOrgRankViewsForPeriod(
+export function packedRepoRankViewsForPeriod(
   packed: PackedRepoWindow,
   periodIndex: number,
   w: Window,
   gen: string,
-  carry: Float64Array,
   prevFlow: Map<string, number> | undefined,
   prevStock: Map<string, number> | undefined,
 ): {
@@ -436,8 +549,28 @@ export function packedOrgRankViewsForPeriod(
   nextFlow: Map<string, number>;
   nextStock: Map<string, number>;
 } {
-  const period = packed.periods[periodIndex]!;
-  const rows = packedOrgPeriodRows(packed, periodIndex, carry);
+  return repoRankViewsFromPeriodRows(
+    packed.periods[periodIndex]!,
+    packedRepoPeriodRows(packed, periodIndex),
+    w,
+    gen,
+    prevFlow,
+    prevStock,
+  );
+}
+
+export function orgRankViewsFromPeriodRows(
+  period: string,
+  rows: PackedPeriodOrgRow[],
+  w: Window,
+  gen: string,
+  prevFlow: Map<string, number> | undefined,
+  prevStock: Map<string, number> | undefined,
+): {
+  views: Map<string, RankView>;
+  nextFlow: Map<string, number>;
+  nextStock: Map<string, number>;
+} {
   const flowRows: RankRow[] = rows.map((row) => ({
     key: row.login,
     login: row.login,
@@ -472,6 +605,29 @@ export function packedOrgRankViewsForPeriod(
     nextFlow: flow.fullRank,
     nextStock: stock.fullRank,
   };
+}
+
+export function packedOrgRankViewsForPeriod(
+  packed: PackedRepoWindow,
+  periodIndex: number,
+  w: Window,
+  gen: string,
+  carry: Float64Array,
+  prevFlow: Map<string, number> | undefined,
+  prevStock: Map<string, number> | undefined,
+): {
+  views: Map<string, RankView>;
+  nextFlow: Map<string, number>;
+  nextStock: Map<string, number>;
+} {
+  return orgRankViewsFromPeriodRows(
+    packed.periods[periodIndex]!,
+    packedOrgPeriodRows(packed, periodIndex, carry),
+    w,
+    gen,
+    prevFlow,
+    prevStock,
+  );
 }
 
 export function packedGrowthViews(packed: PackedRepoWindow, w: Window, gen: string): Map<string, RankView> {
@@ -558,7 +714,7 @@ export function packedWindowBucketPath(runId: string, kind: PackedWindowKind, bu
   return `ops/workflows/${runId}/recompute/${kind}-win/${bucket}.json`;
 }
 
-export function packedBucketFile(packed: PackedRepoWindow, bucket: number, buckets: number): PackedWindowBucketFile {
+export function packedBucketFile(packed: PackedRepoWindow, bucket: number, buckets: number): PackedWindowBucketFileV1 {
   const repos: PackedWindowBucketRepo[] = [];
   for (let repo = 0; repo < packed.ids.length; repo++) {
     const id = packed.ids[repo]!;
@@ -579,7 +735,28 @@ export function packedBucketFile(packed: PackedRepoWindow, bucket: number, bucke
   return { v: 1, repos };
 }
 
-export function packedMetaFile(kind: PackedWindowKind, seamPeriod: string, packed: PackedRepoWindow, buckets: number): PackedWindowMetaFile {
+/** Persist one already-bucketed packed window as flat arrays (week incremental pack). */
+export function packedWindowAsFlatBucket(packed: PackedRepoWindow): PackedWindowBucketFileV2 {
+  return {
+    v: 2,
+    ids: packed.ids,
+    owners: packed.owners,
+    active: Array.from(packed.active),
+    start: Array.from(packed.start),
+    len: Array.from(packed.len),
+    periodIdx: Array.from(packed.periodIdx),
+    flow: Array.from(packed.flow),
+    cumgross: Array.from(packed.cumgross),
+    stock: Array.from(packed.stock),
+  };
+}
+
+export function packedMetaFile(
+  kind: PackedWindowKind,
+  seamPeriod: string,
+  packed: { periods: string[] },
+  buckets: number,
+): PackedWindowMetaFile {
   return {
     v: 1,
     kind,
@@ -590,7 +767,10 @@ export function packedMetaFile(kind: PackedWindowKind, seamPeriod: string, packe
   };
 }
 
-export function assemblePackedWindow(meta: PackedWindowMetaFile, shards: PackedWindowBucketFile[]): PackedRepoWindow {
+export function createPackedWindowAssembler(meta: PackedWindowMetaFile): {
+  absorb(shard: PackedWindowBucketFile): void;
+  finalize(): PackedRepoWindow;
+} {
   const ids: number[] = [];
   const owners: string[] = [];
   const active: number[] = [];
@@ -610,37 +790,46 @@ export function assemblePackedWindow(meta: PackedWindowMetaFile, shards: PackedW
     stock = growCapacity(stock, cap, (size) => new Float64Array(size));
   };
 
-  for (const shard of shards) {
-    for (const repo of shard.repos) {
-      const start = n;
-      for (const cell of repo.cells) {
-        if (n >= cap) grow();
-        periodIdx[n] = cell[0];
-        flow[n] = cell[1];
-        cumgross[n] = cell[2];
-        stock[n] = cell[3];
-        n += 1;
-      }
-      ids.push(repo.id);
-      owners.push(repo.owner);
-      active.push(repo.active ? 1 : 0);
-      starts.push(start);
-      lens.push(n - start);
-    }
-  }
-
   return {
-    ids,
-    owners,
-    active: Uint8Array.from(active),
-    periods: meta.periods,
-    start: Uint32Array.from(starts),
-    len: Uint16Array.from(lens),
-    periodIdx: periodIdx.slice(0, n),
-    flow: flow.slice(0, n),
-    cumgross: cumgross.slice(0, n),
-    stock: stock.slice(0, n),
+    absorb(shard) {
+      forEachPackedBucketRepo(shard, (repo) => {
+        const start = n;
+        for (const cell of repo.cells) {
+          if (n >= cap) grow();
+          periodIdx[n] = cell[0];
+          flow[n] = cell[1];
+          cumgross[n] = cell[2];
+          stock[n] = cell[3];
+          n += 1;
+        }
+        ids.push(repo.id);
+        owners.push(repo.owner);
+        active.push(repo.active ? 1 : 0);
+        starts.push(start);
+        lens.push(n - start);
+      });
+    },
+    finalize() {
+      return {
+        ids,
+        owners,
+        active: Uint8Array.from(active),
+        periods: meta.periods,
+        start: Uint32Array.from(starts),
+        len: Uint16Array.from(lens),
+        periodIdx: periodIdx.slice(0, n),
+        flow: flow.slice(0, n),
+        cumgross: cumgross.slice(0, n),
+        stock: stock.slice(0, n),
+      };
+    },
   };
+}
+
+export function assemblePackedWindow(meta: PackedWindowMetaFile, shards: PackedWindowBucketFile[]): PackedRepoWindow {
+  const assembler = createPackedWindowAssembler(meta);
+  for (const shard of shards) assembler.absorb(shard);
+  return assembler.finalize();
 }
 
 export function coercePackedWindowMeta(json: unknown): PackedWindowMetaFile | null {
@@ -667,9 +856,54 @@ export function coercePackedWindowMeta(json: unknown): PackedWindowMetaFile | nu
   };
 }
 
+function coerceNumberArray(value: unknown): number[] | null {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "number")) return null;
+  return value;
+}
+
 export function coercePackedWindowBucket(json: unknown): PackedWindowBucketFile | null {
   if (!json || typeof json !== "object") return null;
-  const rec = json as { v?: unknown; repos?: unknown };
+  const rec = json as {
+    v?: unknown;
+    repos?: unknown;
+    ids?: unknown;
+    owners?: unknown;
+    active?: unknown;
+    start?: unknown;
+    len?: unknown;
+    periodIdx?: unknown;
+    flow?: unknown;
+    cumgross?: unknown;
+    stock?: unknown;
+  };
+  if (rec.v === 2) {
+    const ids = coerceNumberArray(rec.ids);
+    const start = coerceNumberArray(rec.start);
+    const len = coerceNumberArray(rec.len);
+    const periodIdx = coerceNumberArray(rec.periodIdx);
+    const flow = coerceNumberArray(rec.flow);
+    const cumgross = coerceNumberArray(rec.cumgross);
+    const stock = coerceNumberArray(rec.stock);
+    const active = coerceNumberArray(rec.active);
+    if (!ids || !start || !len || !periodIdx || !flow || !cumgross || !stock || !active) return null;
+    if (!Array.isArray(rec.owners) || !rec.owners.every((owner) => typeof owner === "string")) return null;
+    if (ids.length !== rec.owners.length || ids.length !== active.length || ids.length !== start.length || ids.length !== len.length) {
+      return null;
+    }
+    if (periodIdx.length !== flow.length || flow.length !== cumgross.length || cumgross.length !== stock.length) return null;
+    return {
+      v: 2,
+      ids,
+      owners: rec.owners,
+      active,
+      start,
+      len,
+      periodIdx,
+      flow,
+      cumgross,
+      stock,
+    };
+  }
   if (rec.v !== 1 || !Array.isArray(rec.repos)) return null;
   const repos: PackedWindowBucketRepo[] = [];
   for (const row of rec.repos) {
