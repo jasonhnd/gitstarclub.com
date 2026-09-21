@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { CANONICAL_SHARD_READ_CONCURRENCY } from "@/lib/workflows/canonical-validation";
-import { canonicalModelLoadPlan, mergeCompleteBucketShards, wantedCanonicalFamilies, WRITE_CONCURRENCY_CF } from "./io";
+import { canonicalModelLoadPlan, collectPeriodsFromSeriesShard, mergeCompleteBucketShards, wantedCanonicalFamilies, WRITE_CONCURRENCY_CF } from "./io";
 
 describe("mergeCompleteBucketShards", () => {
   test("merges every complete shard", () => {
@@ -35,5 +35,23 @@ describe("canonicalModelLoadPlan", () => {
   test("wantedCanonicalFamilies defaults to every family and honors a hop subset", () => {
     expect([...wantedCanonicalFamilies()]).toEqual(["repos", "monthly", "weekly", "recentDaily", "siteDaily"]);
     expect([...wantedCanonicalFamilies({ families: ["repos", "weekly"] })]).toEqual(["repos", "weekly"]);
+  });
+});
+
+describe("collectPeriodsFromSeriesShard", () => {
+  test("unions period strings and ignores malformed cells", () => {
+    const periods = new Set<string>();
+    collectPeriodsFromSeriesShard(
+      {
+        "1": [
+          ["2026-W20", 3],
+          ["2026-W21", 1],
+        ],
+        "2": [["2026-W20", 9], ["nope"]],
+        "3": "skip",
+      },
+      periods,
+    );
+    expect([...periods].sort()).toEqual(["2026-W20", "2026-W21"]);
   });
 });

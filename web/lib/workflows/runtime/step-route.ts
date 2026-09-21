@@ -10,7 +10,7 @@ import {
 } from "@/lib/workers-host/queue-advance";
 import { foldStepCheckpointName, hasNextFoldWindow } from "@/lib/workflows/steps/fold";
 import {
-  hasNextRecomputeWindow,
+  extraRecomputeCheckpointSteps,
   recomputeStepCheckpointName,
   writeRecomputeEnqueued,
 } from "@/lib/workflows/steps/recompute-rank";
@@ -53,11 +53,13 @@ async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult)
     );
     await writeRecomputeEnqueued(job.runId);
   }
-  if (job.graph === "full" && job.name === "recomputeRank" && !hasNextRecomputeWindow(result)) {
-    await putView(
-      `ops/workflows/${job.runId}/steps/recomputeRank.json`,
-      WorkflowStepCheckpoint.parse({ ...checkpoint, step: "recomputeRank" }),
-    );
+  if (job.graph === "full" && job.name === "recomputeRank") {
+    for (const stepName of extraRecomputeCheckpointSteps(job.cursor, result)) {
+      await putView(
+        `ops/workflows/${job.runId}/steps/${stepName}.json`,
+        WorkflowStepCheckpoint.parse({ ...checkpoint, step: stepName }),
+      );
+    }
   }
 }
 
