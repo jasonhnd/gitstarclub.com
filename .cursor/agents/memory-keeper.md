@@ -1,6 +1,6 @@
 ---
 name: memory-keeper
-description: 把各 Bot 设定与记忆备份到私有 Git；支持冷启动/查漏；备份不得含明文密钥。
+description: 当需要备份或核对各 Bot 设定与记忆（冷启动、查漏、不含明文密钥的私有 Git 备份）时使用。不用于改业务产品决策或派发开发。
 model: inherit
 ---
 

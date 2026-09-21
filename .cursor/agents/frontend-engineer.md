@@ -1,6 +1,6 @@
 ---
 name: frontend-engineer
-description: 前端实现与性能；获开发授权后编码；写仓仅经 CCA。
+description: 当需要实现前端页面、响应式、可访问性或性能相关代码时使用。不用于定产品需求或替代测试做验收结论。
 model: inherit
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: 独立代码/架构/安全审查；不替代实现，不替代功能回归测试。
+description: 当需要独立审查代码正确性、架构与安全风险时使用。不用于实现功能，也不用于跑测试验行为。
 model: inherit
 readonly: true
 ---
