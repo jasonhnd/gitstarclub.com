@@ -135,7 +135,7 @@ GitHub's "watch" semantics changed in late 2012. By 2015 the WatchEvent stream i
 
 ### Whitelist
 
-The active tracked set is the open-ended GitHub Search discovery result for `stars:>=10000`; Search membership is snapshotted with an authoritative `count`, but GraphQL supplies every displayed/ranked current total. New entrants are picked up by the workflow diff. Drops become retained historical rows and stop polling; re-entry reactivates the same id while preserving its first `tracked_since`.
+The active tracked set is the open-ended GitHub Search discovery result for `stars:>=MIN_TRACKED_STARS` (default 10000; preview wrangler `env.pre` sets 1000). Search membership is snapshotted with an authoritative `count`, but GraphQL supplies every displayed/ranked current total. New entrants are picked up by the workflow diff. Drops become retained historical rows and stop polling; re-entry reactivates the same id while preserving its first `tracked_since`. Pages read precomputed views only.
 
 ## Data model
 

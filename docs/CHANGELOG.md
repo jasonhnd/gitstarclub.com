@@ -36,6 +36,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
+- **Preview tracked universe floor is env-gated to ≥1k stars.** `MIN_TRACKED_STARS` defaults to 10,000. Wrangler `env.pre` sets `1000`; production top-level must stay unset (or `10000`). Pages stay precomputed; the next full (non-fixture) refresh is what actually grows the published set. Rollback: remove or restore the env to `10000`. See [OPS.md](./OPS.md) and [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md).
+
 - **CF preview `/` and `/rankings` no longer 500 when live generation history exceeds 64 hops.** Period-scoped liveHistory reads still cap at 64 validated manifests and fail closed on cycle / schema / listed-but-missing. A request newer than the hop's `week`/`month` stops immediately (older hops cannot have that period). Hitting the hop bound without `previous_generation:null` now truncates to a miss so pages fall back to base / empty instead of throwing `live generation history exceeds 64 entries`. This is acceptance-matrix **H2**, independent of refresh OOM isolate **H1** (#494). Does not raise the scan cap, change the refresh pipeline, enable production CF Cron, or stop Vercel cron. See [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.9. Closes #495.
 
 - **CF CI gates keep preview Worker `gitstarclub-web-pre` and refuse a live production hit.** `.delivery.yml` and `scripts/assert-cf-ci-gates.mjs` use the same names (`main` → `gitstarclub-web`, `pre` → `gitstarclub-web-pre`). Production `triggers.crons` must be an explicit `[]`. Probe origins are allowlisted; `--dry-run=false` and `wrangler versions upload` count as live deploys. Repo automation must not PUT Cloudflare schedules. See [OPS.md](./OPS.md).
