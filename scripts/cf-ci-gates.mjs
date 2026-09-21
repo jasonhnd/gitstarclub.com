@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,9 +15,11 @@ export const PRODUCTION_CRON_ORIGIN = "https://gitstarclub.com";
 export const PREVIEW_CRON_ORIGIN = "https://pre.gitstarclub.com";
 // Repo draft stays Vercel-parity (Sunday=0). Dispatch also accepts CF 7 / SUN.
 export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]);
+export const ASSERT_SCRIPT_REL = "scripts/assert-cf-ci-gates.mjs";
 
 const LEGACY_PREVIEW_WORKER_NAME = "gitstarclub-web-nonprod";
 const WRANGLER_CONFIG_REL = "workers/gitstarclub-web/wrangler.jsonc";
+const NAMING_DOC_RELS = Object.freeze(["docs/OPS.md", "docs/TESTING.md", "docs/README.md"]);
 
 export function stripJsonc(source) {
   return source
@@ -59,6 +61,35 @@ export function readDefaultCfPreviewOrigin(runtimeConfigSource) {
     throw new Error("web/lib/runtime-config.ts must export DEFAULT_CF_PREVIEW_ORIGIN as a string literal");
   }
   return match[1];
+}
+
+export function normalizeCfPreviewOrigin(origin) {
+  return String(origin ?? "").trim().replace(/\/+$/, "");
+}
+
+function isAllowedPreviewOrigin(origin) {
+  return ALLOWED_CF_PREVIEW_ORIGINS.includes(normalizeCfPreviewOrigin(origin));
+}
+
+export function assertAllowedCfPreviewOrigin(origin) {
+  const normalized = normalizeCfPreviewOrigin(origin);
+  if (!normalized) {
+    throw new Error("CF_PREVIEW_ORIGIN is empty; expected a preview Worker entry");
+  }
+  if (normalized === CLOSED_PRODUCTION_WORKERS_DEV_ORIGIN) {
+    throw new Error("CF_PREVIEW_ORIGIN must not point at the closed production workers.dev host");
+  }
+  if (normalized.includes(`${PRODUCTION_WORKER_NAME}.`) && !normalized.includes(PREVIEW_WORKER_NAME)) {
+    throw new Error(
+      `CF_PREVIEW_ORIGIN must not target production Worker ${PRODUCTION_WORKER_NAME} (received ${origin})`,
+    );
+  }
+  if (!isAllowedPreviewOrigin(normalized)) {
+    throw new Error(
+      `CF_PREVIEW_ORIGIN must be ${ALLOWED_CF_PREVIEW_ORIGINS.join(" or ")} (received ${origin})`,
+    );
+  }
+  return normalized;
 }
 
 function readFlagValues(args, name) {
@@ -134,30 +165,48 @@ export function planCfWranglerDryRun(userArgs = []) {
   };
 }
 
+function isSkippableSourceLine(trimmed) {
+  return !trimmed || trimmed.startsWith("#") || trimmed.startsWith("//");
+}
+
+function commandHasEffectiveDryRun(command) {
+  if (/--dry-run(?:=false|=0)\b/.test(command)) return false;
+  return /--dry-run(?:\s|=|$)/.test(command);
+}
+
 export function findWranglerDeployInvocations(text) {
   const invocations = [];
   for (const rawLine of text.split("\n")) {
     const trimmed = rawLine.trim();
-    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
-    const match = trimmed.match(/wrangler\s+deploy\b(.*)/);
+    if (isSkippableSourceLine(trimmed)) continue;
+    const match = trimmed.match(/(?:bunx\s+|npx\s+|bun\s+x\s+)?wrangler\s+(deploy|versions\s+upload)\b(.*)/);
     if (!match) continue;
-    const command = `wrangler deploy${match[1] ?? ""}`;
+    const command = `wrangler ${match[1]}${match[2] ?? ""}`;
     invocations.push({
       command,
-      hasDryRun: /--dry-run(?:\s|=|$)/.test(command),
+      hasDryRun: commandHasEffectiveDryRun(command),
     });
   }
   return invocations;
 }
 
+export function findForbiddenCloudflareMutations(text) {
+  const issues = [];
+  for (const rawLine of text.split("\n")) {
+    const trimmed = rawLine.trim();
+    if (isSkippableSourceLine(trimmed)) continue;
+    if (!/schedules/i.test(trimmed)) continue;
+    const writesSchedule =
+      /\bPUT\b/.test(trimmed) || /method:\s*["']PUT["']/.test(trimmed) || /["']PUT["']/.test(trimmed);
+    if (!writesSchedule) continue;
+    issues.push(`refusing Cloudflare schedule mutation in repo automation: ${trimmed}`);
+  }
+  return issues;
+}
+
 function ciPreviewOriginFallback(ciYml) {
   const match = ciYml.match(/CF_PREVIEW_ORIGIN:\s*\$\{\{\s*vars\.CF_PREVIEW_ORIGIN\s*\|\|\s*'([^']+)'\s*\}\}/);
   return match?.[1] ?? null;
-}
-
-function isAllowedPreviewOrigin(origin) {
-  const normalized = origin.replace(/\/+$/, "");
-  return ALLOWED_CF_PREVIEW_ORIGINS.includes(normalized);
 }
 
 function jobMentionsPreAllowlist(ciYml, jobId) {
@@ -168,6 +217,24 @@ function jobMentionsPreAllowlist(ciYml, jobId) {
   return block.includes("github.ref_name == 'pre'") && block.includes("github.base_ref == 'pre'");
 }
 
+function collectCanonicalNameIssues(text, label) {
+  const issues = [];
+  if (!text.includes(ASSERT_SCRIPT_REL)) {
+    issues.push(`${label} must name ${ASSERT_SCRIPT_REL}`);
+  }
+  if (!text.includes(PREVIEW_WORKER_NAME)) {
+    issues.push(`${label} must name preview Worker ${PREVIEW_WORKER_NAME}`);
+  }
+  if (!text.includes(PRODUCTION_WORKER_NAME)) {
+    issues.push(`${label} must name production Worker ${PRODUCTION_WORKER_NAME}`);
+  }
+  return issues;
+}
+
+function productionCronsAreEmpty(productionCrons) {
+  return Array.isArray(productionCrons) && productionCrons.length === 0;
+}
+
 /**
  * @typedef {object} CfCiGateSources
  * @property {string} wranglerSource
@@ -175,6 +242,8 @@ function jobMentionsPreAllowlist(ciYml, jobId) {
  * @property {string} deliveryYml
  * @property {string} webPackageSource
  * @property {string} runtimeConfigSource
+ * @property {string} [deploySurfaceSource]
+ * @property {Record<string, string>} [namingSources]
  */
 
 /**
@@ -202,7 +271,7 @@ export function assertCfCiGates(sources) {
   }
 
   const productionCrons = wrangler.triggers?.crons;
-  if (productionCrons !== undefined && (!Array.isArray(productionCrons) || productionCrons.length > 0)) {
+  if (!productionCronsAreEmpty(productionCrons)) {
     issues.push("wrangler top-level triggers.crons must stay [] until Jason approves production CF Cron");
   }
   const previewCrons = preview?.triggers?.crons;
@@ -243,14 +312,21 @@ export function assertCfCiGates(sources) {
     issues.push(`ci.yml CF_PREVIEW_ORIGIN fallback must match DEFAULT_CF_PREVIEW_ORIGIN (${defaultOrigin})`);
   }
 
-  for (const { command, hasDryRun } of findWranglerDeployInvocations(`${ciYml}\n${webPackageSource}`)) {
+  const extraSurface = sources.deploySurfaceSource ?? "";
+  const deploySurface = `${ciYml}\n${webPackageSource}\n${extraSurface}`;
+  for (const { command, hasDryRun } of findWranglerDeployInvocations(deploySurface)) {
     if (!hasDryRun) {
       issues.push(`refusing bare wrangler deploy (missing --dry-run): ${command.trim()}`);
     }
   }
+  issues.push(...findForbiddenCloudflareMutations(deploySurface));
 
   if (webPackageSource.includes(`--env ""`) || webPackageSource.includes("--env ''")) {
     issues.push('web/package.json must not use wrangler --env "" (top-level name is production gitstarclub-web)');
+  }
+
+  if (extraSurface.includes(`--env ""`) || extraSurface.includes("--env ''")) {
+    issues.push('automation must not use wrangler --env "" (top-level name is production gitstarclub-web)');
   }
 
   if (!webPackageSource.includes("scripts/cf-wrangler-dry-run.mjs") && !webPackageSource.includes("cf-wrangler-dry-run")) {
@@ -275,8 +351,19 @@ export function assertCfCiGates(sources) {
   if (/\bcf-preview\b/.test(requiredChecks) || /\bcf-workers-host\b/.test(requiredChecks)) {
     issues.push(".delivery.yml ci.checks must not require cf-preview or cf-workers-host");
   }
+  issues.push(...collectCanonicalNameIssues(deliveryYml, ".delivery.yml"));
+  if (!/triggers\.crons[^\n]*\[\]/.test(deliveryYml)) {
+    issues.push(".delivery.yml must keep production triggers.crons [] next to the named assert");
+  }
+
+  if (!ciYml.includes(ASSERT_SCRIPT_REL) && !ciYml.includes("assert-cf-ci-gates.mjs")) {
+    issues.push(`ci.yml must run ${ASSERT_SCRIPT_REL}`);
+  }
   if (!ciYml.includes("steps.deployment.outputs.skipped") || !ciYml.includes("needs.preview-e2e.outputs.skipped")) {
     issues.push("ci.yml must soft-skip preview-e2e follow-up steps and product-gates when Vercel Preview is skipped");
+  }
+  if (!ciYml.includes(`${ASSERT_SCRIPT_REL} --preview-origin`) && !ciYml.includes("assert-cf-ci-gates.mjs --preview-origin")) {
+    issues.push(`ci.yml cf-preview must allowlist origins via ${ASSERT_SCRIPT_REL} --preview-origin`);
   }
 
   for (const jobId of ["cf-preview", "cf-workers-host"]) {
@@ -285,16 +372,44 @@ export function assertCfCiGates(sources) {
     }
   }
 
+  for (const [label, text] of Object.entries(sources.namingSources ?? {})) {
+    issues.push(...collectCanonicalNameIssues(text, label));
+  }
+
   return issues;
 }
 
+function readTextFiles(root, directory, predicate) {
+  const absolute = resolve(root, directory);
+  return readdirSync(absolute)
+    .filter((name) => predicate(name))
+    .sort()
+    .map((name) => readFileSync(resolve(absolute, name), "utf8"));
+}
+
+export function collectRepositoryDeploySurface(root) {
+  return [
+    readFileSync(resolve(root, "package.json"), "utf8"),
+    ...readTextFiles(
+      root,
+      "scripts",
+      (name) => name.endsWith(".mjs") && !name.endsWith(".test.mjs") && name !== "cf-ci-gates.mjs",
+    ),
+  ].join("\n");
+}
+
 export function assertRepositoryCfCiGates(root) {
+  const namingSources = Object.fromEntries(
+    NAMING_DOC_RELS.map((rel) => [rel, readFileSync(resolve(root, rel), "utf8")]),
+  );
   const issues = assertCfCiGates({
     wranglerSource: readFileSync(resolve(root, WRANGLER_CONFIG_REL), "utf8"),
     ciYml: readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8"),
     deliveryYml: readFileSync(resolve(root, ".delivery.yml"), "utf8"),
     webPackageSource: readFileSync(resolve(root, "web/package.json"), "utf8"),
     runtimeConfigSource: readFileSync(resolve(root, "web/lib/runtime-config.ts"), "utf8"),
+    deploySurfaceSource: collectRepositoryDeploySurface(root),
+    namingSources,
   });
   if (issues.length > 0) {
     throw new Error(`CF CI gates failed:\n- ${issues.join("\n- ")}`);
@@ -304,16 +419,18 @@ export function assertRepositoryCfCiGates(root) {
     previewWorker: PREVIEW_WORKER_NAME,
     previewEnv: PREVIEW_WRANGLER_ENV,
     previewOrigin: DEFAULT_CF_PREVIEW_ORIGIN,
+    productionCrons: [],
+    assertScript: ASSERT_SCRIPT_REL,
   };
 }
 
-const invokedPath = process.argv[1] ? fileURLToPath(import.meta.url) : "";
 const thisPath = fileURLToPath(import.meta.url);
-if (invokedPath && resolve(invokedPath) === resolve(thisPath) && process.argv[1]?.endsWith("cf-ci-gates.mjs")) {
+const entryPath = process.argv[1] ? resolve(process.argv[1]) : "";
+if (entryPath && resolve(thisPath) === entryPath) {
   try {
     const summary = assertRepositoryCfCiGates(resolve(dirname(thisPath), ".."));
     console.log(
-      `CF CI gates ok: ${summary.previewEnv}→${summary.previewWorker}; probe ${summary.previewOrigin}; no live deploy to ${summary.productionWorker}`,
+      `CF CI gates ok: ${summary.previewEnv}→${summary.previewWorker}; probe ${summary.previewOrigin}; production ${summary.productionWorker} triggers.crons=[]; no live deploy`,
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

@@ -1,7 +1,7 @@
 ---
 owner: docs / maintenance
 status: active
-last_reviewed: 2026-09-19
+last_reviewed: 2026-09-21
 source_of_truth_for:
   - documentation index
   - documentation ownership map
@@ -184,6 +184,7 @@ source_of_truth_for:
 - `bun run lint:docs` validates Markdown/frontmatter, backticked repository paths,
   environment-variable coverage, route ownership, API route coverage, pinned
   framework facts, and the CF CI gates in `scripts/assert-cf-ci-gates.mjs`
-  (preview Worker `gitstarclub-web-pre`; no live GHA deploy of `gitstarclub-web`).
+  (preview Worker `gitstarclub-web-pre`; no live GHA deploy of `gitstarclub-web`;
+  production `triggers.crons` stays `[]`; `.delivery.yml` uses the same names).
   Historical path references are exempt only through the reasoned allowlist in
   `scripts/check-docs.mjs`; current-state docs cannot opt out silently.

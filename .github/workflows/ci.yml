@@ -37,7 +37,7 @@ jobs:
       - name: Assert pinned runtime versions
         working-directory: .
         run: node scripts/assert-runtime-versions.mjs
-      - name: Assert CF CI deploy gates
+      - name: Assert CF CI deploy gates (gitstarclub-web-pre; production triggers.crons [])
         working-directory: .
         run: node scripts/assert-cf-ci-gates.mjs
       - run: bun install --frozen-lockfile
@@ -355,15 +355,9 @@ jobs:
         working-directory: .
         run: node scripts/assert-runtime-versions.mjs
       - run: bun install --frozen-lockfile
-      - name: Assert CF preview origin is not closed production workers.dev
-        run: |
-          case "${CF_PREVIEW_ORIGIN}" in
-            https://gitstarclub-web.worldgo.workers.dev|https://gitstarclub-web.worldgo.workers.dev/)
-              echo "::error::CF_PREVIEW_ORIGIN must not point at the closed production workers.dev host"
-              exit 1
-              ;;
-          esac
-          echo "CF_PREVIEW_ORIGIN=${CF_PREVIEW_ORIGIN}"
+      - name: Assert CF preview origin is allowlisted
+        working-directory: .
+        run: node scripts/assert-cf-ci-gates.mjs --preview-origin
       - name: Resolve CF Preview identity
         id: deployment
         env:
