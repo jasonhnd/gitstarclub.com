@@ -81,6 +81,26 @@ describe("refresh step graph", () => {
     expect(done?.cursor.preflightAcc).toBeUndefined();
   });
 
+  test("metadata GraphQL 502 keeps the same bucket hop", () => {
+    const job = full("metadata", { startedAt: "2026-09-21T16:02:55.723Z", fencingToken: 30, bucket: 0 });
+    const retry = nextRefreshJob(job, {
+      name: "metadata",
+      retryMetadata: true,
+      bucket: 0,
+      repos: 100,
+      from_github: 100,
+      error: "GitHub GraphQL 502: error code: 502",
+    });
+    expect(retry).toMatchObject({
+      name: "metadata",
+      cursor: { bucket: 0, fencingToken: 30, startedAt: "2026-09-21T16:02:55.723Z" },
+    });
+    expect(retry?.cursor.metadata).toBeUndefined();
+
+    const advanced = nextRefreshJob(job, { name: "metadata", bucket: 0, repos: 100, from_github: 100 });
+    expect(advanced).toMatchObject({ name: "metadata", cursor: { bucket: 1, fencingToken: 30 } });
+  });
+
   test("whitelist Search hops stay on whitelist until the last shard", () => {
     const mid = nextRefreshJob(full("whitelist", { startedAt: "2026-09-21T14:05:09.247Z", fencingToken: 29 }), {
       name: "whitelist",

@@ -6,7 +6,7 @@ import {
   type WhitelistEntry as WhitelistEntryRecord,
   type WhitelistSearchProgress,
 } from "@/lib/contracts";
-import { GITHUB_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
+import { FetchTimeoutError, GITHUB_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
 import {
   getMinTrackedStars,
   requireGithubToken,
@@ -44,6 +44,31 @@ export interface GitHubFetchOptions {
   timeoutMs?: number;
 }
 
+export class GitHubHttpError extends Error {
+  readonly status: number;
+  readonly source: "graphql" | "search";
+
+  constructor(source: "graphql" | "search", status: number, body: string) {
+    const label = source === "graphql" ? "GraphQL" : "Search";
+    super(`GitHub ${label} ${status}: ${body.slice(0, 200)}`);
+    this.name = "GitHubHttpError";
+    this.status = status;
+    this.source = source;
+  }
+}
+
+export function isTransientGithubStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+export function isTransientGithubError(error: unknown): boolean {
+  if (error instanceof GitHubHttpError) return isTransientGithubStatus(error.status);
+  if (error instanceof FetchTimeoutError) return true;
+  if (!(error instanceof Error)) return false;
+  if (/fetch timed out after/i.test(error.message)) return true;
+  return /GitHub (?:GraphQL|Search) (429|5\d\d)\b/.test(error.message);
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const NonNegativeInt = z.number().int().nonnegative();
 
@@ -74,11 +99,11 @@ async function gql<T>(token: string, query: string, schema: z.ZodType<T>, attemp
     timeoutMs: opts.timeoutMs ?? GITHUB_FETCH_TIMEOUT_MS,
   });
   const text = await res.text();
-  if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt <= MAX_RETRIES) {
+  if ((res.status === 403 || isTransientGithubStatus(res.status)) && attempt <= MAX_RETRIES) {
     await sleep(secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
     return gql<T>(token, query, schema, attempt + 1, opts);
   }
-  if (!res.ok) throw new Error(`GitHub GraphQL ${res.status}: ${text.slice(0, 200)}`);
+  if (!res.ok) throw new GitHubHttpError("graphql", res.status, text);
   const json = z.object({ data: z.unknown().optional(), errors: z.unknown().optional() }).passthrough().parse(JSON.parse(text));
   // Partial data + errors is normal (a deleted/renamed repo aliases to null); only fail with no data.
   if (!json.data) throw new Error(`GraphQL: ${JSON.stringify(json.errors ?? {}).slice(0, 200)}`);
@@ -141,12 +166,12 @@ async function restSearch(token: string, params: Record<string, string | number>
     cache: "no-store",
     timeoutMs: opts.timeoutMs ?? GITHUB_FETCH_TIMEOUT_MS,
   });
-  if ((res.status === 403 || res.status === 429 || res.status >= 500) && attempt <= MAX_RETRIES) {
+  if ((res.status === 403 || isTransientGithubStatus(res.status)) && attempt <= MAX_RETRIES) {
     const text = await res.text();
     await sleep(secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
     return restSearch(token, params, attempt + 1, opts);
   }
-  if (!res.ok) throw new Error(`GitHub Search ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) throw new GitHubHttpError("search", res.status, await res.text());
   return SearchResultSchema.parse(await res.json());
 }
 
@@ -364,43 +389,56 @@ const RepoNodeSchema = z.object({
 }).passthrough();
 const NodesResponseSchema = z.object({ nodes: z.array(z.unknown().nullable()) }).passthrough();
 
-/** Batch repo metadata via GraphQL nodes() (100 ids/query) → Map<databaseId, RepoMetadata>.
- *  Ported from pipeline/lib/github.mjs batchMetadata; see docs/VERCEL-DATA-OPERATIONS.md §4 metadata step. */
-export async function batchMetadata(nodeIds: string[], opts: GitHubFetchOptions = {}): Promise<Map<number, RepoMetadata>> {
+export const METADATA_GRAPHQL_BATCH = 100;
+
+/** One GraphQL nodes() page (≤100 ids) → Map<databaseId, RepoMetadata>. */
+export async function fetchRepositoryMetadata(
+  nodeIds: string[],
+  opts: GitHubFetchOptions = {},
+): Promise<Map<number, RepoMetadata>> {
   const token = requireGithubToken();
   const out = new Map<number, RepoMetadata>();
+  if (nodeIds.length === 0) return out;
   const selection =
     "databaseId nameWithOwner owner{login __typename} name description primaryLanguage{name} " +
     "languages(first:10, orderBy:{field:SIZE, direction:DESC}){edges{size node{name color}}} " +
     "repositoryTopics(first:20){nodes{topic{name}}} createdAt stargazerCount isArchived";
-  for (let i = 0; i < nodeIds.length; i += 100) {
-    const ids = nodeIds.slice(i, i + 100);
-    const query = `query{nodes(ids:${JSON.stringify(ids)}){... on Repository{${selection}}}}`;
-    const data = await gql(token, query, NodesResponseSchema, 1, opts);
-    for (const raw of data.nodes) {
-      if (!raw) continue;
-      const parsed = RepoNodeSchema.safeParse(raw);
-      if (!parsed.success) {
-        console.warn("[github] skipped invalid repository node", parsed.error.message.slice(0, 200));
-        continue;
-      }
-      const n = parsed.data;
-      if (n.databaseId == null) continue;
-      out.set(n.databaseId, {
-        full_name: n.nameWithOwner,
-        owner: n.owner.login,
-        owner_type: n.owner.__typename,
-        name: n.name,
-        description: n.description,
-        language: n.primaryLanguage?.name ?? null,
-        languages: n.languages.edges.map((edge) => ({ name: edge.node.name, size: edge.size, color: edge.node.color ?? null })),
-        topics: n.repositoryTopics.nodes.map((t) => t.topic.name),
-        created_at: n.createdAt,
-        current_stars: n.stargazerCount,
-        is_archived: n.isArchived,
-      });
+  const query = `query{nodes(ids:${JSON.stringify(nodeIds)}){... on Repository{${selection}}}}`;
+  const data = await gql(token, query, NodesResponseSchema, 1, opts);
+  for (const raw of data.nodes) {
+    if (!raw) continue;
+    const parsed = RepoNodeSchema.safeParse(raw);
+    if (!parsed.success) {
+      console.warn("[github] skipped invalid repository node", parsed.error.message.slice(0, 200));
+      continue;
     }
-    if (i + 100 < nodeIds.length) await sleep(BATCH_PAUSE_MS);
+    const n = parsed.data;
+    if (n.databaseId == null) continue;
+    out.set(n.databaseId, {
+      full_name: n.nameWithOwner,
+      owner: n.owner.login,
+      owner_type: n.owner.__typename,
+      name: n.name,
+      description: n.description,
+      language: n.primaryLanguage?.name ?? null,
+      languages: n.languages.edges.map((edge) => ({ name: edge.node.name, size: edge.size, color: edge.node.color ?? null })),
+      topics: n.repositoryTopics.nodes.map((t) => t.topic.name),
+      created_at: n.createdAt,
+      current_stars: n.stargazerCount,
+      is_archived: n.isArchived,
+    });
+  }
+  return out;
+}
+
+/** Batch repo metadata via GraphQL nodes() (100 ids/query) → Map<databaseId, RepoMetadata>.
+ *  Ported from pipeline/lib/github.mjs batchMetadata; see docs/VERCEL-DATA-OPERATIONS.md §4 metadata step. */
+export async function batchMetadata(nodeIds: string[], opts: GitHubFetchOptions = {}): Promise<Map<number, RepoMetadata>> {
+  const out = new Map<number, RepoMetadata>();
+  for (let i = 0; i < nodeIds.length; i += METADATA_GRAPHQL_BATCH) {
+    const batch = await fetchRepositoryMetadata(nodeIds.slice(i, i + METADATA_GRAPHQL_BATCH), opts);
+    for (const [id, meta] of batch) out.set(id, meta);
+    if (i + METADATA_GRAPHQL_BATCH < nodeIds.length) await sleep(BATCH_PAUSE_MS);
   }
   return out;
 }

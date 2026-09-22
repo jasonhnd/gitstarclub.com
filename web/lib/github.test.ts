@@ -12,10 +12,14 @@
 // (If github.ts changes these helpers, keep the replicas in sync.) No fetch is
 // invoked and GITHUB_TOKEN is never set, so this suite makes zero network calls.
 import { test, expect, describe } from "bun:test";
+import { FetchTimeoutError } from "./fetch-timeout.mjs";
 import {
   GITHUB_ACCEPT,
   GITHUB_USER_AGENT,
+  GitHubHttpError,
   githubApiHeaders,
+  isTransientGithubError,
+  isTransientGithubStatus,
   searchWhitelistHop,
   searchWhitelistWithSearch,
   type SearchResult,
@@ -272,5 +276,18 @@ describe("retry attempt boundary (MAX_RETRIES)", () => {
     expect(shouldRetry(1)).toBe(true);
     expect(shouldRetry(MAX_RETRIES)).toBe(true);
     expect(shouldRetry(MAX_RETRIES + 1)).toBe(false);
+  });
+});
+
+describe("isTransientGithubError", () => {
+  test("treats 502/503/504/429 and fetch timeouts as transient", () => {
+    expect(isTransientGithubStatus(502)).toBe(true);
+    expect(isTransientGithubStatus(403)).toBe(false);
+    expect(isTransientGithubError(new GitHubHttpError("graphql", 502, "error code: 502"))).toBe(true);
+    expect(isTransientGithubError(new GitHubHttpError("search", 429, "rate limited"))).toBe(true);
+    expect(isTransientGithubError(new GitHubHttpError("graphql", 401, "bad credentials"))).toBe(false);
+    expect(isTransientGithubError(new FetchTimeoutError("https://api.github.com/graphql", 30_000))).toBe(true);
+    expect(isTransientGithubError(new Error("GitHub GraphQL 502: error code: 502"))).toBe(true);
+    expect(isTransientGithubError(new Error("GraphQL metadata missing for 1 active repository"))).toBe(false);
   });
 });

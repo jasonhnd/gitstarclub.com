@@ -84,7 +84,7 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
 
 #### Repository tracking contract（权威）
 
-1. GitHub Search 只负责**成员发现**。发现先执行开放上界的 `stars:>=MIN_TRACKED_STARS`（默认 10,000；`getMinTrackedStars()` 读 `MIN_TRACKED_STARS`，预发 = 1,000）、按 stars 降序读取当前最高值，再以该动态上界自适应分桶；不存在 600,000 或其他产品级最高星数截断。预发 `WHITELIST_SEARCH_SHARDS=1` 时 Search 按 hop 恢复队列（`ops/workflows/<run_id>/whitelist-search.json`），完成前不写 snapshot。页开不现算，成员变化只经 refresh → 预计算视图。
+1. GitHub Search 只负责**成员发现**。发现先执行开放上界的 `stars:>=MIN_TRACKED_STARS`（默认 10,000；`getMinTrackedStars()` 读 `MIN_TRACKED_STARS`，预发 = 1,000）、按 stars 降序读取当前最高值，再以该动态上界自适应分桶；不存在 600,000 或其他产品级最高星数截断。预发 `WHITELIST_SEARCH_SHARDS=1` 时 Search 按 hop 恢复队列（`ops/workflows/<run_id>/whitelist-search.json`），完成前不写 snapshot。失败 run 的 unpublished snapshot 经 `ops/workflows/latest-unpublished-whitelist.json` 供下一 run 复用（不重搜）；已发布 pointer 仍是 baseline。页开不现算，成员变化只经 refresh → 预计算视图。
 2. GraphQL `Repository.stargazerCount` 是 `current_stars`、当前总量及当前/全时排名的唯一权威来源。Search 返回的 `stargazers_count` 只保留在 immutable whitelist snapshot 中用于发现审计，不写入 canonical `current_stars`。
 3. `WhitelistSnapshot.count === entries.length` 是本 run 的权威 active tracked count。publish gate 要求该集合与 canonical `active:true`、`lookup/repos.json active:true`、`meta.active_repo_count` 完全一致。
 4. drop 不删除：canonical、lookup、search 与 repo entity 继续保留，并写 `active:false`；daily/weekly cron、当前 org/category 聚合和 all-time 榜只使用 active rows。
@@ -186,6 +186,8 @@ views/latest.json                              # 发布指针（读侧据此解�
 views/{run_id}/…                               # 一个 run 的完整视图版本（version=run_id，无独立 staging/published）
 ops/workflows/{run_id}/manifest.json           # Workflow run 元信息
 ops/workflows/{run_id}/steps/{step}.json       # 每个 step 的 checkpoint
+ops/workflows/{run_id}/metadata-<bucket>.json  # metadata GraphQL batch 进度（502 后续跑）
+ops/workflows/latest-unpublished-whitelist.json # 未发布 whitelist snapshot 指针
 ops/workflows/latest-success.json              # 最近一次成功发布的 run_id（恢复点）
 ```
 
@@ -607,7 +609,7 @@ product gate 仍将该 transport failure 判为失败。
 }
 ```
 
-> `steps[]` 为 **manifest 分组**（10 项，对应进度账本，含 read-only `preflight` 与真实 `buildAliases` 阶段）；**细粒度 13 步**（preflight/whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。编排 runtime 另写 `ops/workflows/<run_id>/steps/<step>.json`；`validate` 另写 `canonical-manifest.json`（全部必需 canonical shard 的路径、bucket、记录数、SHA-256 与完整性结论）及 `validation.json`，其余 run 级账本包括 manifest / error / latest-success。
+> `steps[]` 为 **manifest 分组**（10 项，对应进度账本，含 read-only `preflight` 与真实 `buildAliases` 阶段）；**细粒度 13 步**（preflight/whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。编排 runtime 另写 `ops/workflows/<run_id>/steps/<step>.json`；metadata 另写可变 `metadata-<bucket>.json`（GraphQL batch 进度；502 后续跑同一 hop）；`validate` 另写 `canonical-manifest.json`（全部必需 canonical shard 的路径、bucket、记录数、SHA-256 与完整性结论）及 `validation.json`，其余 run 级账本包括 manifest / error / latest-success / `latest-unpublished-whitelist.json`。
 
 `ops/workflows/active.json` 是 refresh / rollback 的互斥 lease。start 路由和执行体都通过 Blob ETag 条件写更新；takeover 会递增 `fencing_token`。lease 30 分钟到期，长写入每 ≤5 分钟 heartbeat；canonical、checkpoint 和 publish pointer 写前必须同时核对 `run_id` 与 token。
 

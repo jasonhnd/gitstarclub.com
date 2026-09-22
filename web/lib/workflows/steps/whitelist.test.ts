@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import type { WhitelistEntry, WhitelistSnapshot } from "@/lib/contracts";
 import { whitelistDiscoveryDate } from "./metadata";
 import type { WhitelistSearchProgress } from "@/lib/contracts";
-import { refreshWhitelistWithDeps, runWhitelistStepWithDeps, type WhitelistDeps } from "./whitelist";
+import {
+  rememberFailedUnpublishedWhitelist,
+  refreshWhitelistWithDeps,
+  runWhitelistStepWithDeps,
+  type WhitelistDeps,
+} from "./whitelist";
 
 function entry(id: number): WhitelistEntry {
   return {
@@ -34,6 +39,8 @@ function fakeWhitelist() {
     ownershipCalls: 0,
     creates: 0,
     now: "2026-07-17T02:00:00.000Z",
+    unpublished: null as { run_id: string; count: number; recorded_at: string } | null,
+    minStars: 1000,
   };
   const deps: WhitelistDeps = {
     readSnapshot: async (runId) => state.snapshots.get(runId) ?? null,
@@ -62,6 +69,11 @@ function fakeWhitelist() {
       state.ownershipCalls += 1;
     },
     now: () => state.now,
+    readUnpublishedPointer: async () => state.unpublished,
+    writeUnpublishedPointer: async (pointer) => {
+      state.unpublished = structuredClone(pointer);
+    },
+    readMinStars: () => state.minStars,
   };
   return { state, deps };
 }
@@ -82,9 +94,43 @@ describe("published whitelist baseline", () => {
     expect(first).toEqual({ count: 2, added: 1, dropped: 0 });
     expect(retry).toEqual(first);
     expect(state.snapshots.get("failed-run")).toEqual(persisted);
-    expect(state.searchCalls).toBe(2); // first run + successor; retry did not search
-    expect(successor).toEqual({ count: 3, added: 2, dropped: 0 });
-    expect(state.snapshots.get("successor-run")?.diff.added).toEqual([2, 3]);
+    expect(state.searchCalls).toBe(1); // successor reused unpublished snapshot; retry did not search
+    expect(successor).toEqual({ count: 2, added: 1, dropped: 0 });
+    expect(state.snapshots.get("successor-run")?.diff.added).toEqual([2]);
+    expect(state.snapshots.get("successor-run")?.generated_at).toBe(persisted.generated_at);
+  });
+
+  test("reuses an unpublished failed snapshot pointed at by latest-unpublished-whitelist", async () => {
+    const { state, deps } = fakeWhitelist();
+    state.snapshots.set("refresh-2026-09-21T16-02-51-499Z", snapshot("refresh-2026-09-21T16-02-51-499Z", [1, 2], "2026-09-21T18:03:22.274Z"));
+    state.unpublished = {
+      run_id: "refresh-2026-09-21T16-02-51-499Z",
+      count: 2,
+      recorded_at: "2026-09-22T00:00:00.000Z",
+    };
+    state.searchEntries = [entry(1), entry(2), entry(3)];
+
+    const reused = await refreshWhitelistWithDeps("next-run", 3, deps);
+
+    expect(reused).toEqual({ count: 2, added: 1, dropped: 0 });
+    expect(state.searchCalls).toBe(0);
+    expect(state.snapshots.get("next-run")?.generated_at).toBe("2026-09-21T18:03:22.274Z");
+  });
+
+  test("does not reuse an unpublished snapshot when minStars no longer matches", async () => {
+    const { state, deps } = fakeWhitelist();
+    state.snapshots.set("old-1k", snapshot("old-1k", [1, 2]));
+    state.unpublished = { run_id: "old-1k", count: 2, recorded_at: "2026-09-21T18:03:22.274Z" };
+    state.minStars = 10_000;
+    deps.readProgress = async (runId) =>
+      runId === "old-1k"
+        ? { v: 1 as const, minStars: 1000, observedMax: 50_000, queue: [], entries: [entry(1), entry(2)] }
+        : null;
+
+    const next = await refreshWhitelistWithDeps("next-run", 3, deps);
+
+    expect(state.searchCalls).toBe(1);
+    expect(next).toEqual({ count: 2, added: 1, dropped: 0 });
   });
 
   test("after publication the next run compares with the successfully published snapshot", async () => {
@@ -250,5 +296,37 @@ describe("published whitelist baseline", () => {
     expect(result).toEqual({ count: 2, added: 1, dropped: 0 });
     expect(hops).toBe(2);
     expect(state.snapshots.get("drain-run")?.count).toBe(2);
+  });
+
+  test("start remembers a failed lease snapshot as the unpublished reuse pointer", async () => {
+    const { state, deps } = fakeWhitelist();
+    state.snapshots.set(
+      "refresh-2026-09-21T16-02-51-499Z",
+      snapshot("refresh-2026-09-21T16-02-51-499Z", [1, 2], "2026-09-21T18:03:22.274Z"),
+    );
+    const pointer = await rememberFailedUnpublishedWhitelist(
+      {
+        read: async () => ({
+          lease: {
+            run_id: "refresh-2026-09-21T16-02-51-499Z",
+            status: "failed",
+            acquired_at: "2026-09-21T18:07:02.790Z",
+            expires_at: "2026-09-21T18:07:02.790Z",
+            fencing_token: 30,
+          },
+          etag: '"1"',
+        }),
+        create: async () => false,
+        compareAndSet: async () => false,
+      },
+      deps,
+    );
+
+    expect(pointer).toEqual({
+      run_id: "refresh-2026-09-21T16-02-51-499Z",
+      count: 2,
+      recorded_at: "2026-07-17T02:00:00.000Z",
+    });
+    expect(state.unpublished?.run_id).toBe("refresh-2026-09-21T16-02-51-499Z");
   });
 });
