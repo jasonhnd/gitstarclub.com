@@ -1,6 +1,6 @@
 import { CanonicalMeta } from "@/lib/contracts";
 import { readRequiredView } from "@/lib/data/source";
-import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
+import { resolveCanonicalEmptyShardPolicy, validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
 
 export interface CanonicalPreflightResult {
   seam_date: string;
@@ -34,10 +34,21 @@ export async function readCanonicalPreflight(
   // inventory while still rejecting legacy rows that the current model cannot
   // consume. The Workflow step rechecks all 128 shards in 4-bucket windows
   // (`runPreflightStep`) before any mutation so CF Workers stay under 1102.
+  const emptyShardPolicy = resolveCanonicalEmptyShardPolicy();
   const canonical = await validateCanonicalGeneration(bust, {
     scope: phase === "route" ? "repositories" : "full",
     checksum: false,
+    emptyShardPolicy,
   });
+  if (canonical.placeholders.length > 0) {
+    console.log("[workflow-refresh] preview preflight empty-shard policy", {
+      policy: emptyShardPolicy,
+      run_id: runId,
+      phase,
+      placeholders: canonical.placeholders,
+      placeholder_count: canonical.placeholders.length,
+    });
+  }
   if (!canonical.manifest.complete) {
     throw new Error(
       `canonical preflight failed (${canonical.failures.length}): ${canonical.failures.slice(0, 5).join("; ")}`,

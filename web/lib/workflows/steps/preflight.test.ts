@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 let value: unknown = null;
 let repoValue: Record<string, unknown> | null = null;
 let seriesPresent = true;
+let missingPaths = new Set<string>();
 let reads: Array<{ path: string; bust?: string }> = [];
 
 const validRepo = {
@@ -24,6 +25,7 @@ async function mockRead(
   opts: { bust?: string } = {},
 ) {
   reads.push({ path, bust: opts.bust });
+  if (missingPaths.has(path)) return null;
   let raw: unknown;
   if (path === "canonical/v2/meta.json") raw = value;
   else if (path.endsWith("repos/1.json")) raw = repoValue ? { "1": repoValue } : {};
@@ -55,7 +57,10 @@ beforeEach(() => {
   value = null;
   repoValue = { ...validRepo };
   seriesPresent = true;
+  missingPaths = new Set();
   reads = [];
+  delete process.env.PREFLIGHT_RELAX_EMPTY_SHARDS;
+  delete process.env.VERCEL_ENV;
 });
 
 /*
@@ -173,6 +178,7 @@ describe("preflightCanonical", () => {
         recentDailyRecords: 1,
         validatedShards: 112,
         schemaFailures: 0,
+        placeholderShards: 0,
       },
     });
     expect(last.nextPreflightOffset).toBeUndefined();
@@ -196,5 +202,60 @@ describe("preflightCanonical", () => {
     await expect(preflightCanonical("refresh-empty-series")).rejects.toThrow(
       "canonical/v2/repo-monthly: no repository records",
     );
+  });
+
+  test("preview policy lets a hop-4 missing-shard window continue", async () => {
+    value = {
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      folded_through: { month: "2026-05", week: "2026-W22" },
+      generated_at: "2026-06-02T14:32:57.214Z",
+    };
+    process.env.PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
+    missingPaths = new Set([
+      "canonical/v2/repos/4.json",
+      "canonical/v2/repos/6.json",
+      "canonical/v2/repos/7.json",
+      "canonical/v2/repo-monthly/5.json",
+      "canonical/v2/repo-monthly/6.json",
+    ]);
+
+    const hop = await runPreflightStep("refresh-hop4-preview", { preflightOffset: 4 });
+    expect(hop.nextPreflightOffset).toBe(8);
+    expect(hop.preflight).toBeUndefined();
+    expect(hop.preflightAcc?.placeholderShards).toBe(5);
+    expect(hop.preflightAcc?.schemaFailures).toBe(0);
+  });
+
+  test("production-shaped env refuses the preview empty-shard policy", async () => {
+    value = {
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      folded_through: { month: "2026-05", week: "2026-W22" },
+      generated_at: "2026-06-02T14:32:57.214Z",
+    };
+    process.env.PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
+    process.env.VERCEL_ENV = "production";
+    missingPaths = new Set(["canonical/v2/repos/4.json"]);
+
+    await expect(runPreflightStep("refresh-hop4-prod", { preflightOffset: 4 })).rejects.toThrow(
+      "canonical/v2/repos/4.json: missing",
+    );
+  });
+
+  test("preview policy does not void the run when time-series families are empty", async () => {
+    value = {
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+      folded_through: { month: "2026-05", week: "2026-W22" },
+      generated_at: "2026-06-02T14:32:57.214Z",
+    };
+    process.env.PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
+    seriesPresent = false;
+
+    await expect(preflightCanonical("refresh-preview-empty-series")).resolves.toMatchObject({
+      seam_date: "2026-05-30",
+      schema_ver: 1,
+    });
   });
 });

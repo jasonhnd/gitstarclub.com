@@ -25,7 +25,15 @@ function asPreflightAcc(value: unknown): CanonicalPreflightCursorAcc | undefined
   ) {
     return undefined;
   }
-  return acc;
+  return {
+    repoRecords: acc.repoRecords,
+    monthlyRecords: acc.monthlyRecords,
+    weeklyRecords: acc.weeklyRecords,
+    recentDailyRecords: acc.recentDailyRecords,
+    validatedShards: acc.validatedShards,
+    schemaFailures: acc.schemaFailures,
+    placeholderShards: typeof acc.placeholderShards === "number" ? acc.placeholderShards : 0,
+  };
 }
 
 function asFoldAcc(value: unknown): FoldCursorAcc | undefined {

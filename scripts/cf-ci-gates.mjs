@@ -17,6 +17,7 @@ export const PREVIEW_CRON_ORIGIN = "https://pre.gitstarclub.com";
 export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]);
 export const PREVIEW_MIN_TRACKED_STARS = "1000";
 export const PRODUCTION_MIN_TRACKED_STARS = "10000";
+export const PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
 export const ASSERT_SCRIPT_REL = "scripts/assert-cf-ci-gates.mjs";
 
 const LEGACY_PREVIEW_WORKER_NAME = "gitstarclub-web-nonprod";
@@ -302,6 +303,18 @@ export function assertCfCiGates(sources) {
   if (productionMinTracked !== undefined && productionMinTracked !== PRODUCTION_MIN_TRACKED_STARS) {
     issues.push(
       `wrangler top-level vars.MIN_TRACKED_STARS must be unset or ${PRODUCTION_MIN_TRACKED_STARS} (production stays ≥10k)`,
+    );
+  }
+  const previewRelaxEmpty = preview?.vars?.PREFLIGHT_RELAX_EMPTY_SHARDS;
+  if (previewRelaxEmpty !== undefined && previewRelaxEmpty !== PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.PREFLIGHT_RELAX_EMPTY_SHARDS must be unset or ${PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS} (preview-only empty-shard placeholder)`,
+    );
+  }
+  const productionRelaxEmpty = wrangler.vars?.PREFLIGHT_RELAX_EMPTY_SHARDS;
+  if (productionRelaxEmpty === PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS) {
+    issues.push(
+      "wrangler top-level vars.PREFLIGHT_RELAX_EMPTY_SHARDS must not be 1 (preview-only; production stays fail-closed)",
     );
   }
 

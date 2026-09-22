@@ -3,10 +3,12 @@ import {
   CANONICAL_SHARD_READ_CONCURRENCY,
   CANONICAL_SHARD_READ_CONCURRENCY_CF,
   EXPECTED_CANONICAL_SHARDS,
+  PREVIEW_EMPTY_SHARD_POLICY,
   canonicalShardReadConcurrency,
   emptyCanonicalPreflightAcc,
   emptySeriesPreflightFailures,
   mergeCanonicalPreflightAcc,
+  resolveCanonicalEmptyShardPolicy,
   validateCanonicalGeneration,
   type CanonicalShardReader,
 } from "./canonical-validation";
@@ -178,6 +180,7 @@ describe("validateCanonicalGeneration", () => {
       recentDailyRecords: 0,
       validatedShards: 16,
       schemaFailures: 0,
+      placeholderShards: 0,
     });
     expect(emptySeriesPreflightFailures(mid)).toEqual(
       expect.arrayContaining([
@@ -194,6 +197,122 @@ describe("validateCanonicalGeneration", () => {
     expect(canonicalShardReadConcurrency({ HOSTING_TARGET: "cf", VERCEL_ENV: "production" })).toBe(
       CANONICAL_SHARD_READ_CONCURRENCY,
     );
+  });
+
+  test("preview placeholder policy treats missing shards as empty {} and stays complete", async () => {
+    const missing = new Set([
+      "canonical/v2/repos/4.json",
+      "canonical/v2/repos/6.json",
+      "canonical/v2/repos/7.json",
+      "canonical/v2/repo-monthly/5.json",
+      "canonical/v2/repo-monthly/6.json",
+    ]);
+    const reader: CanonicalShardReader = async (path) => {
+      if (missing.has(path)) return null;
+      if (path.endsWith("repos/1.json")) return { "1": historicalRepo };
+      if (path.endsWith("repo-monthly/1.json")) return { "1": [["2026-06", 1]] };
+      if (path.endsWith("repo-weekly/1.json")) return { "1": [["2026-W26", 1]] };
+      if (path.endsWith("repo-recent-daily/1.json")) return { "1": [["2026-06-30", 1]] };
+      return {};
+    };
+
+    const result = await validateCanonicalGeneration("refresh-preview-placeholders", {
+      reader,
+      generatedAt: "2026-09-22T01:26:07.000Z",
+      emptyShardPolicy: PREVIEW_EMPTY_SHARD_POLICY,
+      checksum: false,
+    });
+
+    expect(result.failures).toEqual([]);
+    expect(result.placeholders).toEqual([...missing].toSorted());
+    expect(result.acc.placeholderShards).toBe(missing.size);
+    expect(result.manifest.complete).toBe(true);
+    expect(result.manifest.validated_shards).toBe(EXPECTED_CANONICAL_SHARDS);
+    expect(result.invariants.canonical_placeholder_shards).toBe(missing.size);
+  });
+
+  test("preview hop-4 window with 14 missing shards does not fail closed", async () => {
+    const present = new Set(["canonical/v2/repos/5.json", "canonical/v2/repo-weekly/4.json"]);
+    const reader: CanonicalShardReader = async (path) => {
+      if (path.endsWith("repos/5.json")) return { "5": { ...historicalRepo, id: 5, node_id: "R_5" } };
+      if (path.endsWith("repo-weekly/4.json")) return {};
+      if (present.has(path)) return {};
+      return null;
+    };
+
+    const closed = await validateCanonicalGeneration("refresh-hop4-closed", {
+      reader,
+      generatedAt: "2026-09-22T01:26:07.000Z",
+      buckets: [4, 5, 6, 7],
+      checksum: false,
+      finalize: false,
+      emptyShardPolicy: "fail-closed",
+    });
+    expect(closed.failures).toHaveLength(14);
+    expect(closed.failures.every((item) => item.endsWith(": missing"))).toBe(true);
+    expect(closed.manifest.complete).toBe(false);
+
+    const relaxed = await validateCanonicalGeneration("refresh-hop4-preview", {
+      reader,
+      generatedAt: "2026-09-22T01:26:07.000Z",
+      buckets: [4, 5, 6, 7],
+      checksum: false,
+      finalize: false,
+      emptyShardPolicy: PREVIEW_EMPTY_SHARD_POLICY,
+    });
+    expect(relaxed.failures).toEqual([]);
+    expect(relaxed.placeholders).toHaveLength(14);
+    expect(relaxed.acc.placeholderShards).toBe(14);
+    expect(relaxed.acc.validatedShards).toBe(16);
+    expect(relaxed.manifest.complete).toBe(true);
+  });
+
+  test("preview placeholder policy still fail-closes schema and identity errors", async () => {
+    const reader: CanonicalShardReader = async (path) => {
+      if (path.endsWith("repos/2.json")) return { broken: { id: "not-a-number" } };
+      if (path.endsWith("repos/1.json")) return { "1": historicalRepo };
+      if (path.endsWith("repo-monthly/1.json")) return { "1": [["2026-06", 1]] };
+      if (path.endsWith("repo-weekly/1.json")) return { "1": [["2026-W26", 1]] };
+      if (path.endsWith("repo-recent-daily/1.json")) return { "1": [["2026-06-30", 1]] };
+      return {};
+    };
+
+    const result = await validateCanonicalGeneration("refresh-preview-schema", {
+      reader,
+      generatedAt: "2026-09-22T01:26:07.000Z",
+      emptyShardPolicy: PREVIEW_EMPTY_SHARD_POLICY,
+      checksum: false,
+    });
+    expect(result.manifest.complete).toBe(false);
+    expect(result.failures).toEqual(expect.arrayContaining([expect.stringContaining("canonical/v2/repos/2.json: schema")]));
+  });
+
+  test("preview placeholder policy skips family-wide empty failures", async () => {
+    const reader: CanonicalShardReader = async (path) =>
+      path.endsWith("repos/1.json") ? { "1": historicalRepo } : {};
+
+    const result = await validateCanonicalGeneration("refresh-preview-empty-family", {
+      reader,
+      generatedAt: "2026-09-22T01:26:07.000Z",
+      emptyShardPolicy: PREVIEW_EMPTY_SHARD_POLICY,
+      checksum: false,
+    });
+    expect(result.failures).toEqual([]);
+    expect(result.manifest.complete).toBe(true);
+    expect(emptySeriesPreflightFailures(result.acc, PREVIEW_EMPTY_SHARD_POLICY)).toEqual([]);
+    expect(emptySeriesPreflightFailures(result.acc, "fail-closed")).toEqual(
+      expect.arrayContaining([
+        "canonical/v2/repo-monthly: no repository records for 1 canonical repo(s)",
+      ]),
+    );
+  });
+
+  test("resolveCanonicalEmptyShardPolicy is fail-closed unless the preview flag is on", () => {
+    expect(resolveCanonicalEmptyShardPolicy({})).toBe("fail-closed");
+    expect(resolveCanonicalEmptyShardPolicy({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1" })).toBe(PREVIEW_EMPTY_SHARD_POLICY);
+    expect(
+      resolveCanonicalEmptyShardPolicy({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1", VERCEL_ENV: "production" }),
+    ).toBe("fail-closed");
   });
 
   test.each([NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
