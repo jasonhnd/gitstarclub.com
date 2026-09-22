@@ -1,7 +1,7 @@
 ---
 owner: data contracts
 status: active
-last_reviewed: 2026-09-21
+last_reviewed: 2026-09-22
 source_of_truth_for:
   - canonical JSON shard schemas
   - JSON view schemas
@@ -40,7 +40,7 @@ source_of_truth_for:
 - **主键**：repo = GitHub 数字 `repo_id`（不可变，跨改名稳定）；org = `owner` login 字符串。
 - **数值**：整数。`delta` / flow 在 seam 后为 net，**可为负**（取消 star）；stock（累计）非负。
 - **契约硬线**：`current_stars` / `current_stars_sum` / `stars` / count 类字段非负；`RankItem.value` 仍可为负（net flow）。`RankItem` 必须且只能携带 `id`（repo）或 `login`（org）之一。
-- **文本与时间**：`DateStr` 日期字段使用 UTC `YYYY-MM-DD`；`TimestampStr`（`generated_at` / `published_at` / checkpoint 等）使用带时区的 ISO timestamp。自由文本字段由 React 渲染层转义，同时契约拒绝高风险 active HTML 片段（script/iframe/style 等）。
+- **文本与时间**：`DateStr` 日期字段使用 UTC `YYYY-MM-DD`；`TimestampStr`（`generated_at` / `published_at` / checkpoint 等）使用带时区的 ISO timestamp。自由文本字段由 React 渲染层转义，同时契约拒绝高风险 active HTML 片段（script/iframe/style 等）和真正的 `javascript:` URL scheme（不是英文标题里的 `JavaScript:`）。
 - **引用 vs 内嵌**：排行榜 JSON 只存实体 **id/login + 数值**，不内嵌名字/描述；build 用 `lookup/*` join 出展示字段 → 榜单文件保持小、改名只需更新 lookup。
 - 每个 JSON 带 `meta`（至少 `generated_at`，视图另含 `period/window/dim/metric`）便于缓存与调试。
 

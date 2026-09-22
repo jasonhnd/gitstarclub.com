@@ -52,6 +52,41 @@ export function capSafeText(value: string, max = SAFE_TEXT_MAX): string {
   return truncateUnicodeText(value, max);
 }
 
+/**
+ * True when `javascript:` appears as a URI scheme (RFC 3986), not as the
+ * English word "JavaScript:" in prose.
+ *
+ * `refresh-2026-09-22T00-40-32-142Z` died on bucket 3 because `/javascript:/i`
+ * matched `getify/LABjs` ("…Blocking JavaScript: On-demand…") and
+ * `samdutton/simpl` ("…CSS and Javascript:"). Those are labels, not URLs.
+ *
+ * Compact bodies (`javascript:alert(1)`) always count. Whitespace after the
+ * colon only counts when the payload looks like a script/URL (`alert(`, `//`,
+ * percent-encoding), not English (`On-demand`, `basics`).
+ */
+export function containsJavascriptUrlScheme(value: string): boolean {
+  const scheme = /javascript:/gi;
+  let match: RegExpExecArray | null;
+  while ((match = scheme.exec(value)) !== null) {
+    const start = match.index;
+    if (start > 0 && /[0-9A-Za-z+.-]/.test(value.charAt(start - 1))) {
+      continue;
+    }
+    if (hasJavascriptUrlBody(value.slice(start + match[0].length))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasJavascriptUrlBody(afterColon: string): boolean {
+  if (afterColon.length === 0) return false;
+  const trimmed = afterColon.trimStart();
+  if (trimmed.length === 0) return false;
+  if (afterColon === trimmed) return true;
+  return /^(?:\/\/|\/\*|%[0-9A-Fa-f]{2}|[\\'"`(]|(?:void|alert|eval|prompt|confirm)\s*\(|(?:document|window)(?:\.|\[|\s*\()|[A-Za-z_$][\w$]*\s*\()/.test(trimmed);
+}
+
 export const SafeText = z
   .string()
   .refine(isWellFormedUnicode, "must contain only well-formed Unicode scalar values")
@@ -61,7 +96,7 @@ export const SafeText = z
     "must not contain active HTML tags",
   )
   .refine((value) => !/\bon[a-z]+\s*=/i.test(value), "must not contain inline event handlers")
-  .refine((value) => !/javascript:/i.test(value), "must not contain javascript: URLs");
+  .refine((value) => !containsJavascriptUrlScheme(value), "must not contain javascript: URLs");
 
 /**
  * Like SafeText, but silently truncates oversized input before validation.

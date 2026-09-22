@@ -13,6 +13,8 @@ import {
   OwnerType,
   Window,
   Metric,
+  SafeText,
+  containsJavascriptUrlScheme,
   // canonical
   CanonicalMeta,
   ReposShardEntry,
@@ -135,6 +137,33 @@ describe("common primitives", () => {
   test("Metric enum rejects unknown member", () => {
     expect(Metric.parse("growth")).toBe("growth");
     expect(rejects(Metric, "velocity")).toBe(true);
+  });
+
+  test("SafeText allows prose JavaScript: labels", () => {
+    expect(containsJavascriptUrlScheme("Loading And Blocking JavaScript: On-demand parallel loader")).toBe(false);
+    expect(containsJavascriptUrlScheme("Simplest possible examples of HTML, CSS and Javascript:")).toBe(false);
+    expect(
+      SafeText.parse("Loading And Blocking JavaScript: On-demand parallel loader for JavaScript with execution order dependencies"),
+    ).toContain("JavaScript:");
+    expect(SafeText.parse("Simplest possible examples of HTML, CSS and Javascript:")).toContain("Javascript:");
+    expect(SafeText.parse("Learn JavaScript: basics")).toBe("Learn JavaScript: basics");
+  });
+
+  test("SafeText still rejects real javascript: URL schemes", () => {
+    const urls = [
+      "javascript:alert(1)",
+      "javascript:void(0)",
+      "JaVaScRiPt:alert(1)",
+      "see javascript:alert(1) now",
+      "javascript: alert(1)",
+      "javascript:%0aalert(1)",
+      "javascript://comment%0aalert(1)",
+      'href="javascript:alert(1)"',
+    ];
+    for (const value of urls) {
+      expect(containsJavascriptUrlScheme(value)).toBe(true);
+      expect(rejects(SafeText, value)).toBe(true);
+    }
   });
 });
 
@@ -427,6 +456,39 @@ describe("canonical shards", () => {
   test("ReposShardEntry truncates oversized description instead of rejecting", () => {
     const parsed = ReposShardEntry.parse({ ...validEntry, description: "x".repeat(5000) });
     expect(parsed.description?.length).toBe(4096);
+  });
+
+  test("ReposShardEntry accepts ≥1k descriptions that /javascript:/i used to kill", () => {
+    const labjs = ReposShardEntry.parse({
+      ...validEntry,
+      id: 365027,
+      owner: "getify",
+      name: "LABjs",
+      full_name: "getify/LABjs",
+      current_stars: 2258,
+      description: "Loading And Blocking JavaScript: On-demand parallel loader for JavaScript with execution order dependencies",
+    });
+    expect(labjs.description).toContain("JavaScript:");
+
+    const simpl = ReposShardEntry.parse({
+      ...validEntry,
+      id: 5291075,
+      owner: "samdutton",
+      name: "simpl",
+      full_name: "samdutton/simpl",
+      current_stars: 5187,
+      description: "Simplest possible examples of HTML, CSS and Javascript:",
+    });
+    expect(simpl.description).toBe("Simplest possible examples of HTML, CSS and Javascript:");
+
+    expect(rejects(ReposShardEntry, { ...validEntry, description: "javascript:alert(1)" })).toBe(true);
+    expect(rejects(ReposShard, {
+      "365027": {
+        ...validEntry,
+        id: 365027,
+        description: "javascript:alert(document.cookie)",
+      },
+    })).toBe(true);
   });
 
   test("ReposShardEntry truncates by code point and repairs malformed legacy Unicode", () => {
@@ -1074,6 +1136,16 @@ describe("search contracts", () => {
 
   test("SearchDoc parses; language/description nullable", () => {
     expect(SearchDoc.parse({ ...doc, language: null, description: null }).id).toBe(1);
+  });
+
+  test("SearchDoc allows prose JavaScript: and rejects javascript: URLs", () => {
+    expect(
+      SearchDoc.parse({
+        ...doc,
+        description: "Loading And Blocking JavaScript: On-demand parallel loader for JavaScript with execution order dependencies",
+      }).description,
+    ).toContain("JavaScript:");
+    expect(rejects(SearchDoc, { ...doc, description: "javascript:alert(1)" })).toBe(true);
   });
 
   test("SearchDoc rejects non-int current_stars", () => {
