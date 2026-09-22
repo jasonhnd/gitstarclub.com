@@ -24,6 +24,8 @@ import {
   WhitelistEntry,
   WhitelistSearchProgress,
   WhitelistSnapshot,
+  MetadataBucketProgress,
+  UnpublishedWhitelistPointer,
   PendingPeriod,
   // workflow
   ViewsPointer,
@@ -590,6 +592,42 @@ describe("canonical shards", () => {
     });
     expect(progress.queue).toHaveLength(1);
     expect(rejects(WhitelistSearchProgress, { v: 2, minStars: 1000, observedMax: 1, queue: [], entries: [] })).toBe(true);
+  });
+
+  test("MetadataBucketProgress parses resumable GraphQL batches", () => {
+    const progress = MetadataBucketProgress.parse({
+      v: 1,
+      bucket: 0,
+      fetched: {
+        "1": {
+          full_name: "a/b",
+          owner: "a",
+          owner_type: "User",
+          name: "b",
+          description: null,
+          language: "TypeScript",
+          languages: [{ name: "TypeScript", size: 10, color: "#3178c6" }],
+          topics: ["testing"],
+          created_at: TS,
+          current_stars: 12_000,
+          is_archived: false,
+        },
+      },
+      transient_attempts: 1,
+      last_error: "GitHub GraphQL 502: error code: 502",
+    });
+    expect(progress.fetched["1"]?.current_stars).toBe(12_000);
+    expect(rejects(MetadataBucketProgress, { v: 2, bucket: 0, fetched: {}, transient_attempts: 0 })).toBe(true);
+  });
+
+  test("UnpublishedWhitelistPointer points at a failed-run snapshot", () => {
+    const pointer = UnpublishedWhitelistPointer.parse({
+      run_id: "refresh-2026-09-21T16-02-51-499Z",
+      count: 65015,
+      recorded_at: TS,
+    });
+    expect(pointer.count).toBe(65015);
+    expect(rejects(UnpublishedWhitelistPointer, { run_id: "r", count: -1, recorded_at: TS })).toBe(true);
   });
 
   test("WhitelistSnapshot rejects diff.added with non-int ids", () => {

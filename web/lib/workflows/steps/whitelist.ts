@@ -1,11 +1,13 @@
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
-import { createView } from "@/lib/data/write";
+import { createView, putView } from "@/lib/data/write";
 import {
   PublishedWhitelist,
   ReposLookup,
+  UnpublishedWhitelistPointer,
   ViewsPointer,
   WhitelistSearchProgress,
   WhitelistSnapshot,
+  type UnpublishedWhitelistPointer as UnpublishedWhitelistPointerType,
   type WhitelistSearchProgress as WhitelistSearchProgressType,
   type WhitelistSnapshot as WhitelistSnapshotType,
 } from "@/lib/contracts";
@@ -16,7 +18,12 @@ import {
   isWhitelistSearchSharded,
 } from "@/lib/runtime-config";
 import { putOwnedView } from "@/lib/workflows/owned-write";
-import { renewWorkflowLease, type WorkflowOwnership } from "@/lib/workflows/lease";
+import {
+  blobWorkflowLeaseStore,
+  renewWorkflowLease,
+  type WorkflowLeaseStore,
+  type WorkflowOwnership,
+} from "@/lib/workflows/lease";
 import type { RefreshCursor, RefreshStepResult } from "@/lib/workflows/runtime/types";
 
 export interface WhitelistResult {
@@ -45,11 +52,16 @@ export type WhitelistDeps = {
   ensureOwnership(owner: WorkflowOwnership): Promise<void>;
   now(): string;
   searchSharded(): boolean;
+  readUnpublishedPointer(): Promise<UnpublishedWhitelistPointerType | null>;
+  writeUnpublishedPointer(pointer: UnpublishedWhitelistPointerType): Promise<void>;
+  readMinStars(): number;
 };
 
 export function whitelistSearchProgressPath(runId: string): string {
   return `ops/workflows/${runId}/whitelist-search.json`;
 }
+
+export const UNPUBLISHED_WHITELIST_PATH = "ops/workflows/latest-unpublished-whitelist.json";
 
 export function whitelistStepCheckpointName(cursor: RefreshCursor): string {
   return `whitelist-${cursor.whitelistSearchSeq ?? 0}`;
@@ -91,6 +103,10 @@ const defaultDeps: WhitelistDeps = {
   ensureOwnership: (owner) => renewWorkflowLease(owner.runId, owner.fencingToken).then(() => undefined),
   now: () => new Date().toISOString(),
   searchSharded: () => isWhitelistSearchSharded(),
+  readUnpublishedPointer: () =>
+    readAuthoritativeView(UNPUBLISHED_WHITELIST_PATH, UnpublishedWhitelistPointer),
+  writeUnpublishedPointer: (pointer) => putView(UNPUBLISHED_WHITELIST_PATH, pointer),
+  readMinStars: () => getMinTrackedStars(),
 };
 
 function resultOf(snapshot: WhitelistSnapshotType): WhitelistResult {
@@ -125,6 +141,7 @@ async function persistSnapshot(
   deps: WhitelistDeps,
   entries: WhitelistSnapshotType["entries"],
   prevIds: number[],
+  generatedAt = deps.now(),
 ): Promise<WhitelistResult> {
   const ids = entries.map((entry) => entry.id);
   const idSet = new Set(ids);
@@ -132,7 +149,7 @@ async function persistSnapshot(
 
   const snapshot = WhitelistSnapshot.parse({
     run_id: runId,
-    generated_at: deps.now(),
+    generated_at: generatedAt,
     count: entries.length,
     entries,
     diff: {
@@ -143,11 +160,48 @@ async function persistSnapshot(
 
   await deps.ensureOwnership(owner);
   const created = await deps.createSnapshot(runId, snapshot);
-  if (created) return resultOf(snapshot);
+  const persisted = created ? snapshot : await deps.readSnapshot(runId);
+  if (!persisted) throw new Error(`whitelist snapshot ${runId} conflicted but cannot be read`);
+  await deps.writeUnpublishedPointer({
+    run_id: persisted.run_id,
+    count: persisted.count,
+    recorded_at: deps.now(),
+  });
+  return resultOf(persisted);
+}
 
-  const raced = await deps.readSnapshot(runId);
-  if (!raced) throw new Error(`whitelist snapshot ${runId} conflicted but cannot be read`);
-  return resultOf(raced);
+async function reusableUnpublishedEntries(
+  runId: string,
+  deps: WhitelistDeps,
+): Promise<{ entries: WhitelistSnapshotType["entries"]; generatedAt: string } | null> {
+  const pointer = await deps.readUnpublishedPointer();
+  if (!pointer || pointer.run_id === runId) return null;
+  const publishedRunId = await deps.readPublishedRunId();
+  if (publishedRunId === pointer.run_id) return null;
+  const snapshot = await deps.readSnapshot(pointer.run_id);
+  if (!snapshot || snapshot.entries.length === 0) return null;
+  const progress = await deps.readProgress(pointer.run_id);
+  if (progress && progress.minStars !== deps.readMinStars()) return null;
+  return { entries: snapshot.entries, generatedAt: snapshot.generated_at };
+}
+
+/** After a failed run, remember its unpublished snapshot so the next start can skip Search. */
+export async function rememberFailedUnpublishedWhitelist(
+  store: WorkflowLeaseStore | undefined = blobWorkflowLeaseStore,
+  deps: Pick<WhitelistDeps, "readSnapshot" | "writeUnpublishedPointer" | "now"> = defaultDeps,
+): Promise<UnpublishedWhitelistPointerType | null> {
+  const current = await store.read();
+  const lease = current.lease;
+  if (!lease || lease.status !== "failed") return null;
+  const snapshot = await deps.readSnapshot(lease.run_id);
+  if (!snapshot || snapshot.entries.length === 0) return null;
+  const pointer = UnpublishedWhitelistPointer.parse({
+    run_id: snapshot.run_id,
+    count: snapshot.count,
+    recorded_at: deps.now(),
+  });
+  await deps.writeUnpublishedPointer(pointer);
+  return pointer;
 }
 
 export async function refreshWhitelist(
@@ -201,6 +255,10 @@ export async function runWhitelistStepWithDeps(
   // point must fail closed instead of spending a Search request and then
   // silently comparing against a migration fallback.
   const prevIds = await publishedIds(deps);
+  const reused = await reusableUnpublishedEntries(runId, deps);
+  if (reused) {
+    return persistSnapshot(runId, owner, deps, reused.entries, prevIds, reused.generatedAt);
+  }
 
   if (!deps.searchSharded()) {
     const entries = await deps.search();

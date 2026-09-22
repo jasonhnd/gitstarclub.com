@@ -258,6 +258,38 @@ describe("startRefreshWorkflowRoute", () => {
     expect(health[0]?.detail.idempotency_key).toBe("manual-1");
   });
 
+  test("records an unpublished whitelist pointer from a failed lease before claiming", async () => {
+    const store = new MemoryLeaseStore(
+      WorkflowLease.parse({
+        run_id: "refresh-2026-09-21T16-02-51-499Z",
+        status: "failed",
+        acquired_at: "2026-09-21T18:07:02.790Z",
+        expires_at: "2026-09-21T18:07:02.790Z",
+        fencing_token: 30,
+        idempotency_key: "workflow-refresh:universe-1k-pr510-20260921T160245Z",
+        trigger: "universe-1k-pr510",
+      }),
+    );
+    const remembered: string[] = [];
+    const startWorkflow = mock(async () => {});
+
+    const response = await startRefreshWorkflowRoute(request(), startWorkflow, {
+      now: new Date("2026-09-22T00:20:00.000Z"),
+      leaseStore: store,
+      recordHealth: async () => {},
+      preflight: passPreflight,
+      rememberUnpublishedWhitelist: async (leaseStore) => {
+        const current = await leaseStore?.read();
+        remembered.push(current?.lease?.run_id ?? "");
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(remembered).toEqual(["refresh-2026-09-21T16-02-51-499Z"]);
+    expect(startWorkflow).toHaveBeenCalledTimes(1);
+    expect(store.lease?.status).toBe("running");
+  });
+
   test("surfaces a lease release failure when enqueueing fails", async () => {
     const store = new FailingReleaseStore();
     const alerts: string[] = [];

@@ -5,6 +5,7 @@ import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 import { claimWorkflowLease, releaseWorkflowLease, type WorkflowLeaseStore } from "@/lib/workflows/lease";
 import { readCanonicalPreflight } from "@/lib/workflows/canonical-preflight";
+import { rememberFailedUnpublishedWhitelist } from "@/lib/workflows/steps/whitelist";
 
 export type RefreshWorkflowStarter = (runId: string) => Promise<void>;
 type HealthRecorder = typeof recordHealth;
@@ -16,6 +17,7 @@ type StartRouteOptions = {
   recordHealth?: HealthRecorder;
   sendAlert?: AlertSender;
   preflight?: typeof readCanonicalPreflight;
+  rememberUnpublishedWhitelist?: (store?: WorkflowLeaseStore) => Promise<void>;
 };
 
 const SUPPORTED_START_QUERY = new Set(["idempotency_key", "idempotencyKey", "trigger"]);
@@ -88,6 +90,10 @@ function requireRefreshWorkflowRuntimeConfig(): void {
   requireGithubToken();
 }
 
+async function defaultRememberUnpublishedWhitelist(store?: WorkflowLeaseStore): Promise<void> {
+  await rememberFailedUnpublishedWhitelist(store);
+}
+
 export async function startRefreshWorkflowRoute(
   req: Request,
   startWorkflow: RefreshWorkflowStarter,
@@ -125,6 +131,14 @@ export async function startRefreshWorkflowRoute(
   }
 
   let claim;
+  const leaseStore = opts.leaseStore;
+  try {
+    await (opts.rememberUnpublishedWhitelist ?? defaultRememberUnpublishedWhitelist)(leaseStore);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[workflow-refresh] unpublished whitelist pointer not recorded", { error: message });
+  }
+
   try {
     claim = await claimWorkflowLease(
       {
