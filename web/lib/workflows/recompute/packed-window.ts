@@ -39,7 +39,7 @@ export type PackedPeriodOrgRow = {
   stock_est: number;
 };
 
-export type PackedWindowKind = "month" | "week";
+export type PackedWindowKind = "month" | "week" | "year";
 
 export type PackedWindowMetaFile = {
   v: 1;
@@ -630,8 +630,28 @@ export function packedOrgRankViewsForPeriod(
   );
 }
 
+export type GrowthCandidate = { id: number; flow: number; base: number };
+
+export function compareGrowthCandidates(left: GrowthCandidate, right: GrowthCandidate): number {
+  return right.flow / right.base - left.flow / left.base || right.flow - left.flow || left.id - right.id;
+}
+
+function growthViewItems(bucket: GrowthCandidate[]) {
+  return [...bucket]
+    .sort(compareGrowthCandidates)
+    .slice(0, RANK_TOP_N)
+    .map((row, index) => ({
+      rank: index + 1,
+      id: row.id,
+      value: row.flow,
+      base: row.base,
+      rate: Math.round((row.flow / row.base) * 1000) / 10,
+      prev_rank: null,
+    }));
+}
+
 export function packedGrowthViews(packed: PackedRepoWindow, w: Window, gen: string): Map<string, RankView> {
-  const byPeriod = new Map<string, Array<{ id: number; flow: number; base: number }>>();
+  const byPeriod = new Map<string, GrowthCandidate[]>();
   for (let repo = 0; repo < packed.ids.length; repo++) {
     const start = packed.start[repo]!;
     const len = packed.len[repo]!;
@@ -645,25 +665,125 @@ export function packedGrowthViews(packed: PackedRepoWindow, w: Window, gen: stri
       bucket.push({ id: packed.ids[repo]!, flow: cellFlow, base });
     }
   }
+  return growthViewsFromTopCandidates(byPeriod, w, gen);
+}
+
+/** Keep the global top-N growth rows while scanning one persist bucket at a time. */
+export function absorbGrowthCandidates(
+  shard: PackedWindowBucketFile,
+  periods: readonly string[],
+  into: Map<string, GrowthCandidate[]>,
+  topN = RANK_TOP_N,
+): void {
+  forEachPackedBucketRepo(shard, (repo) => {
+    let prevStock: number | undefined;
+    let seen = 0;
+    for (const cell of repo.cells) {
+      if (seen > 0 && prevStock !== undefined && prevStock >= GROWTH_FLOOR_STARS && cell[1] > 0) {
+        const period = periods[cell[0]];
+        if (!period) throw new Error(`packed growth period index ${cell[0]} is outside ${periods.length} periods`);
+        const list = into.get(period) ?? [];
+        list.push({ id: repo.id, flow: cell[1], base: prevStock });
+        list.sort(compareGrowthCandidates);
+        if (list.length > topN) list.length = topN;
+        into.set(period, list);
+      }
+      prevStock = cell[3];
+      seen += 1;
+    }
+  });
+}
+
+export function growthViewsFromTopCandidates(
+  byPeriod: Map<string, GrowthCandidate[]>,
+  w: Window,
+  gen: string,
+): Map<string, RankView> {
   const out = new Map<string, RankView>();
   for (const [period, bucket] of byPeriod) {
-    const items = bucket
-      .sort((a, b) => b.flow / b.base - a.flow / a.base || b.flow - a.flow || a.id - b.id)
-      .slice(0, RANK_TOP_N)
-      .map((row, index) => ({
-        rank: index + 1,
-        id: row.id,
-        value: row.flow,
-        base: row.base,
-        rate: Math.round((row.flow / row.base) * 1000) / 10,
-        prev_rank: null,
-      }));
+    if (bucket.length === 0) continue;
     out.set(`rank/${w}/${period}/repo/growth.json`, {
       meta: { window: w, period, dim: "repo", metric: "growth", generated_at: gen },
-      items,
+      items: growthViewItems(bucket),
     });
   }
   return out;
+}
+
+export function yearPeriodsFromMonthPeriods(monthPeriods: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const years: string[] = [];
+  for (const period of monthPeriods) {
+    const year = period.slice(0, 4);
+    if (year.length !== 4 || seen.has(year)) continue;
+    seen.add(year);
+    years.push(year);
+  }
+  years.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  return years;
+}
+
+/** Roll one month persist bucket into year cells. Period indices are global year indices. */
+export function deriveYearBucketFromMonthBucket(
+  shard: PackedWindowBucketFile,
+  monthPeriods: readonly string[],
+  yearPeriods: readonly string[],
+): PackedWindowBucketFileV2 {
+  const yearIndex = new Map(yearPeriods.map((year, index) => [year, index]));
+  const ids: number[] = [];
+  const owners: string[] = [];
+  const active: number[] = [];
+  const start: number[] = [];
+  const len: number[] = [];
+  const periodIdx: number[] = [];
+  const flow: number[] = [];
+  const cumgross: number[] = [];
+  const stock: number[] = [];
+
+  forEachPackedBucketRepo(shard, (repo) => {
+    const repoStart = periodIdx.length;
+    let year = "";
+    let yearFlow = 0;
+    let yearCum = 0;
+    let yearStock = 0;
+    let open = false;
+    const flush = () => {
+      if (!open) return;
+      const idx = yearIndex.get(year);
+      if (idx === undefined) throw new Error(`year ${year} missing from derived year periods`);
+      periodIdx.push(idx);
+      flow.push(yearFlow);
+      cumgross.push(yearCum);
+      stock.push(yearStock);
+      open = false;
+    };
+    for (const cell of repo.cells) {
+      const period = monthPeriods[cell[0]];
+      if (!period) throw new Error(`month period index ${cell[0]} is outside ${monthPeriods.length} periods`);
+      const nextYear = period.slice(0, 4);
+      if (!open) {
+        year = nextYear;
+        yearFlow = 0;
+        open = true;
+      } else if (nextYear !== year) {
+        flush();
+        year = nextYear;
+        yearFlow = 0;
+        open = true;
+      }
+      yearFlow += cell[1];
+      yearCum = cell[2];
+      yearStock = cell[3];
+    }
+    flush();
+    ids.push(repo.id);
+    owners.push(repo.owner);
+    active.push(repo.active ? 1 : 0);
+    start.push(repoStart);
+    len.push(periodIdx.length - repoStart);
+  });
+
+  return { v: 2, ids, owners, active, start, len, periodIdx, flow, cumgross, stock };
 }
 
 export function assignPackedFlowRanks(packed: PackedRepoWindow): Uint32Array {
@@ -842,7 +962,7 @@ export function coercePackedWindowMeta(json: unknown): PackedWindowMetaFile | nu
     buckets?: unknown;
     complete?: unknown;
   };
-  if (rec.v !== 1 || (rec.kind !== "month" && rec.kind !== "week")) return null;
+  if (rec.v !== 1 || (rec.kind !== "month" && rec.kind !== "week" && rec.kind !== "year")) return null;
   if (typeof rec.seamPeriod !== "string" || rec.complete !== true) return null;
   if (!Array.isArray(rec.periods) || typeof rec.buckets !== "number") return null;
   if (!rec.periods.every((period) => typeof period === "string")) return null;
