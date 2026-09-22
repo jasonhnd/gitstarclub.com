@@ -16,6 +16,7 @@ import {
   getWhitelistSearchHopBudgetMs,
   isWhitelistSearchSharded,
   isPreviewPreflightEmptyShardRelaxed,
+  isWorkflowColdStartEnabled,
   DEFAULT_WHITELIST_SEARCH_HOP_BUDGET_MS,
   getPreviewTarget,
   isCloudflareWorkersHost,
@@ -87,6 +88,12 @@ describe("runtime config getters", () => {
     expect(
       isPreviewPreflightEmptyShardRelaxed({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1", VERCEL_ENV: "production" }),
     ).toBe(false);
+  });
+
+  test("WORKFLOW_COLD_START is preview-only and off unless exactly 1", () => {
+    expect(isWorkflowColdStartEnabled({})).toBe(false);
+    expect(isWorkflowColdStartEnabled({ WORKFLOW_COLD_START: "1" })).toBe(true);
+    expect(isWorkflowColdStartEnabled({ WORKFLOW_COLD_START: "1", VERCEL_ENV: "production" })).toBe(false);
   });
 
   test("WHITELIST_SEARCH_SHARDS is off unless exactly 1", () => {

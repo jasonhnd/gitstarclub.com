@@ -1,3 +1,4 @@
+import { isUniverseColdStartActive } from "@/lib/workflows/cold-start";
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import { createView, putView } from "@/lib/data/write";
 import {
@@ -83,6 +84,9 @@ const defaultDeps: WhitelistDeps = {
     return pointer?.ids ?? null;
   },
   readBootstrapIds: async () => {
+    if (await isUniverseColdStartActive()) {
+      return [];
+    }
     const lookup = await readRequiredView("lookup/repos.json", ReposLookup, { base: true });
     return Object.entries(lookup)
       .filter(([, entry]) => entry.active !== false)

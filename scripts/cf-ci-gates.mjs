@@ -18,6 +18,7 @@ export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * 0", "0
 export const PREVIEW_MIN_TRACKED_STARS = "1000";
 export const PRODUCTION_MIN_TRACKED_STARS = "10000";
 export const PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
+export const PREVIEW_WORKFLOW_COLD_START = "1";
 export const ASSERT_SCRIPT_REL = "scripts/assert-cf-ci-gates.mjs";
 
 const LEGACY_PREVIEW_WORKER_NAME = "gitstarclub-web-nonprod";
@@ -315,6 +316,18 @@ export function assertCfCiGates(sources) {
   if (productionRelaxEmpty === PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS) {
     issues.push(
       "wrangler top-level vars.PREFLIGHT_RELAX_EMPTY_SHARDS must not be 1 (preview-only; production stays fail-closed)",
+    );
+  }
+  const previewColdStart = preview?.vars?.WORKFLOW_COLD_START;
+  if (previewColdStart !== PREVIEW_WORKFLOW_COLD_START) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.WORKFLOW_COLD_START must be ${PREVIEW_WORKFLOW_COLD_START} (preview-only first-universe bootstrap)`,
+    );
+  }
+  const productionColdStart = wrangler.vars?.WORKFLOW_COLD_START;
+  if (productionColdStart === PREVIEW_WORKFLOW_COLD_START) {
+    issues.push(
+      "wrangler top-level vars.WORKFLOW_COLD_START must not be 1 (preview-only; production stays fail-closed)",
     );
   }
 

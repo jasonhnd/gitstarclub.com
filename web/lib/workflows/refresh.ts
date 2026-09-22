@@ -27,7 +27,7 @@ export async function refreshWorkflow(runId: string) {
   try {
     // Fail before whitelist/canonical writes when the deployed bootstrap shape
     // cannot be consumed by the managed refresh.
-    const preflight = await withStepRetry("preflight", () => preflightCanonical(runId));
+    const preflight = await withStepRetry("preflight", () => preflightCanonical(runId, fencingToken));
     const whitelist = await withStepRetry("whitelist", () => refreshWhitelist(runId, fencingToken));
     const rename = await withStepRetry("rename", () => detectRenames(runId, fencingToken));
 
