@@ -146,6 +146,7 @@ async function persistSnapshot(
   entries: WhitelistSnapshotType["entries"],
   prevIds: number[],
   generatedAt = deps.now(),
+  metadataResumeRunId?: string,
 ): Promise<WhitelistResult> {
   const ids = entries.map((entry) => entry.id);
   const idSet = new Set(ids);
@@ -160,6 +161,9 @@ async function persistSnapshot(
       added: ids.filter((id) => !prevSet.has(id)),
       dropped: prevIds.filter((id) => !idSet.has(id)),
     },
+    ...(metadataResumeRunId && metadataResumeRunId !== runId
+      ? { metadata_resume_run_id: metadataResumeRunId }
+      : {}),
   });
 
   await deps.ensureOwnership(owner);
@@ -177,7 +181,7 @@ async function persistSnapshot(
 async function reusableUnpublishedEntries(
   runId: string,
   deps: WhitelistDeps,
-): Promise<{ entries: WhitelistSnapshotType["entries"]; generatedAt: string } | null> {
+): Promise<{ entries: WhitelistSnapshotType["entries"]; generatedAt: string; metadataResumeRunId: string } | null> {
   const pointer = await deps.readUnpublishedPointer();
   if (!pointer || pointer.run_id === runId) return null;
   const publishedRunId = await deps.readPublishedRunId();
@@ -186,7 +190,11 @@ async function reusableUnpublishedEntries(
   if (!snapshot || snapshot.entries.length === 0) return null;
   const progress = await deps.readProgress(pointer.run_id);
   if (progress && progress.minStars !== deps.readMinStars()) return null;
-  return { entries: snapshot.entries, generatedAt: snapshot.generated_at };
+  return {
+    entries: snapshot.entries,
+    generatedAt: snapshot.generated_at,
+    metadataResumeRunId: snapshot.metadata_resume_run_id ?? pointer.run_id,
+  };
 }
 
 /** After a failed run, remember its unpublished snapshot so the next start can skip Search. */
@@ -261,7 +269,15 @@ export async function runWhitelistStepWithDeps(
   const prevIds = await publishedIds(deps);
   const reused = await reusableUnpublishedEntries(runId, deps);
   if (reused) {
-    return persistSnapshot(runId, owner, deps, reused.entries, prevIds, reused.generatedAt);
+    return persistSnapshot(
+      runId,
+      owner,
+      deps,
+      reused.entries,
+      prevIds,
+      reused.generatedAt,
+      reused.metadataResumeRunId,
+    );
   }
 
   if (!deps.searchSharded()) {

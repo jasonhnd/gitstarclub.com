@@ -29,7 +29,7 @@ export function whitelistDiscoveryDate(snapshot: WhitelistSnapshot): string {
   return snapshot.generated_at.slice(0, 10);
 }
 
-export const MAX_METADATA_TRANSIENT_ATTEMPTS = 6;
+export const MAX_METADATA_TRANSIENT_ATTEMPTS = 12;
 export const METADATA_BATCH_PAUSE_MS = 2000;
 
 export function metadataProgressPath(runId: string, bucket: number): string {
@@ -37,7 +37,7 @@ export function metadataProgressPath(runId: string, bucket: number): string {
 }
 
 export function metadataTransientRetryDelayMs(attempts: number): number {
-  return Math.min(5_000 * 2 ** Math.max(attempts - 1, 0), 30_000);
+  return Math.min(8_000 * 2 ** Math.max(attempts - 1, 0), 60_000);
 }
 
 export function hasNextMetadataRetry(result: { retryMetadata?: boolean }): boolean {
@@ -57,6 +57,40 @@ function progressRecord(fetched: ReadonlyMap<number, RepoMetadata>): Record<stri
   const record: Record<string, RepoMetadata> = {};
   for (const [id, row] of fetched) record[String(id)] = row;
   return record;
+}
+
+/** Prefer in-run progress; otherwise borrow fetched rows from a failed run (fresh transient budget). */
+export function coalesceMetadataBucketProgress(
+  bucket: number,
+  own: MetadataBucketProgressType | null,
+  borrowed: MetadataBucketProgressType | null,
+): MetadataBucketProgressType | null {
+  const ownCount = Object.keys(own?.fetched ?? {}).length;
+  if (ownCount > 0) return own;
+  const borrowedCount = Object.keys(borrowed?.fetched ?? {}).length;
+  if (borrowedCount > 0) {
+    return MetadataBucketProgress.parse({
+      v: 1,
+      bucket,
+      fetched: borrowed!.fetched,
+      transient_attempts: 0,
+      last_error: null,
+    });
+  }
+  return own ?? borrowed;
+}
+
+async function loadMetadataBucketProgress(
+  runId: string,
+  bucket: number,
+  deps: MetadataDeps,
+): Promise<MetadataBucketProgressType | null> {
+  const own = await deps.readProgress(runId, bucket);
+  const wl = await deps.readWhitelist(runId);
+  const resumeRunId = wl.metadata_resume_run_id;
+  if (!resumeRunId || resumeRunId === runId) return own;
+  const borrowed = await deps.readProgress(resumeRunId, bucket);
+  return coalesceMetadataBucketProgress(bucket, own, borrowed);
 }
 
 // Workflow step: build canonical/v2/repos/<bucket>.json for ONE bucket. Search
@@ -192,7 +226,7 @@ export async function refreshMetadataBucketWithDeps(
   // retry on a later day must not rewrite tracked_since.
   const trackedSince = whitelistDiscoveryDate(wl);
   const fetchedAt = deps.now();
-  const prior = await deps.readProgress(runId, bucket);
+  const prior = await loadMetadataBucketProgress(runId, bucket, deps);
   const gh = metadataFromProgress(prior);
 
   if ((prior?.transient_attempts ?? 0) > 0) {

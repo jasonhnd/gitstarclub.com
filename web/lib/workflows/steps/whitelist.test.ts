@@ -115,6 +115,7 @@ describe("published whitelist baseline", () => {
     expect(reused).toEqual({ count: 2, added: 1, dropped: 0 });
     expect(state.searchCalls).toBe(0);
     expect(state.snapshots.get("next-run")?.generated_at).toBe("2026-09-21T18:03:22.274Z");
+    expect(state.snapshots.get("next-run")?.metadata_resume_run_id).toBe("refresh-2026-09-21T16-02-51-499Z");
   });
 
   test("does not reuse an unpublished snapshot when minStars no longer matches", async () => {
