@@ -163,11 +163,11 @@ function fakeMetadata(ids: number[]) {
 }
 
 describe("metadata GraphQL resume", () => {
-  test("metadataTransientRetryDelayMs backs off and caps at 30s", () => {
-    expect(metadataTransientRetryDelayMs(1)).toBe(5_000);
-    expect(metadataTransientRetryDelayMs(2)).toBe(10_000);
-    expect(metadataTransientRetryDelayMs(3)).toBe(20_000);
-    expect(metadataTransientRetryDelayMs(4)).toBe(30_000);
+  test("metadataTransientRetryDelayMs backs off and caps at 60s", () => {
+    expect(metadataTransientRetryDelayMs(1)).toBe(8_000);
+    expect(metadataTransientRetryDelayMs(2)).toBe(16_000);
+    expect(metadataTransientRetryDelayMs(3)).toBe(32_000);
+    expect(metadataTransientRetryDelayMs(4)).toBe(60_000);
   });
 
   test("persists a successful batch and resumes the same hop after GraphQL 502", async () => {
@@ -206,7 +206,36 @@ describe("metadata GraphQL resume", () => {
     expect(second).toMatchObject({ repos: 101, from_github: 101, bucket: 1 });
     expect(state.shard?.["1"]?.current_stars).toBe(10_001);
     expect(state.shard?.["3201"]?.current_stars).toBe(13_201);
-    expect(state.sleeps).toContain(5_000);
+    expect(state.sleeps).toContain(8_000);
+  });
+
+  test("borrows GraphQL batch progress from metadata_resume_run_id on a new run", async () => {
+    const ids = [1, 33];
+    const { state, deps } = fakeMetadata(ids);
+    deps.readWhitelist = async () => ({
+      ...whitelistFor(ids),
+      metadata_resume_run_id: "refresh-failed",
+    });
+    const priorRepo = metadata(1, 10_001);
+    deps.readProgress = async (progressRunId, bucket) => {
+      void bucket;
+      if (progressRunId === "refresh-failed") {
+        return {
+          v: 1,
+          bucket: 1,
+          fetched: { "1": priorRepo },
+          transient_attempts: MAX_METADATA_TRANSIENT_ATTEMPTS,
+          last_error: "GitHub GraphQL 502: error code: 502",
+        };
+      }
+      return state.progress;
+    };
+
+    const done = await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
+    expect(done).toMatchObject({ repos: 2, from_github: 2, bucket: 1 });
+    expect(state.fetches).toHaveLength(1);
+    expect(state.fetches[0]).toEqual(["R_33"]);
+    expect(state.shard?.["1"]?.current_stars).toBe(10_001);
   });
 
   test("throws after the transient hop budget so the run can fail closed", async () => {

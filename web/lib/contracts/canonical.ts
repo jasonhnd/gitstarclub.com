@@ -120,6 +120,8 @@ export const WhitelistSnapshot = z.object({
     added: z.array(NonNegativeInt), // new repo ids (newcomers)
     dropped: z.array(NonNegativeInt), // ids no longer >=10k
   }).strict(),
+  /** When entries were copied from a failed run, metadata batch progress may resume here. */
+  metadata_resume_run_id: SafeText.optional(),
 }).strict().refine((snapshot) => snapshot.count === snapshot.entries.length, "count must match entries length");
 export type WhitelistSnapshot = z.infer<typeof WhitelistSnapshot>;
 
