@@ -3,6 +3,7 @@ import { buildModel, type RawShards, type RepoMeta } from "./model";
 import { computeOrgWindow, computeRepoWindow, deriveYearWindow } from "./windows";
 import { growth, orgRankMatrix, repoRankMatrix } from "./ranks";
 import {
+  absorbGrowthCandidates,
   absorbOrgPeriodRowsFromBucket,
   appendRepoPeriodRowsFromBucket,
   assemblePackedWindow,
@@ -10,6 +11,8 @@ import {
   coercePackedWindowBucket,
   createPackedWindowBuilder,
   derivePackedYearWindow,
+  deriveYearBucketFromMonthBucket,
+  growthViewsFromTopCandidates,
   orgRankViewsFromPeriodRows,
   orgRowsFromAbsorbed,
   packedBucketFile,
@@ -21,6 +24,7 @@ import {
   packedRepoRows,
   packedWindowAsFlatBucket,
   repoRankViewsFromPeriodRows,
+  yearPeriodsFromMonthPeriods,
   type PackedPeriodRepoRow,
   type PackedRepoWindow,
 } from "./packed-window";
@@ -286,6 +290,85 @@ describe("week stream extract matches assembled window ranks", () => {
     expect(orgRowsFromAbsorbed(firstAcc[0]!)).toEqual([{ login: "org", flow: 100, stock_est: 100 }]);
     expect(orgRowsFromAbsorbed(secondAcc[0]!)).toEqual([{ login: "org", flow: 20, stock_est: 120 }]);
     expect(orgRowsFromAbsorbed(secondAcc[1]!)).toEqual([{ login: "org", flow: 10, stock_est: 130 }]);
+  });
+});
+
+function cellsById(packed: PackedRepoWindow) {
+  const out = new Map<number, Array<[string, number, number, number]>>();
+  for (let repo = 0; repo < packed.ids.length; repo++) {
+    const start = packed.start[repo]!;
+    const end = start + packed.len[repo]!;
+    const cells: Array<[string, number, number, number]> = [];
+    for (let cell = start; cell < end; cell++) {
+      cells.push([
+        packed.periods[packed.periodIdx[cell]!]!,
+        packed.flow[cell]!,
+        packed.cumgross[cell]!,
+        packed.stock[cell]!,
+      ]);
+    }
+    out.set(packed.ids[repo]!, cells);
+  }
+  return out;
+}
+
+describe("month and year stay sharded", () => {
+  test("year buckets derived one shard at a time match the full derived year window", () => {
+    const model = makeModel([
+      { id: 1, owner: "beta", owner_type: "Organization", current_stars: 150, d: 0.8, monthly: [["2025-11", 40], ["2025-12", 20], ["2026-01", 10]] },
+      { id: 2, owner: "beta", owner_type: "Organization", current_stars: 80, d: 1, monthly: [["2026-01", 15], ["2026-06", 30]] },
+      { id: 33, owner: "solo", current_stars: 40, d: 1, monthly: [["2024-12", 5], ["2026-03", 8]] },
+    ]);
+    const month = packFromModel(model, "month");
+    const direct = derivePackedYearWindow(month);
+    const years = yearPeriodsFromMonthPeriods(month.periods);
+    const shards = [1, 2]
+      .map((bucket) => packedBucketFile(month, bucket, 32))
+      .filter((shard) => shard.repos.length > 0)
+      .map((shard) => deriveYearBucketFromMonthBucket(shard, month.periods, years));
+    const assembled = assemblePackedWindow(packedMetaFile("year", "2026", { periods: years }, 32), shards);
+    expect(cellsById(assembled)).toEqual(cellsById(direct));
+    expect(packedRepoRankMap(assembled, "year")).toEqual(packedRepoRankMap(direct, "year"));
+    expect(packedOrgRankMap(assembled, "year")).toEqual(packedOrgRankMap(direct, "year"));
+    expect(packedGrowthViews(assembled, "year", GEN)).toEqual(packedGrowthViews(direct, "year", GEN));
+  });
+
+  test("bucket growth top-N matches the full-window growth view", () => {
+    const specs: RepoSpec[] = [];
+    for (let n = 0; n < 120; n++) {
+      specs.push({
+        id: 1 + n * 32,
+        owner: "bulk",
+        current_stars: 30_000,
+        d: 1,
+        monthly: [
+          ["2026-01", 25_000],
+          ["2026-02", 100 + n],
+        ],
+      });
+    }
+    specs.push({
+      id: 2,
+      owner: "spike",
+      current_stars: 80_000,
+      d: 1,
+      monthly: [
+        ["2026-01", 25_000],
+        ["2026-02", 50_000],
+      ],
+    });
+    const month = packFromModel(makeModel(specs), "month");
+    const full = packedGrowthViews(month, "month", GEN);
+    const top = new Map<string, Array<{ id: number; flow: number; base: number }>>();
+    for (let bucket = 0; bucket < 32; bucket++) {
+      const shard = packedBucketFile(month, bucket, 32);
+      if (shard.repos.length === 0) continue;
+      absorbGrowthCandidates(shard, month.periods, top);
+    }
+    expect(growthViewsFromTopCandidates(top, "month", GEN)).toEqual(full);
+    const items = full.get("rank/month/2026-02/repo/growth.json")?.items ?? [];
+    expect(items).toHaveLength(100);
+    expect(items[0]).toMatchObject({ id: 2 });
   });
 });
 

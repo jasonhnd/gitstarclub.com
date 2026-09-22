@@ -156,40 +156,47 @@ const SEARCH_DESC_CAP = 200; // bound the client-loaded index; keywords live in 
 
 /** search/index.json — one lean doc per repo for the client-side MiniSearch index (§V0.2 §1).
  *  Derived from the same repos dimension as lookups; descriptions are head-capped to bound size. */
+export function searchRepoDoc(repo: RepoMeta) {
+  const desc = truncateUnicodeText(repo.description ?? "", SEARCH_DESC_CAP);
+  return {
+    id: repo.id,
+    full_name: repo.full_name,
+    owner: repo.owner,
+    language: repo.language ?? null,
+    current_stars: repo.current_stars,
+    description: desc || null,
+    active: repo.active !== false,
+    tracked_since: repo.tracked_since ?? null,
+  };
+}
+
 export function searchIndex(model: Model, gen: string): Map<string, unknown> {
-  const repos = model.ids.map((id) => {
-    const r = model.repos.get(id)!;
-    const desc = truncateUnicodeText(r.description ?? "", SEARCH_DESC_CAP);
-    return {
-      id: r.id,
-      full_name: r.full_name,
-      owner: r.owner,
-      language: r.language ?? null,
-      current_stars: r.current_stars,
-      description: desc || null,
-      active: r.active !== false,
-      tracked_since: r.tracked_since ?? null,
-    };
-  });
+  const repos = model.ids.map((id) => searchRepoDoc(model.repos.get(id)!));
   return new Map<string, unknown>([["search/index.json", { generated_at: gen, count: repos.length, repos }]]);
+}
+
+export function lookupRepoEntry(repo: RepoMeta) {
+  return {
+    owner: repo.owner,
+    name: repo.name,
+    full_name: repo.full_name,
+    owner_type: repo.owner_type,
+    language: repo.language ?? null,
+    current_stars: repo.current_stars,
+    active: repo.active !== false,
+    tracked_since: repo.tracked_since ?? null,
+  };
+}
+
+export function lookupOrgEntry(org: { login: string; owner_type: string; repo_count: number; current_stars_sum: number }) {
+  return { login: org.login, owner_type: org.owner_type, repo_count: org.repo_count, current_stars_sum: org.current_stars_sum };
 }
 
 export function lookups(model: Model): Map<string, unknown> {
   const repoLk: Record<string, unknown> = {};
-  for (const r of model.repos.values())
-    repoLk[r.id] = {
-      owner: r.owner,
-      name: r.name,
-      full_name: r.full_name,
-      owner_type: r.owner_type,
-      language: r.language ?? null,
-      current_stars: r.current_stars,
-      active: r.active !== false,
-      tracked_since: r.tracked_since ?? null,
-    };
+  for (const repo of model.repos.values()) repoLk[repo.id] = lookupRepoEntry(repo);
   const orgLk: Record<string, unknown> = {};
-  for (const o of model.orgs.values())
-    orgLk[o.login] = { login: o.login, owner_type: o.owner_type, repo_count: o.repo_count, current_stars_sum: o.current_stars_sum };
+  for (const org of model.orgs.values()) orgLk[org.login] = lookupOrgEntry(org);
   return new Map<string, unknown>([
     ["lookup/repos.json", repoLk],
     ["lookup/orgs.json", orgLk],
