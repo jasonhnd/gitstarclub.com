@@ -251,6 +251,40 @@ describe("refresh step graph", () => {
     });
   });
 
+  test("recomputeRank month pack, year derive, and rest buckets stay on recomputeRank", () => {
+    const monthPack = nextRefreshJob(full("recomputeRank", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 }), {
+      name: "recomputeRank",
+      files: 2,
+      nextRecomputePhase: "month",
+      nextRecomputeOffset: 0,
+    });
+    expect(monthPack).toMatchObject({
+      name: "recomputeRank",
+      cursor: { recomputePhase: "month", recomputeOffset: 0, fencingToken: 22 },
+    });
+
+    const yearPack = nextRefreshJob(full("recomputeRank", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22, recomputePhase: "year" }), {
+      name: "recomputeRank",
+      files: 1,
+      nextRecomputePhase: "year",
+      nextRecomputeOffset: 0,
+    });
+    expect(yearPack).toMatchObject({
+      cursor: { recomputePhase: "year", recomputeOffset: 0 },
+    });
+
+    const rest = nextRefreshJob(
+      full("recomputeRank", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22, recomputePhase: "weekOrg", recomputeOffset: 8 }),
+      { name: "recomputeRank", files: 1, nextRecomputePhase: "rest", nextRecomputeOffset: 0 },
+    );
+    expect(rest).toMatchObject({
+      cursor: { recomputePhase: "rest", recomputeOffset: 0, fencingToken: 22 },
+    });
+
+    const restNext = nextRefreshJob(rest!, { name: "recomputeRank", files: 1, nextRecomputePhase: "rest", nextRecomputeOffset: 1 });
+    expect(restNext).toMatchObject({ cursor: { recomputePhase: "rest", recomputeOffset: 1 } });
+  });
+
   test("fold result walks to recomputeRank and keeps the fencing token", () => {
     const next = nextRefreshJob(full("fold", { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 }), {
       name: "fold",

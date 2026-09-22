@@ -92,7 +92,7 @@ describe("runRefreshStepRoute", () => {
         attempt: 0,
         cursor: {},
       }),
-    ).toBe("recomputeRank-month");
+    ).toBe("recomputeRank-month-pack");
     expect(
       refreshStepCheckpointName({
         v: 1,
