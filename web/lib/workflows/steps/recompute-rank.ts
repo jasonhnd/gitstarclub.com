@@ -3,8 +3,6 @@ import { putView } from "@/lib/data/write";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 import {
   ensurePackedWindowPersisted,
-  loadCanonicalModel,
-  loadPackedRepoWindow,
   orgStockToMap,
   pairsToRankMap,
   readPackedWindowMeta,
@@ -12,31 +10,23 @@ import {
   streamPackedOrgPeriodRows,
   streamPackedRepoPeriodRows,
   writeRankCarry,
+  writeStreamedGrowthViews,
   writeVersionAndClear,
-  writeVersionChunks,
 } from "../recompute/io";
-import { computeCategoryViews, lookups, searchIndex } from "../recompute";
-import { allTime, newcomers } from "../recompute/ranks";
 import {
-  derivePackedYearWindow,
   orgRankViewsFromPeriodRows,
-  packedGrowthViews,
-  packedOrgRankViewsForPeriod,
-  packedRepoRankViewsForPeriod,
   repoRankViewsFromPeriodRows,
-  type PackedRepoWindow,
   type PackedWindowKind,
 } from "../recompute/packed-window";
 import { RECOMPUTE_PHASE_SET, type RecomputePhase, type RefreshCursor } from "@/lib/workflows/runtime/types";
+import { runRestRankHop } from "./recompute-rest";
 
-// Rank recompute (cross-bucket gather). #486 split families (month/week/rest) but
-// the month hop still built object windows + year + two org windows in one isolate
-// and never wrote recomputeRank-month.json (CRON-PRE-PR486-RETEST-001).
-// #497 packed hops + persist; month/year fit, but week-start assembled every
-// week-win shard (or finalized ~4× month cells) and OOM'd (CRON-PRE-PR497-RETEST-001).
-// Week is now: pack hop (one bucket persist, flat v2) → period-window stream hops.
-// Vercel / tests still drain every hop in-process.
-// See docs/VERCEL-DATA-OPERATIONS.md §4 / §3.3.
+// Rank recompute (cross-bucket gather). #486 split families. #497 packed the
+// window but week-start still finalized every week cell and OOM'd. Week, and
+// now month / year / rest, keep one hop's resident set to a bucket or an
+// 8-period slice: pack persists flat v2 per repo bucket, rank streams that
+// persist, rest folds one repos shard. Vercel / tests still drain every hop
+// in-process. See docs/VERCEL-DATA-OPERATIONS.md §4 / §3.3.
 
 export type RecomputeRankStepFields = {
   files: number;
@@ -67,10 +57,13 @@ export const NEXT_RECOMPUTE_PHASE: Record<RecomputePhase, RecomputePhase | undef
   rest: undefined,
 };
 
+const PACK_PHASES = new Set<RecomputePhase>(["month", "year", "week"]);
+const WINDOW_PHASES = new Set<RecomputePhase>(["month", "monthOrg", "year", "yearOrg", "week", "weekOrg", "rest"]);
+
 export function recomputeStepCheckpointName(cursor: RefreshCursor): string {
   const phase = cursor.recomputePhase ?? "month";
-  if (phase === "week" && cursor.recomputeOffset === undefined) return "recomputeRank-week-pack";
-  if ((phase === "week" || phase === "weekOrg") && typeof cursor.recomputeOffset === "number") {
+  if (PACK_PHASES.has(phase) && cursor.recomputeOffset === undefined) return `recomputeRank-${phase}-pack`;
+  if (WINDOW_PHASES.has(phase) && typeof cursor.recomputeOffset === "number") {
     return `recomputeRank-${phase}-${cursor.recomputeOffset}`;
   }
   return `recomputeRank-${phase}`;
@@ -78,7 +71,7 @@ export function recomputeStepCheckpointName(cursor: RefreshCursor): string {
 
 export function recomputeStartCheckpointName(cursor: RefreshCursor): string {
   const phase = recomputePhaseOf(cursor);
-  if (phase === "week" && cursor.recomputeOffset === undefined) return "recomputeRank-week-start";
+  if (PACK_PHASES.has(phase) && cursor.recomputeOffset === undefined) return `recomputeRank-${phase}-start`;
   return `${recomputeStepCheckpointName(cursor)}-start`;
 }
 
@@ -88,8 +81,13 @@ export function extraRecomputeCheckpointSteps(
 ): string[] {
   const current = recomputePhaseOf(cursor);
   const extra: string[] = [];
+  if (current === "month" && result.nextRecomputePhase === "monthOrg") extra.push("recomputeRank-month");
+  if (current === "monthOrg" && result.nextRecomputePhase === "year") extra.push("recomputeRank-monthOrg");
+  if (current === "year" && result.nextRecomputePhase === "yearOrg") extra.push("recomputeRank-year");
+  if (current === "yearOrg" && result.nextRecomputePhase === "week") extra.push("recomputeRank-yearOrg");
   if (current === "week" && result.nextRecomputePhase === "weekOrg") extra.push("recomputeRank-week");
   if (current === "weekOrg" && result.nextRecomputePhase === "rest") extra.push("recomputeRank-weekOrg");
+  if (current === "rest" && !hasNextRecomputeWindow(result)) extra.push("recomputeRank-rest");
   if (!hasNextRecomputeWindow(result)) extra.push("recomputeRank");
   return extra;
 }
@@ -135,71 +133,29 @@ export async function writeRecomputeHopStart(runId: string, fencingToken: number
   );
 }
 
-async function writePackedRepoRanks(
+type StreamedRepoPhase = "month" | "week" | "year";
+type StreamedOrgPhase = "monthOrg" | "weekOrg" | "yearOrg";
+
+async function rankStreamedRepos(
   runId: string,
   owner: { runId: string; fencingToken: number },
-  packed: PackedRepoWindow,
-  w: "month" | "week" | "year",
-  generatedAt: string,
-): Promise<number> {
-  let files = 0;
-  let prevFlow: Map<string, number> | undefined;
-  let prevStock: Map<string, number> | undefined;
-  for (let periodIndex = 0; periodIndex < packed.periods.length; periodIndex++) {
-    const ranked = packedRepoRankViewsForPeriod(packed, periodIndex, w, generatedAt, prevFlow, prevStock);
-    files += await writeVersionAndClear(runId, ranked.views, owner);
-    prevFlow = ranked.nextFlow;
-    prevStock = ranked.nextStock;
-  }
-  return files;
-}
-
-async function writePackedOrgRanks(
-  runId: string,
-  owner: { runId: string; fencingToken: number },
-  packed: PackedRepoWindow,
-  w: "month" | "week" | "year",
-  generatedAt: string,
-): Promise<number> {
-  let files = 0;
-  const carry = new Float64Array(packed.ids.length);
-  let prevFlow: Map<string, number> | undefined;
-  let prevStock: Map<string, number> | undefined;
-  for (let periodIndex = 0; periodIndex < packed.periods.length; periodIndex++) {
-    const ranked = packedOrgRankViewsForPeriod(packed, periodIndex, w, generatedAt, carry, prevFlow, prevStock);
-    files += await writeVersionAndClear(runId, ranked.views, owner);
-    prevFlow = ranked.nextFlow;
-    prevStock = ranked.nextStock;
-  }
-  return files;
-}
-
-async function loadRankWindow(
-  runId: string,
   kind: PackedWindowKind,
-  owner: { runId: string; fencingToken: number },
-): Promise<PackedRepoWindow> {
-  const loaded = await loadPackedRepoWindow(runId, kind, { owner, persist: true });
-  return loaded.packed;
-}
-
-async function rankStreamedWeekRepos(
-  runId: string,
-  owner: { runId: string; fencingToken: number },
+  phase: StreamedRepoPhase,
   offset: number,
   generatedAt: string,
+  done: RecomputeRankStepFields,
 ): Promise<RecomputeRankStepFields> {
-  const meta = await readPackedWindowMeta(runId, "week");
-  if (!meta) throw new Error(`ops/workflows/${runId}/recompute/week-win/meta.json: missing persist`);
-  if (offset >= meta.periods.length) return { files: 0, nextRecomputePhase: "weekOrg", nextRecomputeOffset: 0 };
+  const meta = await readPackedWindowMeta(runId, kind);
+  if (!meta) throw new Error(`ops/workflows/${runId}/recompute/${kind}-win/meta.json: missing persist`);
+  if (offset >= meta.periods.length) return { ...done, files: 0 };
   const to = Math.min(offset + WEEK_RANK_PERIODS_PER_HOP, meta.periods.length);
-  const rows = await streamPackedRepoPeriodRows(runId, "week", offset, to, owner);
-  const carry = await readRankCarry(runId, "week", "repo");
+  const rows = await streamPackedRepoPeriodRows(runId, kind, offset, to, owner);
+  const carry = await readRankCarry(runId, kind, "repo");
   let prevFlow = pairsToRankMap(carry?.flow);
   let prevStock = pairsToRankMap(carry?.stock);
   let files = 0;
   for (let i = 0; i < rows.length; i++) {
-    const ranked = repoRankViewsFromPeriodRows(meta.periods[offset + i]!, rows[i]!, "week", generatedAt, prevFlow, prevStock);
+    const ranked = repoRankViewsFromPeriodRows(meta.periods[offset + i]!, rows[i]!, phase, generatedAt, prevFlow, prevStock);
     files += await writeVersionAndClear(runId, ranked.views, owner);
     prevFlow = ranked.nextFlow;
     prevStock = ranked.nextStock;
@@ -208,35 +164,39 @@ async function rankStreamedWeekRepos(
   if (to < meta.periods.length) {
     await writeRankCarry(owner, {
       v: 1,
-      kind: "week",
+      kind,
       dim: "repo",
       nextPeriod: to,
       flow: prevFlow ? [...prevFlow] : [],
       stock: prevStock ? [...prevStock] : [],
     });
-    return { files, nextRecomputePhase: "week", nextRecomputeOffset: to };
+    return { files, nextRecomputePhase: phase, nextRecomputeOffset: to };
   }
-  return { files, nextRecomputePhase: "weekOrg", nextRecomputeOffset: 0 };
+  return { ...done, files };
 }
 
-async function rankStreamedWeekOrgs(
+async function rankStreamedOrgs(
   runId: string,
   owner: { runId: string; fencingToken: number },
+  kind: PackedWindowKind,
+  phase: StreamedOrgPhase,
+  w: "month" | "week" | "year",
   offset: number,
   generatedAt: string,
+  done: RecomputeRankStepFields,
 ): Promise<RecomputeRankStepFields> {
-  const meta = await readPackedWindowMeta(runId, "week");
-  if (!meta) throw new Error(`ops/workflows/${runId}/recompute/week-win/meta.json: missing persist`);
-  if (offset >= meta.periods.length) return { files: 0, nextRecomputePhase: "rest" };
+  const meta = await readPackedWindowMeta(runId, kind);
+  if (!meta) throw new Error(`ops/workflows/${runId}/recompute/${kind}-win/meta.json: missing persist`);
+  if (offset >= meta.periods.length) return { ...done, files: 0 };
   const to = Math.min(offset + WEEK_RANK_PERIODS_PER_HOP, meta.periods.length);
-  const carryFile = await readRankCarry(runId, "week", "org");
+  const carryFile = await readRankCarry(runId, kind, "org");
   const orgStock = orgStockToMap(carryFile?.orgStock);
-  const rows = await streamPackedOrgPeriodRows(runId, "week", offset, to, orgStock, owner);
+  const rows = await streamPackedOrgPeriodRows(runId, kind, offset, to, orgStock, owner);
   let prevFlow = pairsToRankMap(carryFile?.flow);
   let prevStock = pairsToRankMap(carryFile?.stock);
   let files = 0;
   for (let i = 0; i < rows.length; i++) {
-    const ranked = orgRankViewsFromPeriodRows(meta.periods[offset + i]!, rows[i]!, "week", generatedAt, prevFlow, prevStock);
+    const ranked = orgRankViewsFromPeriodRows(meta.periods[offset + i]!, rows[i]!, w, generatedAt, prevFlow, prevStock);
     files += await writeVersionAndClear(runId, ranked.views, owner);
     prevFlow = ranked.nextFlow;
     prevStock = ranked.nextStock;
@@ -245,16 +205,16 @@ async function rankStreamedWeekOrgs(
   if (to < meta.periods.length) {
     await writeRankCarry(owner, {
       v: 1,
-      kind: "week",
+      kind,
       dim: "org",
       nextPeriod: to,
       flow: prevFlow ? [...prevFlow] : [],
       stock: prevStock ? [...prevStock] : [],
       orgStock: [...orgStock],
     });
-    return { files, nextRecomputePhase: "weekOrg", nextRecomputeOffset: to };
+    return { files, nextRecomputePhase: phase, nextRecomputeOffset: to };
   }
-  return { files, nextRecomputePhase: "rest" };
+  return { ...done, files };
 }
 
 export async function runRecomputeRankStep(
@@ -268,49 +228,62 @@ export async function runRecomputeRankStep(
   await writeRecomputeHopStart(runId, fencingToken, cursor);
   switch (phase) {
     case "month": {
-      const packed = await loadRankWindow(runId, "month", owner);
-      let files = await writePackedRepoRanks(runId, owner, packed, "month", generatedAt);
-      files += await writeVersionAndClear(runId, packedGrowthViews(packed, "month", generatedAt), owner);
-      return { files, nextRecomputePhase: NEXT_RECOMPUTE_PHASE.month };
+      if (cursor.recomputeOffset === undefined) {
+        await ensurePackedWindowPersisted(runId, "month", owner);
+        const files = await writeStreamedGrowthViews(runId, "month", "month", generatedAt, owner);
+        return { files, nextRecomputePhase: "month", nextRecomputeOffset: 0 };
+      }
+      return rankStreamedRepos(runId, owner, "month", "month", cursor.recomputeOffset, generatedAt, {
+        files: 0,
+        nextRecomputePhase: "monthOrg",
+        nextRecomputeOffset: 0,
+      });
     }
     case "monthOrg": {
-      const packed = await loadRankWindow(runId, "month", owner);
-      const files = await writePackedOrgRanks(runId, owner, packed, "month", generatedAt);
-      return { files, nextRecomputePhase: NEXT_RECOMPUTE_PHASE.monthOrg };
+      return rankStreamedOrgs(runId, owner, "month", "monthOrg", "month", cursor.recomputeOffset ?? 0, generatedAt, {
+        files: 0,
+        nextRecomputePhase: "year",
+      });
     }
     case "year": {
-      const month = await loadRankWindow(runId, "month", owner);
-      const year = derivePackedYearWindow(month);
-      let files = await writePackedRepoRanks(runId, owner, year, "year", generatedAt);
-      files += await writeVersionAndClear(runId, packedGrowthViews(year, "year", generatedAt), owner);
-      return { files, nextRecomputePhase: NEXT_RECOMPUTE_PHASE.year };
+      if (cursor.recomputeOffset === undefined) {
+        await ensurePackedWindowPersisted(runId, "month", owner);
+        await ensurePackedWindowPersisted(runId, "year", owner);
+        const files = await writeStreamedGrowthViews(runId, "year", "year", generatedAt, owner);
+        return { files, nextRecomputePhase: "year", nextRecomputeOffset: 0 };
+      }
+      return rankStreamedRepos(runId, owner, "year", "year", cursor.recomputeOffset, generatedAt, {
+        files: 0,
+        nextRecomputePhase: "yearOrg",
+        nextRecomputeOffset: 0,
+      });
     }
     case "yearOrg": {
-      const month = await loadRankWindow(runId, "month", owner);
-      const year = derivePackedYearWindow(month);
-      const files = await writePackedOrgRanks(runId, owner, year, "year", generatedAt);
-      return { files, nextRecomputePhase: NEXT_RECOMPUTE_PHASE.yearOrg };
+      return rankStreamedOrgs(runId, owner, "year", "yearOrg", "year", cursor.recomputeOffset ?? 0, generatedAt, {
+        files: 0,
+        nextRecomputePhase: "week",
+      });
     }
     case "week": {
       if (cursor.recomputeOffset === undefined) {
         await ensurePackedWindowPersisted(runId, "week", owner);
         return { files: 0, nextRecomputePhase: "week", nextRecomputeOffset: 0 };
       }
-      return rankStreamedWeekRepos(runId, owner, cursor.recomputeOffset, generatedAt);
+      return rankStreamedRepos(runId, owner, "week", "week", cursor.recomputeOffset, generatedAt, {
+        files: 0,
+        nextRecomputePhase: "weekOrg",
+        nextRecomputeOffset: 0,
+      });
     }
     case "weekOrg": {
-      return rankStreamedWeekOrgs(runId, owner, cursor.recomputeOffset ?? 0, generatedAt);
+      return rankStreamedOrgs(runId, owner, "week", "weekOrg", "week", cursor.recomputeOffset ?? 0, generatedAt, {
+        files: 0,
+        nextRecomputePhase: "rest",
+        nextRecomputeOffset: 0,
+      });
     }
     case "rest": {
-      const { model } = await loadCanonicalModel(runId, { families: RECOMPUTE_RANK_FAMILIES.rest });
-      const views = new Map<string, unknown>(allTime(model, generatedAt));
-      for (const [path, view] of newcomers(model, "month", generatedAt)) views.set(path, view);
-      for (const [path, view] of newcomers(model, "year", generatedAt)) views.set(path, view);
-      for (const [path, view] of lookups(model)) views.set(path, view);
-      for (const [path, view] of searchIndex(model, generatedAt)) views.set(path, view);
-      let files = await writeVersionAndClear(runId, views, owner);
-      files += await writeVersionChunks(runId, computeCategoryViews(model, generatedAt).entries(), owner);
-      return { files };
+      return runRestRankHop(runId, owner, cursor.recomputeOffset ?? 0, generatedAt);
     }
     default: {
       const _exhaustive: never = phase;

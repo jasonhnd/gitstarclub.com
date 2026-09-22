@@ -22,21 +22,26 @@ import { getWriteObjectStore } from "@/lib/storage";
 import { canonicalShardReadConcurrency } from "@/lib/workflows/canonical-validation";
 import { REPO_BUCKETS } from "../buckets";
 import { assembleModel, normalizeRepoMeta, seamPeriods, type DailySeries, type Model, type OwnerType, type RepoMeta, type Series } from "./model";
+import type { Window } from "./windows";
 import { putOwnedView, workflowHeartbeat } from "@/lib/workflows/owned-write";
 import type { WorkflowOwnership } from "@/lib/workflows/lease";
 import {
+  absorbGrowthCandidates,
   absorbOrgPeriodRowsFromBucket,
   appendRepoPeriodRowsFromBucket,
   coercePackedWindowBucket,
   coercePackedWindowMeta,
   createPackedWindowAssembler,
   createPackedWindowBuilder,
+  deriveYearBucketFromMonthBucket,
+  growthViewsFromTopCandidates,
   orgRowsFromAbsorbed,
   packedBucketFile,
   packedMetaFile,
   packedWindowAsFlatBucket,
   packedWindowBucketPath,
   packedWindowMetaPath,
+  yearPeriodsFromMonthPeriods,
   type PackedPeriodOrgRow,
   type PackedPeriodRepoRow,
   type PackedRepoWindow,
@@ -124,6 +129,11 @@ function asSeries(value: unknown): Series {
   return Array.isArray(value) ? (value as Series) : [];
 }
 
+function canonicalSeriesKind(kind: PackedWindowKind): "month" | "week" {
+  if (kind === "month" || kind === "week") return kind;
+  throw new Error(`packed window ${kind} is derived from month buckets, not a canonical series`);
+}
+
 export async function persistPackedWindow(
   runId: string,
   kind: PackedWindowKind,
@@ -180,8 +190,9 @@ async function buildPackedWindowFromShards(
   const skipSchemaParse = isCloudflareWorkersHost();
   const heartbeat = owner ? workflowHeartbeat(owner) : async () => {};
   const builder = createPackedWindowBuilder(seamPeriod);
-  const seriesKind = kind === "week" ? "repo-weekly" : "repo-monthly";
-  const seriesSchema = kind === "week" ? RepoWeeklyShard : RepoMonthlyShard;
+  const series = canonicalSeriesKind(kind);
+  const seriesKind = series === "week" ? "repo-weekly" : "repo-monthly";
+  const seriesSchema = series === "week" ? RepoWeeklyShard : RepoMonthlyShard;
   for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
     await heartbeat();
     const reposPath = `canonical/v2/repos/${bucket}.json`;
@@ -215,8 +226,9 @@ export async function loadPackedRepoWindow(
   kind: PackedWindowKind,
   opts: LoadPackedWindowOptions = {},
 ): Promise<LoadedPackedWindow> {
+  const series = canonicalSeriesKind(kind);
   const meta = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust });
-  const seamPeriod = seamPeriods(meta.seam_date)[kind];
+  const seamPeriod = seamPeriods(meta.seam_date)[series];
   const persisted = await readPersistedPackedWindow(bust, kind);
   if (persisted) {
     return {
@@ -251,9 +263,10 @@ export function collectPeriodsFromSeriesShard(shard: unknown, into: Set<string>)
 }
 
 export async function collectSeriesPeriods(bust: string, kind: PackedWindowKind): Promise<string[]> {
+  const series = canonicalSeriesKind(kind);
   const skipSchemaParse = isCloudflareWorkersHost();
-  const seriesKind = kind === "week" ? "repo-weekly" : "repo-monthly";
-  const seriesSchema = kind === "week" ? RepoWeeklyShard : RepoMonthlyShard;
+  const seriesKind = series === "week" ? "repo-weekly" : "repo-monthly";
+  const seriesSchema = series === "week" ? RepoWeeklyShard : RepoMonthlyShard;
   const periods = new Set<string>();
   for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
     const seriesPath = `canonical/v2/${seriesKind}/${bucket}.json`;
@@ -272,9 +285,10 @@ async function packOneSeriesBucket(
   periods: readonly string[],
   bucket: number,
 ): Promise<PackedRepoWindow> {
+  const series = canonicalSeriesKind(kind);
   const skipSchemaParse = isCloudflareWorkersHost();
-  const seriesKind = kind === "week" ? "repo-weekly" : "repo-monthly";
-  const seriesSchema = kind === "week" ? RepoWeeklyShard : RepoMonthlyShard;
+  const seriesKind = series === "week" ? "repo-weekly" : "repo-monthly";
+  const seriesSchema = series === "week" ? RepoWeeklyShard : RepoMonthlyShard;
   const reposPath = `canonical/v2/repos/${bucket}.json`;
   const seriesPath = `canonical/v2/${seriesKind}/${bucket}.json`;
   const reposShard = await readAuthoritativeView(reposPath, ReposShard, { bust, skipSchemaParse });
@@ -306,8 +320,9 @@ export async function persistPackedWindowIncrementally(
   kind: PackedWindowKind,
   owner: WorkflowOwnership,
 ): Promise<PackedWindowMetaFile> {
+  const series = canonicalSeriesKind(kind);
   const canonical = await readRequiredView("canonical/v2/meta.json", CanonicalMeta, { bust });
-  const seamPeriod = seamPeriods(canonical.seam_date)[kind];
+  const seamPeriod = seamPeriods(canonical.seam_date)[series];
   const periods = await collectSeriesPeriods(bust, kind);
   const heartbeat = workflowHeartbeat(owner);
   for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
@@ -322,6 +337,30 @@ export async function persistPackedWindowIncrementally(
   return meta;
 }
 
+/** Derive year-win from month-win one bucket at a time. Never assembles the month window. */
+export async function persistDerivedYearWindow(bust: string, owner: WorkflowOwnership): Promise<PackedWindowMetaFile> {
+  const month = await readPackedWindowMeta(bust, "month");
+  if (!month) throw new Error(`ops/workflows/${bust}/recompute/month-win/meta.json: missing persist`);
+  const years = yearPeriodsFromMonthPeriods(month.periods);
+  const heartbeat = workflowHeartbeat(owner);
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    await heartbeat();
+    const raw = await readAuthoritativeView(packedWindowBucketPath(bust, "month", bucket), UnknownJson, {
+      bust,
+      skipSchemaParse: true,
+    });
+    const shard = coercePackedWindowBucket(raw);
+    if (!shard) throw new Error(`${packedWindowBucketPath(bust, "month", bucket)}: missing persist shard`);
+    const yearBucket = deriveYearBucketFromMonthBucket(shard, month.periods, years);
+    await putOwnedView(owner, packedWindowBucketPath(bust, "year", bucket), yearBucket);
+    clearViewParseMemo();
+  }
+  const meta = packedMetaFile("year", month.seamPeriod.slice(0, 4), { periods: years }, REPO_BUCKETS);
+  await heartbeat();
+  await putOwnedView(owner, packedWindowMetaPath(bust, "year"), meta);
+  return meta;
+}
+
 export async function ensurePackedWindowPersisted(
   bust: string,
   kind: PackedWindowKind,
@@ -329,7 +368,34 @@ export async function ensurePackedWindowPersisted(
 ): Promise<PackedWindowMetaFile> {
   const existing = await readPackedWindowMeta(bust, kind);
   if (existing) return existing;
+  if (kind === "year") return persistDerivedYearWindow(bust, owner);
   return persistPackedWindowIncrementally(bust, kind, owner);
+}
+
+/** Growth top-N from persisted buckets. One bucket resident; the candidate map stays bounded. */
+export async function writeStreamedGrowthViews(
+  bust: string,
+  kind: PackedWindowKind,
+  w: Window,
+  generatedAt: string,
+  owner: WorkflowOwnership,
+): Promise<number> {
+  const meta = await readPackedWindowMeta(bust, kind);
+  if (!meta) throw new Error(`ops/workflows/${bust}/recompute/${kind}-win/meta.json: missing persist`);
+  const top = new Map<string, Array<{ id: number; flow: number; base: number }>>();
+  const heartbeat = workflowHeartbeat(owner);
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    await heartbeat();
+    const raw = await readAuthoritativeView(packedWindowBucketPath(bust, kind, bucket), UnknownJson, {
+      bust,
+      skipSchemaParse: true,
+    });
+    const shard = coercePackedWindowBucket(raw);
+    if (!shard) throw new Error(`${packedWindowBucketPath(bust, kind, bucket)}: missing persist shard`);
+    absorbGrowthCandidates(shard, meta.periods, top);
+    clearViewParseMemo();
+  }
+  return writeVersionAndClear(bust, growthViewsFromTopCandidates(top, w, generatedAt), owner);
 }
 
 export async function streamPackedRepoPeriodRows(
