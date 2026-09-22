@@ -41,4 +41,5 @@ export type WorkerEnv = {
   WHITELIST_SEARCH_SHARDS?: string;
   WHITELIST_SEARCH_HOP_BUDGET_MS?: string;
   PREFLIGHT_RELAX_EMPTY_SHARDS?: string;
+  WORKFLOW_COLD_START?: string;
 };

@@ -90,7 +90,10 @@
         // Jason 2026-09-22: preview-only. Missing/empty canonical shards become
         // empty `{}` placeholders so preflight does not void the run.
         // Unset / "0" restores fail-closed. Production top-level must stay unset.
-        "PREFLIGHT_RELAX_EMPTY_SHARDS": "1"
+        "PREFLIGHT_RELAX_EMPTY_SHARDS": "1",
+        // Jason 2026-09-22 (#519): first managed publish may bootstrap canonical
+        // meta and treat missing canonical/lookup as empty until views/latest exists.
+        "WORKFLOW_COLD_START": "1"
       }
     }
   }

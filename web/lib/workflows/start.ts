@@ -4,7 +4,7 @@ import { recordHealth } from "@/lib/observability/health";
 import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 import { claimWorkflowLease, releaseWorkflowLease, type WorkflowLeaseStore } from "@/lib/workflows/lease";
-import { readCanonicalPreflight } from "@/lib/workflows/canonical-preflight";
+import { readRefreshStartPreflight } from "@/lib/workflows/cold-start";
 import { rememberFailedUnpublishedWhitelist } from "@/lib/workflows/steps/whitelist";
 
 export type RefreshWorkflowStarter = (runId: string) => Promise<void>;
@@ -16,7 +16,7 @@ type StartRouteOptions = {
   leaseStore?: WorkflowLeaseStore;
   recordHealth?: HealthRecorder;
   sendAlert?: AlertSender;
-  preflight?: typeof readCanonicalPreflight;
+  preflight?: typeof readRefreshStartPreflight;
   rememberUnpublishedWhitelist?: (store?: WorkflowLeaseStore) => Promise<void>;
 };
 
@@ -123,7 +123,7 @@ export async function startRefreshWorkflowRoute(
   }
 
   try {
-    await (opts.preflight ?? readCanonicalPreflight)(runId);
+    await (opts.preflight ?? readRefreshStartPreflight)(runId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[workflow-refresh] canonical preflight failed", { run_id: runId, error: message });

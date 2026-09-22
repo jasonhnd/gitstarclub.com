@@ -72,6 +72,15 @@ export function isPreviewPreflightEmptyShardRelaxed(env: RuntimeEnv = process.en
   return env.PREFLIGHT_RELAX_EMPTY_SHARDS === "1" && !isVercelProduction(env);
 }
 
+/**
+ * Preview-only: first managed refresh may bootstrap canonical meta and treat
+ * missing canonical / lookup inputs as empty until views/latest.json exists.
+ * Off by default. Wrangler env.pre sets `1`. Production never arms cold-start.
+ */
+export function isWorkflowColdStartEnabled(env: RuntimeEnv = process.env): boolean {
+  return env.WORKFLOW_COLD_START === "1" && !isVercelProduction(env);
+}
+
 /** Default hop budget: 10 min. Queue consumer wall is 15 min. */
 export const DEFAULT_WHITELIST_SEARCH_HOP_BUDGET_MS = 10 * 60 * 1000;
 /** Stop starting Search requests this far before the hop deadline. */

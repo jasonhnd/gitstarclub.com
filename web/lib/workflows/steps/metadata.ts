@@ -1,3 +1,4 @@
+import { readColdStartLookupOrEmpty, readColdStartReposShardOrEmpty } from "@/lib/workflows/cold-start";
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import {
   fetchRepositoryMetadata,
@@ -102,8 +103,8 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => {
 
 const defaultDeps: MetadataDeps = {
   readWhitelist: (runId) => readRequiredView(`canonical/v2/whitelist/${runId}.json`, WhitelistSnapshot, { bust: runId }),
-  readLookup: (runId) => readRequiredView("lookup/repos.json", ReposLookup, { base: true, bust: runId }),
-  readPrevShard: (runId, bucket) => readRequiredView(`canonical/v2/repos/${bucket}.json`, ReposShard, { bust: runId }),
+  readLookup: (runId) => readColdStartLookupOrEmpty(runId),
+  readPrevShard: (runId, bucket) => readColdStartReposShardOrEmpty(runId, bucket),
   readProgress: (runId, bucket) =>
     readAuthoritativeView(metadataProgressPath(runId, bucket), MetadataBucketProgress, { bust: runId }),
   writeProgress: (owner, progress) => putOwnedView(owner, metadataProgressPath(owner.runId, progress.bucket), progress),
