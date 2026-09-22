@@ -310,6 +310,7 @@ export async function validateCanonicalGeneration(
     }
   });
 
+  placeholders.sort((left, right) => left.localeCompare(right));
   const shards = results.filter((entry): entry is NonNullable<typeof entry> => entry !== null).toSorted((a, b) =>
     a.path.localeCompare(b.path),
   );
