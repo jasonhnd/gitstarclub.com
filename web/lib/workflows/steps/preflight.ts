@@ -7,6 +7,7 @@ import {
   validateCanonicalGeneration,
   type CanonicalPreflightAcc,
 } from "@/lib/workflows/canonical-validation";
+import { ensureColdStartCanonicalMeta } from "@/lib/workflows/cold-start";
 import { readCanonicalMeta, type CanonicalPreflightResult } from "@/lib/workflows/canonical-preflight";
 import type { RefreshCursor } from "@/lib/workflows/runtime/types";
 
@@ -29,8 +30,8 @@ function throwPreflightFailures(failures: string[]): never {
  * One-shot helper for the in-process refresh path. The CF/HTTP step graph calls
  * `runPreflightStep` so each Worker invocation stays inside a 4-bucket window.
  */
-export async function preflightCanonical(runId: string): Promise<CanonicalPreflightResult> {
-  let cursor: RefreshCursor = {};
+export async function preflightCanonical(runId: string, fencingToken?: number): Promise<CanonicalPreflightResult> {
+  let cursor: RefreshCursor = fencingToken == null ? {} : { fencingToken };
   while (true) {
     const step = await runPreflightStep(runId, cursor);
     if (step.preflight) return step.preflight;
@@ -40,6 +41,7 @@ export async function preflightCanonical(runId: string): Promise<CanonicalPrefli
     cursor = {
       preflightOffset: step.nextPreflightOffset,
       preflightAcc: step.preflightAcc,
+      fencingToken: cursor.fencingToken,
     };
   }
 }
@@ -56,6 +58,9 @@ export async function runPreflightStep(runId: string, cursor: RefreshCursor = {}
   }
   const buckets = Array.from({ length: bucketCount }, (_, index) => bucketStart + index);
   if (bucketStart === 0) {
+    if (cursor.fencingToken != null) {
+      await ensureColdStartCanonicalMeta({ runId, fencingToken: cursor.fencingToken });
+    }
     await readCanonicalMeta(runId, "workflow");
   }
   const bust = `${runId}-workflow-preflight`;

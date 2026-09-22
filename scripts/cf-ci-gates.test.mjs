@@ -10,6 +10,8 @@ import {
   PREVIEW_CRON_ORIGIN,
   PREVIEW_CRON_TRIGGERS,
   PREVIEW_MIN_TRACKED_STARS,
+  PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS,
+  PREVIEW_WORKFLOW_COLD_START,
   PRODUCTION_CRON_ORIGIN,
   PRODUCTION_MIN_TRACKED_STARS,
   PRODUCTION_WORKER_NAME,
@@ -29,7 +31,11 @@ const validWrangler = `{
   "env": {
     "pre": {
       "name": "gitstarclub-web-pre",
-      "vars": { "MIN_TRACKED_STARS": "1000" }
+      "vars": {
+        "MIN_TRACKED_STARS": "1000",
+        "PREFLIGHT_RELAX_EMPTY_SHARDS": "1",
+        "WORKFLOW_COLD_START": "1"
+      }
     }
   }
 }`;
@@ -281,8 +287,10 @@ describe("CF CI gates", () => {
     assert.equal(wrangler.env.pre.name, "gitstarclub-web-pre");
     assert.equal(wrangler.env.pre.vars.MIN_TRACKED_STARS, PREVIEW_MIN_TRACKED_STARS);
     assert.equal(wrangler.env.pre.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, "1");
+    assert.equal(wrangler.env.pre.vars.WORKFLOW_COLD_START, "1");
     assert.equal(wrangler.vars.MIN_TRACKED_STARS, undefined);
     assert.equal(wrangler.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, undefined);
+    assert.equal(wrangler.vars.WORKFLOW_COLD_START, undefined);
   });
 
   test("refuses production PREFLIGHT_RELAX_EMPTY_SHARDS=1", () => {

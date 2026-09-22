@@ -19,6 +19,7 @@ import {
   SiteDaily,
 } from "@/lib/contracts";
 import { getWriteObjectStore } from "@/lib/storage";
+import { isUniverseColdStartActive } from "@/lib/workflows/cold-start";
 import { canonicalShardReadConcurrency } from "@/lib/workflows/canonical-validation";
 import { REPO_BUCKETS } from "../buckets";
 import { assembleModel, normalizeRepoMeta, seamPeriods, type DailySeries, type Model, type OwnerType, type RepoMeta, type Series } from "./model";
@@ -190,6 +191,7 @@ async function buildPackedWindowFromShards(
   const skipSchemaParse = isCloudflareWorkersHost();
   const heartbeat = owner ? workflowHeartbeat(owner) : async () => {};
   const builder = createPackedWindowBuilder(seamPeriod);
+  const allowMissing = await isUniverseColdStartActive(bust);
   const series = canonicalSeriesKind(kind);
   const seriesKind = series === "week" ? "repo-weekly" : "repo-monthly";
   const seriesSchema = series === "week" ? RepoWeeklyShard : RepoMonthlyShard;
@@ -198,15 +200,18 @@ async function buildPackedWindowFromShards(
     const reposPath = `canonical/v2/repos/${bucket}.json`;
     const seriesPath = `canonical/v2/${seriesKind}/${bucket}.json`;
     const reposShard = await readAuthoritativeView(reposPath, ReposShard, { bust, skipSchemaParse });
-    if (reposShard === null) throw new Error(`${reposPath}: missing required shard`);
+    if (reposShard === null && !allowMissing) throw new Error(`${reposPath}: missing required shard`);
     const seriesShard = await readAuthoritativeView(seriesPath, seriesSchema, { bust, skipSchemaParse });
-    if (seriesShard === null) throw new Error(`${seriesPath}: missing required shard`);
+    if (seriesShard === null && !allowMissing) throw new Error(`${seriesPath}: missing required shard`);
+    if (reposShard === null && seriesShard === null) continue;
+    const repos = reposShard ?? {};
+    const seriesByRepo = seriesShard ?? {};
     const slim = new Map<number, RepoMeta>();
-    for (const [key, value] of Object.entries(reposShard)) {
+    for (const [key, value] of Object.entries(repos)) {
       const id = Number(key);
       slim.set(id, slimRankRepoMeta(id, value));
     }
-    for (const [key, value] of Object.entries(seriesShard)) {
+    for (const [key, value] of Object.entries(seriesByRepo)) {
       const id = Number(key);
       const meta = slim.get(id);
       if (!meta) {
@@ -267,11 +272,15 @@ export async function collectSeriesPeriods(bust: string, kind: PackedWindowKind)
   const skipSchemaParse = isCloudflareWorkersHost();
   const seriesKind = series === "week" ? "repo-weekly" : "repo-monthly";
   const seriesSchema = series === "week" ? RepoWeeklyShard : RepoMonthlyShard;
+  const allowMissing = await isUniverseColdStartActive(bust);
   const periods = new Set<string>();
   for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
     const seriesPath = `canonical/v2/${seriesKind}/${bucket}.json`;
     const seriesShard = await readAuthoritativeView(seriesPath, seriesSchema, { bust, skipSchemaParse });
-    if (seriesShard === null) throw new Error(`${seriesPath}: missing required shard`);
+    if (seriesShard === null) {
+      if (!allowMissing) throw new Error(`${seriesPath}: missing required shard`);
+      continue;
+    }
     collectPeriodsFromSeriesShard(seriesShard, periods);
     clearViewParseMemo();
   }
@@ -291,17 +300,21 @@ async function packOneSeriesBucket(
   const seriesSchema = series === "week" ? RepoWeeklyShard : RepoMonthlyShard;
   const reposPath = `canonical/v2/repos/${bucket}.json`;
   const seriesPath = `canonical/v2/${seriesKind}/${bucket}.json`;
+  const allowMissing = await isUniverseColdStartActive(bust);
   const reposShard = await readAuthoritativeView(reposPath, ReposShard, { bust, skipSchemaParse });
-  if (reposShard === null) throw new Error(`${reposPath}: missing required shard`);
+  if (reposShard === null && !allowMissing) throw new Error(`${reposPath}: missing required shard`);
   const seriesShard = await readAuthoritativeView(seriesPath, seriesSchema, { bust, skipSchemaParse });
-  if (seriesShard === null) throw new Error(`${seriesPath}: missing required shard`);
+  if (seriesShard === null && !allowMissing) throw new Error(`${seriesPath}: missing required shard`);
+  if (reposShard === null && seriesShard === null) return createPackedWindowBuilder(seamPeriod, periods).finalize();
+  const repos = reposShard ?? {};
+  const seriesByRepo = seriesShard ?? {};
   const builder = createPackedWindowBuilder(seamPeriod, periods);
   const slim = new Map<number, RepoMeta>();
-  for (const [key, value] of Object.entries(reposShard)) {
+  for (const [key, value] of Object.entries(repos)) {
     const id = Number(key);
     slim.set(id, slimRankRepoMeta(id, value));
   }
-  for (const [key, value] of Object.entries(seriesShard)) {
+  for (const [key, value] of Object.entries(seriesByRepo)) {
     const id = Number(key);
     const meta = slim.get(id);
     if (!meta) {
@@ -525,7 +538,10 @@ export async function loadFullReposBucket(bust: string, bucket: number): Promise
   const skipSchemaParse = isCloudflareWorkersHost();
   const path = `canonical/v2/repos/${bucket}.json`;
   const shard = await readAuthoritativeView(path, ReposShard, { bust, skipSchemaParse });
-  if (shard === null) throw new Error(`${path}: missing required shard`);
+  if (shard === null) {
+    if (await isUniverseColdStartActive(bust)) return new Map();
+    throw new Error(`${path}: missing required shard`);
+  }
   const out = new Map<number, RepoMeta>();
   for (const [key, value] of Object.entries(shard)) {
     const id = Number(key);
@@ -538,7 +554,10 @@ export async function loadRecentDailyBucket(bust: string, bucket: number): Promi
   const skipSchemaParse = isCloudflareWorkersHost();
   const path = `canonical/v2/repo-recent-daily/${bucket}.json`;
   const shard = await readAuthoritativeView(path, RepoRecentDailyShard, { bust, skipSchemaParse });
-  if (shard === null) throw new Error(`${path}: missing required shard`);
+  if (shard === null) {
+    if (await isUniverseColdStartActive(bust)) return new Map();
+    throw new Error(`${path}: missing required shard`);
+  }
   const out = new Map<number, DailySeries>();
   for (const [key, value] of Object.entries(shard)) {
     out.set(Number(key), (value as DailySeries) ?? []);
@@ -553,6 +572,7 @@ async function absorbIdShards<T extends Record<string, unknown>>(
   shardConcurrency: number,
   skipSchemaParse: boolean,
   mapValue: (id: number, value: T[string]) => T[string],
+  allowMissingShards = false,
 ): Promise<Map<number, T[string]>> {
   const out = new Map<number, T[string]>();
   const missing: number[] = [];
@@ -564,6 +584,7 @@ async function absorbIdShards<T extends Record<string, unknown>>(
       try {
         const shard = await readAuthoritativeView(path, schema, { bust, skipSchemaParse });
         if (shard === null) {
+          if (allowMissingShards) return;
           missing.push(bucket);
           return;
         }
@@ -614,21 +635,42 @@ export async function loadCanonicalModel(bust: string, opts?: LoadCanonicalModel
   const plan = canonicalModelLoadPlan();
   const wanted = wantedCanonicalFamilies(opts);
   const skipSchemaParse = isCloudflareWorkersHost();
+  const allowMissingShards = await isUniverseColdStartActive(bust);
 
   const loadRepos = async (): Promise<Map<number, RepoMeta>> => {
-    const raw = await absorbIdShards("repos", ReposShard, bust, plan.shardConcurrency, skipSchemaParse, identitySeries);
+    const raw = await absorbIdShards(
+      "repos",
+      ReposShard,
+      bust,
+      plan.shardConcurrency,
+      skipSchemaParse,
+      identitySeries,
+      allowMissingShards,
+    );
     const repos = new Map<number, RepoMeta>();
     for (const [id, value] of raw) repos.set(id, normalizeRepoMeta(id, value as unknown as RepoMeta));
     return repos;
   };
   const loadMonthly = () =>
-    absorbIdShards("repo-monthly", RepoMonthlyShard, bust, plan.shardConcurrency, skipSchemaParse, identitySeries) as Promise<
-      Map<number, Series>
-    >;
+    absorbIdShards(
+      "repo-monthly",
+      RepoMonthlyShard,
+      bust,
+      plan.shardConcurrency,
+      skipSchemaParse,
+      identitySeries,
+      allowMissingShards,
+    ) as Promise<Map<number, Series>>;
   const loadWeekly = () =>
-    absorbIdShards("repo-weekly", RepoWeeklyShard, bust, plan.shardConcurrency, skipSchemaParse, identitySeries) as Promise<
-      Map<number, Series>
-    >;
+    absorbIdShards(
+      "repo-weekly",
+      RepoWeeklyShard,
+      bust,
+      plan.shardConcurrency,
+      skipSchemaParse,
+      identitySeries,
+      allowMissingShards,
+    ) as Promise<Map<number, Series>>;
   const loadRecent = () =>
     absorbIdShards(
       "repo-recent-daily",
@@ -637,6 +679,7 @@ export async function loadCanonicalModel(bust: string, opts?: LoadCanonicalModel
       plan.shardConcurrency,
       skipSchemaParse,
       identitySeries,
+      allowMissingShards,
     ) as Promise<Map<number, DailySeries>>;
   const loadSite = async (): Promise<DailySeries> => {
     const thisYear = new Date().getUTCFullYear() + 1;
