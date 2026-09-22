@@ -1,7 +1,6 @@
 import { CanonicalMeta, ReposLookup, ReposShard, ViewsPointer } from "@/lib/contracts";
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import { isWorkflowColdStartEnabled } from "@/lib/runtime-config";
-import { buildCanonicalMeta } from "../../../pipeline/lib/canonical-meta.mjs";
 import { utcMonthPeriod } from "@/lib/workflows/steps/fold";
 import { endOfMonth, weekIdOf } from "@/lib/workflows/steps/week-dates";
 import { putOwnedView } from "@/lib/workflows/owned-write";
@@ -36,15 +35,12 @@ export function buildColdStartCanonicalMeta(now: Date): CanonicalMeta {
   const foldedThroughMonth =
     month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, "0")}`;
   const foldedThroughWeek = weekIdOf(endOfMonth(foldedThroughMonth));
-  return CanonicalMeta.parse(
-    buildCanonicalMeta({
-      seamDate,
-      schemaVer: 2,
-      foldedThroughMonth,
-      foldedThroughWeek,
-      generatedAt: now.toISOString(),
-    }),
-  );
+  return CanonicalMeta.parse({
+    seam_date: seamDate,
+    schema_ver: 2,
+    folded_through: { month: foldedThroughMonth, week: foldedThroughWeek },
+    generated_at: now.toISOString(),
+  });
 }
 
 export function coldStartPreflightFromMeta(meta: CanonicalMeta): CanonicalPreflightResult {
