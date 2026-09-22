@@ -1,6 +1,6 @@
 import type { ZodType } from "zod";
 import { mapLimit } from "@/lib/data/map-limit";
-import { isCloudflareWorkersHost } from "@/lib/runtime-config";
+import { isCloudflareWorkersHost, isPreviewPreflightEmptyShardRelaxed } from "@/lib/runtime-config";
 import { readAuthoritativeView } from "@/lib/data/source";
 import {
   CanonicalGenerationManifest,
@@ -36,6 +36,29 @@ const SHARD_SPECS = [
 
 export const EXPECTED_CANONICAL_SHARDS = SHARD_SPECS.length * REPO_BUCKETS;
 
+/** Auditable preview-only policy: missing/empty shards become `{}` placeholders. */
+export const PREVIEW_EMPTY_SHARD_POLICY = "preview-empty-canonical-placeholder" as const;
+export type CanonicalEmptyShardPolicy = "fail-closed" | typeof PREVIEW_EMPTY_SHARD_POLICY;
+
+export function resolveCanonicalEmptyShardPolicy(
+  env?: Parameters<typeof isPreviewPreflightEmptyShardRelaxed>[0],
+): CanonicalEmptyShardPolicy {
+  return isPreviewPreflightEmptyShardRelaxed(env) ? PREVIEW_EMPTY_SHARD_POLICY : "fail-closed";
+}
+
+function isPreviewPlaceholderPolicy(policy: CanonicalEmptyShardPolicy): boolean {
+  switch (policy) {
+    case "fail-closed":
+      return false;
+    case PREVIEW_EMPTY_SHARD_POLICY:
+      return true;
+    default: {
+      const _exhaustive: never = policy;
+      return _exhaustive;
+    }
+  }
+}
+
 export type CanonicalShardReader = (path: string, schema: ZodType) => Promise<unknown | null>;
 
 export type CanonicalPreflightAcc = {
@@ -45,6 +68,7 @@ export type CanonicalPreflightAcc = {
   recentDailyRecords: number;
   validatedShards: number;
   schemaFailures: number;
+  placeholderShards: number;
 };
 
 export interface CanonicalValidationResult {
@@ -53,6 +77,7 @@ export interface CanonicalValidationResult {
   schemaFailures: number;
   invariants: Record<string, boolean | number>;
   failures: string[];
+  placeholders: string[];
   repoIds: Set<string>;
   activeRepoIds: Set<string>;
   acc: CanonicalPreflightAcc;
@@ -128,6 +153,7 @@ export function emptyCanonicalPreflightAcc(): CanonicalPreflightAcc {
     recentDailyRecords: 0,
     validatedShards: 0,
     schemaFailures: 0,
+    placeholderShards: 0,
   };
 }
 
@@ -142,11 +168,16 @@ export function mergeCanonicalPreflightAcc(
     recentDailyRecords: left.recentDailyRecords + right.recentDailyRecords,
     validatedShards: left.validatedShards + right.validatedShards,
     schemaFailures: left.schemaFailures + right.schemaFailures,
+    placeholderShards: (left.placeholderShards ?? 0) + (right.placeholderShards ?? 0),
   };
 }
 
 /** Family-wide emptiness is only meaningful after every bucket window has been counted. */
-export function emptySeriesPreflightFailures(acc: CanonicalPreflightAcc): string[] {
+export function emptySeriesPreflightFailures(
+  acc: CanonicalPreflightAcc,
+  policy: CanonicalEmptyShardPolicy = "fail-closed",
+): string[] {
+  if (isPreviewPlaceholderPolicy(policy)) return [];
   const failures: string[] = [];
   if (acc.repoRecords === 0) {
     failures.push("canonical/v2/repos: no repository records");
@@ -190,6 +221,7 @@ export async function validateCanonicalGeneration(
     concurrency?: number;
     checksum?: boolean;
     finalize?: boolean;
+    emptyShardPolicy?: CanonicalEmptyShardPolicy;
   } = {},
 ): Promise<CanonicalValidationResult> {
   const reader = options.reader ?? ((path, schema) => readAuthoritativeView(path, schema, { bust: runId }));
@@ -198,8 +230,11 @@ export async function validateCanonicalGeneration(
   const expectedShards = specs.length * buckets.length;
   const checksumEnabled = options.checksum !== false;
   const finalize = options.finalize !== false;
+  const emptyShardPolicy = options.emptyShardPolicy ?? resolveCanonicalEmptyShardPolicy();
+  const allowPlaceholder = isPreviewPlaceholderPolicy(emptyShardPolicy);
   const concurrency = Math.max(1, options.concurrency ?? canonicalShardReadConcurrency());
   const failures: string[] = [];
+  const placeholders: string[] = [];
   const repoIds = new Set<string>();
   const activeRepoIds = new Set<string>();
   const seriesRepoIds = new Map<string, Set<string>>(
@@ -218,10 +253,14 @@ export async function validateCanonicalGeneration(
   const results = await mapLimit(work, concurrency, async ({ spec, bucket }) => {
     const path = `canonical/v2/${spec.kind}/${bucket}.json`;
     try {
-      const value = await reader(path, spec.schema);
+      let value = await reader(path, spec.schema);
       if (value === null) {
-        failures.push(`${path}: missing`);
-        return null;
+        if (!allowPlaceholder) {
+          failures.push(`${path}: missing`);
+          return null;
+        }
+        placeholders.push(path);
+        value = {};
       }
       const parsed = spec.schema.safeParse(value);
       if (!parsed.success) {
@@ -285,7 +324,7 @@ export async function validateCanonicalGeneration(
   if (missingTrackedSinceField > 0) {
     failures.push(`canonical/v2/repos: ${missingTrackedSinceField} repo(s) are missing explicit tracked_since provenance`);
   }
-  if (finalize && repoIds.size === 0) {
+  if (finalize && repoIds.size === 0 && !allowPlaceholder) {
     failures.push("canonical/v2/repos: no repository records");
   }
   if (repoIdentityFailures > 0) {
@@ -298,7 +337,7 @@ export async function validateCanonicalGeneration(
   if (options.scope !== "repositories") {
     for (const spec of SHARD_SPECS.slice(1)) {
       const records = recordsByKind.get(spec.kind) ?? 0;
-      if (finalize && repoIds.size > 0 && records === 0) {
+      if (finalize && repoIds.size > 0 && records === 0 && !allowPlaceholder) {
         failures.push(`canonical/v2/${spec.kind}: no repository records for ${repoIds.size} canonical repo(s)`);
       }
       const orphanRecords = [...(seriesRepoIds.get(spec.kind) ?? [])].filter((id) => !repoIds.has(id)).length;
@@ -317,6 +356,7 @@ export async function validateCanonicalGeneration(
     recentDailyRecords: recordsByKind.get("repo-recent-daily") ?? 0,
     validatedShards: shards.length,
     schemaFailures,
+    placeholderShards: placeholders.length,
   };
 
   const manifest = CanonicalGenerationManifest.parse({
@@ -349,8 +389,10 @@ export async function validateCanonicalGeneration(
       canonical_repo_identity_failures: repoIdentityFailures,
       canonical_bucket_placement_failures: bucketPlacementFailures,
       canonical_complete: manifest.complete,
+      canonical_placeholder_shards: placeholders.length,
     },
     failures,
+    placeholders,
     repoIds,
     activeRepoIds,
     acc,

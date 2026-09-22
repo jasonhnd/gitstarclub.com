@@ -280,6 +280,26 @@ describe("CF CI gates", () => {
     assert.deepEqual(wrangler.triggers.crons, []);
     assert.equal(wrangler.env.pre.name, "gitstarclub-web-pre");
     assert.equal(wrangler.env.pre.vars.MIN_TRACKED_STARS, PREVIEW_MIN_TRACKED_STARS);
+    assert.equal(wrangler.env.pre.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, "1");
     assert.equal(wrangler.vars.MIN_TRACKED_STARS, undefined);
+    assert.equal(wrangler.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, undefined);
+  });
+
+  test("refuses production PREFLIGHT_RELAX_EMPTY_SHARDS=1", () => {
+    const issues = assertCfCiGates(
+      alignedSources({
+        wranglerSource: `{
+  "name": "gitstarclub-web",
+  "triggers": { "crons": [] },
+  "vars": { "PREFLIGHT_RELAX_EMPTY_SHARDS": "1" },
+  "env": {
+    "pre": { "name": "gitstarclub-web-pre", "vars": { "MIN_TRACKED_STARS": "1000" } }
+  }
+}`,
+      }),
+    );
+    assert.ok(
+      issues.some((issue) => issue.includes("top-level vars.PREFLIGHT_RELAX_EMPTY_SHARDS must not be 1")),
+    );
   });
 });

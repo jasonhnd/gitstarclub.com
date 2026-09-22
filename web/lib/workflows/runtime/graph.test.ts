@@ -53,6 +53,7 @@ describe("refresh step graph", () => {
       recentDailyRecords: 1,
       validatedShards: 16,
       schemaFailures: 0,
+      placeholderShards: 0,
     };
     const first = nextRefreshJob(full("startRun"), {
       name: "startRun",

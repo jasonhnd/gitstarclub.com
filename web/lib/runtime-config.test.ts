@@ -15,6 +15,7 @@ import {
   getMinTrackedStars,
   getWhitelistSearchHopBudgetMs,
   isWhitelistSearchSharded,
+  isPreviewPreflightEmptyShardRelaxed,
   DEFAULT_WHITELIST_SEARCH_HOP_BUDGET_MS,
   getPreviewTarget,
   isCloudflareWorkersHost,
@@ -76,6 +77,16 @@ describe("runtime config getters", () => {
     expect(getMinTrackedStars({ MIN_TRACKED_STARS: " 1000 " })).toBe(1_000);
     expect(() => getMinTrackedStars({ MIN_TRACKED_STARS: "1e3" })).toThrow("positive integer");
     expect(() => getMinTrackedStars({ MIN_TRACKED_STARS: "0" })).toThrow("positive integer");
+  });
+
+  test("PREFLIGHT_RELAX_EMPTY_SHARDS is preview-only and off unless exactly 1", () => {
+    expect(isPreviewPreflightEmptyShardRelaxed({})).toBe(false);
+    expect(isPreviewPreflightEmptyShardRelaxed({ PREFLIGHT_RELAX_EMPTY_SHARDS: "0" })).toBe(false);
+    expect(isPreviewPreflightEmptyShardRelaxed({ PREFLIGHT_RELAX_EMPTY_SHARDS: "true" })).toBe(false);
+    expect(isPreviewPreflightEmptyShardRelaxed({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1" })).toBe(true);
+    expect(
+      isPreviewPreflightEmptyShardRelaxed({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1", VERCEL_ENV: "production" }),
+    ).toBe(false);
   });
 
   test("WHITELIST_SEARCH_SHARDS is off unless exactly 1", () => {

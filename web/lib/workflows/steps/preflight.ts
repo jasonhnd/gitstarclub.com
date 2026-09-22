@@ -3,6 +3,7 @@ import {
   emptyCanonicalPreflightAcc,
   emptySeriesPreflightFailures,
   mergeCanonicalPreflightAcc,
+  resolveCanonicalEmptyShardPolicy,
   validateCanonicalGeneration,
   type CanonicalPreflightAcc,
 } from "@/lib/workflows/canonical-validation";
@@ -58,22 +59,37 @@ export async function runPreflightStep(runId: string, cursor: RefreshCursor = {}
     await readCanonicalMeta(runId, "workflow");
   }
   const bust = `${runId}-workflow-preflight`;
+  const emptyShardPolicy = resolveCanonicalEmptyShardPolicy();
   const batch = await validateCanonicalGeneration(bust, {
     scope: "full",
     buckets,
     checksum: false,
     finalize: false,
+    emptyShardPolicy,
   });
   if (batch.failures.length > 0) throwPreflightFailures(batch.failures);
 
-  const acc = mergeCanonicalPreflightAcc(cursor.preflightAcc ?? emptyCanonicalPreflightAcc(), batch.acc);
+  const acc = mergeCanonicalPreflightAcc(
+    { ...emptyCanonicalPreflightAcc(), ...cursor.preflightAcc },
+    batch.acc,
+  );
   const nextOffset = bucketStart + bucketCount;
+  if (batch.placeholders.length > 0) {
+    console.log("[workflow-refresh] preview preflight empty-shard policy", {
+      policy: emptyShardPolicy,
+      run_id: runId,
+      bucket_start: bucketStart,
+      placeholders: batch.placeholders,
+      placeholder_count: batch.placeholders.length,
+    });
+  }
   console.log("[workflow-refresh] preflight batch", {
     run_id: runId,
     bucket_start: bucketStart,
     bucket_count: bucketCount,
     next_offset: nextOffset < REPO_BUCKETS ? nextOffset : null,
     validated_shards: acc.validatedShards,
+    placeholder_shards: acc.placeholderShards,
   });
   if (nextOffset < REPO_BUCKETS) {
     return {
@@ -84,7 +100,7 @@ export async function runPreflightStep(runId: string, cursor: RefreshCursor = {}
     };
   }
 
-  const familyFailures = emptySeriesPreflightFailures(acc);
+  const familyFailures = emptySeriesPreflightFailures(acc, emptyShardPolicy);
   if (familyFailures.length > 0) throwPreflightFailures(familyFailures);
 
   return {
