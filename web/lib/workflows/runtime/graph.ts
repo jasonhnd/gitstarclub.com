@@ -172,6 +172,16 @@ export function nextRefreshJob(
 
   if (job.name === "metadata") {
     const bucket = job.cursor.bucket ?? 0;
+    if (result.retryMetadata === true) {
+      return {
+        v: 1,
+        graph: "full",
+        runId: job.runId,
+        name: "metadata",
+        attempt: 0,
+        cursor: { ...cursor, bucket },
+      };
+    }
     const metadata = {
       repos: (job.cursor.metadata?.repos ?? 0) + (result.repos ?? 0),
       historical: (job.cursor.metadata?.historical ?? 0) + (result.historical ?? 0),
