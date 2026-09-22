@@ -40,4 +40,5 @@ export type WorkerEnv = {
   MIN_TRACKED_STARS?: string;
   WHITELIST_SEARCH_SHARDS?: string;
   WHITELIST_SEARCH_HOP_BUDGET_MS?: string;
+  PREFLIGHT_RELAX_EMPTY_SHARDS?: string;
 };

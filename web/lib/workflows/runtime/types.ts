@@ -29,6 +29,8 @@ export type CanonicalPreflightCursorAcc = {
   recentDailyRecords: number;
   validatedShards: number;
   schemaFailures: number;
+  /** Preview-only missing/empty shard placeholders counted so far. Optional for mid-run cursors. */
+  placeholderShards?: number;
 };
 
 export type FoldPhase = "month" | "week";

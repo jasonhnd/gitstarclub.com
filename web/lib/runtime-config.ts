@@ -62,6 +62,16 @@ export function isWhitelistSearchSharded(env: RuntimeEnv = process.env): boolean
   return env.WHITELIST_SEARCH_SHARDS === "1";
 }
 
+/**
+ * Preview-only: treat missing/empty canonical shards as empty placeholders
+ * so workflow preflight does not void the run. Off by default. Preview
+ * wrangler `env.pre` sets `1`. `VERCEL_ENV=production` never relaxes,
+ * even if the flag is copied onto a production Worker.
+ */
+export function isPreviewPreflightEmptyShardRelaxed(env: RuntimeEnv = process.env): boolean {
+  return env.PREFLIGHT_RELAX_EMPTY_SHARDS === "1" && !isVercelProduction(env);
+}
+
 /** Default hop budget: 10 min. Queue consumer wall is 15 min. */
 export const DEFAULT_WHITELIST_SEARCH_HOP_BUDGET_MS = 10 * 60 * 1000;
 /** Stop starting Search requests this far before the hop deadline. */
