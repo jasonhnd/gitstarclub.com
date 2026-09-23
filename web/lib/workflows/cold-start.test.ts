@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { buildColdStartCanonicalMeta, coldStartPreflightFromMeta } from "./cold-start";
+import {
+  buildColdStartCanonicalMeta,
+  buildEmptyFrozenPending,
+  coldStartPreflightFromMeta,
+} from "./cold-start";
 
 beforeEach(() => {
   delete process.env.WORKFLOW_COLD_START;
@@ -13,6 +17,14 @@ describe("workflow cold-start (#519)", () => {
     expect(metaValue.schema_ver).toBe(2);
     expect(metaValue.folded_through).toEqual({ month: "2026-08", week: "2026-W36" });
     expect(metaValue.generated_at).toBe("2026-09-22T12:00:00.000Z");
+  });
+
+  test("buildEmptyFrozenPending is a valid honest empty frozen month", () => {
+    const pending = buildEmptyFrozenPending("2026-08");
+    expect(pending.period).toBe("2026-08");
+    expect(pending.frozen_at).toBe("2026-09-01T00:00:00.000Z");
+    expect(pending.daily_totals).toEqual([]);
+    expect(pending.per_repo).toEqual({});
   });
 
   test("coldStartPreflightFromMeta maps meta fields", () => {
