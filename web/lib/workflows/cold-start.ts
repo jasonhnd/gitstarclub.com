@@ -1,4 +1,4 @@
-import { CanonicalMeta, ReposLookup, ReposShard, ViewsPointer } from "@/lib/contracts";
+import { CanonicalMeta, PendingPeriod, ReposLookup, ReposShard, ViewsPointer } from "@/lib/contracts";
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
 import { isWorkflowColdStartEnabled } from "@/lib/runtime-config";
 import { utcMonthPeriod } from "@/lib/workflows/steps/fold";
@@ -28,6 +28,23 @@ export async function isUniverseColdStartActive(bust?: string): Promise<boolean>
  * Minimal honest meta for a universe with no GH Archive gross history: seam is
  * the bootstrap UTC day, fold watermarks sit on the last closed month/week.
  */
+/**
+ * Honest empty frozen tail for a closed month with no GH Archive live overlay
+ * (preview cold-start / meta-without-pending). No fabricated per_repo deltas.
+ */
+export function buildEmptyFrozenPending(month: string): PendingPeriod {
+  const [year, mo] = month.split("-").map(Number);
+  const nextYear = mo >= 12 ? year + 1 : year;
+  const nextMo = mo >= 12 ? 1 : mo + 1;
+  const frozenAt = `${nextYear}-${String(nextMo).padStart(2, "0")}-01T00:00:00.000Z`;
+  return PendingPeriod.parse({
+    period: month,
+    frozen_at: frozenAt,
+    daily_totals: [],
+    per_repo: {},
+  });
+}
+
 export function buildColdStartCanonicalMeta(now: Date): CanonicalMeta {
   const seamDate = now.toISOString().slice(0, 10);
   const currentMonth = utcMonthPeriod(now);

@@ -359,6 +359,28 @@ describe("runFoldStep windows", () => {
     });
   });
 
+  test("preview cold-start: meta at folded month without pending advances week watermark", async () => {
+    const io = memoryFoldIo();
+    io.readPending = async (month: string) => {
+      io.pendingReads.push(month);
+      return null;
+    };
+    io.meta = {
+      ...META,
+      folded_through: { month: "2026-08", week: "2026-W30" },
+    };
+    const result = await foldCanonical("refresh-fold", 1, {
+      io,
+      now,
+      buckets: 8,
+      relaxMissingFrozenPending: true,
+    });
+    expect(result.folded).toEqual([]);
+    expect(result.foldedWeeks.length).toBeGreaterThan(0);
+    expect(result.foldedWeeks.at(-1)).toBe("2026-W35");
+    expect(io.meta.folded_through.week).toBe("2026-W35");
+  });
+
   test("missing closed pending writes pending_missing and still finishes the hop", async () => {
     const io = memoryFoldIo();
     io.readPending = async (month: string) => {
