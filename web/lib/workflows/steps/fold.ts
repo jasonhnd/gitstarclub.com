@@ -6,6 +6,7 @@ import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { REPO_BUCKETS, repoBucket } from "../buckets";
 import { addDays, endOfMonth, monthsBetween, sundayOfWeekId, weekIdOf } from "./week-dates";
 import { putOwnedView } from "@/lib/workflows/owned-write";
+import { buildEmptyFrozenPending, isUniverseColdStartActive } from "@/lib/workflows/cold-start";
 import type { FoldCursorAcc, FoldPhase, RefreshCursor } from "@/lib/workflows/runtime/types";
 
 // Canonical fold. Folds CLOSED months (those with a frozen pending
@@ -100,6 +101,11 @@ export type FoldStepOptions = {
   io?: FoldIo;
   now?: Date;
   buckets?: number;
+  /**
+   * Preview cold-start only: absent frozen pending months read as honest empty
+   * tails until views/latest.json exists. Production and published preview stay fail-closed.
+   */
+  relaxMissingFrozenPending?: boolean;
 };
 
 export function nextMonth(m: string): string {
@@ -151,9 +157,10 @@ export async function foldCanonical(
   fencingToken: number,
   opts: FoldStepOptions = {},
 ): Promise<{ folded: string[]; foldedWeeks: string[] }> {
+  const mergedOpts = await withFoldColdStartOpts(runId, opts);
   let cursor: RefreshCursor = {};
   for (;;) {
-    const step = await runFoldStep(runId, fencingToken, cursor, opts);
+    const step = await runFoldStep(runId, fencingToken, cursor, mergedOpts);
     if (!hasNextFoldWindow(step)) return { folded: step.folded, foldedWeeks: step.foldedWeeks };
     cursor = {
       foldPhase: step.nextFoldPhase,
@@ -171,24 +178,38 @@ export async function runFoldStep(
   cursor: RefreshCursor = {},
   opts: FoldStepOptions = {},
 ): Promise<FoldStepFields> {
-  const bucketsTotal = opts.buckets ?? REPO_BUCKETS;
-  const io = opts.io ?? createDefaultFoldIo(runId, fencingToken);
+  const mergedOpts = await withFoldColdStartOpts(runId, opts);
+  const bucketsTotal = mergedOpts.buckets ?? REPO_BUCKETS;
+  const io =
+    mergedOpts.io ??
+    createDefaultFoldIo(runId, fencingToken);
   clearViewParseMemo();
   const meta = await io.readMeta();
   const acc = copyFoldAcc(cursor.foldAcc ?? emptyFoldAcc(meta));
   const seq = cursor.foldSeq ?? 0;
-  const currentMonth = utcMonthPeriod(opts.now ?? new Date());
+  const currentMonth = utcMonthPeriod(mergedOpts.now ?? new Date());
   const phase: FoldPhase = cursor.foldPhase === "week" ? "week" : "month";
 
   if (phase === "month") {
     const month = cursor.foldMonth ?? nextMonth(acc.foldedThroughMonth);
     if (month >= currentMonth) {
-      return runWeekPhase(io, meta, acc, seq, 0, bucketsTotal, currentMonth, false, "no_closed_month");
+      return runWeekPhase(
+        io,
+        meta,
+        acc,
+        seq,
+        0,
+        bucketsTotal,
+        currentMonth,
+        false,
+        mergedOpts.relaxMissingFrozenPending === true,
+        "no_closed_month",
+      );
     }
     const offset = cursor.foldOffset ?? 0;
     let plan = await loadMonthPlan(io, month, bucketsTotal);
     if (!plan) {
-      const pending = await io.readPending(month);
+      const pending = await readPendingForFoldStep(io, month, mergedOpts.relaxMissingFrozenPending === true);
       if (!pending) {
         if (seq === 0) {
           await io.writeDecision(
@@ -202,7 +223,17 @@ export async function runFoldStep(
             }),
           );
         }
-        return runWeekPhase(io, meta, acc, seq, 0, bucketsTotal, currentMonth, true);
+        return runWeekPhase(
+          io,
+          meta,
+          acc,
+          seq,
+          0,
+          bucketsTotal,
+          currentMonth,
+          true,
+          mergedOpts.relaxMissingFrozenPending === true,
+        );
       }
       if (pending.period !== month) {
         throw new Error(`canonical/v2/pending/${month}.json: period ${pending.period} does not match ${month}`);
@@ -245,7 +276,34 @@ export async function runFoldStep(
     return continueFold(acc, seq, { phase: "week", offset: 0 });
   }
 
-  return runWeekPhase(io, meta, acc, seq, cursor.foldOffset ?? 0, bucketsTotal, currentMonth, false);
+  return runWeekPhase(
+    io,
+    meta,
+    acc,
+    seq,
+    cursor.foldOffset ?? 0,
+    bucketsTotal,
+    currentMonth,
+    false,
+    mergedOpts.relaxMissingFrozenPending === true,
+  );
+}
+
+async function withFoldColdStartOpts(runId: string, opts: FoldStepOptions): Promise<FoldStepOptions> {
+  if (opts.relaxMissingFrozenPending !== undefined || opts.io) return opts;
+  const relax = await isUniverseColdStartActive(runId);
+  return relax === opts.relaxMissingFrozenPending ? opts : { ...opts, relaxMissingFrozenPending: relax };
+}
+
+async function readPendingForFoldStep(
+  io: FoldIo,
+  month: string,
+  relaxMissingFrozenPending: boolean,
+): Promise<PendingPeriod | null> {
+  const pending = await io.readPending(month);
+  if (pending) return pending;
+  if (relaxMissingFrozenPending) return buildEmptyFrozenPending(month);
+  return null;
 }
 
 function createDefaultFoldIo(runId: string, fencingToken: number): FoldIo {
@@ -370,6 +428,7 @@ async function runWeekPhase(
   bucketsTotal: number,
   currentMonth: string,
   wroteMonthDecision: boolean,
+  relaxMissingFrozenPending: boolean,
   emptyReason: FoldDecision["reason"] = "nothing_to_fold",
 ): Promise<FoldStepFields> {
   let plan = await loadWeekPlan(io, acc.foldedThroughMonth);
@@ -396,7 +455,7 @@ async function runWeekPhase(
     const byDate = new Map<string, Map<number, number>>();
     const fromWeekExclusive = acc.foldedThroughWeek;
     for (const month of months) {
-      const pending = await io.readPending(month);
+      const pending = await readPendingForFoldStep(io, month, relaxMissingFrozenPending);
       if (!pending) {
         throw new Error(`canonical/v2/pending: missing required frozen period(s) ${month}`);
       }
