@@ -525,17 +525,9 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
 
 ## 5. robots.txt
 
-For Cloudflare, run these owner commands from `web/`:
+For Cloudflare, run the owner commands in [OPS.md](./OPS.md) from `web/`. The production build needs `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` exported to the public store base before `bun run cf:build:production`. The production deploy uses an explicit empty Wrangler environment (`--env=""`) plus `--var CF_PREVIEW_COMMIT_SHA`. Do not omit the empty environment.
 
-```sh
-cd web
-bun run cf:build:production
-bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc
-bun run cf:build:pre
-bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env pre
-```
-
- Build each target immediately before its deployment because the output directory is shared. The underlying commands are `bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre`; a bare build fails. The production build embeds `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com`; the production Worker declares the same runtime values. `bun run cf:dry-run` builds pre with indexing disabled and performs only a Wrangler dry run. The build checks generated home HTML and robots output. After the owner manually deploys each build, verify that production `/robots.txt` allows `/` and lists the sitemap, production home HTML has no `noindex`, and preview `/robots.txt` and home HTML remain blocked. The owner then resubmits the production sitemap in Google Search Console and Bing Webmaster Tools.
+Build each target immediately before its deployment because the output directory is shared. The underlying commands are `bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre`; a bare build fails. The production build embeds `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com`; the production Worker declares the same runtime values. `bun run cf:dry-run` builds pre with indexing disabled and performs only a Wrangler dry run. The build checks generated home HTML and robots output. After the owner manually deploys each build, verify that production `/robots.txt` allows `/` and lists the sitemap, production home HTML has no `noindex`, and preview `/robots.txt` and home HTML remain blocked. The owner then resubmits the production sitemap in Google Search Console and Bing Webmaster Tools.
 
 用 Next.js 16 `app/robots.ts` 生成（`MetadataRoute.Robots`）。**实际机制：环境变量 `SITE_INDEXABLE` 总开关**——不分主机，按 env 决定是否放开收录。预发期（teaser 占域名、私有 preview deployment 跑 web 应用）即便 host 是生产域名，只要 `SITE_INDEXABLE` 未设也返回 `Disallow: /`，launch 当天才翻牌：
 

@@ -46,13 +46,24 @@
       "bucket_name": "gitstarclub-assets"
     }
   ],
+  // Inheritable. A plain deploy defaults both to on and would reopen
+  // gitstarclub-web.worldgo.workers.dev. env.pre overrides workers_dev.
+  // CF_PREVIEW_COMMIT_SHA is not listed: pass it with --var per deploy.
+  "workers_dev": false,
+  "preview_urls": false,
   "vars": {
     "HOSTING_TARGET": "cf",
     "SITE_INDEXABLE": "1",
     "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com",
     // Production HTTP origin for cron dispatch. Preview overrides this.
     // Secrets (CRON_SECRET, REFRESH_*_URL) are platform-injected, not committed.
-    "CF_CRON_ORIGIN": "https://gitstarclub.com"
+    "CF_CRON_ORIGIN": "https://gitstarclub.com",
+    // Public read base (not a secret). Same store as env.pre. Declared here
+    // so a deploy without --keep-vars cannot wipe / and /rankings.
+    "BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
+    "NEXT_PUBLIC_BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
+    "WORKFLOW_RUNTIME": "cf-queue",
+    "WORKFLOW_QUEUE_ENQUEUE_URL": "https://gitstarclub.com/enqueue"
   },
   // Production CF Cron stays off. `triggers.crons` MUST remain []. Vercel cron
   // in web/vercel.json remains the production scheduler until Jason approves a
@@ -68,6 +79,12 @@
   "env": {
     "pre": {
       "name": "gitstarclub-web-pre",
+      // Do not inherit top-level workers_dev: false. The preview probe and
+      // Access host are https://gitstarclub-web-pre.worldgo.workers.dev.
+      // pre.gitstarclub.com/* is the staging route and is not declared here.
+      // Version preview URLs stay off.
+      "workers_dev": true,
+      "preview_urls": false,
       "triggers": {
         // Draft only. Platform PUT .../schedules (or wrangler deploy of this
         // env) is an ops step; this PR does not enable preview cron.
