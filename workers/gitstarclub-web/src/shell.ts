@@ -1,3 +1,4 @@
+import { cfBuildCommitSha } from "../../../web/lib/cf-build-identity";
 import {
   successorJobAfterRefreshStep,
   successorJobFromResponseHeaders,
@@ -33,7 +34,7 @@ export function previewIdentity(request: Request, env: WorkerEnv): Record<string
   const url = new URL(request.url);
   const deploymentUrl = (env.CF_PREVIEW_ORIGIN ?? url.origin).replace(/\/+$/, "");
   return {
-    commitSha: env.CF_PREVIEW_COMMIT_SHA ?? null,
+    commitSha: env.VERCEL_GIT_COMMIT_SHA?.trim() || env.CF_PREVIEW_COMMIT_SHA?.trim() || cfBuildCommitSha || null,
     deploymentUrl,
     target: "cf",
     host: url.host,

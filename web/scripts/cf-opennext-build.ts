@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { writeCfBuildIdentity } from "./cf-build-identity";
 import { rewriteOpentelemetryApiPackageJson } from "../lib/workers-host/opentelemetry-api-package";
 
 const WEB_ROOT = join(import.meta.dir, "..");
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
     throw new Error("cf:build requires exactly one --site-target=production or --site-target=pre");
   }
   const preview = targetArgs[0] === "--site-target=pre";
+  console.log(`CF build identity: ${writeCfBuildIdentity() ?? "null"}`);
   const patched = patchOpentelemetryApiPackageJsonFiles();
   for (const path of patched) {
     console.log(`patched @opentelemetry/api package.json for OpenNext: ${path}`);
