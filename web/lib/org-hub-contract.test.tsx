@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ReactElement } from "react";
@@ -37,6 +37,10 @@ mock.module("@/lib/data", () => ({
   getOrgEntityDaily: async (login: string) => (login === ORG_LOGIN ? org : null),
   getReposLookupDaily: async () => lookup,
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 const { OrgPageView } = await import("@/app/_localized/org");
 
