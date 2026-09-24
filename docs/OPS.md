@@ -189,8 +189,9 @@ an explicit recovery procedure.
 | `REFRESH_STEP_URL` | Queue consumer 推进 refresh step 的 URL | 消费 refresh step 时必需 | 绝对 URL | Worker `env.REFRESH_STEP_URL`；平台注入，不进仓 |
 | `CF_ACCESS_CLIENT_ID` | CF Access Service Token id（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client ID | `web/lib/preview/access.ts`；GitHub secret 名与此相同；token 名 `gitstarclub-cca-ci`，密钥不进仓 |
 | `CF_ACCESS_CLIENT_SECRET` | CF Access Service Token secret（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client Secret | `web/lib/preview/access.ts`；头 `CF-Access-Client-Secret` |
-| `CF_PREVIEW_REQUIRE_SHA` | CF Preview 是否要求 identity SHA 对齐 | 可选（默认关闭） | 字符串 `1` 才强制 | `web/lib/runtime-config.ts` · `web/scripts/resolve-preview.ts`；Worker 未设 `CF_PREVIEW_COMMIT_SHA` 时不要开 |
-| `CF_PREVIEW_COMMIT_SHA` | CF Preview / Workers host 部署 SHA | 可选 | git SHA | `web/lib/deployment-identity.ts` · Worker `env.CF_PREVIEW_COMMIT_SHA`；未设时 identity 的 `commitSha` 为 null |
+| `CF_PREVIEW_REQUIRE_SHA` | CF Preview 是否要求 identity SHA 对齐 | 可选（默认关闭） | 字符串 `1` 才强制 | `web/lib/runtime-config.ts` · `web/scripts/resolve-preview.ts`；Check the built SHA or an explicit `CF_PREVIEW_COMMIT_SHA` before enabling this gate |
+| `CF_PREVIEW_COMMIT_SHA` | CF Preview / Workers host 部署 SHA | 可选 | git SHA | `web/lib/deployment-identity.ts` · Worker `env.CF_PREVIEW_COMMIT_SHA`；When unset, identity uses the SHA baked by `cf:build` or `null` |
+| `CF_BUILD_COMMIT_SHA` | Optional CI SHA override for `cf:build` | Optional | 40 to 64 hexadecimal characters | `web/scripts/cf-build-identity.ts`; Git HEAD is used when unset. Dirty worktrees append `-dirty`; missing Git yields `null`. |
 | `MIN_TRACKED_STARS` | 白名单 / refresh 发现下限（星数） | 可选（默认 `10000`） | 正整数字符串；预发 wrangler `env.pre` 为 `1000`，生产 top-level 不得设成 `1000` | `web/lib/runtime-config.ts` · `web/lib/github.ts` · `web/lib/constants.mjs`；GitHub Search `stars:>=N`；回滚 = 去掉或改回 `10000` |
 | `WHITELIST_SEARCH_SHARDS` | whitelist GitHub Search 是否按 hop 分片 | 可选（默认关 = 单 hop） | 字符串 `"1"` 才开；预发 wrangler `env.pre` 为 `1` | `web/lib/runtime-config.ts` · `web/lib/workflows/steps/whitelist.ts` · `web/lib/github.ts`；每 hop 写 `ops/workflows/<run_id>/whitelist-search.json`，完成才写 snapshot。回滚 = 去掉或设 `0` 恢复单 hop。不要用关分片来修 metadata 502 |
 | `PREFLIGHT_RELAX_EMPTY_SHARDS` | 预发 preflight 是否把缺/空 canonical shard 当 `{}` 占位 | 可选（默认关 = 缺 shard fail closed） | 字符串 `"1"` 才开；仅预发 wrangler `env.pre`。`VERCEL_ENV=production` 即使误设也拒绝 | `web/lib/runtime-config.ts` · `web/lib/workflows/canonical-validation.ts` · `web/lib/workflows/steps/preflight.ts`；政策名 `preview-empty-canonical-placeholder`。schema / `d` / 身份 / 错桶 / 非 404 仍 fail closed。回滚 = 去掉或设 `0`。不要用关分片 Search 来修缺 shard |
@@ -785,3 +786,9 @@ reads even if the object disappears again.
 - **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment** 即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。Cost-control changes (robots, pointer cache, long-tail ISR, proxy matcher) rollback the same way: promote the previous Ready production deployment, then revert any Firewall deny rules that were added in the same change window.
 - **每日活尾**：`live/generations/<run_id>/**` 不可变，`live/latest.json` 是唯一发布开关。提交前失败无需数据回滚（pointer 仍指向旧 generation）；提交后发现坏数据，将 pointer 的 `generation` 指回 `previous_generation`。回滚也必须先确认没有活跃 `lease` 并使用 ETag 条件写，避免覆盖正在发布的 cron。
 - **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。
+
+## Verify a manual CF preview deployment
+
+1. From a clean checkout of the intended commit, run `cd web && bun run cf:build` and record the SHA printed as the CF build identity. Keep the resulting `.open-next` output with that commit.
+2. An operator deploys that output to `gitstarclub-web-pre` using the approved manual process. This repository does not automate a live deploy.
+3. Request `https://pre.gitstarclub.com/.well-known/deployment` and compare `commitSha` with the recorded SHA. A `-dirty` suffix means the build included uncommitted changes. If `VERCEL_GIT_COMMIT_SHA` or `CF_PREVIEW_COMMIT_SHA` is set on the Worker, its value takes priority.
