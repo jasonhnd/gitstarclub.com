@@ -33,8 +33,32 @@ test("two consecutive builds from a clean checkout stay clean", () => {
     const head = runGit("rev-parse", "HEAD");
     expect(writeCfBuildIdentity(undefined, root)).toBe(head);
     expect(writeCfBuildIdentity(undefined, root)).toBe(head);
-    expect(readFileSync(join(root, "web/lib/cf-build-identity.ts"), "utf8")).toContain(head);
+    expect(readFileSync(join(root, "web/lib/cf-build-identity.ts"), "utf8")).toContain(JSON.stringify(head));
     expect(runGit("status", "--porcelain")).toBe("");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an untracked file does not mark the build dirty", () => {
+  const root = mkdtempSync(join(tmpdir(), "cf-build-identity-"));
+  const runGit = (...args: string[]) => {
+    const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+    return result.stdout.trim();
+  };
+  try {
+    mkdirSync(join(root, "web/lib"), { recursive: true });
+    writeFileSync(join(root, ".gitignore"), "/web/lib/cf-build-identity.ts\n");
+    writeFileSync(join(root, "web/lib/fallback.ts"), "export const cfBuildCommitSha = null;\n");
+    runGit("init", "-q");
+    runGit("add", ".");
+    runGit("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "fixture");
+    writeFileSync(join(root, "local-notes.md"), "untracked\n");
+    const head = runGit("rev-parse", "HEAD");
+    expect(runGit("status", "--porcelain")).toContain("local-notes.md");
+    expect(writeCfBuildIdentity(undefined, root)).toBe(head);
+    expect(readFileSync(join(root, "web/lib/cf-build-identity.ts"), "utf8")).toContain(JSON.stringify(head));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
