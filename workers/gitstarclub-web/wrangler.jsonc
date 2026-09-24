@@ -44,7 +44,9 @@
     }
   ],
   "vars": {
-    "HOSTING_TARGET": "cf"
+    "HOSTING_TARGET": "cf",
+    "SITE_INDEXABLE": "1",
+    "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com"
   },
   // Production CF Cron stays off. Vercel cron in web/vercel.json remains the
   // production scheduler until Jason approves a cutover. Enable crons only on
