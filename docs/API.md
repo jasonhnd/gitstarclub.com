@@ -473,7 +473,7 @@ are public `next/og` endpoints. All return `1200x630` PNG responses and export
 `revalidate=86400`. They render on request/ISR and are cached by Vercel; no
 pipeline-generated Blob image is involved. The exact route/source matrix is in
 [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md), and card/content rules are
-in [SEO.md](./SEO.md#13-og--社交卡片石墨灰--星金).
+in [SEO.md](./SEO.md#13-og--social-cards-graphite-gray--star-gold).
 
 ## Static public JSON exports
 

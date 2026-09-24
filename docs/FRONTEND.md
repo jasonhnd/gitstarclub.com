@@ -9,27 +9,27 @@ source_of_truth_for:
   - i18n implementation
 ---
 
-# gitstarclub 前端设计（Next.js 16 Web 应用）
+# gitstarclub Frontend Design (Next.js 16 Web Application)
 
-> **前端实现真相源**——把 [REQUIREMENTS](./REQUIREMENTS.md)（做什么）、[ARCHITECTURE](./ARCHITECTURE.md)（页面分层 / ISR / 节奏）、[DATA-CONTRACTS](./DATA-CONTRACTS.md)（消费的 JSON 视图 schema）、[DESIGN-SYSTEM](./DESIGN-SYSTEM.md)（M3E token / 组件 / 动效）落到 `web/` 这个 **Next.js 16 App Router** 应用的**渲染配置 / 数据消费 / 组件 / i18n**。路由与源文件清单只在 [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md) 维护。
-> SEO 元数据 / sitemap / canonical 细节见 [SEO.md](./SEO.md)；Route Handler 与公开 JSON endpoint 契约见 [API.md](./API.md)；Blob 布局 / 环境变量 / 部署拓扑见 [OPS.md](./OPS.md)。
-> 技术事实基于 **Next.js 16.3.5 · React 19.2.4 · TypeScript 6 · Tailwind 4 · Zod 4 · 包管理器 bun 1.3.14**（见 `web/package.json` 与根 `package.json`）。
+> **Frontend implementation source of truth**——lands [REQUIREMENTS](./REQUIREMENTS.md) (what to do), [ARCHITECTURE](./ARCHITECTURE.md) (page layering / ISR / cadence), [DATA-CONTRACTS](./DATA-CONTRACTS.md) (consumed JSON view schema), [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) (M3E token / components / motion) onto this `web/` **Next.js 16 App Router** application's **rendering config / data consumption / components / i18n**. The route and source-file inventory is maintained only in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md).
+> SEO metadata / sitemap / canonical details are in [SEO.md](./SEO.md); Route Handler and public JSON endpoint contracts are in [API.md](./API.md); Blob layout / environment variables / deployment topology are in [OPS.md](./OPS.md).
+> Technical facts are based on **Next.js 16.3.5 · React 19.2.4 · TypeScript 6 · Tailwind 4 · Zod 4 · package manager bun 1.3.14** (see `web/package.json` and the root `package.json`).
 
 ---
 
 ## Scope
 
-本文档描述 `web/` 应用（Next.js 16 App Router）的**路由树、组件目录、数据访问层、i18n 架构与渲染策略**,面向需要扩展或维护前端的工程师。
+This document describes the `web/` application's (Next.js 16 App Router) **route tree, component catalog, data access layer, i18n architecture, and rendering strategy**, for engineers who need to extend or maintain the frontend.
 
-不在本文覆盖范围:JSON 视图 schema 与契约语义见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md);Route Handler / 公开 JSON endpoint 的 method、auth、params、response、cache、status codes 见 [API.md](./API.md);M3E token / 调色板 / 动效曲线等设计系统细节见 [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md);SEO 元数据与 sitemap 细节见 [SEO.md](./SEO.md);Blob 布局与部署拓扑见 [OPS.md](./OPS.md)。
+Out of scope for this document: JSON view schema and contract semantics are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md); Route Handler / public JSON endpoint method, auth, params, response, cache, and status codes are in [API.md](./API.md); M3E token / palette / motion curves and other design-system details are in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md); SEO metadata and sitemap details are in [SEO.md](./SEO.md); Blob layout and deployment topology are in [OPS.md](./OPS.md).
 
 ## Requirement Traceability
 
-需求 ID 的权威目录在 [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-id--优先级--追踪矩阵)。本表把这些 ID 映射到前端路由、组件与数据读取边界；测试映射见 [TESTING.md](./TESTING.md#requirement-traceability)。
+The authoritative catalog of requirement IDs is in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-requirement-ids--priority--traceability-matrix). This table maps these IDs to frontend routes, components, and data-read boundaries; the test mapping is in [TESTING.md](./TESTING.md#requirement-traceability).
 
 | Requirement ID | Frontend implementation surface | Data/contract boundary | Primary verification |
 |---|---|---|---|
-| `REQ-CHRONICLE-001` | `(en)` / `(localized)` 的 `rankings/**`、`[owner]/[name]`、`o/**`、`_localized/rankings.tsx` | `rank/**`, `entity/**`, `heatmap/**`, `lookup/**` | `P0-AC1`, `P0-AC3`; routing, SEO, recompute, fold tests |
+| `REQ-CHRONICLE-001` | `(en)` / `(localized)`'s `rankings/**`, `[owner]/[name]`, `o/**`, `_localized/rankings.tsx` | `rank/**`, `entity/**`, `heatmap/**`, `lookup/**` | `P0-AC1`, `P0-AC3`; routing, SEO, recompute, fold tests |
 | `REQ-PULSE-001` | `/`, `/pulse`, `_localized/pulse.tsx`, `pulse/PulseView.tsx`, cron-triggered `revalidatePath` | `hot-snapshot.json`, `current_month.json`, `live/*`, `ops/sync-runs.json` | `P0-AC2`, `P0-AC3`; live-refresh tests |
 | `REQ-RANKING-001` | `/rankings`, `/rankings/[year]`, `/rankings/[year]/[period]`, `RankingList` | `rank/{week|month|year|all-time}/**` plus derived `growth`/`new` | `P0-AC4`; ranking, contract, recompute tests |
 | `REQ-I18N-001` | `(en)` root, `(localized)/[locale]`, `LanguageSwitcher`, `pageMeta()`, sitemap routes | Data fields stay language-neutral; only chrome/meta dictionaries localize | `P0-AC3`; i18n routing/proxy, SEO, sitemap tests |
@@ -41,418 +41,418 @@ source_of_truth_for:
 
 ---
 
-## 0. 设计原则（先读这条）
+## 0. Design Principles (read this first)
 
-| # | 原则 | 落地约束 |
+| # | Principle | Implementation constraint |
 |---|---|---|
-| 1 | **RSC 默认、零客户端 JS 优先** | 内容页全是 Server Component；图表服务端渲染 SVG/DOM；动效纯 CSS。唯一允许的客户端 JS 见 §4。 |
-| 2 | **build 只读 JSON、运行时零引擎、不感知 Workflow** | 页面 body 与 `generateMetadata` 只 `fetch` 预算好的 JSON 视图（Vercel Blob），**绝不**在 build / 请求路径加载 Parquet / DuckDB / 原生模块，也**不知道** Vercel Workflow 存在——数据怎么产出（bootstrap / cron / Workflow）对页面透明，页面只读最终 JSON（见 [ARCHITECTURE](./ARCHITECTURE.md)、[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)）。 |
-| 3 | **页面分层 ↔ Next 配置一一对应** | 核心页 deploy 构建；长尾页按需 ISR；mover/pulse 每日 `revalidatePath`；历史冻结。这是本文的核心，见 §2。 |
-| 4 | **token 驱动、不写死调色板** | 组件用 Tailwind 工具类引用 `globals.css` 的 M3E 运行时变量（`bg-primary-container`、`text-on-surface-variant`…），主题切换即时生效（见 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §接入 Tailwind 4）。 |
-| 5 | **数据语言中立** | i18n 只翻译 UI chrome / 导航 / 标签 / meta；repo 名、描述、语言、topic、数字保留原文（见 §7、[PRODUCT](./PRODUCT.md) i18n）。 |
+| 1 | **RSC by default, zero client JS first** | Content pages are all Server Components; charts are server-rendered SVG/DOM; motion is pure CSS. The only allowed client JS is in §4. |
+| 2 | **build reads only JSON, zero engine at runtime, unaware of Workflow** | The page body and `generateMetadata` only `fetch` budgeted JSON views (Vercel Blob), and **never** load Parquet / DuckDB / native modules on the build / request path, and also **do not know** that Vercel Workflow exists——how the data is produced (bootstrap / cron / Workflow) is transparent to the page, and the page only reads the final JSON (see [ARCHITECTURE](./ARCHITECTURE.md), [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)). |
+| 3 | **Page layering ↔ Next config in one-to-one correspondence** | Core pages are built at deploy; long-tail pages use on-demand ISR; mover/pulse get a daily `revalidatePath`; history is frozen. This is the core of this document, see §2. |
+| 4 | **Token-driven, do not hard-code the palette** | Components use Tailwind utilities to reference the M3E runtime variables in `globals.css` (`bg-primary-container`, `text-on-surface-variant`…), and theme switching takes effect immediately (see [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §Integrating Tailwind 4). |
+| 5 | **Data is language-neutral** | i18n translates only UI chrome / navigation / labels / meta; repo names, descriptions, languages, topics, and numbers keep the original text (see §7, [PRODUCT](./PRODUCT.md) i18n). |
 
 ---
 
-## 1. 路由（App Router）
+## 1. Routing (App Router)
 
-### 1.1 路由与渲染边界
+### 1.1 Routing and rendering boundaries
 
-页面、endpoint、metadata route、源文件、sitemap 与数据加载器的完整矩阵只在
-[UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md) 维护。Endpoint 的 method、
-auth、response 与 cache contract 由 [API.md](./API.md) 维护。本文只维护跨路由的
-渲染策略。
+The complete matrix of pages, endpoints, metadata routes, source files, the sitemap, and data loaders is maintained only in
+[UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md). An endpoint's method,
+auth, response, and cache contract are maintained by [API.md](./API.md). This document maintains only the cross-route
+rendering strategy.
 
-English canonical URL 无前缀；ja/zh/zh-TW/ko/es/fr 使用 locale 前缀并与
-English 互发 `hreflang` / `x-default`。旧 `/trending` 与旧 `/{year}` 路径不做
-兼容重定向；仍在追踪的 repo 改名则通过 alias map 308 到当前 `full_name`。
-四类 `next/og` 路由均在请求/ISR 时生成并使用 `revalidate=86400`；它们不由
-pipeline 生成，也不存 Blob。
+English canonical URLs have no prefix; ja/zh/zh-TW/ko/es/fr use a locale prefix and exchange, with
+English, `hreflang` / `x-default`. Old `/trending` and old `/{year}` paths do not do
+compatibility redirects; a still-tracked repo that is renamed is 308'd via the alias map to the current `full_name`.
+All four `next/og` routes are generated at request/ISR time and use `revalidate=86400`; they are not
+generated by the pipeline, nor stored in Blob.
 
-### 1.2 i18n（locale URL + 服务端渲染）
+### 1.2 i18n (locale URL + server rendering)
 
-需求：默认英文，并提供 en / ja / zh / zh-TW / ko / es / fr 七种 UI 语言（[REQUIREMENTS](./REQUIREMENTS.md) §9、[PRODUCT](./PRODUCT.md) i18n、[SEO](./SEO.md) §10）。English 使用无前缀 URL；非默认 locale 使用前缀 URL。repo URL 仍保留 GitHub 风格 canonical path，只在非默认 locale 前加语言段：`/facebook/react`、`/ja/facebook/react`、`/fr/facebook/react`。
+Requirement: English by default, and provide seven UI languages, en / ja / zh / zh-TW / ko / es / fr ([REQUIREMENTS](./REQUIREMENTS.md) §9, [PRODUCT](./PRODUCT.md) i18n, [SEO](./SEO.md) §10). English uses prefixless URLs; non-default locales use prefixed URLs. A repo URL still keeps the GitHub-style canonical path, adding a language segment only before a non-default locale: `/facebook/react`, `/ja/facebook/react`, `/fr/facebook/react`.
 
-**路由文件布局**：
+**Route file layout**:
 
 ```text
 app/
-  _shell/RootShell.tsx       # 两个 root layout 共享：fonts/global CSS/theme init/body/Footer
-  _localized/*.tsx           # route-locale 共享页面实现
+  _shell/RootShell.tsx       # shared by the two root layouts: fonts/global CSS/theme init/body/Footer
+  _localized/*.tsx           # route-locale shared page implementations
   (en)/
-    layout.tsx               # English 无前缀根布局，<html lang="en">
+    layout.tsx               # English prefixless root layout, <html lang="en">
     page.tsx  pulse/page.tsx
-    [locale]/[owner]/page.tsx # 参数名与 localized tree 对齐；URL 仍为 /owner/name
+    [locale]/[owner]/page.tsx # param names align with the localized tree; the URL is still /owner/name
     o/page.tsx  o/page/[page]/page.tsx  o/[login]/page.tsx
     rankings/page.tsx  rankings/[year]/page.tsx  rankings/[year]/[period]/page.tsx
     about/page.tsx  privacy/page.tsx  categories/**  compare/page.tsx
   (localized)/[locale]/
-    layout.tsx               # 非默认 locale 根布局，<html lang={toHreflang(locale)}>
+    layout.tsx               # non-default locale root layout, <html lang={toHreflang(locale)}>
     page.tsx  pulse/page.tsx
-    [owner]/[name]/page.tsx  # /ja/facebook/react 等 locale-prefixed repo URL
+    [owner]/[name]/page.tsx  # /ja/facebook/react and other locale-prefixed repo URL
     o/**  rankings/**  categories/**  compare/page.tsx  about/page.tsx  privacy/page.tsx
-  api/lang/route.ts          # 兼容入口：写 gsc_lang 后重定向到 locale URL
-  search-index/route.ts      # 客户端搜索索引端点（contract 见 API.md）
-  repo-curve/route.ts        # 对比瘦路由（contract 见 API.md）
-  robots.ts  sitemap.ts  manifest.ts  api/   # 根级特殊路由，无需 layout
+  api/lang/route.ts          # compatibility entry: write gsc_lang, then redirect to the locale URL
+  search-index/route.ts      # client search-index endpoint (contract in API.md)
+  repo-curve/route.ts        # compare slim route (contract in API.md)
+  robots.ts  sitemap.ts  manifest.ts  api/   # root-level special routes, no layout needed
 ```
 
-要点：
+Key points:
 
-- **URL canonical 按 locale 自规范化**：`/facebook/react` 是 English URL；`/ja/facebook/react`、`/zh-TW/facebook/react` 等是对应 locale 的规范 URL；`/en/*` 不是规范形态，`web/proxy.ts` 永久重定向到无前缀 English。
-- **渲染模式见 §2.5**（route locale → server dictionary → localized HTML；长尾仍按需 ISR）。
-- **i18n 实现细节见 §7**（手写字典、路由组选择 `<html lang>`、LanguageSwitcher 以 `<a>` 导航、`gsc_lang` 只作 proxy/API 偏好重定向信号）；数据字段不翻译。
+- **URL canonical is self-canonicalized per locale**: `/facebook/react` is the English URL; `/ja/facebook/react`, `/zh-TW/facebook/react`, and others are the canonical URLs of the corresponding locale; `/en/*` is not a canonical form, and `web/proxy.ts` permanently redirects to prefixless English.
+- **Rendering mode is in §2.5** (route locale → server dictionary → localized HTML; the long tail is still on-demand ISR).
+- **i18n implementation details are in §7** (handwritten dictionaries, route groups choose `<html lang>`, LanguageSwitcher navigates with `<a>`, and `gsc_lang` is only a proxy/API preference-redirect signal); data fields are not translated.
 
 ---
 
-## 2. 页面分层 ↔ Next.js 16 配置（核心）
+## 2. Page Layering ↔ Next.js 16 Config (core)
 
-这是把 [ARCHITECTURE](./ARCHITECTURE.md)「页面分层与重建节奏」与 [REQUIREMENTS](./REQUIREMENTS.md) §6「新鲜度模型（报社比喻）」落成**具体 Next 段配置**的一节。
+This is the section that lands [ARCHITECTURE](./ARCHITECTURE.md) "page layering and rebuild cadence" and [REQUIREMENTS](./REQUIREMENTS.md) §6 "freshness model (newspaper metaphor)" as **concrete Next segment config**.
 
-### 2.1 四层心智模型（对齐新鲜度模型）
+### 2.1 Four-layer mental model (aligned with the freshness model)
 
-| 层 | 页面 | 新鲜度（REQUIREMENTS §6） | Next 机制 |
+| Layer | Page | Freshness (REQUIREMENTS §6) | Next mechanism |
 |---|---|---|---|
-| **核心** | `/` · `/pulse` · `/rankings` · 当年/当月的 `/rankings/...`（非默认 locale 为对应前缀 URL） | 头版：每日换 | 每日 cron `revalidatePath`；核心 locale 页面静态/ISR 预渲染，chrome 服务端本地化，只有搜索/语言/主题等叶子控件水合 |
-| **长尾** | 历史年/月 · **周** · repo · org（~16k+）· 分类 | 编年史：冻结 / 标 as-of | **按需 ISR**：`dynamicParams=true` + 空（或注册表派生）`generateStaticParams`，首访生成、持久缓存。`revalidate` 按页分裂（见下脚注），均叠加 cron `revalidatePath` 定点失效 |
-| **mover** | 在 mover 集里的 repo/org + `/pulse` | 脉搏：事件驱动，只刷"在动的那一小撮" | 每周/每日 cron 对其 `revalidatePath` 定点失效 → 下次访问再生 |
-| **历史** | 已折叠入 Parquet 的过去周期 | 旧报纸：永不重印 | 纯静态命中 CDN；数据不变 = 不 revalidate |
+| **Core** | `/` · `/pulse` · `/rankings` · current-year/current-month `/rankings/...` (a non-default locale is the corresponding prefixed URL) | Front page: replaced daily | Daily cron `revalidatePath`; core locale pages are prerendered static/ISR, chrome is localized on the server, and only leaf controls such as search/language/theme hydrate |
+| **Long tail** | Historical year/month · **week** · repo · org (~16k+) · categories | Chronicle: frozen / marked as-of | **On-demand ISR**: `dynamicParams=true` + empty (or registry-derived) `generateStaticParams`, generated on first visit and persistently cached. `revalidate` splits per page (see the footnote below), and all of them also get cron `revalidatePath` targeted invalidation |
+| **mover** | repo/org in the mover set + `/pulse` | Pulse: event-driven, refresh only "the small set that is moving" | Weekly/daily cron `revalidatePath` targeted invalidation for them → regenerated on the next visit |
+| **History** | Past periods already folded into Parquet | Old newspaper: never reprinted | Pure static hits the CDN; unchanged data = no revalidate |
 
-> 关键：**长尾页"成页"极便宜**（懒生成、不占 build 预算）——所以周页 / org 页独立成页不受 45min build 上限约束（[ARCHITECTURE](./ARCHITECTURE.md) 渲染分层）。
+> Key point: **a long-tail page "becoming a page" is extremely cheap** (lazy generation, does not occupy build budget)——so week pages / org pages as standalone pages are not constrained by the 45min build cap ([ARCHITECTURE](./ARCHITECTURE.md) rendering layering).
 >
-> **长尾 `revalidate` 不是一刀切 `false`**（按文件分裂，以代码为准）：
-> - **repo `/[owner]/[name]`** = `86400`（`page.tsx:22`）——首访生成 + 每 1 天后台再生，叠加 mover 当日 `revalidatePath`。
-> - **org 索引 `/o` / `/o/page/[page]`** = `3600`——提供可爬的 owner 目录层，按 `lookup/orgs.json` 页数预渲染。
-> - **org `/o/[login]`** = `86400`——首访生成 + 每 1 天后台再生，叠加 mover 定点失效。
-> - **分类 `/categories*`** = `86400`——新发布的注册表分类无需重新部署即可在 1 天内出现；分类详情 page 2+ 通过 `/categories/[dimension]/[slug]/page/[page]` 自规范化。
-> - 历史年/月/周仍走 §2.2「核心页」混合文件里的 `revalidate=false` 段（当年/当月预渲染、历史按需）。
+> **Long-tail `revalidate` is not a one-size-fits-all `false`** (split per file; the code is authoritative):
+> - **repo `/[owner]/[name]`** = `86400` (`page.tsx:22`)——generated on first visit + background regeneration every 1 day, plus the mover same-day `revalidatePath`.
+> - **org index `/o` / `/o/page/[page]`** = `3600`——provides a crawlable owner directory layer, prerendered by the page count of `lookup/orgs.json`.
+> - **org `/o/[login]`** = `86400`——generated on first visit + background regeneration every 1 day, plus mover targeted invalidation.
+> - **category `/categories*`** = `86400`——a newly published registry category can appear within 1 day without a redeploy; category detail page 2+ self-canonicalizes via `/categories/[dimension]/[slug]/page/[page]`.
+> - Historical year/month/week still use the `revalidate=false` segment in the §2.2 "core pages" mixed file (current year/current month prerendered, history on demand).
 
-### 2.2 段配置速查（每类页面贴什么）
+### 2.2 Segment-config cheat sheet (what to paste for each page type)
 
-**核心页（Pulse / Rankings / 当年 / 当月）** —— deploy 构建具体 param：
+**Core pages (Pulse / Rankings / current year / current month)** —— deploy builds concrete params:
 
 ```ts
-// 例：app/rankings/[year]/page.tsx（当年走核心，历史走 ISR — 同一文件、混合）
-export const dynamicParams = true            // 未列入的历史年 → 首访按需生成
+// example: app/rankings/[year]/page.tsx (the current year takes the core path, history takes ISR — same file, mixed)
+export const dynamicParams = true            // historical years not listed → generated on demand on first visit
 export async function generateStaticParams() {
-  // 只预渲染「当前年」；历史年留给按需 ISR
+  // prerender only the "current year"; historical years are left to on-demand ISR
   const Y = new Date().getUTCFullYear()
-  return [{ year: String(Y) }]               // locale 由 (en) / (localized)/[locale] 路由组选择；不在这里交叉生成
+  return [{ year: String(Y) }]               // locale is chosen by the (en) / (localized)/[locale] route groups; do not cross-generate here
 }
-export const revalidate = false              // 不轮询；每日 cron 用 revalidatePath 刷当年
+export const revalidate = false              // no polling; the daily cron uses revalidatePath to refresh the current year
 ```
 
-**长尾页（repo / org / 周 / 历史年月）** —— 不在 deploy 构建：
+**Long-tail pages (repo / org / week / historical year-month)** —— not built at deploy:
 
 ```ts
-// 例：app/o/[login]/page.tsx（repo / org 详情页范式）
-export const dynamicParams = true            // 默认值；空列表 + 此项 = 全部按需生成
+// example: app/o/[login]/page.tsx (repo / org detail-page pattern)
+export const dynamicParams = true            // the default; empty list + this = all generated on demand
 export async function generateStaticParams() {
-  return []                                  // repo/org 页返回 [] → 全部按需 ISR
+  return []                                  // repo/org pages return [] → all on-demand ISR
 }
-export const revalidate = 86400              // 每日 ISR + cron 定点失效
-// repo 与 org 详情均为空 static params；首访按需生成，随后每日 ISR。
+export const revalidate = 86400              // daily ISR + cron targeted invalidation
+// repo and org details both have empty static params; generated on demand on first visit, then daily ISR.
 ```
 
-**全时榜 / 脉搏（单页、每日新鲜）**：
+**All-time ranking / pulse (single page, fresh daily)**:
 
 ```ts
-// 例：app/pulse/page.tsx
-export const revalidate = false              // 不靠时间轮询
-// Vercel cron 原子切 live/latest.json 后 revalidatePath('/pulse')
+// example: app/pulse/page.tsx
+export const revalidate = false              // does not rely on time polling
+// after the Vercel cron atomically switches live/latest.json, revalidatePath('/pulse')
 ```
 
-### 2.3 `next.config.ts`：必须的全局开关
+### 2.3 `next.config.ts`: required global switches
 
-分层模型需在 `web/next.config.ts` 显式声明：
+The layering model must be declared explicitly in `web/next.config.ts`:
 
 ```ts
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // 关键：cacheComponents 必须保持「关闭」——开启会禁用 dynamicParams，
-  // 并使空 generateStaticParams() 在 build 报错（与「长尾全按需」冲突）。
-  // 见 ARCHITECTURE 页面分层 §配置要点 / SEO §3.4。默认即关,勿误开。
+  // key point: cacheComponents must stay "off"——turning it on disables dynamicParams,
+  // and makes an empty generateStaticParams() error at build (conflicts with "long tail fully on demand").
+  // see ARCHITECTURE page layering §config points / SEO §3.4. Off by default, do not turn it on by mistake.
 };
 
 export default nextConfig;
 ```
 
-| 开关 | 取值 | 理由 |
+| Switch | Value | Reason |
 |---|---|---|
-| `cacheComponents` | **关闭（不设/false）** | 开启禁用 `dynamicParams`、空 `generateStaticParams` 会 build 报错（[ARCHITECTURE](./ARCHITECTURE.md) / [SEO](./SEO.md) §3.4）。 |
-| `dynamicParams`（段级） | `true` | 长尾首访生成；未知 param 则 `notFound()`（404，见 [SEO](./SEO.md) §3.2）。 |
-| `revalidate`（段级） | `false` | 不做时间轮询；数据变更全靠 cron `revalidatePath` 定点失效。 |
-| repo 改名重定向 | 路由层（非 next.config） | repo 页据 `lookup/aliases.json` 对改名旧 slug 发 `permanentRedirect`（308）到当前 `full_name`；canonical 永远指当前名（[SEO](./SEO.md) §7）。 |
+| `cacheComponents` | **Off (unset/false)** | Turning it on disables `dynamicParams`, and an empty `generateStaticParams` errors at build ([ARCHITECTURE](./ARCHITECTURE.md) / [SEO](./SEO.md) §3.4). |
+| `dynamicParams` (segment-level) | `true` | The long tail is generated on first visit; an unknown param calls `notFound()` (404, see [SEO](./SEO.md) §3.2). |
+| `revalidate` (segment-level) | `false` | No time polling; data changes rely entirely on cron `revalidatePath` targeted invalidation. |
+| repo rename redirect | Route layer (not next.config) | The repo page, based on `lookup/aliases.json`, sends `permanentRedirect` (308) for a renamed old slug to the current `full_name`; canonical always points at the current name ([SEO](./SEO.md) §7). |
 
-### 2.4 数据变更如何到达页面（无 deploy）
+### 2.4 How data changes reach pages (no deploy)
 
-- **每日 cron**（`/api/cron/daily`，[API](./API.md) / [OPS](./OPS.md) §Cron）：把 `current_month`（v2 = 小 index + 32 个 repo shard）/ `hot-snapshot` / 当前月周 rank / 当月 heatmap 写入同一 immutable `live/generations/<run_id>/`，manifest 完成后 fenced CAS 切 `live/latest.json`，**再** `revalidatePath` 核心热集。UTC 周日 daily 跳过，由 weekly 04:00 独占 live 写入。热集页只读 `hot-snapshot.json`，不加载 `current_month` 分片。
-- **每周 cron**（`/api/cron/weekly`，[API](./API.md)）：同样在 Vercel 内做 live refresh，保证周榜和月榜即使没有全量历史重算也不会断档；全量历史刷新另走 Vercel Workflow 分片，不做 16k 全量 build。
-- **deploy**：仅代码/结构变更触发；会重置 ISR store，长尾首访冷生成一次（见 [ARCHITECTURE](./ARCHITECTURE.md)）。
+- **Daily cron** (`/api/cron/daily`, [API](./API.md) / [OPS](./OPS.md) §Cron): writes `current_month` (v2 = small index + 32 repo shards) / `hot-snapshot` / the current month/week rank / the current-month heatmap into the same immutable `live/generations/<run_id>/`, and after the manifest completes a fenced CAS switches `live/latest.json`, **then** `revalidatePath` on the core hot set. UTC Sunday daily is skipped, and weekly 04:00 exclusively owns the live write. Hot-set pages read only `hot-snapshot.json` and do not load `current_month` shards.
+- **Weekly cron** (`/api/cron/weekly`, [API](./API.md)): likewise does a live refresh inside Vercel, so the week ranking and the month ranking do not gap even without a full historical recompute; a full historical refresh goes through Vercel Workflow shards separately, and does not do a 16k full build.
+- **deploy**: triggered only by code/structure changes; it resets the ISR store, and the long tail is cold-generated once on first visit (see [ARCHITECTURE](./ARCHITECTURE.md)).
 
-每个 generation 只声明该次发布生成的当前周期文件，不复制此前尚未折叠的周/月文件。rank / month heatmap 读者在当前 generation 对象确认 404 后，会按 manifest 的 `previous_generation` 有界回溯；链完整走到 `null` 后才读迁移期 flat `live/*`。`current_month` / `hot-snapshot` 是可变语义快照，始终只读 pointer 当前 generation，不沿历史回退成陈旧快照。
+Each generation declares only the current-period files produced by that publish, and does not copy week/month files not yet folded before it. After a rank / month heatmap reader confirms 404 for the current generation object, it walks back boundedly along the manifest's `previous_generation`; only after the chain fully reaches `null` does it read migration-period flat `live/*`. `current_month` / `hot-snapshot` are mutable-semantics snapshots, always read only the pointer's current generation, and do not fall back along history into a stale snapshot.
 
-> `app/api/cron/daily` 与 `app/api/cron/weekly` 通过 `revalidatePath` + `CRON_SECRET` 鉴权刷新热集。
+> `app/api/cron/daily` and `app/api/cron/weekly` refresh the hot set through `revalidatePath` + `CRON_SECRET` authentication.
 
-### 2.5 渲染模式：route locale + 服务端本地化 HTML
+### 2.5 Rendering mode: route locale + server-localized HTML
 
-页面 BODY 与 chrome（顶栏 / 页脚 / 面包屑标签 / 区段标题）都由 route locale 决定：English 无前缀路由渲染英文 HTML，非默认 locale 前缀路由渲染对应语言 HTML。`gsc_lang` cookie 不参与页面渲染，只在 `web/proxy.ts` 和 `/api/lang` 中作为偏好重定向信号。整棵路由树继续命中静态 / ISR 缓存（核心页 SSG、长尾按需 ISR），不进入按请求 SSR。
+Page BODY and chrome (top bar / footer / breadcrumb labels / section titles) are all decided by the route locale: English prefixless routes render English HTML, and non-default locale prefixed routes render HTML in the corresponding language. The `gsc_lang` cookie does not participate in page rendering, and is only a preference-redirect signal in `web/proxy.ts` and `/api/lang`. The whole route tree continues to hit static / ISR cache (core pages SSG, long tail on-demand ISR), and does not enter per-request SSR.
 
-**实现要点**：
+**Implementation points**:
 
-- `web/app/(en)/layout.tsx`：English 无前缀 root layout，调用 `RootShell lang="en"`。
-- `web/app/(localized)/[locale]/layout.tsx`：验证非默认 locale，加载对应 dictionary，调用 `RootShell lang={toHreflang(locale)}`。
-- `web/app/_shell/RootShell.tsx`：两套 root layout 共享的 HTML/body 壳；只保留 theme init script，不再需要 `LANG_INIT_SCRIPT`。
-- `web/app/_localized/*`：共享服务端页面实现，接收 route locale / dictionary / canonical path 后渲染 localized chrome、metadata、JSON-LD 与确定性文案。
-- `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` 为服务端组件；`SearchBox`、`LanguageSwitcher`、`ThemeToggle` 是顶栏内的最小 client islands，其中 `LanguageSwitcher` 只生成 locale URL 链接。
-- 各页（`page.tsx` / `pulse` / `rankings*` / `about` / repo / org / category）：不读 cookie；repo/org 用 `generateStaticParams() => []` 转按需 ISR。
-- `web/lib/i18n/server.ts`：**弃用**——读 cookie 会破坏静态;保留仅供非页面服务端上下文,勿在 page/layout 调用。
+- `web/app/(en)/layout.tsx`: English prefixless root layout, calls `RootShell lang="en"`.
+- `web/app/(localized)/[locale]/layout.tsx`: validates the non-default locale, loads the corresponding dictionary, and calls `RootShell lang={toHreflang(locale)}`.
+- `web/app/_shell/RootShell.tsx`: the HTML/body shell shared by both root layouts; keeps only the theme init script, and no longer needs `LANG_INIT_SCRIPT`.
+- `web/app/_localized/*`: shared server page implementations; after receiving the route locale / dictionary / canonical path, they render localized chrome, metadata, JSON-LD, and deterministic copy.
+- `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` are Server Components; `SearchBox`, `LanguageSwitcher`, and `ThemeToggle` are the minimal client islands in the top bar, and `LanguageSwitcher` only generates locale URL links.
+- Each page (`page.tsx` / `pulse` / `rankings*` / `about` / repo / org / category): does not read the cookie; repo/org use `generateStaticParams() => []` to switch to on-demand ISR.
+- `web/lib/i18n/server.ts`: **deprecated**——reading the cookie breaks static; kept only for non-page server contexts, do not call it in page/layout.
 
-**构建路由表**（`cd web && bun run build`）：
+**Build route table** (`cd web && bun run build`):
 
-| 路由 | 渲染层 |
+| Route | Rendering layer |
 |---|---|
-| `/` · `/pulse` · `/rankings` · `/about` | `○` 静态 |
-| `/rankings/[year]` · `/rankings/[year]/[period]` | `●` SSG（当年/当月预渲染 + 其余按需） |
-| `/[owner]/[name]` · `/o/[login]` | `●` SSG（`[]` + `dynamicParams` → 全部按需 ISR） |
+| `/` · `/pulse` · `/rankings` · `/about` | `○` static |
+| `/rankings/[year]` · `/rankings/[year]/[period]` | `●` SSG (current year/current month prerendered + the rest on demand) |
+| `/[owner]/[name]` · `/o/[login]` | `●` SSG (`[]` + `dynamicParams` → all on-demand ISR) |
 
-- SSR/静态输出**完整可索引 HTML**（当前 route locale 的 chrome 与正文进入初始 HTML，SEO §3a 不受影响），数据语言中立。
-- 取舍依据：每页约 95% 是语言中立数据,仅少量 chrome 字符串需要翻译 → route-locale 服务端渲染 + 按需 ISR 同时保住**静态 CDN 扛量 + GitHub 风格 canonical path**；metadata、sitemap、正文、proxy 与语言切换导航已经统一到 locale URL / hreflang 架构。
+- SSR/static output is **fully indexable HTML** (the current route locale's chrome and body enter the initial HTML, and SEO §3a is unaffected), and the data is language-neutral.
+- Tradeoff basis: about 95% of each page is language-neutral data, and only a few chrome strings need translation → route-locale server rendering + on-demand ISR together keep **static CDN carrying the load + a GitHub-style canonical path**; metadata, the sitemap, the body, the proxy, and language-switch navigation are already unified on the locale URL / hreflang architecture.
 
 ---
 
-## 3. 数据消费（页面如何读 JSON 视图）
+## 3. Data Consumption (how pages read JSON views)
 
-### 3.1 数据来源
+### 3.1 Data sources
 
-页面全部从 `@/lib/data` 读 Blob 上的真实 JSON 视图(`fetch` + Zod parse + React `cache()`)。所有内容页(`rankings/**`/`[owner]/[name]`/`o/[login]`/`categories/**` 等)均 import `@/lib/data`;首页 `page.tsx` 与 `pulse/page.tsx` 经共享的 `PulseView` 间接读取(故不直接 import)。
+Pages all read real JSON views on Blob from `@/lib/data` (`fetch` + Zod parse + React `cache()`). All content pages (`rankings/**`/`[owner]/[name]`/`o/[login]`/`categories/**` and others) import `@/lib/data`; the home `page.tsx` and `pulse/page.tsx` read indirectly through the shared `PulseView` (so they do not import it directly).
 
-### 3.2 数据访问层（`web/lib/`）
+### 3.2 Data access layer (`web/lib/`)
 
-[DATA-CONTRACTS](./DATA-CONTRACTS.md) §4 的 Zod schema 位于 `web/lib/contracts/`,读取器位于 `web/lib/data/`。结构按产物族归并,非每产物一文件:
+The Zod schemas of [DATA-CONTRACTS](./DATA-CONTRACTS.md) §4 live in `web/lib/contracts/`, and readers live in `web/lib/data/`. The structure is grouped by artifact family, not one file per artifact:
 
 ```text
 web/lib/
-  contracts/        # Zod schema（单一类型事实源），barrel = index.ts
-    common.ts       # 共享/枚举/rank/heatmap/meta 等基础 schema
+  contracts/        # Zod schema (single type source of truth), barrel = index.ts
+    common.ts       # shared/enum/rank/heatmap/meta and other base schemas
     lookup.ts  entity.ts  live.ts  canonical.ts  categories.ts
     compare.ts  search.ts  workflow.ts
-  data/             # 读取器（fetch Blob + schema.parse + React cache 去重），barrel = index.ts
-    source.ts       # readView：拼 Blob 直链 URL + fetch + parse-once（按 path+generation 去重 ZodError）
+  data/             # readers (fetch Blob + schema.parse + React cache dedupe), barrel = index.ts
+    source.ts       # readView: assemble the Blob direct URL + fetch + parse-once (dedupe ZodError by path+generation)
     lookup.ts  rank.ts  entity.ts  heatmap.ts  snapshot.ts  meta.ts
     search.ts  compare.ts  categories.ts  watermark.ts
-  search/           # 客户端检索纯核心（MiniSearch 配置 + 查询；SearchBox 懒加载到 Web Worker）
+  search/           # client search pure core (MiniSearch config + query; SearchBox lazy-loads into a Web Worker)
     core.ts
 ```
 
-> rank/heatmap/meta 的 schema 收进 `common.ts`,readers 按 rank/heatmap/snapshot/meta 分文件。
+> rank/heatmap/meta schemas are collected into `common.ts`, and readers are split into files by rank/heatmap/snapshot/meta.
 
-**读取器三要素**（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §4 + [SEO](./SEO.md) §2）：
+**Three essentials of a reader** ([DATA-CONTRACTS](./DATA-CONTRACTS.md) §4 + [SEO](./SEO.md) §2):
 
 ```ts
 import { cache } from "react";
 import { RepoEntitySchema } from "@/lib/contracts/entity";
 
-// React cache(): 同一请求内，generateMetadata 与页面 body 共享同一次读取（去重）
+// React cache(): within the same request, generateMetadata and the page body share one read (deduped)
 export const getRepoEntity = cache(async (id: number) => {
-  const url = blobUrl(`entity/repo/${id}.json`);      // 见 OPS Blob 布局
-  const res = await fetch(url, { /* 核心页可加 next:{revalidate:false} */ });
-  if (res.status === 404) return null;                 // 未知 → 页面调 notFound()（404）
-  return RepoEntitySchema.parse(await res.json());     // 类型从 Zod 推导，不另写 interface
+  const url = blobUrl(`entity/repo/${id}.json`);      // see OPS Blob layout
+  const res = await fetch(url, { /* core pages may add next:{revalidate:false} */ });
+  if (res.status === 404) return null;                 // unknown → the page calls notFound() (404)
+  return RepoEntitySchema.parse(await res.json());     // the type is inferred from Zod, do not write a separate interface
 });
 ```
 
-- **运行时只 `fetch` + `parse`**——不聚合、不带引擎（[ARCHITECTURE](./ARCHITECTURE.md) 渲染策略）。
-- **未知 param → `notFound()`**（404，禁软 200，见 [SEO](./SEO.md) §3.2）。`[owner]/[name]/page.tsx` 先 `getRepoIdByFullName()` 查 id；查不到再查 `lookup/aliases.json`（`getAliasMap`），命中改名别名则 `permanentRedirect`（308）到当前 `full_name`；仍无则 `notFound()`，再 `getRepoEntity(id)`、为空再 `notFound()`。
-- **`categories/assignments`**：新 generation 是 index + 32 个 repo-id 分片。`getCategoryAssignments()` 限并发批读分片后组装（CF Workers 子请求上限；`HOSTING_TARGET=cf` 更紧），再交给非 CF 的 repo/org/ranking-detail。Vercel `/rankings` 用 `getCategoryAssignmentsForRepos` 只读领先行所需 shard，且排在核心榜视图之后；Vercel ranking-detail / repo / org 同样按本页 id 收窄。CF 上这些页与 `/rankings` 一样跳过 assignment 扇出（语言类 exits 仍在）；全量 `loadCategoryAssignments` 在 CF 上硬短路。ISR 保持 `force-cache` / daily revalidate，禁止 `no-store`。已发布的 v1 单体仍可读（单次 GET，无扇出）。
-- **`bootstrap/latest.json`**：页面读到 403/429/5xx 时 bounded retry + jitter，不把 403 当成 404。失败则用 last-known-good pointer 或 managed `views/latest.json`。同一 TTL 内只记一次结构化错误。
+- **At runtime only `fetch` + `parse`**——no aggregation, no engine ([ARCHITECTURE](./ARCHITECTURE.md) rendering strategy).
+- **Unknown param → `notFound()`** (404, soft 200 forbidden, see [SEO](./SEO.md) §3.2). `[owner]/[name]/page.tsx` first looks up the id with `getRepoIdByFullName()`; if not found, it looks up `lookup/aliases.json` (`getAliasMap`), and on a rename-alias hit `permanentRedirect`s (308) to the current `full_name`; if still absent, `notFound()`, then `getRepoEntity(id)`, and if empty, `notFound()` again.
+- **`categories/assignments`**: a new generation is an index + 32 repo-id shards. `getCategoryAssignments()` batch-reads shards with limited concurrency and then assembles them (CF Workers subrequest cap; `HOSTING_TARGET=cf` is tighter), then hands them to non-CF repo/org/ranking-detail. Vercel `/rankings` uses `getCategoryAssignmentsForRepos` to read only the shards needed by the leading rows, and does so after the core ranking views; Vercel ranking-detail / repo / org likewise narrow by this page's ids. On CF these pages, like `/rankings`, skip the assignment fan-out (language-category exits remain); the full `loadCategoryAssignments` is hard short-circuited on CF. ISR keeps `force-cache` / daily revalidate, and `no-store` is forbidden. An already-published v1 monolith remains readable (a single GET, no fan-out).
+- **`bootstrap/latest.json`**: when a page read hits 403/429/5xx, it does bounded retry + jitter, and does not treat 403 as 404. On failure it uses the last-known-good pointer or the managed `views/latest.json`. A structured error is recorded only once within the same TTL.
 
-### 3.3 每页读哪些视图（页面 ↔ JSON 契约映射）
+### 3.3 Which views each page reads (page ↔ JSON contract mapping)
 
-| 页面 | 主要读取 | 说明 |
+| Page | Primary reads | Notes |
 |---|---|---|
-| 首页 `/` | live generation 的 `hot-snapshot.json`（`home`：`year_spine` / `current_month_top` / `on_this_day`） | 热集 ISR 只读 KB 级快照；分区 source-as-of 见 `freshness` |
-| 年页（当年） | live generation 的 `hot-snapshot.json`（`current_year`） + base `heatmap/year/{Y}.json` | 当年走热快照 |
-| 年榜（历史） | `rank/year/{Y}/{repo,org}/{flow,stock}.json` + `heatmap/year/{Y}.json` | 冻结视图 |
-| 月榜（当月） | generation 内 `rank/month/{period}/repo/{flow,stock}.json` + `heatmap/month/{period}.json`，缺失时回退 base | 所有 live siblings 由同一个 pointer 选择 |
-| 月榜（历史） | `rank/month/{period}/{repo,org}/{flow,stock}.json` + `heatmap/month/{period}.json` | 三大榜 + 日热力 |
-| 周榜 | 当前周优先 generation 内 `rank/week/{period}/repo/flow.json`，历史周读 base | 独立页 |
-| repo 页 | `entity/repo/{id}.json`（`curve`/`milestones`/`monthly_table`/`rank_history`） | mover 当日刷新（curve 含 `recent_daily`） |
-| org 页 | `entity/org/{login}.json`（`members`/`curve`/`rank_history`） | 成员聚合曲线 |
-| 全时榜 `/rankings` | `rank/all-time/{repo,org}/stock.json`（或 `hot-snapshot.all_time`）；Vercel 另读领先行 assignment shards，CF 跳过 | repo 榜 + org 榜并列；CF 预览只保留语言类 exits |
-| 脉搏 `/pulse` | 同一 live generation 的 `hot-snapshot.json` + 当前周 rank | 每日/每周原子切 generation |
-| 全部榜单页 | + `lookup/repos.json` / `lookup/orgs.json` | **lookup-join**，见 §3.4 |
+| Home `/` | the live generation's `hot-snapshot.json` (`home`: `year_spine` / `current_month_top` / `on_this_day`) | Hot-set ISR reads only a KB-scale snapshot; per-section source-as-of is in `freshness` |
+| Year page (current year) | the live generation's `hot-snapshot.json` (`current_year`) + base `heatmap/year/{Y}.json` | The current year uses the hot snapshot |
+| Year ranking (historical) | `rank/year/{Y}/{repo,org}/{flow,stock}.json` + `heatmap/year/{Y}.json` | Frozen view |
+| Month ranking (current month) | in-generation `rank/month/{period}/repo/{flow,stock}.json` + `heatmap/month/{period}.json`, falling back to base when missing | All live siblings are selected by the same pointer |
+| Month ranking (historical) | `rank/month/{period}/{repo,org}/{flow,stock}.json` + `heatmap/month/{period}.json` | Three major rankings + daily heatmap |
+| Week ranking | The current week prefers in-generation `rank/week/{period}/repo/flow.json`; historical weeks read base | Standalone page |
+| repo page | `entity/repo/{id}.json` (`curve`/`milestones`/`monthly_table`/`rank_history`) | The mover refreshes the same day (curve includes `recent_daily`) |
+| org page | `entity/org/{login}.json` (`members`/`curve`/`rank_history`) | Member aggregate curve |
+| All-time ranking `/rankings` | `rank/all-time/{repo,org}/stock.json` (or `hot-snapshot.all_time`); Vercel also reads the leading-row assignment shards, and CF skips them | The repo ranking and the org ranking sit side by side; CF preview keeps only language-category exits |
+| Pulse `/pulse` | the same live generation's `hot-snapshot.json` + the current week rank | Daily/weekly atomically switches the generation |
+| All ranking pages | + `lookup/repos.json` / `lookup/orgs.json` | **lookup-join**, see §3.4 |
 
-### 3.4 lookup-join 模式（榜单只存 id，build join 出展示字段）
+### 3.4 lookup-join pattern (rankings store only ids, and the build joins out display fields)
 
-[DATA-CONTRACTS](./DATA-CONTRACTS.md) §全局约定 + §2.1/2.2：排行榜 JSON **只存 `id`/`login` + 数值**，不内嵌名字/语言。build 读 `lookup/*` join 出展示字段：
+[DATA-CONTRACTS](./DATA-CONTRACTS.md) §Global conventions + §2.1/2.2: ranking JSON **stores only `id`/`login` + numbers**, and does not embed names/languages. The build reads `lookup/*` and joins out display fields:
 
 ```ts
-// 渲染月榜：rank 文件给 id+value，lookup 给 owner/name/lang
+// rendering a month ranking: the rank file gives id+value, lookup gives owner/name/lang
 const rank = await getRank("month", "2024-10", "repo", "flow"); // items: [{rank,id,value,prev_rank}]
 const lookup = await getRepoLookup();                            // { [id]: {owner,name,full_name,language,...} }
 const rows = rank.items.map(it => ({ ...it, ...lookup[String(it.id)] }));
 ```
 
-好处（[DATA-CONTRACTS](./DATA-CONTRACTS.md)）：榜单文件保持小、repo 改名只需更新 lookup（不动每张榜）。`web/lib/data/rank.ts` 的 `joinRepoRank`/`joinOrgRank` 把 `rank.items`（`{rank,id,value,prev_rank}`）与 `lookup/*` join 出展示字段后喂给 `RankingList`。
+Benefit ([DATA-CONTRACTS](./DATA-CONTRACTS.md)): ranking files stay small, and a repo rename only needs to update lookup (not every ranking). `joinRepoRank`/`joinOrgRank` in `web/lib/data/rank.ts` join `rank.items` (`{rank,id,value,prev_rank}`) with `lookup/*` into display fields and then feed `RankingList`.
 
-### 3.5 缓存一致性
+### 3.5 Cache consistency
 
-- **live generation 指针**：所有 live reader 先以 60s revalidate + in-memory single-flight 解析 `live/latest.json`，再读不可变 `live/generations/<generation>/<logical-path>`。rank / month heatmap 等周期型文件在当前对象确认 404 后，最多沿 64 个经 Zod 校验、无环且 generation id 匹配的 manifest 回溯；manifest 声明存在但对象 404、manifest/transport/schema 异常或环仍 fail closed。请求周期新于 hop 的 `week`/`month` 时停走并可走 legacy；超 64 代且未到 `null` 则截断为缺失（页面回退 base / 空态，不 500）。只有完整链到 `previous_generation:null` 才启用 legacy flat migration edge。高并发 SSG 下 public CDN 持续 403 不算 404：页面读至多尝试该历史对象 2 次，并按 Blob/key 熔断 60 秒后立即停止 live 链、转交 base / `notFound`，绝不选旧代；熔断会自动恢复，required product gate 仍把 403 判失败。`current_month` / `hot-snapshot` 不走历史链。pointer 错误时使用已验证的当前 generation memo，否则 fail closed，避免混代。
-- `meta.schema_ver`：build 启动校验版本匹配，不符 fail-fast（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §3）。
-- **base 视图版本指针**：base `rank/*` / `entity/*` / `heatmap/*` 通过「先读 `views/latest.json` 指针解析版本前缀，再读该前缀下视图」消费（[VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7）。默认 data-cache TTL 为 3600 秒；repo / categories / OG 等 1 天 ISR 路由使用 daily base 读取入口（86400 秒），避免 pointer fetch 缩短 route TTL。pointer fetch 带共享 tag，publish / rollback 主动失效；所有进程内 memo 无论 data-cache TTL 多长都被 60 秒可见性 SLA 限制。这一步**封装在 `web/lib/data/`**，组件入参形状不变、**对页面透明**；「live 优先、回退 base」语义保留（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11）。
-
----
-
-## 4. 零客户端 JS 内容页
-
-### 4.1 图表 = 服务端渲染 SVG / DOM
-
-内容页 **0 客户端 JS**（[REQUIREMENTS](./REQUIREMENTS.md) §7、[ARCHITECTURE](./ARCHITECTURE.md) 性能策略、[DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §零客户端 JS 约束）。所有图表服务端出 markup、动效纯 CSS：
-
-| 图表 | 组件（`web/app/_explore/`） | 形态 | 动效（CSS，reduced-motion 钉终态） |
-|---|---|---|---|
-| Star 曲线 | `StarCurve.tsx` | 服务端 SVG `<path>`（line + area gradient）+ 里程碑金点 + mono 年份轴 | `.curve-line` `stroke-dashoffset` 描绘 + `.curve-area` 淡入 |
-| 日历/月热力图 | `Heatmap.tsx` | DOM 网格 + `color-mix` 强度（冷灰→亮金，非 GitHub 绿） | `animate-rise` stagger |
-| 年份脊柱（首页） | inline in `page.tsx`（`.spine-bar-y`） | DOM 柱，高度 `--h=gained/max` | `grow-y` 弹簧生长 |
-| 月度脊柱（年榜） | inline in `rankings/[year]/page.tsx`（`.spine-bar`） | DOM 条，宽度 `--w` | `grow` 弹簧生长 |
-| 榜单条 | `RankingList.tsx` | 有序列表 + 右对齐 mono 指标 | `animate-rise` stagger |
-
-> SVG/DOM 图表均为 RSC（无 `"use client"`），符合约束。org 合计曲线复用 `StarCurve`（`entity/org` 的 `curve` 形状同 repo）。`YearSpine` 抽组件供首页/pulse 复用是可选优化项。
-
-### 4.2 允许的客户端 JS（三处例外）
-
-[DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 规定明确例外：防闪烁内联脚本（theme + lang）、主题切换按钮、PWA SW 注册（`RegisterSW.tsx` + `manifest.ts`）。这些都极小、不渲染正文内容。
-
-| 客户端 JS | 文件 | 性质 | DESIGN-SYSTEM 例外 |
-|---|---|---|---|
-| 防 FOUC 主题脚本 | `layout.tsx`：`themeInit` const `:56`，内联 `<script dangerouslySetInnerHTML>` `:67` | paint 前读 `localStorage.theme` 设 `data-theme` + `theme-color` | ① |
-| 主题切换按钮 | `components/ThemeToggle.tsx`（`"use client"`） | 写 `data-theme` + `localStorage` + 同步 `meta[theme-color]`；图标 CSS 显隐 | ② |
-| Service Worker 注册 (PWA) | `_explore/RegisterSW.tsx`（`"use client"`） | 注册 `/sw.js`（失败静默）+ `manifest.ts` | ③（PWA standalone） |
-
-- 这些都极小且不渲染内容页正文 → 不破坏「正文零客户端 JS、爬虫拿全量 HTML」（[SEO](./SEO.md) §3a）。
-- `<html suppressHydrationWarning>`（`layout.tsx:65`）配合主题脚本，避免 hydration 警告。
+- **live generation pointer**: every live reader first resolves `live/latest.json` with a 60s revalidate + in-memory single-flight, then reads the immutable `live/generations/<generation>/<logical-path>`. Periodic files such as rank / month heatmap, after the current object is confirmed 404, walk back along at most 64 manifests that pass Zod validation, are acyclic, and match the generation id; if the manifest declares the object exists but the object is 404, or there is a manifest/transport/schema error or a cycle, it still fails closed. When the requested period is newer than the hop's `week`/`month`, walking stops and legacy may be used; if it exceeds 64 generations and has not reached `null`, it truncates to missing (the page falls back to base / an empty state, and does not 500). Only a complete chain to `previous_generation:null` enables the legacy flat migration edge. Under high-concurrency SSG, a public CDN that keeps returning 403 does not count as 404: a page read tries that historical object at most 2 times, and after a 60-second circuit break by Blob/key immediately stops the live chain and hands off to base / `notFound`, never selecting an older generation; the circuit break recovers automatically, and the required product gate still judges 403 as failure. `current_month` / `hot-snapshot` do not use the history chain. On a pointer error, use the already-validated current generation memo, otherwise fail closed, to avoid mixed generations.
+- `meta.schema_ver`: the build checks version match at startup, and fails fast on mismatch ([DATA-CONTRACTS](./DATA-CONTRACTS.md) §3).
+- **base view version pointer**: base `rank/*` / `entity/*` / `heatmap/*` are consumed by "first reading the `views/latest.json` pointer to resolve the version prefix, then reading the views under that prefix" ([VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7). The default data-cache TTL is 3600 seconds; 1-day ISR routes such as repo / categories / OG use the daily base read entry (86400 seconds), so a pointer fetch does not shorten the route TTL. The pointer fetch carries a shared tag, and publish / rollback invalidate it actively; every in-process memo, however long the data-cache TTL, is limited by the 60-second visibility SLA. This step is **encapsulated in `web/lib/data/`**, component argument shapes stay the same, and it is **transparent to pages**; the "live first, fall back to base" semantics are kept ([DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11).
 
 ---
 
-## 5. 动效
+## 4. Zero Client JS Content Pages
 
-全部纯 CSS、零 JS（[DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §动效），token 已落在 `web/app/globals.css`：
+### 4.1 Charts = server-rendered SVG / DOM
 
-| 动效 | 实现（globals.css） | 备注 |
+Content pages have **0 client JS** ([REQUIREMENTS](./REQUIREMENTS.md) §7, [ARCHITECTURE](./ARCHITECTURE.md) performance strategy, [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §zero client JS constraint). All charts emit markup on the server, and motion is pure CSS:
+
+| Chart | Component (`web/app/_explore/`) | Form | Motion (CSS, reduced-motion pins the end state) |
+|---|---|---|---|
+| Star curve | `StarCurve.tsx` | Server SVG `<path>` (line + area gradient) + milestone gold dots + a mono year axis | `.curve-line` `stroke-dashoffset` draw + `.curve-area` fade-in |
+| Calendar/month heatmap | `Heatmap.tsx` | DOM grid + `color-mix` intensity (cool gray→bright gold, not GitHub green) | `animate-rise` stagger |
+| Year spine (home) | inline in `page.tsx` (`.spine-bar-y`) | DOM bars, height `--h=gained/max` | `grow-y` spring growth |
+| Month spine (year ranking) | inline in `rankings/[year]/page.tsx` (`.spine-bar`) | DOM bars, width `--w` | `grow` spring growth |
+| Ranking rows | `RankingList.tsx` | Ordered list + right-aligned mono metrics | `animate-rise` stagger |
+
+> SVG/DOM charts are all RSC (no `"use client"`), which meets the constraint. The org aggregate curve reuses `StarCurve` (the `curve` shape of `entity/org` is the same as repo). Extracting `YearSpine` as a component for home/pulse reuse is an optional optimization.
+
+### 4.2 Allowed client JS (three exceptions)
+
+[DESIGN-SYSTEM](./DESIGN-SYSTEM.md) specifies explicit exceptions: an anti-flicker inline script (theme + lang), the theme-toggle button, and PWA SW registration (`RegisterSW.tsx` + `manifest.ts`). These are all tiny and do not render body content.
+
+| Client JS | File | Nature | DESIGN-SYSTEM exception |
+|---|---|---|---|
+| Anti-FOUC theme script | `layout.tsx`: `themeInit` const `:56`, inline `<script dangerouslySetInnerHTML>` `:67` | Before paint, read `localStorage.theme` and set `data-theme` + `theme-color` | ① |
+| Theme toggle button | `components/ThemeToggle.tsx` (`"use client"`) | Writes `data-theme` + `localStorage` + syncs `meta[theme-color]`; icons show/hide via CSS | ② |
+| Service Worker registration (PWA) | `_explore/RegisterSW.tsx` (`"use client"`) | Registers `/sw.js` (failure is silent) + `manifest.ts` | ③ (PWA standalone) |
+
+- These are all tiny and do not render content-page body text → they do not break "zero client JS for body text, and crawlers get the full HTML" ([SEO](./SEO.md) §3a).
+- `<html suppressHydrationWarning>` (`layout.tsx:65`) works with the theme script to avoid hydration warnings.
+
+---
+
+## 5. Motion
+
+All pure CSS, zero JS ([DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §Motion), and the tokens already live in `web/app/globals.css`:
+
+| Motion | Implementation (globals.css) | Notes |
 |---|---|---|
-| **跨文档页面转场** | `@view-transition { navigation: auto; }`（`globals.css:263`） | 纯 CSS 零 JS；浏览器不支持时无害降级 |
-| 路由淡入 | `template.tsx` 重挂载 + `.page-enter`（`globals.css:231`，`--animate-page` `:171`） | template 每次导航重挂、CSS 动画自然重放 |
-| 入场 rise | `--animate-rise`（`:168`）+ `rise` keyframe（`:174`）+ `animation-delay` stagger | 标题 / 榜单行 / 热力格 |
-| 弹簧 | `--ease-spring`（CSS `linear()` 预计算关键点，`globals.css:132`） | bar 生长 / hover 抬升 / active 回弹 |
-| emphasized 缓动 | `--ease-emphasized`（`cubic-bezier(0.2,0,0,1)`，`globals.css:131`） | 主题/颜色过渡、淡入 |
-| 曲线绘制 | `.curve-line`（`:250`）/ `.curve-area`（`:256`） | `stroke-dashoffset` 描绘 + 面积淡入 |
-| 状态脉冲 | `--animate-status`（`:170`）/ `status-pulse` keyframe（`:190`） | `/pulse` 的"在涨"状态点 |
+| **Cross-document page transition** | `@view-transition { navigation: auto; }` (`globals.css:263`) | Pure CSS, zero JS; harmless degradation when the browser does not support it |
+| Route fade-in | `template.tsx` remount + `.page-enter` (`globals.css:231`, `--animate-page` `:171`) | template remounts on every navigation, and the CSS animation naturally replays |
+| Entrance rise | `--animate-rise` (`:168`) + `rise` keyframe (`:174`) + `animation-delay` stagger | Titles / ranking rows / heatmap cells |
+| Spring | `--ease-spring` (CSS `linear()` precomputed keypoints, `globals.css:132`) | bar growth / hover lift / active rebound |
+| emphasized easing | `--ease-emphasized` (`cubic-bezier(0.2,0,0,1)`, `globals.css:131`) | Theme/color transitions, fade-in |
+| Curve drawing | `.curve-line` (`:250`) / `.curve-area` (`:256`) | `stroke-dashoffset` draw + area fade-in |
+| Status pulse | `--animate-status` (`:170`) / `status-pulse` keyframe (`:190`) | the "rising" status dot on `/pulse` |
 
-**reduced-motion 兜底（强制，`globals.css:275`）**：全局关 animation/transition，并把动画终态钉死（`.spine-bar` 直接 `scaleX(var(--w))`、`.curve-line` `stroke-dashoffset:0`、`.curve-area` `opacity:1`），保证无动效时布局与终态正确。新增组件的入场动画**必须**在此块补对应终态钉死。
+**reduced-motion fallback (mandatory, `globals.css:275`)**: globally turn off animation/transition, and pin the animation end state (`.spine-bar` directly `scaleX(var(--w))`, `.curve-line` `stroke-dashoffset:0`, `.curve-area` `opacity:1`), so layout and the end state stay correct with no motion. Entrance animations of new components **must** add the corresponding pinned end state in this block.
 
-> 弹簧曲线关键点 build 期预计算（[DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 落地清单）——现 `globals.css` 是手写快照，生成器落地后替换。
+> Spring-curve keypoints are precomputed at build time ([DESIGN-SYSTEM](./DESIGN-SYSTEM.md) implementation checklist)——`globals.css` is currently a handwritten snapshot, to be replaced after the generator lands.
 
 ---
 
-## 6. 组件架构
+## 6. Component Architecture
 
-### 6.1 现有组件清单（`web/app`）
+### 6.1 Existing component inventory (`web/app`)
 
-| 组件 | 文件 | 类型 | 角色 |
+| Component | File | Type | Role |
 |---|---|---|---|
-| 顶栏 Top App Bar | `_explore/Chrome.tsx` | RSC + islands | sticky 毛玻璃栏：logo（金★ + wordmark）+ 可选 tag pill + 搜索框（SearchBox）+ 导航（Pulse / Rankings · Categories `md+` · Compare `sm+` · About `sm+`）+ 语言/主题切换；Chrome 壳服务端渲染，SearchBox/LanguageSwitcher/ThemeToggle 水合 |
-| 全站搜索 SearchBox | `_explore/SearchBox.tsx` | **Client island** | 导航栏搜索框；首次聚焦以浏览器 revalidation 语义懒加载 `/search-index`，description 在 route 层截短，MiniSearch 建索引和查询在 Web Worker 内执行（prefix/fuzzy 0.2/按 stars 加权）。多动作结果使用命名的非模态 `dialog` + 普通 `list`：↑↓ 移动真实焦点，Enter 打开结果，Esc 关闭并把焦点还给输入框，Tab 保持原生链接→比较按钮顺序；比较选择只由按钮 `aria-pressed` 表达。失败重试用 cache reload，并中止/丢弃旧请求。每条结果带「+对比」勾选 + 底部「对比 N 个 →」跳 `/compare?repos=...`（行点击仍跳 repo） |
-| 分享 ShareButton | `_explore/ShareButton.tsx` | **Client** | 复制链接 + X 分享 intent；7 语 `share.*` chrome i18n；接 repo / 榜单月周 / 年页。榜单页另有动态 OG 卡（`rankings/[year]/[period]/opengraph-image.tsx` + `[year]/opengraph-image.tsx`，共享 `lib/og-card.tsx`） |
-| 月度叙事 Narrative | `_explore/Narrative.tsx` | RSC | 月榜顶部 7 语叙事；服务端一次渲染各 locale 文本，由 `html[lang]` CSS 显示当前语言。文案由月页**渲染时**用确定性模板（`lib/narrative.ts`）从榜单数据现拼——**无 AI / 无产物** |
-| 榜单 RankingList | `_explore/RankingList.tsx` | RSC | 有序列表，`variant: "gained"|"rate"|"crossed"`；行 = 金色名次 + mono repo 名 + 语言/计数 pill + 右对齐指标；整行 `<Link>`→repo 页；总榜双栏使用固定行高和单行截断，保证相同条数时两边高度一致 |
-| 热力图 Heatmap | `_explore/Heatmap.tsx` | RSC | DOM 网格 + `color-mix` 强度；可选 `href` 包 `<Link>`；`square`/`columns` 控日历布局 |
-| Star 曲线 StarCurve | `_explore/StarCurve.tsx` | RSC | 服务端 SVG 面积图 + 里程碑金点 + 拐点标记点（三级色点 + `<title>` tooltip，零 JS）+ `role="img"` + aria-label |
-| 对比曲线 CompareCurve | `_explore/CompareCurve.tsx` | **Client** | 多条折线叠图 + 图例（色块+full_name+星数）+ 共享 y 轴 + **absolute↔对齐到 10k 切换**；纯核心归一化在 `lib/compare/core.ts` |
-| 面包屑 Breadcrumbs | `_explore/Breadcrumbs.tsx` | RSC | 默认语言服务端渲染；Home→年→月 / Home→owner→repo 等 + `BreadcrumbList` JSON-LD（[SEO](./SEO.md)） |
-| 结构化数据 JsonLd | `_explore/JsonLd.tsx` | RSC | 注入 `application/ld+json`（配 `@/lib/jsonld` 的 `CollectionPage` / `ItemList` / 实体 builder） |
-| 页脚 Footer | `_explore/Footer.tsx` | RSC + island | 默认语言服务端渲染；构建时间戳 + LanguageSwitcher 语言小岛 |
-| Pulse 视图 PulseView | `pulse/PulseView.tsx` | RSC | 首页与 `/pulse` 共享主体：本周/本月/本年脉搏、全时巨头桥接、"历史上的今天"。可选 `includeWebsiteLd` 注入 `WebSite` JSON-LD（仅首页用） |
-| 对比客户端 CompareClient | `compare/CompareClient.tsx` | **Client** | `/compare` 页内交互层：读 URL `?repos=` → 复用搜索索引映射 id → 并发 fetch `/repo-curve` → 渲染 `CompareCurve`；多选搜索器（基于 `lib/search/core`） + chip 移除 + URL `router.replace` 同步。索引和曲线默认 revalidate；首次索引失败可原地重试，单曲线失败可 cache-bypass 重试；每一类请求均中止旧请求并拒绝 stale completion 覆盖新状态 |
-| OG 图渲染（站点 / repo / 月+周 / 年） | `opengraph-image.tsx` × 4 | RSC（next/og） | 动态生成 1200×630 PNG；`revalidate=86400`，共享 `lib/og-card.tsx`（石墨灰+金、stars 内联 SVG） |
-| 主题切换 ThemeToggle | `components/ThemeToggle.tsx` | **Client** | 交互按钮（见 §4.2） |
-| 语言切换 LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | 根据当前 route locale 与 canonical path 生成 locale URL `<a>` 链接；导航后服务端返回对应语言 HTML（§7） |
-| 页面转场 Template | `template.tsx` | RSC | 重挂载淡入容器 |
-| SW 注册 RegisterSW | `_explore/RegisterSW.tsx` | **Client** | PWA（见 §4.2） |
+| Top bar Top App Bar | `_explore/Chrome.tsx` | RSC + islands | sticky frosted-glass bar: logo (gold ★ + wordmark) + optional tag pill + search box (SearchBox) + navigation (Pulse / Rankings · Categories `md+` · Compare `sm+` · About `sm+`) + language/theme switch; the Chrome shell is server-rendered, and SearchBox/LanguageSwitcher/ThemeToggle hydrate |
+| Site-wide search SearchBox | `_explore/SearchBox.tsx` | **Client island** | Navbar search box; on first focus it lazy-loads `/search-index` with browser revalidation semantics, description is truncated at the route layer, and MiniSearch index building and queries run inside a Web Worker (prefix/fuzzy 0.2/weighted by stars). Multi-action results use a named non-modal `dialog` + a plain `list`: ↑↓ move real focus, Enter opens the result, Esc closes and returns focus to the input, and Tab keeps the native link→compare-button order; compare selection is expressed only by the button `aria-pressed`. Failure retry uses cache reload, and aborts/discards old requests. Each result has a "+compare" checkbox + a bottom "compare N →" that goes to `/compare?repos=...` (a row click still goes to the repo) |
+| Share ShareButton | `_explore/ShareButton.tsx` | **Client** | Copy link + X share intent; 7-language `share.*` chrome i18n; wired to repo / ranking month-week / year pages. Ranking pages also have a dynamic OG card (`rankings/[year]/[period]/opengraph-image.tsx` + `[year]/opengraph-image.tsx`, sharing `lib/og-card.tsx`) |
+| Monthly narrative Narrative | `_explore/Narrative.tsx` | RSC | A 7-language narrative at the top of the month ranking; the server renders each locale's text once, and `html[lang]` CSS shows the current language. Copy is assembled at month-page **render time** by a deterministic template (`lib/narrative.ts`) from ranking data——**no AI / no artifact** |
+| Ranking RankingList | `_explore/RankingList.tsx` | RSC | Ordered list, `variant: "gained"|"rate"|"crossed"`; a row = gold rank + mono repo name + language/count pill + right-aligned metric; the whole row is `<Link>`→the repo page; the overall ranking's two columns use a fixed row height and single-line truncation, so both sides are the same height when the count is the same |
+| Heatmap Heatmap | `_explore/Heatmap.tsx` | RSC | DOM grid + `color-mix` intensity; an optional `href` wraps `<Link>`; `square`/`columns` control the calendar layout |
+| Star curve StarCurve | `_explore/StarCurve.tsx` | RSC | Server SVG area chart + milestone gold dots + inflection marker dots (three-level color dots + `<title>` tooltip, zero JS) + `role="img"` + aria-label |
+| Compare curve CompareCurve | `_explore/CompareCurve.tsx` | **Client** | Multiple overlaid polylines + a legend (color swatch+full_name+star count) + a shared y axis + **absolute↔align-to-10k toggle**; pure-core normalization is in `lib/compare/core.ts` |
+| Breadcrumbs Breadcrumbs | `_explore/Breadcrumbs.tsx` | RSC | Default-language server rendering; Home→year→month / Home→owner→repo and others + `BreadcrumbList` JSON-LD ([SEO](./SEO.md)) |
+| Structured data JsonLd | `_explore/JsonLd.tsx` | RSC | Injects `application/ld+json` (with `@/lib/jsonld`'s `CollectionPage` / `ItemList` / entity builder) |
+| Footer Footer | `_explore/Footer.tsx` | RSC + island | Default-language server rendering; build timestamp + a LanguageSwitcher language island |
+| Pulse view PulseView | `pulse/PulseView.tsx` | RSC | Shared body of the home page and `/pulse`: this-week/this-month/this-year pulse, an all-time-giants bridge, and "on this day in history". Optional `includeWebsiteLd` injects `WebSite` JSON-LD (home only) |
+| Compare client CompareClient | `compare/CompareClient.tsx` | **Client** | In-page interaction layer of `/compare`: read URL `?repos=` → reuse the search index to map ids → concurrently fetch `/repo-curve` → render `CompareCurve`; a multi-select searcher (based on `lib/search/core`) + chip removal + URL `router.replace` sync. The index and curves revalidate by default; a first index failure can retry in place, and a single curve failure can retry with cache-bypass; every class of request aborts the old request and refuses to let a stale completion overwrite the new state |
+| OG image rendering (site / repo / month+week / year) | `opengraph-image.tsx` × 4 | RSC (next/og) | Dynamically generates a 1200×630 PNG; `revalidate=86400`, sharing `lib/og-card.tsx` (graphite gray+gold, stars inline SVG) |
+| Theme toggle ThemeToggle | `components/ThemeToggle.tsx` | **Client** | Interactive button (see §4.2) |
+| Language switch LanguageSwitcher | `components/LanguageSwitcher.tsx` | **Client** | Generates locale URL `<a>` links from the current route locale and canonical path; after navigation the server returns HTML in the corresponding language (§7) |
+| Page transition Template | `template.tsx` | RSC | Remount fade-in container |
+| SW registration RegisterSW | `_explore/RegisterSW.tsx` | **Client** | PWA (see §4.2) |
 
-> 面包屑 / 页脚 / 语言切换为共享组件；上下页导航 / 脊柱部分仍内联在各 page.tsx（见 §6.3）。
+> Breadcrumbs / footer / language switch are shared components; prev-next navigation / the spine are still inlined in each page.tsx (see §6.3).
 
-### 6.2 server-by-default 原则
+### 6.2 server-by-default principle
 
-- **内容主体永远 RSC**：rank lists、heatmaps、repo 主体、org 主体、星曲线（StarCurve）等承载数据的图与表全部服务端渲染、零客户端 JS。
-- **客户端组件仅限交互小岛**：SearchBox / ShareButton / CompareCurve+CompareClient / ThemeToggle / LanguageSwitcher / RegisterSW。Chrome / Footer / Breadcrumbs / `<T>` 已服务端化；Narrative 是服务端组件，用 `html[lang]` CSS 在已渲染的 locale 文本间切换。完整清单与判定规则见 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) "客户端 JS 例外清单"。
-- 新增页面前先确认所选交互无法纯 CSS / 服务端实现，再引入 client component；最低限度不能让内容主体（rank list / heatmap / star curve）变 client。
+- **The content body is always RSC**: rank lists, heatmaps, the repo body, the org body, the star curve (StarCurve), and other data-bearing charts and tables are all server-rendered, with zero client JS.
+- **Client components are limited to interaction islands**: SearchBox / ShareButton / CompareCurve+CompareClient / ThemeToggle / LanguageSwitcher / RegisterSW. Chrome / Footer / Breadcrumbs / `<T>` are already server-side; Narrative is a Server Component and uses `html[lang]` CSS to switch among already-rendered locale texts. The full inventory and decision rules are in [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) "client JS exception list".
+- Before adding a page, first confirm the chosen interaction cannot be done in pure CSS / on the server, then introduce a client component; at minimum do not let the content body (rank list / heatmap / star curve) become client.
 
-### 6.3 共享组件目录
+### 6.3 Shared component catalog
 
-| 组件 | 位置 | 用途 / 复用 |
+| Component | Location | Use / reuse |
 |---|---|---|
-| `Breadcrumbs` | `_explore/` | Home→年→月 / Home→owner→repo（[SEO](./SEO.md) §6.7） |
-| `Footer` | `_explore/` | 页脚导航 + 语言切换落点 |
-| `layout-tokens.ts` | `_explore/` | 共享页面横向 gutter：`PAD_X = px-[clamp(1.25rem,5vw,2.5rem)]`，对齐 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) 锁定基线 |
-| `LanguageSwitcher` | `components/` | 当前语言 + 下拉切其它语言；en/ja/zh/zh-TW/ko/es/fr；每项是对应 locale URL 的普通链接 |
-| `JsonLd` | `_explore/` | 注入 `CollectionPage`、`ItemList`、repo/org 实体等 JSON-LD |
-| `PrevNext`（`NavArrow`/`MonthArrow`） | 内联 | 上下月 / 上下年 / 上下周（年/月/周页）—— 可抽组件 |
-| `EntityCard` | 内联 | repo/org 卡片（pulse / rankings）—— 可抽组件 |
-| `YearSpine` | 内联 | 首页脊柱（首页 / pulse）—— 可抽组件 |
+| `Breadcrumbs` | `_explore/` | Home→year→month / Home→owner→repo ([SEO](./SEO.md) §6.7) |
+| `Footer` | `_explore/` | Footer navigation + the language-switch landing point |
+| `layout-tokens.ts` | `_explore/` | Shared page horizontal gutter: `PAD_X = px-[clamp(1.25rem,5vw,2.5rem)]`, aligned to the [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) locked baseline |
+| `LanguageSwitcher` | `components/` | Current language + a dropdown to switch to the other languages; en/ja/zh/zh-TW/ko/es/fr; each item is a plain link to the corresponding locale URL |
+| `JsonLd` | `_explore/` | Injects JSON-LD such as `CollectionPage`, `ItemList`, and repo/org entities |
+| `PrevNext` (`NavArrow`/`MonthArrow`) | inline | Prev/next month / prev/next year / prev/next week (year/month/week pages)—— can be extracted as a component |
+| `EntityCard` | inline | repo/org cards (pulse / rankings)—— can be extracted as a component |
+| `YearSpine` | inline | Home spine (home / pulse)—— can be extracted as a component |
 
-### 6.4 组件 ↔ JSON 契约映射
+### 6.4 Component ↔ JSON contract mapping
 
-| 组件 | 入参来源（DATA-CONTRACTS） |
+| Component | Argument source (DATA-CONTRACTS) |
 |---|---|
-| `RankingList` | `rank.items`（`{rank,id,value,prev_rank}`）**join** `lookup/*` 后的行（见 §3.4）；`prev_rank` 驱动 ↑↓/进出 TOP |
-| `StarCurve` | `entity/repo.curve.monthly`（`[period,adds,total_end]`）取 `total_end` 为 `total`；`milestones` 只读 `entity/repo.milestones.crossed_10k/50k/100k` 的冻结精确日期，150k+ 等无冻结字段的阈值不从曲线反推；`inflections` 来自 `entity.inflections`（period→monthIndex 映射）；尾部接 `curve.recent_daily` |
-| `CompareCurve` | 客户端从 `/repo-curve?id=` 并发取（[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.15）；`points=[period,total]` 画线，`crossed_10k` 供「对齐到 10k」x 轴重映；归一化/配色在 `lib/compare/core.ts` |
-| `Heatmap` | `heatmap/{scope}/{period}.cells`（`[date|period, 总量]`）；当月合并 `current_month.json.daily_totals` |
-| 脊柱（YearSpine） | `hot-snapshot.home.year_spine`（`[year, 总量]`） |
+| `RankingList` | rows after `rank.items` (`{rank,id,value,prev_rank}`) **join** `lookup/*` (see §3.4); `prev_rank` drives ↑↓/enter-leave TOP |
+| `StarCurve` | `entity/repo.curve.monthly` (`[period,adds,total_end]`) takes `total_end` as `total`; `milestones` reads only the frozen exact dates of `entity/repo.milestones.crossed_10k/50k/100k`, and thresholds such as 150k+ with no frozen field are not reverse-inferred from the curve; `inflections` come from `entity.inflections` (period→monthIndex mapping); the tail appends `curve.recent_daily` |
+| `CompareCurve` | The client fetches concurrently from `/repo-curve?id=` ([DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.15); `points=[period,total]` draws the line, and `crossed_10k` is for "align to 10k" x-axis remapping; normalization/colors are in `lib/compare/core.ts` |
+| `Heatmap` | `heatmap/{scope}/{period}.cells` (`[date|period, total]`); the current month merges `current_month.json.daily_totals` |
+| Spine (YearSpine) | `hot-snapshot.home.year_spine` (`[year, total]`) |
 
-> ⚠️ `entity/repo.curve.recent_daily` 可为负（取消 star，[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5）；`StarCurve` 取 `curve.monthly.total_end`（累计）作 `total`，仍按单增假设画轴/area——真实曲线尾部 net 段回落时需确认渲染正确；`max` 应取序列实际最大值。
+> ⚠️ `entity/repo.curve.recent_daily` may be negative (unstar, [DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5); `StarCurve` takes `curve.monthly.total_end` (cumulative) as `total`, and still draws the axis/area under a monotonic-increase assumption——when the real curve's tail net segment falls back, rendering correctness needs to be confirmed; `max` should take the sequence's actual maximum.
 
 ---
 
-## 7. i18n 实现
+## 7. i18n Implementation
 
-### 7.1 翻译边界（[PRODUCT](./PRODUCT.md) i18n / [SEO](./SEO.md) §10）
+### 7.1 Translation boundary ([PRODUCT](./PRODUCT.md) i18n / [SEO](./SEO.md) §10)
 
-| 翻译 | 不翻译（数据语言中立） |
+| Translated | Not translated (data is language-neutral) |
 |---|---|
-| UI chrome（顶栏 / 按钮 / 标签）、导航、年度标签、About 正文、**meta + OG 文案**、面包屑名 | repo 名、owner/org login、描述、语言、topic、**所有数字** |
+| UI chrome (top bar / buttons / labels), navigation, year labels, About body, **meta + OG copy**, breadcrumb names | repo names, owner/org login, descriptions, languages, topics, **all numbers** |
 
-> 这条直接决定字典只覆盖"界面词"，不碰任何来自 JSON 视图的数据字段。
+> This directly decides that the dictionary covers only "UI words", and does not touch any data field that comes from a JSON view.
 
-### 7.2 字典（手写；route locale 服务端选择）
+### 7.2 Dictionaries (handwritten; the route locale is chosen on the server)
 
 ```text
 web/lib/i18n/
   dictionaries/
     en.ts   ja.ts   zh.ts   zh-tw.ts   ko.ts   es.ts   fr.ts
-  index.ts                       # getDictionary(locale) — 懒加载字典
-  client.tsx                     # server-safe fallback helper；页面应优先使用 route dictionary
-  client-runtime.tsx             # "use client" I18nProvider / useDict / useChrome（仅交互工具兜底，不包内容页）
-  server.ts                      # ⚠️ 弃用：getPreferredDictionary 读 cookie 会破坏静态；勿在 page/layout 调用
+  index.ts                       # getDictionary(locale) — lazy-load dictionaries
+  client.tsx                     # server-safe fallback helper; pages should prefer the route dictionary
+  client-runtime.tsx             # "use client" I18nProvider / useDict / useChrome (only a fallback for interaction tools, and does not wrap content pages)
+  server.ts                      # ⚠️ deprecated: getPreferredDictionary reading the cookie breaks static; do not call it in page/layout
 ```
 
 ```ts
-// web/lib/i18n/index.ts（示意）
+// web/lib/i18n/index.ts (illustrative)
 const dicts = { en, ja, zh, "zh-TW": zhTw, ko, es, fr } as const;
 export type Locale = keyof typeof dicts;
 export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 ```
 
-- `(en)/layout.tsx` 与 `(localized)/[locale]/layout.tsx` 选择 `<html lang>` 并把 route locale / dictionary 传入共享 shell；页面和 chrome 不读 cookie。
-- chrome 文本节点使用 route dictionary；`Chrome`/`Footer`/`Breadcrumbs` 接收 locale 与 dictionary 后服务端渲染当前语言。Pulse 页面文案走 `nav.pulse` / `pulse.*`，避免旧“trending”命名继续混淆编辑语义。**数据**（数字/日期/repo 名）语言无关，按源数据服务端渲染进静态 / ISR HTML。
-- 客户端 i18n resolver 缺键时先回退英文 `en[path]`，只有英文也缺失或路径指向对象节点时才返回原始 path，避免局部字典漏项直接暴露给用户。
-- `LanguageSwitcher` 展示当前 route locale，下拉项是对应 locale URL 的 `<a>` 链接；不写 cookie、不派发 `gsc:localechange`、不在客户端翻译当前页。`/api/lang` 仍保留为兼容入口：写 `gsc_lang` 后重定向到 locale URL。
-- SEO title/description、JSON-LD、FAQ、面包屑与确定性 narrative 随 route locale 由服务端选择；canonical 指当前 locale 自身 URL，`hreflang` / `x-default` 由 `pageMeta()` 输出。
+- `(en)/layout.tsx` and `(localized)/[locale]/layout.tsx` choose `<html lang>` and pass the route locale / dictionary into the shared shell; pages and chrome do not read the cookie.
+- Chrome text nodes use the route dictionary; `Chrome`/`Footer`/`Breadcrumbs` receive the locale and dictionary and then server-render the current language. Pulse page copy goes through `nav.pulse` / `pulse.*`, so the old "trending" name does not keep confusing editorial meaning. **Data** (numbers/dates/repo names) is language-independent and is server-rendered into static / ISR HTML from the source data.
+- When the client i18n resolver misses a key it first falls back to English `en[path]`, and returns the raw path only when English is also missing or the path points at an object node, so a partial dictionary gap is not exposed directly to the user.
+- `LanguageSwitcher` shows the current route locale, and dropdown items are `<a>` links to the corresponding locale URL; it does not write a cookie, does not dispatch `gsc:localechange`, and does not translate the current page on the client. `/api/lang` remains as a compatibility entry: after writing `gsc_lang` it redirects to the locale URL.
+- SEO title/description, JSON-LD, FAQ, breadcrumbs, and the deterministic narrative are chosen on the server with the route locale; canonical points at the current locale's own URL, and `hreflang` / `x-default` are emitted by `pageMeta()`.
 
 ### 7.3 canonical / hreflang（Metadata API）
 
-服务器端多语言 URL 已落地：调用 `pageMeta()` 时传入 locale、无语言前缀的 canonical path、localized title / description；helper 负责生成当前 locale canonical、`og:url`、`og:locale` 与完整 `hreflang` 矩阵（含 `x-default` -> English 无前缀 URL）。页面正文、metadata、sitemap 与语言切换导航都以 locale URL 为准。
+Server-side multilingual URLs have landed: when calling `pageMeta()`, pass the locale, the language-prefixless canonical path, and the localized title / description; the helper generates the current locale canonical, `og:url`, `og:locale`, and the full `hreflang` matrix (including `x-default` -> English prefixless URL). Page body, metadata, the sitemap, and language-switch navigation all take the locale URL as authoritative.
 
 ```ts
 return pageMeta({
@@ -463,61 +463,61 @@ return pageMeta({
 });
 ```
 
-- `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`（[OPS](./OPS.md) 环境变量 / [SEO](./SEO.md) §2）以适配预览/生产。
+- `metadataBase` reads `NEXT_PUBLIC_SITE_URL` ([OPS](./OPS.md) environment variables / [SEO](./SEO.md) §2) to fit preview/production.
 
 ---
 
-## 8. 与现有 app 的具体接点
+## 8. Concrete touchpoints with the existing app
 
-> 把上面落到"动现有哪些文件"。**本文是 spec，不写应用代码**。
+> Land the above onto "which existing files to touch". **This document is a spec and does not write application code**.
 
-1. **数据层**：`web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch Blob + parse + `cache()`）是页面读 JSON 视图的唯一入口。
-2. **段配置**：`rankings/[year]`/`[period]` 预渲染当前年/月 + `dynamicParams`;repo/org `generateStaticParams() => []` 转按需 ISR;未知 param `notFound()`。
-3. **`web/proxy.ts` / `next.config.ts`**：proxy 负责 `/en/*` 规范化与 cookie/header 偏好重定向；`next.config.ts` 不做旧路径形态兼容重定向。
-4. **页面**：`(en)` 与 `(localized)/[locale]` 两套路由组调用 `_localized/*` 共享实现，覆盖 `pulse`/`rankings`/`rankings/[year]`/`[period]`/`[owner]/[name]`/`o/[login]`/`categories`/`compare`。
-5. **i18n**：route-locale 服务端渲染（机制见 §7，渲染模式见 §2.5）。
-6. **SEO 配套**：`app/sitemap.xml/route.ts`、`app/sitemap-*.xml/route.ts`、`app/robots.ts`、各页 `generateMetadata`、JSON-LD。
-7. **cron route**：`app/api/cron/{daily,weekly}`（`revalidatePath` + `CRON_SECRET`）；endpoint contract 见 [API.md](./API.md)。
-8. **共享组件 / token helper**：`Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` 抽成共享组件；页面横向 padding 统一经 `_explore/layout-tokens.ts` 的 `PAD_X` 使用锁定基线 clamp 值；`PrevNext`/`EntityCard`/`YearSpine` 仍内联（§6.3）。
+1. **Data layer**: `web/lib/contracts/` (Zod) + `web/lib/data/` (fetch Blob + parse + `cache()`) is the only entry for pages to read JSON views.
+2. **Segment config**: `rankings/[year]`/`[period]` prerender the current year/month + `dynamicParams`;repo/org `generateStaticParams() => []` switch to on-demand ISR; an unknown param calls `notFound()`.
+3. **`web/proxy.ts` / `next.config.ts`**: proxy handles `/en/*` canonicalization and cookie/header preference redirects; `next.config.ts` does not do compatibility redirects for old path shapes.
+4. **Pages**: the `(en)` and `(localized)/[locale]` route groups both call the `_localized/*` shared implementations, covering `pulse`/`rankings`/`rankings/[year]`/`[period]`/`[owner]/[name]`/`o/[login]`/`categories`/`compare`.
+5. **i18n**: route-locale server rendering (mechanism in §7, rendering mode in §2.5).
+6. **SEO companion pieces**: `app/sitemap.xml/route.ts`, `app/sitemap-*.xml/route.ts`, `app/robots.ts`, each page's `generateMetadata`, and JSON-LD.
+7. **cron route**: `app/api/cron/{daily,weekly}` (`revalidatePath` + `CRON_SECRET`); the endpoint contract is in [API.md](./API.md).
+8. **Shared components / token helper**: `Breadcrumbs`/`Footer`/`LanguageSwitcher`/`JsonLd` are extracted as shared components; page horizontal padding uniformly uses the locked baseline clamp value via `PAD_X` in `_explore/layout-tokens.ts`; `PrevNext`/`EntityCard`/`YearSpine` stay inline (§6.3).
 
 ---
 
-## 9. 当前已知开口
+## 9. Currently known openings
 
-| # | 项目 | 当前状态 |
+| # | Item | Current status |
 |---|---|---|
-| **D** | **StarCurve 非单调曲线渲染** | `entity/repo.curve.recent_daily` 可为负（取消 star,[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5）;`StarCurve` 取 `curve.monthly.total_end` 累计作 `total`,需确认曲线尾部回落时 y 轴/area 渲染正确（`max` 取序列实际最大值） |
-| **I** | **`_explore/` 命名** | 组件位于 `app/_explore/`（Next.js private folder 约定）,沿用现状 |
+| **D** | **StarCurve non-monotonic curve rendering** | `entity/repo.curve.recent_daily` may be negative (unstar,[DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5);`StarCurve` takes the cumulative `curve.monthly.total_end` as `total`, and needs confirmation that y-axis/area rendering is correct when the curve tail falls back (`max` takes the sequence's actual maximum) |
+| **I** | **`_explore/` naming** | Components live in `app/_explore/` (Next.js private folder convention), and the status quo is kept |
 
 ---
 
-## 10. 不变量核对清单（前端层）
+## 10. Invariant checklist (frontend layer)
 
-**路由**
-- 周榜 `/rankings/[year]/W[week]` 独立、与月榜共用 `[period]` 并按 `W` 前缀消歧
-- org `/o/[login]`、repo `/[owner]/[name]`、总榜 `/rankings`、脉搏 `/pulse`
-- i18n URL：English 无前缀；ja/zh/zh-TW/ko/es/fr 使用前缀 URL；`/en/*` 308 到无前缀 English；支持完整 `hreflang` / `x-default` 矩阵
+**Routing**
+- The week ranking `/rankings/[year]/W[week]` is standalone, shares `[period]` with the month ranking, and disambiguates by the `W` prefix
+- org `/o/[login]`, repo `/[owner]/[name]`, overall ranking `/rankings`, pulse `/pulse`
+- i18n URLs: English has no prefix; ja/zh/zh-TW/ko/es/fr use prefixed URLs; `/en/*` 308s to prefixless English; the full `hreflang` / `x-default` matrix is supported
 
-**分层 ↔ 配置**
-- `cacheComponents` 保持关闭（`next.config.ts` 注释说明）
-- `rankings/[year]`/`[period]` 用 `generateStaticParams` 预渲染当年/当月 + `dynamicParams`
-- 数据变更靠 cron `revalidatePath`；`app/api/cron/{daily,weekly}` 带 `CRON_SECRET` 鉴权
-- 渲染模式：route locale + 服务端本地化 HTML（§2.5）→ 构建路由表保持 `○` 静态 / `●` SSG 按需 ISR
+**Layering ↔ config**
+- `cacheComponents` stays off (the `next.config.ts` comment explains it)
+- `rankings/[year]`/`[period]` use `generateStaticParams` to prerender the current year/current month + `dynamicParams`
+- Data changes rely on cron `revalidatePath`; `app/api/cron/{daily,weekly}` authenticate with `CRON_SECRET`
+- Rendering mode: route locale + server-localized HTML (§2.5) → the build route table stays `○` static / `●` SSG on-demand ISR
 
-**数据消费**
-- `web/lib/contracts/`（Zod）+ `web/lib/data/`（fetch+parse+`cache()`）是页面读 JSON 视图的唯一入口
-- 榜单走 lookup-join（rank item + `lookup/*`）；未知 param → `notFound()`
-- 每日视图读取带 `?v=<date>` cache-bust；`meta.schema_ver` 启动校验
+**Data consumption**
+- `web/lib/contracts/` (Zod) + `web/lib/data/` (fetch+parse+`cache()`) is the only entry for pages to read JSON views
+- Rankings use lookup-join (rank item + `lookup/*`); an unknown param → `notFound()`
+- Daily view reads carry `?v=<date>` cache-bust; `meta.schema_ver` is checked at startup
 
-**零客户端 JS**
-- 内容页**数据正文与 chrome 壳**服务端渲染（图表服务端 SVG/DOM）；只允许明确交互小岛水合：SearchBox、ShareButton、ThemeToggle、LanguageSwitcher、RegisterSW，以及 `/compare` 的 CompareClient/CompareCurve
-- 新增入场动画在 `prefers-reduced-motion` 块补终态钉死
+**Zero client JS**
+- Content-page **data body and chrome shell** are server-rendered (charts are server SVG/DOM); only explicit interaction islands may hydrate: SearchBox, ShareButton, ThemeToggle, LanguageSwitcher, RegisterSW, and `/compare`'s CompareClient/CompareCurve
+- New entrance animations add a pinned end state in the `prefers-reduced-motion` block
 
 **i18n**
-- 手写字典 `web/lib/i18n/`（en/ja/zh/zh-TW/ko/es/fr）；数据字段不翻译
-- chrome 按 route locale 服务端渲染：页面传入 dictionary；`i18n/client-runtime.tsx` 仅供真正 client 工具兜底；`i18n/server.ts` 弃用
-- 各页 `pageMeta()` 以无语言前缀 canonical path 为输入，输出当前 locale canonical 与完整 `alternates.languages`
-- `metadataBase` 读 `NEXT_PUBLIC_SITE_URL`
+- Handwritten dictionaries `web/lib/i18n/` (en/ja/zh/zh-TW/ko/es/fr); data fields are not translated
+- Chrome is server-rendered by route locale: the page passes in the dictionary; `i18n/client-runtime.tsx` is only a fallback for real client tools; `i18n/server.ts` is deprecated
+- Each page's `pageMeta()` takes a language-prefixless canonical path as input, and outputs the current locale canonical and the full `alternates.languages`
+- `metadataBase` reads `NEXT_PUBLIC_SITE_URL`
 
 ---
 

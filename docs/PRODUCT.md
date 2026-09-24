@@ -10,224 +10,224 @@ source_of_truth_for:
   - i18n posture
 ---
 
-# gitstarclub 产品设计
+# gitstarclub product design
 
-> 本文档定义产品的页面、信息架构、URL 与视觉调性。架构与数据层见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+> This document defines the product's pages, information architecture, URLs, and visual tone. Architecture and the data layer are in [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Scope
 
-本文档描述**产品本身**——gitstarclub 是什么、给谁看、各页面承载什么、调性、数据诚实立场、i18n 立场。改动产品前先读此文。版本/阶段/状态属于工程进度,不在此处。当前不在范围内的能力见 [ROADMAP.md](./ROADMAP.md)。
+This document describes the **product itself**——what gitstarclub is, who it is for, what each page carries, tone, the data-honesty stance, and the i18n stance. Read this before changing the product. Version/stage/status belong to engineering progress, and are not covered here. Capabilities currently out of scope are in [ROADMAP.md](./ROADMAP.md).
 
-## 需求 ID 对照
+## Requirement ID crosswalk
 
-稳定 requirement ID 的单一来源是 [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-id--优先级--追踪矩阵)。本产品文档只记录页面/体验如何承载这些 ID；验收口径仍回到 REQUIREMENTS 的 `P0-AC*` 与测试文档。
+The single source of stable requirement IDs is [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-requirement-ids--priority--traceability-matrix). This product document only records how pages/experience carry these IDs; acceptance criteria still return to REQUIREMENTS `P0-AC*` and the test documentation.
 
 | Requirement ID | Product surface | Priority | Product responsibility |
 |---|---|---|---|
-| `REQ-CHRONICLE-001` | 首页、年/月/周榜、repo/org 页、全时榜 | P0 | 提供可回看、可内链、标注 as-of 的编年史阅读体验。 |
-| `REQ-PULSE-001` | 首页"现在在涨"区、`/pulse` | P0 | 呈现今日/本周 movers、复活/突刺与每日刷新语义。 |
-| `REQ-RANKING-001` | 年/月/周/全时榜单与派生榜 | P0 | 让 repo/org、flow/stock、growth/new 的榜单语义在页面上清晰可比。 |
-| `REQ-I18N-001` | English 无前缀 URL；ja/zh/zh-TW/ko/es/fr 前缀 URL | P0 | 本地化 chrome、metadata 和 SEO 链接，同时保持 repo 数据字段原文。 |
-| `REQ-DATAOPS-001` | 数据诚实、新鲜度、as-of/每日刷新说明 | P0 | 页面只表达已发布数据状态，不暗示请求时实时抓取或预测。 |
-| `REQ-PERF-001` | 静态内容页、低 JS、可 CDN 缓存的阅读体验 | P0 | 产品体验不得依赖客户端重绘正文或请求路径数据计算。 |
-| `REQ-SEARCH-001` | 顶栏搜索与搜索结果 "+对比" | P1 | 提供按名字直达和从搜索进入 compare 的发现入口。 |
-| `REQ-COMPARE-001` | `/compare?repos=...` | P1 | 用可分享 URL 表达多 repo 曲线对比状态。 |
-| `REQ-CATEGORY-001` | `/categories` 及分类下钻 | P1 | 支持按生态/语言/领域等维度发现 ranked repos。 |
+| `REQ-CHRONICLE-001` | Home, year/month/week rankings, repo/org pages, all-time ranking | P0 | Provide a chronicle reading experience that can be looked back on, internally linked, and marked as-of. |
+| `REQ-PULSE-001` | Home "rising now" section, `/pulse` | P0 | Present today's/this week's movers, revival/spike, and daily-refresh semantics. |
+| `REQ-RANKING-001` | Year/month/week/all-time rankings and derived rankings | P0 | Make repo/org, flow/stock, and growth/new ranking semantics clearly comparable on the page. |
+| `REQ-I18N-001` | English unprefixed URLs; ja/zh/zh-TW/ko/es/fr prefixed URLs | P0 | Localize chrome, metadata, and SEO links, while keeping repo data fields in the original text. |
+| `REQ-DATAOPS-001` | Data honesty, freshness, as-of/daily-refresh notes | P0 | Pages express only published data state, and do not imply a live fetch or a prediction at request time. |
+| `REQ-PERF-001` | Static content pages, low JS, a CDN-cacheable reading experience | P0 | The product experience must not depend on the client redrawing body text or on request-path data computation. |
+| `REQ-SEARCH-001` | Top-bar search and search-result "+compare" | P1 | Provide a discovery entry that jumps straight by name and enters compare from search. |
+| `REQ-COMPARE-001` | `/compare?repos=...` | P1 | Use a shareable URL to express multi-repo curve comparison state. |
+| `REQ-CATEGORY-001` | `/categories` and category drill-down | P1 | Support discovering ranked repos by dimensions such as ecosystem/language/domain. |
 
-## 产品定位
+## Product positioning
 
-gitstarclub 是 **开源世界的编年史 + 实时脉搏** —— 追踪约 5,302 个 ≥10k star 项目跨 12 年时间轴的两面式站点:
+gitstarclub is a **chronicle of the open-source world + a real-time pulse** —— a two-sided site tracking about 5,302 ≥10k star projects across a 12-year timeline:
 
-- **编年史面**(年/月/周/repo/org/全时榜):回看历史,内容多为冻结快照,标注 "as of 日期"。
-- **脉搏面**(`/pulse` + 首页"现在在涨"区):每日刷新,呈现谁在涨、老项目复活/突刺。
+- **Chronicle side**(year/month/week/repo/org/all-time ranking): look back at history, content is mostly frozen snapshots, marked "as of date".
+- **Pulse side**(`/pulse` + home "rising now" section): refreshed daily, showing who is rising, and old-project revival/spike.
 
-**目标用户**:对开源生态有兴趣的开发者、技术媒体、研究者——想"按时间翻阅"或"看当下动态"而不是只查单个 repo 的人。
+**Target users**: developers, tech media, and researchers interested in the open-source ecosystem——people who want to "browse by time" or "see what is happening now" rather than only look up a single repo.
 
-**数据诚实**:站点不杜撰、不预测、不情感化。每张图、每个排名都基于明确的口径(见 [RANKING.md](./RANKING.md))。冻结期标快照日期,活跃期标"每日刷新"。
+**Data honesty**: the site does not fabricate, does not predict, and does not emotionalize. Every chart and every ranking is based on an explicit definition (see [RANKING.md](./RANKING.md)). Frozen periods are marked with a snapshot date, and active periods are marked "refreshed daily".
 
-## 调性
+## Tone
 
-**Material 3 Expressive（M3E）** —— 2025 / Android 17 的设计语言：鲜明动态的色彩、富表现力的字体层级、圆润形状、弹簧动效、tonal elevation 与毛玻璃质感。
+**Material 3 Expressive (M3E)** —— the design language of 2025 / Android 17: vivid dynamic color, an expressive type hierarchy, rounded shapes, spring motion, tonal elevation, and frosted-glass texture.
 
-差异化不再靠"纸感"，而靠 **冷石墨灰中性底 + 金"星"accent + 表现力动效**：金色专属"星 / 峰值"语义，surface 走冷中性石墨灰（明确避开暖米色——那是 Claude 官网的观感）。在一众暗色极客 dashboard 里仍一眼不同，且 premium。明暗双模式（系统偏好 + 手动切换）。
+Differentiation no longer relies on "paper feel", but on a **cool graphite-gray neutral base + gold "star" accent + expressive motion**: gold is reserved for "star / peak" semantics, and surface uses cool neutral graphite gray (explicitly avoiding warm beige——that is the look of the Claude website). It is still different at a glance among the crowd of dark geek dashboards, and premium. Light and dark modes (system preference + manual toggle).
 
-### 字体
+### Fonts
 
-| 用途 | 字体 |
+| Use | Font |
 |---|---|
-| 标题 / 正文 | **Plus Jakarta Sans**（几何变量无衬线） |
-| 数字 / repo 名 | **Geist Mono** |
+| Headings / body | **Plus Jakarta Sans** (geometric variable sans-serif) |
+| Numbers / repo names | **Geist Mono** |
 
-- 标题走 M3 Display/Headline：大字号 + 重字重（700–800）、负字距，体现 M3E"强层级、即时感"
-- 正文同一家族 400/500；全站最多两个家族（无衬线 + 等宽），符合性能预算
+- Headings follow M3 Display/Headline: large size + heavy weight (700–800), negative tracking, expressing M3E "strong hierarchy, immediacy"
+- Body uses the same family at 400/500; the whole site uses at most two families (sans-serif + monospace), within the performance budget
 
-### 配色（accent = 琥珀金 `#F2A900`；surface = 冷中性石墨灰）
+### Color (accent = amber gold `#F2A900`; surface = cool neutral graphite gray)
 
-**金色仅作 accent（"星"色）**：primary / primary-container / primary-fixed-dim 是从琥珀金参考色手工调出、写在 `web/app/globals.css` 的 M3 token。**surface 与 Claude 暖米色脱钩**——改用 M3 baseline 冷中性灰（带极轻冷调），不随金 seed 染成暖色。完整 sys color roles（含 5 级 surface-container、fixed 角色、明暗两套）。
+**Gold is used only as accent ("star" color)**: primary / primary-container / primary-fixed-dim are M3 tokens hand-tuned from the amber-gold reference color and written in `web/app/globals.css`. **surface is decoupled from Claude warm beige**——switched to the M3 baseline cool neutral gray (with a very slight cool tint), and is not stained warm by the gold seed. Full sys color roles (including 5-level surface-container, fixed roles, and both light and dark sets).
 
-> 注：M3 里 `primary`（tone 40）是**深色**文字角色，**亮琥珀在 `primary-container`**；"亮金"装饰（星、峰值）用 `primary-fixed-dim`；surface / outline / inverse 用 M3 baseline 冷中性灰（与 seed 解耦，避免暖色染色 → 不撞 Claude）。
-> **完整调色板（角色 × Light/Dark × 用途，明暗两套全角色）见 [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md)。**
+> Note: in M3, `primary` (tone 40) is a **dark** text role, and **bright amber is on `primary-container`**; "bright gold" decoration (star, peak) uses `primary-fixed-dim`; surface / outline / inverse use the M3 baseline cool neutral gray (decoupled from the seed, avoiding warm staining → not colliding with Claude).
+> **The full palette (role × Light/Dark × use, both light and dark, all roles) is in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).**
 
-### 质感
+### Texture
 
-- **tonal elevation**：用 `surface-container` 的 5 个层级 + M3 阴影表达高度（取代旧"只用 hairline、不用阴影"）
-- **圆润形状**：M3 shape scale（4 / 8 / 12 / 16 / 28 / full），pill 与 squircle
-- **毛玻璃**：顶栏 / 浮层用 `backdrop-filter` 半透明（M3E 标志质感）
-- **弹簧动效**：CSS `linear()` 编码弹簧曲线 + `cubic-bezier(0.2,0,0,1)` emphasized 缓动；**内容页仍零客户端 JS**，动效纯 CSS；跨文档 **View Transitions** 做容器形变页面转场
-- 尊重 `prefers-reduced-motion`
+- **tonal elevation**: use the 5 levels of `surface-container` + M3 shadow to express height (replacing the old "hairline only, no shadow")
+- **Rounded shapes**: M3 shape scale (4 / 8 / 12 / 16 / 28 / full), pill and squircle
+- **Frosted glass**: the top bar / overlays use `backdrop-filter` translucency (the signature M3E texture)
+- **Spring motion**: CSS `linear()` encodes the spring curve + `cubic-bezier(0.2,0,0,1)` emphasized easing; **content pages still have zero client JS**, and motion is pure CSS; cross-document **View Transitions** do container-transform page transitions
+- Respect `prefers-reduced-motion`
 
-> 放弃纸感 / 衬线、放弃暖米色（避开 Claude 观感）。M3 Expressive：**石墨灰 + 星金**、鲜明动态 premium、明暗双模式。
+> Drop paper feel / serif, and drop warm beige (avoid the Claude look). M3 Expressive: **graphite gray + star gold**, vivid dynamic premium, light and dark modes.
 
-## URL 结构
+## URL structure
 
-> 下表给**用途 ↔ URL**；权威路由↔文件↔渲染层清单见 [FRONTEND.md](./FRONTEND.md) §1.1。
+> The table below gives **use ↔ URL**; the authoritative route↔file↔render-layer inventory is in [FRONTEND.md](./FRONTEND.md) §1.1.
 
-| 用途 | URL |
+| Use | URL |
 |---|---|
-| 首页 | `/` |
-| 年度页 | `/rankings/2024` |
-| 月度页 | `/rankings/2024/10` |
-| **周页** | `/rankings/2024/W42`（独立页，ISO 周） |
-| Repo 详情页 | `/:owner/:name` |
-| **Org 详情页** | `/o/:login` |
-| **全时榜** | `/rankings` |
-| **脉搏页** | `/pulse`（今日/本周大涨 + 复活/突刺） |
-| **对比页** | `/compare?repos=a/b,c/d`（多 repo 叠图，URL 即状态、可分享） |
-| 关于页 | `/about` |
+| Home | `/` |
+| Year page | `/rankings/2024` |
+| Month page | `/rankings/2024/10` |
+| **Week page** | `/rankings/2024/W42` (standalone page, ISO week) |
+| Repo detail page | `/:owner/:name` |
+| **Org detail page** | `/o/:login` |
+| **All-time ranking** | `/rankings` |
+| **Pulse page** | `/pulse` (today/this week's big rises + revival/spike) |
+| **Compare page** | `/compare?repos=a/b,c/d` (multi-repo overlaid chart; the URL is the state and is shareable) |
+| About page | `/about` |
 
-原则：**最短、可读、SEO 友好**。English 保持无前缀 URL；ja/zh/zh-TW/ko/es/fr 使用 locale 前缀 URL，并通过 canonical / `hreflang` / `x-default` 互指（见下「多语言」与 [SEO.md](./SEO.md) §10）。
+Principle: **shortest, readable, SEO-friendly**. English keeps unprefixed URLs; ja/zh/zh-TW/ko/es/fr use locale-prefixed URLs, and point at each other through canonical / `hreflang` / `x-default` (see "Multilingual" below and [SEO.md](./SEO.md) §10).
 
-## 核心页面（编年史 + 脉搏两面）
+## Core pages (chronicle + pulse, two sides)
 
-> **编年史面**：首页/年/月/周/repo/org/全时榜——回看，多为冻结 / 标 "as of 日期"。**脉搏面**：`/pulse` + 首页"现在在涨"区——每日刷新"谁在涨/老项目复活"（新鲜度模型见 [REQUIREMENTS §6](./REQUIREMENTS.md)）。
+> **Chronicle side**: home/year/month/week/repo/org/all-time ranking——look back, mostly frozen / marked "as of date". **Pulse side**: `/pulse` + the home "rising now" section——refreshed daily, "who is rising / old projects revive" (freshness model in [REQUIREMENTS §6](./REQUIREMENTS.md)).
 
-### 1. 首页 `/`
+### 1. Home `/`
 
-**目标**：作为 Pulse 首页，一眼展示当前开源世界正在变化的项目，并把访客导向本周、本月、全时榜、repo、org 与分类长尾页。
+**Goal**: as the Pulse home, show at a glance the projects currently changing in the open-source world, and direct visitors to this week, this month, the all-time ranking, repo, org, and category long-tail pages.
 
-**布局（从上到下）**：
+**Layout (top to bottom)**:
 
-1. Pulse 标题与一句话，说明本周、本月、本年正在变化的开源项目。
-2. **本月上升项目**：当前月 flow 榜，直接链接 repo 详情页。
-3. **历史上的今天 / 复活项目**：从 hot snapshot 中读取当天相关项目，作为回看入口。
-4. 导航与搜索把用户带到 `/pulse`、`/rankings`、`/categories`、`/compare`、repo 详情页与 org 详情页。
-5. 首页与 `/pulse` 共用 `PulseView`；首页额外输出 `WebSite` JSON-LD，`/pulse` 作为独立 CollectionPage。
+1. A Pulse title and a one-liner explaining the open-source projects changing this week, this month, and this year.
+2. **Projects rising this month**: the current month's flow ranking, linking directly to repo detail pages.
+3. **On this day in history / revived projects**: read that day's related projects from the hot snapshot, as a look-back entry.
+4. Navigation and search take the user to `/pulse`, `/rankings`, `/categories`, `/compare`, repo detail pages, and org detail pages.
+5. Home and `/pulse` share `PulseView`; home additionally emits `WebSite` JSON-LD, and `/pulse` is a standalone CollectionPage.
 
-### 2. 年度页 `/rankings/2024`
+### 2. Year page `/rankings/2024`
 
-**目标**：在年的尺度回顾"那一年开源世界的脉络"。
+**Goal**: at the scale of a year, look back at "that year's thread through the open-source world".
 
-**布局**：
+**Layout**:
 
-1. 年度标题
-2. **12 个月份格子**（热力图风格，3×4 或 1×12）
-   - 颜色深度 = 当月新增 star 量
-   - 点击进入月度页
-3. 年度 TOP 50 榜单
-4. 年度新晋成员（首次突破 10k 的 repo）
-5. 上下年导航 `← 2023 | 2025 →`
+1. Year title
+2. **12 month cells** (heatmap style, 3×4 or 1×12)
+   - Color depth = that month's newly added star volume
+   - Click to enter the month page
+3. Year TOP 50 ranking
+4. Year's new members (repos that first cross 10k)
+5. Previous/next year navigation `← 2023 | 2025 →`
 
-### 3. 月度页 `/rankings/2024/10`
+### 3. Month page `/rankings/2024/10`
 
-**目标**：在一页内看完"那个月开源世界发生了什么"。
+**Goal**: see, on one page, "what happened in the open-source world that month".
 
-**布局**：
+**Layout**:
 
-1. 标题 + 上下月导航（永远在顶部）
-2. 一句话总结（"这个月：约 5,302 个项目共新增 2.3M star · 47 个新晋成员"）
-3. **当月日历热力图**（31 天，看出有无爆发日）
-4. **榜单（repo 与 org 并列）**：
-   - 🔥 **当月新增 TOP**（flow）· **当月总量 TOP**（stock）— repo 维度
-   - 🏢 **当月 org 榜**（flow / stock）— 组织维度（点 org → `/o/:login`）
-   - 🚀 **当月增速 TOP**（flow ÷ 月初 stock，floor ≥ 20k）
-   - 🎂 **本月新晋**（stock 首破 10k）
-5. **上下月对比**：进入/跌出 TOP 50 的项目
-6. 内部链接：榜单里每个 repo → repo 详情页
+1. Title + previous/next month navigation (always at the top)
+2. A one-sentence summary ("This month: about 5,302 projects added 2.3M star in total · 47 new members")
+3. **That month's calendar heatmap** (31 days, to see whether there is a spike day)
+4. **Rankings (repo and org side by side)**:
+   - 🔥 **This month's newly added TOP** (flow) · **This month's total TOP** (stock) — repo dimension
+   - 🏢 **This month's org ranking** (flow / stock) — organization dimension (click org → `/o/:login`)
+   - 🚀 **This month's growth-rate TOP** (flow ÷ month-start stock, floor ≥ 20k)
+   - 🎂 **New members this month** (stock first crosses 10k)
+5. **Previous/next month comparison**: projects that entered / dropped out of TOP 50
+6. Internal links: every repo in the ranking → repo detail page
 
-### 4. Repo 详情页 `/:owner/:name`
+### 4. Repo detail page `/:owner/:name`
 
-**目标**：完整看一个项目的"一生"。
+**Goal**: see a project's whole "life".
 
-**布局**：
+**Layout**:
 
-1. 标题：`owner / name` + 一句话描述 + 当前 star
-2. 元信息条：**主语言 + 多语言构成**（按语言占比 % 的 chip，链接到 `/categories/language/<slug>`）、创建时间、上次同步时间
-3. **全历史 star 曲线**，标注关键里程碑
-4. **关键里程碑列表**：创建、首次进榜、**每 50k 一档**（50k / 100k / 150k …）、当前
-   - 每个里程碑 → 链接到对应月度页
-5. **月度表现表格**：近 N 月 新增 star + 当月排名
-   - 月份列每行都是链接到月度页
-6. 元信息：topics、GitHub 外链
+1. Title: `owner / name` + a one-line description + current star
+2. Meta strip: **primary language + language composition** (chips by language share %, linking to `/categories/language/<slug>`), created time, last sync time
+3. **Full-history star curve**, marking key milestones
+4. **Key milestone list**: created, first entered the ranking, **one tier every 50k** (50k / 100k / 150k …), current
+   - Each milestone → links to the corresponding month page
+5. **Monthly performance table**: stars added over the last N months + that month's rank
+   - Every row of the month column is a link to the month page
+6. Meta: topics, GitHub external link
 
-### 5. 周页 `/rankings/2024/W42`（独立）
+### 5. Week page `/rankings/2024/W42` (standalone)
 
-- 那一周的 repo / org 涨幅 TOP + 站点周总量；上下周导航（ISO 周）。
-- 当周为"活"页（每日刷新），过去周冻结。
+- That week's repo / org gain TOP + the site's weekly total; previous/next week navigation (ISO week).
+- The current week is a "live" page (refreshed daily); past weeks are frozen.
 
-### 6. Org 详情页 `/o/:login`
+### 6. Org detail page `/o/:login`
 
-- org 合计 star 曲线（成员聚合）+ 当前总数（as-of）。
-- 成员 repo 列表（各自 star）+ org 在各周期的名次史。
-- User 与 Organization 都有页。
+- org combined star curve (member aggregate) + current total (as-of).
+- Member repo list (each one's stars) + the org's rank history in each period.
+- Both User and Organization have a page.
 
-### 7. 全时榜 `/rankings`
+### 7. All-time ranking `/rankings`
 
-- 当前总量 TOP：**repo 榜 + org 榜**（stock 降序）。"谁最大"的总览，每日刷新。
+- Current total TOP: **repo ranking + org ranking** (stock descending). An overview of "who is largest", refreshed daily.
 
-### 8. 脉搏页 `/pulse`（此刻在涨）
+### 8. Pulse page `/pulse` (rising right now)
 
-- 今日 / 本周 **涨幅 TOP** + **复活/突刺**（老项目突然爆）。
-- 每日刷新，是"最新动态"的落点（判定口径见 [REQUIREMENTS §6](./REQUIREMENTS.md)）。
+- Today / this week **gain TOP** + **revival/spike** (an old project suddenly explodes).
+- Refreshed daily; it is where "latest activity" lands (the decision definition is in [REQUIREMENTS §6](./REQUIREMENTS.md)).
 
-### 发现入口：全站搜索
+### Discovery entry: site-wide search
 
-- **导航栏搜索框**（顶栏 chrome），覆盖**全部被追踪 repo**——「按名字直达」的发现入口，与「按时间浏览」（年/月/周）互补。
-- **客户端即时检索**：MiniSearch 在首次聚焦时懒加载版本化 `search/index.json`（经 CDN）；prefix + fuzzy typo 容错、按 stars 加权；结果直达 `/{owner}/{name}`。**零运行时后端**——无 `/search?q=` 结果页。
-- **每条搜索结果带「+对比」勾选**：勾选多条后底部出现「对比 N 个 →」按钮，跳 `/compare?repos=...`，与导航栏的对比入口及 repo 页「加入对比」按钮共同构成对比工具的三个入口。
+- **Navbar search box** (top-bar chrome), covering **all tracked repos**——a "jump by name" discovery entry, complementary to "browse by time" (year/month/week).
+- **Client-side instant search**: MiniSearch lazy-loads versioned `search/index.json` on first focus (via CDN); prefix + fuzzy typo tolerance, weighted by stars; results go directly to `/{owner}/{name}`. **Zero runtime backend**——there is no `/search?q=` results page.
+- **Each search result has a "+compare" checkbox**: after several are checked, a "Compare N →" button appears at the bottom and jumps to `/compare?repos=...`, and together with the navbar compare entry and the repo-page "Add to compare" button these form the compare tool's three entries.
 
-### 对比工具：`/compare`
+### Compare tool: `/compare`
 
-- **目标**：把已收录 repo（≥1 万星）的 star 曲线**叠在一张图**上比增长。
-- **URL 即状态**：`/compare?repos=facebook/react,vuejs/vue` 直接复现选择，链接可分享。上限 5 个。
-- **两种归一化**：绝对值（共享 y 轴的累计星数）与"对齐到 10k"（x 轴换成各自破万后的第 N 个月，比的是增长轨迹）。
-- **三个入口**：导航栏链接、repo 页「加入对比」按钮、搜索框多选 CTA（见上）。
-- **当前范围**：多 repo 对比已在范围内，但仅限已收录的 ≥1 万星 repo；索引外 repo 与低星长尾不可选。
-- **范围之外**：任意 GitHub repo 对比、≥100 星长尾下钻，以及需要数据库/查询层支持的索引外对比属未来工作（见 [ROADMAP.md](./ROADMAP.md)）。
+- **Goal**: overlay the star curves of indexed repos (≥10,000 stars) **on one chart** to compare growth.
+- **The URL is the state**: `/compare?repos=facebook/react,vuejs/vue` reproduces the selection directly, and the link is shareable. Limit of 5.
+- **Two normalizations**: absolute (cumulative stars sharing a y-axis) and "aligned to 10k" (the x-axis becomes the Nth month after each one crossed 10k, and what is compared is the growth trajectory).
+- **Three entries**: the navbar link, the repo-page "Add to compare" button, and the search-box multi-select CTA (see above).
+- **Current scope**: multi-repo compare is in scope, but only for indexed ≥10,000-star repos; repos outside the index and the low-star long tail cannot be selected.
+- **Out of scope**: comparing arbitrary GitHub repos, ≥100-star long-tail drill-down, and out-of-index compare that needs database/query-layer support are future work (see [ROADMAP.md](./ROADMAP.md)).
 
-## 排名矩阵与榜单定义
+## Ranking matrix and ranking definitions
 
-> 全矩阵 **{周/月/年/全时} × {repo/org} × {flow 新增 / stock 总量}**——定义、stock 锚定、边界见 [RANKING.md](./RANKING.md)。下面是页面上常用的派生榜：
+> The full matrix **{week/month/year/all-time} × {repo/org} × {flow new adds / stock total}**——definitions, stock anchoring, and boundaries are in [RANKING.md](./RANKING.md). Below are the derived rankings commonly used on pages:
 
-| 榜单 | 定义 | 偏向 |
+| Ranking | Definition | Bias |
 |---|---|---|
-| 当月新增 star TOP | 当月 flow（∑delta）降序 | 已成名大项目 |
-| 当月增速 TOP | `当月新增 / 月初总数` 降序，**月初总数 ≥ 20,000** 才入选 | 已有体量却仍在加速的中坚 |
-| 本月新晋 | 当月累计（stock）首次 ≥ 10000 | 新血液 |
+| This month's newly added star TOP | This month's flow (∑delta) descending | Already-famous large projects |
+| This month's growth-rate TOP | `this month's new adds / month-start total` descending; eligible only when **month-start total ≥ 20,000** | Established projects that still accelerate |
+| New members this month | This month's cumulative (stock) first reaches ≥ 10000 | New blood |
 
-> 增速榜 floor（月初 ≥ 20k）的理由、排重规则（新晋不进增速）等口径见 [RANKING.md](./RANKING.md) §4。
+> The reason for the growth-rate ranking floor (month-start ≥ 20k), the dedupe rules (new members do not enter growth rate), and other definitions are in [RANKING.md](./RANKING.md) §4.
 
-## Repo 身份与改名
+## Repo identity and renames
 
-- 主键用 GitHub repo **id**（不可变）；URL 用当前 `owner/name`
-- repo 改名/迁移：每周白名单刷新时被动更新 `full_name`，旧 URL 做 **308** 永久重定向（repo 路由据累积别名表 `lookup/aliases.json`，见 [FRONTEND.md](./FRONTEND.md)）
-- 改名历史由 `build aliases` step 并集所有保留的 `renames.json` 增量得到（gc 不删 `ops/`），无需额外追踪
+- The primary key is the GitHub repo **id** (immutable); the URL uses the current `owner/name`
+- Repo rename/transfer: `full_name` is passively updated when the whitelist refreshes weekly, and the old URL does a **308** permanent redirect (the repo route uses the accumulated alias table `lookup/aliases.json`; see [FRONTEND.md](./FRONTEND.md))
+- Rename history is the union, produced by the `build aliases` step, of every retained `renames.json` increment (gc does not delete `ops/`); no extra tracking is required
 
-## 多语言（i18n）
+## Multilingual (i18n)
 
-调性：默认英文，优先级 **英文 > 日文 > 中文 >** zh-TW / ko / es / fr 七种 UI 语言；English URL 保持无前缀，非默认 locale URL / metadata / sitemap / 语言切换导航已按 [I18N.md](./I18N.md) 落地，repo 名、描述、语言、topic、数字等数据字段不翻译。产品功能名 **GitStarClub Pulse** 与 **GitStarClub Compare** 作为品牌名不翻译。**权威口径见 [SEO.md](./SEO.md) §10，实现见 [FRONTEND.md](./FRONTEND.md) §7。**
+Tone: English by default, with priority **English > Japanese > Chinese >** zh-TW / ko / es / fr, seven UI languages; English URLs stay unprefixed, and non-default locale URL / metadata / sitemap / language-switcher navigation have already landed per [I18N.md](./I18N.md). Data fields such as repo name, description, language, topic, and numbers are not translated. The product feature names **GitStarClub Pulse** and **GitStarClub Compare** are brand names and are not translated. **The authoritative definition is in [SEO.md](./SEO.md) §10, and the implementation is in [FRONTEND.md](./FRONTEND.md) §7.**
 
-## 项目命名
+## Project naming
 
-项目名 **gitstarclub**，域名 **gitstarclub.com**（已购）。
+The project name is **gitstarclub**, and the domain is **gitstarclub.com** (already purchased).
 
-## 视觉/交互细节
+## Visual / interaction details
 
-- **永远显示上下月/年导航** —— 强化"翻阅"感
-- **榜单内的 repo 名 = 内部链接**；星数变化 = 视觉权重；语言 = 弱标签
-- **里程碑链接** = 月度页锚点，形成网状内部循环
-- **时间点双显示 UTC + JST**（JA locale 以 JST 为主）；日期粒度数据按 UTC 日
-- **全站搜索**：见上「发现入口：全站搜索」。
+- **Always show previous/next month/year navigation** —— strengthens the sense of "browsing"
+- **A repo name inside a ranking = an internal link**; a change in star count = visual weight; language = a weak label
+- **Milestone links** = anchors on the month page, forming a mesh of internal circulation
+- **Timestamps are shown as both UTC + JST** (the JA locale leads with JST); date-grain data is by UTC day
+- **Site-wide search**: see "Discovery entry: site-wide search" above.
 
-## 范围之外
+## Out of scope
 
-当前不在范围内的能力（任意 GitHub repo 对比、≥100 星长尾扩展、用户系统、数据集扩展、自动叙事/OG 卡片、主题聚类等）见 [ROADMAP.md](./ROADMAP.md)。
+Capabilities currently out of scope (arbitrary GitHub repo compare, ≥100-star long-tail expansion, a user system, dataset expansion, automatic narrative/OG cards, topic clustering, and so on) are in [ROADMAP.md](./ROADMAP.md).

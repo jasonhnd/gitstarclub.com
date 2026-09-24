@@ -9,7 +9,7 @@ source_of_truth_for:
   - visual guardrails
 ---
 
-# Document-Driven Development Workflow (文档驱动开发工作流)
+# Document-Driven Development Workflow (document-driven development workflow)
 
 ## Scope
 
@@ -27,8 +27,8 @@ Issues are split into two types:
 
 | Issue type | Purpose | Expected output |
 |---|---|---|
-| Documentation issue (文档 issue) | Establish or revise the source-of-truth document before implementation. | A docs-only PR, or a docs section that can be reviewed independently. |
-| Development issue (开发 issue) | Implement behavior that is already specified by an accepted document. | Code, tests, and any owning-doc updates required by the accepted spec. |
+| Documentation issue (documentation issue) | Establish or revise the source-of-truth document before implementation. | A docs-only PR, or a docs section that can be reviewed independently. |
+| Development issue (development issue) | Implement behavior that is already specified by an accepted document. | Code, tests, and any owning-doc updates required by the accepted spec. |
 
 Substantive functionality changes are document-first: open and merge the
 documentation issue before opening the development issue. This includes new
@@ -74,7 +74,7 @@ GitHub required merge gates are only `verify / static` and
 treat them as required, and do not add `cf-preview` / `cf-workers-host` to the
 required-check set.
 
-### 1. Should This Merge? (是否该合并)
+### 1. Should This Merge? (whether this should merge)
 
 This pass decides whether the change belongs in the project.
 
@@ -91,7 +91,7 @@ Reviewers check:
 - Partially completed issues are described as partial work and do not use a
   closing keyword.
 
-### 2. Should This Run? (是否该运行起来)
+### 2. Should This Run? (whether this should run)
 
 This pass decides whether the merged change should be deployed, triggered, or
 verified in production.
