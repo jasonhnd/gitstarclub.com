@@ -270,7 +270,7 @@ Align with the ARCHITECTURE "accessibility" section, combining automatic + manua
 Verify that the **mesh of internal links** is really connected (both SEO and the product depend on it; see SEO.md "internal-link strategy"). Use Playwright, and assert navigation rather than pixels.
 
 - **Navigation graph connected through**: home → year page → month page → repo page → org page → all-time ranking, and any page is reachable within 3 hops
-- **Previous/next period navigation**: the month page `← 9 Sep | 11 Nov →`, and the year page `← 2023 | 2025 →`, are always at the top and jump to the right place
+- **Previous/next period navigation**: the month page `← Sep | Nov →`, and the year page `← 2023 | 2025 →`, are always at the top and jump to the right place
 - **Milestone link → month-page anchor**: clicking a milestone on the repo page lands on the correct anchor of the corresponding month
 - **Ranking row → entity page**: a repo name in the ranking → the repo page; an org name → the org page
 
