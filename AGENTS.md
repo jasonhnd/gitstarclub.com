@@ -1,14 +1,15 @@
 # AGENTS
 
-本仓 Cursor 子代理定义见 `.cursor/agents/`。
+Cursor subagent definitions for this repository live in `.cursor/agents/`.
 
-分支与合并策略以 `.grok/rules/pre-only.md` 为准；CI 必过项与交付管线以 `.delivery.yml` 为准。本文件不重复、不覆盖它们。
+Branch and merge policy is owned by `.grok/rules/pre-only.md`. Required CI checks and the delivery pipeline are owned by `.delivery.yml`. This file does not repeat or override them.
 
-仓库当前无 `WORKFLOW.md`，以 pre-only + `.delivery.yml` 为准。
+This repository currently has no root `WORKFLOW.md`. Follow pre-only plus `.delivery.yml`.
 
-## 可执行新规
+## Executable rules
 
-1. 子代理起 agent 按「[角色][项目] 任务」命名。
-2. 面向 Jason 的输出，术语第一次必须大白话解释。
-3. 不得自动合 `main`（合 `pre` 可以）。
-4. 每个任务计划写成 `plans/` 下 markdown。
+1. Name each spawned agent `[role][project] task`.
+2. In output for Jason, the first time a term appears, explain it in plain language.
+3. Do not merge to `main` automatically. Merging to `pre` is allowed.
+4. Write each task plan as markdown under `plans/`.
+5. All repository text, commit messages, issues, and pull requests are English. The only exception is product locale copy for readers of the zh / zh-TW / ja site (dictionaries, localized pages, and tests that assert that copy).
