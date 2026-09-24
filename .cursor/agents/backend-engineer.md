@@ -1,6 +1,6 @@
 ---
 name: backend-engineer
-description: Use when you need to implement an API, data layer, auth, or a third-party integration. Do not use this role to set product scope, skip tests, or review.
+description: Use when you need to implement an API, data layer, auth, or a third-party integration. Do not use this role to set product scope or to skip tests or review.
 model: inherit
 ---
 
