@@ -104,11 +104,22 @@ configuration to the `pre` git branch (`gitBranch: pre`). Cloudflare DNS points
 `pre.gitstarclub.com` to Vercel with `A -> 76.76.21.21`; the record is DNS-only
 and must not be proxied.
 
-Preview is intentionally noindex. `SITE_INDEXABLE` and `NEXT_PUBLIC_SITE_URL`
-are Production-only, so Preview emits `<meta name="robots"
+Preview is intentionally noindex. The Cloudflare production build sets `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com`; the top-level Worker variables match. `bun run cf:dry-run` builds for preview with indexing disabled. Preview emits `<meta name="robots"
 content="noindex,nofollow">` and `robots.txt` returns `User-Agent: *` with
 `Disallow: /`. Preview still reads production Blob data because `BLOB_*`
 variables are set for Preview.
+
+Cloudflare owner commands (run from `web/`; build each target immediately before its matching deployment because both builds use the same output directory):
+
+```sh
+cd web
+bun run cf:build:production
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc
+bun run cf:build:pre
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env pre
+```
+
+`bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre` are the explicit underlying forms. A bare `bun run cf:build` fails. `bun run cf:dry-run` builds pre and performs a Wrangler dry run only. The build checks the generated home HTML and robots response for the selected indexing policy before deployment.
 
 Access: Preview is locked. Project-level Vercel Authentication
 (`ssoProtection.deploymentType=preview`) was re-enabled 2026-08-28 so
@@ -238,10 +249,10 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | `CF_WORKERS_HOST_LOCAL` | P3 冒烟强制 localhost | 可选 | 字符串 `1` | `web/lib/workers-host/smoke-origin.ts` |
 | `VERCEL_DEPLOY_HOOK_URL` | Deploy Hook URL（触发一次核心 rebuild，用于代码 / 结构变更或手动全量刷新） | 可选 | `https://api.vercel.com/v1/integrations/deploy/<id>` | 手动 / CI（数据更新不需要它，长尾走 ISR） |
 | `ALERT_WEBHOOK_URL` | 失败告警 webhook（Slack / Discord incoming webhook 或 `https://webhook.site/...`，POST JSON 摘要；**不设则仅日志**） | 可选 | `https://…` 可接收 JSON POST 的端点 | `web/lib/observability/alert.ts:45`；Workflow `sendAlert` · 每日 / 每周 cron 失败投递 |
-| `SITE_INDEXABLE` | 生产 indexing 开关——`"1"` 解除 pre-launch noindex 并开放 sitemap | 可选（默认 noindex） | 字符串 `"1"` 才生效，其他值 / 未设 = noindex | `web/app/robots.ts:6` · `web/app/_shell/RootShell.tsx:18`；上线时单点切换 |
+| `SITE_INDEXABLE` | Enables public indexing and sitemap discovery | Required for the production Cloudflare build and Worker; absent on preview | `"1"` enables indexing; other values disable it | `web/scripts/cf-opennext-build.ts`, [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | GCP 服务账号 key 路径 | 仅一次性回填 | 本机文件路径，例 `./gcp-key.json` | **本地回填脚本**（仅一次性 BigQuery 回填） |
 | `GCP_PROJECT_ID` | GCP 项目 ID | 仅一次性回填 | GCP project ID 字符串 | **本地回填脚本**（仅一次性 BigQuery 回填） |
-| `NEXT_PUBLIC_SITE_URL` | 站点规范域名（canonical / sitemap / OG / JSON-LD 绝对 URL） | **必需**（生产） | `https://gitstarclub.com` 等绝对 URL（**无尾斜杠**） | `web/lib/sitemap.ts:26` · `web/app/robots.ts:5` · `web/app/_shell/RootShell.tsx:17` · `web/lib/jsonld.ts:4` · `web/app/_explore/Breadcrumbs.tsx:10` |
+| `NEXT_PUBLIC_SITE_URL` | Canonical origin for sitemap, metadata, and structured data | Required for the production Cloudflare build and Worker | `https://gitstarclub.com` without a trailing slash | `web/scripts/cf-opennext-build.ts`, [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
 | `BING_SITE_VERIFICATION` | Bing `msvalidate.01` token | 可选（生产） | Bing 提供的 token | `web/app/_shell/RootShell.tsx` 输出 verification meta；不需要 XML 文件 |
 | `INDEXNOW_ENABLED` | IndexNow post-commit 提交开关 | 可选（默认关闭） | 字符串 `1` 才启用 | live cron 提交 pointer 后调用 IndexNow；dry-run / pre-commit 不调用 |
 | `SEO_LIVE_BASE` | 集成测试拉取的活线 origin（默认 `https://www.gitstarclub.com`，留空可跳过测试） | 仅测试 | `https://www.gitstarclub.com` 或空串 | `web/lib/integration/seo.test.ts:23` |

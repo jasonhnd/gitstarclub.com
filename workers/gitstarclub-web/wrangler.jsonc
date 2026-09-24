@@ -48,6 +48,8 @@
   ],
   "vars": {
     "HOSTING_TARGET": "cf",
+    "SITE_INDEXABLE": "1",
+    "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com",
     // Production HTTP origin for cron dispatch. Preview overrides this.
     // Secrets (CRON_SECRET, REFRESH_*_URL) are platform-injected, not committed.
     "CF_CRON_ORIGIN": "https://gitstarclub.com"

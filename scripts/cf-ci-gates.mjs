@@ -273,6 +273,15 @@ export function assertCfCiGates(sources) {
     issues.push(`wrangler must not name a Worker ${LEGACY_PREVIEW_WORKER_NAME}`);
   }
   const preview = wrangler.env?.[PREVIEW_WRANGLER_ENV];
+  if (wrangler.vars?.SITE_INDEXABLE !== "1") {
+    issues.push('wrangler top-level vars.SITE_INDEXABLE must be "1"');
+  }
+  if (wrangler.vars?.NEXT_PUBLIC_SITE_URL !== "https://gitstarclub.com") {
+    issues.push("wrangler top-level vars.NEXT_PUBLIC_SITE_URL must be https://gitstarclub.com");
+  }
+  if (preview?.vars?.SITE_INDEXABLE === "1") {
+    issues.push("wrangler env.pre must not enable SITE_INDEXABLE");
+  }
   if (!preview) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} is required`);
   } else if (preview.name !== PREVIEW_WORKER_NAME) {

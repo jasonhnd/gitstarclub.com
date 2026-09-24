@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 const description =
   "A browsable pulse and chronicle of open source. See what is rising this week, this month, this year, and across GitHub star history.";
 
-// metadataBase from env; indexing OFF until launch (private preview — SEO §11). Flip SITE_INDEXABLE=1 at launch.
+// The production Cloudflare build sets SITE_INDEXABLE=1; preview builds keep indexing off.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://gitstarclub.com";
 const indexable = process.env.SITE_INDEXABLE === "1";
 const bingSiteVerification = process.env.BING_SITE_VERIFICATION;
