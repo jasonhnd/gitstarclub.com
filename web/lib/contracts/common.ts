@@ -137,7 +137,7 @@ export const Metric = z.enum(["flow", "stock", "growth", "new"]);
 export type Metric = z.infer<typeof Metric>;
 
 /** One ranking row. `id` for repo dim, `login` for org dim. value may be negative (net flow).
- *  Derived metrics add: `rate` (growth %, float), `base` (期初 stock), `date` (new: crossed-10k day). */
+ *  Derived metrics add: `rate` (growth %, float), `base` (period-start stock), `date` (new: crossed-10k day). */
 export const RankItem = z
   .object({
     rank: PositiveRank,

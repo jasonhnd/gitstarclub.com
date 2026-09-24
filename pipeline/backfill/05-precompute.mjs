@@ -321,8 +321,8 @@ async function exportOrgEntities(orgAgg) {
 }
 
 // --- derived repo rankings: growth (rate) + new (first ≥10k), per RANKING §4 ---
-// Growth = flow / 期初stock (prev period stock_est), floor 期初stock ≥ 20k. The floor also
-// dedupes newcomers (their 期初 < 10k) so they never appear in growth.
+// Growth = flow / period-start stock (prev period stock_est), floor period-start stock ≥ 20k. The floor also
+// dedupes newcomers (their period-start stock < 10k) so they never appear in growth.
 async function exportGrowth(w) {
   const rs = await query(
     `WITH g AS (
