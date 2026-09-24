@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { describe, test } from "node:test";
 import {
   ALLOWED_CF_PREVIEW_ORIGINS,
@@ -14,6 +15,8 @@ import {
 
 const validWrangler = `{
   "name": "gitstarclub-web",
+  "vars": { "SITE_INDEXABLE": "1", "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com" },
+  "triggers": { "crons": [] },
   "env": {
     "pre": { "name": "gitstarclub-web-pre" }
   }
@@ -38,6 +41,30 @@ const validPackage = `{
 }`;
 
 describe("CF CI gates", () => {
+  test("Cloudflare build rejects missing and unknown targets before building", () => {
+    for (const args of [[], ["--site-target=staging"], ["--site-target=pre", "--site-target=production"]]) {
+      const result = spawnSync("bun", ["scripts/cf-opennext-build.ts", ...args], {
+        cwd: new URL("../web/", import.meta.url),
+        encoding: "utf8",
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /requires exactly one --site-target=production or --site-target=pre/);
+    }
+  });
+  test("requires production indexing and forbids preview indexing", () => {
+    const missing = validWrangler.replace('"SITE_INDEXABLE": "1", ', "");
+    const sources = (wranglerSource) => ({
+      wranglerSource,
+      ciYml: validCi,
+      deliveryYml: validDelivery,
+      webPackageSource: validPackage,
+      runtimeConfigSource: validRuntime,
+    });
+    assert.deepEqual(assertCfCiGates(sources(validWrangler)), []);
+    assert.match(assertCfCiGates(sources(missing)).join(" "), /SITE_INDEXABLE/);
+    const previewEnabled = validWrangler.replace('{ "name": "gitstarclub-web-pre" }', '{ "name": "gitstarclub-web-pre", "vars": { "SITE_INDEXABLE": "1" } }');
+    assert.match(assertCfCiGates(sources(previewEnabled)).join(" "), /SITE_INDEXABLE/);
+  });
   test("plans a dry-run against wrangler env pre only", () => {
     assert.deepEqual(planCfWranglerDryRun([]), {
       argv: [

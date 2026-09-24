@@ -150,7 +150,7 @@ From `web/`:
 
 ```bash
 # Read-only fixture (CI) or a public BLOB_BASE_URL (content smoke)
-bun run cf:build
+bun run cf:build:production
 bun run cf:preview          # wrangler dev on :8787
 bun run cf:smoke            # defaults to localhost without Access
 bun run cf:dry-run          # OpenNext build + wrangler deploy --dry-run --env pre (never live-deploys gitstarclub-web)
