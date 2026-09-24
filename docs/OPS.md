@@ -13,7 +13,7 @@ source_of_truth_for:
 # gitstarclub Operations Runbook
 
 > 运维与部署的唯一真相源。架构与数据流见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
-> 核心原则承袭架构：**Cloudflare Workers hosting with Vercel Blob storage**、**运行时纯静态零引擎**、**生产数据运营不依赖本地计算**。本文把这些落到具体的项目、环境变量、Cron、Workflow、Blob 与告警上；endpoint method/auth/cache/status contracts 见 [API.md](./API.md)。
+> Core principles from the architecture: **Cloudflare Workers hosting with Vercel Blob storage**, **a static runtime without an engine**, and **production data operations independent of local computation**. This runbook applies them to projects, environment variables, Cron, workflows, Blob, and alerts; see [API.md](./API.md) for endpoint method, authentication, cache, and status contracts.
 
 ## Scope
 
@@ -185,9 +185,7 @@ an explicit recovery procedure.
 
 ## 环境变量与密钥
 
-Current Worker configuration is in [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc) and Cloudflare platform secrets. The former Vercel project configuration is rollback history.本地把仓库根
-`.env.example` 复制为 `web/.env.local`；`web/scripts/lib/env.ts` 只加载该文件，
-**勿提交真实值**。读路径与写路径遵循最小权限：只浏览或构建不需要写令牌。
+Current Worker configuration is in [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc), with secrets stored on the Cloudflare platform. The former Vercel project configuration is rollback history. For local development, copy the repository root `.env.example` to `web/.env.local`; `web/scripts/lib/env.ts` loads only that file. **Never commit real secret values.** Follow least privilege for read and write paths: browsing or building does not require a write token.
 
 <!-- env-inventory:start -->
 
