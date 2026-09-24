@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ReactElement } from "react";
@@ -43,6 +43,10 @@ mock.module("@/lib/data", () => ({
   getRepoIdByFullNameDaily: async () => new Map([[REPO_FULL_NAME.toLowerCase(), REPO_ID]]),
   getReposLookupDaily: async () => lookup,
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 const { RepoPageView } = await import("@/app/_localized/repo");
 
