@@ -290,8 +290,15 @@ export const cjkAllowlist = [
   /^web\/lib\/format\.ts$/,
   /^web\/lib\/narrative\.ts$/,
   /^web\/lib\/shareable-snippets\.ts$/,
-  /\.test\.tsx?$/,
-  /^web\/e2e\/.+\.spec\.ts$/,
+  // Localized-output tests only. Confirmed against files that still contain Han text.
+  /^web\/lib\/format\.test\.ts$/,
+  /^web\/lib\/narrative\.test\.ts$/,
+  /^web\/lib\/shareable-snippets\.test\.ts$/,
+  /^web\/lib\/geo-capsules\.test\.ts$/,
+  /^web\/lib\/pulse-board-links\.test\.tsx$/,
+  /^web\/lib\/rank-period-labels\.test\.ts$/,
+  /^web\/lib\/rankings-archive\.test\.ts$/,
+  /^web\/e2e\/routing-security\.spec\.ts$/,
 ];
 
 export function isCjkAllowlisted(repoPath) {

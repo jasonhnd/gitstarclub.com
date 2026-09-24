@@ -45,8 +45,17 @@ describe("documentation consistency gate", () => {
     assert.equal(isCjkAllowlisted("web/lib/narrative.ts"), true);
     assert.equal(isCjkAllowlisted("web/lib/shareable-snippets.ts"), true);
     assert.equal(isCjkAllowlisted("web/lib/format.test.ts"), true);
-    assert.equal(isCjkAllowlisted("web/lib/narrative.test.tsx"), true);
+    assert.equal(isCjkAllowlisted("web/lib/narrative.test.ts"), true);
+    assert.equal(isCjkAllowlisted("web/lib/shareable-snippets.test.ts"), true);
+    assert.equal(isCjkAllowlisted("web/lib/geo-capsules.test.ts"), true);
+    assert.equal(isCjkAllowlisted("web/lib/pulse-board-links.test.tsx"), true);
+    assert.equal(isCjkAllowlisted("web/lib/rank-period-labels.test.ts"), true);
+    assert.equal(isCjkAllowlisted("web/lib/rankings-archive.test.ts"), true);
     assert.equal(isCjkAllowlisted("web/e2e/routing-security.spec.ts"), true);
+    assert.equal(isCjkAllowlisted("web/lib/narrative.test.tsx"), false);
+    assert.equal(isCjkAllowlisted("web/lib/ordinary.test.ts"), false);
+    assert.equal(isCjkAllowlisted("web/lib/ordinary.test.tsx"), false);
+    assert.equal(isCjkAllowlisted("web/e2e/other.spec.ts"), false);
     assert.equal(isCjkAllowlisted("docs/OPS.md"), false);
     assert.equal(isCjkAllowlisted("plans/README.md"), false);
     assert.equal(isCjkAllowlisted("AGENTS.md"), false);
@@ -105,13 +114,14 @@ describe("documentation consistency gate", () => {
       mkdirSync(join(root, "web/lib/i18n/dictionaries"), { recursive: true });
       const han = String.fromCodePoint(0x9700, 0x6c42);
       writeFileSync(join(root, "docs/bad.md"), `Hello\n${han}\n`);
-      writeFileSync(join(root, "docs/locale.test.ts"), `// ${han}\n`);
+      writeFileSync(join(root, "docs/ordinary.test.ts"), `// ${han}\n`);
       writeFileSync(join(root, "docs/ok.md"), "Hello\n");
       writeFileSync(join(root, "plans/ok.md"), "English only\n");
       writeFileSync(join(root, "AGENTS.md"), "English\n");
       writeFileSync(join(root, "web/lib/i18n/dictionaries/zh.ts"), `export const label = "${han}";\n`);
-      assert.deepEqual(checkCjkProse(root), [
+      assert.deepEqual(checkCjkProse(root).sort(), [
         "docs/bad.md:2 CJK text is not allowed outside product locale files",
+        "docs/ordinary.test.ts:1 CJK text is not allowed outside product locale files",
       ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
