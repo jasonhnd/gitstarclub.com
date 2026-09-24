@@ -344,7 +344,7 @@ the body stays `{ commitSha, deploymentUrl }`. On the P3 CF Workers host
 | Success | `200 application/json` |
 | Cache | `Cache-Control: no-store, max-age=0`; `dynamic = "force-dynamic"` |
 | Source | `web/app/.well-known/deployment/route.ts`, `web/lib/deployment-identity.ts`; Worker intercept on `workers/gitstarclub-web` |
-| Platform inputs | `VERCEL_GIT_COMMIT_SHA`, `CF_PREVIEW_COMMIT_SHA`, the SHA baked by `cf:build`, `VERCEL_URL`, `HOSTING_TARGET`; SHA priority follows that order and is `null` without a valid source. A dirty build appends `-dirty` to the SHA. |
+| Platform inputs | `VERCEL_GIT_COMMIT_SHA`, `CF_PREVIEW_COMMIT_SHA`, the SHA baked by `cf:build`, `VERCEL_URL`, `HOSTING_TARGET`; SHA priority follows that order and is `null` without a valid source. Tracked changes append `-dirty` to the SHA; untracked files do not. |
 
 ```json
 {
