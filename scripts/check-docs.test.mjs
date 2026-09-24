@@ -87,11 +87,19 @@ describe("documentation consistency gate", () => {
         "\u300C",
         "\u300D",
         "\u2014\u2014",
+        "\u3001",
+        "\uFF01",
+        "\uFF1F",
+        "\u3010",
+        "\u3011",
+        "\u300A",
+        "\u300B",
       ];
       const lines = [
         "ASCII only",
         ...marks.map((mark) => `note ${mark} here`),
         "spaced em dash \u2014 is allowed",
+        "curly quotes \u201C\u201D\u2018\u2019 are allowed",
       ];
       writeFileSync(join(root, "docs/punct.md"), `${lines.join("\n")}\n`);
       assert.deepEqual(
