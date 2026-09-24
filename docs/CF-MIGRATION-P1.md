@@ -607,7 +607,7 @@ Production `triggers.crons` stays `[]`. Do not stop Vercel cron. Do not cut DNS.
 
 ## Preview Bearer full refresh acceptance matrix
 
-预发 Bearer 全量 refresh 验收矩阵。This table is the current pass/fail gate
+Preview Bearer full refresh acceptance matrix. This table is the current pass/fail gate
 for a **preview Worker** (`gitstarclub-web-pre`) Bearer full refresh after
 #486 / #494. Historical per-bug retest lists later in this document are
 evidence of earlier stalls; they do not replace this matrix. Unit coverage

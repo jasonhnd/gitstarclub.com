@@ -1,31 +1,31 @@
-# ≥1k 宇宙：pre 闸门
+# ≥1k universe: pre gate
 
-- **task_id**：`gitstarclub-universe-1k-pre-gate-cca-001`
-- **目标分支**：`pre`（不碰 `main`）
-- **授权**：Jason 2026-09-21 JST「≥1k：现在就开」
+- **task_id**: `gitstarclub-universe-1k-pre-gate-cca-001`
+- **target branch**: `pre` (do not touch `main`)
+- **authorization**: Jason 2026-09-21 JST, "≥1k: turn it on now"
 
-## 目标
+## Goal
 
-把纳入排名／刷新的宇宙下限从硬编码 ≥10,000 星改成可逆闸门，并在预发打开 ≥1,000。页开只用预计算。
+Change the floor for the universe included in rankings / refresh from a hardcoded ≥10,000 stars to a reversible gate, and open ≥1,000 on preview. Page opens use precomputed data only.
 
-## 范围
+## Scope
 
-- `MIN_TRACKED_STARS` 运行时解析，默认 `10000`
+- Resolve `MIN_TRACKED_STARS` at runtime, default `10000`
 - wrangler `env.pre.vars.MIN_TRACKED_STARS=1000`
-- CF CI 门禁：预发必须是 `1000`；生产 top-level 不得设成 `1000`
-- 文档 / env inventory 同步
+- CF CI gate: preview must be `1000`; the production top-level must not be set to `1000`
+- Sync docs / env inventory
 
-## 不做
+## Out of scope
 
-- 不改 `main` / 生产默认
-- 不在页开路径现算
-- 不重开 #362 的 ≥100 / 查询平面四项
-- 不把浅短菜单当产品方向
-- 本次不跑生产 refresh
+- Do not change `main` / the production default
+- Do not compute on the page-open path
+- Do not reopen the four ≥100 / query-plane items from #362
+- Do not treat a shallow short menu as the product direction
+- Do not run a production refresh this time
 
-## 验收
+## Acceptance
 
-1. 默认 / 生产仍是 ≥10k
-2. 预发配置可读出 ≥1k，且 `assert-cf-ci-gates` 锁住
-3. 回滚：去掉或改回 `MIN_TRACKED_STARS=10000`
-4. 真扩容只发生在下一次 **非 fixture** 全量 refresh
+1. The default / production floor is still ≥10k
+2. Preview config reads as ≥1k, and `assert-cf-ci-gates` locks that
+3. Rollback: remove `MIN_TRACKED_STARS` or set it back to `10000`
+4. A real expansion happens only on the next **non-fixture** full refresh

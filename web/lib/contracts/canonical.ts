@@ -76,7 +76,7 @@ export type ReposShardEntry = z.infer<typeof ReposShardEntry>;
 export const ReposShard = z.record(z.string(), ReposShardEntry);
 export type ReposShard = z.infer<typeof ReposShard>;
 
-/** [period, flow] series per repo (seam-前 gross / 后 net). */
+/** [period, flow] series per repo (gross before the seam / net after it). */
 const MonthlyPeriodSeries = z.array(z.tuple([MonthPeriod, z.number().int()]));
 const WeeklyPeriodSeries = z.array(z.tuple([WeekPeriod, z.number().int()]));
 /** canonical/v2/repo-monthly/<bucket>.json — { "<id>": [[month, flow], ...] }. */

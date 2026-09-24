@@ -1,5 +1,5 @@
 # plans
 
-每个任务的计划写在本目录的 markdown。本目录是 `AGENTS.md` 第 4 条的前置：没有它，那条规则跑不了。
+Write each task's plan as markdown in this directory. This directory is what rule 4 in `AGENTS.md` depends on. Without it, that rule cannot run.
 
-建议文件名：`<issue号>-<短名>.md`。计划至少写清目标、范围、不做、验收。
+Suggested filename: `<issue-number>-<short-name>.md`. A plan should at least state the goal, the scope, what is out of scope, and acceptance.
