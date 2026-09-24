@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, mock, test } from "bun:test";
 import type { ReactElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
 import type { CategoryAssignments, CategoryRegistry, Meta, RepoEntity, ReposLookup } from "@/lib/contracts";
@@ -36,6 +36,10 @@ mock.module("@/lib/data", () => ({
   getRepoIdByFullNameDaily: async () => new Map([["solo/current", 1]]),
   getReposLookupDaily: async () => lookup,
 }));
+
+afterAll(() => {
+  mock.restore();
+});
 
 const { RepoPageView } = await import("@/app/_localized/repo");
 
