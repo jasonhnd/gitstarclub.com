@@ -525,6 +525,8 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
 
 ## 5. robots.txt
 
+For Cloudflare, `bun run cf:build` embeds `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com` into the production build. The production Worker declares the same runtime values. `bun run cf:dry-run` selects a preview build with indexing disabled. After the owner manually deploys each build, verify that production `/robots.txt` allows `/` and lists the sitemap, production home HTML has no `noindex`, and preview `/robots.txt` and home HTML remain blocked. The owner then resubmits the production sitemap in Google Search Console and Bing Webmaster Tools.
+
 用 Next.js 16 `app/robots.ts` 生成（`MetadataRoute.Robots`）。**实际机制：环境变量 `SITE_INDEXABLE` 总开关**——不分主机，按 env 决定是否放开收录。预发期（teaser 占域名、私有 preview deployment 跑 web 应用）即便 host 是生产域名，只要 `SITE_INDEXABLE` 未设也返回 `Disallow: /`，launch 当天才翻牌：
 
 ```ts
