@@ -9,252 +9,252 @@ source_of_truth_for:
   - rollback and garbage collection
 ---
 
-# gitstarclub Vercel 数据运营（VERCEL-DATA-OPERATIONS）
+# gitstarclub Vercel data operations (VERCEL-DATA-OPERATIONS)
 
-> 本文目标:描述 gitstarclub 生产数据生命周期在 Vercel 上的当前运行形态——所有 recurring 数据作业在 Vercel 触发、运行、记录、发布、回滚。本机 `pipeline/backfill` 仅作为一次性 bootstrap 工具 / 历史归档,不在日常运营路径上。
+> Document goal: describe the current operating form of the gitstarclub production data lifecycle on Vercel—all recurring data jobs are triggered, run, recorded, published, and rolled back on Vercel. Local `pipeline/backfill` serves only as a one-time bootstrap tool / historical archive, and is not on the daily operations path.
 >
-> 关联:架构总览 [ARCHITECTURE.md](./ARCHITECTURE.md) · 数据契约 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) · 运维 [OPS.md](./OPS.md) · pipeline [PIPELINE.md](./PIPELINE.md) · 测试 [TESTING.md](./TESTING.md) · 变更记录 [CHANGELOG.md](./CHANGELOG.md)。
+> Related: architecture overview [ARCHITECTURE.md](./ARCHITECTURE.md) · data contracts [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) · operations [OPS.md](./OPS.md) · pipeline [PIPELINE.md](./PIPELINE.md) · testing [TESTING.md](./TESTING.md) · changelog [CHANGELOG.md](./CHANGELOG.md).
 >
-> 官方参考:[Vercel Cron Jobs](https://vercel.com/docs/cron-jobs) · [Vercel Workflows](https://vercel.com/docs/workflows)(含 [Concepts](https://vercel.com/docs/workflows/concepts))· [Vercel Functions Limits](https://vercel.com/docs/functions/limitations)。
+> Official references:[Vercel Cron Jobs](https://vercel.com/docs/cron-jobs) · [Vercel Workflows](https://vercel.com/docs/workflows)(including [Concepts](https://vercel.com/docs/workflows/concepts))· [Vercel Functions Limits](https://vercel.com/docs/functions/limitations).
 
 ---
 
 ## Scope
 
-本文描述 recurring 数据刷新如何在 Vercel 上运行:Vercel Workflow 编排、Blob 物理布局、`views/latest.json` 发布指针、原子版本切换与回滚模型。**修改 recompute 流水线或读侧版本解析路径之前,先读本文**。读侧契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md);运维操作手册见 [OPS.md](./OPS.md)。
+This document describes how recurring data refresh runs on Vercel: Vercel Workflow orchestration, Blob physical layout, `views/latest.json` publish pointer, atomic version switch and rollback model. **Before modifying the recompute pipeline or the read-side version resolution path, read this document first**. Read-side contracts are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md); the operations runbook is in [OPS.md](./OPS.md).
 
 ---
 
-## 1. 系统总览与边界
+## 1. System overview and boundaries
 
-### 1.1 系统定位
+### 1.1 System positioning
 
-gitstarclub 的运行时是**纯静态**:用户请求只读预算好的 JSON / Blob,**永不触达 Workflow / 引擎 / 数据库**(见 [ARCHITECTURE.md](./ARCHITECTURE.md))。本文描述的数据运营层负责**离线产出这些静态 JSON**:白名单刷新、元数据刷新、改名检测、新晋追踪、canonical 折叠、rank/entity/heatmap 重算、校验、发布、回滚——全部在 Vercel 触发并运行。
+gitstarclub's runtime is **purely static**: user requests only read precomputed JSON / Blob, **never touching Workflow / engine / database** (see [ARCHITECTURE.md](./ARCHITECTURE.md)). The data operations layer this document describes is responsible for **producing these static JSON offline**: whitelist refresh, metadata refresh, rename detection, newcomer tracking, canonical fold, rank/entity/heatmap recompute, validation, publish, rollback—all triggered and run on Vercel.
 
-### 1.2 不变的约束
+### 1.2 Unchanging constraints
 
-- **运行时纯静态**:Workflow 只产出数据,页面不知道它存在。
-- **Vercel-first / 避免散落账单**:不引入 GCP / 第三方队列 / 外部数据库作为 recurring 依赖。BigQuery 仅在一次性 bootstrap 时作为可选历史数据源(见 §10)。
-- **不做 16k 全量 build**:发布只切指针 + revalidate 核心热集,长尾走按需 ISR(见 [ARCHITECTURE.md](./ARCHITECTURE.md) 页面分层)。
+- **Runtime purely static**: Workflow only produces data, and pages do not know it exists.
+- **Vercel-first / avoid scattered bills**: do not introduce GCP / third-party queues / external databases as recurring dependencies. BigQuery is only an optional historical data source during one-time bootstrap (see §10).
+- **Do not do a 16k full build**: publish only switches the pointer + revalidate the core hot set, and the long tail uses on-demand ISR (see [ARCHITECTURE.md](./ARCHITECTURE.md) page layering).
 
-### 1.3 关键设计决策:为什么不能把全量重算塞进一个 Function
+### 1.3 Key design decision: why a full recompute cannot be stuffed into one Function
 
-| 限制 | 普通 Vercel Function(Pro,Node.js) | 对全量重算的影响 |
+| Limit | Ordinary Vercel Function(Pro,Node.js) | Impact on full recompute |
 |---|---|---|
-| **最长时长** | 默认 300s,**最大 800s**(13 分钟) | DuckDB 读 8M 行 Parquet 全量预算 16k+ 视图远超 13 分钟 |
-| **内存 / CPU** | 默认 2GB / 1 vCPU,**最大 4GB / 2 vCPU** | 本机 precompute 已需 `--max-old-space-size=4096`,贴着上限 |
-| **包体积** | 部署 bundle **≤ 250MB**(解压) | `@duckdb/node-api` 原生模块体积大、且 serverless 跑原生模块不可靠 |
-| **响应体** | 请求 / 响应体 **≤ 4.5MB** | 大文件必须走 Blob 直链读写绕过此限 |
+| **Max duration** | default 300s,**max 800s**(13 minutes) | DuckDB reading 8M rows of Parquet to fully precompute 16k+ views far exceeds 13 minutes |
+| **Memory / CPU** | default 2GB / 1 vCPU,**max 4GB / 2 vCPU** | local precompute already needs `--max-old-space-size=4096`, pressing against the limit |
+| **Bundle size** | deployed bundle **≤ 250MB**(uncompressed) | `@duckdb/node-api` native module is large, and running native modules on serverless is unreliable |
+| **Response body** | request / response body **≤ 4.5MB** | large files must use Blob direct-link read/write to bypass this limit |
 
-> 官方明确建议([Functions Limits](https://vercel.com/docs/functions/limitations)):**需要超长执行时间的工作负载,用 [Vercel Workflows](https://vercel.com/docs/workflows)**——它能让代码 pause / resume / 跨步骤保存状态,**无单函数时长上限**。
+> The official docs explicitly recommend ([Functions Limits](https://vercel.com/docs/functions/limitations)): **workloads that need extra-long execution time should use [Vercel Workflows](https://vercel.com/docs/workflows)**—it lets code pause / resume / save state across steps, **with no single-function duration cap**.
 >
-> 因此结论:**Cron 只负责触发**(对生产 URL 的一次 GET);**长任务交给 Workflow 拆成多个 step**,每个 step 是一个独立、可重试、短小的 Function 调用,step 之间用 Blob checkpoint 记录进度。**不在任何单个 Function 里加载 DuckDB / Parquet 做全量重算。**
+> Therefore the conclusion: **Cron is only responsible for triggering** (one GET against the production URL); **long tasks are handed to Workflow and split into multiple steps**, each step is an independent, retryable, short Function invocation, and Blob checkpoints record progress between steps. **Do not load DuckDB / Parquet inside any single Function to do a full recompute.**
 
 ---
 
-## 2. 运行分层
+## 2. Runtime layering
 
-数据作业按「频率 × 重量」分四层,明确各自跑在哪:
+Data jobs are split into four layers by "frequency × weight", making clear where each runs:
 
-| 层 | 作业 | 跑在哪 | 触发 |
+| Layer | Job | Where it runs | Trigger |
 |---|---|---|---|
-| **L1 每日 live** | poll current_stars → 写 immutable `live/generations/<run_id>/**` + manifest → fenced CAS 切 `live/latest.json` → revalidate 热集 | **Vercel Function**(单函数,JSON-only,秒级) | Cron `0 3 * * *` |
-| **L2 每周 live** | 复用 live refresh,覆盖写当前周 / 当前月 rank + 当月 heatmap + hot snapshot + `ops/sync-runs.json` | **Vercel Function**(单函数,JSON-only) | Cron `0 4 * * 0` |
-| **L3 Managed refresh** | canonical readiness preflight → 白名单 diff → 元数据 shard → 改名检测 → 月+周折叠 → rank/entity/heatmap 全量重算 → 校验 → 发布(切指针)→ 版本 GC(step 详见 §4) | **Vercel Workflow**(多 step,Blob checkpoint) | 每周 cron + 手动(调度见 [OPS.md](./OPS.md) §Cron) |
-| **L4 Bootstrap archive** | 11 年事件级历史首次回填(Search → BigQuery → DuckDB → JSON → Blob) | **本机 / 全 Node**(`pipeline/backfill`) | 手动,一次性 |
+| **L1 daily live** | poll current_stars → write immutable `live/generations/<run_id>/**` + manifest → fenced CAS switch `live/latest.json` → revalidate hot set | **Vercel Function**(single function, JSON-only, seconds) | Cron `0 3 * * *` |
+| **L2 weekly live** | reuse live refresh, overwrite current week / current month rank + current-month heatmap + hot snapshot + `ops/sync-runs.json` | **Vercel Function**(single function, JSON-only) | Cron `0 4 * * 0` |
+| **L3 Managed refresh** | canonical readiness preflight → whitelist diff → metadata shard → rename detection → month+week fold → rank/entity/heatmap full recompute → validate → publish (switch pointer) → version GC (step details in §4) | **Vercel Workflow**(multi-step, Blob checkpoint) | weekly cron + manual (schedule see [OPS.md](./OPS.md) §Cron) |
+| **L4 Bootstrap archive** | first backfill of 11 years of event-level history (Search → BigQuery → DuckDB → JSON → Blob) | **local / full Node**(`pipeline/backfill`) | manual, one-time |
 
-> 上表「触发」列只标各层的调度归属;**三条 cron 的权威调度(`0 3` / `0 4` / `0 6` 及 `vercel.json` 声明)见 [OPS.md](./OPS.md) §Cron**。
+> The "Trigger" column in the table above only marks each layer's schedule ownership; **the authoritative schedule of the three crons (`0 3` / `0 4` / `0 6` and the `vercel.json` declaration) is in [OPS.md](./OPS.md) §Cron**.
 
-**分工原则**:
-- **L1 / L2** 处理「当前周期的活尾」——KB 级 JSON,单函数秒级。
-- **L3** 处理「跨周期的全量 / 历史 / 元数据刷新」——重、慢、需断点,必须 Workflow。**这是本文的核心。**
-- **L4** 只在「从零冷启动」或「灾难重建」时跑一次,产出被 L3 接管后即退役。
+**Division of labor**:
+- **L1 / L2** handle "the live tail of the current period"—KB-level JSON, single function, seconds.
+- **L3** handles "cross-period full / historical / metadata refresh"—heavy, slow, needs checkpoints, must be Workflow. **This is the core of this document.**
+- **L4** runs once only for "cold start from zero" or "disaster rebuild"; once its output is taken over by L3 it is retired.
 
-> L2 与 L3 的关系:L2 是「轻量活尾兜底」,L3 负责「全量重算 + 历史折叠 + 元数据」。两者读写不同的 Blob 前缀(live 覆盖层 vs canonical / `views/<run_id>`),天然隔离。
+> Relationship between L2 and L3: L2 is "lightweight live-tail fallback", L3 is responsible for "full recompute + historical fold + metadata". The two read and write different Blob prefixes (live overlay vs canonical / `views/<run_id>`), naturally isolated.
 
 ---
 
-## 3. Vercel Workflow 模式(L3 设计核心)
+## 3. Vercel Workflow pattern (L3 design core)
 
-### 3.1 Workflow 与 Cron / Function 的职责切分
+### 3.1 Responsibility split between Workflow and Cron / Function
 
 ```text
-Vercel Cron(GET /api/workflows/refresh/start,带 CRON_SECRET)  ← 生产排程真源，P1 不改 vercel.json
-  └─ route:鉴权 + 只读 canonical meta/repos preflight + 取得 lease + startRefresh,立即返回 run_id(不阻塞)
-       └─ workflows runtime(startRefresh / enqueueStep / completeStep；无 Workflow SDK)
+Vercel Cron(GET /api/workflows/refresh/start,with CRON_SECRET)  ← production schedule source of truth, P1 does not change vercel.json
+  └─ route: auth + read-only canonical meta/repos preflight + acquire lease + startRefresh, return run_id immediately (non-blocking)
+       └─ workflows runtime(startRefresh / enqueueStep / completeStep; no Workflow SDK)
             ├─ step 0  full canonical preflight          (4-bucket windows on CF/HTTP; read-only)
             ├─ step 1  refresh whitelist                 (plain async + explicit retry)
-            ├─ step 2  rename detection(先于 metadata,读旧 full_name)
-            ├─ step 3  metadata shards(按 bucket 循环,含 newcomer-aware `tracked_since`)
-            ├─ step 4  canonical fold(月+周折叠已收口周期)
-            ├─ step 5  rank recompute(跨桶 gather)        → views/<run_id>/rank/**
-            ├─ step 6a entity/repo recompute(桶内独立)    → views/<run_id>/entity/repo/**
-            ├─ step 6b entity/org recompute(跨桶 gather + 派生 search/index.json)
+            ├─ step 2  rename detection(before metadata, read old full_name)
+            ├─ step 3  metadata shards(loop by bucket, including newcomer-aware `tracked_since`)
+            ├─ step 4  canonical fold(month+week fold of already-closed periods)
+            ├─ step 5  rank recompute(cross-bucket gather)        → views/<run_id>/rank/**
+            ├─ step 6a entity/repo recompute(independent within bucket)    → views/<run_id>/entity/repo/**
+            ├─ step 6b entity/org recompute(cross-bucket gather + derived search/index.json)
             │                                              → views/<run_id>/entity/org/** + lookup/** + search/index.json
             ├─ step 7  heatmap update                       → views/<run_id>/heatmap/**
-            ├─ step 8  build aliases(改名旧名→当前 id)      → views/<run_id>/lookup/aliases.json
-            ├─ step 9  validate(Zod + sanity,对 views/<run_id> 该版本)
-            ├─ step 10 publish(持久化 intent → 更新 views/latest.json 指针 → 主动失效缓存)
-            └─ step 11 gc(版本垃圾回收,best-effort)
+            ├─ step 8  build aliases(renamed old name→current id)      → views/<run_id>/lookup/aliases.json
+            ├─ step 9  validate(Zod + sanity, for this version of views/<run_id>)
+            ├─ step 10 publish(persist intent → update views/latest.json pointer → actively invalidate cache)
+            └─ step 11 gc(version garbage collection, best-effort)
 ```
 
-> 上图 step 顺序与实现源码 `web/lib/workflows/refresh.ts` L27–60 一致:
+> The step order in the diagram above matches implementation source `web/lib/workflows/refresh.ts` L27–60:
 > `preflight → whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`。
-> Workflow 发布会对 `published-views-pointer` cache tag 和根 layout 主动失效；其他已暖函数实例的进程内 pointer memo 上限为 60s，因此 publish / rollback 的可见性 SLA 为 **≤60s**（§7.4）。
+> Workflow publish actively invalidates the `published-views-pointer` cache tag and the root layout; the in-process pointer memo cap of other already-warm function instances is 60s, so the publish / rollback visibility SLA is **≤60s** (§7.4).
 
-**为什么 Cron route 不直接干活**:Cron 触发是对生产 URL 的一次 HTTP GET,受 Function 时长 / 内存约束。所以 route 只做「鉴权 + canonical meta/32 个 repos shard 只读 preflight + lease + 启动 workflow + 返回」,把真正的长任务交给 Workflow runtime 异步编排。route gate 会在 lease 和 enqueue 前检查 `active` / `tracked_since` / `d`、repo key/id 与 bucket；workflow 的 step 0 再校验全部 128 个必需 shard（CF / HTTP 上按 4-bucket 窗口拆 invocation，避免 Workers 1102），防止 enqueue 到执行之间对象变化，并在任何 canonical mutation 前阻断空时间序列、孤立 repo ID、缺失 shard 或读取错误。
+**Why the Cron route does not do the work directly**: a Cron trigger is one HTTP GET against the production URL, constrained by Function duration / memory. So the route only does "auth + read-only preflight of canonical meta/32 repos shards + lease + start workflow + return", and hands the real long task to the Workflow runtime for async orchestration. The route gate checks `active` / `tracked_since` / `d`, repo key/id and bucket before lease and enqueue; workflow step 0 then validates all 128 required shards (on CF / HTTP, invocations are split by 4-bucket windows to avoid Workers 1102), preventing objects from changing between enqueue and execution, and blocking empty time series, orphan repo IDs, missing shards, or read errors before any canonical mutation.
 
-### 3.2 P1 runtime 落地形态
+### 3.2 P1 runtime landed form
 
-P1 去掉 Vercel Workflow SDK。step 是普通 async 函数，由 `web/lib/workflows/runtime/` 显式重试并调度：
+P1 removes the Vercel Workflow SDK. Steps are ordinary async functions, explicitly retried and scheduled by `web/lib/workflows/runtime/`:
 
-- **`startRefresh(runId)`**:取得 lease 之后入队第一步。
-- **`enqueueStep(job)`**:把一步交给 memory queue、HTTP `/api/workflows/refresh/step`，或非生产 CF Queue。
-- **`completeStep(job, result)`**:写 `ops/workflows/<run_id>/steps/<step>.json`，再入队下一步。
+- **`startRefresh(runId)`**: after acquiring the lease, enqueue the first step.
+- **`enqueueStep(job)`**: hand one step to the memory queue, HTTP `/api/workflows/refresh/step`, or a non-production CF Queue.
+- **`completeStep(job, result)`**: write `ops/workflows/<run_id>/steps/<step>.json`, then enqueue the next step.
 
-生产调度仍是 `web/vercel.json` 的周日 06:00 Vercel cron。CF Cron/Queue 只用于非生产证明；回滚见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)（停 CF Cron，生产仍 Vercel）。
+The production schedule is still the Sunday 06:00 Vercel cron in `web/vercel.json`. CF Cron/Queue is used only for non-production proof; rollback see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) (stop CF Cron, production remains Vercel).
 
-骨架示意(**结构示意;实现见 `web/lib/workflows/refresh.ts` + `runtime/*` + `steps/*`,函数名以代码为准**):
+Skeleton sketch (**structural sketch; implementation see `web/lib/workflows/refresh.ts` + `runtime/*` + `steps/*`, function names follow the code**):
 
 ```ts
 // web/lib/workflows/refresh.ts
 export async function refreshWorkflow(runId: string) {
   await preflightCanonical(runId);                       // step 0(read-only schema gate)
   await refreshWhitelist(runId);                       // step 1
-  await detectRenames(runId);                          // step 2(先于 metadata,读旧 full_name)
+  await detectRenames(runId);                          // step 2(before metadata, read old full_name)
   for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
-    await refreshMetadataBucket(runId, bucket);        // step 3(per-bucket loop,含 newcomer-aware tracked_since)
+    await refreshMetadataBucket(runId, bucket);        // step 3(per-bucket loop, including newcomer-aware tracked_since)
   }
-  await foldCanonical(runId);                          // step 4(月+周折叠;读 pending 冻结快照,防重复/丢数据)
-  await recomputeRank(runId);                          // step 5(跨桶 gather)
-  await recomputeRepoEntities(runId);                  // step 6a(桶内独立,可并行分批)
-  await recomputeOrgEntities(runId);                   // step 6b(跨桶 gather + 成员 carry-forward + 派生 search/index.json)
+  await foldCanonical(runId);                          // step 4(month+week fold; read the pending frozen snapshot, prevent duplicates/data loss)
+  await recomputeRank(runId);                          // step 5(cross-bucket gather)
+  await recomputeRepoEntities(runId);                  // step 6a(independent within bucket, can be parallelized in batches)
+  await recomputeOrgEntities(runId);                   // step 6b(cross-bucket gather + member carry-forward + derived search/index.json)
   await recomputeHeatmap(runId);                       // step 7
-  await buildAliases(runId);                           // step 8(改名旧 full_name → 当前 id,供 308 重定向)
+  await buildAliases(runId);                           // step 8(renamed old full_name → current id, for 308 redirect)
   await validateVersion(runId);                        // step 9
-  await publishVersion(runId);                         // step 10(切 views/latest.json 指针)
-  await gcVersions(runId);                             // step 11(版本 GC,best-effort 不抛)
+  await publishVersion(runId);                         // step 10(switch the views/latest.json pointer)
+  await gcVersions(runId);                             // step 11(version GC, best-effort does not throw)
   return { runId, ok: true };
 }
 
 // web/lib/workflows/steps/recompute-rank.ts
 async function recomputeRank(runId: string) {
-  // 独立 step、显式重试、幂等
-  // 载入全部 canonical/v2 月/周 shard(Blob 直链)建 period 索引 → 算 rank → 写 views/<runId>/rank/**
-  // ⚠️ 跨桶:rank/all-time/org 都需全部 repo,不能按桶切(见 §3.3 两类重算形状)
+  // independent step, explicit retry, idempotent
+  // load all canonical/v2 month/week shards (Blob direct link) to build a period index → compute rank → write views/<runId>/rank/**
+  // ⚠️ cross-bucket: rank/all-time/org all need every repo, cannot split by bucket (see §3.3 two recompute shapes)
 }
 ```
 
-> 实现源码见 `web/lib/workflows/refresh.ts`(workflow 编排)+ `web/lib/workflows/steps/*`(各 step 实现)。函数名以代码为准,本文表格用「逻辑职责」描述。
+> Implementation source see `web/lib/workflows/refresh.ts` (workflow orchestration)+ `web/lib/workflows/steps/*` (each step's implementation). Function names follow the code; tables in this document use "logical responsibilities" to describe them.
 
-### 3.3 step 切分原则
+### 3.3 Step split principles
 
-| 原则 | 落地 |
+| Principle | How it lands |
 |---|---|
-| **每个 step 短小** | 单 step 控制在 Function 时长 / 内存内(< 800s、< 4GB)。重算按 **shard 分批**:rank 重算每 step 处理 1 个周期或 1 个 period 批,不是「一次算完所有周期」。 |
-| **每个 step 幂等** | step 输入 = `(run_id, shard 范围)`;输出按确定路径覆盖写 `views/<run_id>/`。重跑同 `run_id` = 覆盖同一份产物,不重复累加(见 §11)。 |
-| **step 之间用 Blob checkpoint** | 每个 step 完成后写 `ops/workflows/<run_id>/steps/<step>.json`(状态 + 产物清单 + 计数)。checkpoint 是**业务可读**的进度账本,供运维 / 恢复用。 |
-| **大数据走 Blob 直链** | step 间不通过 Workflow 传大 payload(受 4.5MB 限)。step 只传 `run_id` / shard key 等小标识;数据落 Blob,下一 step 从 Blob 直链读。 |
-| **长等待用 sleep** | 命中 GitHub secondary rate limit / `Retry-After` 时,step 内短等待;跨小时级配额恢复用 workflow `sleep('1 hour')`,不空转占资源。 |
-| **所有权可隔离** | `active.json` lease 带递增 `fencing_token`，30 分钟到期、活跃写入最多每 5 分钟 heartbeat；canonical、checkpoint 和 publish pointer 每次写前都续租并核对 `(run_id, fencing_token)`。续租用 origin `getOrigin()` 的同一响应 body+etag 做 ifMatch（与 live pointer #402 / #475 同类：public GET / CDN 不能 fence；#499 week hop 跨 isolate 时不能只对 `head()` 与 CDN GET 对拍后丢 etag）。同代 CAS 412 退避并合并到 peer same-owner renew，不把仍持有 token 的冲突写成 ownership loss。被 takeover 的旧 run fail closed。 |
+| **Each step is short** | A single step stays within Function duration / memory (< 800s, < 4GB). Recompute is **batched by shard**: each rank-recompute step handles 1 period or 1 period batch, not "computing all periods at once". |
+| **Each step is idempotent** | step input = `(run_id, shard range)`; output overwrites `views/<run_id>/` at a deterministic path. Rerunning the same `run_id` = overwriting the same artifact, not accumulating again (see §11). |
+| **Blob checkpoints between steps** | After each step completes, write `ops/workflows/<run_id>/steps/<step>.json` (status + artifact list + counts). The checkpoint is a **business-readable** progress ledger, for operations / recovery. |
+| **Large data uses Blob direct links** | Steps do not pass large payloads through Workflow (subject to the 4.5MB limit). A step only passes small identifiers such as `run_id` / shard key; data lands in Blob, and the next step reads it from the Blob direct link. |
+| **Long waits use sleep** | On hitting a GitHub secondary rate limit / `Retry-After`, wait briefly inside the step; for hour-scale quota recovery use workflow `sleep('1 hour')`, and do not spin occupying resources. |
+| **Ownership can be isolated** | The `active.json` lease carries an incrementing `fencing_token`, expires in 30 minutes, and active writes heartbeat at most every 5 minutes; canonical, checkpoint, and the publish pointer renew the lease and check `(run_id, fencing_token)` before every write. Renewal does ifMatch with the same response body+etag from origin `getOrigin()` (same class as live pointer #402 / #475: public GET / CDN cannot fence; when #499 week hop crosses isolates, do not compare only `head()` against a CDN GET and then drop the etag). Same-generation CAS 412 backs off and merges into a peer same-owner renew, and does not record a conflict that still holds the token as ownership loss. An old run that was taken over fails closed. |
 
-> ⚠️ **两类重算形状(实现者必读)**:shard 按 `repo_id % N` 分桶,但**不是所有重算都桶内自洽**——
-> - **桶内独立(可按桶并行分批)**:**entity/repo** —— 每个 repo 的 entity 文件只依赖它自己那一桶的数据(monthly/weekly/recent-daily/meta),天然可按桶分 step。
-> - **必须跨桶 gather(不能按桶切)**:**rank(任一周期需全部 repo 同期 flow/stock)、entity/org(成员 `repo_id` 散落不同桶,见 C2)、all-time(全量排序)** —— 这些 step 要先**把全部 `repo-monthly`(以及需要时 `repo-weekly`)桶载入内存建索引**,再按 period / owner 聚合。全量 repo-monthly ≈ 数 MB(见 §5.2),整体载入远低于 4GB,可行;但**绝不能误以为能桶内算完**。
+> ⚠️ **Two recompute shapes (implementers must read)**: shards are bucketed by `repo_id % N`, but **not every recompute is self-contained within a bucket**—
+> - **Independent within a bucket (can be parallelized by bucket in batches)**: **entity/repo** — each repo's entity file depends only on the data in its own bucket (monthly/weekly/recent-daily/meta), and can naturally be split into steps by bucket.
+> - **Must cross-bucket gather (cannot split by bucket)**: **rank (any period needs all repos' same-period flow/stock), entity/org (member `repo_id`s are scattered across different buckets, see C2), all-time (full sort)** — these steps must first **load all `repo-monthly` (and `repo-weekly` when needed) buckets into memory to build an index**, then aggregate by period / owner. Full repo-monthly ≈ several MB (see §5.2); loading the whole set is far below 4GB and feasible; but **never mistakenly assume it can be finished within a bucket**.
 
 ---
 
-## 4. Workflow 流水线职责
+## 4. Workflow pipeline responsibilities
 
-| # | step | 读 | 写 | 说明 |
+| # | step | Read | Write | Notes |
 |---|---|---|---|---|
-| 0 | canonical readiness preflight | route：`meta.json` + 32 个 `repos` shard；workflow：全部 128 个必需 shard（运行时按 4-bucket 窗口拆步） | 无 | route 在 lease/enqueue 前验证当前模型必需的 repo lifecycle/anchoring/bucket 契约；workflow 在任何 whitelist/canonical mutation 前复核全部 shard、时间序列非空和 repo ID 引用完整性。CF Workers 不得在单次 invocation 读齐 128 个 shard（1102）。Workflow 与 daily/weekly cron 的 mutation input 均用权威读取：只有确认 404 可表示缺失；403、超时、schema/pointer 错误全部 fail closed。预发 `PREFLIGHT_RELAX_EMPTY_SHARDS=1`（政策 `preview-empty-canonical-placeholder`）把缺/空 shard 当 `{}` 占位，不整 run 作废；生产与闸门关闭仍 fail closed。这不是 lifecycle / `d` / schema 的兼容 fallback。2026-07 legacy lifecycle remediation 只走 [OPS](./OPS.md) §一次性 canonical lifecycle provenance 迁移：先 reviewed dry-run，再以 exact plan digest + shared fenced lease 执行。 |
-| 1 | refresh whitelist | GitHub Search `stars:>=MIN_TRACKED_STARS`（默认 10000；预发 wrangler `env.pre` = 1000）+ 当前已发布 run 的 whitelist snapshot | immutable `canonical/v2/whitelist/<run_id>.json` + diff；分片时另写可变 `ops/workflows/<run_id>/whitelist-search.json`；另写 `ops/workflows/latest-unpublished-whitelist.json` | Search 仅做成员发现：开放上界查询当前最高 star 后动态分桶，无 600k ceiling；snapshot `count` 是本 run 权威 active 数。同一 run 重试复用 snapshot；失败 run 不推进 baseline。下一 run 若 `latest-unpublished-whitelist.json` 指向未发布 snapshot（且 Search 进度 `minStars` 仍匹配），复用 entries、不重搜。预发 `WHITELIST_SEARCH_SHARDS=1` 把 Search 拆成 ≤10 min hop，每 hop 必须在 `gitstarclub-jobs-pre` 15 min Queue wall 内结束；`0` / 未设 = 旧单 hop。生产默认仍 ≥10k，直至 top-level / Vercel 显式改闸。页开仍只读预计算。 |
-| 2 | rename detection | 新旧 `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | full_name 变化的 repo:记录旧→新映射,其增量由后续 build-aliases step 并集成 `lookup/aliases.json`,供 repo 页 308 重定向(见 [FRONTEND.md](./FRONTEND.md))。**先于 metadata 跑**——metadata 会覆盖 `full_name`,改名检测必须在覆盖前读到旧值。canonical 按 `repo_id` 归并,改名不丢历史。 |
-| 3 | metadata shards(**按 bucket,1 step/桶**,内含 lifecycle) | run whitelist(Search membership/node_id/rename-aware identity)+ previous canonical/lookup | `canonical/v2/repos/<bucket>.json`(`active`/`tracked_since`/GraphQL metadata) + 可变 `ops/workflows/<run_id>/metadata-<bucket>.json` | 对**每个 active repo**用 GraphQL `nodes()` 批量取 metadata + 权威 `stargazerCount`；任一 active id 缺失 GraphQL 结果即 fail closed，绝不回退 Search stars。previous row 先标 `active:false`，本次 entries 再激活；drop 历史保留、re-entry 保留首次 `tracked_since`、首次 newcomer 写 snapshot discovery date。每桶按 100-id batch 落进度；GitHub GraphQL **502/503/504/429**（含 `error code: 502` 文案）与 fetch timeout 续跑同一 hop（lease 不放），已成功 batch 不重拉；单 hop 最多 **12** 次 transient（8s→60s 退避）后 `markFailed`。下一 run 经 `latest-unpublished-whitelist.json` 复用 snapshot 时，snapshot 带 `metadata_resume_run_id`，metadata 合并旧 run 的 `fetched` 并重置 transient 计数。≥1k 时单桶可远超两批；不要退回单 hop Search。 |
-| 4 | canonical fold | 已收口周期的**冻结快照** `canonical/v2/pending/<period>.json` | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` + `meta.json.folded_through` | **折叠**:周期收口时把活尾 net delta 折进月/周 rollup shard;append 站点日总量。**交接靠水位标记防重复/丢数据**——见 §7.2(H1):cron 跨期重置 `current_month.json` 前先把上一期完整 `per_repo` 落到 `canonical/v2/pending/<period>.json`,fold 只读 pending、折叠后标记 `folded_through=period`。`repo-recent-daily` 不参与 recurring fold（见 §6.2 / issue #3）。跌出者保留历史 shard、停止 poll。 |
-| 5 | rank recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`/`meta` shard | `views/<run_id>/rank/**` | 载入全部 monthly/weekly 桶建「period→repos」索引,按 period 算 flow/stock + all-time,幂等写 staging。**growth**:期初 stock = monthly `stock_est` 的上一有数据期值(§6.3),floor 期初 ≥20k;**new**:直接用 `repos.crossed_10k` 落当期判定(**不另用 stock_est 重算**,口径同 [RANKING.md](./RANKING.md) §4)。stock 锚定见 §6.3 / [RANKING.md](./RANKING.md) §3。 |
+| 0 | canonical readiness preflight | route: `meta.json` + 32 `repos` shards; workflow: all 128 required shards (runtime splits steps by 4-bucket windows) | none | The route, before lease/enqueue, verifies the repo lifecycle/anchoring/bucket contract required by the current model; the workflow, before any whitelist/canonical mutation, rechecks all shards, that time series are non-empty, and repo ID referential integrity. CF Workers must not read all 128 shards in a single invocation (1102). Mutation inputs of Workflow and of daily/weekly cron all use authoritative reads: only a confirmed 404 may mean missing; 403, timeout, and schema/pointer errors all fail closed. Preview `PREFLIGHT_RELAX_EMPTY_SHARDS=1` (policy `preview-empty-canonical-placeholder`) treats missing/empty shards as `{}` placeholders and does not void the whole run; production and a closed gate still fail closed. This is not a compatibility fallback for lifecycle / `d` / schema. The 2026-07 legacy lifecycle remediation goes only through [OPS](./OPS.md) §one-time canonical lifecycle provenance migration: reviewed dry-run first, then execute with an exact plan digest + shared fenced lease. |
+| 1 | refresh whitelist | GitHub Search `stars:>=MIN_TRACKED_STARS` (default 10000; preview wrangler `env.pre` = 1000) + the whitelist snapshot of the currently published run | immutable `canonical/v2/whitelist/<run_id>.json` + diff; when sharded, also write mutable `ops/workflows/<run_id>/whitelist-search.json`; also write `ops/workflows/latest-unpublished-whitelist.json` | Search only does membership discovery: after an open-upper-bound query of the current highest star, bucket dynamically, with no 600k ceiling; snapshot `count` is this run's authoritative active count. Retries of the same run reuse the snapshot; a failed run does not advance the baseline. If the next run's `latest-unpublished-whitelist.json` points at an unpublished snapshot (and Search progress `minStars` still matches), reuse entries and do not search again. Preview `WHITELIST_SEARCH_SHARDS=1` splits Search into ≤10 min hops; each hop must finish within the `gitstarclub-jobs-pre` 15 min Queue wall; `0` / unset = the old single hop. The production default remains ≥10k until top-level / Vercel explicitly changes the gate. Opening a page still only reads precomputed data. |
+| 2 | rename detection | old and new `repos/<bucket>` | rename map → `ops/workflows/<run_id>/renames.json` | repos whose full_name changed: record the old→new mapping; its delta is merged by the later build-aliases step into `lookup/aliases.json`, for 308 redirects on the repo page (see [FRONTEND.md](./FRONTEND.md)). **Runs before metadata**—metadata overwrites `full_name`, so rename detection must read the old value before the overwrite. canonical is merged by `repo_id`, so a rename does not lose history. |
+| 3 | metadata shards (**by bucket, 1 step/bucket**, includes lifecycle) | run whitelist(Search membership/node_id/rename-aware identity)+ previous canonical/lookup | `canonical/v2/repos/<bucket>.json` (`active`/`tracked_since`/GraphQL metadata) + mutable `ops/workflows/<run_id>/metadata-<bucket>.json` | For **each active repo**, batch-fetch metadata + authoritative `stargazerCount` with GraphQL `nodes()`; if any active id lacks a GraphQL result, fail closed, and never fall back to Search stars. Previous rows are marked `active:false` first, then this run's entries are activated; drop history is retained, re-entry keeps the first `tracked_since`, and a first-time newcomer writes the snapshot discovery date. Each bucket persists progress in 100-id batches; GitHub GraphQL **502/503/504/429** (including `error code: 502` wording) and fetch timeout continue the same hop (lease is not released), and already-successful batches are not refetched; a single hop `markFailed` after at most **12** transients (8s→60s backoff). When the next run reuses the snapshot via `latest-unpublished-whitelist.json`, the snapshot carries `metadata_resume_run_id`, and metadata merges the old run's `fetched` and resets the transient count. At ≥1k a single bucket can far exceed two batches; do not fall back to single-hop Search. |
+| 4 | canonical fold | **frozen snapshot** of closed periods `canonical/v2/pending/<period>.json` | `canonical/v2/repo-monthly/**` `repo-weekly/**` `site-daily/**` + `meta.json.folded_through` | **Fold**: when a period closes, fold the live tail net delta into month/week rollup shards; append site daily totals. **Handoff uses a watermark mark to prevent duplicates/data loss**—see §7.2 (H1): before cron resets `current_month.json` across periods, it first lands the previous period's complete `per_repo` into `canonical/v2/pending/<period>.json`; fold only reads pending, and after folding marks `folded_through=period`. `repo-recent-daily` does not participate in recurring fold (see §6.2 / issue #3). Dropped-out repos keep historical shards and stop polling. |
+| 5 | rank recompute (**cross-bucket gather**) | all `repo-monthly`/`repo-weekly` + `repos`/`meta` shards | `views/<run_id>/rank/**` | Load all monthly/weekly buckets to build a "period→repos" index, compute flow/stock + all-time by period, and idempotently write staging. **growth**: period-start stock = the previous period-with-data value of monthly `stock_est` (§6.3), floor period-start ≥20k; **new**: use `repos.crossed_10k` directly for the current-period decision (**do not recompute separately with stock_est**, same definition as [RANKING.md](./RANKING.md) §4). Stock anchoring see §6.3 / [RANKING.md](./RANKING.md) §3. |
 | 5a | category artifacts(**same gather as rank**) | `repos` + rank inputs already loaded by step 5 | `views/<run_id>/categories/**` + `lookup/categories.json` + `rank/category/**/all-time/repo/stock*.json` | Phase-1 deterministic category registry, repo assignments, public category lookup, and bounded page slices for all-time category stock ranks. Windowed category ranks stay out of Phase 1 to avoid a large view-count expansion. |
-| 6a | entity/repo recompute(**桶内独立**) | 单桶 `repo-monthly`/`repo-weekly`/`repo-recent-daily`/`repos` | `views/<run_id>/entity/repo/**` | 每个 repo 只依赖自己那桶,可按桶并行分 step。 |
-| 6b | entity/org recompute(**跨桶 gather**) | 全部 `repo-monthly`/`repo-weekly` + `repos`(owner→members) | `views/<run_id>/entity/org/**` + `lookup/**` + `search/index.json` | **不能按桶算**：当前 org aggregate/curve 只用 active members，历史 period rank 仍可保留已 drop repo 的历史贡献；active member stock 先 carry-forward 再求和，终点对齐 active `current_stars_sum`。repo lookup/search/entity 同时保留 historical rows 并传播 `active` / `tracked_since`。 |
-| 7 | heatmap update | `site-daily` shard(+ 派生月总量) | `views/<run_id>/heatmap/**` | 站点级日 / 月总量(月总量 = site-daily 当月求和)。 |
-| 8 | build aliases | 所有保留的 `ops/workflows/<run>/renames.json` + 本 run `lookup/repos.json` | `views/<run_id>/lookup/aliases.json` | 旧 full_name → 当前 id 的累积别名表,供 repo 页 308 重定向改名旧 URL。并集历史 renames 增量(gc 不删 ops/),自愈,自动覆盖更早 run 的改名；剔除 dangling/自指/与活仓库撞名项。 |
-| 9 | validate | `views/<run_id>/**` | `ops/workflows/<run_id>/validation.json` | Zod schema + sanity 不变量(见 §8 实测清单)。**不过不发布**。 |
-| 10 | publish | `views/<run_id>/**` + immutable whitelist snapshot | immutable `publish-intent.json` + `views/latest.json` + `latest-success.json` + published whitelist pointer | intent 固定原始 `prev_version`；所有覆盖写幂等，重试不会生成 `prev_version === version`。每次写前检查 fencing ownership，完成后主动失效 cache tag / route。 |
-| 11 | gc | `views/latest.json` + `list(views/)` | `del views/<旧 version>/**` | **版本 GC**(`gc.ts`,发布后跑):保留最新 4 版 + 当前 / `prev_version` 指针(回滚目标),删更旧的孤儿版本。**best-effort、绝不抛错**——清理失败不拖垮已发布的 run。 |
+| 6a | entity/repo recompute (**independent within bucket**) | single-bucket `repo-monthly`/`repo-weekly`/`repo-recent-daily`/`repos` | `views/<run_id>/entity/repo/**` | Each repo depends only on its own bucket, and steps can be split in parallel by bucket. |
+| 6b | entity/org recompute (**cross-bucket gather**) | all `repo-monthly`/`repo-weekly` + `repos` (owner→members) | `views/<run_id>/entity/org/**` + `lookup/**` + `search/index.json` | **Cannot compute by bucket**: the current org aggregate/curve uses only active members, while historical period rank may still keep the historical contribution of already-dropped repos; active member stock is carry-forwarded first and then summed, and the endpoint aligns to active `current_stars_sum`. repo lookup/search/entity also keep historical rows and propagate `active` / `tracked_since`. |
+| 7 | heatmap update | `site-daily` shard (+ derived monthly total) | `views/<run_id>/heatmap/**` | Site-level daily / monthly totals (monthly total = sum of site-daily for the current month). |
+| 8 | build aliases | all retained `ops/workflows/<run>/renames.json` + this run's `lookup/repos.json` | `views/<run_id>/lookup/aliases.json` | Cumulative alias table of old full_name → current id, for 308 redirects of renamed old URLs on the repo page. Union of historical renames deltas (gc does not delete ops/), self-healing, automatically covering renames from earlier runs; drop dangling / self-pointing / items that collide with a live repo name. |
+| 9 | validate | `views/<run_id>/**` | `ops/workflows/<run_id>/validation.json` | Zod schema + sanity invariants (see the measured checklist in §8). **Do not publish if it does not pass**. |
+| 10 | publish | `views/<run_id>/**` + immutable whitelist snapshot | immutable `publish-intent.json` + `views/latest.json` + `latest-success.json` + published whitelist pointer | intent fixes the original `prev_version`; all overwrites are idempotent, and retries will not produce `prev_version === version`. Check fencing ownership before every write, and actively invalidate the cache tag / route after completion. |
+| 11 | gc | `views/latest.json` + `list(views/)` | `del views/<old version>/**` | **Version GC** (`gc.ts`, runs after publish): keep the latest 4 versions + the current / `prev_version` pointer (rollback target), and delete older orphan versions. **best-effort, never throw**—a cleanup failure does not take down an already-published run. |
 
-> 上表是**逻辑职责**枚举,顺序与 `web/lib/workflows/refresh.ts` 完全一致。**细粒度 = 13 个真实 step-function**:`preflight → whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`(无 `revalidate`、无独立 `newcomer` step——workflow 不调 `revalidatePath`,newcomer 追踪折进 metadata 的 `tracked_since`)。运行 manifest 把这些职责归并为 10 个 checkpoint step(`preflight / whitelist / rename / metadata / fold / recompute / buildAliases / validate / publish / gc`),见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12。
+> The table above enumerates **logical responsibilities**, and the order matches `web/lib/workflows/refresh.ts` exactly. **Fine grain = 13 real step-functions**: `preflight → whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc` (no `revalidate`, no independent `newcomer` step—the workflow does not call `revalidatePath`, and newcomer tracking is folded into metadata's `tracked_since`). The run manifest collapses these responsibilities into 10 checkpoint steps (`preflight / whitelist / rename / metadata / fold / recompute / buildAliases / validate / publish / gc`), see [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12.
 >
-> publish / rollback 都调用同一 `invalidatePublishedViews()`：失效 pointer tag 与根 layout；60s 进程 memo 上限是最坏传播窗口，而不是正常等待时间。
+> publish / rollback both call the same `invalidatePublishedViews()`: invalidate the pointer tag and the root layout; the 60s process memo cap is the worst-case propagation window, not the normal wait time.
 
 ---
 
-## 5. Blob 物理布局
+## 5. Blob physical layout
 
-> 沿用 [OPS.md](./OPS.md) 的单一 PUBLIC store。下面只列**与 L3 Workflow 生命周期直接相关的前缀**及 L1/L2 live generation。完整 Blob 树以 OPS 为权威；根级 `current_month.json` / `hot-snapshot.json` 只保留为首发迁移 fallback，新 cron 不再覆盖。`canonical/star_daily.parquet` 已降级为 bootstrap 归档。
+> Continues the single PUBLIC store from [OPS.md](./OPS.md). Below lists only **prefixes directly related to the L3 Workflow lifecycle** and L1/L2 live generation. The complete Blob tree treats OPS as authoritative; root-level `current_month.json` / `hot-snapshot.json` are kept only as first-publish migration fallbacks, and new crons no longer overwrite them. `canonical/star_daily.parquet` has been downgraded to a bootstrap archive.
 
 ```text
 blob://
 ├── bootstrap/
-│   ├── latest.json                          # L4 单文件 commit/rollback pointer
+│   ├── latest.json                          # L4 single-file commit/rollback pointer
 │   ├── generations/<generation>/            # sealed bootstrap payload；create-only
 │   │   ├── manifests/{base,canonical}.json  # exact object count/bytes/SHA-256
-│   │   ├── views/**                         # 初始 base view generation
+│   │   ├── views/**                         # initial base view generation
 │   │   └── canonical/{star_daily.parquet,v2/**}
-│   └── overlays/<generation>/canonical/v2/** # L1/L3 canonical copy-on-write 状态
+│   └── overlays/<generation>/canonical/v2/** # L1/L3 canonical copy-on-write state
 │
-├── ops/workflows/                           # L3 Workflow checkpoints + 元信息
+├── ops/workflows/                           # L3 Workflow checkpoints + meta info
 │   ├── <run_id>/
-│   │   ├── manifest.json                    # run 元信息:触发时间、step 列表、整体状态
-│   │   ├── publish-intent.json              # immutable:version、原 prev_version、published_at、fencing token
-│   │   ├── steps/<step>.json                # 每个 step 的 checkpoint(状态 + 产物 + 计数)
-│   │   ├── renames.json                     # 改名映射(rename step 产出)
-│   │   ├── canonical-manifest.json           # 全部必需 canonical shard 的记录数 + SHA-256 完整性收据
-│   │   ├── validation.json                  # 校验报告(validate step 产出,见 §8)
-│   │   ├── metadata-<bucket>.json           # metadata GraphQL batch 进度（502 后续跑）
-│   │   └── error.json                       # 失败时写入(markFailed,含 step + message,便于排查)
-│   ├── active.json                          # 当前 lease(ETag CAS + idempotency key + fencing_token + expiry)
-│   ├── latest-unpublished-whitelist.json    # 未发布 snapshot 指针（失败后复用 Search）
-│   ├── latest-success.json                  # 最近一次成功发布的 run_id(恢复点)
-│   └── health/                              # 每条 pipeline 独立的 ETag-CAS 健康状态（无扁平 health.json）
-│       ├── workflow-refresh.json            # Sunday 06:00 唯一 operator signal
+│   │   ├── manifest.json                    # run meta info: trigger time, step list, overall status
+│   │   ├── publish-intent.json              # immutable:version, original prev_version, published_at, fencing token
+│   │   ├── steps/<step>.json                # checkpoint for each step (status + artifacts + counts)
+│   │   ├── renames.json                     # rename mapping (rename step output)
+│   │   ├── canonical-manifest.json           # record counts + SHA-256 integrity receipt of all required canonical shards
+│   │   ├── validation.json                  # validation report (validate step output, see §8)
+│   │   ├── metadata-<bucket>.json           # metadata GraphQL batch progress (resume after 502)
+│   │   └── error.json                       # written on failure (markFailed, includes step + message, for debugging)
+│   ├── active.json                          # current lease (ETag CAS + idempotency key + fencing_token + expiry)
+│   ├── latest-unpublished-whitelist.json    # unpublished snapshot pointer (reuse Search after failure)
+│   ├── latest-success.json                  # run_id of the most recent successful publish (recovery point)
+│   └── health/                              # independent ETag-CAS health state per pipeline (no flat health.json)
+│       ├── workflow-refresh.json            # Sunday 06:00 sole operator signal
 │       ├── cron-daily.json
 │       └── cron-weekly.json
 │
-├── canonical/v2/                            # 生产 canonical(JSON shard)
-│   ├── meta.json                            # seam_date · schema_ver · folded_through(周/月水位,见 §6.3/§7.2)
-│   ├── whitelist/<run_id>.json              # 白名单快照 + diff(每次 whitelist step 产出)
-│   ├── whitelist/latest.json                # 兼容 pointer；只在成功 publish / rollback 时推进
-│   ├── repos/<bucket>.json                  # repo 维度 + active/history + tracked_since + 冻结锚定因子 d
-│   ├── repo-monthly/<bucket>.json           # per-repo 月 flow 序列(驱动月榜 + 月曲线)
-│   ├── repo-weekly/<bucket>.json            # per-repo ISO 周 flow 序列(驱动历史周榜)
-│   ├── repo-recent-daily/<bucket>.json      # per-repo 近 ~90 天日点(曲线尾 + 周边界)
-│   ├── site-daily/<yyyy>.json               # 站点级日总量(驱动 heatmap)
-│   └── pending/<period>.json                # 已收口、待折叠的周期活尾冻结快照(cron 写、fold step 读,见 §7.2)
-│   # (同级 canonical/star_daily.parquet 是 bootstrap 归档,仅 L4 / 灾难重建用——见 OPS §Blob 布局)
+├── canonical/v2/                            # production canonical (JSON shard)
+│   ├── meta.json                            # seam_date · schema_ver · folded_through (week/month watermark, see §6.3/§7.2)
+│   ├── whitelist/<run_id>.json              # whitelist snapshot + diff (produced each whitelist step)
+│   ├── whitelist/latest.json                # compatibility pointer; advanced only on successful publish / rollback
+│   ├── repos/<bucket>.json                  # repo dimensions + active/history + tracked_since + frozen anchor factor d
+│   ├── repo-monthly/<bucket>.json           # per-repo month flow series (drives monthly rank + monthly curve)
+│   ├── repo-weekly/<bucket>.json            # per-repo ISO week flow series (drives historical weekly rank)
+│   ├── repo-recent-daily/<bucket>.json      # per-repo recent ~90-day daily points (curve tail + week boundary)
+│   ├── site-daily/<yyyy>.json               # site-level daily totals (drives heatmap)
+│   └── pending/<period>.json                # frozen snapshot of a closed, not-yet-folded period live tail (cron writes, fold step reads, see §7.2)
+│   # (sibling canonical/star_daily.parquet is the bootstrap archive, only for L4 / disaster rebuild—see OPS §Blob layout)
 │
-├── live/                                    # L1/L2 原子活尾
-│   ├── latest.json                          # 当前完整 generation + ETag/CAS lease/fence
-│   └── generations/<run_id>/                # immutable；全部文件 + manifest 完成后才可发布
+├── live/                                    # L1/L2 atomic live tail
+│   ├── latest.json                          # current complete generation + ETag/CAS lease/fence
+│   └── generations/<run_id>/                # immutable; publishable only after all files + manifest are complete
 │       ├── manifest.json
 │       ├── current_month.json               # v2 index (schema_version=2, no per_repo)
-│       ├── current_month/shards/<0-31>.json # repo_id % 32；reader 组装成 CurrentMonth
+│       ├── current_month/shards/<0-31>.json # repo_id % 32; reader assembles them into CurrentMonth
 │       ├── hot-snapshot.json
 │       ├── rank/** · heatmap/**
-│       └── rollover/<period>.json            # 跨月 pending 恢复副本（可选）
+│       └── rollover/<period>.json            # cross-month pending recovery copy (optional)
 │
-└── views/                                   # 发布层(指针切换)
-    ├── latest.json                          # 指针:当前生效的版本前缀(version = run_id;见 §7)
-    └── <run_id>/                            # 一个 run 的完整视图版本(version=run_id,无独立 staging/published)
-        ├── meta.json                        # seam/fold 水位 + active_repo_count/historical_repo_count
-        ├── rank/**                          # 全周期 flow/stock + all-time(repo + org)
-        ├── entity/repo/<id>.json            # per-repo entity(曲线 monthly + recent_daily + 里程碑)
-        ├── entity/org/<login>.json          # per-org entity(carry-forward 后求和)
-        ├── heatmap/year/<yyyy>.json         # 年度热力图
-        ├── lookup/repos.json                # active + historical 查询表(含 tracked_since)
-        ├── search/index.json                # 客户端搜索索引(见 DATA-CONTRACTS §2.14)
-        └── current_month.json               # 该版本快照下的当月活尾投影(读侧可用作回退)
-        # 写完→validate→指针指向它即上线
+└── views/                                   # publish layer (pointer switch)
+    ├── latest.json                          # pointer: currently effective version prefix (version = run_id; see §7)
+    └── <run_id>/                            # one run's complete view version (version=run_id, no separate staging/published)
+        ├── meta.json                        # seam/fold watermark + active_repo_count/historical_repo_count
+        ├── rank/**                          # all-period flow/stock + all-time (repo + org)
+        ├── entity/repo/<id>.json            # per-repo entity (curve monthly + recent_daily + milestones)
+        ├── entity/org/<login>.json          # per-org entity (sum after carry-forward)
+        ├── heatmap/year/<yyyy>.json         # yearly heatmap
+        ├── lookup/repos.json                # active + historical lookup table (includes tracked_since)
+        ├── search/index.json                # client search index (see DATA-CONTRACTS §2.14)
+        └── current_month.json               # current-month live-tail projection under this version's snapshot (read side may use it as fallback)
+        # write finishes→validate→once the pointer points at it, it is live
 ```
 
 Phase-1 category outputs under `views/<run_id>/`:
@@ -270,172 +270,172 @@ These are written by the rank recompute gather. Windowed category ranks are not
 part of Phase 1 because they multiply the view count across every public
 category and every historical week/month/year.
 
-### 5.1 读路径优先级(页面如何选版本)
+### 5.1 Read-path priority (how a page chooses a version)
 
-页面 / 数据层先读 `views/latest.json` 指针解析出 `<version>`(下记 `V = views/<version>`,version = run_id),再按「live 优先、回退 base」取数。**关键:用 `meta.folded_through` 水位决定某周期归 live 还是归 base,避免重复计数(§7.2)**:
+The page / data layer first reads the `views/latest.json` pointer and resolves `<version>` (below, `V = views/<version>`, version = run_id), then fetches by "live first, fall back to base". **Key: use the `meta.folded_through` watermark to decide whether a period belongs to live or to base, avoiding double counting (§7.2)**:
 
 ```text
-未折叠周期(period > folded_through,即当前/刚收口未发布):
-    rank/heatmap:  live/* (L1/L2 活尾) → 回退 V/* (上一版 base,可能尚不含该期)
-已折叠周期(period ≤ folded_through,base 已含):
-    rank/heatmap:  直接读 V/* (不再叠 live,防重复)
-entity / lookup:    V/* (L3 发布版本)
-hot-snapshot / current_month: 读 live/latest.json → live/generations/<generation>/*
+unfolded periods (period > folded_through, i.e. current / just closed and not yet published):
+    rank/heatmap:  live/* (L1/L2 live tail) → fall back to V/* (previous version's base, which may not yet include this period)
+folded periods (period ≤ folded_through, base already includes them):
+    rank/heatmap:  read V/* directly (do not overlay live, prevent duplicates)
+entity / lookup:    V/* (L3 published version)
+hot-snapshot / current_month: read live/latest.json → live/generations/<generation>/*
 ```
 
-> 页面 base 视图(rank/all-time/entity/heatmap/meta/lookup)走 `readView(path, schema, { base:true })`。managed pointer 成功返回 version 时才读取 bootstrap pointer，并按 `published_at` 选择更新的完整 generation：managed publish 后读 `views/<version>/<path>`；更新的 bootstrap commit / rollback 后读 sealed `bootstrap/generations/<generation>/views/<path>`。页面读取在 managed pointer 超时、非 404 失败或形状不可用时保持既有 legacy flat 容错；Workflow/control-plane 及 daily/weekly cron 的 mutation input 改走 `readAuthoritativeView` / `readRequiredView`，pointer 或对象 403/超时/解析失败一律抛错，只有确认 404 才能表示缺失，且 overlay 非 404 错误绝不回退 sealed bytes。live snapshot/rank/heatmap 走独立的 `live/latest.json`，再读 `live/generations/<generation>/<logical-path>`；live pointer 真正 404 时才回退旧 flat layout，pointer 无法访问/解析时复用缓存的已验证 generation，否则 fail closed。logical `canonical/*` 在 bootstrap pointer 存在时先读 `bootstrap/overlays/<generation>/canonical/*`，单对象 404 才回退 immutable generation seed；写入一律进入 overlay。这样 recurring mutation 不改 sealed payload，bootstrap rollback 会同时恢复对应 generation 的 canonical overlay。`ops/*` 仍走 flat。**「live vs base」判据按 `meta.folded_through` 水位收紧**(period ≤ `folded_through` 直读 base、未折叠周期叠 live,§7.2),防重复计数。
+> Page base views (rank/all-time/entity/heatmap/meta/lookup) go through `readView(path, schema, { base:true })`. The bootstrap pointer is read only when the managed pointer successfully returns a version, and the newer complete generation is chosen by `published_at`: after a managed publish, read `views/<version>/<path>`; after a newer bootstrap commit / rollback, read sealed `bootstrap/generations/<generation>/views/<path>`. Page reads keep the existing legacy flat tolerance when the managed pointer times out, fails non-404, or the shape is unusable; mutation inputs of Workflow/control-plane and of daily/weekly cron instead go through `readAuthoritativeView` / `readRequiredView`, and pointer or object 403/timeout/parse failures always throw; only a confirmed 404 may mean missing, and an overlay non-404 error never falls back to sealed bytes. live snapshot/rank/heatmap use an independent `live/latest.json`, then read `live/generations/<generation>/<logical-path>`; fall back to the old flat layout only when the live pointer is a true 404; when the pointer cannot be accessed/parsed, reuse the cached verified generation, otherwise fail closed. When a bootstrap pointer exists, logical `canonical/*` first reads `bootstrap/overlays/<generation>/canonical/*`, and falls back to the immutable generation seed only on a single-object 404; writes always go into the overlay. Thus recurring mutation does not change the sealed payload, and bootstrap rollback also restores that generation's canonical overlay. `ops/*` still uses flat. **The "live vs base" criterion is tightened by the `meta.folded_through` watermark** (period ≤ `folded_through` reads base directly, unfolded periods overlay live, §7.2), preventing double counting.
 
-> ⚠️ **两类指针读取都必须用重校验缓存而非 `no-store`**：base pointer 默认 1h（部分 daily 入口 1d），live pointer 60s。`resolveLiveGeneration()` 另有 single-flight，保证同一冷实例的并发 sibling 读取共享一个 pointer 结果。
+> ⚠️ **Both kinds of pointer reads must use a revalidating cache rather than `no-store`**: the base pointer defaults to 1h (some daily entries 1d), and the live pointer is 60s. `resolveLiveGeneration()` also has single-flight, so concurrent sibling reads on the same cold instance share one pointer result.
 
-### 5.2 分桶(bucket)策略
+### 5.2 Bucketing (bucket) strategy
 
-| shard | 分桶键 | 桶数(建议) | 单桶量级(估算) | 重算粒度 |
+| shard | Bucket key | Bucket count (suggested) | Per-bucket size (estimate) | Recompute grain |
 |---|---|---|---|---|
-| `repos/<bucket>` | `repo_id % N` | 32 | ~165 repo / 桶,~数百 KB | metadata step 每 step 几个桶 |
-| `repo-monthly/<bucket>` | `repo_id % N` | 32 | ~165 repo × ~132 月点 × ~20B ≈ **~430 KB** | rank/entity gather |
-| `repo-weekly/<bucket>` | `repo_id % N` | 64 | ~82 repo × ~570 周点 × ~22B ≈ **~1 MB** | 历史周榜重算 |
-| `repo-recent-daily/<bucket>` | `repo_id % N` | 32 | ~165 repo × ≤90 日点,~数百 KB | bootstrap 一次性 seed；entity recompute 只读；recurring fold 当前不老化 / 不修剪（issue #3 选择文档化现状） |
-| `site-daily/<yyyy>` | 年 | 1/年 | 365 点,KB 级 | heatmap step |
+| `repos/<bucket>` | `repo_id % N` | 32 | ~165 repo / bucket, ~a few hundred KB | metadata step handles several buckets per step |
+| `repo-monthly/<bucket>` | `repo_id % N` | 32 | ~165 repo × ~132 month points × ~20B ≈ **~430 KB** | rank/entity gather |
+| `repo-weekly/<bucket>` | `repo_id % N` | 64 | ~82 repo × ~570 week points × ~22B ≈ **~1 MB** | historical weekly-rank recompute |
+| `repo-recent-daily/<bucket>` | `repo_id % N` | 32 | ~165 repo × ≤90 daily points, ~a few hundred KB | bootstrap one-time seed; entity recompute is read-only; recurring fold currently does not age / prune (issue #3 chooses to document the status quo) |
+| `site-daily/<yyyy>` | year | 1/year | 365 points, KB-level | heatmap step |
 
-**内存校验**:跨桶 gather 的 step(rank / entity-org / all-time)需一次载入**全部**桶——
-- 全部 `repo-monthly`:32 × ~430KB ≈ **~14 MB**;全部 `repo-weekly`:64 × ~1MB ≈ **~64 MB**。
-- 即便同时载入 monthly + weekly + repos ≈ **&lt; 100 MB**,远低于 Function **4GB** 上限。
-- 单文件读走 **Blob 直链**(绕过 4.5MB 响应体限制),`repo-weekly` 单桶 ~1MB 也安全。
-- 写出侧:全量 entity(~16k 文件)按 **75/s** 节流 ≈ 213s,但 entity/repo 按桶分多 step(7a),每 step 仅 ~165 文件 ≈ 2–3s,不逼近 800s。
+**Memory check**: cross-bucket gather steps (rank / entity-org / all-time) must load **all** buckets at once—
+- All `repo-monthly`: 32 × ~430KB ≈ **~14 MB**; all `repo-weekly`: 64 × ~1MB ≈ **~64 MB**.
+- Even loading monthly + weekly + repos together ≈ **&lt; 100 MB**, far below the Function **4GB** cap.
+- Single-file reads use **Blob direct links** (bypassing the 4.5MB response-body limit), and a single `repo-weekly` bucket of ~1MB is also safe.
+- Write side: full entities (~16k files) throttled at **75/s** ≈ 213s, but entity/repo is split into multiple steps by bucket (7a), and each step is only ~165 files ≈ 2–3s, not approaching 800s.
 
-> 桶数是可调旋钮:目标是**单桶 JSON 远小于 Function 内存、单 step 处理几个桶在时长内完成**。规模增长(白名单扩容)时调大桶数即可,不改逻辑。
+> Bucket count is a tunable knob: the goal is **a single bucket's JSON far smaller than Function memory, and a single step processing several buckets finishing within the duration**. When scale grows (whitelist expansion), increase the bucket count; do not change the logic.
 
 ---
 
-## 6. Canonical shard 模型
+## 6. Canonical shard model
 
-### 6.1 为什么是 JSON shard
+### 6.1 Why JSON shards
 
-历史上 canonical = **单个 `star_daily.parquet`**(per-repo×天,~800 万行)。它只能被 **DuckDB**(本机原生模块、4GB 内存)读出来做全量预算——这是「依赖本地计算」的根因。生产 canonical 改成**一组小而可单独重算的 JSON shard**,每个 shard:
+Historically canonical = **a single `star_daily.parquet`** (per-repo×day, ~8 million rows). It can only be read by **DuckDB** (local native module, 4GB memory) to do a full precompute—this is the root cause of "depending on local compute". Production canonical is changed into **a set of small JSON shards that can be recomputed individually**. Each shard:
 
-- **纯 JSON**:`fetch` + `JSON.parse` 即可读,无原生模块、无引擎。
-- **小**:单 shard 远小于 4.5MB(大文件走 Blob 直链读绕过响应体限制),可整个装进 Function 内存。
-- **可单独重算**:改一个 repo 桶只重算该桶,不动全量。
-- **预聚合到视图所需粒度**:生产重算需要的是「per-repo 月 / 周 flow + 累计 stock」「站点日总量」,**不需要**每天每 repo 的原始 8M 行。
+- **Pure JSON**: readable with `fetch` + `JSON.parse`, no native module, no engine.
+- **Small**: a single shard is far below 4.5MB (large files are read via Blob direct link to bypass the response-body limit), and can fit entirely in Function memory.
+- **Individually recomputable**: changing one repo bucket recomputes only that bucket, not the full set.
+- **Pre-aggregated to the grain views need**: what production recompute needs is "per-repo month / week flow + cumulative stock" and "site daily totals", and it **does not need** the raw 8M rows of every repo every day.
 
-### 6.2 shard 模型
+### 6.2 Shard model
 
-| 逻辑事实 | 历史(Parquet 列) | 生产 shard(JSON) | 谁消费 |
+| Logical fact | History (Parquet column) | Production shard (JSON) | Who consumes |
 |---|---|---|---|
-| per-repo×天 delta | `star_daily(repo_id,date,delta)` 全量 | **不进生产**:折叠为下面的月/周 rollup;原始日表只留 bootstrap 归档 | — |
-| per-repo×月 flow | DuckDB `GROUP BY repo,月` | `canonical/v2/repo-monthly/<bucket>.json` = `{ "<id>": [[period, flow], ...] }` | 月榜 + entity 月曲线 |
-| per-repo×周 flow | DuckDB `GROUP BY repo,ISO周` | `canonical/v2/repo-weekly/<bucket>.json` | 历史周榜 |
-| per-repo 近 90 天日点 | DuckDB 取近 90 天 | `canonical/v2/repo-recent-daily/<bucket>.json` | entity 曲线尾 + 周边界 |
-| 站点级日总量 | DuckDB `GROUP BY 日` | `canonical/v2/site-daily/<yyyy>.json` | heatmap |
-| repo 维度 + 里程碑 | `repos` 维度 | `canonical/v2/repos/<bucket>.json` | lookup + entity meta + 新晋 |
+| per-repo×day delta | `star_daily(repo_id,date,delta)` full | **not in production**: folded into the month/week rollups below; the raw daily table remains only as a bootstrap archive | — |
+| per-repo×month flow | DuckDB `GROUP BY repo,month` | `canonical/v2/repo-monthly/<bucket>.json` = `{ "<id>": [[period, flow], ...] }` | monthly rank + entity monthly curve |
+| per-repo×week flow | DuckDB `GROUP BY repo,ISO week` | `canonical/v2/repo-weekly/<bucket>.json` | historical weekly rank |
+| per-repo recent 90-day daily points | DuckDB takes the recent 90 days | `canonical/v2/repo-recent-daily/<bucket>.json` | entity curve tail + week boundary |
+| site-level daily totals | DuckDB `GROUP BY day` | `canonical/v2/site-daily/<yyyy>.json` | heatmap |
+| repo dimensions + milestones | `repos` dimensions | `canonical/v2/repos/<bucket>.json` | lookup + entity meta + newcomers |
 
-> **关键洞察**:日粒度只在 bootstrap 时需要(算里程碑跨阈日 + 首次 rollup 成月/周)。**里程碑一次算定即冻结**;之后生产系统只**追加新日 delta(cron 活尾)并在周期收口时折进月/周 shard**。所以**生产 canonical = 月/周/站点 rollup shard + 近 90 天 + repo 维度**,全 JSON、全小、全可在 Vercel 重算。原始 8M 行日表退为 bootstrap 归档。
+> **Key insight**: day grain is needed only at bootstrap (compute milestone threshold-crossing days + the first rollup into month/week). **Milestones are computed once and then frozen**; afterward the production system only **appends new-day deltas (cron live tail) and folds them into month/week shards when the period closes**. So **production canonical = month/week/site rollup shards + recent 90 days + repo dimensions**, all JSON, all small, all recomputable on Vercel. The raw 8M-row daily table is retired to a bootstrap archive.
 
-> ⚠️ **recent-daily 当前未做老化(与 issue #3 一致)**:`repo-recent-daily` 由 **bootstrap(`07-export-v2`)一次性 seed**,recurring `fold` step(`fold.ts`)**只折叠月/周 rollup + site-daily,不读、不写、不修剪 `repo-recent-daily`**——`web/lib/` 内没有任何 `repo-recent-daily` 的 writer,只有 reader(`io.ts:53`)。因此「日点滑出 90 天时并入 `repo-monthly` 并从 recent-daily 删除」的滚动老化机制**尚未实现**,不要据此推断接缝去重已生效。entity 曲线 `monthly`(月点)接 `recent_daily`(日尾)的接缝连续性由 recompute 阶段保证(都是 net delta;stock 段按 §6.3 锚定),不依赖 fold 的修剪。
+> ⚠️ **recent-daily is not currently aged (consistent with issue #3)**: `repo-recent-daily` is **one-time seeded by bootstrap (`07-export-v2`)**, and the recurring `fold` step (`fold.ts`) **only folds month/week rollup + site-daily, and does not read, write, or prune `repo-recent-daily`**—there is no `repo-recent-daily` writer anywhere under `web/lib/`, only a reader (`io.ts:53`). Therefore the rolling aging mechanism "when a daily point slides past 90 days, merge it into `repo-monthly` and delete it from recent-daily" is **not yet implemented**; do not infer from this that seam dedup is already in effect. Seam continuity where the entity curve `monthly` (month points) meets `recent_daily` (day tail) is guaranteed by the recompute stage (both are net delta; the stock segment is anchored per §6.3), and does not depend on fold's pruning.
 
-### 6.3 stock 锚定(必须分 seam 前后,口径同 [RANKING.md](./RANKING.md) §3)
+### 6.3 stock anchoring (must be split before and after seam, same definition as [RANKING.md](./RANKING.md) §3)
 
-> ⚠️ **关键:`d` 只作用于 seam 前的 gross,seam 后的 net 直接累加、不再乘 `d`**。这是 [RANKING.md](./RANKING.md) §3 的权威口径,生产 shard 照搬,否则曲线终点对不上 `current_stars`。
+> ⚠️ **Key: `d` applies only to pre-seam gross; post-seam net is summed directly and is no longer multiplied by `d`**. This is the authoritative definition in [RANKING.md](./RANKING.md) §3; production shards copy it, otherwise the curve endpoint will not match `current_stars`.
 
-- **持久化 `seam_date`**:`canonical/v2/meta.json` 含 `seam_date`、`schema_ver`(见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4)。seam = gross→net 边界(bootstrap 截止日)。
-- **锚定因子**(per repo,bootstrap 算定后冻结):`d = current_stars@seam / cumgross@seam_date`,**分母只含 seam 前 gross 累计**(不含任何 net)。契约仅要求 `d >= 0`; GitHub Archive 低计时可 `d > 1`。
-- **seam 前(历史)**:`stock_est[period] = round(cumgross[period] × d)`,`cumgross` = 该 repo 月 flow(gross)在桶内的前缀和。终点(seam 月)= `cumgross@seam × d = current_stars@seam`,精确锚定。
-- **seam 后(net 期)**:`stock[period] = stock_est@seam + Σ(net flow 从 seam 到 period)`,**不再乘 `d`**——net 是真实增量,精确跟踪(RANKING §3「seam 后不再估算」)。
-- **实现**:repo-monthly 桶里每个 period 标记 gross/net(按 `seam_date` 判),`d` 只乘到 gross 段前缀和,net 段直接加。纯 JS、单桶内存可控。
+- **Persisted `seam_date`**: `canonical/v2/meta.json` contains `seam_date` and `schema_ver` (see [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4). seam = the gross→net boundary (bootstrap cutoff day).
+- **Anchor factor** (per repo, frozen after bootstrap computes it): `d = current_stars@seam / cumgross@seam_date`, **the denominator contains only the pre-seam gross cumulative** (no net of any kind). The contract only requires `d >= 0`; when GitHub Archive undercounts, `d > 1` is allowed.
+- **Pre-seam (history)**: `stock_est[period] = round(cumgross[period] × d)`, where `cumgross` = the prefix sum, inside the bucket, of that repo's month flow (gross). The endpoint (seam month) = `cumgross@seam × d = current_stars@seam`, exactly anchored.
+- **Post-seam (net periods)**: `stock[period] = stock_est@seam + Σ(net flow from seam to period)`, **no longer multiplied by `d`**—net is the real increment and is tracked exactly (RANKING §3 "no longer estimated after seam").
+- **Implementation**: each period in a repo-monthly bucket is marked gross/net (judged by `seam_date`); `d` is multiplied only into the gross-segment prefix sum, and the net segment is added directly. Pure JS, and single-bucket memory is controllable.
 
-> 即:生产 shard 里是「读一个 repo 桶 → 按 seam 分段做前缀和(gross 段乘 d、net 段不乘)」的纯 JS 计算,口径与 RANKING §3 一致,不需要 Parquet / DuckDB。**`d` 在 bootstrap 算定后写入 `repos` shard 冻结,Workflow 不重算 `d`(避免 net 累积让分母漂移)。**旧 DuckDB parity 只用于 folded_through 不晚于 seam 的等价对拍;post-seam 正确性由独立合成夹具断言。
+> That is: inside a production shard it is pure JS that "reads one repo bucket → prefix-sums in segments by seam (gross segment multiplied by d, net segment not multiplied)", the same definition as RANKING §3, and it does not need Parquet / DuckDB. **After bootstrap computes `d`, it is written into the `repos` shard and frozen; Workflow does not recompute `d` (to avoid net accumulation drifting the denominator).** Old DuckDB parity is used only for an equivalent cross-check where folded_through is not later than seam; post-seam correctness is asserted by an independent synthetic fixture.
 
 ---
 
-## 7. Live 覆盖与发布指针
+## 7. Live overlay and publish pointer
 
-### 7.1 L1 / L2 live 覆盖层
+### 7.1 L1 / L2 live overlay
 
-L1 daily cron / L2 weekly cron 先取得 `live/latest.json` 内嵌 lease，再写一个完整 immutable generation；最后用同一 pointer ETag 做 fenced CAS 切换。获取 lease 只改 `lease`、不改 `generation`，因此任何对象写失败都不会暴露半套视图。读侧按 §5.1 与 base 视图叠合:
+L1 daily cron / L2 weekly cron first acquire the embedded lease in `live/latest.json`, then write one complete immutable generation; finally they switch with fenced CAS using the same pointer ETag. Acquiring the lease changes only `lease`, not `generation`, so any object-write failure will not expose a half set of views. The read side composites with the base view per §5.1:
 
-- **当前/刚收口未折叠的周期**:读 `live/*` 覆盖层(若回退到 base,base 尚不含该期,会缺活尾)。
-- **已折叠的周期**:读 base(`views/<version>/*`),不再叠 live,避免重复计数。
+- **Current / just-closed unfolded periods**: read the `live/*` overlay (if falling back to base, base does not yet include that period, so the live tail will be missing).
+- **Already-folded periods**: read base (`views/<version>/*`), and do not overlay live, avoiding double counting.
 
-每个 live generation 只含本次刷新生成的当前周/月文件，不是全部未折叠周期的复制。周期型 rank / heatmap 先读 pointer 当前 generation；对象确认 404 时，读侧沿 immutable manifest 的 `previous_generation` 有界回溯（最多 64 代、cycle detection、manifest generation/files 一致性校验）。请求的 week/month 新于 hop 声明周期时立即停走（更旧代不可能有该期）。链到 `null` 后才尝试迁移期 flat `live/*`。manifest 声明文件却读到 404，或 pointer/manifest/transport/schema/环异常，一律 fail closed。扫描触到 64 代上限且尚未走到 `null` 时截断为缺失（返回 null，页面回退 base / 空态，不 500，也不猜 legacy）。高并发 SSG 的 public-CDN 403 不是缺失：页面读至多尝试同一历史对象 2 次，并按 Blob/key 熔断 60 秒后停止整个 live 链、交给 base / `notFound`；熔断会自动恢复，且不能借机取旧代。required product gate 仍对 403 保持失败。`current_month` / `hot-snapshot` 仍是单 generation 快照，禁止历史回退。
+Each live generation contains only the current week/month files produced by this refresh, not a copy of every unfolded period. Period-shaped rank / heatmap first read the pointer's current generation; when an object is a confirmed 404, the read side walks back along the immutable manifest's `previous_generation` with a bound (at most 64 generations, cycle detection, and a consistency check of manifest generation/files). If the requested week/month is newer than the period the hop declares, stop immediately (an older generation cannot have that period). Only after the chain reaches `null` does it try migration-era flat `live/*`. If the manifest declares a file but the read is 404, or pointer/manifest/transport/schema/cycle is abnormal, always fail closed. When the scan hits the 64-generation cap and has not yet reached `null`, truncate as missing (return null; the page falls back to base / empty state, does not 500, and does not guess legacy). A public-CDN 403 under high-concurrency SSG is not missing: a page read tries the same historical object at most 2 times, and after a 60-second circuit break by Blob/key stops the whole live chain and hands off to base / `notFound`; the circuit breaker recovers automatically, and must not be used as a chance to fetch an older generation. The required product gate still treats 403 as failure. `current_month` / `hot-snapshot` remain single-generation snapshots, and historical fallback is forbidden.
 
-L1/L2 与 L3 写不同 Blob 前缀(`live/generations/*` vs `canonical/v2/**` + `views/<run_id>/**`),前缀不重叠；L3 重算期间 L1/L2 照常刷活尾。默认幂等 key 为 `<job>:<UTC-day>`；同 key running/committed 分别 attach/直接返回，不同 key active 返回 409。手动同日追加刷新用显式新 key。
+L1/L2 and L3 write different Blob prefixes (`live/generations/*` vs `canonical/v2/**` + `views/<run_id>/**`); the prefixes do not overlap, and during L3 recompute L1/L2 keep refreshing the live tail as usual. The default idempotency key is `<job>:<UTC-day>`; same-key running/committed attach / return directly respectively, and a different key while active returns 409. A manual same-day extra refresh uses an explicit new key.
 
-### 7.2 周期收口交接契约(防重复 / 丢数据)
+### 7.2 Period-close handoff contract (prevent duplicates / data loss)
 
-generation 内的 `current_month.json` 会在跨月时初始化新月，所以必须在 pointer 切换前把上一期数据落到持久区:
+The `current_month.json` inside a generation initializes a new month when crossing months, so the previous period's data must be landed in durable storage before the pointer switch:
 
-| 步骤 | 谁做 | 动作 |
+| Step | Who | Action |
 |---|---|---|
-| 1. 冻结上一期 | **L1/L2 cron**(跨期那次) | 检测到旧 generation 的 month ≠ 本次 month → 以 UTC 日 00:00 固定 `frozen_at`，在 pointer commit 前写 `canonical/v2/pending/<旧 period>.json`，并把同一 payload 放入新 generation 的 `rollover/<period>.json`。重试字节等价；即使其后 generation 失败，旧 pointer 仍可读。 |
-| 2. 折叠 | **L3 fold step** | 只读 `canonical/v2/pending/<period>.json`(已冻结、不再变动)→ 折进 `repo-monthly`/`repo-weekly` → 标 `folded_through=period`(写 `canonical/v2/meta.json`)。 |
-| 3. 防重复 | **读路径 §5.1** | 已折叠周期(`≤ folded_through`)只读 base(已含该期);未折叠的当前/刚收口周期读 live 覆盖层。**同一周期绝不同时计 live + canonical。** |
+| 1. Freeze the previous period | **L1/L2 cron** (the cross-period run) | Detect that the old generation's month ≠ this month → fix `frozen_at` at UTC day 00:00, write `canonical/v2/pending/<old period>.json` before the pointer commit, and put the same payload into the new generation's `rollover/<period>.json`. Retries are byte-equivalent; even if the generation fails afterward, the old pointer remains readable. |
+| 2. Fold | **L3 fold step** | Read only `canonical/v2/pending/<period>.json` (already frozen, no longer changing) → fold into `repo-monthly`/`repo-weekly` → mark `folded_through=period` (write `canonical/v2/meta.json`). |
+| 3. Prevent duplicates | **Read path §5.1** | Already-folded periods (`≤ folded_through`) read only base (already includes that period); unfolded current / just-closed periods read the live overlay. **The same period is never counted as both live and canonical.** |
 
-> 这样:① 上月最后一天 net 一定先进 pending 才被覆盖 → **不丢**;② base 与 live 按 `folded_through` 水位线**互斥**取数 → **不重复**;③ pending 是冻结快照,L3 折叠期间 cron 不再动它 → step 5 读到的是稳定输入。`folded_through` 同时是周/月两套水位(周收口比月早)。
+> Thus: ① the previous month's last-day net always enters pending before being overwritten → **not lost**; ② base and live fetch **mutually exclusively** along the `folded_through` watermark line → **not duplicated**; ③ pending is a frozen snapshot, and cron does not touch it while L3 is folding → what step 5 reads is a stable input. `folded_through` is both the week and month watermarks (week closes earlier than month).
 
-### 7.2a Live generation 原子发布与失败语义
-
-```text
-1. CAS live/latest.json，写入 15m lease（generation 保持旧值）
-2. 生成并 Zod 校验全部 payload
-3. 顺序写 live/generations/<run_id>/**（allowOverwrite:false）
-4. 最后写 immutable manifest.json
-5. 用 Blob API `head()` 核对 claim 时记下的 origin etag（不要 public GET 指针正文）
-6. 以该 origin ETag 做 fenced CAS：generation=<run_id>, lease=null
-7. commit 成功后才 revalidatePath / IndexNow / sync-run log
-```
-
-- 任一 prerequisite/data/manifest/pointer 写入故障都让 reader 继续解析旧
-  `generation`；partial generation 是不可见 orphan。
-- 同 run 重试遇到已有 immutable 文件时只接受**完全相同字节**，内容冲突
-  fail closed。lease 过期或被替换的 writer 无权清 lease 或切 pointer。
-- pointer 的 `previous_generation` 保留一跳运维回滚目标；每个 immutable manifest
-  的同名字段同时组成周期文件的读侧历史链。读侧回溯是有界查询，不改变回滚命令
-  仍只接受显式一跳 target 的语义。live GC 尚不在本 issue 内；不要删除历史链可能
-  引用、current/previous 或带 active lease 的 generation。
-- `hot-snapshot.freshness` 逐 section 标 source-as-of；carry-forward section 不得
-  使用本次运行时间。日期依赖的旧 `on_this_day` 不匹配当前 UTC 月日即清空。
-
-### 7.3 发布指针模型(atomic pointer swap)
-
-> **版本前缀 = run_id,无独立 staging/published 两段式**。重算直接写 `views/<run_id>/**`(新前缀,不影响线上);该版本未被指针引用前对读侧不可见,等价于「staging」。publish 仅原子覆盖写一个指针文件即上线——省掉一次全量复制(~12,899 文件)。
+### 7.2a Live generation atomic publish and failure semantics
 
 ```text
-1. step 6–8 重算产物写到 views/<run_id>/**(version = run_id,不影响线上)
-2. step 9 validate:对该版本跑 Zod + sanity(见 TESTING)
-   └─ 不过 → 抛错终止,指针从未切;views/<run_id> 成为无人引用的孤儿,留存排查 / 后续 GC
-3. step 10 publish 先创建 immutable `ops/workflows/<run_id>/publish-intent.json`，固定首次读取到的
-   `prev_version` 与 `published_at`。仅 `views/latest.json` 的确认 404 代表首发；timeout / 5xx /
-   schema error 一律抛出，不能降级成 `prev_version=null`。
-4. 以 intent 的固定值先幂等切换作为逻辑 commit point 的 `views/latest.json`，成功后再同步
-   `ops/workflows/latest-success.json` 与 `canonical/v2/whitelist/latest.json`。任一写前核对当前
-   fencing token；后续写失败时重试仍写完全相同的 pointer，绝不把当前 run 误记为自己的
-   rollback target。下一 run 的 baseline 直接跟随 commit point。
-5. 调用 `invalidatePublishedViews()`：清本实例 memo、立即失效 `published-views-pointer` tag，
-   并 `revalidatePath('/', 'layout')`。正常请求立即拾取；其他暖实例最迟 60s 拾取。
+1. CAS live/latest.json, write a 15m lease (generation keeps the old value)
+2. Generate and Zod-validate all payloads
+3. Sequentially write live/generations/<run_id>/** (allowOverwrite:false)
+4. Write immutable manifest.json last
+5. Use Blob API `head()` to check the origin etag recorded at claim time (do not public GET the pointer body)
+6. Fenced CAS with that origin ETag: generation=<run_id>, lease=null
+7. revalidatePath / IndexNow / sync-run log only after commit succeeds
 ```
 
-### 7.4 `views/latest.json` 指针契约
+- Any prerequisite/data/manifest/pointer write failure makes the reader keep resolving the old
+  `generation`; a partial generation is an invisible orphan.
+- When the same run retries and hits an existing immutable file, accept only **exactly the same bytes**; a content conflict
+  fail closed. A writer whose lease has expired or been replaced has no authority to clear the lease or switch the pointer.
+- The pointer's `previous_generation` keeps a one-hop operations rollback target; each immutable manifest
+  field of the same name also forms the read-side history chain of period files. Read-side walk-back is a bounded query, and does not change the rollback command
+  still accepting only an explicit one-hop target. live GC is not in this issue yet; do not delete generations the history chain might
+  reference, current/previous, or that carry an active lease.
+- `hot-snapshot.freshness` marks source-as-of per section; a carry-forward section must not
+  use this run's time. A date-dependent old `on_this_day` that does not match the current UTC month-day is cleared.
+
+### 7.3 Publish pointer model (atomic pointer swap)
+
+> **Version prefix = run_id, with no separate staging/published two-stage**. Recompute writes directly to `views/<run_id>/**` (a new prefix, which does not affect what is live); until the pointer references this version it is invisible to the read side, equivalent to "staging". publish goes live by atomically overwriting a single pointer file—saving one full copy (~12,899 files).
+
+```text
+1. step 6–8 recompute artifacts are written to views/<run_id>/** (version = run_id, does not affect what is live)
+2. step 9 validate: run Zod + sanity on this version (see TESTING)
+   └─ does not pass → throw and stop, the pointer was never switched; views/<run_id> becomes an unreferenced orphan, kept for debugging / later GC
+3. step 10 publish first creates immutable `ops/workflows/<run_id>/publish-intent.json`, fixing the first-read
+   `prev_version` and `published_at`. Only a confirmed 404 of `views/latest.json` means first publish; timeout / 5xx /
+   schema error is always thrown, and must not be downgraded to `prev_version=null`.
+4. Using the intent's fixed values, first idempotently switch `views/latest.json`, the logical commit point, and after success sync
+   `ops/workflows/latest-success.json` and `canonical/v2/whitelist/latest.json`. Before any write, check the current
+   fencing token; if a later write fails, the retry still writes the exact same pointer, and never misrecords the current run as its own
+   rollback target. The next run's baseline follows the commit point directly.
+5. Call `invalidatePublishedViews()`: clear this instance's memo and immediately invalidate the `published-views-pointer` tag,
+   and `revalidatePath('/', 'layout')`. Normal requests pick it up immediately; other warm instances pick it up within 60s at latest.
+```
+
+### 7.4 `views/latest.json` pointer contract
 
 ```jsonc
 {
-  "version": "refresh-2026-06-02T15-48-35-661Z",   // = run_id(版本前缀 views/<version>/)
+  "version": "refresh-2026-06-02T15-48-35-661Z",   // = run_id(version prefix views/<version>/)
   "run_id": "refresh-2026-06-02T15-48-35-661Z",
   "published_at": "2026-06-02T15:59:13.901Z",
-  "prev_version": null,                              // 上一版本(首发为 null),供一键回滚
+  "prev_version": null,                              // previous version (null on first publish), for one-click rollback
   "schema_ver": 1
 }
 ```
 
-- **读侧**:数据层先读 `views/latest.json`，解析出 `version` 前缀，再读该前缀下的 immutable 视图。pointer fetch 带 `published-views-pointer` cache tag。
-- **原子性**:切指针是**单文件覆盖写**,最坏让某次请求读到滞后一版的指针(旧版本数据仍自洽),无半发布风险。
-- **可见性 SLA**:`PUBLICATION_VISIBILITY_SLA_MS = 60_000` 限制所有进程内 memo，即使页面为避免降低 ISR 寿命而使用 1h / 24h pointer data-cache TTL。publish / rollback 主动失效共享 tag 与 route；无法接收本次主动信号的既有实例也会在 ≤60s 重新解析 pointer。
-- **mutable read**:`canonical/**`、`ops/**` 和直接 `views/latest.json` 读取固定使用 `cache:'no-store'` + per-read cache-bust（同时绕过 Blob CDN 的短覆盖缓存）；只有 immutable `views/<version>/**` 保留 `force-cache`。
+- **Read side**: the data layer first reads `views/latest.json`, resolves the `version` prefix, then reads the immutable views under that prefix. The pointer fetch carries the `published-views-pointer` cache tag.
+- **Atomicity**: switching the pointer is a **single-file overwrite**; the worst case is one request reading a pointer one version behind (the old version's data is still self-consistent), with no half-publish risk.
+- **Visibility SLA**: `PUBLICATION_VISIBILITY_SLA_MS = 60_000` caps every in-process memo, even when a page uses a 1h / 24h pointer data-cache TTL to avoid shortening ISR lifetime. publish / rollback actively invalidate the shared tag and route; existing instances that cannot receive this active signal also re-resolve the pointer within ≤60s.
+- **mutable read**: reads of `canonical/**`, `ops/**`, and `views/latest.json` directly always use `cache:'no-store'` + per-read cache-bust (also bypassing the Blob CDN's short overwrite cache); only immutable `views/<version>/**` keep `force-cache`.
 
 ### 7.5 L4 bootstrap publication pointer
 
-`06-upload` 与 `07-export-v2` 不再覆盖 flat production paths。两步共用一个显式 `bootstrap-<id>`，分别 create-only stage `base` / `canonical` phase；每个 phase 的 sealed manifest 固定 object path、精确 bytes 与 SHA-256。同 generation 遇到网络失败时只补缺失对象，已有对象必须 byte-identical，否则 fail closed。
+`06-upload` and `07-export-v2` no longer overwrite flat production paths. The two steps share one explicit `bootstrap-<id>`, and respectively create-only stage the `base` / `canonical` phase; each phase's sealed manifest fixes the object path, exact bytes, and SHA-256. On a network failure in the same generation, only missing objects are filled in; existing objects must be byte-identical, otherwise fail closed.
 
-`07` 在 commit 前完成以下顺序：复核两个远端 manifest 及每个对象 → 用 Zod 校验全部本地 views、canonical meta/site-daily 与 `4 × 32` 个必需 shards → 对 `ops/workflows/active.json` 做 ETag CAS 取得与 managed refresh 共用的 fenced lease → lease 内重读 current pointer；首次 commit 还要验证 legacy flat 的关键 base artifacts 与全部 bucketed canonical families → 单文件覆盖 `bootstrap/latest.json`。只有最后一步改变读侧；任何更早失败都留下不可见 generation，线上仍完整指向旧状态。
+`07` completes the following order before commit: recheck both remote manifests and every object → Zod-validate all local views, canonical meta/site-daily, and the `4 × 32` required shards → ETag CAS on `ops/workflows/active.json` to acquire the fenced lease shared with managed refresh → re-read the current pointer inside the lease; a first commit must also verify legacy flat's key base artifacts and all bucketed canonical families → single-file overwrite of `bootstrap/latest.json`. Only the last step changes the read side; any earlier failure leaves an invisible generation, and what is live still fully points at the old state.
 
 ```jsonc
 {
@@ -449,150 +449,150 @@ generation 内的 `current_month.json` 会在跨月时初始化新月，所以�
 }
 ```
 
-读侧会先看与 generation 绑定的 copy-on-write canonical overlay，再回退 sealed seed；因此 generation 本体永不改变，而 pointer rollback 会恢复旧 generation 及其 overlay。`previous_generation:null` 不表示无恢复点，而是保留的 `legacy-flat` recovery edge。回滚命令必须显式指定 target：`--rollback <generation> --execute`，或首次发布后用 `--rollback legacy-flat --execute`。sealed generation 在 lease 前验证；mutable legacy flat 在 lease 内复核后，通过原子删除 pointer 恢复。写/删 pointer 已成功但响应丢失时，同 target 重试返回 `already-rolled-back`，不会反向翻转。
+The read side first looks at the copy-on-write canonical overlay bound to the generation, then falls back to the sealed seed; thus the generation body itself never changes, while pointer rollback restores the old generation and its overlay. `previous_generation:null` does not mean there is no recovery point; it is the retained `legacy-flat` recovery edge. The rollback command must name the target explicitly: `--rollback <generation> --execute`, or, after the first publish, `--rollback legacy-flat --execute`. The sealed generation is verified before the lease; mutable legacy flat is rechecked inside the lease, then restored by atomically deleting the pointer. When a pointer write/delete already succeeded but the response was lost, a retry of the same target returns `already-rolled-back` and does not flip the other way.
 
 ---
 
-## 8. 校验门(validate)
+## 8. Validation gate (validate)
 
-validate step 在指针切换前对 `views/<run_id>/**` **抽样**校验,**不过不发布**。下面是 `web/lib/workflows/steps/validate.ts` 实测执行的检查清单——以代码为权威,文档只记录代码做了什么:
+Before the pointer switch, the validate step **samples** `views/<run_id>/**` and **does not publish if it does not pass**. Below is the checklist actually executed by `web/lib/workflows/steps/validate.ts`—the code is authoritative, and this document only records what the code does:
 
-### 8.1 当前实际执行的检查
+### 8.1 Checks actually executed now
 
-- **Zod schema 校验**(每个文件读取时按 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2 契约逐字段验证;任一文件 schema parse 失败计入 `schema_failures` 并加入 `failures`):
-  - `views/<run_id>/meta.json`(契约 `Meta`)
-  - `views/<run_id>/rank/all-time/repo/stock.json`(契约 `RankList`)
-  - `views/<run_id>/rank/all-time/org/stock.json`(契约 `RankList`)
-  - `views/<run_id>/lookup/repos.json`(契约 `ReposLookup`)
-  - `views/<run_id>/lookup/orgs.json`(契约 `OrgsLookup`)
-  - `views/<run_id>/search/index.json`(契约 `SearchIndex`)
-  - `views/<run_id>/categories/registry.json`(契约 `CategoryRegistry`)
-  - `views/<run_id>/categories/assignments.json`(契约 `CategoryAssignmentsDocument`：v2 index 或 v1 单体)
-  - `views/<run_id>/categories/assignments/shards/<bucket>.json`(契约 `CategoryAssignmentsShard`；UTF-8 JSON **< 1.50 MiB**)
-  - `views/<run_id>/lookup/categories.json`(契约 `CategoriesLookup`)
-  - `views/<run_id>/rank/category/<sample>/all-time/repo/stock.json`(契约 `CategoryRankList`)
-  - `views/<run_id>/entity/repo/<id>.json`(契约 `RepoEntity`，lookup 全量；top repo 另抽曲线非空)
-  - `views/<run_id>/entity/org/<login>.json`(契约 `OrgEntity`，lookup 全量)
-  - `views/<run_id>/heatmap/year/<lastYear>.json`(契约 `Heatmap`,上一公历年抽样)
-- **Sanity 不变量**(在 schema 校验之外另行 assert,失败即抛错终止 workflow):
-  - **`meta.seam_date` 存在**(布尔 truthy);
-  - **`meta.folded_through` 单调**:若上一发布版本有 `folded_through`,新版本的 month/week 不得倒退;
-  - **rank 列表完整性**:staging `all-time` repo/org rank 检查 rank 从 1 连续、`value` 非递增、无重复 rank、无重复 `id/login`;
-  - **引用完整性**:repo rank item 的 `id` 必须存在于 `lookup/repos.json`;org rank item 的 `login` 必须存在于 `lookup/orgs.json`;
-  - **repository lifecycle**:`lookup/repos.json` 全部 ID 与 canonical 完全一致；whitelist entries、canonical `active:true`、lookup `active:true` 三个集合完全相等；`meta.active_repo_count == whitelist.count`，`meta.historical_repo_count == lookup active:false`；drop 必须保留且为 historical，inactive re-entry 可作为 `diff.added` 重新激活;
-  - **`lookup/aliases.json`**:无 dangling / live-shadow,且相对上一发布版本 alias count 不倒退（buildAliases 必须扫描所有 workflow run folder;读取错误会失败,缺失 `renames.json` 视为空增量）;
-  - **canonical 完整性**:`repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 全部 bucket 必须存在且通过 schema；repo key 必须等于 row `id` 且落在正确 bucket；三类时间序列不能整体为空，也不能引用 `repos` 之外的 ID；输出 `canonical-manifest.json`（记录数 + SHA-256）；任一缺失或错误阻断发布;
-  - **`canonical/v2/repos/*` 的 `d`**:`d > 2` 仅 warning；历史 repo 缺少有限 `d` 为硬失败；带 `tracked_since` 的新晋 repo 明确以 `d=0` 起步;
-  - **`search/index.json`**:`count ≥ MIN_LOOKUP`(=1000)、`count === repos.length`，每条显式传播 `active` / `tracked_since`;
-  - **category views**:`registry` 非空且有 public categories;assignments 覆盖 ≥ `MIN_LOOKUP`;`language`/`language_family` 每 repo 至少一个,`owner_kind` 每 repo 单值;assignment 引用都存在于 registry;抽样 category rank 的 repo 都属于该 category;index 与每个 shard 的真实 JSON byte length < 1.50 MiB;
-  - **entities**: recompute 写 Blob 前全量 Zod-parse 每个 `RepoEntity` / `OrgEntity`；validate 再按 lookup 全量读取。`stock_est` 不得为负（不得放宽 `MonthlyPoint`）。top repo 另要求 `curve.monthly` 长度 > 0，且显式传播 `active` / `tracked_since`;
-  - **上一公历年 heatmap 存在**:`heatmap/year/<UTCFullYear - 1>.json` 能读到(prior calendar year 总是已收口)。
-- **输出**:`ops/workflows/<run_id>/canonical-manifest.json` + `validation.json`（后者契约 `WorkflowValidation`,含 `run_id` / `ok` / `checked` / `schema_failures` / `invariants` / `failures`）。任一完整性 / sanity 失败 → `failures` 非空 → 抛错;publish step 不会启动,版本前缀留作孤儿待 GC。
+- **Zod schema validation** (each file, when read, is validated field by field against the [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2 contract; any file whose schema parse fails is counted in `schema_failures` and added to `failures`):
+  - `views/<run_id>/meta.json` (contract `Meta`)
+  - `views/<run_id>/rank/all-time/repo/stock.json` (contract `RankList`)
+  - `views/<run_id>/rank/all-time/org/stock.json` (contract `RankList`)
+  - `views/<run_id>/lookup/repos.json` (contract `ReposLookup`)
+  - `views/<run_id>/lookup/orgs.json` (contract `OrgsLookup`)
+  - `views/<run_id>/search/index.json` (contract `SearchIndex`)
+  - `views/<run_id>/categories/registry.json` (contract `CategoryRegistry`)
+  - `views/<run_id>/categories/assignments.json` (contract `CategoryAssignmentsDocument`: v2 index or v1 monolith)
+  - `views/<run_id>/categories/assignments/shards/<bucket>.json` (contract `CategoryAssignmentsShard`; UTF-8 JSON **< 1.50 MiB**)
+  - `views/<run_id>/lookup/categories.json` (contract `CategoriesLookup`)
+  - `views/<run_id>/rank/category/<sample>/all-time/repo/stock.json` (contract `CategoryRankList`)
+  - `views/<run_id>/entity/repo/<id>.json` (contract `RepoEntity`, full lookup set; top repos are also sampled for a non-empty curve)
+  - `views/<run_id>/entity/org/<login>.json` (contract `OrgEntity`, full lookup set)
+  - `views/<run_id>/heatmap/year/<lastYear>.json` (contract `Heatmap`, previous calendar year sample)
+- **Sanity invariants** (asserted separately, beyond schema validation; failure throws and stops the workflow):
+  - **`meta.seam_date` exists** (boolean truthy);
+  - **`meta.folded_through` is monotonic**: if the previous published version has `folded_through`, the new version's month/week must not go backward;
+  - **rank list integrity**: staging `all-time` repo/org rank checks that rank is contiguous from 1, `value` is non-increasing, there is no duplicate rank, and there is no duplicate `id/login`;
+  - **Referential integrity**: a repo rank item's `id` must exist in `lookup/repos.json`; an org rank item's `login` must exist in `lookup/orgs.json`;
+  - **repository lifecycle**: every ID in `lookup/repos.json` matches canonical exactly; the three sets of whitelist entries, canonical `active:true`, and lookup `active:true` are exactly equal; `meta.active_repo_count == whitelist.count`, and `meta.historical_repo_count == lookup active:false`; a drop must be retained and be historical, and an inactive re-entry may be reactivated as `diff.added`;
+  - **`lookup/aliases.json`**: no dangling / live-shadow, and the alias count does not regress relative to the previous published version (buildAliases must scan every workflow run folder; a read error fails, and a missing `renames.json` counts as an empty delta);
+  - **canonical integrity**: every bucket of `repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` must exist and pass schema; the repo key must equal the row `id` and fall in the correct bucket; the three time series must not be entirely empty, and must not reference an ID outside `repos`; output `canonical-manifest.json` (record count + SHA-256); any missing item or error blocks publish;
+  - **`d` of `canonical/v2/repos/*`**: `d > 2` is warning only; a historical repo missing a finite `d` is a hard failure; a newcomer repo with `tracked_since` explicitly starts at `d=0`;
+  - **`search/index.json`**: `count ≥ MIN_LOOKUP` (=1000), `count === repos.length`, and each entry explicitly propagates `active` / `tracked_since`;
+  - **category views**: `registry` is non-empty and has public categories; assignments cover ≥ `MIN_LOOKUP`; `language`/`language_family` has at least one per repo, and `owner_kind` is a single value per repo; every assignment reference exists in the registry; every repo in a sampled category rank belongs to that category; the real JSON byte length of the index and of each shard is < 1.50 MiB;
+  - **entities**: before writing Blob, recompute fully Zod-parses every `RepoEntity` / `OrgEntity`; validate then reads the full lookup set again. `stock_est` must not be negative (do not relax `MonthlyPoint`). Top repos also require `curve.monthly` length > 0, and explicitly propagate `active` / `tracked_since`;
+  - **Previous calendar year's heatmap exists**: `heatmap/year/<UTCFullYear - 1>.json` can be read (the prior calendar year is always already closed).
+- **Output**: `ops/workflows/<run_id>/canonical-manifest.json` + `validation.json` (the latter's contract is `WorkflowValidation`, containing `run_id` / `ok` / `checked` / `schema_failures` / `invariants` / `failures`). Any integrity / sanity failure → `failures` non-empty → throw; the publish step does not start, and the version prefix is left as an orphan pending GC.
 
-校验不通过 = 指针从未切 = 线上一直是上一版,**无半发布风险**。
+Validation does not pass = the pointer was never switched = what is live stays the previous version, **no half-publish risk**.
 
-### 8.2 未启用的不变量(future work)
+### 8.2 Invariants not enabled (future work)
 
-下列检查曾在早期设计稿中列为"硬不变量",但**目前 `validate.ts` 未实现**——它们或者代价过高(全量遍历)、或者依赖 L1 cron 与 L3 折叠之间的同步语义(运行时另有侦测/告警机制),保留为未来增强项,不应被误读为已生效:
+The following checks were listed as "hard invariants" in an early design draft, but **`validate.ts` does not implement them now**—they are either too expensive (a full traversal), or they depend on sync semantics between the L1 cron and the L3 fold (the runtime has separate detection/alerting), and they are kept as future enhancements and must not be misread as already in effect:
 
-- ~~rank 文件数与 period 集合一致~~ —— 目前抽样 all-time repo/org rank,不枚举全部历史 period。
-- ~~org stock 终点 = 成员 `current_stars_sum`(carry-forward 等式)~~ —— 不在 validate 内,口径靠 recompute step 内部不变量(见 [RANKING.md](./RANKING.md) §5)。
-- ~~entity 曲线 monthly / recent_daily 接缝在 90 天水位线连续~~ —— 仅抽样 top repo 的 `monthly` 非空,**不**校验 monthly↔recent_daily 接缝。
-- ~~月榜 / 近期日榜的 seam 连续性~~ —— 不在 validate 内,seam 锚定由 recompute 阶段保证(§6.3)。
+- ~~rank file count matches the period set~~ — currently it samples all-time repo/org rank, and does not enumerate every historical period.
+- ~~org stock endpoint = members' `current_stars_sum` (carry-forward equation)~~ — not inside validate; the definition relies on invariants inside the recompute step (see [RANKING.md](./RANKING.md) §5).
+- ~~the entity curve monthly / recent_daily seam is continuous at the 90-day watermark~~ — only samples that a top repo's `monthly` is non-empty, and does **not** check the monthly↔recent_daily seam.
+- ~~seam continuity of the monthly rank / recent daily rank~~ — not inside validate; seam anchoring is guaranteed by the recompute stage (§6.3).
 
-> 如要补强其中任一项,直接改 `validate.ts` 并同步更新本节;不要在其他文档(如 TESTING)宣称已生效。
+> To strengthen any one of these, change `validate.ts` directly and update this section in sync; do not claim in other documents (such as TESTING) that it is already in effect.
 
 ---
 
-## 9. 失败模式与回滚
+## 9. Failure modes and rollback
 
-### 9.1 不变量
+### 9.1 Invariants
 
-| 不变量 | 保证方式 |
+| Invariant | How it is guaranteed |
 |---|---|
-| **每个 step 幂等** | step 输出按 `(run_id, shard)` 确定路径覆盖写;重跑同 `run_id` 同 shard = 覆盖同一份,不重复累加。 |
-| **重跑同一个 `run_id` 不写坏数据** | 版本前缀含 `run_id`;同 run 重跑只覆盖自己的 `views/<run_id>`,不碰已发布版本。 |
-| **失败只影响该版本前缀** | 指针未切前,线上读的是 `views/latest.json` 指向的上一版;任何 step 失败都不影响线上。 |
-| **`ops/workflows/latest-success.json` 是恢复点** | 记录最近一次成功发布的 run_id;新 run 从它的 canonical 状态出发增量重算。 |
-| **publish retry 保留 rollback 目标** | immutable `publish-intent.json` 在切 pointer 前记录原 `prev_version`；pointer 已切但后续写失败时，同 run retry 重放 intent。非 404 pointer 读取失败直接中止。 |
-| **whitelist discovery ≠ publication** | `<run_id>.json` snapshot immutable；下一 run 通过已发布的 `views/latest.run_id` 找 baseline，失败 run 永远不会成为 baseline。`tracked_since` 取 snapshot 的 `generated_at` 日期。 |
-| **过期 owner 不可继续写** | lease takeover 增加 `fencing_token`；canonical / ops / pointer 写前续租核对。release 失败会抛出并进入告警/错误路径，不再静默忽略。 |
+| **Each step is idempotent** | step output overwrites a path determined by `(run_id, shard)`; rerunning the same `run_id` and the same shard = overwriting the same artifact, not accumulating again. |
+| **Rerunning the same `run_id` does not write bad data** | the version prefix contains `run_id`; rerunning the same run only overwrites its own `views/<run_id>`, and does not touch an already-published version. |
+| **Failure affects only that version prefix** | before the pointer switches, what is live is the previous version pointed at by `views/latest.json`; any step failure does not affect what is live. |
+| **`ops/workflows/latest-success.json` is the recovery point** | it records the run_id of the most recent successful publish; a new run incrementally recomputes starting from its canonical state. |
+| **publish retry keeps the rollback target** | immutable `publish-intent.json` records the original `prev_version` before the pointer is switched; if the pointer has switched but a later write fails, the same-run retry replays the intent. A non-404 pointer read failure aborts directly. |
+| **whitelist discovery ≠ publication** | the `<run_id>.json` snapshot is immutable; the next run finds the baseline through the published `views/latest.run_id`, and a failed run never becomes the baseline. `tracked_since` takes the snapshot's `generated_at` date. |
+| **An expired owner must not keep writing** | lease takeover increments `fencing_token`; canonical / ops / pointer renew and check before a write. A failed release throws and enters the alert/error path, and is no longer silently ignored. |
 
-### 9.2 恢复路径
+### 9.2 Recovery paths
 
-- **某 step 失败**:runtime 对普通 async step 做显式重试(网络错)。业务侧每 step 写 `ops/workflows/<run_id>/steps/<step>.json` checkpoint。lease **ownership** 错误（token / run_id / expiry）fail closed，不重试。同代 ETag CAS 耗尽是 retryable（`WorkflowLeaseCasError`），不是丢失所有权。
-- **整个 run 卡死 / 超时**:lease 30 分钟到期，活跃写入每 ≤5 分钟 heartbeat。新 run CAS takeover 后 fencing token 递增；旧 run 的下一次写或 publish 会 fail closed。运维据 manifest / active lease 看 owner，不要人工复用旧 token。
-- **GitHub 限流**:step 内遇 `403` / secondary limit / `Retry-After`,短等待重试;不要空转。
+- **A step fails**: the runtime explicitly retries ordinary async steps (network errors). The business side writes an `ops/workflows/<run_id>/steps/<step>.json` checkpoint for each step. A lease **ownership** error (token / run_id / expiry) fails closed and is not retried. Same-generation ETag CAS exhaustion is retryable (`WorkflowLeaseCasError`), and is not loss of ownership.
+- **A whole run is stuck / times out**: the lease expires in 30 minutes, and active writes heartbeat every ≤5 minutes. After a new run's CAS takeover the fencing token increments; the old run's next write or publish fails closed. Operations read the owner from the manifest / active lease, and must not manually reuse the old token.
+- **GitHub rate limiting**: inside a step, on `403` / secondary limit / `Retry-After`, wait briefly and retry; do not spin.
 
-### 9.3 回滚
+### 9.3 Rollback
 
-| 场景 | 操作 |
+| Scenario | Action |
 |---|---|
-| 新版本数据有问题(已发布) | 调用受 Bearer 鉴权的 `POST /api/workflows/refresh/rollback`，显式传 `target_version` 与稳定 `idempotency-key`。该路径获取 fenced lease、持久化 rollback intent、同步 recovery / whitelist pointer 并主动失效缓存。不要再手改 Blob pointer。 |
-| 校验未过(未发布) | 无需回滚:指针从未切,线上一直是上一版;孤儿 `views/<run_id>` 留存排查。 |
-| 部署层问题 | Vercel 保留历史部署,Promote 上一个正常 deployment(见 [OPS.md](./OPS.md) 回滚)。 |
+| New-version data is bad (already published) | Call the Bearer-authenticated `POST /api/workflows/refresh/rollback`, explicitly passing `target_version` and a stable `idempotency-key`. This path acquires a fenced lease, persists the rollback intent, syncs the recovery / whitelist pointer, and actively invalidates cache. Do not hand-edit the Blob pointer anymore. |
+| Validation did not pass (not published) | No rollback needed: the pointer was never switched, and what is live stays the previous version; the orphan `views/<run_id>` is kept for debugging. |
+| Deployment-layer problem | Vercel keeps historical deployments; Promote the previous healthy deployment (see [OPS.md](./OPS.md) rollback). |
 
-- **保留份数**:`views/<version>` 保留近 N 份(如 4 份),旧版本 / 孤儿由 GC 清。手动工具 `web/scripts/blob-del-prefix.ts <prefix>` 默认只输出完整 inventory 的精确 count/bytes；删除必须额外提供 `--execute --confirm <同一 prefix>`。
-- **顺序**:先走 rollback API → 在 60s SLA 内用 cache-bust 核对 pointer / 页面 → 必要时再 redeploy → 核对 workflow artifacts 与漂移恢复正常。
+- **Copies retained**: `views/<version>` keeps the most recent N copies (for example 4); old versions / orphans are cleared by GC. The manual tool `web/scripts/blob-del-prefix.ts <prefix>` by default only prints the exact count/bytes of the full inventory; deletion must additionally supply `--execute --confirm <the same prefix>`.
+- **Order**: go through the rollback API first → within the 60s SLA, use cache-bust to check the pointer / page → redeploy if needed → check that workflow artifacts and drift are back to normal.
 
-### 9.4 版本垃圾回收(GC)
+### 9.4 Version garbage collection (GC)
 
-step 11(`gc`)在 pointer publish 后、所属 refresh lease 释放前跑，负责回收旧版本前缀：
+step 11 (`gc`) runs after pointer publish and before the owning refresh lease is released, and reclaims old version prefixes:
 
-- **保留策略**:最新 4 版 `views/<version>` + 当前指针 + `prev_version`(回滚目标)。
-- **删除目标**:`list(views/)` 列出所有 `<version>` 前缀,排除保留集,再通过共享 protection helper 逐前缀 `del`。每个 chunk 在同一 fenced lease 内 renew、重读 current / rollback protection、再次证明 ownership 后才删除；publish / rollback 无法在检查与 `del` 之间切入。
-- **best-effort,绝不抛错**:清理失败只记日志,不拖垮已发布的 run。下次 run 会重试清同一批孤儿。
-- **手动清理**:`web/scripts/blob-del-prefix.ts <prefix>` 仅 preview；确认精确 count/bytes 后，用 `--execute --confirm <prefix>` 删除允许的临时 verify / orphan generation。execute 会取得相同的 fenced lease，并逐 chunk 重检 protection。工具拒绝 canonical、ops、live、pointer、宽容器，以及 current / active / rollback-target 的 view、bootstrap payload 与 overlay。
+- **Retention policy**: the latest 4 versions of `views/<version>` + the current pointer + `prev_version` (rollback target).
+- **Delete targets**: `list(views/)` lists every `<version>` prefix, excludes the retention set, then `del`s prefix by prefix through the shared protection helper. Each chunk, inside the same fenced lease, renews, re-reads current / rollback protection, and proves ownership again before deleting; publish / rollback cannot cut in between the check and `del`.
+- **best-effort, never throw**: a cleanup failure is only logged, and does not take down an already-published run. The next run retries clearing the same batch of orphans.
+- **Manual cleanup**: `web/scripts/blob-del-prefix.ts <prefix>` is preview only; after confirming the exact count/bytes, use `--execute --confirm <prefix>` to delete allowed temporary verify / orphan generations. execute acquires the same fenced lease and rechecks protection chunk by chunk. The tool refuses canonical, ops, live, pointer, and wide containers, and also refuses views, bootstrap payloads, and overlays that are current / active / rollback-target.
 
 ---
 
-## 10. 新晋 repo 历史策略
+## 10. Newcomer repo history strategy
 
-新晋 repo(上线后首次 star ≥ 10,000、不在 bootstrap 基线里)的**历史 star 曲线**怎么补?三个方案,各有取舍:
+How is the **historical star curve** backfilled for a newcomer repo (the first time star ≥ 10,000 after launch, and not in the bootstrap baseline)? Three options, each with a tradeoff:
 
-| 方案 | 怎么做 | 完整度 | 速度 / 限额 | Vercel-first? | 引入账单? |
+| Option | How | Completeness | Speed / quota | Vercel-first? | Introduces a bill? |
 |---|---|---|---|---|---|
-| **A 保守(默认)** | 从**进入白名单当天**起追踪;entity 页标注 `tracked_since`,该日之前无曲线 | 仅发现日之后 | 快、无外部限额 | 是,纯 Vercel | 否 |
-| **B GitHub stargazers API** | Workflow 分页调 `GET /repos/{o}/{r}/stargazers`(`Accept: application/vnd.github.star+json` 拿 `starred_at`),按天聚合补历史 | 较全,但有硬上限 | **慢且受限**(见下) | 是,纯 Vercel(慢) | 否 |
-| **C BigQuery 重跑** | 对新 repo_id 重跑 GH Archive extract(含稳定 repo.id、gross adds) | **最完整** | 一次性、需人工 | ❌ 引入 GCP | **是(~小额 + GCP 账号)** |
+| **A conservative (default)** | track from **the day it enters the whitelist**; the entity page marks `tracked_since`, and there is no curve before that day | only after the discovery day | fast, no external quota | yes, pure Vercel | no |
+| **B GitHub stargazers API** | Workflow paginates `GET /repos/{o}/{r}/stargazers` (`Accept: application/vnd.github.star+json` to get `starred_at`) and aggregates by day to backfill history | fairly complete, but with a hard cap | **slow and limited** (see below) | yes, pure Vercel (slow) | no |
+| **C BigQuery rerun** | rerun the GH Archive extract for the new repo_id (including a stable repo.id and gross adds) | **most complete** | one-time, needs a human | ❌ introduces GCP | **yes (~a small amount + a GCP account)** |
 
-### 10.1 诚实的限制说明
+### 10.1 An honest statement of the limits
 
-- **方案 B 的硬限**:GitHub stargazers 分页**最多约 400 页 × 100 = 40,000 个 stargazer**——超过 4 万 star 的 repo**取不全**早期历史。且 REST **5,000 请求/小时**配额下,一个 4 万 star 的 repo = 400 请求 ≈ 单 repo 吃掉 8% 小时配额,**非常慢**;要靠 Workflow `sleep('1 hour')` 跨配额窗口分批,可能耗时数小时到数天。仅对**小 / 新**(star 不远超 1 万)的 repo 现实可行。
-- **方案 C 最完整但违背 Vercel-first**:BigQuery 查 GH Archive 是唯一能精确拿到「任意 repo 任意历史日 gross adds + 稳定 repo.id」的来源,但它**引入 GCP 账号与费用**,与「避免散落账单」冲突,只能作为**手动一次性 bootstrap / 重建**工具(L4),不进 recurring 生产路径。
+- **Hard limit of option B**: GitHub stargazers pagination is **at most about 400 pages × 100 = 40,000 stargazers**—a repo with more than 40,000 stars **cannot fully fetch** its early history. And under the REST **5,000 requests/hour** quota, a 40,000-star repo = 400 requests ≈ one repo consumes 8% of the hourly quota, and is **very slow**; it has to batch across quota windows with Workflow `sleep('1 hour')`, and may take hours to days. It is realistically feasible only for **small / new** repos (stars not far above 10,000).
+- **Option C is the most complete but violates Vercel-first**: querying GH Archive with BigQuery is the only source that can precisely obtain "any repo's gross adds on any historical day + a stable repo.id", but it **introduces a GCP account and cost**, which conflicts with "avoid scattered bills", so it can only be a **manual one-time bootstrap / rebuild** tool (L4), and does not enter the recurring production path.
 
-### 10.2 推荐取舍
+### 10.2 Recommended tradeoff
 
-- **默认采用方案 A(保守)**:已有 bootstrap 历史基线**保留**;新增 repo **从发现日起追踪**,页面诚实标注 `tracked_since`(与 About 页「幸存者偏差 / as-of」口径一致,见 [ARCHITECTURE.md](./ARCHITECTURE.md) 数据口径)。
-- **方案 B 作为可选 best-effort 增强**:对 star 不太大的新晋 repo,Workflow 可顺带调 stargazers API 补一段近似历史,失败 / 触限即降级回方案 A(标 `tracked_since`),**绝不**因补历史阻塞主流程。
-- **方案 C 仅在「要大规模补全 / 重建基线」时手动跑一次**(L4 bootstrap),产物上传后由 L3 接管,不常态化。
+- **Default to option A (conservative)**: the existing bootstrap historical baseline is **kept**; a newly added repo is **tracked from the discovery day**, and the page honestly marks `tracked_since` (the same definition as the About page's "survivorship bias / as-of", see [ARCHITECTURE.md](./ARCHITECTURE.md) data definition).
+- **Option B as an optional best-effort enhancement**: for a newcomer repo whose star count is not too large, Workflow may along the way call the stargazers API to backfill an approximate stretch of history; on failure / hitting the limit it degrades back to option A (mark `tracked_since`), and **never** blocks the main flow in order to backfill history.
+- **Option C is run manually once only when "a large-scale backfill / baseline rebuild" is required** (L4 bootstrap); after the artifact is uploaded, L3 takes over, and it is not made routine.
 
 ---
 
-## 11. 成本边界
+## 11. Cost boundaries
 
-> Workflow step 本身按用量计费([Workflows Pricing](https://vercel.com/docs/workflows/pricing):Events / Data Written / Data Retained);真正的大头是 **Function compute + Blob IO + GitHub API 时间**。设计要主动控这三项。
+> A Workflow step itself is billed by usage ([Workflows Pricing](https://vercel.com/docs/workflows/pricing):Events / Data Written / Data Retained); the real bulk is **Function compute + Blob IO + GitHub API time**. The design must actively control these three.
 
-| 成本项 | 驱动 | 控制手段 |
+| Cost item | Driver | Control |
 |---|---|---|
-| **Function compute** | step 数 × 每 step 时长 | step 按 shard 分批,控制总 step 数;I/O 等待(GraphQL / Blob)不计 active CPU,但要控 active 计算量(前缀和 / 排序在桶内做,桶不过大)。 |
-| **Blob 写速率 / 量** | 重算写出的视图文件数 | 遵守 **75/s 写上限**([OPS.md](./OPS.md));批量 put 限并发 + 节流;只写**变化的 shard**(diff-aware),不每次全量重写 16k+ 文件。 |
-| **Blob 存储 / 保留** | published 历史版本份数 | 只保留近 N 份 published;旧版本清理。canonical shard 体积小(几十 MB 级)。 |
-| **GitHub API 时间** | metadata / stargazers 调用 | GraphQL `nodes()` 100/查、标量字段成本低(约 5,302 repo ≈ 54 查 ≈ 1% 小时配额);stargazers(方案 B)受 5,000 req/hr 限,用 sleep 分批。 |
-| **页面再生** | revalidate 后冷生成 | **不一次性生成 16k 页**;继续 ISR / revalidate,长尾首访冷生成一次(读 KB 视图,可忽略)。 |
+| **Function compute** | step count × duration per step | batch steps by shard and control the total step count; I/O waits (GraphQL / Blob) do not count as active CPU, but active compute must be controlled (prefix sums / sorts are done inside the bucket, and buckets are not too large). |
+| **Blob write rate / volume** | number of view files written by recompute | obey the **75/s write cap** ([OPS.md](./OPS.md)); batch puts limit concurrency + throttle; write only **shards that changed** (diff-aware), and do not fully rewrite 16k+ files every time. |
+| **Blob storage / retention** | number of published historical versions | keep only the most recent N published copies; clean up old versions. canonical shards are small (tens of MB). |
+| **GitHub API time** | metadata / stargazers calls | GraphQL `nodes()` is 100/query, and scalar fields are cheap (about 5,302 repos ≈ 54 queries ≈ 1% of the hourly quota); stargazers (option B) are limited to 5,000 req/hr and are batched with sleep. |
+| **Page regeneration** | cold generation after revalidate | **do not generate 16k pages at once**; keep using ISR / revalidate, and a long-tail first visit cold-generates once (it reads a KB view, which is negligible). |
 
-**硬约束复述**:
-- 单 Function ≤ 800s / ≤ 4GB / bundle ≤ 250MB / 响应体 ≤ 4.5MB——**所以全量重算必须 Workflow 分片,大文件走 Blob 直链**。
-- 不在请求热路径放任何 Workflow / 引擎;运行时永远只读静态 JSON(见 [ARCHITECTURE.md](./ARCHITECTURE.md))。
+**Hard constraints restated**:
+- A single Function ≤ 800s / ≤ 4GB / bundle ≤ 250MB / response body ≤ 4.5MB—**so a full recompute must be sharded by Workflow, and large files use Blob direct links**.
+- Do not put any Workflow / engine on the request hot path; the runtime forever only reads static JSON (see [ARCHITECTURE.md](./ARCHITECTURE.md)).
 
 ---
 
-## 12. 设计验收
+## 12. Design acceptance
 
-- [x] 生产数据生命周期(白名单 / 元数据 / 改名 / 新晋 / canonical 折叠 / 重算 / 校验 / 发布 / 回滚)**全部**有 Vercel 落点,无任何 recurring 步骤要求本地计算。
-- [x] 清楚区分四层:L1/L2 live cron · L3 Workflow(月+周折叠 / 重算 / 发布 / 版本 GC)· L4 `pipeline/backfill` 归档。
-- [x] Blob checkpoint / 版本前缀 / publish pointer / rollback 模式定义清楚(§3、§5、§7、§9)。
-- [x] canonical 从单 Parquet 重设计为 JSON shard,生产重算不依赖 DuckDB / Parquet(§6)。
-- [x] 新晋 repo 历史三方案取舍诚实写清,默认保守 + `tracked_since`(§10)。
-- [x] 成本 / 限制(Cron、Function 800s/4GB/250MB/4.5MB、Workflow、Blob 75/s、GitHub 配额)写清(§1.3、§11)。
-- [x] BigQuery/GCP 仅一次性 bootstrap,不在 recurring 生产路径。
+- [x] The production data lifecycle (whitelist / metadata / rename / newcomers / canonical fold / recompute / validation / publish / rollback) **entirely** has a Vercel landing point, and no recurring step requires local compute.
+- [x] Clearly distinguish four layers: L1/L2 live cron · L3 Workflow (month+week fold / recompute / publish / version GC) · L4 `pipeline/backfill` archive.
+- [x] The Blob checkpoint / version prefix / publish pointer / rollback patterns are clearly defined (§3, §5, §7, §9).
+- [x] canonical is redesigned from a single Parquet into JSON shards, and production recompute does not depend on DuckDB / Parquet (§6).
+- [x] The three-option tradeoff for newcomer repo history is written honestly, defaulting to conservative + `tracked_since` (§10).
+- [x] Costs / limits (Cron, Function 800s/4GB/250MB/4.5MB, Workflow, Blob 75/s, GitHub quota) are written clearly (§1.3, §11).
+- [x] BigQuery/GCP is one-time bootstrap only, and is not on the recurring production path.

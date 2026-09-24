@@ -8,7 +8,7 @@ source_of_truth_for:
   - documentation metadata convention
 ---
 
-# gitstarclub 文档索引
+# gitstarclub documentation index
 
 A browsable history of GitHub open-source activity. The site is fully static-read at runtime: JSON in Vercel Blob behind a publish pointer, no runtime database, no engine in the request path. Recurring data refresh is scheduled by Vercel cron; P1 orchestration no longer uses the Workflow SDK.
 
@@ -127,14 +127,14 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Repo / view counts | REQUIREMENTS |
 | Per-artifact schema (field-level) | DATA-CONTRACTS |
 | Endpoint contracts (method / auth / params / response / cache / status codes) | [API.md](./API.md) |
-| Blob layout | OPS (§Vercel Blob 布局) |
+| Blob layout | OPS (§Vercel Blob layout) |
 | Cloudflare R2 P0 adapter | [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) |
 | Cloudflare migrate P1 workflow runtime | [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
 | CF preview Bearer full-refresh acceptance matrix | [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
 | Cloudflare migrate P2 ISR / Preview / observability | [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
 | Cloudflare migrate P3 Workers host | [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
 | Branch topology / staging / promotion | [OPS.md](./OPS.md) (§Branch topology / staging) |
-| Cron schedule | OPS (§Cron 调度) |
+| Cron schedule | OPS (§Cron schedule) |
 | Workflow step enumeration | VERCEL-DATA-OPERATIONS |
 | Category taxonomy / classification rules | CATEGORIES |
 | Rendering model (route locale + server-rendered localized HTML) | FRONTEND (§2.5) |
@@ -144,7 +144,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Answer-engine citation strategy / GEO | GEO |
 | Color tokens / design vocabulary | DESIGN-SYSTEM |
 | Ranking algorithms (seam, stock anchoring, derived rankings) | RANKING |
-| Repo identity / rename → redirect posture | PRODUCT (§Repo 身份与改名) |
+| Repo identity / rename → redirect posture | PRODUCT (§Repo identity and renames) |
 | Cockpit content / timeline / radar spike | [COCKPIT.md](./COCKPIT.md) |
 | Code module map / module ownership | CODEBASE |
 | Issue workflow / PR gates / visual guardrails | WORKFLOW (GitHub required CI: `static` + `production-build`; current automation table in TESTING) |
