@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-09-21
+last_reviewed: 2026-09-24
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -109,17 +109,54 @@ content="noindex,nofollow">` and `robots.txt` returns `User-Agent: *` with
 `Disallow: /`. Preview still reads production Blob data because `BLOB_*`
 variables are set for Preview.
 
-Cloudflare owner commands (run from `web/`; build each target immediately before its matching deployment because both builds use the same output directory):
+Cloudflare owner commands (run from `web/`; build each target immediately before its matching deployment because both builds use the same output directory). GitHub Actions must not run the live deploy. `bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre` are the explicit underlying forms. A bare `bun run cf:build` fails. `bun run cf:dry-run` builds pre and performs a Wrangler dry run of `env.pre` only. The build checks the generated home HTML and robots response for the selected indexing policy before deployment.
+
+### Production build and deploy
+
+`bun run cf:build:production` prerenders with `BLOB_BASE_URL`. Wrangler vars are not visible to that prerender. Export the public store base first (no trailing slash, no BOM). `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com` are set by the build script.
 
 ```sh
 cd web
+export BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+export NEXT_PUBLIC_BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
 bun run cf:build:production
-bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc
-bun run cf:build:pre
-bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env pre
 ```
 
-`bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre` are the explicit underlying forms. A bare `bun run cf:build` fails. `bun run cf:dry-run` builds pre and performs a Wrangler dry run only. The build checks the generated home HTML and robots response for the selected indexing policy before deployment.
+Deploy the top-level Worker `gitstarclub-web` with an explicit empty environment so `CLOUDFLARE_ENV` cannot select `pre`. Do not commit `CF_PREVIEW_COMMIT_SHA`. Pass the deployed SHA with `--var`. Do not use `--keep-vars` in place of the five plain-text vars in `wrangler.jsonc` (`BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, `CF_CRON_ORIGIN`, `WORKFLOW_RUNTIME`, `WORKFLOW_QUEUE_ENQUEUE_URL`). Secrets stay dashboard-injected. This command is a live deploy. Run it only when promoting production. A dry run of the same flags is safe and prints the binding list.
+
+```sh
+cd web
+bunx wrangler deploy --dry-run --config ../workers/gitstarclub-web/wrangler.jsonc --env=""
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env="" \
+  --var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"
+```
+
+`--var` values are hidden in the dry-run binding table. The table must still list `HOSTING_TARGET`, `SITE_INDEXABLE`, `NEXT_PUBLIC_SITE_URL`, the five vars above, `ASSETS`, `WORKER_SELF_REFERENCE`, `JOBS` (`gitstarclub-jobs`), and `MEDIA` (`gitstarclub-assets`). Top-level `workers_dev` and `preview_urls` are `false`.
+
+After the live deploy, check production and confirm the workers.dev subdomain stayed closed:
+
+```sh
+curl -fsS https://gitstarclub.com/robots.txt
+curl -fsS https://gitstarclub.com/ | grep -o 'name="robots" content="[^"]*"'
+curl -fsS -o /dev/null -w '%{http_code}\n' https://gitstarclub.com/rankings
+curl -fsS https://gitstarclub.com/.well-known/deployment
+curl -sS -o /dev/null -w '%{http_code}\n' https://gitstarclub-web.worldgo.workers.dev/
+```
+
+Expect `/robots.txt` to allow `/` for `User-Agent: *` and to list `Sitemap: https://gitstarclub.com/sitemap.xml`. Expect the home robots meta to be `index, follow` and not `noindex`. Expect `/rankings` to be `200` (a missing `BLOB_BASE_URL` returns 500). Expect `/.well-known/deployment` JSON `target` `cf` and `commitSha` equal to the `--var` SHA. Expect `https://gitstarclub-web.worldgo.workers.dev/` not to serve the site (`workers.dev` `enabled=false`, version preview URLs `previews_enabled=false`). Read-only settings check: Cloudflare API account `00f850e853e4c7f9627233d51a6e30a1`, Worker `gitstarclub-web`, resources `settings` and `subdomain`. Do not change schedules, DNS, or secrets from this procedure.
+
+### Preview deploy
+
+`env.pre` sets `workers_dev: true` so it does not inherit the closed production subdomain. The probe host remains `https://gitstarclub-web-pre.worldgo.workers.dev`. `preview_urls` stays `false`. `pre.gitstarclub.com/*` is not declared in `wrangler.jsonc`.
+
+```sh
+cd web
+export BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+export NEXT_PUBLIC_BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+bun run cf:build:pre
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env pre \
+  --var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"
+```
 
 Access: Preview is locked. Project-level Vercel Authentication
 (`ssoProtection.deploymentType=preview`) was re-enabled 2026-08-28 so
@@ -224,8 +261,8 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | `R2_PREFIX` | 非生产对象前缀 | 可选（默认 `migrate-dev/`） | `migrate-dev/` / `migrate-test/` / `migrate-preview/` | `web/lib/runtime-config.ts`；空前缀与生产 key 空间禁止写入 |
 | `R2_PUBLIC_BASE_URL` | R2 公开读 base URL | 仅 `r2` / `r2_then_blob` 页面读 | 无尾斜杠的 https origin | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` |
 | `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | **必需** | 随机串（≥32 字符，**无首尾空白**） | `web/lib/cron/handlers.ts` · `web/lib/security.ts` · `web/lib/runtime-config.ts` · `web/app/api/workflows/refresh/start/route.ts` · `web/app/api/workflows/refresh/step/route.ts`；每日 / 每周 cron · refresh start / step |
-| `WORKFLOW_RUNTIME` | Managed refresh 编排后端 | 可选（默认 `http`） | `http` \| `memory` \| `cf-queue` | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/resolve.ts`；生产默认 HTTP 自链，`cf-queue` 仅非生产 |
-| `WORKFLOW_QUEUE_ENQUEUE_URL` | CF Queue 入队 URL（Worker `/enqueue`） | 仅 `WORKFLOW_RUNTIME=cf-queue` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/cf-queue.ts` |
+| `WORKFLOW_RUNTIME` | Managed refresh 编排后端 | 可选（默认 `http`） | `http` \| `memory` \| `cf-queue` | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/resolve.ts`. Unset code default is `http`. Production wrangler top-level and preview `env.pre` both set `cf-queue`. |
+| `WORKFLOW_QUEUE_ENQUEUE_URL` | CF Queue 入队 URL（Worker `/enqueue`） | 仅 `WORKFLOW_RUNTIME=cf-queue` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/cf-queue.ts`. Production top-level is `https://gitstarclub.com/enqueue`. Preview `env.pre` is `https://pre.gitstarclub.com/enqueue`. |
 | `WORKFLOW_STEP_BASE_URL` | step 路由 origin 覆盖 | 可选 | 无尾斜杠 https origin | `web/lib/runtime-config.ts`；未设时用请求 origin 或 `VERCEL_URL` |
 | `CACHE_INVALIDATION_DRIVER` | ISR 失效端口 | 可选（默认 `vercel`） | `vercel` \| `memory` \| `cf-stub` | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/`；生产默认 Next `revalidatePath/Tag`，`cf-stub` 仅非生产，见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
 | `CF_CACHE_PURGE_URL` | CF stub 双跑 POST URL（Worker `/preview/invalidate`） | 仅 `CACHE_INVALIDATION_DRIVER=cf-stub` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/cf-stub.ts`；不是 Cloudflare Cache Purge |
