@@ -271,6 +271,7 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
+  mock.restore();
   globalThis.fetch = originalFetch;
   if (originalBlobBase === undefined) delete process.env.BLOB_BASE_URL;
   else process.env.BLOB_BASE_URL = originalBlobBase;
