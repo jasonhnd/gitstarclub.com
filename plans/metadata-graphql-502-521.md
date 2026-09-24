@@ -1,13 +1,13 @@
-# Issue #521 — metadata GraphQL 502 续跑
+# Issue #521 — resume after metadata GraphQL 502
 
-## 根因（现场对齐）
+## Root cause (aligned with the live run)
 
-- #512 已在 **同一 run / 同一 bucket hop** 内持久化 `metadata-<bucket>.json` 并 `retryMetadata` 重入队；`transient_attempts` 达 **6** 后 throw → `markFailed`，整 run 作废（`refresh-2026-09-22T12-32-21-068Z` 即此路径）。
-- `latest-unpublished-whitelist` 只复用 **Search snapshot**，**不**携带旧 run 的 GraphQL batch 进度；再 Bearer 会从 metadata-0 重拉。
-- 冷启动只放宽 lookup/repos 空读，**不**绕过 GraphQL metadata。
+- #512 already persists `metadata-<bucket>.json` inside the **same run / same bucket hop** and re-enqueues via `retryMetadata`; when `transient_attempts` reaches **6** it throws → `markFailed`, and the whole run is void (`refresh-2026-09-22T12-32-21-068Z` is that path).
+- `latest-unpublished-whitelist` reuses only the **Search snapshot**. It does **not** carry GraphQL batch progress from the old run; another Bearer starts over at metadata-0.
+- Cold start only relaxes an empty lookup/repos read. It does **not** bypass GraphQL metadata.
 
-## 改动
+## Changes
 
-1. 提高 hop 级 transient 预算与退避上限。
-2. whitelist 从 unpublished 复用时写 `metadata_resume_run_id`，metadata 读取时合并旧 run 的 `fetched` 并重置 `transient_attempts`。
-3. 文档 + 测试。
+1. Raise the hop-level transient budget and the backoff cap.
+2. When the whitelist is reused from unpublished, write `metadata_resume_run_id`. When metadata is read, merge `fetched` from the old run and reset `transient_attempts`.
+3. Docs + tests.

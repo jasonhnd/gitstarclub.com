@@ -1,17 +1,17 @@
-# #504 按审查修 .cursor/agents + AGENTS.md
+# #504 Fix .cursor/agents + AGENTS.md per review
 
-- **task_id**：`gitstarclub-cursor-agents-fix-review-cca-001`
-- **baseline**：`pre`（已含 #503）
-- **目标**：Draft PR → `pre`；FINISHED ≠ 合并
+- **task_id**: `gitstarclub-cursor-agents-fix-review-cca-001`
+- **baseline**: `pre` (already includes #503)
+- **goal**: Draft PR → `pre`; FINISHED is not a merge
 
-## 范围
+## Scope
 
-1. 13 个 `.cursor/agents/*.md` 的 `description` 改成「当需要……时使用。不用于……」，并分清 vercel/cloudflare、researcher/pm、code-reviewer/test-engineer。
-2. 给 `test-engineer`、`github-ops`、`notion-ops` 加 `readonly: true`；保留 `researcher`、`code-reviewer`；其余可写岗不加。
-3. 重写根 `AGENTS.md`：删 Grok 专用条目；引用服从 `.grok/rules/pre-only.md` 与 `.delivery.yml`；只留四条可执行新规；创建本目录。
+1. Change `description` in the 13 `.cursor/agents/*.md` files to "Use when you need to .... Do not use for ....", and separate vercel/cloudflare, researcher/pm, and code-reviewer/test-engineer.
+2. Add `readonly: true` to `test-engineer`, `github-ops`, and `notion-ops`; keep it on `researcher` and `code-reviewer`; do not add it to the other writable roles.
+3. Rewrite the root `AGENTS.md`: drop Grok-only entries; defer to `.grok/rules/pre-only.md` and `.delivery.yml`; keep only four executable rules; create this directory.
 
-## 不做
+## Out of scope
 
-- 不碰 `main`；不合并本 PR
-- 不改业务代码 / Worker / Cron
-- 不造根目录 `WORKFLOW.md`（仓库当前无此文件）
+- Do not touch `main`; do not merge this PR
+- Do not change product code / Workers / cron
+- Do not create a root `WORKFLOW.md` (the repository does not have that file today)
