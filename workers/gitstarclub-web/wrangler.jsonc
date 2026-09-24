@@ -47,7 +47,8 @@
     }
   ],
   // Inheritable. A plain deploy defaults both to on and would reopen
-  // gitstarclub-web.worldgo.workers.dev. env.pre overrides workers_dev.
+  // gitstarclub-web.worldgo.workers.dev. env.pre sets both explicitly so a
+  // preview deploy does not inherit these closed production flags.
   // CF_PREVIEW_COMMIT_SHA is not listed: pass it with --var per deploy.
   "workers_dev": false,
   "preview_urls": false,
@@ -79,12 +80,14 @@
   "env": {
     "pre": {
       "name": "gitstarclub-web-pre",
-      // Do not inherit top-level workers_dev: false. The preview probe and
+      // Do not inherit the closed production flags. The preview probe and
       // Access host are https://gitstarclub-web-pre.worldgo.workers.dev.
+      // preview_urls matches live gitstarclub-web-pre on 2026-09-24
+      // (workers.dev enabled, previews_enabled). Turning preview URLs off
+      // for pre is a separate owner decision.
       // pre.gitstarclub.com/* is the staging route and is not declared here.
-      // Version preview URLs stay off.
       "workers_dev": true,
-      "preview_urls": false,
+      "preview_urls": true,
       "triggers": {
         // Draft only. Platform PUT .../schedules (or wrangler deploy of this
         // env) is an ops step; this PR does not enable preview cron.

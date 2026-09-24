@@ -147,7 +147,7 @@ Expect `/robots.txt` to allow `/` for `User-Agent: *` and to list `Sitemap: http
 
 ### Preview deploy
 
-`env.pre` sets `workers_dev: true` so it does not inherit the closed production subdomain. The probe host remains `https://gitstarclub-web-pre.worldgo.workers.dev`. `preview_urls` stays `false`. `pre.gitstarclub.com/*` is not declared in `wrangler.jsonc`.
+`env.pre` sets `workers_dev: true` and `preview_urls: true` so a preview deploy does not inherit the closed production flags. The probe host remains `https://gitstarclub-web-pre.worldgo.workers.dev`. Live `gitstarclub-web-pre` had workers.dev enabled and version preview URLs enabled on 2026-09-24; this file matches that. Turning preview URLs off for pre is a separate owner decision. `pre.gitstarclub.com/*` is not declared in `wrangler.jsonc`.
 
 ```sh
 cd web
@@ -261,8 +261,8 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | `R2_PREFIX` | 非生产对象前缀 | 可选（默认 `migrate-dev/`） | `migrate-dev/` / `migrate-test/` / `migrate-preview/` | `web/lib/runtime-config.ts`；空前缀与生产 key 空间禁止写入 |
 | `R2_PUBLIC_BASE_URL` | R2 公开读 base URL | 仅 `r2` / `r2_then_blob` 页面读 | 无尾斜杠的 https origin | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` |
 | `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | **必需** | 随机串（≥32 字符，**无首尾空白**） | `web/lib/cron/handlers.ts` · `web/lib/security.ts` · `web/lib/runtime-config.ts` · `web/app/api/workflows/refresh/start/route.ts` · `web/app/api/workflows/refresh/step/route.ts`；每日 / 每周 cron · refresh start / step |
-| `WORKFLOW_RUNTIME` | Managed refresh 编排后端 | 可选（默认 `http`） | `http` \| `memory` \| `cf-queue` | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/resolve.ts`. Unset code default is `http`. Production wrangler top-level and preview `env.pre` both set `cf-queue`. |
-| `WORKFLOW_QUEUE_ENQUEUE_URL` | CF Queue 入队 URL（Worker `/enqueue`） | 仅 `WORKFLOW_RUNTIME=cf-queue` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/cf-queue.ts`. Production top-level is `https://gitstarclub.com/enqueue`. Preview `env.pre` is `https://pre.gitstarclub.com/enqueue`. |
+| `WORKFLOW_RUNTIME` | Managed refresh orchestration backend | Optional (default `http`) | `http` \| `memory` \| `cf-queue` | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/resolve.ts`. Unset code default is `http`. Production wrangler top-level and preview `env.pre` both set `cf-queue`. |
+| `WORKFLOW_QUEUE_ENQUEUE_URL` | Cloudflare Queue enqueue URL (Worker `/enqueue`) | Required only when `WORKFLOW_RUNTIME=cf-queue` | Absolute URL | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/cf-queue.ts`. Production top-level is `https://gitstarclub.com/enqueue`. Preview `env.pre` is `https://pre.gitstarclub.com/enqueue`. |
 | `WORKFLOW_STEP_BASE_URL` | step 路由 origin 覆盖 | 可选 | 无尾斜杠 https origin | `web/lib/runtime-config.ts`；未设时用请求 origin 或 `VERCEL_URL` |
 | `CACHE_INVALIDATION_DRIVER` | ISR 失效端口 | 可选（默认 `vercel`） | `vercel` \| `memory` \| `cf-stub` | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/`；生产默认 Next `revalidatePath/Tag`，`cf-stub` 仅非生产，见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
 | `CF_CACHE_PURGE_URL` | CF stub 双跑 POST URL（Worker `/preview/invalidate`） | 仅 `CACHE_INVALIDATION_DRIVER=cf-stub` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/cf-stub.ts`；不是 Cloudflare Cache Purge |
