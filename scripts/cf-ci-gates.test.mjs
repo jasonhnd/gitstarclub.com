@@ -91,6 +91,16 @@ function alignedSources(overrides = {}) {
 }
 
 describe("CF CI gates", () => {
+  test("Cloudflare build rejects missing and unknown targets before building", () => {
+    for (const args of [[], ["--site-target=staging"], ["--site-target=pre", "--site-target=production"]]) {
+      const result = spawnSync("bun", ["scripts/cf-opennext-build.ts", ...args], {
+        cwd: new URL("../web/", import.meta.url),
+        encoding: "utf8",
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /requires exactly one --site-target=production or --site-target=pre/);
+    }
+  });
   test("requires production indexing and forbids preview indexing", () => {
     const missing = validWrangler.replace('"SITE_INDEXABLE": "1", ', "");
     assert.match(assertCfCiGates(alignedSources({ wranglerSource: missing })).join(" "), /SITE_INDEXABLE/);

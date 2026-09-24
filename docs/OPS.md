@@ -60,6 +60,18 @@ content="noindex,nofollow">` and `robots.txt` returns `User-Agent: *` with
 `Disallow: /`. Preview still reads production Blob data because `BLOB_*`
 variables are set for Preview.
 
+Cloudflare owner commands (run from `web/`; build each target immediately before its matching deployment because both builds use the same output directory):
+
+```sh
+cd web
+bun run cf:build:production
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc
+bun run cf:build:pre
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env pre
+```
+
+`bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre` are the explicit underlying forms. A bare `bun run cf:build` fails. `bun run cf:dry-run` builds pre and performs a Wrangler dry run only. The build checks the generated home HTML and robots response for the selected indexing policy before deployment.
+
 Access: Preview is locked. Project-level Vercel Authentication
 (`ssoProtection.deploymentType=preview`) was re-enabled 2026-08-28 so
 `pre.gitstarclub.com`, PR `*.vercel.app` URLs, and leftover preview deployments
