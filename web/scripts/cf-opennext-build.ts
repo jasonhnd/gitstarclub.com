@@ -27,6 +27,7 @@ async function main(): Promise<void> {
     console.log(`patched @opentelemetry/api package.json for OpenNext: ${path}`);
   }
 
+  const preview = process.argv.includes("--site-target=pre");
   const result = Bun.spawnSync({
     cmd: [
       "bunx",
@@ -34,9 +35,12 @@ async function main(): Promise<void> {
       "build",
       "--config",
       "../workers/gitstarclub-web/wrangler.jsonc",
-      ...process.argv.slice(2),
+      ...process.argv.slice(2).filter((arg) => arg !== "--site-target=pre"),
     ],
     cwd: WEB_ROOT,
+    env: preview
+      ? { ...process.env, SITE_INDEXABLE: "0" }
+      : { ...process.env, SITE_INDEXABLE: "1", NEXT_PUBLIC_SITE_URL: "https://gitstarclub.com" },
     stdout: "inherit",
     stderr: "inherit",
     stdin: "inherit",

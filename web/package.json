@@ -25,7 +25,7 @@
     "test:cov": "bun test lib/ --coverage --isolate && node ../scripts/check-coverage-threshold.mjs coverage/lcov.info",
     "cf:build": "bun scripts/cf-opennext-build.ts",
     "cf:preview": "wrangler dev --config ../workers/gitstarclub-web/wrangler.jsonc --env pre --port 8787 --ip 127.0.0.1",
-    "cf:dry-run": "bun run cf:build && node ../scripts/cf-wrangler-dry-run.mjs",
+    "cf:dry-run": "bun run cf:build --site-target=pre && node ../scripts/cf-wrangler-dry-run.mjs",
     "cf:smoke": "bun scripts/cf-workers-host-smoke.ts"
   },
   "dependencies": {

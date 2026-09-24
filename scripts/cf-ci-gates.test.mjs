@@ -27,6 +27,7 @@ import {
 
 const validWrangler = `{
   "name": "gitstarclub-web",
+  "vars": { "SITE_INDEXABLE": "1", "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com" },
   "triggers": { "crons": [] },
   "env": {
     "pre": {
@@ -90,6 +91,12 @@ function alignedSources(overrides = {}) {
 }
 
 describe("CF CI gates", () => {
+  test("requires production indexing and forbids preview indexing", () => {
+    const missing = validWrangler.replace('"SITE_INDEXABLE": "1", ', "");
+    assert.match(assertCfCiGates(alignedSources({ wranglerSource: missing })).join(" "), /SITE_INDEXABLE/);
+    const previewEnabled = validWrangler.replace('"WORKFLOW_COLD_START": "1"', '"WORKFLOW_COLD_START": "1", "SITE_INDEXABLE": "1"');
+    assert.match(assertCfCiGates(alignedSources({ wranglerSource: previewEnabled })).join(" "), /SITE_INDEXABLE/);
+  });
   test("plans a dry-run against wrangler env pre only", () => {
     assert.deepEqual(planCfWranglerDryRun([]), {
       argv: [
