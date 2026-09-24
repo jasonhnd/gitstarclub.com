@@ -13,7 +13,7 @@ source_of_truth_for:
 # gitstarclub Operations Runbook
 
 > 运维与部署的唯一真相源。架构与数据流见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
-> 核心原则承袭架构：**Vercel-first 统一计费**、**运行时纯静态零引擎**、**生产数据运营不依赖本地计算**。本文把这些落到具体的项目、环境变量、Cron、Workflow、Blob 与告警上；endpoint method/auth/cache/status contracts 见 [API.md](./API.md)。
+> Core principles from the architecture: **Cloudflare Workers hosting with Vercel Blob storage**, **a static runtime without an engine**, and **production data operations independent of local computation**. This runbook applies them to projects, environment variables, Cron, workflows, Blob, and alerts; see [API.md](./API.md) for endpoint method, authentication, cache, and status contracts.
 
 ## Scope
 
@@ -23,6 +23,55 @@ source_of_truth_for:
 - **每日 / 每周 live cron**——见 §Cron 调度。
 - **历史 / 元数据 / canonical 全量刷新（Vercel cron + 无 SDK 编排）**——见 §Vercel Workflow runbook（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)；P1 双调度见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)）。
 - **一次性 BigQuery + DuckDB bootstrap 回填**——见 §一次性 bootstrap Runbook（归档，非日常路径）。
+
+## Current hosting and branch topology
+
+As checked on 2026-09-24, both `https://gitstarclub.com` and
+`https://pre.gitstarclub.com` returned `server: cloudflare` and `x-opennext: 1`.
+The current web host is Cloudflare Workers with OpenNext: `gitstarclub-web`
+serves production (`main`), and `gitstarclub-web-pre` serves preview (`pre`).
+The `www` hostname belongs to the production domain set, but this check did
+not independently probe its response. Vercel Blob remains the JSON storage
+service; the former Vercel web project and CLI deploy instructions below are
+rollback history, not the current deployment procedure.
+
+Feature PRs target `pre`; promotion is a separate merge from `pre` to `main`.
+The CI gate forbids a live production Worker deploy from repository automation,
+and its production `triggers.crons` contract remains `[]`.
+
+### Deployment and scheduler evidence (2026-09-24)
+
+| Surface | Observed or declared state |
+|---|---|
+| Production web | `gitstarclub.com`: `server: cloudflare`, `x-opennext: 1` |
+| Preview web | `pre.gitstarclub.com`: `server: cloudflare`, `x-opennext: 1` |
+| Production Worker schedule | Cloudflare schedules API observation in issue #528 at 03:30 UTC: `gitstarclub-web` = `[]`; repository gate requires `triggers.crons: []` |
+| Preview Worker schedule | Same API observation: `gitstarclub-web-pre` = `0 3 * * *`, `0 4 * * 7`, `0 6 * * 7` |
+| Production refresh trigger | Owner reports Cloudflare, but no production Worker Cron schedule was observed. An external caller, another Worker, or a changed schedule after the snapshot remains unverified. Do not infer the mechanism from route code or `web/vercel.json`. |
+
+The Worker `scheduled` handler dispatches the three cron expressions to the
+protected daily, weekly, and refresh routes. The preview platform schedules
+prove preview triggers are configured; they do not establish a production
+trigger. The production trigger requires an operator-provided schedule or
+request log showing caller, target, and timestamp. The old `web/vercel.json`
+cron declarations are retained as rollback reference and do not establish
+active Vercel scheduling on the Cloudflare-hosted domain. Do not change the
+production gate to reconcile the owner's statement without that evidence.
+
+### Environment variable source
+
+Production and preview Worker variables and bindings are declared in
+[Worker configuration](../workers/gitstarclub-web/wrangler.jsonc); runtime secrets are injected on the
+Cloudflare platform and are never stored in this repository. Local development
+uses `web/.env.local`. Vercel Blob remains external storage and requires its
+Blob URL and, for writes, a Blob token. The former Vercel project environment
+configuration below applies only to its historical rollback deployment.
+
+### History / rollback reference (retired Vercel web hosting; 2026-09-24)
+
+The following topology, DNS values, authentication, and `vercel deploy` commands
+record the pre-migration setup. They must not be used as the current operating
+instructions.
 
 ## 部署拓扑（单一 Vercel 项目）
 
@@ -91,7 +140,7 @@ production is a merge from `pre` to `main`.
 
 These are **Cloudflare Worker names**, not the retired Vercel project also
 historically called `gitstarclub-web`. Apex / www and `pre.gitstarclub.com`
-stay on Vercel unless Jason later approves a DNS cut.
+were historically on Vercel before the Cloudflare cut.
 
 | Git branch | Cloudflare Worker | wrangler env | Deploy rule |
 |---|---|---|---|
@@ -147,9 +196,7 @@ an explicit recovery procedure.
 
 ## 环境变量与密钥
 
-集中在 `zkscio/gitstarclub.com` 项目的 Vercel 环境变量里配置。本地把仓库根
-`.env.example` 复制为 `web/.env.local`；`web/scripts/lib/env.ts` 只加载该文件，
-**勿提交真实值**。读路径与写路径遵循最小权限：只浏览或构建不需要写令牌。
+Current Worker configuration is in [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc), with secrets stored on the Cloudflare platform. The former Vercel project configuration is rollback history. For local development, copy the repository root `.env.example` to `web/.env.local`; `web/scripts/lib/env.ts` loads only that file. **Never commit real secret values.** Follow least privilege for read and write paths: browsing or building does not require a write token.
 
 <!-- env-inventory:start -->
 
@@ -398,7 +445,9 @@ bun run scripts/backfill-live-week.ts --week 2026-W27 --finalize
 
 `KNOWN_MISSING_LIVE_WEEKS` is empty after this backfill. Product gates expect `live/rank/week/2026-W27/repo/flow.json` **200**.
 
-## Cron 调度
+## Cron route and schedule reference
+
+The following Vercel schedule declaration is historical. The current preview Worker schedule and production evidence gap are recorded above.
 
 `web/vercel.json` 声明 `crons[]`；Pro 计划 **100 job / 项目**、最小 1 次 / 分。三条 job：
 
@@ -435,7 +484,7 @@ Worker `scheduled` 按 `event.cron` 分发到上表三条路径（见 [CF-MIGRAT
 
 ### Sunday 06:00 UTC workflow-refresh failure
 
-Schedule: `0 6 * * 0` UTC → `GET /api/workflows/refresh/start` (managed refresh, no Workflow SDK). This is **not** the Sunday 04:00 weekly live cron above. A leftover `live/latest.json` lease is that other path (#402). Production scheduling stays on Vercel; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) for dual-scheduler rollback (stop CF Cron, leave these three Vercel crons).
+Schedule: `0 6 * * 0` UTC → `GET /api/workflows/refresh/start` (managed refresh, no Workflow SDK). This is **not** the Sunday 04:00 weekly live cron above. A leftover `live/latest.json` lease is that other path (#402). The production scheduler is unverified; see the dated evidence above.
 
 Paging already exists — do not invent new alerts. `markFailed` in `web/lib/workflows/checkpoint.ts` calls `recordHealth("workflow-refresh", "failed", …)` and `sendAlert`. Start-route lease/enqueue failures in `web/lib/workflows/start.ts` also `sendAlert`. `sendAlert` always writes a structured `[ALERT] workflow-refresh failed` function log; it POSTs a webhook only when `ALERT_WEBHOOK_URL` is set.
 
@@ -502,7 +551,7 @@ Paging already exists — do not invent new alerts. `markFailed` in `web/lib/wor
 
 ### Dual-scheduler rollback (P1)
 
-Production Sunday refresh is still the Vercel cron row above. A non-production
+The production Sunday refresh trigger is not independently established. A non-production
 CF Cron on `gitstarclub-web` may also call start or enqueue a shrink fixture.
 If that CF path is enabled and must be abandoned:
 
@@ -515,7 +564,7 @@ Full write-up: [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md).
 
 ### Dual-run rollback (P2 ISR / Preview)
 
-Production Preview gates and ISR invalidation stay on Vercel. A non-production
+The earlier Vercel Preview gates and ISR invalidation are rollback references. A non-production
 CF Preview host (`gitstarclub-web-pre.worldgo.workers.dev`, Worker
 `gitstarclub-web-pre`) plus optional `verify / cf-preview` may dual-run Access
 + a cache-invalidation stub.
@@ -533,7 +582,7 @@ Full write-up: [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
 
 ### Workers host rollback (P3 OpenNext preview)
 
-Production apex/www stay on Vercel. A non-production OpenNext host on
+Production apex/www now use Cloudflare Workers. A non-production OpenNext host on
 `gitstarclub-web-pre.worldgo.workers.dev` (or `wrangler preview` with
 `--env pre`) may serve the Next app behind the existing Worker shell.
 

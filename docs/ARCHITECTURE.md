@@ -28,9 +28,9 @@ These are non-negotiable for the production system. New features must respect al
 
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
 2. **Zero runtime database.** Read-side state lives in versioned Blob views resolved through a publish pointer; there is no SQL connection to open.
-3. **Vercel-first.** Deploy, cron, Blob, workflow, and Vercel Web Analytics stay on Vercel. Google Analytics and other third-party tracking scripts are intentionally unsupported.
+3. **Cloudflare hosting.** Production and preview use Cloudflare Workers with OpenNext; Vercel Blob remains the JSON store. Google Analytics and other third-party tracking scripts are intentionally unsupported.
 4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, service-worker registration, and Vercel Web Analytics.
-5. **Recurring work on Vercel, not the laptop.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) is scheduled by Vercel cron and runs as ordinary async steps. Local pipeline runs are reserved for one-off bootstrap.
+5. **Recurring work is hosted, not laptop-bound.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) is driven by scheduled or authenticated triggers and runs as ordinary async steps. Local pipeline runs are reserved for one-off bootstrap.
 
 The same data layer also operates AI-free: features that look like they would call an LLM (summaries, classifications, narratives) ship as deterministic templates instead. The rationale and tradeoff are recorded in the team feedback memory.
 
@@ -38,13 +38,13 @@ The same data layer also operates AI-free: features that look like they would ca
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Framework | Next.js 16 (App Router, RSC, Turbopack) | Vercel-native |
+| Framework | Next.js 16 (App Router, RSC, Turbopack) | OpenNext on Cloudflare Workers |
 | Language / toolchain | TypeScript 6, React 19, Zod 4, Node 24, bun | |
 | Styling | Tailwind 4 + Material 3 Expressive tokens (graphite + amber), hand-authored in `web/app/globals.css` following the M3 system color role taxonomy | |
 | Fonts | Plus Jakarta Sans (variable sans), Geist Mono (numerals, repo names) | |
 | Read-side data | Versioned JSON views in Vercel Blob, served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
 | Live-overlay data | Immutable `live/generations/<run_id>/**`, selected by `live/latest.json` | Atomic current snapshot; period files use bounded validated manifest history until folded |
-| Recurring data refresh | Vercel cron + step runtime (multi-step, Blob checkpoint; no Workflow SDK) | Production schedule stays in `web/vercel.json` |
+| Recurring data refresh | Cron routes + step runtime (multi-step, Blob checkpoint; no Workflow SDK) | Production trigger source is under investigation; see OPS.md |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
 | Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test` from `web/` on PRs and `main` pushes |
 | Analytics | Vercel Web Analytics via `@vercel/analytics` is the only analytics integration. It uses same-origin `/_vercel/insights` endpoints, and build-time policy checks keep CSP compatible. | No GA or third-party tracking scripts. |
@@ -61,7 +61,7 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 │  Upload     →   Vercel Blob                                  │
 └─────────────────────────────────────────────────────────────┘
 
-┌─ Recurring recompute (Vercel cron + step runtime) ──────────┐
+┌─ Recurring recompute (Cron routes + step runtime) ──────────┐
 │  whitelist → rename → metadata (per bucket) → fold (month/  │
 │  week) → recompute (rank, entity, heatmap, search index     │
 │  written to views/<run_id>/**) → validate → publish (swap   │
@@ -88,7 +88,7 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 ┌─ Build (each deploy) ───────────────────────────────────────┐
 │  Read precomputed JSON views, render static HTML and SSR    │
 │  SVG. No aggregation, no engine, no native modules.         │
-│  Output → Vercel Edge CDN                                   │
+│  Output → Cloudflare Workers / CDN                                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -202,7 +202,7 @@ English keeps the base canonical paths unprefixed; non-default locales add URL p
 
 ### Build budget
 
-Eleven thousand-plus pages cannot be built at deploy time within Vercel's 45-minute budget, and `.next/cache` does not carry pre-rendered HTML across deploys. The build only produces the small core (home, current year, current month, all-time rankings, pulse, compare). Everything else renders on first request and is then cached as ISR.
+Eleven thousand-plus pages cannot be built at deploy time within the deployment build budget, and `.next/cache` does not carry pre-rendered HTML across deploys. The build only produces the small core (home, current year, current month, all-time rankings, pulse, compare). Everything else renders on first request and is then cached as ISR.
 
 ### Page tiering and refresh cadence
 
@@ -284,7 +284,7 @@ The current scope is comfortably static. Several requested capabilities would fo
 - Topic / language / cohort clustering.
 - Semantic / embedding-based search.
 
-These cannot fit a fixed view set or a client-side index. They share an open architectural decision recorded in [ROADMAP.md](./ROADMAP.md): which analytical layer to introduce (managed ClickHouse, Vercel-native relational, etc.) and how to reconcile that with the Vercel-first / runtime-zero-engine posture above. No work on those features starts before that decision lands.
+These cannot fit a fixed view set or a client-side index. They share an open architectural decision recorded in [ROADMAP.md](./ROADMAP.md): which analytical layer to introduce (managed ClickHouse, OpenNext on Cloudflare Workers relational, etc.) and how to reconcile that with the Cloudflare-hosted / runtime-zero-engine posture above. No work on those features starts before that decision lands.
 
 ## Cost estimate
 
