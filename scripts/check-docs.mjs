@@ -99,7 +99,7 @@ export function extractRepoReferences(markdown) {
   const references = [];
   for (const match of markdown.matchAll(/`([^`\n]+)`/g)) {
     const span = match[1];
-    const tokens = span.match(/(?:web|pipeline|scripts|\.github)\/[^\s,;，；|→]+/g) ?? [];
+    const tokens = span.match(/(?:web|pipeline|scripts|\.github)\/[^\s,;\uFF0C\uFF1B|→]+/g) ?? [];
     for (const token of tokens) references.push(normalizeReference(token));
   }
   return references;
@@ -277,7 +277,9 @@ export function checkMaintainedFacts(root) {
 
 const cjkProseDirectories = ["docs", "plans", ".cursor", ".grok"];
 const cjkProseFiles = ["AGENTS.md"];
-const cjkPattern = /[\u4e00-\u9fff]/;
+// Han text, full-width punctuation, and the Chinese double em dash.
+// A single em dash (U+2014) is the English replacement and stays allowed.
+const cjkPattern = /[\u4e00-\u9fff\u3002\u300C\u300D\uFF08\uFF09\uFF0C\uFF1A\uFF1B]|\u2014\u2014/;
 
 // Product locale copy and tests that assert it may contain Han text.
 // These paths are outside the scanned roots; the filter is here so a wider scan cannot flag them.

@@ -55,6 +55,48 @@ describe("documentation consistency gate", () => {
     assert.equal(isCjkAllowlisted("web/lib/contracts/common.ts"), false);
   });
 
+  test("repo reference scan still stops at full-width comma and semicolon", () => {
+    const markdown = "See `web/lib/format.ts\uFF0Cweb/lib/narrative.ts\uFF1Bweb/lib/format.test.ts`.";
+    assert.deepEqual(extractRepoReferences(markdown), [
+      "web/lib/format.ts",
+      "web/lib/narrative.ts",
+      "web/lib/format.test.ts",
+    ]);
+  });
+
+  test("cjk prose check flags full-width punctuation and a double em dash", () => {
+    const root = mkdtempSync(join(tmpdir(), "gsc-cjk-punct-"));
+    try {
+      mkdirSync(join(root, "docs"), { recursive: true });
+      const marks = [
+        "\uFF0C",
+        "\u3002",
+        "\uFF1A",
+        "\uFF1B",
+        "\uFF08",
+        "\uFF09",
+        "\u300C",
+        "\u300D",
+        "\u2014\u2014",
+      ];
+      const lines = [
+        "ASCII only",
+        ...marks.map((mark) => `note ${mark} here`),
+        "spaced em dash \u2014 is allowed",
+      ];
+      writeFileSync(join(root, "docs/punct.md"), `${lines.join("\n")}\n`);
+      assert.deepEqual(
+        checkCjkProse(root),
+        marks.map(
+          (_, index) =>
+            `docs/punct.md:${index + 2} CJK text is not allowed outside product locale files`,
+        ),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("cjk prose check flags Han text in scanned roots and skips allowlisted files", () => {
     const root = mkdtempSync(join(tmpdir(), "gsc-cjk-"));
     try {
