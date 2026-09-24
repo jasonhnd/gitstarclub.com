@@ -8,18 +8,18 @@ source_of_truth_for:
   - build-side data types
 ---
 
-# gitstarclub 数据契约（canonical JSON shard + JSON 视图）
+# gitstarclub Data Contracts (canonical JSON shard + JSON views)
 
 ## Scope
 
-本文是 **数据层与 build 之间的接口契约**，给每个 canonical shard 与 JSON 视图的**精确 schema**——字段、类型、口径、引用关系，并作为 `web/lib/contracts/` Zod 定义的事实源。新增产物 / 改字段 / 调口径前必读。
-物理形式、取舍与生成流水线见 [ARCHITECTURE.md](./ARCHITECTURE.md)「数据模型」与 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)；前端如何消费见 [FRONTEND.md](./FRONTEND.md)；榜单口径细则见 [RANKING.md](./RANKING.md)；本文不涉及部署、运维、cron 调度（见 [OPS.md](./OPS.md)）。
+This document is the **interface contract between the data layer and the build**, giving each canonical shard and JSON view an **exact schema** — fields, types, definitions, and reference relationships, and it is the source of truth for the Zod definitions in `web/lib/contracts/`. It must be read before adding an artifact / changing a field / adjusting a definition.
+Physical form, tradeoffs, and the generation pipeline are in [ARCHITECTURE.md](./ARCHITECTURE.md) "data model" and [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md); how the frontend consumes them is in [FRONTEND.md](./FRONTEND.md); ranking-definition details are in [RANKING.md](./RANKING.md); this document does not cover deployment, operations, or cron scheduling (see [OPS.md](./OPS.md)).
 
-> ⚠️ **canonical 形态**：§1 的 `star_daily.parquet` 是 **bootstrap 归档**形态。**生产 canonical = §1.4 的 JSON shard**（Vercel 可重算、无引擎）。Workflow / checkpoint / 发布指针契约见 §2.11–2.13。
+> ⚠️ **canonical form**: §1's `star_daily.parquet` is the **bootstrap archive** form. **production canonical = §1.4's JSON shard** (Vercel can recompute it, with no engine). The Workflow / checkpoint / publish pointer contracts are in §2.11–2.13.
 
 ## Requirement Traceability
 
-[REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-id--优先级--追踪矩阵) owns priority and acceptance language. This table identifies which JSON contracts provide evidence for each requirement.
+[REQUIREMENTS.md §0](./REQUIREMENTS.md#0-requirement-ids--priority--traceability-matrix) owns priority and acceptance language. This table identifies which JSON contracts provide evidence for each requirement.
 
 | Requirement ID | Contract artifacts | Contract responsibility |
 |---|---|---|
@@ -33,86 +33,86 @@ source_of_truth_for:
 | `REQ-COMPARE-001` | `/repo-curve?id=<id>` projection from `entity/repo/{id}.json` | Compare reuses entity curves and returns only the slim curve payload needed by the client. |
 | `REQ-CATEGORY-001` | `categories/registry.json`, `categories/assignments.json`, `categories/assignments/shards/*.json`, `lookup/categories.json`, `rank/category/**` | Category pages are driven by public registry and assignment artifacts, with paged all-time rank views. New generations shard assignments so each Data Cache entry stays under 1.50 MiB. |
 
-## 全局约定
+## Global conventions
 
-- **日期**：一律 UTC，`YYYY-MM-DD`。
-- **周期标识 `period`**：周 = `WeekPeriod` ISO 周 `YYYY-Www`（如 `2024-W42`）；月 = `MonthPeriod` `YYYY-MM`；年 = `YearPeriod` `YYYY`；全时 `all`。
-- **主键**：repo = GitHub 数字 `repo_id`（不可变，跨改名稳定）；org = `owner` login 字符串。
-- **数值**：整数。`delta` / flow 在 seam 后为 net，**可为负**（取消 star）；stock（累计）非负。
-- **契约硬线**：`current_stars` / `current_stars_sum` / `stars` / count 类字段非负；`RankItem.value` 仍可为负（net flow）。`RankItem` 必须且只能携带 `id`（repo）或 `login`（org）之一。
-- **文本与时间**：`DateStr` 日期字段使用 UTC `YYYY-MM-DD`；`TimestampStr`（`generated_at` / `published_at` / checkpoint 等）使用带时区的 ISO timestamp。自由文本字段由 React 渲染层转义，同时契约拒绝高风险 active HTML 片段（script/iframe/style 等）和真正的 `javascript:` URL scheme（不是英文标题里的 `JavaScript:`）。
-- **引用 vs 内嵌**：排行榜 JSON 只存实体 **id/login + 数值**，不内嵌名字/描述；build 用 `lookup/*` join 出展示字段 → 榜单文件保持小、改名只需更新 lookup。
-- 每个 JSON 带 `meta`（至少 `generated_at`，视图另含 `period/window/dim/metric`）便于缓存与调试。
+- **Dates**: always UTC, `YYYY-MM-DD`.
+- **Period identifier `period`**: week = `WeekPeriod` ISO week `YYYY-Www` (e.g. `2024-W42`); month = `MonthPeriod` `YYYY-MM`; year = `YearPeriod` `YYYY`; all-time `all`.
+- **Primary key**: repo = the GitHub numeric `repo_id` (immutable, stable across renames); org = the `owner` login string.
+- **Numbers**: integers. `delta` / flow is net after the seam, and **may be negative** (unstar); stock (cumulative) is non-negative.
+- **Contract hard line**: `current_stars` / `current_stars_sum` / `stars` / count-like fields are non-negative; `RankItem.value` may still be negative (net flow). A `RankItem` must carry exactly one of `id` (repo) or `login` (org).
+- **Text and time**: `DateStr` date fields use UTC `YYYY-MM-DD`; `TimestampStr` (`generated_at` / `published_at` / checkpoint and others) uses a timezone-qualified ISO timestamp. Free-text fields are escaped by the React render layer, and the contract also rejects high-risk active HTML fragments (script/iframe/style and others) and a real `javascript:` URL scheme (not `JavaScript:` inside an English title).
+- **Reference vs embedding**: ranking JSON stores only the entity **id/login + numbers**, and does not embed names/descriptions; the build uses `lookup/*` to join out display fields → ranking files stay small, and a rename only needs to update lookup.
+- Every JSON carries `meta` (at least `generated_at`; a view also includes `period/window/dim/metric`) to help caching and debugging.
 
 ---
 
-## 1. Canonical（仅数据层触碰：§1.1–1.3 bootstrap Parquet 形态；§1.4 生产 JSON shard）
+## 1. Canonical (touched only by the data layer: §1.1–1.3 bootstrap Parquet form; §1.4 production JSON shard)
 
-### 1.1 事实表 `canonical/star_daily.parquet`（🗄️ bootstrap 归档形态）
+### 1.1 Fact table `canonical/star_daily.parquet` (🗄️ bootstrap archive form)
 
-bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，日表本身退为归档、不在生产读 / 重算路径。
+The sole bootstrap source of truth; in the production phase it is folded into §1.4's month/week JSON shards, and the daily table itself retires to an archive and is not on the production read / recompute path.
 
-| 列 | 类型 | 说明 |
+| Column | Type | Description |
 |---|---|---|
-| `repo_id` | INT64 | GitHub 数字 id（不可变主键） |
-| `date` | DATE | UTC 日 |
-| `delta` | INT32 | 当日 star 增量；seam 前 gross（≥0，GH Archive WatchEvent 计数）、seam 后 net（GraphQL 日差，可负） |
+| `repo_id` | INT64 | GitHub numeric id (immutable primary key) |
+| `date` | DATE | UTC day |
+| `delta` | INT32 | That day's star delta; gross before the seam (≥0, GH Archive WatchEvent count), net after the seam (GraphQL day difference, may be negative) |
 
-- 逻辑 PK `(repo_id, date)`；按 `repo_id` 排序/分区，利于按 repo 聚合。
-- ~800 万行 / 列存 ≈ 几十 MB。**不含进行中当月**——当月在 `current_month.json` 活尾（§2.8），build/cron 合并。
+- Logical PK `(repo_id, date)`; sorted/partitioned by `repo_id`, which helps aggregation by repo.
+- ~8 million rows / columnar storage ≈ tens of MB. **Does not include the in-progress current month** — the current month is in the `current_month.json` live tail (§2.8), and the build/cron merges it.
 
-### 1.2 `repos` 维度（→ 同时导出 `lookup/repos.json`）
+### 1.2 `repos` dimension (→ also exported as `lookup/repos.json`)
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |---|---|---|
-| `id` | int | GitHub 数字 id（主键） |
-| `node_id` | string | GraphQL 全局 id（批量 `nodes()` 用） |
-| `owner` | string | 属主 login |
-| `owner_type` | `"User"\|"Organization"` | 决定 org 榜归类 |
-| `name` | string | repo 名 |
-| `full_name` | string | 当前 `owner/name`（改名更新；URL 用它，旧 URL 308） |
+| `id` | int | GitHub numeric id (primary key) |
+| `node_id` | string | GraphQL global id (for batched `nodes()`) |
+| `owner` | string | Owner login |
+| `owner_type` | `"User"\|"Organization"` | Decides org-ranking classification |
+| `name` | string | repo name |
+| `full_name` | string | Current `owner/name` (updated on rename; URLs use it, and old URLs 308) |
 | `description` | string\|null | |
-| `language` | string\|null | 主语言 |
+| `language` | string\|null | Primary language |
 | `topics` | string[] | |
-| `created_at` | DateStr\|TimestampStr | repo 创建日期；canonical shard 可保留 GitHub `createdAt` timestamp，entity 视图裁成 `YYYY-MM-DD` |
-| `current_stars` | int | GraphQL 权威当前总数（**唯一必须精确的数**） |
-| `active` | bool | 是否属于本次 GitHub Search 发现集。`false` = 仅历史保留，不参与当前轮询、当前总量或全时/分类榜 |
+| `created_at` | DateStr\|TimestampStr | repo creation date; a canonical shard may keep the GitHub `createdAt` timestamp, and the entity view is trimmed to `YYYY-MM-DD` |
+| `current_stars` | int | GraphQL authoritative current total (**the only number that must be exact**) |
+| `active` | bool | Whether it belongs to this GitHub Search discovery set. `false` = kept for history only, and it does not participate in current polling, the current total, or all-time/category rankings |
 | `is_archived` | bool | |
-| `crossed_10k/50k/100k` | DateStr\|null | 首破里程碑精确日期（供"历史上的今天"） |
-| `tracked_since` | DateStr\|null | 首次进入白名单 / 开始追踪的日期。bootstrap 基线 repo 为 `null`（有完整历史）；新晋 repo = 首次发现日；drop 后 re-entry 保留原日期（页面据此标注，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10） |
-| `fetched_at` | TimestampStr | 元数据抓取时刻 |
+| `crossed_10k/50k/100k` | DateStr\|null | Exact date the milestone was first crossed (for "on this day in history") |
+| `tracked_since` | DateStr\|null | Date of first entering the whitelist / when tracking started. A bootstrap baseline repo is `null` (it has full history); a newcomer repo = the first discovery day; re-entry after a drop keeps the original date (the page labels from this, see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §10) |
+| `fetched_at` | TimestampStr | Metadata fetch time |
 
-#### Repository tracking contract（权威）
+#### Repository tracking contract (authoritative)
 
-1. GitHub Search 只负责**成员发现**。发现先执行开放上界的 `stars:>=MIN_TRACKED_STARS`（默认 10,000；`getMinTrackedStars()` 读 `MIN_TRACKED_STARS`，预发 = 1,000）、按 stars 降序读取当前最高值，再以该动态上界自适应分桶；不存在 600,000 或其他产品级最高星数截断。预发 `WHITELIST_SEARCH_SHARDS=1` 时 Search 按 hop 恢复队列（`ops/workflows/<run_id>/whitelist-search.json`），完成前不写 snapshot。失败 run 的 unpublished snapshot 经 `ops/workflows/latest-unpublished-whitelist.json` 供下一 run 复用（不重搜）；已发布 pointer 仍是 baseline。页开不现算，成员变化只经 refresh → 预计算视图。
-2. GraphQL `Repository.stargazerCount` 是 `current_stars`、当前总量及当前/全时排名的唯一权威来源。Search 返回的 `stargazers_count` 只保留在 immutable whitelist snapshot 中用于发现审计，不写入 canonical `current_stars`。
-3. `WhitelistSnapshot.count === entries.length` 是本 run 的权威 active tracked count。publish gate 要求该集合与 canonical `active:true`、`lookup/repos.json active:true`、`meta.active_repo_count` 完全一致。
-4. drop 不删除：canonical、lookup、search 与 repo entity 继续保留，并写 `active:false`；daily/weekly cron、当前 org/category 聚合和 all-time 榜只使用 active rows。
-5. re-entry 由下一次 whitelist `diff.added` 重新激活，GraphQL 重新取权威总数，并保留首次 `tracked_since`。首次 newcomer 才把 immutable whitelist snapshot 的 UTC 日期写入 `tracked_since`。
+1. GitHub Search is responsible only for **membership discovery**. Discovery first runs an open-upper-bound `stars:>=MIN_TRACKED_STARS` (default 10,000; `getMinTrackedStars()` reads `MIN_TRACKED_STARS`, preview = 1,000), reads the current maximum in descending star order, then adaptively buckets by that dynamic upper bound; there is no 600,000 or other product-level maximum-star cutoff. When preview `WHITELIST_SEARCH_SHARDS=1`, Search resumes the queue by hop (`ops/workflows/<run_id>/whitelist-search.json`) and does not write a snapshot before completion. A failed run's unpublished snapshot is reused by the next run via `ops/workflows/latest-unpublished-whitelist.json` (no re-search); the published pointer remains the baseline. Opening a page does not compute on the fly; membership changes go only through refresh → precomputed views.
+2. GraphQL `Repository.stargazerCount` is the sole authoritative source of `current_stars`, the current total, and current/all-time ranking. The `stargazers_count` returned by Search is kept only in the immutable whitelist snapshot for discovery audit, and is not written to canonical `current_stars`.
+3. `WhitelistSnapshot.count === entries.length` is this run's authoritative active tracked count. The publish gate requires that set to match canonical `active:true`, `lookup/repos.json active:true`, and `meta.active_repo_count` exactly.
+4. A drop does not delete: canonical, lookup, search, and the repo entity are kept, and `active:false` is written; daily/weekly cron, current org/category aggregation, and the all-time ranking use only active rows.
+5. Re-entry is reactivated by the next whitelist `diff.added`, GraphQL fetches the authoritative total again, and the first `tracked_since` is kept. Only a first-time newcomer writes the immutable whitelist snapshot's UTC date into `tracked_since`.
 
-### 1.3 `meta`（→ `meta.json`）
+### 1.3 `meta` (→ `meta.json`)
 
 ```json
 { "seam_date": "2026-05-30", "backfilled_at": "...", "schema_ver": 1,
   "active_repo_count": 5302, "historical_repo_count": 17, "generated_at": "..." }
 ```
 
-`seam_date` = gross→net 边界（回填截止日）：`date < seam_date` 为 gross，之后为 net。版本化 writer 还写 `active_repo_count` / `historical_repo_count`；publish gate 与 whitelist / lookup 交叉校验。`Meta` 契约同时接受**扁平 bootstrap meta**（含 `backfilled_at`）与**版本化 meta**（含 `folded_through`，无 `backfilled_at`）；计数字段在 legacy 读取期间 optional，但新 publish 必须存在且匹配。`schema_ver` 即该视图的 schema version。这四个生命周期字段的归属：
+`seam_date` = the gross→net boundary (backfill cutoff date): `date < seam_date` is gross, and after that is net. A versioned writer also writes `active_repo_count` / `historical_repo_count`; the publish gate cross-checks them against the whitelist / lookup. The `Meta` contract accepts both **flat bootstrap meta** (includes `backfilled_at`) and **versioned meta** (includes `folded_through`, with no `backfilled_at`); count fields are optional during legacy reads, but a new publish must have them and they must match. `schema_ver` is that view's schema version. Ownership of these four lifecycle fields:
 
 | Field | Type | Produced by | Official on |
 |---|---|---|---|
-| `active` | bool | metadata / recompute | `ReposShardEntry`, `RepoLookupEntry`, `SearchDoc`, `RepoEntity`（legacy optional） |
+| `active` | bool | metadata / recompute | `ReposShardEntry`, `RepoLookupEntry`, `SearchDoc`, `RepoEntity` (legacy optional) |
 | `tracked_since` | DateStr\|null | metadata | same |
 | `active_repo_count` | int | recompute `views/meta.json` | `Meta` only |
 | `historical_repo_count` | int | recompute `views/meta.json` | `Meta` only |
 
-它们**不属于** `canonical/v2/meta.json`（`CanonicalMeta` 保持 `.strict()`，不含计数字段）。读取端不使用 `.passthrough()`。
+They **do not belong to** `canonical/v2/meta.json` (`CanonicalMeta` stays `.strict()`, and does not include count fields). Readers do not use `.passthrough()`.
 
-### 1.4 生产 canonical JSON shard
+### 1.4 Production canonical JSON shard
 
-> 把 §1.1 的 8M 行日表**折叠 + 分桶**成一组小 JSON，让 Vercel Workflow 能无引擎重算。设计与分桶策略见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§5.2。`<bucket>` = `repo_id % N`。
+> **Fold + bucket** §1.1's 8M-row daily table into a set of small JSON, so Vercel Workflow can recompute with no engine. The design and bucketing strategy are in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§5.2. `<bucket>` = `repo_id % N`.
 
-**`canonical/v2/meta.json`** —— 全局元信息（驱动 stock 锚定分段 + 收口水位）：
+**`canonical/v2/meta.json`** — global metadata (drives stock-anchor segmentation + the close-out watermark):
 
 ```json
 { "seam_date": "2026-05-30", "schema_ver": 1,
@@ -120,11 +120,11 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
   "generated_at": "2026-06-02T14:32:57.214Z" }
 ```
 
-- `seam_date`：gross→net 边界，stock 锚定据此分段（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3）。
-- `folded_through`：已折叠进 base 的最末周/月周期；读路径据此判某周期归 live 还是 base（防重复，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）。
-- `generated_at`：bootstrap 与 recurring fold writer 都必须写入的 UTC timestamp。reader 在迁移期仍接受没有该字段的 legacy generation；managed refresh route 会在 lease 前检查 `meta` + 全部 `repos` shard，workflow 首个 step 再在任何 canonical mutation 前校验全部 128 个必需 shard（CF / HTTP 编排按 4-bucket 窗口拆 invocation，语义仍是全量 gate）。预发 `PREFLIGHT_RELAX_EMPTY_SHARDS=1` 时，缺/空 shard 按 `preview-empty-canonical-placeholder` 当作空 `{}` 占位，不整 run 作废；生产保持 fail closed。schema / 身份 / `d` / 错桶仍拒绝。
+- `seam_date`: the gross→net boundary; stock anchoring segments by it ([VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3).
+- `folded_through`: the last week/month period already folded into base; the read path uses it to decide whether a period belongs to live or base (prevents duplication, [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2).
+- `generated_at`: a UTC timestamp that both the bootstrap writer and the recurring fold writer must write. During migration, a reader still accepts a legacy generation that lacks this field; the managed refresh route checks `meta` + every `repos` shard before the lease, and the workflow's first step validates all 128 required shards again before any canonical mutation (CF / HTTP orchestration splits invocations by 4-bucket windows, and the semantics remain a full gate). When preview `PREFLIGHT_RELAX_EMPTY_SHARDS=1`, a missing/empty shard is treated as an empty `{}` placeholder via `preview-empty-canonical-placeholder`, and the whole run is not voided; production stays fail closed. schema / identity / `d` / a wrong bucket are still rejected.
 
-**`canonical/v2/repos/{bucket}.json`** —— repo 维度分桶（字段同 §1.2，含 `tracked_since`、`fetched_at`（元数据抓取时刻）；外加 `d` = 冻结锚定因子（`>= 0`，GitHub Archive 低计时可 `> 1`），bootstrap 算定，**存全精度 IEEE double**——舍入会让 JS 重算的 `stock_est` 与 DuckDB 差 ±1）：
+**`canonical/v2/repos/{bucket}.json`** — repo-dimension buckets (fields same as §1.2, including `tracked_since` and `fetched_at` (metadata fetch time); plus `d` = the frozen anchor factor (`>= 0`, and it may be `> 1` when GitHub Archive undercounts), computed by bootstrap and **stored as a full-precision IEEE double** — rounding would make the JS-recomputed `stock_est` differ from DuckDB by ±1):
 
 ```json
 { "1296269": { "id": 1296269, "node_id": "...", "owner": "vuejs", "owner_type": "Organization",
@@ -133,65 +133,65 @@ bootstrap 唯一真相源；生产阶段折叠成 §1.4 的月/周 JSON shard，
                "d": 0.9123 } }
 ```
 
-**`canonical/v2/repo-monthly/{bucket}.json`** —— per-repo 月 flow 序列（period = `MonthPeriod`，驱动月榜 + entity 月曲线）：
+**`canonical/v2/repo-monthly/{bucket}.json`** — per-repo month flow series (period = `MonthPeriod`, drives the month ranking + the entity month curve):
 
 ```json
-{ "1296269": [ ["2015-01", 1200], ["2015-02", 1500] ] }   // { "<id>": [[period, flow], ...]；seam 前 gross / 后 net }
+{ "1296269": [ ["2015-01", 1200], ["2015-02", 1500] ] }   // { "<id>": [[period, flow], ...]; gross before the seam / net after }
 ```
 
-**`canonical/v2/repo-weekly/{bucket}.json`** —— per-repo ISO 周 flow 序列（period = `WeekPeriod`，驱动历史周榜）：`{ "<id>": [["2024-W42", 320], ...] }`。
+**`canonical/v2/repo-weekly/{bucket}.json`** — per-repo ISO week flow series (period = `WeekPeriod`, drives the historical week ranking): `{ "<id>": [["2024-W42", 320], ...] }`.
 
-**`canonical/v2/repo-recent-daily/{bucket}.json`** —— per-repo 近 ~90 天日点（曲线尾 + 周边界，net 可负）：`{ "<id>": [["2026-03-01", 30], ["2026-03-02", -5]] }`。⚠️ **bootstrap(`07-export-v2`)一次性 seed**；recurring `fold` step(`fold.ts`)**不读、不写、不修剪** recent-daily(`web/lib/` 内无 writer，仅 reader `io.ts:53`)——「滚出 90 天的日点并入 `repo-monthly`」的老化机制**尚未实现**（xref issue #3 / [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.2）。
+**`canonical/v2/repo-recent-daily/{bucket}.json`** — per-repo daily points for the recent ~90 days (curve tail + week boundary, net may be negative): `{ "<id>": [["2026-03-01", 30], ["2026-03-02", -5]] }`. ⚠️ **bootstrap(`07-export-v2`) one-time seed**; the recurring `fold` step(`fold.ts`)**does not read, write, or trim** recent-daily(`web/lib/` has no writer, only the reader `io.ts:53`) — "daily points that roll out of 90 days are merged into `repo-monthly`" aging is **not yet implemented** (xref issue #3 / [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.2).
 
-**`canonical/v2/site-daily/{yyyy}.json`** —— 站点级日总量（`year` = `YearPeriod`，驱动 heatmap）：`{ "year": "2024", "cells": [["2024-01-01", 82000]] }`。
+**`canonical/v2/site-daily/{yyyy}.json`** — site-level daily totals (`year` = `YearPeriod`, drives the heatmap): `{ "year": "2024", "cells": [["2024-01-01", 82000]] }`.
 
-**`canonical/v2/pending/{period}.json`** —— 已收口、待折叠的月周期活尾冻结快照（period = `MonthPeriod`；cron 跨期重置前写、折叠 step 读，[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2）：形同 `current_month.json` 的 `per_repo` + `daily_totals`。
+**`canonical/v2/pending/{period}.json`** — a frozen snapshot of a month-period live tail that is already closed out and pending fold (period = `MonthPeriod`; written before the cron cross-period reset and read by the fold step, [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2): the same shape as `current_month.json`'s `per_repo` + `daily_totals`.
 
-> **stock 锚定**(口径同 [RANKING.md](./RANKING.md) §3,**必须分 seam 前后**)：锚定因子 `d = current_stars@seam / cumgross@seam_date`(**分母只含 seam 前 gross**),bootstrap 算定后写入 `repos` shard 冻结；`d >= 0`，Archive 低计时可 `> 1`。seam 前 `stock_est = cumgross × d`；**seam 后 net 不乘 `d`、直接累加**：`stock = stock@seam + Σ(seam 后 net)`。详见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3。里程碑同样 bootstrap 算定后冻结、写入 `repos` shard。
+> **stock anchoring**(definition same as [RANKING.md](./RANKING.md) §3,**must be split before and after the seam**): the anchor factor `d = current_stars@seam / cumgross@seam_date`(**the denominator includes only pre-seam gross**),bootstrap computes it and then writes it frozen into the `repos` shard; `d >= 0`, and it may be `> 1` when Archive undercounts. Before the seam, `stock_est = cumgross × d`; **after the seam, net is not multiplied by `d` and is summed directly**: `stock = stock@seam + Σ(net after the seam)`. Details are in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3. Milestones are likewise computed by bootstrap, then frozen and written into the `repos` shard.
 
 ---
 
-## 2. 服务视图（JSON，build 读，Vercel Blob 存）
+## 2. Service views (JSON, read by the build, stored in Vercel Blob)
 
-### 2.0 视图 schema 索引（物理 Blob 树见 [OPS.md](./OPS.md) §Blob 布局）
+### 2.0 View schema index (the physical Blob tree is in [OPS.md](./OPS.md) §Blob layout)
 
-> 下列为**有 §2.x schema 的视图名 → 章节**索引；完整物理布局（含 `canonical/v2/*` shard）不在此重列，见 OPS §Blob 布局。
+> The following is an index of **view names that have a §2.x schema → section**; the full physical layout (including `canonical/v2/*` shards) is not relisted here, see OPS §Blob layout.
 
 ```text
-lookup/repos.json                              # build join 表（§2.1）
+lookup/repos.json                              # build join table (§2.1)
 lookup/orgs.json
-lookup/aliases.json                            # 改名旧 full_name → 当前 repo id（§2.2b）
-search/index.json                              # 客户端全站搜索索引（recompute 派生）
+lookup/aliases.json                            # renamed old full_name → current repo id (§2.2b)
+search/index.json                              # client site-wide search index (derived by recompute)
 rank/{week|month|year}/{period}/{repo|org}/{flow|stock}.json
 rank/all-time/{repo|org}/stock.json
-live/latest.json                              # live generation 指针 + fenced lease（§2.9a）
-live/generations/{run_id}/manifest.json       # generation 完整性清单
+live/latest.json                              # live generation pointer + fenced lease (§2.9a)
+live/generations/{run_id}/manifest.json       # generation integrity manifest
 live/generations/{run_id}/rank/{week|month}/{period}/repo/{flow|stock}.json
 live/generations/{run_id}/heatmap/month/{period}.json
-live/generations/{run_id}/current_month.json  # 活尾（cron 写，§2.8）
-live/generations/{run_id}/hot-snapshot.json   # 热集（cron 写，ISR 读，§2.9）
+live/generations/{run_id}/current_month.json  # live tail (written by cron, §2.8)
+live/generations/{run_id}/hot-snapshot.json   # hot set (written by cron, read by ISR, §2.9)
 entity/repo/{id}.json
 entity/org/{login}.json
 heatmap/{year|month}/{period}.json
-current_month.json                             # 迁移期 flat fallback（新 cron 不再覆盖）
-hot-snapshot.json                              # 迁移期 flat fallback（新 cron 不再覆盖）
-ops/sync-runs.json                             # cron 运行记录（cron 写，运维读）
+current_month.json                             # migration-period flat fallback (new cron no longer overwrites it)
+hot-snapshot.json                              # migration-period flat fallback (new cron no longer overwrites it)
+ops/sync-runs.json                             # cron run records (written by cron, read by operations)
 meta.json
-canonical/v2/whitelist/latest.json             # { run_id, ids[] }：已发布 baseline 的兼容 pointer（publish / rollback 写；whitelist step 不推进）
-# ── Vercel-only 发布层（见 §2.11–2.13）──
-bootstrap/latest.json                          # 冷启动 generation 的 atomic commit / rollback pointer
-bootstrap/generations/{generation}/**          # sealed base + canonical payload 与 phase manifests
-bootstrap/overlays/{generation}/canonical/**   # recurring canonical copy-on-write 状态
-views/latest.json                              # 发布指针（读侧据此解析版本前缀；version = run_id）
-views/{run_id}/…                               # 一个 run 的完整视图版本（version=run_id，无独立 staging/published）
-ops/workflows/{run_id}/manifest.json           # Workflow run 元信息
-ops/workflows/{run_id}/steps/{step}.json       # 每个 step 的 checkpoint
-ops/workflows/{run_id}/metadata-<bucket>.json  # metadata GraphQL batch 进度（502 后续跑）
-ops/workflows/latest-unpublished-whitelist.json # 未发布 whitelist snapshot 指针
-ops/workflows/latest-success.json              # 最近一次成功发布的 run_id（恢复点）
+canonical/v2/whitelist/latest.json             # { run_id, ids[] }: compatibility pointer of the published baseline (written by publish / rollback; the whitelist step does not advance it)
+# ── Vercel-only publish layer (see §2.11–2.13)──
+bootstrap/latest.json                          # cold start generation's atomic commit / rollback pointer
+bootstrap/generations/{generation}/**          # sealed base + canonical payload and phase manifests
+bootstrap/overlays/{generation}/canonical/**   # recurring canonical copy-on-write state
+views/latest.json                              # publish pointer (the read side resolves the version prefix from it; version = run_id)
+views/{run_id}/…                               # one run's complete view version (version=run_id, with no separate staging/published)
+ops/workflows/{run_id}/manifest.json           # Workflow run metadata
+ops/workflows/{run_id}/steps/{step}.json       # each step's checkpoint
+ops/workflows/{run_id}/metadata-<bucket>.json  # metadata GraphQL batch progress (continue the run after a 502)
+ops/workflows/latest-unpublished-whitelist.json # unpublished whitelist snapshot pointer
+ops/workflows/latest-success.json              # run_id of the most recent successful publish (recovery point)
 ```
 
-> **发布层产物（`views/<version>/*`）的内部结构 = §2.1–2.7 的视图**（`rank/** entity/** heatmap/** lookup/** meta.json`），落在 `views/<run_id>/` 前缀下（version = run_id，无 staging→published 拷贝）。读侧先读 `views/latest.json` 指针解析出 `<version>`，再读该前缀下的视图（无指针时回退扁平布局；见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.1）。
+> **The internal structure of publish-layer artifacts (`views/<version>/*`) = the views in §2.1–2.7** (`rank/** entity/** heatmap/** lookup/** meta.json`), placed under the `views/<run_id>/` prefix (version = run_id, with no staging→published copy). The read side first reads the `views/latest.json` pointer to resolve `<version>`, then reads the views under that prefix (when there is no pointer it falls back to the flat layout; see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5.1).
 
 Phase 1 category views also live under `views/<run_id>/`:
 
@@ -210,7 +210,7 @@ explicitly accepted.
 
 ### 2.1 `lookup/repos.json`
 
-build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元数据在 `entity/repo`）。
+The build's join table — holds only the minimum fields needed to render rankings/cards (full metadata is in `entity/repo`).
 
 ```json
 {
@@ -220,7 +220,7 @@ build 的 join 表——只放渲染榜单/卡片所需最小字段（完整元�
 }
 ```
 
-lookup 保留 active 与 historical 两类 repo，供旧 URL / 历史 entity 继续解析；调用方不得用“row 存在”推断当前成员。
+lookup keeps both active and historical repos, so old URLs / historical entities can still resolve; callers must not infer current membership from "the row exists".
 
 ### 2.2 `lookup/orgs.json`
 
@@ -233,7 +233,7 @@ lookup 保留 active 与 historical 两类 repo，供旧 URL / 历史 entity 继
 
 ### 2.2b `lookup/aliases.json`
 
-改名映射：旧（已弃用）`full_name`（小写）→ 当前 `repo id`。repo 页 `/[owner]/[name]` 在 slug 查不到时据此 **308 永久重定向**到该 id 的当前 `full_name`（`repo_id` 跨改名稳定，重定向目标在请求时从 `lookup/repos.json` 实时解析）。由 `buildAliases` workflow step 产出：并集所有保留的 `ops/workflows/<run>/renames.json` 增量（gc 不删 `ops/`，故能覆盖更早 run 的改名），剔除已不再追踪的 id、自指、以及与活仓库当前名相撞的项。
+Rename map: an old (deprecated) `full_name` (lowercased) → the current `repo id`. When the repo page `/[owner]/[name]` cannot find the slug, it uses this to **308 permanently redirect** to that id's current `full_name` (`repo_id` is stable across renames, and the redirect target is resolved at request time from `lookup/repos.json`). Produced by the `buildAliases` workflow step: the union of every retained `ops/workflows/<run>/renames.json` increment (gc does not delete `ops/`, so it can cover renames from earlier runs), dropping ids that are no longer tracked, self-references, and entries that collide with a live repo's current name.
 
 ```json
 { "facebook/react": 10270250, "facebook/react-native": 29028775 }
@@ -241,8 +241,8 @@ lookup 保留 active 与 historical 两类 repo，供旧 URL / 历史 entity 继
 
 ### 2.3 `rank/{window}/{period}/{dim}/{metric}.json`
 
-排行榜。`window∈{week,month,year}`、`period` 见全局约定、`dim∈{repo,org}`、`metric∈{flow,stock}`。
-**派生 repo 榜（仅 month/year，dim=repo）**：`metric=growth`（增速，item 含 `rate`=增速%、`base`=期初 stock；**入榜须期初 stock ≥ 20,000 且当期 flow > 0**——`flow<=0` 一并剔除，见 `ranks.ts:131`）、`metric=new`（新晋，item 含 `date`=破 10k 日期）。口径见 [RANKING §4](./RANKING.md)；`RankItem` 因此带可选 `rate`/`base`/`date` 三字段。
+Rankings. `window∈{week,month,year}`, `period` is in Global conventions, `dim∈{repo,org}`, `metric∈{flow,stock}`.
+**Derived repo rankings (month/year only, dim=repo)**: `metric=growth` (growth rate; the item includes `rate`=growth-rate % and `base`=period-start stock; **entering the ranking requires period-start stock ≥ 20,000 and current-period flow > 0** — `flow<=0` is dropped as well, see `ranks.ts:131`), `metric=new` (newcomer; the item includes `date`=the date 10k was crossed). The definition is in [RANKING §4](./RANKING.md); `RankItem` therefore carries the three optional fields `rate`/`base`/`date`.
 
 ```json
 {
@@ -255,14 +255,14 @@ lookup 保留 active 与 historical 两类 repo，供旧 URL / 历史 entity 继
 }
 ```
 
-- `dim="repo"` → 用 `id`；`dim="org"` → 用 `login`（另一字段省略）。
-- `value`：`flow` = 期间 ∑delta；`stock` = 期末累计（历史=锚定估算、seam 后=精确）。
-- `prev_rank`：上一同类周期的名次（供"↑↓ / 进出 TOP50"），无则 `null`。
-- top-N：repo 默认 100、org 默认 100（页面按需截断）。
+- `dim="repo"` → use `id`; `dim="org"` → use `login` (the other field is omitted).
+- `value`: `flow` = ∑delta over the period; `stock` = the cumulative total at period end (historical = anchor estimate, after the seam = exact).
+- `prev_rank`: the rank in the previous period of the same kind (for "↑↓ / enter-leave TOP50"), or `null` if there is none.
+- top-N: repo defaults to 100, and org defaults to 100 (pages truncate as needed).
 
 ### 2.4 `rank/all-time/{dim}/stock.json`
 
-`items` 形状同上；全时仅 `stock`（仅 `active:true`；repo = GraphQL `current_stars` 排序，org = active 成员的 `current_stars_sum` 排序）。
+`items` has the same shape; all-time is `stock` only (`active:true` only; repo is sorted by GraphQL `current_stars`, and org is sorted by the `current_stars_sum` of active members).
 
 ### 2.4a `rank/category/<dimension>/<slug>/all-time/repo/stock*.json`
 
@@ -297,7 +297,7 @@ Rules:
 - Every `item.id` must be assigned to `meta.category.id` in the assembled `categories/assignments` map (v2 shards or v1 monolith).
 - Windowed `flow`/`stock` category ranks are future work; avoid emitting them until the category route phase has accepted the extra view count.
 
-### 2.4b `categories/assignments.json`（index + repo-id shards）
+### 2.4b `categories/assignments.json` (index + repo-id shards)
 
 Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,986 bytes). New generations write a small index plus 32 repo-id shards. ISR pages keep `force-cache` / daily revalidate — they must not flip to `no-store`. The publish gate checks **UTF-8 JSON byte length** of the index and every shard; each file must be **< 1.50 MiB**.
 
@@ -361,16 +361,16 @@ Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,
 }
 ```
 
-- `curve.monthly`：`[period, adds, total_end]`——历史走月点（11 年≈132 点）。`total_end` is `stock_est` and **must be ≥ 0** (`MonthlyPoint` uses `NonNegativeInt`). Flow (`adds`) may be negative. Writers clamp `stock_est = max(0, formula)` in `computeRepoWindow` so `d=0` newcomers / first-period unstars cannot publish a negative star count; running `cumGross`/`cumNet`/`anchor` stay unclamped so later periods can recover toward `current_stars`. Recompute Zod-parses every `RepoEntity` / `OrgEntity` before Blob write; the publish gate re-parses every entity from lookup, not only the top repo.
-- `active` / `tracked_since`：明确展示当前追踪状态与 newcomer provenance；historical entity 不删除，repo 页显示“历史保留”及可用的首次追踪日期。
+- `curve.monthly`: `[period, adds, total_end]` — history uses monthly points (11 years≈132 points). `total_end` is `stock_est` and **must be ≥ 0** (`MonthlyPoint` uses `NonNegativeInt`). Flow (`adds`) may be negative. Writers clamp `stock_est = max(0, formula)` in `computeRepoWindow` so `d=0` newcomers / first-period unstars cannot publish a negative star count; running `cumGross`/`cumNet`/`anchor` stay unclamped so later periods can recover toward `current_stars`. Recompute Zod-parses every `RepoEntity` / `OrgEntity` before Blob write; the publish gate re-parses every entity from lookup, not only the top repo.
+- `active` / `tracked_since`: explicitly show the current tracking status and newcomer provenance; a historical entity is not deleted, and the repo page shows "kept for history" plus the available first-tracked date.
 - `languages`: optional GitHub language breakdown from GraphQL
   `Repository.languages`, sorted by byte size descending. Older published shards
   may omit it; pages fall back to the primary `language` field.
-- `homepage_url` / `license` / `latest_release`：可选 GitHub metadata 字段。页面只读 JSON 视图；这些字段由离线 metadata pipeline / cron 补齐，不在请求路径实时抓 GitHub。`homepage_url` 也可作为 repo JSON-LD `sameAs` 的 deterministic first-party identity source。
-- `curve.recent_daily`：`[date, net_adds]`——近 ~90 天日点（曲线尾部），可负。
-- `monthly_table`：近 N 月的新增 + 当月 flow 名次。
-- `rank_history`：可选，名次史（驱动"名次走势"）。
-- `inflections`：可选，拐点标记 `[{period, flow, kind}]`，由 recompute 派生——月 flow ≥ K× 滚动中位数且过绝对下限的"爆发"月，最高月 `kind:"peak"`、其余 `"surge"`，至多 3 个；`StarCurve` 据此画标记 + tooltip。旧数据无此字段（optional）。
+- `homepage_url` / `license` / `latest_release`: optional GitHub metadata fields. Pages only read JSON views; these fields are filled in by the offline metadata pipeline / cron, and GitHub is not fetched live on the request path. `homepage_url` can also serve as a repo JSON-LD `sameAs` deterministic first-party identity source.
+- `curve.recent_daily`: `[date, net_adds]` — daily points for the recent ~90 days (the curve tail), and may be negative.
+- `monthly_table`: adds for the recent N months + the current month's flow rank.
+- `rank_history`: optional, rank history (drives "rank trend").
+- `inflections`: optional, inflection markers `[{period, flow, kind}]`, derived by recompute — a "burst" month whose month flow is ≥ K× the rolling median and passes an absolute floor; the highest month is `kind:"peak"`, the rest are `"surge"`, at most 3; `StarCurve` draws markers + a tooltip from them. Old data lacks this field (optional).
 
 ### 2.6 `entity/org/{login}.json`
 
@@ -383,29 +383,29 @@ Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,
 }
 ```
 
-- `members`：该 org 的白名单（≥10k）repo id 列表。
-- `curve` = 成员聚合（∑ 成员 delta；stock = ∑ 成员累计）。Org `stock_est` is also ≥ 0 because it sums clamped member stocks.
+- `members`: that org's whitelist (≥10k) repo id list.
+- `curve` = member aggregate (∑ member delta; stock = ∑ member cumulative). Org `stock_est` is also ≥ 0 because it sums clamped member stocks.
 
 ### 2.7 `heatmap/{year|month}/{period}.json`
 
-站点级总量（"爆发日/月"）。
+Site-level totals ("burst day/month").
 
 ```json
 { "meta": { "scope": "month", "period": "2024-10", "generated_at": "..." },
   "cells": [ ["2024-10-01", 82000], ["2024-10-02", 91000] ] }
 ```
 
-- `heatmap/month/2024-10.json` → 当月各日总量（日历热力图）。
-- `heatmap/year/2024.json` → 该年 12 个月总量（年页月格子），`cells` 用 `["2024-10", 总量]`。
-- 进行中当月的日总量来自 `current_month.json`，build 合并。
+- `heatmap/month/2024-10.json` → each day's total for that month (calendar heatmap).
+- `heatmap/year/2024.json` → that year's 12 month totals (month cells on the year page); `cells` uses `["2024-10", total]`.
+- Daily totals for the in-progress current month come from `current_month.json`, and the build merges them.
 
-### 2.8 `live/generations/{run_id}/current_month.json`（活尾——Vercel cron 写）
+### 2.8 `live/generations/{run_id}/current_month.json` (live tail — written by the Vercel cron)
 
-`month` 字段是 `MonthPeriod`；`updated` / `daily_totals` / `per_repo` 日期字段是 `DateStr`。
+The `month` field is a `MonthPeriod`; the `updated` / `daily_totals` / `per_repo` date fields are `DateStr`.
 
-生产 `current_month` 在月末会超过 Next.js Data Cache 的 2MB 条目上限（`JSON.stringify` 转义后；2026-08-23 实测单体约 1.90MB raw / 2.13MB cache entry）。新 generation 写成 **index + 32 个 repo 分片**，页面/cron 组装后再当原来的 `CurrentMonth` 用。Reader 同时接受旧的单体文件。
+Production `current_month` exceeds the Next.js Data Cache 2MB entry limit by month end (after `JSON.stringify` escaping; measured on 2026-08-23, the monolith was about 1.90MB raw / 2.13MB cache entry). A new generation is written as **an index + 32 repo shards**, and pages/cron assemble them and then use them as the original `CurrentMonth`. A reader also accepts the old monolith file.
 
-**v2 index**（`current_month.json`，KB 级）：
+**v2 index** (`current_month.json`, KB-scale):
 
 ```json
 {
@@ -416,7 +416,7 @@ Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,
 }
 ```
 
-**v2 shard**（`current_month/shards/<bucket>.json`，`bucket = repo_id % 32`）：
+**v2 shard** (`current_month/shards/<bucket>.json`, `bucket = repo_id % 32`):
 
 ```json
 {
@@ -426,7 +426,7 @@ Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,
 }
 ```
 
-**v1 单体**（已发布 generation 仍可读）：
+**v1 monolith** (already-published generations remain readable):
 
 ```json
 {
@@ -437,16 +437,16 @@ Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,
 }
 ```
 
-- 当月内 **append-only + 按 UTC 日 upsert**（幂等，见 [OPS.md](./OPS.md)）。
-- 同一 UTC 日重跑时，日初基线由 `current_stars - 已记录今日 delta` 重建，再以最新 GraphQL 数值计算完整当日 delta；相同输入产生相同日状态，后续增长或回落仍保留相对日初的完整差值。
-- GitHub 对删除/改名仓库可返回 partial data。cron 明确支持这种 partial publication：只更新成功返回的 repo，缺失 repo 的 `per_repo` 今日值和 `current_stars` 原样保留；若非复用路径一个 repo 都未返回则 fail closed，不覆盖 live state。
-- `current_stars`：每日 GraphQL 最新权威值（也用于锚定）。
-- `current_stars` map 只含 active repo；已 drop repo 的既有 `per_repo` 日序列保留供月末 fold，但不再发出 GraphQL 请求，也不进入 current rank。
-- 每日/每周 Vercel cron 在同一 immutable generation 内写活尾、当前周/月 rank 与当月 heatmap；所有对象及 `manifest.json` 写完并通过 schema 后才切 `live/latest.json`。基础 `rank/*` / `heatmap/*` 不被 cron 覆盖，避免重复合并活尾。**周期收口时折叠进 `canonical/v2` 月/周 shard**（不是 Parquet）由 Vercel Workflow 分片承载（月+周折叠 `fold.ts`，见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6/§7.2）；交接靠 `canonical/v2/pending/<period>.json` + generation 内 `rollover/<period>.json` 恢复副本 + `folded_through` 水位防重复/丢数据。
+- Within the current month, **append-only + upsert by UTC day** (idempotent, see [OPS.md](./OPS.md)).
+- When the same UTC day is rerun, the start-of-day baseline is rebuilt from `current_stars - recorded today delta`, then the full that-day delta is computed from the latest GraphQL number; the same input produces the same day state, and later growth or pullback still keeps the full difference relative to the start of the day.
+- GitHub may return partial data for a deleted/renamed repo. Cron explicitly supports this kind of partial publication: it updates only repos that returned successfully, and a missing repo's `per_repo` today value and `current_stars` are kept as-is; if a non-reuse path gets no repo back at all, it fails closed and does not overwrite live state.
+- `current_stars`: each day's latest authoritative GraphQL value (also used for anchoring).
+- The `current_stars` map contains only active repos; an already-dropped repo's existing `per_repo` daily series is kept for the month-end fold, but no further GraphQL request is sent for it, and it does not enter the current rank.
+- The daily/weekly Vercel cron writes the live tail, the current week/month rank, and the current-month heatmap inside the same immutable generation; it switches `live/latest.json` only after every object and `manifest.json` are written and pass schema. Base `rank/*` / `heatmap/*` are not overwritten by cron, to avoid merging the live tail twice. **Folding into `canonical/v2` month/week shards at period close-out** (not Parquet) is carried by Vercel Workflow shards (the month+week fold is `fold.ts`, see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6/§7.2); handoff relies on `canonical/v2/pending/<period>.json` + the in-generation `rollover/<period>.json` recovery copy + the `folded_through` watermark to prevent duplication or lost data.
 
-### 2.9 `live/generations/{run_id}/hot-snapshot.json`（cron 写，热集 ISR 读）
+### 2.9 `live/generations/{run_id}/hot-snapshot.json` (written by cron, read by hot-set ISR)
 
-KB 级；热集 ISR 页**只读它**，绝不加载大文件。
+KB-scale; a hot-set ISR page **reads only it**, and never loads a large file.
 
 ```json
 {
@@ -463,24 +463,24 @@ KB 级；热集 ISR 页**只读它**，绝不加载大文件。
     "current_month_top": { "flow": [ {"rank":1,"id":1296269,"value":1234} ], "stock": [ ... ] },
     "on_this_day": [ { "id": 1296269, "crossed": "10k", "date": "2016-05-29" } ]
   },
-  "current_year": { "...": "同 rank items 子集" },
+  "current_year": { "...": "same rank items subset" },
   "current_month": { "...": "" },
   "all_time": { "repo": [ ... ], "org": [ ... ] }
 }
 ```
 
-`freshness` 是各 section 的 source-as-of，`null` 表示 writer 无法证明该
-section 当前有效；legacy flat snapshot 可暂时缺此字段。`generated_at` 为已知
-section 中最保守的时间，不能把 carry-forward 的旧 `year_spine` /
-`current_year` 冒充为本次刷新。cron 有 year rank/heatmap base 时会用
-base + 当前月重算；无法重算的 `on_this_day` 只保留与本 UTC 月日匹配的条目，
-否则发布空数组且 `freshness.on_this_day=null`。
+`freshness` is each section's source-as-of, and `null` means the writer cannot prove that
+the section is currently valid; a legacy flat snapshot may temporarily lack this field. `generated_at` is, among known
+sections, the most conservative time, and must not pass off a carry-forward old `year_spine` /
+`current_year` as this refresh. When cron has a year rank/heatmap base it uses
+base + the current month to recompute; `on_this_day` that cannot be recomputed keeps only entries matching this UTC month-day,
+otherwise it publishes an empty array and `freshness.on_this_day=null`.
 
-### 2.9a `live/latest.json` + generation manifest（原子 live 发布）
+### 2.9a `live/latest.json` + generation manifest (atomic live publish)
 
-`live/latest.json` 是唯一可变 live 控制对象，同时保存当前完整 generation 与
-15 分钟 lease。lease 获取与最终发布都使用 Blob ETag CAS；获取 lease 只改变
-`lease`，不会改变 `generation`，因此读者始终看到旧完整版本或新完整版本。
+`live/latest.json` is the only mutable live control object, and it stores both the current complete generation and
+a 15-minute lease. Both lease acquisition and the final publish use Blob ETag CAS; acquiring the lease only changes
+`lease`, and does not change `generation`, so a reader always sees either the old complete version or the new complete version.
 
 ```json
 {
@@ -498,30 +498,30 @@ base + 当前月重算；无法重算的 `on_this_day` 只保留与本 UTC 月�
 }
 ```
 
-运行中 `lease={run_id,idempotency_key,job,acquired_at,expires_at}`；首发前
-`generation` 及发布元数据可为 `null`。manifest 重复上述 run/period 元数据并
-列出 generation 内全部相对 `files[]`。默认幂等 key 为 `<job>:<UTC-day>`；
-同 key running→attached，committed→直接返回已发布，不同 key active→409。
-对象写或验证失败只留下未引用的 orphan generation，pointer 不变；revalidate
-和 IndexNow 必须在 pointer CAS 成功之后执行。
+While running, `lease={run_id,idempotency_key,job,acquired_at,expires_at}`; before the first publish,
+`generation` and the publish metadata may be `null`. The manifest repeats the run/period metadata above and
+lists every relative `files[]` inside the generation. The default idempotency key is `<job>:<UTC-day>`;
+the same key running→attached, committed→returns what is already published, and a different key while active→409.
+An object write or validation failure leaves only an unreferenced orphan generation, and the pointer is unchanged; revalidate
+and IndexNow must run only after the pointer CAS succeeds.
 
-generation 是“本次发布文件集合”的完整快照，不会复制此前尚未折叠的周期文件。
-因此周期型 rank / heatmap 读侧在当前对象确认 404 后，按各 manifest 的
-`previous_generation` 最多回溯 64 代；每一代都校验 schema、generation id、
-`files[]`、无环和深度。manifest 已列出的对象若 404、manifest/transport/schema
-异常或环，仍 fail closed。请求的 week/month **新于** 当前 hop 的
-`manifest.week` / `manifest.month` 时立即停走（更旧代不可能有该期），并可使用
-legacy flat migration edge。扫描触到 64 代上限且尚未走到
-`previous_generation:null` 时 **截断为缺失**（返回 null，不 500，也不猜
-legacy）。只有有效链走到 `null` 才允许查迁移期 flat `live/*`。`current_month` 与
-`hot-snapshot` 不使用历史链，以免用旧代快照冒充当前状态。public CDN 在高并发
-SSG 下持续 403 时，页面读至多尝试同一历史对象 2 次，并按 Blob/key 熔断 60 秒
-后停止 live 链、回退 base / `notFound`（不选旧代）；熔断自动恢复，required
-product gate 仍将该 transport failure 判为失败。
+A generation is a complete snapshot of "this publish's file set", and it does not copy period files that have not yet been folded.
+So, after a periodic rank / heatmap reader confirms 404 for the current object, it follows each manifest's
+`previous_generation` and walks back at most 64 generations; every generation is checked for schema, generation id,
+`files[]`, acyclicity, and depth. If an object the manifest has listed is 404, or there is a manifest/transport/schema
+error or a cycle, it still fails closed. When the requested week/month is **newer than** the current hop's
+`manifest.week` / `manifest.month`, walking stops immediately (an older generation cannot have that period), and it may use
+the legacy flat migration edge. When the scan hits the 64-generation cap and has not yet reached
+`previous_generation:null`, it **truncates to missing** (returns null, does not 500, and does not guess
+legacy). Only when a valid chain reaches `null` may it look up migration-period flat `live/*`. `current_month` and
+`hot-snapshot` do not use the history chain, so an older generation's snapshot is not passed off as the current state. When the public CDN, under high-concurrency
+SSG, keeps returning 403, a page read tries the same historical object at most 2 times, and after a 60-second circuit break by Blob/key
+stops the live chain and falls back to base / `notFound` (it does not select an older generation); the circuit break recovers automatically, and the required
+product gate still judges that transport failure as a failure.
 
-### 2.10 `ops/sync-runs.json`（cron 运行记录）
+### 2.10 `ops/sync-runs.json` (cron run records)
 
-轻量运维日志；由 Vercel cron 覆盖写，保留最近 100 次运行。
+A lightweight operations log; overwritten by the Vercel cron, keeping the most recent 100 runs.
 
 ```json
 {
@@ -553,9 +553,9 @@ product gate 仍将该 transport failure 判为失败。
 }
 ```
 
-### 2.11 `views/latest.json` — 发布指针
+### 2.11 `views/latest.json` — publish pointer
 
-读侧据此解析当前生效的视图版本前缀；切指针 = 原子发布 / 回滚（见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
+The read side resolves the currently effective view-version prefix from this; switching the pointer = atomic publish / rollback (see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7).
 
 ```json
 {
@@ -567,13 +567,13 @@ product gate 仍将该 transport failure 判为失败。
 }
 ```
 
-- 读侧 pointer fetch 带 `published-views-pointer` cache tag；解析 `version` → 读 immutable `views/<version>/**`（无指针时回退扁平布局）。publish / rollback 主动失效 tag + 根 layout，其他暖实例的 memo 也被 60s SLA 上限约束。
-- 回滚必须走 fenced rollback API / `rollbackVersion()`，不能只手改 Blob；它会同步 recovery、published whitelist pointer 和 cache invalidation。
-- publish 前先写 immutable `ops/workflows/<run_id>/publish-intent.json`；其中固定首次观察到的 `prev_version`，因此局部成功后的重试不会生成自指 rollback。
+- The read-side pointer fetch carries the `published-views-pointer` cache tag; it resolves `version` → and reads the immutable `views/<version>/**` (it falls back to the flat layout when there is no pointer). publish / rollback actively invalidate the tag + the root layout, and memos on other warm instances are also bounded by the 60s SLA.
+- Rollback must go through the fenced rollback API / `rollbackVersion()`, and must not be only a hand edit of Blob; it syncs recovery, the published whitelist pointer, and cache invalidation.
+- Before publish, first write the immutable `ops/workflows/<run_id>/publish-intent.json`; it pins the `prev_version` observed the first time, so a retry after a partial success does not create a self-referential rollback.
 
-### 2.11a `bootstrap/latest.json` — 冷启动 generation 指针
+### 2.11a `bootstrap/latest.json` — cold start generation pointer
 
-一次性 `pipeline/backfill` 不直接覆盖任何线上 views / canonical 对象。`06-upload` 与 `07-export-v2` 先 create-only 写入 `bootstrap/generations/<generation>/**`；两个 phase manifest 分别记录该 phase 每个对象的 logical path、byte count 与 SHA-256。只有远端逐对象复核、本地 Zod 校验和共享 Workflow lease 全部通过，才单文件覆盖此 pointer。
+The one-shot `pipeline/backfill` does not directly overwrite any live views / canonical objects. `06-upload` and `07-export-v2` first create-only write `bootstrap/generations/<generation>/**`; the two phase manifests each record, for that phase, every object's logical path, byte count, and SHA-256. This pointer is overwritten as a single file only after the remote per-object recheck, the local Zod validation, and the shared Workflow lease all pass.
 
 ```json
 {
@@ -587,16 +587,16 @@ product gate 仍将该 transport failure 判为失败。
 }
 ```
 
-- `generation` 必须匹配 `^bootstrap-[A-Za-z0-9][A-Za-z0-9._-]{2,120}$`；`prefix` 必须严格等于 `bootstrap/generations/<generation>`。
-- 两个 manifest digest 都是 64 位 lowercase hex；pointer 使用 strict Zod object，未知字段拒绝。
-- `previous_generation:null` 是明确的 `legacy-flat` recovery edge。首次 commit 必须在共享 lease 内验证 legacy `meta` / lookup / all-time rank 与全部 `4 × 32` canonical shard families；`--rollback legacy-flat --execute` 在同一 lease 内复核这些 mutable artifacts 后原子删除 pointer。删除成功但响应丢失的同命令重试是 no-op success。
-- base 读在 managed pointer 成功返回 version 时再读取 bootstrap pointer，并按 `published_at` 使用更新的完整 generation；因此新 bootstrap commit / rollback 能一次切 base + canonical，之后更新的 managed publish 会重新接管 base。managed pointer 若超时、非 404 失败或形状不可用，则 fail-safe 保持 legacy flat 且不查询 bootstrap，避免误跳到旧 generation；只有 managed pointer 明确 404 时才查询 bootstrap，而 bootstrap 也明确 404 时继续使用 legacy flat。
-- canonical 读先查 `bootstrap/overlays/<generation>/canonical/**`，对象不存在时回退 sealed generation；canonical writer 只写 overlay，不覆盖 generation。`previous_generation` 因而同时恢复旧 seed 与其 overlay。
-- 同 generation 的 resume 必须 byte-identical；validation / upload / active lease 失败时 pointer 不变。generation rollback 在 lease 前复核 sealed target，再在 lease 内重读 pointer；legacy rollback 的 target 验证必须在 lease 内完成。
+- `generation` must match `^bootstrap-[A-Za-z0-9][A-Za-z0-9._-]{2,120}$`; `prefix` must be strictly equal to `bootstrap/generations/<generation>`.
+- Both manifest digests are 64-character lowercase hex; the pointer uses a strict Zod object, and unknown fields are rejected.
+- `previous_generation:null` is the explicit `legacy-flat` recovery edge. The first commit must, inside the shared lease, validate legacy `meta` / lookup / all-time rank and all `4 × 32` canonical shard families; `--rollback legacy-flat --execute` rechecks these mutable artifacts inside the same lease and then atomically deletes the pointer. A retry of the same command after a successful delete whose response was lost is a no-op success.
+- A base read reads the bootstrap pointer only after the managed pointer successfully returns a version, and uses the newer complete generation by `published_at`; therefore a new bootstrap commit / rollback can switch base + canonical at once, and a later updated managed publish takes base back over. If the managed pointer times out, fails with a non-404, or has an unusable shape, it fails safe, keeps legacy flat, and does not query bootstrap, to avoid jumping to an old generation by mistake; bootstrap is queried only when the managed pointer is an explicit 404, and if bootstrap is also an explicit 404 it keeps using legacy flat.
+- A canonical read checks `bootstrap/overlays/<generation>/canonical/**` first, and falls back to the sealed generation when the object does not exist; a canonical writer writes only the overlay and does not overwrite the generation. `previous_generation` therefore restores both the old seed and its overlay.
+- A resume of the same generation must be byte-identical; if validation / upload / the active lease fails, the pointer is unchanged. A generation rollback rechecks the sealed target before the lease, then rereads the pointer inside the lease; a legacy rollback's target validation must finish inside the lease.
 
 ### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json` — Workflow checkpoint
 
-业务可读的 run 进度账本（编排 runtime 用 Queue / HTTP 链推进；不再依赖 Workflow SDK 持久化）。
+A business-readable run-progress ledger (the orchestration runtime advances it with a Queue / HTTP chain; it no longer depends on Workflow SDK persistence).
 
 ```json
 // manifest.json
@@ -604,14 +604,14 @@ product gate 仍将该 transport failure 判为失败。
   "run_id": "refresh-2026-06-02T04-00-00-000Z",
   "started_at": "2026-06-02T04:00:00.000Z",
   "status": "running",                          // running | published | failed
-  "steps": ["preflight","whitelist","rename","metadata","fold","recompute","buildAliases","validate","publish","gc"],  // manifest 分组（细粒度步骤见 VERCEL-DATA-OPERATIONS §4）
+  "steps": ["preflight","whitelist","rename","metadata","fold","recompute","buildAliases","validate","publish","gc"],  // manifest grouping (fine-grained steps are in VERCEL-DATA-OPERATIONS §4)
   "published_version": null
 }
 ```
 
-> `steps[]` 为 **manifest 分组**（10 项，对应进度账本，含 read-only `preflight` 与真实 `buildAliases` 阶段）；**细粒度 13 步**（preflight/whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc）见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4。编排 runtime 另写 `ops/workflows/<run_id>/steps/<step>.json`；metadata 另写可变 `metadata-<bucket>.json`（GraphQL batch 进度；502 后续跑同一 hop）；`validate` 另写 `canonical-manifest.json`（全部必需 canonical shard 的路径、bucket、记录数、SHA-256 与完整性结论）及 `validation.json`，其余 run 级账本包括 manifest / error / latest-success / `latest-unpublished-whitelist.json`。
+> `steps[]` is the **manifest grouping** (10 items, corresponding to the progress ledger, including the read-only `preflight` and the real `buildAliases` phase); the **fine-grained 13 steps** (preflight/whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc) are in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4. The orchestration runtime also writes `ops/workflows/<run_id>/steps/<step>.json`; metadata also writes a mutable `metadata-<bucket>.json` (GraphQL batch progress; a 502 continues the same hop); `validate` also writes `canonical-manifest.json` (the path, bucket, record count, SHA-256, and integrity conclusion of every required canonical shard) and `validation.json`, and the other run-level ledgers include manifest / error / latest-success / `latest-unpublished-whitelist.json`.
 
-`ops/workflows/active.json` 是 refresh / rollback 的互斥 lease。start 路由和执行体都通过 Blob ETag 条件写更新；takeover 会递增 `fencing_token`。lease 30 分钟到期，长写入每 ≤5 分钟 heartbeat；canonical、checkpoint 和 publish pointer 写前必须同时核对 `run_id` 与 token。
+`ops/workflows/active.json` is the mutual-exclusion lease for refresh / rollback. Both the start route and the executor update it with a Blob ETag conditional write; takeover increments `fencing_token`. The lease expires after 30 minutes, and a long write heartbeats every ≤5 minutes; before writing canonical, a checkpoint, or the publish pointer, both `run_id` and the token must be checked.
 
 ```json
 {
@@ -625,9 +625,9 @@ product gate 仍将该 transport failure 判为失败。
 }
 ```
 
-#### 2.12.1 `ops/workflows/health/{pipeline}.json` — 独立健康状态
+#### 2.12.1 `ops/workflows/health/{pipeline}.json` — independent health status
 
-`pipeline` 固定为 `workflow-refresh`、`cron-daily` 或 `cron-weekly`。每条 pipeline 使用独立对象和 ETag compare-and-set，避免并发运行互相覆盖。Sunday 06:00 的唯一 operator signal 是 `ops/workflows/health/workflow-refresh.json`。退役的扁平 `ops/workflows/health.json` **不要读**（Jul 2026 成功记录可能在后续 stall 后仍挂着）。
+`pipeline` is fixed to `workflow-refresh`, `cron-daily`, or `cron-weekly`. Each pipeline uses its own object and ETag compare-and-set, so concurrent runs do not overwrite each other. The only operator signal at Sunday 06:00 is `ops/workflows/health/workflow-refresh.json`. The retired flat `ops/workflows/health.json` **must not be read** (a Jul 2026 success record may still be hanging after a later stall).
 
 ```json
 {
@@ -645,9 +645,9 @@ product gate 仍将该 transport failure 判为失败。
 }
 ```
 
-- `status` 是最新时间信号（`ok | failed | attached | rejected`）。较旧的迟到写不能倒退 latest。
-- `last_success` 与 `last_failure` 独立保留；恢复成功不会抹掉上次失败的诊断。
-- `freshness.stale_after` 是依据 pipeline 频率计算的绝对时间，读取者无需相信写入时的静态 age 值。
+- `status` is the latest time signal (`ok | failed | attached | rejected`). An older late write must not roll latest backward.
+- `last_success` and `last_failure` are kept independently; a successful recovery does not erase the previous failure's diagnosis.
+- `freshness.stale_after` is an absolute time computed from the pipeline frequency, so a reader does not need to trust the static age value from write time.
 
 ```json
 // steps/recompute.json
@@ -659,9 +659,9 @@ product gate 仍将该 transport failure 判为失败。
 }
 ```
 
-`ops/workflows/latest-success.json` = `{ "run_id": "...", "version": "...", "published_at": "..." }`（恢复点）。
+`ops/workflows/latest-success.json` = `{ "run_id": "...", "version": "...", "published_at": "..." }` (recovery point).
 
-`ops/workflows/<run_id>/publish-intent.json` 是 immutable retry state：
+`ops/workflows/<run_id>/publish-intent.json` is immutable retry state:
 
 ```json
 {
@@ -674,12 +674,12 @@ product gate 仍将该 transport failure 判为失败。
 }
 ```
 
-同一 operation retry 必须重放该对象；不能重新读取 pointer 后覆盖 `prev_version`。`operation` 也可为 `rollback`。
+A retry of the same operation must replay that object; it must not reread the pointer and then overwrite `prev_version`. `operation` may also be `rollback`.
 
-### 2.13 `ops/workflows/{run_id}/validation.json` — 校验报告
+### 2.13 `ops/workflows/{run_id}/validation.json` — validation report
 
-step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity，并对全部必需 canonical bucket 跑 schema / ID / anchoring 完整性；同时校验 repo key/id/bucket、时间序列非空及无孤立 repo ID；`ok=false` 则不切指针。
-**`checked` = 关键派生视图抽样读次数 + 全部必需 canonical shard 数**。派生视图仍抽查 `meta` / `rank/all-time` / lookup / search / categories / top-repo entity / 去年 heatmap；canonical 的 `repos`、`repo-monthly`、`repo-weekly`、`repo-recent-daily` 则逐 bucket 全量读取，并另写 `canonical-manifest.json`。
+Step `validate` runs Zod + sanity on `views/<run_id>/**`, and runs schema / ID / anchoring integrity on every required canonical bucket; it also checks repo key/id/bucket, that time series are non-empty, and that there is no orphan repo ID; if `ok=false` it does not switch the pointer.
+**`checked` = the sample-read count of key derived views + the count of every required canonical shard**. Derived views are still spot-checked for `meta` / `rank/all-time` / lookup / search / categories / the top-repo entity / last year's heatmap; canonical `repos`, `repo-monthly`, `repo-weekly`, and `repo-recent-daily` are read in full, bucket by bucket, and `canonical-manifest.json` is written as well.
 
 ```json
 {
@@ -690,9 +690,9 @@ step `validate` 对 `views/<run_id>/**` 跑 Zod + sanity，并对全部必需 ca
 }
 ```
 
-### 2.14 `search/index.json` — 客户端全站搜索
+### 2.14 `search/index.json` — client site-wide search
 
-recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描述头部截断 200 字符以控体积），随 entity/org step 写入 `views/<run_id>/search/index.json`，并入 `validate`（断言条目数 ≥ 阈值）。客户端 `SearchBox` 首次聚焦时懒加载 + 建 MiniSearch 索引（typo 容错 + prefix + 按 stars 加权），**零运行时后端**；读侧经 `/search-index` 路由服务端解析发布指针读取版本化产物。endpoint method、cache、fallback 与 status contract 见 [API.md](./API.md)。schema `SearchIndex`/`SearchDoc`（`web/lib/contracts/search.ts`）。
+A compact search index that recompute derives from the `repos` dimension (one entry per repo; the head of the description is truncated to 200 characters to control size). It is written with the entity/org step to `views/<run_id>/search/index.json` and included in `validate` (which asserts the entry count ≥ a threshold). The client `SearchBox`, on first focus, lazy-loads it and builds a MiniSearch index (typo tolerance + prefix + weighted by stars), with **zero runtime backend**; the read side resolves the publish pointer on the server through the `/search-index` route and reads the versioned artifact. The endpoint method, cache, fallback, and status contract are in [API.md](./API.md). The schema is `SearchIndex`/`SearchDoc` (`web/lib/contracts/search.ts`).
 
 ```json
 {
@@ -705,30 +705,30 @@ recompute 从 `repos` 维度派生的精简检索索引（每 repo 一条；描�
 }
 ```
 
-> **月度叙事无独立产物**：榜页叙事是**确定性模板**、**渲染时**从该月 rank 数据（top/增速/新晋）现拼（`web/lib/narrative.ts`），**不落 Blob、不引 AI**。故此处无 `narrative/*` 契约。
+> **The monthly narrative has no independent artifact**: ranking-page narrative is a **deterministic template**, assembled **at render time** from that month's rank data (top/growth rate/newcomer) (`web/lib/narrative.ts`), **not written to Blob and not using AI**. So there is no `narrative/*` contract here.
 
-### 2.15 `/repo-curve?id=<id>` — 多 repo 对比瘦路由（无独立产物）
+### 2.15 `/repo-curve?id=<id>` — multi-repo compare slim route (no independent artifact)
 
-多 repo 对比（`/compare`）需要浏览器**按需**取若干 repo 的曲线。**不新建 Blob 产物**：`app/repo-curve/route.ts` 服务端经发布指针读版本化 `entity/repo/<id>.json`（§2.5），**投影**出对比所需的精简 payload 返回。endpoint method、query、cache、error status contract 见 [API.md](./API.md)。schema `CompareCurve`（`web/lib/contracts/compare.ts`）：
+Multi-repo compare (`/compare`) needs the browser to fetch several repos' curves **on demand**. **No new Blob artifact is created**: `app/repo-curve/route.ts` reads the versioned `entity/repo/<id>.json` (§2.5) on the server through the publish pointer, **projects** the slim payload compare needs, and returns it. The endpoint method, query, cache, and error status contract are in [API.md](./API.md). The schema is `CompareCurve` (`web/lib/contracts/compare.ts`):
 
 ```json
 { "id": 10270250, "full_name": "facebook/react", "current_stars": 232000, "crossed_10k": "2014-09-15", "points": [["2014-01", 9800], ["2014-02", 10400]] }
 ```
 
-`points = [period, total_end][]`（取 entity `curve.monthly` 的累计列）；`crossed_10k` 来自 `entity.milestones.crossed_10k`，供「对齐到 10k」x 轴重映。**故此处无 `compare/*` 或 `curve/*` Blob 契约**——它是 entity 的只读投影，离线 parity 集合不变。
+`points = [period, total_end][]` (takes the cumulative column of the entity `curve.monthly`); `crossed_10k` comes from `entity.milestones.crossed_10k`, for "align to 10k" x-axis remapping. **So there is no `compare/*` or `curve/*` Blob contract here** — it is a read-only projection of the entity, and the offline parity set is unchanged.
 
 ---
 
-## 3. 版本 / 缓存 / 原子性
+## 3. Version / cache / atomicity
 
-- **原子切换**：冷启动写 sealed `bootstrap/generations/<generation>/**` → validate → 更新 `bootstrap/latest.json`（§2.11a）；recurring base 发布写 `views/<run_id>/...` → validate → 更新 `views/latest.json`（§2.11）；live 发布写 `live/generations/<run_id>/...` → manifest → fenced CAS 更新 `live/latest.json`（§2.9a）。三条路径都只有一个 logical commit point，读侧只消费指针指向的不可变完整版本。
-- `meta.schema_ver`：破坏性 schema 改动 bump，build 启动校验版本匹配，不符 fail-fast。
-- live 指针 60s 短缓存可能读到上一完整 generation，但不会读到混合 generation；pointer 非 404 错误时读侧使用已缓存的旧 generation 或 fail closed，只有真正 404 才允许迁移期 flat fallback。
+- **Atomic switch**: cold start writes the sealed `bootstrap/generations/<generation>/**` → validate → updates `bootstrap/latest.json` (§2.11a); a recurring base publish writes `views/<run_id>/...` → validate → updates `views/latest.json` (§2.11); a live publish writes `live/generations/<run_id>/...` → manifest → a fenced CAS updates `live/latest.json` (§2.9a). All three paths have only one logical commit point, and the read side consumes only the immutable complete version the pointer points at.
+- `meta.schema_ver`: a breaking schema change bumps it, the build checks version match at startup, and it fails fast on a mismatch.
+- The live pointer's 60s short cache may read the previous complete generation, but it will not read a mixed generation; on a non-404 pointer error the read side uses the cached old generation or fails closed, and only a real 404 allows the migration-period flat fallback.
 
-## 4. 类型来源（单一事实源）
+## 4. Type source (single source of truth)
 
-每个产物用 Zod schema 定义于 `web/lib/contracts/`（canonical shard / workflow checkpoint / 发布指针的 schema 也归此处）：
+Every artifact is defined with a Zod schema in `web/lib/contracts/` (schemas for canonical shards / workflow checkpoints / the publish pointer also live here):
 
-- bootstrap / Workflow 产出每个 JSON 后用对应 schema **校验**（脏数据不发布、不切指针，见 TESTING §1.2/§1.3）。
-- build / 运行时读取时 `schema.parse(json)` → 得到带类型的对象，类型即从 Zod 推导，**不另写 interface**。
-- 改 schema = 改 Zod = 同时改契约、校验、类型——三者不会漂移。
+- After bootstrap / Workflow produces each JSON, it **validates** it with the corresponding schema (dirty data is not published and does not switch the pointer, see TESTING §1.2/§1.3).
+- When the build / runtime reads, `schema.parse(json)` → yields a typed object; the type is inferred from Zod, and **no separate interface is written**.
+- Changing the schema = changing Zod = changing the contract, the validation, and the types at the same time — the three cannot drift.

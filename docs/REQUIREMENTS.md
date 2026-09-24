@@ -8,17 +8,17 @@ source_of_truth_for:
   - repository and view counts
 ---
 
-# gitstarclub 需求基准
+# gitstarclub requirements baseline
 
 ## Scope
 
-本文是产品需求的**单一基准**——定义"做什么"。所有结构性争议、新功能立项、口径调整都先回到这里对齐。"怎么做"分散在各层文档：架构 [ARCHITECTURE](./ARCHITECTURE.md)、数据运维 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)、契约 [DATA-CONTRACTS](./DATA-CONTRACTS.md)、bootstrap 流水线 [PIPELINE](./PIPELINE.md)、排名口径 [RANKING](./RANKING.md)、前端 [FRONTEND](./FRONTEND.md)、设计系统 [DESIGN-SYSTEM](./DESIGN-SYSTEM.md)、SEO [SEO](./SEO.md)、运维 [OPS](./OPS.md)、测试 [TESTING](./TESTING.md)；UX 导航叙事见 [INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md)。未做的功能与受阻决策见 [ROADMAP.md](./ROADMAP.md)。
+This document is the **single baseline** of product requirements — defining "what to build". All structural disputes, new-feature proposals, and definition adjustments align here first. "How to build it" is spread across the layer documents: architecture [ARCHITECTURE](./ARCHITECTURE.md), data operations [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md), contract [DATA-CONTRACTS](./DATA-CONTRACTS.md), bootstrap pipeline [PIPELINE](./PIPELINE.md), ranking definitions [RANKING](./RANKING.md), frontend [FRONTEND](./FRONTEND.md), design system [DESIGN-SYSTEM](./DESIGN-SYSTEM.md), SEO [SEO](./SEO.md), operations [OPS](./OPS.md), testing [TESTING](./TESTING.md); the UX navigation narrative is in [INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md). Unbuilt features and blocked decisions are in [ROADMAP.md](./ROADMAP.md).
 
-## 0. 需求 ID / 优先级 / 追踪矩阵
+## 0. Requirement IDs / priority / traceability matrix
 
-Requirement ID 是跨 BRD/PRD/FSD/UX/测试追踪的稳定键。新增或调整核心能力时先在本节登记 ID、优先级、user story 与验收口径，再把同一 ID 引到产品、前端、数据契约和测试文档。
+Requirement ID is the stable key for traceability across BRD/PRD/FSD/UX/testing. When adding or adjusting a core capability, first register in this section the ID, priority, user story, and acceptance criteria, then cite the same ID into the product, frontend, data-contract, and test documentation.
 
-### 0.1 核心需求目录
+### 0.1 Core requirement catalog
 
 | ID | Priority | User story | Testable acceptance criteria | Owning docs / implementation / tests |
 |---|---|---|---|---|
@@ -46,115 +46,115 @@ Requirement ID 是跨 BRD/PRD/FSD/UX/测试追踪的稳定键。新增或调整�
 | `REQ-COMPARE-001` | §3 multi-repo compare | Compare tool `/compare` | FRONTEND compare route/client and `/repo-curve`; DATA-CONTRACTS §2.15 | compare tests and planned E2E |
 | `REQ-CATEGORY-001` | §3 category browsing | URL structure and category entry points | FRONTEND §11; DATA-CONTRACTS §2.4a | category recompute/rules tests |
 
-## 1. 产品定位（两副面孔）
+## 1. Product positioning (two faces)
 
-- **编年史面**：回看「哪些项目在某周期上涨」。已完成周期 = **冻结、精确、可回溯**。产品主体。
-- **脉搏面**：看「此刻谁在涨 / 爆发」，尤其 **老项目突然苏醒**。**时效敏感**，是回访与传播引擎。
-- 差异化：vs GitHub Trending（只当下）/ star-history（单 repo）/ gitstar-ranking（只当前总榜）——可回溯 + 结构化 + 有脉搏。
-- 来访：长尾搜索为主（`X star history`、`github trending 2024`、`谁在涨`）。
+- **Chronicle side**: look back at "which projects rose in a given period". A completed period = **frozen, exact, and replayable**. The main body of the product.
+- **Pulse side**: see "who is rising / exploding right now", especially **an old project suddenly waking up**. **Time-sensitive**; it is the engine of return visits and spread.
+- Differentiation: vs GitHub Trending (the present only) / star-history (a single repo) / gitstar-ranking (the current overall ranking only) — replayable + structured + has a pulse.
+- Visits: mainly long-tail search (`X star history`, `github trending 2024`, `who is rising`).
 
-## 2. 数据集范围
+## 2. Dataset scope
 
-- 白名单 = 当前 star ≥ **10,000** 的公开 repo（bootstrap ≈5,248 @2026-05 实测 → 当前约 5,302；每周浮动）。每周刷新；新晋者补历史；跌出者保留历史、停止轮询。
-- 时间 **2015-01 至今**（2015 前 watch≠star、schema 不稳）。
-- 维度：**repo + org**（org = 按 owner 聚合，含 User 与 Organization 两类）。
+- Whitelist = public repos whose current stars are ≥ **10,000** (bootstrap ≈5,248 measured @2026-05 → currently about 5,302; it floats weekly). Refreshed weekly; newcomers get history backfilled; those that drop out keep history and polling stops.
+- Time **2015-01 to the present** (before 2015, watch≠star and the schema is unstable).
+- Dimensions: **repo + org** (org = aggregated by owner, including both User and Organization).
 
-## 3. 页面（page-surface）
+## 3. Pages (page-surface)
 
-| 页 | URL | 要点 |
+| Page | URL | Points |
 |---|---|---|
-| 首页 | `/` | 年份脊柱 · 本月聚焦 · **此刻在涨区** · 历史上的今天 |
-| 年页 | `/rankings/YYYY` | 年榜 · 12 月热力 · 新晋 |
-| 月页 | `/rankings/YYYY/MM` | 月榜(repo+org × flow+stock) · 增速 · 新晋 · 日热力 · 上下月对比 |
-| 周页 | `/rankings/YYYY/W##` | **独立页**；当周活、过去周冻结 |
-| repo 页 | `/:owner/:name` | 曲线 · 里程碑 · 月度表 |
-| org 页 | `/o/:login` | 合计曲线 · 成员 · 名次 |
-| 全时榜 | `/rankings` | 当前总量 repo / org TOP |
-| 分类浏览 | `/categories` · `/categories/:dimension` · `/categories/:dimension/:slug` | 按 语言/生态/领域/类型/owner/成熟度 多维下钻 |
-| 脉搏页 | `/pulse` | 今日/本周大涨 + 复活/突刺 |
-| 关于 | `/about` | 数据口径声明 |
+| Home | `/` | Year spine · this-month focus · **rising-right-now section** · on this day in history |
+| Year page | `/rankings/YYYY` | Year ranking · 12-month heatmap · new members |
+| Month page | `/rankings/YYYY/MM` | Month ranking (repo+org × flow+stock) · growth rate · new members · daily heatmap · previous/next month comparison |
+| Week page | `/rankings/YYYY/W##` | **Standalone page**; the current week is live, and past weeks are frozen |
+| repo page | `/:owner/:name` | Curve · milestones · monthly table |
+| org page | `/o/:login` | Combined curve · members · rank |
+| All-time ranking | `/rankings` | Current-total repo / org TOP |
+| Category browsing | `/categories` · `/categories/:dimension` · `/categories/:dimension/:slug` | Multi-dimensional drill-down by language/ecosystem/domain/type/owner/maturity |
+| Pulse page | `/pulse` | Today/this week's big rises + revival/spike |
+| About | `/about` | Data-definition statement |
 
-- English URL 保持无前缀；非默认 locale 使用有前缀 URL，metadata / canonical / sitemap / hreflang 按 route locale 输出（当前 SEO 口径见 [SEO.md](./SEO.md) §10；架构见 [I18N.md](./I18N.md)）。
-- 月/年页 **repo 榜与 org 榜并列**展示。
-- **导航栏全站搜索**：顶栏 chrome 客户端 combobox，首次聚焦懒加载版本化 `search/index.json` + MiniSearch（zero 后端、走 CDN），typo 容错 + 按 stars 加权，直达 `/{owner}/{name}`；「按名字直达」入口，无 `/search?q=` 结果页。
-- **多 repo 对比**：`/compare` 静态壳 + URL 携带 `?repos=a/b,c/d`，前端按需取版本化曲线、叠图比较；归一化两模式（绝对值 / 对齐到破万）；上限 5 个；可对比集 = 已收录的 ≥1 万星 repo。任意 repo / ≥100 星下钻属未来工作，见 [ROADMAP.md](./ROADMAP.md)。
+- English URLs stay unprefixed; a non-default locale uses a prefixed URL, and metadata / canonical / sitemap / hreflang are emitted by route locale (the current SEO definition is in [SEO.md](./SEO.md) §10; the architecture is in [I18N.md](./I18N.md)).
+- Month/year pages display the **repo ranking and the org ranking side by side**.
+- **Navbar site-wide search**: a client combobox in the top-bar chrome that, on first focus, lazy-loads versioned `search/index.json` + MiniSearch (zero backend, via CDN), with typo tolerance + weighting by stars, going straight to `/{owner}/{name}`; a "jump by name" entry, and there is no `/search?q=` results page.
+- **Multi-repo compare**: a `/compare` static shell + the URL carries `?repos=a/b,c/d`; the frontend fetches versioned curves on demand and overlays them to compare; two normalization modes (absolute / aligned to crossing 10k); a limit of 5; the comparable set = indexed ≥10,000-star repos. Arbitrary repos / ≥100-star drill-down are future work; see [ROADMAP.md](./ROADMAP.md).
 
-## 4. 排名
+## 4. Rankings
 
-- 矩阵 **{周 / 月 / 年 / 全时} × {repo / org} × {flow 新增 / stock 总量}**。
-- 派生：**增速**（flow ÷ 期初 stock，floor 期初 ≥ 20k）；**新晋**（stock 首次 ≥ 10k）。
-- 排重：新晋不进增速。边界：flow 可负、平手二级排序(stock→id)、无数据不入榜。
-- 口径细节见 [RANKING.md](./RANKING.md)。
+- Matrix **{week / month / year / all-time} × {repo / org} × {flow new adds / stock total}**.
+- Derived: **growth rate** (flow ÷ period-start stock, floor period-start ≥ 20k); **new members** (stock first ≥ 10k).
+- Dedupe: new members do not enter growth rate. Boundaries: flow may be negative, ties use a secondary sort (stock→id), and no data means not on the ranking.
+- Definition details are in [RANKING.md](./RANKING.md).
 
-## 5. 数据来源与口径
+## 5. Data sources and definitions
 
-- **历史回填（一次性）**：BigQuery 查 GH Archive WatchEvent（含稳定 `repo.id`），~$10。（免费方案 ClickHouse 公共实例 1000 行上限、自建 4–12TB 均已评估排除。）
-- **成员与日常监测**：GitHub Search 的开放上界 `stars:>=MIN_TRACKED_STARS`（默认 10000；预发可设 1000）只发现 active 集合（动态最高值分桶，无 600k ceiling）；GitHub GraphQL 每日只批量查 active repo 的 `current_stars`（每 100 repo 一批）→ diff 出 net 日增。页开不现算。
-- **元数据**：GraphQL（owner + owner_type、language、topics、createdAt、current_stars、isArchived）。
-- **口径**：历史 = gross（GH Archive 无取消事件）/ 上线后 = net（含取消，可负）；**seam** 分界。**`current_stars` 是唯一必须精确的数**；历史 stock = gross 累加 × 锚定因子 `d` 对齐到 current_stars（估算，标 as-of；`d >= 0` 且可 `> 1`）。
-- **生命周期**：whitelist `count` = 当前 active tracked 数；drop 保留 entity/history 但停止轮询与当前榜聚合；re-entry 重新激活并保留首次 `tracked_since`。publish 前必须让 whitelist、canonical、lookup、meta 的 active 集合/计数一致。
+- **Historical backfill (one-off)**: BigQuery queries GH Archive WatchEvent (including a stable `repo.id`), ~$10. (The free options, a ClickHouse public instance with a 1000-row cap and a self-hosted 4–12TB, were both evaluated and excluded.)
+- **Membership and daily monitoring**: GitHub Search's open upper bound `stars:>=MIN_TRACKED_STARS` (default 10000; preview may set 1000) only discovers the active set (bucketed by the dynamic maximum, with no 600k ceiling); every day GitHub GraphQL batch-queries only active repos' `current_stars` (100 repos per batch) → a diff yields the net daily add. Opening a page does not compute it live.
+- **Metadata**: GraphQL (owner + owner_type, language, topics, createdAt, current_stars, isArchived).
+- **Definition**: history = gross (GH Archive has no unstar events) / after launch = net (includes unstars, and may be negative); the **seam** is the boundary. **`current_stars` is the only number that must be exact**; historical stock = gross accumulation × anchoring factor `d` aligned to current_stars (an estimate, marked as-of; `d >= 0` and it may be `> 1`).
+- **Lifecycle**: whitelist `count` = the current active tracked count; a drop keeps entity/history but stops polling and current-ranking aggregation; re-entry reactivates and keeps the first `tracked_since`. Before publish, the active sets/counts of whitelist, canonical, lookup, and meta must agree.
 
-## 6. 新鲜度模型 ⭐（核心）
+## 6. Freshness model ⭐ (core)
 
-**比喻：报社**。过去的报纸（历史）印好归档、**永不重印**；今天的头版（"现在在涨"）每天换；来了大新闻（老项目突然爆）登头版 + 更新它那一页，但**绝不重印整个报库**。
+**Metaphor: a newspaper**. Past newspapers (history) are printed, archived, and **never reprinted**; today's front page ("rising now") is replaced every day; when big news arrives (an old project suddenly explodes) it makes the front page + that one page is updated, but **the whole newspaper archive is never reprinted**.
 
-- **编年史（历史周期 + 稳定实体）**：冻结 / 标 **"as of 日期"**；零 churn。
-- **脉搏 = 新鲜度跟着"运动"走（事件驱动）**：每日 poll 全量 → 算每个 repo 日增 → **只刷新"显著在动的那一小撮"+「现在在涨」页**；其余一律不动。
-- **每天刷新集 = 下面三类的并集（通常几十~几百个）**：
-  1. **今日涨幅前 ~50**。
-  2. **爆发/复活**：今日涨幅 ≥ 其近 90 天日均的 **5×** 且 当日净增 ≥ **200**。
-  3. **破里程碑**：今日跨 10k / 50k / 100k。
-  > 数字（50 / 5× / 200）是可调旋钮，上线后按真实数据校准。
-- 老项目爆发 → 进刷新集 → 当天上 `/pulse` + 它的 repo 页当天刷新（曲线立刻显示这波）。
-- **不全量刷长尾页**（当前约 5,302 repo，含 org/周期页上限留 ~16k 余量；全量刷会毁静态/贵）、**不一律冻结**（错过爆发）。
+- **Chronicle (historical periods + stable entities)**: frozen / marked **"as of date"**; zero churn.
+- **Pulse = freshness follows "movement" (event-driven)**: a daily poll of the full set → compute each repo's daily add → **refresh only "that small set which is moving significantly" + the "rising now" page**; everything else is left untouched.
+- **The set refreshed every day = the union of the three classes below (usually tens to a few hundred)**:
+  1. **Today's top ~50 by gain**.
+  2. **Spike/revival**: today's gain ≥ **5×** its daily average over the recent 90 days, and the same-day net add ≥ **200**.
+  3. **Milestone crossed**: today crosses 10k / 50k / 100k.
+  > The numbers (50 / 5× / 200) are tunable knobs, calibrated against real data after launch.
+- An old project spikes → it enters the refresh set → it is on `/pulse` that day + its repo page refreshes that day (the curve shows this wave immediately).
+- **Do not refresh the long-tail pages in full** (currently about 5,302 repos; including org/period pages the cap leaves ~16k of headroom; a full refresh would destroy static rendering / be expensive), and **do not freeze everything** (that would miss a spike).
 
-## 7. 渲染 / 扛量
+## 7. Rendering / carrying the load
 
-- SSG-first；内容页**零客户端 JS**（图表服务端 SVG）；HTML < 20KB。
-- 页面分层：**核心**(deploy 构建,小集) / **长尾**(按需 ISR,持久 store) / **mover**(每日事件驱动刷新) / **历史**(冻结)。
-- 扛 **100万–1000万/天**；热路径纯静态走 CDN、零 Function；Vercel build **45min 上限** ⇒ 不全量 build。
-- CWV：LCP<2.5s · INP<200ms · CLS<0.1。
+- SSG-first; content pages have **zero client JS** (charts are server-side SVG); HTML < 20KB.
+- Page layers: **core** (built at deploy, a small set) / **long tail** (on-demand ISR, a durable store) / **mover** (refreshed daily, event-driven) / **history** (frozen).
+- Carries **100 × 10,000–1000 × 10,000/day**; the hot path is pure static via CDN, with zero Function; the Vercel build has a **45min cap** ⇒ do not build everything.
+- CWV: LCP<2.5s · INP<200ms · CLS<0.1.
 
-## 8. 数据形式 / pipeline
+## 8. Data form / pipeline
 
-- 生产 canonical = **JSON shard**（per-repo 月/周 rollup + 站点日总量 + repo 维度，Vercel 可重算）；服务 = 预算好的 **JSON 视图**（build / 运行时只读）。bootstrap 形态是 Parquet 事实表（归档）。
-- 引擎（BigQuery/DuckDB）**只在一次性 bootstrap**；**生产 recurring 重算（历史/元数据/全量）走 Vercel Workflow，纯 JS + JSON shard、无引擎**；**build / cron / 运行时零引擎、零原生模块**。
-- 每日 / 每周 live cron JSON-only；全量重算 + 发布 + 回滚 + 折叠 + GC 走 Vercel Workflow。详见 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)、[DATA-CONTRACTS](./DATA-CONTRACTS.md)、[PIPELINE](./PIPELINE.md)。
+- Production canonical = **JSON shard** (per-repo month/week rollup + site daily totals + the repo dimension, recomputable on Vercel); serving = precomputed **JSON views** (read-only at build / runtime). The bootstrap form is a Parquet fact table (archived).
+- Engines (BigQuery/DuckDB) are used **only in the one-off bootstrap**; **production recurring recompute (history/metadata/full) goes through Vercel Workflow, pure JS + JSON shard, with no engine**; **build / cron / runtime have zero engine and zero native modules**.
+- Daily / weekly live cron is JSON-only; full recompute + publish + rollback + fold + GC go through Vercel Workflow. See [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md), [DATA-CONTRACTS](./DATA-CONTRACTS.md), and [PIPELINE](./PIPELINE.md).
 
-## 8a. 非功能需求：生产不依赖本地计算 ⭐
+## 8a. Non-functional requirement: production does not depend on local compute ⭐
 
-- **所有 recurring 数据作业在 Vercel 触发、运行、记录**（Cron / Function / Workflow）；本机 `pipeline/backfill` 仅作一次性 bootstrap / 历史归档 / 紧急人工工具，**不在日常运营路径**。
-- 单 Function 受 800s / 4GB / bundle 250MB / 响应体 4.5MB 限——**全量重算必须 Workflow 分片**，大文件走 Blob 直链。
-- 新晋 repo 历史**默认保守**（从发现日追踪、标 `tracked_since`），不为补历史引入 GCP 作为 recurring 依赖（取舍见 [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §6）。
+- **All recurring data jobs are triggered, run, and recorded on Vercel** (Cron / Function / Workflow); local `pipeline/backfill` is only a one-off bootstrap / historical archive / emergency manual tool, and is **not on the day-to-day operations path**.
+- A single Function is limited by 800s / 4GB / bundle 250MB / a 4.5MB response body — **full recompute must be Workflow shards**, and large files go through a Blob direct link.
+- Newcomer repo history is **conservative by default** (tracked from the discovery day, and marked `tracked_since`), and GCP is not introduced as a recurring dependency in order to backfill history (the tradeoff is in [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §6).
 
 ## 9. SEO / i18n
 
-- 每页 = 长尾落地页（标题含真实搜索词）；sitemap 使用 index + per-locale XML，English 无前缀、非默认 locale 有前缀 URL 与 hreflang（**权威 URL 规模见 [SEO.md](./SEO.md)** §1.3 / §10）；schema.org（Dataset/ItemList/Organization/BreadcrumbList…）；OG 图（石墨灰+金，build 生成）；预览站 noindex。详见 [SEO.md](./SEO.md)。
+- Each page = a long-tail landing page (the title contains real search terms); the sitemap uses index + per-locale XML, English is unprefixed, and a non-default locale has a prefixed URL and hreflang (**the authoritative URL scale is in [SEO.md](./SEO.md)** §1.3 / §10); schema.org (Dataset/ItemList/Organization/BreadcrumbList…); OG images (graphite gray+gold, generated at build); the preview site is noindex. See [SEO.md](./SEO.md).
 
-## 10. 设计调性
+## 10. Design tone
 
-- **M3 Expressive**；**冷石墨灰 surface + 金"星"accent**；Plus Jakarta Sans + Geist Mono；**手写 token + Tailwind 4**（不用 @material/web）；明暗双模式；CSS 弹簧 / 跨文档 View Transitions 零 JS。详见 [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md)。
+- **M3 Expressive**; **cool graphite-gray surface + gold "star" accent**; Plus Jakarta Sans + Geist Mono; **hand-written tokens + Tailwind 4** (not using @material/web); light and dark modes; CSS springs / cross-document View Transitions with zero JS. See [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
 
-## 11. 部署 / 约束
+## 11. Deployment / constraints
 
-- **单一 Vercel 项目**：`zkscio/gitstarclub.com` 承载 Production 与 Preview；生产域名为 `gitstarclub.com` / `www.gitstarclub.com`，测试域名为 `pre.gitstarclub.com`（private/noindex）。
-- **Vercel-first / 避免散落账单**（BigQuery 仅一次性 ~$10 为唯一例外）。
-- 时区：存 UTC、显示 UTC + JST。Cron 鉴权 + 幂等 + 监控 + 回滚见 [OPS.md](./OPS.md)。
+- **A single Vercel project**: `zkscio/gitstarclub.com` hosts Production and Preview; the production domains are `gitstarclub.com` / `www.gitstarclub.com`, and the test domain is `pre.gitstarclub.com` (private/noindex).
+- **Vercel-first / avoid scattered bills** (a one-off BigQuery ~$10 is the only exception).
+- Time zone: store UTC, and display UTC + JST. Cron auth + idempotency + monitoring + rollback are in [OPS.md](./OPS.md).
 
-## 12. 合规
+## 12. Compliance
 
-- GH Archive 署名；遵守 GitHub ToS / 限额；仅展示公开 repo 公开数据。
-- About 页声明口径：gross/net seam、幸存者偏差、2015 起点、as-of、锚定估算。
+- GH Archive attribution; comply with the GitHub ToS / limits; display only public data of public repos.
+- The About page states the definitions: gross/net seam, survivor bias, the 2015 start, as-of, and the anchoring estimate.
 
 ---
 
-## 验收（需求层面）
+## Acceptance (requirement level)
 
-本节只放可观察的通过 / 失败信号；战略判断保留在上文。P0 项必须能由 PR CI、Vercel Workflow 闸门，或明确的人工 runbook 复核。
+This section holds only observable pass / fail signals; strategic judgment stays above. A P0 item must be re-checkable by PR CI, a Vercel Workflow gate, or an explicit manual runbook.
 
-- [ ] **P0-AC1 [`REQ-CHRONICLE-001`] 历史周期可回看且已收口周期冻结。** Given 一个读取 `views/latest.json` 的 Preview/Production deployment，When reviewer 请求 `GET https://pre.gitstarclub.com/rankings/2024`、`/rankings/2024/10`、`/rankings/2024/W41`，Then 每个有效历史周期返回 `200`，canonical 指向自身 URL，页面值来自同版本 `views/<version>/rank/**` / `heatmap/**` 产物；每日 cron 完成后再次请求同一 2024 历史周期，榜单数值不得改变。验证入口：`.github/workflows/ci.yml`（`web/` 下 `bun run lint`、`bunx tsc --noEmit -p tsconfig.json`、`BLOB_BASE_URL=https://blob.example.com bun run test`），重点测试 `web/lib/workflows/recompute/windows.test.ts`、`web/lib/workflows/steps/fold.test.ts`、`web/lib/integration/week-fold.test.ts`、`web/lib/integration/seam-fold.test.ts`、`web/lib/data/watermark.test.ts`；生产发布前还必须通过 Workflow `validate` step（`web/lib/workflows/steps/validate.ts`）。
-- [ ] **P0-AC2 [`REQ-PULSE-001`] `/pulse` 在每日 cron 后反映当前 movers。** Given UTC 日期 `<D>` 的 daily cron 已完成，When reviewer 请求 `GET https://pre.gitstarclub.com/pulse` 与 `GET https://pre.gitstarclub.com/ja/pulse`，Then 均返回 `200`，页面使用与 `hot-snapshot.json` / `current_month.json` 相同的 `<D>` 或最新成功 run 数据，`ops/sync-runs.json` 记录最近一次 daily run 为成功，且 `current_month.json` 包含 `<D>` 的 per-repo delta；若 `<D>` 缺失或 snapshot 旧于最近成功 run，则失败。验证入口：OPS「Daily cron 实跑 runbook」第 4 步（`bun web/scripts/validate-live-views.ts --bust <UTC day>`）和 `web/lib/cron/live-refresh.test.ts`。
-- [ ] **P0-AC3 [`REQ-CHRONICLE-001`, `REQ-PULSE-001`, `REQ-I18N-001`] 核心页面、SEO 与 7 语言 URL 矩阵可验证。** Given `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com`，When reviewer 请求 English URLs `/`、`/pulse`、`/rankings`、`/rankings/2024`、`/rankings/2024/10`、`/rankings/2024/W41`、`/categories`、`/compare`、`/about`、`/react/react`、`/o/vercel`，以及 locale samples `/ja`、`/zh/rankings/2024/10`、`/zh-TW/rankings/2024/10`、`/ko/pulse`、`/es/rankings`、`/fr/react/react`，Then 已收录实体 / 周期返回 `200`；English canonical 不带 locale 前缀；非默认 locale canonical 带前缀；`<html lang>` 与 route locale 一致；`hreflang` 精确包含 `x-default`、`en`、`ja`、`zh-CN`、`zh-TW`、`ko`、`es`、`fr`；sitemap 分片包含这些 canonical URL。验证入口：`web/lib/i18n/routing.test.ts`、`web/lib/i18n/middleware.test.ts`、`web/lib/seo.test.ts`、`web/lib/sitemap.test.ts`、`web/lib/integration/seo.test.ts`，统一由 `cd web && bun run test` 覆盖。
-- [ ] **P0-AC4 [`REQ-RANKING-001`] 排名矩阵和派生榜文件形状正确。** Given canonical JSON shard fixture 或 Workflow staging 版本，When recompute 完成，Then 必须存在并通过 schema：`rank/week/2024-W41/{repo,org}/{flow,stock}.json`、`rank/month/2024-10/{repo,org}/{flow,stock}.json`、`rank/year/2024/{repo,org}/{flow,stock}.json`、`rank/all-time/{repo,org}/stock.json`；派生 repo 榜只要求 month/year：`rank/month/2024-10/repo/{growth,new}.json`、`rank/year/2024/repo/{growth,new}.json`。每个 rank item 必须只有 `id` 或 `login` 之一，rank 从 1 连续、无重复实体、按 metric 与 tie-break 降序，top-N 不超过 100；growth 必须满足期初 stock ≥ 20,000 且 flow > 0，new 必须来自冻结的 `crossed_10k`。验证入口：`web/lib/workflows/recompute/ranks.test.ts`、`web/lib/workflows/recompute/windows.test.ts`、`web/lib/contracts/contracts.test.ts`、`web/lib/integration/recompute.test.ts`、Workflow `validate` step。
-- [ ] **P0-AC5 [`REQ-PERF-001`] 静态读取、性能阈值与 10M/day 假设有可复核证据。** Given Preview/Production deployment 已 warm up，When reviewer 对 `/`、`/rankings/2024/10`、`/react/react` 跑 Lighthouse / Web Vitals 与 `curl` body-size smoke，Then LCP < 2.5s、INP < 200ms、CLS < 0.1、FCP < 1.5s；内容页 HTML < 20KB；内容页不加载非白名单客户端 JS；第二次请求由 CDN / ISR cache 命中或 stale-while-revalidate，不在请求路径触发 GitHub API、DuckDB、BigQuery、数据库或 Workflow。验证入口：`docs/TESTING.md` §5 的性能 / 零 JS runbook；自动化落地前，PR 必须附对应 Preview 报告或说明未触及渲染性能面。
-- [ ] **P0-AC6 [`REQ-DATAOPS-001`] recurring 数据运营只走 Vercel，且发布闸门可阻断坏数据。** Given daily/weekly cron 与 weekly Workflow 调度，When reviewer 检查 Vercel logs 与 Blob ops artifacts，Then `/api/cron/daily`、`/api/cron/weekly`、`/api/workflows/refresh/start` 均由 `web/vercel.json` 调度；daily/weekly run 写入 `current_month.json`、`hot-snapshot.json`、`live/*`、`ops/sync-runs.json`；Workflow 写入 `ops/workflows/<run_id>/validation.json`，只有 `ok=true` 才切 `views/latest.json`；Production / Preview recurring 环境不得依赖 `GOOGLE_APPLICATION_CREDENTIALS`、`GCP_PROJECT_ID`、DuckDB 或 Parquet。验证入口：OPS「Cron 调度」「Daily cron 实跑 runbook」「Vercel Workflow runbook」，`web/lib/cron/live-refresh.test.ts`、`web/lib/workflows/steps/validate.test.ts`、`web/lib/workflows/steps/week-dates.test.ts`、`web/scripts/validate-live-views.ts`。
+- [ ] **P0-AC1 [`REQ-CHRONICLE-001`] Historical periods can be looked back on, and periods that have already closed are frozen.** Given a Preview/Production deployment that reads `views/latest.json`, When reviewer requests `GET https://pre.gitstarclub.com/rankings/2024`, `/rankings/2024/10`, `/rankings/2024/W41`, Then each valid historical period returns `200`, canonical points at its own URL, and page values come from the same version's `views/<version>/rank/**` / `heatmap/**` artifacts; after the daily cron finishes, requesting the same 2024 historical period again, ranking values must not change. Verification entry: `.github/workflows/ci.yml` (under `web/`: `bun run lint`, `bunx tsc --noEmit -p tsconfig.json`, `BLOB_BASE_URL=https://blob.example.com bun run test`), with the key tests `web/lib/workflows/recompute/windows.test.ts`, `web/lib/workflows/steps/fold.test.ts`, `web/lib/integration/week-fold.test.ts`, `web/lib/integration/seam-fold.test.ts`, `web/lib/data/watermark.test.ts`; before a production publish it must also pass the Workflow `validate` step (`web/lib/workflows/steps/validate.ts`).
+- [ ] **P0-AC2 [`REQ-PULSE-001`] `/pulse` reflects the current movers after the daily cron.** Given the daily cron for UTC date `<D>` has finished, When reviewer requests `GET https://pre.gitstarclub.com/pulse` and `GET https://pre.gitstarclub.com/ja/pulse`, Then both return `200`, the page uses the same `<D>` or latest successful run data as `hot-snapshot.json` / `current_month.json`, `ops/sync-runs.json` records the most recent daily run as success, and `current_month.json` contains the per-repo delta for `<D>`; if `<D>` is missing or the snapshot is older than the most recent successful run, it fails. Verification entry: step 4 of the OPS "Daily cron live-run runbook" (`bun web/scripts/validate-live-views.ts --bust <UTC day>`) and `web/lib/cron/live-refresh.test.ts`.
+- [ ] **P0-AC3 [`REQ-CHRONICLE-001`, `REQ-PULSE-001`, `REQ-I18N-001`] Core pages, SEO, and the 7-language URL matrix are verifiable.** Given `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com`, When reviewer requests English URLs `/`, `/pulse`, `/rankings`, `/rankings/2024`, `/rankings/2024/10`, `/rankings/2024/W41`, `/categories`, `/compare`, `/about`, `/react/react`, `/o/vercel`, and locale samples `/ja`, `/zh/rankings/2024/10`, `/zh-TW/rankings/2024/10`, `/ko/pulse`, `/es/rankings`, `/fr/react/react`, Then an indexed entity / period returns `200`; an English canonical does not carry a locale prefix; a non-default locale canonical carries a prefix; `<html lang>` agrees with the route locale; `hreflang` exactly includes `x-default`, `en`, `ja`, `zh-CN`, `zh-TW`, `ko`, `es`, `fr`; sitemap shards include these canonical URLs. Verification entry: `web/lib/i18n/routing.test.ts`, `web/lib/i18n/middleware.test.ts`, `web/lib/seo.test.ts`, `web/lib/sitemap.test.ts`, `web/lib/integration/seo.test.ts`, all covered by `cd web && bun run test`.
+- [ ] **P0-AC4 [`REQ-RANKING-001`] The ranking matrix and derived-ranking file shapes are correct.** Given a canonical JSON shard fixture or a Workflow staging version, When recompute finishes, Then the following must exist and pass schema: `rank/week/2024-W41/{repo,org}/{flow,stock}.json`, `rank/month/2024-10/{repo,org}/{flow,stock}.json`, `rank/year/2024/{repo,org}/{flow,stock}.json`, `rank/all-time/{repo,org}/stock.json`; derived repo rankings are required only for month/year: `rank/month/2024-10/repo/{growth,new}.json`, `rank/year/2024/repo/{growth,new}.json`. Each rank item must have only one of `id` or `login`, rank is contiguous from 1, there are no duplicate entities, order is descending by metric and tie-break, and top-N does not exceed 100; growth must satisfy period-start stock ≥ 20,000 and flow > 0, and new must come from the frozen `crossed_10k`. Verification entry: `web/lib/workflows/recompute/ranks.test.ts`, `web/lib/workflows/recompute/windows.test.ts`, `web/lib/contracts/contracts.test.ts`, `web/lib/integration/recompute.test.ts`, and the Workflow `validate` step.
+- [ ] **P0-AC5 [`REQ-PERF-001`] Static reads, performance thresholds, and the 10M/day assumption have re-checkable evidence.** Given a Preview/Production deployment has warmed up, When reviewer runs Lighthouse / Web Vitals and a `curl` body-size smoke against `/`, `/rankings/2024/10`, and `/react/react`, Then LCP < 2.5s, INP < 200ms, CLS < 0.1, and FCP < 1.5s; content-page HTML < 20KB; content pages do not load non-whitelist client JS; the second request is a CDN / ISR cache hit or stale-while-revalidate, and does not trigger the GitHub API, DuckDB, BigQuery, a database, or Workflow on the request path. Verification entry: the performance / zero-JS runbook in `docs/TESTING.md` §5; before automation lands, the PR must attach the corresponding Preview report or state that the rendering-performance surface was not touched.
+- [ ] **P0-AC6 [`REQ-DATAOPS-001`] Recurring data operations go only through Vercel, and the publish gate can block bad data.** Given daily/weekly cron and the weekly Workflow schedule, When reviewer inspects Vercel logs and Blob ops artifacts, Then `/api/cron/daily`, `/api/cron/weekly`, and `/api/workflows/refresh/start` are all scheduled by `web/vercel.json`; a daily/weekly run writes `current_month.json`, `hot-snapshot.json`, `live/*`, and `ops/sync-runs.json`; the Workflow writes `ops/workflows/<run_id>/validation.json`, and only `ok=true` cuts `views/latest.json`; a Production / Preview recurring environment must not depend on `GOOGLE_APPLICATION_CREDENTIALS`, `GCP_PROJECT_ID`, DuckDB, or Parquet. Verification entry: OPS "Cron schedule", "Daily cron live-run runbook", and "Vercel Workflow runbook", `web/lib/cron/live-refresh.test.ts`, `web/lib/workflows/steps/validate.test.ts`, `web/lib/workflows/steps/week-dates.test.ts`, `web/scripts/validate-live-views.ts`.

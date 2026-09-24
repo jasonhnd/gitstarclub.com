@@ -16,7 +16,7 @@ const CANON = p("star_daily.parquet");
 const db = await DuckDBInstance.create();
 const con = await db.connect();
 
-// 1. canonical fact table: gross_adds → delta (seam-前都是 gross；net 由 cron 之后 append)
+// 1. canonical fact table: gross_adds → delta (everything before the seam is gross; cron appends net after that)
 await con.run(
   `COPY (SELECT repo_id, day AS date, gross_adds AS delta FROM read_parquet('${GROSS}'))
    TO '${CANON}' (FORMAT PARQUET)`,
