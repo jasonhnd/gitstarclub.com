@@ -31,7 +31,7 @@ Every non-trivial change should answer these questions before code is edited:
 2. Which data contract or view path changes, if any?
 3. Which route, component, or workflow owns the behavior?
 4. Which doc is the source of truth and must be updated?
-5. How will production on Vercel be verified?
+5. How will production on Cloudflare Workers be verified?
 
 The expected commit shape is:
 
@@ -129,10 +129,10 @@ Docs-only changes are allowed when the code already implements the behavior.
 5. Update `FRONTEND.md` and `SEO.md` if content, metadata, or internal links
    change.
 
-## Vercel-First Verification
+## Cloudflare Hosting Verification
 
-The project is operated Vercel-first. Do not rely on a local dev server as the
-final verification path.
+The production and preview domains are hosted on Cloudflare Workers (OpenNext).
+Do not rely on a local dev server as the final verification path.
 
 Branch topology and promotion are owned by [OPS.md](./OPS.md) §Branch topology /
 staging. Feature work merges into `pre`, staging verification uses
@@ -143,10 +143,10 @@ Preferred production verification sequence:
 
 1. Merge the feature PR into `pre`.
 2. Wait for the fixed staging domain, `https://pre.gitstarclub.com`, to serve the
-   Preview deployment (Vercel Authentication: log in with a team account).
+   Cloudflare preview deployment. Verify access according to the current preview policy in OPS.md.
 3. Verify the affected staging URL or behavior on `pre`.
 4. Promote by merging `pre` into `main`.
-5. Wait for the Vercel production deployment to serve the new HTML or behavior.
+5. Wait for the Cloudflare production domain to serve the new HTML or behavior.
 6. For code-only read-side changes, verify the affected production URL directly.
 7. For recompute/category/data changes, trigger the production refresh workflow
    after deployment and wait for `views/latest.json` to point at the new run.
