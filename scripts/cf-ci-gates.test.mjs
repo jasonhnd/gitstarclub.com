@@ -46,7 +46,7 @@ const validWrangler = `{
     "pre": {
       "name": "gitstarclub-web-pre",
       "workers_dev": true,
-      "preview_urls": false,
+      "preview_urls": true,
       "queues": {
         "producers": [{ "binding": "JOBS", "queue": "gitstarclub-jobs-pre" }],
         "consumers": [{ "queue": "gitstarclub-jobs-pre", "max_batch_size": 1, "max_retries": 2 }]
@@ -334,7 +334,7 @@ describe("CF CI gates", () => {
     assert.equal(wrangler.workers_dev, false);
     assert.equal(wrangler.preview_urls, false);
     assert.equal(wrangler.env.pre.workers_dev, true);
-    assert.equal(wrangler.env.pre.preview_urls, false);
+    assert.equal(wrangler.env.pre.preview_urls, true);
     assert.equal(wrangler.vars.BLOB_BASE_URL, PRODUCTION_BLOB_BASE_URL);
     assert.equal(wrangler.vars.NEXT_PUBLIC_BLOB_BASE_URL, PRODUCTION_BLOB_BASE_URL);
     assert.equal(wrangler.vars.CF_CRON_ORIGIN, PRODUCTION_CRON_ORIGIN);
@@ -381,6 +381,17 @@ describe("CF CI gates", () => {
     delete inherited.env.pre.workers_dev;
     const inheritedIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(inherited) }));
     assert.ok(inheritedIssues.some((issue) => issue.includes("env.pre workers_dev must be true")));
+
+    for (const previewUrls of [false, undefined]) {
+      const config = structuredClone(base);
+      if (previewUrls === undefined) delete config.env.pre.preview_urls;
+      else config.env.pre.preview_urls = previewUrls;
+      const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+      assert.ok(
+        issues.some((issue) => issue.includes("env.pre preview_urls must be true")),
+        issues.join("\n"),
+      );
+    }
 
     const sha = structuredClone(base);
     sha.vars.CF_PREVIEW_COMMIT_SHA = "0123456789abcdef";

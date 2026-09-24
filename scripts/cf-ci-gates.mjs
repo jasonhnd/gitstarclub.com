@@ -326,8 +326,10 @@ export function assertCfCiGates(sources) {
       "wrangler env.pre workers_dev must be true so a preview deploy does not inherit the closed production workers.dev flag",
     );
   }
-  if (preview && preview.preview_urls !== false) {
-    issues.push("wrangler env.pre preview_urls must be false");
+  if (preview && preview.preview_urls !== true) {
+    issues.push(
+      "wrangler env.pre preview_urls must be true so a preview deploy does not inherit the closed production preview URL flag",
+    );
   }
   if (wrangler.vars?.CF_PREVIEW_COMMIT_SHA !== undefined || preview?.vars?.CF_PREVIEW_COMMIT_SHA !== undefined) {
     issues.push("CF_PREVIEW_COMMIT_SHA must not be committed; pass it with wrangler --var on each deploy");
