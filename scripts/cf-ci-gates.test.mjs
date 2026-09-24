@@ -12,9 +12,12 @@ import {
   PREVIEW_MIN_TRACKED_STARS,
   PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS,
   PREVIEW_WORKFLOW_COLD_START,
+  PRODUCTION_BLOB_BASE_URL,
   PRODUCTION_CRON_ORIGIN,
   PRODUCTION_MIN_TRACKED_STARS,
   PRODUCTION_WORKER_NAME,
+  PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL,
+  PRODUCTION_WORKFLOW_RUNTIME,
   assertAllowedCfPreviewOrigin,
   assertCfCiGates,
   assertRepositoryCfCiGates,
@@ -27,11 +30,23 @@ import {
 
 const validWrangler = `{
   "name": "gitstarclub-web",
-  "vars": { "SITE_INDEXABLE": "1", "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com" },
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "SITE_INDEXABLE": "1",
+    "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com",
+    "BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
+    "NEXT_PUBLIC_BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
+    "CF_CRON_ORIGIN": "https://gitstarclub.com",
+    "WORKFLOW_RUNTIME": "cf-queue",
+    "WORKFLOW_QUEUE_ENQUEUE_URL": "https://gitstarclub.com/enqueue"
+  },
   "triggers": { "crons": [] },
   "env": {
     "pre": {
       "name": "gitstarclub-web-pre",
+      "workers_dev": true,
+      "preview_urls": true,
       "queues": {
         "producers": [{ "binding": "JOBS", "queue": "gitstarclub-jobs-pre" }],
         "consumers": [{ "queue": "gitstarclub-jobs-pre", "max_batch_size": 1, "max_retries": 2 }]
@@ -102,7 +117,7 @@ describe("CF CI gates", () => {
     }
   });
   test("requires production indexing and forbids preview indexing", () => {
-    const missing = validWrangler.replace('"SITE_INDEXABLE": "1", ', "");
+    const missing = validWrangler.replace('"SITE_INDEXABLE": "1",\n', "");
     assert.match(assertCfCiGates(alignedSources({ wranglerSource: missing })).join(" "), /SITE_INDEXABLE/);
     const previewEnabled = validWrangler.replace('"WORKFLOW_COLD_START": "1"', '"WORKFLOW_COLD_START": "1", "SITE_INDEXABLE": "1"');
     assert.match(assertCfCiGates(alignedSources({ wranglerSource: previewEnabled })).join(" "), /SITE_INDEXABLE/);
@@ -316,6 +331,72 @@ describe("CF CI gates", () => {
     assert.equal(wrangler.vars.MIN_TRACKED_STARS, undefined);
     assert.equal(wrangler.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, undefined);
     assert.equal(wrangler.vars.WORKFLOW_COLD_START, undefined);
+    assert.equal(wrangler.workers_dev, false);
+    assert.equal(wrangler.preview_urls, false);
+    assert.equal(wrangler.env.pre.workers_dev, true);
+    assert.equal(wrangler.env.pre.preview_urls, true);
+    assert.equal(wrangler.vars.BLOB_BASE_URL, PRODUCTION_BLOB_BASE_URL);
+    assert.equal(wrangler.vars.NEXT_PUBLIC_BLOB_BASE_URL, PRODUCTION_BLOB_BASE_URL);
+    assert.equal(wrangler.vars.CF_CRON_ORIGIN, PRODUCTION_CRON_ORIGIN);
+    assert.equal(wrangler.vars.WORKFLOW_RUNTIME, PRODUCTION_WORKFLOW_RUNTIME);
+    assert.equal(wrangler.vars.WORKFLOW_QUEUE_ENQUEUE_URL, PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL);
+    assert.equal(wrangler.vars.CF_PREVIEW_COMMIT_SHA, undefined);
+    assert.equal(wrangler.env.pre.vars.CF_PREVIEW_COMMIT_SHA, undefined);
+  });
+
+  test("rejects a production config that drops plaintext vars or reopens workers.dev", () => {
+    const base = JSON.parse(validWrangler);
+    for (const key of [
+      "BLOB_BASE_URL",
+      "NEXT_PUBLIC_BLOB_BASE_URL",
+      "CF_CRON_ORIGIN",
+      "WORKFLOW_RUNTIME",
+      "WORKFLOW_QUEUE_ENQUEUE_URL",
+    ]) {
+      const config = structuredClone(base);
+      delete config.vars[key];
+      const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+      assert.ok(
+        issues.some((issue) => issue.includes(`top-level vars.${key} must be`)),
+        issues.join("\n"),
+      );
+    }
+    for (const key of ["workers_dev", "preview_urls"]) {
+      const config = structuredClone(base);
+      delete config[key];
+      const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+      assert.ok(
+        issues.some((issue) => issue.includes(`top-level ${key} must be false`)),
+        issues.join("\n"),
+      );
+    }
+    const reopened = structuredClone(base);
+    reopened.workers_dev = true;
+    reopened.preview_urls = true;
+    const reopenedIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(reopened) }));
+    assert.ok(reopenedIssues.some((issue) => issue.includes("top-level workers_dev must be false")));
+    assert.ok(reopenedIssues.some((issue) => issue.includes("top-level preview_urls must be false")));
+
+    const inherited = structuredClone(base);
+    delete inherited.env.pre.workers_dev;
+    const inheritedIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(inherited) }));
+    assert.ok(inheritedIssues.some((issue) => issue.includes("env.pre workers_dev must be true")));
+
+    for (const previewUrls of [false, undefined]) {
+      const config = structuredClone(base);
+      if (previewUrls === undefined) delete config.env.pre.preview_urls;
+      else config.env.pre.preview_urls = previewUrls;
+      const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+      assert.ok(
+        issues.some((issue) => issue.includes("env.pre preview_urls must be true")),
+        issues.join("\n"),
+      );
+    }
+
+    const sha = structuredClone(base);
+    sha.vars.CF_PREVIEW_COMMIT_SHA = "0123456789abcdef";
+    const shaIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(sha) }));
+    assert.ok(shaIssues.some((issue) => issue.includes("CF_PREVIEW_COMMIT_SHA must not be committed")));
   });
 
   test("refuses production PREFLIGHT_RELAX_EMPTY_SHARDS=1", () => {

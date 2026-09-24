@@ -21,9 +21,12 @@ export const PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
 export const PREVIEW_WORKFLOW_COLD_START = "1";
 export const PREVIEW_BLOB_BASE_URL =
   "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com";
+export const PRODUCTION_BLOB_BASE_URL = PREVIEW_BLOB_BASE_URL;
 export const PREVIEW_QUEUE_NAME = "gitstarclub-jobs-pre";
 export const PREVIEW_WORKFLOW_RUNTIME = "cf-queue";
+export const PRODUCTION_WORKFLOW_RUNTIME = PREVIEW_WORKFLOW_RUNTIME;
 export const PREVIEW_WORKFLOW_QUEUE_ENQUEUE_URL = "https://pre.gitstarclub.com/enqueue";
+export const PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL = "https://gitstarclub.com/enqueue";
 export const ASSERT_SCRIPT_REL = "scripts/assert-cf-ci-gates.mjs";
 
 const LEGACY_PREVIEW_WORKER_NAME = "gitstarclub-web-nonprod";
@@ -300,9 +303,36 @@ export function assertCfCiGates(sources) {
       )} (repo draft only; platform enable is ops)`,
     );
   }
-  const productionOrigin = wrangler.vars?.CF_CRON_ORIGIN;
-  if (productionOrigin !== undefined && productionOrigin !== PRODUCTION_CRON_ORIGIN) {
-    issues.push(`wrangler top-level vars.CF_CRON_ORIGIN must be ${PRODUCTION_CRON_ORIGIN} when set`);
+  const requiredProductionVars = [
+    ["BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL],
+    ["NEXT_PUBLIC_BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL],
+    ["CF_CRON_ORIGIN", PRODUCTION_CRON_ORIGIN],
+    ["WORKFLOW_RUNTIME", PRODUCTION_WORKFLOW_RUNTIME],
+    ["WORKFLOW_QUEUE_ENQUEUE_URL", PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL],
+  ];
+  for (const [key, expected] of requiredProductionVars) {
+    if (wrangler.vars?.[key] !== expected) {
+      issues.push(`wrangler top-level vars.${key} must be ${expected}`);
+    }
+  }
+  if (wrangler.workers_dev !== false) {
+    issues.push("wrangler top-level workers_dev must be false");
+  }
+  if (wrangler.preview_urls !== false) {
+    issues.push("wrangler top-level preview_urls must be false");
+  }
+  if (preview && preview.workers_dev !== true) {
+    issues.push(
+      "wrangler env.pre workers_dev must be true so a preview deploy does not inherit the closed production workers.dev flag",
+    );
+  }
+  if (preview && preview.preview_urls !== true) {
+    issues.push(
+      "wrangler env.pre preview_urls must be true so a preview deploy does not inherit the closed production preview URL flag",
+    );
+  }
+  if (wrangler.vars?.CF_PREVIEW_COMMIT_SHA !== undefined || preview?.vars?.CF_PREVIEW_COMMIT_SHA !== undefined) {
+    issues.push("CF_PREVIEW_COMMIT_SHA must not be committed; pass it with wrangler --var on each deploy");
   }
   const previewOriginVar = preview?.vars?.CF_CRON_ORIGIN;
   if (previewOriginVar !== undefined && previewOriginVar !== PREVIEW_CRON_ORIGIN) {
@@ -380,15 +410,6 @@ export function assertCfCiGates(sources) {
       `wrangler env.${PREVIEW_WRANGLER_ENV} queues.consumers must include ${PREVIEW_QUEUE_NAME}`,
     );
   }
-  const productionBlobBase = wrangler.vars?.BLOB_BASE_URL;
-  if (productionBlobBase !== undefined) {
-    issues.push("wrangler top-level vars.BLOB_BASE_URL must stay unset (preview-only plaintext binding)");
-  }
-  const productionWorkflowRuntime = wrangler.vars?.WORKFLOW_RUNTIME;
-  if (productionWorkflowRuntime === PREVIEW_WORKFLOW_RUNTIME) {
-    issues.push("wrangler top-level vars.WORKFLOW_RUNTIME must not be cf-queue (preview-only)");
-  }
-
   const defaultOrigin = readDefaultCfPreviewOrigin(runtimeConfigSource);
   if (defaultOrigin === CLOSED_PRODUCTION_WORKERS_DEV_ORIGIN) {
     issues.push("DEFAULT_CF_PREVIEW_ORIGIN must not be the closed production workers.dev host");
