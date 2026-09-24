@@ -99,7 +99,7 @@ Vercel Cron(GET /api/workflows/refresh/start,with CRON_SECRET)  ← production s
 ```
 
 > The step order in the diagram above matches implementation source `web/lib/workflows/refresh.ts` L27–60:
-> `preflight → whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`。
+> `preflight → whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc`.
 > Workflow publish actively invalidates the `published-views-pointer` cache tag and the root layout; the in-process pointer memo cap of other already-warm function instances is 60s, so the publish / rollback visibility SLA is **≤60s** (§7.4).
 
 **Why the Cron route does not do the work directly**: a Cron trigger is one HTTP GET against the production URL, constrained by Function duration / memory. So the route only does "auth + read-only preflight of canonical meta/32 repos shards + lease + start workflow + return", and hands the real long task to the Workflow runtime for async orchestration. The route gate checks `active` / `tracked_since` / `d`, repo key/id and bucket before lease and enqueue; workflow step 0 then validates all 128 required shards (on CF / HTTP, invocations are split by 4-bucket windows to avoid Workers 1102), preventing objects from changing between enqueue and execution, and blocking empty time series, orphan repo IDs, missing shards, or read errors before any canonical mutation.
@@ -197,7 +197,7 @@ async function recomputeRank(runId: string) {
 blob://
 ├── bootstrap/
 │   ├── latest.json                          # L4 single-file commit/rollback pointer
-│   ├── generations/<generation>/            # sealed bootstrap payload；create-only
+│   ├── generations/<generation>/            # sealed bootstrap payload; create-only
 │   │   ├── manifests/{base,canonical}.json  # exact object count/bytes/SHA-256
 │   │   ├── views/**                         # initial base view generation
 │   │   └── canonical/{star_daily.parquet,v2/**}

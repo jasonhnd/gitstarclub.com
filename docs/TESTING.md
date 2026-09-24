@@ -313,7 +313,7 @@ Align with ARCHITECTURE "performance strategy". Lighthouse / CWV run on represen
 
 Playwright's three engines run the key pages, and the focus is the **progressive-enhancement degradation path**:
 
-- **Chrome / Firefox / Safari**（chromium / firefox / webkit）
+- **Chrome / Firefox / Safari** (chromium / firefox / webkit)
 - Verify: scrolling, pure-CSS spring motion, **View Transitions fallback** (a browser that does not support them must degrade gracefully to no transition, with no error and no blank screen)
 - Because content pages have zero JS, the cross-browser risk surface is small, and one mainly watches the fallback of new CSS features (`backdrop-filter` frosted glass, the `linear()` spring curve, and cross-document View Transitions)
 
@@ -330,9 +330,9 @@ Status meanings: `enforced` = a current automated gate blocks merge; `soft` = wh
 | Node/Bun runtime pins | `enforced` | all GitHub Actions jobs: setup + `assert-runtime-versions.mjs` | Node 24.x, Bun 1.3.14; any mismatch fails before a project command runs |
 | Documentation contracts | `enforced` | `verify / static`: root `bun run lint:docs` | a missing language fence, missing/illegal frontmatter, a broken backtick path, an omitted env, a duplicate route owner, and API route/version drift all block; a historical path is allowed only by an explicit reasoned allowlist |
 | `lint` | `enforced` | GitHub Actions PR/`pre`/`main`: `bun run lint` | current PR blocker |
-| TypeScript app | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck` | Current PR blocker for production app code through `web/tsconfig.json` |
-| TypeScript tests / integration | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck:tests` | Current PR blocker for `*.test.ts(x)` and `web/lib/integration/**` through `web/tsconfig.tests.json` |
-| TypeScript scripts / JS | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck:scripts` | Current PR blocker for root scripts, pipeline `.mjs`, web `.mjs`, and `web/public/sw.js` through `tsconfig.scripts.json` with `checkJs` |
+| TypeScript app | `enforced` | GitHub Actions PR/`pre`/`main`: `bun run typecheck` | Current PR blocker for production app code through `web/tsconfig.json` |
+| TypeScript tests / integration | `enforced` | GitHub Actions PR/`pre`/`main`: `bun run typecheck:tests` | Current PR blocker for `*.test.ts(x)` and `web/lib/integration/**` through `web/tsconfig.tests.json` |
+| TypeScript scripts / JS | `enforced` | GitHub Actions PR/`pre`/`main`: `bun run typecheck:scripts` | Current PR blocker for root scripts, pipeline `.mjs`, web `.mjs`, and `web/public/sw.js` through `tsconfig.scripts.json` with `checkJs` |
 | Pipeline publication tests | `enforced` | GitHub Actions PR/`pre`/`main`: in `pipeline/` run `bun run test` | Interrupted uploads, resume, validation failure, lease fencing, single-pointer commit, and explicit rollback replay |
 | Logic tests + coverage | `enforced` | GitHub Actions PR/`pre`/`main`: `bun run test:cov` | the `web/lib` suite and the `pipeline/lib` pure helpers it loads directly; lines/functions may not fall below 80% |
 | Production `next build` | `enforced` | GitHub Actions PR/`pre`/`main`: `verify / production-build` | uses a local GET/HEAD-only bounded fixture; no write-capable credentials |
