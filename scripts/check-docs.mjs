@@ -243,7 +243,8 @@ export function checkMaintainedFacts(root) {
 
   const ops = readFileSync(resolve(root, "docs/OPS.md"), "utf8");
   if (!ops.includes("`web/.env.local`")) issues.push("docs/OPS.md: local env location must be web/.env.local");
-  if (/本地用 `\.env`/.test(ops)) issues.push("docs/OPS.md: root .env is not loaded by the web scripts");
+  // Retired wording for "use a root .env locally". Escaped so this file stays free of Han characters.
+  if (/\u672c\u5730\u7528 `\.env`/.test(ops)) issues.push("docs/OPS.md: root .env is not loaded by the web scripts");
 
   const workflow = readFileSync(resolve(root, "docs/WORKFLOW.md"), "utf8");
   if (!workflow.includes("verify / static") || !workflow.includes("verify / production-build")) {
@@ -262,7 +263,8 @@ export function checkMaintainedFacts(root) {
     if (/Preview discovery for Vercel \(required gates\)/.test(content)) {
       issues.push(`${path}: Vercel preview discovery is optional / skippable, not a required gate`);
     }
-    if (/已提交并强制/.test(content) && /preview-e2e|axe serious/.test(content)) {
+    // Retired wording for "submitted and made mandatory", alongside preview-e2e / axe.
+    if (/\u5df2\u63d0\u4ea4\u5e76\u5f3a\u5236/.test(content) && /preview-e2e|axe serious/.test(content)) {
       issues.push(`${path}: preview-e2e suites are soft / optional, not enforced merge gates`);
     }
     if (content.includes("web/middleware.ts")) {
@@ -273,11 +275,60 @@ export function checkMaintainedFacts(root) {
   return issues;
 }
 
+const cjkProseDirectories = ["docs", "plans", ".cursor", ".grok"];
+const cjkProseFiles = ["AGENTS.md"];
+const cjkPattern = /[\u4e00-\u9fff]/;
+
+// Product locale copy and tests that assert it may contain Han text.
+// These paths are outside the scanned roots; the filter is here so a wider scan cannot flag them.
+export const cjkAllowlist = [
+  /^web\/lib\/i18n\/dictionaries\//,
+  /^web\/lib\/i18n\/locales\.ts$/,
+  /^web\/app\/_localized\//,
+  /^web\/lib\/format\.ts$/,
+  /^web\/lib\/narrative\.ts$/,
+  /^web\/lib\/shareable-snippets\.ts$/,
+  /\.test\.tsx?$/,
+  /^web\/e2e\/.+\.spec\.ts$/,
+];
+
+export function isCjkAllowlisted(repoPath) {
+  return cjkAllowlist.some((pattern) => pattern.test(repoPath));
+}
+
+export function checkCjkProse(root) {
+  const files = [];
+  for (const directory of cjkProseDirectories) {
+    const absolute = resolve(root, directory);
+    if (!existsSync(absolute)) continue;
+    files.push(...walk(absolute));
+  }
+  for (const file of cjkProseFiles) {
+    const absolute = resolve(root, file);
+    if (existsSync(absolute)) files.push(absolute);
+  }
+
+  const issues = [];
+  for (const file of files) {
+    const path = toRepoPath(file, root);
+    if (isCjkAllowlisted(path)) continue;
+    const bytes = readFileSync(file);
+    if (bytes.includes(0)) continue;
+    const lines = bytes.toString("utf8").split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+      if (!cjkPattern.test(lines[index])) continue;
+      issues.push(`${path}:${index + 1} CJK text is not allowed outside product locale files`);
+    }
+  }
+  return issues;
+}
+
 export function checkDocs(root) {
   return [
     ...checkDocReferences(root),
     ...checkEnvironmentInventory(root),
     ...checkMaintainedFacts(root),
+    ...checkCjkProse(root),
   ];
 }
 
