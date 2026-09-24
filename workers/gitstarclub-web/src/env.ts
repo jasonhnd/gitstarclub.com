@@ -34,6 +34,7 @@ export type WorkerEnv = {
   REFRESH_STEP_URL?: string;
   WORKFLOW_FIXTURE?: string;
   CF_PREVIEW_COMMIT_SHA?: string;
+  VERCEL_GIT_COMMIT_SHA?: string;
   CF_PREVIEW_ORIGIN?: string;
   HOSTING_TARGET?: string;
   BLOB_BASE_URL?: string;

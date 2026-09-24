@@ -29,3 +29,26 @@ describe("buildDeploymentIdentity", () => {
     });
   });
 });
+
+describe("commit SHA priority", () => {
+  const url = "https://pre.gitstarclub.com/.well-known/deployment";
+  test("Vercel wins over CF and the build value", () => {
+    expect(buildDeploymentIdentity(url, {
+      HOSTING_TARGET: "cf",
+      VERCEL_GIT_COMMIT_SHA: "vercel",
+      CF_PREVIEW_COMMIT_SHA: "preview",
+    }).commitSha).toBe("vercel");
+  });
+
+  test("CF preview wins when Vercel is absent", () => {
+    expect(buildDeploymentIdentity(url, {
+      HOSTING_TARGET: "cf",
+      CF_PREVIEW_COMMIT_SHA: "preview",
+    }).commitSha).toBe("preview");
+  });
+
+  test("missing overrides use the baked value or null", async () => {
+    const { cfBuildCommitSha } = await import("./cf-build-identity");
+    expect(buildDeploymentIdentity(url, { HOSTING_TARGET: "cf" }).commitSha).toBe(cfBuildCommitSha);
+  });
+});
