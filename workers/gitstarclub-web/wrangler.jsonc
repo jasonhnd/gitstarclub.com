@@ -78,10 +78,38 @@
           "service": "gitstarclub-web-pre"
         }
       ],
+      // Preview queue/R2 names differ from production; must live in wrangler so
+      // `wrangler deploy --env pre` / version_upload cannot drop platform bindings.
+      "queues": {
+        "producers": [
+          {
+            "binding": "JOBS",
+            "queue": "gitstarclub-jobs-pre"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "gitstarclub-jobs-pre",
+            "max_batch_size": 1,
+            "max_retries": 2
+          }
+        ]
+      },
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "gitstarclub-assets"
+        }
+      ],
       "vars": {
         "HOSTING_TARGET": "cf",
         "WORKFLOW_FIXTURE": "1",
         "CF_CRON_ORIGIN": "https://pre.gitstarclub.com",
+        // Public read base (not a secret). Required for / and /rankings on CF.
+        "BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
+        "NEXT_PUBLIC_BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
+        "WORKFLOW_RUNTIME": "cf-queue",
+        "WORKFLOW_QUEUE_ENQUEUE_URL": "https://pre.gitstarclub.com/enqueue",
         // Jason 2026-09-21: ≥1k on pre only. Production top-level stays unset → 10_000.
         "MIN_TRACKED_STARS": "1000",
         // Jason 2026-09-22: shard Search so one hop stays inside the 15 min Queue wall.

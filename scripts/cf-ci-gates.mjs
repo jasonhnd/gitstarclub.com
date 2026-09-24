@@ -19,6 +19,11 @@ export const PREVIEW_MIN_TRACKED_STARS = "1000";
 export const PRODUCTION_MIN_TRACKED_STARS = "10000";
 export const PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
 export const PREVIEW_WORKFLOW_COLD_START = "1";
+export const PREVIEW_BLOB_BASE_URL =
+  "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com";
+export const PREVIEW_QUEUE_NAME = "gitstarclub-jobs-pre";
+export const PREVIEW_WORKFLOW_RUNTIME = "cf-queue";
+export const PREVIEW_WORKFLOW_QUEUE_ENQUEUE_URL = "https://pre.gitstarclub.com/enqueue";
 export const ASSERT_SCRIPT_REL = "scripts/assert-cf-ci-gates.mjs";
 
 const LEGACY_PREVIEW_WORKER_NAME = "gitstarclub-web-nonprod";
@@ -329,6 +334,50 @@ export function assertCfCiGates(sources) {
     issues.push(
       "wrangler top-level vars.WORKFLOW_COLD_START must not be 1 (preview-only; production stays fail-closed)",
     );
+  }
+  const previewBlobBase = preview?.vars?.BLOB_BASE_URL;
+  if (previewBlobBase !== PREVIEW_BLOB_BASE_URL) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.BLOB_BASE_URL must be the public preview store base (${PREVIEW_BLOB_BASE_URL})`,
+    );
+  }
+  const previewPublicBlobBase = preview?.vars?.NEXT_PUBLIC_BLOB_BASE_URL;
+  if (previewPublicBlobBase !== PREVIEW_BLOB_BASE_URL) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.NEXT_PUBLIC_BLOB_BASE_URL must match BLOB_BASE_URL (${PREVIEW_BLOB_BASE_URL})`,
+    );
+  }
+  const previewWorkflowRuntime = preview?.vars?.WORKFLOW_RUNTIME;
+  if (previewWorkflowRuntime !== PREVIEW_WORKFLOW_RUNTIME) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.WORKFLOW_RUNTIME must be ${PREVIEW_WORKFLOW_RUNTIME}`,
+    );
+  }
+  const previewEnqueueUrl = preview?.vars?.WORKFLOW_QUEUE_ENQUEUE_URL;
+  if (previewEnqueueUrl !== PREVIEW_WORKFLOW_QUEUE_ENQUEUE_URL) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.WORKFLOW_QUEUE_ENQUEUE_URL must be ${PREVIEW_WORKFLOW_QUEUE_ENQUEUE_URL}`,
+    );
+  }
+  const previewQueueProducer = preview?.queues?.producers?.find((entry) => entry.binding === "JOBS");
+  if (previewQueueProducer?.queue !== PREVIEW_QUEUE_NAME) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} queues.producers JOBS must target ${PREVIEW_QUEUE_NAME}`,
+    );
+  }
+  const previewQueueConsumer = preview?.queues?.consumers?.find((entry) => entry.queue === PREVIEW_QUEUE_NAME);
+  if (!previewQueueConsumer) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} queues.consumers must include ${PREVIEW_QUEUE_NAME}`,
+    );
+  }
+  const productionBlobBase = wrangler.vars?.BLOB_BASE_URL;
+  if (productionBlobBase !== undefined) {
+    issues.push("wrangler top-level vars.BLOB_BASE_URL must stay unset (preview-only plaintext binding)");
+  }
+  const productionWorkflowRuntime = wrangler.vars?.WORKFLOW_RUNTIME;
+  if (productionWorkflowRuntime === PREVIEW_WORKFLOW_RUNTIME) {
+    issues.push("wrangler top-level vars.WORKFLOW_RUNTIME must not be cf-queue (preview-only)");
   }
 
   const defaultOrigin = readDefaultCfPreviewOrigin(runtimeConfigSource);
