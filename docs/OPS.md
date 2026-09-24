@@ -752,8 +752,8 @@ create / put / delete. Review checks at least:
 
 - `production_writes=0`;
 - source layout / `views/latest.run_id` / 19 snapshot hash match the review evidence;
-- `canonical_repositories=5393`、`active_true=5389`、`active_false=4`;
-- `tracked_since_recovered=79`、`anchors_invented=0`、`changed_buckets=32`;
+- `canonical_repositories=5393`, `active_true=5389`, `active_false=4`;
+- `tracked_since_recovered=79`, `anchors_invented=0`, `changed_buckets=32`;
 - the emitted `plan_sha256` is unchanged across repeated dry-run.
 
 To save the full changed-id / per-bucket checksum plan, use
