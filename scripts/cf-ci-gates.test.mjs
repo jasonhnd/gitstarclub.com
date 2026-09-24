@@ -31,7 +31,15 @@ const validWrangler = `{
   "env": {
     "pre": {
       "name": "gitstarclub-web-pre",
+      "queues": {
+        "producers": [{ "binding": "JOBS", "queue": "gitstarclub-jobs-pre" }],
+        "consumers": [{ "queue": "gitstarclub-jobs-pre", "max_batch_size": 1, "max_retries": 2 }]
+      },
       "vars": {
+        "BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
+        "NEXT_PUBLIC_BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
+        "WORKFLOW_RUNTIME": "cf-queue",
+        "WORKFLOW_QUEUE_ENQUEUE_URL": "https://pre.gitstarclub.com/enqueue",
         "MIN_TRACKED_STARS": "1000",
         "PREFLIGHT_RELAX_EMPTY_SHARDS": "1",
         "WORKFLOW_COLD_START": "1"
