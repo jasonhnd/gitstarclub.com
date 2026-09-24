@@ -30,11 +30,11 @@ This is not a replacement for the owning docs:
 GitStarClub is a static-read Next.js app backed by JSON views in Vercel Blob.
 The request path never queries a database. Pages read validated JSON through
 `web/lib/data/*`; recurring refresh work writes new versioned views through
-Vercel Workflow and flips `views/latest.json`.
+managed refresh and flips `views/latest.json`.
 
 ```text
 GitHub APIs
-  -> Vercel Workflow refresh
+  -> managed refresh
   -> canonical/v2/* shards
   -> views/<run_id>/*
   -> views/latest.json
@@ -63,7 +63,7 @@ GitHub APIs
 | `web/lib/cache-invalidation/` | ISR invalidation port (`vercel` \| `memory` \| `cf-stub`); default remains Next `revalidatePath/Tag` |
 | `web/lib/preview/` | Pluggable Preview target (`vercel` \| `cf`) and Cloudflare Access Service Token headers |
 | `web/lib/workers-host/` | Worker path classification, smoke origin, step self-fetch, Queue successor after fold (body + `x-gitstarclub-queue-successor`; fold writes `fold-decision.json` then 1-bucket windows + compact plans when there is closed-period work; recomputeRank is month-pack + 8-period month/monthOrg, year derived per month bucket + 8-period year/yearOrg, week-pack + streamed week/weekOrg, then rest one repos bucket at a time) |
-| `web/open-next.config.ts` | OpenNext Cloudflare adapter (static-assets incremental cache; preview only) |
+| `web/open-next.config.ts` | OpenNext Cloudflare adapter (static-assets incremental cache) |
 | `workers/gitstarclub-web/` | CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (`env.pre`) |
 | `scripts/assert-cf-ci-gates.mjs` | CF CI gate: `pre` → `gitstarclub-web-pre`; no live deploy of `gitstarclub-web`; production `triggers.crons` stays `[]` |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
@@ -104,7 +104,7 @@ Important files:
   health, recompute I/O, aliases list, and version GC. R2 is opt-in and
   non-production only; see [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
 - `web/lib/cache-invalidation/`: publication and live-cron ISR invalidation.
-  Default is Vercel `next/cache`. The CF stub is non-production and testable;
+  The runtime uses Next cache invalidation; the CF stub remains testable;
   see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
 - `web/lib/preview/`: Preview discovery for Vercel (optional `preview-e2e` /
   `product-gates`; skippable without a Preview; not a GitHub required gate) and

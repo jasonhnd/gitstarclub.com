@@ -9,7 +9,7 @@ adapters:
   gate: human-merge      # humans choose what merges
 worker:
   base_branch: pre       # gitstarclub integrates on pre; promote = merge pre -> main
-  command_hint: "implement the issue per its acceptance and docs/GEO.md; honor the hard constraints (no runtime AI, near-zero client JS on content pages, Vercel-first, deterministic, English-only, no new pages unless the issue says so); run the web/ checks; commit"
+  command_hint: "implement the issue per its acceptance and docs/GEO.md; honor the hard constraints (no runtime AI, near-zero client JS on content pages, Cloudflare Workers hosting, Vercel Blob storage, deterministic, English-only, no new pages unless the issue says so); run the web/ checks; commit"
 verifier:
   model: "claude-opus-4-8[1m]"
   reasoning_effort: max
