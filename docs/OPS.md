@@ -77,16 +77,16 @@ instructions.
 
 Production and test environments are merged into the same Vercel project:
 
-- Team：`zkscio`
-- Project：`gitstarclub.com`
-- Project ID：`prj_V9RVqspNWPXXiytX7Fj3wlMT9wNw`
-- Root Directory：`web`
-- Framework：Next.js
-- Node.js：24.x
+- Team: `zkscio`
+- Project: `gitstarclub.com`
+- Project ID: `prj_V9RVqspNWPXXiytX7Fj3wlMT9wNw`
+- Root Directory: `web`
+- Framework: Next.js
+- Node.js: 24.x
 
 | Project | Content | Domain | Description |
 |---|---|---|---|
-| **Production** | `web/`（Next.js，App Router + RSC） | **gitstarclub.com / www.gitstarclub.com** | Production branch is `main`; production is indexable only when `SITE_INDEXABLE=1` is set in Production |
+| **Production** | `web/` (Next.js, App Router + RSC) | **gitstarclub.com / www.gitstarclub.com** | Production branch is `main`; production is indexable only when `SITE_INDEXABLE=1` is set in Production |
 | **Preview / staging** | the same project's Preview deployment | **pre.gitstarclub.com** | Fixed custom domain for the `pre` branch; Cloudflare DNS is `A pre.gitstarclub.com 76.76.21.21`, DNS-only |
 
 ## Branch topology / staging
@@ -361,7 +361,7 @@ blob://
 │       ├── meta.json                                #   seam_date · schema_ver · folded_through (week/month watermark)
 │       ├── whitelist/                               #   Workflow step 1: ≥10k whitelist (web/lib/workflows/steps/whitelist.ts)
 │       │   ├── <run_id>.json                        #     single-run snapshot (entries + diff.added/dropped)
-│       │   └── latest.json                          #     pointer: { run_id, ids } —— used by the next run to compute the diff
+│       │   └── latest.json                          #     pointer: { run_id, ids } — used by the next run to compute the diff
 │       ├── repos/{bucket}.json                      #   repo dimension + active/history + tracked_since + frozen anchor factor d
 │       ├── repo-monthly/{bucket}.json · repo-weekly/{bucket}.json · repo-recent-daily/{bucket}.json
 │       ├── site-daily/{yyyy}.json
@@ -385,7 +385,7 @@ blob://
 │       ├── heatmap/month/{current}.json
 │       └── rollover/{period}.json                   #     in-generation recovery copy of cross-month pending (only when crossing a month)
 ├── views/                                           # publish layer: latest.json pointer + <run_id>/ (version=run_id)
-│   ├── latest.json                                  #   pointer：{ version, run_id, published_at, prev_version, schema_ver }
+│   ├── latest.json                                  #   pointer: { version, run_id, published_at, prev_version, schema_ver }
 │   └── <run_id>/                                    #   versioned output (writeVersion → views/<run_id>/<rel>)
 │       ├── meta.json                                #     version meta (seam_date · schema_ver · folded_through · generated_at)
 │       ├── lookup/                                  #     entity step derived (lookup/repos.json + lookup/orgs.json)
@@ -711,7 +711,7 @@ When the data pipeline (Vercel Workflow full refresh + daily / weekly cron) fail
 2. Local DuckDB
    Land a per-repo×day fact table → star_daily.parquet
    + compute milestones (exact dates of crossing 10k / 50k / 100k)
-3. GraphQL（GITHUB_TOKEN）
+3. GraphQL (GITHUB_TOKEN)
    Search discovers members (dynamically open upper bound); GraphQL fetches metadata + owner(+type) + current_stars (sole authority) → repos.json
 4. DuckDB precomputes every JSON view
    {week / month / year / all-time}×{repo / org}×{flow / stock} + entity curves + heatmap
@@ -750,10 +750,10 @@ bun scripts/migrate-canonical-lifecycle.ts
 Dry-run loads only `BLOB_BASE_URL`, does not need `BLOB_READ_WRITE_TOKEN`, and does not call Blob
 create / put / delete. Review checks at least:
 
-- `production_writes=0`；
+- `production_writes=0`;
 - source layout / `views/latest.run_id` / 19 snapshot hash match the review evidence;
-- `canonical_repositories=5393`、`active_true=5389`、`active_false=4`；
-- `tracked_since_recovered=79`、`anchors_invented=0`、`changed_buckets=32`；
+- `canonical_repositories=5393`、`active_true=5389`、`active_false=4`;
+- `tracked_since_recovered=79`、`anchors_invented=0`、`changed_buckets=32`;
 - the emitted `plan_sha256` is unchanged across repeated dry-run.
 
 To save the full changed-id / per-bucket checksum plan, use

@@ -12,7 +12,7 @@ source_of_truth_for:
 
 ## Scope
 
-This document is the **interface contract between the data layer and the build**, giving each canonical shard and JSON view an **exact schema**——fields, types, definitions, and reference relationships, and it is the source of truth for the Zod definitions in `web/lib/contracts/`. It must be read before adding an artifact / changing a field / adjusting a definition.
+This document is the **interface contract between the data layer and the build**, giving each canonical shard and JSON view an **exact schema** — fields, types, definitions, and reference relationships, and it is the source of truth for the Zod definitions in `web/lib/contracts/`. It must be read before adding an artifact / changing a field / adjusting a definition.
 Physical form, tradeoffs, and the generation pipeline are in [ARCHITECTURE.md](./ARCHITECTURE.md) "data model" and [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md); how the frontend consumes them is in [FRONTEND.md](./FRONTEND.md); ranking-definition details are in [RANKING.md](./RANKING.md); this document does not cover deployment, operations, or cron scheduling (see [OPS.md](./OPS.md)).
 
 > ⚠️ **canonical form**: §1's `star_daily.parquet` is the **bootstrap archive** form. **production canonical = §1.4's JSON shard** (Vercel can recompute it, with no engine). The Workflow / checkpoint / publish pointer contracts are in §2.11–2.13.
@@ -59,7 +59,7 @@ The sole bootstrap source of truth; in the production phase it is folded into §
 | `delta` | INT32 | That day's star delta; gross before the seam (≥0, GH Archive WatchEvent count), net after the seam (GraphQL day difference, may be negative) |
 
 - Logical PK `(repo_id, date)`; sorted/partitioned by `repo_id`, which helps aggregation by repo.
-- ~8 million rows / columnar storage ≈ tens of MB. **Does not include the in-progress current month**——the current month is in the `current_month.json` live tail (§2.8), and the build/cron merges it.
+- ~8 million rows / columnar storage ≈ tens of MB. **Does not include the in-progress current month** — the current month is in the `current_month.json` live tail (§2.8), and the build/cron merges it.
 
 ### 1.2 `repos` dimension (→ also exported as `lookup/repos.json`)
 
@@ -90,7 +90,7 @@ The sole bootstrap source of truth; in the production phase it is folded into §
 4. A drop does not delete: canonical, lookup, search, and the repo entity are kept, and `active:false` is written; daily/weekly cron, current org/category aggregation, and the all-time ranking use only active rows.
 5. Re-entry is reactivated by the next whitelist `diff.added`, GraphQL fetches the authoritative total again, and the first `tracked_since` is kept. Only a first-time newcomer writes the immutable whitelist snapshot's UTC date into `tracked_since`.
 
-### 1.3 `meta`（→ `meta.json`）
+### 1.3 `meta` (→ `meta.json`)
 
 ```json
 { "seam_date": "2026-05-30", "backfilled_at": "...", "schema_ver": 1,
@@ -101,7 +101,7 @@ The sole bootstrap source of truth; in the production phase it is folded into §
 
 | Field | Type | Produced by | Official on |
 |---|---|---|---|
-| `active` | bool | metadata / recompute | `ReposShardEntry`, `RepoLookupEntry`, `SearchDoc`, `RepoEntity`（legacy optional） |
+| `active` | bool | metadata / recompute | `ReposShardEntry`, `RepoLookupEntry`, `SearchDoc`, `RepoEntity` (legacy optional) |
 | `tracked_since` | DateStr\|null | metadata | same |
 | `active_repo_count` | int | recompute `views/meta.json` | `Meta` only |
 | `historical_repo_count` | int | recompute `views/meta.json` | `Meta` only |
@@ -112,7 +112,7 @@ They **do not belong to** `canonical/v2/meta.json` (`CanonicalMeta` stays `.stri
 
 > **Fold + bucket** §1.1's 8M-row daily table into a set of small JSON, so Vercel Workflow can recompute with no engine. The design and bucketing strategy are in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§5.2. `<bucket>` = `repo_id % N`.
 
-**`canonical/v2/meta.json`** —— global metadata (drives stock-anchor segmentation + the close-out watermark):
+**`canonical/v2/meta.json`** — global metadata (drives stock-anchor segmentation + the close-out watermark):
 
 ```json
 { "seam_date": "2026-05-30", "schema_ver": 1,
@@ -124,7 +124,7 @@ They **do not belong to** `canonical/v2/meta.json` (`CanonicalMeta` stays `.stri
 - `folded_through`: the last week/month period already folded into base; the read path uses it to decide whether a period belongs to live or base (prevents duplication, [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2).
 - `generated_at`: a UTC timestamp that both the bootstrap writer and the recurring fold writer must write. During migration, a reader still accepts a legacy generation that lacks this field; the managed refresh route checks `meta` + every `repos` shard before the lease, and the workflow's first step validates all 128 required shards again before any canonical mutation (CF / HTTP orchestration splits invocations by 4-bucket windows, and the semantics remain a full gate). When preview `PREFLIGHT_RELAX_EMPTY_SHARDS=1`, a missing/empty shard is treated as an empty `{}` placeholder via `preview-empty-canonical-placeholder`, and the whole run is not voided; production stays fail closed. schema / identity / `d` / a wrong bucket are still rejected.
 
-**`canonical/v2/repos/{bucket}.json`** —— repo-dimension buckets (fields same as §1.2, including `tracked_since` and `fetched_at` (metadata fetch time); plus `d` = the frozen anchor factor (`>= 0`, and it may be `> 1` when GitHub Archive undercounts), computed by bootstrap and **stored as a full-precision IEEE double**——rounding would make the JS-recomputed `stock_est` differ from DuckDB by ±1):
+**`canonical/v2/repos/{bucket}.json`** — repo-dimension buckets (fields same as §1.2, including `tracked_since` and `fetched_at` (metadata fetch time); plus `d` = the frozen anchor factor (`>= 0`, and it may be `> 1` when GitHub Archive undercounts), computed by bootstrap and **stored as a full-precision IEEE double** — rounding would make the JS-recomputed `stock_est` differ from DuckDB by ±1):
 
 ```json
 { "1296269": { "id": 1296269, "node_id": "...", "owner": "vuejs", "owner_type": "Organization",
@@ -133,19 +133,19 @@ They **do not belong to** `canonical/v2/meta.json` (`CanonicalMeta` stays `.stri
                "d": 0.9123 } }
 ```
 
-**`canonical/v2/repo-monthly/{bucket}.json`** —— per-repo month flow series (period = `MonthPeriod`, drives the month ranking + the entity month curve):
+**`canonical/v2/repo-monthly/{bucket}.json`** — per-repo month flow series (period = `MonthPeriod`, drives the month ranking + the entity month curve):
 
 ```json
 { "1296269": [ ["2015-01", 1200], ["2015-02", 1500] ] }   // { "<id>": [[period, flow], ...]; gross before the seam / net after }
 ```
 
-**`canonical/v2/repo-weekly/{bucket}.json`** —— per-repo ISO week flow series (period = `WeekPeriod`, drives the historical week ranking): `{ "<id>": [["2024-W42", 320], ...] }`.
+**`canonical/v2/repo-weekly/{bucket}.json`** — per-repo ISO week flow series (period = `WeekPeriod`, drives the historical week ranking): `{ "<id>": [["2024-W42", 320], ...] }`.
 
-**`canonical/v2/repo-recent-daily/{bucket}.json`** —— per-repo daily points for the recent ~90 days (curve tail + week boundary, net may be negative): `{ "<id>": [["2026-03-01", 30], ["2026-03-02", -5]] }`. ⚠️ **bootstrap(`07-export-v2`) one-time seed**; the recurring `fold` step(`fold.ts`)**does not read, write, or trim** recent-daily(`web/lib/` has no writer, only the reader `io.ts:53`)——"daily points that roll out of 90 days are merged into `repo-monthly`" aging is **not yet implemented** (xref issue #3 / [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.2).
+**`canonical/v2/repo-recent-daily/{bucket}.json`** — per-repo daily points for the recent ~90 days (curve tail + week boundary, net may be negative): `{ "<id>": [["2026-03-01", 30], ["2026-03-02", -5]] }`. ⚠️ **bootstrap(`07-export-v2`) one-time seed**; the recurring `fold` step(`fold.ts`)**does not read, write, or trim** recent-daily(`web/lib/` has no writer, only the reader `io.ts:53`) — "daily points that roll out of 90 days are merged into `repo-monthly`" aging is **not yet implemented** (xref issue #3 / [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.2).
 
-**`canonical/v2/site-daily/{yyyy}.json`** —— site-level daily totals (`year` = `YearPeriod`, drives the heatmap): `{ "year": "2024", "cells": [["2024-01-01", 82000]] }`.
+**`canonical/v2/site-daily/{yyyy}.json`** — site-level daily totals (`year` = `YearPeriod`, drives the heatmap): `{ "year": "2024", "cells": [["2024-01-01", 82000]] }`.
 
-**`canonical/v2/pending/{period}.json`** —— a frozen snapshot of a month-period live tail that is already closed out and pending fold (period = `MonthPeriod`; written before the cron cross-period reset and read by the fold step, [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2): the same shape as `current_month.json`'s `per_repo` + `daily_totals`.
+**`canonical/v2/pending/{period}.json`** — a frozen snapshot of a month-period live tail that is already closed out and pending fold (period = `MonthPeriod`; written before the cron cross-period reset and read by the fold step, [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.2): the same shape as `current_month.json`'s `per_repo` + `daily_totals`.
 
 > **stock anchoring**(definition same as [RANKING.md](./RANKING.md) §3,**must be split before and after the seam**): the anchor factor `d = current_stars@seam / cumgross@seam_date`(**the denominator includes only pre-seam gross**),bootstrap computes it and then writes it frozen into the `repos` shard; `d >= 0`, and it may be `> 1` when Archive undercounts. Before the seam, `stock_est = cumgross × d`; **after the seam, net is not multiplied by `d` and is summed directly**: `stock = stock@seam + Σ(net after the seam)`. Details are in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6.3. Milestones are likewise computed by bootstrap, then frozen and written into the `repos` shard.
 
@@ -210,7 +210,7 @@ explicitly accepted.
 
 ### 2.1 `lookup/repos.json`
 
-The build's join table——holds only the minimum fields needed to render rankings/cards (full metadata is in `entity/repo`).
+The build's join table — holds only the minimum fields needed to render rankings/cards (full metadata is in `entity/repo`).
 
 ```json
 {
@@ -242,7 +242,7 @@ Rename map: an old (deprecated) `full_name` (lowercased) → the current `repo i
 ### 2.3 `rank/{window}/{period}/{dim}/{metric}.json`
 
 Rankings. `window∈{week,month,year}`, `period` is in Global conventions, `dim∈{repo,org}`, `metric∈{flow,stock}`.
-**Derived repo rankings (month/year only, dim=repo)**: `metric=growth` (growth rate; the item includes `rate`=growth-rate % and `base`=period-start stock; **entering the ranking requires period-start stock ≥ 20,000 and current-period flow > 0**——`flow<=0` is dropped as well, see `ranks.ts:131`), `metric=new` (newcomer; the item includes `date`=the date 10k was crossed). The definition is in [RANKING §4](./RANKING.md); `RankItem` therefore carries the three optional fields `rate`/`base`/`date`.
+**Derived repo rankings (month/year only, dim=repo)**: `metric=growth` (growth rate; the item includes `rate`=growth-rate % and `base`=period-start stock; **entering the ranking requires period-start stock ≥ 20,000 and current-period flow > 0** — `flow<=0` is dropped as well, see `ranks.ts:131`), `metric=new` (newcomer; the item includes `date`=the date 10k was crossed). The definition is in [RANKING §4](./RANKING.md); `RankItem` therefore carries the three optional fields `rate`/`base`/`date`.
 
 ```json
 {
@@ -297,7 +297,7 @@ Rules:
 - Every `item.id` must be assigned to `meta.category.id` in the assembled `categories/assignments` map (v2 shards or v1 monolith).
 - Windowed `flow`/`stock` category ranks are future work; avoid emitting them until the category route phase has accepted the extra view count.
 
-### 2.4b `categories/assignments.json`（index + repo-id shards）
+### 2.4b `categories/assignments.json` (index + repo-id shards)
 
 Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,986 bytes). New generations write a small index plus 32 repo-id shards. ISR pages keep `force-cache` / daily revalidate — they must not flip to `no-store`. The publish gate checks **UTF-8 JSON byte length** of the index and every shard; each file must be **< 1.50 MiB**.
 
@@ -361,16 +361,16 @@ Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,
 }
 ```
 
-- `curve.monthly`: `[period, adds, total_end]`——history uses monthly points (11 years≈132 points). `total_end` is `stock_est` and **must be ≥ 0** (`MonthlyPoint` uses `NonNegativeInt`). Flow (`adds`) may be negative. Writers clamp `stock_est = max(0, formula)` in `computeRepoWindow` so `d=0` newcomers / first-period unstars cannot publish a negative star count; running `cumGross`/`cumNet`/`anchor` stay unclamped so later periods can recover toward `current_stars`. Recompute Zod-parses every `RepoEntity` / `OrgEntity` before Blob write; the publish gate re-parses every entity from lookup, not only the top repo.
+- `curve.monthly`: `[period, adds, total_end]` — history uses monthly points (11 years≈132 points). `total_end` is `stock_est` and **must be ≥ 0** (`MonthlyPoint` uses `NonNegativeInt`). Flow (`adds`) may be negative. Writers clamp `stock_est = max(0, formula)` in `computeRepoWindow` so `d=0` newcomers / first-period unstars cannot publish a negative star count; running `cumGross`/`cumNet`/`anchor` stay unclamped so later periods can recover toward `current_stars`. Recompute Zod-parses every `RepoEntity` / `OrgEntity` before Blob write; the publish gate re-parses every entity from lookup, not only the top repo.
 - `active` / `tracked_since`: explicitly show the current tracking status and newcomer provenance; a historical entity is not deleted, and the repo page shows "kept for history" plus the available first-tracked date.
 - `languages`: optional GitHub language breakdown from GraphQL
   `Repository.languages`, sorted by byte size descending. Older published shards
   may omit it; pages fall back to the primary `language` field.
 - `homepage_url` / `license` / `latest_release`: optional GitHub metadata fields. Pages only read JSON views; these fields are filled in by the offline metadata pipeline / cron, and GitHub is not fetched live on the request path. `homepage_url` can also serve as a repo JSON-LD `sameAs` deterministic first-party identity source.
-- `curve.recent_daily`: `[date, net_adds]`——daily points for the recent ~90 days (the curve tail), and may be negative.
+- `curve.recent_daily`: `[date, net_adds]` — daily points for the recent ~90 days (the curve tail), and may be negative.
 - `monthly_table`: adds for the recent N months + the current month's flow rank.
 - `rank_history`: optional, rank history (drives "rank trend").
-- `inflections`: optional, inflection markers `[{period, flow, kind}]`, derived by recompute——a "burst" month whose month flow is ≥ K× the rolling median and passes an absolute floor; the highest month is `kind:"peak"`, the rest are `"surge"`, at most 3; `StarCurve` draws markers + a tooltip from them. Old data lacks this field (optional).
+- `inflections`: optional, inflection markers `[{period, flow, kind}]`, derived by recompute — a "burst" month whose month flow is ≥ K× the rolling median and passes an absolute floor; the highest month is `kind:"peak"`, the rest are `"surge"`, at most 3; `StarCurve` draws markers + a tooltip from them. Old data lacks this field (optional).
 
 ### 2.6 `entity/org/{login}.json`
 
@@ -399,7 +399,7 @@ Site-level totals ("burst day/month").
 - `heatmap/year/2024.json` → that year's 12 month totals (month cells on the year page); `cells` uses `["2024-10", total]`.
 - Daily totals for the in-progress current month come from `current_month.json`, and the build merges them.
 
-### 2.8 `live/generations/{run_id}/current_month.json` (live tail——written by the Vercel cron)
+### 2.8 `live/generations/{run_id}/current_month.json` (live tail — written by the Vercel cron)
 
 The `month` field is a `MonthPeriod`; the `updated` / `daily_totals` / `per_repo` date fields are `DateStr`.
 
@@ -416,7 +416,7 @@ Production `current_month` exceeds the Next.js Data Cache 2MB entry limit by mon
 }
 ```
 
-**v2 shard**（`current_month/shards/<bucket>.json`，`bucket = repo_id % 32`）：
+**v2 shard** (`current_month/shards/<bucket>.json`, `bucket = repo_id % 32`):
 
 ```json
 {
@@ -715,7 +715,7 @@ Multi-repo compare (`/compare`) needs the browser to fetch several repos' curves
 { "id": 10270250, "full_name": "facebook/react", "current_stars": 232000, "crossed_10k": "2014-09-15", "points": [["2014-01", 9800], ["2014-02", 10400]] }
 ```
 
-`points = [period, total_end][]` (takes the cumulative column of the entity `curve.monthly`); `crossed_10k` comes from `entity.milestones.crossed_10k`, for "align to 10k" x-axis remapping. **So there is no `compare/*` or `curve/*` Blob contract here**——it is a read-only projection of the entity, and the offline parity set is unchanged.
+`points = [period, total_end][]` (takes the cumulative column of the entity `curve.monthly`); `crossed_10k` comes from `entity.milestones.crossed_10k`, for "align to 10k" x-axis remapping. **So there is no `compare/*` or `curve/*` Blob contract here** — it is a read-only projection of the entity, and the offline parity set is unchanged.
 
 ---
 
@@ -731,4 +731,4 @@ Every artifact is defined with a Zod schema in `web/lib/contracts/` (schemas for
 
 - After bootstrap / Workflow produces each JSON, it **validates** it with the corresponding schema (dirty data is not published and does not switch the pointer, see TESTING §1.2/§1.3).
 - When the build / runtime reads, `schema.parse(json)` → yields a typed object; the type is inferred from Zod, and **no separate interface is written**.
-- Changing the schema = changing Zod = changing the contract, the validation, and the types at the same time——the three cannot drift.
+- Changing the schema = changing Zod = changing the contract, the validation, and the types at the same time — the three cannot drift.

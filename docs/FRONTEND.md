@@ -11,7 +11,7 @@ source_of_truth_for:
 
 # gitstarclub Frontend Design (Next.js 16 Web Application)
 
-> **Frontend implementation source of truth**——lands [REQUIREMENTS](./REQUIREMENTS.md) (what to do), [ARCHITECTURE](./ARCHITECTURE.md) (page layering / ISR / cadence), [DATA-CONTRACTS](./DATA-CONTRACTS.md) (consumed JSON view schema), [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) (M3E token / components / motion) onto this `web/` **Next.js 16 App Router** application's **rendering config / data consumption / components / i18n**. The route and source-file inventory is maintained only in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md).
+> **Frontend implementation source of truth** — lands [REQUIREMENTS](./REQUIREMENTS.md) (what to do), [ARCHITECTURE](./ARCHITECTURE.md) (page layering / ISR / cadence), [DATA-CONTRACTS](./DATA-CONTRACTS.md) (consumed JSON view schema), [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) (M3E token / components / motion) onto this `web/` **Next.js 16 App Router** application's **rendering config / data consumption / components / i18n**. The route and source-file inventory is maintained only in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md).
 > SEO metadata / sitemap / canonical details are in [SEO.md](./SEO.md); Route Handler and public JSON endpoint contracts are in [API.md](./API.md); Blob layout / environment variables / deployment topology are in [OPS.md](./OPS.md).
 > Technical facts are based on **Next.js 16.3.5 · React 19.2.4 · TypeScript 6 · Tailwind 4 · Zod 4 · package manager bun 1.3.14** (see `web/package.json` and the root `package.json`).
 
@@ -46,7 +46,7 @@ The authoritative catalog of requirement IDs is in [REQUIREMENTS.md §0](./REQUI
 | # | Principle | Implementation constraint |
 |---|---|---|
 | 1 | **RSC by default, zero client JS first** | Content pages are all Server Components; charts are server-rendered SVG/DOM; motion is pure CSS. The only allowed client JS is in §4. |
-| 2 | **build reads only JSON, zero engine at runtime, unaware of Workflow** | The page body and `generateMetadata` only `fetch` budgeted JSON views (Vercel Blob), and **never** load Parquet / DuckDB / native modules on the build / request path, and also **do not know** that Vercel Workflow exists——how the data is produced (bootstrap / cron / Workflow) is transparent to the page, and the page only reads the final JSON (see [ARCHITECTURE](./ARCHITECTURE.md), [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)). |
+| 2 | **build reads only JSON, zero engine at runtime, unaware of Workflow** | The page body and `generateMetadata` only `fetch` budgeted JSON views (Vercel Blob), and **never** load Parquet / DuckDB / native modules on the build / request path, and also **do not know** that Vercel Workflow exists — how the data is produced (bootstrap / cron / Workflow) is transparent to the page, and the page only reads the final JSON (see [ARCHITECTURE](./ARCHITECTURE.md), [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md)). |
 | 3 | **Page layering ↔ Next config in one-to-one correspondence** | Core pages are built at deploy; long-tail pages use on-demand ISR; mover/pulse get a daily `revalidatePath`; history is frozen. This is the core of this document, see §2. |
 | 4 | **Token-driven, do not hard-code the palette** | Components use Tailwind utilities to reference the M3E runtime variables in `globals.css` (`bg-primary-container`, `text-on-surface-variant`…), and theme switching takes effect immediately (see [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §Integrating Tailwind 4). |
 | 5 | **Data is language-neutral** | i18n translates only UI chrome / navigation / labels / meta; repo names, descriptions, languages, topics, and numbers keep the original text (see §7, [PRODUCT](./PRODUCT.md) i18n). |
@@ -117,18 +117,18 @@ This is the section that lands [ARCHITECTURE](./ARCHITECTURE.md) "page layering 
 | **mover** | repo/org in the mover set + `/pulse` | Pulse: event-driven, refresh only "the small set that is moving" | Weekly/daily cron `revalidatePath` targeted invalidation for them → regenerated on the next visit |
 | **History** | Past periods already folded into Parquet | Old newspaper: never reprinted | Pure static hits the CDN; unchanged data = no revalidate |
 
-> Key point: **a long-tail page "becoming a page" is extremely cheap** (lazy generation, does not occupy build budget)——so week pages / org pages as standalone pages are not constrained by the 45min build cap ([ARCHITECTURE](./ARCHITECTURE.md) rendering layering).
+> Key point: **a long-tail page "becoming a page" is extremely cheap** (lazy generation, does not occupy build budget) — so week pages / org pages as standalone pages are not constrained by the 45min build cap ([ARCHITECTURE](./ARCHITECTURE.md) rendering layering).
 >
 > **Long-tail `revalidate` is not a one-size-fits-all `false`** (split per file; the code is authoritative):
-> - **repo `/[owner]/[name]`** = `86400` (`page.tsx:22`)——generated on first visit + background regeneration every 1 day, plus the mover same-day `revalidatePath`.
-> - **org index `/o` / `/o/page/[page]`** = `3600`——provides a crawlable owner directory layer, prerendered by the page count of `lookup/orgs.json`.
-> - **org `/o/[login]`** = `86400`——generated on first visit + background regeneration every 1 day, plus mover targeted invalidation.
-> - **category `/categories*`** = `86400`——a newly published registry category can appear within 1 day without a redeploy; category detail page 2+ self-canonicalizes via `/categories/[dimension]/[slug]/page/[page]`.
+> - **repo `/[owner]/[name]`** = `86400` (`page.tsx:22`) — generated on first visit + background regeneration every 1 day, plus the mover same-day `revalidatePath`.
+> - **org index `/o` / `/o/page/[page]`** = `3600` — provides a crawlable owner directory layer, prerendered by the page count of `lookup/orgs.json`.
+> - **org `/o/[login]`** = `86400` — generated on first visit + background regeneration every 1 day, plus mover targeted invalidation.
+> - **category `/categories*`** = `86400` — a newly published registry category can appear within 1 day without a redeploy; category detail page 2+ self-canonicalizes via `/categories/[dimension]/[slug]/page/[page]`.
 > - Historical year/month/week still use the `revalidate=false` segment in the §2.2 "core pages" mixed file (current year/current month prerendered, history on demand).
 
 ### 2.2 Segment-config cheat sheet (what to paste for each page type)
 
-**Core pages (Pulse / Rankings / current year / current month)** —— deploy builds concrete params:
+**Core pages (Pulse / Rankings / current year / current month)** — deploy builds concrete params:
 
 ```ts
 // example: app/rankings/[year]/page.tsx (the current year takes the core path, history takes ISR — same file, mixed)
@@ -141,7 +141,7 @@ export async function generateStaticParams() {
 export const revalidate = false              // no polling; the daily cron uses revalidatePath to refresh the current year
 ```
 
-**Long-tail pages (repo / org / week / historical year-month)** —— not built at deploy:
+**Long-tail pages (repo / org / week / historical year-month)** — not built at deploy:
 
 ```ts
 // example: app/o/[login]/page.tsx (repo / org detail-page pattern)
@@ -169,7 +169,7 @@ The layering model must be declared explicitly in `web/next.config.ts`:
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // key point: cacheComponents must stay "off"——turning it on disables dynamicParams,
+  // key point: cacheComponents must stay "off" — turning it on disables dynamicParams,
   // and makes an empty generateStaticParams() error at build (conflicts with "long tail fully on demand").
   // see ARCHITECTURE page layering §config points / SEO §3.4. Off by default, do not turn it on by mistake.
 };
@@ -206,7 +206,7 @@ Page BODY and chrome (top bar / footer / breadcrumb labels / section titles) are
 - `web/app/_localized/*`: shared server page implementations; after receiving the route locale / dictionary / canonical path, they render localized chrome, metadata, JSON-LD, and deterministic copy.
 - `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` are Server Components; `SearchBox`, `LanguageSwitcher`, and `ThemeToggle` are the minimal client islands in the top bar, and `LanguageSwitcher` only generates locale URL links.
 - Each page (`page.tsx` / `pulse` / `rankings*` / `about` / repo / org / category): does not read the cookie; repo/org use `generateStaticParams() => []` to switch to on-demand ISR.
-- `web/lib/i18n/server.ts`: **deprecated**——reading the cookie breaks static; kept only for non-page server contexts, do not call it in page/layout.
+- `web/lib/i18n/server.ts`: **deprecated** — reading the cookie breaks static; kept only for non-page server contexts, do not call it in page/layout.
 
 **Build route table** (`cd web && bun run build`):
 
@@ -262,7 +262,7 @@ export const getRepoEntity = cache(async (id: number) => {
 });
 ```
 
-- **At runtime only `fetch` + `parse`**——no aggregation, no engine ([ARCHITECTURE](./ARCHITECTURE.md) rendering strategy).
+- **At runtime only `fetch` + `parse`** — no aggregation, no engine ([ARCHITECTURE](./ARCHITECTURE.md) rendering strategy).
 - **Unknown param → `notFound()`** (404, soft 200 forbidden, see [SEO](./SEO.md) §3.2). `[owner]/[name]/page.tsx` first looks up the id with `getRepoIdByFullName()`; if not found, it looks up `lookup/aliases.json` (`getAliasMap`), and on a rename-alias hit `permanentRedirect`s (308) to the current `full_name`; if still absent, `notFound()`, then `getRepoEntity(id)`, and if empty, `notFound()` again.
 - **`categories/assignments`**: a new generation is an index + 32 repo-id shards. `getCategoryAssignments()` batch-reads shards with limited concurrency and then assembles them (CF Workers subrequest cap; `HOSTING_TARGET=cf` is tighter), then hands them to non-CF repo/org/ranking-detail. Vercel `/rankings` uses `getCategoryAssignmentsForRepos` to read only the shards needed by the leading rows, and does so after the core ranking views; Vercel ranking-detail / repo / org likewise narrow by this page's ids. On CF these pages, like `/rankings`, skip the assignment fan-out (language-category exits remain); the full `loadCategoryAssignments` is hard short-circuited on CF. ISR keeps `force-cache` / daily revalidate, and `no-store` is forbidden. An already-published v1 monolith remains readable (a single GET, no fan-out).
 - **`bootstrap/latest.json`**: when a page read hits 403/429/5xx, it does bounded retry + jitter, and does not treat 403 as 404. On failure it uses the last-known-good pointer or the managed `views/latest.json`. A structured error is recorded only once within the same TTL.
@@ -351,7 +351,7 @@ All pure CSS, zero JS ([DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §Motion), and the to
 
 **reduced-motion fallback (mandatory, `globals.css:275`)**: globally turn off animation/transition, and pin the animation end state (`.spine-bar` directly `scaleX(var(--w))`, `.curve-line` `stroke-dashoffset:0`, `.curve-area` `opacity:1`), so layout and the end state stay correct with no motion. Entrance animations of new components **must** add the corresponding pinned end state in this block.
 
-> Spring-curve keypoints are precomputed at build time ([DESIGN-SYSTEM](./DESIGN-SYSTEM.md) implementation checklist)——`globals.css` is currently a handwritten snapshot, to be replaced after the generator lands.
+> Spring-curve keypoints are precomputed at build time ([DESIGN-SYSTEM](./DESIGN-SYSTEM.md) implementation checklist) — `globals.css` is currently a handwritten snapshot, to be replaced after the generator lands.
 
 ---
 
@@ -364,7 +364,7 @@ All pure CSS, zero JS ([DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §Motion), and the to
 | Top bar Top App Bar | `_explore/Chrome.tsx` | RSC + islands | sticky frosted-glass bar: logo (gold ★ + wordmark) + optional tag pill + search box (SearchBox) + navigation (Pulse / Rankings · Categories `md+` · Compare `sm+` · About `sm+`) + language/theme switch; the Chrome shell is server-rendered, and SearchBox/LanguageSwitcher/ThemeToggle hydrate |
 | Site-wide search SearchBox | `_explore/SearchBox.tsx` | **Client island** | Navbar search box; on first focus it lazy-loads `/search-index` with browser revalidation semantics, description is truncated at the route layer, and MiniSearch index building and queries run inside a Web Worker (prefix/fuzzy 0.2/weighted by stars). Multi-action results use a named non-modal `dialog` + a plain `list`: ↑↓ move real focus, Enter opens the result, Esc closes and returns focus to the input, and Tab keeps the native link→compare-button order; compare selection is expressed only by the button `aria-pressed`. Failure retry uses cache reload, and aborts/discards old requests. Each result has a "+compare" checkbox + a bottom "compare N →" that goes to `/compare?repos=...` (a row click still goes to the repo) |
 | Share ShareButton | `_explore/ShareButton.tsx` | **Client** | Copy link + X share intent; 7-language `share.*` chrome i18n; wired to repo / ranking month-week / year pages. Ranking pages also have a dynamic OG card (`rankings/[year]/[period]/opengraph-image.tsx` + `[year]/opengraph-image.tsx`, sharing `lib/og-card.tsx`) |
-| Monthly narrative Narrative | `_explore/Narrative.tsx` | RSC | A 7-language narrative at the top of the month ranking; the server renders each locale's text once, and `html[lang]` CSS shows the current language. Copy is assembled at month-page **render time** by a deterministic template (`lib/narrative.ts`) from ranking data——**no AI / no artifact** |
+| Monthly narrative Narrative | `_explore/Narrative.tsx` | RSC | A 7-language narrative at the top of the month ranking; the server renders each locale's text once, and `html[lang]` CSS shows the current language. Copy is assembled at month-page **render time** by a deterministic template (`lib/narrative.ts`) from ranking data — **no AI / no artifact** |
 | Ranking RankingList | `_explore/RankingList.tsx` | RSC | Ordered list, `variant: "gained"|"rate"|"crossed"`; a row = gold rank + mono repo name + language/count pill + right-aligned metric; the whole row is `<Link>`→the repo page; the overall ranking's two columns use a fixed row height and single-line truncation, so both sides are the same height when the count is the same |
 | Heatmap Heatmap | `_explore/Heatmap.tsx` | RSC | DOM grid + `color-mix` intensity; an optional `href` wraps `<Link>`; `square`/`columns` control the calendar layout |
 | Star curve StarCurve | `_explore/StarCurve.tsx` | RSC | Server SVG area chart + milestone gold dots + inflection marker dots (three-level color dots + `<title>` tooltip, zero JS) + `role="img"` + aria-label |
@@ -397,9 +397,9 @@ All pure CSS, zero JS ([DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §Motion), and the to
 | `layout-tokens.ts` | `_explore/` | Shared page horizontal gutter: `PAD_X = px-[clamp(1.25rem,5vw,2.5rem)]`, aligned to the [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) locked baseline |
 | `LanguageSwitcher` | `components/` | Current language + a dropdown to switch to the other languages; en/ja/zh/zh-TW/ko/es/fr; each item is a plain link to the corresponding locale URL |
 | `JsonLd` | `_explore/` | Injects JSON-LD such as `CollectionPage`, `ItemList`, and repo/org entities |
-| `PrevNext` (`NavArrow`/`MonthArrow`) | inline | Prev/next month / prev/next year / prev/next week (year/month/week pages)—— can be extracted as a component |
-| `EntityCard` | inline | repo/org cards (pulse / rankings)—— can be extracted as a component |
-| `YearSpine` | inline | Home spine (home / pulse)—— can be extracted as a component |
+| `PrevNext` (`NavArrow`/`MonthArrow`) | inline | Prev/next month / prev/next year / prev/next week (year/month/week pages) — can be extracted as a component |
+| `EntityCard` | inline | repo/org cards (pulse / rankings) — can be extracted as a component |
+| `YearSpine` | inline | Home spine (home / pulse) — can be extracted as a component |
 
 ### 6.4 Component ↔ JSON contract mapping
 
@@ -411,7 +411,7 @@ All pure CSS, zero JS ([DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §Motion), and the to
 | `Heatmap` | `heatmap/{scope}/{period}.cells` (`[date|period, total]`); the current month merges `current_month.json.daily_totals` |
 | Spine (YearSpine) | `hot-snapshot.home.year_spine` (`[year, total]`) |
 
-> ⚠️ `entity/repo.curve.recent_daily` may be negative (unstar, [DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5); `StarCurve` takes `curve.monthly.total_end` (cumulative) as `total`, and still draws the axis/area under a monotonic-increase assumption——when the real curve's tail net segment falls back, rendering correctness needs to be confirmed; `max` should take the sequence's actual maximum.
+> ⚠️ `entity/repo.curve.recent_daily` may be negative (unstar, [DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.5); `StarCurve` takes `curve.monthly.total_end` (cumulative) as `total`, and still draws the axis/area under a monotonic-increase assumption — when the real curve's tail net segment falls back, rendering correctness needs to be confirmed; `max` should take the sequence's actual maximum.
 
 ---
 
@@ -450,7 +450,7 @@ export const getDictionary = async (l: Locale) => (await dicts[l]()).default;
 - `LanguageSwitcher` shows the current route locale, and dropdown items are `<a>` links to the corresponding locale URL; it does not write a cookie, does not dispatch `gsc:localechange`, and does not translate the current page on the client. `/api/lang` remains as a compatibility entry: after writing `gsc_lang` it redirects to the locale URL.
 - SEO title/description, JSON-LD, FAQ, breadcrumbs, and the deterministic narrative are chosen on the server with the route locale; canonical points at the current locale's own URL, and `hreflang` / `x-default` are emitted by `pageMeta()`.
 
-### 7.3 canonical / hreflang（Metadata API）
+### 7.3 canonical / hreflang (Metadata API)
 
 Server-side multilingual URLs have landed: when calling `pageMeta()`, pass the locale, the language-prefixless canonical path, and the localized title / description; the helper generates the current locale canonical, `og:url`, `og:locale`, and the full `hreflang` matrix (including `x-default` -> English prefixless URL). Page body, metadata, the sitemap, and language-switch navigation all take the locale URL as authoritative.
 

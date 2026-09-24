@@ -12,7 +12,7 @@ source_of_truth_for:
 
 ## Scope
 
-This document is the **single baseline** of product requirements——defining "what to build". All structural disputes, new-feature proposals, and definition adjustments align here first. "How to build it" is spread across the layer documents: architecture [ARCHITECTURE](./ARCHITECTURE.md), data operations [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md), contract [DATA-CONTRACTS](./DATA-CONTRACTS.md), bootstrap pipeline [PIPELINE](./PIPELINE.md), ranking definitions [RANKING](./RANKING.md), frontend [FRONTEND](./FRONTEND.md), design system [DESIGN-SYSTEM](./DESIGN-SYSTEM.md), SEO [SEO](./SEO.md), operations [OPS](./OPS.md), testing [TESTING](./TESTING.md); the UX navigation narrative is in [INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md). Unbuilt features and blocked decisions are in [ROADMAP.md](./ROADMAP.md).
+This document is the **single baseline** of product requirements — defining "what to build". All structural disputes, new-feature proposals, and definition adjustments align here first. "How to build it" is spread across the layer documents: architecture [ARCHITECTURE](./ARCHITECTURE.md), data operations [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md), contract [DATA-CONTRACTS](./DATA-CONTRACTS.md), bootstrap pipeline [PIPELINE](./PIPELINE.md), ranking definitions [RANKING](./RANKING.md), frontend [FRONTEND](./FRONTEND.md), design system [DESIGN-SYSTEM](./DESIGN-SYSTEM.md), SEO [SEO](./SEO.md), operations [OPS](./OPS.md), testing [TESTING](./TESTING.md); the UX navigation narrative is in [INFORMATION-ARCHITECTURE](./INFORMATION-ARCHITECTURE.md). Unbuilt features and blocked decisions are in [ROADMAP.md](./ROADMAP.md).
 
 ## 0. Requirement IDs / priority / traceability matrix
 
@@ -50,7 +50,7 @@ Requirement ID is the stable key for traceability across BRD/PRD/FSD/UX/testing.
 
 - **Chronicle side**: look back at "which projects rose in a given period". A completed period = **frozen, exact, and replayable**. The main body of the product.
 - **Pulse side**: see "who is rising / exploding right now", especially **an old project suddenly waking up**. **Time-sensitive**; it is the engine of return visits and spread.
-- Differentiation: vs GitHub Trending (the present only) / star-history (a single repo) / gitstar-ranking (the current overall ranking only)——replayable + structured + has a pulse.
+- Differentiation: vs GitHub Trending (the present only) / star-history (a single repo) / gitstar-ranking (the current overall ranking only) — replayable + structured + has a pulse.
 - Visits: mainly long-tail search (`X star history`, `github trending 2024`, `who is rising`).
 
 ## 2. Dataset scope
@@ -113,7 +113,7 @@ Requirement ID is the stable key for traceability across BRD/PRD/FSD/UX/testing.
 - SSG-first; content pages have **zero client JS** (charts are server-side SVG); HTML < 20KB.
 - Page layers: **core** (built at deploy, a small set) / **long tail** (on-demand ISR, a durable store) / **mover** (refreshed daily, event-driven) / **history** (frozen).
 - Carries **100 × 10,000–1000 × 10,000/day**; the hot path is pure static via CDN, with zero Function; the Vercel build has a **45min cap** ⇒ do not build everything.
-- CWV：LCP<2.5s · INP<200ms · CLS<0.1。
+- CWV: LCP<2.5s · INP<200ms · CLS<0.1.
 
 ## 8. Data form / pipeline
 
@@ -124,7 +124,7 @@ Requirement ID is the stable key for traceability across BRD/PRD/FSD/UX/testing.
 ## 8a. Non-functional requirement: production does not depend on local compute ⭐
 
 - **All recurring data jobs are triggered, run, and recorded on Vercel** (Cron / Function / Workflow); local `pipeline/backfill` is only a one-off bootstrap / historical archive / emergency manual tool, and is **not on the day-to-day operations path**.
-- A single Function is limited by 800s / 4GB / bundle 250MB / a 4.5MB response body——**full recompute must be Workflow shards**, and large files go through a Blob direct link.
+- A single Function is limited by 800s / 4GB / bundle 250MB / a 4.5MB response body — **full recompute must be Workflow shards**, and large files go through a Blob direct link.
 - Newcomer repo history is **conservative by default** (tracked from the discovery day, and marked `tracked_since`), and GCP is not introduced as a recurring dependency in order to backfill history (the tradeoff is in [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §6).
 
 ## 9. SEO / i18n

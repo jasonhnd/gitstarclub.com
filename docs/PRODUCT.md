@@ -16,7 +16,7 @@ source_of_truth_for:
 
 ## Scope
 
-This document describes the **product itself**——what gitstarclub is, who it is for, what each page carries, tone, the data-honesty stance, and the i18n stance. Read this before changing the product. Version/stage/status belong to engineering progress, and are not covered here. Capabilities currently out of scope are in [ROADMAP.md](./ROADMAP.md).
+This document describes the **product itself** — what gitstarclub is, who it is for, what each page carries, tone, the data-honesty stance, and the i18n stance. Read this before changing the product. Version/stage/status belong to engineering progress, and are not covered here. Capabilities currently out of scope are in [ROADMAP.md](./ROADMAP.md).
 
 ## Requirement ID crosswalk
 
@@ -36,20 +36,20 @@ The single source of stable requirement IDs is [REQUIREMENTS.md §0](./REQUIREME
 
 ## Product positioning
 
-gitstarclub is a **chronicle of the open-source world + a real-time pulse** —— a two-sided site tracking about 5,302 ≥10k star projects across a 12-year timeline:
+gitstarclub is a **chronicle of the open-source world + a real-time pulse** — a two-sided site tracking about 5,302 ≥10k star projects across a 12-year timeline:
 
 - **Chronicle side**(year/month/week/repo/org/all-time ranking): look back at history, content is mostly frozen snapshots, marked "as of date".
 - **Pulse side**(`/pulse` + home "rising now" section): refreshed daily, showing who is rising, and old-project revival/spike.
 
-**Target users**: developers, tech media, and researchers interested in the open-source ecosystem——people who want to "browse by time" or "see what is happening now" rather than only look up a single repo.
+**Target users**: developers, tech media, and researchers interested in the open-source ecosystem — people who want to "browse by time" or "see what is happening now" rather than only look up a single repo.
 
 **Data honesty**: the site does not fabricate, does not predict, and does not emotionalize. Every chart and every ranking is based on an explicit definition (see [RANKING.md](./RANKING.md)). Frozen periods are marked with a snapshot date, and active periods are marked "refreshed daily".
 
 ## Tone
 
-**Material 3 Expressive (M3E)** —— the design language of 2025 / Android 17: vivid dynamic color, an expressive type hierarchy, rounded shapes, spring motion, tonal elevation, and frosted-glass texture.
+**Material 3 Expressive (M3E)** — the design language of 2025 / Android 17: vivid dynamic color, an expressive type hierarchy, rounded shapes, spring motion, tonal elevation, and frosted-glass texture.
 
-Differentiation no longer relies on "paper feel", but on a **cool graphite-gray neutral base + gold "star" accent + expressive motion**: gold is reserved for "star / peak" semantics, and surface uses cool neutral graphite gray (explicitly avoiding warm beige——that is the look of the Claude website). It is still different at a glance among the crowd of dark geek dashboards, and premium. Light and dark modes (system preference + manual toggle).
+Differentiation no longer relies on "paper feel", but on a **cool graphite-gray neutral base + gold "star" accent + expressive motion**: gold is reserved for "star / peak" semantics, and surface uses cool neutral graphite gray (explicitly avoiding warm beige — that is the look of the Claude website). It is still different at a glance among the crowd of dark geek dashboards, and premium. Light and dark modes (system preference + manual toggle).
 
 ### Fonts
 
@@ -63,7 +63,7 @@ Differentiation no longer relies on "paper feel", but on a **cool graphite-gray 
 
 ### Color (accent = amber gold `#F2A900`; surface = cool neutral graphite gray)
 
-**Gold is used only as accent ("star" color)**: primary / primary-container / primary-fixed-dim are M3 tokens hand-tuned from the amber-gold reference color and written in `web/app/globals.css`. **surface is decoupled from Claude warm beige**——switched to the M3 baseline cool neutral gray (with a very slight cool tint), and is not stained warm by the gold seed. Full sys color roles (including 5-level surface-container, fixed roles, and both light and dark sets).
+**Gold is used only as accent ("star" color)**: primary / primary-container / primary-fixed-dim are M3 tokens hand-tuned from the amber-gold reference color and written in `web/app/globals.css`. **surface is decoupled from Claude warm beige** — switched to the M3 baseline cool neutral gray (with a very slight cool tint), and is not stained warm by the gold seed. Full sys color roles (including 5-level surface-container, fixed roles, and both light and dark sets).
 
 > Note: in M3, `primary` (tone 40) is a **dark** text role, and **bright amber is on `primary-container`**; "bright gold" decoration (star, peak) uses `primary-fixed-dim`; surface / outline / inverse use the M3 baseline cool neutral gray (decoupled from the seed, avoiding warm staining → not colliding with Claude).
 > **The full palette (role × Light/Dark × use, both light and dark, all roles) is in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).**
@@ -99,7 +99,7 @@ Principle: **shortest, readable, SEO-friendly**. English keeps unprefixed URLs; 
 
 ## Core pages (chronicle + pulse, two sides)
 
-> **Chronicle side**: home/year/month/week/repo/org/all-time ranking——look back, mostly frozen / marked "as of date". **Pulse side**: `/pulse` + the home "rising now" section——refreshed daily, "who is rising / old projects revive" (freshness model in [REQUIREMENTS §6](./REQUIREMENTS.md)).
+> **Chronicle side**: home/year/month/week/repo/org/all-time ranking — look back, mostly frozen / marked "as of date". **Pulse side**: `/pulse` + the home "rising now" section — refreshed daily, "who is rising / old projects revive" (freshness model in [REQUIREMENTS §6](./REQUIREMENTS.md)).
 
 ### 1. Home `/`
 
@@ -181,8 +181,8 @@ Principle: **shortest, readable, SEO-friendly**. English keeps unprefixed URLs; 
 
 ### Discovery entry: site-wide search
 
-- **Navbar search box** (top-bar chrome), covering **all tracked repos**——a "jump by name" discovery entry, complementary to "browse by time" (year/month/week).
-- **Client-side instant search**: MiniSearch lazy-loads versioned `search/index.json` on first focus (via CDN); prefix + fuzzy typo tolerance, weighted by stars; results go directly to `/{owner}/{name}`. **Zero runtime backend**——there is no `/search?q=` results page.
+- **Navbar search box** (top-bar chrome), covering **all tracked repos** — a "jump by name" discovery entry, complementary to "browse by time" (year/month/week).
+- **Client-side instant search**: MiniSearch lazy-loads versioned `search/index.json` on first focus (via CDN); prefix + fuzzy typo tolerance, weighted by stars; results go directly to `/{owner}/{name}`. **Zero runtime backend** — there is no `/search?q=` results page.
 - **Each search result has a "+compare" checkbox**: after several are checked, a "Compare N →" button appears at the bottom and jumps to `/compare?repos=...`, and together with the navbar compare entry and the repo-page "Add to compare" button these form the compare tool's three entries.
 
 ### Compare tool: `/compare`
@@ -196,7 +196,7 @@ Principle: **shortest, readable, SEO-friendly**. English keeps unprefixed URLs; 
 
 ## Ranking matrix and ranking definitions
 
-> The full matrix **{week/month/year/all-time} × {repo/org} × {flow new adds / stock total}**——definitions, stock anchoring, and boundaries are in [RANKING.md](./RANKING.md). Below are the derived rankings commonly used on pages:
+> The full matrix **{week/month/year/all-time} × {repo/org} × {flow new adds / stock total}** — definitions, stock anchoring, and boundaries are in [RANKING.md](./RANKING.md). Below are the derived rankings commonly used on pages:
 
 | Ranking | Definition | Bias |
 |---|---|---|
@@ -222,7 +222,7 @@ The project name is **gitstarclub**, and the domain is **gitstarclub.com** (alre
 
 ## Visual / interaction details
 
-- **Always show previous/next month/year navigation** —— strengthens the sense of "browsing"
+- **Always show previous/next month/year navigation** — strengthens the sense of "browsing"
 - **A repo name inside a ranking = an internal link**; a change in star count = visual weight; language = a weak label
 - **Milestone links** = anchors on the month page, forming a mesh of internal circulation
 - **Timestamps are shown as both UTC + JST** (the JA locale leads with JST); date-grain data is by UTC day

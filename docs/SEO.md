@@ -472,7 +472,7 @@ Next.js 16 `app/.../sitemap.ts`'s `generateSitemaps()` returns `[{ id }]`, and s
 ```
 
 ```ts
-// app/r/sitemap.ts —— repo shard example (future)
+// app/r/sitemap.ts — repo shard example (future)
 import type { MetadataRoute } from "next";
 
 const PER = 50_000;
@@ -991,7 +991,7 @@ SSG + zero client JS + HTML < 20KB naturally satisfies them (see the performance
 - [ ] During the preview period: robots `Disallow: /` + meta `noindex` + a PRIVATE deployment, triple insurance
 - [ ] Cutover-day check: production is back to `Allow: /`, noindex is gone, the teaser has left the domain, and the sitemap is reachable
 
-**Search Console（§14）**
+**Search Console (§14)**
 
 - [ ] After the production cutover, verify the site + submit the sitemap index
 - [ ] Monitor the indexing rate (Discovered/Crawled not indexed), rich results, CWV, and hreflang diagnostics (locale URL / `x-default`, see §10)

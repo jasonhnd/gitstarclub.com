@@ -15,13 +15,13 @@ source_of_truth_for:
 
 ## Scope
 
-This document describes the **bootstrap pipeline**: it runs once, executed from the developer's machine, in order to seed `canonical/v2/**` and `views/**` out of blank. Scripts under the `pipeline/` directory are an archived form——they have already been run once, are no longer triggered in day-to-day operations, and are executed again only in the following cases:
+This document describes the **bootstrap pipeline**: it runs once, executed from the developer's machine, in order to seed `canonical/v2/**` and `views/**` out of blank. Scripts under the `pipeline/` directory are an archived form — they have already been run once, are no longer triggered in day-to-day operations, and are executed again only in the following cases:
 
 - The first cold start of a new environment
 - Disaster rebuild (Blob lost in full)
 - A new data source is introduced, and the historical baseline needs to be regenerated
 
-**Day-to-day recurring data refresh (whitelist / metadata / canonical fold / full recompute / publish / rollback) all runs on Vercel Workflow**——see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md). The local environment and the BigQuery / DuckDB engines **do not take part** in the day-to-day path, and also **should not** be stuffed into a single Vercel Function (subject to the 800s / 4GB / 250MB limits).
+**Day-to-day recurring data refresh (whitelist / metadata / canonical fold / full recompute / publish / rollback) all runs on Vercel Workflow** — see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md). The local environment and the BigQuery / DuckDB engines **do not take part** in the day-to-day path, and also **should not** be stuffed into a single Vercel Function (subject to the 800s / 4GB / 250MB limits).
 
 Ordinary Vercel cron is responsible only for JSON incremental refresh; engine-class full recompute is carried by a multi-step Vercel Workflow.
 
@@ -51,7 +51,7 @@ Credentials: `GITHUB_TOKEN` (GraphQL/Search), GCP (**bootstrap only** BigQuery),
 
 **01 whitelist** — GitHub Search `stars:>=MIN_TRACKED_STARS` (default `web/lib/constants.ts` = 10,000; runtime `MIN_TRACKED_STARS` may override it, and preview wrangler `env.pre` = 1,000) only does membership discovery. First query the current highest star with an open upper bound, then **adaptively bucket** by star range against that dynamic upper bound to get around the Search 1000-result cap (if a range is >1000, bisect); there is no fixed 600k cap. When preview `WHITELIST_SEARCH_SHARDS=1`, the Search queue is digested hop by hop (default 10 min / hop), and progress is written to `ops/workflows/<run_id>/whitelist-search.json`, so that a single isolate does not hit the `gitstarclub-jobs-pre` 15 min Queue wall; unset / `0` is still a single hop. Output `data/whitelist.json`: `{id, node_id, full_name, owner, name, stars}`; the Search `stars` there is a discovery audit value, not the displayed total. The default ≥10k scale is about 5.3k, and it changes weekly.
 
-> **Newcomer baseline (the first v2 run)**: the Workflow whitelist step (`whitelist.ts:24-28`) uses the id set of `canonical/v2/whitelist/latest.json` as the newcomer diff baseline; **when that pointer does not yet exist on the first run, it falls back to the id set of bootstrap `lookup/repos.json`**——otherwise the first run would misjudge every existing repo as a "newcomer". After that, each run writes `latest.json` back as the next run's baseline.
+> **Newcomer baseline (the first v2 run)**: the Workflow whitelist step (`whitelist.ts:24-28`) uses the id set of `canonical/v2/whitelist/latest.json` as the newcomer diff baseline; **when that pointer does not yet exist on the first run, it falls back to the id set of bootstrap `lookup/repos.json`** — otherwise the first run would misjudge every existing repo as a "newcomer". After that, each run writes `latest.json` back as the next run's baseline.
 
 **02 extract (BigQuery, ~$10)** — first `--dry_run` to confirm scan volume/cost, then run:
 ```sql
@@ -144,7 +144,7 @@ node backfill/07-export-v2.mjs --rollback legacy-flat --execute
 | §1 bootstrap step (local) | → | §4 Workflow step (Vercel) |
 |---|---|---|
 | 01-whitelist (Search) | → | step `refresh whitelist` (Search adaptive bucketing + diff) |
-| 03-metadata（GraphQL） | → | step `metadata shards` → `canonical/v2/repos/<bucket>.json` |
+| 03-metadata (GraphQL) | → | step `metadata shards` → `canonical/v2/repos/<bucket>.json` |
 | — (added) | → | step `rename detection` + `newcomer tracking` (`tracked_since`) |
 | 04-rollup (DuckDB → Parquet + milestones) | → | step `canonical shard update` (the live tail is folded into month/week JSON shards; milestones are frozen after bootstrap computes them) |
 | 05-precompute (DuckDB → every JSON view) | → | steps `rank / entity / heatmap recompute` (read JSON shards, pure JS aggregation → `views/<run_id>/**`); the entity/org step (`recompute-entity.ts`) derives `search/index.json` and it joins the validate gate |
@@ -164,7 +164,7 @@ The §3 weekly live cron and the §4 Workflow are prefix-isolated and each does 
 ## 5. Key algorithms
 
 - **Milestones**: the first day `repo cumsum(delta)` crosses a threshold (computed once at backfill, then frozen).
-- **stock historical anchoring**: gross accumulation × anchoring factor `d` aligned to `current_stars` —— the formula and the precision boundary are in [RANKING.md](./RANKING.md).
+- **stock historical anchoring**: gross accumulation × anchoring factor `d` aligned to `current_stars` — the formula and the precision boundary are in [RANKING.md](./RANKING.md).
 - **Period boundaries**: week = ISO week (UTC); month/year = UTC calendar boundaries. A week does not divide a month evenly, so canonical must be **day** grain (see the ARCHITECTURE decision).
 - **Fold aging**: when the current month closes → days aggregate into monthly (entity `curve.monthly`). An **ISO week** is folded into `repo-weekly` after every day it belongs to has fallen inside an already-frozen month (at the same time as the month fold, in the same `fold` step, watermark `folded_through.week`; a week that crosses months takes its daily aggregate from the two months' pending). ⚠️ **`repo-recent-daily` does not age at present**: it is seeded once by bootstrap (`07-export-v2`), and the recurring `fold` (`fold.ts`) folds only the month/week rollup + site-daily, and **does not read, write, or trim** recent-daily (`web/lib/` has no writer, only the reader `io.ts:53`); the rolling aging of "keep daily points for the recent ~90 days, and roll anything older into monthly" is **not yet implemented** (xref issue #3).
 
