@@ -278,8 +278,8 @@ export function checkMaintainedFacts(root) {
 const cjkProseDirectories = ["docs", "plans", ".cursor", ".grok"];
 const cjkProseFiles = ["AGENTS.md"];
 // Han text, full-width punctuation, and the Chinese double em dash.
-// A single em dash (U+2014) is the English replacement and stays allowed.
-const cjkPattern = /[\u4e00-\u9fff\u3002\u300C\u300D\uFF08\uFF09\uFF0C\uFF1A\uFF1B]|\u2014\u2014/;
+// A single em dash (U+2014) and English curly quotes stay allowed.
+const cjkPattern = /[\u4e00-\u9fff\u3001\u3002\u300A\u300B\u300C\u300D\u3010\u3011\uFF01\uFF08\uFF09\uFF0C\uFF1A\uFF1B\uFF1F]|\u2014\u2014/;
 
 // Product locale copy and tests that assert it may contain Han text.
 // These paths are outside the scanned roots; the filter is here so a wider scan cannot flag them.
