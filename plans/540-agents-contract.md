@@ -36,7 +36,7 @@ Extend the root `AGENTS.md` so every agent that only reads that file gets the sa
 
 ## Notes
 
-`scripts/check-docs.mjs` treats a backtick span containing `workers/.../wrangler.jsonc` as the repository path `web/wrangler.jsonc`, which is not a file. This plan therefore does not backtick that path.
+The docs path scanner treats a backtick span that merely contains the letters web/ as a repository path. The Worker wrangler config is therefore named in prose here, not in backticks.
 
 The active ruleset `release gates (pre/main)` requires a pull request into `pre` and `main`, blocks force-push and branch deletion, and requires status checks `static` and `production-build`. It allows merge, squash, and rebase. The merge-commit rule for promotion and the squash rule for feature PRs are policy in `AGENTS.md`; the ruleset does not force the method.
 
