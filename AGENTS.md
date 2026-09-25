@@ -51,184 +51,203 @@ Write the task plan as markdown under `plans/` (executable rule 4). A plan state
 
 ## Verification commands
 
-Run these with Node 24 (`.node-version`) and Bun 1.3.14 (root `packageManager`). The machine default often fails the check (this host's global Bun was 1.4.0: expected 1.3.14). Put the pinned binaries on `PATH` for the current shell with the block under "Pinned runtime". Do not change the global install. Each block below was run on this contract branch on 2026-09-25 and passed. Durations are wall time on that run. Install and `audit:deps` need network. Empty `SEO_LIVE_BASE` skips the live SEO file only. It does not keep the suite off the network. `web/lib/integration/live-smoke.test.ts` calls `readBlobBase()` before it looks at `RUN_LIVE_SMOKE`. That helper reads web/.env.local. When the file contains a Blob base, the suite fetches the hard-coded production site. Run the suite from a checkout with no web/.env.local (move the file aside when it exists) and with `RUN_LIVE_SMOKE` unset. Those steps are in the `web/` test block below.
+Run the static job from `.github/workflows/ci.yml` on the commit under test. Use Node 24 (`.node-version`; the tarball below is v24.20.0) and Bun 1.3.14 (root `packageManager`). A full `web/` suite is the bar. One test file is not.
 
-A full `web/` suite is the verification bar. A single test file is not.
-
-Every later block assumes this shell. Run the pinned-runtime block first.
-
-### Pinned runtime
-
-Session only. The binaries land under `$TMPDIR/gitstarclub-runtime` (or `/tmp/gitstarclub-runtime` when `TMPDIR` is unset). This does not replace the global Node or Bun, and it does not edit the shell profile. Do not pipe `https://bun.sh/install` into a shell: that installer appends a `PATH` line to the shell rc. This block downloads the Node 24.20.0 tarball and the Bun 1.3.14 release zip instead. On this Darwin arm64 host it printed Node v24.20.0 and Bun 1.3.14, then `runtime contract satisfied`. The other platform arms use the same release names and were not executed here.
+Use a fresh detached worktree of that commit. Untracked files in the owner's checkout, including web/.env.local, are not in the new tree. Do not move or delete files there. From the checkout you are editing:
 
 ```bash
-set -euo pipefail
-runtime_root="${TMPDIR:-/tmp}/gitstarclub-runtime"
-mkdir -p "$runtime_root"
+git worktree add --detach ../gsc-verify HEAD
+```
+
+Remove it from that same checkout when finished. Install and the builds leave untracked files, so removal needs `--force`:
+
+```bash
+git worktree remove --force ../gsc-verify
+```
+
+Run the two heredocs with `bash --noprofile --norc` under `env -i`. They do not use the parent shell, so zsh is fine as the parent. Each heredoc is its own process. Do not source it.
+
+The clean environment has no inherited variables. For an offline run, do not set `RUN_LIVE_SMOKE`, `LIVE_SMOKE_SITE_URL`, `RELEASE_GATE_REQUIRE_LIVE`, `RELEASE_GATE_SITE`, or `RELEASE_GATE_BLOB_BASE`. `web/lib/integration/release-gates-live.ts` runs live checks only when `RELEASE_GATE_REQUIRE_LIVE` is `1` or `true`. `web/lib/integration/live-smoke.test.ts` reads web/.env.local before `RUN_LIVE_SMOKE` and can then fetch production; a fresh worktree has no such file, so that suite skips. `web/lib/integration/seo.test.ts` treats a missing `SEO_LIVE_BASE` as the production site, so the static block sets it to empty, which is what CI does. It also sets `BLOB_BASE_URL` to `https://blob.example.com`. That value is a placeholder. Do not replace it with a real store, and do not export a Blob write credential.
+
+Bun reads `.env`, `.env.local`, and `.env.<NODE_ENV>` from the directory it starts in. A fresh worktree has none.
+
+Do not pipe the Bun installer into a shell. It appends to the shell rc. The bootstrap downloads the official archives, checks SHA-256, then extracts. Node sums come from `https://nodejs.org/dist/v24.20.0/SHASUMS256.txt`. Bun sums come from the `bun-v1.3.14` release `SHASUMS256.txt`. macOS uses `shasum -a 256 -c`. Linux uses `sha256sum -c` when `shasum` is absent. The cache is `$TMPDIR/gitstarclub-toolchain/node-v24.20.0` and `$TMPDIR/gitstarclub-toolchain/bun-1.3.14`. A cached binary is used only after that run has verified its archive. The bootstrap also links `bunx` to `bun`, because `cf:build` and the dry-run wrapper call `bunx`.
+
+The static block follows the CI `static` job: web install and audit, then pipeline install, audit, and test, then `lint:docs`, then web lint and the three typechecks, then view validation and `test:cov`. Pipeline packages have to be installed before `typecheck:scripts`. `test:cov` is `bun test lib/ --coverage --isolate` plus `scripts/check-coverage-threshold.mjs` (line and function coverage at least 80%). Restore a `bun.lock` if an install changes it. Do not commit that churn.
+
+App data for the two builds comes from the local GET/HEAD fixture on `127.0.0.1:4010`. `web/app/_shell/RootShell.tsx` imports `next/font/google`, so a cold build can also download fonts. Eslint ignores `.next` and does not ignore `.open-next`. The block lints before `cf:dry-run`. `cf:dry-run` is a dry run for wrangler env `pre` only. Do not deploy. Do not run `wrangler versions upload`. `cf:build` must be given `--site-target=production` or `--site-target=pre`. Production output is indexable. Preview output is `noindex`.
+
+### Bootstrap
+
+```bash
+env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:-/tmp}" \
+  bash --noprofile --norc -euo pipefail <<'SH'
+tool_root="${TMPDIR}/gitstarclub-toolchain"
 node_ver="v24.20.0"
+bun_ver="1.3.14"
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
 mach="$(uname -m)"
 case "$mach" in
   arm64|aarch64) node_arch="arm64" ;;
   x86_64) node_arch="x64" ;;
-  *) echo "unsupported machine: $mach" >&2; exit 1 ;;
+  *) echo "unsupported machine: $mach" >&2; false ;;
 esac
 case "$os" in
   darwin|linux) ;;
-  *) echo "unsupported os: $os" >&2; exit 1 ;;
+  *) echo "unsupported os: $os" >&2; false ;;
 esac
-node_dist="node-${node_ver}-${os}-${node_arch}"
-node_dir="$runtime_root/$node_dist"
-if [ ! -x "$node_dir/bin/node" ]; then
-  curl -fsSL "https://nodejs.org/dist/${node_ver}/${node_dist}.tar.gz" -o "$runtime_root/${node_dist}.tar.gz"
-  tar -xzf "$runtime_root/${node_dist}.tar.gz" -C "$runtime_root"
-fi
 case "${os}-${mach}" in
   darwin-arm64) bun_asset="bun-darwin-aarch64" ;;
   darwin-x86_64) bun_asset="bun-darwin-x64" ;;
   linux-x86_64) bun_asset="bun-linux-x64" ;;
   linux-aarch64|linux-arm64) bun_asset="bun-linux-aarch64" ;;
-  *) echo "unsupported bun platform: ${os}-${mach}" >&2; exit 1 ;;
+  *) echo "unsupported bun platform: ${os}-${mach}" >&2; false ;;
 esac
-bun_dir="$runtime_root/$bun_asset"
-if [ ! -x "$bun_dir/bun" ]; then
-  curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/${bun_asset}.zip" -o "$runtime_root/${bun_asset}.zip"
-  unzip -q -o "$runtime_root/${bun_asset}.zip" -d "$runtime_root"
+if command -v shasum >/dev/null 2>&1; then
+  check_sum() { grep "  ${1}$" SHASUMS256.txt | shasum -a 256 -c -; }
+else
+  check_sum() { grep "  ${1}$" SHASUMS256.txt | sha256sum -c -; }
 fi
-export PATH="$node_dir/bin:$bun_dir:$PATH"
+verify_archive() {
+  cache="$1"
+  sums_url="$2"
+  archive_url="$3"
+  archive="$4"
+  extract="$5"
+  mkdir -p "$cache"
+  (
+    cd "$cache"
+    curl -fsSL "$sums_url" -o SHASUMS256.txt
+    if [ -f "$archive" ] && ! check_sum "$archive"; then
+      rm -f "$archive"
+      rm -rf "$extract"
+    fi
+    if [ ! -f "$archive" ]; then
+      curl -fsSL "$archive_url" -o "$archive"
+    fi
+    check_sum "$archive"
+  )
+}
+node_dist="node-${node_ver}-${os}-${node_arch}"
+node_cache="${tool_root}/node-${node_ver}"
+verify_archive "$node_cache" \
+  "https://nodejs.org/dist/${node_ver}/SHASUMS256.txt" \
+  "https://nodejs.org/dist/${node_ver}/${node_dist}.tar.gz" \
+  "${node_dist}.tar.gz" \
+  "$node_dist"
+if [ ! -x "${node_cache}/${node_dist}/bin/node" ]; then
+  tar -xzf "${node_cache}/${node_dist}.tar.gz" -C "$node_cache"
+fi
+bun_cache="${tool_root}/bun-${bun_ver}"
+verify_archive "$bun_cache" \
+  "https://github.com/oven-sh/bun/releases/download/bun-v${bun_ver}/SHASUMS256.txt" \
+  "https://github.com/oven-sh/bun/releases/download/bun-v${bun_ver}/${bun_asset}.zip" \
+  "${bun_asset}.zip" \
+  "$bun_asset"
+if [ ! -x "${bun_cache}/${bun_asset}/bun" ]; then
+  unzip -q -o "${bun_cache}/${bun_asset}.zip" -d "$bun_cache"
+fi
+ln -sfn bun "${bun_cache}/${bun_asset}/bunx"
+export PATH="${node_cache}/${node_dist}/bin:${bun_cache}/${bun_asset}:${PATH}"
 hash -r
 node --version
 bun --version
-node scripts/assert-runtime-versions.mjs
+command -v bunx
+bunx --version
+SH
 ```
 
-Run that from the repo root. Later blocks in this file use the same shell.
+### Static job and local builds
 
-### Repository root
-
-No network. On the passing run, all three finished in under a second (`lint:docs` about 0.4s).
+`cd ../gsc-verify` first. The block checks the cached archives again, then runs the static job, the fixture production build, and `cf:dry-run`.
 
 ```bash
-set -euo pipefail
+env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:-/tmp}" \
+  bash --noprofile --norc -euo pipefail <<'SH'
+tool_root="${TMPDIR}/gitstarclub-toolchain"
+node_ver="v24.20.0"
+bun_ver="1.3.14"
+os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+mach="$(uname -m)"
+case "$mach" in
+  arm64|aarch64) node_arch="arm64" ;;
+  x86_64) node_arch="x64" ;;
+  *) echo "unsupported machine: $mach" >&2; false ;;
+esac
+case "${os}-${mach}" in
+  darwin-arm64) bun_asset="bun-darwin-aarch64" ;;
+  darwin-x86_64) bun_asset="bun-darwin-x64" ;;
+  linux-x86_64) bun_asset="bun-linux-x64" ;;
+  linux-aarch64|linux-arm64) bun_asset="bun-linux-aarch64" ;;
+  *) echo "unsupported bun platform: ${os}-${mach}" >&2; false ;;
+esac
+if command -v shasum >/dev/null 2>&1; then
+  check_sum() { grep "  ${1}$" SHASUMS256.txt | shasum -a 256 -c -; }
+else
+  check_sum() { grep "  ${1}$" SHASUMS256.txt | sha256sum -c -; }
+fi
+node_dist="node-${node_ver}-${os}-${node_arch}"
+node_cache="${tool_root}/node-${node_ver}"
+bun_cache="${tool_root}/bun-${bun_ver}"
+( cd "$node_cache" && check_sum "${node_dist}.tar.gz" )
+( cd "$bun_cache" && check_sum "${bun_asset}.zip" )
+export PATH="${node_cache}/${node_dist}/bin:${bun_cache}/${bun_asset}:${PATH}"
+hash -r
+node --version
+bun --version
+command -v bunx
+bunx --version
 node scripts/assert-runtime-versions.mjs
 node scripts/assert-cf-ci-gates.mjs
+( cd web && bun install --frozen-lockfile && bun run audit:deps )
+( cd pipeline && bun install --frozen-lockfile && bun run audit:deps && bun run test )
 bun run lint:docs
-```
-
-`assert-runtime-versions` prints `runtime contract satisfied` for Node 24.x and Bun 1.3.14. `assert-cf-ci-gates` checks the preview Worker name, an empty production cron list, and that automation does not live-deploy. `lint:docs` checks Markdown fences, docs contracts, the CJK gate, and the same CF gates.
-
-### `web/`
-
-```bash
-set -euo pipefail
-bun install --frozen-lockfile
-bun run audit:deps
-bun run lint
-bun run typecheck
-bun run typecheck:tests
-bun run typecheck:scripts
-bun run validate:views -- scripts/fixtures/views
-```
-
-Then, still from the repo root, run the suite only after moving web/.env.local aside and unsetting `RUN_LIVE_SMOKE`. Restore the file on the way out. `BLOB_BASE_URL=https://blob.example.com` is a public placeholder, not a live store. Do not replace it with a real Blob URL.
-
-```bash
-set -euo pipefail
-aside="${TMPDIR:-/tmp}/gitstarclub-web-env-local-aside"
-root="$(pwd)"
-moved=0
-if [ -e "$root/web/.env.local" ]; then
-  mv "$root/web/.env.local" "$aside"
-  moved=1
-fi
-cleanup() {
-  if [ "$moved" = 1 ] && [ -e "$aside" ]; then
-    mv "$aside" "$root/web/.env.local"
+(
+  cd web
+  bun run lint
+  bun run typecheck
+  bun run typecheck:tests
+  bun run typecheck:scripts
+  bun run validate:views -- scripts/fixtures/views
+  BLOB_BASE_URL="https://blob.example.com" SEO_LIVE_BASE="" bun run test:cov
+)
+start_fixture() {
+  bun scripts/ci-build-fixture-server.ts >"${TMPDIR}/ci-build-fixture.log" 2>&1 &
+  fixture_pid=$!
+  ready=0
+  for _step in $(seq 1 20); do
+    if curl --fail --silent "${BLOB_BASE_URL}/_health" >/dev/null; then
+      ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [ "$ready" != 1 ]; then
+    echo "fixture did not become ready" >&2
+    kill "$fixture_pid" 2>/dev/null || true
+    false
   fi
 }
-trap cleanup EXIT
-unset RUN_LIVE_SMOKE
 (
-  cd "$root/web"
-  BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE= bun run test
-  BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE= bun run test:cov
+  cd web
+  export BLOB_BASE_URL="http://127.0.0.1:4010"
+  fixture_pid=""
+  trap 'if [ -n "${fixture_pid:-}" ]; then kill "$fixture_pid" 2>/dev/null || true; fi' EXIT
+  start_fixture
+  bun run build
 )
-status=$?
-cleanup
-trap - EXIT
-exit "$status"
+(
+  cd web
+  export BLOB_BASE_URL="http://127.0.0.1:4010"
+  export HOSTING_TARGET="cf"
+  export NODE_OPTIONS="--max-old-space-size=8192"
+  fixture_pid=""
+  trap 'if [ -n "${fixture_pid:-}" ]; then kill "$fixture_pid" 2>/dev/null || true; fi' EXIT
+  start_fixture
+  bun run cf:dry-run
+)
+SH
 ```
-
-`test:cov` is `bun test lib/ --coverage --isolate` plus `scripts/check-coverage-threshold.mjs` (line and function coverage at least 80%). Observed: install about 1s (658 packages); audit under 1s with no high advisory; lint about 6s (0 errors); typecheck about 5s, tests about 3s, scripts about 1s; view validation under 1s (`discovered 15; validated 15; failed 0`); `test` about 25s (1304 pass, 49 skip, 0 fail, 1353 tests, 162 files); `test:cov` about 25s with the same counts and coverage lines 86.36%, functions 86.10%.
-
-Restore `web/bun.lock` if `bun install` changes it. Do not commit that churn.
-
-`bun run lint` also reads web/.open-next when that directory exists. Eslint ignores `.next/**` and does not ignore `.open-next`. A previous `cf:dry-run` leaves web/.open-next behind, and lint then fails. Remove that gitignored directory before linting.
-
-### `pipeline/`
-
-```bash
-set -euo pipefail
-bun install --frozen-lockfile
-bun run audit:deps
-bun run test
-```
-
-Observed: install about 41ms (35 packages); audit about 1s, exit 0; tests about 21ms (9 pass, 0 fail). Restore `pipeline/bun.lock` if the install changes it.
-
-### Production build
-
-This matches the `production-build` job: a GET/HEAD-only fixture, then `bun run build` in `web/`. Do not export a Blob write credential (`BLOB_READ_WRITE_TOKEN` must be unset). No real Blob URL.
-
-```bash
-set -euo pipefail
-cd web
-export BLOB_BASE_URL=http://127.0.0.1:4010
-bun scripts/ci-build-fixture-server.ts > /tmp/ci-build-fixture.log 2>&1 &
-fixture_pid=$!
-trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
-for attempt in $(seq 1 20); do
-  if curl --fail --silent "$BLOB_BASE_URL/_health" > /dev/null; then
-    bun run build
-    exit $?
-  fi
-  sleep 1
-done
-echo "fixture did not become ready" >&2
-exit 1
-```
-
-App data comes only from that fixture. It listens on `127.0.0.1:4010`, returns 404 for views, and rejects any method other than GET or HEAD. The app build must tolerate those missing views. `web/app/_shell/RootShell.tsx` imports `next/font/google`, so a cold build can also download fonts. A warm font cache does not. Observed: about 14s, Next.js 16.3.5, 248 static pages, exit 0.
-
-### Cloudflare build
-
-`cf:dry-run` is `cf:build:pre` and then `node ../scripts/cf-wrangler-dry-run.mjs`. That wrapper is `wrangler deploy --dry-run` for wrangler env `pre` only. It must not target the production Worker, and it must not drop `--dry-run`. Do not deploy. Do not run `wrangler versions upload`.
-
-Needs `BLOB_BASE_URL`. The successful local run used the same fixture as the production build (`http://127.0.0.1:4010`). The public placeholder, when a command needs a Blob base and is not using that fixture, is `https://blob.example.com`. Never a real store URL. `cf:build:pre` sets `SITE_INDEXABLE=0` itself. The optional CI job also sets `HOSTING_TARGET=cf` and `NODE_OPTIONS=--max-old-space-size=8192`; this run set both.
-
-```bash
-set -euo pipefail
-cd web
-export BLOB_BASE_URL=http://127.0.0.1:4010
-export HOSTING_TARGET=cf
-export NODE_OPTIONS=--max-old-space-size=8192
-bun scripts/ci-build-fixture-server.ts > /tmp/ci-build-fixture.log 2>&1 &
-fixture_pid=$!
-trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
-for attempt in $(seq 1 20); do
-  if curl --fail --silent "$BLOB_BASE_URL/_health" > /dev/null; then
-    bun run cf:dry-run
-    exit $?
-  fi
-  sleep 1
-done
-echo "fixture did not become ready" >&2
-exit 1
-```
-
-App data for this build comes from the same local fixture. A cold run can still download Google fonts, because `cf:dry-run` runs the Next build that loads `next/font/google` from `web/app/_shell/RootShell.tsx`. Observed: about 18s. `cf:build:pre` printed `cf:build pre indexing self-check passed`. Wrangler printed `--dry-run: exiting now`. Nothing was deployed.
-
-`cf:build` must be given `--site-target=production` or `--site-target=pre`. Production output is indexable. Preview (`pre`) output is `noindex`.
 
 ## Repository constraints
 
