@@ -62,6 +62,7 @@ Every later block assumes this shell. Run the pinned-runtime block first.
 Session only. The binaries land under `$TMPDIR/gitstarclub-runtime` (or `/tmp/gitstarclub-runtime` when `TMPDIR` is unset). This does not replace the global Node or Bun, and it does not edit the shell profile. Do not pipe `https://bun.sh/install` into a shell: that installer appends a `PATH` line to the shell rc. This block downloads the Node 24.20.0 tarball and the Bun 1.3.14 release zip instead. On this Darwin arm64 host it printed Node v24.20.0 and Bun 1.3.14, then `runtime contract satisfied`. The other platform arms use the same release names and were not executed here.
 
 ```bash
+set -euo pipefail
 runtime_root="${TMPDIR:-/tmp}/gitstarclub-runtime"
 mkdir -p "$runtime_root"
 node_ver="v24.20.0"
@@ -108,6 +109,7 @@ Run that from the repo root. Later blocks in this file use the same shell.
 No network. On the passing run, all three finished in under a second (`lint:docs` about 0.4s).
 
 ```bash
+set -euo pipefail
 node scripts/assert-runtime-versions.mjs
 node scripts/assert-cf-ci-gates.mjs
 bun run lint:docs
@@ -118,6 +120,7 @@ bun run lint:docs
 ### `web/`
 
 ```bash
+set -euo pipefail
 bun install --frozen-lockfile
 bun run audit:deps
 bun run lint
@@ -130,6 +133,7 @@ bun run validate:views -- scripts/fixtures/views
 Then, still from the repo root, run the suite only after moving web/.env.local aside and unsetting `RUN_LIVE_SMOKE`. Restore the file on the way out. `BLOB_BASE_URL=https://blob.example.com` is a public placeholder, not a live store. Do not replace it with a real Blob URL.
 
 ```bash
+set -euo pipefail
 aside="${TMPDIR:-/tmp}/gitstarclub-web-env-local-aside"
 root="$(pwd)"
 moved=0
@@ -159,9 +163,12 @@ exit "$status"
 
 Restore `web/bun.lock` if `bun install` changes it. Do not commit that churn.
 
+`bun run lint` also reads web/.open-next when that directory exists. Eslint ignores `.next/**` and does not ignore `.open-next`. A previous `cf:dry-run` leaves web/.open-next behind, and lint then fails. Remove that gitignored directory before linting.
+
 ### `pipeline/`
 
 ```bash
+set -euo pipefail
 bun install --frozen-lockfile
 bun run audit:deps
 bun run test
@@ -174,6 +181,7 @@ Observed: install about 41ms (35 packages); audit about 1s, exit 0; tests about 
 This matches the `production-build` job: a GET/HEAD-only fixture, then `bun run build` in `web/`. Do not export a Blob write credential (`BLOB_READ_WRITE_TOKEN` must be unset). No real Blob URL.
 
 ```bash
+set -euo pipefail
 cd web
 export BLOB_BASE_URL=http://127.0.0.1:4010
 bun scripts/ci-build-fixture-server.ts > /tmp/ci-build-fixture.log 2>&1 &
@@ -199,6 +207,7 @@ App data comes only from that fixture. It listens on `127.0.0.1:4010`, returns 4
 Needs `BLOB_BASE_URL`. The successful local run used the same fixture as the production build (`http://127.0.0.1:4010`). The public placeholder, when a command needs a Blob base and is not using that fixture, is `https://blob.example.com`. Never a real store URL. `cf:build:pre` sets `SITE_INDEXABLE=0` itself. The optional CI job also sets `HOSTING_TARGET=cf` and `NODE_OPTIONS=--max-old-space-size=8192`; this run set both.
 
 ```bash
+set -euo pipefail
 cd web
 export BLOB_BASE_URL=http://127.0.0.1:4010
 export HOSTING_TARGET=cf
