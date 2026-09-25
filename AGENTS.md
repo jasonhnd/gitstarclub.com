@@ -71,7 +71,7 @@ The clean environment has no inherited variables. For an offline run, do not set
 
 Bun reads `.env`, `.env.local`, and `.env.<NODE_ENV>` from the directory it starts in. A fresh worktree has none.
 
-Do not pipe the Bun installer into a shell. It appends to the shell rc. The bootstrap downloads the official archives, checks SHA-256, then extracts. Node sums come from `https://nodejs.org/dist/v24.20.0/SHASUMS256.txt`. Bun sums come from the `bun-v1.3.14` release `SHASUMS256.txt`. macOS uses `shasum -a 256 -c`. Linux uses `sha256sum -c` when `shasum` is absent. The cache is `$TMPDIR/gitstarclub-toolchain/node-v24.20.0` and `$TMPDIR/gitstarclub-toolchain/bun-1.3.14`. A cached binary is used only after that run has verified its archive. The bootstrap also links `bunx` to `bun`, because `cf:build` and the dry-run wrapper call `bunx`.
+Do not pipe the Bun installer into a shell. It appends to the shell rc. The bootstrap downloads the official archives, checks SHA-256, then extracts. Node sums come from `https://nodejs.org/dist/v24.20.0/SHASUMS256.txt`. Bun sums come from the `bun-v1.3.14` release `SHASUMS256.txt`. macOS uses `shasum -a 256 -c`. Linux uses `sha256sum -c` when `shasum` is absent. The cache is `$TMPDIR/gitstarclub-toolchain/node-v24.20.0` and `$TMPDIR/gitstarclub-toolchain/bun-1.3.14`. A cached binary is used only after that run has verified its archive. If an archive checksum fails, or a cached `node` or `bun` binary does not report v24.20.0 or 1.3.14, the block prints that path and exits non-zero. It does not delete the cache. Remove the named directory by hand, then run the bootstrap again. The only deletion outside the verify worktree is `git worktree remove` of the worktree this flow created. The bootstrap also links `bunx` to `bun`, because `cf:build` and the dry-run wrapper call `bunx`.
 
 The static block follows the CI `static` job: web install and audit, then pipeline install, audit, and test, then `lint:docs`, then web lint and the three typechecks, then view validation and `test:cov`. Pipeline packages have to be installed before `typecheck:scripts`. `test:cov` is `bun test lib/ --coverage --isolate` plus `scripts/check-coverage-threshold.mjs` (line and function coverage at least 80%). Restore a `bun.lock` if an install changes it. Do not commit that churn.
 
@@ -113,19 +113,20 @@ verify_archive() {
   sums_url="$2"
   archive_url="$3"
   archive="$4"
-  extract="$5"
   mkdir -p "$cache"
   (
     cd "$cache"
-    curl -fsSL "$sums_url" -o SHASUMS256.txt
-    if [ -f "$archive" ] && ! check_sum "$archive"; then
-      rm -f "$archive"
-      rm -rf "$extract"
+    if [ ! -f SHASUMS256.txt ]; then
+      curl -fsSL "$sums_url" -o SHASUMS256.txt
     fi
     if [ ! -f "$archive" ]; then
       curl -fsSL "$archive_url" -o "$archive"
     fi
-    check_sum "$archive"
+    if ! check_sum "$archive"; then
+      echo "checksum failed: ${cache}/${archive}" >&2
+      echo "remove ${cache} manually and run the bootstrap again" >&2
+      false
+    fi
   )
 }
 node_dist="node-${node_ver}-${os}-${node_arch}"
@@ -133,19 +134,27 @@ node_cache="${tool_root}/node-${node_ver}"
 verify_archive "$node_cache" \
   "https://nodejs.org/dist/${node_ver}/SHASUMS256.txt" \
   "https://nodejs.org/dist/${node_ver}/${node_dist}.tar.gz" \
-  "${node_dist}.tar.gz" \
-  "$node_dist"
-if [ ! -x "${node_cache}/${node_dist}/bin/node" ]; then
+  "${node_dist}.tar.gz"
+node_bin="${node_cache}/${node_dist}/bin/node"
+if [ ! -x "$node_bin" ]; then
   tar -xzf "${node_cache}/${node_dist}.tar.gz" -C "$node_cache"
+fi
+if [ "$("$node_bin" --version)" != "v${node_ver}" ]; then
+  echo "cached node failed re-verification: ${node_bin}" >&2
+  false
 fi
 bun_cache="${tool_root}/bun-${bun_ver}"
 verify_archive "$bun_cache" \
   "https://github.com/oven-sh/bun/releases/download/bun-v${bun_ver}/SHASUMS256.txt" \
   "https://github.com/oven-sh/bun/releases/download/bun-v${bun_ver}/${bun_asset}.zip" \
-  "${bun_asset}.zip" \
-  "$bun_asset"
-if [ ! -x "${bun_cache}/${bun_asset}/bun" ]; then
+  "${bun_asset}.zip"
+bun_bin="${bun_cache}/${bun_asset}/bun"
+if [ ! -x "$bun_bin" ]; then
   unzip -q -o "${bun_cache}/${bun_asset}.zip" -d "$bun_cache"
+fi
+if [ "$("$bun_bin" --version)" != "$bun_ver" ]; then
+  echo "cached bun failed re-verification: ${bun_bin}" >&2
+  false
 fi
 ln -sfn bun "${bun_cache}/${bun_asset}/bunx"
 export PATH="${node_cache}/${node_dist}/bin:${bun_cache}/${bun_asset}:${PATH}"
@@ -189,8 +198,26 @@ fi
 node_dist="node-${node_ver}-${os}-${node_arch}"
 node_cache="${tool_root}/node-${node_ver}"
 bun_cache="${tool_root}/bun-${bun_ver}"
-( cd "$node_cache" && check_sum "${node_dist}.tar.gz" )
-( cd "$bun_cache" && check_sum "${bun_asset}.zip" )
+node_bin="${node_cache}/${node_dist}/bin/node"
+bun_bin="${bun_cache}/${bun_asset}/bun"
+if ! ( cd "$node_cache" && check_sum "${node_dist}.tar.gz" ); then
+  echo "checksum failed: ${node_cache}/${node_dist}.tar.gz" >&2
+  echo "remove ${node_cache} manually and run the bootstrap again" >&2
+  false
+fi
+if ! ( cd "$bun_cache" && check_sum "${bun_asset}.zip" ); then
+  echo "checksum failed: ${bun_cache}/${bun_asset}.zip" >&2
+  echo "remove ${bun_cache} manually and run the bootstrap again" >&2
+  false
+fi
+if [ "$("$node_bin" --version)" != "v${node_ver}" ]; then
+  echo "cached node failed re-verification: ${node_bin}" >&2
+  false
+fi
+if [ "$("$bun_bin" --version)" != "$bun_ver" ]; then
+  echo "cached bun failed re-verification: ${bun_bin}" >&2
+  false
+fi
 export PATH="${node_cache}/${node_dist}/bin:${bun_cache}/${bun_asset}:${PATH}"
 hash -r
 node --version
