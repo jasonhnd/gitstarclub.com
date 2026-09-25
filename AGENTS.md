@@ -237,7 +237,7 @@ CSP. Production `script-src` stays `'self' 'unsafe-inline'` (`web/lib/csp.ts`). 
 
 Language switcher. Links go through `/api/lang?lang=…&next=…` (`web/app/components/LanguageSwitcher.tsx`). Do not point them at localized paths directly.
 
-Ranking periods. Navigation and sitemap periods come from `resolveAvailableRankPeriods` in `web/lib/data/rank-periods.ts` (data that exists), never from calendar math. Historical sitemap periods come from `meta.folded_through` (`web/lib/sitemap.ts`).
+Ranking periods. Navigation periods come from `resolveAvailableRankPeriods` in `web/lib/data/rank-periods.ts` (data that exists), never from calendar math. Sitemap routes do the same: `web/lib/sitemap-routes.ts` passes `resolveAvailableRankPeriods(now)` into `buildSitemapPaths`. `publishedRankingPeriodPaths` in `web/lib/sitemap.ts` uses that resolver result when it is present, and falls back to `meta.folded_through` only when it is absent. `web/lib/sitemap.test.ts` covers both.
 
 Tests. Bun `mock.module` is process-global. Never mock `@/lib/periods`. Never replace `globalThis.fetch` without restoring it. A change is verified only when the full `web/` suite passes, not when one file passes.
 
