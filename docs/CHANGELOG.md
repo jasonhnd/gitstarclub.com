@@ -19,6 +19,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Added
 
+- **Shared agent contract (#540).** Root `AGENTS.md` now restates branch, delivery, executor limits, verification commands, and repository constraints for every agent, and keeps executable rules 1-5. `.grok/rules/pre-only.md` and `.delivery.yml` stay and must agree with that file. Plan: [540-agents-contract.md](../plans/540-agents-contract.md).
+
 - **CF preview Bearer full-refresh acceptance matrix.** After #486, docs now have a pass/fail table for preview Worker Bearer full refresh: `fold-decision.json` is required; `reason=no_closed_month` without month/week plans is normal; recompute is month/week/rest then `publish`/`gc`; fetch-origin OOM or Queue silence is fail; production `triggers.crons` stays `[]` and Vercel cron is not stopped. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Docs only; does not enable production CF Cron or stop Vercel.
 
 - **CF Cron scheduled dispatch (preview draft).** Worker `scheduled` / `handleScheduled` now branches on `event.cron`: daily and weekly GET `{CF_CRON_ORIGIN}/api/cron/{daily,weekly}` with Bearer `CRON_SECRET`; Sunday 06:00 keeps `triggerStart` (or the preview fixture). Unknown expressions fail observably. Preview wrangler may list the three cron strings; production `triggers.crons` stays `[]`. Secrets and platform schedule enablement are ops follow-ups, not this change. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Does not enable production CF Cron or stop Vercel.
