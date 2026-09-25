@@ -51,9 +51,57 @@ Write the task plan as markdown under `plans/` (executable rule 4). A plan state
 
 ## Verification commands
 
-Run these with Node 24 (`.node-version`) and Bun 1.3.14 (root `packageManager`). `node scripts/assert-runtime-versions.mjs` fails when either pin is wrong. Each block below was run on this contract branch on 2026-09-25 and passed. Durations are wall time on that run. Install and `audit:deps` need network. Empty `SEO_LIVE_BASE` skips the live SEO file only. It does not keep the suite off the network. `web/lib/integration/live-smoke.test.ts` calls `readBlobBase()` before it looks at `RUN_LIVE_SMOKE`. That helper reads web/.env.local. When the file contains a Blob base, the suite fetches the hard-coded production site. Run the suite from a checkout with no web/.env.local (move the file aside when it exists) and with `RUN_LIVE_SMOKE` unset. Those steps are in the `web/` test block below.
+Run these with Node 24 (`.node-version`) and Bun 1.3.14 (root `packageManager`). The machine default often fails the check (this host's global Bun was 1.4.0: expected 1.3.14). Put the pinned binaries on `PATH` for the current shell with the block under "Pinned runtime". Do not change the global install. Each block below was run on this contract branch on 2026-09-25 and passed. Durations are wall time on that run. Install and `audit:deps` need network. Empty `SEO_LIVE_BASE` skips the live SEO file only. It does not keep the suite off the network. `web/lib/integration/live-smoke.test.ts` calls `readBlobBase()` before it looks at `RUN_LIVE_SMOKE`. That helper reads web/.env.local. When the file contains a Blob base, the suite fetches the hard-coded production site. Run the suite from a checkout with no web/.env.local (move the file aside when it exists) and with `RUN_LIVE_SMOKE` unset. Those steps are in the `web/` test block below.
 
 A full `web/` suite is the verification bar. A single test file is not.
+
+Every later block assumes this shell. Run the pinned-runtime block first.
+
+### Pinned runtime
+
+Session only. The binaries land under `$TMPDIR/gitstarclub-runtime` (or `/tmp/gitstarclub-runtime` when `TMPDIR` is unset). This does not replace the global Node or Bun, and it does not edit the shell profile. Do not pipe `https://bun.sh/install` into a shell: that installer appends a `PATH` line to the shell rc. This block downloads the Node 24.20.0 tarball and the Bun 1.3.14 release zip instead. On this Darwin arm64 host it printed Node v24.20.0 and Bun 1.3.14, then `runtime contract satisfied`. The other platform arms use the same release names and were not executed here.
+
+```bash
+runtime_root="${TMPDIR:-/tmp}/gitstarclub-runtime"
+mkdir -p "$runtime_root"
+node_ver="v24.20.0"
+os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+mach="$(uname -m)"
+case "$mach" in
+  arm64|aarch64) node_arch="arm64" ;;
+  x86_64) node_arch="x64" ;;
+  *) echo "unsupported machine: $mach" >&2; exit 1 ;;
+esac
+case "$os" in
+  darwin|linux) ;;
+  *) echo "unsupported os: $os" >&2; exit 1 ;;
+esac
+node_dist="node-${node_ver}-${os}-${node_arch}"
+node_dir="$runtime_root/$node_dist"
+if [ ! -x "$node_dir/bin/node" ]; then
+  curl -fsSL "https://nodejs.org/dist/${node_ver}/${node_dist}.tar.gz" -o "$runtime_root/${node_dist}.tar.gz"
+  tar -xzf "$runtime_root/${node_dist}.tar.gz" -C "$runtime_root"
+fi
+case "${os}-${mach}" in
+  darwin-arm64) bun_asset="bun-darwin-aarch64" ;;
+  darwin-x86_64) bun_asset="bun-darwin-x64" ;;
+  linux-x86_64) bun_asset="bun-linux-x64" ;;
+  linux-aarch64|linux-arm64) bun_asset="bun-linux-aarch64" ;;
+  *) echo "unsupported bun platform: ${os}-${mach}" >&2; exit 1 ;;
+esac
+bun_dir="$runtime_root/$bun_asset"
+if [ ! -x "$bun_dir/bun" ]; then
+  curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/${bun_asset}.zip" -o "$runtime_root/${bun_asset}.zip"
+  unzip -q -o "$runtime_root/${bun_asset}.zip" -d "$runtime_root"
+fi
+export PATH="$node_dir/bin:$bun_dir:$PATH"
+hash -r
+node --version
+bun --version
+node scripts/assert-runtime-versions.mjs
+```
+
+Run that from the repo root. Later blocks in this file use the same shell.
 
 ### Repository root
 
