@@ -12,7 +12,7 @@ Extend the root `AGENTS.md` so every agent that only reads that file gets the sa
 
 ## Out of scope
 
-- Editing `.grok/rules/pre-only.md`, `.delivery.yml`, CI workflows, `workers/gitstarclub-web/wrangler.jsonc`, or deploy scripts
+- Editing `.grok/rules/pre-only.md`, `.delivery.yml`, CI workflows, the Worker wrangler config, or deploy scripts
 - Pushing `main`, `pre`, or `preview`; merging; force-push; deleting branches or files
 - Live `wrangler deploy`, `wrangler versions upload`, Cloudflare schedule / DNS / route / secret changes
 - Calls to production cron or refresh endpoints
@@ -33,6 +33,12 @@ Extend the root `AGENTS.md` so every agent that only reads that file gets the sa
 - Executable rule 5 stays verbatim, including its zh / zh-TW / ja exception sentence. The Repository constraints section states the current site locales (`en`, `ja`, `zh`, `zh-TW`, `ko`, `es`, `fr`) and the paths `bun run lint:docs` allows. That later section is the complete contract the issue requires.
 - `.grok/rules/pre-only.md` still says implement, open PRs, merge, and rebase only against `pre`, and do not target `main`. This file restates that and adds: never push directly to `pre` or `main`; promotion is a separate `pre` to `main` PR with a merge commit, and only when the owner explicitly says "push main" or "promote to main". Those two files are not edited in this change; they must be kept consistent afterward.
 - `.delivery.yml` required checks stay `static` and `production-build`. `preview-e2e`, `product-gates`, `cf-preview`, and `cf-workers-host` stay optional and must not be made required.
+
+## Notes
+
+`scripts/check-docs.mjs` treats a backtick span containing `workers/.../wrangler.jsonc` as the repository path `web/wrangler.jsonc`, which is not a file. This plan therefore does not backtick that path.
+
+The active ruleset `release gates (pre/main)` requires a pull request into `pre` and `main`, blocks force-push and branch deletion, and requires status checks `static` and `production-build`. It allows merge, squash, and rebase. The merge-commit rule for promotion and the squash rule for feature PRs are policy in `AGENTS.md`; the ruleset does not force the method.
 
 ## Acceptance
 
