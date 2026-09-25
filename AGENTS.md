@@ -139,7 +139,7 @@ node_bin="${node_cache}/${node_dist}/bin/node"
 if [ ! -x "$node_bin" ]; then
   tar -xzf "${node_cache}/${node_dist}.tar.gz" -C "$node_cache"
 fi
-if [ "$("$node_bin" --version)" != "v${node_ver}" ]; then
+if [ "$("$node_bin" --version)" != "$node_ver" ]; then
   echo "cached node failed re-verification: ${node_bin}" >&2
   false
 fi
@@ -210,7 +210,7 @@ if ! ( cd "$bun_cache" && check_sum "${bun_asset}.zip" ); then
   echo "remove ${bun_cache} manually and run the bootstrap again" >&2
   false
 fi
-if [ "$("$node_bin" --version)" != "v${node_ver}" ]; then
+if [ "$("$node_bin" --version)" != "$node_ver" ]; then
   echo "cached node failed re-verification: ${node_bin}" >&2
   false
 fi
