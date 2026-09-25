@@ -225,6 +225,8 @@ Observed: about 18s. `cf:build:pre` printed `cf:build pre indexing self-check pa
 
 Language. The English-only policy is executable rule 5. It covers repository text, code comments, commits, issues, and pull requests. Site locales are `en`, `ja`, `zh`, `zh-TW`, `ko`, `es`, and `fr`. Non-English product copy is allowed only for ja, zh, zh-TW, ko, es, and fr, and only on the paths rule 5 lists.
 
+The automated check is narrower than that policy. `checkCjkProse` in `scripts/check-docs.mjs` walks only `docs/`, `plans/`, `.cursor/`, `.grok/`, and `AGENTS.md`. The pattern matches Han ideographs in U+4E00 through U+9FFF, the full-width marks U+3001, U+3002, U+300A, U+300B, U+300C, U+300D, U+3010, U+3011, U+FF01, U+FF08, U+FF09, U+FF0C, U+FF1A, U+FF1B, and U+FF1F, and a double em dash. It does not match hiragana, katakana, or hangul. A single em dash stays allowed. The same function skips the allowlist in rule 5, including the locale helpers `web/lib/format.ts`, `web/lib/narrative.ts`, and `web/lib/shareable-snippets.ts`, so a wider walk would still skip them. Those paths are outside the directories the check walks today. `bun run lint:docs` runs this check. A green run does not prove the rest of the tree is English.
+
 Product. Pages are fully prerendered static HTML plus small client islands. All data comes from precomputed JSON. There is no runtime AI, no runtime database, and no live search. Output is deterministic. Content pages stay near-zero client JavaScript. Do not add pages unless the issue says so. Follow `docs/GEO.md`.
 
 Reader-facing copy, in every language, does not mention Blob, rank JSON, lookup JSON, or server routes. Keep the signals that the page is precomputed, deterministic, and not live search or AI.
