@@ -51,7 +51,7 @@ Write the task plan as markdown under `plans/` (executable rule 4). A plan state
 
 ## Verification commands
 
-Run these with Node 24 (`.node-version`) and Bun 1.3.14 (root `packageManager`). `node scripts/assert-runtime-versions.mjs` fails when either pin is wrong. Each block below was run on this contract branch on 2026-09-25 and passed. Durations are wall time on that run. Install and `audit:deps` need network. The test and build commands below do not: live SEO probes stay off when `SEO_LIVE_BASE` is empty, and the builds talk only to the local fixture.
+Run these with Node 24 (`.node-version`) and Bun 1.3.14 (root `packageManager`). `node scripts/assert-runtime-versions.mjs` fails when either pin is wrong. Each block below was run on this contract branch on 2026-09-25 and passed. Durations are wall time on that run. Install and `audit:deps` need network. Empty `SEO_LIVE_BASE` skips the live SEO file only. It does not keep the suite off the network. `web/lib/integration/live-smoke.test.ts` calls `readBlobBase()` before it looks at `RUN_LIVE_SMOKE`. That helper reads web/.env.local. When the file contains a Blob base, the suite fetches the hard-coded production site. Run the suite from a checkout with no web/.env.local (move the file aside when it exists) and with `RUN_LIVE_SMOKE` unset. Those steps are in the `web/` test block below.
 
 A full `web/` suite is the verification bar. A single test file is not.
 
@@ -77,11 +77,37 @@ bun run typecheck
 bun run typecheck:tests
 bun run typecheck:scripts
 bun run validate:views -- scripts/fixtures/views
-BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE= bun run test
-BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE= bun run test:cov
 ```
 
-`BLOB_BASE_URL=https://blob.example.com` is a public placeholder, not a live store. Do not replace it with a real Blob URL. Empty `SEO_LIVE_BASE` keeps the deterministic gate off the network. `test:cov` is `bun test lib/ --coverage --isolate` plus `scripts/check-coverage-threshold.mjs` (line and function coverage at least 80%). Observed: install about 1s (658 packages); audit under 1s with no high advisory; lint about 6s (0 errors); typecheck about 5s, tests about 3s, scripts about 1s; view validation under 1s (`discovered 15; validated 15; failed 0`); `test` about 25s (1304 pass, 49 skip, 0 fail, 1353 tests, 162 files); `test:cov` about 25s with the same counts and coverage lines 86.36%, functions 86.10%.
+Then, still from the repo root, run the suite only after moving web/.env.local aside and unsetting `RUN_LIVE_SMOKE`. Restore the file on the way out. `BLOB_BASE_URL=https://blob.example.com` is a public placeholder, not a live store. Do not replace it with a real Blob URL.
+
+```bash
+aside="${TMPDIR:-/tmp}/gitstarclub-web-env-local-aside"
+root="$(pwd)"
+moved=0
+if [ -e "$root/web/.env.local" ]; then
+  mv "$root/web/.env.local" "$aside"
+  moved=1
+fi
+cleanup() {
+  if [ "$moved" = 1 ] && [ -e "$aside" ]; then
+    mv "$aside" "$root/web/.env.local"
+  fi
+}
+trap cleanup EXIT
+unset RUN_LIVE_SMOKE
+(
+  cd "$root/web"
+  BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE= bun run test
+  BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE= bun run test:cov
+)
+status=$?
+cleanup
+trap - EXIT
+exit "$status"
+```
+
+`test:cov` is `bun test lib/ --coverage --isolate` plus `scripts/check-coverage-threshold.mjs` (line and function coverage at least 80%). Observed: install about 1s (658 packages); audit under 1s with no high advisory; lint about 6s (0 errors); typecheck about 5s, tests about 3s, scripts about 1s; view validation under 1s (`discovered 15; validated 15; failed 0`); `test` about 25s (1304 pass, 49 skip, 0 fail, 1353 tests, 162 files); `test:cov` about 25s with the same counts and coverage lines 86.36%, functions 86.10%.
 
 Restore `web/bun.lock` if `bun install` changes it. Do not commit that churn.
 
