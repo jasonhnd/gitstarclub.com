@@ -2,7 +2,7 @@
 
 ## Goal
 
-Extend the root `AGENTS.md` so every agent that only reads that file gets the same contract: branches, delivery, forbidden executor actions, verification commands, and repository constraints. Keep the existing pointer and executable rules 1–5.
+Extend the root `AGENTS.md` so every agent that only reads that file gets the same contract: branches, delivery, forbidden executor actions, verification commands, and repository constraints. Keep the existing pointer and executable rules 1-4. Rule 5 names the real locale allowlist.
 
 ## Scope
 
@@ -30,7 +30,7 @@ Extend the root `AGENTS.md` so every agent that only reads that file gets the sa
 ## Reconciliation
 
 - Executable rule 3 stays verbatim: do not merge to `main` automatically; merging to `pre` is allowed. The new Forbidden section applies to executors: the reviewer or owner squash-merges feature PRs into `pre`. Rule 3's meaning does not change.
-- Executable rule 5 stays verbatim, including its zh / zh-TW / ja exception sentence. The Repository constraints section states the current site locales (`en`, `ja`, `zh`, `zh-TW`, `ko`, `es`, `fr`) and the paths `bun run lint:docs` allows. That later section is the complete contract the issue requires.
+- Executable rule 5 now names every non-English site locale (ja, zh, zh-TW, ko, es, fr) and the CJK-gate allowlist paths. Issue #540 asked both to keep rule 5 unchanged and to list all site locales. Those two instructions conflict. The owner corrected the brief: amend rule 5. Rules 1-4 stay verbatim.
 - `.grok/rules/pre-only.md` still says implement, open PRs, merge, and rebase only against `pre`, and do not target `main`. This file restates that and adds: never push directly to `pre` or `main`; promotion is a separate `pre` to `main` PR with a merge commit, and only when the owner explicitly says "push main" or "promote to main". Those two files are not edited in this change; they must be kept consistent afterward.
 - `.delivery.yml` required checks stay `static` and `production-build`. `preview-e2e`, `product-gates`, `cf-preview`, and `cf-workers-host` stay optional and must not be made required.
 
@@ -42,7 +42,7 @@ The active ruleset `release gates (pre/main)` requires a pull request into `pre`
 
 ## Acceptance
 
-- Rules 1–5 remain, with the same meaning.
+- Rules 1-4 remain, with the same meaning. Rule 5 names the non-English site locales and the CJK-gate allowlist.
 - All six issue sections are present and match `.grok/rules/pre-only.md`, `.delivery.yml`, and `.github/workflows/ci.yml`.
 - Every verification command listed in `AGENTS.md` was run locally; the PR body pastes each result.
 - `bun run lint:docs` passes.

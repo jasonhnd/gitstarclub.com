@@ -12,7 +12,7 @@ This repository currently has no root `WORKFLOW.md`. Follow pre-only plus `.deli
 2. In output for Jason, the first time a term appears, explain it in plain language.
 3. Do not merge to `main` automatically. Merging to `pre` is allowed.
 4. Write each task plan as markdown under `plans/`.
-5. All repository text, commit messages, issues, and pull requests are English. The only exception is product locale copy for readers of the zh / zh-TW / ja site (dictionaries, localized pages, and tests that assert that copy).
+5. All repository text, code comments, commits, issues, and pull requests are English. The exception is product locale copy for the non-English site locales ja, zh, zh-TW, ko, es, and fr, on the CJK-gate allowlist: `web/lib/i18n/dictionaries/`, `web/lib/i18n/locales.ts`, `web/app/_localized/`, `web/lib/format.ts`, `web/lib/narrative.ts`, `web/lib/shareable-snippets.ts`, `web/lib/format.test.ts`, `web/lib/narrative.test.ts`, `web/lib/shareable-snippets.test.ts`, `web/lib/geo-capsules.test.ts`, `web/lib/pulse-board-links.test.tsx`, `web/lib/rank-period-labels.test.ts`, `web/lib/rankings-archive.test.ts`, and `web/e2e/routing-security.spec.ts`.
 
 ## Branches
 
@@ -223,7 +223,7 @@ Observed: about 18s. `cf:build:pre` printed `cf:build pre indexing self-check pa
 
 ## Repository constraints
 
-Language. Repository text, code comments, commits, issues, and pull requests are English. The exception is product locale copy for readers of the site's non-English locales. Site locales are `en`, `ja`, `zh`, `zh-TW`, `ko`, `es`, and `fr`. That copy lives in `web/lib/i18n/dictionaries/*`, `web/lib/i18n/locales.ts`, `web/app/_localized/*`, and tests that assert it. `bun run lint:docs` rejects CJK anywhere else. Executable rule 5 stays as written; this paragraph is the full locale list the gate enforces.
+Language. The English-only policy is executable rule 5. It covers repository text, code comments, commits, issues, and pull requests. Site locales are `en`, `ja`, `zh`, `zh-TW`, `ko`, `es`, and `fr`. Non-English product copy is allowed only for ja, zh, zh-TW, ko, es, and fr, and only on the paths rule 5 lists.
 
 Product. Pages are fully prerendered static HTML plus small client islands. All data comes from precomputed JSON. There is no runtime AI, no runtime database, and no live search. Output is deterministic. Content pages stay near-zero client JavaScript. Do not add pages unless the issue says so. Follow `docs/GEO.md`.
 
