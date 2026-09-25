@@ -22,7 +22,7 @@ Extend the root `AGENTS.md` so every agent that only reads that file gets the sa
 ## Approach
 
 1. Read `AGENTS.md`, `.grok/rules/pre-only.md`, `.delivery.yml`, the `static` and `production-build` jobs in `.github/workflows/ci.yml`, `docs/GEO.md`, `docs/TESTING.md`, and the root / `web` / `pipeline` package scripts.
-2. Run the CI `static` mirror locally with Node 24 (`.node-version`) and Bun 1.3.14 (root `packageManager`). The machine default may differ; the runtime assert is the check.
+2. Run the CI `static` mirror from a fresh detached worktree and a clean `bash --noprofile --norc`, with Node 24 and Bun 1.3.14 checked by SHA-256. Do not move files in the owner's checkout.
 3. Try the `production-build` fixture (`web/scripts/ci-build-fixture-server.ts` on `127.0.0.1:4010`, then `bun run build` in `web/`). Try `bun run cf:build:pre` and `bun run cf:dry-run` the same way the optional `cf-workers-host` job does. Never deploy.
 4. Put a command in `AGENTS.md` only after it succeeds locally. Record pass/fail, counts, and duration in the PR body. Omit failures instead of guessing steps.
 5. Replace the sentence that says this file does not repeat or override the branch and delivery rules. Restate those rules here, and say `.grok/rules/pre-only.md` and `.delivery.yml` must stay consistent with this file.

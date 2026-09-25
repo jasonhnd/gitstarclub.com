@@ -19,7 +19,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Added
 
-- **Shared agent contract (#540).** Root `AGENTS.md` now restates branch, delivery, executor limits, verification commands, and repository constraints for every agent. Rules 1-4 stay as written. Rule 5 names the non-English site locales and the CJK-gate allowlist. Review corrections cover the live-smoke network hazard, a session-only Node 24 / Bun 1.3.14 setup, the real CJK scan, cold-build font downloads, sitemap periods, and Cloudflare Workers hosting. `.grok/rules/pre-only.md`, `.delivery.yml`, and `docs/GEO.md` stay as they are. Plan: [540-agents-contract.md](../plans/540-agents-contract.md).
+- **Shared agent contract (#540).** Root `AGENTS.md` now restates branch, delivery, executor limits, verification commands, and repository constraints for every agent. Rules 1-4 stay as written. Rule 5 names the non-English site locales and the CJK-gate allowlist. Offline verification is a fresh worktree plus a clean bash process. Node and Bun archives are SHA-256 checked before use. `.grok/rules/pre-only.md`, `.delivery.yml`, and `docs/GEO.md` stay as they are. Plan: [540-agents-contract.md](../plans/540-agents-contract.md).
 
 - **CF preview Bearer full-refresh acceptance matrix.** After #486, docs now have a pass/fail table for preview Worker Bearer full refresh: `fold-decision.json` is required; `reason=no_closed_month` without month/week plans is normal; recompute is month/week/rest then `publish`/`gc`; fetch-origin OOM or Queue silence is fail; production `triggers.crons` stays `[]` and Vercel cron is not stopped. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Docs only; does not enable production CF Cron or stop Vercel.
 
