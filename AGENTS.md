@@ -190,7 +190,7 @@ echo "fixture did not become ready" >&2
 exit 1
 ```
 
-The fixture listens on `127.0.0.1:4010`, returns 404 for views, and rejects any method other than GET or HEAD. The app build must tolerate those missing views. Observed: about 14s, Next.js 16.3.5, 248 static pages, exit 0. Localhost only.
+App data comes only from that fixture. It listens on `127.0.0.1:4010`, returns 404 for views, and rejects any method other than GET or HEAD. The app build must tolerate those missing views. `web/app/_shell/RootShell.tsx` imports `next/font/google`, so a cold build can also download fonts. A warm font cache does not. Observed: about 14s, Next.js 16.3.5, 248 static pages, exit 0.
 
 ### Cloudflare build
 
@@ -217,7 +217,7 @@ echo "fixture did not become ready" >&2
 exit 1
 ```
 
-Observed: about 18s. `cf:build:pre` printed `cf:build pre indexing self-check passed`. Wrangler printed `--dry-run: exiting now`. Nothing was deployed.
+App data for this build comes from the same local fixture. A cold run can still download Google fonts, because `cf:dry-run` runs the Next build that loads `next/font/google` from `web/app/_shell/RootShell.tsx`. Observed: about 18s. `cf:build:pre` printed `cf:build pre indexing self-check passed`. Wrangler printed `--dry-run: exiting now`. Nothing was deployed.
 
 `cf:build` must be given `--site-target=production` or `--site-target=pre`. Production output is indexable. Preview (`pre`) output is `noindex`.
 
