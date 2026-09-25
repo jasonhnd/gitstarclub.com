@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveMinTrackedStars } from "./constants.mjs";
+import { resolveRuntimeEnv } from "./workers-host/runtime-env";
 
 // Runtime configuration boundary for server-side data and workflow modules.
 // Keep process.env reads here so tests and route handlers can change config
@@ -18,8 +19,9 @@ export function runWithCloudflareWorkersHostForTests<T>(isCf: boolean, fn: () =>
   return cloudflareWorkersHostOverride.run(isCf, fn);
 }
 
-export function getBlobBaseUrl(env: RuntimeEnv = process.env): string {
-  return (env.BLOB_BASE_URL ?? env.NEXT_PUBLIC_BLOB_BASE_URL ?? "").replace(/\/+$/, "");
+export function getBlobBaseUrl(env?: RuntimeEnv): string {
+  const runtime = env ?? resolveRuntimeEnv();
+  return (runtime.BLOB_BASE_URL ?? runtime.NEXT_PUBLIC_BLOB_BASE_URL ?? "").replace(/\/+$/, "");
 }
 
 export function requireBlobBaseUrl(env?: RuntimeEnv): string {
@@ -28,8 +30,9 @@ export function requireBlobBaseUrl(env?: RuntimeEnv): string {
   return value;
 }
 
-export function getBlobWriteToken(env: RuntimeEnv = process.env): string | undefined {
-  return env.BLOB_READ_WRITE_TOKEN || undefined;
+export function getBlobWriteToken(env?: RuntimeEnv): string | undefined {
+  const runtime = env ?? resolveRuntimeEnv();
+  return runtime.BLOB_READ_WRITE_TOKEN || undefined;
 }
 
 export function requireBlobWriteToken(env?: RuntimeEnv): string {
@@ -38,8 +41,9 @@ export function requireBlobWriteToken(env?: RuntimeEnv): string {
   return value;
 }
 
-export function getGithubToken(env: RuntimeEnv = process.env): string | undefined {
-  return env.GITHUB_TOKEN || undefined;
+export function getGithubToken(env?: RuntimeEnv): string | undefined {
+  const runtime = env ?? resolveRuntimeEnv();
+  return runtime.GITHUB_TOKEN || undefined;
 }
 
 export function requireGithubToken(env?: RuntimeEnv): string {
