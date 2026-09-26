@@ -89,10 +89,12 @@
       "workers_dev": true,
       "preview_urls": true,
       "triggers": {
-        // Draft only. Platform PUT .../schedules (or wrangler deploy of this
-        // env) is an ops step; this PR does not enable preview cron.
-        // Dispatch also accepts CF Sunday DoW 7 / SUN for weekly + refresh.
-        "crons": ["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]
+        // Platform schedules for env.pre (wrangler deploy --env pre applies these).
+        // CF Schedules rejects Sunday=0 (API 10100); use 7 here. Worker dispatch
+        // still treats 0 / 7 / SUN as the same weekly + refresh jobs.
+        // Never wrangler versions upload pre without triggers deploy — top-level
+        // triggers.crons [] can wipe platform schedules.
+        "crons": ["0 3 * * *", "0 4 * * 7", "0 6 * * 7"]
       },
       "services": [
         {
