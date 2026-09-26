@@ -13,8 +13,8 @@ export const ALLOWED_CF_PREVIEW_ORIGINS = Object.freeze([
 ]);
 export const PRODUCTION_CRON_ORIGIN = "https://gitstarclub.com";
 export const PREVIEW_CRON_ORIGIN = "https://pre.gitstarclub.com";
-// Repo draft stays Vercel-parity (Sunday=0). Dispatch also accepts CF 7 / SUN.
-export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]);
+// Cloudflare Schedules rejects Sunday=0 (API 10100). Worker dispatch still aliases 0/7/SUN.
+export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * 7", "0 6 * * 7"]);
 export const PREVIEW_MIN_TRACKED_STARS = "1000";
 export const PRODUCTION_MIN_TRACKED_STARS = "10000";
 export const PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
@@ -298,9 +298,14 @@ export function assertCfCiGates(sources) {
   const previewCrons = preview?.triggers?.crons;
   if (previewCrons !== undefined && JSON.stringify(previewCrons) !== JSON.stringify([...PREVIEW_CRON_TRIGGERS])) {
     issues.push(
-      `wrangler env.${PREVIEW_WRANGLER_ENV} triggers.crons must be the three Vercel-parity expressions ${JSON.stringify(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} triggers.crons must be the three Cloudflare Schedules expressions ${JSON.stringify(
         [...PREVIEW_CRON_TRIGGERS],
-      )} (repo draft only; platform enable is ops)`,
+      )} (Sunday=7; dispatch aliases Vercel Sunday=0)`,
+    );
+  }
+  if (previewCrons?.some((cron) => typeof cron === "string" && /\* \* 0$/.test(cron) && cron !== "0 3 * * *")) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} triggers.crons must not use Sunday=0 (Cloudflare Schedules API 10100); use 7 for weekly/refresh`,
     );
   }
   const requiredProductionVars = [
