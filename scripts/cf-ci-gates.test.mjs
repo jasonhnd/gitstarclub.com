@@ -254,7 +254,7 @@ describe("CF CI gates", () => {
       }),
     );
     assert.ok(issues.some((issue) => issue.includes("top-level triggers.crons must stay []")));
-    assert.ok(issues.some((issue) => issue.includes("three Vercel-parity expressions")));
+    assert.ok(issues.some((issue) => issue.includes("three Cloudflare Schedules expressions")));
     assert.ok(issues.some((issue) => issue.includes(`top-level vars.CF_CRON_ORIGIN must be ${PRODUCTION_CRON_ORIGIN}`)));
     assert.ok(issues.some((issue) => issue.includes(`env.pre vars.CF_CRON_ORIGIN must be ${PREVIEW_CRON_ORIGIN}`)));
   });
@@ -321,7 +321,7 @@ describe("CF CI gates", () => {
     assert.equal(summary.previewOrigin, DEFAULT_CF_PREVIEW_ORIGIN);
     assert.equal(summary.assertScript, ASSERT_SCRIPT_REL);
     assert.deepEqual(summary.productionCrons, []);
-    assert.deepEqual([...PREVIEW_CRON_TRIGGERS], ["0 3 * * *", "0 4 * * 0", "0 6 * * 0"]);
+    assert.deepEqual([...PREVIEW_CRON_TRIGGERS], ["0 3 * * *", "0 4 * * 7", "0 6 * * 7"]);
     const wrangler = parseWranglerJsonc(readFileSync("workers/gitstarclub-web/wrangler.jsonc", "utf8"));
     assert.deepEqual(wrangler.triggers.crons, []);
     assert.equal(wrangler.env.pre.name, "gitstarclub-web-pre");

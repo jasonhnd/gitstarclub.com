@@ -122,6 +122,36 @@ describe("runLiveRefreshRoute health", () => {
     }
   });
 
+  test("skips daily during preview cold-start until lookup/repos.json is published", async () => {
+    const health: Array<{ pipeline: AlertPipeline; status: HealthStatus }> = [];
+    const claimPublication = mock(async () => {
+      throw new Error("cold-start daily must not claim a lease");
+    });
+    const response = await runLiveRefreshRoute(request("daily"), "daily", {
+      now: new Date("2026-07-17T03:00:00.000Z"),
+      requireRuntimeConfig: () => {},
+      claimPublication,
+      resolveDailyPreflight: async ({ runId, idempotencyKey }) =>
+        Response.json({
+          ok: true,
+          status: "skipped",
+          reason: "cold-start-awaiting-first-publish",
+          runId,
+          idempotency_key: idempotencyKey,
+        }),
+      refresh: successfulRefresh,
+      recordSyncRun: async () => null,
+      recordHealth: async (pipeline, status) => {
+        health.push({ pipeline, status });
+      },
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, status: "skipped", reason: "cold-start-awaiting-first-publish" });
+    expect(claimPublication).not.toHaveBeenCalled();
+    expect(health).toEqual([{ pipeline: "cron-daily", status: "ok" }]);
+  });
+
   test("skips Sunday daily so weekly owns that day's live publication", async () => {
     const health: Array<{ pipeline: AlertPipeline; status: HealthStatus }> = [];
     const claimPublication = mock(async () => {
