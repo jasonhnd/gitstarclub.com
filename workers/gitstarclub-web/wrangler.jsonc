@@ -46,7 +46,11 @@
   "vars": {
     "HOSTING_TARGET": "cf",
     "SITE_INDEXABLE": "1",
-    "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com"
+    "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com",
+    // Stopgap for #543: views/latest.json is missing. Serve this complete
+    // version until the pointer is restored, then remove this var.
+    // Do not copy it to env.pre.
+    "VIEWS_VERSION_FALLBACK": "refresh-2026-09-13T06-00-16-398Z"
   },
   // Production CF Cron stays off. Vercel cron in web/vercel.json remains the
   // production scheduler until Jason approves a cutover. Enable crons only on

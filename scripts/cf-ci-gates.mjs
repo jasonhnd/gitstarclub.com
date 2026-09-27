@@ -11,6 +11,9 @@ export const ALLOWED_CF_PREVIEW_ORIGINS = Object.freeze([
   DEFAULT_CF_PREVIEW_ORIGIN,
   "https://pre.gitstarclub.com",
 ]);
+// Last complete views version while views/latest.json is missing (#543 / #553).
+// Remove this, and the top-level wrangler var, once the pointer is restored.
+export const PRODUCTION_VIEWS_VERSION_FALLBACK = "refresh-2026-09-13T06-00-16-398Z";
 
 const LEGACY_PREVIEW_WORKER_NAME = "gitstarclub-web-nonprod";
 const WRANGLER_CONFIG_REL = "workers/gitstarclub-web/wrangler.jsonc";
@@ -204,6 +207,15 @@ export function assertCfCiGates(sources) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} is required`);
   } else if (preview.name !== PREVIEW_WORKER_NAME) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV}.name must be ${PREVIEW_WORKER_NAME}`);
+  }
+
+  if (wrangler.vars?.VIEWS_VERSION_FALLBACK !== PRODUCTION_VIEWS_VERSION_FALLBACK) {
+    issues.push(`wrangler top-level vars.VIEWS_VERSION_FALLBACK must be ${PRODUCTION_VIEWS_VERSION_FALLBACK}`);
+  }
+  if (preview?.vars?.VIEWS_VERSION_FALLBACK !== undefined) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.VIEWS_VERSION_FALLBACK must not be set (production-only stopgap for #543)`,
+    );
   }
 
   const defaultOrigin = readDefaultCfPreviewOrigin(runtimeConfigSource);
