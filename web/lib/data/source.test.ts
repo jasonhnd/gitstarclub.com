@@ -471,7 +471,7 @@ describe("readView — VIEWS_VERSION_FALLBACK", () => {
   test("a pointer timeout does not use the fallback", async () => {
     process.env.VIEWS_VERSION_FALLBACK = FALLBACK_VERSION;
     routes = { "/data/pointer-timeout.json": { json: { ok: true, tag: "flat-after-timeout" } } };
-    globalThis.fetch = mock((input: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = mock((input: string | URL | Request) => {
       const url = typeof input === "string" ? input : input.toString();
       fetchCalls.push(url);
       if (url.includes("/views/latest.json")) return new Promise<Response>(() => {});
