@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import {
   ALLOWED_CF_PREVIEW_ORIGINS,
   CLOSED_PRODUCTION_WORKERS_DEV_ORIGIN,
   DEFAULT_CF_PREVIEW_ORIGIN,
+  PRODUCTION_VIEWS_VERSION_FALLBACK,
   assertCfCiGates,
   assertRepositoryCfCiGates,
   findWranglerDeployInvocations,
@@ -15,7 +17,7 @@ import {
 
 const validWrangler = `{
   "name": "gitstarclub-web",
-  "vars": { "SITE_INDEXABLE": "1", "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com" },
+  "vars": { "SITE_INDEXABLE": "1", "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com", "VIEWS_VERSION_FALLBACK": "refresh-2026-09-13T06-00-16-398Z" },
   "triggers": { "crons": [] },
   "env": {
     "pre": { "name": "gitstarclub-web-pre" }
@@ -138,5 +140,34 @@ describe("CF CI gates", () => {
     const summary = assertRepositoryCfCiGates(process.cwd());
     assert.equal(summary.previewWorker, "gitstarclub-web-pre");
     assert.equal(summary.previewOrigin, DEFAULT_CF_PREVIEW_ORIGIN);
+    const wrangler = parseWranglerJsonc(readFileSync("workers/gitstarclub-web/wrangler.jsonc", "utf8"));
+    assert.equal(wrangler.vars.VIEWS_VERSION_FALLBACK, PRODUCTION_VIEWS_VERSION_FALLBACK);
+    assert.equal(wrangler.env.pre.vars?.VIEWS_VERSION_FALLBACK, undefined);
+  });
+
+  test("requires the production VIEWS_VERSION_FALLBACK and refuses it on preview", () => {
+    const sourcesFor = (config) => ({
+      wranglerSource: JSON.stringify(config),
+      ciYml: validCi,
+      deliveryYml: validDelivery,
+      webPackageSource: validPackage,
+      runtimeConfigSource: validRuntime,
+    });
+
+    const missing = JSON.parse(validWrangler);
+    delete missing.vars.VIEWS_VERSION_FALLBACK;
+    const missingIssues = assertCfCiGates(sourcesFor(missing));
+    assert.ok(
+      missingIssues.some((issue) => issue.includes("top-level vars.VIEWS_VERSION_FALLBACK must be")),
+      missingIssues.join("\n"),
+    );
+
+    const onPreview = JSON.parse(validWrangler);
+    onPreview.env.pre.vars = { VIEWS_VERSION_FALLBACK: PRODUCTION_VIEWS_VERSION_FALLBACK };
+    const previewIssues = assertCfCiGates(sourcesFor(onPreview));
+    assert.ok(
+      previewIssues.some((issue) => issue.includes("env.pre vars.VIEWS_VERSION_FALLBACK must not be set")),
+      previewIssues.join("\n"),
+    );
   });
 });

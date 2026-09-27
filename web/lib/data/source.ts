@@ -1,7 +1,7 @@
 import type { ZodType } from "zod";
 import { LiveGenerationPointer } from "@/lib/contracts";
 import { BLOB_JSON_FETCH_TIMEOUT_MS, FetchTimeoutError, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
-import { getPublicReadBases } from "@/lib/runtime-config";
+import { getPublicReadBases, getViewsVersionFallback } from "@/lib/runtime-config";
 import { PUBLISHED_VIEWS_CACHE_TAG, PUBLICATION_VISIBILITY_SLA_MS } from "@/lib/data/publication-cache-contract";
 import {
   invalidateBootstrapPointerCache,
@@ -15,7 +15,9 @@ import { parseView } from "@/lib/data/parse-view";
 // View source: reads JSON views by direct URL from the Vercel Blob store (public).
 // BLOB_BASE_URL must point at the store base (set in Vercel project env + local .env.local).
 // Base views compare the managed and bootstrap publication timestamps, then use the newest
-// complete generation; when neither pointer exists they use the legacy flat layout. Canonical
+// complete generation; when neither pointer exists they use the legacy flat layout. A published
+// read may instead serve VIEWS_VERSION_FALLBACK after a confirmed 404 of views/latest.json.
+// Authoritative reads ignore that configured version. Canonical
 // reads resolve through bootstrap/latest.json. Live overlays resolve independently through
 // live/latest.json to one complete immutable generation. Period-scoped views may walk the
 // validated immutable generation history until base folding catches up. Every publication
@@ -86,6 +88,42 @@ class StrictBlobReadForbiddenError extends Error {
 export function invalidatePublishedVersionMemo(): void {
   versionMemo.clear();
   invalidateBootstrapPointerCache();
+}
+
+const VIEWS_VERSION_FALLBACK_NOTICE =
+  "[views-version-fallback] views/latest.json is missing; serving configured fallback";
+let viewsVersionFallbackNoted = false;
+
+function noteViewsVersionFallback(version: string): void {
+  if (viewsVersionFallbackNoted) return;
+  viewsVersionFallbackNoted = true;
+  console.warn(VIEWS_VERSION_FALLBACK_NOTICE, { version });
+}
+
+/** Test hook. The in-effect warning is once per isolate. */
+export function resetViewsVersionFallbackNoticeForTests(): void {
+  viewsVersionFallbackNoted = false;
+}
+
+async function publishedAtForViewsFallback(
+  blobBase: string,
+  version: string,
+  timeoutMs: number,
+): Promise<string | null> {
+  try {
+    const res = await fetchWithTimeout(`${blobBase}/views/${version}/meta.json`, {
+      cache: "force-cache",
+      timeoutMs,
+    });
+    if (!res.ok) return null;
+    const meta = (await res.json()) as { generated_at?: unknown };
+    if (typeof meta.generated_at === "string" && Number.isFinite(Date.parse(meta.generated_at))) {
+      return meta.generated_at;
+    }
+  } catch {
+    // Missing or unreadable meta still serves the configured version.
+  }
+  return null;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -251,7 +289,8 @@ function readLiveGenerationManifest(
   return retained;
 }
 
-/** Resolve views/latest; only a confirmed 404 is allowed to activate bootstrap fallback. */
+/** Resolve views/latest. Only a confirmed 404 may activate bootstrap/legacy flat,
+ * or the configured published-read fallback version. */
 async function resolveVersion(
   blobBase: string,
   ttlMs = VERSION_TTL_MS,
@@ -293,7 +332,17 @@ async function resolveVersion(
           throw new Error("missing version");
         }
       } else if (res?.status === 404) {
-        resolution.confirmedAbsent = true;
+        // Authoritative reads must still see a missing pointer. The configured
+        // version is a published-read stopgap only, and only for a real 404.
+        const fallbackVersion = mode === "published" ? getViewsVersionFallback() : null;
+        if (fallbackVersion) {
+          resolution.version = fallbackVersion;
+          resolution.publishedAt = await publishedAtForViewsFallback(blobBase, fallbackVersion, timeoutMs);
+          resolution.confirmedAbsent = false;
+          noteViewsVersionFallback(fallbackVersion);
+        } else {
+          resolution.confirmedAbsent = true;
+        }
       } else if (mode === "authoritative") {
         throw new Error(res ? `HTTP ${res.status}` : "no response");
       }

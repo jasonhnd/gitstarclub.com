@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-09-18
+last_reviewed: 2026-09-27
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -153,6 +153,7 @@ an explicit recovery procedure.
 | `GITHUB_TOKEN` | GitHub GraphQL / Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | **必需**（cron / Workflow） | `ghp_…` PAT 字符串 | `web/lib/github.ts:5`；每日 cron · 每周 cron · Workflow whitelist/metadata step · 一次性回填 |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本 |
 | `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；Next.js build · ISR 视图直读 · live cron 读发布指针 |
+| `VIEWS_VERSION_FALLBACK` | `views/latest.json` 确认 404 时只读服务的版本（#543 止血，#553） | 可选。只放在 production Worker 顶层 vars，指针恢复后删除。Preview 不得设置 | `refresh-YYYY-MM-DDTHH-MM-SS-mmmZ`。Production 为 `refresh-2026-09-13T06-00-16-398Z`。其他非空值会被忽略并只记录一次日志 | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`；见本清单下方的事故说明 |
 | `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；客户端 bundle 中读取 |
 | `STORAGE_READ_DRIVER` | 对象存储读驱动 | 可选（默认 `blob`） | `blob` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`；P0 默认仍读 Vercel Blob，见 [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) |
 | `READ_DRIVER` | `STORAGE_READ_DRIVER` 别名 | 可选 | 同 `STORAGE_READ_DRIVER` | `web/lib/runtime-config.ts` |
@@ -227,6 +228,20 @@ an explicit recovery procedure.
 | `BASELINE_SCREENSHOT_CATEGORY` | visual tooling | baseline category 参数 |
 
 <!-- env-inventory:end -->
+
+### 事故 #543：只读 views 版本回退
+
+Production 基础视图通过 `views/latest.json` 解析版本。共享 Blob store 里这个指针缺失（issue #543），页面没有排名数据。最后一个完整版本 `refresh-2026-09-13T06-00-16-398Z` 仍在 `views/` 下。回滚不能重建缺失的指针，这个止血方案也不会写指针。
+
+`VIEWS_VERSION_FALLBACK` 只设在 production Worker（Worker wrangler 配置的顶层 `vars`）。published 读只有在 `views/latest.json` 确认 404 后才使用它；超时、5xx、JSON 无效都不使用。指针存在时以指针为准。authoritative 读（refresh 和其他写路径）忽略这个变量，仍然看到指针缺失。`published_at` 取 `views/<version>/meta.json` 的 `generated_at`（是有效时间戳时），否则为 null。回退生效期间，每个 isolate 记录一次警告。Preview `env.pre` 不得设置这个变量。
+
+issue #543 恢复 `views/latest.json` 后删除：
+
+1. 从 Worker wrangler 配置删除顶层 `VIEWS_VERSION_FALLBACK`。
+2. 删除 `scripts/cf-ci-gates.mjs` 里对应的 production 变量断言；preview 拒绝检查保留到两处都删掉为止。
+3. 重新部署 production Worker。
+
+真实指针存在后不要保留回退。否则以后再出现 404，会继续服务冻结的 2026-09-13 版本。这个变量从不写 store。
 
 **约定**：
 
