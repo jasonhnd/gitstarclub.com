@@ -27,6 +27,34 @@ export function requireBlobBaseUrl(env?: RuntimeEnv): string {
   return value;
 }
 
+/** `refresh-YYYY-MM-DDTHH-MM-SS-mmmZ`, the same shape as a refresh run id. */
+const VIEWS_VERSION_FALLBACK_PATTERN = /^refresh-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/;
+const INVALID_VIEWS_VERSION_FALLBACK_MESSAGE =
+  "[views-version-fallback] ignoring VIEWS_VERSION_FALLBACK because it does not match refresh-YYYY-MM-DDTHH-MM-SS-mmmZ";
+let invalidViewsVersionFallbackLogged = false;
+
+/**
+ * Optional published-read version used only when `views/latest.json` is a
+ * confirmed 404 (#553, incident #543). Blank means unset. Any other value
+ * that is not a refresh version id is ignored, and that rejection is logged
+ * once per isolate. Write paths must not treat this as a pointer.
+ */
+export function getViewsVersionFallback(env: RuntimeEnv = process.env): string | null {
+  const raw = env.VIEWS_VERSION_FALLBACK;
+  if (raw == null || raw === "") return null;
+  if (VIEWS_VERSION_FALLBACK_PATTERN.test(raw)) return raw;
+  if (!invalidViewsVersionFallbackLogged) {
+    invalidViewsVersionFallbackLogged = true;
+    console.warn(INVALID_VIEWS_VERSION_FALLBACK_MESSAGE);
+  }
+  return null;
+}
+
+/** Test hook. The invalid-value warning is once per isolate. */
+export function resetViewsVersionFallbackLogForTests(): void {
+  invalidViewsVersionFallbackLogged = false;
+}
+
 export function getBlobWriteToken(env: RuntimeEnv = process.env): string | undefined {
   return env.BLOB_READ_WRITE_TOKEN || undefined;
 }
