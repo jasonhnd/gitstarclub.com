@@ -5,14 +5,12 @@ import {
   CRON_DAILY_PATH,
   CRON_REFRESH,
   CRON_REFRESH_ALIASES,
-  CRON_REFRESH_CF,
+  CRON_REFRESH_NUMERIC,
   CRON_REFRESH_PATH,
-  CRON_REFRESH_SUN,
   CRON_WEEKLY,
   CRON_WEEKLY_ALIASES,
-  CRON_WEEKLY_CF,
+  CRON_WEEKLY_NUMERIC,
   CRON_WEEKLY_PATH,
-  CRON_WEEKLY_SUN,
   cronHttpUrl,
   planCronDispatch,
   PREVIEW_CRON_ORIGIN,
@@ -45,16 +43,16 @@ function makeEnv(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
 }
 
 describe("CF cron dispatch plan", () => {
-  test("maps the three Vercel-parity expressions", () => {
+  test("maps the three Cloudflare expressions", () => {
     expect(planCronDispatch(CRON_DAILY)).toEqual({ kind: "daily", path: CRON_DAILY_PATH });
     expect(planCronDispatch(CRON_WEEKLY)).toEqual({ kind: "weekly", path: CRON_WEEKLY_PATH });
     expect(planCronDispatch(CRON_REFRESH)).toEqual({ kind: "refresh", path: CRON_REFRESH_PATH });
-    expect([...PREVIEW_CRON_TRIGGERS]).toEqual([CRON_DAILY, CRON_WEEKLY, CRON_REFRESH]);
+    expect([...PREVIEW_CRON_TRIGGERS]).toEqual(["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"]);
   });
 
-  test("weekly and refresh accept Sunday DoW 0, 7, and SUN", () => {
-    expect([...CRON_WEEKLY_ALIASES]).toEqual([CRON_WEEKLY, CRON_WEEKLY_CF, CRON_WEEKLY_SUN]);
-    expect([...CRON_REFRESH_ALIASES]).toEqual([CRON_REFRESH, CRON_REFRESH_CF, CRON_REFRESH_SUN]);
+  test("weekly and refresh accept Cloudflare Sunday spellings SUN and 1", () => {
+    expect([...CRON_WEEKLY_ALIASES]).toEqual(["0 4 * * SUN", "0 4 * * 1"]);
+    expect([...CRON_REFRESH_ALIASES]).toEqual(["0 6 * * SUN", "0 6 * * 1"]);
     for (const cron of CRON_WEEKLY_ALIASES) {
       expect(planCronDispatch(cron)).toEqual({ kind: "weekly", path: CRON_WEEKLY_PATH });
     }
@@ -66,11 +64,24 @@ describe("CF cron dispatch plan", () => {
     expect(planCronDispatch(CRON_DAILY)).toEqual({ kind: "daily", path: CRON_DAILY_PATH });
   });
 
+  test("7 is Saturday on Cloudflare and never dispatches as Sunday", () => {
+    for (const cron of ["0 4 * * 7", "0 6 * * 7", "0 4 * * SAT", "0 6 * * sat"]) {
+      expect(planCronDispatch(cron)).toEqual({ kind: "unknown", cron });
+    }
+  });
+
+  test("Unix Sunday 0 is not a Cloudflare expression and stays unknown", () => {
+    for (const cron of ["0 4 * * 0", "0 6 * * 0"]) {
+      expect(planCronDispatch(cron)).toEqual({ kind: "unknown", cron });
+    }
+  });
+
   test("treats unknown expressions as an observable failure plan", () => {
     expect(planCronDispatch("0 1 * * *")).toEqual({ kind: "unknown", cron: "0 1 * * *" });
-    expect(planCronDispatch("0 4 * * 1")).toEqual({ kind: "unknown", cron: "0 4 * * 1" });
+    expect(planCronDispatch("0 4 * * 2")).toEqual({ kind: "unknown", cron: "0 4 * * 2" });
     expect(planCronDispatch("0 4 * * 6")).toEqual({ kind: "unknown", cron: "0 4 * * 6" });
-    expect(planCronDispatch("0 3 * * 7")).toEqual({ kind: "unknown", cron: "0 3 * * 7" });
+    expect(planCronDispatch("0 3 * * 1")).toEqual({ kind: "unknown", cron: "0 3 * * 1" });
+    expect(planCronDispatch("0 3 * * SUN")).toEqual({ kind: "unknown", cron: "0 3 * * SUN" });
     expect(planCronDispatch("")).toEqual({ kind: "unknown", cron: "" });
   });
 });
@@ -118,13 +129,11 @@ describe("handleScheduled dispatch", () => {
       { cron: CRON_WEEKLY },
       makeEnv({ CF_CRON_ORIGIN: PRODUCTION_CRON_ORIGIN }),
     );
-    await handleScheduled({ cron: CRON_WEEKLY_CF }, makeEnv());
-    await handleScheduled({ cron: CRON_WEEKLY_SUN }, makeEnv());
+    await handleScheduled({ cron: CRON_WEEKLY_NUMERIC }, makeEnv());
 
     expect(calls).toEqual([
       { url: `${PREVIEW_CRON_ORIGIN}${CRON_DAILY_PATH}`, auth: "Bearer test-cron-secret" },
       { url: `${PRODUCTION_CRON_ORIGIN}${CRON_WEEKLY_PATH}`, auth: "Bearer test-cron-secret" },
-      { url: `${PREVIEW_CRON_ORIGIN}${CRON_WEEKLY_PATH}`, auth: "Bearer test-cron-secret" },
       { url: `${PREVIEW_CRON_ORIGIN}${CRON_WEEKLY_PATH}`, auth: "Bearer test-cron-secret" },
     ]);
   });
@@ -166,10 +175,9 @@ describe("handleScheduled dispatch", () => {
       makeEnv({ REFRESH_START_URL: "https://pre.gitstarclub.com/custom/start" }),
     );
     await handleScheduled({ cron: CRON_REFRESH }, makeEnv());
-    await handleScheduled({ cron: CRON_REFRESH_CF }, makeEnv());
-    await handleScheduled({ cron: CRON_REFRESH_SUN }, makeEnv());
+    await handleScheduled({ cron: CRON_REFRESH_NUMERIC }, makeEnv());
     await handleScheduled(
-      { cron: CRON_REFRESH_CF },
+      { cron: CRON_REFRESH_NUMERIC },
       makeEnv({
         WORKFLOW_FIXTURE: "1",
         JOBS: { send: async (job) => { queued.push(job); } },
@@ -178,7 +186,6 @@ describe("handleScheduled dispatch", () => {
 
     expect(calls).toEqual([
       "https://pre.gitstarclub.com/custom/start",
-      `${PREVIEW_CRON_ORIGIN}${CRON_REFRESH_PATH}`,
       `${PREVIEW_CRON_ORIGIN}${CRON_REFRESH_PATH}`,
       `${PREVIEW_CRON_ORIGIN}${CRON_REFRESH_PATH}`,
     ]);
@@ -191,6 +198,9 @@ describe("handleScheduled dispatch", () => {
 
     await expect(handleScheduled({ cron: "15 1 * * *" }, makeEnv())).rejects.toThrow(
       "unknown CF cron expression: 15 1 * * *",
+    );
+    await expect(handleScheduled({ cron: "0 4 * * 7" }, makeEnv())).rejects.toThrow(
+      "unknown CF cron expression: 0 4 * * 7",
     );
     await expect(handleScheduled({ cron: CRON_DAILY }, makeEnv())).rejects.toThrow("CF cron daily failed: HTTP 401");
     await expect(handleScheduled({ cron: CRON_DAILY }, makeEnv({ CF_CRON_ORIGIN: undefined }))).rejects.toThrow(

@@ -9,6 +9,7 @@ import {
   DEFAULT_CF_PREVIEW_ORIGIN,
   PREVIEW_CRON_ORIGIN,
   PREVIEW_CRON_TRIGGERS,
+  PREVIEW_CRONS_PAUSED,
   PREVIEW_MIN_TRACKED_STARS,
   PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS,
   PREVIEW_WORKFLOW_COLD_START,
@@ -21,6 +22,7 @@ import {
   assertAllowedCfPreviewOrigin,
   assertCfCiGates,
   assertRepositoryCfCiGates,
+  cronUsesAmbiguousNumericWeekday,
   findForbiddenCloudflareMutations,
   findWranglerDeployInvocations,
   parseWranglerJsonc,
@@ -47,6 +49,7 @@ const validWrangler = `{
       "name": "gitstarclub-web-pre",
       "workers_dev": true,
       "preview_urls": true,
+      "triggers": { "crons": [] },
       "queues": {
         "producers": [{ "binding": "JOBS", "queue": "gitstarclub-jobs-pre" }],
         "consumers": [{ "queue": "gitstarclub-jobs-pre", "max_batch_size": 1, "max_retries": 2 }]
@@ -254,9 +257,67 @@ describe("CF CI gates", () => {
       }),
     );
     assert.ok(issues.some((issue) => issue.includes("top-level triggers.crons must stay []")));
-    assert.ok(issues.some((issue) => issue.includes("three Cloudflare Schedules expressions")));
+    assert.ok(issues.some((issue) => issue.includes("env.pre triggers.crons must be [] while preview schedules are paused")));
+    assert.ok(issues.some((issue) => issue.includes("top-level triggers.crons must not use numeric weekday 0 or 7")));
+    assert.ok(issues.some((issue) => issue.includes("env.pre triggers.crons must not use numeric weekday 0 or 7")));
     assert.ok(issues.some((issue) => issue.includes(`top-level vars.CF_CRON_ORIGIN must be ${PRODUCTION_CRON_ORIGIN}`)));
     assert.ok(issues.some((issue) => issue.includes(`env.pre vars.CF_CRON_ORIGIN must be ${PREVIEW_CRON_ORIGIN}`)));
+  });
+
+  test("keeps env.pre crons [] while preview schedules are paused (#543)", () => {
+    assert.equal(PREVIEW_CRONS_PAUSED, true);
+    const base = JSON.parse(validWrangler);
+
+    const scheduled = structuredClone(base);
+    scheduled.env.pre.triggers.crons = [...PREVIEW_CRON_TRIGGERS];
+    const scheduledIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(scheduled) }));
+    assert.ok(
+      scheduledIssues.some((issue) => issue.includes("env.pre triggers.crons must be [] while preview schedules are paused")),
+      scheduledIssues.join("\n"),
+    );
+
+    const missing = structuredClone(base);
+    delete missing.env.pre.triggers;
+    const missingIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(missing) }));
+    assert.ok(
+      missingIssues.some((issue) => issue.includes("env.pre triggers.crons must be [] while preview schedules are paused")),
+      missingIssues.join("\n"),
+    );
+  });
+
+  test("re-enabled preview requires the SUN expressions and rejects Saturday 7", () => {
+    assert.deepEqual([...PREVIEW_CRON_TRIGGERS], ["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"]);
+    const base = JSON.parse(validWrangler);
+
+    const intended = structuredClone(base);
+    intended.env.pre.triggers.crons = [...PREVIEW_CRON_TRIGGERS];
+    assert.deepEqual(
+      assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(intended), previewCronsPaused: false })),
+      [],
+    );
+
+    const empty = assertCfCiGates(alignedSources({ previewCronsPaused: false }));
+    assert.ok(empty.some((issue) => issue.includes("must be the three Cloudflare expressions")), empty.join("\n"));
+
+    const saturday = structuredClone(base);
+    saturday.env.pre.triggers.crons = ["0 3 * * *", "0 4 * * 7", "0 6 * * 7"];
+    const saturdayIssues = assertCfCiGates(
+      alignedSources({ wranglerSource: JSON.stringify(saturday), previewCronsPaused: false }),
+    );
+    assert.ok(saturdayIssues.some((issue) => issue.includes("must be the three Cloudflare expressions")));
+    assert.ok(
+      saturdayIssues.some((issue) => issue.includes("env.pre triggers.crons must not use numeric weekday 0 or 7")),
+      saturdayIssues.join("\n"),
+    );
+  });
+
+  test("flags numeric weekday 0 or 7 as ambiguous (Cloudflare 7 = Saturday)", () => {
+    for (const cron of ["0 4 * * 7", "0 6 * * 0", "0 4 * * 5-7", "0 4 * * 1,7", "0 4 * * 7L", "0 4 * * 0#2"]) {
+      assert.equal(cronUsesAmbiguousNumericWeekday(cron), true, cron);
+    }
+    for (const cron of ["0 3 * * *", "0 4 * * SUN", "0 6 * * sun", "0 4 * * 1", "0 4 * * SAT", "0 4 * * 2-6", 7, "0 4 * 7"]) {
+      assert.equal(cronUsesAmbiguousNumericWeekday(cron), false, String(cron));
+    }
   });
 
   test("requires preview MIN_TRACKED_STARS=1000 and refuses production ≥1k", () => {
@@ -321,9 +382,10 @@ describe("CF CI gates", () => {
     assert.equal(summary.previewOrigin, DEFAULT_CF_PREVIEW_ORIGIN);
     assert.equal(summary.assertScript, ASSERT_SCRIPT_REL);
     assert.deepEqual(summary.productionCrons, []);
-    assert.deepEqual([...PREVIEW_CRON_TRIGGERS], ["0 3 * * *", "0 4 * * 7", "0 6 * * 7"]);
+    assert.deepEqual([...PREVIEW_CRON_TRIGGERS], ["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"]);
     const wrangler = parseWranglerJsonc(readFileSync("workers/gitstarclub-web/wrangler.jsonc", "utf8"));
     assert.deepEqual(wrangler.triggers.crons, []);
+    assert.deepEqual(wrangler.env.pre.triggers.crons, []);
     assert.equal(wrangler.env.pre.name, "gitstarclub-web-pre");
     assert.equal(wrangler.env.pre.vars.MIN_TRACKED_STARS, PREVIEW_MIN_TRACKED_STARS);
     assert.equal(wrangler.env.pre.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, "1");

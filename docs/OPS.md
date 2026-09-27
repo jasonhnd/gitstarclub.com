@@ -46,7 +46,7 @@ and its production `triggers.crons` contract remains `[]`.
 | Production web | `gitstarclub.com`: `server: cloudflare`, `x-opennext: 1` |
 | Preview web | `pre.gitstarclub.com`: `server: cloudflare`, `x-opennext: 1` |
 | Production Worker schedule | Cloudflare schedules API observation in issue #528 at 03:30 UTC: `gitstarclub-web` = `[]`; repository gate requires `triggers.crons: []` |
-| Preview Worker schedule | Same API observation: `gitstarclub-web-pre` = `0 3 * * *`, `0 4 * * 7`, `0 6 * * 7` |
+| Preview Worker schedule | Same API observation: `gitstarclub-web-pre` = `0 3 * * *`, `0 4 * * 7`, `0 6 * * 7`. On Cloudflare `7` is Saturday, so the two weekly schedules fired on Saturday, not Sunday (#546). The owner paused all preview schedules on 2026-09-25/26 (#543); the repo keeps `env.pre` `triggers.crons` at `[]` |
 | Production refresh trigger | Owner reports Cloudflare, but no production Worker Cron schedule was observed. An external caller, another Worker, or a changed schedule after the snapshot remains unverified. Do not infer the mechanism from route code or `web/vercel.json`. |
 
 The Worker `scheduled` handler dispatches the three cron expressions to the
@@ -510,7 +510,7 @@ Endpoint method, auth, query, response, cache, and status contract see [API.md](
 
 ### CF Cron dispatch draft (in-repo code; the platform is not enabled)
 
-The Worker `scheduled` handler dispatches by `event.cron` to the three paths in the table above (see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)). weekly / refresh also accept Sunday `0` and `7` (and the documented `SUN`); daily stays `0 3 * * *`. Production `wrangler.jsonc` `triggers.crons` **must stay `[]`**. Preview `env.pre` may carry a draft of the three expressions, which **does not mean** schedules are already turned on in Cloudflare. This repo does not enable platform schedules, and does not claim that production cron is already on.
+The Worker `scheduled` handler dispatches by `event.cron` to the three paths in the table above (see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)). Cloudflare Cron Triggers number weekdays `1` = Sunday through `7` = Saturday and reject `0` ([Cloudflare docs](https://developers.cloudflare.com/workers/configuration/cron-triggers/)), unlike Vercel and Unix cron where `0` is Sunday. weekly / refresh accept `SUN` (or Cloudflare `1`); `7` is Saturday and dispatches as unknown. Daily stays `0 3 * * *`. Production `wrangler.jsonc` `triggers.crons` **must stay `[]`**. Preview `env.pre` `triggers.crons` **must stay `[]`** while preview schedules are paused (#543); the CI gate enforces it through `PREVIEW_CRONS_PAUSED` in `scripts/cf-ci-gates.mjs`. The intended preview expressions are `0 3 * * *`, `0 4 * * SUN`, and `0 6 * * SUN`. To re-enable after owner approval, one PR sets them in `env.pre` and flips `PREVIEW_CRONS_PAUSED` to `false`; a cron string in wrangler **does not by itself mean** schedules are turned on in Cloudflare. This repo does not enable platform schedules, and does not claim that production cron is already on.
 
 Note: `CRON_SECRET` / `REFRESH_*_URL`, and `PUT .../schedules` (first `gitstarclub-web-pre`), are **a separately opened operations execution ticket**. This repo does not write secret values, and does not claim that production cron is already enabled. Stopping Vercel Cron comes only after CF preview is green and Jason approves the cutover.
 
