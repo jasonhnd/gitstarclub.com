@@ -1,18 +1,19 @@
+// Cloudflare Cron Triggers number weekdays 1 = Sunday ... 7 = Saturday and
+// reject 0. See https://developers.cloudflare.com/workers/configuration/cron-triggers/.
+// Canonical weekly/refresh expressions use the unambiguous SUN token.
 export const CRON_DAILY = "0 3 * * *";
-export const CRON_WEEKLY = "0 4 * * 0";
-export const CRON_WEEKLY_CF = "0 4 * * 7";
-export const CRON_WEEKLY_SUN = "0 4 * * SUN";
-export const CRON_REFRESH = "0 6 * * 0";
-export const CRON_REFRESH_CF = "0 6 * * 7";
-export const CRON_REFRESH_SUN = "0 6 * * SUN";
+export const CRON_WEEKLY = "0 4 * * SUN";
+export const CRON_WEEKLY_NUMERIC = "0 4 * * 1";
+export const CRON_REFRESH = "0 6 * * SUN";
+export const CRON_REFRESH_NUMERIC = "0 6 * * 1";
 
 export const CRON_DAILY_PATH = "/api/cron/daily";
 export const CRON_WEEKLY_PATH = "/api/cron/weekly";
 export const CRON_REFRESH_PATH = "/api/workflows/refresh/start";
 
-/** Unix Sunday=0, CF Schedules Sunday=7, and the unambiguous SUN token. */
-export const CRON_WEEKLY_ALIASES = Object.freeze([CRON_WEEKLY, CRON_WEEKLY_CF, CRON_WEEKLY_SUN]);
-export const CRON_REFRESH_ALIASES = Object.freeze([CRON_REFRESH, CRON_REFRESH_CF, CRON_REFRESH_SUN]);
+/** Cloudflare Sunday spellings: SUN (any case) and numeric 1. */
+export const CRON_WEEKLY_ALIASES = Object.freeze([CRON_WEEKLY, CRON_WEEKLY_NUMERIC]);
+export const CRON_REFRESH_ALIASES = Object.freeze([CRON_REFRESH, CRON_REFRESH_NUMERIC]);
 
 /** Public production origin. Never use this as a preview fallback. */
 export const PRODUCTION_CRON_ORIGIN = "https://gitstarclub.com";
@@ -21,6 +22,10 @@ export const PREVIEW_CRON_ORIGIN = "https://pre.gitstarclub.com";
 
 export const CLOSED_PRODUCTION_WORKERS_DEV_ORIGIN = "https://gitstarclub-web.worldgo.workers.dev";
 
+/**
+ * Intended env.pre schedule once preview is re-enabled. The repo keeps
+ * env.pre triggers.crons [] while preview is paused (#543).
+ */
 export const PREVIEW_CRON_TRIGGERS = Object.freeze([CRON_DAILY, CRON_WEEKLY, CRON_REFRESH]);
 
 export type CronDispatchPlan =
@@ -29,19 +34,20 @@ export type CronDispatchPlan =
   | { kind: "refresh"; path: typeof CRON_REFRESH_PATH }
   | { kind: "unknown"; cron: string };
 
-const SUNDAY_DOW = /^(?:0|7|SUN)$/i;
+const SUNDAY_DOW = /^(?:1|SUN)$/i;
 
 /**
- * Map Sunday DoW aliases to Unix `0` so weekly/refresh accept both Vercel
- * (`0`) and Cloudflare Schedules (`7` / `SUN`). Daily stays `0 3 * * *`.
- * Quartz `1` (Sunday in some CF docs) is intentionally not accepted.
+ * Map Cloudflare Sunday spellings (`SUN` in any case, or `1`) to `SUN`.
+ * `7` is Saturday on Cloudflare and `0` is rejected by the Cloudflare API, so
+ * neither is Sunday here; both stay unknown and fail the scheduled invocation.
+ * Daily stays `0 3 * * *`.
  */
 export function canonicalSundayCron(cron: string): string {
   const parts = cron.split(" ");
   if (parts.length !== 5) return cron;
   const [minute, hour, dayOfMonth, month, dow] = parts;
   if (!dow || !SUNDAY_DOW.test(dow)) return cron;
-  return `${minute} ${hour} ${dayOfMonth} ${month} 0`;
+  return `${minute} ${hour} ${dayOfMonth} ${month} SUN`;
 }
 
 export function planCronDispatch(cron: string): CronDispatchPlan {

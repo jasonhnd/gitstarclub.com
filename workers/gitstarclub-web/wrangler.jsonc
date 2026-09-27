@@ -68,9 +68,9 @@
   },
   // Production CF Cron stays off. `triggers.crons` MUST remain []. Vercel cron
   // in web/vercel.json remains the production scheduler until Jason approves a
-  // cutover. Writing three expressions under env.pre is a repo draft only —
-  // it does not enable Cloudflare schedules. Enable schedules / inject
-  // CRON_SECRET via an ops runbook after deploy. The top-level name
+  // cutover. env.pre crons are paused ([]) while #543 is open; see the
+  // comment there. The repo does not enable Cloudflare schedules. Enable
+  // schedules / inject CRON_SECRET via an ops runbook after deploy. The top-level name
   // gitstarclub-web is production-only: GHA must never wrangler deploy it
   // except --dry-run, and repo scripts refuse a live deploy of that name.
   // Do not attach apex/www routes here.
@@ -89,12 +89,18 @@
       "workers_dev": true,
       "preview_urls": true,
       "triggers": {
-        // Platform schedules for env.pre (wrangler deploy --env pre applies these).
-        // CF Schedules rejects Sunday=0 (API 10100); use 7 here. Worker dispatch
-        // still treats 0 / 7 / SUN as the same weekly + refresh jobs.
-        // Never wrangler versions upload pre without triggers deploy — top-level
-        // triggers.crons [] can wipe platform schedules.
-        "crons": ["0 3 * * *", "0 4 * * 7", "0 6 * * 7"]
+        // Preview schedules are PAUSED (owner, 2026-09-25/26; shared-store
+        // incident #543). Keep this [] so a routine `wrangler deploy --env pre`
+        // cannot silently re-enable them. scripts/cf-ci-gates.mjs enforces []
+        // while PREVIEW_CRONS_PAUSED is true.
+        // Intended expressions when the owner re-enables preview:
+        //   "0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"
+        // Cloudflare numbers weekdays 1 = Sunday ... 7 = Saturday and rejects 0
+        // (https://developers.cloudflare.com/workers/configuration/cron-triggers/).
+        // Use SUN, never 7, for Sunday. To re-enable: in one PR, set these crons
+        // and flip PREVIEW_CRONS_PAUSED to false in scripts/cf-ci-gates.mjs.
+        // Never wrangler versions upload pre without triggers deploy.
+        "crons": []
       },
       "services": [
         {
