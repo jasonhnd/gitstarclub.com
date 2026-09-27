@@ -3,6 +3,8 @@ import {
   assertR2WritesAllowed,
   getBlobBaseUrl,
   getBlobWriteToken,
+  getViewsVersionFallback,
+  resetViewsVersionFallbackLogForTests,
   getGithubToken,
   getPublicReadBases,
   getR2KeyPrefix,
@@ -47,6 +49,7 @@ const originalEnv = {
   R2_PREFIX: process.env.R2_PREFIX,
   R2_PUBLIC_BASE_URL: process.env.R2_PUBLIC_BASE_URL,
   VERCEL_ENV: process.env.VERCEL_ENV,
+  VIEWS_VERSION_FALLBACK: process.env.VIEWS_VERSION_FALLBACK,
 };
 
 const STORAGE_KEYS = Object.keys(originalEnv) as Array<keyof typeof originalEnv>;
@@ -70,6 +73,42 @@ describe("runtime config getters", () => {
 
     process.env.BLOB_BASE_URL = "https://private.example.com///";
     expect(getBlobBaseUrl()).toBe("https://private.example.com");
+  });
+
+  test("VIEWS_VERSION_FALLBACK accepts only a refresh version id", () => {
+    resetViewsVersionFallbackLogForTests();
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+    try {
+      expect(getViewsVersionFallback({})).toBeNull();
+      expect(getViewsVersionFallback({ VIEWS_VERSION_FALLBACK: "" })).toBeNull();
+      expect(getViewsVersionFallback({ VIEWS_VERSION_FALLBACK: "refresh-2026-09-13T06-00-16-398Z" })).toBe(
+        "refresh-2026-09-13T06-00-16-398Z",
+      );
+      expect(warnings).toEqual([]);
+
+      expect(getViewsVersionFallback({ VIEWS_VERSION_FALLBACK: "latest" })).toBeNull();
+      expect(getViewsVersionFallback({ VIEWS_VERSION_FALLBACK: "refresh-2026-09-13T06-00-16-398" })).toBeNull();
+      expect(warnings).toHaveLength(1);
+      expect(String(warnings[0]?.[0])).toContain("ignoring VIEWS_VERSION_FALLBACK");
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  test("VIEWS_VERSION_FALLBACK is read from the Worker env at call time", () => {
+    delete process.env.VIEWS_VERSION_FALLBACK;
+    expect(getViewsVersionFallback()).toBeNull();
+    expect(getViewsVersionFallback({ VIEWS_VERSION_FALLBACK: "refresh-2026-01-01T00-00-00-000Z" })).toBe(
+      "refresh-2026-01-01T00-00-00-000Z",
+    );
+
+    process.env.VIEWS_VERSION_FALLBACK = "refresh-2026-09-13T06-00-16-398Z";
+    expect(getViewsVersionFallback()).toBe("refresh-2026-09-13T06-00-16-398Z");
+    expect(getViewsVersionFallback({})).toBeNull();
   });
 
   test("MIN_TRACKED_STARS defaults to 10000 and resolves at call time", () => {

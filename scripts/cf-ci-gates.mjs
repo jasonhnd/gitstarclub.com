@@ -33,6 +33,9 @@ export const PREVIEW_WORKFLOW_RUNTIME = "cf-queue";
 export const PRODUCTION_WORKFLOW_RUNTIME = PREVIEW_WORKFLOW_RUNTIME;
 export const PREVIEW_WORKFLOW_QUEUE_ENQUEUE_URL = "https://pre.gitstarclub.com/enqueue";
 export const PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL = "https://gitstarclub.com/enqueue";
+// Last complete views version while views/latest.json is missing (#543 / #553).
+// Remove this, and the top-level wrangler var, once the pointer is restored.
+export const PRODUCTION_VIEWS_VERSION_FALLBACK = "refresh-2026-09-13T06-00-16-398Z";
 export const ASSERT_SCRIPT_REL = "scripts/assert-cf-ci-gates.mjs";
 
 const LEGACY_PREVIEW_WORKER_NAME = "gitstarclub-web-nonprod";
@@ -361,11 +364,17 @@ export function assertCfCiGates(sources) {
     ["CF_CRON_ORIGIN", PRODUCTION_CRON_ORIGIN],
     ["WORKFLOW_RUNTIME", PRODUCTION_WORKFLOW_RUNTIME],
     ["WORKFLOW_QUEUE_ENQUEUE_URL", PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL],
+    ["VIEWS_VERSION_FALLBACK", PRODUCTION_VIEWS_VERSION_FALLBACK],
   ];
   for (const [key, expected] of requiredProductionVars) {
     if (wrangler.vars?.[key] !== expected) {
       issues.push(`wrangler top-level vars.${key} must be ${expected}`);
     }
+  }
+  if (preview?.vars?.VIEWS_VERSION_FALLBACK !== undefined) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.VIEWS_VERSION_FALLBACK must not be set (production-only stopgap for #543)`,
+    );
   }
   if (wrangler.workers_dev !== false) {
     issues.push("wrangler top-level workers_dev must be false");

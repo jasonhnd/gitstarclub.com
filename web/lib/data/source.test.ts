@@ -5,7 +5,9 @@ import {
   readAuthoritativeView,
   readRequiredView,
   readView,
+  resetViewsVersionFallbackNoticeForTests,
 } from "./source";
+import { resetViewsVersionFallbackLogForTests } from "@/lib/runtime-config";
 import { PUBLISHED_VIEWS_CACHE_TAG } from "./publication-cache-contract";
 import { resolveCanonicalBlobPath } from "./bootstrap-publication";
 import { resetBootstrapPointerCacheForTests } from "./bootstrap-pointer-cache";
@@ -19,6 +21,8 @@ const originalBase = process.env.BLOB_BASE_URL;
 const originalPublicBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
 const originalReadDriver = process.env.STORAGE_READ_DRIVER;
 const originalR2Public = process.env.R2_PUBLIC_BASE_URL;
+const originalViewsFallback = process.env.VIEWS_VERSION_FALLBACK;
+const FALLBACK_VERSION = "refresh-2026-09-13T06-00-16-398Z";
 
 const Doc = z.object({ ok: z.boolean(), tag: z.string() });
 
@@ -113,6 +117,7 @@ beforeEach(() => {
   delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   delete process.env.STORAGE_READ_DRIVER;
   delete process.env.R2_PUBLIC_BASE_URL;
+  delete process.env.VIEWS_VERSION_FALLBACK;
   advancePastTtl(); // ensure each test starts with an expired version memo
   Date.now = () => clock;
   globalThis.fetch = mock((input: string | URL | Request, init?: RequestInit) => {
@@ -134,6 +139,8 @@ afterEach(() => {
   else process.env.STORAGE_READ_DRIVER = originalReadDriver;
   if (originalR2Public === undefined) delete process.env.R2_PUBLIC_BASE_URL;
   else process.env.R2_PUBLIC_BASE_URL = originalR2Public;
+  if (originalViewsFallback === undefined) delete process.env.VIEWS_VERSION_FALLBACK;
+  else process.env.VIEWS_VERSION_FALLBACK = originalViewsFallback;
 });
 
 describe("readView — runtime Blob config", () => {
@@ -368,6 +375,214 @@ describe("readView — base:true version-prefix resolution", () => {
     const result = await readView("rank/week/2099-W01/repo/flow.json", Doc, { base: true });
 
     expect(result).toBeNull();
+  });
+});
+
+describe("readView — VIEWS_VERSION_FALLBACK", () => {
+  const originalWarn = console.warn;
+  let warnings: unknown[][];
+
+  beforeEach(() => {
+    warnings = [];
+    resetViewsVersionFallbackNoticeForTests();
+    resetViewsVersionFallbackLogForTests();
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+  });
+
+  afterEach(() => {
+    console.warn = originalWarn;
+  });
+
+  function warned(fragment: string): boolean {
+    return warnings.some((args) => String(args[0]).includes(fragment));
+  }
+
+  test("a confirmed 404 with a fallback serves that version and does not use the flat layout", async () => {
+    process.env.VIEWS_VERSION_FALLBACK = FALLBACK_VERSION;
+    routes = {
+      "/views/latest.json": { status: 404 },
+      [`/views/${FALLBACK_VERSION}/meta.json`]: { json: { generated_at: "2026-09-13T06:25:00.000Z" } },
+      [`/views/${FALLBACK_VERSION}/data/served.json`]: { json: { ok: true, tag: "fallback" } },
+      "/data/served.json": { json: { ok: true, tag: "flat" } },
+    };
+
+    expect(await readView("data/served.json", Doc, { base: true })).toEqual({ ok: true, tag: "fallback" });
+    expect(fetchCalls.some((url) => url.includes(`/views/${FALLBACK_VERSION}/data/served.json`))).toBe(true);
+    expect(fetchCalls.some((url) => url.includes("/data/served.json") && !url.includes("/views/"))).toBe(false);
+    expect(warned("serving configured fallback")).toBe(true);
+
+    warnings.length = 0;
+    advancePastTtl();
+    invalidatePublishedVersionMemo();
+    expect(await readView("data/served.json", Doc, { base: true })).toEqual({ ok: true, tag: "fallback" });
+    expect(warned("serving configured fallback")).toBe(false);
+  });
+
+  test("meta generated_at is the fallback published_at, so a newer bootstrap still wins", async () => {
+    process.env.VIEWS_VERSION_FALLBACK = FALLBACK_VERSION;
+    routes = {
+      "/views/latest.json": { status: 404 },
+      [`/views/${FALLBACK_VERSION}/meta.json`]: { json: { generated_at: "2026-07-01T00:00:00.000Z" } },
+      [`/views/${FALLBACK_VERSION}/data/priority.json`]: { json: { ok: true, tag: "fallback" } },
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-newer") },
+      "/bootstrap/generations/bootstrap-newer/views/data/priority.json": {
+        json: { ok: true, tag: "bootstrap-newer" },
+      },
+    };
+
+    expect(await readView("data/priority.json", Doc, { base: true })).toEqual({ ok: true, tag: "bootstrap-newer" });
+    expect(fetchCalls.some((url) => url.includes(`/views/${FALLBACK_VERSION}/data/priority.json`))).toBe(false);
+  });
+
+  test("a missing meta leaves published_at null, so bootstrap does not replace the fallback version", async () => {
+    process.env.VIEWS_VERSION_FALLBACK = FALLBACK_VERSION;
+    routes = {
+      "/views/latest.json": { status: 404 },
+      [`/views/${FALLBACK_VERSION}/data/kept.json`]: { json: { ok: true, tag: "fallback" } },
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-newer") },
+      "/bootstrap/generations/bootstrap-newer/views/data/kept.json": {
+        json: { ok: true, tag: "bootstrap-newer" },
+      },
+    };
+
+    expect(await readView("data/kept.json", Doc, { base: true })).toEqual({ ok: true, tag: "fallback" });
+    expect(fetchCalls.some((url) => url.includes("/bootstrap/generations/bootstrap-newer/views/data/kept.json"))).toBe(
+      false,
+    );
+  });
+
+  test("a confirmed 404 without a fallback keeps the flat layout", async () => {
+    delete process.env.VIEWS_VERSION_FALLBACK;
+    routes = {
+      "/views/latest.json": { status: 404 },
+      "/rank/month/2026-05/org/stock.json": { json: { ok: true, tag: "flat" } },
+    };
+
+    expect(await readView("rank/month/2026-05/org/stock.json", Doc, { base: true })).toEqual({
+      ok: true,
+      tag: "flat",
+    });
+    expect(fetchCalls.some((url) => /\/views\/[^/]+\/rank\//.test(url))).toBe(false);
+    expect(warned("serving configured fallback")).toBe(false);
+  });
+
+  test("a pointer timeout does not use the fallback", async () => {
+    process.env.VIEWS_VERSION_FALLBACK = FALLBACK_VERSION;
+    routes = { "/data/pointer-timeout.json": { json: { ok: true, tag: "flat-after-timeout" } } };
+    globalThis.fetch = mock((input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input.toString();
+      fetchCalls.push(url);
+      if (url.includes("/views/latest.json")) return new Promise<Response>(() => {});
+      return Promise.resolve(makeRes(routeFor(url)));
+    }) as unknown as typeof fetch;
+
+    expect(await readView("data/pointer-timeout.json", Doc, { base: true, timeoutMs: 5 })).toEqual({
+      ok: true,
+      tag: "flat-after-timeout",
+    });
+    expect(fetchCalls.some((url) => url.includes(`/views/${FALLBACK_VERSION}/`))).toBe(false);
+    expect(fetchCalls.some((url) => url.includes("/bootstrap/latest.json"))).toBe(false);
+    expect(warned("serving configured fallback")).toBe(false);
+  }, { timeout: 20_000 });
+
+  test("a pointer 5xx does not use the fallback", async () => {
+    process.env.VIEWS_VERSION_FALLBACK = FALLBACK_VERSION;
+    routes = {
+      "/views/latest.json": { status: 500 },
+      "/data/err.json": { json: { ok: true, tag: "flat-after-5xx" } },
+    };
+
+    expect(await readView("data/err.json", Doc, { base: true })).toEqual({ ok: true, tag: "flat-after-5xx" });
+    expect(fetchCalls.some((url) => url.includes(`/views/${FALLBACK_VERSION}/`))).toBe(false);
+    expect(fetchCalls.some((url) => url.includes("/bootstrap/latest.json"))).toBe(false);
+    expect(warned("serving configured fallback")).toBe(false);
+  }, { timeout: 20_000 });
+
+  test("invalid pointer JSON does not use the fallback", async () => {
+    process.env.VIEWS_VERSION_FALLBACK = FALLBACK_VERSION;
+    routes = { "/data/bad-json.json": { json: { ok: true, tag: "flat-after-bad-json" } } };
+    globalThis.fetch = mock((input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input.toString();
+      fetchCalls.push(url);
+      if (url.includes("/views/latest.json")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          json: async () => {
+            throw new Error("invalid json");
+          },
+        } as unknown as Response);
+      }
+      return Promise.resolve(makeRes(routeFor(url)));
+    }) as unknown as typeof fetch;
+
+    expect(await readView("data/bad-json.json", Doc, { base: true })).toEqual({
+      ok: true,
+      tag: "flat-after-bad-json",
+    });
+    expect(fetchCalls.some((url) => url.includes(`/views/${FALLBACK_VERSION}/`))).toBe(false);
+    expect(warned("serving configured fallback")).toBe(false);
+  });
+
+  test("an invalid fallback value is ignored", async () => {
+    process.env.VIEWS_VERSION_FALLBACK = "not-a-version";
+    routes = {
+      "/views/latest.json": { status: 404 },
+      "/rank/month/2026-05/org/stock.json": { json: { ok: true, tag: "flat" } },
+      "/views/not-a-version/rank/month/2026-05/org/stock.json": { json: { ok: true, tag: "bad-fallback" } },
+    };
+
+    expect(await readView("rank/month/2026-05/org/stock.json", Doc, { base: true })).toEqual({
+      ok: true,
+      tag: "flat",
+    });
+    expect(fetchCalls.some((url) => url.includes("/views/not-a-version/"))).toBe(false);
+    expect(warned("ignoring VIEWS_VERSION_FALLBACK")).toBe(true);
+
+    warnings.length = 0;
+    process.env.VIEWS_VERSION_FALLBACK = "still-bad";
+    advancePastTtl();
+    invalidatePublishedVersionMemo();
+    expect(await readView("rank/month/2026-05/org/stock.json", Doc, { base: true })).toEqual({
+      ok: true,
+      tag: "flat",
+    });
+    expect(warned("ignoring VIEWS_VERSION_FALLBACK")).toBe(false);
+  });
+
+  test("authoritative mode ignores the fallback and still sees no pointer", async () => {
+    process.env.VIEWS_VERSION_FALLBACK = FALLBACK_VERSION;
+    routes = {
+      "/views/latest.json": { status: 404 },
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-auth") },
+      "/bootstrap/generations/bootstrap-auth/views/data/auth.json": { json: { ok: true, tag: "bootstrap" } },
+      [`/views/${FALLBACK_VERSION}/meta.json`]: { json: { generated_at: "2026-09-13T06:25:00.000Z" } },
+      [`/views/${FALLBACK_VERSION}/data/auth.json`]: { json: { ok: true, tag: "fallback" } },
+    };
+
+    expect(await readAuthoritativeView("data/auth.json", Doc, { base: true })).toEqual({
+      ok: true,
+      tag: "bootstrap",
+    });
+    expect(fetchCalls.some((url) => url.includes(`/views/${FALLBACK_VERSION}/`))).toBe(false);
+    expect(warned("serving configured fallback")).toBe(false);
+  });
+
+  test("an existing views/latest.json wins over the fallback", async () => {
+    process.env.VIEWS_VERSION_FALLBACK = FALLBACK_VERSION;
+    routes = {
+      "/views/latest.json": { json: { version: "v-live", published_at: "2026-09-20T00:00:00.000Z" } },
+      "/views/v-live/data/current.json": { json: { ok: true, tag: "pointer" } },
+      [`/views/${FALLBACK_VERSION}/meta.json`]: { json: { generated_at: "2026-09-13T06:25:00.000Z" } },
+      [`/views/${FALLBACK_VERSION}/data/current.json`]: { json: { ok: true, tag: "fallback" } },
+    };
+
+    expect(await readView("data/current.json", Doc, { base: true })).toEqual({ ok: true, tag: "pointer" });
+    expect(fetchCalls.some((url) => url.includes(`/views/${FALLBACK_VERSION}/`))).toBe(false);
+    expect(warned("serving configured fallback")).toBe(false);
   });
 });
 
