@@ -20,7 +20,8 @@ while the shared-store incident (#543) is open.
 3. `scripts/cf-ci-gates.mjs`: `PREVIEW_CRONS_PAUSED` switches the gate between
    "must be `[]`" (now) and "must be the intended set". Any numeric weekday
    `0` or `7` in a wrangler cron is rejected. Tests cover both states.
-4. `docs/OPS.md`, `docs/CF-MIGRATION-P1.md`, and one `docs/CHANGELOG.md` entry.
+4. `docs/OPS.md`, `docs/CF-MIGRATION-P1.md`, the `docs/TESTING.md` coverage row
+   for #468, and one `docs/CHANGELOG.md` entry.
 
 ## Out of scope
 
@@ -29,10 +30,8 @@ while the shared-store incident (#543) is open.
 - `web/lib/cron/handlers.ts`: it uses JS `getUTCDay() === 0` for Sunday, which is
   correct, so it does not change.
 - `web/vercel.json`: Vercel uses Unix cron, where `0` is Sunday.
-- `docs/TESTING.md` row "CF Cron Sunday DoW 0/7 alias (#468)" and the older
-  CHANGELOG entry of the same name still describe the old aliases. They are
-  outside the files this issue allows; the new CHANGELOG entry says it
-  supersedes the old one. Follow-up for TESTING.md is flagged in the PR.
+- The historical CHANGELOG entry "CF Cron Sunday DoW 0/7 alias" stays as
+  written; the new CHANGELOG entry says it supersedes it.
 
 ## Acceptance
 
