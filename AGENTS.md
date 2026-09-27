@@ -75,7 +75,7 @@ Do not pipe the Bun installer into a shell. It appends to the shell rc. The boot
 
 The static block follows the CI `static` job: web install and audit, then pipeline install, audit, and test, then `lint:docs`, then web lint and the three typechecks, then view validation and `test:cov`. Pipeline packages have to be installed before `typecheck:scripts`. `test:cov` is `bun test lib/ --coverage --isolate` plus `scripts/check-coverage-threshold.mjs` (line and function coverage at least 80%). Restore a `bun.lock` if an install changes it. Do not commit that churn.
 
-App data for the two builds comes from the local GET/HEAD fixture on `127.0.0.1:4010`. `web/app/_shell/RootShell.tsx` imports `next/font/google`, so a cold build can also download fonts. Eslint ignores `.next` and does not ignore `.open-next`. The block lints before `cf:dry-run`. `cf:dry-run` is a dry run for wrangler env `pre` only. Do not deploy. Do not run `wrangler versions upload`. `cf:build` must be given `--site-target=production` or `--site-target=pre`. Production output is indexable. Preview output is `noindex`.
+App data for the two builds comes from the local GET/HEAD fixture on `127.0.0.1:4010`. `web/app/_shell/RootShell.tsx` imports `next/font/google`, so a cold build can also download fonts. Eslint ignores `.next` and `.open-next`. Generated OpenNext output can stay on disk while lint runs. The block lints before `cf:dry-run`. `cf:dry-run` is a dry run for wrangler env `pre` only. Do not deploy. Do not run `wrangler versions upload`. `cf:build` must be given `--site-target=production` or `--site-target=pre`. Production output is indexable. Preview output is `noindex`.
 
 ### Bootstrap
 
