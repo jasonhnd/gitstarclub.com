@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-09-24
+last_reviewed: 2026-09-27
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -242,6 +242,7 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | `GITHUB_TOKEN` | GitHub GraphQL / Search PAT (batch lookup of `stargazerCount` + metadata + whitelist) | **Required** (cron / Workflow) | `ghp_…` PAT string | `web/lib/github.ts`; daily cron · weekly cron · Workflow whitelist/metadata step · one-time backfill. GraphQL and REST both send `User-Agent: gitstarclub` and `Accept: application/vnd.github+json` |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob read-write token | **Required** (write path) | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/storage/vercel-blob-fetch-client.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`; cron writes the live tail · Workflow writes canonical/views · GC deletes old versions. CF Workers use runtime `fetch`, not `@vercel/blob`/undici |
 | `BLOB_BASE_URL` | Vercel Blob public-read base URL (build / runtime direct-link fetch of views + resolving the publish pointer) | **Required** (read path) | `https://<store>.public.blob.vercel-storage.com` (**no trailing slash / no BOM**) | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`; Next.js build · ISR views read directly · live cron reads the publish pointer |
+| `VIEWS_VERSION_FALLBACK` | Read-only version served when `views/latest.json` is a confirmed 404 (#543 stopgap, #553) | Optional. Production Worker top-level only, until the pointer is restored. Preview must not set it | `refresh-YYYY-MM-DDTHH-MM-SS-mmmZ`. Production is `refresh-2026-09-13T06-00-16-398Z`. Any other non-empty value is ignored and logged once | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`. See the incident note below this inventory |
 | `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` client fallback (only when the server-only value is unavailable) | Optional (fallback) | Same as `BLOB_BASE_URL` | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`; read from the client bundle |
 | `STORAGE_READ_DRIVER` | Object-storage read driver | Optional (default `blob`) | `blob` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`; P0 still reads Vercel Blob by default, see [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) |
 | `READ_DRIVER` | `STORAGE_READ_DRIVER` alias | Optional | Same as `STORAGE_READ_DRIVER` | `web/lib/runtime-config.ts` |
@@ -325,6 +326,20 @@ Platform and development-tool variables also belong to the maintained inventory;
 | `BASELINE_SCREENSHOT_CATEGORY` | visual tooling | baseline category parameter |
 
 <!-- env-inventory:end -->
+
+### Incident #543: read-only views version fallback
+
+Production base views resolve through `views/latest.json`. That pointer is missing in the shared Blob store (issue #543), so pages render with no ranking data. The last complete version, `refresh-2026-09-13T06-00-16-398Z`, is still stored under `views/`. Rollback cannot recreate a missing pointer, and this stopgap does not write one.
+
+`VIEWS_VERSION_FALLBACK` is set on the production Worker only (top-level `vars` in the Worker wrangler config). A published read uses it only after a confirmed 404 of `views/latest.json`. A timeout, a 5xx response, or invalid JSON does not use it. If the pointer exists, it wins. Authoritative reads (refresh and other write paths) ignore the variable and still see no pointer. `published_at` is `generated_at` from `views/<version>/meta.json` when that field is a real timestamp, otherwise null. While the fallback is in effect the Worker logs one warning per isolate. Preview `env.pre` must not set the variable.
+
+Remove it after issue #543 restores `views/latest.json`:
+
+1. Delete the top-level `VIEWS_VERSION_FALLBACK` entry from the Worker wrangler config.
+2. Delete the matching production-var assertion in `scripts/cf-ci-gates.mjs`, and keep the preview rejection until the var is gone from both places.
+3. Redeploy the production Worker.
+
+Do not leave the fallback in place after the real pointer exists. A later 404 would keep serving the frozen 2026-09-13 version. This variable never writes the store.
 
 **Conventions**:
 
