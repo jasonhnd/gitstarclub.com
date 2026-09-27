@@ -1,51 +1,37 @@
-import { test, expect, describe } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { test, expect, describe, spyOn } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readBlobBaseFromEnvFile, resolveLiveSmokeConfig } from "./live-smoke-config";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LIVE network/integration smoke test.
 //
-// This suite hits the LIVE production deploy + the public Vercel Blob store and
-// asserts core health: pages serve 200 with the expected chrome/content, the
-// static HTML is default-locale English, and the published view pointer resolves
-// to a versioned all-time stock ranking with the right shape.
+// This suite hits a LIVE deploy + the public Vercel Blob store and asserts core
+// health: pages serve 200 with the expected chrome/content, the static HTML is
+// default-locale English, and the published view pointer resolves to a
+// versioned all-time stock ranking with the right shape.
 //
-// It is NOT a unit test: it needs internet and an up-to-date deploy. Run it in CI
-// or on demand (`bun test lib/integration/live-smoke.test.ts`), never offline. If
-// the site is unreachable every assertion fails with a clear "unreachable" message.
+// It is OPT-IN. The network suite is registered only when RUN_LIVE_SMOKE=1 and
+// LIVE_SMOKE_SITE_URL names the target origin; there is no default site. Without
+// that opt-in, web/.env.local is not even read and `bun run test` makes no
+// request from this file. Run it on demand, e.g.
+//   RUN_LIVE_SMOKE=1 LIVE_SMOKE_SITE_URL=https://pre.gitstarclub.com \
+//     bun test lib/integration/live-smoke.test.ts
+// If the site is unreachable every assertion fails with a clear "unreachable" message.
 //
 // SECURITY: only BLOB_BASE_URL is read from web/.env.local (matched by regex on a
 // single line). The BLOB_READ_WRITE_TOKEN and every other secret are never read,
 // logged, or echoed — the Blob store is public, so a base URL is all we need.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SITE = "https://www.gitstarclub.com";
-
 /** Per-request budget — generous, because cold ISR paths + Blob can be slow. */
 const REQUEST_TIMEOUT_MS = 30_000;
 
-/** Read ONLY the BLOB_BASE_URL line from web/.env.local. Never touches the token. */
-function readBlobBase(): string | null {
-  // lib/integration/ → ../../.env.local
-  const envPath = join(import.meta.dir, "..", "..", ".env.local");
-  if (!existsSync(envPath)) return null;
-  let raw: string;
-  try {
-    raw = readFileSync(envPath, "utf8");
-  } catch {
-    return null;
-  }
-  // Match exactly the BLOB_BASE_URL assignment; ignore BLOB_READ_WRITE_TOKEN etc.
-  const match = raw.match(/^\s*BLOB_BASE_URL\s*=\s*"?([^"\r\n]+)"?\s*$/m);
-  if (!match) return null;
-  return match[1].trim().replace(/\/+$/, "");
-}
+// lib/integration/ → ../../.env.local
+const ENV_LOCAL_PATH = join(import.meta.dir, "..", "..", ".env.local");
 
-const BLOB_BASE = (
-  readBlobBase() ??
-  (process.env.RUN_LIVE_SMOKE === "1" ? (process.env.BLOB_BASE_URL ?? process.env.NEXT_PUBLIC_BLOB_BASE_URL) : "") ??
-  ""
-).replace(/\/+$/, "");
+const LIVE = resolveLiveSmokeConfig(process.env, () => readBlobBaseFromEnvFile(ENV_LOCAL_PATH));
 
 interface FetchResult {
   status: number;
@@ -97,12 +83,120 @@ function currentYearMonth(): { year: number; month: number } {
   return { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
 }
 
-if (!BLOB_BASE) {
-  console.warn("[live-smoke.test] SKIP: web/.env.local with BLOB_BASE_URL is not present.");
-  test.skip("live smoke requires BLOB_BASE_URL in web/.env.local", () => {});
+// ── Opt-in gate: offline checks that always run ─────────────────────────────
+describe("live-smoke gate [offline]", () => {
+  const blobFromFile = "https://blob.example.com";
+  const site = "https://smoke.example.com";
+
+  test("without RUN_LIVE_SMOKE the suite is disabled and web/.env.local is not read", () => {
+    let reads = 0;
+    const config = resolveLiveSmokeConfig({ LIVE_SMOKE_SITE_URL: site }, () => {
+      reads++;
+      return blobFromFile;
+    });
+    expect(config).toEqual({ enabled: false, reason: "RUN_LIVE_SMOKE is not 1" });
+    expect(reads).toBe(0);
+  });
+
+  test("RUN_LIVE_SMOKE must be exactly \"1\"", () => {
+    for (const value of ["", "0", "true", "yes", " 1"]) {
+      const config = resolveLiveSmokeConfig(
+        { RUN_LIVE_SMOKE: value, LIVE_SMOKE_SITE_URL: site, BLOB_BASE_URL: blobFromFile },
+        () => blobFromFile,
+      );
+      expect(config.enabled).toBe(false);
+    }
+  });
+
+  test("RUN_LIVE_SMOKE=1 without LIVE_SMOKE_SITE_URL has no default site", () => {
+    let reads = 0;
+    const config = resolveLiveSmokeConfig({ RUN_LIVE_SMOKE: "1", BLOB_BASE_URL: blobFromFile }, () => {
+      reads++;
+      return blobFromFile;
+    });
+    expect(config).toEqual({ enabled: false, reason: "LIVE_SMOKE_SITE_URL is not set" });
+    expect(reads).toBe(0);
+  });
+
+  test("a non-http(s) LIVE_SMOKE_SITE_URL is rejected", () => {
+    for (const value of ["pre.gitstarclub.com", "ftp://example.com", "javascript:alert(1)"]) {
+      const config = resolveLiveSmokeConfig(
+        { RUN_LIVE_SMOKE: "1", LIVE_SMOKE_SITE_URL: value, BLOB_BASE_URL: blobFromFile },
+        () => null,
+      );
+      expect(config.enabled).toBe(false);
+    }
+  });
+
+  test("RUN_LIVE_SMOKE=1 + site: web/.env.local Blob base wins over env, trailing slashes trimmed", () => {
+    const config = resolveLiveSmokeConfig(
+      { RUN_LIVE_SMOKE: "1", LIVE_SMOKE_SITE_URL: `${site}//`, BLOB_BASE_URL: "https://env.example.com" },
+      () => blobFromFile,
+    );
+    expect(config).toEqual({ enabled: true, site, blobBase: blobFromFile });
+  });
+
+  test("RUN_LIVE_SMOKE=1 + site: falls back to BLOB_BASE_URL, then NEXT_PUBLIC_BLOB_BASE_URL", () => {
+    expect(
+      resolveLiveSmokeConfig(
+        { RUN_LIVE_SMOKE: "1", LIVE_SMOKE_SITE_URL: site, BLOB_BASE_URL: "https://env.example.com/" },
+        () => null,
+      ),
+    ).toEqual({ enabled: true, site, blobBase: "https://env.example.com" });
+    expect(
+      resolveLiveSmokeConfig(
+        { RUN_LIVE_SMOKE: "1", LIVE_SMOKE_SITE_URL: site, NEXT_PUBLIC_BLOB_BASE_URL: "https://pub.example.com" },
+        () => null,
+      ),
+    ).toEqual({ enabled: true, site, blobBase: "https://pub.example.com" });
+  });
+
+  test("RUN_LIVE_SMOKE=1 + site but no Blob base anywhere stays disabled", () => {
+    const config = resolveLiveSmokeConfig({ RUN_LIVE_SMOKE: "1", LIVE_SMOKE_SITE_URL: site }, () => null);
+    expect(config.enabled).toBe(false);
+  });
+
+  test("readBlobBaseFromEnvFile reads only the BLOB_BASE_URL line", () => {
+    const dir = mkdtempSync(join(tmpdir(), "live-smoke-env-"));
+    try {
+      const envPath = join(dir, ".env.local");
+      expect(readBlobBaseFromEnvFile(envPath)).toBeNull();
+      writeFileSync(envPath, 'BLOB_READ_WRITE_TOKEN="placeholder"\nOTHER=1\n');
+      expect(readBlobBaseFromEnvFile(envPath)).toBeNull();
+      writeFileSync(envPath, 'BLOB_READ_WRITE_TOKEN="placeholder"\nBLOB_BASE_URL="https://blob.example.com/"\n');
+      expect(readBlobBaseFromEnvFile(envPath)).toBe("https://blob.example.com");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the gate itself performs no network request", () => {
+    const fetchSpy = spyOn(globalThis, "fetch");
+    try {
+      resolveLiveSmokeConfig({}, () => blobFromFile);
+      resolveLiveSmokeConfig({ RUN_LIVE_SMOKE: "1", LIVE_SMOKE_SITE_URL: site }, () => blobFromFile);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("this process only registers the network suite under the explicit opt-in", () => {
+    if (process.env.RUN_LIVE_SMOKE !== "1" || !process.env.LIVE_SMOKE_SITE_URL) {
+      expect(LIVE.enabled).toBe(false);
+    }
+  });
+});
+
+if (!LIVE.enabled) {
+  console.warn(`[live-smoke.test] SKIP network suite: ${LIVE.reason}.`);
+  test.skip(`live smoke [network] skipped: ${LIVE.reason}`, () => {});
 } else {
+  const SITE = LIVE.site;
+  const BLOB_BASE = LIVE.blobBase;
+
   // describe block name flags this as live/network for filtered runs and CI reporting.
-  describe("live-smoke [network] — production deploy + Blob health", () => {
+  describe("live-smoke [network] — live deploy + Blob health", () => {
   // ── Pages: 200 + expected content ─────────────────────────────────────────
   // Every surface renders the shared <Chrome>, whose default-locale nav contains
   // "Rankings" and "Pulse". We assert on that stable chrome (plus a per-page
