@@ -10,15 +10,15 @@ while the shared-store incident (#543) is open.
 
 ## Scope
 
-1. `workers/gitstarclub-web/src/cron-dispatch.ts`: canonical weekly and refresh
+1. `cron-dispatch.ts` under `workers/gitstarclub-web/`: canonical weekly and refresh
    expressions use `SUN`. Dispatch accepts `SUN` (any case) and Cloudflare `1`
    as Sunday. `7` (Saturday on Cloudflare) and `0` (rejected by the Cloudflare
    API) are unknown expressions and fail the scheduled invocation.
    Tests in `web/lib/workers-host/cron-dispatch.test.ts` pin that.
-2. `workers/gitstarclub-web/wrangler.jsonc`: `env.pre` `triggers.crons` is `[]`
+2. `wrangler.jsonc` under `workers/gitstarclub-web/`: `env.pre` `triggers.crons` is `[]`
    with a comment that points to #543 and lists the intended expressions.
 3. `scripts/cf-ci-gates.mjs`: `PREVIEW_CRONS_PAUSED` switches the gate between
-   "must be `[]`" (now) and "must be the intended set". Any numeric Sunday
+   "must be `[]`" (now) and "must be the intended set". Any numeric weekday
    `0` or `7` in a wrangler cron is rejected. Tests cover both states.
 4. `docs/OPS.md`, `docs/CF-MIGRATION-P1.md`, and one `docs/CHANGELOG.md` entry.
 
@@ -29,6 +29,10 @@ while the shared-store incident (#543) is open.
 - `web/lib/cron/handlers.ts`: it uses JS `getUTCDay() === 0` for Sunday, which is
   correct, so it does not change.
 - `web/vercel.json`: Vercel uses Unix cron, where `0` is Sunday.
+- `docs/TESTING.md` row "CF Cron Sunday DoW 0/7 alias (#468)" and the older
+  CHANGELOG entry of the same name still describe the old aliases. They are
+  outside the files this issue allows; the new CHANGELOG entry says it
+  supersedes the old one. Follow-up for TESTING.md is flagged in the PR.
 
 ## Acceptance
 

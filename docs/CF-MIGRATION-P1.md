@@ -91,15 +91,20 @@ refresh start.
 | `event.cron` (UTC) | Worker action | Auth |
 |---|---|---|
 | `0 3 * * *` | `GET {CF_CRON_ORIGIN}/api/cron/daily` | Bearer `CRON_SECRET` |
-| `0 4 * * 0` or `0 4 * * 7` (or `SUN`) | `GET {CF_CRON_ORIGIN}/api/cron/weekly` | Bearer `CRON_SECRET` |
-| `0 6 * * 0` or `0 6 * * 7` (or `SUN`) | existing `triggerStart` (`REFRESH_START_URL`, or `{CF_CRON_ORIGIN}/api/workflows/refresh/start`). `WORKFLOW_FIXTURE=1` still enqueues the shrink fixture **only** on these expressions | Bearer `CRON_SECRET` |
+| `0 4 * * SUN` (or `0 4 * * 1`) | `GET {CF_CRON_ORIGIN}/api/cron/weekly` | Bearer `CRON_SECRET` |
+| `0 6 * * SUN` (or `0 6 * * 1`) | existing `triggerStart` (`REFRESH_START_URL`, or `{CF_CRON_ORIGIN}/api/workflows/refresh/start`). `WORKFLOW_FIXTURE=1` still enqueues the shrink fixture **only** on these expressions | Bearer `CRON_SECRET` |
 | anything else | structured `workflow.cron` log with `kind: "unknown"` and a thrown error (failed scheduled invocation) | n/a |
 
-Sunday DoW `0` (Vercel / Unix) and `7` (Cloudflare Schedules preview mount) are
-dispatch aliases, plus the unambiguous `SUN` token if a schedule uses the
-documented name. Daily stays `0 3 * * *`. Accepting `7` does **not** enable
-platform schedules and does **not** put expressions on production
-`triggers.crons`.
+Cloudflare Cron Triggers number weekdays `1` = Sunday through `7` = Saturday
+and reject `0`
+([Cloudflare docs](https://developers.cloudflare.com/workers/configuration/cron-triggers/)).
+This differs from Unix and Vercel cron, where `0` is Sunday. Cloudflare
+expressions in this repo use `SUN` for Sunday. Dispatch accepts `SUN` in any
+case and Cloudflare `1` as Sunday. `7` is Saturday on Cloudflare, so
+`0 4 * * 7` and `0 6 * * 7` dispatch as unknown and fail the scheduled
+invocation. Unix `0` also dispatches as unknown. Daily stays `0 3 * * *`. The
+matcher does **not** enable platform schedules and does **not** put expressions
+on production `triggers.crons`.
 
 `CF_CRON_ORIGIN` is a wrangler var, not a hardcoded single host:
 
@@ -114,11 +119,16 @@ weekly stay ordinary Next routes (not Queue jobs).
 | Surface | This change | Not this change |
 |---|---|---|
 | `wrangler.jsonc` top-level `triggers.crons` | stays `[]` | production schedules |
-| `wrangler.jsonc` `env.pre` `triggers.crons` | three Vercel-parity expressions as a **draft** | Cloudflare `PUT .../schedules` / live `wrangler deploy` |
+| `wrangler.jsonc` `env.pre` `triggers.crons` | `[]` while preview schedules are paused (#543). Intended when re-enabled: `0 3 * * *`, `0 4 * * SUN`, `0 6 * * SUN` | Cloudflare `PUT .../schedules` / live `wrangler deploy` |
 | `CRON_SECRET` / `REFRESH_*_URL` | documented names only | secret values in git, gist, or PR |
 
-Writing the preview cron expressions in wrangler does **not** enable
-Cloudflare Cron Triggers. Enabling schedules and injecting secrets is an
+The owner paused all `env.pre` schedules on 2026-09-25/26 (shared-store
+incident #543). The CI gate (`PREVIEW_CRONS_PAUSED` in
+`scripts/cf-ci-gates.mjs`) requires `env.pre` `triggers.crons` to be `[]`, so a
+routine `wrangler deploy --env pre` cannot re-enable them. To re-enable after
+owner approval, one PR sets the three intended expressions in `env.pre` and
+flips `PREVIEW_CRONS_PAUSED` to `false`. Writing cron expressions in wrangler
+does **not** by itself enable Cloudflare Cron Triggers. Enabling schedules and injecting secrets is an
 **ops runbook** after a preview Worker deploy. This document does not claim
 production cron is on.
 
@@ -126,7 +136,7 @@ production cron is on.
 
 1. Deploy `gitstarclub-web-pre` with the dispatch build (keep production Worker off this PR).
 2. Inject per-environment vars/secrets (names only here): `CRON_SECRET`, `CF_CRON_ORIGIN`, optional `REFRESH_START_URL` / `REFRESH_STEP_URL`. Preview origin must stay `https://pre.gitstarclub.com`.
-3. Enable **preview** schedules only (Cloudflare schedules API for Worker `gitstarclub-web-pre`, or deploy wrangler env `pre` with the three crons). Confirm the platform schedule list matches the three strings.
+3. Enable **preview** schedules only (Cloudflare schedules API for Worker `gitstarclub-web-pre`, or deploy wrangler env `pre` with the three crons). Confirm the platform schedule list matches the three strings (`0 3 * * *`, `0 4 * * SUN`, `0 6 * * SUN`; never `7`, which is Saturday on Cloudflare).
 4. Accept on preview: unauthenticated daily/weekly 401; Bearer daily + weekly 2xx; refresh start or fixture path 2xx; `/` and `/rankings` still 200.
 5. Keep Vercel production crons running. Do **not** enable `gitstarclub-web` schedules until Jason approves a later cutover. Production `triggers.crons` must remain `[]` in this repo until that approval.
 
@@ -644,7 +654,7 @@ secrets, stop Vercel cron, or deploy production `gitstarclub-web`.
 | H2 | Pages vs health (liveHistory) | Independently, a page 500 with `live generation history exceeds 64 entries` (or a requested week/month newer than the hop) is the **#496** class. This branch already fail-softs those walks (merged from `pre`): pages fall back to base / previous / empty and stay 200. Score **H2** only when **X1** is green | Scoring a liveHistory 500 as **H1**/**X1** after a passing refresh, or requiring a published-view rewrite to explain it |
 | X1 | OOM = fail | Fetch-origin `Worker exceeded memory limit` must **not** be a stable last event | Memory-limit ×N (Queue `max_retries: 2` → three events) then quiet |
 | X2 | Queue silence = fail | Queue origin keeps consuming until `markPublished` or a written `ops/workflows/<run_id>/error.json` / `active.json` `failed` | Queue silent after fold or a recompute hop; no `error.json`; lease expires. **Do not** treat that as “still running” |
-| P1 | Production crons | Top-level `triggers.crons` is `[]`. Preview `env.pre` may list three **draft** expressions; that is not platform enablement | Any production cron string, or a Cloudflare schedule on Worker `gitstarclub-web` |
+| P1 | Production crons | Top-level `triggers.crons` is `[]`. Preview `env.pre` `triggers.crons` is `[]` while paused (#543); when re-enabled it lists the three `SUN` expressions, which is not by itself platform enablement | Any production cron string, or a Cloudflare schedule on Worker `gitstarclub-web` |
 | P2 | Vercel stays on | Production daily / weekly / start remain the three `web/vercel.json` rows | Stopping, emptying, or disabling Vercel cron as part of this acceptance |
 
 ### fold-decision reasons (quick key)
@@ -862,7 +872,7 @@ deployed as a shell.
 - Tests: `web/lib/workflows/runtime/*.test.ts` drain a shrink fixture through
   `MemoryObjectStore` + `BlobWorkflowLeaseStore`. Lease CAS still wins/loses
   on ETag. No `workflow` package is required.
-- Worker `env.pre` (`gitstarclub-web-pre`): `0 6 * * 0` or `0 6 * * 7` with
+- Worker `env.pre` (`gitstarclub-web-pre`): `0 6 * * SUN` (or `0 6 * * 1`) with
   `WORKFLOW_FIXTURE=1` or `GET /start` with `CRON_SECRET` enqueues one fixture
   job; the Queue consumer advances one step per message. Daily/weekly crons
   HTTP to `https://pre.gitstarclub.com` and do not use the fixture queue.
