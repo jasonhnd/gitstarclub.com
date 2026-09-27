@@ -13,8 +13,14 @@ export const ALLOWED_CF_PREVIEW_ORIGINS = Object.freeze([
 ]);
 export const PRODUCTION_CRON_ORIGIN = "https://gitstarclub.com";
 export const PREVIEW_CRON_ORIGIN = "https://pre.gitstarclub.com";
-// Cloudflare Schedules rejects Sunday=0 (API 10100). Worker dispatch still aliases 0/7/SUN.
-export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * 7", "0 6 * * 7"]);
+// Cloudflare Cron Triggers number weekdays 1 = Sunday ... 7 = Saturday and reject 0
+// (API 10100). See https://developers.cloudflare.com/workers/configuration/cron-triggers/.
+// Use SUN for Sunday. These are the intended env.pre expressions once preview is re-enabled.
+export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"]);
+// Preview schedules are paused by the owner (shared-store incident #543), so
+// wrangler env.pre triggers.crons must be []. To re-enable, in one PR set
+// env.pre triggers.crons to PREVIEW_CRON_TRIGGERS and flip this to false.
+export const PREVIEW_CRONS_PAUSED = true;
 export const PREVIEW_MIN_TRACKED_STARS = "1000";
 export const PRODUCTION_MIN_TRACKED_STARS = "10000";
 export const PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
@@ -247,6 +253,45 @@ function productionCronsAreEmpty(productionCrons) {
   return Array.isArray(productionCrons) && productionCrons.length === 0;
 }
 
+const WEEKDAY_TOKEN_SEPARATORS = /[,\-/#]/;
+
+/**
+ * True when a cron expression spells a weekday as numeric 0 or 7. On
+ * Cloudflare 7 is Saturday (not Sunday) and 0 is rejected, so both are
+ * ambiguous with Unix cron. Use three-letter names (SUN, SAT) instead.
+ * @param {unknown} cron
+ */
+export function cronUsesAmbiguousNumericWeekday(cron) {
+  if (typeof cron !== "string") return false;
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return false;
+  return parts[4].split(WEEKDAY_TOKEN_SEPARATORS).some((token) => /^[07]L?$/i.test(token));
+}
+
+/**
+ * @param {unknown} previewCrons
+ * @param {boolean} paused
+ * @returns {string[]}
+ */
+export function previewCronIssues(previewCrons, paused) {
+  const issues = [];
+  const label = `wrangler env.${PREVIEW_WRANGLER_ENV} triggers.crons`;
+  if (paused) {
+    if (!Array.isArray(previewCrons) || previewCrons.length !== 0) {
+      issues.push(
+        `${label} must be [] while preview schedules are paused (#543); intended when re-enabled: ${JSON.stringify(
+          [...PREVIEW_CRON_TRIGGERS],
+        )} with PREVIEW_CRONS_PAUSED=false`,
+      );
+    }
+  } else if (JSON.stringify(previewCrons) !== JSON.stringify([...PREVIEW_CRON_TRIGGERS])) {
+    issues.push(
+      `${label} must be the three Cloudflare expressions ${JSON.stringify([...PREVIEW_CRON_TRIGGERS])} (Cloudflare 1 = Sunday, 7 = Saturday; use SUN)`,
+    );
+  }
+  return issues;
+}
+
 /**
  * @typedef {object} CfCiGateSources
  * @property {string} wranglerSource
@@ -256,6 +301,7 @@ function productionCronsAreEmpty(productionCrons) {
  * @property {string} runtimeConfigSource
  * @property {string} [deploySurfaceSource]
  * @property {Record<string, string>} [namingSources]
+ * @property {boolean} [previewCronsPaused] Test override for PREVIEW_CRONS_PAUSED.
  */
 
 /**
@@ -296,17 +342,18 @@ export function assertCfCiGates(sources) {
     issues.push("wrangler top-level triggers.crons must stay [] until Jason approves production CF Cron");
   }
   const previewCrons = preview?.triggers?.crons;
-  if (previewCrons !== undefined && JSON.stringify(previewCrons) !== JSON.stringify([...PREVIEW_CRON_TRIGGERS])) {
-    issues.push(
-      `wrangler env.${PREVIEW_WRANGLER_ENV} triggers.crons must be the three Cloudflare Schedules expressions ${JSON.stringify(
-        [...PREVIEW_CRON_TRIGGERS],
-      )} (Sunday=7; dispatch aliases Vercel Sunday=0)`,
-    );
+  if (preview) {
+    issues.push(...previewCronIssues(previewCrons, sources.previewCronsPaused ?? PREVIEW_CRONS_PAUSED));
   }
-  if (previewCrons?.some((cron) => typeof cron === "string" && /\* \* 0$/.test(cron) && cron !== "0 3 * * *")) {
-    issues.push(
-      `wrangler env.${PREVIEW_WRANGLER_ENV} triggers.crons must not use Sunday=0 (Cloudflare Schedules API 10100); use 7 for weekly/refresh`,
-    );
+  for (const [label, crons] of [
+    ["top-level", productionCrons],
+    [`env.${PREVIEW_WRANGLER_ENV}`, previewCrons],
+  ]) {
+    if (Array.isArray(crons) && crons.some(cronUsesAmbiguousNumericWeekday)) {
+      issues.push(
+        `wrangler ${label} triggers.crons must not use numeric weekday 0 or 7 (Cloudflare 1 = Sunday, 7 = Saturday, 0 rejected); use SUN or SAT`,
+      );
+    }
   }
   const requiredProductionVars = [
     ["BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL],
