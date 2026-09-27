@@ -17,6 +17,7 @@ import {
   PRODUCTION_CRON_ORIGIN,
   PRODUCTION_MIN_TRACKED_STARS,
   PRODUCTION_WORKER_NAME,
+  PRODUCTION_VIEWS_VERSION_FALLBACK,
   PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL,
   PRODUCTION_WORKFLOW_RUNTIME,
   assertAllowedCfPreviewOrigin,
@@ -41,7 +42,8 @@ const validWrangler = `{
     "NEXT_PUBLIC_BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
     "CF_CRON_ORIGIN": "https://gitstarclub.com",
     "WORKFLOW_RUNTIME": "cf-queue",
-    "WORKFLOW_QUEUE_ENQUEUE_URL": "https://gitstarclub.com/enqueue"
+    "WORKFLOW_QUEUE_ENQUEUE_URL": "https://gitstarclub.com/enqueue",
+    "VIEWS_VERSION_FALLBACK": "refresh-2026-09-13T06-00-16-398Z"
   },
   "triggers": { "crons": [] },
   "env": {
@@ -402,6 +404,8 @@ describe("CF CI gates", () => {
     assert.equal(wrangler.vars.CF_CRON_ORIGIN, PRODUCTION_CRON_ORIGIN);
     assert.equal(wrangler.vars.WORKFLOW_RUNTIME, PRODUCTION_WORKFLOW_RUNTIME);
     assert.equal(wrangler.vars.WORKFLOW_QUEUE_ENQUEUE_URL, PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL);
+    assert.equal(wrangler.vars.VIEWS_VERSION_FALLBACK, PRODUCTION_VIEWS_VERSION_FALLBACK);
+    assert.equal(wrangler.env.pre.vars.VIEWS_VERSION_FALLBACK, undefined);
     assert.equal(wrangler.vars.CF_PREVIEW_COMMIT_SHA, undefined);
     assert.equal(wrangler.env.pre.vars.CF_PREVIEW_COMMIT_SHA, undefined);
   });
@@ -414,6 +418,7 @@ describe("CF CI gates", () => {
       "CF_CRON_ORIGIN",
       "WORKFLOW_RUNTIME",
       "WORKFLOW_QUEUE_ENQUEUE_URL",
+      "VIEWS_VERSION_FALLBACK",
     ]) {
       const config = structuredClone(base);
       delete config.vars[key];
@@ -459,6 +464,16 @@ describe("CF CI gates", () => {
     sha.vars.CF_PREVIEW_COMMIT_SHA = "0123456789abcdef";
     const shaIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(sha) }));
     assert.ok(shaIssues.some((issue) => issue.includes("CF_PREVIEW_COMMIT_SHA must not be committed")));
+  });
+
+  test("refuses VIEWS_VERSION_FALLBACK on preview", () => {
+    const config = JSON.parse(validWrangler);
+    config.env.pre.vars.VIEWS_VERSION_FALLBACK = PRODUCTION_VIEWS_VERSION_FALLBACK;
+    const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+    assert.ok(
+      issues.some((issue) => issue.includes("env.pre vars.VIEWS_VERSION_FALLBACK must not be set")),
+      issues.join("\n"),
+    );
   });
 
   test("refuses production PREFLIGHT_RELAX_EMPTY_SHARDS=1", () => {

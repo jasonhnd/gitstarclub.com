@@ -79,6 +79,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Fixed
 
+- **Production pages serve a configured views version when `views/latest.json` is missing (#553).** `VIEWS_VERSION_FALLBACK` on the production Worker (`refresh-2026-09-13T06-00-16-398Z`) is used only after a confirmed 404. Timeouts, 5xx, invalid JSON, and authoritative reads do not use it. An existing pointer still wins. Preview does not set the var. The read path does not write the store. Remove the var after #543 restores the pointer. Plan: [issue-553-views-version-fallback.md](../plans/issue-553-views-version-fallback.md).
+
 - **Live smoke is opt-in (#548).** `web/lib/integration/live-smoke.test.ts` no longer reads `web/.env.local` before checking `RUN_LIVE_SMOKE` and no longer has a hard-coded production site. Its network suite runs only with `RUN_LIVE_SMOKE=1` and a `LIVE_SMOKE_SITE_URL` target, so `bun run test` in a checkout with `web/.env.local` makes no request from it. An offline block tests the gate. `AGENTS.md` and `docs/TESTING.md` describe the switch. Plan: [issue-548-live-smoke-opt-in.md](../plans/issue-548-live-smoke-opt-in.md).
 
 - **Eslint ignores OpenNext build output (#549).** The web eslint ignore list now includes `.open-next/**` beside `.next/**`, so `bun run lint` stays clean after `cf:build` or `cf:dry-run` leaves generated output on disk. `AGENTS.md` records that both directories are ignored. Plan: [issue-549-eslint-open-next.md](../plans/issue-549-eslint-open-next.md).
