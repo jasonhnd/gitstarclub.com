@@ -17,11 +17,7 @@ import {
 
 const validWrangler = `{
   "name": "gitstarclub-web",
-  "vars": {
-    "SITE_INDEXABLE": "1",
-    "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com",
-    "VIEWS_VERSION_FALLBACK": "refresh-2026-09-13T06-00-16-398Z"
-  },
+  "vars": { "SITE_INDEXABLE": "1", "NEXT_PUBLIC_SITE_URL": "https://gitstarclub.com", "VIEWS_VERSION_FALLBACK": "refresh-2026-09-13T06-00-16-398Z" },
   "triggers": { "crons": [] },
   "env": {
     "pre": { "name": "gitstarclub-web-pre" }
