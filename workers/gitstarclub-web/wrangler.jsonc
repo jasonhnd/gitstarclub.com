@@ -64,7 +64,11 @@
     "BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
     "NEXT_PUBLIC_BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
     "WORKFLOW_RUNTIME": "cf-queue",
-    "WORKFLOW_QUEUE_ENQUEUE_URL": "https://gitstarclub.com/enqueue"
+    "WORKFLOW_QUEUE_ENQUEUE_URL": "https://gitstarclub.com/enqueue",
+    // Stopgap for #543: views/latest.json is missing. Serve this complete
+    // version until the pointer is restored, then remove this var.
+    // Do not copy it to env.pre.
+    "VIEWS_VERSION_FALLBACK": "refresh-2026-09-13T06-00-16-398Z"
   },
   // Production CF Cron stays off. `triggers.crons` MUST remain []. Vercel cron
   // in web/vercel.json remains the production scheduler until Jason approves a
