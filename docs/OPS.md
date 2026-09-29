@@ -257,6 +257,8 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | `R2_SECRET_ACCESS_KEY` | R2 S3 secret | R2 driver only | secret | `web/lib/runtime-config.ts` |
 | `AWS_SECRET_ACCESS_KEY` | `R2_SECRET_ACCESS_KEY` alias | R2 driver only | Same as `R2_SECRET_ACCESS_KEY` | `web/lib/runtime-config.ts` |
 | `R2_BUCKET` | R2 bucket name | R2 driver only | `gitstarclub-assets` | `web/lib/runtime-config.ts` |
+| `R2_BUCKET_PROD` | Production bucket for bootstrap and ops CLIs (`--target prod`) | R2 CLI only | `gitstarclub-data-prod` | `pipeline/lib/bootstrap-cli.mjs` · `web/lib/storage/ops-target.ts`. When set, it wins. A different `R2_BUCKET` is refused |
+| `R2_BUCKET_PRE` | Preview bucket for bootstrap and ops CLIs (`--target pre`) | R2 CLI only | `gitstarclub-data-pre` | `pipeline/lib/bootstrap-cli.mjs` · `web/lib/storage/ops-target.ts`. When set, it wins. A different `R2_BUCKET` is refused |
 | `AWS_S3_BUCKET` | `R2_BUCKET` alias | R2 driver only | Same as `R2_BUCKET` | `web/lib/runtime-config.ts` |
 | `R2_REGION` | SigV4 region | Optional (default `auto`) | `auto` | `web/lib/runtime-config.ts` |
 | `AWS_REGION` | `R2_REGION` alias | Optional | Same as `R2_REGION` | `web/lib/runtime-config.ts` |
@@ -364,7 +366,7 @@ Use **one PUBLIC store**: the large set of JSON views is read by the build / run
 ```text
 blob://
 ├── bootstrap/
-│   ├── latest.json                                  # atomic bootstrap pointer (previous=null means legacy-flat)
+│   ├── latest.json                                  # atomic bootstrap pointer (Blob previous=null means legacy-flat)
 │   ├── generations/<bootstrap-generation>/          # create-only; never overwritten after the manifest is sealed
 │   │   ├── manifests/{base,canonical}.json           # object path/bytes/SHA-256 integrity receipt
 │   │   ├── views/**                                  # first base views; after views/latest exists, managed views take priority
@@ -720,7 +722,15 @@ When the data pipeline (Vercel Workflow full refresh + daily / weekly cron) fail
 
 11 years of event-level history are backfilled only once, via **BigQuery** (GCP credentials required, about $10, including a stable repo.id). Free alternatives (the ClickHouse public instance, self-hosted ingestion) were all judged infeasible after evaluation; see ARCHITECTURE "Why backfill uses BigQuery".
 
-**Prerequisites**: GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`) · GitHub PAT (`GITHUB_TOKEN`) · Vercel Blob store (`BLOB_READ_WRITE_TOKEN`). Run it on a local machine / a full Node environment, not on Vercel.
+**Prerequisites**: GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`) · GitHub PAT (`GITHUB_TOKEN`) · Vercel Blob store (`BLOB_READ_WRITE_TOKEN`) for the Blob path. The R2 path uses a bucket-scoped key in the uncommitted pipeline env file (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) plus `R2_BUCKET_PRE` or `R2_BUCKET_PROD`. Run it on a local machine / a full Node environment, not on Vercel.
+
+Render `pipeline/backfill/02-extract.sql` before any BigQuery job. The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`.
+
+```bash
+cd pipeline
+node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531
+bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < rendered.sql
+```
 
 ```text
 1. Query GH Archive WatchEvents (BigQuery)
@@ -742,6 +752,29 @@ When the data pipeline (Vercel Workflow full refresh + daily / weekly cron) fail
 - **Cost**: ~$10 (one-time); after the backfill, never touch GCP again.
 - Metric-definition caveats (gross vs net, survivor bias, start point 2015) see ARCHITECTURE, and are noted on the About page.
 - After the backfill the two GCP variables can be retired, and routine operations return to 0 GCP.
+- Steps 5 and 6 above are the Blob path (`--store` defaults to blob). Blob still uploads unless `--dry-run` (step 6) or `--no-upload` (step 7).
+
+### R2 rehearsal and empty-bucket first commit
+
+Rehearse in `gitstarclub-data-pre`, then load `gitstarclub-data-prod`. The owner places `_meta/bucket-identity.json` at the bucket root out of band. `bucket` must equal the target bucket name. `deploy_env` is `pre` for `--target pre` and `production` for `--target prod`. The scripts never write or delete `_meta/`.
+
+R2 performs no writes unless `--execute`. A dry run prints the object count, byte count, and target bucket. `--initial-commit` is R2 only. It publishes `previous_generation: null` when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are all absent, and it refuses if any of those already exist. The identity marker and staged generation objects do not block that check. This null is not a legacy-flat rollback: `--rollback legacy-flat` fails closed because the flat layout is not in the new bucket.
+
+```bash
+cd pipeline
+GEN=bootstrap-20260717T120000Z
+
+node backfill/06-upload.mjs --store r2 --target pre --generation "$GEN"
+node backfill/06-upload.mjs --store r2 --target pre --generation "$GEN" --execute
+
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN"
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN" --execute --stage-only
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN" --execute --initial-commit
+
+node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$GEN" --execute
+```
+
+Production uses the same commands with `--target prod` after the pre rehearsal. Nothing in this section uploads, deploys, or binds a bucket.
 
 ## One-time canonical lifecycle provenance migration (Issue #326)
 
@@ -764,8 +797,7 @@ cd web
 bun scripts/migrate-canonical-lifecycle.ts
 ```
 
-Dry-run loads only `BLOB_BASE_URL`, does not need `BLOB_READ_WRITE_TOKEN`, and does not call Blob
-create / put / delete. Review checks at least:
+Blob dry-run loads only `BLOB_BASE_URL` and does not need `BLOB_READ_WRITE_TOKEN`. R2 dry-run (`--store r2 --target pre` or `--target prod`) loads `R2_PUBLIC_BASE_URL` and the bucket name, and it does not load `R2_SECRET_ACCESS_KEY`. Neither dry-run calls create / put / delete. Review checks at least:
 
 - `production_writes=0`;
 - source layout / `views/latest.run_id` / 19 snapshot hash match the review evidence;
@@ -874,18 +906,21 @@ Operator command for the missing bootstrap pointer (dry-run first):
 ```text
 cd web && bun scripts/ensure-bootstrap-pointer.ts
 cd web && bun scripts/ensure-bootstrap-pointer.ts --execute
+cd web && bun scripts/ensure-bootstrap-pointer.ts --store r2 --target pre
+cd web && bun scripts/ensure-bootstrap-pointer.ts --store r2 --target pre --execute --initial-commit
 ```
 
 `--execute` only writes when a sealed `bootstrap/generations/<id>` already
 exists. If none exists, the plan is `leave-legacy-flat` and no pointer is
-invented. Creating a pointer is not the root-cost fix: a missing pointer is a
+invented. `--initial-commit` is R2 only and is the empty-bucket exception
+documented in the bootstrap runbook. Creating a pointer is not the root-cost fix: a missing pointer is a
 normal long-lived legacy state and must stay negatively cached with coalesced
 reads even if the object disappears again.
 
 ## Rollback
 
 - **Pointer rollback (Workflow publish)**: do not overwrite Blob directly. Call the protected rollback API with a stable idempotency key; it acquires a fenced lease, pins the rollback intent, syncs the recovery / whitelist pointers, and invalidates pages and the pointer cache. Example: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`. After a successful return, check the pages and `views/latest.json` within the **≤60s** visibility SLA. Design see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.
-- **bootstrap generation / legacy rollback**: first read `bootstrap/latest.previous_generation`. When the value is a generation, run `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute`; the first publish's value is `null`, and its explicit meaning is to run `--rollback legacy-flat --execute`. A generation target rechecks sealed manifests and every object before the lease; a mutable legacy target, after acquiring the same Workflow CAS lease, verifies the key flat base artifacts and all `4 × 32` canonical shards. The command then rereads the pointer inside the lease and overwrites the pointer only once; a legacy target atomically deletes `bootstrap/latest.json`. If the pointer write/delete succeeded but the response was lost, retrying the same target returns `already-rolled-back`. Do not hand-edit the pointer, and do not delete the current / previous generation or overlay.
+- **bootstrap generation / legacy rollback**: first read `bootstrap/latest.previous_generation`. When the value is a generation, run `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute`. On Blob, a first publish stores null, and that null means `cd pipeline && node backfill/07-export-v2.mjs --rollback legacy-flat --execute`. On R2, `--initial-commit` also stores null, and `--rollback legacy-flat` fails closed because the flat files were never uploaded. An R2 generation rollback is `cd pipeline && node backfill/07-export-v2.mjs --store r2 --target pre --rollback <bootstrap-generation> --execute` (use `--target prod` for the production bucket). A generation target rechecks sealed manifests and every object before the lease; a mutable legacy target, after acquiring the same Workflow CAS lease, verifies the key flat base artifacts and all `4 × 32` canonical shards. The command then rereads the pointer inside the lease and overwrites the pointer only once; a legacy target atomically deletes `bootstrap/latest.json`. If the pointer write/delete succeeded but the response was lost, retrying the same target returns `already-rolled-back`. Do not hand-edit the pointer, and do not delete the current / previous generation or overlay.
 - **Deploy rollback**: Vercel keeps historical deployments, and **Promote the previous healthy deployment** rolls back in seconds. The old `gitstarclub-web` is kept temporarily as an extra rollback reference, but a normal rollback should be finished inside the `gitstarclub.com` project. Cost-control changes (robots, pointer cache, long-tail ISR, proxy matcher) rollback the same way: promote the previous Ready production deployment, then revert any Firewall deny rules that were added in the same change window.
 - **Daily live tail**: `live/generations/<run_id>/**` is immutable, and `live/latest.json` is the only publish switch. A failure before commit needs no data rollback (the pointer still points at the old generation); if bad data is found after commit, point the pointer's `generation` back at `previous_generation`. Rollback must also first confirm there is no active `lease` and use an ETag conditional write, so it does not overwrite a cron that is publishing.
 - **Order**: roll data back first (Blob points back at the previous view version) → then redeploy the previous healthy deployment → check that `sync_runs` and drift are back to normal.
