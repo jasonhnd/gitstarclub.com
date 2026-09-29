@@ -11,7 +11,7 @@ source_of_truth_for:
 
 # GitStarClub data exports
 
-GitStarClub publishes small, deterministic CSV and JSON extracts for reuse and citation. They are generated from existing precomputed Vercel Blob views and checked in as static assets under `web/public/data/exports/v1/`.
+GitStarClub publishes small, deterministic CSV and JSON extracts for reuse and citation. They are generated from existing precomputed JSON views in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)) and checked in as static assets under `web/public/data/exports/v1/`.
 
 Exports are stored once, in dated directories such as `web/public/data/exports/v1/YYYY-MM-DD/`. The public `/data/exports/v1/latest/*` URLs are stable aliases rewritten by Next.js to the newest dated directory at build time; `latest/` is not a second copy of the CSV or JSON payloads. Dataset JSON-LD reads that same `public/data/exports/v1` folder through a statically scoped path so the Next/Turbopack build does not `readdir` the repository root.
 

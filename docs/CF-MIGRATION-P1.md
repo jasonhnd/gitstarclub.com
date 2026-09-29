@@ -149,7 +149,7 @@ production cron is on.
 | `cf-queue` | non-production only | POST `WORKFLOW_QUEUE_ENQUEUE_URL` (Worker `/enqueue`) |
 
 Lease and view writes still go through `web/lib/storage` (P0). Unset drivers
-mean Vercel Blob, which is enough to accept the orchestration.
+mean the blob driver. Production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
 
 ## CF Workers Blob write path (full cron / refresh)
 
@@ -166,8 +166,7 @@ the official SDK (`x-allow-overwrite`, `x-if-match`, `x-api-version`). That is
 the Workers-safe path. Optional alternative: `STORAGE_WRITE_DRIVER=r2` already
 signs S3 with `fetch` (`web/lib/storage/r2-s3-store.ts`). R2 writes require
 `DEPLOY_ENV` of `production` or `pre` and a matching `_meta/bucket-identity.json`.
-Default CF preview stays on Vercel Blob so lease/views remain on the public
-store `BLOB_BASE_URL` already serves.
+That paragraph describes the fetch blob client used when the write driver is blob. Preview Worker `env.pre` now writes through the DATA binding. Production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
 
 **Full CF daily / refresh depends on this fetch write path.** This change does
 not enable Cloudflare schedules. Production `wrangler.jsonc` `triggers.crons`
@@ -861,8 +860,7 @@ If a non-production CF Cron or Queue consumer is enabled and misbehaves:
    `/api/workflows/refresh/start` on Vercel.
 3. Set `WORKFLOW_RUNTIME=http` (or unset it) on the Next deployment so start
    no longer POSTs to the Worker.
-4. Production read/write stays on Vercel Blob unless P0 driver switches are
-   also rolled back; see [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
+4. Production read/write stays on Vercel Blob until cutover unless the stage 4 driver switch is also rolled back; see [R2-CUTOVER.md](./R2-CUTOVER.md).
 5. Do not cut DNS. Do not empty Blob.
 
 After that, production scheduling is Vercel-only again. The CF Worker can stay

@@ -18,7 +18,7 @@ This document is the owning document for GitStarClub's GEO strategy: how the exi
 
 GEO complements [SEO.md](./SEO.md). SEO owns crawlability, canonical URLs, metadata, sitemap, robots policy, and internal links. GEO owns answer-engine citation tactics layered on top of those surfaces: answer capsules, FAQ blocks, dataset schema, AI crawler hygiene, freshness signals, entity authority, and measurement.
 
-Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only JSON from Vercel Blob, and implementation must remain deterministic and Vercel-first.
+Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only JSON from Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)), and implementation must remain deterministic and Vercel-first.
 
 Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate Vercel log reporting runbook. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
 
@@ -95,7 +95,7 @@ GitStarClub has several advantages that most content sites must build from scrat
 
 | Asset | Current state | GEO value |
 |---|---|---|
-| Proprietary dataset | Deterministic GitHub star histories for 5,300+ tracked repositories, with repo/org/ranking/category views in Vercel Blob. | The numbers are not generic web copy. Answer engines need a source for "when did repo X cross 100k stars?" or "which Python repos are largest?". |
+| Proprietary dataset | Deterministic GitHub star histories for 5,300+ tracked repositories, with repo/org/ranking/category views in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)). | The numbers are not generic web copy. Answer engines need a source for "when did repo X cross 100k stars?" or "which Python repos are largest?". |
 | Server-rendered content | `FRONTEND.md` defines content bodies as RSC/static HTML; charts are server SVG/DOM; client JS is limited to explicit islands. | Crawlers and answer extractors see the actual facts without hydrating the app. |
 | Fast pages | #25 Lighthouse baseline recorded mobile FCP around 0.91-1.22s and desktop FCP around 0.25-0.29s on representative production pages; CLS was 0.000-0.003. | Performance is already unlikely to be the blocking factor for extraction or crawl. |
 | HTTPS production host | The public site is served from `https://gitstarclub.com`, with canonical URLs generated from `NEXT_PUBLIC_SITE_URL`. | AI search engines and classic crawlers get one secure apex identity, not fragmented preview or subdomain URLs. |

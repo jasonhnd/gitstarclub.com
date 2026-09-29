@@ -19,7 +19,7 @@ source_of_truth_for:
 
 This document owns the project's test pyramid and testing boundaries: current CI checks, contract tests, recompute parity, Workflow validation invariants, smoke checks, and target browser/performance/a11y coverage. It separates checks that are enforced today from target-state coverage and planned gates; use **Current automation** for real blockers, **Target coverage** for strategy, and **Planned gates** for implementation status.
 
-Out of scope: development playbooks and local workflow live in [DEVELOPMENT.md](./DEVELOPMENT.md), issue/PR workflow lives in [WORKFLOW.md](./WORKFLOW.md), production operations live in [OPS.md](./OPS.md) and [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md), and schema or ranking truth lives in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) and [RANKING.md](./RANKING.md). This document should reference those owners instead of restating their rules.
+Out of scope: development playbooks and local workflow live in [DEVELOPMENT.md](./DEVELOPMENT.md), issue/PR workflow lives in [WORKFLOW.md](./WORKFLOW.md), production operations live in [OPS.md](./OPS.md), and current object storage lives in [R2-CUTOVER.md](./R2-CUTOVER.md) (Cloudflare R2; production still reads Vercel Blob until cutover). Schema or ranking truth lives in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) and [RANKING.md](./RANKING.md). This document should reference those owners instead of restating their rules.
 
 ## Current automation
 
