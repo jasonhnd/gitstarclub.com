@@ -1,7 +1,6 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { ObjectStorePreconditionFailedError } from "./errors";
 import type {
-  ObjectGetBytesResult,
   ObjectGetResult,
   ObjectHeadResult,
   ObjectListItem,
@@ -38,7 +37,6 @@ export type R2ObjectHead = {
 
 export type R2ObjectBody = R2ObjectHead & {
   text(): Promise<string>;
-  arrayBuffer?(): Promise<ArrayBuffer>;
 };
 
 export type R2ListResult = {
@@ -176,21 +174,6 @@ export class R2BindingObjectStore implements ObjectStore {
       etag: httpEtagOf(object),
       contentType: object.httpMetadata?.contentType,
       size: object.size,
-    };
-  }
-
-  async getBytes(path: string): Promise<ObjectGetBytesResult | null> {
-    const object = await this.bucket.get(this.physicalKey(path));
-    if (!object) return null;
-    if (typeof object.arrayBuffer !== "function") {
-      throw new Error(`R2 binding cannot read binary objects at ${path}`);
-    }
-    const body = new Uint8Array(await object.arrayBuffer());
-    return {
-      body,
-      etag: httpEtagOf(object),
-      contentType: object.httpMetadata?.contentType,
-      size: body.byteLength,
     };
   }
 
