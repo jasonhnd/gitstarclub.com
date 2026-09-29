@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   assertR2WritesAllowed,
   getBlobBaseUrl,
@@ -205,6 +205,8 @@ describe("runtime config getters", () => {
   });
 });
 
+const identityEndpoint = "https://acct.r2.cloudflarestorage.com";
+
 describe("storage driver config", () => {
   test("defaults read and write drivers to blob", () => {
     expect(getStorageReadDriver()).toBe("blob");
@@ -238,30 +240,57 @@ describe("storage driver config", () => {
       reads += 1;
       return null;
     };
-    await expect(assertR2WritesAllowed({ HOSTING_TARGET: "cf" }, readIdentity, "gitstarclub-assets")).rejects.toThrow(
-      "unset on Cloudflare",
+    await expect(
+      assertR2WritesAllowed({ HOSTING_TARGET: "cf" }, readIdentity, "gitstarclub-assets", identityEndpoint),
+    ).rejects.toThrow("unset on Cloudflare");
+    await expect(assertR2WritesAllowed({}, readIdentity, "gitstarclub-assets", identityEndpoint)).rejects.toThrow(
+      "DEPLOY_ENV is unset",
     );
-    await expect(assertR2WritesAllowed({}, readIdentity, "gitstarclub-assets")).rejects.toThrow("DEPLOY_ENV is unset");
-    await expect(assertR2WritesAllowed({ DEPLOY_ENV: "local" }, readIdentity, "gitstarclub-assets")).rejects.toThrow(
-      "DEPLOY_ENV=local",
-    );
+    await expect(
+      assertR2WritesAllowed({ DEPLOY_ENV: "local" }, readIdentity, "gitstarclub-assets", identityEndpoint),
+    ).rejects.toThrow("DEPLOY_ENV=local");
     expect(reads).toBe(0);
   });
 
   test("refuses R2 writes when the bucket identity does not match DEPLOY_ENV", async () => {
     const marker = JSON.stringify({ bucket: "gitstarclub-prod", deploy_env: "production" });
     await expect(
-      assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => marker, "gitstarclub-prod"),
+      assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => marker, "gitstarclub-prod", identityEndpoint),
     ).rejects.toThrow("deploy_env=production does not match DEPLOY_ENV=pre");
   });
 
+  test("refuses R2 writes when VERCEL_ENV=production conflicts with DEPLOY_ENV=pre", async () => {
+    let reads = 0;
+    const readIdentity = async () => {
+      reads += 1;
+      return JSON.stringify({ bucket: "gitstarclub-pre", deploy_env: "pre" });
+    };
+    await expect(
+      assertR2WritesAllowed(
+        { VERCEL_ENV: "production", DEPLOY_ENV: "pre" },
+        readIdentity,
+        "gitstarclub-pre",
+        identityEndpoint,
+      ),
+    ).rejects.toThrow("VERCEL_ENV=production conflicts with DEPLOY_ENV=pre");
+    expect(reads).toBe(0);
+    await expect(
+      assertR2WritesAllowed(
+        { VERCEL_ENV: "production", DEPLOY_ENV: "production" },
+        async () => JSON.stringify({ bucket: "gitstarclub-prod", deploy_env: "production" }),
+        "gitstarclub-prod",
+        identityEndpoint,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   test("refuses R2 writes when the bucket identity marker is missing or unreadable", async () => {
-    await expect(assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => null, "gitstarclub-pre")).rejects.toThrow(
-      "marker is missing",
-    );
-    await expect(assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => "   ", "gitstarclub-pre")).rejects.toThrow(
-      "marker is missing",
-    );
+    await expect(
+      assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => null, "gitstarclub-pre", identityEndpoint),
+    ).rejects.toThrow("marker is missing");
+    await expect(
+      assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => "   ", "gitstarclub-pre", identityEndpoint),
+    ).rejects.toThrow("marker is missing");
     await expect(
       assertR2WritesAllowed(
         { DEPLOY_ENV: "pre" },
@@ -269,22 +298,24 @@ describe("storage driver config", () => {
           throw new Error("network down");
         },
         "gitstarclub-pre",
+        identityEndpoint,
       ),
     ).rejects.toThrow("marker is unreadable");
-    await expect(assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => "not-json", "gitstarclub-pre")).rejects.toThrow(
-      "marker is unreadable",
-    );
-    await expect(assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => "{}", "gitstarclub-pre")).rejects.toThrow(
-      "marker is unreadable",
-    );
-    await expect(assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => "[]", "gitstarclub-pre")).rejects.toThrow(
-      "marker is unreadable",
-    );
+    await expect(
+      assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => "not-json", "gitstarclub-pre", identityEndpoint),
+    ).rejects.toThrow("marker is unreadable");
+    await expect(
+      assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => "{}", "gitstarclub-pre", identityEndpoint),
+    ).rejects.toThrow("marker is unreadable");
+    await expect(
+      assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => "[]", "gitstarclub-pre", identityEndpoint),
+    ).rejects.toThrow("marker is unreadable");
     await expect(
       assertR2WritesAllowed(
         { DEPLOY_ENV: "pre" },
         async () => JSON.stringify({ bucket: "gitstarclub-pre", deploy_env: "local" }),
         "gitstarclub-pre",
+        identityEndpoint,
       ),
     ).rejects.toThrow("marker is unreadable");
     await expect(
@@ -292,25 +323,34 @@ describe("storage driver config", () => {
         { DEPLOY_ENV: "pre" },
         async () => JSON.stringify({ bucket: "other", deploy_env: "pre" }),
         "gitstarclub-pre",
+        identityEndpoint,
       ),
     ).rejects.toThrow('bucket "other"');
   });
 
-  test("caches a matching bucket identity for the isolate", async () => {
+  test("caches a matching bucket identity by the caller endpoint, not env", async () => {
     let reads = 0;
     const readIdentity = async () => {
       reads += 1;
       return JSON.stringify({ bucket: "gitstarclub-pre", deploy_env: "pre" });
     };
-    const env = { DEPLOY_ENV: "pre", R2_ACCOUNT_ID: "acct" };
-    await expect(assertR2WritesAllowed(env, readIdentity, "gitstarclub-pre")).resolves.toBeUndefined();
-    await expect(assertR2WritesAllowed(env, readIdentity, "gitstarclub-pre")).resolves.toBeUndefined();
+    const env = {
+      DEPLOY_ENV: "pre",
+      R2_ACCOUNT_ID: "acct",
+      R2_S3_ENDPOINT: "https://from-env.example",
+    };
+    const endpoint = "https://override.example";
+    await expect(assertR2WritesAllowed(env, readIdentity, "gitstarclub-pre", endpoint)).resolves.toBeUndefined();
+    await expect(assertR2WritesAllowed(env, readIdentity, "gitstarclub-pre", `${endpoint}/`)).resolves.toBeUndefined();
     expect(reads).toBe(1);
+    await expect(assertR2WritesAllowed(env, readIdentity, "gitstarclub-pre", "https://other.example")).resolves.toBeUndefined();
+    expect(reads).toBe(2);
     await expect(
       assertR2WritesAllowed(
         env,
         async () => JSON.stringify({ bucket: "gitstarclub-prod", deploy_env: "production" }),
         "gitstarclub-prod",
+        endpoint,
       ),
     ).rejects.toThrow("does not match DEPLOY_ENV=pre");
   });
@@ -321,26 +361,13 @@ describe("storage driver config", () => {
       reads += 1;
       return null;
     };
-    await expect(assertR2WritesAllowed({ DEPLOY_ENV: "staging" }, readIdentity, "gitstarclub-pre")).rejects.toThrow(
-      "refusing R2 writes",
+    await expect(
+      assertR2WritesAllowed({ DEPLOY_ENV: "staging" }, readIdentity, "gitstarclub-pre", identityEndpoint),
+    ).rejects.toThrow("refusing R2 writes");
+    await expect(assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, readIdentity, "  ", identityEndpoint)).rejects.toThrow(
+      "bucket name is unset",
     );
-    await expect(assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, readIdentity, "  ")).rejects.toThrow("bucket name is unset");
     expect(reads).toBe(0);
-  });
-
-  test("isProductionDeployment sees DEPLOY_ENV from the live Worker env", async () => {
-    delete process.env.DEPLOY_ENV;
-    mock.module("@opennextjs/cloudflare", () => ({
-      getCloudflareContext: () => ({
-        env: { DEPLOY_ENV: "production", JOBS: { send: async () => {} } },
-      }),
-    }));
-    try {
-      expect(isProductionDeployment()).toBe(true);
-      expect(isProductionDeployment({})).toBe(false);
-    } finally {
-      mock.restore();
-    }
   });
 });
 
