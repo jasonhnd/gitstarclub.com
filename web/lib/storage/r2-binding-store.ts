@@ -11,7 +11,7 @@ import type {
   ObjectStore,
 } from "./types";
 
-/** Quoted etag from `get` / `head` / `put`. Pass it back as `ifMatch`. */
+/** Raised when `r2_binding` is selected and the Worker has no `DATA` binding. */
 export const MISSING_DATA_BINDING_ERROR = "r2_binding requires the DATA R2 binding";
 
 /** Workers `R2Bucket.delete` accepts at most 1000 keys per call. */
@@ -98,6 +98,7 @@ export function resolveDataBinding(readBinding: () => unknown = readCloudflareDa
   return data;
 }
 
+/** Quoted etag from `get` / `head` / `put`. Pass it back as `ifMatch`. */
 function httpEtagOf(object: { etag: string; httpEtag?: string }): string {
   const quoted = object.httpEtag?.trim();
   if (quoted) return quoted;
@@ -201,13 +202,14 @@ export class R2BindingObjectStore implements ObjectStore {
 
   async del(pathsOrUrls: string | string[]): Promise<void> {
     const values = Array.isArray(pathsOrUrls) ? pathsOrUrls : [pathsOrUrls];
-    const keys = values.map((value) => this.keyFromUrlOrPath(value));
+    const keys = values.map((value) => this.resolveKey(value));
     for (let offset = 0; offset < keys.length; offset += R2_DELETE_BATCH) {
       await this.bucket.delete(keys.slice(offset, offset + R2_DELETE_BATCH));
     }
   }
 
-  private keyFromUrlOrPath(value: string): string {
+  /** Key `del` will delete: logical path, `r2://` object key, or public URL. */
+  resolveKey(value: string): string {
     if (value.startsWith("r2://")) {
       const rest = value.slice("r2://".length);
       const slash = rest.indexOf("/");

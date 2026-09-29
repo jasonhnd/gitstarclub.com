@@ -57,6 +57,8 @@ export function r2StoreConfigFromEnv(env?: ObjectStoreFactoryEnv): R2S3StoreConf
 
 type PrefixedKeyStore = {
   physicalKey(path: string): string;
+  logicalPath(key: string): string;
+  resolveKey(value: string): string;
 };
 
 function isMetaNamespaceKey(key: string): boolean {
@@ -82,15 +84,32 @@ function hasDotSegment(key: string): boolean {
   return false;
 }
 
-function assertWritePathsAllowed(store: PrefixedKeyStore, paths: readonly string[]): void {
+function rejectUnsafeKey(key: string): void {
+  if (hasDotSegment(key)) {
+    throw new Error('refusing R2 writes: path contains "." or ".." segments');
+  }
+  if (isMetaNamespaceKey(key)) {
+    throw new Error("refusing R2 writes: keys under _meta/ are placed out of band");
+  }
+}
+
+function assertPutPathsAllowed(store: PrefixedKeyStore, paths: readonly string[]): void {
   for (const path of paths) {
-    const physical = store.physicalKey(path);
-    if (hasDotSegment(path) || hasDotSegment(physical)) {
-      throw new Error('refusing R2 writes: path contains "." or ".." segments');
-    }
-    if (isMetaNamespaceKey(path) || isMetaNamespaceKey(physical)) {
-      throw new Error("refusing R2 writes: keys under _meta/ are placed out of band");
-    }
+    rejectUnsafeKey(path);
+    rejectUnsafeKey(store.physicalKey(path));
+  }
+}
+
+/**
+ * `del` accepts logical paths, `r2://` URLs, and public URLs. The check has to
+ * use the key `del` will actually delete. A prefixed public URL such as
+ * `<base>/_meta/x` is `<prefix>_meta/x` physically and `_meta/x` logically.
+ */
+function assertDelPathsAllowed(store: PrefixedKeyStore, values: readonly string[]): void {
+  for (const value of values) {
+    const resolved = store.resolveKey(value);
+    rejectUnsafeKey(resolved);
+    rejectUnsafeKey(store.logicalPath(resolved));
   }
 }
 
@@ -105,14 +124,14 @@ function withBucketIdentityGuard<T extends ObjectStore & PrefixedKeyStore>(
     get(target, prop, receiver) {
       if (prop === "put") {
         return async (path: string, body: string | Uint8Array, options?: ObjectPutOptions) => {
-          assertWritePathsAllowed(target, [path]);
+          assertPutPathsAllowed(target, [path]);
           await assertR2WritesAllowed(env, readIdentity, bucket, endpoint);
           return target.put(path, body, options);
         };
       }
       if (prop === "del") {
         return async (paths: string | string[]) => {
-          assertWritePathsAllowed(target, Array.isArray(paths) ? paths : [paths]);
+          assertDelPathsAllowed(target, Array.isArray(paths) ? paths : [paths]);
           await assertR2WritesAllowed(env, readIdentity, bucket, endpoint);
           return target.del(paths);
         };
