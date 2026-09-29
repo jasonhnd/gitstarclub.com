@@ -113,7 +113,7 @@ export function publicReadBaseForOps(env: OpsEnv, selection: OpsSelection): stri
 export async function assertPublicReadMatchesTarget(
   env: OpsEnv,
   selection: OpsSelection,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: (input: string | URL, init?: RequestInit) => Promise<Response> = fetch,
 ): Promise<string> {
   const base = publicReadBaseForOps(env, selection);
   if (selection.store !== "r2" || (selection.target !== "prod" && selection.target !== "pre")) return base;

@@ -137,7 +137,7 @@ describe("ops target selection", () => {
     const env = { R2_PUBLIC_BASE_URL_PRE: "https://pre.example", R2_BUCKET_PRE: "gitstarclub-data-pre" };
     const selection = { store: "r2" as const, target: "pre" as const };
     const calls: Array<{ url: string; cache: RequestCache | undefined }> = [];
-    const fetchImpl: typeof fetch = async (input, init) => {
+    const fetchImpl = async (input: string | URL, init?: RequestInit) => {
       calls.push({ url: String(input), cache: init?.cache });
       return new Response(JSON.stringify({ bucket: "gitstarclub-data-pre", deploy_env: "pre" }), { status: 200 });
     };
