@@ -182,4 +182,47 @@ describe("bucket identity write guard", () => {
     await store.put("views/b.json", "{}");
     expect(identityReads).toBe(1);
   });
+
+  test("refuses put and del of any key under _meta/ without reading the marker", async () => {
+    const { store, calls } = guardedStore(() => {
+      throw new Error("should not fetch");
+    });
+    await expect(store.put("_meta/x", "{}")).rejects.toThrow("keys under _meta/");
+    await expect(store.del("_meta/bucket-identity.json")).rejects.toThrow("keys under _meta/");
+    await expect(store.del(["views/a.json", "_meta/x"])).rejects.toThrow("keys under _meta/");
+    expect(calls).toEqual([]);
+  });
+
+  test("refuses a physical key under _meta/ when the prefix is the meta namespace", async () => {
+    const store = createR2S3ObjectStore(
+      { DEPLOY_ENV: "pre", ...r2Credentials },
+      {
+        prefix: "_meta/",
+        fetch: async () => {
+          throw new Error("should not fetch");
+        },
+      },
+    );
+    await expect(store.put("x", "{}")).rejects.toThrow("keys under _meta/");
+  });
+
+  test("identity cache follows the store endpoint after extras, not the env endpoint", async () => {
+    let reads = 0;
+    const fetchImpl = async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.includes("/_meta/bucket-identity.json")) {
+        reads += 1;
+        return new Response(JSON.stringify({ bucket: "gitstarclub-pre", deploy_env: "pre" }), { status: 200 });
+      }
+      if (method === "PUT") return new Response(null, { status: 200, headers: { etag: '"1"' } });
+      return new Response(null, { status: 500 });
+    };
+    const env = { DEPLOY_ENV: "pre", R2_S3_ENDPOINT: "https://from-env.example", ...r2Credentials };
+    const first = createR2S3ObjectStore(env, { endpoint: "https://override-a.example", fetch: fetchImpl });
+    const second = createR2S3ObjectStore(env, { endpoint: "https://override-b.example", fetch: fetchImpl });
+    await first.put("views/a.json", "{}");
+    await second.put("views/b.json", "{}");
+    expect(reads).toBe(2);
+  });
 });

@@ -54,21 +54,41 @@ export function r2StoreConfigFromEnv(env?: ObjectStoreFactoryEnv): R2S3StoreConf
   };
 }
 
+function isMetaNamespaceKey(key: string): boolean {
+  const normalized = key.replace(/^\/+/, "");
+  return normalized === "_meta" || normalized.startsWith("_meta/");
+}
+
+function assertMetaNamespaceUntouched(store: R2S3ObjectStore, paths: readonly string[]): void {
+  for (const path of paths) {
+    if (isMetaNamespaceKey(path) || isMetaNamespaceKey(store.physicalKey(path))) {
+      throw new Error("refusing R2 writes: keys under _meta/ are placed out of band");
+    }
+  }
+}
+
 function withBucketIdentityGuard(
   store: R2S3ObjectStore,
   env: ObjectStoreFactoryEnv,
   bucket: string,
+  endpoint: string,
   readIdentity: () => Promise<string | null>,
 ): ObjectStore {
   return new Proxy(store, {
     get(target, prop, receiver) {
       if (prop === "put") {
-        return (path: string, body: string | Uint8Array, options?: ObjectPutOptions) =>
-          assertR2WritesAllowed(env, readIdentity, bucket).then(() => target.put(path, body, options));
+        return async (path: string, body: string | Uint8Array, options?: ObjectPutOptions) => {
+          assertMetaNamespaceUntouched(target, [path]);
+          await assertR2WritesAllowed(env, readIdentity, bucket, endpoint);
+          return target.put(path, body, options);
+        };
       }
       if (prop === "del") {
-        return (paths: string | string[]) =>
-          assertR2WritesAllowed(env, readIdentity, bucket).then(() => target.del(paths));
+        return async (paths: string | string[]) => {
+          assertMetaNamespaceUntouched(target, Array.isArray(paths) ? paths : [paths]);
+          await assertR2WritesAllowed(env, readIdentity, bucket, endpoint);
+          return target.del(paths);
+        };
       }
       const value: unknown = Reflect.get(target, prop, receiver);
       if (typeof value === "function") return (value as (...args: unknown[]) => unknown).bind(target);
@@ -88,7 +108,9 @@ export function createR2S3ObjectStore(env?: ObjectStoreFactoryEnv, extras: Parti
   const store = new R2S3ObjectStore(config);
   // The marker identifies the bucket, not a key prefix, so it is read at the bucket root.
   const identityStore = config.prefix ? new R2S3ObjectStore({ ...config, prefix: "" }) : store;
-  return withBucketIdentityGuard(store, runtime, config.bucket, () => readBucketIdentity(identityStore));
+  return withBucketIdentityGuard(store, runtime, config.bucket, config.endpoint, () =>
+    readBucketIdentity(identityStore),
+  );
 }
 
 export function createReadObjectStore(env?: ObjectStoreFactoryEnv): ObjectStore {

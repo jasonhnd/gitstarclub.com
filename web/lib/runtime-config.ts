@@ -269,6 +269,8 @@ export function isVercelProduction(env: RuntimeEnv = process.env): boolean {
 /**
  * `DEPLOY_ENV` must be `production` or `pre` before any R2 write.
  * Unset on Cloudflare is refused without reading the bucket.
+ * `VERCEL_ENV=production` conflicts with any other `DEPLOY_ENV`, the same
+ * conflict `isPreDeployment` already applies to cold start.
  */
 export function assertR2WriteDeployEnv(env?: RuntimeEnv): "production" | "pre" {
   const runtime = configuredEnv(env);
@@ -287,6 +289,9 @@ export function assertR2WriteDeployEnv(env?: RuntimeEnv): "production" | "pre" {
   }
   if (deploy !== "production" && deploy !== "pre") {
     throw new Error(`refusing R2 writes: DEPLOY_ENV=${deploy} has no bucket identity`);
+  }
+  if (runtime.VERCEL_ENV === "production" && deploy !== "production") {
+    throw new Error(`refusing R2 writes: VERCEL_ENV=production conflicts with DEPLOY_ENV=${deploy}`);
   }
   return deploy;
 }
@@ -318,21 +323,28 @@ export function resetBucketIdentityCacheForTests(): void {
   positiveBucketIdentityCache.clear();
 }
 
+/** Same trailing-slash strip as `R2S3ObjectStore`, so extras and the client share a cache key. */
+function bucketIdentityCacheEndpoint(endpoint: string): string {
+  return endpoint.replace(/\/+$/, "");
+}
+
 /**
  * Refuse an R2 write unless `_meta/bucket-identity.json` in the target bucket
  * says this bucket and the same `deploy_env` as `DEPLOY_ENV`.
- * A passing check is cached for the isolate.
+ * A passing check is cached for the isolate. `endpoint` is the endpoint the
+ * store uses after extras; it is not re-derived from env.
  */
 export async function assertR2WritesAllowed(
   env: RuntimeEnv | undefined,
   readIdentity: () => Promise<string | null>,
   bucket: string,
+  endpoint: string,
 ): Promise<void> {
   const runtime = configuredEnv(env);
   const deploy = assertR2WriteDeployEnv(runtime);
   const target = bucket.trim();
   if (!target) throw new Error("refusing R2 writes: R2 bucket name is unset");
-  const cacheKey = `${getR2S3Endpoint(runtime)}\0${target}\0${deploy}`;
+  const cacheKey = `${bucketIdentityCacheEndpoint(endpoint)}\0${target}\0${deploy}`;
   if (positiveBucketIdentityCache.has(cacheKey)) return;
 
   let body: string | null;
