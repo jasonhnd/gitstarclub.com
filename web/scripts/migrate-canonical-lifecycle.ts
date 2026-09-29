@@ -46,6 +46,7 @@ import { requireStorageWriteConfig } from "@/lib/runtime-config";
 import { getReadObjectStore } from "@/lib/storage";
 import {
   applyOpsSelection,
+  assertPublicReadMatchesTarget,
   opsEnvKeys,
   publicReadBaseForOps,
   takeOpsFlags,
@@ -513,6 +514,7 @@ async function main(): Promise<void> {
   const { selection, rest } = takeOpsFlags(argv);
   const args = parseArgs(rest);
   loadReadEnv(selection);
+  await assertPublicReadMatchesTarget(process.env, selection);
 
   if (!args.execute) {
     const bundle = await loadLiveBundle(args.inventoryPath);

@@ -21,9 +21,9 @@ import { createObjectStoreBootstrapAdapter } from "../lib/storage/bootstrap-adap
 import { getReadObjectStore, getWriteObjectStore } from "../lib/storage";
 import {
   applyOpsSelection,
+  assertPublicReadMatchesTarget,
   opsCredentialsPresent,
   opsEnvKeys,
-  publicReadBaseForOps,
   takeOpsFlags,
   type OpsSelection,
 } from "../lib/storage/ops-target";
@@ -88,7 +88,7 @@ async function listGenerations() {
 }
 
 async function main(active: OpsSelection) {
-  const base = publicReadBaseForOps(process.env, active);
+  const base = await assertPublicReadMatchesTarget(process.env, active);
   const pointer = await readPublicPointer(base);
   const candidates = opsCredentialsPresent(process.env, active) ? await listGenerations() : [];
   const plan = selectBootstrapGenerationToCommit(pointer, candidates);
