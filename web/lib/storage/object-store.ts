@@ -16,6 +16,7 @@ import {
 } from "@/lib/runtime-config";
 import { resolveRuntimeEnv } from "@/lib/workers-host/runtime-env";
 import { DualReadObjectStore } from "./dual-read-store";
+import { resolveDataBinding, R2BindingObjectStore, type R2BindingStoreConfig, type R2Bucket } from "./r2-binding-store";
 import { R2S3ObjectStore, type R2S3StoreConfig } from "./r2-s3-store";
 import type { ObjectPutOptions, ObjectStore } from "./types";
 import { VercelBlobObjectStore } from "./vercel-blob-store";
@@ -128,6 +129,33 @@ async function readBucketIdentity(store: ObjectStore): Promise<string | null> {
   return result?.body ?? null;
 }
 
+/** Cache-key endpoint for the binding store. There is no S3 URL. */
+export const R2_BINDING_ENDPOINT = "r2-binding";
+
+export type R2BindingStoreExtras = {
+  bucket?: R2Bucket;
+  prefix?: string;
+  publicBaseUrl?: string;
+};
+
+export function createR2BindingObjectStore(
+  env?: ObjectStoreFactoryEnv,
+  extras: R2BindingStoreExtras = {},
+): ObjectStore {
+  const runtime = factoryEnv(env);
+  const bucket = extras.bucket ?? resolveDataBinding();
+  const prefix = extras.prefix ?? getR2KeyPrefix(runtime);
+  const bucketName = getR2Bucket(runtime) ?? "";
+  const publicBaseUrl = extras.publicBaseUrl ?? (getR2PublicBaseUrl(runtime) || undefined);
+  const config: R2BindingStoreConfig = { bucket, bucketName, prefix, publicBaseUrl };
+  const store = new R2BindingObjectStore(config);
+  // The marker identifies the bucket, not a key prefix, so it is read at the bucket root.
+  const identityStore = prefix ? new R2BindingObjectStore({ ...config, prefix: "" }) : store;
+  return withBucketIdentityGuard(store, runtime, bucketName, R2_BINDING_ENDPOINT, () =>
+    readBucketIdentity(identityStore),
+  );
+}
+
 export function createR2S3ObjectStore(env?: ObjectStoreFactoryEnv, extras: Partial<R2S3StoreConfig> = {}): ObjectStore {
   const runtime = factoryEnv(env);
   const config = { ...r2StoreConfigFromEnv(runtime), ...extras };
@@ -146,7 +174,10 @@ export function createReadObjectStore(env?: ObjectStoreFactoryEnv): ObjectStore 
     case "blob":
       return createVercelBlobObjectStore();
     case "r2":
+    case "r2_s3":
       return createR2S3ObjectStore(runtime);
+    case "r2_binding":
+      return createR2BindingObjectStore(runtime);
     case "r2_then_blob":
       return new DualReadObjectStore(createR2S3ObjectStore(runtime), createVercelBlobObjectStore());
     default: {
@@ -163,8 +194,12 @@ export function createWriteObjectStore(env?: ObjectStoreFactoryEnv): ObjectStore
     case "blob":
       return createVercelBlobObjectStore();
     case "r2":
+    case "r2_s3":
       assertR2WriteDeployEnv(runtime);
       return createR2S3ObjectStore(runtime);
+    case "r2_binding":
+      assertR2WriteDeployEnv(runtime);
+      return createR2BindingObjectStore(runtime);
     default: {
       const _exhaustive: never = driver;
       throw new Error(`unsupported storage write driver: ${String(_exhaustive)}`);
