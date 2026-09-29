@@ -91,6 +91,20 @@ describe("object store factory", () => {
     expect(() => r2StoreConfigFromEnv({})).toThrow("R2 driver requires");
   });
 
+  test("R2 reads do not consult the bucket identity marker", async () => {
+    const store = createR2S3ObjectStore(r2Credentials, {
+      fetch: async (input, init) => {
+        const method = init?.method ?? "GET";
+        const url = String(input);
+        if (method === "GET" && url.includes("/views/a.json")) {
+          return new Response("{}", { status: 200, headers: { etag: '"a"' } });
+        }
+        throw new Error(`unexpected ${method} ${url}`);
+      },
+    });
+    expect((await store.get("views/a.json"))?.body).toBe("{}");
+  });
+
   test("R2 write config defaults to an empty prefix", () => {
     const config = r2StoreConfigFromEnv(r2Credentials);
     expect(config.prefix).toBe("");
