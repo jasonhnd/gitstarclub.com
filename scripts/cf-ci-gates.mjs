@@ -21,13 +21,17 @@ export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * SUN", 
 // wrangler env.pre triggers.crons must be []. To re-enable, in one PR set
 // env.pre triggers.crons to PREVIEW_CRON_TRIGGERS and flip this to false.
 export const PREVIEW_CRONS_PAUSED = true;
-export const PREVIEW_MIN_TRACKED_STARS = "1000";
 export const PRODUCTION_MIN_TRACKED_STARS = "10000";
-export const PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
-export const PREVIEW_WORKFLOW_COLD_START = "1";
-export const PREVIEW_BLOB_BASE_URL =
+// Own literal. Do not alias this to a preview Blob URL. Preview no longer has one.
+export const PRODUCTION_BLOB_BASE_URL =
   "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com";
-export const PRODUCTION_BLOB_BASE_URL = PREVIEW_BLOB_BASE_URL;
+export const PREVIEW_R2_BUCKET = "gitstarclub-data-pre";
+export const PRODUCTION_R2_BUCKET = "gitstarclub-data-prod";
+export const PREVIEW_R2_PUBLIC_BASE_URL = "https://data-pre.gitstarclub.com";
+export const PREVIEW_DEPLOY_ENV = "pre";
+// `r2` and `r2_s3` both read R2_PUBLIC_BASE_URL. Preview locks `r2`.
+export const PREVIEW_STORAGE_READ_DRIVER = "r2";
+export const PREVIEW_STORAGE_WRITE_DRIVER = "r2_binding";
 export const PREVIEW_QUEUE_NAME = "gitstarclub-jobs-pre";
 export const PREVIEW_WORKFLOW_RUNTIME = "cf-queue";
 export const PRODUCTION_WORKFLOW_RUNTIME = PREVIEW_WORKFLOW_RUNTIME;
@@ -74,6 +78,18 @@ export function stripJsonc(source) {
 
 export function parseWranglerJsonc(source) {
   return JSON.parse(stripJsonc(source));
+}
+
+function namedR2Bucket(buckets, binding) {
+  if (!Array.isArray(buckets)) return undefined;
+  for (const entry of buckets) {
+    if (entry && entry.binding === binding) return entry.bucket_name;
+  }
+  return undefined;
+}
+
+function jsonMentions(value, needle) {
+  return JSON.stringify(value ?? null).includes(needle);
 }
 
 export function readDefaultCfPreviewOrigin(runtimeConfigSource) {
@@ -399,52 +415,110 @@ export function assertCfCiGates(sources) {
   if (previewOriginVar !== undefined && previewOriginVar !== PREVIEW_CRON_ORIGIN) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} vars.CF_CRON_ORIGIN must be ${PREVIEW_CRON_ORIGIN} when set`);
   }
-  const previewMinTracked = preview?.vars?.MIN_TRACKED_STARS;
-  if (previewMinTracked !== PREVIEW_MIN_TRACKED_STARS) {
+  if (preview && !Array.isArray(preview.r2_buckets)) {
     issues.push(
-      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.MIN_TRACKED_STARS must be ${PREVIEW_MIN_TRACKED_STARS} (Jason 2026-09-21 ≥1k on pre)`,
+      `wrangler env.${PREVIEW_WRANGLER_ENV} must declare its own r2_buckets (wrangler environments do not inherit r2_buckets)`,
     );
   }
+  if (preview && (preview.vars == null || typeof preview.vars !== "object" || Array.isArray(preview.vars))) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} must declare its own vars (wrangler environments do not inherit vars)`,
+    );
+  }
+  const previewDataBucket = namedR2Bucket(preview?.r2_buckets, "DATA");
+  if (preview && previewDataBucket !== PREVIEW_R2_BUCKET) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} r2_buckets DATA bucket_name must be ${PREVIEW_R2_BUCKET}`,
+    );
+  }
+  const productionDataBucket = namedR2Bucket(wrangler.r2_buckets, "DATA");
+  if (productionDataBucket !== undefined && productionDataBucket !== PRODUCTION_R2_BUCKET) {
+    issues.push(
+      `wrangler top-level r2_buckets DATA bucket_name must be ${PRODUCTION_R2_BUCKET} when present`,
+    );
+  }
+  if (
+    previewDataBucket !== undefined &&
+    productionDataBucket !== undefined &&
+    previewDataBucket === productionDataBucket
+  ) {
+    issues.push("wrangler env.pre DATA bucket must differ from the top-level DATA bucket");
+  }
+  for (const needle of [PRODUCTION_R2_BUCKET, "data.gitstarclub.com"]) {
+    if (jsonMentions(preview, needle)) {
+      issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} must not mention ${needle}`);
+    }
+  }
+  const topLevel = { ...wrangler };
+  delete topLevel.env;
+  for (const needle of [PREVIEW_R2_BUCKET, "data-pre.gitstarclub.com"]) {
+    if (jsonMentions(topLevel, needle)) {
+      issues.push(`wrangler top-level must not mention ${needle}`);
+    }
+  }
+  if (preview?.vars?.DEPLOY_ENV !== PREVIEW_DEPLOY_ENV) {
+    issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} vars.DEPLOY_ENV must be ${PREVIEW_DEPLOY_ENV}`);
+  }
+  if (preview?.vars?.STORAGE_READ_DRIVER !== PREVIEW_STORAGE_READ_DRIVER) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.STORAGE_READ_DRIVER must be ${PREVIEW_STORAGE_READ_DRIVER} (public reads use R2_PUBLIC_BASE_URL)`,
+    );
+  }
+  if (preview?.vars?.STORAGE_WRITE_DRIVER !== PREVIEW_STORAGE_WRITE_DRIVER) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.STORAGE_WRITE_DRIVER must be ${PREVIEW_STORAGE_WRITE_DRIVER}`,
+    );
+  }
+  if (preview?.vars?.R2_BUCKET !== PREVIEW_R2_BUCKET) {
+    issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} vars.R2_BUCKET must be ${PREVIEW_R2_BUCKET}`);
+  }
+  if (preview?.vars?.R2_PUBLIC_BASE_URL !== PREVIEW_R2_PUBLIC_BASE_URL) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.R2_PUBLIC_BASE_URL must be ${PREVIEW_R2_PUBLIC_BASE_URL}`,
+    );
+  }
+  const previewPrefix = preview?.vars?.R2_PREFIX;
+  if (previewPrefix !== undefined && previewPrefix !== "") {
+    issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} vars.R2_PREFIX must be unset or empty`);
+  }
+  if (jsonMentions(preview, "BLOB_")) {
+    issues.push(
+      `wrangler env.${PREVIEW_WRANGLER_ENV} must not contain BLOB_* (preview reads R2, not Vercel Blob)`,
+    );
+  }
+  // The 1k-star cold-start experiment (MIN_TRACKED_STARS=1000, WORKFLOW_COLD_START,
+  // PREFLIGHT_RELAX_EMPTY_SHARDS) is paused. Preview rehearses at the production floor.
+  // Restoring that experiment later is an owner decision.
   const productionMinTracked = wrangler.vars?.MIN_TRACKED_STARS;
   if (productionMinTracked !== undefined && productionMinTracked !== PRODUCTION_MIN_TRACKED_STARS) {
     issues.push(
       `wrangler top-level vars.MIN_TRACKED_STARS must be unset or ${PRODUCTION_MIN_TRACKED_STARS} (production stays ≥10k)`,
     );
   }
-  const previewRelaxEmpty = preview?.vars?.PREFLIGHT_RELAX_EMPTY_SHARDS;
-  if (previewRelaxEmpty !== undefined && previewRelaxEmpty !== PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS) {
+  const effectiveProductionMin = productionMinTracked ?? PRODUCTION_MIN_TRACKED_STARS;
+  if (preview?.vars?.MIN_TRACKED_STARS !== effectiveProductionMin) {
     issues.push(
-      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.PREFLIGHT_RELAX_EMPTY_SHARDS must be unset or ${PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS} (preview-only empty-shard placeholder)`,
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.MIN_TRACKED_STARS must equal production (${effectiveProductionMin})`,
     );
   }
-  const productionRelaxEmpty = wrangler.vars?.PREFLIGHT_RELAX_EMPTY_SHARDS;
-  if (productionRelaxEmpty === PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS) {
+  if (preview?.vars?.WORKFLOW_COLD_START !== undefined) {
     issues.push(
-      "wrangler top-level vars.PREFLIGHT_RELAX_EMPTY_SHARDS must not be 1 (preview-only; production stays fail-closed)",
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.WORKFLOW_COLD_START must be absent (1k cold-start experiment is paused; restoring it is an owner decision)`,
     );
   }
-  const previewColdStart = preview?.vars?.WORKFLOW_COLD_START;
-  if (previewColdStart !== PREVIEW_WORKFLOW_COLD_START) {
+  if (wrangler.vars?.WORKFLOW_COLD_START !== undefined) {
     issues.push(
-      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.WORKFLOW_COLD_START must be ${PREVIEW_WORKFLOW_COLD_START} (preview-only first-universe bootstrap)`,
+      "wrangler top-level vars.WORKFLOW_COLD_START must be absent (1k cold-start experiment is paused; restoring it is an owner decision)",
     );
   }
-  const productionColdStart = wrangler.vars?.WORKFLOW_COLD_START;
-  if (productionColdStart === PREVIEW_WORKFLOW_COLD_START) {
+  if (preview?.vars?.PREFLIGHT_RELAX_EMPTY_SHARDS !== undefined) {
     issues.push(
-      "wrangler top-level vars.WORKFLOW_COLD_START must not be 1 (preview-only; production stays fail-closed)",
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.PREFLIGHT_RELAX_EMPTY_SHARDS must be absent (1k cold-start experiment is paused; restoring it is an owner decision)`,
     );
   }
-  const previewBlobBase = preview?.vars?.BLOB_BASE_URL;
-  if (previewBlobBase !== PREVIEW_BLOB_BASE_URL) {
+  if (wrangler.vars?.PREFLIGHT_RELAX_EMPTY_SHARDS !== undefined) {
     issues.push(
-      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.BLOB_BASE_URL must be the public preview store base (${PREVIEW_BLOB_BASE_URL})`,
-    );
-  }
-  const previewPublicBlobBase = preview?.vars?.NEXT_PUBLIC_BLOB_BASE_URL;
-  if (previewPublicBlobBase !== PREVIEW_BLOB_BASE_URL) {
-    issues.push(
-      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.NEXT_PUBLIC_BLOB_BASE_URL must match BLOB_BASE_URL (${PREVIEW_BLOB_BASE_URL})`,
+      "wrangler top-level vars.PREFLIGHT_RELAX_EMPTY_SHARDS must be absent (1k cold-start experiment is paused; restoring it is an owner decision)",
     );
   }
   const previewWorkflowRuntime = preview?.vars?.WORKFLOW_RUNTIME;
