@@ -8,6 +8,11 @@ import { resolveRuntimeEnv } from "./workers-host/runtime-env";
 
 type RuntimeEnv = Record<string, string | undefined>;
 
+/** Caller-supplied env wins. Otherwise merge live Worker bindings over `process.env`. */
+function configuredEnv(env?: RuntimeEnv): RuntimeEnv {
+  return env ?? resolveRuntimeEnv();
+}
+
 const cloudflareWorkersHostOverride = new AsyncLocalStorage<boolean>();
 
 /**
@@ -98,23 +103,59 @@ export function isWhitelistSearchSharded(env: RuntimeEnv = process.env): boolean
   return env.WHITELIST_SEARCH_SHARDS === "1";
 }
 
+export type DeployEnv = "production" | "pre" | "local";
+
+function normalizedDeployEnv(env: RuntimeEnv): string {
+  return (env.DEPLOY_ENV ?? "").trim().toLowerCase();
+}
+
+/**
+ * `production` | `pre` | `local`, or null when unset. Any other value throws.
+ * Worker bindings are visible when the caller omits `env`.
+ */
+export function getDeployEnv(env?: RuntimeEnv): DeployEnv | null {
+  const runtime = configuredEnv(env);
+  const raw = normalizedDeployEnv(runtime);
+  if (!raw) return null;
+  if (raw === "production" || raw === "pre" || raw === "local") return raw;
+  throw new Error(`DEPLOY_ENV must be production | pre | local (got ${JSON.stringify(runtime.DEPLOY_ENV)})`);
+}
+
+/**
+ * Production on Vercel (`VERCEL_ENV=production`) or on Cloudflare
+ * (`DEPLOY_ENV=production`). Cloudflare Workers do not set `VERCEL_ENV`.
+ */
+export function isProductionDeployment(env?: RuntimeEnv): boolean {
+  const runtime = configuredEnv(env);
+  if (runtime.VERCEL_ENV === "production") return true;
+  return normalizedDeployEnv(runtime) === "production";
+}
+
+/** Preview-only arm. Production signals and an unset DEPLOY_ENV stay off. */
+function isPreDeployment(env: RuntimeEnv): boolean {
+  return normalizedDeployEnv(env) === "pre" && env.VERCEL_ENV !== "production";
+}
+
 /**
  * Preview-only: treat missing/empty canonical shards as empty placeholders
- * so workflow preflight does not void the run. Off by default. Preview
- * wrangler `env.pre` sets `1`. `VERCEL_ENV=production` never relaxes,
- * even if the flag is copied onto a production Worker.
+ * so workflow preflight does not void the run. Off unless `DEPLOY_ENV=pre`
+ * and the flag is exactly `1`. Unset `DEPLOY_ENV` (including
+ * `HOSTING_TARGET=cf`) and production stay fail-closed.
  */
-export function isPreviewPreflightEmptyShardRelaxed(env: RuntimeEnv = process.env): boolean {
-  return env.PREFLIGHT_RELAX_EMPTY_SHARDS === "1" && !isVercelProduction(env);
+export function isPreviewPreflightEmptyShardRelaxed(env?: RuntimeEnv): boolean {
+  const runtime = configuredEnv(env);
+  return runtime.PREFLIGHT_RELAX_EMPTY_SHARDS === "1" && isPreDeployment(runtime);
 }
 
 /**
  * Preview-only: first managed refresh may bootstrap canonical meta and treat
  * missing canonical / lookup inputs as empty until views/latest.json exists.
- * Off by default. Wrangler env.pre sets `1`. Production never arms cold-start.
+ * Off unless `DEPLOY_ENV=pre` and the flag is exactly `1`. Unset `DEPLOY_ENV`
+ * (including `HOSTING_TARGET=cf`) and production never arm cold-start.
  */
-export function isWorkflowColdStartEnabled(env: RuntimeEnv = process.env): boolean {
-  return env.WORKFLOW_COLD_START === "1" && !isVercelProduction(env);
+export function isWorkflowColdStartEnabled(env?: RuntimeEnv): boolean {
+  const runtime = configuredEnv(env);
+  return runtime.WORKFLOW_COLD_START === "1" && isPreDeployment(runtime);
 }
 
 /** Default hop budget: 10 min. Queue consumer wall is 15 min. */
@@ -140,52 +181,64 @@ export function getWhitelistSearchHopBudgetMs(env: RuntimeEnv = process.env): nu
 export type StorageReadDriver = "blob" | "r2" | "r2_then_blob";
 export type StorageWriteDriver = "blob" | "r2";
 
-const DEFAULT_R2_PREFIX = "migrate-dev/";
-const NON_PRODUCTION_R2_PREFIX = /^migrate-(dev|test|preview)\/$/;
+/** Bucket-root object that names the bucket and which deploy env may write it. */
+export const BUCKET_IDENTITY_KEY = "_meta/bucket-identity.json";
+
+export type BucketIdentity = {
+  bucket: string;
+  deploy_env: "production" | "pre";
+};
 
 function normalizeDriver(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
 
-export function getStorageReadDriver(env: RuntimeEnv = process.env): StorageReadDriver {
-  const raw = normalizeDriver(env.STORAGE_READ_DRIVER ?? env.READ_DRIVER);
+export function getStorageReadDriver(env?: RuntimeEnv): StorageReadDriver {
+  const runtime = configuredEnv(env);
+  const raw = normalizeDriver(runtime.STORAGE_READ_DRIVER ?? runtime.READ_DRIVER);
   if (!raw || raw === "blob") return "blob";
   if (raw === "r2") return "r2";
   if (raw === "r2_then_blob") return "r2_then_blob";
   throw new Error(`STORAGE_READ_DRIVER must be blob | r2 | r2_then_blob (got ${raw})`);
 }
 
-export function getStorageWriteDriver(env: RuntimeEnv = process.env): StorageWriteDriver {
-  const raw = normalizeDriver(env.STORAGE_WRITE_DRIVER ?? env.WRITE_DRIVER);
+export function getStorageWriteDriver(env?: RuntimeEnv): StorageWriteDriver {
+  const runtime = configuredEnv(env);
+  const raw = normalizeDriver(runtime.STORAGE_WRITE_DRIVER ?? runtime.WRITE_DRIVER);
   if (!raw || raw === "blob") return "blob";
   if (raw === "r2") return "r2";
   throw new Error(`STORAGE_WRITE_DRIVER must be blob | r2 (got ${raw})`);
 }
 
-export function getR2AccountId(env: RuntimeEnv = process.env): string | undefined {
-  return env.R2_ACCOUNT_ID || undefined;
+export function getR2AccountId(env?: RuntimeEnv): string | undefined {
+  return configuredEnv(env).R2_ACCOUNT_ID || undefined;
 }
 
-export function getR2AccessKeyId(env: RuntimeEnv = process.env): string | undefined {
-  return env.R2_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID || undefined;
+export function getR2AccessKeyId(env?: RuntimeEnv): string | undefined {
+  const runtime = configuredEnv(env);
+  return runtime.R2_ACCESS_KEY_ID || runtime.AWS_ACCESS_KEY_ID || undefined;
 }
 
-export function getR2SecretAccessKey(env: RuntimeEnv = process.env): string | undefined {
-  return env.R2_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY || undefined;
+export function getR2SecretAccessKey(env?: RuntimeEnv): string | undefined {
+  const runtime = configuredEnv(env);
+  return runtime.R2_SECRET_ACCESS_KEY || runtime.AWS_SECRET_ACCESS_KEY || undefined;
 }
 
-export function getR2Bucket(env: RuntimeEnv = process.env): string | undefined {
-  return env.R2_BUCKET || env.AWS_S3_BUCKET || undefined;
+export function getR2Bucket(env?: RuntimeEnv): string | undefined {
+  const runtime = configuredEnv(env);
+  return runtime.R2_BUCKET || runtime.AWS_S3_BUCKET || undefined;
 }
 
-export function getR2Region(env: RuntimeEnv = process.env): string {
-  return (env.R2_REGION || env.AWS_REGION || "auto").trim() || "auto";
+export function getR2Region(env?: RuntimeEnv): string {
+  const runtime = configuredEnv(env);
+  return (runtime.R2_REGION || runtime.AWS_REGION || "auto").trim() || "auto";
 }
 
-export function getR2S3Endpoint(env: RuntimeEnv = process.env): string {
-  const explicit = (env.R2_S3_ENDPOINT || env.AWS_ENDPOINT_URL || "").replace(/\/+$/, "");
+export function getR2S3Endpoint(env?: RuntimeEnv): string {
+  const runtime = configuredEnv(env);
+  const explicit = (runtime.R2_S3_ENDPOINT || runtime.AWS_ENDPOINT_URL || "").replace(/\/+$/, "");
   if (explicit) return explicit;
-  const accountId = getR2AccountId(env);
+  const accountId = getR2AccountId(runtime);
   return accountId ? `https://${accountId}.r2.cloudflarestorage.com` : "";
 }
 
@@ -198,39 +251,125 @@ export function normalizeR2KeyPrefix(value: string): string {
   return `${trimmed}/`;
 }
 
-export function getR2KeyPrefix(env: RuntimeEnv = process.env): string {
-  if (env.R2_PREFIX === undefined) return DEFAULT_R2_PREFIX;
-  return normalizeR2KeyPrefix(env.R2_PREFIX);
+/** Unset or blank `R2_PREFIX` is the bucket root. There is no migrate-dev default. */
+export function getR2KeyPrefix(env?: RuntimeEnv): string {
+  const runtime = configuredEnv(env);
+  if (runtime.R2_PREFIX == null || runtime.R2_PREFIX.trim() === "") return "";
+  return normalizeR2KeyPrefix(runtime.R2_PREFIX);
 }
 
-export function getR2PublicBaseUrl(env: RuntimeEnv = process.env): string {
-  return (env.R2_PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
+export function getR2PublicBaseUrl(env?: RuntimeEnv): string {
+  return (configuredEnv(env).R2_PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
 }
 
 export function isVercelProduction(env: RuntimeEnv = process.env): boolean {
   return env.VERCEL_ENV === "production";
 }
 
-export function isNonProductionR2Prefix(prefix: string): boolean {
-  return NON_PRODUCTION_R2_PREFIX.test(prefix);
+/**
+ * `DEPLOY_ENV` must be `production` or `pre` before any R2 write.
+ * Unset on Cloudflare is refused without reading the bucket.
+ */
+export function assertR2WriteDeployEnv(env?: RuntimeEnv): "production" | "pre" {
+  const runtime = configuredEnv(env);
+  let deploy: DeployEnv | null;
+  try {
+    deploy = getDeployEnv(runtime);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`refusing R2 writes: ${message}`);
+  }
+  if (deploy == null) {
+    if (getHostingTarget(runtime) === "cf") {
+      throw new Error("refusing R2 writes: DEPLOY_ENV is unset on Cloudflare");
+    }
+    throw new Error("refusing R2 writes: DEPLOY_ENV is unset");
+  }
+  if (deploy !== "production" && deploy !== "pre") {
+    throw new Error(`refusing R2 writes: DEPLOY_ENV=${deploy} has no bucket identity`);
+  }
+  return deploy;
 }
 
-export function assertR2WritesAllowed(env: RuntimeEnv = process.env): void {
-  if (isVercelProduction(env)) {
-    throw new Error("refusing R2 writes: VERCEL_ENV=production (P0 forbids production R2 write)");
+function parseBucketIdentity(body: string): BucketIdentity {
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    throw new Error("not JSON");
   }
-  const prefix = getR2KeyPrefix(env);
-  if (!isNonProductionR2Prefix(prefix)) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("not an object");
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.bucket !== "string" || record.bucket.trim() === "") {
+    throw new Error("bucket is missing");
+  }
+  if (record.deploy_env !== "production" && record.deploy_env !== "pre") {
+    throw new Error("deploy_env is invalid");
+  }
+  return { bucket: record.bucket, deploy_env: record.deploy_env };
+}
+
+/** Positive identity matches only. Failures are not cached. */
+const positiveBucketIdentityCache = new Set<string>();
+
+export function resetBucketIdentityCacheForTests(): void {
+  positiveBucketIdentityCache.clear();
+}
+
+/**
+ * Refuse an R2 write unless `_meta/bucket-identity.json` in the target bucket
+ * says this bucket and the same `deploy_env` as `DEPLOY_ENV`.
+ * A passing check is cached for the isolate.
+ */
+export async function assertR2WritesAllowed(
+  env: RuntimeEnv | undefined,
+  readIdentity: () => Promise<string | null>,
+  bucket: string,
+): Promise<void> {
+  const runtime = configuredEnv(env);
+  const deploy = assertR2WriteDeployEnv(runtime);
+  const target = bucket.trim();
+  if (!target) throw new Error("refusing R2 writes: R2 bucket name is unset");
+  const cacheKey = `${getR2S3Endpoint(runtime)}\0${target}\0${deploy}`;
+  if (positiveBucketIdentityCache.has(cacheKey)) return;
+
+  let body: string | null;
+  try {
+    body = await readIdentity();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`refusing R2 writes: bucket identity marker is unreadable (${message})`);
+  }
+  if (body == null || body.trim() === "") {
+    throw new Error("refusing R2 writes: bucket identity marker is missing");
+  }
+  let identity: BucketIdentity;
+  try {
+    identity = parseBucketIdentity(body);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`refusing R2 writes: bucket identity marker is unreadable (${message})`);
+  }
+  if (identity.bucket !== target) {
     throw new Error(
-      `refusing R2 writes: R2_PREFIX must be a non-production migrate-* prefix (got "${prefix || "(empty root)"}")`,
+      `refusing R2 writes: bucket identity bucket "${identity.bucket}" does not match target "${target}"`,
     );
   }
+  if (identity.deploy_env !== deploy) {
+    throw new Error(
+      `refusing R2 writes: bucket identity deploy_env=${identity.deploy_env} does not match DEPLOY_ENV=${deploy}`,
+    );
+  }
+  positiveBucketIdentityCache.add(cacheKey);
 }
 
-export function getPublicReadBases(env: RuntimeEnv = process.env): string[] {
-  const driver = getStorageReadDriver(env);
-  const blob = getBlobBaseUrl(env);
-  const r2 = getR2PublicBaseUrl(env);
+export function getPublicReadBases(env?: RuntimeEnv): string[] {
+  const runtime = configuredEnv(env);
+  const driver = getStorageReadDriver(runtime);
+  const blob = getBlobBaseUrl(runtime);
+  const r2 = getR2PublicBaseUrl(runtime);
   switch (driver) {
     case "blob":
       if (!blob) throw new Error("BLOB_BASE_URL not set — point it at the Vercel Blob store base URL.");
