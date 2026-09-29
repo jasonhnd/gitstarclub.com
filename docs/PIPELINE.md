@@ -57,7 +57,7 @@ Credentials: `GITHUB_TOKEN` (GraphQL/Search), GCP (**bootstrap only** BigQuery),
 
 ```bash
 cd pipeline
-node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531
+node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531 > rendered.sql
 bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < rendered.sql
 ```
 

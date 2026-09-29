@@ -1,13 +1,13 @@
 // Render pipeline/backfill/02-extract.sql. This process does not call BigQuery.
 //
-//   node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531
+//   node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531 > rendered.sql
 //   bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < rendered.sql
 import { readFileSync } from "node:fs";
 import { renderExtractSql } from "../lib/extract-sql.mjs";
 
 const HELP = `Render the BigQuery extract template. Does not query BigQuery.
 
-  node backfill/02-extract.mjs --cutoff-suffix YYMMDD --destination gitstarclub.star_daily_gross_YYMMDD
+  node backfill/02-extract.mjs --cutoff-suffix YYMMDD --destination gitstarclub.star_daily_gross_YYMMDD > rendered.sql
 
 Then dry-run with a byte cap:
   bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < rendered.sql

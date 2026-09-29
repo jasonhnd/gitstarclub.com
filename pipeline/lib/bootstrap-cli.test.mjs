@@ -161,6 +161,9 @@ describe("extract SQL parameters", () => {
     expect(() => renderExtractSql(template, { cutoffSuffix: "260531", destination: "gitstarclub.star_daily_gross" })).toThrow(
       /refusing to overwrite/,
     );
+    expect(() => renderExtractSql(template, { cutoffSuffix: "260531", destination: "gitstarclub.whitelist" })).toThrow(
+      /star_daily_gross_<suffix>/,
+    );
     expect(() => renderExtractSql(template, { cutoffSuffix: "20260531", destination: "gitstarclub.star_daily_gross_x" })).toThrow(
       /6-digit/,
     );

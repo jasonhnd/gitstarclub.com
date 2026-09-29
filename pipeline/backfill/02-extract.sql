@@ -4,7 +4,7 @@
 --
 -- Do not run this file unchanged. It is a template. Rendering it is local and
 -- does not call BigQuery:
---   node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531
+--   node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531 > rendered.sql
 --
 -- Parameters:
 --   @@CUTOFF_SUFFIX@@       6-digit YYMMDD table suffix, for example 260531
