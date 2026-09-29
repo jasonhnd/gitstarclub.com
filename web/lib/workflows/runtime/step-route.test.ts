@@ -47,7 +47,7 @@ describe("runRefreshStepRoute", () => {
   test("rejects fixture jobs when DEPLOY_ENV=production", async () => {
     const executeFixture = mock(async () => ({ name: "startRun" }));
     const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
-      env: { DEPLOY_ENV: "production" },
+      env: { NODE_ENV: "test", DEPLOY_ENV: "production" },
       executeFixture,
       recordCheckpoint: async () => {},
     });
@@ -59,7 +59,7 @@ describe("runRefreshStepRoute", () => {
   test("runs a fixture step on DEPLOY_ENV=pre when an executor is configured", async () => {
     const executeFixture = mock(async () => ({ name: "startRun" }));
     const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
-      env: { DEPLOY_ENV: "pre" },
+      env: { NODE_ENV: "test", DEPLOY_ENV: "pre" },
       kind: "memory",
       executeFixture,
       recordCheckpoint: async () => {},
