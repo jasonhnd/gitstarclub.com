@@ -10,12 +10,15 @@ import {
   PREVIEW_CRON_ORIGIN,
   PREVIEW_CRON_TRIGGERS,
   PREVIEW_CRONS_PAUSED,
-  PREVIEW_MIN_TRACKED_STARS,
-  PREVIEW_PREFLIGHT_RELAX_EMPTY_SHARDS,
-  PREVIEW_WORKFLOW_COLD_START,
+  PREVIEW_DEPLOY_ENV,
+  PREVIEW_R2_BUCKET,
+  PREVIEW_R2_PUBLIC_BASE_URL,
+  PREVIEW_STORAGE_READ_DRIVER,
+  PREVIEW_STORAGE_WRITE_DRIVER,
   PRODUCTION_BLOB_BASE_URL,
   PRODUCTION_CRON_ORIGIN,
   PRODUCTION_MIN_TRACKED_STARS,
+  PRODUCTION_R2_BUCKET,
   PRODUCTION_WORKER_NAME,
   PRODUCTION_VIEWS_VERSION_FALLBACK,
   PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL,
@@ -56,14 +59,19 @@ const validWrangler = `{
         "producers": [{ "binding": "JOBS", "queue": "gitstarclub-jobs-pre" }],
         "consumers": [{ "queue": "gitstarclub-jobs-pre", "max_batch_size": 1, "max_retries": 2 }]
       },
+      "r2_buckets": [
+        { "binding": "MEDIA", "bucket_name": "gitstarclub-assets" },
+        { "binding": "DATA", "bucket_name": "gitstarclub-data-pre" }
+      ],
       "vars": {
-        "BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
-        "NEXT_PUBLIC_BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
+        "DEPLOY_ENV": "pre",
+        "STORAGE_READ_DRIVER": "r2",
+        "STORAGE_WRITE_DRIVER": "r2_binding",
+        "R2_BUCKET": "gitstarclub-data-pre",
+        "R2_PUBLIC_BASE_URL": "https://data-pre.gitstarclub.com",
         "WORKFLOW_RUNTIME": "cf-queue",
         "WORKFLOW_QUEUE_ENQUEUE_URL": "https://pre.gitstarclub.com/enqueue",
-        "MIN_TRACKED_STARS": "1000",
-        "PREFLIGHT_RELAX_EMPTY_SHARDS": "1",
-        "WORKFLOW_COLD_START": "1"
+        "MIN_TRACKED_STARS": "10000"
       }
     }
   }
@@ -124,7 +132,10 @@ describe("CF CI gates", () => {
   test("requires production indexing and forbids preview indexing", () => {
     const missing = validWrangler.replace('"SITE_INDEXABLE": "1",\n', "");
     assert.match(assertCfCiGates(alignedSources({ wranglerSource: missing })).join(" "), /SITE_INDEXABLE/);
-    const previewEnabled = validWrangler.replace('"WORKFLOW_COLD_START": "1"', '"WORKFLOW_COLD_START": "1", "SITE_INDEXABLE": "1"');
+    const previewEnabled = validWrangler.replace(
+      '"MIN_TRACKED_STARS": "10000"',
+      '"MIN_TRACKED_STARS": "10000", "SITE_INDEXABLE": "1"',
+    );
     assert.match(assertCfCiGates(alignedSources({ wranglerSource: previewEnabled })).join(" "), /SITE_INDEXABLE/);
   });
   test("plans a dry-run against wrangler env pre only", () => {
@@ -322,7 +333,7 @@ describe("CF CI gates", () => {
     }
   });
 
-  test("requires preview MIN_TRACKED_STARS=1000 and refuses production ≥1k", () => {
+  test("requires preview MIN_TRACKED_STARS to equal production and refuses a 1k floor", () => {
     const missingPreview = assertCfCiGates(alignedSources({ wranglerSource: `{
       "name": "gitstarclub-web",
       "triggers": { "crons": [] },
@@ -330,7 +341,7 @@ describe("CF CI gates", () => {
     }` }));
     assert.ok(
       missingPreview.some((issue) =>
-        issue.includes(`env.pre vars.MIN_TRACKED_STARS must be ${PREVIEW_MIN_TRACKED_STARS}`),
+        issue.includes(`env.pre vars.MIN_TRACKED_STARS must equal production (${PRODUCTION_MIN_TRACKED_STARS})`),
       ),
     );
 
@@ -389,9 +400,22 @@ describe("CF CI gates", () => {
     assert.deepEqual(wrangler.triggers.crons, []);
     assert.deepEqual(wrangler.env.pre.triggers.crons, []);
     assert.equal(wrangler.env.pre.name, "gitstarclub-web-pre");
-    assert.equal(wrangler.env.pre.vars.MIN_TRACKED_STARS, PREVIEW_MIN_TRACKED_STARS);
-    assert.equal(wrangler.env.pre.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, "1");
-    assert.equal(wrangler.env.pre.vars.WORKFLOW_COLD_START, "1");
+    assert.equal(wrangler.env.pre.vars.MIN_TRACKED_STARS, PRODUCTION_MIN_TRACKED_STARS);
+    assert.equal(wrangler.env.pre.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, undefined);
+    assert.equal(wrangler.env.pre.vars.WORKFLOW_COLD_START, undefined);
+    assert.equal(wrangler.env.pre.vars.DEPLOY_ENV, PREVIEW_DEPLOY_ENV);
+    assert.equal(wrangler.env.pre.vars.STORAGE_READ_DRIVER, PREVIEW_STORAGE_READ_DRIVER);
+    assert.equal(wrangler.env.pre.vars.STORAGE_WRITE_DRIVER, PREVIEW_STORAGE_WRITE_DRIVER);
+    assert.equal(wrangler.env.pre.vars.R2_BUCKET, PREVIEW_R2_BUCKET);
+    assert.equal(wrangler.env.pre.vars.R2_PUBLIC_BASE_URL, PREVIEW_R2_PUBLIC_BASE_URL);
+    assert.equal(wrangler.env.pre.vars.R2_PREFIX, undefined);
+    assert.equal(wrangler.env.pre.vars.BLOB_BASE_URL, undefined);
+    assert.equal(wrangler.env.pre.vars.NEXT_PUBLIC_BLOB_BASE_URL, undefined);
+    assert.equal(
+      wrangler.env.pre.r2_buckets.find((entry) => entry.binding === "DATA").bucket_name,
+      PREVIEW_R2_BUCKET,
+    );
+    assert.equal(wrangler.r2_buckets.find((entry) => entry.binding === "DATA"), undefined);
     assert.equal(wrangler.vars.MIN_TRACKED_STARS, undefined);
     assert.equal(wrangler.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, undefined);
     assert.equal(wrangler.vars.WORKFLOW_COLD_START, undefined);
@@ -490,7 +514,212 @@ describe("CF CI gates", () => {
       }),
     );
     assert.ok(
-      issues.some((issue) => issue.includes("top-level vars.PREFLIGHT_RELAX_EMPTY_SHARDS must not be 1")),
+      issues.some((issue) => issue.includes("top-level vars.PREFLIGHT_RELAX_EMPTY_SHARDS must be absent")),
     );
+  });
+
+  test("rejects preview and production storage cross-wiring", () => {
+    const prodBucket = JSON.parse(validWrangler);
+    const previewData = prodBucket.env.pre.r2_buckets.find((entry) => entry.binding === "DATA");
+    previewData.bucket_name = PRODUCTION_R2_BUCKET;
+    prodBucket.env.pre.vars.R2_BUCKET = PRODUCTION_R2_BUCKET;
+    const prodBucketIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(prodBucket) }));
+    assert.ok(
+      prodBucketIssues.some((issue) => issue.includes(`DATA bucket_name must be ${PREVIEW_R2_BUCKET}`)),
+      prodBucketIssues.join("\n"),
+    );
+    assert.ok(
+      prodBucketIssues.some((issue) => issue.includes(`must not mention ${PRODUCTION_R2_BUCKET}`)),
+      prodBucketIssues.join("\n"),
+    );
+
+    const preDomain = JSON.parse(validWrangler);
+    preDomain.vars.R2_PUBLIC_BASE_URL = PREVIEW_R2_PUBLIC_BASE_URL;
+    const preDomainIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(preDomain) }));
+    assert.ok(
+      preDomainIssues.some((issue) => issue.includes("top-level must not mention data-pre.gitstarclub.com")),
+      preDomainIssues.join("\n"),
+    );
+
+    const blobOnPreview = JSON.parse(validWrangler);
+    blobOnPreview.env.pre.vars.BLOB_BASE_URL = PRODUCTION_BLOB_BASE_URL;
+    const blobIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(blobOnPreview) }));
+    assert.ok(
+      blobIssues.some((issue) => issue.includes("must not contain BLOB_*")),
+      blobIssues.join("\n"),
+    );
+
+    const coldStart = JSON.parse(validWrangler);
+    coldStart.env.pre.vars.WORKFLOW_COLD_START = "1";
+    const coldIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(coldStart) }));
+    assert.ok(
+      coldIssues.some((issue) => issue.includes("env.pre vars.WORKFLOW_COLD_START must be absent")),
+      coldIssues.join("\n"),
+    );
+
+    const missingDeploy = JSON.parse(validWrangler);
+    delete missingDeploy.env.pre.vars.DEPLOY_ENV;
+    const deployIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(missingDeploy) }));
+    assert.ok(
+      deployIssues.some((issue) => issue.includes(`vars.DEPLOY_ENV must be ${PREVIEW_DEPLOY_ENV}`)),
+      deployIssues.join("\n"),
+    );
+
+    const prefixed = JSON.parse(validWrangler);
+    prefixed.env.pre.vars.R2_PREFIX = "migrate-dev/";
+    const prefixIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(prefixed) }));
+    assert.ok(
+      prefixIssues.some((issue) => issue.includes("R2_PREFIX must be unset or empty")),
+      prefixIssues.join("\n"),
+    );
+
+    const emptyPrefix = JSON.parse(validWrangler);
+    emptyPrefix.env.pre.vars.R2_PREFIX = "";
+    assert.deepEqual(assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(emptyPrefix) })), []);
+
+    const sameBucket = JSON.parse(validWrangler);
+    sameBucket.r2_buckets = [{ binding: "DATA", bucket_name: PREVIEW_R2_BUCKET }];
+    const sameIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(sameBucket) }));
+    assert.ok(
+      sameIssues.some((issue) => issue.includes("DATA bucket must differ from the top-level DATA bucket")),
+      sameIssues.join("\n"),
+    );
+
+    const inherited = JSON.parse(validWrangler);
+    delete inherited.env.pre.r2_buckets;
+    delete inherited.env.pre.vars;
+    const inheritedIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(inherited) }));
+    assert.ok(
+      inheritedIssues.some((issue) => issue.includes("must declare its own r2_buckets")),
+      inheritedIssues.join("\n"),
+    );
+    assert.ok(
+      inheritedIssues.some((issue) => issue.includes("must declare its own vars")),
+      inheritedIssues.join("\n"),
+    );
+  });
+
+  test("cf:build public read base matches the target and rejects the other environment", () => {
+    const wrangler = {
+      vars: {
+        BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+        NEXT_PUBLIC_BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+      },
+      env: {
+        pre: {
+          vars: {
+            R2_PUBLIC_BASE_URL: PREVIEW_R2_PUBLIC_BASE_URL,
+          },
+        },
+      },
+    };
+    const cases = [
+      {
+        name: "preview match",
+        input: {
+          target: "pre",
+          shell: {
+            R2_PUBLIC_BASE_URL: `${PREVIEW_R2_PUBLIC_BASE_URL}/`,
+            BLOB_BASE_URL: "http://127.0.0.1:4010",
+          },
+          wrangler,
+        },
+        expect: [],
+      },
+      {
+        name: "production match",
+        input: {
+          target: "production",
+          shell: {
+            BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+            NEXT_PUBLIC_BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+          },
+          wrangler,
+        },
+        expect: [],
+      },
+      {
+        name: "production fixture",
+        input: {
+          target: "production",
+          shell: { BLOB_BASE_URL: "http://127.0.0.1:4010" },
+          wrangler,
+        },
+        expect: [],
+      },
+      {
+        name: "preview bakes production blob",
+        input: {
+          target: "pre",
+          shell: {
+            R2_PUBLIC_BASE_URL: PREVIEW_R2_PUBLIC_BASE_URL,
+            BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+          },
+          wrangler,
+        },
+        includes: "belongs to production",
+      },
+      {
+        name: "production bakes preview domain",
+        input: {
+          target: "production",
+          shell: {
+            BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+            R2_PUBLIC_BASE_URL: PREVIEW_R2_PUBLIC_BASE_URL,
+          },
+          wrangler,
+        },
+        includes: "belongs to pre",
+      },
+      {
+        name: "preview mismatches its own domain",
+        input: {
+          target: "pre",
+          shell: { R2_PUBLIC_BASE_URL: "https://data.gitstarclub.com" },
+          wrangler,
+        },
+        includes: "declares R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com",
+      },
+    ];
+    const result = spawnSync(
+      "bun",
+      [
+        "-e",
+        `import { publicReadBaseMismatches } from "./scripts/cf-opennext-build.ts";
+         const cases = JSON.parse(process.env["PUBLIC_READ_CASES"]);
+         const report = cases.map((entry) => ({ name: entry.name, issues: publicReadBaseMismatches(entry.input) }));
+         process.stdout.write(JSON.stringify(report));`,
+      ],
+      {
+        cwd: new URL("../web/", import.meta.url),
+        encoding: "utf8",
+        env: { ...process.env, PUBLIC_READ_CASES: JSON.stringify(cases) },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    for (const entry of cases) {
+      const found = report.find((item) => item.name === entry.name);
+      assert.ok(found, entry.name);
+      if (entry.expect) assert.deepEqual(found.issues, entry.expect, entry.name);
+      if (entry.includes) assert.ok(found.issues.join("\n").includes(entry.includes), `${entry.name}: ${found.issues.join("\n")}`);
+    }
+
+    const mismatch = spawnSync("bun", ["scripts/cf-opennext-build.ts", "--site-target=pre"], {
+      cwd: new URL("../web/", import.meta.url),
+      encoding: "utf8",
+      timeout: 20000,
+      env: {
+        ...process.env,
+        R2_PUBLIC_BASE_URL: "https://data.gitstarclub.com",
+        BLOB_BASE_URL: "http://127.0.0.1:4010",
+        NEXT_PUBLIC_BLOB_BASE_URL: "",
+        NEXT_PUBLIC_R2_PUBLIC_BASE_URL: "",
+      },
+    });
+    assert.notEqual(mismatch.status, 0);
+    assert.match(mismatch.stderr, /data\.gitstarclub\.com/);
+    assert.equal(mismatch.stdout.includes("opennextjs-cloudflare"), false);
+    assert.equal(mismatch.stderr.includes("opennextjs-cloudflare"), false);
   });
 });
