@@ -6,10 +6,10 @@ Point wrangler `env.pre` at its own R2 bucket with a production-like rehearsal c
 
 ## Scope
 
-- `workers/gitstarclub-web/wrangler.jsonc` (`env.pre` only)
+- Worker wrangler config, env.pre only (file: workers/gitstarclub-web/wrangler.jsonc)
 - `scripts/cf-ci-gates.mjs` and `scripts/cf-ci-gates.test.mjs`
 - `web/scripts/cf-opennext-build.ts`
-- `.delivery.yml`, `AGENTS.md`, `.env.example`, `workers/gitstarclub-web/.dev.vars.example`
+- `.delivery.yml`, `AGENTS.md`, `.env.example`, and the Worker `.dev.vars.example`
 - Docs that state the current preview floor or the preview Blob read path
 
 ## Out of scope
