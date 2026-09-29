@@ -19,6 +19,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Added
 
+- **Driver-aware Blob reads and config checks (#563).** Bootstrap pointer reads, sync-run history, cron and workflow config checks, and the rankings cache key use `getPublicReadBases()` / `requirePublicReadBase()` / `requireStorageWriteConfig()`. `blob` still requires `BLOB_BASE_URL` and, on writes, `BLOB_READ_WRITE_TOKEN`. `r2_binding` needs the DATA binding, `R2_BUCKET`, and `DEPLOY_ENV`, and does not need a Blob token. Live gates prefer `LIVE_PUBLIC_READ_BASE_URL` and still fall back to the public Blob URL until stage 6. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). Does not bind the bucket in wrangler and does not cut DNS.
+
 - **Native R2 binding driver for the Worker (#561).** `STORAGE_READ_DRIVER` accepts `blob`, `r2_binding`, `r2_s3`, `r2`, and `r2_then_blob`. `STORAGE_WRITE_DRIVER` accepts `blob`, `r2_binding`, `r2_s3`, and `r2`. `r2` remains an alias of the S3 store. `r2_binding` uses the Worker `DATA` binding and does not read storage keys; a missing binding throws. Unset drivers and `blob` are unchanged. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). Does not bind the bucket in wrangler and does not cut DNS.
 
 - **Shared agent contract (#540).** Root `AGENTS.md` now restates branch, delivery, executor limits, verification commands, and repository constraints for every agent. Rules 1-4 stay as written. Rule 5 names the non-English site locales and the CJK-gate allowlist. Offline verification is a fresh worktree plus a clean bash process. Node and Bun archives are SHA-256 checked before use. `.grok/rules/pre-only.md`, `.delivery.yml`, and `docs/GEO.md` stay as they are. Plan: [540-agents-contract.md](../plans/540-agents-contract.md).

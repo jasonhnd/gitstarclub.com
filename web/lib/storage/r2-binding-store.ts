@@ -81,7 +81,15 @@ function isR2Bucket(value: unknown): value is R2Bucket {
   );
 }
 
+let dataBindingReaderForTests: (() => unknown) | undefined;
+
+/** Test-only DATA binding. `undefined` restores the live Worker binding. */
+export function setDataBindingReaderForTests(reader: (() => unknown) | undefined): void {
+  dataBindingReaderForTests = reader;
+}
+
 function readCloudflareDataBinding(): unknown {
+  if (dataBindingReaderForTests !== undefined) return dataBindingReaderForTests();
   const { env } = getCloudflareContext();
   return (env as { DATA?: unknown }).DATA;
 }

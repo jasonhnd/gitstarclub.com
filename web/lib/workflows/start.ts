@@ -1,7 +1,7 @@
 import type { HealthStatus } from "@/lib/contracts";
 import { sendAlert, type AlertSummary } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
-import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
+import { requireGithubToken, requirePublicReadBase, requireStorageWriteConfig } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 import { claimWorkflowLease, releaseWorkflowLease, type WorkflowLeaseStore } from "@/lib/workflows/lease";
 import { readRefreshStartPreflight } from "@/lib/workflows/cold-start";
@@ -85,8 +85,8 @@ async function recordStartHealth(
 }
 
 function requireRefreshWorkflowRuntimeConfig(): void {
-  requireBlobBaseUrl();
-  requireBlobWriteToken();
+  requirePublicReadBase();
+  requireStorageWriteConfig();
   requireGithubToken();
 }
 
