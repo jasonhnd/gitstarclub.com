@@ -16,7 +16,7 @@ export function renderExtractSql(template, options = {}) {
       `refusing to overwrite ${UNSUFFIXED_TABLE}; pass a dated table such as gitstarclub.star_daily_gross_${cutoffSuffix}`,
     );
   }
-  if (!/^gitstarclub\.[A-Za-z_][A-Za-z0-9_]*$/.test(table)) {
+  if (!/^gitstarclub\.star_daily_gross_[A-Za-z0-9_]+$/.test(table)) {
     throw new Error("--destination must look like gitstarclub.star_daily_gross_<suffix>");
   }
   if (!template.includes("@@DESTINATION_TABLE@@") || !template.includes("@@CUTOFF_SUFFIX@@")) {

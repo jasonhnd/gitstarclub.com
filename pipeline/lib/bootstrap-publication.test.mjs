@@ -426,5 +426,55 @@ describe("bootstrap publication", () => {
     await expect(
       commitBootstrapGeneration({ generation: "bootstrap-mixed-pointer", store: pointer, initialCommit: true }),
     ).rejects.toThrow("bootstrap/latest.json already exists");
+
+    const retry = await commitBootstrapGeneration({
+      generation: "bootstrap-empty",
+      store,
+      initialCommit: true,
+      now: () => "2026-07-17T00:00:01.000Z",
+    });
+    expect(retry.status).toBe("already-published");
+    expect(retry.pointer.published_at).toBe("2026-07-17T00:00:00.000Z");
+  });
+
+  test("initial commit create race returns already-published only for the same generation", async () => {
+    const lost = new MemoryStore();
+    await stageComplete(lost, "bootstrap-race");
+    const realCreate = lost.createMutable.bind(lost);
+    lost.createMutable = async (path, body) => {
+      await realCreate(path, body);
+      return false;
+    };
+    const published = await commitBootstrapGeneration({
+      generation: "bootstrap-race",
+      store: lost,
+      initialCommit: true,
+      now: () => "2026-07-17T00:00:00.000Z",
+    });
+    expect(published.status).toBe("already-published");
+    expect(published.pointer.generation).toBe("bootstrap-race");
+
+    const other = new MemoryStore();
+    await stageComplete(other, "bootstrap-race-other");
+    other.createMutable = async () => {
+      other.objects.set(
+        BOOTSTRAP_POINTER_PATH,
+        Buffer.from(
+          JSON.stringify({
+            schema_ver: 1,
+            generation: "bootstrap-someone-else",
+            prefix: "bootstrap/generations/bootstrap-someone-else",
+            previous_generation: null,
+            published_at: "2026-07-17T00:00:00.000Z",
+            base_manifest_sha256: "a".repeat(64),
+            canonical_manifest_sha256: "b".repeat(64),
+          }),
+        ),
+      );
+      return false;
+    };
+    await expect(
+      commitBootstrapGeneration({ generation: "bootstrap-race-other", store: other, initialCommit: true }),
+    ).rejects.toThrow("already exists");
   });
 });

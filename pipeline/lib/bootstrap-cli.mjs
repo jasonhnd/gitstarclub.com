@@ -42,10 +42,11 @@ R2 dry-run (no remote writes):
 R2 stage, then the empty-bucket first commit (previous_generation null):
   node backfill/07-export-v2.mjs --store r2 --target pre --generation bootstrap-20260717T120000Z --execute --stage-only
   node backfill/07-export-v2.mjs --store r2 --target pre --generation bootstrap-20260717T120000Z --execute --initial-commit
+  node backfill/07-export-v2.mjs --store r2 --target prod --generation bootstrap-20260717T120000Z --execute --initial-commit
 
 R2 later rollback (a generation that was published; legacy-flat still requires the flat layout):
   node backfill/07-export-v2.mjs --store r2 --target pre --rollback bootstrap-20260717T120000Z --execute
-  node backfill/07-export-v2.mjs --store r2 --target prod --generation bootstrap-20260717T120000Z --execute --initial-commit
+  node backfill/07-export-v2.mjs --store r2 --target prod --rollback bootstrap-20260717T120000Z --execute
 
 Flags:
   --generation <bootstrap-id>   Required to stage or commit. Use bootstrap-YYYYMMDDTHHMMSSZ or pass --generated-at.
@@ -55,6 +56,7 @@ Flags:
   --execute                     Required for every R2 write, including --stage-only and --rollback.
   --initial-commit              R2 only. First pointer when the bucket has no bootstrap/latest.json,
                                 no views/latest.json, and no canonical/v2/meta.json. Refuses mixed state.
+                                Retrying it after that same generation is visible returns already-published.
   --stage-only                  Stage the canonical phase and do not commit the pointer.
   --no-upload                   Export and validate locally. No remote writes.
   --dry-run                     Same remote effect as omitting --execute on R2: no remote writes.

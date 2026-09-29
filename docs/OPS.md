@@ -730,7 +730,7 @@ Render `pipeline/backfill/02-extract.sql` before any BigQuery job. The renderer 
 
 ```bash
 cd pipeline
-node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531
+node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531 > rendered.sql
 bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < rendered.sql
 ```
 
@@ -760,7 +760,7 @@ bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < 
 
 Rehearse in `gitstarclub-data-pre`, then load `gitstarclub-data-prod`. The owner places `_meta/bucket-identity.json` at the bucket root out of band. `bucket` must equal the target bucket name. `deploy_env` is `pre` for `--target pre` and `production` for `--target prod`. The scripts never write or delete `_meta/`.
 
-R2 performs no writes unless `--execute`. A dry run prints the object count, byte count, and target bucket. `--initial-commit` is R2 only. It publishes `previous_generation: null` when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are all absent, and it refuses if any of those already exist. The identity marker and staged generation objects do not block that check. This null is not a legacy-flat rollback: `--rollback legacy-flat` fails closed because the flat layout is not in the new bucket.
+R2 performs no writes unless `--execute`. `--target` without `--store r2` is refused. A dry run prints the object count, byte count, and target bucket. When R2 credentials are set, that dry run also reads `_meta/bucket-identity.json` and refuses a mismatched marker. When they are unset, it does not contact the bucket. `--initial-commit` is R2 only. It publishes `previous_generation: null` when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are all absent, and it refuses if any of those already exist. The first pointer is create-only. Retrying the same `--initial-commit` after that generation is visible returns already-published; a different existing pointer is refused. The identity marker and staged generation objects do not block that check. This null is not a legacy-flat rollback: `--rollback legacy-flat` fails closed because the flat layout is not in the new bucket.
 
 ```bash
 cd pipeline
@@ -799,7 +799,7 @@ cd web
 bun scripts/migrate-canonical-lifecycle.ts
 ```
 
-Blob dry-run loads only `BLOB_BASE_URL` and does not need `BLOB_READ_WRITE_TOKEN`. R2 dry-run (`--store r2 --target pre` or `--target prod`) loads `R2_PUBLIC_BASE_URL` and the bucket name, and it does not load `R2_SECRET_ACCESS_KEY`. Neither dry-run calls create / put / delete. Review checks at least:
+Blob dry-run loads only `BLOB_BASE_URL` and does not need `BLOB_READ_WRITE_TOKEN`. R2 dry-run (`--store r2 --target pre` or `--target prod`) loads `R2_PUBLIC_BASE_URL_PRE` or `R2_PUBLIC_BASE_URL_PROD` when set, otherwise `R2_PUBLIC_BASE_URL`, plus the bucket name. It fetches the public `_meta/bucket-identity.json` and does not load `R2_SECRET_ACCESS_KEY`. Neither dry-run calls create / put / delete. Review checks at least:
 
 - `production_writes=0`;
 - source layout / `views/latest.run_id` / 19 snapshot hash match the review evidence;
