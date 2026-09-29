@@ -15,6 +15,7 @@ describe("DualReadObjectStore", () => {
     const fallback = new MemoryObjectStore({ "views/latest.json": '{"from":"blob"}' });
     const store = new DualReadObjectStore(primary, fallback);
     expect(JSON.parse((await store.get("views/latest.json"))?.body ?? "null")).toEqual({ from: "blob" });
+    expect(new TextDecoder().decode((await store.getBytes("views/latest.json"))?.body)).toBe('{"from":"blob"}');
   });
 
   test("falls back when the primary throws", async () => {

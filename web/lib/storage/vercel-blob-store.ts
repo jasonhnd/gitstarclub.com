@@ -2,6 +2,7 @@ import { requireBlobWriteToken } from "@/lib/runtime-config";
 import { ObjectStorePreconditionFailedError } from "./errors";
 import { createVercelBlobFetchClient } from "./vercel-blob-fetch-client";
 import type {
+  ObjectGetBytesResult,
   ObjectGetResult,
   ObjectHeadResult,
   ObjectListOptions,
@@ -67,6 +68,21 @@ export class VercelBlobObjectStore implements ObjectStore {
 
   async getOrigin(path: string): Promise<ObjectGetResult | null> {
     return this.getWithAccess(path, "private");
+  }
+
+  async getBytes(path: string): Promise<ObjectGetBytesResult | null> {
+    const result = await this.client.get(path, { access: "public", token: this.token() });
+    if (!result) return null;
+    if (result.statusCode !== 200 || !result.stream) {
+      throw new Error(`blob read ${path} -> ${result.statusCode}`);
+    }
+    const body = new Uint8Array(await new Response(result.stream).arrayBuffer());
+    return {
+      body,
+      etag: result.blob.etag,
+      contentType: result.blob.contentType,
+      size: body.byteLength,
+    };
   }
 
   private async getWithAccess(path: string, access: "public" | "private"): Promise<ObjectGetResult | null> {

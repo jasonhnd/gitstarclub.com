@@ -17,6 +17,14 @@ export type ObjectGetResult = {
   size?: number;
 };
 
+/** Binary GET. `get()` is text and must not be used for parquet or other non-UTF-8 objects. */
+export type ObjectGetBytesResult = {
+  body: Uint8Array;
+  etag: string | null;
+  contentType?: string;
+  size?: number;
+};
+
 export type ObjectHeadResult = {
   etag: string | null;
   contentType?: string;
@@ -56,6 +64,12 @@ export interface ObjectStore {
    * their `get()` is already origin.
    */
   getOrigin?(path: string): Promise<ObjectGetResult | null>;
+  /**
+   * Byte-preserving GET. Required for bootstrap publication, which hashes
+   * staged parquet. Stores that only implement text `get()` must not be used
+   * for that path.
+   */
+  getBytes?(path: string): Promise<ObjectGetBytesResult | null>;
   head(path: string): Promise<ObjectHeadResult | null>;
   list(options: ObjectListOptions): Promise<ObjectListResult>;
   del(pathsOrUrls: string | string[]): Promise<void>;
