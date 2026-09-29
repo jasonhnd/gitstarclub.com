@@ -10,17 +10,18 @@ source_of_truth_for:
 
 # R2 migration P0 (Blob adapter)
 
-> Cloudflare migrate **P0** only: injectable object-store drivers for Vercel Blob and
-> R2 (S3 API). This does **not** cut DNS, does **not** orange-cloud apex/www, and
-> does **not** make R2 the production read primary.
+> Cloudflare migrate **P0** only: injectable object-store drivers for Vercel Blob,
+> the R2 S3 API, and the Worker R2 binding. This does **not** cut DNS, does **not**
+> orange-cloud apex/www, and does **not** make R2 the production read primary.
 
 ## Scope
 
 This document owns the P0 storage port added in `web/lib/storage/`:
 
-- Drivers: `vercel-blob` (default) and `r2-s3`
-- Dual-read: `blob` | `r2` | `r2_then_blob`
-- Writes stay on Vercel Blob unless `STORAGE_WRITE_DRIVER=r2` **and** the bucket identity marker matches `DEPLOY_ENV`
+- Drivers: `vercel-blob` (default), `r2-s3` (S3 API, outside the Worker), and `r2-binding` (Workers `DATA` binding, no storage keys)
+- Read drivers: `blob` | `r2_binding` | `r2_s3` | `r2` | `r2_then_blob`. `r2` is an alias of `r2_s3`. `r2_then_blob` still reads S3, then Blob.
+- Write drivers: `blob` | `r2_binding` | `r2_s3` | `r2`. `r2` is an alias of `r2_s3`.
+- Writes stay on Vercel Blob unless the write driver is an R2 driver **and** the bucket identity marker matches `DEPLOY_ENV`
 - Rollback: unset the driver switches (or set them back to `blob`)
 
 Out of scope: ISR / Preview bypass rewrites, Workers hosting of the
@@ -33,7 +34,7 @@ by default):
 
 - account_id: `00f850e853e4c7f9627233d51a6e30a1`
 - R2 bucket: `gitstarclub-assets`
-- Worker shell: `gitstarclub-web` with binding `MEDIA` → that bucket (not used by this Node adapter)
+- Worker shell: `gitstarclub-web` with binding `MEDIA` → that bucket (not used by the S3 adapter). The native driver reads a separate `DATA` binding. Wrangler does not bind `DATA` yet.
 - Object key prefix: unset (`R2_PREFIX` defaults to empty). Writes are gated by `_meta/bucket-identity.json`, not by a prefix.
 
 ## Default behavior (no regression)
@@ -55,35 +56,39 @@ do not hit `ALPNProtocols`. R2 writes were already fetch-signed. See
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `STORAGE_READ_DRIVER` | `blob` | `blob` \| `r2` \| `r2_then_blob` |
+| `STORAGE_READ_DRIVER` | `blob` | `blob` \| `r2_binding` \| `r2_s3` \| `r2` \| `r2_then_blob`. `r2` is an alias of `r2_s3`. |
 | `READ_DRIVER` | (alias) | Same as `STORAGE_READ_DRIVER` |
-| `STORAGE_WRITE_DRIVER` | `blob` | `blob` \| `r2` |
+| `STORAGE_WRITE_DRIVER` | `blob` | `blob` \| `r2_binding` \| `r2_s3` \| `r2`. `r2` is an alias of `r2_s3`. |
 | `WRITE_DRIVER` | (alias) | Same as `STORAGE_WRITE_DRIVER` |
 | `R2_ACCOUNT_ID` | unset | Used to build `https://<account>.r2.cloudflarestorage.com` |
 | `R2_S3_ENDPOINT` | from account id | Explicit S3 endpoint override |
 | `AWS_ENDPOINT_URL` | (alias) | Same as `R2_S3_ENDPOINT` |
 | `R2_ACCESS_KEY_ID` / `AWS_ACCESS_KEY_ID` | unset | R2 S3 access key |
 | `R2_SECRET_ACCESS_KEY` / `AWS_SECRET_ACCESS_KEY` | unset | R2 S3 secret |
-| `R2_BUCKET` / `AWS_S3_BUCKET` | unset | Bucket name (`gitstarclub-assets`) |
+| `R2_BUCKET` / `AWS_S3_BUCKET` | unset | Bucket name. Required for every R2 write, including `r2_binding`, because the identity check compares this name to the marker. The binding itself is not named by this variable. |
 | `R2_REGION` / `AWS_REGION` | `auto` | SigV4 region |
 | `R2_PREFIX` | empty | Optional object key prefix. Unset is the bucket root. It is not a write allowlist. |
 | `DEPLOY_ENV` | unset | `production` \| `pre` \| `local`. R2 writes require `production` or `pre`, matching the bucket identity marker. |
-| `R2_PUBLIC_BASE_URL` | unset | Public URL base for `r2` / `r2_then_blob` page reads |
+| `R2_PUBLIC_BASE_URL` | unset | Public URL base for `r2` / `r2_s3` / `r2_binding` / `r2_then_blob` page reads |
 
 CI must not set production `BLOB_READ_WRITE_TOKEN` as an R2 write credential. The
 R2 driver tests mock `fetch` and never open the real bucket.
 
 ## Write guard
 
-`STORAGE_WRITE_DRIVER=blob` (the default) does not read the marker. Blob writes are unchanged.
+`STORAGE_WRITE_DRIVER=blob` (the default) does not read the marker. Blob writes are unchanged. Unset drivers stay on Blob.
 
-`STORAGE_WRITE_DRIVER=r2` is rejected when:
+`r2_binding` uses the Worker `DATA` R2 binding (`getCloudflareContext()`). It does not read `R2_ACCESS_KEY_ID` or `R2_SECRET_ACCESS_KEY`. Missing `DATA` throws `r2_binding requires the DATA R2 binding`. `r2` and `r2_s3` keep using the S3 client. `r2_then_blob` still falls back from that S3 client to Blob.
+
+An R2 write driver (`r2`, `r2_s3`, or `r2_binding`) is rejected when:
 
 - `DEPLOY_ENV` is unset (on Cloudflare this is `HOSTING_TARGET=cf` with no `DEPLOY_ENV`), or
 - `DEPLOY_ENV` is not `production` or `pre`, or
 - `VERCEL_ENV=production` and `DEPLOY_ENV` is not `production`, or
+- the `put` or `del` path contains a `.` or `..` segment, including one percent-encoding (`%2e`, `%2e%2e`), or
 - the `put` or `del` key is under `_meta/` (the caller path, or the key after `R2_PREFIX`), or
-- `_meta/bucket-identity.json` at the bucket root is missing, unreadable, or its `deploy_env` / `bucket` does not match `DEPLOY_ENV` and the configured bucket name.
+- `R2_BUCKET` is unset, or
+- `_meta/bucket-identity.json` at the bucket root is missing, unreadable, or its `deploy_env` / `bucket` does not match `DEPLOY_ENV` and `R2_BUCKET`.
 
 The marker JSON is exactly one of:
 
@@ -92,7 +97,9 @@ The marker JSON is exactly one of:
 {"bucket":"<R2_BUCKET>","deploy_env":"production"}
 ```
 
-A passing check is cached for the isolate. The cache key is the S3 endpoint the store uses after extras, the bucket name, and `DEPLOY_ENV`. It is not an endpoint re-read from env. Cloudflare Workers never set `VERCEL_ENV`. When `VERCEL_ENV=production`, `DEPLOY_ENV` must also be `production`.
+A passing check is cached for the isolate. The cache key is the S3 endpoint the store uses after extras (or the fixed sentinel `r2-binding` for the native driver), the bucket name, and `DEPLOY_ENV`. It is not an endpoint re-read from env. Cloudflare Workers never set `VERCEL_ENV`. When `VERCEL_ENV=production`, `DEPLOY_ENV` must also be `production`.
+
+`new URL()` removes `.` and `..` after one percent-decode, so `views/../_meta/x` and `views/%2e%2e/_meta/x` would otherwise be written as `_meta/x`. The guard rejects those segments before the request is built. The binding store returns the quoted `httpEtag`. Pass that value back as `ifMatch`.
 
 An operator places `_meta/bucket-identity.json` out of band, once per bucket, before any application write. Application code never `put`s or deletes a key under `_meta/`. Example for the preview bucket (operators only; CI does not run this):
 
@@ -128,6 +135,7 @@ bun scripts/sync-blob-to-r2.ts --prefix views/ --execute
 
 - Production read primary is still Vercel Blob.
 - Apex / www DNS and Cloudflare orange-cloud are unchanged.
-- The Worker `MEDIA` binding is used by the P3 host (`workers/gitstarclub-web`);
-  this adapter still talks S3 from Node when `STORAGE_READ_DRIVER` selects R2.
+- The Worker `MEDIA` binding is used by the P3 host (`workers/gitstarclub-web`).
+  `r2` and `r2_s3` still talk S3 from Node. `r2_binding` talks to `DATA` only when that binding exists.
+  Wrangler does not bind `DATA` in this change.
   See [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md). Production reads stay Blob.
