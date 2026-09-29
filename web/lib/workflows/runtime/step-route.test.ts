@@ -56,6 +56,36 @@ describe("runRefreshStepRoute", () => {
     expect(executeFixture).not.toHaveBeenCalled();
   });
 
+  test("rejects fixture jobs when HOSTING_TARGET=cf and DEPLOY_ENV is unset or invalid", async () => {
+    const executeFixture = mock(async () => ({ name: "startRun" }));
+    const unset = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      env: { NODE_ENV: "test", HOSTING_TARGET: "cf" },
+      executeFixture,
+      recordCheckpoint: async () => {},
+    });
+    expect(unset.status).toBe(400);
+    expect(await unset.json()).toEqual({ ok: false, error: "Fixture refresh is not allowed on this runtime" });
+    const misspelled = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      env: { NODE_ENV: "test", HOSTING_TARGET: "cf", DEPLOY_ENV: "staging" },
+      executeFixture,
+      recordCheckpoint: async () => {},
+    });
+    expect(misspelled.status).toBe(400);
+    expect(executeFixture).not.toHaveBeenCalled();
+  });
+
+  test("runs a fixture step on HOSTING_TARGET=cf when DEPLOY_ENV=pre", async () => {
+    const executeFixture = mock(async () => ({ name: "startRun" }));
+    const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      env: { NODE_ENV: "test", HOSTING_TARGET: "cf", DEPLOY_ENV: "pre" },
+      kind: "memory",
+      executeFixture,
+      recordCheckpoint: async () => {},
+    });
+    expect(response.status).toBe(200);
+    expect(executeFixture).toHaveBeenCalledTimes(1);
+  });
+
   test("runs a fixture step on DEPLOY_ENV=pre when an executor is configured", async () => {
     const executeFixture = mock(async () => ({ name: "startRun" }));
     const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
