@@ -1,7 +1,7 @@
 ---
 owner: operations / workflows
 status: active
-last_reviewed: 2026-09-21
+last_reviewed: 2026-09-29
 source_of_truth_for:
   - Cloudflare migrate P1 workflow runtime
   - non-production CF Cron / Queue orchestration
@@ -164,9 +164,10 @@ The default Blob driver now uses `web/lib/storage/vercel-blob-fetch-client.ts`:
 runtime `fetch` to `https://vercel.com/api/blob` with the same CAS headers as
 the official SDK (`x-allow-overwrite`, `x-if-match`, `x-api-version`). That is
 the Workers-safe path. Optional alternative: `STORAGE_WRITE_DRIVER=r2` already
-signs S3 with `fetch` (`web/lib/storage/r2-s3-store.ts`) under a non-production
-`migrate-*` prefix. Default CF preview stays on Vercel Blob so lease/views
-remain on the public store `BLOB_BASE_URL` already serves.
+signs S3 with `fetch` (`web/lib/storage/r2-s3-store.ts`). R2 writes require
+`DEPLOY_ENV` of `production` or `pre` and a matching `_meta/bucket-identity.json`.
+Default CF preview stays on Vercel Blob so lease/views remain on the public
+store `BLOB_BASE_URL` already serves.
 
 **Full CF daily / refresh depends on this fetch write path.** This change does
 not enable Cloudflare schedules. Production `wrangler.jsonc` `triggers.crons`

@@ -27,4 +27,13 @@ describe("blob→R2 sync plan", () => {
     expect(() => assertBlobToR2SyncAllowed({ execute: false, env: { DEPLOY_ENV: "local" } })).toThrow("DEPLOY_ENV=local");
     expect(() => assertBlobToR2SyncAllowed({ execute: false, env: preEnv })).not.toThrow();
   });
+
+  test("refuses a plan when VERCEL_ENV=production conflicts with DEPLOY_ENV=pre", () => {
+    expect(() =>
+      assertBlobToR2SyncAllowed({ execute: true, env: { VERCEL_ENV: "production", DEPLOY_ENV: "pre" } }),
+    ).toThrow("VERCEL_ENV=production conflicts with DEPLOY_ENV=pre");
+    expect(() =>
+      assertBlobToR2SyncAllowed({ execute: false, env: { VERCEL_ENV: "production", DEPLOY_ENV: "production" } }),
+    ).not.toThrow();
+  });
 });
