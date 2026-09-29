@@ -1,3 +1,5 @@
+import type { R2Bucket } from "../../../web/lib/storage/r2-binding-store";
+
 export type RefreshJob = {
   v: 1;
   graph: "full" | "fixture";
@@ -25,6 +27,8 @@ export type WorkerEnv = {
   JOBS: {
     send(message: RefreshJob): Promise<void>;
   };
+  /** Native R2 binding for the data bucket. Wrangler wiring is a later step. */
+  DATA?: R2Bucket;
   MEDIA: unknown;
   ASSETS?: { fetch(request: Request): Promise<Response> };
   WORKER_SELF_REFERENCE?: { fetch(request: Request): Promise<Response> };

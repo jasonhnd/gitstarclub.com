@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { resetBucketIdentityCacheForTests } from "@/lib/runtime-config";
 import { DualReadObjectStore } from "./dual-read-store";
 import {
+  createR2BindingObjectStore,
   createR2S3ObjectStore,
   createReadObjectStore,
   createWriteObjectStore,
@@ -10,6 +11,7 @@ import {
   getWriteObjectStore,
   r2StoreConfigFromEnv,
 } from "./object-store";
+import { MISSING_DATA_BINDING_ERROR } from "./r2-binding-store";
 import { R2S3ObjectStore } from "./r2-s3-store";
 import { createVercelBlobFetchClient } from "./vercel-blob-fetch-client";
 import { VercelBlobObjectStore } from "./vercel-blob-store";
@@ -85,6 +87,33 @@ describe("object store factory", () => {
       R2_ACCOUNT_ID: "00f850e853e4c7f9627233d51a6e30a1",
     });
     expect(store).toBeInstanceOf(R2S3ObjectStore);
+  });
+
+  test("r2 is an alias of the S3 store and r2_s3 uses the same store", () => {
+    const env = {
+      STORAGE_READ_DRIVER: "r2_s3",
+      STORAGE_WRITE_DRIVER: "r2_s3",
+      DEPLOY_ENV: "pre",
+      ...r2Credentials,
+    };
+    expect(createReadObjectStore(env)).toBeInstanceOf(R2S3ObjectStore);
+    expect(createWriteObjectStore({ ...env, STORAGE_WRITE_DRIVER: "r2" })).toBeInstanceOf(R2S3ObjectStore);
+    expect(describeStorageDrivers({ STORAGE_READ_DRIVER: "r2", STORAGE_WRITE_DRIVER: "r2" })).toEqual({
+      read: "r2",
+      write: "r2",
+    });
+  });
+
+  test("r2_binding without a DATA binding throws a clear error", () => {
+    expect(() => createReadObjectStore({ STORAGE_READ_DRIVER: "r2_binding" })).toThrow(MISSING_DATA_BINDING_ERROR);
+    expect(() =>
+      createWriteObjectStore({
+        STORAGE_WRITE_DRIVER: "r2_binding",
+        DEPLOY_ENV: "pre",
+        R2_BUCKET: "gitstarclub-data-pre",
+      }),
+    ).toThrow(MISSING_DATA_BINDING_ERROR);
+    expect(() => createR2BindingObjectStore({ R2_BUCKET: "gitstarclub-data-pre" })).toThrow(MISSING_DATA_BINDING_ERROR);
   });
 
   test("R2 config fails closed without credentials", () => {
