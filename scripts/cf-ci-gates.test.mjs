@@ -598,4 +598,128 @@ describe("CF CI gates", () => {
       inheritedIssues.join("\n"),
     );
   });
+
+  test("cf:build public read base matches the target and rejects the other environment", () => {
+    const wrangler = {
+      vars: {
+        BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+        NEXT_PUBLIC_BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+      },
+      env: {
+        pre: {
+          vars: {
+            R2_PUBLIC_BASE_URL: PREVIEW_R2_PUBLIC_BASE_URL,
+          },
+        },
+      },
+    };
+    const cases = [
+      {
+        name: "preview match",
+        input: {
+          target: "pre",
+          shell: {
+            R2_PUBLIC_BASE_URL: `${PREVIEW_R2_PUBLIC_BASE_URL}/`,
+            BLOB_BASE_URL: "http://127.0.0.1:4010",
+          },
+          wrangler,
+        },
+        expect: [],
+      },
+      {
+        name: "production match",
+        input: {
+          target: "production",
+          shell: {
+            BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+            NEXT_PUBLIC_BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+          },
+          wrangler,
+        },
+        expect: [],
+      },
+      {
+        name: "production fixture",
+        input: {
+          target: "production",
+          shell: { BLOB_BASE_URL: "http://127.0.0.1:4010" },
+          wrangler,
+        },
+        expect: [],
+      },
+      {
+        name: "preview bakes production blob",
+        input: {
+          target: "pre",
+          shell: {
+            R2_PUBLIC_BASE_URL: PREVIEW_R2_PUBLIC_BASE_URL,
+            BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+          },
+          wrangler,
+        },
+        includes: "belongs to production",
+      },
+      {
+        name: "production bakes preview domain",
+        input: {
+          target: "production",
+          shell: {
+            BLOB_BASE_URL: PRODUCTION_BLOB_BASE_URL,
+            R2_PUBLIC_BASE_URL: PREVIEW_R2_PUBLIC_BASE_URL,
+          },
+          wrangler,
+        },
+        includes: "belongs to pre",
+      },
+      {
+        name: "preview mismatches its own domain",
+        input: {
+          target: "pre",
+          shell: { R2_PUBLIC_BASE_URL: "https://data.gitstarclub.com" },
+          wrangler,
+        },
+        includes: "declares R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com",
+      },
+    ];
+    const result = spawnSync(
+      "bun",
+      [
+        "-e",
+        `import { publicReadBaseMismatches } from "./scripts/cf-opennext-build.ts";
+         const cases = JSON.parse(process.env.PUBLIC_READ_CASES);
+         const report = cases.map((entry) => ({ name: entry.name, issues: publicReadBaseMismatches(entry.input) }));
+         process.stdout.write(JSON.stringify(report));`,
+      ],
+      {
+        cwd: new URL("../web/", import.meta.url),
+        encoding: "utf8",
+        env: { ...process.env, PUBLIC_READ_CASES: JSON.stringify(cases) },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    for (const entry of cases) {
+      const found = report.find((item) => item.name === entry.name);
+      assert.ok(found, entry.name);
+      if (entry.expect) assert.deepEqual(found.issues, entry.expect, entry.name);
+      if (entry.includes) assert.ok(found.issues.join("\n").includes(entry.includes), `${entry.name}: ${found.issues.join("\n")}`);
+    }
+
+    const mismatch = spawnSync("bun", ["scripts/cf-opennext-build.ts", "--site-target=pre"], {
+      cwd: new URL("../web/", import.meta.url),
+      encoding: "utf8",
+      timeout: 20000,
+      env: {
+        ...process.env,
+        R2_PUBLIC_BASE_URL: "https://data.gitstarclub.com",
+        BLOB_BASE_URL: "http://127.0.0.1:4010",
+        NEXT_PUBLIC_BLOB_BASE_URL: "",
+        NEXT_PUBLIC_R2_PUBLIC_BASE_URL: "",
+      },
+    });
+    assert.notEqual(mismatch.status, 0);
+    assert.match(mismatch.stderr, /data\.gitstarclub\.com/);
+    assert.equal(mismatch.stdout.includes("opennextjs-cloudflare"), false);
+    assert.equal(mismatch.stderr.includes("opennextjs-cloudflare"), false);
+  });
 });
