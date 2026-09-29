@@ -15,7 +15,7 @@ Stop bootstrap pointer reads, sync-run history reads, workflow and cron config c
 
 ## Out of scope
 
-`workers/gitstarclub-web/wrangler.jsonc`, `scripts/cf-ci-gates.mjs`, `.github/workflows/*`, `.delivery.yml`, pipeline code, `web/scripts/*`, and `web/lib/data/source.ts` fallback / `VIEWS_VERSION_FALLBACK` logic. No Cloudflare, Vercel, or BigQuery writes. No deploy. No push to `main`, `pre`, or `preview`.
+The Worker wrangler config, `scripts/cf-ci-gates.mjs`, `.github/workflows/*`, `.delivery.yml`, pipeline code, `web/scripts/*`, and `web/lib/data/source.ts` fallback / `VIEWS_VERSION_FALLBACK` logic. No Cloudflare, Vercel, or BigQuery writes. No deploy. No push to `main`, `pre`, or `preview`.
 
 ## Behavior
 
