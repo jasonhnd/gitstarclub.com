@@ -81,9 +81,26 @@ R2 driver tests mock `fetch` and never open the real bucket.
 
 - `DEPLOY_ENV` is unset (on Cloudflare this is `HOSTING_TARGET=cf` with no `DEPLOY_ENV`), or
 - `DEPLOY_ENV` is not `production` or `pre`, or
+- `VERCEL_ENV=production` and `DEPLOY_ENV` is not `production`, or
+- the `put` or `del` key is under `_meta/` (the caller path, or the key after `R2_PREFIX`), or
 - `_meta/bucket-identity.json` at the bucket root is missing, unreadable, or its `deploy_env` / `bucket` does not match `DEPLOY_ENV` and the configured bucket name.
 
-The marker is `{"bucket":"<name>","deploy_env":"production"|"pre"}`. A passing check is cached for the isolate. `VERCEL_ENV` is not the write gate: Cloudflare Workers never set it. A matching production marker may be written when `DEPLOY_ENV=production`.
+The marker JSON is exactly one of:
+
+```json
+{"bucket":"<R2_BUCKET>","deploy_env":"pre"}
+{"bucket":"<R2_BUCKET>","deploy_env":"production"}
+```
+
+A passing check is cached for the isolate. The cache key is the S3 endpoint the store uses after extras, the bucket name, and `DEPLOY_ENV`. It is not an endpoint re-read from env. Cloudflare Workers never set `VERCEL_ENV`. When `VERCEL_ENV=production`, `DEPLOY_ENV` must also be `production`.
+
+An operator places `_meta/bucket-identity.json` out of band, once per bucket, before any application write. Application code never `put`s or deletes a key under `_meta/`. Example for the preview bucket (operators only; CI does not run this):
+
+```bash
+printf '%s\n' '{"bucket":"gitstarclub-assets","deploy_env":"pre"}' | wrangler r2 object put gitstarclub-assets/_meta/bucket-identity.json --pipe
+```
+
+Use `"deploy_env":"production"` only on the production bucket, and only where `DEPLOY_ENV=production`.
 
 ## Rollback
 
