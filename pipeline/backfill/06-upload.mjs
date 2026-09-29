@@ -27,6 +27,7 @@ import {
   bootstrapGenerationPrefix,
   stageBootstrapPhase,
 } from "../lib/bootstrap-publication.mjs";
+import { withUploadRetry } from "../lib/upload-retry.mjs";
 
 const cli = parseBootstrapArgs(process.argv.slice(2));
 if (cli.help) {
@@ -53,12 +54,9 @@ if (writing && cli.store === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
   throw new Error("BLOB_READ_WRITE_TOKEN not set — add it to pipeline/.env or use --dry-run");
 }
 
-const MAX_PER_SEC = 60;
 const CONCURRENCY = 16;
-const RETRIES = 4;
 const CONTENT_TYPE = { json: "application/json", parquet: "application/vnd.apache.parquet" };
 const ctOf = (path) => CONTENT_TYPE[path.slice(path.lastIndexOf(".") + 1)] ?? "application/octet-stream";
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function walk(dir) {
   const out = [];
@@ -74,32 +72,6 @@ function validateViews() {
   const result = spawnSync("bun", [VALIDATE_VIEWS, VIEWS], { stdio: "inherit" });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`view validation failed with exit ${result.status}`);
-}
-
-let nextStart = 0;
-async function gate() {
-  const now = Date.now();
-  const wait = Math.max(0, nextStart - now);
-  nextStart = Math.max(now, nextStart) + 1000 / MAX_PER_SEC;
-  if (wait > 0) await sleep(wait);
-}
-
-function withUploadRetry(store) {
-  return {
-    read: (path) => store.read(path),
-    put: (path, body, contentType) => store.put(path, body, contentType),
-    async create(path, body, contentType) {
-      for (let attempt = 1; ; attempt++) {
-        await gate();
-        try {
-          return await store.create(path, body, contentType);
-        } catch (error) {
-          if (attempt > RETRIES) throw error;
-          await sleep(500 * 2 ** (attempt - 1));
-        }
-      }
-    },
-  };
 }
 
 try {
