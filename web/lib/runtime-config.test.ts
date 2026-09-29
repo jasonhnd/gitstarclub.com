@@ -277,6 +277,16 @@ describe("storage driver config", () => {
     await expect(assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => "{}", "gitstarclub-pre")).rejects.toThrow(
       "marker is unreadable",
     );
+    await expect(assertR2WritesAllowed({ DEPLOY_ENV: "pre" }, async () => "[]", "gitstarclub-pre")).rejects.toThrow(
+      "marker is unreadable",
+    );
+    await expect(
+      assertR2WritesAllowed(
+        { DEPLOY_ENV: "pre" },
+        async () => JSON.stringify({ bucket: "gitstarclub-pre", deploy_env: "local" }),
+        "gitstarclub-pre",
+      ),
+    ).rejects.toThrow("marker is unreadable");
     await expect(
       assertR2WritesAllowed(
         { DEPLOY_ENV: "pre" },
