@@ -686,7 +686,7 @@ describe("CF CI gates", () => {
       [
         "-e",
         `import { publicReadBaseMismatches } from "./scripts/cf-opennext-build.ts";
-         const cases = JSON.parse(process.env.PUBLIC_READ_CASES);
+         const cases = JSON.parse(process.env["PUBLIC_READ_CASES"]);
          const report = cases.map((entry) => ({ name: entry.name, issues: publicReadBaseMismatches(entry.input) }));
          process.stdout.write(JSON.stringify(report));`,
       ],
