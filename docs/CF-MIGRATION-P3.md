@@ -1,7 +1,7 @@
 ---
 owner: operations / hosting
 status: active
-last_reviewed: 2026-09-20
+last_reviewed: 2026-09-29
 source_of_truth_for:
   - Cloudflare migrate P3 Workers hosting of the Next app
   - vinext vs OpenNext adapter choice
@@ -134,9 +134,10 @@ Unset drivers still mean Vercel Blob. That is enough for the Workers preview
 to read published views: `BLOB_BASE_URL` is the public store. Full cron /
 refresh **writes** on this host use the fetch Blob client (not `@vercel/blob`
 undici); see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Set
-`STORAGE_READ_DRIVER=r2` or `r2_then_blob` only with the P0 R2 credentials and
-a non-production `migrate-*` prefix. P0 still refuses R2 writes when
-`VERCEL_ENV=production`.
+`STORAGE_READ_DRIVER=r2` or `r2_then_blob` only with the P0 R2 credentials.
+R2 writes require `DEPLOY_ENV` of `production` or `pre` and a matching
+`_meta/bucket-identity.json`. `VERCEL_ENV=production` with any other
+`DEPLOY_ENV` is refused. Application code never writes keys under `_meta/`.
 
 `WORKFLOW_RUNTIME` may be `http` (Next self-chain on the Worker) or `cf-queue`
 (POST Worker `/enqueue`). Production Sunday 06:00 stays the Vercel cron row.
