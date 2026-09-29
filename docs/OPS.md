@@ -13,7 +13,7 @@ source_of_truth_for:
 # gitstarclub Operations Runbook
 
 > Sole source of truth for operations and deployment. Architecture and data flow see [ARCHITECTURE.md](./ARCHITECTURE.md), product see [PRODUCT.md](./PRODUCT.md).
-> Core principles from the architecture: **Cloudflare Workers hosting with Vercel Blob storage**, **a static runtime without an engine**, and **production data operations independent of local computation**. This runbook applies them to projects, environment variables, Cron, workflows, Blob, and alerts; see [API.md](./API.md) for endpoint method, authentication, cache, and status contracts.
+> Core principles from the architecture: **Cloudflare Workers hosting with Cloudflare R2 storage (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md))**, **a static runtime without an engine**, and **production data operations independent of local computation**. This runbook applies them to projects, environment variables, Cron, workflows, Blob until cutover, and alerts; see [API.md](./API.md) for endpoint method, authentication, cache, and status contracts.
 
 ## Scope
 
@@ -31,8 +31,7 @@ As checked on 2026-09-24, both `https://gitstarclub.com` and
 The current web host is Cloudflare Workers with OpenNext: `gitstarclub-web`
 serves production (`main`), and `gitstarclub-web-pre` serves preview (`pre`).
 The `www` hostname belongs to the production domain set, but this check did
-not independently probe its response. Vercel Blob remains the JSON storage
-service; the former Vercel web project and CLI deploy instructions below are
+not independently probe its response. JSON storage is Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)). The former Vercel web project and CLI deploy instructions below are
 rollback history, not the current deployment procedure.
 
 Feature PRs target `pre`; promotion is a separate merge from `pre` to `main`.
@@ -63,8 +62,7 @@ production gate to reconcile the owner's statement without that evidence.
 Production and preview Worker variables and bindings are declared in
 [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc); runtime secrets are injected on the
 Cloudflare platform and are never stored in this repository. Local development
-uses `web/.env.local`. Vercel Blob remains external storage and requires its
-Blob URL and, for writes, a Blob token. The former Vercel project environment
+uses `web/.env.local`. Production still reads Vercel Blob until cutover and, for blob writes, still requires a blob token. Preview reads Cloudflare R2 and does not set `BLOB_*`. See [R2-CUTOVER.md](./R2-CUTOVER.md). The former Vercel project environment
 configuration below applies only to its historical rollback deployment.
 
 ### History / rollback reference (retired Vercel web hosting; 2026-09-24)
@@ -106,7 +104,7 @@ and must not be proxied.
 
 Preview is intentionally noindex. The Cloudflare production build sets `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com`; the top-level Worker variables match. `bun run cf:dry-run` builds for preview with indexing disabled. Preview emits `<meta name="robots"
 content="noindex,nofollow">` and `robots.txt` returns `User-Agent: *` with
-`Disallow: /`. Preview reads its own R2 bucket `gitstarclub-data-pre` at `https://data-pre.gitstarclub.com`. It does not set `BLOB_*`. Production still reads Vercel Blob until the stage-6 cutover.
+`Disallow: /`. Preview reads its own R2 bucket `gitstarclub-data-pre` at `https://data-pre.gitstarclub.com`. It does not set `BLOB_*`. Production still reads Vercel Blob until cutover (stage 4 in [R2-CUTOVER.md](./R2-CUTOVER.md)). Stage 6 retires the blob store.
 
 Cloudflare owner commands (run from `web/`; build each target immediately before its matching deployment because both builds use the same output directory). GitHub Actions must not run the live deploy. `bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre` are the explicit underlying forms. A bare `bun run cf:build` fails. `bun run cf:dry-run` builds pre and performs a Wrangler dry run of `env.pre` only. The build checks the generated home HTML and robots response for the selected indexing policy before deployment.
 
@@ -239,11 +237,11 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | Variable | Purpose | Required / optional | Format | Who uses it (path:line) |
 |---|---|---|---|---|
 | `GITHUB_TOKEN` | GitHub GraphQL / Search PAT (batch lookup of `stargazerCount` + metadata + whitelist) | **Required** (cron / Workflow) | `ghp_…` PAT string | `web/lib/github.ts`; daily cron · weekly cron · Workflow whitelist/metadata step · one-time backfill. GraphQL and REST both send `User-Agent: gitstarclub` and `Accept: application/vnd.github+json` |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob read-write token | **Required** (write path) | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/storage/vercel-blob-fetch-client.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`; cron writes the live tail · Workflow writes canonical/views · GC deletes old versions. CF Workers use runtime `fetch`, not `@vercel/blob`/undici |
-| `BLOB_BASE_URL` | Vercel Blob public-read base URL (build / runtime direct-link fetch of views + resolving the publish pointer) | **Required** for the `blob` read driver | `https://<store>.public.blob.vercel-storage.com` (**no trailing slash / no BOM**) | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`; page reads use `getPublicReadBases()`. R2 drivers use `R2_PUBLIC_BASE_URL` instead |
+| `BLOB_READ_WRITE_TOKEN` | Blob read-write token, until cutover, while production still reads Vercel Blob | **Required** for the `blob` write driver | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/storage/vercel-blob-fetch-client.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`; cron writes the live tail · refresh writes canonical/views · GC deletes old versions. CF Workers use runtime `fetch`, not `@vercel/blob`/undici. Preview `r2_binding` does not use this token |
+| `BLOB_BASE_URL` | Public blob base URL, until cutover, while production still reads Vercel Blob (build / runtime direct-link fetch of views + resolving the publish pointer) | **Required** for the `blob` read driver | `https://<store>.public.blob.vercel-storage.com` (**no trailing slash / no BOM**) | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`; page reads use `getPublicReadBases()`. R2 drivers use `R2_PUBLIC_BASE_URL` instead |
 | `VIEWS_VERSION_FALLBACK` | Read-only version served when `views/latest.json` is a confirmed 404 (#543 stopgap, #553) | Optional. Production Worker top-level only, until the pointer is restored. Preview must not set it | `refresh-YYYY-MM-DDTHH-MM-SS-mmmZ`. Production is `refresh-2026-09-13T06-00-16-398Z`. Any other non-empty value is ignored and logged once | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`. See the incident note below this inventory |
 | `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` client fallback (only when the server-only value is unavailable) | Optional (fallback) | Same as `BLOB_BASE_URL` | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`; used only when `BLOB_BASE_URL` is unset |
-| `STORAGE_READ_DRIVER` | Object-storage read driver | Optional (default `blob`). Preview Worker `env.pre` sets `r2` | `blob` \| `r2_binding` \| `r2_s3` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`; `r2` reads `R2_PUBLIC_BASE_URL`. Production Worker still defaults to Blob until I-5b. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) |
+| `STORAGE_READ_DRIVER` | Object-storage read driver | Optional (default `blob`). Preview Worker `env.pre` sets `r2` | `blob` \| `r2_binding` \| `r2_s3` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`; `r2` reads `R2_PUBLIC_BASE_URL`. Production still reads Vercel Blob until cutover (stage 4, I-5b). See [R2-CUTOVER.md](./R2-CUTOVER.md) |
 | `READ_DRIVER` | `STORAGE_READ_DRIVER` alias | Optional | Same as `STORAGE_READ_DRIVER` | `web/lib/runtime-config.ts` |
 | `DEPLOY_ENV` | Which deployment this process is (`production`, `pre`, or `local`) | Preview Worker `env.pre` sets `pre`. Cloudflare Workers must set it; they do not receive `VERCEL_ENV` | `production` \| `pre` \| `local` | `web/lib/runtime-config.ts`. Read through `resolveRuntimeEnv()` so a Worker var is visible. Unset on `HOSTING_TARGET=cf` refuses R2 writes and does not arm `WORKFLOW_COLD_START` or `PREFLIGHT_RELAX_EMPTY_SHARDS` |
 | `STORAGE_WRITE_DRIVER` | Object-storage write driver | Optional (default `blob`). Preview Worker `env.pre` sets `r2_binding` | `blob` \| `r2_binding` \| `r2_s3` \| `r2` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`; `blob` still requires `BLOB_BASE_URL` and `BLOB_READ_WRITE_TOKEN`. R2 write drivers require `DEPLOY_ENV`. `put` / `del` still require a matching bucket-identity marker. `r2_binding` uses the DATA binding and does not need a Blob token |
@@ -355,12 +353,12 @@ Do not leave the fallback in place after the real pointer exists. A later 404 wo
 - When writing Vercel variables, leading/trailing whitespace and a BOM must be stripped; whitespace on `CRON_SECRET` makes the Cron header illegal, and a BOM on `BLOB_BASE_URL` makes the Next.js build report `ERR_INVALID_URL` at the sitemap stage.
 - **The two GCP items are for local one-time backfill only**: query GH Archive with BigQuery (about $10, including a stable repo.id). After one backfill these two variables can be retired—**routine operations are 0 GCP and 0 external bills**. (Why not the free ClickHouse public instance / self-hosted: see ARCHITECTURE "Why backfill uses BigQuery".)
 - At startup, verify that required secrets exist; if any are missing, fail-fast (do not swallow them silently).
-- Cloudflare R2 P0 adaptation (dual-read switch, non-production write guard, rollback) see [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). Reads/writes still default to Vercel Blob; **do not cut DNS**.
+- Current R2 status and the stage plan are in [R2-CUTOVER.md](./R2-CUTOVER.md). Production still reads Vercel Blob until cutover. Historical P0 notes are in [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). **Do not cut DNS** from this runbook.
 - Cloudflare migrate P1 orchestration (remove the Workflow SDK, non-production CF Cron/Queue, dual-schedule rollback) see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). **The production weekly refresh is still Vercel cron**, until Jason approves the cutover.
 - Cloudflare migrate P2 (ISR invalidation port, pluggable Preview, Access protects only `gitstarclub-web-pre.worldgo.workers.dev`, optional `cf-preview` job) see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md). **Production Preview / product-gates / `revalidatePath` are still Vercel**. Do not cut DNS, and do not bind Access to apex/www.
 - Cloudflare migrate P3 (OpenNext mounts Next onto the `gitstarclub-web` preview, optional `cf-workers-host` dry-run) see [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md). **Production apex/www is still Vercel**. Do not cut DNS, and do not treat the Worker as the only entry.
 
-## Vercel Blob layout
+## Vercel Blob layout (until cutover)
 
 Use **one PUBLIC store**: the large set of JSON views is read by the build / runtime via **direct-link URL**; public reads are the simplest and hit the CDN. The first bootstrap's views + canonical are sealed first in an immutable generation and committed once by `bootstrap/latest.json`; later canonical changes enter that generation's copy-on-write overlay. The full definition of the new layout see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4 and [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.11–2.13.
 
@@ -555,7 +553,7 @@ Paging already exists — do not invent new alerts. `markFailed` in `web/lib/wor
 7. Hard stops: no validate-invariant relaxation; no inventing `bootstrap/latest.json`; do not push `main` or call production cron unless the user said push main; wait leftover lease; product-gates stay fail-closed.
 8. After a successful publish, static exports still need the [DATA-EXPORTS.md](./DATA-EXPORTS.md) regenerate path (#375). Do not duplicate that runbook here.
 
-**Optional — retire the stale flat object (do not run unless the user authorized a production Blob write).** Writers no longer touch `ops/workflows/health.json`. `blob-del-prefix.ts` hard-blocks `ops/**`. If the Jul-2026 object is still confusing operators, overwrite or delete that **single** pathname from the Vercel Blob dashboard after confirming `healthPath` still has no flat-file writer. Do not prefix-delete `ops/`. Do not call production cron to “refresh” it.
+**Optional — retire the stale flat object (do not run unless the user authorized a production Blob write, until cutover).** Writers no longer touch `ops/workflows/health.json`. `blob-del-prefix.ts` hard-blocks `ops/**`. If the Jul-2026 object is still confusing operators, overwrite or delete that **single** pathname from the Vercel Blob dashboard after confirming `healthPath` still has no flat-file writer. Do not prefix-delete `ops/`. Do not call production cron to refresh it.
 
 **Auth mode (CRON_SECRET)**:
 
@@ -723,7 +721,7 @@ When the data pipeline (Vercel Workflow full refresh + daily / weekly cron) fail
 
 11 years of event-level history are backfilled only once, via **BigQuery** (GCP credentials required, about $10, including a stable repo.id). Free alternatives (the ClickHouse public instance, self-hosted ingestion) were all judged infeasible after evaluation; see ARCHITECTURE "Why backfill uses BigQuery".
 
-**Prerequisites**: GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`) · GitHub PAT (`GITHUB_TOKEN`) · Vercel Blob store (`BLOB_READ_WRITE_TOKEN`) for the Blob path. The R2 path uses a bucket-scoped key in the uncommitted pipeline env file (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) plus `R2_BUCKET_PRE` or `R2_BUCKET_PROD`. Run it on a local machine / a full Node environment, not on Vercel.
+**Prerequisites**: GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`) · GitHub PAT (`GITHUB_TOKEN`) · blob store token (`BLOB_READ_WRITE_TOKEN`) for the blob path, until cutover, while production still reads Vercel Blob. The R2 path uses a bucket-scoped key in the uncommitted pipeline env file (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) plus `R2_BUCKET_PRE` or `R2_BUCKET_PROD`. Run it on a local machine / a full Node environment. See [R2-CUTOVER.md](./R2-CUTOVER.md).
 
 Render `pipeline/backfill/02-extract.sql` before any BigQuery job. The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`.
 
