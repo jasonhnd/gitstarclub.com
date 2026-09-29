@@ -2,7 +2,7 @@ import { cache } from "react";
 import type { RankList } from "@/lib/contracts";
 import { monthYearLabel } from "@/lib/format";
 import { currentUtcPeriods, FIRST_YEAR, isoWeek } from "@/lib/periods";
-import { isCloudflareWorkersHost } from "@/lib/runtime-config";
+import { getPublicReadCacheKey, isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { getMeta } from "./meta";
 import { getRank } from "./rank";
 
@@ -80,9 +80,12 @@ export function rankPeriodLookbackLimits(
   return { monthLookback: MONTH_LOOKBACK, weekLookback: WEEK_LOOKBACK };
 }
 
+export function availableRankPeriodCacheKey(): string {
+  return getPublicReadCacheKey();
+}
+
 export function resolveAvailableRankPeriods(now = new Date()): Promise<AvailableRankPeriods> {
-  const cacheKey = process.env.BLOB_BASE_URL ?? process.env.NEXT_PUBLIC_BLOB_BASE_URL ?? "";
-  return resolveAvailableRankPeriodsCached(now.toISOString().slice(0, 10), cacheKey);
+  return resolveAvailableRankPeriodsCached(now.toISOString().slice(0, 10), availableRankPeriodCacheKey());
 }
 
 const resolveAvailableRankPeriodsCached = cache((isoDate: string, cacheKey: string) => {

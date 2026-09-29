@@ -4,6 +4,7 @@ import {
   resolveLiveArtifactFromHistory,
   type LiveArtifactResolution,
 } from "@/lib/data/live-generation-history";
+import { getLivePublicReadBaseUrl } from "@/lib/runtime-config";
 
 // Live product release gates for #286.
 // These checks hit a real deployment URL + the public Blob store. They are meant
@@ -13,7 +14,11 @@ import {
 // full-suite runs cannot be poisoned by mock.module("@/lib/periods") leaks from
 // other test files (e.g. uiux-seo / watermark).
 
-/** Production public Blob base (not a secret — store is public-read). Overridable. */
+/**
+ * Production public Blob base (not a secret; the store is public-read).
+ * Temporary while the live site still reads Blob. Stage 6 removes this fallback.
+ * `LIVE_PUBLIC_READ_BASE_URL` wins, then `RELEASE_GATE_BLOB_BASE`, then `BLOB_BASE_URL`.
+ */
 export const DEFAULT_PUBLIC_BLOB_BASE = "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com";
 
 /**
@@ -47,7 +52,10 @@ export type GateEnv = Record<string, string | undefined>;
 
 export function resolveLiveGateConfig(env: GateEnv = process.env): LiveGateConfig | { error: string } {
   const siteBase = (env.RELEASE_GATE_SITE ?? env.SEO_LIVE_BASE ?? env.LIVE_SMOKE_SITE_URL ?? "").replace(/\/+$/, "");
-  const blobBase = (env.RELEASE_GATE_BLOB_BASE ?? env.BLOB_BASE_URL ?? DEFAULT_PUBLIC_BLOB_BASE).replace(/\/+$/, "");
+  const explicitReadBase = getLivePublicReadBaseUrl(env);
+  const blobBase = (
+    explicitReadBase || (env.RELEASE_GATE_BLOB_BASE ?? env.BLOB_BASE_URL ?? DEFAULT_PUBLIC_BLOB_BASE)
+  ).replace(/\/+$/, "");
   if (!siteBase) {
     return { error: "RELEASE_GATE_SITE (or SEO_LIVE_BASE) is required for live product gates" };
   }

@@ -9,7 +9,7 @@ import {
   BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS,
 } from "@/lib/data/publication-cache-contract";
 import { BLOB_JSON_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
-import { requireBlobBaseUrl } from "@/lib/runtime-config";
+import { requirePublicReadBase } from "@/lib/runtime-config";
 
 export const BOOTSTRAP_POINTER_PATH = "bootstrap/latest.json";
 export { invalidateBootstrapPointerCache };
@@ -121,7 +121,7 @@ function cachedValue(entry: CachedBootstrapPointer): BootstrapPointer | null {
 export async function readBootstrapPublicationPointer(
   options: PointerReadOptions = {},
 ): Promise<BootstrapPointer | null> {
-  const blobBase = requireBlobBaseUrl();
+  const blobBase = requirePublicReadBase();
   if (options.published) {
     const cached = await readCachedBootstrapPointer(() => fetchPointerFromOrigin(blobBase, options));
     return cachedValue(cached);

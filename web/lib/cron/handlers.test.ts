@@ -1,8 +1,19 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { AlertSummary } from "@/lib/observability/alert";
 import type { AlertPipeline, HealthStatus } from "@/lib/contracts";
+import { setDataBindingReaderForTests, type R2Bucket } from "@/lib/storage/r2-binding-store";
 import type { LiveRefreshResult } from "./live-refresh";
 import { runLiveRefreshRoute, type LiveRefreshRouteOptions } from "./handlers";
+
+function fakeDataBinding(): R2Bucket {
+  return {
+    get: async () => null,
+    head: async () => null,
+    put: async () => null,
+    delete: async () => {},
+    list: async () => ({ objects: [], delimitedPrefixes: [], truncated: false }),
+  };
+}
 
 const ORIGINAL_SECRET = process.env.CRON_SECRET;
 
@@ -198,5 +209,45 @@ describe("runLiveRefreshRoute health", () => {
 
     expect(response.status).toBe(200);
     expect(recordHealth).not.toHaveBeenCalled();
+  });
+});
+
+describe("runLiveRefreshRoute storage drivers", () => {
+  test("non-dry daily accepts r2_binding with no Blob env", async () => {
+    const previous = {
+      STORAGE_READ_DRIVER: process.env.STORAGE_READ_DRIVER,
+      STORAGE_WRITE_DRIVER: process.env.STORAGE_WRITE_DRIVER,
+      R2_PUBLIC_BASE_URL: process.env.R2_PUBLIC_BASE_URL,
+      R2_BUCKET: process.env.R2_BUCKET,
+      DEPLOY_ENV: process.env.DEPLOY_ENV,
+      BLOB_BASE_URL: process.env.BLOB_BASE_URL,
+      NEXT_PUBLIC_BLOB_BASE_URL: process.env.NEXT_PUBLIC_BLOB_BASE_URL,
+      BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+      GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+    };
+    delete process.env.BLOB_BASE_URL;
+    delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    process.env.STORAGE_READ_DRIVER = "r2_binding";
+    process.env.STORAGE_WRITE_DRIVER = "r2_binding";
+    process.env.R2_PUBLIC_BASE_URL = "https://r2.example.com";
+    process.env.R2_BUCKET = "gitstarclub-data-pre";
+    process.env.DEPLOY_ENV = "pre";
+    process.env.GITHUB_TOKEN = "github-token";
+    setDataBindingReaderForTests(() => fakeDataBinding());
+    try {
+      const response = await runLiveRefreshRoute(request("daily"), "daily", {
+        now: new Date("2026-07-05T03:00:00.000Z"),
+        recordHealth: async () => {},
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ status: "skipped", reason: "weekly-owns-sunday" });
+    } finally {
+      setDataBindingReaderForTests(undefined);
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });
