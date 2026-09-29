@@ -16,7 +16,7 @@ Production-safety checks must work on Cloudflare Workers. `VERCEL_ENV` is never 
 
 ## Out of scope
 
-- `workers/gitstarclub-web/wrangler.jsonc`, `scripts/cf-ci-gates.mjs`, CI workflows, `.delivery.yml`, and pipeline code.
+- The Worker wrangler config, `scripts/cf-ci-gates.mjs`, CI workflows, `.delivery.yml`, and pipeline code.
 - A new storage driver, and any Cloudflare, Vercel, or BigQuery write or deploy.
 
 ## Acceptance
