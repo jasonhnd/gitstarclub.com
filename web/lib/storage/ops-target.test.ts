@@ -35,6 +35,9 @@ describe("ops target selection", () => {
     expect(takeOpsFlags(["--week", "2026-W27"]).selection).toEqual({ store: "blob", target: null });
     expect(() => takeOpsFlags(["--store", "s3"])).toThrow(/blob or r2/);
     expect(() => takeOpsFlags(["--store", "r2", "--target", "local"])).toThrow(/prod or pre/);
+    expect(() => takeOpsFlags(["--target", "prod"])).toThrow(/requires --store r2/);
+    expect(() => takeOpsFlags(["--target", "pre", "--execute"])).toThrow(/requires --store r2/);
+    expect(() => takeOpsFlags(["--target", "local"])).toThrow(/requires --store r2/);
   });
 
   test("bucket names follow the target and do not echo secrets", () => {

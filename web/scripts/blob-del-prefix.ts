@@ -32,7 +32,7 @@ import {
 import type { ZodType } from "zod";
 
 const USAGE =
-  "usage: bun scripts/blob-del-prefix.ts [--store blob|r2] [--target prod|pre] <specific-prefix/> [--execute --confirm <same-prefix/>]";
+  "usage: bun scripts/blob-del-prefix.ts [--store blob|r2] [--target prod|pre] <specific-prefix/> [--execute --confirm <same-prefix/>]\n--target requires --store r2.";
 
 const argv = process.argv.slice(2);
 if (argv.includes("--help") || argv.includes("-h")) {

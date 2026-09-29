@@ -29,7 +29,7 @@ const HELP = `Recompute live views into a throwaway prefix. Dry-run unless --exe
   bun run scripts/verify-recompute-live.ts <existing-run-id>
 
 An existing run id only re-validates. It does not write.
---store blob is the default. --store r2 requires --target prod|pre.
+--store blob is the default and refuses --target. --store r2 requires --target prod|pre.
 `;
 
 const webDir = fileURLToPath(new URL("..", import.meta.url));

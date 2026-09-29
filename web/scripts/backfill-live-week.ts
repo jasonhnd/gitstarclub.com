@@ -41,7 +41,7 @@ const webDir = fileURLToPath(new URL("..", import.meta.url));
 type Args = { week: string; dry: boolean; execute: boolean; date: string | null; finalize: boolean };
 
 const USAGE =
-  "Usage: bun run scripts/backfill-live-week.ts [--store blob|r2] [--target prod|pre] [--week YYYY-Www] [--date YYYY-MM-DD] [--finalize] [--execute] [--dry]";
+  "Usage: bun run scripts/backfill-live-week.ts [--store blob|r2] [--target prod|pre] [--week YYYY-Www] [--date YYYY-MM-DD] [--finalize] [--execute] [--dry]\n--target requires --store r2.";
 
 function parseArgs(argv: string[]): Args {
   let week = "2026-W27";

@@ -15,7 +15,7 @@ R2 (dry-run unless --execute):
 Flags:
   --generation <bootstrap-id>   Required.
   --store blob|r2               Default blob.
-  --target prod|pre             Required with --store r2.
+  --target prod|pre             Required with --store r2. Refused unless --store r2.
   --execute                     Required for R2 writes. Without it, R2 prints the plan and writes nothing.
   --dry-run                     Validate and print the plan. No remote writes.
   -h, --help                    Show this help.
@@ -51,7 +51,7 @@ Flags:
   --generation <bootstrap-id>   Required to stage or commit. Use bootstrap-YYYYMMDDTHHMMSSZ or pass --generated-at.
   --generated-at <ISO>          Deterministic canonical meta timestamp.
   --store blob|r2               Default blob.
-  --target prod|pre             Required with --store r2.
+  --target prod|pre             Required with --store r2. Refused unless --store r2.
   --execute                     Required for every R2 write, including --stage-only and --rollback.
   --initial-commit              R2 only. First pointer when the bucket has no bootstrap/latest.json,
                                 no views/latest.json, and no canonical/v2/meta.json. Refuses mixed state.
@@ -88,6 +88,8 @@ export function parseBootstrapArgs(argv) {
     rollback: undefined,
     rollbackRequested: false,
   };
+  /** @type {string[]} */
+  const unknown = [];
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
     if (arg === "--help" || arg === "-h") cli.help = true;
@@ -110,10 +112,12 @@ export function parseBootstrapArgs(argv) {
     } else if (arg.startsWith("--rollback=")) {
       cli.rollbackRequested = true;
       cli.rollback = arg.slice("--rollback=".length);
-    }
+    } else unknown.push(arg);
   }
   if (cli.help) return cli;
+  if (unknown.length > 0) throw new Error(`unknown argument ${unknown[0]}`);
   if (cli.store !== "blob" && cli.store !== "r2") throw new Error("--store must be blob or r2");
+  if (cli.target !== null && cli.store !== "r2") throw new Error("--target requires --store r2");
   if (cli.target !== null && cli.target !== "prod" && cli.target !== "pre") {
     throw new Error("--target must be prod or pre");
   }
