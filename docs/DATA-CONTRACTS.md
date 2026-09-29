@@ -151,7 +151,7 @@ They **do not belong to** `canonical/v2/meta.json` (`CanonicalMeta` stays `.stri
 
 ---
 
-## 2. Service views (JSON, read by the build, stored in Vercel Blob)
+## 2. Service views (JSON, read by the build; Cloudflare R2, production still reads Vercel Blob until cutover)
 
 ### 2.0 View schema index (the physical Blob tree is in [OPS.md](./OPS.md) §Blob layout)
 

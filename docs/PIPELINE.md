@@ -9,7 +9,7 @@ source_of_truth_for:
 
 # gitstarclub data Pipeline
 
-> How the artifacts defined by [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) are produced. This document focuses on the **one-off bootstrap pipeline**: seeding `canonical/v2/**` and `views/**` out of a blank system from zero. Day-to-day recurring refresh is carried by Vercel Workflow, and the local machine does not take part.
+> How the artifacts defined by [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) are produced. This document focuses on the **one-off bootstrap pipeline**: seeding `canonical/v2/**` and `views/**` out of a blank system from zero. Day-to-day recurring refresh is carried by the managed refresh, and the local machine does not take part. New loads target Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)). The blob commands below stay valid until cutover.
 >
 > Architecture is in [ARCHITECTURE.md](./ARCHITECTURE.md), and operations/credentials are in [OPS.md](./OPS.md).
 

@@ -10,7 +10,7 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 |---|---|
 | Site | [gitstarclub.com](https://gitstarclub.com) |
 | Stack | Next.js 16 (App Router, RSC) · TypeScript 6 · React 19 · Zod 4 · Tailwind 4 · bun · Node 24 |
-| Read path | Static HTML / on-demand ISR from Cloudflare Workers (OpenNext); JSON in Vercel Blob behind a publish pointer; no runtime database, no engine in the request path |
+| Read path | Static HTML / on-demand ISR from Cloudflare Workers (OpenNext); JSON in Cloudflare R2 (production still reads Vercel Blob until cutover; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)); no runtime database, no engine in the request path |
 | Recurring data refresh | Managed refresh (whitelist → rename → metadata → fold → recompute → buildAliases → validate → publish → garbage-collect) |
 | Live overlay | Daily and weekly cron routes (`current_month.json`, `hot-snapshot.json`) |
 | Bootstrap | One-off BigQuery (GH Archive) + local DuckDB → Parquet → Blob; archived after seed |
@@ -20,9 +20,9 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 ## Hard constraints
 
 - **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB / ClickHouse / Postgres / vector index in the runtime image.
-- **Zero runtime database.** Read-side state is versioned Blob views behind a publish pointer.
+- **Zero runtime database.** Read-side state is versioned JSON views behind a publish pointer.
 - **Static content pages.** Zero client JavaScript on content surfaces. The named exceptions live in [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md).
-- **Cloudflare hosting.** Production and preview pages run on Cloudflare Workers via OpenNext; JSON remains in Vercel Blob. Keep refresh scheduling evidence separate from route implementation.
+- **Cloudflare hosting.** Production and preview pages run on Cloudflare Workers via OpenNext. JSON is in Cloudflare R2 (production still reads Vercel Blob until cutover; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)). Keep refresh scheduling evidence separate from route implementation.
 - **AI-free.** Features that would normally call an LLM (summaries, classifications) ship as deterministic templates.
 
 The reasoning behind each constraint is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -111,9 +111,10 @@ bun dev
 ```
 
 Required environment for local development is documented in [docs/OPS.md](docs/OPS.md)
-and `.env.example`. Copy the template to `web/.env.local`. Read-only development
-and builds require only `BLOB_BASE_URL`; `BLOB_READ_WRITE_TOKEN` is required only
-for mutation paths. Cron and managed refresh execution additionally require
+and `.env.example`. Copy the template to `web/.env.local`. Storage is
+Cloudflare R2 (production still reads Vercel Blob until cutover; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)).
+Read-only development and builds against the blob driver, until cutover, require only `BLOB_BASE_URL`; `BLOB_READ_WRITE_TOKEN` is required only
+for blob mutation paths. Preview reads do not use that token. Cron and managed refresh execution additionally require
 `CRON_SECRET` and `GITHUB_TOKEN`.
 
 ## Common commands
