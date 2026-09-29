@@ -83,7 +83,7 @@ describe("bootstrap CLI", () => {
   });
 
   test("06 and 07 help document the R2 flags", () => {
-    const env = { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", TMPDIR: process.env.TMPDIR ?? "/tmp" };
+    const env = { PATH: "/usr/bin:/bin", HOME: "/tmp", TMPDIR: "/tmp" };
     for (const script of ["backfill/06-upload.mjs", "backfill/07-export-v2.mjs"]) {
       const result = spawnSync(process.execPath, [script, "--help"], { cwd: pipelineDir, encoding: "utf8", env });
       expect(result.status, result.stderr).toBe(0);
