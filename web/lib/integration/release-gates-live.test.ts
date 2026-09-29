@@ -98,6 +98,17 @@ describe("release-gates-live config", () => {
     expect(resolved.blobBase).toBe(DEFAULT_PUBLIC_BLOB_BASE);
   });
 
+  test("prefers LIVE_PUBLIC_READ_BASE_URL over the Blob fallback", () => {
+    const resolved = resolveLiveGateConfig({
+      RELEASE_GATE_SITE: "https://gitstarclub.com",
+      LIVE_PUBLIC_READ_BASE_URL: "https://pub.example.r2.dev/",
+      BLOB_BASE_URL: DEFAULT_PUBLIC_BLOB_BASE,
+    });
+    expect("error" in resolved).toBe(false);
+    if ("error" in resolved) return;
+    expect(resolved.blobBase).toBe("https://pub.example.r2.dev");
+  });
+
   test("W27 is no longer a documented missing live week after GH Archive backfill", () => {
     expect(KNOWN_MISSING_LIVE_WEEKS).not.toContain("2026-W27");
     // Continuity scan still includes the week itself as a period to check.

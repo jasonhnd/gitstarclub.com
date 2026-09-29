@@ -12,6 +12,10 @@ const { completedRun, failedRun, safeRecordSyncRun, syncRunId } = await import("
 
 const originalFetch = globalThis.fetch;
 const originalBase = process.env.BLOB_BASE_URL;
+const originalPublicBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+const originalReadDriver = process.env.STORAGE_READ_DRIVER;
+const originalR2PublicBase = process.env.R2_PUBLIC_BASE_URL;
+const originalWriteToken = process.env.BLOB_READ_WRITE_TOKEN;
 
 beforeEach(() => {
   putCalls = [];
@@ -26,6 +30,14 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalBase === undefined) delete process.env.BLOB_BASE_URL;
   else process.env.BLOB_BASE_URL = originalBase;
+  if (originalPublicBase === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  else process.env.NEXT_PUBLIC_BLOB_BASE_URL = originalPublicBase;
+  if (originalReadDriver === undefined) delete process.env.STORAGE_READ_DRIVER;
+  else process.env.STORAGE_READ_DRIVER = originalReadDriver;
+  if (originalR2PublicBase === undefined) delete process.env.R2_PUBLIC_BASE_URL;
+  else process.env.R2_PUBLIC_BASE_URL = originalR2PublicBase;
+  if (originalWriteToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+  else process.env.BLOB_READ_WRITE_TOKEN = originalWriteToken;
 });
 
 describe("sync run helpers", () => {
@@ -67,5 +79,40 @@ describe("sync run helpers", () => {
     const run = failedRun("weekly-test", "weekly", false, new Date("2026-06-21T03:00:00.000Z"), new Error("boom"));
 
     await expect(safeRecordSyncRun(run)).resolves.toBe("blob write failed");
+  });
+
+  test("reads ops/sync-runs.json from the R2 public base without Blob env", async () => {
+    delete process.env.BLOB_BASE_URL;
+    delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    process.env.STORAGE_READ_DRIVER = "r2_binding";
+    process.env.R2_PUBLIC_BASE_URL = "https://r2.example.com";
+    let fetched = "";
+    globalThis.fetch = mock(async (input: string | URL | Request) => {
+      fetched = typeof input === "string" ? input : input.toString();
+      return new Response(JSON.stringify({ generated_at: "old", runs: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const run = completedRun("daily-r2", "daily", true, new Date("2026-06-21T03:00:00.000Z"), {
+      job: "daily",
+      dry: true,
+      day: "2026-06-21",
+      month: "2026-06",
+      week: "2026-W25",
+      polled: 1,
+      day_total: 0,
+      writes: [],
+      all_time_repo_1: null,
+      current_week_flow_1: null,
+      current_month_flow_1: null,
+      generation: null,
+      previous_generation: null,
+      published_at: null,
+      post_commit_errors: [],
+    });
+
+    await expect(safeRecordSyncRun(run)).resolves.toBeNull();
+    expect(fetched.startsWith("https://r2.example.com/ops/sync-runs.json")).toBe(true);
+    expect(putCalls).toHaveLength(1);
   });
 });

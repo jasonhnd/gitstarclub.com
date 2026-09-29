@@ -1,8 +1,19 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { WorkflowLease } from "@/lib/contracts";
 import type { HealthStatus } from "@/lib/contracts";
+import { setDataBindingReaderForTests, type R2Bucket } from "@/lib/storage/r2-binding-store";
 import type { WorkflowLeaseSnapshot, WorkflowLeaseStore } from "./lease";
 import { startRefreshWorkflowRoute } from "./start";
+
+function fakeDataBinding(): R2Bucket {
+  return {
+    get: async () => null,
+    head: async () => null,
+    put: async () => null,
+    delete: async () => {},
+    list: async () => ({ objects: [], delimitedPrefixes: [], truncated: false }),
+  };
+}
 
 class MemoryLeaseStore implements WorkflowLeaseStore {
   lease: WorkflowLease | null;
@@ -154,6 +165,48 @@ describe("startRefreshWorkflowRoute", () => {
     expect(await response.json()).toMatchObject({ status: "started", idempotencyKey: "manual-2026-07-17" });
     expect(startWorkflow).toHaveBeenCalledTimes(1);
     expect(store.lease).toMatchObject({ trigger: "operator", idempotency_key: "manual-2026-07-17" });
+  });
+
+  test("starts when storage is r2_binding and Blob env is absent", async () => {
+    const previous = {
+      STORAGE_READ_DRIVER: process.env.STORAGE_READ_DRIVER,
+      STORAGE_WRITE_DRIVER: process.env.STORAGE_WRITE_DRIVER,
+      R2_PUBLIC_BASE_URL: process.env.R2_PUBLIC_BASE_URL,
+      R2_BUCKET: process.env.R2_BUCKET,
+      DEPLOY_ENV: process.env.DEPLOY_ENV,
+      BLOB_BASE_URL: process.env.BLOB_BASE_URL,
+      NEXT_PUBLIC_BLOB_BASE_URL: process.env.NEXT_PUBLIC_BLOB_BASE_URL,
+      BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+    };
+    delete process.env.BLOB_BASE_URL;
+    delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    process.env.STORAGE_READ_DRIVER = "r2_binding";
+    process.env.STORAGE_WRITE_DRIVER = "r2_binding";
+    process.env.R2_PUBLIC_BASE_URL = "https://r2.example.com";
+    process.env.R2_BUCKET = "gitstarclub-data-pre";
+    process.env.DEPLOY_ENV = "pre";
+    setDataBindingReaderForTests(() => fakeDataBinding());
+    const store = new MemoryLeaseStore();
+    const startWorkflow = mock(async () => {});
+    try {
+      const response = await startRefreshWorkflowRoute(request(), startWorkflow, {
+        now: new Date("2026-07-17T06:00:00.000Z"),
+        leaseStore: store,
+        recordHealth: async () => {},
+        preflight: passPreflight,
+        rememberUnpublishedWhitelist: async () => {},
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ status: "started" });
+      expect(startWorkflow).toHaveBeenCalledTimes(1);
+    } finally {
+      setDataBindingReaderForTests(undefined);
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   test("fails before acquiring a lease when required runtime config is missing", async () => {

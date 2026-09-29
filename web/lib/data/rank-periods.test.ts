@@ -5,6 +5,7 @@ import {
   MONTH_LOOKBACK_CF,
   WEEK_LOOKBACK,
   WEEK_LOOKBACK_CF,
+  availableRankPeriodCacheKey,
   rankPeriodLookbackLimits,
   resolveAvailableRankPeriodsForTest,
 } from "./rank-periods";
@@ -32,6 +33,29 @@ const NOW_PERIODS = {
   week: { year: 2026, week: 28 },
   weekPeriod: "2026-W28",
 };
+
+describe("available rank period cache key", () => {
+  test("uses the R2 public base when Blob env is absent", () => {
+    const previous = {
+      STORAGE_READ_DRIVER: process.env.STORAGE_READ_DRIVER,
+      R2_PUBLIC_BASE_URL: process.env.R2_PUBLIC_BASE_URL,
+      BLOB_BASE_URL: process.env.BLOB_BASE_URL,
+      NEXT_PUBLIC_BLOB_BASE_URL: process.env.NEXT_PUBLIC_BLOB_BASE_URL,
+    };
+    delete process.env.BLOB_BASE_URL;
+    delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+    process.env.STORAGE_READ_DRIVER = "r2_binding";
+    process.env.R2_PUBLIC_BASE_URL = "https://r2.example.com/";
+    try {
+      expect(availableRankPeriodCacheKey()).toBe("https://r2.example.com");
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+});
 
 describe("resolveAvailableRankPeriods", () => {
   test("uses the current ISO week when that rank view exists", async () => {

@@ -1,6 +1,6 @@
 import { putView } from "@/lib/data/write";
 import { BLOB_JSON_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
-import { getBlobBaseUrl } from "@/lib/runtime-config";
+import { getPublicReadBases, getStorageReadDriver } from "@/lib/runtime-config";
 import type { LiveRefreshJob, LiveRefreshResult } from "./live-refresh";
 
 const SYNC_RUNS_PATH = "ops/sync-runs.json";
@@ -81,8 +81,18 @@ export async function safeRecordSyncRun(run: SyncRun): Promise<string | null> {
   }
 }
 
+function syncRunsReadBase(): string {
+  try {
+    return getPublicReadBases()[0] ?? "";
+  } catch (error) {
+    // A missing Blob base used to return empty history instead of throwing.
+    if (getStorageReadDriver() === "blob") return "";
+    throw error;
+  }
+}
+
 async function readSyncRuns(): Promise<SyncRunsFile> {
-  const base = getBlobBaseUrl();
+  const base = syncRunsReadBase();
   if (!base) return { generated_at: new Date().toISOString(), runs: [] };
 
   const url = `${base}/${SYNC_RUNS_PATH}?v=${Date.now()}`;
