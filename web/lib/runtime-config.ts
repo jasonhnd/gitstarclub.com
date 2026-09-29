@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveMinTrackedStars } from "./constants.mjs";
+import { resolveDataBinding } from "./storage/r2-binding-store";
 import { resolveRuntimeEnv } from "./workers-host/runtime-env";
 
 // Runtime configuration boundary for server-side data and workflow modules.
@@ -27,6 +28,18 @@ export function runWithCloudflareWorkersHostForTests<T>(isCf: boolean, fn: () =>
 export function getBlobBaseUrl(env?: RuntimeEnv): string {
   const runtime = env ?? resolveRuntimeEnv();
   return (runtime.BLOB_BASE_URL ?? runtime.NEXT_PUBLIC_BLOB_BASE_URL ?? "").replace(/\/+$/, "");
+}
+
+/** Process-level Blob base for runners that must not name the env key themselves. */
+export function assignBlobBaseUrl(value: string | undefined): void {
+  if (value === undefined) delete process.env.BLOB_BASE_URL;
+  else process.env.BLOB_BASE_URL = value;
+}
+
+/** Process-level public Blob fallback. `undefined` clears it. */
+export function assignNextPublicBlobBaseUrl(value: string | undefined): void {
+  if (value === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  else process.env.NEXT_PUBLIC_BLOB_BASE_URL = value;
 }
 
 export function requireBlobBaseUrl(env?: RuntimeEnv): string {
@@ -407,6 +420,72 @@ export function getPublicReadBases(env?: RuntimeEnv): string[] {
       throw new Error(`unsupported storage read driver: ${String(_exhaustive)}`);
     }
   }
+}
+
+/** Primary public read base. Blob with no URL throws the same error as `requireBlobBaseUrl`. */
+export function requirePublicReadBase(env?: RuntimeEnv): string {
+  const primary = getPublicReadBases(env)[0];
+  if (!primary) throw new Error("BLOB_BASE_URL not set — point it at the Vercel Blob store base URL.");
+  return primary;
+}
+
+const R2_S3_WRITE_CONFIG_ERROR =
+  "R2 driver requires R2_ACCESS_KEY_ID (or AWS_ACCESS_KEY_ID), R2_SECRET_ACCESS_KEY (or AWS_SECRET_ACCESS_KEY), R2_BUCKET (or AWS_S3_BUCKET), and R2_S3_ENDPOINT or R2_ACCOUNT_ID";
+
+/**
+ * Write-driver config check. Does not read the bucket-identity marker and
+ * does not include secret values in errors.
+ * `blob` still requires the Blob base URL and `BLOB_READ_WRITE_TOKEN`.
+ */
+export function requireStorageWriteConfig(env?: RuntimeEnv): void {
+  const runtime = configuredEnv(env);
+  const driver = getStorageWriteDriver(runtime);
+  switch (driver) {
+    case "blob":
+      requireBlobBaseUrl(runtime);
+      requireBlobWriteToken(runtime);
+      return;
+    case "r2_binding":
+      assertR2WriteDeployEnv(runtime);
+      if (!getR2Bucket(runtime)) throw new Error("r2_binding writes require R2_BUCKET");
+      resolveDataBinding();
+      return;
+    case "r2":
+    case "r2_s3": {
+      assertR2WriteDeployEnv(runtime);
+      const accessKeyId = getR2AccessKeyId(runtime);
+      const secretAccessKey = getR2SecretAccessKey(runtime);
+      const bucket = getR2Bucket(runtime);
+      const endpoint = getR2S3Endpoint(runtime);
+      if (!accessKeyId || !secretAccessKey || !bucket || !endpoint) {
+        throw new Error(R2_S3_WRITE_CONFIG_ERROR);
+      }
+      return;
+    }
+    default: {
+      const _exhaustive: never = driver;
+      throw new Error(`unsupported storage write driver: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+/**
+ * React cache identity for readers that vary by the public origin.
+ * A missing Blob base stays "" so that path does not throw here.
+ */
+export function getPublicReadCacheKey(env?: RuntimeEnv): string {
+  const runtime = configuredEnv(env);
+  if (getStorageReadDriver(runtime) === "blob") return getBlobBaseUrl(runtime);
+  return getPublicReadBases(runtime).join("\n");
+}
+
+function readLivePublicReadBaseUrl(env: RuntimeEnv): string {
+  return (env.LIVE_PUBLIC_READ_BASE_URL ?? "").replace(/\/+$/, "");
+}
+
+/** Explicit live-gate read base. Empty when unset. Stage 6 drops the Blob URL fallback. */
+export function getLivePublicReadBaseUrl(env?: RuntimeEnv): string {
+  return readLivePublicReadBaseUrl(configuredEnv(env));
 }
 
 export type WorkflowRuntimeKind = "http" | "memory" | "cf-queue";
