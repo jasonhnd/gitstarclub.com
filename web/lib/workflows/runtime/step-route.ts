@@ -1,7 +1,7 @@
 import { WorkflowStepCheckpoint } from "@/lib/contracts";
 import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { putView } from "@/lib/data/write";
-import { getWorkflowRuntimeKind, isVercelProduction } from "@/lib/runtime-config";
+import { getWorkflowRuntimeKind, isProductionDeployment } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 import {
   encodeSuccessorJobHeader,
@@ -89,7 +89,7 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
   }
   const job = body;
   if (job.graph === "fixture") {
-    if (isVercelProduction(opts.env) || !opts.executeFixture) {
+    if (isProductionDeployment(opts.env) || !opts.executeFixture) {
       return Response.json({ ok: false, error: "Fixture refresh is not allowed on this runtime" }, { status: 400 });
     }
   }

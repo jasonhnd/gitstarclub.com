@@ -91,6 +91,9 @@ describe("Blob deletion safety", () => {
       "bootstrap/generations/bootstrap-previous/",
       "bootstrap/overlays/bootstrap-current/",
       "bootstrap/overlays/bootstrap-previous/",
+      "_meta/",
+      "_meta/bucket-identity/",
+      "_meta/other/",
     ]) {
       expect(() => assertBlobDeletionAllowed(prefix, protectedContext)).toThrow(/refusing/);
     }

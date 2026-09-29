@@ -1,28 +1,30 @@
 import { describe, expect, test } from "bun:test";
 import { assertBlobToR2SyncAllowed, describeBlobToR2SyncPlan } from "./sync-plan";
 
-const nonProdR2 = {
-  R2_PREFIX: "migrate-dev/",
-  VERCEL_ENV: "preview",
+const preEnv = {
+  DEPLOY_ENV: "pre",
 };
 
 describe("blob→R2 sync plan", () => {
-  test("defaults to dry-run against migrate-dev/", () => {
-    expect(describeBlobToR2SyncPlan({ env: nonProdR2 })).toEqual({
+  test("defaults to a dry-run with an empty destination prefix", () => {
+    expect(describeBlobToR2SyncPlan({ env: preEnv })).toEqual({
       execute: false,
       sourcePrefix: "",
-      destinationPrefix: "migrate-dev/",
+      destinationPrefix: "",
       readDriver: "blob",
     });
   });
 
-  test("refuses production and production prefixes", () => {
-    expect(() => assertBlobToR2SyncAllowed({ execute: true, env: { ...nonProdR2, VERCEL_ENV: "production" } })).toThrow(
-      "VERCEL_ENV=production",
+  test("keeps an explicit destination prefix", () => {
+    expect(describeBlobToR2SyncPlan({ env: { ...preEnv, R2_PREFIX: "archive/" } }).destinationPrefix).toBe("archive/");
+  });
+
+  test("refuses a plan when DEPLOY_ENV is unset or cannot name a bucket", () => {
+    expect(() => assertBlobToR2SyncAllowed({ execute: true, env: { HOSTING_TARGET: "cf" } })).toThrow(
+      "unset on Cloudflare",
     );
-    expect(() => assertBlobToR2SyncAllowed({ execute: false, env: { R2_PREFIX: "" } })).toThrow("non-production");
-    expect(() => assertBlobToR2SyncAllowed({ execute: false, env: { R2_PREFIX: "canonical/" } })).toThrow(
-      "non-production",
-    );
+    expect(() => assertBlobToR2SyncAllowed({ execute: false, env: {} })).toThrow("DEPLOY_ENV is unset");
+    expect(() => assertBlobToR2SyncAllowed({ execute: false, env: { DEPLOY_ENV: "local" } })).toThrow("DEPLOY_ENV=local");
+    expect(() => assertBlobToR2SyncAllowed({ execute: false, env: preEnv })).not.toThrow();
   });
 });

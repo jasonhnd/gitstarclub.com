@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { resetBucketIdentityCacheForTests } from "@/lib/runtime-config";
 import { DualReadObjectStore } from "./dual-read-store";
 import {
+  createR2S3ObjectStore,
   createReadObjectStore,
   createWriteObjectStore,
   describeStorageDrivers,
@@ -11,6 +13,17 @@ import {
 import { R2S3ObjectStore } from "./r2-s3-store";
 import { createVercelBlobFetchClient } from "./vercel-blob-fetch-client";
 import { VercelBlobObjectStore } from "./vercel-blob-store";
+
+const r2Credentials = {
+  R2_ACCESS_KEY_ID: "id",
+  R2_SECRET_ACCESS_KEY: "secret",
+  R2_BUCKET: "gitstarclub-pre",
+  R2_ACCOUNT_ID: "00f850e853e4c7f9627233d51a6e30a1",
+};
+
+beforeEach(() => {
+  resetBucketIdentityCacheForTests();
+});
 
 describe("object store factory", () => {
   test("defaults both drivers to Vercel Blob and does not need an R2 token", () => {
@@ -37,18 +50,14 @@ describe("object store factory", () => {
     expect(JSON.stringify(calls[0])).not.toContain("ALPN");
   });
 
-  test("refuses a production R2 write driver without talking to a bucket", () => {
+  test("refuses a Cloudflare R2 write driver when DEPLOY_ENV is unset without talking to a bucket", () => {
     expect(() =>
       createWriteObjectStore({
         STORAGE_WRITE_DRIVER: "r2",
-        VERCEL_ENV: "production",
-        R2_PREFIX: "migrate-dev/",
-        R2_ACCESS_KEY_ID: "id",
-        R2_SECRET_ACCESS_KEY: "secret",
-        R2_BUCKET: "gitstarclub-assets",
-        R2_ACCOUNT_ID: "00f850e853e4c7f9627233d51a6e30a1",
+        HOSTING_TARGET: "cf",
+        ...r2Credentials,
       }),
-    ).toThrow("VERCEL_ENV=production");
+    ).toThrow("unset on Cloudflare");
   });
 
   test("builds an r2_then_blob read store from env aliases", () => {
@@ -82,24 +91,95 @@ describe("object store factory", () => {
     expect(() => r2StoreConfigFromEnv({})).toThrow("R2 driver requires");
   });
 
-  test("non-production R2 write uses the migrate-dev prefix", () => {
-    const config = r2StoreConfigFromEnv({
-      R2_ACCESS_KEY_ID: "id",
-      R2_SECRET_ACCESS_KEY: "secret",
-      R2_BUCKET: "gitstarclub-assets",
-      R2_ACCOUNT_ID: "00f850e853e4c7f9627233d51a6e30a1",
-    });
-    expect(config.prefix).toBe("migrate-dev/");
-    const store = createWriteObjectStore({
-      WRITE_DRIVER: "r2",
-      VERCEL_ENV: "preview",
-      ...{
-        R2_ACCESS_KEY_ID: "id",
-        R2_SECRET_ACCESS_KEY: "secret",
-        R2_BUCKET: "gitstarclub-assets",
-        R2_ACCOUNT_ID: "00f850e853e4c7f9627233d51a6e30a1",
+  test("R2 reads do not consult the bucket identity marker", async () => {
+    const store = createR2S3ObjectStore(r2Credentials, {
+      fetch: async (input, init) => {
+        const method = init?.method ?? "GET";
+        const url = String(input);
+        if (method === "GET" && url.includes("/views/a.json")) {
+          return new Response("{}", { status: 200, headers: { etag: '"a"' } });
+        }
+        throw new Error(`unexpected ${method} ${url}`);
       },
     });
+    expect((await store.get("views/a.json"))?.body).toBe("{}");
+  });
+
+  test("R2 write config defaults to an empty prefix", () => {
+    const config = r2StoreConfigFromEnv(r2Credentials);
+    expect(config.prefix).toBe("");
+    const store = createWriteObjectStore({
+      WRITE_DRIVER: "r2",
+      DEPLOY_ENV: "pre",
+      ...r2Credentials,
+    });
     expect(store).toBeInstanceOf(R2S3ObjectStore);
+  });
+
+  test("Blob writes stay on the Blob driver when DEPLOY_ENV is unset", () => {
+    expect(createWriteObjectStore({ STORAGE_WRITE_DRIVER: "blob", HOSTING_TARGET: "cf" })).toBeInstanceOf(
+      VercelBlobObjectStore,
+    );
+  });
+});
+
+describe("bucket identity write guard", () => {
+  function guardedStore(handler: (method: string, url: string) => Response) {
+    const calls: string[] = [];
+    const store = createR2S3ObjectStore(
+      { DEPLOY_ENV: "pre", R2_PREFIX: "migrate-dev/", ...r2Credentials },
+      {
+        fetch: async (input, init) => {
+          const url = String(input);
+          const method = init?.method ?? "GET";
+          calls.push(`${method} ${url}`);
+          return handler(method, url);
+        },
+      },
+    );
+    return { store, calls };
+  }
+
+  test("DEPLOY_ENV=pre refuses a write when the marker says production", async () => {
+    const { store, calls } = guardedStore((_method, url) => {
+      if (url.includes("/_meta/bucket-identity.json")) {
+        return new Response(JSON.stringify({ bucket: "gitstarclub-pre", deploy_env: "production" }), { status: 200 });
+      }
+      return new Response(null, { status: 500 });
+    });
+    await expect(store.put("views/a.json", "{}")).rejects.toThrow(
+      "deploy_env=production does not match DEPLOY_ENV=pre",
+    );
+    expect(calls.some((call) => call.startsWith("PUT"))).toBe(false);
+    expect(calls[0]).toContain("/_meta/bucket-identity.json");
+    expect(calls[0]).not.toContain("migrate-dev/_meta");
+  });
+
+  test("a missing or unreadable marker refuses the write", async () => {
+    const missing = guardedStore(() => new Response(null, { status: 404 }));
+    await expect(missing.store.put("views/a.json", "{}")).rejects.toThrow("marker is missing");
+
+    resetBucketIdentityCacheForTests();
+    const broken = guardedStore(() => new Response("nope", { status: 500 }));
+    await expect(broken.store.del("views/a.json")).rejects.toThrow("marker is unreadable");
+    expect(broken.calls.some((call) => call.startsWith("DELETE"))).toBe(false);
+  });
+
+  test("a matching marker is cached and the following put does not re-read it", async () => {
+    let identityReads = 0;
+    const { store } = guardedStore((method, url) => {
+      if (url.includes("/_meta/bucket-identity.json")) {
+        identityReads += 1;
+        return new Response(JSON.stringify({ bucket: "gitstarclub-pre", deploy_env: "pre" }), {
+          status: 200,
+          headers: { etag: '"id"' },
+        });
+      }
+      if (method === "PUT") return new Response(null, { status: 200, headers: { etag: '"1"' } });
+      return new Response(null, { status: 500 });
+    });
+    await store.put("views/a.json", "{}");
+    await store.put("views/b.json", "{}");
+    expect(identityReads).toBe(1);
   });
 });
