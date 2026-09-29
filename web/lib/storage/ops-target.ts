@@ -108,7 +108,9 @@ export function publicReadBaseForOps(env: OpsEnv, selection: OpsSelection): stri
 /**
  * Blob returns the public base and does not fetch. R2 fetches the identity
  * marker from that base and refuses a missing marker or a bucket that does
- * not match `--target`, before the script plans a write.
+ * not match `--target`, before the script plans a write. A passing check
+ * copies the verified base onto `R2_PUBLIC_BASE_URL` so library reads use
+ * the same origin the identity check just accepted.
  */
 export async function assertPublicReadMatchesTarget(
   env: OpsEnv,
@@ -145,6 +147,7 @@ export async function assertPublicReadMatchesTarget(
       `refusing R2 plan: public identity deploy_env=${String(record.deploy_env)} does not match --target ${selection.target} (expected ${expectedEnv})`,
     );
   }
+  env.R2_PUBLIC_BASE_URL = base;
   return base;
 }
 

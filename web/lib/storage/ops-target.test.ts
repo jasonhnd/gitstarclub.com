@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { getPublicReadBases } from "../runtime-config";
 import { describeStorageDrivers } from "./object-store";
 import {
   applyOpsSelection,
@@ -174,6 +175,46 @@ describe("ops target selection", () => {
       }),
     ).toBe("https://blob.example.com");
     expect(blobCalls).toHaveLength(0);
+  });
+
+  test("a passing identity check pins the verified base for library reads", async () => {
+    const prod = {
+      R2_PUBLIC_BASE_URL_PROD: "https://prod-data.example.com",
+      R2_PUBLIC_BASE_URL: "https://pre-data.example.com",
+      R2_BUCKET_PROD: "gitstarclub-data-prod",
+    };
+    const prodSelection = { store: "r2" as const, target: "prod" as const };
+    applyOpsSelection(prod, prodSelection);
+    const prodCalls: string[] = [];
+    const prodBase = await assertPublicReadMatchesTarget(prod, prodSelection, async (input) => {
+      prodCalls.push(String(input));
+      return new Response(JSON.stringify({ bucket: "gitstarclub-data-prod", deploy_env: "production" }), { status: 200 });
+    });
+    expect(prodCalls).toEqual(["https://prod-data.example.com/_meta/bucket-identity.json"]);
+    expect(prodBase).toBe("https://prod-data.example.com");
+    expect(getPublicReadBases(prod)[0]).toBe(prodBase);
+
+    const mismatched = {
+      R2_PUBLIC_BASE_URL_PROD: "https://prod-data.example.com",
+      R2_PUBLIC_BASE_URL: "https://pre-data.example.com",
+      R2_BUCKET_PROD: "gitstarclub-data-prod",
+    };
+    applyOpsSelection(mismatched, prodSelection);
+    await expect(
+      assertPublicReadMatchesTarget(mismatched, prodSelection, async () =>
+        new Response(JSON.stringify({ bucket: "gitstarclub-data-pre", deploy_env: "pre" }), { status: 200 }),
+      ),
+    ).rejects.toThrow(/does not match target/);
+    expect(mismatched.R2_PUBLIC_BASE_URL).toBe("https://pre-data.example.com");
+
+    const preOnly = { R2_PUBLIC_BASE_URL_PRE: "https://pre-data.example.com", R2_BUCKET_PRE: "gitstarclub-data-pre" };
+    const preSelection = { store: "r2" as const, target: "pre" as const };
+    applyOpsSelection(preOnly, preSelection);
+    const preBase = await assertPublicReadMatchesTarget(preOnly, preSelection, async () =>
+      new Response(JSON.stringify({ bucket: "gitstarclub-data-pre", deploy_env: "pre" }), { status: 200 }),
+    );
+    expect(preBase).toBe("https://pre-data.example.com");
+    expect(getPublicReadBases(preOnly)[0]).toBe(preBase);
   });
 
   test("confirm values are not treated as the positional prefix", () => {
