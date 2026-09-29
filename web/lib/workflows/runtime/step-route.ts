@@ -1,7 +1,7 @@
 import { WorkflowStepCheckpoint } from "@/lib/contracts";
 import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { putView } from "@/lib/data/write";
-import { getWorkflowRuntimeKind, isProductionDeployment } from "@/lib/runtime-config";
+import { getDeployEnv, getHostingTarget, getWorkflowRuntimeKind, isProductionDeployment } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 import {
   encodeSuccessorJobHeader,
@@ -71,6 +71,20 @@ async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult)
   }
 }
 
+/**
+ * Production never runs a fixture. On Cloudflare an unset or invalid
+ * `DEPLOY_ENV` is not "non-production": it is refused the same way.
+ */
+function fixtureRefreshBlocked(env: RefreshStepRouteOptions["env"]): boolean {
+  if (isProductionDeployment(env)) return true;
+  try {
+    if (getHostingTarget(env) !== "cf") return false;
+    return getDeployEnv(env) == null;
+  } catch {
+    return true;
+  }
+}
+
 export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOptions = {}): Promise<Response> {
   const unauthorized = requireBearerToken(req.headers.get("authorization"));
   if (unauthorized) return unauthorized;
@@ -89,7 +103,7 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
   }
   const job = body;
   if (job.graph === "fixture") {
-    if (isProductionDeployment(opts.env) || !opts.executeFixture) {
+    if (fixtureRefreshBlocked(opts.env) || !opts.executeFixture) {
       return Response.json({ ok: false, error: "Fixture refresh is not allowed on this runtime" }, { status: 400 });
     }
   }
