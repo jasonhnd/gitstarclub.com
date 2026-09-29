@@ -53,15 +53,15 @@ Credentials: `GITHUB_TOKEN` (GraphQL/Search), GCP (**bootstrap only** BigQuery),
 
 > **Newcomer baseline (the first v2 run)**: the Workflow whitelist step (`whitelist.ts:24-28`) uses the id set of `canonical/v2/whitelist/latest.json` as the newcomer diff baseline; **when that pointer does not yet exist on the first run, it falls back to the id set of bootstrap `lookup/repos.json`** — otherwise the first run would misjudge every existing repo as a "newcomer". After that, each run writes `latest.json` back as the next run's baseline.
 
-**02 extract (BigQuery, ~$10)** — first `--dry_run` to confirm scan volume/cost, then run:
-```sql
-SELECT repo.id AS repo_id, DATE(created_at) AS day, COUNT(*) AS gross_adds
-FROM `githubarchive.day.*`
-WHERE _TABLE_SUFFIX BETWEEN '20150101' AND '<seam_date>'
-  AND type = 'WatchEvent' AND repo.id IN UNNEST(@whitelist_ids)
-GROUP BY repo_id, day;
+**02 extract (BigQuery, ~$10)** — render `pipeline/backfill/02-extract.sql` locally, then dry-run with a 400 GB cap before any real query:
+
+```bash
+cd pipeline
+node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531
+bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < rendered.sql
 ```
-Includes a stable `repo.id` (rename consolidation), and exports Parquet to the local machine.
+
+The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`, so a rerun cannot replace the May extract. The cutoff is a 6-digit YYMMDD suffix. Includes a stable `repo.id` (rename consolidation), and exports Parquet to the local machine. Step 04 still reads the local directory `data/star_daily_gross/`.
 
 **03 metadata (GraphQL)** — `nodes(ids:[node_id])` fetches in batches of 100/query `owner.login + owner.__typename + name + description + primaryLanguage + languages + repositoryTopics + createdAt + stargazerCount(=current_stars) + isArchived` → the `repos` dimension (DATA-CONTRACTS §1.2).
 
@@ -72,7 +72,7 @@ Includes a stable `repo.id` (rename consolidation), and exports Parquet to the l
 
 **05 precompute views (DuckDB)** — following the ranking matrix and the entity rollup, produce every JSON view (rank/entity/heatmap/lookup, DATA-CONTRACTS §2). **stock anchoring** and the definitions are in [RANKING.md](./RANKING.md).
 
-**06 upload (Blob, staging only)** — first validate `views/**` with the authoritative Zod contracts, then write `star_daily.parquet` + `lookup/*` + `rank/**` + `entity/**` + `heatmap/**` + `meta.json` create-only into `bootstrap/generations/<generation>/**`. Neither objects nor the phase manifest may be overwritten; a byte-identical rerun of the same generation validates the objects already present and resumes. This step **never modifies the production pointer**. Batched `put()` is **throttled <75/s** (the OPS Blob rate limit).
+**06 upload (staging only)** — first validate `views/**` with the authoritative Zod contracts, then write `star_daily.parquet` + `lookup/*` + `rank/**` + `entity/**` + `heatmap/**` + `meta.json` create-only into `bootstrap/generations/<generation>/**`. Neither objects nor the phase manifest may be overwritten; a byte-identical rerun of the same generation validates the objects already present and resumes. This step **never modifies the production pointer**. Batched `put()` is **throttled <75/s** (the OPS Blob rate limit). `--store blob` still uploads unless `--dry-run`. `--store r2` prints the plan and writes nothing unless `--execute`, and it requires `--target prod|pre`.
 
 **07 export-v2 (DuckDB → canonical/v2 JSON shards → atomic commit)** — **fold + bucket** the 8M-row daily table of §1.1 into `canonical/v2/{meta,repos,repo-monthly,repo-weekly,repo-recent-daily,site-daily}/...` JSON shards (`<bucket>=repo_id % N`), so that Vercel Workflow can recompute with no engine. Freeze `repos.d` (the stock anchoring factor, IEEE double at full precision, `>= 0` and it may be `> 1`) + the milestone `crossed_*`; the fold watermark is written to `folded_through` of `canonical/v2/meta.json`. This step create-only stages the canonical phase, re-validates the local views + all 128 required canonical shards, checks the remote SHA-256 object by object, and acquires the shared Workflow CAS lease; at the end it **overwrites only one `bootstrap/latest.json`**. Any upload / validation / lease failure does not cut over production. See [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6 and [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4.
 
@@ -96,8 +96,16 @@ node backfill/07-export-v2.mjs --generation "$GEN"
 # When previous_generation is a generation, specify that generation explicitly
 node backfill/07-export-v2.mjs --rollback bootstrap-20260710T120000Z --execute
 
-# The first publish's previous_generation:null is explicitly defined as legacy-flat
+# The first Blob publish's previous_generation:null is explicitly defined as legacy-flat
 node backfill/07-export-v2.mjs --rollback legacy-flat --execute
+
+# R2 dry run, then execute, then the empty-bucket first commit
+node backfill/06-upload.mjs --store r2 --target pre --generation "$GEN"
+node backfill/06-upload.mjs --store r2 --target pre --generation "$GEN" --execute
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN"
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN" --execute --stage-only
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN" --execute --initial-commit
+node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$GEN" --execute
 ```
 
 ---
@@ -171,7 +179,7 @@ The §3 weekly live cron and the §4 Workflow are prefix-isolated and each does 
 ## 6. Idempotency / errors / reruns
 
 - Every step can be rerun: for the same generation, bootstrap rechecks byte count + SHA-256 object by object and creates only the missing objects; once a phase manifest is written it is sealed, and inconsistent content fails closed. A Workflow step is idempotent by `(run_id, shard)` ([VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8).
-- **bootstrap atomicity**: `06` does not publish; `07` cuts the single file `bootstrap/latest.json` only after both remote phases are complete, both local validators pass, and the `ops/workflows/active.json` CAS lease has been acquired. The first commit also verifies, inside the lease, the legacy flat base/canonical recovery artifacts that bootstrap did not rewrite; `previous_generation:null` means an executable `legacy-flat` rollback target. The generation body is never overwritten; recurring canonical writes are bound to that generation's copy-on-write overlay, and the old generation + overlay can roll back directly.
+- **bootstrap atomicity**: `06` does not publish; `07` cuts the single file `bootstrap/latest.json` only after both remote phases are complete, both local validators pass, and the `ops/workflows/active.json` CAS lease has been acquired. A Blob first commit verifies, inside the lease, the legacy flat base/canonical recovery artifacts that bootstrap did not rewrite; `previous_generation: null` on that pointer means an executable `legacy-flat` rollback target. An R2 `--initial-commit` skips that proof, stores `previous_generation: null`, and is allowed only when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are absent. `--rollback legacy-flat` on that R2 bucket fails closed. The generation body is never overwritten; recurring canonical writes are bound to that generation's copy-on-write overlay, and the old generation + overlay can roll back directly.
 - **Versioned artifacts**: Workflow publish writes `views/<run_id>/` (version=run_id) → cuts the `views/latest.json` pointer (keeping `prev_version`), and bad data only has to be pointed back at the previous version (OPS rollback).
 - **Validation gate**: after the JSON is produced, run the Zod schema + sanity invariants (TESTING §1.2/§1.3); if they do not pass, do not publish and do not cut the pointer.
 - **Failure rests on verifiable state** (Vercel Function logs + an optional webhook + `sync-runs` + `ops/workflows/**`); the repository currently has no Sentry integration. A Workflow step retries on its own, and across quota it waits with `sleep` instead of spinning.

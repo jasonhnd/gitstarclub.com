@@ -2,7 +2,7 @@
 
 ## Goal
 
-Let the one-time bootstrap (`pipeline/backfill/06` and `07`) and the listed ops scripts write to a fresh R2 bucket. Blob mode stays the current path. Nothing here deploys, uploads, or edits Worker config.
+Let the one-time bootstrap (`pipeline/backfill/06-upload.mjs` and `pipeline/backfill/07-export-v2.mjs`) and the listed ops scripts write to a fresh R2 bucket. Blob mode stays the current path. Nothing here deploys, uploads, or edits Worker config.
 
 ## In scope
 
@@ -16,7 +16,7 @@ Let the one-time bootstrap (`pipeline/backfill/06` and `07`) and the listed ops 
 
 ## Out of scope
 
-`workers/gitstarclub-web/wrangler.jsonc`, `scripts/cf-ci-gates.mjs`, `.github/workflows/*`, `.delivery.yml`, Worker runtime, `web/scripts/sync-blob-to-r2.ts`, real Cloudflare / Vercel / BigQuery / GCS writes, deploys, and pushes to `main` / `pre` / `preview`.
+The Worker wrangler config, `scripts/cf-ci-gates.mjs`, `.github/workflows/*`, `.delivery.yml`, Worker runtime, `web/scripts/sync-blob-to-r2.ts`, real Cloudflare / Vercel / BigQuery / GCS writes, deploys, and pushes to `main` / `pre` / `preview`.
 
 ## Acceptance
 
