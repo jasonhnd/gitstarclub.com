@@ -43,8 +43,8 @@ Unset drivers mean:
 
 - `STORAGE_READ_DRIVER` / `READ_DRIVER` = `blob`
 - `STORAGE_WRITE_DRIVER` / `WRITE_DRIVER` = `blob`
-- Public page reads still use `BLOB_BASE_URL`
-- Cron / Workflow CAS still uses `BLOB_READ_WRITE_TOKEN`
+- Public page reads still use `BLOB_BASE_URL` through `getPublicReadBases()` while the read driver is `blob`
+- Cron / Workflow config checks still require `BLOB_BASE_URL` and `BLOB_READ_WRITE_TOKEN` while the write driver is `blob`
 
 Existing Vercel Blob behavior is the production path. The Blob **driver** now
 calls the Blob HTTP API with runtime `fetch` (`web/lib/storage/vercel-blob-fetch-client.ts`)
@@ -73,6 +73,16 @@ do not hit `ALPNProtocols`. R2 writes were already fetch-signed. See
 
 CI must not set production `BLOB_READ_WRITE_TOKEN` as an R2 write credential. The
 R2 driver tests mock `fetch` and never open the real bucket.
+
+## Driver-aware reads (I-3)
+
+Bootstrap pointer reads, sync-run history, cron and workflow config checks, and the rankings period cache key use the configured driver. `requirePublicReadBase()` returns the primary `getPublicReadBases()` URL. `requireStorageWriteConfig()` checks the write driver without reading `_meta/bucket-identity.json` and without putting secret values in the error:
+
+- `blob`: Blob base URL and `BLOB_READ_WRITE_TOKEN`, same messages as before
+- `r2_binding`: DATA binding, `R2_BUCKET`, and `DEPLOY_ENV` of `production` or `pre`
+- `r2` / `r2_s3`: S3 credentials, bucket, endpoint, and the same `DEPLOY_ENV` check
+
+A missing Blob base still means empty sync-run history. Live release gates prefer `LIVE_PUBLIC_READ_BASE_URL`. Until stage 6 they still fall back to `RELEASE_GATE_BLOB_BASE`, then `BLOB_BASE_URL`, then the current public Blob URL.
 
 ## Write guard
 

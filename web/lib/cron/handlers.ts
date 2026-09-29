@@ -9,13 +9,13 @@ import {
 import { completedRun, failedRun, safeRecordSyncRun, syncRunId } from "@/lib/cron/sync-runs";
 import { sendAlert } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
-import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
+import { requireGithubToken, requirePublicReadBase, requireStorageWriteConfig } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 
 function requireLiveRefreshRuntimeConfig(dry: boolean): void {
-  requireBlobBaseUrl();
+  requirePublicReadBase();
   requireGithubToken();
-  if (!dry) requireBlobWriteToken();
+  if (!dry) requireStorageWriteConfig();
 }
 
 export interface LiveRefreshRouteOptions {

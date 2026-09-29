@@ -38,6 +38,7 @@ import type {
   ReposLookup,
 } from "@/lib/contracts";
 import { CATEGORY_DETAIL_PAGE_SIZE } from "@/lib/pagination";
+import { assignBlobBaseUrl, assignNextPublicBlobBaseUrl } from "@/lib/runtime-config";
 import { localeSitemapRoute } from "@/lib/sitemap-routes";
 
 const BLOB_BASE_URL = "https://blob.test";
@@ -175,8 +176,8 @@ const routes: RouteCase[] = [
 ];
 
 async function runRouteSmoke() {
-  process.env.BLOB_BASE_URL = BLOB_BASE_URL;
-  delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  assignBlobBaseUrl(BLOB_BASE_URL);
+  assignNextPublicBlobBaseUrl(undefined);
   globalThis.fetch = routeSmokeFetch as typeof fetch;
 
   for (const route of routes) {

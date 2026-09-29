@@ -33,12 +33,17 @@ import {
   assertPreviewTargetAllowed,
   assertHostingTargetAllowed,
   DEFAULT_CF_PREVIEW_ORIGIN,
+  getLivePublicReadBaseUrl,
+  getPublicReadCacheKey,
   requireBlobBaseUrl,
   requireBlobWriteToken,
   requireCronSecret,
   requireGithubToken,
+  requirePublicReadBase,
+  requireStorageWriteConfig,
   requireWorkflowQueueEnqueueUrl,
 } from "./runtime-config";
+import { MISSING_DATA_BINDING_ERROR, setDataBindingReaderForTests, type R2Bucket } from "./storage/r2-binding-store";
 
 const originalEnv = {
   BLOB_BASE_URL: process.env.BLOB_BASE_URL,
@@ -64,9 +69,11 @@ const STORAGE_KEYS = Object.keys(originalEnv) as Array<keyof typeof originalEnv>
 beforeEach(() => {
   for (const key of STORAGE_KEYS) delete process.env[key];
   resetBucketIdentityCacheForTests();
+  setDataBindingReaderForTests(undefined);
 });
 
 afterEach(() => {
+  setDataBindingReaderForTests(undefined);
   for (const key of STORAGE_KEYS) {
     const value = originalEnv[key];
     if (value === undefined) delete process.env[key];
@@ -207,6 +214,16 @@ describe("runtime config getters", () => {
 
 const identityEndpoint = "https://acct.r2.cloudflarestorage.com";
 
+function fakeDataBinding(): R2Bucket {
+  return {
+    get: async () => null,
+    head: async () => null,
+    put: async () => null,
+    delete: async () => {},
+    list: async () => ({ objects: [], delimitedPrefixes: [], truncated: false }),
+  };
+}
+
 describe("storage driver config", () => {
   test("defaults read and write drivers to blob", () => {
     expect(getStorageReadDriver()).toBe("blob");
@@ -258,6 +275,123 @@ describe("storage driver config", () => {
         R2_PUBLIC_BASE_URL: "https://r2.example.com/",
       }),
     ).toEqual(["https://r2.example.com", "https://blob.example.com"]);
+  });
+
+  test("requirePublicReadBase keeps the Blob error and accepts an R2 public base", () => {
+    expect(() => requirePublicReadBase({})).toThrow("BLOB_BASE_URL not set — point it at the Vercel Blob store base URL.");
+    expect(requirePublicReadBase({ BLOB_BASE_URL: "https://blob.example.com/" })).toBe("https://blob.example.com");
+    expect(
+      requirePublicReadBase({
+        STORAGE_READ_DRIVER: "r2_binding",
+        R2_PUBLIC_BASE_URL: "https://r2.example.com/",
+      }),
+    ).toBe("https://r2.example.com");
+    expect(() =>
+      requirePublicReadBase({ STORAGE_READ_DRIVER: "r2_binding" }),
+    ).toThrow("R2_PUBLIC_BASE_URL not set");
+  });
+
+  test("Blob write config still requires the base URL and the write token", () => {
+    expect(() => requireStorageWriteConfig({})).toThrow(
+      "BLOB_BASE_URL not set — point it at the Vercel Blob store base URL.",
+    );
+    expect(() => requireStorageWriteConfig({ BLOB_BASE_URL: "https://blob.example.com" })).toThrow(
+      "BLOB_READ_WRITE_TOKEN not set",
+    );
+    expect(() =>
+      requireStorageWriteConfig({
+        BLOB_BASE_URL: "https://blob.example.com",
+        BLOB_READ_WRITE_TOKEN: "blob-token",
+      }),
+    ).not.toThrow();
+  });
+
+  test("r2_binding write config needs DATA, R2_BUCKET, and DEPLOY_ENV, and no Blob token", () => {
+    expect(() =>
+      requireStorageWriteConfig({ STORAGE_WRITE_DRIVER: "r2_binding", R2_BUCKET: "gitstarclub-data-pre" }),
+    ).toThrow("DEPLOY_ENV is unset");
+    expect(() =>
+      requireStorageWriteConfig({ STORAGE_WRITE_DRIVER: "r2_binding", DEPLOY_ENV: "pre" }),
+    ).toThrow("r2_binding writes require R2_BUCKET");
+    expect(() =>
+      requireStorageWriteConfig({
+        STORAGE_WRITE_DRIVER: "r2_binding",
+        DEPLOY_ENV: "pre",
+        R2_BUCKET: "gitstarclub-data-pre",
+      }),
+    ).toThrow(MISSING_DATA_BINDING_ERROR);
+
+    setDataBindingReaderForTests(() => fakeDataBinding());
+    expect(() =>
+      requireStorageWriteConfig({
+        STORAGE_WRITE_DRIVER: "r2_binding",
+        DEPLOY_ENV: "pre",
+        R2_BUCKET: "gitstarclub-data-pre",
+      }),
+    ).not.toThrow();
+  });
+
+  test("r2 and r2_s3 write config require S3 settings without echoing secrets", () => {
+    const secret = "super-secret-value";
+    const accessKey = "AKIAsecretvalue";
+    expect(() =>
+      requireStorageWriteConfig({
+        STORAGE_WRITE_DRIVER: "r2_s3",
+        DEPLOY_ENV: "pre",
+        R2_ACCESS_KEY_ID: accessKey,
+        R2_SECRET_ACCESS_KEY: secret,
+      }),
+    ).toThrow("R2 driver requires");
+    try {
+      requireStorageWriteConfig({
+        STORAGE_WRITE_DRIVER: "r2",
+        DEPLOY_ENV: "pre",
+        R2_ACCESS_KEY_ID: accessKey,
+        R2_SECRET_ACCESS_KEY: secret,
+        R2_BUCKET: "gitstarclub-data-pre",
+      });
+      throw new Error("expected missing endpoint to throw");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).toContain("R2 driver requires");
+      expect(message).not.toContain(secret);
+      expect(message).not.toContain(accessKey);
+    }
+    expect(() =>
+      requireStorageWriteConfig({
+        STORAGE_WRITE_DRIVER: "r2",
+        DEPLOY_ENV: "pre",
+        R2_ACCESS_KEY_ID: accessKey,
+        R2_SECRET_ACCESS_KEY: secret,
+        R2_BUCKET: "gitstarclub-data-pre",
+        R2_ACCOUNT_ID: "abc123",
+      }),
+    ).not.toThrow();
+  });
+
+  test("public read cache key follows resolved bases and stays empty when Blob is unset", () => {
+    expect(getPublicReadCacheKey({})).toBe("");
+    expect(getPublicReadCacheKey({ BLOB_BASE_URL: "https://blob.example.com/" })).toBe("https://blob.example.com");
+    expect(
+      getPublicReadCacheKey({
+        STORAGE_READ_DRIVER: "r2_binding",
+        R2_PUBLIC_BASE_URL: "https://r2.example.com/",
+      }),
+    ).toBe("https://r2.example.com");
+    expect(
+      getPublicReadCacheKey({
+        STORAGE_READ_DRIVER: "r2_then_blob",
+        R2_PUBLIC_BASE_URL: "https://r2.example.com",
+        BLOB_BASE_URL: "https://blob.example.com",
+      }),
+    ).toBe("https://r2.example.com\nhttps://blob.example.com");
+  });
+
+  test("live public read base is explicit and empty when unset", () => {
+    expect(getLivePublicReadBaseUrl({})).toBe("");
+    expect(getLivePublicReadBaseUrl({ LIVE_PUBLIC_READ_BASE_URL: "https://pub.example.r2.dev/" })).toBe(
+      "https://pub.example.r2.dev",
+    );
   });
 
   test("refuses R2 writes when DEPLOY_ENV is unset, including on Cloudflare", async () => {

@@ -10,6 +10,9 @@ import { BOOTSTRAP_POINTER_NEGATIVE_TTL_MS } from "./publication-cache-contract"
 const BLOB = "https://blob.example.com";
 const originalBase = process.env.BLOB_BASE_URL;
 const originalPublicBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+const originalReadDriver = process.env.STORAGE_READ_DRIVER;
+const originalR2PublicBase = process.env.R2_PUBLIC_BASE_URL;
+const originalWriteToken = process.env.BLOB_READ_WRITE_TOKEN;
 const realFetch = globalThis.fetch;
 const realNow = Date.now;
 
@@ -70,6 +73,12 @@ afterEach(() => {
   else process.env.BLOB_BASE_URL = originalBase;
   if (originalPublicBase === undefined) delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
   else process.env.NEXT_PUBLIC_BLOB_BASE_URL = originalPublicBase;
+  if (originalReadDriver === undefined) delete process.env.STORAGE_READ_DRIVER;
+  else process.env.STORAGE_READ_DRIVER = originalReadDriver;
+  if (originalR2PublicBase === undefined) delete process.env.R2_PUBLIC_BASE_URL;
+  else process.env.R2_PUBLIC_BASE_URL = originalR2PublicBase;
+  if (originalWriteToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+  else process.env.BLOB_READ_WRITE_TOKEN = originalWriteToken;
 });
 
 describe("published bootstrap pointer cache", () => {
@@ -79,6 +88,21 @@ describe("published bootstrap pointer cache", () => {
     expect(result?.generation).toBe("bootstrap-20260717T120000Z");
     expect(fetchCalls.filter((url) => url.includes("/bootstrap/latest.json"))).toHaveLength(1);
     expect(fetchCalls[0]?.includes("?")).toBe(false);
+  });
+
+  test("reads the pointer from the R2 public base without Blob env", async () => {
+    delete process.env.BLOB_BASE_URL;
+    delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    process.env.STORAGE_READ_DRIVER = "r2_binding";
+    process.env.R2_PUBLIC_BASE_URL = "https://r2.example.com";
+    routes = { "/bootstrap/latest.json": { json: pointer() } };
+
+    const result = await readBootstrapPublicationPointer({ published: true });
+
+    expect(result?.generation).toBe("bootstrap-20260717T120000Z");
+    expect(fetchCalls.some((url) => url.startsWith("https://r2.example.com/bootstrap/latest.json"))).toBe(true);
+    expect(fetchCalls.some((url) => url.includes("blob.example.com"))).toBe(false);
   });
 
   test("treats a confirmed 404 as legacy-flat absence", async () => {
