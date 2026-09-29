@@ -27,7 +27,7 @@ function bytePreservingR2() {
     if (method === "GET") {
       const bytes = objects.get(key);
       if (!bytes) return new Response(null, { status: 404 });
-      return new Response(bytes, {
+      return new Response(Buffer.from(bytes), {
         status: 200,
         headers: { etag: '"staged"', "content-type": "application/octet-stream" },
       });
