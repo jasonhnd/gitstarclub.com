@@ -1,5 +1,7 @@
 # ≥1k universe: pre gate
 
+> Superseded for the live preview config by #567 (2026-09-29, D3=A). Preview `MIN_TRACKED_STARS` is `10000`. Restoring this 1k experiment is an owner decision. The rest of this file is the historical plan.
+
 - **task_id**: `gitstarclub-universe-1k-pre-gate-cca-001`
 - **target branch**: `pre` (do not touch `main`)
 - **authorization**: Jason 2026-09-21 JST, "≥1k: turn it on now"

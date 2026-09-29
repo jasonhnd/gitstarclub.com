@@ -44,6 +44,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
+- **Preview Worker reads its own R2 bucket (#567).** `env.pre` binds `DATA` to `gitstarclub-data-pre`, sets `DEPLOY_ENV=pre`, `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, and `R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com`. `R2_PREFIX` stays unset. Preview `MIN_TRACKED_STARS` is `10000`, matching production. `BLOB_*`, `VIEWS_VERSION_FALLBACK`, `WORKFLOW_COLD_START`, and `PREFLIGHT_RELAX_EMPTY_SHARDS` are absent on `env.pre`. The 1k cold-start experiment is paused; restoring it is an owner decision. `cf:build` refuses a shell public read base that does not match the target wrangler env. A loopback fixture is still allowed. Production top-level wrangler config is unchanged and still reads Vercel Blob until I-5b. Does not create buckets or deploy.
+
 - **Guarded R2 deletes resolve URL keys before the `_meta/` check (#561).** `del("r2://…/_meta/…")` and `del` of a public URL under `_meta/` are refused on both the S3 store and the binding store, before the identity marker is read.
 
 - **Guarded R2 writes refuse dot segments (#561).** `put` and `del` on both the S3 store and the binding store reject `.` and `..` path segments, including `%2e` and `%2e%2e`, before the bucket-identity check. That stops `new URL()` from collapsing `views/../_meta/x` into `_meta/`. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
