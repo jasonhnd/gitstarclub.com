@@ -1,10 +1,12 @@
 // One-off Issue #326 canonical lifecycle migration.
 //
-// Default: read-only production dry-run (BLOB_BASE_URL only).
+// Default: read-only dry-run (public read base only).
 //   bun scripts/migrate-canonical-lifecycle.ts
+//   bun scripts/migrate-canonical-lifecycle.ts --store r2 --target pre
 //
 // Execute an already reviewed plan:
 //   bun scripts/migrate-canonical-lifecycle.ts --execute --confirm <plan-sha256>
+//   bun scripts/migrate-canonical-lifecycle.ts --store r2 --target pre --execute --confirm <plan-sha256>
 //
 // Roll back from the immutable before-state receipt:
 //   bun scripts/migrate-canonical-lifecycle.ts --rollback <plan-sha256> \
@@ -40,6 +42,16 @@ import {
   rollbackCanonicalLifecycleMigration,
   type CanonicalLifecycleExecutionDeps,
 } from "@/lib/migrations/canonical-lifecycle-execution";
+import { requireStorageWriteConfig } from "@/lib/runtime-config";
+import { getReadObjectStore } from "@/lib/storage";
+import {
+  applyOpsSelection,
+  assertPublicReadMatchesTarget,
+  opsEnvKeys,
+  publicReadBaseForOps,
+  takeOpsFlags,
+  type OpsSelection,
+} from "@/lib/storage/ops-target";
 import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
 import { createOwnedView, putOwnedView } from "@/lib/workflows/owned-write";
 import {
@@ -58,6 +70,7 @@ const IO_CONCURRENCY = 6;
 
 type Args = {
   execute: boolean;
+  dry: boolean;
   confirm: string | null;
   rollback: string | null;
   inventoryPath: string;
@@ -73,15 +86,19 @@ type LoadedJson<T> = {
 function usage(): string {
   return [
     "Usage:",
-    "  bun scripts/migrate-canonical-lifecycle.ts [--full] [--plan-out <file>]",
+    "  bun scripts/migrate-canonical-lifecycle.ts [--store blob|r2] [--target prod|pre] [--full] [--plan-out <file>]",
     "  bun scripts/migrate-canonical-lifecycle.ts --execute --confirm <plan-sha256>",
+    "  bun scripts/migrate-canonical-lifecycle.ts --store r2 --target pre --execute --confirm <plan-sha256>",
     "  bun scripts/migrate-canonical-lifecycle.ts --rollback <plan-sha256> --execute --confirm <same-sha256>",
     "",
     "Options:",
+    "  --store blob|r2     Default blob. r2 requires --target prod|pre.",
+    "  --target prod|pre   Required with --store r2. Refused unless --store r2.",
     "  --inventory <file>  Reviewed immutable whitelist history inventory.",
     "  --plan-out <file>   Create a local full-plan JSON file; existing unequal files are refused.",
     "  --full              Print the full deterministic plan to stdout.",
-    "  --execute           Enable guarded Blob mutation. Omitted by default.",
+    "  --execute           Enable guarded object-store mutation. Omitted by default.",
+    "  --dry, --dry-run    Force zero writes even when --execute is present.",
     "  --confirm <sha>     Exact reviewed plan SHA-256 required by --execute.",
     "  --rollback <sha>    Restore the immutable before-state receipt for this plan.",
   ].join("\n");
@@ -89,6 +106,7 @@ function usage(): string {
 
 function parseArgs(argv: string[]): Args {
   let execute = false;
+  let dry = false;
   let confirm: string | null = null;
   let rollback: string | null = null;
   let inventoryPath = defaultInventoryPath;
@@ -98,6 +116,7 @@ function parseArgs(argv: string[]): Args {
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
     if (arg === "--execute") execute = true;
+    else if (arg === "--dry" || arg === "--dry-run") dry = true;
     else if (arg === "--full") full = true;
     else if (arg === "--confirm") confirm = argv[++index] ?? "";
     else if (arg.startsWith("--confirm=")) confirm = arg.slice("--confirm=".length);
@@ -124,29 +143,33 @@ function parseArgs(argv: string[]): Args {
   if (rollback !== null && rollback !== confirm) {
     throw new Error("--rollback and --confirm must name the same plan SHA-256");
   }
-  return { execute, confirm, rollback, inventoryPath, planOut, full };
+  return { execute: execute && !dry, dry, confirm, rollback, inventoryPath, planOut, full };
 }
 
-function loadReadEnv(): void {
+let activeSelection: OpsSelection = { store: "blob", target: null };
+
+function loadReadEnv(selection: OpsSelection): void {
+  activeSelection = selection;
   loadWebEnvFiles(webDir, {
-    keys: ["BLOB_BASE_URL"],
+    keys: opsEnvKeys(selection, false),
     onDiagnostic: warnEnvFileDiagnostic,
   });
-  if (!process.env.BLOB_BASE_URL) throw new Error("BLOB_BASE_URL not set");
+  applyOpsSelection(process.env, selection);
+  publicReadBaseForOps(process.env, selection);
 }
 
-function loadWriteEnv(): string {
+function loadWriteEnv(selection: OpsSelection): void {
+  activeSelection = selection;
   loadWebEnvFiles(webDir, {
-    keys: ["BLOB_READ_WRITE_TOKEN"],
+    keys: opsEnvKeys(selection, true),
     onDiagnostic: warnEnvFileDiagnostic,
   });
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) throw new Error("BLOB_READ_WRITE_TOKEN not set");
-  return token;
+  applyOpsSelection(process.env, selection);
+  requireStorageWriteConfig();
 }
 
 function publicUrl(path: string, attempt: number): string {
-  const base = process.env.BLOB_BASE_URL!.replace(/\/+$/, "");
+  const base = publicReadBaseForOps(process.env, activeSelection);
   return `${base}/${path}?v=issue-326-${attempt}-${Date.now().toString(36)}`;
 }
 
@@ -303,39 +326,24 @@ function dryRunSummary(bundle: CanonicalLifecycleMigrationBundle) {
   };
 }
 
-let blobModulePromise: Promise<typeof import("@vercel/blob")> | null = null;
-function blobModule() {
-  blobModulePromise ??= import("@vercel/blob");
-  return blobModulePromise;
-}
-
 async function readStoredJson<T>(
   path: string,
   schema: ZodType<T>,
-  token: string,
   optional = false,
 ): Promise<LoadedJson<T> | null> {
-  const { get } = await blobModule();
-  const result = await get(path, { access: "public", token });
+  const result = await getReadObjectStore().get(path);
   if (!result) {
     if (optional) return null;
     throw new Error(`${path} missing`);
   }
-  if (result.statusCode !== 200 || !result.stream) {
-    throw new Error(`${path} -> ${result.statusCode}`);
-  }
-  const value = schema.parse(JSON.parse(await new Response(result.stream).text()));
+  const value = schema.parse(JSON.parse(result.body));
   return { value, sha256: await sha256Json(value) };
 }
 
-async function loadStoredBundle(
-  planSha256: string,
-  token: string,
-): Promise<CanonicalLifecycleMigrationBundle | null> {
+async function loadStoredBundle(planSha256: string): Promise<CanonicalLifecycleMigrationBundle | null> {
   const receiptLoaded = await readStoredJson(
     canonicalLifecycleReceiptPath(planSha256),
     CanonicalLifecycleMigrationReceipt,
-    token,
     true,
   );
   if (!receiptLoaded) return null;
@@ -346,7 +354,6 @@ async function loadStoredBundle(
     const loaded = await readStoredJson(
       canonicalLifecycleShardReceiptPath(planSha256, "before", bucket.bucket),
       ReposShard,
-      token,
     );
     if (!loaded) throw new Error(`stored before bucket ${bucket.bucket} missing`);
     if (loaded.sha256 !== bucket.before_sha256) {
@@ -363,7 +370,6 @@ async function loadStoredBundle(
     const loaded = await readStoredJson(
       canonicalLifecycleShardReceiptPath(planSha256, "after", bucket.bucket),
       ReposShard,
-      token,
     );
     if (!loaded) throw new Error(`stored after bucket ${bucket.bucket} missing`);
     if (loaded.sha256 !== bucket.after_sha256) {
@@ -431,16 +437,12 @@ async function canonicalPhysicalPaths(
   ];
 }
 
-function executionDeps(
-  token: string,
-  plan: CanonicalLifecycleMigrationPlan,
-): CanonicalLifecycleExecutionDeps {
+function executionDeps(plan: CanonicalLifecycleMigrationPlan): CanonicalLifecycleExecutionDeps {
   async function readCanonicalExact<T>(path: string, schema: ZodType<T>): Promise<T> {
     for (const physicalPath of await canonicalPhysicalPaths(path, plan)) {
-      // Canonical shards are mutable. The token-backed Blob get() path may
-      // still return the bytes from immediately before our own overwrite, so
-      // classification and write verification must use the cache-busted
-      // authoritative reader shared with dry-run/source validation.
+      // Canonical shards are mutable. A store get may still return the bytes
+      // from immediately before our own overwrite, so classification and write
+      // verification use the cache-busted public reader shared with dry-run.
       const loaded = await readPublicJson(physicalPath, schema, { optional: true });
       if (loaded) return loaded.value;
     }
@@ -474,7 +476,7 @@ function executionDeps(
     assertSource: assertPlanSource,
     createExact: async (owner, path, value, expectedSha256) => {
       await createOwnedView(owner, path, value);
-      const loaded = await readStoredJson(path, CanonicalLifecycleMigrationReceipt.or(ReposShard), token);
+      const loaded = await readStoredJson(path, CanonicalLifecycleMigrationReceipt.or(ReposShard));
       if (!loaded || loaded.sha256 !== expectedSha256) {
         throw new Error(`${path} immutable receipt checksum mismatch`);
       }
@@ -504,8 +506,15 @@ function executionDeps(
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-  loadReadEnv();
+  const argv = process.argv.slice(2);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    console.log(usage());
+    process.exit(0);
+  }
+  const { selection, rest } = takeOpsFlags(argv);
+  const args = parseArgs(rest);
+  loadReadEnv(selection);
+  await assertPublicReadMatchesTarget(process.env, selection);
 
   if (!args.execute) {
     const bundle = await loadLiveBundle(args.inventoryPath);
@@ -522,9 +531,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  const token = loadWriteEnv();
+  loadWriteEnv(selection);
   const confirmed = args.confirm!;
-  let bundle = await loadStoredBundle(confirmed, token);
+  let bundle = await loadStoredBundle(confirmed);
   if (!bundle) {
     if (args.rollback) {
       throw new Error(`rollback receipt ${canonicalLifecycleReceiptPath(confirmed)} is missing`);
@@ -538,7 +547,7 @@ async function main(): Promise<void> {
   }
   if (args.planOut) writePlanFile(args.planOut, bundle);
 
-  const deps = executionDeps(token, bundle.plan);
+  const deps = executionDeps(bundle.plan);
   const result = args.rollback
     ? await rollbackCanonicalLifecycleMigration(bundle, confirmed, deps)
     : await executeCanonicalLifecycleMigration(bundle, confirmed, deps);

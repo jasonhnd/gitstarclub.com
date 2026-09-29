@@ -1,6 +1,7 @@
 import { ObjectStorePreconditionFailedError } from "./errors";
 import { sha256Hex } from "./s3-sign";
 import type {
+  ObjectGetBytesResult,
   ObjectGetResult,
   ObjectHeadResult,
   ObjectListOptions,
@@ -11,18 +12,33 @@ import type {
 } from "./types";
 
 type MemoryObject = {
+  bytes: Uint8Array;
   body: string;
   etag: string;
   contentType: string;
   size: number;
 };
 
-function etagFor(body: string): string {
-  return `"${sha256Hex(body).slice(0, 16)}"`;
+function bytesOf(body: string | Uint8Array): Uint8Array {
+  if (typeof body === "string") return new TextEncoder().encode(body);
+  const copy = new Uint8Array(body.byteLength);
+  copy.set(body);
+  return copy;
 }
 
-function toText(body: string | Uint8Array): string {
-  return typeof body === "string" ? body : new TextDecoder().decode(body);
+function etagFor(bytes: Uint8Array): string {
+  return `"${sha256Hex(bytes).slice(0, 16)}"`;
+}
+
+function remember(body: string | Uint8Array, contentType: string): MemoryObject {
+  const bytes = bytesOf(body);
+  return {
+    bytes,
+    body: typeof body === "string" ? body : new TextDecoder().decode(bytes),
+    etag: etagFor(bytes),
+    contentType,
+    size: bytes.byteLength,
+  };
 }
 
 export class MemoryObjectStore implements ObjectStore {
@@ -30,12 +46,11 @@ export class MemoryObjectStore implements ObjectStore {
 
   constructor(initial: Record<string, string> = {}) {
     for (const [path, body] of Object.entries(initial)) {
-      this.objects.set(path, { body, etag: etagFor(body), contentType: "application/json", size: body.length });
+      this.objects.set(path, remember(body, "application/json"));
     }
   }
 
   async put(path: string, body: string | Uint8Array, options: ObjectPutOptions = {}): Promise<ObjectPutResult> {
-    const text = toText(body);
     const existing = this.objects.get(path);
     if (options.ifMatch) {
       if (!existing || existing.etag !== options.ifMatch) {
@@ -44,12 +59,7 @@ export class MemoryObjectStore implements ObjectStore {
     } else if (options.allowOverwrite === false && existing) {
       throw new ObjectStorePreconditionFailedError(`object already exists: ${path}`);
     }
-    const stored: MemoryObject = {
-      body: text,
-      etag: etagFor(text),
-      contentType: options.contentType ?? "application/json",
-      size: new TextEncoder().encode(text).byteLength,
-    };
+    const stored = remember(body, options.contentType ?? "application/json");
     this.objects.set(path, stored);
     return { etag: stored.etag, url: path };
   }
@@ -59,6 +69,19 @@ export class MemoryObjectStore implements ObjectStore {
     if (!existing) return null;
     return {
       body: existing.body,
+      etag: existing.etag,
+      contentType: existing.contentType,
+      size: existing.size,
+    };
+  }
+
+  async getBytes(path: string): Promise<ObjectGetBytesResult | null> {
+    const existing = this.objects.get(path);
+    if (!existing) return null;
+    const body = new Uint8Array(existing.bytes.byteLength);
+    body.set(existing.bytes);
+    return {
+      body,
       etag: existing.etag,
       contentType: existing.contentType,
       size: existing.size,

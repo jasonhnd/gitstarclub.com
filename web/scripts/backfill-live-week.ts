@@ -3,11 +3,15 @@
 // 2026-W27 recovery after GITHUB_TOKEN outage (no pending/live daily rows).
 // GROSS WatchEvent counts for tracked repos; top-20 flow matching live cron.
 //
-// Full week:
+// Remote publish is dry-run unless --execute. Day files under /tmp are local.
+// Full week, preview then publish:
 //   bun run scripts/backfill-live-week.ts --week 2026-W27
+//   bun run scripts/backfill-live-week.ts --week 2026-W27 --execute
+// R2:
+//   bun run scripts/backfill-live-week.ts --store r2 --target pre --week 2026-W27 --execute
 // One day (writes partial state under /tmp, merge with --finalize):
 //   bun run scripts/backfill-live-week.ts --week 2026-W27 --date 2026-06-29
-//   bun run scripts/backfill-live-week.ts --week 2026-W27 --finalize
+//   bun run scripts/backfill-live-week.ts --week 2026-W27 --finalize --execute
 
 import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
@@ -15,11 +19,18 @@ import { Readable } from "node:stream";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { put } from "@vercel/blob";
-import { RankList } from "../lib/contracts";
-import { requireBlobWriteToken } from "../lib/runtime-config";
-import { loadWebEnvFiles, warnEnvFileDiagnostic } from "./lib/env";
 import { fileURLToPath } from "node:url";
+import { RankList } from "../lib/contracts";
+import { requireStorageWriteConfig } from "../lib/runtime-config";
+import { getWriteObjectStore } from "../lib/storage";
+import {
+  applyOpsSelection,
+  assertPublicReadMatchesTarget,
+  opsEnvKeys,
+  takeOpsFlags,
+  type OpsSelection,
+} from "../lib/storage/ops-target";
+import { loadWebEnvFiles, warnEnvFileDiagnostic } from "./lib/env";
 
 const TOP_N = 20;
 const HOUR_CONCURRENCY = 3;
@@ -27,30 +38,35 @@ const WEEK_RE = /^(\d{4})-W(\d{2})$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const webDir = fileURLToPath(new URL("..", import.meta.url));
 
-type Args = { week: string; dry: boolean; date: string | null; finalize: boolean };
+type Args = { week: string; dry: boolean; execute: boolean; date: string | null; finalize: boolean };
+
+const USAGE =
+  "Usage: bun run scripts/backfill-live-week.ts [--store blob|r2] [--target prod|pre] [--week YYYY-Www] [--date YYYY-MM-DD] [--finalize] [--execute] [--dry]\n--target requires --store r2.";
 
 function parseArgs(argv: string[]): Args {
   let week = "2026-W27";
   let dry = false;
+  let execute = false;
   let date: string | null = null;
   let finalize = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--dry") dry = true;
+    if (a === "--dry" || a === "--dry-run") dry = true;
+    else if (a === "--execute") execute = true;
     else if (a === "--finalize") finalize = true;
     else if (a === "--week") week = argv[++i] ?? "";
     else if (a.startsWith("--week=")) week = a.slice("--week=".length);
     else if (a === "--date") date = argv[++i] ?? "";
     else if (a.startsWith("--date=")) date = a.slice("--date=".length);
     else if (a === "-h" || a === "--help") {
-      console.log("Usage: bun run scripts/backfill-live-week.ts [--week YYYY-Www] [--date YYYY-MM-DD] [--finalize] [--dry]");
+      console.log(USAGE);
       process.exit(0);
     } else throw new Error(`Unknown arg: ${a}`);
   }
   if (!WEEK_RE.test(week)) throw new Error(`Invalid --week ${week}`);
   if (date && !DATE_RE.test(date)) throw new Error(`Invalid --date ${date}`);
   if (date && finalize) throw new Error("Use either --date or --finalize, not both");
-  return { week, dry, date, finalize };
+  return { week, dry, execute, date, finalize };
 }
 
 export function isoWeekDays(weekId: string): string[] {
@@ -187,7 +203,12 @@ async function countDay(date: string, tracked: Set<number>): Promise<Map<number,
   return day;
 }
 
-async function publishWeek(week: string, counts: Map<number, number>, blobBase: string, dry: boolean): Promise<{ path: string; items: RankList["items"] }> {
+async function publishWeek(
+  week: string,
+  counts: Map<number, number>,
+  readBase: string,
+  dry: boolean,
+): Promise<{ path: string; items: RankList["items"] }> {
   const items = topWeekFlowItems(counts, TOP_N);
   const payload = RankList.parse({
     meta: {
@@ -206,29 +227,32 @@ async function publishWeek(week: string, counts: Map<number, number>, blobBase: 
     console.log(`DRY RUN — would put ${path}`);
     return { path, items };
   }
-  const token = requireBlobWriteToken();
-  await put(path, JSON.stringify(payload), {
-    access: "public",
-    token,
+  requireStorageWriteConfig();
+  await getWriteObjectStore().put(path, JSON.stringify(payload), {
     allowOverwrite: true,
-    addRandomSuffix: false,
     contentType: "application/json",
     cacheControlMaxAge: 60,
   });
-  console.log(`wrote ${blobBase}/${path}`);
+  console.log(`wrote ${readBase}/${path}`);
   return { path, items };
 }
 
-export async function runBackfillLiveWeek(args: Args): Promise<{ path: string; items: RankList["items"] } | { saved: string }> {
+export async function runBackfillLiveWeek(
+  args: Args,
+  selection: OpsSelection,
+): Promise<{ path: string; items: RankList["items"] } | { saved: string }> {
+  const writing = args.execute && !args.dry;
   loadWebEnvFiles(webDir, {
-    keys: ["BLOB_BASE_URL", "BLOB_READ_WRITE_TOKEN", "NEXT_PUBLIC_BLOB_BASE_URL"],
+    keys: opsEnvKeys(selection, writing),
     onDiagnostic: warnEnvFileDiagnostic,
   });
-  const blobBase = (process.env.BLOB_BASE_URL ?? process.env.NEXT_PUBLIC_BLOB_BASE_URL ?? "").replace(/\/+$/, "");
-  if (!blobBase) throw new Error("BLOB_BASE_URL required");
+  applyOpsSelection(process.env, selection);
+  const readBase = await assertPublicReadMatchesTarget(process.env, selection);
 
   const days = isoWeekDays(args.week);
-  console.log(`backfill ${args.week} days=${days.join(",")} date=${args.date ?? "*"} finalize=${args.finalize} dry=${args.dry}`);
+  console.log(
+    `backfill ${args.week} days=${days.join(",")} date=${args.date ?? "*"} finalize=${args.finalize} dry=${!writing} store=${selection.store}`,
+  );
 
   if (args.finalize) {
     const weekCounts = new Map<number, number>();
@@ -238,10 +262,10 @@ export async function runBackfillLiveWeek(args: Args): Promise<{ path: string; i
       mergeCounts(weekCounts, part);
       console.log(`  loaded ${d} repos=${part.size}`);
     }
-    return publishWeek(args.week, weekCounts, blobBase, args.dry);
+    return publishWeek(args.week, weekCounts, readBase, !writing);
   }
 
-  const tracked = await loadTrackedRepoIds(blobBase);
+  const tracked = await loadTrackedRepoIds(readBase);
   console.log(`tracked repos=${tracked.size}`);
 
   const targets = args.date ? [args.date] : days;
@@ -270,11 +294,17 @@ export async function runBackfillLiveWeek(args: Args): Promise<{ path: string; i
     if (!part) throw new Error(`internal: missing ${d} after count`);
     mergeCounts(weekCounts, part);
   }
-  return publishWeek(args.week, weekCounts, blobBase, args.dry);
+  return publishWeek(args.week, weekCounts, readBase, !writing);
 }
 
 if (import.meta.main) {
-  runBackfillLiveWeek(parseArgs(process.argv.slice(2))).catch((err) => {
+  const argv = process.argv.slice(2);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    console.log(USAGE);
+    process.exit(0);
+  }
+  const { selection, rest } = takeOpsFlags(argv);
+  runBackfillLiveWeek(parseArgs(rest), selection).catch((err) => {
     console.error(err);
     process.exit(1);
   });

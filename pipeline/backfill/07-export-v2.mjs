@@ -11,13 +11,25 @@
 //                        node backfill/07-export-v2.mjs --no-upload  (export + local validation only)
 //                        node backfill/07-export-v2.mjs --rollback bootstrap-<id> --execute
 //                        node backfill/07-export-v2.mjs --rollback legacy-flat --execute
+// R2 dry-run:            node backfill/07-export-v2.mjs --store r2 --target pre --generation bootstrap-YYYYMMDDTHHMMSSZ
+// R2 execute:            node backfill/07-export-v2.mjs --store r2 --target pre --generation bootstrap-YYYYMMDDTHHMMSSZ --execute --initial-commit
+// R2 rollback:           node backfill/07-export-v2.mjs --store r2 --target pre --rollback bootstrap-<id> --execute
+//                        node backfill/07-export-v2.mjs --help
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { buildCanonicalMeta } from "../lib/canonical-meta.mjs";
-import { createBlobBootstrapStore } from "../lib/blob-bootstrap-store.mjs";
+import {
+  EXPORT_HELP,
+  formatRemotePlan,
+  parseBootstrapArgs,
+  preflightR2Identity,
+  remoteWriteEnabled,
+  resolveR2BucketName,
+  runRemoteStage,
+} from "../lib/bootstrap-cli.mjs";
 import { withBootstrapPublicationLease } from "../lib/bootstrap-lease.mjs";
 import {
   buildBootstrapPhaseManifest,
@@ -27,6 +39,13 @@ import {
   sha256Bytes,
   stageBootstrapPhase,
 } from "../lib/bootstrap-publication.mjs";
+import { withUploadRetry } from "../lib/upload-retry.mjs";
+
+const cli = parseBootstrapArgs(process.argv.slice(2));
+if (cli.help) {
+  console.log(EXPORT_HELP);
+  process.exit(0);
+}
 
 try {
   process.loadEnvFile(fileURLToPath(new URL("../.env", import.meta.url)));
@@ -41,18 +60,14 @@ const OUT = p("v2"); // local mirror; files live under OUT/<blob-path>
 const VIEWS = p("views");
 const VALIDATE_VIEWS = fileURLToPath(new URL("../../web/scripts/validate-views.ts", import.meta.url));
 const VALIDATE_CANONICAL = fileURLToPath(new URL("../../web/scripts/validate-bootstrap-canonical.ts", import.meta.url));
-const args = process.argv.slice(2);
-const generationIndex = args.indexOf("--generation");
-const generation = generationIndex >= 0 ? args[generationIndex + 1] : undefined;
-const generatedAtIndex = args.indexOf("--generated-at");
-const generatedAtArg = generatedAtIndex >= 0 ? args[generatedAtIndex + 1] : undefined;
-const noUpload = args.includes("--no-upload");
-const stageOnly = args.includes("--stage-only");
-const rollbackIndex = args.indexOf("--rollback");
-const rollbackRequested = rollbackIndex >= 0;
-const rollbackValue = rollbackRequested ? args[rollbackIndex + 1] : undefined;
+const generation = cli.generation;
+const generatedAtArg = cli.generatedAt;
+const noUpload = cli.noUpload;
+const stageOnly = cli.stageOnly;
+const rollbackRequested = cli.rollbackRequested;
+const rollbackValue = /** @type {string | undefined} */ (cli.rollback);
 const rollbackTarget =
-  rollbackValue === LEGACY_FLAT_TARGET || rollbackValue?.startsWith("bootstrap-")
+  rollbackValue === LEGACY_FLAT_TARGET || rollbackValue?.startsWith("bootstrap-") === true
     ? rollbackValue
     : undefined;
 const BUCKETS = 32;
@@ -111,27 +126,33 @@ function assertLocalManifestMatches(generation, phase, localItems, remotePhase) 
   }
 }
 
-const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 if (rollbackRequested) {
-  if (!args.includes("--execute")) throw new Error("bootstrap rollback requires --execute");
+  if (!cli.execute) throw new Error("bootstrap rollback requires --execute");
   if (!rollbackTarget) {
     throw new Error(
       "bootstrap rollback requires an explicit target: --rollback <bootstrap-id|legacy-flat> --execute",
     );
   }
-  if (!TOKEN) throw new Error("BLOB_READ_WRITE_TOKEN not set");
-  const store = createBlobBootstrapStore(TOKEN);
-  const result = await withBootstrapPublicationLease({
-    store,
-    generation: rollbackTarget,
-    operation: "rollback",
-    run: (assertCanCommit) =>
-      rollbackBootstrapGeneration({
+  if (cli.store === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error("BLOB_READ_WRITE_TOKEN not set");
+  }
+  const outcome = await runRemoteStage({
+    cli,
+    env: process.env,
+    stage: (store) =>
+      withBootstrapPublicationLease({
         store,
-        targetGeneration: rollbackTarget,
-        assertCanCommit,
+        generation: rollbackTarget,
+        operation: "rollback",
+        run: (assertCanCommit) =>
+          rollbackBootstrapGeneration({
+            store,
+            targetGeneration: rollbackTarget,
+            assertCanCommit,
+          }),
       }),
   });
+  const result = outcome.result;
   const previous = result.pointer?.previous_generation ?? result.previousPointer?.generation ?? "none";
   console.log(
     `rollback ${result.status}: target=${result.target} previous=${previous} objects=${result.verified.objectCount} bytes=${result.verified.totalBytes}`,
@@ -271,85 +292,83 @@ if (vue) console.log(`  sanity vuejs/vue: bucket=${bucketOf(vue.id)} d=${dById.g
 
 // --- validate, immutably stage, then atomically commit bootstrap/latest.json ---
 runValidator(VALIDATE_CANONICAL, `${OUT}/canonical/v2`, "canonical");
-if (noUpload) {
-  console.log("--no-upload: local canonical validation passed; skipped Blob staging and commit");
-  process.exit(0);
-}
-if (!TOKEN) throw new Error("BLOB_READ_WRITE_TOKEN not set — add to pipeline/.env or use --no-upload");
-
-const MAX_PER_SEC = 60;
-const CONCURRENCY = 12;
-const RETRIES = 4;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let nextStart = 0;
-async function gate() {
-  const now = Date.now();
-  const wait = Math.max(0, nextStart - now);
-  nextStart = Math.max(now, nextStart) + 1000 / MAX_PER_SEC;
-  if (wait > 0) await sleep(wait);
-}
-
-function withUploadRetry(store) {
-  return {
-    read: (path) => store.read(path),
-    put: (path, body, contentType) => store.put(path, body, contentType),
-    async create(path, body, contentType) {
-      for (let attempt = 1; ; attempt++) {
-        await gate();
-        try {
-          return await store.create(path, body, contentType);
-        } catch (error) {
-          if (attempt > RETRIES) throw error;
-          await sleep(500 * 2 ** (attempt - 1));
-        }
-      }
-    },
-  };
-}
-
-const items = writtenFiles.map((abs) => ({
+const stagedItems = writtenFiles.map((abs) => ({
   path: abs.slice(OUT.length + 1).replaceAll("\\", "/"),
   body: readFileSync(abs),
   contentType: "application/json",
 }));
-const blobStore = createBlobBootstrapStore(TOKEN);
-const store = withUploadRetry(blobStore);
-const staged = await stageBootstrapPhase({
-  generation,
-  phase: "canonical",
-  items,
-  store,
-  concurrency: CONCURRENCY,
-  onProgress: ({ completed, total }) => {
-    if (completed % 50 === 0 || completed === total) console.log(`  staged/verified ${completed}/${total}`);
-  },
-});
-console.log(
-  `canonical ${staged.status}: objects=${staged.manifest.object_count} bytes=${staged.manifest.total_bytes} created=${staged.created} reused=${staged.reused}`,
-);
-if (stageOnly) {
-  console.log("--stage-only: production pointer unchanged");
+const stagedBytes = stagedItems.reduce((sum, item) => sum + item.body.byteLength, 0);
+if (!remoteWriteEnabled(cli)) {
+  if (cli.store === "r2") {
+    const bucket = resolveR2BucketName(process.env, cli.target);
+    console.log(formatRemotePlan({ objects: stagedItems.length, bytes: stagedBytes, cli, bucket }));
+    console.log("dry-run: local canonical validation passed; no remote writes");
+  } else {
+    console.log("--no-upload: local canonical validation passed; skipped Blob staging and commit");
+  }
+  await preflightR2Identity(cli, process.env);
+  const outcome = await runRemoteStage({
+    cli,
+    env: process.env,
+    stage: async () => {
+      throw new Error("dry-run must not stage");
+    },
+  });
+  if (outcome.action !== "dry-run") throw new Error("dry-run opened a remote write");
   process.exit(0);
 }
+if (cli.store === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
+  throw new Error("BLOB_READ_WRITE_TOKEN not set — add to pipeline/.env or use --no-upload");
+}
 
-const committed = await withBootstrapPublicationLease({
-  store: blobStore,
-  generation,
-  operation: "publish",
-  run: (assertCanCommit) =>
-    commitBootstrapGeneration({
+const CONCURRENCY = 12;
+
+const items = stagedItems;
+await runRemoteStage({
+  cli,
+  env: process.env,
+  stage: async (blobStore) => {
+    const store = withUploadRetry(blobStore);
+    const staged = await stageBootstrapPhase({
       generation,
+      phase: "canonical",
+      items,
       store,
-      validate: async (verified) => {
-        assertLocalManifestMatches(generation, "base", localBaseItems(), verified.base);
-        assertLocalManifestMatches(generation, "canonical", items, verified.canonical);
-        runValidator(VALIDATE_VIEWS, VIEWS, "views");
-        runValidator(VALIDATE_CANONICAL, `${OUT}/canonical/v2`, "canonical");
+      concurrency: CONCURRENCY,
+      onProgress: ({ completed, total }) => {
+        if (completed % 50 === 0 || completed === total) console.log(`  staged/verified ${completed}/${total}`);
       },
-      assertCanCommit,
-    }),
+    });
+    console.log(
+      `canonical ${staged.status}: objects=${staged.manifest.object_count} bytes=${staged.manifest.total_bytes} created=${staged.created} reused=${staged.reused}`,
+    );
+    if (stageOnly) {
+      console.log("--stage-only: production pointer unchanged");
+      return staged;
+    }
+    const committed = await withBootstrapPublicationLease({
+      store: blobStore,
+      generation,
+      operation: "publish",
+      run: (assertCanCommit) =>
+        commitBootstrapGeneration({
+          generation,
+          store,
+          initialCommit: cli.initialCommit,
+          validate: async (verified) => {
+            assertLocalManifestMatches(generation, "base", localBaseItems(), verified.base);
+            assertLocalManifestMatches(generation, "canonical", items, verified.canonical);
+            runValidator(VALIDATE_VIEWS, VIEWS, "views");
+            runValidator(VALIDATE_CANONICAL, `${OUT}/canonical/v2`, "canonical");
+          },
+          assertCanCommit,
+        }),
+    });
+    console.log(
+      `${committed.status}: generation=${committed.pointer.generation} previous=${committed.pointer.previous_generation} objects=${committed.verified.objectCount} bytes=${committed.verified.totalBytes}`,
+    );
+    console.log("commit point: bootstrap/latest.json (single atomic pointer write)");
+    return committed;
+  },
 });
-console.log(
-  `${committed.status}: generation=${committed.pointer.generation} previous=${committed.pointer.previous_generation} objects=${committed.verified.objectCount} bytes=${committed.verified.totalBytes}`,
-);
-console.log("commit point: bootstrap/latest.json (single atomic pointer write)");
+if (stageOnly) process.exit(0);

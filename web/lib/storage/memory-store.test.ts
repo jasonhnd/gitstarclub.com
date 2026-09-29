@@ -7,6 +7,17 @@ import { BlobWorkflowLeaseStore } from "@/lib/workflows/lease";
 import { WorkflowLease } from "@/lib/contracts";
 
 describe("MemoryObjectStore CAS", () => {
+  test("getBytes keeps non-UTF-8 bytes that text get cannot", async () => {
+    const parquet = Uint8Array.from([0x50, 0x41, 0x52, 0x31, 0x00, 0xff, 0x0a, 0x80, 0x7f, 0x1f, 0x8b]);
+    const store = new MemoryObjectStore();
+    await store.put("canonical/star_daily.parquet", parquet, { contentType: "application/vnd.apache.parquet" });
+    const bytes = await store.getBytes("canonical/star_daily.parquet");
+    expect(bytes?.body).toEqual(parquet);
+    expect(Buffer.from((await store.get("canonical/star_daily.parquet"))?.body ?? "").equals(Buffer.from(parquet))).toBe(
+      false,
+    );
+  });
+
   test("create-if-absent and If-Match conflict return 412", async () => {
     const store = new MemoryObjectStore();
     const first = await store.put("ops/workflows/active.json", JSON.stringify({ n: 1 }), { allowOverwrite: false });
