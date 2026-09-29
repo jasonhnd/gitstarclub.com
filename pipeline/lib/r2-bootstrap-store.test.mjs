@@ -128,6 +128,21 @@ describe("R2 bootstrap store", () => {
     expect(Buffer.compare(await store.read("ops/workflows/active.json"), Buffer.from("two"))).toBe(0);
   });
 
+  test("compareAndSet with an empty etag sends no request", async () => {
+    const fake = createFakeR2();
+    fake.seedIdentity();
+    const store = storeFor(fake);
+    await store.put("ops/workflows/active.json", Buffer.from("one"));
+    const before = fake.requests.length;
+    for (const etag of [null, undefined, "", "   "]) {
+      await expect(store.compareAndSet("ops/workflows/active.json", etag, Buffer.from("two"))).rejects.toThrow(
+        /requires a non-empty etag/,
+      );
+    }
+    expect(fake.requests).toHaveLength(before);
+    expect(Buffer.compare(await store.read("ops/workflows/active.json"), Buffer.from("one"))).toBe(0);
+  });
+
   test("refuses a missing, wrong-bucket, or wrong-env identity marker before any write", async () => {
     const missing = createFakeR2();
     await expect(storeFor(missing).put("views/a.json", Buffer.from("x"))).rejects.toThrow(/marker is missing/);

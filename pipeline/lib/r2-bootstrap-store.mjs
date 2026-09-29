@@ -167,6 +167,9 @@ export function createR2BootstrapStore(config) {
       return true;
     },
     async compareAndSet(path, etag, body, contentType = "application/json") {
+      if (typeof etag !== "string" || etag.trim() === "") {
+        throw new Error("R2 compare-and-set requires a non-empty etag");
+      }
       const key = await writableKey(path);
       const response = await request("PUT", key, {
         body,
