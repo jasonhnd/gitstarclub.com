@@ -2,6 +2,7 @@ export { DualReadObjectStore } from "./dual-read-store";
 export { isObjectStoreConflict, ObjectStorePreconditionFailedError } from "./errors";
 export { MemoryObjectStore } from "./memory-store";
 export {
+  createR2BindingObjectStore,
   createR2S3ObjectStore,
   createReadObjectStore,
   createVercelBlobObjectStore,
@@ -11,6 +12,8 @@ export {
   getWriteObjectStore,
   r2StoreConfigFromEnv,
 } from "./object-store";
+export { R2BindingObjectStore, resolveDataBinding } from "./r2-binding-store";
+export type { R2BindingStoreConfig, R2Bucket } from "./r2-binding-store";
 export { R2S3ObjectStore } from "./r2-s3-store";
 export type { R2S3StoreConfig } from "./r2-s3-store";
 export type {

@@ -178,8 +178,8 @@ export function getWhitelistSearchHopBudgetMs(env: RuntimeEnv = process.env): nu
   return value;
 }
 
-export type StorageReadDriver = "blob" | "r2" | "r2_then_blob";
-export type StorageWriteDriver = "blob" | "r2";
+export type StorageReadDriver = "blob" | "r2_binding" | "r2_s3" | "r2" | "r2_then_blob";
+export type StorageWriteDriver = "blob" | "r2_binding" | "r2_s3" | "r2";
 
 /** Bucket-root object that names the bucket and which deploy env may write it. */
 export const BUCKET_IDENTITY_KEY = "_meta/bucket-identity.json";
@@ -197,17 +197,21 @@ export function getStorageReadDriver(env?: RuntimeEnv): StorageReadDriver {
   const runtime = configuredEnv(env);
   const raw = normalizeDriver(runtime.STORAGE_READ_DRIVER ?? runtime.READ_DRIVER);
   if (!raw || raw === "blob") return "blob";
+  if (raw === "r2_binding") return "r2_binding";
+  if (raw === "r2_s3") return "r2_s3";
   if (raw === "r2") return "r2";
   if (raw === "r2_then_blob") return "r2_then_blob";
-  throw new Error(`STORAGE_READ_DRIVER must be blob | r2 | r2_then_blob (got ${raw})`);
+  throw new Error(`STORAGE_READ_DRIVER must be blob | r2_binding | r2_s3 | r2 | r2_then_blob (got ${raw})`);
 }
 
 export function getStorageWriteDriver(env?: RuntimeEnv): StorageWriteDriver {
   const runtime = configuredEnv(env);
   const raw = normalizeDriver(runtime.STORAGE_WRITE_DRIVER ?? runtime.WRITE_DRIVER);
   if (!raw || raw === "blob") return "blob";
+  if (raw === "r2_binding") return "r2_binding";
+  if (raw === "r2_s3") return "r2_s3";
   if (raw === "r2") return "r2";
-  throw new Error(`STORAGE_WRITE_DRIVER must be blob | r2 (got ${raw})`);
+  throw new Error(`STORAGE_WRITE_DRIVER must be blob | r2_binding | r2_s3 | r2 (got ${raw})`);
 }
 
 export function getR2AccountId(env?: RuntimeEnv): string | undefined {
@@ -387,6 +391,8 @@ export function getPublicReadBases(env?: RuntimeEnv): string[] {
       if (!blob) throw new Error("BLOB_BASE_URL not set — point it at the Vercel Blob store base URL.");
       return [blob];
     case "r2":
+    case "r2_s3":
+    case "r2_binding":
       if (!r2) throw new Error("R2_PUBLIC_BASE_URL not set — public r2 reads need an R2 public base URL.");
       return [r2];
     case "r2_then_blob": {

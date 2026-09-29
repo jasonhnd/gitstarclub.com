@@ -19,6 +19,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Added
 
+- **Native R2 binding driver for the Worker (#561).** `STORAGE_READ_DRIVER` accepts `blob`, `r2_binding`, `r2_s3`, `r2`, and `r2_then_blob`. `STORAGE_WRITE_DRIVER` accepts `blob`, `r2_binding`, `r2_s3`, and `r2`. `r2` remains an alias of the S3 store. `r2_binding` uses the Worker `DATA` binding and does not read storage keys; a missing binding throws. Unset drivers and `blob` are unchanged. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). Does not bind the bucket in wrangler and does not cut DNS.
+
 - **Shared agent contract (#540).** Root `AGENTS.md` now restates branch, delivery, executor limits, verification commands, and repository constraints for every agent. Rules 1-4 stay as written. Rule 5 names the non-English site locales and the CJK-gate allowlist. Offline verification is a fresh worktree plus a clean bash process. Node and Bun archives are SHA-256 checked before use. `.grok/rules/pre-only.md`, `.delivery.yml`, and `docs/GEO.md` stay as they are. Plan: [540-agents-contract.md](../plans/540-agents-contract.md).
 
 - **CF preview Bearer full-refresh acceptance matrix.** After #486, docs now have a pass/fail table for preview Worker Bearer full refresh: `fold-decision.json` is required; `reason=no_closed_month` without month/week plans is normal; recompute is month/week/rest then `publish`/`gc`; fetch-origin OOM or Queue silence is fail; production `triggers.crons` stays `[]` and Vercel cron is not stopped. See [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Docs only; does not enable production CF Cron or stop Vercel.
@@ -37,6 +39,10 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 - **Vercel Web Analytics.** Enabled cookieless aggregate page-view measurement through Vercel Web Analytics and corrected the privacy page copy to reflect that no analytics cookies or personal data are collected.
 
 ### Changed
+
+- **Guarded R2 deletes resolve URL keys before the `_meta/` check (#561).** `del("r2://…/_meta/…")` and `del` of a public URL under `_meta/` are refused on both the S3 store and the binding store, before the identity marker is read.
+
+- **Guarded R2 writes refuse dot segments (#561).** `put` and `del` on both the S3 store and the binding store reject `.` and `..` path segments, including `%2e` and `%2e%2e`, before the bucket-identity check. That stops `new URL()` from collapsing `views/../_meta/x` into `_meta/`. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
 
 - **R2 write guards refuse a Vercel/`DEPLOY_ENV` conflict, `_meta/` writes, and unset Cloudflare fixtures (#559).** `VERCEL_ENV=production` with `DEPLOY_ENV` other than `production` refuses R2 writes. Fixture refresh on `HOSTING_TARGET=cf` requires a valid `DEPLOY_ENV`. The guarded store refuses `put`/`del` of any key under `_meta/`; an operator places `_meta/bucket-identity.json` out of band. The positive identity cache uses the store endpoint after extras. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
 
