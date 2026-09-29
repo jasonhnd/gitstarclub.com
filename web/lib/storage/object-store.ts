@@ -54,21 +54,47 @@ export function r2StoreConfigFromEnv(env?: ObjectStoreFactoryEnv): R2S3StoreConf
   };
 }
 
+type PrefixedKeyStore = {
+  physicalKey(path: string): string;
+};
+
 function isMetaNamespaceKey(key: string): boolean {
   const normalized = key.replace(/^\/+/, "");
   return normalized === "_meta" || normalized.startsWith("_meta/");
 }
 
-function assertMetaNamespaceUntouched(store: R2S3ObjectStore, paths: readonly string[]): void {
+/**
+ * `new URL()` removes `.` and `..` after one percent-decode, so
+ * `views/../_meta/x` and `views/%2e%2e/_meta/x` both become `_meta/x`.
+ * Reject those segments before the request is built.
+ */
+function hasDotSegment(key: string): boolean {
+  for (const segment of key.replace(/^\/+/, "").split("/")) {
+    if (segment === "." || segment === "..") return true;
+    try {
+      const decoded = decodeURIComponent(segment);
+      if (decoded === "." || decoded === "..") return true;
+    } catch {
+      // A malformed escape is not a dot segment.
+    }
+  }
+  return false;
+}
+
+function assertWritePathsAllowed(store: PrefixedKeyStore, paths: readonly string[]): void {
   for (const path of paths) {
-    if (isMetaNamespaceKey(path) || isMetaNamespaceKey(store.physicalKey(path))) {
+    const physical = store.physicalKey(path);
+    if (hasDotSegment(path) || hasDotSegment(physical)) {
+      throw new Error('refusing R2 writes: path contains "." or ".." segments');
+    }
+    if (isMetaNamespaceKey(path) || isMetaNamespaceKey(physical)) {
       throw new Error("refusing R2 writes: keys under _meta/ are placed out of band");
     }
   }
 }
 
-function withBucketIdentityGuard(
-  store: R2S3ObjectStore,
+function withBucketIdentityGuard<T extends ObjectStore & PrefixedKeyStore>(
+  store: T,
   env: ObjectStoreFactoryEnv,
   bucket: string,
   endpoint: string,
@@ -78,14 +104,14 @@ function withBucketIdentityGuard(
     get(target, prop, receiver) {
       if (prop === "put") {
         return async (path: string, body: string | Uint8Array, options?: ObjectPutOptions) => {
-          assertMetaNamespaceUntouched(target, [path]);
+          assertWritePathsAllowed(target, [path]);
           await assertR2WritesAllowed(env, readIdentity, bucket, endpoint);
           return target.put(path, body, options);
         };
       }
       if (prop === "del") {
         return async (paths: string | string[]) => {
-          assertMetaNamespaceUntouched(target, Array.isArray(paths) ? paths : [paths]);
+          assertWritePathsAllowed(target, Array.isArray(paths) ? paths : [paths]);
           await assertR2WritesAllowed(env, readIdentity, bucket, endpoint);
           return target.del(paths);
         };

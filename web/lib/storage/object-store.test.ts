@@ -193,6 +193,16 @@ describe("bucket identity write guard", () => {
     expect(calls).toEqual([]);
   });
 
+  test("refuses dot segments that would collapse into _meta/ through URL normalization", async () => {
+    const { store, calls } = guardedStore(() => {
+      throw new Error("should not fetch");
+    });
+    await expect(store.put("views/../_meta/x", "{}")).rejects.toThrow('"." or ".."');
+    await expect(store.put("views/%2e%2e/_meta/x", "{}")).rejects.toThrow('"." or ".."');
+    await expect(store.del("views/./../_meta/x")).rejects.toThrow('"." or ".."');
+    expect(calls).toEqual([]);
+  });
+
   test("refuses a physical key under _meta/ when the prefix is the meta namespace", async () => {
     const store = createR2S3ObjectStore(
       { DEPLOY_ENV: "pre", ...r2Credentials },
