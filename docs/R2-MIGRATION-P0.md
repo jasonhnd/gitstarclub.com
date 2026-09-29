@@ -87,6 +87,7 @@ An R2 write driver (`r2`, `r2_s3`, or `r2_binding`) is rejected when:
 - `VERCEL_ENV=production` and `DEPLOY_ENV` is not `production`, or
 - the `put` or `del` path contains a `.` or `..` segment, including one percent-encoding (`%2e`, `%2e%2e`), or
 - the `put` or `del` key is under `_meta/` (the caller path, or the key after `R2_PREFIX`), or
+- `del` names that key as an `r2://` URL or a public URL (`del` resolves those to the object key first; `r2://` is a bucket-root key and does not add `R2_PREFIX`), or
 - `R2_BUCKET` is unset, or
 - `_meta/bucket-identity.json` at the bucket root is missing, unreadable, or its `deploy_env` / `bucket` does not match `DEPLOY_ENV` and `R2_BUCKET`.
 

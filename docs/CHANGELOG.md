@@ -40,6 +40,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
+- **Guarded R2 deletes resolve URL keys before the `_meta/` check (#561).** `del("r2://…/_meta/…")` and `del` of a public URL under `_meta/` are refused on both the S3 store and the binding store, before the identity marker is read.
+
 - **Guarded R2 writes refuse dot segments (#561).** `put` and `del` on both the S3 store and the binding store reject `.` and `..` path segments, including `%2e` and `%2e%2e`, before the bucket-identity check. That stops `new URL()` from collapsing `views/../_meta/x` into `_meta/`. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
 
 - **R2 write guards refuse a Vercel/`DEPLOY_ENV` conflict, `_meta/` writes, and unset Cloudflare fixtures (#559).** `VERCEL_ENV=production` with `DEPLOY_ENV` other than `production` refuses R2 writes. Fixture refresh on `HOSTING_TARGET=cf` requires a valid `DEPLOY_ENV`. The guarded store refuses `put`/`del` of any key under `_meta/`; an operator places `_meta/bucket-identity.json` out of band. The positive identity cache uses the store endpoint after extras. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
