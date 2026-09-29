@@ -1,7 +1,7 @@
 ---
 owner: operations / storage
-status: active
-last_reviewed: 2026-09-29
+status: superseded
+last_reviewed: 2026-09-30
 source_of_truth_for:
   - Cloudflare R2 P0 storage adapter
   - Blob/R2 dual-read and write-driver switches
@@ -9,6 +9,8 @@ source_of_truth_for:
 ---
 
 # R2 migration P0 (Blob adapter)
+
+> **Superseded.** Current storage status, stages, and rollback are in [R2-CUTOVER.md](./R2-CUTOVER.md). The sections below are history. The JSON store does not use the MEDIA binding. MEDIA stays on the assets bucket `gitstarclub-assets` and is not `gitstarclub-data-pre` or `gitstarclub-data-prod`. Preview JSON uses the DATA binding.
 
 > Cloudflare migrate **P0** only: injectable object-store drivers for Vercel Blob,
 > the R2 S3 API, and the Worker R2 binding. This does **not** cut DNS, does **not**
@@ -29,12 +31,10 @@ full Next app, DNS, paid R2/Workers plan purchases, emptying production Blob.
 Workflow SDK removal and non-production CF Cron/Queue are P1; see
 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md).
 
-Prepared Cloudflare resources (documentation only; this PR still reads Vercel Blob
-by default):
+Prepared Cloudflare resources in the original P0 note (historical; the account id below is not a secret, and it is not a write instruction):
 
 - account_id: `00f850e853e4c7f9627233d51a6e30a1`
-- R2 bucket: `gitstarclub-assets`
-- Worker shell: `gitstarclub-web` with binding `MEDIA` → that bucket (not used by the S3 adapter). The native driver reads a separate `DATA` binding. Wrangler does not bind `DATA` yet.
+- The JSON store does not use the MEDIA binding. MEDIA remains the assets bucket `gitstarclub-assets`. It is not the data bucket. Preview `env.pre` binds DATA to `gitstarclub-data-pre`. The production top-level Worker does not bind DATA yet. See [R2-CUTOVER.md](./R2-CUTOVER.md).
 - Object key prefix: unset (`R2_PREFIX` defaults to empty). Writes are gated by `_meta/bucket-identity.json`, not by a prefix.
 
 ## Default behavior (no regression)
@@ -112,7 +112,7 @@ A passing check is cached for the isolate. The cache key is the S3 endpoint the 
 
 `new URL()` removes `.` and `..` after one percent-decode, so `views/../_meta/x` and `views/%2e%2e/_meta/x` would otherwise be written as `_meta/x`. The guard rejects those segments before the request is built. The binding store returns the quoted `httpEtag`. Pass that value back as `ifMatch`.
 
-An operator places `_meta/bucket-identity.json` out of band, once per bucket, before any application write. Application code never `put`s or deletes a key under `_meta/`. Example for the preview bucket (operators only; CI does not run this):
+An operator places `_meta/bucket-identity.json` out of band, once per bucket, before any application write. Application code never `put`s or deletes a key under `_meta/`. The shell example below is historical and names the assets bucket. Do not run it. Data-bucket markers belong on `gitstarclub-data-pre` and `gitstarclub-data-prod`. See [R2-CUTOVER.md](./R2-CUTOVER.md).
 
 ```bash
 printf '%s\n' '{"bucket":"gitstarclub-assets","deploy_env":"pre"}' | wrangler r2 object put gitstarclub-assets/_meta/bucket-identity.json --pipe
@@ -146,7 +146,4 @@ bun scripts/sync-blob-to-r2.ts --prefix views/ --execute
 
 - Production read primary is still Vercel Blob.
 - Apex / www DNS and Cloudflare orange-cloud are unchanged.
-- The Worker `MEDIA` binding is used by the P3 host (`workers/gitstarclub-web`).
-  `r2` and `r2_s3` still talk S3 from Node. `r2_binding` talks to `DATA` only when that binding exists.
-  Wrangler does not bind `DATA` in this change.
-  See [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md). Production reads stay Blob.
+- The JSON Worker does not use the MEDIA binding. MEDIA stays on the assets bucket `gitstarclub-assets` and is not the data store. `r2` and `r2_s3` still talk S3 from Node. `r2_binding` talks to DATA only. Preview `env.pre` binds DATA; this P0 text originally said wrangler did not. See [R2-CUTOVER.md](./R2-CUTOVER.md) and [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md). Production still reads Vercel Blob until cutover.
