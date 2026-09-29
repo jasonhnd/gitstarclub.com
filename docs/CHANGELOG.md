@@ -44,6 +44,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
+- **R2 cutover runbook (#569).** [R2-CUTOVER.md](./R2-CUTOVER.md) is the storage status and the stage plan (0 stop-bleed through 6 retire Blob). Stage 1 code is done. Production still reads Vercel Blob until cutover. [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) and [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) are superseded history. The JSON store does not use the MEDIA binding. Does not create buckets, change DNS, or deploy.
+
 - **Preview Worker reads its own R2 bucket (#567).** `env.pre` binds `DATA` to `gitstarclub-data-pre`, sets `DEPLOY_ENV=pre`, `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, and `R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com`. `R2_PREFIX` stays unset. Preview `MIN_TRACKED_STARS` is `10000`, matching production. `BLOB_*`, `VIEWS_VERSION_FALLBACK`, `WORKFLOW_COLD_START`, and `PREFLIGHT_RELAX_EMPTY_SHARDS` are absent on `env.pre`. The 1k cold-start experiment is paused; restoring it is an owner decision. `cf:build` refuses a shell public read base that does not match the target wrangler env. A loopback fixture is still allowed. Production top-level wrangler config is unchanged and still reads Vercel Blob until I-5b. Does not create buckets or deploy.
 
 - **Guarded R2 deletes resolve URL keys before the `_meta/` check (#561).** `del("r2://…/_meta/…")` and `del` of a public URL under `_meta/` are refused on both the S3 store and the binding store, before the identity marker is read.
