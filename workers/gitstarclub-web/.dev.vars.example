@@ -3,7 +3,12 @@ NEXTJS_ENV=production
 HOSTING_TARGET=cf
 # Cron HTTP origin for handleScheduled dispatch. Preview host, not production.
 CF_CRON_ORIGIN=https://pre.gitstarclub.com
-# Public Blob read base (same store the Vercel site reads). Not a write token.
-BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+# Preview reads its own R2 bucket. Writes use the DATA binding. No storage keys.
+DEPLOY_ENV=pre
+STORAGE_READ_DRIVER=r2
+STORAGE_WRITE_DRIVER=r2_binding
+R2_BUCKET=gitstarclub-data-pre
+R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com
+# R2_PREFIX stays unset (bucket root).
 # Optional. Needed only to POST /preview/invalidate or /start during local smoke.
 CRON_SECRET=replace-with-local-preview-secret
