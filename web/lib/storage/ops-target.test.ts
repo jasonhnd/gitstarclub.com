@@ -7,6 +7,7 @@ import {
   firstPositional,
   opsCredentialsPresent,
   opsEnvKeys,
+  assertPublicReadMatchesTarget,
   publicReadBaseForOps,
   readOpsProcessEnv,
   resolveOpsBucketName,
@@ -92,6 +93,18 @@ describe("ops target selection", () => {
     expect(publicReadBaseForOps({ R2_PUBLIC_BASE_URL: "https://r2.example.com" }, { store: "r2", target: "pre" })).toBe(
       "https://r2.example.com",
     );
+    expect(
+      publicReadBaseForOps(
+        { R2_PUBLIC_BASE_URL: "https://generic.example", R2_PUBLIC_BASE_URL_PRE: "https://pre.example/" },
+        { store: "r2", target: "pre" },
+      ),
+    ).toBe("https://pre.example");
+    expect(
+      publicReadBaseForOps(
+        { R2_PUBLIC_BASE_URL: "https://generic.example", R2_PUBLIC_BASE_URL_PROD: "https://prod.example" },
+        { store: "r2", target: "prod" },
+      ),
+    ).toBe("https://prod.example");
     expect(() => publicReadBaseForOps({}, { store: "blob", target: null })).toThrow(/BLOB_BASE_URL not set/);
     expect(() => publicReadBaseForOps({}, { store: "r2", target: "prod" })).toThrow(/R2_PUBLIC_BASE_URL not set/);
     expect(opsEnvKeys({ store: "blob", target: null }, false)).not.toContain("BLOB_READ_WRITE_TOKEN");
@@ -115,7 +128,52 @@ describe("ops target selection", () => {
       "R2_BUCKET",
       "R2_BUCKET_PRE",
       "R2_BUCKET_PROD",
+      "R2_PUBLIC_BASE_URL_PRE",
+      "R2_PUBLIC_BASE_URL_PROD",
     ]);
+  });
+
+  test("R2 public identity must match the target and Blob does not fetch", async () => {
+    const env = { R2_PUBLIC_BASE_URL_PRE: "https://pre.example", R2_BUCKET_PRE: "gitstarclub-data-pre" };
+    const selection = { store: "r2" as const, target: "pre" as const };
+    const calls: Array<{ url: string; cache: RequestCache | undefined }> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      calls.push({ url: String(input), cache: init?.cache });
+      return new Response(JSON.stringify({ bucket: "gitstarclub-data-pre", deploy_env: "pre" }), { status: 200 });
+    };
+    expect(await assertPublicReadMatchesTarget(env, selection, fetchImpl)).toBe("https://pre.example");
+    expect(calls).toEqual([{ url: "https://pre.example/_meta/bucket-identity.json", cache: "no-store" }]);
+
+    await expect(
+      assertPublicReadMatchesTarget(env, selection, async () =>
+        new Response(JSON.stringify({ bucket: "gitstarclub-data-prod", deploy_env: "production" }), { status: 200 }),
+      ),
+    ).rejects.toThrow(/does not match target "gitstarclub-data-pre"/);
+    await expect(
+      assertPublicReadMatchesTarget(env, selection, async () =>
+        new Response(JSON.stringify({ bucket: "gitstarclub-data-pre", deploy_env: "production" }), { status: 200 }),
+      ),
+    ).rejects.toThrow(/deploy_env=production/);
+    await expect(
+      assertPublicReadMatchesTarget(env, selection, async () => new Response("missing", { status: 404 })),
+    ).rejects.toThrow(/unreadable \(404\)/);
+    await expect(
+      assertPublicReadMatchesTarget(env, selection, async () => new Response("not-json", { status: 200 })),
+    ).rejects.toThrow(/not JSON/);
+    await expect(
+      assertPublicReadMatchesTarget(env, selection, async () => {
+        throw new Error("offline");
+      }),
+    ).rejects.toThrow(/unreadable \(offline\)/);
+
+    const blobCalls: string[] = [];
+    expect(
+      await assertPublicReadMatchesTarget({ BLOB_BASE_URL: "https://blob.example.com" }, { store: "blob", target: null }, async () => {
+        blobCalls.push("fetch");
+        throw new Error("blob must not fetch");
+      }),
+    ).toBe("https://blob.example.com");
+    expect(blobCalls).toHaveLength(0);
   });
 
   test("confirm values are not treated as the positional prefix", () => {

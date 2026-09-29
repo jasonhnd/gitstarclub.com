@@ -25,8 +25,8 @@ import { requireStorageWriteConfig } from "../lib/runtime-config";
 import { getWriteObjectStore } from "../lib/storage";
 import {
   applyOpsSelection,
+  assertPublicReadMatchesTarget,
   opsEnvKeys,
-  publicReadBaseForOps,
   takeOpsFlags,
   type OpsSelection,
 } from "../lib/storage/ops-target";
@@ -247,7 +247,7 @@ export async function runBackfillLiveWeek(
     onDiagnostic: warnEnvFileDiagnostic,
   });
   applyOpsSelection(process.env, selection);
-  const readBase = publicReadBaseForOps(process.env, selection);
+  const readBase = await assertPublicReadMatchesTarget(process.env, selection);
 
   const days = isoWeekDays(args.week);
   console.log(

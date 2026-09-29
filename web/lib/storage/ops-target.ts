@@ -92,12 +92,59 @@ export function applyOpsSelection(env: OpsEnv, selection: OpsSelection): void {
 
 export function publicReadBaseForOps(env: OpsEnv, selection: OpsSelection): string {
   if (selection.store === "r2") {
-    const base = (env.R2_PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
+    if (selection.target !== "prod" && selection.target !== "pre") {
+      throw new Error("--store r2 requires --target prod|pre");
+    }
+    const named = selection.target === "prod" ? env.R2_PUBLIC_BASE_URL_PROD : env.R2_PUBLIC_BASE_URL_PRE;
+    const base = (named?.trim() || env.R2_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
     if (!base) throw new Error("R2_PUBLIC_BASE_URL not set");
     return base;
   }
   const base = (env.BLOB_BASE_URL ?? env.NEXT_PUBLIC_BLOB_BASE_URL ?? "").replace(/\/+$/, "");
   if (!base) throw new Error("BLOB_BASE_URL not set");
+  return base;
+}
+
+/**
+ * Blob returns the public base and does not fetch. R2 fetches the identity
+ * marker from that base and refuses a missing marker or a bucket that does
+ * not match `--target`, before the script plans a write.
+ */
+export async function assertPublicReadMatchesTarget(
+  env: OpsEnv,
+  selection: OpsSelection,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const base = publicReadBaseForOps(env, selection);
+  if (selection.store !== "r2" || (selection.target !== "prod" && selection.target !== "pre")) return base;
+  const expectedBucket = resolveOpsBucketName(env, selection.target);
+  const expectedEnv = deployEnvForTarget(selection.target);
+  let response: Response;
+  try {
+    response = await fetchImpl(`${base}/_meta/bucket-identity.json`, { cache: "no-store" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`refusing R2 plan: public bucket identity is unreadable (${message})`);
+  }
+  if (!response.ok) {
+    throw new Error(`refusing R2 plan: public bucket identity at ${base} is unreadable (${response.status})`);
+  }
+  let identity: unknown;
+  try {
+    identity = await response.json();
+  } catch {
+    throw new Error(`refusing R2 plan: public bucket identity at ${base} is unreadable (not JSON)`);
+  }
+  const record = identity && typeof identity === "object" ? (identity as { bucket?: unknown; deploy_env?: unknown }) : {};
+  if (typeof record.bucket !== "string" || record.bucket !== expectedBucket) {
+    const seen = typeof record.bucket === "string" ? record.bucket : "";
+    throw new Error(`refusing R2 plan: public identity bucket "${seen}" does not match target "${expectedBucket}"`);
+  }
+  if (record.deploy_env !== expectedEnv) {
+    throw new Error(
+      `refusing R2 plan: public identity deploy_env=${String(record.deploy_env)} does not match --target ${selection.target} (expected ${expectedEnv})`,
+    );
+  }
   return base;
 }
 
@@ -109,6 +156,8 @@ export function opsEnvKeys(selection: OpsSelection, writing: boolean): string[] 
   }
   const keys = [
     "R2_PUBLIC_BASE_URL",
+    "R2_PUBLIC_BASE_URL_PRE",
+    "R2_PUBLIC_BASE_URL_PROD",
     "R2_BUCKET",
     "R2_BUCKET_PRE",
     "R2_BUCKET_PROD",
@@ -141,6 +190,8 @@ export function readOpsProcessEnv(): OpsEnv {
     R2_BUCKET_PRE: process.env.R2_BUCKET_PRE,
     R2_BUCKET: process.env.R2_BUCKET,
     AWS_S3_BUCKET: process.env.AWS_S3_BUCKET,
+    R2_PUBLIC_BASE_URL_PROD: process.env.R2_PUBLIC_BASE_URL_PROD,
+    R2_PUBLIC_BASE_URL_PRE: process.env.R2_PUBLIC_BASE_URL_PRE,
   };
 }
 

@@ -15,8 +15,8 @@ import { computeAllViews } from "../lib/workflows/recompute";
 import { validateVersion } from "../lib/workflows/steps/validate";
 import {
   applyOpsSelection,
+  assertPublicReadMatchesTarget,
   opsEnvKeys,
-  publicReadBaseForOps,
   takeOpsFlags,
 } from "../lib/storage/ops-target";
 import { loadWebEnvFiles, warnEnvFileDiagnostic } from "./lib/env";
@@ -59,7 +59,7 @@ applyOpsSelection(process.env, selection);
 
 let base: string;
 try {
-  base = publicReadBaseForOps(process.env, selection);
+  base = await assertPublicReadMatchesTarget(process.env, selection);
   if (writing) requireStorageWriteConfig();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
