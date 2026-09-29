@@ -307,9 +307,18 @@ describe("validateCanonicalGeneration", () => {
     );
   });
 
-  test("resolveCanonicalEmptyShardPolicy is fail-closed unless the preview flag is on", () => {
+  test("resolveCanonicalEmptyShardPolicy arms only when DEPLOY_ENV=pre", () => {
     expect(resolveCanonicalEmptyShardPolicy({})).toBe("fail-closed");
-    expect(resolveCanonicalEmptyShardPolicy({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1" })).toBe(PREVIEW_EMPTY_SHARD_POLICY);
+    expect(resolveCanonicalEmptyShardPolicy({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1" })).toBe("fail-closed");
+    expect(resolveCanonicalEmptyShardPolicy({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1", HOSTING_TARGET: "cf" })).toBe(
+      "fail-closed",
+    );
+    expect(resolveCanonicalEmptyShardPolicy({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1", DEPLOY_ENV: "pre" })).toBe(
+      PREVIEW_EMPTY_SHARD_POLICY,
+    );
+    expect(
+      resolveCanonicalEmptyShardPolicy({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1", DEPLOY_ENV: "production" }),
+    ).toBe("fail-closed");
     expect(
       resolveCanonicalEmptyShardPolicy({ PREFLIGHT_RELAX_EMPTY_SHARDS: "1", VERCEL_ENV: "production" }),
     ).toBe("fail-closed");

@@ -52,6 +52,7 @@ const STATIC_PROTECTED_PATHS = [
   "rank/",
   "search/",
   "views/latest.json",
+  "_meta/",
 ] as const;
 
 // These are container roots, not deletable generations. They cannot be part of

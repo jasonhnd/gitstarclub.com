@@ -61,6 +61,7 @@ beforeEach(() => {
   reads = [];
   delete process.env.PREFLIGHT_RELAX_EMPTY_SHARDS;
   delete process.env.VERCEL_ENV;
+  delete process.env.DEPLOY_ENV;
 });
 
 /*
@@ -212,6 +213,7 @@ describe("preflightCanonical", () => {
       generated_at: "2026-06-02T14:32:57.214Z",
     };
     process.env.PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
+    process.env.DEPLOY_ENV = "pre";
     missingPaths = new Set([
       "canonical/v2/repos/4.json",
       "canonical/v2/repos/6.json",
@@ -251,6 +253,7 @@ describe("preflightCanonical", () => {
       generated_at: "2026-06-02T14:32:57.214Z",
     };
     process.env.PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
+    process.env.DEPLOY_ENV = "pre";
     seriesPresent = false;
 
     await expect(preflightCanonical("refresh-preview-empty-series")).resolves.toMatchObject({

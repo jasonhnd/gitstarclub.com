@@ -44,6 +44,30 @@ describe("runRefreshStepRoute", () => {
     expect(executeFixture).not.toHaveBeenCalled();
   });
 
+  test("rejects fixture jobs when DEPLOY_ENV=production", async () => {
+    const executeFixture = mock(async () => ({ name: "startRun" }));
+    const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      env: { NODE_ENV: "test", DEPLOY_ENV: "production" },
+      executeFixture,
+      recordCheckpoint: async () => {},
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: "Fixture refresh is not allowed on this runtime" });
+    expect(executeFixture).not.toHaveBeenCalled();
+  });
+
+  test("runs a fixture step on DEPLOY_ENV=pre when an executor is configured", async () => {
+    const executeFixture = mock(async () => ({ name: "startRun" }));
+    const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      env: { NODE_ENV: "test", DEPLOY_ENV: "pre" },
+      kind: "memory",
+      executeFixture,
+      recordCheckpoint: async () => {},
+    });
+    expect(response.status).toBe(200);
+    expect(executeFixture).toHaveBeenCalledTimes(1);
+  });
+
   test("executes one full step and completes it", async () => {
     const executeFull = mock(async () => ({ name: "startRun", startedAt: "2026-09-16T00:00:00.000Z", fencingToken: 4 }));
     const complete: string[] = [];
