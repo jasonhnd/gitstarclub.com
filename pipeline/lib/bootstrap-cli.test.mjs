@@ -80,6 +80,14 @@ describe("bootstrap CLI", () => {
     expect(() => parseBootstrapArgs(["--initial-commit", "--generation", "bootstrap-20260717T120000Z"])).toThrow(
       /requires --store r2/,
     );
+    expect(() => parseBootstrapArgs(["--target", "prod", "--generation", "bootstrap-abc"])).toThrow(
+      /--target requires --store r2/,
+    );
+    expect(() => parseBootstrapArgs(["--target", "pre", "--generation", "bootstrap-abc", "--execute"])).toThrow(
+      /--target requires --store r2/,
+    );
+    expect(() => parseBootstrapArgs(["--excute"])).toThrow(/unknown argument --excute/);
+    expect(parseBootstrapArgs(["--help", "--bogus"]).help).toBe(true);
   });
 
   test("06 and 07 help document the R2 flags", () => {

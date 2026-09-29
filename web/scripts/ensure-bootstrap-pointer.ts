@@ -36,7 +36,7 @@ const HELP = `Commit one discovered sealed bootstrap generation. Dry-run unless 
   bun scripts/ensure-bootstrap-pointer.ts --store r2 --target pre
   bun scripts/ensure-bootstrap-pointer.ts --store r2 --target pre --execute --initial-commit
 
---store blob is the default and does not take --initial-commit.
+--store blob is the default and does not take --initial-commit or --target.
 --store r2 requires --target prod|pre. Writes use the storage driver and the bucket-identity marker.
 --initial-commit is R2 only, and only when bootstrap/latest.json, views/latest.json, and canonical/v2/meta.json are absent.
 `;

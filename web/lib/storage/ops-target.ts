@@ -31,6 +31,7 @@ export function takeOpsFlags(argv: readonly string[]): { selection: OpsSelection
     else rest.push(arg);
   }
   if (store !== "blob" && store !== "r2") throw new Error("--store must be blob or r2");
+  if (target !== null && store !== "r2") throw new Error("--target requires --store r2");
   if (target !== null && target !== "prod" && target !== "pre") throw new Error("--target must be prod or pre");
   if (store === "r2" && target !== "prod" && target !== "pre") {
     throw new Error("--store r2 requires --target prod|pre");

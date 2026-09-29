@@ -92,7 +92,7 @@ function usage(): string {
     "",
     "Options:",
     "  --store blob|r2     Default blob. r2 requires --target prod|pre.",
-    "  --target prod|pre   Bucket and deploy_env for --store r2.",
+    "  --target prod|pre   Required with --store r2. Refused unless --store r2.",
     "  --inventory <file>  Reviewed immutable whitelist history inventory.",
     "  --plan-out <file>   Create a local full-plan JSON file; existing unequal files are refused.",
     "  --full              Print the full deterministic plan to stdout.",
