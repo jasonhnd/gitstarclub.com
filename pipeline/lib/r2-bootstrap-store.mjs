@@ -140,6 +140,9 @@ export function createR2BootstrapStore(config) {
     async readSnapshot(path) {
       return readKey(normalizeKey(path));
     },
+    async checkIdentity() {
+      await ensureIdentity();
+    },
     async create(path, body, contentType = "application/octet-stream") {
       const key = await writableKey(path);
       const response = await request("PUT", key, {
