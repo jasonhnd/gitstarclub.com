@@ -28,7 +28,7 @@ These are non-negotiable for the production system. New features must respect al
 
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
 2. **Zero runtime database.** Read-side state lives in versioned Blob views resolved through a publish pointer; there is no SQL connection to open.
-3. **Cloudflare hosting.** Production and preview use Cloudflare Workers with OpenNext; Vercel Blob remains the JSON store. Google Analytics and other third-party tracking scripts are intentionally unsupported.
+3. **Cloudflare hosting.** Production and preview use Cloudflare Workers with OpenNext. JSON is in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)). Google Analytics and other third-party tracking scripts are intentionally unsupported.
 4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, service-worker registration, and Vercel Web Analytics.
 5. **Recurring work is hosted, not laptop-bound.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) is driven by scheduled or authenticated triggers and runs as ordinary async steps. Local pipeline runs are reserved for one-off bootstrap.
 
@@ -42,7 +42,7 @@ The same data layer also operates AI-free: features that look like they would ca
 | Language / toolchain | TypeScript 6, React 19, Zod 4, Node 24, bun | |
 | Styling | Tailwind 4 + Material 3 Expressive tokens (graphite + amber), hand-authored in `web/app/globals.css` following the M3 system color role taxonomy | |
 | Fonts | Plus Jakarta Sans (variable sans), Geist Mono (numerals, repo names) | |
-| Read-side data | Versioned JSON views in Vercel Blob, served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
+| Read-side data | Versioned JSON views in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)), served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
 | Live-overlay data | Immutable `live/generations/<run_id>/**`, selected by `live/latest.json` | Atomic current snapshot; period files use bounded validated manifest history until folded |
 | Recurring data refresh | Cron routes + step runtime (multi-step, Blob checkpoint; no Workflow SDK) | Production trigger source is under investigation; see OPS.md |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
@@ -58,7 +58,7 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 │  BigQuery   →   GH Archive WatchEvent (repo_id, day, gross) │
 │  GraphQL    →   metadata + current_stars (authoritative)    │
 │  DuckDB     →   star_daily.parquet, milestones, JSON views  │
-│  Upload     →   Vercel Blob                                  │
+│  Upload     →   Cloudflare R2 (production still reads Vercel Blob until cutover) │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─ Recurring recompute (Cron routes + step runtime) ──────────┐

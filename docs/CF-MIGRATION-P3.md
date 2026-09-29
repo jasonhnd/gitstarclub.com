@@ -130,11 +130,8 @@ P0 port (default Blob).
 
 ## Storage and runtime (P0 / P1)
 
-Unset drivers still mean Vercel Blob. That is enough for the Workers preview
-to read published views: `BLOB_BASE_URL` is the public store. Full cron /
-refresh **writes** on this host use the fetch Blob client (not `@vercel/blob`
-undici); see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Set
-`STORAGE_READ_DRIVER=r2` or `r2_then_blob` only with the P0 R2 credentials.
+Unset drivers still mean the blob driver. Preview Worker `env.pre` now reads Cloudflare R2 and writes through the DATA binding (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)). Blob-driver writes on this host use the fetch blob client (not `@vercel/blob` undici); see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Set
+`STORAGE_READ_DRIVER=r2` or `r2_then_blob` only with the R2 public base or the P0 R2 credentials.
 R2 writes require `DEPLOY_ENV` of `production` or `pre` and a matching
 `_meta/bucket-identity.json`. `VERCEL_ENV=production` with any other
 `DEPLOY_ENV` is refused. Application code never writes keys under `_meta/`.

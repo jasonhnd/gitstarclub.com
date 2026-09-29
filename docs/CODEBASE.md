@@ -27,7 +27,7 @@ This is not a replacement for the owning docs:
 
 ## Runtime Shape
 
-GitStarClub is a static-read Next.js app backed by JSON views in Vercel Blob.
+GitStarClub is a static-read Next.js app backed by JSON views in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)).
 The request path never queries a database. Pages read validated JSON through
 `web/lib/data/*`; recurring refresh work writes new versioned views through
 managed refresh and flips `views/latest.json`.

@@ -237,8 +237,8 @@ export function checkMaintainedFacts(root) {
   }
 
   const rootReadme = readFileSync(resolve(root, "README.md"), "utf8");
-  if (!/Read-only development\s+and builds require only `BLOB_BASE_URL`/.test(rootReadme)) {
-    issues.push("README.md: read-only setup must state that BLOB_BASE_URL is the only required Blob credential");
+  if (!rootReadme.includes("Cloudflare R2 (production still reads Vercel Blob until cutover; see")) {
+    issues.push("README.md: storage must be Cloudflare R2, with production still reading Vercel Blob until cutover");
   }
 
   const ops = readFileSync(resolve(root, "docs/OPS.md"), "utf8");
