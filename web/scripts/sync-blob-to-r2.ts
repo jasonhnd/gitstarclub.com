@@ -1,5 +1,6 @@
-// Optional one-shot Blob → R2 copy into a non-production prefix.
-// Default is dry-run. Never writes production roots or VERCEL_ENV=production.
+// Optional one-shot Blob → R2 copy.
+// Default is dry-run. Requires DEPLOY_ENV=production|pre. Each R2 put also
+// checks _meta/bucket-identity.json and refuses a missing or mismatched marker.
 //
 //   bun scripts/sync-blob-to-r2.ts
 //   bun scripts/sync-blob-to-r2.ts --prefix views/ --execute
