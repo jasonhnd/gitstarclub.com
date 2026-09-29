@@ -3,19 +3,37 @@
 // pointer. Step 07 stages canonical shards, validates both phases, and performs
 // the one-file bootstrap/latest.json commit.
 //
-// Preview:
-//   node backfill/06-upload.mjs --generation bootstrap-2026-07-17 --dry-run
-// Stage/resume:
-//   node backfill/06-upload.mjs --generation bootstrap-2026-07-17
+// Blob (upload unless --dry-run):
+//   node backfill/06-upload.mjs --generation bootstrap-20260717T120000Z --dry-run
+//   node backfill/06-upload.mjs --generation bootstrap-20260717T120000Z
+// R2 (dry-run unless --execute):
+//   node backfill/06-upload.mjs --store r2 --target pre --generation bootstrap-20260717T120000Z
+//   node backfill/06-upload.mjs --store r2 --target pre --generation bootstrap-20260717T120000Z --execute
+//   node backfill/06-upload.mjs --help
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createBlobBootstrapStore } from "../lib/blob-bootstrap-store.mjs";
+import {
+  UPLOAD_HELP,
+  formatRemotePlan,
+  parseBootstrapArgs,
+  preflightR2Identity,
+  remoteWriteEnabled,
+  resolveR2BucketName,
+  runRemoteStage,
+} from "../lib/bootstrap-cli.mjs";
 import {
   bootstrapGenerationPrefix,
   stageBootstrapPhase,
 } from "../lib/bootstrap-publication.mjs";
+import { withUploadRetry } from "../lib/upload-retry.mjs";
+
+const cli = parseBootstrapArgs(process.argv.slice(2));
+if (cli.help) {
+  console.log(UPLOAD_HELP);
+  process.exit(0);
+}
 
 try {
   process.loadEnvFile(fileURLToPath(new URL("../.env", import.meta.url)));
@@ -27,24 +45,18 @@ const dataDir = fileURLToPath(new URL("../data", import.meta.url));
 const VIEWS = `${dataDir}/views`;
 const PARQUET = `${dataDir}/star_daily.parquet`;
 const VALIDATE_VIEWS = fileURLToPath(new URL("../../web/scripts/validate-views.ts", import.meta.url));
-const args = process.argv.slice(2);
-const generationIndex = args.indexOf("--generation");
-const generation = generationIndex >= 0 ? args[generationIndex + 1] : undefined;
-const DRY = args.includes("--dry-run");
-const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
+const generation = cli.generation;
+const writing = remoteWriteEnabled(cli);
 
 if (!generation) throw new Error("--generation bootstrap-<specific-id> is required for preview, staging, and resume");
 const generationPrefix = bootstrapGenerationPrefix(generation);
-if (!DRY && !TOKEN) {
+if (writing && cli.store === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
   throw new Error("BLOB_READ_WRITE_TOKEN not set — add it to pipeline/.env or use --dry-run");
 }
 
-const MAX_PER_SEC = 60;
 const CONCURRENCY = 16;
-const RETRIES = 4;
 const CONTENT_TYPE = { json: "application/json", parquet: "application/vnd.apache.parquet" };
 const ctOf = (path) => CONTENT_TYPE[path.slice(path.lastIndexOf(".") + 1)] ?? "application/octet-stream";
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function walk(dir) {
   const out = [];
@@ -60,32 +72,6 @@ function validateViews() {
   const result = spawnSync("bun", [VALIDATE_VIEWS, VIEWS], { stdio: "inherit" });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`view validation failed with exit ${result.status}`);
-}
-
-let nextStart = 0;
-async function gate() {
-  const now = Date.now();
-  const wait = Math.max(0, nextStart - now);
-  nextStart = Math.max(now, nextStart) + 1000 / MAX_PER_SEC;
-  if (wait > 0) await sleep(wait);
-}
-
-function withUploadRetry(store) {
-  return {
-    read: (path) => store.read(path),
-    put: (path, body, contentType) => store.put(path, body, contentType),
-    async create(path, body, contentType) {
-      for (let attempt = 1; ; attempt++) {
-        await gate();
-        try {
-          return await store.create(path, body, contentType);
-        } catch (error) {
-          if (attempt > RETRIES) throw error;
-          await sleep(500 * 2 ** (attempt - 1));
-        }
-      }
-    },
-  };
 }
 
 try {
@@ -115,23 +101,39 @@ console.log(`bootstrap base: generation=${generation} objects=${items.length} by
 console.log(`staging prefix: ${generationPrefix}/ (immutable; production pointer unchanged)`);
 validateViews();
 
-if (DRY) {
+if (!writing) {
+  const bucket = cli.store === "r2" ? resolveR2BucketName(process.env, cli.target) : "vercel-blob";
+  console.log(formatRemotePlan({ objects: items.length, bytes: totalBytes, cli, bucket }));
   for (const item of items.slice(0, 8)) console.log(`  ${item.path} (${item.body.byteLength} bytes)`);
+  await preflightR2Identity(cli, process.env);
+  const outcome = await runRemoteStage({
+    cli,
+    env: process.env,
+    stage: async () => {
+      throw new Error("dry-run must not stage");
+    },
+  });
+  if (outcome.action !== "dry-run") throw new Error("dry-run opened a remote write");
   console.log("dry-run: validation passed; nothing uploaded and no pointer changed");
   process.exit(0);
 }
 
-const store = withUploadRetry(createBlobBootstrapStore(TOKEN));
-const result = await stageBootstrapPhase({
-  generation,
-  phase: "base",
-  items,
-  store,
-  concurrency: CONCURRENCY,
-  onProgress: ({ completed, total }) => {
-    if (completed % 500 === 0 || completed === total) console.log(`  staged/verified ${completed}/${total}`);
-  },
+const outcome = await runRemoteStage({
+  cli,
+  env: process.env,
+  stage: (store) =>
+    stageBootstrapPhase({
+      generation,
+      phase: "base",
+      items,
+      store: withUploadRetry(store),
+      concurrency: CONCURRENCY,
+      onProgress: ({ completed, total }) => {
+        if (completed % 500 === 0 || completed === total) console.log(`  staged/verified ${completed}/${total}`);
+      },
+    }),
 });
+const result = outcome.result;
 console.log(
   `base ${result.status}: objects=${result.manifest.object_count} bytes=${result.manifest.total_bytes} created=${result.created} reused=${result.reused}`,
 );

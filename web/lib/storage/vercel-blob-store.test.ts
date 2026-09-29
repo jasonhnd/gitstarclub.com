@@ -67,4 +67,20 @@ describe("VercelBlobObjectStore", () => {
     const getting = fakeClient({ get: mock(async () => null) });
     expect(await new VercelBlobObjectStore(() => "blob-token", getting).get("missing.json")).toBeNull();
   });
+
+  test("getBytes preserves a non-UTF-8 parquet payload", async () => {
+    const parquet = Uint8Array.from([0x50, 0x41, 0x52, 0x31, 0x00, 0xff, 0x0a, 0x80, 0x7f, 0x1f, 0x8b]);
+    const client = fakeClient({
+      get: mock(async () => ({
+        statusCode: 200 as const,
+        stream: new Blob([parquet]).stream(),
+        headers: new Headers(),
+        blob: { etag: '"p"', contentType: "application/vnd.apache.parquet", size: parquet.byteLength },
+      })),
+    });
+    const store = new VercelBlobObjectStore(() => "blob-token", client);
+    const bytes = await store.getBytes("canonical/star_daily.parquet");
+    expect(Array.from(bytes?.body ?? [])).toEqual(Array.from(parquet));
+    expect(client.get).toHaveBeenCalledWith("canonical/star_daily.parquet", { access: "public", token: "blob-token" });
+  });
 });
