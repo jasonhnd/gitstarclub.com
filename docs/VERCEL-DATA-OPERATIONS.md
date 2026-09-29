@@ -1,7 +1,7 @@
 ---
 owner: data operations / workflows
-status: active
-last_reviewed: 2026-09-21
+status: superseded
+last_reviewed: 2026-09-30
 source_of_truth_for:
   - production data lifecycle
   - Vercel Blob publish model
@@ -11,7 +11,9 @@ source_of_truth_for:
 
 # gitstarclub Vercel data operations (VERCEL-DATA-OPERATIONS)
 
-> Document goal: describe the current operating form of the gitstarclub production data lifecycle on Vercel—all recurring data jobs are triggered, run, recorded, published, and rolled back on Vercel. Local `pipeline/backfill` serves only as a one-time bootstrap tool / historical archive, and is not on the daily operations path.
+> **Superseded.** Current object storage and the cutover stages are in [R2-CUTOVER.md](./R2-CUTOVER.md). Keep the sections below as history of the Blob publish model and the refresh step list. Blob operating steps here apply until cutover. Production still reads Vercel Blob until cutover. Do not treat this file as the current storage model.
+
+> Document goal: describe the Blob-era operating form of the gitstarclub production data lifecycle—recurring data jobs triggered, run, recorded, published, and rolled back, with local `pipeline/backfill` as a one-time bootstrap tool / historical archive, not the daily operations path. The host is Cloudflare Workers. This file is no longer the storage source of truth.
 >
 > Related: architecture overview [ARCHITECTURE.md](./ARCHITECTURE.md) · data contracts [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) · operations [OPS.md](./OPS.md) · pipeline [PIPELINE.md](./PIPELINE.md) · testing [TESTING.md](./TESTING.md) · changelog [CHANGELOG.md](./CHANGELOG.md).
 >
