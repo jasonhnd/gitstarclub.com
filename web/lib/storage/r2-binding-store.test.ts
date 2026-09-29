@@ -306,6 +306,19 @@ describe("R2 binding bucket-identity guard", () => {
     expect(mismatched.deletes).toEqual([]);
   });
 
+  test("refuses del of r2 and public URLs that resolve under _meta/", async () => {
+    const bucket = new FakeR2Bucket();
+    const store = createR2BindingObjectStore(
+      { ...bindingEnv, R2_PUBLIC_BASE_URL: "https://pub.example" },
+      { bucket },
+    );
+    await expect(store.del("r2://gitstarclub-data-pre/_meta/bucket-identity.json")).rejects.toThrow("keys under _meta/");
+    await expect(store.del("https://pub.example/_meta/x")).rejects.toThrow("keys under _meta/");
+    await expect(store.del("r2://gitstarclub-data-pre/views/../_meta/x")).rejects.toThrow('"." or ".."');
+    expect(bucket.deletes).toEqual([]);
+    expect(bucket.puts).toEqual([]);
+  });
+
   test("refuses _meta/x and views/../_meta/x without reading the marker", async () => {
     const bucket = new FakeR2Bucket();
     const store = createR2BindingObjectStore(bindingEnv, { bucket });

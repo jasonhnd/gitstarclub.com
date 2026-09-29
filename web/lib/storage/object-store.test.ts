@@ -232,6 +232,28 @@ describe("bucket identity write guard", () => {
     expect(calls).toEqual([]);
   });
 
+  test("refuses del of r2 and public URLs that resolve under _meta/", async () => {
+    const calls: string[] = [];
+    const store = createR2S3ObjectStore(
+      {
+        DEPLOY_ENV: "pre",
+        R2_PREFIX: "migrate-dev/",
+        R2_PUBLIC_BASE_URL: "https://pub.example",
+        ...r2Credentials,
+      },
+      {
+        fetch: async () => {
+          calls.push("fetch");
+          throw new Error("should not fetch");
+        },
+      },
+    );
+    await expect(store.del("r2://gitstarclub-pre/_meta/bucket-identity.json")).rejects.toThrow("keys under _meta/");
+    await expect(store.del("https://pub.example/_meta/x")).rejects.toThrow("keys under _meta/");
+    await expect(store.del("r2://gitstarclub-pre/views/../_meta/x")).rejects.toThrow('"." or ".."');
+    expect(calls).toEqual([]);
+  });
+
   test("refuses a physical key under _meta/ when the prefix is the meta namespace", async () => {
     const store = createR2S3ObjectStore(
       { DEPLOY_ENV: "pre", ...r2Credentials },
