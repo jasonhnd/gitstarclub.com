@@ -38,6 +38,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
+- **R2 write guard follows `DEPLOY_ENV` and a bucket identity marker (#557).** Cloudflare Workers never set `VERCEL_ENV`, so the old production checks did not run there. `WORKFLOW_COLD_START` and `PREFLIGHT_RELAX_EMPTY_SHARDS` now arm only when `DEPLOY_ENV=pre`. R2 writes read `_meta/bucket-identity.json` and refuse a missing, unreadable, or mismatched marker, including when `DEPLOY_ENV` is unset. `R2_PREFIX` defaults to empty. Blob writes are unchanged while `STORAGE_WRITE_DRIVER=blob`. See [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
+
 - **Branch rule file matches AGENTS.md (#550).** `.grok/rules/pre-only.md` now restates the Branches section: `pre` is the integration branch, promotion is a merge commit from `pre` to `main`, and nobody pushes `pre` or `main` directly. The stale reason "because Vercel cron runs on `main`" is gone. Production is still not hotfixed by calling production cron. Plan: [issue-550-pre-only.md](../plans/issue-550-pre-only.md).
 
 - **Hosting documentation (#528).** Production and preview web domains are served by Cloudflare Workers (OpenNext); Vercel Blob remains storage. The production refresh trigger is unresolved because the observed production Worker schedule was empty despite the owner reporting Cloudflare cron. The preview Worker had three schedules. See [OPS.md](./OPS.md) for dated evidence and the historical Vercel rollback reference.

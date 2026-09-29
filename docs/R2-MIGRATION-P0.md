@@ -1,11 +1,11 @@
 ---
 owner: operations / storage
 status: active
-last_reviewed: 2026-09-19
+last_reviewed: 2026-09-29
 source_of_truth_for:
   - Cloudflare R2 P0 storage adapter
   - Blob/R2 dual-read and write-driver switches
-  - non-production R2 write guard
+  - bucket-identity R2 write guard
 ---
 
 # R2 migration P0 (Blob adapter)
@@ -20,7 +20,7 @@ This document owns the P0 storage port added in `web/lib/storage/`:
 
 - Drivers: `vercel-blob` (default) and `r2-s3`
 - Dual-read: `blob` | `r2` | `r2_then_blob`
-- Writes stay on Vercel Blob unless `STORAGE_WRITE_DRIVER=r2` **and** the target is a non-production prefix
+- Writes stay on Vercel Blob unless `STORAGE_WRITE_DRIVER=r2` **and** the bucket identity marker matches `DEPLOY_ENV`
 - Rollback: unset the driver switches (or set them back to `blob`)
 
 Out of scope: ISR / Preview bypass rewrites, Workers hosting of the
@@ -34,7 +34,7 @@ by default):
 - account_id: `00f850e853e4c7f9627233d51a6e30a1`
 - R2 bucket: `gitstarclub-assets`
 - Worker shell: `gitstarclub-web` with binding `MEDIA` → that bucket (not used by this Node adapter)
-- Non-production object prefix: `migrate-dev/`
+- Object key prefix: unset (`R2_PREFIX` defaults to empty). Writes are gated by `_meta/bucket-identity.json`, not by a prefix.
 
 ## Default behavior (no regression)
 
@@ -66,7 +66,8 @@ do not hit `ALPNProtocols`. R2 writes were already fetch-signed. See
 | `R2_SECRET_ACCESS_KEY` / `AWS_SECRET_ACCESS_KEY` | unset | R2 S3 secret |
 | `R2_BUCKET` / `AWS_S3_BUCKET` | unset | Bucket name (`gitstarclub-assets`) |
 | `R2_REGION` / `AWS_REGION` | `auto` | SigV4 region |
-| `R2_PREFIX` | `migrate-dev/` | Object key prefix. Writes only allow `migrate-dev/`, `migrate-test/`, `migrate-preview/` |
+| `R2_PREFIX` | empty | Optional object key prefix. Unset is the bucket root. It is not a write allowlist. |
+| `DEPLOY_ENV` | unset | `production` \| `pre` \| `local`. R2 writes require `production` or `pre`, matching the bucket identity marker. |
 | `R2_PUBLIC_BASE_URL` | unset | Public URL base for `r2` / `r2_then_blob` page reads |
 
 CI must not set production `BLOB_READ_WRITE_TOKEN` as an R2 write credential. The
@@ -74,13 +75,15 @@ R2 driver tests mock `fetch` and never open the real bucket.
 
 ## Write guard
 
+`STORAGE_WRITE_DRIVER=blob` (the default) does not read the marker. Blob writes are unchanged.
+
 `STORAGE_WRITE_DRIVER=r2` is rejected when:
 
-- `VERCEL_ENV=production`, or
-- `R2_PREFIX` is empty / store root, or
-- `R2_PREFIX` is not `migrate-(dev|test|preview)/`
+- `DEPLOY_ENV` is unset (on Cloudflare this is `HOSTING_TARGET=cf` with no `DEPLOY_ENV`), or
+- `DEPLOY_ENV` is not `production` or `pre`, or
+- `_meta/bucket-identity.json` at the bucket root is missing, unreadable, or its `deploy_env` / `bucket` does not match `DEPLOY_ENV` and the configured bucket name.
 
-There is no P0 escape hatch to write the production key space.
+The marker is `{"bucket":"<name>","deploy_env":"production"|"pre"}`. A passing check is cached for the isolate. `VERCEL_ENV` is not the write gate: Cloudflare Workers never set it. A matching production marker may be written when `DEPLOY_ENV=production`.
 
 ## Rollback
 
@@ -92,15 +95,17 @@ That returns the site to the pre-P0 Blob-only path.
 
 ## Optional sync script
 
-`web/scripts/sync-blob-to-r2.ts` copies Blob objects into the non-production R2
-prefix. Default is dry-run:
+`web/scripts/sync-blob-to-r2.ts` copies Blob objects into the configured R2
+prefix (`R2_PREFIX`, default empty). Default is dry-run. The plan refuses to
+start unless `DEPLOY_ENV` is `production` or `pre`. `--execute` puts go through
+the same bucket-identity guard:
 
 ```bash
 bun scripts/sync-blob-to-r2.ts
 bun scripts/sync-blob-to-r2.ts --prefix views/ --execute
 ```
 
-`--execute` still refuses `VERCEL_ENV=production` and non-`migrate-*` prefixes.
+`--execute` still refuses a missing `DEPLOY_ENV` and a bucket identity that does not match.
 
 ## What this PR does not claim
 
