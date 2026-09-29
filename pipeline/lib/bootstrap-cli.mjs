@@ -187,6 +187,26 @@ export function formatRemotePlan({ objects, bytes, cli, bucket }) {
   return `plan: store=${cli.store} target=${target} bucket=${bucket} objects=${objects} bytes=${bytes} writes=0`;
 }
 
+export function r2CredentialsPresent(env) {
+  return Boolean((env.R2_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID) && (env.R2_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY));
+}
+
+/**
+ * Read-only bucket-identity check for an R2 dry run. Skipped when credentials
+ * are unset so a plan with no secrets still makes zero requests. Never writes.
+ */
+export async function preflightR2Identity(cli, env, options = {}) {
+  if (cli.store !== "r2") return { checked: false };
+  if (!r2CredentialsPresent(env)) {
+    console.log("dry-run: bucket identity was not checked (R2 credentials unset)");
+    return { checked: false };
+  }
+  const store = createStoreFromCli(cli, env, { force: true, fetch: options.fetch, now: options.now });
+  if (typeof store.checkIdentity !== "function") throw new Error("R2 store cannot check bucket identity");
+  await store.checkIdentity();
+  return { checked: true };
+}
+
 export function createStoreFromCli(cli, env, options = {}) {
   if (!remoteWriteEnabled(cli) && !options.force) {
     throw new Error("refusing to open a remote store when remote writes are disabled");
@@ -200,6 +220,15 @@ export function createStoreFromCli(cli, env, options = {}) {
   });
 }
 
+/**
+ * @param {{
+ *   cli: ReturnType<typeof parseBootstrapArgs>,
+ *   env: Record<string, string | undefined>,
+ *   fetch?: typeof fetch,
+ *   now?: () => Date,
+ *   stage: (store: any) => Promise<any>,
+ * }} options
+ */
 export async function runRemoteStage({ cli, env, fetch, now, stage }) {
   if (!remoteWriteEnabled(cli)) return { action: "dry-run" };
   const store = createStoreFromCli(cli, env, { fetch, now });

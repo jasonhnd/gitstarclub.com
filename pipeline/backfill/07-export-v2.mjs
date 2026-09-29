@@ -23,11 +23,12 @@ import { DuckDBInstance } from "@duckdb/node-api";
 import { buildCanonicalMeta } from "../lib/canonical-meta.mjs";
 import {
   EXPORT_HELP,
-  createStoreFromCli,
   formatRemotePlan,
   parseBootstrapArgs,
+  preflightR2Identity,
   remoteWriteEnabled,
   resolveR2BucketName,
+  runRemoteStage,
 } from "../lib/bootstrap-cli.mjs";
 import { withBootstrapPublicationLease } from "../lib/bootstrap-lease.mjs";
 import {
@@ -134,18 +135,23 @@ if (rollbackRequested) {
   if (cli.store === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
     throw new Error("BLOB_READ_WRITE_TOKEN not set");
   }
-  const store = createStoreFromCli(cli, process.env);
-  const result = await withBootstrapPublicationLease({
-    store,
-    generation: rollbackTarget,
-    operation: "rollback",
-    run: (assertCanCommit) =>
-      rollbackBootstrapGeneration({
+  const outcome = await runRemoteStage({
+    cli,
+    env: process.env,
+    stage: (store) =>
+      withBootstrapPublicationLease({
         store,
-        targetGeneration: rollbackTarget,
-        assertCanCommit,
+        generation: rollbackTarget,
+        operation: "rollback",
+        run: (assertCanCommit) =>
+          rollbackBootstrapGeneration({
+            store,
+            targetGeneration: rollbackTarget,
+            assertCanCommit,
+          }),
       }),
   });
+  const result = outcome.result;
   const previous = result.pointer?.previous_generation ?? result.previousPointer?.generation ?? "none";
   console.log(
     `rollback ${result.status}: target=${result.target} previous=${previous} objects=${result.verified.objectCount} bytes=${result.verified.totalBytes}`,
@@ -299,6 +305,15 @@ if (!remoteWriteEnabled(cli)) {
   } else {
     console.log("--no-upload: local canonical validation passed; skipped Blob staging and commit");
   }
+  await preflightR2Identity(cli, process.env);
+  const outcome = await runRemoteStage({
+    cli,
+    env: process.env,
+    stage: async () => {
+      throw new Error("dry-run must not stage");
+    },
+  });
+  if (outcome.action !== "dry-run") throw new Error("dry-run opened a remote write");
   process.exit(0);
 }
 if (cli.store === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
@@ -336,45 +351,51 @@ function withUploadRetry(store) {
 }
 
 const items = stagedItems;
-const blobStore = createStoreFromCli(cli, process.env);
-const store = withUploadRetry(blobStore);
-const staged = await stageBootstrapPhase({
-  generation,
-  phase: "canonical",
-  items,
-  store,
-  concurrency: CONCURRENCY,
-  onProgress: ({ completed, total }) => {
-    if (completed % 50 === 0 || completed === total) console.log(`  staged/verified ${completed}/${total}`);
+await runRemoteStage({
+  cli,
+  env: process.env,
+  stage: async (blobStore) => {
+    const store = withUploadRetry(blobStore);
+    const staged = await stageBootstrapPhase({
+      generation,
+      phase: "canonical",
+      items,
+      store,
+      concurrency: CONCURRENCY,
+      onProgress: ({ completed, total }) => {
+        if (completed % 50 === 0 || completed === total) console.log(`  staged/verified ${completed}/${total}`);
+      },
+    });
+    console.log(
+      `canonical ${staged.status}: objects=${staged.manifest.object_count} bytes=${staged.manifest.total_bytes} created=${staged.created} reused=${staged.reused}`,
+    );
+    if (stageOnly) {
+      console.log("--stage-only: production pointer unchanged");
+      return staged;
+    }
+    const committed = await withBootstrapPublicationLease({
+      store: blobStore,
+      generation,
+      operation: "publish",
+      run: (assertCanCommit) =>
+        commitBootstrapGeneration({
+          generation,
+          store,
+          initialCommit: cli.initialCommit,
+          validate: async (verified) => {
+            assertLocalManifestMatches(generation, "base", localBaseItems(), verified.base);
+            assertLocalManifestMatches(generation, "canonical", items, verified.canonical);
+            runValidator(VALIDATE_VIEWS, VIEWS, "views");
+            runValidator(VALIDATE_CANONICAL, `${OUT}/canonical/v2`, "canonical");
+          },
+          assertCanCommit,
+        }),
+    });
+    console.log(
+      `${committed.status}: generation=${committed.pointer.generation} previous=${committed.pointer.previous_generation} objects=${committed.verified.objectCount} bytes=${committed.verified.totalBytes}`,
+    );
+    console.log("commit point: bootstrap/latest.json (single atomic pointer write)");
+    return committed;
   },
 });
-console.log(
-  `canonical ${staged.status}: objects=${staged.manifest.object_count} bytes=${staged.manifest.total_bytes} created=${staged.created} reused=${staged.reused}`,
-);
-if (stageOnly) {
-  console.log("--stage-only: production pointer unchanged");
-  process.exit(0);
-}
-
-const committed = await withBootstrapPublicationLease({
-  store: blobStore,
-  generation,
-  operation: "publish",
-  run: (assertCanCommit) =>
-    commitBootstrapGeneration({
-      generation,
-      store,
-      initialCommit: cli.initialCommit,
-      validate: async (verified) => {
-        assertLocalManifestMatches(generation, "base", localBaseItems(), verified.base);
-        assertLocalManifestMatches(generation, "canonical", items, verified.canonical);
-        runValidator(VALIDATE_VIEWS, VIEWS, "views");
-        runValidator(VALIDATE_CANONICAL, `${OUT}/canonical/v2`, "canonical");
-      },
-      assertCanCommit,
-    }),
-});
-console.log(
-  `${committed.status}: generation=${committed.pointer.generation} previous=${committed.pointer.previous_generation} objects=${committed.verified.objectCount} bytes=${committed.verified.totalBytes}`,
-);
-console.log("commit point: bootstrap/latest.json (single atomic pointer write)");
+if (stageOnly) process.exit(0);

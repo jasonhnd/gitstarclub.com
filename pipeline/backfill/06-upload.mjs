@@ -16,11 +16,12 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   UPLOAD_HELP,
-  createStoreFromCli,
   formatRemotePlan,
   parseBootstrapArgs,
+  preflightR2Identity,
   remoteWriteEnabled,
   resolveR2BucketName,
+  runRemoteStage,
 } from "../lib/bootstrap-cli.mjs";
 import {
   bootstrapGenerationPrefix,
@@ -132,21 +133,35 @@ if (!writing) {
   const bucket = cli.store === "r2" ? resolveR2BucketName(process.env, cli.target) : "vercel-blob";
   console.log(formatRemotePlan({ objects: items.length, bytes: totalBytes, cli, bucket }));
   for (const item of items.slice(0, 8)) console.log(`  ${item.path} (${item.body.byteLength} bytes)`);
+  await preflightR2Identity(cli, process.env);
+  const outcome = await runRemoteStage({
+    cli,
+    env: process.env,
+    stage: async () => {
+      throw new Error("dry-run must not stage");
+    },
+  });
+  if (outcome.action !== "dry-run") throw new Error("dry-run opened a remote write");
   console.log("dry-run: validation passed; nothing uploaded and no pointer changed");
   process.exit(0);
 }
 
-const store = withUploadRetry(createStoreFromCli(cli, process.env));
-const result = await stageBootstrapPhase({
-  generation,
-  phase: "base",
-  items,
-  store,
-  concurrency: CONCURRENCY,
-  onProgress: ({ completed, total }) => {
-    if (completed % 500 === 0 || completed === total) console.log(`  staged/verified ${completed}/${total}`);
-  },
+const outcome = await runRemoteStage({
+  cli,
+  env: process.env,
+  stage: (store) =>
+    stageBootstrapPhase({
+      generation,
+      phase: "base",
+      items,
+      store: withUploadRetry(store),
+      concurrency: CONCURRENCY,
+      onProgress: ({ completed, total }) => {
+        if (completed % 500 === 0 || completed === total) console.log(`  staged/verified ${completed}/${total}`);
+      },
+    }),
 });
+const result = outcome.result;
 console.log(
   `base ${result.status}: objects=${result.manifest.object_count} bytes=${result.manifest.total_bytes} created=${result.created} reused=${result.reused}`,
 );

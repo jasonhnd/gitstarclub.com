@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   formatRemotePlan,
   parseBootstrapArgs,
+  preflightR2Identity,
   remoteWriteEnabled,
   resolveR2BucketName,
   resolveR2Location,
@@ -88,6 +89,40 @@ describe("bootstrap CLI", () => {
     );
     expect(() => parseBootstrapArgs(["--excute"])).toThrow(/unknown argument --excute/);
     expect(parseBootstrapArgs(["--help", "--bogus"]).help).toBe(true);
+  });
+
+  test("R2 dry-run identity preflight is a single GET and is skipped without credentials", async () => {
+    const cli = parseBootstrapArgs(["--store", "r2", "--target", "pre", "--generation", "bootstrap-20260717T120000Z"]);
+    const requests = [];
+    const skipped = await preflightR2Identity(
+      cli,
+      { R2_BUCKET_PRE: "gitstarclub-data-pre" },
+      {
+        fetch: async () => {
+          requests.push("fetch");
+          throw new Error("unset credentials must not fetch");
+        },
+      },
+    );
+    expect(skipped.checked).toBe(false);
+    expect(requests).toHaveLength(0);
+
+    const identity = JSON.stringify({ bucket: "gitstarclub-data-pre", deploy_env: "pre" });
+    const checked = await preflightR2Identity(cli, r2Env(), {
+      now: () => new Date("2026-07-17T00:00:00.000Z"),
+      fetch: async (input, init) => {
+        const method = init?.method ?? "GET";
+        requests.push(method);
+        const url = String(input);
+        if (method !== "GET" || !url.includes("_meta/bucket-identity.json")) {
+          throw new Error(`unexpected ${method}`);
+        }
+        return new Response(identity, { status: 200, headers: { etag: '"id"' } });
+      },
+    });
+    expect(checked.checked).toBe(true);
+    expect(requests).toEqual(["GET"]);
+    expect(requests.join(" ")).not.toContain(SECRET);
   });
 
   test("06 and 07 help document the R2 flags", () => {
