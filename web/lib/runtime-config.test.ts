@@ -221,6 +221,32 @@ describe("storage driver config", () => {
     expect(getStorageWriteDriver({ WRITE_DRIVER: "r2" })).toBe("r2");
   });
 
+  test("accepts r2_binding and r2_s3, and keeps r2 as its own alias value", () => {
+    expect(getStorageReadDriver({ STORAGE_READ_DRIVER: "r2_binding" })).toBe("r2_binding");
+    expect(getStorageReadDriver({ STORAGE_READ_DRIVER: " R2_S3 " })).toBe("r2_s3");
+    expect(getStorageReadDriver({ READ_DRIVER: "r2" })).toBe("r2");
+    expect(getStorageWriteDriver({ STORAGE_WRITE_DRIVER: "r2_binding" })).toBe("r2_binding");
+    expect(getStorageWriteDriver({ WRITE_DRIVER: "r2_s3" })).toBe("r2_s3");
+    expect(() => getStorageReadDriver({ STORAGE_READ_DRIVER: "s3" })).toThrow(
+      "blob | r2_binding | r2_s3 | r2 | r2_then_blob",
+    );
+    expect(() => getStorageWriteDriver({ STORAGE_WRITE_DRIVER: "r2_then_blob" })).toThrow(
+      "blob | r2_binding | r2_s3 | r2",
+    );
+    expect(
+      getPublicReadBases({
+        STORAGE_READ_DRIVER: "r2_binding",
+        R2_PUBLIC_BASE_URL: "https://r2.example.com/",
+      }),
+    ).toEqual(["https://r2.example.com"]);
+    expect(
+      getPublicReadBases({
+        STORAGE_READ_DRIVER: "r2_s3",
+        R2_PUBLIC_BASE_URL: "https://r2.example.com",
+      }),
+    ).toEqual(["https://r2.example.com"]);
+  });
+
   test("public reads stay on Blob unless an R2 public base is configured", () => {
     expect(getPublicReadBases({ BLOB_BASE_URL: "https://blob.example.com" })).toEqual([
       "https://blob.example.com",

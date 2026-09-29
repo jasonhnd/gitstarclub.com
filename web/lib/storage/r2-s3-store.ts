@@ -164,7 +164,7 @@ export class R2S3ObjectStore implements ObjectStore {
   }
 
   async del(pathsOrUrls: string | string[]): Promise<void> {
-    const keys = (Array.isArray(pathsOrUrls) ? pathsOrUrls : [pathsOrUrls]).map((value) => this.keyFromUrlOrPath(value));
+    const keys = (Array.isArray(pathsOrUrls) ? pathsOrUrls : [pathsOrUrls]).map((value) => this.resolveKey(value));
     if (keys.length === 0) return;
     if (keys.length === 1) {
       const response = await this.request("DELETE", keys[0]);
@@ -185,7 +185,8 @@ export class R2S3ObjectStore implements ObjectStore {
     if (result.includes("<Error>")) throw new Error(`R2 delete reported object errors: ${result}`);
   }
 
-  private keyFromUrlOrPath(value: string): string {
+  /** Key `del` will delete: logical path, `r2://` object key, or public URL. */
+  resolveKey(value: string): string {
     if (value.startsWith("r2://")) {
       const rest = value.slice("r2://".length);
       const slash = rest.indexOf("/");

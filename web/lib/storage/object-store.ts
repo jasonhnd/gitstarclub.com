@@ -16,6 +16,7 @@ import {
 } from "@/lib/runtime-config";
 import { resolveRuntimeEnv } from "@/lib/workers-host/runtime-env";
 import { DualReadObjectStore } from "./dual-read-store";
+import { resolveDataBinding, R2BindingObjectStore, type R2BindingStoreConfig, type R2Bucket } from "./r2-binding-store";
 import { R2S3ObjectStore, type R2S3StoreConfig } from "./r2-s3-store";
 import type { ObjectPutOptions, ObjectStore } from "./types";
 import { VercelBlobObjectStore } from "./vercel-blob-store";
@@ -54,21 +55,66 @@ export function r2StoreConfigFromEnv(env?: ObjectStoreFactoryEnv): R2S3StoreConf
   };
 }
 
+type PrefixedKeyStore = {
+  physicalKey(path: string): string;
+  logicalPath(key: string): string;
+  resolveKey(value: string): string;
+};
+
 function isMetaNamespaceKey(key: string): boolean {
   const normalized = key.replace(/^\/+/, "");
   return normalized === "_meta" || normalized.startsWith("_meta/");
 }
 
-function assertMetaNamespaceUntouched(store: R2S3ObjectStore, paths: readonly string[]): void {
-  for (const path of paths) {
-    if (isMetaNamespaceKey(path) || isMetaNamespaceKey(store.physicalKey(path))) {
-      throw new Error("refusing R2 writes: keys under _meta/ are placed out of band");
+/**
+ * `new URL()` removes `.` and `..` after one percent-decode, so
+ * `views/../_meta/x` and `views/%2e%2e/_meta/x` both become `_meta/x`.
+ * Reject those segments before the request is built.
+ */
+function hasDotSegment(key: string): boolean {
+  for (const segment of key.replace(/^\/+/, "").split("/")) {
+    if (segment === "." || segment === "..") return true;
+    try {
+      const decoded = decodeURIComponent(segment);
+      if (decoded === "." || decoded === "..") return true;
+    } catch {
+      // A malformed escape is not a dot segment.
     }
+  }
+  return false;
+}
+
+function rejectUnsafeKey(key: string): void {
+  if (hasDotSegment(key)) {
+    throw new Error('refusing R2 writes: path contains "." or ".." segments');
+  }
+  if (isMetaNamespaceKey(key)) {
+    throw new Error("refusing R2 writes: keys under _meta/ are placed out of band");
   }
 }
 
-function withBucketIdentityGuard(
-  store: R2S3ObjectStore,
+function assertPutPathsAllowed(store: PrefixedKeyStore, paths: readonly string[]): void {
+  for (const path of paths) {
+    rejectUnsafeKey(path);
+    rejectUnsafeKey(store.physicalKey(path));
+  }
+}
+
+/**
+ * `del` accepts logical paths, `r2://` URLs, and public URLs. The check has to
+ * use the key `del` will actually delete. A prefixed public URL such as
+ * `<base>/_meta/x` is `<prefix>_meta/x` physically and `_meta/x` logically.
+ */
+function assertDelPathsAllowed(store: PrefixedKeyStore, values: readonly string[]): void {
+  for (const value of values) {
+    const resolved = store.resolveKey(value);
+    rejectUnsafeKey(resolved);
+    rejectUnsafeKey(store.logicalPath(resolved));
+  }
+}
+
+function withBucketIdentityGuard<T extends ObjectStore & PrefixedKeyStore>(
+  store: T,
   env: ObjectStoreFactoryEnv,
   bucket: string,
   endpoint: string,
@@ -78,14 +124,14 @@ function withBucketIdentityGuard(
     get(target, prop, receiver) {
       if (prop === "put") {
         return async (path: string, body: string | Uint8Array, options?: ObjectPutOptions) => {
-          assertMetaNamespaceUntouched(target, [path]);
+          assertPutPathsAllowed(target, [path]);
           await assertR2WritesAllowed(env, readIdentity, bucket, endpoint);
           return target.put(path, body, options);
         };
       }
       if (prop === "del") {
         return async (paths: string | string[]) => {
-          assertMetaNamespaceUntouched(target, Array.isArray(paths) ? paths : [paths]);
+          assertDelPathsAllowed(target, Array.isArray(paths) ? paths : [paths]);
           await assertR2WritesAllowed(env, readIdentity, bucket, endpoint);
           return target.del(paths);
         };
@@ -100,6 +146,33 @@ function withBucketIdentityGuard(
 async function readBucketIdentity(store: ObjectStore): Promise<string | null> {
   const result = await store.get(BUCKET_IDENTITY_KEY);
   return result?.body ?? null;
+}
+
+/** Cache-key endpoint for the binding store. There is no S3 URL. */
+export const R2_BINDING_ENDPOINT = "r2-binding";
+
+export type R2BindingStoreExtras = {
+  bucket?: R2Bucket;
+  prefix?: string;
+  publicBaseUrl?: string;
+};
+
+export function createR2BindingObjectStore(
+  env?: ObjectStoreFactoryEnv,
+  extras: R2BindingStoreExtras = {},
+): ObjectStore {
+  const runtime = factoryEnv(env);
+  const bucket = extras.bucket ?? resolveDataBinding();
+  const prefix = extras.prefix ?? getR2KeyPrefix(runtime);
+  const bucketName = getR2Bucket(runtime) ?? "";
+  const publicBaseUrl = extras.publicBaseUrl ?? (getR2PublicBaseUrl(runtime) || undefined);
+  const config: R2BindingStoreConfig = { bucket, bucketName, prefix, publicBaseUrl };
+  const store = new R2BindingObjectStore(config);
+  // The marker identifies the bucket, not a key prefix, so it is read at the bucket root.
+  const identityStore = prefix ? new R2BindingObjectStore({ ...config, prefix: "" }) : store;
+  return withBucketIdentityGuard(store, runtime, bucketName, R2_BINDING_ENDPOINT, () =>
+    readBucketIdentity(identityStore),
+  );
 }
 
 export function createR2S3ObjectStore(env?: ObjectStoreFactoryEnv, extras: Partial<R2S3StoreConfig> = {}): ObjectStore {
@@ -120,7 +193,10 @@ export function createReadObjectStore(env?: ObjectStoreFactoryEnv): ObjectStore 
     case "blob":
       return createVercelBlobObjectStore();
     case "r2":
+    case "r2_s3":
       return createR2S3ObjectStore(runtime);
+    case "r2_binding":
+      return createR2BindingObjectStore(runtime);
     case "r2_then_blob":
       return new DualReadObjectStore(createR2S3ObjectStore(runtime), createVercelBlobObjectStore());
     default: {
@@ -137,8 +213,12 @@ export function createWriteObjectStore(env?: ObjectStoreFactoryEnv): ObjectStore
     case "blob":
       return createVercelBlobObjectStore();
     case "r2":
+    case "r2_s3":
       assertR2WriteDeployEnv(runtime);
       return createR2S3ObjectStore(runtime);
+    case "r2_binding":
+      assertR2WriteDeployEnv(runtime);
+      return createR2BindingObjectStore(runtime);
     default: {
       const _exhaustive: never = driver;
       throw new Error(`unsupported storage write driver: ${String(_exhaustive)}`);
