@@ -11,13 +11,24 @@
 //                        node backfill/07-export-v2.mjs --no-upload  (export + local validation only)
 //                        node backfill/07-export-v2.mjs --rollback bootstrap-<id> --execute
 //                        node backfill/07-export-v2.mjs --rollback legacy-flat --execute
+// R2 dry-run:            node backfill/07-export-v2.mjs --store r2 --target pre --generation bootstrap-YYYYMMDDTHHMMSSZ
+// R2 execute:            node backfill/07-export-v2.mjs --store r2 --target pre --generation bootstrap-YYYYMMDDTHHMMSSZ --execute --initial-commit
+// R2 rollback:           node backfill/07-export-v2.mjs --store r2 --target pre --rollback bootstrap-<id> --execute
+//                        node backfill/07-export-v2.mjs --help
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { buildCanonicalMeta } from "../lib/canonical-meta.mjs";
-import { createBlobBootstrapStore } from "../lib/blob-bootstrap-store.mjs";
+import {
+  EXPORT_HELP,
+  createStoreFromCli,
+  formatRemotePlan,
+  parseBootstrapArgs,
+  remoteWriteEnabled,
+  resolveR2BucketName,
+} from "../lib/bootstrap-cli.mjs";
 import { withBootstrapPublicationLease } from "../lib/bootstrap-lease.mjs";
 import {
   buildBootstrapPhaseManifest,
@@ -27,6 +38,12 @@ import {
   sha256Bytes,
   stageBootstrapPhase,
 } from "../lib/bootstrap-publication.mjs";
+
+const cli = parseBootstrapArgs(process.argv.slice(2));
+if (cli.help) {
+  console.log(EXPORT_HELP);
+  process.exit(0);
+}
 
 try {
   process.loadEnvFile(fileURLToPath(new URL("../.env", import.meta.url)));
@@ -41,18 +58,14 @@ const OUT = p("v2"); // local mirror; files live under OUT/<blob-path>
 const VIEWS = p("views");
 const VALIDATE_VIEWS = fileURLToPath(new URL("../../web/scripts/validate-views.ts", import.meta.url));
 const VALIDATE_CANONICAL = fileURLToPath(new URL("../../web/scripts/validate-bootstrap-canonical.ts", import.meta.url));
-const args = process.argv.slice(2);
-const generationIndex = args.indexOf("--generation");
-const generation = generationIndex >= 0 ? args[generationIndex + 1] : undefined;
-const generatedAtIndex = args.indexOf("--generated-at");
-const generatedAtArg = generatedAtIndex >= 0 ? args[generatedAtIndex + 1] : undefined;
-const noUpload = args.includes("--no-upload");
-const stageOnly = args.includes("--stage-only");
-const rollbackIndex = args.indexOf("--rollback");
-const rollbackRequested = rollbackIndex >= 0;
-const rollbackValue = rollbackRequested ? args[rollbackIndex + 1] : undefined;
+const generation = cli.generation;
+const generatedAtArg = cli.generatedAt;
+const noUpload = cli.noUpload;
+const stageOnly = cli.stageOnly;
+const rollbackRequested = cli.rollbackRequested;
+const rollbackValue = /** @type {string | undefined} */ (cli.rollback);
 const rollbackTarget =
-  rollbackValue === LEGACY_FLAT_TARGET || rollbackValue?.startsWith("bootstrap-")
+  rollbackValue === LEGACY_FLAT_TARGET || rollbackValue?.startsWith("bootstrap-") === true
     ? rollbackValue
     : undefined;
 const BUCKETS = 32;
@@ -111,16 +124,17 @@ function assertLocalManifestMatches(generation, phase, localItems, remotePhase) 
   }
 }
 
-const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 if (rollbackRequested) {
-  if (!args.includes("--execute")) throw new Error("bootstrap rollback requires --execute");
+  if (!cli.execute) throw new Error("bootstrap rollback requires --execute");
   if (!rollbackTarget) {
     throw new Error(
       "bootstrap rollback requires an explicit target: --rollback <bootstrap-id|legacy-flat> --execute",
     );
   }
-  if (!TOKEN) throw new Error("BLOB_READ_WRITE_TOKEN not set");
-  const store = createBlobBootstrapStore(TOKEN);
+  if (cli.store === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error("BLOB_READ_WRITE_TOKEN not set");
+  }
+  const store = createStoreFromCli(cli, process.env);
   const result = await withBootstrapPublicationLease({
     store,
     generation: rollbackTarget,
@@ -271,11 +285,25 @@ if (vue) console.log(`  sanity vuejs/vue: bucket=${bucketOf(vue.id)} d=${dById.g
 
 // --- validate, immutably stage, then atomically commit bootstrap/latest.json ---
 runValidator(VALIDATE_CANONICAL, `${OUT}/canonical/v2`, "canonical");
-if (noUpload) {
-  console.log("--no-upload: local canonical validation passed; skipped Blob staging and commit");
+const stagedItems = writtenFiles.map((abs) => ({
+  path: abs.slice(OUT.length + 1).replaceAll("\\", "/"),
+  body: readFileSync(abs),
+  contentType: "application/json",
+}));
+const stagedBytes = stagedItems.reduce((sum, item) => sum + item.body.byteLength, 0);
+if (!remoteWriteEnabled(cli)) {
+  if (cli.store === "r2") {
+    const bucket = resolveR2BucketName(process.env, cli.target);
+    console.log(formatRemotePlan({ objects: stagedItems.length, bytes: stagedBytes, cli, bucket }));
+    console.log("dry-run: local canonical validation passed; no remote writes");
+  } else {
+    console.log("--no-upload: local canonical validation passed; skipped Blob staging and commit");
+  }
   process.exit(0);
 }
-if (!TOKEN) throw new Error("BLOB_READ_WRITE_TOKEN not set — add to pipeline/.env or use --no-upload");
+if (cli.store === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
+  throw new Error("BLOB_READ_WRITE_TOKEN not set — add to pipeline/.env or use --no-upload");
+}
 
 const MAX_PER_SEC = 60;
 const CONCURRENCY = 12;
@@ -307,12 +335,8 @@ function withUploadRetry(store) {
   };
 }
 
-const items = writtenFiles.map((abs) => ({
-  path: abs.slice(OUT.length + 1).replaceAll("\\", "/"),
-  body: readFileSync(abs),
-  contentType: "application/json",
-}));
-const blobStore = createBlobBootstrapStore(TOKEN);
+const items = stagedItems;
+const blobStore = createStoreFromCli(cli, process.env);
 const store = withUploadRetry(blobStore);
 const staged = await stageBootstrapPhase({
   generation,
@@ -340,6 +364,7 @@ const committed = await withBootstrapPublicationLease({
     commitBootstrapGeneration({
       generation,
       store,
+      initialCommit: cli.initialCommit,
       validate: async (verified) => {
         assertLocalManifestMatches(generation, "base", localBaseItems(), verified.base);
         assertLocalManifestMatches(generation, "canonical", items, verified.canonical);

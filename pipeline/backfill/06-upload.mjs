@@ -3,19 +3,35 @@
 // pointer. Step 07 stages canonical shards, validates both phases, and performs
 // the one-file bootstrap/latest.json commit.
 //
-// Preview:
-//   node backfill/06-upload.mjs --generation bootstrap-2026-07-17 --dry-run
-// Stage/resume:
-//   node backfill/06-upload.mjs --generation bootstrap-2026-07-17
+// Blob (upload unless --dry-run):
+//   node backfill/06-upload.mjs --generation bootstrap-20260717T120000Z --dry-run
+//   node backfill/06-upload.mjs --generation bootstrap-20260717T120000Z
+// R2 (dry-run unless --execute):
+//   node backfill/06-upload.mjs --store r2 --target pre --generation bootstrap-20260717T120000Z
+//   node backfill/06-upload.mjs --store r2 --target pre --generation bootstrap-20260717T120000Z --execute
+//   node backfill/06-upload.mjs --help
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createBlobBootstrapStore } from "../lib/blob-bootstrap-store.mjs";
+import {
+  UPLOAD_HELP,
+  createStoreFromCli,
+  formatRemotePlan,
+  parseBootstrapArgs,
+  remoteWriteEnabled,
+  resolveR2BucketName,
+} from "../lib/bootstrap-cli.mjs";
 import {
   bootstrapGenerationPrefix,
   stageBootstrapPhase,
 } from "../lib/bootstrap-publication.mjs";
+
+const cli = parseBootstrapArgs(process.argv.slice(2));
+if (cli.help) {
+  console.log(UPLOAD_HELP);
+  process.exit(0);
+}
 
 try {
   process.loadEnvFile(fileURLToPath(new URL("../.env", import.meta.url)));
@@ -27,15 +43,12 @@ const dataDir = fileURLToPath(new URL("../data", import.meta.url));
 const VIEWS = `${dataDir}/views`;
 const PARQUET = `${dataDir}/star_daily.parquet`;
 const VALIDATE_VIEWS = fileURLToPath(new URL("../../web/scripts/validate-views.ts", import.meta.url));
-const args = process.argv.slice(2);
-const generationIndex = args.indexOf("--generation");
-const generation = generationIndex >= 0 ? args[generationIndex + 1] : undefined;
-const DRY = args.includes("--dry-run");
-const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
+const generation = cli.generation;
+const writing = remoteWriteEnabled(cli);
 
 if (!generation) throw new Error("--generation bootstrap-<specific-id> is required for preview, staging, and resume");
 const generationPrefix = bootstrapGenerationPrefix(generation);
-if (!DRY && !TOKEN) {
+if (writing && cli.store === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
   throw new Error("BLOB_READ_WRITE_TOKEN not set — add it to pipeline/.env or use --dry-run");
 }
 
@@ -115,13 +128,15 @@ console.log(`bootstrap base: generation=${generation} objects=${items.length} by
 console.log(`staging prefix: ${generationPrefix}/ (immutable; production pointer unchanged)`);
 validateViews();
 
-if (DRY) {
+if (!writing) {
+  const bucket = cli.store === "r2" ? resolveR2BucketName(process.env, cli.target) : "vercel-blob";
+  console.log(formatRemotePlan({ objects: items.length, bytes: totalBytes, cli, bucket }));
   for (const item of items.slice(0, 8)) console.log(`  ${item.path} (${item.body.byteLength} bytes)`);
   console.log("dry-run: validation passed; nothing uploaded and no pointer changed");
   process.exit(0);
 }
 
-const store = withUploadRetry(createBlobBootstrapStore(TOKEN));
+const store = withUploadRetry(createStoreFromCli(cli, process.env));
 const result = await stageBootstrapPhase({
   generation,
   phase: "base",

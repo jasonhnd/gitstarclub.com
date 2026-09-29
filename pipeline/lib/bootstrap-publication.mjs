@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 
 export const BOOTSTRAP_POINTER_PATH = "bootstrap/latest.json";
+export const INITIAL_COMMIT_ABSENT_PATHS = [
+  BOOTSTRAP_POINTER_PATH,
+  "views/latest.json",
+  "canonical/v2/meta.json",
+];
 export const BOOTSTRAP_SCHEMA_VER = 1;
 export const BOOTSTRAP_PHASES = ["base", "canonical"];
 export const LEGACY_FLAT_TARGET = "legacy-flat";
@@ -279,12 +284,20 @@ function parsePointer(body) {
   return pointer;
 }
 
+export async function assertInitialCommitTarget({ store }) {
+  for (const path of INITIAL_COMMIT_ABSENT_PATHS) {
+    const body = await store.read(path);
+    if (body) throw new Error(`--initial-commit refused: ${path} already exists`);
+  }
+}
+
 export async function commitBootstrapGeneration({
   generation,
   store,
   validate = async (_verified) => {},
   assertCanCommit = async () => {},
   now = () => new Date().toISOString(),
+  initialCommit = false,
 }) {
   assertBootstrapGeneration(generation);
   const verified = await verifyBootstrapGeneration({ generation, store });
@@ -293,8 +306,13 @@ export async function commitBootstrapGeneration({
   const current = parsePointer(await store.read(BOOTSTRAP_POINTER_PATH));
   // null is an explicit legacy-flat recovery edge, not "no rollback". Prove
   // that mutable flat state while holding the shared writer lease before the
-  // first pointer can hide it.
-  if (!current) {
+  // first pointer can hide it. An empty R2 bucket has no legacy layout:
+  // --initial-commit skips that proof and refuses if any published marker
+  // is already present.
+  if (initialCommit) {
+    await assertInitialCommitTarget({ store });
+    await assertCanCommit();
+  } else if (!current) {
     await verifyLegacyFlatTarget({ store });
     await assertCanCommit();
   }
