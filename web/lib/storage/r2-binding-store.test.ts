@@ -114,6 +114,11 @@ class FakeR2Bucket implements R2Bucket {
     return {
       ...this.toHead(key, stored),
       text: async () => new TextDecoder().decode(stored.body),
+      arrayBuffer: async () => {
+        const copy = new Uint8Array(stored.body.byteLength);
+        copy.set(stored.body);
+        return copy.buffer as ArrayBuffer;
+      },
     };
   }
 }
@@ -138,6 +143,35 @@ describe("R2 binding driver", () => {
     expect(bucket.puts[0]?.onlyIf).toEqual({ etagDoesNotMatch: "*" });
     expect(bucket.puts[1]?.onlyIf).toEqual({ etagDoesNotMatch: "*" });
     expect(await store.get("views/a.json")).toMatchObject({ body: "{}" });
+  });
+
+  test("getBytes keeps non-UTF-8 parquet bytes and refuses a text-only body", async () => {
+    const parquet = Uint8Array.from([0x50, 0x41, 0x52, 0x31, 0x00, 0xff, 0x0a, 0x80, 0x7f, 0x1f, 0x8b]);
+    const bucket = new FakeR2Bucket();
+    const store = storeWith(bucket);
+    await store.put("canonical/star_daily.parquet", parquet, { contentType: "application/vnd.apache.parquet" });
+    const bytes = await store.getBytes("canonical/star_daily.parquet");
+    expect(bytes?.body).toEqual(parquet);
+    expect(Buffer.from((await store.get("canonical/star_daily.parquet"))?.body ?? "").equals(Buffer.from(parquet))).toBe(
+      false,
+    );
+
+    const textOnly: R2Bucket = {
+      get: async () => ({
+        key: "canonical/star_daily.parquet",
+        size: parquet.byteLength,
+        etag: "abc",
+        httpEtag: '"abc"',
+        text: async () => "decoded",
+      }),
+      head: async () => null,
+      put: async () => null,
+      delete: async () => undefined,
+      list: async () => ({ objects: [], delimitedPrefixes: [], truncated: false }),
+    };
+    await expect(new R2BindingObjectStore({ bucket: textOnly }).getBytes("canonical/star_daily.parquet")).rejects.toThrow(
+      "cannot read binary",
+    );
   });
 
   test("ifMatch succeeds with the etag from get and fails on a mismatch", async () => {

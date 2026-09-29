@@ -13,20 +13,23 @@ export type BootstrapStoreAdapter = {
   delete(path: string): Promise<void>;
 };
 
-function asBuffer(body: string): Buffer {
-  return Buffer.from(body);
+async function readBytes(store: ObjectStore, path: string): Promise<Buffer | null> {
+  if (typeof store.getBytes !== "function") {
+    throw new Error(`object store cannot read binary objects at ${path}`);
+  }
+  const result = await store.getBytes(path);
+  return result ? Buffer.from(result.body) : null;
 }
 
 /**
- * Bootstrap publication speaks Buffer + create/CAS. ObjectStore speaks text
- * and put options. JSON ops use this adapter so R2 puts still hit the
+ * Bootstrap publication speaks Buffer + create/CAS. Reads go through
+ * `getBytes` so staged parquet is not decoded as text. Puts still hit the
  * bucket-identity guard on the write store.
  */
 export function createObjectStoreBootstrapAdapter(store: ObjectStore): BootstrapStoreAdapter {
   return {
     async read(path) {
-      const result = await store.get(path);
-      return result ? asBuffer(result.body) : null;
+      return readBytes(store, path);
     },
     async create(path, body, contentType = "application/octet-stream") {
       try {
@@ -42,9 +45,12 @@ export function createObjectStoreBootstrapAdapter(store: ObjectStore): Bootstrap
       }
     },
     async readSnapshot(path) {
-      const result = await store.get(path);
+      if (typeof store.getBytes !== "function") {
+        throw new Error(`object store cannot read binary objects at ${path}`);
+      }
+      const result = await store.getBytes(path);
       if (!result) return { body: null, etag: null };
-      return { body: asBuffer(result.body), etag: result.etag };
+      return { body: Buffer.from(result.body), etag: result.etag };
     },
     async createMutable(path, body, contentType = "application/json") {
       try {

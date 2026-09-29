@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { ObjectStorePreconditionFailedError } from "./errors";
 import { encodeS3Path, signS3Request } from "./s3-sign";
 import type {
+  ObjectGetBytesResult,
   ObjectGetResult,
   ObjectHeadResult,
   ObjectListItem,
@@ -118,6 +119,19 @@ export class R2S3ObjectStore implements ObjectStore {
       etag: normalizeEtag(response.headers.get("etag")),
       contentType: response.headers.get("content-type") ?? undefined,
       size: Number(response.headers.get("content-length") ?? undefined) || undefined,
+    };
+  }
+
+  async getBytes(path: string): Promise<ObjectGetBytesResult | null> {
+    const response = await this.request("GET", this.physicalKey(path));
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`R2 get ${path} -> ${response.status}`);
+    const body = new Uint8Array(await response.arrayBuffer());
+    return {
+      body,
+      etag: normalizeEtag(response.headers.get("etag")),
+      contentType: response.headers.get("content-type") ?? undefined,
+      size: body.byteLength,
     };
   }
 

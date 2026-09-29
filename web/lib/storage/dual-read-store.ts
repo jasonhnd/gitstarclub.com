@@ -1,4 +1,5 @@
 import type {
+  ObjectGetBytesResult,
   ObjectGetResult,
   ObjectHeadResult,
   ObjectListOptions,
@@ -32,6 +33,15 @@ export class DualReadObjectStore implements ObjectStore {
 
   async get(path: string): Promise<ObjectGetResult | null> {
     return this.readThrough((store) => store.get(path));
+  }
+
+  async getBytes(path: string): Promise<ObjectGetBytesResult | null> {
+    return this.readThrough((store) => {
+      if (typeof store.getBytes !== "function") {
+        return Promise.reject(new Error(`object store cannot read binary objects at ${path}`));
+      }
+      return store.getBytes(path);
+    });
   }
 
   async head(path: string): Promise<ObjectHeadResult | null> {

@@ -1,6 +1,7 @@
 import { ObjectStorePreconditionFailedError } from "./errors";
 import { sha256Hex } from "./s3-sign";
 import type {
+  ObjectGetBytesResult,
   ObjectGetResult,
   ObjectHeadResult,
   ObjectListOptions,
@@ -59,6 +60,17 @@ export class MemoryObjectStore implements ObjectStore {
     if (!existing) return null;
     return {
       body: existing.body,
+      etag: existing.etag,
+      contentType: existing.contentType,
+      size: existing.size,
+    };
+  }
+
+  async getBytes(path: string): Promise<ObjectGetBytesResult | null> {
+    const existing = await this.get(path);
+    if (!existing) return null;
+    return {
+      body: new TextEncoder().encode(existing.body),
       etag: existing.etag,
       contentType: existing.contentType,
       size: existing.size,
