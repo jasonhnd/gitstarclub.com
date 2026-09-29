@@ -15,7 +15,7 @@ Close the review follow-ups from #558. R2 writes must refuse a Vercel production
 
 ## Out of scope
 
-- `workers/gitstarclub-web/wrangler.jsonc`, `scripts/cf-ci-gates.mjs`, `.github/workflows/*`, `.delivery.yml`, and pipeline code.
+- The Worker wrangler config, CI workflows, `.delivery.yml`, and pipeline code.
 - A new storage driver, and any Cloudflare, Vercel, or BigQuery write or deploy.
 
 ## Acceptance
