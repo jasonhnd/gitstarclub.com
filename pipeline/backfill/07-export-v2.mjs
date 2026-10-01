@@ -22,6 +22,15 @@ import { fileURLToPath } from "node:url";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { buildCanonicalMeta } from "../lib/canonical-meta.mjs";
 import {
+  BACKFILL_BUCKETS as BUCKETS,
+  addDays,
+  assertLocalManifestMatches,
+  bucketOf,
+  bucketSeries,
+  num,
+  timestampFromGeneration,
+} from "../lib/backfill-data.mjs";
+import {
   EXPORT_HELP,
   formatRemotePlan,
   parseBootstrapArgs,
@@ -32,11 +41,9 @@ import {
 } from "../lib/bootstrap-cli.mjs";
 import { withBootstrapPublicationLease } from "../lib/bootstrap-lease.mjs";
 import {
-  buildBootstrapPhaseManifest,
   commitBootstrapGeneration,
   LEGACY_FLAT_TARGET,
   rollbackBootstrapGeneration,
-  sha256Bytes,
   stageBootstrapPhase,
 } from "../lib/bootstrap-publication.mjs";
 import { withUploadRetry } from "../lib/upload-retry.mjs";
@@ -70,15 +77,8 @@ const rollbackTarget =
   rollbackValue === LEGACY_FLAT_TARGET || rollbackValue?.startsWith("bootstrap-") === true
     ? rollbackValue
     : undefined;
-const BUCKETS = 32;
 const RECENT_DAYS = 90;
 const SCHEMA_VER = 1;
-
-function timestampFromGeneration(value) {
-  const match = /^bootstrap-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z(?:-|$)/.exec(value ?? "");
-  if (!match) return null;
-  return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.000Z`;
-}
 
 const GEN = generatedAtArg ?? timestampFromGeneration(generation) ?? (noUpload ? new Date().toISOString() : null);
 if (!rollbackRequested && (!GEN || !Number.isFinite(Date.parse(GEN)))) {
@@ -86,8 +86,6 @@ if (!rollbackRequested && (!GEN || !Number.isFinite(Date.parse(GEN)))) {
     "staged upload needs deterministic time: use generation bootstrap-YYYYMMDDTHHMMSSZ or pass --generated-at <ISO>",
   );
 }
-const num = (v) => (typeof v === "bigint" ? Number(v) : v);
-const bucketOf = (id) => id % BUCKETS;
 
 function runValidator(script, directory, label) {
   const result = spawnSync("bun", [script, directory], { stdio: "inherit" });
@@ -116,14 +114,6 @@ function localBaseItems() {
     // Step 06 also treats the parquet archive as optional.
   }
   return base;
-}
-
-function assertLocalManifestMatches(generation, phase, localItems, remotePhase) {
-  const local = buildBootstrapPhaseManifest(generation, phase, localItems);
-  const digest = sha256Bytes(Buffer.from(JSON.stringify(local)));
-  if (digest !== remotePhase.sha256) {
-    throw new Error(`${phase} local validation input does not match sealed remote manifest`);
-  }
 }
 
 if (rollbackRequested) {
@@ -164,12 +154,6 @@ if (!noUpload && !generation) {
   throw new Error("--generation bootstrap-YYYYMMDDTHHMMSSZ is required for staging, resume, and commit");
 }
 
-function addDays(ymd, days) {
-  const dt = new Date(`${ymd}T00:00:00Z`);
-  dt.setUTCDate(dt.getUTCDate() + days);
-  return dt.toISOString().slice(0, 10);
-}
-
 const madeDirs = new Set();
 let fileCount = 0;
 const writtenFiles = [];
@@ -183,19 +167,6 @@ function writeJson(rel, obj) {
   writeFileSync(full, JSON.stringify(obj));
   writtenFiles.push(full);
   fileCount++;
-}
-
-/** Group `[repo_id,...]` rows into `{ bucket: { id: [valueFn(row), ...] } }`. */
-function bucketSeries(rows, valueFn) {
-  const buckets = new Map(); // bucket -> { id: array }
-  for (const r of rows) {
-    const id = num(r.repo_id);
-    const b = bucketOf(id);
-    let bm = buckets.get(b);
-    if (!bm) buckets.set(b, (bm = {}));
-    (bm[id] ??= []).push(valueFn(r));
-  }
-  return buckets;
 }
 
 function writeBucketSeries(prefix, buckets) {
