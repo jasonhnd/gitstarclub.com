@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { withBootstrapPublicationLease } from "./bootstrap-lease.mjs";
 
 export const BOOTSTRAP_POINTER_PATH = "bootstrap/latest.json";
 export const INITIAL_COMMIT_ABSENT_PATHS = [
@@ -324,6 +325,7 @@ export async function commitBootstrapGeneration({
     if (current) throw new Error(`--initial-commit refused: ${BOOTSTRAP_POINTER_PATH} already exists`);
     await assertInitialCommitTarget({ store });
     await assertCanCommit();
+    await assertInitialCommitTarget({ store });
   } else if (!current) {
     await verifyLegacyFlatTarget({ store });
     await assertCanCommit();
@@ -342,6 +344,9 @@ export async function commitBootstrapGeneration({
     if (typeof store.createMutable !== "function") {
       throw new Error("bootstrap store cannot create the first pointer without overwrite");
     }
+    // The post-renewal marker reads can outlast the 10-minute lease. Recheck
+    // ownership at this write. A valid takeover must fail before create.
+    await assertCanCommit();
     const created = await store.createMutable(BOOTSTRAP_POINTER_PATH, body, "application/json");
     if (!created) {
       const raced = parsePointer(await store.read(BOOTSTRAP_POINTER_PATH));
@@ -358,6 +363,26 @@ export async function commitBootstrapGeneration({
     await store.put(BOOTSTRAP_POINTER_PATH, body, "application/json");
   }
   return { status: "published", pointer, verified };
+}
+
+/**
+ * R2 `--initial-commit` for the operator pointer script. Uses the same
+ * `ops/workflows/active.json` lease and fencing token as pipeline step 07.
+ */
+export async function commitInitialBootstrapWithLease({ generation, store, now }) {
+  return withBootstrapPublicationLease({
+    store,
+    generation,
+    operation: "publish",
+    run: (assertCanCommit) =>
+      commitBootstrapGeneration({
+        generation,
+        store,
+        initialCommit: true,
+        now,
+        assertCanCommit,
+      }),
+  });
 }
 
 export async function rollbackBootstrapGeneration({
