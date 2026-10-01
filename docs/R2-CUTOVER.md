@@ -96,9 +96,12 @@ Rollback of the code is a revert of those pull requests on `pre`. Do not roll pr
 
 Not accepted. Load the preview bucket, then prove the preview site reads it. Dry run first. `--execute` is an operator action and needs the bucket-scoped key outside the repository.
 
+Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`. These commands do not deploy that Worker and do not write bucket `gitstarclub-data-prod` or Worker `gitstarclub-web`.
+
 From `pipeline/`, replace the generation id with the one the local build produced:
 
 ```bash
+# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
 node backfill/06-upload.mjs --store r2 --target pre --generation bootstrap-YYYYMMDDTHHMMSSZ
 node backfill/06-upload.mjs --store r2 --target pre --generation bootstrap-YYYYMMDDTHHMMSSZ --execute
 node backfill/07-export-v2.mjs --store r2 --target pre --generation bootstrap-YYYYMMDDTHHMMSSZ --execute --stage-only
@@ -107,24 +110,71 @@ node backfill/07-export-v2.mjs --store r2 --target pre --generation bootstrap-YY
 
 `--initial-commit` is allowed only when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are all absent. It stores `previous_generation: null`. That null is not a legacy-flat rollback. `--rollback legacy-flat` fails closed on this bucket. A retry of the same generation returns already-published.
 
+A first publish has no prior generation. `previous_generation` stays null. `--rollback` of the generation just committed compares the target with the current generation, returns `already-rolled-back`, and leaves the pointer in place. That status is not an undo. `--rollback legacy-flat` also fails closed, because the flat layout was never uploaded to `gitstarclub-data-pre`. Do not run either command and record it as a rollback.
+
+Later publishes (a commit without `--initial-commit`) set `previous_generation` to the generation that was current. Roll those back only to that field, after reading `https://data-pre.gitstarclub.com/bootstrap/latest.json`. Do not pass the current `generation`.
+
+```bash
+# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+# PREVIOUS is bootstrap/latest.json previous_generation, not the current generation.
+node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$PREVIOUS" --execute
+```
+
+Bad first publish: quarantine. Any write in this procedure needs a separate owner authorization. This document does not authorize it.
+
+1. Read the pointer. `previous_generation` must be JSON null, and `generation` must be the bad id. If `previous_generation` is a generation id, this is not a first publish: use the later-publish command above and stop.
+
+```bash
+# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+curl -fsS https://data-pre.gitstarclub.com/bootstrap/latest.json
+```
+
+2. Isolate readers. Do not accept stage 2. Do not start stage 3 from this generation. Do not point Worker `gitstarclub-web` (top-level production, no `--env`) at bucket `gitstarclub-data-pre` or `gitstarclub-data-prod`. Do not hand-write `bootstrap/latest.json` or `views/latest.json`. Do not delete `_meta/bucket-identity.json`. `web/scripts/blob-del-prefix.ts` refuses `bootstrap/latest.json`, the broad prefix `bootstrap/`, and `bootstrap/generations/<current>/` while the pointer names that generation. Do not run it against those paths. Do not treat `already-rolled-back` as success.
+
+3. Leave `https://pre.gitstarclub.com/` out of the acceptance evidence until a corrected generation is what the preview pages render. Worker `gitstarclub-web-pre` stays on env `pre` and bucket `gitstarclub-data-pre`. Do not deploy another bucket onto that Worker to hide the object.
+
+4. The only authorized write that changes which generation readers follow is a corrected generation, committed without `--initial-commit` (that flag is refused once `bootstrap/latest.json` exists). The owner names the new generation id before the command runs. The new pointer's `previous_generation` is the bad id. The bad generation stays sealed and becomes the one-hop rollback target. Do not delete it in this step.
+
+```bash
+# Owner-authorized. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+# GOOD is a new generation id. Do not pass --initial-commit.
+node backfill/06-upload.mjs --store r2 --target pre --generation "$GOOD" --execute
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --execute --stage-only
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --execute
+```
+
+If the owner does not approve that commit, stop at step 3. There is no supported command that deletes the first R2 pointer.
+
 Acceptance:
 
 - `https://data-pre.gitstarclub.com/_meta/bucket-identity.json` is `{"bucket":"gitstarclub-data-pre","deploy_env":"pre"}`.
-- After the initial commit, `https://data-pre.gitstarclub.com/bootstrap/latest.json` returns 200 and names that generation.
+- After the initial commit, `https://data-pre.gitstarclub.com/bootstrap/latest.json` returns 200 and names that generation. On the first publish, `previous_generation` is null.
 - `https://pre.gitstarclub.com/` returns 200 and is `noindex`.
 - `node scripts/assert-cf-ci-gates.mjs` still passes. Preview still has no `BLOB_*`.
 
-Rollback (operator, same generation, only after that generation was committed):
-
-```bash
-node backfill/07-export-v2.mjs --store r2 --target pre --rollback bootstrap-YYYYMMDDTHHMMSSZ --execute
-```
-
-Do not delete `_meta/`. Do not point the production Worker at this bucket. If the public origin still does not resolve, fix DNS in a separate authorized change before calling the rehearsal accepted. Do not use the production blob URL as a stand-in.
+Do not delete `_meta/`. Do not point Worker `gitstarclub-web` at this bucket. If the public origin still does not resolve, fix DNS in a separate authorized change before calling the rehearsal accepted. Do not use the production blob URL as a stand-in.
 
 ### Stage 3. Production rebuild
 
-Not accepted. Repeat the stage 2 commands with `--target prod` into `gitstarclub-data-prod` only after the preview rehearsal is accepted. The production Worker keeps reading Vercel Blob until cutover. Do not bind `DATA` on the top-level Worker in this stage. Do not export the preview public origin for a production build.
+Not accepted. Repeat the stage 2 upload and `--initial-commit` commands with `--target prod` into bucket `gitstarclub-data-prod` only after the preview rehearsal is accepted. Worker `gitstarclub-web` (top-level production, no `--env`) keeps reading Vercel Blob until cutover. Do not bind `DATA` on that Worker in this stage. Do not pass `--env pre`. Do not export the preview public origin for a production build. These commands do not deploy the Worker and do not write bucket `gitstarclub-data-pre`.
+
+```bash
+# Worker gitstarclub-web, top-level production (no --env), bucket gitstarclub-data-prod
+node backfill/06-upload.mjs --store r2 --target prod --generation bootstrap-YYYYMMDDTHHMMSSZ
+node backfill/06-upload.mjs --store r2 --target prod --generation bootstrap-YYYYMMDDTHHMMSSZ --execute
+node backfill/07-export-v2.mjs --store r2 --target prod --generation bootstrap-YYYYMMDDTHHMMSSZ --execute --stage-only
+node backfill/07-export-v2.mjs --store r2 --target prod --generation bootstrap-YYYYMMDDTHHMMSSZ --execute --initial-commit
+```
+
+The first publish on this bucket also stores `previous_generation: null`. `--rollback` of that same generation returns `already-rolled-back` and is not an undo. `--rollback legacy-flat` fails closed on `gitstarclub-data-prod`. Quarantine a bad first publish with the stage 2 procedure, using Worker `gitstarclub-web` (top-level, no `--env`), public origin `https://data.gitstarclub.com`, and bucket `gitstarclub-data-prod`. The site is still on Blob, so production pages are already off this bucket. The corrective commit uses `--target prod`, omits `--initial-commit`, and does not run against Worker `gitstarclub-web-pre` or bucket `gitstarclub-data-pre`.
+
+A later publish rolls back to `previous_generation`:
+
+```bash
+# Worker gitstarclub-web, top-level production (no --env), bucket gitstarclub-data-prod
+# PREVIOUS is bootstrap/latest.json previous_generation on https://data.gitstarclub.com
+node backfill/07-export-v2.mjs --store r2 --target prod --rollback "$PREVIOUS" --execute
+```
 
 Acceptance:
 
@@ -132,7 +182,7 @@ Acceptance:
 - `https://data.gitstarclub.com/bootstrap/latest.json` and the published views pointer return 200 for the generation that was committed.
 - Production `https://gitstarclub.com/` still returns 200 from the blob read path. Top-level Worker config still has no `DATA` binding and still sets the blob public base.
 
-Rollback: `07-export-v2.mjs --store r2 --target prod --rollback <generation> --execute` for that generation. Leave production drivers on `blob`. Do not delete the identity marker or the blob objects.
+Leave production drivers on `blob` (an unset `STORAGE_READ_DRIVER` is the same default). Do not delete the identity marker or the blob objects. Do not roll the first publish back by naming the generation just committed.
 
 ### Stage 4. Cutover (I-5b)
 
