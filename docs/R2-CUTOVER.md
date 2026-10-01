@@ -160,11 +160,9 @@ curl -fsS -o /dev/null -w 'sealed stock %{http_code}\n' \
 
    The two site responses must not be a rankings page. HTTP 200 whose body still has an `owner/name` row means that host is still serving the bad generation, and the quarantine has not happened. If a version preview URL was handed out, request its `/rankings` the same way and require the same failure. The pointer GET still names the bad `generation` with `previous_generation` null. The identity object is unchanged. The sealed stock object is still 200. The bad generation stays in the bucket.
 
-   If the owner does not authorize this host block, step 3 stays blocked. Those hosts keep serving the bad generation. Do not record the incident as quarantined. Do not start stage 3.
+   If the owner does not authorize this host block, step 3 stays blocked. Those hosts keep serving the bad generation. Do not record the incident as quarantined. Do not start stage 3. Do not restore hosts from this step. Recovery is step 5. A successful fetch of a detached host is not the condition for attaching that host.
 
-   Recovery: turn the workers.dev subdomain back on, turn preview URLs back on, and attach `pre.gitstarclub.com/*` to Worker `gitstarclub-web-pre` again only after one of these is true. The corrected commit in step 4 has landed, `https://data-pre.gitstarclub.com/bootstrap/latest.json` names that new generation, and a fresh `https://pre.gitstarclub.com/rankings` shows rows from it. Or the owner accepts the current generation in writing and stage 2 acceptance is run again. Do not restore the hosts while the pointer still names the rejected generation, unless that written acceptance exists. Do not delete the sealed generation, the pointer, or the identity object in order to unblock.
-
-4. Repair is a separate owner authorization, not the isolation. The only write that changes which generation a restored reader follows is a corrected generation, committed without `--initial-commit` (that flag is refused once `bootstrap/latest.json` exists). The owner names the new generation id before the command runs. The new pointer's `previous_generation` is the bad id. The bad generation stays sealed and becomes the one-hop rollback target. Do not delete it in this step. Do not restore the preview hosts until the recovery condition in step 3 is met.
+4. Repair is a separate owner authorization, not the isolation. The only write that changes which generation a restored reader follows is a corrected generation, committed without `--initial-commit` (that flag is refused once `bootstrap/latest.json` exists). The owner names the new generation id before the command runs. The new pointer's `previous_generation` is the bad id. The bad generation stays sealed and becomes the one-hop rollback target. Do not delete it in this step. These commands publish objects in bucket `gitstarclub-data-pre` only. They do not rebuild pages and do not deploy Worker `gitstarclub-web-pre`. English rankings at `web/app/(en)/rankings/page.tsx` and localized rankings at `web/app/(localized)/[locale]/rankings/page.tsx` set `revalidate` to false, so a new pointer does not replace HTML that was already prerendered. Leave the hosts blocked.
 
 ```bash
 # Owner-authorized. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
@@ -174,7 +172,53 @@ node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --ex
 node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --execute
 ```
 
-If the owner does not approve that commit, leave the hosts blocked and leave the bad generation sealed. There is no supported command that deletes the first R2 pointer. Unblock conditions are in step 3.
+If the owner does not approve that commit, the remaining path is written acceptance in step 5. Leave the hosts blocked until that path finishes. There is no supported command that deletes the first R2 pointer.
+
+5. Recovery. The hosts from step 3 stay blocked through the object check and the isolated build. Do not fetch `https://pre.gitstarclub.com/rankings` to decide whether that host may be attached.
+
+   Choose the generation this recovery will serve. Either step 4 has landed, or the owner has accepted the current generation in writing while the hosts are still blocked. If neither is true, leave the hosts blocked and stop. Written acceptance is that record. It is not a request to the detached site, and it is not stage 2 acceptance. Stage 2 acceptance includes the live rankings page, so it runs only after the controlled reopen below succeeds.
+
+   a. With the hosts still blocked, verify the data origin. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`. Repeat the site curls from step 3 and require the same closed result. `$SERVE` is the chosen generation.
+
+```bash
+# Hosts still blocked. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+curl -fsS https://data-pre.gitstarclub.com/bootstrap/latest.json
+curl -fsS https://data-pre.gitstarclub.com/_meta/bucket-identity.json
+curl -fsS "https://data-pre.gitstarclub.com/bootstrap/generations/${SERVE}/manifests/base.json"
+curl -fsS "https://data-pre.gitstarclub.com/bootstrap/generations/${SERVE}/manifests/canonical.json"
+curl -fsS "https://data-pre.gitstarclub.com/bootstrap/generations/${SERVE}/views/rank/all-time/repo/stock.json"
+```
+
+   The pointer `generation` must be `$SERVE`. On the corrected path, `previous_generation` is the bad id. On the written-acceptance path, `previous_generation` is still JSON null. Identity stays `{"bucket":"gitstarclub-data-pre","deploy_env":"pre"}`. Each manifest SHA-256 matches the pointer. The stock object contains at least one repository row with a star count. Do not delete the bad sealed generation, the pointer, or the identity object.
+
+   b. Build a fresh preview while the hosts stay blocked. The build reads the public data origin. It does not attach a route.
+
+```bash
+# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+# Build only. Do not deploy.
+cd web
+export STORAGE_READ_DRIVER=r2
+export R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com
+bun run cf:build:pre
+```
+
+   Do not export a Blob base URL. Read the prerendered English `/rankings` document and one localized `/rankings` document in the OpenNext asset output of that build. Each must show an `owner/name` link and a star count from `$SERVE`. The English sentence "Ranking data is waiting for the next published recompute." on both ranking sections is a failure. This check is the build output. The corrected pointer alone does not establish it.
+
+   c. Publish that output only under a separate owner authorization that leaves the block in place. Do not run `wrangler deploy --env pre` against the committed Worker configuration. That deploy sets `workers_dev` and `preview_urls` back to true. `pre.gitstarclub.com/*` stays detached, the workers.dev subdomain stays off, and preview URLs stay off. The owner publishes the built assets from the dashboard or API without changing those three settings. After the publish, repeat the step 3 site curls and require the same closed result. If that publish cannot be done without turning the hosts on, step 5 stays blocked. Do not call the incident recovered, and do not attach the route in order to finish the check.
+
+   d. Controlled reopen is the next owner authorization, after (a), (b), and (c). It does not depend on a live response from the still-detached host. Turn the workers.dev subdomain on, turn preview URLs on, and attach `pre.gitstarclub.com/*` to Worker `gitstarclub-web-pre`.
+
+   e. Immediately request the reopened rankings pages. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`.
+
+```bash
+# Just after the controlled reopen. Re-block if either body fails.
+curl -sS -D - -o /tmp/pre-rankings.html -w 'pre.gitstarclub.com %{http_code}\n' https://pre.gitstarclub.com/rankings
+curl -sS -D - -o /tmp/workers-rankings.html -w 'workers.dev %{http_code}\n' https://gitstarclub-web-pre.worldgo.workers.dev/rankings
+```
+
+   Each response must be HTTP 200 and `noindex`, and the body must show an `owner/name` link and a star count from `$SERVE`. The empty English sentence on both ranking sections is a failure. If either check fails, detach `pre.gitstarclub.com/*`, turn the workers.dev subdomain off, and turn preview URLs off again before any other work. A version preview URL opened by that same authorization must pass the same body check or be turned off with the other hosts. Do not leave a failed page on those hosts. Do not start stage 3.
+
+   f. Repeat stage 2 acceptance only after (e) passes. That acceptance may then request `https://pre.gitstarclub.com/rankings`. It is not the condition that allows (d).
 
 Acceptance. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`. Do not require `views/latest.json`.
 
