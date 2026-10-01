@@ -1,3 +1,4 @@
+import { formatConjunction as listLabels, formatSignedStars as signedStars, formatTemplate as fill } from "@/lib/template-format";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
@@ -21,7 +22,7 @@ import { exactRepoMilestones, type ExactRepoMilestone } from "@/lib/repo-milesto
 import { resolveRepoRoute } from "@/lib/repo-route";
 import type { RepoPageEntity } from "@/lib/repo-readiness";
 import { ANSWER_CAPSULE_SOURCE, resolveDataAsOfFromMeta, type AnswerCapsuleContent } from "@/lib/geo-capsules";
-import { absoluteSnippetUrl, type ShareableSnippetContent } from "@/lib/shareable-snippets";
+import { absoluteSnippetUrl, buildShareableSnippet, type ShareableSnippetContent } from "@/lib/shareable-snippets";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { safeExternalHref } from "@/lib/external-url";
@@ -663,7 +664,7 @@ function buildLocalizedRepoFaqs(t: Dict, locale: Locale, repo: RepoPageEntity, a
   ];
 }
 
-function buildLocalizedRepoMilestoneSnippet({
+export function buildLocalizedRepoMilestoneSnippet({
   t,
   locale,
   repo,
@@ -687,7 +688,7 @@ function buildLocalizedRepoMilestoneSnippet({
       }),
     ),
   );
-  return snippet({
+  return buildShareableSnippet({
     kind: "repo-milestones",
     title: fill(t.repo.milestoneSnippetTitle, { repo: repo.full_name }),
     text: fill(t.repo.milestoneSnippetText, { asOf, repo: repo.full_name, milestones: milestoneText }),
@@ -738,71 +739,11 @@ function repoMilestoneLabels(t: Dict, locale: Locale, repo: RepoPageEntity): str
   );
 }
 
-function snippet({
-  kind,
-  title,
-  text,
-  links,
-  sourceLabel,
-}: {
-  kind: ShareableSnippetContent["kind"];
-  title: string;
-  text: string;
-  links: Array<{ label: string; href: string }>;
-  sourceLabel: string;
-}): ShareableSnippetContent {
-  const canonicalLinks = links.map((link) => ({ ...link, href: absoluteSnippetUrl(link.href) }));
-  const copyText = [text, ...canonicalLinks.map((link) => `${link.label}: ${link.href}`)].join("\n");
-  return {
-    kind,
-    title,
-    text,
-    links: canonicalLinks,
-    copyText,
-    embedHtml: embedHtml(title, text, canonicalLinks, sourceLabel),
-  };
-}
-
-function embedHtml(title: string, text: string, links: Array<{ label: string; href: string }>, sourceLabel: string): string {
-  const source = links[0];
-  return [
-    `<blockquote cite="${escapeAttribute(source?.href ?? absoluteSnippetUrl("/"))}">`,
-    `<p><strong>${escapeHtml(title)}</strong></p>`,
-    `<p>${escapeHtml(text)}</p>`,
-    source ? `<p><a href="${escapeAttribute(source.href)}">${escapeHtml(sourceLabel)}: ${escapeHtml(source.label)}</a></p>` : "",
-    `</blockquote>`,
-  ]
-    .filter(Boolean)
-    .join("");
-}
-
 function monthYearFromPeriod(locale: Locale, period: string): string {
   const { y, m } = ymParts(period);
   return monthYearLabel(locale, y, m);
 }
 
-function signedStars(value: number, locale: Locale): string {
-  const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${fmtStars(Math.abs(value), locale)}`;
-}
-
-function listLabels(locale: Locale, values: readonly string[]): string {
-  if (values.length === 0) return "";
-  return new Intl.ListFormat(toBcp47Locale(locale), { type: "conjunction" }).format([...values]);
-}
-
 function withSource(text: string): string {
   return `${text} - ${ANSWER_CAPSULE_SOURCE}`;
-}
-
-function fill(template: string, values: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
 }
