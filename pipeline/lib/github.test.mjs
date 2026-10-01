@@ -212,6 +212,76 @@ describe("pipeline GitHub client (injected fetch)", () => {
     }
   });
 
+  test("rejects malformed repository fields before mapping them", async () => {
+    process.env.GITHUB_TOKEN = "test-token";
+    blockRealFetch();
+    const missingOwner = { databaseId: 7 };
+    const badStars = { ...repo, stargazerCount: "many" };
+    const badId = { ...repo, databaseId: "bad" };
+    const badTopics = { ...repo, repositoryTopics: { nodes: [{ topic: { name: 1 } }] } };
+    const badLanguage = { ...repo, primaryLanguage: "TypeScript" };
+    const badOwnerType = { ...repo, owner: { login: "acme", __typename: "Bot" } };
+    const cases = [
+      [missingOwner, /repository 7 field nameWithOwner:/],
+      [badStars, /repository 7 field stargazerCount:/],
+      [badId, /repository invalid-id field databaseId:/],
+      [badTopics, /repository 7 field repositoryTopics:/],
+      [badLanguage, /repository 7 field primaryLanguage:/],
+      [badOwnerType, /repository 7 field owner.__typename:/],
+    ];
+    for (const [node, pattern] of cases) {
+      const transport = scripted([response(200, { data: { nodes: [node] } })]);
+      const error = await batchMetadata(["NODE"], transport.opts).then(
+        () => {
+          throw new Error("expected a repository field error");
+        },
+        (caught) => caught,
+      );
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(TypeError);
+      expect(error.message).toMatch(pattern);
+      expect(transport.calls).toHaveLength(1);
+      expect(transport.sleeps).toEqual([]);
+    }
+
+    const huge = { databaseId: 7, extra: "y".repeat(500) };
+    const bounded = scripted([response(200, { data: { nodes: [huge] } })]);
+    const boundedError = await batchMetadata(["NODE"], bounded.opts).then(
+      () => {
+        throw new Error("expected a bounded repository field error");
+      },
+      (caught) => caught,
+    );
+    const prefix = "GitHub GraphQL invalid data: repository 7 field nameWithOwner: ";
+    expect(boundedError.message.startsWith(prefix)).toBe(true);
+    expect(boundedError.message.length).toBe(prefix.length + 200);
+    expect(boundedError.message).not.toContain("y".repeat(201));
+  });
+
+  test("keeps null, empty, and non-repository nodes out of the metadata map", async () => {
+    process.env.GITHUB_TOKEN = "test-token";
+    blockRealFetch();
+    const transport = scripted([
+      response(200, {
+        data: {
+          nodes: [null, {}, { __typename: "Issue" }, { databaseId: null, stargazerCount: "many" }, repo],
+        },
+      }),
+    ]);
+    const rows = await batchMetadata(["NODE"], transport.opts);
+    expect([...rows.keys()]).toEqual([7]);
+    expect(rows.get(7)?.current_stars).toBe(12);
+    expect(rows.get(7)?.owner).toBe("acme");
+  });
+
+  test("rejects an array node instead of treating it as a repository", async () => {
+    process.env.GITHUB_TOKEN = "test-token";
+    blockRealFetch();
+    const transport = scripted([response(200, { data: { nodes: [[repo]] } })]);
+    await expect(batchMetadata(["NODE"], transport.opts)).rejects.toThrow("node was not an object");
+    expect(transport.calls).toHaveLength(1);
+  });
+
   test("accepts valid empty GraphQL nodes and an empty id list", async () => {
     process.env.GITHUB_TOKEN = "test-token";
     blockRealFetch();

@@ -203,14 +203,67 @@ async function batchNodes(nodeIds, selection, pick, opts = {}) {
     }
     for (const n of data.nodes) {
       if (n == null) continue;
-      if (typeof n !== "object") throw new Error("GitHub GraphQL invalid data: node was not an object");
-      if (n.databaseId != null) result.set(n.databaseId, pick(n));
+      // An inline fragment on Repository is an empty object for every other
+      // node type. Arrays are not those objects.
+      if (typeof n !== "object" || Array.isArray(n)) {
+        throw new Error("GitHub GraphQL invalid data: node was not an object");
+      }
+      if (n.databaseId == null) continue;
+      result.set(n.databaseId, pick(n));
     }
   }
   return result;
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isSafeCount(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.length > 0;
+}
+
+/** Name of the first mapped field that cannot be stored, or "" when the node is usable. */
+function repositoryProblem(node) {
+  if (!isSafeCount(node.databaseId)) return "databaseId";
+  if (!isNonEmptyString(node.nameWithOwner)) return "nameWithOwner";
+  if (!isPlainObject(node.owner)) return "owner";
+  if (!isNonEmptyString(node.owner.login)) return "owner.login";
+  if (node.owner.__typename !== "User" && node.owner.__typename !== "Organization") return "owner.__typename";
+  if (typeof node.name !== "string") return "name";
+  if (!(node.description === null || typeof node.description === "string")) return "description";
+  const language = node.primaryLanguage;
+  if (!(language === null || (isPlainObject(language) && typeof language.name === "string"))) {
+    return "primaryLanguage";
+  }
+  if (!isPlainObject(node.repositoryTopics) || !Array.isArray(node.repositoryTopics.nodes)) return "repositoryTopics";
+  for (const topicNode of node.repositoryTopics.nodes) {
+    if (!isPlainObject(topicNode) || !isPlainObject(topicNode.topic) || typeof topicNode.topic.name !== "string") {
+      return "repositoryTopics";
+    }
+  }
+  if (!isNonEmptyString(node.createdAt)) return "createdAt";
+  if (!isSafeCount(node.stargazerCount)) return "stargazerCount";
+  if (typeof node.isArchived !== "boolean") return "isArchived";
+  return "";
+}
+
+function rejectRepository(node) {
+  const field = repositoryProblem(node);
+  if (!field) return;
+  const id = isSafeCount(node.databaseId) ? String(node.databaseId) : "invalid-id";
+  throw new Error(
+    `GitHub GraphQL invalid data: repository ${id} field ${field}: ${boundedDiagnostic(JSON.stringify(node))}`,
+  );
+}
+
 // Full metadata incl. owner_type (User|Organization). Returns Map<databaseId, {...}>.
+// A present databaseId is a repository payload. Fields are checked before they
+// are read, so a bad owner or star count cannot be stored or throw a TypeError.
 export function batchMetadata(nodeIds, opts = {}) {
   const selection = `
     nameWithOwner owner { login __typename } name
@@ -218,16 +271,19 @@ export function batchMetadata(nodeIds, opts = {}) {
     primaryLanguage { name }
     repositoryTopics(first: 20) { nodes { topic { name } } }
     createdAt stargazerCount isArchived`;
-  return batchNodes(nodeIds, selection, (n) => ({
-    full_name: n.nameWithOwner,
-    owner: n.owner.login,
-    owner_type: n.owner.__typename, // "User" | "Organization"
-    name: n.name,
-    description: n.description,
-    language: n.primaryLanguage?.name ?? null,
-    topics: n.repositoryTopics.nodes.map((t) => t.topic.name),
-    created_at: n.createdAt,
-    current_stars: n.stargazerCount,
-    is_archived: n.isArchived,
-  }), opts);
+  return batchNodes(nodeIds, selection, (n) => {
+    rejectRepository(n);
+    return {
+      full_name: n.nameWithOwner,
+      owner: n.owner.login,
+      owner_type: n.owner.__typename, // "User" | "Organization"
+      name: n.name,
+      description: n.description,
+      language: n.primaryLanguage?.name ?? null,
+      topics: n.repositoryTopics.nodes.map((t) => t.topic.name),
+      created_at: n.createdAt,
+      current_stars: n.stargazerCount,
+      is_archived: n.isArchived,
+    };
+  }, opts);
 }

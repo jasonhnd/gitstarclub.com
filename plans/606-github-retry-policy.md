@@ -6,9 +6,9 @@ Close code-health proposal E03 (findings P01, P02, P03, P06, L06). GitHub client
 
 ## Scope
 
-1. `pipeline/lib/github.mjs`: named attempt and page limits aligned with `web/lib/github.ts`. Retry 403, 429, and 5xx at most four extra times. Cap Retry-After and reset waits at 60 seconds and ignore non-finite header values. Backoff stays capped at 30 seconds. Reject non-OK GraphQL and REST status with a diagnostic of at most 200 characters. Require a GraphQL `data` object and a `nodes` array. Drop unused `batchStargazerCounts`. Callers can pass `fetcher` and `sleep`. The token is read when a request is made.
+1. `pipeline/lib/github.mjs`: named attempt and page limits aligned with `web/lib/github.ts`. Retry 403, 429, and 5xx at most four extra times. Cap Retry-After and reset waits at 60 seconds and ignore non-finite header values. Backoff stays capped at 30 seconds. Reject non-OK GraphQL and REST status with a diagnostic of at most 200 characters. Require a GraphQL `data` object and a `nodes` array. A node with a `databaseId` must have a safe integer id and star count, non-empty names, a User or Organization owner, and a topic list before those fields are mapped. Null nodes and nodes with no `databaseId` stay skipped, including other GraphQL types. Drop unused `batchStargazerCounts`. Callers can pass `fetcher` and `sleep`. The token is read when a request is made.
 2. `pipeline/lib/github.test.mjs` (new): injected fetch and sleep. Covers 400, 401, 403, 429, 5xx, invalid GraphQL data, valid empty data, and retry exhaustion. `globalThis.fetch` is restored and must not run.
-3. `pipeline/lib/upload-retry.mjs`: `maxPerSec` must be a finite number greater than 0. `retries` must be a finite nonnegative integer. Retry only the documented set (408, 429, 500, 502, 503, 504, plus timeout and socket failures). 400, 401, and 403 fail on the first attempt.
+3. `pipeline/lib/upload-retry.mjs`: `maxPerSec` must be a finite number greater than 0, and `1000 / maxPerSec` must be a finite wait that fits a 32-bit timer. `retries` must be a finite nonnegative integer. Retry only the documented set (408, 429, 500, 502, 503, 504, plus timeout and socket failures). Also retry `@vercel/blob` `BlobServiceRateLimited` and `BlobServiceNotAvailable`. Access, precondition, and other Blob SDK errors fail on the first attempt, as do HTTP 400, 401, and 403.
 4. `pipeline/lib/upload-retry.test.mjs`: bad settings throw before any attempt. Status and exhaustion cases go through `withUploadRetry`.
 5. `web/lib/github.ts`: export the existing pure delay helpers and the named limits. Pass optional `fetcher` and `sleep` through the real GraphQL and Search clients. Default transport and delays stay the same.
 6. `web/lib/github.test.ts`: delete the private-helper replicas. Call the exported helpers and the real clients with injected fetch.
@@ -25,5 +25,9 @@ Close code-health proposal E03 (findings P01, P02, P03, P06, L06). GitHub client
 ## Acceptance
 
 - Injected-fetch tests exercise the real policy for 400, 401, 403, 429, and 5xx, invalid GraphQL data, valid empty data, bad rate and retry settings, and retry exhaustion. They make zero real service calls.
-- Removing the non-OK reject, the 60 second cap, the upload option checks, or the retryable-status check makes those new tests fail.
+- Removing the non-OK reject, the 60 second cap, the upload option checks, the timer-wait check, the Blob service class check, the repository field check, or the retryable-status check makes those new tests fail.
 - The AGENTS.md static job, fixture production build, and `cf:dry-run` pass in a fresh detached worktree.
+
+## Review round 1
+
+The first review of PR 626 kept three gaps. Upload retries now recognize the two Blob SDK transient classes and still fail access, precondition, and unknown Blob errors on the first attempt. A finite but overflowing `maxPerSec`, including `Number.MIN_VALUE`, throws before `create`. `batchMetadata` rejects a malformed repository object with a bounded field diagnostic and still returns only real repository rows from a mixed node list.
