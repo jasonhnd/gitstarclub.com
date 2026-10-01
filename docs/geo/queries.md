@@ -1,7 +1,7 @@
 ---
 owner: GEO measurement / citation review
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - GEO target-query registry
   - citation-review worksheet
@@ -137,9 +137,9 @@ Expected page family: `/about`.
 
 | id | page_type | query | expected_url | expected_fact | source_fields | priority | notes |
 |---|---|---|---|---|---|---|---|
-| about-star-history-methodology | about | how does GitStarClub calculate GitHub star history? | /about | GitStarClub combines GH Archive WatchEvent history with public GitHub API current totals using deterministic seam-aware anchoring | web/app/about/page.tsx; docs/DATA-CONTRACTS.md; docs/RANKING.md | high | Checks methodology citation for star-history derivation. |
-| about-citable-fields | about | what GitStarClub fields can be cited for GitHub stars? | /about | citable fields include current_stars, current_stars_sum, rank item value, monthly curve totals, recent daily net change, and 10k/50k/100k milestones | web/app/about/page.tsx ABOUT_DATASET_VARIABLES | medium | Checks whether engines cite the methodology surface for field definitions. |
-| about-license-attribution | about | what attribution is required for GitStarClub GitHub star history data? | /about | GitStarClub uses CC BY 4.0 attribution copy: Data from GH Archive, derived by GitStarClub | web/app/about/page.tsx; docs/DATA-EXPORTS.md | medium | Checks attribution and license citation. |
+| about-star-history-methodology | about | how does GitStarClub calculate GitHub star history? | /about | GitStarClub combines GH Archive WatchEvent history with public GitHub API current totals using deterministic seam-aware anchoring | web/app/_localized/about.tsx; web/app/(en)/about/page.tsx; web/app/(localized)/[locale]/about/page.tsx; docs/DATA-CONTRACTS.md; docs/RANKING.md | high | Checks methodology citation for star-history derivation. The public URL stays /about. |
+| about-citable-fields | about | what GitStarClub fields can be cited for GitHub stars? | /about | citable fields include current_stars, current_stars_sum, rank item value, monthly curve totals, recent daily net change, and 10k/50k/100k milestones | web/app/_localized/about.tsx ABOUT_DATASET_VARIABLES | medium | Checks whether engines cite the methodology surface for field definitions. The English adapter is web/app/(en)/about/page.tsx. |
+| about-license-attribution | about | what attribution is required for GitStarClub GitHub star history data? | /about | GitStarClub uses CC BY 4.0 attribution copy: Data from GH Archive, derived by GitStarClub | web/app/_localized/about.tsx; web/app/(en)/about/page.tsx; web/app/(localized)/[locale]/about/page.tsx; docs/DATA-EXPORTS.md | medium | Checks attribution and license citation. The public URL stays /about. |
 
 ### Data-export files
 

@@ -21,7 +21,7 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 
 - **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB / ClickHouse / Postgres / vector index in the runtime image.
 - **Zero runtime database.** Read-side state is versioned JSON views behind a publish pointer.
-- **Static content pages.** Zero client JavaScript on content surfaces. The named exceptions live in [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md).
+- **Static content pages.** A small core is prerendered at deploy. The long tail is generated on demand and then cached. Content pages stay near-zero client JavaScript. Client islands are listed in [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) and [docs/FRONTEND.md](docs/FRONTEND.md).
 - **Cloudflare hosting.** Production and preview pages run on Cloudflare Workers via OpenNext. JSON is in Cloudflare R2 (production still reads Vercel Blob until cutover; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)). Keep refresh scheduling evidence separate from route implementation.
 - **AI-free.** Features that would normally call an LLM (summaries, classifications) ship as deterministic templates.
 
