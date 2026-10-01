@@ -43,6 +43,8 @@ Issue #569 records that both data buckets already exist and that each has `_meta
 4. **Key shape.** Guarded put and delete reject `.` and `..` segments, including one percent-encoding (`%2e`, `%2e%2e`), so `new URL()` cannot collapse `views/../_meta/x` into `_meta/`. `del` of an `r2://` URL or a public URL under `_meta/` is refused before the marker is read.
 5. **CI gates.** `node scripts/assert-cf-ci-gates.mjs` refuses a production bucket or domain inside preview `env.pre`, a preview bucket or domain at the top level, `BLOB_*` on preview, a missing preview `DEPLOY_ENV`, and a non-empty `R2_PREFIX`. Those host checks ignore case, so `DATA.gitstarclub.com` is still the production host. Until cutover, top-level `DEPLOY_ENV` must stay unset, and top-level `STORAGE_READ_DRIVER`, `READ_DRIVER`, `STORAGE_WRITE_DRIVER`, and `WRITE_DRIVER` must stay unset or `blob`. `cf:build` refuses a shell public read base that does not match the wrangler vars for `--site-target`. A loopback fixture (`127.0.0.1`, `localhost`, and a URL whose hostname is `[::1]`) stays allowed so CI can build.
 
+Issue #578 prepares a separate stage-4 target contract without changing the current config. Top-level `DEPLOY_ENV=production` selects that contract: both explicit drivers, the production bucket var and public base, and exactly one `DATA` binding must match stage 4. Blob variables and `VIEWS_VERSION_FALLBACK` must be absent, and `R2_PREFIX` must remain unset or empty. Driver aliases, if present, must agree with the explicit drivers. A partial switch fails. Bucket/domain isolation, indexing, and the paused schedules remain enforced in both contracts.
+
 The marker JSON is exactly one of:
 
 ```json
@@ -149,7 +151,19 @@ Acceptance:
 - `node scripts/assert-cf-ci-gates.mjs` passes, including the rule that preview config does not name the production bucket.
 - `https://gitstarclub.com/rankings` returns 200 with indexing still on.
 - The generation in `https://data.gitstarclub.com/views/latest.json` matches what the production pages render.
-- A production shell build exports `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, not the preview origin and not the blob host. `cf:build` fails the build if the shell base does not match the top-level wrangler vars.
+- A production shell build exports both `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`. OpenNext prerendering inherits the shell, not the Worker vars. `cf:build` rejects a missing or different read driver, a missing public base, any shell `BLOB_*` variable (including `NEXT_PUBLIC_BLOB_*`), or a non-loopback base that does not match the top-level wrangler vars.
+
+After the separately authorized stage-4 config change, the read-only production build environment is:
+
+```bash
+export STORAGE_READ_DRIVER=r2
+export R2_PUBLIC_BASE_URL=https://data.gitstarclub.com
+unset READ_DRIVER BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL BLOB_READ_WRITE_TOKEN
+cd web
+bun run cf:build:production
+```
+
+Do not run this against the current Blob Worker config: the target mismatch must fail. Clear any other `BLOB_*` or `NEXT_PUBLIC_BLOB_*` shell vars as well. No write driver or storage credential is needed for this build. Offline tests use an R2 loopback base with the same explicit read driver and no Blob vars.
 
 Rollback: restore the previous top-level blob public base, remove the production `DATA` binding, and set the read and write drivers back to `blob` (or unset them). Do not delete blob objects. Do not empty the production R2 bucket as part of rollback.
 
@@ -168,8 +182,9 @@ Not accepted. After production has been on R2 through at least one successful re
 - Production and preview do not require `BLOB_READ_WRITE_TOKEN` or `BLOB_BASE_URL`.
 - Live release gates stop falling back to the public blob URL. They use `LIVE_PUBLIC_READ_BASE_URL` or the R2 public origin. That fallback is documented as temporary in [OPS.md](./OPS.md).
 - Blob layout instructions in [OPS.md](./OPS.md) and the superseded Blob design doc move to history.
+- `exports:generate` and `validate-live-views.ts` use `getPublicReadBases()` for the configured read driver. The validator checks the primary origin and reports `storage_read_driver` and `public_read_base`. Their offline CLI regression tests run with an R2 loopback base and no Blob vars; a missing R2 base fails even when a Blob base is available. This preparation does not retire the remaining Blob operating dependencies.
 
-Acceptance: the top-level Worker config and preview `env.pre` contain no `BLOB_*` vars, and a read-only production page still returns 200 from `https://data.gitstarclub.com`.
+Acceptance: the top-level Worker config and preview `env.pre` contain no `BLOB_*` vars, a read-only production page still returns 200 from `https://data.gitstarclub.com`, and the read-only export and live-view tools succeed with the R2 driver without Blob vars. A page returning 200 alone does not verify those tools.
 
 Rollback: restore the blob driver and the blob public base on the production Worker, as in stage 4 rollback. Do not delete blob objects in order to roll back. Deleting the blob store is a separate owner decision after this stage has stayed healthy. It is not the rollback.
 
