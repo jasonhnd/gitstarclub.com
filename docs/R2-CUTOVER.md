@@ -201,7 +201,31 @@ Acceptance:
 - The generation in `https://data.gitstarclub.com/views/latest.json` matches what the production pages render.
 - A production shell build exports `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, not the preview origin and not the blob host. `cf:build` fails the build if the shell base does not match the top-level wrangler vars.
 
-Rollback: restore the previous top-level blob public base, remove the production `DATA` binding, and set the read and write drivers back to `blob` (or unset them). Do not delete blob objects. Do not empty the production R2 bucket as part of rollback.
+Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset: rankings then render with no rows.
+
+The pre-cutover version is `14b84f73-ef31-4e86-a70d-b71251756093`. On 2026-10-01 a read-only check found that version deployed at 100% of Worker `gitstarclub-web`. Do not pass `--env pre`. This command does not write bucket `gitstarclub-data-prod` and does not write the blob store. The restored version reads blob base `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`.
+
+```bash
+# Worker gitstarclub-web, top-level production (no --env), blob store
+# https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+# Does not target bucket gitstarclub-data-prod or wrangler env pre.
+wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web
+```
+
+That version has `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`, `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` set to `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`, no top-level `DATA` binding, and no `STORAGE_READ_DRIVER` (the runtime default is `blob`). Do not follow the rollback with a deploy that drops `VIEWS_VERSION_FALLBACK`.
+
+If the rollback is a wrangler config edit and a new deploy, instead of the version command above, set the same values: `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`, both blob base variables to that blob host, drivers back to `blob` or unset, remove the production `DATA` binding, and leave `triggers.crons` at `[]`. Worker `gitstarclub-web`, top-level production, no `--env`. Do not delete blob objects. Do not empty bucket `gitstarclub-data-prod`.
+
+Smoke checks that real data renders. HTTP 200 alone is not enough. Worker `gitstarclub-web`, top-level production, blob store `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`:
+
+```bash
+# Worker gitstarclub-web, top-level production (no --env), blob store
+# https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+curl -fsS -o /dev/null -w '%{http_code}\n' https://gitstarclub.com/rankings
+curl -fsS https://gitstarclub.com/rankings
+```
+
+Expect HTTP 200 and indexing still on (`index, follow`). The HTML must include a repository ranking row (`owner/name`) and a star count. It must not show "Ranking data is waiting for the next published recompute." as the body of both ranking sections. That empty copy means the fallback version was not served. Blob `views/latest.json` may still 404. The page data is version `refresh-2026-09-13T06-00-16-398Z`.
 
 ### Stage 5. Production crons
 
@@ -221,7 +245,7 @@ Not accepted. After production has been on R2 through at least one successful re
 
 Acceptance: the top-level Worker config and preview `env.pre` contain no `BLOB_*` vars, and a read-only production page still returns 200 from `https://data.gitstarclub.com`.
 
-Rollback: restore the blob driver and the blob public base on the production Worker, as in stage 4 rollback. Do not delete blob objects in order to roll back. Deleting the blob store is a separate owner decision after this stage has stayed healthy. It is not the rollback.
+Rollback: use the stage 4 version rollback on Worker `gitstarclub-web` (top-level production, no `--env`): `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`. That restores `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z` and the blob public base `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`. It does not write bucket `gitstarclub-data-prod`. Do not delete blob objects in order to roll back. Do not empty bucket `gitstarclub-data-prod`. Deleting the blob store is a separate owner decision after this stage has stayed healthy. It is not the rollback. The same rankings smoke as stage 4 must show repository rows, not the empty ranking copy.
 
 ## What is still blob, until cutover
 

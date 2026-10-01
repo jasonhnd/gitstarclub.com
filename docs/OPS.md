@@ -798,6 +798,32 @@ node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --ex
 
 Production uses the same upload and `--initial-commit` commands with `--target prod` after the pre rehearsal. That target is Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`. The first publish there has the same null `previous_generation` and the same quarantine, with public origin `https://data.gitstarclub.com`. A later publish on that bucket rolls back with `--target prod` and `$PREVIOUS` from that origin. Nothing in this section uploads, deploys, or binds a bucket.
 
+### Stage 4 cutover rollback
+
+Stage 4 is specified in [R2-CUTOVER.md](./R2-CUTOVER.md). Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset.
+
+The pre-cutover version is `14b84f73-ef31-4e86-a70d-b71251756093`. On 2026-10-01 a read-only check found that version deployed at 100% of Worker `gitstarclub-web`. Do not pass `--env pre`. This command does not write bucket `gitstarclub-data-prod` and does not write the blob store. The restored version reads blob base `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`.
+
+```bash
+# Worker gitstarclub-web, top-level production (no --env), blob store
+# https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+# Does not target bucket gitstarclub-data-prod or wrangler env pre.
+wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web
+```
+
+That version has `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`, `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` set to `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`, no top-level `DATA` binding, and no `STORAGE_READ_DRIVER` (the runtime default is `blob`). Do not follow the rollback with a deploy that drops `VIEWS_VERSION_FALLBACK`. A config-edit rollback sets those same values, removes the production `DATA` binding, and leaves `triggers.crons` at `[]`. Do not delete blob objects. Do not empty bucket `gitstarclub-data-prod`.
+
+Smoke checks that real data renders. HTTP 200 alone is not enough.
+
+```bash
+# Worker gitstarclub-web, top-level production (no --env), blob store
+# https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+curl -fsS -o /dev/null -w '%{http_code}\n' https://gitstarclub.com/rankings
+curl -fsS https://gitstarclub.com/rankings
+```
+
+Expect HTTP 200 and indexing still on (`index, follow`). The HTML must include a repository ranking row (`owner/name`) and a star count. It must not show "Ranking data is waiting for the next published recompute." as the body of both ranking sections. Blob `views/latest.json` may still 404. The page data is version `refresh-2026-09-13T06-00-16-398Z`.
+
 ## One-time canonical lifecycle provenance migration (Issue #326)
 
 > This is a **one-time controlled migration** that fills in lifecycle provenance for legacy canonical rows, not
