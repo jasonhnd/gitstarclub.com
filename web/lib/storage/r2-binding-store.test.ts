@@ -110,6 +110,7 @@ class FakeR2Bucket implements R2Bucket {
     return {
       ...this.toHead(key, stored),
       text: async () => new TextDecoder().decode(stored.body),
+      arrayBuffer: async () => new Uint8Array(stored.body).buffer,
     };
   }
 }
