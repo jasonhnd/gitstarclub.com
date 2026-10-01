@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { acquireBootstrapLease } from "../../../pipeline/lib/bootstrap-lease.mjs";
 import {
   commitInitialBootstrapWithLease,
   stageBootstrapPhase,
@@ -134,5 +135,49 @@ describe("initial bootstrap commit lease", () => {
       commitInitialBootstrapWithLease({ generation: GENERATION, store, now: NOW }),
     ).rejects.toThrow(/workflow lease/);
     expect(await store.read("bootstrap/latest.json")).toBeNull();
+  });
+
+  test("refuses a valid takeover during the post-renewal marker reads without writing the pointer", async () => {
+    const { store } = await stagedStore();
+    const realNow = Date.now;
+    let canonicalReads = 0;
+    let pointerWrites = 0;
+    const originalRead = store.read.bind(store);
+    const originalCreate = store.createMutable.bind(store);
+    store.read = async (path: string) => {
+      if (path === "canonical/v2/meta.json") {
+        canonicalReads += 1;
+        if (canonicalReads === 2) {
+          const jumped = realNow() + 11 * 60 * 1000;
+          Date.now = () => jumped;
+          await acquireBootstrapLease({
+            store,
+            generation: "bootstrap-other-writer",
+            operation: "publish",
+          });
+        }
+      }
+      return originalRead(path);
+    };
+    store.createMutable = async (path, body, contentType) => {
+      if (path === "bootstrap/latest.json") pointerWrites += 1;
+      return originalCreate(path, body, contentType);
+    };
+    try {
+      await expect(
+        commitInitialBootstrapWithLease({ generation: GENERATION, store, now: NOW }),
+      ).rejects.toThrow(/workflow lease/);
+      expect(canonicalReads).toBe(2);
+      expect(pointerWrites).toBe(0);
+      expect(await originalRead("bootstrap/latest.json")).toBeNull();
+      const lease = JSON.parse((await originalRead(ACTIVE))?.toString("utf8") ?? "");
+      expect(lease).toMatchObject({
+        run_id: "bootstrap-publish-bootstrap-other-writer",
+        fencing_token: 2,
+        status: "running",
+      });
+    } finally {
+      Date.now = realNow;
+    }
   });
 });

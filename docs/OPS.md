@@ -917,7 +917,8 @@ documented in the bootstrap runbook. That execute path acquires the same
 `bootstrap:publish:<generation>`. A running unexpired workflow blocks the
 write. After the lease renewal the command re-reads `bootstrap/latest.json`,
 `views/latest.json`, and `canonical/v2/meta.json`, and refuses if any of them
-appeared in that window. The pointer write stays create-only. Creating a pointer is not the root-cost fix: a missing pointer is a
+appeared in that window. It renews the lease again immediately before the
+create-only write, so a valid takeover during those reads does not publish. Creating a pointer is not the root-cost fix: a missing pointer is a
 normal long-lived legacy state and must stay negatively cached with coalesced
 reads even if the object disappears again.
 
