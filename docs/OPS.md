@@ -313,6 +313,9 @@ Platform and development-tool variables also belong to the maintained inventory;
 | `NODE_ENV` | runtime/tooling | Next.js and tests standard runtime mode |
 | `CI` | CI | Enables CI-only timeouts, output, and security gates |
 | `PORT` | Local tooling | Port the local fixture/dev server listens on |
+| `BACKFILL_FIXTURE_CONFIG` | Offline pipeline tests only | Disposable synthetic transport configuration; never a production setting |
+| `BACKFILL_FIXTURE_TRACE` | Offline pipeline tests only | Local JSONL request trace written by the subprocess network interceptor |
+| `BACKFILL_FIXTURE_REMOTE` | Offline pipeline tests only | Disposable file backing synthetic R2 responses; never a bucket or credential file |
 | `BASE_URL` | Playwright/release | Browser-test origin; usually injected by the deployment resolver |
 | `PLAYWRIGHT_BASE_URL` | Playwright | `BASE_URL` explicit Playwright override |
 | `IDENTITY_ORIGIN` | release gate | Verifies the target deployment's canonical identity |
