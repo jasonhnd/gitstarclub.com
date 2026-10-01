@@ -49,6 +49,8 @@ export type R2ListResult = {
 /**
  * Structural subset of the Workers `R2Bucket` binding.
  * `etag` is unquoted; `httpEtag` is quoted. This store returns `httpEtag`.
+ * `ifMatch` may be that quoted value. `onlyIf.etagMatches` is the unquoted form
+ * workerd accepts.
  */
 export type R2Bucket = {
   get(key: string): Promise<R2ObjectBody | null>;
@@ -115,8 +117,49 @@ function httpEtagOf(object: { etag: string; httpEtag?: string }): string {
   return raw.startsWith('"') ? raw : `"${raw}"`;
 }
 
+/**
+ * workerd `UnwrappedConditional(const Conditional&)` rejects a value that
+ * starts and ends with `"`. `*` is a wildcard. Every other string, including
+ * `W/...`, is a strong tag with that literal value. Weak tags are parsed only
+ * from `If-Match` / `If-None-Match` headers, which this store does not send.
+ */
+function structuredConditionalTag(value: string): { wildcard: true } | { wildcard: false; value: string } {
+  if (value.startsWith('"') && value.endsWith('"')) {
+    throw new TypeError(`Conditional ETag should not be wrapped in quotes (${value}).`);
+  }
+  if (value === "*") return { wildcard: true };
+  return { wildcard: false, value };
+}
+
+/** `ifMatch` is a quoted `httpEtag`. Structured `etagMatches` must be unquoted. */
+export function etagForBindingCondition(ifMatch: string): string {
+  const value = ifMatch.trim();
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1);
+  return value;
+}
+
+/**
+ * Structured `onlyIf` check used by test buckets so they fail the same way as
+ * workerd. A quoted etag throws `TypeError` and does not count as a mismatch.
+ * `existingEtag` is omitted when the key is absent.
+ */
+export function bindingPreconditionPasses(existingEtag: string | undefined, onlyIf: R2OnlyIf | undefined): boolean {
+  if (!onlyIf) return true;
+  if (onlyIf.etagMatches !== undefined) {
+    const tag = structuredConditionalTag(onlyIf.etagMatches);
+    const matches = tag.wildcard ? existingEtag !== undefined : existingEtag === tag.value;
+    if (!matches) return false;
+  }
+  if (onlyIf.etagDoesNotMatch !== undefined) {
+    const tag = structuredConditionalTag(onlyIf.etagDoesNotMatch);
+    const differs = tag.wildcard ? existingEtag === undefined : existingEtag !== tag.value;
+    if (!differs) return false;
+  }
+  return true;
+}
+
 function onlyIfFor(options: ObjectPutOptions): R2OnlyIf | undefined {
-  if (options.ifMatch) return { etagMatches: options.ifMatch };
+  if (options.ifMatch) return { etagMatches: etagForBindingCondition(options.ifMatch) };
   if (options.allowOverwrite === false) return { etagDoesNotMatch: "*" };
   return undefined;
 }

@@ -5,6 +5,7 @@ import { createR2BindingObjectStore } from "./object-store";
 import {
   MISSING_DATA_BINDING_ERROR,
   R2BindingObjectStore,
+  bindingPreconditionPasses,
   resolveDataBinding,
   type R2Bucket,
   type R2HttpMetadata,
@@ -43,12 +44,7 @@ class FakeR2Bucket implements R2Bucket {
   async put(key: string, value: string | Uint8Array, options?: { onlyIf?: R2OnlyIf; httpMetadata?: R2HttpMetadata }) {
     this.puts.push({ key, onlyIf: options?.onlyIf, httpMetadata: options?.httpMetadata });
     const existing = this.objects.get(key);
-    const onlyIf = options?.onlyIf;
-    if (onlyIf?.etagDoesNotMatch === "*" && existing) return null;
-    if (onlyIf?.etagMatches) {
-      const quoted = existing ? `"${existing.etag}"` : null;
-      if (quoted !== onlyIf.etagMatches) return null;
-    }
+    if (!bindingPreconditionPasses(existing?.etag, options?.onlyIf)) return null;
     const body = typeof value === "string" ? new TextEncoder().encode(value) : value;
     this.seq += 1;
     const stored: Stored = {
@@ -149,11 +145,64 @@ describe("R2 binding driver", () => {
     if (typeof etag !== "string") throw new Error("expected a quoted etag");
     const updated = await store.put("views/a.json", "two", { ifMatch: etag });
     expect(updated.etag).toBe('"etag2"');
+    expect(bucket.puts[1]?.onlyIf).toEqual({ etagMatches: "etag1" });
     expect((await store.get("views/a.json"))?.body).toBe("two");
     await expect(store.put("views/a.json", "three", { ifMatch: '"stale"' })).rejects.toBeInstanceOf(
       ObjectStorePreconditionFailedError,
     );
+    expect(bucket.puts[2]?.onlyIf).toEqual({ etagMatches: "stale" });
     expect((await store.get("views/a.json"))?.body).toBe("two");
+    const again = await store.put("views/a.json", "four", { ifMatch: "etag2" });
+    expect(again.etag).toBe('"etag3"');
+  });
+
+  test("a weak ifMatch is a strong literal and does not match the object etag", async () => {
+    const bucket = new FakeR2Bucket();
+    const store = storeWith(bucket);
+    await store.put("views/a.json", "one");
+    const etag = (await store.get("views/a.json"))?.etag;
+    expect(etag).toBe('"etag1"');
+    await expect(store.put("views/a.json", "nope", { ifMatch: `W/${etag}` })).rejects.toBeInstanceOf(
+      ObjectStorePreconditionFailedError,
+    );
+    expect(bucket.puts.at(-1)?.onlyIf).toEqual({ etagMatches: 'W/"etag1"' });
+    expect((await store.get("views/a.json"))?.body).toBe("one");
+  });
+
+  test("the fake bucket matches workerd structured conditionals", async () => {
+    const bucket = new FakeR2Bucket();
+    await bucket.put("views/a.json", "one");
+    const quoted = '"etag1"';
+
+    await expect(bucket.put("views/a.json", "bad", { onlyIf: { etagMatches: quoted } })).rejects.toThrow(
+      TypeError,
+    );
+    await expect(bucket.put("views/a.json", "bad", { onlyIf: { etagMatches: quoted } })).rejects.toThrow(
+      `Conditional ETag should not be wrapped in quotes (${quoted}).`,
+    );
+    await expect(bucket.put("views/a.json", "bad", { onlyIf: { etagDoesNotMatch: quoted } })).rejects.toThrow(
+      `Conditional ETag should not be wrapped in quotes (${quoted}).`,
+    );
+    await expect(bucket.put("views/a.json", "bad", { onlyIf: { etagDoesNotMatch: '"*"' } })).rejects.toThrow(
+      'Conditional ETag should not be wrapped in quotes ("*").',
+    );
+    await expect(bucket.put("views/a.json", "bad", { onlyIf: { etagMatches: '"' } })).rejects.toThrow(
+      'Conditional ETag should not be wrapped in quotes (").',
+    );
+    expect(await (await bucket.get("views/a.json"))?.text()).toBe("one");
+
+    expect(await bucket.put("views/a.json", "two", { onlyIf: { etagMatches: "etag1" } })).not.toBeNull();
+    expect(await bucket.put("views/a.json", "weak", { onlyIf: { etagMatches: 'W/"etag2"' } })).toBeNull();
+    expect(await bucket.put("missing", "no", { onlyIf: { etagMatches: "*" } })).toBeNull();
+    expect(await bucket.put("views/a.json", "star", { onlyIf: { etagMatches: "*" } })).not.toBeNull();
+    expect(await bucket.put("fresh", "created", { onlyIf: { etagDoesNotMatch: "*" } })).not.toBeNull();
+    expect(await bucket.put("fresh", "again", { onlyIf: { etagDoesNotMatch: "*" } })).toBeNull();
+    expect(await bucket.put("fresh", "other", { onlyIf: { etagDoesNotMatch: "not-fresh" } })).not.toBeNull();
+    expect(await bucket.put("absent", "yes", { onlyIf: { etagDoesNotMatch: "etag1" } })).not.toBeNull();
+    // An opening quote without a closing quote is not a quoted etag. It is a strong literal.
+    expect(await bucket.put("views/a.json", "same", { onlyIf: { etagMatches: '"etag' } })).toBeNull();
+    expect(await (await bucket.get("views/a.json"))?.text()).toBe("star");
+    expect(await (await bucket.get("fresh"))?.text()).toBe("other");
   });
 
   test("get and head of a missing key return null", async () => {
