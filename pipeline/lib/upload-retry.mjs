@@ -2,12 +2,19 @@
 // forwards createMutable so --initial-commit can publish the first pointer
 // with If-None-Match instead of an overwrite.
 
+import { BlobServiceNotAvailable, BlobServiceRateLimited } from "@vercel/blob";
+
 export const DEFAULT_MAX_PER_SEC = 60;
 export const DEFAULT_RETRIES = 4;
+/** Largest delay setTimeout accepts as a 32-bit signed integer. */
+const MAX_UPLOAD_INTERVAL_MS = 2_147_483_647;
 
 /**
  * HTTP statuses worth another attempt. 400, 401, and 403 fail immediately.
- * A missing status is retryable only for the timeout and socket failures below.
+ * BlobServiceRateLimited and BlobServiceNotAvailable are the Blob SDK's
+ * transient failures and are retried. Access, precondition, and other Blob
+ * errors are not. A missing status is retryable only for the timeout and
+ * socket failures below.
  */
 export const UPLOAD_RETRYABLE_STATUSES = [408, 429, 500, 502, 503, 504];
 
@@ -43,6 +50,7 @@ export function uploadErrorStatus(error) {
  * @param {unknown} error
  */
 export function isRetryableUploadError(error) {
+  if (error instanceof BlobServiceRateLimited || error instanceof BlobServiceNotAvailable) return true;
   const status = uploadErrorStatus(error);
   if (status != null) return RETRYABLE_STATUS.has(status);
   if (!error || typeof error !== "object") return false;
@@ -59,7 +67,11 @@ function requireMaxPerSec(value) {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     throw new RangeError(`maxPerSec must be a finite number greater than 0, got ${value}`);
   }
-  return value;
+  const intervalMs = 1000 / value;
+  if (!Number.isFinite(intervalMs) || intervalMs > MAX_UPLOAD_INTERVAL_MS) {
+    throw new RangeError(`maxPerSec must produce a finite timer wait, got ${value}`);
+  }
+  return intervalMs;
 }
 
 /**
@@ -86,7 +98,7 @@ function requireRetries(value) {
  * }} [options]
  */
 export function withUploadRetry(store, options = {}) {
-  const maxPerSec = requireMaxPerSec(options.maxPerSec ?? DEFAULT_MAX_PER_SEC);
+  const intervalMs = requireMaxPerSec(options.maxPerSec ?? DEFAULT_MAX_PER_SEC);
   const retries = requireRetries(options.retries ?? DEFAULT_RETRIES);
   const sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   let nextStart = 0;
@@ -94,7 +106,7 @@ export function withUploadRetry(store, options = {}) {
   async function gate() {
     const now = Date.now();
     const wait = Math.max(0, nextStart - now);
-    nextStart = Math.max(now, nextStart) + 1000 / maxPerSec;
+    nextStart = Math.max(now, nextStart) + intervalMs;
     if (wait > 0) await sleep(wait);
   }
 

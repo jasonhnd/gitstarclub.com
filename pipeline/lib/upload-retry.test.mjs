@@ -5,6 +5,13 @@ import { withBootstrapPublicationLease } from "./bootstrap-lease.mjs";
 import { commitBootstrapGeneration, stageBootstrapPhase } from "./bootstrap-publication.mjs";
 import { createR2BootstrapStore } from "./r2-bootstrap-store.mjs";
 import { sha256Hex } from "./s3-sign.mjs";
+import {
+  BlobAccessError,
+  BlobPreconditionFailedError,
+  BlobServiceNotAvailable,
+  BlobServiceRateLimited,
+  BlobUnknownError,
+} from "@vercel/blob";
 import { withUploadRetry } from "./upload-retry.mjs";
 
 const NOW = new Date("2026-07-17T00:00:00.000Z");
@@ -177,6 +184,19 @@ describe("upload retry options and retryable errors", () => {
     }
   });
 
+  test("rejects a rate whose spacing is not a finite timer wait before any create", () => {
+    let calls = 0;
+    const store = countingStore(async () => {
+      calls += 1;
+      return true;
+    });
+    for (const maxPerSec of [Number.MIN_VALUE, 1e-9]) {
+      expect(() => withUploadRetry(store, { maxPerSec })).toThrow(RangeError);
+      expect(() => withUploadRetry(store, { maxPerSec })).toThrow(/finite timer wait/);
+    }
+    expect(calls).toBe(0);
+  });
+
   test("rejects a non-integer retry count before any attempt", () => {
     for (const retries of [Number.NaN, -1, 1.5, Number.POSITIVE_INFINITY]) {
       expect(() => withUploadRetry(countingStore(async () => true), { retries })).toThrow(RangeError);
@@ -301,5 +321,55 @@ describe("upload retry options and retryable errors", () => {
     await expect(reset.createMutable("pointer.json", Buffer.from("{}"))).resolves.toBe(false);
     expect(resets).toBe(2);
     expect(resetWaits).toEqual([500]);
+  });
+
+  test("retries Blob service rate limits and outages once, then returns the create", async () => {
+    for (const failure of [new BlobServiceRateLimited(1), new BlobServiceNotAvailable()]) {
+      let calls = 0;
+      const waits = [];
+      const wrapped = withUploadRetry(
+        countingStore(async () => {
+          calls += 1;
+          if (calls === 1) throw failure;
+          return true;
+        }),
+        { ...fastRate, sleep: async (ms) => waits.push(ms) },
+      );
+      await expect(wrapped.create("a", Buffer.from("x"))).resolves.toBe(true);
+      expect(calls).toBe(2);
+      expect(waits).toEqual([500]);
+    }
+  });
+
+  test("exhausts Blob service outages after retries + 1 attempts", async () => {
+    for (const Factory of [BlobServiceNotAvailable, BlobServiceRateLimited]) {
+      let calls = 0;
+      const waits = [];
+      const wrapped = withUploadRetry(
+        countingStore(async () => {
+          calls += 1;
+          throw new Factory();
+        }),
+        { ...fastRate, retries: 4, sleep: async (ms) => waits.push(ms) },
+      );
+      await expect(wrapped.create("a", Buffer.from("x"))).rejects.toBeInstanceOf(Factory);
+      expect(calls).toBe(5);
+      expect(waits).toEqual([500, 1_000, 2_000, 4_000]);
+    }
+  });
+
+  test("does not retry permanent Blob access, precondition, or unknown errors", async () => {
+    for (const failure of [new BlobAccessError(), new BlobPreconditionFailedError(), new BlobUnknownError()]) {
+      let calls = 0;
+      const wrapped = withUploadRetry(
+        countingStore(async () => {
+          calls += 1;
+          throw failure;
+        }),
+        { ...fastRate, retries: 4, sleep: async () => { throw new Error("slept"); } },
+      );
+      await expect(wrapped.create("a", Buffer.from("x"))).rejects.toBe(failure);
+      expect(calls).toBe(1);
+    }
   });
 });
