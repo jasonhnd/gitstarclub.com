@@ -6,7 +6,7 @@ The Worker shell compares `CRON_SECRET` with the shared constant-time bearer hel
 
 ## Scope
 
-- `workers/gitstarclub-web/src/shell.ts`: replace the local `===` bearer check with `hasValidBearerToken` from `web/lib/security.ts`. A missing or empty `env.CRON_SECRET` fails closed and does not fall through to `process.env.CRON_SECRET`. Apply `securityHeaders` from `web/lib/csp.ts` to the public health and deployment responses and to the 401 response.
+- Worker shell `shell.ts` under `workers/gitstarclub-web/`: replace the local string-equality bearer check with `hasValidBearerToken` from `web/lib/security.ts`. A missing or empty `env.CRON_SECRET` fails closed and does not fall through to `process.env.CRON_SECRET`. Apply `securityHeaders` from `web/lib/csp.ts` to the public health and deployment responses and to the 401 response.
 - `web/lib/workers-host/shell-hardening.test.ts`: auth and header behavior. The constant-time assertion fails if the shell goes back to ordinary equality.
 - `docs/CHANGELOG.md` and a short note in `docs/CF-MIGRATION-P3.md`.
 
