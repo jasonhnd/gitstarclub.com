@@ -1,5 +1,6 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { POST } from "@/app/api/workflows/refresh/rollback/route";
+import * as rollback from "@/lib/workflows/rollback";
 import { resetBucketIdentityCacheForTests } from "@/lib/runtime-config";
 import {
   bindingPreconditionPasses,
@@ -115,6 +116,49 @@ test("rollback accepts r2_binding with no Blob env", async () => {
     expect(response.status).toBe(500);
     expect(body.error).toBe("Rollback failed");
   } finally {
+    errorSpy.mockRestore();
+  }
+});
+
+test("rollback logs and the response omit secret canaries", async () => {
+  delete process.env.BLOB_BASE_URL;
+  delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+  delete process.env.BLOB_READ_WRITE_TOKEN;
+  process.env.CRON_SECRET = "test-secret";
+  process.env.STORAGE_READ_DRIVER = "r2_binding";
+  process.env.STORAGE_WRITE_DRIVER = "r2_binding";
+  process.env.R2_PUBLIC_BASE_URL = "https://r2.example.com";
+  process.env.R2_BUCKET = "gitstarclub-data-pre";
+  process.env.DEPLOY_ENV = "pre";
+  const bucket = new FakeR2Bucket(JSON.stringify({ bucket: "gitstarclub-data-pre", deploy_env: "pre" }));
+  setDataBindingReaderForTests(() => bucket);
+  resetBucketIdentityCacheForTests();
+  const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+  const rollbackSpy = spyOn(rollback, "rollbackVersion").mockRejectedValue(
+    new Error(`GitHub GraphQL 502 Bearer CANARYBEARERTOKEN1234567890abcd ${canary}`),
+  );
+  const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const response = await POST(
+      new Request("https://gitstarclub.com/api/workflows/refresh/rollback", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-secret",
+          "idempotency-key": "rollback-canary",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ target_version: "refresh-2026-07-01T00-00-00-000Z" }),
+      }),
+    );
+    const body = (await response.json()) as { error?: string };
+    const logged = JSON.stringify(errorSpy.mock.calls);
+    expect(response.status).toBe(500);
+    expect(body.error).toBe("Rollback failed");
+    expect(logged).toContain("GitHub GraphQL 502");
+    expect(logged).not.toContain("CANARY");
+    expect(JSON.stringify(body)).not.toContain("CANARY");
+  } finally {
+    rollbackSpy.mockRestore();
     errorSpy.mockRestore();
   }
 });
