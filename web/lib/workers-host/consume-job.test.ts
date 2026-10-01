@@ -208,6 +208,48 @@ describe("CF Queue consumeJob successor", () => {
     expect(queued).toEqual([]);
   });
 
+  test("queue send failures omit secret canaries from the advance_error log", async () => {
+    const cron = "CANARYWORKERSECRET1234567890";
+    const github = "ghp_CANARYHISTORY1234567890abcd";
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map((item) => String(item)).join(" "));
+    };
+    const env: WorkerEnv = {
+      JOBS: {
+        send: async () => {
+          throw new Error(`queue rejected ${cron} ${github}`);
+        },
+      },
+      MEDIA: null,
+      REFRESH_STEP_URL: STEP,
+      CRON_SECRET: cron,
+      WORKER_SELF_REFERENCE: {
+        async fetch() {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              runId: "refresh-2026-09-20T09-39-26-949Z",
+              step: "fold",
+              result: { name: "fold", folded: ["2026-08"], foldedWeeks: ["2026-W35"] },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        },
+      },
+    };
+    try {
+      await expect(consumeJob(env, foldJob())).rejects.toThrow("queue rejected");
+      const logged = logs.join("\n");
+      expect(logged).toContain("workflow.advance_error");
+      expect(logged).toContain("queue rejected");
+      expect(logged).not.toContain("CANARY");
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
   test("fixture short-circuit still advances without fetching the step route", async () => {
     const queued: RefreshJob[] = [];
     const env: WorkerEnv = {

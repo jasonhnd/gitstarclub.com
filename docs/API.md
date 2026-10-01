@@ -226,7 +226,7 @@ to the locale URL form.
 |---|---|
 | Auth | Public |
 | Query | `lang` optional; valid values are `en`, `ja`, `zh`, `zh-TW`, `ko`, `es`, `fr`; invalid or missing values fall back to `en` |
-| Query | `next` optional; accepted only when it starts with `/` and not `//`; unsafe values fall back to `/` |
+| Query | `next` optional. It must be a same-origin path. The handler validates it, strips one non-default locale prefix, validates that path again, and redirects only when the final URL origin equals the request origin. Anything else, including `//host` revealed by stripping, falls back to the localized home (`/` or `/{lang}`). |
 | Body | None |
 | Success | `307` redirect to the requested locale URL |
 | Cache | No explicit `Cache-Control`; clients should treat it as a preference mutation, not a cacheable data endpoint |
@@ -243,6 +243,12 @@ Set-Cookie: gsc_lang=fr; ...
 ```http
 GET /api/lang?lang=en&next=/fr/rankings
 Location: /rankings
+Set-Cookie: gsc_lang=en; ...
+```
+
+```http
+GET /api/lang?lang=en&next=/ja//example.com/path
+Location: /
 Set-Cookie: gsc_lang=en; ...
 ```
 
