@@ -59,7 +59,7 @@ function scripted(responses: Response[]) {
 function blockRealFetch(): void {
   globalThis.fetch = (() => {
     throw new Error("real fetch");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 }
 
 const repo = { id: 1, owner: "acme", name: "widget" };
