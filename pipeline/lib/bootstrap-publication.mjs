@@ -325,8 +325,6 @@ export async function commitBootstrapGeneration({
     if (current) throw new Error(`--initial-commit refused: ${BOOTSTRAP_POINTER_PATH} already exists`);
     await assertInitialCommitTarget({ store });
     await assertCanCommit();
-    // Renewal is the last await before create. Re-read so a marker or pointer
-    // written during that fence is refused. Create-only covers only the pointer.
     await assertInitialCommitTarget({ store });
   } else if (!current) {
     await verifyLegacyFlatTarget({ store });
@@ -346,6 +344,9 @@ export async function commitBootstrapGeneration({
     if (typeof store.createMutable !== "function") {
       throw new Error("bootstrap store cannot create the first pointer without overwrite");
     }
+    // The post-renewal marker reads can outlast the 10-minute lease. Recheck
+    // ownership at this write. A valid takeover must fail before create.
+    await assertCanCommit();
     const created = await store.createMutable(BOOTSTRAP_POINTER_PATH, body, "application/json");
     if (!created) {
       const raced = parsePointer(await store.read(BOOTSTRAP_POINTER_PATH));
