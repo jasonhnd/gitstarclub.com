@@ -291,6 +291,55 @@ describe("CF CI gates", () => {
     assert.ok(ALLOWED_CF_PREVIEW_ORIGINS.includes(DEFAULT_CF_PREVIEW_ORIGIN));
   });
 
+  test("preserves combined gate diagnostics in order without mutating sources", () => {
+    const config = JSON.parse(validWrangler);
+    config.name = "wrong-worker";
+    config.env.pre.vars.SITE_INDEXABLE = "1";
+    config.triggers.crons = ["0 6 * * 0"];
+    config.vars.DEPLOY_ENV = "pre";
+    config.vars.STORAGE_READ_DRIVER = "r2";
+    config.vars.R2_PUBLIC_BASE_URL = PREVIEW_R2_PUBLIC_BASE_URL;
+    config.env.pre.r2_buckets.find((entry) => entry.binding === "DATA").bucket_name = PRODUCTION_R2_BUCKET;
+    config.env.pre.vars.MIN_TRACKED_STARS = "1000";
+    config.env.pre.vars.WORKFLOW_QUEUE_ENQUEUE_URL = PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL;
+    const sources = Object.freeze(alignedSources({
+      wranglerSource: JSON.stringify(config),
+      runtimeConfigSource: validRuntime.replace(DEFAULT_CF_PREVIEW_ORIGIN, CLOSED_PRODUCTION_WORKERS_DEV_ORIGIN),
+      ciYml: validCi.replace(DEFAULT_CF_PREVIEW_ORIGIN, CLOSED_PRODUCTION_WORKERS_DEV_ORIGIN)
+        .replace("github.base_ref == 'pre'", "github.base_ref == 'main'"),
+      deliveryYml: validDelivery.replace("checks: [static, production-build]", "checks: [static, production-build, cf-preview]"),
+      deploySurfaceSource: 'wrangler deploy --env pre\ncurl -X PUT "https://example.com/schedules"',
+      namingSources: Object.freeze({ "docs/OPS.md": "missing all canonical names" }),
+    }));
+    const before = structuredClone(sources);
+    const expected = [
+      "wrangler top-level name must be gitstarclub-web (production)",
+      "wrangler env.pre must not enable SITE_INDEXABLE",
+      "wrangler top-level triggers.crons must stay [] until Jason approves production CF Cron",
+      "wrangler top-level triggers.crons must not use numeric weekday 0 or 7 (Cloudflare 1 = Sunday, 7 = Saturday, 0 rejected); use SUN or SAT",
+      "wrangler env.pre r2_buckets DATA bucket_name must be gitstarclub-data-pre",
+      "wrangler env.pre must not mention gitstarclub-data-prod",
+      "wrangler top-level must not mention data-pre.gitstarclub.com",
+      'wrangler top-level vars.DEPLOY_ENV must be unset until R2 cutover (received "pre")',
+      'wrangler top-level vars.STORAGE_READ_DRIVER must be unset or blob until R2 cutover (received "r2")',
+      "wrangler env.pre vars.MIN_TRACKED_STARS must equal production (10000)",
+      "wrangler env.pre vars.WORKFLOW_QUEUE_ENQUEUE_URL must be https://pre.gitstarclub.com/enqueue",
+      "DEFAULT_CF_PREVIEW_ORIGIN must not be the closed production workers.dev host",
+      "DEFAULT_CF_PREVIEW_ORIGIN must be https://gitstarclub-web-pre.worldgo.workers.dev or https://pre.gitstarclub.com (received https://gitstarclub-web.worldgo.workers.dev)",
+      "ci.yml CF_PREVIEW_ORIGIN fallback must not be the closed production workers.dev host",
+      "refusing bare wrangler deploy (missing --dry-run): wrangler deploy --env pre",
+      'refusing Cloudflare schedule mutation in repo automation: curl -X PUT "https://example.com/schedules"',
+      ".delivery.yml ci.checks must not require cf-preview or cf-workers-host",
+      "cf-preview must allowlist only github.ref_name == 'pre' or github.base_ref == 'pre'",
+      "docs/OPS.md must name scripts/assert-cf-ci-gates.mjs",
+      "docs/OPS.md must name preview Worker gitstarclub-web-pre",
+      "docs/OPS.md must name production Worker gitstarclub-web",
+    ];
+    assert.deepEqual(assertCfCiGates(sources), expected);
+    assert.deepEqual(assertCfCiGates(sources), expected);
+    assert.deepEqual(sources, before);
+  });
+
   test("rejects production cron triggers and mixed-environment cron origins", () => {
     const issues = assertCfCiGates(
       alignedSources({
