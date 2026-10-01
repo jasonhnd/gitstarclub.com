@@ -1,4 +1,6 @@
 import { cfBuildCommitSha } from "../../../web/lib/cf-build-identity";
+import { securityHeaders } from "../../../web/lib/csp";
+import { hasValidBearerToken, unauthorizedResponse } from "../../../web/lib/security";
 import {
   successorJobAfterRefreshStep,
   successorJobFromResponseHeaders,
@@ -21,13 +23,21 @@ export function emitRunLog(fields: Record<string, unknown>): void {
   console.log(JSON.stringify({ ts: new Date().toISOString(), ...fields }));
 }
 
-function unauthorized(): Response {
-  return new Response("Unauthorized", { status: 401 });
+function applySecurityHeaders(response: Response): Response {
+  for (const header of securityHeaders) {
+    response.headers.set(header.key, header.value);
+  }
+  return response;
 }
 
-function hasValidBearer(header: string | null, secret: string | undefined): boolean {
-  if (!header || !secret || !header.startsWith("Bearer ")) return false;
-  return header.slice("Bearer ".length) === secret;
+function unauthorized(): Response {
+  return applySecurityHeaders(unauthorizedResponse());
+}
+
+function hasWorkerCronBearer(header: string | null, secret: string | undefined): boolean {
+  // An omitted Worker secret must not fall through to process.env.CRON_SECRET.
+  if (!secret) return false;
+  return hasValidBearerToken(header, secret);
 }
 
 export function previewIdentity(request: Request, env: WorkerEnv): Record<string, unknown> {
@@ -144,12 +154,12 @@ export async function handleShellFetch(request: Request, env: WorkerEnv): Promis
 
   if (pathname === "/preview/health" && request.method === "GET") {
     emitRunLog({ event: "preview.health", host: url.host, hosting: "cf" });
-    return Response.json({
+    return applySecurityHeaders(Response.json({
       ok: true,
       target: "cf",
       hosting: "opennext",
       observability: true,
-    });
+    }));
   }
 
   if (
@@ -158,10 +168,10 @@ export async function handleShellFetch(request: Request, env: WorkerEnv): Promis
   ) {
     const identity = previewIdentity(request, env);
     emitRunLog({ event: "preview.identity", host: url.host, commitSha: identity.commitSha });
-    return Response.json(identity);
+    return applySecurityHeaders(Response.json(identity));
   }
 
-  if (!hasValidBearer(request.headers.get("authorization"), env.CRON_SECRET)) {
+  if (!hasWorkerCronBearer(request.headers.get("authorization"), env.CRON_SECRET)) {
     emitRunLog({ event: "preview.unauthorized", path: pathname });
     return unauthorized();
   }
