@@ -14,7 +14,10 @@ and pointer writes with workerd's actual conditional ETag semantics.
 - Run the actual `pipeline/backfill/06-upload.mjs` and `07-export-v2.mjs`
   entrypoints against fixture data in an isolated local directory.
 - Document the required local rehearsal in stage 2 of `docs/R2-CUTOVER.md`
-  and update the relevant testing documentation.
+  and update the relevant testing documentation and local-tool environment
+  inventory in `docs/OPS.md`.
+- Fill the binding driver's missing byte-preserving `getBytes` method, exposed
+  by the local Worker bootstrap check, and cover it against real workerd.
 
 ## Out of scope
 
@@ -51,10 +54,34 @@ and pointer writes with workerd's actual conditional ETag semantics.
 - Verified the official Node/Bun archives with the `AGENTS.md` bootstrap and
   installed both web and pipeline dependencies with frozen lockfiles and
   environment-file loading disabled. No lockfile changes were produced.
-- Issue 572 is present through merged PR 581. PR 583 for issue 573 is still
-  open and has no merge commit. The fetched baseline lacks
-  `commitInitialBootstrapWithLease` and the post-renewal initial-commit checks.
-- Implementation is blocked on that prerequisite landing in `pre`. Resume
-  this card after fetching the updated integration branch; do not copy the
-  prerequisite implementation into the issue 586 branch. No rehearsal command,
-  full static run, real-bucket action, or pull request has been performed yet.
+- Initially blocked because issue 573 had not landed in `pre`. PR 583 merged
+  as `ae9dae4` on 2026-10-01T13:12:29Z. Resumed the same card and rebased the
+  plan onto freshly fetched `origin/pre` (`aa175a8`, also containing the
+  unrelated dependency-security update). No prerequisite code was copied.
+- The first local run reached the binding initial-commit path and failed with
+  `object store cannot read binary objects` because the binding store lacked
+  `getBytes`. Commit `ceda546` supplies byte-preserving reads and a real-workerd
+  regression; both binding test files passed (17 tests).
+- The standalone command now passes all local stages and exits 0 with
+  `R2_LOCAL_REHEARSAL_OK`. Full static verification and mutation evidence are
+  recorded separately for the final tested commit before the pull request.
+
+## Mutation verification
+
+Use a disposable verification checkout. Run the same local command after each
+change, require a non-zero exit with the expected behavioral assertion, then
+restore the source before the next mutation and the full static run:
+
+1. Remove the binding `getBytes` method: bootstrap must fail its binary read,
+   rather than proceeding to publication.
+2. In `onlyIfFor`, pass `options.ifMatch` directly instead of
+   `etagForBindingCondition(options.ifMatch)`: real workerd must reject the
+   quoted structured condition on Worker renewal.
+3. Make `commitInitialBootstrapWithLease` call `commitBootstrapGeneration`
+   directly with `initialCommit: true`, bypassing the shared lease: the active
+   workflow refusal must fail because the pointer is incorrectly published.
+4. Remove the second `assertInitialCommitTarget` after renewal: a marker
+   inserted during renewal must incorrectly publish and fail the race check.
+
+The fixture's marker injection changes a local `DATA` object at the relevant
+renewal read; it does not simulate ETags or replace workerd's CAS conditions.
