@@ -281,12 +281,3 @@ The current scope is comfortably static. Several requested capabilities would fo
 - Semantic / embedding-based search.
 
 These cannot fit a fixed view set or a client-side index. They share an open architectural decision recorded in [ROADMAP.md](./ROADMAP.md): which analytical layer to introduce (managed ClickHouse, OpenNext on Cloudflare Workers relational, etc.) and how to reconcile that with the Cloudflare-hosted / runtime-zero-engine posture above. No work on those features starts before that decision lands.
-
-## Cost estimate
-
-| Scale | Monthly cost |
-|---|---|
-| MVP (<100k page views / day) | ~$20 (Vercel Pro) + one-off bootstrap ~$10 (BigQuery) |
-| 1M / day | ~$40–100 |
-| 10M / day (Vercel-only) | ~$2,100 (bandwidth-dominated) |
-| 10M / day (with Cloudflare in front) | ~$200–400 |
