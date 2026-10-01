@@ -117,7 +117,7 @@ This is the section that lands [ARCHITECTURE](./ARCHITECTURE.md) "page layering 
 | **mover** | repo/org in the mover set + `/pulse` | Pulse: event-driven, refresh only "the small set that is moving" | Weekly/daily cron `revalidatePath` targeted invalidation for them → regenerated on the next visit |
 | **History** | Past periods already folded into Parquet | Old newspaper: never reprinted | Pure static hits the CDN; unchanged data = no revalidate |
 
-> Key point: **a long-tail page "becoming a page" is extremely cheap** (lazy generation, does not occupy build budget) — so week pages / org pages as standalone pages are not constrained by the 45min build cap ([ARCHITECTURE](./ARCHITECTURE.md) rendering layering).
+> Key point: **a long-tail page "becoming a page" is extremely cheap** (lazy generation, does not occupy the build) — so week pages / org pages as standalone pages stay on on-demand ISR ([ARCHITECTURE](./ARCHITECTURE.md) rendering layering). Current platform price and duration caps are not recorded here.
 >
 > **Long-tail `revalidate` is not a one-size-fits-all `false`** (split per file; the code is authoritative):
 > - **repo `/[owner]/[name]`** = `86400` (`page.tsx:22`) — generated on first visit + background regeneration every 1 day, plus the mover same-day `revalidatePath`.
@@ -158,7 +158,7 @@ export const revalidate = 86400              // daily ISR + cron targeted invali
 ```ts
 // example: app/pulse/page.tsx
 export const revalidate = false              // does not rely on time polling
-// after the Vercel cron atomically switches live/latest.json, revalidatePath('/pulse')
+// after the publish switches live/latest.json, revalidatePath('/pulse')
 ```
 
 ### 2.3 `next.config.ts`: required global switches
@@ -187,7 +187,7 @@ export default nextConfig;
 ### 2.4 How data changes reach pages (no deploy)
 
 - **Daily cron** (`/api/cron/daily`, [API](./API.md) / [OPS](./OPS.md) §Cron): writes `current_month` (v2 = small index + 32 repo shards) / `hot-snapshot` / the current month/week rank / the current-month heatmap into the same immutable `live/generations/<run_id>/`, and after the manifest completes a fenced CAS switches `live/latest.json`, **then** `revalidatePath` on the core hot set. UTC Sunday daily is skipped, and weekly 04:00 exclusively owns the live write. Hot-set pages read only `hot-snapshot.json` and do not load `current_month` shards.
-- **Weekly cron** (`/api/cron/weekly`, [API](./API.md)): likewise does a live refresh inside Vercel, so the week ranking and the month ranking do not gap even without a full historical recompute; a full historical refresh goes through Vercel Workflow shards separately, and does not do a 16k full build.
+- **Weekly cron** (`/api/cron/weekly`, [API](./API.md)): likewise does a live refresh on the Worker, so the week ranking and the month ranking do not gap even without a full historical recompute. Production writes still use Vercel Blob until cutover. A full historical refresh goes through managed-refresh steps separately, and does not do a 16k full build. Neither Worker cron list includes this route today. The production caller is unverified.
 - **deploy**: triggered only by code/structure changes; it resets the ISR store, and the long tail is cold-generated once on first visit (see [ARCHITECTURE](./ARCHITECTURE.md)).
 
 Each generation declares only the current-period files produced by that publish, and does not copy week/month files not yet folded before it. After a rank / month heatmap reader confirms 404 for the current generation object, it walks back boundedly along the manifest's `previous_generation`; only after the chain fully reaches `null` does it read migration-period flat `live/*`. `current_month` / `hot-snapshot` are mutable-semantics snapshots, always read only the pointer's current generation, and do not fall back along history into a stale snapshot.
@@ -264,7 +264,7 @@ export const getRepoEntity = cache(async (id: number) => {
 
 - **At runtime only `fetch` + `parse`** — no aggregation, no engine ([ARCHITECTURE](./ARCHITECTURE.md) rendering strategy).
 - **Unknown param → `notFound()`** (404, soft 200 forbidden, see [SEO](./SEO.md) §3.2). `[owner]/[name]/page.tsx` first looks up the id with `getRepoIdByFullName()`; if not found, it looks up `lookup/aliases.json` (`getAliasMap`), and on a rename-alias hit `permanentRedirect`s (308) to the current `full_name`; if still absent, `notFound()`, then `getRepoEntity(id)`, and if empty, `notFound()` again.
-- **`categories/assignments`**: a new generation is an index + 32 repo-id shards. `getCategoryAssignments()` batch-reads shards with limited concurrency and then assembles them (CF Workers subrequest cap; `HOSTING_TARGET=cf` is tighter), then hands them to non-CF repo/org/ranking-detail. Vercel `/rankings` uses `getCategoryAssignmentsForRepos` to read only the shards needed by the leading rows, and does so after the core ranking views; Vercel ranking-detail / repo / org likewise narrow by this page's ids. On CF these pages, like `/rankings`, skip the assignment fan-out (language-category exits remain); the full `loadCategoryAssignments` is hard short-circuited on CF. ISR keeps `force-cache` / daily revalidate, and `no-store` is forbidden. An already-published v1 monolith remains readable (a single GET, no fan-out).
+- **`categories/assignments`**: a new generation is an index + 32 repo-id shards. `getCategoryAssignments()` batch-reads shards with limited concurrency and then assembles them (CF Workers subrequest cap; `HOSTING_TARGET=cf` is tighter), then hands them to non-CF repo/org/ranking-detail. When `HOSTING_TARGET` is not `cf`, `/rankings` uses `getCategoryAssignmentsForRepos` to read only the shards needed by the leading rows, and does so after the core ranking views; ranking-detail / repo / org likewise narrow by this page's ids. On `HOSTING_TARGET=cf` these pages, like `/rankings`, skip the assignment fan-out (language-category exits remain); the full `loadCategoryAssignments` is hard short-circuited. Production and preview both set `HOSTING_TARGET=cf`. ISR keeps `force-cache` / daily revalidate, and `no-store` is forbidden. An already-published v1 monolith remains readable (a single GET, no fan-out).
 - **`bootstrap/latest.json`**: when a page read hits 403/429/5xx, it does bounded retry + jitter, and does not treat 403 as 404. On failure it uses the last-known-good pointer or the managed `views/latest.json`. A structured error is recorded only once within the same TTL.
 
 ### 3.3 Which views each page reads (page ↔ JSON contract mapping)
@@ -279,7 +279,7 @@ export const getRepoEntity = cache(async (id: number) => {
 | Week ranking | The current week prefers in-generation `rank/week/{period}/repo/flow.json`; historical weeks read base | Standalone page |
 | repo page | `entity/repo/{id}.json` (`curve`/`milestones`/`monthly_table`/`rank_history`) | The mover refreshes the same day (curve includes `recent_daily`) |
 | org page | `entity/org/{login}.json` (`members`/`curve`/`rank_history`) | Member aggregate curve |
-| All-time ranking `/rankings` | `rank/all-time/{repo,org}/stock.json` (or `hot-snapshot.all_time`); Vercel also reads the leading-row assignment shards, and CF skips them | The repo ranking and the org ranking sit side by side; CF preview keeps only language-category exits |
+| All-time ranking `/rankings` | `rank/all-time/{repo,org}/stock.json` (or `hot-snapshot.all_time`); when `HOSTING_TARGET` is not `cf` the page also reads the leading-row assignment shards, and `cf` skips them | The repo ranking and the org ranking sit side by side; the Cloudflare preview keeps only language-category exits |
 | Pulse `/pulse` | the same live generation's `hot-snapshot.json` + the current week rank | Daily/weekly atomically switches the generation |
 | All ranking pages | + `lookup/repos.json` / `lookup/orgs.json` | **lookup-join**, see §3.4 |
 

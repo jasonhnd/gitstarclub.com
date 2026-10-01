@@ -202,7 +202,6 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 | New pages must not re-probe missing Blob objects | Crawler-driven 404 amplification on `bootstrap/latest.json` | Pointer 404 remains a cached legacy state; no new per-request existence probes |
 | Dependabot + bun lockfiles | npm Dependabot PRs against `main` fail `bun install --frozen-lockfile` | Next Dependabot wave is retargeted or immediately replaced with a `pre` + lockfile PR (pattern from #351) |
 | Product-gates stay fail-closed when they run | 14-day base pointer and export SLAs are the live contract (#286) | Do not loosen live assertions to land features. Ignored Build / no Vercel Preview is a separate CI soft-skip; the job is not a GitHub required check |
-| Vercel Firewall | Optional extra crawler control after robots | Recipe in [OPS.md](./OPS.md). 2026-08-20: denies published then removed the same day; operator chose to allow crawlers. Zero custom rules live. |
 
 Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blob 404s. GitHub required CI gates are `static` + `production-build` only; product-gates stay fail-closed when a Vercel Preview exists and soft-skip otherwise.
 
@@ -213,7 +212,6 @@ Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blo
 | [#377](https://github.com/jasonhnd/gitstarclub.com/issues/377) | Retire stale `health.json` as the operator signal |
 | [#378](https://github.com/jasonhnd/gitstarclub.com/issues/378) | Dependabot targets `pre` + bun lockfile convention |
 | [#379](https://github.com/jasonhnd/gitstarclub.com/issues/379) | Sunday refresh failure runbook |
-| [#380](https://github.com/jasonhnd/gitstarclub.com/issues/380) | Firewall only if crawler spend justifies it |
 | [#402](https://github.com/jasonhnd/gitstarclub.com/issues/402) | Weekly live publish must not false-fence on a CDN-stale `live/latest.json` |
 
 ---
