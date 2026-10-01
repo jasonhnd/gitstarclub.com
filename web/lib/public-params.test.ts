@@ -64,7 +64,7 @@ describe("ranking parameters", () => {
 async function probe(code: string) {
   const child = Bun.spawn([process.execPath, "--eval", code], {
     cwd: resolve(import.meta.dir, ".."),
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, BLOB_BASE_URL: "https://blob.example.com", SEO_LIVE_BASE: "" },
+    env: { BLOB_BASE_URL: "https://blob.example.com", SEO_LIVE_BASE: "" },
     stdout: "pipe", stderr: "pipe",
   });
   const [out, err, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
