@@ -281,3 +281,32 @@ describe("runLiveRefreshRoute storage drivers", () => {
     }
   });
 });
+
+describe("runLiveRefreshRoute post-publication errors", () => {
+  test("response and recorded run omit secret canaries from post_commit_errors", async () => {
+    const canary = "ghp_CANARYMISSEDSINK1234567890abcd";
+    let recorded = "";
+    const response = await runLiveRefreshRoute(request("daily"), "daily", {
+      now: new Date("2026-07-17T03:00:00.000Z"),
+      requireRuntimeConfig: () => {},
+      claimPublication,
+      releasePublication,
+      refresh: async () => ({
+        ...(await successfulRefresh("daily", false)),
+        post_commit_errors: [`revalidate: GitHub GraphQL 502 ${canary}`],
+      }),
+      recordSyncRun: async (run) => {
+        recorded = JSON.stringify(run);
+        return null;
+      },
+      recordHealth: async () => {},
+    });
+
+    expect(response.status).toBe(200);
+    const body = JSON.stringify(await response.json());
+    expect(body).toContain("revalidate: GitHub GraphQL 502");
+    expect(recorded).toContain("revalidate: GitHub GraphQL 502");
+    expect(body).not.toContain("CANARY");
+    expect(recorded).not.toContain("CANARY");
+  });
+});

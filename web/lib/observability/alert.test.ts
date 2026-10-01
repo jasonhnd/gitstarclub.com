@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { hasValidBearerToken } from "@/lib/security";
 import { sendAlert, type AlertFetcher } from "./alert";
 
 const SUMMARY = {
@@ -180,6 +181,52 @@ describe("sendAlert", () => {
     } finally {
       if (previousCron === undefined) delete process.env.CRON_SECRET;
       else process.env.CRON_SECRET = previousCron;
+    }
+  });
+
+  test("redacts a short cron secret that bearer auth still accepts", async () => {
+    const secret = "CANARYshort42";
+    expect(hasValidBearerToken(`Bearer ${secret}`, secret)).toBe(true);
+    const previousCron = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = secret;
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const fetchMock = mock(async () => new Response(null, { status: 204 }));
+    try {
+      await sendAlert(
+        { ...SUMMARY, error: `GitHub GraphQL 502 ${secret}` },
+        { fetch: fetchMock as unknown as AlertFetcher, now: new Date("2026-07-17T03:00:00.000Z") },
+      );
+      const logged = JSON.stringify(errSpy.mock.calls);
+      const webhook = String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body);
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+      expect(webhook).not.toContain("CANARY");
+    } finally {
+      if (previousCron === undefined) delete process.env.CRON_SECRET;
+      else process.env.CRON_SECRET = previousCron;
+    }
+  });
+
+  test("redacts a token carried in the delivery error name", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const canary = "ghp_CANARYNAMETOKEN1234567890abcd";
+    for (const message of ["socket hang up", ""]) {
+      errSpy.mockClear();
+      const failure = new Error(message);
+      failure.name = `TransportError ${canary}`;
+      const fetchMock = mock(async () => {
+        throw failure;
+      });
+      const result = await sendAlert(SUMMARY, {
+        fetch: fetchMock as unknown as AlertFetcher,
+        sleep: async () => {},
+        maxAttempts: 1,
+      });
+      const logged = JSON.stringify(errSpy.mock.calls);
+      expect(logged).not.toContain("CANARY");
+      expect(result.error).not.toContain("CANARY");
+      if (message) expect(result.error).toContain(message);
+      expect(result.error?.length).toBeGreaterThan(0);
     }
   });
 });

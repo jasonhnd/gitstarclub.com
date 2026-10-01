@@ -6,7 +6,7 @@ import {
   releaseLivePublication,
   type LivePublicationStore,
 } from "@/lib/cron/live-publication";
-import { completedRun, failedRun, safeRecordSyncRun, syncRunId } from "@/lib/cron/sync-runs";
+import { completedRun, failedRun, safeRecordSyncRun, sanitizeLiveRefreshResult, syncRunId } from "@/lib/cron/sync-runs";
 import { sendAlert } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
 import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
@@ -173,7 +173,7 @@ export async function runLiveRefreshRoute(
       acquired = true;
     }
 
-    const result = await refresh(job, dry, {
+    const rawResult = await refresh(job, dry, {
       now: startedAt,
       ...(!dry
         ? {
@@ -187,6 +187,7 @@ export async function runLiveRefreshRoute(
           }
         : {}),
     });
+    const result = sanitizeLiveRefreshResult(rawResult);
     const log_error = dry
       ? null
       : await recordSyncRun(completedRun(id, job, dry, startedAt, result));

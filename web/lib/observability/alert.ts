@@ -50,8 +50,8 @@ function retryableStatus(status: number): boolean {
 function safeDeliveryError(error: unknown, timedOut: boolean): string {
   if (timedOut || (error instanceof Error && error.name === "AbortError")) return "timeout";
   if (!(error instanceof Error)) return "network failure";
-  const safeMessage = sanitizeErrorText(error.message);
-  return safeMessage ? `${error.name}: ${safeMessage}` : error.name || "network failure";
+  const assembled = error.message ? `${error.name}: ${error.message}` : error.name;
+  return sanitizeErrorText(assembled) || "network failure";
 }
 
 function failedDelivery(
