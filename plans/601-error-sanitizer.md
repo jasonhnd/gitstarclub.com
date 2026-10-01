@@ -25,7 +25,7 @@ Stop raw error strings from carrying secrets into console logs, alert webhooks, 
 
 - Refactoring workflow step logic or the storage driver. R2 migration stays in the storage layer. `web/lib/workflows` only changes the call at each sink.
 - CI workflows, `.delivery.yml`, and Worker wrangler config.
-- Reading `pipeline/.env`, `web/.env.local`, or any live credential.
+- Reading pipeline or web environment files, or any live credential.
 - Cloudflare or Vercel API calls, deploys, or requests against production hosts.
 
 ## Acceptance
