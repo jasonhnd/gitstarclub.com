@@ -21,7 +21,7 @@ This document defines the SEO rules for each page type (`title` / `description` 
 > **SEO is not a bonus, it is the premise on which the goal holds** — this site has no brand-term traffic and no social viral engine, and the only scaled customer acquisition is "every page precisely hits one long-tail query".
 >
 > Related documents: rendering / page layering / ISR see [ARCHITECTURE.md](./ARCHITECTURE.md); pages / URL / i18n / tone / palette see [PRODUCT.md](./PRODUCT.md);
-> domain topology / Blob / environment variables see [OPS.md](./OPS.md). Technical facts are based on **Next.js 16.3.5** (App Router + Metadata API).
+> domain topology / Blob / environment variables see [OPS.md](./OPS.md). Technical facts are based on **Next.js 16.3.6** (App Router + Metadata API).
 > AI answer-engine citation strategy is owned by [GEO.md](./GEO.md); this document stays focused on classic search crawl, canonical, metadata, sitemap, and internal-link mechanics.
 > Performance targets are owned by [TESTING.md](./TESTING.md); the issue #25 measured Lighthouse / Core Web Vitals baseline is supporting evidence in [perf/CWV-25.md](./perf/CWV-25.md).
 >
@@ -898,7 +898,7 @@ SSG + zero client JS + HTML < 20KB naturally satisfies them (see the performance
 | Page | OG card | Where it is implemented | Content (1200×630, flex layout) | Copy aligned to search terms |
 |---|---|---|---|---|
 | Site default / home / `/pulse` | **Site card** | `web/app/opengraph-image.tsx` (`revalidate=86400`) | `GitStarClub.com` as a large title + "A chronicle of open source — more than a decade of GitHub star history across 5,300+ projects." | star history |
-| Repo page | **repo card** | `web/app/(en)/[locale]/[owner]/opengraph-image.tsx` (`revalidate=86400`) | `owner/name` in large type + the current star count (`fmtStars`) + the primary language (read live per repo; an unknown repo shows only the name) | <repo> star history |
+| Repo page | **repo card** | `web/app/(en)/[locale]/[owner]/opengraph-image.tsx` (`revalidate=86400`) | Stored `owner/name` in large type + the current star count (`fmtStars`) + the primary language, only after the path resolves to a known repo id. Any other path uses the site card and does not draw the URL. | <repo> star history |
 | Year page | **Ranking card** | `web/app/(en)/rankings/[year]/opengraph-image.tsx` (`revalidate=86400`, shares `rankingCard` from `og-card.tsx`) | "<Year>" in extra-large type + that year's stars-gained TOP 3 repos (gold + `+N`) | github <year> trending |
 | Month page / week page | **Ranking card** | `web/app/(en)/rankings/[year]/[period]/opengraph-image.tsx` (`revalidate=86400`, shares `rankingCard`, splits month/week by `^W(\d+)$`) | "<Month Year>" / "<Year> · Week N" + that period's stars-gained TOP 3 | top github repos october 2024 |
 | Org page | **(falls back to the site card)** | No dedicated route (`pageMeta` does not pass `ogImage`) | Same as the site card | <org> github stars |
