@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-09-27
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -224,7 +224,7 @@ Pick a few well-known repos whose **facts are publicly checkable** as regression
 - `web/lib/search/core.test.ts`: MiniSearch assembly (prefix / fuzzy 0.2 typo tolerance / `starBoost` weighted by stars, with popular repos pinned to the top).
 - The `searchIndex` case of `web/lib/workflows/recompute/entities.test.ts`: recompute derives the index from the `repos` dimension (entry count, fields, description truncation).
 - contracts `SearchIndex` / `SearchDoc` schema contract tests (`web/lib/contracts/search.ts`).
-- The full suite is run at once via `bun test lib/` (**current scale: 424 tests / 28 files**, used as a freshness anchor).
+- The full suite is run at once via `bun test lib/`. Do not record a test count or file count here; it goes stale.
 
 > **Alias- and category-related tests** (covering the logic that corresponds to the alias/category assertions inside the §1.5 gate above):
 > - `web/lib/workflows/recompute/aliases.test.ts`: alias-map construction (union-retained `renames.json` increments → current id).
@@ -349,7 +349,7 @@ Status meanings: `enforced` = a current automated gate blocks merge; `soft` = wh
 | 1.5 full publish / rollback E2E | `planned` | no independent gate | the target is end-to-end verification of publish, rollback, and read-side atomicity |
 | 2. visual regression | `not implemented` | no Playwright visual-baseline job | failure screenshots are already kept on file; the target is still key pages × 4 breakpoints × light and dark themes, with baselines checked in |
 | 3. a11y (axe + keyboard) | `soft` | `verify / preview-e2e` | when a Preview exists, it enforces axe critical/serious, `/pulse` contrast, and Search keyboard/focus; when there is no Preview, skip; the remaining keyboard, reduced-motion, and manual review are still targets |
-| 4. E2E navigation / i18n browser flows | `not implemented` | the Search/Compare subset is already in `preview-e2e` (when a Preview exists); there is no full navigation/i18n suite | the Search/Compare recovery flow blocks when a Preview exists; the remaining in-site navigation and i18n browser flows are not implemented yet |
+| 4. E2E navigation / i18n browser flows | `not implemented` | `web/e2e/routing-security.spec.ts` covers a locale-cookie, in-site language redirect, and localized 404 subset. `verify / preview-e2e` does not run that file. From `web/`, it runs `e2e/accessibility-responsive.spec.ts`, `e2e/horizontal-overflow.spec.ts`, and `e2e/search-compare-interactions.spec.ts`. | The Search/Compare recovery flow blocks when a Preview exists. Full in-site navigation and the §4.1 language-switcher acceptance are still not implemented. |
 | 5. Lighthouse / CWV | `report-only` | `docs/perf/CWV-25.md` historical baseline | target: automatic Lighthouse/CWV reports for representative pages; field INP needs RUM/CrUX |
 | 5. zero JS / HTML / font budgets | `planned` | no independent budget gate | target: scripted structural checks, and block inside the gate |
 | 6. cross-browser | `not implemented` | no Playwright multi-engine job | target: chromium / firefox / webkit key pages and progressive-enhancement fallback |
