@@ -1,6 +1,7 @@
 // Backfill step 7 — export canonical/v2 JSON shards from the bootstrap fact table.
-// One-time bootstrap seed. The default upload target is the Blob store; --store r2
-// seeds the preview bucket. Reads star_daily.parquet +
+// One-time bootstrap seed. The default upload target is the Blob store.
+// --store r2 requires an explicit --target of prod or pre and does not write
+// unless --execute is set. Reads star_daily.parquet +
 // repos.json (already extracted), computes per-repo monthly/weekly flow, recent
 // daily tail, site-daily totals, and the frozen discount d (DuckDB), then writes
 // bucketed canonical/v2/* shards (bucket = id % 32, matching
