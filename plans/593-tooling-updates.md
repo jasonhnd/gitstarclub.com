@@ -87,6 +87,13 @@ The npm registry was rechecked after resuming: stable targets are Wrangler
 Node 24 types, 24.19.0. The global Node types latest tag is 26.6.3; it is outside
 this issue's allowed major line.
 
+The lockfile also aligns the `playwright-core` peer used by axe with Playwright
+1.63.0. Bun initially retained the 1.62.1 peer while nesting a 1.63.0 core for
+the new test runner, which made the two E2E `Page` types incompatible. A targeted
+core update followed by removal of Bun's temporary direct declaration keeps
+only the necessary lockfile change; no new direct dependency or override is
+introduced. A nonincremental typecheck passed on the aligned graph.
+
 Capture a bounded local baseline before changing packages. The baseline uses
 `pulse`, `rankings`, `categories`, `compare`, and `about`, English, both themes,
 and all four viewports in the committed screenshot generator (40 screenshots).
