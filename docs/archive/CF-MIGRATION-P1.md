@@ -1,6 +1,6 @@
 ---
 owner: operations / workflows
-status: active
+status: superseded
 last_reviewed: 2026-09-29
 source_of_truth_for:
   - Cloudflare migrate P1 workflow runtime
@@ -21,6 +21,8 @@ source_of_truth_for:
 ---
 
 # Cloudflare migrate P1 (workflow / cron)
+
+> Superseded. See [OPS.md](../OPS.md) for the current host, schedules, and rollback, and [R2-CUTOVER.md](../R2-CUTOVER.md) for object storage. Production data stays on Vercel Blob until that cutover.
 
 > Cloudflare migrate **P1** only: drop the Vercel Workflow SDK hard dependency
 > from managed refresh, and prove a Queue-schedulable step chain. This does
@@ -149,7 +151,7 @@ production cron is on.
 | `cf-queue` | non-production only | POST `WORKFLOW_QUEUE_ENQUEUE_URL` (Worker `/enqueue`) |
 
 Lease and view writes still go through `web/lib/storage` (P0). Unset drivers
-mean the blob driver. Production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
+mean the blob driver. Production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](../R2-CUTOVER.md).
 
 ## CF Workers Blob write path (full cron / refresh)
 
@@ -166,7 +168,7 @@ the official SDK (`x-allow-overwrite`, `x-if-match`, `x-api-version`). That is
 the Workers-safe path. Optional alternative: `STORAGE_WRITE_DRIVER=r2` already
 signs S3 with `fetch` (`web/lib/storage/r2-s3-store.ts`). R2 writes require
 `DEPLOY_ENV` of `production` or `pre` and a matching `_meta/bucket-identity.json`.
-That paragraph describes the fetch blob client used when the write driver is blob. Preview Worker `env.pre` now writes through the DATA binding. Production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
+That paragraph describes the fetch blob client used when the write driver is blob. Preview Worker `env.pre` now writes through the DATA binding. Production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](../R2-CUTOVER.md).
 
 **Full CF daily / refresh depends on this fetch write path.** This change does
 not enable Cloudflare schedules. Production `wrangler.jsonc` `triggers.crons`
@@ -621,7 +623,7 @@ Preview Bearer full refresh acceptance matrix. This table is the current pass/fa
 for a **preview Worker** (`gitstarclub-web-pre`) Bearer full refresh after
 #486 / #494. Historical per-bug retest lists later in this document are
 evidence of earlier stalls; they do not replace this matrix. Unit coverage
-lives in [TESTING.md](./TESTING.md) (`#485` / `#494`).
+lives in [TESTING.md](../TESTING.md) (`#485` / `#494`).
 
 This section does **not** enable Cloudflare production schedules, inject
 secrets, stop Vercel cron, or deploy production `gitstarclub-web`.
@@ -860,7 +862,7 @@ If a non-production CF Cron or Queue consumer is enabled and misbehaves:
    `/api/workflows/refresh/start` on Vercel.
 3. Set `WORKFLOW_RUNTIME=http` (or unset it) on the Next deployment so start
    no longer POSTs to the Worker.
-4. Production read/write stays on Vercel Blob until cutover unless the stage 4 driver switch is also rolled back; see [R2-CUTOVER.md](./R2-CUTOVER.md).
+4. Production read/write stays on Vercel Blob until cutover unless the stage 4 driver switch is also rolled back; see [R2-CUTOVER.md](../R2-CUTOVER.md).
 5. Do not cut DNS. Do not empty Blob.
 
 After that, production scheduling is Vercel-only again. The CF Worker can stay

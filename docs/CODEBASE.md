@@ -102,16 +102,16 @@ Important files:
   default `blob`).
 - `web/lib/storage/`: object-store port used by write, live publication, lease,
   health, recompute I/O, aliases list, and version GC. R2 is opt-in and
-  non-production only; see [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
+  non-production only; see [archive/R2-MIGRATION-P0.md](./archive/R2-MIGRATION-P0.md).
 - `web/lib/cache-invalidation/`: publication and live-cron ISR invalidation.
   The runtime uses Next cache invalidation; the CF stub remains testable;
-  see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
+  see [archive/CF-MIGRATION-P2.md](./archive/CF-MIGRATION-P2.md).
 - `web/lib/preview/`: Preview discovery for Vercel (optional `preview-e2e` /
   `product-gates`; skippable without a Preview; not a GitHub required gate) and
   optional CF Access on `gitstarclub-web-pre.worldgo.workers.dev`.
 - `web/lib/workers-host/` + `workers/gitstarclub-web/`: P3 OpenNext host
   wraps the P1–P2 shell. `/` is the Next homepage; production origin stays
-  Vercel. See [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md).
+  Vercel. See [archive/CF-MIGRATION-P3.md](./archive/CF-MIGRATION-P3.md).
 
 Rule: if a page needs a new view, add or extend the Zod schema in
 `web/lib/contracts/`, then add the read helper in `web/lib/data/`.

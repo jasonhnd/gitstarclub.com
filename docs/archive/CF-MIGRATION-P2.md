@@ -1,6 +1,6 @@
 ---
 owner: operations / preview
-status: active
+status: superseded
 last_reviewed: 2026-09-18
 source_of_truth_for:
   - Cloudflare migrate P2 cache-invalidation port
@@ -10,6 +10,8 @@ source_of_truth_for:
 ---
 
 # Cloudflare migrate P2 (ISR / Preview / observability)
+
+> Superseded. See [OPS.md](../OPS.md) for logs, preview access, and indexing. Preview is public. Production data stays on Vercel Blob until cutover; see [R2-CUTOVER.md](../R2-CUTOVER.md).
 
 > Cloudflare migrate **P2** only: abstract `revalidatePath` / `revalidateTag`,
 > make Preview resolution pluggable (`vercel` | `cf`), document Access on the
