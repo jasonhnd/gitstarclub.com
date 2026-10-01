@@ -104,7 +104,7 @@ release. The primary updated lockfile integrity values match npm's registry.
 | Root `bun run lint:docs` | Pass |
 | Web `bun run lint` | Pass; 14 warnings, 0 errors |
 | Web `typecheck`, `typecheck:tests`, `typecheck:scripts` | Pass |
-| `bun run validate:views -- scripts/fixtures/views` | Pass |
+| `bun run validate:views` against `web/scripts/fixtures/views` | Pass |
 | `BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE="" bun run test:cov` | 1409 pass, 49 skip, 0 fail; 171 files |
 | LCOV coverage gate | Lines 86.43%, functions 86.95%; both above 80% |
 | Fixture `bun run build` | Pass |
