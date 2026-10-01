@@ -349,8 +349,8 @@ the body stays `{ commitSha, deploymentUrl }`. On the P3 CF Workers host
 | Query / body | None |
 | Success | `200 application/json` |
 | Cache | `Cache-Control: no-store, max-age=0`; `dynamic = "force-dynamic"` |
-| Source | `web/app/.well-known/deployment/route.ts`, `web/lib/deployment-identity.ts`; Worker intercept on `workers/gitstarclub-web` |
-| Platform inputs | `VERCEL_GIT_COMMIT_SHA`, `CF_PREVIEW_COMMIT_SHA`, the SHA baked by `cf:build`, `VERCEL_URL`, `HOSTING_TARGET`; SHA priority follows that order and is `null` without a valid source. Tracked changes append `-dirty` to the SHA; untracked files do not. |
+| Source | `web/app/.well-known/deployment/route.ts`, `web/lib/deployment-identity.ts`, `web/lib/deployment-commit.ts`; Worker intercept on `workers/gitstarclub-web` |
+| Platform inputs | The SHA baked by `cf:build` is the reported commit when it exists, including when `VERCEL_GIT_COMMIT_SHA` or `CF_PREVIEW_COMMIT_SHA` names a different commit. Those runtime values are used only when no SHA was baked. `commitSha` is `null` only when there is no baked SHA and both runtime SHA values are absent or blank. `VERCEL_URL` and `HOSTING_TARGET` still choose the URL and the CF fields. Tracked changes append `-dirty` to the baked SHA; untracked files do not. |
 
 ```json
 {
