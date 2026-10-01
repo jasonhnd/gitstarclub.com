@@ -798,9 +798,39 @@ node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --ex
 
 Production uses the same upload and `--initial-commit` commands with `--target prod` after the pre rehearsal. That target is Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`. The first publish there has the same null `previous_generation` and the same quarantine, with public origin `https://data.gitstarclub.com`. A later publish on that bucket rolls back with `--target prod` and `$PREVIOUS` from that origin. Nothing in this section uploads, deploys, or binds a bucket.
 
+Stage 2 acceptance uses the bootstrap pointer, the phase manifests, and real page data. It does not require `views/latest.json`. On Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`:
+
+- `https://data-pre.gitstarclub.com/bootstrap/latest.json` returns 200 and names the committed generation. On the first publish, `previous_generation` is null.
+- `https://data-pre.gitstarclub.com/bootstrap/generations/<id>/manifests/base.json` and `.../manifests/canonical.json` return 200, and each SHA-256 matches the pointer.
+- `https://data-pre.gitstarclub.com/bootstrap/generations/<id>/views/rank/all-time/repo/stock.json` returns 200 and contains at least one repository row with a star count.
+- `https://data-pre.gitstarclub.com/views/latest.json` may 404. Do not hand-write it. Preview does not set `VIEWS_VERSION_FALLBACK`, so pages read the bootstrap generation.
+- `https://pre.gitstarclub.com/rankings` returns 200, is `noindex`, and shows repository rows. The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure.
+
+If a managed views pointer is required, the only writer is the publish step of an owner-authorized managed refresh. Stage 2 acceptance does not run it.
+
+```bash
+# Owner-authorized. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+# Do not call the production Worker gitstarclub-web or https://gitstarclub.com/api/cron/*
+curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
+  https://pre.gitstarclub.com/api/workflows/refresh/start
+```
+
+That run's publish step writes `views/latest.json` in bucket `gitstarclub-data-pre`. Never hand-write the pointer.
+
+Stage 3 acceptance is the same bootstrap pointer, manifests, and sealed `views/rank/all-time/repo/stock.json` on `https://data.gitstarclub.com`, bucket `gitstarclub-data-prod`. `views/latest.json` on that origin is not required. A 404 is expected. Do not hand-write it. `https://gitstarclub.com/rankings` still shows blob rows for version `refresh-2026-09-13T06-00-16-398Z` via `VIEWS_VERSION_FALLBACK`, because Worker `gitstarclub-web` (top-level, no `--env`) is not reading bucket `gitstarclub-data-prod` yet. After stage 4, the command that creates `views/latest.json` on that bucket is an owner-authorized refresh publish:
+
+```bash
+# Owner-authorized, and only after stage 4. Worker gitstarclub-web, top-level
+# production (no --env), bucket gitstarclub-data-prod
+curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
+  https://gitstarclub.com/api/workflows/refresh/start
+```
+
+Do not call `https://gitstarclub.com/api/cron/*` to create the pointer. Never hand-write `views/latest.json`.
+
 ### Stage 4 cutover rollback
 
-Stage 4 is specified in [R2-CUTOVER.md](./R2-CUTOVER.md). Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset.
+Stage 4 is specified in [R2-CUTOVER.md](./R2-CUTOVER.md). Cutover acceptance on Worker `gitstarclub-web` (top-level, no `--env`, bucket `gitstarclub-data-prod`) is real ranking rows that match `https://data.gitstarclub.com/bootstrap/latest.json`. `views/latest.json` is not required. A 404 is acceptable. Do not hand-write it. If an owner-authorized refresh publish has already written that pointer, the pages must match its `version`. Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset.
 
 The pre-cutover version is `14b84f73-ef31-4e86-a70d-b71251756093`. On 2026-10-01 a read-only check found that version deployed at 100% of Worker `gitstarclub-web`. Do not pass `--env pre`. This command does not write bucket `gitstarclub-data-prod` and does not write the blob store. The restored version reads blob base `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`.
 
