@@ -102,7 +102,7 @@ export function requireGithubToken(env?: RuntimeEnv): string {
   return value;
 }
 
-/** Search / refresh membership floor. Default 10_000; pre sets MIN_TRACKED_STARS=1000. */
+/** Search / refresh membership floor. Default 10_000. Preview wrangler uses the same floor. */
 export function getMinTrackedStars(env: RuntimeEnv = process.env): number {
   return resolveMinTrackedStars(env.MIN_TRACKED_STARS);
 }

@@ -71,14 +71,22 @@ function normalizePublicReadBase(value: string | undefined): string {
   return (value ?? "").trim().replace(/\/+$/, "");
 }
 
-/** Loopback is the CI and AGENTS.md read-only fixture, not a preview or production store. */
+/**
+ * Loopback is the CI and AGENTS.md read-only fixture, not a preview or production store.
+ * The URL hostname for IPv6 keeps its brackets, so `[::1]` is loopback.
+ */
 export function isLocalPublicReadFixture(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1";
+    return isLoopbackHostname(url.hostname);
   } catch {
     return false;
   }
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const bare = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return bare === "127.0.0.1" || bare === "localhost" || bare === "::1";
 }
 
 function varsForTarget(
