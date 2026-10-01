@@ -34,6 +34,7 @@ import {
   parseWranglerJsonc,
   planCfWranglerDryRun,
   readDefaultCfPreviewOrigin,
+  stripJsonc,
 } from "./cf-ci-gates.mjs";
 
 const validWrangler = `{
@@ -197,6 +198,42 @@ describe("CF CI gates", () => {
       "env": { "pre": { "name": "gitstarclub-web-pre" } }
     }`);
     assert.equal(parsed.env.pre.name, "gitstarclub-web-pre");
+  });
+
+  test("round-trips quoted JSONC comment markers and escapes", () => {
+    const expected = {
+      "/* quoted key */": "literal /* keep me */ suffix",
+      line: "https://example.com/path//literal",
+      quote: 'escaped " quote /* still quoted */ // still quoted',
+      backslash: "one \\ and two \\\\ before /* literal */",
+      trailingBackslash: "ends with \\",
+      markers: ["/*", "*/", "//", "/* outer /* inner */ tail */"],
+    };
+    const source = JSON.stringify(expected);
+    assert.equal(stripJsonc(source), source);
+    assert.deepEqual(parseWranglerJsonc(source), expected);
+  });
+
+  test("strips mixed JSONC comments only outside quoted strings", () => {
+    const expected = { value: 'literal /* keep */ and " // keep', url: "https://example.com" };
+    const source = `/* header with a quote " and // marker\r\nsecond line */\r\n{
+      "value"/* between key and colon */: ${JSON.stringify(expected.value)}, // quote " and /* ignored
+      "url": ${JSON.stringify(expected.url)} /* multiline comment
+      with \\ and " and // markers */
+    } // trailing comment without a newline`;
+    assert.deepEqual(parseWranglerJsonc(source), expected);
+    assert.deepEqual(
+      stripJsonc(source).match(/[\r\n]/g),
+      source.match(/[\r\n]/g),
+    );
+    assert.deepEqual(parseWranglerJsonc('{"value": 1 // CR-only comment\r}'), { value: 1 });
+  });
+
+  test("JSONC comments do not join invalid JSON tokens", () => {
+    for (const source of ['{"value": 1/* separator */2}', '{"value": tr/* separator */ue}']) {
+      assert.throws(() => parseWranglerJsonc(source), SyntaxError);
+    }
+    assert.throws(() => parseWranglerJsonc('{} /* unterminated comment'), SyntaxError);
   });
 
   test("rejects closed production workers.dev and legacy nonprod names", () => {

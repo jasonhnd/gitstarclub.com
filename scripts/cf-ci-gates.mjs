@@ -49,33 +49,44 @@ const WRANGLER_CONFIG_REL = "workers/gitstarclub-web/wrangler.jsonc";
 const NAMING_DOC_RELS = Object.freeze(["docs/OPS.md", "docs/TESTING.md", "docs/README.md"]);
 
 export function stripJsonc(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((line) => {
-      let inString = false;
-      let escaped = false;
-      for (let index = 0; index < line.length; index += 1) {
-        const char = line[index];
-        if (escaped) {
-          escaped = false;
-          continue;
-        }
-        if (char === "\\") {
-          escaped = true;
-          continue;
-        }
-        if (char === '"') {
-          inString = !inString;
-          continue;
-        }
-        if (!inString && char === "/" && line[index + 1] === "/") {
-          return line.slice(0, index);
-        }
+  const output = [];
+  let inString = false;
+  let escaped = false;
+  let comment = null;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+    const isNewline = char === "\n" || char === "\r";
+    if (comment !== null) {
+      // Whitespace keeps tokens separate and preserves source locations.
+      if (comment === "block" && char === "*" && next === "/") {
+        output.push("  ");
+        index += 1;
+        comment = null;
+      } else {
+        output.push(isNewline ? char : " ");
+        if (comment === "line" && isNewline) comment = null;
       }
-      return line;
-    })
-    .join("\n");
+      continue;
+    }
+    if (inString) {
+      output.push(char);
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === "/" && (next === "/" || next === "*")) {
+      comment = next === "/" ? "line" : "block";
+      output.push("  ");
+      index += 1;
+    } else {
+      output.push(char);
+      if (char === '"') inString = true;
+    }
+  }
+  if (comment === "block") throw new SyntaxError("Unterminated JSONC block comment");
+  return output.join("");
 }
 
 export function parseWranglerJsonc(source) {
