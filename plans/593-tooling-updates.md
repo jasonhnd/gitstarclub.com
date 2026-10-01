@@ -55,61 +55,105 @@ to `main`, `pre`, or `preview`. No branch deletions or unrelated file deletions.
   explicitly reported.
 - The PR includes a version comparison and reviewable evidence.
 
-## Initial setup and prerequisite check: 2026-10-01
+## Baseline and compatibility
 
-- Latest fetched `origin/pre` is
-  `b9650f063895c9eaf97ea91eb57c3882f89ce23c`; the task checkout started there.
-- GSC_0038 is accepted, but its PR
-  <https://github.com/jasonhnd/gitstarclub.com/pull/619> remains open with
-  `mergedAt: null` and head
-  `425dc0887a9d36e85a5a9f3034a9eb565b019b39`.
-- `origin/pre:web/package.json` still declares Next 16.3.6 and OpenNext
-  `^1.20.6`, rather than the prerequisite's Next 16.3.8 and OpenNext `^1.20.7`.
-  Implementation is blocked until the prerequisite lands in `pre`, preserving
-  the required serial dependency-upgrade order and avoiding lockfile overlap.
-- Created `chore/593-tooling-updates` from the fetched `origin/pre`.
-- The exact `AGENTS.md` bootstrap exited zero. Both official archives passed
-  SHA-256 verification; Node reported v24.20.0 and Bun/bunx reported 1.3.14.
-- In a clean environment, checked that `web` and `pipeline` contain no
-  `.env*` files, then ran `node scripts/assert-runtime-versions.mjs` and
-  `bun install --frozen-lockfile` in both directories. All exited zero;
-  658 web packages and 35 pipeline packages installed. Neither lockfile changed.
-- No dependency declarations have been changed. The full static job, builds,
-  moderate audits, sharing-image checks, and Playwright comparisons are pending.
+Started implementation from `origin/pre` at `aa175a8`, after PR #619 merged.
+The npm registry was checked on 2026-10-01 for stable releases. Node types
+24.19.0 are the latest stable 24.x types; the global latest 26.x line was excluded.
 
-## Resumed implementation: 2026-10-01
+The Playwright core peer used by axe is aligned to 1.63.0 in the lockfile. Keeping
+Bun's older 1.62.1 peer alongside the new nested core caused incompatible `Page`
+types. No new direct dependency, override, type cast, or test assertion removal
+is introduced. Wrangler's Miniflare update also removes the `type: "worker"`
+configuration field; the existing local R2 fixture drops that field and updates
+its workerd version comment while preserving all 19 conditional-write assertions.
 
-PR #619 merged at 13:15:35 UTC as
-`aa175a8f6ab7a9892a8c7f25f57f531c372733ba`. The unpublished plan commit was
-rebased onto that latest `origin/pre`. Next 16.3.8 and OpenNext 1.20.7 are now
-part of the baseline. Frozen installs and the verified bootstrap passed again.
+## Completed verification
 
-The npm registry was rechecked after resuming: stable targets are Wrangler
-4.145.0, PostCSS 8.5.28, sharp 0.35.5, Playwright 1.63.0, and the newest stable
-Node 24 types, 24.19.0. The global Node types latest tag is 26.6.3; it is outside
-this issue's allowed major line.
+The complete code and test change was verified at
+`9cbf3c724bbcd2de23e98271bc9b817e71265609` in a fresh detached worktree,
+using the SHA-256-verified Node 24.20.0 and Bun 1.3.14 under `env -i` and
+`bash --noprofile --norc`. Wrangler telemetry was disabled and its configuration
+was isolated in an empty directory; the legacy home directory did not exist.
 
-The lockfile also aligns the `playwright-core` peer used by axe with Playwright
-1.63.0. Bun initially retained the 1.62.1 peer while nesting a 1.63.0 core for
-the new test runner, which made the two E2E `Page` types incompatible. A targeted
-core update followed by removal of Bun's temporary direct declaration keeps
-only the necessary lockfile change; no new direct dependency or override is
-introduced. A nonincremental typecheck passed on the aligned graph.
+### Resolved version comparison
 
-Wrangler's Miniflare update removes the `type: "worker"` field from its worker
-configuration schema. The local R2 conditional-write fixture drops that obsolete
-field and updates its workerd version comment. The bucket setup, telemetry opt-out,
-and all conditional-write assertions stay intact; no production storage code or
-Worker deployment configuration changes.
+| Package | Before | After |
+|---|---|---|
+| `wrangler` | 4.133.0 | 4.145.0 |
+| `postcss` | 8.5.23 | 8.5.28 |
+| `sharp` | 0.35.4 | 0.35.5 |
+| `@playwright/test` | 1.62.1 | 1.63.0 |
+| `playwright` | 1.62.1 | 1.63.0 |
+| `playwright-core` | 1.62.1 | 1.63.0 |
+| `@types/node` | 24.13.3 | 24.19.0 |
 
-Capture a bounded local baseline before changing packages. The baseline uses
-`pulse`, `rankings`, `categories`, `compare`, and `about`, English, both themes,
-and all four viewports in the committed screenshot generator (40 screenshots).
-The CI fixture intentionally supplies missing-data responses, so this comparison
-covers static chrome and empty states rather than populated production data.
-All browser network requests outside loopback are blocked. Sharing images are
-checked separately, including a known repository card from checked-in fixtures.
+Next 16.3.8, OpenNext 1.20.7, product dependencies, and all existing security
+pins remain unchanged. Wrangler's required companion packages advance Miniflare
+from 5.20260916.0-alpha to 5.20260930.0-alpha and workerd from 1.20260916.1 to
+1.20260930.2. sharp's platform packages and libvips packages follow its patch
+release. The primary updated lockfile integrity values match npm's registry.
 
-The detached verification worktree and disposable logs are placed inside this
-card's ignored web test-output directory to keep all work in the card
-workspace. No live data store, platform API, or credentials are needed.
+### Commands and results
+
+| Check | Result |
+|---|---|
+| Exact `AGENTS.md` bootstrap and runtime/CF gate assertions | Pass |
+| Frozen web and pipeline installs; high-severity audits | Pass |
+| Pipeline `bun run test` | 24 pass, 0 fail |
+| Root `bun run lint:docs` | Pass |
+| Web `bun run lint` | Pass; 14 warnings, 0 errors |
+| Web `typecheck`, `typecheck:tests`, `typecheck:scripts` | Pass |
+| `bun run validate:views -- scripts/fixtures/views` | Pass |
+| `BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE="" bun run test:cov` | 1409 pass, 49 skip, 0 fail; 171 files |
+| LCOV coverage gate | Lines 86.43%, functions 86.95%; both above 80% |
+| Fixture `bun run build` | Pass |
+| Fixture `bun run cf:dry-run` | Pass with Wrangler 4.145.0; pre only; no deployment |
+| Web `bun audit --audit-level=moderate` | Exit 0; no vulnerabilities found |
+| Pipeline `bun audit --audit-level=moderate` | Exit 0; no vulnerabilities found |
+| Verification lockfile comparison | Neither lockfile changed during frozen installs |
+| Local R2 conditional-write test | Pass; all 19 assertions retained |
+
+Both builds used the committed read-only HTTP fixture on loopback. No live-smoke
+or release-gate opt-ins, real environment files, write credentials, or real data
+stores were used. No CI workflow, Worker configuration, or deployment script was
+edited. The screenshot/image comparison and cleanup details follow below.
+
+### Sharing images and sharp
+
+All four HTTP metadata-image routes discovered from the Next build manifest
+return 200, `image/png`, and 1200x630. Route names with Next's generated suffixes
+were used rather than guessed URLs. The stored-fixture known-repository and
+unknown-repository routes also render correctly in an isolated Bun process:
+only the known id reads the entity; external fetches are forbidden and the
+original fetch is restored.
+
+All six before/after PNGs are byte-identical. The known fixture remains 51,829
+bytes and the unknown site card remains 56,781 bytes, matching the issue #585
+committed images. sharp 0.35.5 with libvips 8.18.7 decodes each card and resizes
+it to 600x315 PNG successfully; the baseline used sharp 0.35.4/libvips 8.18.6.
+
+### Playwright baselines
+
+Playwright advances from 1.62.1 to 1.63.0; bundled Chromium advances from
+151.0.7922.34 (revision 1234) to 153.0.8010.12 (revision 1243). Both local
+capture runs pass all 40 cases. Of the 40 decoded-pixel comparisons, 38 are
+identical. Two Rankings screenshots differ by 129 pixels (1440x1100 light,
+0.008144%) and 56 pixels (768x1024 dark, 0.007121%). Differences are confined
+to header edges, with maximum channel deltas of 13 and 12 out of 255. Visual
+inspection finds no content or layout change. Browser rasterization is a
+possible explanation; the exact cause was not isolated. No existing baselines
+are replaced. See [before/after evidence](593-tooling-screenshots/README.md) and
+[machine-readable results](593-tooling-verification.json).
+
+### Limits and cleanup
+
+The screenshot fixture intentionally returns missing data. Browser coverage is
+English static chrome and empty states across five routes, four viewports, and
+both themes; populated datasets, other locales, and a live deployment were not
+browser-tested. No UI redesign or production code change is intended.
+
+The detached verification worktree was removed successfully. The final
+verification-record commit receives a fresh static/build/audit run as well;
+its exact result and head are recorded in the Kanban handoff. Final acceptance
+and merging remain with the reviewer and project owner.
