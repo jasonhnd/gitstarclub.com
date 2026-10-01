@@ -759,8 +759,13 @@ Rehearse in `gitstarclub-data-pre`, then load `gitstarclub-data-prod`. The owner
 
 R2 performs no writes unless `--execute`. `--target` without `--store r2` is refused. A dry run prints the object count, byte count, and target bucket. When R2 credentials are set, that dry run also reads `_meta/bucket-identity.json` and refuses a mismatched marker. When they are unset, it does not contact the bucket. `--initial-commit` is R2 only. It publishes `previous_generation: null` when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are all absent, and it refuses if any of those already exist. The first pointer is create-only. Retrying the same `--initial-commit` after that generation is visible returns already-published; a different existing pointer is refused. The identity marker and staged generation objects do not block that check. This null is not a legacy-flat rollback: `--rollback legacy-flat` fails closed because the flat layout is not in the new bucket.
 
+A first publish has no prior generation. `--rollback` of the generation just committed returns `already-rolled-back` and leaves the pointer in place. That status is not an undo. The same rule is in [R2-CUTOVER.md](./R2-CUTOVER.md) stages 2 and 3.
+
+Preview commands use Worker `gitstarclub-web-pre`, wrangler env `pre`, and bucket `gitstarclub-data-pre`. They do not deploy that Worker and do not write bucket `gitstarclub-data-prod`.
+
 ```bash
 cd pipeline
+# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
 GEN=bootstrap-20260717T120000Z
 
 node backfill/06-upload.mjs --store r2 --target pre --generation "$GEN"
@@ -769,11 +774,29 @@ node backfill/06-upload.mjs --store r2 --target pre --generation "$GEN" --execut
 node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN"
 node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN" --execute --stage-only
 node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN" --execute --initial-commit
-
-node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$GEN" --execute
 ```
 
-Production uses the same commands with `--target prod` after the pre rehearsal. Nothing in this section uploads, deploys, or binds a bucket.
+Later publishes roll back to `previous_generation` on `https://data-pre.gitstarclub.com/bootstrap/latest.json`. Do not pass the current generation. `$GEN` above is the generation just committed, so it is not the rollback target.
+
+```bash
+cd pipeline
+# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+# PREVIOUS is bootstrap/latest.json previous_generation, not the current generation.
+node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$PREVIOUS" --execute
+```
+
+Bad first publish: quarantine. Any write needs a separate owner authorization. Read `https://data-pre.gitstarclub.com/bootstrap/latest.json` and confirm `previous_generation` is JSON null. If it is a generation id, use the later-publish command instead. Do not accept the rehearsal. Do not start the production-bucket load from this generation. Do not point Worker `gitstarclub-web` (top-level production, no `--env`) at bucket `gitstarclub-data-pre` or `gitstarclub-data-prod`. Do not hand-write `bootstrap/latest.json` or `views/latest.json`. Do not delete `_meta/bucket-identity.json`. `web/scripts/blob-del-prefix.ts` refuses the pointer, the broad `bootstrap/` prefix, and the current generation prefix. The only authorized write that changes which generation readers follow is a corrected generation committed without `--initial-commit`. The owner names that new id first. The new pointer's `previous_generation` is the bad id, and the bad generation stays sealed. If the owner does not approve that commit, stop. There is no supported command that deletes the first R2 pointer.
+
+```bash
+cd pipeline
+# Owner-authorized. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+# GOOD is a new generation id. Do not pass --initial-commit.
+node backfill/06-upload.mjs --store r2 --target pre --generation "$GOOD" --execute
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --execute --stage-only
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --execute
+```
+
+Production uses the same upload and `--initial-commit` commands with `--target prod` after the pre rehearsal. That target is Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`. The first publish there has the same null `previous_generation` and the same quarantine, with public origin `https://data.gitstarclub.com`. A later publish on that bucket rolls back with `--target prod` and `$PREVIOUS` from that origin. Nothing in this section uploads, deploys, or binds a bucket.
 
 ## One-time canonical lifecycle provenance migration (Issue #326)
 
@@ -919,7 +942,7 @@ reads even if the object disappears again.
 ## Rollback
 
 - **Pointer rollback (Workflow publish)**: do not overwrite Blob directly. Call the protected rollback API with a stable idempotency key; it acquires a fenced lease, pins the rollback intent, syncs the recovery / whitelist pointers, and invalidates pages and the pointer cache. Example: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`. After a successful return, check the pages and `views/latest.json` within the **≤60s** visibility SLA. Design see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.
-- **bootstrap generation / legacy rollback**: first read `bootstrap/latest.previous_generation`. When the value is a generation, run `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute`. On Blob, a first publish stores null, and that null means `cd pipeline && node backfill/07-export-v2.mjs --rollback legacy-flat --execute`. On R2, `--initial-commit` also stores null, and `--rollback legacy-flat` fails closed because the flat files were never uploaded. An R2 generation rollback is `cd pipeline && node backfill/07-export-v2.mjs --store r2 --target pre --rollback <bootstrap-generation> --execute` (use `--target prod` for the production bucket). A generation target rechecks sealed manifests and every object before the lease; a mutable legacy target, after acquiring the same Workflow CAS lease, verifies the key flat base artifacts and all `4 × 32` canonical shards. The command then rereads the pointer inside the lease and overwrites the pointer only once; a legacy target atomically deletes `bootstrap/latest.json`. If the pointer write/delete succeeded but the response was lost, retrying the same target returns `already-rolled-back`. Do not hand-edit the pointer, and do not delete the current / previous generation or overlay.
+- **bootstrap generation / legacy rollback**: first read `bootstrap/latest.previous_generation`. When the value is a generation, run `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute` for the Blob store. On Blob, a first publish stores null, and that null means `cd pipeline && node backfill/07-export-v2.mjs --rollback legacy-flat --execute`. On R2, `--initial-commit` also stores null, and that null means there is no prior generation. `--rollback` of the generation just committed returns `already-rolled-back` and is not an undo. `--rollback legacy-flat` fails closed because the flat files were never uploaded. Quarantine that first R2 publish as in the R2 rehearsal section above and in [R2-CUTOVER.md](./R2-CUTOVER.md): owner authorization, no hand-written pointer, and a later corrected commit without `--initial-commit` only if the owner names a new generation id. An R2 rollback after a later publish names `previous_generation`: `cd pipeline && node backfill/07-export-v2.mjs --store r2 --target pre --rollback <previous-generation> --execute` for Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre` (use `--target prod` for Worker `gitstarclub-web`, top-level production with no `--env`, bucket `gitstarclub-data-prod`). Do not pass the current generation. A generation target rechecks sealed manifests and every object before the lease; a mutable legacy target, after acquiring the same Workflow CAS lease, verifies the key flat base artifacts and all `4 × 32` canonical shards. The command then rereads the pointer inside the lease and overwrites the pointer only once; a legacy target atomically deletes `bootstrap/latest.json`. If the pointer write/delete succeeded but the response was lost, retrying the same target returns `already-rolled-back`. Do not hand-edit the pointer, and do not delete the current / previous generation or overlay.
 - **Deploy rollback**: Vercel keeps historical deployments, and **Promote the previous healthy deployment** rolls back in seconds. The old `gitstarclub-web` is kept temporarily as an extra rollback reference, but a normal rollback should be finished inside the `gitstarclub.com` project. Cost-control changes (robots, pointer cache, long-tail ISR, proxy matcher) rollback the same way: promote the previous Ready production deployment, then revert any Firewall deny rules that were added in the same change window.
 - **Daily live tail**: `live/generations/<run_id>/**` is immutable, and `live/latest.json` is the only publish switch. A failure before commit needs no data rollback (the pointer still points at the old generation); if bad data is found after commit, point the pointer's `generation` back at `previous_generation`. Rollback must also first confirm there is no active `lease` and use an ETag conditional write, so it does not overwrite a cron that is publishing.
 - **Order**: roll data back first (Blob points back at the previous view version) → then redeploy the previous healthy deployment → check that `sync_runs` and drift are back to normal.
