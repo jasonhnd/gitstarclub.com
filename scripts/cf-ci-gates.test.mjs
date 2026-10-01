@@ -13,6 +13,8 @@ import {
   PREVIEW_DEPLOY_ENV,
   PREVIEW_R2_BUCKET,
   PREVIEW_R2_PUBLIC_BASE_URL,
+  PREVIEW_R2_PUBLIC_HOST,
+  PRODUCTION_R2_PUBLIC_HOST,
   PREVIEW_STORAGE_READ_DRIVER,
   PREVIEW_STORAGE_WRITE_DRIVER,
   PRODUCTION_BLOB_BASE_URL,
@@ -596,6 +598,129 @@ describe("CF CI gates", () => {
     assert.ok(
       inheritedIssues.some((issue) => issue.includes("must declare its own vars")),
       inheritedIssues.join("\n"),
+    );
+  });
+
+  test("rejects wrong or missing preview storage drivers, bucket, and public base", () => {
+    const cases = [
+      {
+        name: "missing read driver",
+        mutate: (config) => {
+          delete config.env.pre.vars.STORAGE_READ_DRIVER;
+        },
+        fragment: "STORAGE_READ_DRIVER must be r2",
+      },
+      {
+        name: "blob read driver",
+        mutate: (config) => {
+          config.env.pre.vars.STORAGE_READ_DRIVER = "blob";
+        },
+        fragment: "STORAGE_READ_DRIVER must be r2",
+      },
+      {
+        name: "missing write driver",
+        mutate: (config) => {
+          delete config.env.pre.vars.STORAGE_WRITE_DRIVER;
+        },
+        fragment: "STORAGE_WRITE_DRIVER must be r2_binding",
+      },
+      {
+        name: "s3 write driver",
+        mutate: (config) => {
+          config.env.pre.vars.STORAGE_WRITE_DRIVER = "r2";
+        },
+        fragment: "STORAGE_WRITE_DRIVER must be r2_binding",
+      },
+      {
+        name: "missing bucket var",
+        mutate: (config) => {
+          delete config.env.pre.vars.R2_BUCKET;
+        },
+        fragment: "R2_BUCKET must be gitstarclub-data-pre",
+      },
+      {
+        name: "wrong bucket var",
+        mutate: (config) => {
+          config.env.pre.vars.R2_BUCKET = "gitstarclub-other";
+        },
+        fragment: "R2_BUCKET must be gitstarclub-data-pre",
+      },
+      {
+        name: "missing public base",
+        mutate: (config) => {
+          delete config.env.pre.vars.R2_PUBLIC_BASE_URL;
+        },
+        fragment: "R2_PUBLIC_BASE_URL must be https://data-pre.gitstarclub.com",
+      },
+      {
+        name: "wrong public base",
+        mutate: (config) => {
+          config.env.pre.vars.R2_PUBLIC_BASE_URL = "https://evil.example";
+        },
+        fragment: "R2_PUBLIC_BASE_URL must be https://data-pre.gitstarclub.com",
+      },
+    ];
+    for (const entry of cases) {
+      const config = JSON.parse(validWrangler);
+      entry.mutate(config);
+      const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+      assert.ok(issues.some((issue) => issue.includes(entry.fragment)), `${entry.name}: ${issues.join("\n")}`);
+    }
+  });
+
+  test("rejects cross-wired preview and production buckets and domains", () => {
+    const previewBinding = JSON.parse(validWrangler);
+    previewBinding.env.pre.r2_buckets.find((entry) => entry.binding === "DATA").bucket_name = PRODUCTION_R2_BUCKET;
+    const bindingIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(previewBinding) }));
+    assert.ok(
+      bindingIssues.some((issue) => issue.includes(`DATA bucket_name must be ${PREVIEW_R2_BUCKET}`)),
+      bindingIssues.join("\n"),
+    );
+    assert.ok(
+      bindingIssues.some((issue) => issue.includes(`must not mention ${PRODUCTION_R2_BUCKET}`)),
+      bindingIssues.join("\n"),
+    );
+
+    const previewBucket = JSON.parse(validWrangler);
+    previewBucket.env.pre.vars.R2_BUCKET = PRODUCTION_R2_BUCKET;
+    const previewBucketIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(previewBucket) }));
+    assert.ok(
+      previewBucketIssues.some((issue) => issue.includes(`must not mention ${PRODUCTION_R2_BUCKET}`)),
+      previewBucketIssues.join("\n"),
+    );
+    assert.ok(
+      previewBucketIssues.some((issue) => issue.includes(`R2_BUCKET must be ${PREVIEW_R2_BUCKET}`)),
+      previewBucketIssues.join("\n"),
+    );
+
+    const previewDomain = JSON.parse(validWrangler);
+    previewDomain.env.pre.vars.R2_PUBLIC_BASE_URL = `https://${PRODUCTION_R2_PUBLIC_HOST}`;
+    const previewDomainIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(previewDomain) }));
+    assert.ok(
+      previewDomainIssues.some((issue) => issue.includes(`must not mention ${PRODUCTION_R2_PUBLIC_HOST}`)),
+      previewDomainIssues.join("\n"),
+    );
+    assert.ok(
+      previewDomainIssues.some((issue) =>
+        issue.includes(`R2_PUBLIC_BASE_URL must be ${PREVIEW_R2_PUBLIC_BASE_URL}`),
+      ),
+      previewDomainIssues.join("\n"),
+    );
+
+    const topBucket = JSON.parse(validWrangler);
+    topBucket.vars.NOTE = PREVIEW_R2_BUCKET;
+    const topBucketIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(topBucket) }));
+    assert.ok(
+      topBucketIssues.some((issue) => issue.includes(`top-level must not mention ${PREVIEW_R2_BUCKET}`)),
+      topBucketIssues.join("\n"),
+    );
+
+    const topDomain = JSON.parse(validWrangler);
+    topDomain.vars.R2_PUBLIC_BASE_URL = PREVIEW_R2_PUBLIC_BASE_URL;
+    const topDomainIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(topDomain) }));
+    assert.ok(
+      topDomainIssues.some((issue) => issue.includes(`top-level must not mention ${PREVIEW_R2_PUBLIC_HOST}`)),
+      topDomainIssues.join("\n"),
     );
   });
 
