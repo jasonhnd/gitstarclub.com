@@ -47,7 +47,7 @@ The authoritative catalog of requirement IDs is in [REQUIREMENTS.md §0](./REQUI
 |---|---|---|
 | 1 | **RSC by default, zero client JS first** | Content pages are all Server Components; charts are server-rendered SVG/DOM; motion is pure CSS. The only allowed client JS is in §4. |
 | 2 | **build reads only JSON, zero engine at runtime, unaware of Workflow** | The page body and `generateMetadata` only `fetch` budgeted JSON views from Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER](./R2-CUTOVER.md)), and **never** load Parquet / DuckDB / native modules on the build / request path, and also **do not know** that the refresh workflow exists. How the data is produced (bootstrap / cron / refresh) is transparent to the page, and the page only reads the final JSON (see [ARCHITECTURE](./ARCHITECTURE.md), [R2-CUTOVER](./R2-CUTOVER.md)). |
-| 3 | **Page layering ↔ Next config in one-to-one correspondence** | Core pages are built at deploy; long-tail pages use on-demand ISR with a per-route page TTL; the live cron calls `revalidatePath` for pulse and the current ranking periods, not for mover entity pages; history is frozen. This is the core of this document, see §2. |
+| 3 | **Page layering ↔ Next config in one-to-one correspondence** | Core pages are built at deploy; long-tail pages use on-demand ISR with a per-route exported segment default; the live cron calls `revalidatePath` for pulse and the current ranking periods, not for mover entity pages; history exports `revalidate=false` and can still miss the page cache when shared publication tags expire. This is the core of this document, see §2. |
 | 4 | **Token-driven, do not hard-code the palette** | Components use Tailwind utilities to reference the M3E runtime variables in `globals.css` (`bg-primary-container`, `text-on-surface-variant`…), and theme switching takes effect immediately (see [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §Integrating Tailwind 4). |
 | 5 | **Data is language-neutral** | i18n translates only UI chrome / navigation / labels / meta; repo names, descriptions, languages, topics, and numbers keep the original text (see §7, [PRODUCT](./PRODUCT.md) i18n). |
 
@@ -113,19 +113,19 @@ This is the section that lands [ARCHITECTURE](./ARCHITECTURE.md) "page layering 
 | Layer | Page | Freshness (REQUIREMENTS §6) | Next mechanism |
 |---|---|---|---|
 | **Core** | `/` · `/pulse` · `/rankings` · current-year/current-month `/rankings/...` (a non-default locale is the corresponding prefixed URL) | Front page: replaced daily | Daily cron `revalidatePath`; core locale pages are prerendered static/ISR, chrome is localized on the server, and only leaf controls such as search/language/theme hydrate |
-| **Long tail** | Historical year/month · **week** · repo · org (~16k+) · categories | Chronicle: frozen / marked as-of | **On-demand ISR**: `dynamicParams=true` plus an empty or registry-derived `generateStaticParams`. Page `revalidate` splits per route (see the footnote). Publish and the live cron do not call `revalidatePath` on repo detail, org detail, or category detail. |
+| **Long tail** | Historical year/month · **week** · repo · org (~16k+) · categories | Chronicle: frozen / marked as-of | **On-demand ISR**: `dynamicParams=true` plus an empty or registry-derived `generateStaticParams`. The exported segment `revalidate` splits per route (see the footnote). Publish and the live cron do not call `revalidatePath` on repo detail, org detail, or category detail. That path list is not the whole invalidation story. |
 | **mover** | repo/org in the mover set + `/pulse` | Pulse: event-driven, refresh only "the small set that is moving" | The live cron calls `revalidatePath` for English `/pulse` and the current ranking periods. Mover repo and org pages are IndexNow submissions, not `revalidatePath` targets. |
-| **History** | Past periods already folded into Parquet | Old newspaper: never reprinted | Pure static hits the CDN; unchanged data = no revalidate |
+| **History** | Past periods already folded into Parquet | Old newspaper: the page copy is stamped as-of | Historical period routes export `revalidate=false` and are not explicit `revalidatePath` targets. Shared publication tags can still miss the page cache. |
 
 > Key point: **a long-tail page "becoming a page" is extremely cheap** (lazy generation, does not occupy build budget) — so week pages / org pages as standalone pages are not constrained by the 45min build cap ([ARCHITECTURE](./ARCHITECTURE.md) rendering layering).
 >
-> **Page `revalidate`, the data-cache TTL, and active invalidation are three different clocks.** Do not collapse them. The route-by-route table is in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md). Split per file; the code is authoritative:
-> - **repo `/{owner}/{name}`** page cache = `604800` (`web/app/(en)/[locale]/[owner]/page.tsx` and `web/app/(localized)/[locale]/[owner]/[name]/page.tsx`). `generateStaticParams` returns `[]`. Data reads use the daily published pointer (`DAILY_BASE_VIEW_TTL_MS`, 86400 seconds) via `getRepoPageEntityDaily`, `getReposLookupDaily`, `getAliasMapDaily`, and `getMeta(DAILY_BASE_VIEW_TTL_MS)`. No `revalidatePath` on publish or on the live cron. Mover repos are IndexNow only.
-> - **org index `/o` and `/o/page/{page}`** page cache = `3600`. Data reads use `getOrgsLookup` and the default published pointer (`VERSION_TTL_MS`, 3600 seconds). Publish calls `revalidatePath` for `/o` in every locale. Paginated paths are not in that list.
-> - **org `/o/{login}`** page cache = `604800`. `generateStaticParams` returns `[]`. Data reads use `getOrgEntityDaily`, `getReposLookupDaily`, and `getMeta(DAILY_BASE_VIEW_TTL_MS)` at 86400 seconds. No `revalidatePath` for the detail path.
-> - **category index `/categories` and dimension `/categories/{dimension}`** page cache = `86400`. Dimensions are prebuilt from `CATEGORY_DIMENSIONS`. `getCategoryRegistry` uses the 86400-second pointer. `getMeta()` uses the 3600-second pointer. Publish calls `revalidatePath` for `/categories` only, not for each dimension.
-> - **category detail and `/page/{page}`** page cache = `604800`. Priority language details are prebuilt; pagination `generateStaticParams` returns `[]`. Data reads mix `getCategoryRegistry` / `getReposLookupDaily` (86400 seconds) and `getMeta()` (3600 seconds). Those paths are not invalidated on publish.
-> - Historical year/month/week keep `revalidate=false`. The current available year, month, and week are prebuilt. The live cron calls `revalidatePath` for the English current year, month, and week only.
+> **The exported segment `revalidate`, each fetch `revalidate`, and explicit `revalidatePath` are different settings, and Next combines them.** Do not treat the segment export as the HTML lifetime. The route-by-route table is in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md). Split per file; the exports and fetch options are the evidence. Hosted cache behavior was not measured.
+> - **repo `/{owner}/{name}`** exports `revalidate=604800` (`web/app/(en)/[locale]/[owner]/page.tsx` and `web/app/(localized)/[locale]/[owner]/[name]/page.tsx`). `generateStaticParams` returns `[]`. Data reads pass `DAILY_BASE_VIEW_TTL_MS` (86400 seconds) through `getRepoPageEntityDaily`, `getReposLookupDaily`, `getAliasMapDaily`, and `getMeta(DAILY_BASE_VIEW_TTL_MS)`. That fetch is shorter than the export, and a base read may also fetch `bootstrap/latest.json` at 300 seconds, so either can lower the route interval. The repo URL is not an explicit `revalidatePath` target. Mover repos are IndexNow submissions. Shared publication tags still apply to this render. The export is not a seven-day HTML guarantee.
+> - **org index `/o` and `/o/page/{page}`** exports `revalidate=3600`. Data reads use `getOrgsLookup` and the default published pointer (`VERSION_TTL_MS`, 3600 seconds). A 300-second bootstrap pointer fetch can lower that interval. Publish calls `revalidatePath` for `/o` in every locale. Paginated paths are not explicit path targets. Shared tags still apply.
+> - **org `/o/{login}`** exports `revalidate=604800`. `generateStaticParams` returns `[]`. Data reads use `getOrgEntityDaily`, `getReposLookupDaily`, and `getMeta(DAILY_BASE_VIEW_TTL_MS)` at 86400 seconds, which is shorter than the export. The detail URL is not an explicit `revalidatePath` target. Shared tags can still miss the page cache.
+> - **category index `/categories` and dimension `/categories/{dimension}`** export `revalidate=86400`. Dimensions are prebuilt from `CATEGORY_DIMENSIONS`. `getCategoryRegistry` uses the 86400-second pointer. `getMeta()` uses the 3600-second pointer, which is shorter than the export. Publish calls `revalidatePath` for `/categories` only. Dimension paths are not explicit path targets. Shared tags still apply.
+> - **category detail and `/page/{page}`** export `revalidate=604800`. Priority language details are prebuilt; pagination `generateStaticParams` returns `[]`. `getCategoryRegistry` and `getReposLookupDaily` use 86400 seconds. `getMeta()` in `web/app/_localized/categories.tsx` uses the 3600-second default. A base read may also use the 300-second bootstrap pointer fetch. Those shorter fetches can lower the route interval. The detail URLs are not explicit `revalidatePath` targets. Shared tag expiry can still miss the page cache. The export is not a seven-day wait.
+> - Historical year/month/week export `revalidate=false`. The current available year, month, and week are prebuilt. The live cron calls `revalidatePath` for the English current year, month, and week only. Historical paths are not explicit path targets. `revalidate=false` does not mean a pointer switch leaves that HTML in place, because the shared publication tags can still miss the page cache.
 
 ### 2.2 Segment-config cheat sheet (what to paste for each page type)
 
@@ -142,18 +142,18 @@ export async function generateStaticParams() {
 export const revalidate = false              // no polling; the daily cron uses revalidatePath to refresh the current year
 ```
 
-**Long-tail pages (repo / org detail)** are not built at deploy. Their page TTL is seven days. That number is not the data-cache TTL and not an invalidation signal:
+**Long-tail pages (repo / org detail)** are not built at deploy. The exported segment default below is 604800 seconds. It is not a seven-day HTML guarantee. A shorter fetch `revalidate` in the same render can lower the route interval, and shared publication-tag expiry is a separate invalidation path:
 
 ```ts
 // example: web/app/(en)/o/[login]/page.tsx and the repo detail route
 export const dynamicParams = true
 export function generateStaticParams() {
-  return [] // first request renders, then the page cache holds the HTML
+  return [] // first request renders; the export is not an effective HTML lifetime
 }
-export const revalidate = 604800 // page cache only; data reads stay on DAILY_BASE_VIEW_TTL_MS
+export const revalidate = 604800 // exported segment default, not an effective HTML TTL
 ```
 
-Category index and dimension routes keep `export const revalidate = 86400`. Org index routes keep `export const revalidate = 3600`. Do not copy `604800` onto those files.
+Category index and dimension routes export `86400`. Org index routes export `3600`. Do not copy `604800` onto those files. Copying the export does not create an independent lifetime either.
 
 **All-time ranking / pulse (single page, fresh daily)**:
 
@@ -183,7 +183,7 @@ export default nextConfig;
 |---|---|---|
 | `cacheComponents` | **Off (unset/false)** | Turning it on disables `dynamicParams`, and an empty `generateStaticParams` errors at build ([ARCHITECTURE](./ARCHITECTURE.md) / [SEO](./SEO.md) §3.4). |
 | `dynamicParams` (segment-level) | `true` | The long tail is generated on first visit; an unknown param calls `notFound()` (404, see [SEO](./SEO.md) §3.2). |
-| `revalidate` (segment-level) | per route | `false` on core and historical rankings; `3600` on the org index; `86400` on the category index, dimension, and OG routes; `604800` on repo detail, org detail, and category detail or pagination. Cron `revalidatePath` covers only the paths named in §2.1. |
+| `revalidate` (segment-level) | exported default, per route | `false` on core and historical rankings; `3600` on the org index; `86400` on the category index, dimension, and OG routes; `604800` on repo detail, org detail, and category detail or pagination. These are the exports. A shorter fetch `revalidate` can lower the route interval. Explicit `revalidatePath` covers only the paths named in §2.1. Shared publication tags are separate. |
 | repo rename redirect | Route layer (not next.config) | The repo page, based on `lookup/aliases.json`, sends `permanentRedirect` (308) for a renamed old slug to the current `full_name`; canonical always points at the current name ([SEO](./SEO.md) §7). |
 
 ### 2.4 How data changes reach pages (no deploy)
@@ -302,7 +302,7 @@ Benefit ([DATA-CONTRACTS](./DATA-CONTRACTS.md)): ranking files stay small, and a
 
 - **live generation pointer**: every live reader first resolves `live/latest.json` with a 60s revalidate + in-memory single-flight, then reads the immutable `live/generations/<generation>/<logical-path>`. Periodic files such as rank / month heatmap, after the current object is confirmed 404, walk back along at most 64 manifests that pass Zod validation, are acyclic, and match the generation id; if the manifest declares the object exists but the object is 404, or there is a manifest/transport/schema error or a cycle, it still fails closed. When the requested period is newer than the hop's `week`/`month`, walking stops and legacy may be used; if it exceeds 64 generations and has not reached `null`, it truncates to missing (the page falls back to base / an empty state, and does not 500). Only a complete chain to `previous_generation:null` enables the legacy flat migration edge. Under high-concurrency SSG, a public CDN that keeps returning 403 does not count as 404: a page read tries that historical object at most 2 times, and after a 60-second circuit break by Blob/key immediately stops the live chain and hands off to base / `notFound`, never selecting an older generation; the circuit break recovers automatically, and the required product gate still judges 403 as failure. `current_month` / `hot-snapshot` do not use the history chain. On a pointer error, use the already-validated current generation memo, otherwise fail closed, to avoid mixed generations.
 - `meta.schema_ver`: the build checks version match at startup, and fails fast on mismatch ([DATA-CONTRACTS](./DATA-CONTRACTS.md) §3).
-- **base view version pointer**: base `rank/*` / `entity/*` / `heatmap/*` are consumed by "first reading the `views/latest.json` pointer to resolve the version prefix, then reading the views under that prefix" ([VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7). The default data-cache TTL is 3600 seconds. Daily readers (`DAILY_BASE_VIEW_OPTS`) use 86400 seconds. Repo and org detail pages use those daily readers even though their page `revalidate` is 604800, so the pointer TTL does not shorten or lengthen the page TTL. Category index uses the daily registry read and a 86400-second page TTL. OG routes use page `revalidate=86400`. The pointer fetch carries a shared tag, and publish / rollback invalidate it actively; every in-process memo, however long the data-cache TTL, is limited by the 60-second visibility SLA. This step is **encapsulated in `web/lib/data/`**, component argument shapes stay the same, and it is **transparent to pages**; the "live first, fall back to base" semantics are kept ([DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11).
+- **base view version pointer**: base `rank/*` / `entity/*` / `heatmap/*` are consumed by "first reading the `views/latest.json` pointer to resolve the version prefix, then reading the views under that prefix" ([VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md) §4.1/§7). The default pointer fetch uses 3600 seconds. Daily readers (`DAILY_BASE_VIEW_OPTS`) pass 86400 seconds. Those values are fetch `revalidate` options. They can lower a route whose exported segment default is longer, including repo and org detail at 604800 and the category index at 86400. A base read may also cache `bootstrap/latest.json` for 300 seconds (`BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS`) under tag `bootstrap-publication-pointer`. The `views/latest.json` fetch is tagged `published-views-pointer`. Publish expires both tags with `expire: 0`. In-process memos stay inside the 60-second visibility SLA. OG routes export `revalidate=86400`, which is the same kind of segment default, not a measured card lifetime. This is the fetch configuration. It is not a measured hosted HTML lifetime. This step is **encapsulated in `web/lib/data/`**, component argument shapes stay the same, and it is **transparent to pages**; the "live first, fall back to base" semantics are kept ([DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.11).
 
 ---
 
@@ -551,10 +551,14 @@ Data and rendering:
   and `lookup/repos.json` through `web/lib/data/categories.ts`.
 - The `/categories` index groups public categories by registry dimension rather
   than hard-coding only languages.
-- The category index and dimension pages use a 86400-second page TTL. Category
-  detail and pagination use a 604800-second page TTL. A newly published registry
-  can appear on the index after that page TTL or a publish `revalidatePath` of
-  `/categories`, without a full redeploy. Detail HTML waits for its own page TTL.
+- The category index and dimension pages export `revalidate=86400`. Category
+  detail and pagination export `revalidate=604800`. Detail also calls `getMeta()`
+  with the 3600-second default pointer, which is shorter than that export, and a
+  base read may include the 300-second bootstrap pointer fetch. Those detail
+  paths are not explicit `revalidatePath` targets. Expiring
+  `published-views-pointer` or `bootstrap-publication-pointer` can still miss
+  their page cache under the Next driver. The index is an explicit publish
+  path (`/categories`). None of these exports is a measured wait for the HTML.
 - The chrome nav exposes `/categories` through the localized `nav.categories`
   dictionary entry.
 - Category index, dimension pages, and category detail pages emit server-rendered
