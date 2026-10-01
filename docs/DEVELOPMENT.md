@@ -1,7 +1,7 @@
 ---
 owner: development process
 status: active
-last_reviewed: 2026-09-21
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - developer workflow
   - documentation ownership practice
@@ -102,9 +102,11 @@ Docs-only changes are allowed when the code already implements the behavior.
 1. Update `web/lib/categories/rules.ts`.
 2. Update `web/lib/categories/rules.test.ts`.
 3. If published artifacts change shape, update `web/lib/contracts/categories.ts`.
-4. If only assignment behavior changes, trigger a production refresh after
-   deployment so `categories/assignments.json`, registry counts, and category
-   ranks are regenerated.
+4. If only assignment behavior changes, `categories/assignments.json`, registry
+   counts, and category ranks stay on the previous publish until a production
+   refresh. That refresh is not part of the default flow. It requires a
+   separate owner authorization after promotion to `main`. Executors do not
+   call production cron or refresh endpoints.
 5. Update `CATEGORIES.md`.
 
 ### Change Ranking Behavior
@@ -135,22 +137,28 @@ The production and preview domains are hosted on Cloudflare Workers (OpenNext).
 Do not rely on a local dev server as the final verification path.
 
 Branch topology and promotion are owned by [OPS.md](./OPS.md) §Branch topology /
-staging. Feature work merges into `pre`, staging verification uses
-`https://pre.gitstarclub.com`, and production promotion is a merge from `pre` to
-`main`.
+staging and by the root `AGENTS.md`. Feature work lands on `pre`. Staging
+verification uses `https://pre.gitstarclub.com`. The default flow stops there.
 
-Preferred production verification sequence:
+Preferred verification sequence:
 
-1. Merge the feature PR into `pre`.
+1. Open the feature pull request against `pre`. The reviewer or owner
+   squash-merges it. The executor does not merge.
 2. Wait for the fixed staging domain, `https://pre.gitstarclub.com`, to serve the
    Cloudflare preview deployment. Verify access according to the current preview policy in OPS.md.
 3. Verify the affected staging URL or behavior on `pre`.
-4. Promote by merging `pre` into `main`.
-5. Wait for the Cloudflare production domain to serve the new HTML or behavior.
-6. For code-only read-side changes, verify the affected production URL directly.
-7. For recompute/category/data changes, trigger the production refresh workflow
-   after deployment and wait for `views/latest.json` to point at the new run.
-8. Verify the exact production page or Blob view that proves the change.
+
+Promotion to production is a separate pull request from `pre` to `main`. Open it
+only when the owner explicitly says "push main", "push to main", or "promote to
+main". Merge that pull request with a merge commit so `Closes #N` keeps working.
+After that deploy, wait for the Cloudflare production domain, then verify the
+affected production URL. Code-only read-side changes stop there.
+
+A production refresh is a further explicit authorization. Executors do not call
+production cron or refresh endpoints, including `gitstarclub.com/api/cron/*`.
+When the owner authorizes a refresh for a recompute, category, or other data
+change, that run is what moves `views/latest.json` to the new run. Verify the
+production page or published view only after that authorized run.
 
 Useful production signals:
 
