@@ -477,7 +477,7 @@ Production blob writes, until cutover, use `web/lib/storage/vercel-blob-fetch-cl
 
 ### Sunday 06:00 UTC workflow-refresh failure
 
-Schedule: `0 6 * * 0` UTC → `GET /api/workflows/refresh/start` (managed refresh, no Workflow SDK). This is **not** the Sunday 04:00 weekly live cron above. A leftover `live/latest.json` lease is that other path (#402). The production scheduler is unverified; see the dated evidence above.
+Schedule: intended `0 6 * * SUN` UTC (Cloudflare also accepts `1` and rejects `0`) → `GET /api/workflows/refresh/start` (managed refresh, no Workflow SDK). This is **not** the Sunday 04:00 weekly live cron above. A leftover `live/latest.json` lease is that other path (#402). The production scheduler is unverified; see the dated evidence above.
 
 Paging already exists — do not invent new alerts. `markFailed` in `web/lib/workflows/checkpoint.ts` calls `recordHealth("workflow-refresh", "failed", …)` and `sendAlert`. Start-route lease/enqueue failures in `web/lib/workflows/start.ts` also `sendAlert`. `sendAlert` always writes a structured `[ALERT] workflow-refresh failed` Worker log; it POSTs a webhook only when `ALERT_WEBHOOK_URL` is set on that Worker.
 
