@@ -430,6 +430,11 @@ describe("CF CI gates", () => {
     assert.equal(wrangler.vars.CF_CRON_ORIGIN, PRODUCTION_CRON_ORIGIN);
     assert.equal(wrangler.vars.WORKFLOW_RUNTIME, PRODUCTION_WORKFLOW_RUNTIME);
     assert.equal(wrangler.vars.WORKFLOW_QUEUE_ENQUEUE_URL, PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL);
+    assert.equal(wrangler.vars.DEPLOY_ENV, undefined);
+    assert.equal(wrangler.vars.STORAGE_READ_DRIVER, undefined);
+    assert.equal(wrangler.vars.READ_DRIVER, undefined);
+    assert.equal(wrangler.vars.STORAGE_WRITE_DRIVER, undefined);
+    assert.equal(wrangler.vars.WRITE_DRIVER, undefined);
     assert.equal(wrangler.vars.VIEWS_VERSION_FALLBACK, PRODUCTION_VIEWS_VERSION_FALLBACK);
     assert.equal(wrangler.env.pre.vars.VIEWS_VERSION_FALLBACK, undefined);
     assert.equal(wrangler.vars.CF_PREVIEW_COMMIT_SHA, undefined);
@@ -722,6 +727,30 @@ describe("CF CI gates", () => {
       topDomainIssues.some((issue) => issue.includes(`top-level must not mention ${PREVIEW_R2_PUBLIC_HOST}`)),
       topDomainIssues.join("\n"),
     );
+  });
+
+  test("rejects top-level DEPLOY_ENV and non-blob drivers before R2 cutover", () => {
+    const cases = [
+      ["DEPLOY_ENV", "pre", "top-level vars.DEPLOY_ENV must be unset until R2 cutover"],
+      ["DEPLOY_ENV", "production", "top-level vars.DEPLOY_ENV must be unset until R2 cutover"],
+      ["STORAGE_READ_DRIVER", "r2", "top-level vars.STORAGE_READ_DRIVER must be unset or blob"],
+      ["STORAGE_READ_DRIVER", "r2_then_blob", "top-level vars.STORAGE_READ_DRIVER must be unset or blob"],
+      ["READ_DRIVER", "r2", "top-level vars.READ_DRIVER must be unset or blob"],
+      ["STORAGE_WRITE_DRIVER", "r2_binding", "top-level vars.STORAGE_WRITE_DRIVER must be unset or blob"],
+      ["WRITE_DRIVER", "r2_s3", "top-level vars.WRITE_DRIVER must be unset or blob"],
+    ];
+    for (const [key, value, fragment] of cases) {
+      const config = JSON.parse(validWrangler);
+      config.vars[key] = value;
+      const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+      assert.ok(issues.some((issue) => issue.includes(fragment)), `${key}=${value}: ${issues.join("\n")}`);
+    }
+
+    const explicitBlob = JSON.parse(validWrangler);
+    explicitBlob.vars.STORAGE_READ_DRIVER = "blob";
+    explicitBlob.vars.STORAGE_WRITE_DRIVER = " Blob ";
+    explicitBlob.vars.READ_DRIVER = "";
+    assert.deepEqual(assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(explicitBlob) })), []);
   });
 
   test("treats production and preview R2 hosts case-insensitively", () => {
