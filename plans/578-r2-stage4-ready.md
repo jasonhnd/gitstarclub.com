@@ -61,4 +61,7 @@ Do not merge, force-push, delete branches, or push protected branches.
 
 ## Verification
 
-Pending implementation and clean-worktree verification.
+- The checked-in configuration passes `node scripts/assert-cf-ci-gates.mjs`.
+- Four stage-4 gate tests pass with
+  `node --test --test-name-pattern='production stage-4 storage contract' scripts/cf-ci-gates.test.mjs`.
+- Complete pinned-toolchain verification and behavioral negative probes are pending.
