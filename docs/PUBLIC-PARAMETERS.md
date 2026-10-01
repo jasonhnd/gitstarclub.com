@@ -1,3 +1,13 @@
+---
+owner: web
+status: active
+last_reviewed: 2026-10-01
+source_of_truth_for:
+  - public repository and organization input validation
+  - ranking route and storage period validation
+  - malformed parameter fallback behavior
+---
+
 # Public path parameter boundaries
 
 `web/lib/public-params.ts` owns the shared input contract for repository,
