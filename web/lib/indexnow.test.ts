@@ -1,5 +1,7 @@
 import type { ZodType } from "zod";
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, spyOn, test } from "bun:test";
+import type { ReposLookup } from "@/lib/contracts";
+import * as source from "@/lib/data/source";
 
 const TS = "2026-06-26T00:00:00.000Z";
 const views = new Map<string, unknown>();
@@ -9,6 +11,8 @@ const {
   indexNowKeyLocation,
   liveOverlayCanonicalPaths,
   submitIndexNowUrls,
+  submitLiveOverlayIndexNow,
+  submitWorkflowPublishIndexNow,
   workflowPublishCanonicalPaths,
 } = await import("./indexnow");
 
@@ -53,6 +57,73 @@ describe("IndexNow batching", () => {
       expect(result.submitted).toBe(0);
       expect(warnings[0][0]).toBe("[indexnow]");
     } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  test("POST throw logs omit secret canaries and keep the failure category", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warnings.push(args);
+    try {
+      const result = await submitIndexNowUrls(["/pulse"], { source: "test" }, {
+        base: "https://gitstarclub.com",
+        enabled: true,
+        fetcher: (async () => {
+          throw new Error(`POST GitHub GraphQL 502 ${canary}`);
+        }) as unknown as typeof fetch,
+      });
+      expect(result.failed).toBe(1);
+      const logged = JSON.stringify(warnings);
+      expect(logged).toContain("POST threw");
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  test("workflow and live-overlay catch paths omit secret canaries", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warnings.push(args);
+    const readView = spyOn(source, "readView").mockRejectedValue(
+      new Error(`workflow GitHub GraphQL 502 ${canary}`),
+    );
+    const repos = new Proxy({} as ReposLookup, {
+      get() {
+        throw new Error(`overlay GitHub GraphQL 502 ${canary}`);
+      },
+    });
+    try {
+      await expect(
+        submitWorkflowPublishIndexNow({
+          runId: "refresh-test",
+          prevVersion: null,
+          publishedAt: "2026-07-17T00:00:00.000Z",
+        }),
+      ).resolves.toBeNull();
+      await expect(
+        submitLiveOverlayIndexNow({
+          job: "daily",
+          day: "2026-07-17",
+          year: 2026,
+          monthPeriod: "2026-07",
+          weekPeriod: "2026-W29",
+          repos,
+          repoIds: [1],
+          orgLogins: [],
+        }),
+      ).resolves.toBeNull();
+      const logged = JSON.stringify(warnings);
+      expect(logged).toContain("workflow publish derivation failed");
+      expect(logged).toContain("live overlay derivation failed");
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+    } finally {
+      readView.mockRestore();
       console.warn = originalWarn;
     }
   });
