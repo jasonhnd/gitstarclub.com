@@ -44,6 +44,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
+- **Worker shell auth and security headers (#603).** `/start`, `/enqueue`, and `/preview/invalidate` compare `CRON_SECRET` with `hasValidBearerToken`. A missing or empty Worker secret is 401 and does not use `process.env.CRON_SECRET`. `GET /preview/health`, `GET /.well-known/deployment`, `GET /preview/identity`, and those 401 responses send `securityHeaders`. CSP stays `script-src 'self' 'unsafe-inline'` with no nonce. See [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md).
+
 - **Repository open-graph cards ignore unknown paths (#585).** `/{owner}/{name}/opengraph-image` draws the stored repository name only when that path resolves to a known repo id and the entity is renderable. Other paths use the site card. See [SEO.md](./SEO.md).
 
 - **Next.js 16.3.6 and high-severity dependency pins (#585).** `next` and `eslint-config-next` move from 16.3.5 to 16.3.6, which fixes GHSA-vcvr-r3jv-pc5j (remote code execution in `next/og` ImageResponse). `web` pins `undici` to 7.29.1 and `brace-expansion` to 1.1.21, 2.1.7, and 5.0.12. `pipeline` pins `undici` to 6.28.1 so `@vercel/blob`'s 6.x line clears GHSA-rfgv-xxqx-mfg5. See [TESTING.md](./TESTING.md).
