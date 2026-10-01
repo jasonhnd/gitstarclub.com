@@ -599,6 +599,37 @@ describe("CF CI gates", () => {
     );
   });
 
+  test("treats production and preview R2 hosts case-insensitively", () => {
+    const previewHost = JSON.parse(validWrangler);
+    previewHost.env.pre.vars.R2_PUBLIC_BASE_URL = "https://DATA.gitstarclub.com";
+    const previewIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(previewHost) }));
+    assert.ok(
+      previewIssues.some((issue) => issue.includes("env.pre must not mention data.gitstarclub.com")),
+      previewIssues.join("\n"),
+    );
+
+    const previewNote = JSON.parse(validWrangler);
+    previewNote.env.pre.vars.NOTE = "see https://Data.Gitstarclub.com/views/latest.json";
+    const noteIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(previewNote) }));
+    assert.ok(
+      noteIssues.some((issue) => issue.includes("env.pre must not mention data.gitstarclub.com")),
+      noteIssues.join("\n"),
+    );
+    assert.equal(
+      noteIssues.some((issue) => issue.includes("R2_PUBLIC_BASE_URL must be")),
+      false,
+      noteIssues.join("\n"),
+    );
+
+    const topHost = JSON.parse(validWrangler);
+    topHost.vars.NOTE = "https://DATA-PRE.GITSTARCLUB.COM/bootstrap/latest.json";
+    const topIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(topHost) }));
+    assert.ok(
+      topIssues.some((issue) => issue.includes("top-level must not mention data-pre.gitstarclub.com")),
+      topIssues.join("\n"),
+    );
+  });
+
   test("cf:build public read base matches the target and rejects the other environment", () => {
     const wrangler = {
       vars: {
