@@ -70,6 +70,8 @@ describe("sanitizeErrorText", () => {
         BLOB,
         AWS,
         `api_key=${R2}`,
+        `CRON_SECRET=${CRON}`,
+        `AWS_SECRET_ACCESS_KEY=${R2}`,
       ].join(" "),
       { env: {} },
     );
@@ -78,6 +80,8 @@ describe("sanitizeErrorText", () => {
     expect(output).toContain("Bearer [redacted]");
     expect(output).toContain("[redacted-url]");
     expect(output).toContain("api_key=[redacted]");
+    expect(output).toContain("CRON_SECRET=[redacted]");
+    expect(output).toContain("AWS_SECRET_ACCESS_KEY=[redacted]");
     expect(leaked(output)).toBeNull();
     expect(output).not.toContain("blob.example");
     expect(output).not.toContain("hooks.example");

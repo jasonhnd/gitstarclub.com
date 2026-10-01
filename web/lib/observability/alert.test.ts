@@ -152,4 +152,34 @@ describe("sendAlert", () => {
     expect(result.error).not.toContain("hooks.example.com");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  test("drops secret canaries from the log and the webhook body", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const cron = "CANARYCRONSECRET1234567890abcd";
+    const previousCron = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = cron;
+    const fetchMock = mock(async () => new Response(null, { status: 204 }));
+    try {
+      await sendAlert(
+        {
+          ...SUMMARY,
+          error: `GitHub GraphQL 502 Bearer CANARYBEARERTOKEN1234567890abcd ${cron} ghp_CANARYGITHUBTOKEN1234567890abcd`,
+        },
+        { fetch: fetchMock as unknown as AlertFetcher, now: new Date("2026-07-17T03:00:00.000Z") },
+      );
+      const logged = JSON.stringify(errSpy.mock.calls);
+      const body = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body)) as {
+        error?: string;
+      };
+      const webhook = JSON.stringify(body);
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(webhook).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+      expect(webhook).not.toContain("CANARY");
+      expect(body.error).toContain("Bearer [redacted]");
+    } finally {
+      if (previousCron === undefined) delete process.env.CRON_SECRET;
+      else process.env.CRON_SECRET = previousCron;
+    }
+  });
 });

@@ -207,4 +207,26 @@ describe("recordHealth", () => {
       errorSpy.mockRestore();
     }
   });
+
+  test("stored health JSON omits secret canaries and keeps the failure category", async () => {
+    let saved: PipelineHealth | null = null;
+    const store: HealthStore = {
+      read: async () => ({ health: null, etag: null }),
+      create: async (_pipeline, health) => {
+        saved = health;
+        return true;
+      },
+      compareAndSet: async () => false,
+    };
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    await recordHealth(
+      "cron-daily",
+      "failed",
+      { run_id: "daily-1", error: `GitHub GraphQL 502 ${canary}` },
+      { store, now: new Date("2026-07-17T03:00:00.000Z") },
+    );
+    const text = JSON.stringify(saved);
+    expect(text).toContain("GitHub GraphQL 502");
+    expect(text).not.toContain("CANARY");
+  });
 });

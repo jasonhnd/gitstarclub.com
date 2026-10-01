@@ -9,6 +9,7 @@ import {
 import { completedRun, failedRun, safeRecordSyncRun, syncRunId } from "@/lib/cron/sync-runs";
 import { sendAlert } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { requireGithubToken, requirePublicReadBase, requireStorageWriteConfig } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 
@@ -212,10 +213,9 @@ export async function runLiveRefreshRoute(
       } catch (releaseError) {
         console.error(`[cron-${job}] failed to release live publication lease`, {
           run_id: id,
-          error:
-            releaseError instanceof Error
-              ? releaseError.message
-              : "Unexpected lease release failure",
+          error: sanitizeErrorText(
+            releaseError instanceof Error ? releaseError.message : "Unexpected lease release failure",
+          ),
         });
       }
     }
