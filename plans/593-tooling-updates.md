@@ -96,5 +96,5 @@ All browser network requests outside loopback are blocked. Sharing images are
 checked separately, including a known repository card from checked-in fixtures.
 
 The detached verification worktree and disposable logs are placed inside this
-card's ignored `web/test-results/593/` directory to keep all work in the card
+card's ignored web test-output directory to keep all work in the card
 workspace. No live data store, platform API, or credentials are needed.
