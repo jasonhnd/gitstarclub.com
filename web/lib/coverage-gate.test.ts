@@ -100,4 +100,55 @@ describe("coverage release gate", () => {
       "coverage report invalid: aggregate found is zero",
     );
   });
+
+  test("a missing counter in one record is not hidden by a later record", () => {
+    const result = runGate(
+      writeReport(
+        "coverage-mixed-missing",
+        "SF:a.ts\nLH:70\nFNF:10\nFNH:10\nend_of_record\nSF:b.ts\nLF:100\nLH:20\nFNF:10\nFNH:10\nend_of_record\n",
+      ),
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("coverage report missing counters: LF (a.ts)");
+    expect(result.stdout).not.toContain("coverage gate passed");
+  });
+
+  test("hit greater than found in one record is not hidden by a later record", () => {
+    const result = runGate(
+      writeReport(
+        "coverage-mixed-hit",
+        "SF:a.ts\nLF:10\nLH:20\nFNF:10\nFNH:10\nend_of_record\nSF:b.ts\nLF:90\nLH:70\nFNF:10\nFNH:10\nend_of_record\n",
+      ),
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("coverage report invalid: hit exceeds found (a.ts)");
+    expect(result.stdout).not.toContain("coverage gate passed");
+  });
+
+  test("a zero-function record still counts inside a nonempty aggregate", () => {
+    const report = [
+      "SF:a.ts",
+      "LF:10",
+      "LH:10",
+      "FNF:0",
+      "FNH:0",
+      "end_of_record",
+      "SF:b.ts",
+      "LF:90",
+      "LH:80",
+      "FNF:10",
+      "FNH:8",
+      "end_of_record",
+      "",
+    ].join("\n");
+    expect(parseLcovTotals(report)).toEqual({
+      linesFound: 100,
+      linesHit: 90,
+      functionsFound: 10,
+      functionsHit: 8,
+    });
+    const result = runGate(writeReport("coverage-zero-functions", report));
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("coverage gate passed: lines 90.00%; functions 80.00%");
+  });
 });
