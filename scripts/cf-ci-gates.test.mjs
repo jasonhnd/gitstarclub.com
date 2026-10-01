@@ -245,7 +245,7 @@ describe("CF CI gates", () => {
     ];
     const result = spawnSync("bun", ["-e", `
       import { publicReadBaseMismatches, assertBuildPublicReadBase } from "./scripts/cf-opennext-build.ts";
-      const { cases, wrangler } = JSON.parse(process.env.PUBLIC_READ_CASES);
+      const { cases, wrangler } = JSON.parse(process.argv.at(-1));
       const report = cases.map((entry) => {
         const input = { target: "production", shell: entry.shell, wrangler };
         let rejected = false;
@@ -253,10 +253,9 @@ describe("CF CI gates", () => {
         return { name: entry.name, issues: publicReadBaseMismatches(input), rejected };
       });
       process.stdout.write(JSON.stringify(report));
-    `], {
+    `, JSON.stringify({ cases, wrangler })], {
       cwd: new URL("../web/", import.meta.url),
       encoding: "utf8",
-      env: { ...process.env, PUBLIC_READ_CASES: JSON.stringify({ cases, wrangler }) },
     });
     assert.equal(result.status, 0, result.stderr);
     const report = JSON.parse(result.stdout);

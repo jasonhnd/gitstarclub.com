@@ -69,7 +69,7 @@ async function runTool(tool: Tool, env: Record<string, string>) {
     const child = Bun.spawn({
       cmd: [process.execPath, `scripts/${tool}`, ...(tool === "generate-data-exports.ts" ? ["--month", "2026-07"] : ["--bust", "offline"])],
       cwd: sandbox,
-      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", ...env },
+      env,
       stdout: "pipe",
       stderr: "pipe",
     });
