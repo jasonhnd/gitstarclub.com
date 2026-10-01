@@ -23,7 +23,7 @@ The GSC_0031 review recorded 1.5.5-r.4 in `pipeline/bun.lock` and recommended th
 
 - `web/` dependencies, including Next, OpenNext, wrangler, React, and audit overrides.
 - CI workflows, `.delivery.yml`, Worker wrangler config, and deploy scripts.
-- Real backfill, upload, BigQuery, GCS, Cloudflare, or Vercel calls. No read of `pipeline/.env`, `web/.env.local`, or other credentials.
+- Real backfill, upload, BigQuery, GCS, Cloudflare, or Vercel calls. No read of environment files or other credentials.
 - Push to `main` or `pre`. Merge. Force-push. Deleting branches or files outside this issue.
 
 ## Acceptance
