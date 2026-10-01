@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import * as write from "@/lib/data/write";
 import { QUEUE_ADVANCE_CONSUMER, QUEUE_ADVANCE_HEADER, QUEUE_SUCCESSOR_HEADER } from "@/lib/workers-host/queue-advance";
 import { firstRefreshJob } from "./types";
 import { refreshStepCheckpointName, runRefreshStepRoute } from "./step-route";
@@ -322,6 +323,80 @@ describe("runRefreshStepRoute", () => {
       expect(await response.json()).toMatchObject({ ok: false, runId: "refresh-1" });
     } finally {
       errorSpy.mockRestore();
+    }
+  });
+
+  test("step response redacts punctuation and JSON-escaped assignments", async () => {
+    const putSpy = spyOn(write, "putView").mockResolvedValue(undefined as never);
+    try {
+      const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1")), {
+        kind: "memory",
+        executeFull: async () => ({
+          name: "startRun",
+          error: [
+            "GitHub GraphQL 502",
+            "password=!CANARYpunctuation42",
+            "token=CANARYstart:CANARYtail!",
+            String.raw`password=\"!CANARYescaped42\"`,
+          ].join(" "),
+        }),
+      });
+      expect(response.status).toBe(200);
+      const body = JSON.stringify(await response.json());
+      const stored = JSON.stringify(putSpy.mock.calls);
+      expect(body).toContain("GitHub GraphQL 502");
+      expect(stored).toContain("GitHub GraphQL 502");
+      expect(body).not.toContain("CANARY");
+      expect(stored).not.toContain("CANARY");
+    } finally {
+      putSpy.mockRestore();
+    }
+  });
+
+  test("step failure logs omit secret canaries and keep the failure category", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1")), {
+        kind: "memory",
+        retry: { retries: 0, delaysMs: [] },
+        executeFull: async () => {
+          throw new Error(`GitHub GraphQL 502 Bearer CANARYBEARERTOKEN1234567890abcd ${canary}`);
+        },
+        recordCheckpoint: async () => {},
+      });
+      expect(response.status).toBe(500);
+      const body = JSON.stringify(await response.json());
+      const logged = JSON.stringify(errorSpy.mock.calls);
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+      expect(body).not.toContain("CANARY");
+      expect(body).toContain("Internal server error");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  test("step checkpoint JSON and the response omit secret canaries", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const putSpy = spyOn(write, "putView").mockResolvedValue(undefined as never);
+    try {
+      const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1")), {
+        kind: "memory",
+        executeFull: async () => ({
+          name: "startRun",
+          error: `GitHub GraphQL 502 Bearer CANARYBEARERTOKEN1234567890abcd ${canary}`,
+        }),
+      });
+      expect(response.status).toBe(200);
+      const body = JSON.stringify(await response.json());
+      const stored = JSON.stringify(putSpy.mock.calls);
+      expect(body).toContain("GitHub GraphQL 502");
+      expect(stored).toContain("GitHub GraphQL 502");
+      expect(body).not.toContain("CANARY");
+      expect(stored).not.toContain("CANARY");
+    } finally {
+      putSpy.mockRestore();
     }
   });
 });
