@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { NextRequest } from "next/server";
 import { GET as setLanguage } from "../../app/api/lang/route";
 import { config, proxy, shouldIgnorePath } from "../../proxy";
+import { LOCALES, type Locale } from "./locales";
 
 function redirectFor(path: string, headers: Record<string, string> = {}) {
   const request = new NextRequest(new URL(path, "https://gitstarclub.com"), {
@@ -138,4 +139,92 @@ describe("/api/lang locale redirects", () => {
     );
     expect(response.headers.get("location")).toBe("https://gitstarclub.com/fr/rankings?period=month#top");
   });
+
+  test("the confirmed /ja//example.com payload stays on the localized home", () => {
+    const response = setLanguage(new Request("https://gitstarclub.com/api/lang?lang=en&next=/ja//example.com/path"));
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("https://gitstarclub.com/");
+    expect(response.headers.get("set-cookie")).toContain("gsc_lang=en");
+
+    const traditional = setLanguage(
+      new Request("https://gitstarclub.com/api/lang?lang=zh-TW&next=/zh-TW///example.com/path"),
+    );
+    expect(traditional.status).toBe(307);
+    expect(traditional.headers.get("location")).toBe("https://gitstarclub.com/zh-TW");
+    expect(traditional.headers.get("set-cookie")).toContain("gsc_lang=zh-TW");
+  });
+
+  test("falls back to the localized home when stripping reveals an off-site path", () => {
+    // Double and triple slashes, and percent-encoded slashes, pass the check
+    // that runs before stripLocale. Dropping the post-strip call lets lang=en
+    // redirect to example.com. Backslashes are rejected earlier and must still
+    // land on the localized home.
+    const prefixes = ["ja", "zh", "zh-TW", "ko", "es", "fr"] as const;
+    for (const prefix of prefixes) {
+      for (const next of hostileNextPaths(prefix)) {
+        for (const lang of LOCALES) {
+          const response = setLanguage(languageRequest(lang, next));
+          const location = new URL(response.headers.get("location") as string);
+          expect(location.origin).toBe("https://gitstarclub.com");
+          expect(location.hostname).not.toBe("example.com");
+          expect(location.pathname).toBe(localizedHome(lang));
+          expect(location.search).toBe("");
+          expect(location.hash).toBe("");
+          expect(response.headers.get("set-cookie")).toContain(`gsc_lang=${lang}`);
+        }
+      }
+    }
+  });
+
+  test("a default-locale /en prefix does not redirect off-site", () => {
+    for (const next of hostileNextPaths("en")) {
+      const response = setLanguage(languageRequest("fr", next));
+      const location = new URL(response.headers.get("location") as string);
+      expect(location.origin).toBe("https://gitstarclub.com");
+      expect(location.hostname).not.toBe("example.com");
+    }
+  });
+
+  test("keeps ordinary in-site navigation for every locale", () => {
+    for (const lang of LOCALES) {
+      const response = setLanguage(languageRequest(lang, "/rankings?period=month#top"));
+      const path = lang === "en" ? "/rankings?period=month#top" : `/${lang}/rankings?period=month#top`;
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe(`https://gitstarclub.com${path}`);
+      expect(response.headers.get("set-cookie")).toContain(`gsc_lang=${lang}`);
+    }
+
+    for (const prefix of ["ja", "zh", "zh-TW", "ko", "es", "fr"] as const) {
+      const response = setLanguage(languageRequest("en", `/${prefix}/facebook/react`));
+      expect(response.headers.get("location")).toBe("https://gitstarclub.com/facebook/react");
+    }
+
+    const switched = setLanguage(languageRequest("ja", "/zh-TW/rankings/2024?period=month#top"));
+    expect(switched.headers.get("location")).toBe("https://gitstarclub.com/ja/rankings/2024?period=month#top");
+  });
 });
+
+function languageRequest(lang: string, next: string): Request {
+  return new Request(`https://gitstarclub.com/api/lang?lang=${encodeURIComponent(lang)}&next=${encodeURIComponent(next)}`);
+}
+
+function localizedHome(lang: Locale): string {
+  return lang === "en" ? "/" : `/${lang}`;
+}
+
+function hostileNextPaths(prefix: string): string[] {
+  return [
+    `/${prefix}//example.com/path`,
+    `/${prefix}///example.com/path`,
+    `/${prefix}////example.com/path`,
+    `/${prefix}/\\example.com/path`,
+    `/${prefix}\\example.com/path`,
+    `/${prefix}/%2f%2fexample.com/path`,
+    `/${prefix}/%2F/%2Fexample.com/path`,
+    `/${prefix}/%252f%252fexample.com/path`,
+    `/${prefix}/%5c%5cexample.com/path`,
+    `/${prefix}/%255c%255cexample.com/path`,
+    `/${prefix}//user@example.com/path`,
+    `/${prefix}///example.com/path?next=1#frag`,
+  ];
+}
