@@ -125,6 +125,43 @@ describe("coverage release gate", () => {
     expect(result.stdout).not.toContain("coverage gate passed");
   });
 
+  test("a second SF before end_of_record exits non-zero", () => {
+    const missingSeparator = runGate(
+      writeReport(
+        "coverage-sf-missing",
+        "SF:a.ts\nLH:70\nFNF:10\nFNH:10\nSF:b.ts\nLF:100\nLH:20\nFNF:10\nFNH:10\nend_of_record\n",
+      ),
+    );
+    expect(missingSeparator.status).not.toBe(0);
+    expect(missingSeparator.stderr).toContain("coverage report malformed: SF before end_of_record (a.ts)");
+    expect(missingSeparator.stdout).not.toContain("coverage gate passed");
+
+    const hitWithoutSeparator = runGate(
+      writeReport(
+        "coverage-sf-hit",
+        "SF:a.ts\nLF:10\nLH:20\nFNF:10\nFNH:10\nSF:b.ts\nLF:90\nLH:70\nFNF:10\nFNH:10\nend_of_record\n",
+      ),
+    );
+    expect(hitWithoutSeparator.status).not.toBe(0);
+    expect(hitWithoutSeparator.stderr).toContain("coverage report malformed: SF before end_of_record (a.ts)");
+    expect(hitWithoutSeparator.stdout).not.toContain("coverage gate passed");
+  });
+
+  test("a repeated summary counter exits non-zero", () => {
+    const duplicates = [
+      ["coverage-dup-lf", "SF:a.ts\nLF:10\nLH:20\nLF:90\nLH:70\nFNF:10\nFNH:10\nend_of_record\n", "LF"],
+      ["coverage-dup-lh", "SF:a.ts\nLF:100\nLH:0\nLH:90\nFNF:10\nFNH:9\nend_of_record\n", "LH"],
+      ["coverage-dup-fnf", "SF:a.ts\nLF:100\nLH:90\nFNF:1\nFNF:9\nFNH:9\nend_of_record\n", "FNF"],
+      ["coverage-dup-fnh", "SF:a.ts\nLF:100\nLH:90\nFNF:10\nFNH:0\nFNH:9\nend_of_record\n", "FNH"],
+    ] as const;
+    for (const [name, body, label] of duplicates) {
+      const result = runGate(writeReport(name, body));
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(`coverage report duplicate counter: ${label} (a.ts)`);
+      expect(result.stdout).not.toContain("coverage gate passed");
+    }
+  });
+
   test("a zero-function record still counts inside a nonempty aggregate", () => {
     const report = [
       "SF:a.ts",
