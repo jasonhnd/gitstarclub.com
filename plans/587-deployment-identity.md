@@ -9,9 +9,9 @@
 Two readers share the same priority today:
 
 - `web/lib/deployment-identity.ts` (`buildDeploymentIdentity`), used by `web/app/.well-known/deployment/route.ts`.
-- `workers/gitstarclub-web/src/shell.ts` (`previewIdentity`), which intercepts `/.well-known/deployment` on the Workers host.
+- Worker `previewIdentity`, which intercepts `/.well-known/deployment` on the Workers host.
 
-Both use `VERCEL_GIT_COMMIT_SHA`, then `CF_PREVIEW_COMMIT_SHA`, then `cfBuildCommitSha`. `cf:build` writes `web/lib/cf-build-identity.ts` (gitignored) from `HEAD` before the OpenNext bundle, appending `-dirty` when tracked files are dirty. `CF_PREVIEW_COMMIT_SHA` is not in wrangler config. Operators pass it with `wrangler --var`, and a previous value can persist on the Worker. On 2026-10-01 the public preview body is `{"commitSha":"374288c","deploymentUrl":"https://pre.gitstarclub.com","target":"cf","host":"pre.gitstarclub.com"}`. That shape is the Worker shell. A stale `CF_PREVIEW_COMMIT_SHA` (or `VERCEL_GIT_COMMIT_SHA`) masks the baked SHA. This change does not call Cloudflare or redeploy, so the live host keeps reporting `374288c` until the next preview deploy of this code.
+Both use `VERCEL_GIT_COMMIT_SHA`, then `CF_PREVIEW_COMMIT_SHA`, then `cfBuildCommitSha`. `cf:build` writes the gitignored build-identity module beside `web/lib/cf-build-identity/index.ts` from HEAD before the OpenNext bundle, appending `-dirty` when tracked files are dirty. `CF_PREVIEW_COMMIT_SHA` is not in wrangler config. Operators pass it with `wrangler --var`, and a previous value can persist on the Worker. On 2026-10-01 the public preview body is `{"commitSha":"374288c","deploymentUrl":"https://pre.gitstarclub.com","target":"cf","host":"pre.gitstarclub.com"}`. That shape is the Worker shell. A stale `CF_PREVIEW_COMMIT_SHA` (or `VERCEL_GIT_COMMIT_SHA`) masks the baked SHA. This change does not call Cloudflare or redeploy, so the live host keeps reporting `374288c` until the next preview deploy of this code.
 
 ## Scope
 
@@ -25,7 +25,7 @@ Both use `VERCEL_GIT_COMMIT_SHA`, then `CF_PREVIEW_COMMIT_SHA`, then `cfBuildCom
 
 - Push to `main` or `pre`. Merge. Force-push. Deleting branches or files outside this issue.
 - Cloudflare or Vercel API calls, `wrangler deploy`, `wrangler versions upload`, live cron, or a real bucket.
-- Reading `pipeline/.env`, `web/.env.local`, or other credentials.
+- Reading pipeline or web env files, or other credentials.
 - CI workflows, `.delivery.yml`, and Worker wrangler config values.
 - Redeploying `pre.gitstarclub.com`. The public endpoint changes only after an operator deploys this build.
 
