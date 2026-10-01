@@ -64,4 +64,20 @@ Do not merge, force-push, delete branches, or push protected branches.
 - The checked-in configuration passes `node scripts/assert-cf-ci-gates.mjs`.
 - Four stage-4 gate tests pass with
   `node --test --test-name-pattern='production stage-4 storage contract' scripts/cf-ci-gates.test.mjs`.
-- Complete pinned-toolchain verification and behavioral negative probes are pending.
+- At `8987461`, a fresh detached worktree and the SHA-256-verified Node
+  v24.20.0 / Bun 1.3.14 toolchain under `env -i` passed all 34 CF gate/build
+  tests and all four data-tool subprocess tests (35 assertions).
+- Behavioral negative probes at `8987461` restored each baseline implementation
+  from `b9650f0` in that disposable tree, kept the new tests, and restored the
+  fixed file after each probe. All four commands exited 1 as required:
+
+| Restored implementation | Regression command | Observed failure |
+| --- | --- | --- |
+| `scripts/cf-ci-gates.mjs` | `node --test --test-name-pattern="accepts the complete R2 cutover" scripts/cf-ci-gates.test.mjs` | The complete stage-4 config still requires Blob/fallback vars and rejects R2 drivers. |
+| `web/scripts/cf-opennext-build.ts` | `node --test --test-name-pattern="cf:build stage-4" scripts/cf-ci-gates.test.mjs` | Missing shell read driver is incorrectly accepted. |
+| `web/scripts/generate-data-exports.ts` | `cd web && bun test --test-name-pattern="exports CSV and JSON through R2" lib/integration/r2-data-tools.test.ts` | Missing Blob public base prevents R2 exports. |
+| `web/scripts/validate-live-views.ts` | `cd web && bun test --test-name-pattern="validates the published live generation" lib/integration/r2-data-tools.test.ts` | Missing Blob public base prevents R2 live-view validation. |
+
+The issue PR and card handoff are the record for the final full static job,
+fixture builds, tested SHA, and worktree cleanup. They do not claim live R2
+rehearsal or deployment acceptance.
