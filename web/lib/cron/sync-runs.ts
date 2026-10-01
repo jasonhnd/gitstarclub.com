@@ -1,5 +1,6 @@
 import { putView } from "@/lib/data/write";
 import { BLOB_JSON_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { getPublicReadBases, getStorageReadDriver } from "@/lib/runtime-config";
 import type { LiveRefreshJob, LiveRefreshResult } from "./live-refresh";
 
@@ -26,12 +27,17 @@ type SyncRunsFile = {
 };
 
 export async function recordSyncRun(run: SyncRun): Promise<void> {
+  const safeRun = sanitizeStoredRun(run);
   const existing = await readSyncRuns();
-  const runs = [run, ...existing.runs.filter((item) => item.id !== run.id)].slice(0, MAX_RUNS);
+  const runs = [safeRun, ...existing.runs.filter((item) => item.id !== safeRun.id).map(sanitizeStoredRun)].slice(0, MAX_RUNS);
   await putView(SYNC_RUNS_PATH, {
     generated_at: new Date().toISOString(),
     runs,
   });
+}
+
+function sanitizeStoredRun(run: SyncRun): SyncRun {
+  return typeof run.error === "string" ? { ...run, error: sanitizeErrorText(run.error) } : run;
 }
 
 export function syncRunId(job: LiveRefreshJob, startedAt: Date): string {
@@ -68,7 +74,7 @@ export function failedRun(id: string, job: LiveRefreshJob, dry: boolean, started
     started_at: startedAt.toISOString(),
     finished_at: finishedAt.toISOString(),
     duration_ms: finishedAt.getTime() - startedAt.getTime(),
-    error: error instanceof Error ? error.message : "Unexpected cron failure",
+    error: sanitizeErrorText(error instanceof Error ? error.message : "Unexpected cron failure"),
   };
 }
 
@@ -77,7 +83,7 @@ export async function safeRecordSyncRun(run: SyncRun): Promise<string | null> {
     await recordSyncRun(run);
     return null;
   } catch (error) {
-    return error instanceof Error ? error.message : "Failed to record sync run";
+    return sanitizeErrorText(error instanceof Error ? error.message : "Failed to record sync run");
   }
 }
 

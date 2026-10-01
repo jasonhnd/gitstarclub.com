@@ -32,6 +32,6 @@ Stop raw error strings from carrying secrets into console logs, alert webhooks, 
 
 - A canary placed in an error string does not appear in the alert log, the mocked webhook JSON, sync-run JSON, checkpoint JSON, or health JSON.
 - The same output still contains the non-secret failure category.
-- New tests fail if the sanitizer calls are removed (see the verification note in the pull request).
+- New tests fail if the sanitizer calls are removed. To see that, make `sanitizeErrorText` return the raw string (`value instanceof Error ? value.message : String(value ?? "")`) and run `bun test lib/observability/alert.test.ts lib/observability/health.test.ts lib/cron/sync-runs.test.ts lib/cron/handlers.test.ts lib/workflows/checkpoint.test.ts lib/workflows/runtime/step-route.test.ts lib/workflows/rollback-route.test.ts lib/workflows/start.test.ts --isolate` from `web/`. The canary assertions fail. Restore the function afterward.
 - The static job and the fixture production build from `AGENTS.md` pass in a fresh detached worktree.
 - No `bun.lock` churn is committed.

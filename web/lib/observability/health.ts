@@ -6,6 +6,7 @@ import {
   type HealthStatus,
   type PipelineHealth as PipelineHealthType,
 } from "@/lib/contracts";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { getWriteObjectStore, isObjectStoreConflict, type ObjectStore } from "@/lib/storage";
 
 const MAX_CAS_ATTEMPTS = 5;
@@ -197,11 +198,14 @@ export async function recordHealth(
   const now = options.now ?? new Date();
   const sleep = options.sleep ?? defaultSleep;
   const random = options.random ?? Math.random;
+  const safeDetail: HealthDetail = typeof detail.error === "string"
+    ? { ...detail, error: sanitizeErrorText(detail.error) }
+    : detail;
 
   try {
     for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
       const current = await store.read(pipeline);
-      const next = mergePipelineHealth(current.health, pipeline, status, detail, now);
+      const next = mergePipelineHealth(current.health, pipeline, status, safeDetail, now);
 
       if (!current.health) {
         if (await store.create(pipeline, next)) return;
@@ -215,7 +219,7 @@ export async function recordHealth(
   } catch (error) {
     console.error(
       "[ALERT] health write failed",
-      error instanceof Error ? error.message : String(error),
+      sanitizeErrorText(error instanceof Error ? error.message : String(error)),
     );
   }
 }

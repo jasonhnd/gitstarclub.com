@@ -48,7 +48,7 @@ const BLOB_TOKEN = /\bvercel_blob_rw_[A-Za-z0-9_]{8,}\b/g;
 const AWS_ACCESS_KEY = /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g;
 const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
 const ASSIGNMENT =
-  /\b(token|api[_-]?key|access[_-]?key|secret(?:[_-]?(?:access[_-]?)?key)?|password|passwd|credential)\s*[=:]\s*[A-Za-z0-9._~+/=-]{12,}/gi;
+  /(^|[^A-Za-z0-9])((?:[A-Za-z0-9]+_)*(?:secret(?:[_-]access[_-]key)?|access[_-]?key(?:[_-]?id)?|api[_-]?key|token|password|passwd|credential))\s*[=:]\s*[A-Za-z0-9._~+/=-]{12,}/gi;
 
 export type SanitizeErrorEnv = Record<string, string | undefined>;
 
@@ -109,7 +109,7 @@ function redactPatterns(input: string): string {
     .replace(BLOB_TOKEN, "[redacted]")
     .replace(AWS_ACCESS_KEY, "[redacted]")
     .replace(JWT, "[redacted]")
-    .replace(ASSIGNMENT, "$1=[redacted]");
+    .replace(ASSIGNMENT, (_match, lead: string, key: string) => `${lead}${key}=[redacted]`);
 }
 
 export function sanitizeErrorText(value: unknown, options: SanitizeErrorOptions = {}): string {

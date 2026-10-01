@@ -133,6 +133,36 @@ describe("runLiveRefreshRoute health", () => {
     }
   });
 
+  test("cron failure logs omit secret canaries and keep the failure category", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await runLiveRefreshRoute(request("daily"), "daily", {
+        now: new Date("2026-07-17T03:00:00.000Z"),
+        requireRuntimeConfig: () => {},
+        claimPublication,
+        releasePublication: async () => {
+          throw new Error(`lease release failed ${canary}`);
+        },
+        refresh: async () => {
+          throw new Error(`GitHub GraphQL 502 ${canary}`);
+        },
+        recordSyncRun: async () => null,
+        recordHealth: async () => {},
+        sendAlert: async () => ({ status: "disabled", attempts: 0, status_code: null, error: null }),
+      });
+      const body = JSON.stringify(await response.json());
+      const logged = JSON.stringify(errorSpy.mock.calls);
+      expect(response.status).toBe(500);
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).toContain("lease release failed");
+      expect(logged).not.toContain("CANARY");
+      expect(body).not.toContain("CANARY");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   test("skips daily during preview cold-start until lookup/repos.json is published", async () => {
     const health: Array<{ pipeline: AlertPipeline; status: HealthStatus }> = [];
     const claimPublication = mock(async () => {

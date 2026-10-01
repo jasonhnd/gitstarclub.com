@@ -115,4 +115,38 @@ describe("sync run helpers", () => {
     expect(fetched.startsWith("https://r2.example.com/ops/sync-runs.json")).toBe(true);
     expect(putCalls).toHaveLength(1);
   });
+
+  test("stored sync-run JSON omits secret canaries and keeps the failure category", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const cron = "CANARYCRONSECRET1234567890abcd";
+    const previousCron = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = cron;
+    try {
+      const run = failedRun(
+        "weekly-test",
+        "weekly",
+        false,
+        new Date("2026-06-21T03:00:00.000Z"),
+        new Error(`GitHub GraphQL 502 Bearer CANARYBEARERTOKEN1234567890abcd ${canary} ${cron}`),
+      );
+      await expect(safeRecordSyncRun(run)).resolves.toBeNull();
+      const stored = JSON.stringify(putCalls);
+      expect(stored).toContain("GitHub GraphQL 502");
+      expect(stored).not.toContain("CANARY");
+    } finally {
+      if (previousCron === undefined) delete process.env.CRON_SECRET;
+      else process.env.CRON_SECRET = previousCron;
+    }
+  });
+
+  test("sync-run write failures returned to the caller omit secret canaries", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    putImpl = async () => {
+      throw new Error(`blob write failed ${canary}`);
+    };
+    const run = failedRun("weekly-test", "weekly", false, new Date("2026-06-21T03:00:00.000Z"), new Error("boom"));
+    const logged = await safeRecordSyncRun(run);
+    expect(logged).toContain("blob write failed");
+    expect(logged).not.toContain("CANARY");
+  });
 });
