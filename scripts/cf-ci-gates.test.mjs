@@ -120,7 +120,159 @@ function alignedSources(overrides = {}) {
   };
 }
 
+function stage4Wrangler() {
+  const config = JSON.parse(validWrangler);
+  for (const key of ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL", "VIEWS_VERSION_FALLBACK"]) {
+    delete config.vars[key];
+  }
+  Object.assign(config.vars, {
+    DEPLOY_ENV: "production",
+    STORAGE_READ_DRIVER: "r2",
+    STORAGE_WRITE_DRIVER: "r2_binding",
+    R2_BUCKET: "gitstarclub-data-prod",
+    R2_PUBLIC_BASE_URL: "https://data.gitstarclub.com",
+  });
+  config.r2_buckets = [
+    { binding: "MEDIA", bucket_name: "gitstarclub-assets" },
+    { binding: "DATA", bucket_name: "gitstarclub-data-prod" },
+  ];
+  return config;
+}
+
+describe("production stage-4 storage contract", () => {
+  test("accepts the complete R2 cutover and the unchanged current Blob config", () => {
+    assert.deepEqual(assertCfCiGates(alignedSources()), []);
+    assert.deepEqual(assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(stage4Wrangler()) })), []);
+  });
+
+  test("rejects missing or incorrect stage-4 vars and driver aliases", () => {
+    const required = {
+      DEPLOY_ENV: "production",
+      STORAGE_READ_DRIVER: "r2",
+      STORAGE_WRITE_DRIVER: "r2_binding",
+      R2_BUCKET: "gitstarclub-data-prod",
+      R2_PUBLIC_BASE_URL: "https://data.gitstarclub.com",
+    };
+    for (const [key, expected] of Object.entries(required)) {
+      for (const replacement of [undefined, "", "wrong"]) {
+        const config = stage4Wrangler();
+        if (replacement === undefined) delete config.vars[key];
+        else config.vars[key] = replacement;
+        const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+        assert.ok(issues.length > 0, `${key}=${replacement} must not pass`);
+        if (key !== "DEPLOY_ENV") {
+          assert.ok(issues.some((issue) => issue.includes(`vars.${key} must be ${expected}`)), issues.join("\n"));
+        }
+      }
+    }
+    for (const [key, value] of [
+      ["STORAGE_READ_DRIVER", "r2_then_blob"], ["STORAGE_READ_DRIVER", "r2_s3"],
+      ["STORAGE_WRITE_DRIVER", "r2_s3"], ["READ_DRIVER", "blob"], ["WRITE_DRIVER", "r2"],
+    ]) {
+      const config = stage4Wrangler();
+      config.vars[key] = value;
+      const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+      assert.ok(issues.some((issue) => issue.includes(`vars.${key} must be`)), issues.join("\n"));
+    }
+  });
+
+  test("rejects stage-4 Blob remnants, frozen fallback, and non-root prefix", () => {
+    for (const [key, value, fragment] of [
+      ["BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL, "must not contain BLOB_*"],
+      ["NEXT_PUBLIC_BLOB_BASE_URL", "", "must not contain BLOB_*"],
+      ["BLOB_READ_WRITE_TOKEN", "test-only-placeholder", "must not contain BLOB_*"],
+      ["VIEWS_VERSION_FALLBACK", "", "VIEWS_VERSION_FALLBACK must be absent"],
+      ["R2_PREFIX", "migrate-dev/", "R2_PREFIX must be unset or empty"],
+    ]) {
+      const config = stage4Wrangler();
+      config.vars[key] = value;
+      const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+      assert.ok(issues.some((issue) => issue.includes(fragment)), `${key}: ${issues.join("\n")}`);
+    }
+    const root = stage4Wrangler();
+    root.vars.R2_PREFIX = "";
+    root.vars.READ_DRIVER = "r2";
+    root.vars.WRITE_DRIVER = "r2_binding";
+    assert.deepEqual(assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(root) })), []);
+  });
+
+  test("requires one production DATA binding and preserves bucket and domain isolation", () => {
+    const mutations = [
+      (config) => { delete config.r2_buckets; },
+      (config) => { config.r2_buckets = [{ binding: "MEDIA", bucket_name: "gitstarclub-assets" }]; },
+      (config) => { config.r2_buckets.push({ binding: "DATA", bucket_name: "gitstarclub-data-prod" }); },
+      (config) => { config.r2_buckets[1].bucket_name = "gitstarclub-other"; },
+      (config) => { config.r2_buckets[1].bucket_name = "gitstarclub-data-pre"; },
+      (config) => { config.env.pre.r2_buckets[1].bucket_name = "gitstarclub-data-prod"; },
+      (config) => { config.vars.R2_PUBLIC_BASE_URL = "https://DATA-PRE.gitstarclub.com"; },
+      (config) => { config.env.pre.vars.R2_PUBLIC_BASE_URL = "https://DATA.gitstarclub.com"; },
+      (config) => { config.vars.NOTE = "https://DATA-PRE.gitstarclub.com"; },
+      (config) => { config.env.pre.vars.NOTE = "https://DATA.gitstarclub.com"; },
+      (config) => { config.env.pre.vars.BLOB_BASE_URL = PRODUCTION_BLOB_BASE_URL; },
+      (config) => { config.triggers.crons = ["0 3 * * *"]; },
+      (config) => { config.vars.SITE_INDEXABLE = "0"; },
+      (config) => { config.workers_dev = true; },
+    ];
+    for (const mutate of mutations) {
+      const config = stage4Wrangler();
+      mutate(config);
+      const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+      assert.ok(issues.length > 0, `${mutate}: incomplete or cross-wired stage-4 config passed`);
+    }
+  });
+});
+
 describe("CF CI gates", () => {
+  test("cf:build stage-4 requires an explicit R2 shell and refuses Blob fallback", () => {
+    const wrangler = stage4Wrangler();
+    const valid = { STORAGE_READ_DRIVER: "r2", R2_PUBLIC_BASE_URL: "https://data.gitstarclub.com" };
+    const cases = [
+      { name: "production R2", shell: valid, expect: [] },
+      { name: "loopback R2", shell: { ...valid, R2_PUBLIC_BASE_URL: "http://127.0.0.1:4010" }, expect: [] },
+      { name: "missing driver", shell: { R2_PUBLIC_BASE_URL: valid.R2_PUBLIC_BASE_URL }, includes: "STORAGE_READ_DRIVER=r2" },
+      { name: "Blob driver", shell: { ...valid, STORAGE_READ_DRIVER: "blob" }, includes: "STORAGE_READ_DRIVER=r2" },
+      { name: "fallback driver", shell: { ...valid, STORAGE_READ_DRIVER: "r2_then_blob" }, includes: "STORAGE_READ_DRIVER=r2" },
+      { name: "missing base", shell: { STORAGE_READ_DRIVER: "r2" }, includes: "requires shell R2_PUBLIC_BASE_URL" },
+      { name: "empty base", shell: { ...valid, R2_PUBLIC_BASE_URL: " " }, includes: "requires shell R2_PUBLIC_BASE_URL" },
+      { name: "preview base", shell: { ...valid, R2_PUBLIC_BASE_URL: PREVIEW_R2_PUBLIC_BASE_URL }, includes: "belongs to pre" },
+      { name: "unknown base", shell: { ...valid, R2_PUBLIC_BASE_URL: "https://other.example" }, includes: "declares R2_PUBLIC_BASE_URL" },
+      { name: "conflicting alias", shell: { ...valid, READ_DRIVER: "blob" }, includes: "conflicting shell READ_DRIVER" },
+      ...["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL", "BLOB_READ_WRITE_TOKEN"].map((key) => ({
+        name: `Blob remnant ${key}`,
+        shell: { ...valid, [key]: "" },
+        includes: "refuses shell BLOB_*",
+      })),
+    ];
+    const result = spawnSync("bun", ["-e", `
+      import { publicReadBaseMismatches, assertBuildPublicReadBase } from "./scripts/cf-opennext-build.ts";
+      const { cases, wrangler } = JSON.parse(process.env.PUBLIC_READ_CASES);
+      const report = cases.map((entry) => {
+        const input = { target: "production", shell: entry.shell, wrangler };
+        let rejected = false;
+        try { assertBuildPublicReadBase(input); } catch { rejected = true; }
+        return { name: entry.name, issues: publicReadBaseMismatches(input), rejected };
+      });
+      process.stdout.write(JSON.stringify(report));
+    `], {
+      cwd: new URL("../web/", import.meta.url),
+      encoding: "utf8",
+      env: { ...process.env, PUBLIC_READ_CASES: JSON.stringify({ cases, wrangler }) },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    for (const [index, entry] of cases.entries()) {
+      const found = report[index];
+      assert.equal(found.name, entry.name);
+      if (entry.expect) {
+        assert.deepEqual(found.issues, entry.expect, entry.name);
+        assert.equal(found.rejected, false, entry.name);
+      } else {
+        assert.ok(found.issues.join("\n").includes(entry.includes), `${entry.name}: ${found.issues.join("\n")}`);
+        assert.equal(found.rejected, true, entry.name);
+      }
+    }
+  });
+
   test("Cloudflare build rejects missing and unknown targets before building", () => {
     for (const args of [[], ["--site-target=staging"], ["--site-target=pre", "--site-target=production"]]) {
       const result = spawnSync("bun", ["scripts/cf-opennext-build.ts", ...args], {
@@ -732,7 +884,7 @@ describe("CF CI gates", () => {
   test("rejects top-level DEPLOY_ENV and non-blob drivers before R2 cutover", () => {
     const cases = [
       ["DEPLOY_ENV", "pre", "top-level vars.DEPLOY_ENV must be unset until R2 cutover"],
-      ["DEPLOY_ENV", "production", "top-level vars.DEPLOY_ENV must be unset until R2 cutover"],
+      ["DEPLOY_ENV", "production", "top-level vars.STORAGE_READ_DRIVER must be r2"],
       ["STORAGE_READ_DRIVER", "r2", "top-level vars.STORAGE_READ_DRIVER must be unset or blob"],
       ["STORAGE_READ_DRIVER", "r2_then_blob", "top-level vars.STORAGE_READ_DRIVER must be unset or blob"],
       ["READ_DRIVER", "r2", "top-level vars.READ_DRIVER must be unset or blob"],
