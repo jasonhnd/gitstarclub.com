@@ -6,7 +6,7 @@ import { ArchiveGrid, type ArchiveGridItem } from "@/app/_explore/ArchiveGrid";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PageHero } from "@/app/_explore/PageHero";
-import { PeriodSwitcher, type PeriodSwitcherTarget } from "@/app/_explore/PeriodSwitcher";
+import { PeriodSwitcher } from "@/app/_explore/PeriodSwitcher";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { Star } from "@/app/_explore/Star";
 import { OrganizationRankingTable, type OrganizationSummaryRow } from "@/app/_explore/SemanticDataTable";
@@ -14,14 +14,15 @@ import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getAllTime, getCategoryAssignmentsForRepos, getCategoryRegistry, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
 import { RANKING_CATEGORY_LEAD_LIMIT, rankingCategoryExits } from "@/lib/ranking-category-exits";
 import { RankingCategoryExits } from "./ranking-category-exits";
+import { EmptyState, periodSwitcherLinks } from "./ranking-ui";
+import { projectRepoRows, loadArchiveChildPeriods } from "./ranking-page-data";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
 import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { formatInteger, fmtStars } from "@/lib/format";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine, itemListLd } from "@/lib/jsonld";
-import { currentUtcPeriods, isoWeek } from "@/lib/periods";
-import { availablePeriodLabel, isFallbackMonthPeriod, isFallbackWeekPeriod } from "@/lib/rank-period-labels";
+import { currentUtcPeriods } from "@/lib/periods";
 import { pageMeta } from "@/lib/seo";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { answerCapsuleLabels } from "./detail-copy";
@@ -62,13 +63,13 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
     getCategoryRegistry(),
   ]);
   const rankedRepos = repoRank && repoLk ? joinRepoRank(repoRank.items, repoLk) : [];
-  const repoRows: Row[] = rankedRepos.map((r) => ({ owner: r.owner, name: r.name, lang: r.language, total: r.current_stars }));
+  const repoRows = projectRepoRows(repoRank?.items ?? [], repoLk, "total");
   const assignments = isCloudflareWorkersHost()
     ? null
     : await getCategoryAssignmentsForRepos(rankedRepos.slice(0, RANKING_CATEGORY_LEAD_LIMIT).map((row) => row.id));
   const categoryLinks = rankingCategoryExits(rankedRepos, registry, assignments);
   const orgs = orgRank && orgLk ? joinOrgRank(orgRank.items, orgLk) : [];
-  const archiveItems = buildArchiveItems(snap?.home.year_spine ?? [], availablePeriods, locale, t);
+  const archiveItems = await buildArchiveItems(snap?.home.year_spine ?? [], availablePeriods, locale, t);
   const asOf = resolveDataAsOfLabel(repoRank?.meta.generated_at, orgRank?.meta.generated_at, snap?.generated_at, { locale });
   const dateModified = resolveDataAsOfValue(repoRank?.meta.generated_at, orgRank?.meta.generated_at, snap?.generated_at);
   const temporalCoverage = datasetTemporalCoverageFromYearSpine(snap?.home.year_spine);
@@ -243,20 +244,13 @@ function MobileOrganizationRankingCards({
   );
 }
 
-function EmptyState({ message, className = "" }: { message: string; className?: string }) {
-  return (
-    <p className={`mt-[clamp(1rem,2vw,1.5rem)] rounded-2xl border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.9rem] text-on-surface-variant ${className}`}>
-      {message}
-    </p>
-  );
-}
-
-export function buildArchiveItems(
+export async function buildArchiveItems(
   yearSpine: readonly (readonly [string, number])[],
   availablePeriods: AvailableRankPeriods,
   locale: Locale,
   t: Dict,
-): ArchiveGridItem[] {
+  options: Parameters<typeof loadArchiveChildPeriods>[2] = {},
+): Promise<ArchiveGridItem[]> {
   const years = new Map<number, number>();
 
   for (const [rawYear, total] of yearSpine) {
@@ -264,11 +258,13 @@ export function buildArchiveItems(
     if (Number.isInteger(year) && total >= 0) years.set(year, total);
   }
 
+  const children = await loadArchiveChildPeriods([...years.keys()], availablePeriods, options);
+
   return [...years.entries()]
     .sort(([a], [b]) => b - a)
     .map(([year, total]) => {
-      const latestMonth = latestMonthForYear(year, availablePeriods);
-      const latestWeek = latestWeekForYear(year, availablePeriods);
+      const latestMonth = children.get(year)?.month;
+      const latestWeek = children.get(year)?.week;
       const childrenLinks: ArchiveGridItem["childrenLinks"] = [
         { label: t.year.label, href: `/rankings/${year}` },
         ...(latestMonth ? [{ label: t.rankings.archiveMonths, href: `/rankings/${year}/${latestMonth}`, count: latestMonth }] : []),
@@ -285,56 +281,6 @@ export function buildArchiveItems(
     });
 }
 
-function periodSwitcherLinks(
-  periods: AvailableRankPeriods,
-  calendar: ReturnType<typeof currentUtcPeriods>,
-  href: (path: string) => string,
-  locale: Locale,
-  t: Dict,
-): Record<"all-time" | "year" | "month" | "week", PeriodSwitcherTarget> {
-  const labelCopy = { fullHistory: t.rankings.fullHistory };
-  return {
-    "all-time": { href: href(periods.allTime.href), label: t.rankings.allTime, value: t.rankings.fullHistory },
-    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, periods.yearLink, labelCopy) },
-    month: {
-      href: href(periods.month.href),
-      label: t.month.label,
-      value: availablePeriodLabel(locale, periods.month, labelCopy),
-      badge: isFallbackMonthPeriod(periods.month, calendar)
-        ? fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, periods.month, labelCopy) })
-        : undefined,
-    },
-    week: {
-      href: href(periods.week.href),
-      label: t.week.label,
-      value: availablePeriodLabel(locale, periods.week, labelCopy),
-      badge: isFallbackWeekPeriod(periods.week, calendar)
-        ? fill(t.common.latestAvailable, { period: availablePeriodLabel(locale, periods.week, labelCopy) })
-        : undefined,
-    },
-  };
-}
-
 function fill(template: string, values: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
-}
-
-function latestMonthForYear(year: number, periods: AvailableRankPeriods): number | null {
-  if (periods.month.kind === "month") {
-    if (year < periods.month.year) return 12;
-    if (year === periods.month.year) return periods.month.month;
-  }
-  return null;
-}
-
-function latestWeekForYear(year: number, periods: AvailableRankPeriods): number | null {
-  if (periods.week.kind === "week") {
-    if (year < periods.week.year) return weeksInIsoYear(year);
-    if (year === periods.week.year) return periods.week.week;
-  }
-  return null;
-}
-
-function weeksInIsoYear(year: number): number {
-  return isoWeek(new Date(Date.UTC(year, 11, 28))).week;
 }
