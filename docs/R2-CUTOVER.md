@@ -145,12 +145,26 @@ node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --ex
 
 If the owner does not approve that commit, stop at step 3. There is no supported command that deletes the first R2 pointer.
 
-Acceptance:
+Acceptance. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`. Do not require `views/latest.json`.
 
 - `https://data-pre.gitstarclub.com/_meta/bucket-identity.json` is `{"bucket":"gitstarclub-data-pre","deploy_env":"pre"}`.
-- After the initial commit, `https://data-pre.gitstarclub.com/bootstrap/latest.json` returns 200 and names that generation. On the first publish, `previous_generation` is null.
-- `https://pre.gitstarclub.com/` returns 200 and is `noindex`.
+- `https://data-pre.gitstarclub.com/bootstrap/latest.json` returns 200. `generation` is the committed id. On the first publish, `previous_generation` is null.
+- `https://data-pre.gitstarclub.com/bootstrap/generations/<id>/manifests/base.json` and `https://data-pre.gitstarclub.com/bootstrap/generations/<id>/manifests/canonical.json` return 200. Each file's SHA-256 equals `base_manifest_sha256` or `canonical_manifest_sha256` on the pointer.
+- `https://data-pre.gitstarclub.com/bootstrap/generations/<id>/views/rank/all-time/repo/stock.json` returns 200 and contains at least one repository row with a star count. Views for this stage live under that generation prefix.
+- `https://data-pre.gitstarclub.com/views/latest.json` is not required. A 404 is expected when no managed refresh has published. Do not hand-write that pointer. Preview does not set `VIEWS_VERSION_FALLBACK`, so a confirmed 404 lets pages read the bootstrap generation.
+- `https://pre.gitstarclub.com/rankings` returns 200, is `noindex`, and shows repository rows (an `owner/name` link and a star count). The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure. The rows must come from the committed bootstrap generation.
 - `node scripts/assert-cf-ci-gates.mjs` still passes. Preview still has no `BLOB_*`.
+
+If a later step needs `views/latest.json`, the only writer is the publish step of an owner-authorized managed refresh. Stage 2 acceptance does not run it. Do not PUT the object, and do not call `https://gitstarclub.com/api/cron/*`.
+
+```bash
+# Owner-authorized. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+# Do not call the production Worker gitstarclub-web.
+curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
+  https://pre.gitstarclub.com/api/workflows/refresh/start
+```
+
+That run's publish step writes `views/latest.json` in bucket `gitstarclub-data-pre`. Never hand-write the pointer.
 
 Do not delete `_meta/`. Do not point Worker `gitstarclub-web` at this bucket. If the public origin still does not resolve, fix DNS in a separate authorized change before calling the rehearsal accepted. Do not use the production blob URL as a stand-in.
 
@@ -176,11 +190,23 @@ A later publish rolls back to `previous_generation`:
 node backfill/07-export-v2.mjs --store r2 --target prod --rollback "$PREVIOUS" --execute
 ```
 
-Acceptance:
+Acceptance. Worker `gitstarclub-web` stays on the blob read path. The new objects are in bucket `gitstarclub-data-prod`. Do not require `views/latest.json` on that bucket.
 
 - `https://data.gitstarclub.com/_meta/bucket-identity.json` is `{"bucket":"gitstarclub-data-prod","deploy_env":"production"}`.
-- `https://data.gitstarclub.com/bootstrap/latest.json` and the published views pointer return 200 for the generation that was committed.
-- Production `https://gitstarclub.com/` still returns 200 from the blob read path. Top-level Worker config still has no `DATA` binding and still sets the blob public base.
+- `https://data.gitstarclub.com/bootstrap/latest.json` returns 200 and names the committed generation. On the first publish, `previous_generation` is null.
+- `https://data.gitstarclub.com/bootstrap/generations/<id>/manifests/base.json` and `https://data.gitstarclub.com/bootstrap/generations/<id>/manifests/canonical.json` return 200, and each SHA-256 matches the pointer.
+- `https://data.gitstarclub.com/bootstrap/generations/<id>/views/rank/all-time/repo/stock.json` returns 200 and contains at least one repository row with a star count.
+- `https://data.gitstarclub.com/views/latest.json` is not required. A 404 is expected. Do not hand-write it. A production refresh while Worker `gitstarclub-web` still writes Blob would write the blob store, not bucket `gitstarclub-data-prod`. After stage 4, the owner-authorized publish step below is the step that creates the managed pointer on this bucket. Do not call `https://gitstarclub.com/api/cron/*` to create it.
+- Production `https://gitstarclub.com/rankings` still returns 200 from the blob read path and still shows repository rows. While blob `views/latest.json` is missing, those rows are version `refresh-2026-09-13T06-00-16-398Z` via `VIEWS_VERSION_FALLBACK`. The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure. Top-level Worker `gitstarclub-web` still has no `DATA` binding and still sets blob base `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`. It must not be reading bucket `gitstarclub-data-prod` yet.
+
+```bash
+# Owner-authorized, and only after stage 4. Worker gitstarclub-web, top-level
+# production (no --env), bucket gitstarclub-data-prod
+curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
+  https://gitstarclub.com/api/workflows/refresh/start
+```
+
+That run's publish step writes `views/latest.json` in bucket `gitstarclub-data-prod`. Never hand-write the pointer.
 
 Leave production drivers on `blob` (an unset `STORAGE_READ_DRIVER` is the same default). Do not delete the identity marker or the blob objects. Do not roll the first publish back by naming the generation just committed.
 
@@ -190,15 +216,15 @@ Not accepted. This is the production read and write switch. It is a Worker confi
 
 - Bind `DATA` to `gitstarclub-data-prod` on the top-level Worker.
 - Set `DEPLOY_ENV=production`, `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_BUCKET=gitstarclub-data-prod`, and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`.
-- Remove production `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` only after the R2 pointer exists and pages render from it. The fallback must not keep serving the frozen 2026-09-13 version once a real pointer is in place.
+- Remove production `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` only after `bootstrap/latest.json` exists on bucket `gitstarclub-data-prod` and `https://gitstarclub.com/rankings` renders repository rows from that generation. The fallback must not keep serving the frozen 2026-09-13 version once pages read R2. Removing the fallback while the bootstrap pointer is missing leaves rankings empty. `views/latest.json` is not that pointer.
 - Keep `triggers.crons` at `[]` until stage 5.
 - Keep `MEDIA` on `gitstarclub-assets`. Do not use it as the data bucket.
 
 Acceptance:
 
 - `node scripts/assert-cf-ci-gates.mjs` passes, including the rule that preview config does not name the production bucket.
-- `https://gitstarclub.com/rankings` returns 200 with indexing still on.
-- The generation in `https://data.gitstarclub.com/views/latest.json` matches what the production pages render.
+- `https://gitstarclub.com/rankings` returns 200 with indexing still on, and shows repository rows (an `owner/name` link and a star count). The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure.
+- The rows match the generation in `https://data.gitstarclub.com/bootstrap/latest.json` while `views/latest.json` is absent. A 404 of `https://data.gitstarclub.com/views/latest.json` is acceptable. Do not hand-write it. If the owner has already run the authorized refresh publish on Worker `gitstarclub-web` (top-level, bucket `gitstarclub-data-prod`) and `views/latest.json` exists, the pages must match that `version`, and the file must be the one that publish wrote.
 - A production shell build exports `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, not the preview origin and not the blob host. `cf:build` fails the build if the shell base does not match the top-level wrangler vars.
 
 Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset: rankings then render with no rows.
