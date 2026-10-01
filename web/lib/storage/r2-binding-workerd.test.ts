@@ -57,6 +57,14 @@ test("workerd rejects a quoted conditional and accepts the unquoted etag from th
   await expect(bucket.put("views/a.json", "bad", { onlyIf: { etagDoesNotMatch: head.httpEtag } })).rejects.toThrow(
     TypeError,
   );
+  await expect(
+    bucket.put("views/a.json", "bad", { onlyIf: { etagMatches: "stale", etagDoesNotMatch: head.httpEtag } }),
+  ).rejects.toThrow(`Conditional ETag should not be wrapped in quotes (${head.httpEtag}).`);
+  await expect(
+    bucket.put("missing-combo", "no", { onlyIf: { etagMatches: "*", etagDoesNotMatch: head.httpEtag } }),
+  ).rejects.toThrow(TypeError);
+  expect(await bucket.head("missing-combo")).toBeNull();
+  expect(await (await bucket.get("views/a.json"))?.text()).toBe("one");
   expect(await bucket.put("views/a.json", "weak", { onlyIf: { etagMatches: `W/"${head.etag}"` } })).toBeNull();
   expect(await bucket.put("missing", "no", { onlyIf: { etagMatches: "*" } })).toBeNull();
   expect(await bucket.put("views/a.json", "star", { onlyIf: { etagMatches: "*" } })).not.toBeNull();

@@ -22,9 +22,10 @@ Conditional writes through the Worker R2 binding must pass etags workerd accepts
 
 - A quoted `httpEtag` from `get` succeeds as `ifMatch`, and the bucket sees the unquoted value.
 - A quoted conditional passed straight to the fake throws `TypeError` and does not write.
+- Both supplied etags are parsed before any match result. `{ etagMatches: "stale", etagDoesNotMatch: "<quoted>" }` on an existing key, and `{ etagMatches: "*", etagDoesNotMatch: "<quoted>" }` on a missing key, throw `TypeError` and do not write.
 - `*` and `W/` follow workerd `UnwrappedConditional(const Conditional&)` / `buildSingleEtagArray` (see the report for line numbers).
 - The new CAS test fails if the store passes the quoted etag through.
 - `web/lib/storage/r2-binding-workerd.test.ts` runs the same CAS against local workerd through Miniflare. The binary is the `workerd` package wrangler already depends on, so the existing `bun test` job covers it. CI workflows are unchanged.
 - Other storage drivers keep their external etag behavior.
-- The static job in `AGENTS.md` passes in a fresh detached worktree.
+- The static job in `AGENTS.md` passes in a fresh detached worktree once `pre` includes the dependency audit fix (#584). This branch does not edit `bun.lock` or CI. `audit:deps` stays red on the lockfile inherited from `pre` until that lands and this branch is rebased.
 - `bun.lock` is not part of the diff.

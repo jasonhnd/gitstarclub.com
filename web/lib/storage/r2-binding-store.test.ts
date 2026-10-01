@@ -189,6 +189,13 @@ describe("R2 binding driver", () => {
     await expect(bucket.put("views/a.json", "bad", { onlyIf: { etagMatches: '"' } })).rejects.toThrow(
       'Conditional ETag should not be wrapped in quotes (").',
     );
+    await expect(
+      bucket.put("views/a.json", "bad", { onlyIf: { etagMatches: "stale", etagDoesNotMatch: quoted } }),
+    ).rejects.toThrow(`Conditional ETag should not be wrapped in quotes (${quoted}).`);
+    await expect(
+      bucket.put("missing-combo", "bad", { onlyIf: { etagMatches: "*", etagDoesNotMatch: quoted } }),
+    ).rejects.toThrow(`Conditional ETag should not be wrapped in quotes (${quoted}).`);
+    expect(await bucket.get("missing-combo")).toBeNull();
     expect(await (await bucket.get("views/a.json"))?.text()).toBe("one");
 
     expect(await bucket.put("views/a.json", "two", { onlyIf: { etagMatches: "etag1" } })).not.toBeNull();
