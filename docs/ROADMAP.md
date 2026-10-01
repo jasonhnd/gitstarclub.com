@@ -46,7 +46,7 @@ From [README.md](../README.md) and [ARCHITECTURE.md](./ARCHITECTURE.md):
 - Zero runtime engine in the request path (no DuckDB / ClickHouse / Postgres / vector index in the serving image).
 - Zero runtime database. Read-side state is versioned Blob views behind a publish pointer.
 - Static content pages. Near-zero client JavaScript on content surfaces. Named exceptions stay in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
-- Vercel-first. Deploy, cron, Blob, workflow, and any future analytics stay on Vercel unless a constitution-level revision amends this constraint.
+- Cloudflare Workers hosting through OpenNext. Production JSON stays on Vercel Blob until the R2 cutover in [R2-CUTOVER.md](./R2-CUTOVER.md). Do not add a second runtime database or a request-path engine. Analytics stay off on this host unless a later issue turns a provider on in code.
 - AI-free product copy. No LLM-generated summaries or classifications at request time.
 
 A proposal that cannot pass this list is vetoed. It is not a Track A ticket, not a Track C POC, and not a feature PR.
@@ -269,7 +269,7 @@ Recorded outcome per option: Tinybird **no**; Vercel Postgres / Neon **no**; mor
 
 | Option | Trade-off |
 |---|---|
-| **Tinybird (managed ClickHouse)** | Strong analytics. External billing and a non-Vercel runtime dependency. Conflicts with Vercel-first and static-read defaults. Draft lean: **no**. |
+| **Tinybird (managed ClickHouse)** | Strong analytics. External billing and a second runtime database. Conflicts with the static-read default. Draft lean: **no**. |
 | **Vercel Postgres / Neon** | Stays on Vercel. Relational storage is a poor fit for this analytical shape and scale. Draft lean: **no**. |
 | **More precomputed JSON views** | No database. Combinatorial filter/sort/aggregate does not fit a finite shard set. Draft lean: **only-if** a tiny finite extra shard. |
 | **Self-hosted ClickHouse** | Cheap to run in theory, expensive to operate. Already ruled out in [ARCHITECTURE.md](./ARCHITECTURE.md). Do not reopen. |
