@@ -4,6 +4,9 @@ import {
   RELATED_PUBLIC_CATEGORY_LIMIT,
   THIN_CATEGORY_REPO_COUNT,
   isThinCategoryCount,
+  publicCategoryEntries,
+  findCategory,
+  findDimension,
   relatedPublicCategories,
 } from "@/app/categories/category-page-data";
 
@@ -33,6 +36,22 @@ describe("relatedPublicCategories", () => {
     expect(siblings.map((category) => category.id)).not.toContain("language/python");
     expect(siblings.map((category) => category.id)).not.toContain("language/hidden");
     expect(siblings).toHaveLength(RELATED_PUBLIC_CATEGORY_LIMIT);
+  });
+});
+
+describe("public category readers", () => {
+  test("flat public entries and detail lookup preserve filtering without mutating dimensions", () => {
+    const publicEntry = entry("language/python", true);
+    const hiddenEntry = entry("language/hidden", false);
+    const dimension = { id: "language" as const, label: "Language", categories: [hiddenEntry, publicEntry] };
+    const registry = { rules_version: "test", generated_at: "test", dimensions: [dimension] };
+    expect(publicCategoryEntries(registry)).toEqual([publicEntry]);
+    expect(findCategory(registry, "language", "python")).toBe(publicEntry);
+    expect(findCategory(registry, "language", "hidden")).toBeNull();
+    expect(findCategory(registry, "unknown", "python")).toBeNull();
+    expect(findDimension(registry, "language")).toBe(dimension);
+    expect(findDimension(registry, "unknown")).toBeNull();
+    expect(dimension.categories).toEqual([hiddenEntry, publicEntry]);
   });
 });
 
