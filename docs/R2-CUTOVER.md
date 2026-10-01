@@ -120,105 +120,32 @@ Later publishes (a commit without `--initial-commit`) set `previous_generation` 
 node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$PREVIOUS" --execute
 ```
 
-Bad first publish: quarantine. Any write in this procedure needs a separate owner authorization. This document does not authorize it.
+A bad first publish has no rollback. Before stage 4, production `https://gitstarclub.com` still reads Vercel Blob on Worker `gitstarclub-web` (top-level, no `--env`). Preview Worker `gitstarclub-web-pre` (wrangler env `pre`, bucket `gitstarclub-data-pre`) is a rehearsal and may show broken or empty data. Do not block preview hosts, do not publish through an isolated dashboard or API path, and do not prepare a Workers Static Assets cache.
 
-1. Read the pointer. `previous_generation` must be JSON null, and `generation` must be the bad id. If `previous_generation` is a generation id, this is not a first publish: use the later-publish command above and stop.
-
-```bash
-# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
-curl -fsS https://data-pre.gitstarclub.com/bootstrap/latest.json
-```
-
-2. Keep the objects. Do not hand-write `bootstrap/latest.json` or `views/latest.json`. Do not delete `_meta/bucket-identity.json`. Do not delete `bootstrap/generations/<bad-id>/`. `web/scripts/blob-del-prefix.ts` refuses the pointer, the broad prefix `bootstrap/`, and the current generation prefix. Do not run it against those paths. Do not treat `already-rolled-back` as success. Do not point Worker `gitstarclub-web` (top-level production, no `--env`) at bucket `gitstarclub-data-pre` or `gitstarclub-data-prod`.
-
-3. Block preview readers. This step is blocked until the owner authorizes it on its own. Skipping stage 2 acceptance does not quarantine anything: Worker `gitstarclub-web-pre` on wrangler env `pre` still reads bucket `gitstarclub-data-pre`, so the bad pointer stays what the pages serve.
-
-   No repository command performs the block. Env `pre` in the [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc) sets `workers_dev: true` and `preview_urls: true`. Deploying that file turns those hosts back on. The route `pre.gitstarclub.com/*` is not in that file, so the deploy does not detach it. Cloudflare Access on `https://gitstarclub-web-pre.worldgo.workers.dev` does not cover `https://pre.gitstarclub.com`.
-
-   The owner-authorized block is a live script setting on Worker `gitstarclub-web-pre`, wrangler env `pre`, Cloudflare account `00f850e853e4c7f9627233d51a6e30a1`. Do it in the Cloudflare dashboard or API. Do not deploy the committed wrangler file as this step. Do not write bucket `gitstarclub-data-pre`. Do not change DNS for `gitstarclub.com` or `www.gitstarclub.com`. Do not change Worker `gitstarclub-web`.
-
-   - Turn off the workers.dev subdomain for script `gitstarclub-web-pre`.
-   - Turn off preview URLs for that script.
-   - Detach the custom route `pre.gitstarclub.com/*` from that Worker.
-
-   Hosts that must stop serving the bad generation:
-
-   - `https://pre.gitstarclub.com`
-   - `https://gitstarclub-web-pre.worldgo.workers.dev`
-   - every version preview URL for Worker `gitstarclub-web-pre` (the aliases `preview_urls: true` publishes)
-
-```bash
-# After the owner block. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
-# Site curls are expected to fail closed. Do not use curl -f.
-curl -sS -o /dev/null -w 'pre.gitstarclub.com %{http_code}\n' https://pre.gitstarclub.com/rankings
-curl -sS -o /dev/null -w 'workers.dev %{http_code}\n' https://gitstarclub-web-pre.worldgo.workers.dev/rankings
-curl -fsS https://data-pre.gitstarclub.com/bootstrap/latest.json
-curl -fsS https://data-pre.gitstarclub.com/_meta/bucket-identity.json
-curl -fsS -o /dev/null -w 'sealed stock %{http_code}\n' \
-  "https://data-pre.gitstarclub.com/bootstrap/generations/${BAD}/views/rank/all-time/repo/stock.json"
-```
-
-   The two site responses must not be a rankings page. HTTP 200 whose body still has an `owner/name` row means that host is still serving the bad generation, and the quarantine has not happened. If a version preview URL was handed out, request its `/rankings` the same way and require the same failure. The pointer GET still names the bad `generation` with `previous_generation` null. The identity object is unchanged. The sealed stock object is still 200. The bad generation stays in the bucket.
-
-   If the owner does not authorize this host block, step 3 stays blocked. Those hosts keep serving the bad generation. Do not record the incident as quarantined. Do not start stage 3. Do not restore hosts from this step. Recovery is step 5. A successful fetch of a detached host is not the condition for attaching that host.
-
-4. Repair is a separate owner authorization, not the isolation. The only write that changes which generation a restored reader follows is a corrected generation, committed without `--initial-commit` (that flag is refused once `bootstrap/latest.json` exists). The owner names the new generation id before the command runs. The new pointer's `previous_generation` is the bad id. The bad generation stays sealed and becomes the one-hop rollback target. Do not delete it in this step. These commands publish objects in bucket `gitstarclub-data-pre` only. They do not rebuild pages and do not deploy Worker `gitstarclub-web-pre`. English rankings at `web/app/(en)/rankings/page.tsx` and localized rankings at `web/app/(localized)/[locale]/rankings/page.tsx` set `revalidate` to false, so a new pointer does not replace HTML that was already prerendered. Leave the hosts blocked.
-
-```bash
-# Owner-authorized. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
-# GOOD is a new generation id. Do not pass --initial-commit.
-node backfill/06-upload.mjs --store r2 --target pre --generation "$GOOD" --execute
-node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --execute --stage-only
-node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --execute
-```
-
-If the owner does not approve that commit, the remaining path is written acceptance in step 5. Leave the hosts blocked until that path finishes. There is no supported command that deletes the first R2 pointer.
-
-5. Recovery. The hosts from step 3 stay blocked through the object check and the isolated build. Do not fetch `https://pre.gitstarclub.com/rankings` to decide whether that host may be attached.
-
-   Choose the generation this recovery will serve. Either step 4 has landed, or the owner has accepted the current generation in writing while the hosts are still blocked. If neither is true, leave the hosts blocked and stop. Written acceptance is that record. It is not a request to the detached site, and it is not stage 2 acceptance. Stage 2 acceptance includes the live rankings page, so it runs only after the controlled reopen below succeeds.
-
-   a. With the hosts still blocked, verify the data origin. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`. Repeat the site curls from step 3 and require the same closed result. `$SERVE` is the chosen generation.
-
-```bash
-# Hosts still blocked. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
-curl -fsS https://data-pre.gitstarclub.com/bootstrap/latest.json
-curl -fsS https://data-pre.gitstarclub.com/_meta/bucket-identity.json
-curl -fsS "https://data-pre.gitstarclub.com/bootstrap/generations/${SERVE}/manifests/base.json"
-curl -fsS "https://data-pre.gitstarclub.com/bootstrap/generations/${SERVE}/manifests/canonical.json"
-curl -fsS "https://data-pre.gitstarclub.com/bootstrap/generations/${SERVE}/views/rank/all-time/repo/stock.json"
-```
-
-   The pointer `generation` must be `$SERVE`. On the corrected path, `previous_generation` is the bad id. On the written-acceptance path, `previous_generation` is still JSON null. Identity stays `{"bucket":"gitstarclub-data-pre","deploy_env":"pre"}`. Each manifest SHA-256 matches the pointer. The stock object contains at least one repository row with a star count. Do not delete the bad sealed generation, the pointer, or the identity object.
-
-   b. Build a fresh preview while the hosts stay blocked. The build reads the public data origin. It does not attach a route.
+Stop and record what went wrong. Read the pointer:
 
 ```bash
 # Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
-# Build only. Do not deploy.
+curl -fsS https://data-pre.gitstarclub.com/bootstrap/latest.json
+```
+
+`previous_generation` must be JSON null, and `generation` must be the bad id. If `previous_generation` is a generation id, this is not a first publish: use the later-publish command above.
+
+Deleting objects uses the same owner authorization as a bucket write. Never delete `_meta/`, including `_meta/bucket-identity.json`. `web/scripts/blob-del-prefix.ts` refuses `_meta/`, `bootstrap/latest.json`, `canonical/`, the current generation prefix, and the broad prefix `bootstrap/generations/`. The owner removes the bad generation objects in bucket `gitstarclub-data-pre` under `bootstrap/generations/<bad-id>/`. Also remove `bootstrap/latest.json`, and remove `canonical/v2/meta.json` and `views/latest.json` when those objects exist. `--initial-commit` refuses while any of those three paths is present. Do not hand-write `bootstrap/latest.json` or `views/latest.json`. Do not point Worker `gitstarclub-web` at bucket `gitstarclub-data-pre` or `gitstarclub-data-prod`.
+
+Rerun the stage 2 upload and `--initial-commit` commands in this section with a new generation id. Then redeploy preview the normal way and check the live rankings page. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`:
+
+```bash
+# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
 cd web
 export STORAGE_READ_DRIVER=r2
 export R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com
 bun run cf:build:pre
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env pre \
+  --var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"
 ```
 
-   Do not export a Blob base URL. Read the prerendered English `/rankings` document and one localized `/rankings` document in the OpenNext asset output of that build. Each must show an `owner/name` link and a star count from `$SERVE`. The English sentence "Ranking data is waiting for the next published recompute." on both ranking sections is a failure. This check is the build output. The corrected pointer alone does not establish it.
-
-   c. Publish that output only under a separate owner authorization that leaves the block in place. Do not run `wrangler deploy --env pre` against the committed Worker configuration. That deploy sets `workers_dev` and `preview_urls` back to true. `pre.gitstarclub.com/*` stays detached, the workers.dev subdomain stays off, and preview URLs stay off. The owner publishes the built assets from the dashboard or API without changing those three settings. After the publish, repeat the step 3 site curls and require the same closed result. If that publish cannot be done without turning the hosts on, step 5 stays blocked. Do not call the incident recovered, and do not attach the route in order to finish the check.
-
-   d. Controlled reopen is the next owner authorization, after (a), (b), and (c). It does not depend on a live response from the still-detached host. Turn the workers.dev subdomain on, turn preview URLs on, and attach `pre.gitstarclub.com/*` to Worker `gitstarclub-web-pre`.
-
-   e. Immediately request the reopened rankings pages. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`.
-
-```bash
-# Just after the controlled reopen. Re-block if either body fails.
-curl -sS -D - -o /tmp/pre-rankings.html -w 'pre.gitstarclub.com %{http_code}\n' https://pre.gitstarclub.com/rankings
-curl -sS -D - -o /tmp/workers-rankings.html -w 'workers.dev %{http_code}\n' https://gitstarclub-web-pre.worldgo.workers.dev/rankings
-```
-
-   Each response must be HTTP 200 and `noindex`, and the body must show an `owner/name` link and a star count from `$SERVE`. The empty English sentence on both ranking sections is a failure. If either check fails, detach `pre.gitstarclub.com/*`, turn the workers.dev subdomain off, and turn preview URLs off again before any other work. A version preview URL opened by that same authorization must pass the same body check or be turned off with the other hosts. Do not leave a failed page on those hosts. Do not start stage 3.
-
-   f. Repeat stage 2 acceptance only after (e) passes. That acceptance may then request `https://pre.gitstarclub.com/rankings`. It is not the condition that allows (d).
+`https://pre.gitstarclub.com/rankings` must return 200, stay `noindex`, and show repository rows (an `owner/name` link and a star count) from the new generation. The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure. Repeat the stage 2 acceptance below after that live check. Real rollback starts at stage 4 and is the `wrangler rollback` command in that stage.
 
 Acceptance. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`. Do not require `views/latest.json`.
 
@@ -255,7 +182,9 @@ node backfill/07-export-v2.mjs --store r2 --target prod --generation bootstrap-Y
 node backfill/07-export-v2.mjs --store r2 --target prod --generation bootstrap-YYYYMMDDTHHMMSSZ --execute --initial-commit
 ```
 
-The first publish on this bucket also stores `previous_generation: null`. `--rollback` of that same generation returns `already-rolled-back` and is not an undo. `--rollback legacy-flat` fails closed on `gitstarclub-data-prod`. Worker `gitstarclub-web` (top-level, no `--env`) is still on Blob, so `https://gitstarclub.com` is not reading this bucket. That is already true. It is not a host block you perform, and it does not hide `https://data.gitstarclub.com`. No repository command unpublishes that public origin while keeping the objects. Deleting the pointer or the sealed generation to hide the URL is blocked. Do not start stage 4 from a rejected generation. A corrective commit uses `--target prod`, omits `--initial-commit`, and does not run against Worker `gitstarclub-web-pre` or bucket `gitstarclub-data-pre`. Keep `_meta/bucket-identity.json` and `bootstrap/generations/<bad-id>/`.
+The first publish on this bucket also stores `previous_generation: null`. There is no prior generation to roll back to. `--rollback` of that same generation returns `already-rolled-back` and leaves the pointer in place. `--rollback legacy-flat` fails closed on bucket `gitstarclub-data-prod`. Production `https://gitstarclub.com` still reads Vercel Blob on Worker `gitstarclub-web` (top-level, no `--env`), so this publish does not change the live site. Do not cut over. Do not start stage 4.
+
+Stop and record what went wrong. Deleting objects uses the same owner authorization as a bucket write. Never delete `_meta/`, including `_meta/bucket-identity.json`. `web/scripts/blob-del-prefix.ts` refuses `_meta/`, the pointer, and the current generation prefix. The owner removes `bootstrap/generations/<bad-id>/` and `bootstrap/latest.json` in bucket `gitstarclub-data-prod`, and removes `canonical/v2/meta.json` and `views/latest.json` when those objects exist, so `--initial-commit` can run again. Do not hand-write a pointer. Do not write bucket `gitstarclub-data-pre`. Do not deploy Worker `gitstarclub-web-pre`. Then rerun the stage 3 commands above.
 
 A later publish rolls back to `previous_generation`:
 
