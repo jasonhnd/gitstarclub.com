@@ -305,18 +305,20 @@ Rollback: set production `triggers.crons` back to `[]` and redeploy that config.
 
 ### Stage 6. Retire Blob
 
-Not accepted. After production has been on R2 through at least one successful refresh, remove the remaining blob operating dependency:
+Not accepted. After production has been on R2 through at least one successful refresh, remove the remaining blob operating dependency.
+
+Prerequisite, before Blob variables can be removed: `web/scripts/generate-data-exports.ts` (`bun run exports:generate`) and `web/scripts/validate-live-views.ts` still require `BLOB_BASE_URL` or `NEXT_PUBLIC_BLOB_BASE_URL` at startup and fail before they read views if only R2 variables are set. A page returning 200 does not prove those tools are off Blob. A prep change must make both tools use the driver-aware public base, with a test that runs them when `BLOB_*` is unset. Do not retire the blob variables until that prep is accepted. This docs change does not edit those scripts.
 
 - Production and preview do not require `BLOB_READ_WRITE_TOKEN` or `BLOB_BASE_URL`.
 - Live release gates stop falling back to the public blob URL. They use `LIVE_PUBLIC_READ_BASE_URL` or the R2 public origin. That fallback is documented as temporary in [OPS.md](./OPS.md).
 - Blob layout instructions in [OPS.md](./OPS.md) and the superseded Blob design doc move to history.
 
-Acceptance: the top-level Worker config and preview `env.pre` contain no `BLOB_*` vars, and a read-only production page still returns 200 from `https://data.gitstarclub.com`.
+Acceptance: the top-level Worker config and preview `env.pre` contain no `BLOB_*` vars, and a read-only production page still returns 200 from `https://data.gitstarclub.com`. `exports:generate` and `validate-live-views` complete against the production R2 public origin with `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` unset.
 
 Rollback: use the stage 4 version rollback on Worker `gitstarclub-web` (top-level production, no `--env`): `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`. That restores `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z` and the blob public base `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`. It does not write bucket `gitstarclub-data-prod`. Do not delete blob objects in order to roll back. Do not empty bucket `gitstarclub-data-prod`. Deleting the blob store is a separate owner decision after this stage has stayed healthy. It is not the rollback. The same rankings smoke as stage 4 must show repository rows, not the empty ranking copy.
 
 ## What is still blob, until cutover
 
-Production page reads, production cron writes, and the production build prerender still use the blob driver. Keep those runbooks. They are labelled until cutover in [OPS.md](./OPS.md), [README.md](../README.md), and the other current docs. Do not delete them in stage 1.
+Production page reads, production cron writes, the production build prerender, `web/scripts/generate-data-exports.ts`, and `web/scripts/validate-live-views.ts` still use the blob base. Keep those runbooks. They are labelled until cutover in [OPS.md](./OPS.md), [README.md](../README.md), and the other current docs. Do not delete them in stage 1.
 
 Local read-only development against the blob driver still needs only `BLOB_BASE_URL` until cutover. Preview reads do not use a blob token. R2 writes need `DEPLOY_ENV`, the matching identity marker, and either the `DATA` binding (`r2_binding`) or the S3 key (`r2` / `r2_s3`). Never commit the key.
