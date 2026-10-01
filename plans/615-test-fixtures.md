@@ -28,3 +28,16 @@ pushes. Do not mock `@/lib/periods` or leak fetch replacements between suites.
   fixture production build using pinned Node/Bun and a clean environment.
 - Record verification evidence and limitations in a PR targeting `pre` with
   `Closes #615`; hand off for independent Claude-family review.
+
+## Implementation notes
+
+- Share rank construction with explicit values per suite, version-prefix parsing,
+  and both existing HTML decoding variants (preserving their decoding order).
+- Move the UI/UX data and empty-fixture builders into a pure module. Keep all
+  assertions, data mocks, fetch hooks, and scenario-routing branches in the suite.
+- Replace the UI/UX process-global periods mock with the existing `now` page
+  parameters at the same fixture date. No production code changes are needed.
+- Restore the route smoke runner's fetch/read-base overrides in `finally` and
+  cover success and failure in isolated child processes.
+- Defer the optional contract/source splits: these suites are unrelated to the
+  duplicated rendering fixtures, and their cache/scenario hooks remain intact.
