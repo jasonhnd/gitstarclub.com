@@ -6,7 +6,7 @@ Merge the latest `origin/pre` into the existing PR 616 history with a merge comm
 
 ## Scope
 
-Resolve conflicts in `workers/gitstarclub-web/src/shell.ts` and `docs/UIUX-ROUTE-INVENTORY.md`; verify the automatic merge of `docs/CHANGELOG.md`. Retain both deployment identity and sanitizer imports, all pre sanitizer calls and string bindings, and all release entries. Record this plan and update the existing PR verification for the new head.
+Resolve conflicts in the Worker shell (`shell.ts`) and `docs/UIUX-ROUTE-INVENTORY.md`; verify the automatic merge of `docs/CHANGELOG.md`. Retain both deployment identity and sanitizer imports, all pre sanitizer calls and string bindings, and all release entries. Record this plan and update the existing PR verification for the new head.
 
 ## Out of scope
 
