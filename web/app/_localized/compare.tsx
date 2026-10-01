@@ -230,7 +230,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
           </section>
         )}
         {unavailablePairs.length > 0 && (
-          <ul aria-label={t.compare.serverCaption} className="mt-4 space-y-2 rounded-lg border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.9rem] text-on-surface-variant">
+          <ul className="mt-4 space-y-2 rounded-lg border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.9rem] text-on-surface-variant">
             {unavailablePairs.map((pair) => (
               <li key={pair.label}>{t.compare.loadError.replace("{repo}", `${pair.a} ${t.common.versus} ${pair.b}`)}</li>
             ))}
