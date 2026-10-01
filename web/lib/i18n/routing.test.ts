@@ -13,6 +13,7 @@ import {
   toHreflang,
   toOpenGraphLocale,
 } from "./routing";
+import * as routing from "./routing";
 
 describe("localizedPath", () => {
   test("keeps default-locale paths unprefixed", () => {
@@ -81,6 +82,17 @@ describe("locale metadata mappings", () => {
     });
     expect(toOpenGraphLocale("en")).toBe("en_US");
     expect(toOpenGraphLocale("zh")).toBe("zh_CN");
+  });
+
+  test("does not re-export unused compatibility aliases", () => {
+    expect(routing.toHreflang("zh")).toBe("zh-CN");
+    expect(routing.toBcp47Locale("zh-TW")).toBe("zh-TW");
+    expect(routing.toOpenGraphLocale("fr")).toBe("fr_FR");
+    expect(routing.classifyRoute("/ja")).toEqual({ kind: "localized-root", locale: "ja", path: "/" });
+    expect("localeToHreflang" in routing).toBe(false);
+    expect("localeToBcp47" in routing).toBe(false);
+    expect("localeToOpenGraphLocale" in routing).toBe(false);
+    expect("classifyPath" in routing).toBe(false);
   });
 });
 

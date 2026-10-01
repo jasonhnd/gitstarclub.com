@@ -8,8 +8,11 @@ function hostingTarget(environment: AnalyticsEnvironment): string {
 }
 
 /**
- * Vercel Web Analytics is the only provider on Vercel. The CF Workers preview
- * host turns it off because `/_vercel/insights` is not available there.
+ * Vercel Web Analytics is the only provider. It stays on unless the hosting
+ * target is Cloudflare and VERCEL_ENV is not production, which covers the
+ * preview Worker and the production Worker. `/_vercel/insights` is not
+ * available on Workers. A Vercel production environment keeps the provider
+ * even if the hosting target is mis-set.
  * `NEXT_PUBLIC_GA_ID` must never re-enable a third-party script.
  * Keep this module free of `runtime-config` imports — `next.config.ts` loads it
  * during tests and a cycle through that graph breaks `web/lib/data` re-exports.
