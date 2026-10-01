@@ -129,11 +129,42 @@ Bad first publish: quarantine. Any write in this procedure needs a separate owne
 curl -fsS https://data-pre.gitstarclub.com/bootstrap/latest.json
 ```
 
-2. Isolate readers. Do not accept stage 2. Do not start stage 3 from this generation. Do not point Worker `gitstarclub-web` (top-level production, no `--env`) at bucket `gitstarclub-data-pre` or `gitstarclub-data-prod`. Do not hand-write `bootstrap/latest.json` or `views/latest.json`. Do not delete `_meta/bucket-identity.json`. `web/scripts/blob-del-prefix.ts` refuses `bootstrap/latest.json`, the broad prefix `bootstrap/`, and `bootstrap/generations/<current>/` while the pointer names that generation. Do not run it against those paths. Do not treat `already-rolled-back` as success.
+2. Keep the objects. Do not hand-write `bootstrap/latest.json` or `views/latest.json`. Do not delete `_meta/bucket-identity.json`. Do not delete `bootstrap/generations/<bad-id>/`. `web/scripts/blob-del-prefix.ts` refuses the pointer, the broad prefix `bootstrap/`, and the current generation prefix. Do not run it against those paths. Do not treat `already-rolled-back` as success. Do not point Worker `gitstarclub-web` (top-level production, no `--env`) at bucket `gitstarclub-data-pre` or `gitstarclub-data-prod`.
 
-3. Leave `https://pre.gitstarclub.com/` out of the acceptance evidence until a corrected generation is what the preview pages render. Worker `gitstarclub-web-pre` stays on env `pre` and bucket `gitstarclub-data-pre`. Do not deploy another bucket onto that Worker to hide the object.
+3. Block preview readers. This step is blocked until the owner authorizes it on its own. Skipping stage 2 acceptance does not quarantine anything: Worker `gitstarclub-web-pre` on wrangler env `pre` still reads bucket `gitstarclub-data-pre`, so the bad pointer stays what the pages serve.
 
-4. The only authorized write that changes which generation readers follow is a corrected generation, committed without `--initial-commit` (that flag is refused once `bootstrap/latest.json` exists). The owner names the new generation id before the command runs. The new pointer's `previous_generation` is the bad id. The bad generation stays sealed and becomes the one-hop rollback target. Do not delete it in this step.
+   No repository command performs the block. Env `pre` in the [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc) sets `workers_dev: true` and `preview_urls: true`. Deploying that file turns those hosts back on. The route `pre.gitstarclub.com/*` is not in that file, so the deploy does not detach it. Cloudflare Access on `https://gitstarclub-web-pre.worldgo.workers.dev` does not cover `https://pre.gitstarclub.com`.
+
+   The owner-authorized block is a live script setting on Worker `gitstarclub-web-pre`, wrangler env `pre`, Cloudflare account `00f850e853e4c7f9627233d51a6e30a1`. Do it in the Cloudflare dashboard or API. Do not deploy the committed wrangler file as this step. Do not write bucket `gitstarclub-data-pre`. Do not change DNS for `gitstarclub.com` or `www.gitstarclub.com`. Do not change Worker `gitstarclub-web`.
+
+   - Turn off the workers.dev subdomain for script `gitstarclub-web-pre`.
+   - Turn off preview URLs for that script.
+   - Detach the custom route `pre.gitstarclub.com/*` from that Worker.
+
+   Hosts that must stop serving the bad generation:
+
+   - `https://pre.gitstarclub.com`
+   - `https://gitstarclub-web-pre.worldgo.workers.dev`
+   - every version preview URL for Worker `gitstarclub-web-pre` (the aliases `preview_urls: true` publishes)
+
+```bash
+# After the owner block. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+# Site curls are expected to fail closed. Do not use curl -f.
+curl -sS -o /dev/null -w 'pre.gitstarclub.com %{http_code}\n' https://pre.gitstarclub.com/rankings
+curl -sS -o /dev/null -w 'workers.dev %{http_code}\n' https://gitstarclub-web-pre.worldgo.workers.dev/rankings
+curl -fsS https://data-pre.gitstarclub.com/bootstrap/latest.json
+curl -fsS https://data-pre.gitstarclub.com/_meta/bucket-identity.json
+curl -fsS -o /dev/null -w 'sealed stock %{http_code}\n' \
+  "https://data-pre.gitstarclub.com/bootstrap/generations/${BAD}/views/rank/all-time/repo/stock.json"
+```
+
+   The two site responses must not be a rankings page. HTTP 200 whose body still has an `owner/name` row means that host is still serving the bad generation, and the quarantine has not happened. If a version preview URL was handed out, request its `/rankings` the same way and require the same failure. The pointer GET still names the bad `generation` with `previous_generation` null. The identity object is unchanged. The sealed stock object is still 200. The bad generation stays in the bucket.
+
+   If the owner does not authorize this host block, step 3 stays blocked. Those hosts keep serving the bad generation. Do not record the incident as quarantined. Do not start stage 3.
+
+   Recovery: turn the workers.dev subdomain back on, turn preview URLs back on, and attach `pre.gitstarclub.com/*` to Worker `gitstarclub-web-pre` again only after one of these is true. The corrected commit in step 4 has landed, `https://data-pre.gitstarclub.com/bootstrap/latest.json` names that new generation, and a fresh `https://pre.gitstarclub.com/rankings` shows rows from it. Or the owner accepts the current generation in writing and stage 2 acceptance is run again. Do not restore the hosts while the pointer still names the rejected generation, unless that written acceptance exists. Do not delete the sealed generation, the pointer, or the identity object in order to unblock.
+
+4. Repair is a separate owner authorization, not the isolation. The only write that changes which generation a restored reader follows is a corrected generation, committed without `--initial-commit` (that flag is refused once `bootstrap/latest.json` exists). The owner names the new generation id before the command runs. The new pointer's `previous_generation` is the bad id. The bad generation stays sealed and becomes the one-hop rollback target. Do not delete it in this step. Do not restore the preview hosts until the recovery condition in step 3 is met.
 
 ```bash
 # Owner-authorized. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
@@ -143,7 +174,7 @@ node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --ex
 node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GOOD" --execute
 ```
 
-If the owner does not approve that commit, stop at step 3. There is no supported command that deletes the first R2 pointer.
+If the owner does not approve that commit, leave the hosts blocked and leave the bad generation sealed. There is no supported command that deletes the first R2 pointer. Unblock conditions are in step 3.
 
 Acceptance. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`. Do not require `views/latest.json`.
 
@@ -180,7 +211,7 @@ node backfill/07-export-v2.mjs --store r2 --target prod --generation bootstrap-Y
 node backfill/07-export-v2.mjs --store r2 --target prod --generation bootstrap-YYYYMMDDTHHMMSSZ --execute --initial-commit
 ```
 
-The first publish on this bucket also stores `previous_generation: null`. `--rollback` of that same generation returns `already-rolled-back` and is not an undo. `--rollback legacy-flat` fails closed on `gitstarclub-data-prod`. Quarantine a bad first publish with the stage 2 procedure, using Worker `gitstarclub-web` (top-level, no `--env`), public origin `https://data.gitstarclub.com`, and bucket `gitstarclub-data-prod`. The site is still on Blob, so production pages are already off this bucket. The corrective commit uses `--target prod`, omits `--initial-commit`, and does not run against Worker `gitstarclub-web-pre` or bucket `gitstarclub-data-pre`.
+The first publish on this bucket also stores `previous_generation: null`. `--rollback` of that same generation returns `already-rolled-back` and is not an undo. `--rollback legacy-flat` fails closed on `gitstarclub-data-prod`. Worker `gitstarclub-web` (top-level, no `--env`) is still on Blob, so `https://gitstarclub.com` is not reading this bucket. That is already true. It is not a host block you perform, and it does not hide `https://data.gitstarclub.com`. No repository command unpublishes that public origin while keeping the objects. Deleting the pointer or the sealed generation to hide the URL is blocked. Do not start stage 4 from a rejected generation. A corrective commit uses `--target prod`, omits `--initial-commit`, and does not run against Worker `gitstarclub-web-pre` or bucket `gitstarclub-data-pre`. Keep `_meta/bucket-identity.json` and `bootstrap/generations/<bad-id>/`.
 
 A later publish rolls back to `previous_generation`:
 
@@ -214,11 +245,21 @@ Leave production drivers on `blob` (an unset `STORAGE_READ_DRIVER` is the same d
 
 Not accepted. This is the production read and write switch for Worker `gitstarclub-web`, top-level production (no `--env`; do not pass `--env pre`), bucket `gitstarclub-data-prod`, public origin `https://data.gitstarclub.com`. It lands as one pull request. This docs change does not edit the gate or the build script.
 
-Worker config in that pull request:
+Order. Do not wait until `https://gitstarclub.com/rankings` renders the R2 bootstrap generation before clearing `VIEWS_VERSION_FALLBACK`. That wait cannot succeed on a bootstrap-only bucket. While the fallback is set, a 404 of `views/latest.json` selects `refresh-2026-09-13T06-00-16-398Z` (`web/lib/data/source.ts`). The read then requests `views/<that-version>/meta.json` on the public origin. Stage 3 stored views only under `bootstrap/generations/<id>/views/**`, so that meta is absent, the published time stays null, and the read does not choose the bootstrap generation. It requests `views/refresh-2026-09-13T06-00-16-398Z/**`, which is not in bucket `gitstarclub-data-prod`. Clearing the fallback is what makes a confirmed 404 use the bootstrap generation. Clear it in the same authorized build and deploy that switches the driver.
+
+Before that deploy, Worker `gitstarclub-web` is still on the blob driver. Check objects on `https://data.gitstarclub.com` only. Do not use the live rankings page as proof of this bucket.
+
+- `https://data.gitstarclub.com/_meta/bucket-identity.json` is `{"bucket":"gitstarclub-data-prod","deploy_env":"production"}`.
+- `https://data.gitstarclub.com/bootstrap/latest.json` returns 200 and names the committed generation.
+- `https://data.gitstarclub.com/bootstrap/generations/<id>/manifests/base.json` and `.../manifests/canonical.json` return 200, and each SHA-256 matches the pointer.
+- `https://data.gitstarclub.com/bootstrap/generations/<id>/views/rank/all-time/repo/stock.json` returns 200 and contains at least one repository row with a star count.
+- `https://data.gitstarclub.com/views/latest.json` is a 404. Do not hand-write it.
+
+Worker config in that same pull request, deployed together with the shell below:
 
 - Bind `DATA` to `gitstarclub-data-prod` on the top-level Worker. Keep `MEDIA` on `gitstarclub-assets`. Do not use `MEDIA` as the data bucket.
 - Set `DEPLOY_ENV=production`, `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_BUCKET=gitstarclub-data-prod`, and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`.
-- Remove production `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` only after `bootstrap/latest.json` exists on bucket `gitstarclub-data-prod` and `https://gitstarclub.com/rankings` renders repository rows from that generation. The fallback must not keep serving the frozen 2026-09-13 version once pages read R2. Removing the fallback while the bootstrap pointer is missing leaves rankings empty. `views/latest.json` is not that pointer.
+- In that same deploy, remove `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK`. Do not ship the R2 driver while the fallback is still set. Do not clear the fallback in an earlier deploy that still reads Blob. `views/latest.json` is not the object these checks use.
 - Keep `triggers.crons` at `[]` until stage 5.
 
 Same pull request, `scripts/cf-ci-gates.mjs` and `scripts/cf-ci-gates.test.mjs`. The gate still requires top-level `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK`, and the test locks those three. A cutover that only edits the Worker config fails `node scripts/assert-cf-ci-gates.mjs`. In this same pull request:
@@ -231,12 +272,12 @@ Same pull request, the production build shell in `web/scripts/cf-opennext-build.
 
 - Export `STORAGE_READ_DRIVER=r2`.
 - Export `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com` for bucket `gitstarclub-data-prod`. When `NEXT_PUBLIC_R2_PUBLIC_BASE_URL` is set, set it to the same origin.
-- Clear `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` so a parent shell cannot bake blob store `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com` into the prerender.
+- Clear `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` in this same build, matching the Worker var removal in the same deploy. A parent shell must not bake blob store `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com` into the prerender, and must not leave the fallback set while `STORAGE_READ_DRIVER=r2`.
 - Keep refusing a shell public read base that does not match the top-level wrangler vars for Worker `gitstarclub-web`. The loopback fixture at `127.0.0.1` stays allowed for CI.
 
-Until that pull request, the production build shell in [OPS.md](./OPS.md) still exports the blob bases. Do not export `STORAGE_READ_DRIVER=r2` for a production build before the gate and the wrangler vars change together.
+Until that pull request, the production build shell in [OPS.md](./OPS.md) still exports the blob bases. Do not export `STORAGE_READ_DRIVER=r2` for a production build before the object checks above have passed and the gate and the wrangler vars change together.
 
-Operator shell once that pull request is the build being run. Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`:
+Operator shell for that same cutover build. Run it only after the object checks. Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`:
 
 ```bash
 # Worker gitstarclub-web, top-level production (no --env), bucket gitstarclub-data-prod
@@ -248,14 +289,14 @@ unset BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL VIEWS_VERSION_FALLBACK
 bun run cf:build:production
 ```
 
-Acceptance:
+Post-deploy acceptance. This is the first time `https://gitstarclub.com/rankings` is evidence of bucket `gitstarclub-data-prod`. If it fails, run the version rollback below. Do not leave the R2 driver in place with an empty board.
 
 - `node scripts/assert-cf-ci-gates.mjs` passes, including the rule that preview config does not name bucket `gitstarclub-data-prod`, and including the new production R2 contract from this same pull request.
-- `https://gitstarclub.com/rankings` returns 200 with indexing still on, and shows repository rows (an `owner/name` link and a star count). The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure.
-- The rows match the generation in `https://data.gitstarclub.com/bootstrap/latest.json` while `views/latest.json` is absent. A 404 of `https://data.gitstarclub.com/views/latest.json` is acceptable. Do not hand-write it. If the owner has already run the authorized refresh publish on Worker `gitstarclub-web` (top-level, bucket `gitstarclub-data-prod`) and `views/latest.json` exists, the pages must match that `version`, and the file must be the one that publish wrote.
-- A production shell build exports `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, not preview origin `https://data-pre.gitstarclub.com` and not the blob host, and does not export `BLOB_BASE_URL` or `NEXT_PUBLIC_BLOB_BASE_URL`. `cf:build` fails the build if the shell base does not match the top-level wrangler vars for Worker `gitstarclub-web`.
+- `https://gitstarclub.com/rankings` returns 200 with indexing still on, and shows repository rows (an `owner/name` link and a star count) from the generation in `https://data.gitstarclub.com/bootstrap/latest.json`. The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure.
+- `https://data.gitstarclub.com/views/latest.json` may still 404. Do not hand-write it. If the owner has already run the authorized refresh publish on Worker `gitstarclub-web` (top-level, bucket `gitstarclub-data-prod`) and `views/latest.json` exists, the pages must match that `version`, and the file must be the one that publish wrote.
+- The production shell build exported `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, not preview origin `https://data-pre.gitstarclub.com` and not the blob host, and did not export `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, or `VIEWS_VERSION_FALLBACK`. `cf:build` fails the build if the shell base does not match the top-level wrangler vars for Worker `gitstarclub-web`.
 
-Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset: rankings then render with no rows.
+If that post-deploy check fails, roll back. Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset: rankings then render with no rows.
 
 The pre-cutover version is `14b84f73-ef31-4e86-a70d-b71251756093`. On 2026-10-01 a read-only check found that version deployed at 100% of Worker `gitstarclub-web`. Do not pass `--env pre`. This command does not write bucket `gitstarclub-data-prod` and does not write the blob store. The restored version reads blob base `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`.
 
@@ -270,7 +311,7 @@ That version has `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`, `BLO
 
 If the rollback is a wrangler config edit and a new deploy, instead of the version command above, set the same values: `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`, both blob base variables to that blob host, drivers back to `blob` or unset, remove the production `DATA` binding, and leave `triggers.crons` at `[]`. Worker `gitstarclub-web`, top-level production, no `--env`. Do not delete blob objects. Do not empty bucket `gitstarclub-data-prod`.
 
-Smoke checks that real data renders. HTTP 200 alone is not enough. Worker `gitstarclub-web`, top-level production, blob store `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`:
+Smoke after that rollback checks that blob data renders again. HTTP 200 alone is not enough. Worker `gitstarclub-web`, top-level production, blob store `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`:
 
 ```bash
 # Worker gitstarclub-web, top-level production (no --env), blob store
