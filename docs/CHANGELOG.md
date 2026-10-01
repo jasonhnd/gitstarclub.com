@@ -42,6 +42,10 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 - **Track C data-layer option analysis.** Comparative write-up of Tinybird, Vercel Postgres / Neon, extra JSON views, a six-month deferral, and the later lock-002 product veto, plus the historical POC must-prove list. Draft lean was defer; product outcome is **veto**. **POC allowed: no.** See [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). The dated lock-002 record is under Changed below.
 - **Vercel Web Analytics.** Enabled cookieless aggregate page-view measurement through Vercel Web Analytics and corrected the privacy page copy to reflect that no analytics cookies or personal data are collected.
 
+### Removed
+
+- **Unused UI and i18n compatibility code (#608).** Unused explore layout components, the unused answer-capsule base, the unused client dictionary provider, the cookie-based dictionary helper, and four locale routing aliases are gone. Live `AnswerCapsule`, canonical locale helpers, route dictionaries, and `/api/lang` stay. Home and pulse metadata already come from the route dictionary through `generatePulseMetadata` in `web/app/_localized/pulse.tsx`.
+
 ### Changed
 
 - **Repository open-graph cards ignore unknown paths (#585).** `/{owner}/{name}/opengraph-image` draws the stored repository name only when that path resolves to a known repo id and the entity is renderable. Other paths use the site card. See [SEO.md](./SEO.md).

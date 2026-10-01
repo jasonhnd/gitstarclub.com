@@ -98,34 +98,35 @@ Ranking = **{week / month / year / all-time} × {repo / org} × {flow=new / stoc
 
 ### 2.1 Home `/`
 
-Actual implementation (`web/app/(en)/page.tsx` + `web/app/_localized/pulse.tsx`, built via the `pageMeta(...)` helper; `absoluteTitle: true` skips the site-suffix template; Pulse title/description copy comes from `web/lib/site-copy.ts`):
+Actual implementation (`web/app/(en)/page.tsx` + `generatePulseMetadata` in `web/app/_localized/pulse.tsx`, built via the `pageMeta(...)` helper; `absoluteTitle: true` skips the site-suffix template; title and description come from the route dictionary):
 
 | Field | Value |
 |---|---|
 | title | `Open Source Pulse & GitHub Star History · GitStarClub` (`absolute`, does not append the `· GitStarClub` suffix) |
-| description | `See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.` |
+| description | `See open-source momentum from GitStarClub's precomputed data: the latest available weekly, monthly, and yearly movers, plus all-time star rankings.` |
 | canonical | `/` |
 
 - Terms included: `Open Source Pulse`, `GitHub Star History`, `fastest-rising`, `star rankings`.
 
 ### 2.1a Pulse page `/pulse`
 
-Actual implementation (`web/app/(en)/pulse/page.tsx` + `web/app/_localized/pulse.tsx`, `export const revalidate = false`, reuses the same view as the home page, but **does not pass** `includeWebsiteLd` ⇒ no `WebSite` JSON-LD, see §6.1; title/description copy comes from `web/lib/site-copy.ts`):
+Actual implementation (`web/app/(en)/pulse/page.tsx` + `generatePulseMetadata` in `web/app/_localized/pulse.tsx`, `export const revalidate = false`, reuses the same view as the home page, but **does not pass** `includeWebsiteLd` ⇒ no `WebSite` JSON-LD, see §6.1; title and description come from the route dictionary):
 
 | Field | Value |
 |---|---|
 | title | `Open Source Pulse & GitHub Star History` (not `absolute` ⇒ the root layout appends `· GitStarClub` → final `Open Source Pulse & GitHub Star History · GitStarClub`) |
-| description | `See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.` |
+| description | `See open-source momentum from GitStarClub's precomputed data: the latest available weekly, monthly, and yearly movers, plus all-time star rankings.` |
 | canonical | `/pulse` |
 
 ```ts
-export const revalidate = false;
-export async function generateMetadata(): Promise<Metadata> {
+export async function generatePulseMetadata({ locale, canonicalPath, absoluteTitle = false }) {
+  const t = await getDictionary(locale);
   return pageMeta({
-    title: PULSE_META_TITLE,
-    description: PULSE_META_DESCRIPTION,
-    path: "/pulse",
-    locale: "en",
+    absoluteTitle,
+    title: absoluteTitle ? `${t.meta.homeTitle} · GitStarClub` : t.meta.pulseTitle,
+    description: canonicalPath === "/" ? t.meta.homeDescription : t.meta.pulseDescription,
+    path: canonicalPath,
+    locale,
   });
 }
 ```
