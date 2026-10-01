@@ -90,4 +90,26 @@ describe("parseView", () => {
     expect(viewParseErrorFingerprint(result.error)).toContain("unrecognized_keys");
     expect(viewParseErrorFingerprint(result.error)).toContain("active");
   });
+
+  test("parse failure logs omit secret canaries from issue text and fingerprints", () => {
+    resetViewParseStateForTests();
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const SecretDoc = z
+      .object({ ok: z.boolean() })
+      .refine(() => false, { message: `schema GitHub GraphQL 502 ${canary}` })
+      .describe("parse-view-canary");
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseView({ ok: true }, SecretDoc, { path: "meta.json", version: "canary" })).toThrow();
+      expect(() => parseView({ ok: true }, SecretDoc, { path: "meta.json", version: "canary" })).toThrow();
+      logViewParseErrorSummary();
+      const logged = JSON.stringify(errorSpy.mock.calls);
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).toContain("repeated parse failures");
+      expect(logged).not.toContain("CANARY");
+    } finally {
+      errorSpy.mockRestore();
+      resetViewParseStateForTests();
+    }
+  });
 });

@@ -255,4 +255,18 @@ describe("metadata GraphQL resume", () => {
     expect(state.progress?.transient_attempts).toBe(MAX_METADATA_TRANSIENT_ATTEMPTS);
     expect(state.shard).toBeNull();
   });
+
+  test("persisted last_error omits secret canaries and keeps the GraphQL category", async () => {
+    const canary = "ghp_CANARYMISSEDSINK1234567890abcd";
+    const { state, deps } = fakeMetadata([1]);
+    deps.fetchBatch = async () => {
+      throw new GitHubHttpError("graphql", 502, `error code: 502 ${canary}`);
+    };
+
+    const first = await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
+    expect(first).toMatchObject({ retryMetadata: true });
+    expect(state.progress?.transient_attempts).toBe(1);
+    expect(state.progress?.last_error).toContain("GitHub GraphQL 502");
+    expect(state.progress?.last_error).not.toContain("CANARY");
+  });
 });

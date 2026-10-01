@@ -1,6 +1,7 @@
 import { WorkflowManifest } from "@/lib/contracts";
 import { sendAlert } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { logViewParseErrorSummary } from "@/lib/data/parse-view";
 import { claimWorkflowLease, releaseWorkflowLease } from "@/lib/workflows/lease";
 import { putOwnedView } from "@/lib/workflows/owned-write";
@@ -46,15 +47,16 @@ export async function markPublished(runId: string, startedAt: string, fencingTok
 
 /** Mark the run failed; line on Blob does not flip latest-success (line stays at last good run). */
 export async function markFailed(runId: string, startedAt: string, error: string, fencingToken: number): Promise<void> {
+  const safeError = sanitizeErrorText(error);
   const manifest = { run_id: runId, started_at: startedAt, status: "failed", steps: STEPS, published_version: null };
   WorkflowManifest.parse(manifest);
   const owner = { runId, fencingToken };
   await putOwnedView(owner, `ops/workflows/${runId}/manifest.json`, manifest);
-  await putOwnedView(owner, `ops/workflows/${runId}/error.json`, { run_id: runId, error, at: new Date().toISOString() });
+  await putOwnedView(owner, `ops/workflows/${runId}/error.json`, { run_id: runId, error: safeError, at: new Date().toISOString() });
   const released = await releaseWorkflowLease(runId, "failed", undefined, undefined, fencingToken);
   if (!released) throw new Error(`workflow ${runId} lost fencing token ${fencingToken} before failed release`);
   // Surface the failure: greppable log + optional webhook + health beacon. None of these throw.
-  await sendAlert({ pipeline: "workflow-refresh", title: "managed refresh failed", run_id: runId, error });
-  await recordHealth("workflow-refresh", "failed", { run_id: runId, error });
+  await sendAlert({ pipeline: "workflow-refresh", title: "managed refresh failed", run_id: runId, error: safeError });
+  await recordHealth("workflow-refresh", "failed", { run_id: runId, error: safeError });
   logViewParseErrorSummary("[workflow-refresh]");
 }
