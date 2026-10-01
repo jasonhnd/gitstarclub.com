@@ -51,7 +51,7 @@ export class GitHubHttpError extends Error {
 
   constructor(source: "graphql" | "search", status: number, body: string) {
     const label = source === "graphql" ? "GraphQL" : "Search";
-    super(`GitHub ${label} ${status}: ${body.slice(0, 200)}`);
+    super(`GitHub ${label} ${status}: ${sanitizeErrorText(body).slice(0, 200)}`);
     this.name = "GitHubHttpError";
     this.status = status;
     this.source = source;

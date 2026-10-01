@@ -7,20 +7,22 @@ Stop raw error strings from carrying secrets into console logs, alert webhooks, 
 ## Scope
 
 - Add `sanitizeErrorText` in `web/lib/observability/sanitize-error.ts`.
-- Redact bearer headers, known runtime secret values (`CRON_SECRET`, Blob read-write token, GitHub token, R2 and AWS keys, Cloudflare Access secrets, alert webhook URL, deploy hook URL), credential URLs, and token-shaped strings.
+- Redact bearer headers, known runtime secret values (`CRON_SECRET`, Blob read-write token, GitHub token, R2 and AWS keys, Cloudflare Access secrets, alert webhook URL, deploy hook URL, Vercel automation bypass secret), credential URLs, and token-shaped strings.
 - Keep a useful failure category such as `GitHub GraphQL 502`, `timeout`, or `schema validation failed`.
 - Apply the sanitizer where text leaves the process:
   - `sendAlert` log line and webhook body, including the assembled webhook transport diagnostic (`error.name` and message)
   - `failedRun` / `recordSyncRun` / `safeRecordSyncRun`, including `result.post_commit_errors` on the new run and on retained history
   - cron success JSON, which spreads the same sanitized refresh result
-  - `recordHealth` stored `error` and the health-write failure log
+  - `recordHealth` stored `error`, retained health signals, and the health-write failure log
   - `markFailed` checkpoint `error.json`, alert, and health detail
   - metadata progress `last_error` and validation report `failures` immediately before those ops JSON writes
   - step checkpoint `error`, step failure log, and step JSON response `error`
   - rollback failure log
   - refresh start failure logs, alert text, and the rejected-start response `error`
   - cron lease-release failure log
-  - runtime console diagnostics in bootstrap-pointer, search-index, IndexNow, GitHub partial/invalid-node warnings, and view-schema parse logs
+  - runtime console diagnostics in bootstrap-pointer, search-index, IndexNow, GitHub partial/invalid-node warnings, view-schema parse logs, and the Worker queue consumer
+  - GitHub HTTP error bodies, redacted in full before the constructor bound
+  - legacy sync-run history that omits `post_commit_errors`
 - Known secrets come from the live Worker env and from stale `process.env` when those maps differ. An explicit `env` option stays hermetic.
 - Every nonempty known secret is redacted. Bearer credentials of any nonempty length are redacted. Patterns run on the full string, then the result is truncated.
 - Username-only URL userinfo and quoted token assignments are redacted.
