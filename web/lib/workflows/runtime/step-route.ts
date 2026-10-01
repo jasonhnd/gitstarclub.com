@@ -1,6 +1,7 @@
 import { WorkflowStepCheckpoint } from "@/lib/contracts";
 import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { putView } from "@/lib/data/write";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { getDeployEnv, getHostingTarget, getWorkflowRuntimeKind, isProductionDeployment } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 import {
@@ -19,6 +20,12 @@ import { nextRefreshJob } from "./graph";
 import { withStepRetry, type RetryPolicy } from "./retry";
 import { resolveWorkflowRuntime, type ResolveWorkflowRuntimeOptions } from "./resolve";
 import { isRefreshStepJob, type RefreshStepJob, type RefreshStepResult } from "./types";
+
+function publicStepResult(result: RefreshStepResult): RefreshStepResult {
+  if (typeof result.error !== "string") return result;
+  const error = sanitizeErrorText(result.error);
+  return error === result.error ? result : { ...result, error };
+}
 
 export type RefreshStepRouteOptions = ResolveWorkflowRuntimeOptions & {
   executeFull?: (job: Extract<RefreshStepJob, { graph: "full" }>) => Promise<RefreshStepResult>;
@@ -45,7 +52,7 @@ async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult)
     started_at: now,
     finished_at: now,
     files_written: typeof result.files === "number" ? result.files : undefined,
-    error: result.error ?? null,
+    error: typeof result.error === "string" ? sanitizeErrorText(result.error) : result.error ?? null,
   });
   await putView(`ops/workflows/${job.runId}/steps/${step}.json`, checkpoint);
   if (job.graph === "full" && job.name === "whitelist" && !hasNextWhitelistSearch(result)) {
@@ -144,26 +151,27 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
     const headers = new Headers({ "content-type": "application/json" });
     const successor = encodeSuccessorJobHeader(nextRefreshJob(job, result));
     if (successor) headers.set(QUEUE_SUCCESSOR_HEADER, successor);
-    return new Response(JSON.stringify({ ok: true, runId: job.runId, step: job.name, result }), {
+    return new Response(JSON.stringify({ ok: true, runId: job.runId, step: job.name, result: publicStepResult(result) }), {
       status: 200,
       headers,
     });
   } catch (error) {
     clearViewParseMemo();
+    const safeError = sanitizeErrorText(error instanceof Error ? error.message : String(error));
     try {
       const { failRefreshJob } = await import("./execute");
       await failRefreshJob(job, error);
     } catch (checkpointError) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `${message}; failed to record/release failed run: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`,
+      const checkpointMessage = sanitizeErrorText(
+        checkpointError instanceof Error ? checkpointError.message : String(checkpointError),
       );
+      throw new Error(`${safeError}; failed to record/release failed run: ${checkpointMessage}`);
     }
     const runId = job.runId;
     console.error("[workflow-refresh] step failed", {
       run_id: runId,
       step: job.name,
-      error: error instanceof Error ? error.message : String(error),
+      error: safeError,
     });
     return Response.json(internalFailurePayload(runId), { status: 500 });
   }
