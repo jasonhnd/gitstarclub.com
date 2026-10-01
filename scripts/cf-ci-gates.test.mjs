@@ -267,6 +267,7 @@ describe("CF CI gates", () => {
         assert.deepEqual(found.issues, entry.expect, entry.name);
         assert.equal(found.rejected, false, entry.name);
       } else {
+        assert.ok(entry.includes);
         assert.ok(found.issues.join("\n").includes(entry.includes), `${entry.name}: ${found.issues.join("\n")}`);
         assert.equal(found.rejected, true, entry.name);
       }
