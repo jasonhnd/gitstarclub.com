@@ -27,6 +27,8 @@ export const PRODUCTION_BLOB_BASE_URL =
   "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com";
 export const PREVIEW_R2_BUCKET = "gitstarclub-data-pre";
 export const PRODUCTION_R2_BUCKET = "gitstarclub-data-prod";
+export const PREVIEW_R2_PUBLIC_HOST = "data-pre.gitstarclub.com";
+export const PRODUCTION_R2_PUBLIC_HOST = "data.gitstarclub.com";
 export const PREVIEW_R2_PUBLIC_BASE_URL = "https://data-pre.gitstarclub.com";
 export const PREVIEW_DEPLOY_ENV = "pre";
 // `r2` and `r2_s3` both read R2_PUBLIC_BASE_URL. Preview locks `r2`.
@@ -90,6 +92,12 @@ function namedR2Bucket(buckets, binding) {
 
 function jsonMentions(value, needle) {
   return JSON.stringify(value ?? null).includes(needle);
+}
+
+// Host allow/deny is case-insensitive. URL hostname comparison folds case, and
+// `DATA.gitstarclub.com` is still the production host inside env.pre.
+function jsonMentionsHost(value, host) {
+  return JSON.stringify(value ?? null).toLowerCase().includes(String(host).toLowerCase());
 }
 
 export function readDefaultCfPreviewOrigin(runtimeConfigSource) {
@@ -444,17 +452,19 @@ export function assertCfCiGates(sources) {
   ) {
     issues.push("wrangler env.pre DATA bucket must differ from the top-level DATA bucket");
   }
-  for (const needle of [PRODUCTION_R2_BUCKET, "data.gitstarclub.com"]) {
-    if (jsonMentions(preview, needle)) {
-      issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} must not mention ${needle}`);
-    }
+  if (jsonMentions(preview, PRODUCTION_R2_BUCKET)) {
+    issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} must not mention ${PRODUCTION_R2_BUCKET}`);
+  }
+  if (jsonMentionsHost(preview, PRODUCTION_R2_PUBLIC_HOST)) {
+    issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} must not mention ${PRODUCTION_R2_PUBLIC_HOST}`);
   }
   const topLevel = { ...wrangler };
   delete topLevel.env;
-  for (const needle of [PREVIEW_R2_BUCKET, "data-pre.gitstarclub.com"]) {
-    if (jsonMentions(topLevel, needle)) {
-      issues.push(`wrangler top-level must not mention ${needle}`);
-    }
+  if (jsonMentions(topLevel, PREVIEW_R2_BUCKET)) {
+    issues.push(`wrangler top-level must not mention ${PREVIEW_R2_BUCKET}`);
+  }
+  if (jsonMentionsHost(topLevel, PREVIEW_R2_PUBLIC_HOST)) {
+    issues.push(`wrangler top-level must not mention ${PREVIEW_R2_PUBLIC_HOST}`);
   }
   if (preview?.vars?.DEPLOY_ENV !== PREVIEW_DEPLOY_ENV) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} vars.DEPLOY_ENV must be ${PREVIEW_DEPLOY_ENV}`);
