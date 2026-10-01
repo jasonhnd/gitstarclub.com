@@ -1,11 +1,12 @@
 // Backfill step 7 — export canonical/v2 JSON shards from the bootstrap fact table.
-// One-time bootstrap seed for the Vercel-only model: reads star_daily.parquet +
+// One-time bootstrap seed. The default upload target is the Blob store; --store r2
+// seeds the preview bucket. Reads star_daily.parquet +
 // repos.json (already extracted), computes per-repo monthly/weekly flow, recent
 // daily tail, site-daily totals, and the frozen discount d (DuckDB), then writes
 // bucketed canonical/v2/* shards (bucket = id % 32, matching
 // web/lib/workflows/buckets.ts), stages them under an immutable bootstrap
 // generation, validates both phases, and commits one pointer. After this, the
-// Vercel workflow maintains copy-on-write canonical overlays — no DuckDB at runtime.
+// refresh workflow maintains copy-on-write canonical overlays — no DuckDB at runtime.
 // See docs/DATA-CONTRACTS.md §1.4 / VERCEL-DATA-OPERATIONS §5.
 // Run (from pipeline/):  node backfill/07-export-v2.mjs --generation bootstrap-YYYYMMDDTHHMMSSZ
 //                        node backfill/07-export-v2.mjs --no-upload  (export + local validation only)
