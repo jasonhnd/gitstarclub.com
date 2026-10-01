@@ -82,7 +82,9 @@ gitstarclub/
 
 ## Cron routes and scheduler evidence
 
-The legacy `web/vercel.json` declarations list route cadence, not proof of an active production scheduler. The 2026-09-24 Cloudflare schedules API snapshot in issue #528 showed three preview schedules and an empty production Worker schedule. The production trigger remains unverified; see [docs/OPS.md](docs/OPS.md).
+The legacy `web/vercel.json` declarations list route cadence. They are not proof of an active production scheduler. Repository Worker `triggers.crons` are `[]` for both `gitstarclub-web` and `gitstarclub-web-pre`. The production trigger remains unverified; see [docs/OPS.md](docs/OPS.md). Do not infer it from `web/vercel.json`.
+
+`https://pre.gitstarclub.com` is public and is served by Cloudflare. It sends `<meta name="robots" content="noindex,nofollow">` and `robots.txt` returns `Disallow: /`. `noindex` is not access control. The preview site shows public GitHub data only. There is no login wall.
 
 
 | Path | Schedule | Purpose |
