@@ -833,6 +833,24 @@ describe("CF CI gates", () => {
         expect: [],
       },
       {
+        name: "ipv6 loopback fixture",
+        input: {
+          target: "production",
+          shell: { BLOB_BASE_URL: "http://[::1]:4010" },
+          wrangler,
+        },
+        expect: [],
+      },
+      {
+        name: "ipv6 loopback fixture on preview",
+        input: {
+          target: "pre",
+          shell: { R2_PUBLIC_BASE_URL: "http://[::1]:4010/" },
+          wrangler,
+        },
+        expect: [],
+      },
+      {
         name: "preview bakes production blob",
         input: {
           target: "pre",
