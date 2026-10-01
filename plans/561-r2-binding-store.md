@@ -23,7 +23,7 @@ Add an `ObjectStore` that talks to R2 through the Worker `DATA` binding, and sto
 
 ## Etag convention
 
-The binding store returns Cloudflare `httpEtag` (quoted). `ifMatch` is passed back as `onlyIf.etagMatches`. Callers round-trip the value from `get` / `head`.
+The binding store returns Cloudflare `httpEtag` (quoted). Callers round-trip that value as `ifMatch`. #572 strips one quote pair before `onlyIf.etagMatches`, because workerd rejects a quoted conditional ETag.
 
 ## Acceptance
 

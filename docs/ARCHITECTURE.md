@@ -1,7 +1,7 @@
 ---
 owner: architecture
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - system overview
   - tech stack
@@ -208,19 +208,21 @@ Eleven thousand-plus pages cannot be built at deploy time within the deployment 
 
 | Tier | Surfaces | Refresh mechanism |
 |---|---|---|
-| **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy; daily cron atomically publishes a live generation then calls `revalidatePath` |
-| **Movers** (event-driven, daily) | Repos and orgs flagged as moving today (top-50 daily flow ∪ ≥ 5× their 90-day median with absolute floor ∪ milestone crossings) | Daily cron picks the set and calls `revalidatePath` on those entities + the pulse surface |
-| **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos and orgs not currently moving | `dynamicParams=true`, not fully enumerated in `generateStaticParams`; first request renders, then caches. Historical periods use `revalidate=false`; repo/org details use `revalidate=86400`, with targeted `revalidatePath` for movers. |
-| **Frozen** | Completed weekly / monthly / yearly pages | Rendered once and stamped "as of <date>"; only re-rendered when the recompute publishes a new pointer version |
+| **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy for the current core params. The live cron calls `revalidatePath` on the English home, `/pulse`, `/rankings`, and the current year, month, and week. A publish calls `revalidatePath` on the localized core paths in `corePublicationRevalidatePaths`. |
+| **Movers** (event-driven, daily) | Repos and orgs flagged as moving today (top-50 daily flow ∪ ≥ 5× their 90-day median with absolute floor ∪ milestone crossings) | The live cron submits those repos and orgs to IndexNow. It does not call `revalidatePath` on the entity pages. That path fact is not an HTML lifetime. |
+| **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos, orgs, and category pages that are not prebuilt | `dynamicParams=true`. Exported segment defaults differ by route: historical rankings export `revalidate=false`; repo detail, org detail, category detail, and category pagination export `604800`; category index and dimension export `86400`; org index exports `3600`. Those exports are not an effective HTML lifetime. These routes are not explicit `revalidatePath` targets. Shared publication tags are a separate invalidation path. |
+| **Frozen** | Completed weekly / monthly / yearly pages | Completed period routes export `revalidate=false` and are stamped "as of <date>". Those paths are not explicit `revalidatePath` targets. The path list does not mean a pointer switch leaves the stored HTML in place. |
 
 Cadence:
 
 - **Deploys** (code or structural change): build the small core only; ISR resets and re-warms on first request. Long-tail surfaces are not enumerated at deploy.
-- **Daily cron**: acquire the date/job idempotency lease, build and validate all live files, atomically switch `live/latest.json`, then revalidate hot surfaces. A failed run leaves the previous complete generation selected.
+- **Daily cron**: acquire the date/job idempotency lease, build and validate all live files, atomically switch `live/latest.json`, then call `revalidatePath` only for the English paths in `revalidateLivePaths` (home, `/pulse`, `/rankings`, current year, current month, current week). Mover entities go to IndexNow. A failed run leaves the previous complete generation selected.
 - **Weekly cron**: use the same generation protocol for current week/month rank, heatmap, hot snapshot, and then update `ops/sync-runs.json`.
-- **Workflow runs** (recompute → validate → publish): re-derive every `views/**` artifact, validate, and atomically swap the pointer. Old versions are reaped by the GC step.
+- **Workflow runs** (recompute, validate, publish): re-derive every `views/**` artifact, validate, and atomically swap the pointer. `invalidatePublishedViews` then expires tags `published-views-pointer` and `bootstrap-publication-pointer` with `expire: 0`, and calls `revalidatePath` for `corePublicationRevalidatePaths` (home, `/pulse`, `/rankings`, `/categories`, `/about`, `/o`, `/compare`, `/privacy`, in every locale). Repo detail, org detail, category detail, category pagination, and historical period paths are not in that path list. They are not thereby left unchanged. `resolveVersion` tags the `views/latest.json` fetch with `published-views-pointer`. A published base read can also fetch `bootstrap/latest.json` with tag `bootstrap-publication-pointer` and `revalidate` 300 (`BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS`). Under the Next driver those tags are stored on the parent prerender, so expiring them can miss the page cache without a `revalidatePath` for that URL. The production driver wraps Next `revalidateTag` and `revalidatePath`. The non-production `cf-stub` only records the calls. Hosted HTML lifetime was not measured here. Old versions are reaped by the GC step.
 
-Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default — leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model); historical period routes use frozen caching while repo/org long-tail routes use daily ISR; rendering reads only bounded JSON views.
+The segment export, the fetch `revalidate`, and explicit path invalidation are different settings, and they interact. `export const revalidate` is a default, not an independent HTML TTL. Inside `readView`, `VERSION_TTL_MS` is 3600 seconds, `DAILY_BASE_VIEW_TTL_MS` is 86400 seconds, and the live pointer default is 60 seconds. `resolveVersion` passes `next.revalidate` equal to that pointer TTL on `views/latest.json`, and `fetchWithTimeout` forwards `next`. With `cacheComponents` off, Next lowers the route revalidation interval to the smallest fetch `revalidate` in the render, so a 3600-second `getMeta()` or a 300-second bootstrap pointer fetch can undercut an exported `604800`. Expiring the shared tags is separate from both clocks. The per-route table is in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md). This paragraph is the route exports and the fetch options in this repo. It is not a measurement of the hosted cache.
+
+Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default; leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model). Historical period routes export `revalidate=false`. Repo detail, org detail, category detail, and category pagination export `604800`. Category index and dimension export `86400`. Org index exports `3600`. Treat those as exported defaults. A shorter fetch `revalidate` on the same render can lower the route interval, and shared tag expiry can miss the page cache without a matching `revalidatePath`. Rendering reads only bounded JSON views.
 
 ### GraphQL budget
 
@@ -235,7 +237,7 @@ The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per quer
 | Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW. Analytics are off on this host. Third-party analytics are unsupported. |
 | `Cache-Control: s-maxage=86400, stale-while-revalidate` | Historical surfaces cached aggressively |
 | Subset fonts as woff2 | Plus Jakarta Sans subset ~30 KB |
-| Pre-rendered OG cards in Blob | No function cost on share embeds |
+| OG images from `next/og` routes (`revalidate=86400`), with the site card as the fallback | Drawn by the image route and then cached. Not pre-generated Blob objects. Org pages and `/rankings` use `/opengraph-image`. A later cache hit is not a guarantee of zero function invocations. |
 
 ### Page weight
 
