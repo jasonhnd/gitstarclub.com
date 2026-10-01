@@ -100,6 +100,12 @@ function jsonMentionsHost(value, host) {
   return JSON.stringify(value ?? null).toLowerCase().includes(String(host).toLowerCase());
 }
 
+function isUnsetOrBlobDriver(value) {
+  if (value === undefined) return true;
+  const folded = String(value).trim().toLowerCase();
+  return folded === "" || folded === "blob";
+}
+
 export function readDefaultCfPreviewOrigin(runtimeConfigSource) {
   const match = runtimeConfigSource.match(/export const DEFAULT_CF_PREVIEW_ORIGIN = "([^"]+)"/);
   if (!match) {
@@ -465,6 +471,23 @@ export function assertCfCiGates(sources) {
   }
   if (jsonMentionsHost(topLevel, PREVIEW_R2_PUBLIC_HOST)) {
     issues.push(`wrangler top-level must not mention ${PREVIEW_R2_PUBLIC_HOST}`);
+  }
+  // Before R2 cutover (I-5b) the top-level Worker still reads Vercel Blob.
+  // DEPLOY_ENV stays unset. Drivers stay unset or blob, including the
+  // READ_DRIVER and WRITE_DRIVER aliases. Setting any DEPLOY_ENV, or an R2
+  // driver, is the cutover and must update this gate in the same change.
+  if (wrangler.vars?.DEPLOY_ENV !== undefined) {
+    issues.push(
+      `wrangler top-level vars.DEPLOY_ENV must be unset until R2 cutover (received ${quote(wrangler.vars.DEPLOY_ENV)})`,
+    );
+  }
+  for (const key of ["STORAGE_READ_DRIVER", "READ_DRIVER", "STORAGE_WRITE_DRIVER", "WRITE_DRIVER"]) {
+    const value = wrangler.vars?.[key];
+    if (!isUnsetOrBlobDriver(value)) {
+      issues.push(
+        `wrangler top-level vars.${key} must be unset or blob until R2 cutover (received ${quote(value)})`,
+      );
+    }
   }
   if (preview?.vars?.DEPLOY_ENV !== PREVIEW_DEPLOY_ENV) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} vars.DEPLOY_ENV must be ${PREVIEW_DEPLOY_ENV}`);
