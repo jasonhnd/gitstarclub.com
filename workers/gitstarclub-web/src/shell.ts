@@ -1,4 +1,4 @@
-import { cfBuildCommitSha } from "../../../web/lib/cf-build-identity";
+import { reportedCommitSha } from "../../../web/lib/deployment-commit";
 import { sanitizeErrorText } from "../../../web/lib/observability/sanitize-error-text";
 import {
   successorJobAfterRefreshStep,
@@ -44,11 +44,15 @@ function hasValidBearer(header: string | null, secret: string | undefined): bool
   return header.slice("Bearer ".length) === secret;
 }
 
-export function previewIdentity(request: Request, env: WorkerEnv): Record<string, unknown> {
+export function previewIdentity(
+  request: Request,
+  env: WorkerEnv,
+  builtCommitSha?: string | null,
+): Record<string, unknown> {
   const url = new URL(request.url);
   const deploymentUrl = (env.CF_PREVIEW_ORIGIN ?? url.origin).replace(/\/+$/, "");
   return {
-    commitSha: env.VERCEL_GIT_COMMIT_SHA?.trim() || env.CF_PREVIEW_COMMIT_SHA?.trim() || cfBuildCommitSha || null,
+    commitSha: reportedCommitSha(env, builtCommitSha),
     deploymentUrl,
     target: "cf",
     host: url.host,
