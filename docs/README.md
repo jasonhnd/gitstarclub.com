@@ -1,7 +1,7 @@
 ---
 owner: docs / maintenance
 status: active
-last_reviewed: 2026-09-30
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - documentation index
   - documentation ownership map
@@ -16,7 +16,7 @@ This page is the navigation index for `docs/`. For a project overview, start at 
 
 ## Analytics
 
-Vercel Web Analytics is the only analytics integration and remains enabled through `<Analytics />` in `web/app/_shell/RootShell.tsx`. It uses same-origin `/_vercel/insights` endpoints, and the build asserts that CSP permits them. Google Analytics and other third-party tracking scripts are intentionally unsupported, matching the public privacy statement.
+The Cloudflare Workers host does not load Vercel Web Analytics. `analyticsProvidersForEnvironment` in `web/lib/analytics-policy.ts` returns no provider when `HOSTING_TARGET=cf` and `VERCEL_ENV` is not `production`. Both the production Worker and preview `env.pre` set `HOSTING_TARGET=cf` and do not set `VERCEL_ENV`. Google Analytics and other third-party tracking scripts stay unsupported.
 
 ## Reading order (new engineer)
 
@@ -37,7 +37,7 @@ This section is the authoritative newcomer reading order. Update it when adding,
 13. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) - locked visual baseline, tokens, typography, Chrome appearance, accessibility notes.
 14. [SEO.md](./SEO.md) — per-page SEO templates, sitemap structure, robots policy.
 15. [GEO.md](./GEO.md) — answer-engine citation strategy: answer capsules, schema, crawler hygiene, freshness, and measurement.
-16. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout until cutover, env vars, alerting. Current R2 status lives in [R2-CUTOVER.md](./R2-CUTOVER.md). P0 adapter history lives in [archive/R2-MIGRATION-P0.md](./archive/R2-MIGRATION-P0.md). P1 workflow/cron details live in [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md). P2 ISR/Preview/observability details live in [archive/CF-MIGRATION-P2.md](./archive/CF-MIGRATION-P2.md). P3 Workers hosting details live in [archive/CF-MIGRATION-P3.md](./archive/CF-MIGRATION-P3.md).
+16. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout until cutover, env vars, alerting. Current R2 status lives in [R2-CUTOVER.md](./R2-CUTOVER.md). Phase notes in `docs/archive/` are superseded.
 17. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants. GitHub required CI is `static` + `production-build` only.
 
 Supporting docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [COCKPIT.md](./COCKPIT.md) for the unshipped Cockpit content contract and pre spike; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [DATA-EXPORTS.md](./DATA-EXPORTS.md) for public export files; [I18N.md](./I18N.md) for the shipped locale URL architecture decision record.
@@ -61,10 +61,10 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | [geo/queries.md](./geo/queries.md) | active | GEO measurement / citation review | Target queries, review cadence, page-type coverage, or miss classifications change. Re-run affected high-priority checks after schema, robots, sitemap, answer-capsule, ranking, category, methodology, or data-export changes. | Operational registry; [GEO.md](./GEO.md) remains the source of truth for strategy, metrics, and measurement intent. |
 | [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) | active | GEO crawler and AI-referrer reporting | `geo:report` inputs, output fields, taxonomy, privacy rules, or operator commands change. | Operational runbook; [GEO.md](./GEO.md) owns the reporting intent, and [OPS.md](./OPS.md) owns production log/operations practice. |
 | [R2-CUTOVER.md](./R2-CUTOVER.md) | active | R2 cutover runbook | Stage status, buckets, protection layers, acceptance commands, or rollback change. | Current object storage and the stage plan. [OPS.md](./OPS.md) still owns Blob layout until cutover and the env inventory. |
-| [archive/R2-MIGRATION-P0.md](./archive/R2-MIGRATION-P0.md) | superseded | Cloudflare R2 P0 storage adapter | Only to correct a historical error. Current status lives in [R2-CUTOVER.md](./R2-CUTOVER.md). | History. The JSON store does not use the MEDIA binding. |
-| [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) | active | Cloudflare migrate P1 workflow runtime | Runtime kinds, CF Cron dispatch / Queue non-prod proof, Blob fetch write path, lease origin-body renew, dual-scheduler rollback, or the preview Bearer full-refresh acceptance matrix change. | P1 orchestration only; production cron table stays in [OPS.md](./OPS.md) / `web/vercel.json`. Production Worker crons stay empty until an approved cutover. Preview Bearer full refresh is scored by the P1 acceptance matrix (`fold-decision` / recompute hops / lease renew **L1** / silence-is-fail). Full CF daily/refresh depends on the fetch Blob client. |
-| [archive/CF-MIGRATION-P2.md](./archive/CF-MIGRATION-P2.md) | active | Cloudflare migrate P2 ISR / Preview / observability | Cache-invalidation drivers, CF Preview + Access, optional `cf-preview` job, or P2 rollback change. | P2 only; production Preview/product-gates/`revalidatePath` stay Vercel. |
-| [archive/CF-MIGRATION-P3.md](./archive/CF-MIGRATION-P3.md) | active | Cloudflare migrate P3 Workers host | OpenNext adapter, workers.dev preview, optional `cf-workers-host` job, or P3 rollback change. | P3 only; production apex/www stay Vercel. Do not cut DNS. |
+| [archive/R2-MIGRATION-P0.md](./archive/R2-MIGRATION-P0.md) | superseded | Archived P0 storage adapter | Only to correct a historical error. Current status lives in [R2-CUTOVER.md](./R2-CUTOVER.md). | Archive. The JSON store does not use the MEDIA binding. |
+| [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) | superseded | Archived P1 workflow notes | Only to correct a historical error. Current schedules and rollback live in [OPS.md](./OPS.md). | Archive. Production Worker crons stay empty. The production trigger is unverified. |
+| [archive/CF-MIGRATION-P2.md](./archive/CF-MIGRATION-P2.md) | superseded | Archived P2 preview notes | Only to correct a historical error. Current logs and preview access live in [OPS.md](./OPS.md). | Archive. Preview is public and `noindex`. |
+| [archive/CF-MIGRATION-P3.md](./archive/CF-MIGRATION-P3.md) | superseded | Archived P3 host notes | Only to correct a historical error. Current hosting lives in [OPS.md](./OPS.md). | Archive. Production and preview run on Cloudflare Workers. |
 
 ### Decision analyses
 
@@ -91,7 +91,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | PIPELINE | Bootstrap pipeline stages and algorithms (one-off, archived; recurring refresh lives in VERCEL-DATA-OPERATIONS) |
 | RANKING | Rank definitions, stock anchoring, derived rankings, edge cases (single source of truth for ranking algorithms) |
 | CODEBASE | Code map: module layers, data layers, contracts, workflow modules, category system, and ownership boundaries |
-| DEVELOPMENT | Developer workflow: doc ownership, change playbooks, Vercel-first verification, and drift handling |
+| DEVELOPMENT | Developer workflow: doc ownership, change playbooks, Cloudflare hosting verification, and drift handling |
 | WORKFLOW | Document-driven issue workflow, role boundaries, merge gates (`static` + `production-build` required; `preview-e2e` / `product-gates` optional), and visual guardrails |
 | UIUX-ROUTE-INVENTORY | Sole maintained route/source inventory for pages, endpoints, metadata routes, and operational handlers |
 | FRONTEND | Rendering strategy, component catalog, data-access layer, i18n implementation |
@@ -100,10 +100,10 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | GEO | Answer-engine citation strategy, page-type answer capsules, GEO schema plan, AI crawler hygiene, freshness, and measurement |
 | OPS | Branch topology / staging, deploy / rollback / cron / workflow runbooks, Blob layout until cutover, env vars, alerting, failure modes |
 | R2-CUTOVER | Current object storage, stage plan (0-6), acceptance, and rollback |
-| R2-MIGRATION-P0 | Superseded P0 adapter history. The JSON store does not use the MEDIA binding |
-| CF-MIGRATION-P1 | Cloudflare migrate P1 workflow runtime: HTTP/memory/CF Queue, non-prod Cron, Blob fetch write path, preview Bearer full-refresh acceptance matrix, dual-scheduler rollback |
-| CF-MIGRATION-P2 | Cloudflare migrate P2 ISR port, CF Preview/Access, optional CI dual-run, Workers Observability |
-| CF-MIGRATION-P3 | Cloudflare migrate P3 Workers host: OpenNext preview, R2/Queue bindings, rollback, no DNS cut |
+| archive/R2-MIGRATION-P0 | Superseded P0 adapter notes. Current storage is R2-CUTOVER |
+| archive/CF-MIGRATION-P1 | Superseded P1 notes. Current schedules and rollback are in OPS |
+| archive/CF-MIGRATION-P2 | Superseded P2 notes. Current logs and preview access are in OPS |
+| archive/CF-MIGRATION-P3 | Superseded P3 notes. Current hosting is in OPS |
 | TESTING | Test pyramid, contract tests, recompute parity, validation invariants, smoke tests; GitHub required CI is `static` + `production-build` |
 | PRODUCT | Product framing: identity, page surfaces, tone, data-honesty posture, i18n posture |
 | COCKPIT | Unshipped Cockpit content contract and pre-only `/cockpit` spike |
@@ -131,11 +131,11 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Endpoint contracts (method / auth / params / response / cache / status codes) | [API.md](./API.md) |
 | Blob layout until cutover | OPS (§Vercel Blob layout (until cutover)) |
 | R2 cutover and current object storage | [R2-CUTOVER.md](./R2-CUTOVER.md) |
-| Cloudflare R2 P0 adapter | Superseded history in [archive/R2-MIGRATION-P0.md](./archive/R2-MIGRATION-P0.md). Current status is [R2-CUTOVER.md](./R2-CUTOVER.md) |
-| Cloudflare migrate P1 workflow runtime | [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
-| CF preview Bearer full-refresh acceptance matrix | [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
-| Cloudflare migrate P2 ISR / Preview / observability | [archive/CF-MIGRATION-P2.md](./archive/CF-MIGRATION-P2.md) |
-| Cloudflare migrate P3 Workers host | [archive/CF-MIGRATION-P3.md](./archive/CF-MIGRATION-P3.md) |
+| Cloudflare R2 P0 adapter | Superseded notes in [archive/R2-MIGRATION-P0.md](./archive/R2-MIGRATION-P0.md). Current status is [R2-CUTOVER.md](./R2-CUTOVER.md) |
+| Schedules, refresh operations, and deploy rollback | [OPS.md](./OPS.md). The production trigger is unverified |
+| Preview access and indexing | [OPS.md](./OPS.md) and [SEO.md](./SEO.md). Preview is public and `noindex` |
+| Workers logs and alerts | [OPS.md](./OPS.md) |
+| Archived phase notes | [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md), [archive/CF-MIGRATION-P2.md](./archive/CF-MIGRATION-P2.md), [archive/CF-MIGRATION-P3.md](./archive/CF-MIGRATION-P3.md) |
 | Branch topology / staging / promotion | [OPS.md](./OPS.md) (§Branch topology / staging) |
 | Cron schedule | OPS (§Cron schedule) |
 | Workflow step enumeration | VERCEL-DATA-OPERATIONS |
