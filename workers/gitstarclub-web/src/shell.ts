@@ -1,4 +1,5 @@
 import { cfBuildCommitSha } from "../../../web/lib/cf-build-identity";
+import { sanitizeErrorText } from "../../../web/lib/observability/sanitize-error-text";
 import {
   successorJobAfterRefreshStep,
   successorJobFromResponseHeaders,
@@ -17,8 +18,21 @@ const FIXTURE_NEXT: Record<string, string | null> = {
   complete: null,
 };
 
-export function emitRunLog(fields: Record<string, unknown>): void {
-  console.log(JSON.stringify({ ts: new Date().toISOString(), ...fields }));
+function stringBindings(env: object | undefined): Record<string, string | undefined> {
+  if (!env) return {};
+  const out: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
+}
+
+export function emitRunLog(fields: Record<string, unknown>, env?: object): void {
+  const payload = { ...fields };
+  if (typeof payload.error === "string") {
+    payload.error = sanitizeErrorText(payload.error, { env: stringBindings(env) });
+  }
+  console.log(JSON.stringify({ ts: new Date().toISOString(), ...payload }));
 }
 
 function unauthorized(): Response {
@@ -108,7 +122,7 @@ export async function consumeJob(env: WorkerEnv, job: RefreshJob): Promise<void>
       step: job.name,
       via: "successor-header",
       error: error instanceof Error ? error.message : String(error),
-    });
+    }, env);
   }
   try {
     const next = await successorJobAfterRefreshStep(job, response);
@@ -133,7 +147,7 @@ export async function consumeJob(env: WorkerEnv, job: RefreshJob): Promise<void>
       runId: job.runId,
       step: job.name,
       error: error instanceof Error ? error.message : String(error),
-    });
+    }, env);
     throw error;
   }
 }
