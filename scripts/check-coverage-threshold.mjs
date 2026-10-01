@@ -37,17 +37,27 @@ function parseRecord(lines) {
   const totals = { linesFound: 0, linesHit: 0, functionsFound: 0, functionsHit: 0 };
   const seen = { linesFound: false, linesHit: false, functionsFound: false, functionsHit: false };
   let sourceFile = "";
+  let sourceOpen = false;
   let meaningful = false;
   for (const line of lines) {
     if (line.trim() === "") continue;
     meaningful = true;
     if (line.startsWith("SF:")) {
+      if (sourceOpen) {
+        const where = sourceFile ? ` (${sourceFile})` : "";
+        throw new Error(`coverage report malformed: SF before end_of_record${where}`);
+      }
+      sourceOpen = true;
       sourceFile = line.slice(3).trim();
       continue;
     }
     const counter = COUNTERS.find((item) => line.startsWith(item.prefix));
     if (!counter) continue;
-    totals[counter.key] += parseCounter(line.slice(counter.prefix.length), counter.label);
+    const where = sourceFile ? ` (${sourceFile})` : "";
+    if (seen[counter.key]) {
+      throw new Error(`coverage report duplicate counter: ${counter.label}${where}`);
+    }
+    totals[counter.key] = parseCounter(line.slice(counter.prefix.length), counter.label);
     seen[counter.key] = true;
   }
   if (!meaningful) return null;
