@@ -185,6 +185,29 @@ describe("sendAlert", () => {
     }
   });
 
+  test("redacts punctuation, colon, and JSON-escaped credential assignments", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const fetchMock = mock(async () => new Response(null, { status: 204 }));
+    await sendAlert(
+      {
+        ...SUMMARY,
+        error: [
+          "GitHub GraphQL 502",
+          "password=!CANARYpunctuation42",
+          "token=CANARYstart:CANARYtail!",
+          String.raw`password=\"!CANARYescaped42\"`,
+        ].join(" "),
+      },
+      { fetch: fetchMock as unknown as AlertFetcher, now: new Date("2026-07-17T03:00:00.000Z") },
+    );
+    const logged = JSON.stringify(errSpy.mock.calls);
+    const webhook = String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body);
+    expect(logged).toContain("GitHub GraphQL 502");
+    expect(webhook).toContain("GitHub GraphQL 502");
+    expect(logged).not.toContain("CANARY");
+    expect(webhook).not.toContain("CANARY");
+  });
+
   test("redacts a short cron secret that bearer auth still accepts", async () => {
     const secret = "CANARYshort42";
     expect(hasValidBearerToken(`Bearer ${secret}`, secret)).toBe(true);

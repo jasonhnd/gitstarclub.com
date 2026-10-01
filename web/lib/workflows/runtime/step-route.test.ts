@@ -326,6 +326,33 @@ describe("runRefreshStepRoute", () => {
     }
   });
 
+  test("step response redacts punctuation and JSON-escaped assignments", async () => {
+    const putSpy = spyOn(write, "putView").mockResolvedValue(undefined as never);
+    try {
+      const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1")), {
+        kind: "memory",
+        executeFull: async () => ({
+          name: "startRun",
+          error: [
+            "GitHub GraphQL 502",
+            "password=!CANARYpunctuation42",
+            "token=CANARYstart:CANARYtail!",
+            String.raw`password=\"!CANARYescaped42\"`,
+          ].join(" "),
+        }),
+      });
+      expect(response.status).toBe(200);
+      const body = JSON.stringify(await response.json());
+      const stored = JSON.stringify(putSpy.mock.calls);
+      expect(body).toContain("GitHub GraphQL 502");
+      expect(stored).toContain("GitHub GraphQL 502");
+      expect(body).not.toContain("CANARY");
+      expect(stored).not.toContain("CANARY");
+    } finally {
+      putSpy.mockRestore();
+    }
+  });
+
   test("step failure logs omit secret canaries and keep the failure category", async () => {
     const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});

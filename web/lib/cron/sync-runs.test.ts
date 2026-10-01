@@ -159,6 +159,27 @@ describe("sync run helpers", () => {
     }
   });
 
+  test("stored sync-run JSON redacts punctuation and JSON-escaped assignments", async () => {
+    const run = failedRun(
+      "weekly-test",
+      "weekly",
+      false,
+      new Date("2026-06-21T03:00:00.000Z"),
+      new Error(
+        [
+          "GitHub GraphQL 502",
+          "password=!CANARYpunctuation42",
+          "token=CANARYstart:CANARYtail!",
+          String.raw`password=\"!CANARYescaped42\"`,
+        ].join(" "),
+      ),
+    );
+    await expect(safeRecordSyncRun(run)).resolves.toBeNull();
+    const stored = JSON.stringify(putCalls);
+    expect(stored).toContain("GitHub GraphQL 502");
+    expect(stored).not.toContain("CANARY");
+  });
+
   test("stored post_commit_errors and retained history omit secret canaries", async () => {
     const canary = "ghp_CANARYMISSEDSINK1234567890abcd";
     globalThis.fetch = mock(async () =>

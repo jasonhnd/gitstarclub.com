@@ -64,4 +64,32 @@ describe("github diagnostic logs", () => {
       warn.mockRestore();
     }
   });
+
+  test("partial GraphQL warnings redact punctuation and JSON-escaped assignments", async () => {
+    process.env.GITHUB_TOKEN = "fixture-github-token-value";
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const message = [
+      "GitHub GraphQL 502",
+      "password=!CANARYpunctuation42",
+      "token=CANARYstart:CANARYtail!",
+      String.raw`password=\"!CANARYescaped42\"`,
+    ].join(" ");
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: { r0: { stargazerCount: 1 } },
+          errors: [{ message }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof fetch;
+    try {
+      await fetchStarCounts([{ id: 1, owner: "acme", name: "demo" }]);
+      const logged = JSON.stringify(warn.mock.calls);
+      expect(logged).toContain("GraphQL returned partial errors");
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });

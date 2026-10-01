@@ -25,7 +25,8 @@ Stop raw error strings from carrying secrets into console logs, alert webhooks, 
   - legacy sync-run history that omits `post_commit_errors`
 - Known secrets come from the live Worker env and from stale `process.env` when those maps differ. An explicit `env` option stays hermetic.
 - Every nonempty known secret is redacted. Bearer credentials of any nonempty length are redacted. Patterns run on the full string, then the result is truncated.
-- Username-only URL userinfo and quoted token assignments are redacted.
+- Username-only URL userinfo is redacted. A credential assignment (`password`, `passwd`, `pwd`, `secret`, `token`, `api_key`, `access_key`, `private_key`, `client_secret`, `authorization`, `auth`, `bearer`, `cookie`, `session`, `signature`, `credential`, any case, with optional prefixes and suffixes) redacts the whole value through the next whitespace, comma, semicolon, ampersand, closing bracket, or end. Quoted values, including JSON-escaped quotes, end at the matching closer.
+- GraphQL diagnostics sanitize each structured message before `JSON.stringify`, then sanitize the serialized string again.
 - Tests use synthetic canaries and assert those strings are absent from logs, mocked webhook bodies, and stored JSON.
 - Note the sanitizer in `docs/OPS.md` where alert and ops diagnostics are described.
 
@@ -39,6 +40,7 @@ Stop raw error strings from carrying secrets into console logs, alert webhooks, 
 ## Acceptance
 
 - A canary placed in an error string does not appear in the alert log, the mocked webhook JSON, sync-run JSON, checkpoint JSON, or health JSON.
+- Acceptance boundary for credential assignments: `password=!CANARYpunctuation42`, `token=CANARYstart:CANARYtail!`, and `password=\"!CANARYescaped42\"` inside JSON, checked at the alert log, the mocked webhook body, stored sync-run JSON, checkpoint JSON, the step response, and the GraphQL partial-error warning. Further assignment shapes belong in a follow-up issue.
 - The same output still contains the non-secret failure category.
 - New tests fail if the sanitizer calls are removed. To see that, make `sanitizeErrorText` return the raw string (`value instanceof Error ? value.message : String(value ?? "")`) and run `bun test lib/observability/sanitize-error.test.ts lib/observability/alert.test.ts lib/observability/health.test.ts lib/cron/sync-runs.test.ts lib/cron/handlers.test.ts lib/workflows/checkpoint.test.ts lib/workflows/runtime/step-route.test.ts lib/workflows/rollback-route.test.ts lib/workflows/start.test.ts lib/workflows/steps/metadata.test.ts lib/workflows/steps/validate-sink.test.ts lib/data/bootstrap-pointer-cache.test.ts lib/search-index-route.test.ts lib/indexnow.test.ts lib/github-diagnostics.test.ts lib/data/parse-view.test.ts --isolate` from `web/`. The canary assertions fail. Restore the function afterward.
 - The static job and the fixture production build from `AGENTS.md` pass in a fresh detached worktree.
