@@ -12,6 +12,8 @@ against `pre`, after the GSC_0038 / issue #592 changes have landed there.
 - Update the five requested dependency declarations or overrides in
   `web/package.json` and their resolved packages in `web/bun.lock`.
 - Preserve the existing security overrides and unrelated dependency versions.
+- Adapt the existing local workerd test fixture to the Miniflare version
+  brought in by Wrangler, preserving its conditional-write assertions.
 - Update relevant dependency/testing documentation and this plan with the
   before/after version table, verification evidence, and remaining limitations.
 - Record sharing-image output and any Playwright/browser baseline changes.
@@ -93,6 +95,12 @@ the new test runner, which made the two E2E `Page` types incompatible. A targete
 core update followed by removal of Bun's temporary direct declaration keeps
 only the necessary lockfile change; no new direct dependency or override is
 introduced. A nonincremental typecheck passed on the aligned graph.
+
+Wrangler's Miniflare update removes the `type: "worker"` field from its worker
+configuration schema. The local R2 conditional-write fixture drops that obsolete
+field and updates its workerd version comment. The bucket setup, telemetry opt-out,
+and all conditional-write assertions stay intact; no production storage code or
+Worker deployment configuration changes.
 
 Capture a bounded local baseline before changing packages. The baseline uses
 `pulse`, `rankings`, `categories`, `compare`, and `about`, English, both themes,
