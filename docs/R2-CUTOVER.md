@@ -1,7 +1,7 @@
 ---
 owner: operations / storage
 status: active
-last_reviewed: 2026-09-30
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - R2 cutover runbook
   - current object-storage status
@@ -212,20 +212,48 @@ Leave production drivers on `blob` (an unset `STORAGE_READ_DRIVER` is the same d
 
 ### Stage 4. Cutover (I-5b)
 
-Not accepted. This is the production read and write switch. It is a Worker config change, not a docs change:
+Not accepted. This is the production read and write switch for Worker `gitstarclub-web`, top-level production (no `--env`; do not pass `--env pre`), bucket `gitstarclub-data-prod`, public origin `https://data.gitstarclub.com`. It lands as one pull request. This docs change does not edit the gate or the build script.
 
-- Bind `DATA` to `gitstarclub-data-prod` on the top-level Worker.
+Worker config in that pull request:
+
+- Bind `DATA` to `gitstarclub-data-prod` on the top-level Worker. Keep `MEDIA` on `gitstarclub-assets`. Do not use `MEDIA` as the data bucket.
 - Set `DEPLOY_ENV=production`, `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_BUCKET=gitstarclub-data-prod`, and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`.
 - Remove production `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` only after `bootstrap/latest.json` exists on bucket `gitstarclub-data-prod` and `https://gitstarclub.com/rankings` renders repository rows from that generation. The fallback must not keep serving the frozen 2026-09-13 version once pages read R2. Removing the fallback while the bootstrap pointer is missing leaves rankings empty. `views/latest.json` is not that pointer.
 - Keep `triggers.crons` at `[]` until stage 5.
-- Keep `MEDIA` on `gitstarclub-assets`. Do not use it as the data bucket.
+
+Same pull request, `scripts/cf-ci-gates.mjs` and `scripts/cf-ci-gates.test.mjs`. The gate still requires top-level `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK`, and the test locks those three. A cutover that only edits the Worker config fails `node scripts/assert-cf-ci-gates.mjs`. In this same pull request:
+
+- Change the production target contract so top-level vars require `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `DEPLOY_ENV=production`, `R2_BUCKET=gitstarclub-data-prod`, and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, and require `DATA` bound to `gitstarclub-data-prod`.
+- Stop requiring `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` on Worker `gitstarclub-web`. Preview env `pre` on Worker `gitstarclub-web-pre` still must not set `VIEWS_VERSION_FALLBACK` or `BLOB_*`. Bucket `gitstarclub-data-pre` stays the preview bucket.
+- Update `scripts/cf-ci-gates.test.mjs` in that same pull request so the tests require the new contract, and so a missing R2 driver or a leftover blob base fails.
+
+Same pull request, the production build shell in `web/scripts/cf-opennext-build.ts`. The production OpenNext spawn env adds `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com` and otherwise inherits the shell. Unset `STORAGE_READ_DRIVER` defaults to `blob` in `web/lib/runtime-config.ts`. In this same pull request that shell must:
+
+- Export `STORAGE_READ_DRIVER=r2`.
+- Export `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com` for bucket `gitstarclub-data-prod`. When `NEXT_PUBLIC_R2_PUBLIC_BASE_URL` is set, set it to the same origin.
+- Clear `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` so a parent shell cannot bake blob store `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com` into the prerender.
+- Keep refusing a shell public read base that does not match the top-level wrangler vars for Worker `gitstarclub-web`. The loopback fixture at `127.0.0.1` stays allowed for CI.
+
+Until that pull request, the production build shell in [OPS.md](./OPS.md) still exports the blob bases. Do not export `STORAGE_READ_DRIVER=r2` for a production build before the gate and the wrangler vars change together.
+
+Operator shell once that pull request is the build being run. Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`:
+
+```bash
+# Worker gitstarclub-web, top-level production (no --env), bucket gitstarclub-data-prod
+# Do not export BLOB_BASE_URL or NEXT_PUBLIC_BLOB_BASE_URL.
+cd web
+export STORAGE_READ_DRIVER=r2
+export R2_PUBLIC_BASE_URL=https://data.gitstarclub.com
+unset BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL VIEWS_VERSION_FALLBACK
+bun run cf:build:production
+```
 
 Acceptance:
 
-- `node scripts/assert-cf-ci-gates.mjs` passes, including the rule that preview config does not name the production bucket.
+- `node scripts/assert-cf-ci-gates.mjs` passes, including the rule that preview config does not name bucket `gitstarclub-data-prod`, and including the new production R2 contract from this same pull request.
 - `https://gitstarclub.com/rankings` returns 200 with indexing still on, and shows repository rows (an `owner/name` link and a star count). The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure.
 - The rows match the generation in `https://data.gitstarclub.com/bootstrap/latest.json` while `views/latest.json` is absent. A 404 of `https://data.gitstarclub.com/views/latest.json` is acceptable. Do not hand-write it. If the owner has already run the authorized refresh publish on Worker `gitstarclub-web` (top-level, bucket `gitstarclub-data-prod`) and `views/latest.json` exists, the pages must match that `version`, and the file must be the one that publish wrote.
-- A production shell build exports `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, not the preview origin and not the blob host. `cf:build` fails the build if the shell base does not match the top-level wrangler vars.
+- A production shell build exports `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, not preview origin `https://data-pre.gitstarclub.com` and not the blob host, and does not export `BLOB_BASE_URL` or `NEXT_PUBLIC_BLOB_BASE_URL`. `cf:build` fails the build if the shell base does not match the top-level wrangler vars for Worker `gitstarclub-web`.
 
 Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset: rankings then render with no rows.
 

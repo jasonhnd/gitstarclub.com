@@ -110,12 +110,33 @@ Cloudflare owner commands (run from `web/`; build each target immediately before
 
 ### Production build and deploy
 
-`bun run cf:build:production` prerenders with `BLOB_BASE_URL`. Wrangler vars are not visible to that prerender. Export the public store base first (no trailing slash, no BOM). `cf:build` refuses a shell public read base that does not match the wrangler vars for `--site-target`. The loopback fixture at `127.0.0.1` is the CI exception. Do not export the preview R2 URL for a production build. `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com` are set by the build script.
+`bun run cf:build:production` prerenders with `BLOB_BASE_URL`. Wrangler vars are not visible to that prerender. Export the public store base first (no trailing slash, no BOM). `cf:build` refuses a shell public read base that does not match the wrangler vars for `--site-target`. The loopback fixture at `127.0.0.1` is the CI exception. Do not export the preview R2 URL for a production build. `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com` are set by the build script. This shell is the pre-cutover production build for Worker `gitstarclub-web` (top-level, no `--env`). It reads blob store `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`, not bucket `gitstarclub-data-prod`.
 
 ```sh
+# Worker gitstarclub-web, top-level production (no --env), blob store
+# https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+# Not bucket gitstarclub-data-prod. Do not pass --env pre.
 cd web
 export BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
 export NEXT_PUBLIC_BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
+bun run cf:build:production
+```
+
+The stage 4 pull request replaces this shell in the same change as the Worker cutover. Until that pull request merges, keep the blob exports above and do not export `STORAGE_READ_DRIVER=r2` for this build. Unset `STORAGE_READ_DRIVER` defaults to `blob` in `web/lib/runtime-config.ts`. The replacement checklist, also in [R2-CUTOVER.md](./R2-CUTOVER.md) stage 4:
+
+- Change `scripts/cf-ci-gates.mjs` so the production contract requires `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `DEPLOY_ENV=production`, `R2_BUCKET=gitstarclub-data-prod`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, and `DATA` bound to `gitstarclub-data-prod`. Stop requiring top-level `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK`. Preview env `pre` on Worker `gitstarclub-web-pre` still must not set those blob variables. Bucket `gitstarclub-data-pre` stays the preview bucket.
+- Update `scripts/cf-ci-gates.test.mjs` in that same pull request so the tests require the new contract, and so a missing R2 driver or a leftover blob base fails.
+- Change the production spawn env in `web/scripts/cf-opennext-build.ts` so it exports `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com` and clears `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK`.
+
+Operator shell after that pull request. Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`:
+
+```sh
+# Worker gitstarclub-web, top-level production (no --env), bucket gitstarclub-data-prod
+# Do not export BLOB_BASE_URL or NEXT_PUBLIC_BLOB_BASE_URL.
+cd web
+export STORAGE_READ_DRIVER=r2
+export R2_PUBLIC_BASE_URL=https://data.gitstarclub.com
+unset BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL VIEWS_VERSION_FALLBACK
 bun run cf:build:production
 ```
 
@@ -830,7 +851,7 @@ Do not call `https://gitstarclub.com/api/cron/*` to create the pointer. Never ha
 
 ### Stage 4 cutover rollback
 
-Stage 4 is specified in [R2-CUTOVER.md](./R2-CUTOVER.md). Cutover acceptance on Worker `gitstarclub-web` (top-level, no `--env`, bucket `gitstarclub-data-prod`) is real ranking rows that match `https://data.gitstarclub.com/bootstrap/latest.json`. `views/latest.json` is not required. A 404 is acceptable. Do not hand-write it. If an owner-authorized refresh publish has already written that pointer, the pages must match its `version`. Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset.
+Stage 4 is specified in [R2-CUTOVER.md](./R2-CUTOVER.md). The same pull request changes `scripts/cf-ci-gates.mjs` and `scripts/cf-ci-gates.test.mjs` to the production R2 contract (`STORAGE_READ_DRIVER=r2`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, `R2_BUCKET=gitstarclub-data-prod`, `DATA` on that bucket) and stops requiring `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK`. It also changes the production spawn env in `web/scripts/cf-opennext-build.ts` so the build exports `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com` and clears those blob variables. The pre-cutover shell in the production build section above stays in force until that pull request. Cutover acceptance on Worker `gitstarclub-web` (top-level, no `--env`, bucket `gitstarclub-data-prod`) is real ranking rows that match `https://data.gitstarclub.com/bootstrap/latest.json`. `views/latest.json` is not required. A 404 is acceptable. Do not hand-write it. If an owner-authorized refresh publish has already written that pointer, the pages must match its `version`. Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset.
 
 The pre-cutover version is `14b84f73-ef31-4e86-a70d-b71251756093`. On 2026-10-01 a read-only check found that version deployed at 100% of Worker `gitstarclub-web`. Do not pass `--env pre`. This command does not write bucket `gitstarclub-data-prod` and does not write the blob store. The restored version reads blob base `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`.
 
