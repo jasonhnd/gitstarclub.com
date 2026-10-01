@@ -15,10 +15,11 @@ import { buildNarrative } from "@/lib/narrative";
 import { FIRST_YEAR } from "@/lib/periods";
 import { fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
 import { RankingCategoryExits } from "./ranking-category-exits";
-import { getRank } from "@/lib/data";
+import { getRank, getCategoryAssignmentsForRepos } from "@/lib/data";
 import { HeroActions, PeriodStats, AnswerBlock, MovementSection, RankingMetricGrid, CompleteRankingSection, PeriodNavigation, type PeriodNavLink } from "./ranking-ui";
 import { loadRankingDetailData, rankingDetailStructuredData, RANKING_FEATURED_LIMIT } from "./ranking-page-data";
 import { resolveAdjacentRankPeriod, resolveAdjacentRankYear, resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
+import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { pageMeta } from "@/lib/seo";
 import { buildWeeklyMoversSnippet } from "@/lib/shareable-snippets";
 import { repositoryTableLabels } from "./routing";
@@ -90,7 +91,7 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
   const availablePeriods = await resolveAvailableRankPeriods(now);
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > availablePeriods.year) notFound();
 
-  const data = await loadRankingDetailData("year", String(year), locale);
+  const data = await loadPageRankingData("year", String(year), locale);
   if (!data) notFound();
   const { heat, rows: rankRows, most, categoryLinks, fastest, newcomers, asOf, dateModified } = data;
 
@@ -206,7 +207,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = `${year}-${String(month).padStart(2, "0")}`;
-  const data = await loadRankingDetailData("month", period, locale);
+  const data = await loadPageRankingData("month", period, locale);
   if (!data) notFound();
   const { newc, heat, rows: flowRows, most, categoryLinks, fastest, newcomers, asOf, dateModified } = data;
 
@@ -322,7 +323,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = isoWeekLabel(year, week);
-  const data = await loadRankingDetailData("week", period, locale);
+  const data = await loadPageRankingData("week", period, locale);
   if (!data) notFound();
   const { rows: rankRows, most, categoryLinks, asOf, dateModified } = data;
 
@@ -410,6 +411,18 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
       </main>
     </>
   );
+}
+
+function loadPageRankingData(window: "year" | "month" | "week", period: string, locale: Locale) {
+  return loadRankingDetailData(window, period, locale, {
+    readAssignments: loadPageCategoryAssignments,
+    skipAssignments: false,
+  });
+}
+
+function loadPageCategoryAssignments(repoIds: readonly number[]) {
+  // Keep the page's host budget policy explicit; the shared loader selects the leading IDs.
+  return isCloudflareWorkersHost() ? Promise.resolve(null) : getCategoryAssignmentsForRepos(repoIds);
 }
 
 async function monthNavigation(locale: Locale, t: Dict, year: number, month: number, href: (path: string) => string): Promise<{ previous: PeriodNavLink | null; next: PeriodNavLink | null }> {

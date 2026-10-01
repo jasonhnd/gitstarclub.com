@@ -1,6 +1,6 @@
 # Issue 611 visual evidence
 
-Baseline: `origin/pre` at `b9650f0`. Implementation: `4e6e098` (subsequent commit contains only this evidence and plan notes).
+Baseline: `origin/pre` at `b9650f0`. Visual implementation: `4e6e098`. A subsequent caller-policy wrapper change has identical rendered output; the final head is verified separately.
 
 Captured with the local Microsoft Edge executable, light mode, reduced motion, and full-page PNG output. Desktop viewport: 1440 x 1000. Mobile viewport: 390 x 844. All 44 captures have no horizontal document overflow.
 
