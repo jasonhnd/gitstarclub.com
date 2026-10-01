@@ -2,7 +2,7 @@
 
 ## Goal
 
-Cover `workers/gitstarclub-web/src` (`index.ts`, `cron-dispatch.ts`, `shell.ts`, `next-app.ts`) with unit tests that the existing CI `static` job already runs via `bun test lib/` from `web/`. No behavior change.
+Cover the Worker entry files `index.ts`, `cron-dispatch.ts`, `shell.ts`, and `next-app.ts` with unit tests that the existing CI static job already runs via `bun test lib/` from the web package. No behavior change.
 
 ## Scope
 
