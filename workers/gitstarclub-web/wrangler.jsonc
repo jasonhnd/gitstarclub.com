@@ -59,8 +59,9 @@
     // Production HTTP origin for cron dispatch. Preview overrides this.
     // Secrets (CRON_SECRET, REFRESH_*_URL) are platform-injected, not committed.
     "CF_CRON_ORIGIN": "https://gitstarclub.com",
-    // Public read base (not a secret). Same store as env.pre. Declared here
-    // so a deploy without --keep-vars cannot wipe / and /rankings.
+    // Production public Blob base (not a secret). Preview reads its own R2
+    // origin and does not share this store. Declared here so a deploy without
+    // --keep-vars cannot wipe / and /rankings.
     "BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
     "NEXT_PUBLIC_BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
     "WORKFLOW_RUNTIME": "cf-queue",
@@ -70,11 +71,13 @@
     // Do not copy it to env.pre.
     "VIEWS_VERSION_FALLBACK": "refresh-2026-09-13T06-00-16-398Z"
   },
-  // Production CF Cron stays off. `triggers.crons` MUST remain []. Vercel cron
-  // in web/vercel.json remains the production scheduler until Jason approves a
-  // cutover. env.pre crons are paused ([]) while #543 is open; see the
+  // Production CF Cron stays off. `triggers.crons` MUST remain []. This file
+  // does not prove a live production caller. web/vercel.json is a historical
+  // declaration and fallback reference, not evidence that a scheduler is
+  // firing. env.pre crons are paused ([]) while #543 is open; see the
   // comment there. The repo does not enable Cloudflare schedules. Enable
-  // schedules / inject CRON_SECRET via an ops runbook after deploy. The top-level name
+  // schedules / inject CRON_SECRET via an ops runbook after deploy, and only
+  // after the owner approves that cutover. The top-level name
   // gitstarclub-web is production-only: GHA must never wrangler deploy it
   // except --dry-run, and repo scripts refuse a live deploy of that name.
   // Do not attach apex/www routes here.
