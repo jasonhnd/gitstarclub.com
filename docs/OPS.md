@@ -912,7 +912,13 @@ cd web && bun scripts/ensure-bootstrap-pointer.ts --store r2 --target pre --exec
 `--execute` only writes when a sealed `bootstrap/generations/<id>` already
 exists. If none exists, the plan is `leave-legacy-flat` and no pointer is
 invented. `--initial-commit` is R2 only and is the empty-bucket exception
-documented in the bootstrap runbook. Creating a pointer is not the root-cost fix: a missing pointer is a
+documented in the bootstrap runbook. That execute path acquires the same
+`ops/workflows/active.json` publication lease as step 07, with idempotency key
+`bootstrap:publish:<generation>`. A running unexpired workflow blocks the
+write. After the lease renewal the command re-reads `bootstrap/latest.json`,
+`views/latest.json`, and `canonical/v2/meta.json`, and refuses if any of them
+appeared in that window. It renews the lease again immediately before the
+create-only write, so a valid takeover during those reads does not publish. Creating a pointer is not the root-cost fix: a missing pointer is a
 normal long-lived legacy state and must stay negatively cached with coalesced
 reads even if the object disappears again.
 
