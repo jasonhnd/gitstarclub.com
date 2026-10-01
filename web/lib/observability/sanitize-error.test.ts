@@ -152,6 +152,22 @@ describe("sanitizeErrorText", () => {
     expect(output).not.toContain("example.invalid");
   });
 
+  test("redacts a whole credential value, including punctuation and JSON-escaped quotes", () => {
+    const output = sanitizeErrorText(
+      [
+        "GitHub GraphQL 502",
+        "password=!CANARYpunctuation42",
+        "token=CANARYstart:CANARYtail!",
+        String.raw`{"message":"password=\"!CANARYescaped42\""}`,
+      ].join(" "),
+      { env: {} },
+    );
+    expect(output).toContain("GitHub GraphQL 502");
+    expect(output).toContain("password=[redacted]");
+    expect(output).toContain("token=[redacted]");
+    expect(output).not.toContain("CANARY");
+  });
+
   test("redacts quoted secrets that contain punctuation and JSON-escaped runtime values", () => {
     const quoted = sanitizeErrorText('metadata fetch failed {"token":"CANARYstart:CANARYtail!"}', { env: {} });
     expect(quoted).toContain("metadata fetch failed");

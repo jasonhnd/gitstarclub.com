@@ -69,6 +69,27 @@ describe("workflow checkpoints (fenced)", () => {
     await expect(startRun("refresh-test-1")).rejects.toThrow(/already running/);
   });
 
+  test("markFailed redacts punctuation and JSON-escaped assignments", async () => {
+    await markFailed(
+      "refresh-test-2",
+      "2026-07-18T00:00:00.000Z",
+      [
+        "GitHub GraphQL 502",
+        "password=!CANARYpunctuation42",
+        "token=CANARYstart:CANARYtail!",
+        String.raw`password=\"!CANARYescaped42\"`,
+      ].join(" "),
+      4,
+    );
+    const stored = JSON.stringify(putOwned.mock.calls);
+    const alerted = JSON.stringify(sendAlert.mock.calls);
+    const health = JSON.stringify(recordHealth.mock.calls);
+    for (const text of [stored, alerted, health]) {
+      expect(text).toContain("GitHub GraphQL 502");
+      expect(text).not.toContain("CANARY");
+    }
+  });
+
   test("markFailed releases with fencing token", async () => {
     await markFailed("refresh-test-2", "2026-07-18T00:00:00.000Z", "boom", 4);
     expect(release).toHaveBeenCalledWith("refresh-test-2", "failed", undefined, undefined, 4);

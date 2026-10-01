@@ -23,6 +23,17 @@ const BATCH_PAUSE_MS = 2000;
 export const GITHUB_USER_AGENT = "gitstarclub";
 export const GITHUB_ACCEPT = "application/vnd.github+json";
 
+function sanitizeDiagnosticValue(value: unknown): unknown {
+  if (typeof value === "string") return sanitizeErrorText(value);
+  if (Array.isArray(value)) return value.map(sanitizeDiagnosticValue);
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) out[key] = sanitizeDiagnosticValue(item);
+    return out;
+  }
+  return value;
+}
+
 export function githubApiHeaders(
   token: string,
   extra: Record<string, string> = {},
@@ -108,10 +119,13 @@ async function gql<T>(token: string, query: string, schema: z.ZodType<T>, attemp
   const json = z.object({ data: z.unknown().optional(), errors: z.unknown().optional() }).passthrough().parse(JSON.parse(text));
   // Partial data + errors is normal (a deleted/renamed repo aliases to null); only fail with no data.
   if (!json.data) {
-    throw new Error(sanitizeErrorText(`GraphQL: ${JSON.stringify(json.errors ?? {})}`).slice(0, 200));
+    throw new Error(sanitizeErrorText(`GraphQL: ${JSON.stringify(sanitizeDiagnosticValue(json.errors ?? {}))}`).slice(0, 200));
   }
   if (json.errors) {
-    console.warn("[github] GraphQL returned partial errors", sanitizeErrorText(JSON.stringify(json.errors)).slice(0, 200));
+    console.warn(
+      "[github] GraphQL returned partial errors",
+      sanitizeErrorText(JSON.stringify(sanitizeDiagnosticValue(json.errors))).slice(0, 200),
+    );
   }
   return schema.parse(json.data);
 }
