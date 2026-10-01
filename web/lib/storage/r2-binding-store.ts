@@ -140,19 +140,21 @@ export function etagForBindingCondition(ifMatch: string): string {
 
 /**
  * Structured `onlyIf` check used by test buckets so they fail the same way as
- * workerd. A quoted etag throws `TypeError` and does not count as a mismatch.
- * `existingEtag` is omitted when the key is absent.
+ * workerd. Both supplied etags are parsed before any match result, matching
+ * `UnwrappedConditional(const Conditional&)`: a quoted value throws `TypeError`
+ * even when the other condition would already fail. `existingEtag` is omitted
+ * when the key is absent.
  */
 export function bindingPreconditionPasses(existingEtag: string | undefined, onlyIf: R2OnlyIf | undefined): boolean {
   if (!onlyIf) return true;
-  if (onlyIf.etagMatches !== undefined) {
-    const tag = structuredConditionalTag(onlyIf.etagMatches);
-    const matches = tag.wildcard ? existingEtag !== undefined : existingEtag === tag.value;
+  const matchTag = onlyIf.etagMatches !== undefined ? structuredConditionalTag(onlyIf.etagMatches) : undefined;
+  const noneTag = onlyIf.etagDoesNotMatch !== undefined ? structuredConditionalTag(onlyIf.etagDoesNotMatch) : undefined;
+  if (matchTag !== undefined) {
+    const matches = matchTag.wildcard ? existingEtag !== undefined : existingEtag === matchTag.value;
     if (!matches) return false;
   }
-  if (onlyIf.etagDoesNotMatch !== undefined) {
-    const tag = structuredConditionalTag(onlyIf.etagDoesNotMatch);
-    const differs = tag.wildcard ? existingEtag === undefined : existingEtag !== tag.value;
+  if (noneTag !== undefined) {
+    const differs = noneTag.wildcard ? existingEtag === undefined : existingEtag !== noneTag.value;
     if (!differs) return false;
   }
   return true;
