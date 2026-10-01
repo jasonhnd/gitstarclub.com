@@ -97,7 +97,7 @@ describe("read-only data tools without Blob variables", () => {
   test("exports CSV and JSON through R2 with no Blob environment", async () => {
     const fixture = startFixture();
     try {
-      const env = { STORAGE_READ_DRIVER: "r2", R2_PUBLIC_BASE_URL: `${fixture.base}/` };
+      const env = { STORAGE_READ_DRIVER: "r2", R2_PUBLIC_BASE_URL: ` ${fixture.base}/ ` };
       expect(Object.keys(env).some((key) => key.includes("BLOB_"))).toBe(false);
       const result = await runTool("generate-data-exports.ts", env);
       expect(result.exitCode, result.stderr).toBe(0);
@@ -134,8 +134,13 @@ describe("read-only data tools without Blob variables", () => {
     const fixture = startFixture();
     try {
       for (const tool of scripts) {
-        for (const key of ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL"]) {
-          const result = await runTool(tool, { [key]: fixture.base });
+        const cases: Record<string, string>[] = [
+          { BLOB_BASE_URL: fixture.base },
+          { NEXT_PUBLIC_BLOB_BASE_URL: fixture.base },
+          { BLOB_BASE_URL: " ", NEXT_PUBLIC_BLOB_BASE_URL: fixture.base },
+        ];
+        for (const env of cases) {
+          const result = await runTool(tool, env);
           expect(result.exitCode, `${tool}: ${result.stderr}`).toBe(0);
           expect(JSON.parse(result.stdout).ok).toBe(true);
         }
@@ -149,10 +154,11 @@ describe("read-only data tools without Blob variables", () => {
     const fixture = startFixture();
     try {
       for (const tool of scripts) {
-        for (const env of [
+        const cases: Record<string, string>[] = [
           { STORAGE_READ_DRIVER: "r2", BLOB_BASE_URL: fixture.base },
           { STORAGE_READ_DRIVER: "r2", R2_PUBLIC_BASE_URL: "ftp://127.0.0.1/data", BLOB_BASE_URL: fixture.base },
-        ]) {
+        ];
+        for (const env of cases) {
           const result = await runTool(tool, env);
           expect(result.exitCode).not.toBe(0);
           expect(`${result.stdout}\n${result.stderr}`).toMatch(/R2_PUBLIC_BASE_URL not set|must be an http\(s\) URL/);
