@@ -163,8 +163,15 @@ infer a live scheduler from `web/vercel.json`.
 
 ### `POST /api/workflows/refresh/step`
 
-Runs exactly one managed-refresh step, then enqueues the next. Used by the
-HTTP chain and by a non-production CF Queue consumer. It is not a declared Worker cron.
+Runs exactly one managed-refresh step, then enqueues the next. The HTTP chain
+can call it. The configured consumers are production queue `gitstarclub-jobs`
+on Worker `gitstarclub-web` and preview queue `gitstarclub-jobs-pre` on Worker
+`gitstarclub-web-pre` (wrangler env `pre`). Both Workers set
+`WORKFLOW_RUNTIME=cf-queue`. The Worker queue handler has no non-production
+gate, and `web/lib/workflows/runtime/resolve.ts`
+selects the queue runtime whenever that variable is `cf-queue`. It is not a
+declared Worker cron. Both `triggers.crons` arrays are `[]`. The production
+scheduler and caller are unverified.
 
 | Item | Contract |
 |---|---|

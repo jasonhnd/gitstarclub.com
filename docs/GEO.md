@@ -20,7 +20,7 @@ GEO complements [SEO.md](./SEO.md). SEO owns crawlability, canonical URLs, metad
 
 Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only precomputed JSON, and implementation stays deterministic. The host is Cloudflare Workers through OpenNext. Production JSON still comes from Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
 
-Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate log-report runbook. The report script still parses the Vercel log-drain field shape and does not parse Cloudflare Worker logs. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
+Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate log-report runbook. The report script accepts the Vercel log-drain field shape as parser compatibility only. It does not parse Cloudflare Worker logs. Current Cloudflare aggregate measurement is pending an input adapter and evidence. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
 
 ---
 
@@ -661,7 +661,7 @@ Bing Webmaster verification steps:
 1. Add `https://gitstarclub.com` in Bing Webmaster Tools.
 2. Preferred repo-free option: import verification from the already verified Google Search Console property, or use DNS verification in Cloudflare.
 3. Repo-hosted file option: download Bing's verification XML file and commit it under `web/public/` so it is served from the site root. No Bing XML verification file is currently checked in.
-4. Meta-tag option: set `BING_SITE_VERIFICATION=<Bing msvalidate.01 token>` in the Vercel Production environment. `web/app/_shell/RootShell.tsx` emits `<meta name="msvalidate.01" content="...">` when that variable is present.
+4. Meta-tag option: set `BING_SITE_VERIFICATION` to the Bing `msvalidate.01` token in the shell that runs the Cloudflare production build. `web/scripts/cf-opennext-build.ts` inherits that shell environment and passes it into the OpenNext build. `web/app/_shell/RootShell.tsx` reads the variable while metadata is built and emits `<meta name="msvalidate.01" content="...">` only when it is set. After the build, confirm that tag in the generated HTML. Setting the variable on a Vercel project does not change Cloudflare output.
 5. After verification, submit `https://gitstarclub.com/sitemap.xml` in Bing Webmaster Tools.
 
 IndexNow runtime configuration:
@@ -759,7 +759,7 @@ Do not introduce paid GEO monitoring by default. Use the aggregate log report pl
 
 The measurement loop has three layers:
 
-1. Aggregate server-side bot and referrer reporting. The current script accepts the Vercel log-drain shape and does not read Cloudflare Worker logs.
+1. Aggregate server-side bot and referrer reporting. The current script accepts the Vercel log-drain shape as parser compatibility only and does not read Cloudflare Worker logs. Current Cloudflare aggregate measurement is pending an input adapter and evidence.
 2. A versioned target-query file at `docs/geo/queries.md`.
 3. A citation review cadence that turns wrong, stale, or missing citations into implementation issues.
 
@@ -796,12 +796,12 @@ Keep the first implementation aggregate-only. Do not add user-level tracking or 
 
 Reporting contract:
 
-- Source: Vercel request logs, Vercel log drains, or another Vercel-native export. Do not add a client-side tracker for GEO measurement.
+- Source: parser compatibility only. The script accepts a Vercel Log Drains JSON or NDJSON export. It does not parse Cloudflare Worker logs, and this document does not claim that it does. Current Cloudflare aggregate measurement is pending an input adapter and evidence. Do not add a client-side tracker for GEO measurement.
 - Grain: daily or weekly aggregate rows by `date`, `user_agent_family`, `path_family`, `status_bucket`, and `count`.
 - Referrers: aggregate by normalized host only, not full URL with query strings. Store `referrer_host`, `path_family`, and `count`.
 - Privacy: no IP addresses, user ids, cookies, or raw query parameters in checked-in reports.
 - Path families: `repo`, `org`, `rankings`, `category`, `pulse`, `compare`, `about`, `data-export`, and `other`.
-- Output: `cd web && bun run geo:report -- --input <vercel-log-export.ndjson> --format markdown` builds the aggregate report from Vercel Log Drains JSON/NDJSON or exported request-log JSON. The parser and taxonomy live in `web/lib/geo/ai-log-report.ts`; operator notes and the checked taxonomy are in [docs/geo/ai-log-reporting.md](./geo/ai-log-reporting.md).
+- Output: `cd web && bun run geo:report -- --input <log-export.ndjson> --format markdown` builds the aggregate report from that Vercel-shaped input. The parser and taxonomy live in `web/lib/geo/ai-log-report.ts`; operator notes and the checked taxonomy are in [docs/geo/ai-log-reporting.md](./geo/ai-log-reporting.md). The command does not read Cloudflare Worker logs.
 
 ### 10.2 Manual target query set
 
@@ -896,7 +896,7 @@ Goal: make GEO outcomes measurable without paid monitoring or client-side tracki
 
 Scope:
 
-- Build aggregate AI crawler and referrer reporting from Vercel-native logs or exports, following Section 10.1.
+- Aggregate AI crawler and referrer reporting follows Section 10.1. The parser accepts Vercel-shaped log input only. Current Cloudflare aggregate measurement is pending an input adapter and evidence.
 - Maintain `docs/geo/queries.md` with the target-query format in Section 10.2.
 - Maintain query coverage for repo, org, ranking, category, pulse, compare, about/methodology, and data-export pages.
 - Establish the citation-review cadence from Section 10.2: weekly for eight weeks after launch, monthly after stabilization, and ad hoc after crawler/schema/sitemap changes.
