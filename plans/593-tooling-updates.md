@@ -75,6 +75,26 @@ to `main`, `pre`, or `preview`. No branch deletions or unrelated file deletions.
 - No dependency declarations have been changed. The full static job, builds,
   moderate audits, sharing-image checks, and Playwright comparisons are pending.
 
-Resume by fetching `origin/pre` again and verifying #619's changes are present,
-then moving the unpublished plan commit onto that latest base before upgrading.
-Recheck npm versions at that time rather than relying on the initial lookup.
+## Resumed implementation: 2026-10-01
+
+PR #619 merged at 13:15:35 UTC as
+`aa175a8f6ab7a9892a8c7f25f57f531c372733ba`. The unpublished plan commit was
+rebased onto that latest `origin/pre`. Next 16.3.8 and OpenNext 1.20.7 are now
+part of the baseline. Frozen installs and the verified bootstrap passed again.
+
+The npm registry was rechecked after resuming: stable targets are Wrangler
+4.145.0, PostCSS 8.5.28, sharp 0.35.5, Playwright 1.63.0, and the newest stable
+Node 24 types, 24.19.0. The global Node types latest tag is 26.6.3; it is outside
+this issue's allowed major line.
+
+Capture a bounded local baseline before changing packages. The baseline uses
+`pulse`, `rankings`, `categories`, `compare`, and `about`, English, both themes,
+and all four viewports in the committed screenshot generator (40 screenshots).
+The CI fixture intentionally supplies missing-data responses, so this comparison
+covers static chrome and empty states rather than populated production data.
+All browser network requests outside loopback are blocked. Sharing images are
+checked separately, including a known repository card from checked-in fixtures.
+
+The detached verification worktree and disposable logs are placed inside this
+card's ignored `web/test-results/593/` directory to keep all work in the card
+workspace. No live data store, platform API, or credentials are needed.
