@@ -41,6 +41,17 @@ isolated child processes so module mocks cannot contaminate the full Bun suite.
 All route decoding cases are local, use fabricated data, and perform no network
 requests or production probes.
 
+### Regression sensitivity
+
+At 13f1626, `cd web && bun test lib/public-params.test.ts --isolate` passed
+74 tests. In a disposable detached copy, restoring the ten existing production
+files changed by this fix from baseline b9650f0, while keeping the new validator
+and tests, produced 71 passes and three failures (exit 1). The failing tests were
+the actual image routes, page/metadata handlers, and storage readers. Restoring
+those files from HEAD returned the tree to a clean tracked state. The experiment
+used env -i, Node 24.20.0/Bun 1.3.14, BLOB_BASE_URL=https://blob.example.com, and
+SEO_LIVE_BASE empty; the child-process fetch trap prevented network requests.
+
 ## Ranking image captures
 
 These 1200x630 PNGs are the actual local `ImageResponse` output, captured before
