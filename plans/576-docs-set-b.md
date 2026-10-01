@@ -26,3 +26,11 @@ Make the current docs describe Cloudflare Workers hosting, public preview, and t
 - R2-CUTOVER and OPS still agree on the #574 steps, and on the new stage 6 tool prerequisite.
 - `git grep -n 'Vercel-first'` in current docs is empty. Remaining hits are listed and sit in archive, changelog history, or old plans.
 - Preview is documented as public, `noindex,nofollow`, `Disallow: /`. `noindex` is not access control. The production trigger stays unverified.
+
+## Review round 1
+
+- Remove the architecture cost table. Do not invent Cloudflare prices.
+- Remove the standing Vercel Firewall roadmap item. The August sequence note that #380 left Firewall empty stays as history.
+- Align the pipeline refresh roles, the frontend weekly-cron and build-cap sentences, and the TESTING P3 row with Workers. Keep production Blob until cutover and the unverified production caller.
+- The Sunday failure runbook prints `0 6 * * SUN`, not weekday `0`.
+- Do not edit dependencies, lockfiles, or CI. The failed `static` audit is a separate baseline fix.
