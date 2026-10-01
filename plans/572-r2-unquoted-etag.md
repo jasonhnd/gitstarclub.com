@@ -24,6 +24,7 @@ Conditional writes through the Worker R2 binding must pass etags workerd accepts
 - A quoted conditional passed straight to the fake throws `TypeError` and does not write.
 - `*` and `W/` follow workerd `UnwrappedConditional(const Conditional&)` / `buildSingleEtagArray` (see the report for line numbers).
 - The new CAS test fails if the store passes the quoted etag through.
+- `web/lib/storage/r2-binding-workerd.test.ts` runs the same CAS against local workerd through Miniflare. The binary is the `workerd` package wrangler already depends on, so the existing `bun test` job covers it. CI workflows are unchanged.
 - Other storage drivers keep their external etag behavior.
 - The static job in `AGENTS.md` passes in a fresh detached worktree.
 - `bun.lock` is not part of the diff.
