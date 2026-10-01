@@ -152,6 +152,45 @@ describe("sanitizeErrorText", () => {
     expect(output).not.toContain("example.invalid");
   });
 
+  test("redacts quoted secrets that contain punctuation and JSON-escaped runtime values", () => {
+    const quoted = sanitizeErrorText('metadata fetch failed {"token":"CANARYstart:CANARYtail!"}', { env: {} });
+    expect(quoted).toContain("metadata fetch failed");
+    expect(quoted).toContain('"token"=[redacted]');
+    expect(quoted).not.toContain("CANARY");
+
+    const secret = 'CANARYruntime"quoted';
+    const encoded = sanitizeErrorText(JSON.stringify({ message: `GitHub GraphQL 502 ${secret}` }), {
+      env: { CRON_SECRET: secret },
+    });
+    expect(encoded).toContain("GitHub GraphQL 502");
+    expect(encoded).not.toContain("CANARY");
+  });
+
+  test("redacts the Vercel automation bypass secret from live bindings and from an explicit env map", () => {
+    const live = "CANARYVERCELBYPASS1234567890";
+    const stale = "CANARYSTALEBYPASS1234567890";
+    const previous = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET = stale;
+    const spy = spyOn(runtimeEnv, "resolveRuntimeEnv").mockReturnValue({
+      VERCEL_AUTOMATION_BYPASS_SECRET: live,
+    });
+    try {
+      const output = sanitizeErrorText(`bypass failed ${live} stale ${stale}`);
+      expect(output).toContain("bypass failed");
+      expect(output).not.toContain("CANARY");
+    } finally {
+      spy.mockRestore();
+      if (previous === undefined) delete process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+      else process.env.VERCEL_AUTOMATION_BYPASS_SECRET = previous;
+    }
+
+    const explicit = sanitizeErrorText(`header leaked ${live}`, {
+      env: { VERCEL_AUTOMATION_BYPASS_SECRET: live },
+    });
+    expect(explicit).toContain("header leaked");
+    expect(explicit).not.toContain("CANARY");
+  });
+
   test("reads an Error message and stays idempotent", () => {
     const once = sanitizeErrorText(new Error(`GitHub GraphQL 502 ${GITHUB}`), { env: {} });
     expect(once).toContain("GitHub GraphQL 502");

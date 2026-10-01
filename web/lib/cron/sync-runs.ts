@@ -36,14 +36,20 @@ export async function recordSyncRun(run: SyncRun): Promise<void> {
   });
 }
 
+function sanitizePostCommitErrors(value: unknown): string[] {
+  if (typeof value === "string") return [sanitizeErrorText(value)];
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => sanitizeErrorText(typeof item === "string" ? item : String(item)));
+}
+
 export function sanitizeLiveRefreshResult(result: LiveRefreshResult): LiveRefreshResult {
-  let changed = false;
-  const post_commit_errors = result.post_commit_errors.map((item) => {
-    const safe = sanitizeErrorText(item);
-    if (safe !== item) changed = true;
-    return safe;
-  });
-  return changed ? { ...result, post_commit_errors } : result;
+  if (!Object.prototype.hasOwnProperty.call(result, "post_commit_errors")) return result;
+  const raw = (result as { post_commit_errors?: unknown }).post_commit_errors;
+  const post_commit_errors = sanitizePostCommitErrors(raw);
+  if (Array.isArray(raw) && raw.length === post_commit_errors.length && raw.every((item, index) => item === post_commit_errors[index])) {
+    return result;
+  }
+  return { ...result, post_commit_errors };
 }
 
 function sanitizeStoredRun(run: SyncRun): SyncRun {

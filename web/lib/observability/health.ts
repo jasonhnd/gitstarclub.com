@@ -114,6 +114,26 @@ export class BlobHealthStore implements HealthStore {
 
 export const blobHealthStore = new BlobHealthStore();
 
+function sanitizeNullableError(value: string | null): string | null {
+  return typeof value === "string" ? sanitizeErrorText(value) : value;
+}
+
+function sanitizeSignal(signal: HealthSignal | null): HealthSignal | null {
+  if (!signal) return signal;
+  const error = sanitizeNullableError(signal.error);
+  return error === signal.error ? signal : { ...signal, error };
+}
+
+function sanitizeMergedHealth(health: PipelineHealthType): PipelineHealthType {
+  const error = sanitizeNullableError(health.error);
+  const last_success = sanitizeSignal(health.last_success);
+  const last_failure = sanitizeSignal(health.last_failure);
+  if (error === health.error && last_success === health.last_success && last_failure === health.last_failure) {
+    return health;
+  }
+  return { ...health, error, last_success, last_failure };
+}
+
 function newerSignal(current: HealthSignal | null, next: HealthSignal): HealthSignal {
   return !current || next.at >= current.at ? next : current;
 }
@@ -205,7 +225,7 @@ export async function recordHealth(
   try {
     for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
       const current = await store.read(pipeline);
-      const next = mergePipelineHealth(current.health, pipeline, status, safeDetail, now);
+      const next = sanitizeMergedHealth(mergePipelineHealth(current.health, pipeline, status, safeDetail, now));
 
       if (!current.health) {
         if (await store.create(pipeline, next)) return;

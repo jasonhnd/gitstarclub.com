@@ -1,6 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import {
   AlertPipeline,
+  PipelineHealth as PipelineHealthSchema,
   type HealthStatus,
   type PipelineHealth,
 } from "@/lib/contracts";
@@ -226,6 +227,103 @@ describe("recordHealth", () => {
       { store, now: new Date("2026-07-17T03:00:00.000Z") },
     );
     const text = JSON.stringify(saved);
+    expect(text).toContain("GitHub GraphQL 502");
+    expect(text).not.toContain("CANARY");
+  });
+
+  test("a later success rewrites retained failure text before compare-and-set", async () => {
+    const canary = "ghp_CANARYHISTORY1234567890abcd";
+    const failedAt = "2026-07-17T01:00:00.000Z";
+    const previous = PipelineHealthSchema.parse({
+      schema_version: 2,
+      pipeline: "cron-daily",
+      status: "failed",
+      at: failedAt,
+      correlation_id: "daily-old",
+      run_id: "daily-old",
+      idempotency_key: null,
+      error: `GitHub GraphQL 502 ${canary}`,
+      last_success: null,
+      last_failure: {
+        at: failedAt,
+        correlation_id: "daily-old",
+        run_id: "daily-old",
+        idempotency_key: null,
+        error: `GitHub GraphQL 502 ${canary}`,
+      },
+      freshness: {
+        last_success_at: null,
+        expected_within_seconds: 36 * 60 * 60,
+        stale_after: null,
+      },
+    });
+    const saved: { health: PipelineHealth | null } = { health: null };
+    const store: HealthStore = {
+      read: async () => ({ health: previous, etag: `"1"` }),
+      create: async () => false,
+      compareAndSet: async (_pipeline, _etag, health) => {
+        saved.health = health;
+        return true;
+      },
+    };
+    await recordHealth("cron-daily", "ok", { run_id: "daily-new" }, {
+      store,
+      now: new Date("2026-07-17T03:00:00.000Z"),
+    });
+    const written = saved.health;
+    const text = JSON.stringify(written);
+    expect(written?.status).toBe("ok");
+    expect(written?.at).toBe("2026-07-17T03:00:00.000Z");
+    expect(written?.last_failure?.at).toBe(failedAt);
+    expect(written?.last_failure?.correlation_id).toBe("daily-old");
+    expect(text).toContain("GitHub GraphQL 502");
+    expect(text).not.toContain("CANARY");
+  });
+
+  test("an older completion still sanitizes the newer retained error", async () => {
+    const canary = "ghp_CANARYHISTORY1234567890abcd";
+    const newerAt = "2026-07-17T03:00:00.000Z";
+    const previous = PipelineHealthSchema.parse({
+      schema_version: 2,
+      pipeline: "cron-daily",
+      status: "failed",
+      at: newerAt,
+      correlation_id: "daily-new",
+      run_id: "daily-new",
+      idempotency_key: null,
+      error: `GitHub GraphQL 502 ${canary}`,
+      last_success: null,
+      last_failure: {
+        at: newerAt,
+        correlation_id: "daily-new",
+        run_id: "daily-new",
+        idempotency_key: null,
+        error: `GitHub GraphQL 502 ${canary}`,
+      },
+      freshness: {
+        last_success_at: null,
+        expected_within_seconds: 36 * 60 * 60,
+        stale_after: null,
+      },
+    });
+    const saved: { health: PipelineHealth | null } = { health: null };
+    const store: HealthStore = {
+      read: async () => ({ health: previous, etag: `"1"` }),
+      create: async () => false,
+      compareAndSet: async (_pipeline, _etag, health) => {
+        saved.health = health;
+        return true;
+      },
+    };
+    await recordHealth("cron-daily", "ok", { run_id: "daily-old" }, {
+      store,
+      now: new Date("2026-07-17T01:00:00.000Z"),
+    });
+    const written = saved.health;
+    expect(written?.status).toBe("failed");
+    expect(written?.at).toBe(newerAt);
+    expect(written?.correlation_id).toBe("daily-new");
+    const text = JSON.stringify(written);
     expect(text).toContain("GitHub GraphQL 502");
     expect(text).not.toContain("CANARY");
   });

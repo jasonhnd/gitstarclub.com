@@ -196,6 +196,56 @@ describe("sync run helpers", () => {
     expect(stored).not.toContain("CANARY");
   });
 
+  test("a legacy history entry without post_commit_errors still lets the new run persist", async () => {
+    const canary = "ghp_CANARYHISTORY1234567890abcd";
+    const { post_commit_errors: _ignored, ...legacy } = refreshResult([]);
+    globalThis.fetch = mock(async () =>
+      new Response(
+        JSON.stringify({
+          generated_at: "old",
+          runs: [
+            {
+              id: "daily-legacy",
+              job: "daily",
+              status: "ok",
+              dry: false,
+              started_at: "2026-06-19T03:00:00.000Z",
+              finished_at: "2026-06-19T03:00:01.000Z",
+              duration_ms: 1000,
+              result: legacy,
+            },
+            {
+              id: "daily-bad-shape",
+              job: "daily",
+              status: "ok",
+              dry: false,
+              started_at: "2026-06-18T03:00:00.000Z",
+              finished_at: "2026-06-18T03:00:01.000Z",
+              duration_ms: 1000,
+              result: { ...legacy, post_commit_errors: `revalidate: GitHub GraphQL 502 ${canary}` },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    ) as unknown as typeof fetch;
+
+    const run = completedRun(
+      "daily-new",
+      "daily",
+      false,
+      new Date("2026-06-21T03:00:00.000Z"),
+      refreshResult([]),
+    );
+    await expect(safeRecordSyncRun(run)).resolves.toBeNull();
+    expect(putCalls).toHaveLength(1);
+    const stored = JSON.stringify(putCalls);
+    expect(stored).toContain("daily-new");
+    expect(stored).toContain("daily-legacy");
+    expect(stored).toContain("GitHub GraphQL 502");
+    expect(stored).not.toContain("CANARY");
+  });
+
   test("sync-run write failures returned to the caller omit secret canaries", async () => {
     const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
     putImpl = async () => {
