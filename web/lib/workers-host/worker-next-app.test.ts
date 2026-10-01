@@ -1,21 +1,23 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { WorkerEnv } from "../../../workers/gitstarclub-web/src/env";
 
-type NextFetchCall = { url: string; secret: string | undefined; waited: string[] };
+type WaitUntilContext = { waitUntil(promise: Promise<unknown>): void };
 
-const calls: NextFetchCall[] = [];
+type ForwardedCall = {
+  request: Request;
+  env: WorkerEnv;
+  ctx: WaitUntilContext;
+  pending: Promise<unknown>;
+};
+
+const forwarded: ForwardedCall[] = [];
 
 mock.module("../../.open-next/worker.js", () => ({
   default: {
-    fetch(
-      request: Request,
-      env: WorkerEnv,
-      ctx: { waitUntil(promise: Promise<unknown>): void },
-    ): Response {
-      const waited: string[] = [];
-      ctx.waitUntil(Promise.resolve("forwarded"));
-      waited.push("forwarded");
-      calls.push({ url: request.url, secret: env.CRON_SECRET, waited });
+    fetch(request: Request, env: WorkerEnv, ctx: WaitUntilContext): Response {
+      const pending = Promise.resolve("forwarded");
+      forwarded.push({ request, env, ctx, pending });
+      ctx.waitUntil(pending);
       return new Response("open-next", { status: 204 });
     },
   },
@@ -26,22 +28,31 @@ const { handleNextRequest } = (await import(nextAppSpecifier)) as {
   handleNextRequest: (
     request: Request,
     env: WorkerEnv,
-    ctx: { waitUntil(promise: Promise<unknown>): void },
+    ctx: WaitUntilContext,
   ) => Response | Promise<Response>;
 };
 
 describe("handleNextRequest", () => {
-  test("forwards the request, env, and waitUntil context to the OpenNext worker", async () => {
+  test("forwards the same request, env, and waitUntil context to the OpenNext worker", async () => {
+    const request = new Request("https://gitstarclub.com/pulse");
     const env = { JOBS: { send: async () => undefined }, MEDIA: null, CRON_SECRET: "cron" } as WorkerEnv;
-    const response = await handleNextRequest(new Request("https://gitstarclub.com/pulse"), env, {
+    const received: Promise<unknown>[] = [];
+    const ctx: WaitUntilContext = {
       waitUntil(promise: Promise<unknown>) {
-        void promise;
+        received.push(promise);
       },
-    });
+    };
+
+    const response = await handleNextRequest(request, env, ctx);
+
     expect(response.status).toBe(204);
     expect(await response.text()).toBe("open-next");
-    expect(calls).toEqual([
-      { url: "https://gitstarclub.com/pulse", secret: "cron", waited: ["forwarded"] },
-    ]);
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0].request).toBe(request);
+    expect(forwarded[0].env).toBe(env);
+    expect(forwarded[0].ctx).toBe(ctx);
+    expect(received).toHaveLength(1);
+    expect(received[0]).toBe(forwarded[0].pending);
+    expect(await received[0]).toBe("forwarded");
   });
 });

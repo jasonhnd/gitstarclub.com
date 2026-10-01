@@ -19,24 +19,25 @@ import { handleScheduled, handleShellFetch } from "../../../workers/gitstarclub-
 
 const originalFetch = globalThis.fetch;
 
-type NextCall = { url: string; method: string; waited: boolean };
+type WaitUntilContext = { waitUntil(promise: Promise<unknown>): void };
+type NextCall = {
+  request: Request;
+  env: WorkerEnv;
+  ctx: WaitUntilContext;
+  pending: Promise<unknown>;
+};
 const nextCalls: NextCall[] = [];
 
 mock.module("../../../workers/gitstarclub-web/src/next-app.ts", () => ({
-  handleNextRequest(
-    request: Request,
-    _env: WorkerEnv,
-    ctx: { waitUntil(promise: Promise<unknown>): void },
-  ): Response {
-    let waited = false;
-    ctx.waitUntil(Promise.resolve("next-wait"));
-    waited = true;
-    nextCalls.push({ url: request.url, method: request.method, waited });
+  handleNextRequest(request: Request, env: WorkerEnv, ctx: WaitUntilContext): Response {
+    const pending = Promise.resolve("next-wait");
+    nextCalls.push({ request, env, ctx, pending });
+    ctx.waitUntil(pending);
     return new Response("next-app", { status: 200, headers: { "x-handler": "next" } });
   },
 }));
 
-type ExecutionContext = { waitUntil(promise: Promise<unknown>): void };
+type ExecutionContext = WaitUntilContext;
 
 type WorkerHandlers = {
   fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response>;
@@ -284,21 +285,31 @@ describe("shell fetch routing", () => {
 
 describe("Worker entry fetch, scheduled, and queue", () => {
   test("shell paths stay on the shell and other paths go to Next", async () => {
-    const ctx = {
+    const received: Promise<unknown>[] = [];
+    const ctx: WaitUntilContext = {
       waitUntil(promise: Promise<unknown>) {
-        void promise;
+        received.push(promise);
       },
     };
-    const health = await worker.fetch(shellRequest("/preview/health"), makeEnv(), ctx);
+    const env = makeEnv();
+    const health = await worker.fetch(shellRequest("/preview/health"), env, ctx);
     expect(health.status).toBe(200);
     expect(await health.json()).toMatchObject({ ok: true, hosting: "opennext" });
     expect(nextCalls).toEqual([]);
+    expect(received).toEqual([]);
 
-    const page = await worker.fetch(shellRequest("/rankings"), makeEnv(), ctx);
+    const pageRequest = shellRequest("/rankings");
+    const page = await worker.fetch(pageRequest, env, ctx);
     expect(page.status).toBe(200);
     expect(await page.text()).toBe("next-app");
     expect(page.headers.get("x-handler")).toBe("next");
-    expect(nextCalls).toEqual([{ url: "https://pre.gitstarclub.com/rankings", method: "GET", waited: true }]);
+    expect(nextCalls).toHaveLength(1);
+    expect(nextCalls[0].request).toBe(pageRequest);
+    expect(nextCalls[0].env).toBe(env);
+    expect(nextCalls[0].ctx).toBe(ctx);
+    expect(received).toHaveLength(1);
+    expect(received[0]).toBe(nextCalls[0].pending);
+    expect(await received[0]).toBe("next-wait");
   });
 
   test("scheduled passes the bearer and queue drains fixture jobs", async () => {
@@ -339,11 +350,19 @@ describe("Worker env typing assumptions", () => {
   test("RefreshJob, invalidate bodies, and WorkerEnv keep the fields the shell reads", () => {
     assertAssignable<RefreshJob["v"] extends 1 ? true : false>();
     assertAssignable<RefreshJob["graph"] extends "full" | "fixture" ? true : false>();
+    assertAssignable<"full" | "fixture" extends RefreshJob["graph"] ? true : false>();
     assertAssignable<WorkerEnv["JOBS"]["send"] extends (message: RefreshJob) => Promise<void> ? true : false>();
-    assertAssignable<Record<string, never> extends Pick<WorkerEnv, "JOBS" | "MEDIA"> ? false : true>();
-    assertAssignable<Record<string, never> extends Pick<WorkerEnv, "CRON_SECRET"> ? true : false>();
-    assertAssignable<Record<string, never> extends Pick<WorkerEnv, "CF_CRON_ORIGIN"> ? true : false>();
-    assertAssignable<Record<string, never> extends Pick<WorkerEnv, "DATA"> ? true : false>();
+    // `{}` is the empty-object assignability probe for required vs optional keys.
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- required-key probe
+    assertAssignable<{} extends Pick<WorkerEnv, "JOBS"> ? false : true>();
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- required-key probe
+    assertAssignable<{} extends Pick<WorkerEnv, "MEDIA"> ? false : true>();
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- optional-key probe
+    assertAssignable<{} extends Pick<WorkerEnv, "CRON_SECRET"> ? true : false>();
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- optional-key probe
+    assertAssignable<{} extends Pick<WorkerEnv, "CF_CRON_ORIGIN"> ? true : false>();
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- optional-key probe
+    assertAssignable<{} extends Pick<WorkerEnv, "DATA"> ? true : false>();
     assertAssignable<InvalidateOp["kind"] extends "path" | "tag" ? true : false>();
     assertAssignable<NonNullable<InvalidateBody["ops"]> extends readonly InvalidateOp[] ? true : false>();
 
