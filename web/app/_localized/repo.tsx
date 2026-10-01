@@ -18,6 +18,7 @@ import { fmtStars, ymParts, monthYearLabel } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 import { repoLd, type FaqItem } from "@/lib/jsonld";
 import { exactRepoMilestones, type ExactRepoMilestone } from "@/lib/repo-milestones";
+import { githubRepoFullName } from "@/lib/public-params";
 import { resolveRepoRoute } from "@/lib/repo-route";
 import type { RepoPageEntity } from "@/lib/repo-readiness";
 import { ANSWER_CAPSULE_SOURCE, resolveDataAsOfFromMeta, type AnswerCapsuleContent } from "@/lib/geo-capsules";
@@ -64,7 +65,8 @@ async function resolveRepoId(fullName: string, locale: Locale): Promise<number |
 export async function generateRepoMetadata({ locale, owner, name }: { locale: Locale; owner: string; name: string }): Promise<Metadata> {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
-  const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
+  const fullName = githubRepoFullName(owner, name);
+  if (!fullName) notFound();
   const id = await resolveRepoId(fullName, locale);
   const repo = id !== undefined ? await getRepoPageEntityDaily(id) : null;
   if (!repo) {
@@ -90,7 +92,8 @@ export async function generateRepoMetadata({ locale, owner, name }: { locale: Lo
 export async function RepoPageView({ locale, owner, name }: { locale: Locale; owner: string; name: string }) {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
-  const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
+  const fullName = githubRepoFullName(owner, name);
+  if (!fullName) notFound();
   const id = await resolveRepoId(fullName, locale);
   if (id === undefined) notFound();
   // CF: skip assignment shards (language chips stay). Vercel: this repo's bucket only.
