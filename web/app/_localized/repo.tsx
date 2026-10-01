@@ -22,7 +22,7 @@ import { exactRepoMilestones, type ExactRepoMilestone } from "@/lib/repo-milesto
 import { resolveRepoRoute } from "@/lib/repo-route";
 import type { RepoPageEntity } from "@/lib/repo-readiness";
 import { ANSWER_CAPSULE_SOURCE, resolveDataAsOfFromMeta, type AnswerCapsuleContent } from "@/lib/geo-capsules";
-import { absoluteSnippetUrl, buildShareableSnippet, type ShareableSnippetContent } from "@/lib/shareable-snippets";
+import { buildShareableSnippet, type ShareableSnippetContent } from "@/lib/shareable-snippets";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { safeExternalHref } from "@/lib/external-url";
