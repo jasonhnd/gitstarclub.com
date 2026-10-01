@@ -1,7 +1,7 @@
 ---
 owner: GEO crawler and AI-referrer reporting
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - AI crawler aggregate reporting runbook
   - AI-referrer aggregate reporting runbook
@@ -9,29 +9,29 @@ source_of_truth_for:
 
 # AI crawler and referrer log reporting
 
-GitStarClub measures GEO crawler reach and AI referrals from Vercel-side request logs. This path is aggregate-only: it does not add client JavaScript, browser analytics events, cookies, user ids, IP addresses, or stored raw referrer URLs.
+GitStarClub measures GEO crawler reach and AI referrals from an exported request log. The current parser accepts the Vercel Log Drains field shape. It does not parse Cloudflare Worker logs. This path is aggregate-only: it does not add client JavaScript, browser analytics events, cookies, user ids, IP addresses, or stored raw referrer URLs.
 
 ## Run the report
 
-Save a Vercel Log Drains JSON array, NDJSON stream, or exported request-log JSON to a local file, then run:
+Save a JSON array, NDJSON stream, or exported request-log JSON in that field shape to a local file, then run:
 
 ```bash
 cd web
-bun run geo:report -- --input ../vercel-logs.ndjson --format markdown
+bun run geo:report -- --input ../request-logs.ndjson --format markdown
 ```
 
 For machine-readable output, omit `--format markdown`:
 
 ```bash
 cd web
-bun run geo:report -- --input ../vercel-logs.ndjson
+bun run geo:report -- --input ../request-logs.ndjson
 ```
 
-For weekly buckets, add `--grain week`. Without `--input`, the script reads stdin, so a Vercel-native log export can be piped directly into the command.
+For weekly buckets, add `--grain week`. Without `--input`, the script reads stdin. A piped export works only when each record uses the field shape below.
 
 ## Supported input
 
-The parser accepts the Vercel Log Drains request shape documented for JSON and NDJSON logs:
+The parser accepts the Vercel Log Drains request shape documented for JSON and NDJSON logs. It does not parse Cloudflare Worker logs. Accepted fields:
 
 - `proxy.userAgent`
 - `proxy.referer`
@@ -49,7 +49,7 @@ The report emits only aggregate rows:
 - `referrer_counts`: `date`, `referrer_host`, `path_family`, `count`
 - `taxonomy`: the crawler, referrer, and path-family definitions used for classification
 
-Raw IPs, request ids, JA3/JA4 fingerprints, cookies, full URLs, and raw query strings are not included in output. Do not commit raw Vercel log exports; if a report snapshot is checked in later, check in only the aggregate output.
+Raw IPs, request ids, JA3/JA4 fingerprints, cookies, full URLs, and raw query strings are not included in output. Do not commit raw log exports; if a report snapshot is checked in later, check in only the aggregate output.
 
 ## User-agent taxonomy
 

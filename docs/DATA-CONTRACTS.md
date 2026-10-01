@@ -1,7 +1,7 @@
 ---
 owner: data contracts
 status: active
-last_reviewed: 2026-09-22
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - canonical JSON shard schemas
   - JSON view schemas
@@ -15,7 +15,7 @@ source_of_truth_for:
 This document is the **interface contract between the data layer and the build**, giving each canonical shard and JSON view an **exact schema** — fields, types, definitions, and reference relationships, and it is the source of truth for the Zod definitions in `web/lib/contracts/`. It must be read before adding an artifact / changing a field / adjusting a definition.
 Physical form, tradeoffs, and the generation pipeline are in [ARCHITECTURE.md](./ARCHITECTURE.md) "data model" and [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md); how the frontend consumes them is in [FRONTEND.md](./FRONTEND.md); ranking-definition details are in [RANKING.md](./RANKING.md); this document does not cover deployment, operations, or cron scheduling (see [OPS.md](./OPS.md)).
 
-> ⚠️ **canonical form**: §1's `star_daily.parquet` is the **bootstrap archive** form. **production canonical = §1.4's JSON shard** (Vercel can recompute it, with no engine). The Workflow / checkpoint / publish pointer contracts are in §2.11–2.13.
+> ⚠️ **canonical form**: §1's `star_daily.parquet` is the **bootstrap archive** form. **production canonical = §1.4's JSON shard** (the managed refresh recomputes it in pure JS, with no engine). Production JSON stays on Vercel Blob until cutover. The Workflow / checkpoint / publish pointer contracts are in §2.11–2.13.
 
 ## Requirement Traceability
 
@@ -84,7 +84,7 @@ The sole bootstrap source of truth; in the production phase it is folded into §
 
 #### Repository tracking contract (authoritative)
 
-1. GitHub Search is responsible only for **membership discovery**. Discovery first runs an open-upper-bound `stars:>=MIN_TRACKED_STARS` (default 10,000; `getMinTrackedStars()` reads `MIN_TRACKED_STARS`, preview = 1,000), reads the current maximum in descending star order, then adaptively buckets by that dynamic upper bound; there is no 600,000 or other product-level maximum-star cutoff. When preview `WHITELIST_SEARCH_SHARDS=1`, Search resumes the queue by hop (`ops/workflows/<run_id>/whitelist-search.json`) and does not write a snapshot before completion. A failed run's unpublished snapshot is reused by the next run via `ops/workflows/latest-unpublished-whitelist.json` (no re-search); the published pointer remains the baseline. Opening a page does not compute on the fly; membership changes go only through refresh → precomputed views.
+1. GitHub Search is responsible only for **membership discovery**. Discovery first runs an open-upper-bound `stars:>=MIN_TRACKED_STARS` (default 10,000; `getMinTrackedStars()` reads `MIN_TRACKED_STARS`. Production and preview wrangler both use 10,000. The 1,000-star cold-start experiment is paused; restoring it is an owner decision), reads the current maximum in descending star order, then adaptively buckets by that dynamic upper bound; there is no 600,000 or other product-level maximum-star cutoff. When preview `WHITELIST_SEARCH_SHARDS=1`, Search resumes the queue by hop (`ops/workflows/<run_id>/whitelist-search.json`) and does not write a snapshot before completion. A failed run's unpublished snapshot is reused by the next run via `ops/workflows/latest-unpublished-whitelist.json` (no re-search); the published pointer remains the baseline. Opening a page does not compute on the fly; membership changes go only through refresh → precomputed views.
 2. GraphQL `Repository.stargazerCount` is the sole authoritative source of `current_stars`, the current total, and current/all-time ranking. The `stargazers_count` returned by Search is kept only in the immutable whitelist snapshot for discovery audit, and is not written to canonical `current_stars`.
 3. `WhitelistSnapshot.count === entries.length` is this run's authoritative active tracked count. The publish gate requires that set to match canonical `active:true`, `lookup/repos.json active:true`, and `meta.active_repo_count` exactly.
 4. A drop does not delete: canonical, lookup, search, and the repo entity are kept, and `active:false` is written; daily/weekly cron, current org/category aggregation, and the all-time ranking use only active rows.
@@ -110,7 +110,7 @@ They **do not belong to** `canonical/v2/meta.json` (`CanonicalMeta` stays `.stri
 
 ### 1.4 Production canonical JSON shard
 
-> **Fold + bucket** §1.1's 8M-row daily table into a set of small JSON, so Vercel Workflow can recompute with no engine. The design and bucketing strategy are in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§5.2. `<bucket>` = `repo_id % N`.
+> **Fold + bucket** §1.1's 8M-row daily table into a set of small JSON, so the managed refresh can recompute with no engine. The design and bucketing strategy are in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5/§5.2. `<bucket>` = `repo_id % N`.
 
 **`canonical/v2/meta.json`** — global metadata (drives stock-anchor segmentation + the close-out watermark):
 
@@ -178,7 +178,7 @@ hot-snapshot.json                              # migration-period flat fallback 
 ops/sync-runs.json                             # cron run records (written by cron, read by operations)
 meta.json
 canonical/v2/whitelist/latest.json             # { run_id, ids[] }: compatibility pointer of the published baseline (written by publish / rollback; the whitelist step does not advance it)
-# ── Vercel-only publish layer (see §2.11–2.13)──
+# ── Publish pointer layer (see §2.11–2.13)──
 bootstrap/latest.json                          # cold start generation's atomic commit / rollback pointer
 bootstrap/generations/{generation}/**          # sealed base + canonical payload and phase manifests
 bootstrap/overlays/{generation}/canonical/**   # recurring canonical copy-on-write state
@@ -399,7 +399,7 @@ Site-level totals ("burst day/month").
 - `heatmap/year/2024.json` → that year's 12 month totals (month cells on the year page); `cells` uses `["2024-10", total]`.
 - Daily totals for the in-progress current month come from `current_month.json`, and the build merges them.
 
-### 2.8 `live/generations/{run_id}/current_month.json` (live tail — written by the Vercel cron)
+### 2.8 `live/generations/{run_id}/current_month.json` (live tail — written by the daily and weekly live routes)
 
 The `month` field is a `MonthPeriod`; the `updated` / `daily_totals` / `per_repo` date fields are `DateStr`.
 
@@ -442,7 +442,7 @@ Production `current_month` exceeds the Next.js Data Cache 2MB entry limit by mon
 - GitHub may return partial data for a deleted/renamed repo. Cron explicitly supports this kind of partial publication: it updates only repos that returned successfully, and a missing repo's `per_repo` today value and `current_stars` are kept as-is; if a non-reuse path gets no repo back at all, it fails closed and does not overwrite live state.
 - `current_stars`: each day's latest authoritative GraphQL value (also used for anchoring).
 - The `current_stars` map contains only active repos; an already-dropped repo's existing `per_repo` daily series is kept for the month-end fold, but no further GraphQL request is sent for it, and it does not enter the current rank.
-- The daily/weekly Vercel cron writes the live tail, the current week/month rank, and the current-month heatmap inside the same immutable generation; it switches `live/latest.json` only after every object and `manifest.json` are written and pass schema. Base `rank/*` / `heatmap/*` are not overwritten by cron, to avoid merging the live tail twice. **Folding into `canonical/v2` month/week shards at period close-out** (not Parquet) is carried by Vercel Workflow shards (the month+week fold is `fold.ts`, see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6/§7.2); handoff relies on `canonical/v2/pending/<period>.json` + the in-generation `rollover/<period>.json` recovery copy + the `folded_through` watermark to prevent duplication or lost data.
+- The daily and weekly live routes write the live tail, the current week/month rank, and the current-month heatmap inside the same immutable generation; they switch `live/latest.json` only after every object and `manifest.json` are written and pass schema. Base `rank/*` / `heatmap/*` are not overwritten by those routes, to avoid merging the live tail twice. **Folding into `canonical/v2` month/week shards at period close-out** (not Parquet) is carried by managed refresh steps (the month+week fold is `fold.ts`, see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6/§7.2); handoff relies on `canonical/v2/pending/<period>.json` + the in-generation `rollover/<period>.json` recovery copy + the `folded_through` watermark to prevent duplication or lost data. The production caller of those routes is unverified.
 
 ### 2.9 `live/generations/{run_id}/hot-snapshot.json` (written by cron, read by hot-set ISR)
 
@@ -521,7 +521,7 @@ product gate still judges that transport failure as a failure.
 
 ### 2.10 `ops/sync-runs.json` (cron run records)
 
-A lightweight operations log; overwritten by the Vercel cron, keeping the most recent 100 runs.
+A lightweight operations log; overwritten by the live cron route, keeping the most recent 100 runs. Production JSON stays on Vercel Blob until cutover.
 
 ```json
 {

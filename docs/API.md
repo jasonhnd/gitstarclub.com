@@ -1,7 +1,7 @@
 ---
 owner: API / route contracts
 status: active
-last_reviewed: 2026-09-21
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - endpoint contracts
   - route handler auth and cache behavior
@@ -75,7 +75,7 @@ Runs the daily live overlay refresh.
 | Failure | `400` invalid idempotency key; `401 Unauthorized`; `409` another live writer owns the lease; `500 {"ok":false,"runId":"daily-...","error":"Internal server error"}` |
 | Cache | `dynamic = "force-dynamic"`; no explicit `Cache-Control`; callers should not cache |
 | Side effects | Non-dry runs acquire the fenced `live/latest.json` lease, write and validate one immutable `live/generations/<run_id>/**` generation, atomically flip the pointer, then revalidate/submit IndexNow and append `ops/sync-runs.json` |
-| Max duration | `800` seconds |
+| `maxDuration` | `800`, exported by `web/app/api/cron/daily/route.ts` and `web/app/api/cron/weekly/route.ts` |
 | Type source | [`LiveRefreshResult`](../web/lib/cron/live-refresh.ts) |
 
 Success response:
@@ -147,8 +147,9 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 ### `GET /api/workflows/refresh/start`
 
 Enqueues the managed refresh through the workflows runtime and returns
-immediately. The long work continues as ordinary async steps. Production
-scheduling for this path remains the Vercel cron in `web/vercel.json`.
+immediately. The long work continues as ordinary async steps. Both Worker
+`triggers.crons` arrays are `[]`. The production caller is unverified. Do not
+infer a live scheduler from `web/vercel.json`.
 
 | Item | Contract |
 |---|---|
@@ -163,7 +164,7 @@ scheduling for this path remains the Vercel cron in `web/vercel.json`.
 ### `POST /api/workflows/refresh/step`
 
 Runs exactly one managed-refresh step, then enqueues the next. Used by the
-HTTP chain and by a non-production CF Queue consumer. Not a `vercel.json` cron.
+HTTP chain and by a non-production CF Queue consumer. It is not a declared Worker cron.
 
 | Item | Contract |
 |---|---|
@@ -174,7 +175,7 @@ HTTP chain and by a non-production CF Queue consumer. Not a `vercel.json` cron.
 | Failure | `400` invalid job or fixture on this runtime; `401 Unauthorized`; `405` non-POST; `500 {"ok":false,"runId":"refresh-...","error":"Internal server error"}` |
 | Cache | `dynamic = "force-dynamic"`; no explicit `Cache-Control`; callers should not cache |
 | Side effects | Executes one step through the P0 object-store port, writes `ops/workflows/<run_id>/steps/<step>.json`. HTTP / direct POST then `completeStep` enqueues the successor. A CF Queue consumer sends `x-gitstarclub-queue-advance: consumer` and `JOBS.send`s the successor after reading the JSON body (so fold does not POST public `/enqueue` from the exhausted isolate) |
-| Max duration | `800` seconds |
+| `maxDuration` | `800`, exported by `web/app/api/workflows/refresh/step/route.ts` |
 
 Operational example:
 
@@ -330,12 +331,13 @@ applied only while its request generation is still current.
 
 ### `GET /.well-known/deployment`
 
-Public, uncached deployment identity used by optional `preview-e2e` /
-`product-gates` (when a Vercel Preview exists) to prove which commit
-a deployment serves. It does not read Blob data or expose a secret. On Vercel
-the body stays `{ commitSha, deploymentUrl }`. On the P3 CF Workers host
-(`HOSTING_TARGET=cf`) the Worker shell (or the Next route) also returns
-`target: "cf"` and `host`.
+Public, uncached deployment identity used by optional `preview-e2e` and
+`product-gates` to prove which commit a deployment serves. Those jobs are not
+required checks. The route does not read object-store data or expose a secret.
+Production and preview both set `HOSTING_TARGET=cf` and do not set `VERCEL_ENV`.
+The body then includes `target: "cf"` and `host`. `deploymentUrl` is
+`https://` plus `VERCEL_URL` when that variable is set, and otherwise the
+configured Cloudflare preview origin.
 
 | Item | Contract |
 |---|---|
@@ -349,7 +351,9 @@ the body stays `{ commitSha, deploymentUrl }`. On the P3 CF Workers host
 ```json
 {
   "commitSha": "0123456789abcdef0123456789abcdef01234567",
-  "deploymentUrl": "https://gitstarclub-abc-zkscio.vercel.app"
+  "deploymentUrl": "https://gitstarclub-web-pre.worldgo.workers.dev",
+  "target": "cf",
+  "host": "pre.gitstarclub.com"
 }
 ```
 
@@ -470,8 +474,8 @@ Response shape:
 
 The site default, repository, annual-ranking, and period-ranking image routes
 are public `next/og` endpoints. All return `1200x630` PNG responses and export
-`revalidate=86400`. They render on request/ISR and are cached by Vercel; no
-pipeline-generated Blob image is involved. The exact route/source matrix is in
+`revalidate=86400`. They render on request and are cached by the host. No
+pipeline-generated object-store image is involved. The exact route/source matrix is in
 [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md), and card/content rules are
 in [SEO.md](./SEO.md#13-og--social-cards-graphite-gray--star-gold).
 
