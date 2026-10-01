@@ -7,6 +7,7 @@ import {
   type WhitelistSearchProgress,
 } from "@/lib/contracts";
 import { FetchTimeoutError, GITHUB_FETCH_TIMEOUT_MS, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import {
   getMinTrackedStars,
   requireGithubToken,
@@ -106,8 +107,12 @@ async function gql<T>(token: string, query: string, schema: z.ZodType<T>, attemp
   if (!res.ok) throw new GitHubHttpError("graphql", res.status, text);
   const json = z.object({ data: z.unknown().optional(), errors: z.unknown().optional() }).passthrough().parse(JSON.parse(text));
   // Partial data + errors is normal (a deleted/renamed repo aliases to null); only fail with no data.
-  if (!json.data) throw new Error(`GraphQL: ${JSON.stringify(json.errors ?? {}).slice(0, 200)}`);
-  if (json.errors) console.warn("[github] GraphQL returned partial errors", JSON.stringify(json.errors).slice(0, 200));
+  if (!json.data) {
+    throw new Error(sanitizeErrorText(`GraphQL: ${JSON.stringify(json.errors ?? {})}`).slice(0, 200));
+  }
+  if (json.errors) {
+    console.warn("[github] GraphQL returned partial errors", sanitizeErrorText(JSON.stringify(json.errors)).slice(0, 200));
+  }
   return schema.parse(json.data);
 }
 
@@ -409,7 +414,7 @@ export async function fetchRepositoryMetadata(
     if (!raw) continue;
     const parsed = RepoNodeSchema.safeParse(raw);
     if (!parsed.success) {
-      console.warn("[github] skipped invalid repository node", parsed.error.message.slice(0, 200));
+      console.warn("[github] skipped invalid repository node", sanitizeErrorText(parsed.error.message).slice(0, 200));
       continue;
     }
     const n = parsed.data;

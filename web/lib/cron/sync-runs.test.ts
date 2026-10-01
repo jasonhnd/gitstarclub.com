@@ -40,6 +40,26 @@ afterEach(() => {
   else process.env.BLOB_READ_WRITE_TOKEN = originalWriteToken;
 });
 
+function refreshResult(postCommitErrors: string[]) {
+  return {
+    job: "daily" as const,
+    dry: false,
+    day: "2026-06-21",
+    month: "2026-06",
+    week: "2026-W25",
+    polled: 1,
+    day_total: 0,
+    writes: [],
+    all_time_repo_1: null,
+    current_week_flow_1: null,
+    current_month_flow_1: null,
+    generation: "gen",
+    previous_generation: null,
+    published_at: "2026-06-21T03:00:00.000Z",
+    post_commit_errors: postCommitErrors,
+  };
+}
+
 describe("sync run helpers", () => {
   test("syncRunId is stable and filesystem-safe", () => {
     expect(syncRunId("daily", new Date("2026-06-21T03:04:05.678Z"))).toBe("daily-2026-06-21T03-04-05-678Z");
@@ -137,6 +157,43 @@ describe("sync run helpers", () => {
       if (previousCron === undefined) delete process.env.CRON_SECRET;
       else process.env.CRON_SECRET = previousCron;
     }
+  });
+
+  test("stored post_commit_errors and retained history omit secret canaries", async () => {
+    const canary = "ghp_CANARYMISSEDSINK1234567890abcd";
+    globalThis.fetch = mock(async () =>
+      new Response(
+        JSON.stringify({
+          generated_at: "old",
+          runs: [
+            {
+              id: "daily-old",
+              job: "daily",
+              status: "ok",
+              dry: false,
+              started_at: "2026-06-20T03:00:00.000Z",
+              finished_at: "2026-06-20T03:00:01.000Z",
+              duration_ms: 1000,
+              result: refreshResult([`indexnow: GitHub GraphQL 502 ${canary}`]),
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    ) as unknown as typeof fetch;
+
+    const run = completedRun(
+      "daily-new",
+      "daily",
+      false,
+      new Date("2026-06-21T03:00:00.000Z"),
+      refreshResult([`revalidate: GitHub GraphQL 502 ${canary}`]),
+    );
+    await expect(safeRecordSyncRun(run)).resolves.toBeNull();
+    const stored = JSON.stringify(putCalls);
+    expect(stored).toContain("revalidate: GitHub GraphQL 502");
+    expect(stored).toContain("indexnow: GitHub GraphQL 502");
+    expect(stored).not.toContain("CANARY");
   });
 
   test("sync-run write failures returned to the caller omit secret canaries", async () => {

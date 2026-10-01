@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import * as runtimeEnv from "@/lib/workers-host/runtime-env";
 import { SANITIZED_ERROR_MAX_CODE_POINTS, sanitizeErrorText } from "./sanitize-error";
 
 const BEARER = "CANARYBEARERTOKEN1234567890abcd";
@@ -101,11 +102,54 @@ describe("sanitizeErrorText", () => {
     expect(output).not.toContain("CANARY");
   });
 
-  test("ignores runtime values shorter than 16 characters", () => {
-    const output = sanitizeErrorText("CRON_SECRET is not set: secret", {
-      env: { CRON_SECRET: "secret" },
+  test("redacts every nonempty known secret, including values auth accepts", () => {
+    const output = sanitizeErrorText("CRON_SECRET is not set: CANARYshort42 Bearer CANARY7", {
+      env: { CRON_SECRET: "CANARYshort42" },
     });
-    expect(output).toBe("CRON_SECRET is not set: secret");
+    expect(output).toBe("CRON_SECRET is not set: [redacted] Bearer [redacted]");
+    expect(output).not.toContain("CANARY");
+  });
+
+  test("redacts a live Worker binding secret that differs from process.env", () => {
+    const live = "CANARYLIVEWORKERSECRET1234567890";
+    const stale = "CANARYSTALEPROCESSSECRET1234567890";
+    const previous = process.env.R2_SECRET_ACCESS_KEY;
+    process.env.R2_SECRET_ACCESS_KEY = stale;
+    const spy = spyOn(runtimeEnv, "resolveRuntimeEnv").mockReturnValue({
+      R2_SECRET_ACCESS_KEY: live,
+    });
+    try {
+      const output = sanitizeErrorText(`R2 request failed ${live} stale ${stale}`);
+      expect(output).toBe("R2 request failed [redacted] stale [redacted]");
+      expect(output).not.toContain("CANARY");
+    } finally {
+      spy.mockRestore();
+      if (previous === undefined) delete process.env.R2_SECRET_ACCESS_KEY;
+      else process.env.R2_SECRET_ACCESS_KEY = previous;
+    }
+  });
+
+  test("redacts a credential whose terminator sits past the old scan window", () => {
+    const password = "CANARYLONGPASS";
+    const input = `fetch failed https://user:${password}${"A".repeat(850)}@example.invalid/path`;
+    const output = sanitizeErrorText(input, { env: {} });
+    expect(output).toContain("fetch failed");
+    expect(output).toContain("[redacted-url]");
+    expect(output).not.toContain("CANARY");
+    expect(output).not.toContain("example.invalid");
+    expect([...output].length).toBeLessThanOrEqual(SANITIZED_ERROR_MAX_CODE_POINTS);
+  });
+
+  test("redacts username-only URL credentials and quoted assignments", () => {
+    const output = sanitizeErrorText(
+      'metadata fetch failed https://CANARYUSERINFOTOKEN1234567890@example.invalid/path {"token":"CANARYQUOTEDTOKEN1234567890"}',
+      { env: {} },
+    );
+    expect(output).toContain("metadata fetch failed");
+    expect(output).toContain("[redacted-url]");
+    expect(output).toContain('"token"=[redacted]');
+    expect(output).not.toContain("CANARY");
+    expect(output).not.toContain("example.invalid");
   });
 
   test("reads an Error message and stays idempotent", () => {

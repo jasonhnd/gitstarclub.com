@@ -1,4 +1,5 @@
 import { truncateUnicodeText } from "@/lib/unicode-text";
+import * as runtimeEnv from "@/lib/workers-host/runtime-env";
 
 /**
  * Bounded redaction for error text that leaves the process.
@@ -10,15 +11,6 @@ import { truncateUnicodeText } from "@/lib/unicode-text";
  */
 
 export const SANITIZED_ERROR_MAX_CODE_POINTS = 500;
-
-/** Extra code points scanned so a token that starts near the cut is fully matched. */
-const PATTERN_SLACK_CODE_POINTS = 256;
-
-/**
- * Ignore shorter env values. Production secrets are longer; test fixtures such
- * as "secret" or "blob-token" must not swallow ordinary words.
- */
-const MIN_RUNTIME_SECRET_LENGTH = 16;
 
 const RUNTIME_SECRET_ENV_KEYS = [
   "CRON_SECRET",
@@ -38,8 +30,8 @@ const RUNTIME_SECRET_ENV_KEYS = [
   "CF_API_TOKEN",
 ] as const;
 
-const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi;
-const USERINFO_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]+:[^\s/@]+@[^\s]+/gi;
+const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+const USERINFO_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]+@[^\s]+/gi;
 const SENSITIVE_QUERY_URL =
   /\bhttps?:\/\/[^\s]*?(?:x-amz-security-token|x-amz-signature|x-amz-credential|access_token|refresh_token|id_token|api[_-]?key|signature|credential|password|secret|token|sig)=[^\s]*/gi;
 const GITHUB_PAT = /\bgithub_pat_[A-Za-z0-9_]{16,}\b/g;
@@ -48,13 +40,14 @@ const BLOB_TOKEN = /\bvercel_blob_rw_[A-Za-z0-9_]{8,}\b/g;
 const AWS_ACCESS_KEY = /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g;
 const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
 const ASSIGNMENT =
-  /(^|[^A-Za-z0-9])((?:[A-Za-z0-9]+_)*(?:secret(?:[_-]access[_-]key)?|access[_-]?key(?:[_-]?id)?|api[_-]?key|token|password|passwd|credential))\s*[=:]\s*[A-Za-z0-9._~+/=-]{12,}/gi;
+  /(^|[^A-Za-z0-9])(["']?)((?:[A-Za-z0-9]+_)*(?:secret(?:[_-]access[_-]key)?|access[_-]?key(?:[_-]?id)?|api[_-]?key|token|password|passwd|credential))\2\s*[=:]\s*(["']?)([A-Za-z0-9._~+/=-]+)\4/gi;
 
 export type SanitizeErrorEnv = Record<string, string | undefined>;
 
 export type SanitizeErrorOptions = {
   /**
-   * Env map used for known runtime secrets. When omitted, `process.env` is read.
+   * Env map used for known runtime secrets. When omitted, both the live Worker
+   * env (`resolveRuntimeEnv`) and the stale `process.env` fallback are read.
    * Pass an object in tests so the check stays hermetic.
    */
   env?: SanitizeErrorEnv;
@@ -75,16 +68,25 @@ function escapeRegExp(value: string): string {
 function rememberSecret(values: Map<string, "[redacted]" | "[redacted-url]">, raw: string | undefined): void {
   if (typeof raw !== "string") return;
   const trimmed = raw.trim();
-  if (trimmed.length < MIN_RUNTIME_SECRET_LENGTH) return;
-  if (trimmed === "[redacted]" || trimmed === "[redacted-url]") return;
+  if (trimmed.length === 0) return;
+  if (trimmed === "[redacted]" || trimmed === "[redacted-url]" || trimmed === "Bearer [redacted]") return;
   const replacement = /^https?:\/\//i.test(trimmed) ? "[redacted-url]" : "[redacted]";
   values.set(trimmed, replacement);
-  if (raw !== trimmed && raw.length >= MIN_RUNTIME_SECRET_LENGTH) values.set(raw, replacement);
+  if (raw !== trimmed) values.set(raw, replacement);
 }
 
-function applyRuntimeSecrets(input: string, env: SanitizeErrorEnv): string {
+function secretEnvs(options: SanitizeErrorOptions): SanitizeErrorEnv[] {
+  if (options.env) return [options.env];
+  const stale = process.env;
+  const live = runtimeEnv.resolveRuntimeEnv(stale);
+  return live === stale ? [stale] : [stale, live];
+}
+
+function applyRuntimeSecrets(input: string, envs: readonly SanitizeErrorEnv[]): string {
   const values = new Map<string, "[redacted]" | "[redacted-url]">();
-  for (const key of RUNTIME_SECRET_ENV_KEYS) rememberSecret(values, env[key]);
+  for (const env of envs) {
+    for (const key of RUNTIME_SECRET_ENV_KEYS) rememberSecret(values, env[key]);
+  }
   const ordered = [...values.entries()].sort((a, b) => b[0].length - a[0].length);
   let output = input;
   for (const [secret, replacement] of ordered) {
@@ -109,7 +111,7 @@ function redactPatterns(input: string): string {
     .replace(BLOB_TOKEN, "[redacted]")
     .replace(AWS_ACCESS_KEY, "[redacted]")
     .replace(JWT, "[redacted]")
-    .replace(ASSIGNMENT, (_match, lead: string, key: string) => `${lead}${key}=[redacted]`);
+    .replace(ASSIGNMENT, (_match, lead: string, keyQuote: string, key: string) => `${lead}${keyQuote}${key}${keyQuote}=[redacted]`);
 }
 
 export function sanitizeErrorText(value: unknown, options: SanitizeErrorOptions = {}): string {
@@ -117,8 +119,6 @@ export function sanitizeErrorText(value: unknown, options: SanitizeErrorOptions 
   if (!Number.isSafeInteger(maxCodePoints) || maxCodePoints < 0) {
     throw new RangeError("maxCodePoints must be a non-negative safe integer");
   }
-  const env = options.env ?? process.env;
-  const withSecrets = applyRuntimeSecrets(errorText(value), env);
-  const window = truncateUnicodeText(withSecrets, maxCodePoints + PATTERN_SLACK_CODE_POINTS);
-  return truncateUnicodeText(redactPatterns(window), maxCodePoints);
+  const redacted = redactPatterns(applyRuntimeSecrets(errorText(value), secretEnvs(options)));
+  return truncateUnicodeText(redacted, maxCodePoints);
 }

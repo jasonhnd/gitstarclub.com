@@ -85,6 +85,29 @@ describe("buildSearchIndexResponse", () => {
       console.error = originalError;
     }
   });
+
+  test("loader failures logged before the 503 omit secret canaries", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const errSpy = mock(() => {});
+    const originalError = console.error;
+    console.error = errSpy as unknown as typeof console.error;
+    try {
+      const res = await buildSearchIndexResponse(async () => {
+        throw new Error(`view fetch GitHub GraphQL 502 ${canary}`);
+      });
+      expect(res.status).toBe(503);
+      await expect(res.json()).resolves.toEqual({
+        error: "search_index_unavailable",
+        retryable: true,
+      });
+      const logged = JSON.stringify(errSpy.mock.calls);
+      expect(logged).toContain("search_index_unavailable");
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+    } finally {
+      console.error = originalError;
+    }
+  });
 });
 
 function hasUnpairedSurrogateDeep(value: unknown): boolean {

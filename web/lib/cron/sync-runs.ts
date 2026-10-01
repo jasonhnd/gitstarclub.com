@@ -36,8 +36,26 @@ export async function recordSyncRun(run: SyncRun): Promise<void> {
   });
 }
 
+export function sanitizeLiveRefreshResult(result: LiveRefreshResult): LiveRefreshResult {
+  let changed = false;
+  const post_commit_errors = result.post_commit_errors.map((item) => {
+    const safe = sanitizeErrorText(item);
+    if (safe !== item) changed = true;
+    return safe;
+  });
+  return changed ? { ...result, post_commit_errors } : result;
+}
+
 function sanitizeStoredRun(run: SyncRun): SyncRun {
-  return typeof run.error === "string" ? { ...run, error: sanitizeErrorText(run.error) } : run;
+  const error = typeof run.error === "string" ? sanitizeErrorText(run.error) : undefined;
+  const result = run.result ? sanitizeLiveRefreshResult(run.result) : undefined;
+  if (error === undefined && result === undefined) return run;
+  if (error === run.error && result === run.result) return run;
+  return {
+    ...run,
+    ...(error !== undefined ? { error } : {}),
+    ...(result !== undefined ? { result } : {}),
+  };
 }
 
 export function syncRunId(job: LiveRefreshJob, startedAt: Date): string {
