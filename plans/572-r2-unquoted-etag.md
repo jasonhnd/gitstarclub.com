@@ -27,5 +27,5 @@ Conditional writes through the Worker R2 binding must pass etags workerd accepts
 - The new CAS test fails if the store passes the quoted etag through.
 - `web/lib/storage/r2-binding-workerd.test.ts` runs the same CAS against local workerd through Miniflare. The binary is the `workerd` package wrangler already depends on, so the existing `bun test` job covers it. CI workflows are unchanged.
 - Other storage drivers keep their external etag behavior.
-- The static job in `AGENTS.md` passes in a fresh detached worktree once `pre` includes the dependency audit fix (#584). This branch does not edit `bun.lock` or CI. `audit:deps` stays red on the lockfile inherited from `pre` until that lands and this branch is rebased.
-- `bun.lock` is not part of the diff.
+- The static job in `AGENTS.md` passes in a fresh detached worktree of the pull request head. The pull request records that SHA, the commands, and the results.
+- This issue does not edit `bun.lock`, CI workflows, `.delivery.yml`, or the Worker wrangler config. Dependency audit #584 is already merged as #591.
