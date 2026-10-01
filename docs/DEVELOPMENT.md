@@ -1,7 +1,7 @@
 ---
 owner: development process
 status: active
-last_reviewed: 2026-09-21
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - developer workflow
   - documentation ownership practice
@@ -49,11 +49,10 @@ Docs-only changes are allowed when the code already implements the behavior.
 |---|---|
 | Product scope, tracked-set assumptions | `REQUIREMENTS.md` |
 | System architecture, hard constraints | `ARCHITECTURE.md` |
-| Blob layout, workflow lifecycle, publish/rollback | `VERCEL-DATA-OPERATIONS.md`, `OPS.md` |
-| Cloudflare R2 P0 storage drivers / dual-read | `archive/R2-MIGRATION-P0.md` |
-| Cloudflare P1 workflow runtime / CF Cron / preview Bearer refresh acceptance | `archive/CF-MIGRATION-P1.md` |
-| Cloudflare P2 ISR port / CF Preview / Access | `archive/CF-MIGRATION-P2.md` |
-| Cloudflare P3 Workers host / OpenNext preview | `archive/CF-MIGRATION-P3.md` |
+| Blob layout until cutover, schedules, deploy rollback | `OPS.md` |
+| Object storage status and the R2 cutover | `R2-CUTOVER.md` |
+| Workflow step names | `VERCEL-DATA-OPERATIONS.md` |
+| Archived phase notes (superseded; current host and storage are `OPS.md` and `R2-CUTOVER.md`) | `archive/R2-MIGRATION-P0.md`, `archive/CF-MIGRATION-P1.md`, `archive/CF-MIGRATION-P2.md`, `archive/CF-MIGRATION-P3.md` |
 | JSON schema or persisted field | `DATA-CONTRACTS.md` |
 | Bootstrap pipeline behavior | `PIPELINE.md` |
 | Ranking algorithm or tie-breaking | `RANKING.md` |
@@ -134,8 +133,7 @@ Docs-only changes are allowed when the code already implements the behavior.
 The production and preview domains are hosted on Cloudflare Workers (OpenNext).
 Do not rely on a local dev server as the final verification path.
 
-Branch topology and promotion are owned by [OPS.md](./OPS.md) §Branch topology /
-staging. Feature work merges into `pre`, staging verification uses
+Branch topology and promotion are owned by [OPS.md](./OPS.md) §Branch topology. Feature work merges into `pre`, staging verification uses
 `https://pre.gitstarclub.com`, and production promotion is a merge from `pre` to
 `main`.
 
@@ -143,7 +141,7 @@ Preferred production verification sequence:
 
 1. Merge the feature PR into `pre`.
 2. Wait for the fixed staging domain, `https://pre.gitstarclub.com`, to serve the
-   Cloudflare preview deployment. Verify access according to the current preview policy in OPS.md.
+   Cloudflare preview deployment. `https://pre.gitstarclub.com` is public. `noindex` is not access control.
 3. Verify the affected staging URL or behavior on `pre`.
 4. Promote by merging `pre` into `main`.
 5. Wait for the Cloudflare production domain to serve the new HTML or behavior.
@@ -214,8 +212,8 @@ Before finishing:
 - User-visible route/content changes update `FRONTEND.md` or `SEO.md`.
 - Category/ranking/data behavior changes update the owning doc.
 - Production verification plan is clear.
-- GitHub required CI is `static` + `production-build` only; `preview-e2e` /
-  `product-gates` are optional and skip without a Vercel Preview.
+- GitHub required CI is `static` + `production-build` only; `preview-e2e` and
+  `product-gates` are optional.
 - No secrets are printed or committed.
 
 ## Drift Handling
