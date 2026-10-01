@@ -20,6 +20,7 @@ import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { buildNarrative } from "@/lib/narrative";
+import { rankingRoutePeriod, rankingYear } from "@/lib/public-params";
 import { FIRST_YEAR } from "@/lib/periods";
 import { dateLabel, fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
 import { getCategoryAssignmentsForRepos, getCategoryRegistry, getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
@@ -76,6 +77,7 @@ export async function generateLocalizedRankingPeriodStaticParams(): Promise<Arra
 }
 
 export async function generateRankingYearMetadata(locale: Locale, yearValue: string): Promise<Metadata> {
+  if (rankingYear(yearValue) === null) notFound();
   const text = detailText(locale);
   return pageMeta({
     title: fill(text.yearMetaTitle, { year: yearValue }),
@@ -87,12 +89,17 @@ export async function generateRankingYearMetadata(locale: Locale, yearValue: str
 }
 
 export async function generateRankingPeriodMetadata(locale: Locale, params: PeriodParam): Promise<Metadata> {
+  const parsed = rankingRoutePeriod(params.year, params.period);
+  if (!parsed || parsed.window === "year") notFound();
   const text = detailText(locale);
-  const label = periodLabel(locale, params.year, params.period);
+  const label = parsed.window === "week" ? parsed.period : monthYearLabel(locale, parsed.year, parsed.month);
+  const path = parsed.window === "week"
+    ? `/rankings/${parsed.year}/W${String(parsed.week).padStart(2, "0")}`
+    : `/rankings/${parsed.year}/${parsed.month}`;
   return pageMeta({
     title: fill(text.periodMetaTitle, { label }),
     description: fill(text.periodMetaDescription, { label }),
-    path: rankingPeriodPath(params.year, params.period),
+    path,
     locale,
     ogImage: `/rankings/${params.year}/${params.period}/opengraph-image`,
   });
@@ -102,7 +109,8 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
   const t = await getDictionary(locale);
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
-  const year = Number(yearValue);
+  const year = rankingYear(yearValue, now);
+  if (year === null) notFound();
   const availablePeriods = await resolveAvailableRankPeriods(now);
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > availablePeriods.year) notFound();
 
@@ -232,7 +240,9 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
 
 export async function RankingsPeriodPageView({ locale, year: yearValue, period: periodValue }: { locale: Locale; year: string; period: string }) {
   const t = await getDictionary(locale);
-  const year = Number(yearValue);
+  const parsed = rankingRoutePeriod(yearValue, periodValue);
+  if (!parsed || parsed.window === "year") notFound();
+  const year = parsed.year;
   const periods = await resolveAvailableRankPeriods();
   const maxYear = Math.max(
     periods.year,
@@ -240,12 +250,8 @@ export async function RankingsPeriodPageView({ locale, year: yearValue, period: 
     periods.week.kind === "week" ? periods.week.year : FIRST_YEAR,
   );
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > maxYear) notFound();
-  const week = /^W(\d{1,2})$/i.exec(periodValue);
-  if (week) return <WeekRankings locale={locale} t={t} year={year} week={Number(week[1])} />;
-
-  const month = Number(periodValue);
-  if (!Number.isInteger(month) || month < 1 || month > 12) notFound();
-  return <MonthRankings locale={locale} t={t} year={year} month={month} />;
+  if (parsed.window === "week") return <WeekRankings locale={locale} t={t} year={year} week={parsed.week} />;
+  return <MonthRankings locale={locale} t={t} year={year} month={parsed.month} />;
 }
 
 async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Dict; year: number; month: number }) {
@@ -899,21 +905,4 @@ function isoWeekLabel(year: number, week: number): string {
 
 function relatedItem(href: string, label: string) {
   return { href: href as `/${string}`, label };
-}
-
-function rankingPeriodPath(yearValue: string, rawPeriod: string): string {
-  const year = Number(yearValue);
-  if (!Number.isInteger(year)) return `/rankings/${yearValue}/${rawPeriod}`;
-  const week = /^W(\d{1,2})$/i.exec(rawPeriod);
-  if (week) return `/rankings/${year}/W${String(Number(week[1])).padStart(2, "0")}`;
-  const month = Number(rawPeriod);
-  return Number.isInteger(month) ? `/rankings/${year}/${month}` : `/rankings/${year}/${rawPeriod}`;
-}
-
-function periodLabel(locale: Locale, yearValue: string, rawPeriod: string): string {
-  const year = Number(yearValue);
-  const week = /^W(\d{1,2})$/i.exec(rawPeriod);
-  if (week) return `${year}-W${String(Number(week[1])).padStart(2, "0")}`;
-  const month = Number(rawPeriod);
-  return Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12 ? monthYearLabel(locale, year, month) : `${yearValue}/${rawPeriod}`;
 }
