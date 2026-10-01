@@ -49,3 +49,29 @@ fencing, first-commit, and rollback decisions remain unchanged.
 - Each behavior regression fails after its corresponding fix is removed.
 - The complete AGENTS.md static/build flow passes; no lockfile churn or
   unrelated modifications remain. Independent high-risk review is required.
+
+## Progress and scope dependency
+
+The request/body fix is committed at `ed124a7`. Verified frozen dependencies
+and tool archives, 70 pipeline tests, the script typecheck, and whitespace
+checks passed. Six separate removed-fix mutations failed with exit 1: unbounded
+headers/body, no abort, no timer cleanup, a late body read, a restarted body
+deadline, and missing deadline validation. Restoring the committed source
+passed its entire R2 test file. All mutation copies and logs are temporary.
+
+The shared contract draft exposes two existing unchecked consumers of
+`runRemoteStage().result`: `pipeline/backfill/06-upload.mjs:136` and
+`pipeline/backfill/07-export-v2.mjs:157`. A generic result must distinguish
+`action: "dry-run"` (no result) from `action: "wrote"` (result of type T).
+The script typecheck rejects both consumers with TS2339. Both files are outside
+the issue's explicit allowlist, so neither has been edited in this checkout.
+
+In an isolated temporary copy, one action guard at each consumer makes the
+complete script typecheck pass with the drafted contracts. The scope needs to
+include these two files so this can be committed without weakening the types.
+The unapplied contracts, proposed two-line scope extension, exact diagnostics,
+and mutation evidence are retained under `/tmp/GSC_0051/`. The checkout keeps
+only the completed deadline fix and this plan until scope is resolved.
+
+Full detached static/build verification, the PR, and independent review remain
+pending the complete contract change. No live storage or deployment was used.
