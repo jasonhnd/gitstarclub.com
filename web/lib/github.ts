@@ -16,7 +16,11 @@ import {
 
 const ENDPOINT = "https://api.github.com/graphql";
 const REST = "https://api.github.com";
-const MAX_RETRIES = 4;
+/** Extra attempts after the first response. Total attempts = this value + 1. */
+export const GITHUB_MAX_RETRIES = 4;
+/** Search pages inside one star bucket. GitHub Search will not page past this. */
+export const GITHUB_SEARCH_MAX_PAGES = 10;
+export const GITHUB_SEARCH_PAGE_SIZE = 100;
 const BATCH_PAUSE_MS = 2000;
 
 /** GitHub rejects Workers/edge clients that omit User-Agent (administrative 403). */
@@ -54,6 +58,10 @@ export interface RepoRef {
 
 export interface GitHubFetchOptions {
   timeoutMs?: number;
+  /** Overrides the global fetch used by fetchWithTimeout. Tests inject this. */
+  fetcher?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  /** Overrides retry and batch waits. Tests inject this so they do not sleep. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export class GitHubHttpError extends Error {
@@ -81,10 +89,16 @@ export function isTransientGithubError(error: unknown): boolean {
   return /GitHub (?:GraphQL|Search) (429|5\d\d)\b/.test(error.message);
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => {
+  setTimeout(resolve, ms);
+});
 const NonNegativeInt = z.number().int().nonnegative();
 
-function retryDelayMs(res: Response, attempt: number): number {
+function pause(opts: GitHubFetchOptions, ms: number): Promise<void> {
+  return (opts.sleep ?? sleep)(ms);
+}
+
+export function retryDelayMs(res: Response, attempt: number): number {
   const retryAfter = Number(res.headers.get("retry-after"));
   if (Number.isFinite(retryAfter) && retryAfter > 0) return Math.min(retryAfter * 1000, 60_000);
 
@@ -97,7 +111,7 @@ function retryDelayMs(res: Response, attempt: number): number {
   return Math.min(1000 * 2 ** (attempt - 1), 30_000);
 }
 
-function secondaryLimitDelayMs(status: number, text: string): number | null {
+export function secondaryLimitDelayMs(status: number, text: string): number | null {
   if (status !== 403) return null;
   return /secondary rate limit|abuse detection|rate limit/i.test(text) ? 60_000 : null;
 }
@@ -109,10 +123,11 @@ async function gql<T>(token: string, query: string, schema: z.ZodType<T>, attemp
     body: JSON.stringify({ query }),
     cache: "no-store",
     timeoutMs: opts.timeoutMs ?? GITHUB_FETCH_TIMEOUT_MS,
+    fetcher: opts.fetcher,
   });
   const text = await res.text();
-  if ((res.status === 403 || isTransientGithubStatus(res.status)) && attempt <= MAX_RETRIES) {
-    await sleep(secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
+  if ((res.status === 403 || isTransientGithubStatus(res.status)) && attempt <= GITHUB_MAX_RETRIES) {
+    await pause(opts, secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
     return gql<T>(token, query, schema, attempt + 1, opts);
   }
   if (!res.ok) throw new GitHubHttpError("graphql", res.status, text);
@@ -144,7 +159,7 @@ export async function fetchStarCounts(refs: RepoRef[], batchSize = 100, opts: Gi
       const node = data[`r${j}`];
       if (node && typeof node.stargazerCount === "number") out.set(r.id, node.stargazerCount);
     });
-    if (i + batchSize < refs.length) await sleep(BATCH_PAUSE_MS);
+    if (i + batchSize < refs.length) await pause(opts, BATCH_PAUSE_MS);
   }
   return out;
 }
@@ -184,10 +199,11 @@ async function restSearch(token: string, params: Record<string, string | number>
     headers: githubApiHeaders(token),
     cache: "no-store",
     timeoutMs: opts.timeoutMs ?? GITHUB_FETCH_TIMEOUT_MS,
+    fetcher: opts.fetcher,
   });
-  if ((res.status === 403 || isTransientGithubStatus(res.status)) && attempt <= MAX_RETRIES) {
+  if ((res.status === 403 || isTransientGithubStatus(res.status)) && attempt <= GITHUB_MAX_RETRIES) {
     const text = await res.text();
-    await sleep(secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
+    await pause(opts, secondaryLimitDelayMs(res.status, text) ?? retryDelayMs(res, attempt));
     return restSearch(token, params, attempt + 1, opts);
   }
   if (!res.ok) throw new GitHubHttpError("search", res.status, await res.text());
@@ -308,7 +324,7 @@ export async function searchWhitelistHop(args: SearchWhitelistHopOptions): Promi
   while (queue.length && canStartSearch(now(), deadline, slack)) {
     const [low, high] = queue.pop()!;
     const q = `stars:${low}..${high}`;
-    const first = await runSearch({ q, sort: "stars", order: "desc", per_page: 100, page: 1 }, q);
+    const first = await runSearch({ q, sort: "stars", order: "desc", per_page: GITHUB_SEARCH_PAGE_SIZE, page: 1 }, q);
     if (first.total_count > 1000 && high > low) {
       const mid = Math.floor((low + high) / 2);
       queue.push([low, mid], [mid + 1, high]);
@@ -317,11 +333,11 @@ export async function searchWhitelistHop(args: SearchWhitelistHopOptions): Promi
     if (first.total_count > 1000) {
       throw new Error(`GitHub Search bucket ${q} has ${first.total_count} results and cannot be paged completely`);
     }
-    const pages = Math.min(Math.ceil(first.total_count / 100), 10);
+    const pages = Math.min(Math.ceil(first.total_count / GITHUB_SEARCH_PAGE_SIZE), GITHUB_SEARCH_MAX_PAGES);
     for (let page = 1; page <= pages; page++) {
       const res = page === 1
         ? first
-        : await runSearch({ q, sort: "stars", order: "desc", per_page: 100, page }, `${q} page ${page}`);
+        : await runSearch({ q, sort: "stars", order: "desc", per_page: GITHUB_SEARCH_PAGE_SIZE, page }, `${q} page ${page}`);
       ingestSearchPage(out, res);
     }
   }
@@ -457,7 +473,7 @@ export async function batchMetadata(nodeIds: string[], opts: GitHubFetchOptions 
   for (let i = 0; i < nodeIds.length; i += METADATA_GRAPHQL_BATCH) {
     const batch = await fetchRepositoryMetadata(nodeIds.slice(i, i + METADATA_GRAPHQL_BATCH), opts);
     for (const [id, meta] of batch) out.set(id, meta);
-    if (i + METADATA_GRAPHQL_BATCH < nodeIds.length) await sleep(BATCH_PAUSE_MS);
+    if (i + METADATA_GRAPHQL_BATCH < nodeIds.length) await pause(opts, BATCH_PAUSE_MS);
   }
   return out;
 }
