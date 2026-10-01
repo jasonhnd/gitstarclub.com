@@ -1,7 +1,7 @@
 ---
 owner: architecture
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - system overview
   - tech stack
@@ -208,19 +208,21 @@ Eleven thousand-plus pages cannot be built at deploy time within the deployment 
 
 | Tier | Surfaces | Refresh mechanism |
 |---|---|---|
-| **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy; daily cron atomically publishes a live generation then calls `revalidatePath` |
-| **Movers** (event-driven, daily) | Repos and orgs flagged as moving today (top-50 daily flow ∪ ≥ 5× their 90-day median with absolute floor ∪ milestone crossings) | Daily cron picks the set and calls `revalidatePath` on those entities + the pulse surface |
-| **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos and orgs not currently moving | `dynamicParams=true`, not fully enumerated in `generateStaticParams`; first request renders, then caches. Historical periods use `revalidate=false`; repo/org details use `revalidate=86400`, with targeted `revalidatePath` for movers. |
-| **Frozen** | Completed weekly / monthly / yearly pages | Rendered once and stamped "as of <date>"; only re-rendered when the recompute publishes a new pointer version |
+| **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy for the current core params. The live cron calls `revalidatePath` on the English home, `/pulse`, `/rankings`, and the current year, month, and week. A publish calls `revalidatePath` on the localized core paths in `corePublicationRevalidatePaths`. |
+| **Movers** (event-driven, daily) | Repos and orgs flagged as moving today (top-50 daily flow ∪ ≥ 5× their 90-day median with absolute floor ∪ milestone crossings) | The live cron submits those repos and orgs to IndexNow. It does not call `revalidatePath` on the entity pages. Their HTML stays on the repo/org page TTL. |
+| **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos, orgs, and category pages that are not prebuilt | `dynamicParams=true`. Page TTL is per route, not one daily number: historical rankings use `revalidate=false`; repo detail, org detail, category detail, and category pagination use `604800`; category index and dimension stay at `86400`; org index stays at `3600`. Publish does not mass-invalidate repo, org detail, or category detail pages. |
+| **Frozen** | Completed weekly / monthly / yearly pages | `revalidate=false` and stamped "as of <date>". Those paths are not in the live-cron or publish invalidation lists, so a pointer switch does not regenerate them. |
 
 Cadence:
 
 - **Deploys** (code or structural change): build the small core only; ISR resets and re-warms on first request. Long-tail surfaces are not enumerated at deploy.
-- **Daily cron**: acquire the date/job idempotency lease, build and validate all live files, atomically switch `live/latest.json`, then revalidate hot surfaces. A failed run leaves the previous complete generation selected.
+- **Daily cron**: acquire the date/job idempotency lease, build and validate all live files, atomically switch `live/latest.json`, then call `revalidatePath` only for the English paths in `revalidateLivePaths` (home, `/pulse`, `/rankings`, current year, current month, current week). Mover entities go to IndexNow. A failed run leaves the previous complete generation selected.
 - **Weekly cron**: use the same generation protocol for current week/month rank, heatmap, hot snapshot, and then update `ops/sync-runs.json`.
-- **Workflow runs** (recompute → validate → publish): re-derive every `views/**` artifact, validate, and atomically swap the pointer. Old versions are reaped by the GC step.
+- **Workflow runs** (recompute, validate, publish): re-derive every `views/**` artifact, validate, and atomically swap the pointer. `invalidatePublishedViews` then expires the `published-views-pointer` and `bootstrap-publication-pointer` data-cache tags and calls `revalidatePath` for `corePublicationRevalidatePaths` (home, `/pulse`, `/rankings`, `/categories`, `/about`, `/o`, `/compare`, `/privacy`, in every locale). Repo detail, org detail, category detail, and category pagination are not in that list. Old versions are reaped by the GC step.
 
-Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default — leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model); historical period routes use frozen caching while repo/org long-tail routes use daily ISR; rendering reads only bounded JSON views.
+Three caches stay separate. The page segment `revalidate` is the HTML TTL. The data cache is the published-pointer TTL inside `readView` (`VERSION_TTL_MS` is 3600 seconds; `DAILY_BASE_VIEW_TTL_MS` is 86400 seconds; the live pointer default is 60 seconds). Active invalidation is the tag and path list above, not a second copy of the page TTL. The per-route table is in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md).
+
+Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default; leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model). Historical period routes use `revalidate=false`. Repo detail, org detail, category detail, and category pagination use `604800`. Category index and dimension stay at `86400`. Org index stays at `3600`. Rendering reads only bounded JSON views.
 
 ### GraphQL budget
 
@@ -235,7 +237,7 @@ The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per quer
 | Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW and Vercel Web Analytics. Third-party analytics are unsupported. |
 | `Cache-Control: s-maxage=86400, stale-while-revalidate` | Historical surfaces cached aggressively |
 | Subset fonts as woff2 | Plus Jakarta Sans subset ~30 KB |
-| Pre-rendered OG cards in Blob | No function cost on share embeds |
+| OG images from `next/og` routes (`revalidate=86400`), with the site card as the fallback | Drawn by the image route and then cached. Not pre-generated Blob objects. Org pages and `/rankings` use `/opengraph-image`. A later cache hit is not a guarantee of zero function invocations. |
 
 ### Bandwidth defense (cost-stepping)
 
