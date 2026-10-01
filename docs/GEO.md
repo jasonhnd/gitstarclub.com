@@ -18,9 +18,9 @@ This document is the owning document for GitStarClub's GEO strategy: how the exi
 
 GEO complements [SEO.md](./SEO.md). SEO owns crawlability, canonical URLs, metadata, sitemap, robots policy, and internal links. GEO owns answer-engine citation tactics layered on top of those surfaces: answer capsules, FAQ blocks, dataset schema, AI crawler hygiene, freshness signals, entity authority, and measurement.
 
-Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only JSON from Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)), and implementation must remain deterministic and Vercel-first.
+Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only precomputed JSON, and implementation stays deterministic. The host is Cloudflare Workers through OpenNext. Production JSON still comes from Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
 
-Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate Vercel log reporting runbook. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
+Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate log-report runbook. The report script still parses the Vercel log-drain field shape and does not parse Cloudflare Worker logs. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
 
 ---
 
@@ -755,17 +755,17 @@ The engineering goal is to make external citation easy. It should not fabricate 
 
 ## 10. Measurement
 
-Do not introduce paid GEO monitoring by default. Use Vercel-first measurement and a small manual query set.
+Do not introduce paid GEO monitoring by default. Use the aggregate log report plus a small manual query set.
 
 The measurement loop has three layers:
 
-1. Aggregate server-side bot and referrer reporting from Vercel logs.
+1. Aggregate server-side bot and referrer reporting. The current script accepts the Vercel log-drain shape and does not read Cloudflare Worker logs.
 2. A versioned target-query file at `docs/geo/queries.md`.
 3. A citation review cadence that turns wrong, stale, or missing citations into implementation issues.
 
 ### 10.1 Bot and referrer logs
 
-Track user-agent families in Vercel logs or a Vercel-native log export:
+Track these user-agent families. The report input is described in [geo/ai-log-reporting.md](./geo/ai-log-reporting.md):
 
 - `GPTBot`
 - `OAI-SearchBot`
@@ -984,7 +984,7 @@ Acceptance sketch:
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
 | `[geo] Add Dataset DataDownload distribution and temporalCoverage` | Implement Section 11.1 for public data exports and proven coverage windows. | Dataset JSON-LD includes bounded public DataDownload entries; temporalCoverage is data-backed or omitted; tests cover shape and no hard-coded dates. |
-| `[geo] Add Vercel-first GEO measurement report` | Implement Section 11.2 bot/referrer aggregation. | Aggregate-only report by user-agent/referrer/path family; no client analytics or personal data. |
+| `[geo] Add an aggregate GEO measurement report` | Implement Section 11.2 bot/referrer aggregation. | Aggregate-only report by user-agent/referrer/path family; no client analytics or personal data. |
 | `[geo] Add target query tracking doc and citation review cadence` | Implemented in #76: add `docs/geo/queries.md` and the review template from Section 10.2. | Query set covers repo, org, ranking, category, pulse, compare, about/methodology, and data-export page types; weekly/manual check rows are copy-paste ready; citation occupancy and accuracy are defined. |
 | `[geo] Enrich repo and org sameAs from approved identities` | Implemented in #77 from Section 11.3. | Approved sameAs arrays render deterministically; unapproved URLs are omitted; no scraping. |
 | `[geo] Add semantic data tables for citeable ranking surfaces` | Implement Section 11.4. | Server-rendered tables expose core facts and canonical links; visual sign-off attached. |
@@ -1022,7 +1022,7 @@ The GEO deepening implementation round is specified in Section 11. Use Section 1
 
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
-| `[geo] Add AI crawler and referrer log reporting` | Build a Vercel-first aggregate report for AI crawler user-agents and AI referrers. | No client analytics; report aggregates only; docs list user-agent/referrer taxonomy. |
+| `[geo] Add AI crawler and referrer log reporting` | Build an aggregate report for AI crawler user-agents and AI referrers. | No client analytics; report aggregates only; docs list user-agent/referrer taxonomy. The parser accepts the Vercel log-drain shape and does not parse Cloudflare logs. |
 | `[geo] Add target AI query tracking doc` | Implemented in #76: create `docs/geo/queries.md` with target questions, manual weekly check workflow, and citation occupancy metric. | Query list covers repo, org, ranking, category, pulse, compare, about/methodology, and data-export page types; weekly row format is copy-paste ready; no paid monitoring dependency. |
 | `[geo] Review citations and stale answers after launch` | Run manual checks across ChatGPT, Perplexity, Google AI Mode/AIO, Gemini, Claude, and Grok. | Report records citations, wrong answers, missing pages, and follow-up implementation issues. |
 
@@ -1046,7 +1046,7 @@ Pitfalls:
 - Do not make compare facts depend on client-only state if the goal is citation.
 - Do not introduce an LLM to write summaries. The site already has deterministic templates and structured data.
 - Do not modify visual tokens without the design workflow. Answer capsules and FAQ are user-visible UI and must respect the locked amber baseline in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
-- Do not add external paid GEO tools by default. Measurement starts with Vercel logs and manual query checks.
+- Do not add external paid GEO tools by default. Measurement starts with the aggregate log report and manual query checks.
 
 Constraint fit:
 
@@ -1055,7 +1055,7 @@ Constraint fit:
 | No runtime AI | Capsules, FAQ, and statistical sentences are deterministic templates over JSON fields. |
 | Content pages zero client JS | All answer blocks, FAQ, and schema are server-rendered. Compare remains the only interactive exception until pair-specific server pages are designed. |
 | Runtime zero engine / zero database | All facts come from precomputed Blob JSON views and existing lookup joins. |
-| Vercel-first | IndexNow and measurement can run from Vercel workflow/cron/logs; no new database or paid monitoring service is required. |
+| Cloudflare host, Blob until cutover | IndexNow and measurement stay inside the existing refresh and cron routes. No new database or paid monitoring service is required. The log report does not yet parse Cloudflare logs. |
 | Docs as source of truth | This document owns GEO strategy; [SEO.md](./SEO.md) owns crawler/canonical/sitemap mechanics; implementation PRs must update the owning docs when behavior changes. |
 | Visual guardrails | New visible blocks require design review and screenshots before merge, because they change page composition even if colors do not change. |
 
