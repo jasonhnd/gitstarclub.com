@@ -37,4 +37,4 @@ No data-source or authoritative write changes, dictionary changes, deployment, l
 
 ## Delivery status
 
-Implementation and verification pending.
+Implemented the index pending state, pair-level optional failure isolation, localized fallback list, and shared hero facts. `CompareClient.tsx` remains unchanged. Seven-locale baseline HTML hashes cover organization, comparison, and category success output. Focused tests: 47 passed, zero failed. Restoring the baseline index or comparison implementation separately makes the new tests exit 1; restoring the fixes exits 0. Full verification and screenshot evidence are pending.
