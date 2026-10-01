@@ -114,7 +114,7 @@ P1 removes the Vercel Workflow SDK. Steps are ordinary async functions, explicit
 - **`enqueueStep(job)`**: hand one step to the memory queue, HTTP `/api/workflows/refresh/step`, or a non-production CF Queue.
 - **`completeStep(job, result)`**: write `ops/workflows/<run_id>/steps/<step>.json`, then enqueue the next step.
 
-The production schedule is still the Sunday 06:00 Vercel cron in `web/vercel.json`. CF Cron/Queue is used only for non-production proof; rollback see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) (stop CF Cron, production remains Vercel).
+The production schedule is still the Sunday 06:00 Vercel cron in `web/vercel.json`. CF Cron/Queue is used only for non-production proof; rollback see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) (stop CF Cron, production remains Vercel).
 
 Skeleton sketch (**structural sketch; implementation see `web/lib/workflows/refresh.ts` + `runtime/*` + `steps/*`, function names follow the code**):
 
