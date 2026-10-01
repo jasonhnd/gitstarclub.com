@@ -27,3 +27,13 @@ The Worker shell compares `CRON_SECRET` with the shared constant-time bearer hel
 - `GET /preview/health`, `GET /.well-known/deployment`, `GET /preview/identity`, and the 401 response include the six `securityHeaders`. `script-src` is `'self' 'unsafe-inline'` and contains no nonce or hash. The JSON or `Unauthorized` body is unchanged.
 - The static job in `AGENTS.md` passes in a fresh detached worktree of the pull request head.
 - This issue does not edit `bun.lock`, CI workflows, `.delivery.yml`, or the Worker wrangler config.
+
+## PR #627 integration refresh (GSC_0060)
+
+Goal: merge the latest `origin/pre` into `fix/603-worker-shell-hardening` with a merge commit, preserving the reviewed #603 behavior and upstream changes without rewriting history.
+
+Scope: resolve any merge conflicts in the existing implementation and update this plan and the PR verification record. Preserve upstream shell identity, cron dispatch, queue advancement, and refresh behavior alongside the shared constant-time bearer check, missing-secret rejection, and public/401 security headers.
+
+Out of scope: new features, rebases, force pushes, PR merges, protected-branch pushes, deployments, provider API calls, credential reads, and authored changes to CI, `.delivery.yml`, or wrangler configuration. Existing upstream changes are brought in by the merge.
+
+Acceptance: the original PR head remains an ancestor; the fetched `origin/pre` is a merge parent; the complete static job and shell-related tests pass at the new head in a fresh detached worktree; PR #627 reports no merge conflicts and its verification record names the tested head. Temporary verification files and logs stay under `/tmp/GSC_0060/`, and the task checkout is clean at handoff.
