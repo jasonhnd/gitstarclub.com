@@ -110,7 +110,7 @@ The marker JSON is exactly one of:
 
 A passing check is cached for the isolate. The cache key is the S3 endpoint the store uses after extras (or the fixed sentinel `r2-binding` for the native driver), the bucket name, and `DEPLOY_ENV`. It is not an endpoint re-read from env. Cloudflare Workers never set `VERCEL_ENV`. When `VERCEL_ENV=production`, `DEPLOY_ENV` must also be `production`.
 
-`new URL()` removes `.` and `..` after one percent-decode, so `views/../_meta/x` and `views/%2e%2e/_meta/x` would otherwise be written as `_meta/x`. The guard rejects those segments before the request is built. The binding store returns the quoted `httpEtag`. Pass that value back as `ifMatch`.
+`new URL()` removes `.` and `..` after one percent-decode, so `views/../_meta/x` and `views/%2e%2e/_meta/x` would otherwise be written as `_meta/x`. The guard rejects those segments before the request is built. The binding store returns the quoted `httpEtag`. Pass that value back as `ifMatch`. The store removes one surrounding quote pair before `onlyIf.etagMatches`, because workerd rejects a quoted conditional ETag. Create-only puts still send `etagDoesNotMatch: "*"`. Blob and S3 `ifMatch` stay quoted HTTP validators.
 
 An operator places `_meta/bucket-identity.json` out of band, once per bucket, before any application write. Application code never `put`s or deletes a key under `_meta/`. The shell example below is historical and names the assets bucket. Do not run it. Data-bucket markers belong on `gitstarclub-data-pre` and `gitstarclub-data-prod`. See [R2-CUTOVER.md](./R2-CUTOVER.md).
 
