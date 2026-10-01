@@ -2,7 +2,12 @@ import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { POST } from "@/app/api/workflows/refresh/rollback/route";
 import * as rollback from "@/lib/workflows/rollback";
 import { resetBucketIdentityCacheForTests } from "@/lib/runtime-config";
-import { setDataBindingReaderForTests, type R2Bucket, type R2ObjectHead } from "@/lib/storage/r2-binding-store";
+import {
+  bindingPreconditionPasses,
+  setDataBindingReaderForTests,
+  type R2Bucket,
+  type R2ObjectHead,
+} from "@/lib/storage/r2-binding-store";
 
 type Stored = { body: string; etag: string };
 
@@ -41,12 +46,7 @@ class FakeR2Bucket implements R2Bucket {
     options?: { onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string } },
   ) {
     const existing = this.objects.get(key);
-    const onlyIf = options?.onlyIf;
-    if (onlyIf?.etagDoesNotMatch === "*" && existing) return null;
-    if (onlyIf?.etagMatches) {
-      const quoted = existing ? `"${existing.etag}"` : null;
-      if (quoted !== onlyIf.etagMatches) return null;
-    }
+    if (!bindingPreconditionPasses(existing?.etag, options?.onlyIf)) return null;
     const body = typeof value === "string" ? value : new TextDecoder().decode(value);
     this.seq += 1;
     const stored = { body, etag: `e${this.seq}` };
