@@ -1,10 +1,34 @@
 import { describe, expect, test } from "bun:test";
 import { BOOTSTRAP_POINTER_CACHE_TAG, PUBLISHED_VIEWS_CACHE_TAG } from "@/lib/data/publication-cache-contract";
 import { invalidatePublishedViews } from "@/lib/workflows/publication-cache";
-import { CfStubCacheInvalidation } from "./cf-stub";
+import { CF_STUB_POST_DEADLINE_MS, CfStubCacheInvalidation } from "./cf-stub";
 import { MemoryCacheInvalidation } from "./memory";
 import { describeCacheInvalidation, resolveCacheInvalidation } from "./resolve";
 import { VercelCacheInvalidation } from "./vercel";
+
+const HUNG_MS = 500;
+
+async function outcomeOf(work: Promise<unknown>): Promise<unknown> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work.then(
+        () => "resolved",
+        (error: unknown) => error,
+      ),
+      new Promise<string>((resolve) => {
+        timer = setTimeout(() => resolve("hung"), HUNG_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function expectTimeout(outcome: unknown): void {
+  expect(outcome).toBeInstanceOf(Error);
+  expect(outcome).toMatchObject({ name: "TimeoutError", message: "The operation timed out." });
+}
 
 describe("cache-invalidation port", () => {
   test("defaults to the Vercel driver", () => {
@@ -59,7 +83,14 @@ describe("cache-invalidation port", () => {
   });
 
   test("CF stub records hot-path ops, logs JSON, and POSTs the Worker envelope", async () => {
-    const posts: Array<{ url: string; auth: string | null; accessId: string | null; body: unknown }> = [];
+    const posts: Array<{
+      url: string;
+      auth: string | null;
+      accessId: string | null;
+      body: unknown;
+      method: string | null;
+      aborted: boolean | null;
+    }> = [];
     const lines: string[] = [];
     const stub = new CfStubCacheInvalidation({
       env: {
@@ -76,6 +107,8 @@ describe("cache-invalidation port", () => {
           auth: headers.get("authorization"),
           accessId: headers.get("CF-Access-Client-Id"),
           body: JSON.parse(String(init?.body)),
+          method: init?.method ?? null,
+          aborted: init?.signal?.aborted ?? null,
         });
         return Response.json({ ok: true });
       },
@@ -94,5 +127,82 @@ describe("cache-invalidation port", () => {
     expect(posts[0]?.auth).toBe("Bearer cron-secret");
     expect(posts[0]?.accessId).toBe("access-id");
     expect(posts[0]?.body).toEqual({ v: 1, driver: "cf-stub", ops: [{ kind: "path", path: "/" }] });
+    expect(posts[0]?.method).toBe("POST");
+    expect(posts[0]?.aborted).toBe(false);
+    expect(CF_STUB_POST_DEADLINE_MS).toBe(15_000);
+  });
+
+  test("aborts a never-settling cache-invalidation POST", async () => {
+    let sawSignal: AbortSignal | undefined;
+    const stub = new CfStubCacheInvalidation({
+      purgeUrl: "https://example.test/preview/invalidate",
+      deadlineMs: 40,
+      log: () => {},
+      fetchImpl: (_input, init) => {
+        sawSignal = init?.signal ?? undefined;
+        return new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) return;
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      },
+    });
+    expectTimeout(await outcomeOf(stub.revalidatePath("/")));
+    expect(sawSignal?.aborted).toBe(true);
+  });
+
+  test("aborts a cache-invalidation POST that ignores the abort signal", async () => {
+    const stub = new CfStubCacheInvalidation({
+      purgeUrl: "https://example.test/preview/invalidate",
+      deadlineMs: 40,
+      log: () => {},
+      fetchImpl: () => new Promise(() => {}),
+    });
+    expectTimeout(await outcomeOf(stub.revalidatePath("/")));
+  });
+
+  test("aborts a cache-invalidation response body that never settles", async () => {
+    let cancelled = false;
+    const stub = new CfStubCacheInvalidation({
+      purgeUrl: "https://example.test/preview/invalidate",
+      deadlineMs: 40,
+      log: () => {},
+      fetchImpl: () =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          body: {
+            cancel: () => {
+              cancelled = true;
+              return Promise.resolve();
+            },
+          },
+          text: () => new Promise(() => {}),
+        } as unknown as Response),
+    });
+    expectTimeout(await outcomeOf(stub.revalidatePath("/")));
+    expect(cancelled).toBe(true);
+  });
+
+  test("a non-OK cache-invalidation POST still throws the status without reading the body", async () => {
+    let readBody = false;
+    const stub = new CfStubCacheInvalidation({
+      purgeUrl: "https://example.test/preview/invalidate",
+      deadlineMs: 40,
+      log: () => {},
+      fetchImpl: async () =>
+        ({
+          ok: false,
+          status: 503,
+          text: () => {
+            readBody = true;
+            return new Promise(() => {});
+          },
+        }) as unknown as Response,
+    });
+    const outcome = await outcomeOf(stub.revalidatePath("/"));
+    expect(outcome).toBeInstanceOf(Error);
+    expect((outcome as Error).message).toBe("CF cache-invalidation stub -> 503");
+    expect(readBody).toBe(false);
   });
 });
