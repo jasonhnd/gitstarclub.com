@@ -24,6 +24,7 @@ import {
   categoryAssignmentsShardPath,
   isCategoryAssignmentsIndex,
 } from "@/lib/data/category-assignment-shards";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { assertPublishedViewJsonSize } from "@/lib/view-size";
 import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
 import { putOwnedView } from "@/lib/workflows/owned-write";
@@ -177,11 +178,12 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   await read(`heatmap/year/${lastYear}.json`, Heatmap);
 
   const ok = failures.length === 0;
-  const validation = { run_id: runId, ok, checked, schema_failures: schemaFailures, invariants, failures };
+  const storedFailures = failures.map((item) => sanitizeErrorText(item));
+  const validation = { run_id: runId, ok, checked, schema_failures: schemaFailures, invariants, failures: storedFailures };
   WorkflowValidation.parse(validation);
   if (fencingToken === undefined) await putView(`ops/workflows/${runId}/validation.json`, validation);
   else await putOwnedView({ runId, fencingToken }, `ops/workflows/${runId}/validation.json`, validation);
-  if (!ok) throw new Error(`validation failed (${failures.length}): ${failures.slice(0, 5).join("; ")}`);
+  if (!ok) throw new Error(`validation failed (${failures.length}): ${storedFailures.slice(0, 5).join("; ")}`);
   return { ok, checked, failures };
 }
 
