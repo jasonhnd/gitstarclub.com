@@ -34,3 +34,12 @@ Make the current docs describe Cloudflare Workers hosting, public preview, and t
 - Align the pipeline refresh roles, the frontend weekly-cron and build-cap sentences, and the TESTING P3 row with Workers. Keep production Blob until cutover and the unverified production caller.
 - The Sunday failure runbook prints `0 6 * * SUN`, not weekday `0`.
 - Do not edit dependencies, lockfiles, or CI. The failed `static` audit is a separate baseline fix.
+
+## Review round 2
+
+- Bing `msvalidate.01` is set in the shell that runs the Cloudflare production build, then checked in the generated HTML. A Vercel project variable does not change that output.
+- The GEO report parser accepts Vercel-shaped logs as compatibility input only. Cloudflare aggregate measurement stays pending an input adapter and evidence. Do not claim the parser reads Worker logs.
+- `POST /api/workflows/refresh/step` names the configured production consumer `gitstarclub-jobs` and the preview consumer `gitstarclub-jobs-pre`. The production scheduler and caller stay unverified.
+- Runtime errors are Workers Observability on the Worker that served the request. Build and deploy errors are the GitHub `production-build` job or local `cf:build` / Wrangler output.
+- The dependency fix is already on `pre` through #591. This card still does not edit dependencies or CI. Merging current `pre` brings that fix in. Required checks are not claimed until they run on the pushed head.
+- PR #580 is still a separate open pull request. This branch does not merge it. A later squash of #580 can conflict again. Force-push stays forbidden.

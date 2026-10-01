@@ -249,7 +249,7 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | `GOOGLE_APPLICATION_CREDENTIALS` | GCP service-account key path | One-time backfill only | Local file path, for example `./gcp-key.json` | **Local backfill script** (one-time BigQuery backfill only) |
 | `GCP_PROJECT_ID` | GCP project ID | One-time backfill only | GCP project ID string | **Local backfill script** (one-time BigQuery backfill only) |
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin for sitemap, metadata, and structured data | Required for the production Cloudflare build and Worker | `https://gitstarclub.com` without a trailing slash | `web/scripts/cf-opennext-build.ts`, [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
-| `BING_SITE_VERIFICATION` | Bing `msvalidate.01` token | Optional (production) | Bing-provided token | `web/app/_shell/RootShell.tsx` outputs verification meta; no XML file is needed |
+| `BING_SITE_VERIFICATION` | Bing `msvalidate.01` token | Optional. Set it in the shell that runs the Cloudflare production build | Bing-provided token | `web/scripts/cf-opennext-build.ts` inherits that shell. `web/app/_shell/RootShell.tsx` emits the meta tag when the variable is set. Confirm the tag in the generated HTML. A Vercel project variable does not change Cloudflare output. No XML file is needed |
 | `INDEXNOW_ENABLED` | IndexNow post-commit submission switch | Optional (default off) | The string `1` enables it | live cron calls IndexNow after the pointer is committed; dry-run / pre-commit do not call it |
 | `SEO_LIVE_BASE` | Live-line origin fetched by integration tests (default `https://www.gitstarclub.com`; leave empty to skip the test) | Tests only | `https://www.gitstarclub.com` or an empty string | `web/lib/integration/seo.test.ts:23` |
 | `SEO_EXPECT_INDEXABLE` | Live SEO acceptance environment policy (Preview `0`, Production `1`; when unset, inferred from the canonical host) | Tests only | `0` or `1` | `web/lib/integration/seo.test.ts` · `.github/workflows/ci.yml` |
@@ -579,7 +579,8 @@ Workers Observability is enabled on `gitstarclub-web` and `gitstarclub-web-pre`.
 
 | Watch | Tool | Trigger |
 |---|---|---|
-| Runtime / build failures | Workers Observability on the Worker that served the request | Uncaught exceptions, route errors, build failures. There is no Sentry integration |
+| Runtime errors | Workers Observability on the Worker that served the request | Uncaught exceptions and route errors. There is no Sentry integration |
+| Build and deploy errors | The GitHub `production-build` job, or the local `cf:build` / Wrangler stdout and stderr | OpenNext compilation and Wrangler output happen before a Worker serves the new build. There is no separate build-log integration |
 | pipeline run records | **`ops/sync-runs.json` log** (each daily / weekly job appends one entry: start / end time, query count, paths written, status) | For reconciliation and traceback; together with `ops/workflows/<run_id>/steps/*.json` they form the self-built run log |
 | Preview incidents | Workers Observability on `gitstarclub-web-pre` | Do not roll back production Worker `gitstarclub-web` from a preview incident. Preview is public; `noindex` is not access control |
 | Production incidents | Workers Observability on `gitstarclub-web` | Production still reads Vercel Blob until cutover. Hosting rollback for that cutover is the stage 4 version command |

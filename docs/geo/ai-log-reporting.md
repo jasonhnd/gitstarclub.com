@@ -9,7 +9,7 @@ source_of_truth_for:
 
 # AI crawler and referrer log reporting
 
-GitStarClub measures GEO crawler reach and AI referrals from an exported request log. The current parser accepts the Vercel Log Drains field shape. It does not parse Cloudflare Worker logs. This path is aggregate-only: it does not add client JavaScript, browser analytics events, cookies, user ids, IP addresses, or stored raw referrer URLs.
+GitStarClub's aggregate GEO report reads a local export. The parser accepts the Vercel Log Drains field shape as compatibility input only. It does not parse Cloudflare Worker logs. Current Cloudflare aggregate measurement is pending an input adapter and evidence. This path is aggregate-only: it does not add client JavaScript, browser analytics events, cookies, user ids, IP addresses, or stored raw referrer URLs.
 
 ## Run the report
 
