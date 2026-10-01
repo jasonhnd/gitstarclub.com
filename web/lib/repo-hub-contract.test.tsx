@@ -5,6 +5,8 @@ import type { ReactElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
 import type { CategoryAssignments, CategoryRegistry, Meta, RepoEntity, ReposLookup } from "@/lib/contracts";
 import { REPO_HUB_LINK_TYPES, type RepoHubLinkType } from "@/lib/repo-page";
+import { getDictionary, LOCALES } from "@/lib/i18n";
+import { localizedPath } from "@/lib/i18n/routing";
 
 mock.module("next/navigation", () => ({
   notFound: () => {
@@ -25,8 +27,6 @@ mock.module("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-import { getDictionary, LOCALES } from "@/lib/i18n";
-import { localizedPath } from "@/lib/i18n/routing";
 const REPO_ID = 42;
 const SIBLING_ID = 43;
 const REPO_OWNER = "org";

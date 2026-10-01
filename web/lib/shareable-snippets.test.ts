@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { absoluteSnippetUrl, buildShareableSnippet, buildWeeklyMoversSnippet } from "./shareable-snippets";
+import { absoluteSnippetUrl, buildShareableSnippet, buildWeeklyMoversSnippet, type ShareableSnippetContent } from "./shareable-snippets";
 
 import { buildLocalizedRepoMilestoneSnippet } from "@/app/_localized/repo";
 import { buildLocalizedOrgTotalSnippet } from "@/app/_localized/org";
@@ -41,7 +41,7 @@ describe("shareable snippets", () => {
 });
 
 // Captured from the live page builders at pre b9650f0, before extraction.
-const localizedFixtures = {
+const localizedFixtures: Record<Locale, {repo: ShareableSnippetContent; org: ShareableSnippetContent}> = {
   "en": {
     "repo": {
       "kind": "repo-milestones",
@@ -378,7 +378,7 @@ const localizedFixtures = {
       "embedHtml": "<blockquote cite=\"https://gitstarclub.com/fr/o/example\"><p><strong>Total d'organisation example</strong></p><p>Au 2026-06-24, example compte 400 k étoiles GitHub totales sur 1 234 dépôts suivis dans GitStarClub. Les principaux dépôts suivis incluent example/one (140 k étoiles), example/two (44 k étoiles) et example/three (32 k étoiles). Source : historique des étoiles d'organisation GitStarClub.</p><p><a href=\"https://gitstarclub.com/fr/o/example\">Source: Historique des étoiles de example</a></p></blockquote>"
     }
   }
-} as const;
+};
 
 describe("live localized snippet fixtures", () => {
   for (const locale of Object.keys(localizedFixtures) as Locale[]) {

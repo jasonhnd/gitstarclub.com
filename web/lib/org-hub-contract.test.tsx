@@ -4,6 +4,8 @@ import { join } from "node:path";
 import type { ReactElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
 import type { CategoryAssignments, CategoryRegistry, Meta, OrgEntity, ReposLookup } from "@/lib/contracts";
+import { getDictionary, LOCALES } from "@/lib/i18n";
+import { localizedPath } from "@/lib/i18n/routing";
 
 mock.module("next/navigation", () => ({
   notFound: () => {
@@ -24,8 +26,6 @@ mock.module("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-import { getDictionary, LOCALES } from "@/lib/i18n";
-import { localizedPath } from "@/lib/i18n/routing";
 const ORG_LOGIN = "org";
 const LEAD_ID = 1;
 const SECOND_ID = 2;
