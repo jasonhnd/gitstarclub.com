@@ -44,6 +44,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
+- **Repository open-graph cards ignore unknown paths (#585).** `/{owner}/{name}/opengraph-image` draws the stored repository name only when that path resolves to a known repo id and the entity is renderable. Other paths use the site card. See [SEO.md](./SEO.md).
+
 - **Next.js 16.3.6 and high-severity dependency pins (#585).** `next` and `eslint-config-next` move from 16.3.5 to 16.3.6, which fixes GHSA-vcvr-r3jv-pc5j (remote code execution in `next/og` ImageResponse). `web` pins `undici` to 7.29.1 and `brace-expansion` to 1.1.21, 2.1.7, and 5.0.12. `pipeline` pins `undici` to 6.28.1 so `@vercel/blob`'s 6.x line clears GHSA-rfgv-xxqx-mfg5. See [TESTING.md](./TESTING.md).
 
 - **R2 cutover runbook (#569).** [R2-CUTOVER.md](./R2-CUTOVER.md) is the storage status and the stage plan (0 stop-bleed through 6 retire Blob). Stage 1 code is done. Production still reads Vercel Blob until cutover. [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) and [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) are superseded history. The JSON store does not use the MEDIA binding. Does not create buckets, change DNS, or deploy.
