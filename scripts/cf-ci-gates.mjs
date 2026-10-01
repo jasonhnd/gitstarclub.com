@@ -348,14 +348,8 @@ export function previewCronIssues(previewCrons, paused) {
  * @property {boolean} [previewCronsPaused] Test override for PREVIEW_CRONS_PAUSED.
  */
 
-/**
- * @param {CfCiGateSources} sources
- * @returns {string[]}
- */
-export function assertCfCiGates(sources) {
-  const { wranglerSource, ciYml, deliveryYml, webPackageSource, runtimeConfigSource } = sources;
+function collectWorkerIdentityIssues(wrangler, preview) {
   const issues = [];
-  const wrangler = parseWranglerJsonc(wranglerSource);
   if (wrangler.name !== PRODUCTION_WORKER_NAME) {
     issues.push(`wrangler top-level name must be ${PRODUCTION_WORKER_NAME} (production)`);
   }
@@ -365,7 +359,6 @@ export function assertCfCiGates(sources) {
   if (JSON.stringify(wrangler).includes(LEGACY_PREVIEW_WORKER_NAME)) {
     issues.push(`wrangler must not name a Worker ${LEGACY_PREVIEW_WORKER_NAME}`);
   }
-  const preview = wrangler.env?.[PREVIEW_WRANGLER_ENV];
   if (wrangler.vars?.SITE_INDEXABLE !== "1") {
     issues.push('wrangler top-level vars.SITE_INDEXABLE must be "1"');
   }
@@ -380,14 +373,18 @@ export function assertCfCiGates(sources) {
   } else if (preview.name !== PREVIEW_WORKER_NAME) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV}.name must be ${PREVIEW_WORKER_NAME}`);
   }
+  return issues;
+}
 
+function collectCronGateIssues(wrangler, preview, previewCronsPaused) {
+  const issues = [];
   const productionCrons = wrangler.triggers?.crons;
   if (!productionCronsAreEmpty(productionCrons)) {
     issues.push("wrangler top-level triggers.crons must stay [] until Jason approves production CF Cron");
   }
   const previewCrons = preview?.triggers?.crons;
   if (preview) {
-    issues.push(...previewCronIssues(previewCrons, sources.previewCronsPaused ?? PREVIEW_CRONS_PAUSED));
+    issues.push(...previewCronIssues(previewCrons, previewCronsPaused));
   }
   for (const [label, crons] of [
     ["top-level", productionCrons],
@@ -399,6 +396,11 @@ export function assertCfCiGates(sources) {
       );
     }
   }
+  return issues;
+}
+
+function collectWorkerRuntimeIssues(wrangler, preview) {
+  const issues = [];
   const requiredProductionVars = [
     ["BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL],
     ["NEXT_PUBLIC_BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL],
@@ -440,6 +442,11 @@ export function assertCfCiGates(sources) {
   if (previewOriginVar !== undefined && previewOriginVar !== PREVIEW_CRON_ORIGIN) {
     issues.push(`wrangler env.${PREVIEW_WRANGLER_ENV} vars.CF_CRON_ORIGIN must be ${PREVIEW_CRON_ORIGIN} when set`);
   }
+  return issues;
+}
+
+function collectStorageIsolationIssues(wrangler, preview) {
+  const issues = [];
   if (preview && !Array.isArray(preview.r2_buckets)) {
     issues.push(
       `wrangler env.${PREVIEW_WRANGLER_ENV} must declare its own r2_buckets (wrangler environments do not inherit r2_buckets)`,
@@ -483,6 +490,11 @@ export function assertCfCiGates(sources) {
   if (jsonMentionsHost(topLevel, PREVIEW_R2_PUBLIC_HOST)) {
     issues.push(`wrangler top-level must not mention ${PREVIEW_R2_PUBLIC_HOST}`);
   }
+  return issues;
+}
+
+function collectStorageDriverIssues(wrangler, preview) {
+  const issues = [];
   // Before R2 cutover (I-5b) the top-level Worker still reads Vercel Blob.
   // DEPLOY_ENV stays unset. Drivers stay unset or blob, including the
   // READ_DRIVER and WRITE_DRIVER aliases. Setting any DEPLOY_ENV, or an R2
@@ -530,6 +542,11 @@ export function assertCfCiGates(sources) {
       `wrangler env.${PREVIEW_WRANGLER_ENV} must not contain BLOB_* (preview reads R2, not Vercel Blob)`,
     );
   }
+  return issues;
+}
+
+function collectWorkflowRuntimeIssues(wrangler, preview) {
+  const issues = [];
   // The 1k-star cold-start experiment (MIN_TRACKED_STARS=1000, WORKFLOW_COLD_START,
   // PREFLIGHT_RELAX_EMPTY_SHARDS) is paused. Preview rehearses at the production floor.
   // Restoring that experiment later is an owner decision.
@@ -589,6 +606,11 @@ export function assertCfCiGates(sources) {
       `wrangler env.${PREVIEW_WRANGLER_ENV} queues.consumers must include ${PREVIEW_QUEUE_NAME}`,
     );
   }
+  return issues;
+}
+
+function collectPreviewOriginIssues(runtimeConfigSource, ciYml) {
+  const issues = [];
   const defaultOrigin = readDefaultCfPreviewOrigin(runtimeConfigSource);
   if (defaultOrigin === CLOSED_PRODUCTION_WORKERS_DEV_ORIGIN) {
     issues.push("DEFAULT_CF_PREVIEW_ORIGIN must not be the closed production workers.dev host");
@@ -609,8 +631,11 @@ export function assertCfCiGates(sources) {
   } else if (ciOrigin !== defaultOrigin) {
     issues.push(`ci.yml CF_PREVIEW_ORIGIN fallback must match DEFAULT_CF_PREVIEW_ORIGIN (${defaultOrigin})`);
   }
+  return issues;
+}
 
-  const extraSurface = sources.deploySurfaceSource ?? "";
+function collectDeployAutomationIssues(ciYml, webPackageSource, extraSurface) {
+  const issues = [];
   const deploySurface = `${ciYml}\n${webPackageSource}\n${extraSurface}`;
   for (const { command, hasDryRun } of findWranglerDeployInvocations(deploySurface)) {
     if (!hasDryRun) {
@@ -630,7 +655,11 @@ export function assertCfCiGates(sources) {
   if (!webPackageSource.includes("scripts/cf-wrangler-dry-run.mjs") && !webPackageSource.includes("cf-wrangler-dry-run")) {
     issues.push("web/package.json cf:dry-run must go through scripts/cf-wrangler-dry-run.mjs");
   }
+  return issues;
+}
 
+function collectDeliveryContractIssues(deliveryYml) {
+  const issues = [];
   if (!/cf-preview[\s\S]*MUST NOT be added/.test(deliveryYml) && !deliveryYml.includes("MUST NOT be added")) {
     issues.push(".delivery.yml must keep cf-preview / cf-workers-host out of required checks");
   }
@@ -653,7 +682,11 @@ export function assertCfCiGates(sources) {
   if (!/triggers\.crons[^\n]*\[\]/.test(deliveryYml)) {
     issues.push(".delivery.yml must keep production triggers.crons [] next to the named assert");
   }
+  return issues;
+}
 
+function collectCiWorkflowIssues(ciYml) {
+  const issues = [];
   if (!ciYml.includes(ASSERT_SCRIPT_REL) && !ciYml.includes("assert-cf-ci-gates.mjs")) {
     issues.push(`ci.yml must run ${ASSERT_SCRIPT_REL}`);
   }
@@ -669,11 +702,32 @@ export function assertCfCiGates(sources) {
       issues.push(`${jobId} must allowlist only github.ref_name == 'pre' or github.base_ref == 'pre'`);
     }
   }
+  return issues;
+}
 
+/**
+ * @param {CfCiGateSources} sources
+ * @returns {string[]}
+ */
+export function assertCfCiGates(sources) {
+  const { wranglerSource, ciYml, deliveryYml, webPackageSource, runtimeConfigSource } = sources;
+  const wrangler = parseWranglerJsonc(wranglerSource);
+  const preview = wrangler.env?.[PREVIEW_WRANGLER_ENV];
+  const issues = [
+    ...collectWorkerIdentityIssues(wrangler, preview),
+    ...collectCronGateIssues(wrangler, preview, sources.previewCronsPaused ?? PREVIEW_CRONS_PAUSED),
+    ...collectWorkerRuntimeIssues(wrangler, preview),
+    ...collectStorageIsolationIssues(wrangler, preview),
+    ...collectStorageDriverIssues(wrangler, preview),
+    ...collectWorkflowRuntimeIssues(wrangler, preview),
+    ...collectPreviewOriginIssues(runtimeConfigSource, ciYml),
+    ...collectDeployAutomationIssues(ciYml, webPackageSource, sources.deploySurfaceSource ?? ""),
+    ...collectDeliveryContractIssues(deliveryYml),
+    ...collectCiWorkflowIssues(ciYml),
+  ];
   for (const [label, text] of Object.entries(sources.namingSources ?? {})) {
     issues.push(...collectCanonicalNameIssues(text, label));
   }
-
   return issues;
 }
 
