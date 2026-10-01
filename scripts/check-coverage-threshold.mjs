@@ -30,6 +30,39 @@ function parseCounter(raw, label) {
 }
 
 /**
+ * @param {string[]} lines
+ * @returns {{ linesFound: number, linesHit: number, functionsFound: number, functionsHit: number } | null}
+ */
+function parseRecord(lines) {
+  const totals = { linesFound: 0, linesHit: 0, functionsFound: 0, functionsHit: 0 };
+  const seen = { linesFound: false, linesHit: false, functionsFound: false, functionsHit: false };
+  let sourceFile = "";
+  let meaningful = false;
+  for (const line of lines) {
+    if (line.trim() === "") continue;
+    meaningful = true;
+    if (line.startsWith("SF:")) {
+      sourceFile = line.slice(3).trim();
+      continue;
+    }
+    const counter = COUNTERS.find((item) => line.startsWith(item.prefix));
+    if (!counter) continue;
+    totals[counter.key] += parseCounter(line.slice(counter.prefix.length), counter.label);
+    seen[counter.key] = true;
+  }
+  if (!meaningful) return null;
+  const where = sourceFile ? ` (${sourceFile})` : "";
+  const missing = COUNTERS.filter((item) => !seen[item.key]).map((item) => item.label);
+  if (missing.length > 0) {
+    throw new Error(`coverage report missing counters: ${missing.join(", ")}${where}`);
+  }
+  if (totals.linesHit > totals.linesFound || totals.functionsHit > totals.functionsFound) {
+    throw new Error(`coverage report invalid: hit exceeds found${where}`);
+  }
+  return totals;
+}
+
+/**
  * @param {string} content
  * @returns {{ linesFound: number, linesHit: number, functionsFound: number, functionsHit: number }}
  */
@@ -38,16 +71,29 @@ export function parseLcovTotals(content) {
     throw new Error("coverage report empty");
   }
   const totals = { linesFound: 0, linesHit: 0, functionsFound: 0, functionsHit: 0 };
-  const seen = { linesFound: false, linesHit: false, functionsFound: false, functionsHit: false };
+  /** @type {string[]} */
+  let recordLines = [];
+  let sawRecord = false;
+  const flush = () => {
+    const record = parseRecord(recordLines);
+    recordLines = [];
+    if (!record) return;
+    sawRecord = true;
+    totals.linesFound += record.linesFound;
+    totals.linesHit += record.linesHit;
+    totals.functionsFound += record.functionsFound;
+    totals.functionsHit += record.functionsHit;
+  };
   for (const line of content.split(/\r?\n/)) {
-    const counter = COUNTERS.find((item) => line.startsWith(item.prefix));
-    if (!counter) continue;
-    totals[counter.key] += parseCounter(line.slice(counter.prefix.length), counter.label);
-    seen[counter.key] = true;
+    if (line.trim() === "end_of_record") {
+      flush();
+      continue;
+    }
+    recordLines.push(line);
   }
-  const missing = COUNTERS.filter((item) => !seen[item.key]).map((item) => item.label);
-  if (missing.length > 0) {
-    throw new Error(`coverage report missing counters: ${missing.join(", ")}`);
+  flush();
+  if (!sawRecord) {
+    throw new Error("coverage report empty");
   }
   return assertAggregate(totals);
 }
