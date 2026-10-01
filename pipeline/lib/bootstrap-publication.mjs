@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { withBootstrapPublicationLease } from "./bootstrap-lease.mjs";
 
 export const BOOTSTRAP_POINTER_PATH = "bootstrap/latest.json";
 export const INITIAL_COMMIT_ABSENT_PATHS = [
@@ -324,6 +325,9 @@ export async function commitBootstrapGeneration({
     if (current) throw new Error(`--initial-commit refused: ${BOOTSTRAP_POINTER_PATH} already exists`);
     await assertInitialCommitTarget({ store });
     await assertCanCommit();
+    // Renewal is the last await before create. Re-read so a marker or pointer
+    // written during that fence is refused. Create-only covers only the pointer.
+    await assertInitialCommitTarget({ store });
   } else if (!current) {
     await verifyLegacyFlatTarget({ store });
     await assertCanCommit();
@@ -358,6 +362,26 @@ export async function commitBootstrapGeneration({
     await store.put(BOOTSTRAP_POINTER_PATH, body, "application/json");
   }
   return { status: "published", pointer, verified };
+}
+
+/**
+ * R2 `--initial-commit` for the operator pointer script. Uses the same
+ * `ops/workflows/active.json` lease and fencing token as pipeline step 07.
+ */
+export async function commitInitialBootstrapWithLease({ generation, store, now }) {
+  return withBootstrapPublicationLease({
+    store,
+    generation,
+    operation: "publish",
+    run: (assertCanCommit) =>
+      commitBootstrapGeneration({
+        generation,
+        store,
+        initialCommit: true,
+        now,
+        assertCanCommit,
+      }),
+  });
 }
 
 export async function rollbackBootstrapGeneration({
