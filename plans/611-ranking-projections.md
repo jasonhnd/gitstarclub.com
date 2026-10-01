@@ -53,3 +53,5 @@ Local rendering uses fixed, synthetic data and the real server-rendered page com
 ## Regression fault checks
 
 In a disposable detached worktree at implementation commit `4e6e098`, restoring the old `latestMonthForYear` / `latestWeekForYear` calendar inference at the archive caller caused `bun test lib/rankings-archive.test.ts --isolate` to fail (9 pass / 10 fail, exit 1), including both English and Japanese rendered-page tests. A separate one-at-a-time fault moving the detail row cap after the lookup join caused `bun test lib/ranking-detail-data.test.ts --isolate` to fail (25 pass / 1 fail, exit 1). Restoring both files yielded 45 pass / 0 fail, exit 0. The disposable tree was clean before removal. Logs remain outside the repository in `/tmp/GSC_0055/`.
+
+The full static run exposed an existing source-contract test requiring the detail page's Cloudflare category-assignment guard to remain at its caller boundary. The page retains that host-policy wrapper and passes it into the shared loader; the shared loader still owns leading-ID selection and projection. No out-of-scope test was changed. A fresh final-head verification replaces that initial failed run.
