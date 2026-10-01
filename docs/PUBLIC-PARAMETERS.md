@@ -40,3 +40,15 @@ Tests in `web/lib/public-params.test.ts` exercise the real handlers and readers 
 isolated child processes so module mocks cannot contaminate the full Bun suite.
 All route decoding cases are local, use fabricated data, and perform no network
 requests or production probes.
+
+## Ranking image captures
+
+These 1200x630 PNGs are the actual local `ImageResponse` output, captured before
+and after the fix with absent data mocked in both runs. No live store is used.
+The invalid month 99 used to wrap to a misleading March label; both invalid
+inputs now use the site card.
+
+| Input | Before | After |
+|---|---|---|
+| Year not-a-year | ![Invalid year before](./images/602-param-validation/invalid-year-before.png) | ![Invalid year after](./images/602-param-validation/invalid-year-after.png) |
+| Year 2024, month 99 | ![Invalid month before](./images/602-param-validation/invalid-period-before.png) | ![Invalid month after](./images/602-param-validation/invalid-period-after.png) |
