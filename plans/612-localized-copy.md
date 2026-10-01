@@ -40,7 +40,7 @@ verification trees in `/tmp/GSC_0056/`, and leave the task checkout clean.
 
 ## Acceptance
 
-- All seven locale tables have identical keys and placeholders.
+- All seven locale tables have identical keys; builders resolve their placeholders.
 - Korean category capsule/FAQ lists use Korean conjunctions; the other six
   locales retain their baseline output.
 - Tests exercise the production localized builders, including empty and

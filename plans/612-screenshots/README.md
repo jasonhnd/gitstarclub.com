@@ -4,7 +4,9 @@ These full-page screenshots show the actual localized `/ko/categories` page in
 local Microsoft Edge, using only a read-only GET/HEAD fixture at loopback.
 Desktop viewport: 1440 x 1000. Mobile viewport: 390 x 844.
 
-Before: `origin/pre` at `b9650f0`. After: implementation at `6095860`.
+Before: the original `detail-copy.ts` from `origin/pre` at `b9650f0`.
+After: implementation at `6095860`. The baseline copy was restored temporarily
+for recaptures, then the committed implementation was restored unchanged.
 Both use the same date (June 24, 2026), three dimensions (language, ecosystem,
 domain), and fixture counts. The empty fixture retains those dimensions but
 has no categories. The development server and its data cache were restarted
@@ -12,7 +14,8 @@ between fixture modes; the empty page was verified to contain no table.
 
 The intentional change appears in the answer capsule and the second FAQ:
 Korean conjunction replaces the previous English `and`. Both widths have no
-horizontal document overflow. Owner screenshot sign-off is required before
+horizontal document overflow. Populated captures were retaken after visible
+category row/card animation opacity reached 1. Owner screenshot sign-off is required before
 merge. No live bucket, platform API, or deployed page was used.
 
 | State | Before | After |
