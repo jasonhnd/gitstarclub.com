@@ -55,3 +55,11 @@ The integration branch advanced to #639 during execution. Its CHANGELOG conflict
 retains both entries. Its R2-CUTOVER conflict places the incoming offline local
 workerd rehearsal before the existing real-bucket commands. OPS and TESTING
 retain the same prerequisite. No rehearsal procedure or harness was edited.
+
+## Final integration synchronization
+
+The previously pushed head `a890790` passed GitHub `static` and
+`production-build` in run `36950926355`. Before handoff, `origin/pre` advanced to
+`dca7296`, including #642, #632, and #635. This additional merge has no conflicts.
+It preserves #642's 30-second request/body deadline and its existing plan
+without adding new operating content. Incoming code remains unedited.
