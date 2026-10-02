@@ -1,36 +1,28 @@
-import Link from "next/link";
-import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
-import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
-import { Heatmap } from "@/app/_explore/Heatmap";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { Narrative } from "@/app/_explore/Narrative";
 import { PageHero } from "@/app/_explore/PageHero";
-import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { RelatedPages } from "@/app/_explore/RelatedPages";
 import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
-import { ShareButton } from "@/app/_explore/ShareButton";
-import { Star } from "@/app/_explore/Star";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
-import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
 import { buildNarrative } from "@/lib/narrative";
 import { rankingRoutePeriod, rankingYear } from "@/lib/public-params";
 import { FIRST_YEAR } from "@/lib/periods";
-import { dateLabel, fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
-import { getCategoryAssignmentsForRepos, getCategoryRegistry, getHeatmap, getRank, getReposLookup, joinRepoRank } from "@/lib/data";
-import { rankingCategoryExits } from "@/lib/ranking-category-exits";
+import { fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
 import { RankingCategoryExits } from "./ranking-category-exits";
+import { getRank, getCategoryAssignmentsForRepos } from "@/lib/data";
+import { HeroActions, PeriodStats, AnswerBlock, MovementSection, RankingMetricGrid, CompleteRankingSection, PeriodNavigation, type PeriodNavLink } from "./ranking-ui";
+import { loadRankingDetailData, rankingDetailStructuredData, RANKING_FEATURED_LIMIT } from "./ranking-page-data";
 import { resolveAdjacentRankPeriod, resolveAdjacentRankYear, resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
 import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import { pageMeta } from "@/lib/seo";
 import { buildWeeklyMoversSnippet } from "@/lib/shareable-snippets";
-import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { repositoryTableLabels } from "./routing";
 import {
   answerCapsuleLabels,
@@ -45,13 +37,6 @@ import { generateCoreLocaleStaticParams } from "./routing";
 
 type YearParam = { year: string };
 type PeriodParam = { year: string; period: string };
-type NewcomerRow = Row & { crossedDate?: string };
-type HeatmapCell = { label: string; gained: number; href?: string };
-type PeriodNavLink = { href: string; label: string; eyebrow: string };
-
-const RANKING_DETAIL_ROW_LIMIT = 100;
-const PRIMARY_PANEL_LIMIT = 18;
-const SECONDARY_PANEL_LIMIT = 10;
 
 export async function generateRankingYearStaticParams(): Promise<YearParam[]> {
   const periods = await resolveAvailableRankPeriods();
@@ -114,26 +99,14 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
   const availablePeriods = await resolveAvailableRankPeriods(now);
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > availablePeriods.year) notFound();
 
-  const [rank, growth, newc, heat, lookup, registry] = await Promise.all([
-    getRank("year", String(year), "repo", "flow"),
-    getRank("year", String(year), "repo", "growth"),
-    getRank("year", String(year), "repo", "new"),
-    getHeatmap("year", String(year)),
-    getReposLookup(),
-    getCategoryRegistry(),
-  ]);
-  if (!rank || !lookup) notFound();
-  const assignments = await loadPageCategoryAssignments(leadAssignmentRepoIds(rank.items));
+  const data = await loadPageRankingData("year", String(year), locale);
+  if (!data) notFound();
+  const { heat, rows: rankRows, most, categoryLinks, fastest, newcomers, asOf, dateModified } = data;
 
   const pagePath = `/rankings/${year}`;
   const routePath = localizedPath(locale, pagePath);
   const href = (path: string) => localizedPath(locale, path);
   const title = fill(text.yearMetaTitle, { year });
-  const rankRows = toGainedRows(rank.items.slice(0, RANKING_DETAIL_ROW_LIMIT), lookup);
-  const most = rankRows.slice(0, PRIMARY_PANEL_LIMIT);
-  const categoryLinks = rankingCategoryExits(joinRepoRank(rank.items.slice(0, PRIMARY_PANEL_LIMIT), lookup), registry, assignments);
-  const fastest = toGrowthRows(growth?.items.slice(0, SECONDARY_PANEL_LIMIT) ?? [], lookup);
-  const newcomers = toNewcomerRows(newc?.items.slice(0, SECONDARY_PANEL_LIMIT) ?? [], lookup, locale);
   const movementCandidates = (heat?.cells ?? []).map(([period, total]) => {
     const month = Number(String(period).slice(5, 7));
     return { month, period: `${year}-${String(month).padStart(2, "0")}`, total };
@@ -143,16 +116,7 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
     movementRankChecks[index] ? [{ label: monthLabel(locale, cell.month, "short"), gained: cell.total, href: href(`/rankings/${year}/${cell.month}`) }] : [],
   );
   const movementTotal = movementCells.reduce((sum, cell) => sum + cell.gained, 0);
-  const asOf = resolveDataAsOfLabel(rank.meta.generated_at, heat?.meta.generated_at, growth?.meta.generated_at, newc?.meta.generated_at, { locale });
-  const dateModified = resolveDataAsOfValue(rank.meta.generated_at, heat?.meta.generated_at, growth?.meta.generated_at, newc?.meta.generated_at);
   const tableLabels = repositoryTableLabels(t);
-  const dataset = datasetLd({
-    name: fill(text.rankingDatasetName, { label: String(year) }),
-    path: routePath,
-    locale: language,
-    description: fill(text.rankingDatasetDescription, { label: String(year) }),
-    dateModified,
-  });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: rankRows, metric: "gained" }) : null;
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: rankRows, metric: "gained" });
   const [previousYear, nextYear] = await Promise.all([resolveAdjacentRankYear(year, -1), resolveAdjacentRankYear(year, 1)]);
@@ -162,16 +126,7 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
   return (
     <>
       <Chrome locale={locale} canonicalPath={pagePath} dictionary={t} />
-      <JsonLd data={collectionLd(fill(text.rankingCollectionName, { label: String(year) }), routePath, language, { dateModified, about: datasetRef(routePath) })} />
-      <JsonLd data={dataset} />
-      <JsonLd
-        data={itemListLd(
-          fill(text.rankingItemListName, { label: String(year) }),
-          routePath,
-          language,
-          rankRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: localizedPath(locale, `/${repo.owner}/${repo.name}`) })),
-        )}
-      />
+      {rankingDetailStructuredData({ locale, path: routePath, label: String(year), rows: rankRows, dateModified }).map((data, index) => <JsonLd key={index} data={data} />)}
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
         <Breadcrumbs locale={locale} dictionary={t} items={[{ path: "nav.home", href: "/" }, { path: "nav.rankings", href: "/rankings" }, { label: String(year) }]} />
 
@@ -229,7 +184,7 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
           items={[
             relatedItem(href("/rankings"), t.rankings.title),
             relatedItem(href("/pulse"), t.nav.pulse),
-            ...categoryLinks.slice(0, 3).map((category) => relatedItem(href(category.href), category.label)),
+            ...categoryLinks.slice(0, RANKING_FEATURED_LIMIT).map((category) => relatedItem(href(category.href), category.label)),
           ]}
         />
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
@@ -258,64 +213,34 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = `${year}-${String(month).padStart(2, "0")}`;
-  const [flow, growth, newc, heat, lookup, registry] = await Promise.all([
-    getRank("month", period, "repo", "flow"),
-    getRank("month", period, "repo", "growth"),
-    getRank("month", period, "repo", "new"),
-    getHeatmap("month", period),
-    getReposLookup(),
-    getCategoryRegistry(),
-  ]);
-  if (!flow || !lookup) notFound();
-  const assignments = await loadPageCategoryAssignments(leadAssignmentRepoIds(flow.items));
+  const data = await loadPageRankingData("month", period, locale);
+  if (!data) notFound();
+  const { newc, heat, rows: flowRows, most, categoryLinks, fastest, newcomers, asOf, dateModified } = data;
 
   const pageLabel = monthYearLabel(locale, year, month);
   const title = fill(text.periodMetaTitle, { label: pageLabel });
   const pagePath = `/rankings/${year}/${month}`;
   const routePath = localizedPath(locale, pagePath);
   const href = (path: string) => localizedPath(locale, path);
-  const flowRows = toGainedRows(flow.items.slice(0, RANKING_DETAIL_ROW_LIMIT), lookup);
-  const most = flowRows.slice(0, PRIMARY_PANEL_LIMIT);
-  const categoryLinks = rankingCategoryExits(joinRepoRank(flow.items.slice(0, PRIMARY_PANEL_LIMIT), lookup), registry, assignments);
-  const fastest = toGrowthRows(growth?.items.slice(0, SECONDARY_PANEL_LIMIT) ?? [], lookup);
-  const newcomers = toNewcomerRows(newc?.items.slice(0, SECONDARY_PANEL_LIMIT) ?? [], lookup, locale);
   const movementCells = (heat?.cells ?? []).map(([date, total]) => ({ label: String(Number(String(date).slice(8, 10))), gained: total }));
   const movementTotal = movementCells.reduce((sum, cell) => sum + cell.gained, 0);
-  const asOf = resolveDataAsOfLabel(flow.meta.generated_at, heat?.meta.generated_at, growth?.meta.generated_at, newc?.meta.generated_at, { locale });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: flowRows, metric: "gained" }) : null;
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: flowRows, metric: "gained" });
   const narrative = buildNarrative({
     locale,
     label: pageLabel,
-    topGainers: most.slice(0, 3).map((r) => ({ full_name: `${r.owner}/${r.name}`, gained: r.gained ?? 0 })),
+    topGainers: most.slice(0, RANKING_FEATURED_LIMIT).map((r) => ({ full_name: `${r.owner}/${r.name}`, gained: r.gained ?? 0 })),
     fastest: fastest.slice(0, 1).map((r) => ({ full_name: `${r.owner}/${r.name}`, rate: Math.round(r.rate ?? 0) })),
     newcomerCount: newc?.items.length ?? 0,
     newcomers: newcomers.slice(0, 2).map((r) => `${r.owner}/${r.name}`),
   });
   const tableLabels = repositoryTableLabels(t);
-  const dateModified = resolveDataAsOfValue(flow.meta.generated_at, heat?.meta.generated_at, growth?.meta.generated_at, newc?.meta.generated_at);
-  const dataset = datasetLd({
-    name: fill(text.rankingDatasetName, { label: pageLabel }),
-    path: routePath,
-    locale: language,
-    description: fill(text.rankingDatasetDescription, { label: pageLabel }),
-    dateModified,
-  });
   const monthNav = await monthNavigation(locale, t, year, month, href);
 
   return (
     <>
       <Chrome locale={locale} canonicalPath={pagePath} dictionary={t} />
-      <JsonLd data={collectionLd(fill(text.rankingCollectionName, { label: pageLabel }), routePath, language, { dateModified, about: datasetRef(routePath) })} />
-      <JsonLd data={dataset} />
-      <JsonLd
-        data={itemListLd(
-          fill(text.rankingItemListName, { label: pageLabel }),
-          routePath,
-          language,
-          flowRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: localizedPath(locale, `/${repo.owner}/${repo.name}`) })),
-        )}
-      />
+      {rankingDetailStructuredData({ locale, path: routePath, label: pageLabel, rows: flowRows, dateModified }).map((data, index) => <JsonLd key={index} data={data} />)}
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
         <Breadcrumbs
           locale={locale}
@@ -390,7 +315,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
             relatedItem(href(`/rankings/${year}`), String(year)),
             relatedItem(href("/rankings"), t.rankings.title),
             relatedItem(href("/pulse"), t.nav.pulse),
-            ...categoryLinks.slice(0, 3).map((category) => relatedItem(href(category.href), category.label)),
+            ...categoryLinks.slice(0, RANKING_FEATURED_LIMIT).map((category) => relatedItem(href(category.href), category.label)),
           ]}
         />
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
@@ -404,49 +329,24 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = isoWeekLabel(year, week);
-  const [flow, lookup, registry] = await Promise.all([
-    getRank("week", period, "repo", "flow"),
-    getReposLookup(),
-    getCategoryRegistry(),
-  ]);
-  if (!flow || !lookup) notFound();
-  const assignments = await loadPageCategoryAssignments(leadAssignmentRepoIds(flow.items));
+  const data = await loadPageRankingData("week", period, locale);
+  if (!data) notFound();
+  const { rows: rankRows, most, categoryLinks, asOf, dateModified } = data;
 
   const pagePath = `/rankings/${year}/W${String(week).padStart(2, "0")}`;
   const routePath = localizedPath(locale, pagePath);
   const href = (path: string) => localizedPath(locale, path);
-  const rankRows = toGainedRows(flow.items.slice(0, RANKING_DETAIL_ROW_LIMIT), lookup);
-  const most = rankRows.slice(0, PRIMARY_PANEL_LIMIT);
-  const categoryLinks = rankingCategoryExits(joinRepoRank(flow.items.slice(0, PRIMARY_PANEL_LIMIT), lookup), registry, assignments);
   const title = fill(text.periodMetaTitle, { label: period });
-  const asOf = resolveDataAsOfLabel(flow.meta.generated_at, { locale });
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: rankRows, metric: "gained" }) : null;
   const snippet = buildWeeklyMoversSnippet({ locale, period, asOf, rows: rankRows, path: routePath });
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: rankRows, metric: "gained" });
   const tableLabels = repositoryTableLabels(t);
-  const dateModified = resolveDataAsOfValue(flow.meta.generated_at);
-  const dataset = datasetLd({
-    name: fill(text.rankingDatasetName, { label: period }),
-    path: routePath,
-    locale: language,
-    description: fill(text.rankingDatasetDescription, { label: period }),
-    dateModified,
-  });
   const weekNav = await weekNavigation(t, year, week, href);
 
   return (
     <>
       <Chrome locale={locale} canonicalPath={pagePath} dictionary={t} />
-      <JsonLd data={collectionLd(fill(text.rankingCollectionName, { label: period }), routePath, language, { dateModified, about: datasetRef(routePath) })} />
-      <JsonLd data={dataset} />
-      <JsonLd
-        data={itemListLd(
-          fill(text.rankingItemListName, { label: period }),
-          routePath,
-          language,
-          rankRows.map((repo) => ({ name: `${repo.owner}/${repo.name}`, path: localizedPath(locale, `/${repo.owner}/${repo.name}`) })),
-        )}
-      />
+      {rankingDetailStructuredData({ locale, path: routePath, label: period, rows: rankRows, dateModified }).map((data, index) => <JsonLd key={index} data={data} />)}
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
         <Breadcrumbs
           locale={locale}
@@ -510,7 +410,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
             relatedItem(href(`/rankings/${year}`), String(year)),
             relatedItem(href("/rankings"), t.rankings.title),
             relatedItem(href("/pulse"), t.nav.pulse),
-            ...categoryLinks.slice(0, 3).map((category) => relatedItem(href(category.href), category.label)),
+            ...categoryLinks.slice(0, RANKING_FEATURED_LIMIT).map((category) => relatedItem(href(category.href), category.label)),
           ]}
         />
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
@@ -519,338 +419,16 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   );
 }
 
+function loadPageRankingData(window: "year" | "month" | "week", period: string, locale: Locale) {
+  return loadRankingDetailData(window, period, locale, {
+    readAssignments: loadPageCategoryAssignments,
+    skipAssignments: false,
+  });
+}
+
 function loadPageCategoryAssignments(repoIds: readonly number[]) {
-  // CF free Workers count total subrequests (~50). Full 32-shard assignment
-  // fan-out plus OpenNext ASSETS GETs blows the budget. Language exits stay.
+  // Keep the page's host budget policy explicit; the shared loader selects the leading IDs.
   return isCloudflareWorkersHost() ? Promise.resolve(null) : getCategoryAssignmentsForRepos(repoIds);
-}
-
-function leadAssignmentRepoIds(items: readonly { id?: number | null }[]): number[] {
-  return items.slice(0, PRIMARY_PANEL_LIMIT).flatMap((item) => (item.id == null ? [] : [item.id]));
-}
-
-function HeroActions({
-  backHref,
-  backLabel,
-  completeLabel,
-  shareText,
-  shareLabels,
-}: {
-  backHref: string;
-  backLabel: string;
-  completeLabel: string;
-  shareText: string;
-  shareLabels: { label: string; copied: string; onX: string; opensNewTab: string };
-}) {
-  return (
-    <>
-      <Link href={backHref} className="text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline">
-        {backLabel}
-      </Link>
-      <Link href="#complete-ranking" className="text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline">
-        {completeLabel}
-      </Link>
-      <ShareButton text={shareText} labels={shareLabels} />
-    </>
-  );
-}
-
-function PeriodStats({ items }: { items: Array<{ label: string; value: ReactNode }> }) {
-  return (
-    <dl className="grid gap-3 rounded-2xl border border-outline-variant bg-surface-container px-4 py-4">
-      {items.map((item) => (
-        <div key={item.label}>
-          <dt className="font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{item.label}</dt>
-          <dd className="mt-1 break-words font-mono text-[0.95rem] font-extrabold text-on-surface">{item.value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-function AnswerBlock({
-  capsule,
-  rows,
-  locale,
-  labels,
-  leaderLinksLabel,
-  emptyMessage,
-}: {
-  capsule: Parameters<typeof AnswerCapsule>[0]["capsule"] | null;
-  rows: Row[];
-  locale: Locale;
-  labels: Parameters<typeof AnswerCapsule>[0]["labels"];
-  leaderLinksLabel: string;
-  emptyMessage: string;
-}) {
-  if (!capsule) return null;
-  return (
-    <div className="mt-[clamp(1.75rem,4vw,3rem)]">
-      <AnswerCapsule capsule={capsule} labels={labels} />
-      <RankingLeaderLinks rows={rows.slice(0, 3)} locale={locale} ariaLabel={leaderLinksLabel} emptyMessage={emptyMessage} />
-    </div>
-  );
-}
-
-function RankingLeaderLinks({ rows, locale, ariaLabel, emptyMessage }: { rows: Row[]; locale: Locale; ariaLabel: string; emptyMessage: string }) {
-  if (rows.length === 0) return <EmptyState message={emptyMessage} className="mt-3" />;
-  return (
-    <nav aria-label={ariaLabel} className="mt-3 grid gap-2 md:grid-cols-3">
-      {rows.map((row, index) => (
-        <Link
-          key={`${row.owner}/${row.name}`}
-          href={localizedPath(locale, `/${row.owner}/${row.name}`)}
-          className="min-w-0 rounded-2xl bg-surface-container px-4 py-3 transition-colors hover:bg-surface-container-high"
-        >
-          <span className="font-mono text-[0.7rem] uppercase tracking-wider text-on-surface-variant">#{index + 1}</span>
-          <span className="mt-1 block truncate font-mono text-[0.92rem] font-extrabold text-on-surface">
-            {row.owner}/{row.name}
-          </span>
-          <span className="mt-1 block truncate font-mono text-[0.76rem] text-on-surface-variant">
-            {row.gained == null ? (
-              <>
-                {fmtStars(row.total, locale)}
-                <Star />
-              </>
-            ) : (
-              <>
-                +{fmtStars(row.gained, locale)}
-                <Star />
-              </>
-            )}
-          </span>
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
-function MovementSection({
-  title,
-  cells,
-  emptyMessage,
-  labels,
-  locale,
-  square = false,
-  columns,
-}: {
-  title: string;
-  cells: HeatmapCell[];
-  emptyMessage: string;
-  labels: { starsAdded: string };
-  locale: Locale;
-  square?: boolean;
-  columns?: number;
-}) {
-  return (
-    <section className="mt-[clamp(2rem,4vw,3rem)]">
-      <h2 className="mb-3 text-[1.25rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-      {cells.length > 0 ? <Heatmap cells={cells} max={Math.max(1, ...cells.map((cell) => cell.gained))} columns={columns ?? cells.length} square={square} labels={labels} locale={locale} /> : <EmptyState message={emptyMessage} />}
-    </section>
-  );
-}
-
-function RankingMetricGrid({
-  locale,
-  tableLabels,
-  mostRows,
-  fastestRows,
-  newcomerRows,
-  mostTitle,
-  fastestTitle,
-  newcomersTitle,
-  gainedCaption,
-  growthCaption,
-  newcomerCaption,
-  emptyRanking,
-  emptyGrowth,
-  emptyNewcomers,
-}: {
-  locale: Locale;
-  tableLabels: ReturnType<typeof repositoryTableLabels>;
-  mostRows: Row[];
-  fastestRows: Row[];
-  newcomerRows: NewcomerRow[];
-  mostTitle: string;
-  fastestTitle: string;
-  newcomersTitle: string;
-  gainedCaption: string;
-  growthCaption: string;
-  newcomerCaption: string;
-  emptyRanking: string;
-  emptyGrowth: string;
-  emptyNewcomers: string;
-}) {
-  return (
-    <div className="mt-[clamp(2.5rem,5vw,3.5rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
-      <RankingTablePanel title={mostTitle} rows={mostRows} variant="gained" locale={locale} tableCaption={gainedCaption} labels={tableLabels} emptyMessage={emptyRanking} />
-      <RankingTablePanel title={fastestTitle} rows={fastestRows} variant="rate" locale={locale} tableCaption={growthCaption} labels={tableLabels} emptyMessage={emptyGrowth} />
-      <NewcomerPanel title={newcomersTitle} rows={newcomerRows} locale={locale} caption={newcomerCaption} labels={tableLabels} emptyMessage={emptyNewcomers} />
-    </div>
-  );
-}
-
-function RankingTablePanel({
-  title,
-  rows,
-  variant,
-  locale,
-  tableCaption,
-  labels,
-  emptyMessage,
-}: {
-  title: string;
-  rows: Row[];
-  variant: "gained" | "rate";
-  locale: Locale;
-  tableCaption: string;
-  labels: ReturnType<typeof repositoryTableLabels>;
-  emptyMessage: string;
-}) {
-  return (
-    <section className="min-w-0">
-      <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-      {rows.length > 0 ? <RankingList rows={rows} variant={variant} locale={locale} tableCaption={tableCaption} labels={labels} compact /> : <EmptyState message={emptyMessage} />}
-    </section>
-  );
-}
-
-function NewcomerPanel({
-  title,
-  rows,
-  locale,
-  caption,
-  labels,
-  emptyMessage,
-}: {
-  title: string;
-  rows: NewcomerRow[];
-  locale: Locale;
-  caption: string;
-  labels: ReturnType<typeof repositoryTableLabels>;
-  emptyMessage: string;
-}) {
-  return (
-    <section className="min-w-0">
-      <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-      {rows.length > 0 ? (
-        <div className="mt-[clamp(1rem,2vw,1.5rem)]">
-          <p className="mb-2 text-left font-mono text-[0.75rem] uppercase tracking-wider text-on-surface-variant">{caption}</p>
-          <ol className="space-y-2" aria-label={caption}>
-            {rows.map((row, index) => (
-              <li key={`${row.owner}/${row.name}`} className="group animate-rise rounded-2xl bg-surface-container px-3 py-3 transition-colors hover:bg-surface-container-high" style={{ animationDelay: `${0.04 * Math.min(index, 12)}s` }}>
-                <div className="grid min-w-0 gap-2">
-                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2">
-                    <Link href={localizedPath(locale, `/${row.owner}/${row.name}`)} className="block min-w-0 truncate font-mono text-[0.86rem] font-semibold text-on-surface hover:underline hover:underline-offset-2">
-                      {row.owner}/{row.name}
-                    </Link>
-                    <span className="shrink-0 whitespace-nowrap font-mono text-[0.86rem] font-extrabold tabular-nums">
-                      {fmtStars(row.total, locale)}
-                      <Star />
-                    </span>
-                  </div>
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="font-mono text-[0.72rem] tabular-nums text-on-surface-variant">
-                      {labels.tenKCrossingDay}: {row.crossedDate ?? ""}
-                    </span>
-                    <span className="inline-flex max-w-full items-center rounded-full bg-surface-container-high px-2 py-0.5 font-mono text-[0.68rem] text-on-surface-variant">
-                      <span className="break-all">{row.lang ?? labels.unknown}</span>
-                    </span>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-      ) : (
-        <EmptyState message={emptyMessage} />
-      )}
-    </section>
-  );
-}
-
-function CompleteRankingSection({
-  rows,
-  locale,
-  tableCaption,
-  labels,
-  title,
-  emptyMessage,
-}: {
-  rows: Row[];
-  locale: Locale;
-  tableCaption: string;
-  labels: ReturnType<typeof repositoryTableLabels>;
-  title: string;
-  emptyMessage: string;
-}) {
-  return (
-    <section id="complete-ranking" className="mt-[clamp(2.5rem,5vw,3.5rem)] min-w-0 scroll-mt-24">
-      <h2 className="mb-3 text-[1.3rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-      {rows.length > 0 ? <RankingList rows={rows} variant="gained" locale={locale} tableCaption={tableCaption} labels={labels} /> : <EmptyState message={emptyMessage} />}
-    </section>
-  );
-}
-
-function PeriodNavigation({ title, previous, next }: { title: string; previous: PeriodNavLink | null; next: PeriodNavLink | null }) {
-  if (!previous && !next) return null;
-  return (
-    <nav aria-label={title} className="mt-[clamp(2.5rem,5vw,3.5rem)]">
-      <h2 className="mb-3 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {previous && <PeriodNavigationCard link={previous} />}
-        {next && <PeriodNavigationCard link={next} />}
-      </div>
-    </nav>
-  );
-}
-
-function PeriodNavigationCard({ link }: { link: PeriodNavLink }) {
-  return (
-    <Link href={link.href} className="group flex min-h-16 items-center justify-between gap-3 rounded-lg bg-surface-container px-4 py-3 text-on-surface transition-colors hover:bg-surface-container-high">
-      <span className="min-w-0">
-        <span className="block font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{link.eyebrow}</span>
-        <span className="mt-1 block truncate text-[1rem] font-extrabold group-hover:underline group-hover:underline-offset-2">{link.label}</span>
-      </span>
-      <span aria-hidden className="shrink-0 font-mono text-[1rem] text-on-surface-variant transition-colors group-hover:text-on-surface">
-        &rarr;
-      </span>
-    </Link>
-  );
-}
-
-function EmptyState({ message, className = "" }: { message: string; className?: string }) {
-  return <p className={`rounded-lg border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.9rem] text-on-surface-variant ${className}`}>{message}</p>;
-}
-
-function toGainedRows(items: Parameters<typeof joinRepoRank>[0], lookup: Parameters<typeof joinRepoRank>[1]): Row[] {
-  return joinRepoRank(items, lookup).map((r) => ({
-    owner: r.owner,
-    name: r.name,
-    lang: r.language,
-    gained: r.value,
-    total: r.current_stars,
-  }));
-}
-
-function toGrowthRows(items: Parameters<typeof joinRepoRank>[0], lookup: Parameters<typeof joinRepoRank>[1]): Row[] {
-  return joinRepoRank(items, lookup).map((r) => ({
-    owner: r.owner,
-    name: r.name,
-    lang: r.language,
-    total: r.current_stars,
-    rate: typeof r.rate === "number" ? r.rate : undefined,
-  }));
-}
-
-function toNewcomerRows(items: Parameters<typeof joinRepoRank>[0], lookup: Parameters<typeof joinRepoRank>[1], locale: Locale): NewcomerRow[] {
-  return joinRepoRank(items, lookup).map((r) => ({
-    owner: r.owner,
-    name: r.name,
-    lang: r.language,
-    total: r.current_stars,
-    crossedDate: r.date ? dateLabel(locale, r.date) : undefined,
-  }));
 }
 
 async function monthNavigation(locale: Locale, t: Dict, year: number, month: number, href: (path: string) => string): Promise<{ previous: PeriodNavLink | null; next: PeriodNavLink | null }> {
