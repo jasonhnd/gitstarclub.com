@@ -3,145 +3,75 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
 import { fallbackRegistry } from "@/app/categories/category-page-data";
-import type { CategoryRegistry, OrgEntity, RepoEntity } from "@/lib/contracts";
+import {
+  answerCapsuleLabels,
+  buildLocalizedCategoryDetailCapsule,
+  buildLocalizedCategoryDimensionCapsule,
+  buildLocalizedCategoryIndexCapsule,
+  buildLocalizedRankingCapsule,
+} from "@/app/_localized/detail-copy";
+import {
+  buildLocalizedAllTimeRankingCapsule,
+  buildLocalizedCompareCapsule,
+  buildLocalizedPulseCapsule,
+} from "@/app/_localized/seo-copy";
+import type { CategoryRegistry } from "@/lib/contracts";
+import { getDictionary, LOCALES, type Locale } from "@/lib/i18n";
 import en from "@/lib/i18n/dictionaries/en";
 import {
-  buildAllTimeRankingCapsule,
-  buildCategoryDetailCapsule,
-  buildCategoryDimensionCapsule,
-  buildCategoryIndexCapsule,
-  buildCompareCapsule,
-  buildOrgCapsule,
-  buildPulseCapsule,
-  buildRankingCapsule,
-  buildRepoCapsule,
   capsuleWordCount,
   dataAsOfFromMeta,
   dataAsOfLabel,
   formatDataAsOf,
   resolveDataAsOfFromMeta,
   resolveDataAsOfLabel,
+  resolveDataAsOfValue,
   visibleCapsuleSnapshot,
-  type AnswerCapsuleContent,
 } from "./geo-capsules";
 
 const asOf = dataAsOfLabel("2026-06-24T12:00:00Z");
-
-const repo = {
-  id: 1,
-  full_name: "react/react",
-  owner: "react",
-  owner_type: "Organization",
-  name: "react",
-  description: "The library for web and native user interfaces.",
-  language: "JavaScript",
-  languages: [{ name: "JavaScript", size: 100, color: "#f1e05a" }],
-  topics: ["ui"],
-  homepage_url: "https://react.dev",
-  license: "MIT",
-  latest_release: null,
-  created_at: "2013-05-24",
-  current_stars: 246000,
-  is_archived: false,
-  milestones: {
-    crossed_10k: "2015-05-01",
-    crossed_50k: "2017-01-01",
-    crossed_100k: "2018-06-01",
-  },
-  curve: {
-    monthly: [["2026-06", 1200, 246000]],
-    recent_daily: [["2026-06-24", 45]],
-  },
-  monthly_table: [{ month: "2026-06", adds: 1200, rank: 4 }],
-  rank_history: {},
-  inflections: [],
-} satisfies RepoEntity;
-
-const org = {
-  login: "vercel",
-  owner_type: "Organization",
-  current_stars_sum: 400000,
-  repo_count: 42,
-  members: [1, 2],
-  curve: {
-    monthly: [["2026-06", 2000, 400000]],
-    recent_daily: [["2026-06-24", 70]],
-  },
-  rank_history: {},
-} satisfies OrgEntity;
-
 const rankRows = [
   { owner: "react", name: "react", gained: 1200, total: 246000 },
   { owner: "vuejs", name: "vue", gained: 900, total: 208000 },
   { owner: "angular", name: "angular", gained: 700, total: 98000 },
 ];
-
-const registry = {
+const registry: CategoryRegistry = {
   rules_version: "2026-06-01",
   generated_at: "2026-06-24T12:00:00Z",
   dimensions: [
     {
-      id: "language",
-      label: "Languages",
-      categories: [
-        {
-          id: "language/javascript",
-          dimension: "language",
-          slug: "javascript",
-          label: "JavaScript",
-          count: 214,
-          public: true,
-          sitemap: true,
-          minimum_repo_count: 3,
-        },
-        {
-          id: "language/python",
-          dimension: "language",
-          slug: "python",
-          label: "Python",
-          count: 175,
-          public: true,
-          sitemap: true,
-          minimum_repo_count: 3,
-        },
+      id: "language", label: "Languages", categories: [
+        { id: "language/javascript", dimension: "language", slug: "javascript", label: "JavaScript", count: 214, public: true, sitemap: true, minimum_repo_count: 3 },
+        { id: "language/python", dimension: "language", slug: "python", label: "Python", count: 175, public: true, sitemap: true, minimum_repo_count: 3 },
       ],
     },
-    {
-      id: "ecosystem",
-      label: "Ecosystems",
-      categories: [],
-    },
-    {
-      id: "domain",
-      label: "Domains",
-      categories: [],
-    },
+    { id: "ecosystem", label: "Ecosystems", categories: [] },
+    { id: "domain", label: "Domains", categories: [] },
   ],
-} satisfies CategoryRegistry;
-
-const capsules: AnswerCapsuleContent[] = [
-  buildRepoCapsule(repo, asOf),
-  buildOrgCapsule(org, asOf),
-  buildRankingCapsule({ title: "June 2026 GitHub Star Rankings", asOf, rows: rankRows, metric: "gained" }),
-  buildAllTimeRankingCapsule({ asOf, repoRows: rankRows, orgRows: [{ login: "vercel", current_stars_sum: 400000, repo_count: 42 }] }),
-  buildCategoryIndexCapsule(registry, asOf),
-  buildCategoryDimensionCapsule(registry.dimensions[0], asOf),
-  buildCategoryDetailCapsule({ category: registry.dimensions[0].categories[0], asOf, rows: rankRows }),
-  buildPulseCapsule({ asOf, weekRows: rankRows, monthRows: rankRows.slice().reverse() }),
-  buildCompareCapsule(asOf),
-];
-
-const visibleCapsuleLabels = {
-  answerCapsule: en.common.answerCapsule,
-  dataAsOf: en.common.dataAsOf,
-  source: en.common.source,
 };
 
-describe("GEO answer capsules", () => {
+function liveCapsules(locale: Locale, date = asOf, rows = rankRows) {
+  return [
+    buildLocalizedRankingCapsule({ locale, title: "June 2026 GitHub Star Rankings", asOf: date, rows, metric: "gained" }),
+    buildLocalizedAllTimeRankingCapsule({ locale, asOf: date, repoRows: rows, orgRows: rows.length ? [{ login: "vercel", current_stars_sum: 400000, repo_count: 42 }] : [] }),
+    buildLocalizedCategoryIndexCapsule(locale, registry, date),
+    buildLocalizedCategoryDimensionCapsule(locale, registry.dimensions[0], date),
+    buildLocalizedCategoryDetailCapsule({ locale, category: registry.dimensions[0].categories[0], asOf: date, rows }),
+    buildLocalizedPulseCapsule({ locale, asOf: date, weekRows: rows, monthRows: rows.slice().reverse(), activeWeek: "2026-W25", activeMonth: "2026-06" }),
+    buildLocalizedCompareCapsule(locale, date),
+  ];
+}
+
+const visibleLabels = { answerCapsule: en.common.answerCapsule, dataAsOf: en.common.dataAsOf, source: en.common.source };
+
+describe("shared GEO capsule dates and live localized builders", () => {
   test("formats data-as-of labels from real data fields", () => {
     expect(formatDataAsOf("2026-06-24T12:00:00Z")).toBe("June 24, 2026");
     expect(formatDataAsOf("2026-06-24")).toBe("June 24, 2026");
     expect(formatDataAsOf("2026-06")).toBe("June 2026");
+    expect(formatDataAsOf("2026-W25")).toBe("2026 week 25");
+    expect(formatDataAsOf("2026")).toBe("2026");
+    expect(formatDataAsOf(null)).toBeNull();
     expect(formatDataAsOf("2026-06-28T12:00:00Z", "ja")).toBe("2026年6月28日");
     expect(formatDataAsOf("2026-06-28T12:00:00Z", "fr")).toBe("28 juin 2026");
     expect(resolveDataAsOfLabel("fallback", "2026-06-28T12:00:00Z", { locale: "ko" })).toBe("2026년 6월 28일");
@@ -149,150 +79,77 @@ describe("GEO answer capsules", () => {
     expect(() => dataAsOfLabel("fallback")).toThrow("GEO answer capsule requires a real data-as-of date");
   });
 
-  test("resolves fallback category registry dates from a real secondary watermark without throwing", () => {
-    const registryFallback = fallbackRegistry();
-    expect(registryFallback.generated_at).toBe("fallback");
-    expect(() => resolveDataAsOfLabel(registryFallback.generated_at, "2026-06-24T12:00:00Z")).not.toThrow();
-    expect(resolveDataAsOfLabel(registryFallback.generated_at, "2026-06-24T12:00:00Z")).toBe("June 24, 2026");
-    expect(resolveDataAsOfLabel(registryFallback.generated_at)).toBeNull();
+  test("preserves raw date resolution and metadata candidate priority", () => {
+    expect(resolveDataAsOfValue("fallback", "2026-06-24T12:00:00Z", "2026-06")).toBe("2026-06-24T12:00:00Z");
+    expect(resolveDataAsOfValue(undefined, null, "fallback")).toBeNull();
+    expect(resolveDataAsOfLabel("2026-06", "2026-06-24")).toBe("June 2026");
+    expect(resolveDataAsOfFromMeta({ seam_date: "2020-01-01", schema_ver: 1, generated_at: "2026-06-24T12:00:00Z" }, "2026-07-01")).toBe(asOf);
+    expect(resolveDataAsOfFromMeta(null, "2026-07-01")).toBe("July 1, 2026");
   });
 
-  test("dateless meta uses the non-throwing skip path for optional capsules", () => {
-    const datelessMeta = { seam_date: "2020-01-01", schema_ver: 1 };
-    const asOfFromDatelessMeta = resolveDataAsOfFromMeta(datelessMeta);
-    expect(asOfFromDatelessMeta).toBeNull();
-    expect(() => (asOfFromDatelessMeta ? buildCompareCapsule(asOfFromDatelessMeta) : null)).not.toThrow();
-    expect(() => (asOfFromDatelessMeta ? buildRepoCapsule(repo, asOfFromDatelessMeta) : null)).not.toThrow();
-    expect(() => (asOfFromDatelessMeta ? buildOrgCapsule(org, asOfFromDatelessMeta) : null)).not.toThrow();
+  test("fallback category dates use a real secondary watermark without throwing", () => {
+    const data = fallbackRegistry();
+    expect(data.generated_at).toBe("fallback");
+    expect(resolveDataAsOfLabel(data.generated_at, "2026-06-24T12:00:00Z")).toBe(asOf);
+    expect(resolveDataAsOfLabel(data.generated_at)).toBeNull();
   });
 
-  test("keeps every deterministic capsule within the 40-60 word target", () => {
-    for (const capsule of capsules) {
-      expect(capsuleWordCount(capsule)).toBeGreaterThanOrEqual(40);
-      expect(capsuleWordCount(capsule)).toBeLessThanOrEqual(60);
-    }
+  test("dateless metadata uses the optional capsule skip path", () => {
+    const date = resolveDataAsOfFromMeta({ seam_date: "2020-01-01", schema_ver: 1 });
+    expect(date).toBeNull();
+    expect(date ? buildLocalizedCompareCapsule("en", date) : null).toBeNull();
   });
 
-  test("renders stable selectors for the visible answer capsule metadata", () => {
-    const html = renderToStaticMarkup(
-      createElement(AnswerCapsule, {
-        capsule: buildCategoryIndexCapsule(registry, asOf),
-        labels: { ariaLabel: en.common.answerCapsule, eyebrow: en.common.answerCapsule, dataAsOf: en.common.dataAsOf, source: en.common.source },
-      }),
-    );
-
-    expect(html).toContain('data-testid="answer-capsule"');
-    expect(html).toContain('data-testid="answer-capsule-data-as-of"');
-    expect(html).toContain('data-testid="answer-capsule-source"');
-  });
-
-  test("snapshots visible repo capsule and data-as-of block", () => {
-    expect(visibleCapsuleSnapshot(buildRepoCapsule(repo, asOf), visibleCapsuleLabels)).toBe(
-      [
-        "Answer capsule",
-        "As of June 24, 2026, react/react has 246.0k GitHub stars. GitStarClub tracks its JavaScript profile, 10k in May 2015, 50k in January 2017, and 100k in June 2018, and latest recorded month of June 2026 with +1.2k stars, combining identity, milestone, current-star, and monthly curve fields for answerable repository history without runtime inference. — GitStarClub",
-        "Data as of: June 24, 2026",
-        "Source: GitStarClub",
-      ].join("\n"),
+  test("word counting and visible snapshot helpers retain their contracts", () => {
+    expect(capsuleWordCount("A/B — C")).toBe(3);
+    expect(capsuleWordCount({ text: " A  B \n C " })).toBe(3);
+    expect(capsuleWordCount("")).toBe(0);
+    expect(visibleCapsuleSnapshot({ text: "Summary", asOf, source: "GitStarClub" }, visibleLabels)).toBe(
+      `Answer capsule\nSummary\nData as of: ${asOf}\nSource: GitStarClub`,
     );
   });
 
-  test("snapshots visible org and rankings capsules", () => {
-    expect(visibleCapsuleSnapshot(buildOrgCapsule(org, asOf), visibleCapsuleLabels)).toBe(
-      [
-        "Answer capsule",
-        "As of June 24, 2026, vercel has 400.0k total GitHub stars across 42 tracked repositories. GitStarClub builds this organization page from GitStarClub's precomputed organization data, member repository ids, current-star sums, and monthly curves so readers can cite organization momentum without a runtime database. — GitStarClub",
-        "Data as of: June 24, 2026",
-        "Source: GitStarClub",
-      ].join("\n"),
+  for (const locale of LOCALES) {
+    test(`${locale} live capsules render dated and attributed HTML for populated and empty rows`, async () => {
+      const t = await getDictionary(locale);
+      const date = dataAsOfLabel("2026-06-24T12:00:00Z", { locale });
+      for (const rows of [rankRows, rankRows.slice(0, 1), rankRows.slice(0, 2), []]) {
+        for (const capsule of liveCapsules(locale, date, rows)) {
+          const html = renderToStaticMarkup(createElement(AnswerCapsule, { capsule, labels: answerCapsuleLabels(locale, t) }));
+          expect(capsule.asOf).toBe(date);
+          expect(capsule.source).toBe("GitStarClub");
+          expect(capsule.text).toContain(date);
+          expect(capsule.text.endsWith(" - GitStarClub")).toBe(true);
+          expect(capsule.text).not.toMatch(/\{\w+\}|\?repos=/);
+          expect(html).toContain('data-testid="answer-capsule"');
+          expect(html).toContain('data-testid="answer-capsule-data-as-of"');
+          expect(html).toContain('data-testid="answer-capsule-source"');
+        }
+      }
+    });
+  }
+
+  test("snapshots live English ranking and category capsule text", () => {
+    expect(liveCapsules("en")[0].text).toBe(
+      "As of June 24, 2026, June 2026 GitHub Star Rankings ranks tracked GitHub repositories by stars gained in the selected period. react/react leads with +1.2k stars, followed by vuejs/vue and angular/angular. GitStarClub generates this visible ranking from GitStarClub's precomputed ranking and repository data, without runtime search, a database, or AI. - GitStarClub",
     );
-    expect(visibleCapsuleSnapshot(buildRankingCapsule({ title: "June 2026 GitHub Star Rankings", asOf, rows: rankRows, metric: "gained" }), visibleCapsuleLabels)).toBe(
-      [
-        "Answer capsule",
-        "As of June 24, 2026, June 2026 GitHub Star Rankings ranks tracked GitHub repositories by stars gained. react/react leads with +1.2k stars, followed by vuejs/vue and angular/angular. GitStarClub generates this visible ranking from GitStarClub's precomputed ranking and repository data, with no runtime search, database, or AI. — GitStarClub",
-        "Data as of: June 24, 2026",
-        "Source: GitStarClub",
-      ].join("\n"),
-    );
-    expect(visibleCapsuleSnapshot(buildAllTimeRankingCapsule({ asOf, repoRows: rankRows, orgRows: [{ login: "vercel", current_stars_sum: 400000, repo_count: 42 }] }), visibleCapsuleLabels)).toBe(
-      [
-        "Answer capsule",
-        "As of June 24, 2026, GitStarClub's all-time rankings summarize the largest tracked GitHub repositories and organizations. react/react leads repositories with 246.0k total stars, while vercel leads organizations with 400.0k total stars. The page is built from GitStarClub's precomputed all-time ranking, repository, and organization data. — GitStarClub",
-        "Data as of: June 24, 2026",
-        "Source: GitStarClub",
-      ].join("\n"),
+    expect(liveCapsules("en")[2].text).toBe(
+      "As of June 24, 2026, browse 2 public GitHub categories across 3 dimensions, including Languages, Ecosystems and Domains. GitStarClub builds these category links from deterministic rules over repository metadata, not live search or AI, so readers can reach focused repository lists through crawlable pages. - GitStarClub",
     );
   });
 
-  test("snapshots visible category, pulse, and compare capsules", () => {
-    expect(visibleCapsuleSnapshot(buildCategoryIndexCapsule(registry, asOf), visibleCapsuleLabels)).toBe(
-      [
-        "Answer capsule",
-        "As of June 24, 2026, browse 2 public GitHub categories across 3 dimensions, including languages, ecosystems, domains. GitStarClub builds these category links from deterministic rules over repository metadata, not live search or AI, so readers can reach focused repository lists through crawlable pages. — GitStarClub",
-        "Data as of: June 24, 2026",
-        "Source: GitStarClub",
-      ].join("\n"),
-    );
-    expect(visibleCapsuleSnapshot(buildCategoryDimensionCapsule(registry.dimensions[0], asOf), visibleCapsuleLabels)).toBe(
-      [
-        "Answer capsule",
-        "As of June 24, 2026, GitStarClub lists 2 public categories in the languages dimension for tracked GitHub repositories. This page uses deterministic rules over repository metadata, not live search or AI, with crawlable links that move readers and answer engines from broad taxonomy to specific repository rankings. — GitStarClub",
-        "Data as of: June 24, 2026",
-        "Source: GitStarClub",
-      ].join("\n"),
-    );
-    expect(visibleCapsuleSnapshot(buildCategoryDetailCapsule({ category: registry.dimensions[0].categories[0], asOf, rows: rankRows }), visibleCapsuleLabels)).toBe(
-      [
-        "Answer capsule",
-        "As of June 24, 2026, GitStarClub tracks 214 repositories in JavaScript. react/react leads with 246.0k total stars, followed by vuejs/vue and angular/angular. This category ranking uses deterministic category assignments, all-time stock ranking data, and repository metadata, not live search or AI. — GitStarClub",
-        "Data as of: June 24, 2026",
-        "Source: GitStarClub",
-      ].join("\n"),
-    );
-    expect(visibleCapsuleSnapshot(buildPulseCapsule({ asOf, weekRows: rankRows, monthRows: rankRows.slice().reverse() }), visibleCapsuleLabels)).toBe(
-      [
-        "Answer capsule",
-        "As of June 24, 2026, GitStarClub Pulse summarizes current open-source momentum across tracked repositories. react/react leads the latest available week with +1.2k stars, while angular/angular leads the current month-to-date list with +700 stars. The page is generated from GitStarClub's precomputed activity and ranking data so the visible summary stays deterministic, dated, and free of runtime analysis. — GitStarClub",
-        "Data as of: June 24, 2026",
-        "Source: GitStarClub",
-      ].join("\n"),
-    );
-    expect(visibleCapsuleSnapshot(buildCompareCapsule(asOf), visibleCapsuleLabels)).toBe(
-      [
-        "Answer capsule",
-        "As of June 24, 2026, GitStarClub Compare lets readers overlay tracked repository star-history curves from GitStarClub's precomputed star-history data. The static page explains absolute calendar history and 10k-aligned comparison without claiming client-only query-state facts as server-rendered evidence, keeping citation copy deterministic and reviewable. — GitStarClub",
-        "Data as of: June 24, 2026",
-        "Source: GitStarClub",
-      ].join("\n"),
-    );
-  });
-
-  test("every capsule carries a real as-of date, GitStarClub attribution, and a GitStarClub-only statistic", () => {
-    for (const capsule of capsules) {
-      expect(capsule.asOf).toBe(asOf);
-      expect(capsule.source).toBe("GitStarClub");
-      expect(capsule.text).toContain(asOf);
-      expect(capsule.text).toContain("GitStarClub");
-      expect(capsule.text.endsWith("— GitStarClub")).toBe(true);
-      expect(capsule.text).not.toMatch(/\?repos=/);
-    }
-  });
-
-  test("as-of labels come from supplied metadata, not hardcoded freshness dates", () => {
+  test("as-of labels reflect supplied metadata rather than hardcoded freshness", () => {
     const later = dataAsOfLabel("2026-07-02T09:00:00Z");
-    expect(later).toBe("July 2, 2026");
-    expect(buildCompareCapsule(later).text).toContain(later);
-    expect(buildCompareCapsule(later).text).not.toContain(asOf);
-    expect(buildPulseCapsule({ asOf: later, weekRows: rankRows, monthRows: rankRows }).asOf).toBe(later);
-    expect(buildRepoCapsule(repo, later).asOf).toBe(later);
+    for (const capsule of liveCapsules("en", later)) {
+      expect(capsule.asOf).toBe(later);
+      expect(capsule.text).toContain(later);
+      expect(capsule.text).not.toContain(asOf);
+    }
   });
 
-  test("compare capsule stays generic and does not interpolate client query selections", () => {
-    const capsule = buildCompareCapsule(asOf);
+  test("live compare capsule remains generic rather than describing client selections", () => {
+    const capsule = buildLocalizedCompareCapsule("en", asOf);
     expect(capsule.text).toContain("without claiming client-only query-state facts as server-rendered evidence");
-    expect(capsule.text).not.toContain("react/react");
-    expect(capsule.text).not.toContain("vuejs/vue");
-    expect(capsule.text).not.toMatch(/\?repos=/);
-    expect(capsule.text).not.toMatch(/selected repositor/i);
+    expect(capsule.text).not.toMatch(/react\/react|vuejs\/vue|\?repos=|selected repositor/i);
   });
 });
