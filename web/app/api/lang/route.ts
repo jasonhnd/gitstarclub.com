@@ -10,8 +10,14 @@ export function GET(req: Request) {
   const lang = url.searchParams.get("lang");
   const locale = lang && isLocale(lang) ? lang : DEFAULT_LOCALE;
   const safeNext = safeInternalRedirectPath(url.searchParams.get("next"), url);
-  const canonicalNext = stripLocale(safeNext).path;
-  const res = NextResponse.redirect(new URL(localizedPath(locale, canonicalNext), url));
+  // Stripping a locale prefix can reveal a protocol-relative path (`/ja//host`
+  // becomes `//host`). Validate again, then keep only a same-origin URL.
+  const canonicalNext = safeInternalRedirectPath(stripLocale(safeNext).path, url);
+  let destination = new URL(localizedPath(locale, canonicalNext), url);
+  if (destination.origin !== url.origin || destination.username || destination.password) {
+    destination = new URL(localizedPath(locale, "/"), url);
+  }
+  const res = NextResponse.redirect(destination);
   res.cookies.set(LANG_COOKIE, locale, { path: "/", maxAge: ONE_YEAR, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
   return res;
 }

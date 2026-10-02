@@ -12,8 +12,9 @@ import {
 import { resolveLiveArtifactFromHistory } from "@/lib/data/live-generation-history";
 import { parseView } from "@/lib/data/parse-view";
 
-// View source: reads JSON views by direct URL from the Vercel Blob store (public).
-// BLOB_BASE_URL must point at the store base (set in Vercel project env + local .env.local).
+// View source: reads public JSON views by direct URL. getPublicReadBases picks
+// the origin: the blob driver uses BLOB_BASE_URL (production until cutover), and
+// the r2 driver uses R2_PUBLIC_BASE_URL (preview today).
 // Base views compare the managed and bootstrap publication timestamps, then use the newest
 // complete generation; when neither pointer exists they use the legacy flat layout. A published
 // read may instead serve VIEWS_VERSION_FALLBACK after a confirmed 404 of views/latest.json.
