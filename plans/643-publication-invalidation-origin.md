@@ -92,7 +92,7 @@ Source: GSC_0035 audit findings F01 and F09. Both were re-checked on
 - The `WorkflowManifest` contract. `published_version` is already nullable
   text, and `error.json` has no schema.
 - Worker service-binding self-calls in place of the public origin.
-- Sharing origin parsing with `workers/gitstarclub-web/src/cron-dispatch.ts`.
+- Sharing origin parsing with the Worker's `resolveCronOrigin` (cron dispatch).
   The web app does not import Worker sources. The new parser is stricter.
 - `web/lib/workflows/refresh.ts` `refreshWorkflow` has no caller (audit F12).
   It still calls `markFailed` without publication details and is left for
