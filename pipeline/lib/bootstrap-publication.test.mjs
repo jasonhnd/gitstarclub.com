@@ -392,6 +392,58 @@ describe("bootstrap publication", () => {
     expect(ACTIVE_WORKFLOW_PATH).toBe("ops/workflows/active.json");
   });
 
+  test("a failed leased operation releases as failed and preserves the operation error", async () => {
+    const store = new LeaseStore();
+    await expect(withBootstrapPublicationLease({
+      store,
+      generation: "bootstrap-failed",
+      operation: "publish",
+      run: async (assertCanCommit) => {
+        await assertCanCommit();
+        throw new Error("injected validation failure");
+      },
+    })).rejects.toThrow("injected validation failure");
+    expect(JSON.parse(store.body.toString())).toMatchObject({
+      status: "failed",
+      fencing_token: 1,
+    });
+  });
+
+  test("a callback cannot return a result without acquiring the publication lease", async () => {
+    const store = new LeaseStore();
+    await expect(withBootstrapPublicationLease({
+      store,
+      generation: "bootstrap-no-lease",
+      operation: "publish",
+      run: async () => ({ published: true }),
+    })).rejects.toThrow("did not acquire the shared workflow lease");
+    expect(store.body).toBeNull();
+  });
+
+  test("renewal and release do not overwrite a lease takeover", async () => {
+    const store = new LeaseStore();
+    let takeover;
+    await expect(withBootstrapPublicationLease({
+      store,
+      generation: "bootstrap-stale",
+      operation: "rollback",
+      run: async (assertCanCommit) => {
+        await assertCanCommit();
+        takeover = {
+          ...JSON.parse(store.body.toString()),
+          run_id: "new-owner",
+          fencing_token: 2,
+        };
+        store.body = Buffer.from(JSON.stringify(takeover));
+        store.etag = "takeover";
+        await assertCanCommit();
+        throw new Error("stale owner must not continue");
+      },
+    })).rejects.toThrow("lost workflow lease 1 before release");
+    expect(JSON.parse(store.body.toString())).toEqual(takeover);
+    expect(store.etag).toBe("takeover");
+  });
+
   test("initial commit publishes an empty bucket and refuses mixed markers", async () => {
     const store = new MemoryStore();
     await stageComplete(store, "bootstrap-empty");

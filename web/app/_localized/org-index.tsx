@@ -62,6 +62,12 @@ export async function OrgIndexPageView({ locale, page }: { locale: Locale; page:
           )}
         </section>
 
+        {rows.length === 0 && (
+          <p className="mt-[clamp(1rem,2vw,1.5rem)] rounded-lg border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.9rem] text-on-surface-variant">
+            {t.categories.rankingPending}
+          </p>
+        )}
+
         <OrganizationRankingTable
           rows={pageRows}
           startRank={first || 1}
