@@ -119,7 +119,6 @@ async function start(contents: string): Promise<void> {
     workers: [{
       config: {
         name: "r2-local-rehearsal",
-        type: "worker",
         compatibilityDate: "2026-09-01",
         compatibilityFlags: ["nodejs_compat"],
         manifest: {
@@ -152,7 +151,12 @@ async function start(contents: string): Promise<void> {
             assert.equal(request.method, "GET", "public fixture reads are GET only");
             assert(url.pathname.startsWith(`/cdn-cgi/local/r2/public/${bucketName}/`));
             readPaths.push(url.pathname);
-            return local.dispatchFetch(request.url, { method: request.method, headers: request.headers });
+            // Current Miniflare dispatchFetch sends a portless loopback URL to the
+            // network. Rebuild it on this instance's listener so the local public
+            // bucket answers, and the Worker still only dials 127.0.0.1.
+            const origin = (await local.ready).origin;
+            const localUrl = new URL(`${url.pathname}${url.search}`, origin);
+            return local.dispatchFetch(localUrl, { method: request.method, headers: request.headers });
           },
         },
       },
