@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { isRankingPeriod } from "@/lib/public-params";
 import type { Window, Dim, Metric, RankItem, RepoLookupEntry, OrgLookupEntry } from "@/lib/contracts";
 import { RankList } from "@/lib/contracts";
 import {
@@ -18,18 +19,29 @@ function hasLiveRank(window: Window, dim: Dim, metric: Metric): boolean {
   return false;
 }
 
-export const getRankBase = cache((window: Window, period: string, dim: Dim, metric: Metric) =>
-  readView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList, { base: true }),
-);
-export const getRankBaseDaily = cache((window: Window, period: string, dim: Dim, metric: Metric) =>
-  readView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList, DAILY_BASE_VIEW_OPTS),
-);
-/** Cron mutation input; never reinterpret a pointer/transport error as a missing base rank. */
-export const getRankBaseAuthoritative = (window: Window, period: string, dim: Dim, metric: Metric) =>
-  readAuthoritativeView(`rank/${window}/${period}/${dim}/${metric}.json`, RankList, { base: true });
+function rankPath(window: Window, period: string, dim: Dim, metric: Metric): string | null {
+  if (!isRankingPeriod(window, period) || !["repo", "org"].includes(dim) || !["flow", "stock", "growth", "new"].includes(metric)) return null;
+  return `rank/${window}/${period}/${dim}/${metric}.json`;
+}
+
+export const getRankBase = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
+  const path = rankPath(window, period, dim, metric);
+  return path ? readView(path, RankList, { base: true }) : null;
+});
+export const getRankBaseDaily = cache(async (window: Window, period: string, dim: Dim, metric: Metric) => {
+  const path = rankPath(window, period, dim, metric);
+  return path ? readView(path, RankList, DAILY_BASE_VIEW_OPTS) : null;
+});
+/** Cron mutation input; never reinterpret invalid input or a transport error as a missing base rank. */
+export const getRankBaseAuthoritative = (window: Window, period: string, dim: Dim, metric: Metric) => {
+  const path = rankPath(window, period, dim, metric);
+  if (!path) throw new Error("Invalid ranking parameters");
+  return readAuthoritativeView(path, RankList, { base: true });
+};
 
 async function readLiveRank(window: "week" | "month", period: string, dim: Dim, metric: Metric, versionTtlMs?: number) {
-  const path = `rank/${window}/${period}/${dim}/${metric}.json`;
+  const path = rankPath(window, period, dim, metric);
+  if (!path) return null;
   return readView(path, RankList, {
     live: true,
     liveHistory: true,
@@ -73,6 +85,7 @@ async function readSelectedRank(
   readBase: typeof getRankBase,
   versionTtlMs?: number,
 ) {
+  if (!rankPath(window, period, dim, metric)) return null;
   const liveWindow = window === "month" || window === "week" ? window : null;
   if (!liveWindow || !hasLiveRank(window, dim, metric)) {
     return readBase(window, period, dim, metric);
@@ -96,7 +109,9 @@ export const getRankDaily = cache((window: Window, period: string, dim: Dim, met
   readSelectedRank(window, period, dim, metric, getRankBaseDaily, DAILY_BASE_VIEW_TTL_MS),
 );
 
-export const getAllTime = cache((dim: Dim) => readView(`rank/all-time/${dim}/stock.json`, RankList, { base: true }));
+export const getAllTime = cache(async (dim: Dim) =>
+  ["repo", "org"].includes(dim) ? readView(`rank/all-time/${dim}/stock.json`, RankList, { base: true }) : null,
+);
 
 // lookup-join: rank items carry only id/login + value; merge display fields from lookup/*.
 // Entries missing from lookup are dropped (referential integrity is enforced upstream).

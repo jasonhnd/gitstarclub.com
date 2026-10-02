@@ -60,7 +60,7 @@ describe("rank read policy", () => {
             const liveCapable = dim === "repo" &&
               (window === "month" && ["flow", "stock"].includes(metric) ||
                window === "week" && metric === "flow");
-            const period = window === "week" ? "2026-W27" : "2026-07";
+            const period = window === "week" ? "2026-W27" : window === "month" ? "2026-07" : window === "year" ? "2026" : "all";
             const path = "rank/" + window + "/" + period + "/" + dim + "/" + metric + ".json";
             for (overlay of [false, true]) {
               for (base of [null, payload("base")]) {
