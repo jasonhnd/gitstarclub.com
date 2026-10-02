@@ -133,6 +133,7 @@ const outcome = await runRemoteStage({
       },
     }),
 });
+if (outcome.action !== "wrote") throw new Error("remote staging unexpectedly skipped");
 const result = outcome.result;
 console.log(
   `base ${result.status}: objects=${result.manifest.object_count} bytes=${result.manifest.total_bytes} created=${result.created} reused=${result.reused}`,
