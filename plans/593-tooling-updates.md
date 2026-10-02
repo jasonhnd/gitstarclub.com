@@ -67,6 +67,8 @@ types. No new direct dependency, override, type cast, or test assertion removal
 is introduced. Wrangler's Miniflare update also removes the `type: "worker"`
 configuration field; the existing local R2 fixture drops that field and updates
 its workerd version comment while preserving all 19 conditional-write assertions.
+The stage 2 rehearsal harness, added on `pre` after that fixture change, drops
+the same field. See the follow-up section below.
 
 ## Completed verification
 
@@ -157,3 +159,47 @@ The detached verification worktree was removed successfully. The final
 verification-record commit receives a fresh static/build/audit run as well;
 its exact result and head are recorded in the Kanban handoff. Final acceptance
 and merging remain with the reviewer and project owner.
+
+## Follow-up after merging origin/pre
+
+Merging `origin/pre` at `5c3cca0` brought in the stage 2 local R2 rehearsal.
+GitHub `static` then failed `typecheck:scripts` at
+`web/scripts/lib/r2-local-rehearsal-harness.ts` with TS2353, because the
+Miniflare worker config no longer accepts `type`. The local R2 test fixture
+on this branch had already dropped that field.
+
+`c96dacf` drops `type: "worker"` from the rehearsal worker config. Current
+Miniflare `dispatchFetch` opens a portless `http://127.0.0.1` URL on the
+network, so the outbound handler rebuilds that public read on this instance's
+listener. The Worker still only dials `127.0.0.1`, and the public-path
+allowlist is unchanged. No dependency, CI workflow, Wrangler config, or
+product behavior changed.
+
+From `web/`, with pinned Node v24.20.0 and Bun 1.3.14:
+
+```bash
+bun --no-env-file scripts/r2-local-rehearsal.ts
+```
+
+Result: nine `PASS` lines and `R2_LOCAL_REHEARSAL_OK`. `bun run typecheck:scripts` passed.
+
+The complete `AGENTS.md` static job, fixture production build, and `cf:dry-run`
+were run on `c96dacf` in a fresh detached worktree under `env -i`, with
+SHA-256-verified Node v24.20.0 and Bun 1.3.14:
+
+| Check | Result |
+|---|---|
+| Runtime and CF gate assertions | Pass |
+| Frozen web and pipeline installs; high-severity audits | Pass; no vulnerabilities found |
+| Pipeline `bun run test` | 53 pass, 0 fail; 6 files |
+| Root `bun run lint:docs` | Pass; 41 pass, 0 fail |
+| Web `bun run lint` | Pass; 15 warnings, 0 errors |
+| Web `typecheck`, `typecheck:tests`, `typecheck:scripts` | Pass |
+| `bun run validate:views` against `web/scripts/fixtures/views` | 15 validated, 0 failed |
+| `BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE="" bun run test:cov` | 1556 pass, 49 skip, 0 fail; 188 files |
+| LCOV coverage gate | Lines 86.48%, functions 87.39%; both above 80% |
+| Fixture `bun run build` | Pass |
+| Fixture `bun run cf:dry-run` | Pass with Wrangler 4.145.0; pre only; dry-run; no deployment |
+| Verification lockfiles | Unchanged |
+
+Pipeline and web counts differ from the earlier table because `origin/pre` landed more tests and one existing lint warning. No live-smoke or release-gate opt-ins, environment files, write credentials, or real buckets were used.
