@@ -1,4 +1,5 @@
 import { z, type ZodType } from "zod";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 
 // Parse a Blob JSON view once per (path, version, schema) in this process.
 // Repeated ISR/page reads of the same published generation must not re-parse
@@ -83,7 +84,7 @@ export function logViewParseErrorSummary(label = "[view-schema]"): void {
     console.error(`${label} repeated parse failures`, {
       path: row.path,
       version: row.version || null,
-      fingerprint: row.fingerprint,
+      fingerprint: sanitizeErrorText(row.fingerprint),
       count: row.count,
     });
   }
@@ -102,11 +103,11 @@ function recordParseFailure(path: string, version: string, error: z.ZodError): v
   console.error("[view-schema] parse failed", {
     path,
     version: version || null,
-    fingerprint,
+    fingerprint: sanitizeErrorText(fingerprint),
     issues: error.issues.slice(0, MAX_LOGGED_ISSUES).map((issue) => ({
       code: issue.code,
       path: issue.path,
-      message: issue.message,
+      message: sanitizeErrorText(issue.message),
     })),
   });
 }

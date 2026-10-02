@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadEnvFiles, loadWebEnvFiles, parseEnvFile } from "../scripts/lib/env";
+import {
+  envFilePaths,
+  formatEnvFileDiagnostic,
+  loadEnvFiles,
+  loadWebEnvFiles,
+  parseEnvFile,
+  warnEnvFileDiagnostic,
+} from "../scripts/lib/env";
 
 describe("script env-file parsing", () => {
   test("parses comments, blank lines, exports, quotes, and inline comments", () => {
@@ -93,6 +100,60 @@ describe("script env-file parsing", () => {
       });
 
       expect(target.BLOB_BASE_URL).toBe("https://file.example.com");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("formats diagnostics and warns with path and line", () => {
+    const diagnostic = {
+      path: "a.env",
+      line: 4,
+      message: "Expected KEY=value or export KEY=value; skipping line.",
+    };
+    expect(formatEnvFileDiagnostic(diagnostic)).toBe(
+      "a.env:4: Expected KEY=value or export KEY=value; skipping line.",
+    );
+    const warnings: unknown[] = [];
+    const original = console.warn;
+    console.warn = (message?: unknown) => {
+      warnings.push(message);
+    };
+    try {
+      warnEnvFileDiagnostic(diagnostic);
+    } finally {
+      console.warn = original;
+    }
+    expect(warnings).toEqual(["a.env:4: Expected KEY=value or export KEY=value; skipping line."]);
+  });
+
+  test("skips missing files, reports diagnostics, and keeps single-quoted text literal", () => {
+    const dir = mkdtempSync(join(tmpdir(), "gitstarclub-env-"));
+    try {
+      expect(envFilePaths(dir, [".env.local", ".env"])).toEqual([]);
+      writeFileSync(join(dir, ".env.local"), "GOOD=ok\r\nBROKEN\r\nQUOTED='line\\nnext'\r\nEMPTY=\"\"\n");
+      const seen: string[] = [];
+      const target: Record<string, string | undefined> = {};
+      const result = loadWebEnvFiles(dir, {
+        target,
+        onDiagnostic: (diagnostic) => {
+          seen.push(formatEnvFileDiagnostic(diagnostic));
+        },
+      });
+      expect(result.files).toEqual([join(dir, ".env.local")]);
+      expect(result.loadedKeys).toEqual(["GOOD", "QUOTED", "EMPTY"]);
+      expect(target.QUOTED).toBe("line\\nnext");
+      expect(target.EMPTY).toBe("");
+      expect(result.diagnostics).toEqual([
+        {
+          path: join(dir, ".env.local"),
+          line: 2,
+          message: "Expected KEY=value or export KEY=value; skipping line.",
+        },
+      ]);
+      expect(seen).toEqual([
+        `${join(dir, ".env.local")}:2: Expected KEY=value or export KEY=value; skipping line.`,
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

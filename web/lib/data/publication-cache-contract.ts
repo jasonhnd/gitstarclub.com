@@ -11,6 +11,3 @@ export const BOOTSTRAP_POINTER_NEGATIVE_TTL_MS = BOOTSTRAP_POINTER_NEGATIVE_TTL_
 
 /** In-process pointer memos can remain stale for at most this long after a remote publish. */
 export const PUBLICATION_VISIBILITY_SLA_MS = 60_000;
-
-/** On-demand ISR for crawler-driven long-tail routes. Publication does not mass-invalidate these. */
-export const LONG_TAIL_REVALIDATE_SECONDS = 604_800;
