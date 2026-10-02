@@ -1,7 +1,37 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CF_PREVIEW_ORIGIN } from "@/lib/runtime-config";
 import { cloudflareAccessHeaders } from "./access";
-import { cfPreviewHeaders, cfPreviewUrl, invalidateCfPreviewHotPaths, readCfPreviewIdentity } from "./cf";
+import {
+  CF_PREVIEW_POST_DEADLINE_MS,
+  cfPreviewHeaders,
+  cfPreviewUrl,
+  invalidateCfPreviewHotPaths,
+  readCfPreviewIdentity,
+} from "./cf";
+
+const HUNG_MS = 500;
+
+async function outcomeOf(work: Promise<unknown>): Promise<unknown> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work.then(
+        () => "resolved",
+        (error: unknown) => error,
+      ),
+      new Promise<string>((resolve) => {
+        timer = setTimeout(() => resolve("hung"), HUNG_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function expectTimeout(outcome: unknown): void {
+  expect(outcome).toBeInstanceOf(Error);
+  expect(outcome).toMatchObject({ name: "TimeoutError", message: "The operation timed out." });
+}
 import { describePreviewTarget, resolvePreviewTarget } from "./resolve";
 import { extractVercelPreviewHost, selectDiscoveryMode, validateVercelDeploymentUrl } from "./vercel-discovery";
 
@@ -82,7 +112,14 @@ describe("CF Preview probe", () => {
   });
 
   test("invalidates the / and /pulse hot paths on the Worker stub", async () => {
-    const posted: Array<{ url: string; auth: string | null; accessId: string | null; body: unknown }> = [];
+    const posted: Array<{
+      url: string;
+      auth: string | null;
+      accessId: string | null;
+      body: unknown;
+      method: string | null;
+      aborted: boolean | null;
+    }> = [];
     const result = await invalidateCfPreviewHotPaths(env, async (input, init) => {
       const headers = new Headers(init?.headers);
       posted.push({
@@ -90,6 +127,8 @@ describe("CF Preview probe", () => {
         auth: headers.get("authorization"),
         accessId: headers.get("CF-Access-Client-Id"),
         body: JSON.parse(String(init?.body)),
+        method: init?.method ?? null,
+        aborted: init?.signal?.aborted ?? null,
       });
       return Response.json({
         ok: true,
@@ -112,10 +151,84 @@ describe("CF Preview probe", () => {
             { kind: "path", path: "/pulse" },
           ],
         },
+        method: "POST",
+        aborted: false,
       },
     ]);
     expect(result.ok).toBe(true);
     expect(result.recorded.map((op) => op.path)).toEqual(["/", "/pulse"]);
+    expect(CF_PREVIEW_POST_DEADLINE_MS).toBe(15_000);
+  });
+
+  test("aborts a never-settling preview invalidate POST", async () => {
+    let sawSignal: AbortSignal | undefined;
+    const outcome = await outcomeOf(
+      invalidateCfPreviewHotPaths(
+        env,
+        (_input, init) => {
+          sawSignal = init?.signal ?? undefined;
+          return new Promise((_resolve, reject) => {
+            const signal = init?.signal;
+            if (!signal) return;
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          });
+        },
+        40,
+      ),
+    );
+    expectTimeout(outcome);
+    expect(sawSignal?.aborted).toBe(true);
+  });
+
+  test("aborts a preview invalidate POST that ignores the abort signal", async () => {
+    const outcome = await outcomeOf(invalidateCfPreviewHotPaths(env, () => new Promise(() => {}), 40));
+    expectTimeout(outcome);
+  });
+
+  test("aborts a preview invalidate body that never settles", async () => {
+    let cancelled = false;
+    const outcome = await outcomeOf(
+      invalidateCfPreviewHotPaths(
+        env,
+        () =>
+          Promise.resolve({
+            ok: true,
+            status: 200,
+            body: {
+              cancel: () => {
+                cancelled = true;
+                return Promise.resolve();
+              },
+            },
+            json: () => new Promise(() => {}),
+          } as unknown as Response),
+        40,
+      ),
+    );
+    expectTimeout(outcome);
+    expect(cancelled).toBe(true);
+  });
+
+  test("a non-OK preview invalidate still throws the status without reading the body", async () => {
+    let readBody = false;
+    const outcome = await outcomeOf(
+      invalidateCfPreviewHotPaths(
+        env,
+        async () =>
+          ({
+            ok: false,
+            status: 502,
+            json: () => {
+              readBody = true;
+              return new Promise(() => {});
+            },
+          }) as unknown as Response,
+        40,
+      ),
+    );
+    expect(outcome).toBeInstanceOf(Error);
+    expect((outcome as Error).message).toBe("CF Preview hot-path invalidate -> 502");
+    expect(readBody).toBe(false);
   });
 });
 

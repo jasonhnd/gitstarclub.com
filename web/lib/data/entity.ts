@@ -8,7 +8,6 @@ import { DAILY_BASE_VIEW_OPTS, readView } from "./source";
 const UnknownView = z.unknown();
 
 export const getRepoEntity = cache(async (id: number) => isGithubRepoId(id) ? readView(`entity/repo/${id}.json`, RepoEntity, { base: true }) : null);
-export const getOrgEntity = cache(async (login: string) => githubLogin(login) ? readView(`entity/org/${login}.json`, OrgEntity, { base: true }) : null);
 export const getRepoEntityDaily = cache(async (id: number) => isGithubRepoId(id) ? readView(`entity/repo/${id}.json`, RepoEntity, DAILY_BASE_VIEW_OPTS) : null);
 export const getOrgEntityDaily = cache(async (login: string) => githubLogin(login) ? readView(`entity/org/${login}.json`, OrgEntity, DAILY_BASE_VIEW_OPTS) : null);
 
