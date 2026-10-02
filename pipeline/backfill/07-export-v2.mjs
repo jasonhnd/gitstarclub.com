@@ -154,6 +154,7 @@ if (rollbackRequested) {
           }),
       }),
   });
+  if (outcome.action !== "wrote") throw new Error("rollback unexpectedly skipped");
   const result = outcome.result;
   const previous = result.pointer?.previous_generation ?? result.previousPointer?.generation ?? "none";
   console.log(
