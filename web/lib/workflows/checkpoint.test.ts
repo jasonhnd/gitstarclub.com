@@ -125,6 +125,7 @@ describe("workflow checkpoints (fenced)", () => {
   test("markFailed after the pointer commit records the live version and failed step", async () => {
     const message = "version refresh-test-3 is live; post-commit invalidate failed: -> 503";
     await markFailed("refresh-test-3", "2026-07-18T00:00:00.000Z", message, 4, {
+      phase: "post_commit",
       version: "refresh-test-3",
       step: "invalidate",
     });
@@ -147,6 +148,31 @@ describe("workflow checkpoints (fenced)", () => {
       title: "managed refresh published; post-commit step failed",
       run_id: "refresh-test-3",
       step: "invalidate",
+      error: message,
+    });
+  });
+
+  test("markFailed with an unknown commit state names the candidate version but publishes nothing", async () => {
+    const message = "version refresh-test-4 may be live; pointer failed and the live pointer could not be read: 503";
+    await markFailed("refresh-test-4", "2026-07-18T00:00:00.000Z", message, 4, {
+      phase: "commit_unknown",
+      version: "refresh-test-4",
+      step: "pointer",
+    });
+
+    expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: null });
+    const failure = storedAt("/error.json");
+    expect(failure).toMatchObject({
+      phase: "commit_unknown",
+      candidate_version: "refresh-test-4",
+      failed_step: "pointer",
+    });
+    expect(failure).not.toHaveProperty("committed_version");
+    expect(sendAlert).toHaveBeenCalledWith({
+      pipeline: "workflow-refresh",
+      title: "managed refresh failed; publication commit state unknown",
+      run_id: "refresh-test-4",
+      step: "pointer",
       error: message,
     });
   });

@@ -4,6 +4,7 @@ import {
   PUBLICATION_INVALIDATION_TIMEOUT_MS,
   requestPublishedViewsInvalidation,
   resolvePublicationInvalidationOrigin,
+  resolvePublicationInvalidationTarget,
   type InvalidationFetch,
 } from "./publication-invalidation-request";
 
@@ -118,6 +119,14 @@ describe("resolvePublicationInvalidationOrigin", () => {
     ).toThrow(/DEPLOY_ENV=pre must not invalidate the production site/);
   });
 
+  test("a trailing-dot production host cannot slip past the preview guard", () => {
+    for (const origin of ["https://gitstarclub.com.", "https://www.gitstarclub.com.."]) {
+      expect(() => resolvePublicationInvalidationOrigin({ ...previewEnv, CF_CRON_ORIGIN: origin })).toThrow(
+        /CF_CRON_ORIGIN must be a bare origin/,
+      );
+    }
+  });
+
   test("Cloudflare production keeps the production origin", () => {
     expect(resolvePublicationInvalidationOrigin(productionCfEnv)).toBe(PRODUCTION_ORIGIN);
     expect(resolvePublicationInvalidationOrigin({ ...productionCfEnv, CF_CRON_ORIGIN: `${PRODUCTION_ORIGIN}/` })).toBe(
@@ -173,6 +182,8 @@ describe("resolvePublicationInvalidationOrigin", () => {
       "https://pre.gitstarclub.com?x=1",
       "https://pre.gitstarclub.com#frag",
       "https://user:pass@pre.gitstarclub.com",
+      "https://pre.gitstarclub.com//",
+      "https://pre.gitstarclub.com.",
     ]) {
       expect(() => resolvePublicationInvalidationOrigin({ ...previewEnv, CF_CRON_ORIGIN: origin })).toThrow(
         /CF_CRON_ORIGIN must be/,
@@ -204,6 +215,24 @@ describe("resolvePublicationInvalidationOrigin", () => {
     );
     expect(() => resolvePublicationInvalidationOrigin({ ...previewEnv, HOSTING_TARGET: "netlify" })).toThrow(
       /HOSTING_TARGET must be/,
+    );
+  });
+});
+
+describe("resolvePublicationInvalidationTarget", () => {
+  test("returns the callback URL and bearer secret for the running deployment", () => {
+    expect(resolvePublicationInvalidationTarget(previewEnv)).toEqual({
+      url: `${PREVIEW_ORIGIN}${PUBLICATION_INVALIDATION_PATH}`,
+      secret: SECRET,
+    });
+  });
+
+  test("fails closed on a missing secret or origin", () => {
+    expect(() => resolvePublicationInvalidationTarget(withoutKey(previewEnv, "CRON_SECRET"))).toThrow(
+      "CRON_SECRET not set for publication cache invalidation",
+    );
+    expect(() => resolvePublicationInvalidationTarget(withoutKey(previewEnv, "CF_CRON_ORIGIN"))).toThrow(
+      /CF_CRON_ORIGIN is required/,
     );
   });
 });

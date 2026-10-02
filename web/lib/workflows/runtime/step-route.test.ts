@@ -9,6 +9,7 @@ import * as owned from "@/lib/workflows/owned-write";
 import { publishVersionWithDeps, type PublicationDeps } from "@/lib/workflows/publication-core";
 import {
   requestPublishedViewsInvalidation,
+  resolvePublicationInvalidationTarget,
   type InvalidationFetch,
 } from "@/lib/workflows/publication-invalidation-request";
 import { firstRefreshJob, type FullRefreshStepName, type RefreshStepJob } from "./types";
@@ -461,7 +462,7 @@ describe("publish failures after the pointer commit", () => {
     return call?.[2] as Record<string, unknown> | undefined;
   }
 
-  function memoryPublication(invalidate: () => Promise<void>) {
+  function memoryPublication(invalidate: () => Promise<void>, checkInvalidationTarget: () => void = () => {}) {
     const snapshot: WhitelistSnapshot = {
       run_id: runId,
       generated_at: "2026-10-01T00:00:00.000Z",
@@ -497,6 +498,7 @@ describe("publish failures after the pointer commit", () => {
       },
       writeWhitelistPointer: async () => {},
       ensureOwnership: async () => {},
+      checkInvalidationTarget,
       invalidate,
       notifyIndexNow: async () => null,
       now: () => "2026-10-02T01:00:00.000Z",
@@ -522,7 +524,12 @@ describe("publish failures after the pointer commit", () => {
       calls.push(url);
       return new Response("unavailable", { status: 503 });
     };
-    const { state, deps } = memoryPublication(() => requestPublishedViewsInvalidation({ env: previewEnv, fetchImpl }));
+    const { state, deps } = memoryPublication(
+      () => requestPublishedViewsInvalidation({ env: previewEnv, fetchImpl }),
+      () => {
+        resolvePublicationInvalidationTarget(previewEnv);
+      },
+    );
 
     const response = await runPublish(deps);
 
@@ -582,6 +589,63 @@ describe("publish failures after the pointer commit", () => {
     expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: null });
     expect(storedAt("/error.json")).toMatchObject({ phase: "pre_commit", error: "pointer write 500" });
     expect(storedAt("/error.json")).not.toHaveProperty("committed_version");
+  });
+
+  test("a preview without CF_CRON_ORIGIN fails before the pointer switch and sends nothing", async () => {
+    const brokenEnv = { HOSTING_TARGET: "cf", DEPLOY_ENV: "pre", CRON_SECRET: "secret" };
+    const calls: string[] = [];
+    const fetchImpl: InvalidationFetch = async (url) => {
+      calls.push(url);
+      return new Response(null, { status: 200 });
+    };
+    const { state, deps } = memoryPublication(
+      () => requestPublishedViewsInvalidation({ env: brokenEnv, fetchImpl }),
+      () => {
+        resolvePublicationInvalidationTarget(brokenEnv);
+      },
+    );
+
+    const response = await runPublish(deps);
+
+    expect(response.status).toBe(500);
+    expect(calls).toEqual([]);
+    expect(state.pointer?.version).toBe("refresh-previous");
+    expect(state.recoveryVersion).toBeNull();
+    expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: null });
+    expect(storedAt("/error.json")).toMatchObject({ phase: "pre_commit" });
+    expect(String(storedAt("/error.json")?.error)).toMatch(/CF_CRON_ORIGIN is required/);
+  });
+
+  test("an unreadable pointer after a failed pointer write records an unknown commit state", async () => {
+    const { state, deps } = memoryPublication(async () => {});
+    deps.writePointer = async (next) => {
+      state.pointer = structuredClone(next);
+      throw new Error("pointer write response lost");
+    };
+    let reads = 0;
+    deps.readPointer = async () => {
+      reads++;
+      if (reads > 1) throw new Error("pointer read 503");
+      return state.pointer;
+    };
+
+    const response = await runRefreshStepRoute(post(job("publish")), {
+      kind: "memory",
+      retry: { retries: 0, delaysMs: [] },
+      recordCheckpoint: async () => {},
+      executeFull: async (current) => ({
+        name: current.name,
+        ...(await publishVersionWithDeps(current.runId, current.cursor.fencingToken ?? -1, deps)),
+      }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: null });
+    expect(storedAt("/error.json")).toMatchObject({
+      phase: "commit_unknown",
+      candidate_version: runId,
+      failed_step: "pointer",
+    });
   });
 
   for (const name of ["gc", "markPublished"] as const) {
