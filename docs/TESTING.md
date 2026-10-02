@@ -35,13 +35,43 @@ Temporary dependency-audit overrides live in the affected package manifest, next
 
 `web` no longer ignores any advisory in `bun audit`. Major-line overrides keep `brace-expansion` on the security backports `1.1.21`, `2.1.7`, and `5.0.12`. Legacy ESLint / SWC CLI / file-list tooling still require the callable CommonJS 1.x/2.x export, so a global 5.x override would break `bun run lint`. The public advisory now recognizes those backports, so the previous `GHSA-mh99-v99m-4gvg` ignore was removed (issue #321). Those three pins are the patched releases for GHSA-qhr7-859c-m2p7 and GHSA-6j4f-fj2g-mc7p: 1.x needs `>=1.1.20`, 2.x needs `>=2.1.6`, and 5.x needs `>=5.0.11`.
 
-Those commands are the current PR/`pre`/`main` static blockers; production build is the other required GitHub gate. Chromium / live product-gates run only when a Vercel Preview exists and are not required merge checks. `bun run typecheck` keeps the main Next.js app config focused on production code. `bun run typecheck:tests` uses `web/tsconfig.tests.json` for `*.test.ts(x)` and `web/lib/integration/**`, which stay excluded from the main app typecheck only to keep the production program narrow. `bun run typecheck:scripts` uses the root `tsconfig.scripts.json` with `checkJs` for root scripts, pipeline `.mjs` utilities, web `.mjs` configs/helpers, and `web/public/sw.js`. The `bun run test` command in `pipeline/` exercises the extracted bootstrap publication core, including interrupted uploads, deterministic resume, validation failure, pointer commit/rollback replay, and the shared publication lease. `web/lib/storage/initial-bootstrap-commit.test.ts` covers the operator `--initial-commit` entry on that same lease: a running `ops/workflows/active.json` blocks publication, and a marker or pointer written between the empty-bucket check and the create is refused. The `bun run test:cov` command in `web/` maps to `bun test lib/ --coverage` followed by `scripts/check-coverage-threshold.mjs`; the latter sums the generated LCOV records and exits non-zero when aggregate line or function coverage is below 80%. The measured web scope is every first-party module loaded by the `web/lib` suite, including directly imported pure helpers under `pipeline/lib`; destructive/offline `pipeline/backfill` entrypoints remain covered by typecheck, the publication-core tests, contract/parity tests, and fixture validation rather than artificial line execution. The static job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. Each job summary records exact Node/Bun versions, and the static summary records the aggregate function/line coverage row. Lighthouse, visual-baseline, browser-flow, and multi-engine coverage remain unenforced.
+Those commands are the current PR/`pre`/`main` static blockers; production build is the other required GitHub gate. Chromium / live product-gates run only when a Vercel Preview exists and are not required merge checks. `bun run typecheck` keeps the main Next.js app config focused on production code. `bun run typecheck:tests` uses `web/tsconfig.tests.json` for `*.test.ts(x)` and `web/lib/integration/**`, which stay excluded from the main app typecheck only to keep the production program narrow. `bun run typecheck:scripts` uses the root `tsconfig.scripts.json` with `checkJs` for root scripts, pipeline `.mjs` utilities, web `.mjs` configs/helpers, and `web/public/sw.js`. The `bun run test` command in `pipeline/` exercises the extracted bootstrap publication core, including interrupted uploads, deterministic resume, validation failure, pointer commit/rollback replay, and the shared publication lease. `web/lib/storage/initial-bootstrap-commit.test.ts` covers the operator `--initial-commit` entry on that same lease: a running `ops/workflows/active.json` blocks publication, and a marker or pointer written between the empty-bucket check and the create is refused. The `bun run test:cov` command in `web/` maps to `bun test lib/ --coverage` followed by `scripts/check-coverage-threshold.mjs`; the latter sums the generated LCOV records and exits non-zero when aggregate line or function coverage is below 80%. The measured web scope is every first-party module loaded by the `web/lib` suite, including directly imported pure helpers under `pipeline/lib`; archived `pipeline/backfill` entrypoints additionally run against isolated offline fixtures under the pipeline test command (see Offline backfill command coverage below). The static job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. Each job summary records exact Node/Bun versions, and the static summary records the aggregate function/line coverage row. Lighthouse, visual-baseline, browser-flow, and multi-engine coverage remain unenforced.
 
 `web/tsconfig.json` still has `allowJs` because first-party `.mjs` modules such as `web/lib/fetch-timeout.mjs` are shared with Node pipeline scripts. `skipLibCheck` remains enabled in the TypeScript configs to keep CI focused on first-party code and avoid framework/dependency declaration churn from Next, React, Bun, and Node type packages. App and test code stay under `strict`; `tsconfig.scripts.json` also runs `checkJs`, but intentionally leaves `noImplicitAny` off for archived `.mjs` pipeline utilities whose DuckDB/API row shapes are dynamic until they are migrated or annotated more deeply.
 
 The Vercel Workflow `validate` step is a separate production-data publish gate: it samples `views/<run_id>/**` after recompute and blocks the `views/latest.json` pointer cut on validation failure. It is not a page-rendering or PR CI gate.
 
-## Local R2 stage 2 rehearsal
+### Offline backfill command coverage
+
+Issue 589 adds 88 tests through the unchanged `pipeline/` command
+`bun test lib/*.test.mjs`: 27 in `pipeline/lib/backfill-data.test.mjs` and 61 in
+`pipeline/lib/backfill-cli.test.mjs`. The existing CI static job's `bun run test`
+discovers both files without a workflow or package-script change.
+
+The command tests copy steps 01 through 07 into disposable directories and use a
+synthetic three-repository Parquet slice with leap-day and year-boundary facts.
+They run the real DuckDB rollup/precompute/export and real view/canonical
+validators. GitHub and R2 transport responses are intercepted inside each child
+process; all other fetches and network sockets are refused. Environment files and
+owner data are never copied. Test credentials are literal synthetic strings.
+
+The guards cover both R2 targets, default dry run, write opt-in, explicit dry run,
+no-upload, stage-only, empty-bucket initial commit and its shared lease, conflicting
+markers, corruption, and rollback. Current-generation rollback deliberately
+returns `already-rolled-back` without a pointer write; a changed manifest digest
+is refused. The tests preserve that retry behavior rather than changing it to
+match the issue's shorthand about refusing the current generation.
+
+Pure-helper tests cover `num`, `groupBy`, `drain`, `addDays`,
+`timestampFromGeneration`, `bucketOf`, `bucketSeries`, and
+`assertLocalManifestMatches` in `pipeline/lib/backfill-data.mjs`, plus the existing
+canonical metadata and SQL-rendering producers. These helper extractions preserve
+the original transformations. CLI tests also exercise the shared argument parser,
+write gate, R2 selection, publication/rollback core, and lease functions through
+the actual scripts. These tests supplement the full `web/lib` coverage gate; they
+do not establish a separate pipeline line-coverage threshold or live-bucket proof.
+
+### Local R2 stage 2 rehearsal
 
 Issue #586 adds the manual offline command in
 [web/scripts/r2-local-rehearsal.ts](../web/scripts/r2-local-rehearsal.ts). Run it with pinned

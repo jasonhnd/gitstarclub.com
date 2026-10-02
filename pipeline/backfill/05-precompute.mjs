@@ -22,6 +22,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { GROWTH_FLOOR_STARS } from "../../web/lib/constants.mjs";
+import { addDays, drain, groupBy, num } from "../lib/backfill-data.mjs";
 
 const dataDir = fileURLToPath(new URL("../data", import.meta.url));
 const p = (rel) => `${dataDir}/${rel}`.replaceAll("\\", "/"); // DuckDB wants forward slashes
@@ -39,8 +40,6 @@ const WINDOWS = {
   year: "strftime(date,'%Y')",
 };
 
-const num = (v) => (typeof v === "bigint" ? Number(v) : v);
-
 const madeDirs = new Set();
 let fileCount = 0;
 function writeJson(rel, obj) {
@@ -52,30 +51,6 @@ function writeJson(rel, obj) {
   }
   writeFileSync(full, JSON.stringify(obj));
   fileCount++;
-}
-
-function groupBy(arr, keyOf) {
-  const m = new Map();
-  for (const x of arr) {
-    const k = keyOf(x);
-    let a = m.get(k);
-    if (!a) m.set(k, (a = []));
-    a.push(x);
-  }
-  return m;
-}
-
-/** Consume rows (sorted by repo_id asc) for the current id; advances ptr.i. */
-function drain(arr, ptr, id) {
-  const out = [];
-  while (ptr.i < arr.length && num(arr[ptr.i].repo_id) === id) out.push(arr[ptr.i++]);
-  return out;
-}
-
-function addDays(ymd, days) {
-  const dt = new Date(`${ymd}T00:00:00Z`);
-  dt.setUTCDate(dt.getUTCDate() + days);
-  return dt.toISOString().slice(0, 10);
 }
 
 const db = await DuckDBInstance.create();
