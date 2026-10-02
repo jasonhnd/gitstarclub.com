@@ -11,6 +11,11 @@ const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "
 
 export type InvalidationFetch = (url: string, init: RequestInit) => Promise<Response>;
 
+export type PublicationInvalidationTarget = {
+  url: string;
+  secret: string;
+};
+
 export type PublicationInvalidationOptions = {
   env?: RuntimeEnv;
   fetchImpl?: InvalidationFetch;
@@ -26,8 +31,10 @@ function parseOrigin(name: string, raw: string): URL {
   }
   const secure = url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname));
   if (!secure) throw new Error(`${name} must be an https origin (got ${url.protocol}//${url.host})`);
-  if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
-    throw new Error(`${name} must be a bare origin without credentials, path, query, or fragment`);
+  // A trailing-dot host names the same site but would slip past the host checks below.
+  const extra = url.username || url.password || url.pathname !== "/" || url.search || url.hash;
+  if (extra || url.hostname.endsWith(".")) {
+    throw new Error(`${name} must be a bare origin without credentials, path, query, fragment, or trailing dot`);
   }
   return url;
 }
@@ -82,12 +89,21 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Ask the owning deployment to invalidate its data/route caches. */
-export async function requestPublishedViewsInvalidation(options: PublicationInvalidationOptions = {}): Promise<void> {
-  const env = options.env ?? resolveRuntimeEnv();
+/**
+ * Callback URL and bearer for the running deployment. Publication calls this
+ * before the pointer switch too, so bad config fails before anything goes live.
+ */
+export function resolvePublicationInvalidationTarget(
+  env: RuntimeEnv = resolveRuntimeEnv(),
+): PublicationInvalidationTarget {
   const secret = getCronSecret(env);
   if (!secret) throw new Error("CRON_SECRET not set for publication cache invalidation");
-  const target = `${resolvePublicationInvalidationOrigin(env)}${PUBLICATION_INVALIDATION_PATH}`;
+  return { url: `${resolvePublicationInvalidationOrigin(env)}${PUBLICATION_INVALIDATION_PATH}`, secret };
+}
+
+/** Ask the owning deployment to invalidate its data/route caches. */
+export async function requestPublishedViewsInvalidation(options: PublicationInvalidationOptions = {}): Promise<void> {
+  const { url: target, secret } = resolvePublicationInvalidationTarget(options.env ?? resolveRuntimeEnv());
   const timeoutMs = options.timeoutMs ?? PUBLICATION_INVALIDATION_TIMEOUT_MS;
   const signal = AbortSignal.timeout(timeoutMs);
   const fetchImpl: InvalidationFetch = options.fetchImpl ?? ((url, init) => fetch(url, init));

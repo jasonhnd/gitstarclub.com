@@ -45,30 +45,47 @@ export async function markPublished(runId: string, startedAt: string, fencingTok
   logViewParseErrorSummary("[workflow-refresh]");
 }
 
-/** A failure after `views/latest.json` switched: `version` is live, `step` did not finish. */
-export type PostCommitFailure = {
+/**
+ * A failure around the publication commit. `post_commit`: `views/latest.json`
+ * already serves `version` and `step` did not finish. `commit_unknown`: `step`
+ * failed and the pointer could not be read to tell whether `version` is live.
+ */
+export type PublicationFailure = {
+  phase: "post_commit" | "commit_unknown";
   version: string;
   step: string;
 };
 
-function failureRecord(runId: string, error: string, postCommit: PostCommitFailure | undefined) {
+function failureRecord(runId: string, error: string, publication: PublicationFailure | undefined) {
   const base = { run_id: runId, error, at: new Date().toISOString() };
-  if (!postCommit) return { ...base, phase: "pre_commit" };
-  return { ...base, phase: "post_commit", committed_version: postCommit.version, failed_step: postCommit.step };
+  if (!publication) return { ...base, phase: "pre_commit" };
+  const version =
+    publication.phase === "post_commit"
+      ? { committed_version: publication.version }
+      : { candidate_version: publication.version };
+  return { ...base, phase: publication.phase, ...version, failed_step: publication.step };
+}
+
+function failureAlertTitle(publication: PublicationFailure | undefined): string {
+  if (!publication) return "managed refresh failed";
+  if (publication.phase === "post_commit") return "managed refresh published; post-commit step failed";
+  return "managed refresh failed; publication commit state unknown";
 }
 
 /**
  * Mark the run failed. Before the pointer commit, latest-success stays at the
  * last good run and `published_version` is null. After it, `published_version`
- * names the live version and error.json names the step that did not finish, so
- * operators repair the publication instead of rerunning or rolling back.
+ * names the live version and error.json names the step that did not finish:
+ * do not roll back or rerun for it, the next successful run rewrites that
+ * step's artifacts. An unknown commit state keeps `published_version` null and
+ * names the candidate version, so operators check `views/latest.json`.
  */
 export async function markFailed(
   runId: string,
   startedAt: string,
   error: string,
   fencingToken: number,
-  postCommit?: PostCommitFailure,
+  publication?: PublicationFailure,
 ): Promise<void> {
   const safeError = sanitizeErrorText(error);
   const manifest = {
@@ -76,25 +93,20 @@ export async function markFailed(
     started_at: startedAt,
     status: "failed",
     steps: STEPS,
-    published_version: postCommit?.version ?? null,
+    published_version: publication?.phase === "post_commit" ? publication.version : null,
   };
   WorkflowManifest.parse(manifest);
   const owner = { runId, fencingToken };
   await putOwnedView(owner, `ops/workflows/${runId}/manifest.json`, manifest);
-  await putOwnedView(owner, `ops/workflows/${runId}/error.json`, failureRecord(runId, safeError, postCommit));
+  await putOwnedView(owner, `ops/workflows/${runId}/error.json`, failureRecord(runId, safeError, publication));
   const released = await releaseWorkflowLease(runId, "failed", undefined, undefined, fencingToken);
   if (!released) throw new Error(`workflow ${runId} lost fencing token ${fencingToken} before failed release`);
   // Surface the failure: greppable log + optional webhook + health beacon. None of these throw.
+  const title = failureAlertTitle(publication);
   await sendAlert(
-    postCommit
-      ? {
-          pipeline: "workflow-refresh",
-          title: "managed refresh published; post-commit step failed",
-          run_id: runId,
-          step: postCommit.step,
-          error: safeError,
-        }
-      : { pipeline: "workflow-refresh", title: "managed refresh failed", run_id: runId, error: safeError },
+    publication
+      ? { pipeline: "workflow-refresh", title, run_id: runId, step: publication.step, error: safeError }
+      : { pipeline: "workflow-refresh", title, run_id: runId, error: safeError },
   );
   await recordHealth("workflow-refresh", "failed", { run_id: runId, error: safeError });
   logViewParseErrorSummary("[workflow-refresh]");
