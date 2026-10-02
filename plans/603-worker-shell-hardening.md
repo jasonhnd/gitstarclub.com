@@ -39,3 +39,13 @@ Out of scope: new features, rebases, force pushes, PR merges, protected-branch p
 Acceptance: the original PR head remains an ancestor; the fetched `origin/pre` is a merge parent; the complete static job and shell-related tests pass at the new head in a fresh detached worktree; PR #627 reports no merge conflicts and its verification record names the tested head. Temporary verification files and logs stay under `/tmp/GSC_0060/`, and the task checkout is clean at handoff.
 
 Integration result: the fetched base is `5ab838656eb0d67ac775d5fcf8c0aa67cf83ba6c`. PR #616 is still open and is not part of that base. The only merge conflict is the adjacent `Changed` entries in `docs/CHANGELOG.md`; retain both the #603 hardening entry and the upstream #592 runtime update entry. `shell.ts` has no merge conflict and remains byte-for-byte identical to the reviewed PR head, including identity priority, cron dispatch, refresh and queue behavior, constant-time auth, missing-secret rejection, and security headers.
+
+## PR #627 integration refresh (GSC_0065)
+
+Goal: merge the latest `origin/pre` into `fix/603-worker-shell-hardening` with a merge commit after #616 landed. Keep the reviewed #603 auth and header behavior and the upstream deployment-identity and log-sanitizer behavior. Do not rewrite history.
+
+Scope: resolve the Worker shell module and `docs/CHANGELOG.md`. Keep `reportedCommitSha` (optional baked SHA, stale runtime overrides do not mask the build) and `emitRunLog` sanitizing through `stringBindings` and `sanitizeErrorText`. Keep `hasValidBearerToken`, rejection of a missing or empty Worker secret with no `process.env.CRON_SECRET` fallback, and `securityHeaders` on public health, deployment, identity, and 401 responses. Authenticated 200 and 404 JSON stay without those headers.
+
+Out of scope: new features, rebases, force pushes, merging the pull request, pushes to `pre` or `main`, deployments, provider API calls, credential reads, and authored changes to CI, `.delivery.yml`, or wrangler configuration. Upstream changes arrive only through the merge.
+
+Acceptance: the previous PR head `e9362320afdbcf42e4ab3ff84f98f63e05a8c81d` and the fetched `origin/pre` are both ancestors of the new head; `bun test lib/workers-host/ --isolate` passes, including shell hardening and deployment identity; the complete static job in `AGENTS.md` passes in a fresh detached worktree; PR #627 is mergeable and its verification record names the tested head. Temporary verification files stay under `/tmp/GSC_0065/`.
