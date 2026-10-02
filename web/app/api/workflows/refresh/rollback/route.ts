@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { SafeText } from "@/lib/contracts";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { requireBearerToken } from "@/lib/security";
 import { requirePublicReadBase, requireStorageWriteConfig } from "@/lib/runtime-config";
 import { claimWorkflowLease, releaseWorkflowLease } from "@/lib/workflows/lease";
@@ -63,12 +64,13 @@ export async function POST(req: Request): Promise<Response> {
       new Date().toISOString(),
       claim.lease.fencing_token,
     );
+    const safeError = sanitizeErrorText(error instanceof Error ? error.message : String(error));
     console.error("[workflow-rollback] failed", {
       operation_id: operationId,
       target_version: targetVersion,
       released,
-      error: error instanceof Error ? error.message : String(error),
+      error: safeError,
     });
-    return Response.json({ ok: false, operationId, error: "Rollback failed" }, { status: 500 });
+    return Response.json({ ok: false, operationId, error: sanitizeErrorText("Rollback failed") }, { status: 500 });
   }
 }

@@ -7,10 +7,14 @@
 // Commit a discovered sealed generation:
 //   bun scripts/ensure-bootstrap-pointer.ts --execute
 //   bun scripts/ensure-bootstrap-pointer.ts --store r2 --target pre --execute
-// Empty R2 bucket, no legacy flat layout:
+// Empty R2 bucket, no legacy flat layout. This path holds the same publication
+// lease as pipeline step 07:
 //   bun scripts/ensure-bootstrap-pointer.ts --store r2 --target pre --execute --initial-commit
 import { fileURLToPath } from "node:url";
-import { commitBootstrapGeneration } from "../../pipeline/lib/bootstrap-publication.mjs";
+import {
+  commitBootstrapGeneration,
+  commitInitialBootstrapWithLease,
+} from "../../pipeline/lib/bootstrap-publication.mjs";
 import { BootstrapPublicationPointer } from "../lib/contracts";
 import {
   parseListedBootstrapGenerations,
@@ -39,6 +43,7 @@ const HELP = `Commit one discovered sealed bootstrap generation. Dry-run unless 
 --store blob is the default and does not take --initial-commit or --target.
 --store r2 requires --target prod|pre. Writes use the storage driver and the bucket-identity marker.
 --initial-commit is R2 only, and only when bootstrap/latest.json, views/latest.json, and canonical/v2/meta.json are absent.
+It acquires the same ops/workflows/active.json publication lease as pipeline step 07, and refuses a running workflow or a marker or pointer that appears before the create-only write.
 `;
 
 const webDir = fileURLToPath(new URL("..", import.meta.url));
@@ -101,11 +106,15 @@ async function main(active: OpsSelection) {
     return;
   }
   requireStorageWriteConfig();
-  const result = await commitBootstrapGeneration({
-    generation: plan.generation,
-    store: createObjectStoreBootstrapAdapter(getWriteObjectStore()),
-    initialCommit: active.store === "r2" && initialCommit,
-  });
+  const store = createObjectStoreBootstrapAdapter(getWriteObjectStore());
+  const result =
+    active.store === "r2" && initialCommit
+      ? await commitInitialBootstrapWithLease({ generation: plan.generation, store })
+      : await commitBootstrapGeneration({
+          generation: plan.generation,
+          store,
+          initialCommit: false,
+        });
   console.log(JSON.stringify({ committed: result }, null, 2));
 }
 
