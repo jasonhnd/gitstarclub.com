@@ -29,7 +29,7 @@ These are non-negotiable for the production system. New features must respect al
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
 2. **Zero runtime database.** Read-side state lives in versioned Blob views resolved through a publish pointer; there is no SQL connection to open.
 3. **Cloudflare hosting.** Production and preview use Cloudflare Workers with OpenNext. JSON is in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)). Google Analytics and other third-party tracking scripts are intentionally unsupported.
-4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, service-worker registration, and Vercel Web Analytics.
+4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, and service-worker registration. Vercel Web Analytics is not loaded on this host.
 5. **Recurring work is hosted, not laptop-bound.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) is driven by scheduled or authenticated triggers and runs as ordinary async steps. Local pipeline runs are reserved for one-off bootstrap.
 
 The same data layer also operates AI-free: features that look like they would call an LLM (summaries, classifications, narratives) ship as deterministic templates instead. The rationale and tradeoff are recorded in the team feedback memory.
@@ -44,10 +44,10 @@ The same data layer also operates AI-free: features that look like they would ca
 | Fonts | Plus Jakarta Sans (variable sans), Geist Mono (numerals, repo names) | |
 | Read-side data | Versioned JSON views in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)), served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
 | Live-overlay data | Immutable `live/generations/<run_id>/**`, selected by `live/latest.json` | Atomic current snapshot; period files use bounded validated manifest history until folded |
-| Recurring data refresh | Cron routes + step runtime (multi-step, Blob checkpoint; no Workflow SDK) | Production trigger source is under investigation; see OPS.md |
+| Recurring data refresh | Cron routes + step runtime (multi-step; no Workflow SDK) | Both Worker cron lists are empty. The production trigger source is unverified; see OPS.md |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
 | Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test` from `web/` on PRs and `main` pushes |
-| Analytics | Vercel Web Analytics via `@vercel/analytics` is the only analytics integration. It uses same-origin `/_vercel/insights` endpoints, and build-time policy checks keep CSP compatible. | No GA or third-party tracking scripts. |
+| Analytics | Off on the Cloudflare host. `web/lib/analytics-policy.ts` returns no provider when `HOSTING_TARGET=cf` and `VERCEL_ENV` is not `production`. | No GA or third-party tracking scripts. |
 
 Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, tRPC, any LLM SDK. The reasoning is the constraints above.
 
@@ -234,18 +234,14 @@ The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per quer
 |---|---|
 | Static HTML for content pages | Function invocations stay at zero |
 | HTML under ~20 KB | Reduces bandwidth at scale |
-| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW and Vercel Web Analytics. Third-party analytics are unsupported. |
+| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW. Analytics are off on this host. Third-party analytics are unsupported. |
 | `Cache-Control: s-maxage=86400, stale-while-revalidate` | Historical surfaces cached aggressively |
 | Subset fonts as woff2 | Plus Jakarta Sans subset ~30 KB |
 | OG images from `next/og` routes (`revalidate=86400`), with the site card as the fallback | Drawn by the image route and then cached. Not pre-generated Blob objects. Org pages and `/rankings` use `/opengraph-image`. A later cache hit is not a guarantee of zero function invocations. |
 
-### Bandwidth defense (cost-stepping)
+### Page weight
 
-At ~10M views per day, bandwidth (~15 TB/month) dominates cost. The expected steps are:
-
-1. **Up to ~1M/day**: Vercel Pro, ~$40–100/month.
-2. **1M–5M/day**: aggressive compression (Brotli 11, HTML minification).
-3. **5M+/day**: Cloudflare in front of Vercel to absorb egress (~80–90% cut).
+Keep content HTML small and client JavaScript near zero. Do not prerender the long tail in one build. Current platform price and bandwidth caps are not recorded here.
 
 ## Operations, data quality, and compliance
 
@@ -287,12 +283,3 @@ The current scope is comfortably static. Several requested capabilities would fo
 - Semantic / embedding-based search.
 
 These cannot fit a fixed view set or a client-side index. They share an open architectural decision recorded in [ROADMAP.md](./ROADMAP.md): which analytical layer to introduce (managed ClickHouse, OpenNext on Cloudflare Workers relational, etc.) and how to reconcile that with the Cloudflare-hosted / runtime-zero-engine posture above. No work on those features starts before that decision lands.
-
-## Cost estimate
-
-| Scale | Monthly cost |
-|---|---|
-| MVP (<100k page views / day) | ~$20 (Vercel Pro) + one-off bootstrap ~$10 (BigQuery) |
-| 1M / day | ~$40–100 |
-| 10M / day (Vercel-only) | ~$2,100 (bandwidth-dominated) |
-| 10M / day (with Cloudflare in front) | ~$200–400 |

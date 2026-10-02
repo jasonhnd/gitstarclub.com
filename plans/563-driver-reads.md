@@ -11,7 +11,7 @@ Stop bootstrap pointer reads, sync-run history reads, workflow and cron config c
 - `web/lib/storage/r2-binding-store.ts`: test hook so `r2_binding` write checks can see a `DATA` binding without a Worker.
 - `web/lib/integration/route-smoke-runner.ts`: the acceptance grep also matches this file's `process.env.BLOB_BASE_URL` assignment. The assignment moves into `runtime-config.ts`.
 - Tests for those sites.
-- `docs/OPS.md` driver enum `blob | r2_binding | r2_s3 | r2 | r2_then_blob`, `docs/R2-MIGRATION-P0.md`, `docs/CHANGELOG.md`.
+- `docs/OPS.md` driver enum `blob | r2_binding | r2_s3 | r2 | r2_then_blob`, `docs/archive/R2-MIGRATION-P0.md`, `docs/CHANGELOG.md`.
 
 ## Out of scope
 

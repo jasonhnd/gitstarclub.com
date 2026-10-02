@@ -1,0 +1,45 @@
+# Plan: docs set B for issue #576
+
+## Goal
+
+Make the current docs describe Cloudflare Workers hosting, public preview, and the transitional Blob store. Move the superseded phase docs out of the live index. Do not overturn the #574 rollback and acceptance text.
+
+## Scope
+
+- Current docs: README, web/README, docs/README, OPS, DEVELOPMENT, ARCHITECTURE, REQUIREMENTS, ROADMAP, WORKFLOW, SEO, API, CODEBASE, GEO, DATA-CONTRACTS, geo/ai-log-reporting, R2-CUTOVER, AGENTS (the one hosting sentence that would otherwise stay false), CHANGELOG link targets plus one unreleased note.
+- Move `docs/CF-MIGRATION-P1.md`, `docs/CF-MIGRATION-P2.md`, `docs/CF-MIGRATION-P3.md`, and `docs/R2-MIGRATION-P0.md` to `docs/archive/` with a one-line superseded banner. Update links and the docs index.
+- Findings in scope: A01, A02, A03, A04, A05, A06, A08, A09, A10, A12, A14, A15, B01, B02, B08.
+- Branch `docs/576-docs-set-b` starts at `d9d9897` (PR #580 / #574), because `origin/pre` at `2958fc2` does not contain that commit yet.
+
+## Out of scope
+
+- Code, tests, CI, `.delivery.yml`, and Worker wrangler values.
+- Deploy, DNS, buckets, secrets, and env files.
+- Findings owned by other cards (A07, A11, A13, B03–B07, C01).
+- Rewriting `docs/VERCEL-DATA-OPERATIONS.md` or deleting it. Current docs stop treating it as the live host procedure.
+- Merging, or pushing `main`, `pre`, or `preview`.
+- Changing the #574 stage 2/3 recovery, stage 4 `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`, bootstrap acceptance, or the stage 4 gate and build-shell checklist.
+
+## Acceptance
+
+- `bun run lint:docs` and `node scripts/check-docs.mjs` pass on Node v24.20.0 and Bun 1.3.14 with `--no-env-file`.
+- R2-CUTOVER and OPS still agree on the #574 steps, and on the new stage 6 tool prerequisite.
+- `git grep -n 'Vercel-first'` in current docs is empty. Remaining hits are listed and sit in archive, changelog history, or old plans.
+- Preview is documented as public, `noindex,nofollow`, `Disallow: /`. `noindex` is not access control. The production trigger stays unverified.
+
+## Review round 1
+
+- Remove the architecture cost table. Do not invent Cloudflare prices.
+- Remove the standing Vercel Firewall roadmap item. The August sequence note that #380 left Firewall empty stays as history.
+- Align the pipeline refresh roles, the frontend weekly-cron and build-cap sentences, and the TESTING P3 row with Workers. Keep production Blob until cutover and the unverified production caller.
+- The Sunday failure runbook prints `0 6 * * SUN`, not weekday `0`.
+- Do not edit dependencies, lockfiles, or CI. The failed `static` audit is a separate baseline fix.
+
+## Review round 2
+
+- Bing `msvalidate.01` is set in the shell that runs the Cloudflare production build, then checked in the generated HTML. A Vercel project variable does not change that output.
+- The GEO report parser accepts Vercel-shaped logs as compatibility input only. Cloudflare aggregate measurement stays pending an input adapter and evidence. Do not claim the parser reads Worker logs.
+- `POST /api/workflows/refresh/step` names the configured production consumer `gitstarclub-jobs` and the preview consumer `gitstarclub-jobs-pre`. The production scheduler and caller stay unverified.
+- Runtime errors are Workers Observability on the Worker that served the request. Build and deploy errors are the GitHub `production-build` job or local `cf:build` / Wrangler output.
+- The dependency fix is already on `pre` through #591. This card still does not edit dependencies or CI. Merging current `pre` brings that fix in. Required checks are not claimed until they run on the pushed head.
+- PR #580 is still a separate open pull request. This branch does not merge it. A later squash of #580 can conflict again. Force-push stays forbidden.

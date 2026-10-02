@@ -49,11 +49,10 @@ Docs-only changes are allowed when the code already implements the behavior.
 |---|---|
 | Product scope, tracked-set assumptions | `REQUIREMENTS.md` |
 | System architecture, hard constraints | `ARCHITECTURE.md` |
-| Blob layout, workflow lifecycle, publish/rollback | `VERCEL-DATA-OPERATIONS.md`, `OPS.md` |
-| Cloudflare R2 P0 storage drivers / dual-read | `R2-MIGRATION-P0.md` |
-| Cloudflare P1 workflow runtime / CF Cron / preview Bearer refresh acceptance | `CF-MIGRATION-P1.md` |
-| Cloudflare P2 ISR port / CF Preview / Access | `CF-MIGRATION-P2.md` |
-| Cloudflare P3 Workers host / OpenNext preview | `CF-MIGRATION-P3.md` |
+| Blob layout until cutover, schedules, deploy rollback | `OPS.md` |
+| Object storage status and the R2 cutover | `R2-CUTOVER.md` |
+| Workflow step names | `VERCEL-DATA-OPERATIONS.md` |
+| Archived phase notes (superseded; current host and storage are `OPS.md` and `R2-CUTOVER.md`) | `archive/R2-MIGRATION-P0.md`, `archive/CF-MIGRATION-P1.md`, `archive/CF-MIGRATION-P2.md`, `archive/CF-MIGRATION-P3.md` |
 | JSON schema or persisted field | `DATA-CONTRACTS.md` |
 | Bootstrap pipeline behavior | `PIPELINE.md` |
 | Ranking algorithm or tie-breaking | `RANKING.md` |
@@ -145,7 +144,7 @@ Preferred verification sequence:
 1. Open the feature pull request against `pre`. The reviewer or owner
    squash-merges it. The executor does not merge.
 2. Wait for the fixed staging domain, `https://pre.gitstarclub.com`, to serve the
-   Cloudflare preview deployment. Verify access according to the current preview policy in OPS.md.
+   Cloudflare preview deployment. `https://pre.gitstarclub.com` is public. `noindex` is not access control.
 3. Verify the affected staging URL or behavior on `pre`.
 
 Promotion to production is a separate pull request from `pre` to `main`. Open it
@@ -222,8 +221,8 @@ Before finishing:
 - User-visible route/content changes update `FRONTEND.md` or `SEO.md`.
 - Category/ranking/data behavior changes update the owning doc.
 - Production verification plan is clear.
-- GitHub required CI is `static` + `production-build` only; `preview-e2e` /
-  `product-gates` are optional and skip without a Vercel Preview.
+- GitHub required CI is `static` + `production-build` only; `preview-e2e` and
+  `product-gates` are optional.
 - No secrets are printed or committed.
 
 ## Drift Handling

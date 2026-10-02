@@ -46,7 +46,7 @@ From [README.md](../README.md) and [ARCHITECTURE.md](./ARCHITECTURE.md):
 - Zero runtime engine in the request path (no DuckDB / ClickHouse / Postgres / vector index in the serving image).
 - Zero runtime database. Read-side state is versioned Blob views behind a publish pointer.
 - Static content pages. Near-zero client JavaScript on content surfaces. Named exceptions stay in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
-- Vercel-first. Deploy, cron, Blob, workflow, and any future analytics stay on Vercel unless a constitution-level revision amends this constraint.
+- Cloudflare Workers hosting through OpenNext. Production JSON stays on Vercel Blob until the R2 cutover in [R2-CUTOVER.md](./R2-CUTOVER.md). Do not add a second runtime database or a request-path engine. Analytics stay off on this host unless a later issue turns a provider on in code.
 - AI-free product copy. No LLM-generated summaries or classifications at request time.
 
 A proposal that cannot pass this list is vetoed. It is not a Track A ticket, not a Track C POC, and not a feature PR.
@@ -202,7 +202,6 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 | New pages must not re-probe missing Blob objects | Crawler-driven 404 amplification on `bootstrap/latest.json` | Pointer 404 remains a cached legacy state; no new per-request existence probes |
 | Dependabot + bun lockfiles | npm Dependabot PRs against `main` fail `bun install --frozen-lockfile` | Next Dependabot wave is retargeted or immediately replaced with a `pre` + lockfile PR (pattern from #351) |
 | Product-gates stay fail-closed when they run | 14-day base pointer and export SLAs are the live contract (#286) | Do not loosen live assertions to land features. Ignored Build / no Vercel Preview is a separate CI soft-skip; the job is not a GitHub required check |
-| Vercel Firewall | Optional extra crawler control after robots | Recipe in [OPS.md](./OPS.md). 2026-08-20: denies published then removed the same day; operator chose to allow crawlers. Zero custom rules live. |
 
 Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blob 404s. GitHub required CI gates are `static` + `production-build` only; product-gates stay fail-closed when a Vercel Preview exists and soft-skip otherwise.
 
@@ -213,7 +212,6 @@ Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blo
 | [#377](https://github.com/jasonhnd/gitstarclub.com/issues/377) | Retire stale `health.json` as the operator signal |
 | [#378](https://github.com/jasonhnd/gitstarclub.com/issues/378) | Dependabot targets `pre` + bun lockfile convention |
 | [#379](https://github.com/jasonhnd/gitstarclub.com/issues/379) | Sunday refresh failure runbook |
-| [#380](https://github.com/jasonhnd/gitstarclub.com/issues/380) | Firewall only if crawler spend justifies it |
 | [#402](https://github.com/jasonhnd/gitstarclub.com/issues/402) | Weekly live publish must not false-fence on a CDN-stale `live/latest.json` |
 
 ---
@@ -269,7 +267,7 @@ Recorded outcome per option: Tinybird **no**; Vercel Postgres / Neon **no**; mor
 
 | Option | Trade-off |
 |---|---|
-| **Tinybird (managed ClickHouse)** | Strong analytics. External billing and a non-Vercel runtime dependency. Conflicts with Vercel-first and static-read defaults. Draft lean: **no**. |
+| **Tinybird (managed ClickHouse)** | Strong analytics. External billing and a second runtime database. Conflicts with the static-read default. Draft lean: **no**. |
 | **Vercel Postgres / Neon** | Stays on Vercel. Relational storage is a poor fit for this analytical shape and scale. Draft lean: **no**. |
 | **More precomputed JSON views** | No database. Combinatorial filter/sort/aggregate does not fit a finite shard set. Draft lean: **only-if** a tiny finite extra shard. |
 | **Self-hosted ClickHouse** | Cheap to run in theory, expensive to operate. Already ruled out in [ARCHITECTURE.md](./ARCHITECTURE.md). Do not reopen. |
