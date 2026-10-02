@@ -2,6 +2,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { ObjectStorePreconditionFailedError } from "./errors";
 import type {
   ObjectGetResult,
+  ObjectGetBytesResult,
   ObjectHeadResult,
   ObjectListItem,
   ObjectListOptions,
@@ -37,6 +38,7 @@ export type R2ObjectHead = {
 
 export type R2ObjectBody = R2ObjectHead & {
   text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
 };
 
 export type R2ListResult = {
@@ -216,6 +218,18 @@ export class R2BindingObjectStore implements ObjectStore {
     if (!object) return null;
     return {
       body: await object.text(),
+      etag: httpEtagOf(object),
+      contentType: object.httpMetadata?.contentType,
+      size: object.size,
+    };
+  }
+
+  /** Bootstrap hashes staged parquet; decoding it as text changes its bytes. */
+  async getBytes(path: string): Promise<ObjectGetBytesResult | null> {
+    const object = await this.bucket.get(this.physicalKey(path));
+    if (!object) return null;
+    return {
+      body: new Uint8Array(await object.arrayBuffer()),
       etag: httpEtagOf(object),
       contentType: object.httpMetadata?.contentType,
       size: object.size,

@@ -1,6 +1,7 @@
 import { encodeS3Path, signS3Request } from "./s3-sign.mjs";
 
 export const BUCKET_IDENTITY_KEY = "_meta/bucket-identity.json";
+export const R2_REQUEST_TIMEOUT_MS = 30_000;
 
 function toBuffer(body) {
   if (Buffer.isBuffer(body)) return body;
@@ -33,6 +34,7 @@ function expectedDeployEnv(target) {
   return target === "prod" ? "production" : "pre";
 }
 
+/** @returns {import('./bootstrap-store-types.mjs').BootstrapStore} */
 export function createR2BootstrapStore(config) {
   const accessKeyId = config?.accessKeyId;
   const secretAccessKey = config?.secretAccessKey;
@@ -42,10 +44,14 @@ export function createR2BootstrapStore(config) {
   const target = config?.target;
   const fetchImpl = config?.fetch ?? globalThis.fetch;
   const now = config?.now ?? (() => new Date());
+  const requestTimeoutMs = config?.requestTimeoutMs ?? R2_REQUEST_TIMEOUT_MS;
   if (!accessKeyId || !secretAccessKey || !bucket || !endpoint) {
     throw new Error("R2 store requires an access key, a secret, a bucket, and an endpoint");
   }
   if (target !== "prod" && target !== "pre") throw new Error("--target must be prod or pre");
+  if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs <= 0 || requestTimeoutMs > 2_147_483_647) {
+    throw new Error("R2 requestTimeoutMs must be a positive integer within the timer range");
+  }
 
   let identityOk = false;
 
@@ -68,13 +74,34 @@ export function createR2BootstrapStore(config) {
       region,
       now: now(),
     });
-    const response = await fetchImpl(url, { method, headers: signed, body });
-    const bytes = Buffer.from(await response.arrayBuffer());
-    return {
-      status: response.status,
-      body: bytes,
-      etag: response.headers.get("etag"),
-    };
+    const controller = new AbortController();
+    const timeoutError = new Error(`R2 ${method} ${key} timed out after ${requestTimeoutMs}ms`);
+    timeoutError.name = "TimeoutError";
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let timer;
+    /** @type {Promise<never>} */
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(timeoutError);
+        controller.abort(timeoutError);
+      }, requestTimeoutMs);
+    });
+    try {
+      // One deadline includes headers and body, even when an injected transport
+      // ignores abort. A late response must not start another body read.
+      return await Promise.race([
+        (async () => {
+          const response = await fetchImpl(url, { method, headers: signed, body, signal: controller.signal });
+          controller.signal.throwIfAborted();
+          const bytes = Buffer.from(await response.arrayBuffer());
+          controller.signal.throwIfAborted();
+          return { status: response.status, body: bytes, etag: response.headers.get("etag") };
+        })(),
+        deadline,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function readKey(key) {
