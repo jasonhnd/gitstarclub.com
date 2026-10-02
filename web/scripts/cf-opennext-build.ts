@@ -121,6 +121,23 @@ export function publicReadBaseMismatches(input: {
   const otherDeclared = declaredPublicReadBases(varsForTarget(input.wrangler, otherTarget));
   const otherValues = new Set(otherDeclared.values());
   const issues: string[] = [];
+  // OpenNext inherits the shell, not wrangler's read-driver vars, during
+  // prerender. Stage 4 must explicitly export the R2 driver and public base.
+  const stage4 = input.target === "production" && varsForTarget(input.wrangler, input.target).DEPLOY_ENV === "production";
+  if (stage4) {
+    if (input.shell.STORAGE_READ_DRIVER !== "r2") {
+      issues.push("cf:build stage-4 production requires shell STORAGE_READ_DRIVER=r2");
+    }
+    if (!normalizePublicReadBase(input.shell.R2_PUBLIC_BASE_URL)) {
+      issues.push("cf:build stage-4 production requires shell R2_PUBLIC_BASE_URL");
+    }
+    if (Object.keys(input.shell).some((key) => key.includes("BLOB_") && input.shell[key] !== undefined)) {
+      issues.push("cf:build stage-4 production refuses shell BLOB_* variables");
+    }
+    if (input.shell.READ_DRIVER !== undefined && input.shell.READ_DRIVER !== "r2") {
+      issues.push("cf:build stage-4 production refuses a conflicting shell READ_DRIVER");
+    }
+  }
   for (const key of PUBLIC_READ_BASE_ENV_KEYS) {
     const shellValue = normalizePublicReadBase(input.shell[key]);
     if (!shellValue || isLocalPublicReadFixture(shellValue)) continue;

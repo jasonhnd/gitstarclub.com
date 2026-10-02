@@ -16,6 +16,7 @@ import {
   type WhitelistEntry,
 } from "@/lib/contracts";
 import { capSafeText } from "@/lib/contracts/common";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { repoBucket } from "../buckets";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 import type { WorkflowOwnership } from "@/lib/workflows/lease";
@@ -257,7 +258,7 @@ export async function refreshMetadataBucketWithDeps(
       bucket,
       fetched: progressRecord(gh),
       transient_attempts: attempts,
-      last_error: capSafeText(message),
+      last_error: capSafeText(sanitizeErrorText(message)),
     }));
     if (attempts >= MAX_METADATA_TRANSIENT_ATTEMPTS) throw error;
     return {
