@@ -1,4 +1,5 @@
 import type { BootstrapPublicationPointer as BootstrapPointer } from "@/lib/contracts";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import {
   BOOTSTRAP_POINTER_CACHE_KEY,
   BOOTSTRAP_POINTER_CACHE_TAG,
@@ -71,7 +72,7 @@ export async function readCachedBootstrapPointer(
       if (failedAt - failureLoggedAt >= BOOTSTRAP_POINTER_NEGATIVE_TTL_MS) {
         failureLoggedAt = failedAt;
         console.error("[bootstrap-pointer] origin fetch failed", {
-          message: failure.message,
+          message: sanitizeErrorText(failure.message),
           using_last_known_good: lastKnownGood !== null,
           last_known_good_state: lastKnownGood?.state ?? null,
         });
