@@ -1,7 +1,17 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import type { ViewsPointer, WhitelistSnapshot } from "@/lib/contracts";
 import * as write from "@/lib/data/write";
+import * as alert from "@/lib/observability/alert";
+import * as health from "@/lib/observability/health";
 import { QUEUE_ADVANCE_CONSUMER, QUEUE_ADVANCE_HEADER, QUEUE_SUCCESSOR_HEADER } from "@/lib/workers-host/queue-advance";
-import { firstRefreshJob } from "./types";
+import * as lease from "@/lib/workflows/lease";
+import * as owned from "@/lib/workflows/owned-write";
+import { publishVersionWithDeps, type PublicationDeps } from "@/lib/workflows/publication-core";
+import {
+  requestPublishedViewsInvalidation,
+  type InvalidationFetch,
+} from "@/lib/workflows/publication-invalidation-request";
+import { firstRefreshJob, type FullRefreshStepName, type RefreshStepJob } from "./types";
 import { refreshStepCheckpointName, runRefreshStepRoute } from "./step-route";
 
 const originalSecret = process.env.CRON_SECRET;
@@ -398,5 +408,216 @@ describe("runRefreshStepRoute", () => {
     } finally {
       putSpy.mockRestore();
     }
+  });
+});
+
+describe("publish failures after the pointer commit", () => {
+  const runId = "refresh-643";
+  const startedAt = "2026-10-02T00:00:00.000Z";
+  const fencingToken = 9;
+  // Preview Worker vars (wrangler env.pre): no NEXT_PUBLIC_SITE_URL, no VERCEL_URL.
+  const previewEnv = {
+    HOSTING_TARGET: "cf",
+    DEPLOY_ENV: "pre",
+    CF_CRON_ORIGIN: "https://pre.gitstarclub.com",
+    CRON_SECRET: "secret",
+  };
+
+  let putOwned: ReturnType<typeof spyOn>;
+  let release: ReturnType<typeof spyOn>;
+  let sendAlert: ReturnType<typeof spyOn>;
+  let recordHealth: ReturnType<typeof spyOn>;
+  let consoleError: ReturnType<typeof spyOn>;
+  let networkGuard: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    // Every callback goes through the injected fetch capture. A real network
+    // call would mean the resolver ignored it, so fail instead of sending one.
+    networkGuard = spyOn(globalThis, "fetch").mockImplementation((() => {
+      throw new Error("unexpected network call from a publication test");
+    }) as unknown as typeof fetch);
+    putOwned = spyOn(owned, "putOwnedView").mockResolvedValue(undefined as never);
+    release = spyOn(lease, "releaseWorkflowLease").mockResolvedValue(true);
+    sendAlert = spyOn(alert, "sendAlert").mockResolvedValue(undefined as never);
+    recordHealth = spyOn(health, "recordHealth").mockResolvedValue(undefined as never);
+    consoleError = spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    networkGuard.mockRestore();
+    putOwned.mockRestore();
+    release.mockRestore();
+    sendAlert.mockRestore();
+    recordHealth.mockRestore();
+    consoleError.mockRestore();
+  });
+
+  function job(name: FullRefreshStepName): RefreshStepJob {
+    return { v: 1, graph: "full", runId, name, attempt: 0, cursor: { startedAt, fencingToken } };
+  }
+
+  function storedAt(suffix: string): Record<string, unknown> | undefined {
+    const call = putOwned.mock.calls.find((args: unknown[]) => String(args[1]).endsWith(suffix));
+    return call?.[2] as Record<string, unknown> | undefined;
+  }
+
+  function memoryPublication(invalidate: () => Promise<void>) {
+    const snapshot: WhitelistSnapshot = {
+      run_id: runId,
+      generated_at: "2026-10-01T00:00:00.000Z",
+      count: 1,
+      entries: [{ id: 1, node_id: "node-1", full_name: "owner/repo-1", owner: "owner", name: "repo-1", stars: 10_001 }],
+      diff: { added: [1], dropped: [] },
+    };
+    const state = {
+      pointer: {
+        version: "refresh-previous",
+        run_id: "refresh-previous",
+        published_at: "2026-09-27T00:00:00.000Z",
+        prev_version: null,
+        schema_ver: 1,
+      } as ViewsPointer | null,
+      intent: null as Parameters<PublicationDeps["createIntent"]>[1] | null,
+      recoveryVersion: null as string | null,
+    };
+    const deps: PublicationDeps = {
+      readPointer: async () => state.pointer,
+      readIntent: async () => state.intent,
+      createIntent: async (_operationId, intent) => {
+        if (state.intent) return false;
+        state.intent = structuredClone(intent);
+        return true;
+      },
+      readWhitelistSnapshot: async (version) => (version === runId ? snapshot : null),
+      writePointer: async (next) => {
+        state.pointer = structuredClone(next);
+      },
+      writeRecovery: async (recovery) => {
+        state.recoveryVersion = recovery.version;
+      },
+      writeWhitelistPointer: async () => {},
+      ensureOwnership: async () => {},
+      invalidate,
+      notifyIndexNow: async () => null,
+      now: () => "2026-10-02T01:00:00.000Z",
+    };
+    return { state, deps };
+  }
+
+  function runPublish(deps: PublicationDeps) {
+    return runRefreshStepRoute(post(job("publish")), {
+      kind: "memory",
+      retry: { retries: 1, delaysMs: [0] },
+      recordCheckpoint: async () => {},
+      executeFull: async (current) => ({
+        name: current.name,
+        ...(await publishVersionWithDeps(current.runId, current.cursor.fencingToken ?? -1, deps)),
+      }),
+    });
+  }
+
+  test("a permanent preview invalidation failure records the live version and failing step", async () => {
+    const calls: string[] = [];
+    const fetchImpl: InvalidationFetch = async (url) => {
+      calls.push(url);
+      return new Response("unavailable", { status: 503 });
+    };
+    const { state, deps } = memoryPublication(() => requestPublishedViewsInvalidation({ env: previewEnv, fetchImpl }));
+
+    const response = await runPublish(deps);
+
+    expect(response.status).toBe(500);
+    expect(calls).toEqual([
+      "https://pre.gitstarclub.com/api/workflows/refresh/revalidate",
+      "https://pre.gitstarclub.com/api/workflows/refresh/revalidate",
+    ]);
+    expect(state.pointer?.version).toBe(runId);
+    expect(state.pointer?.prev_version).toBe("refresh-previous");
+    expect(state.recoveryVersion).toBe(runId);
+    expect(storedAt("/manifest.json")).toMatchObject({ run_id: runId, status: "failed", published_version: runId });
+    expect(storedAt("/error.json")).toMatchObject({
+      run_id: runId,
+      phase: "post_commit",
+      committed_version: runId,
+      failed_step: "invalidate",
+      error: `version ${runId} is live; post-commit invalidate failed: publication cache invalidation POST https://pre.gitstarclub.com/api/workflows/refresh/revalidate -> 503`,
+    });
+    expect(release).toHaveBeenCalledWith(runId, "failed", undefined, undefined, fencingToken);
+    expect(sendAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "managed refresh published; post-commit step failed", step: "invalidate" }),
+    );
+    expect(networkGuard).not.toHaveBeenCalled();
+  });
+
+  test("the in-step retry replays the intent and repairs a transient invalidation failure", async () => {
+    const statuses = [503, 200];
+    const calls: string[] = [];
+    const fetchImpl: InvalidationFetch = async (url) => {
+      calls.push(url);
+      return new Response(null, { status: statuses.shift() ?? 500 });
+    };
+    const { state, deps } = memoryPublication(() => requestPublishedViewsInvalidation({ env: previewEnv, fetchImpl }));
+
+    const response = await runPublish(deps);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, step: "publish", result: { version: runId } });
+    expect(calls).toHaveLength(2);
+    expect(state.pointer).toMatchObject({ version: runId, prev_version: "refresh-previous" });
+    expect(storedAt("/manifest.json")).toBeUndefined();
+    expect(storedAt("/error.json")).toBeUndefined();
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  test("a failure before the pointer commit keeps published_version null", async () => {
+    const { state, deps } = memoryPublication(async () => {});
+    deps.writePointer = async () => {
+      throw new Error("pointer write 500");
+    };
+
+    const response = await runPublish(deps);
+
+    expect(response.status).toBe(500);
+    expect(state.pointer?.version).toBe("refresh-previous");
+    expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: null });
+    expect(storedAt("/error.json")).toMatchObject({ phase: "pre_commit", error: "pointer write 500" });
+    expect(storedAt("/error.json")).not.toHaveProperty("committed_version");
+  });
+
+  for (const name of ["gc", "markPublished"] as const) {
+    test(`a ${name} failure after publish records the run's version as committed`, async () => {
+      const response = await runRefreshStepRoute(post(job(name)), {
+        kind: "memory",
+        retry: { retries: 0, delaysMs: [] },
+        recordCheckpoint: async () => {},
+        executeFull: async () => {
+          throw new Error(`${name} blew up`);
+        },
+      });
+
+      expect(response.status).toBe(500);
+      expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: runId });
+      expect(storedAt("/error.json")).toMatchObject({
+        phase: "post_commit",
+        committed_version: runId,
+        failed_step: name,
+        error: `${name} blew up`,
+      });
+    });
+  }
+
+  test("an earlier step failure stays a pre-commit failure", async () => {
+    const response = await runRefreshStepRoute(post(job("validate")), {
+      kind: "memory",
+      retry: { retries: 0, delaysMs: [] },
+      recordCheckpoint: async () => {},
+      executeFull: async () => {
+        throw new Error("validate blew up");
+      },
+    });
+
+    expect(response.status).toBe(500);
+    expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: null });
+    expect(storedAt("/error.json")).toMatchObject({ phase: "pre_commit", error: "validate blew up" });
   });
 });

@@ -100,6 +100,57 @@ describe("workflow checkpoints (fenced)", () => {
     });
   });
 
+  function storedAt(suffix: string): Record<string, unknown> {
+    const call = putOwned.mock.calls.find((args: unknown[]) => String(args[1]).endsWith(suffix));
+    if (!call) throw new Error(`no putOwnedView call for ${suffix}`);
+    return call[2] as Record<string, unknown>;
+  }
+
+  test("markFailed before the pointer commit keeps published_version null", async () => {
+    await markFailed("refresh-test-2", "2026-07-18T00:00:00.000Z", "validate failed", 4);
+
+    expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: null });
+    const failure = storedAt("/error.json");
+    expect(failure).toMatchObject({ run_id: "refresh-test-2", error: "validate failed", phase: "pre_commit" });
+    expect(failure).not.toHaveProperty("committed_version");
+    expect(failure).not.toHaveProperty("failed_step");
+    expect(sendAlert).toHaveBeenCalledWith({
+      pipeline: "workflow-refresh",
+      title: "managed refresh failed",
+      run_id: "refresh-test-2",
+      error: "validate failed",
+    });
+  });
+
+  test("markFailed after the pointer commit records the live version and failed step", async () => {
+    const message = "version refresh-test-3 is live; post-commit invalidate failed: -> 503";
+    await markFailed("refresh-test-3", "2026-07-18T00:00:00.000Z", message, 4, {
+      version: "refresh-test-3",
+      step: "invalidate",
+    });
+
+    expect(storedAt("/manifest.json")).toMatchObject({
+      run_id: "refresh-test-3",
+      status: "failed",
+      published_version: "refresh-test-3",
+    });
+    expect(storedAt("/error.json")).toMatchObject({
+      run_id: "refresh-test-3",
+      error: message,
+      phase: "post_commit",
+      committed_version: "refresh-test-3",
+      failed_step: "invalidate",
+    });
+    expect(release).toHaveBeenCalledWith("refresh-test-3", "failed", undefined, undefined, 4);
+    expect(sendAlert).toHaveBeenCalledWith({
+      pipeline: "workflow-refresh",
+      title: "managed refresh published; post-commit step failed",
+      run_id: "refresh-test-3",
+      step: "invalidate",
+      error: message,
+    });
+  });
+
   test("markFailed stores and forwards a sanitized error", async () => {
     const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
     const cron = "CANARYCRONSECRET1234567890abcd";
