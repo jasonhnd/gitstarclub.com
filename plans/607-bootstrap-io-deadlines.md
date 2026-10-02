@@ -9,8 +9,11 @@ remote-stage result.
 
 ## Scope
 
-Only the eight pipeline files listed in issue #607 may change, plus this plan
-required by AGENTS.md. The R2 store uses a 30-second total request deadline;
+The eight pipeline files listed in issue #607 may change, plus this plan
+required by AGENTS.md. The leader extended the scope on October 2, 2026 to
+`pipeline/backfill/06-upload.mjs` and `pipeline/backfill/07-export-v2.mjs`,
+strictly one action guard each. No other change is allowed in those entrypoints.
+The R2 store uses a 30-second total request deadline;
 tests inject a shorter deadline and fake fetch implementations. The deadline
 must reject and abort even if the injected fetch or body ignores cancellation.
 The deadline covers successful and error responses and is cleared on every exit.
@@ -50,28 +53,36 @@ fencing, first-commit, and rollback decisions remain unchanged.
 - The complete AGENTS.md static/build flow passes; no lockfile churn or
   unrelated modifications remain. Independent high-risk review is required.
 
-## Progress and scope dependency
+## Implementation and scope resolution
 
-The request/body fix is committed at `ed124a7`. Verified frozen dependencies
-and tool archives, 70 pipeline tests, the script typecheck, and whitespace
-checks passed. Six separate removed-fix mutations failed with exit 1: unbounded
-headers/body, no abort, no timer cleanup, a late body read, a restarted body
-deadline, and missing deadline validation. Restoring the committed source
-passed its entire R2 test file. All mutation copies and logs are temporary.
+The request/body fix uses an AbortController and a promise race over the complete
+response read. Its TimeoutError remains retryable by the existing upload retry
+wrapper. The shared BootstrapStore, BootstrapSnapshot, and BootstrapLease
+typedefs constrain byte reads, ETags, conditional writes, and fencing tokens.
+Publication entrypoints use the capabilities they need, including the existing
+retry wrapper. Remote stages and leased callbacks retain their generic results.
 
-The shared contract draft exposes two existing unchecked consumers of
+The shared contract exposed two existing unchecked consumers of
 `runRemoteStage().result`: `pipeline/backfill/06-upload.mjs:136` and
 `pipeline/backfill/07-export-v2.mjs:157`. A generic result must distinguish
 `action: "dry-run"` (no result) from `action: "wrote"` (result of type T).
-The script typecheck rejects both consumers with TS2339. Both files are outside
-the issue's explicit allowlist, so neither has been edited in this checkout.
+The script typecheck rejected both consumers with TS2339. The leader authorized
+one guard at each consumer; the normal write path and the existing earlier
+dry-run exits remain unchanged. This scope extension must be stated in the PR.
 
-In an isolated temporary copy, one action guard at each consumer makes the
-complete script typecheck pass with the drafted contracts. The scope needs to
-include these two files so this can be committed without weakening the types.
-The unapplied contracts, proposed two-line scope extension, exact diagnostics,
-and mutation evidence are retained under `/tmp/GSC_0051/`. The checkout keeps
-only the completed deadline fix and this plan until scope is resolved.
+Frozen installs and the official tool archives were reverified after updating
+to the current pre baseline. The complete pipeline suite passes 74 tests,
+including structured stage results, failed lease release, missing lease
+acquisition, and takeover preservation. The script typecheck passes. A temporary
+TypeScript probe verifies both inferred stage/lease results and compile-time
+rejection of invalid snapshot, ETag, and fencing-token types, plus access to a
+dry-run result. The two cited sites have no JSDoc `any`.
 
-Full detached static/build verification, the PR, and independent review remain
-pending the complete contract change. No live storage or deployment was used.
+Six separate removed-fix mutations failed with exit 1: unbounded headers/body,
+no abort, no timer cleanup, a late body read, a restarted body deadline, and
+missing deadline validation. Restoring the committed source passed the R2 test
+file. Evidence and disposable copies are retained under `/tmp/GSC_0051/`.
+
+Full detached static/build verification, the additional unmerged #589 offline
+tests, and the PR follow this implementation commit. No live storage or
+deployment is used. Independent high-risk review remains required.
