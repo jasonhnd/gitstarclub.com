@@ -1,3 +1,4 @@
+import { formatConjunction as listLabels, formatSignedStars as signedStars, formatTemplate as fill } from "@/lib/template-format";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
@@ -25,7 +26,7 @@ import { rankingMonthHref } from "@/lib/repo-page";
 import { pageMeta } from "@/lib/seo";
 import { orgLd, type FaqItem } from "@/lib/jsonld";
 import { ANSWER_CAPSULE_SOURCE, resolveDataAsOfFromMeta, resolveDataAsOfValue, type AnswerCapsuleContent } from "@/lib/geo-capsules";
-import { absoluteSnippetUrl, type ShareableSnippetContent } from "@/lib/shareable-snippets";
+import { absoluteSnippetUrl, buildShareableSnippet, type ShareableSnippetContent } from "@/lib/shareable-snippets";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { repositoryTableLabels } from "./routing";
@@ -368,11 +369,6 @@ function orgOwnerTypeLabel(t: Dict, ownerType: string | null | undefined): strin
   return t.tables.unknown;
 }
 
-function signedStars(value: number, locale: string): string {
-  const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${fmtStars(Math.abs(value), locale)}`;
-}
-
 function relatedItem(href: string, label: string) {
   return { href: href as `/${string}`, label };
 }
@@ -435,7 +431,7 @@ function buildLocalizedOrgFaqs(t: Dict, language: string, org: OrgEntity, member
   ];
 }
 
-function buildLocalizedOrgTotalSnippet({
+export function buildLocalizedOrgTotalSnippet({
   t,
   locale,
   org,
@@ -468,7 +464,7 @@ function buildLocalizedOrgTotalSnippet({
     leaders,
   });
 
-  return snippet({
+  return buildShareableSnippet({
     kind: "org-total",
     title: fill(t.org.totalSnippetTitle, { login: org.login }),
     text,
@@ -480,65 +476,10 @@ function buildLocalizedOrgTotalSnippet({
   });
 }
 
-function snippet({
-  kind,
-  title,
-  text,
-  links,
-  sourceLabel,
-}: {
-  kind: ShareableSnippetContent["kind"];
-  title: string;
-  text: string;
-  links: Array<{ label: string; href: string }>;
-  sourceLabel: string;
-}): ShareableSnippetContent {
-  const canonicalLinks = links.map((link) => ({ ...link, href: absoluteSnippetUrl(link.href) }));
-  const copyText = [text, ...canonicalLinks.map((link) => `${link.label}: ${link.href}`)].join("\n");
-  return {
-    kind,
-    title,
-    text,
-    links: canonicalLinks,
-    copyText,
-    embedHtml: embedHtml(title, text, canonicalLinks, sourceLabel),
-  };
-}
-
-function embedHtml(title: string, text: string, links: Array<{ label: string; href: string }>, sourceLabel: string): string {
-  const source = links[0];
-  return [
-    `<blockquote cite="${escapeAttribute(source?.href ?? absoluteSnippetUrl("/"))}">`,
-    `<p><strong>${escapeHtml(title)}</strong></p>`,
-    `<p>${escapeHtml(text)}</p>`,
-    source ? `<p><a href="${escapeAttribute(source.href)}">${escapeHtml(sourceLabel)}: ${escapeHtml(source.label)}</a></p>` : "",
-    `</blockquote>`,
-  ]
-    .filter(Boolean)
-    .join("");
-}
-
 function repoName(row: { owner: string; name: string }): string {
   return `${row.owner}/${row.name}`;
 }
 
-function listLabels(language: string, values: readonly string[]): string {
-  if (values.length === 0) return "";
-  return new Intl.ListFormat(language, { type: "conjunction" }).format([...values]);
-}
-
 function withSource(text: string): string {
   return `${text} - ${ANSWER_CAPSULE_SOURCE}`;
-}
-
-function fill(template: string, values: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
 }
