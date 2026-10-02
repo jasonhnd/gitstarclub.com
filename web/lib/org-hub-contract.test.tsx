@@ -4,6 +4,8 @@ import { join } from "node:path";
 import type { ReactElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
 import type { CategoryAssignments, CategoryRegistry, Meta, OrgEntity, ReposLookup } from "@/lib/contracts";
+import { getDictionary, LOCALES } from "@/lib/i18n";
+import { localizedPath } from "@/lib/i18n/routing";
 
 mock.module("next/navigation", () => ({
   notFound: () => {
@@ -156,6 +158,32 @@ describe("org hub contract on the rendered page", () => {
     expect(hrefs).toContain("/compare?repos=org%2Flead%2Corg%2Fsecond");
     expect(hrefs).toContain("/rankings/2026/6");
   });
+
+  for (const locale of LOCALES) {
+    test(`${locale}: live total snippet, trend, and localized member links remain rendered`, async () => {
+      const t = await getDictionary(locale);
+      const markup = await renderPage(await OrgPageView({locale,login:ORG_LOGIN}));
+      expect(markup).toContain(t.org.history);
+      expect(anchors(markup)).toContain(`https://gitstarclub.com${localizedPath(locale, `/o/${ORG_LOGIN}`)}`);
+      expect(anchors(markup)).toContain(`https://gitstarclub.com${localizedPath(locale, "/org/lead")}`);
+    });
+  }
+
+  test("no members or monthly history keep the organization empty states", async () => {
+    const saved = { ...org };
+    try {
+      Object.assign(org, {members:[],repo_count:0,current_stars_sum:0,curve:{monthly:[],recent_daily:[]}});
+      const t = await getDictionary("en");
+      const markup = await renderPage(await OrgPageView({locale:"en",login:ORG_LOGIN}));
+      expect(markup).toContain(t.org.trendUnavailable);
+      expect(markup).toContain(t.org.noTrackedRepos);
+      expect(markup).toContain("org organization total");
+      expect(markup).not.toContain('href="https://gitstarclub.com/org/lead"');
+    } finally {
+      Object.assign(org, saved);
+    }
+  });
+
 });
 
 async function renderPage(element: ReactElement): Promise<string> {
