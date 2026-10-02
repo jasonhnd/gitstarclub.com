@@ -3,9 +3,8 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { currentUtcPeriods } from "../lib/periods";
 import { buildDataExportBundle, type DataExportBundle } from "../lib/data-exports";
-import { loadWebEnvFiles, warnEnvFileDiagnostic } from "./lib/env";
+import { loadPublicReadBases } from "./lib/public-read-env";
 
-const BLOB_BASE_KEYS = ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL"] as const;
 const webDir = fileURLToPath(new URL("..", import.meta.url));
 const publicDir = join(webDir, "public");
 const exportRoot = join(publicDir, "data", "exports", "v1");
@@ -20,7 +19,8 @@ function usage(): void {
       "Usage: bun run exports:generate [--month YYYY-MM]",
       "",
       "Generates bounded static CSV/JSON exports under web/public/data/exports/v1/.",
-      "Reads BLOB_BASE_URL or NEXT_PUBLIC_BLOB_BASE_URL, also from web/.env.local when present.",
+      "Reads the configured storage driver's public base, also from web/.env.local when present.",
+      "R2 reads use STORAGE_READ_DRIVER=r2 and R2_PUBLIC_BASE_URL; Blob remains the default.",
     ].join("\n"),
   );
 }
@@ -47,24 +47,8 @@ function parseArgs(argv: string[]): Args {
   return { month };
 }
 
-function loadBlobBaseFromEnvFile(): void {
-  loadWebEnvFiles(webDir, {
-    keys: BLOB_BASE_KEYS,
-    onDiagnostic: warnEnvFileDiagnostic,
-  });
-}
-
-function ensureBlobBase(): void {
-  loadBlobBaseFromEnvFile();
-  const key = BLOB_BASE_KEYS.find((candidate) => process.env[candidate]?.trim());
-  if (!key) throw new Error("Missing BLOB_BASE_URL or NEXT_PUBLIC_BLOB_BASE_URL.");
-  const raw = process.env[key]?.trim() ?? "";
-  const url = new URL(raw);
-  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error(`${key} must be an http(s) URL.`);
-}
-
 async function buildBundle(month: string): Promise<DataExportBundle> {
-  ensureBlobBase();
+  loadPublicReadBases(webDir);
   const [{ getAllTime, getRank, getRepoEntity, getReposLookup, getOrgsLookup }] = await Promise.all([
     import("../lib/data/index"),
   ]);
