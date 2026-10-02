@@ -85,16 +85,6 @@ export function relatedPublicCategories(
   return categories.filter((entry) => entry.public && entry.id !== currentId).slice(0, limit);
 }
 
-function publicCategoriesForDimension(dimension: { categories: CategoryRegistryEntry[] }): CategoryRegistryEntry[] {
-  return dimension.categories.filter((category) => category.public);
-}
-
-export function publicDimensions(registry: CategoryRegistry) {
-  return registry.dimensions
-    .map((dimension) => ({ ...dimension, categories: publicCategoriesForDimension(dimension) }))
-    .filter((dimension) => dimension.categories.length > 0);
-}
-
 export function findCategory(registry: CategoryRegistry, dimension: string, slug: string): CategoryRegistryEntry | null {
   if (!isCategoryDimension(dimension)) return null;
   return registry.dimensions.find((entry) => entry.id === dimension)?.categories.find((category) => category.slug === slug && category.public) ?? null;

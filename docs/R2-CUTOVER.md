@@ -1,7 +1,7 @@
 ---
 owner: operations / storage
 status: active
-last_reviewed: 2026-09-30
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - R2 cutover runbook
   - current object-storage status
@@ -42,6 +42,8 @@ Issue #569 records that both data buckets already exist and that each has `_meta
 3. **Bucket identity.** Before an R2 put or delete, the guarded store reads `_meta/bucket-identity.json` at the bucket root. `bucket` must equal `R2_BUCKET` and `deploy_env` must equal `DEPLOY_ENV` (`pre` or `production`). Application code never puts or deletes a key under `_meta/`. An operator places the marker out of band. The positive check is cached per isolate.
 4. **Key shape.** Guarded put and delete reject `.` and `..` segments, including one percent-encoding (`%2e`, `%2e%2e`), so `new URL()` cannot collapse `views/../_meta/x` into `_meta/`. `del` of an `r2://` URL or a public URL under `_meta/` is refused before the marker is read.
 5. **CI gates.** `node scripts/assert-cf-ci-gates.mjs` refuses a production bucket or domain inside preview `env.pre`, a preview bucket or domain at the top level, `BLOB_*` on preview, a missing preview `DEPLOY_ENV`, and a non-empty `R2_PREFIX`. Those host checks ignore case, so `DATA.gitstarclub.com` is still the production host. Until cutover, top-level `DEPLOY_ENV` must stay unset, and top-level `STORAGE_READ_DRIVER`, `READ_DRIVER`, `STORAGE_WRITE_DRIVER`, and `WRITE_DRIVER` must stay unset or `blob`. `cf:build` refuses a shell public read base that does not match the wrangler vars for `--site-target`. A loopback fixture (`127.0.0.1`, `localhost`, and a URL whose hostname is `[::1]`) stays allowed so CI can build.
+
+Issue #578 prepares a separate stage-4 target contract without changing the current config. Top-level `DEPLOY_ENV=production` selects that contract: both explicit drivers, the production bucket var and public base, and exactly one `DATA` binding must match stage 4. Blob variables and `VIEWS_VERSION_FALLBACK` must be absent, and `R2_PREFIX` must remain unset or empty. Driver aliases, if present, must agree with the explicit drivers. A partial switch fails. Bucket/domain isolation, indexing, and the paused schedules remain enforced in both contracts.
 
 The marker JSON is exactly one of:
 
@@ -96,6 +98,46 @@ Rollback of the code is a revert of those pull requests on `pre`. Do not roll pr
 
 Not accepted. Load the preview bucket, then prove the preview site reads it. Dry run first. `--execute` is an operator action and needs the bucket-scoped key outside the repository.
 
+**Before the real-bucket rehearsal, run the offline local rehearsal first.**
+Use the SHA-256-verified Node v24.20.0 and Bun 1.3.14 bootstrap in
+[AGENTS.md](../AGENTS.md), with dependencies installed in both `web/` and
+`pipeline/` using `bun --no-env-file install --frozen-lockfile`. From the
+repository root:
+
+```bash
+cd web
+bun --no-env-file scripts/r2-local-rehearsal.ts
+```
+
+Success prints `R2_LOCAL_REHEARSAL_OK` and exits 0. Any failed assertion or
+timeout exits non-zero. Each run creates a private fixture project and HOME,
+uses Miniflare's built-in local S3 and public R2 services with a persistent
+workerd bucket, restarts that Worker to prove persistence, then removes its
+own scratch directory. Miniflare is already installed by wrangler. The
+entrypoint accepts no remote endpoint, bucket, or credential arguments.
+Telemetry and remote bindings are disabled. Worker outbound reads are limited
+to the local R2 service. Local S3 signing uses fabricated fixture values that
+are valid only inside that Miniflare instance.
+
+The rehearsal runs the actual `06-upload.mjs` and `07-export-v2.mjs` entrypoints
+in a fixture mirror containing no environment files. It proves dry-run leaves
+the bucket unchanged, upload and stage-only leave the pointer absent, and
+initial commit publishes `previous_generation: null` and releases the shared
+lease. A standalone Worker bundles the application read, storage, and lease
+modules: with `STORAGE_READ_DRIVER=r2` and `STORAGE_WRITE_DRIVER=r2_binding`,
+rankings resolve from the bootstrap generation while `views/latest.json` is
+absent. The `DATA` write path claims, renews, and releases the workflow lease;
+current pointer CAS succeeds and stale CAS is refused. Both pipeline and Worker
+refuse a production identity and a different existing pointer. The Worker also
+refuses mixed state and a marker introduced during initial-commit renewal.
+Its bootstrap adapter reads staged parquet as bytes through `DATA`.
+
+This local command is a prerequisite for the operator rehearsal. Stage 2 still
+requires the real public origins and preview site acceptance below. The
+standalone Worker exercises data paths; the full Next/OpenNext page server and
+shared Next request cache are outside this command. CI workflows and required
+checks are unchanged. See [TESTING.md](./TESTING.md#local-r2-stage-2-rehearsal).
+
 From `pipeline/`, replace the generation id with the one the local build produced:
 
 ```bash
@@ -112,6 +154,7 @@ Acceptance:
 - `https://data-pre.gitstarclub.com/_meta/bucket-identity.json` is `{"bucket":"gitstarclub-data-pre","deploy_env":"pre"}`.
 - After the initial commit, `https://data-pre.gitstarclub.com/bootstrap/latest.json` returns 200 and names that generation.
 - `https://pre.gitstarclub.com/` returns 200 and is `noindex`.
+- Deployment identity must equal the commit that was actually deployed. `https://pre.gitstarclub.com/.well-known/deployment` `commitSha` equals the SHA baked by the preview `cf:build` for that deploy. A runtime `CF_PREVIEW_COMMIT_SHA` or `VERCEL_GIT_COMMIT_SHA` counts only when it names that same commit.
 - `node scripts/assert-cf-ci-gates.mjs` still passes. Preview still has no `BLOB_*`.
 
 Rollback (operator, same generation, only after that generation was committed):
@@ -149,7 +192,19 @@ Acceptance:
 - `node scripts/assert-cf-ci-gates.mjs` passes, including the rule that preview config does not name the production bucket.
 - `https://gitstarclub.com/rankings` returns 200 with indexing still on.
 - The generation in `https://data.gitstarclub.com/views/latest.json` matches what the production pages render.
-- A production shell build exports `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, not the preview origin and not the blob host. `cf:build` fails the build if the shell base does not match the top-level wrangler vars.
+- A production shell build exports both `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`. OpenNext prerendering inherits the shell, not the Worker vars. `cf:build` rejects a missing or different read driver, a missing public base, any shell `BLOB_*` variable (including `NEXT_PUBLIC_BLOB_*`), or a non-loopback base that does not match the top-level wrangler vars.
+
+After the separately authorized stage-4 config change, the read-only production build environment is:
+
+```bash
+export STORAGE_READ_DRIVER=r2
+export R2_PUBLIC_BASE_URL=https://data.gitstarclub.com
+unset READ_DRIVER BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL BLOB_READ_WRITE_TOKEN
+cd web
+bun run cf:build:production
+```
+
+Do not run this against the current Blob Worker config: the target mismatch must fail. Clear any other `BLOB_*` or `NEXT_PUBLIC_BLOB_*` shell vars as well. No write driver or storage credential is needed for this build. Offline tests use an R2 loopback base with the same explicit read driver and no Blob vars.
 
 Rollback: restore the previous top-level blob public base, remove the production `DATA` binding, and set the read and write drivers back to `blob` (or unset them). Do not delete blob objects. Do not empty the production R2 bucket as part of rollback.
 
@@ -168,8 +223,9 @@ Not accepted. After production has been on R2 through at least one successful re
 - Production and preview do not require `BLOB_READ_WRITE_TOKEN` or `BLOB_BASE_URL`.
 - Live release gates stop falling back to the public blob URL. They use `LIVE_PUBLIC_READ_BASE_URL` or the R2 public origin. That fallback is documented as temporary in [OPS.md](./OPS.md).
 - Blob layout instructions in [OPS.md](./OPS.md) and the superseded Blob design doc move to history.
+- `exports:generate` and `validate-live-views.ts` use `getPublicReadBases()` for the configured read driver. The validator checks the primary origin and reports `storage_read_driver` and `public_read_base`. Their offline CLI regression tests run with an R2 loopback base and no Blob vars; a missing R2 base fails even when a Blob base is available. This preparation does not retire the remaining Blob operating dependencies.
 
-Acceptance: the top-level Worker config and preview `env.pre` contain no `BLOB_*` vars, and a read-only production page still returns 200 from `https://data.gitstarclub.com`.
+Acceptance: the top-level Worker config and preview `env.pre` contain no `BLOB_*` vars, a read-only production page still returns 200 from `https://data.gitstarclub.com`, and the read-only export and live-view tools succeed with the R2 driver without Blob vars. A page returning 200 alone does not verify those tools.
 
 Rollback: restore the blob driver and the blob public base on the production Worker, as in stage 4 rollback. Do not delete blob objects in order to roll back. Deleting the blob store is a separate owner decision after this stage has stayed healthy. It is not the rollback.
 
