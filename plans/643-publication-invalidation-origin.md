@@ -26,33 +26,47 @@ Source: GSC_0035 audit findings F01 and F09. Both were re-checked on
       `VERCEL_URL` is always the running deployment's own host.
     - No hard-coded production default. Missing config throws.
     - Validation: an https origin with no credentials, path, query, or
-      fragment. Plain http is accepted only for a loopback host. The closed
-      production `workers.dev` host is refused. `DEPLOY_ENV=pre` refuses
-      production hosts on either host. A production deployment on
-      Cloudflare (`DEPLOY_ENV=production` or `VERCEL_ENV=production`)
-      requires a production host. An invalid `DEPLOY_ENV` or
+      fragment. A trailing-dot host is refused. Plain http is accepted only
+      for a loopback host. The closed production `workers.dev` host is
+      refused. `DEPLOY_ENV=pre` refuses production hosts on either host. A
+      Cloudflare deployment that sets `DEPLOY_ENV=production` (or
+      `VERCEL_ENV=production`) requires a production host. The production
+      top-level vars do not set `DEPLOY_ENV` today, so there the CI gate
+      remains what pins the value. An invalid `DEPLOY_ENV` or
       `HOSTING_TARGET` throws.
+  - `resolvePublicationInvalidationTarget(env)` returns the URL and bearer,
+    or throws.
   - `requestPublishedViewsInvalidation({ env, fetchImpl, timeoutMs })`:
     adds a timeout (default 30 s). Timeout, network, and non-2xx errors
     name the target URL and never include the bearer secret.
+- `web/lib/workflows/publication-deps.ts`: wires
+  `checkInvalidationTarget` to `resolvePublicationInvalidationTarget`.
 - `web/lib/workflows/publication-core.ts`
+  - `PublicationDeps.checkInvalidationTarget()` runs before the pointer
+    write. A missing or cross-environment origin fails with nothing
+    published.
   - `PublicationPostCommitError` carries `version`, `step`, and `cause`.
   - After the pointer write, the recovery, whitelist pointer,
     invalidation, and IndexNow calls are wrapped. Ownership checks are not
     wrapped, so `WorkflowLeaseOwnershipError` keeps its no-retry handling.
-  - If the pointer write or a replay step before it throws, the live
-    pointer is read once. When it already holds this intent, the failure is
-    raised as post-commit with step `pointer`. If that read fails, the
-    original error is raised unchanged.
+  - If the target check, the whitelist snapshot read, or the pointer write
+    throws, the live pointer is read once. That happens for the pointer
+    write always, and for the other two only on a replay. A fresh intent
+    cannot be live before its own pointer write. When the pointer already
+    holds this intent, the failure is post-commit with that step. If the
+    read fails, `PublicationCommitUnknownError` is raised.
 - `web/lib/workflows/checkpoint.ts`
-  - `markFailed(..., postCommit?)` writes `published_version` = the
-    committed version. `error.json` gets `phase`, plus `committed_version`
-    and `failed_step` for post-commit failures. The alert title and step
-    say the version is live. The lease still releases as `failed`.
+  - `markFailed(..., publication?)` writes `published_version` = the
+    committed version for `post_commit`. `error.json` gets `phase`
+    (`pre_commit`, `post_commit`, or `commit_unknown`), plus
+    `committed_version` or `candidate_version` and `failed_step`. The alert
+    title and step say which case it is. The lease still releases as
+    `failed`.
 - `web/lib/workflows/runtime/execute.ts`
-  - `failRefreshJob` passes post-commit details for a
-    `PublicationPostCommitError` and for `gc` / `markPublished` failures,
-    which run only after publish succeeded.
+  - `failRefreshJob` passes the publication failure for
+    `PublicationPostCommitError`, for `PublicationCommitUnknownError`, and
+    for `gc` / `markPublished` failures, which run only after publish
+    succeeded.
 - Tests (written first, run red on the old code):
   - `publication-invalidation-request.test.ts`: preview, production, Vercel,
     missing config, invalid origins, timeout, non-2xx, network error, and
@@ -78,6 +92,11 @@ Source: GSC_0035 audit findings F01 and F09. Both were re-checked on
 - The `WorkflowManifest` contract. `published_version` is already nullable
   text, and `error.json` has no schema.
 - Worker service-binding self-calls in place of the public origin.
+- Sharing origin parsing with `workers/gitstarclub-web/src/cron-dispatch.ts`.
+  The web app does not import Worker sources. The new parser is stricter.
+- `web/lib/workflows/refresh.ts` `refreshWorkflow` has no caller (audit F12).
+  It still calls `markFailed` without publication details and is left for
+  the F12 cleanup.
 - Deploys, real refresh or GC runs, and calls to any cron, refresh, or
   revalidate endpoint.
 
