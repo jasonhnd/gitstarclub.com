@@ -141,6 +141,67 @@ function stage4Wrangler() {
 }
 
 describe("production stage-4 storage contract", () => {
+  test("preserves combined stage-4 diagnostic order without mutating sources", () => {
+    const config = stage4Wrangler();
+    Object.assign(config.vars, {
+      CF_CRON_ORIGIN: "wrong",
+      WORKFLOW_RUNTIME: "wrong",
+      WORKFLOW_QUEUE_ENQUEUE_URL: "wrong",
+      STORAGE_READ_DRIVER: "blob",
+      STORAGE_WRITE_DRIVER: "r2_s3",
+      R2_BUCKET: "gitstarclub-data-pre",
+      R2_PUBLIC_BASE_URL: "https://DATA-PRE.GITSTARCLUB.COM",
+      BLOB_BASE_URL: "",
+      VIEWS_VERSION_FALLBACK: "",
+      R2_PREFIX: "migrate-dev/",
+      READ_DRIVER: "blob",
+      WRITE_DRIVER: "blob",
+    });
+    config.r2_buckets.push({ binding: "DATA", bucket_name: "gitstarclub-data-prod" });
+    config.env.pre.vars.NOTE = "https://Data.Gitstarclub.com/views/latest.json";
+    const sources = Object.freeze(alignedSources({ wranglerSource: JSON.stringify(config) }));
+    const before = structuredClone(sources);
+    const expected = [
+      "wrangler top-level vars.CF_CRON_ORIGIN must be https://gitstarclub.com",
+      "wrangler top-level vars.WORKFLOW_RUNTIME must be cf-queue",
+      "wrangler top-level vars.WORKFLOW_QUEUE_ENQUEUE_URL must be https://gitstarclub.com/enqueue",
+      "wrangler top-level vars.STORAGE_READ_DRIVER must be r2",
+      "wrangler top-level vars.STORAGE_WRITE_DRIVER must be r2_binding",
+      "wrangler top-level vars.R2_BUCKET must be gitstarclub-data-prod",
+      "wrangler top-level vars.R2_PUBLIC_BASE_URL must be https://data.gitstarclub.com",
+      "wrangler env.pre must not mention data.gitstarclub.com",
+      "wrangler top-level must not mention gitstarclub-data-pre",
+      "wrangler top-level must not mention data-pre.gitstarclub.com",
+      "wrangler top-level stage-4 r2_buckets must declare exactly one DATA binding to gitstarclub-data-prod",
+      "wrangler top-level stage-4 must not contain BLOB_* (production reads R2)",
+      "wrangler top-level stage-4 vars.VIEWS_VERSION_FALLBACK must be absent",
+      "wrangler top-level stage-4 vars.R2_PREFIX must be unset or empty",
+      "wrangler top-level stage-4 vars.READ_DRIVER must be unset or r2",
+      "wrangler top-level stage-4 vars.WRITE_DRIVER must be unset or r2_binding",
+    ];
+    assert.deepEqual(assertCfCiGates(sources), expected);
+    assert.deepEqual(assertCfCiGates(sources), expected);
+    assert.deepEqual(sources, before);
+  });
+
+  test("preserves pre-cutover production runtime diagnostic order", () => {
+    const config = JSON.parse(validWrangler);
+    for (const key of [
+      "CF_CRON_ORIGIN", "WORKFLOW_RUNTIME", "WORKFLOW_QUEUE_ENQUEUE_URL",
+      "BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL", "VIEWS_VERSION_FALLBACK",
+    ]) {
+      delete config.vars[key];
+    }
+    assert.deepEqual(assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) })), [
+      `wrangler top-level vars.CF_CRON_ORIGIN must be ${PRODUCTION_CRON_ORIGIN}`,
+      `wrangler top-level vars.WORKFLOW_RUNTIME must be ${PRODUCTION_WORKFLOW_RUNTIME}`,
+      `wrangler top-level vars.WORKFLOW_QUEUE_ENQUEUE_URL must be ${PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL}`,
+      `wrangler top-level vars.BLOB_BASE_URL must be ${PRODUCTION_BLOB_BASE_URL}`,
+      `wrangler top-level vars.NEXT_PUBLIC_BLOB_BASE_URL must be ${PRODUCTION_BLOB_BASE_URL}`,
+      `wrangler top-level vars.VIEWS_VERSION_FALLBACK must be ${PRODUCTION_VIEWS_VERSION_FALLBACK}`,
+    ]);
+  });
+
   test("accepts the complete R2 cutover and the unchanged current Blob config", () => {
     assert.deepEqual(assertCfCiGates(alignedSources()), []);
     assert.deepEqual(assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(stage4Wrangler()) })), []);
