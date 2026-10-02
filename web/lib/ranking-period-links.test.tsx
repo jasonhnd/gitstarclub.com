@@ -1,3 +1,6 @@
+import { createRankFixture } from "@/lib/integration/fixtures/rank";
+import { viewKey } from "@/lib/integration/fixtures/view-key";
+import { decodeHtml } from "@/lib/integration/fixtures/html";
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import type { ReactElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
@@ -32,6 +35,15 @@ const GENERATED_AT = "2026-06-21T00:00:00.000Z";
 const NOW = new Date("2026-07-08T12:00:00.000Z");
 const REPO_ID = 1;
 const ORG_LOGIN = "vercel";
+const rankFixture = createRankFixture({
+  generatedAt: GENERATED_AT,
+  repoId: REPO_ID,
+  orgLogin: ORG_LOGIN,
+  stock: 100_000,
+  flow: 100,
+  orgValue: 100_000,
+});
+
 const originalFetch = globalThis.fetch;
 const originalBlobBase = process.env.BLOB_BASE_URL;
 const originalPublicBlobBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
@@ -92,31 +104,11 @@ function extractAnchors(html: string): string[] {
   return [...html.matchAll(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>/gi)].map((match) => decodeHtml(match[1]));
 }
 
-function decodeHtml(value: string): string {
-  return value
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)))
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
-}
-
 async function fixtureFetch(input: RequestInfo | URL): Promise<Response> {
-  const key = viewKey(input);
+  const key = viewKey(input, VERSION);
   const body = fixtureForView(key);
   if (body === null) return new Response("not found", { status: 404 });
   return Response.json(body);
-}
-
-function viewKey(input: RequestInfo | URL): string {
-  const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
-  let path = url.pathname.replace(/^\/+/, "");
-  const versionPrefix = `views/${VERSION}/`;
-  if (path.startsWith(versionPrefix)) path = path.slice(versionPrefix.length);
-  return path;
 }
 
 function fixtureForView(path: string): unknown | null {
@@ -147,23 +139,6 @@ function fixtureForView(path: string): unknown | null {
   }
 
   return null;
-}
-
-function rankFixture(window: string, period: string, dim: string, metric: string): RankList {
-  return {
-    meta: {
-      window: window as RankList["meta"]["window"],
-      period: period as RankList["meta"]["period"],
-      dim: dim as RankList["meta"]["dim"],
-      metric: metric as RankList["meta"]["metric"],
-      generated_at: GENERATED_AT,
-    },
-    items: [
-      dim === "repo"
-        ? { rank: 1, id: REPO_ID, value: metric === "stock" ? 100_000 : 100, prev_rank: null }
-        : { rank: 1, login: ORG_LOGIN, value: 100_000, prev_rank: null },
-    ],
-  };
 }
 
 const reposLookupFixture: ReposLookup = {

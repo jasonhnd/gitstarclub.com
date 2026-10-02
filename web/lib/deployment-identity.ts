@@ -1,4 +1,4 @@
-import { cfBuildCommitSha } from "@/lib/cf-build-identity";
+import { reportedCommitSha } from "@/lib/deployment-commit";
 import { getCfPreviewOrigin, getHostingTarget, type HostingTarget } from "@/lib/runtime-config";
 
 export type DeploymentIdentity = {
@@ -15,11 +15,14 @@ function vercelDeploymentHost(env: IdentityEnv): string | null {
   return host || null;
 }
 
-export function buildDeploymentIdentity(requestUrl: string, env: IdentityEnv = process.env): DeploymentIdentity {
+export function buildDeploymentIdentity(
+  requestUrl: string,
+  env: IdentityEnv = process.env,
+  builtCommitSha?: string | null,
+): DeploymentIdentity {
   const hosting = getHostingTarget(env);
   const vercelHost = vercelDeploymentHost(env);
-  const commitSha =
-    env.VERCEL_GIT_COMMIT_SHA?.trim() || env.CF_PREVIEW_COMMIT_SHA?.trim() || cfBuildCommitSha || null;
+  const commitSha = reportedCommitSha(env, builtCommitSha);
   const deploymentUrl = vercelHost
     ? `https://${vercelHost}`
     : hosting === "cf"
