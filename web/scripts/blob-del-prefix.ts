@@ -23,39 +23,32 @@ import {
   type BlobDeletionContext,
 } from "@/lib/blob-deletion";
 import { getReadObjectStore, getWriteObjectStore } from "@/lib/storage";
-import { applyOpsSelection, firstPositional, splitConfirmArg, takeOpsFlags } from "@/lib/storage/ops-target";
+import { applyOpsSelection } from "@/lib/storage/ops-target";
 import {
   claimWorkflowLease,
   releaseWorkflowLease,
   renewWorkflowLease,
 } from "@/lib/workflows/lease";
 import type { ZodType } from "zod";
+import {
+  assertDeleteConfirmation,
+  BLOB_DEL_PREFIX_USAGE,
+  deletionContextFromPointers,
+  interpretBlobDelPrefixArgs,
+} from "./lib/blob-del-prefix";
 
-const USAGE =
-  "usage: bun scripts/blob-del-prefix.ts [--store blob|r2] [--target prod|pre] <specific-prefix/> [--execute --confirm <same-prefix/>]\n--target requires --store r2.";
-
-const argv = process.argv.slice(2);
-if (argv.includes("--help") || argv.includes("-h")) {
-  console.log(USAGE);
+const decision = interpretBlobDelPrefixArgs(process.argv.slice(2), process.env);
+if (decision.action === "help") {
+  console.log(BLOB_DEL_PREFIX_USAGE);
   process.exit(0);
 }
-
-const { selection, rest } = takeOpsFlags(argv);
-const dry = rest.includes("--dry") || rest.includes("--dry-run");
-const execute = rest.includes("--execute") && !dry;
-const { confirm: confirmation } = splitConfirmArg(rest);
-const prefix = firstPositional(rest);
-
-if (selection.store === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
-  console.error("BLOB_READ_WRITE_TOKEN not set");
-  process.exit(1);
-}
-if (!prefix) {
-  console.error(USAGE);
+if (decision.action === "error") {
+  console.error(decision.message);
   process.exit(1);
 }
 
-applyOpsSelection(process.env, selection);
+applyOpsSelection(process.env, decision.selection);
+const { prefix, execute, confirmation } = decision;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -71,15 +64,7 @@ async function protectionContext(): Promise<BlobDeletionContext> {
     readJson<BootstrapPointerType>("bootstrap/latest.json", BootstrapPublicationPointer),
     readJson<WorkflowLeaseType>("ops/workflows/active.json", WorkflowLease),
   ]);
-  const activeWorkflowRun =
-    active?.status === "running" && Date.parse(active.expires_at) > Date.now() ? active.run_id : null;
-  return {
-    currentViewVersion: views?.version,
-    rollbackViewVersion: views?.prev_version,
-    activeWorkflowRun,
-    currentBootstrapGeneration: bootstrap?.generation,
-    rollbackBootstrapGeneration: bootstrap?.previous_generation,
-  };
+  return deletionContextFromPointers(views, bootstrap, active, Date.now());
 }
 
 async function deleteUrls(urls: string[]): Promise<void> {
@@ -120,9 +105,7 @@ try {
     console.log(`execute: --execute --confirm ${plan.prefix}`);
     process.exit(0);
   }
-  if (confirmation !== plan.prefix) {
-    throw new Error(`--confirm must exactly equal "${plan.prefix}"`);
-  }
+  assertDeleteConfirmation(confirmation, plan.prefix);
 
   const acquiredAt = new Date().toISOString();
   const operationId = `blob-delete-${acquiredAt.replaceAll(/[:.]/g, "-")}-${process.pid}`;

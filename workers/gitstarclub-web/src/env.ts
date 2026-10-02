@@ -27,7 +27,11 @@ export type WorkerEnv = {
   JOBS: {
     send(message: RefreshJob): Promise<void>;
   };
-  /** Native R2 binding for the data bucket. Wrangler wiring is a later step. */
+  /**
+   * Native R2 binding for the data bucket. env.pre wires DATA to
+   * gitstarclub-data-pre. The production Worker does not declare DATA;
+   * production reads stay on the public Blob origin until cutover.
+   */
   DATA?: R2Bucket;
   MEDIA: unknown;
   ASSETS?: { fetch(request: Request): Promise<Response> };
