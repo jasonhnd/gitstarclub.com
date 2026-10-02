@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { commitBootstrapGeneration, stageBootstrapPhase } from "./bootstrap-publication.mjs";
 import { createR2BootstrapStore } from "./r2-bootstrap-store.mjs";
 import { sha256Hex } from "./s3-sign.mjs";
+import { withUploadRetry } from "./upload-retry.mjs";
 
 const NOW = new Date("2026-07-17T00:00:00.000Z");
 const PRE_BUCKET = "gitstarclub-data-pre";
@@ -73,7 +74,7 @@ function createFakeR2() {
   };
 }
 
-function storeFor(fake, target = "pre", bucket = PRE_BUCKET) {
+function storeFor(fake, target = "pre", bucket = PRE_BUCKET, options = {}) {
   return createR2BootstrapStore({
     accessKeyId: "test-access-key",
     secretAccessKey: "test-secret-not-printed",
@@ -82,7 +83,30 @@ function storeFor(fake, target = "pre", bucket = PRE_BUCKET) {
     target,
     fetch: fake.fetch,
     now: () => NOW,
+    ...options,
   });
+}
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Keep removed-fix runs bounded too: a hung store must fail this assertion,
+// rather than relying on Bun's much longer per-test timeout.
+async function guarded(operation) {
+  let timer;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("store did not settle within the test guard")), 500);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function deadlineStore(fetch) {
+  return storeFor({ fetch }, "pre", PRE_BUCKET, { requestTimeoutMs: 20 });
 }
 
 const phaseItems = (phase) => {
@@ -94,6 +118,145 @@ const phaseItems = (phase) => {
 };
 
 describe("R2 bootstrap store", () => {
+  test("rejects invalid deadlines before issuing a request", () => {
+    for (const requestTimeoutMs of [0, -1, 0.5, NaN, Infinity, 2_147_483_648]) {
+      expect(() => storeFor({}, "pre", PRE_BUCKET, { requestTimeoutMs }))
+        .toThrow(/positive integer within the timer range/);
+    }
+  });
+
+  test("aborts never-settling headers even when fetch ignores the signal", async () => {
+    let signal;
+    const store = deadlineStore(async (_input, init) => {
+      signal = init.signal;
+      return new Promise(() => {});
+    });
+    await expect(guarded(store.readSnapshot("views/a.json"))).rejects.toThrow(/timed out after 20ms/);
+    expect(signal.aborted).toBe(true);
+    expect(signal.reason.name).toBe("TimeoutError");
+    expect(signal.reason.message).not.toContain("test-secret-not-printed");
+    expect(signal.reason.message).not.toContain(ENDPOINT);
+  });
+
+  test.each([200, 404, 412, 500])("aborts never-settling response bodies for HTTP %i", async (status) => {
+    let signal;
+    const store = deadlineStore(async (_input, init) => {
+      signal = init.signal;
+      return { status, headers: new Headers({ etag: '"body"' }), arrayBuffer: () => new Promise(() => {}) };
+    });
+    await expect(guarded(store.read("views/a.json"))).rejects.toThrow(/timed out after 20ms/);
+    expect(signal.aborted).toBe(true);
+  });
+
+  test.each(["headers", "body"])("an identity %s timeout refuses all writes", async (stall) => {
+    const methods = [];
+    let signal;
+    const store = deadlineStore(async (_input, init) => {
+      methods.push(init.method);
+      signal = init.signal;
+      if (stall === "headers") return new Promise(() => {});
+      return { status: 200, headers: new Headers(), arrayBuffer: () => new Promise(() => {}) };
+    });
+    await expect(guarded(store.put("views/a.json", Buffer.from("x")))).rejects.toThrow(
+      /identity marker is unreadable .*timed out after 20ms/,
+    );
+    expect(methods).toEqual(["GET"]);
+    expect(signal.aborted).toBe(true);
+  });
+
+  test.each(["create", "createMutable", "compareAndSet", "put", "delete"])(
+    "%s aborts a stalled signed write after identity verification",
+    async (method) => {
+      const fake = createFakeR2();
+      fake.seedIdentity();
+      let signal;
+      let signed;
+      const store = deadlineStore(async (input, init) => {
+        if (String(input).endsWith("_meta/bucket-identity.json")) return fake.fetch(input, init);
+        signal = init.signal;
+        signed = init.headers;
+        return new Promise(() => {});
+      });
+      const operation = method === "compareAndSet"
+        ? store[method]("views/a.json", '"expected"', Buffer.from("x"))
+        : store[method]("views/a.json", Buffer.from("x"));
+      await expect(guarded(operation)).rejects.toThrow(/timed out after 20ms/);
+      expect(signal.aborted).toBe(true);
+      expect(header(signed, "authorization")).toContain("AWS4-HMAC-SHA256");
+      if (method === "compareAndSet") expect(header(signed, "if-match")).toBe('"expected"');
+      if (method === "create" || method === "createMutable") expect(header(signed, "if-none-match")).toBe("*");
+    },
+  );
+
+  test("keeps the same deadline after headers arrive", async () => {
+    let signal;
+    const store = deadlineStore(async (_input, init) => {
+      signal = init.signal;
+      await delay(12);
+      return {
+        status: 200,
+        headers: new Headers(),
+        arrayBuffer: async () => { await delay(12); return new ArrayBuffer(0); },
+      };
+    });
+    await expect(guarded(store.read("views/a.json"))).rejects.toThrow(/timed out after 20ms/);
+    expect(signal.aborted).toBe(true);
+  });
+
+  test("does not start a body read when ignored cancellation delivers late headers", async () => {
+    let finishHeaders;
+    let reads = 0;
+    const store = deadlineStore(() => new Promise((resolve) => { finishHeaders = resolve; }));
+    await expect(guarded(store.read("views/a.json"))).rejects.toThrow(/timed out after 20ms/);
+    finishHeaders({
+      status: 200,
+      headers: new Headers(),
+      arrayBuffer: async () => { reads++; return new ArrayBuffer(0); },
+    });
+    await delay(0);
+    expect(reads).toBe(0);
+  });
+
+  test("clears deadlines on success, fetch failure, and body failure", async () => {
+    const signals = [];
+    const success = deadlineStore(async (_input, init) => {
+      signals.push(init.signal);
+      return new Response(Buffer.from([0, 255, 128]), { headers: { etag: '"same-response"' } });
+    });
+    const snapshot = await success.readSnapshot("views/a.json");
+    expect(snapshot).toEqual({ body: Buffer.from([0, 255, 128]), etag: '"same-response"' });
+    for (const phase of ["fetch", "body"]) {
+      const failure = deadlineStore(async (_input, init) => {
+        signals.push(init.signal);
+        if (phase === "fetch") throw new Error("fetch failed");
+        return { arrayBuffer: async () => { throw new Error("body failed"); } };
+      });
+      await expect(failure.read("views/a.json")).rejects.toThrow(`${phase} failed`);
+    }
+    await delay(40);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
+  });
+
+  test("a response-lost create timeout can retry without overwriting immutable bytes", async () => {
+    const fake = createFakeR2();
+    fake.seedIdentity();
+    let attempts = 0;
+    let firstSignal;
+    const store = deadlineStore(async (input, init) => {
+      const response = await fake.fetch(input, init);
+      if (init.method === "PUT" && ++attempts === 1) {
+        firstSignal = init.signal;
+        return new Promise(() => {});
+      }
+      return response;
+    });
+    const retry = withUploadRetry(store, { retries: 1, sleep: async () => {} });
+    expect(await guarded(retry.create("views/a.json", Buffer.from("first")))).toBe(false);
+    expect(attempts).toBe(2);
+    expect(firstSignal.aborted).toBe(true);
+    expect(await store.read("views/a.json")).toEqual(Buffer.from("first"));
+  });
+
   test("round-trips a parquet-like buffer without text decoding", async () => {
     const fake = createFakeR2();
     fake.seedIdentity();
