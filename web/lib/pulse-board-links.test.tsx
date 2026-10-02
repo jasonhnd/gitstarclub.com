@@ -1,7 +1,10 @@
+import { createRankFixture } from "@/lib/integration/fixtures/rank";
+import { viewKey } from "@/lib/integration/fixtures/view-key";
+import { decodeHtml } from "@/lib/integration/fixtures/html";
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import type { ReactElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
-import type { HotSnapshot, OrgsLookup, RankList, ReposLookup } from "@/lib/contracts";
+import type { HotSnapshot, OrgsLookup, ReposLookup } from "@/lib/contracts";
 import type { AvailableRankPeriods } from "@/lib/data/rank-periods";
 import { localizedPulseBoardHrefs, pulseBoardHrefs } from "./pulse-board-links";
 
@@ -31,6 +34,15 @@ const VERSION = "pulse-board-links";
 const GENERATED_AT = "2026-06-21T00:00:00.000Z";
 const NOW = new Date("2026-07-08T12:00:00.000Z");
 const REPO_ID = 1;
+const rankFixture = createRankFixture({
+  generatedAt: GENERATED_AT,
+  repoId: REPO_ID,
+  orgLogin: "vercel",
+  stock: 100_000,
+  flow: 100,
+  orgValue: 100_000,
+});
+
 const originalFetch = globalThis.fetch;
 const originalBlobBase = process.env.BLOB_BASE_URL;
 const originalPublicBlobBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
@@ -183,30 +195,10 @@ function extractBoardHrefs(html: string, label: string): string[] {
   return [...new Set(hrefs)];
 }
 
-function decodeHtml(value: string): string {
-  return value
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)))
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
-}
-
 async function fixtureFetch(input: RequestInfo | URL): Promise<Response> {
-  const body = fixtureForView(viewKey(input));
+  const body = fixtureForView(viewKey(input, VERSION));
   if (body === null) return new Response("not found", { status: 404 });
   return Response.json(body);
-}
-
-function viewKey(input: RequestInfo | URL): string {
-  const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
-  let path = url.pathname.replace(/^\/+/, "");
-  const versionPrefix = `views/${VERSION}/`;
-  if (path.startsWith(versionPrefix)) path = path.slice(versionPrefix.length);
-  return path;
 }
 
 function fixtureForView(path: string): unknown | null {
@@ -237,23 +229,6 @@ function fixtureForView(path: string): unknown | null {
   }
 
   return null;
-}
-
-function rankFixture(window: string, period: string, dim: string, metric: string): RankList {
-  return {
-    meta: {
-      window: window as RankList["meta"]["window"],
-      period: period as RankList["meta"]["period"],
-      dim: dim as RankList["meta"]["dim"],
-      metric: metric as RankList["meta"]["metric"],
-      generated_at: GENERATED_AT,
-    },
-    items: [
-      dim === "repo"
-        ? { rank: 1, id: REPO_ID, value: metric === "stock" ? 100_000 : 100, prev_rank: null }
-        : { rank: 1, login: "vercel", value: 100_000, prev_rank: null },
-    ],
-  };
 }
 
 const reposLookupFixture: ReposLookup = {
