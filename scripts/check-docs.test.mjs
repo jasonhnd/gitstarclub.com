@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import {
   checkCjkProse,
   checkDocs,
+  checkMaintainedFacts,
   extractRepoReferences,
   historicalDocumentAllowlist,
   isCjkAllowlisted,
@@ -35,6 +36,78 @@ describe("documentation consistency gate", () => {
 
   test("the checked-in repository satisfies all maintained doc contracts", () => {
     assert.deepEqual(checkDocs(process.cwd()), []);
+  });
+
+  test("preserves maintained fact diagnostics in order without changing files", () => {
+    const root = mkdtempSync(join(tmpdir(), "gsc-maintained-facts-"));
+    const apiSources = [
+      "web/app/api/health/route.ts",
+      "web/app/sitemap-*.xml/route.ts",
+      "web/app/robots.ts",
+      "web/app/manifest.ts",
+      "web/app/opengraph-image.tsx",
+      "web/app/(en)/[locale]/[owner]/opengraph-image.tsx",
+      "web/app/(en)/rankings/[year]/opengraph-image.tsx",
+      "web/app/(en)/rankings/[year]/[period]/opengraph-image.tsx",
+    ];
+    const files = {
+      "web/package.json": JSON.stringify({ dependencies: { next: "99.0.0" } }),
+      "web/app/api/health/route.ts": "",
+      "web/app/sitemap-users.xml/route.ts": "",
+      "docs/FRONTEND.md": "Next.js 99.0.0",
+      "docs/SEO.md": "Next.js 99.0.0",
+      "docs/UIUX-ROUTE-INVENTORY.md": "---\nowner: route and source inventory\n---\n",
+      "docs/API.md": apiSources.join("\n"),
+      "README.md": "Cloudflare R2 (production still reads Vercel Blob until cutover; see docs)",
+      "docs/OPS.md": "Local environment: `web/.env.local`",
+      "docs/WORKFLOW.md": "verify / static, verify / production-build; preview-e2e is optional",
+    };
+    const writeFiles = () => {
+      for (const [path, content] of Object.entries(files)) {
+        const target = join(root, path);
+        mkdirSync(join(target, ".."), { recursive: true });
+        writeFileSync(target, content);
+      }
+    };
+    try {
+      writeFiles();
+      assert.deepEqual(checkMaintainedFacts(root), []);
+      files["docs/FRONTEND.md"] = "outdated version";
+      files["docs/SEO.md"] = "outdated version";
+      files["docs/UIUX-ROUTE-INVENTORY.md"] = "no inventory owner";
+      files["docs/API.md"] = "no endpoints";
+      files["README.md"] = "outdated storage";
+      files["docs/OPS.md"] = "\u672c\u5730\u7528 `.env`";
+      files["docs/WORKFLOW.md"] = "outdated merge gates";
+      files["docs/STALE.md"] = "Preview discovery for Vercel (required gates)\n\u5df2\u63d0\u4ea4\u5e76\u5f3a\u5236 preview-e2e\nweb/middleware.ts";
+      writeFiles();
+      const expected = [
+        "docs/FRONTEND.md: expected Next.js 99.0.0",
+        "docs/SEO.md: expected Next.js 99.0.0",
+        "route/source inventory must have exactly one owner; found: none",
+        ...apiSources.map((source) => `docs/API.md: endpoint inventory is missing ${source}`),
+        "README.md: storage must be Cloudflare R2, with production still reading Vercel Blob until cutover",
+        "docs/OPS.md: local env location must be web/.env.local",
+        "docs/OPS.md: root .env is not loaded by the web scripts",
+        "docs/WORKFLOW.md: merge gates must state GitHub required checks are static + production-build",
+        "docs/WORKFLOW.md: merge gates must state preview-e2e / product-gates are optional",
+        "docs/STALE.md: Vercel preview discovery is optional / skippable, not a required gate",
+        "docs/STALE.md: preview-e2e suites are soft / optional, not enforced merge gates",
+        "docs/STALE.md: stale middleware path; the active entrypoint is web/proxy.ts",
+      ];
+      assert.deepEqual(checkMaintainedFacts(root), expected);
+      assert.deepEqual(checkMaintainedFacts(root), expected);
+      for (const [path, content] of Object.entries(files)) {
+        assert.equal(readFileSync(join(root, path), "utf8"), content);
+      }
+      // Historical records must remain exempt from current-state wording checks.
+      files["docs/CHANGELOG.md"] = files["docs/STALE.md"];
+      files["docs/STALE.md"] = "current wording";
+      writeFiles();
+      assert.deepEqual(checkMaintainedFacts(root), expected.slice(0, -3));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("cjk allowlist covers product locale paths and localized tests only", () => {
