@@ -1,3 +1,4 @@
+import { githubRepoFullName } from "@/lib/public-params";
 import { safeExternalHref } from "@/lib/external-url";
 
 const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -90,7 +91,7 @@ export function normalizeRepoPageEntity(value: unknown, expectedId?: number): Re
 
 export function isRenderableRepoFullName(value: string): boolean {
   const parts = value.split("/");
-  return parts.length === 2 && parts.every((part) => part.trim().length > 0 && !part.includes("?") && !part.includes("#"));
+  return parts.length === 2 && githubRepoFullName(parts[0], parts[1]) !== null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
