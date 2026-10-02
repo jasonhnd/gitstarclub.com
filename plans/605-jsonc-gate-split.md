@@ -29,3 +29,33 @@ CI workflows, delivery policy, Worker configuration, dependency lockfiles, deplo
 - Existing gate assertions and diagnostic messages are preserved, including ordering on combined failures.
 - Full static checks and fixture production build pass under the pinned toolchain without live credentials or real data access.
 - No changes to workflows, delivery policy, Worker configuration, or lockfiles.
+
+## PR #634 integration follow-up (GSC_0062)
+
+### Goal and scope
+
+Merge the latest `origin/pre` into the existing PR branch with a merge commit.
+Resolve the CF gate conflict by carrying the complete #630 production stage-4
+contract into the extracted validators, while retaining #579 hardening and the
+JSONC string scanner. Preserve all conditions, exact diagnostics, and their
+order. Scope is the conflicted gate implementation, gate tests, this plan, and
+any changelog conflict; changes arriving from `pre` remain intact.
+
+### Restrictions
+
+No new behavior, rebase, force push, PR merge, protected-branch push, branch or
+file deletion, deployment, Cloudflare/Vercel API call, credential or local
+environment-file read, or edits to workflows, delivery policy, or Worker config.
+
+### Acceptance and delivery
+
+- Keep every #630 and #579 gate regression, and prove their conditions and
+  ordered diagnostic output match the latest `pre` implementation.
+- Pass `node --test scripts/cf-ci-gates.test.mjs scripts/check-docs.test.mjs` and
+  `node scripts/assert-cf-ci-gates.mjs` with the pinned toolchain.
+- Pass the complete static job in a fresh detached verification worktree,
+  with a clean environment and no live checks; use `/tmp/GSC_0062/` for artifacts.
+- Push only the existing PR branch, confirm PR #634 has no merge conflict, and
+  update its verification record to the new head.
+- Report the new head, every transferred check, test results, and remaining
+  risks through GSC_0062 for independent Claude-family review.
