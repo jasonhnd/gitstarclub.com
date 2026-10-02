@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { withBootstrapPublicationLease } from "./bootstrap-lease.mjs";
 
+/** @typedef {import('./bootstrap-store-types.mjs').BootstrapStore} BootstrapStore */
+/** @typedef {import('./bootstrap-store-types.mjs').BootstrapStagingStore} BootstrapStagingStore */
+/** @typedef {import('./bootstrap-store-types.mjs').BootstrapPublicationStore} BootstrapPublicationStore */
+
 export const BOOTSTRAP_POINTER_PATH = "bootstrap/latest.json";
 export const INITIAL_COMMIT_ABSENT_PATHS = [
   BOOTSTRAP_POINTER_PATH,
@@ -166,6 +170,7 @@ async function mapPool(items, concurrency, worker) {
  * bootstrap process never overwrites these paths; rollback removes only the
  * bootstrap pointer after representative base views and every required
  * bucketed canonical family parse successfully.
+ * @param {{ store: Pick<BootstrapStore, 'read'>, concurrency?: number }} options
  */
 export async function verifyLegacyFlatTarget({ store, concurrency = 12 }) {
   const files = await mapPool(LEGACY_FLAT_REQUIRED_PATHS, concurrency, async (path) => {
@@ -198,6 +203,14 @@ export async function verifyLegacyFlatTarget({ store, concurrency = 12 }) {
 /**
  * Create one immutable generation phase. Existing byte-identical objects are
  * reused, which makes the same generation safe to resume after interruption.
+ * @param {{
+ *   generation: string | undefined,
+ *   phase: string,
+ *   items: Array<{ path: string, body: Buffer, contentType?: string }>,
+ *   store: BootstrapStagingStore,
+ *   concurrency?: number,
+ *   onProgress?: (progress: { completed: number, total: number, path: string, created: boolean }) => void,
+ * }} options
  */
 export async function stageBootstrapPhase({ generation, phase, items, store, concurrency = 12, onProgress = (_progress) => {} }) {
   const prefix = bootstrapGenerationPrefix(generation);
@@ -242,6 +255,7 @@ export async function stageBootstrapPhase({ generation, phase, items, store, con
   return { status: "staged", created, reused: manifest.object_count - created, manifest };
 }
 
+/** @param {{ generation: string | undefined, phase: string, store: Pick<BootstrapStore, 'read'>, concurrency?: number }} options */
 export async function verifyBootstrapPhase({ generation, phase, store, concurrency = 12 }) {
   const manifestPath = bootstrapPhaseManifestPath(generation, phase);
   const rawManifest = await store.read(manifestPath);
@@ -255,6 +269,7 @@ export async function verifyBootstrapPhase({ generation, phase, store, concurren
   return { manifest, sha256: sha256Bytes(rawManifest) };
 }
 
+/** @param {{ generation: string | undefined, store: Pick<BootstrapStore, 'read'>, concurrency?: number }} options */
 export async function verifyBootstrapGeneration({ generation, store, concurrency = 12 }) {
   const [base, canonical] = await Promise.all(
     BOOTSTRAP_PHASES.map((phase) => verifyBootstrapPhase({ generation, phase, store, concurrency })),
@@ -285,6 +300,7 @@ function parsePointer(body) {
   return pointer;
 }
 
+/** @param {{ store: Pick<BootstrapStore, 'read'> }} options */
 export async function assertInitialCommitTarget({ store }) {
   for (const path of INITIAL_COMMIT_ABSENT_PATHS) {
     const body = await store.read(path);
@@ -292,6 +308,16 @@ export async function assertInitialCommitTarget({ store }) {
   }
 }
 
+/**
+ * @param {{
+ *   generation: string | undefined,
+ *   store: BootstrapPublicationStore,
+ *   validate?: (verified: Awaited<ReturnType<typeof verifyBootstrapGeneration>>) => Promise<void>,
+ *   assertCanCommit?: () => Promise<void>,
+ *   now?: () => string,
+ *   initialCommit?: boolean,
+ * }} options
+ */
 export async function commitBootstrapGeneration({
   generation,
   store,
@@ -368,6 +394,7 @@ export async function commitBootstrapGeneration({
 /**
  * R2 `--initial-commit` for the operator pointer script. Uses the same
  * `ops/workflows/active.json` lease and fencing token as pipeline step 07.
+ * @param {{ generation: string, store: BootstrapStore, now?: () => string }} options
  */
 export async function commitInitialBootstrapWithLease({ generation, store, now }) {
   return withBootstrapPublicationLease({
@@ -385,6 +412,14 @@ export async function commitInitialBootstrapWithLease({ generation, store, now }
   });
 }
 
+/**
+ * @param {{
+ *   store: BootstrapPublicationStore,
+ *   targetGeneration: string,
+ *   assertCanCommit?: () => Promise<void>,
+ *   now?: () => string,
+ * }} options
+ */
 export async function rollbackBootstrapGeneration({
   store,
   targetGeneration,

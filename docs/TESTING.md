@@ -41,6 +41,40 @@ Those commands are the current PR/`pre`/`main` static blockers; production build
 
 The Vercel Workflow `validate` step is a separate production-data publish gate: it samples `views/<run_id>/**` after recompute and blocks the `views/latest.json` pointer cut on validation failure. It is not a page-rendering or PR CI gate.
 
+## Local R2 stage 2 rehearsal
+
+Issue #586 adds the manual offline command in
+[web/scripts/r2-local-rehearsal.ts](../web/scripts/r2-local-rehearsal.ts). Run it with pinned
+Node v24.20.0 / Bun 1.3.14 and both packages installed before the real-bucket
+rehearsal in [R2-CUTOVER.md stage 2](./R2-CUTOVER.md#stage-2-preview-rehearsal).
+It exits 0 with `R2_LOCAL_REHEARSAL_OK` only after the real backfill CLIs,
+persistent local R2 restart, standalone Worker bootstrap reads, binding lease
+operations, pointer CAS, and identity/initial-commit refusals pass.
+
+The CLI fixture mirror copies only the two backfill entrypoints, their source
+helpers, and checked-in view fixtures, then generates a tiny DuckDB parquet
+file. Installed dependencies and validators are linked into that mirror;
+repository environment files are not copied or loaded. A new HOME and a small
+environment allowlist keep the harness separate from account configuration.
+Miniflare provides the local S3/public services and actual workerd conditions;
+there is no hand-written bucket emulator. Worker public reads loop back to its
+`DATA` bucket. The local bucket and mirror are removed on completion.
+
+`web/lib/storage/r2-binding-workerd.test.ts` also checks a non-UTF-8 binary
+payload, a missing key, a prefixed key, and the bootstrap adapter's matching
+body/ETag snapshot. This covers the `getBytes` binding method needed by Worker
+bootstrap publication. The original local rehearsal failed without that method
+with `object store cannot read binary objects` before the guarded commit could
+run. Reverting quote removal in binding conditions breaks Worker renewal;
+bypassing the initial-commit shared lease breaks the active-workflow refusal;
+removing the post-renewal marker check breaks the injected-marker refusal.
+Mutation verification is performed in a disposable verification checkout,
+with every source restored before the full static job.
+
+The command remains manual rather than adding a CI job. It covers the Worker
+data path, with the Next request cache disabled; full page-server behavior and
+real DNS/bucket/preview acceptance remain separate checks.
+
 ## Target coverage
 
 The responsive-overflow, serious/critical axe, and Search/Compare interaction subset below is enforced in Chromium. Visual baselines, broader browser flows, performance, keyboard/manual accessibility outside the Search/Compare flow, and cross-browser coverage remain targets until their tooling is added. The status table in **Planned gates** is the source of truth for whether each check is `enforced`, `manual`, `report-only`, `planned`, or `not implemented`.
