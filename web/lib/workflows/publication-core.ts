@@ -22,31 +22,48 @@ export type PublicationOwner = {
 };
 
 /**
- * Steps that can fail while `views/latest.json` already serves the intent's
- * version. `whitelist_snapshot` and `pointer` happen only when a replay or a
- * lost pointer-write response finds the pointer already switched.
+ * Steps checked against the live pointer when they fail: the invalidation
+ * target check, the whitelist snapshot read, and the pointer write. Before
+ * the pointer write they count as post-commit only on a replay, when an
+ * earlier attempt may already have switched the pointer.
  */
-export type PublicationPostCommitStep =
-  | "whitelist_snapshot"
-  | "pointer"
-  | "recovery"
-  | "whitelist_pointer"
-  | "invalidate"
-  | "indexnow";
+export type PublicationCommitCheckStep = "invalidate" | "whitelist_snapshot" | "pointer";
+
+/** Steps that can fail while `views/latest.json` already serves the intent's version. */
+export type PublicationPostCommitStep = PublicationCommitCheckStep | "recovery" | "whitelist_pointer" | "indexnow";
+
+function causeText(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
 
 /**
  * The live pointer already serves `version`, but a later publication step did
- * not finish. Retrying replays the immutable intent and repairs the remaining
- * steps; this is not a reason to roll back or to rerun the refresh.
+ * not finish. A retry inside the same step replays the immutable intent and
+ * repairs the rest; once the run is marked failed, the next successful run
+ * rewrites them. Not a reason to roll back or to rerun the refresh.
  */
 export class PublicationPostCommitError extends Error {
   readonly version: string;
   readonly step: PublicationPostCommitStep;
 
   constructor(version: string, step: PublicationPostCommitStep, cause: unknown) {
-    const reason = cause instanceof Error ? cause.message : String(cause);
-    super(`version ${version} is live; post-commit ${step} failed: ${reason}`, { cause });
+    super(`version ${version} is live; post-commit ${step} failed: ${causeText(cause)}`, { cause });
     this.name = "PublicationPostCommitError";
+    this.version = version;
+    this.step = step;
+  }
+}
+
+/** A step around the pointer write failed and the live pointer could not be read to tell whether it switched. */
+export class PublicationCommitUnknownError extends Error {
+  readonly version: string;
+  readonly step: PublicationCommitCheckStep;
+
+  constructor(version: string, step: PublicationCommitCheckStep, cause: unknown) {
+    super(`version ${version} may be live; ${step} failed and the live pointer could not be read: ${causeText(cause)}`, {
+      cause,
+    });
+    this.name = "PublicationCommitUnknownError";
     this.version = version;
     this.step = step;
   }
@@ -61,6 +78,8 @@ export type PublicationDeps = {
   writeRecovery(recovery: LatestSuccess): Promise<void>;
   writeWhitelistPointer(pointer: PublishedWhitelistType): Promise<void>;
   ensureOwnership(owner: PublicationOwner): Promise<void>;
+  /** Throws when the cache-invalidation target cannot be resolved; runs before the pointer switch. */
+  checkInvalidationTarget(): void;
   invalidate(): Promise<void>;
   notifyIndexNow(args: { runId: string; prevVersion: string | null; publishedAt: string }): Promise<unknown>;
   now(): string;
@@ -87,12 +106,12 @@ async function getOrCreateIntent(
   version: string,
   previousVersion: string | null,
   deps: PublicationDeps,
-): Promise<PublishIntentType> {
+): Promise<{ intent: PublishIntentType; created: boolean }> {
   const existing = await deps.readIntent(operationId);
   if (existing) {
     const intent = validateIntent(existing, operation, operationId);
     if (intent.version !== version) throw new Error(`publish intent ${operationId} already targets ${intent.version}`);
-    return intent;
+    return { intent, created: false };
   }
 
   if (previousVersion === version) throw new Error(`refusing to publish ${version} with itself as prev_version`);
@@ -106,7 +125,7 @@ async function getOrCreateIntent(
   });
   await deps.ensureOwnership(owner);
   const created = await deps.createIntent(operationId, intent);
-  if (created) return intent;
+  if (created) return { intent, created: true };
 
   // A same-run retry won the immutable create race. Read and use exactly what
   // it persisted instead of recomputing a possibly different rollback target.
@@ -116,40 +135,46 @@ async function getOrCreateIntent(
   if (intentAfterRace.version !== version) {
     throw new Error(`publish intent ${operationId} already targets ${intentAfterRace.version}`);
   }
-  return intentAfterRace;
+  return { intent: intentAfterRace, created: false };
 }
 
-/** True only when the live pointer is exactly this intent's switch. */
-async function pointerServesIntent(intent: PublishIntentType, deps: PublicationDeps): Promise<boolean> {
+type CommitState = "live" | "not_live" | "unknown";
+
+/** `live` only when the pointer is exactly this intent's switch. */
+async function commitState(intent: PublishIntentType, deps: PublicationDeps): Promise<CommitState> {
   let live: ViewsPointerType | null;
   try {
     live = await deps.readPointer();
   } catch {
-    // Commit state is unknown. The caller rethrows the original error, which
-    // is the actionable one; a pointer read failure would only hide it.
-    return false;
+    return "unknown";
   }
-  return (
+  const switched =
     live?.version === intent.version &&
     live.published_at === intent.published_at &&
-    live.prev_version === intent.prev_version
-  );
+    live.prev_version === intent.prev_version;
+  return switched ? "live" : "not_live";
 }
 
 /**
- * Run a step up to and including the pointer write. When it fails, check the
- * pointer once: a replay or a lost write response may already have switched it.
+ * Run a step up to and including the pointer write. When it fails, read the
+ * pointer once if it may have switched: the pointer write itself (its response
+ * can be lost), or any step of a replay (an earlier attempt may have switched
+ * it). A freshly created intent cannot be live before its pointer write.
  */
 async function beforeCommit<T>(
   intent: PublishIntentType,
   deps: PublicationDeps,
-  step: "whitelist_snapshot" | "pointer",
+  replay: boolean,
+  step: PublicationCommitCheckStep,
   run: () => Promise<T>,
 ): Promise<T> {
   try {
     return await run();
   } catch (error) {
-    if (await pointerServesIntent(intent, deps)) throw new PublicationPostCommitError(intent.version, step, error);
+    if (!replay && step !== "pointer") throw error;
+    const state = await commitState(intent, deps);
+    if (state === "live") throw new PublicationPostCommitError(intent.version, step, error);
+    if (state === "unknown") throw new PublicationCommitUnknownError(intent.version, step, error);
     throw error;
   }
 }
@@ -170,8 +195,12 @@ async function applyIntent(
   owner: PublicationOwner,
   intent: PublishIntentType,
   deps: PublicationDeps,
+  replay: boolean,
 ): Promise<PublicationResult> {
-  const whitelist = await beforeCommit(intent, deps, "whitelist_snapshot", async () => {
+  // Resolve the cache-invalidation target before anything can go live, so a
+  // missing or cross-environment origin cannot leave a switched pointer behind.
+  await beforeCommit(intent, deps, replay, "invalidate", async () => deps.checkInvalidationTarget());
+  const whitelist = await beforeCommit(intent, deps, replay, "whitelist_snapshot", async () => {
     const snapshot = await deps.readWhitelistSnapshot(intent.version);
     if (!snapshot) throw new Error(`whitelist snapshot for published version ${intent.version} not found`);
     return snapshot;
@@ -202,7 +231,7 @@ async function applyIntent(
   // ledger records the live version. Ownership checks stay unwrapped: a lost
   // lease must keep its non-retryable WorkflowLeaseOwnershipError type.
   await deps.ensureOwnership(owner);
-  await beforeCommit(intent, deps, "pointer", () => deps.writePointer(pointer));
+  await beforeCommit(intent, deps, replay, "pointer", () => deps.writePointer(pointer));
   await deps.ensureOwnership(owner);
   await afterCommit(intent, "recovery", () => deps.writeRecovery(recovery));
   await deps.ensureOwnership(owner);
@@ -229,12 +258,12 @@ export async function publishVersionWithDeps(
   if (existing) {
     const intent = validateIntent(existing, "publish", runId);
     if (intent.version !== runId) throw new Error(`publish intent ${runId} already targets ${intent.version}`);
-    return applyIntent(owner, intent, deps);
+    return applyIntent(owner, intent, deps, true);
   }
   const current = await deps.readPointer();
   const previousVersion = current?.version === runId ? current.prev_version : (current?.version ?? null);
-  const intent = await getOrCreateIntent("publish", runId, owner, runId, previousVersion, deps);
-  return applyIntent(owner, intent, deps);
+  const { intent, created } = await getOrCreateIntent("publish", runId, owner, runId, previousVersion, deps);
+  return applyIntent(owner, intent, deps, !created);
 }
 
 export async function rollbackVersionWithDeps(
@@ -250,7 +279,7 @@ export async function rollbackVersionWithDeps(
     if (targetVersion && targetVersion !== intent.version) {
       throw new Error(`rollback ${operationId} already targets ${intent.version}`);
     }
-    return applyIntent(owner, intent, deps);
+    return applyIntent(owner, intent, deps, true);
   }
 
   const current = await deps.readPointer();
@@ -258,6 +287,6 @@ export async function rollbackVersionWithDeps(
   const target = targetVersion ?? current.prev_version;
   if (!target) throw new Error(`published version ${current.version} has no rollback target`);
   if (target === current.version) throw new Error(`published version ${current.version} already targets ${target}`);
-  const intent = await getOrCreateIntent("rollback", operationId, owner, target, current.version, deps);
-  return applyIntent(owner, intent, deps);
+  const { intent, created } = await getOrCreateIntent("rollback", operationId, owner, target, current.version, deps);
+  return applyIntent(owner, intent, deps, !created);
 }

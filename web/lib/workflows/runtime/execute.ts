@@ -1,7 +1,7 @@
 import { sendAlert } from "@/lib/observability/alert";
-import { markFailed, markPublished, startRun, type PostCommitFailure } from "@/lib/workflows/checkpoint";
+import { markFailed, markPublished, startRun, type PublicationFailure } from "@/lib/workflows/checkpoint";
 import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
-import { PublicationPostCommitError } from "@/lib/workflows/publication-core";
+import { PublicationCommitUnknownError, PublicationPostCommitError } from "@/lib/workflows/publication-core";
 import { buildAliases } from "@/lib/workflows/steps/aliases";
 import { runFoldStep } from "@/lib/workflows/steps/fold";
 import { gcVersions } from "@/lib/workflows/steps/gc";
@@ -77,19 +77,30 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
 }
 
 /**
- * Whether the run's version was already live when this step failed. publish
- * raises PublicationPostCommitError after the pointer switch; gc and
+ * Whether the run's version was live, or may be, when this step failed.
+ * publish raises PublicationPostCommitError after the pointer switch and
+ * PublicationCommitUnknownError when the switch cannot be confirmed; gc and
  * markPublished run only after publish succeeded, and publish uses the run id
  * as the version.
  */
-function postCommitFailure(job: Extract<RefreshStepJob, { graph: "full" }>, error: unknown): PostCommitFailure | undefined {
-  if (error instanceof PublicationPostCommitError) return { version: error.version, step: error.step };
-  if (job.name === "gc" || job.name === "markPublished") return { version: job.runId, step: job.name };
+function publicationFailure(
+  job: Extract<RefreshStepJob, { graph: "full" }>,
+  error: unknown,
+): PublicationFailure | undefined {
+  if (error instanceof PublicationPostCommitError) {
+    return { phase: "post_commit", version: error.version, step: error.step };
+  }
+  if (error instanceof PublicationCommitUnknownError) {
+    return { phase: "commit_unknown", version: error.version, step: error.step };
+  }
+  if (job.name === "gc" || job.name === "markPublished") {
+    return { phase: "post_commit", version: job.runId, step: job.name };
+  }
   return undefined;
 }
 
 export async function failRefreshJob(job: RefreshStepJob, error: unknown): Promise<void> {
   if (job.graph !== "full" || !job.cursor.startedAt || job.cursor.fencingToken === undefined) return;
   const message = error instanceof Error ? error.message : String(error);
-  await markFailed(job.runId, job.cursor.startedAt, message, job.cursor.fencingToken, postCommitFailure(job, error));
+  await markFailed(job.runId, job.cursor.startedAt, message, job.cursor.fencingToken, publicationFailure(job, error));
 }
