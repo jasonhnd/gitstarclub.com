@@ -6,7 +6,7 @@ import {
   bindingPreconditionPasses,
   setDataBindingReaderForTests,
   type R2Bucket,
-  type R2ObjectHead,
+  type R2ObjectBody,
 } from "@/lib/storage/r2-binding-store";
 
 type Stored = { body: string; etag: string };
@@ -19,7 +19,7 @@ class FakeR2Bucket implements R2Bucket {
     this.objects.set("_meta/bucket-identity.json", { body: marker, etag: "identity" });
   }
 
-  private toHead(key: string, stored: Stored): R2ObjectHead & { text: () => Promise<string> } {
+  private toHead(key: string, stored: Stored): R2ObjectBody {
     return {
       key,
       size: stored.body.length,
@@ -27,6 +27,7 @@ class FakeR2Bucket implements R2Bucket {
       httpEtag: `"${stored.etag}"`,
       httpMetadata: { contentType: "application/json" },
       text: async () => stored.body,
+      arrayBuffer: async () => new TextEncoder().encode(stored.body).buffer,
     };
   }
 
