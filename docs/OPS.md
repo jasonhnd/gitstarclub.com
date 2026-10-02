@@ -269,6 +269,7 @@ Platform and development-tool variables also belong to the maintained inventory;
 | `NODE_ENV` | runtime/tooling | Next.js and tests standard runtime mode |
 | `CI` | CI | Enables CI-only timeouts, output, and security gates |
 | `PORT` | Local tooling | Port the local fixture/dev server listens on |
+| `PATH` | Local tooling | Locates pinned Node/Bun for the offline R2 rehearsal; forwarded into its otherwise clean environment, never a Worker binding |
 | `BASE_URL` | Playwright/release | Browser-test origin; usually injected by the deployment resolver |
 | `PLAYWRIGHT_BASE_URL` | Playwright | `BASE_URL` explicit Playwright override |
 | `IDENTITY_ORIGIN` | release gate | Verifies the target deployment's canonical identity |
