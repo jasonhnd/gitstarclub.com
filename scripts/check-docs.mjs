@@ -201,7 +201,7 @@ function frontmatter(content) {
   return end === -1 ? "" : content.slice(4, end);
 }
 
-export function checkMaintainedFacts(root) {
+function checkFrameworkVersionFacts(root) {
   const issues = [];
   const webPackage = JSON.parse(readFileSync(resolve(root, "web/package.json"), "utf8"));
   const frontend = readFileSync(resolve(root, "docs/FRONTEND.md"), "utf8");
@@ -209,7 +209,11 @@ export function checkMaintainedFacts(root) {
   const expectedNext = `Next.js ${webPackage.dependencies.next}`;
   if (!frontend.includes(expectedNext)) issues.push(`docs/FRONTEND.md: expected ${expectedNext}`);
   if (!seo.includes(expectedNext)) issues.push(`docs/SEO.md: expected ${expectedNext}`);
+  return issues;
+}
 
+function checkRouteInventoryOwnership(root) {
+  const issues = [];
   const ownerDocs = readdirSync(resolve(root, "docs"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
     .map((entry) => `docs/${entry.name}`)
@@ -217,7 +221,11 @@ export function checkMaintainedFacts(root) {
   if (ownerDocs.length !== 1 || ownerDocs[0] !== "docs/UIUX-ROUTE-INVENTORY.md") {
     issues.push(`route/source inventory must have exactly one owner; found: ${ownerDocs.join(", ") || "none"}`);
   }
+  return issues;
+}
 
+function checkApiInventoryFacts(root) {
+  const issues = [];
   const api = readFileSync(resolve(root, "docs/API.md"), "utf8");
   const routeSources = walk(resolve(root, "web/app"))
     .map((file) => toRepoPath(file, root))
@@ -235,7 +243,11 @@ export function checkMaintainedFacts(root) {
   for (const source of requiredApiSources) {
     if (!api.includes(source)) issues.push(`docs/API.md: endpoint inventory is missing ${source}`);
   }
+  return issues;
+}
 
+function checkStorageDocumentationFacts(root) {
+  const issues = [];
   const rootReadme = readFileSync(resolve(root, "README.md"), "utf8");
   if (!rootReadme.includes("Cloudflare R2 (production still reads Vercel Blob until cutover; see")) {
     issues.push("README.md: storage must be Cloudflare R2, with production still reading Vercel Blob until cutover");
@@ -245,7 +257,11 @@ export function checkMaintainedFacts(root) {
   if (!ops.includes("`web/.env.local`")) issues.push("docs/OPS.md: local env location must be web/.env.local");
   // Retired wording for "use a root .env locally". Escaped so this file stays free of Han characters.
   if (/\u672c\u5730\u7528 `\.env`/.test(ops)) issues.push("docs/OPS.md: root .env is not loaded by the web scripts");
+  return issues;
+}
 
+function checkWorkflowDocumentationFacts(root) {
+  const issues = [];
   const workflow = readFileSync(resolve(root, "docs/WORKFLOW.md"), "utf8");
   if (!workflow.includes("verify / static") || !workflow.includes("verify / production-build")) {
     issues.push("docs/WORKFLOW.md: merge gates must state GitHub required checks are static + production-build");
@@ -253,7 +269,11 @@ export function checkMaintainedFacts(root) {
   if (!/preview-e2e/.test(workflow) || !/optional/.test(workflow)) {
     issues.push("docs/WORKFLOW.md: merge gates must state preview-e2e / product-gates are optional");
   }
+  return issues;
+}
 
+function checkCurrentDocumentationFacts(root) {
+  const issues = [];
   const currentStateDocs = walk(resolve(root, "docs"))
     .filter((file) => file.endsWith(".md"))
     .filter((file) => !historicalDocumentAllowlist.has(toRepoPath(file, root)));
@@ -271,8 +291,18 @@ export function checkMaintainedFacts(root) {
       issues.push(`${path}: stale middleware path; the active entrypoint is web/proxy.ts`);
     }
   }
-
   return issues;
+}
+
+export function checkMaintainedFacts(root) {
+  return [
+    ...checkFrameworkVersionFacts(root),
+    ...checkRouteInventoryOwnership(root),
+    ...checkApiInventoryFacts(root),
+    ...checkStorageDocumentationFacts(root),
+    ...checkWorkflowDocumentationFacts(root),
+    ...checkCurrentDocumentationFacts(root),
+  ];
 }
 
 const cjkProseDirectories = ["docs", "plans", ".cursor", ".grok"];
