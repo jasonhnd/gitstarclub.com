@@ -56,3 +56,11 @@ The card-level rule forbids creating another worktree. Verification therefore
 uses a fresh local clone detached at the exact committed SHA, with no copied
 untracked files or environment files; temporary logs and fixtures stay in
 `/tmp/GSC_0072`.
+
+## Regression evidence
+
+Before production changes, the two step test files produced 4 passing and 22
+failing tests (26 total, exit 1). Failures included omitted second-page aliases,
+25 simultaneous rename reads, incorrect newest-four selection, and discarded
+progress after a successful version deletion followed by a failure. After the
+fix, all 26 tests pass (exit 0), including partial-chunk deletion and retry.
