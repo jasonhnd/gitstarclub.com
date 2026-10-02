@@ -1,6 +1,8 @@
 import { createBlobBootstrapStore } from "./blob-bootstrap-store.mjs";
 import { createR2BootstrapStore } from "./r2-bootstrap-store.mjs";
 
+/** @typedef {import('./bootstrap-store-types.mjs').BootstrapStore} BootstrapStore */
+
 export const UPLOAD_HELP = `Backfill step 6 — stage an immutable base phase. This step does not publish a pointer.
 
 Blob (unchanged: upload unless --dry-run):
@@ -209,6 +211,7 @@ export async function preflightR2Identity(cli, env, options = {}) {
   return { checked: true };
 }
 
+/** @returns {BootstrapStore} */
 export function createStoreFromCli(cli, env, options = {}) {
   if (!remoteWriteEnabled(cli) && !options.force) {
     throw new Error("refusing to open a remote store when remote writes are disabled");
@@ -223,13 +226,15 @@ export function createStoreFromCli(cli, env, options = {}) {
 }
 
 /**
+ * @template T
  * @param {{
  *   cli: ReturnType<typeof parseBootstrapArgs>,
  *   env: Record<string, string | undefined>,
  *   fetch?: typeof fetch,
  *   now?: () => Date,
- *   stage: (store: any) => Promise<any>,
+ *   stage: (store: BootstrapStore) => Promise<T>,
  * }} options
+ * @returns {Promise<{ action: 'dry-run' } | { action: 'wrote', result: T }>}
  */
 export async function runRemoteStage({ cli, env, fetch, now, stage }) {
   if (!remoteWriteEnabled(cli)) return { action: "dry-run" };

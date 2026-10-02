@@ -2,10 +2,14 @@
 // closes the read-check-write race: a Workflow cannot start between bootstrap
 // validation and the one-file pointer switch, and stale owners stay fenced.
 
+/** @typedef {import('./bootstrap-store-types.mjs').BootstrapLease} BootstrapLease */
+/** @typedef {import('./bootstrap-store-types.mjs').BootstrapLeaseStore} BootstrapLeaseStore */
+
 export const ACTIVE_WORKFLOW_PATH = "ops/workflows/active.json";
 const BOOTSTRAP_LEASE_TTL_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
 
+/** @param {Buffer | null} body @returns {BootstrapLease | null} */
 function parseLease(body) {
   if (!body) return null;
   let lease;
@@ -26,10 +30,12 @@ function parseLease(body) {
   return lease;
 }
 
+/** @param {BootstrapLease} lease */
 function leaseBody(lease) {
   return Buffer.from(JSON.stringify(lease));
 }
 
+/** @param {{ store: BootstrapLeaseStore, generation: string | undefined, operation: 'publish' | 'rollback', now?: number }} options */
 export async function acquireBootstrapLease({ store, generation, operation, now = Date.now() }) {
   const acquiredAt = new Date(now).toISOString();
   const runId = `bootstrap-${operation}-${generation}`;
@@ -41,6 +47,7 @@ export async function acquireBootstrapLease({ store, generation, operation, now 
     if (active?.status === "running" && Date.parse(active.expires_at) > now) {
       throw new Error(`bootstrap ${operation} blocked by active workflow ${active.run_id} until ${active.expires_at}`);
     }
+    /** @type {BootstrapLease} */
     const lease = {
       run_id: runId,
       status: "running",
@@ -58,6 +65,7 @@ export async function acquireBootstrapLease({ store, generation, operation, now 
   throw new Error(`failed to acquire ${ACTIVE_WORKFLOW_PATH} after concurrent updates`);
 }
 
+/** @param {{ store: BootstrapLeaseStore, lease: BootstrapLease, status: 'published' | 'failed', now?: number }} options */
 export async function releaseBootstrapLease({ store, lease, status, now = Date.now() }) {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const snapshot = await store.readSnapshot(ACTIVE_WORKFLOW_PATH);
@@ -82,6 +90,7 @@ export async function releaseBootstrapLease({ store, lease, status, now = Date.n
   return false;
 }
 
+/** @param {{ store: BootstrapLeaseStore, lease: BootstrapLease, now?: number }} options */
 export async function renewBootstrapLease({ store, lease, now = Date.now() }) {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const snapshot = await store.readSnapshot(ACTIVE_WORKFLOW_PATH);
@@ -107,20 +116,31 @@ export async function renewBootstrapLease({ store, lease, now = Date.now() }) {
   throw new Error(`bootstrap operation lost workflow lease ${lease.fencing_token} while renewing`);
 }
 
+/**
+ * @template {(assertCanCommit: () => Promise<void>) => Promise<unknown>} TRun
+ * @param {{
+ *   store: BootstrapLeaseStore,
+ *   generation: string | undefined,
+ *   operation: 'publish' | 'rollback',
+ *   run: TRun,
+ * }} options
+ * @returns {Promise<Awaited<ReturnType<TRun>>>}
+ */
 export async function withBootstrapPublicationLease({ store, generation, operation, run }) {
-  /** @type {any} */
-  let lease = null;
+  /** @type {{ lease: BootstrapLease | null }} */
+  const state = { lease: null };
   let succeeded = false;
   try {
     const result = await run(async () => {
-      lease = lease
-        ? await renewBootstrapLease({ store, lease })
+      state.lease = state.lease
+        ? await renewBootstrapLease({ store, lease: state.lease })
         : await acquireBootstrapLease({ store, generation, operation });
     });
-    if (!lease) throw new Error(`bootstrap ${operation} did not acquire the shared workflow lease`);
+    if (!state.lease) throw new Error(`bootstrap ${operation} did not acquire the shared workflow lease`);
     succeeded = true;
-    return result;
+    return /** @type {Awaited<ReturnType<TRun>>} */ (result);
   } finally {
+    const lease = state.lease;
     if (lease) {
       const released = await releaseBootstrapLease({
         store,

@@ -29,6 +29,27 @@ function r2Env(overrides = {}) {
 }
 
 describe("bootstrap CLI", () => {
+  test("an executed remote stage retains its structured result", async () => {
+    const cli = parseBootstrapArgs(["--store", "r2", "--target", "pre", "--execute"]);
+    const result = { phase: "base", objects: 2, digests: ["one", "two"] };
+    const requests = [];
+    const outcome = await runRemoteStage({
+      cli,
+      env: r2Env(),
+      fetch: async (_input, init) => {
+        requests.push(init.method);
+        return new Response(JSON.stringify({ bucket: "gitstarclub-data-pre", deploy_env: "pre" }));
+      },
+      stage: async (store) => {
+        await store.checkIdentity();
+        return result;
+      },
+    });
+    expect(outcome.action).toBe("wrote");
+    expect(outcome.result).toBe(result);
+    expect(requests).toEqual(["GET"]);
+  });
+
   test("R2 without --execute performs zero write requests and Blob still writes", async () => {
     const cli = parseBootstrapArgs(["--store", "r2", "--target", "pre", "--generation", "bootstrap-20260717T120000Z"]);
     expect(remoteWriteEnabled(cli)).toBe(false);
