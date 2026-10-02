@@ -180,7 +180,6 @@ describe("actual public boundaries", () => {
       const rank = await import("./lib/data/rank");
       const heat = await import("./lib/data/heatmap");
       for (const login of ${JSON.stringify(invalidSegments)}) {
-        assert.equal(await entity.getOrgEntity(login), null);
         assert.equal(await entity.getOrgEntityDaily(login), null);
       }
       for (const id of [0,-1,1.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]) {
@@ -198,7 +197,7 @@ describe("actual public boundaries", () => {
         assert.throws(() => heat.getHeatmapBaseAuthoritative(scope,period), /Invalid heatmap/);
       }
       assert.deepEqual(reads, []);
-      await entity.getOrgEntity("Git-Hub");
+      await entity.getOrgEntityDaily("Git-Hub");
       await entity.getRepoPageEntityDaily(1);
       await rank.getRankBase("year","2024","repo","flow");
       await rank.getRankBaseDaily("week","2020-W53","repo","flow");
