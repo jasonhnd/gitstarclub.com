@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { Chrome } from "@/app/_explore/Chrome";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
@@ -9,15 +8,11 @@ import { PageHero } from "@/app/_explore/PageHero";
 import { Star } from "@/app/_explore/Star";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { CompareClient } from "@/app/compare/CompareClient";
-import { getMeta, getRepoCurve, getRepoIdByFullName } from "@/lib/data";
+import { getMeta, getRepoIdByFullName } from "@/lib/data";
 import { resolveDataAsOfFromMeta } from "@/lib/geo-capsules";
 import {
-  COMMON_COMPARE_PAIRS,
   buildCompareConclusionText,
-  buildComparePairConclusion,
   formatCompareGain,
-  type CompareConclusionLabels,
-  type ComparePairConclusion,
 } from "@/lib/compare/conclusions";
 import { fmtStars } from "@/lib/format";
 import { getDictionary, type Locale } from "@/lib/i18n";
@@ -25,6 +20,8 @@ import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { pageMeta } from "@/lib/seo";
 import { answerCapsuleLabels } from "./detail-copy";
 import { buildLocalizedCompareCapsule, buildLocalizedCompareFaqs } from "./seo-copy";
+
+import { HeroFacts, loadPairConclusions } from "./comparison-page-data";
 
 const COMPARE_PATH = "/compare";
 
@@ -46,7 +43,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
   const asOf = resolveDataAsOfFromMeta(meta, { locale });
   const capsule = asOf ? buildLocalizedCompareCapsule(locale, asOf) : null;
   const faqItems = buildLocalizedCompareFaqs(locale, asOf);
-  const pairConclusions = await loadPairConclusions(repoIds, locale, t.compare);
+  const { conclusions: pairConclusions, unavailablePairs } = await loadPairConclusions(repoIds, locale, t.compare);
   const conclusionText = asOf ? buildCompareConclusionText(asOf, pairConclusions, t.compare) : null;
   const hasServerSummary = Boolean(conclusionText && pairConclusions.length > 0);
   const compareClientLabels = {
@@ -89,7 +86,7 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
             />
           }
           aside={
-            <CompareHeroFacts
+            <HeroFacts
               items={[
                 ...(asOf ? [{ label: t.common.dataAsOf, value: asOf }] : []),
                 { label: t.common.source, value: t.compare.repoCurveSource },
@@ -232,6 +229,13 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
             </dl>
           </section>
         )}
+        {unavailablePairs.length > 0 && (
+          <ul className="mt-4 space-y-2 rounded-lg border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.9rem] text-on-surface-variant">
+            {unavailablePairs.map((pair) => (
+              <li key={pair.label}>{t.compare.loadError.replace("{repo}", `${pair.a} ${t.common.versus} ${pair.b}`)}</li>
+            ))}
+          </ul>
+        )}
         <section id="compare-workbench" className="mt-[clamp(2.5rem,5vw,4rem)] scroll-mt-24">
           <CompareClient labels={compareClientLabels} comparePath={routePath} locale={locale} />
         </section>
@@ -239,20 +243,6 @@ export async function ComparePageView({ locale }: { locale: Locale }) {
       </main>
     </>
   );
-}
-
-async function loadPairConclusions(repoIds: Map<string, number>, locale: Locale, labels: CompareConclusionLabels): Promise<ComparePairConclusion[]> {
-  const rows = await Promise.all(
-    COMMON_COMPARE_PAIRS.map(async (pair) => {
-      const aId = repoIds.get(pair.a.toLowerCase());
-      const bId = repoIds.get(pair.b.toLowerCase());
-      if (aId === undefined || bId === undefined) return null;
-      const [a, b] = await Promise.all([getRepoCurve(aId), getRepoCurve(bId)]);
-      if (!a || !b) return null;
-      return buildComparePairConclusion(pair, a, b, locale, labels);
-    }),
-  );
-  return rows.filter((row): row is ComparePairConclusion => Boolean(row));
 }
 
 function HeroActions({ links }: { links: Array<{ href: string; label: string }> }) {
@@ -269,16 +259,3 @@ function HeroActions({ links }: { links: Array<{ href: string; label: string }> 
 
 const heroActionClass =
   "text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline";
-
-function CompareHeroFacts({ items }: { items: Array<{ label: string; value: ReactNode }> }) {
-  return (
-    <dl className="grid gap-3 rounded-lg border border-outline-variant bg-surface-container px-4 py-4">
-      {items.map((item) => (
-        <div key={item.label} className="min-w-0">
-          <dt className="font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{item.label}</dt>
-          <dd className="mt-1 break-words font-mono text-[0.95rem] font-extrabold text-on-surface">{item.value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
