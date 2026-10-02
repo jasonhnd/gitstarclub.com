@@ -652,6 +652,15 @@ bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < 
 
 Rehearse in `gitstarclub-data-pre`, then load `gitstarclub-data-prod`. The owner places `_meta/bucket-identity.json` at the bucket root out of band. `bucket` must equal the target bucket name. `deploy_env` is `pre` for `--target pre` and `production` for `--target prod`. The scripts never write or delete `_meta/`.
 
+Before the real-bucket rehearsal, run the offline local rehearsal first. Use the SHA-256-verified Node v24.20.0 and Bun 1.3.14 bootstrap in [AGENTS.md](../AGENTS.md), with dependencies installed in both `web/` and `pipeline/` using `bun --no-env-file install --frozen-lockfile`. From the repository root:
+
+```bash
+cd web
+bun --no-env-file scripts/r2-local-rehearsal.ts
+```
+
+Success prints `R2_LOCAL_REHEARSAL_OK` and exits 0. Stage 2 still requires the real public origins and preview site acceptance in [R2-CUTOVER.md](./R2-CUTOVER.md#stage-2-preview-rehearsal). The local command uses fixtures and a clean environment, with no deployment or added CI job (#586).
+
 R2 performs no writes unless `--execute`. `--target` without `--store r2` is refused. A dry run prints the object count, byte count, and target bucket. When R2 credentials are set, that dry run also reads `_meta/bucket-identity.json` and refuses a mismatched marker. When they are unset, it does not contact the bucket. `--initial-commit` is R2 only. It publishes `previous_generation: null` when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are all absent, and it refuses if any of those already exist. The first pointer is create-only. Retrying the same `--initial-commit` after that generation is visible returns already-published; a different existing pointer is refused. The identity marker and staged generation objects do not block that check. This null is not a legacy-flat rollback: `--rollback legacy-flat` fails closed because the flat layout is not in the new bucket.
 
 A first publish has no prior generation. `--rollback` of the generation just committed returns `already-rolled-back` and leaves the pointer in place. That status is not an undo. The same rule is in [R2-CUTOVER.md](./R2-CUTOVER.md) stages 2 and 3.
