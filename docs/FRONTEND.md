@@ -13,7 +13,7 @@ source_of_truth_for:
 
 > **Frontend implementation source of truth** — lands [REQUIREMENTS](./REQUIREMENTS.md) (what to do), [ARCHITECTURE](./ARCHITECTURE.md) (page layering / ISR / cadence), [DATA-CONTRACTS](./DATA-CONTRACTS.md) (consumed JSON view schema), [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) (M3E token / components / motion) onto this `web/` **Next.js 16 App Router** application's **rendering config / data consumption / components / i18n**. The route and source-file inventory is maintained only in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md).
 > SEO metadata / sitemap / canonical details are in [SEO.md](./SEO.md); Route Handler and public JSON endpoint contracts are in [API.md](./API.md); Blob layout / environment variables / deployment topology are in [OPS.md](./OPS.md).
-> Technical facts are based on **Next.js 16.3.6 · React 19.2.4 · TypeScript 6 · Tailwind 4 · Zod 4 · package manager bun 1.3.14** (see `web/package.json` and the root `package.json`).
+> Technical facts are based on **Next.js 16.3.8 · React 19.2.4 · TypeScript 6 · Tailwind 4 · Zod 4 · package manager bun 1.3.14** (see `web/package.json` and the root `package.json`).
 
 ---
 
@@ -208,7 +208,7 @@ Page BODY and chrome (top bar / footer / breadcrumb labels / section titles) are
 - `web/app/_localized/*`: shared server page implementations; after receiving the route locale / dictionary / canonical path, they render localized chrome, metadata, JSON-LD, and deterministic copy.
 - `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` are Server Components; `SearchBox`, `LanguageSwitcher`, and `ThemeToggle` are the minimal client islands in the top bar, and `LanguageSwitcher` only generates locale URL links.
 - Each page (`page.tsx` / `pulse` / `rankings*` / `about` / repo / org / category): does not read the cookie; repo/org use `generateStaticParams() => []` to switch to on-demand ISR.
-- `web/lib/i18n/server.ts`: **deprecated** — reading the cookie breaks static; kept only for non-page server contexts, do not call it in page/layout.
+- Pages and layouts do not read `gsc_lang`. A cookie read there would opt that route out of static rendering.
 
 **Build route table** (`cd web && bun run build`):
 
@@ -434,9 +434,7 @@ web/lib/i18n/
   dictionaries/
     en.ts   ja.ts   zh.ts   zh-tw.ts   ko.ts   es.ts   fr.ts
   index.ts                       # getDictionary(locale) — lazy-load dictionaries
-  client.tsx                     # server-safe fallback helper; pages should prefer the route dictionary
-  client-runtime.tsx             # "use client" I18nProvider / useDict / useChrome (only a fallback for interaction tools, and does not wrap content pages)
-  server.ts                      # ⚠️ deprecated: getPreferredDictionary reading the cookie breaks static; do not call it in page/layout
+  client.tsx                     # server-safe chrome resolver; pages should prefer the route dictionary
 ```
 
 ```ts
@@ -517,7 +515,7 @@ return pageMeta({
 
 **i18n**
 - Handwritten dictionaries `web/lib/i18n/` (en/ja/zh/zh-TW/ko/es/fr); data fields are not translated
-- Chrome is server-rendered by route locale: the page passes in the dictionary; `i18n/client-runtime.tsx` is only a fallback for real client tools; `i18n/server.ts` is deprecated
+- Chrome is server-rendered by route locale: the page passes in the dictionary from `web/lib/i18n/index.ts`, and `web/lib/i18n/client.tsx` resolves chrome strings for shell components
 - Each page's `pageMeta()` takes a language-prefixless canonical path as input, and outputs the current locale canonical and the full `alternates.languages`
 - `metadataBase` reads `NEXT_PUBLIC_SITE_URL`
 

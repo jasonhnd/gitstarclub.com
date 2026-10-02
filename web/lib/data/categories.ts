@@ -1,7 +1,6 @@
 import { cache } from "react";
 import { categoryAllTimeRankPath } from "@/lib/categories/rank-pages";
 import {
-  CategoriesLookup,
   CategoryAssignments,
   CategoryAssignmentsDocument,
   CategoryAssignmentsShard,
@@ -122,19 +121,12 @@ export async function loadCategoryAssignments(
 }
 
 export const getCategoryRegistry = cache(() => readView("categories/registry.json", CategoryRegistry, DAILY_BASE_VIEW_OPTS));
-export const getCategoriesLookup = cache(() => readView("lookup/categories.json", CategoriesLookup, DAILY_BASE_VIEW_OPTS));
 export const getCategoryAssignments = cache(() => loadCategoryAssignments(readView, DAILY_BASE_VIEW_OPTS, "omit"));
-export const getCategoryAssignmentsAuthoritative = () =>
-  loadCategoryAssignments(readAuthoritativeView, { base: true }, "throw");
 
 /** Rankings / category-exit paths: fetch only the shards that contain these repo ids. */
 export function getCategoryAssignmentsForRepos(repoIds: readonly number[]) {
   return loadCategoryAssignments(readView, DAILY_BASE_VIEW_OPTS, "omit", { repoIds });
 }
-
-export const getCategoryAllTime = cache((dimension: string, slug: string) =>
-  readView(categoryAllTimeRankPath(dimension, slug), CategoryRankList, DAILY_BASE_VIEW_OPTS),
-);
 
 export const getCategoryAllTimePage = cache((dimension: string, slug: string, page: number) =>
   readView(categoryAllTimeRankPath(dimension, slug, page), CategoryRankList, DAILY_BASE_VIEW_OPTS),

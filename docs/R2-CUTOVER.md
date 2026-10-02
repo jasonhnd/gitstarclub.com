@@ -43,6 +43,8 @@ Issue #569 records that both data buckets already exist and that each has `_meta
 4. **Key shape.** Guarded put and delete reject `.` and `..` segments, including one percent-encoding (`%2e`, `%2e%2e`), so `new URL()` cannot collapse `views/../_meta/x` into `_meta/`. `del` of an `r2://` URL or a public URL under `_meta/` is refused before the marker is read.
 5. **CI gates.** `node scripts/assert-cf-ci-gates.mjs` refuses a production bucket or domain inside preview `env.pre`, a preview bucket or domain at the top level, `BLOB_*` on preview, a missing preview `DEPLOY_ENV`, and a non-empty `R2_PREFIX`. Those host checks ignore case, so `DATA.gitstarclub.com` is still the production host. Until cutover, top-level `DEPLOY_ENV` must stay unset, and top-level `STORAGE_READ_DRIVER`, `READ_DRIVER`, `STORAGE_WRITE_DRIVER`, and `WRITE_DRIVER` must stay unset or `blob`. `cf:build` refuses a shell public read base that does not match the wrangler vars for `--site-target`. A loopback fixture (`127.0.0.1`, `localhost`, and a URL whose hostname is `[::1]`) stays allowed so CI can build.
 
+Issue #578 prepares a separate stage-4 target contract without changing the current config. Top-level `DEPLOY_ENV=production` selects that contract: both explicit drivers, the production bucket var and public base, and exactly one `DATA` binding must match stage 4. Blob variables and `VIEWS_VERSION_FALLBACK` must be absent, and `R2_PREFIX` must remain unset or empty. Driver aliases, if present, must agree with the explicit drivers. A partial switch fails. Bucket/domain isolation, indexing, and the paused schedules remain enforced in both contracts.
+
 The marker JSON is exactly one of:
 
 ```json
@@ -108,7 +110,7 @@ node backfill/07-export-v2.mjs --store r2 --target pre --generation bootstrap-YY
 node backfill/07-export-v2.mjs --store r2 --target pre --generation bootstrap-YYYYMMDDTHHMMSSZ --execute --initial-commit
 ```
 
-`--initial-commit` is allowed only when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are all absent. It stores `previous_generation: null`. That null is not a legacy-flat rollback. `--rollback legacy-flat` fails closed on this bucket. A retry of the same generation returns already-published.
+`--initial-commit` is allowed only when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are all absent. It stores `previous_generation: null`. That null is not a legacy-flat rollback. `--rollback legacy-flat` fails closed on this bucket. A retry of the same generation returns already-published. `web/scripts/ensure-bootstrap-pointer.ts --execute --initial-commit` uses the same publication lease as step 07 before that create-only write.
 
 A first publish has no prior generation. `previous_generation` stays null. `--rollback` of the generation just committed compares the target with the current generation, returns `already-rolled-back`, and leaves the pointer in place. That status is not an undo. `--rollback legacy-flat` also fails closed, because the flat layout was never uploaded to `gitstarclub-data-pre`. Do not run either command and record it as a rollback.
 
@@ -155,6 +157,7 @@ Acceptance. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclu
 - `https://data-pre.gitstarclub.com/bootstrap/generations/<id>/views/rank/all-time/repo/stock.json` returns 200 and contains at least one repository row with a star count. Views for this stage live under that generation prefix.
 - `https://data-pre.gitstarclub.com/views/latest.json` is not required. A 404 is expected when no managed refresh has published. Do not hand-write that pointer. Preview does not set `VIEWS_VERSION_FALLBACK`, so a confirmed 404 lets pages read the bootstrap generation.
 - `https://pre.gitstarclub.com/rankings` returns 200, is `noindex`, and shows repository rows (an `owner/name` link and a star count). The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure. The rows must come from the committed bootstrap generation.
+- Deployment identity must equal the commit that was actually deployed. `https://pre.gitstarclub.com/.well-known/deployment` `commitSha` equals the SHA baked by the preview `cf:build` for that deploy. A runtime `CF_PREVIEW_COMMIT_SHA` or `VERCEL_GIT_COMMIT_SHA` counts only when it names that same commit.
 - `node scripts/assert-cf-ci-gates.mjs` still passes. Preview still has no `BLOB_*`.
 
 If a later step needs `views/latest.json`, the only writer is the publish step of an owner-authorized managed refresh. Stage 2 acceptance does not run it. Do not PUT the object, and do not call `https://gitstarclub.com/api/cron/*`.
@@ -235,18 +238,20 @@ Worker config in that same pull request, deployed together with the shell below:
 - In that same deploy, remove `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK`. Do not ship the R2 driver while the fallback is still set. Do not clear the fallback in an earlier deploy that still reads Blob. `views/latest.json` is not the object these checks use.
 - Keep `triggers.crons` at `[]` until stage 5.
 
-Same pull request, `scripts/cf-ci-gates.mjs` and `scripts/cf-ci-gates.test.mjs`. The gate still requires top-level `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK`, and the test locks those three. A cutover that only edits the Worker config fails `node scripts/assert-cf-ci-gates.mjs`. In this same pull request:
+`scripts/cf-ci-gates.mjs` and `scripts/cf-ci-gates.test.mjs` already support both the current Blob contract and the stage-4 R2 contract (#578). The current config still requires top-level `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK`. The same cutover pull request must select and verify the prepared R2 contract:
 
-- Change the production target contract so top-level vars require `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `DEPLOY_ENV=production`, `R2_BUCKET=gitstarclub-data-prod`, and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, and require `DATA` bound to `gitstarclub-data-prod`.
-- Stop requiring `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` on Worker `gitstarclub-web`. Preview env `pre` on Worker `gitstarclub-web-pre` still must not set `VIEWS_VERSION_FALLBACK` or `BLOB_*`. Bucket `gitstarclub-data-pre` stays the preview bucket.
-- Update `scripts/cf-ci-gates.test.mjs` in that same pull request so the tests require the new contract, and so a missing R2 driver or a leftover blob base fails.
+- Top-level `DEPLOY_ENV=production` selects the contract requiring `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_BUCKET=gitstarclub-data-prod`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, and exactly one `DATA` binding to `gitstarclub-data-prod`.
+- The selected contract refuses `BLOB_*` and `VIEWS_VERSION_FALLBACK` on Worker `gitstarclub-web`. Preview env `pre` on Worker `gitstarclub-web-pre` still must not set `VIEWS_VERSION_FALLBACK` or `BLOB_*`. Bucket `gitstarclub-data-pre` stays the preview bucket.
+- Run the gate and its tests in that same pull request. A partial switch, a missing R2 driver, or a leftover blob base fails.
 
-Same pull request, the production build shell in `web/scripts/cf-opennext-build.ts`. The production OpenNext spawn env adds `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com` and otherwise inherits the shell. Unset `STORAGE_READ_DRIVER` defaults to `blob` in `web/lib/runtime-config.ts`. In this same pull request that shell must:
+The production build checks in `web/scripts/cf-opennext-build.ts` are already prepared for stage 4 (#578). The production OpenNext spawn env adds `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com` and otherwise inherits the shell, not the Worker vars. Unset `STORAGE_READ_DRIVER` defaults to `blob` in `web/lib/runtime-config.ts`. In the same cutover build that shell must:
 
 - Export `STORAGE_READ_DRIVER=r2`.
 - Export `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com` for bucket `gitstarclub-data-prod`. When `NEXT_PUBLIC_R2_PUBLIC_BASE_URL` is set, set it to the same origin.
 - Clear `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` in this same build, matching the Worker var removal in the same deploy. A parent shell must not bake blob store `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com` into the prerender, and must not leave the fallback set while `STORAGE_READ_DRIVER=r2`.
 - Keep refusing a shell public read base that does not match the top-level wrangler vars for Worker `gitstarclub-web`. The loopback fixture at `127.0.0.1` stays allowed for CI.
+
+`cf:build` rejects a missing or different read driver, a missing public base, any shell `BLOB_*` variable (including `NEXT_PUBLIC_BLOB_*`), or a non-loopback base that does not match the top-level wrangler vars. Clear any other `BLOB_*` or `NEXT_PUBLIC_BLOB_*` shell vars as well. No write driver or storage credential is needed for this build. Offline tests use an R2 loopback base with the same explicit read driver and no Blob vars.
 
 Until that pull request, the production build shell in [OPS.md](./OPS.md) still exports the blob bases. Do not export `STORAGE_READ_DRIVER=r2` for a production build before the object checks above have passed and the gate and the wrangler vars change together.
 
@@ -258,7 +263,7 @@ Operator shell for that same cutover build. Run it only after the object checks.
 cd web
 export STORAGE_READ_DRIVER=r2
 export R2_PUBLIC_BASE_URL=https://data.gitstarclub.com
-unset BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL VIEWS_VERSION_FALLBACK
+unset READ_DRIVER BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL BLOB_READ_WRITE_TOKEN VIEWS_VERSION_FALLBACK
 bun run cf:build:production
 ```
 
@@ -307,13 +312,14 @@ Rollback: set production `triggers.crons` back to `[]` and redeploy that config.
 
 Not accepted. After production has been on R2 through at least one successful refresh, remove the remaining blob operating dependency.
 
-Prerequisite, before Blob variables can be removed: `web/scripts/generate-data-exports.ts` (`bun run exports:generate`) and `web/scripts/validate-live-views.ts` still require `BLOB_BASE_URL` or `NEXT_PUBLIC_BLOB_BASE_URL` at startup and fail before they read views if only R2 variables are set. A page returning 200 does not prove those tools are off Blob. A prep change must make both tools use the driver-aware public base, with a test that runs them when `BLOB_*` is unset. Do not retire the blob variables until that prep is accepted. This docs change does not edit those scripts.
+The read-only tools are prepared for R2 (#578), as described below. A page returning 200 does not prove those tools are off Blob. Before Blob variables can be retired, both commands must complete against the production R2 public origin with those variables unset. This docs change does not edit those scripts.
 
 - Production and preview do not require `BLOB_READ_WRITE_TOKEN` or `BLOB_BASE_URL`.
 - Live release gates stop falling back to the public blob URL. They use `LIVE_PUBLIC_READ_BASE_URL` or the R2 public origin. That fallback is documented as temporary in [OPS.md](./OPS.md).
 - Blob layout instructions in [OPS.md](./OPS.md) and the superseded Blob design doc move to history.
+- `exports:generate` and `validate-live-views.ts` use `getPublicReadBases()` for the configured read driver. The validator checks the primary origin and reports `storage_read_driver` and `public_read_base`. Their offline CLI regression tests run with an R2 loopback base and no Blob vars; a missing R2 base fails even when a Blob base is available. This preparation does not retire the remaining Blob operating dependencies.
 
-Acceptance: the top-level Worker config and preview `env.pre` contain no `BLOB_*` vars, and a read-only production page still returns 200 from `https://data.gitstarclub.com`. `exports:generate` and `validate-live-views` complete against the production R2 public origin with `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` unset.
+Acceptance: the top-level Worker config and preview `env.pre` contain no `BLOB_*` vars, and a read-only production page still returns 200 from `https://data.gitstarclub.com`. `exports:generate` and `validate-live-views` complete against the production R2 public origin with `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` unset. A page returning 200 alone does not verify those tools.
 
 Rollback: use the stage 4 version rollback on Worker `gitstarclub-web` (top-level production, no `--env`): `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`. That restores `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z` and the blob public base `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`. It does not write bucket `gitstarclub-data-prod`. Do not delete blob objects in order to roll back. Do not empty bucket `gitstarclub-data-prod`. Deleting the blob store is a separate owner decision after this stage has stayed healthy. It is not the rollback. The same rankings smoke as stage 4 must show repository rows, not the empty ranking copy.
 

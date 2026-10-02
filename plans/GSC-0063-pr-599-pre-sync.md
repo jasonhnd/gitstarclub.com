@@ -33,3 +33,18 @@ edited by this task. Work stays in the card workspace.
 - GitHub `static` and `production-build` pass for the resulting pull request head.
 - The workspace has no tracked or untracked changes at handoff.
 - Deliver the head and evidence through GSC_0063 for independent review.
+
+## Initial merge decisions
+
+- CHANGELOG: retain both the current-host entry and the publication-lease entry.
+- OPS: retain the cutover and rollback checklist, use the prepared #578 gate,
+  build, and read-tool facts, retain built-commit identity and error sanitization,
+  and keep Worker alert setup rather than the superseded Vercel setup.
+- R2-CUTOVER: retain bootstrap-based acceptance and first-publish recovery,
+  relocate built-commit identity into that acceptance, retain the prepared #578
+  contract and build checks, and require both R2 tools before Blob retirement.
+- TESTING: retain the incoming Worker-entry test row and the archived phase links.
+- Automatically merged API, PIPELINE, and SEO changes retain redirect protection,
+  publication locking, and built-commit identity respectively.
+- The initial documentation checks pass: 41 tests, zero failures; the direct
+  documentation check and whitespace check also pass.
