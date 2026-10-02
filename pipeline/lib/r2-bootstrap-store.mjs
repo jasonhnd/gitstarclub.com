@@ -34,6 +34,7 @@ function expectedDeployEnv(target) {
   return target === "prod" ? "production" : "pre";
 }
 
+/** @returns {import('./bootstrap-store-types.mjs').BootstrapStore} */
 export function createR2BootstrapStore(config) {
   const accessKeyId = config?.accessKeyId;
   const secretAccessKey = config?.secretAccessKey;
