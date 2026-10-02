@@ -371,4 +371,35 @@ describe("startRefreshWorkflowRoute", () => {
       errorSpy.mockRestore();
     }
   });
+
+  test("start failure logs and the alert omit secret canaries", async () => {
+    const store = new MemoryLeaseStore();
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const alerts: string[] = [];
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await startRefreshWorkflowRoute(
+        request(),
+        async () => {
+          throw new Error(`enqueue unavailable ${canary}`);
+        },
+        {
+          now: new Date("2026-07-05T06:00:00.000Z"),
+          leaseStore: store,
+          preflight: passPreflight,
+          recordHealth: async () => {},
+          sendAlert: async (summary) => {
+            alerts.push(summary.error ?? "");
+          },
+        },
+      );
+      const body = await response.json();
+      const text = JSON.stringify({ alerts, logs: errorSpy.mock.calls, body });
+      expect(response.status).toBe(500);
+      expect(text).toContain("enqueue unavailable");
+      expect(text).not.toContain("CANARY");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });
