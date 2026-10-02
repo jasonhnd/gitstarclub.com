@@ -1,3 +1,6 @@
+import { createRankFixture } from "@/lib/integration/fixtures/rank";
+import { viewKey } from "@/lib/integration/fixtures/view-key";
+import { decodeHtmlAttribute } from "@/lib/integration/fixtures/html";
 import { createElement, isValidElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
@@ -33,7 +36,6 @@ import type {
   Meta,
   OrgEntity,
   OrgsLookup,
-  RankList,
   RepoEntity,
   ReposLookup,
 } from "@/lib/contracts";
@@ -49,6 +51,17 @@ const REPO_FULL_NAME = "vuejs/vue";
 const BROKEN_REPO_ID = 259;
 const BROKEN_REPO_FULL_NAME = "fighting41love/funNLP";
 const ORG_LOGIN = "microsoft";
+const rankFixture = createRankFixture({
+  generatedAt: GENERATED_AT,
+  repoId: REPO_ID,
+  orgLogin: ORG_LOGIN,
+  stock: 210_000,
+  flow: 1_200,
+  orgValue: 220_000,
+  growth: { value: 15, rate: 1.5, base: 200_000 },
+  newcomer: { value: 10_000, date: "2024-06-01" },
+});
+
 const CATEGORY_TOTAL_REPOS = CATEGORY_DETAIL_PAGE_SIZE + 3;
 
 type RouteCase = {
@@ -204,18 +217,10 @@ async function runRouteSmoke() {
 }
 
 async function routeSmokeFetch(input: RequestInfo | URL): Promise<Response> {
-  const key = viewKey(input);
+  const key = viewKey(input, VERSION);
   const body = fixtureForView(key);
   if (body === null) return new Response("not found", { status: 404 });
   return Response.json(body);
-}
-
-function viewKey(input: RequestInfo | URL): string {
-  const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
-  let path = url.pathname.replace(/^\/+/, "");
-  const versionPrefix = `views/${VERSION}/`;
-  if (path.startsWith(versionPrefix)) path = path.slice(versionPrefix.length);
-  return path;
 }
 
 function fixtureForView(path: string): unknown | null {
@@ -259,26 +264,6 @@ function fixtureForView(path: string): unknown | null {
   if (heatmap) return heatmapFixture(heatmap[1], heatmap[2]);
 
   return null;
-}
-
-function rankFixture(window: string, period: string, dim: string, metric: string): RankList {
-  const repoItem = metric === "growth"
-    ? { rank: 1, id: REPO_ID, value: 15, prev_rank: null, rate: 1.5, base: 200_000 }
-    : metric === "new"
-      ? { rank: 1, id: REPO_ID, value: 10_000, prev_rank: null, date: "2024-06-01" }
-      : { rank: 1, id: REPO_ID, value: metric === "stock" ? 210_000 : 1_200, prev_rank: null };
-  const orgItem = { rank: 1, login: ORG_LOGIN, value: 220_000, prev_rank: null };
-
-  return {
-    meta: {
-      window: window as RankList["meta"]["window"],
-      period: period as RankList["meta"]["period"],
-      dim: dim as RankList["meta"]["dim"],
-      metric: metric as RankList["meta"]["metric"],
-      generated_at: GENERATED_AT,
-    },
-    items: [dim === "repo" ? repoItem : orgItem],
-  };
 }
 
 function categoryRankFixture(dimension: string, slug: string, page: number): CategoryRankList | null {
@@ -381,10 +366,6 @@ function categoryPaginationPathsFromSitemap(xml: string): string[] {
     if (/^\/categories\/[^/]+\/[^/]+\/page\/[1-9]\d*$/.test(path)) paths.add(path);
   }
   return [...paths].sort();
-}
-
-function decodeHtmlAttribute(value: string): string {
-  return value.replaceAll("&amp;", "&").replaceAll("&quot;", '"').replaceAll("&apos;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">");
 }
 
 const appRouterStub = {
@@ -644,4 +625,13 @@ const hotSnapshotFixture: HotSnapshot = {
   },
 };
 
-await runRouteSmoke();
+const originalFetch = globalThis.fetch;
+const originalBlobBase = process.env.BLOB_BASE_URL;
+const originalPublicBlobBase = process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+try {
+  await runRouteSmoke();
+} finally {
+  globalThis.fetch = originalFetch;
+  assignBlobBaseUrl(originalBlobBase);
+  assignNextPublicBlobBaseUrl(originalPublicBlobBase);
+}

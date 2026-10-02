@@ -226,7 +226,7 @@ to the locale URL form.
 |---|---|
 | Auth | Public |
 | Query | `lang` optional; valid values are `en`, `ja`, `zh`, `zh-TW`, `ko`, `es`, `fr`; invalid or missing values fall back to `en` |
-| Query | `next` optional; accepted only when it starts with `/` and not `//`; unsafe values fall back to `/` |
+| Query | `next` optional. It must be a same-origin path. The handler validates it, strips one non-default locale prefix, validates that path again, and redirects only when the final URL origin equals the request origin. Anything else, including `//host` revealed by stripping, falls back to the localized home (`/` or `/{lang}`). |
 | Body | None |
 | Success | `307` redirect to the requested locale URL |
 | Cache | No explicit `Cache-Control`; clients should treat it as a preference mutation, not a cacheable data endpoint |
@@ -243,6 +243,12 @@ Set-Cookie: gsc_lang=fr; ...
 ```http
 GET /api/lang?lang=en&next=/fr/rankings
 Location: /rankings
+Set-Cookie: gsc_lang=en; ...
+```
+
+```http
+GET /api/lang?lang=en&next=/ja//example.com/path
+Location: /
 Set-Cookie: gsc_lang=en; ...
 ```
 
@@ -343,8 +349,8 @@ the body stays `{ commitSha, deploymentUrl }`. On the P3 CF Workers host
 | Query / body | None |
 | Success | `200 application/json` |
 | Cache | `Cache-Control: no-store, max-age=0`; `dynamic = "force-dynamic"` |
-| Source | `web/app/.well-known/deployment/route.ts`, `web/lib/deployment-identity.ts`; Worker intercept on `workers/gitstarclub-web` |
-| Platform inputs | `VERCEL_GIT_COMMIT_SHA`, `CF_PREVIEW_COMMIT_SHA`, the SHA baked by `cf:build`, `VERCEL_URL`, `HOSTING_TARGET`; SHA priority follows that order and is `null` without a valid source. Tracked changes append `-dirty` to the SHA; untracked files do not. |
+| Source | `web/app/.well-known/deployment/route.ts`, `web/lib/deployment-identity.ts`, `web/lib/deployment-commit.ts`; Worker intercept on `workers/gitstarclub-web` |
+| Platform inputs | The SHA baked by `cf:build` is the reported commit when it exists, including when `VERCEL_GIT_COMMIT_SHA` or `CF_PREVIEW_COMMIT_SHA` names a different commit. Those runtime values are used only when no SHA was baked. `commitSha` is `null` only when there is no baked SHA and both runtime SHA values are absent or blank. `VERCEL_URL` and `HOSTING_TARGET` still choose the URL and the CF fields. Tracked changes append `-dirty` to the baked SHA; untracked files do not. |
 
 ```json
 {

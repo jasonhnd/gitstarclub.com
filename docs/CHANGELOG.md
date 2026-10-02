@@ -44,6 +44,10 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 - **Track C data-layer option analysis.** Comparative write-up of Tinybird, Vercel Postgres / Neon, extra JSON views, a six-month deferral, and the later lock-002 product veto, plus the historical POC must-prove list. Draft lean was defer; product outcome is **veto**. **POC allowed: no.** See [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md). The dated lock-002 record is under Changed below.
 - **Vercel Web Analytics.** Enabled cookieless aggregate page-view measurement through Vercel Web Analytics and corrected the privacy page copy to reflect that no analytics cookies or personal data are collected.
 
+### Removed
+
+- **Unused UI and i18n compatibility code (#608).** Unused explore layout components, the unused answer-capsule base, the unused client dictionary provider, the cookie-based dictionary helper, and four locale routing aliases are gone. Live `AnswerCapsule`, canonical locale helpers, route dictionaries, and `/api/lang` stay. Home and pulse metadata already come from the route dictionary through `generatePulseMetadata` in `web/app/_localized/pulse.tsx`.
+
 ### Changed
 
 - **Next.js 16.3.8 and OpenNext Cloudflare 1.20.7 (#592).** `next` and `eslint-config-next` move from 16.3.6 to 16.3.8. npm `latest` on 2026-10-01 is 16.3.8, with no newer stable patch. That release fixes GHSA-cjq9-62q9-8jv4 (high, image-optimization SSRF; this app sets no `images.remotePatterns`), GHSA-f87g-xv8r-7p7x (moderate, metadata image routes honor `dynamicParams`), four moderate cache advisories (GHSA-4jqv-mc3x-m676, GHSA-mcj8-r9mp-w47p, GHSA-3w37-wq28-93x7, GHSA-h694-7cp9-m8p3), and low GHSA-39w2-rjm5-chcv (development server). `@opennextjs/cloudflare` moves from 1.20.6 to 1.20.7 and pulls `@opennextjs/aws` 4.1.6. 1.20.7 accepts `next >=16.3.6` and replaces the whole `loadCustomCacheHandlers` body so minified Next.js 16.3 Worker chunks do not throw `ReferenceError`. The #585 share-image guard stays: a repository card paints a name only after the path resolves to a stored repo. The #585 pins stay: web `undici` 7.29.1, web `brace-expansion` 1.1.21 / 2.1.7 / 5.0.12, and pipeline `undici` 6.28.1. See [TESTING.md](./TESTING.md).
@@ -104,6 +108,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 - **Repo-page star milestones use frozen exact crossings.** The per-repo milestone list and curve markers now read `entity/repo.milestones.crossed_10k/50k/100k`; higher thresholds are hidden until a frozen first-crossing field exists, so estimated curve-derived dates are not presented as exact newcomer evidence.
 
 ### Fixed
+
+- **Deployment identity follows the commit baked by `cf:build` (#587).** `/.well-known/deployment` no longer lets a stale `CF_PREVIEW_COMMIT_SHA` or `VERCEL_GIT_COMMIT_SHA` mask the built SHA. Those vars count only when no SHA was baked, or when they name that same commit. The Worker shell and the Next route share `reportedCommitSha`. Stage 2 of [R2-CUTOVER.md](./R2-CUTOVER.md) requires the public identity to equal the deployed commit. This does not redeploy preview. Plan: [587-deployment-identity.md](../plans/587-deployment-identity.md).
 
 - **R2 binding conditional puts send unquoted ETags (#572).** `ObjectStore` still returns the quoted `httpEtag` and accepts that value as `ifMatch`. The binding store strips one quote pair before `onlyIf.etagMatches`. The test bucket rejects quoted `etagMatches` and `etagDoesNotMatch` the way workerd does, including when both are set and the match condition would already fail. `*` stays a wildcard. A `W/` string on the structured conditional is a strong literal, not a weak tag. A local Miniflare check runs in the existing web test suite against the workerd binary that wrangler already installs. Blob and S3 `ifMatch` are unchanged. Plan: [572-r2-unquoted-etag.md](../plans/572-r2-unquoted-etag.md).
 

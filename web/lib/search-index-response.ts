@@ -1,4 +1,5 @@
 import type { SearchIndex } from "@/lib/contracts";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { truncateUnicodeText } from "@/lib/unicode-text";
 
 // Pure response builder for GET /search-index. Kept free of Next/React imports so unit
@@ -38,7 +39,7 @@ export async function buildSearchIndexResponse(
   } catch (error) {
     console.error("[search-index] unavailable", {
       code: "search_index_unavailable",
-      error: error instanceof Error ? error.message : String(error),
+      error: sanitizeErrorText(error instanceof Error ? error.message : String(error)),
     });
     return Response.json(
       { error: "search_index_unavailable", retryable: true },

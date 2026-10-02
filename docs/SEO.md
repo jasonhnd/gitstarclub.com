@@ -98,34 +98,35 @@ Ranking = **{week / month / year / all-time} × {repo / org} × {flow=new / stoc
 
 ### 2.1 Home `/`
 
-Actual implementation (`web/app/(en)/page.tsx` + `web/app/_localized/pulse.tsx`, built via the `pageMeta(...)` helper; `absoluteTitle: true` skips the site-suffix template; Pulse title/description copy comes from `web/lib/site-copy.ts`):
+Actual implementation (`web/app/(en)/page.tsx` + `generatePulseMetadata` in `web/app/_localized/pulse.tsx`, built via the `pageMeta(...)` helper; `absoluteTitle: true` skips the site-suffix template; title and description come from the route dictionary):
 
 | Field | Value |
 |---|---|
 | title | `Open Source Pulse & GitHub Star History · GitStarClub` (`absolute`, does not append the `· GitStarClub` suffix) |
-| description | `See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.` |
+| description | `See open-source momentum from GitStarClub's precomputed data: the latest available weekly, monthly, and yearly movers, plus all-time star rankings.` |
 | canonical | `/` |
 
 - Terms included: `Open Source Pulse`, `GitHub Star History`, `fastest-rising`, `star rankings`.
 
 ### 2.1a Pulse page `/pulse`
 
-Actual implementation (`web/app/(en)/pulse/page.tsx` + `web/app/_localized/pulse.tsx`, `export const revalidate = false`, reuses the same view as the home page, but **does not pass** `includeWebsiteLd` ⇒ no `WebSite` JSON-LD, see §6.1; title/description copy comes from `web/lib/site-copy.ts`):
+Actual implementation (`web/app/(en)/pulse/page.tsx` + `generatePulseMetadata` in `web/app/_localized/pulse.tsx`, `export const revalidate = false`, reuses the same view as the home page, but **does not pass** `includeWebsiteLd` ⇒ no `WebSite` JSON-LD, see §6.1; title and description come from the route dictionary):
 
 | Field | Value |
 |---|---|
 | title | `Open Source Pulse & GitHub Star History` (not `absolute` ⇒ the root layout appends `· GitStarClub` → final `Open Source Pulse & GitHub Star History · GitStarClub`) |
-| description | `See the current pulse of open source: this week's, this month's, and this year's fastest-rising GitHub projects, plus all-time star rankings.` |
+| description | `See open-source momentum from GitStarClub's precomputed data: the latest available weekly, monthly, and yearly movers, plus all-time star rankings.` |
 | canonical | `/pulse` |
 
 ```ts
-export const revalidate = false;
-export async function generateMetadata(): Promise<Metadata> {
+export async function generatePulseMetadata({ locale, canonicalPath, absoluteTitle = false }) {
+  const t = await getDictionary(locale);
   return pageMeta({
-    title: PULSE_META_TITLE,
-    description: PULSE_META_DESCRIPTION,
-    path: "/pulse",
-    locale: "en",
+    absoluteTitle,
+    title: absoluteTitle ? `${t.meta.homeTitle} · GitStarClub` : t.meta.pulseTitle,
+    description: canonicalPath === "/" ? t.meta.homeDescription : t.meta.pulseDescription,
+    path: canonicalPath,
+    locale,
   });
 }
 ```
@@ -525,7 +526,7 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
 
 ## 5. robots.txt
 
-For Cloudflare, run the owner commands in [OPS.md](./OPS.md) from `web/`. The production build needs `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` exported to the public store base before `bun run cf:build:production`. The preview build exports `R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com` and does not export that Blob URL. The production deploy uses an explicit empty Wrangler environment (`--env=""`) plus `--var CF_PREVIEW_COMMIT_SHA`. Do not omit the empty environment.
+For Cloudflare, run the owner commands in [OPS.md](./OPS.md) from `web/`. The production build needs `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` exported to the public store base before `bun run cf:build:production`. The preview build exports `R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com` and does not export that Blob URL. The production deploy uses an explicit empty Wrangler environment (`--env=""`) plus `--var CF_PREVIEW_COMMIT_SHA` set to the SHA that `cf:build` baked. A different value is ignored. Do not omit the empty environment.
 
 Build each target immediately before its deployment because the output directory is shared. The underlying commands are `bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre`; a bare build fails. The production build embeds `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com`; the production Worker declares the same runtime values. `bun run cf:dry-run` builds pre with indexing disabled and performs only a Wrangler dry run. The build checks generated home HTML and robots output. After the owner manually deploys each build, verify that production `/robots.txt` allows `/` and lists the sitemap, production home HTML has no `noindex`, and preview `/robots.txt` and home HTML remain blocked. The owner then resubmits the production sitemap in Google Search Console and Bing Webmaster Tools.
 

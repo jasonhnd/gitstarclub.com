@@ -1,6 +1,6 @@
 // 🗄️ BOOTSTRAP-ONLY / ARCHIVE — NOT a recurring production path. For recurring ops the
-// view matrix is now recomputed on Vercel by web/lib/workflows/recompute/* (pure JS, no
-// DuckDB), parity-proven byte-identical to this script. This stays for cold-start / disaster
+// view matrix is recomputed by web/lib/workflows/recompute/* (pure JS, no
+// DuckDB) on the hosting runtime. That path is not Vercel-only. This script stays for cold-start / disaster
 // rebuild only. See docs/VERCEL-DATA-OPERATIONS.md.
 //
 // Backfill step 5 — DuckDB precompute → all JSON service views (data/views/**).
