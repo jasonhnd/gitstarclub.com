@@ -180,10 +180,26 @@ async function recomputeRank(runId: string) {
 | 6a | entity/repo recompute (**independent within bucket**) | single-bucket `repo-monthly`/`repo-weekly`/`repo-recent-daily`/`repos` | `views/<run_id>/entity/repo/**` | Each repo depends only on its own bucket, and steps can be split in parallel by bucket. |
 | 6b | entity/org recompute (**cross-bucket gather**) | all `repo-monthly`/`repo-weekly` + `repos` (owner→members) | `views/<run_id>/entity/org/**` + `lookup/**` + `search/index.json` | **Cannot compute by bucket**: the current org aggregate/curve uses only active members, while historical period rank may still keep the historical contribution of already-dropped repos; active member stock is carry-forwarded first and then summed, and the endpoint aligns to active `current_stars_sum`. repo lookup/search/entity also keep historical rows and propagate `active` / `tracked_since`. |
 | 7 | heatmap update | `site-daily` shard (+ derived monthly total) | `views/<run_id>/heatmap/**` | Site-level daily / monthly totals (monthly total = sum of site-daily for the current month). |
-| 8 | build aliases | all retained `ops/workflows/<run>/renames.json` + this run's `lookup/repos.json` | `views/<run_id>/lookup/aliases.json` | Cumulative alias table of old full_name → current id, for 308 redirects of renamed old URLs on the repo page. Union of historical renames deltas (gc does not delete ops/), self-healing, automatically covering renames from earlier runs; drop dangling / self-pointing / items that collide with a live repo name. |
+| 8 | build aliases | all retained `ops/workflows/<run>/renames.json` + this run's `lookup/repos.json` | `views/<run_id>/lookup/aliases.json` | Cumulative alias table of old full_name → current id, for 308 redirects of renamed old URLs on the repo page. Scan every folded ObjectStore page, de-duplicate folders, then read rename deltas with at most eight concurrent reads. Only a missing delta is empty; listing, transport, or schema failures stop the step. Union of historical renames deltas (gc does not delete ops/), self-healing, automatically covering renames from earlier runs; drop dangling / self-pointing / items that collide with a live repo name. |
 | 9 | validate | `views/<run_id>/**` | `ops/workflows/<run_id>/validation.json` | Zod schema + sanity invariants (see the measured checklist in §8). **Do not publish if it does not pass**. |
 | 10 | publish | `views/<run_id>/**` + immutable whitelist snapshot | immutable `publish-intent.json` + `views/latest.json` + `latest-success.json` + published whitelist pointer | intent fixes the original `prev_version`; all overwrites are idempotent, and retries will not produce `prev_version === version`. Check fencing ownership before every write, and actively invalidate the cache tag / route after completion. |
-| 11 | gc | `views/latest.json` + `list(views/)` | `del views/<old version>/**` | **Version GC** (`gc.ts`, runs after publish): keep the latest 4 versions + the current / `prev_version` pointer (rollback target), and delete older orphan versions. **best-effort, never throw**—a cleanup failure does not take down an already-published run. |
+| 11 | gc | `views/latest.json` + `list(views/)` | `del views/<old version>/**` | **Version GC** (`gc.ts`, runs after publish): enumerate and de-duplicate all folded pages before selecting the latest 4 versions, plus current / `prev_version` (rollback target), the unexpired running workflow, and the caller's version. Renew fencing ownership and re-read protection before deletion chunks. **Best-effort, never throw**—a cleanup failure does not take down an already-published run. |
+
+Folded inventories follow `hasMore`, including empty pages, using the returned
+cursor. A missing or repeated continuation cursor fails closed before alias
+publication or version deletion. A terminal page ends the inventory even if it
+returns a cursor.
+
+GC reports `deleted` only after a version's complete deletion plan succeeds.
+On failure, earlier completed versions stay in `deleted`; `failed` records the
+version and error, and the top-level `error` preserves the cleanup warning.
+Deletion stops after the first failed version. Once inventory succeeds, `kept`
+counts all listed versions not confirmed fully deleted, including a partially
+deleted version and any unattempted versions. Before inventory succeeds, no
+version is deleted and `kept` remains zero because the total is unknown. A retry
+re-lists remaining folders and objects and applies the same protections; no
+prior deletion is undone. The pagination and fault tests use only in-memory
+ObjectStores, never real GC.
 
 > The table above enumerates **logical responsibilities**, and the order matches `web/lib/workflows/refresh.ts` exactly. **Fine grain = 13 real step-functions**: `preflight → whitelist → rename → metadata(per-bucket loop)→ fold → rank → repo-entities → org-entities → heatmap → aliases → validate → publish → gc` (no `revalidate`, no independent `newcomer` step—the workflow does not call `revalidatePath`, and newcomer tracking is folded into metadata's `tracked_since`). The run manifest collapses these responsibilities into 10 checkpoint steps (`preflight / whitelist / rename / metadata / fold / recompute / buildAliases / validate / publish / gc`), see [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12.
 >
