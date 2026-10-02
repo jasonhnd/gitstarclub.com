@@ -21,6 +21,37 @@ export type PublicationOwner = {
   fencingToken: number;
 };
 
+/**
+ * Steps that can fail while `views/latest.json` already serves the intent's
+ * version. `whitelist_snapshot` and `pointer` happen only when a replay or a
+ * lost pointer-write response finds the pointer already switched.
+ */
+export type PublicationPostCommitStep =
+  | "whitelist_snapshot"
+  | "pointer"
+  | "recovery"
+  | "whitelist_pointer"
+  | "invalidate"
+  | "indexnow";
+
+/**
+ * The live pointer already serves `version`, but a later publication step did
+ * not finish. Retrying replays the immutable intent and repairs the remaining
+ * steps; this is not a reason to roll back or to rerun the refresh.
+ */
+export class PublicationPostCommitError extends Error {
+  readonly version: string;
+  readonly step: PublicationPostCommitStep;
+
+  constructor(version: string, step: PublicationPostCommitStep, cause: unknown) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    super(`version ${version} is live; post-commit ${step} failed: ${reason}`, { cause });
+    this.name = "PublicationPostCommitError";
+    this.version = version;
+    this.step = step;
+  }
+}
+
 export type PublicationDeps = {
   readPointer(): Promise<ViewsPointerType | null>;
   readIntent(operationId: string): Promise<PublishIntentType | null>;
@@ -88,13 +119,63 @@ async function getOrCreateIntent(
   return intentAfterRace;
 }
 
+/** True only when the live pointer is exactly this intent's switch. */
+async function pointerServesIntent(intent: PublishIntentType, deps: PublicationDeps): Promise<boolean> {
+  let live: ViewsPointerType | null;
+  try {
+    live = await deps.readPointer();
+  } catch {
+    // Commit state is unknown. The caller rethrows the original error, which
+    // is the actionable one; a pointer read failure would only hide it.
+    return false;
+  }
+  return (
+    live?.version === intent.version &&
+    live.published_at === intent.published_at &&
+    live.prev_version === intent.prev_version
+  );
+}
+
+/**
+ * Run a step up to and including the pointer write. When it fails, check the
+ * pointer once: a replay or a lost write response may already have switched it.
+ */
+async function beforeCommit<T>(
+  intent: PublishIntentType,
+  deps: PublicationDeps,
+  step: "whitelist_snapshot" | "pointer",
+  run: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (await pointerServesIntent(intent, deps)) throw new PublicationPostCommitError(intent.version, step, error);
+    throw error;
+  }
+}
+
+async function afterCommit(
+  intent: PublishIntentType,
+  step: PublicationPostCommitStep,
+  run: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    throw new PublicationPostCommitError(intent.version, step, error);
+  }
+}
+
 async function applyIntent(
   owner: PublicationOwner,
   intent: PublishIntentType,
   deps: PublicationDeps,
 ): Promise<PublicationResult> {
-  const whitelist = await deps.readWhitelistSnapshot(intent.version);
-  if (!whitelist) throw new Error(`whitelist snapshot for published version ${intent.version} not found`);
+  const whitelist = await beforeCommit(intent, deps, "whitelist_snapshot", async () => {
+    const snapshot = await deps.readWhitelistSnapshot(intent.version);
+    if (!snapshot) throw new Error(`whitelist snapshot for published version ${intent.version} not found`);
+    return snapshot;
+  });
 
   const pointer = ViewsPointer.parse({
     version: intent.version,
@@ -117,18 +198,23 @@ async function applyIntent(
   // the publication commit point; recovery and the compatibility whitelist
   // pointer advance only after that switch succeeds. If a later write fails,
   // the immutable intent makes the retry reproduce the same rollback metadata.
+  // Failures after the switch surface as PublicationPostCommitError so the run
+  // ledger records the live version. Ownership checks stay unwrapped: a lost
+  // lease must keep its non-retryable WorkflowLeaseOwnershipError type.
   await deps.ensureOwnership(owner);
-  await deps.writePointer(pointer);
+  await beforeCommit(intent, deps, "pointer", () => deps.writePointer(pointer));
   await deps.ensureOwnership(owner);
-  await deps.writeRecovery(recovery);
+  await afterCommit(intent, "recovery", () => deps.writeRecovery(recovery));
   await deps.ensureOwnership(owner);
-  await deps.writeWhitelistPointer(publishedWhitelist);
-  await deps.invalidate();
-  await deps.notifyIndexNow({
-    runId: intent.version,
-    prevVersion: intent.prev_version,
-    publishedAt: intent.published_at,
-  });
+  await afterCommit(intent, "whitelist_pointer", () => deps.writeWhitelistPointer(publishedWhitelist));
+  await afterCommit(intent, "invalidate", () => deps.invalidate());
+  await afterCommit(intent, "indexnow", () =>
+    deps.notifyIndexNow({
+      runId: intent.version,
+      prevVersion: intent.prev_version,
+      publishedAt: intent.published_at,
+    }),
+  );
 
   return { version: intent.version, prev_version: intent.prev_version, published_at: intent.published_at };
 }

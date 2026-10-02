@@ -45,18 +45,57 @@ export async function markPublished(runId: string, startedAt: string, fencingTok
   logViewParseErrorSummary("[workflow-refresh]");
 }
 
-/** Mark the run failed; line on Blob does not flip latest-success (line stays at last good run). */
-export async function markFailed(runId: string, startedAt: string, error: string, fencingToken: number): Promise<void> {
+/** A failure after `views/latest.json` switched: `version` is live, `step` did not finish. */
+export type PostCommitFailure = {
+  version: string;
+  step: string;
+};
+
+function failureRecord(runId: string, error: string, postCommit: PostCommitFailure | undefined) {
+  const base = { run_id: runId, error, at: new Date().toISOString() };
+  if (!postCommit) return { ...base, phase: "pre_commit" };
+  return { ...base, phase: "post_commit", committed_version: postCommit.version, failed_step: postCommit.step };
+}
+
+/**
+ * Mark the run failed. Before the pointer commit, latest-success stays at the
+ * last good run and `published_version` is null. After it, `published_version`
+ * names the live version and error.json names the step that did not finish, so
+ * operators repair the publication instead of rerunning or rolling back.
+ */
+export async function markFailed(
+  runId: string,
+  startedAt: string,
+  error: string,
+  fencingToken: number,
+  postCommit?: PostCommitFailure,
+): Promise<void> {
   const safeError = sanitizeErrorText(error);
-  const manifest = { run_id: runId, started_at: startedAt, status: "failed", steps: STEPS, published_version: null };
+  const manifest = {
+    run_id: runId,
+    started_at: startedAt,
+    status: "failed",
+    steps: STEPS,
+    published_version: postCommit?.version ?? null,
+  };
   WorkflowManifest.parse(manifest);
   const owner = { runId, fencingToken };
   await putOwnedView(owner, `ops/workflows/${runId}/manifest.json`, manifest);
-  await putOwnedView(owner, `ops/workflows/${runId}/error.json`, { run_id: runId, error: safeError, at: new Date().toISOString() });
+  await putOwnedView(owner, `ops/workflows/${runId}/error.json`, failureRecord(runId, safeError, postCommit));
   const released = await releaseWorkflowLease(runId, "failed", undefined, undefined, fencingToken);
   if (!released) throw new Error(`workflow ${runId} lost fencing token ${fencingToken} before failed release`);
   // Surface the failure: greppable log + optional webhook + health beacon. None of these throw.
-  await sendAlert({ pipeline: "workflow-refresh", title: "managed refresh failed", run_id: runId, error: safeError });
+  await sendAlert(
+    postCommit
+      ? {
+          pipeline: "workflow-refresh",
+          title: "managed refresh published; post-commit step failed",
+          run_id: runId,
+          step: postCommit.step,
+          error: safeError,
+        }
+      : { pipeline: "workflow-refresh", title: "managed refresh failed", run_id: runId, error: safeError },
+  );
   await recordHealth("workflow-refresh", "failed", { run_id: runId, error: safeError });
   logViewParseErrorSummary("[workflow-refresh]");
 }

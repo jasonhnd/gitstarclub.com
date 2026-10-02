@@ -27,6 +27,10 @@ const productionCfEnv = {
   CRON_SECRET: SECRET,
 };
 
+function withoutKey(env: Record<string, string>, key: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => name !== key));
+}
+
 type Captured = { url: string; init: RequestInit };
 
 function fetchCapture(respond: (captured: Captured) => Promise<Response> | Response = () => Response.json({ ok: true })) {
@@ -93,7 +97,7 @@ describe("resolvePublicationInvalidationOrigin", () => {
   });
 
   test("preview without CF_CRON_ORIGIN fails closed instead of falling back to production", () => {
-    const { CF_CRON_ORIGIN: _omit, ...missing } = previewEnv;
+    const missing = withoutKey(previewEnv, "CF_CRON_ORIGIN");
     expect(() => resolvePublicationInvalidationOrigin(missing)).toThrow(/CF_CRON_ORIGIN is required/);
     expect(() => resolvePublicationInvalidationOrigin({ ...missing, CF_CRON_ORIGIN: "   " })).toThrow(
       /CF_CRON_ORIGIN is required/,
@@ -131,7 +135,7 @@ describe("resolvePublicationInvalidationOrigin", () => {
   });
 
   test("Cloudflare without CF_CRON_ORIGIN fails closed even when NEXT_PUBLIC_SITE_URL is set", () => {
-    const { CF_CRON_ORIGIN: _omit, ...missing } = productionCfEnv;
+    const missing = withoutKey(productionCfEnv, "CF_CRON_ORIGIN");
     expect(() => resolvePublicationInvalidationOrigin(missing)).toThrow(/CF_CRON_ORIGIN is required/);
   });
 
@@ -229,7 +233,7 @@ describe("requestPublishedViewsInvalidation", () => {
 
   test("missing origin config fails before any request", async () => {
     const { calls, fetchImpl } = fetchCapture();
-    const { CF_CRON_ORIGIN: _omit, ...missing } = previewEnv;
+    const missing = withoutKey(previewEnv, "CF_CRON_ORIGIN");
 
     const error = await rejectionOf(requestPublishedViewsInvalidation({ env: missing, fetchImpl }));
 
@@ -239,7 +243,7 @@ describe("requestPublishedViewsInvalidation", () => {
 
   test("missing CRON_SECRET fails before any request", async () => {
     const { calls, fetchImpl } = fetchCapture();
-    const { CRON_SECRET: _omit, ...missing } = previewEnv;
+    const missing = withoutKey(previewEnv, "CRON_SECRET");
 
     const error = await rejectionOf(requestPublishedViewsInvalidation({ env: missing, fetchImpl }));
 
