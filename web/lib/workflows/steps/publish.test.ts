@@ -7,6 +7,7 @@ import type {
   WhitelistSnapshot,
 } from "@/lib/contracts";
 import {
+  PublicationCommitUnknownError,
   PublicationPostCommitError,
   publishVersionWithDeps,
   rollbackVersionWithDeps,
@@ -104,6 +105,7 @@ function fakePublication(initialPointer: ViewsPointer | null, failure: Failure =
       fault("whitelist", "after");
     },
     ensureOwnership: async () => {},
+    checkInvalidationTarget: () => {},
     invalidate: async () => {
       state.invalidations++;
       state.visibleVersion = state.pointer?.version ?? null;
@@ -324,7 +326,7 @@ describe("post-commit publication failures", () => {
     expect(state.pointer?.version).toBe("version-old");
   });
 
-  test("an unreadable pointer after a failed write keeps the original error", async () => {
+  test("an unreadable pointer after a failed write reports an unknown commit state", async () => {
     const { state, deps } = fakePublication(pointer("version-old", "version-older"), {
       write: "pointer",
       timing: "after",
@@ -340,8 +342,13 @@ describe("post-commit publication failures", () => {
 
     const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
 
+    expect(error).toBeInstanceOf(PublicationCommitUnknownError);
     expect(error).not.toBeInstanceOf(PublicationPostCommitError);
-    expect((error as Error).message).toBe("injected after pointer");
+    expect(error).toMatchObject({ name: "PublicationCommitUnknownError", version: "version-new", step: "pointer" });
+    expect((error as Error).message).toBe(
+      "version version-new may be live; pointer failed and the live pointer could not be read: injected after pointer",
+    );
+    expect(((error as Error).cause as Error).message).toBe("injected after pointer");
   });
 
   test("a pointer that holds a different publication is not mistaken for this commit", async () => {
@@ -373,6 +380,81 @@ describe("post-commit publication failures", () => {
 
     expect(error).toMatchObject({ version: "version-new", step: "whitelist_snapshot" });
     expect((error as Error).message).toContain("whitelist snapshot 503");
+  });
+
+  test("a first-attempt whitelist snapshot failure is pre-commit without reading the pointer", async () => {
+    const { state, deps } = fakePublication(pointer("version-old", "version-older"));
+    let pointerReads = 0;
+    const readPointer = deps.readPointer;
+    deps.readPointer = async () => {
+      pointerReads++;
+      return readPointer();
+    };
+
+    const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
+
+    expect(error).not.toBeInstanceOf(PublicationPostCommitError);
+    expect((error as Error).message).toBe("whitelist snapshot for published version version-new not found");
+    expect(pointerReads).toBe(1);
+    expect(state.pointer?.version).toBe("version-old");
+  });
+
+  test("a replay that cannot read the pointer after a failed step reports an unknown commit state", async () => {
+    const { state, deps } = fakePublication(pointer("version-old", "version-older"));
+    state.snapshots.set("version-new", snapshot("version-new"));
+    deps.invalidate = async () => {
+      throw new Error("invalidate 503");
+    };
+    await expect(publishVersionWithDeps("version-new", 7, deps)).rejects.toBeInstanceOf(PublicationPostCommitError);
+    deps.readWhitelistSnapshot = async () => {
+      throw new Error("store 503");
+    };
+    deps.readPointer = async () => {
+      throw new Error("store 503");
+    };
+
+    const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
+
+    expect(error).toBeInstanceOf(PublicationCommitUnknownError);
+    expect(error).toMatchObject({ version: "version-new", step: "whitelist_snapshot" });
+  });
+
+  test("a misconfigured invalidation target fails before the pointer switch", async () => {
+    const { state, deps } = fakePublication(pointer("version-old", "version-older"));
+    state.snapshots.set("version-new", snapshot("version-new"));
+    let invalidateCalls = 0;
+    deps.checkInvalidationTarget = () => {
+      throw new Error("CF_CRON_ORIGIN is required for publication cache invalidation on Cloudflare");
+    };
+    deps.invalidate = async () => {
+      invalidateCalls++;
+    };
+
+    const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
+
+    expect(error).not.toBeInstanceOf(PublicationPostCommitError);
+    expect((error as Error).message).toMatch(/CF_CRON_ORIGIN is required/);
+    expect(state.pointer?.version).toBe("version-old");
+    expect(state.recovery).toBeNull();
+    expect(state.writes).toEqual(["intent"]);
+    expect(invalidateCalls).toBe(0);
+  });
+
+  test("a replay whose invalidation target broke after the commit is post-commit invalidate", async () => {
+    const { state, deps } = fakePublication(pointer("version-old", "version-older"));
+    state.snapshots.set("version-new", snapshot("version-new"));
+    deps.invalidate = async () => {
+      throw new Error("invalidate 503");
+    };
+    await expect(publishVersionWithDeps("version-new", 7, deps)).rejects.toBeInstanceOf(PublicationPostCommitError);
+    deps.checkInvalidationTarget = () => {
+      throw new Error("CF_CRON_ORIGIN is required");
+    };
+
+    const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
+
+    expect(error).toBeInstanceOf(PublicationPostCommitError);
+    expect(error).toMatchObject({ version: "version-new", step: "invalidate" });
   });
 
   test("intent failures before the commit stay plain errors", async () => {
