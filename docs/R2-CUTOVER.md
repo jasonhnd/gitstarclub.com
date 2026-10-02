@@ -98,6 +98,46 @@ Rollback of the code is a revert of those pull requests on `pre`. Do not roll pr
 
 Not accepted. Load the preview bucket, then prove the preview site reads it. Dry run first. `--execute` is an operator action and needs the bucket-scoped key outside the repository.
 
+**Before the real-bucket rehearsal, run the offline local rehearsal first.**
+Use the SHA-256-verified Node v24.20.0 and Bun 1.3.14 bootstrap in
+[AGENTS.md](../AGENTS.md), with dependencies installed in both `web/` and
+`pipeline/` using `bun --no-env-file install --frozen-lockfile`. From the
+repository root:
+
+```bash
+cd web
+bun --no-env-file scripts/r2-local-rehearsal.ts
+```
+
+Success prints `R2_LOCAL_REHEARSAL_OK` and exits 0. Any failed assertion or
+timeout exits non-zero. Each run creates a private fixture project and HOME,
+uses Miniflare's built-in local S3 and public R2 services with a persistent
+workerd bucket, restarts that Worker to prove persistence, then removes its
+own scratch directory. Miniflare is already installed by wrangler. The
+entrypoint accepts no remote endpoint, bucket, or credential arguments.
+Telemetry and remote bindings are disabled. Worker outbound reads are limited
+to the local R2 service. Local S3 signing uses fabricated fixture values that
+are valid only inside that Miniflare instance.
+
+The rehearsal runs the actual `06-upload.mjs` and `07-export-v2.mjs` entrypoints
+in a fixture mirror containing no environment files. It proves dry-run leaves
+the bucket unchanged, upload and stage-only leave the pointer absent, and
+initial commit publishes `previous_generation: null` and releases the shared
+lease. A standalone Worker bundles the application read, storage, and lease
+modules: with `STORAGE_READ_DRIVER=r2` and `STORAGE_WRITE_DRIVER=r2_binding`,
+rankings resolve from the bootstrap generation while `views/latest.json` is
+absent. The `DATA` write path claims, renews, and releases the workflow lease;
+current pointer CAS succeeds and stale CAS is refused. Both pipeline and Worker
+refuse a production identity and a different existing pointer. The Worker also
+refuses mixed state and a marker introduced during initial-commit renewal.
+Its bootstrap adapter reads staged parquet as bytes through `DATA`.
+
+This local command is a prerequisite for the operator rehearsal. Stage 2 still
+requires the real public origins and preview site acceptance below. The
+standalone Worker exercises data paths; the full Next/OpenNext page server and
+shared Next request cache are outside this command. CI workflows and required
+checks are unchanged. See [TESTING.md](./TESTING.md#local-r2-stage-2-rehearsal).
+
 Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`. These commands do not deploy that Worker and do not write bucket `gitstarclub-data-prod` or Worker `gitstarclub-web`.
 
 From `pipeline/`, replace the generation id with the one the local build produced:

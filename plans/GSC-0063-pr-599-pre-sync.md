@@ -48,3 +48,10 @@ edited by this task. Work stays in the card workspace.
   publication locking, and built-commit identity respectively.
 - The initial documentation checks pass: 41 tests, zero failures; the direct
   documentation check and whitespace check also pass.
+
+## Local rehearsal merge
+
+The integration branch advanced to #639 during execution. Its CHANGELOG conflict
+retains both entries. Its R2-CUTOVER conflict places the incoming offline local
+workerd rehearsal before the existing real-bucket commands. OPS and TESTING
+retain the same prerequisite. No rehearsal procedure or harness was edited.
