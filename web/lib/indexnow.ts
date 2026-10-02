@@ -1,5 +1,6 @@
 import type { ZodType } from "zod";
 import { CategoriesLookup, Meta, OrgEntity, OrgsLookup, RankList, RepoEntity, ReposLookup } from "@/lib/contracts";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { currentUtcPeriods } from "@/lib/periods";
 import { absoluteCanonicalUrl, buildSitemapPaths, publishedRankingPeriodPaths, siteBaseUrl } from "@/lib/sitemap";
 
@@ -424,7 +425,11 @@ function stableStringify(value: unknown): string {
 }
 
 function warnIndexNow(message: string, context: IndexNowContext, details: Record<string, unknown>): void {
-  console.warn("[indexnow]", message, { ...context, ...details });
+  const payload: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries({ ...context, ...details })) {
+    payload[key] = typeof value === "string" ? sanitizeErrorText(value) : value;
+  }
+  console.warn("[indexnow]", message, payload);
 }
 
 function errorMessage(error: unknown): string {

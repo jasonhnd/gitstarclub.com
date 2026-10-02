@@ -1,4 +1,5 @@
 import type { AlertPipeline } from "@/lib/contracts";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 
 const WEBHOOK_TIMEOUT_MS = 5_000;
 const WEBHOOK_MAX_ATTEMPTS = 3;
@@ -49,11 +50,8 @@ function retryableStatus(status: number): boolean {
 function safeDeliveryError(error: unknown, timedOut: boolean): string {
   if (timedOut || (error instanceof Error && error.name === "AbortError")) return "timeout";
   if (!(error instanceof Error)) return "network failure";
-  const safeMessage = error.message
-    .replaceAll(/https?:\/\/\S+/gi, "[redacted-url]")
-    .replaceAll(/(token|key|secret)=[^\s&]+/gi, "$1=[redacted]")
-    .slice(0, 300);
-  return safeMessage ? `${error.name}: ${safeMessage}` : error.name || "network failure";
+  const assembled = error.message ? `${error.name}: ${error.message}` : error.name;
+  return sanitizeErrorText(assembled) || "network failure";
 }
 
 function failedDelivery(
@@ -85,10 +83,11 @@ export async function sendAlert(
   summary: AlertSummary,
   options: AlertDeliveryOptions = {},
 ): Promise<AlertDeliveryResult> {
+  const errorText = typeof summary.error === "string" ? sanitizeErrorText(summary.error) : summary.error;
   console.error(`[ALERT] ${summary.pipeline} failed`, {
     run_id: summary.run_id ?? null,
     step: summary.step ?? null,
-    error: summary.error ?? null,
+    error: errorText ?? null,
   });
 
   const url = process.env.ALERT_WEBHOOK_URL;
@@ -122,7 +121,7 @@ export async function sendAlert(
           pipeline: summary.pipeline,
           run_id: summary.run_id ?? null,
           step: summary.step ?? null,
-          error: summary.error ?? null,
+          error: errorText ?? null,
           at,
         }),
         signal: controller.signal,
