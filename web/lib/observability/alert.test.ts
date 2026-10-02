@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { GitHubHttpError, isTransientGithubError } from "@/lib/github";
+import { hasValidBearerToken } from "@/lib/security";
 import { sendAlert, type AlertFetcher } from "./alert";
 
 const SUMMARY = {
@@ -151,5 +153,126 @@ describe("sendAlert", () => {
     expect(result.error).toContain("[redacted-url]");
     expect(result.error).not.toContain("hooks.example.com");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("drops secret canaries from the log and the webhook body", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const cron = "CANARYCRONSECRET1234567890abcd";
+    const previousCron = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = cron;
+    const fetchMock = mock(async () => new Response(null, { status: 204 }));
+    try {
+      await sendAlert(
+        {
+          ...SUMMARY,
+          error: `GitHub GraphQL 502 Bearer CANARYBEARERTOKEN1234567890abcd ${cron} ghp_CANARYGITHUBTOKEN1234567890abcd`,
+        },
+        { fetch: fetchMock as unknown as AlertFetcher, now: new Date("2026-07-17T03:00:00.000Z") },
+      );
+      const logged = JSON.stringify(errSpy.mock.calls);
+      const body = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body)) as {
+        error?: string;
+      };
+      const webhook = JSON.stringify(body);
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(webhook).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+      expect(webhook).not.toContain("CANARY");
+      expect(body.error).toContain("Bearer [redacted]");
+    } finally {
+      if (previousCron === undefined) delete process.env.CRON_SECRET;
+      else process.env.CRON_SECRET = previousCron;
+    }
+  });
+
+  test("redacts punctuation, colon, and JSON-escaped credential assignments", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const fetchMock = mock(async () => new Response(null, { status: 204 }));
+    await sendAlert(
+      {
+        ...SUMMARY,
+        error: [
+          "GitHub GraphQL 502",
+          "password=!CANARYpunctuation42",
+          "token=CANARYstart:CANARYtail!",
+          String.raw`password=\"!CANARYescaped42\"`,
+        ].join(" "),
+      },
+      { fetch: fetchMock as unknown as AlertFetcher, now: new Date("2026-07-17T03:00:00.000Z") },
+    );
+    const logged = JSON.stringify(errSpy.mock.calls);
+    const webhook = String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body);
+    expect(logged).toContain("GitHub GraphQL 502");
+    expect(webhook).toContain("GitHub GraphQL 502");
+    expect(logged).not.toContain("CANARY");
+    expect(webhook).not.toContain("CANARY");
+  });
+
+  test("redacts a short cron secret that bearer auth still accepts", async () => {
+    const secret = "CANARYshort42";
+    expect(hasValidBearerToken(`Bearer ${secret}`, secret)).toBe(true);
+    const previousCron = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = secret;
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const fetchMock = mock(async () => new Response(null, { status: 204 }));
+    try {
+      await sendAlert(
+        { ...SUMMARY, error: `GitHub GraphQL 502 ${secret}` },
+        { fetch: fetchMock as unknown as AlertFetcher, now: new Date("2026-07-17T03:00:00.000Z") },
+      );
+      const logged = JSON.stringify(errSpy.mock.calls);
+      const webhook = String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body);
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+      expect(webhook).not.toContain("CANARY");
+    } finally {
+      if (previousCron === undefined) delete process.env.CRON_SECRET;
+      else process.env.CRON_SECRET = previousCron;
+    }
+  });
+
+  test("redacts a token carried in the delivery error name", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const canary = "ghp_CANARYNAMETOKEN1234567890abcd";
+    for (const message of ["socket hang up", ""]) {
+      errSpy.mockClear();
+      const failure = new Error(message);
+      failure.name = `TransportError ${canary}`;
+      const fetchMock = mock(async () => {
+        throw failure;
+      });
+      const result = await sendAlert(SUMMARY, {
+        fetch: fetchMock as unknown as AlertFetcher,
+        sleep: async () => {},
+        maxAttempts: 1,
+      });
+      const logged = JSON.stringify(errSpy.mock.calls);
+      expect(logged).not.toContain("CANARY");
+      expect(result.error).not.toContain("CANARY");
+      if (message) expect(result.error).toContain(message);
+      expect(result.error?.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("redacts a GitHub HTTP body whose credential terminator sits past the old 200-unit cut", async () => {
+    process.env.ALERT_WEBHOOK_URL = "https://hooks.example.com/alert";
+    const body = `request failed https://user:${"CANARYLONGHTTPPASS"}${"A".repeat(250)}@example.invalid/path`;
+    const error = new GitHubHttpError("graphql", 502, body);
+    expect(error.source).toBe("graphql");
+    expect(error.status).toBe(502);
+    expect(isTransientGithubError(error)).toBe(true);
+    expect(error.message).toContain("GitHub GraphQL 502");
+    expect(error.message).not.toContain("CANARY");
+    const fetchMock = mock(async () => new Response(null, { status: 204 }));
+    await sendAlert(
+      { ...SUMMARY, error: error.message },
+      { fetch: fetchMock as unknown as AlertFetcher, now: new Date("2026-07-17T03:00:00.000Z") },
+    );
+    const logged = JSON.stringify(errSpy.mock.calls);
+    const webhook = String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body);
+    expect(logged).toContain("GitHub GraphQL 502");
+    expect(webhook).toContain("GitHub GraphQL 502");
+    expect(logged).not.toContain("CANARY");
+    expect(webhook).not.toContain("CANARY");
   });
 });
