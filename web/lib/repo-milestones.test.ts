@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { RepoMilestonesSection } from "@/app/_localized/repo-sections";
+import { RepoHistorySection, RepoMilestonesSection } from "@/app/_localized/repo-sections";
 import { getDictionary } from "@/lib/i18n";
 import { exactRepoMilestones } from "./repo-milestones";
 
@@ -64,5 +64,25 @@ describe("RepoMilestonesSection ranking links", () => {
     expect(html).toContain('href="/rankings/2020/3"');
     expect(html).not.toContain("/rankings/2014/");
     expect(html).not.toContain('href="/rankings/2014/2"');
+  });
+});
+
+
+describe("live repository sections with empty data", () => {
+  test("empty and single-point history do not render a curve", async () => {
+    const t = await getDictionary("en");
+    for (const series of [[], [{label:"2024-01",total:0}]]) {
+      expect(renderToStaticMarkup(createElement(RepoHistorySection, {
+        locale:"en",t,inflections:[],milestones:[],series,
+      }))).toBe("");
+    }
+  });
+
+  test("missing milestones do not render an empty milestone section", async () => {
+    const t = await getDictionary("en");
+    expect(renderToStaticMarkup(createElement(RepoMilestonesSection, {
+      locale:"en",t,milestones:[],milestoneSnippet:null,
+      snippetLabels:{eyebrow:"s",copy:"c",copied:"d",embed:"e",embedCopied:"f"},
+    }))).toBe("");
   });
 });

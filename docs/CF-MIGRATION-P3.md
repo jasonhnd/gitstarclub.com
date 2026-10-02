@@ -110,6 +110,8 @@ The Worker entry `src/index.ts` under `workers/gitstarclub-web/` classifies each
 | `GET\|POST /start`, `POST /enqueue` | Worker shell | `CRON_SECRET` |
 | Queue consumer / `pre` Cron | Worker shell | n/a |
 
+`/start`, `/enqueue`, and `/preview/invalidate` call `hasValidBearerToken` in `web/lib/security.ts`. A missing or empty Worker `CRON_SECRET` is 401 and does not fall through to `process.env.CRON_SECRET`. `GET /preview/health`, `GET /.well-known/deployment`, `GET /preview/identity`, and those 401 responses include `securityHeaders` from `web/lib/csp.ts`. `script-src` stays `'self' 'unsafe-inline'` with no nonce or hash.
+
 `GET /` is the Next homepage. The P1 start route is **`/start` only**. The
 pre-P3 shell also accepted `/` as start; that would steal the homepage.
 
