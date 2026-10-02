@@ -208,7 +208,7 @@ Page BODY and chrome (top bar / footer / breadcrumb labels / section titles) are
 - `web/app/_localized/*`: shared server page implementations; after receiving the route locale / dictionary / canonical path, they render localized chrome, metadata, JSON-LD, and deterministic copy.
 - `Chrome.tsx` / `Footer.tsx` / `Breadcrumbs.tsx` are Server Components; `SearchBox`, `LanguageSwitcher`, and `ThemeToggle` are the minimal client islands in the top bar, and `LanguageSwitcher` only generates locale URL links.
 - Each page (`page.tsx` / `pulse` / `rankings*` / `about` / repo / org / category): does not read the cookie; repo/org use `generateStaticParams() => []` to switch to on-demand ISR.
-- `web/lib/i18n/server.ts`: **deprecated** — reading the cookie breaks static; kept only for non-page server contexts, do not call it in page/layout.
+- Pages and layouts do not read `gsc_lang`. A cookie read there would opt that route out of static rendering.
 
 **Build route table** (`cd web && bun run build`):
 
@@ -434,9 +434,7 @@ web/lib/i18n/
   dictionaries/
     en.ts   ja.ts   zh.ts   zh-tw.ts   ko.ts   es.ts   fr.ts
   index.ts                       # getDictionary(locale) — lazy-load dictionaries
-  client.tsx                     # server-safe fallback helper; pages should prefer the route dictionary
-  client-runtime.tsx             # "use client" I18nProvider / useDict / useChrome (only a fallback for interaction tools, and does not wrap content pages)
-  server.ts                      # ⚠️ deprecated: getPreferredDictionary reading the cookie breaks static; do not call it in page/layout
+  client.tsx                     # server-safe chrome resolver; pages should prefer the route dictionary
 ```
 
 ```ts
@@ -517,7 +515,7 @@ return pageMeta({
 
 **i18n**
 - Handwritten dictionaries `web/lib/i18n/` (en/ja/zh/zh-TW/ko/es/fr); data fields are not translated
-- Chrome is server-rendered by route locale: the page passes in the dictionary; `i18n/client-runtime.tsx` is only a fallback for real client tools; `i18n/server.ts` is deprecated
+- Chrome is server-rendered by route locale: the page passes in the dictionary from `web/lib/i18n/index.ts`, and `web/lib/i18n/client.tsx` resolves chrome strings for shell components
 - Each page's `pageMeta()` takes a language-prefixless canonical path as input, and outputs the current locale canonical and the full `alternates.languages`
 - `metadataBase` reads `NEXT_PUBLIC_SITE_URL`
 
