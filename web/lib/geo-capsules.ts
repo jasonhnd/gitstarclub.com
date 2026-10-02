@@ -1,5 +1,5 @@
-import type { CategoryDimensionRegistry, CategoryRegistry, CategoryRegistryEntry, Meta, OrgEntity, RepoEntity } from "@/lib/contracts";
-import { fmtStars, formatInteger, intlLocaleTag, monthYearLabel } from "@/lib/format";
+import type { Meta } from "@/lib/contracts";
+import { intlLocaleTag, monthYearLabel } from "@/lib/format";
 
 export const ANSWER_CAPSULE_SOURCE = "GitStarClub";
 
@@ -28,12 +28,9 @@ export type CapsuleOrgRankRow = {
   repo_count: number;
 };
 
-type RankingMetric = "gained" | "total";
 type DataAsOfCandidate = string | null | undefined;
 type DataAsOfOptions = { locale?: string };
 type DataAsOfArg = DataAsOfCandidate | DataAsOfOptions;
-
-const SOURCE_SUFFIX = ` — ${ANSWER_CAPSULE_SOURCE}`;
 
 export function formatDataAsOf(value: string | null | undefined, locale = "en"): string | null {
   if (!value) return null;
@@ -86,123 +83,6 @@ export function resolveDataAsOfFromMeta(meta: Meta | null | undefined, ...args: 
   return resolveDataAsOfLabel(meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, ...fallbacks, { locale });
 }
 
-export function buildRepoCapsule(repo: RepoEntity, asOf: string, locale = "en"): AnswerCapsuleContent {
-  const latest = repo.monthly_table.at(-1);
-  const language = repo.language ? `${repo.language} ` : "";
-  const latestPhrase = latest ? `${monthYearLabel(locale, Number(latest.month.slice(0, 4)), Number(latest.month.slice(5, 7)))} with ${signedStars(latest.adds)} stars` : "its latest precomputed monthly row";
-  const text = withSource(
-    `As of ${asOf}, ${repo.full_name} has ${fmtStars(repo.current_stars)} GitHub stars. GitStarClub tracks its ${language}profile, ${repoMilestonePhrase(repo, locale)}, and latest recorded month of ${latestPhrase}, combining identity, milestone, current-star, and monthly curve fields for answerable repository history without runtime inference.`,
-  );
-  return capsule(text, asOf);
-}
-
-export function buildOrgCapsule(org: OrgEntity, asOf: string, locale = "en"): AnswerCapsuleContent {
-  const kind = org.owner_type === "Organization" ? "organization" : "developer";
-  const text = withSource(
-    `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories. GitStarClub builds this ${kind} page from GitStarClub's precomputed organization data, member repository ids, current-star sums, and monthly curves so readers can cite organization momentum without a runtime database.`,
-  );
-  return capsule(text, asOf);
-}
-
-export function buildRankingCapsule({
-  title,
-  asOf,
-  rows,
-  metric,
-}: {
-  title: string;
-  asOf: string;
-  rows: CapsuleRankRow[];
-  metric: RankingMetric;
-}): AnswerCapsuleContent {
-  const [first, second, third] = rows;
-  const leader = first ? `${repoName(first)} leads with ${rankValue(first, metric)}` : "the visible list is waiting for rank rows";
-  const followers = second && third ? `, followed by ${repoName(second)} and ${repoName(third)}` : "";
-  const metricLabel = metric === "total" ? "current total stars" : "stars gained";
-  const text = withSource(
-    `As of ${asOf}, ${title} ranks tracked GitHub repositories by ${metricLabel}. ${leader}${followers}. GitStarClub generates this visible ranking from GitStarClub's precomputed ranking and repository data, with no runtime search, database, or AI.`,
-  );
-  return capsule(text, asOf);
-}
-
-export function buildAllTimeRankingCapsule({
-  asOf,
-  repoRows,
-  orgRows,
-}: {
-  asOf: string;
-  repoRows: CapsuleRankRow[];
-  orgRows: CapsuleOrgRankRow[];
-}): AnswerCapsuleContent {
-  const repoLead = repoRows[0] ? `${repoName(repoRows[0])} leads repositories with ${rankValue(repoRows[0], "total")}` : "the repository list is waiting for rows";
-  const orgLead = orgRows[0] ? `${orgRows[0].login} leads organizations with ${fmtStars(orgRows[0].current_stars_sum)} total stars` : "the organization list is waiting for rows";
-  const text = withSource(
-    `As of ${asOf}, GitStarClub's all-time rankings summarize the largest tracked GitHub repositories and organizations. ${repoLead}, while ${orgLead}. The page is built from GitStarClub's precomputed all-time ranking, repository, and organization data.`,
-  );
-  return capsule(text, asOf);
-}
-
-export function buildCategoryIndexCapsule(registry: CategoryRegistry, asOf: string, locale = "en"): AnswerCapsuleContent {
-  const publicCategories = registry.dimensions.flatMap((dimension) => dimension.categories.filter((category) => category.public));
-  const labels = registry.dimensions.slice(0, 3).map((dimension) => dimension.label.toLowerCase()).join(", ");
-  const text = withSource(
-    `As of ${asOf}, browse ${formatInteger(locale, publicCategories.length)} public GitHub categories across ${formatInteger(locale, registry.dimensions.length)} dimensions, including ${labels}. GitStarClub builds these category links from deterministic rules over repository metadata, not live search or AI, so readers can reach focused repository lists through crawlable pages.`,
-  );
-  return capsule(text, asOf);
-}
-
-export function buildCategoryDimensionCapsule(dimension: CategoryDimensionRegistry, asOf: string, locale = "en"): AnswerCapsuleContent {
-  const publicCategories = dimension.categories.filter((category) => category.public);
-  const text = withSource(
-    `As of ${asOf}, GitStarClub lists ${formatInteger(locale, publicCategories.length)} public categories in the ${dimension.label.toLowerCase()} dimension for tracked GitHub repositories. This page uses deterministic rules over repository metadata, not live search or AI, with crawlable links that move readers and answer engines from broad taxonomy to specific repository rankings.`,
-  );
-  return capsule(text, asOf);
-}
-
-export function buildCategoryDetailCapsule({
-  category,
-  asOf,
-  rows,
-  locale = "en",
-}: {
-  category: CategoryRegistryEntry;
-  asOf: string;
-  rows: CapsuleRankRow[];
-  locale?: string;
-}): AnswerCapsuleContent {
-  const [first, second, third] = rows;
-  const leader = first ? `${repoName(first)} leads with ${rankValue(first, "total")}` : "the category list is waiting for ranking rows";
-  const followers = second && third ? `, followed by ${repoName(second)} and ${repoName(third)}` : "";
-  const text = withSource(
-    `As of ${asOf}, GitStarClub tracks ${formatInteger(locale, category.count)} repositories in ${category.label}. ${leader}${followers}. This category ranking uses deterministic category assignments, all-time stock ranking data, and repository metadata, not live search or AI.`,
-  );
-  return capsule(text, asOf);
-}
-
-export function buildPulseCapsule({
-  asOf,
-  weekRows,
-  monthRows,
-}: {
-  asOf: string;
-  weekRows: CapsuleRankRow[];
-  monthRows: CapsuleRankRow[];
-}): AnswerCapsuleContent {
-  const weekLead = weekRows[0] ? `${repoName(weekRows[0])} leads the latest available week with ${rankValue(weekRows[0], "gained")}` : "weekly movers are waiting for rank rows";
-  const monthLead = monthRows[0] ? `${repoName(monthRows[0])} leads the current month-to-date list with ${rankValue(monthRows[0], "gained")}` : "monthly movers are waiting for rank rows";
-  const text = withSource(
-    `As of ${asOf}, GitStarClub Pulse summarizes current open-source momentum across tracked repositories. ${weekLead}, while ${monthLead}. The page is generated from GitStarClub's precomputed activity and ranking data so the visible summary stays deterministic, dated, and free of runtime analysis.`,
-  );
-  return capsule(text, asOf);
-}
-
-export function buildCompareCapsule(asOf: string): AnswerCapsuleContent {
-  const text = withSource(
-    `As of ${asOf}, GitStarClub Compare lets readers overlay tracked repository star-history curves from GitStarClub's precomputed star-history data. The static page explains absolute calendar history and 10k-aligned comparison without claiming client-only query-state facts as server-rendered evidence, keeping citation copy deterministic and reviewable.`,
-  );
-  return capsule(text, asOf);
-}
-
 export function capsuleWordCount(capsule: Pick<AnswerCapsuleContent, "text"> | string): number {
   const text = typeof capsule === "string" ? capsule : capsule.text;
   return text.replace(/[—/]/g, " ").trim().split(/\s+/).filter(Boolean).length;
@@ -212,28 +92,8 @@ export function visibleCapsuleSnapshot(capsule: AnswerCapsuleContent, labels: Vi
   return [labels.answerCapsule, capsule.text, `${labels.dataAsOf}: ${capsule.asOf}`, `${labels.source}: ${capsule.source}`].join("\n");
 }
 
-function capsule(text: string, asOf: string): AnswerCapsuleContent {
-  return { text, asOf, source: ANSWER_CAPSULE_SOURCE };
-}
-
-function withSource(text: string): string {
-  return `${text}${SOURCE_SUFFIX}`;
-}
-
 function formatUtcDate(year: number, month: number, day: number, locale: string): string {
   return new Intl.DateTimeFormat(intlLocaleTag(locale), { timeZone: "UTC", year: "numeric", month: "long", day: "numeric" }).format(Date.UTC(year, month - 1, day));
-}
-
-function repoMilestonePhrase(repo: RepoEntity, locale: string): string {
-  const milestones = [
-    ["10k", repo.milestones.crossed_10k],
-    ["50k", repo.milestones.crossed_50k],
-    ["100k", repo.milestones.crossed_100k],
-  ] as const;
-  const known = milestones.flatMap(([label, date]) => (date ? [`${label} in ${monthYearLabel(locale, Number(date.slice(0, 4)), Number(date.slice(5, 7)))}`] : []));
-  if (known.length === 0) return "frozen 10k, 50k, and 100k milestone fields when available";
-  if (known.length === 1) return known[0];
-  return `${known.slice(0, -1).join(", ")}, and ${known.at(-1)}`;
 }
 
 function dataAsOfArgs(args: DataAsOfArg[]): { candidates: DataAsOfCandidate[]; locale: string } {
@@ -246,18 +106,4 @@ function dataAsOfArgs(args: DataAsOfArg[]): { candidates: DataAsOfCandidate[]; l
 
 function isDataAsOfOptions(value: DataAsOfArg | undefined): value is DataAsOfOptions {
   return Boolean(value && typeof value === "object" && "locale" in value);
-}
-
-function repoName(row: CapsuleRankRow): string {
-  return `${row.owner}/${row.name}`;
-}
-
-function rankValue(row: CapsuleRankRow, metric: RankingMetric): string {
-  if (metric === "total") return `${fmtStars(row.total ?? 0)} total stars`;
-  return `${signedStars(row.gained ?? 0)} stars`;
-}
-
-function signedStars(value: number): string {
-  const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${fmtStars(Math.abs(value))}`;
 }

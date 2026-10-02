@@ -57,6 +57,8 @@ afterAll(() => {
 });
 
 // Fixed SHA-256 values captured from origin/pre b9650f0 with these fixtures.
+// Only ko/categories is refreshed for issue #612: intentional Korean conjunctions.
+// The other 20 values retain the original pre baseline.
 const baseline: Record<string, Record<string, string>> = {
   "en": {
     "org": "1497576aa088189c8dd729b7fd619df3f8701f341cc2174ae5d0dfc5a358ff35",
@@ -81,7 +83,7 @@ const baseline: Record<string, Record<string, string>> = {
   "ko": {
     "org": "1d6fae0e39f94686e741fd041e74947ad267adb7f0c5e5e93427a5b0e4182b91",
     "compare": "8ae2ff6ef0cccb9e0f018011bca8b76aa9e7e82771b841750522b51d6b1a9961",
-    "categories": "b7aba71b96bbd7cd43d976e849bcc1e8ac93cb15dbfbc0cd2ad8dccb62615e5e"
+    "categories": "6c37f0a641aa887b228fc1bf51f3b75f02fe593c072301aa3562448ae6dd133c"
   },
   "es": {
     "org": "73f4bc08cde600816bd8757af329a6b7d7b83097606be7002df0e80be943fa8b",
@@ -96,7 +98,7 @@ const baseline: Record<string, Record<string, string>> = {
 };
 
 describe("successful page HTML stays stable", () => {
-  test.each([...LOCALES])("%s matches pre b9650f0", async (locale) => {
+  test.each([...LOCALES])("%s matches its documented HTML baseline", async (locale) => {
     const html = {
       org: render(await OrgIndexPageView({ locale, page: 1 })),
       compare: render(await ComparePageView({ locale })),
