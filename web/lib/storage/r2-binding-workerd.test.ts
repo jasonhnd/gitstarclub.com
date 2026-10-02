@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { Miniflare } from "miniflare";
 import { ObjectStorePreconditionFailedError } from "./errors";
+import { createObjectStoreBootstrapAdapter } from "./bootstrap-adapter";
 import { R2BindingObjectStore, type R2Bucket } from "./r2-binding-store";
 
 /**
@@ -41,6 +42,23 @@ async function workerdBucket(): Promise<R2Bucket> {
   });
   return (await miniflare.getR2Bucket("DATA")) as unknown as R2Bucket;
 }
+
+test("workerd binding preserves staged binary bytes and their ETag for bootstrap publication", async () => {
+  const bucket = await workerdBucket();
+  const store = new R2BindingObjectStore({ bucket, prefix: "fixture/" });
+  const path = "canonical/star_daily.parquet";
+  const bytes = new Uint8Array([0x50, 0x41, 0x52, 0x31, 0x00, 0x80, 0xff, 0xc3, 0x28]);
+  const created = await store.put(path, bytes, { contentType: "application/vnd.apache.parquet" });
+  expect(await store.getBytes("missing")).toBeNull();
+  const binary = await store.getBytes(path);
+  expect(binary).toMatchObject({ etag: created.etag, size: bytes.length, contentType: "application/vnd.apache.parquet" });
+  expect(binary?.body).toEqual(bytes);
+  const adapter = createObjectStoreBootstrapAdapter(store);
+  const snapshot = await adapter.readSnapshot(path);
+  expect(snapshot.etag).toBe(created.etag);
+  expect(snapshot.body).toEqual(Buffer.from(bytes));
+  expect(await adapter.read(path)).toEqual(Buffer.from(bytes));
+});
 
 test("workerd rejects a quoted conditional and accepts the unquoted etag from the store", async () => {
   const bucket = await workerdBucket();
