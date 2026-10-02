@@ -30,6 +30,16 @@ export const PRODUCTION_R2_BUCKET = "gitstarclub-data-prod";
 export const PREVIEW_R2_PUBLIC_HOST = "data-pre.gitstarclub.com";
 export const PRODUCTION_R2_PUBLIC_HOST = "data.gitstarclub.com";
 export const PREVIEW_R2_PUBLIC_BASE_URL = "https://data-pre.gitstarclub.com";
+export const PRODUCTION_R2_PUBLIC_BASE_URL = "https://data.gitstarclub.com";
+// DEPLOY_ENV=production selects this complete stage-4 contract. The checked-in
+// Blob configuration stays on the pre-cutover contract until explicitly changed.
+export const PRODUCTION_STAGE4_VARS = Object.freeze({
+  DEPLOY_ENV: "production",
+  STORAGE_READ_DRIVER: "r2",
+  STORAGE_WRITE_DRIVER: "r2_binding",
+  R2_BUCKET: PRODUCTION_R2_BUCKET,
+  R2_PUBLIC_BASE_URL: PRODUCTION_R2_PUBLIC_BASE_URL,
+});
 export const PREVIEW_DEPLOY_ENV = "pre";
 // `r2` and `r2_s3` both read R2_PUBLIC_BASE_URL. Preview locks `r2`.
 export const PREVIEW_STORAGE_READ_DRIVER = "r2";
@@ -399,15 +409,19 @@ function collectCronGateIssues(wrangler, preview, previewCronsPaused) {
   return issues;
 }
 
-function collectWorkerRuntimeIssues(wrangler, preview) {
+function collectWorkerRuntimeIssues(wrangler, preview, stage4) {
   const issues = [];
   const requiredProductionVars = [
-    ["BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL],
-    ["NEXT_PUBLIC_BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL],
     ["CF_CRON_ORIGIN", PRODUCTION_CRON_ORIGIN],
     ["WORKFLOW_RUNTIME", PRODUCTION_WORKFLOW_RUNTIME],
     ["WORKFLOW_QUEUE_ENQUEUE_URL", PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL],
-    ["VIEWS_VERSION_FALLBACK", PRODUCTION_VIEWS_VERSION_FALLBACK],
+    ...(stage4
+      ? Object.entries(PRODUCTION_STAGE4_VARS)
+      : [
+          ["BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL],
+          ["NEXT_PUBLIC_BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL],
+          ["VIEWS_VERSION_FALLBACK", PRODUCTION_VIEWS_VERSION_FALLBACK],
+        ]),
   ];
   for (const [key, expected] of requiredProductionVars) {
     if (wrangler.vars?.[key] !== expected) {
@@ -493,23 +507,47 @@ function collectStorageIsolationIssues(wrangler, preview) {
   return issues;
 }
 
-function collectStorageDriverIssues(wrangler, preview) {
+function collectStorageDriverIssues(wrangler, preview, stage4) {
   const issues = [];
-  // Before R2 cutover (I-5b) the top-level Worker still reads Vercel Blob.
-  // DEPLOY_ENV stays unset. Drivers stay unset or blob, including the
-  // READ_DRIVER and WRITE_DRIVER aliases. Setting any DEPLOY_ENV, or an R2
-  // driver, is the cutover and must update this gate in the same change.
-  if (wrangler.vars?.DEPLOY_ENV !== undefined) {
-    issues.push(
-      `wrangler top-level vars.DEPLOY_ENV must be unset until R2 cutover (received ${quote(wrangler.vars.DEPLOY_ENV)})`,
-    );
-  }
-  for (const key of ["STORAGE_READ_DRIVER", "READ_DRIVER", "STORAGE_WRITE_DRIVER", "WRITE_DRIVER"]) {
-    const value = wrangler.vars?.[key];
-    if (!isUnsetOrBlobDriver(value)) {
+  if (stage4) {
+    const productionDataBucket = namedR2Bucket(wrangler.r2_buckets, "DATA");
+    const topLevel = { ...wrangler };
+    delete topLevel.env;
+    const dataBindings = Array.isArray(wrangler.r2_buckets)
+      ? wrangler.r2_buckets.filter((entry) => entry?.binding === "DATA")
+      : [];
+    if (dataBindings.length !== 1 || productionDataBucket !== PRODUCTION_R2_BUCKET) {
+      issues.push(`wrangler top-level stage-4 r2_buckets must declare exactly one DATA binding to ${PRODUCTION_R2_BUCKET}`);
+    }
+    if (jsonMentions(topLevel, "BLOB_")) {
+      issues.push("wrangler top-level stage-4 must not contain BLOB_* (production reads R2)");
+    }
+    if (wrangler.vars?.VIEWS_VERSION_FALLBACK !== undefined) {
+      issues.push("wrangler top-level stage-4 vars.VIEWS_VERSION_FALLBACK must be absent");
+    }
+    if (wrangler.vars?.R2_PREFIX !== undefined && wrangler.vars.R2_PREFIX !== "") {
+      issues.push("wrangler top-level stage-4 vars.R2_PREFIX must be unset or empty");
+    }
+    for (const [key, expected] of [["READ_DRIVER", "r2"], ["WRITE_DRIVER", "r2_binding"]]) {
+      if (wrangler.vars?.[key] !== undefined && wrangler.vars[key] !== expected) {
+        issues.push(`wrangler top-level stage-4 vars.${key} must be unset or ${expected}`);
+      }
+    }
+  } else {
+    // Before cutover, DEPLOY_ENV stays unset and both driver aliases stay Blob.
+    // A partial switch cannot bypass either this contract or the stage-4 checks.
+    if (wrangler.vars?.DEPLOY_ENV !== undefined) {
       issues.push(
-        `wrangler top-level vars.${key} must be unset or blob until R2 cutover (received ${quote(value)})`,
+        `wrangler top-level vars.DEPLOY_ENV must be unset until R2 cutover (received ${quote(wrangler.vars.DEPLOY_ENV)})`,
       );
+    }
+    for (const key of ["STORAGE_READ_DRIVER", "READ_DRIVER", "STORAGE_WRITE_DRIVER", "WRITE_DRIVER"]) {
+      const value = wrangler.vars?.[key];
+      if (!isUnsetOrBlobDriver(value)) {
+        issues.push(
+          `wrangler top-level vars.${key} must be unset or blob until R2 cutover (received ${quote(value)})`,
+        );
+      }
     }
   }
   if (preview?.vars?.DEPLOY_ENV !== PREVIEW_DEPLOY_ENV) {
@@ -713,12 +751,13 @@ export function assertCfCiGates(sources) {
   const { wranglerSource, ciYml, deliveryYml, webPackageSource, runtimeConfigSource } = sources;
   const wrangler = parseWranglerJsonc(wranglerSource);
   const preview = wrangler.env?.[PREVIEW_WRANGLER_ENV];
+  const stage4 = wrangler.vars?.DEPLOY_ENV === PRODUCTION_STAGE4_VARS.DEPLOY_ENV;
   const issues = [
     ...collectWorkerIdentityIssues(wrangler, preview),
     ...collectCronGateIssues(wrangler, preview, sources.previewCronsPaused ?? PREVIEW_CRONS_PAUSED),
-    ...collectWorkerRuntimeIssues(wrangler, preview),
+    ...collectWorkerRuntimeIssues(wrangler, preview, stage4),
     ...collectStorageIsolationIssues(wrangler, preview),
-    ...collectStorageDriverIssues(wrangler, preview),
+    ...collectStorageDriverIssues(wrangler, preview, stage4),
     ...collectWorkflowRuntimeIssues(wrangler, preview),
     ...collectPreviewOriginIssues(runtimeConfigSource, ciYml),
     ...collectDeployAutomationIssues(ciYml, webPackageSource, sources.deploySurfaceSource ?? ""),
