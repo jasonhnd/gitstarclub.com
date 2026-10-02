@@ -1,6 +1,5 @@
-import { fmtStars, formatInteger, monthYearLabel } from "@/lib/format";
+import { formatSignedStars as signedStars, formatTemplate as fill } from "@/lib/template-format";
 import type { Locale } from "@/lib/i18n";
-import type { ExactRepoMilestone } from "@/lib/repo-milestones";
 
 export type SnippetLink = {
   label: string;
@@ -20,12 +19,6 @@ type RepoRow = {
   owner: string;
   name: string;
   gained?: number;
-  total?: number;
-};
-
-type MemberRow = {
-  owner: string;
-  name: string;
   total?: number;
 };
 
@@ -139,7 +132,7 @@ export function buildWeeklyMoversSnippet({
     fill(copy.source, { period }),
   ].join(" ");
 
-  return snippet({
+  return buildShareableSnippet({
     kind: "weekly-movers",
     title: fill(copy.title, { period }),
     text,
@@ -148,66 +141,7 @@ export function buildWeeklyMoversSnippet({
   });
 }
 
-export function buildRepoMilestoneSnippet({
-  locale = "en",
-  repo,
-  asOf,
-  milestones,
-}: {
-  locale?: Locale;
-  repo: { full_name: string };
-  asOf: string | null;
-  milestones: ExactRepoMilestone[];
-}): ShareableSnippetContent | null {
-  if (!asOf || milestones.length === 0) return null;
-
-  const milestoneText = readableList(
-    milestones.map((milestone) => `${milestone.label} in ${monthYearFromDate(milestone.date, locale)}`),
-    locale,
-  );
-  const text = `As of ${asOf}, GitStarClub records ${repo.full_name} crossing ${milestoneText}. These milestone dates come from frozen repository fields and link back to the matching monthly ranking pages. Source: GitStarClub repository star history.`;
-
-  return snippet({
-    kind: "repo-milestones",
-    title: `${repo.full_name} milestones`,
-    text,
-    links: [
-      { label: `${repo.full_name} star history`, href: `/${repo.full_name}` },
-      ...milestones.map((milestone) => {
-        const date = milestone.date.slice(0, 7);
-        const [year, month] = date.split("-");
-        return { label: `${milestone.label} ranking month`, href: `/rankings/${year}/${Number(month)}` };
-      }),
-    ],
-  });
-}
-
-export function buildOrgTotalSnippet({
-  locale = "en",
-  org,
-  asOf,
-  members,
-}: {
-  locale?: Locale;
-  org: { login: string; current_stars_sum: number; repo_count: number };
-  asOf: string | null;
-  members: MemberRow[];
-}): ShareableSnippetContent | null {
-  if (!asOf) return null;
-
-  const top = members.slice(0, 3);
-  const leaders = top.length ? ` Top tracked repositories include ${readableList(top.map((row) => `${repoName(row)} (${fmtStars(row.total ?? 0, locale)} stars)`), locale)}.` : "";
-  const text = `As of ${asOf}, ${org.login} has ${fmtStars(org.current_stars_sum, locale)} total GitHub stars across ${formatInteger(locale, org.repo_count)} tracked repositories on GitStarClub.${leaders} Source: GitStarClub organization star history.`;
-
-  return snippet({
-    kind: "org-total",
-    title: `${org.login} organization total`,
-    text,
-    links: [{ label: `${org.login} star history`, href: `/o/${org.login}` }, ...top.map((row) => ({ label: repoName(row), href: repoPath(row) }))],
-  });
-}
-
-function snippet({
+export function buildShareableSnippet({
   kind,
   title,
   text,
@@ -253,22 +187,6 @@ function repoPath(row: { owner: string; name: string }): string {
   return `/${repoName(row)}`;
 }
 
-function signedStars(value: number, locale: Locale): string {
-  const prefix = value >= 0 ? "+" : "-";
-  return `${prefix}${fmtStars(Math.abs(value), locale)}`;
-}
-
-function monthYearFromDate(date: string, locale: Locale): string {
-  const year = Number(date.slice(0, 4));
-  const month = Number(date.slice(5, 7));
-  return monthYearLabel(locale, year, month);
-}
-
-function readableList(items: string[], locale: Locale = "en"): string {
-  if (items.length <= 1) return items[0] ?? "";
-  return new Intl.ListFormat(locale, { type: "conjunction" }).format(items);
-}
-
 function joinItems(items: readonly string[], locale: Locale): string {
   if (items.length <= 1) return items[0] ?? "";
   const separator = locale === "ja" || locale === "zh" || locale === "zh-TW" ? "、" : locale === "es" ? " y " : locale === "fr" ? " et " : " and ";
@@ -277,10 +195,6 @@ function joinItems(items: readonly string[], locale: Locale): string {
   const head = items.slice(0, -1);
   if (locale === "ja" || locale === "zh" || locale === "zh-TW") return `${head.join("、")}、${last}`;
   return `${head.join(", ")}${separator}${last}`;
-}
-
-function fill(template: string, values: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
 }
 
 function escapeHtml(value: string): string {
