@@ -67,19 +67,13 @@ export function toHreflang(locale: Locale): string {
   return HREFLANG_BY_LOCALE[locale];
 }
 
-export const localeToHreflang = toHreflang;
-
 export function toBcp47Locale(locale: Locale): string {
   return BCP47_LOCALE_BY_LOCALE[locale];
 }
 
-export const localeToBcp47 = toBcp47Locale;
-
 export function toOpenGraphLocale(locale: Locale): string {
   return OPEN_GRAPH_LOCALE_BY_LOCALE[locale];
 }
-
-export const localeToOpenGraphLocale = toOpenGraphLocale;
 
 export function isNonDefaultLocale(value: string): value is NonDefaultLocale {
   return value !== DEFAULT_LOCALE && isLocale(value);
@@ -136,8 +130,6 @@ export function classifyRoute(path: string): RouteClassification {
 
   return { kind: "other", locale: DEFAULT_LOCALE, path: pathname, segments };
 }
-
-export const classifyPath = classifyRoute;
 
 export function isLocalizedRoutePath(path: string): boolean {
   const classification = classifyRoute(path);
