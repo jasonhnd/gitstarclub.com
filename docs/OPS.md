@@ -112,6 +112,8 @@ Cloudflare owner commands (run from `web/`; build each target immediately before
 
 `bun run cf:build:production` prerenders with `BLOB_BASE_URL`. Wrangler vars are not visible to that prerender. Export the public store base first (no trailing slash, no BOM). `cf:build` refuses a shell public read base that does not match the wrangler vars for `--site-target`. The loopback fixture at `127.0.0.1` is the CI exception. Do not export the preview R2 URL for a production build. `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com` are set by the build script.
 
+That is the current Blob configuration. After the separately authorized stage-4 cutover, the build must explicitly export `STORAGE_READ_DRIVER=r2` and the production `R2_PUBLIC_BASE_URL`, with no Blob shell vars. The build asserts those inputs before OpenNext starts. See [R2-CUTOVER.md](./R2-CUTOVER.md#stage-4-cutover-i-5b) for the future environment and the gate contract.
+
 ```sh
 cd web
 export BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
