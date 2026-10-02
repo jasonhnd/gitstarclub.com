@@ -1,6 +1,5 @@
 // Unit tests for the pure i18n logic that backs static chrome text and prop-localized client islands.
-// `client.tsx` stays server-safe and exports the deterministic chrome resolver; client-only hooks
-// live in `client-runtime.tsx` as a route-dictionary fallback.
+// `client.tsx` stays server-safe and exports the deterministic chrome resolver used by shell components.
 import { test, expect, describe } from "bun:test";
 import en, { type Dict } from "./dictionaries/en";
 import { DEFAULT_LOCALE, getDictionary, isLocale, LOCALES } from ".";

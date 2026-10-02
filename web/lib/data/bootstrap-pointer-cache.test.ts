@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import {
   readBootstrapPublicationPointer,
   invalidateBootstrapPointerCache,
   setBootstrapPointerRetryHooksForTests,
 } from "./bootstrap-publication";
-import { resetBootstrapPointerCacheForTests } from "./bootstrap-pointer-cache";
+import { readCachedBootstrapPointer, resetBootstrapPointerCacheForTests } from "./bootstrap-pointer-cache";
 import { BOOTSTRAP_POINTER_NEGATIVE_TTL_MS } from "./publication-cache-contract";
 
 const BLOB = "https://blob.example.com";
@@ -226,5 +226,25 @@ describe("published bootstrap pointer cache", () => {
   test("does not treat a network failure as a missing pointer", async () => {
     globalThis.fetch = mock(() => Promise.reject(new Error("socket hang up"))) as unknown as typeof fetch;
     await expect(readBootstrapPublicationPointer({ published: true })).rejects.toThrow("socket hang up");
+  });
+
+  test("origin loader failures omit secret canaries from the console log", async () => {
+    resetBootstrapPointerCacheForTests();
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        readCachedBootstrapPointer(async () => {
+          throw new Error(`origin fetch GitHub GraphQL 502 ${canary}`);
+        }),
+      ).rejects.toThrow("GitHub GraphQL 502");
+      const logged = JSON.stringify(errorSpy.mock.calls);
+      expect(logged).toContain("origin fetch failed");
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+    } finally {
+      errorSpy.mockRestore();
+      resetBootstrapPointerCacheForTests();
+    }
   });
 });

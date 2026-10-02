@@ -1,4 +1,4 @@
-// Validates daily live JSON views on Vercel Blob after cron runs.
+// Validates daily live JSON views on the configured public storage origin.
 // Run from web/:
 //   bun scripts/validate-live-views.ts [cacheBust]
 //   bun scripts/validate-live-views.ts --bust 2026-05-31
@@ -13,12 +13,11 @@ import {
 } from "../lib/contracts/index";
 import { assembleCurrentMonth, currentMonthShardPath, isCurrentMonthIndex } from "../lib/data/current-month-shards";
 import type { RankItem } from "../lib/contracts/index";
-import { loadWebEnvFiles, warnEnvFileDiagnostic } from "./lib/env";
+import { getStorageReadDriver } from "../lib/runtime-config";
+import { loadPublicReadBases } from "./lib/public-read-env";
 
-const BLOB_BASE_KEYS = ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL"] as const;
 const webDir = fileURLToPath(new URL("..", import.meta.url));
 
-type BlobBaseKey = (typeof BLOB_BASE_KEYS)[number];
 type JsonObject = Record<string, unknown>;
 
 type ViewResult =
@@ -42,7 +41,8 @@ function usage(): void {
       "Usage: bun scripts/validate-live-views.ts [cacheBust]",
       "       bun scripts/validate-live-views.ts --bust 2026-05-31",
       "",
-      "Reads BLOB_BASE_URL or NEXT_PUBLIC_BLOB_BASE_URL, also from web/.env.local when present.",
+      "Reads the configured storage driver's primary public base, also from web/.env.local when present.",
+      "R2 reads use STORAGE_READ_DRIVER=r2 and R2_PUBLIC_BASE_URL; Blob remains the default.",
     ].join("\n"),
   );
 }
@@ -80,43 +80,13 @@ function parseArgs(argv: string[]): string {
   return bust || utcToday();
 }
 
-function loadBlobBaseFromEnvFile(): void {
-  loadWebEnvFiles(webDir, {
-    keys: BLOB_BASE_KEYS,
-    onDiagnostic: warnEnvFileDiagnostic,
-  });
-}
-
-function resolveBlobBase(): { base: URL; envKey: BlobBaseKey } {
-  loadBlobBaseFromEnvFile();
-
-  for (const key of BLOB_BASE_KEYS) {
-    const raw = process.env[key]?.trim();
-    if (!raw) continue;
-
-    let base: URL;
-    try {
-      base = new URL(raw.endsWith("/") ? raw : `${raw}/`);
-    } catch {
-      throw new Error(`${key} is not a valid URL`);
-    }
-
-    if (base.protocol !== "https:" && base.protocol !== "http:") {
-      throw new Error(`${key} must be an http(s) URL`);
-    }
-    return { base, envKey: key };
-  }
-
-  throw new Error("Missing BLOB_BASE_URL or NEXT_PUBLIC_BLOB_BASE_URL");
-}
-
 function viewUrl(base: URL, path: string, bust: string): URL {
   const url = new URL(path, base);
   url.searchParams.set("v", bust);
   return url;
 }
 
-async function readBlobJson(base: URL, path: string, bust: string): Promise<unknown> {
+async function readPublicJson(base: URL, path: string, bust: string): Promise<unknown> {
   const response = await fetch(viewUrl(base, path, bust), {
     cache: "no-store",
     headers: { accept: "application/json" },
@@ -243,7 +213,7 @@ async function resolveLiveRoot(base: URL, bust: string): Promise<{ root: string;
 
 async function main(): Promise<void> {
   const bust = parseArgs(process.argv.slice(2));
-  const { base, envKey } = resolveBlobBase();
+  const base = loadPublicReadBases(webDir)[0];
   const live = await resolveLiveRoot(base, bust);
 
   const views = await Promise.all([
@@ -254,7 +224,7 @@ async function main(): Promise<void> {
             await Promise.all(
               Array.from({ length: data.shard_count }, async (_, bucket) =>
                 CurrentMonthShard.parse(
-                  await readBlobJson(base, `${live.root}${currentMonthShardPath(bucket)}`, bust),
+                  await readPublicJson(base, `${live.root}${currentMonthShardPath(bucket)}`, bust),
                 ),
               ),
             ),
@@ -286,7 +256,8 @@ async function main(): Promise<void> {
   const summary = {
     ok: views.every((view) => view.ok),
     bust,
-    blob_base_env: envKey,
+    storage_read_driver: getStorageReadDriver(process.env),
+    public_read_base: base.origin + base.pathname.replace(/\/$/, ""),
     generation: live.generation,
     legacy_layout: live.legacy,
     views,
