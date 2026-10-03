@@ -10,13 +10,32 @@ source_of_truth_for:
 
 # R2 cutover
 
-> **Current status:** Stage 1 (code) is done. Production still reads Vercel Blob until cutover. Stages 2 through 6 are not accepted.
+> **Current status:** Stage 1 (code) is done. Production still reads Vercel Blob on the **live** Worker until an authorized stage-4 deploy. A **2026-10-03 config batch** (below) prepares the checked-in stage-4 wrangler contract on `pre` without deploying production. Stages 2 through 6 are not accepted on production traffic.
 >
 > Storage sentence used across the current docs: Cloudflare R2 (production still reads Vercel Blob until cutover; see docs/R2-CUTOVER.md).
 
 This file is the source of truth for where object storage is going and which stage is current. Historical P0 adapter notes live in [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). The Blob publish and refresh design lives in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md). Both are superseded for storage status. Blob layout and the environment inventory, still required until cutover, stay in [OPS.md](./OPS.md).
 
 This document does not create buckets, change DNS, deploy a Worker, or write either store.
+
+## 2026-10-03 migration batch (steps 1–3)
+
+Jason 2026-10-03 resume: Blob → R2 migration is split from formal traffic cutover.
+
+| Step | Owner | Scope | Accepted when |
+| --- | --- | --- | --- |
+| **1 — Write-path audit (read-only)** | Backend engineer | List every in-repo Blob **writer**, trigger, and whether it is still schedulable; explain freeze-period growth (e.g. `ops/sync-runs.json`). No code or schedule changes. | Project store report `internal/r2-migration-20261003.md` (2026-10-03) |
+| **2 — Inventory + R2 copy** | BOT / operator | Blob object inventory and copy into `gitstarclub-data-prod` at bucket root. **Do not** use repo Cloudflare API copy from this agent run. | Jason confirms byte/key parity vs Blob |
+| **3 — Config + docs (no deploy)** | Backend engineer | Draft PR on `pre`: top-level wrangler switches to stage-4 R2 vars (`R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, `DATA` → `gitstarclub-data-prod`, remove production `BLOB_*` and `VIEWS_VERSION_FALLBACK`). Update this file. **Keep PR draft; do not `wrangler deploy` production or merge to `main`.** | `node scripts/assert-cf-ci-gates.mjs` green on the PR branch |
+
+**Not in steps 1–3 (explicitly deferred):**
+
+- Production Worker deploy that would make `gitstarclub.com` read R2 (stage 4 cutover acceptance).
+- Production `triggers.crons` enablement (stage 5).
+- Blob store retirement (stage 6).
+- Changing secret values, Bearer publish, or destructive Blob operations.
+
+Formal cutover remains stage 4 deploy + acceptance after step 2 passes.
 
 ## Target model
 
