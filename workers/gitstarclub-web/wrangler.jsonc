@@ -44,6 +44,10 @@
     {
       "binding": "MEDIA",
       "bucket_name": "gitstarclub-assets"
+    },
+    {
+      "binding": "DATA",
+      "bucket_name": "gitstarclub-data-prod"
     }
   ],
   // Inheritable. A plain deploy defaults both to on and would reopen
@@ -59,17 +63,16 @@
     // Production HTTP origin for cron dispatch. Preview overrides this.
     // Secrets (CRON_SECRET, REFRESH_*_URL) are platform-injected, not committed.
     "CF_CRON_ORIGIN": "https://gitstarclub.com",
-    // Production public Blob base (not a secret). Preview reads its own R2
-    // origin and does not share this store. Declared here so a deploy without
-    // --keep-vars cannot wipe / and /rankings.
-    "BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
-    "NEXT_PUBLIC_BLOB_BASE_URL": "https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com",
+    // Stage 4 (I-5b) read/write config — production public R2 origin. This PR
+    // lands the contract only; do not deploy production until R2 copy is verified
+    // and Jason approves cutover (see docs/R2-CUTOVER.md §2026-10-03 batch).
+    "DEPLOY_ENV": "production",
+    "STORAGE_READ_DRIVER": "r2",
+    "STORAGE_WRITE_DRIVER": "r2_binding",
+    "R2_BUCKET": "gitstarclub-data-prod",
+    "R2_PUBLIC_BASE_URL": "https://data.gitstarclub.com",
     "WORKFLOW_RUNTIME": "cf-queue",
-    "WORKFLOW_QUEUE_ENQUEUE_URL": "https://gitstarclub.com/enqueue",
-    // Stopgap for #543: views/latest.json is missing. Serve this complete
-    // version until the pointer is restored, then remove this var.
-    // Do not copy it to env.pre.
-    "VIEWS_VERSION_FALLBACK": "refresh-2026-09-13T06-00-16-398Z"
+    "WORKFLOW_QUEUE_ENQUEUE_URL": "https://gitstarclub.com/enqueue"
   },
   // Production CF Cron stays off. `triggers.crons` MUST remain []. This file
   // does not prove a live production caller. web/vercel.json is a historical
