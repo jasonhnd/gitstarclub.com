@@ -24,7 +24,7 @@ Jason 2026-10-03 resume: Blob → R2 migration is split from formal traffic cuto
 
 | Step | Owner | Scope | Accepted when |
 | --- | --- | --- | --- |
-| **1 — Write-path audit (read-only)** | Backend engineer | List every in-repo Blob **writer**, trigger, and whether it is still schedulable; explain freeze-period growth (e.g. `ops/sync-runs.json`). No code or schedule changes. | Report in Project store [`internal/r2-migration-20261003.md`](/cursor/stores/bc-c39797d3-b6a9-5c7b-a2c9-a4b3200fe6bf/internal/r2-migration-20261003.md) |
+| **1 — Write-path audit (read-only)** | Backend engineer | List every in-repo Blob **writer**, trigger, and whether it is still schedulable; explain freeze-period growth (e.g. `ops/sync-runs.json`). No code or schedule changes. | Project store report `internal/r2-migration-20261003.md` (2026-10-03) |
 | **2 — Inventory + R2 copy** | BOT / operator | Blob object inventory and copy into `gitstarclub-data-prod` at bucket root. **Do not** use repo Cloudflare API copy from this agent run. | Jason confirms byte/key parity vs Blob |
 | **3 — Config + docs (no deploy)** | Backend engineer | Draft PR on `pre`: top-level wrangler switches to stage-4 R2 vars (`R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, `DATA` → `gitstarclub-data-prod`, remove production `BLOB_*` and `VIEWS_VERSION_FALLBACK`). Update this file. **Keep PR draft; do not `wrangler deploy` production or merge to `main`.** | `node scripts/assert-cf-ci-gates.mjs` green on the PR branch |
 
