@@ -522,8 +522,11 @@ function collectStorageDriverIssues(wrangler, preview, stage4) {
     if (jsonMentions(topLevel, "BLOB_")) {
       issues.push("wrangler top-level stage-4 must not contain BLOB_* (production reads R2)");
     }
-    if (wrangler.vars?.VIEWS_VERSION_FALLBACK !== undefined) {
-      issues.push("wrangler top-level stage-4 vars.VIEWS_VERSION_FALLBACK must be absent");
+    const fallback = wrangler.vars?.VIEWS_VERSION_FALLBACK;
+    if (fallback !== undefined && fallback !== PRODUCTION_VIEWS_VERSION_FALLBACK) {
+      issues.push(
+        `wrangler top-level stage-4 vars.VIEWS_VERSION_FALLBACK must be absent or ${PRODUCTION_VIEWS_VERSION_FALLBACK} (received ${quote(fallback)})`,
+      );
     }
     if (wrangler.vars?.R2_PREFIX !== undefined && wrangler.vars.R2_PREFIX !== "") {
       issues.push("wrangler top-level stage-4 vars.R2_PREFIX must be unset or empty");
