@@ -72,7 +72,12 @@
     "R2_BUCKET": "gitstarclub-data-prod",
     "R2_PUBLIC_BASE_URL": "https://data.gitstarclub.com",
     "WORKFLOW_RUNTIME": "cf-queue",
-    "WORKFLOW_QUEUE_ENQUEUE_URL": "https://gitstarclub.com/enqueue"
+    "WORKFLOW_QUEUE_ENQUEUE_URL": "https://gitstarclub.com/enqueue",
+    // Stopgap for #543: views/latest.json is missing on Blob and may still be
+    // absent on R2 at first cutover deploy. Keep until the pointer is restored
+    // on the store production reads, then remove (Jason approval).
+    // Do not copy it to env.pre.
+    "VIEWS_VERSION_FALLBACK": "refresh-2026-09-13T06-00-16-398Z"
   },
   // Production CF Cron stays off. `triggers.crons` MUST remain []. This file
   // does not prove a live production caller. web/vercel.json is a historical

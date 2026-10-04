@@ -123,7 +123,7 @@ function alignedSources(overrides = {}) {
 
 function stage4Wrangler() {
   const config = JSON.parse(validWrangler);
-  for (const key of ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL", "VIEWS_VERSION_FALLBACK"]) {
+  for (const key of ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL"]) {
     delete config.vars[key];
   }
   Object.assign(config.vars, {
@@ -132,6 +132,7 @@ function stage4Wrangler() {
     STORAGE_WRITE_DRIVER: "r2_binding",
     R2_BUCKET: "gitstarclub-data-prod",
     R2_PUBLIC_BASE_URL: "https://data.gitstarclub.com",
+    VIEWS_VERSION_FALLBACK: PRODUCTION_VIEWS_VERSION_FALLBACK,
   });
   config.r2_buckets = [
     { binding: "MEDIA", bucket_name: "gitstarclub-assets" },
@@ -174,7 +175,7 @@ describe("production stage-4 storage contract", () => {
       "wrangler top-level must not mention data-pre.gitstarclub.com",
       "wrangler top-level stage-4 r2_buckets must declare exactly one DATA binding to gitstarclub-data-prod",
       "wrangler top-level stage-4 must not contain BLOB_* (production reads R2)",
-      "wrangler top-level stage-4 vars.VIEWS_VERSION_FALLBACK must be absent",
+      `wrangler top-level stage-4 vars.VIEWS_VERSION_FALLBACK must be absent or ${PRODUCTION_VIEWS_VERSION_FALLBACK} (received "")`,
       "wrangler top-level stage-4 vars.R2_PREFIX must be unset or empty",
       "wrangler top-level stage-4 vars.READ_DRIVER must be unset or r2",
       "wrangler top-level stage-4 vars.WRITE_DRIVER must be unset or r2_binding",
@@ -243,7 +244,7 @@ describe("production stage-4 storage contract", () => {
       ["BLOB_BASE_URL", PRODUCTION_BLOB_BASE_URL, "must not contain BLOB_*"],
       ["NEXT_PUBLIC_BLOB_BASE_URL", "", "must not contain BLOB_*"],
       ["BLOB_READ_WRITE_TOKEN", "test-only-placeholder", "must not contain BLOB_*"],
-      ["VIEWS_VERSION_FALLBACK", "", "VIEWS_VERSION_FALLBACK must be absent"],
+      ["VIEWS_VERSION_FALLBACK", "wrong-fallback", "VIEWS_VERSION_FALLBACK must be absent or"],
       ["R2_PREFIX", "migrate-dev/", "R2_PREFIX must be unset or empty"],
     ]) {
       const config = stage4Wrangler();
@@ -716,7 +717,10 @@ describe("CF CI gates", () => {
       wrangler.env.pre.r2_buckets.find((entry) => entry.binding === "DATA").bucket_name,
       PREVIEW_R2_BUCKET,
     );
-    assert.equal(wrangler.r2_buckets.find((entry) => entry.binding === "DATA"), undefined);
+    assert.equal(
+      wrangler.r2_buckets.find((entry) => entry.binding === "DATA").bucket_name,
+      PRODUCTION_R2_BUCKET,
+    );
     assert.equal(wrangler.vars.MIN_TRACKED_STARS, undefined);
     assert.equal(wrangler.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, undefined);
     assert.equal(wrangler.vars.WORKFLOW_COLD_START, undefined);
@@ -724,16 +728,18 @@ describe("CF CI gates", () => {
     assert.equal(wrangler.preview_urls, false);
     assert.equal(wrangler.env.pre.workers_dev, true);
     assert.equal(wrangler.env.pre.preview_urls, true);
-    assert.equal(wrangler.vars.BLOB_BASE_URL, PRODUCTION_BLOB_BASE_URL);
-    assert.equal(wrangler.vars.NEXT_PUBLIC_BLOB_BASE_URL, PRODUCTION_BLOB_BASE_URL);
+    assert.equal(wrangler.vars.BLOB_BASE_URL, undefined);
+    assert.equal(wrangler.vars.NEXT_PUBLIC_BLOB_BASE_URL, undefined);
     assert.equal(wrangler.vars.CF_CRON_ORIGIN, PRODUCTION_CRON_ORIGIN);
     assert.equal(wrangler.vars.WORKFLOW_RUNTIME, PRODUCTION_WORKFLOW_RUNTIME);
     assert.equal(wrangler.vars.WORKFLOW_QUEUE_ENQUEUE_URL, PRODUCTION_WORKFLOW_QUEUE_ENQUEUE_URL);
-    assert.equal(wrangler.vars.DEPLOY_ENV, undefined);
-    assert.equal(wrangler.vars.STORAGE_READ_DRIVER, undefined);
+    assert.equal(wrangler.vars.DEPLOY_ENV, "production");
+    assert.equal(wrangler.vars.STORAGE_READ_DRIVER, "r2");
     assert.equal(wrangler.vars.READ_DRIVER, undefined);
-    assert.equal(wrangler.vars.STORAGE_WRITE_DRIVER, undefined);
+    assert.equal(wrangler.vars.STORAGE_WRITE_DRIVER, "r2_binding");
     assert.equal(wrangler.vars.WRITE_DRIVER, undefined);
+    assert.equal(wrangler.vars.R2_BUCKET, PRODUCTION_R2_BUCKET);
+    assert.equal(wrangler.vars.R2_PUBLIC_BASE_URL, "https://data.gitstarclub.com");
     assert.equal(wrangler.vars.VIEWS_VERSION_FALLBACK, PRODUCTION_VIEWS_VERSION_FALLBACK);
     assert.equal(wrangler.env.pre.vars.VIEWS_VERSION_FALLBACK, undefined);
     assert.equal(wrangler.vars.CF_PREVIEW_COMMIT_SHA, undefined);

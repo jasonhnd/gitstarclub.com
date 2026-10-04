@@ -26,7 +26,7 @@ Jason 2026-10-03 resume: Blob → R2 migration is split from formal traffic cuto
 | --- | --- | --- | --- |
 | **1 — Write-path audit (read-only)** | Backend engineer | List every in-repo Blob **writer**, trigger, and whether it is still schedulable; explain freeze-period growth (e.g. `ops/sync-runs.json`). No code or schedule changes. | Project store report `internal/r2-migration-20261003.md` (2026-10-03) |
 | **2 — Inventory + R2 copy** | BOT / operator | Blob object inventory and copy into `gitstarclub-data-prod` at bucket root. **Do not** use repo Cloudflare API copy from this agent run. | Jason confirms byte/key parity vs Blob |
-| **3 — Config + docs (no deploy)** | Backend engineer | Draft PR on `pre`: top-level wrangler switches to stage-4 R2 vars (`R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, `DATA` → `gitstarclub-data-prod`, remove production `BLOB_*` and `VIEWS_VERSION_FALLBACK`). Update this file. **Keep PR draft; do not `wrangler deploy` production or merge to `main`.** | `node scripts/assert-cf-ci-gates.mjs` green on the PR branch |
+| **3 — Config + docs (no deploy)** | Backend engineer | PR on `pre`: top-level wrangler switches to stage-4 R2 vars (`STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, `DATA` → `gitstarclub-data-prod`, remove production `BLOB_*`; keep `VIEWS_VERSION_FALLBACK` until `views/latest.json` exists on the store production reads). Update this file (formal cutover checklist below). **Do not `wrangler deploy` production or merge to `main`.** | Jason 2026-10-04: R2 copy parity accepted; `node scripts/assert-cf-ci-gates.mjs` green; R2-vs-Blob page parity on `data.gitstarclub.com` |
 
 **Not in steps 1–3 (explicitly deferred):**
 
@@ -35,7 +35,31 @@ Jason 2026-10-03 resume: Blob → R2 migration is split from formal traffic cuto
 - Blob store retirement (stage 6).
 - Changing secret values, Bearer publish, or destructive Blob operations.
 
-Formal cutover remains stage 4 deploy + acceptance after step 2 passes.
+Formal cutover remains stage 4 **live Worker deploy** + acceptance after step 2 passes. Merging step 3 into `pre` updates the **checked-in** wrangler contract only; it does not move production traffic until an operator runs the authorized deploy in the checklist below.
+
+### Formal production cutover checklist (Jason approval required)
+
+Do not start this checklist until step 2 (R2 copy parity) and step 3 (config on `pre`) are accepted. **Each deploy step needs explicit Jason approval**; this document does not authorize production deploy by itself.
+
+1. **Pre-deploy read-only checks**
+   - `https://data.gitstarclub.com/_meta/bucket-identity.json` → `{"bucket":"gitstarclub-data-prod","deploy_env":"production"}`.
+   - Spot-check keys copied from Blob (Jason 2026-10-04: full inventory parity accepted).
+   - `node scripts/assert-cf-ci-gates.mjs` on the commit you will deploy (top-level stage-4 contract, preview isolation unchanged).
+   - Production shell build (no Blob vars): export `STORAGE_READ_DRIVER=r2`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, unset all `BLOB_*`, then `cd web && bun run cf:build:production` (see stage 4 acceptance below).
+
+2. **Authorized production Worker deploy** (operator only; not CI)
+   - Build and deploy top-level `gitstarclub-web` per [OPS.md](./OPS.md) with `--env=""` and `--var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"` matching the baked `cf:build` SHA.
+   - Confirm Cloudflare bindings: `DATA` → `gitstarclub-data-prod`, `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, **no** `BLOB_*`.
+
+3. **Post-deploy traffic acceptance**
+   - `https://gitstarclub.com/`, `/rankings`, a representative `/repo/...`, and `/search?q=...` return **200** and match pre-cutover content (same views generation / rankings).
+   - `https://data.gitstarclub.com/views/latest.json` (or configured fallback generation) matches what pages render.
+   - Workers Observability / logs: outbound reads hit `data.gitstarclub.com`, not `*.public.blob.vercel-storage.com` (Blob traffic should trend to zero for page reads).
+
+4. **Remove frozen fallback** (separate small deploy after pointer is live on R2)
+   - When `views/latest.json` returns **200** on `data.gitstarclub.com`, remove top-level `VIEWS_VERSION_FALLBACK` and redeploy. Do not remove the fallback while the pointer is still missing.
+
+**Rollback (stage 4):** Restore previous production Worker version or redeploy prior wrangler: re-add `BLOB_BASE_URL` / `NEXT_PUBLIC_BLOB_BASE_URL`, remove `DATA` and R2 driver vars (or unset drivers to default `blob`), keep `VIEWS_VERSION_FALLBACK` if the pointer is still missing on Blob. Do not delete objects in either store.
 
 ## Target model
 
@@ -46,7 +70,7 @@ Two data buckets, one per deployment:
 | Preview (`pre`) | `gitstarclub-data-pre` | `pre` | `https://data-pre.gitstarclub.com` | `DATA` binding, `STORAGE_WRITE_DRIVER=r2_binding` |
 | Production (`main`) | `gitstarclub-data-prod` | `production` | `https://data.gitstarclub.com` | `DATA` binding, `STORAGE_WRITE_DRIVER=r2_binding` (stage 4) |
 
-Preview already sets `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL` to the preview origin. That read uses public HTTP and does not use a storage key. Production top-level config still uses the blob read driver and does not bind `DATA`.
+Preview already sets `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL` to the preview origin. That read uses public HTTP and does not use a storage key. After step 3 lands on `pre`, the **checked-in** top-level wrangler uses the stage-4 R2 contract; the **live** production Worker still reads Blob until an authorized stage-4 deploy.
 
 The assets binding `MEDIA` on `gitstarclub-assets` is not the JSON store. The JSON Worker does not use `MEDIA` for views, canonical objects, or pointers.
 
