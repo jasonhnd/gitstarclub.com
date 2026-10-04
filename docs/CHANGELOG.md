@@ -17,6 +17,10 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ## Unreleased
 
+### Fixed
+
+- **Dependency audit (`braces`, GHSA-vfj7-8cjw-p6xm).** `web/package.json` overrides transitive `braces` to the depth-guard backport at `micromatch/braces@bdb6fda` until npm publishes a fixed `3.0.x` release. Dev-only ESLint glob tooling; production runtime unchanged.
+
 ### Added
 
 - **Offline local R2 stage 2 rehearsal (#586).** `web/scripts/r2-local-rehearsal.ts` runs the actual upload/export CLIs against Miniflare's persistent local S3 bucket, restarts workerd, and exercises the application Worker read/write paths through `DATA`. It checks dry-run, stage-only, initial commit, lease claim/renew/release, pointer CAS, and identity/first-commit refusals. Run it before the real-bucket rehearsal in [R2-CUTOVER.md](./R2-CUTOVER.md). It uses fixtures and a clean environment, with no deployment or added CI job.
