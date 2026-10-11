@@ -279,3 +279,43 @@ Rollback: restore the blob driver and the blob public base on the production Wor
 Production **page reads** use R2 (stage 4 accepted 2026-10-04). Production cron writes remain paused (`triggers.crons` is `[]`). The live Worker still carries **`VIEWS_VERSION_FALLBACK`** and the **`BLOB_READ_WRITE_TOKEN`** secret until a later authorized batch (stages 4 item 4 / stage 6). Production build prerender still requires shell **`VIEWS_VERSION_FALLBACK`** when `views/latest.json` is absent on R2. Blob runbooks in [OPS.md](./OPS.md), [README.md](../README.md), and other docs remain until stage 6 retires Blob operating dependencies.
 
 Local read-only development against the blob driver still needs only `BLOB_BASE_URL` until cutover. Preview reads do not use a blob token. R2 writes need `DEPLOY_ENV`, the matching identity marker, and either the `DATA` binding (`r2_binding`) or the S3 key (`r2` / `r2_s3`). Never commit the key.
+
+## Edge cache (Worker Cache API)
+
+The Next branch uses `caches.default`, Cloudflare's per-data-center response cache,
+after shell routing. It stores only GET responses with status 200 and a positive
+`s-maxage` (shared-cache lifetime in seconds). HTML, RSC (Next's React component
+payload), and JSON are all eligible. HEAD and other methods bypass the cache.
+Paths starting with `/api`, paths containing `refresh`, `/start`, `/enqueue`,
+`/preview/*`, and `/.well-known/*` are excluded. Requests carrying Authorization,
+Cookie, or Range headers bypass it. Responses with `private`, `no-store`, or
+`no-cache`, any Set-Cookie header, or `Vary: *` are never stored.
+
+Every Next response carries `x-gsc-cache`: `HIT` means served from cache; `MISS`
+means an eligible response was rendered and queued for storage; `BYPASS` means
+the request or response was excluded, the Cache API was unavailable, or a cache
+lookup failed. Cache writes run in `waitUntil` and failures only log a warning.
+Shell responses keep their existing behavior. OpenNext's `disableIncrementalCache`
+setting remains enabled.
+
+Keys preserve the URL and query parameters, including `_rsc`, and append
+`__gsc_cv`: a version composed of `EDGE_CACHE_VERSION` (default `v1`),
+`VIEWS_VERSION_FALLBACK`, and the commit identifier baked by `cf:build`
+(falling back to `VERCEL_GIT_COMMIT_SHA`, then `CF_PREVIEW_COMMIT_SHA`). These
+identifiers are optional; no generated Next build ID is imported. `__gsc_variant` hashes the
+full RSC, router state, prefetch, segment prefetch, Next URL, and Accept header
+values so HTML and component payloads never share an entry.
+
+After each weekly data refresh, change `EDGE_CACHE_VERSION` or
+`VIEWS_VERSION_FALLBACK` and redeploy to move all requests to new keys. Operators
+can alternatively use Cloudflare's **Purge Everything**. Cache API entries live
+in individual data centers; a URL purge must target the actual synthetic key,
+including `__gsc_cv` and `__gsc_variant`, rather than just the public page URL.
+
+The stored response lifetime is `min(s-maxage, 86400)` seconds (one day), enforced
+by `EDGE_CACHE_MAX_TTL_SECONDS`. Rendered responses and cache hits keep the
+original client-facing Cache-Control; only the stored copy carries the cap. The
+homepage advertises a one-year `s-maxage`, so version rotation is required for
+immediate refresh visibility. If rotation is forgotten, this cache can retain an
+old response for at most one day after storage. This cap does not refresh stale
+source data or existing downstream caches.

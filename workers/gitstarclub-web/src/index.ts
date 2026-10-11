@@ -1,4 +1,5 @@
 import { isWorkerShellRequest } from "../../../web/lib/workers-host/shell-routes";
+import { handleEdgeCachedNext } from "../../../web/lib/workers-host/edge-cache";
 import type { RefreshJob, WorkerEnv } from "./env";
 import { handleNextRequest } from "./next-app";
 import { emitRunLog, handleQueue, handleScheduled, handleShellFetch } from "./shell";
@@ -10,7 +11,7 @@ export default {
       return handleShellFetch(request, env);
     }
     emitRunLog({ event: "host.next", path: url.pathname, method: request.method });
-    return handleNextRequest(request, env, ctx);
+    return handleEdgeCachedNext(request, env, ctx, () => handleNextRequest(request, env, ctx));
   },
 
   async scheduled(event: ScheduledEvent, env: WorkerEnv): Promise<void> {
