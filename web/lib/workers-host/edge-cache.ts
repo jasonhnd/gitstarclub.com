@@ -2,10 +2,12 @@ import { cfBuildCommitSha } from "../cf-build-identity";
 
 /** Cloudflare Cache API storage is local to each data center. */
 export const EDGE_CACHE_MAX_TTL_SECONDS = 86400;
+const EDGE_CACHE_DEFAULT_TTL_SECONDS = 3600;
 const ORIGIN_CACHE_CONTROL_HEADER = "x-gsc-cache-origin-control";
 
 export type EdgeCacheEnv = {
   EDGE_CACHE_VERSION?: string;
+  EDGE_CACHE_TTL?: string;
   VIEWS_VERSION_FALLBACK?: string;
   CF_PREVIEW_COMMIT_SHA?: string;
   VERCEL_GIT_COMMIT_SHA?: string;
@@ -30,7 +32,7 @@ function eligibleRequest(request: Request): boolean {
     && !["authorization", "cookie", "range"].some((header) => request.headers.has(header));
 }
 
-export function edgeCacheTtl(response: Response): number | undefined {
+export function edgeCacheTtl(response: Response, env: EdgeCacheEnv = {}): number | undefined {
   if (response.status !== 200 || response.headers.has("set-cookie")) return undefined;
   if (response.headers.get("vary")?.split(",").some((value) => value.trim() === "*")) return undefined;
   const directives = (response.headers.get("cache-control") ?? "").split(",").map((value) => value.trim());
@@ -39,7 +41,12 @@ export function edgeCacheTtl(response: Response): number | undefined {
   if (shared.length !== 1) return undefined;
   const match = /^s-maxage\s*=\s*(?:"(\d+)"|(\d+))$/i.exec(shared[0]);
   const seconds = match ? Number(match[1] ?? match[2]) : 0;
-  return Number.isSafeInteger(seconds) && seconds > 0 ? Math.min(seconds, EDGE_CACHE_MAX_TTL_SECONDS) : undefined;
+  if (!Number.isSafeInteger(seconds) || seconds <= 0) return undefined;
+  const value = env.EDGE_CACHE_TTL ?? "";
+  const storageSeconds = /^[0-9]+$/.test(value) && value.trim() === value ? Number(value) : 0;
+  return storageSeconds > 0
+    ? Math.min(storageSeconds, EDGE_CACHE_MAX_TTL_SECONDS)
+    : EDGE_CACHE_DEFAULT_TTL_SECONDS;
 }
 
 export async function edgeCacheKey(request: Request, env: EdgeCacheEnv): Promise<Request> {
@@ -90,10 +97,10 @@ export async function handleEdgeCachedNext(
   }
 
   const response = await next();
-  const ttl = edgeCacheTtl(response);
+  const ttl = edgeCacheTtl(response, env);
   if (ttl === undefined) return withCacheStatus(response, "BYPASS");
   const result = withCacheStatus(response, "MISS");
-  // Limit only the stored copy; preserve the origin's client-facing policy.
+  // Set the independent storage lifetime only on the stored copy; preserve the origin policy.
   try {
     const stored = result.clone();
     stored.headers.set(ORIGIN_CACHE_CONTROL_HEADER, result.headers.get("cache-control")!);

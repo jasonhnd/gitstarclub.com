@@ -46,6 +46,7 @@ export type WorkerEnv = {
   CF_PREVIEW_ORIGIN?: string;
   HOSTING_TARGET?: string;
   EDGE_CACHE_VERSION?: string;
+  EDGE_CACHE_TTL?: string;
   VIEWS_VERSION_FALLBACK?: string;
   BLOB_BASE_URL?: string;
   MIN_TRACKED_STARS?: string;

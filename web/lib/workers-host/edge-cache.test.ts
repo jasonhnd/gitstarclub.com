@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { cfBuildCommitSha } from "../cf-build-identity";
 import { EDGE_CACHE_MAX_TTL_SECONDS, edgeCacheKey, edgeCacheTtl, handleEdgeCachedNext, type EdgeCache, type EdgeCacheEnv } from "./edge-cache";
 
 function harness(headers: HeadersInit = { "cache-control": "public, s-maxage=300" }, status = 200) {
@@ -87,9 +88,13 @@ describe("Worker edge cache", () => {
     const baseline = await edgeCacheKey(request, {});
     const url = new URL(baseline.url);
     expect(url.searchParams.get("_rsc")).toBe("one");
-    expect(url.searchParams.getAll("__gsc_cv")).toEqual(["user", '["v1","",""]']);
-    for (const env of [{ EDGE_CACHE_VERSION: "v2" }, { VIEWS_VERSION_FALLBACK: "weekly-new" }, { CF_PREVIEW_COMMIT_SHA: "new-build" }, { VERCEL_GIT_COMMIT_SHA: "new-build" }]) {
+    expect(url.searchParams.getAll("__gsc_cv")).toEqual(["user", JSON.stringify(["v1", "", cfBuildCommitSha || ""])]);
+    for (const env of [{ EDGE_CACHE_VERSION: "v2" }, { VIEWS_VERSION_FALLBACK: "weekly-new" }]) {
       expect((await edgeCacheKey(request, env)).url).not.toBe(baseline.url);
+    }
+    for (const env of [{ CF_PREVIEW_COMMIT_SHA: "new-build" }, { VERCEL_GIT_COMMIT_SHA: "new-build" }]) {
+      const key = new URL((await edgeCacheKey(request, env)).url);
+      expect(key.searchParams.getAll("__gsc_cv")).toEqual(["user", JSON.stringify(["v1", "", cfBuildCommitSha || "new-build"])]);
     }
     expect((await edgeCacheKey(new Request("https://example.com/rankings?lang=en&_rsc=two"), {})).url).not.toBe(baseline.url);
     const h = harness();
@@ -97,15 +102,40 @@ describe("Worker edge cache", () => {
     expect((await h.run(request, { EDGE_CACHE_VERSION: "v2" })).headers.get("x-gsc-cache")).toBe("MISS");
   });
 
-  test("caps the stored TTL at one day and allows non-HTML payloads", async () => {
-    const h = harness({ "cache-control": "public, s-maxage=31536000", "content-type": "text/x-component" });
-    const response = await h.run();
-    expect(response.headers.get("cache-control")).toBe("public, s-maxage=31536000");
-    expect([...h.entries.values()][0].headers.get("cache-control")).toBe(`public, max-age=${EDGE_CACHE_MAX_TTL_SECONDS}, s-maxage=${EDGE_CACHE_MAX_TTL_SECONDS}`);
-    const hit = await h.run();
-    expect(hit.headers.get("cache-control")).toBe(response.headers.get("cache-control"));
-    expect(hit.headers.has("x-gsc-cache-origin-control")).toBe(false);
-    expect(edgeCacheTtl(new Response("{}", { headers: { "cache-control": 'PUBLIC, S-MAXAGE="60"', "content-type": "application/json", vary: "RSC" } }))).toBe(60);
+  test("stores short and long origin lifetimes for one hour and restores the origin policy on HIT", async () => {
+    for (const seconds of [60, 31536000]) {
+      const policy = `public, s-maxage=${seconds}`;
+      const h = harness({ "cache-control": policy, "content-type": "text/x-component" });
+      const response = await h.run();
+      expect(response.headers.get("x-gsc-cache")).toBe("MISS");
+      expect(response.headers.get("cache-control")).toBe(policy);
+      expect([...h.entries.values()][0].headers.get("cache-control")).toBe("public, max-age=3600, s-maxage=3600");
+      const hit = await h.run();
+      expect(hit.headers.get("x-gsc-cache")).toBe("HIT");
+      expect(hit.headers.get("cache-control")).toBe(policy);
+      expect(hit.headers.has("x-gsc-cache-origin-control")).toBe(false);
+    }
+    expect(edgeCacheTtl(new Response("{}", { headers: { "cache-control": 'PUBLIC, S-MAXAGE="60"', "content-type": "application/json", vary: "RSC" } }))).toBe(3600);
+  });
+
+  test("uses EDGE_CACHE_TTL for storage and caps it at one day", async () => {
+    for (const [value, ttl] of [["600", 600], ["999999", EDGE_CACHE_MAX_TTL_SECONDS]] as const) {
+      const h = harness({ "cache-control": "public, s-maxage=60" });
+      const env = { EDGE_CACHE_TTL: value };
+      expect((await h.run(undefined, env)).headers.get("cache-control")).toBe("public, s-maxage=60");
+      expect([...h.entries.values()][0].headers.get("cache-control")).toBe(`public, max-age=${ttl}, s-maxage=${ttl}`);
+      const hit = await h.run(undefined, env);
+      expect(hit.headers.get("x-gsc-cache")).toBe("HIT");
+      expect(hit.headers.get("cache-control")).toBe("public, s-maxage=60");
+    }
+  });
+
+  test("empty, invalid and non-positive EDGE_CACHE_TTL values fall back to one hour", async () => {
+    for (const value of ["", "bad", "0", "000", "-1", "1.5", "+600", "600seconds", "6e2", " 600", "600 ", "600\n"]) {
+      const h = harness({ "cache-control": "public, s-maxage=60" });
+      expect((await h.run(undefined, { EDGE_CACHE_TTL: value })).headers.get("x-gsc-cache")).toBe("MISS");
+      expect([...h.entries.values()][0].headers.get("cache-control")).toBe("public, max-age=3600, s-maxage=3600");
+    }
   });
 
   test("missing Cache API bypasses and cache failures preserve the response", async () => {
