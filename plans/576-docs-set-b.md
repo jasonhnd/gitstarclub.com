@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make the current docs describe Cloudflare Workers hosting, public preview, and the transitional Blob store. Move the superseded phase docs out of the live index. Do not overturn the #574 rollback and acceptance text.
+Make the current docs describe Cloudflare Workers hosting, public preview, and the accepted copied-store R2 production cutover. Keep superseded phase docs under `docs/archive/`. On the 2026-10-13 resume (GSC_0002), reconcile the historical #574 bootstrap recipe with the operator acceptance recorded in PR #649, retaining historical recovery and rollback without presenting them as current instructions.
 
 ## Scope
 
@@ -10,6 +10,8 @@ Make the current docs describe Cloudflare Workers hosting, public preview, and t
 - Move `docs/CF-MIGRATION-P1.md`, `docs/CF-MIGRATION-P2.md`, `docs/CF-MIGRATION-P3.md`, and `docs/R2-MIGRATION-P0.md` to `docs/archive/` with a one-line superseded banner. Update links and the docs index.
 - Findings in scope: A01, A02, A03, A04, A05, A06, A08, A09, A10, A12, A14, A15, B01, B02, B08.
 - Branch `docs/576-docs-set-b` starts at `d9d9897` (PR #580 / #574), because `origin/pre` at `2958fc2` does not contain that commit yet.
+- Resume the existing PR #599 at `19c708c` and normally merge freshly fetched `origin/pre` (`5af183a` at resume). Resolve the R2-CUTOVER text conflict and the automatically merged OPS semantic conflict; incoming application code stays unchanged.
+- Record dated public production/preview identities, pointer availability, and provider evidence limits in maintained docs. Distinguish issue #647 from config PR #648 and historical acceptance PR #649. Keep the frozen fallback while the production pointer is absent; the gate permits absence or exactly `refresh-2026-09-13T06-00-16-398Z`.
 
 ## Out of scope
 
@@ -18,7 +20,8 @@ Make the current docs describe Cloudflare Workers hosting, public preview, and t
 - Findings owned by other cards (A07, A11, A13, B03–B07, C01).
 - Rewriting `docs/VERCEL-DATA-OPERATIONS.md` or deleting it. Current docs stop treating it as the live host procedure.
 - Merging, or pushing `main`, `pre`, or `preview`.
-- Changing the #574 stage 2/3 recovery, stage 4 `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`, bootstrap acceptance, or the stage 4 gate and build-shell checklist.
+- New stage 2/3 acceptance, production refresh, stage 5 schedule enablement, or stage 6 Blob retirement. The unaccepted bootstrap recipe is historical and does not govern the accepted copied store.
+- Editing the excluded owner `HANDOVER.md`, provider credentials, or environment files. The old rollback reference is retained as history; its present availability and security suitability are not assumed.
 
 ## Acceptance
 
@@ -26,6 +29,15 @@ Make the current docs describe Cloudflare Workers hosting, public preview, and t
 - R2-CUTOVER and OPS still agree on the #574 steps, and on the new stage 6 tool prerequisite.
 - `git grep -n 'Vercel-first'` in current docs is empty. Remaining hits are listed and sit in archive, changelog history, or old plans.
 - Preview is documented as public, `noindex,nofollow`, `Disallow: /`. `noindex` is not access control. The production trigger stays unverified.
+- OPS and R2-CUTOVER agree on the accepted copied-store cutover, required frozen fallback, conditional removal, and separately authorized historical bootstrap recovery/rollback.
+- On the exact final commit, run the full static job (pipeline tests, docs lint, web lint, all three typechecks, view validation, and full web coverage), the local GET/HEAD fixture production build, and pre-only `cf:dry-run`. Use SHA-256-verified Node v24.20.0 / Bun 1.3.14 under `env -i`, without real env files or live opt-ins. All temporary output stays under `/tmp/GSC_0002/`.
+- The card prohibits another worktree: use a clean detached checkout of the exact commit in a temporary local clone under `/tmp/GSC_0002/`, preserving the repository verification block and excluding owner untracked files.
+- `git diff --check` passes; `origin/pre` is an ancestor; the final diff against it contains only the authorized documentation/plan changes. The existing PR body records the exact head, commands/results, limitations, and any CI wait. Exact-head `static` and `production-build` must pass before merge.
+- Push only `docs/576-docs-set-b`, hand off through GSC_0002 with a clean `git status --short`, and await independent review and a separate batch merge.
+
+## Historical review notes
+
+The notes below record the original October 1 review. Current storage status and the resumed acceptance above supersede their Blob-until-cutover wording and bootstrap-only cutover assumptions.
 
 ## Review round 1
 
