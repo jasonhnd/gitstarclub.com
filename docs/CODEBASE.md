@@ -27,7 +27,7 @@ This is not a replacement for the owning docs:
 
 ## Runtime Shape
 
-GitStarClub is a static-read Next.js app backed by JSON views in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)).
+GitStarClub is a static-read Next.js app backed by JSON views in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)).
 The request path never queries a database. Pages read validated JSON through
 `web/lib/data/*`; recurring refresh work writes new versioned views through
 managed refresh and flips `views/latest.json`.
@@ -103,7 +103,7 @@ Important files:
 - `web/lib/storage/`: object-store port used by write, live publication, lease,
   health, recompute I/O, aliases list, and version GC. `DEPLOY_ENV` may be
   `production` or `pre`. Preview `env.pre` already reads R2 and writes through
-  the `DATA` binding. Production still reads Vercel Blob until cutover. The
+  the `DATA` binding. Production uses R2 after the accepted 2026-10-04 cutover. The
   bucket root has no migrate prefix. See [R2-CUTOVER.md](./R2-CUTOVER.md).
 - `web/lib/cache-invalidation/`: publication and live-cron ISR invalidation.
   The runtime uses Next cache invalidation. `cf-stub` is non-production only.

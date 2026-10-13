@@ -117,7 +117,7 @@ Requirement ID is the stable key for traceability across BRD/PRD/FSD/UX/testing.
 
 ## 8. Data form / pipeline
 
-- Production canonical = **JSON shard** (per-repo month/week rollup + site daily totals + the repo dimension); serving = precomputed **JSON views** (read-only at build / runtime). The bootstrap form is a Parquet fact table (archived). Production views still come from Vercel Blob until cutover. See [R2-CUTOVER.md](./R2-CUTOVER.md).
+- Production canonical = **JSON shard** (per-repo month/week rollup + site daily totals + the repo dimension); serving = precomputed **JSON views** (read-only at build / runtime). The bootstrap form is a Parquet fact table (archived). Production views come from R2 after the accepted 2026-10-04 cutover. See [R2-CUTOVER.md](./R2-CUTOVER.md).
 - Engines (BigQuery/DuckDB) are used **only in the one-off bootstrap**. Recurring recompute is pure JS plus JSON shards, with no engine. Build, cron, and runtime have zero engine and zero native modules.
 - Daily and weekly live routes are JSON-only. Full recompute, publish, rollback, fold, and GC are managed refresh steps. See [OPS.md](./OPS.md), [DATA-CONTRACTS](./DATA-CONTRACTS.md), and [PIPELINE](./PIPELINE.md).
 
@@ -137,7 +137,7 @@ Requirement ID is the stable key for traceability across BRD/PRD/FSD/UX/testing.
 
 ## 11. Deployment / constraints
 
-- **Cloudflare Workers.** Production Worker `gitstarclub-web` serves `gitstarclub.com` / `www.gitstarclub.com`. Preview Worker `gitstarclub-web-pre` serves public `pre.gitstarclub.com` with `noindex,nofollow` and `Disallow: /`. `noindex` is not access control. Production JSON stays on Vercel Blob until cutover. See [R2-CUTOVER.md](./R2-CUTOVER.md) and [OPS.md](./OPS.md).
+- **Cloudflare Workers.** Production Worker `gitstarclub-web` serves `gitstarclub.com` / `www.gitstarclub.com`. Preview Worker `gitstarclub-web-pre` serves public `pre.gitstarclub.com` with `noindex,nofollow` and `Disallow: /`. `noindex` is not access control. Production JSON uses R2 after the accepted 2026-10-04 cutover. See [R2-CUTOVER.md](./R2-CUTOVER.md) and [OPS.md](./OPS.md).
 - Avoid a second runtime database or a request-path engine. A one-off BigQuery job is the bootstrap exception.
 - Time zone: store UTC, and display UTC + JST. Cron auth, idempotency, monitoring, and rollback are in [OPS.md](./OPS.md). The production trigger source is unverified.
 

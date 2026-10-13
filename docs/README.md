@@ -10,7 +10,7 @@ source_of_truth_for:
 
 # gitstarclub documentation index
 
-A browsable history of GitHub open-source activity. The site is fully static-read at runtime: JSON in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)), no runtime database, no engine in the request path. Recurring data refresh is scheduled outside the request path; P1 orchestration no longer uses the Workflow SDK.
+A browsable history of GitHub open-source activity. The site is fully static-read at runtime: JSON in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)), no runtime database, no engine in the request path. Recurring data refresh is scheduled outside the request path; P1 orchestration no longer uses the Workflow SDK.
 
 This page is the navigation index for `docs/`. For a project overview, start at [../README.md](../README.md). For what shipped when, see [CHANGELOG.md](./CHANGELOG.md). For what isn't built yet, see [ROADMAP.md](./ROADMAP.md).
 
@@ -24,7 +24,7 @@ This section is the authoritative newcomer reading order. Update it when adding,
 
 1. [REQUIREMENTS.md](./REQUIREMENTS.md) — what the product is and the constraints it operates under.
 2. [ARCHITECTURE.md](./ARCHITECTURE.md) — system overview: tech stack, data flow, data model, rendering model, hard constraints.
-3. [R2-CUTOVER.md](./R2-CUTOVER.md) — current object storage, stage plan, and rollback. [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) is superseded history for the Blob publish model; the refresh step list there is still the design reference until cutover.
+3. [R2-CUTOVER.md](./R2-CUTOVER.md) — current object storage, stage plan, and rollback. [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) is superseded history for the Blob publish model; the refresh step list there remains a historical design reference.
 4. [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) — every canonical shard and view schema (the Zod source of truth).
 5. [API.md](./API.md) — endpoint contracts: method, auth, params, response, cache, status codes, examples.
 6. [PIPELINE.md](./PIPELINE.md) — bootstrap pipeline (one-off, archive-only).
@@ -37,7 +37,7 @@ This section is the authoritative newcomer reading order. Update it when adding,
 13. [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) - locked visual baseline, tokens, typography, Chrome appearance, accessibility notes.
 14. [SEO.md](./SEO.md) — per-page SEO templates, sitemap structure, robots policy.
 15. [GEO.md](./GEO.md) — answer-engine citation strategy: answer capsules, schema, crawler hygiene, freshness, and measurement.
-16. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Blob layout until cutover, env vars, alerting. Current R2 status lives in [R2-CUTOVER.md](./R2-CUTOVER.md). Phase notes in `docs/archive/` are superseded.
+16. [OPS.md](./OPS.md) — runbooks: branch topology, staging, deploy, rollback, cron, workflow operations, Retained Blob rollback layout, env vars, alerting. Current R2 status lives in [R2-CUTOVER.md](./R2-CUTOVER.md). Phase notes in `docs/archive/` are superseded.
 17. [TESTING.md](./TESTING.md) — test pyramid, contract tests, parity gate, validation invariants. GitHub required CI is `static` + `production-build` only.
 
 Supporting docs (read as needed): [PRODUCT.md](./PRODUCT.md) for product framing; [COCKPIT.md](./COCKPIT.md) for the unshipped Cockpit content contract and pre spike; [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) for the UX navigation narrative; [CATEGORIES.md](./CATEGORIES.md) for category taxonomy, deterministic classification rules, and category-view rollout; [DATA-EXPORTS.md](./DATA-EXPORTS.md) for public export files; [I18N.md](./I18N.md) for the shipped locale URL architecture decision record.
@@ -60,7 +60,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 |---|---|---|---|---|
 | [geo/queries.md](./geo/queries.md) | active | GEO measurement / citation review | Target queries, review cadence, page-type coverage, or miss classifications change. Re-run affected high-priority checks after schema, robots, sitemap, answer-capsule, ranking, category, methodology, or data-export changes. | Operational registry; [GEO.md](./GEO.md) remains the source of truth for strategy, metrics, and measurement intent. |
 | [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) | active | GEO crawler and AI-referrer reporting | `geo:report` inputs, output fields, taxonomy, privacy rules, or operator commands change. | Operational runbook; [GEO.md](./GEO.md) owns the reporting intent, and [OPS.md](./OPS.md) owns production log/operations practice. |
-| [R2-CUTOVER.md](./R2-CUTOVER.md) | active | R2 cutover runbook | Stage status, buckets, protection layers, acceptance commands, or rollback change. | Current object storage and the stage plan. [OPS.md](./OPS.md) still owns Blob layout until cutover and the env inventory. |
+| [R2-CUTOVER.md](./R2-CUTOVER.md) | active | R2 cutover runbook | Stage status, buckets, protection layers, acceptance commands, or rollback change. | Current object storage and the stage plan. [OPS.md](./OPS.md) still owns Retained Blob rollback layout and the env inventory. |
 | [archive/R2-MIGRATION-P0.md](./archive/R2-MIGRATION-P0.md) | superseded | Archived P0 storage adapter | Only to correct a historical error. Current status lives in [R2-CUTOVER.md](./R2-CUTOVER.md). | Archive. The JSON store does not use the MEDIA binding. |
 | [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) | superseded | Archived P1 workflow notes | Only to correct a historical error. Current schedules and rollback live in [OPS.md](./OPS.md). | Archive. Production Worker crons stay empty. The production trigger is unverified. |
 | [archive/CF-MIGRATION-P2.md](./archive/CF-MIGRATION-P2.md) | superseded | Archived P2 preview notes | Only to correct a historical error. Current logs and preview access live in [OPS.md](./OPS.md). | Archive. Preview is public and `noindex`. |
@@ -85,7 +85,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 |---|---|
 | REQUIREMENTS | Product baseline, scope, constraints; single source for repo/view counts |
 | ARCHITECTURE | System overview: tech stack, data flow, hard constraints, rendering model, key decisions |
-| VERCEL-DATA-OPERATIONS | Superseded Blob publish history. Refresh step names still point here until cutover. Current storage status is [R2-CUTOVER.md](./R2-CUTOVER.md) |
+| VERCEL-DATA-OPERATIONS | Superseded Blob publish history. Refresh step names retain this historical reference. Current storage status is [R2-CUTOVER.md](./R2-CUTOVER.md) |
 | DATA-CONTRACTS | Per-shard / per-view Zod schemas (single source of truth for build-side types) |
 | API | Endpoint contracts: route handlers, public JSON endpoints, metadata endpoints, auth, cache, statuses |
 | PIPELINE | Bootstrap pipeline stages and algorithms (one-off, archived; recurring refresh lives in VERCEL-DATA-OPERATIONS) |
@@ -98,7 +98,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | DESIGN-SYSTEM | Locked visual baseline, tokens, typography, Chrome appearance, accessibility notes |
 | SEO | Per-page SEO templates, sitemap structure, robots/noindex policy, internal linking |
 | GEO | Answer-engine citation strategy, page-type answer capsules, GEO schema plan, AI crawler hygiene, freshness, and measurement |
-| OPS | Branch topology / staging, deploy / rollback / cron / workflow runbooks, Blob layout until cutover, env vars, alerting, failure modes |
+| OPS | Branch topology / staging, deploy / rollback / cron / workflow runbooks, Retained Blob rollback layout, env vars, alerting, failure modes |
 | R2-CUTOVER | Current object storage, stage plan (0-6), acceptance, and rollback |
 | archive/R2-MIGRATION-P0 | Superseded P0 adapter notes. Current storage is R2-CUTOVER |
 | archive/CF-MIGRATION-P1 | Superseded P1 notes. Current schedules and rollback are in OPS |
@@ -129,7 +129,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Repo / view counts | REQUIREMENTS |
 | Per-artifact schema (field-level) | DATA-CONTRACTS |
 | Endpoint contracts (method / auth / params / response / cache / status codes) | [API.md](./API.md) |
-| Blob layout until cutover | OPS (§Vercel Blob layout (until cutover)) |
+| Retained Blob rollback layout | OPS (§Vercel Blob rollback layout (retained until stage 6)) |
 | R2 cutover and current object storage | [R2-CUTOVER.md](./R2-CUTOVER.md) |
 | Cloudflare R2 P0 adapter | Superseded notes in [archive/R2-MIGRATION-P0.md](./archive/R2-MIGRATION-P0.md). Current status is [R2-CUTOVER.md](./R2-CUTOVER.md) |
 | Schedules, refresh operations, and deploy rollback | [OPS.md](./OPS.md). The production trigger is unverified |

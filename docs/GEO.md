@@ -18,7 +18,7 @@ This document is the owning document for GitStarClub's GEO strategy: how the exi
 
 GEO complements [SEO.md](./SEO.md). SEO owns crawlability, canonical URLs, metadata, sitemap, robots policy, and internal links. GEO owns answer-engine citation tactics layered on top of those surfaces: answer capsules, FAQ blocks, dataset schema, AI crawler hygiene, freshness signals, entity authority, and measurement.
 
-Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only precomputed JSON, and implementation stays deterministic. The host is Cloudflare Workers through OpenNext. Production JSON still comes from Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
+Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only precomputed JSON, and implementation stays deterministic. The host is Cloudflare Workers through OpenNext. Production JSON comes from R2 after the accepted 2026-10-04 cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
 
 Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate log-report runbook. The report script accepts the Vercel log-drain field shape as parser compatibility only. It does not parse Cloudflare Worker logs. Current Cloudflare aggregate measurement is pending an input adapter and evidence. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
 
@@ -95,7 +95,7 @@ GitStarClub has several advantages that most content sites must build from scrat
 
 | Asset | Current state | GEO value |
 |---|---|---|
-| Proprietary dataset | Deterministic GitHub star histories for 5,300+ tracked repositories, with repo/org/ranking/category views in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)). | The numbers are not generic web copy. Answer engines need a source for "when did repo X cross 100k stars?" or "which Python repos are largest?". |
+| Proprietary dataset | Deterministic GitHub star histories for 5,300+ tracked repositories, with repo/org/ranking/category views in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)). | The numbers are not generic web copy. Answer engines need a source for "when did repo X cross 100k stars?" or "which Python repos are largest?". |
 | Server-rendered content | `FRONTEND.md` defines content bodies as RSC/static HTML; charts are server SVG/DOM; client JS is limited to explicit islands. | Crawlers and answer extractors see the actual facts without hydrating the app. |
 | Fast pages | #25 Lighthouse baseline recorded mobile FCP around 0.91-1.22s and desktop FCP around 0.25-0.29s on representative production pages; CLS was 0.000-0.003. | Performance is already unlikely to be the blocking factor for extraction or crawl. |
 | HTTPS production host | The public site is served from `https://gitstarclub.com`, with canonical URLs generated from `NEXT_PUBLIC_SITE_URL`. | AI search engines and classic crawlers get one secure apex identity, not fragmented preview or subdomain URLs. |
@@ -1055,7 +1055,7 @@ Constraint fit:
 | No runtime AI | Capsules, FAQ, and statistical sentences are deterministic templates over JSON fields. |
 | Content pages zero client JS | All answer blocks, FAQ, and schema are server-rendered. Compare remains the only interactive exception until pair-specific server pages are designed. |
 | Runtime zero engine / zero database | All facts come from precomputed Blob JSON views and existing lookup joins. |
-| Cloudflare host, Blob until cutover | IndexNow and measurement stay inside the existing refresh and cron routes. No new database or paid monitoring service is required. The log report does not yet parse Cloudflare logs. |
+| Cloudflare host, accepted R2 cutover | IndexNow and measurement stay inside the existing refresh and cron routes. No new database or paid monitoring service is required. The log report does not yet parse Cloudflare logs. |
 | Docs as source of truth | This document owns GEO strategy; [SEO.md](./SEO.md) owns crawler/canonical/sitemap mechanics; implementation PRs must update the owning docs when behavior changes. |
 | Visual guardrails | New visible blocks require design review and screenshots before merge, because they change page composition even if colors do not change. |
 

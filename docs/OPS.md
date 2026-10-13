@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-10-01
+last_reviewed: 2026-10-13
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -13,7 +13,7 @@ source_of_truth_for:
 # gitstarclub Operations Runbook
 
 > Sole source of truth for operations and deployment. Architecture and data flow see [ARCHITECTURE.md](./ARCHITECTURE.md), product see [PRODUCT.md](./PRODUCT.md).
-> Core principles from the architecture: **Cloudflare Workers hosting with Cloudflare R2 storage (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md))**, **a static runtime without an engine**, and **production data operations independent of local computation**. This runbook applies them to projects, environment variables, Cron, workflows, Blob until cutover, and alerts; see [API.md](./API.md) for endpoint method, authentication, cache, and status contracts.
+> Core principles from the architecture: **Cloudflare Workers hosting with Cloudflare R2 storage (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md))**, **a static runtime without an engine**, and **production data operations independent of local computation**. This runbook applies them to projects, environment variables, Cron, workflows, retained Blob rollback history, and alerts; see [API.md](./API.md) for endpoint method, authentication, cache, and status contracts.
 
 ## Scope
 
@@ -31,7 +31,7 @@ As checked on 2026-09-24, both `https://gitstarclub.com` and
 The current web host is Cloudflare Workers with OpenNext: `gitstarclub-web`
 serves production (`main`), and `gitstarclub-web-pre` serves preview (`pre`).
 The `www` hostname belongs to the production domain set, but this check did
-not independently probe its response. JSON storage is Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)).
+not independently probe its response. JSON storage is Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)).
 
 Feature PRs target `pre`; promotion is a separate merge from `pre` to `main`.
 The CI gate forbids a live production Worker deploy from repository automation,
@@ -48,9 +48,7 @@ and its production `triggers.crons` contract remains `[]`.
 | Production refresh trigger | Owner reports Cloudflare, but no production Worker Cron schedule was observed. An external caller, another Worker, or a changed schedule after the snapshot remains unverified. Do not infer the mechanism from route code or `web/vercel.json`. |
 
 The Worker `scheduled` handler dispatches the three cron expressions to the
-protected daily, weekly, and refresh routes. The preview platform schedules
-prove preview triggers are configured; they do not establish a production
-trigger. The production trigger requires an operator-provided schedule or
+protected daily, weekly, and refresh routes. The historical preview schedule observation proves configuration only at that timestamp; it establishes neither the current schedules nor a production trigger. The production trigger requires an operator-provided schedule or
 request log showing caller, target, and timestamp. `web/vercel.json` is in the
 repository. It does not establish a live production caller. Do not infer the
 production trigger from that file. Do not change the
@@ -61,7 +59,7 @@ production gate to reconcile the owner's statement without that evidence.
 Production and preview Worker variables and bindings are declared in
 [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc); runtime secrets are injected on the
 Cloudflare platform and are never stored in this repository. Local development
-uses `web/.env.local`. Production still reads Vercel Blob until cutover and, for blob writes, still requires a blob token. Preview reads Cloudflare R2 and does not set `BLOB_*`. See [R2-CUTOVER.md](./R2-CUTOVER.md).
+uses `web/.env.local`. Both checked-in Worker contracts use R2: public HTTP reads and guarded `DATA` binding writes. PR #649 records the accepted production cutover and retained Blob secret on 2026-10-04; live secret presence was not rechecked. Preview does not set `BLOB_*` or the production fallback. See [R2-CUTOVER.md](./R2-CUTOVER.md).
 
 ## Branch topology
 
@@ -76,66 +74,44 @@ Feature work merges into `pre`. Promotion to production is a separate merge from
 
 Preview is intentionally noindex. The Cloudflare production build sets `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com`; the top-level Worker variables match. `bun run cf:dry-run` builds for preview with indexing disabled. Preview emits `<meta name="robots"
 content="noindex,nofollow">` and `robots.txt` returns `User-Agent: *` with
-`Disallow: /`. Preview reads its own R2 bucket `gitstarclub-data-pre` at `https://data-pre.gitstarclub.com`. It does not set `BLOB_*`. Production still reads Vercel Blob until cutover (stage 4 in [R2-CUTOVER.md](./R2-CUTOVER.md)). Stage 6 retires the blob store.
+`Disallow: /`. Preview reads its own R2 bucket `gitstarclub-data-pre` at `https://data-pre.gitstarclub.com`. It does not set `BLOB_*`. Production uses R2 after the accepted 2026-10-04 cutover (stage 4 in [R2-CUTOVER.md](./R2-CUTOVER.md)). Stage 6 retires the blob store.
 
 Cloudflare owner commands (run from `web/`; build each target immediately before its matching deployment because both builds use the same output directory). GitHub Actions must not run the live deploy. `bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre` are the explicit underlying forms. A bare `bun run cf:build` fails. `bun run cf:dry-run` builds pre and performs a Wrangler dry run of `env.pre` only. The build checks the generated home HTML and robots response for the selected indexing policy before deployment.
 
 ### Production build and deploy
 
-`bun run cf:build:production` prerenders with `BLOB_BASE_URL`. Wrangler vars are not visible to that prerender. Export the public store base first (no trailing slash, no BOM). `cf:build` refuses a shell public read base that does not match the wrangler vars for `--site-target`. The loopback fixture at `127.0.0.1` is the CI exception. Do not export the preview R2 URL for a production build. `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com` are set by the build script. This shell is the pre-cutover production build for Worker `gitstarclub-web` (top-level, no `--env`). It reads blob store `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`, not bucket `gitstarclub-data-prod`.
+Production cutover was owner-accepted on 2026-10-04 in PR #649 after the operator copy and config PR #648 (issue #647). The accepted production store contains copied versioned views, not only bootstrap-generation objects. The [dated public checks and evidence limits](./R2-CUTOVER.md#read-only-state-check-2026-10-13) distinguish historical acceptance from current public identity: production `daee5fc`, preview `5af183a` on October 13. Neither public identity establishes live provider bindings, secrets, schedules, or version UUID.
 
-That is the current Blob configuration. After the separately authorized stage-4 cutover, the build must explicitly export `STORAGE_READ_DRIVER=r2` and the production `R2_PUBLIC_BASE_URL`, with no Blob shell vars. The build asserts those inputs before OpenNext starts. See [R2-CUTOVER.md](./R2-CUTOVER.md#stage-4-cutover-i-5b) for the future environment and the gate contract.
+Current production `views/latest.json` and `bootstrap/latest.json` returned 404 at the dated check, while `views/refresh-2026-09-13T06-00-16-398Z/meta.json` returned 200. Preserve the exact frozen fallback in both the Worker and production build shell. The old bootstrap-only recipe that cleared it at cutover does not apply to this copied store.
 
-```sh
-# Worker gitstarclub-web, top-level production (no --env), blob store
-# https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
-# Not bucket gitstarclub-data-prod. Do not pass --env pre.
-cd web
-export BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
-export NEXT_PUBLIC_BLOB_BASE_URL=https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
-bun run cf:build:production
-```
+- Top-level `DEPLOY_ENV=production` selects `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_BUCKET=gitstarclub-data-prod`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, and exactly one `DATA` binding to that bucket. `MEDIA` remains the assets bucket.
+- `scripts/cf-ci-gates.mjs` refuses checked-in `BLOB_*` vars and accepts a fallback that is absent or exactly `refresh-2026-09-13T06-00-16-398Z`. This is not permission to remove a needed fallback. Preview must have neither Blob vars nor the fallback; both checked-in cron arrays remain `[]`.
+- OpenNext inherits the build shell, not the Worker vars. `cf:build` rejects a missing/different R2 read driver, missing public base, Blob shell vars, or a non-loopback base that differs from the selected target. No write driver or storage credential is needed for a read-only build.
 
-The stage 4 pull request replaces this shell in the same change as the Worker cutover. Until that pull request merges, keep the blob exports above and do not export `STORAGE_READ_DRIVER=r2` for this build. Unset `STORAGE_READ_DRIVER` defaults to `blob` in `web/lib/runtime-config.ts`. Before the cutover build, confirm identity, `bootstrap/latest.json`, both phase manifests, and sealed `views/rank/all-time/repo/stock.json` on `https://data.gitstarclub.com` (bucket `gitstarclub-data-prod`). Do not use `https://gitstarclub.com/rankings` for that check. While `VIEWS_VERSION_FALLBACK` is set, a 404 of `views/latest.json` selects `refresh-2026-09-13T06-00-16-398Z` (`web/lib/data/source.ts`). That version's meta is not in the bootstrap-only bucket, so the read never switches to `bootstrap/generations/<id>/views/**`. The replacement checklist, also in [R2-CUTOVER.md](./R2-CUTOVER.md) stage 4, is one build and one deploy:
-
-- `scripts/cf-ci-gates.mjs` and `scripts/cf-ci-gates.test.mjs` already support the stage-4 contract (#578). The same cutover pull request selects it with top-level `DEPLOY_ENV=production`: `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_BUCKET=gitstarclub-data-prod`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, and exactly one `DATA` binding to `gitstarclub-data-prod`. It refuses `BLOB_*` and `VIEWS_VERSION_FALLBACK`. Preview env `pre` on Worker `gitstarclub-web-pre` still must not set those variables. Bucket `gitstarclub-data-pre` stays the preview bucket.
-- Run the gate and its tests in that same pull request. A partial switch, a missing R2 driver, or a leftover blob base fails.
-- The production build checks in `web/scripts/cf-opennext-build.ts` are already prepared (#578). OpenNext inherits the shell, not Worker vars. That same build explicitly exports `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com` and clears all `BLOB_*`, `NEXT_PUBLIC_BLOB_*`, and `VIEWS_VERSION_FALLBACK`. `cf:build` rejects a missing or different read driver, a missing public base, leftover Blob shell vars, or a non-loopback base that does not match the top-level wrangler vars. No write driver or storage credential is needed. Offline tests use an R2 loopback base with the same explicit read driver and no Blob vars. Do not clear the fallback in an earlier build that still reads Blob, and do not wait for live R2 rankings before clearing it.
-
-Operator shell for that same cutover build, after the object checks. Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`. After deploy, `https://gitstarclub.com/rankings` must show repository rows from the bootstrap generation. If it does not, roll back with the stage 4 version command later in this runbook. The deploy commands under this heading that still export the blob bases are the pre-cutover deploy. The stage 4 deploy uses the same Worker and `--env=""`, with the R2 vars from that pull request and without `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK`.
+Operator shell for a separately authorized production build while the pointer is absent. Clear any other `BLOB_*` or `NEXT_PUBLIC_BLOB_*` shell vars; if `NEXT_PUBLIC_R2_PUBLIC_BASE_URL` is set, it must match the production R2 origin:
 
 ```sh
 # Worker gitstarclub-web, top-level production (no --env), bucket gitstarclub-data-prod
-# Do not export BLOB_BASE_URL or NEXT_PUBLIC_BLOB_BASE_URL.
 cd web
 export STORAGE_READ_DRIVER=r2
 export R2_PUBLIC_BASE_URL=https://data.gitstarclub.com
-unset READ_DRIVER BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL BLOB_READ_WRITE_TOKEN VIEWS_VERSION_FALLBACK
+export VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z
+unset READ_DRIVER BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL BLOB_READ_WRITE_TOKEN
 bun run cf:build:production
 ```
 
-Deploy the top-level Worker `gitstarclub-web` with an explicit empty environment so `CLOUDFLARE_ENV` cannot select `pre`. Do not commit `CF_PREVIEW_COMMIT_SHA`. Pass `--var CF_PREVIEW_COMMIT_SHA` only when it equals the SHA baked by that `cf:build`. A different or stale value is ignored, and the reported identity stays the baked SHA. Do not use `--keep-vars` in place of the five plain-text vars in `wrangler.jsonc` (`BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, `CF_CRON_ORIGIN`, `WORKFLOW_RUNTIME`, `WORKFLOW_QUEUE_ENQUEUE_URL`). Secrets stay dashboard-injected. This command is a live deploy. Run it only when promoting production. A dry run of the same flags is safe and prints the binding list.
+A live deploy requires explicit owner approval and operator execution; GitHub automation must not deploy production. Deploy the top-level Worker with `--env=""` so `CLOUDFLARE_ENV` cannot select preview. Pass `CF_PREVIEW_COMMIT_SHA` only when it matches the SHA baked by that build. A stale runtime SHA cannot override the built identity. Run from `web/` after building that exact commit:
 
 ```sh
-cd web
-bunx wrangler deploy --dry-run --config ../workers/gitstarclub-web/wrangler.jsonc --env=""
 bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env="" \
   --var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"
 ```
 
-`--var` values are hidden in the dry-run binding table. The table must still list `HOSTING_TARGET`, `SITE_INDEXABLE`, `NEXT_PUBLIC_SITE_URL`, the five vars above, `ASSETS`, `WORKER_SELF_REFERENCE`, `JOBS` (`gitstarclub-jobs`), and `MEDIA` (`gitstarclub-assets`). Top-level `workers_dev` and `preview_urls` are `false`.
+Check the selected production binding/var inventory against the current wrangler contract, including `DATA`, the R2 vars, the exact fallback while needed, `ASSETS`, `WORKER_SELF_REFERENCE`, `JOBS` (`gitstarclub-jobs`), and `MEDIA`. Blob base vars must not return. PR #649 records that the Blob write secret was retained at cutover; current live secret presence was not checked here, and removal needs separately authorized stage 6 acceptance. Do not use `--keep-vars` to retain an obsolete Blob configuration. Production workers.dev and version preview URLs remain disabled in source.
 
-After the live deploy, check production and confirm the workers.dev subdomain stayed closed:
+After any separately authorized deploy, check `/`, `/rankings`, a representative `/<owner>/<repo>`, `/search-index`, robots, and the public deployment identity. They must remain indexable and render the intended generation, including repository rows/star counts on rankings. HTTP 200 alone is insufficient. An authoritative views pointer takes priority over the fallback; while it is absent, compare pages with the copied frozen generation. Verify outbound reads at `data.gitstarclub.com` with operator logs. Those live binding/log/page-parity checks were not repeated by this documentation card.
 
-```sh
-curl -fsS https://gitstarclub.com/robots.txt
-curl -fsS https://gitstarclub.com/ | grep -o 'name="robots" content="[^"]*"'
-curl -fsS -o /dev/null -w '%{http_code}\n' https://gitstarclub.com/rankings
-curl -fsS https://gitstarclub.com/.well-known/deployment
-curl -sS -o /dev/null -w '%{http_code}\n' https://gitstarclub-web.worldgo.workers.dev/
-```
-
-Expect `/robots.txt` to allow `/` for `User-Agent: *` and to list `Sitemap: https://gitstarclub.com/sitemap.xml`. Expect the home robots meta to be `index, follow` and not `noindex`. Expect `/rankings` to be `200` (a missing `BLOB_BASE_URL` returns 500). Expect `/.well-known/deployment` JSON `target` `cf` and `commitSha` equal to the SHA baked by that `cf:build`. A `--var CF_PREVIEW_COMMIT_SHA` is accepted only when it is that same value. Expect `https://gitstarclub-web.worldgo.workers.dev/` not to serve the site (`workers.dev` `enabled=false`, version preview URLs `previews_enabled=false`). Read-only settings check: Cloudflare API account `00f850e853e4c7f9627233d51a6e30a1`, Worker `gitstarclub-web`, resources `settings` and `subdomain`. Do not change schedules, DNS, or secrets from this procedure.
+Remove the fallback only after the production R2 views pointer returns 200, is authoritative for page data, and a production build without the fallback prerenders real data. Change the Worker var and shell together in a separately authorized batch. Do not hand-write either pointer or remove the Blob secret before stage 6 acceptance. See the same criteria and historical rollback reference in [R2-CUTOVER.md](./R2-CUTOVER.md#stage-4-cutover-i-5b).
 
 ### Preview deploy
 
@@ -193,14 +169,14 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | Variable | Purpose | Required / optional | Format | Who uses it (path:line) |
 |---|---|---|---|---|
 | `GITHUB_TOKEN` | GitHub GraphQL / Search PAT (batch lookup of `stargazerCount` + metadata + whitelist) | **Required** (cron / Workflow) | `ghp_…` PAT string | `web/lib/github.ts`; daily cron · weekly cron · Workflow whitelist/metadata step · one-time backfill. GraphQL and REST both send `User-Agent: gitstarclub` and `Accept: application/vnd.github+json` |
-| `BLOB_READ_WRITE_TOKEN` | Blob read-write token, until cutover, while production still reads Vercel Blob | **Required** for the `blob` write driver | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/storage/vercel-blob-fetch-client.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`; cron writes the live tail · refresh writes canonical/views · GC deletes old versions. CF Workers use runtime `fetch`, not `@vercel/blob`/undici. Preview `r2_binding` does not use this token |
-| `BLOB_BASE_URL` | Public blob base URL, until cutover, while production still reads Vercel Blob (build / runtime direct-link fetch of views + resolving the publish pointer) | **Required** for the `blob` read driver | `https://<store>.public.blob.vercel-storage.com` (**no trailing slash / no BOM**) | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`; page reads use `getPublicReadBases()`. R2 drivers use `R2_PUBLIC_BASE_URL` instead |
-| `VIEWS_VERSION_FALLBACK` | Read-only version served when `views/latest.json` is a confirmed 404 (#543 stopgap, #553) | Optional. Production Worker top-level only, until the pointer is restored. Preview must not set it | `refresh-YYYY-MM-DDTHH-MM-SS-mmmZ`. Production is `refresh-2026-09-13T06-00-16-398Z`. Any other non-empty value is ignored and logged once | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`. See the incident note below this inventory |
+| `BLOB_READ_WRITE_TOKEN` | Retained Blob write token; not used by the current R2 write contract | **Required** for the `blob` write driver | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/storage/vercel-blob-fetch-client.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`; cron writes the live tail · refresh writes canonical/views · GC deletes old versions. CF Workers use runtime `fetch`, not `@vercel/blob`/undici. Preview `r2_binding` does not use this token |
+| `BLOB_BASE_URL` | Retained Blob rollback/local-driver public base URL (build / runtime direct-link fetch of views + resolving the publish pointer) | **Required** for the `blob` read driver | `https://<store>.public.blob.vercel-storage.com` (**no trailing slash / no BOM**) | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`; page reads use `getPublicReadBases()`. R2 drivers use `R2_PUBLIC_BASE_URL` instead |
+| `VIEWS_VERSION_FALLBACK` | Read-only version served when `views/latest.json` is a confirmed 404 (#543 stopgap, #553) | Optional. Production Worker top-level only; required while the current pointer is absent. Preview must not set it | `refresh-YYYY-MM-DDTHH-MM-SS-mmmZ`. Production is `refresh-2026-09-13T06-00-16-398Z`. Any other non-empty value is ignored and logged once | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`. See the incident note below this inventory |
 | `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` client fallback (only when the server-only value is unavailable) | Optional (fallback) | Same as `BLOB_BASE_URL` | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`; used only when `BLOB_BASE_URL` is unset |
-| `STORAGE_READ_DRIVER` | Object-storage read driver | Optional (default `blob`). Preview Worker `env.pre` sets `r2` | `blob` \| `r2_binding` \| `r2_s3` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`; `r2` reads `R2_PUBLIC_BASE_URL`. Production still reads Vercel Blob until cutover (stage 4, I-5b). See [R2-CUTOVER.md](./R2-CUTOVER.md) |
+| `STORAGE_READ_DRIVER` | Object-storage read driver | Optional in code (default `blob`). Both Worker contracts explicitly set `r2` | `blob` \| `r2_binding` \| `r2_s3` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`; `r2` reads `R2_PUBLIC_BASE_URL`. Production uses R2 after the accepted 2026-10-04 cutover (stage 4, I-5b). See [R2-CUTOVER.md](./R2-CUTOVER.md) |
 | `READ_DRIVER` | `STORAGE_READ_DRIVER` alias | Optional | Same as `STORAGE_READ_DRIVER` | `web/lib/runtime-config.ts` |
-| `DEPLOY_ENV` | Which deployment this process is (`production`, `pre`, or `local`) | Preview Worker `env.pre` sets `pre`. Cloudflare Workers must set it; they do not receive `VERCEL_ENV` | `production` \| `pre` \| `local` | `web/lib/runtime-config.ts`. Read through `resolveRuntimeEnv()` so a Worker var is visible. Unset on `HOSTING_TARGET=cf` refuses R2 writes and does not arm `WORKFLOW_COLD_START` or `PREFLIGHT_RELAX_EMPTY_SHARDS` |
-| `STORAGE_WRITE_DRIVER` | Object-storage write driver | Optional (default `blob`). Preview Worker `env.pre` sets `r2_binding` | `blob` \| `r2_binding` \| `r2_s3` \| `r2` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`; `blob` still requires `BLOB_BASE_URL` and `BLOB_READ_WRITE_TOKEN`. R2 write drivers require `DEPLOY_ENV`. `put` / `del` still require a matching bucket-identity marker. `r2_binding` uses the DATA binding and does not need a Blob token |
+| `DEPLOY_ENV` | Which deployment this process is (`production`, `pre`, or `local`) | Preview Worker `env.pre` sets `pre`; production top-level sets `production`. Cloudflare Workers must set it; they do not receive `VERCEL_ENV` | `production` \| `pre` \| `local` | `web/lib/runtime-config.ts`. Read through `resolveRuntimeEnv()` so a Worker var is visible. Unset on `HOSTING_TARGET=cf` refuses R2 writes and does not arm `WORKFLOW_COLD_START` or `PREFLIGHT_RELAX_EMPTY_SHARDS` |
+| `STORAGE_WRITE_DRIVER` | Object-storage write driver | Optional in code (default `blob`). Both Worker contracts explicitly set `r2_binding` | `blob` \| `r2_binding` \| `r2_s3` \| `r2` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`; `blob` still requires `BLOB_BASE_URL` and `BLOB_READ_WRITE_TOKEN`. R2 write drivers require `DEPLOY_ENV`. `put` / `del` still require a matching bucket-identity marker. `r2_binding` uses the DATA binding and does not need a Blob token |
 | `WRITE_DRIVER` | `STORAGE_WRITE_DRIVER` alias | Optional | Same as `STORAGE_WRITE_DRIVER` | `web/lib/runtime-config.ts` |
 | `R2_ACCOUNT_ID` | Cloudflare account ID (composed into the S3 endpoint) | R2 driver only | 32-digit hex | `web/lib/runtime-config.ts`; prepared account `00f850e853e4c7f9627233d51a6e30a1` |
 | `R2_S3_ENDPOINT` | R2 S3-compatible endpoint | R2 driver only | `https://<account>.r2.cloudflarestorage.com` | `web/lib/runtime-config.ts` |
@@ -209,7 +185,7 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | `AWS_ACCESS_KEY_ID` | `R2_ACCESS_KEY_ID` alias | R2 driver only | Same as `R2_ACCESS_KEY_ID` | `web/lib/runtime-config.ts` |
 | `R2_SECRET_ACCESS_KEY` | R2 S3 secret | R2 driver only | secret | `web/lib/runtime-config.ts` |
 | `AWS_SECRET_ACCESS_KEY` | `R2_SECRET_ACCESS_KEY` alias | R2 driver only | Same as `R2_SECRET_ACCESS_KEY` | `web/lib/runtime-config.ts` |
-| `R2_BUCKET` | R2 bucket name | R2 driver only | Preview Worker `env.pre` is `gitstarclub-data-pre`. Production data bucket will be `gitstarclub-data-prod` (not wired on the top-level Worker yet). `MEDIA` stays `gitstarclub-assets` | `web/lib/runtime-config.ts` |
+| `R2_BUCKET` | R2 bucket name | R2 driver only | Preview Worker `env.pre` is `gitstarclub-data-pre`. Production top-level DATA is wired to `gitstarclub-data-prod`. `MEDIA` stays `gitstarclub-assets` | `web/lib/runtime-config.ts` |
 | `R2_BUCKET_PROD` | Production bucket for bootstrap and ops CLIs (`--target prod`) | R2 CLI only | `gitstarclub-data-prod` | `pipeline/lib/bootstrap-cli.mjs` · `web/lib/storage/ops-target.ts`. When set, it wins. A different `R2_BUCKET` is refused |
 | `R2_BUCKET_PRE` | Preview bucket for bootstrap and ops CLIs (`--target pre`) | R2 CLI only | `gitstarclub-data-pre` | `pipeline/lib/bootstrap-cli.mjs` · `web/lib/storage/ops-target.ts`. When set, it wins. A different `R2_BUCKET` is refused |
 | `AWS_S3_BUCKET` | `R2_BUCKET` alias | R2 driver only | Same as `R2_BUCKET` | `web/lib/runtime-config.ts` |
@@ -304,16 +280,16 @@ Do not leave the fallback in place after the real pointer exists. A later 404 wo
 **Conventions**:
 
 - `NEXT_PUBLIC_*` goes into the client bundle; **put only non-sensitive values there**. Everything else is Server-only.
-- Until cutover, production blob reads and the production build need `BLOB_BASE_URL`. Production blob writes also need `BLOB_READ_WRITE_TOKEN`. Preview `r2` / `r2_binding` uses `R2_PUBLIC_BASE_URL` and the `DATA` binding and must not set `BLOB_*`. `CRON_SECRET` and `GITHUB_TOKEN` stay off the client and out of the repository.
+- Both Worker contracts use the R2 public base and guarded `DATA` binding. Production builds preserve the frozen fallback while the pointer is absent and clear Blob shell vars. Explicit use of the retained Blob driver needs its public base and, for mutation only, the Blob token. Preview must not set `BLOB_*` or the production fallback. `CRON_SECRET` and `GITHUB_TOKEN` stay off the client and out of the repository.
 - Strip leading and trailing whitespace and a BOM from values. Whitespace on `CRON_SECRET` makes the bearer header illegal, and a BOM on `BLOB_BASE_URL` makes the Next.js build report `ERR_INVALID_URL` at the sitemap stage.
 - **The two GCP items are for local one-time backfill only**: query GH Archive with BigQuery (about $10, including a stable repo.id). After one backfill these two variables can be retired—**routine operations are 0 GCP and 0 external bills**. (Why not the free ClickHouse public instance / self-hosted: see ARCHITECTURE "Why backfill uses BigQuery".)
 - At startup, verify that required secrets exist; if any are missing, fail-fast (do not swallow them silently).
-- Current R2 status and the stage plan are in [R2-CUTOVER.md](./R2-CUTOVER.md). Production still reads Vercel Blob until cutover. Superseded phase notes are in `docs/archive/`. **Do not cut DNS** from this runbook.
+- Current R2 status and the stage plan are in [R2-CUTOVER.md](./R2-CUTOVER.md). Production uses R2 after the accepted 2026-10-04 cutover. Superseded phase notes are in `docs/archive/`. **Do not cut DNS** from this runbook.
 - Both Workers serve the site. A preview fault rolls back Worker `gitstarclub-web-pre` (`--env pre`) only. Do not roll back production Worker `gitstarclub-web` from a preview incident. Production hosting rollback for the R2 cutover is the stage 4 version command later in this runbook. The production trigger remains unverified. Both `triggers.crons` arrays stay `[]` until an owner-approved stage 5 change.
 
-## Vercel Blob layout (until cutover)
+## Vercel Blob rollback layout (retained until stage 6)
 
-Use **one PUBLIC store**: the large set of JSON views is read by the build / runtime via **direct-link URL**; public reads are the simplest and hit the CDN. The first bootstrap's views + canonical are sealed first in an immutable generation and committed once by `bootstrap/latest.json`; later canonical changes enter that generation's copy-on-write overlay. The full definition of the new layout see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4 and [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.11–2.13.
+This retained historical layout supports Blob rollback and explicitly selected local Blob operations. It is not the current production read/write procedure; keep it until stage 6 acceptance. The accepted R2 copy retained relevant keys at the production bucket root. The Blob layout uses **one PUBLIC store**: the large set of JSON views is read by the build / runtime via **direct-link URL**; public reads are the simplest and hit the CDN. The first bootstrap's views + canonical are sealed first in an immutable generation and committed once by `bootstrap/latest.json`; later canonical changes enter that generation's copy-on-write overlay. The full definition of the new layout see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4 and [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.11–2.13.
 
 ```text
 blob://
@@ -408,7 +384,7 @@ blob://
 | Pro capacity | ~5GB storage + 100GB transfer/month | The data is tens of MB, with ample room |
 | **Write rate** | **4,500 times/minute (75/s)** | **Batched `put()` must be throttled** (limit concurrency + spacing), especially when a bootstrap upload / Workflow recompute writes tens of thousands of entity JSON files |
 | Same-path overwrite | Requires `allowOverwrite: true` | Only a pointer / lease / operations state may be overwritten; live generation objects must use `allowOverwrite:false` |
-| **Cache propagation** | A same-path overwrite takes up to **60s** to take effect network-wide | The page process still memo `live/latest.json` 60s. Pointer writes use `max-age=0`. **publish uses the Blob API `head()` etag (the origin etag recorded at claim time) as fence**, and no longer uses a public GET to decide whether the lease is still held. A public store cannot private get; the CDN caches by path, and `?v=` has no effect. The Sunday weekly fast path is 1–2s, otherwise it reads `lease: null`. generation paths are immutable |
+| **Cache propagation** | A same-path overwrite takes up to **60s** to take effect network-wide | The page process still memo `live/latest.json` 60s. Pointer writes use `max-age=0`. **the retained Blob implementation fences publish with the origin `head()` etag recorded at claim time**, and no longer uses a public GET to decide whether the lease is still held. A public store cannot private get; the CDN caches by path, and `?v=` has no effect. The Sunday weekly fast path is 1–2s, otherwise it reads `lease: null`. generation paths are immutable |
 
 > Why a PUBLIC store was chosen: JSON views are public data meant to be `fetch`ed directly by the build / runtime, so a public read skips signatures and naturally goes through the CDN. canonical (JSON shard + bootstrap Parquet) is in the same store, but only a Workflow / bootstrap that holds the token writes it, and it is not on the build / runtime read path.
 
@@ -458,7 +434,7 @@ bun run scripts/backfill-live-week.ts --week 2026-W27 --finalize
 
 Endpoint method, auth, query, response, cache, and status contract see [API.md](./API.md). This section maintains the intended cadence, idempotency, and the operations runbook.
 
-Neither Worker has cron triggers. Production `triggers.crons` and preview `env.pre` `triggers.crons` are both `[]`. The production caller is unverified. `web/vercel.json` is in the repository and is not proof of a live caller. Do not infer the caller from that file.
+Neither checked-in Worker declares cron triggers. Production `triggers.crons` and preview `env.pre` `triggers.crons` are both `[]`. The production caller is unverified. `web/vercel.json` is in the repository and is not proof of a live caller. Do not infer the caller from that file.
 
 Intended cadence when an owner later enables schedules. Cloudflare numbers Sunday as `SUN` or `1` and rejects `0`. `7` is Saturday.
 
@@ -472,9 +448,9 @@ Intended cadence when an owner later enables schedules. Cloudflare numbers Sunda
 
 The Worker `scheduled` handler dispatches by `event.cron` to the three paths in the table. Cloudflare Cron Triggers number weekdays `1` = Sunday through `7` = Saturday and reject `0` ([Cloudflare docs](https://developers.cloudflare.com/workers/configuration/cron-triggers/)). Weekly and refresh accept `SUN` (or Cloudflare `1`); `7` is Saturday and dispatches as unknown. Daily stays `0 3 * * *`. Production `triggers.crons` **must stay `[]`** until stage 5. Preview `env.pre` `triggers.crons` **must stay `[]`** while preview schedules are paused (#543); the CI gate enforces it through `PREVIEW_CRONS_PAUSED` in `scripts/cf-ci-gates.mjs`. The intended preview expressions, when the owner re-enables them, are `0 3 * * *`, `0 4 * * SUN`, and `0 6 * * SUN`. A cron string in the Worker config does not by itself turn platform schedules on. This repo does not enable platform schedules.
 
-Production blob writes, until cutover, use `web/lib/storage/vercel-blob-fetch-client.ts`. Preview `r2_binding` writes through the `DATA` binding and does not use `BLOB_READ_WRITE_TOKEN`. `?dry=1` writes no objects.
+Both Worker write contracts use `r2_binding` through their own guarded `DATA` bindings. The retained Blob driver uses `web/lib/storage/vercel-blob-fetch-client.ts`; it is not the current production contract. `?dry=1` writes no objects.
 
-> **Cron route behavior**: daily job = `web/app/api/cron/daily/route.ts`, weekly job = `web/app/api/cron/weekly/route.ts`, and both delegate to `web/lib/cron/handlers.ts` and support `?dry=1`. CRON_SECRET auth → with the idempotency key `<job>:<UTC-day>`, acquire a 15-minute ETag/CAS lease on `live/latest.json` → GraphQL pulls current_stars → `live-refresh.ts` idempotently rebuilds that day's state → validate all JSON → write `live/generations/<run_id>/**` (`current_month.json` v2 index + `current_month/shards/<0-31>.json`) and the manifest → the same control object does a fenced CAS generation switch → only **after that** come `revalidatePath` / IndexNow / `ops/sync-runs.json`. On UTC Sunday, daily returns `skipped: weekly-owns-sunday` before acquiring the lease, so it does not contend with the 04:00 weekly for live/health. Different keys in parallel return 409; the same key still running returns 202 attached, and one already committed returns 200 already-published. A manual same-day refresh must supply a new `idempotency_key`. Publish / release fence with the Blob API `head()` etag captured at acquire — not a public GET of the pointer body (#402). Health CAS is at most 5 tries, with exponential backoff + jitter; do not resolve a sustained conflict by raising the count.
+> **Cron route behavior**: daily job = `web/app/api/cron/daily/route.ts`, weekly job = `web/app/api/cron/weekly/route.ts`, and both delegate to `web/lib/cron/handlers.ts` and support `?dry=1`. CRON_SECRET auth → with the idempotency key `<job>:<UTC-day>`, acquire a 15-minute ETag/CAS lease on `live/latest.json` → GraphQL pulls current_stars → `live-refresh.ts` idempotently rebuilds that day's state → validate all JSON → write `live/generations/<run_id>/**` (`current_month.json` v2 index + `current_month/shards/<0-31>.json`) and the manifest → the same control object does a fenced CAS generation switch → only **after that** come `revalidatePath` / IndexNow / `ops/sync-runs.json`. On UTC Sunday, daily returns `skipped: weekly-owns-sunday` before acquiring the lease, so it does not contend with the 04:00 weekly for live/health. Different keys in parallel return 409; the same key still running returns 202 attached, and one already committed returns 200 already-published. A manual same-day refresh must supply a new `idempotency_key`. Publish/release fence with the configured store's origin ETag captured at acquire, not a public GET of the pointer body. The retained Blob driver uses its `head()` API for that fence (#402). Health CAS is at most 5 tries, with exponential backoff + jitter; do not resolve a sustained conflict by raising the count.
 
 **Failed weekly / leftover lease:** A false-fence (or any failure after acquire) used to leave `lease` on `live/latest.json` until `expires_at` (~15 min) because release also read the CDN-stale `lease: null` body and skipped the clear. Release now CAS-clears when `claimedEtag` still matches origin `head()`. If an old deploy left a lease stuck, wait until `expires_at` before the next acquire; do not skip that wait by writing `main` or calling production cron unless the user said push main. Sunday **workflow-refresh** failures are the next section, not this path.
 
@@ -493,7 +469,7 @@ Paging already exists — do not invent new alerts. `markFailed` in `web/lib/wor
 7. Hard stops: no validate-invariant relaxation; no inventing `bootstrap/latest.json`; do not push `main` or call production cron unless the user said push main; wait leftover lease; product-gates stay fail-closed.
 8. After a successful publish, static exports still need the [DATA-EXPORTS.md](./DATA-EXPORTS.md) regenerate path (#375). Do not duplicate that runbook here.
 
-**Optional — retire the stale flat object (do not run unless the user authorized a production Blob write, until cutover).** Writers no longer touch `ops/workflows/health.json`. `blob-del-prefix.ts` hard-blocks `ops/**`. If the Jul-2026 object is still confusing operators, overwrite or delete that **single** pathname from the Vercel Blob dashboard after confirming `healthPath` still has no flat-file writer. Do not prefix-delete `ops/`. Do not call production cron to refresh it.
+**Optional — retire the stale flat object (do not run unless the user authorized a write to the retained production Blob store).** Writers no longer touch `ops/workflows/health.json`. `blob-del-prefix.ts` hard-blocks `ops/**`. If the Jul-2026 object is still confusing operators, overwrite or delete that **single** pathname from the Vercel Blob dashboard after confirming `healthPath` still has no flat-file writer. Do not prefix-delete `ops/`. Do not call production cron to refresh it.
 
 **Auth mode (CRON_SECRET)**:
 
@@ -514,7 +490,7 @@ A full recompute stays in managed-refresh steps. Do not put a DuckDB or Parquet 
 
 1. A manual `GET /api/cron/daily?dry=1` with `Authorization: Bearer <CRON_SECRET>` is a no-write check. It is not proof of a scheduler and is not a production hotfix. Read Worker logs on `gitstarclub-web`. If those logs show a GitHub GraphQL `403`, `Retry-After`, or rate-limit remaining near 0, stop and lower the batch size or add waits.
 2. Before a live run, record `live/latest.json` (especially `generation` / `previous_generation` / `lease`). Immutable generation files do not need to be backed up one by one.
-3. A live `GET /api/cron/daily` with the same header writes the production blob store until cutover. The client may disconnect before the route finishes. Worker logs and the written objects are the record. Do not use this call to ship a code change.
+3. A live `GET /api/cron/daily` with the same header writes through the guarded production R2 DATA binding. The client may disconnect before the route finishes. Worker logs and the written objects are the record. Do not use this call to ship a code change.
 4. After the write, from the repository root run `bun web/scripts/validate-live-views.ts --bust <UTC day>`; the script first resolves `live/latest.json`, then validates `current_month` / `hot-snapshot` and freshness for the same generation. Then check `/` and `/pulse`. The script uses `getPublicReadBases()` for the configured read driver, checks the primary origin, and reports `storage_read_driver` and `public_read_base` (#578). A missing R2 base fails even when a Blob base is available. A page returning 200 does not prove the tool is off Blob. Stage 6 still requires it to complete against the production R2 origin with Blob variables unset; see [R2-CUTOVER.md](./R2-CUTOVER.md).
 5. If it fails, confirm the pointer's `generation` did not change; a partial generation that was written but is not referenced does not affect production and can be left for a later GC. If committed content is wrong, point `generation` back at `previous_generation` (also use an ETag conditional write; do not overwrite an active lease).
 
@@ -524,13 +500,13 @@ A full recompute stays in managed-refresh steps. Do not put a DuckDB or Parquet 
 >
 > Critical constraint: Search only discovers membership; metadata calls GraphQL `nodes()` bucket by bucket, across 32 buckets, for every active repo, and writes the sole authoritative `current_stars` from `stargazerCount`. A single bucket is at most about two batches of requests and keeps inter-batch throttling; if any active repo is missing a GraphQL result, publishing stops, and it must not fall back to Search stars.
 >
-> Intended cadence is `0 6 * * SUN`, independent of daily and weekly. Neither Worker has that cron today. The production caller is unverified.
+> Intended cadence is `0 6 * * SUN`, independent of daily and weekly. Neither checked-in Worker declares that cron. The production caller is unverified.
 
 **Why steps**: a full recompute does not fit one request. Each step is ordinary async plus explicit retry, advanced by an HTTP self-chain or the Worker queue. Do not add a second engine on the request path.
 
 **Run prerequisites**:
 - `CRON_SECRET` and `GITHUB_TOKEN` on the Worker that runs the refresh.
-- Production blob writes, until cutover, also need `BLOB_READ_WRITE_TOKEN` and `BLOB_BASE_URL`. Preview `r2_binding` does not set `BLOB_*`.
+- Both Worker write contracts use their own guarded R2 DATA binding, matching `DEPLOY_ENV` and bucket identity. They do not need a Blob token. Explicit use of the retained Blob write driver needs its Blob base and token.
 - `WORKFLOW_RUNTIME` is `cf-queue` on both Workers. The code default when unset is `http`.
 - Deploy with the Wrangler commands earlier in this runbook. Do not use a Vercel deploy command.
 
@@ -544,19 +520,19 @@ A full recompute stays in managed-refresh steps. Do not put a DuckDB or Parquet 
 
 > Full-chain steps: `preflight` (validate every canonical shard again) → `fold` (month + week; each time `fold-decision.json` is written first. When there is closed pending, also write compact `fold-month-plan.json` / `fold-week-plan.json`, split by 1-bucket windows into `fold-month-*` / `fold-week-*`, and still write `fold.json` at the end. If already folded through the current month and no weeks remain, then `reason=no_closed_month`; missing a month plan is not a stall) → `recomputeRank` (on CF: month-pack + 8-period month/monthOrg, then year derived from month buckets followed by 8-period year/yearOrg, then week-pack + 8-period week/weekOrg, and finally rest by repos bucket; after fold, write `recompute-enqueued.json`, and each hop first writes `recomputeRank-<phase>-start.json`. The #497 whole-window week OOM has been split by bucket; month/year/rest likewise no longer load a whole window, see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md)) → `buildAliases` (→ `lookup/aliases.json`) → `validate` publish gate → `publish` switches the `views/latest.json` pointer / rollback → `gc` version reclamation (design see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7). CF preview Blob filenames are runtime steps: after fold, `recompute-enqueued.json`, `recomputeRank-month-pack.json` / `recomputeRank-month-*.json` should appear through the terminal `recomputeRank-month.json`, plus year-pack / week-pack / `recomputeRank-rest-*.json` and the terminal `recomputeRank.json` (not the manifest alias `recompute.json`). When `WORKFLOW_RUNTIME=cf-queue`, the Queue consumer reads the step JSON (or `x-gitstarclub-queue-successor`) and then `JOBS.send`s the next step; writing only `fold-decision`+`fold.json` and then a silent queue, a fetch source of `Worker exceeded memory limit`, no `error.json`, and an expired lease is a stall that is still not closed after #486 (the root cause is that the month hop still loads an object window, not that fold-decision failed to enqueue; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md)). `/` `/rankings` returning 500 while `/preview/health` returns 200 is the same isolate OOM (OpenNext vs shell), not a published pointer written corrupt. The pass/fail table for a preview Bearer full refresh see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix). An OOM or a silent Queue counts as failure, not "still running".
 
-**Auth / credentials**: `CRON_SECRET` (trigger) and `GITHUB_TOKEN` (Search / GraphQL). Production blob writes, until cutover, also need `BLOB_READ_WRITE_TOKEN`. Preview `r2_binding` does not. Refresh is 0 GCP end to end (GCP is bootstrap only).
+**Auth / credentials**: `CRON_SECRET` (trigger) and `GITHUB_TOKEN` (Search / GraphQL). The retained Blob write path needs `BLOB_READ_WRITE_TOKEN`; the current R2 `DATA` path does not. Refresh is 0 GCP end to end (GCP is bootstrap only).
 
 ### Preview fault rollback
 
 A preview fault rolls back Worker `gitstarclub-web-pre` (wrangler env `pre`) only. Do not apply that rollback to production Worker `gitstarclub-web`. Do not empty production `triggers.crons` as a preview fix; they are already `[]`. Do not set `HOSTING_TARGET=vercel`. Do not add a login wall on `https://pre.gitstarclub.com`. Do not cut DNS. Do not delete production Blob.
 
-Production hosting rollback for the R2 cutover is the stage 4 command later in this runbook: `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`.
+The historical production cutover rollback reference, requiring operator checks and separate authorization, is recorded later in this runbook: `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`.
 
 **Alerts**: a refresh failure writes a structured Worker log, an optional webhook, a run checkpoint, and an independent health state. The repository has no Sentry SDK. A failure before publish does not switch the live pointer.
 
 ### Post-publish checklist: static data exports
 
-Workflow publish only cuts the Blob pointer. Committed static exports under
+Workflow publish switches the configured store's views pointer; the current production write contract is R2. Committed static exports under
 `web/public/data/exports/v1/` do **not** update automatically. Product-gates
 `export-manifest-age` requires the deployed manifest `data_as_of` within
 **14 days** (`EXPORT_MAX_AGE_MS`). Full copy-paste runbook:
@@ -586,7 +562,7 @@ Workers Observability is enabled on `gitstarclub-web` and `gitstarclub-web-pre`.
 | Build and deploy errors | The GitHub `production-build` job, or the local `cf:build` / Wrangler stdout and stderr | OpenNext compilation and Wrangler output happen before a Worker serves the new build. There is no separate build-log integration |
 | pipeline run records | **`ops/sync-runs.json` log** (each daily / weekly job appends one entry: start / end time, query count, paths written, status) | For reconciliation and traceback; together with `ops/workflows/<run_id>/steps/*.json` they form the self-built run log |
 | Preview incidents | Workers Observability on `gitstarclub-web-pre` | Do not roll back production Worker `gitstarclub-web` from a preview incident. Preview is public; `noindex` is not access control |
-| Production incidents | Workers Observability on `gitstarclub-web` | Production still reads Vercel Blob until cutover. Hosting rollback for that cutover is the stage 4 version command |
+| Production incidents | Workers Observability on `gitstarclub-web` | Production uses R2 after the accepted 2026-10-04 cutover. Hosting rollback for that cutover is the stage 4 version command |
 | **Data drift** | Compare the GraphQL authoritative total against the summed adds total | **Alert when drift > a threshold (for example 2%)**, and re-anchor with GraphQL as the anchor (see ARCHITECTURE "Data validation / reconciliation") |
 | **Cron failure** | `[ALERT]` Worker log + optional `ALERT_WEBHOOK_URL` + `sync-runs` + pipeline health | webhook delivery is best-effort; when it fails or is unset, logs and health are authoritative |
 | Single-day spike | pipeline sanity check | An extreme single-day addition spike is logged as an alert (net is allowed to be negative) |
@@ -595,7 +571,7 @@ For aggregate GEO crawler and AI-referrer reporting, use [geo/ai-log-reporting.m
 
 **Alert channel**: `sendAlert` always writes a structured Worker log. `ALERT_WEBHOOK_URL`, when set on that Worker, can point at an endpoint that receives a JSON POST, such as Slack or Discord. Watch especially for a failed run and for data drift past the bound. Webhook is not a reliable queue and must not be the only source of state. A missing schedule is not something this log can prove; the production caller stays unverified.
 
-> `sync_runs` does not need a database: the current implementation overwrite-writes `ops/sync-runs.json` on Blob and keeps the most recent 100 runs. When reliable delivery or paging is needed, attach a separate alerting service with durable retries; the current code does not declare that capability.
+> `sync_runs` does not need a database: the current implementation overwrite-writes `ops/sync-runs.json` through the configured store and keeps the most recent 100 runs. When reliable delivery or paging is needed, attach a separate alerting service with durable retries; the current code does not declare that capability.
 
 ### Alert webhook (`ALERT_WEBHOOK_URL`, optional)
 
@@ -612,11 +588,11 @@ Set `ALERT_WEBHOOK_URL` on the Worker that should send it. Leave it unset to sta
 
 ## One-time bootstrap Runbook (archived / non-routine path)
 
-> **Demotion statement**: this is a tool run manually once for **the first cold start / a disaster rebuild / introducing a new data source**, and **not a recurring operations path**. After the artifacts are uploaded, the host's live routes and managed refresh take over. Production data stays on Vercel Blob until cutover. The production caller is unverified. Routine operations are **0 local dependencies · 0 GCP**.
+> **Demotion statement**: this is a tool run manually once for **the first cold start / a disaster rebuild / introducing a new data source**, and **not a recurring operations path**. After the artifacts are uploaded, the host's live routes and managed refresh take over. Production data uses R2 after the accepted 2026-10-04 cutover. The production caller is unverified. Routine operations are **0 local dependencies · 0 GCP**.
 
 11 years of event-level history are backfilled only once, via **BigQuery** (GCP credentials required, about $10, including a stable repo.id). Free alternatives (the ClickHouse public instance, self-hosted ingestion) were all judged infeasible after evaluation; see ARCHITECTURE "Why backfill uses BigQuery".
 
-**Prerequisites**: GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`) · GitHub PAT (`GITHUB_TOKEN`) · blob store token (`BLOB_READ_WRITE_TOKEN`) for the blob path, until cutover, while production still reads Vercel Blob. The R2 path uses a bucket-scoped key in the uncommitted pipeline env file (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) plus `R2_BUCKET_PRE` or `R2_BUCKET_PROD`. Run it on a local machine / a full Node environment. See [R2-CUTOVER.md](./R2-CUTOVER.md).
+**Prerequisites**: GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`) · GitHub PAT (`GITHUB_TOKEN`) · Blob token (`BLOB_READ_WRITE_TOKEN`) only for the retained Blob path. The R2 path uses a bucket-scoped key in the uncommitted pipeline env file (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) plus `R2_BUCKET_PRE` or `R2_BUCKET_PROD`. Run it on a local machine / a full Node environment. See [R2-CUTOVER.md](./R2-CUTOVER.md).
 
 Render `pipeline/backfill/02-extract.sql` before any BigQuery job. The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`.
 
@@ -650,7 +626,7 @@ bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < 
 
 ### R2 rehearsal and empty-bucket first commit
 
-Rehearse in `gitstarclub-data-pre`, then load `gitstarclub-data-prod`. The owner places `_meta/bucket-identity.json` at the bucket root out of band. `bucket` must equal the target bucket name. `deploy_env` is `pre` for `--target pre` and `production` for `--target prod`. The scripts never write or delete `_meta/`.
+**Historical empty-bucket recipe; stages 2/3 remain unaccepted.** This did not supply the accepted production store: the operator instead copied Blob and completed the separately accepted stage-4 cutover. Do not apply initial-commit or bad-first-publish cleanup to the populated production copy. Any new rehearsal/rebuild requires its own authorized empty target. In the original recipe, rehearse preview first, then load an eligible production target. The owner places `_meta/bucket-identity.json` at the bucket root out of band. `bucket` must equal the target bucket name. `deploy_env` is `pre` for `--target pre` and `production` for `--target prod`. The scripts never write or delete `_meta/`.
 
 Before the real-bucket rehearsal, run the offline local rehearsal first. Use the SHA-256-verified Node v24.20.0 and Bun 1.3.14 bootstrap in [AGENTS.md](../AGENTS.md), with dependencies installed in both `web/` and `pipeline/` using `bun --no-env-file install --frozen-lockfile`. From the repository root:
 
@@ -689,11 +665,11 @@ cd pipeline
 node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$PREVIOUS" --execute
 ```
 
-A bad first publish has no rollback. Before stage 4, production `https://gitstarclub.com` still reads Vercel Blob on Worker `gitstarclub-web` (top-level, no `--env`). Preview Worker `gitstarclub-web-pre` (wrangler env `pre`, bucket `gitstarclub-data-pre`) is a rehearsal and may show broken or empty data. Do not block preview hosts, do not publish through an isolated dashboard or API path, and do not prepare a Workers Static Assets cache.
+A bad first publish has no rollback. In this historical pre-cutover recipe, production `https://gitstarclub.com` would read Vercel Blob on Worker `gitstarclub-web` (top-level, no `--env`). Preview Worker `gitstarclub-web-pre` (wrangler env `pre`, bucket `gitstarclub-data-pre`) is a rehearsal and may show broken or empty data. Do not block preview hosts, do not publish through an isolated dashboard or API path, and do not prepare a Workers Static Assets cache.
 
 Stop and record what went wrong. Read `https://data-pre.gitstarclub.com/bootstrap/latest.json`. `previous_generation` must be JSON null. If it is a generation id, use the later-publish command above.
 
-Deleting objects uses the same owner authorization as a bucket write. Never delete `_meta/`, including `_meta/bucket-identity.json`. `web/scripts/blob-del-prefix.ts` refuses `_meta/`, `bootstrap/latest.json`, `canonical/`, the current generation prefix, and the broad prefix `bootstrap/generations/`. The owner removes the bad generation objects in bucket `gitstarclub-data-pre` under `bootstrap/generations/<bad-id>/`. Also remove `bootstrap/latest.json`, and remove `canonical/v2/meta.json` and `views/latest.json` when those objects exist. `--initial-commit` refuses while any of those three paths is present. Do not hand-write `bootstrap/latest.json` or `views/latest.json`. Do not point Worker `gitstarclub-web` at bucket `gitstarclub-data-pre` or `gitstarclub-data-prod`.
+Deleting objects uses the same owner authorization as a bucket write. Never delete `_meta/`, including `_meta/bucket-identity.json`. `web/scripts/blob-del-prefix.ts` refuses `_meta/`, `bootstrap/latest.json`, `canonical/`, the current generation prefix, and the broad prefix `bootstrap/generations/`. The owner removes the bad generation objects in bucket `gitstarclub-data-pre` under `bootstrap/generations/<bad-id>/`. Also remove `bootstrap/latest.json`, and remove `canonical/v2/meta.json` and `views/latest.json` when those objects exist. `--initial-commit` refuses while any of those three paths is present. Do not hand-write `bootstrap/latest.json` or `views/latest.json`. Never point production at the preview bucket. Do not change the current production R2 binding as part of this historical rehearsal.
 
 Rerun the preview upload and `--initial-commit` commands above with a new generation id. Then redeploy preview the normal way (the Preview deploy section in this file) and check the live rankings page. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`:
 
@@ -709,7 +685,7 @@ bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env pr
 
 `https://pre.gitstarclub.com/rankings` must return 200, stay `noindex`, and show repository rows from the new generation. The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure. Repeat stage 2 acceptance after that live check. Real rollback starts at stage 4 and is the `wrangler rollback` command in that section.
 
-Production uses the same upload and `--initial-commit` commands with `--target prod` after the pre rehearsal. That target is Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`. The first publish there has the same null `previous_generation`. `--rollback` of that same generation returns `already-rolled-back` and leaves the pointer in place. Production `https://gitstarclub.com` still reads Vercel Blob, so this publish does not change the live site. Do not cut over. Do not start stage 4.
+Production uses the same upload and `--initial-commit` commands with `--target prod` after the pre rehearsal. That target is Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`. The first publish there has the same null `previous_generation`. `--rollback` of that same generation returns `already-rolled-back` and leaves the pointer in place. In the original pre-cutover recipe, production would stay on Blob and that initial publish would not change the site. This was not the accepted operator copy/cutover route. Do not run it against the current copied production bucket.
 
 Stop and record what went wrong. Deleting objects uses the same owner authorization as a bucket write. Never delete `_meta/`, including `_meta/bucket-identity.json`. The owner removes `bootstrap/generations/<bad-id>/` and `bootstrap/latest.json` in bucket `gitstarclub-data-prod`, and removes `canonical/v2/meta.json` and `views/latest.json` when those objects exist, so `--initial-commit` can run again. `web/scripts/blob-del-prefix.ts` refuses `_meta/`, the pointer, and the current generation prefix. Do not hand-write a pointer. Do not write bucket `gitstarclub-data-pre`. Do not deploy Worker `gitstarclub-web-pre`. Then rerun the production upload and `--initial-commit` commands. A later publish on that bucket rolls back with `--target prod` and `$PREVIOUS` from `https://data.gitstarclub.com/bootstrap/latest.json`.
 
@@ -733,7 +709,7 @@ curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
 
 That run's publish step writes `views/latest.json` in bucket `gitstarclub-data-pre`. Never hand-write the pointer.
 
-Stage 3 acceptance is the same bootstrap pointer, manifests, and sealed `views/rank/all-time/repo/stock.json` on `https://data.gitstarclub.com`, bucket `gitstarclub-data-prod`. `views/latest.json` on that origin is not required. A 404 is expected. Do not hand-write it. `https://gitstarclub.com/rankings` still shows blob rows for version `refresh-2026-09-13T06-00-16-398Z` via `VIEWS_VERSION_FALLBACK`, because Worker `gitstarclub-web` (top-level, no `--env`) is not reading bucket `gitstarclub-data-prod` yet. After stage 4, the command that creates `views/latest.json` on that bucket is an owner-authorized refresh publish:
+Stage 3 acceptance is the same bootstrap pointer, manifests, and sealed `views/rank/all-time/repo/stock.json` on `https://data.gitstarclub.com`, bucket `gitstarclub-data-prod`. `views/latest.json` on that origin is not required. A 404 is expected. Do not hand-write it. In that historical recipe, `https://gitstarclub.com/rankings` would show Blob rows for version `refresh-2026-09-13T06-00-16-398Z` via `VIEWS_VERSION_FALLBACK`, because that pre-cutover Worker would not yet read R2. This is not a statement about the current production Worker. After stage 4, the command that creates `views/latest.json` on that bucket is an owner-authorized refresh publish:
 
 ```bash
 # Owner-authorized, and only after stage 4. Worker gitstarclub-web, top-level
@@ -746,29 +722,18 @@ Do not call `https://gitstarclub.com/api/cron/*` to create the pointer. Never ha
 
 ### Stage 4 cutover rollback
 
-Stage 4 is specified in [R2-CUTOVER.md](./R2-CUTOVER.md). Before the cutover deploy, check identity, the bootstrap pointer, both phase manifests, and sealed ranking JSON on `https://data.gitstarclub.com` (bucket `gitstarclub-data-prod`). Do not treat live `https://gitstarclub.com/rankings` as that proof. The same cutover pull request selects and verifies the R2 contract already prepared in `scripts/cf-ci-gates.mjs` and `scripts/cf-ci-gates.test.mjs` (#578): `DEPLOY_ENV=production`, `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, `R2_BUCKET=gitstarclub-data-prod`, and exactly one `DATA` binding to that bucket. That contract refuses `BLOB_*` and `VIEWS_VERSION_FALLBACK`. The production build checks in `web/scripts/cf-opennext-build.ts` are also prepared: that same build explicitly exports `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com` and clears all Blob shell variables and `VIEWS_VERSION_FALLBACK`. With the fallback still set, a 404 of `views/latest.json` selects `refresh-2026-09-13T06-00-16-398Z` and does not read `bootstrap/generations/<id>/views/**` (`web/lib/data/source.ts`). Clear the fallback in that same deploy, not after live rankings already show R2 rows. The pre-cutover shell in the production build section above stays in force until that pull request. After the deploy, Worker `gitstarclub-web` (top-level, no `--env`, bucket `gitstarclub-data-prod`) must show real ranking rows that match `https://data.gitstarclub.com/bootstrap/latest.json`. `views/latest.json` is not required. A 404 is acceptable. Do not hand-write it. If an owner-authorized refresh publish has already written that pointer, the pages must match its `version`. If the live rows are missing, roll back. Rollback restores the full pre-cutover production Worker, including `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`. Production still depends on that value while blob `views/latest.json` is missing (#543). Restoring the blob base and the blob driver, and removing `DATA`, is not enough if the fallback stays unset.
+The accepted copied-store cutover and current missing-pointer state are in [R2-CUTOVER.md](./R2-CUTOVER.md#stage-4-cutover-i-5b). The current contract uses R2 and preserves the exact frozen fallback; it does not require a bootstrap pointer that the accepted copy path never published. Do not clear the fallback based on the unaccepted bootstrap-only recipe, and do not delete objects in either store.
 
-The pre-cutover version is `14b84f73-ef31-4e86-a70d-b71251756093`. On 2026-10-01 a read-only check found that version deployed at 100% of Worker `gitstarclub-web`. Do not pass `--env pre`. This command does not write bucket `gitstarclub-data-prod` and does not write the blob store. The restored version reads blob base `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`.
+PR #649 retains historical pre-cutover Worker version `14b84f73-ef31-4e86-a70d-b71251756093` (commit `b32939d`). Its present availability and security suitability were not verified. It predates security fixes included in publicly identified production `daee5fc`; an operator must assess those fixes and explicitly authorize rollback before choosing it. The command is recovery history, not an automatic current incident step:
 
 ```bash
-# Worker gitstarclub-web, top-level production (no --env), blob store
-# https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
-# Does not target bucket gitstarclub-data-prod or wrangler env pre.
+# Historical operator rollback only; production gitstarclub-web, no --env pre.
 wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web
 ```
 
-That version has `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`, `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` set to `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`, no top-level `DATA` binding, and no `STORAGE_READ_DRIVER` (the runtime default is `blob`). Do not follow the rollback with a deploy that drops `VIEWS_VERSION_FALLBACK`. A config-edit rollback sets those same values, removes the production `DATA` binding, and leaves `triggers.crons` at `[]`. Do not delete blob objects. Do not empty bucket `gitstarclub-data-prod`.
+The recorded configuration includes `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`, both Blob bases at `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`, Blob/default drivers, and no production `DATA` binding. An authorized config-based rollback restores that complete set, including the fallback while the Blob pointer is absent, and keeps `triggers.crons=[]`. Base/driver restoration alone is insufficient. Do not empty production R2, delete Blob data, or target preview with this version command.
 
-Smoke checks that real data renders. HTTP 200 alone is not enough.
-
-```bash
-# Worker gitstarclub-web, top-level production (no --env), blob store
-# https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com
-curl -fsS -o /dev/null -w '%{http_code}\n' https://gitstarclub.com/rankings
-curl -fsS https://gitstarclub.com/rankings
-```
-
-Expect HTTP 200 and indexing still on (`index, follow`). The HTML must include a repository ranking row (`owner/name`) and a star count. It must not show "Ranking data is waiting for the next published recompute." as the body of both ranking sections. Blob `views/latest.json` may still 404. The page data is version `refresh-2026-09-13T06-00-16-398Z`.
+After an authorized rollback, verify `/rankings` returns 200, remains indexable, and contains repository links/star counts from the expected Blob generation. Both boards showing waiting copy is a failure. Verify deployment identity; page status alone does not establish successful recovery or security suitability. R2-CUTOVER retains the same requirements.
 
 ## One-time canonical lifecycle provenance migration (Issue #326)
 
@@ -878,8 +843,8 @@ reads even if the object disappears again.
 ## Rollback
 
 - **Pointer rollback (Workflow publish)**: do not overwrite Blob directly. Call the protected rollback API with a stable idempotency key; it acquires a fenced lease, pins the rollback intent, syncs the recovery / whitelist pointers, and invalidates pages and the pointer cache. Example: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`. After a successful return, check the pages and `views/latest.json` within the **≤60s** visibility SLA. Design see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.
-- **bootstrap generation / legacy rollback**: first read `bootstrap/latest.previous_generation`. When the value is a generation, run `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute` for the Blob store. On Blob, a first publish stores null, and that null means `cd pipeline && node backfill/07-export-v2.mjs --rollback legacy-flat --execute`. On R2, `--initial-commit` also stores null, and that null means there is no prior generation. `--rollback` of the generation just committed returns `already-rolled-back` and is not an undo. `--rollback legacy-flat` fails closed because the flat files were never uploaded. A bad first R2 publish (`previous_generation` null) has no rollback. On bucket `gitstarclub-data-pre` (Worker `gitstarclub-web-pre`, wrangler env `pre`), stop, record the failure, and under the same owner authorization as a bucket write remove `bootstrap/generations/<bad-id>/` plus `bootstrap/latest.json` (and `canonical/v2/meta.json` or `views/latest.json` when present). Never delete `_meta/`. Then rerun that stage and redeploy preview the normal way. On bucket `gitstarclub-data-prod` (Worker `gitstarclub-web`, top-level, no `--env`) the live site still reads Blob: do not cut over; remove that bad generation the same way and rerun stage 3. `web/scripts/blob-del-prefix.ts` refuses the current generation and `_meta/`. The same rule is in the R2 rehearsal section and in [R2-CUTOVER.md](./R2-CUTOVER.md). Real rollback starts at stage 4. An R2 rollback after a later publish names `previous_generation`: `cd pipeline && node backfill/07-export-v2.mjs --store r2 --target pre --rollback <previous-generation> --execute` for Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre` (use `--target prod` for Worker `gitstarclub-web`, top-level production with no `--env`, bucket `gitstarclub-data-prod`). Do not pass the current generation. A generation target rechecks sealed manifests and every object before the lease; a mutable legacy target, after acquiring the same Workflow CAS lease, verifies the key flat base artifacts and all `4 × 32` canonical shards. The command then rereads the pointer inside the lease and overwrites the pointer only once; a legacy target atomically deletes `bootstrap/latest.json`. If the pointer write/delete succeeded but the response was lost, retrying the same target returns `already-rolled-back`. Do not hand-edit the pointer. After a later publish, roll back to `previous_generation` and do not delete that current or previous generation or overlay.
-- **Deploy rollback**: roll back the Worker that served the bad version. A preview incident rolls back `gitstarclub-web-pre` (wrangler env `pre`) and must not roll back production Worker `gitstarclub-web`. The R2 cutover rollback is the stage 4 command above: `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`. Do not pass `--env pre`. That command does not write bucket `gitstarclub-data-prod` and does not write the blob store.
+- **bootstrap generation / legacy rollback**: first read `bootstrap/latest.previous_generation`. When the value is a generation, run `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute` for the Blob store. On Blob, a first publish stores null, and that null means `cd pipeline && node backfill/07-export-v2.mjs --rollback legacy-flat --execute`. On R2, `--initial-commit` also stores null, and that null means there is no prior generation. `--rollback` of the generation just committed returns `already-rolled-back` and is not an undo. `--rollback legacy-flat` fails closed because the flat files were never uploaded. A bad first R2 publish (`previous_generation` null) has no rollback. On bucket `gitstarclub-data-pre` (Worker `gitstarclub-web-pre`, wrangler env `pre`), stop, record the failure, and under the same owner authorization as a bucket write remove `bootstrap/generations/<bad-id>/` plus `bootstrap/latest.json` (and `canonical/v2/meta.json` or `views/latest.json` when present). Never delete `_meta/`. Then rerun that stage and redeploy preview the normal way. The original empty-bucket production stage 3 was never accepted and was superseded by the copied-store cutover. Its bad-first-publish cleanup must not be applied to current `gitstarclub-data-prod`. `web/scripts/blob-del-prefix.ts` refuses the current generation and `_meta/`. The same rule is in the R2 rehearsal section and in [R2-CUTOVER.md](./R2-CUTOVER.md). The accepted cutover has a separate historical Worker rollback reference; do not confuse it with bootstrap publication rollback. An R2 rollback after a later publish names `previous_generation`: `cd pipeline && node backfill/07-export-v2.mjs --store r2 --target pre --rollback <previous-generation> --execute` for Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre` (use `--target prod` for Worker `gitstarclub-web`, top-level production with no `--env`, bucket `gitstarclub-data-prod`). Do not pass the current generation. A generation target rechecks sealed manifests and every object before the lease; a mutable legacy target, after acquiring the same Workflow CAS lease, verifies the key flat base artifacts and all `4 × 32` canonical shards. The command then rereads the pointer inside the lease and overwrites the pointer only once; a legacy target atomically deletes `bootstrap/latest.json`. If the pointer write/delete succeeded but the response was lost, retrying the same target returns `already-rolled-back`. Do not hand-edit the pointer. After a later publish, roll back to `previous_generation` and do not delete that current or previous generation or overlay.
+- **Deploy rollback**: roll back the Worker that served the bad version. A preview incident rolls back `gitstarclub-web-pre` (wrangler env `pre`) and must not roll back production Worker `gitstarclub-web`. The retained historical R2 cutover version command above requires operator verification of availability/security suitability and separate authorization: `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`. Do not pass `--env pre`. That command does not write bucket `gitstarclub-data-prod` and does not write the blob store.
 - **Daily live tail**: `live/generations/<run_id>/**` is immutable, and `live/latest.json` is the only publish switch. A failure before commit needs no data rollback (the pointer still points at the old generation); if bad data is found after commit, point the pointer's `generation` back at `previous_generation`. Rollback must also first confirm there is no active `lease` and use an ETag conditional write, so it does not overwrite a cron that is publishing.
 - **Order**: roll the published pointer back first, then roll back the matching Worker version, then check that `sync_runs` and drift are back to normal. Do not roll back `gitstarclub-web` for a preview-only fault.
 

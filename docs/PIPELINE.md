@@ -9,7 +9,7 @@ source_of_truth_for:
 
 # gitstarclub data Pipeline
 
-> How the artifacts defined by [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) are produced. This document focuses on the **one-off bootstrap pipeline**: seeding `canonical/v2/**` and `views/**` out of a blank system from zero. Day-to-day recurring refresh is carried by the managed refresh, and the local machine does not take part. New loads target Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)). The blob commands below stay valid until cutover.
+> How the artifacts defined by [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) are produced. This document focuses on the **one-off bootstrap pipeline**: seeding `canonical/v2/**` and `views/**` out of a blank system from zero. Day-to-day recurring refresh is carried by the managed refresh, and the local machine does not take part. New loads target Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)). The default Blob commands below describe the retained historical bootstrap path; the accepted production copy/cutover is in R2-CUTOVER. Do not run these commands against the current store without separate authorization.
 >
 > Architecture is in [ARCHITECTURE.md](./ARCHITECTURE.md), and operations/credentials are in [OPS.md](./OPS.md).
 
@@ -23,24 +23,24 @@ This document describes the **bootstrap pipeline**: it runs once, executed from 
 
 **Day-to-day recurring data refresh (whitelist / metadata / canonical fold / full recompute / publish / rollback) runs as managed refresh on the Cloudflare Workers host.** See [OPS.md](./OPS.md) and [R2-CUTOVER.md](./R2-CUTOVER.md). The step names in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) are superseded history for the Blob publish model. The local environment and the BigQuery / DuckDB engines **do not take part** in the day-to-day path. A full recompute stays in the managed-refresh steps. Do not load DuckDB or Parquet in one request.
 
-Neither Worker lists cron triggers. Production `triggers.crons` and preview `env.pre` `triggers.crons` are both `[]`. The production caller is unverified. `web/vercel.json` is not proof of a live caller. The intended cadence, when an owner later enables schedules, is daily `0 3 * * *`, weekly `0 4 * * SUN`, and Sunday refresh `0 6 * * SUN`. Cloudflare rejects weekday `0`. Production JSON stays on Vercel Blob until cutover.
+Neither Worker lists cron triggers. Production `triggers.crons` and preview `env.pre` `triggers.crons` are both `[]`. The production caller is unverified. `web/vercel.json` is not proof of a live caller. The intended cadence, when an owner later enables schedules, is daily `0 3 * * *`, weekly `0 4 * * SUN`, and Sunday refresh `0 6 * * SUN`. Cloudflare rejects weekday `0`. Production JSON uses R2 after the accepted 2026-10-04 cutover.
 
 ## 0. Roles and environments
 
 | Stage | Where it runs | What it uses | Trigger |
 |---|---|---|---|
 | One-off bootstrap (this document §1) | Local machine / full Node | BigQuery (once) + DuckDB + GraphQL → JSON | Run once manually |
-| Daily cron (this document §2) | Cloudflare Worker route `web/app/api/cron/daily` | GraphQL + JSON live tail (**does not touch DuckDB/Parquet**). Production writes still use the blob store until cutover | Intended `0 3 * * *`. Both Worker cron lists are `[]`. The production caller is unverified |
-| Weekly cron (this document §3) | Cloudflare Worker route `web/app/api/cron/weekly` | GraphQL + JSON incremental overwrite of the current week/month/hot set. Production writes still use the blob store until cutover | Intended `0 4 * * SUN`. Both Worker cron lists are `[]`. The production caller is unverified |
-| Managed refresh (this document §4) | Cloudflare Workers. `WORKFLOW_RUNTIME` is `cf-queue` on both Workers; the code default when unset is `http` | Multi-step checkpoint + JSON shard (**no engine**). Production checkpoints stay on Vercel Blob until cutover | Intended `0 6 * * SUN`, or a manual authenticated call. Both Worker cron lists are `[]`. The production caller is unverified |
+| Daily cron (this document §2) | Cloudflare Worker route `web/app/api/cron/daily` | GraphQL + JSON live tail (**does not touch DuckDB/Parquet**). The production write contract uses the guarded R2 DATA binding | Intended `0 3 * * *`. Both Worker cron lists are `[]`. The production caller is unverified |
+| Weekly cron (this document §3) | Cloudflare Worker route `web/app/api/cron/weekly` | GraphQL + JSON incremental overwrite of the current week/month/hot set. The production write contract uses the guarded R2 DATA binding | Intended `0 4 * * SUN`. Both Worker cron lists are `[]`. The production caller is unverified |
+| Managed refresh (this document §4) | Cloudflare Workers. `WORKFLOW_RUNTIME` is `cf-queue` on both Workers; the code default when unset is `http` | Multi-step checkpoint + JSON shard (**no engine**). The production write contract uses the guarded R2 DATA binding | Intended `0 6 * * SUN`, or a manual authenticated call. Both Worker cron lists are `[]`. The production caller is unverified |
 
-Credentials: `GITHUB_TOKEN` (GraphQL/Search), GCP (**bootstrap only** BigQuery), `BLOB_READ_WRITE_TOKEN` for production blob writes until cutover, `CRON_SECRET`. Preview `r2_binding` does not use the blob token. See [OPS.md](./OPS.md).
+Credentials: `GITHUB_TOKEN` (GraphQL/Search), GCP (**bootstrap only** BigQuery), `BLOB_READ_WRITE_TOKEN` only for the retained Blob write path, `CRON_SECRET`. Both Workers use the guarded `DATA` binding for R2 writes and do not use the Blob token for that path. See [OPS.md](./OPS.md).
 
 ---
 
 ## 1. One-off bootstrap (`pipeline/backfill/`, run once manually)
 
-> **Demotion notice**: this section is a one-off tool for the **first cold start / disaster rebuild**, and it is **not a day-to-day operations runbook**. After the JSON views and canonical it produces are uploaded, the host's managed refresh takes over recurring refresh. Production data stays on Vercel Blob until cutover. The production caller is unverified. **Day-to-day operations have 0 local dependencies.** These scripts are not deleted, but they are run manually only when a new data source is introduced / the baseline is rebuilt.
+> **Demotion notice**: this section is a one-off tool for the **first cold start / disaster rebuild**, and it is **not a day-to-day operations runbook**. After the JSON views and canonical it produces are uploaded, the host's managed refresh takes over recurring refresh. Production data uses R2 after the accepted 2026-10-04 cutover. The production caller is unverified. **Day-to-day operations have 0 local dependencies.** These scripts are not deleted, but they are run manually only when a new data source is introduced / the baseline is rebuilt.
 
 ```text
 01-whitelist → 02-extract(BigQuery) → 03-metadata(GraphQL)
@@ -147,7 +147,7 @@ node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$GEN" --execu
 
 ## 4. Managed refresh
 
-> Step names live in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md). That file is superseded history for the Blob publish model. What follows is the **correspondence** with the §1 bootstrap: that local chain now runs as managed-refresh steps on the Cloudflare Workers host, and it **does not depend on local compute**. Production checkpoints stay on Vercel Blob until cutover. Both Worker cron lists are `[]`. The production caller is unverified.
+> Step names live in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md). That file is superseded history for the Blob publish model. What follows is the **correspondence** with the §1 bootstrap: that local chain now runs as managed-refresh steps on the Cloudflare Workers host, and it **does not depend on local compute**. The production write contract uses the guarded R2 DATA binding. Both Worker cron lists are `[]`. The production caller is unverified.
 
 | §1 bootstrap step (local) | → | §4 managed-refresh step |
 |---|---|---|

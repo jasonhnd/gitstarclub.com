@@ -1,5 +1,7 @@
 # 574 R2 runbook rollback, acceptance, and stage 4 checklist
 
+> Historical issue #574 plan. Its empty-bucket bootstrap acceptance/recovery remains unaccepted for stages 2/3 and must not be applied to the current copied production R2 store. The accepted cutover, retained frozen fallback, and conditional rollback guidance are maintained in [R2-CUTOVER.md](../docs/R2-CUTOVER.md) and [OPS.md](../docs/OPS.md), reconciled by GSC_0002.
+
 ## Goal
 
 Correct the R2 cutover runbook for review findings F3 through F6 on issue #574. Docs only.
