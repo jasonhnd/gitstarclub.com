@@ -26,7 +26,7 @@ Make the current docs describe Cloudflare Workers hosting, public preview, and t
 ## Acceptance
 
 - `bun run lint:docs` and `node scripts/check-docs.mjs` pass on Node v24.20.0 and Bun 1.3.14 with `--no-env-file`.
-- R2-CUTOVER and OPS still agree on the #574 steps, and on the new stage 6 tool prerequisite.
+- R2-CUTOVER and OPS agree on the historical #574 recovery, accepted copied-store cutover, and stage 6 tool prerequisite.
 - `git grep -n 'Vercel-first'` in current docs is empty. Remaining hits are listed and sit in archive, changelog history, or old plans.
 - Preview is documented as public, `noindex,nofollow`, `Disallow: /`. `noindex` is not access control. The production trigger stays unverified.
 - OPS and R2-CUTOVER agree on the accepted copied-store cutover, required frozen fallback, conditional removal, and separately authorized historical bootstrap recovery/rollback.

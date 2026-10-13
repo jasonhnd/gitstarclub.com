@@ -49,7 +49,7 @@ Docs-only changes are allowed when the code already implements the behavior.
 |---|---|
 | Product scope, tracked-set assumptions | `REQUIREMENTS.md` |
 | System architecture, hard constraints | `ARCHITECTURE.md` |
-| Blob layout until cutover, schedules, deploy rollback | `OPS.md` |
+| Retained Blob rollback layout, schedules, deploy rollback | `OPS.md` |
 | Object storage status and the R2 cutover | `R2-CUTOVER.md` |
 | Workflow step names | `VERCEL-DATA-OPERATIONS.md` |
 | Archived phase notes (superseded; current host and storage are `OPS.md` and `R2-CUTOVER.md`) | `archive/R2-MIGRATION-P0.md`, `archive/CF-MIGRATION-P1.md`, `archive/CF-MIGRATION-P2.md`, `archive/CF-MIGRATION-P3.md` |

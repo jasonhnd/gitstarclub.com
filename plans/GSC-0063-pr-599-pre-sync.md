@@ -1,5 +1,7 @@
 # PR #599 integration synchronization
 
+> Historical GSC_0063 record. The 2026-10-13 resume is GSC_0002, governed by the updated [issue #576 plan](./576-docs-set-b.md). Its accepted copied-store cutover supersedes the old bootstrap-only/no-fallback stage-4 assumptions below. Prior test results prove only their named commits.
+
 ## Goal
 
 Merge the latest `origin/pre` into `docs/576-docs-set-b` with a merge commit,
@@ -63,3 +65,11 @@ The previously pushed head `a890790` passed GitHub `static` and
 `dca7296`, including #642, #632, and #635. This additional merge has no conflicts.
 It preserves #642's 30-second request/body deadline and its existing plan
 without adding new operating content. Incoming code remains unedited.
+
+## 2026-10-13 resumed synchronization (GSC_0002)
+
+- Existing feature head `19c708c`; freshly fetched integration baseline `5af183a`. Use a normal merge and preserve all incoming application code. Only R2-CUTOVER has a text conflict; CHANGELOG auto-merges.
+- Reconcile automatically merged OPS as well: stage-4 config PR #648 implements issue #647, and PR #649 records the October 4 acceptance. Preserve that history while recording October 13 public production `daee5fc` and preview `5af183a` separately from unknown provider UUID/bindings.
+- Production views/bootstrap pointers return 404 and the copied frozen metadata returns 200. Keep the exact frozen fallback in Worker/build shell; the gate allows absent or that exact value, rather than unconditional removal. The original empty-bucket stages 2/3 remain unaccepted, and their cleanup is not a current production procedure. Stages 5/6 remain unaccepted.
+- Preserve complete historical Blob rollback configuration, but require separate operator authorization and checks of retained-version availability and security suitability. Current docs use accepted R2 status and archive links; owner HANDOVER and incoming code/config stay untouched.
+- Run full pinned, SHA-verified, clean exact-commit static/coverage and fixture production/pre dry-run builds; no inherited env, credentials, live opt-ins, or extra worktree. Use a detached temporary local clone under `/tmp/GSC_0002/`. Exact-head GitHub checks and independent review remain merge prerequisites; current results belong in PR #599 and the GSC_0002 handoff.

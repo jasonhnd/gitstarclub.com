@@ -15,7 +15,7 @@ source_of_truth_for:
 This document is the **interface contract between the data layer and the build**, giving each canonical shard and JSON view an **exact schema** — fields, types, definitions, and reference relationships, and it is the source of truth for the Zod definitions in `web/lib/contracts/`. It must be read before adding an artifact / changing a field / adjusting a definition.
 Physical form, tradeoffs, and the generation pipeline are in [ARCHITECTURE.md](./ARCHITECTURE.md) "data model" and [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md); how the frontend consumes them is in [FRONTEND.md](./FRONTEND.md); ranking-definition details are in [RANKING.md](./RANKING.md); this document does not cover deployment, operations, or cron scheduling (see [OPS.md](./OPS.md)).
 
-> ⚠️ **canonical form**: §1's `star_daily.parquet` is the **bootstrap archive** form. **production canonical = §1.4's JSON shard** (the managed refresh recomputes it in pure JS, with no engine). Production JSON stays on Vercel Blob until cutover. The Workflow / checkpoint / publish pointer contracts are in §2.11–2.13.
+> ⚠️ **canonical form**: §1's `star_daily.parquet` is the **bootstrap archive** form. **production canonical = §1.4's JSON shard** (the managed refresh recomputes it in pure JS, with no engine). Production JSON uses R2 after the accepted 2026-10-04 cutover. The Workflow / checkpoint / publish pointer contracts are in §2.11–2.13.
 
 ## Requirement Traceability
 
@@ -151,7 +151,7 @@ They **do not belong to** `canonical/v2/meta.json` (`CanonicalMeta` stays `.stri
 
 ---
 
-## 2. Service views (JSON, read by the build; Cloudflare R2, production still reads Vercel Blob until cutover)
+## 2. Service views (JSON, read by the build; Cloudflare R2, production cutover accepted 2026-10-04)
 
 ### 2.0 View schema index (the physical Blob tree is in [OPS.md](./OPS.md) §Blob layout)
 
@@ -521,7 +521,7 @@ product gate still judges that transport failure as a failure.
 
 ### 2.10 `ops/sync-runs.json` (cron run records)
 
-A lightweight operations log; overwritten by the live cron route, keeping the most recent 100 runs. Production JSON stays on Vercel Blob until cutover.
+A lightweight operations log; overwritten by the live cron route, keeping the most recent 100 runs. Production JSON uses R2 after the accepted 2026-10-04 cutover.
 
 ```json
 {

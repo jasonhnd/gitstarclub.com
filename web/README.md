@@ -17,11 +17,11 @@ Required local secrets live in `web/.env.local` and must not be committed.
 
 Production and preview run on Cloudflare Workers through OpenNext. Deploy and rollback commands are in [docs/OPS.md](../docs/OPS.md). Do not use a Vercel deploy command for the current site.
 
-- Production Worker `gitstarclub-web` serves `gitstarclub.com`. It still reads Vercel Blob until cutover. See [docs/R2-CUTOVER.md](../docs/R2-CUTOVER.md).
+- Production Worker `gitstarclub-web` serves `gitstarclub.com`. It uses R2 after the accepted 2026-10-04 cutover. See [docs/R2-CUTOVER.md](../docs/R2-CUTOVER.md).
 - Preview Worker `gitstarclub-web-pre` (`wrangler` env `pre`) serves public `https://pre.gitstarclub.com`. It reads Cloudflare R2 and does not use `BLOB_*`.
 - Preview is `noindex,nofollow` with `robots.txt` `Disallow: /`. That is not access control. There is no login wall.
 
-A blob read or blob write, until cutover, needs `BLOB_BASE_URL`. A blob write also needs `BLOB_READ_WRITE_TOKEN`. Preview R2 reads need `R2_PUBLIC_BASE_URL` and do not need the blob token. Cron and managed refresh execution need `CRON_SECRET` and `GITHUB_TOKEN`.
+Both Worker contracts use R2. Read-only R2 builds need the explicit R2 driver and matching public base; production prerender preserves the frozen fallback until its views pointer is authoritative. The retained Blob driver needs `BLOB_BASE_URL` for reads and a Blob token for writes. R2 public reads do not need that token. Cron and managed refresh execution need `CRON_SECRET` and `GITHUB_TOKEN`.
 
 ## Analytics
 
