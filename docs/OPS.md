@@ -722,7 +722,7 @@ Do not call `https://gitstarclub.com/api/cron/*` to create the pointer. Never ha
 
 ### Stage 4 cutover rollback
 
-The accepted copied-store cutover and current missing-pointer state are in [R2-CUTOVER.md](./R2-CUTOVER.md#stage-4-cutover-i-5b). The current contract uses R2 and preserves the exact frozen fallback; it does not require a bootstrap pointer that the accepted copy path never published. Do not clear the fallback based on the unaccepted bootstrap-only recipe, and do not delete objects in either store.
+The accepted copied-store cutover and current missing-pointer state are in [R2-CUTOVER.md](./R2-CUTOVER.md#stage-4-cutover-i-5b). The current contract uses R2 and preserves the exact frozen fallback; it does not require the bootstrap pointer currently absent from the copied store. The dated GET does not establish whether that pointer existed earlier. Do not clear the fallback based on the unaccepted bootstrap-only recipe, and do not delete objects in either store.
 
 PR #649 retains historical pre-cutover Worker version `14b84f73-ef31-4e86-a70d-b71251756093` (commit `b32939d`). Its present availability and security suitability were not verified. It predates security fixes included in publicly identified production `daee5fc`; an operator must assess those fixes and explicitly authorize rollback before choosing it. The command is recovery history, not an automatic current incident step:
 
