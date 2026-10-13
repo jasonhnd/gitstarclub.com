@@ -1,7 +1,7 @@
 ---
 owner: operations / storage
 status: active
-last_reviewed: 2026-10-01
+last_reviewed: 2026-10-04
 source_of_truth_for:
   - R2 cutover runbook
   - current object-storage status
@@ -10,13 +10,57 @@ source_of_truth_for:
 
 # R2 cutover
 
-> **Current status:** Stage 1 (code) is done. Production still reads Vercel Blob until cutover. Stages 2 through 6 are not accepted.
+> **Current status:** **Stage 4 (production cutover) was accepted on 2026-10-04** (Jason, 17:59 JST). Live production Worker version **c163a860** (deploy commit **c32b373**); acceptance passed with no rollback. Production reads and writes the production R2 bucket (`gitstarclub-data-prod` at `https://data.gitstarclub.com`). **Rollback reference:** prior Worker version **14b84f73** (commit **b32939d**). **`VIEWS_VERSION_FALLBACK`** and the Worker secret **`BLOB_READ_WRITE_TOKEN`** are **still set** on production; removal is deferred to a separate authorized batch (see checklist item 4 below). Stages 5 (production crons) and 6 (Blob retirement) are not accepted.
 >
-> Storage sentence used across the current docs: Cloudflare R2 (production still reads Vercel Blob until cutover; see docs/R2-CUTOVER.md).
+> Storage sentence used across the current docs: Cloudflare R2 (production cutover accepted 2026-10-04; see docs/R2-CUTOVER.md).
 
 This file is the source of truth for where object storage is going and which stage is current. Historical P0 adapter notes live in [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md). The Blob publish and refresh design lives in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md). Both are superseded for storage status. Blob layout and the environment inventory, still required until cutover, stay in [OPS.md](./OPS.md).
 
 This document does not create buckets, change DNS, deploy a Worker, or write either store.
+
+## 2026-10-03 migration batch (steps 1–3)
+
+Jason 2026-10-03 resume: Blob → R2 migration is split from formal traffic cutover.
+
+| Step | Owner | Scope | Accepted when |
+| --- | --- | --- | --- |
+| **1 — Write-path audit (read-only)** | Backend engineer | List every in-repo Blob **writer**, trigger, and whether it is still schedulable; explain freeze-period growth (e.g. `ops/sync-runs.json`). No code or schedule changes. | Project store report `internal/r2-migration-20261003.md` (2026-10-03) |
+| **2 — Inventory + R2 copy** | BOT / operator | Blob object inventory and copy into `gitstarclub-data-prod` at bucket root. **Do not** use repo Cloudflare API copy from this agent run. | Jason confirms byte/key parity vs Blob |
+| **3 — Config + docs (no deploy)** | Backend engineer | PR on `pre`: top-level wrangler switches to stage-4 R2 vars (`STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, `DATA` → `gitstarclub-data-prod`, remove production `BLOB_*`; keep `VIEWS_VERSION_FALLBACK` until `views/latest.json` exists on the store production reads). Update this file (formal cutover checklist below). **Do not `wrangler deploy` production or merge to `main`.** | Jason 2026-10-04: R2 copy parity accepted; `node scripts/assert-cf-ci-gates.mjs` green; R2-vs-Blob page parity on `data.gitstarclub.com` |
+
+**Not in steps 1–3 (explicitly deferred):**
+
+- ~~Production Worker deploy that would make `gitstarclub.com` read R2 (stage 4 cutover acceptance).~~ **Done 2026-10-04** (see current status).
+- Production `triggers.crons` enablement (stage 5).
+- Blob store retirement (stage 6).
+- Changing secret values, Bearer publish, or destructive Blob operations.
+
+Formal cutover was stage 4 **live Worker deploy** + acceptance after step 2 passes (**completed 2026-10-04**). Merging step 3 into `pre` had updated the **checked-in** wrangler contract only; production traffic moved when the operator ran the authorized deploy in the checklist below.
+
+### Formal production cutover checklist (Jason approval required)
+
+Do not start this checklist until step 2 (R2 copy parity) and step 3 (config on `pre`) are accepted. **Each deploy step needs explicit Jason approval**; this document does not authorize production deploy by itself.
+
+1. **Pre-deploy read-only checks**
+   - `https://data.gitstarclub.com/_meta/bucket-identity.json` → `{"bucket":"gitstarclub-data-prod","deploy_env":"production"}`.
+   - Spot-check keys copied from Blob (Jason 2026-10-04: full inventory parity accepted).
+   - `node scripts/assert-cf-ci-gates.mjs` on the commit you will deploy (top-level stage-4 contract, preview isolation unchanged).
+   - Production shell build (no Blob vars): export `STORAGE_READ_DRIVER=r2`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, **`VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`** (required until `views/latest.json` is live on R2 for prerender), unset all `BLOB_*`, then `cd web && bun run cf:build:production` (see stage 4 acceptance below). **Without the fallback**, OpenNext prerender can resolve an empty views generation when R2 has no `views/latest.json`, producing blank homepage and `/rankings` HTML.
+
+2. **Authorized production Worker deploy** (operator only; not CI)
+   - Build and deploy top-level `gitstarclub-web` per [OPS.md](./OPS.md) with `--env=""` and `--var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"` matching the baked `cf:build` SHA.
+   - Confirm Cloudflare bindings: `DATA` → `gitstarclub-data-prod`, `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, **no** `BLOB_*`.
+
+3. **Post-deploy traffic acceptance**
+   - `https://gitstarclub.com/`, `/rankings`, a representative repo page at `/<owner>/<repo>` (not `/repo/...`), and **`/search-index`** (the site has no `/search` route) return **200** and match pre-cutover content (same views generation / rankings).
+   - `https://data.gitstarclub.com/views/latest.json` (or the configured fallback generation) matches what pages render.
+   - Workers Observability / logs: outbound reads hit `data.gitstarclub.com`, not `*.public.blob.vercel-storage.com` (Blob traffic should trend to zero for page reads).
+
+4. **Remove frozen fallback and Blob secret** (separate authorized batch; **not done** as of 2026-10-04)
+   - When `views/latest.json` returns **200** on `data.gitstarclub.com` and prerender no longer needs the shell fallback, remove top-level `VIEWS_VERSION_FALLBACK` and redeploy. Do not remove the fallback while the pointer is still missing.
+   - Retire the production Worker secret `BLOB_READ_WRITE_TOKEN` only after stage 6 Blob retirement criteria are met. **2026-10-04 cutover:** both fallback var and `BLOB_READ_WRITE_TOKEN` remain on the live Worker.
+
+**Rollback (stage 4):** Restore previous production Worker version **14b84f73** (commit **b32939d**) or redeploy prior wrangler: re-add `BLOB_BASE_URL` / `NEXT_PUBLIC_BLOB_BASE_URL`, remove `DATA` and R2 driver vars (or unset drivers to default `blob`), keep `VIEWS_VERSION_FALLBACK` if the pointer is still missing on the store production reads. Do not delete objects in either store.
 
 ## Target model
 
@@ -27,7 +71,7 @@ Two data buckets, one per deployment:
 | Preview (`pre`) | `gitstarclub-data-pre` | `pre` | `https://data-pre.gitstarclub.com` | `DATA` binding, `STORAGE_WRITE_DRIVER=r2_binding` |
 | Production (`main`) | `gitstarclub-data-prod` | `production` | `https://data.gitstarclub.com` | `DATA` binding, `STORAGE_WRITE_DRIVER=r2_binding` (stage 4) |
 
-Preview already sets `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL` to the preview origin. That read uses public HTTP and does not use a storage key. Production top-level config still uses the blob read driver and does not bind `DATA`.
+Preview already sets `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL` to the preview origin. That read uses public HTTP and does not use a storage key. The **checked-in** top-level wrangler uses the stage-4 R2 contract; the **live** production Worker has read R2 since **2026-10-04** (stage 4 accepted).
 
 The assets binding `MEDIA` on `gitstarclub-assets` is not the JSON store. The JSON Worker does not use `MEDIA` for views, canonical objects, or pointers.
 
@@ -179,34 +223,35 @@ Rollback: `07-export-v2.mjs --store r2 --target prod --rollback <generation> --e
 
 ### Stage 4. Cutover (I-5b)
 
-Not accepted. This is the production read and write switch. It is a Worker config change, not a docs change:
+**Accepted on production 2026-10-04** (Jason, 17:59 JST). Worker version **c163a860**, deploy commit **c32b373**; no rollback. This was the production read and write switch (Worker config + authorized deploy):
 
 - Bind `DATA` to `gitstarclub-data-prod` on the top-level Worker.
 - Set `DEPLOY_ENV=production`, `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_BUCKET=gitstarclub-data-prod`, and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`.
-- Remove production `BLOB_BASE_URL`, `NEXT_PUBLIC_BLOB_BASE_URL`, and `VIEWS_VERSION_FALLBACK` only after the R2 pointer exists and pages render from it. The fallback must not keep serving the frozen 2026-09-13 version once a real pointer is in place.
+- Remove production `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` on the live Worker. **`VIEWS_VERSION_FALLBACK` remains** on production until a separate batch removes it (see checklist item 4). The fallback must not keep serving the frozen 2026-09-13 generation once a real R2 pointer is authoritative for runtime reads.
 - Keep `triggers.crons` at `[]` until stage 5.
 - Keep `MEDIA` on `gitstarclub-assets`. Do not use it as the data bucket.
 
-Acceptance:
+Acceptance (completed 2026-10-04):
 
 - `node scripts/assert-cf-ci-gates.mjs` passes, including the rule that preview config does not name the production bucket.
-- `https://gitstarclub.com/rankings` returns 200 with indexing still on.
-- The generation in `https://data.gitstarclub.com/views/latest.json` matches what the production pages render.
-- A production shell build exports both `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`. OpenNext prerendering inherits the shell, not the Worker vars. `cf:build` rejects a missing or different read driver, a missing public base, any shell `BLOB_*` variable (including `NEXT_PUBLIC_BLOB_*`), or a non-loopback base that does not match the top-level wrangler vars.
+- `https://gitstarclub.com/`, `/rankings`, a representative `/<owner>/<repo>` page, and `/search-index` return **200** with indexing unchanged on rankings; content matches pre-cutover.
+- The generation in `https://data.gitstarclub.com/views/latest.json` (or the configured fallback) matches what the production pages render.
+- A production shell build exports `STORAGE_READ_DRIVER=r2`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, and **`VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`**. OpenNext prerendering inherits the shell, not the Worker vars. **Omitting `VIEWS_VERSION_FALLBACK` when R2 has no `views/latest.json` yields empty prerender for `/` and `/rankings`.** `cf:build` rejects a missing or different read driver, a missing public base, any shell `BLOB_*` variable (including `NEXT_PUBLIC_BLOB_*`), or a non-loopback base that does not match the top-level wrangler vars.
 
-After the separately authorized stage-4 config change, the read-only production build environment is:
+Authorized production build environment (including fallback required for prerender until the R2 pointer is live):
 
 ```bash
 export STORAGE_READ_DRIVER=r2
 export R2_PUBLIC_BASE_URL=https://data.gitstarclub.com
+export VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z
 unset READ_DRIVER BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL BLOB_READ_WRITE_TOKEN
 cd web
 bun run cf:build:production
 ```
 
-Do not run this against the current Blob Worker config: the target mismatch must fail. Clear any other `BLOB_*` or `NEXT_PUBLIC_BLOB_*` shell vars as well. No write driver or storage credential is needed for this build. Offline tests use an R2 loopback base with the same explicit read driver and no Blob vars.
+Clear any other `BLOB_*` or `NEXT_PUBLIC_BLOB_*` shell vars as well. No write driver or storage credential is needed for this build. Offline tests use an R2 loopback base with the same explicit read driver and no Blob vars.
 
-Rollback: restore the previous top-level blob public base, remove the production `DATA` binding, and set the read and write drivers back to `blob` (or unset them). Do not delete blob objects. Do not empty the production R2 bucket as part of rollback.
+Rollback: restore Worker version **14b84f73** (commit **b32939d**), or redeploy prior wrangler: restore the top-level blob public base, remove the production `DATA` binding, and set the read and write drivers back to `blob` (or unset them). Do not delete blob objects. Do not empty the production R2 bucket as part of rollback.
 
 ### Stage 5. Production crons
 
@@ -229,8 +274,48 @@ Acceptance: the top-level Worker config and preview `env.pre` contain no `BLOB_*
 
 Rollback: restore the blob driver and the blob public base on the production Worker, as in stage 4 rollback. Do not delete blob objects in order to roll back. Deleting the blob store is a separate owner decision after this stage has stayed healthy. It is not the rollback.
 
-## What is still blob, until cutover
+## What is still blob, after stage 4
 
-Production page reads, production cron writes, and the production build prerender still use the blob driver. Keep those runbooks. They are labelled until cutover in [OPS.md](./OPS.md), [README.md](../README.md), and the other current docs. Do not delete them in stage 1.
+Production **page reads** use R2 (stage 4 accepted 2026-10-04). Production cron writes remain paused (`triggers.crons` is `[]`). The live Worker still carries **`VIEWS_VERSION_FALLBACK`** and the **`BLOB_READ_WRITE_TOKEN`** secret until a later authorized batch (stages 4 item 4 / stage 6). Production build prerender still requires shell **`VIEWS_VERSION_FALLBACK`** when `views/latest.json` is absent on R2. Blob runbooks in [OPS.md](./OPS.md), [README.md](../README.md), and other docs remain until stage 6 retires Blob operating dependencies.
 
 Local read-only development against the blob driver still needs only `BLOB_BASE_URL` until cutover. Preview reads do not use a blob token. R2 writes need `DEPLOY_ENV`, the matching identity marker, and either the `DATA` binding (`r2_binding`) or the S3 key (`r2` / `r2_s3`). Never commit the key.
+
+## Edge cache (Worker Cache API)
+
+The Next branch uses `caches.default`, Cloudflare's per-data-center response cache,
+after shell routing. It stores only GET responses with status 200 and a positive
+`s-maxage` (shared-cache lifetime in seconds). HTML, RSC (Next's React component
+payload), and JSON are all eligible. HEAD and other methods bypass the cache.
+Paths starting with `/api`, paths containing `refresh`, `/start`, `/enqueue`,
+`/preview/*`, and `/.well-known/*` are excluded. Requests carrying Authorization,
+Cookie, or Range headers bypass it. Responses with `private`, `no-store`, or
+`no-cache`, any Set-Cookie header, or `Vary: *` are never stored.
+
+Every Next response carries `x-gsc-cache`: `HIT` means served from cache; `MISS`
+means an eligible response was rendered and queued for storage; `BYPASS` means
+the request or response was excluded, the Cache API was unavailable, or a cache
+lookup failed. Cache writes run in `waitUntil` and failures only log a warning.
+Shell responses keep their existing behavior. OpenNext's `disableIncrementalCache`
+setting remains enabled.
+
+Keys preserve the URL and query parameters, including `_rsc`, and append
+`__gsc_cv`: a version composed of `EDGE_CACHE_VERSION` (default `v1`),
+`VIEWS_VERSION_FALLBACK`, and the commit identifier baked by `cf:build`
+(falling back to `VERCEL_GIT_COMMIT_SHA`, then `CF_PREVIEW_COMMIT_SHA`). These
+identifiers are optional; no generated Next build ID is imported. `__gsc_variant` hashes the
+full RSC, router state, prefetch, segment prefetch, Next URL, and Accept header
+values so HTML and component payloads never share an entry.
+
+After each weekly data refresh, change `EDGE_CACHE_VERSION` or
+`VIEWS_VERSION_FALLBACK` and redeploy to move all requests to new keys. Operators
+can alternatively use Cloudflare's **Purge Everything**. Cache API entries live
+in individual data centers; a URL purge must target the actual synthetic key,
+including `__gsc_cv` and `__gsc_variant`, rather than just the public page URL.
+
+The stored response lifetime is `min(s-maxage, 86400)` seconds (one day), enforced
+by `EDGE_CACHE_MAX_TTL_SECONDS`. Rendered responses and cache hits keep the
+original client-facing Cache-Control; only the stored copy carries the cap. The
+homepage advertises a one-year `s-maxage`, so version rotation is required for
+immediate refresh visibility. If rotation is forgotten, this cache can retain an
+old response for at most one day after storage. This cap does not refresh stale
+source data or existing downstream caches.

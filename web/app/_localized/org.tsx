@@ -21,6 +21,7 @@ import { DAILY_BASE_VIEW_TTL_MS, getCategoryAssignmentsForRepos, getCategoryRegi
 import { isCloudflareWorkersHost } from "@/lib/runtime-config";
 import type { OrgEntity } from "@/lib/contracts";
 import { dateLabel, formatInteger, fmtStars, monthYearLabel, ymParts } from "@/lib/format";
+import { githubLogin } from "@/lib/public-params";
 import { buildOrgHub } from "@/lib/org-page";
 import { rankingMonthHref } from "@/lib/repo-page";
 import { pageMeta } from "@/lib/seo";
@@ -37,7 +38,8 @@ const ORG_HERO_ACTION_CLASS =
 export async function generateOrgMetadata({ locale, login: raw }: { locale: Locale; login: string }): Promise<Metadata> {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
-  const login = decodeURIComponent(raw);
+  const login = githubLogin(raw);
+  if (!login) notFound();
   const org = await getOrgEntityDaily(login);
   if (!org) {
     return pageMeta({
@@ -63,7 +65,8 @@ export async function generateOrgMetadata({ locale, login: raw }: { locale: Loca
 export async function OrgPageView({ locale, login: raw }: { locale: Locale; login: string }) {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
-  const login = decodeURIComponent(raw);
+  const login = githubLogin(raw);
+  if (!login) notFound();
   const [org, lookup, registry, meta] = await Promise.all([
     getOrgEntityDaily(login),
     getReposLookupDaily(),

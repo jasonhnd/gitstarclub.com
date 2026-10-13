@@ -303,6 +303,7 @@ describe("Worker entry fetch, scheduled, and queue", () => {
     expect(page.status).toBe(200);
     expect(await page.text()).toBe("next-app");
     expect(page.headers.get("x-handler")).toBe("next");
+    expect(page.headers.get("x-gsc-cache")).toBe("BYPASS");
     expect(nextCalls).toHaveLength(1);
     expect(nextCalls[0].request).toBe(pageRequest);
     expect(nextCalls[0].env).toBe(env);

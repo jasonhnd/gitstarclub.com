@@ -17,6 +17,10 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ## Unreleased
 
+### Fixed
+
+- **Dependency audit (`braces`, GHSA-vfj7-8cjw-p6xm).** `web/package.json` overrides transitive `braces` to the depth-guard backport at `micromatch/braces@bdb6fda` until npm publishes a fixed `3.0.x` release. Dev-only ESLint glob tooling; production runtime unchanged.
+
 ### Added
 
 - **Offline local R2 stage 2 rehearsal (#586).** `web/scripts/r2-local-rehearsal.ts` runs the actual upload/export CLIs against Miniflare's persistent local S3 bucket, restarts workerd, and exercises the application Worker read/write paths through `DATA`. It checks dry-run, stage-only, initial commit, lease claim/renew/release, pointer CAS, and identity/first-commit refusals. Run it before the real-bucket rehearsal in [R2-CUTOVER.md](./R2-CUTOVER.md). It uses fixtures and a clean environment, with no deployment or added CI job.
@@ -51,6 +55,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 - **Unused UI and i18n compatibility code (#608).** Unused explore layout components, the unused answer-capsule base, the unused client dictionary provider, the cookie-based dictionary helper, and four locale routing aliases are gone. Live `AnswerCapsule`, canonical locale helpers, route dictionaries, and `/api/lang` stay. Home and pulse metadata already come from the route dictionary through `generatePulseMetadata` in `web/app/_localized/pulse.tsx`.
 
 ### Changed
+
+- **Worker shell auth and security headers (#603).** `/start`, `/enqueue`, and `/preview/invalidate` compare `CRON_SECRET` with `hasValidBearerToken`. A missing or empty Worker secret is 401 and does not use `process.env.CRON_SECRET`. `GET /preview/health`, `GET /.well-known/deployment`, `GET /preview/identity`, and those 401 responses send `securityHeaders`. CSP stays `script-src 'self' 'unsafe-inline'` with no nonce. See [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md).
 
 - **Next.js 16.3.8 and OpenNext Cloudflare 1.20.7 (#592).** `next` and `eslint-config-next` move from 16.3.6 to 16.3.8. npm `latest` on 2026-10-01 is 16.3.8, with no newer stable patch. That release fixes GHSA-cjq9-62q9-8jv4 (high, image-optimization SSRF; this app sets no `images.remotePatterns`), GHSA-f87g-xv8r-7p7x (moderate, metadata image routes honor `dynamicParams`), four moderate cache advisories (GHSA-4jqv-mc3x-m676, GHSA-mcj8-r9mp-w47p, GHSA-3w37-wq28-93x7, GHSA-h694-7cp9-m8p3), and low GHSA-39w2-rjm5-chcv (development server). `@opennextjs/cloudflare` moves from 1.20.6 to 1.20.7 and pulls `@opennextjs/aws` 4.1.6. 1.20.7 accepts `next >=16.3.6` and replaces the whole `loadCustomCacheHandlers` body so minified Next.js 16.3 Worker chunks do not throw `ReferenceError`. The #585 share-image guard stays: a repository card paints a name only after the path resolves to a stored repo. The #585 pins stay: web `undici` 7.29.1, web `brace-expansion` 1.1.21 / 2.1.7 / 5.0.12, and pipeline `undici` 6.28.1. See [TESTING.md](./TESTING.md).
 

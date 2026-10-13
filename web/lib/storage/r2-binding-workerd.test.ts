@@ -6,7 +6,7 @@ import { R2BindingObjectStore, type R2Bucket } from "./r2-binding-store";
 
 /**
  * Local workerd check. The binary is the `workerd` package already installed
- * with wrangler (1.20260916.1), so this stays inside `bun test` and does not
+ * with wrangler (1.20260930.2), so this stays inside `bun test` and does not
  * change CI. Telemetry stays off. No Cloudflare account and no remote bucket.
  */
 let miniflare: Miniflare | undefined;
@@ -23,7 +23,6 @@ async function workerdBucket(): Promise<R2Bucket> {
       {
         config: {
           name: "r2-etag",
-          type: "worker",
           compatibilityDate: "2026-09-01",
           manifest: {
             mainModule: "worker.js",
