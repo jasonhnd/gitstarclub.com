@@ -30,10 +30,34 @@ Make the current docs describe Cloudflare Workers hosting, public preview, and t
 - `git grep -n 'Vercel-first'` in current docs is empty. Remaining hits are listed and sit in archive, changelog history, or old plans.
 - Preview is documented as public, `noindex,nofollow`, `Disallow: /`. `noindex` is not access control. The production trigger stays unverified.
 - OPS and R2-CUTOVER agree on the accepted copied-store cutover, required frozen fallback, conditional removal, and separately authorized historical bootstrap recovery/rollback.
-- On the exact final commit, run the full static job (pipeline tests, docs lint, web lint, all three typechecks, view validation, and full web coverage), the local GET/HEAD fixture production build, and pre-only `cf:dry-run`. Use SHA-256-verified Node v24.20.0 / Bun 1.3.14 under `env -i`, without real env files or live opt-ins. All temporary output stays under `/tmp/GSC_0002/`.
-- The card prohibits another worktree: use a clean detached checkout of the exact commit in a temporary local clone under `/tmp/GSC_0002/`, preserving the repository verification block and excluding owner untracked files.
+- Before merge, run the full static job (pipeline tests, docs lint, web lint, all three typechecks, view validation, and full web coverage), the local GET/HEAD fixture production build, and pre-only `cf:dry-run` on the exact synchronized head. Use SHA-256-verified Node v24.20.0 / Bun 1.3.14 under `env -i`, without real env files or live opt-ins. The October 15 review pass below requires the three documentation checks; full integration verification follows the separately scheduled dependency resynchronization.
+- The October 15 owner rule replaces earlier temporary paths: new artifacts belong under `<workspace>/.kanban-work/GSC_0002/`, excluded through `.git/info/exclude`. Do not create new artifacts under `/tmp` or alter the owner's untracked environment files. The card prohibits another worktree.
 - `git diff --check` passes; `origin/pre` is an ancestor; the final diff against it contains only the authorized documentation/plan changes. The existing PR body records the exact head, commands/results, limitations, and any CI wait. Exact-head `static` and `production-build` must pass before merge.
 - Push only `docs/576-docs-set-b`, hand off through GSC_0002 with a clean `git status --short`, and await independent review and a separate batch merge.
+
+## October 15 review rework (GSC_0006, round 0)
+
+### Goal and scope
+
+Address all six requested changes on the existing branch with normal commits, preserving incoming application/configuration code:
+
+1. Rewrite the OPS incident #543 removal procedure and R2 stage 0 reference to require separate authorization, an authoritative production R2 views pointer returning 200, and a production build without the fallback that still prerenders real data. Change the Worker var and build shell together. Retain the existing gate and defer Blob-secret removal to stage 6.
+2. Replace ROADMAP's current-production Blob views/storage claims with the accepted R2 contract.
+3. Align the SEO production build shell with OPS/R2: explicit R2 driver/base, the exact frozen fallback while the pointer is absent, and no Blob shell vars.
+4. Use `EDGE_CACHE_VERSION`, not `VIEWS_VERSION_FALLBACK`, for separately authorized cache-key rotation.
+5. Repair CHANGELOG's archived P3 link and inspect its other migration-document links, which the docs checker does not cover.
+6. Correct all four archive banners. Sweep the entire docs tree for additional current-production Blob or future-cutover claims; qualify historical text instead of erasing recovery history.
+
+### Out of scope
+
+`docs/DATA-EXPORTS.md`, `docs/VERCEL-DATA-OPERATIONS.md`, application code, dependencies/locks, CI, gates, Worker/deploy configuration, production actions, merges, rebase, force push, and new pre synchronization. GSC_0004 owns the inherited dependency audit remediation; GSC_0005 owns the queued Actions investigation.
+
+### Acceptance and delivery
+
+- All six findings and related current-production wording are addressed; historical Blob driver/default/rollback descriptions remain explicitly historical or driver-specific.
+- Run `bun run lint:docs`, `node scripts/check-docs.mjs`, and `node scripts/assert-cf-ci-gates.mjs` on the exact final rework head with the pinned, SHA-verified toolchain and no real environment files/live opt-ins. Also run `git diff --check` and check repaired CHANGELOG links directly.
+- The diff from reviewed head `699fc96` contains only authorized documentation and plan changes; the two excluded documents are unchanged.
+- Update PR #599 with the final head, a finding-by-finding response, exact command results, and the explicitly older scope of prior full-suite/build evidence. Return through `kanban_complete` for independent review. Dependency resynchronization and passing final integration gates remain later merge conditions, not blockers for this documentation rework.
 
 ## Historical review notes
 
