@@ -146,6 +146,6 @@ bun scripts/sync-blob-to-r2.ts --prefix views/ --execute
 
 ## What this PR does not claim
 
-- Production read primary is still Vercel Blob.
+- At this historical P0 stage, production still used Vercel Blob as its read primary; the accepted R2 cutover is recorded in R2-CUTOVER.
 - Apex / www DNS and Cloudflare orange-cloud are unchanged.
 - The JSON Worker does not use the MEDIA binding. MEDIA stays on the assets bucket `gitstarclub-assets` and is not the data store. `r2` and `r2_s3` still talk S3 from Node. `r2_binding` talks to DATA only. Preview `env.pre` binds DATA; this P0 text originally said wrangler did not. Production R2 cutover was accepted on 2026-10-04. See [R2-CUTOVER.md](../R2-CUTOVER.md) for current storage status and [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) for host migration history.

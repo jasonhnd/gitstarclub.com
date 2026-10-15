@@ -66,7 +66,7 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 │  week) → recompute (rank, entity, heatmap, search index     │
 │  written to views/<run_id>/**) → validate → publish (swap   │
 │  views/latest.json) → garbage-collect old versions          │
-│  Pure-JS throughout; large artifacts use the R2 public read origin │
+│  Pure-JS throughout; large artifacts go via R2 public URL   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─ Daily cron (live overlay, JSON-only, seconds) ─────────────┐
@@ -177,7 +177,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 ### Physical: JSON view artifacts
 
-Each (period × dim × metric) reduction produces a JSON view: rank tables, entity timelines (per repo, per org), heatmaps, lookup tables for build-time joins, and the client-side search index. Live-overlay paths produce the same logical `current_month.json`, `hot-snapshot.json`, rank and heatmap files under one immutable generation; `live/latest.json` is the only publication switch. The copied JSON key layout and retained Blob rollback layout is in [OPS.md](./OPS.md); per-view schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
+Each (period × dim × metric) reduction produces a JSON view: rank tables, entity timelines (per repo, per org), heatmaps, lookup tables for build-time joins, and the client-side search index. Live-overlay paths produce the same logical `current_month.json`, `hot-snapshot.json`, rank and heatmap files under one immutable generation; `live/latest.json` is the only publication switch. The copied JSON key layout and retained Blob rollback layout are in [OPS.md](./OPS.md); per-view schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
 
 Builds ingest these JSONs directly and bake them into static HTML. Adding a new view means adding a recompute step that produces JSON; the read path needs no engine.
 
