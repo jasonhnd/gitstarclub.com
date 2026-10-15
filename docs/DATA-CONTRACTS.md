@@ -333,7 +333,7 @@ Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,
 }
 ```
 
-**v1 monolith** (already-published generations remain readable): the previous `{ rules_version, generated_at, repositories }` document at `categories/assignments.json`. Readers accept either shape and assemble shards before callers see `CategoryAssignments`. Index-mode assemble batches shard reads (≤6 concurrent, ≤4 on CF Workers) because a single `Promise.all` of 32 shards plus other `/rankings` Blob GETs exceeds the Workers subrequest cap.
+**v1 monolith** (already-published generations remain readable): the previous `{ rules_version, generated_at, repositories }` document at `categories/assignments.json`. Readers accept either shape and assemble shards before callers see `CategoryAssignments`. Index-mode assemble batches shard reads (≤6 concurrent, ≤4 on CF Workers) because a single `Promise.all` of 32 shards plus other `/rankings` storage GETs exceeds the Workers subrequest cap.
 
 ### 2.5 `entity/repo/{id}.json`
 
@@ -361,7 +361,7 @@ Production assignments exceeded the Next.js Data Cache 2 MiB entry limit (2,113,
 }
 ```
 
-- `curve.monthly`: `[period, adds, total_end]` — history uses monthly points (11 years≈132 points). `total_end` is `stock_est` and **must be ≥ 0** (`MonthlyPoint` uses `NonNegativeInt`). Flow (`adds`) may be negative. Writers clamp `stock_est = max(0, formula)` in `computeRepoWindow` so `d=0` newcomers / first-period unstars cannot publish a negative star count; running `cumGross`/`cumNet`/`anchor` stay unclamped so later periods can recover toward `current_stars`. Recompute Zod-parses every `RepoEntity` / `OrgEntity` before Blob write; the publish gate re-parses every entity from lookup, not only the top repo.
+- `curve.monthly`: `[period, adds, total_end]` — history uses monthly points (11 years≈132 points). `total_end` is `stock_est` and **must be ≥ 0** (`MonthlyPoint` uses `NonNegativeInt`). Flow (`adds`) may be negative. Writers clamp `stock_est = max(0, formula)` in `computeRepoWindow` so `d=0` newcomers / first-period unstars cannot publish a negative star count; running `cumGross`/`cumNet`/`anchor` stay unclamped so later periods can recover toward `current_stars`. Recompute Zod-parses every `RepoEntity` / `OrgEntity` before storing JSON; the publish gate re-parses every entity from lookup, not only the top repo.
 - `active` / `tracked_since`: explicitly show the current tracking status and newcomer provenance; a historical entity is not deleted, and the repo page shows "kept for history" plus the available first-tracked date.
 - `languages`: optional GitHub language breakdown from GraphQL
   `Repository.languages`, sorted by byte size descending. Older published shards
@@ -715,7 +715,7 @@ Multi-repo compare (`/compare`) needs the browser to fetch several repos' curves
 { "id": 10270250, "full_name": "facebook/react", "current_stars": 232000, "crossed_10k": "2014-09-15", "points": [["2014-01", 9800], ["2014-02", 10400]] }
 ```
 
-`points = [period, total_end][]` (takes the cumulative column of the entity `curve.monthly`); `crossed_10k` comes from `entity.milestones.crossed_10k`, for "align to 10k" x-axis remapping. **So there is no `compare/*` or `curve/*` Blob contract here** — it is a read-only projection of the entity, and the offline parity set is unchanged.
+`points = [period, total_end][]` (takes the cumulative column of the entity `curve.monthly`); `crossed_10k` comes from `entity.milestones.crossed_10k`, for "align to 10k" x-axis remapping. **So there is no `compare/*` or `curve/*` storage contract here** — it is a read-only projection of the entity, and the offline parity set is unchanged.
 
 ---
 
