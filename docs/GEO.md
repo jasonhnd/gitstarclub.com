@@ -18,15 +18,15 @@ This document is the owning document for GitStarClub's GEO strategy: how the exi
 
 GEO complements [SEO.md](./SEO.md). SEO owns crawlability, canonical URLs, metadata, sitemap, robots policy, and internal links. GEO owns answer-engine citation tactics layered on top of those surfaces: answer capsules, FAQ blocks, dataset schema, AI crawler hygiene, freshness signals, entity authority, and measurement.
 
-Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only JSON from Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)), and implementation must remain deterministic and Vercel-first.
+Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only precomputed JSON, and implementation stays deterministic. The host is Cloudflare Workers through OpenNext. Production JSON comes from R2 after the accepted 2026-10-04 cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
 
-Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate Vercel log reporting runbook. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
+Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate log-report runbook. The report script accepts the Vercel log-drain field shape as parser compatibility only. It does not parse Cloudflare Worker logs. Current Cloudflare aggregate measurement is pending an input adapter and evidence. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
 
 ---
 
 ## 1. TL;DR / Strategic Thesis
 
-GEO, or Generative Engine Optimization, is the work of making a site more likely to be selected, extracted, and cited by AI answer engines such as ChatGPT, Perplexity, Google AI Overviews and AI Mode, Gemini, Claude, and Grok. The next step for GitStarClub is GEO because the site is already indexable, fast, server-rendered, and backed by a proprietary dataset: GitHub star history curves, week/month/year growth ranks, exact 10k/50k/100k crossing dates, newcomers, organization aggregation, and deterministic time series for 5,300+ repositories. The strategy is not to invent AI content. It is to expose the data already present in Blob JSON as self-contained, dated, source-attributed answer blocks that an answer engine can lift without guessing.
+GEO, or Generative Engine Optimization, is the work of making a site more likely to be selected, extracted, and cited by AI answer engines such as ChatGPT, Perplexity, Google AI Overviews and AI Mode, Gemini, Claude, and Grok. The next step for GitStarClub is GEO because the site is already indexable, fast, server-rendered, and backed by a proprietary dataset: GitHub star history curves, week/month/year growth ranks, exact 10k/50k/100k crossing dates, newcomers, organization aggregation, and deterministic time series for 5,300+ repositories. The strategy is not to invent AI content. It is to expose the data already present in precomputed JSON as self-contained, dated, source-attributed answer blocks that an answer engine can lift without guessing.
 
 The core thesis is:
 
@@ -63,7 +63,7 @@ Platform differences matter:
 | Gemini | Benefits from Google index and entity graph. Yext's large citation study reports that brand-managed sources dominate many AI citations, which helps sites that publish authoritative first-party facts. | Treat GitStarClub as the canonical publisher of its derived star-history dataset; add organization identity and Dataset schema. |
 | Claude / Grok | Public details are less stable, but crawler logs and search-index visibility still matter. | Allow relevant crawlers, keep pages plain HTML, and measure referrals plus bot traffic rather than assuming citations. |
 
-The page design implication is simple: every important fact should be available as normal server-rendered HTML, not hidden in client-only UI, canvas, images, or a large interactive state. GitStarClub already satisfies much of this through RSC pages, server SVG charts, and Blob-backed static JSON. GEO work should add extractable prose and schema around the same facts.
+The page design implication is simple: every important fact should be available as normal server-rendered HTML, not hidden in client-only UI, canvas, images, or a large interactive state. GitStarClub already satisfies much of this through RSC pages, server SVG charts, and R2-backed static JSON. GEO work should add extractable prose and schema around the same facts.
 
 ---
 
@@ -95,7 +95,7 @@ GitStarClub has several advantages that most content sites must build from scrat
 
 | Asset | Current state | GEO value |
 |---|---|---|
-| Proprietary dataset | Deterministic GitHub star histories for 5,300+ tracked repositories, with repo/org/ranking/category views in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)). | The numbers are not generic web copy. Answer engines need a source for "when did repo X cross 100k stars?" or "which Python repos are largest?". |
+| Proprietary dataset | Deterministic GitHub star histories for 5,300+ tracked repositories, with repo/org/ranking/category views in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)). | The numbers are not generic web copy. Answer engines need a source for "when did repo X cross 100k stars?" or "which Python repos are largest?". |
 | Server-rendered content | `FRONTEND.md` defines content bodies as RSC/static HTML; charts are server SVG/DOM; client JS is limited to explicit islands. | Crawlers and answer extractors see the actual facts without hydrating the app. |
 | Fast pages | #25 Lighthouse baseline recorded mobile FCP around 0.91-1.22s and desktop FCP around 0.25-0.29s on representative production pages; CLS was 0.000-0.003. | Performance is already unlikely to be the blocking factor for extraction or crawl. |
 | HTTPS production host | The public site is served from `https://gitstarclub.com`, with canonical URLs generated from `NEXT_PUBLIC_SITE_URL`. | AI search engines and classic crawlers get one secure apex identity, not fragmented preview or subdomain URLs. |
@@ -119,7 +119,7 @@ The gaps are equally clear:
 
 Implementation rule for every page type:
 
-- The concrete numbers in the example capsules below are format examples, not durable assertions of the current production value; implementation must generate them deterministically from the current Blob JSON fields.
+- The concrete numbers in the example capsules below are format examples, not durable assertions of the current production value; implementation must generate them deterministically from the current precomputed JSON fields.
 - The capsule must be normal server-rendered HTML, near the top of the content.
 - The capsule should be concise: 40-60 English words, or an equivalent localized length for non-default locales. On `/ja`, `/zh`, `/zh-TW`, `/ko`, `/es`, and `/fr`, render the capsule in the route locale with locale-formatted dates and numbers; data fields stay language-neutral.
 - It must include a real date, at least one distinctive GitStarClub-only statistic, and attribution: `— GitStarClub`.
@@ -347,7 +347,7 @@ GEO uses the following shapes. Dataset and `dateModified` are implemented for ho
 
 ### 6.1 Dataset: site-level and optional ranking-level
 
-Use on the home page and major ranking/category pages. GitStarClub is fundamentally a derived, transformed dataset of GitHub star history, so Dataset schema is linked from page-level schema where the visible facts are backed by precomputed Blob JSON.
+Use on the home page and major ranking/category pages. GitStarClub is fundamentally a derived, transformed dataset of GitHub star history, so Dataset schema is linked from page-level schema where the visible facts are backed by precomputed JSON.
 
 The `variableMeasured.name` values below are descriptive schema labels, not a byte-for-byte JSON contract. Where a label maps to a production field, it uses or names the real field path (`current_stars`, `current_stars_sum`, rank item `value`, `curve.monthly` `total_end`, `milestones.crossed_*`).
 
@@ -384,7 +384,7 @@ Implementation linkage:
 
 - `web/lib/jsonld.ts` exposes `datasetLd({ name, path, locale, description, dateModified })` plus `datasetRef(path)`.
 - Page-level `CollectionPage` / `WebSite` schema links to the Dataset with `about: datasetRef(path)`; the Dataset is also emitted as its own JSON-LD object.
-- `dateModified` is resolved with the non-throwing `resolveDataAsOfValue(...)` helper from real Blob fields only. It skips fallback sentinels such as `categories/registry.json`'s `"fallback"` value and omits `dateModified` when no real data date exists.
+- `dateModified` is resolved with the non-throwing `resolveDataAsOfValue(...)` helper from real published JSON fields only. It skips fallback sentinels such as `categories/registry.json`'s `"fallback"` value and omits `dateModified` when no real data date exists.
 - Current source fields by surface:
   - Home and `/pulse`: `hot-snapshot.json.generated_at`, falling back to the active weekly rank `meta.generated_at`.
   - All-time rankings: `rank/all-time/{repo|org}/stock.json.meta.generated_at`.
@@ -394,9 +394,9 @@ Implementation linkage:
   - Category index/dimension pages: `categories/registry.json.generated_at`, falling back to `meta.json.generated_at`, `meta.json.backfilled_at`, or `meta.json.folded_through.month`.
   - Category detail pages: category rank `meta.generated_at`, `categories/registry.json.generated_at`, then the same `meta.json` fallbacks.
 - `temporalCoverage` remains optional and should only be emitted when a caller has a data-backed coverage range.
-- Deepening round Dataset enrichment should add `distribution` only for public static export files, not private Blob views. Use `DataDownload` entries pointing at stable `/data/exports/v1/latest/*` aliases for the manifest and bounded CSV/JSON extracts, with `encodingFormat` (`application/json` or `text/csv`) and human-readable `name`.
+- Deepening round Dataset enrichment should add `distribution` only for public static export files, not internal JSON views. Use `DataDownload` entries pointing at stable `/data/exports/v1/latest/*` aliases for the manifest and bounded CSV/JSON extracts, with `encodingFormat` (`application/json` or `text/csv`) and human-readable `name`.
 - Dataset `temporalCoverage` should be derived from real coverage metadata or visible export metadata. Prefer an interval such as `2015/2026` or `2015-01/2026-06` only when the implementation can prove both endpoints from precomputed views; otherwise omit the field.
-- The Dataset `distribution` list must remain small and citeable: start with the export manifest plus the three public extract families from [DATA-EXPORTS.md](./DATA-EXPORTS.md). Do not expose raw internal Blob contract paths through Dataset distribution.
+- The Dataset `distribution` list must remain small and citeable: start with the export manifest plus the three public extract families from [DATA-EXPORTS.md](./DATA-EXPORTS.md). Do not expose raw internal JSON contract paths through Dataset distribution.
 - The visible page should include a matching "Data as of" line when the page has a real data date.
 
 ### 6.2 FAQPage: generated from visible FAQ
@@ -529,7 +529,7 @@ Semantic HTML tables are a GEO surface, not only a visual component. Presence AI
 
 Implementation contract:
 
-- Keep tables server-rendered and deterministic. Rows must come from the same Blob JSON already used by the page.
+- Keep tables server-rendered and deterministic. Rows must come from the same precomputed JSON already used by the page.
 - Use real table semantics: `<table>`, `<caption>` or an accessible heading, `<thead>`, `<tbody>`, `<th scope="col">`, and stable column labels. Do not replace semantic tables with div grids when the content is tabular.
 - Candidate surfaces: complete ranking rows, organization member repository summaries, category detail repository lists, and compact top-row summaries for Pulse where the visible layout can support a table.
 - Each table should expose at least one citeable statistic column and one canonical URL column or link: rank, repository or organization name, current stars or period gain, period/date label, and canonical GitStarClub URL.
@@ -564,7 +564,7 @@ Rules:
 
 - Never hard-code a freshness date.
 - Never update `dateModified` merely to look fresh; it must correspond to a real data publish, live overlay, or page content change.
-- Never serialize fallback sentinels such as `"fallback"` as schema freshness; omit `dateModified` until a real Blob date or watermark is available.
+- Never serialize fallback sentinels such as `"fallback"` as schema freshness; omit `dateModified` until a real published-data date or watermark is available.
 - Use year and period terms in H1 or capsule where they matter: `June 2026 GitHub Star Rankings`, `2026-W26 weekly movers`.
 - For current-period surfaces, use `month-to-date` or `week-to-date`; for historical periods, use `final` or `frozen`.
 - Dataset `temporalCoverage` must describe the covered observation window, not the page publish date. It should advance only when the underlying export or data coverage advances.
@@ -661,7 +661,7 @@ Bing Webmaster verification steps:
 1. Add `https://gitstarclub.com` in Bing Webmaster Tools.
 2. Preferred repo-free option: import verification from the already verified Google Search Console property, or use DNS verification in Cloudflare.
 3. Repo-hosted file option: download Bing's verification XML file and commit it under `web/public/` so it is served from the site root. No Bing XML verification file is currently checked in.
-4. Meta-tag option: set `BING_SITE_VERIFICATION=<Bing msvalidate.01 token>` in the Vercel Production environment. `web/app/_shell/RootShell.tsx` emits `<meta name="msvalidate.01" content="...">` when that variable is present.
+4. Meta-tag option: set `BING_SITE_VERIFICATION` to the Bing `msvalidate.01` token in the shell that runs the Cloudflare production build. `web/scripts/cf-opennext-build.ts` inherits that shell environment and passes it into the OpenNext build. `web/app/_shell/RootShell.tsx` reads the variable while metadata is built and emits `<meta name="msvalidate.01" content="...">` only when it is set. After the build, confirm that tag in the generated HTML. Setting the variable on a Vercel project does not change Cloudflare output.
 5. After verification, submit `https://gitstarclub.com/sitemap.xml` in Bing Webmaster Tools.
 
 IndexNow runtime configuration:
@@ -676,7 +676,7 @@ Batching and failure policy:
 - Per request cap: 100 URLs.
 - Per run cap: 200 URLs.
 - URL ordering is deterministic for the same input set: hot core pages first, then ranking periods, then entity/category paths sorted by canonical URL.
-- Workflow publish compares selected versioned Blob views from `views/<run_id>/` and `views/<prev_version>/` to submit only changed core, period, category, repo, and org URLs.
+- Workflow publish compares selected versioned JSON views from `views/<run_id>/` and `views/<prev_version>/` to submit only changed core, period, category, repo, and org URLs.
 - Daily/weekly cron submits `/`, `/pulse`, `/rankings`, current year/month/week ranking URLs, and the repo/org URLs for live movers.
 - IndexNow POST errors and URL-derivation errors log `[indexnow]` warnings with source, run id/job, batch, status or error, and URL count. They never throw back into workflow publish or cron, so external indexing cannot block data publication.
 
@@ -737,7 +737,7 @@ Engineering enablement:
 | Item | Scope | Why it helps |
 |---|---|---|
 | Public dataset landing page | A server-rendered methodology and dataset page explaining fields, license, cadence, and examples. | Gives journalists, Wikipedia editors, and AI engines one canonical citation target. |
-| Downloadable snapshots | Small CSV/JSON extracts for top rankings, milestones, and org aggregates, generated from Blob views. | Makes GitStarClub's original data easier to reuse and cite. |
+| Downloadable snapshots | Small CSV/JSON extracts for top rankings, milestones, and org aggregates, generated from JSON views. | Makes GitStarClub's original data easier to reuse and cite. |
 | Repo/org sameAs | GitHub repo or owner URLs, repo homepage metadata, approved static-registry entries, and later Wikidata only if separately approved. | Helps entity disambiguation across Google and answer engines. |
 | Embeddable snippets | Static "this week in GitHub stars" or "repo milestone" cards with canonical links. | Makes external mention and community sharing easier without adding runtime services. |
 | Citation guide | Short copy explaining attribution: "Data from GH Archive, derived and transformed by GitStarClub." | Reduces inconsistent external naming. |
@@ -755,17 +755,17 @@ The engineering goal is to make external citation easy. It should not fabricate 
 
 ## 10. Measurement
 
-Do not introduce paid GEO monitoring by default. Use Vercel-first measurement and a small manual query set.
+Do not introduce paid GEO monitoring by default. Use the aggregate log report plus a small manual query set.
 
 The measurement loop has three layers:
 
-1. Aggregate server-side bot and referrer reporting from Vercel logs.
+1. Aggregate server-side bot and referrer reporting. The current script accepts the Vercel log-drain shape as parser compatibility only and does not read Cloudflare Worker logs. Current Cloudflare aggregate measurement is pending an input adapter and evidence.
 2. A versioned target-query file at `docs/geo/queries.md`.
 3. A citation review cadence that turns wrong, stale, or missing citations into implementation issues.
 
 ### 10.1 Bot and referrer logs
 
-Track user-agent families in Vercel logs or a Vercel-native log export:
+Track these user-agent families. The report input is described in [geo/ai-log-reporting.md](./geo/ai-log-reporting.md):
 
 - `GPTBot`
 - `OAI-SearchBot`
@@ -796,12 +796,12 @@ Keep the first implementation aggregate-only. Do not add user-level tracking or 
 
 Reporting contract:
 
-- Source: Vercel request logs, Vercel log drains, or another Vercel-native export. Do not add a client-side tracker for GEO measurement.
+- Source: parser compatibility only. The script accepts a Vercel Log Drains JSON or NDJSON export. It does not parse Cloudflare Worker logs, and this document does not claim that it does. Current Cloudflare aggregate measurement is pending an input adapter and evidence. Do not add a client-side tracker for GEO measurement.
 - Grain: daily or weekly aggregate rows by `date`, `user_agent_family`, `path_family`, `status_bucket`, and `count`.
 - Referrers: aggregate by normalized host only, not full URL with query strings. Store `referrer_host`, `path_family`, and `count`.
 - Privacy: no IP addresses, user ids, cookies, or raw query parameters in checked-in reports.
 - Path families: `repo`, `org`, `rankings`, `category`, `pulse`, `compare`, `about`, `data-export`, and `other`.
-- Output: `cd web && bun run geo:report -- --input <vercel-log-export.ndjson> --format markdown` builds the aggregate report from Vercel Log Drains JSON/NDJSON or exported request-log JSON. The parser and taxonomy live in `web/lib/geo/ai-log-report.ts`; operator notes and the checked taxonomy are in [docs/geo/ai-log-reporting.md](./geo/ai-log-reporting.md).
+- Output: `cd web && bun run geo:report -- --input <log-export.ndjson> --format markdown` builds the aggregate report from that Vercel-shaped input. The parser and taxonomy live in `web/lib/geo/ai-log-report.ts`; operator notes and the checked taxonomy are in [docs/geo/ai-log-reporting.md](./geo/ai-log-reporting.md). The command does not read Cloudflare Worker logs.
 
 ### 10.2 Manual target query set
 
@@ -886,7 +886,7 @@ Scope:
 Acceptance sketch:
 
 - JSON-LD validates as Dataset with DataDownload distribution.
-- Distribution URLs resolve through the stable latest export aliases and do not point at private Blob views.
+- Distribution URLs resolve through the stable latest export aliases and do not point at internal JSON views.
 - `temporalCoverage` is omitted when coverage cannot be proven from precomputed data.
 - Tests assert escaping, shape, and absence of hard-coded freshness dates.
 
@@ -896,7 +896,7 @@ Goal: make GEO outcomes measurable without paid monitoring or client-side tracki
 
 Scope:
 
-- Build aggregate AI crawler and referrer reporting from Vercel-native logs or exports, following Section 10.1.
+- Aggregate AI crawler and referrer reporting follows Section 10.1. The parser accepts Vercel-shaped log input only. Current Cloudflare aggregate measurement is pending an input adapter and evidence.
 - Maintain `docs/geo/queries.md` with the target-query format in Section 10.2.
 - Maintain query coverage for repo, org, ranking, category, pulse, compare, about/methodology, and data-export pages.
 - Establish the citation-review cadence from Section 10.2: weekly for eight weeks after launch, monthly after stabilization, and ad hoc after crawler/schema/sitemap changes.
@@ -940,7 +940,7 @@ Scope:
 
 Acceptance sketch:
 
-- Tables are server-rendered from existing Blob JSON and contain canonical links.
+- Tables are server-rendered from existing precomputed JSON and contain canonical links.
 - Rows and rankings match existing visible data.
 - 320px, 375px, 768px, and desktop screenshots show no overlap or token drift.
 - No global visual tokens are changed.
@@ -953,7 +953,7 @@ Scope:
 
 - Keep `/compare` as the route. Do not add pair-specific pages in this round.
 - Add a server-rendered generic conclusion block that explains what GitStarClub Compare can conclude from precomputed repo curves: absolute history, 10k-aligned growth, current stars, and milestone context.
-- If URL query parameters are later parsed server-side, the conclusion may summarize the selected pair only when the route has loaded both compare curves on the server from existing Blob JSON.
+- If URL query parameters are later parsed server-side, the conclusion may summarize the selected pair only when the route has loaded both compare curves on the server from existing precomputed JSON.
 - Until then, visible copy and schema must stay generic and must not claim facts about client-selected repositories.
 - This is UI-affecting work and requires visual sign-off before merge.
 
@@ -984,7 +984,7 @@ Acceptance sketch:
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
 | `[geo] Add Dataset DataDownload distribution and temporalCoverage` | Implement Section 11.1 for public data exports and proven coverage windows. | Dataset JSON-LD includes bounded public DataDownload entries; temporalCoverage is data-backed or omitted; tests cover shape and no hard-coded dates. |
-| `[geo] Add Vercel-first GEO measurement report` | Implement Section 11.2 bot/referrer aggregation. | Aggregate-only report by user-agent/referrer/path family; no client analytics or personal data. |
+| `[geo] Add an aggregate GEO measurement report` | Implement Section 11.2 bot/referrer aggregation. | Aggregate-only report by user-agent/referrer/path family; no client analytics or personal data. |
 | `[geo] Add target query tracking doc and citation review cadence` | Implemented in #76: add `docs/geo/queries.md` and the review template from Section 10.2. | Query set covers repo, org, ranking, category, pulse, compare, about/methodology, and data-export page types; weekly/manual check rows are copy-paste ready; citation occupancy and accuracy are defined. |
 | `[geo] Enrich repo and org sameAs from approved identities` | Implemented in #77 from Section 11.3. | Approved sameAs arrays render deterministically; unapproved URLs are omitted; no scraping. |
 | `[geo] Add semantic data tables for citeable ranking surfaces` | Implement Section 11.4. | Server-rendered tables expose core facts and canonical links; visual sign-off attached. |
@@ -1002,7 +1002,7 @@ The GEO deepening implementation round is specified in Section 11. Use Section 1
 
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
-| `[geo] Add answer capsules and visible data-as-of blocks` | Implemented in #52: deterministic server-rendered capsules on repo, org, rankings, category, pulse, and compare surfaces. Existing Blob JSON fields only. | Each page type has a 40-60 word capsule, a real data date, GitStarClub attribution, no runtime AI, no new client JS, and tests for visible changes. |
+| `[geo] Add answer capsules and visible data-as-of blocks` | Implemented in #52: deterministic server-rendered capsules on repo, org, rankings, category, pulse, and compare surfaces. Existing precomputed JSON fields only. | Each page type has a 40-60 word capsule, a real data date, GitStarClub attribution, no runtime AI, no new client JS, and tests for visible changes. |
 | `[geo] Add visible FAQ blocks and FAQPage JSON-LD` | Implemented in #56: 3-5 deterministic FAQ items per page type and matching FAQPage schema from a shared builder. | FAQ is visible in HTML; JSON-LD exactly mirrors visible answers; no hidden schema; tests cover escaping and schema shape. |
 | `[geo] Add Dataset and dateModified schema` | Implemented in #57: `datasetLd`, optional `dateModified` on collection/entity builders, and Dataset linkage on home/ranking/category pages. | JSON-LD tests validate Dataset shape and `dateModified`; dates come from `meta` or actual watermarks; no hard-coded date. |
 | `[geo] Make AI crawler policy explicit in robots` | Extend `robots.ts` to explicitly list retrieval, search, and training crawlers while preserving preview noindex and `/api/` disallow. | Production robots includes explicit agents; preview still disallows all; tests assert expected robots output. |
@@ -1014,7 +1014,7 @@ The GEO deepening implementation round is specified in Section 11. Use Section 1
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
 | `[geo] Enhance existing /about methodology page for GEO` | Extend the existing `/about` page with Dataset schema, user-facing field definitions, license, cadence, seam explanation, and sample queries. | Existing about page links DATA-CONTRACTS/RANKING concepts in user-facing language, emits Dataset schema, keeps footer access through the existing About link, and adds no new route. |
-| `[geo] Publish small deterministic data exports` | Implemented in #65: generate bounded top ranking, repository milestone, and organization aggregate CSV/JSON extracts from existing precomputed Blob views. | Static exports are versioned, dated from real `generated_at` metadata, documented, downloadable without runtime engines, and carry CC BY 4.0 plus "Data from GH Archive, derived by GitStarClub" attribution. |
+| `[geo] Publish small deterministic data exports` | Implemented in #65: generate bounded top ranking, repository milestone, and organization aggregate CSV/JSON extracts from existing precomputed JSON views. | Static exports are versioned, dated from real `generated_at` metadata, documented, downloadable without runtime engines, and carry CC BY 4.0 plus "Data from GH Archive, derived by GitStarClub" attribution. |
 | `[geo] Add GitStarClub Organization identity schema` | Add site-level Organization schema with approved sameAs entries. | sameAs entries are reviewed, stable, and documented; no scraped external links. |
 | `[geo] Add shareable static data snippets` | Add copy/link/embed affordances for weekly movers, milestones, and org totals. | Server-rendered snippets preserve visual baseline, include canonical links, and require visual signoff if UI changes. |
 
@@ -1022,7 +1022,7 @@ The GEO deepening implementation round is specified in Section 11. Use Section 1
 
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
-| `[geo] Add AI crawler and referrer log reporting` | Build a Vercel-first aggregate report for AI crawler user-agents and AI referrers. | No client analytics; report aggregates only; docs list user-agent/referrer taxonomy. |
+| `[geo] Add AI crawler and referrer log reporting` | Build an aggregate report for AI crawler user-agents and AI referrers. | No client analytics; report aggregates only; docs list user-agent/referrer taxonomy. The parser accepts the Vercel log-drain shape and does not parse Cloudflare logs. |
 | `[geo] Add target AI query tracking doc` | Implemented in #76: create `docs/geo/queries.md` with target questions, manual weekly check workflow, and citation occupancy metric. | Query list covers repo, org, ranking, category, pulse, compare, about/methodology, and data-export page types; weekly row format is copy-paste ready; no paid monitoring dependency. |
 | `[geo] Review citations and stale answers after launch` | Run manual checks across ChatGPT, Perplexity, Google AI Mode/AIO, Gemini, Claude, and Grok. | Report records citations, wrong answers, missing pages, and follow-up implementation issues. |
 
@@ -1046,7 +1046,7 @@ Pitfalls:
 - Do not make compare facts depend on client-only state if the goal is citation.
 - Do not introduce an LLM to write summaries. The site already has deterministic templates and structured data.
 - Do not modify visual tokens without the design workflow. Answer capsules and FAQ are user-visible UI and must respect the locked amber baseline in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
-- Do not add external paid GEO tools by default. Measurement starts with Vercel logs and manual query checks.
+- Do not add external paid GEO tools by default. Measurement starts with the aggregate log report and manual query checks.
 
 Constraint fit:
 
@@ -1054,8 +1054,8 @@ Constraint fit:
 |---|---|
 | No runtime AI | Capsules, FAQ, and statistical sentences are deterministic templates over JSON fields. |
 | Content pages zero client JS | All answer blocks, FAQ, and schema are server-rendered. Compare remains the only interactive exception until pair-specific server pages are designed. |
-| Runtime zero engine / zero database | All facts come from precomputed Blob JSON views and existing lookup joins. |
-| Vercel-first | IndexNow and measurement can run from Vercel workflow/cron/logs; no new database or paid monitoring service is required. |
+| Runtime zero engine / zero database | All facts come from precomputed JSON views and existing lookup joins. |
+| Cloudflare host, accepted R2 cutover | IndexNow and measurement stay inside the existing refresh and cron routes. No new database or paid monitoring service is required. The log report does not yet parse Cloudflare logs. |
 | Docs as source of truth | This document owns GEO strategy; [SEO.md](./SEO.md) owns crawler/canonical/sitemap mechanics; implementation PRs must update the owning docs when behavior changes. |
 | Visual guardrails | New visible blocks require design review and screenshots before merge, because they change page composition even if colors do not change. |
 

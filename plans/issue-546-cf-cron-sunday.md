@@ -20,7 +20,7 @@ while the shared-store incident (#543) is open.
 3. `scripts/cf-ci-gates.mjs`: `PREVIEW_CRONS_PAUSED` switches the gate between
    "must be `[]`" (now) and "must be the intended set". Any numeric weekday
    `0` or `7` in a wrangler cron is rejected. Tests cover both states.
-4. `docs/OPS.md`, `docs/CF-MIGRATION-P1.md`, the `docs/TESTING.md` coverage row
+4. `docs/OPS.md`, `docs/archive/CF-MIGRATION-P1.md`, the `docs/TESTING.md` coverage row
    for #468, and one `docs/CHANGELOG.md` entry.
 
 ## Out of scope

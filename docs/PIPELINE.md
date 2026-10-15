@@ -9,7 +9,7 @@ source_of_truth_for:
 
 # gitstarclub data Pipeline
 
-> How the artifacts defined by [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) are produced. This document focuses on the **one-off bootstrap pipeline**: seeding `canonical/v2/**` and `views/**` out of a blank system from zero. Day-to-day recurring refresh is carried by the managed refresh, and the local machine does not take part. New loads target Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)). The blob commands below stay valid until cutover.
+> How the artifacts defined by [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) are produced. This document focuses on the **one-off bootstrap pipeline**: seeding `canonical/v2/**` and `views/**` out of a blank system from zero. Day-to-day recurring refresh is carried by the managed refresh, and the local machine does not take part. New loads target Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)). The default Blob commands below describe the retained historical bootstrap path; the accepted production copy/cutover is in R2-CUTOVER. Do not run these commands against the current store without separate authorization.
 >
 > Architecture is in [ARCHITECTURE.md](./ARCHITECTURE.md), and operations/credentials are in [OPS.md](./OPS.md).
 
@@ -18,29 +18,29 @@ source_of_truth_for:
 This document describes the **bootstrap pipeline**: it runs once, executed from the developer's machine, in order to seed `canonical/v2/**` and `views/**` out of blank. Scripts under the `pipeline/` directory are an archived form — they have already been run once, are no longer triggered in day-to-day operations, and are executed again only in the following cases:
 
 - The first cold start of a new environment
-- Disaster rebuild (Blob lost in full)
+- Disaster rebuild (the configured object store is lost in full)
 - A new data source is introduced, and the historical baseline needs to be regenerated
 
-**Day-to-day recurring data refresh (whitelist / metadata / canonical fold / full recompute / publish / rollback) all runs on Vercel Workflow** — see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md). The local environment and the BigQuery / DuckDB engines **do not take part** in the day-to-day path, and also **should not** be stuffed into a single Vercel Function (subject to the 800s / 4GB / 250MB limits).
+**Day-to-day recurring data refresh (whitelist / metadata / canonical fold / full recompute / publish / rollback) runs as managed refresh on the Cloudflare Workers host.** See [OPS.md](./OPS.md) and [R2-CUTOVER.md](./R2-CUTOVER.md). The step names in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) are superseded history for the Blob publish model. The local environment and the BigQuery / DuckDB engines **do not take part** in the day-to-day path. A full recompute stays in the managed-refresh steps. Do not load DuckDB or Parquet in one request.
 
-Ordinary Vercel cron is responsible only for JSON incremental refresh; engine-class full recompute is carried by a multi-step Vercel Workflow.
+Neither Worker lists cron triggers. Production `triggers.crons` and preview `env.pre` `triggers.crons` are both `[]`. The production caller is unverified. `web/vercel.json` is not proof of a live caller. The intended cadence, when an owner later enables schedules, is daily `0 3 * * *`, weekly `0 4 * * SUN`, and Sunday refresh `0 6 * * SUN`. Cloudflare rejects weekday `0`. Production JSON uses R2 after the accepted 2026-10-04 cutover.
 
 ## 0. Roles and environments
 
 | Stage | Where it runs | What it uses | Trigger |
 |---|---|---|---|
 | One-off bootstrap (this document §1) | Local machine / full Node | BigQuery (once) + DuckDB + GraphQL → JSON | Run once manually |
-| Daily cron (this document §2) | Vercel Function | GraphQL + JSON live tail (**does not touch DuckDB/Parquet**) | Vercel Cron `0 3 * * *` |
-| Weekly cron (this document §3) | Vercel Function | GraphQL + JSON incremental overwrite of the current week/month/hot set | Vercel Cron `0 4 * * 0` |
-| Production recompute (this document §4) | **Vercel Workflow** | Multi-step + Blob checkpoint + JSON shard (**no engine**) | Vercel Cron `0 6 * * 0` / manual |
+| Daily cron (this document §2) | Cloudflare Worker route `web/app/api/cron/daily` | GraphQL + JSON live tail (**does not touch DuckDB/Parquet**). The production write contract uses the guarded R2 DATA binding | Intended `0 3 * * *`. Both Worker cron lists are `[]`. The production caller is unverified |
+| Weekly cron (this document §3) | Cloudflare Worker route `web/app/api/cron/weekly` | GraphQL + JSON incremental overwrite of the current week/month/hot set. The production write contract uses the guarded R2 DATA binding | Intended `0 4 * * SUN`. Both Worker cron lists are `[]`. The production caller is unverified |
+| Managed refresh (this document §4) | Cloudflare Workers. `WORKFLOW_RUNTIME` is `cf-queue` on both Workers; the code default when unset is `http` | Multi-step checkpoint + JSON shard (**no engine**). The production write contract uses the guarded R2 DATA binding | Intended `0 6 * * SUN`, or a manual authenticated call. Both Worker cron lists are `[]`. The production caller is unverified |
 
-Credentials: `GITHUB_TOKEN` (GraphQL/Search), GCP (**bootstrap only** BigQuery), `BLOB_READ_WRITE_TOKEN` (upload), `CRON_SECRET`. See OPS.
+Credentials: `GITHUB_TOKEN` (GraphQL/Search), GCP (**bootstrap only** BigQuery), `BLOB_READ_WRITE_TOKEN` only for the retained Blob write path, `CRON_SECRET`. Both Workers use the guarded `DATA` binding for R2 writes and do not use the Blob token for that path. See [OPS.md](./OPS.md).
 
 ---
 
 ## 1. One-off bootstrap (`pipeline/backfill/`, run once manually)
 
-> **Demotion notice**: this section is a one-off tool for the **first cold start / disaster rebuild**, and it is **not a day-to-day operations runbook**. After the JSON views + canonical it produces are uploaded to Blob, Vercel (§2/§3 live cron + §4 Workflow) takes over recurring refresh. **Day-to-day operations have 0 local dependencies.** These scripts are not deleted, but they are run manually only when a new data source is introduced / the baseline is rebuilt.
+> **Demotion notice**: this section is a one-off tool for the **first cold start / disaster rebuild**, and it is **not a day-to-day operations runbook**. After the JSON views and canonical it produces are uploaded, the host's managed refresh takes over recurring refresh. Production data uses R2 after the accepted 2026-10-04 cutover. The production caller is unverified. **Day-to-day operations have 0 local dependencies.** These scripts are not deleted, but they are run manually only when a new data source is introduced / the baseline is rebuilt.
 
 ```text
 01-whitelist → 02-extract(BigQuery) → 03-metadata(GraphQL)
@@ -74,7 +74,7 @@ The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`, so a r
 
 **06 upload (staging only)** — first validate `views/**` with the authoritative Zod contracts, then write `star_daily.parquet` + `lookup/*` + `rank/**` + `entity/**` + `heatmap/**` + `meta.json` create-only into `bootstrap/generations/<generation>/**`. Neither objects nor the phase manifest may be overwritten; a byte-identical rerun of the same generation validates the objects already present and resumes. This step **never modifies the production pointer**. Batched `put()` is **throttled <75/s** (the OPS Blob rate limit). `--store blob` still uploads unless `--dry-run`. `--store r2` prints the plan and writes nothing unless `--execute`, and it requires `--target prod|pre`.
 
-**07 export-v2 (DuckDB → canonical/v2 JSON shards → atomic commit)** — **fold + bucket** the 8M-row daily table of §1.1 into `canonical/v2/{meta,repos,repo-monthly,repo-weekly,repo-recent-daily,site-daily}/...` JSON shards (`<bucket>=repo_id % N`), so that Vercel Workflow can recompute with no engine. Freeze `repos.d` (the stock anchoring factor, IEEE double at full precision, `>= 0` and it may be `> 1`) + the milestone `crossed_*`; the fold watermark is written to `folded_through` of `canonical/v2/meta.json`. This step create-only stages the canonical phase, re-validates the local views + all 128 required canonical shards, checks the remote SHA-256 object by object, and acquires the shared Workflow CAS lease; at the end it **overwrites only one `bootstrap/latest.json`**. Any upload / validation / lease failure does not cut over production. See [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6 and [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4.
+**07 export-v2 (DuckDB → canonical/v2 JSON shards → atomic commit)** — **fold + bucket** the 8M-row daily table of §1.1 into `canonical/v2/{meta,repos,repo-monthly,repo-weekly,repo-recent-daily,site-daily}/...` JSON shards (`<bucket>=repo_id % N`), so that the managed refresh can recompute with no engine. Freeze `repos.d` (the stock anchoring factor, IEEE double at full precision, `>= 0` and it may be `> 1`) + the milestone `crossed_*`; the fold watermark is written to `folded_through` of `canonical/v2/meta.json`. This step create-only stages the canonical phase, re-validates the local views + all 128 required canonical shards, checks the remote SHA-256 object by object, and acquires the shared Workflow CAS lease; at the end it **overwrites only one `bootstrap/latest.json`**. Any upload / validation / lease failure does not cut over production. See [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §6 and [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §1.4.
 
 ```bash
 cd pipeline
@@ -118,7 +118,7 @@ node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$GEN" --execu
 3. net daily add = today's current_stars − yesterday's value in current_month.json
 4. upsert current_month.json: write daily_totals + per_repo + current_stars by UTC day (append-only, idempotent)
 5. Pick the mover set (deltas are already in hand, free): today's top ~50 by gain ∪ (today ≥ 5× its 90d daily average and the same-day net add ≥200) ∪ milestone crossed
-6. Recompute hot-snapshot.json + `/pulse` data (including spike/revival) → Blob
+6. Recompute hot-snapshot.json + `/pulse` data (including spike/revival) → the configured object store
 7. revalidatePath: the core hot set (home/current year/current month/rankings/pulse) + **the mover set's repo/org pages**
    (entities that did not move + all history are not touched at all)
 ```
@@ -129,7 +129,7 @@ node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$GEN" --execu
 
 ---
 
-## 3. Weekly cron (Vercel Function, `web/app/api/cron/weekly`)
+## 3. Weekly cron (`web/app/api/cron/weekly`)
 
 ```text
 1. Validate Authorization: Bearer CRON_SECRET
@@ -141,15 +141,15 @@ node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$GEN" --execu
 ```
 
 - Dropping out of ≥10k, a newcomer backfilling multiple years of history, and all-time/entity history recompute: these are not synchronous steps of ordinary cron, and are handed to §4 Workflow.
-- Renames: the live refresh of Vercel cron still follows the existing lookup; a full metadata refresh updates lookup only after it enters Workflow shards, and the old URL is 308'd by the web layer.
+- Renames: the live refresh still follows the existing lookup; a full metadata refresh updates lookup only after it enters the managed-refresh steps, and the old URL is 308'd by the web layer.
 
 ---
 
-## 4. Vercel Workflow production pipeline
+## 4. Managed refresh
 
-> The full design is in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md). What follows is the **correspondence** with the §1 bootstrap: that §1 local chain has already been moved onto Vercel Workflow, and it **does not depend on local compute**.
+> Step names live in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md). That file is superseded history for the Blob publish model. What follows is the **correspondence** with the §1 bootstrap: that local chain now runs as managed-refresh steps on the Cloudflare Workers host, and it **does not depend on local compute**. The production write contract uses the guarded R2 DATA binding. Both Worker cron lists are `[]`. The production caller is unverified.
 
-| §1 bootstrap step (local) | → | §4 Workflow step (Vercel) |
+| §1 bootstrap step (local) | → | §4 managed-refresh step |
 |---|---|---|
 | 01-whitelist (Search) | → | step `refresh whitelist` (Search adaptive bucketing + diff) |
 | 03-metadata (GraphQL) | → | step `metadata shards` → `canonical/v2/repos/<bucket>.json` |
@@ -160,12 +160,12 @@ node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$GEN" --execu
 | 06-upload (Blob put throttling) | → | steps `validate → publish (cut the views/latest pointer) → gc (version reclamation) → revalidate` |
 
 **Key differences**:
-- **No engine**: a Workflow step reads `canonical/v2/*` JSON shards and, in pure JS, does prefix sums / grouping / sorting, and **does not load DuckDB / Parquet** (see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5).
+- **No engine**: a managed-refresh step reads `canonical/v2/*` JSON shards and, in pure JS, does prefix sums / grouping / sorting, and **does not load DuckDB / Parquet** (see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §5).
 - **Shards + checkpoint**: each step is short and idempotent, and progress is written to `ops/workflows/<run_id>/steps/<step>.json`; a failure affects only that version's prefix `views/<run_id>/`, and does not cut the live pointer.
 - **Publish = cut the pointer**: write `views/<run_id>/**` (version=run_id) → validate → cut `views/latest.json` → revalidate; rollback can happen in seconds.
 - **Do not do a 16k full build**: publish only revalidates the core hot set, and the long tail is on-demand ISR.
 
-The §3 weekly live cron and the §4 Workflow are prefix-isolated and each does its own job (live overlay vs base publish layer), so week-level refresh does not gap.
+The §3 weekly live cron and the §4 managed refresh are prefix-isolated and each does its own job (live overlay vs base publish layer), so week-level refresh does not gap.
 
 ---
 
@@ -182,4 +182,4 @@ The §3 weekly live cron and the §4 Workflow are prefix-isolated and each does 
 - **bootstrap atomicity**: `06` does not publish; `07` cuts the single file `bootstrap/latest.json` only after both remote phases are complete, both local validators pass, and the `ops/workflows/active.json` CAS lease has been acquired. A Blob first commit verifies, inside the lease, the legacy flat base/canonical recovery artifacts that bootstrap did not rewrite; `previous_generation: null` on that pointer means an executable `legacy-flat` rollback target. An R2 `--initial-commit` skips that proof, stores `previous_generation: null`, and is allowed only when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are absent. `web/scripts/ensure-bootstrap-pointer.ts --store r2 --execute --initial-commit` takes that same lease, then re-reads those three paths after the renewal so a marker or pointer written in that window is refused. The lease is renewed again immediately before the create-only write, so a valid takeover during those reads does not publish. `--rollback legacy-flat` on that R2 bucket fails closed. The generation body is never overwritten; recurring canonical writes are bound to that generation's copy-on-write overlay, and the old generation + overlay can roll back directly.
 - **Versioned artifacts**: Workflow publish writes `views/<run_id>/` (version=run_id) → cuts the `views/latest.json` pointer (keeping `prev_version`), and bad data only has to be pointed back at the previous version (OPS rollback).
 - **Validation gate**: after the JSON is produced, run the Zod schema + sanity invariants (TESTING §1.2/§1.3); if they do not pass, do not publish and do not cut the pointer.
-- **Failure rests on verifiable state** (Vercel Function logs + an optional webhook + `sync-runs` + `ops/workflows/**`); the repository currently has no Sentry integration. A Workflow step retries on its own, and across quota it waits with `sleep` instead of spinning.
+- **Failure rests on verifiable state** (a structured Worker log, an optional webhook when `ALERT_WEBHOOK_URL` is set, `sync-runs`, and `ops/workflows/**`); the repository currently has no Sentry integration. A managed-refresh step retries on its own, and across quota it waits with `sleep` instead of spinning.

@@ -12,7 +12,7 @@ Add an `ObjectStore` that talks to R2 through the Worker `DATA` binding, and sto
 - The binding store is wrapped with the same bucket-identity guard as the S3 store. The identity marker is read at the bucket root.
 - Guarded `put` / `del` on both stores reject path segments that are `.` or `..`, including a single percent-encoding (`%2e`, `%2e%2e`).
 - The Worker env type adds optional `DATA`. `MEDIA` stays.
-- Docs: `docs/R2-MIGRATION-P0.md`, `docs/CHANGELOG.md`.
+- Docs: `docs/archive/R2-MIGRATION-P0.md`, `docs/CHANGELOG.md`.
 
 ## Out of scope
 

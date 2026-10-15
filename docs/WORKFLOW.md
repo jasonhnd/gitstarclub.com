@@ -84,7 +84,7 @@ Reviewers check:
 - The PR cites the owning document and updates it when behavior, contracts,
   routes, operations, copy, or visual rules changed.
 - The hard constraints still hold: zero runtime engine/database, near-zero client JS
-  on content pages with explicit global islands, AI-free deterministic behavior, and Vercel-first operations.
+  on content pages with explicit global islands, AI-free deterministic behavior, and Cloudflare Workers hosting. Production JSON uses R2 after the accepted 2026-10-04 cutover.
 - Validation is green for the required commands (`static` + `production-build`).
 - The PR avoids unrelated code, docs, formatting, generated files, and broad
   rewrites.
@@ -103,7 +103,7 @@ Reviewers check:
   is optional, not a required GitHub check.
 - Data or workflow changes have a clear recompute, cron, rollback, or publish
   plan.
-- Production verification identifies the exact page, Blob view, workflow run,
+- Production verification identifies the exact page, JSON view, workflow run,
   or artifact that proves the change.
 - Operational timing is acceptable, especially around current-period live
   overlays, publish pointers, and cron-maintained artifacts.
