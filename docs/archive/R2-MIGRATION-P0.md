@@ -10,7 +10,7 @@ source_of_truth_for:
 
 # R2 migration P0 (Blob adapter)
 
-> Superseded. See [R2-CUTOVER.md](../R2-CUTOVER.md). Production data stays on Vercel Blob until that cutover.
+> Superseded. See [R2-CUTOVER.md](../R2-CUTOVER.md). Production R2 cutover was accepted on 2026-10-04; Blob remains retained rollback history pending separately authorized stage 6. The material below records earlier migration procedures, not current operating instructions.
 
 > **Superseded.** Current storage status, stages, and rollback are in [R2-CUTOVER.md](../R2-CUTOVER.md). The sections below are history. The JSON store does not use the MEDIA binding. MEDIA stays on the assets bucket `gitstarclub-assets` and is not `gitstarclub-data-pre` or `gitstarclub-data-prod`. Preview JSON uses the DATA binding.
 
@@ -48,7 +48,7 @@ Unset drivers mean:
 - Public page reads still use `BLOB_BASE_URL` through `getPublicReadBases()` while the read driver is `blob`
 - Cron / Workflow config checks still require `BLOB_BASE_URL` and `BLOB_READ_WRITE_TOKEN` while the write driver is `blob`
 
-Existing Vercel Blob behavior is the production path. The Blob **driver** now
+Existing Vercel Blob behavior was the production path at this historical P0 stage; the accepted R2 cutover is recorded in [R2-CUTOVER.md](../R2-CUTOVER.md). The Blob **driver** now
 calls the Blob HTTP API with runtime `fetch` (`web/lib/storage/vercel-blob-fetch-client.ts`)
 instead of importing `@vercel/blob` on the request path, so Cloudflare Workers
 do not hit `ALPNProtocols`. R2 writes were already fetch-signed. See
@@ -148,4 +148,4 @@ bun scripts/sync-blob-to-r2.ts --prefix views/ --execute
 
 - Production read primary is still Vercel Blob.
 - Apex / www DNS and Cloudflare orange-cloud are unchanged.
-- The JSON Worker does not use the MEDIA binding. MEDIA stays on the assets bucket `gitstarclub-assets` and is not the data store. `r2` and `r2_s3` still talk S3 from Node. `r2_binding` talks to DATA only. Preview `env.pre` binds DATA; this P0 text originally said wrangler did not. See [R2-CUTOVER.md](../R2-CUTOVER.md) and [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md). Production still reads Vercel Blob until cutover.
+- The JSON Worker does not use the MEDIA binding. MEDIA stays on the assets bucket `gitstarclub-assets` and is not the data store. `r2` and `r2_s3` still talk S3 from Node. `r2_binding` talks to DATA only. Preview `env.pre` binds DATA; this P0 text originally said wrangler did not. Production R2 cutover was accepted on 2026-10-04. See [R2-CUTOVER.md](../R2-CUTOVER.md) for current storage status and [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) for host migration history.

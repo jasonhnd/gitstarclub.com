@@ -21,7 +21,7 @@ This document defines the SEO rules for each page type (`title` / `description` 
 > **SEO is not a bonus, it is the premise on which the goal holds** — this site has no brand-term traffic and no social viral engine, and the only scaled customer acquisition is "every page precisely hits one long-tail query".
 >
 > Related documents: rendering / page layering / ISR see [ARCHITECTURE.md](./ARCHITECTURE.md); pages / URL / i18n / tone / palette see [PRODUCT.md](./PRODUCT.md);
-> domain topology / Blob / environment variables see [OPS.md](./OPS.md). Technical facts are based on **Next.js 16.3.8** (App Router + Metadata API).
+> domain topology / object storage / environment variables see [OPS.md](./OPS.md). Technical facts are based on **Next.js 16.3.8** (App Router + Metadata API).
 > AI answer-engine citation strategy is owned by [GEO.md](./GEO.md); this document stays focused on classic search crawl, canonical, metadata, sitemap, and internal-link mechanics.
 > Performance targets are owned by [TESTING.md](./TESTING.md); the issue #25 measured Lighthouse / Core Web Vitals baseline is supporting evidence in [perf/CWV-25.md](./perf/CWV-25.md).
 >
@@ -619,7 +619,7 @@ Actual output (`webSiteLd(locale, path)` in `web/lib/jsonld.ts`):
 
 ### 6.2 Home page: `Dataset`
 
-Current implementation: the home page now emits Dataset JSON-LD through `datasetLd(...)` in `PulseView`, alongside the home `WebSite` schema. `webSiteLd(...)` links to the page Dataset with `about: datasetRef("/")`, and the Dataset carries `creator`, `publisher`, `license`, `isAccessibleForFree`, `variableMeasured`, `measurementTechnique`, and optional `dateModified` from real Blob metadata. The `/pulse` page uses the same component with `/pulse` as the Dataset path.
+Current implementation: the home page now emits Dataset JSON-LD through `datasetLd(...)` in `PulseView`, alongside the home `WebSite` schema. `webSiteLd(...)` links to the page Dataset with `about: datasetRef("/")`, and the Dataset carries `creator`, `publisher`, `license`, `isAccessibleForFree`, `variableMeasured`, `measurementTechnique`, and optional `dateModified` from real published JSON metadata. The `/pulse` page uses the same component with `/pulse` as the Dataset path.
 
 Dataset enrichment details, including future `DataDownload` `distribution` entries and `temporalCoverage`, are owned by [GEO.md §11](./GEO.md#11-geo-deepening-round). SEO keeps ownership of classic crawl, canonical, metadata, sitemap, and internal-link mechanics.
 

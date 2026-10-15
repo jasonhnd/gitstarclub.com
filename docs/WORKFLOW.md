@@ -103,7 +103,7 @@ Reviewers check:
   is optional, not a required GitHub check.
 - Data or workflow changes have a clear recompute, cron, rollback, or publish
   plan.
-- Production verification identifies the exact page, Blob view, workflow run,
+- Production verification identifies the exact page, JSON view, workflow run,
   or artifact that proves the change.
 - Operational timing is acceptable, especially around current-period live
   overlays, publish pointers, and cron-maintained artifacts.

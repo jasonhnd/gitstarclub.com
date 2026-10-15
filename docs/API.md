@@ -272,7 +272,7 @@ slimmed `SearchIndex`.
 | Query | None |
 | Body | None |
 | Success | `200 application/json` |
-| Failure | Structured `503` `{ "error": "search_index_unavailable", "retryable": true }` when Blob read or schema parse throws (`Cache-Control: no-store`) |
+| Failure | Structured `503` `{ "error": "search_index_unavailable", "retryable": true }` when object-storage read or schema parse throws (`Cache-Control: no-store`) |
 | Hit cache | `Cache-Control: public, max-age=0, s-maxage=3600, stale-while-revalidate=86400` |
 | Empty fallback cache | `Cache-Control: public, max-age=0, s-maxage=60` |
 | Zod contract | [`SearchIndex` / `SearchDoc`](../web/lib/contracts/search.ts) |
@@ -309,7 +309,7 @@ Route behavior:
 
 Public CDN-cached JSON endpoint for `/compare`. The route reads
 `entity/repo/<id>.json` through the publish pointer and projects the lean
-comparison payload. It does not create or read a separate Blob artifact.
+comparison payload. It does not create or read a separate storage artifact.
 
 | Item | Contract |
 |---|---|
@@ -317,7 +317,7 @@ comparison payload. It does not create or read a separate Blob artifact.
 | Query | `id` required; must be a positive integer GitHub repo id |
 | Body | None |
 | Success | `200 application/json` |
-| Failure | `400 {"error":"invalid id"}`; `404 {"error":"not found"}`; framework `500` if the Blob read or schema parse throws |
+| Failure | `400 {"error":"invalid id"}`; `404 {"error":"not found"}`; framework `500` if the object-storage read or schema parse throws |
 | Hit cache | `Cache-Control: public, max-age=0, s-maxage=3600, stale-while-revalidate=86400` |
 | Error cache | `Cache-Control: public, max-age=0, s-maxage=60` |
 | Zod contract | [`CompareCurve`](../web/lib/contracts/compare.ts) |
@@ -380,7 +380,7 @@ Public XML sitemap index.
 | Query | None |
 | Body | None |
 | Success | `200 application/xml` |
-| Failure | Framework `500` if required Blob view reads fail unexpectedly |
+| Failure | Framework `500` if required JSON view reads fail unexpectedly |
 | Cache | `revalidate = 86400`; `Cache-Control: public, max-age=0, s-maxage=86400, stale-while-revalidate=86400` |
 | Source data | `lookup/repos.json`, `lookup/orgs.json`, `lookup/categories.json`, `meta.json` |
 | Source code | [`web/lib/sitemap-routes.ts`](../web/lib/sitemap-routes.ts), [`web/lib/sitemap.ts`](../web/lib/sitemap.ts) |
@@ -414,7 +414,7 @@ Public per-locale XML sitemap. Supported locale files are:
 | Query | None |
 | Body | None |
 | Success | `200 application/xml` |
-| Failure | Framework `500` if required Blob view reads fail unexpectedly |
+| Failure | Framework `500` if required JSON view reads fail unexpectedly |
 | Cache | `revalidate = 86400`; `Cache-Control: public, max-age=0, s-maxage=86400, stale-while-revalidate=86400` |
 | Source data | Same as `/sitemap.xml` |
 | Source code | [`web/lib/sitemap-routes.ts`](../web/lib/sitemap-routes.ts), [`web/lib/sitemap.ts`](../web/lib/sitemap.ts) |

@@ -11,7 +11,7 @@ source_of_truth_for:
 
 # Cloudflare migrate P3 (Workers host / OpenNext preview)
 
-> Superseded. See [OPS.md](../OPS.md) for the current Cloudflare Workers host and deploy rollback. Production data stays on Vercel Blob until cutover; see [R2-CUTOVER.md](../R2-CUTOVER.md).
+> Superseded. See [OPS.md](../OPS.md) for the current Cloudflare Workers host and deploy rollback. Production R2 cutover was accepted on 2026-10-04; the material below is earlier migration history, not current operating instructions. See [R2-CUTOVER.md](../R2-CUTOVER.md).
 
 > Cloudflare migrate **P3** only: run the existing Next.js 16 app on the
 > `gitstarclub-web-pre` Worker as a **non-production preview**. This does **not**
@@ -134,7 +134,7 @@ P0 port (default Blob).
 
 ## Storage and runtime (P0 / P1)
 
-Unset drivers still mean the blob driver. Preview Worker `env.pre` now reads Cloudflare R2 and writes through the DATA binding (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](../R2-CUTOVER.md)). Blob-driver writes on this host use the fetch blob client (not `@vercel/blob` undici); see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Set
+Unset drivers still mean the blob driver. Preview Worker `env.pre` now reads Cloudflare R2 and writes through the DATA binding (production still read Vercel Blob at this historical stage; current R2 status is in [R2-CUTOVER.md](../R2-CUTOVER.md)). Blob-driver writes on this host use the fetch blob client (not `@vercel/blob` undici); see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md). Set
 `STORAGE_READ_DRIVER=r2` or `r2_then_blob` only with the R2 public base or the P0 R2 credentials.
 R2 writes require `DEPLOY_ENV` of `production` or `pre` and a matching
 `_meta/bucket-identity.json`. `VERCEL_ENV=production` with any other

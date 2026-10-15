@@ -83,7 +83,7 @@ module boundaries, so it intentionally does not copy the per-route table.
 
 ## Read Side
 
-All production pages should use `web/lib/data/*` rather than fetching Blob URLs
+All production pages should use `web/lib/data/*` rather than fetching public storage URLs
 directly.
 
 Important files:

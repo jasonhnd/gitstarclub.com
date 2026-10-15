@@ -18,7 +18,7 @@ source_of_truth_for:
 This document describes the **bootstrap pipeline**: it runs once, executed from the developer's machine, in order to seed `canonical/v2/**` and `views/**` out of blank. Scripts under the `pipeline/` directory are an archived form — they have already been run once, are no longer triggered in day-to-day operations, and are executed again only in the following cases:
 
 - The first cold start of a new environment
-- Disaster rebuild (Blob lost in full)
+- Disaster rebuild (the configured object store is lost in full)
 - A new data source is introduced, and the historical baseline needs to be regenerated
 
 **Day-to-day recurring data refresh (whitelist / metadata / canonical fold / full recompute / publish / rollback) runs as managed refresh on the Cloudflare Workers host.** See [OPS.md](./OPS.md) and [R2-CUTOVER.md](./R2-CUTOVER.md). The step names in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) are superseded history for the Blob publish model. The local environment and the BigQuery / DuckDB engines **do not take part** in the day-to-day path. A full recompute stays in the managed-refresh steps. Do not load DuckDB or Parquet in one request.
@@ -118,7 +118,7 @@ node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$GEN" --execu
 3. net daily add = today's current_stars − yesterday's value in current_month.json
 4. upsert current_month.json: write daily_totals + per_repo + current_stars by UTC day (append-only, idempotent)
 5. Pick the mover set (deltas are already in hand, free): today's top ~50 by gain ∪ (today ≥ 5× its 90d daily average and the same-day net add ≥200) ∪ milestone crossed
-6. Recompute hot-snapshot.json + `/pulse` data (including spike/revival) → Blob
+6. Recompute hot-snapshot.json + `/pulse` data (including spike/revival) → the configured object store
 7. revalidatePath: the core hot set (home/current year/current month/rankings/pulse) + **the mover set's repo/org pages**
    (entities that did not move + all history are not touched at all)
 ```
