@@ -526,7 +526,20 @@ export default async function sitemap(props: { id: Promise<string> }): Promise<M
 
 ## 5. robots.txt
 
-For Cloudflare, run the owner commands in [OPS.md](./OPS.md) from `web/`. The production build needs `BLOB_BASE_URL` and `NEXT_PUBLIC_BLOB_BASE_URL` exported to the public store base before `bun run cf:build:production`. The preview build exports `R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com` and does not export that Blob URL. The production deploy uses an explicit empty Wrangler environment (`--env=""`) plus `--var CF_PREVIEW_COMMIT_SHA` set to the SHA that `cf:build` baked. A different value is ignored. Do not omit the empty environment.
+For Cloudflare, follow the separately authorized owner procedure in [OPS.md](./OPS.md#production-build-and-deploy). Production uses the accepted R2 contract. While its views pointer is absent, the build shell preserves the exact frozen fallback and clears Blob variables. From the repository root:
+
+```sh
+cd web
+export STORAGE_READ_DRIVER=r2
+export R2_PUBLIC_BASE_URL=https://data.gitstarclub.com
+export VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z
+unset READ_DRIVER BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL BLOB_READ_WRITE_TOKEN
+bun run cf:build:production
+```
+
+Clear any other `BLOB_*` or `NEXT_PUBLIC_BLOB_*` shell variables too; stage-4 `cf:build` rejects them. If `NEXT_PUBLIC_R2_PUBLIC_BASE_URL` is set, it must match the production R2 origin. Fallback removal follows the separate authorization, authoritative-pointer, and no-fallback-prerender prerequisites in OPS/R2-CUTOVER; do not drop it merely to build or change cache keys.
+
+The preview build exports `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com`, with Blob variables and the production fallback unset. The production deploy uses an explicit empty Wrangler environment (`--env=""`) plus `--var CF_PREVIEW_COMMIT_SHA` set to the SHA that `cf:build` baked. A different value is ignored. Do not omit the empty environment.
 
 Build each target immediately before its deployment because the output directory is shared. The underlying commands are `bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre`; a bare build fails. The production build embeds `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com`; the production Worker declares the same runtime values. `bun run cf:dry-run` builds pre with indexing disabled and performs only a Wrangler dry run. The build checks generated home HTML and robots output. After the owner manually deploys each build, verify that production `/robots.txt` allows `/` and lists the sitemap, production home HTML has no `noindex`, and preview `/robots.txt` and home HTML remain blocked. The owner then resubmits the production sitemap in Google Search Console and Bing Webmaster Tools.
 
