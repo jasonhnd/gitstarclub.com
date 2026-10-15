@@ -153,9 +153,9 @@ They **do not belong to** `canonical/v2/meta.json` (`CanonicalMeta` stays `.stri
 
 ## 2. Service views (JSON, read by the build; Cloudflare R2, production cutover accepted 2026-10-04)
 
-### 2.0 View schema index (the physical Blob tree is in [OPS.md](./OPS.md) §Blob layout)
+### 2.0 View schema index (the copied JSON key layout and retained Blob rollback layout are in [OPS.md](./OPS.md) §Vercel Blob rollback layout (retained until stage 6))
 
-> The following is an index of **view names that have a §2.x schema → section**; the full physical layout (including `canonical/v2/*` shards) is not relisted here, see OPS §Blob layout.
+> The following is an index of **view names that have a §2.x schema → section**; the full physical layout (including `canonical/v2/*` shards) is not relisted here, see OPS §Vercel Blob rollback layout (retained until stage 6).
 
 ```text
 lookup/repos.json                              # build join table (§2.1)
@@ -479,7 +479,7 @@ otherwise it publishes an empty array and `freshness.on_this_day=null`.
 ### 2.9a `live/latest.json` + generation manifest (atomic live publish)
 
 `live/latest.json` is the only mutable live control object, and it stores both the current complete generation and
-a 15-minute lease. Both lease acquisition and the final publish use Blob ETag CAS; acquiring the lease only changes
+a 15-minute lease. Both lease acquisition and the final publish use storage-origin ETag CAS; acquiring the lease only changes
 `lease`, and does not change `generation`, so a reader always sees either the old complete version or the new complete version.
 
 ```json
@@ -515,7 +515,7 @@ the legacy flat migration edge. When the scan hits the 64-generation cap and has
 `previous_generation:null`, it **truncates to missing** (returns null, does not 500, and does not guess
 legacy). Only when a valid chain reaches `null` may it look up migration-period flat `live/*`. `current_month` and
 `hot-snapshot` do not use the history chain, so an older generation's snapshot is not passed off as the current state. When the public CDN, under high-concurrency
-SSG, keeps returning 403, a page read tries the same historical object at most 2 times, and after a 60-second circuit break by Blob/key
+SSG, keeps returning 403, a page read tries the same historical object at most 2 times, and after a 60-second circuit break by storage origin/key
 stops the live chain and falls back to base / `notFound` (it does not select an older generation); the circuit break recovers automatically, and the required
 product gate still judges that transport failure as a failure.
 
@@ -568,7 +568,7 @@ The read side resolves the currently effective view-version prefix from this; sw
 ```
 
 - The read-side pointer fetch carries the `published-views-pointer` cache tag; it resolves `version` → and reads the immutable `views/<version>/**` (it falls back to the flat layout when there is no pointer). publish / rollback actively invalidate the tag + the root layout, and memos on other warm instances are also bounded by the 60s SLA.
-- Rollback must go through the fenced rollback API / `rollbackVersion()`, and must not be only a hand edit of Blob; it syncs recovery, the published whitelist pointer, and cache invalidation.
+- Rollback must go through the fenced rollback API / `rollbackVersion()`, and must not be only a hand edit of stored objects; it syncs recovery, the published whitelist pointer, and cache invalidation.
 - Before publish, first write the immutable `ops/workflows/<run_id>/publish-intent.json`; it pins the `prev_version` observed the first time, so a retry after a partial success does not create a self-referential rollback.
 
 ### 2.11a `bootstrap/latest.json` — cold start generation pointer
@@ -611,7 +611,7 @@ A business-readable run-progress ledger (the orchestration runtime advances it w
 
 > `steps[]` is the **manifest grouping** (10 items, corresponding to the progress ledger, including the read-only `preflight` and the real `buildAliases` phase); the **fine-grained 13 steps** (preflight/whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc) are in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4. The orchestration runtime also writes `ops/workflows/<run_id>/steps/<step>.json`; metadata also writes a mutable `metadata-<bucket>.json` (GraphQL batch progress; a 502 continues the same hop); `validate` also writes `canonical-manifest.json` (the path, bucket, record count, SHA-256, and integrity conclusion of every required canonical shard) and `validation.json`, and the other run-level ledgers include manifest / error / latest-success / `latest-unpublished-whitelist.json`.
 
-`ops/workflows/active.json` is the mutual-exclusion lease for refresh / rollback. Both the start route and the executor update it with a Blob ETag conditional write; takeover increments `fencing_token`. The lease expires after 30 minutes, and a long write heartbeats every ≤5 minutes; before writing canonical, a checkpoint, or the publish pointer, both `run_id` and the token must be checked.
+`ops/workflows/active.json` is the mutual-exclusion lease for refresh / rollback. Both the start route and the executor update it with a storage-origin ETag conditional write; takeover increments `fencing_token`. The lease expires after 30 minutes, and a long write heartbeats every ≤5 minutes; before writing canonical, a checkpoint, or the publish pointer, both `run_id` and the token must be checked.
 
 ```json
 {
@@ -705,11 +705,11 @@ A compact search index that recompute derives from the `repos` dimension (one en
 }
 ```
 
-> **The monthly narrative has no independent artifact**: ranking-page narrative is a **deterministic template**, assembled **at render time** from that month's rank data (top/growth rate/newcomer) (`web/lib/narrative.ts`), **not written to Blob and not using AI**. So there is no `narrative/*` contract here.
+> **The monthly narrative has no independent artifact**: ranking-page narrative is a **deterministic template**, assembled **at render time** from that month's rank data (top/growth rate/newcomer) (`web/lib/narrative.ts`), **not written to object storage and not using AI**. So there is no `narrative/*` contract here.
 
 ### 2.15 `/repo-curve?id=<id>` — multi-repo compare slim route (no independent artifact)
 
-Multi-repo compare (`/compare`) needs the browser to fetch several repos' curves **on demand**. **No new Blob artifact is created**: `app/repo-curve/route.ts` reads the versioned `entity/repo/<id>.json` (§2.5) on the server through the publish pointer, **projects** the slim payload compare needs, and returns it. The endpoint method, query, cache, and error status contract are in [API.md](./API.md). The schema is `CompareCurve` (`web/lib/contracts/compare.ts`):
+Multi-repo compare (`/compare`) needs the browser to fetch several repos' curves **on demand**. **No new storage artifact is created**: `app/repo-curve/route.ts` reads the versioned `entity/repo/<id>.json` (§2.5) on the server through the publish pointer, **projects** the slim payload compare needs, and returns it. The endpoint method, query, cache, and error status contract are in [API.md](./API.md). The schema is `CompareCurve` (`web/lib/contracts/compare.ts`):
 
 ```json
 { "id": 10270250, "full_name": "facebook/react", "current_stars": 232000, "crossed_10k": "2014-09-15", "points": [["2014-01", 9800], ["2014-02", 10400]] }

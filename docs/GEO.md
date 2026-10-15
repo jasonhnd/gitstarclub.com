@@ -26,7 +26,7 @@ Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-
 
 ## 1. TL;DR / Strategic Thesis
 
-GEO, or Generative Engine Optimization, is the work of making a site more likely to be selected, extracted, and cited by AI answer engines such as ChatGPT, Perplexity, Google AI Overviews and AI Mode, Gemini, Claude, and Grok. The next step for GitStarClub is GEO because the site is already indexable, fast, server-rendered, and backed by a proprietary dataset: GitHub star history curves, week/month/year growth ranks, exact 10k/50k/100k crossing dates, newcomers, organization aggregation, and deterministic time series for 5,300+ repositories. The strategy is not to invent AI content. It is to expose the data already present in Blob JSON as self-contained, dated, source-attributed answer blocks that an answer engine can lift without guessing.
+GEO, or Generative Engine Optimization, is the work of making a site more likely to be selected, extracted, and cited by AI answer engines such as ChatGPT, Perplexity, Google AI Overviews and AI Mode, Gemini, Claude, and Grok. The next step for GitStarClub is GEO because the site is already indexable, fast, server-rendered, and backed by a proprietary dataset: GitHub star history curves, week/month/year growth ranks, exact 10k/50k/100k crossing dates, newcomers, organization aggregation, and deterministic time series for 5,300+ repositories. The strategy is not to invent AI content. It is to expose the data already present in precomputed JSON as self-contained, dated, source-attributed answer blocks that an answer engine can lift without guessing.
 
 The core thesis is:
 
@@ -63,7 +63,7 @@ Platform differences matter:
 | Gemini | Benefits from Google index and entity graph. Yext's large citation study reports that brand-managed sources dominate many AI citations, which helps sites that publish authoritative first-party facts. | Treat GitStarClub as the canonical publisher of its derived star-history dataset; add organization identity and Dataset schema. |
 | Claude / Grok | Public details are less stable, but crawler logs and search-index visibility still matter. | Allow relevant crawlers, keep pages plain HTML, and measure referrals plus bot traffic rather than assuming citations. |
 
-The page design implication is simple: every important fact should be available as normal server-rendered HTML, not hidden in client-only UI, canvas, images, or a large interactive state. GitStarClub already satisfies much of this through RSC pages, server SVG charts, and Blob-backed static JSON. GEO work should add extractable prose and schema around the same facts.
+The page design implication is simple: every important fact should be available as normal server-rendered HTML, not hidden in client-only UI, canvas, images, or a large interactive state. GitStarClub already satisfies much of this through RSC pages, server SVG charts, and R2-backed static JSON. GEO work should add extractable prose and schema around the same facts.
 
 ---
 
@@ -119,7 +119,7 @@ The gaps are equally clear:
 
 Implementation rule for every page type:
 
-- The concrete numbers in the example capsules below are format examples, not durable assertions of the current production value; implementation must generate them deterministically from the current Blob JSON fields.
+- The concrete numbers in the example capsules below are format examples, not durable assertions of the current production value; implementation must generate them deterministically from the current precomputed JSON fields.
 - The capsule must be normal server-rendered HTML, near the top of the content.
 - The capsule should be concise: 40-60 English words, or an equivalent localized length for non-default locales. On `/ja`, `/zh`, `/zh-TW`, `/ko`, `/es`, and `/fr`, render the capsule in the route locale with locale-formatted dates and numbers; data fields stay language-neutral.
 - It must include a real date, at least one distinctive GitStarClub-only statistic, and attribution: `— GitStarClub`.
@@ -347,7 +347,7 @@ GEO uses the following shapes. Dataset and `dateModified` are implemented for ho
 
 ### 6.1 Dataset: site-level and optional ranking-level
 
-Use on the home page and major ranking/category pages. GitStarClub is fundamentally a derived, transformed dataset of GitHub star history, so Dataset schema is linked from page-level schema where the visible facts are backed by precomputed Blob JSON.
+Use on the home page and major ranking/category pages. GitStarClub is fundamentally a derived, transformed dataset of GitHub star history, so Dataset schema is linked from page-level schema where the visible facts are backed by precomputed JSON.
 
 The `variableMeasured.name` values below are descriptive schema labels, not a byte-for-byte JSON contract. Where a label maps to a production field, it uses or names the real field path (`current_stars`, `current_stars_sum`, rank item `value`, `curve.monthly` `total_end`, `milestones.crossed_*`).
 
@@ -384,7 +384,7 @@ Implementation linkage:
 
 - `web/lib/jsonld.ts` exposes `datasetLd({ name, path, locale, description, dateModified })` plus `datasetRef(path)`.
 - Page-level `CollectionPage` / `WebSite` schema links to the Dataset with `about: datasetRef(path)`; the Dataset is also emitted as its own JSON-LD object.
-- `dateModified` is resolved with the non-throwing `resolveDataAsOfValue(...)` helper from real Blob fields only. It skips fallback sentinels such as `categories/registry.json`'s `"fallback"` value and omits `dateModified` when no real data date exists.
+- `dateModified` is resolved with the non-throwing `resolveDataAsOfValue(...)` helper from real published JSON fields only. It skips fallback sentinels such as `categories/registry.json`'s `"fallback"` value and omits `dateModified` when no real data date exists.
 - Current source fields by surface:
   - Home and `/pulse`: `hot-snapshot.json.generated_at`, falling back to the active weekly rank `meta.generated_at`.
   - All-time rankings: `rank/all-time/{repo|org}/stock.json.meta.generated_at`.
@@ -394,9 +394,9 @@ Implementation linkage:
   - Category index/dimension pages: `categories/registry.json.generated_at`, falling back to `meta.json.generated_at`, `meta.json.backfilled_at`, or `meta.json.folded_through.month`.
   - Category detail pages: category rank `meta.generated_at`, `categories/registry.json.generated_at`, then the same `meta.json` fallbacks.
 - `temporalCoverage` remains optional and should only be emitted when a caller has a data-backed coverage range.
-- Deepening round Dataset enrichment should add `distribution` only for public static export files, not private Blob views. Use `DataDownload` entries pointing at stable `/data/exports/v1/latest/*` aliases for the manifest and bounded CSV/JSON extracts, with `encodingFormat` (`application/json` or `text/csv`) and human-readable `name`.
+- Deepening round Dataset enrichment should add `distribution` only for public static export files, not internal JSON views. Use `DataDownload` entries pointing at stable `/data/exports/v1/latest/*` aliases for the manifest and bounded CSV/JSON extracts, with `encodingFormat` (`application/json` or `text/csv`) and human-readable `name`.
 - Dataset `temporalCoverage` should be derived from real coverage metadata or visible export metadata. Prefer an interval such as `2015/2026` or `2015-01/2026-06` only when the implementation can prove both endpoints from precomputed views; otherwise omit the field.
-- The Dataset `distribution` list must remain small and citeable: start with the export manifest plus the three public extract families from [DATA-EXPORTS.md](./DATA-EXPORTS.md). Do not expose raw internal Blob contract paths through Dataset distribution.
+- The Dataset `distribution` list must remain small and citeable: start with the export manifest plus the three public extract families from [DATA-EXPORTS.md](./DATA-EXPORTS.md). Do not expose raw internal JSON contract paths through Dataset distribution.
 - The visible page should include a matching "Data as of" line when the page has a real data date.
 
 ### 6.2 FAQPage: generated from visible FAQ
@@ -529,7 +529,7 @@ Semantic HTML tables are a GEO surface, not only a visual component. Presence AI
 
 Implementation contract:
 
-- Keep tables server-rendered and deterministic. Rows must come from the same Blob JSON already used by the page.
+- Keep tables server-rendered and deterministic. Rows must come from the same precomputed JSON already used by the page.
 - Use real table semantics: `<table>`, `<caption>` or an accessible heading, `<thead>`, `<tbody>`, `<th scope="col">`, and stable column labels. Do not replace semantic tables with div grids when the content is tabular.
 - Candidate surfaces: complete ranking rows, organization member repository summaries, category detail repository lists, and compact top-row summaries for Pulse where the visible layout can support a table.
 - Each table should expose at least one citeable statistic column and one canonical URL column or link: rank, repository or organization name, current stars or period gain, period/date label, and canonical GitStarClub URL.
@@ -564,7 +564,7 @@ Rules:
 
 - Never hard-code a freshness date.
 - Never update `dateModified` merely to look fresh; it must correspond to a real data publish, live overlay, or page content change.
-- Never serialize fallback sentinels such as `"fallback"` as schema freshness; omit `dateModified` until a real Blob date or watermark is available.
+- Never serialize fallback sentinels such as `"fallback"` as schema freshness; omit `dateModified` until a real published-data date or watermark is available.
 - Use year and period terms in H1 or capsule where they matter: `June 2026 GitHub Star Rankings`, `2026-W26 weekly movers`.
 - For current-period surfaces, use `month-to-date` or `week-to-date`; for historical periods, use `final` or `frozen`.
 - Dataset `temporalCoverage` must describe the covered observation window, not the page publish date. It should advance only when the underlying export or data coverage advances.
@@ -676,7 +676,7 @@ Batching and failure policy:
 - Per request cap: 100 URLs.
 - Per run cap: 200 URLs.
 - URL ordering is deterministic for the same input set: hot core pages first, then ranking periods, then entity/category paths sorted by canonical URL.
-- Workflow publish compares selected versioned Blob views from `views/<run_id>/` and `views/<prev_version>/` to submit only changed core, period, category, repo, and org URLs.
+- Workflow publish compares selected versioned JSON views from `views/<run_id>/` and `views/<prev_version>/` to submit only changed core, period, category, repo, and org URLs.
 - Daily/weekly cron submits `/`, `/pulse`, `/rankings`, current year/month/week ranking URLs, and the repo/org URLs for live movers.
 - IndexNow POST errors and URL-derivation errors log `[indexnow]` warnings with source, run id/job, batch, status or error, and URL count. They never throw back into workflow publish or cron, so external indexing cannot block data publication.
 
@@ -737,7 +737,7 @@ Engineering enablement:
 | Item | Scope | Why it helps |
 |---|---|---|
 | Public dataset landing page | A server-rendered methodology and dataset page explaining fields, license, cadence, and examples. | Gives journalists, Wikipedia editors, and AI engines one canonical citation target. |
-| Downloadable snapshots | Small CSV/JSON extracts for top rankings, milestones, and org aggregates, generated from Blob views. | Makes GitStarClub's original data easier to reuse and cite. |
+| Downloadable snapshots | Small CSV/JSON extracts for top rankings, milestones, and org aggregates, generated from JSON views. | Makes GitStarClub's original data easier to reuse and cite. |
 | Repo/org sameAs | GitHub repo or owner URLs, repo homepage metadata, approved static-registry entries, and later Wikidata only if separately approved. | Helps entity disambiguation across Google and answer engines. |
 | Embeddable snippets | Static "this week in GitHub stars" or "repo milestone" cards with canonical links. | Makes external mention and community sharing easier without adding runtime services. |
 | Citation guide | Short copy explaining attribution: "Data from GH Archive, derived and transformed by GitStarClub." | Reduces inconsistent external naming. |
@@ -886,7 +886,7 @@ Scope:
 Acceptance sketch:
 
 - JSON-LD validates as Dataset with DataDownload distribution.
-- Distribution URLs resolve through the stable latest export aliases and do not point at private Blob views.
+- Distribution URLs resolve through the stable latest export aliases and do not point at internal JSON views.
 - `temporalCoverage` is omitted when coverage cannot be proven from precomputed data.
 - Tests assert escaping, shape, and absence of hard-coded freshness dates.
 
@@ -940,7 +940,7 @@ Scope:
 
 Acceptance sketch:
 
-- Tables are server-rendered from existing Blob JSON and contain canonical links.
+- Tables are server-rendered from existing precomputed JSON and contain canonical links.
 - Rows and rankings match existing visible data.
 - 320px, 375px, 768px, and desktop screenshots show no overlap or token drift.
 - No global visual tokens are changed.
@@ -953,7 +953,7 @@ Scope:
 
 - Keep `/compare` as the route. Do not add pair-specific pages in this round.
 - Add a server-rendered generic conclusion block that explains what GitStarClub Compare can conclude from precomputed repo curves: absolute history, 10k-aligned growth, current stars, and milestone context.
-- If URL query parameters are later parsed server-side, the conclusion may summarize the selected pair only when the route has loaded both compare curves on the server from existing Blob JSON.
+- If URL query parameters are later parsed server-side, the conclusion may summarize the selected pair only when the route has loaded both compare curves on the server from existing precomputed JSON.
 - Until then, visible copy and schema must stay generic and must not claim facts about client-selected repositories.
 - This is UI-affecting work and requires visual sign-off before merge.
 
@@ -1002,7 +1002,7 @@ The GEO deepening implementation round is specified in Section 11. Use Section 1
 
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
-| `[geo] Add answer capsules and visible data-as-of blocks` | Implemented in #52: deterministic server-rendered capsules on repo, org, rankings, category, pulse, and compare surfaces. Existing Blob JSON fields only. | Each page type has a 40-60 word capsule, a real data date, GitStarClub attribution, no runtime AI, no new client JS, and tests for visible changes. |
+| `[geo] Add answer capsules and visible data-as-of blocks` | Implemented in #52: deterministic server-rendered capsules on repo, org, rankings, category, pulse, and compare surfaces. Existing precomputed JSON fields only. | Each page type has a 40-60 word capsule, a real data date, GitStarClub attribution, no runtime AI, no new client JS, and tests for visible changes. |
 | `[geo] Add visible FAQ blocks and FAQPage JSON-LD` | Implemented in #56: 3-5 deterministic FAQ items per page type and matching FAQPage schema from a shared builder. | FAQ is visible in HTML; JSON-LD exactly mirrors visible answers; no hidden schema; tests cover escaping and schema shape. |
 | `[geo] Add Dataset and dateModified schema` | Implemented in #57: `datasetLd`, optional `dateModified` on collection/entity builders, and Dataset linkage on home/ranking/category pages. | JSON-LD tests validate Dataset shape and `dateModified`; dates come from `meta` or actual watermarks; no hard-coded date. |
 | `[geo] Make AI crawler policy explicit in robots` | Extend `robots.ts` to explicitly list retrieval, search, and training crawlers while preserving preview noindex and `/api/` disallow. | Production robots includes explicit agents; preview still disallows all; tests assert expected robots output. |
@@ -1014,7 +1014,7 @@ The GEO deepening implementation round is specified in Section 11. Use Section 1
 | Proposed issue title | Scope | Acceptance sketch |
 |---|---|---|
 | `[geo] Enhance existing /about methodology page for GEO` | Extend the existing `/about` page with Dataset schema, user-facing field definitions, license, cadence, seam explanation, and sample queries. | Existing about page links DATA-CONTRACTS/RANKING concepts in user-facing language, emits Dataset schema, keeps footer access through the existing About link, and adds no new route. |
-| `[geo] Publish small deterministic data exports` | Implemented in #65: generate bounded top ranking, repository milestone, and organization aggregate CSV/JSON extracts from existing precomputed Blob views. | Static exports are versioned, dated from real `generated_at` metadata, documented, downloadable without runtime engines, and carry CC BY 4.0 plus "Data from GH Archive, derived by GitStarClub" attribution. |
+| `[geo] Publish small deterministic data exports` | Implemented in #65: generate bounded top ranking, repository milestone, and organization aggregate CSV/JSON extracts from existing precomputed JSON views. | Static exports are versioned, dated from real `generated_at` metadata, documented, downloadable without runtime engines, and carry CC BY 4.0 plus "Data from GH Archive, derived by GitStarClub" attribution. |
 | `[geo] Add GitStarClub Organization identity schema` | Add site-level Organization schema with approved sameAs entries. | sameAs entries are reviewed, stable, and documented; no scraped external links. |
 | `[geo] Add shareable static data snippets` | Add copy/link/embed affordances for weekly movers, milestones, and org totals. | Server-rendered snippets preserve visual baseline, include canonical links, and require visual signoff if UI changes. |
 
@@ -1054,7 +1054,7 @@ Constraint fit:
 |---|---|
 | No runtime AI | Capsules, FAQ, and statistical sentences are deterministic templates over JSON fields. |
 | Content pages zero client JS | All answer blocks, FAQ, and schema are server-rendered. Compare remains the only interactive exception until pair-specific server pages are designed. |
-| Runtime zero engine / zero database | All facts come from precomputed Blob JSON views and existing lookup joins. |
+| Runtime zero engine / zero database | All facts come from precomputed JSON views and existing lookup joins. |
 | Cloudflare host, accepted R2 cutover | IndexNow and measurement stay inside the existing refresh and cron routes. No new database or paid monitoring service is required. The log report does not yet parse Cloudflare logs. |
 | Docs as source of truth | This document owns GEO strategy; [SEO.md](./SEO.md) owns crawler/canonical/sitemap mechanics; implementation PRs must update the owning docs when behavior changes. |
 | Visual guardrails | New visible blocks require design review and screenshots before merge, because they change page composition even if colors do not change. |

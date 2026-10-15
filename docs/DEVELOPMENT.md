@@ -70,7 +70,7 @@ Docs-only changes are allowed when the code already implements the behavior.
 ### Add Or Change A Page
 
 1. Find the route in `web/app/`.
-2. Read existing data through `web/lib/data/*`; avoid direct Blob fetches in
+2. Read existing data through `web/lib/data/*`; avoid direct storage fetches in
    page code.
 3. Keep the main page server-rendered unless interactivity requires a client
    component.

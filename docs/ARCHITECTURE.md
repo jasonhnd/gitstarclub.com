@@ -27,7 +27,7 @@ Because the aggregations are deterministic and the query set is finite, the enti
 These are non-negotiable for the production system. New features must respect all of them; any proposal that breaks one is a flag for an architectural review.
 
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
-2. **Zero runtime database.** Read-side state lives in versioned Blob views resolved through a publish pointer; there is no SQL connection to open.
+2. **Zero runtime database.** Read-side state lives in versioned JSON views in R2 resolved through a publish pointer; there is no SQL connection to open.
 3. **Cloudflare hosting.** Production and preview use Cloudflare Workers with OpenNext. JSON is in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)). Google Analytics and other third-party tracking scripts are intentionally unsupported.
 4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, and service-worker registration. Vercel Web Analytics is not loaded on this host.
 5. **Recurring work is hosted, not laptop-bound.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) is driven by scheduled or authenticated triggers and runs as ordinary async steps. Local pipeline runs are reserved for one-off bootstrap.
@@ -66,7 +66,7 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 │  week) → recompute (rank, entity, heatmap, search index     │
 │  written to views/<run_id>/**) → validate → publish (swap   │
 │  views/latest.json) → garbage-collect old versions          │
-│  Pure-JS throughout; large artifacts go via Blob direct URL │
+│  Pure-JS throughout; large artifacts use the R2 public read origin │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─ Daily cron (live overlay, JSON-only, seconds) ─────────────┐
@@ -177,7 +177,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 ### Physical: JSON view artifacts
 
-Each (period × dim × metric) reduction produces a JSON view: rank tables, entity timelines (per repo, per org), heatmaps, lookup tables for build-time joins, and the client-side search index. Live-overlay paths produce the same logical `current_month.json`, `hot-snapshot.json`, rank and heatmap files under one immutable generation; `live/latest.json` is the only publication switch. The complete Blob layout is in [OPS.md](./OPS.md); per-view schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
+Each (period × dim × metric) reduction produces a JSON view: rank tables, entity timelines (per repo, per org), heatmaps, lookup tables for build-time joins, and the client-side search index. Live-overlay paths produce the same logical `current_month.json`, `hot-snapshot.json`, rank and heatmap files under one immutable generation; `live/latest.json` is the only publication switch. The copied JSON key layout and retained Blob rollback layout is in [OPS.md](./OPS.md); per-view schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
 
 Builds ingest these JSONs directly and bake them into static HTML. Adding a new view means adding a recompute step that produces JSON; the read path needs no engine.
 
@@ -237,7 +237,7 @@ The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per quer
 | Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW. Analytics are off on this host. Third-party analytics are unsupported. |
 | `Cache-Control: s-maxage=86400, stale-while-revalidate` | Historical surfaces cached aggressively |
 | Subset fonts as woff2 | Plus Jakarta Sans subset ~30 KB |
-| OG images from `next/og` routes (`revalidate=86400`), with the site card as the fallback | Drawn by the image route and then cached. Not pre-generated Blob objects. Org pages and `/rankings` use `/opengraph-image`. A later cache hit is not a guarantee of zero function invocations. |
+| OG images from `next/og` routes (`revalidate=86400`), with the site card as the fallback | Drawn by the image route and then cached. Not pre-generated storage objects. Org pages and `/rankings` use `/opengraph-image`. A later cache hit is not a guarantee of zero function invocations. |
 
 ### Page weight
 

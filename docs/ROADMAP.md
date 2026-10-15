@@ -44,9 +44,9 @@ Track A edits pages and precomputed views. Track C does not authorize a POC, a q
 From [README.md](../README.md) and [ARCHITECTURE.md](./ARCHITECTURE.md):
 
 - Zero runtime engine in the request path (no DuckDB / ClickHouse / Postgres / vector index in the serving image).
-- Zero runtime database. Read-side state is versioned Blob views behind a publish pointer.
+- Zero runtime database. Read-side state is versioned JSON views in R2 behind a publish pointer.
 - Static content pages. Near-zero client JavaScript on content surfaces. Named exceptions stay in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
-- Cloudflare Workers hosting through OpenNext. Production JSON stays on Vercel Blob until the R2 cutover in [R2-CUTOVER.md](./R2-CUTOVER.md). Do not add a second runtime database or a request-path engine. Analytics stay off on this host unless a later issue turns a provider on in code.
+- Cloudflare Workers hosting through OpenNext. Production JSON uses R2 after the accepted 2026-10-04 cutover recorded in [R2-CUTOVER.md](./R2-CUTOVER.md). Do not add a second runtime database or a request-path engine. Analytics stay off on this host unless a later issue turns a provider on in code.
 - AI-free product copy. No LLM-generated summaries or classifications at request time.
 
 A proposal that cannot pass this list is vetoed. It is not a Track A ticket, not a Track C POC, and not a feature PR.
@@ -199,11 +199,11 @@ Search is a chrome combobox over `search/index.json`, not a `/search?q=` results
 | Item | Why it exists | Done looks like |
 |---|---|---|
 | Weekly managed refresh stays visible when it fails | Aug 2026 publish stalled for weeks because validate and enqueue failures were easy to miss | `ops/workflows/health/workflow-refresh.json` is the only live operator signal; retired `ops/workflows/health.json` is not read |
-| New pages must not re-probe missing Blob objects | Crawler-driven 404 amplification on `bootstrap/latest.json` | Pointer 404 remains a cached legacy state; no new per-request existence probes |
+| New pages must not re-probe missing stored objects | Crawler-driven 404 amplification on `bootstrap/latest.json` | Pointer 404 remains a cached legacy state; no new per-request existence probes |
 | Dependabot + bun lockfiles | npm Dependabot PRs against `main` fail `bun install --frozen-lockfile` | Next Dependabot wave is retargeted or immediately replaced with a `pre` + lockfile PR (pattern from #351) |
 | Product-gates stay fail-closed when they run | 14-day base pointer and export SLAs are the live contract (#286) | Do not loosen live assertions to land features. Ignored Build / no Vercel Preview is a separate CI soft-skip; the job is not a GitHub required check |
 
-Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on Blob 404s. GitHub required CI gates are `static` + `production-build` only; product-gates stay fail-closed when a Vercel Preview exists and soft-skip otherwise.
+Every Track A PR inherits: no layout-wide `revalidatePath`, no new always-on object-storage 404s. GitHub required CI gates are `static` + `production-build` only; product-gates stay fail-closed when a Vercel Preview exists and soft-skip otherwise.
 
 **Children**
 

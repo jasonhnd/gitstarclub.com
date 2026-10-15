@@ -11,7 +11,7 @@ source_of_truth_for:
 
 # Cloudflare migrate P2 (ISR / Preview / observability)
 
-> Superseded. See [OPS.md](../OPS.md) for logs, preview access, and indexing. Preview is public. Production data stays on Vercel Blob until cutover; see [R2-CUTOVER.md](../R2-CUTOVER.md).
+> Superseded. See [OPS.md](../OPS.md) for logs, preview access, and indexing. Preview is public. Production R2 cutover was accepted on 2026-10-04; the material below is earlier migration history, not current operating instructions. See [R2-CUTOVER.md](../R2-CUTOVER.md).
 
 > Cloudflare migrate **P2** only: abstract `revalidatePath` / `revalidateTag`,
 > make Preview resolution pluggable (`vercel` | `cf`), document Access on the
