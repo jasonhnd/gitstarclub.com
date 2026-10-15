@@ -118,7 +118,7 @@ The numbered plan records the original bootstrap route. Stages 2/3 are unaccepte
 
 ### Stage 0. Stop-bleed
 
-Done before the stage 1 code. Shared-store incident #543: production `views/latest.json` was missing, so the production Worker serves `VIEWS_VERSION_FALLBACK` (`refresh-2026-09-13T06-00-16-398Z`) only after a confirmed 404 of that pointer. Preview schedules are paused (`env.pre` `triggers.crons` is `[]`). Preview does not set `BLOB_*` or the fallback. Production `triggers.crons` stays `[]`.
+Done before the stage 1 code. The original shared-Blob incident #543 introduced the production-only frozen fallback after a confirmed 404 of `views/latest.json`. The accepted stage-4 contract now reads the copied production R2 store. At the dated October 13 check above, its views pointer still returned 404, so preserve `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z` in the Worker and production build shell. Preview schedules are paused in source (`env.pre` `triggers.crons` is `[]`). Preview does not set `BLOB_*` or the fallback. Production `triggers.crons` stays `[]`.
 
 Acceptance (read-only, still required):
 
@@ -126,7 +126,7 @@ Acceptance (read-only, still required):
 node scripts/assert-cf-ci-gates.mjs
 ```
 
-Rollback: do not point preview cron at the production blob store. Remove `VIEWS_VERSION_FALLBACK` only after `views/latest.json` exists on the store production is reading, using the removal steps in [OPS.md](./OPS.md). The fallback is not a pointer write.
+Recovery and later removal: do not point preview at either production store. Removing `VIEWS_VERSION_FALLBACK` requires separate owner authorization, HTTP 200 from the production R2 views pointer, proof that it is authoritative for page data, and a production build without the fallback that still prerenders real data. Change the Worker var and build shell together, following [OPS incident #543](./OPS.md#incident-543-read-only-views-version-fallback) and [stage 4](#stage-4-cutover-i-5b). Keep the existing gate, which already allows an absent or exact frozen fallback and rejects it on preview; do not delete its assertion. Blob-secret removal remains subject to stage 6. The fallback is not a pointer write.
 
 ### Stage 1. Code
 
@@ -420,8 +420,11 @@ identifiers are optional; no generated Next build ID is imported. `__gsc_variant
 full RSC, router state, prefetch, segment prefetch, Next URL, and Accept header
 values so HTML and component payloads never share an entry.
 
-After each weekly data refresh, change `EDGE_CACHE_VERSION` or
-`VIEWS_VERSION_FALLBACK` and redeploy to move all requests to new keys. Operators
+After an authorized weekly data refresh, rotate `EDGE_CACHE_VERSION` in a
+separately authorized deploy to move requests to new keys. Do not change
+`VIEWS_VERSION_FALLBACK` to bust the cache: the production gate accepts only an
+absent value or exactly `refresh-2026-09-13T06-00-16-398Z`, and the missing-pointer
+state requires that exact value until the stage-4 removal prerequisites are met. Operators
 can alternatively use Cloudflare's **Purge Everything**. Cache API entries live
 in individual data centers; a URL purge must target the actual synthetic key,
 including `__gsc_cv` and `__gsc_variant`, rather than just the public page URL.

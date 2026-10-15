@@ -265,17 +265,18 @@ Platform and development-tool variables also belong to the maintained inventory;
 
 ### Incident #543: read-only views version fallback
 
-Production base views resolve through `views/latest.json`. That pointer is missing in the shared Blob store (issue #543), so pages render with no ranking data. The last complete version, `refresh-2026-09-13T06-00-16-398Z`, is still stored under `views/`. Rollback cannot recreate a missing pointer, and this stopgap does not write one.
+The original shared-Blob incident #543 involved a missing `views/latest.json`, which could leave rankings without data before the fallback was added. Production subsequently switched to the copied R2 store under the accepted stage-4 contract. At the [dated October 13 check](./R2-CUTOVER.md#read-only-state-check-2026-10-13), the production R2 views pointer still returned 404 and metadata for `refresh-2026-09-13T06-00-16-398Z` returned 200. Preserve that exact frozen fallback in both the Worker and production build shell while the pointer is absent. This stopgap never writes a pointer; the historical Blob incident is not the current production storage contract.
 
 `VIEWS_VERSION_FALLBACK` is set on the production Worker only (top-level `vars` in the Worker wrangler config). A published read uses it only after a confirmed 404 of `views/latest.json`. A timeout, a 5xx response, or invalid JSON does not use it. If the pointer exists, it wins. Authoritative reads (refresh and other write paths) ignore the variable and still see no pointer. `published_at` is `generated_at` from `views/<version>/meta.json` when that field is a real timestamp, otherwise null. While the fallback is in effect the Worker logs one warning per isolate. Preview `env.pre` must not set the variable.
 
-Remove it after issue #543 restores `views/latest.json`:
+Removal requires separate owner authorization and the same prerequisites as the [production build procedure](#production-build-and-deploy) and [R2 stage 4](./R2-CUTOVER.md#stage-4-cutover-i-5b):
 
-1. Delete the top-level `VIEWS_VERSION_FALLBACK` entry from the Worker wrangler config.
-2. Delete the matching production-var assertion in `scripts/cf-ci-gates.mjs`, and keep the preview rejection until the var is gone from both places.
-3. Redeploy the production Worker.
+1. Confirm `https://data.gitstarclub.com/views/latest.json` returns HTTP 200 and is authoritative for the version rendered by production pages.
+2. Verify a production build without `VIEWS_VERSION_FALLBACK` still prerenders real data, including repository rows and star counts on rankings. HTTP 200 alone is insufficient.
+3. Remove the top-level Worker var and its production build-shell export together in that separately authorized build/deploy change.
+4. Keep the existing `scripts/cf-ci-gates.mjs` assertion: it already permits an absent fallback or exactly `refresh-2026-09-13T06-00-16-398Z`, and preview must still reject the var. No gate deletion or relaxation is needed. Do not remove `BLOB_READ_WRITE_TOKEN` before the separately authorized stage-6 criteria are accepted.
 
-Do not leave the fallback in place after the real pointer exists. A later 404 would keep serving the frozen 2026-09-13 version. This variable never writes the store.
+A valid pointer already takes priority over the fallback. Do not remove or change the fallback merely because issue #543 closes or to rotate cache keys. Until the removal prerequisites are met and the change is authorized, keep the exact frozen value. After authorized removal, a later 404 must not silently select that frozen generation again.
 
 **Conventions**:
 
