@@ -10,93 +10,93 @@ source_of_truth_for:
   - cockpit reader jobs
 ---
 
-# GitStar Cockpit — 内容契约
+# GitStar Cockpit — Content contract
 
-> 本文从**读者要干什么**锁画面。视觉稿只是示意；与本文冲突时以本文为准。
+> This document locks the screen from **what the reader is here to do**. A visual mock is only illustrative; when it conflicts with this document, this document wins.
 >
-> **不是已上线路由。** 不授权新开 `/cockpit`，不授权绕过 [ROADMAP.md](./ROADMAP.md) Track C。
+> **Not an already-shipped route.** It does not authorize newly opening `/cockpit`, and it does not authorize bypassing [ROADMAP.md](./ROADMAP.md) Track C.
 >
-> 产品调性与数据诚实归 [PRODUCT.md](./PRODUCT.md)。榜单口径归 [RANKING.md](./RANKING.md)。分类归 [CATEGORIES.md](./CATEGORIES.md)。字段形状归 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md)。内部指标名（flow / stock）只出现在本文 §9，不出现在玻璃上。
+> Product tone and data honesty belong to [PRODUCT.md](./PRODUCT.md). Ranking definitions belong to [RANKING.md](./RANKING.md). Categories belong to [CATEGORIES.md](./CATEGORIES.md). Field shapes belong to [DATA-CONTRACTS.md](./DATA-CONTRACTS.md). Internal metric names (flow / stock) appear only in §9 of this document, and do not appear on the glass.
 
-## 读者是谁、来干什么
+## Who the reader is, and what they came to do
 
-站点已经回答两件事：[INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md) 的 Pulse（现在谁在动）和 Rankings（谁最大、哪一段谁赢了）。Cockpit 不发明第三套榜单。它让同一个人**看见运动，并能把时间拖回去**。
+The site already answers two things: [INFORMATION-ARCHITECTURE.md](./INFORMATION-ARCHITECTURE.md)'s Pulse (who is moving now) and Rankings (who is the largest, and who won which stretch). Cockpit does not invent a third set of rankings. It lets the same person **see the motion, and drag time back**.
 
-目标读者仍是 [PRODUCT.md](./PRODUCT.md) 的开发者、技术媒体、研究者——他们会搜一个项目名，会引用 as-of，不会来学「flow / Momentum / p90」。
+The target readers are still the developers, tech media, and researchers of [PRODUCT.md](./PRODUCT.md) — they will search a project name, they will cite as-of, and they will not come to learn "flow / Momentum / p90".
 
-打开后 **5 秒内**必须成立：
+Within **5 seconds** of opening, the following must hold:
 
-1. 中间是一片正在动的开源项目，不是一张表。
-2. 已经有一个项目被讲完，不用先点。
-3. 看得出当前在看「这个月」。
-4. 看得出底下有一条能拖的时间轴；鼠标一拉，中间那片点跟着变。
+1. The middle is a field of open-source projects that are moving, not a table.
+2. One project has already been told through, with no need to click first.
+3. One can see that what is being looked at now is "this month".
+4. One can see that there is a timeline underneath that can be dragged; one pull of the mouse, and the field of dots in the middle changes with it.
 
-四件读者任务，按优先级：
+Four reader tasks, by priority:
 
-| 任务 | 读者心里的话 | Cockpit 怎么接 |
+| Task | What the reader is thinking | How Cockpit answers |
 |---|---|---|
-| **看天气** | 这阵子开源在涨什么？ | 雷达 + 左侧三条头条 + 默认讲涨得最多的那个 |
-| **跟一个项目** | 它是怎么长到今天的？ | 选中后：故事栏 + 时间轴上它的 10k/50k/100k；拖到那天就看到当时 |
-| **找邻居** | 同类还有谁？ | Nearby 三个点；Compare |
-| **倒带世界** | 2019 年长什么样？它破 10 万那天呢？ | 用鼠标在全历史轴上来回拖；点里程碑是跳到那天 |
+| **Read the weather** | What has open source been gaining lately? | Radar + three headlines on the left + by default tell the one that gained the most |
+| **Follow one project** | How did it grow to today? | After it is selected: the story column + its 10k/50k/100k on the timeline; drag to that day and see then |
+| **Find neighbors** | Who else is of the same kind? | Three Nearby dots; Compare |
+| **Rewind the world** | What did 2019 look like? And the day it broke 100k? | Drag back and forth with the mouse on the all-history axis; clicking a milestone jumps to that day |
 
-做不到这四件事的控件，不进第一版。
+A control that cannot do these four things does not enter the first version.
 
 ---
 
-## 这版改了什么（相对上一份锁）
+## What this version changed (relative to the previous lock)
 
-上一份从数据模块出发，读者要先学会我们的词。这版改成读者的词。冲突时以这版为准。
+The previous one started from data modules, and the reader had to learn our words first. This version is changed to the reader's words. On a conflict, this version wins.
 
-| 旧锁 | 新锁 | 为什么 |
+| Old lock | New lock | Why |
 |---|---|---|
-| 左侧 5 条 Rising / Accelerating / Persistent Growth / New Entrants / Category Movers | 左侧 **3 条头条**：Moving now / Speeding up / New on the map | 五条并列是控制室，不是阅读。读者一次只看「谁在涨、谁在加速、谁刚进万星」 |
-| 芯片 `1W 1M 1Y ALL` | 芯片只要 **This week / This month / This year**。时间轴永远是全历史 | `ALL` 在时间条上看起来像「整段历史」，实际却在改「什么叫在动」。两件事不要绑一个键 |
-| 右侧同等的 7d / 30d / 1y + Momentum + Acceleration | 故事栏主句跟当前芯片一致（This month +9.2k）；「比上月」用白话；不要 Very high | 同一项目左边 this month、右边 7d，读者会对哪一个是真的 |
-| 时间轴主操作是 Play | **主操作是鼠标来回拖时间轴**。Play 只是可选的自动滑动，不是这个舱存在的理由 | 打开时头在今天很正常；读者往左拖就能回到 2019 |
-| Persistent Growth 独立成条 | 撤掉。若选中项目连涨 3 个月，写在故事栏一句 | 那是这个项目的属性，不是全球头条 |
-| Category Movers 独立成条 | 撤掉。分类名次变化写在故事栏 `In AI / ML  #2  was #4` | 读者关心「它在自己那类里的位置」，不是第五条头条 |
+| 5 items on the left, Rising / Accelerating / Persistent Growth / New Entrants / Category Movers | **3 headlines** on the left: Moving now / Speeding up / New on the map | Five side by side is a control room, not reading. At one time the reader looks only at "who is rising, who is accelerating, who just entered 10k stars" |
+| Chips `1W 1M 1Y ALL` | The chips are only **This week / This month / This year**. The timeline is always all-history | On the time bar, `ALL` looks like "the whole history", but it actually changes "what counts as moving". Do not bind the two things to one key |
+| An equivalent 7d / 30d / 1y + Momentum + Acceleration on the right | The story column's main sentence matches the current chip (This month +9.2k); "vs last month" is in plain language; do not use Very high | The same project has this month on the left and 7d on the right, and the reader will doubt which one is the real one |
+| The timeline's main action is Play | **The main action is dragging the timeline back and forth with the mouse**. Play is only an optional auto-slide, not the reason this cabin exists | It is normal for the head to be on today when it opens; the reader drags left and can get back to 2019 |
+| Persistent Growth as its own item | Remove it. If the selected project has risen for 3 months in a row, write one sentence in the story column | That is a property of this project, not a global headline |
+| Category Movers as its own item | Remove it. A change in category place is written in the story column as `In AI / ML  #2  was #4` | The reader cares about "its place in its own category", not a fifth headline |
 
 ---
 
-## 锁定决策
+## Locked decisions
 
-| 决策 | 锁定值 |
+| Decision | Locked value |
 |---|---|
-| 默认打开 | This month；播放头 = 今天；故事 = 本月涨星最多的项目 |
-| 「在动」的含义 | 由芯片决定：This week / This month / This year |
-| 时间轴范围 | 永远从数据最早月 → 今天。没有 ALL 键 |
-| 左侧头条 | 3 条，每条一个 repo，规则见 §3 |
-| 故事栏主增量 | **与芯片同一句话**（This month / This week / This year） |
-| 节点大小 | 体量（今天的 stars；拖历史则当时的累计） |
-| 节点亮 / 尾 | 亮 = 这窗在涨；尾 = 比上一窗涨得更快 |
-| 节点颜色 | 领域；图例 5 组：AI / Dev Tools / Database / Infra / Web |
-| 雷达前景 | 体量或本窗涨幅进前约 400；其余极淡 |
-| 玻璃上的语言 | 默认英文。禁止 flow、stock、Momentum、Acceleration、p90、intel |
-| 雷达怎么画 | **先用 Three.js 做出能看的星空**。好看再留；太重或太像游戏，再换成更轻的画法。数据帧不变 |
+| Open by default | This month; playhead = today; story = the project that gained the most stars this month |
+| Meaning of "moving" | Decided by the chip: This week / This month / This year |
+| Timeline range | Always from the earliest month in the data → today. There is no ALL key |
+| Left headlines | 3 items, one repo each, rules in §3 |
+| Story-column primary delta | **The same sentence as the chip** (This month / This week / This year) |
+| Node size | Scale (today's stars; if history is dragged, the cumulative total then) |
+| Node bright / tail | bright = rising in this window; tail = rising faster than the previous window |
+| Node color | Domain; a legend of 5 groups: AI / Dev Tools / Database / Infra / Web |
+| Radar foreground | Scale, or this window's gain, in about the top 400; the rest extremely faint |
+| Language on the glass | English by default. Forbid flow, stock, Momentum, Acceleration, p90, and intel |
+| How to draw the radar | **First use Three.js to make a starfield one can look at**. If it looks good, keep it; if it is too heavy or too much like a game, switch to a lighter way of drawing. The data frames do not change |
 
 ---
 
-## 1. 顶栏
+## 1. Top bar
 
-读者要认出这是 GitStarClub，并且能搜自己已经知道的名字。
+The reader must recognize that this is GitStarClub, and be able to search a name they already know.
 
-| 画面 | 读者得到什么 |
+| What is on screen | What the reader gets |
 |---|---|
-| `★ GitStarClub` + `Cockpit` | 还在这个产品里，只是换成探索模式 |
-| `Explore how open source moves` | 这句话就是任务 |
-| Search | 输入已知 `owner/name`，在雷达里选中它，不先踢去详情页 |
-| 日期 | 「这些数算到哪一天」——和全站 as-of 同一套 |
+| `★ GitStarClub` + `Cockpit` | Still inside this product, only switched into explore mode |
+| `Explore how open source moves` | This sentence is the task |
+| Search | Enter a known `owner/name`, select it in the radar, and do not kick it to the detail page first |
+| Date | "Which day these numbers are counted through" — the same set as the site-wide as-of |
 
-语言、主题与现站相同。
+Language and theme are the same as the current site.
 
 ---
 
-## 2. 雷达（天气）
+## 2. Radar (weather)
 
-读者应感到：每个亮点是一个真实项目；大的是星多的；在闪的是这阵子在涨的。
+The reader should feel: each bright dot is a real project; a big one has more stars; a flashing one is one that is rising lately.
 
-Hover 只说人话：
+Hover says only plain language:
 
 ```text
 huggingface/transformers
@@ -104,53 +104,53 @@ huggingface/transformers
 +9.2k this month
 ```
 
-最多约 6 个名字印在图上（本窗涨得最多的、体量极大的、当前选中的）。不要把图做成标签云。
+At most about 6 names are printed on the chart (the ones that gained the most this window, the ones of extreme scale, and the one currently selected). Do not turn the chart into a tag cloud.
 
-点一下：右边换成这个项目的故事，底下时间轴换成它的 10k / 50k / 100k。不要空选中——打开时已经在讲「这月涨最多的那个」。
+One click: the right side switches to this project's story, and the timeline underneath switches to its 10k / 50k / 100k. Do not allow an empty selection — on open it is already telling "the one that gained the most this month".
 
-不做缩放、不做漫游。要找认识的项目，用 Search。
+No zoom, and no roaming. To find a project one recognizes, use Search.
 
 ---
 
-## 3. 左侧头条（天气的标题）
+## 3. Left headlines (the titles of the weather)
 
-不是菜单。三条，永远这个顺序，每条一个项目。
+Not a menu. Three items, always in this order, one project each.
 
-| 玻璃上的标题 | 读者听成 | 规则（内部，见 §9） |
+| Title on the glass | What the reader hears it as | Rule (internal, see §9) |
 |---|---|---|
-| **Moving now** | 这阵子涨最多的 | 本窗净增星第 1，且 > 0 |
-| **Speeding up** | 比上一阵更快的 | 本窗净增 > 0，且比上一窗多得最多 |
-| **New on the map** | 刚进万星宇宙的 | 本窗**首次**跨过 10k（冻结里程碑） |
+| **Moving now** | The one that gained the most lately | Rank 1 by net stars added this window, and > 0 |
+| **Speeding up** | Faster than the previous stretch | Net added this window > 0, and the one that gained the most more than the previous window |
+| **New on the map** | Just entered the 10k-star universe | **First** crossed 10k in this window (a frozen milestone) |
 
-每条只放：
+Each item holds only:
 
-- 标题
+- Title
 - `owner/name`
-- 现在的 star 数
-- 一句增量：`+9.2k this month`（随芯片改 week / year）
-- 一条 90 日小曲线（让人感到在动，不读坐标）
+- The star count now
+- One delta sentence: `+9.2k this month` (it changes with the chip to week / year)
+- One 90-day small curve (so a person feels the motion, and does not read the axes)
 
-Speeding up 的角标可以是白话 `faster than last month`，不要 `+38%` 单独飞在标题上（百分比没有基数，读者会虚）。
+The corner mark of Speeding up may be the plain language `faster than last month`; do not let `+38%` fly alone on the title (a percentage has no base, and the reader will feel it is hollow).
 
-点一条 = 选中这个项目。三条名单只随芯片变，不随选中变。选中的那条轻轻高亮。
+Clicking one item = select this project. The list of three changes only with the chip, not with the selection. The selected item is highlighted lightly.
 
-某条本窗没人：标题留下，项目处 `—`。不要把上个月的「新晋」留到这个月。
+If some item has nobody this window: leave the title, and put `—` where the project would be. Do not keep last month's "newcomer" into this month.
 
 ---
 
-## 4. 右侧故事（跟一个项目）
+## 4. Story on the right (follow one project)
 
-读者刚点完（或默认已经在看）一个项目。这里只回答：它现在多大、这阵子涨了多少、在同类里排第几、附近是谁、我能对比或看全文。
+The reader has just finished clicking (or is already looking, by default) at one project. This place answers only: how big it is now, how much it has gained lately, what place it has among its kind, who is nearby, and whether I can compare or read the full text.
 
-默认英文，结构锁定：
+English by default, and the structure is locked:
 
 ```text
 huggingface/transformers
-164.1k stars                    ← 播放头时刻；不在今天则加 as of 2019-07
+164.1k stars                    ← playhead moment; if it is not today, add as of 2019-07
 
-This month          +9.2k       ← 与芯片同一句话
-vs last month       faster      ← 比上一窗多；没有上一窗则 —
-In AI / ML          #2  was #4  ← registry 分类名，禁止 Local AI
+This month          +9.2k       ← the same sentence as the chip
+vs last month       faster      ← more than the previous window; if there is no previous window, then —
+In AI / ML          #2  was #4  ← registry category name, forbid Local AI
 
 Last 90 days        [curve]
 
@@ -159,161 +159,161 @@ Nearby              pytorch · diffusers · datasets
 [Compare]  [Full history]
 ```
 
-芯片切到 This week / This year 时，第一行改成 `This week` / `This year`。不要同时再摆 7d / 30d / 1y 三块——那是第二套钟。
+When the chip switches to This week / This year, the first line changes to `This week` / `This year`. Do not also lay out three blocks of 7d / 30d / 1y at the same time — that is a second clock.
 
-90 日曲线已经给「最近长什么样」。读者要十年曲线，走 Full history。
+The 90-day curve already gives "what the recent stretch looks like". If the reader wants a ten-year curve, go to Full history.
 
-若这个项目**连续 3 个日历月**都在涨，在 `vs last month` 下加一句 `3rd month climbing`。这是故事属性，不是全球头条。
+If this project has been rising for **3 calendar months in a row**, add one sentence `3rd month climbing` under `vs last month`. This is a property of the story, not a global headline.
 
-Nearby：现有 related（同属主或同语言，按体量截 3）。点 Nearby = 换成讲那个项目。Compare = 带上当前项目去 `/compare`。Full history = `/{owner}/{name}`。
+Nearby: the existing related (same owner or same language, cut to 3 by scale). Clicking Nearby = switch to telling that project. Compare = take the current project to `/compare`. Full history = `/{owner}/{name}`.
 
 ---
 
-## 5. 时间轴（倒带）
+## 5. Timeline (rewind)
 
-这是数据舱相对现站列表的独特能力：**用鼠标在时间上走来走去**。不是按一下 Play 等它自己放完。
+This is the unique ability of the data cabin relative to the current site's lists: **walk back and forth in time with the mouse**. It is not pressing Play once and waiting for it to finish playing by itself.
 
-轴永远是全历史。头默认停在今天。读者往左拖，就是回到过去；往右拖，回到今天。中间的点、选中项目的大数字，都跟头走。
+The axis is always all-history. The head stops on today by default. The reader drags left, and that is going back to the past; drags right, and that is coming back to today. The dots in the middle, and the big number of the selected project, all move with the head.
 
-| 读者动作 | 应该发生的事 |
+| Reader action | What should happen |
 |---|---|
-| 按住轴上的头左右拖 | 雷达立刻变成**那个时候**：点的大小是当时体量，亮的是那一窗在涨的 |
-| 点轴上空白 | 头跳到那一年/月 |
-| 点 10k / 50k / 100k | 跳到选中项目真正跨过那天（冻结里程碑，不是估的） |
-| This week / This month / This year | 只改变「什么叫在涨」，不缩短轴。轴还是全历史 |
-| Play（可选） | 头沿轴自动滑。可有，不是主路径。已经在今天时，自动滑应从读者能理解的起点开始，或干脆不提供自动滑 |
-| `prefers-reduced-motion` | 不要自动滑；拖和点仍然可用 |
+| Hold the head on the axis and drag left or right | The radar immediately becomes **that time**: a dot's size is the scale then, and the bright ones are the ones rising in that window |
+| Click blank space on the axis | The head jumps to that year/month |
+| Click 10k / 50k / 100k | Jump to the day the selected project truly crossed it (a frozen milestone, not an estimate) |
+| This week / This month / This year | It only changes "what counts as rising", and it does not shorten the axis. The axis is still all-history |
+| Play (optional) | The head auto-slides along the axis. It may exist, and it is not the main path. When it is already on today, auto-slide should start from a point the reader can understand, or simply not offer auto-slide |
+| `prefers-reduced-motion` | Do not auto-slide; drag and click are still available |
 
-事件点只属于**当前选中项目**。禁止写「Ollama 0.3 release」这种手填发行说明。
-
----
-
-## 6. 打开时
-
-1. 芯片 = This month。
-2. 播放头 = 今天。
-3. 雷达 = 这个月在动的宇宙。
-4. 三条头条 = 本月 Moving now / Speeding up / New on the map。
-5. 故事栏 = Moving now 那个项目。
-6. 轴上的点 = 该项目的 10k / 50k / 100k。
-
-概念图可以用 `huggingface/transformers` 充当 Moving now，好让名字认得出来。上线后必须是该窗净增第 1，不得写死。
+Event dots belong only to the **currently selected project**. Do not write a hand-filled release note such as "Ollama 0.3 release".
 
 ---
 
-## 7. 交互（读者路径）
+## 6. On open
 
-始终在讲一个项目。
+1. Chip = This month.
+2. Playhead = today.
+3. Radar = the universe that is moving this month.
+4. The three headlines = this month's Moving now / Speeding up / New on the map.
+5. Story column = that Moving now project.
+6. The dots on the axis = that project's 10k / 50k / 100k.
 
-**来找天气的人：** 打开就能看。点头条或点雷达，右边换成那个项目。把芯片拨到 This week，三条头条换成周的。不必学任何指标名。
-
-**带着名字来的人：** Search 命中即选中。不在 400 个亮点里也要能选中，并临时画进前景。
-
-**想看它怎么长的人：** 拖时间轴，或点轴上的 10k。大数字跟着当时走。故事栏主句（This month +9.2k）**仍说相对今天的这窗**，避免「2019 年的 this month」这种假账；只让大数字和雷达体量穿越。大数字旁出现 `as of Jul 2019`。
-
-**想找邻居的人：** Nearby 换选中；Compare 离开去叠曲线。
-
-点雷达空白：不取消选中。
-
-键盘：← → 按月/周挪头；Home / End = 最早 / 今天。Space 只有在提供 Play 时才是自动滑。
+The concept picture may use `huggingface/transformers` as Moving now, so the name can be recognized. After it ships, it must be rank 1 by net added in that window, and it must not be hardcoded.
 
 ---
 
-## 8. 玻璃上禁止
+## 7. Interaction (reader paths)
 
-| 禁止 | 读者会怎样 |
+Always telling one project.
+
+**People who came for the weather:** they can look as soon as it opens. Click a headline or click the radar, and the right side switches to that project. Flip the chip to This week, and the three headlines switch to the week's. There is no need to learn any metric name.
+
+**People who came with a name:** a Search hit selects it at once. Even if it is not among the 400 bright dots it must still be selectable, and be drawn into the foreground temporarily.
+
+**People who want to see how it grew:** drag the timeline, or click 10k on the axis. The big number moves with that time. The story column's main sentence (This month +9.2k) **still says this window relative to today**, to avoid a false account such as "2019's this month"; only the big number and the radar scale travel through. `as of Jul 2019` appears beside the big number.
+
+**People who want to find neighbors:** Nearby switches the selection; Compare leaves to overlay curves.
+
+Click blank space on the radar: do not clear the selection.
+
+Keyboard: ← → move the head by month/week; Home / End = earliest / today. Space is auto-slide only when Play is offered.
+
+---
+
+## 8. Forbidden on the glass
+
+| Forbidden | What the reader would get |
 |---|---|
-| flow / stock / Momentum / Acceleration / intel / p90 | 这是我们的词，不是他们的任务 |
-| `ALL` 键、`3M` 键 | 时间轴已经是全部；三个月没有榜 |
-| 左侧写 7d / 30d，右侧再写 This month | 两个钟 |
-| Very high / exploding / breakout | 像在打分，不像在陈述 |
-| 自造分类名 | 对不上分类页 |
-| 五条以上并列头条 | 不知道先看哪句 |
-| 时间轴拖了中间的点却不动 | 独特能力死掉 |
-| 白名单外的项目、编造的 10k 日期、LLM 摘要 | 破坏全站诚实 |
+| flow / stock / Momentum / Acceleration / intel / p90 | These are our words, not their task |
+| An `ALL` key, a `3M` key | The timeline is already the whole thing; three months have no ranking |
+| Writing 7d / 30d on the left, and writing This month again on the right | Two clocks |
+| Very high / exploding / breakout | It is like scoring, not like stating |
+| Invented category names | They will not match the category pages |
+| More than five headlines side by side | One does not know which sentence to look at first |
+| The timeline was dragged but the dots in the middle do not move | The unique ability dies |
+| Projects outside the whitelist, fabricated 10k dates, LLM summaries | They break site-wide honesty |
 
-示例数字不是契约。上线用该 as-of 的真实视图。
+Example numbers are not the contract. After it ships, use the real view of that as-of.
 
 ---
 
-## 9. 内部映射（不写在玻璃上）
+## 9. Internal mapping (not written on the glass)
 
-实现对照用。读者不需要知道这些名字。
+For implementation cross-reference. The reader does not need to know these names.
 
-| 玻璃 | 内部 |
+| Glass | Internal |
 |---|---|
-| 体量 / 大数字 stars | `current_stars`；历史月末 `curve.monthly.total_end` |
-| This week / month / year 的 +k | 对应窗 repo **flow**（净增，可负则该项目不进 Moving now） |
-| faster / slower / — | `flow_t − flow_{t-1}`。分母 floor 100 只用于是否入选 Speeding up 的排序，玻璃默认不展示百分比 |
-| New on the map | 已有 new 榜 / 冻结 `crossed_10k` |
-| In {label} #n was #m | 主 `domain` 的 `rank` + `prev_rank`，label 来自 registry |
-| 3rd month climbing | 连续 3 个日历月 flow > 0 |
-| 亮 | 本窗 flow > 0 |
-| 尾 | `flow_t > flow_{t-1}` |
-| 颜色 5 组 | `ai-ml` → AI；`devtools` → Dev Tools；`data-db` → Database；`infra-cloud` → Infra；`web-frontend`+`web-backend` → Web |
-| Nearby | 现有 related 规则 |
-| 90 日曲线 | `curve.recent_daily` 累计 |
+| Scale / big-number stars | `current_stars`; historical month-end `curve.monthly.total_end` |
+| This week / month / year's +k | The corresponding window's repo **flow** (net added; if it can be negative, that project does not enter Moving now) |
+| faster / slower / — | `flow_t − flow_{t-1}`. A denominator floor of 100 is used only to order whether something is selected into Speeding up; the glass does not show a percentage by default |
+| New on the map | The existing new ranking / frozen `crossed_10k` |
+| In {label} #n was #m | The primary `domain`'s `rank` + `prev_rank`, and the label comes from the registry |
+| 3rd month climbing | 3 calendar months in a row with flow > 0 |
+| Bright | This window's flow > 0 |
+| Tail | `flow_t > flow_{t-1}` |
+| Color, 5 groups | `ai-ml` → AI; `devtools` → Dev Tools; `data-db` → Database; `infra-cloud` → Infra; `web-frontend`+`web-backend` → Web |
+| Nearby | The existing related rules |
+| 90-day curve | `curve.recent_daily` cumulative |
 
-已有增速榜（flow / 期初 stock）仍只活在 ranking 页，不进 Cockpit 玻璃。
-
----
-
-## 10. 实现边界（本文不授权开工）
-
-预计算视图可以做「400 点雷达包」和「三条头条」。不能在浏览器扫 5,300 份 entity。不能在请求路径上跑引擎。白名单外下钻、任意分面仍归 Track C。
+The existing growth-rate ranking (flow / period-start stock) still lives only on the ranking page, and does not enter the Cockpit glass.
 
 ---
 
-## 11. 雷达怎么画（先 Three.js）
+## 10. Implementation boundary (this document does not authorize starting work)
 
-还没人见过「用鼠标来回拖时间轴时，这片星长什么样」。在看清效果之前，**不关掉 Three.js**。
-
-顺序锁定：
-
-1. **先做 Three.js 样片**（中间星空 + 可拖时间轴；左右栏可用静态壳）。目的是看：拖的时候光、尾巴、深度跟不跟得上。不是做游戏，也不是做自动播放器。
-2. 样片过关：拖轴时点在变，像概念图，而不是 Excel 散点图 → **就留 Three.js**，用动态加载，只有打开数据舱才下载。
-3. 样片失败：太卡、包太大、或一旋转就变成飞船 → 换更轻的画法，**同一份时间帧数据**，读者看到的字和按钮不变。
-
-样片里也必须遵守：
-
-- 相机锁死，正面看，不能拖着转
-- 不要轨道旋转、不要驾驶舱、不要人物
-- 数字和日期仍由网页管；Three.js 只负责把那一帧的点画亮
-- 没有 3D 时，退回普通圆点，功能还在
-
-WebGPU 不当第一道门槛。Three.js 若自带更好的后端，可以以后再开。
+A precomputed view may make a "400-dot radar pack" and "three headlines". Do not scan 5,300 entity files in the browser. Do not run the engine on the request path. Drill-down outside the whitelist, and arbitrary facets, still belong to Track C.
 
 ---
 
-## 12. 和现站的关系（两套面，不是把 Cockpit 拆成两期）
+## 11. How to draw the radar (Three.js first)
 
-GitStarClub 以后是两套阅读面，共用同一份 ≥10k 数据：
+Nobody has yet seen "what this field of stars looks like while dragging the timeline back and forth with the mouse". Before the effect is seen clearly, **do not turn off Three.js**.
 
-| 面 | 是什么 | 读者来干什么 |
+The order is locked:
+
+1. **First make a Three.js sample** (a starfield in the middle + a draggable timeline; the left and right columns may use a static shell). The purpose is to see whether, while dragging, the light, the tails, and the depth can keep up. It is not making a game, and it is not making an auto-player.
+2. The sample passes: while dragging the axis the dots are changing, like the concept picture rather than an Excel scatter plot → **keep Three.js**, load it dynamically, and download it only when the data cabin is opened.
+3. The sample fails: too laggy, the bundle too big, or one rotation and it becomes a spaceship → switch to a lighter way of drawing, with **the same time-frame data**, and the words and buttons the reader sees do not change.
+
+The sample must also obey:
+
+- The camera is locked, viewed from the front, and cannot be dragged around to rotate
+- No orbit rotation, no cockpit, and no characters
+- Numbers and dates are still owned by the web page; Three.js is only responsible for painting that frame's dots bright
+- When there is no 3D, fall back to ordinary round dots, and the function is still there
+
+WebGPU is not the first threshold. If Three.js brings its own better backend, it may be turned on later.
+
+---
+
+## 12. Relationship with the current site (two surfaces, not splitting Cockpit into two phases)
+
+GitStarClub will from then on be two reading surfaces, sharing the same copy of ≥10k data:
+
+| Surface | What it is | What the reader came to do |
 |---|---|---|
-| **静态页 = 现在的网站** | Pulse、榜单、repo/org、分类、Compare | 打开就能读、能引用、能被搜索引擎抓。几乎无客户端 JS |
-| **动态数据舱 = Cockpit** | 新做的、可用鼠标在时间上走的星空 | 看天气、跟一个项目、拖轴倒带。Three.js 只活在这里 |
+| **Static pages = the website now** | Pulse, rankings, repo/org, categories, Compare | It can be read as soon as it opens, it can be cited, and it can be crawled by a search engine. Almost no client JS |
+| **Dynamic data cabin = Cockpit** | Newly made, a starfield one can walk through in time with the mouse | Read the weather, follow one project, drag the axis to rewind. Three.js lives only here |
 
-Cockpit **不替换** 现站。搜 `react star history` 进来的人仍落在 repo 页。Cockpit 是多一种「看开源怎么动」的入口。
+Cockpit **does not replace** the current site. A person who comes in by searching `react star history` still lands on the repo page. Cockpit is one more entrance for "watching how open source moves".
 
-现站的迭代继续走 [ROADMAP.md](./ROADMAP.md) 的 Track A / B / C，不因为 Cockpit 停掉。
+Iteration of the current site continues along [ROADMAP.md](./ROADMAP.md)'s Track A / B / C, and does not stop because of Cockpit.
 
-Cockpit 现在**不是** Track A 实现流，也**不是** Track C（不扩白名单、不上查询引擎）。正式写进 Roadmap 要等：`pre` 上舱的样片过关，并且 Track C 在 2026-09-12 有结论，再开 epic 子 issue。样片只在 **`pre`**，**不进 `main`**，路由 `noindex`。
+Cockpit **is not** now a Track A implementation stream, and it **is not** Track C (do not expand the whitelist, and do not put a query engine up). Writing it into the Roadmap for real waits for: the sample of the cabin on `pre` to pass, and for Track C to have a conclusion on 2026-09-12, and then an epic sub-issue is opened. The sample lives only on **`pre`**, it **does not enter `main`**, and the route is `noindex`.
 
-### 现站 Roadmap 怎么定
+### How the current site's Roadmap is decided
 
-还是现在那张图：把现有 ≥10k 编年史和 Pulse 读深、读能引用。A1–A4 已在 `pre` 合完。新的现站点功能仍要挂在开放 epic 的子 issue 上，冻到 2026-09-12 的规则不变。
+It is still that same picture: read the existing ≥10k chronicle and Pulse deeply, and read them so they can be cited. A1–A4 are already merged on `pre`. A new current-site feature must still hang on the open epic's sub-issue, and the rule frozen until 2026-09-12 does not change.
 
-### 数据舱 Roadmap 怎么定
+### How the data cabin's Roadmap is decided
 
-只回答一件事：**在 pre 上用鼠标来回拖时间轴，这片星值不值得成为一个入口。**
+It answers only one thing: **on pre, dragging the timeline back and forth with the mouse, is this field of stars worth becoming an entrance.**
 
-1. **样片（现在）** — 假数据 + Three.js + 可拖的轴。相机锁死。现站一条代码都不必为了它改阅读页。
-2. **过关** — 拖到 2019，点明显变小/变暗；拖回今天，涨的点亮起来；点一颗有故事；不像飞船、不像散点图。光和深度不够就继续 Three.js。
-3. **过关之后** — 才做真的预计算雷达包，才谈挂进导航、才谈和 Pulse 怎么链过去。
-4. **不过关** — Cockpit 停在样片，现站照常发版。
+1. **Sample (now)** — fake data + Three.js + a draggable axis. The camera is locked. The current site does not have to change a single line of reading-page code for it.
+2. **Pass** — drag to 2019, and the dots clearly get smaller/dimmer; drag back to today, and the rising dots light up; click one and there is a story; it does not look like a spaceship, and it does not look like a scatter plot. If the light and the depth are not enough, continue with Three.js.
+3. **After it passes** — only then make a real precomputed radar pack, only then talk about hanging it in the navigation, and only then talk about how to link onward with Pulse.
+4. **If it does not pass** — Cockpit stays at the sample, and the current site ships as usual.
 
-两套面共用 lookup、榜、曲线、分类；舱多出来的只有「400 点时间帧」和 Three.js 岛。现站页面继续 RSC，不把 Three.js 带进 Pulse / 榜单 / repo 页。
+The two surfaces share lookup, rankings, curves, and categories; what the cabin adds is only "400-dot time frames" and the Three.js island. Current-site pages stay RSC, and do not bring Three.js into Pulse / ranking / repo pages.
 
 
 

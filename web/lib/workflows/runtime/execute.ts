@@ -2,17 +2,17 @@ import { sendAlert } from "@/lib/observability/alert";
 import { markFailed, markPublished, startRun } from "@/lib/workflows/checkpoint";
 import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
 import { buildAliases } from "@/lib/workflows/steps/aliases";
-import { foldCanonical } from "@/lib/workflows/steps/fold";
+import { runFoldStep } from "@/lib/workflows/steps/fold";
 import { gcVersions } from "@/lib/workflows/steps/gc";
 import { refreshMetadataBucket } from "@/lib/workflows/steps/metadata";
-import { preflightCanonical } from "@/lib/workflows/steps/preflight";
+import { runPreflightStep } from "@/lib/workflows/steps/preflight";
 import { publishVersion } from "@/lib/workflows/steps/publish";
 import { recomputeOrgEntities, recomputeRepoEntities } from "@/lib/workflows/steps/recompute-entity";
 import { recomputeHeatmap } from "@/lib/workflows/steps/recompute-heatmap";
-import { recomputeRank } from "@/lib/workflows/steps/recompute-rank";
+import { runRecomputeRankStep } from "@/lib/workflows/steps/recompute-rank";
 import { detectRenames } from "@/lib/workflows/steps/rename";
 import { validateVersion } from "@/lib/workflows/steps/validate";
-import { refreshWhitelist } from "@/lib/workflows/steps/whitelist";
+import { runWhitelistStep } from "@/lib/workflows/steps/whitelist";
 import type { FullRefreshStepName, RefreshStepJob, RefreshStepResult } from "./types";
 
 function requireToken(job: RefreshStepJob): number {
@@ -31,9 +31,9 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
       return { name, startedAt: started.startedAt, fencingToken: started.fencingToken };
     }
     case "preflight":
-      return { name, preflight: await preflightCanonical(runId) };
+      return { name, ...(await runPreflightStep(runId, job.cursor)) };
     case "whitelist":
-      return { name, ...(await refreshWhitelist(runId, requireToken(job))) };
+      return { name, ...(await runWhitelistStep(runId, requireToken(job), job.cursor)) };
     case "rename":
       return { name, ...(await detectRenames(runId, requireToken(job))) };
     case "metadata": {
@@ -41,9 +41,9 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
       return { name, ...(await refreshMetadataBucket(runId, bucket, requireToken(job))) };
     }
     case "fold":
-      return { name, ...(await foldCanonical(runId, requireToken(job))) };
+      return { name, ...(await runFoldStep(runId, requireToken(job), job.cursor)) };
     case "recomputeRank":
-      return { name, ...(await recomputeRank(runId, requireToken(job))) };
+      return { name, ...(await runRecomputeRankStep(runId, requireToken(job), job.cursor)) };
     case "recomputeRepoEntities":
       return { name, ...(await recomputeRepoEntities(runId, requireToken(job))) };
     case "recomputeOrgEntities":

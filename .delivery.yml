@@ -9,12 +9,16 @@ adapters:
   gate: human-merge      # humans choose what merges
 worker:
   base_branch: pre       # gitstarclub integrates on pre; promote = merge pre -> main
-  command_hint: "implement the issue per its acceptance and docs/GEO.md; honor the hard constraints (no runtime AI, near-zero client JS on content pages, Vercel-first, deterministic, English-only, no new pages unless the issue says so); run the web/ checks; commit"
+  command_hint: "implement the issue per its acceptance and docs/GEO.md; honor the hard constraints (no runtime AI, near-zero client JS on content pages, Cloudflare Workers hosting, Cloudflare R2 storage (Vercel Blob only until the stage-6 cutover), deterministic, English-only, no new pages unless the issue says so); run the web/ checks; commit"
 verifier:
   model: "claude-opus-4-8[1m]"
   reasoning_effort: max
 ci:
-  checks: [static, production-build, preview-e2e, product-gates]  # product-gates = live #286; cf-preview / cf-workers-host are optional CF dual-runs and MUST NOT be added here (not ruleset required)
+  checks: [static, production-build]  # Required = static + production-build. preview-e2e / product-gates optional / skippable (Ignored Build / no Preview). cf-preview / cf-workers-host MUST NOT be added (not ruleset required)
+  # Named by scripts/assert-cf-ci-gates.mjs (keep these Worker names in sync):
+  #   main → gitstarclub-web (production; wrangler top-level triggers.crons MUST stay [])
+  #   pre  → gitstarclub-web-pre (wrangler env pre)
+  # GHA/scripts must never live-deploy gitstarclub-web or PUT production schedules.
 verification:
   browser:
     enabled: auto        # browser-verify UI changes automatically

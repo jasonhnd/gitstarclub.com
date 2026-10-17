@@ -1,7 +1,7 @@
 ---
 owner: data exports
 status: active
-last_reviewed: 2026-08-30
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - public data export set
   - export regeneration commands
@@ -11,7 +11,7 @@ source_of_truth_for:
 
 # GitStarClub data exports
 
-GitStarClub publishes small, deterministic CSV and JSON extracts for reuse and citation. They are generated from existing precomputed Vercel Blob views and checked in as static assets under `web/public/data/exports/v1/`.
+GitStarClub publishes small, deterministic CSV and JSON extracts for reuse and citation. They are generated from existing precomputed JSON views in Cloudflare R2 (production still reads Vercel Blob until cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md)) and checked in as static assets under `web/public/data/exports/v1/`.
 
 Exports are stored once, in dated directories such as `web/public/data/exports/v1/YYYY-MM-DD/`. The public `/data/exports/v1/latest/*` URLs are stable aliases rewritten by Next.js to the newest dated directory at build time; `latest/` is not a second copy of the CSV or JSON payloads. Dataset JSON-LD reads that same `public/data/exports/v1` folder through a statically scoped path so the Next/Turbopack build does not `readdir` the repository root.
 
@@ -153,18 +153,21 @@ EOF
 )"
 ```
 
-5. After the PR merges to `pre`, verify staging, then promote with the normal path (`pre` → `main`):
+5. After the pull request merges to `pre`, verify staging. That is the end of the default flow:
 
 ```bash
-# staging (pre branch / pre.gitstarclub.com)
 curl -sS "https://pre.gitstarclub.com/data/exports/v1/latest/manifest.json" \
   | jq '{export_date, data_as_of}'
-# promote only after Preview is good — never silent production overwrite
-gh pr create --base main --head pre --title "promote: pre → main (exports YYYY-MM-DD)" \
-  --body "Promotes regenerated static exports after weekly views publish."
 ```
 
-6. After production deploy, confirm the gate input is fresh:
+Open a promotion pull request from `pre` to `main` only when the owner explicitly says "push main", "push to main", or "promote to main". Merge that pull request with a merge commit. This export flow does not call a production refresh.
+
+```bash
+gh pr create --base main --head pre --title "promote: pre → main (exports YYYY-MM-DD)" \
+  --body "Promotes regenerated static exports after the owner authorized promotion. Merge with a merge commit."
+```
+
+6. After the authorized production deploy, confirm the public export is the new build. This is a read, not a production refresh:
 
 ```bash
 curl -sS "https://www.gitstarclub.com/data/exports/v1/latest/manifest.json" \

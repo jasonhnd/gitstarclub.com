@@ -391,4 +391,142 @@ describe("bootstrap publication", () => {
     });
     expect(ACTIVE_WORKFLOW_PATH).toBe("ops/workflows/active.json");
   });
+
+  test("a failed leased operation releases as failed and preserves the operation error", async () => {
+    const store = new LeaseStore();
+    await expect(withBootstrapPublicationLease({
+      store,
+      generation: "bootstrap-failed",
+      operation: "publish",
+      run: async (assertCanCommit) => {
+        await assertCanCommit();
+        throw new Error("injected validation failure");
+      },
+    })).rejects.toThrow("injected validation failure");
+    expect(JSON.parse(store.body.toString())).toMatchObject({
+      status: "failed",
+      fencing_token: 1,
+    });
+  });
+
+  test("a callback cannot return a result without acquiring the publication lease", async () => {
+    const store = new LeaseStore();
+    await expect(withBootstrapPublicationLease({
+      store,
+      generation: "bootstrap-no-lease",
+      operation: "publish",
+      run: async () => ({ published: true }),
+    })).rejects.toThrow("did not acquire the shared workflow lease");
+    expect(store.body).toBeNull();
+  });
+
+  test("renewal and release do not overwrite a lease takeover", async () => {
+    const store = new LeaseStore();
+    let takeover;
+    await expect(withBootstrapPublicationLease({
+      store,
+      generation: "bootstrap-stale",
+      operation: "rollback",
+      run: async (assertCanCommit) => {
+        await assertCanCommit();
+        takeover = {
+          ...JSON.parse(store.body.toString()),
+          run_id: "new-owner",
+          fencing_token: 2,
+        };
+        store.body = Buffer.from(JSON.stringify(takeover));
+        store.etag = "takeover";
+        await assertCanCommit();
+        throw new Error("stale owner must not continue");
+      },
+    })).rejects.toThrow("lost workflow lease 1 before release");
+    expect(JSON.parse(store.body.toString())).toEqual(takeover);
+    expect(store.etag).toBe("takeover");
+  });
+
+  test("initial commit publishes an empty bucket and refuses mixed markers", async () => {
+    const store = new MemoryStore();
+    await stageComplete(store, "bootstrap-empty");
+    const published = await commitBootstrapGeneration({
+      generation: "bootstrap-empty",
+      store,
+      initialCommit: true,
+      now: () => "2026-07-17T00:00:00.000Z",
+    });
+    expect(published.status).toBe("published");
+    expect(published.pointer.previous_generation).toBeNull();
+
+    const views = new MemoryStore();
+    await stageComplete(views, "bootstrap-mixed-views");
+    views.objects.set("views/latest.json", Buffer.from("{}"));
+    await expect(
+      commitBootstrapGeneration({ generation: "bootstrap-mixed-views", store: views, initialCommit: true }),
+    ).rejects.toThrow("views/latest.json already exists");
+    expect(await views.read(BOOTSTRAP_POINTER_PATH)).toBeNull();
+
+    const canonical = new MemoryStore();
+    await stageComplete(canonical, "bootstrap-mixed-canon");
+    canonical.objects.set("canonical/v2/meta.json", Buffer.from("{}"));
+    await expect(
+      commitBootstrapGeneration({ generation: "bootstrap-mixed-canon", store: canonical, initialCommit: true }),
+    ).rejects.toThrow("canonical/v2/meta.json already exists");
+    expect(await canonical.read(BOOTSTRAP_POINTER_PATH)).toBeNull();
+
+    const pointer = new MemoryStore();
+    await stageComplete(pointer, "bootstrap-mixed-pointer");
+    pointer.objects.set(BOOTSTRAP_POINTER_PATH, Buffer.from(JSON.stringify(published.pointer)));
+    await expect(
+      commitBootstrapGeneration({ generation: "bootstrap-mixed-pointer", store: pointer, initialCommit: true }),
+    ).rejects.toThrow("bootstrap/latest.json already exists");
+
+    const retry = await commitBootstrapGeneration({
+      generation: "bootstrap-empty",
+      store,
+      initialCommit: true,
+      now: () => "2026-07-17T00:00:01.000Z",
+    });
+    expect(retry.status).toBe("already-published");
+    expect(retry.pointer.published_at).toBe("2026-07-17T00:00:00.000Z");
+  });
+
+  test("initial commit create race returns already-published only for the same generation", async () => {
+    const lost = new MemoryStore();
+    await stageComplete(lost, "bootstrap-race");
+    const realCreate = lost.createMutable.bind(lost);
+    lost.createMutable = async (path, body) => {
+      await realCreate(path, body);
+      return false;
+    };
+    const published = await commitBootstrapGeneration({
+      generation: "bootstrap-race",
+      store: lost,
+      initialCommit: true,
+      now: () => "2026-07-17T00:00:00.000Z",
+    });
+    expect(published.status).toBe("already-published");
+    expect(published.pointer.generation).toBe("bootstrap-race");
+
+    const other = new MemoryStore();
+    await stageComplete(other, "bootstrap-race-other");
+    other.createMutable = async () => {
+      other.objects.set(
+        BOOTSTRAP_POINTER_PATH,
+        Buffer.from(
+          JSON.stringify({
+            schema_ver: 1,
+            generation: "bootstrap-someone-else",
+            prefix: "bootstrap/generations/bootstrap-someone-else",
+            previous_generation: null,
+            published_at: "2026-07-17T00:00:00.000Z",
+            base_manifest_sha256: "a".repeat(64),
+            canonical_manifest_sha256: "b".repeat(64),
+          }),
+        ),
+      );
+      return false;
+    };
+    await expect(
+      commitBootstrapGeneration({ generation: "bootstrap-race-other", store: other, initialCommit: true }),
+    ).rejects.toThrow("already exists");
+  });
 });

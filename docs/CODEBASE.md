@@ -1,7 +1,7 @@
 ---
 owner: codebase architecture
 status: active
-last_reviewed: 2026-09-18
+last_reviewed: 2026-09-21
 source_of_truth_for:
   - code map
   - data layer ownership
@@ -27,14 +27,14 @@ This is not a replacement for the owning docs:
 
 ## Runtime Shape
 
-GitStarClub is a static-read Next.js app backed by JSON views in Vercel Blob.
+GitStarClub is a static-read Next.js app backed by JSON views in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)).
 The request path never queries a database. Pages read validated JSON through
 `web/lib/data/*`; recurring refresh work writes new versioned views through
-Vercel Workflow and flips `views/latest.json`.
+managed refresh and flips `views/latest.json`.
 
 ```text
 GitHub APIs
-  -> Vercel Workflow refresh
+  -> managed refresh
   -> canonical/v2/* shards
   -> views/<run_id>/*
   -> views/latest.json
@@ -48,23 +48,24 @@ GitHub APIs
 |---|---|
 | `web/app/` | Next.js App Router pages, route handlers, metadata, OG images, sitemap, robots |
 | `web/app/_explore/` | Shared server-rendered UI components used by product pages |
-| `web/lib/data/` | Read-side accessors for Blob views; all page data should go through this layer |
+| `web/lib/data/` | Read-side accessors for published views; all page data should go through this layer |
 | `web/lib/contracts/` | Zod schemas for every persisted view and public read contract |
 | `web/lib/workflows/` | Managed refresh orchestration and refresh steps (no Workflow SDK) |
 | `web/lib/workflows/runtime/` | `startRefresh` / `enqueueStep` / `completeStep` port: memory, HTTP chain, CF Queue |
-| `web/lib/workflows/recompute/` | Pure recompute core: ranks, entities, heatmaps, categories, windows |
+| `web/lib/workflows/recompute/` | Pure recompute core: ranks, entities, heatmaps, categories, windows, packed CF windows |
 | `web/lib/categories/` | Deterministic category taxonomy and classification rules |
 | `web/lib/cron/` | Shared daily/weekly live-overlay route handlers and refresh logic |
 | `web/lib/i18n/` | Server/client dictionaries and locale helpers |
 | `web/lib/compare/` | Compare-page normalization and curve logic |
 | `web/lib/search/` | Search index/query core |
 | `web/lib/observability/` | Health and alert helpers for cron/workflow failure alerting |
-| `web/lib/storage/` | Injectable object-store port (`vercel-blob` \| `r2-s3`) for write/CAS/list/del; default remains Blob |
+| `web/lib/storage/` | Object-store port. Read drivers: `blob`, `r2_binding`, `r2_s3`, `r2`, `r2_then_blob`. Write drivers: `blob`, `r2_binding`, `r2_s3`, `r2`. `r2` is an alias of `r2_s3`. Unset drivers stay `blob`. Current status is [R2-CUTOVER.md](./R2-CUTOVER.md) |
 | `web/lib/cache-invalidation/` | ISR invalidation port (`vercel` \| `memory` \| `cf-stub`); default remains Next `revalidatePath/Tag` |
-| `web/lib/preview/` | Pluggable Preview target (`vercel` \| `cf`) and Cloudflare Access Service Token headers |
-| `web/lib/workers-host/` | P3 Worker path classification and local/remote smoke origin |
-| `web/open-next.config.ts` | OpenNext Cloudflare adapter (static-assets incremental cache; preview only) |
+| `web/lib/preview/` | Optional preview-target resolver. `pre.gitstarclub.com` is public; `noindex` is not access control |
+| `web/lib/workers-host/` | Worker path classification, smoke origin, step self-fetch, Queue successor after fold (body + `x-gitstarclub-queue-successor`; fold writes `fold-decision.json` then 1-bucket windows + compact plans when there is closed-period work; recomputeRank is month-pack + 8-period month/monthOrg, year derived per month bucket + 8-period year/yearOrg, week-pack + streamed week/weekOrg, then rest one repos bucket at a time) |
+| `web/open-next.config.ts` | OpenNext Cloudflare adapter (static-assets incremental cache) |
 | `workers/gitstarclub-web/` | CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (`env.pre`) |
+| `scripts/assert-cf-ci-gates.mjs` | CF CI gate: `pre` → `gitstarclub-web-pre`; no live deploy of `gitstarclub-web`; production `triggers.crons` stays `[]` |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
 | `docs/` | Product, architecture, data, operations, frontend, SEO, testing, and development docs |
 
@@ -82,7 +83,7 @@ module boundaries, so it intentionally does not copy the per-route table.
 
 ## Read Side
 
-All production pages should use `web/lib/data/*` rather than fetching Blob URLs
+All production pages should use `web/lib/data/*` rather than fetching public storage URLs
 directly.
 
 Important files:
@@ -100,16 +101,18 @@ Important files:
   not write. Both helpers go through `web/lib/storage` (`STORAGE_WRITE_DRIVER`,
   default `blob`).
 - `web/lib/storage/`: object-store port used by write, live publication, lease,
-  health, recompute I/O, aliases list, and version GC. R2 is opt-in and
-  non-production only; see [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md).
+  health, recompute I/O, aliases list, and version GC. `DEPLOY_ENV` may be
+  `production` or `pre`. Preview `env.pre` already reads R2 and writes through
+  the `DATA` binding. Production uses R2 after the accepted 2026-10-04 cutover. The
+  bucket root has no migrate prefix. See [R2-CUTOVER.md](./R2-CUTOVER.md).
 - `web/lib/cache-invalidation/`: publication and live-cron ISR invalidation.
-  Default is Vercel `next/cache`. The CF stub is non-production and testable;
-  see [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
-- `web/lib/preview/`: Preview discovery for Vercel (required gates) and
-  optional CF Access on `gitstarclub-web-pre.worldgo.workers.dev`.
-- `web/lib/workers-host/` + `workers/gitstarclub-web/`: P3 OpenNext host
-  wraps the P1–P2 shell. `/` is the Next homepage; production origin stays
-  Vercel. See [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md).
+  The runtime uses Next cache invalidation. `cf-stub` is non-production only.
+- `web/lib/preview/`: optional CI preview resolution. It is not a login wall
+  for `pre.gitstarclub.com`. `preview-e2e` and `product-gates` are optional
+  and are not GitHub required checks.
+- `web/lib/workers-host/` + the Worker directory `workers/gitstarclub-web/`:
+  OpenNext on Cloudflare Workers. Production Worker `gitstarclub-web` and
+  preview Worker `gitstarclub-web-pre` both serve the site. See [OPS.md](./OPS.md).
 
 Rule: if a page needs a new view, add or extend the Zod schema in
 `web/lib/contracts/`, then add the read helper in `web/lib/data/`.
@@ -166,8 +169,7 @@ Rules:
 
 Shared UI is in `web/app/_explore/`. These are mostly server components and
 should stay near-zero-client-JS unless a workflow requires client interactivity.
-The explicit global client islands are `RegisterSW` and Vercel Web Analytics
-from `web/app/_shell/RootShell.tsx`. Third-party tracking scripts are unsupported.
+The explicit global client island for registration is `RegisterSW` in `web/app/_shell/RootShell.tsx`. Vercel Web Analytics is not loaded when `HOSTING_TARGET=cf` and `VERCEL_ENV` is not `production`. Third-party tracking scripts are unsupported.
 
 Common components:
 

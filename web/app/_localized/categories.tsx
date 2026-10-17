@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
@@ -52,6 +51,8 @@ import {
   paginationLabels,
 } from "./detail-copy";
 import { generateCoreLocaleStaticParams } from "./routing";
+
+import { HeroFacts } from "./comparison-page-data";
 
 type CategoryPageParams = { dimension: string; slug: string; page?: string };
 type CategoryDetailStaticParam = { dimension: string; slug: string };
@@ -235,7 +236,7 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
           title={t.categories.title}
           lede={text.categoryIndexDatasetDescription}
           aside={
-            <HeroStats
+            <HeroFacts
               items={[
                 { label: t.categories.eyebrow, value: formatInteger(locale, publicCategories.length) },
                 { label: t.categories.dimensionEyebrow, value: formatInteger(locale, dimensions.length) },
@@ -347,7 +348,7 @@ export async function CategoryDimensionPageView({ locale, dimension }: { locale:
           lede={fill(text.categoryDimensionDatasetDescription, { label: entryLabel })}
           actions={<HeroActions links={[{ href: href("/categories"), label: t.nav.categories }]} />}
           aside={
-            <HeroStats
+            <HeroFacts
               items={[
                 { label: t.categories.groups, value: formatInteger(locale, categories.length) },
                 { label: t.tables.slug, value: entry.id },
@@ -470,7 +471,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
             />
           }
           aside={
-            <HeroStats
+            <HeroFacts
               items={[
                 {
                   label: t.categories.repositories,
@@ -607,19 +608,6 @@ function HeroActions({ links }: { links: Array<{ href: string; label: string }> 
 
 const heroActionClass =
   "text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline";
-
-function HeroStats({ items }: { items: Array<{ label: string; value: ReactNode }> }) {
-  return (
-    <dl className="grid gap-3 rounded-lg border border-outline-variant bg-surface-container px-4 py-4">
-      {items.map((item) => (
-        <div key={item.label} className="min-w-0">
-          <dt className="font-mono text-[0.68rem] uppercase tracking-wider text-on-surface-variant">{item.label}</dt>
-          <dd className="mt-1 break-words font-mono text-[0.95rem] font-extrabold text-on-surface">{item.value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
 
 function SectionIntro({ title, description }: { title: string; description: string }) {
   return (

@@ -17,20 +17,15 @@ export const getReposLookupAuthoritative = () =>
 /** lookup/aliases.json — old full_name (lowercased) → current repo id. Consulted by the repo
  *  route on a slug miss to 308-redirect a renamed repo's stale URL. Absent before the first
  *  alias-producing refresh → readView returns null and the route falls through to notFound(). */
-export const getAliasMap = cache(() => readView("lookup/aliases.json", AliasMap, { base: true }));
 export const getAliasMapDaily = cache(() => readView("lookup/aliases.json", AliasMap, DAILY_BASE_VIEW_OPTS));
 
-/** Reverse index full_name → repo id, for /[owner]/[name] → entity/repo/{id}. */
-export const getRepoIdByFullName = cache(async () => {
-  const lookup = await getReposLookup();
+/** Pure reverse index shared by published readers with different freshness policies. */
+function repoIdByFullName(lookup: ReposLookup | null): Map<string, number> {
   const map = new Map<string, number>();
   if (lookup) for (const [id, entry] of Object.entries(lookup)) map.set(entry.full_name.toLowerCase(), Number(id));
   return map;
-});
+}
 
-export const getRepoIdByFullNameDaily = cache(async () => {
-  const lookup = await getReposLookupDaily();
-  const map = new Map<string, number>();
-  if (lookup) for (const [id, entry] of Object.entries(lookup)) map.set(entry.full_name.toLowerCase(), Number(id));
-  return map;
-});
+/** Reverse index full_name → repo id, for /[owner]/[name] → entity/repo/{id}. */
+export const getRepoIdByFullName = cache(async () => repoIdByFullName(await getReposLookup()));
+export const getRepoIdByFullNameDaily = cache(async () => repoIdByFullName(await getReposLookupDaily()));

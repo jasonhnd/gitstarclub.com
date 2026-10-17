@@ -76,7 +76,7 @@ export type ReposShardEntry = z.infer<typeof ReposShardEntry>;
 export const ReposShard = z.record(z.string(), ReposShardEntry);
 export type ReposShard = z.infer<typeof ReposShard>;
 
-/** [period, flow] series per repo (seam-前 gross / 后 net). */
+/** [period, flow] series per repo (gross before the seam / net after it). */
 const MonthlyPeriodSeries = z.array(z.tuple([MonthPeriod, z.number().int()]));
 const WeeklyPeriodSeries = z.array(z.tuple([WeekPeriod, z.number().int()]));
 /** canonical/v2/repo-monthly/<bucket>.json — { "<id>": [[month, flow], ...] }. */
@@ -120,8 +120,61 @@ export const WhitelistSnapshot = z.object({
     added: z.array(NonNegativeInt), // new repo ids (newcomers)
     dropped: z.array(NonNegativeInt), // ids no longer >=10k
   }).strict(),
+  /** When entries were copied from a failed run, metadata batch progress may resume here. */
+  metadata_resume_run_id: SafeText.optional(),
 }).strict().refine((snapshot) => snapshot.count === snapshot.entries.length, "count must match entries length");
 export type WhitelistSnapshot = z.infer<typeof WhitelistSnapshot>;
+
+/** ops/workflows/<run_id>/whitelist-search.json — resumable Search queue (not a snapshot). */
+export const WhitelistSearchProgress = z.object({
+  v: z.literal(1),
+  minStars: NonNegativeInt,
+  observedMax: z.number().int(),
+  queue: z.array(z.object({
+    low: z.number().int(),
+    high: z.number().int(),
+  }).strict()),
+  entries: z.array(WhitelistEntry),
+}).strict();
+export type WhitelistSearchProgress = z.infer<typeof WhitelistSearchProgress>;
+
+/** One GraphQL nodes() row cached so a metadata hop can resume after 502. */
+export const RepoMetadataRecord = z.object({
+  full_name: z.string(),
+  owner: z.string(),
+  owner_type: z.enum(["User", "Organization"]),
+  name: z.string(),
+  description: z.string().nullable(),
+  language: z.string().nullable(),
+  languages: z.array(z.object({
+    name: z.string(),
+    size: NonNegativeInt,
+    color: z.string().nullable(),
+  }).strict()),
+  topics: z.array(z.string()),
+  created_at: z.string(),
+  current_stars: NonNegativeInt,
+  is_archived: z.boolean(),
+}).strict();
+export type RepoMetadataRecord = z.infer<typeof RepoMetadataRecord>;
+
+/** ops/workflows/<run_id>/metadata-<bucket>.json — resumable GraphQL batch progress. */
+export const MetadataBucketProgress = z.object({
+  v: z.literal(1),
+  bucket: NonNegativeInt,
+  fetched: z.record(z.string(), RepoMetadataRecord),
+  transient_attempts: NonNegativeInt,
+  last_error: SafeText.nullable().optional(),
+}).strict();
+export type MetadataBucketProgress = z.infer<typeof MetadataBucketProgress>;
+
+/** ops/workflows/latest-unpublished-whitelist.json — reuse Search after a failed run. */
+export const UnpublishedWhitelistPointer = z.object({
+  run_id: SafeText,
+  count: NonNegativeInt,
+  recorded_at: TimestampStr,
+}).strict();
+export type UnpublishedWhitelistPointer = z.infer<typeof UnpublishedWhitelistPointer>;
 
 /** canonical/v2/pending/<period>.json — frozen closed-period live tail awaiting fold (VERCEL-DATA-OPERATIONS §7.2). */
 export const PendingPeriod = z.object({

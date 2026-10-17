@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { SafeText } from "@/lib/contracts";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { requireBearerToken } from "@/lib/security";
-import { requireBlobBaseUrl, requireBlobWriteToken } from "@/lib/runtime-config";
+import { requirePublicReadBase, requireStorageWriteConfig } from "@/lib/runtime-config";
 import { claimWorkflowLease, releaseWorkflowLease } from "@/lib/workflows/lease";
 import { rollbackVersion } from "@/lib/workflows/rollback";
 
@@ -22,8 +23,8 @@ export async function POST(req: Request): Promise<Response> {
   let targetVersion: string;
   try {
     targetVersion = RollbackRequest.parse(await req.json()).target_version;
-    requireBlobBaseUrl();
-    requireBlobWriteToken();
+    requirePublicReadBase();
+    requireStorageWriteConfig();
   } catch (error) {
     return Response.json({ ok: false, error: error instanceof z.ZodError ? "invalid rollback request" : "invalid runtime config" }, { status: 400 });
   }
@@ -63,12 +64,13 @@ export async function POST(req: Request): Promise<Response> {
       new Date().toISOString(),
       claim.lease.fencing_token,
     );
+    const safeError = sanitizeErrorText(error instanceof Error ? error.message : String(error));
     console.error("[workflow-rollback] failed", {
       operation_id: operationId,
       target_version: targetVersion,
       released,
-      error: error instanceof Error ? error.message : String(error),
+      error: safeError,
     });
-    return Response.json({ ok: false, operationId, error: "Rollback failed" }, { status: 500 });
+    return Response.json({ ok: false, operationId, error: sanitizeErrorText("Rollback failed") }, { status: 500 });
   }
 }

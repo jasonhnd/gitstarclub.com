@@ -11,10 +11,11 @@ import {
   type CategoryDefinition,
   type CategoryDimension,
 } from "@/lib/categories/rules";
+import { CATEGORY_ASSIGNMENT_SCHEMA_VERSION, CATEGORY_ASSIGNMENT_SHARD_COUNT } from "@/lib/contracts/categories";
 import { CATEGORY_RANK_PAGE_SIZE, categoryAllTimeRankPath } from "@/lib/categories/rank-pages";
 import type { CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts/categories";
 import { categoryAssignmentsPublicationArtifacts } from "@/lib/data/category-assignment-shards";
-import type { Model, Period } from "./model";
+import type { Model, Period, RepoMeta } from "./model";
 
 const DIMENSION_LABELS: Record<CategoryDimension, string> = {
   language: "Language",
@@ -173,17 +174,14 @@ function buildCategoriesLookup(registry: CategoryRegistry) {
   };
 }
 
-function categoryAllTimeRankViews(
-  model: Model,
+function categoryAllTimeRankViewsFromStars(
   category: CategoryRegistryEntry,
-  repoIds: Set<number>,
+  rows: Array<{ id: number; stars: number }>,
   generatedAt: string,
 ): Array<{ path: string; view: CategoryRankView }> {
-  const items = [...repoIds]
-    .map((id) => model.repos.get(id))
-    .filter((repo): repo is NonNullable<typeof repo> => Boolean(repo))
-    .sort((a, b) => b.current_stars - a.current_stars || a.id - b.id)
-    .map((repo, i) => ({ rank: i + 1, id: repo.id, value: repo.current_stars, prev_rank: null }));
+  const items = [...rows]
+    .sort((a, b) => b.stars - a.stars || a.id - b.id)
+    .map((row, i) => ({ rank: i + 1, id: row.id, value: row.stars, prev_rank: null }));
   if (items.length === 0) return [];
 
   const pages: Array<{ path: string; view: CategoryRankView }> = [];
@@ -207,23 +205,89 @@ function categoryAllTimeRankViews(
   return pages;
 }
 
-export function computeCategoryViews(model: Model, generatedAt: string): Map<string, unknown> {
-  const views = new Map<string, unknown>();
-  const assignments = buildAssignments(model, generatedAt);
-  const { registry, publicCategories } = buildRegistry(generatedAt, assignments);
+export function categoryIdsOf(assignment: CategoryAssignment): string[] {
+  const ids: string[] = [];
+  for (const dimension of CATEGORY_DIMENSIONS) ids.push(...assignment[dimension]);
+  return ids;
+}
 
+export function classifyActiveRepo(repo: RepoMeta, generatedAt: string): {
+  assignment: CategoryAssignment;
+  categoryIds: string[];
+  languageLabels: Array<{ slug: string; label: string }>;
+} | null {
+  if (repo.active === false) return null;
+  const languageLabels = languageCategoriesFromRepository(repo).map((language) => ({
+    slug: language.slug,
+    label: language.label,
+  }));
+  const assignment = classifyRepository(repo, { generatedAt });
+  return { assignment, categoryIds: categoryIdsOf(assignment), languageLabels };
+}
+
+export function categoryAssignmentShardDocument(
+  bucket: number,
+  generatedAt: string,
+  repositories: Record<string, CategoryAssignment>,
+) {
+  return {
+    schema_version: CATEGORY_ASSIGNMENT_SCHEMA_VERSION,
+    bucket,
+    rules_version: CATEGORY_RULES_VERSION,
+    generated_at: generatedAt,
+    repositories,
+  };
+}
+
+export function categoryAssignmentsIndexDocument(generatedAt: string) {
+  return {
+    schema_version: CATEGORY_ASSIGNMENT_SCHEMA_VERSION,
+    rules_version: CATEGORY_RULES_VERSION,
+    generated_at: generatedAt,
+    shard_count: CATEGORY_ASSIGNMENT_SHARD_COUNT,
+  };
+}
+
+export function categoryViewsFromAggregates(
+  generatedAt: string,
+  counts: Map<string, number>,
+  languageLabels: Map<string, string>,
+  members: Map<string, Array<{ id: number; stars: number }>>,
+): Map<string, unknown> {
+  const views = new Map<string, unknown>();
+  const { registry, publicCategories } = buildRegistry(generatedAt, {
+    payload: { rules_version: CATEGORY_RULES_VERSION, generated_at: generatedAt, repositories: {} },
+    repoCategories: new Map(),
+    categoryRepos: new Map(),
+    counts,
+    languageLabels,
+  });
   views.set("categories/registry.json", registry);
+  views.set("lookup/categories.json", buildCategoriesLookup(registry));
+  for (const category of publicCategories) {
+    const rows = members.get(category.id);
+    if (!rows?.length) continue;
+    for (const { path, view } of categoryAllTimeRankViewsFromStars(category, rows, generatedAt)) views.set(path, view);
+  }
+  return views;
+}
+
+export function computeCategoryViews(model: Model, generatedAt: string): Map<string, unknown> {
+  const assignments = buildAssignments(model, generatedAt);
+  const counts = assignments.counts;
+  const members = new Map<string, Array<{ id: number; stars: number }>>();
+  for (const [category, repoIds] of assignments.categoryRepos) {
+    const rows: Array<{ id: number; stars: number }> = [];
+    for (const id of repoIds) {
+      const repo = model.repos.get(id);
+      if (!repo) continue;
+      rows.push({ id, stars: repo.current_stars });
+    }
+    members.set(category, rows);
+  }
+  const views = categoryViewsFromAggregates(generatedAt, counts, assignments.languageLabels, members);
   for (const { path, data } of categoryAssignmentsPublicationArtifacts(assignments.payload)) {
     views.set(path, data);
   }
-  views.set("lookup/categories.json", buildCategoriesLookup(registry));
-
-  for (const category of publicCategories) {
-    const repoIds = assignments.categoryRepos.get(category.id);
-    if (!repoIds?.size) continue;
-
-    for (const { path, view } of categoryAllTimeRankViews(model, category, repoIds, generatedAt)) views.set(path, view);
-  }
-
   return views;
 }

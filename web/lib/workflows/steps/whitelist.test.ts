@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { WhitelistEntry, WhitelistSnapshot } from "@/lib/contracts";
 import { whitelistDiscoveryDate } from "./metadata";
-import { refreshWhitelistWithDeps, type WhitelistDeps } from "./whitelist";
+import type { WhitelistSearchProgress } from "@/lib/contracts";
+import {
+  rememberFailedUnpublishedWhitelist,
+  refreshWhitelistWithDeps,
+  runWhitelistStepWithDeps,
+  type WhitelistDeps,
+} from "./whitelist";
 
 function entry(id: number): WhitelistEntry {
   return {
@@ -30,8 +36,11 @@ function fakeWhitelist() {
     snapshots: new Map<string, WhitelistSnapshot>([["published-old", snapshot("published-old", [1])]]),
     searchEntries: [entry(1), entry(2)],
     searchCalls: 0,
+    ownershipCalls: 0,
     creates: 0,
     now: "2026-07-17T02:00:00.000Z",
+    unpublished: null as { run_id: string; count: number; recorded_at: string } | null,
+    minStars: 1000,
   };
   const deps: WhitelistDeps = {
     readSnapshot: async (runId) => state.snapshots.get(runId) ?? null,
@@ -42,14 +51,29 @@ function fakeWhitelist() {
       state.searchCalls++;
       return structuredClone(state.searchEntries);
     },
+    searchHop: async () => {
+      throw new Error("searchHop should not run when shards are off");
+    },
+    readProgress: async () => null,
+    writeProgress: async () => {
+      throw new Error("writeProgress should not run when shards are off");
+    },
+    searchSharded: () => false,
     createSnapshot: async (runId, next) => {
       if (state.snapshots.has(runId)) return false;
       state.snapshots.set(runId, structuredClone(next));
       state.creates++;
       return true;
     },
-    ensureOwnership: async () => {},
+    ensureOwnership: async () => {
+      state.ownershipCalls += 1;
+    },
     now: () => state.now,
+    readUnpublishedPointer: async () => state.unpublished,
+    writeUnpublishedPointer: async (pointer) => {
+      state.unpublished = structuredClone(pointer);
+    },
+    readMinStars: () => state.minStars,
   };
   return { state, deps };
 }
@@ -70,9 +94,44 @@ describe("published whitelist baseline", () => {
     expect(first).toEqual({ count: 2, added: 1, dropped: 0 });
     expect(retry).toEqual(first);
     expect(state.snapshots.get("failed-run")).toEqual(persisted);
-    expect(state.searchCalls).toBe(2); // first run + successor; retry did not search
-    expect(successor).toEqual({ count: 3, added: 2, dropped: 0 });
-    expect(state.snapshots.get("successor-run")?.diff.added).toEqual([2, 3]);
+    expect(state.searchCalls).toBe(1); // successor reused unpublished snapshot; retry did not search
+    expect(successor).toEqual({ count: 2, added: 1, dropped: 0 });
+    expect(state.snapshots.get("successor-run")?.diff.added).toEqual([2]);
+    expect(state.snapshots.get("successor-run")?.generated_at).toBe(persisted.generated_at);
+  });
+
+  test("reuses an unpublished failed snapshot pointed at by latest-unpublished-whitelist", async () => {
+    const { state, deps } = fakeWhitelist();
+    state.snapshots.set("refresh-2026-09-21T16-02-51-499Z", snapshot("refresh-2026-09-21T16-02-51-499Z", [1, 2], "2026-09-21T18:03:22.274Z"));
+    state.unpublished = {
+      run_id: "refresh-2026-09-21T16-02-51-499Z",
+      count: 2,
+      recorded_at: "2026-09-22T00:00:00.000Z",
+    };
+    state.searchEntries = [entry(1), entry(2), entry(3)];
+
+    const reused = await refreshWhitelistWithDeps("next-run", 3, deps);
+
+    expect(reused).toEqual({ count: 2, added: 1, dropped: 0 });
+    expect(state.searchCalls).toBe(0);
+    expect(state.snapshots.get("next-run")?.generated_at).toBe("2026-09-21T18:03:22.274Z");
+    expect(state.snapshots.get("next-run")?.metadata_resume_run_id).toBe("refresh-2026-09-21T16-02-51-499Z");
+  });
+
+  test("does not reuse an unpublished snapshot when minStars no longer matches", async () => {
+    const { state, deps } = fakeWhitelist();
+    state.snapshots.set("old-1k", snapshot("old-1k", [1, 2]));
+    state.unpublished = { run_id: "old-1k", count: 2, recorded_at: "2026-09-21T18:03:22.274Z" };
+    state.minStars = 10_000;
+    deps.readProgress = async (runId) =>
+      runId === "old-1k"
+        ? { v: 1 as const, minStars: 1000, observedMax: 50_000, queue: [], entries: [entry(1), entry(2)] }
+        : null;
+
+    const next = await refreshWhitelistWithDeps("next-run", 3, deps);
+
+    expect(state.searchCalls).toBe(1);
+    expect(next).toEqual({ count: 2, added: 1, dropped: 0 });
   });
 
   test("after publication the next run compares with the successfully published snapshot", async () => {
@@ -99,8 +158,176 @@ describe("published whitelist baseline", () => {
     expect(state.snapshots.has("next-run")).toBe(false);
   });
 
+  test("proves fencing ownership before GitHub Search and again before the snapshot write", async () => {
+    const { state, deps } = fakeWhitelist();
+    const order: string[] = [];
+    deps.ensureOwnership = async () => {
+      state.ownershipCalls += 1;
+      order.push("own");
+    };
+    deps.search = async () => {
+      order.push("search");
+      state.searchCalls += 1;
+      return structuredClone(state.searchEntries);
+    };
+    deps.createSnapshot = async (runId, next) => {
+      order.push("write");
+      state.snapshots.set(runId, structuredClone(next));
+      state.creates += 1;
+      return true;
+    };
+
+    await refreshWhitelistWithDeps("next-run", 21, deps);
+
+    expect(state.ownershipCalls).toBe(2);
+    expect(order).toEqual(["own", "search", "own", "write"]);
+  });
+
+  test("a lost fence before Search does not spend GitHub quota", async () => {
+    const { state, deps } = fakeWhitelist();
+    deps.ensureOwnership = async () => {
+      state.ownershipCalls += 1;
+      throw new Error("lost fence");
+    };
+
+    await expect(refreshWhitelistWithDeps("next-run", 21, deps)).rejects.toThrow("lost fence");
+    expect(state.ownershipCalls).toBe(1);
+    expect(state.searchCalls).toBe(0);
+    expect(state.snapshots.has("next-run")).toBe(false);
+  });
+
   test("newcomer provenance is pinned to immutable snapshot discovery time", () => {
     const discovered = snapshot("run", [7], "2026-07-17T23:59:59.000Z");
     expect(whitelistDiscoveryDate(discovered)).toBe("2026-07-17");
+  });
+
+  test("sharded Search yields before the snapshot and resumes to the same diff", async () => {
+    const { state, deps } = fakeWhitelist();
+    const progressWrites: WhitelistSearchProgress[] = [];
+    let hops = 0;
+    deps.searchSharded = () => true;
+    deps.searchHop = async (progress) => {
+      hops += 1;
+      if (!progress) {
+        return {
+          done: false,
+          requests: 2,
+          entries: [entry(2)],
+          progress: {
+            v: 1,
+            minStars: 1000,
+            observedMax: 50_000,
+            queue: [{ low: 1000, high: 9_999 }],
+            entries: [entry(2)],
+          },
+        };
+      }
+      return {
+        done: true,
+        requests: 3,
+        entries: structuredClone(state.searchEntries),
+        progress: {
+          v: 1,
+          minStars: 1000,
+          observedMax: 50_000,
+          queue: [],
+          entries: structuredClone(state.searchEntries),
+        },
+      };
+    };
+    deps.writeProgress = async (_owner, progress) => {
+      progressWrites.push(structuredClone(progress));
+    };
+    deps.readProgress = async () => progressWrites.at(-1) ?? null;
+
+    const mid = await runWhitelistStepWithDeps("sharded-run", 4, {}, deps);
+    expect(mid.nextWhitelistSearchSeq).toBe(1);
+    expect(mid.count).toBe(1);
+    expect(state.snapshots.has("sharded-run")).toBe(false);
+    expect(progressWrites).toHaveLength(1);
+    expect(state.searchCalls).toBe(0);
+
+    const done = await runWhitelistStepWithDeps("sharded-run", 4, { whitelistSearchSeq: 1 }, deps);
+    expect(done).toMatchObject({ count: 2, added: 1, dropped: 0 });
+    expect(done.nextWhitelistSearchSeq).toBeUndefined();
+    expect(state.snapshots.get("sharded-run")?.diff.added).toEqual([2]);
+    expect(hops).toBe(2);
+  });
+
+  test("in-process drain still finishes a sharded Search as one whitelist result", async () => {
+    const { state, deps } = fakeWhitelist();
+    let hops = 0;
+    deps.searchSharded = () => true;
+    deps.searchHop = async (progress) => {
+      hops += 1;
+      if (!progress) {
+        return {
+          done: false,
+          requests: 1,
+          entries: [],
+          progress: {
+            v: 1,
+            minStars: 1000,
+            observedMax: 12_000,
+            queue: [{ low: 1000, high: 12_000 }],
+            entries: [],
+          },
+        };
+      }
+      return {
+        done: true,
+        requests: 1,
+        entries: structuredClone(state.searchEntries),
+        progress: {
+          v: 1,
+          minStars: 1000,
+          observedMax: 12_000,
+          queue: [],
+          entries: structuredClone(state.searchEntries),
+        },
+      };
+    };
+    const writes: WhitelistSearchProgress[] = [];
+    deps.writeProgress = async (_owner, progress) => {
+      writes.push(structuredClone(progress));
+    };
+    deps.readProgress = async () => writes.at(-1) ?? null;
+
+    const result = await refreshWhitelistWithDeps("drain-run", 5, deps);
+    expect(result).toEqual({ count: 2, added: 1, dropped: 0 });
+    expect(hops).toBe(2);
+    expect(state.snapshots.get("drain-run")?.count).toBe(2);
+  });
+
+  test("start remembers a failed lease snapshot as the unpublished reuse pointer", async () => {
+    const { state, deps } = fakeWhitelist();
+    state.snapshots.set(
+      "refresh-2026-09-21T16-02-51-499Z",
+      snapshot("refresh-2026-09-21T16-02-51-499Z", [1, 2], "2026-09-21T18:03:22.274Z"),
+    );
+    const pointer = await rememberFailedUnpublishedWhitelist(
+      {
+        read: async () => ({
+          lease: {
+            run_id: "refresh-2026-09-21T16-02-51-499Z",
+            status: "failed",
+            acquired_at: "2026-09-21T18:07:02.790Z",
+            expires_at: "2026-09-21T18:07:02.790Z",
+            fencing_token: 30,
+          },
+          etag: '"1"',
+        }),
+        create: async () => false,
+        compareAndSet: async () => false,
+      },
+      deps,
+    );
+
+    expect(pointer).toEqual({
+      run_id: "refresh-2026-09-21T16-02-51-499Z",
+      count: 2,
+      recorded_at: "2026-07-17T02:00:00.000Z",
+    });
+    expect(state.unpublished?.run_id).toBe("refresh-2026-09-21T16-02-51-499Z");
   });
 });

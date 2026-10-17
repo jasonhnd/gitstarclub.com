@@ -1,12 +1,14 @@
-// Recoverable Blob prefix cleanup. Always inventories first and previews exact
-// object/byte totals. Deletion requires BOTH --execute and --confirm <prefix>.
-// Shared protection logic with automated version GC blocks production state.
+// Recoverable prefix cleanup for the object store. Always inventories first and
+// previews exact object/byte totals. Deletion requires BOTH --execute and
+// --confirm <prefix>. Shared protection logic blocks production state.
+// Blob is the default. R2 requires --target prod|pre and checks bucket identity
+// on the write. This script does not load web/.env.local; export credentials first.
 //
 // Preview:
 //   bun scripts/blob-del-prefix.ts views/verify-123/
+//   bun scripts/blob-del-prefix.ts --store r2 --target pre views/verify-123/
 // Execute the exact previewed prefix:
 //   bun scripts/blob-del-prefix.ts views/verify-123/ --execute --confirm views/verify-123/
-import { del, get, list } from "@vercel/blob";
 import {
   BootstrapPublicationPointer,
   ViewsPointer,
@@ -20,36 +22,40 @@ import {
   planBlobPrefixDeletion,
   type BlobDeletionContext,
 } from "@/lib/blob-deletion";
+import { getReadObjectStore, getWriteObjectStore } from "@/lib/storage";
+import { applyOpsSelection } from "@/lib/storage/ops-target";
 import {
   claimWorkflowLease,
   releaseWorkflowLease,
   renewWorkflowLease,
 } from "@/lib/workflows/lease";
 import type { ZodType } from "zod";
+import {
+  assertDeleteConfirmation,
+  BLOB_DEL_PREFIX_USAGE,
+  deletionContextFromPointers,
+  interpretBlobDelPrefixArgs,
+} from "./lib/blob-del-prefix";
 
-const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
-const args = process.argv.slice(2);
-const prefix = args[0];
-const execute = args.includes("--execute");
-const confirmIndex = args.indexOf("--confirm");
-const confirmation = confirmIndex >= 0 ? args[confirmIndex + 1] : undefined;
-
-if (!TOKEN) {
-  console.error("BLOB_READ_WRITE_TOKEN not set");
+const decision = interpretBlobDelPrefixArgs(process.argv.slice(2), process.env);
+if (decision.action === "help") {
+  console.log(BLOB_DEL_PREFIX_USAGE);
+  process.exit(0);
+}
+if (decision.action === "error") {
+  console.error(decision.message);
   process.exit(1);
 }
-if (!prefix || prefix.startsWith("--")) {
-  console.error("usage: bun scripts/blob-del-prefix.ts <specific-prefix/> [--execute --confirm <same-prefix/>]");
-  process.exit(1);
-}
+
+applyOpsSelection(process.env, decision.selection);
+const { prefix, execute, confirmation } = decision;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function readJson<T>(path: string, schema: ZodType<T>): Promise<T | null> {
-  const result = await get(path, { access: "public", token: TOKEN });
+  const result = await getReadObjectStore().get(path);
   if (!result) return null;
-  if (result.statusCode !== 200 || !result.stream) throw new Error(`Blob read ${path} -> ${result.statusCode}`);
-  return schema.parse(JSON.parse(await new Response(result.stream).text()));
+  return schema.parse(JSON.parse(result.body));
 }
 
 async function protectionContext(): Promise<BlobDeletionContext> {
@@ -58,21 +64,13 @@ async function protectionContext(): Promise<BlobDeletionContext> {
     readJson<BootstrapPointerType>("bootstrap/latest.json", BootstrapPublicationPointer),
     readJson<WorkflowLeaseType>("ops/workflows/active.json", WorkflowLease),
   ]);
-  const activeWorkflowRun =
-    active?.status === "running" && Date.parse(active.expires_at) > Date.now() ? active.run_id : null;
-  return {
-    currentViewVersion: views?.version,
-    rollbackViewVersion: views?.prev_version,
-    activeWorkflowRun,
-    currentBootstrapGeneration: bootstrap?.generation,
-    rollbackBootstrapGeneration: bootstrap?.previous_generation,
-  };
+  return deletionContextFromPointers(views, bootstrap, active, Date.now());
 }
 
 async function deleteUrls(urls: string[]): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
-      await del(urls, { token: TOKEN });
+      await getWriteObjectStore().del(urls);
       await sleep(250);
       return;
     } catch (error) {
@@ -89,9 +87,15 @@ async function deleteUrls(urls: string[]): Promise<void> {
 
 try {
   const context = await protectionContext();
-  const plan = await planBlobPrefixDeletion(prefix, context, ({ prefix: listedPrefix, cursor, limit }) =>
-    list({ prefix: listedPrefix, cursor, limit, token: TOKEN }),
-  );
+  const plan = await planBlobPrefixDeletion(prefix, context, async ({ prefix: listedPrefix, cursor, limit }) => {
+    const page = await getReadObjectStore().list({
+      prefix: listedPrefix,
+      cursor,
+      limit,
+      mode: "expanded",
+    });
+    return { blobs: page.blobs, cursor: page.cursor };
+  });
   console.log(`preview: prefix="${plan.prefix}" objects=${plan.objectCount} bytes=${plan.totalBytes}`);
   for (const blob of plan.objects.slice(0, 20)) console.log(`  ${blob.pathname} (${blob.size} bytes)`);
   if (plan.objects.length > 20) console.log(`  … ${plan.objects.length - 20} more object(s)`);
@@ -101,9 +105,7 @@ try {
     console.log(`execute: --execute --confirm ${plan.prefix}`);
     process.exit(0);
   }
-  if (confirmation !== plan.prefix) {
-    throw new Error(`--confirm must exactly equal "${plan.prefix}"`);
-  }
+  assertDeleteConfirmation(confirmation, plan.prefix);
 
   const acquiredAt = new Date().toISOString();
   const operationId = `blob-delete-${acquiredAt.replaceAll(/[:.]/g, "-")}-${process.pid}`;

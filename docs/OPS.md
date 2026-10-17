@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-09-27
+last_reviewed: 2026-10-13
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -12,84 +12,131 @@ source_of_truth_for:
 
 # gitstarclub Operations Runbook
 
-> 运维与部署的唯一真相源。架构与数据流见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
-> 核心原则承袭架构：**Vercel-first 统一计费**、**运行时纯静态零引擎**、**生产数据运营不依赖本地计算**。本文把这些落到具体的项目、环境变量、Cron、Workflow、Blob 与告警上；endpoint method/auth/cache/status contracts 见 [API.md](./API.md)。
+> Sole source of truth for operations and deployment. Architecture and data flow see [ARCHITECTURE.md](./ARCHITECTURE.md), product see [PRODUCT.md](./PRODUCT.md).
+> Core principles from the architecture: **Cloudflare Workers hosting with Cloudflare R2 storage (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md))**, **a static runtime without an engine**, and **production data operations independent of local computation**. This runbook applies them to projects, environment variables, Cron, workflows, retained Blob rollback history, and alerts; see [API.md](./API.md) for endpoint method, authentication, cache, and status contracts.
 
 ## Scope
 
-本文是 **gitstarclub 的运维运行手册（operations runbook）**——**部署、cron / Workflow 操作、Blob 布局、环境变量清单、告警、回滚**。当生产出问题需要排查、或要搭建一套新环境时，读这一份就够。
+This document is **gitstarclub's operations runbook**—**deployment, cron / Workflow operations, Blob layout, environment-variable inventory, alerts, rollback**. When production has a problem that needs troubleshooting, or when standing up a new environment, reading this one document is enough.
 
-数据运营分层：
-- **每日 / 每周 live cron**——见 §Cron 调度。
-- **历史 / 元数据 / canonical 全量刷新（Vercel cron + 无 SDK 编排）**——见 §Vercel Workflow runbook（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)；P1 双调度见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)）。
-- **一次性 BigQuery + DuckDB bootstrap 回填**——见 §一次性 bootstrap Runbook（归档，非日常路径）。
+Data operations layers:
+- **Daily / weekly live cron**—see §Cron schedule.
+- **History / metadata / canonical full refresh (managed refresh)**—see §Managed refresh runbook (step names see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)).
+- **One-time BigQuery + DuckDB bootstrap backfill**—see §One-time bootstrap Runbook (archived, non-routine path).
 
-## 部署拓扑（单一 Vercel 项目）
+## Current hosting and branch topology
 
-生产与测试环境合并到同一个 Vercel 项目：
+As checked on 2026-09-24, both `https://gitstarclub.com` and
+`https://pre.gitstarclub.com` returned `server: cloudflare` and `x-opennext: 1`.
+The current web host is Cloudflare Workers with OpenNext: `gitstarclub-web`
+serves production (`main`), and `gitstarclub-web-pre` serves preview (`pre`).
+The `www` hostname belongs to the production domain set, but this check did
+not independently probe its response. JSON storage is Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)).
 
-- Team：`zkscio`
-- Project：`gitstarclub.com`
-- Project ID：`prj_V9RVqspNWPXXiytX7Fj3wlMT9wNw`
-- Root Directory：`web`
-- Framework：Next.js
-- Node.js：24.x
+Feature PRs target `pre`; promotion is a separate merge from `pre` to `main`.
+The CI gate forbids a live production Worker deploy from repository automation,
+and its production `triggers.crons` contract remains `[]`.
 
-| 项目 | 内容 | 域名 | 说明 |
+### Deployment and scheduler evidence (2026-09-24)
+
+| Surface | Observed or declared state |
+|---|---|
+| Production web | `gitstarclub.com`: `server: cloudflare`, `x-opennext: 1` |
+| Preview web | `pre.gitstarclub.com`: `server: cloudflare`, `x-opennext: 1` |
+| Production Worker schedule | Cloudflare schedules API observation in issue #528 at 03:30 UTC: `gitstarclub-web` = `[]`; repository gate requires `triggers.crons: []` |
+| Preview Worker schedule | Same API observation: `gitstarclub-web-pre` = `0 3 * * *`, `0 4 * * 7`, `0 6 * * 7`. On Cloudflare `7` is Saturday, so the two weekly schedules fired on Saturday, not Sunday (#546). The owner paused all preview schedules on 2026-09-25/26 (#543); the repo keeps `env.pre` `triggers.crons` at `[]` |
+| Production refresh trigger | Owner reports Cloudflare, but no production Worker Cron schedule was observed. An external caller, another Worker, or a changed schedule after the snapshot remains unverified. Do not infer the mechanism from route code or `web/vercel.json`. |
+
+The Worker `scheduled` handler dispatches the three cron expressions to the
+protected daily, weekly, and refresh routes. The historical preview schedule observation proves configuration only at that timestamp; it establishes neither the current schedules nor a production trigger. The production trigger requires an operator-provided schedule or
+request log showing caller, target, and timestamp. `web/vercel.json` is in the
+repository. It does not establish a live production caller. Do not infer the
+production trigger from that file. Do not change the
+production gate to reconcile the owner's statement without that evidence.
+
+### Environment variable source
+
+Production and preview Worker variables and bindings are declared in
+[Worker configuration](../workers/gitstarclub-web/wrangler.jsonc); runtime secrets are injected on the
+Cloudflare platform and are never stored in this repository. Local development
+uses `web/.env.local`. Both checked-in Worker contracts use R2: public HTTP reads and guarded `DATA` binding writes. PR #649 records the accepted production cutover and retained Blob secret on 2026-10-04; live secret presence was not rechecked. Preview does not set `BLOB_*` or the production fallback. See [R2-CUTOVER.md](./R2-CUTOVER.md).
+
+## Branch topology
+
+| Branch | Worker | Domain | Indexing |
 |---|---|---|---|
-| **Production** | `web/`（Next.js，App Router + RSC） | **gitstarclub.com / www.gitstarclub.com** | Production branch is `main`; production is indexable only when `SITE_INDEXABLE=1` is set in Production |
-| **Preview / staging** | 同一项目的 Preview deployment | **pre.gitstarclub.com** | Fixed custom domain for the `pre` branch; Cloudflare DNS is `A pre.gitstarclub.com 76.76.21.21`, DNS-only |
+| `main` | `gitstarclub-web` (top-level, no `--env`) | `https://gitstarclub.com` / `https://www.gitstarclub.com` | Production build sets `SITE_INDEXABLE=1` |
+| `pre` | `gitstarclub-web-pre` (wrangler env `pre`) | `https://pre.gitstarclub.com` | Public. Meta robots `noindex,nofollow`. `robots.txt` is `Disallow: /` |
 
-## Branch topology / staging
+Feature work merges into `pre`. Promotion to production is a separate merge from `pre` to `main`.
 
-GitHub and Vercel use a two-branch topology:
-
-| Branch | Vercel target | Domain | Indexing | Purpose |
-|---|---|---|---|---|
-| `main` | Production Branch = `main` | `https://gitstarclub.com` / `https://www.gitstarclub.com` | Indexable only in Production; `SITE_INDEXABLE=1` is Production-only | Production |
-| `pre` | Preview deployment for git branch `pre` | `https://pre.gitstarclub.com` | Always noindex in Preview | Staging |
-
-`pre.gitstarclub.com` is a stable custom staging domain, not the auto
-`*-git-pre-*.vercel.app` branch alias. It is bound in the Vercel project domain
-configuration to the `pre` git branch (`gitBranch: pre`). Cloudflare DNS points
-`pre.gitstarclub.com` to Vercel with `A -> 76.76.21.21`; the record is DNS-only
-and must not be proxied.
+`https://pre.gitstarclub.com` is public and served by Cloudflare. There is no login wall. `noindex` is not access control. The preview site shows public GitHub data only.
 
 Preview is intentionally noindex. The Cloudflare production build sets `SITE_INDEXABLE=1` and `NEXT_PUBLIC_SITE_URL=https://gitstarclub.com`; the top-level Worker variables match. `bun run cf:dry-run` builds for preview with indexing disabled. Preview emits `<meta name="robots"
 content="noindex,nofollow">` and `robots.txt` returns `User-Agent: *` with
-`Disallow: /`. Preview still reads production Blob data because `BLOB_*`
-variables are set for Preview.
+`Disallow: /`. Preview reads its own R2 bucket `gitstarclub-data-pre` at `https://data-pre.gitstarclub.com`. It does not set `BLOB_*`. Production uses R2 after the accepted 2026-10-04 cutover (stage 4 in [R2-CUTOVER.md](./R2-CUTOVER.md)). Stage 6 retires the blob store.
 
-Cloudflare owner commands (run from `web/`; build each target immediately before its matching deployment because both builds use the same output directory):
+Cloudflare owner commands (run from `web/`; build each target immediately before its matching deployment because both builds use the same output directory). GitHub Actions must not run the live deploy. `bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre` are the explicit underlying forms. A bare `bun run cf:build` fails. `bun run cf:dry-run` builds pre and performs a Wrangler dry run of `env.pre` only. The build checks the generated home HTML and robots response for the selected indexing policy before deployment.
+
+### Production build and deploy
+
+Production cutover was owner-accepted on 2026-10-04 in PR #649 after the operator copy and config PR #648 (issue #647). The accepted production store contains copied versioned views, not only bootstrap-generation objects. The [dated public checks and evidence limits](./R2-CUTOVER.md#read-only-state-check-2026-10-13) distinguish historical acceptance from current public identity: production `daee5fc`, preview `5af183a` on October 13. Neither public identity establishes live provider bindings, secrets, schedules, or version UUID.
+
+Current production `views/latest.json` and `bootstrap/latest.json` returned 404 at the dated check, while `views/refresh-2026-09-13T06-00-16-398Z/meta.json` returned 200. Preserve the exact frozen fallback in both the Worker and production build shell. The old bootstrap-only recipe that cleared it at cutover does not apply to this copied store.
+
+- Top-level `DEPLOY_ENV=production` selects `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `R2_BUCKET=gitstarclub-data-prod`, `R2_PUBLIC_BASE_URL=https://data.gitstarclub.com`, and exactly one `DATA` binding to that bucket. `MEDIA` remains the assets bucket.
+- `scripts/cf-ci-gates.mjs` refuses checked-in `BLOB_*` vars and accepts a fallback that is absent or exactly `refresh-2026-09-13T06-00-16-398Z`. This is not permission to remove a needed fallback. Preview must have neither Blob vars nor the fallback; both checked-in cron arrays remain `[]`.
+- OpenNext inherits the build shell, not the Worker vars. `cf:build` rejects a missing/different R2 read driver, missing public base, Blob shell vars, or a non-loopback base that differs from the selected target. No write driver or storage credential is needed for a read-only build.
+
+Operator shell for a separately authorized production build while the pointer is absent. Clear any other `BLOB_*` or `NEXT_PUBLIC_BLOB_*` shell vars; if `NEXT_PUBLIC_R2_PUBLIC_BASE_URL` is set, it must match the production R2 origin:
+
+```sh
+# Worker gitstarclub-web, top-level production (no --env), bucket gitstarclub-data-prod
+cd web
+export STORAGE_READ_DRIVER=r2
+export R2_PUBLIC_BASE_URL=https://data.gitstarclub.com
+export VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z
+unset READ_DRIVER BLOB_BASE_URL NEXT_PUBLIC_BLOB_BASE_URL BLOB_READ_WRITE_TOKEN
+bun run cf:build:production
+```
+
+A live deploy requires explicit owner approval and operator execution; GitHub automation must not deploy production. Deploy the top-level Worker with `--env=""` so `CLOUDFLARE_ENV` cannot select preview. Pass `CF_PREVIEW_COMMIT_SHA` only when it matches the SHA baked by that build. A stale runtime SHA cannot override the built identity. Run from `web/` after building that exact commit:
+
+```sh
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env="" \
+  --var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"
+```
+
+Check the selected production binding/var inventory against the current wrangler contract, including `DATA`, the R2 vars, the exact fallback while needed, `ASSETS`, `WORKER_SELF_REFERENCE`, `JOBS` (`gitstarclub-jobs`), and `MEDIA`. Blob base vars must not return. PR #649 records that the Blob write secret was retained at cutover; current live secret presence was not checked here, and removal needs separately authorized stage 6 acceptance. Do not use `--keep-vars` to retain an obsolete Blob configuration. Production workers.dev and version preview URLs remain disabled in source.
+
+After any separately authorized deploy, check `/`, `/rankings`, a representative `/<owner>/<repo>`, `/search-index`, robots, and the public deployment identity. They must remain indexable and render the intended generation, including repository rows/star counts on rankings. HTTP 200 alone is insufficient. An authoritative views pointer takes priority over the fallback; while it is absent, compare pages with the copied frozen generation. Verify outbound reads at `data.gitstarclub.com` with operator logs. Those live binding/log/page-parity checks were not repeated by this documentation card.
+
+Remove the fallback only after the production R2 views pointer returns 200, is authoritative for page data, and a production build without the fallback prerenders real data. Change the Worker var and shell together in a separately authorized batch. Do not hand-write either pointer or remove the Blob secret before stage 6 acceptance. See the same criteria and historical rollback reference in [R2-CUTOVER.md](./R2-CUTOVER.md#stage-4-cutover-i-5b).
+
+### Preview deploy
+
+`env.pre` sets `workers_dev: true` and `preview_urls: true` so a preview deploy does not inherit the closed production flags. The probe host remains `https://gitstarclub-web-pre.worldgo.workers.dev`. Live `gitstarclub-web-pre` had workers.dev enabled and version preview URLs enabled on 2026-09-24; this file matches that. Turning preview URLs off for pre is a separate owner decision. `pre.gitstarclub.com/*` is not declared in `wrangler.jsonc`.
 
 ```sh
 cd web
-bun run cf:build:production
-bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc
+export STORAGE_READ_DRIVER=r2
+export R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com
 bun run cf:build:pre
-bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env pre
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env pre \
+  --var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"
 ```
 
-`bun run cf:build --site-target=production` and `bun run cf:build --site-target=pre` are the explicit underlying forms. A bare `bun run cf:build` fails. `bun run cf:dry-run` builds pre and performs a Wrangler dry run only. The build checks the generated home HTML and robots response for the selected indexing policy before deployment.
+`https://pre.gitstarclub.com` is public. There is no login wall. The preview build emits meta robots `noindex,nofollow` and `robots.txt` `Disallow: /`. `noindex` is not access control. Do not add a login lock. `preview-e2e` and `product-gates` are not GitHub required checks.
 
-Access: Preview is locked. Project-level Vercel Authentication
-(`ssoProtection.deploymentType=preview`) was re-enabled 2026-08-28 so
-`pre.gitstarclub.com`, PR `*.vercel.app` URLs, and leftover preview deployments
-require a Vercel team login. Production domains (`gitstarclub.com` /
-`www.gitstarclub.com`) stay public. CI uses the existing Protection Bypass for
-Automation secret (`VERCEL_AUTOMATION_BYPASS_SECRET` / header
-`x-vercel-protection-bypass`) to read identity and run preview-e2e. Humans open
-staging while logged into Vercel.
+Do not run `bun run cf:build:production` and then `bun run cf:preview`. `cf:preview` is `wrangler dev --env pre` and shares the output directory with the production build. Build preview with `bun run cf:build:pre` immediately before a preview deploy.
 
 Development flow: feature work targets `pre` through PRs into `pre`. Verify the
-merged Preview deployment at `https://pre.gitstarclub.com`. Promotion to
+merged preview at `https://pre.gitstarclub.com`. Promotion to
 production is a merge from `pre` to `main`.
 
 ### Cloudflare Workers (`main` → production, `pre` → preview)
 
-These are **Cloudflare Worker names**, not the retired Vercel project also
-historically called `gitstarclub-web`. Apex / www and `pre.gitstarclub.com`
-stay on Vercel unless Jason later approves a DNS cut.
+These are the Cloudflare Worker names that serve the site.
 
 | Git branch | Cloudflare Worker | wrangler env | Deploy rule |
 |---|---|---|---|
@@ -103,277 +150,264 @@ probe/dry-run at the closed production workers.dev host.
 
 Optional `verify / cf-preview` and `verify / cf-workers-host` run only on `pre`
 (or PRs targeting `pre`). **Do not** add those job names to `.delivery.yml` or
-the GitHub required-check ruleset.
+the GitHub required-check ruleset. `.delivery.yml` and `scripts/assert-cf-ci-gates.mjs`
+use the same names: `main` → `gitstarclub-web` (production `triggers.crons` must
+stay `[]`); `pre` → `gitstarclub-web-pre`. GHA and repo scripts must not
+live-deploy `gitstarclub-web` or PUT production schedules.
 
-**域名命名约定**：
+**Domains**:
 
-- 生产访问只使用 `gitstarclub.com` / `www.gitstarclub.com`。
-- 测试访问只使用 `pre.gitstarclub.com`。
-- `pre.gitstarclub.com` is the fixed custom domain bound to the `pre` branch; it is not the auto `*-git-pre-*.vercel.app` branch alias.
-- `gitstarclubcom.vercel.app` / `gitstarclubcom-zkscio.vercel.app` 是 Vercel 自动生成的生产别名，保留但不对外传播。
-- `gitstarclub-<hash>-zkscio.vercel.app` 是每次部署的不可变 deployment URL，只用于 inspect / promote / 回滚，不作为环境入口。
-- 旧 `gitstarclub-web*.vercel.app` 与旧分支 alias 已移除，避免和当前单项目拓扑混淆。
+- Production access uses `gitstarclub.com` and `www.gitstarclub.com`.
+- Preview access uses public `https://pre.gitstarclub.com`.
 
-**历史项目处理**：
+## Environment variables and secrets
 
-- `gitstarclub-web` 是旧 web staging 项目，只作临时回滚参考；后续部署不要再使用。
-- 根目录的 teaser 静态页源码仍保留，但生产域名已从 teaser deployment promote 到 `gitstarclub.com` 的 Next.js deployment。
-- 删除旧 Vercel 项目属于破坏性操作；确认 `gitstarclub.com` Production 与 `pre.gitstarclub.com` 都稳定后再手动删除旧项目。
-
-**部署命令**：
-
-所有 Vercel CLI 命令从仓库根目录执行，因为项目 Root Directory 已设置为 `web`。
-
-```powershell
-vercel deploy . --prod --yes --scope zkscio --project gitstarclub.com
-vercel deploy . --yes --scope zkscio --project gitstarclub.com
-```
-
-需要先验证再切生产域名时：
-
-```powershell
-vercel deploy . --prod --yes --scope zkscio --project gitstarclub.com --skip-domain
-vercel promote https://<deployment>.vercel.app --scope zkscio --yes
-```
-
-Staging is branch-bound through the Vercel project domain configuration
-(`gitBranch: pre`). Do not replace it with a one-off deployment alias except for
-an explicit recovery procedure.
-
-## 环境变量与密钥
-
-集中在 `zkscio/gitstarclub.com` 项目的 Vercel 环境变量里配置。本地把仓库根
-`.env.example` 复制为 `web/.env.local`；`web/scripts/lib/env.ts` 只加载该文件，
-**勿提交真实值**。读路径与写路径遵循最小权限：只浏览或构建不需要写令牌。
+Current Worker configuration is in [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc), with secrets stored on the Cloudflare platform. For local development, copy the repository root `.env.example` to `web/.env.local`; `web/scripts/lib/env.ts` loads only that file. **Never commit real secret values.** Follow least privilege for read and write paths: browsing or building does not require a write token.
 
 <!-- env-inventory:start -->
 
-| 变量 | 用途 | 必需 / 可选 | 格式 | 谁用（path:line） |
+| Variable | Purpose | Required / optional | Format | Who uses it (path:line) |
 |---|---|---|---|---|
-| `GITHUB_TOKEN` | GitHub GraphQL / Search PAT（批量查 `stargazerCount` + 元数据 + 白名单） | **必需**（cron / Workflow） | `ghp_…` PAT 字符串 | `web/lib/github.ts:5`；每日 cron · 每周 cron · Workflow whitelist/metadata step · 一次性回填 |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 读写令牌 | **必需**（写路径） | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`；cron 写活尾 · Workflow 写 canonical/views · GC 删旧版本 |
-| `BLOB_BASE_URL` | Vercel Blob 公开读 base URL（build / 运行时直链 fetch 视图 + 解析 publish pointer） | **必需**（读路径） | `https://<store>.public.blob.vercel-storage.com`（**无尾斜杠 / 无 BOM**） | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；Next.js build · ISR 视图直读 · live cron 读发布指针 |
-| `VIEWS_VERSION_FALLBACK` | `views/latest.json` 确认 404 时只读服务的版本（#543 止血，#553） | 可选。只放在 production Worker 顶层 vars，指针恢复后删除。Preview 不得设置 | `refresh-YYYY-MM-DDTHH-MM-SS-mmmZ`。Production 为 `refresh-2026-09-13T06-00-16-398Z`。其他非空值会被忽略并只记录一次日志 | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`；见本清单下方的事故说明 |
-| `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` 的客户端回退（仅当 server-only 值不可用时） | 可选（回退） | 同 `BLOB_BASE_URL` | `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`；客户端 bundle 中读取 |
-| `STORAGE_READ_DRIVER` | 对象存储读驱动 | 可选（默认 `blob`） | `blob` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`；P0 默认仍读 Vercel Blob，见 [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md) |
-| `READ_DRIVER` | `STORAGE_READ_DRIVER` 别名 | 可选 | 同 `STORAGE_READ_DRIVER` | `web/lib/runtime-config.ts` |
-| `STORAGE_WRITE_DRIVER` | 对象存储写驱动 | 可选（默认 `blob`） | `blob` \| `r2` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`；`r2` 仅允许非生产 `migrate-*` 前缀，且拒绝 `VERCEL_ENV=production` |
-| `WRITE_DRIVER` | `STORAGE_WRITE_DRIVER` 别名 | 可选 | 同 `STORAGE_WRITE_DRIVER` | `web/lib/runtime-config.ts` |
-| `R2_ACCOUNT_ID` | Cloudflare 账户 ID（拼 S3 endpoint） | 仅 R2 驱动 | 32 位 hex | `web/lib/runtime-config.ts`；已备账户 `00f850e853e4c7f9627233d51a6e30a1` |
-| `R2_S3_ENDPOINT` | R2 S3 兼容 endpoint | 仅 R2 驱动 | `https://<account>.r2.cloudflarestorage.com` | `web/lib/runtime-config.ts` |
-| `AWS_ENDPOINT_URL` | `R2_S3_ENDPOINT` 别名 | 仅 R2 驱动 | 同 `R2_S3_ENDPOINT` | `web/lib/runtime-config.ts` |
-| `R2_ACCESS_KEY_ID` | R2 S3 access key | 仅 R2 驱动 | Cloudflare R2 API token | `web/lib/runtime-config.ts` |
-| `AWS_ACCESS_KEY_ID` | `R2_ACCESS_KEY_ID` 别名 | 仅 R2 驱动 | 同 `R2_ACCESS_KEY_ID` | `web/lib/runtime-config.ts` |
-| `R2_SECRET_ACCESS_KEY` | R2 S3 secret | 仅 R2 驱动 | secret | `web/lib/runtime-config.ts` |
-| `AWS_SECRET_ACCESS_KEY` | `R2_SECRET_ACCESS_KEY` 别名 | 仅 R2 驱动 | 同 `R2_SECRET_ACCESS_KEY` | `web/lib/runtime-config.ts` |
-| `R2_BUCKET` | R2 桶名 | 仅 R2 驱动 | `gitstarclub-assets` | `web/lib/runtime-config.ts` |
-| `AWS_S3_BUCKET` | `R2_BUCKET` 别名 | 仅 R2 驱动 | 同 `R2_BUCKET` | `web/lib/runtime-config.ts` |
-| `R2_REGION` | SigV4 region | 可选（默认 `auto`） | `auto` | `web/lib/runtime-config.ts` |
-| `AWS_REGION` | `R2_REGION` 别名 | 可选 | 同 `R2_REGION` | `web/lib/runtime-config.ts` |
-| `R2_PREFIX` | 非生产对象前缀 | 可选（默认 `migrate-dev/`） | `migrate-dev/` / `migrate-test/` / `migrate-preview/` | `web/lib/runtime-config.ts`；空前缀与生产 key 空间禁止写入 |
-| `R2_PUBLIC_BASE_URL` | R2 公开读 base URL | 仅 `r2` / `r2_then_blob` 页面读 | 无尾斜杠的 https origin | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` |
-| `CRON_SECRET` | Cron 鉴权随机串（Vercel 以 `Authorization: Bearer <secret>` 注入，handler 校验） | **必需** | 随机串（≥32 字符，**无首尾空白**） | `web/lib/cron/handlers.ts` · `web/lib/security.ts` · `web/lib/runtime-config.ts` · `web/app/api/workflows/refresh/start/route.ts` · `web/app/api/workflows/refresh/step/route.ts`；每日 / 每周 cron · refresh start / step |
-| `WORKFLOW_RUNTIME` | Managed refresh 编排后端 | 可选（默认 `http`） | `http` \| `memory` \| `cf-queue` | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/resolve.ts`；生产默认 HTTP 自链，`cf-queue` 仅非生产 |
-| `WORKFLOW_QUEUE_ENQUEUE_URL` | CF Queue 入队 URL（Worker `/enqueue`） | 仅 `WORKFLOW_RUNTIME=cf-queue` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/cf-queue.ts` |
-| `WORKFLOW_STEP_BASE_URL` | step 路由 origin 覆盖 | 可选 | 无尾斜杠 https origin | `web/lib/runtime-config.ts`；未设时用请求 origin 或 `VERCEL_URL` |
-| `CACHE_INVALIDATION_DRIVER` | ISR 失效端口 | 可选（默认 `vercel`） | `vercel` \| `memory` \| `cf-stub` | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/`；生产默认 Next `revalidatePath/Tag`，`cf-stub` 仅非生产，见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
-| `CF_CACHE_PURGE_URL` | CF stub 双跑 POST URL（Worker `/preview/invalidate`） | 仅 `CACHE_INVALIDATION_DRIVER=cf-stub` | 绝对 URL | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/cf-stub.ts`；不是 Cloudflare Cache Purge |
-| `PREVIEW_TARGET` | Preview 解析后端 | 可选（默认 `vercel`） | `vercel` \| `cf` | `web/lib/runtime-config.ts` · `web/lib/preview/`；生产门禁仍走 Vercel |
-| `CF_PREVIEW_ORIGIN` | 非生产 CF Preview origin | 可选（默认 `https://gitstarclub-web-pre.worldgo.workers.dev`） | 无尾斜杠 https origin | `web/lib/runtime-config.ts`；默认预发 Worker `gitstarclub-web-pre`，不要指向已关的生产 `gitstarclub-web.worldgo.workers.dev`；Access 只护这个 host，不绑 apex/www |
-| `CF_ACCESS_CLIENT_ID` | CF Access Service Token id（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client ID | `web/lib/preview/access.ts`；GitHub secret 名与此相同；token 名 `gitstarclub-cca-ci`，密钥不进仓 |
-| `CF_ACCESS_CLIENT_SECRET` | CF Access Service Token secret（CI） | 仅 `PREVIEW_TARGET=cf` / 可选 `cf-preview` job | Access Service Token Client Secret | `web/lib/preview/access.ts`；头 `CF-Access-Client-Secret` |
-| `CF_PREVIEW_REQUIRE_SHA` | CF Preview 是否要求 identity SHA 对齐 | 可选（默认关闭） | 字符串 `1` 才强制 | `web/lib/runtime-config.ts` · `web/scripts/resolve-preview.ts`；Worker 未设 `CF_PREVIEW_COMMIT_SHA` 时不要开 |
-| `CF_PREVIEW_COMMIT_SHA` | CF Preview / Workers host 部署 SHA | 可选 | git SHA | `web/lib/deployment-identity.ts` · Worker `env.CF_PREVIEW_COMMIT_SHA`；未设时 identity 的 `commitSha` 为 null |
-| `HOSTING_TARGET` | Next 托管目标 | 可选（默认 `vercel`） | `vercel` \| `cf` | `web/lib/runtime-config.ts` · `web/lib/analytics-policy.ts`；`cf` 仅非生产 Workers 预览，见 [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
-| `NEXT_PUBLIC_HOSTING_TARGET` | `HOSTING_TARGET` 的公开别名 | 可选 | 同 `HOSTING_TARGET` | `web/lib/runtime-config.ts`；不要在 Vercel Production 设为 `cf` |
-| `CF_WORKERS_HOST_ORIGIN` | P3 Workers host 冒烟 origin | 可选 | 无尾斜杠 http(s) origin | `web/lib/workers-host/smoke-origin.ts` · `web/scripts/cf-workers-host-smoke.ts` |
-| `CF_WORKERS_HOST_LOCAL` | P3 冒烟强制 localhost | 可选 | 字符串 `1` | `web/lib/workers-host/smoke-origin.ts` |
-| `VERCEL_DEPLOY_HOOK_URL` | Deploy Hook URL（触发一次核心 rebuild，用于代码 / 结构变更或手动全量刷新） | 可选 | `https://api.vercel.com/v1/integrations/deploy/<id>` | 手动 / CI（数据更新不需要它，长尾走 ISR） |
-| `ALERT_WEBHOOK_URL` | 失败告警 webhook（Slack / Discord incoming webhook 或 `https://webhook.site/...`，POST JSON 摘要；**不设则仅日志**） | 可选 | `https://…` 可接收 JSON POST 的端点 | `web/lib/observability/alert.ts:45`；Workflow `sendAlert` · 每日 / 每周 cron 失败投递 |
+| `GITHUB_TOKEN` | GitHub GraphQL / Search PAT (batch lookup of `stargazerCount` + metadata + whitelist) | **Required** (cron / Workflow) | `ghp_…` PAT string | `web/lib/github.ts`; daily cron · weekly cron · Workflow whitelist/metadata step · one-time backfill. GraphQL and REST both send `User-Agent: gitstarclub` and `Accept: application/vnd.github+json` |
+| `BLOB_READ_WRITE_TOKEN` | Retained Blob write token; not used by the current R2 write contract | **Required** for the `blob` write driver | `vercel_blob_rw_…` | `web/lib/data/write.ts` · `web/lib/storage/vercel-blob-store.ts` · `web/lib/storage/vercel-blob-fetch-client.ts` · `web/lib/workflows/recompute/io.ts` · `web/lib/workflows/steps/gc.ts`; cron writes the live tail · refresh writes canonical/views · GC deletes old versions. CF Workers use runtime `fetch`, not `@vercel/blob`/undici. Preview `r2_binding` does not use this token |
+| `BLOB_BASE_URL` | Retained Blob rollback/local-driver public base URL (build / runtime direct-link fetch of views + resolving the publish pointer) | **Required** for the `blob` read driver | `https://<store>.public.blob.vercel-storage.com` (**no trailing slash / no BOM**) | `web/lib/runtime-config.ts` · `web/lib/data/source.ts` · `web/lib/cron/sync-runs.ts`; page reads use `getPublicReadBases()`. R2 drivers use `R2_PUBLIC_BASE_URL` instead |
+| `VIEWS_VERSION_FALLBACK` | Read-only version served when `views/latest.json` is a confirmed 404 (#543 stopgap, #553) | Optional. Production Worker top-level only; required while the current pointer is absent. Preview must not set it | `refresh-YYYY-MM-DDTHH-MM-SS-mmmZ`. Production is `refresh-2026-09-13T06-00-16-398Z`. Any other non-empty value is ignored and logged once | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`. See the incident note below this inventory |
+| `NEXT_PUBLIC_BLOB_BASE_URL` | `BLOB_BASE_URL` client fallback (only when the server-only value is unavailable) | Optional (fallback) | Same as `BLOB_BASE_URL` | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`; used only when `BLOB_BASE_URL` is unset |
+| `STORAGE_READ_DRIVER` | Object-storage read driver | Optional in code (default `blob`). Both Worker contracts explicitly set `r2` | `blob` \| `r2_binding` \| `r2_s3` \| `r2` \| `r2_then_blob` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`; `r2` reads `R2_PUBLIC_BASE_URL`. Production uses R2 after the accepted 2026-10-04 cutover (stage 4, I-5b). See [R2-CUTOVER.md](./R2-CUTOVER.md) |
+| `READ_DRIVER` | `STORAGE_READ_DRIVER` alias | Optional | Same as `STORAGE_READ_DRIVER` | `web/lib/runtime-config.ts` |
+| `DEPLOY_ENV` | Which deployment this process is (`production`, `pre`, or `local`) | Preview Worker `env.pre` sets `pre`; production top-level sets `production`. Cloudflare Workers must set it; they do not receive `VERCEL_ENV` | `production` \| `pre` \| `local` | `web/lib/runtime-config.ts`. Read through `resolveRuntimeEnv()` so a Worker var is visible. Unset on `HOSTING_TARGET=cf` refuses R2 writes and does not arm `WORKFLOW_COLD_START` or `PREFLIGHT_RELAX_EMPTY_SHARDS` |
+| `STORAGE_WRITE_DRIVER` | Object-storage write driver | Optional in code (default `blob`). Both Worker contracts explicitly set `r2_binding` | `blob` \| `r2_binding` \| `r2_s3` \| `r2` | `web/lib/runtime-config.ts` · `web/lib/storage/object-store.ts`; `blob` still requires `BLOB_BASE_URL` and `BLOB_READ_WRITE_TOKEN`. R2 write drivers require `DEPLOY_ENV`. `put` / `del` still require a matching bucket-identity marker. `r2_binding` uses the DATA binding and does not need a Blob token |
+| `WRITE_DRIVER` | `STORAGE_WRITE_DRIVER` alias | Optional | Same as `STORAGE_WRITE_DRIVER` | `web/lib/runtime-config.ts` |
+| `R2_ACCOUNT_ID` | Cloudflare account ID (composed into the S3 endpoint) | R2 driver only | 32-digit hex | `web/lib/runtime-config.ts`; prepared account `00f850e853e4c7f9627233d51a6e30a1` |
+| `R2_S3_ENDPOINT` | R2 S3-compatible endpoint | R2 driver only | `https://<account>.r2.cloudflarestorage.com` | `web/lib/runtime-config.ts` |
+| `AWS_ENDPOINT_URL` | `R2_S3_ENDPOINT` alias | R2 driver only | Same as `R2_S3_ENDPOINT` | `web/lib/runtime-config.ts` |
+| `R2_ACCESS_KEY_ID` | R2 S3 access key | R2 driver only | Cloudflare R2 API token | `web/lib/runtime-config.ts` |
+| `AWS_ACCESS_KEY_ID` | `R2_ACCESS_KEY_ID` alias | R2 driver only | Same as `R2_ACCESS_KEY_ID` | `web/lib/runtime-config.ts` |
+| `R2_SECRET_ACCESS_KEY` | R2 S3 secret | R2 driver only | secret | `web/lib/runtime-config.ts` |
+| `AWS_SECRET_ACCESS_KEY` | `R2_SECRET_ACCESS_KEY` alias | R2 driver only | Same as `R2_SECRET_ACCESS_KEY` | `web/lib/runtime-config.ts` |
+| `R2_BUCKET` | R2 bucket name | R2 driver only | Preview Worker `env.pre` is `gitstarclub-data-pre`. Production top-level DATA is wired to `gitstarclub-data-prod`. `MEDIA` stays `gitstarclub-assets` | `web/lib/runtime-config.ts` |
+| `R2_BUCKET_PROD` | Production bucket for bootstrap and ops CLIs (`--target prod`) | R2 CLI only | `gitstarclub-data-prod` | `pipeline/lib/bootstrap-cli.mjs` · `web/lib/storage/ops-target.ts`. When set, it wins. A different `R2_BUCKET` is refused |
+| `R2_BUCKET_PRE` | Preview bucket for bootstrap and ops CLIs (`--target pre`) | R2 CLI only | `gitstarclub-data-pre` | `pipeline/lib/bootstrap-cli.mjs` · `web/lib/storage/ops-target.ts`. When set, it wins. A different `R2_BUCKET` is refused |
+| `AWS_S3_BUCKET` | `R2_BUCKET` alias | R2 driver only | Same as `R2_BUCKET` | `web/lib/runtime-config.ts` |
+| `R2_REGION` | SigV4 region | Optional (default `auto`) | `auto` | `web/lib/runtime-config.ts` |
+| `AWS_REGION` | `R2_REGION` alias | Optional | Same as `R2_REGION` | `web/lib/runtime-config.ts` |
+| `R2_PREFIX` | Optional R2 object key prefix | Optional (default empty, the bucket root) | A relative prefix such as `archive/`, or empty | `web/lib/runtime-config.ts`. The write guard is the bucket identity marker, not this prefix |
+| `R2_PUBLIC_BASE_URL` | R2 public-read base URL | `r2_binding`, `r2_s3`, `r2`, and `r2_then_blob` public reads. Preview Worker `env.pre` sets `https://data-pre.gitstarclub.com` | no-trailing-slash https origin | `web/lib/runtime-config.ts` · `web/lib/data/source.ts`. Ops CLIs use this only when the named prod or pre URL below is unset |
+| `R2_PUBLIC_BASE_URL_PROD` | Public read base for ops CLIs with `--target prod` | R2 CLI only | no-trailing-slash https origin | `web/lib/storage/ops-target.ts`. When set, it wins over `R2_PUBLIC_BASE_URL`. The script reads `_meta/bucket-identity.json` from this base and requires the prod bucket. A passing check copies this base onto `R2_PUBLIC_BASE_URL` so later library reads use it |
+| `R2_PUBLIC_BASE_URL_PRE` | Public read base for ops CLIs with `--target pre` | R2 CLI only | no-trailing-slash https origin | `web/lib/storage/ops-target.ts`. When set, it wins over `R2_PUBLIC_BASE_URL`. The script reads `_meta/bucket-identity.json` from this base and requires the pre bucket. A passing check copies this base onto `R2_PUBLIC_BASE_URL` so later library reads use it |
+| `LIVE_PUBLIC_READ_BASE_URL` | Explicit public read base for live release gates | Optional | no-trailing-slash https origin | `web/lib/runtime-config.ts` · `web/lib/integration/release-gates-live.ts`. When unset, gates still fall back to `RELEASE_GATE_BLOB_BASE`, then `BLOB_BASE_URL`, then the current public Blob URL. That Blob URL fallback is temporary and is removed in stage 6 |
+| `CRON_SECRET` | Bearer secret the cron and refresh handlers require. The caller sends `Authorization: Bearer <secret>`. It is a Worker secret, not a committed value | **Required** | Random string (≥32 characters, **no leading or trailing whitespace**) | `web/lib/cron/handlers.ts` · `web/lib/security.ts` · `web/lib/runtime-config.ts` · `web/app/api/workflows/refresh/start/route.ts` · `web/app/api/workflows/refresh/step/route.ts`; daily / weekly cron · refresh start / step |
+| `WORKFLOW_RUNTIME` | Managed refresh orchestration backend | Optional (default `http`) | `http` \| `memory` \| `cf-queue` | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/resolve.ts`. Unset code default is `http`. Production wrangler top-level and preview `env.pre` both set `cf-queue`. |
+| `WORKFLOW_QUEUE_ENQUEUE_URL` | Cloudflare Queue enqueue URL (Worker `/enqueue`) | Required only when `WORKFLOW_RUNTIME=cf-queue` | Absolute URL | `web/lib/runtime-config.ts` · `web/lib/workflows/runtime/cf-queue.ts`. Production top-level is `https://gitstarclub.com/enqueue`. Preview `env.pre` is `https://pre.gitstarclub.com/enqueue`. |
+| `WORKFLOW_STEP_BASE_URL` | step route origin override | Optional | no-trailing-slash https origin | `web/lib/runtime-config.ts`; when unset, use the request origin or `VERCEL_URL` |
+| `CACHE_INVALIDATION_DRIVER` | ISR invalidation port | Optional (code default `vercel`) | `vercel` \| `memory` \| `cf-stub` | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/`; unset uses Next `revalidatePath` / `revalidateTag`. `cf-stub` is non-production only |
+| `CF_CACHE_PURGE_URL` | CF stub dual-run POST URL (Worker `/preview/invalidate`) | Only when `CACHE_INVALIDATION_DRIVER=cf-stub` | Absolute URL | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/cf-stub.ts`; not Cloudflare Cache Purge |
+| `PREVIEW_TARGET` | Optional preview-target resolver | Optional (code default `vercel`) | `vercel` \| `cf` | `web/lib/runtime-config.ts` · `web/lib/preview/`. `https://pre.gitstarclub.com` is public either way. This variable is not a login lock |
+| `CF_PREVIEW_ORIGIN` | Preview Worker origin used by probes and deployment identity when `VERCEL_URL` is unset | Optional (default `https://gitstarclub-web-pre.worldgo.workers.dev`) | no-trailing-slash https origin | `web/lib/runtime-config.ts`; default preview Worker `gitstarclub-web-pre`. Do not point it at the closed production `gitstarclub-web.worldgo.workers.dev`. `https://pre.gitstarclub.com` is an allowed public equivalent. This host is not behind a login wall |
+| `CF_CRON_ORIGIN` | CF Worker `scheduled` hits Next cron route HTTP origin | Required for Worker dispatch (wrangler var) | no-trailing-slash https origin; preview `https://pre.gitstarclub.com`, production `https://gitstarclub.com` | Worker `env.CF_CRON_ORIGIN`; do not hardcode the wrong environment, and do not use the already-closed production `workers.dev`; the value is not a secret, but it must be injected per Worker |
+| `REFRESH_START_URL` | refresh cron / `/start` override URL | Optional (when unset, `{CF_CRON_ORIGIN}/api/workflows/refresh/start`) | Absolute URL | Worker `env.REFRESH_START_URL`; injected by the platform, not committed to the repo |
+| `REFRESH_STEP_URL` | Queue consumer advances refresh step URL | Required when consuming a refresh step | Absolute URL | Worker `env.REFRESH_STEP_URL`; injected by the platform, not committed to the repo |
+| `CF_ACCESS_CLIENT_ID` | CF Access Service Token id (CI) | Only `PREVIEW_TARGET=cf` / optional `cf-preview` job | Access Service Token Client ID | `web/lib/preview/access.ts`; the GitHub secret name is the same; token name `gitstarclub-cca-ci`, and the secret is not committed to the repo |
+| `CF_ACCESS_CLIENT_SECRET` | CF Access Service Token secret (CI) | Only `PREVIEW_TARGET=cf` / optional `cf-preview` job | Access Service Token Client Secret | `web/lib/preview/access.ts`; header `CF-Access-Client-Secret` |
+| `CF_PREVIEW_REQUIRE_SHA` | Require the CF Preview identity SHA to match | Optional (off by default) | String `1` enables the gate | `web/lib/runtime-config.ts` and `web/scripts/resolve-preview.ts`; check the built SHA or an explicit `CF_PREVIEW_COMMIT_SHA` before enabling this gate |
+| `CF_PREVIEW_COMMIT_SHA` | Optional runtime copy of the deployed SHA | Optional | Git SHA | `web/lib/deployment-commit.ts` and Worker `env.CF_PREVIEW_COMMIT_SHA`. When `cf:build` baked a SHA, that SHA is the reported identity. This var counts only when it equals the baked SHA. When no SHA was baked, it is the fallback after `VERCEL_GIT_COMMIT_SHA`. A stale value cannot mask the built commit. |
+| `CF_BUILD_COMMIT_SHA` | Optional CI SHA override for `cf:build` | Optional | 40 to 64 hexadecimal characters | `web/scripts/cf-build-identity.ts`; Git HEAD is used when unset. Tracked changes append `-dirty`; untracked files do not. Missing Git yields `null`. |
+| `MIN_TRACKED_STARS` | Whitelist / refresh discovery floor (star count) | Optional (default `10000`). Preview wrangler `env.pre` is `10000`, the same floor as production | Positive-integer string. Production top-level must stay unset or `10000`. The 1k experiment is paused; restoring it is an owner decision | `web/lib/runtime-config.ts` · `web/lib/github.ts` · `web/lib/constants.mjs`; GitHub Search `stars:>=N` |
+| `WHITELIST_SEARCH_SHARDS` | whitelist GitHub Search whether sharded by hop | Optional (default off = single hop) | The string `"1"` turns it on; preview wrangler `env.pre` is `1` | `web/lib/runtime-config.ts` · `web/lib/workflows/steps/whitelist.ts` · `web/lib/github.ts`; each hop writes `ops/workflows/<run_id>/whitelist-search.json`, and the snapshot is written only when complete. Rollback = remove it or set `0` to restore a single hop. Do not turn shards off to fix a metadata 502 |
+| `PREFLIGHT_RELAX_EMPTY_SHARDS` | Whether preview preflight treats a missing/empty canonical shard as a `{}` placeholder | Optional (default off = missing shard fail closed). Wrangler `env.pre` does not set it | The string `"1"` turns it on only when `DEPLOY_ENV=pre`. Unset `DEPLOY_ENV` (including `HOSTING_TARGET=cf`) and `DEPLOY_ENV=production` / `VERCEL_ENV=production` stay fail-closed. Restoring it is an owner decision | `web/lib/runtime-config.ts` · `web/lib/workflows/canonical-validation.ts` · `web/lib/workflows/steps/preflight.ts`; policy name `preview-empty-canonical-placeholder`. schema / `d` / identity / wrong bucket / non-404 still fail closed. Rollback = remove it or set `0`. Do not turn off sharded Search to fix a missing shard |
+| `WORKFLOW_COLD_START` | Whether the first preview managed publish may bootstrap canonical / an empty lookup from zero | Optional (default off). Wrangler `env.pre` does not set it | The string `"1"` turns it on only when `DEPLOY_ENV=pre`, together with `PREFLIGHT_RELAX_EMPTY_SHARDS=1`. Unset `DEPLOY_ENV` (including `HOSTING_TARGET=cf`) and production stay off. Restoring the paused 1k experiment is an owner decision | `web/lib/workflows/cold-start.ts` · `web/lib/runtime-config.ts` · refresh start / preflight / whitelist / metadata / recompute I/O. It takes effect only while `views/latest.json` is still 404; written meta uses a real UTC `generated_at` and the bootstrap-day `seam_date` (no GH Archive  gross history), and **forbids** fake `node_id` / fake GraphQL. On conflict with the #515 empty-bucket placeholder, #512 502 recovery, or SafeText, **cold start wins** (see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)). After the first successful publish it automatically returns to fail closed. Rollback = remove it or set `0` |
+| `WHITELIST_SEARCH_HOP_BUDGET_MS` | Single-hop Search wall-clock budget | Optional (default `600000` = 10 min) | Integer milliseconds, `60000..840000` (must stay under the Queue 15 min wall) | `web/lib/runtime-config.ts` · `web/lib/github.ts` `searchWhitelistHop` |
+| `HOSTING_TARGET` | Next hosting target | Optional in code (default `vercel`). Both Workers set `cf` | `vercel` \| `cf` | `web/lib/runtime-config.ts` · `web/lib/analytics-policy.ts`. Production Worker `gitstarclub-web` and preview Worker `gitstarclub-web-pre` both set `cf` |
+| `NEXT_PUBLIC_HOSTING_TARGET` | `HOSTING_TARGET` public alias | Optional | Same as `HOSTING_TARGET` | `web/lib/runtime-config.ts`. The Workers set `HOSTING_TARGET=cf` |
+| `CF_WORKERS_HOST_ORIGIN` | P3 Workers host smoke origin | Optional | no-trailing-slash http(s) origin | `web/lib/workers-host/smoke-origin.ts` · `web/scripts/cf-workers-host-smoke.ts` |
+| `CF_WORKERS_HOST_LOCAL` | P3 smoke forces localhost | Optional | String `1` | `web/lib/workers-host/smoke-origin.ts` |
+| `VERCEL_DEPLOY_HOOK_URL` | Not used by the current Cloudflare deploy path | Optional | URL string | Not read by application code. Deploy with the Wrangler commands in this runbook |
+| `ALERT_WEBHOOK_URL` | Failure-alert webhook (Slack / Discord incoming webhook or `https://webhook.site/...`, POST a JSON summary; **if unset, logs only**) | Optional | An `https://…` endpoint that can receive a JSON POST | `web/lib/observability/alert.ts:45`; Workflow `sendAlert` · daily / weekly cron failure delivery |
 | `SITE_INDEXABLE` | Enables public indexing and sitemap discovery | Required for the production Cloudflare build and Worker; absent on preview | `"1"` enables indexing; other values disable it | `web/scripts/cf-opennext-build.ts`, [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | GCP 服务账号 key 路径 | 仅一次性回填 | 本机文件路径，例 `./gcp-key.json` | **本地回填脚本**（仅一次性 BigQuery 回填） |
-| `GCP_PROJECT_ID` | GCP 项目 ID | 仅一次性回填 | GCP project ID 字符串 | **本地回填脚本**（仅一次性 BigQuery 回填） |
+| `GOOGLE_APPLICATION_CREDENTIALS` | GCP service-account key path | One-time backfill only | Local file path, for example `./gcp-key.json` | **Local backfill script** (one-time BigQuery backfill only) |
+| `GCP_PROJECT_ID` | GCP project ID | One-time backfill only | GCP project ID string | **Local backfill script** (one-time BigQuery backfill only) |
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin for sitemap, metadata, and structured data | Required for the production Cloudflare build and Worker | `https://gitstarclub.com` without a trailing slash | `web/scripts/cf-opennext-build.ts`, [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
-| `BING_SITE_VERIFICATION` | Bing `msvalidate.01` token | 可选（生产） | Bing 提供的 token | `web/app/_shell/RootShell.tsx` 输出 verification meta；不需要 XML 文件 |
-| `INDEXNOW_ENABLED` | IndexNow post-commit 提交开关 | 可选（默认关闭） | 字符串 `1` 才启用 | live cron 提交 pointer 后调用 IndexNow；dry-run / pre-commit 不调用 |
-| `SEO_LIVE_BASE` | 集成测试拉取的活线 origin（默认 `https://www.gitstarclub.com`，留空可跳过测试） | 仅测试 | `https://www.gitstarclub.com` 或空串 | `web/lib/integration/seo.test.ts:23` |
-| `SEO_EXPECT_INDEXABLE` | Live SEO 验收的环境策略（Preview `0`，Production `1`；未设时按 canonical host 推断） | 仅测试 | `0` 或 `1` | `web/lib/integration/seo.test.ts` · `.github/workflows/ci.yml` |
-| `SEO_CANON_ORIGIN` | 集成测试断言的 canonical origin（默认 `https://gitstarclub.com`） | 仅测试 | 绝对 origin（**无尾斜杠**） | `web/lib/integration/seo.test.ts:25` |
-| `VERCEL_AUTOMATION_BYPASS_SECRET` | Preview Vercel Authentication 的 CI bypass（`x-vercel-protection-bypass`） | **必需**（GitHub Actions preview-e2e / product-gates） | Vercel Protection Bypass for Automation token | `web/lib/vercel-protection-bypass.ts` · `web/scripts/resolve-vercel-preview.ts`；不进浏览器、不进生产页面 |
+| `BING_SITE_VERIFICATION` | Bing `msvalidate.01` token | Optional. Set it in the shell that runs the Cloudflare production build | Bing-provided token | `web/scripts/cf-opennext-build.ts` inherits that shell. `web/app/_shell/RootShell.tsx` emits the meta tag when the variable is set. Confirm the tag in the generated HTML. A Vercel project variable does not change Cloudflare output. No XML file is needed |
+| `INDEXNOW_ENABLED` | IndexNow post-commit submission switch | Optional (default off) | The string `1` enables it | live cron calls IndexNow after the pointer is committed; dry-run / pre-commit do not call it |
+| `SEO_LIVE_BASE` | Live-line origin fetched by integration tests (default `https://www.gitstarclub.com`; leave empty to skip the test) | Tests only | `https://www.gitstarclub.com` or an empty string | `web/lib/integration/seo.test.ts:23` |
+| `SEO_EXPECT_INDEXABLE` | Live SEO acceptance environment policy (Preview `0`, Production `1`; when unset, inferred from the canonical host) | Tests only | `0` or `1` | `web/lib/integration/seo.test.ts` · `.github/workflows/ci.yml` |
+| `SEO_CANON_ORIGIN` | canonical origin asserted by integration tests (default `https://gitstarclub.com`) | Tests only | Absolute origin (**no trailing slash**) | `web/lib/integration/seo.test.ts:25` |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | Optional header secret read by `web/lib/vercel-protection-bypass.ts`. `https://pre.gitstarclub.com` is public and does not use this as a login lock | Optional | Token string | `web/lib/vercel-protection-bypass.ts` · `web/scripts/resolve-vercel-preview.ts`; not sent to the browser, and not put on production pages |
 
-平台和开发工具变量也属于受维护清单；它们不应被误当作应用密钥：
+Platform and development-tool variables also belong to the maintained inventory; they must not be mistaken for application secrets:
 
-| 变量 | 范围 | 用途 |
+| Variable | Scope | Purpose |
 |---|---|---|
-| `NEXT_RUNTIME` | Next.js 注入 | `nodejs` / `edge`; enables the shared Data Cache 404 sentinel for `bootstrap/latest.json` |
-| `VERCEL_ENV` | Vercel 注入 | 区分 Production / Preview / Development 行为 |
-| `VERCEL_URL` | Vercel 注入 | `/.well-known/deployment` 返回当前不可变 deployment URL |
-| `VERCEL_GIT_COMMIT_SHA` | Vercel 注入 | `/.well-known/deployment` 返回当前部署 commit |
-| `NODE_ENV` | runtime/tooling | Next.js 与测试的标准运行模式 |
-| `CI` | CI | 启用 CI 专用超时、输出与安全门禁 |
-| `PORT` | 本地工具 | 本地 fixture/dev server 监听端口 |
-| `BASE_URL` | Playwright/release | 浏览器测试 origin；通常由 deployment resolver 注入 |
-| `PLAYWRIGHT_BASE_URL` | Playwright | `BASE_URL` 的显式 Playwright override |
-| `IDENTITY_ORIGIN` | release gate | 校验目标部署 canonical identity |
-| `LIVE_SMOKE_SITE_URL` | live smoke | live smoke 的目标 origin |
-| `RUN_LIVE_SMOKE` | live smoke | 字符串 `1` 才启用显式网络 smoke |
-| `BASELINE_SCREENSHOT_DIR` | visual tooling | baseline 截图输出目录 |
-| `BASELINE_SCREENSHOT_LOCALES` | visual tooling | baseline locale 子集 |
-| `BASELINE_SCREENSHOT_ROUTE_IDS` | visual tooling | baseline route 子集 |
-| `BASELINE_SCREENSHOT_YEAR` | visual tooling | baseline 年份参数 |
-| `BASELINE_SCREENSHOT_MONTH` | visual tooling | baseline 月份参数 |
-| `BASELINE_SCREENSHOT_WEEK` | visual tooling | baseline 周参数 |
-| `BASELINE_SCREENSHOT_REPO` | visual tooling | baseline repo 参数 |
-| `BASELINE_SCREENSHOT_ORG` | visual tooling | baseline org 参数 |
-| `BASELINE_SCREENSHOT_CATEGORY` | visual tooling | baseline category 参数 |
+| `NEXT_RUNTIME` | Next.js injected | `nodejs` / `edge`; enables the shared Data Cache 404 sentinel for `bootstrap/latest.json` |
+| `VERCEL_ENV` | Not set on either Worker. Analytics stay off when `HOSTING_TARGET=cf` and this is not `production` | `web/lib/analytics-policy.ts` |
+| `VERCEL_URL` | Not set on either Worker. When unset, Cloudflare deployment identity uses the preview origin | `web/lib/deployment-identity.ts` |
+| `VERCEL_GIT_COMMIT_SHA` | Optional commit input for `/.well-known/deployment`. Workers pass `CF_PREVIEW_COMMIT_SHA` or the SHA baked by `cf:build` | `web/lib/deployment-identity.ts` |
+| `NODE_ENV` | runtime/tooling | Next.js and tests standard runtime mode |
+| `CI` | CI | Enables CI-only timeouts, output, and security gates |
+| `PORT` | Local tooling | Port the local fixture/dev server listens on |
+| `PATH` | Local tooling / offline pipeline tests | Locates pinned Node/Bun for offline pipeline tests and the local R2 rehearsal; forwarded into otherwise clean child environments, never a Worker binding |
+| `BACKFILL_FIXTURE_CONFIG` | Offline pipeline tests only | Disposable synthetic transport configuration; never a production setting |
+| `BACKFILL_FIXTURE_TRACE` | Offline pipeline tests only | Local JSONL request trace written by the subprocess network interceptor |
+| `BACKFILL_FIXTURE_REMOTE` | Offline pipeline tests only | Disposable file backing synthetic R2 responses; never a bucket or credential file |
+| `BASE_URL` | Playwright/release | Browser-test origin; usually injected by the deployment resolver |
+| `PLAYWRIGHT_BASE_URL` | Playwright | `BASE_URL` explicit Playwright override |
+| `IDENTITY_ORIGIN` | release gate | Verifies the target deployment's canonical identity |
+| `LIVE_SMOKE_SITE_URL` | live smoke | live smoke target origin |
+| `RUN_LIVE_SMOKE` | live smoke | The string `1` enables the explicit network smoke |
+| `BASELINE_SCREENSHOT_DIR` | visual tooling | baseline screenshot output directory |
+| `BASELINE_SCREENSHOT_LOCALES` | visual tooling | baseline locale subset |
+| `BASELINE_SCREENSHOT_ROUTE_IDS` | visual tooling | baseline route subset |
+| `BASELINE_SCREENSHOT_YEAR` | visual tooling | baseline year parameter |
+| `BASELINE_SCREENSHOT_MONTH` | visual tooling | baseline month parameter |
+| `BASELINE_SCREENSHOT_WEEK` | visual tooling | baseline week parameter |
+| `BASELINE_SCREENSHOT_REPO` | visual tooling | baseline repo parameter |
+| `BASELINE_SCREENSHOT_ORG` | visual tooling | baseline org parameter |
+| `BASELINE_SCREENSHOT_CATEGORY` | visual tooling | baseline category parameter |
 
 <!-- env-inventory:end -->
 
-### 事故 #543：只读 views 版本回退
+### Incident #543: read-only views version fallback
 
-Production 基础视图通过 `views/latest.json` 解析版本。共享 Blob store 里这个指针缺失（issue #543），页面没有排名数据。最后一个完整版本 `refresh-2026-09-13T06-00-16-398Z` 仍在 `views/` 下。回滚不能重建缺失的指针，这个止血方案也不会写指针。
+The original shared-Blob incident #543 involved a missing `views/latest.json`, which could leave rankings without data before the fallback was added. Production subsequently switched to the copied R2 store under the accepted stage-4 contract. At the [dated October 13 check](./R2-CUTOVER.md#read-only-state-check-2026-10-13), the production R2 views pointer still returned 404 and metadata for `refresh-2026-09-13T06-00-16-398Z` returned 200. Preserve that exact frozen fallback in both the Worker and production build shell while the pointer is absent. This stopgap never writes a pointer; the historical Blob incident is not the current production storage contract.
 
-`VIEWS_VERSION_FALLBACK` 只设在 production Worker（Worker wrangler 配置的顶层 `vars`）。published 读只有在 `views/latest.json` 确认 404 后才使用它；超时、5xx、JSON 无效都不使用。指针存在时以指针为准。authoritative 读（refresh 和其他写路径）忽略这个变量，仍然看到指针缺失。`published_at` 取 `views/<version>/meta.json` 的 `generated_at`（是有效时间戳时），否则为 null。回退生效期间，每个 isolate 记录一次警告。Preview `env.pre` 不得设置这个变量。
+`VIEWS_VERSION_FALLBACK` is set on the production Worker only (top-level `vars` in the Worker wrangler config). A published read uses it only after a confirmed 404 of `views/latest.json`. A timeout, a 5xx response, or invalid JSON does not use it. If the pointer exists, it wins. Authoritative reads (refresh and other write paths) ignore the variable and still see no pointer. `published_at` is `generated_at` from `views/<version>/meta.json` when that field is a real timestamp, otherwise null. While the fallback is in effect the Worker logs one warning per isolate. Preview `env.pre` must not set the variable.
 
-issue #543 恢复 `views/latest.json` 后删除：
+Removal requires separate owner authorization and the same prerequisites as the [production build procedure](#production-build-and-deploy) and [R2 stage 4](./R2-CUTOVER.md#stage-4-cutover-i-5b):
 
-1. 从 Worker wrangler 配置删除顶层 `VIEWS_VERSION_FALLBACK`。
-2. 删除 `scripts/cf-ci-gates.mjs` 里对应的 production 变量断言；preview 拒绝检查保留到两处都删掉为止。
-3. 重新部署 production Worker。
+1. Confirm `https://data.gitstarclub.com/views/latest.json` returns HTTP 200 and is authoritative for the version rendered by production pages.
+2. Verify a production build without `VIEWS_VERSION_FALLBACK` still prerenders real data, including repository rows and star counts on rankings. HTTP 200 alone is insufficient.
+3. Remove the top-level Worker var and its production build-shell export together in that separately authorized build/deploy change.
+4. Keep the existing `scripts/cf-ci-gates.mjs` assertion: it already permits an absent fallback or exactly `refresh-2026-09-13T06-00-16-398Z`, and preview must still reject the var. No gate deletion or relaxation is needed. Do not remove `BLOB_READ_WRITE_TOKEN` before the separately authorized stage-6 criteria are accepted.
 
-真实指针存在后不要保留回退。否则以后再出现 404，会继续服务冻结的 2026-09-13 版本。这个变量从不写 store。
+A valid pointer already takes priority over the fallback. Do not remove or change the fallback merely because issue #543 closes or to rotate cache keys. Until the removal prerequisites are met and the change is authorized, keep the exact frozen value. After authorized removal, a later 404 must not silently select that frozen generation again.
 
-**约定**：
+**Conventions**:
 
-- `NEXT_PUBLIC_*` 会进客户端 bundle，**只放非敏感值**；其余一律 Server-only。
-- Production 与 Preview 的页面/build 读路径只要求 `BLOB_BASE_URL`。只有 cron /
-  Workflow mutation 环境才配置 `BLOB_READ_WRITE_TOKEN`、`CRON_SECRET`、
-  `GITHUB_TOKEN`；它们**绝不写进仓库或客户端**。
-- 写入 Vercel 变量时必须去掉首尾空白和 BOM；`CRON_SECRET` 带空白会让 Cron header 非法，`BLOB_BASE_URL` 带 BOM 会让 Next.js build 在 sitemap 阶段报 `ERR_INVALID_URL`。
-- **GCP 两项仅本地一次性回填用**：用 BigQuery 查 GH Archive（约 $10，含稳定 repo.id）。回填一次后这两个变量即可弃用——**日常运营 0 GCP、0 外部账单**。（为何不用免费的 ClickHouse 公共实例 / 自建：见 ARCHITECTURE「为什么回填用 BigQuery」。）
-- 启动时校验必需密钥存在，缺失则 fail-fast（不静默吞）。
-- Cloudflare R2 P0 适配（双读开关、非生产写守卫、回滚）见 [R2-MIGRATION-P0.md](./R2-MIGRATION-P0.md)。默认仍读/写 Vercel Blob；**不切 DNS**。
-- Cloudflare migrate P1 编排（去掉 Workflow SDK、非生产 CF Cron/Queue、双调度回滚）见 [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md)。**生产周更仍是 Vercel cron**，直至 Jason 批切流。
-- Cloudflare migrate P2（ISR 失效端口、可插 Preview、Access 只护 `gitstarclub-web.worldgo.workers.dev`、可选 `cf-preview` job）见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md)。**生产 Preview / product-gates / `revalidatePath` 仍是 Vercel**。勿切 DNS，勿把 Access 绑到 apex/www。
-- Cloudflare migrate P3（OpenNext 把 Next 挂到 `gitstarclub-web` 预览、可选 `cf-workers-host` dry-run）见 [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md)。**生产 apex/www 仍是 Vercel**。勿切 DNS，勿把 Worker 当唯一入口。
+- `NEXT_PUBLIC_*` goes into the client bundle; **put only non-sensitive values there**. Everything else is Server-only.
+- Both Worker contracts use the R2 public base and guarded `DATA` binding. Production builds preserve the frozen fallback while the pointer is absent and clear Blob shell vars. Explicit use of the retained Blob driver needs its public base and, for mutation only, the Blob token. Preview must not set `BLOB_*` or the production fallback. `CRON_SECRET` and `GITHUB_TOKEN` stay off the client and out of the repository.
+- Strip leading and trailing whitespace and a BOM from values. Whitespace on `CRON_SECRET` makes the bearer header illegal, and a BOM on `BLOB_BASE_URL` makes the Next.js build report `ERR_INVALID_URL` at the sitemap stage.
+- **The two GCP items are for local one-time backfill only**: query GH Archive with BigQuery (about $10, including a stable repo.id). After one backfill these two variables can be retired—**routine operations are 0 GCP and 0 external bills**. (Why not the free ClickHouse public instance / self-hosted: see ARCHITECTURE "Why backfill uses BigQuery".)
+- At startup, verify that required secrets exist; if any are missing, fail-fast (do not swallow them silently).
+- Current R2 status and the stage plan are in [R2-CUTOVER.md](./R2-CUTOVER.md). Production uses R2 after the accepted 2026-10-04 cutover. Superseded phase notes are in `docs/archive/`. **Do not cut DNS** from this runbook.
+- Both Workers serve the site. A preview fault rolls back Worker `gitstarclub-web-pre` (`--env pre`) only. Do not roll back production Worker `gitstarclub-web` from a preview incident. Production hosting rollback for the R2 cutover is the stage 4 version command later in this runbook. The production trigger remains unverified. Both `triggers.crons` arrays stay `[]` until an owner-approved stage 5 change.
 
-## Vercel Blob 布局
+## Vercel Blob rollback layout (retained until stage 6)
 
-使用**一个 PUBLIC store**：海量 JSON 视图由 build / 运行时按**直链 URL** 读取，公开读最省事、命中 CDN。首次 bootstrap 的 views + canonical 先封存在 immutable generation，由 `bootstrap/latest.json` 一次提交；后续 canonical 变更进入该 generation 的 copy-on-write overlay。新布局完整定义见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4 与 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.11–2.13。
+This retained historical layout supports Blob rollback and explicitly selected local Blob operations. It is not the current production read/write procedure; keep it until stage 6 acceptance. The accepted R2 copy retained relevant keys at the production bucket root. The Blob layout uses **one PUBLIC store**: the large set of JSON views is read by the build / runtime via **direct-link URL**; public reads are the simplest and hit the CDN. The first bootstrap's views + canonical are sealed first in an immutable generation and committed once by `bootstrap/latest.json`; later canonical changes enter that generation's copy-on-write overlay. The full definition of the new layout see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4 and [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.11–2.13.
 
 ```text
 blob://
 ├── bootstrap/
-│   ├── latest.json                                  # atomic bootstrap pointer（previous=null 表示 legacy-flat）
-│   ├── generations/<bootstrap-generation>/          # create-only、manifest 封存后永不覆盖
-│   │   ├── manifests/{base,canonical}.json           # object path/bytes/SHA-256 完整性收据
-│   │   ├── views/**                                  # 首次 base views；views/latest 存在后由 managed views 优先
+│   ├── latest.json                                  # atomic bootstrap pointer (Blob previous=null means legacy-flat)
+│   ├── generations/<bootstrap-generation>/          # create-only; never overwritten after the manifest is sealed
+│   │   ├── manifests/{base,canonical}.json           # object path/bytes/SHA-256 integrity receipt
+│   │   ├── views/**                                  # first base views; after views/latest exists, managed views take priority
 │   │   └── canonical/
-│   │       ├── star_daily.parquet                    # bootstrap 归档
+│   │       ├── star_daily.parquet                    # bootstrap archive
 │   │       └── v2/**                                 # immutable canonical seed
-│   └── overlays/<bootstrap-generation>/canonical/v2/** # recurring canonical copy-on-write 状态
-├── canonical/                                       # legacy flat layout：bootstrap pointer 不存在时才读写
-│   ├── star_daily.parquet                          # bootstrap 归档（仅一次性 / 灾难重建读写，非生产路径）
-│   └── v2/                                          # 生产 canonical JSON shard（见 VERCEL-DATA-OPERATIONS §4）
-│       ├── meta.json                                #   seam_date · schema_ver · folded_through（周/月水位）
-│       ├── whitelist/                               #   Workflow step 1：≥10k 白名单（web/lib/workflows/steps/whitelist.ts）
-│       │   ├── <run_id>.json                        #     单次 run 快照（entries + diff.added/dropped）
-│       │   └── latest.json                          #     指针：{ run_id, ids } —— 下次 run 计算 diff 用
-│       ├── repos/{bucket}.json                      #   repo 维度 + active/history + tracked_since + 冻结锚定因子 d
+│   └── overlays/<bootstrap-generation>/canonical/v2/** # recurring canonical copy-on-write state
+├── canonical/                                       # legacy flat layout: read and write only when the bootstrap pointer does not exist
+│   ├── star_daily.parquet                          # bootstrap archive (read/write only for one-time / disaster rebuild, not a production path)
+│   └── v2/                                          # production canonical JSON shard (see VERCEL-DATA-OPERATIONS §4)
+│       ├── meta.json                                #   seam_date · schema_ver · folded_through (week/month watermark)
+│       ├── whitelist/                               #   Workflow step 1: ≥10k whitelist (web/lib/workflows/steps/whitelist.ts)
+│       │   ├── <run_id>.json                        #     single-run snapshot (entries + diff.added/dropped)
+│       │   └── latest.json                          #     pointer: { run_id, ids } — used by the next run to compute the diff
+│       ├── repos/{bucket}.json                      #   repo dimension + active/history + tracked_since + frozen anchor factor d
 │       ├── repo-monthly/{bucket}.json · repo-weekly/{bucket}.json · repo-recent-daily/{bucket}.json
 │       ├── site-daily/{yyyy}.json
-│       └── pending/{period}.json                    #   已收口待折叠的周期活尾冻结快照（防重复 / 丢数据）
+│       └── pending/{period}.json                    #   frozen snapshot of a closed period's live tail waiting to be folded (guards against duplicates / data loss)
 ├── lookup/
-│   ├── repos.json                                   # repo 元数据（build join）
+│   ├── repos.json                                   # repo metadata (build join)
 │   └── orgs.json
-├── rank/                                            # 预算好的排行榜视图（build 读，flat 旧布局；新布局走 views/<run_id>/rank/**）
+├── rank/                                            # precomputed ranking views (read by the build, flat old layout; the new layout uses views/<run_id>/rank/**)
 │   ├── {week|month|year}/{period}/{repo|org}/{flow|stock}.json
 │   └── all-time/{repo|org}/stock.json
-├── entity/                                          # flat 旧布局
-│   ├── repo/{id}.json                               # 曲线 + 里程碑 + 历期表 + 名次史
+├── entity/                                          # flat old layout
+│   ├── repo/{id}.json                               # curve + milestones + period table + rank history
 │   └── org/{login}.json
 ├── heatmap/{year|month}/{period}.json
-├── live/                                            # 当前周期原子活尾（每日 / 每周 cron 写）
-│   ├── latest.json                                  #   唯一可变控制对象：完整 generation 指针 + ETag/CAS lease
-│   └── generations/<run_id>/                        #   不可变；manifest 写完后才允许切 latest
-│       ├── manifest.json                            #     完整文件清单 + idempotency key + previous generation
+├── live/                                            # atomic live tail of the current period (written by daily / weekly cron)
+│   ├── latest.json                                  #   the only mutable control object: full generation pointer + ETag/CAS lease
+│   └── generations/<run_id>/                        #   immutable; switching latest is allowed only after the manifest is written
+│       ├── manifest.json                            #     full file manifest + idempotency key + previous generation
 │       ├── current_month.json · hot-snapshot.json
 │       ├── rank/{week|month}/{current}/repo/{flow|stock}.json
 │       ├── heatmap/month/{current}.json
-│       └── rollover/{period}.json                   #     跨月 pending 的 generation 内恢复副本（仅跨月时）
-├── views/                                           # 发布层：latest.json 指针 + <run_id>/（version=run_id）
-│   ├── latest.json                                  #   pointer：{ version, run_id, published_at, prev_version, schema_ver }
-│   └── <run_id>/                                    #   版本化输出（writeVersion → views/<run_id>/<rel>）
-│       ├── meta.json                                #     版本元（seam_date · schema_ver · folded_through · generated_at）
-│       ├── lookup/                                  #     entity step 派生（lookup/repos.json + lookup/orgs.json）
+│       └── rollover/{period}.json                   #     in-generation recovery copy of cross-month pending (only when crossing a month)
+├── views/                                           # publish layer: latest.json pointer + <run_id>/ (version=run_id)
+│   ├── latest.json                                  #   pointer: { version, run_id, published_at, prev_version, schema_ver }
+│   └── <run_id>/                                    #   versioned output (writeVersion → views/<run_id>/<rel>)
+│       ├── meta.json                                #     version meta (seam_date · schema_ver · folded_through · generated_at)
+│       ├── lookup/                                  #     entity step derived (lookup/repos.json + lookup/orgs.json)
 │       │   ├── repos.json
 │       │   ├── orgs.json
-│       │   ├── aliases.json                         #     buildAliases step 派生：old_full_name → 当前 id（repo route 308 跳转，validate 校验）
-│       │   └── categories.json                      #     category step 派生：公开分类目录（validate 校验非空）
-│       ├── categories/                              #     category step 派生（registry + 每仓分配，validate 校验）
-│       │   ├── registry.json                        #       分类登记表（dimensions × categories，含 public 标记）
-│       │   ├── assignments.json                     #       v2 index（或迁移期可读的 v1 单体）
-│       │   └── assignments/shards/{0..31}.json      #       repo_id % 32 分片（单文件 < 1.50 MiB）
+│       │   ├── aliases.json                         #     buildAliases step derived: old_full_name → current id (repo route 308 redirect, validate checks)
+│       │   └── categories.json                      #     category step derived: public category catalog (validate checks that it is non-empty)
+│       ├── categories/                              #     category step derived (registry + per-repo assignment, validate checks)
+│       │   ├── registry.json                        #       category registry (dimensions × categories, including the public flag)
+│       │   ├── assignments.json                     #       v2 index (or a v1 monolith readable during migration)
+│       │   └── assignments/shards/{0..31}.json      #       repo_id % 32 shards (single file < 1.50 MiB)
 │       ├── search/
-│       │   └── index.json                           #     客户端搜索索引（entity step 派生，validate 闸门校验条目数）
-│       ├── rank/                                    #     rank 矩阵（窗口 × 维度 × 指标）
+│       │   └── index.json                           #     client search index (derived by the entity step; the validate gate checks the entry count)
+│       ├── rank/                                    #     rank matrix (window × dimension × metric)
 │       │   ├── {week|month|year}/{period}/{repo|org}/{flow|stock|growth|new}.json
 │       │   ├── all-time/{repo|org}/stock.json
-│       │   └── category/{dimension}/{slug}/all-time/{repo|org}/stock.json  # 分类排行榜（validate 抽样校验）
-│       ├── entity/                                  #     repo / org 曲线 + 里程碑 + 历期表 + 名次史
+│       │   └── category/{dimension}/{slug}/all-time/{repo|org}/stock.json  # category rankings (validate spot-checks)
+│       ├── entity/                                  #     repo / org curve + milestones + period table + rank history
 │       │   ├── repo/{id}.json
 │       │   └── org/{login}.json
-│       └── heatmap/                                 #     站点级日 / 月汇总
+│       └── heatmap/                                 #     site-level day / month rollup
 │           ├── month/{yyyy-mm}.json
 │           └── year/{yyyy}.json
 ├── ops/
-│   ├── sync-runs.json                               # live cron 运行记录（保留最近 100 次）
+│   ├── sync-runs.json                               # live cron run records (keep the most recent 100)
 │   └── workflows/
-│       ├── latest-success.json                      #   最近一次成功 run 的恢复点：{ run_id, version, published_at }
-│       ├── active.json                              #   当前 refresh/rollback lease（ETag CAS；idempotency_key + fencing_token + expiry）
-│       ├── health/                                  #   每条 pipeline 独立的 CAS 健康状态（无扁平 health.json）
-│       │   ├── workflow-refresh.json                #     Sunday 06:00 唯一 operator signal
-│       │   ├── cron-daily.json                      #     每次非 dry 成功/失败都更新
-│       │   └── cron-weekly.json                     #     每次非 dry 成功/失败都更新
-│       └── <run_id>/                                #   Workflow 单次 run checkpoint
-│           ├── manifest.json                        #     步骤清单 + 状态（running / published / failed）
-│           ├── canonical-manifest.json              #     必需 canonical shard 的记录数、SHA-256 与完整性收据
-│           ├── validation.json                      #     发布闸门结果（ok · checked · invariants · failures）
-│           ├── renames.json                         #     rename step 输出（old_full_name → new_full_name，web 层 308）
-│           └── error.json                           #     失败时写入（run_id · error · at）
-├── current_month.json                               # 迁移期 legacy fallback；新 cron 不再覆盖
-└── hot-snapshot.json                                # 迁移期 legacy fallback；新 cron 不再覆盖
+│       ├── latest-success.json                      #   recovery point of the most recent successful run: { run_id, version, published_at }
+│       ├── active.json                              #   current refresh/rollback lease (ETag CAS; idempotency_key + fencing_token + expiry)
+│       ├── health/                                  #   per-pipeline CAS health state (no flat health.json)
+│       │   ├── workflow-refresh.json                #     Sunday 06:00 the only operator signal
+│       │   ├── cron-daily.json                      #     updated on every non-dry success/failure
+│       │   └── cron-weekly.json                     #     updated on every non-dry success/failure
+│       └── <run_id>/                                #   Workflow single-run checkpoint
+│           ├── manifest.json                        #     step list + status (running / published / failed)
+│           ├── canonical-manifest.json              #     record count, SHA-256, and integrity receipt of the required canonical shard
+│           ├── validation.json                      #     publish gate result (ok · checked · invariants · failures)
+│           ├── renames.json                         #     rename step output (old_full_name → new_full_name, web-layer 308)
+│           └── error.json                           #     written on failure (run_id · error · at)
+├── current_month.json                               # migration-period legacy fallback; the new cron no longer overwrites it
+└── hot-snapshot.json                                # migration-period legacy fallback; the new cron no longer overwrites it
 ```
 
-**Blob 操作约束（写 pipeline 时必须遵守）**：
+**Blob operation constraints (must be followed when writing a pipeline)**:
 
-| 维度 | 数值 | 对策 |
+| Dimension | Value | Countermeasure |
 |---|---|---|
-| API | `put` / `head` / `list` / `del` / `copy`；可在 build 脚本、cron route、server component 调用 | — |
-| 单文件上限 | 5TB | 远超需求（数据仅几十 MB） |
-| Pro 容量 | ~5GB 存储 + 100GB 传输/月 | 数据几十 MB，宽裕 |
-| **写速率** | **4,500 次/分（75/s）** | **批量 `put()` 必须节流**（限并发 + 间隔），尤其 bootstrap 上传 / Workflow 重算写上万 entity JSON 时 |
-| 同路径覆盖 | 需 `allowOverwrite: true` | 仅 pointer / lease / 运维状态可覆盖；live generation 对象必须 `allowOverwrite:false` |
-| **缓存传播** | 同路径覆盖最长 **60s** 才全网生效 | 页面进程内仍 memo `live/latest.json` 60s。指针写入 `max-age=0`。**publish 用 Blob API `head()` etag（claim 当时记下的 origin etag）做 fence**，不再用 public GET 判断是否仍持有 lease。public store 不能 private get；CDN 按 path 缓存，`?v=` 无效。周日 weekly 快路径 1–2s 否则会读到 `lease: null`。generation 路径不可变 |
+| API | `put` / `head` / `list` / `del` / `copy`; callable from build script, cron route, and server component | — |
+| Per-file limit | 5TB | Far beyond need (the data is only tens of MB) |
+| Pro capacity | ~5GB storage + 100GB transfer/month | The data is tens of MB, with ample room |
+| **Write rate** | **4,500 times/minute (75/s)** | **Batched `put()` must be throttled** (limit concurrency + spacing), especially when a bootstrap upload / Workflow recompute writes tens of thousands of entity JSON files |
+| Same-path overwrite | Requires `allowOverwrite: true` | Only a pointer / lease / operations state may be overwritten; live generation objects must use `allowOverwrite:false` |
+| **Cache propagation** | A same-path overwrite takes up to **60s** to take effect network-wide | The page process still memo `live/latest.json` 60s. Pointer writes use `max-age=0`. **the retained Blob implementation fences publish with the origin `head()` etag recorded at claim time**, and no longer uses a public GET to decide whether the lease is still held. A public store cannot private get; the CDN caches by path, and `?v=` has no effect. The Sunday weekly fast path is 1–2s, otherwise it reads `lease: null`. generation paths are immutable |
 
-> 之所以选 PUBLIC store：JSON 视图本就是要被 build / 运行时直接 `fetch` 的公开数据，公开读免去签名、天然走 CDN。canonical（JSON shard + bootstrap Parquet）虽也在同 store，但只有持 token 的 Workflow / bootstrap 会写它，不在 build / 运行时读路径。
+> Why a PUBLIC store was chosen: JSON views are public data meant to be `fetch`ed directly by the build / runtime, so a public read skips signatures and naturally goes through the CDN. canonical (JSON shard + bootstrap Parquet) is in the same store, but only a Workflow / bootstrap that holds the token writes it, and it is not on the build / runtime read path.
 
-**安全删除（默认只预览）**：
+**Safe delete (preview only by default)**:
 
 ```bash
 cd web
 
-# 枚举完整 prefix，并输出精确 object count + bytes；不会删除
+# Enumerate the full prefix, and print the exact object count + bytes; it does not delete
 bun scripts/blob-del-prefix.ts views/verify-123/
 
-# 只有 --execute 与逐字相同的 --confirm 同时存在才会删除
+# A delete happens only when --execute and a character-for-character identical --confirm are both present
 bun scripts/blob-del-prefix.ts views/verify-123/ \
   --execute --confirm views/verify-123/
 ```
 
-preview inventory 不持有写锁，也不删除。执行模式会先取得与 managed/bootstrap publish、rollback 共用的 `ops/workflows/active.json` fenced lease；每个 delete chunk 前按 `renew → 重读 live protection state → 再次核对 fencing → del` 执行，最后才释放 lease。因此 current / rollback target 不可能在 protection check 与 destructive call 之间被切入。`canonical/**`、`ops/**`、`live/**`、`current_month`、`hot-snapshot`、两个 latest pointer、当前 / rollback-target / active Workflow 的 view prefix，以及当前 / rollback bootstrap generation + overlay 都硬阻；`views/`、`bootstrap/generations/`、`bootstrap/overlays/` 等宽前缀也不能执行。自动 GC 在所属 refresh lease 释放前复用同一个 guard。
+preview inventory does not hold a write lock, and does not delete. Execute mode first acquires the `ops/workflows/active.json` fenced lease shared with managed/bootstrap publish and rollback; before each delete chunk it runs `renew → re-read live protection state → re-check fencing → del`, and releases the lease only at the end. Therefore a current / rollback target cannot be switched in between the protection check and the destructive call. `canonical/**`, `ops/**`, `live/**`, `current_month`, `hot-snapshot`, the two latest pointer, the view prefix of the current / rollback-target / active Workflow, and the current / rollback bootstrap generation + overlay are all hard-blocked; wide prefixes such as `views/`, `bootstrap/generations/`, and `bootstrap/overlays/` also cannot be executed. Automatic GC reuses the same guard before the owning refresh lease is released.
 
-> **公开 JSON endpoint**：`/search-index`、`/repo-curve` 与静态 data export aliases 的 method/cache/status contract 见 [API.md](./API.md)；Blob 读取与物理布局仍以本节为准。
+> **Public JSON endpoint**: the method/cache/status contract for `/search-index`, `/repo-curve`, and the static data export aliases see [API.md](./API.md); Blob reads and the physical layout still follow this section.
 
 ### Live-rank recovery: `2026-W27`
 
@@ -400,41 +434,38 @@ bun run scripts/backfill-live-week.ts --week 2026-W27 --finalize
 
 `KNOWN_MISSING_LIVE_WEEKS` is empty after this backfill. Product gates expect `live/rank/week/2026-W27/repo/flow.json` **200**.
 
-## Cron 调度
+## Cron route and schedule reference
 
-`web/vercel.json` 声明 `crons[]`；Pro 计划 **100 job / 项目**、最小 1 次 / 分。三条 job：
+Endpoint method, auth, query, response, cache, and status contract see [API.md](./API.md). This section maintains the intended cadence, idempotency, and the operations runbook.
 
-Endpoint method、auth、query、response、cache 与 status contract 见 [API.md](./API.md)；本节只维护调度、幂等和运维 runbook。
+Neither checked-in Worker declares cron triggers. Production `triggers.crons` and preview `env.pre` `triggers.crons` are both `[]`. The production caller is unverified. `web/vercel.json` is in the repository and is not proof of a live caller. Do not infer the caller from that file.
 
-| Job | 调度（UTC） | 动作 | 触发 deploy？ |
+Intended cadence when an owner later enables schedules. Cloudflare numbers Sunday as `SUN` or `1` and rejects `0`. `7` is Saturday.
+
+| Job | Intended schedule (UTC) | Action | Triggers a deploy? |
 |---|---|---|---|
-| **每日** | `0 3 * * *`（~03:00） | **Vercel Function / JSON-only**：GraphQL 查 current_stars → 生成并校验完整 immutable live generation → 原子切 `live/latest.json` → `revalidatePath` 热集页 | **否**（不碰 Parquet / 引擎 / deploy） |
-| **每周** | `0 4 * * 0`（周日 ~04:00） | **Vercel Function / 增量刷新**：复用同一 generation/pointer 发布协议，并落 `ops/sync-runs.json` | **否**（长尾按需 ISR；不做全量 build） |
-| **每周 refresh workflow** | `0 6 * * 0`（周日 06:00） | **Vercel cron + 无 SDK 编排 / 全量刷新**：`/api/workflows/refresh/start` 鉴权后取得 lease 并 `startRefresh`——白名单 → 改名 → 元数据 → 折叠 → rank / entity / heatmap 重算 → 校验 → 发布（切指针）→ 版本 GC。默认 HTTP 自链到 `/api/workflows/refresh/step`；生产排程仍是本表，不是 CF Cron | **否**（发布只切指针；排程独立于 daily / weekly） |
+| **Daily** | `0 3 * * *` (~03:00) | JSON-only: GraphQL looks up current_stars, then generate and validate a complete immutable live generation, switch `live/latest.json`, and `revalidatePath` the hot-set pages | **No** |
+| **Weekly** | `0 4 * * SUN` (Sunday ~04:00) | Incremental live overlay. Reuse the same generation and pointer protocol, and write `ops/sync-runs.json` | **No** |
+| **Weekly refresh** | `0 6 * * SUN` (Sunday 06:00) | Managed refresh: `/api/workflows/refresh/start` authenticates, acquires a lease, and `startRefresh` runs whitelist, rename, metadata, fold, rank / entity / heatmap recompute, validate, publish, and version GC. Steps continue through `/api/workflows/refresh/step` | **No** |
 
-```jsonc
-// web/vercel.json — all scheduled entrypoints run on Vercel Production
-{
-  "crons": [
-    { "path": "/api/cron/daily", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/weekly", "schedule": "0 4 * * 0" },
-    { "path": "/api/workflows/refresh/start", "schedule": "0 6 * * 0" }
-  ]
-}
-```
+`web/vercel.json` still lists Sunday as `0`. That file is not the Worker schedule.
 
-> **Vercel-only cron 实现**：每日 job = `web/app/api/cron/daily/route.ts`，每周 job = `web/app/api/cron/weekly/route.ts`，两者都委托 `web/lib/cron/handlers.ts` 并支持 `?dry=1`。CRON_SECRET 鉴权 → 以 `<job>:<UTC-day>` 幂等 key 在 `live/latest.json` 取得 15 分钟 ETag/CAS lease → GraphQL 拉 current_stars → `live-refresh.ts` 幂等重建当日状态 → 校验全部 JSON → 写 `live/generations/<run_id>/**`（`current_month.json` v2 index + `current_month/shards/<0-31>.json`）与 manifest → 同一个控制对象做 fenced CAS 切 generation → **之后**才 `revalidatePath` / IndexNow / `ops/sync-runs.json`。UTC 周日 daily 在取得 lease 前返回 `skipped: weekly-owns-sunday`，避免与 04:00 weekly 争 live/health。不同 key 并发返回 409；同 key 运行中返回 202 attached，已提交返回 200 already-published。手动同日再次刷新须提供新的 `idempotency_key`。Publish / release fence with the Blob API `head()` etag captured at acquire — not a public GET of the pointer body (#402). Health CAS 最多 5 次，指数退避 + 抖动；不要靠加次数解决持续冲突。
+The Worker `scheduled` handler dispatches by `event.cron` to the three paths in the table. Cloudflare Cron Triggers number weekdays `1` = Sunday through `7` = Saturday and reject `0` ([Cloudflare docs](https://developers.cloudflare.com/workers/configuration/cron-triggers/)). Weekly and refresh accept `SUN` (or Cloudflare `1`); `7` is Saturday and dispatches as unknown. Daily stays `0 3 * * *`. Production `triggers.crons` **must stay `[]`** until stage 5. Preview `env.pre` `triggers.crons` **must stay `[]`** while preview schedules are paused (#543); the CI gate enforces it through `PREVIEW_CRONS_PAUSED` in `scripts/cf-ci-gates.mjs`. The intended preview expressions, when the owner re-enables them, are `0 3 * * *`, `0 4 * * SUN`, and `0 6 * * SUN`. A cron string in the Worker config does not by itself turn platform schedules on. This repo does not enable platform schedules.
+
+Both Worker write contracts use `r2_binding` through their own guarded `DATA` bindings. The retained Blob driver uses `web/lib/storage/vercel-blob-fetch-client.ts`; it is not the current production contract. `?dry=1` writes no objects.
+
+> **Cron route behavior**: daily job = `web/app/api/cron/daily/route.ts`, weekly job = `web/app/api/cron/weekly/route.ts`, and both delegate to `web/lib/cron/handlers.ts` and support `?dry=1`. CRON_SECRET auth → with the idempotency key `<job>:<UTC-day>`, acquire a 15-minute ETag/CAS lease on `live/latest.json` → GraphQL pulls current_stars → `live-refresh.ts` idempotently rebuilds that day's state → validate all JSON → write `live/generations/<run_id>/**` (`current_month.json` v2 index + `current_month/shards/<0-31>.json`) and the manifest → the same control object does a fenced CAS generation switch → only **after that** come `revalidatePath` / IndexNow / `ops/sync-runs.json`. On UTC Sunday, daily returns `skipped: weekly-owns-sunday` before acquiring the lease, so it does not contend with the 04:00 weekly for live/health. Different keys in parallel return 409; the same key still running returns 202 attached, and one already committed returns 200 already-published. A manual same-day refresh must supply a new `idempotency_key`. Publish/release fence with the configured store's origin ETag captured at acquire, not a public GET of the pointer body. The retained Blob driver uses its `head()` API for that fence (#402). Health CAS is at most 5 tries, with exponential backoff + jitter; do not resolve a sustained conflict by raising the count.
 
 **Failed weekly / leftover lease:** A false-fence (or any failure after acquire) used to leave `lease` on `live/latest.json` until `expires_at` (~15 min) because release also read the CDN-stale `lease: null` body and skipped the clear. Release now CAS-clears when `claimedEtag` still matches origin `head()`. If an old deploy left a lease stuck, wait until `expires_at` before the next acquire; do not skip that wait by writing `main` or calling production cron unless the user said push main. Sunday **workflow-refresh** failures are the next section, not this path.
 
 ### Sunday 06:00 UTC workflow-refresh failure
 
-Schedule: `0 6 * * 0` UTC → `GET /api/workflows/refresh/start` (managed refresh, no Workflow SDK). This is **not** the Sunday 04:00 weekly live cron above. A leftover `live/latest.json` lease is that other path (#402). Production scheduling stays on Vercel; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) for dual-scheduler rollback (stop CF Cron, leave these three Vercel crons).
+Schedule: intended `0 6 * * SUN` UTC (Cloudflare also accepts `1` and rejects `0`) → `GET /api/workflows/refresh/start` (managed refresh, no Workflow SDK). This is **not** the Sunday 04:00 weekly live cron above. A leftover `live/latest.json` lease is that other path (#402). The production scheduler is unverified; see the dated evidence above.
 
-Paging already exists — do not invent new alerts. `markFailed` in `web/lib/workflows/checkpoint.ts` calls `recordHealth("workflow-refresh", "failed", …)` and `sendAlert`. Start-route lease/enqueue failures in `web/lib/workflows/start.ts` also `sendAlert`. `sendAlert` always writes a structured `[ALERT] workflow-refresh failed` function log; it POSTs a webhook only when `ALERT_WEBHOOK_URL` is set.
+Paging already exists — do not invent new alerts. `markFailed` in `web/lib/workflows/checkpoint.ts` calls `recordHealth("workflow-refresh", "failed", …)` and `sendAlert`. Start-route lease/enqueue failures in `web/lib/workflows/start.ts` also `sendAlert`. `sendAlert` always writes a structured `[ALERT] workflow-refresh failed` Worker log; it POSTs a webhook only when `ALERT_WEBHOOK_URL` is set on that Worker.
 
 1. Read **`ops/workflows/health/workflow-refresh.json`** (`status`, `last_failure`, `freshness.stale_after`). **Do not read** retired `ops/workflows/health.json`.
-2. Grep Vercel function logs for `[ALERT] workflow-refresh`.
+2. Read Worker logs for `[ALERT] workflow-refresh` on `gitstarclub-web`. A preview incident uses `gitstarclub-web-pre` logs and must not roll back `gitstarclub-web`.
 3. Check `ops/workflows/active.json` (`run_id`, `expires_at`, `fencing_token`, `idempotency_key`). Default Sunday key is week-scoped (`workflow-refresh:YYYY-Www`). Same-key retries attach; a different active trigger is 409.
 4. Check `ops/workflows/<run_id>/manifest.json`, `error.json`, and `validation.json`. Validate is fail-closed; do not relax invariants.
 5. Check `views/latest.json`. If the failure was before publish, the pointer must be unchanged. Do not hand-edit the pointer.
@@ -442,114 +473,70 @@ Paging already exists — do not invent new alerts. `markFailed` in `web/lib/wor
 7. Hard stops: no validate-invariant relaxation; no inventing `bootstrap/latest.json`; do not push `main` or call production cron unless the user said push main; wait leftover lease; product-gates stay fail-closed.
 8. After a successful publish, static exports still need the [DATA-EXPORTS.md](./DATA-EXPORTS.md) regenerate path (#375). Do not duplicate that runbook here.
 
-**Optional — retire the stale flat object (do not run unless the user authorized a production Blob write).** Writers no longer touch `ops/workflows/health.json`. `blob-del-prefix.ts` hard-blocks `ops/**`. If the Jul-2026 object is still confusing operators, overwrite or delete that **single** pathname from the Vercel Blob dashboard after confirming `healthPath` still has no flat-file writer. Do not prefix-delete `ops/`. Do not call production cron to “refresh” it.
+**Optional — retire the stale flat object (do not run unless the user authorized a write to the retained production Blob store).** Writers no longer touch `ops/workflows/health.json`. `blob-del-prefix.ts` hard-blocks `ops/**`. If the Jul-2026 object is still confusing operators, overwrite or delete that **single** pathname from the Vercel Blob dashboard after confirming `healthPath` still has no flat-file writer. Do not prefix-delete `ops/`. Do not call production cron to refresh it.
 
-**鉴权模式（CRON_SECRET）**：
+**Auth mode (CRON_SECRET)**:
 
-- 触发是对生产 URL 的 **HTTP GET**；配置 `CRON_SECRET` 后 Vercel 自动带 `Authorization: Bearer <CRON_SECRET>`。
-- handler 第一步校验该头，拦截外部直呼 `/api/cron/*` 与 Workflow trigger；精确 status / response contract 见 [API.md](./API.md)（robots 已屏蔽 `/api/`，但鉴权才是真防线）。
+- The handler requires `Authorization: Bearer <CRON_SECRET>`. A manual request is not proof of a scheduler. Do not call production cron to ship a code change.
+- The exact status and response contract is in [API.md](./API.md). `robots.txt` disallows `/api/`; auth is the real line of defense.
 
-**幂等（关键约束）**：
+**Idempotency (critical constraint)**:
 
-> Vercel Cron **无自动重试**，且**同一次可能触发两次**。两个 handler **必须幂等**：
-> - 每日 / 每周：默认 key 为 `<job>:<UTC-day>`；同 key 最多发布一次。租约、当前 generation 和 fencing token 共存于 `live/latest.json`，所以失去 lease 的旧进程不能晚到覆盖新指针。
-> - generation 文件不可变；对象写到任意一步失败，`generation` 字段仍指向上一完整版本。部分失败后释放/过期 lease 即可用同 key 重试，已存在的同字节 immutable 对象可安全复用。
-> - `current_month` 内仍按 UTC 日 upsert，保证显式新 key 的同日追加刷新不会重复累计。
-> - 失败靠**告警**兜底（见下），不靠重试。
+> A schedule or a manual call can run twice. Both handlers **must be idempotent**:
+> - Daily / weekly: the default key is `<job>:<UTC-day>`; the same key publishes at most once. The lease, the current generation, and the fencing token coexist on `live/latest.json`, so an old process that has lost the lease cannot arrive late and overwrite the new pointer.
+> - Generation files are immutable; if an object write fails at any step, the `generation` field still points at the previous complete version. After a partial failure, releasing or letting the lease expire is enough to retry with the same key, and an existing same-byte immutable object can be reused safely.
+> - Inside `current_month`, upsert is still by UTC day, so a same-day additional refresh with an explicit new key does not accumulate twice.
+> - Failures are covered by **alerts** (see below), not by retries.
 
-**时长**：cron route 是 Function，default 300s / **max 800s**。每日 / 每周 Vercel cron 都只读写 JSON，但 GraphQL 全量轮询需要按批次 pacing；本地全量模拟约 131s，Vercel 实跑必须预留数分钟并控制在 800s 内。DuckDB / Parquet 的历史全量重算不得放进单个 Function；要 Vercel-only 时拆成 Workflow 分片，逐步读写 Blob checkpoint。
+A full recompute stays in managed-refresh steps. Do not put a DuckDB or Parquet rebuild in one request.
 
-**Daily cron 实跑 runbook**：
+**Daily cron live-run runbook**:
 
-1. 先在 Vercel production-target URL 调 `GET /api/cron/daily?dry=1`，带 `Authorization: Bearer <CRON_SECRET>`；若日志出现 GitHub GraphQL `403`、`Retry-After` 或 rate-limit remaining 接近 0，停止实跑，先继续降批次 / 加等待。
-2. 实跑前记录 `live/latest.json`（尤其 `generation` / `previous_generation` / `lease`）。不需要逐个备份 immutable generation 文件。
-3. 真实触发 `GET /api/cron/daily`，同样带 `Authorization: Bearer <CRON_SECRET>`。客户端连接可能比函数完成更早关闭；以 Blob 写入和 Vercel logs 为准。
-4. 写后从仓库根运行 `bun web/scripts/validate-live-views.ts --bust <UTC day>`；脚本先解析 `live/latest.json`，再校验同一 generation 的 `current_month` / `hot-snapshot` 与 freshness。再检查 `/`、`/pulse`。
-5. 若失败，确认 pointer 的 `generation` 未变；已写但未引用的 partial generation 不影响线上，可留待后续 GC。若已提交内容有误，把 `generation` 指回 `previous_generation`（同时使用 ETag 条件写，勿覆盖活跃 lease）。
+1. A manual `GET /api/cron/daily?dry=1` with `Authorization: Bearer <CRON_SECRET>` is a no-write check. It is not proof of a scheduler and is not a production hotfix. Read Worker logs on `gitstarclub-web`. If those logs show a GitHub GraphQL `403`, `Retry-After`, or rate-limit remaining near 0, stop and lower the batch size or add waits.
+2. Before a live run, record `live/latest.json` (especially `generation` / `previous_generation` / `lease`). Immutable generation files do not need to be backed up one by one.
+3. A live `GET /api/cron/daily` with the same header writes through the guarded production R2 DATA binding. The client may disconnect before the route finishes. Worker logs and the written objects are the record. Do not use this call to ship a code change.
+4. After the write, from the repository root run `bun web/scripts/validate-live-views.ts --bust <UTC day>`; the script first resolves `live/latest.json`, then validates `current_month` / `hot-snapshot` and freshness for the same generation. Then check `/` and `/pulse`. The script uses `getPublicReadBases()` for the configured read driver, checks the primary origin, and reports `storage_read_driver` and `public_read_base` (#578). A missing R2 base fails even when a Blob base is available. A page returning 200 does not prove the tool is off Blob. Stage 6 still requires it to complete against the production R2 origin with Blob variables unset; see [R2-CUTOVER.md](./R2-CUTOVER.md).
+5. If it fails, confirm the pointer's `generation` did not change; a partial generation that was written but is not referenced does not affect production and can be left for a later GC. If committed content is wrong, point `generation` back at `previous_generation` (also use an ETag conditional write; do not overwrite an active lease).
 
-## Vercel Workflow runbook
+## Managed refresh runbook
 
-> 承载历史 / 元数据 / canonical 全量刷新的长任务。本节只给**运维步骤**；**Workflow 设计与 step 清单见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §3**。
+> Long tasks that carry the history / metadata / canonical full refresh. This section gives only the **operations steps**. Step names are in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §3.
 >
-> 关键约束：Search 只发现 membership；metadata 按 32 个 bucket 逐桶对全部 active repo 调 GraphQL `nodes()`，以 `stargazerCount` 写唯一权威 `current_stars`。单桶最多约两批请求并保留批间节流；任一 active repo 缺失 GraphQL 结果即停止发布，不能回退 Search stars。
+> Critical constraint: Search only discovers membership; metadata calls GraphQL `nodes()` bucket by bucket, across 32 buckets, for every active repo, and writes the sole authoritative `current_stars` from `stargazerCount`. A single bucket is at most about two batches of requests and keeps inter-batch throttling; if any active repo is missing a GraphQL result, publishing stops, and it must not fall back to Search stars.
 >
-> 接 cron：`/api/workflows/refresh/start` 在 `web/vercel.json` 的 `crons` 中，调度 `0 6 * * 0`（周日 06:00 UTC，独立于 daily / weekly）。
+> Intended cadence is `0 6 * * SUN`, independent of daily and weekly. Neither checked-in Worker declares that cron. The production caller is unverified.
 
-**为什么拆 step 而不是单 Function**：单 Function 上限 800s / 4GB / bundle 250MB / 响应体 4.5MB（[Functions Limits](https://vercel.com/docs/functions/limitations)），装不下 DuckDB 全量重算。P1 不再依赖 Vercel Workflow SDK；每步是普通 async + 显式重试，由 HTTP 自链或非生产 CF Queue 推进。生产排程仍是 Vercel cron，不要为了新编排去关 Fluid。
+**Why steps**: a full recompute does not fit one request. Each step is ordinary async plus explicit retry, advanced by an HTTP self-chain or the Worker queue. Do not add a second engine on the request path.
 
-**部署前置**：
-- Fluid Compute 可保持开启（P1 **禁止**为了赌新编排而关掉它）。
-- env：`CRON_SECRET`、`GITHUB_TOKEN`、`BLOB_READ_WRITE_TOKEN`、`BLOB_BASE_URL` 同时配 Production 与 Preview。`WORKFLOW_RUNTIME` 默认 `http`。
-- 部署：`vercel deploy . --yes --scope zkscio --project gitstarclub.com`（preview，从仓库根；Root Directory=web）。
+**Run prerequisites**:
+- `CRON_SECRET` and `GITHUB_TOKEN` on the Worker that runs the refresh.
+- Both Worker write contracts use their own guarded R2 DATA binding, matching `DEPLOY_ENV` and bucket identity. They do not need a Blob token. Explicit use of the retained Blob write driver needs its Blob base and token.
+- `WORKFLOW_RUNTIME` is `cf-queue` on both Workers. The code default when unset is `http`.
+- Deploy with the Wrangler commands earlier in this runbook. Do not use a Vercel deploy command.
 
-**手动触发 runbook**：
+**Manual trigger runbook**:
 
-1. `GET <deployment>/api/workflows/refresh/start`，带 `Authorization: Bearer <CRON_SECRET>` → route 先只读校验 `canonical/v2/meta.json` 与全部 32 个 `repos` shard（含 `active` / `tracked_since` / `d`、key/id/bucket），通过后才取得 lease 并 `startRefresh`，随即返回 `run_id`（不阻塞）。preflight 失败时不会 enqueue 或取得 lease；step `preflight` 会在任何 canonical mutation 前再全量校验 128 个必需 shard。
-2. 看 `ops/workflows/active.json` 与 `ops/workflows/<run_id>/steps/<step>.json`。**不要**把 Vercel Dashboard → Observability → Workflows / `workflow inspect` 当操作面（P1 已去掉 Workflow SDK）。生产对照自建 run 日志与 health JSON；CF 双跑另看 Workers Observability（见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md)）。
-3. 看 `ops/workflows/active.json` 的 `(run_id, fencing_token, expires_at)`、`ops/workflows/<run_id>/manifest.json`（status running / published / failed）+ 产物 `canonical/v2/whitelist/<run_id>.json`、`canonical/v2/repos/<bucket>.json`、`renames.json`、`views/<run_id>/lookup/aliases.json`、`publish-intent.json` 与 `latest-success.json`。
-4. 校验白名单数、repos shard 分桶齐全、diff / rename 合理。
-5. cron 已接入（`/api/workflows/refresh/start`，`0 6 * * 0`，独立于 daily / weekly 排程）。该 managed Workflow **没有 dry-run 模式**；任何 `dry` query 都会在取得 lease 或写入状态前返回 `400`。需要无写入探测时只能使用 `/api/cron/daily?dry=1` 或 `/api/cron/weekly?dry=1`；手动触发 managed refresh 必须按上述步骤观察完整真实运行。
+1. `GET <deployment>/api/workflows/refresh/start`, with `Authorization: Bearer <CRON_SECRET>` → the route first read-only validates `canonical/v2/meta.json` and all 32 `repos` shard (including `active` / `tracked_since` / `d`, key/id/bucket), and only after that passes does it acquire the lease and `startRefresh`, then immediately return `run_id` (non-blocking). A preflight failure does not enqueue or acquire a lease; step `preflight` validates all 128 required shard again before any canonical mutation. CF / HTTP orchestration splits this recheck into 4-bucket windows (16 shard per window, `ops/workflows/<run_id>/steps/preflight-0.json` … `preflight-28.json`), so Workers do not read all 128 objects at once and trigger 1102. When preview has `PREFLIGHT_RELAX_EMPTY_SHARDS=1`, a confirmed 404 / empty bucket is treated as a `{}` placeholder and a `preview-empty-canonical-placeholder` log is recorded, without voiding the whole run; production stays fail closed.
+2. Read `ops/workflows/active.json` and `ops/workflows/<run_id>/steps/<step>.json`. Compare that run log and the health JSON with Workers Observability on the Worker that ran the refresh. A preview incident uses `gitstarclub-web-pre` and must not roll back `gitstarclub-web`.
+3. Read `(run_id, fencing_token, expires_at)` on `ops/workflows/active.json`, `ops/workflows/<run_id>/manifest.json` (status running / published / failed), plus artifacts `canonical/v2/whitelist/<run_id>.json`, `canonical/v2/repos/<bucket>.json`, `renames.json`, `views/<run_id>/lookup/aliases.json`, `publish-intent.json`, and `latest-success.json`.
+4. Check the whitelist count, that repos shard buckets are complete, and that diff / rename look reasonable.
+5. The route exists. Neither Worker cron list includes it, and the production caller is unverified. This managed refresh **has no dry-run mode**; any `dry` query returns `400` before a lease is acquired or state is written. A no-write probe can only use `/api/cron/daily?dry=1` or `/api/cron/weekly?dry=1`. A manual refresh is not proof of a scheduler. Watch a real run through the steps above.
 
-> 全链路 step：`preflight`（再次校验全部 canonical shard）→ `fold`（月 + 周）→ `recompute` → `buildAliases`（→ `lookup/aliases.json`）→ `validate` 发布闸门 → `publish` 切 `views/latest.json` 指针 / 回滚 → `gc` 版本回收（设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7）。
+> Full-chain steps: `preflight` (validate every canonical shard again) → `fold` (month + week; each time `fold-decision.json` is written first. When there is closed pending, also write compact `fold-month-plan.json` / `fold-week-plan.json`, split by 1-bucket windows into `fold-month-*` / `fold-week-*`, and still write `fold.json` at the end. If already folded through the current month and no weeks remain, then `reason=no_closed_month`; missing a month plan is not a stall) → `recomputeRank` (on CF: month-pack + 8-period month/monthOrg, then year derived from month buckets followed by 8-period year/yearOrg, then week-pack + 8-period week/weekOrg, and finally rest by repos bucket; after fold, write `recompute-enqueued.json`, and each hop first writes `recomputeRank-<phase>-start.json`. The #497 whole-window week OOM has been split by bucket; month/year/rest likewise no longer load a whole window, see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md)) → `buildAliases` (→ `lookup/aliases.json`) → `validate` publish gate → `publish` switches the `views/latest.json` pointer / rollback → `gc` version reclamation (design see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7). CF preview Blob filenames are runtime steps: after fold, `recompute-enqueued.json`, `recomputeRank-month-pack.json` / `recomputeRank-month-*.json` should appear through the terminal `recomputeRank-month.json`, plus year-pack / week-pack / `recomputeRank-rest-*.json` and the terminal `recomputeRank.json` (not the manifest alias `recompute.json`). When `WORKFLOW_RUNTIME=cf-queue`, the Queue consumer reads the step JSON (or `x-gitstarclub-queue-successor`) and then `JOBS.send`s the next step; writing only `fold-decision`+`fold.json` and then a silent queue, a fetch source of `Worker exceeded memory limit`, no `error.json`, and an expired lease is a stall that is still not closed after #486 (the root cause is that the month hop still loads an object window, not that fold-decision failed to enqueue; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md)). `/` `/rankings` returning 500 while `/preview/health` returns 200 is the same isolate OOM (OpenNext vs shell), not a published pointer written corrupt. The pass/fail table for a preview Bearer full refresh see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix). An OOM or a silent Queue counts as failure, not "still running".
 
-**鉴权 / 凭证**：`CRON_SECRET`（触发）、`GITHUB_TOKEN`（Search / GraphQL）、`BLOB_READ_WRITE_TOKEN`（读写 canonical / staging / published）。**refresh 全程 0 GCP**（GCP 仅 bootstrap）。
+**Auth / credentials**: `CRON_SECRET` (trigger) and `GITHUB_TOKEN` (Search / GraphQL). The retained Blob write path needs `BLOB_READ_WRITE_TOKEN`; the current R2 `DATA` path does not. Refresh is 0 GCP end to end (GCP is bootstrap only).
 
-### Dual-scheduler rollback (P1)
+### Preview fault rollback
 
-Production Sunday refresh is still the Vercel cron row above. A non-production
-CF Cron on `gitstarclub-web` may also call start or enqueue a shrink fixture.
-If that CF path is enabled and must be abandoned:
+A preview fault rolls back Worker `gitstarclub-web-pre` (wrangler env `pre`) only. Do not apply that rollback to production Worker `gitstarclub-web`. Do not empty production `triggers.crons` as a preview fix; they are already `[]`. Do not set `HOSTING_TARGET=vercel`. Do not add a login wall on `https://pre.gitstarclub.com`. Do not cut DNS. Do not delete production Blob.
 
-1. Stop the Worker cron (`triggers.crons` empty; do not keep `env.pre` crons).
-2. Set `WORKFLOW_RUNTIME=http` (or unset it) on the Next deployment.
-3. Leave `web/vercel.json` exactly as committed — daily / weekly / start stay Vercel.
-4. Do not cut DNS. Do not delete production Blob.
+The historical production cutover rollback reference, requiring operator checks and separate authorization, is recorded later in this runbook: `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`.
 
-Full write-up: [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md).
-
-### Dual-run rollback (P2 ISR / Preview)
-
-Production Preview gates and ISR invalidation stay on Vercel. A non-production
-CF Preview host (`gitstarclub-web-pre.worldgo.workers.dev`, Worker
-`gitstarclub-web-pre`) plus optional `verify / cf-preview` may dual-run Access
-+ a cache-invalidation stub.
-
-If that CF path is enabled and must be abandoned:
-
-1. Unset GitHub variable `CF_PREVIEW_ENABLED` so `verify / cf-preview` is skipped.
-   Do not add or keep that job in `.delivery.yml` / required checks.
-2. Set `PREVIEW_TARGET=vercel` and `CACHE_INVALIDATION_DRIVER=vercel` (or unset both).
-3. Leave Vercel Authentication, `VERCEL_AUTOMATION_BYPASS_SECRET`, and
-   `web/vercel.json` exactly as committed.
-4. Do not cut DNS. Do not attach Access to apex/www. Do not delete production Blob.
-
-Full write-up: [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md).
-
-### Workers host rollback (P3 OpenNext preview)
-
-Production apex/www stay on Vercel. A non-production OpenNext host on
-`gitstarclub-web-pre.worldgo.workers.dev` (or `wrangler preview` with
-`--env pre`) may serve the Next app behind the existing Worker shell.
-
-If that CF host misbehaves:
-
-1. Unset GitHub variable `CF_WORKERS_HOST_ENABLED` so `verify / cf-workers-host`
-   is skipped. Do not add that job to `.delivery.yml` / required checks.
-2. `wrangler rollback` the `gitstarclub-web-pre` Worker if a bad preview version
-   was promoted. Do not change Vercel production. Do not roll back production
-   `gitstarclub-web` from a preview incident.
-3. Set `HOSTING_TARGET=vercel` (or unset) on any Next deployment.
-4. Leave `web/vercel.json`, Vercel Authentication, and production DNS exactly
-   as committed.
-5. Do not cut DNS. Do not orange-cloud apex/www. Do not delete production Blob.
-
-Full write-up: [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md).
-
-**告警**：Workflow 失败会写结构化 Vercel Function log、可选 webhook、run checkpoint 和独立 health 状态；仓库当前没有 Sentry SDK 或 Marketplace 集成。失败发生在 publish 前时不会切换线上指针。
+**Alerts**: a refresh failure writes a structured Worker log, an optional webhook, a run checkpoint, and an independent health state. The repository has no Sentry SDK. A failure before publish does not switch the live pointer.
 
 ### Post-publish checklist: static data exports
 
-Workflow publish only cuts the Blob pointer. Committed static exports under
+Workflow publish switches the configured store's views pointer; the current production write contract is R2. Committed static exports under
 `web/public/data/exports/v1/` do **not** update automatically. Product-gates
 `export-manifest-age` requires the deployed manifest `data_as_of` within
 **14 days** (`EXPORT_MAX_AGE_MS`). Full copy-paste runbook:
@@ -558,8 +545,8 @@ Workflow publish only cuts the Blob pointer. Committed static exports under
 After a successful `views/latest.json` publish (cron or manual):
 
 1. Confirm `views/latest.json` has the intended `version` / `published_at`.
-2. On a branch from `pre`: `cd web && bun run exports:generate`
-   (needs `BLOB_BASE_URL` / `NEXT_PUBLIC_BLOB_BASE_URL`).
+2. On a branch from `pre`: `cd web && bun run exports:generate`.
+   `web/scripts/generate-data-exports.ts` and `web/scripts/validate-live-views.ts` use `getPublicReadBases()` for the configured read driver (#578). The validator checks the primary origin and reports `storage_read_driver` and `public_read_base`. Their offline CLI regression tests run with an R2 loopback base and no Blob vars; a missing R2 base fails even when a Blob base is available. A page returning 200 does not prove those tools are off Blob. Before the stage 6 retirement in [R2-CUTOVER.md](./R2-CUTOVER.md), both commands must complete against the production R2 public origin with Blob variables unset. This runbook does not edit the scripts.
 3. PR the new dated directory `web/public/data/exports/v1/YYYY-MM-DD/` **into
    `pre`**. Do not commit a `latest/` tree; do not push straight to `main`.
 4. Verify Preview
@@ -567,111 +554,229 @@ After a successful `views/latest.json` publish (cron or manual):
 5. Promote `pre` → `main` through the normal PR path only — no silent
    production overwrite and no runtime export regenerate endpoint.
 
-## Deploy Hook 使用（可选）
+A data update does not by itself require a new Worker deploy. Daily and weekly routes call `revalidatePath` for the hot set. Long-tail pages stay on-demand ISR. Deploy with the Wrangler commands in this runbook when the code or the Worker config changes.
 
-- 在 web 应用项目 **Settings → Git → Deploy Hooks** 创建（项目须 Git 连接），得到 URL 存入 `VERCEL_DEPLOY_HOOK_URL`；触发 `POST .../deploy/<prj>/<id>`（无 auth / payload）；限额 **5 hook / 项目**。
-- **用途有限**：ISR 模型下**数据更新不需要 deploy**（cron 直接 `revalidatePath`）。Deploy 只在**代码 / 结构变更**时发生（一般 Git push 自动部署；此 hook 供手动 / CI 触发一次核心 rebuild）。
-- **每日 / 每周 cron 都不触发全量 deploy**：每日 revalidate 热集，每周 revalidate 变更页；长尾页按需 ISR。
+## Monitoring and alerts
 
-> Vercel **每次 deploy 重建所有 build-时 SSG 页**，`.next/cache` 不跨 deploy 保留预渲染 HTML——所以历史 / 长尾页**不在 deploy 构建**（按需 ISR），deploy 只 build 小核心，永不逼近 45min 上限（见 ARCHITECTURE「页面分层」）。
+Workers Observability is enabled on `gitstarclub-web` and `gitstarclub-web-pre`.
 
-## 监控与告警
-
-| 关注 | 工具 | 触发 |
+| Watch | Tool | Trigger |
 |---|---|---|
-| 运行时 / build 异常 | Vercel build / function logs | 未捕获异常、route 报错、build 失败；当前没有 Sentry 集成。**不要**依赖 Vercel Workflows UI |
-| pipeline 运行记录 | **`ops/sync-runs.json` 日志**（每次每日 / 每周 job 落一条：开始 / 结束时刻、查询数、写入路径、状态） | 供对账与回溯；与 `ops/workflows/<run_id>/steps/*.json` 一起构成自建 run 日志 |
-| CF Preview 双跑 | Workers Observability（`gitstarclub-web-pre`）+ Worker JSON `event` 行 | 仅预发；Access 只护 `gitstarclub-web-pre.worldgo.workers.dev`，见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
-| CF Workers host 预览 | 同上 + OpenNext `/` `/rankings` | 仅非生产；生产仍 Vercel，见 [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
-| **数据漂移** | 比对 GraphQL 权威总数 vs adds 累加总数 | **漂移 > 阈值（如 2%）告警**，并以 GraphQL 为锚点重锚（见 ARCHITECTURE「数据校验 / 对账」） |
-| **Cron 失败** | `[ALERT]` function log + 可选 `ALERT_WEBHOOK_URL` + `sync-runs` + pipeline health | webhook 投递为 best-effort；失败或未配置时以日志和 health 为准，必要时人工补跑 |
-| 单日突刺 | pipeline sanity check | 单日新增极端突刺打日志告警（net 允许为负） |
+| Runtime errors | Workers Observability on the Worker that served the request | Uncaught exceptions and route errors. There is no Sentry integration |
+| Build and deploy errors | The GitHub `production-build` job, or the local `cf:build` / Wrangler stdout and stderr | OpenNext compilation and Wrangler output happen before a Worker serves the new build. There is no separate build-log integration |
+| pipeline run records | **`ops/sync-runs.json` log** (each daily / weekly job appends one entry: start / end time, query count, paths written, status) | For reconciliation and traceback; together with `ops/workflows/<run_id>/steps/*.json` they form the self-built run log |
+| Preview incidents | Workers Observability on `gitstarclub-web-pre` | Do not roll back production Worker `gitstarclub-web` from a preview incident. Preview is public; `noindex` is not access control |
+| Production incidents | Workers Observability on `gitstarclub-web` | Production uses R2 after the accepted 2026-10-04 cutover. Hosting rollback for that cutover is the stage 4 version command |
+| **Data drift** | Compare the GraphQL authoritative total against the summed adds total | **Alert when drift > a threshold (for example 2%)**, and re-anchor with GraphQL as the anchor (see ARCHITECTURE "Data validation / reconciliation") |
+| **Cron failure** | `[ALERT]` Worker log + optional `ALERT_WEBHOOK_URL` + `sync-runs` + pipeline health | webhook delivery is best-effort; when it fails or is unset, logs and health are authoritative |
+| Single-day spike | pipeline sanity check | An extreme single-day addition spike is logged as an alert (net is allowed to be negative) |
 
-For aggregate-only GEO crawler and AI-referrer reporting from Vercel-side logs, use [geo/ai-log-reporting.md](./geo/ai-log-reporting.md). That appendix owns the operator command and taxonomy; this runbook owns the production log and alerting context.
+For aggregate GEO crawler and AI-referrer reporting, use [geo/ai-log-reporting.md](./geo/ai-log-reporting.md). That script accepts the Vercel Log Drains field shape and does not parse Cloudflare Worker logs.
 
-**告警通道**：Vercel Function logs 始终存在；`ALERT_WEBHOOK_URL` 可接 Slack / Discord 等接收 JSON POST 的端点。重点盯 cron 没跑 / 跑失败和数据漂移越界。Webhook 不是可靠队列，不应作为唯一状态来源。
+**Alert channel**: `sendAlert` always writes a structured Worker log. `ALERT_WEBHOOK_URL`, when set on that Worker, can point at an endpoint that receives a JSON POST, such as Slack or Discord. Watch especially for a failed run and for data drift past the bound. Webhook is not a reliable queue and must not be the only source of state. A missing schedule is not something this log can prove; the production caller stays unverified.
 
-> `sync_runs` 不需要数据库：当前实现覆盖写 Blob 上的 `ops/sync-runs.json`，保留最近 100 次运行。需要可靠投递或 paging 时，应另接带持久重试的告警服务；当前代码没有声明该能力。
+> `sync_runs` does not need a database: the current implementation overwrite-writes `ops/sync-runs.json` through the configured store and keeps the most recent 100 runs. When reliable delivery or paging is needed, attach a separate alerting service with durable retries; the current code does not declare that capability.
 
-### 告警 webhook（`ALERT_WEBHOOK_URL`，可选）
+### Alert webhook (`ALERT_WEBHOOK_URL`, optional)
 
-数据 pipeline（Vercel Workflow 全量刷新 + 每日 / 每周 cron）失败时调用 `sendAlert`（`web/lib/observability/alert.ts`）。`sendAlert` 有两条投递面，都是**尽力而为、绝不抛错**（告警失败不能拖垮 pipeline）：
+When managed refresh or the daily / weekly route fails, it calls `sendAlert` (`web/lib/observability/alert.ts`). `sendAlert` has two delivery surfaces, both **best-effort and never throwing** (an alert failure must not take down the pipeline):
 
-1. **永远**写一条可 grep 的结构化日志 `[ALERT] <pipeline> failed`（含 `run_id` / `step` / `error`）到 **Vercel function logs**——即便没配 webhook 也看得到。
-2. **当且仅当**设置了环境变量 `ALERT_WEBHOOK_URL` 时，额外向该 URL `POST` 一段 JSON 失败摘要（`{ text, pipeline, run_id, step, error, at }`，单次 5s 超时）。只有 HTTP 2xx 才算成功；408 / 425 / 429 / 5xx、超时和网络错误最多尝试 3 次（100ms / 250ms backoff），其他 4xx 立即标为投递失败。最终结果含 `delivered` / `failed` / `disabled`、attempt 数和安全诊断，并写入结构化日志；不会把 webhook 错误抛回 pipeline。
+1. **Always** write one grep-able structured log line `[ALERT] <pipeline> failed` (including `run_id` / `step` / `error`) to the Worker log. That line is written even when no webhook is configured.
+2. **If and only if** `ALERT_WEBHOOK_URL` is set on that Worker, also `POST` a JSON failure summary to that URL (`{ text, pipeline, run_id, step, error, at }`, 5s timeout per attempt). Only HTTP 2xx counts as success; 408 / 425 / 429 / 5xx, timeouts, and network errors are tried at most 3 times (100ms / 250ms backoff), and other 4xx are marked delivery-failed immediately. The final result includes `delivered` / `failed` / `disabled`, the attempt count, and a safe diagnosis, and is written to the structured log; webhook errors are not thrown back into the pipeline.
 
-**一行接入**：在 Vercel 项目 Settings → Environment Variables 加 `ALERT_WEBHOOK_URL`，值指向一个能收 JSON POST 的端点——Slack / Discord incoming webhook，或调试用的 `https://webhook.site/...`。配上即生效，无需改代码；留空则保持纯日志模式。
+`error` text passes through `sanitizeErrorText` (`web/lib/observability/sanitize-error.ts`) before the log line, the webhook body, sync-run records (including `post_commit_errors` and older history that lacks that array), workflow checkpoints, metadata `last_error`, validation failure strings, health records (including retained success and failure signals), rollback or step diagnostic responses, the Worker queue consumer log, and other runtime console diagnostics. GitHub HTTP error text is redacted before it is bounded. The sanitizer drops bearer credentials, known runtime secret values from the live Worker env and from `process.env` (including `VERCEL_AUTOMATION_BYPASS_SECRET`), credential URLs, and token-shaped strings. A credential assignment redacts the whole value, including punctuation, through the next break or the matching quote. GraphQL diagnostics are sanitized before they are serialized and again on the serialized text. It keeps a bounded failure category such as `GitHub GraphQL 502` or `timeout`.
 
-> `recordHealth` 分别写 `ops/workflows/health/{workflow-refresh|cron-daily|cron-weekly}.json`。Sunday 06:00 的唯一 operator signal 是 `ops/workflows/health/workflow-refresh.json`。扁平 `ops/workflows/health.json` 已退役，不要读。每条记录用 ETag compare-and-set 更新，保留 `last_success`、`last_failure`、`correlation_id` / `run_id` / `idempotency_key`，并给出 `freshness.stale_after`。每日和每周 cron 的每次非 dry 成功与失败都会更新；`attached` / `rejected` 只改变该 pipeline 的 latest signal，不删除历史成功或失败。不同 pipeline 的并发运行不能互相覆盖。
+Set `ALERT_WEBHOOK_URL` on the Worker that should send it. Leave it unset to stay in logs-only mode. Do not put the URL in the repository.
 
-## 一次性 bootstrap Runbook（归档 / 非日常路径）
+> `recordHealth` writes `ops/workflows/health/{workflow-refresh|cron-daily|cron-weekly}.json` separately. The only operator signal for Sunday 06:00 is `ops/workflows/health/workflow-refresh.json`. The flat `ops/workflows/health.json` is retired; do not read it. Each record is updated with an ETag compare-and-set, keeps `last_success`, `last_failure`, and `correlation_id` / `run_id` / `idempotency_key`, and provides `freshness.stale_after`. Every non-dry success and failure of the daily and weekly cron updates its record; `attached` / `rejected` only change that pipeline's latest signal and do not delete historical successes or failures. Concurrent runs of different pipelines cannot overwrite each other.
 
-> **降级声明**：这是**首次冷启动 / 灾难重建 / 引入新数据源**时手动跑一次的工具，**不是 recurring 运营路径**。产物上传 Blob 后由 Vercel（live cron + Workflow）接管，日常运营 **0 本地依赖 · 0 GCP**。
+## One-time bootstrap Runbook (archived / non-routine path)
 
-11 年事件级历史只回填一次，走 **BigQuery**（要 GCP 凭证，约 $10、含稳定 repo.id）。免费替代（ClickHouse 公共实例、自建摄入）评估后均不可行，见 ARCHITECTURE「为什么回填用 BigQuery」。
+> **Demotion statement**: this is a tool run manually once for **the first cold start / a disaster rebuild / introducing a new data source**, and **not a recurring operations path**. After the artifacts are uploaded, the host's live routes and managed refresh take over. Production data uses R2 after the accepted 2026-10-04 cutover. The production caller is unverified. Routine operations are **0 local dependencies · 0 GCP**.
 
-**前置**：GCP 凭证（`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`）· GitHub PAT（`GITHUB_TOKEN`）· Vercel Blob store（`BLOB_READ_WRITE_TOKEN`）。本机 / 全 Node 环境跑，不在 Vercel。
+11 years of event-level history are backfilled only once, via **BigQuery** (GCP credentials required, about $10, including a stable repo.id). Free alternatives (the ClickHouse public instance, self-hosted ingestion) were all judged infeasible after evaluation; see ARCHITECTURE "Why backfill uses BigQuery".
 
-```text
-1. 查 GH Archive WatchEvents（BigQuery）
-   按 repo + UTC 天 汇总 WatchEvent（2015-01 起，量大按年 / 按批分块）→ 导出
-2. 本机 DuckDB
-   落 per-repo×天 事实表 → star_daily.parquet
-   + 算里程碑（破 10k / 50k / 100k 精确日期）
-3. GraphQL（GITHUB_TOKEN）
-   Search 发现成员（动态开放上界）；GraphQL 抓元数据 + owner(+type) + current_stars（唯一权威）→ repos.json
-4. DuckDB 预算所有 JSON 视图
-   {周 / 月 / 年 / 全时}×{repo / org}×{flow / stock} + entity 曲线 + heatmap
-5. 生成唯一 id，例如 `bootstrap-20260717T120000Z`；先运行
-   `06-upload.mjs --generation <id> --dry-run`，再以同 id stage / resume base phase
-6. 运行 `07-export-v2.mjs --generation <id> --stage-only` 检查 canonical phase；确认后重跑
-   不带 `--stage-only`。脚本复核 manifest + 远端 bytes/SHA-256，取得 Workflow CAS lease，
-   最后只切 `bootstrap/latest.json`。批量 create 节流到 < 75/s
+**Prerequisites**: GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`) · GitHub PAT (`GITHUB_TOKEN`) · Blob token (`BLOB_READ_WRITE_TOKEN`) only for the retained Blob path. The R2 path uses a bucket-scoped key in the uncommitted pipeline env file (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) plus `R2_BUCKET_PRE` or `R2_BUCKET_PROD`. Run it on a local machine / a full Node environment. See [R2-CUTOVER.md](./R2-CUTOVER.md).
+
+Render `pipeline/backfill/02-extract.sql` before any BigQuery job. The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`.
+
+```bash
+cd pipeline
+node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531 > rendered.sql
+bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < rendered.sql
 ```
 
-- **成本**：~$10（一次性）；回填完永不再碰 GCP。
-- 口径瑕疵（gross vs net、幸存者偏差、起点 2015）见 ARCHITECTURE，About 页注明。
-- 回填完成后 GCP 两个变量即可弃用，日常运营回到 0 GCP。
+```text
+1. Query GH Archive WatchEvents (BigQuery)
+   Aggregate WatchEvent by repo + UTC day (from 2015-01; if the volume is large, chunk by year / by batch) → export
+2. Local DuckDB
+   Land a per-repo×day fact table → star_daily.parquet
+   + compute milestones (exact dates of crossing 10k / 50k / 100k)
+3. GraphQL (GITHUB_TOKEN)
+   Search discovers members (dynamically open upper bound); GraphQL fetches metadata + owner(+type) + current_stars (sole authority) → repos.json
+4. DuckDB precomputes every JSON view
+   {week / month / year / all-time}×{repo / org}×{flow / stock} + entity curves + heatmap
+5. Generate a unique id, for example `bootstrap-20260717T120000Z`; first run
+   `06-upload.mjs --generation <id> --dry-run`, then with the same id stage / resume base phase
+6. Run `07-export-v2.mjs --generation <id> --stage-only` to check the canonical phase; after confirmation, rerun
+   without `--stage-only`. The script rechecks the manifest + remote bytes/SHA-256, acquires the Workflow CAS lease,
+   and finally switches only `bootstrap/latest.json`. Batched create are throttled to < 75/s
+```
 
-## 一次性 canonical lifecycle provenance 迁移（Issue #326）
+- **Cost**: ~$10 (one-time); after the backfill, never touch GCP again.
+- Metric-definition caveats (gross vs net, survivor bias, start point 2015) see ARCHITECTURE, and are noted on the About page.
+- After the backfill the two GCP variables can be retired, and routine operations return to 0 GCP.
+- Steps 5 and 6 above are the Blob path (`--store` defaults to blob). Blob still uploads unless `--dry-run` (step 6) or `--no-upload` (step 7).
 
-> 这是为 legacy canonical rows 补齐 lifecycle provenance 的**一次性受控迁移**，不是
-> bootstrap 重跑，也不是 recurring Workflow。实现 PR 只交付工具、测试和 dry-run
-> 证据；没有明确的生产执行授权时，禁止使用 `--execute`。
+### R2 rehearsal and empty-bucket first commit
 
-2026-07-28 的只读盘点证明：5,393 个 canonical repo row 都缺显式
-`active`；当前已发布 whitelist 有 5,389 个 id，因此计划结果是 5,389 个
-`active:true`、4 个 retained historical `active:false`。另有 79 个 row 同时为
-`tracked_since:null` 且无 `d`。它们不属于 bootstrap historical rows：legacy
-`lookup/repos.json` 不含这些 id，而 19 个 immutable whitelist snapshot 能完整恢复首次
-出现日（12 个 `2026-06-02`、18 个 `2026-06-28`、49 个 `2026-07-12`）。因此迁移只补
-`tracked_since`，**绝不猜测 `d=1`，也不以可变的 current stars 重算 anchor**。
+**Historical empty-bucket recipe; stages 2/3 remain unaccepted.** This did not supply the accepted production store: the operator instead copied Blob and completed the separately accepted stage-4 cutover. Do not apply initial-commit or bad-first-publish cleanup to the populated production copy. Any new rehearsal/rebuild requires its own authorized empty target. In the original recipe, rehearse preview first, then load an eligible production target. The owner places `_meta/bucket-identity.json` at the bucket root out of band. `bucket` must equal the target bucket name. `deploy_env` is `pre` for `--target pre` and `production` for `--target prod`. The scripts never write or delete `_meta/`.
 
-### Dry-run（默认、零生产写）
+Before the real-bucket rehearsal, run the offline local rehearsal first. Use the SHA-256-verified Node v24.20.0 and Bun 1.3.14 bootstrap in [AGENTS.md](../AGENTS.md), with dependencies installed in both `web/` and `pipeline/` using `bun --no-env-file install --frozen-lockfile`. From the repository root:
+
+```bash
+cd web
+bun --no-env-file scripts/r2-local-rehearsal.ts
+```
+
+Success prints `R2_LOCAL_REHEARSAL_OK` and exits 0. Stage 2 still requires the real public origins and preview site acceptance in [R2-CUTOVER.md](./R2-CUTOVER.md#stage-2-preview-rehearsal). The local command uses fixtures and a clean environment, with no deployment or added CI job (#586).
+
+R2 performs no writes unless `--execute`. `--target` without `--store r2` is refused. A dry run prints the object count, byte count, and target bucket. When R2 credentials are set, that dry run also reads `_meta/bucket-identity.json` and refuses a mismatched marker. When they are unset, it does not contact the bucket. `--initial-commit` is R2 only. It publishes `previous_generation: null` when `bootstrap/latest.json`, `views/latest.json`, and `canonical/v2/meta.json` are all absent, and it refuses if any of those already exist. The first pointer is create-only. Retrying the same `--initial-commit` after that generation is visible returns already-published; a different existing pointer is refused. The identity marker and staged generation objects do not block that check. This null is not a legacy-flat rollback: `--rollback legacy-flat` fails closed because the flat layout is not in the new bucket.
+
+A first publish has no prior generation. `--rollback` of the generation just committed returns `already-rolled-back` and leaves the pointer in place. That status is not an undo. The same rule is in [R2-CUTOVER.md](./R2-CUTOVER.md) stages 2 and 3.
+
+Preview commands use Worker `gitstarclub-web-pre`, wrangler env `pre`, and bucket `gitstarclub-data-pre`. They do not deploy that Worker and do not write bucket `gitstarclub-data-prod`.
+
+```bash
+cd pipeline
+# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+GEN=bootstrap-20260717T120000Z
+
+node backfill/06-upload.mjs --store r2 --target pre --generation "$GEN"
+node backfill/06-upload.mjs --store r2 --target pre --generation "$GEN" --execute
+
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN"
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN" --execute --stage-only
+node backfill/07-export-v2.mjs --store r2 --target pre --generation "$GEN" --execute --initial-commit
+```
+
+Later publishes roll back to `previous_generation` on `https://data-pre.gitstarclub.com/bootstrap/latest.json`. Do not pass the current generation. `$GEN` above is the generation just committed, so it is not the rollback target.
+
+```bash
+cd pipeline
+# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+# PREVIOUS is bootstrap/latest.json previous_generation, not the current generation.
+node backfill/07-export-v2.mjs --store r2 --target pre --rollback "$PREVIOUS" --execute
+```
+
+A bad first publish has no rollback. In this historical pre-cutover recipe, production `https://gitstarclub.com` would read Vercel Blob on Worker `gitstarclub-web` (top-level, no `--env`). Preview Worker `gitstarclub-web-pre` (wrangler env `pre`, bucket `gitstarclub-data-pre`) is a rehearsal and may show broken or empty data. Do not block preview hosts, do not publish through an isolated dashboard or API path, and do not prepare a Workers Static Assets cache.
+
+Stop and record what went wrong. Read `https://data-pre.gitstarclub.com/bootstrap/latest.json`. `previous_generation` must be JSON null. If it is a generation id, use the later-publish command above.
+
+Deleting objects uses the same owner authorization as a bucket write. Never delete `_meta/`, including `_meta/bucket-identity.json`. `web/scripts/blob-del-prefix.ts` refuses `_meta/`, `bootstrap/latest.json`, `canonical/`, the current generation prefix, and the broad prefix `bootstrap/generations/`. The owner removes the bad generation objects in bucket `gitstarclub-data-pre` under `bootstrap/generations/<bad-id>/`. Also remove `bootstrap/latest.json`, and remove `canonical/v2/meta.json` and `views/latest.json` when those objects exist. `--initial-commit` refuses while any of those three paths is present. Do not hand-write `bootstrap/latest.json` or `views/latest.json`. Never point production at the preview bucket. Do not change the current production R2 binding as part of this historical rehearsal.
+
+Rerun the preview upload and `--initial-commit` commands above with a new generation id. Then redeploy preview the normal way (the Preview deploy section in this file) and check the live rankings page. Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`:
+
+```bash
+# Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+cd web
+export STORAGE_READ_DRIVER=r2
+export R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com
+bun run cf:build:pre
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env pre \
+  --var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"
+```
+
+`https://pre.gitstarclub.com/rankings` must return 200, stay `noindex`, and show repository rows from the new generation. The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure. Repeat stage 2 acceptance after that live check. Real rollback starts at stage 4 and is the `wrangler rollback` command in that section.
+
+Production uses the same upload and `--initial-commit` commands with `--target prod` after the pre rehearsal. That target is Worker `gitstarclub-web`, top-level production (no `--env`), bucket `gitstarclub-data-prod`. The first publish there has the same null `previous_generation`. `--rollback` of that same generation returns `already-rolled-back` and leaves the pointer in place. In the original pre-cutover recipe, production would stay on Blob and that initial publish would not change the site. This was not the accepted operator copy/cutover route. Do not run it against the current copied production bucket.
+
+Stop and record what went wrong. Deleting objects uses the same owner authorization as a bucket write. Never delete `_meta/`, including `_meta/bucket-identity.json`. The owner removes `bootstrap/generations/<bad-id>/` and `bootstrap/latest.json` in bucket `gitstarclub-data-prod`, and removes `canonical/v2/meta.json` and `views/latest.json` when those objects exist, so `--initial-commit` can run again. `web/scripts/blob-del-prefix.ts` refuses `_meta/`, the pointer, and the current generation prefix. Do not hand-write a pointer. Do not write bucket `gitstarclub-data-pre`. Do not deploy Worker `gitstarclub-web-pre`. Then rerun the production upload and `--initial-commit` commands. A later publish on that bucket rolls back with `--target prod` and `$PREVIOUS` from `https://data.gitstarclub.com/bootstrap/latest.json`.
+
+Stage 2 acceptance uses the bootstrap pointer, the phase manifests, and real page data. It does not require `views/latest.json`. On Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre`:
+
+- `https://data-pre.gitstarclub.com/bootstrap/latest.json` returns 200 and names the committed generation. On the first publish, `previous_generation` is null.
+- `https://data-pre.gitstarclub.com/bootstrap/generations/<id>/manifests/base.json` and `.../manifests/canonical.json` return 200, and each SHA-256 matches the pointer.
+- `https://data-pre.gitstarclub.com/bootstrap/generations/<id>/views/rank/all-time/repo/stock.json` returns 200 and contains at least one repository row with a star count.
+- `https://data-pre.gitstarclub.com/views/latest.json` may 404. Do not hand-write it. Preview does not set `VIEWS_VERSION_FALLBACK`, so pages read the bootstrap generation.
+- `https://pre.gitstarclub.com/rankings` returns 200, is `noindex`, and shows repository rows. The English empty copy "Ranking data is waiting for the next published recompute." on both ranking sections is a failure.
+- Deployment identity must equal the commit that was actually deployed. `https://pre.gitstarclub.com/.well-known/deployment` `commitSha` equals the SHA baked by the preview `cf:build` for that deploy. A runtime `CF_PREVIEW_COMMIT_SHA` or `VERCEL_GIT_COMMIT_SHA` counts only when it names that same commit.
+
+If a managed views pointer is required, the only writer is the publish step of an owner-authorized managed refresh. Stage 2 acceptance does not run it.
+
+```bash
+# Owner-authorized. Worker gitstarclub-web-pre, wrangler env pre, bucket gitstarclub-data-pre
+# Do not call the production Worker gitstarclub-web or https://gitstarclub.com/api/cron/*
+curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
+  https://pre.gitstarclub.com/api/workflows/refresh/start
+```
+
+That run's publish step writes `views/latest.json` in bucket `gitstarclub-data-pre`. Never hand-write the pointer.
+
+Stage 3 acceptance is the same bootstrap pointer, manifests, and sealed `views/rank/all-time/repo/stock.json` on `https://data.gitstarclub.com`, bucket `gitstarclub-data-prod`. `views/latest.json` on that origin is not required. A 404 is expected. Do not hand-write it. In that historical recipe, `https://gitstarclub.com/rankings` would show Blob rows for version `refresh-2026-09-13T06-00-16-398Z` via `VIEWS_VERSION_FALLBACK`, because that pre-cutover Worker would not yet read R2. This is not a statement about the current production Worker. After stage 4, the command that creates `views/latest.json` on that bucket is an owner-authorized refresh publish:
+
+```bash
+# Owner-authorized, and only after stage 4. Worker gitstarclub-web, top-level
+# production (no --env), bucket gitstarclub-data-prod
+curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
+  https://gitstarclub.com/api/workflows/refresh/start
+```
+
+Do not call `https://gitstarclub.com/api/cron/*` to create the pointer. Never hand-write `views/latest.json`.
+
+### Stage 4 cutover rollback
+
+The accepted copied-store cutover and current missing-pointer state are in [R2-CUTOVER.md](./R2-CUTOVER.md#stage-4-cutover-i-5b). The current contract uses R2 and preserves the exact frozen fallback; it does not require the bootstrap pointer currently absent from the copied store. The dated GET does not establish whether that pointer existed earlier. Do not clear the fallback based on the unaccepted bootstrap-only recipe, and do not delete objects in either store.
+
+PR #649 retains historical pre-cutover Worker version `14b84f73-ef31-4e86-a70d-b71251756093` (commit `b32939d`). Its present availability and security suitability were not verified. It predates security fixes included in publicly identified production `daee5fc`; an operator must assess those fixes and explicitly authorize rollback before choosing it. The command is recovery history, not an automatic current incident step:
+
+```bash
+# Historical operator rollback only; production gitstarclub-web, no --env pre.
+wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web
+```
+
+The recorded configuration includes `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z`, both Blob bases at `https://cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com`, Blob/default drivers, and no production `DATA` binding. An authorized config-based rollback restores that complete set, including the fallback while the Blob pointer is absent, and keeps `triggers.crons=[]`. Base/driver restoration alone is insufficient. Do not empty production R2, delete Blob data, or target preview with this version command.
+
+After an authorized rollback, verify `/rankings` returns 200, remains indexable, and contains repository links/star counts from the expected Blob generation. Both boards showing waiting copy is a failure. Verify deployment identity; page status alone does not establish successful recovery or security suitability. R2-CUTOVER retains the same requirements.
+
+## One-time canonical lifecycle provenance migration (Issue #326)
+
+> This is a **one-time controlled migration** that fills in lifecycle provenance for legacy canonical rows, not
+> a bootstrap rerun, and not a recurring Workflow. The implementation PR delivers only the tool, tests, and dry-run
+> evidence; without explicit production execution authorization, `--execute` is forbidden.
+
+The read-only inventory on 2026-07-28 shows that all 5,393 canonical repo row lack an explicit
+`active`; the currently published whitelist has 5,389 ids, so the planned result is 5,389
+`active:true` and 4 retained historical `active:false`. Another 79 row are both
+`tracked_since:null` and have no `d`. They are not bootstrap historical rows: legacy
+`lookup/repos.json` does not contain these ids, while 19 immutable whitelist snapshot can fully recover the first
+appearance date (12 on `2026-06-02`, 18 on `2026-06-28`, 49 on `2026-07-12`). Therefore the migration only fills in
+`tracked_since`, and **never guesses `d=1`, nor recomputes the anchor from mutable current stars**.
+
+### Dry-run (default, zero production writes)
 
 ```bash
 cd web
 bun scripts/migrate-canonical-lifecycle.ts
 ```
 
-Dry-run 只加载 `BLOB_BASE_URL`，不需要 `BLOB_READ_WRITE_TOKEN`，也不会调用 Blob
-create / put / delete。评审至少核对：
+Blob dry-run loads only `BLOB_BASE_URL` and does not need `BLOB_READ_WRITE_TOKEN`. R2 dry-run (`--store r2 --target pre` or `--target prod`) loads `R2_PUBLIC_BASE_URL_PRE` or `R2_PUBLIC_BASE_URL_PROD` when set, otherwise `R2_PUBLIC_BASE_URL`, plus the bucket name. It fetches the public `_meta/bucket-identity.json` and does not load `R2_SECRET_ACCESS_KEY`. Neither dry-run calls create / put / delete. Review checks at least:
 
-- `production_writes=0`；
-- source layout / `views/latest.run_id` / 19 个 snapshot hash 均与评审证据一致；
-- `canonical_repositories=5393`、`active_true=5389`、`active_false=4`；
-- `tracked_since_recovered=79`、`anchors_invented=0`、`changed_buckets=32`；
-- 输出的 `plan_sha256` 在重复 dry-run 中不变。
+- `production_writes=0`;
+- source layout / `views/latest.run_id` / 19 snapshot hash match the review evidence;
+- `canonical_repositories=5393`, `active_true=5389`, `active_false=4`;
+- `tracked_since_recovered=79`, `anchors_invented=0`, `changed_buckets=32`;
+- the emitted `plan_sha256` is unchanged across repeated dry-run.
 
-如需保存完整 changed-id / per-bucket checksum 计划，使用
-`--plan-out <new-local-file>`；工具只创建新文件，遇到内容不同的既有文件会拒绝覆盖。
-`bootstrap/latest.json`、published whitelist pointer、任一 snapshot 或 repo shard 发生漂移
-都会产生新计划或直接 fail closed，必须重新评审。
+To save the full changed-id / per-bucket checksum plan, use
+`--plan-out <new-local-file>`; the tool only creates a new file, and refuses to overwrite an existing file whose content differs.
+If `bootstrap/latest.json`, the published whitelist pointer, any snapshot, or a repo shard drifts,
+that produces a new plan or fail closed directly, and it must be reviewed again.
 
-### Execute（必须单独授权）
+### Execute (must be authorized separately)
 
-只有完整 plan 已人工评审、确认当前没有 planned `pre → main` promotion，并取得明确生产
-执行授权后，才能运行：
+Only after the full plan has been manually reviewed, it is confirmed there is currently no planned `pre → main` promotion, and explicit production
+execution authorization has been obtained, may it be run:
 
 ```bash
 cd web
@@ -680,23 +785,23 @@ bun scripts/migrate-canonical-lifecycle.ts \
   --confirm <exact-reviewed-plan-sha256>
 ```
 
-执行器先取得 `ops/workflows/active.json` 的 shared fenced lease，再把 plan、32 个 before
-shard 和 32 个 after shard create-only 封存到
-`ops/migrations/canonical-lifecycle/<plan-sha256>/`。plan receipt 最后创建；此后每个
-canonical write 只接受两种状态：checksum 等于 reviewed before（待写）或 reviewed after
-（重试时已完成）。任何第三种 bytes、pointer drift、lease loss 或 full canonical
-validation failure 都中止。Public Blob overwrite 最多可在 CDN 继续暴露旧 bytes 60 秒，
-因此写后 exact-after checksum 验证使用覆盖该窗口的有界退避；期间只允许看到 reviewed
-before，超出窗口或出现第三种 bytes 仍会失败释放 lease。所有写经 `putOwnedView` 在写前
-续租；成功后 full 128-shard canonical validation 必须 `complete=true`。
+The executor first acquires the shared fenced lease on `ops/workflows/active.json`, then create-only seals the plan and the 32 before
+shard and the 32 after shard create-only sealed into
+`ops/migrations/canonical-lifecycle/<plan-sha256>/`. The plan receipt is created last; after that, each
+canonical write accepts only two states: a checksum equal to reviewed before (pending write) or reviewed after
+(already completed on retry). Any third kind of bytes, pointer drift, lease loss, or full canonical
+validation failure aborts. Public Blob overwrite may keep exposing the old bytes on the CDN for up to 60 seconds,
+so the post-write exact-after checksum check uses a bounded backoff that covers that window; during it, only reviewed
+before may be seen, and going past the window or seeing a third kind of bytes still fails and releases the lease. Every write, via `putOwnedView`, before the write
+renews the lease; after success, full 128-shard canonical validation must be `complete=true`.
 
-中断后用**同一条 execute 命令和同一 digest**重试；执行器读取 immutable receipt，跳过已
-达到 after checksum 的 bucket。不要生成一个基于 partial state 的新确认 digest。
+After an interruption, retry with **the same execute command and the same digest**; the executor reads the immutable receipt and skips buckets that have already
+reached the after checksum bucket. Do not generate a new confirmation digest based on partial state.
 
 ### Rollback
 
-Rollback 只接受原 plan receipt，且 current shard 必须仍等于该 plan 的 before 或 after
-checksum；后续 Workflow 已改写的第三种状态会被硬阻：
+Rollback accepts only the original plan receipt, and the current shard must still equal that plan's before or after
+checksum; a third state already rewritten by a later Workflow is hard-blocked:
 
 ```bash
 cd web
@@ -706,76 +811,49 @@ bun scripts/migrate-canonical-lifecycle.ts \
   --confirm <exact-reviewed-plan-sha256>
 ```
 
-Rollback 恢复 immutable before shards，因此会重新恢复 #320 preflight 所阻断的 legacy
-状态；它用于迁移事故恢复，不代表 canonical readiness 已通过。迁移成功后的正常验收是：
-再次 dry-run 得到 `changed_repositories=0`，再运行 full canonical preflight / product
-gates，最后才重新评估 `pre → main`。
+Rollback restores the immutable before shards, and therefore restores again the #320 preflight blocked legacy
+state; it is for recovering from a migration incident, and does not mean canonical readiness has passed. Normal acceptance after a successful migration is:
+dry-run again and get `changed_repositories=0`, then run full canonical preflight / product
+gates, and only then re-evaluate `pre → main`.
 
-## Build 约束
+## Build shape
 
-> **Vercel build 45 分钟硬上限（所有计划）—— 首要约束。** 绝不在单次 deploy 里 build 全部页面。
+The build reads precomputed JSON and renders it. It does not aggregate, and it does not load an engine or a native module. Do not prerender the long tail in one build. Historical repo, org, and period pages use on-demand ISR. Data changes use `revalidatePath` from the live routes. OG images are drawn by the four `next/og` routes on request (`revalidate=86400`) and then cached. There is no pipeline-side OG object. Current platform price and duration caps are not recorded here. A full recompute stays in the managed refresh steps above.
 
-- 长尾页（历史 repo / org 详情）走**按需 ISR**，不在 deploy 时构建（见 ARCHITECTURE「页面分层」）。
-- 长尾（历史 / repo / org / 周页）**不在 deploy 构建**，按需 ISR 懒生成、存持久 ISR store；数据变更靠 cron `revalidatePath`，不做全量 build。
-- OG 图**不在每次 build 全量生成**：四类 `next/og` route 在请求/ISR 时现绘，
-  `revalidate=86400` 后由 Vercel ISR/CDN 缓存；没有 pipeline 侧 OG 生成或 Blob
-  `og/*` 产物。
-- build 只读预算好的 JSON 视图直接渲染——**不聚合、不带引擎、不碰原生模块**。
-
-**Function 资源（ISR / cron）核对**：
-
-| 资源 | 默认 | 上限 |
-|---|---|---|
-| 时长 | 300s | **800s** |
-| 内存 / CPU | 2GB / 1 vCPU | 4GB / 2 vCPU |
-| `/tmp` | 500MB | — |
-| 响应体 | 4.5MB | Blob 直读绕过此限 |
-
-> 每日 cron 与热集 ISR 都只读写 KB 级 JSON，远不触及上述任何上限。读大文件一律走 Blob（绕过 4.5MB 响应体限制）。**全量重算超出单 Function 上限，必须走 Vercel Workflow 分片**（见 §Vercel Workflow runbook）。
-
-## Vercel Firewall bot rules (pre-app)
-
-`robots.txt` is not a security boundary and still incurs Edge/middleware cost
-if the request reaches the deployment. Apply these **Vercel Firewall** rules
-on project `gitstarclub.com` (`prj_V9RVqspNWPXXiytX7Fj3wlMT9wNw`, scope
-`zkscio`) so blocked crawlers never enter Fluid/ISR/Blob:
-
-| Rule | Condition | Action |
-|---|---|---|
-| Block Meta external agent | User-Agent contains `meta-externalagent` OR `facebookexternalhit` | Deny |
-| Block GoogleOther | User-Agent contains `GoogleOther` | Deny |
-| Block GPTBot training | User-Agent contains `GPTBot` and does **not** contain `OAI-SearchBot` or `ChatGPT-User` | Deny |
-| Block SEO scrapers | User-Agent contains `AhrefsBot` OR `Amazonbot` OR `PetalBot` OR `Bytespider` OR `SemrushBot` OR `DotBot` OR `CCBot` | Deny |
-| Rate-limit remaining unknown bots | `bot_category` is `unclassified` or `tool`, path matches `/:locale(ja\|zh\|zh-TW\|ko\|es\|fr)?/:owner/:name` | Challenge or 30 req/min/IP |
-
-Do not implement these blocks as application middleware 403s; that still
-bills Edge invocations. Keep `Googlebot` and `Bingbot` unblocked.
-
-The table above is the optional recipe. **Do not apply it unless an operator
-explicitly asks.** On 2026-08-20 the four Deny rules were published, then
-**removed the same day** after the operator chose to allow those crawlers
-(including Meta link-preview). Production currently has **zero custom
-Firewall rules**. The unclassified/tool rate-limit was never published
-(Security Plus 401). Re-apply only with a new dated decision; then
-`vercel firewall publish`.
+## Bootstrap pointer repair
 
 Operator command for the missing bootstrap pointer (dry-run first):
 
 ```text
 cd web && bun scripts/ensure-bootstrap-pointer.ts
 cd web && bun scripts/ensure-bootstrap-pointer.ts --execute
+cd web && bun scripts/ensure-bootstrap-pointer.ts --store r2 --target pre
+cd web && bun scripts/ensure-bootstrap-pointer.ts --store r2 --target pre --execute --initial-commit
 ```
 
 `--execute` only writes when a sealed `bootstrap/generations/<id>` already
 exists. If none exists, the plan is `leave-legacy-flat` and no pointer is
-invented. Creating a pointer is not the root-cost fix: a missing pointer is a
+invented. `--initial-commit` is R2 only and is the empty-bucket exception
+documented in the bootstrap runbook. That execute path acquires the same
+`ops/workflows/active.json` publication lease as step 07, with idempotency key
+`bootstrap:publish:<generation>`. A running unexpired workflow blocks the
+write. After the lease renewal the command re-reads `bootstrap/latest.json`,
+`views/latest.json`, and `canonical/v2/meta.json`, and refuses if any of them
+appeared in that window. It renews the lease again immediately before the
+create-only write, so a valid takeover during those reads does not publish. Creating a pointer is not the root-cost fix: a missing pointer is a
 normal long-lived legacy state and must stay negatively cached with coalesced
 reads even if the object disappears again.
 
-## 回滚
+## Rollback
 
-- **指针回滚（Workflow 发布）**：不要直接覆盖 Blob。用稳定 idempotency key 调受保护 rollback API；它取得 fenced lease、固定 rollback intent、同步 recovery / whitelist pointer 并失效页面和 pointer cache。示例：`curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`。返回成功后在 **≤60s** 可见性 SLA 内核对页面与 `views/latest.json`。设计见 [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7。
-- **bootstrap generation / legacy 回滚**：先读取 `bootstrap/latest.previous_generation`。值为 generation 时执行 `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute`；首次 publish 的值为 `null`，其明确含义是执行 `--rollback legacy-flat --execute`。generation target 在 lease 前复核 sealed manifests 与全部对象；mutable legacy target 在取得同一个 Workflow CAS lease 后验证关键 flat base artifacts 和全部 `4 × 32` canonical shards。随后命令在 lease 内重读 pointer，只做一次 pointer 覆盖；legacy target 则原子删除 `bootstrap/latest.json`。写/删 pointer 已成功但响应丢失时，同 target 重试返回 `already-rolled-back`。不要手改 pointer，也不要删除 current / previous generation 或 overlay。
-- **部署回滚**：Vercel 保留历史部署，**Promote 上一个正常 deployment** 即可秒级回退。旧 `gitstarclub-web` 暂保留为额外回滚参考，但正常回滚应在 `gitstarclub.com` 项目内完成。Cost-control changes (robots, pointer cache, long-tail ISR, proxy matcher) rollback the same way: promote the previous Ready production deployment, then revert any Firewall deny rules that were added in the same change window.
-- **每日活尾**：`live/generations/<run_id>/**` 不可变，`live/latest.json` 是唯一发布开关。提交前失败无需数据回滚（pointer 仍指向旧 generation）；提交后发现坏数据，将 pointer 的 `generation` 指回 `previous_generation`。回滚也必须先确认没有活跃 `lease` 并使用 ETag 条件写，避免覆盖正在发布的 cron。
-- **顺序**：先回滚数据（Blob 指回上一版视图）→ 再 redeploy 上一个正常部署 → 核对 `sync_runs` 与漂移恢复正常。
+- **Pointer rollback (Workflow publish)**: do not overwrite Blob directly. Call the protected rollback API with a stable idempotency key; it acquires a fenced lease, pins the rollback intent, syncs the recovery / whitelist pointers, and invalidates pages and the pointer cache. Example: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`. After a successful return, check the pages and `views/latest.json` within the **≤60s** visibility SLA. Design see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.
+- **bootstrap generation / legacy rollback**: first read `bootstrap/latest.previous_generation`. When the value is a generation, run `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute` for the Blob store. On Blob, a first publish stores null, and that null means `cd pipeline && node backfill/07-export-v2.mjs --rollback legacy-flat --execute`. On R2, `--initial-commit` also stores null, and that null means there is no prior generation. `--rollback` of the generation just committed returns `already-rolled-back` and is not an undo. `--rollback legacy-flat` fails closed because the flat files were never uploaded. A bad first R2 publish (`previous_generation` null) has no rollback. On bucket `gitstarclub-data-pre` (Worker `gitstarclub-web-pre`, wrangler env `pre`), stop, record the failure, and under the same owner authorization as a bucket write remove `bootstrap/generations/<bad-id>/` plus `bootstrap/latest.json` (and `canonical/v2/meta.json` or `views/latest.json` when present). Never delete `_meta/`. Then rerun that stage and redeploy preview the normal way. The original empty-bucket production stage 3 was never accepted and was superseded by the copied-store cutover. Its bad-first-publish cleanup must not be applied to current `gitstarclub-data-prod`. `web/scripts/blob-del-prefix.ts` refuses the current generation and `_meta/`. The same rule is in the R2 rehearsal section and in [R2-CUTOVER.md](./R2-CUTOVER.md). The accepted cutover has a separate historical Worker rollback reference; do not confuse it with bootstrap publication rollback. An R2 rollback after a later publish names `previous_generation`: `cd pipeline && node backfill/07-export-v2.mjs --store r2 --target pre --rollback <previous-generation> --execute` for Worker `gitstarclub-web-pre`, wrangler env `pre`, bucket `gitstarclub-data-pre` (use `--target prod` for Worker `gitstarclub-web`, top-level production with no `--env`, bucket `gitstarclub-data-prod`). Do not pass the current generation. A generation target rechecks sealed manifests and every object before the lease; a mutable legacy target, after acquiring the same Workflow CAS lease, verifies the key flat base artifacts and all `4 × 32` canonical shards. The command then rereads the pointer inside the lease and overwrites the pointer only once; a legacy target atomically deletes `bootstrap/latest.json`. If the pointer write/delete succeeded but the response was lost, retrying the same target returns `already-rolled-back`. Do not hand-edit the pointer. After a later publish, roll back to `previous_generation` and do not delete that current or previous generation or overlay.
+- **Deploy rollback**: roll back the Worker that served the bad version. A preview incident rolls back `gitstarclub-web-pre` (wrangler env `pre`) and must not roll back production Worker `gitstarclub-web`. The retained historical R2 cutover version command above requires operator verification of availability/security suitability and separate authorization: `wrangler rollback 14b84f73-ef31-4e86-a70d-b71251756093 --name gitstarclub-web`. Do not pass `--env pre`. That command does not write bucket `gitstarclub-data-prod` and does not write the blob store.
+- **Daily live tail**: `live/generations/<run_id>/**` is immutable, and `live/latest.json` is the only publish switch. A failure before commit needs no data rollback (the pointer still points at the old generation); if bad data is found after commit, point the pointer's `generation` back at `previous_generation`. Rollback must also first confirm there is no active `lease` and use an ETag conditional write, so it does not overwrite a cron that is publishing.
+- **Order**: roll the published pointer back first, then roll back the matching Worker version, then check that `sync_runs` and drift are back to normal. Do not roll back `gitstarclub-web` for a preview-only fault.
+
+## Verify a manual CF preview deployment
+
+1. From a clean checkout of the intended commit, export `STORAGE_READ_DRIVER=r2` and `R2_PUBLIC_BASE_URL=https://data-pre.gitstarclub.com`, then run `cd web && bun run cf:build:pre` and record the SHA printed as the CF build identity. Keep the resulting `.open-next` output with that commit. A bare `bun run cf:build` fails because the build requires `--site-target=pre`. Do not run `bun run cf:build:production` and then preview from that output. The output directory is shared. `cf:preview` is local `wrangler dev --env pre` and is not a preview deploy. Do not export the production Blob URL for this build.
+2. An operator deploys that output to `gitstarclub-web-pre` using the approved manual process. This repository does not automate a live deploy.
+3. Request `https://pre.gitstarclub.com/.well-known/deployment` and compare `commitSha` with the recorded SHA. A `-dirty` suffix means the build included tracked uncommitted changes. Untracked files do not add that suffix. The reported commit is the SHA baked by that `cf:build`. A Worker `VERCEL_GIT_COMMIT_SHA` or `CF_PREVIEW_COMMIT_SHA` is accepted only when it equals that baked SHA. A different value is ignored.

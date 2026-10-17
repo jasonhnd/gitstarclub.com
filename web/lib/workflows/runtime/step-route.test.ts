@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import * as write from "@/lib/data/write";
+import { QUEUE_ADVANCE_CONSUMER, QUEUE_ADVANCE_HEADER, QUEUE_SUCCESSOR_HEADER } from "@/lib/workers-host/queue-advance";
 import { firstRefreshJob } from "./types";
-import { runRefreshStepRoute } from "./step-route";
+import { refreshStepCheckpointName, runRefreshStepRoute } from "./step-route";
 
 const originalSecret = process.env.CRON_SECRET;
 const originalRuntime = process.env.WORKFLOW_RUNTIME;
@@ -43,6 +45,60 @@ describe("runRefreshStepRoute", () => {
     expect(executeFixture).not.toHaveBeenCalled();
   });
 
+  test("rejects fixture jobs when DEPLOY_ENV=production", async () => {
+    const executeFixture = mock(async () => ({ name: "startRun" }));
+    const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      env: { NODE_ENV: "test", DEPLOY_ENV: "production" },
+      executeFixture,
+      recordCheckpoint: async () => {},
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: "Fixture refresh is not allowed on this runtime" });
+    expect(executeFixture).not.toHaveBeenCalled();
+  });
+
+  test("rejects fixture jobs when HOSTING_TARGET=cf and DEPLOY_ENV is unset or invalid", async () => {
+    const executeFixture = mock(async () => ({ name: "startRun" }));
+    const unset = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      env: { NODE_ENV: "test", HOSTING_TARGET: "cf" },
+      executeFixture,
+      recordCheckpoint: async () => {},
+    });
+    expect(unset.status).toBe(400);
+    expect(await unset.json()).toEqual({ ok: false, error: "Fixture refresh is not allowed on this runtime" });
+    const misspelled = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      env: { NODE_ENV: "test", HOSTING_TARGET: "cf", DEPLOY_ENV: "staging" },
+      executeFixture,
+      recordCheckpoint: async () => {},
+    });
+    expect(misspelled.status).toBe(400);
+    expect(executeFixture).not.toHaveBeenCalled();
+  });
+
+  test("runs a fixture step on HOSTING_TARGET=cf when DEPLOY_ENV=pre", async () => {
+    const executeFixture = mock(async () => ({ name: "startRun" }));
+    const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      env: { NODE_ENV: "test", HOSTING_TARGET: "cf", DEPLOY_ENV: "pre" },
+      kind: "memory",
+      executeFixture,
+      recordCheckpoint: async () => {},
+    });
+    expect(response.status).toBe(200);
+    expect(executeFixture).toHaveBeenCalledTimes(1);
+  });
+
+  test("runs a fixture step on DEPLOY_ENV=pre when an executor is configured", async () => {
+    const executeFixture = mock(async () => ({ name: "startRun" }));
+    const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1", "fixture")), {
+      env: { NODE_ENV: "test", DEPLOY_ENV: "pre" },
+      kind: "memory",
+      executeFixture,
+      recordCheckpoint: async () => {},
+    });
+    expect(response.status).toBe(200);
+    expect(executeFixture).toHaveBeenCalledTimes(1);
+  });
+
   test("executes one full step and completes it", async () => {
     const executeFull = mock(async () => ({ name: "startRun", startedAt: "2026-09-16T00:00:00.000Z", fencingToken: 4 }));
     const complete: string[] = [];
@@ -57,6 +113,199 @@ describe("runRefreshStepRoute", () => {
     expect(await response.json()).toMatchObject({ ok: true, runId: "refresh-1", step: "startRun" });
     expect(executeFull).toHaveBeenCalledTimes(1);
     expect(complete).toEqual(["checkpoint:startRun"]);
+  });
+
+  test("names preflight checkpoints by bucket window", async () => {
+    const names: string[] = [];
+    const job = {
+      v: 1 as const,
+      graph: "full" as const,
+      runId: "refresh-1",
+      name: "preflight" as const,
+      attempt: 0,
+      cursor: { preflightOffset: 8 },
+    };
+    expect(refreshStepCheckpointName(job)).toBe("preflight-8");
+    const response = await runRefreshStepRoute(post(job), {
+      kind: "memory",
+      executeFull: async () => ({ name: "preflight", nextPreflightOffset: 12 }),
+      recordCheckpoint: async (current) => {
+        names.push(refreshStepCheckpointName(current));
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(names).toEqual(["preflight-8"]);
+  });
+
+  test("names recompute checkpoints by phase", () => {
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "recomputeRank",
+        attempt: 0,
+        cursor: {},
+      }),
+    ).toBe("recomputeRank-month-pack");
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "recomputeRank",
+        attempt: 0,
+        cursor: { recomputePhase: "monthOrg" },
+      }),
+    ).toBe("recomputeRank-monthOrg");
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "recomputeRank",
+        attempt: 0,
+        cursor: { recomputePhase: "week" },
+      }),
+    ).toBe("recomputeRank-week-pack");
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "recomputeRank",
+        attempt: 0,
+        cursor: { recomputePhase: "week", recomputeOffset: 8 },
+      }),
+    ).toBe("recomputeRank-week-8");
+  });
+
+  test("names whitelist Search hops by sequence", () => {
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "whitelist",
+        attempt: 0,
+        cursor: {},
+      }),
+    ).toBe("whitelist-0");
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "whitelist",
+        attempt: 0,
+        cursor: { whitelistSearchSeq: 2 },
+      }),
+    ).toBe("whitelist-2");
+  });
+
+  test("names fold checkpoints by phase and sequence", () => {
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "fold",
+        attempt: 0,
+        cursor: { foldPhase: "week", foldSeq: 3 },
+      }),
+    ).toBe("fold-week-3");
+    expect(
+      refreshStepCheckpointName({
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "fold",
+        attempt: 0,
+        cursor: {},
+      }),
+    ).toBe("fold-month-0");
+  });
+
+  test("cf-queue consumer header skips completeStep after fold so the isolate does not POST /enqueue", async () => {
+    const enqueues: unknown[] = [];
+    const job = {
+      v: 1 as const,
+      graph: "full" as const,
+      runId: "refresh-1",
+      name: "fold" as const,
+      attempt: 0,
+      cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
+    };
+    const headers = {
+      authorization: "Bearer secret",
+      "content-type": "application/json",
+      [QUEUE_ADVANCE_HEADER]: QUEUE_ADVANCE_CONSUMER,
+    };
+    const response = await runRefreshStepRoute(
+      new Request("https://pre.gitstarclub.com/api/workflows/refresh/step", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(job),
+      }),
+      {
+        kind: "cf-queue",
+        env: {
+          ...process.env,
+          CRON_SECRET: "secret",
+          WORKFLOW_QUEUE_ENQUEUE_URL: "https://pre.gitstarclub.com/enqueue",
+        },
+        fetchImpl: async (_url, init) => {
+          enqueues.push(JSON.parse(String(init?.body)));
+          return new Response("queued", { status: 200 });
+        },
+        executeFull: async () => ({ name: "fold", folded: ["2026-08"], foldedWeeks: [] }),
+        recordCheckpoint: async () => {},
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, runId: "refresh-1", step: "fold" });
+    expect(enqueues).toEqual([]);
+    expect(JSON.parse(response.headers.get(QUEUE_SUCCESSOR_HEADER) ?? "null")).toMatchObject({
+      name: "recomputeRank",
+      runId: "refresh-1",
+    });
+  });
+
+  test("cf-queue direct POST still completeSteps fold → recomputeRank", async () => {
+    const enqueues: unknown[] = [];
+    const job = {
+      v: 1 as const,
+      graph: "full" as const,
+      runId: "refresh-1",
+      name: "fold" as const,
+      attempt: 0,
+      cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
+    };
+    const response = await runRefreshStepRoute(post(job), {
+      kind: "cf-queue",
+      env: {
+        ...process.env,
+        CRON_SECRET: "secret",
+        WORKFLOW_QUEUE_ENQUEUE_URL: "https://pre.gitstarclub.com/enqueue",
+      },
+      fetchImpl: async (_url, init) => {
+        enqueues.push(JSON.parse(String(init?.body)));
+        return new Response("queued", { status: 200 });
+      },
+      executeFull: async () => ({ name: "fold", folded: [], foldedWeeks: [] }),
+      recordCheckpoint: async () => {},
+    });
+    expect(response.status).toBe(200);
+    expect(enqueues).toEqual([
+      {
+        v: 1,
+        graph: "full",
+        runId: "refresh-1",
+        name: "recomputeRank",
+        attempt: 0,
+        cursor: { startedAt: "2026-09-20T09:39:26.949Z", fencingToken: 22 },
+      },
+    ]);
   });
 
   test("records a failed full step after retries are exhausted", async () => {
@@ -74,6 +323,80 @@ describe("runRefreshStepRoute", () => {
       expect(await response.json()).toMatchObject({ ok: false, runId: "refresh-1" });
     } finally {
       errorSpy.mockRestore();
+    }
+  });
+
+  test("step response redacts punctuation and JSON-escaped assignments", async () => {
+    const putSpy = spyOn(write, "putView").mockResolvedValue(undefined as never);
+    try {
+      const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1")), {
+        kind: "memory",
+        executeFull: async () => ({
+          name: "startRun",
+          error: [
+            "GitHub GraphQL 502",
+            "password=!CANARYpunctuation42",
+            "token=CANARYstart:CANARYtail!",
+            String.raw`password=\"!CANARYescaped42\"`,
+          ].join(" "),
+        }),
+      });
+      expect(response.status).toBe(200);
+      const body = JSON.stringify(await response.json());
+      const stored = JSON.stringify(putSpy.mock.calls);
+      expect(body).toContain("GitHub GraphQL 502");
+      expect(stored).toContain("GitHub GraphQL 502");
+      expect(body).not.toContain("CANARY");
+      expect(stored).not.toContain("CANARY");
+    } finally {
+      putSpy.mockRestore();
+    }
+  });
+
+  test("step failure logs omit secret canaries and keep the failure category", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1")), {
+        kind: "memory",
+        retry: { retries: 0, delaysMs: [] },
+        executeFull: async () => {
+          throw new Error(`GitHub GraphQL 502 Bearer CANARYBEARERTOKEN1234567890abcd ${canary}`);
+        },
+        recordCheckpoint: async () => {},
+      });
+      expect(response.status).toBe(500);
+      const body = JSON.stringify(await response.json());
+      const logged = JSON.stringify(errorSpy.mock.calls);
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).not.toContain("CANARY");
+      expect(body).not.toContain("CANARY");
+      expect(body).toContain("Internal server error");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  test("step checkpoint JSON and the response omit secret canaries", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const putSpy = spyOn(write, "putView").mockResolvedValue(undefined as never);
+    try {
+      const response = await runRefreshStepRoute(post(firstRefreshJob("refresh-1")), {
+        kind: "memory",
+        executeFull: async () => ({
+          name: "startRun",
+          error: `GitHub GraphQL 502 Bearer CANARYBEARERTOKEN1234567890abcd ${canary}`,
+        }),
+      });
+      expect(response.status).toBe(200);
+      const body = JSON.stringify(await response.json());
+      const stored = JSON.stringify(putSpy.mock.calls);
+      expect(body).toContain("GitHub GraphQL 502");
+      expect(stored).toContain("GitHub GraphQL 502");
+      expect(body).not.toContain("CANARY");
+      expect(stored).not.toContain("CANARY");
+    } finally {
+      putSpy.mockRestore();
     }
   });
 });

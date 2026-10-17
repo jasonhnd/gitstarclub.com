@@ -1,6 +1,6 @@
 // 🗄️ BOOTSTRAP-ONLY / ARCHIVE — NOT a recurring production path. For recurring ops the
-// view matrix is now recomputed on Vercel by web/lib/workflows/recompute/* (pure JS, no
-// DuckDB), parity-proven byte-identical to this script. This stays for cold-start / disaster
+// view matrix is recomputed by web/lib/workflows/recompute/* (pure JS, no
+// DuckDB) on the hosting runtime. That path is not Vercel-only. This script stays for cold-start / disaster
 // rebuild only. See docs/VERCEL-DATA-OPERATIONS.md.
 //
 // Backfill step 5 — DuckDB precompute → all JSON service views (data/views/**).
@@ -22,6 +22,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { GROWTH_FLOOR_STARS } from "../../web/lib/constants.mjs";
+import { addDays, drain, groupBy, num } from "../lib/backfill-data.mjs";
 
 const dataDir = fileURLToPath(new URL("../data", import.meta.url));
 const p = (rel) => `${dataDir}/${rel}`.replaceAll("\\", "/"); // DuckDB wants forward slashes
@@ -39,8 +40,6 @@ const WINDOWS = {
   year: "strftime(date,'%Y')",
 };
 
-const num = (v) => (typeof v === "bigint" ? Number(v) : v);
-
 const madeDirs = new Set();
 let fileCount = 0;
 function writeJson(rel, obj) {
@@ -52,30 +51,6 @@ function writeJson(rel, obj) {
   }
   writeFileSync(full, JSON.stringify(obj));
   fileCount++;
-}
-
-function groupBy(arr, keyOf) {
-  const m = new Map();
-  for (const x of arr) {
-    const k = keyOf(x);
-    let a = m.get(k);
-    if (!a) m.set(k, (a = []));
-    a.push(x);
-  }
-  return m;
-}
-
-/** Consume rows (sorted by repo_id asc) for the current id; advances ptr.i. */
-function drain(arr, ptr, id) {
-  const out = [];
-  while (ptr.i < arr.length && num(arr[ptr.i].repo_id) === id) out.push(arr[ptr.i++]);
-  return out;
-}
-
-function addDays(ymd, days) {
-  const dt = new Date(`${ymd}T00:00:00Z`);
-  dt.setUTCDate(dt.getUTCDate() + days);
-  return dt.toISOString().slice(0, 10);
 }
 
 const db = await DuckDBInstance.create();
@@ -321,8 +296,8 @@ async function exportOrgEntities(orgAgg) {
 }
 
 // --- derived repo rankings: growth (rate) + new (first ≥10k), per RANKING §4 ---
-// Growth = flow / 期初stock (prev period stock_est), floor 期初stock ≥ 20k. The floor also
-// dedupes newcomers (their 期初 < 10k) so they never appear in growth.
+// Growth = flow / period-start stock (prev period stock_est), floor period-start stock ≥ 20k. The floor also
+// dedupes newcomers (their period-start stock < 10k) so they never appear in growth.
 async function exportGrowth(w) {
   const rs = await query(
     `WITH g AS (

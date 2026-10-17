@@ -5,6 +5,8 @@ import type { ReactElement } from "react";
 import { renderToReadableStream } from "react-dom/server";
 import type { CategoryAssignments, CategoryRegistry, Meta, RepoEntity, ReposLookup } from "@/lib/contracts";
 import { REPO_HUB_LINK_TYPES, type RepoHubLinkType } from "@/lib/repo-page";
+import { getDictionary, LOCALES } from "@/lib/i18n";
+import { localizedPath } from "@/lib/i18n/routing";
 
 mock.module("next/navigation", () => ({
   notFound: () => {
@@ -172,6 +174,38 @@ describe("repo hub contract on the rendered page", () => {
     expect(hrefs).toContain(`/${RELATED_FULL_NAME}`);
     expect(hrefs.some((href) => /^\/rankings\/\d{4}\/\d+$/.test(href))).toBe(true);
   });
+
+  for (const locale of LOCALES) {
+    test(`${locale}: live history, milestones, and localized snippet links remain rendered`, async () => {
+      const t = await getDictionary(locale);
+      const markup = await renderPage(await RepoPageView({locale, owner: REPO_OWNER, name: REPO_NAME}));
+      expect(markup).toContain(t.repo.history);
+      expect(markup).toContain(t.repo.milestones);
+      expect(markup).toContain("10k");
+      expect(anchors(markup)).toContain(`https://gitstarclub.com${localizedPath(locale, `/${REPO_FULL_NAME}`)}`);
+      expect(anchors(markup)).toContain(`https://gitstarclub.com${localizedPath(locale, "/rankings/2020/3")}`);
+    });
+  }
+
+  test("missing metadata and milestones keep the page and hub without empty history sections", async () => {
+    const saved = { ...entity };
+    try {
+      Object.assign(entity, {description: null, language: null, languages: [], topics: [], license: null,
+        latest_release: null, homepage_url: null, curve: {monthly: [], recent_daily: []},
+        milestones: {crossed_10k:null,crossed_50k:null,crossed_100k:null}});
+      const t = await getDictionary("en");
+      const markup = await renderPage(await RepoPageView({locale:"en",owner:REPO_OWNER,name:REPO_NAME}));
+      expect(markup).toContain(REPO_FULL_NAME);
+      expect(markup).toContain(t.repo.unspecifiedLanguage);
+      expect(anchors(markup)).toContain(`/o/${REPO_OWNER}`);
+      expect(markup).not.toContain('aria-label="org/current milestones');
+      expect(markup).not.toContain(">STAR TREND<");
+      expect(markup).not.toContain(">Milestones<");
+    } finally {
+      Object.assign(entity, saved);
+    }
+  });
+
 });
 
 async function renderPage(element: ReactElement): Promise<string> {

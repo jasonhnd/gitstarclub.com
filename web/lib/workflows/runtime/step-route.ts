@@ -1,10 +1,31 @@
 import { WorkflowStepCheckpoint } from "@/lib/contracts";
+import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { putView } from "@/lib/data/write";
-import { isVercelProduction } from "@/lib/runtime-config";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
+import { getDeployEnv, getHostingTarget, getWorkflowRuntimeKind, isProductionDeployment } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
+import {
+  encodeSuccessorJobHeader,
+  QUEUE_SUCCESSOR_HEADER,
+  queueAdvanceFromConsumer,
+} from "@/lib/workers-host/queue-advance";
+import { foldStepCheckpointName, hasNextFoldWindow } from "@/lib/workflows/steps/fold";
+import { hasNextWhitelistSearch, whitelistStepCheckpointName } from "@/lib/workflows/steps/whitelist";
+import {
+  extraRecomputeCheckpointSteps,
+  recomputeStepCheckpointName,
+  writeRecomputeEnqueued,
+} from "@/lib/workflows/steps/recompute-rank";
+import { nextRefreshJob } from "./graph";
 import { withStepRetry, type RetryPolicy } from "./retry";
 import { resolveWorkflowRuntime, type ResolveWorkflowRuntimeOptions } from "./resolve";
 import { isRefreshStepJob, type RefreshStepJob, type RefreshStepResult } from "./types";
+
+function publicStepResult(result: RefreshStepResult): RefreshStepResult {
+  if (typeof result.error !== "string") return result;
+  const error = sanitizeErrorText(result.error);
+  return error === result.error ? result : { ...result, error };
+}
 
 export type RefreshStepRouteOptions = ResolveWorkflowRuntimeOptions & {
   executeFull?: (job: Extract<RefreshStepJob, { graph: "full" }>) => Promise<RefreshStepResult>;
@@ -13,8 +34,17 @@ export type RefreshStepRouteOptions = ResolveWorkflowRuntimeOptions & {
   retry?: RetryPolicy;
 };
 
+export function refreshStepCheckpointName(job: RefreshStepJob): string {
+  if (job.graph === "full" && job.name === "metadata") return `metadata-${job.cursor.bucket ?? 0}`;
+  if (job.graph === "full" && job.name === "preflight") return `preflight-${job.cursor.preflightOffset ?? 0}`;
+  if (job.graph === "full" && job.name === "whitelist") return whitelistStepCheckpointName(job.cursor);
+  if (job.graph === "full" && job.name === "fold") return foldStepCheckpointName(job.cursor);
+  if (job.graph === "full" && job.name === "recomputeRank") return recomputeStepCheckpointName(job.cursor);
+  return job.name;
+}
+
 async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult): Promise<void> {
-  const step = job.name === "metadata" ? `metadata-${job.cursor.bucket ?? 0}` : job.name;
+  const step = refreshStepCheckpointName(job);
   const now = new Date().toISOString();
   const checkpoint = WorkflowStepCheckpoint.parse({
     step,
@@ -22,9 +52,44 @@ async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult)
     started_at: now,
     finished_at: now,
     files_written: typeof result.files === "number" ? result.files : undefined,
-    error: result.error ?? null,
+    error: typeof result.error === "string" ? sanitizeErrorText(result.error) : result.error ?? null,
   });
   await putView(`ops/workflows/${job.runId}/steps/${step}.json`, checkpoint);
+  if (job.graph === "full" && job.name === "whitelist" && !hasNextWhitelistSearch(result)) {
+    await putView(
+      `ops/workflows/${job.runId}/steps/whitelist.json`,
+      WorkflowStepCheckpoint.parse({ ...checkpoint, step: "whitelist" }),
+    );
+  }
+  if (job.graph === "full" && job.name === "fold" && !hasNextFoldWindow(result)) {
+    await putView(
+      `ops/workflows/${job.runId}/steps/fold.json`,
+      WorkflowStepCheckpoint.parse({ ...checkpoint, step: "fold" }),
+    );
+    await writeRecomputeEnqueued(job.runId);
+  }
+  if (job.graph === "full" && job.name === "recomputeRank") {
+    for (const stepName of extraRecomputeCheckpointSteps(job.cursor, result)) {
+      await putView(
+        `ops/workflows/${job.runId}/steps/${stepName}.json`,
+        WorkflowStepCheckpoint.parse({ ...checkpoint, step: stepName }),
+      );
+    }
+  }
+}
+
+/**
+ * Production never runs a fixture. On Cloudflare an unset or invalid
+ * `DEPLOY_ENV` is not "non-production": it is refused the same way.
+ */
+function fixtureRefreshBlocked(env: RefreshStepRouteOptions["env"]): boolean {
+  if (isProductionDeployment(env)) return true;
+  try {
+    if (getHostingTarget(env) !== "cf") return false;
+    return getDeployEnv(env) == null;
+  } catch {
+    return true;
+  }
 }
 
 export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOptions = {}): Promise<Response> {
@@ -45,7 +110,7 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
   }
   const job = body;
   if (job.graph === "fixture") {
-    if (isVercelProduction(opts.env) || !opts.executeFixture) {
+    if (fixtureRefreshBlocked(opts.env) || !opts.executeFixture) {
       return Response.json({ ok: false, error: "Fixture refresh is not allowed on this runtime" }, { status: 400 });
     }
   }
@@ -66,31 +131,47 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
       },
       opts.retry,
     );
+    clearViewParseMemo();
     await (opts.recordCheckpoint ?? defaultCheckpoint)(job, result);
+    const kind = opts.kind ?? getWorkflowRuntimeKind(opts.env);
     const runtime = resolveWorkflowRuntime({
       requestUrl: req.url,
       schedule: opts.schedule,
       fetchImpl: opts.fetchImpl,
       env: opts.env,
-      kind: opts.kind,
+      kind,
     });
-    await runtime.completeStep(job, result);
-    return Response.json({ ok: true, runId: job.runId, step: job.name, result });
+    // CF Queue consumer advances via JOBS.send after reading this body. Doing
+    // completeStep here POSTs the public /enqueue hop from the same isolate
+    // that just finished fold — that hop never landed (queue silent, no
+    // error.json). Direct POST /step still completeSteps.
+    if (!(kind === "cf-queue" && queueAdvanceFromConsumer(req.headers))) {
+      await runtime.completeStep(job, result);
+    }
+    const headers = new Headers({ "content-type": "application/json" });
+    const successor = encodeSuccessorJobHeader(nextRefreshJob(job, result));
+    if (successor) headers.set(QUEUE_SUCCESSOR_HEADER, successor);
+    return new Response(JSON.stringify({ ok: true, runId: job.runId, step: job.name, result: publicStepResult(result) }), {
+      status: 200,
+      headers,
+    });
   } catch (error) {
+    clearViewParseMemo();
+    const safeError = sanitizeErrorText(error instanceof Error ? error.message : String(error));
     try {
       const { failRefreshJob } = await import("./execute");
       await failRefreshJob(job, error);
     } catch (checkpointError) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `${message}; failed to record/release failed run: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`,
+      const checkpointMessage = sanitizeErrorText(
+        checkpointError instanceof Error ? checkpointError.message : String(checkpointError),
       );
+      throw new Error(`${safeError}; failed to record/release failed run: ${checkpointMessage}`);
     }
     const runId = job.runId;
     console.error("[workflow-refresh] step failed", {
       run_id: runId,
       step: job.name,
-      error: error instanceof Error ? error.message : String(error),
+      error: safeError,
     });
     return Response.json(internalFailurePayload(runId), { status: 500 });
   }

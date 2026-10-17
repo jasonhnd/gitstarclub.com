@@ -1,4 +1,5 @@
 import { z, type ZodType } from "zod";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 
 // Parse a Blob JSON view once per (path, version, schema) in this process.
 // Repeated ISR/page reads of the same published generation must not re-parse
@@ -20,6 +21,8 @@ const MAX_LOGGED_ISSUES = 8;
 export type ViewParseContext = {
   path: string;
   version?: string | null;
+  /** Published ISR reads memoize. Workflow bust reads must not — fold kept 64 shards + pendings in the isolate after `fold.json` and the consumer then died on OOM. */
+  memo?: boolean;
 };
 
 function memoKey(path: string, version: string, schema: ZodType): string {
@@ -56,6 +59,15 @@ export function resetViewParseStateForTests(): void {
   errorCounts.clear();
 }
 
+/** Drop parsed views so a CF step isolate can return JSON after a heavy fold/recompute. */
+export function clearViewParseMemo(): void {
+  parseMemo.clear();
+}
+
+export function viewParseMemoSize(): number {
+  return parseMemo.size;
+}
+
 export function viewParseErrorSummary(): Array<{
   path: string;
   version: string;
@@ -72,7 +84,7 @@ export function logViewParseErrorSummary(label = "[view-schema]"): void {
     console.error(`${label} repeated parse failures`, {
       path: row.path,
       version: row.version || null,
-      fingerprint: row.fingerprint,
+      fingerprint: sanitizeErrorText(row.fingerprint),
       count: row.count,
     });
   }
@@ -91,11 +103,11 @@ function recordParseFailure(path: string, version: string, error: z.ZodError): v
   console.error("[view-schema] parse failed", {
     path,
     version: version || null,
-    fingerprint,
+    fingerprint: sanitizeErrorText(fingerprint),
     issues: error.issues.slice(0, MAX_LOGGED_ISSUES).map((issue) => ({
       code: issue.code,
       path: issue.path,
-      message: issue.message,
+      message: sanitizeErrorText(issue.message),
     })),
   });
 }
@@ -106,7 +118,7 @@ function recordParseFailure(path: string, version: string, error: z.ZodError): v
  */
 export function parseView<T>(json: unknown, schema: ZodType<T>, context: ViewParseContext): T {
   const version = context.version ?? "";
-  const shouldMemo = version.length > 0;
+  const shouldMemo = context.memo !== false && version.length > 0;
   const key = memoKey(context.path, version, schema);
   const cached = shouldMemo ? parseMemo.get(key) : undefined;
   if (cached) {
