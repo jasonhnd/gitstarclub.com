@@ -1,7 +1,7 @@
 ---
 owner: testing
 status: active
-last_reviewed: 2026-09-18
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - test pyramid
   - contract tests
@@ -10,36 +10,100 @@ source_of_truth_for:
   - smoke tests
 ---
 
-# gitstarclub 测试策略
+# gitstarclub Testing strategy
 
-> 精简的、决策导向的测试策略。核心原则：**数据正确性就是产品本身**——历史精度是卖点，错的数据比难看的页面更致命。
-> 因此测试金字塔不是常规倒三角：**pipeline / 数据质量测试是地基**，视觉 / a11y / E2E 在其上。架构见 [ARCHITECTURE.md](./ARCHITECTURE.md)，产品见 [PRODUCT.md](./PRODUCT.md)。
+> A concise, decision-oriented testing strategy. Core principle: **data correctness is the product itself** — historical accuracy is the selling point, and wrong data is more fatal than an ugly page.
+> Therefore the test pyramid is not the usual inverted triangle: **pipeline / data-quality tests are the foundation**, and visual / a11y / E2E sit on top of it. For architecture see [ARCHITECTURE.md](./ARCHITECTURE.md); for the product see [PRODUCT.md](./PRODUCT.md).
 
 ## Scope
 
 This document owns the project's test pyramid and testing boundaries: current CI checks, contract tests, recompute parity, Workflow validation invariants, smoke checks, and target browser/performance/a11y coverage. It separates checks that are enforced today from target-state coverage and planned gates; use **Current automation** for real blockers, **Target coverage** for strategy, and **Planned gates** for implementation status.
 
-Out of scope: development playbooks and local workflow live in [DEVELOPMENT.md](./DEVELOPMENT.md), issue/PR workflow lives in [WORKFLOW.md](./WORKFLOW.md), production operations live in [OPS.md](./OPS.md) and [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md), and schema or ranking truth lives in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) and [RANKING.md](./RANKING.md). This document should reference those owners instead of restating their rules.
+Out of scope: development playbooks and local workflow live in [DEVELOPMENT.md](./DEVELOPMENT.md), issue/PR workflow lives in [WORKFLOW.md](./WORKFLOW.md), production operations live in [OPS.md](./OPS.md), and current object storage lives in [R2-CUTOVER.md](./R2-CUTOVER.md) (Cloudflare R2; production cutover accepted 2026-10-04). Schema or ranking truth lives in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) and [RANKING.md](./RANKING.md). This document should reference those owners instead of restating their rules.
 
 ## Current automation
 
-GitHub Actions is committed at `.github/workflows/ci.yml`. Every job installs Node from `.node-version` (major 24) and Bun from the root `packageManager` pin (`1.3.14`), then runs `scripts/assert-runtime-versions.mjs`; a mismatch fails before project work starts. On PRs and pushes to `pre` or `main`, `verify / static` runs `scripts/assert-cf-ci-gates.mjs` (preview Worker `gitstarclub-web-pre`, no live `wrangler deploy` to `gitstarclub-web`, `CF_PREVIEW_ORIGIN` defaults to the preview host) and root `bun run lint:docs` (Markdown/frontmatter, maintained repository paths, env inventory, route/API ownership, pinned facts); from `pipeline/` it runs the dependency audit and `bun run test`; and from `web/` it runs the dependency audit, `bun run lint`, all three typechecks, exhaustive view-fixture validation, and `bun run test:cov`. It sets `SEO_LIVE_BASE=""` so network-dependent suites stay out of the deterministic gate. `verify / production-build` then runs `next build` against a bounded local HTTP fixture that permits only `GET` and `HEAD`; it receives no Blob write, cron, Workflow, Vercel, or GitHub credential, and explicitly rejects `BLOB_READ_WRITE_TOKEN`.
+GitHub Actions is committed at `.github/workflows/ci.yml`. Every job installs Node from `.node-version` (major 24) and Bun from the root `packageManager` pin (`1.3.14`), then runs `scripts/assert-runtime-versions.mjs`; a mismatch fails before project work starts. On PRs and pushes to `pre` or `main`, `verify / static` runs `scripts/assert-cf-ci-gates.mjs` (preview Worker `gitstarclub-web-pre`, no live `wrangler deploy` to `gitstarclub-web`, production `triggers.crons` stays `[]`, `CF_PREVIEW_ORIGIN` defaults to the preview host; the same Worker names are recorded in `.delivery.yml`) and root `bun run lint:docs` (Markdown/frontmatter, maintained repository paths, env inventory, route/API ownership, pinned facts); from `pipeline/` it runs the dependency audit and `bun run test`; and from `web/` it runs the dependency audit, `bun run lint`, all three typechecks, exhaustive view-fixture validation, and `bun run test:cov`. It sets `SEO_LIVE_BASE=""` so network-dependent suites stay out of the deterministic gate. `web/lib/integration/live-smoke.test.ts` is opt-in: its network suite registers only when `RUN_LIVE_SMOKE=1` and `LIVE_SMOKE_SITE_URL` names the target origin. There is no default site, and `web/.env.local` is read only after that opt-in, so a local `bun run test` with that file present makes no request from this suite. CI sets neither variable. `verify / production-build` then runs `next build` against a bounded local HTTP fixture that permits only `GET` and `HEAD`; it receives no Blob write, cron, Workflow, Vercel, or GitHub credential, and explicitly rejects `BLOB_READ_WRITE_TOKEN`.
 
-After both jobs pass, `verify / preview-e2e` resolves the Vercel-owned preview check for the PR head or pushed SHA, waits for the preview alias to publish that exact SHA through `/.well-known/deployment` (using `VERCEL_AUTOMATION_BYPASS_SECRET` and following the bypass `_vercel_jwt` cookie because Preview is Vercel-authenticated), and re-verifies the SHA on the immutable `*.vercel.app` deployment URL before running Chromium. It runs `e2e/accessibility-responsive.spec.ts`, `e2e/horizontal-overflow.spec.ts`, and `e2e/search-compare-interactions.spec.ts`; serious or critical axe findings, explicit contrast failures, response failures, horizontal overflow, Search keyboard/focus regressions, or Search/Compare retry failures fail the job. Failed runs retain traces and screenshots plus the HTML report and deployment metadata as a GitHub Actions artifact. On `pre` and `main` pushes the same job also runs `bun test lib/integration/seo.test.ts` against that immutable deployment; preview remains noindex while production must be indexable.
+After both jobs pass, `verify / preview-e2e` tries to resolve a Vercel Preview for the PR head or pushed SHA. When Vercel posts `Canceled by Ignored Build Step` (or Preview Comments complete without a preview URL) the resolver writes `skipped=true` and exits 0; Playwright and live SEO steps do not run, and `product-gates` is skipped. That is a soft exit, not a failure. When a Preview URL does exist, the job waits for `/.well-known/deployment` (using `VERCEL_AUTOMATION_BYPASS_SECRET` and following the bypass `_vercel_jwt` cookie because Preview is Vercel-authenticated), re-verifies the SHA on the immutable `*.vercel.app` deployment URL, and runs Chromium. It runs `e2e/accessibility-responsive.spec.ts`, `e2e/horizontal-overflow.spec.ts`, and `e2e/search-compare-interactions.spec.ts`; serious or critical axe findings, explicit contrast failures, response failures, horizontal overflow, Search keyboard/focus regressions, or Search/Compare retry failures fail the job. Failed runs retain traces and screenshots plus the HTML report and deployment metadata as a GitHub Actions artifact. On `pre` and `main` pushes the same job also runs `bun test lib/integration/seo.test.ts` against that immutable deployment when it was resolved; preview remains noindex while production must be indexable.
 
-The repository rule protecting `main` must require `verify / static`, `verify / production-build`, `verify / preview-e2e`, and Vercel's deployment check before a `pre` promotion can merge. Workflow files cannot create that GitHub-hosted rule; maintainers must update the required-check contexts in repository settings when this workflow lands and remove the superseded `verify` / `release-seo` contexts. Do **not** add `verify / cf-preview` or `verify / cf-workers-host` to that required-check set: they are optional Cloudflare dual-runs (P2 identity / P3 OpenNext dry-run) gated by `vars.CF_PREVIEW_ENABLED` / `vars.CF_WORKERS_HOST_ENABLED` and are omitted from `.delivery.yml`. Production Preview resolution stays `web/scripts/resolve-vercel-preview.ts`. See [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) and [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md).
+The GitHub required-check ruleset for `pre` / `main` is **only** `verify / static` and `verify / production-build`. `preview-e2e` and `product-gates` are not required merge gates: they soft-skip when Ignored Build leaves no Vercel Preview. Workflow files cannot edit that GitHub-hosted rule; maintainers update ruleset required contexts in repository settings. Do **not** add `verify / cf-preview` or `verify / cf-workers-host` to that required-check set: they are optional Cloudflare dual-runs (P2 identity / P3 OpenNext dry-run) gated by `vars.CF_PREVIEW_ENABLED` / `vars.CF_WORKERS_HOST_ENABLED` and are omitted from `.delivery.yml`. Functional Cloudflare preview acceptance is ops / manual on `pre.gitstarclub.com` (or the optional CF jobs), not a GitHub required check. Preview resolution stays `web/scripts/resolve-vercel-preview.ts`. See [archive/CF-MIGRATION-P2.md](./archive/CF-MIGRATION-P2.md) and [archive/CF-MIGRATION-P3.md](./archive/CF-MIGRATION-P3.md).
 
 Dependency audit is also a PR gate. CI runs `bun run audit:deps` in both `web/` and `pipeline/`, with `bun audit --audit-level=high` as the default policy; new high-severity advisories must be fixed by upgrading the direct dependency or documented as a temporary exception before merge. Moderate and low advisories are reviewed during dependency maintenance, but they do not fail CI unless the advisory affects a production server-side path or is escalated by maintainers.
 
-Temporary dependency-audit overrides live in the affected package manifest, next to the lockfile they protect. As of this policy, `web/package.json` pins `undici` to `7.29.0` and `js-yaml` to `4.3.2` above their current high-advisory floors, pins `nanoid` to `5.1.16` so transitive exact pins cannot drop to the advisory-vulnerable 5.1.6 line, pins `piscina` to the first fixed 4.x release while `@swc/cli` has not released an updated dependency range, and pins `postcss` to `8.5.23` and `sharp` to `0.35.4` while their parents retain older compatible ranges. `find-up@7` is a compatibility pin, not a security exception: it keeps Vercel Bun resolving the ESM package while eslint keeps its own compatible nested `find-up@5`. The `workflow` package is no longer a web dependency.
+Temporary dependency-audit overrides live in the affected package manifest, next to the lockfile they protect. As of this policy, `web/package.json` pins `undici` to `7.29.1` and `js-yaml` to `4.3.2` above their current high-advisory floors, pins `nanoid` to `5.1.16` so transitive exact pins cannot drop to the advisory-vulnerable 5.1.6 line, pins `piscina` to the first fixed 4.x release while `@swc/cli` has not released an updated dependency range, and pins `postcss` to `8.5.28` and `sharp` to `0.35.5` while their parents retain older compatible ranges. `find-up@7` is a compatibility pin, not a security exception: it keeps Vercel Bun resolving the ESM package while eslint keeps its own compatible nested `find-up@5`. The `workflow` package is no longer a web dependency. `pipeline/package.json` pins `undici` to `6.28.1` because `@vercel/blob` still requests the 6.x line (`^6.23.0`) and 6.27.0 is inside GHSA-rfgv-xxqx-mfg5 (`>=6.7.0 <6.28.1`). `braces` is overridden to `github:micromatch/braces#bdb6fda18f2aba1ae63d78786cb4460b478459ba` (micromatch/braces#75 depth guards for GHSA-vfj7-8cjw-p6xm / CVE-2026-93687) while npm `braces@3.0.3` remains the latest registry release; the chain is dev-only (`eslint-config-next` → `fast-glob` → `micromatch`) and is not part of the production Next.js bundle. Drop the override when a registry `braces` release includes the fix.
 
-`web` no longer ignores any advisory in `bun audit`. Major-line overrides keep `brace-expansion` on the security backports `1.1.18`, `2.1.4`, and `5.0.9`. Legacy ESLint / SWC CLI / file-list tooling still require the callable CommonJS 1.x/2.x export, so a global 5.x override would break `bun run lint`. The public advisory now recognizes those backports, so the previous `GHSA-mh99-v99m-4gvg` ignore was removed (issue #321).
+`web` no longer ignores any advisory in `bun audit`. Major-line overrides keep `brace-expansion` on the security backports `1.1.21`, `2.1.7`, and `5.0.12`. Legacy ESLint / SWC CLI / file-list tooling still require the callable CommonJS 1.x/2.x export, so a global 5.x override would break `bun run lint`. The public advisory now recognizes those backports, so the previous `GHSA-mh99-v99m-4gvg` ignore was removed (issue #321). Those three pins are the patched releases for GHSA-qhr7-859c-m2p7 and GHSA-6j4f-fj2g-mc7p: 1.x needs `>=1.1.20`, 2.x needs `>=2.1.6`, and 5.x needs `>=5.0.11`.
 
-Those commands are the current PR/`pre`/`main` static blockers; production build and Chromium browser acceptance are additional blockers. `bun run typecheck` keeps the main Next.js app config focused on production code. `bun run typecheck:tests` uses `web/tsconfig.tests.json` for `*.test.ts(x)` and `web/lib/integration/**`, which stay excluded from the main app typecheck only to keep the production program narrow. `bun run typecheck:scripts` uses the root `tsconfig.scripts.json` with `checkJs` for root scripts, pipeline `.mjs` utilities, web `.mjs` configs/helpers, and `web/public/sw.js`. The `bun run test` command in `pipeline/` exercises the extracted bootstrap publication core, including interrupted uploads, deterministic resume, validation failure, pointer commit/rollback replay, and the shared publication lease. The `bun run test:cov` command in `web/` maps to `bun test lib/ --coverage` followed by `scripts/check-coverage-threshold.mjs`; the latter sums the generated LCOV records and exits non-zero when aggregate line or function coverage is below 80%. The measured web scope is every first-party module loaded by the `web/lib` suite, including directly imported pure helpers under `pipeline/lib`; destructive/offline `pipeline/backfill` entrypoints remain covered by typecheck, the publication-core tests, contract/parity tests, and fixture validation rather than artificial line execution. The static job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. Each job summary records exact Node/Bun versions, and the static summary records the aggregate function/line coverage row. Lighthouse, visual-baseline, browser-flow, and multi-engine coverage remain unenforced.
+Those commands are the current PR/`pre`/`main` static blockers; production build is the other required GitHub gate. Chromium / live product-gates run only when a Vercel Preview exists and are not required merge checks. `bun run typecheck` keeps the main Next.js app config focused on production code. `bun run typecheck:tests` uses `web/tsconfig.tests.json` for `*.test.ts(x)` and `web/lib/integration/**`, which stay excluded from the main app typecheck only to keep the production program narrow. `bun run typecheck:scripts` uses the root `tsconfig.scripts.json` with `checkJs` for root scripts, pipeline `.mjs` utilities, web `.mjs` configs/helpers, and `web/public/sw.js`. The `bun run test` command in `pipeline/` exercises the extracted bootstrap publication core, including interrupted uploads, deterministic resume, validation failure, pointer commit/rollback replay, and the shared publication lease. `web/lib/storage/initial-bootstrap-commit.test.ts` covers the operator `--initial-commit` entry on that same lease: a running `ops/workflows/active.json` blocks publication, and a marker or pointer written between the empty-bucket check and the create is refused. The `bun run test:cov` command in `web/` maps to `bun test lib/ --coverage` followed by `scripts/check-coverage-threshold.mjs`; the latter sums the generated LCOV records and exits non-zero when aggregate line or function coverage is below 80%. The measured web scope is every first-party module loaded by the `web/lib` suite, including directly imported pure helpers under `pipeline/lib`; archived `pipeline/backfill` entrypoints additionally run against isolated offline fixtures under the pipeline test command (see Offline backfill command coverage below). The static job sets `BLOB_BASE_URL=https://blob.example.com` for tests that need a truthy Blob base. Each job summary records exact Node/Bun versions, and the static summary records the aggregate function/line coverage row. Lighthouse, visual-baseline, browser-flow, and multi-engine coverage remain unenforced.
 
 `web/tsconfig.json` still has `allowJs` because first-party `.mjs` modules such as `web/lib/fetch-timeout.mjs` are shared with Node pipeline scripts. `skipLibCheck` remains enabled in the TypeScript configs to keep CI focused on first-party code and avoid framework/dependency declaration churn from Next, React, Bun, and Node type packages. App and test code stay under `strict`; `tsconfig.scripts.json` also runs `checkJs`, but intentionally leaves `noImplicitAny` off for archived `.mjs` pipeline utilities whose DuckDB/API row shapes are dynamic until they are migrated or annotated more deeply.
 
-The Vercel Workflow `validate` step is a separate production-data publish gate: it samples `views/<run_id>/**` after recompute and blocks the `views/latest.json` pointer cut on validation failure. It is not a page-rendering or PR CI gate.
+The managed-refresh `validate` step is a separate production-data publish gate: it samples `views/<run_id>/**` after recompute and blocks the `views/latest.json` pointer cut on validation failure. It is not a page-rendering or PR CI gate.
+
+### Offline backfill command coverage
+
+Issue 589 adds 88 tests through the unchanged `pipeline/` command
+`bun test lib/*.test.mjs`: 27 in `pipeline/lib/backfill-data.test.mjs` and 61 in
+`pipeline/lib/backfill-cli.test.mjs`. The existing CI static job's `bun run test`
+discovers both files without a workflow or package-script change.
+
+The command tests copy steps 01 through 07 into disposable directories and use a
+synthetic three-repository Parquet slice with leap-day and year-boundary facts.
+They run the real DuckDB rollup/precompute/export and real view/canonical
+validators. GitHub and R2 transport responses are intercepted inside each child
+process; all other fetches and network sockets are refused. Environment files and
+owner data are never copied. Test credentials are literal synthetic strings.
+
+The guards cover both R2 targets, default dry run, write opt-in, explicit dry run,
+no-upload, stage-only, empty-bucket initial commit and its shared lease, conflicting
+markers, corruption, and rollback. Current-generation rollback deliberately
+returns `already-rolled-back` without a pointer write; a changed manifest digest
+is refused. The tests preserve that retry behavior rather than changing it to
+match the issue's shorthand about refusing the current generation.
+
+Pure-helper tests cover `num`, `groupBy`, `drain`, `addDays`,
+`timestampFromGeneration`, `bucketOf`, `bucketSeries`, and
+`assertLocalManifestMatches` in `pipeline/lib/backfill-data.mjs`, plus the existing
+canonical metadata and SQL-rendering producers. These helper extractions preserve
+the original transformations. CLI tests also exercise the shared argument parser,
+write gate, R2 selection, publication/rollback core, and lease functions through
+the actual scripts. These tests supplement the full `web/lib` coverage gate; they
+do not establish a separate pipeline line-coverage threshold or live-bucket proof.
+
+### Local R2 stage 2 rehearsal
+
+Issue #586 adds the manual offline command in
+[web/scripts/r2-local-rehearsal.ts](../web/scripts/r2-local-rehearsal.ts). Run it with pinned
+Node v24.20.0 / Bun 1.3.14 and both packages installed before the real-bucket
+rehearsal in [R2-CUTOVER.md stage 2](./R2-CUTOVER.md#stage-2-preview-rehearsal).
+It exits 0 with `R2_LOCAL_REHEARSAL_OK` only after the real backfill CLIs,
+persistent local R2 restart, standalone Worker bootstrap reads, binding lease
+operations, pointer CAS, and identity/initial-commit refusals pass.
+
+The CLI fixture mirror copies only the two backfill entrypoints, their source
+helpers, and checked-in view fixtures, then generates a tiny DuckDB parquet
+file. Installed dependencies and validators are linked into that mirror;
+repository environment files are not copied or loaded. A new HOME and a small
+environment allowlist keep the harness separate from account configuration.
+Miniflare provides the local S3/public services and actual workerd conditions;
+there is no hand-written bucket emulator. Worker public reads loop back to its
+`DATA` bucket. The local bucket and mirror are removed on completion.
+
+`web/lib/storage/r2-binding-workerd.test.ts` also checks a non-UTF-8 binary
+payload, a missing key, a prefixed key, and the bootstrap adapter's matching
+body/ETag snapshot. This covers the `getBytes` binding method needed by Worker
+bootstrap publication. The original local rehearsal failed without that method
+with `object store cannot read binary objects` before the guarded commit could
+run. Reverting quote removal in binding conditions breaks Worker renewal;
+bypassing the initial-commit shared lease breaks the active-workflow refusal;
+removing the post-renewal marker check breaks the injected-marker refusal.
+Mutation verification is performed in a disposable verification checkout,
+with every source restored before the full static job.
+
+The command remains manual rather than adding a CI job. It covers the Worker
+data path, with the Next request cache disabled; full page-server behavior and
+real DNS/bucket/preview acceptance remain separate checks.
 
 ## Target coverage
 
@@ -49,7 +113,7 @@ The issue #25 Lighthouse / Core Web Vitals baseline is archived in [perf/CWV-25.
 
 ## Requirement Traceability
 
-Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-id--优先级--追踪矩阵). New tests that validate a core product behavior should name the relevant `REQ-*` ID in the test description, fixture name, or surrounding comment when the mapping is not obvious from the file path.
+Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-requirement-ids--priority--traceability-matrix). New tests that validate a core product behavior should name the relevant `REQ-*` ID in the test description, fixture name, or surrounding comment when the mapping is not obvious from the file path.
 
 | Requirement ID | Acceptance link | Current automated evidence | Planned / manual evidence |
 |---|---|---|---|
@@ -72,9 +136,28 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | Pulse movers → ranking period (#372) | Week / month / year / all-time panels link the resolved ranking route; rows stay on repo hubs; locale prefixes apply | `web/lib/pulse-board-links.test.tsx` | Manual Preview of `/` and `/ja` |
 | GEO capsule gaps (#376) | High-value routes keep a dated, attributed capsule and FAQ; Pulse capsule is after the period switcher and before ranking panels; compare capsule stays generic | `web/lib/geo-capsules.test.ts`, `web/lib/geo-faq.test.ts`, `web/lib/pulse-board-links.test.tsx`, `web/lib/integration/uiux-seo.test.tsx` | Manual Preview of `/` and `/pulse` |
 | Sunday refresh health path (#377 / #379) | Operator signal is only `ops/workflows/health/workflow-refresh.json`; never the retired flat `ops/workflows/health.json` | `web/lib/observability/health.test.ts` | Sunday runbook in [OPS.md](./OPS.md) |
-| CF migrate P1 refresh runtime (#446) | Refresh main path runs without Workflow SDK; memory runtime drains a shrink fixture; lease CAS still wins/loses on ETag | `web/lib/workflows/runtime/*.test.ts`, `web/lib/workflows/lease.test.ts`, `web/lib/workflows/start.test.ts` | Production cron table unchanged; see [CF-MIGRATION-P1.md](./CF-MIGRATION-P1.md) |
-| CF migrate P3 Workers host (#452) | OpenNext selected over vinext; `/` is Next; shell keeps `/preview/*` + `/start`; Analytics off on `HOSTING_TARGET=cf` | `web/lib/workers-host/*.test.ts`, `web/lib/analytics-policy.test.ts`, `web/lib/deployment-identity.test.ts`, `web/lib/runtime-config.test.ts` | Optional `verify / cf-workers-host` dry-run; local `bun run cf:smoke`; production stays Vercel; see [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
-| Cloudflare R2 P0 adapter (#444) | Default Blob drivers; R2 CAS 412 / list prefix / production write guard; no real production bucket token | `web/lib/storage/*.test.ts`, `web/lib/runtime-config.test.ts` | Dry-run `web/scripts/sync-blob-to-r2.ts` against `migrate-dev/` only |
+| CF migrate P1 refresh runtime (#446) | Refresh main path runs without Workflow SDK; memory runtime drains a shrink fixture; lease CAS still wins/loses on ETag | `web/lib/workflows/runtime/*.test.ts`, `web/lib/workflows/lease.test.ts`, `web/lib/workflows/start.test.ts` | Production cron table unchanged; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
+| CF Cron scheduled dispatch (#466) | `event.cron` maps daily / weekly / refresh; unknown cron throws; production wrangler crons stay empty; origins stay env-specific | `web/lib/workers-host/cron-dispatch.test.ts`, `scripts/cf-ci-gates.test.mjs` | Ops injects secrets and enables preview schedules later; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
+| CF Cron Cloudflare Sunday (#468, superseded by #546) | Cloudflare numbers weekdays `1` = Sunday through `7` = Saturday and rejects `0`. weekly `0 4 * * SUN` and refresh `0 6 * * SUN` (or Cloudflare `1`) dispatch; `7` (Saturday on Cloudflare) and `0` dispatch as unknown and throw; the CI gate rejects any wrangler cron with numeric weekday `0` or `7`; daily stays `0 3 * * *`; `env.pre` `triggers.crons` stays `[]` while `PREVIEW_CRONS_PAUSED` is true (#543); production `triggers.crons` stays `[]` | `web/lib/workers-host/cron-dispatch.test.ts`, `scripts/cf-ci-gates.test.mjs` | Platform schedules stay off; production cron is not enabled; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
+| Worker entry (#588) | Cron expressions still map to daily, weekly, and refresh; production and preview `triggers.crons` stay `[]` while paused; empty cron strings and a missing `CRON_SECRET` fail without fetch; shell `fetch` routes health, identity, start, enqueue, and invalidate; other paths go to Next; `handleNextRequest` forwards to the OpenNext worker; `WorkerEnv` keeps `JOBS` and `MEDIA` required and secrets optional | `web/lib/workers-host/worker-entry.test.ts`, `web/lib/workers-host/worker-next-app.test.ts` | `web` `test:cov` (`bun test lib/`) runs both files. No schedule or secret change |
+| CF Cron GraphQL UA + Blob fetch write (#470) | GraphQL `gql()` sends `User-Agent: gitstarclub` and `Accept: application/vnd.github+json`; Blob lease/write on `HOSTING_TARGET=cf` uses runtime `fetch` (no `ALPNProtocols`) | `web/lib/github.test.ts`, `web/lib/github-timeout.test.ts`, `web/lib/storage/vercel-blob-fetch-client.test.ts`, `web/lib/storage/object-store.test.ts` | Preview Bearer `refresh/start` is 2xx; full daily must not 500 on ALPN; production `triggers.crons` stays `[]`; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
+| CF refresh preflight 1102 (#472) | Workflow preflight reads 4-bucket windows (16 shards) at CF concurrency 2; SHA-256 deferred to `validate`; graph re-enqueues until 128 shards pass; cf-queue stays the preview runtime | `web/lib/workflows/canonical-validation.test.ts`, `web/lib/workflows/steps/preflight.test.ts`, `web/lib/workflows/runtime/graph.test.ts`, `web/lib/workflows/runtime/step-route.test.ts` | After CF preview deploy: Bearer start 200 → queue consume → step `preflight` is **not** 503/1102; Blob shows `preflight-0` then a later step; production `triggers.crons` stays `[]`; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
+| CF refresh lease renew (#474) | Renew withholds a CDN-stale public GET ETag, backs off CAS, coalesces same-owner overlap, and throws retryable `WorkflowLeaseCasError` instead of `lost ownership while renewing`; whitelist proves the fence before Search; Queue consumer uses `WORKER_SELF_REFERENCE` | `web/lib/workflows/lease.test.ts`, `web/lib/workflows/steps/whitelist.test.ts`, `web/lib/workflows/runtime/retry.test.ts`, `web/lib/workers-host/refresh-step-fetch.test.ts`, `web/lib/storage/vercel-blob-fetch-client.test.ts` | After CF preview deploy: Bearer start 200 → preflight batches ok → no `lost ownership while renewing` → `steps/whitelist.json` or later; production `triggers.crons` stays `[]`; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
+| Preview sharded whitelist Search (#509) | `WHITELIST_SEARCH_SHARDS=1` yields Search between star-range hops inside a 10 min budget; progress is not a snapshot; shard-off is single-hop | `web/lib/github.test.ts`, `web/lib/workflows/steps/whitelist.test.ts`, `web/lib/workflows/runtime/graph.test.ts`, `web/lib/runtime-config.test.ts` | After CF preview deploy of this change: full (non-fixture) refresh whitelist hops finish under the 15 min Queue wall and write `canonical/v2/whitelist/<run>.json` (~65k vs 5534). Do not re-run the old single-hop Bearer path. Production `triggers.crons` stays `[]`. |
+| Preview empty/missing canonical preflight (#515) | `PREFLIGHT_RELAX_EMPTY_SHARDS=1` treats confirmed-missing shards as empty `{}` placeholders (`preview-empty-canonical-placeholder`) so hop 4-style gaps do not void the run; production / flag-off stay fail-closed; schema/`d`/identity still fail | `web/lib/workflows/canonical-validation.test.ts`, `web/lib/workflows/steps/preflight.test.ts`, `web/lib/runtime-config.test.ts`, `scripts/cf-ci-gates.test.mjs` | After CF preview deploy: Bearer start 200 → preflight windows ok even if some `canonical/v2/{repos,repo-monthly,…}/{4–7}.json` are 404; Observability shows the policy log; do **not** trigger Bearer from this PR. Production `triggers.crons` stays `[]`. |
+| Preview cold-start first publish (#519) | With `WORKFLOW_COLD_START=1` and unpublished `views/latest.json`, route preflight allows start when `meta.json` is absent; workflow writes minimal meta under lease; whitelist baseline `[]`; missing lookup/repos/series read as `{}` until first publish; GitHub still supplies `node_id`/stars | `web/lib/workflows/cold-start.test.ts`, `web/lib/runtime-config.test.ts`, `scripts/cf-ci-gates.test.mjs` | Do **not** Bearer-trigger full refresh from CI/PR. After deploy + Jason-authorized run: expect Search → metadata → recompute → publish; entity/heatmap hops may still OOM on large universes. |
+| CF refresh fold→recompute stall (#476) | Queue consumer reads the step JSON body and `JOBS.send`s `nextRefreshJob`; `cf-queue` + `x-gitstarclub-queue-advance: consumer` skips the public `/enqueue` hop after fold; `loadCanonicalModel` caps CF shard reads | `web/lib/workers-host/queue-advance.test.ts`, `web/lib/workers-host/consume-job.test.ts`, `web/lib/workflows/runtime/step-route.test.ts`, `web/lib/workflows/runtime/graph.test.ts`, `web/lib/workflows/recompute/io.test.ts`, `web/lib/workflows/recompute/io-load.test.ts` | After CF preview deploy: Bearer start 200 → `fold.json` ok → queue consume `recomputeRank` (not silent) → later `publish.json`; production `triggers.crons` stays `[]`; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
+| CF refresh fold OOM + advance (#478) | Fold runs 4-bucket month/week windows; busted reads skip parse memo; step route clears memo and sets `x-gitstarclub-queue-successor`; consumer enqueues from that header if the body is lost | `web/lib/workflows/steps/fold-step.test.ts`, `web/lib/workflows/steps/fold.test.ts`, `web/lib/workflows/runtime/graph.test.ts`, `web/lib/workflows/runtime/step-route.test.ts`, `web/lib/workers-host/queue-advance.test.ts`, `web/lib/workers-host/consume-job.test.ts`, `web/lib/data/parse-view.test.ts` | After CF preview deploy: Bearer start 200 → `fold-month-0` / `fold-week-*` / `fold.json` → queue still live → `recomputeRank.json` → `publish.json` (and `gc.json` if that step ran); no stable fetch-origin memory kill after fold; production `triggers.crons` stays `[]`; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
+| CF refresh fold still OOM after fold-month-0 (#483) | Fold uses 1-bucket windows; month/week plan hops write compact plans without shards; later windows do not reload pending; retry after a plan exists is one shard | `web/lib/workflows/steps/fold-step.test.ts`, `web/lib/workflows/steps/fold.ts`, `web/lib/workflows/runtime/graph.test.ts`, `web/lib/workers-host/consume-job.test.ts` | After CF preview deploy of this PR: Bearer start 200 → `fold-month-0` (plan) → later `fold-month-*` / `fold-week-*` → `fold.json` → queue still live → `recomputeRank.json` → `publish.json` (and `gc.json` if that step ran); no silent gap after the first month window; production `triggers.crons` stays `[]`; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md) |
+| CF refresh plan hop skip + recompute OOM after #484 (#485) | First fold hop writes `fold-decision.json` (`no_closed_month` when already folded through the last closed month); month/week plans only when there is closed-period work; CF pending/shard reads skip a second Zod clone; `recomputeRank` is month/week/rest hops that load only the needed families | `web/lib/workflows/steps/fold-step.test.ts`, `web/lib/workflows/steps/recompute-rank-step.test.ts`, `web/lib/workflows/recompute/io-load.test.ts`, `web/lib/workflows/runtime/graph.test.ts`, `web/lib/workers-host/consume-job.test.ts`, `web/lib/data/source.test.ts` | After CF preview deploy: score the [preview Bearer full-refresh acceptance matrix](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix) (F1–F4 / R1–R3 / X1–X2 / P1–P2). `no_closed_month` without month/week plans is normal; OOM or Queue silence is fail; production `triggers.crons` stays `[]` |
+| CF refresh recompute still OOM after #486 (#494) | Packed typed-array window; slim repo meta; seven rank hops (month / monthOrg / year / yearOrg / week / weekOrg / rest); persist `recompute/{month,week}-win`; fold writes `recompute-enqueued.json`; each hop writes `recomputeRank-<phase>-start.json`; entity steps stream packed + one bucket | `web/lib/workflows/recompute/packed-window.test.ts`, `web/lib/workflows/steps/recompute-rank-step.test.ts`, `web/lib/workflows/recompute/io-load.test.ts`, `web/lib/workflows/runtime/graph.test.ts`, `web/lib/workers-host/consume-job.test.ts` | After CF preview deploy: score the [preview Bearer full-refresh acceptance matrix](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix) including **H1** and **H2**. Must reach `publish.json` (prefer `gc.json`). Page 500 + health 200 after fold **while X1 is red** is the same OOM isolate (**H1**). Independently, `liveHistory` >64 / newer-than-head is **H2** (#496, already on this branch). Production `triggers.crons` stays `[]` |
+| CF refresh week-start OOM after #497 (#498) | Week pack hop persists flat v2 one repo-bucket at a time; week/weekOrg rank 8-period windows by streaming one persist shard (never assemble the full week window); carry file keeps prev_rank / org stock; terminal `recomputeRank-week.json` / `recomputeRank-weekOrg.json` still written | `web/lib/workflows/recompute/packed-window.test.ts`, `web/lib/workflows/steps/recompute-rank-step.test.ts`, `web/lib/workflows/recompute/io.test.ts`, `web/lib/workflows/recompute/io-load.test.ts`, `web/lib/workflows/runtime/graph.test.ts`, `web/lib/workers-host/consume-job.test.ts` | After CF preview deploy: score the [preview Bearer full-refresh acceptance matrix](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix) including **R1** week-pack / week-* windows. Must pass `recomputeRank-week-start` → `recomputeRank-week` → `publish.json` (prefer `gc.json`). Stuck week-start + OOM ×3 is fail. Production `triggers.crons` stays `[]` |
+| CF refresh month/year/rest full-window OOM (#517) | Month and year pack per repo bucket (year derived from month buckets); rank streams 8 periods; growth keeps top-100 per period; rest folds one repos bucket then writes all-time, lookup, search, and categories without `loadCanonicalModel`; terminal phase checkpoints remain | `web/lib/workflows/recompute/packed-window.test.ts`, `web/lib/workflows/recompute/rest-fold.test.ts`, `web/lib/workflows/steps/recompute-rank-step.test.ts`, `web/lib/workflows/runtime/graph.test.ts` | Do not Bearer-start or live-deploy from this change. After a later preview deploy, score [R1](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix): month-pack / month-* / year-pack / year-* / rest-* then terminal `recomputeRank-*.json`. One isolate assembling month, year, or every repo is fail. Production `triggers.crons` stays `[]` |
+| CF refresh lease origin ETag after #499 (#500) | Empty write cache + CDN GET / origin `head()` diverge uses origin `getOrigin()` body+etag; successor on origin fails closed (no stale-body CAS); public-only stores still withhold a divergent GET ETag | `web/lib/workflows/lease.test.ts`, `web/lib/storage/vercel-blob-fetch-client.test.ts`, `web/lib/storage/vercel-blob-store.test.ts` | After CF preview deploy: score the [preview Bearer full-refresh acceptance matrix](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix) including **L1**. Must pass week hops → weekOrg → rest → `publish.json` (prefer `gc.json`). `could not read a consistent origin ETag while renewing` on a still-owned token is fail. Production `triggers.crons` stays `[]` |
+| CF preview Bearer full-refresh acceptance (#488) | After #486: `fold-decision.json` is always present; `reason=no_closed_month` without month/week plans is normal; recompute is month/week/rest then `publish`/`gc`; fetch-origin OOM or Queue silence is fail; production `triggers.crons` stays `[]` and Vercel cron is not stopped | Same unit files as the #485 row (docs-only acceptance table; no new CI job) | Operator scores [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix). This is not a GitHub required check and must not open production schedules |
+| CF live history >64 page 500 (#495) | Period-scoped liveHistory truncates at 64 hops (null, no throw, no unverified legacy); a requested week/month newer than the hop stops without walking the rest of the chain; cycle / schema / listed-but-missing still fail closed; production `triggers.crons` stays `[]` | `web/lib/data/live-generation-history.test.ts`, `web/lib/data/source.test.ts` | After CF preview deploy of this PR: `GET /preview/health` 200; `GET /` and `GET /rankings` 200 (base / previous period / empty is OK). Do not PUT production schedules or stop Vercel cron |
+| CF migrate P3 Workers host (#452) | OpenNext selected over vinext; `/` is Next; shell keeps `/preview/*` + `/start`; Analytics off on `HOSTING_TARGET=cf` | `web/lib/workers-host/*.test.ts`, `web/lib/analytics-policy.test.ts`, `web/lib/deployment-identity.test.ts`, `web/lib/runtime-config.test.ts` | Optional `verify / cf-workers-host` dry-run; local `bun run cf:smoke`; production and preview run on Cloudflare Workers; production JSON uses R2 after the accepted 2026-10-04 cutover; the production caller is unverified; see [archive/CF-MIGRATION-P3.md](./archive/CF-MIGRATION-P3.md) |
+| Cloudflare R2 P0 adapter (#444, #557) | Default Blob drivers; R2 CAS 412 / list prefix; R2 writes require `DEPLOY_ENV` plus `_meta/bucket-identity.json`; no real production bucket token | `web/lib/storage/*.test.ts`, `web/lib/runtime-config.test.ts`, `web/lib/blob-deletion.test.ts` | Dry-run `web/scripts/sync-blob-to-r2.ts` only with `DEPLOY_ENV=pre` or `production` against a bucket whose identity marker matches |
 | View parse-once + Zod fingerprints | Same path+generation is parsed once; unrecognized lifecycle keys are not `.passthrough()`; old and new Meta/lookup/entity shapes both parse | `web/lib/data/parse-view.test.ts`, `web/lib/contracts/contracts.test.ts` | 24h `ZodError` volume drops; no per-request repeat of the same fingerprint |
 | current_month shards under Data Cache limit | Writer emits index + 32 shards; reader accepts v1 monolith and v2 index; Sunday daily does not claim live lease | `web/lib/cron/current-month-shards.test.ts`, `web/lib/cron/live-refresh.test.ts`, `web/lib/cron/handlers.test.ts` | `items over 2MB can not be cached` is 0 after the next live publish |
 | category assignments shards under Data Cache limit | Writer emits index + 32 repo-id shards; reader accepts v1 monolith; publish gate checks UTF-8 JSON byte length < 1.50 MiB; ISR stays cached | `web/lib/data/category-assignment-shards.test.ts`, `web/lib/workflows/recompute/categories.test.ts`, `web/lib/view-size.test.ts` | `items over 2MB can not be cached` is 0 after the next base publish |
@@ -84,271 +167,275 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-需求-
 | non-negative entity stock | `computeRepoWindow` clamps published `stock_est` to ≥ 0; every RepoEntity/OrgEntity is Zod-parsed before Blob write and again at publish | `web/lib/workflows/recompute/windows.test.ts`, `web/lib/workflows/recompute/entities.test.ts` | `/o/astrid-runtime` and locale routes return 200; no negative `MonthlyPoint` |
 | bootstrap pointer 403 is not a 404 | Bounded retry + jitter; last-known-good pointer; one structured error per TTL; `unstable_cache` loader failures do not call `load()` again | `web/lib/data/bootstrap-pointer-cache.test.ts` | bootstrap pointer 403 does not form a repeat storm |
 
-本文档描述本项目的测试金字塔：**Zod 契约测试**、纯核心逻辑的**单元测试**、**集成测试**（recompute parity、live overlay）、**端到端冒烟测试**，以及 workflow 中的**校验闸门**(validation gates)。在新增任何 feature 或改动任何 contract 之前请先阅读本文档,确保改动落在既有的测试边界内。
+This document describes this project's test pyramid: **Zod contract tests**, **unit tests** of pure core logic, **integration tests** (recompute parity, live overlay), **end-to-end smoke tests**, and in the workflow the **validation gates**(validation gates). Before adding any feature or changing any contract, please read this document first, and ensure the change lands inside the existing test boundaries.
 
-## 测试取向(先定调)
+## Testing orientation(set the tone first)
 
-| 取向 | 决定 | 理由 |
+| Orientation | Decision | Rationale |
 |---|---|---|
-| 真数据 > mock | 聚合 / 排名 / schema 测试**直接跑真 Parquet 子集 + 真 JSON 产物**，能用真数据就不 mock | 本产品 bug 几乎都藏在"真实数据的脏边角"（取消 star、改名、突刺、空月），mock 永远测不到 |
-| 结构 | **AAA**（Arrange-Act-Assert）三段式 | 数据测试断言密集，AAA 让"造数据 / 算 / 校验"边界清晰 |
-| 命名 | 描述行为，不描述函数名 | 如 `org 总量等于其成员 repo 总量之和`、`周窗口跨月不丢日`，失败即文档 |
-| 哲学 | 视觉回归**补充**而非替代逻辑覆盖 | 截图能抓"看起来错了"，抓不到"flow 求和少算一天"——后者靠单测 |
+| real data > mock | aggregation / ranking / schema tests **run a real Parquet subset + real JSON artifacts directly**, and do not mock when real data can be used | bugs in this product are almost all hidden in the "dirty corners of real data" (canceled stars, renames, spikes, empty months); mock can never catch them |
+| Structure | **AAA** (Arrange-Act-Assert) three-part form | Data-test assertions are dense; AAA makes the boundary of "make data / compute / validate" clear |
+| Naming | describe behavior, do not describe function names | e.g. `org total equals the sum of its member repos' totals`, `weekly window across months does not drop a day`; a failure is the documentation |
+| Philosophy | visual regression **supplements** rather than replaces logic coverage | A screenshot can catch "it looks wrong", and cannot catch "the flow sum is short one day" — the latter relies on unit tests |
 
-## 覆盖目标
+## Coverage targets
 
-- **逻辑代码 ≥ 80%**（聚合 / 排名 / 窗口 / 锚定 / schema / i18n 路由——即 `pipeline/` 与 `web/lib/` 的纯函数）。这是项目硬线。
-- **视觉回归**不计入覆盖率数字，是独立信号层（见 §2）。
-- 不为零客户端 JS 的纯展示 SVG 组件强凑单测覆盖——它们的信号在视觉回归里，单测它们的 markup 既脆又低价值。
+- **Logic code ≥ 80%** (aggregation / ranking / windows / anchoring / schema / i18n routing — that is, the pure functions of `pipeline/` and `web/lib/`). This is the project's hard line.
+- **Visual regression** is not counted in the coverage number; it is an independent signal layer (see §2).
+- Do not pad unit-test coverage for pure presentational SVG components with zero client JS — their signal is in visual regression, and unit-testing their markup is both brittle and low-value.
 
 ---
 
-## 1. Pipeline / 数据质量测试（最重要）
+## 1. Pipeline / data-quality tests (most important)
 
-数据在数据层（bootstrap / Vercel Workflow）被聚合成 JSON 视图，**一旦发布给 16k 静态页就无法运行时修正**。所以这一层是重兵把守区，分五类：聚合数学、schema 校验、sanity 不变量、golden file、发布闸门（§1.5）。
+In the data layer (bootstrap / managed refresh), data is aggregated into JSON views, and **once published to the 16k static pages it cannot be corrected at runtime**. So this layer is a heavily guarded zone, split into five kinds: aggregation math, schema validation, sanity invariants, golden file, and publish gates (§1.5).
 
-### 1.1 聚合 + 排名数学（单测，真数据子集）
+### 1.1 Aggregation + ranking math (unit tests, real-data subset)
 
-针对聚合预算逻辑的纯函数 / 或直接对产出断言。**用一小份真切片**（Parquet 子集 + 同源 canonical JSON shard，5–10 个知名 repo、跨 2–3 年）当 fixture，避免合成数据掩盖真实边界；并据此做 §1.5 的「shard 纯 JS 重算 == DuckDB 重算」等价对拍。
+Pure functions for the aggregation-budget logic / or assertions directly on the output. **Use a small real slice** (Parquet subset + same-source canonical JSON shard, 5–10 well-known repos, spanning 2–3 years) as the fixture, so synthetic data does not hide real boundaries; and from that, do the §1.5 equivalence parity check of "shard pure-JS recompute == DuckDB recompute".
 
-- **flow（∑delta）**：窗口内每日 delta 求和 == 该窗口榜单数值；含 delta 为负（取消 star）的月份仍正确
-- **stock 累计 + 锚定**：累加到窗口末的总量；终点须**锚定 GraphQL `current_stars`**（gross 曲线终点 ≠ 当前总数时，以 GraphQL 为权威，见 ARCHITECTURE「数据校验/对账」）
-- **窗口边界**：
-  - 周不整除月——`周窗口跨月边界不重不漏`
-  - 月 / 年边界：闰年 2 月、跨年 12→1、月末 28/29/30/31 天
-  - 全时 = 2015-01 起点到当期，不早于 seam 也不漏起点月
-- **org 聚合**：按 `owner` 分组求和（含 User 与 Organization 两类 `owner_type`）== 其成员 repo 之和
+- **flow (∑delta)**: the sum of each day's delta inside the window == that window's ranking value; a month whose delta is negative (canceled stars) is still correct
+- **stock cumulative + anchoring**: the total accumulated to the end of the window; the endpoint must **anchor to GraphQL `current_stars`** (when the gross curve's endpoint ≠ the current total, GraphQL is authoritative; see ARCHITECTURE "data validation/reconciliation")
+- **Window boundaries**:
+  - A week does not divide a month evenly — `weekly window across a month boundary neither double-counts nor drops`
+  - Month / year boundaries: leap-year month 2, year-crossing 12→1, month-end 28/29/30/31 days
+  - All-time = from the 2015-01 start to the current period, neither earlier than the seam nor missing the start month
+- **org aggregation**: group-sum by `owner` (including both User and Organization `owner_type`) == the sum of its member repos
 
 ```ts
-// 示意，非实际测试代码
-test('周排名窗口跨月不丢日', () => {
-  // Arrange: 真切片中一个横跨 9/29–10/05 的 ISO 周
-  // Act:    取该周 flow 榜单
-  // Assert: 榜值 == 该 repo 这 7 天 delta 之和（含跨月两段）
+// illustration, not actual test code
+test('weekly ranking window across months does not drop a day', () => {
+  // Arrange: an ISO week in the real slice spanning 9/29–10/05
+  // Act:    take that week's flow ranking
+  // Assert: ranking value == the sum of this repo's 7 days of delta (including the two segments across the month)
 });
 ```
 
-### 1.2 JSON 视图 schema 校验（Zod）
+### 1.2 JSON view schema validation (Zod)
 
-所有 `rank/* · entity/* · heatmap/* · lookup/*` 与活尾 `current_month.json` / `hot-snapshot.json` 都有 **Zod schema**，pipeline 产出后立即校验，build 读取前再校验一次（fail-fast，脏 JSON 绝不进 build）。
+All of `rank/* · entity/* · heatmap/* · lookup/*` and the live tail `current_month.json` / `hot-snapshot.json` have a **Zod schema**, validated immediately after the pipeline produces them, and validated once more before the build reads them (fail-fast; dirty JSON never enters the build).
 
-- 字段类型 / 必填 / 枚举（`owner_type ∈ {User, Org}`、`metric ∈ {flow, stock}`、`window ∈ {week,month,year,all-time}`）
-- 引用完整性：榜单里每个 `repo_id` 在 `lookup/repos.json` 有对应条目
-- Zod schema 即 build 读 JSON 的 TS 类型来源（single source of truth，避免 schema 与类型漂移）
-- **实现**：`web/scripts/validate-views.ts`（`bun run validate:views -- <viewsDir>` 全量校验目录内每个 JSON 对契约，未知路径、畸形 JSON 或 schema mismatch 均失败；只有 `web/lib/view-validation.ts` 中带理由的窄 allowlist 可豁免）。CI 对覆盖所有已注册视图家族的只读 fixture 执行同一命令。bootstrap precompute 全部产物也必须运行该门禁，期望 `skipped=0`、`failed=0`；这与离线 parity 是两个不同指标——**离线 parity 测试**比对生成的视图与 DuckDB 重算结果逐字节一致（`web/lib/integration/recompute.test.ts`），勿混淆文件契约校验与字节对拍。**Workflow 的 `validate` step 复用同一套 Zod 契约校验 `views/<run_id>/**`**（§1.5，运行时另加完整性/跨视图不变量），逻辑同源、只换运行位置。
+- Field types / required / enums (`owner_type ∈ {User, Org}`, `metric ∈ {flow, stock}`, `window ∈ {week,month,year,all-time}`)
+- Referential integrity: every `repo_id` in a ranking has a corresponding entry in `lookup/repos.json`
+- The Zod schema is the source of the TS types with which the build reads JSON (single source of truth, avoiding drift between schema and types)
+- **Implementation**: `web/scripts/validate-views.ts` (`bun run validate:views -- <viewsDir>` fully validates every JSON in the directory against the contract; unknown paths, malformed JSON, or a schema mismatch all fail; only a narrow allowlist with a reason in `web/lib/view-validation.ts` may be exempted). CI runs the same command on a read-only fixture that covers every registered view family. Every bootstrap precompute artifact must also run this gate, expecting `skipped=0`, `failed=0`; this and offline parity are two different metrics — **offline parity tests** compare the generated views with the DuckDB recompute results byte for byte (`web/lib/integration/recompute.test.ts`); do not confuse file-contract validation with byte parity. **Workflow `validate` step reuses the same set of Zod contracts to validate `views/<run_id>/**`** (§1.5; at runtime it also adds completeness / cross-view invariants); the logic has the same source, and only the place it runs changes.
 
-### 1.3 Sanity 不变量（数据级断言，对全量产物跑）
+### 1.3 Sanity invariants (data-level assertions, run against the full artifacts)
 
-这些是"数据物理定律"。目标状态是对**每次 pipeline 全量输出**断言，任一违反即阻断对应 gate；当前已自动化的范围见下方 **Planned gates** 状态表：
+These are the "laws of data physics". The target state is to assert on **every full pipeline output**, and any violation blocks the corresponding gate; the scope already automated today is in the **Planned gates** status table below:
 
-| 不变量 | 阈值 / 规则 |
+| Invariant | Threshold / rule |
 |---|---|
-| stock 总量非负 | 任意 repo / org 任意窗口末累计 ≥ 0 |
-| 日 delta 在合理界 | 单日新增不超过 sane 上限（如历史单日峰值的 N 倍）；net 允许为负但有下界 |
-| 排名列表长度 | top-N JSON 恰为 N 条（或全集 < N 时为全集），无重复 `repo_id` |
-| 排名有序 | 按对应 metric 严格降序 |
-| org == ∑members | 每个 org 各窗口总量 == 其成员 repo 之和（容差 0） |
-| 漂移检查 | `按 adds 累加总数` vs GraphQL `current_stars` 漂移 ≤ 阈值（如 2%）；超阈记 `total_drift_pct` 并以 GraphQL 重锚（见 ARCHITECTURE） |
-| seam 连续性 | gross→net 接缝日（`meta.seam_date`）前后曲线无断裂 / 无重复计日 |
+| stock total is non-negative | the cumulative total of any repo / org at the end of any window ≥ 0 |
+| daily delta is within sane bounds | single-day additions do not exceed a sane cap (e.g. N times the historical single-day peak); net may be negative but has a lower bound |
+| ranking list length | top-N JSON is exactly N rows (or the full set when the full set < N), with no duplicate `repo_id` |
+| ranking is ordered | strict descending order by the corresponding metric |
+| org == ∑members | each org's total in each window == the sum of its member repos (tolerance 0) |
+| drift check | `total accumulated by adds` vs GraphQL `current_stars` drift ≤ a threshold (e.g. 2%); over the threshold, record `total_drift_pct` and re-anchor with GraphQL (see ARCHITECTURE) |
+| seam continuity | no break in the curve before and after the gross→net seam day (`meta.seam_date`) / no double-counted day |
 
-### 1.4 Golden file（已知 repo 的已知里程碑）
+### 1.4 Golden file (known milestones of known repos)
 
-挑几个**事实公开可查**的知名 repo 作回归基准，把它们的关键节点固化成 golden 快照；pipeline 改动后比对，防止重构悄悄改变历史口径。
+Pick a few well-known repos whose **facts are publicly checkable** as regression baselines, and freeze their key points into golden snapshots; compare after a pipeline change, to prevent a refactor from quietly changing the historical definition.
 
-- 例：某著名 repo 突破 10k / 50k / 100k 的**精确月份**与当时排名
-- 例：某 AI 项目某个爆发月的 flow 排名位次
-- golden 值人工核对一次后冻结；变更须显式 review（防"测试跟着 bug 一起改"）
+- e.g.: the **exact month** a famous repo crossed 10k / 50k / 100k, and the ranking at that time
+- e.g.: some AI project's breakout month, and its flow ranking place
+- golden values are manually checked once and then frozen; a change requires explicit review (to prevent "the tests changing along with the bug")
 
-> golden file 测的是"历史不该变"；§1.1 测的是"算法该对"。两者互补：前者抓回归，后者抓逻辑。
+> A golden file tests "history should not change"; §1.1 tests "the algorithm should be correct". The two complement each other: the former catches regressions, the latter catches logic.
 
-### 1.5 Workflow 发布闸门 / staging 校验 / 回滚
+### 1.5 Workflow publish gate / staging validation / rollback
 
-> **数据校验的"最后闸门"位于 managed refresh 的 `validate` step**——对 `views/<run_id>/**` 跑**抽样断言**，**通过才切 `views/latest.json` 指针**（实现 `web/lib/workflows/steps/validate.ts`、契约见 [DATA-CONTRACTS.md](./DATA-CONTRACTS.md)）。
+> **The "last gate" of data validation is at managed refresh's `validate` step** — run **sampled assertions** on `views/<run_id>/**`, and **cut the `views/latest.json` pointer only if they pass** (implementation `web/lib/workflows/steps/validate.ts`; the contract is in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md)).
 
-**当前实际断言的不变量**（与 §1.3 完整清单的差距见下表）：
+**Invariants actually asserted today** (the gap from the full list in §1.3 is in the table below):
 
-| 断言 | 检查内容 |
+| Assertion | What is checked |
 |---|---|
-| `meta.json` | `seam_date` 存在 |
-| 全时 stock 总榜 | repo/org all-time rank 均读 schema；`items` 非空、`rank[0]==1`、`value` 非递增；rank 从 1 连续、无重复 rank、无重复 `id/login` |
-| `lookup/repos.json` | 条目数 ≥ 1000；ID 集合必须与本 run canonical repos 完全一致，且相对上一发布版只能出现 whitelist `diff.added` 批准的新 ID（跌出白名单的历史 repo 保留） |
-| rank 引用完整性 | staging all-time rank item 的 repo `id` 必须在 `lookup/repos.json`；org `login` 必须在 `lookup/orgs.json` |
-| `meta.folded_through` | 相对上一发布版本不倒退（month/week 单调） |
-| `lookup/aliases.json` | 别名完整性：无 dangling（每个别名 id 仍在 `lookup/repos.json` 内）、无 live-shadow（别名旧名不得撞当前某 repo 的 `full_name`）、alias count 不小于上一发布版本 |
-| canonical 完整性 | `repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` 的全部 bucket 必须存在并通过 schema；repo key/id/bucket 必须一致；三类时间序列不能整体为空或引用未知 repo；写含路径、记录数、SHA-256 的 `canonical-manifest.json` |
-| `canonical/v2/repos/*` `d` 因子 | `d > 2` 仍是 warning；历史 repo 缺少有限 `d` 为硬失败，新晋 repo（有 `tracked_since`）显式按 `d=0` 建模 |
-| `search/index.json` | `count` ≥ 1000 且 `count == repos.length`（防止索引漂移） |
-| `categories/registry.json` | 非空；至少一个 `public` 分类 |
-| `categories/assignments.json` | v2 index 或 v1 单体；组装后条目数 ≥ 1000；每 repo `language`/`language_family` 各 ≥1、`owner_kind` 恰 1；无 unknown 分类引用；index + 每个 shard UTF-8 JSON < 1.50 MiB |
-| `lookup/categories.json` | 非空 |
-| 抽样 category-rank | 取首个 public 分类的 `rank/category/<dim>/<slug>/all-time/repo/stock.json`，其每个 item 都已在 assignments 中归入该分类 |
-| 全量 entity | lookup 内每个 repo/org entity 通过 `RepoEntity` / `OrgEntity`；`stock_est` ≥ 0；头部 repo 的 `curve.monthly` 非空 |
-| 上一年 heatmap | `heatmap/year/<Y-1>.json` 可读、字段齐 |
+| `meta.json` | `seam_date` exists |
+| all-time stock overall ranking | repo/org all-time rank are both read against schema; `items` is non-empty, `rank[0]==1`, `value` is non-increasing; rank is contiguous from 1, no duplicate rank, no duplicate `id/login` |
+| `lookup/repos.json` | entry count ≥ 1000; the ID set must match this run's canonical repos exactly, and relative to the previous published version the only new IDs that may appear are those approved by whitelist `diff.added` (historical repos that fell out of the whitelist are kept) |
+| rank referential integrity | the repo `id` of a staging all-time rank item must be in `lookup/repos.json`; the org `login` must be in `lookup/orgs.json` |
+| `meta.folded_through` | does not go backwards relative to the previous published version (month/week monotonic) |
+| `lookup/aliases.json` | alias integrity: no dangling (every alias id is still inside `lookup/repos.json`), no live-shadow (an alias's old name must not collide with some current repo's `full_name`), and the alias count is not smaller than the previous published version |
+| canonical completeness | every bucket of `repos` / `repo-monthly` / `repo-weekly` / `repo-recent-daily` must exist and pass schema; repo key/id/bucket must be consistent; the three time series must not be entirely empty or reference an unknown repo; write a `canonical-manifest.json` containing the path, the record count, and the SHA-256 |
+| `canonical/v2/repos/*` `d` factor | `d > 2` is still a warning; a historical repo missing a finite `d` is a hard failure, and a newcomer repo (one that has `tracked_since`) is explicitly modeled as `d=0` |
+| `search/index.json` | `count` ≥ 1000 and `count == repos.length` (to prevent index drift) |
+| `categories/registry.json` | non-empty; at least one `public` category |
+| `categories/assignments.json` | v2 index or v1 monolith; assembled entry count ≥ 1000; each repo has `language` / `language_family` each ≥ 1, and `owner_kind` exactly 1; no unknown category reference; index + each shard's UTF-8 JSON < 1.50 MiB |
+| `lookup/categories.json` | non-empty |
+| sampled category-rank | take the first public category's `rank/category/<dim>/<slug>/all-time/repo/stock.json`, and every one of its items is already assigned to that category in assignments |
+| full entities | every repo/org entity in lookup passes `RepoEntity` / `OrgEntity`; `stock_est` ≥ 0; head repos' `curve.monthly` is non-empty |
+| previous-year heatmap | `heatmap/year/<Y-1>.json` is readable, and its fields are complete |
 
-| 测试 | 在哪跑 | 断言 | 失败动作 |
+| Test | Where it runs | Assertion | Failure action |
 |---|---|---|---|
-| **staging 校验闸门** | Workflow `validate` step（Vercel） | 上表视图抽样断言 + 全量 canonical shard/ID 完整性 | `ok=false` → **不切指针**；线上仍是上一版；staging 版本保留供排查；写 `canonical-manifest.json` 与 `validation.json` |
-| **canonical shard 等价性** | 单测（CI）+ Workflow step | 「JSON shard 纯 JS 聚合」结果 == 「bootstrap DuckDB 同口径」结果（容差 0）；DuckDB parity 只作为 `folded_through <= seam` 的 legacy 等价对拍,不是 post-seam oracle | CI 阻断 / step error |
-| **发布指针原子性** | 集成测试 | 切指针前后读侧拿到的版本自洽；切到一半的请求拿旧版（不拿半发布） | CI 阻断 |
-| **回滚可逆** | 集成测试 | 把 `views/latest.json.version` 指回 `prev_version` 后，读侧立即拿回上一版；`views/<prev>` 仍在 | CI 阻断 |
-| **step 幂等** | 单测 | 同 `(run_id, shard)` 重跑 step → 覆盖同一份产物，不重复累加（[VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8） | CI 阻断 |
-| **权威 Blob 读取** | 单测 + Workflow preflight | 页面读取保留 WAF 容错；Workflow/control-plane 及 daily/weekly cron mutation input 对 403、超时、pointer/schema 错误 fail closed，overlay 非 404 错误不得回退 sealed bytes；required shard 的 404 也必须中止 | CI 阻断 / 不取得 lease 或不进入 mutation step |
-| **fold pending 完整性** | 单测 + Workflow step | weekly fold 需要的所有 frozen month pending 必须存在且 `period` 与路径一致；缺失时不生成零值周、不推进 watermark | CI 阻断 / step error |
+| **staging validation gate** | Workflow `validate` step (Vercel) | the view sampled assertions in the table above + full canonical shard/ID completeness | `ok=false` → **do not cut the pointer**; what is live is still the previous version; the staging version is kept for investigation; write `canonical-manifest.json` and `validation.json` |
+| **canonical shard equivalence** | unit tests (CI) + Workflow step | the result of "JSON shard pure-JS aggregation" == the result of "bootstrap DuckDB, same definition" (tolerance 0); DuckDB parity is only a legacy equivalence parity check for `folded_through <= seam`, not a post-seam oracle | CI blocks / step error |
+| **publish-pointer atomicity** | integration tests | the versions the read side gets before and after the pointer cut are self-consistent; a request caught mid-cut gets the old version (not a half-publish) | CI blocks |
+| **rollback is reversible** | integration tests | after pointing `views/latest.json.version` back to `prev_version`, the read side immediately gets the previous version back; `views/<prev>` is still there | CI blocks |
+| **step idempotence** | unit tests | rerunning the step for the same `(run_id, shard)` → overwrites the same artifact, and does not accumulate again ([VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §8) | CI blocks |
+| **authoritative Blob reads** | unit tests + Workflow preflight | page reads keep WAF tolerance; Workflow/control-plane and daily/weekly cron mutation input fail closed on 403, timeout, and pointer/schema errors, and an overlay non-404 error must not fall back to sealed bytes; a 404 of a required shard must also abort | CI blocks / do not acquire the lease or do not enter the mutation step |
+| **fold pending completeness** | unit tests + Workflow step | every frozen month pending that the weekly fold needs must exist, and `period` must match the path; when one is missing, do not generate a zero-value week, and do not advance the watermark | CI blocks / step error |
 
-- **fixture**：§1.1 的真切片同样导出成 **canonical JSON shard fixture**（与 Parquet 切片同源），单测「shard 重算」与「DuckDB 重算」对拍。
-- **隔离**：Workflow 校验只读 staging、不碰 `live/*` 活尾；活尾校验仍由每日/每周 cron 后置（见下「节奏」）。
-- **当前 gap**（未在 validate step 中执行，留作未来工作）：org `stock == ∑members` 等价、monthly ↔ recent-daily seam 连续、`total_drift_pct` 阈值、全量历史 period 文件集合完整性——这些不变量记录在 §1.3 但**目前不阻断发布**，仅作 §1.1/§1.4 测试目标。
+- **fixture**: the real slice from §1.1 is likewise exported as a **canonical JSON shard fixture** (same source as the Parquet slice), and unit tests parity-check "shard recompute" against "DuckDB recompute".
+- **Isolation**: Workflow validation only reads staging, and does not touch the `live/*` live tail; live-tail validation is still placed after the daily/weekly cron (see "cadence" below).
+- **Current gap** (not executed inside the validate step, left as future work): org `stock == ∑members` equivalence, monthly ↔ recent-daily seam continuity, the `total_drift_pct` threshold, and completeness of the full historical period file set — these invariants are recorded in §1.3 but **currently do not block publish**, and serve only as test targets for §1.1/§1.4.
 
-### 1.6 全站搜索测试
+### 1.6 Site-wide search tests
 
-`search/index.json` 与客户端 MiniSearch 检索单独成测：
+`search/index.json` and client MiniSearch retrieval are tested on their own:
 
-- `web/lib/search/core.test.ts`：MiniSearch 装配（prefix / fuzzy 0.2 typo 容错 / 按 stars 加权 `starBoost`，热门 repo 置顶）。
-- `web/lib/workflows/recompute/entities.test.ts` 的 `searchIndex` 用例：recompute 从 `repos` 维度派生索引（条目数、字段、描述截断）。
-- contracts `SearchIndex` / `SearchDoc` schema 契约测试（`web/lib/contracts/search.ts`）。
-- 全套测试通过 `bun test lib/` 一次性运行（**当前规模：424 tests / 28 files**，作新鲜度锚点）。
+- `web/lib/search/core.test.ts`: MiniSearch assembly (prefix / fuzzy 0.2 typo tolerance / `starBoost` weighted by stars, with popular repos pinned to the top).
+- The `searchIndex` case of `web/lib/workflows/recompute/entities.test.ts`: recompute derives the index from the `repos` dimension (entry count, fields, description truncation).
+- contracts `SearchIndex` / `SearchDoc` schema contract tests (`web/lib/contracts/search.ts`).
+- The full suite is run at once via `bun test lib/`. Do not record a test count or file count here; it goes stale.
 
-> **别名与分类相关测试**（覆盖上文 §1.5 闸门里的 alias/category 断言对应逻辑）：
-> - `web/lib/workflows/recompute/aliases.test.ts`：alias-map 构建（并集保留的 `renames.json` 增量 → 当前 id）。
-> - `web/lib/workflows/recompute/categories.test.ts`：分类产物派生（registry / assignments / lookup / paged all-time category rank、public 资格、curated 绕过 `minimum_repo_count`）。
-> - `web/lib/categories/rules.test.ts`：确定性分类规则（slug 归一、language-family 映射、topic/keyword 规则）。
+> **Alias- and category-related tests** (covering the logic that corresponds to the alias/category assertions inside the §1.5 gate above):
+> - `web/lib/workflows/recompute/aliases.test.ts`: alias-map construction (union-retained `renames.json` increments → current id).
+> - `web/lib/workflows/recompute/categories.test.ts`: derivation of category artifacts (registry / assignments / lookup / paged all-time category rank, public eligibility, curated bypassing `minimum_repo_count`).
+> - `web/lib/categories/rules.test.ts`: deterministic category rules (slug normalization, language-family mapping, topic/keyword rules).
 
-- **parity 跳过 / 边界**：`web/lib/integration/recompute.test.ts` 经 `NO_DISK_REF` 跳过 `search/index.json`（派生视图，DuckDB 无参照可对拍），与 live-artifact 跳过并列——其余视图仍逐字节对拍。该 DuckDB disk reference 只在 `folded_through <= seam` 时是等价参照;post-seam 公式由 `web/lib/integration/post-seam-oracle.test.ts` 的合成夹具断言 `round(cumGross@seam * d) + Σ(post-seam net)`。
-
----
-
-## 2. 视觉回归（高信号——这是个"看的"站）
-
-整站是服务端渲染 SVG + 零客户端 JS 的视觉 SSG，截图差分信号极高。用 **Playwright 截图**。
-
-- **断点**：320 / 768 / 1024 / 1440（对齐 web 测试规则）
-- **双主题**：light + dark **都截**（M3E 明暗双模式都是一等公民，不能只测一套）
-- **关键页**（每页 × 4 断点 × 2 主题）：
-  - 首页：**年份脊柱**（bar 宽度 = 全年新增、年度标签）
-  - 月度页 `/rankings/2024/10`：**日历热力图** + 三个核心榜单（新增 / 增速 / 新晋）
-  - 年度页 `/rankings/2024`：12 月份格子热力图 + 年度 TOP
-  - Repo 详情页 `/:owner/:name`：**全历史 star 曲线** + 里程碑标注
-  - org 页（路由待 PRODUCT 定，见 ARCHITECTURE）：org 维度曲线 + 成员榜
-  - 全时总榜页
-- 截图针对**固定数据快照**（用 §1 的真切片 fixture build 一份确定性站点），避免每日数据变动导致截图漂移
-- 基准图入库；diff 超阈人工 review（数据更新引起的合理变化批准后更新基准）
+- **parity skip / boundary**: `web/lib/integration/recompute.test.ts` via `NO_DISK_REF` skips `search/index.json` (a derived view; DuckDB has no reference it can parity-check), listed alongside the live-artifact skip — the other views are still parity-checked byte for byte. This DuckDB disk reference is an equivalence reference only when `folded_through <= seam`; the post-seam formula is asserted by the synthetic fixture of `web/lib/integration/post-seam-oracle.test.ts` as `round(cumGross@seam * d) + Σ(post-seam net)`.
 
 ---
 
-## 3. 无障碍（a11y）
+## 2. Visual regression (high signal — this is a site one "looks at")
 
-对齐 ARCHITECTURE「无障碍」节，自动 + 手动结合：
+The whole site is a visual SSG of server-rendered SVG + zero client JS, and the screenshot-diff signal is extremely high. Use **Playwright screenshots**.
 
-- **自动 axe 检查**：在关键页（首页 / 年 / 月 / repo）跑 axe-core，零 critical/serious 违规
-- **键盘导航**：所有内链可 Tab 聚焦、Tab 顺序合理、**focus 态可见**（M3 focus ring）；无键盘陷阱
-- **prefers-reduced-motion**：开启时 View Transitions / 弹簧动效降级或关闭（动效纯 CSS，须验证媒体查询确实生效）
-- **对比度 WCAG AA**：明暗双主题下文本 / on-* 角色对 surface 均达 AA（M3 tone 映射保证，但要断言验证）
-- **SVG 图表可达**：star 曲线 / 热力图带 `<title>` + `aria-label`，并有**视觉隐藏的数据表 fallback**（screen reader 能读到数值，不只是"一张图"）
-
----
-
-## 4. E2E 关键流程
-
-验证**网状内链**真的连通（SEO 与产品都依赖它，见 SEO.md「内链策略」）。用 Playwright，断言导航而非像素。
-
-- **导航图贯通**：首页 → 年度页 → 月度页 → repo 页 → org 页 → 全时榜，任意页 3 跳内可达
-- **上下期导航**：月度页 `← 9月 | 11月 →`、年度页 `← 2023 | 2025 →` 永远在顶部且跳对
-- **里程碑链接 → 月度页锚点**：repo 页里程碑点击落到对应月份的正确锚点
-- **榜单行 → 实体页**：榜单里 repo 名 → repo 页；org 名 → org 页
-
-### 4.1 i18n locale URL、语言下拉与 cookie 重定向
-
-- 无 `gsc_lang` cookie 访问 `/`、`/pulse`、`/rankings` 时应渲染 English；带非默认 `Accept-Language` 首访 `/` 时 middleware 可 307 到对应 locale root。
-- 语言切换器显示当前 route locale，展开后列出 `en`、`ja`、`zh`、`zh-TW`、`ko`、`es`、`fr`；每一项都是普通 `<a>` 链接。
-- 从 English 点击 Japanese 应导航到 `/ja/...`；从 `/ja/...` 点击 English 应导航回无前缀 URL；从任一非英文语言都必须能切回 English。
-- `LanguageSwitcher` 不写 `gsc_lang`、不派发 `gsc:localechange`、不靠客户端刷新当前 RSC 视图；导航后由服务端返回对应语言 HTML。
-- `/api/lang?lang=fr&next=/rankings` 作为兼容入口应写入 `gsc_lang=fr` 并重定向到 `/fr/rankings`；`next=//evil.example` 必须回退到站内安全路径，防止开放重定向。
-- 带 `gsc_lang=ja` 访问未加前缀的页面导航（如 `/rankings`）应 307 到 `/ja/rankings`；显式 locale URL（如 `/fr/rankings`）必须优先于 cookie。
-- Service worker 不得缓存 HTML 导航或 `/api/*` 响应；middleware / `/api/lang` 的重定向不能被旧 HTML 缓存污染。
-- 切换语言后 `<html lang>`、UI 文案、canonical 与 `hreflang` alternate 应与 route locale 一致；repo 名、语言、topic、数字等数据字段不得被翻译。
-- **locale URL × 数据语言中立**：应测 `/`、`/ja`、`/rankings/2024/10`、`/zh-TW/rankings/2024/10`、`/:owner/:name`、`/fr/:owner/:name` 均返回 200（合法实体前提下），UI chrome 按 route locale 翻译，repo 名/语言/topic/数字等数据字段保持源数据形式。
-- 用确定性等待（等元素 / URL），**不用 timeout 硬等**，避免 flaky
+- **Breakpoints**: 320 / 768 / 1024 / 1440 (aligned with the web testing rules)
+- **Both themes**: light + dark are **both captured** (M3E light and dark modes are both first-class citizens; do not test only one set)
+- **Key pages** (each page × 4 breakpoints × 2 themes):
+  - Home: **year spine** (bar width = additions for the whole year, year labels)
+  - Month page `/rankings/2024/10`: **calendar heatmap** + three core rankings (additions / growth rate / newcomers)
+  - Year page `/rankings/2024`: a 12-month cell heatmap + yearly TOP
+  - Repo detail page `/:owner/:name`: **full-history star curve** + milestone annotations
+  - org page (the route is pending a PRODUCT decision, see ARCHITECTURE): an org-dimension curve + a member ranking
+  - all-time overall ranking page
+- Screenshots target a **fixed data snapshot** (use the real-slice fixture from §1 to build one deterministic site), to avoid daily data changes causing screenshot drift
+- Baseline images are checked in; a diff over the threshold gets manual review (a reasonable change caused by a data update updates the baseline after approval)
 
 ---
 
-## 5. 性能（Core Web Vitals + 零 JS 红线）
+## 3. Accessibility (a11y)
 
-对齐 ARCHITECTURE「性能策略」。Lighthouse / CWV 跑在代表性页面（首页 + 一个 repo 页 + 一个月度页）。
+Align with the ARCHITECTURE "accessibility" section, combining automatic + manual:
 
-| 指标 | 目标 |
+- **Automatic axe checks**: run axe-core on key pages (home / year / month / repo), with zero critical/serious violations
+- **Keyboard navigation**: every internal link can be Tab-focused, the Tab order is sensible, and the **focus state is visible** (M3 focus ring); no keyboard trap
+- **prefers-reduced-motion**: when it is on, View Transitions / spring motion degrades or turns off (motion is pure CSS, and one must verify that the media query actually takes effect)
+- **Contrast WCAG AA**: under both light and dark themes, text / on-* roles against surface all reach AA (guaranteed by the M3 tone mapping, but it must be verified by assertion)
+- **SVG charts are accessible**: the star curve / heatmap carry `<title>` + `aria-label`, and there is a **visually hidden data-table fallback** (a screen reader can read the numbers, not just "a picture")
+
+---
+
+## 4. E2E key flows
+
+Verify that the **mesh of internal links** is really connected (both SEO and the product depend on it; see SEO.md "internal-link strategy"). Use Playwright, and assert navigation rather than pixels.
+
+- **Navigation graph connected through**: home → year page → month page → repo page → org page → all-time ranking, and any page is reachable within 3 hops
+- **Previous/next period navigation**: the month page `← Sep | Nov →`, and the year page `← 2023 | 2025 →`, are always at the top and jump to the right place
+- **Milestone link → month-page anchor**: clicking a milestone on the repo page lands on the correct anchor of the corresponding month
+- **Ranking row → entity page**: a repo name in the ranking → the repo page; an org name → the org page
+
+### 4.1 i18n locale URL, language dropdown, and cookie redirect
+
+- Visiting `/`, `/pulse`, and `/rankings` with no `gsc_lang` cookie should render English; on a first visit to `/` with a non-default `Accept-Language`, middleware may 307 to the corresponding locale root.
+- The language switcher shows the current route locale, and after it expands it lists `en`, `ja`, `zh`, `zh-TW`, `ko`, `es`, `fr`; every item is an ordinary `<a>` link.
+- Clicking Japanese from English should navigate to `/ja/...`; clicking English from `/ja/...` should navigate back to the unprefixed URL; from any non-English language one must be able to switch back to English.
+- `LanguageSwitcher` does not write `gsc_lang`, does not dispatch `gsc:localechange`, and does not rely on the client to refresh the current RSC view; after navigation the server returns the HTML of the corresponding language.
+- `/api/lang?lang=fr&next=/rankings`, as a compatibility entry, should write `gsc_lang=fr` and redirect to `/fr/rankings`; `next=//evil.example` must fall back to an in-site safe path, to prevent an open redirect. A value that becomes protocol-relative only after the locale prefix is removed, such as `next=/ja//example.com/path`, must stay on the request origin and fall back to that locale's home.
+- Visiting an unprefixed page navigation with `gsc_lang=ja` (such as `/rankings`) should 307 to `/ja/rankings`; an explicit locale URL (such as `/fr/rankings`) must take priority over the cookie.
+- Service worker must not cache HTML navigations or `/api/*` responses; a redirect from middleware / `/api/lang` must not be polluted by a stale HTML cache.
+- After a language switch, `<html lang>`, UI copy, canonical, and the `hreflang` alternate should match the route locale; data fields such as repo name, language, topic, and numbers must not be translated.
+- **locale URL × data-language neutrality**: one should test that `/`, `/ja`, `/rankings/2024/10`, `/zh-TW/rankings/2024/10`, `/:owner/:name`, and `/fr/:owner/:name` all return 200 (given a valid entity), that UI chrome is translated by route locale, and that data fields such as repo name/language/topic/numbers keep the source-data form.
+- Use a deterministic wait (wait for an element / URL), **do not hard-wait on a timeout**, to avoid flaky
+
+---
+
+## 5. Performance (Core Web Vitals + the zero-JS red line)
+
+Align with ARCHITECTURE "performance strategy". Lighthouse / CWV run on representative pages (home + one repo page + one month page).
+
+| Metric | Target |
 |---|---|
 | LCP | < 2.5s |
 | INP | < 200ms |
 | CLS | < 0.1 |
 | FCP | < 1.5s |
 
-**结构性硬断言**（比 Lighthouse 评分更可靠，计划纳入后续 gates）：
+**Structural hard assertions** (more reliable than a Lighthouse score, and planned to be brought into later gates):
 
-- **内容页零客户端 JS**：bundle 检查——除一小段内联主题切换脚本外，content 页不得 ship 任何客户端 JS chunk。这是架构红线，回归即 fail
-- **HTML < 20KB**：关键页渲染后 HTML 体积上限断言（直接降 bandwidth，见 ARCHITECTURE「Bandwidth 防御阶梯」）
-- **字体子集**：Plus Jakarta Sans 子集 woff2 ≤ ~30KB；只预加载真正关键的一档 weight
-- **图表尺寸固定**：SVG 有显式宽高，防 CLS
+- **Content pages have zero client JS**: a bundle check — aside from one short inline theme-toggle script, a content page must not ship any client JS chunk. This is an architecture red line, and a regression is a fail
+- **HTML < 20KB**: an assertion of the HTML size cap after key pages render (it directly cuts bandwidth; see ARCHITECTURE "Bandwidth defense ladder")
+- **Font subset**: the Plus Jakarta Sans subset woff2 ≤ ~30KB; preload only the one weight that is truly critical
+- **Chart size is fixed**: the SVG has an explicit width and height, to prevent CLS
 
 ---
 
-## 6. 跨浏览器
+## 6. Cross-browser
 
-Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
+Playwright's three engines run the key pages, and the focus is the **progressive-enhancement degradation path**:
 
-- **Chrome / Firefox / Safari**（chromium / firefox / webkit）
-- 验证：滚动、纯 CSS 弹簧动效、**View Transitions fallback**（不支持的浏览器须优雅降级为无转场，不报错、不白屏）
-- 因内容页零 JS，跨浏览器风险面小，主要盯 CSS 新特性（`backdrop-filter` 毛玻璃、`linear()` 弹簧曲线、跨文档 View Transitions）的回退
+- **Chrome / Firefox / Safari** (chromium / firefox / webkit)
+- Verify: scrolling, pure-CSS spring motion, **View Transitions fallback** (a browser that does not support them must degrade gracefully to no transition, with no error and no blank screen)
+- Because content pages have zero JS, the cross-browser risk surface is small, and one mainly watches the fallback of new CSS features (`backdrop-filter` frosted glass, the `linear()` spring curve, and cross-document View Transitions)
 
 ---
 
 ## Planned gates
 
-> **当前 CI、生产数据发布闸门、目标渲染闸门不要混淆**：① current GitHub Actions PR/`pre`/`main` CI 分成 static、production-build、preview-e2e、product-gates **四个 release checks**；browser check 只覆盖已提交的 Chromium responsive/overflow/axe 和 Search/Compare interaction suites，product-gates 对 exact-SHA **Vercel** preview 与 public Blob 做只读产品连续性检查。可选 `verify / cf-preview` 与 `verify / cf-workers-host` 是迁 CF P2/P3 双跑草案，**不是**生产唯一必过。② Workflow `validate` step 是生产数据重算后的 publish gate，只读 staging `views/<run_id>/**`，不过则不切指针；它不渲染页面。③ Lighthouse、视觉基线、其余完整 browser flows 与 multi-engine coverage 仍是 target coverage。
+> **Do not confuse current CI, the production-data publish gate, and the target render gates**: ① The only GitHub **must-pass** gates are `verify / static` and `verify / production-build`. `preview-e2e` / `product-gates` still run when a Vercel Preview exists (Chromium responsive/overflow/axe / Search/Compare, plus exact-SHA Preview + public Blob read-only continuity); on Ignored Build / no Preview URL they skip (not a failure), and they are **not** ruleset required. The optional `verify / cf-preview` and `verify / cf-workers-host` are draft dual-runs of the CF migration P2/P3, and **must not** be added to GitHub required on one's own. CF preview acceptance goes through ops / manual (`pre.gitstarclub.com`). ② The Workflow `validate` step is the publish gate after a production-data recompute; it only reads staging `views/<run_id>/**`, and if it does not pass it does not cut the pointer; it does not render pages. ③ Lighthouse, visual baselines, the remaining full browser flows, and multi-engine coverage are still target coverage.
 
-状态含义：`enforced` = 当前自动化 gate 会阻断；`manual` = reviewer / operator 可手动检查但不自动阻断；`report-only` = 有报告或基线但不阻断；`planned` = 已定义目标，尚无提交的 gate；`not implemented` = 尚无当前 tooling。
+Status meanings: `enforced` = a current automated gate blocks merge; `soft` = when a Vercel Preview exists a job failure turns red, but it is not GitHub required, and when there is no Preview / Ignored Build it skips (not a failure); `manual` = a reviewer / operator may check by hand but it does not block automatically; `report-only` = there is a report or a baseline but it does not block; `planned` = the target is defined, and there is no committed gate yet; `not implemented` = there is no current tooling.
 
-| 检查 | 状态 | 当前执行位置 | 说明 / 目标 gate |
+| Check | Status | Where it runs today | Notes / target gate |
 |---|---|---|---|
-| Node/Bun runtime pins | `enforced` | 全部 GitHub Actions jobs：setup + `assert-runtime-versions.mjs` | Node 24.x、Bun 1.3.14；任一 mismatch 在执行项目命令前失败 |
-| Documentation contracts | `enforced` | `verify / static`：root `bun run lint:docs` | 无语言 fence、缺失/非法 frontmatter、失效 backtick 路径、漏记 env、重复 route owner、API 路由/版本漂移均阻断；历史路径仅允许显式 reasoned allowlist |
-| `lint` | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run lint` | 当前 PR blocker |
-| TypeScript app | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck` | Current PR blocker for production app code through `web/tsconfig.json` |
-| TypeScript tests / integration | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck:tests` | Current PR blocker for `*.test.ts(x)` and `web/lib/integration/**` through `web/tsconfig.tests.json` |
-| TypeScript scripts / JS | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run typecheck:scripts` | Current PR blocker for root scripts, pipeline `.mjs`, web `.mjs`, and `web/public/sw.js` through `tsconfig.scripts.json` with `checkJs` |
-| Pipeline publication tests | `enforced` | GitHub Actions PR/`pre`/`main`：在 `pipeline/` 运行 `bun run test` | Interrupted uploads, resume, validation failure, lease fencing, single-pointer commit, and explicit rollback replay |
-| Logic tests + coverage | `enforced` | GitHub Actions PR/`pre`/`main`：`bun run test:cov` | `web/lib` suite 及其直接加载的 `pipeline/lib` pure helpers；lines/functions 均不得低于 80% |
-| Production `next build` | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / production-build` | 使用本地 GET/HEAD-only bounded fixture；无 write-capable credentials |
-| Responsive / horizontal overflow | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / preview-e2e` | Chromium 对 exact-SHA immutable Vercel deployment 跑 committed responsive/overflow suites |
-| Axe serious / critical | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / preview-e2e` | 关键 routes 明暗主题以及打开且有结果的 Search dialog，serious/critical 必须为 0；失败上传 HTML、trace、screenshot 与 violation details |
-| Search / Compare interaction recovery | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / preview-e2e` | Search Arrow/Enter/Escape/Tab、焦点/compare toggle，以及 Compare index/curve retry 均为 Chromium blocker |
-| Live generation / period continuity | `enforced` | GitHub Actions PR/`pre`/`main`：`verify / product-gates` | 以页面同语义解析 `live/latest.json`：当前 generation 优先，周期文件沿最多 64 个 validated manifest 回溯，链尽头才查 legacy flat；pointer/manifest/对象完整性异常 fail closed，并检查当前周/月与最近 4 个已收口周 |
-| Live SEO acceptance | `enforced` | GitHub Actions `pre`/`main` push：`verify / preview-e2e` → `bun test lib/integration/seo.test.ts` | 对 exact-SHA immutable deployment 验证 rendered metadata、hreflang、sitemap index/children，以及 preview/production robots 差异 |
-| 1.1 聚合 / 排名单测 | `enforced` | `bun test lib/` 中的 recompute / ranking / window / integration suites | 覆盖目标仍以 §1.1 为准 |
-| 1.2 Zod schema 契约 | `enforced` | `bun test lib/` contract tests；Workflow `validate` 抽样 staging 视图 | 全量产物校验仍是 target coverage |
-| 1.3 sanity 不变量 | `enforced` | Workflow `validate` step；相关 unit tests | 当前自动化范围是 §1.5 列出的抽样断言；§1.3 全量清单仍是 target coverage |
-| 1.4 golden file | `planned` | 无独立 gate | 已有 milestone 字段/展示逻辑测试；≥3 个知名 repo 的人工核对 golden baseline 尚未单独落地 |
-| 1.5 staging validate / pointer cut | `enforced` | Vercel Workflow `validate` step | `ok=false` 不切 `views/latest.json`；不是 PR 页面渲染 gate |
-| 1.5 full publish / rollback E2E | `planned` | 无独立 gate | 目标是发布、回滚、读侧原子性端到端验证 |
-| 2. 视觉回归 | `not implemented` | 无 Playwright visual-baseline job | 失败截图已留档；目标仍是关键页 × 4 断点 × 明暗双主题，基准入库 |
-| 3. a11y（axe + 键盘） | `enforced` | `verify / preview-e2e` | 已强制 axe critical/serious、`/pulse` 对比度和 Search 键盘/焦点；其余键盘、reduced-motion 和 manual review 仍是 target |
-| 4. E2E 导航 / i18n browser flows | `not implemented` | Search/Compare 子集已在 `preview-e2e`；无完整 navigation/i18n suite | Search/Compare 恢复流已阻断；其余站内导航与 i18n browser flows 尚未实现 |
-| 5. Lighthouse / CWV | `report-only` | `docs/perf/CWV-25.md` historical baseline | 目标：代表性页面自动 Lighthouse/CWV 报告；字段 INP 需 RUM/CrUX |
-| 5. 零 JS / HTML / font budgets | `planned` | 无独立 budget gate | 目标：脚本化 structural checks，并在 gate 中阻断 |
-| 6. 跨浏览器 | `not implemented` | 无 Playwright multi-engine job | 目标：chromium / firefox / webkit 关键页与渐进增强 fallback |
-| Vercel preview visual/perf review | `manual` | Reviewer 按改动页面检查 | 不是当前自动 gate；适合在 browser tooling 落地前补充 review 信号 |
-| CF Preview Access dual-run | `report-only` | 可选 `verify / cf-preview`（`CF_PREVIEW_ENABLED=1`，仅 `pre`） | Access Service Token 探 `gitstarclub-web-pre.worldgo.workers.dev`；**不得**替换 `preview-e2e` / `product-gates`；**不得**加入 required checks；见 [CF-MIGRATION-P2.md](./CF-MIGRATION-P2.md) |
-| CF Workers host OpenNext dry-run | `report-only` | 可选 `verify / cf-workers-host`（`CF_WORKERS_HOST_ENABLED=1`，仅 `pre`） | fixture + OpenNext + `wrangler deploy --dry-run --env pre`（Worker `gitstarclub-web-pre`）；**不需要 Access**；不得 live-deploy `gitstarclub-web`；不得替换生产必过；见 [CF-MIGRATION-P3.md](./CF-MIGRATION-P3.md) |
+| Node/Bun runtime pins | `enforced` | all GitHub Actions jobs: setup + `assert-runtime-versions.mjs` | Node 24.x, Bun 1.3.14; any mismatch fails before a project command runs |
+| Documentation contracts | `enforced` | `verify / static`: root `bun run lint:docs` | a missing language fence, missing/illegal frontmatter, a broken backtick path, an omitted env, a duplicate route owner, and API route/version drift all block; a historical path is allowed only by an explicit reasoned allowlist |
+| `lint` | `enforced` | GitHub Actions PR/`pre`/`main`: `bun run lint` | current PR blocker |
+| TypeScript app | `enforced` | GitHub Actions PR/`pre`/`main`: `bun run typecheck` | Current PR blocker for production app code through `web/tsconfig.json` |
+| TypeScript tests / integration | `enforced` | GitHub Actions PR/`pre`/`main`: `bun run typecheck:tests` | Current PR blocker for `*.test.ts(x)` and `web/lib/integration/**` through `web/tsconfig.tests.json` |
+| TypeScript scripts / JS | `enforced` | GitHub Actions PR/`pre`/`main`: `bun run typecheck:scripts` | Current PR blocker for root scripts, pipeline `.mjs`, web `.mjs`, and `web/public/sw.js` through `tsconfig.scripts.json` with `checkJs` |
+| Pipeline publication tests | `enforced` | GitHub Actions PR/`pre`/`main`: in `pipeline/` run `bun run test` | Interrupted uploads, resume, validation failure, lease fencing, single-pointer commit, and explicit rollback replay |
+| Logic tests + coverage | `enforced` | GitHub Actions PR/`pre`/`main`: `bun run test:cov` | the `web/lib` suite and the `pipeline/lib` pure helpers it loads directly; lines/functions may not fall below 80% |
+| Production `next build` | `enforced` | GitHub Actions PR/`pre`/`main`: `verify / production-build` | uses a local GET/HEAD-only bounded fixture; no write-capable credentials |
+| Responsive / horizontal overflow | `soft` | GitHub Actions PR/`pre`/`main`: `verify / preview-e2e` | when a Vercel Preview exists, Chromium runs the committed responsive/overflow suites against the exact-SHA immutable deployment; on Ignored Build, skip |
+| Axe serious / critical | `soft` | GitHub Actions PR/`pre`/`main`: `verify / preview-e2e` | when a Preview exists, for key routes in light and dark themes and for an open Search dialog that has results, serious/critical must be 0; when there is no Preview, skip |
+| Search / Compare interaction recovery | `soft` | GitHub Actions PR/`pre`/`main`: `verify / preview-e2e` | when a Preview exists, Search Arrow/Enter/Escape/Tab, focus/compare toggle, and Compare index/curve retry are all Chromium blockers; when there is no Preview, skip |
+| Live generation / period continuity | `soft` | GitHub Actions PR/`pre`/`main`: `verify / product-gates` | the same conditions as preview-e2e: skip when there is no Preview; when a Preview exists, parse `live/latest.json` with the same semantics as the page, and fail closed on a pointer/manifest/object-integrity anomaly |
+| Live SEO acceptance | `soft` | GitHub Actions `pre`/`main` push: `verify / preview-e2e` → `bun test lib/integration/seo.test.ts` | runs only when an exact-SHA Vercel deployment has been resolved; skip on Ignored Build |
+| 1.1 aggregation / ranking unit tests | `enforced` | the recompute / ranking / window / integration suites inside `bun test lib/` | coverage targets still follow §1.1 |
+| 1.2 Zod schema contract | `enforced` | `bun test lib/` contract tests; Workflow `validate` samples staging views | full-artifact validation is still target coverage |
+| 1.3 sanity invariants | `enforced` | Workflow `validate` step; related unit tests | the scope automated today is the sampled assertions listed in §1.5; the full §1.3 list is still target coverage |
+| 1.4 golden file | `planned` | no independent gate | there are already tests of milestone fields/display logic; a manually checked golden baseline of ≥3 well-known repos has not landed on its own yet |
+| 1.5 staging validate / pointer cut | `enforced` | managed-refresh `validate` step | `ok=false` does not cut `views/latest.json`; it is not a PR page-render gate |
+| 1.5 full publish / rollback E2E | `planned` | no independent gate | the target is end-to-end verification of publish, rollback, and read-side atomicity |
+| 2. visual regression | `not implemented` | no Playwright visual-baseline job | failure screenshots are already kept on file; the target is still key pages × 4 breakpoints × light and dark themes, with baselines checked in |
+| 3. a11y (axe + keyboard) | `soft` | `verify / preview-e2e` | when a Preview exists, it enforces axe critical/serious, `/pulse` contrast, and Search keyboard/focus; when there is no Preview, skip; the remaining keyboard, reduced-motion, and manual review are still targets |
+| 4. E2E navigation / i18n browser flows | `not implemented` | `web/e2e/routing-security.spec.ts` covers a locale-cookie, in-site language redirect, and localized 404 subset. `verify / preview-e2e` does not run that file. From `web/`, it runs `e2e/accessibility-responsive.spec.ts`, `e2e/horizontal-overflow.spec.ts`, and `e2e/search-compare-interactions.spec.ts`. | The Search/Compare recovery flow blocks when a Preview exists. Full in-site navigation and the §4.1 language-switcher acceptance are still not implemented. |
+| 5. Lighthouse / CWV | `report-only` | `docs/perf/CWV-25.md` historical baseline | target: automatic Lighthouse/CWV reports for representative pages; field INP needs RUM/CrUX |
+| 5. zero JS / HTML / font budgets | `planned` | no independent budget gate | target: scripted structural checks, and block inside the gate |
+| 6. cross-browser | `not implemented` | no Playwright multi-engine job | target: chromium / firefox / webkit key pages and progressive-enhancement fallback |
+| Vercel preview visual/perf review | `manual` | Reviewer checks by the pages that changed | not a current automatic gate; suitable for adding a review signal before browser tooling lands |
+| CF Preview Access dual-run | `report-only` | optional `verify / cf-preview` (`CF_PREVIEW_ENABLED=1`, `pre` only) | an Access Service Token probes `gitstarclub-web-pre.worldgo.workers.dev`; **must not** replace `preview-e2e` / `product-gates`; **must not** be added to required checks; see [archive/CF-MIGRATION-P2.md](./archive/CF-MIGRATION-P2.md) |
+| CF Workers host OpenNext dry-run | `report-only` | optional `verify / cf-workers-host` (`CF_WORKERS_HOST_ENABLED=1`, `pre` only) | fixture + OpenNext + `wrangler deploy --dry-run --env pre` (Worker `gitstarclub-web-pre`); **does not need Access**; must not live-deploy `gitstarclub-web`; must not replace the production must-pass; see [archive/CF-MIGRATION-P3.md](./archive/CF-MIGRATION-P3.md) |
+| CF preview Bearer full-refresh acceptance matrix (#488) | `manual` | ops scores it per [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix) | preview Bearer full refresh: `fold-decision.json` must be present; `no_closed_month` with no month/week plan counts as normal; after the recompute segments come `publish`/`gc`; OOM or Queue silence = failure; **H1** = page 500 after fold and **X1** red (same isolate OOM); **H2** = `liveHistory` >64 / newer-than-head when **X1** is green (#496). Production `triggers.crons` stays `[]`, and Vercel cron is not stopped. It is not GitHub required, and it does not open production schedules |
+| CF live history >64 page 500 (#495) | `manual` | preview `GET /preview/health`, `GET /`, `GET /rankings` | after this PR is deployed to `pre`: health 200; `/` and `/rankings` 200 (may fall back to base / the previous published week / empty). Obs no longer turns `live generation history exceeds 64 entries` into a page 500. Matrix **H2**; tracked apart from #494 **H1** recompute OOM; production `triggers.crons` stays `[]`, and Vercel cron is not stopped |
+| CF refresh week-start OOM after #497 (#498) | `manual` | preview Bearer full refresh; Blob `recomputeRank-week-pack` / `recomputeRank-week-*` / `publish.json` | after this PR is deployed to `pre`: it must pass week-start → week-pack → week period windows → `recomputeRank-week.json` → publish (preferably gc). Stuck at week-start + Obs memory limit ×3 / queue silence = failure. Production `triggers.crons` stays `[]`, and Vercel cron is not stopped |
 
-**节奏要点**：
+**Cadence points**:
 
-- **CI（每 PR / `pre` push / `main` push）**：三个 jobs 都锁定并断言 Node 24.x / Bun 1.3.14；`verify / static` 跑 audit、Markdown/frontmatter、lint、三套 typecheck、view fixture 与带 80% 双阈值的 coverage tests；`verify / production-build` 对只读本地 fixture 跑 `next build`；`verify / preview-e2e` 对 exact-SHA immutable Vercel URL 跑 committed Chromium axe/responsive/overflow 和 Search/Compare interaction suites，并在 branch push 时加跑 live SEO。Lighthouse、视觉 baseline、其余完整 browser flows 与 multi-engine coverage 仍不阻断。
-- **Publish gate（refresh `validate` step）**：生产全量重算把产物写到 `views/<run_id>/**`（version=run_id）后，对该版本跑 §1.2/1.3 的当前抽样 Zod + sanity，任一当前断言失败即**不切 `views/latest.json` 指针**（线上仍上一版）。实现：`web/lib/workflows/steps/validate.ts`，闸门验证不锚定 `current_stars`（stock 曲线 seam-anchored、stars 为实时，二者刻意不相等）。
-- **Issue #326 lifecycle migration**：`web/lib/migrations/canonical-lifecycle.test.ts` 覆盖 published-whitelist membership、immutable history 首次出现日、bootstrap-vs-newcomer 判别、deterministic plan SHA、零 anchor 猜测、full repository preflight、source/shard drift、exact confirmation、fenced execution、partial retry、validation failure、lease loss 与 rollback。`web/scripts/migrate-canonical-lifecycle.ts` 的生产 dry-run 是人工 reviewed evidence，不放进 CI 的 live/network gate；默认路径必须报告 `production_writes=0`，且不加载写 token。执行/回滚 runbook 见 [OPS.md](./OPS.md)。
-- **Planned browser/render gates**：视觉 baseline、完整 E2E navigation、Lighthouse 与 cross-browser 自动化仍需要对应 tooling；a11y 的 axe serious/critical 和 responsive overflow subset 已提交并强制。
-- **每日 / 每周 cron**：不触发 deploy；cron 写 `current_month.json` / `hot-snapshot.json` / `live/*` 后的活尾 schema/sanity 告警属于 ops 目标，不是当前 PR CI gate。
-- **本地 / manual**：改聚合逻辑先跑相关 `bun test lib/...`；改组件可按 Vercel 预览手动看相关页视觉、a11y、性能，但这些手动检查不是当前自动 PR blocker。
+- **CI (every PR / `pre` push / `main` push)**: jobs pin and assert Node 24.x / Bun 1.3.14. The only **must-pass** items are `verify / static` (audit, Markdown/frontmatter, lint, the three typechecks, the view fixture, and coverage tests with the 80% dual threshold) and `verify / production-build` (run `next build` against the read-only local fixture). `verify / preview-e2e` runs Chromium axe/responsive/overflow and Search/Compare against the exact-SHA immutable URL only when a Vercel Preview exists; after Ignored Build it skips (not a failure), and `product-gates` has the same conditions. Lighthouse, the visual baseline, the remaining full browser flows, and multi-engine coverage still do not block. Do not add `cf-preview` / `cf-workers-host` as required.
+- **Publish gate (refresh `validate` step)**: after a production full recompute writes artifacts to `views/<run_id>/**` (version=run_id), run the current sampled Zod + sanity of §1.2/1.3 on that version, and if any current assertion fails **do not cut the `views/latest.json` pointer** (what is live is still the previous version). Implementation: `web/lib/workflows/steps/validate.ts`; gate validation does not anchor `current_stars` (the stock curve is seam-anchored, stars are live, and the two are deliberately unequal).
+- **Issue #326 lifecycle migration**: `web/lib/migrations/canonical-lifecycle.test.ts` covers published-whitelist membership, the first-seen day of immutable history, bootstrap-vs-newcomer discrimination, deterministic plan SHA, zero anchor guessing, full repository preflight, source/shard drift, exact confirmation, fenced execution, partial retry, validation failure, lease loss, and rollback. The production dry-run of `web/scripts/migrate-canonical-lifecycle.ts` is manually reviewed evidence, and is not put into CI's live/network gate; the default path must report `production_writes=0`, and must not load a write token. The execute/rollback runbook is in [OPS.md](./OPS.md). Argument checks, the dry-run summary, and local plan-file refusal for that CLI are covered by `web/lib/ops-scripts/migrate-canonical-lifecycle.test.ts` (#590).
+- **Issue #590 operational scripts**: `bun test lib/` runs `web/lib/ops-scripts/*.test.ts`. Those tests cover argument parsing and local guards for prefix deletion, view validation, bootstrap canonical validation, parity diff, preview SHA checks, Blob-to-R2 dry-run args, the AI log report CLI, and `web/scripts/lib/env.ts`. They do not call a network or a real store.
+- **Planned browser/render gates**: the visual baseline, full E2E navigation, Lighthouse, and cross-browser automation still need the corresponding tooling; a11y's axe serious/critical and the responsive overflow subset are already committed, they run when a Vercel Preview exists and skip when there is no Preview, and they are **not** GitHub required.
+- **Daily / weekly cron**: does not trigger a deploy; live-tail schema/sanity alerts after cron writes `current_month.json` / `hot-snapshot.json` / `live/*` belong to ops targets, and are not the current PR CI gate.
+- **Local / manual**: when changing aggregation logic, first run the relevant `bun test lib/...`; when changing a component, one may look by hand at the relevant pages' visuals, a11y, and performance on the Vercel preview, but these manual checks are not the current automatic PR blocker.
 
-## 验收清单
+## Acceptance checklist
 
 ### Required current checks
 
@@ -360,21 +447,23 @@ Playwright 三引擎跑关键页，重点是**渐进增强的降级路径**：
 - [ ] `web/` PR/`pre`/`main` CI passes `bun run typecheck:scripts`
 - [ ] `web/` PR/`pre`/`main` CI passes `bun run test:cov`, with line and function coverage both ≥ 80%
 - [ ] `web/` PR/`pre`/`main` CI passes `next build` against the read-only fixture
-- [ ] exact-SHA immutable Vercel deployment passes all three committed Playwright release suites
-- [ ] `pre`/`main` push release verification passes `bun test lib/integration/seo.test.ts` against that immutable deployment
-- [ ] 涉及生产数据发布时，Workflow `validate` 失败仍不切 `views/latest.json` 指针
-- [ ] Issue #326 执行前的 reviewed dry-run 保持 exact plan SHA；执行后 full canonical validation complete，且重复 dry-run 为 0 changes
+- [ ] `verify / preview-e2e` and `verify / product-gates` soft-skip (non-failure) when Vercel reports Ignored Build / no Preview URL; they are not GitHub required checks
+- [ ] when a Vercel Preview URL exists, that exact-SHA immutable deployment passes all three committed Playwright release suites
+- [ ] when a Vercel Preview URL exists, `pre`/`main` push release verification passes `bun test lib/integration/seo.test.ts` against that immutable deployment
+- [ ] When a production-data publish is involved, a Workflow `validate` failure still does not cut the `views/latest.json` pointer
+- [ ] The reviewed dry-run before Issue #326 execution keeps the exact plan SHA; after execution, full canonical validation is complete, and a repeated dry-run is 0 changes
+- [ ] Score the CF preview Bearer full refresh per [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix): `fold-decision.json` must be present; `no_closed_month` with no month/week plan counts as normal; recompute must pass the week-pack / week-* windows to `recomputeRank-week.json` and then `publish`/`gc`; being stuck at `recomputeRank-week-start`, OOM, or Queue silence counts as failure; production `triggers.crons` stays `[]`, and Vercel cron is not stopped
 
 ### Target-state / planned checks
 
-- [ ] 聚合 / 排名单测覆盖 flow / stock+锚定 / 周月年全时边界 / org 求和，跑真切片（Parquet 子集 + 同源 JSON shard）
-- [ ] 全部 JSON 视图有 Zod schema，产出 + build 读取双校验
-- [ ] sanity 不变量（非负 / delta 界 / 榜长序 / org==∑members / 漂移 / seam）对全量产物跑，阻断发布
-- [ ] staging 校验闸门：不过不切 `views/latest.json` 指针；shard 等价对拍、发布/回滚可逆（§1.5）
-- [ ] golden file 覆盖 ≥3 个知名 repo 的里程碑与排名，值已人工核对冻结
-- [ ] 视觉回归：关键页 × 4 断点 × 明暗双主题，基准入库
-- [ ] axe 零 critical；键盘可达 + focus 可见；reduced-motion 生效；AA 对比；SVG 有 title/aria + 数据表 fallback
-- [ ] E2E：导航图 3 跳贯通、上下期导航、里程碑锚点、榜单跳转、i18n locale URL 导航（`<html lang>` / canonical / hreflang / chrome 翻译一致）
-- [ ] 内容页零客户端 JS（bundle 断言）+ HTML < 20KB + 字体子集 ≤ ~30KB
-- [ ] CWV 达标（LCP<2.5s / INP<200ms / CLS<0.1 / FCP<1.5s）
-- [ ] 跨浏览器关键页通过，View Transitions 优雅降级
+- [ ] Aggregation / ranking unit tests cover flow / stock+anchoring / week-month-year-all-time boundaries / org sums, and run a real slice (Parquet subset + same-source JSON shard)
+- [ ] Every JSON view has a Zod schema, with dual validation on output + build read
+- [ ] sanity invariants (non-negative / delta bounds / ranking length and order / org==∑members / drift / seam) run against the full artifacts, and block publish
+- [ ] staging validation gate: if it does not pass, do not cut the `views/latest.json` pointer; shard equivalence parity, and publish/rollback are reversible (§1.5)
+- [ ] golden files cover the milestones and rankings of ≥3 well-known repos, and the values have been manually checked and frozen
+- [ ] Visual regression: key pages × 4 breakpoints × light and dark themes, baselines checked in
+- [ ] axe has zero critical; keyboard reachable + focus visible; reduced-motion takes effect; AA contrast; SVG has title/aria + a data-table fallback
+- [ ] E2E: the navigation graph is connected within 3 hops, previous/next period navigation, milestone anchors, ranking jumps, and i18n locale URL navigation (`<html lang>` / canonical / hreflang / chrome translation consistent)
+- [ ] Content pages have zero client JS (bundle assertion) + HTML < 20KB + font subset ≤ ~30KB
+- [ ] CWV meets the targets (LCP<2.5s / INP<200ms / CLS<0.1 / FCP<1.5s)
+- [ ] Cross-browser key pages pass, and View Transitions degrade gracefully

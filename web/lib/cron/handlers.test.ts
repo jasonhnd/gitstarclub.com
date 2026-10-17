@@ -1,8 +1,19 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { AlertSummary } from "@/lib/observability/alert";
 import type { AlertPipeline, HealthStatus } from "@/lib/contracts";
+import { setDataBindingReaderForTests, type R2Bucket } from "@/lib/storage/r2-binding-store";
 import type { LiveRefreshResult } from "./live-refresh";
 import { runLiveRefreshRoute, type LiveRefreshRouteOptions } from "./handlers";
+
+function fakeDataBinding(): R2Bucket {
+  return {
+    get: async () => null,
+    head: async () => null,
+    put: async () => null,
+    delete: async () => {},
+    list: async () => ({ objects: [], delimitedPrefixes: [], truncated: false }),
+  };
+}
 
 const ORIGINAL_SECRET = process.env.CRON_SECRET;
 
@@ -122,6 +133,66 @@ describe("runLiveRefreshRoute health", () => {
     }
   });
 
+  test("cron failure logs omit secret canaries and keep the failure category", async () => {
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await runLiveRefreshRoute(request("daily"), "daily", {
+        now: new Date("2026-07-17T03:00:00.000Z"),
+        requireRuntimeConfig: () => {},
+        claimPublication,
+        releasePublication: async () => {
+          throw new Error(`lease release failed ${canary}`);
+        },
+        refresh: async () => {
+          throw new Error(`GitHub GraphQL 502 ${canary}`);
+        },
+        recordSyncRun: async () => null,
+        recordHealth: async () => {},
+        sendAlert: async () => ({ status: "disabled", attempts: 0, status_code: null, error: null }),
+      });
+      const body = JSON.stringify(await response.json());
+      const logged = JSON.stringify(errorSpy.mock.calls);
+      expect(response.status).toBe(500);
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).toContain("lease release failed");
+      expect(logged).not.toContain("CANARY");
+      expect(body).not.toContain("CANARY");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  test("skips daily during preview cold-start until lookup/repos.json is published", async () => {
+    const health: Array<{ pipeline: AlertPipeline; status: HealthStatus }> = [];
+    const claimPublication = mock(async () => {
+      throw new Error("cold-start daily must not claim a lease");
+    });
+    const response = await runLiveRefreshRoute(request("daily"), "daily", {
+      now: new Date("2026-07-17T03:00:00.000Z"),
+      requireRuntimeConfig: () => {},
+      claimPublication,
+      resolveDailyPreflight: async ({ runId, idempotencyKey }) =>
+        Response.json({
+          ok: true,
+          status: "skipped",
+          reason: "cold-start-awaiting-first-publish",
+          runId,
+          idempotency_key: idempotencyKey,
+        }),
+      refresh: successfulRefresh,
+      recordSyncRun: async () => null,
+      recordHealth: async (pipeline, status) => {
+        health.push({ pipeline, status });
+      },
+    });
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, status: "skipped", reason: "cold-start-awaiting-first-publish" });
+    expect(claimPublication).not.toHaveBeenCalled();
+    expect(health).toEqual([{ pipeline: "cron-daily", status: "ok" }]);
+  });
+
   test("skips Sunday daily so weekly owns that day's live publication", async () => {
     const health: Array<{ pipeline: AlertPipeline; status: HealthStatus }> = [];
     const claimPublication = mock(async () => {
@@ -168,5 +239,74 @@ describe("runLiveRefreshRoute health", () => {
 
     expect(response.status).toBe(200);
     expect(recordHealth).not.toHaveBeenCalled();
+  });
+});
+
+describe("runLiveRefreshRoute storage drivers", () => {
+  test("non-dry daily accepts r2_binding with no Blob env", async () => {
+    const previous = {
+      STORAGE_READ_DRIVER: process.env.STORAGE_READ_DRIVER,
+      STORAGE_WRITE_DRIVER: process.env.STORAGE_WRITE_DRIVER,
+      R2_PUBLIC_BASE_URL: process.env.R2_PUBLIC_BASE_URL,
+      R2_BUCKET: process.env.R2_BUCKET,
+      DEPLOY_ENV: process.env.DEPLOY_ENV,
+      BLOB_BASE_URL: process.env.BLOB_BASE_URL,
+      NEXT_PUBLIC_BLOB_BASE_URL: process.env.NEXT_PUBLIC_BLOB_BASE_URL,
+      BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+      GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+    };
+    delete process.env.BLOB_BASE_URL;
+    delete process.env.NEXT_PUBLIC_BLOB_BASE_URL;
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    process.env.STORAGE_READ_DRIVER = "r2_binding";
+    process.env.STORAGE_WRITE_DRIVER = "r2_binding";
+    process.env.R2_PUBLIC_BASE_URL = "https://r2.example.com";
+    process.env.R2_BUCKET = "gitstarclub-data-pre";
+    process.env.DEPLOY_ENV = "pre";
+    process.env.GITHUB_TOKEN = "github-token";
+    setDataBindingReaderForTests(() => fakeDataBinding());
+    try {
+      const response = await runLiveRefreshRoute(request("daily"), "daily", {
+        now: new Date("2026-07-05T03:00:00.000Z"),
+        recordHealth: async () => {},
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ status: "skipped", reason: "weekly-owns-sunday" });
+    } finally {
+      setDataBindingReaderForTests(undefined);
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+});
+
+describe("runLiveRefreshRoute post-publication errors", () => {
+  test("response and recorded run omit secret canaries from post_commit_errors", async () => {
+    const canary = "ghp_CANARYMISSEDSINK1234567890abcd";
+    let recorded = "";
+    const response = await runLiveRefreshRoute(request("daily"), "daily", {
+      now: new Date("2026-07-17T03:00:00.000Z"),
+      requireRuntimeConfig: () => {},
+      claimPublication,
+      releasePublication,
+      refresh: async () => ({
+        ...(await successfulRefresh("daily", false)),
+        post_commit_errors: [`revalidate: GitHub GraphQL 502 ${canary}`],
+      }),
+      recordSyncRun: async (run) => {
+        recorded = JSON.stringify(run);
+        return null;
+      },
+      recordHealth: async () => {},
+    });
+
+    expect(response.status).toBe(200);
+    const body = JSON.stringify(await response.json());
+    expect(body).toContain("revalidate: GitHub GraphQL 502");
+    expect(recorded).toContain("revalidate: GitHub GraphQL 502");
+    expect(body).not.toContain("CANARY");
+    expect(recorded).not.toContain("CANARY");
   });
 });

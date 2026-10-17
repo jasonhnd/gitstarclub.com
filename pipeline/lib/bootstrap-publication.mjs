@@ -1,6 +1,16 @@
 import { createHash } from "node:crypto";
+import { withBootstrapPublicationLease } from "./bootstrap-lease.mjs";
+
+/** @typedef {import('./bootstrap-store-types.mjs').BootstrapStore} BootstrapStore */
+/** @typedef {import('./bootstrap-store-types.mjs').BootstrapStagingStore} BootstrapStagingStore */
+/** @typedef {import('./bootstrap-store-types.mjs').BootstrapPublicationStore} BootstrapPublicationStore */
 
 export const BOOTSTRAP_POINTER_PATH = "bootstrap/latest.json";
+export const INITIAL_COMMIT_ABSENT_PATHS = [
+  BOOTSTRAP_POINTER_PATH,
+  "views/latest.json",
+  "canonical/v2/meta.json",
+];
 export const BOOTSTRAP_SCHEMA_VER = 1;
 export const BOOTSTRAP_PHASES = ["base", "canonical"];
 export const LEGACY_FLAT_TARGET = "legacy-flat";
@@ -160,6 +170,7 @@ async function mapPool(items, concurrency, worker) {
  * bootstrap process never overwrites these paths; rollback removes only the
  * bootstrap pointer after representative base views and every required
  * bucketed canonical family parse successfully.
+ * @param {{ store: Pick<BootstrapStore, 'read'>, concurrency?: number }} options
  */
 export async function verifyLegacyFlatTarget({ store, concurrency = 12 }) {
   const files = await mapPool(LEGACY_FLAT_REQUIRED_PATHS, concurrency, async (path) => {
@@ -192,6 +203,14 @@ export async function verifyLegacyFlatTarget({ store, concurrency = 12 }) {
 /**
  * Create one immutable generation phase. Existing byte-identical objects are
  * reused, which makes the same generation safe to resume after interruption.
+ * @param {{
+ *   generation: string | undefined,
+ *   phase: string,
+ *   items: Array<{ path: string, body: Buffer, contentType?: string }>,
+ *   store: BootstrapStagingStore,
+ *   concurrency?: number,
+ *   onProgress?: (progress: { completed: number, total: number, path: string, created: boolean }) => void,
+ * }} options
  */
 export async function stageBootstrapPhase({ generation, phase, items, store, concurrency = 12, onProgress = (_progress) => {} }) {
   const prefix = bootstrapGenerationPrefix(generation);
@@ -236,6 +255,7 @@ export async function stageBootstrapPhase({ generation, phase, items, store, con
   return { status: "staged", created, reused: manifest.object_count - created, manifest };
 }
 
+/** @param {{ generation: string | undefined, phase: string, store: Pick<BootstrapStore, 'read'>, concurrency?: number }} options */
 export async function verifyBootstrapPhase({ generation, phase, store, concurrency = 12 }) {
   const manifestPath = bootstrapPhaseManifestPath(generation, phase);
   const rawManifest = await store.read(manifestPath);
@@ -249,6 +269,7 @@ export async function verifyBootstrapPhase({ generation, phase, store, concurren
   return { manifest, sha256: sha256Bytes(rawManifest) };
 }
 
+/** @param {{ generation: string | undefined, store: Pick<BootstrapStore, 'read'>, concurrency?: number }} options */
 export async function verifyBootstrapGeneration({ generation, store, concurrency = 12 }) {
   const [base, canonical] = await Promise.all(
     BOOTSTRAP_PHASES.map((phase) => verifyBootstrapPhase({ generation, phase, store, concurrency })),
@@ -279,25 +300,39 @@ function parsePointer(body) {
   return pointer;
 }
 
+/** @param {{ store: Pick<BootstrapStore, 'read'> }} options */
+export async function assertInitialCommitTarget({ store }) {
+  for (const path of INITIAL_COMMIT_ABSENT_PATHS) {
+    const body = await store.read(path);
+    if (body) throw new Error(`--initial-commit refused: ${path} already exists`);
+  }
+}
+
+/**
+ * @param {{
+ *   generation: string | undefined,
+ *   store: BootstrapPublicationStore,
+ *   validate?: (verified: Awaited<ReturnType<typeof verifyBootstrapGeneration>>) => Promise<void>,
+ *   assertCanCommit?: () => Promise<void>,
+ *   now?: () => string,
+ *   initialCommit?: boolean,
+ * }} options
+ */
 export async function commitBootstrapGeneration({
   generation,
   store,
   validate = async (_verified) => {},
   assertCanCommit = async () => {},
   now = () => new Date().toISOString(),
+  initialCommit = false,
 }) {
   assertBootstrapGeneration(generation);
   const verified = await verifyBootstrapGeneration({ generation, store });
   await validate(verified);
   await assertCanCommit();
   const current = parsePointer(await store.read(BOOTSTRAP_POINTER_PATH));
-  // null is an explicit legacy-flat recovery edge, not "no rollback". Prove
-  // that mutable flat state while holding the shared writer lease before the
-  // first pointer can hide it.
-  if (!current) {
-    await verifyLegacyFlatTarget({ store });
-    await assertCanCommit();
-  }
+  // A lost response after a successful first commit retries with the same
+  // generation. That is already published, including under --initial-commit.
   if (current?.generation === generation) {
     if (
       current.base_manifest_sha256 !== verified.base.sha256 ||
@@ -306,6 +341,20 @@ export async function commitBootstrapGeneration({
       throw new Error(`${BOOTSTRAP_POINTER_PATH}: published generation manifest digest changed`);
     }
     return { status: "already-published", pointer: current, verified };
+  }
+  // null is an explicit legacy-flat recovery edge, not "no rollback". Prove
+  // that mutable flat state while holding the shared writer lease before the
+  // first pointer can hide it. An empty R2 bucket has no legacy layout:
+  // --initial-commit skips that proof and refuses if any published marker
+  // is already present.
+  if (initialCommit) {
+    if (current) throw new Error(`--initial-commit refused: ${BOOTSTRAP_POINTER_PATH} already exists`);
+    await assertInitialCommitTarget({ store });
+    await assertCanCommit();
+    await assertInitialCommitTarget({ store });
+  } else if (!current) {
+    await verifyLegacyFlatTarget({ store });
+    await assertCanCommit();
   }
   const pointer = {
     schema_ver: BOOTSTRAP_SCHEMA_VER,
@@ -316,10 +365,61 @@ export async function commitBootstrapGeneration({
     base_manifest_sha256: verified.base.sha256,
     canonical_manifest_sha256: verified.canonical.sha256,
   };
-  await store.put(BOOTSTRAP_POINTER_PATH, Buffer.from(JSON.stringify(pointer)), "application/json");
+  const body = Buffer.from(JSON.stringify(pointer));
+  if (initialCommit) {
+    if (typeof store.createMutable !== "function") {
+      throw new Error("bootstrap store cannot create the first pointer without overwrite");
+    }
+    // The post-renewal marker reads can outlast the 10-minute lease. Recheck
+    // ownership at this write. A valid takeover must fail before create.
+    await assertCanCommit();
+    const created = await store.createMutable(BOOTSTRAP_POINTER_PATH, body, "application/json");
+    if (!created) {
+      const raced = parsePointer(await store.read(BOOTSTRAP_POINTER_PATH));
+      if (
+        raced?.generation === generation &&
+        raced.base_manifest_sha256 === verified.base.sha256 &&
+        raced.canonical_manifest_sha256 === verified.canonical.sha256
+      ) {
+        return { status: "already-published", pointer: raced, verified };
+      }
+      throw new Error(`--initial-commit refused: ${BOOTSTRAP_POINTER_PATH} already exists`);
+    }
+  } else {
+    await store.put(BOOTSTRAP_POINTER_PATH, body, "application/json");
+  }
   return { status: "published", pointer, verified };
 }
 
+/**
+ * R2 `--initial-commit` for the operator pointer script. Uses the same
+ * `ops/workflows/active.json` lease and fencing token as pipeline step 07.
+ * @param {{ generation: string, store: BootstrapStore, now?: () => string }} options
+ */
+export async function commitInitialBootstrapWithLease({ generation, store, now }) {
+  return withBootstrapPublicationLease({
+    store,
+    generation,
+    operation: "publish",
+    run: (assertCanCommit) =>
+      commitBootstrapGeneration({
+        generation,
+        store,
+        initialCommit: true,
+        now,
+        assertCanCommit,
+      }),
+  });
+}
+
+/**
+ * @param {{
+ *   store: BootstrapPublicationStore,
+ *   targetGeneration: string,
+ *   assertCanCommit?: () => Promise<void>,
+ *   now?: () => string,
+ * }} options
+ */
 export async function rollbackBootstrapGeneration({
   store,
   targetGeneration,

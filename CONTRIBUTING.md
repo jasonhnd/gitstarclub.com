@@ -41,9 +41,10 @@ bun test lib/
 bun run build
 ```
 
-For docs-only changes, state that no code validation was required. Vercel preview
-or production checks remain the final verification path when deployment behavior
-is involved.
+For docs-only changes, state that no code validation was required. GitHub
+required merge gates are `static` and `production-build`. `preview-e2e` /
+`product-gates` are optional and skip without a Vercel Preview. Staging
+verification after merge to `pre` uses `https://pre.gitstarclub.com`.
 
 ## Documentation Updates
 

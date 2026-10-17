@@ -1,7 +1,7 @@
 ---
 owner: issue and PR workflow
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-09-21
 source_of_truth_for:
   - document-driven issue workflow
   - role boundaries
@@ -9,7 +9,7 @@ source_of_truth_for:
   - visual guardrails
 ---
 
-# Document-Driven Development Workflow (文档驱动开发工作流)
+# Document-Driven Development Workflow (document-driven development workflow)
 
 ## Scope
 
@@ -27,8 +27,8 @@ Issues are split into two types:
 
 | Issue type | Purpose | Expected output |
 |---|---|---|
-| Documentation issue (文档 issue) | Establish or revise the source-of-truth document before implementation. | A docs-only PR, or a docs section that can be reviewed independently. |
-| Development issue (开发 issue) | Implement behavior that is already specified by an accepted document. | Code, tests, and any owning-doc updates required by the accepted spec. |
+| Documentation issue (documentation issue) | Establish or revise the source-of-truth document before implementation. | A docs-only PR, or a docs section that can be reviewed independently. |
+| Development issue (development issue) | Implement behavior that is already specified by an accepted document. | Code, tests, and any owning-doc updates required by the accepted spec. |
 
 Substantive functionality changes are document-first: open and merge the
 documentation issue before opening the development issue. This includes new
@@ -68,7 +68,13 @@ staging. Feature PRs target `pre`, staging verification uses
 `https://pre.gitstarclub.com`, and production promotion is a merge from `pre` to
 `main`.
 
-### 1. Should This Merge? (是否该合并)
+GitHub required merge gates are only `verify / static` and
+`verify / production-build` (see [TESTING.md](./TESTING.md)). `preview-e2e` and
+`product-gates` are optional and skip when there is no Vercel Preview. Do not
+treat them as required, and do not add `cf-preview` / `cf-workers-host` to the
+required-check set.
+
+### 1. Should This Merge? (whether this should merge)
 
 This pass decides whether the change belongs in the project.
 
@@ -78,24 +84,26 @@ Reviewers check:
 - The PR cites the owning document and updates it when behavior, contracts,
   routes, operations, copy, or visual rules changed.
 - The hard constraints still hold: zero runtime engine/database, near-zero client JS
-  on content pages with explicit global islands, AI-free deterministic behavior, and Vercel-first operations.
-- Validation is green for the required commands.
+  on content pages with explicit global islands, AI-free deterministic behavior, and Cloudflare Workers hosting. Production JSON uses R2 after the accepted 2026-10-04 cutover.
+- Validation is green for the required commands (`static` + `production-build`).
 - The PR avoids unrelated code, docs, formatting, generated files, and broad
   rewrites.
 - Partially completed issues are described as partial work and do not use a
   closing keyword.
 
-### 2. Should This Run? (是否该运行起来)
+### 2. Should This Run? (whether this should run)
 
 This pass decides whether the merged change should be deployed, triggered, or
 verified in production.
 
 Reviewers check:
 
-- The Vercel preview or build signal is sufficient for the change type.
+- Staging or production verification is sufficient for the change type
+  (`https://pre.gitstarclub.com` or the production URL). A Vercel Preview job
+  is optional, not a required GitHub check.
 - Data or workflow changes have a clear recompute, cron, rollback, or publish
   plan.
-- Production verification identifies the exact page, Blob view, workflow run,
+- Production verification identifies the exact page, JSON view, workflow run,
   or artifact that proves the change.
 - Operational timing is acceptable, especially around current-period live
   overlays, publish pointers, and cron-maintained artifacts.

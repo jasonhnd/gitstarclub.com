@@ -1,11 +1,13 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { z } from "zod";
 import {
+  clearViewParseMemo,
   logViewParseErrorSummary,
   parseView,
   resetViewParseStateForTests,
   viewParseErrorFingerprint,
   viewParseErrorSummary,
+  viewParseMemoSize,
 } from "./parse-view";
 
 const Doc = z.object({ ok: z.boolean(), tag: z.string() }).strict().describe("parse-view-doc");
@@ -66,11 +68,48 @@ describe("parseView", () => {
     }
   });
 
+  test("skips memo when memo is false and clearViewParseMemo drops cached entries", () => {
+    resetViewParseStateForTests();
+    const json = { ok: true, tag: "once" };
+    parseView(json, Doc, { path: "ok.json", version: "v1" });
+    expect(viewParseMemoSize()).toBe(1);
+    parseView({ ok: true, tag: "fresh" }, Doc, { path: "workflow.json", version: "run-1", memo: false });
+    expect(viewParseMemoSize()).toBe(1);
+    expect(parseView({ ok: true, tag: "fresh-again" }, Doc, { path: "workflow.json", version: "run-1", memo: false }).tag).toBe(
+      "fresh-again",
+    );
+    clearViewParseMemo();
+    expect(viewParseMemoSize()).toBe(0);
+    resetViewParseStateForTests();
+  });
+
   test("fingerprints unrecognized keys so lifecycle fields are visible", () => {
     const result = Doc.safeParse({ ok: true, tag: "x", active: true, tracked_since: null });
     expect(result.success).toBe(false);
     if (result.success) return;
     expect(viewParseErrorFingerprint(result.error)).toContain("unrecognized_keys");
     expect(viewParseErrorFingerprint(result.error)).toContain("active");
+  });
+
+  test("parse failure logs omit secret canaries from issue text and fingerprints", () => {
+    resetViewParseStateForTests();
+    const canary = "ghp_CANARYGITHUBTOKEN1234567890abcd";
+    const SecretDoc = z
+      .object({ ok: z.boolean() })
+      .refine(() => false, { message: `schema GitHub GraphQL 502 ${canary}` })
+      .describe("parse-view-canary");
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseView({ ok: true }, SecretDoc, { path: "meta.json", version: "canary" })).toThrow();
+      expect(() => parseView({ ok: true }, SecretDoc, { path: "meta.json", version: "canary" })).toThrow();
+      logViewParseErrorSummary();
+      const logged = JSON.stringify(errorSpy.mock.calls);
+      expect(logged).toContain("GitHub GraphQL 502");
+      expect(logged).toContain("repeated parse failures");
+      expect(logged).not.toContain("CANARY");
+    } finally {
+      errorSpy.mockRestore();
+      resetViewParseStateForTests();
+    }
   });
 });

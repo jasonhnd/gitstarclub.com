@@ -1,5 +1,6 @@
+import { readColdStartReposShardOrEmpty } from "@/lib/workflows/cold-start";
 import { readRequiredView } from "@/lib/data/source";
-import { ReposShard, RenameMap, WhitelistSnapshot, type RenameEntry } from "@/lib/contracts";
+import { RenameMap, WhitelistSnapshot, type RenameEntry } from "@/lib/contracts";
 import { repoBucket } from "../buckets";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 
@@ -27,7 +28,7 @@ export async function detectRenames(runId: string, fencingToken: number): Promis
 
   const renames: RenameEntry[] = [];
   for (const [b, entries] of byBucket) {
-    const prev = await readRequiredView(`canonical/v2/repos/${b}.json`, ReposShard, { bust: runId });
+    const prev = await readColdStartReposShardOrEmpty(runId, b);
     for (const e of entries) {
       const p = prev[String(e.id)];
       if (p && p.full_name !== e.full_name) {

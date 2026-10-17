@@ -22,6 +22,30 @@ export type FullRefreshStepName = (typeof FULL_REFRESH_STEPS)[number];
 export type FixtureRefreshStepName = (typeof FIXTURE_REFRESH_STEPS)[number];
 export type RefreshGraph = "full" | "fixture";
 
+export type CanonicalPreflightCursorAcc = {
+  repoRecords: number;
+  monthlyRecords: number;
+  weeklyRecords: number;
+  recentDailyRecords: number;
+  validatedShards: number;
+  schemaFailures: number;
+  /** Preview-only missing/empty shard placeholders counted so far. Optional for mid-run cursors. */
+  placeholderShards?: number;
+};
+
+export type FoldPhase = "month" | "week";
+/** CF rank hops. #486's month/week/rest still held object windows + org/year in one isolate. */
+export const RECOMPUTE_PHASES = ["month", "monthOrg", "year", "yearOrg", "week", "weekOrg", "rest"] as const;
+export type RecomputePhase = (typeof RECOMPUTE_PHASES)[number];
+export const RECOMPUTE_PHASE_SET: ReadonlySet<string> = new Set(RECOMPUTE_PHASES);
+
+export type FoldCursorAcc = {
+  folded: string[];
+  foldedWeeks: string[];
+  foldedThroughMonth: string;
+  foldedThroughWeek: string;
+};
+
 export type RefreshCursor = {
   startedAt?: string;
   fencingToken?: number;
@@ -31,6 +55,18 @@ export type RefreshCursor = {
     historical: number;
     fromGithub: number;
   };
+  preflightOffset?: number;
+  preflightAcc?: CanonicalPreflightCursorAcc;
+  foldPhase?: FoldPhase;
+  foldMonth?: string;
+  foldOffset?: number;
+  foldSeq?: number;
+  foldAcc?: FoldCursorAcc;
+  recomputePhase?: RecomputePhase;
+  /** Week/weekOrg period-window start. Pack hop leaves this unset. */
+  recomputeOffset?: number;
+  /** Whitelist Search hop index when WHITELIST_SEARCH_SHARDS=1. */
+  whitelistSearchSeq?: number;
 };
 
 export type RefreshStepJob =

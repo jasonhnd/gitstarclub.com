@@ -12,8 +12,9 @@ import {
 import { resolveLiveArtifactFromHistory } from "@/lib/data/live-generation-history";
 import { parseView } from "@/lib/data/parse-view";
 
-// View source: reads JSON views by direct URL from the Vercel Blob store (public).
-// BLOB_BASE_URL must point at the store base (set in Vercel project env + local .env.local).
+// View source: reads public JSON views by direct URL. getPublicReadBases picks
+// the origin: the blob driver uses BLOB_BASE_URL (production until cutover), and
+// the r2 driver uses R2_PUBLIC_BASE_URL (preview today).
 // Base views compare the managed and bootstrap publication timestamps, then use the newest
 // complete generation; when neither pointer exists they use the legacy flat layout. A published
 // read may instead serve VIEWS_VERSION_FALLBACK after a confirmed 404 of views/latest.json.
@@ -38,7 +39,9 @@ export interface ViewOpts {
    * the live overlay while authoritative reads fail closed. */
   live?: boolean;
   /** For immutable period-scoped rank/heatmap views only: after a current-generation
-   * 404, walk validated manifest previous_generation links with a bounded depth. */
+   * 404, walk validated manifest previous_generation links with a bounded depth.
+   * A hop bound or a request newer than the hop's declared week/month returns
+   * null so published pages can use base / empty instead of 500. */
   liveHistory?: boolean;
   /** Pre-generation flat path. Snapshot reads use it only when live/latest.json
    * does not exist; liveHistory reads use it after a valid chain is exhausted. */
@@ -53,6 +56,12 @@ export interface ViewOpts {
    * Never set this on ISR pages: `no-store` flips the page to dynamic at runtime.
    */
   skipNextDataCache?: boolean;
+  /**
+   * Return the JSON body without a Zod clone. CF fold/recompute hops use this
+   * after preflight already validated canonical shards — a second full parse of
+   * weekly (~33 MiB) is what OOM'd the isolate after a no-op fold.
+   */
+  skipSchemaParse?: boolean;
 }
 
 const VERSION_TTL_MS = 3_600_000;
@@ -579,10 +588,15 @@ function fetchErrorDetail(error: unknown): string {
   return error instanceof Error ? error.message : "no response";
 }
 
+function parsedOrRaw<T>(json: unknown, schema: ZodType<T>, path: string, opts: ViewOpts): T {
+  if (opts.skipSchemaParse) return json as T;
+  return parseView(json, schema, { path, version: opts.bust ?? null, memo: !opts.bust });
+}
+
 /** Read + Zod-validate a view. Returns null when the view is absent (caller → notFound()). */
 export async function readView<T>(path: string, schema: ZodType<T>, opts: ViewOpts = {}): Promise<T | null> {
   const json = await rawRead(path, opts, "published");
-  return json === null ? null : parseView(json, schema, { path, version: opts.bust ?? null });
+  return json === null ? null : parsedOrRaw(json, schema, path, opts);
 }
 
 /**
@@ -596,7 +610,7 @@ export async function readAuthoritativeView<T>(
   opts: ViewOpts = {},
 ): Promise<T | null> {
   const json = await rawRead(path, opts, "authoritative");
-  return json === null ? null : parseView(json, schema, { path, version: opts.bust ?? null });
+  return json === null ? null : parsedOrRaw(json, schema, path, opts);
 }
 
 /** Authoritative read for a workflow artifact that must already exist. */

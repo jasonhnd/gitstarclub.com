@@ -1,19 +1,22 @@
 import { refreshLiveViews, type LiveRefreshJob } from "@/lib/cron/live-refresh";
+import { getReposLookupAuthoritative } from "@/lib/data/lookup";
+import { isUniverseColdStartActive } from "@/lib/workflows/cold-start";
 import {
   claimLivePublication,
   releaseLivePublication,
   type LivePublicationStore,
 } from "@/lib/cron/live-publication";
-import { completedRun, failedRun, safeRecordSyncRun, syncRunId } from "@/lib/cron/sync-runs";
+import { completedRun, failedRun, safeRecordSyncRun, sanitizeLiveRefreshResult, syncRunId } from "@/lib/cron/sync-runs";
 import { sendAlert } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
-import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
+import { requireGithubToken, requirePublicReadBase, requireStorageWriteConfig } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 
 function requireLiveRefreshRuntimeConfig(dry: boolean): void {
-  requireBlobBaseUrl();
+  requirePublicReadBase();
   requireGithubToken();
-  if (!dry) requireBlobWriteToken();
+  if (!dry) requireStorageWriteConfig();
 }
 
 export interface LiveRefreshRouteOptions {
@@ -26,6 +29,27 @@ export interface LiveRefreshRouteOptions {
   recordHealth?: typeof recordHealth;
   sendAlert?: typeof sendAlert;
   requireRuntimeConfig?: typeof requireLiveRefreshRuntimeConfig;
+  /** Test seam for preview cold-start daily skip before lookup exists. */
+  resolveDailyPreflight?: (args: {
+    runId: string;
+    idempotencyKey: string;
+  }) => Promise<Response | null>;
+}
+
+async function defaultDailyColdStartPreflight(args: {
+  runId: string;
+  idempotencyKey: string;
+}): Promise<Response | null> {
+  if (!(await isUniverseColdStartActive(`${args.runId}-daily-preflight`))) return null;
+  const lookup = await getReposLookupAuthoritative();
+  if (lookup) return null;
+  return Response.json({
+    ok: true,
+    status: "skipped",
+    reason: "cold-start-awaiting-first-publish",
+    runId: args.runId,
+    idempotency_key: args.idempotencyKey,
+  });
 }
 
 function liveIdempotencyKey(url: URL, job: LiveRefreshJob, day: string): string | null {
@@ -62,6 +86,17 @@ export async function runLiveRefreshRoute(
 
   try {
     (options.requireRuntimeConfig ?? requireLiveRefreshRuntimeConfig)(dry);
+    if (!dry && job === "daily") {
+      const preflight = options.resolveDailyPreflight ?? defaultDailyColdStartPreflight;
+      const skipped = await preflight({ runId: id, idempotencyKey });
+      if (skipped) {
+        await health("cron-daily", "ok", {
+          run_id: id,
+          idempotency_key: idempotencyKey,
+        });
+        return skipped;
+      }
+    }
     // Weekly owns Sunday live publication. Daily would otherwise start at 03:00 UTC
     // and still be writing health / live/latest.json when weekly starts at 04:00.
     if (!dry && job === "daily" && startedAt.getUTCDay() === 0) {
@@ -138,7 +173,7 @@ export async function runLiveRefreshRoute(
       acquired = true;
     }
 
-    const result = await refresh(job, dry, {
+    const rawResult = await refresh(job, dry, {
       now: startedAt,
       ...(!dry
         ? {
@@ -152,6 +187,7 @@ export async function runLiveRefreshRoute(
           }
         : {}),
     });
+    const result = sanitizeLiveRefreshResult(rawResult);
     const log_error = dry
       ? null
       : await recordSyncRun(completedRun(id, job, dry, startedAt, result));
@@ -178,10 +214,9 @@ export async function runLiveRefreshRoute(
       } catch (releaseError) {
         console.error(`[cron-${job}] failed to release live publication lease`, {
           run_id: id,
-          error:
-            releaseError instanceof Error
-              ? releaseError.message
-              : "Unexpected lease release failure",
+          error: sanitizeErrorText(
+            releaseError instanceof Error ? releaseError.message : "Unexpected lease release failure",
+          ),
         });
       }
     }

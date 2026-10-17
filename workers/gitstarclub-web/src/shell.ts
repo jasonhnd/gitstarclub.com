@@ -1,3 +1,17 @@
+import { securityHeaders } from "../../../web/lib/csp";
+import { reportedCommitSha } from "../../../web/lib/deployment-commit";
+import { sanitizeErrorText } from "../../../web/lib/observability/sanitize-error-text";
+import { hasValidBearerToken, unauthorizedResponse } from "../../../web/lib/security";
+import {
+  successorJobAfterRefreshStep,
+  successorJobFromResponseHeaders,
+} from "../../../web/lib/workers-host/queue-advance";
+import { fetchRefreshStep, refreshStepFetchVia } from "../../../web/lib/workers-host/refresh-step-fetch";
+import {
+  cronHttpUrl,
+  planCronDispatch,
+  resolveRefreshStartUrl,
+} from "./cron-dispatch";
 import type { InvalidateBody, InvalidateOp, RefreshJob, WorkerEnv } from "./env";
 
 const FIXTURE_NEXT: Record<string, string | null> = {
@@ -6,24 +20,49 @@ const FIXTURE_NEXT: Record<string, string | null> = {
   complete: null,
 };
 
-export function emitRunLog(fields: Record<string, unknown>): void {
-  console.log(JSON.stringify({ ts: new Date().toISOString(), ...fields }));
+function stringBindings(env: object | undefined): Record<string, string | undefined> {
+  if (!env) return {};
+  const out: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
+}
+
+export function emitRunLog(fields: Record<string, unknown>, env?: object): void {
+  const payload = { ...fields };
+  if (typeof payload.error === "string") {
+    payload.error = sanitizeErrorText(payload.error, { env: stringBindings(env) });
+  }
+  console.log(JSON.stringify({ ts: new Date().toISOString(), ...payload }));
+}
+
+function applySecurityHeaders(response: Response): Response {
+  for (const header of securityHeaders) {
+    response.headers.set(header.key, header.value);
+  }
+  return response;
 }
 
 function unauthorized(): Response {
-  return new Response("Unauthorized", { status: 401 });
+  return applySecurityHeaders(unauthorizedResponse());
 }
 
-function hasValidBearer(header: string | null, secret: string | undefined): boolean {
-  if (!header || !secret || !header.startsWith("Bearer ")) return false;
-  return header.slice("Bearer ".length) === secret;
+function hasWorkerCronBearer(header: string | null, secret: string | undefined): boolean {
+  // An omitted Worker secret must not fall through to process.env.CRON_SECRET.
+  if (!secret) return false;
+  return hasValidBearerToken(header, secret);
 }
 
-export function previewIdentity(request: Request, env: WorkerEnv): Record<string, unknown> {
+export function previewIdentity(
+  request: Request,
+  env: WorkerEnv,
+  builtCommitSha?: string | null,
+): Record<string, unknown> {
   const url = new URL(request.url);
   const deploymentUrl = (env.CF_PREVIEW_ORIGIN ?? url.origin).replace(/\/+$/, "");
   return {
-    commitSha: env.CF_PREVIEW_COMMIT_SHA ?? null,
+    commitSha: reportedCommitSha(env, builtCommitSha),
     deploymentUrl,
     target: "cf",
     host: url.host,
@@ -37,12 +76,11 @@ function recordedOps(body: InvalidateBody): InvalidateOp[] {
   return ops;
 }
 
-async function triggerStart(env: WorkerEnv): Promise<Response> {
-  const startUrl = env.REFRESH_START_URL;
-  if (!startUrl || !env.CRON_SECRET) {
-    return Response.json({ ok: false, error: "REFRESH_START_URL and CRON_SECRET are required" }, { status: 500 });
+async function triggerAuthorizedGet(env: WorkerEnv, url: string): Promise<Response> {
+  if (!env.CRON_SECRET) {
+    return Response.json({ ok: false, error: "CRON_SECRET is required" }, { status: 500 });
   }
-  const response = await fetch(startUrl, {
+  const response = await fetch(url, {
     method: "GET",
     headers: { authorization: `Bearer ${env.CRON_SECRET}` },
   });
@@ -51,6 +89,17 @@ async function triggerStart(env: WorkerEnv): Promise<Response> {
     status: response.status,
     headers: { "content-type": response.headers.get("content-type") ?? "application/json" },
   });
+}
+
+async function triggerStart(env: WorkerEnv): Promise<Response> {
+  let startUrl: string;
+  try {
+    startUrl = resolveRefreshStartUrl(env);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "REFRESH_START_URL or CF_CRON_ORIGIN is required";
+    return Response.json({ ok: false, error: message }, { status: 500 });
+  }
+  return triggerAuthorizedGet(env, startUrl);
 }
 
 export async function enqueueJob(env: WorkerEnv, job: RefreshJob): Promise<void> {
@@ -64,26 +113,56 @@ function nextFixtureJob(job: RefreshJob): RefreshJob | null {
 }
 
 export async function consumeJob(env: WorkerEnv, job: RefreshJob): Promise<void> {
-  emitRunLog({ event: "workflow.step", runId: job.runId, step: job.name, graph: job.graph });
+  emitRunLog({
+    event: "workflow.step",
+    runId: job.runId,
+    step: job.name,
+    graph: job.graph,
+    via: refreshStepFetchVia(env),
+  });
   if (env.WORKFLOW_FIXTURE === "1" && job.graph === "fixture") {
     const next = nextFixtureJob(job);
     if (next) await enqueueJob(env, next);
     return;
   }
-  const stepUrl = env.REFRESH_STEP_URL;
-  if (!stepUrl || !env.CRON_SECRET) {
-    throw new Error("REFRESH_STEP_URL and CRON_SECRET are required to consume a refresh step");
+  const response = await fetchRefreshStep(env, job);
+  let headerNext: ReturnType<typeof successorJobFromResponseHeaders> = null;
+  try {
+    headerNext = successorJobFromResponseHeaders(response.headers);
+  } catch (error) {
+    emitRunLog({
+      event: "workflow.advance_error",
+      runId: job.runId,
+      step: job.name,
+      via: "successor-header",
+      error: error instanceof Error ? error.message : String(error),
+    }, env);
   }
-  const response = await fetch(stepUrl, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.CRON_SECRET}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(job),
-  });
-  if (!response.ok) {
-    throw new Error(`refresh step ${job.name} failed: HTTP ${response.status}`);
+  try {
+    const next = await successorJobAfterRefreshStep(job, response);
+    if (next) {
+      await enqueueJob(env, next);
+      emitRunLog({ event: "workflow.advance", runId: job.runId, step: job.name, next: next.name });
+    }
+  } catch (error) {
+    if (headerNext && (response.ok || response.status >= 500)) {
+      await enqueueJob(env, headerNext);
+      emitRunLog({
+        event: "workflow.advance",
+        runId: job.runId,
+        step: job.name,
+        next: headerNext.name,
+        via: "successor-header",
+      });
+      return;
+    }
+    emitRunLog({
+      event: "workflow.advance_error",
+      runId: job.runId,
+      step: job.name,
+      error: error instanceof Error ? error.message : String(error),
+    }, env);
+    throw error;
   }
 }
 
@@ -93,12 +172,12 @@ export async function handleShellFetch(request: Request, env: WorkerEnv): Promis
 
   if (pathname === "/preview/health" && request.method === "GET") {
     emitRunLog({ event: "preview.health", host: url.host, hosting: "cf" });
-    return Response.json({
+    return applySecurityHeaders(Response.json({
       ok: true,
       target: "cf",
       hosting: "opennext",
       observability: true,
-    });
+    }));
   }
 
   if (
@@ -107,10 +186,10 @@ export async function handleShellFetch(request: Request, env: WorkerEnv): Promis
   ) {
     const identity = previewIdentity(request, env);
     emitRunLog({ event: "preview.identity", host: url.host, commitSha: identity.commitSha });
-    return Response.json(identity);
+    return applySecurityHeaders(Response.json(identity));
   }
 
-  if (!hasValidBearer(request.headers.get("authorization"), env.CRON_SECRET)) {
+  if (!hasWorkerCronBearer(request.headers.get("authorization"), env.CRON_SECRET)) {
     emitRunLog({ event: "preview.unauthorized", path: pathname });
     return unauthorized();
   }
@@ -142,16 +221,46 @@ export async function handleShellFetch(request: Request, env: WorkerEnv): Promis
   return Response.json({ ok: false, error: "Not found" }, { status: 404 });
 }
 
-export async function handleScheduled(env: WorkerEnv): Promise<void> {
-  if (env.WORKFLOW_FIXTURE === "1") {
-    const runId = `fixture-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
-    await enqueueJob(env, { v: 1, graph: "fixture", runId, name: "startRun", attempt: 0, cursor: {} });
-    emitRunLog({ event: "workflow.cron", runId, graph: "fixture" });
-    return;
-  }
-  const response = await triggerStart(env);
-  if (!response.ok) {
-    throw new Error(`CF cron start failed: HTTP ${response.status}`);
+async function enqueueFixtureStart(env: WorkerEnv, cron: string): Promise<void> {
+  const runId = `fixture-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
+  await enqueueJob(env, { v: 1, graph: "fixture", runId, name: "startRun", attempt: 0, cursor: {} });
+  emitRunLog({ event: "workflow.cron", cron, runId, graph: "fixture", kind: "refresh" });
+}
+
+async function assertCronHttpOk(kind: "daily" | "weekly" | "refresh", response: Response): Promise<void> {
+  if (response.ok) return;
+  throw new Error(`CF cron ${kind} failed: HTTP ${response.status}`);
+}
+
+export async function handleScheduled(event: { cron: string }, env: WorkerEnv): Promise<void> {
+  const plan = planCronDispatch(event.cron);
+  switch (plan.kind) {
+    case "daily":
+    case "weekly": {
+      const url = cronHttpUrl(env, plan.path);
+      const response = await triggerAuthorizedGet(env, url);
+      emitRunLog({ event: "workflow.cron", cron: event.cron, kind: plan.kind, status: response.status, url });
+      await assertCronHttpOk(plan.kind, response);
+      return;
+    }
+    case "refresh": {
+      if (env.WORKFLOW_FIXTURE === "1") {
+        await enqueueFixtureStart(env, event.cron);
+        return;
+      }
+      const response = await triggerStart(env);
+      emitRunLog({ event: "workflow.cron", cron: event.cron, kind: "refresh", status: response.status });
+      await assertCronHttpOk("refresh", response);
+      return;
+    }
+    case "unknown": {
+      emitRunLog({ event: "workflow.cron", cron: event.cron, kind: "unknown", ok: false });
+      throw new Error(`unknown CF cron expression: ${event.cron}`);
+    }
+    default: {
+      const _exhaustive: never = plan;
+      throw new Error(`unhandled CF cron dispatch: ${JSON.stringify(_exhaustive)}`);
+    }
   }
 }
 

@@ -1,10 +1,12 @@
 import type { HealthStatus } from "@/lib/contracts";
 import { sendAlert, type AlertSummary } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
-import { requireBlobBaseUrl, requireBlobWriteToken, requireGithubToken } from "@/lib/runtime-config";
+import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
+import { requireGithubToken, requirePublicReadBase, requireStorageWriteConfig } from "@/lib/runtime-config";
 import { internalFailurePayload, requireBearerToken } from "@/lib/security";
 import { claimWorkflowLease, releaseWorkflowLease, type WorkflowLeaseStore } from "@/lib/workflows/lease";
-import { readCanonicalPreflight } from "@/lib/workflows/canonical-preflight";
+import { readRefreshStartPreflight } from "@/lib/workflows/cold-start";
+import { rememberFailedUnpublishedWhitelist } from "@/lib/workflows/steps/whitelist";
 
 export type RefreshWorkflowStarter = (runId: string) => Promise<void>;
 type HealthRecorder = typeof recordHealth;
@@ -15,7 +17,8 @@ type StartRouteOptions = {
   leaseStore?: WorkflowLeaseStore;
   recordHealth?: HealthRecorder;
   sendAlert?: AlertSender;
-  preflight?: typeof readCanonicalPreflight;
+  preflight?: typeof readRefreshStartPreflight;
+  rememberUnpublishedWhitelist?: (store?: WorkflowLeaseStore) => Promise<void>;
 };
 
 const SUPPORTED_START_QUERY = new Set(["idempotency_key", "idempotencyKey", "trigger"]);
@@ -83,9 +86,13 @@ async function recordStartHealth(
 }
 
 function requireRefreshWorkflowRuntimeConfig(): void {
-  requireBlobBaseUrl();
-  requireBlobWriteToken();
+  requirePublicReadBase();
+  requireStorageWriteConfig();
   requireGithubToken();
+}
+
+async function defaultRememberUnpublishedWhitelist(store?: WorkflowLeaseStore): Promise<void> {
+  await rememberFailedUnpublishedWhitelist(store);
 }
 
 export async function startRefreshWorkflowRoute(
@@ -111,20 +118,28 @@ export async function startRefreshWorkflowRoute(
   try {
     requireRefreshWorkflowRuntimeConfig();
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = sanitizeErrorText(error instanceof Error ? error.message : String(error));
     console.error("[workflow-refresh] invalid runtime config", { run_id: runId, error: message });
     return Response.json(internalFailurePayload(runId), { status: 500 });
   }
 
   try {
-    await (opts.preflight ?? readCanonicalPreflight)(runId);
+    await (opts.preflight ?? readRefreshStartPreflight)(runId);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = sanitizeErrorText(error instanceof Error ? error.message : String(error));
     console.error("[workflow-refresh] canonical preflight failed", { run_id: runId, error: message });
     return Response.json(internalFailurePayload(runId), { status: 500 });
   }
 
   let claim;
+  const leaseStore = opts.leaseStore;
+  try {
+    await (opts.rememberUnpublishedWhitelist ?? defaultRememberUnpublishedWhitelist)(leaseStore);
+  } catch (error) {
+    const message = sanitizeErrorText(error instanceof Error ? error.message : String(error));
+    console.warn("[workflow-refresh] unpublished whitelist pointer not recorded", { error: message });
+  }
+
   try {
     claim = await claimWorkflowLease(
       {
@@ -137,7 +152,7 @@ export async function startRefreshWorkflowRoute(
       opts.leaseStore,
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = sanitizeErrorText(error instanceof Error ? error.message : String(error));
     await alerter({ pipeline: "workflow-refresh", title: "failed to acquire managed refresh lease", run_id: runId, step: "start", error: message });
     console.error("[workflow-refresh] failed to acquire lease", { run_id: runId, error: message });
     return Response.json(internalFailurePayload(runId), { status: 500 });
@@ -149,7 +164,7 @@ export async function startRefreshWorkflowRoute(
   }
 
   if (claim.status === "rejected") {
-    const error = `Refresh already running until ${claim.lease.expires_at}`;
+    const error = sanitizeErrorText(`Refresh already running until ${claim.lease.expires_at}`);
     await recordStartHealth(recorder, "rejected", { run_id: claim.lease.run_id, idempotency_key: idempotencyKey, error });
     return Response.json(
       {
@@ -167,7 +182,7 @@ export async function startRefreshWorkflowRoute(
   try {
     await startWorkflow(runId);
   } catch (error) {
-    let message = error instanceof Error ? error.message : String(error);
+    let message = sanitizeErrorText(error instanceof Error ? error.message : String(error));
     const released = await releaseWorkflowLease(runId, "failed", opts.leaseStore, new Date().toISOString(), claim.lease.fencing_token);
     if (!released) message += `; failed to release fencing token ${claim.lease.fencing_token}`;
     await alerter({ pipeline: "workflow-refresh", title: "failed to enqueue managed refresh", run_id: runId, step: "start", error: message });

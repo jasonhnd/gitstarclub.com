@@ -1,5 +1,6 @@
-// Optional one-shot Blob → R2 copy into a non-production prefix.
-// Default is dry-run. Never writes production roots or VERCEL_ENV=production.
+// Optional one-shot Blob → R2 copy.
+// Default is dry-run. Requires DEPLOY_ENV=production|pre. Each R2 put also
+// checks _meta/bucket-identity.json and refuses a missing or mismatched marker.
 //
 //   bun scripts/sync-blob-to-r2.ts
 //   bun scripts/sync-blob-to-r2.ts --prefix views/ --execute
@@ -8,14 +9,12 @@ import { getBlobWriteToken } from "@/lib/runtime-config";
 import { createR2S3ObjectStore, createVercelBlobObjectStore } from "@/lib/storage";
 import { describeBlobToR2SyncPlan } from "@/lib/storage/sync-plan";
 import { loadWebEnvFiles, warnEnvFileDiagnostic } from "./lib/env";
+import { missingBlobTokenOutcome, parseSyncBlobToR2Args } from "./lib/sync-blob-to-r2-cli";
 
 const webDir = fileURLToPath(new URL("..", import.meta.url));
 loadWebEnvFiles(webDir, { onDiagnostic: warnEnvFileDiagnostic });
 
-const args = process.argv.slice(2);
-const execute = args.includes("--execute");
-const prefixIndex = args.indexOf("--prefix");
-const sourcePrefix = prefixIndex >= 0 ? (args[prefixIndex + 1] ?? "") : "";
+const { execute, sourcePrefix } = parseSyncBlobToR2Args(process.argv.slice(2));
 
 const plan = describeBlobToR2SyncPlan({ execute, sourcePrefix });
 console.log(
@@ -23,8 +22,9 @@ console.log(
 );
 
 if (!getBlobWriteToken()) {
-  console.log("dry-run listing skipped: BLOB_READ_WRITE_TOKEN is not set.");
-  if (execute) throw new Error("BLOB_READ_WRITE_TOKEN is required for --execute");
+  const outcome = missingBlobTokenOutcome(execute);
+  console.log(outcome.log);
+  if (outcome.error) throw new Error(outcome.error);
   process.exit(0);
 }
 

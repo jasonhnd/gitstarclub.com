@@ -13,6 +13,8 @@ import {
   OwnerType,
   Window,
   Metric,
+  SafeText,
+  containsJavascriptUrlScheme,
   // canonical
   CanonicalMeta,
   ReposShardEntry,
@@ -22,7 +24,10 @@ import {
   RepoRecentDailyShard,
   SiteDaily,
   WhitelistEntry,
+  WhitelistSearchProgress,
   WhitelistSnapshot,
+  MetadataBucketProgress,
+  UnpublishedWhitelistPointer,
   PendingPeriod,
   // workflow
   ViewsPointer,
@@ -132,6 +137,33 @@ describe("common primitives", () => {
   test("Metric enum rejects unknown member", () => {
     expect(Metric.parse("growth")).toBe("growth");
     expect(rejects(Metric, "velocity")).toBe(true);
+  });
+
+  test("SafeText allows prose JavaScript: labels", () => {
+    expect(containsJavascriptUrlScheme("Loading And Blocking JavaScript: On-demand parallel loader")).toBe(false);
+    expect(containsJavascriptUrlScheme("Simplest possible examples of HTML, CSS and Javascript:")).toBe(false);
+    expect(
+      SafeText.parse("Loading And Blocking JavaScript: On-demand parallel loader for JavaScript with execution order dependencies"),
+    ).toContain("JavaScript:");
+    expect(SafeText.parse("Simplest possible examples of HTML, CSS and Javascript:")).toContain("Javascript:");
+    expect(SafeText.parse("Learn JavaScript: basics")).toBe("Learn JavaScript: basics");
+  });
+
+  test("SafeText still rejects real javascript: URL schemes", () => {
+    const urls = [
+      "javascript:alert(1)",
+      "javascript:void(0)",
+      "JaVaScRiPt:alert(1)",
+      "see javascript:alert(1) now",
+      "javascript: alert(1)",
+      "javascript:%0aalert(1)",
+      "javascript://comment%0aalert(1)",
+      'href="javascript:alert(1)"',
+    ];
+    for (const value of urls) {
+      expect(containsJavascriptUrlScheme(value)).toBe(true);
+      expect(rejects(SafeText, value)).toBe(true);
+    }
   });
 });
 
@@ -426,6 +458,39 @@ describe("canonical shards", () => {
     expect(parsed.description?.length).toBe(4096);
   });
 
+  test("ReposShardEntry accepts ≥1k descriptions that /javascript:/i used to kill", () => {
+    const labjs = ReposShardEntry.parse({
+      ...validEntry,
+      id: 365027,
+      owner: "getify",
+      name: "LABjs",
+      full_name: "getify/LABjs",
+      current_stars: 2258,
+      description: "Loading And Blocking JavaScript: On-demand parallel loader for JavaScript with execution order dependencies",
+    });
+    expect(labjs.description).toContain("JavaScript:");
+
+    const simpl = ReposShardEntry.parse({
+      ...validEntry,
+      id: 5291075,
+      owner: "samdutton",
+      name: "simpl",
+      full_name: "samdutton/simpl",
+      current_stars: 5187,
+      description: "Simplest possible examples of HTML, CSS and Javascript:",
+    });
+    expect(simpl.description).toBe("Simplest possible examples of HTML, CSS and Javascript:");
+
+    expect(rejects(ReposShardEntry, { ...validEntry, description: "javascript:alert(1)" })).toBe(true);
+    expect(rejects(ReposShard, {
+      "365027": {
+        ...validEntry,
+        id: 365027,
+        description: "javascript:alert(document.cookie)",
+      },
+    })).toBe(true);
+  });
+
   test("ReposShardEntry truncates by code point and repairs malformed legacy Unicode", () => {
     const boundary = `${"x".repeat(4095)}🦍tail`;
     const parsedBoundary = ReposShardEntry.parse({ ...validEntry, description: boundary });
@@ -577,6 +642,54 @@ describe("canonical shards", () => {
       diff: { added: [2], dropped: [3] },
     };
     expect(WhitelistSnapshot.parse(snap).diff.added).toEqual([2]);
+  });
+
+  test("WhitelistSearchProgress parses a resumable Search queue", () => {
+    const progress = WhitelistSearchProgress.parse({
+      v: 1,
+      minStars: 1000,
+      observedMax: 50000,
+      queue: [{ low: 1000, high: 9999 }],
+      entries: [{ id: 1, node_id: "n", full_name: "a/b", owner: "a", name: "b", stars: 12000 }],
+    });
+    expect(progress.queue).toHaveLength(1);
+    expect(rejects(WhitelistSearchProgress, { v: 2, minStars: 1000, observedMax: 1, queue: [], entries: [] })).toBe(true);
+  });
+
+  test("MetadataBucketProgress parses resumable GraphQL batches", () => {
+    const progress = MetadataBucketProgress.parse({
+      v: 1,
+      bucket: 0,
+      fetched: {
+        "1": {
+          full_name: "a/b",
+          owner: "a",
+          owner_type: "User",
+          name: "b",
+          description: null,
+          language: "TypeScript",
+          languages: [{ name: "TypeScript", size: 10, color: "#3178c6" }],
+          topics: ["testing"],
+          created_at: TS,
+          current_stars: 12_000,
+          is_archived: false,
+        },
+      },
+      transient_attempts: 1,
+      last_error: "GitHub GraphQL 502: error code: 502",
+    });
+    expect(progress.fetched["1"]?.current_stars).toBe(12_000);
+    expect(rejects(MetadataBucketProgress, { v: 2, bucket: 0, fetched: {}, transient_attempts: 0 })).toBe(true);
+  });
+
+  test("UnpublishedWhitelistPointer points at a failed-run snapshot", () => {
+    const pointer = UnpublishedWhitelistPointer.parse({
+      run_id: "refresh-2026-09-21T16-02-51-499Z",
+      count: 65015,
+      recorded_at: TS,
+    });
+    expect(pointer.count).toBe(65015);
+    expect(rejects(UnpublishedWhitelistPointer, { run_id: "r", count: -1, recorded_at: TS })).toBe(true);
   });
 
   test("WhitelistSnapshot rejects diff.added with non-int ids", () => {
@@ -1023,6 +1136,16 @@ describe("search contracts", () => {
 
   test("SearchDoc parses; language/description nullable", () => {
     expect(SearchDoc.parse({ ...doc, language: null, description: null }).id).toBe(1);
+  });
+
+  test("SearchDoc allows prose JavaScript: and rejects javascript: URLs", () => {
+    expect(
+      SearchDoc.parse({
+        ...doc,
+        description: "Loading And Blocking JavaScript: On-demand parallel loader for JavaScript with execution order dependencies",
+      }).description,
+    ).toContain("JavaScript:");
+    expect(rejects(SearchDoc, { ...doc, description: "javascript:alert(1)" })).toBe(true);
   });
 
   test("SearchDoc rejects non-int current_stars", () => {

@@ -13,34 +13,16 @@ Open `http://localhost:3000`.
 
 Required local secrets live in `web/.env.local` and must not be committed.
 
-## Vercel
+## Hosting
 
-The canonical Vercel project is `zkscio/gitstarclub.com`.
+Production and preview run on Cloudflare Workers through OpenNext. Deploy and rollback commands are in [docs/OPS.md](../docs/OPS.md). Do not use a Vercel deploy command for the current site.
 
-- Root Directory: `web`
-- Framework: Next.js
-- Production: `gitstarclub.com` / `www.gitstarclub.com`
-- Preview: public `pre.gitstarclub.com`, always noindex
+- Production Worker `gitstarclub-web` serves `gitstarclub.com`. It uses R2 after the accepted 2026-10-04 cutover. See [docs/R2-CUTOVER.md](../docs/R2-CUTOVER.md).
+- Preview Worker `gitstarclub-web-pre` (`wrangler` env `pre`) serves public `https://pre.gitstarclub.com`. It reads Cloudflare R2 and does not use `BLOB_*`.
+- Preview is `noindex,nofollow` with `robots.txt` `Disallow: /`. That is not access control. There is no login wall.
 
-Run deploy commands from the repository root, not from `web/`, because the
-Vercel project already appends the `web` root directory.
-
-```powershell
-vercel deploy . --prod --yes --scope zkscio --project gitstarclub.com
-vercel deploy . --yes --scope zkscio --project gitstarclub.com
-```
-
-Production and Preview read paths need `BLOB_BASE_URL`. Mutation paths additionally
-need `BLOB_READ_WRITE_TOKEN`; scheduled cron/workflow execution also needs
-`CRON_SECRET` and `GITHUB_TOKEN`. Preview Protection is a dashboard-managed option,
-not a repository-enforced property; the current fixed staging domain is public.
+Both Worker contracts use R2. Read-only R2 builds need the explicit R2 driver and matching public base; production prerender preserves the frozen fallback until its views pointer is authoritative. The retained Blob driver needs `BLOB_BASE_URL` for reads and a Blob token for writes. R2 public reads do not need that token. Cron and managed refresh execution need `CRON_SECRET` and `GITHUB_TOKEN`.
 
 ## Analytics
 
-Web traffic is measured with [Vercel Web Analytics](https://vercel.com/docs/analytics)
-via the `@vercel/analytics` package (`<Analytics />` in `app/_shell/RootShell.tsx`).
-Vercel Web Analytics is cookieless and collects no personal data. Collection only
-starts once **Web Analytics** is enabled for the project in the Vercel dashboard.
-Its script and reporting endpoint are same-origin under `/_vercel/insights`, and
-the build fails if the Content Security Policy would block those endpoints.
-Google Analytics and other third-party tracking scripts are intentionally unsupported.
+The Cloudflare host does not load Vercel Web Analytics. `web/lib/analytics-policy.ts` returns no provider when `HOSTING_TARGET=cf` and `VERCEL_ENV` is not `production`. Google Analytics and other third-party tracking scripts are intentionally unsupported.

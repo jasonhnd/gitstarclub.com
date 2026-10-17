@@ -1,7 +1,8 @@
-import { BlobNotFoundError, BlobPreconditionFailedError, del, get, head, list, put } from "@vercel/blob";
 import { requireBlobWriteToken } from "@/lib/runtime-config";
 import { ObjectStorePreconditionFailedError } from "./errors";
+import { createVercelBlobFetchClient } from "./vercel-blob-fetch-client";
 import type {
+  ObjectGetBytesResult,
   ObjectGetResult,
   ObjectHeadResult,
   ObjectListOptions,
@@ -11,15 +12,9 @@ import type {
   ObjectStore,
 } from "./types";
 
-export type VercelBlobClient = {
-  put: typeof put;
-  get: typeof get;
-  head: typeof head;
-  list: typeof list;
-  del: typeof del;
-};
+export type VercelBlobClient = ReturnType<typeof createVercelBlobFetchClient>;
 
-const defaultClient: VercelBlobClient = { put, get, head, list, del };
+const defaultClient: VercelBlobClient = createVercelBlobFetchClient();
 
 async function streamText(stream: ReadableStream<Uint8Array>): Promise<string> {
   return new Response(stream).text();
@@ -30,12 +25,20 @@ function isNamedError(error: unknown, name: string): boolean {
 }
 
 function rethrowBlobConflict(error: unknown): never {
-  if (error instanceof BlobPreconditionFailedError || isNamedError(error, "BlobPreconditionFailedError")) {
+  if (isNamedError(error, "BlobPreconditionFailedError")) {
     throw new ObjectStorePreconditionFailedError(error instanceof Error ? error.message : "precondition failed");
   }
   throw error;
 }
 
+/**
+ * Vercel Blob object store.
+ *
+ * The default client is `createVercelBlobFetchClient()` (runtime `fetch` to
+ * `https://vercel.com/api/blob`). Do not default this to `@vercel/blob`: that
+ * SDK's undici transport sets `ALPNProtocols`, which Cloudflare Workers
+ * reject (`options.ALPNProtocols option is not implemented`) on lease/write.
+ */
 export class VercelBlobObjectStore implements ObjectStore {
   constructor(
     private readonly token = requireBlobWriteToken,
@@ -60,10 +63,33 @@ export class VercelBlobObjectStore implements ObjectStore {
   }
 
   async get(path: string): Promise<ObjectGetResult | null> {
+    return this.getWithAccess(path, "public");
+  }
+
+  async getOrigin(path: string): Promise<ObjectGetResult | null> {
+    return this.getWithAccess(path, "private");
+  }
+
+  async getBytes(path: string): Promise<ObjectGetBytesResult | null> {
     const result = await this.client.get(path, { access: "public", token: this.token() });
     if (!result) return null;
     if (result.statusCode !== 200 || !result.stream) {
       throw new Error(`blob read ${path} -> ${result.statusCode}`);
+    }
+    const body = new Uint8Array(await new Response(result.stream).arrayBuffer());
+    return {
+      body,
+      etag: result.blob.etag,
+      contentType: result.blob.contentType,
+      size: body.byteLength,
+    };
+  }
+
+  private async getWithAccess(path: string, access: "public" | "private"): Promise<ObjectGetResult | null> {
+    const result = await this.client.get(path, { access, token: this.token() });
+    if (!result) return null;
+    if (result.statusCode !== 200 || !result.stream) {
+      throw new Error(`blob ${access === "private" ? "origin " : ""}read ${path} -> ${result.statusCode}`);
     }
     return {
       body: await streamText(result.stream),
@@ -83,7 +109,7 @@ export class VercelBlobObjectStore implements ObjectStore {
         url: result.url,
       };
     } catch (error) {
-      if (error instanceof BlobNotFoundError || isNamedError(error, "BlobNotFoundError")) return null;
+      if (isNamedError(error, "BlobNotFoundError")) return null;
       throw error;
     }
   }

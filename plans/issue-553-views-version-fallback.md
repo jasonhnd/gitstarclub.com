@@ -26,7 +26,3 @@ Production pages currently render no ranking data because `views/latest.json` is
 - The tests in the issue exist and pass, and the `AGENTS.md` verification commands pass on a fresh detached worktree of the commit.
 - A fixture production-target build still passes its indexing self-check.
 - The diff adds no store `put`, `del`, or write call.
-
-## Hotfix on `main`
-
-The change first merged into `pre` (#555). It is ported to `main` as a hotfix for #543. `main` does not have the Worker env resolver from #544, so `getViewsVersionFallback` reads `process.env` by default, like the other `main` getters in `web/lib/runtime-config.ts`. On `main` the wrangler change only adds `VIEWS_VERSION_FALLBACK` to top-level `vars`. The CI gate adds only the two `VIEWS_VERSION_FALLBACK` checks.

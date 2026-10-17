@@ -10,9 +10,9 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 |---|---|
 | Site | [gitstarclub.com](https://gitstarclub.com) |
 | Stack | Next.js 16 (App Router, RSC) · TypeScript 6 · React 19 · Zod 4 · Tailwind 4 · bun · Node 24 |
-| Read path | Static HTML / on-demand ISR from Vercel Edge; JSON in Vercel Blob behind a publish pointer; no runtime database, no engine in the request path |
-| Recurring data refresh | Vercel Workflow (whitelist → rename → metadata → fold → recompute → buildAliases → validate → publish → garbage-collect) |
-| Live overlay | Daily and weekly Vercel cron (`current_month.json`, `hot-snapshot.json`) |
+| Read path | Static HTML / on-demand ISR from Cloudflare Workers (OpenNext); JSON in Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)); no runtime database, no engine in the request path |
+| Recurring data refresh | Managed refresh (whitelist → rename → metadata → fold → recompute → buildAliases → validate → publish → garbage-collect) |
+| Live overlay | Daily and weekly cron routes (`current_month.json`, `hot-snapshot.json`) |
 | Bootstrap | One-off BigQuery (GH Archive) + local DuckDB → Parquet → Blob; archived after seed |
 | Target scale | ~10M page views per day |
 | Data scope | Public repos with ≥10,000 stars (current whitelist size in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) §2), 2015-01 to present |
@@ -20,9 +20,9 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 ## Hard constraints
 
 - **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB / ClickHouse / Postgres / vector index in the runtime image.
-- **Zero runtime database.** Read-side state is versioned Blob views behind a publish pointer.
-- **Static content pages.** Zero client JavaScript on content surfaces. The named exceptions live in [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md).
-- **Vercel-first.** Deploy, cron, Blob, workflow, and any future analytics stay on Vercel. No scattered third-party billing.
+- **Zero runtime database.** Read-side state is versioned JSON views behind a publish pointer.
+- **Static content pages.** A small core is prerendered at deploy. The long tail is generated on demand and then cached. Content pages stay near-zero client JavaScript. Client islands are listed in [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) and [docs/FRONTEND.md](docs/FRONTEND.md).
+- **Cloudflare hosting.** Production and preview pages run on Cloudflare Workers via OpenNext. JSON is in Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)). Keep refresh scheduling evidence separate from route implementation.
 - **AI-free.** Features that would normally call an LLM (summaries, classifications) ship as deterministic templates.
 
 The reasoning behind each constraint is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -37,11 +37,11 @@ The full design and operations docs live in [`docs/`](docs/README.md). For the m
 gitstarclub/
 ├── README.md
 ├── docs/                          Documentation (see docs/README.md for the index)
-├── pipeline/                      One-off bootstrap (archived; recurring refresh is scheduled by Vercel cron)
+├── pipeline/                      One-off bootstrap (archived; recurring refresh uses managed routes)
 │   ├── backfill/                  Step scripts 01-whitelist → 07-export-v2
 │   ├── data/                      Bootstrap inputs/outputs (gitignored)
 │   └── lib/                       Shared bootstrap utilities
-├── workers/gitstarclub-web/       CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (pre). Apex/www stay Vercel.
+├── workers/gitstarclub-web/       CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (pre). Apex and pre are verified on Cloudflare Workers; www is in the production domain set.
 └── web/                           Next.js 16 application
     ├── app/
     │   ├── page.tsx               Home (Pulse)
@@ -63,7 +63,7 @@ gitstarclub/
     │   ├── components/            ThemeToggle, LanguageSwitcher (interactive client controls)
     │   ├── opengraph-image.tsx    Site-level OG card (next/og)
     │   ├── robots.ts  sitemap.ts  manifest.ts  layout.tsx  template.tsx  globals.css
-    ├── open-next.config.ts        OpenNext Cloudflare adapter (P3 preview only)
+    ├── open-next.config.ts        OpenNext Cloudflare adapter
     ├── lib/
     │   ├── contracts/             Zod schemas (build-side type source of truth)
     │   ├── data/                  Read layer: fetch Blob + Zod parse + React cache
@@ -77,10 +77,15 @@ gitstarclub/
     │   ├── preview/               Pluggable Vercel|CF Preview + Access headers
     │   ├── cron/                  Live-refresh helpers
     │   └── integration/           Cross-module integration + smoke tests
-    └── vercel.json                Cron schedule
+    └── vercel.json                Legacy Vercel cron declarations
 ```
 
-## Cron schedule
+## Cron routes and scheduler evidence
+
+The legacy `web/vercel.json` declarations list route cadence. They are not proof of an active production scheduler. Repository Worker `triggers.crons` are `[]` for both `gitstarclub-web` and `gitstarclub-web-pre`. The production trigger remains unverified; see [docs/OPS.md](docs/OPS.md). Do not infer it from `web/vercel.json`.
+
+`https://pre.gitstarclub.com` is public and is served by Cloudflare. It sends `<meta name="robots" content="noindex,nofollow">` and `robots.txt` returns `Disallow: /`. `noindex` is not access control. The preview site shows public GitHub data only. There is no login wall.
+
 
 | Path | Schedule | Purpose |
 |---|---|---|
@@ -97,7 +102,7 @@ See [docs/OPS.md](docs/OPS.md) for details and the manual-trigger runbook.
 | `main` | `gitstarclub-web` | Production Worker only. GitHub Actions must not `wrangler deploy` this name except `--dry-run`. Production `gitstarclub-web.worldgo.workers.dev` is closed. |
 | `pre` | `gitstarclub-web-pre` | Preview Worker (`wrangler` env `pre`). Optional CI probe / dry-run only. |
 
-`CF_PREVIEW_ORIGIN` defaults to `https://gitstarclub-web-pre.worldgo.workers.dev` (equivalent documented preview entry: `https://pre.gitstarclub.com`). Optional `verify / cf-preview` and `verify / cf-workers-host` jobs are **not** required checks. See [docs/OPS.md](docs/OPS.md).
+`CF_PREVIEW_ORIGIN` defaults to `https://gitstarclub-web-pre.worldgo.workers.dev` (equivalent documented preview entry: `https://pre.gitstarclub.com`). Production `triggers.crons` must stay `[]`. `.delivery.yml` and `scripts/assert-cf-ci-gates.mjs` use these Worker names. Optional `verify / cf-preview` and `verify / cf-workers-host` jobs are **not** required checks. See [docs/OPS.md](docs/OPS.md).
 
 ## Running locally
 
@@ -108,10 +113,14 @@ bun dev
 ```
 
 Required environment for local development is documented in [docs/OPS.md](docs/OPS.md)
-and `.env.example`. Copy the template to `web/.env.local`. Read-only development
-and builds require only `BLOB_BASE_URL`; `BLOB_READ_WRITE_TOKEN` is required only
-for mutation paths. Cron and managed refresh execution additionally require
+and `.env.example`. Copy the template to `web/.env.local`. Storage is
+Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)).
+Read-only R2 development/builds use `STORAGE_READ_DRIVER=r2` and the target public base; production prerender also preserves the frozen fallback while its pointer is absent. The retained Blob driver needs `BLOB_BASE_URL` for reads and `BLOB_READ_WRITE_TOKEN` only for Blob mutation. R2 public reads do not use that token. Cron and managed refresh execution additionally require
 `CRON_SECRET` and `GITHUB_TOKEN`.
+
+Historical transition notice, superseded by the accepted 2026-10-04 cutover:
+"Cloudflare R2 (production still reads Vercel Blob until cutover; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md))."
+Current production uses R2; Blob rollback data remains until separately authorized stage 6 retirement.
 
 ## Common commands
 
@@ -128,7 +137,7 @@ Run these from `web/`:
 | Test | `bun test lib/` |
 | Build | `bun run build` |
 
-For the full development workflow, targeted test examples, and Vercel-first
+For the full development workflow, targeted test examples, and Cloudflare hosting
 verification details, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Differentiation

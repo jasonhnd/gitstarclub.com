@@ -1,7 +1,7 @@
 ---
 owner: architecture
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - system overview
   - tech stack
@@ -27,10 +27,10 @@ Because the aggregations are deterministic and the query set is finite, the enti
 These are non-negotiable for the production system. New features must respect all of them; any proposal that breaks one is a flag for an architectural review.
 
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
-2. **Zero runtime database.** Read-side state lives in versioned Blob views resolved through a publish pointer; there is no SQL connection to open.
-3. **Vercel-first.** Deploy, cron, Blob, workflow, and Vercel Web Analytics stay on Vercel. Google Analytics and other third-party tracking scripts are intentionally unsupported.
-4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, service-worker registration, and Vercel Web Analytics.
-5. **Recurring work on Vercel, not the laptop.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) is scheduled by Vercel cron and runs as ordinary async steps. Local pipeline runs are reserved for one-off bootstrap.
+2. **Zero runtime database.** Read-side state lives in versioned JSON views in R2 resolved through a publish pointer; there is no SQL connection to open.
+3. **Cloudflare hosting.** Production and preview use Cloudflare Workers with OpenNext. JSON is in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)). Google Analytics and other third-party tracking scripts are intentionally unsupported.
+4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, and service-worker registration. Vercel Web Analytics is not loaded on this host.
+5. **Recurring work is hosted, not laptop-bound.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) is driven by scheduled or authenticated triggers and runs as ordinary async steps. Local pipeline runs are reserved for one-off bootstrap.
 
 The same data layer also operates AI-free: features that look like they would call an LLM (summaries, classifications, narratives) ship as deterministic templates instead. The rationale and tradeoff are recorded in the team feedback memory.
 
@@ -38,16 +38,16 @@ The same data layer also operates AI-free: features that look like they would ca
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Framework | Next.js 16 (App Router, RSC, Turbopack) | Vercel-native |
+| Framework | Next.js 16 (App Router, RSC, Turbopack) | OpenNext on Cloudflare Workers |
 | Language / toolchain | TypeScript 6, React 19, Zod 4, Node 24, bun | |
 | Styling | Tailwind 4 + Material 3 Expressive tokens (graphite + amber), hand-authored in `web/app/globals.css` following the M3 system color role taxonomy | |
 | Fonts | Plus Jakarta Sans (variable sans), Geist Mono (numerals, repo names) | |
-| Read-side data | Versioned JSON views in Vercel Blob, served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
+| Read-side data | Versioned JSON views in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)), served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
 | Live-overlay data | Immutable `live/generations/<run_id>/**`, selected by `live/latest.json` | Atomic current snapshot; period files use bounded validated manifest history until folded |
-| Recurring data refresh | Vercel cron + step runtime (multi-step, Blob checkpoint; no Workflow SDK) | Production schedule stays in `web/vercel.json` |
+| Recurring data refresh | Cron routes + step runtime (multi-step; no Workflow SDK) | Both Worker cron lists are empty. The production trigger source is unverified; see OPS.md |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
 | Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test` from `web/` on PRs and `main` pushes |
-| Analytics | Vercel Web Analytics via `@vercel/analytics` is the only analytics integration. It uses same-origin `/_vercel/insights` endpoints, and build-time policy checks keep CSP compatible. | No GA or third-party tracking scripts. |
+| Analytics | Off on the Cloudflare host. `web/lib/analytics-policy.ts` returns no provider when `HOSTING_TARGET=cf` and `VERCEL_ENV` is not `production`. | No GA or third-party tracking scripts. |
 
 Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, tRPC, any LLM SDK. The reasoning is the constraints above.
 
@@ -58,15 +58,15 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 │  BigQuery   →   GH Archive WatchEvent (repo_id, day, gross) │
 │  GraphQL    →   metadata + current_stars (authoritative)    │
 │  DuckDB     →   star_daily.parquet, milestones, JSON views  │
-│  Upload     →   Vercel Blob                                  │
+│  Upload     →   Cloudflare R2 (production cutover accepted 2026-10-04) │
 └─────────────────────────────────────────────────────────────┘
 
-┌─ Recurring recompute (Vercel cron + step runtime) ──────────┐
+┌─ Recurring recompute (Cron routes + step runtime) ──────────┐
 │  whitelist → rename → metadata (per bucket) → fold (month/  │
 │  week) → recompute (rank, entity, heatmap, search index     │
 │  written to views/<run_id>/**) → validate → publish (swap   │
 │  views/latest.json) → garbage-collect old versions          │
-│  Pure-JS throughout; large artifacts go via Blob direct URL │
+│  Pure-JS throughout; large artifacts go via R2 public URL   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─ Daily cron (live overlay, JSON-only, seconds) ─────────────┐
@@ -88,7 +88,7 @@ Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybi
 ┌─ Build (each deploy) ───────────────────────────────────────┐
 │  Read precomputed JSON views, render static HTML and SSR    │
 │  SVG. No aggregation, no engine, no native modules.         │
-│  Output → Vercel Edge CDN                                   │
+│  Output → Cloudflare Workers / CDN                                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -135,7 +135,7 @@ GitHub's "watch" semantics changed in late 2012. By 2015 the WatchEvent stream i
 
 ### Whitelist
 
-The active tracked set is the open-ended GitHub Search discovery result for `stars:>=10000`; Search membership is snapshotted with an authoritative `count`, but GraphQL supplies every displayed/ranked current total. New entrants are picked up by the workflow diff. Drops become retained historical rows and stop polling; re-entry reactivates the same id while preserving its first `tracked_since`.
+The active tracked set is the open-ended GitHub Search discovery result for `stars:>=MIN_TRACKED_STARS` (default 10000; preview wrangler `env.pre` sets 10000, the same floor as production). Search membership is snapshotted with an authoritative `count`, but GraphQL supplies every displayed/ranked current total. Preview may split Search across Queue hops (`WHITELIST_SEARCH_SHARDS=1`) so one isolate stays inside the 15 min consumer wall. New entrants are picked up by the workflow diff. Drops become retained historical rows and stop polling; re-entry reactivates the same id while preserving its first `tracked_since`. Pages read precomputed views only.
 
 ## Data model
 
@@ -177,7 +177,7 @@ SELECT id, current_stars FROM repos ORDER BY current_stars DESC LIMIT 100;
 
 ### Physical: JSON view artifacts
 
-Each (period × dim × metric) reduction produces a JSON view: rank tables, entity timelines (per repo, per org), heatmaps, lookup tables for build-time joins, and the client-side search index. Live-overlay paths produce the same logical `current_month.json`, `hot-snapshot.json`, rank and heatmap files under one immutable generation; `live/latest.json` is the only publication switch. The complete Blob layout is in [OPS.md](./OPS.md); per-view schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
+Each (period × dim × metric) reduction produces a JSON view: rank tables, entity timelines (per repo, per org), heatmaps, lookup tables for build-time joins, and the client-side search index. Live-overlay paths produce the same logical `current_month.json`, `hot-snapshot.json`, rank and heatmap files under one immutable generation; `live/latest.json` is the only publication switch. The copied JSON key layout and retained Blob rollback layout are in [OPS.md](./OPS.md); per-view schemas are in [DATA-CONTRACTS.md](./DATA-CONTRACTS.md).
 
 Builds ingest these JSONs directly and bake them into static HTML. Adding a new view means adding a recompute step that produces JSON; the read path needs no engine.
 
@@ -202,25 +202,27 @@ English keeps the base canonical paths unprefixed; non-default locales add URL p
 
 ### Build budget
 
-Eleven thousand-plus pages cannot be built at deploy time within Vercel's 45-minute budget, and `.next/cache` does not carry pre-rendered HTML across deploys. The build only produces the small core (home, current year, current month, all-time rankings, pulse, compare). Everything else renders on first request and is then cached as ISR.
+Eleven thousand-plus pages cannot be built at deploy time within the deployment build budget, and `.next/cache` does not carry pre-rendered HTML across deploys. The build only produces the small core (home, current year, current month, all-time rankings, pulse, compare). Everything else renders on first request and is then cached as ISR.
 
 ### Page tiering and refresh cadence
 
 | Tier | Surfaces | Refresh mechanism |
 |---|---|---|
-| **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy; daily cron atomically publishes a live generation then calls `revalidatePath` |
-| **Movers** (event-driven, daily) | Repos and orgs flagged as moving today (top-50 daily flow ∪ ≥ 5× their 90-day median with absolute floor ∪ milestone crossings) | Daily cron picks the set and calls `revalidatePath` on those entities + the pulse surface |
-| **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos and orgs not currently moving | `dynamicParams=true`, not fully enumerated in `generateStaticParams`; first request renders, then caches. Historical periods use `revalidate=false`; repo/org details use `revalidate=86400`, with targeted `revalidatePath` for movers. |
-| **Frozen** | Completed weekly / monthly / yearly pages | Rendered once and stamped "as of <date>"; only re-rendered when the recompute publishes a new pointer version |
+| **Core** (built at deploy) | home, current year, current month, all-time rankings, `/pulse`, `/compare` | Built at deploy for the current core params. The live cron calls `revalidatePath` on the English home, `/pulse`, `/rankings`, and the current year, month, and week. A publish calls `revalidatePath` on the localized core paths in `corePublicationRevalidatePaths`. |
+| **Movers** (event-driven, daily) | Repos and orgs flagged as moving today (top-50 daily flow ∪ ≥ 5× their 90-day median with absolute floor ∪ milestone crossings) | The live cron submits those repos and orgs to IndexNow. It does not call `revalidatePath` on the entity pages. That path fact is not an HTML lifetime. |
+| **Long-tail** (on-demand ISR) | Historical years / months / weeks; repos, orgs, and category pages that are not prebuilt | `dynamicParams=true`. Exported segment defaults differ by route: historical rankings export `revalidate=false`; repo detail, org detail, category detail, and category pagination export `604800`; category index and dimension export `86400`; org index exports `3600`. Those exports are not an effective HTML lifetime. These routes are not explicit `revalidatePath` targets. Shared publication tags are a separate invalidation path. |
+| **Frozen** | Completed weekly / monthly / yearly pages | Completed period routes export `revalidate=false` and are stamped "as of <date>". Those paths are not explicit `revalidatePath` targets. The path list does not mean a pointer switch leaves the stored HTML in place. |
 
 Cadence:
 
 - **Deploys** (code or structural change): build the small core only; ISR resets and re-warms on first request. Long-tail surfaces are not enumerated at deploy.
-- **Daily cron**: acquire the date/job idempotency lease, build and validate all live files, atomically switch `live/latest.json`, then revalidate hot surfaces. A failed run leaves the previous complete generation selected.
+- **Daily cron**: acquire the date/job idempotency lease, build and validate all live files, atomically switch `live/latest.json`, then call `revalidatePath` only for the English paths in `revalidateLivePaths` (home, `/pulse`, `/rankings`, current year, current month, current week). Mover entities go to IndexNow. A failed run leaves the previous complete generation selected.
 - **Weekly cron**: use the same generation protocol for current week/month rank, heatmap, hot snapshot, and then update `ops/sync-runs.json`.
-- **Workflow runs** (recompute → validate → publish): re-derive every `views/**` artifact, validate, and atomically swap the pointer. Old versions are reaped by the GC step.
+- **Workflow runs** (recompute, validate, publish): re-derive every `views/**` artifact, validate, and atomically swap the pointer. `invalidatePublishedViews` then expires tags `published-views-pointer` and `bootstrap-publication-pointer` with `expire: 0`, and calls `revalidatePath` for `corePublicationRevalidatePaths` (home, `/pulse`, `/rankings`, `/categories`, `/about`, `/o`, `/compare`, `/privacy`, in every locale). Repo detail, org detail, category detail, category pagination, and historical period paths are not in that path list. They are not thereby left unchanged. `resolveVersion` tags the `views/latest.json` fetch with `published-views-pointer`. A published base read can also fetch `bootstrap/latest.json` with tag `bootstrap-publication-pointer` and `revalidate` 300 (`BOOTSTRAP_POINTER_NEGATIVE_TTL_SECONDS`). Under the Next driver those tags are stored on the parent prerender, so expiring them can miss the page cache without a `revalidatePath` for that URL. The production driver wraps Next `revalidateTag` and `revalidatePath`. The non-production `cf-stub` only records the calls. Hosted HTML lifetime was not measured here. Old versions are reaped by the GC step.
 
-Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default — leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model); historical period routes use frozen caching while repo/org long-tail routes use daily ISR; rendering reads only bounded JSON views.
+The segment export, the fetch `revalidate`, and explicit path invalidation are different settings, and they interact. `export const revalidate` is a default, not an independent HTML TTL. Inside `readView`, `VERSION_TTL_MS` is 3600 seconds, `DAILY_BASE_VIEW_TTL_MS` is 86400 seconds, and the live pointer default is 60 seconds. `resolveVersion` passes `next.revalidate` equal to that pointer TTL on `views/latest.json`, and `fetchWithTimeout` forwards `next`. With `cacheComponents` off, Next lowers the route revalidation interval to the smallest fetch `revalidate` in the render, so a 3600-second `getMeta()` or a 300-second bootstrap pointer fetch can undercut an exported `604800`. Expiring the shared tags is separate from both clocks. The per-route table is in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md). This paragraph is the route exports and the fetch options in this repo. It is not a measurement of the hosted cache.
+
+Configuration constraints: `next.config.ts` does not set `cacheComponents` (Next 16 default; leaving it off is mandatory because enabling it would disable `dynamicParams` and break the on-demand ISR model). Historical period routes export `revalidate=false`. Repo detail, org detail, category detail, and category pagination export `604800`. Category index and dimension export `86400`. Org index exports `3600`. Treat those as exported defaults. A shorter fetch `revalidate` on the same render can lower the route interval, and shared tag expiry can miss the page cache without a matching `revalidatePath`. Rendering reads only bounded JSON views.
 
 ### GraphQL budget
 
@@ -232,18 +234,14 @@ The hourly point budget is 5,000. Querying `stargazerCount` is ~1 point per quer
 |---|---|
 | Static HTML for content pages | Function invocations stay at zero |
 | HTML under ~20 KB | Reduces bandwidth at scale |
-| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW and Vercel Web Analytics. Third-party analytics are unsupported. |
+| Near-zero client JS on content pages | SVG charts and chrome render server-side; only explicit interaction and global islands hydrate, including RegisterSW. Analytics are off on this host. Third-party analytics are unsupported. |
 | `Cache-Control: s-maxage=86400, stale-while-revalidate` | Historical surfaces cached aggressively |
 | Subset fonts as woff2 | Plus Jakarta Sans subset ~30 KB |
-| Pre-rendered OG cards in Blob | No function cost on share embeds |
+| OG images from `next/og` routes (`revalidate=86400`), with the site card as the fallback | Drawn by the image route and then cached. Not pre-generated storage objects. Org pages and `/rankings` use `/opengraph-image`. A later cache hit is not a guarantee of zero function invocations. |
 
-### Bandwidth defense (cost-stepping)
+### Page weight
 
-At ~10M views per day, bandwidth (~15 TB/month) dominates cost. The expected steps are:
-
-1. **Up to ~1M/day**: Vercel Pro, ~$40–100/month.
-2. **1M–5M/day**: aggressive compression (Brotli 11, HTML minification).
-3. **5M+/day**: Cloudflare in front of Vercel to absorb egress (~80–90% cut).
+Keep content HTML small and client JavaScript near zero. Do not prerender the long tail in one build. Current platform price and bandwidth caps are not recorded here.
 
 ## Operations, data quality, and compliance
 
@@ -284,13 +282,4 @@ The current scope is comfortably static. Several requested capabilities would fo
 - Topic / language / cohort clustering.
 - Semantic / embedding-based search.
 
-These cannot fit a fixed view set or a client-side index. They share an open architectural decision recorded in [ROADMAP.md](./ROADMAP.md): which analytical layer to introduce (managed ClickHouse, Vercel-native relational, etc.) and how to reconcile that with the Vercel-first / runtime-zero-engine posture above. No work on those features starts before that decision lands.
-
-## Cost estimate
-
-| Scale | Monthly cost |
-|---|---|
-| MVP (<100k page views / day) | ~$20 (Vercel Pro) + one-off bootstrap ~$10 (BigQuery) |
-| 1M / day | ~$40–100 |
-| 10M / day (Vercel-only) | ~$2,100 (bandwidth-dominated) |
-| 10M / day (with Cloudflare in front) | ~$200–400 |
+These cannot fit a fixed view set or a client-side index. They share an open architectural decision recorded in [ROADMAP.md](./ROADMAP.md): which analytical layer to introduce (managed ClickHouse, OpenNext on Cloudflare Workers relational, etc.) and how to reconcile that with the Cloudflare-hosted / runtime-zero-engine posture above. No work on those features starts before that decision lands.

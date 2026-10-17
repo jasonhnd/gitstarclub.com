@@ -6,7 +6,7 @@ import { heatmaps } from "../recompute";
 // read side uses for the live-overlay watermark. See docs/VERCEL-DATA-OPERATIONS.md §4 / §7.2.
 
 export async function recomputeHeatmap(runId: string, fencingToken: number): Promise<{ files: number }> {
-  const { model, seamDate, foldedThrough } = await loadCanonicalModel(runId);
+  const { model, seamDate, foldedThrough } = await loadCanonicalModel(runId, { families: ["repos", "siteDaily"] });
   const gen = new Date().toISOString();
   const views = new Map<string, unknown>(heatmaps(model.siteDaily, gen));
   views.set("meta.json", {

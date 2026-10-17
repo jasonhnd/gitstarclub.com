@@ -37,6 +37,9 @@ describe("VercelBlobObjectStore", () => {
       url: "https://blob.example.com/ops/a.json",
     });
     expect((await store.get("ops/a.json"))?.etag).toBe('"g1"');
+    expect(client.get).toHaveBeenCalledWith("ops/a.json", { access: "public", token: "blob-token" });
+    expect((await store.getOrigin("ops/a.json"))?.etag).toBe('"g1"');
+    expect(client.get).toHaveBeenCalledWith("ops/a.json", { access: "private", token: "blob-token" });
     expect((await store.head("ops/a.json"))?.etag).toBe('"h1"');
     expect((await store.list({ prefix: "views/", mode: "folded" })).folders).toEqual(["views/run-a/"]);
     await store.del(["https://blob.example.com/views/a.json"]);
@@ -63,5 +66,21 @@ describe("VercelBlobObjectStore", () => {
 
     const getting = fakeClient({ get: mock(async () => null) });
     expect(await new VercelBlobObjectStore(() => "blob-token", getting).get("missing.json")).toBeNull();
+  });
+
+  test("getBytes preserves a non-UTF-8 parquet payload", async () => {
+    const parquet = Uint8Array.from([0x50, 0x41, 0x52, 0x31, 0x00, 0xff, 0x0a, 0x80, 0x7f, 0x1f, 0x8b]);
+    const client = fakeClient({
+      get: mock(async () => ({
+        statusCode: 200 as const,
+        stream: new Blob([parquet]).stream(),
+        headers: new Headers(),
+        blob: { etag: '"p"', contentType: "application/vnd.apache.parquet", size: parquet.byteLength },
+      })),
+    });
+    const store = new VercelBlobObjectStore(() => "blob-token", client);
+    const bytes = await store.getBytes("canonical/star_daily.parquet");
+    expect(Array.from(bytes?.body ?? [])).toEqual(Array.from(parquet));
+    expect(client.get).toHaveBeenCalledWith("canonical/star_daily.parquet", { access: "public", token: "blob-token" });
   });
 });

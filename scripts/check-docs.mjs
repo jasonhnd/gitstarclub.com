@@ -22,6 +22,7 @@ const ignoredDirectories = new Set([
 export const historicalDocumentAllowlist = new Map([
   ["docs/CHANGELOG.md", "release entries are immutable historical records"],
   ["docs/analysis/DATA-CORRECTNESS-21.md", "closed point-in-time analysis"],
+  ["docs/analysis/RECONCILE-MAIN-PRE-2026-07-19.md", "2026-07-19 main/pre reconciliation snapshot, not current required-check policy"],
   ["docs/perf/CWV-25.md", "frozen performance baseline"],
 ]);
 
@@ -98,7 +99,7 @@ export function extractRepoReferences(markdown) {
   const references = [];
   for (const match of markdown.matchAll(/`([^`\n]+)`/g)) {
     const span = match[1];
-    const tokens = span.match(/(?:web|pipeline|scripts|\.github)\/[^\s,;，；|→]+/g) ?? [];
+    const tokens = span.match(/(?:web|pipeline|scripts|\.github)\/[^\s,;\uFF0C\uFF1B|→]+/g) ?? [];
     for (const token of tokens) references.push(normalizeReference(token));
   }
   return references;
@@ -200,7 +201,7 @@ function frontmatter(content) {
   return end === -1 ? "" : content.slice(4, end);
 }
 
-export function checkMaintainedFacts(root) {
+function checkFrameworkVersionFacts(root) {
   const issues = [];
   const webPackage = JSON.parse(readFileSync(resolve(root, "web/package.json"), "utf8"));
   const frontend = readFileSync(resolve(root, "docs/FRONTEND.md"), "utf8");
@@ -208,7 +209,11 @@ export function checkMaintainedFacts(root) {
   const expectedNext = `Next.js ${webPackage.dependencies.next}`;
   if (!frontend.includes(expectedNext)) issues.push(`docs/FRONTEND.md: expected ${expectedNext}`);
   if (!seo.includes(expectedNext)) issues.push(`docs/SEO.md: expected ${expectedNext}`);
+  return issues;
+}
 
+function checkRouteInventoryOwnership(root) {
+  const issues = [];
   const ownerDocs = readdirSync(resolve(root, "docs"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
     .map((entry) => `docs/${entry.name}`)
@@ -216,7 +221,11 @@ export function checkMaintainedFacts(root) {
   if (ownerDocs.length !== 1 || ownerDocs[0] !== "docs/UIUX-ROUTE-INVENTORY.md") {
     issues.push(`route/source inventory must have exactly one owner; found: ${ownerDocs.join(", ") || "none"}`);
   }
+  return issues;
+}
 
+function checkApiInventoryFacts(root) {
+  const issues = [];
   const api = readFileSync(resolve(root, "docs/API.md"), "utf8");
   const routeSources = walk(resolve(root, "web/app"))
     .map((file) => toRepoPath(file, root))
@@ -234,26 +243,122 @@ export function checkMaintainedFacts(root) {
   for (const source of requiredApiSources) {
     if (!api.includes(source)) issues.push(`docs/API.md: endpoint inventory is missing ${source}`);
   }
+  return issues;
+}
 
+function checkStorageDocumentationFacts(root) {
+  const issues = [];
   const rootReadme = readFileSync(resolve(root, "README.md"), "utf8");
-  if (!/Read-only development\s+and builds require only `BLOB_BASE_URL`/.test(rootReadme)) {
-    issues.push("README.md: read-only setup must state that BLOB_BASE_URL is the only required Blob credential");
+  if (!rootReadme.includes("Cloudflare R2 (production still reads Vercel Blob until cutover; see")) {
+    issues.push("README.md: storage must be Cloudflare R2, with production still reading Vercel Blob until cutover");
   }
 
   const ops = readFileSync(resolve(root, "docs/OPS.md"), "utf8");
   if (!ops.includes("`web/.env.local`")) issues.push("docs/OPS.md: local env location must be web/.env.local");
-  if (/本地用 `\.env`/.test(ops)) issues.push("docs/OPS.md: root .env is not loaded by the web scripts");
+  // Retired wording for "use a root .env locally". Escaped so this file stays free of Han characters.
+  if (/\u672c\u5730\u7528 `\.env`/.test(ops)) issues.push("docs/OPS.md: root .env is not loaded by the web scripts");
+  return issues;
+}
 
-  const activeDocs = walk(resolve(root, "docs"))
+function checkWorkflowDocumentationFacts(root) {
+  const issues = [];
+  const workflow = readFileSync(resolve(root, "docs/WORKFLOW.md"), "utf8");
+  if (!workflow.includes("verify / static") || !workflow.includes("verify / production-build")) {
+    issues.push("docs/WORKFLOW.md: merge gates must state GitHub required checks are static + production-build");
+  }
+  if (!/preview-e2e/.test(workflow) || !/optional/.test(workflow)) {
+    issues.push("docs/WORKFLOW.md: merge gates must state preview-e2e / product-gates are optional");
+  }
+  return issues;
+}
+
+function checkCurrentDocumentationFacts(root) {
+  const issues = [];
+  const currentStateDocs = walk(resolve(root, "docs"))
     .filter((file) => file.endsWith(".md"))
     .filter((file) => !historicalDocumentAllowlist.has(toRepoPath(file, root)));
-  for (const file of activeDocs) {
+  for (const file of currentStateDocs) {
+    const path = toRepoPath(file, root);
     const content = readFileSync(file, "utf8");
+    if (/Preview discovery for Vercel \(required gates\)/.test(content)) {
+      issues.push(`${path}: Vercel preview discovery is optional / skippable, not a required gate`);
+    }
+    // Retired wording for "submitted and made mandatory", alongside preview-e2e / axe.
+    if (/\u5df2\u63d0\u4ea4\u5e76\u5f3a\u5236/.test(content) && /preview-e2e|axe serious/.test(content)) {
+      issues.push(`${path}: preview-e2e suites are soft / optional, not enforced merge gates`);
+    }
     if (content.includes("web/middleware.ts")) {
-      issues.push(`${toRepoPath(file, root)}: stale middleware path; the active entrypoint is web/proxy.ts`);
+      issues.push(`${path}: stale middleware path; the active entrypoint is web/proxy.ts`);
     }
   }
+  return issues;
+}
 
+export function checkMaintainedFacts(root) {
+  return [
+    ...checkFrameworkVersionFacts(root),
+    ...checkRouteInventoryOwnership(root),
+    ...checkApiInventoryFacts(root),
+    ...checkStorageDocumentationFacts(root),
+    ...checkWorkflowDocumentationFacts(root),
+    ...checkCurrentDocumentationFacts(root),
+  ];
+}
+
+const cjkProseDirectories = ["docs", "plans", ".cursor", ".grok"];
+const cjkProseFiles = ["AGENTS.md"];
+// Han text, full-width punctuation, and the Chinese double em dash.
+// A single em dash (U+2014) and English curly quotes stay allowed.
+const cjkPattern = /[\u4e00-\u9fff\u3001\u3002\u300A\u300B\u300C\u300D\u3010\u3011\uFF01\uFF08\uFF09\uFF0C\uFF1A\uFF1B\uFF1F]|\u2014\u2014/;
+
+// Product locale copy and tests that assert it may contain Han text.
+// These paths are outside the scanned roots; the filter is here so a wider scan cannot flag them.
+export const cjkAllowlist = [
+  /^web\/lib\/i18n\/dictionaries\//,
+  /^web\/lib\/i18n\/locales\.ts$/,
+  /^web\/app\/_localized\//,
+  /^web\/lib\/format\.ts$/,
+  /^web\/lib\/narrative\.ts$/,
+  /^web\/lib\/shareable-snippets\.ts$/,
+  // Localized-output tests only. Confirmed against files that still contain Han text.
+  /^web\/lib\/format\.test\.ts$/,
+  /^web\/lib\/narrative\.test\.ts$/,
+  /^web\/lib\/shareable-snippets\.test\.ts$/,
+  /^web\/lib\/geo-capsules\.test\.ts$/,
+  /^web\/lib\/pulse-board-links\.test\.tsx$/,
+  /^web\/lib\/rank-period-labels\.test\.ts$/,
+  /^web\/lib\/rankings-archive\.test\.ts$/,
+  /^web\/e2e\/routing-security\.spec\.ts$/,
+];
+
+export function isCjkAllowlisted(repoPath) {
+  return cjkAllowlist.some((pattern) => pattern.test(repoPath));
+}
+
+export function checkCjkProse(root) {
+  const files = [];
+  for (const directory of cjkProseDirectories) {
+    const absolute = resolve(root, directory);
+    if (!existsSync(absolute)) continue;
+    files.push(...walk(absolute));
+  }
+  for (const file of cjkProseFiles) {
+    const absolute = resolve(root, file);
+    if (existsSync(absolute)) files.push(absolute);
+  }
+
+  const issues = [];
+  for (const file of files) {
+    const path = toRepoPath(file, root);
+    if (isCjkAllowlisted(path)) continue;
+    const bytes = readFileSync(file);
+    if (bytes.includes(0)) continue;
+    const lines = bytes.toString("utf8").split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+      if (!cjkPattern.test(lines[index])) continue;
+      issues.push(`${path}:${index + 1} CJK text is not allowed outside product locale files`);
+    }
+  }
   return issues;
 }
 
@@ -262,6 +367,7 @@ export function checkDocs(root) {
     ...checkDocReferences(root),
     ...checkEnvironmentInventory(root),
     ...checkMaintainedFacts(root),
+    ...checkCjkProse(root),
   ];
 }
 

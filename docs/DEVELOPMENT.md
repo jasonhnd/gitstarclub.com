@@ -1,7 +1,7 @@
 ---
 owner: development process
 status: active
-last_reviewed: 2026-09-17
+last_reviewed: 2026-10-01
 source_of_truth_for:
   - developer workflow
   - documentation ownership practice
@@ -31,7 +31,7 @@ Every non-trivial change should answer these questions before code is edited:
 2. Which data contract or view path changes, if any?
 3. Which route, component, or workflow owns the behavior?
 4. Which doc is the source of truth and must be updated?
-5. How will production on Vercel be verified?
+5. How will production on Cloudflare Workers be verified?
 
 The expected commit shape is:
 
@@ -49,11 +49,10 @@ Docs-only changes are allowed when the code already implements the behavior.
 |---|---|
 | Product scope, tracked-set assumptions | `REQUIREMENTS.md` |
 | System architecture, hard constraints | `ARCHITECTURE.md` |
-| Blob layout, workflow lifecycle, publish/rollback | `VERCEL-DATA-OPERATIONS.md`, `OPS.md` |
-| Cloudflare R2 P0 storage drivers / dual-read | `R2-MIGRATION-P0.md` |
-| Cloudflare P1 workflow runtime / CF Cron | `CF-MIGRATION-P1.md` |
-| Cloudflare P2 ISR port / CF Preview / Access | `CF-MIGRATION-P2.md` |
-| Cloudflare P3 Workers host / OpenNext preview | `CF-MIGRATION-P3.md` |
+| Retained Blob rollback layout, schedules, deploy rollback | `OPS.md` |
+| Object storage status and the R2 cutover | `R2-CUTOVER.md` |
+| Workflow step names | `VERCEL-DATA-OPERATIONS.md` |
+| Archived phase notes (superseded; current host and storage are `OPS.md` and `R2-CUTOVER.md`) | `archive/R2-MIGRATION-P0.md`, `archive/CF-MIGRATION-P1.md`, `archive/CF-MIGRATION-P2.md`, `archive/CF-MIGRATION-P3.md` |
 | JSON schema or persisted field | `DATA-CONTRACTS.md` |
 | Bootstrap pipeline behavior | `PIPELINE.md` |
 | Ranking algorithm or tie-breaking | `RANKING.md` |
@@ -71,7 +70,7 @@ Docs-only changes are allowed when the code already implements the behavior.
 ### Add Or Change A Page
 
 1. Find the route in `web/app/`.
-2. Read existing data through `web/lib/data/*`; avoid direct Blob fetches in
+2. Read existing data through `web/lib/data/*`; avoid direct storage fetches in
    page code.
 3. Keep the main page server-rendered unless interactivity requires a client
    component.
@@ -102,9 +101,11 @@ Docs-only changes are allowed when the code already implements the behavior.
 1. Update `web/lib/categories/rules.ts`.
 2. Update `web/lib/categories/rules.test.ts`.
 3. If published artifacts change shape, update `web/lib/contracts/categories.ts`.
-4. If only assignment behavior changes, trigger a production refresh after
-   deployment so `categories/assignments.json`, registry counts, and category
-   ranks are regenerated.
+4. If only assignment behavior changes, `categories/assignments.json`, registry
+   counts, and category ranks stay on the previous publish until a production
+   refresh. That refresh is not part of the default flow. It requires a
+   separate owner authorization after promotion to `main`. Executors do not
+   call production cron or refresh endpoints.
 5. Update `CATEGORIES.md`.
 
 ### Change Ranking Behavior
@@ -129,28 +130,34 @@ Docs-only changes are allowed when the code already implements the behavior.
 5. Update `FRONTEND.md` and `SEO.md` if content, metadata, or internal links
    change.
 
-## Vercel-First Verification
+## Cloudflare Hosting Verification
 
-The project is operated Vercel-first. Do not rely on a local dev server as the
-final verification path.
+The production and preview domains are hosted on Cloudflare Workers (OpenNext).
+Do not rely on a local dev server as the final verification path.
 
 Branch topology and promotion are owned by [OPS.md](./OPS.md) §Branch topology /
-staging. Feature work merges into `pre`, staging verification uses
-`https://pre.gitstarclub.com`, and production promotion is a merge from `pre` to
-`main`.
+staging and by the root `AGENTS.md`. Feature work lands on `pre`. Staging
+verification uses `https://pre.gitstarclub.com`. The default flow stops there.
 
-Preferred production verification sequence:
+Preferred verification sequence:
 
-1. Merge the feature PR into `pre`.
+1. Open the feature pull request against `pre`. The reviewer or owner
+   squash-merges it. The executor does not merge.
 2. Wait for the fixed staging domain, `https://pre.gitstarclub.com`, to serve the
-   Preview deployment (Vercel Authentication: log in with a team account).
+   Cloudflare preview deployment. `https://pre.gitstarclub.com` is public. `noindex` is not access control.
 3. Verify the affected staging URL or behavior on `pre`.
-4. Promote by merging `pre` into `main`.
-5. Wait for the Vercel production deployment to serve the new HTML or behavior.
-6. For code-only read-side changes, verify the affected production URL directly.
-7. For recompute/category/data changes, trigger the production refresh workflow
-   after deployment and wait for `views/latest.json` to point at the new run.
-8. Verify the exact production page or Blob view that proves the change.
+
+Promotion to production is a separate pull request from `pre` to `main`. Open it
+only when the owner explicitly says "push main", "push to main", or "promote to
+main". Merge that pull request with a merge commit so `Closes #N` keeps working.
+After that deploy, wait for the Cloudflare production domain, then verify the
+affected production URL. Code-only read-side changes stop there.
+
+A production refresh is a further explicit authorization. Executors do not call
+production cron or refresh endpoints, including `gitstarclub.com/api/cron/*`.
+When the owner authorizes a refresh for a recompute, category, or other data
+change, that run is what moves `views/latest.json` to the new run. Verify the
+production page or published view only after that authorized run.
 
 Useful production signals:
 
@@ -214,6 +221,8 @@ Before finishing:
 - User-visible route/content changes update `FRONTEND.md` or `SEO.md`.
 - Category/ranking/data behavior changes update the owning doc.
 - Production verification plan is clear.
+- GitHub required CI is `static` + `production-build` only; `preview-e2e` and
+  `product-gates` are optional.
 - No secrets are printed or committed.
 
 ## Drift Handling
