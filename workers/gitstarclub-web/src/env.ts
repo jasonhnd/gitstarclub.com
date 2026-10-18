@@ -45,6 +45,8 @@ export type WorkerEnv = {
   VERCEL_GIT_COMMIT_SHA?: string;
   CF_PREVIEW_ORIGIN?: string;
   HOSTING_TARGET?: string;
+  EDGE_CACHE_VERSION?: string;
+  VIEWS_VERSION_FALLBACK?: string;
   BLOB_BASE_URL?: string;
   MIN_TRACKED_STARS?: string;
   WHITELIST_SEARCH_SHARDS?: string;
