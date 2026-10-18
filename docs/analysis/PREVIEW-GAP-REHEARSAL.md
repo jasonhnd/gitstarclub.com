@@ -169,7 +169,7 @@ task's pipeline input remains restricted to the approved gap and id set.
 
 ### Meaning, date boundaries, and input mapping
 
-GitHub's [endpoint announcement clarification](https://github.com/orgs/community/discussions/206104#discussioncomment-14342442)
+GitHub's [endpoint announcement clarification](https://github.com/orgs/community/discussions/206104)
 says the counts describe stars created on a date that **still exist at
 query time**. Removed stars and their removal dates are absent. A later
 read can revise older counts. This is surviving-star history, neither
