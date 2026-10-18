@@ -10,7 +10,7 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 |---|---|
 | Site | [gitstarclub.com](https://gitstarclub.com) |
 | Stack | Next.js 16 (App Router, RSC) · TypeScript 6 · React 19 · Zod 4 · Tailwind 4 · bun · Node 24 |
-| Read path | Static HTML / on-demand ISR from Cloudflare Workers (OpenNext); JSON in Cloudflare R2 (production still reads Vercel Blob until cutover; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)); no runtime database, no engine in the request path |
+| Read path | Static HTML / on-demand ISR from Cloudflare Workers (OpenNext); JSON in Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)); no runtime database, no engine in the request path |
 | Recurring data refresh | Managed refresh (whitelist → rename → metadata → fold → recompute → buildAliases → validate → publish → garbage-collect) |
 | Live overlay | Daily and weekly cron routes (`current_month.json`, `hot-snapshot.json`) |
 | Bootstrap | One-off BigQuery (GH Archive) + local DuckDB → Parquet → Blob; archived after seed |
@@ -22,7 +22,7 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 - **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB / ClickHouse / Postgres / vector index in the runtime image.
 - **Zero runtime database.** Read-side state is versioned JSON views behind a publish pointer.
 - **Static content pages.** A small core is prerendered at deploy. The long tail is generated on demand and then cached. Content pages stay near-zero client JavaScript. Client islands are listed in [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) and [docs/FRONTEND.md](docs/FRONTEND.md).
-- **Cloudflare hosting.** Production and preview pages run on Cloudflare Workers via OpenNext. JSON is in Cloudflare R2 (production still reads Vercel Blob until cutover; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)). Keep refresh scheduling evidence separate from route implementation.
+- **Cloudflare hosting.** Production and preview pages run on Cloudflare Workers via OpenNext. JSON is in Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)). Keep refresh scheduling evidence separate from route implementation.
 - **AI-free.** Features that would normally call an LLM (summaries, classifications) ship as deterministic templates.
 
 The reasoning behind each constraint is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -82,7 +82,9 @@ gitstarclub/
 
 ## Cron routes and scheduler evidence
 
-The legacy `web/vercel.json` declarations list route cadence, not proof of an active production scheduler. The 2026-09-24 Cloudflare schedules API snapshot in issue #528 showed three preview schedules and an empty production Worker schedule. The production trigger remains unverified; see [docs/OPS.md](docs/OPS.md).
+The legacy `web/vercel.json` declarations list route cadence. They are not proof of an active production scheduler. Repository Worker `triggers.crons` are `[]` for both `gitstarclub-web` and `gitstarclub-web-pre`. The production trigger remains unverified; see [docs/OPS.md](docs/OPS.md). Do not infer it from `web/vercel.json`.
+
+`https://pre.gitstarclub.com` is public and is served by Cloudflare. It sends `<meta name="robots" content="noindex,nofollow">` and `robots.txt` returns `Disallow: /`. `noindex` is not access control. The preview site shows public GitHub data only. There is no login wall.
 
 
 | Path | Schedule | Purpose |
@@ -112,10 +114,13 @@ bun dev
 
 Required environment for local development is documented in [docs/OPS.md](docs/OPS.md)
 and `.env.example`. Copy the template to `web/.env.local`. Storage is
-Cloudflare R2 (production still reads Vercel Blob until cutover; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)).
-Read-only development and builds against the blob driver, until cutover, require only `BLOB_BASE_URL`; `BLOB_READ_WRITE_TOKEN` is required only
-for blob mutation paths. Preview reads do not use that token. Cron and managed refresh execution additionally require
+Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)).
+Read-only R2 development/builds use `STORAGE_READ_DRIVER=r2` and the target public base; production prerender also preserves the frozen fallback while its pointer is absent. The retained Blob driver needs `BLOB_BASE_URL` for reads and `BLOB_READ_WRITE_TOKEN` only for Blob mutation. R2 public reads do not use that token. Cron and managed refresh execution additionally require
 `CRON_SECRET` and `GITHUB_TOKEN`.
+
+Historical transition notice, superseded by the accepted 2026-10-04 cutover:
+"Cloudflare R2 (production still reads Vercel Blob until cutover; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md))."
+Current production uses R2; Blob rollback data remains until separately authorized stage 6 retirement.
 
 ## Common commands
 
