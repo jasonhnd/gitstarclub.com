@@ -80,7 +80,7 @@ Source: GSC_0035 audit findings F01 and F09. Both were re-checked on
     the real invalidation request, and a permanent 503 after commit.
 - Docs: `docs/CHANGELOG.md`, `docs/OPS.md` (`CF_CRON_ORIGIN` row and run
   ledger), `docs/DATA-CONTRACTS.md` §2.12, `docs/VERCEL-DATA-OPERATIONS.md`
-  (publish row and `error.json`), `docs/CF-MIGRATION-P2.md`, and
+  (publish row and `error.json`), `docs/archive/CF-MIGRATION-P2.md`, and
   `docs/API.md` (callback row).
 
 ## Out of scope
