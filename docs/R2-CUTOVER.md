@@ -148,7 +148,7 @@ node scripts/assert-cf-ci-gates.mjs
 bun run lint:docs
 ```
 
-Unset drivers and `blob` still behave as the blob store. Preview `env.pre` sets `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `DEPLOY_ENV=pre`, `R2_BUCKET=gitstarclub-data-pre`, and `MIN_TRACKED_STARS=10000`. It does not set `BLOB_*`, `VIEWS_VERSION_FALLBACK`, `WORKFLOW_COLD_START`, or `PREFLIGHT_RELAX_EMPTY_SHARDS`.
+Unset drivers and `blob` still behave as the blob store. Preview `env.pre` sets `STORAGE_READ_DRIVER=r2`, `STORAGE_WRITE_DRIVER=r2_binding`, `DEPLOY_ENV=pre`, `R2_BUCKET=gitstarclub-data-pre`, and `MIN_TRACKED_STARS=10000`. It also sets `WORKFLOW_COLD_START=1` and `PREFLIGHT_RELAX_EMPTY_SHARDS=1` (#662) so the empty bucket can take one real cold-start refresh; both arm only while `DEPLOY_ENV=pre` and `views/latest.json` is absent, and production must not set them. It does not set `BLOB_*`, `VIEWS_VERSION_FALLBACK`, or `WORKFLOW_FIXTURE`. The one-time first-run procedure is in [OPS.md](./OPS.md) (Preview cold-start first run); the resulting dataset is a rehearsal dataset with no GH Archive history.
 
 Rollback of the code is a revert of those pull requests on `pre`. Do not roll production back by editing `main` from this stage. Production was not switched.
 
