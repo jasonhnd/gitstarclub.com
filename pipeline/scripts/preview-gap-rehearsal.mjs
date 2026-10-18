@@ -198,7 +198,7 @@ export function prepareMetadata(out, cachedDirectory) {
   writeJson(join(out, "pipeline-data/repos.json"), result.repos);
   writeJson(join(out, "pipeline-data/whitelist.json"), result.repos.map((repo) => ({ id: repo.id, node_id: repo.node_id, full_name: repo.full_name })));
   const summary = {
-    status: STATUS, mode: "retained snapshots; strict step 03 is not bypassed",
+    status: STATUS, mode: "historical snapshot assembly; strict step 03 is unchanged and has not passed",
     strictStep03Exception: "GitHub NOT_FOUND/REST 404 for segment-boneyard/nightmare (18477927); historical snapshot reuse is rehearsal-only",
     repositories: result.repos.length, fallbacks: result.fallbacks,
     inactive: result.repos.filter((repo) => repo.active === false).length,
@@ -235,7 +235,7 @@ export async function summarize(out, cachedDirectory) {
       const old = snapshots.read(`heatmap-${month}.json`, `${ORIGIN}/views/${FROZEN}/heatmap/month/${month}.json`, true);
       const current = monthly.find((row) => row.period === month);
       assert(current, `missing rehearsal month ${month}`);
-      sites.push({ month, rehearsalGross: Number(current.adds), days: Number(current.days), frozenFlow: old ? old.cells.reduce((sum, row) => sum + row[1], 0) : null });
+      sites.push({ month, rehearsalGross: Number(current.adds), days: Number(current.days), frozenFlow: old ? old.cells.reduce((sum, row) => sum + row[1], 0) : null, frozenDays: old ? old.cells.length : null });
     }
     const examples = [28457823, 10270250, 132750724].map((id) => {
       const old = snapshots.read(`entity-${id}.json`, `${ORIGIN}/views/${FROZEN}/entity/repo/${id}.json`);
