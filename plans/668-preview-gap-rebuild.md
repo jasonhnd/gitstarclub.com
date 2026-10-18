@@ -4,6 +4,12 @@ Issue: #668. Execution card: GSC_0044.
 
 ## Goal
 
+**Updated owner constraint:** the GH Archive gap is a pipeline rehearsal only,
+not publishable data. Do not upload these artifacts. Assess the GitHub
+`stargazers/history` alternative read-only with a handful of repositories;
+do not extract the entire whitelist. Report its coverage, pagination, API
+quota, date boundaries, and input mapping separately from the rehearsal.
+
 Prepare a locally validated preview baseline using the May gross-star backup
 and only the missing 2026-05-30 through 2026-09-30 interval. Follow section B2-gap
 of `plans/prod-rollout-and-data-repair.md` on `docs/prod-rollout-plan` (PR #667)

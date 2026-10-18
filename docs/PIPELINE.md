@@ -81,6 +81,13 @@ baseline. An October fold needs no frozen pending with those watermarks,
 without the preview cold-start relaxation. Local evidence and later preview
 upload instructions belong in [the rebuild plan](../plans/668-preview-gap-rebuild.md).
 
+The owner subsequently restricted this GH Archive gap to a **local rehearsal
+only** (GSC_0045 sampling found severe undercoverage). Do not upload or publish
+its output. The plan also assesses GitHub's aggregate star-history API with a
+small read-only sample; a complete replacement extraction is not authorized.
+When a rehearsal reuses repository metadata snapshots, step 07 preserves
+`active: false` for historical members instead of reactivating them.
+
 **03 metadata (GraphQL)** — `nodes(ids:[node_id])` fetches in batches of 100/query `owner.login + owner.__typename + name + description + primaryLanguage + languages + repositoryTopics + createdAt + stargazerCount(=current_stars) + isArchived` → the `repos` dimension (DATA-CONTRACTS §1.2).
 
 **04 rollup (DuckDB)** — read the Parquet from 02:
