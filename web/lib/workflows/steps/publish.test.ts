@@ -475,10 +475,8 @@ describe("post-commit publication failures", () => {
     const { state, deps } = fakePublication(pointer("version-old", "version-older"));
     state.snapshots.set("version-new", snapshot("version-new"));
     const lost = new WorkflowLeaseOwnershipError("lost fencing token");
-    let checks = 0;
     deps.ensureOwnership = async () => {
-      checks++;
-      if (checks > 1) throw lost;
+      if (state.pointer?.version === "version-new") throw lost;
     };
 
     const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
@@ -493,10 +491,8 @@ describe("post-commit publication failures", () => {
   test("a non-lease ownership failure after the commit is a post-commit error", async () => {
     const { state, deps } = fakePublication(pointer("version-old", "version-older"));
     state.snapshots.set("version-new", snapshot("version-new"));
-    let checks = 0;
     deps.ensureOwnership = async () => {
-      checks++;
-      if (checks > 1) throw new Error("lease read 500");
+      if (state.pointer?.version === "version-new") throw new Error("lease read 500");
     };
 
     const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
