@@ -81,3 +81,9 @@ production build, and pre Worker dry run all exit zero on the reported head;
 the cold-start tests pass; production files remain unchanged; PR #659 keeps
 `Closes #645`; the handoff includes files, verification, risks, and the full
 head SHA; the editing checkout is clean.
+
+Implementation check: before the fix, the real-chain setup failed with the
+required `CF_CRON_ORIGIN` error while all three cold-start tests passed. After
+the test-only fix, the full-chain, cold-start, and publication-invalidation
+request files passed together (53 tests, zero failures). Full exact-head gate
+results are recorded in PR #659 and the GSC_0058 handoff.

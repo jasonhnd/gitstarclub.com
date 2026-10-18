@@ -110,7 +110,8 @@ export function workflowSeed(): Record<string, string> {
 
 export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Record<string, string> = {}) {
   const store = new WorkflowTestStore(initial);
-  const env = { BLOB_BASE_URL: "https://workflow.test.invalid", STORAGE_READ_DRIVER: "blob", HOSTING_TARGET: "cf", DEPLOY_ENV: "pre", WORKFLOW_RUNTIME: "memory", CRON_SECRET: "workflow-test-only", NEXT_PUBLIC_SITE_URL: "https://workflow.test.invalid", WORKFLOW_STEP_BASE_URL: "https://workflow.test.invalid", WHITELIST_SEARCH_SHARDS: "0", ...extraEnv };
+  // A distinct test-only callback origin exposes accidental site-URL fallbacks.
+  const env = { BLOB_BASE_URL: "https://workflow.test.invalid", STORAGE_READ_DRIVER: "blob", HOSTING_TARGET: "cf", DEPLOY_ENV: "pre", CF_CRON_ORIGIN: "https://workflow-cron.test.invalid", WORKFLOW_RUNTIME: "memory", CRON_SECRET: "workflow-test-only", NEXT_PUBLIC_SITE_URL: "https://workflow.test.invalid", WORKFLOW_STEP_BASE_URL: "https://workflow.test.invalid", WHITELIST_SEARCH_SHARDS: "0", ...extraEnv };
   const previousEnv = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
   Object.assign(process.env, env);
   setSystemTime(new Date(TEST_NOW));
@@ -129,12 +130,12 @@ export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Recor
     return [id, { owner: "example", owner_type: "Organization" as const, name: `repo-${id}`, full_name: `example/repo-${id}`, current_stars: 10000 + id, description: null, language: "TypeScript", languages: [], topics: [], created_at: "2025-01-01", is_archived: false }];
   })));
   const originalFetch = globalThis.fetch;
-  const invalidations: string[] = [];
+  const invalidations: Array<{ url: string; init?: RequestInit }> = [];
   let invalidationStatus = 200;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.pathname === "/api/workflows/refresh/revalidate") {
-      invalidations.push(url.origin);
+      invalidations.push({ url: url.href, init });
       return new Response(null, { status: invalidationStatus });
     }
     if (url.origin !== env.BLOB_BASE_URL || (init?.method && init.method !== "GET")) {
