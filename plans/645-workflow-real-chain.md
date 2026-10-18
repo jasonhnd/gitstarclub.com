@@ -23,8 +23,11 @@ configuration, protected-branch pushes, and merging.
    with behavior and production constants.
 4. Recheck S1 publication invalidation; rebase if it has landed.
 5. Run the complete offline static job and regression proofs on a clean commit
-   export under /tmp/GSC_0073, without creating another worktree (card rule).
+   export under the card temp directory, without creating another worktree
+   (card rule).
 6. Open one PR against pre closing #645 and hand it to cross-family review.
+7. GSC_0020: merge fresh `pre` (normal merge, no rebase), rerun the full gate in
+   a fresh detached checkout of the exact head, and record results in the PR.
 
 ## Acceptance
 
