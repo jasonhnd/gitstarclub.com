@@ -26,7 +26,9 @@ const RUNTIME_SECRET_ENV_KEYS = [
   "CF_API_TOKEN",
 ] as const;
 
-const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+// `(?!\s*[:=])` leaves `bearer = value` to the assignment pass, which owns the delimiter.
+const BEARER = /\bBearer(?!\s*[:=])\s+[A-Za-z0-9._~+/=-]+/gi;
+const REDACTION_MARKER = /\[redacted(?:-url)?\]/y;
 const USERINFO_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]+@[^\s]+/gi;
 const SENSITIVE_QUERY_URL =
   /\bhttps?:\/\/[^\s]*?(?:x-amz-security-token|x-amz-signature|x-amz-credential|access_token|refresh_token|id_token|api[_-]?key|signature|credential|password|secret|token|sig)=[^\s]*/gi;
@@ -185,6 +187,16 @@ function assignmentAt(input: string, index: number): { end: number; replacement:
   if (input[cursor] !== "=" && input[cursor] !== ":") return null;
   cursor += 1;
   while (input[cursor] === " " || input[cursor] === "\t") cursor += 1;
+  REDACTION_MARKER.lastIndex = cursor;
+  const marker = REDACTION_MARKER.exec(input);
+  if (marker) {
+    // Output of an earlier pass: keep it as is, so repeated sanitizing is stable.
+    const markerEnd = cursor + marker[0].length;
+    if (markerEnd >= input.length || UNQUOTED_VALUE_STOP.test(input[markerEnd]!)) {
+      return { end: markerEnd, replacement: input.slice(index, markerEnd) };
+    }
+    cursor = markerEnd;
+  }
   const valueEnd = scanValue(input, cursor);
   const rawValue = input.slice(cursor, valueEnd);
   if (/^bearer$/i.test(rawValue)) return null;
