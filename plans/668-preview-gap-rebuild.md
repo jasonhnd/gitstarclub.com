@@ -71,3 +71,18 @@ GitHub Actions stays off by owner decision.
 - Backup verified: 20 files, 30,907,971 bytes, every size and SHA-256 matched.
 - Existing BigQuery metadata: whitelist 5,249 rows; original May extract
   12,375,426 rows. Both are read-only inputs.
+- Gap job completed below the cap: 90,797 rows, 4,914 repositories,
+  10,581,180,416 billed bytes. The local union has 12,466,223 unique rows
+  and exactly the original 5,249 ids.
+- Local rollup, all 13,012 views, and all 128 required canonical shards
+  validated. The exported-meta fold probe passes on October 1/19/31
+  without pending or cold-start relaxation; W39 controls fail closed.
+- GitHub history assessment used five repositories and 11 history GETs,
+  including the initial sanity request. Estimated gap-only cost is 5,249
+  REST requests, without executing that collection. Surviving-star semantics
+  and non-guaranteed UTC boundaries prevent an automatic substitution.
+- Measured results, metadata snapshot limitations, artifact hashes, and the
+  gated future operator recipe are in
+  [the rehearsal report](../docs/analysis/PREVIEW-GAP-REHEARSAL.md). Current
+  artifacts are not publishable. Step 06 is required before a future remote
+  step 07 commit because the commit verifies both phase manifests.
