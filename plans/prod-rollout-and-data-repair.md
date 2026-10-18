@@ -1,9 +1,11 @@
 # Production rollout and data repair plan
 
 Status: draft for owner decision. References #543 (P0, open). Closes nothing.
-Order: SB-20261018-09, step 1.3. Evidence date: 2026-10-18 about 14:30 UTC.
+Order: SB-20261018-09. Section B revised by GSC_0030. Evidence date: 2026-10-18.
 
 This plan stops before any production deploy, secret change, cron change, or R2 or Blob write. It is built from the accepted diagnosis on GSC_0017, `docs/OPS.md`, `docs/R2-CUTOVER.md`, `docs/PIPELINE.md`, the repository code, and unauthenticated public GETs. `wrangler` is not authenticated on the authoring machine. Anything that needs live Cloudflare state is marked **to verify by operator**.
+
+Section B was revised by GSC_0030 on 2026-10-18 after a read-only look at `gs://gitstarclub-backfill-746384388303/star_daily_gross/` (20 Parquet files, the 2026-05-30 BigQuery export). History through 2026-05-29 comes from that backup. Only 2026-05-30 onward is a new extract. Costs below are estimates from `bq query --dry_run` (bytes billed 0).
 
 ## 0. Starting state
 
@@ -121,49 +123,140 @@ Any failure: roll back (A5), then diagnose.
 
 Goal: make a full managed refresh runnable on production (canonical complete, fold able to proceed) so that the first publish creates `views/latest.json`. Coverage rule (lock-002): the tracked universe stays GitHub repositories with at least 10,000 stars (`MIN_TRACKED_STARS=10000`), same metrics and periods. Rebuilding or backfilling the same coverage is not an expansion. Lowering the floor, adding sources, periods or repositories beyond the weekly whitelist drift would be, and is excluded.
 
-### B1. Copy missing kinds and `pending/2026-08` from the old Vercel Blob store: not available
+Revision (GSC_0030): do not rebuild 2015 through 2026-05-29. That gross history is already in the GCS backup and already matches the frozen views. Rebuild only the gap from 2026-05-30 through the last closed month end, 2026-09-30.
 
-* Public probe (read-only): all 13 keys tried return 404 `Store not found`, including `views/refresh-2026-09-13T06-00-16-398Z/meta.json`, which R2 holds. The store is deleted or disabled. The public base URL is recorded in `docs/R2-CUTOVER.md` and `docs/OPS.md`.
-* What could still be true: the Vercel dashboard or Vercel support may be able to restore a deleted store; the owner may hold local exports. **To verify by operator.** If a copy surfaces, `web/scripts/sync-blob-to-r2.ts --prefix canonical/v2/ --execute` (dry-run by default; needs `DEPLOY_ENV=production`, the Blob token, an R2 S3 key) is the existing copy tool.
-* Closes P2 and P3: only if a snapshot dated at or after the 2026-08 freeze exists. Today: no. Cost 0 and zero spend risk, but currently no source.
+### B0. The GCS backup (read-only, 2026-10-18)
 
-### B2. Rebuild with the pipeline from GH Archive: possible, but cannot land on the populated bucket as-is
+Bucket `gs://gitstarclub-backfill-746384388303/` is in GCP project `gitstarclub`, location US, created 2026-05-30T01:50:50Z. The only prefix is `star_daily_gross/`. `gcloud storage ls -l gs://gitstarclub-backfill-746384388303/**` shows 20 objects, 30,907,971 bytes (29.48 MiB), each created 2026-05-30T01:50:56Z. No write, delete, or ACL change was made. The logged-in account is a project owner on `gitstarclub` (stronger than this check needed). The account name is in the GSC_0030 handoff, not here. The active gcloud config project was left unchanged.
 
-Steps (`docs/PIPELINE.md` section 1, `docs/OPS.md` one-time bootstrap):
+DuckDB on the 20 files (local copy only):
 
-1. `01-whitelist.mjs`: GitHub Search with `stars:>=10000`, adaptive buckets (needs `GITHUB_TOKEN`; about 5.3k repositories).
-2. `02-extract.mjs`: render the BigQuery SQL with a **new** dated table and a cutoff suffix; dry-run with `--maximum_bytes_billed=400000000000`; then run. Requires a GCP project and credentials (`GOOGLE_APPLICATION_CREDENTIALS`, `GCP_PROJECT_ID`). Docs measured about 303 GB scanned and budgeted about $10 for the 2015 to 2026-05-31 extract. A cutoff near today scans slightly more; confirm with the dry run. Export Parquet locally.
-3. `03-metadata.mjs` (GraphQL, `GITHUB_TOKEN`), `04-rollup.mjs` and `05-precompute.mjs` (DuckDB, local; precompute uses `--max-old-space-size=4096`).
-4. `06-upload.mjs` and `07-export-v2.mjs --stage-only` create-only into `bootstrap/generations/<id>/...` of the chosen bucket. Needs a bucket-scoped R2 S3 key (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_PRE|PROD`), kept outside the repository. Runtime: one local machine, unmeasured, plausibly several hours.
-5. Commit (`07 --initial-commit` or a normal commit). **Blocker:** `--initial-commit` refuses when `canonical/v2/meta.json` already exists (`bootstrap-publication.mjs` `INITIAL_COMMIT_ABSENT_PATHS`), and the normal commit path runs `verifyLegacyFlatTarget`, which requires all 128 flat canonical objects plus `meta.json`, `lookup/*` and `rank/all-time/*` at the bucket root. Production has none of the three missing kinds, so both fail closed. Landing it needs either (a) a reviewed code change to the commit gate, or (b) removing `canonical/v2/meta.json` first, which `docs/OPS.md` explicitly says not to do on the populated copy, and which destroys the only copy of the live `repos` shards. Either needs its own authorization and a full backup of `gitstarclub-data-prod` first.
+| Check | Result |
+|---|---|
+| Columns | `repo_id` BIGINT, `day` DATE, `gross_adds` BIGINT |
+| Rows | 12,375,426 |
+| Distinct `repo_id` | 5,249 |
+| Min / max `day` | 2015-01-01 / 2026-05-29 |
+| Rows on or after 2026-05-30 | 0 |
+| Nulls, non-positive `gross_adds`, duplicate `(repo_id, day)` | 0 |
+| Sum of `gross_adds` | 120,374,597 |
 
-Data semantics to decide before running:
-* **Cutoff.** If the cutoff is the last closed month end (2026-09-30), the rebuilt `folded_through` is month 2026-09, and the fold needs no pending until the following month closes. This closes P3 by construction (inference from `fold.ts`; **verify with a local fixture fold before trusting**). A cutoff of 2026-05-31, the original, would leave June to September for pending data that no longer exists.
-* **Gross versus net.** Bootstrap history is GH Archive gross `WatchEvent` counts; the live cron appends GraphQL net deltas after `seam_date`. `docs/OPS.md` (W27 recovery) records that 2026 `WatchEvent` volume is far below 2024 samples (about 80x lower in a spot check). A rebuild through mid-2026 may undercount recent months. Published rank values would change relative to the frozen 2026-09-13 views. This needs an owner decision and a comparison against the frozen views before any production commit.
-* All four kinds, `repos`, `site-daily` and the whitelist pointer are regenerated together; do not mix new kinds with old `repos` shards (anchor factor `d` and `tracked_since` would disagree).
-* Whitelist drift since May is normal weekly churn at the same 10k floor.
+This is gross, not net. `pipeline/backfill/02-extract.sql` lines 1-2 and 28-37 count GH Archive `WatchEvent` rows (no unstar event) as `gross_adds` per `repo.id` and UTC `day`. There is no net column. The minimum `gross_adds` in the file is 1.
 
-Recommended execution order for B2: rehearse the whole chain into `gitstarclub-data-pre` (empty, supports `--initial-commit`, matches the documented stage 2), then reuse the same local artifacts for production. Preview then also gets real data.
-Closes: P2 yes (all 128 shards and `site-daily`); P3 yes if cutoff is the last closed month end; P4 only after the first managed refresh. Spend: BigQuery plus local compute; GitHub API quota. Risk: high (changes published numbers; production commit path blocked; R2 write to the data bucket).
+`pipeline/backfill/04-rollup.mjs` lines 19-22 reads exactly those three names and writes `repo_id`, `day AS date`, `gross_adds AS delta`. The file is the input step 04 expects. DuckDB's BIGINT is the usual read of BigQuery INT64. No cast is required.
 
-### B3. Other paths
+BigQuery metadata (no table contents were queried): dataset `gitstarclub.gitstarclub` in US holds `whitelist` (5,249 rows, `repo_id` INTEGER, created 2026-05-30T01:39:24Z) and unsuffixed `star_daily_gross` (12,375,426 rows, columns `repo_id` INTEGER, `day` DATE, `gross_adds` INTEGER, created 2026-05-30T01:49:05Z). The row count matches the Parquet. `pipeline/lib/extract-sql.mjs` lines 14-17 refuses to render a query that writes that unsuffixed table. Leave both tables in place. A gap extract needs a new dated table such as `gitstarclub.star_daily_gross_260930`.
 
-* **B3a. Targeted `pending/2026-08` (and `2026-09`) from GH Archive.** Small BigQuery extract of two months of daily `WatchEvent` per whitelisted repo (scan likely well under the full extract; dry-run to confirm). No existing tool writes `pending/*` from archive data (`web/scripts/backfill-live-week.ts` writes live rank only), so it needs a new reviewed script. Closes P3 only. Does **not** close P2, which still needs the three kinds. Gross-versus-net caveat applies. Not sufficient on its own.
-* **B3b. Reconstruct `repo-monthly`, `repo-weekly`, `repo-recent-daily` from the frozen views** (`views/refresh-2026-09-13.../entity/repo/<id>.json` curves and period tables, which are deterministic functions of canonical). Existing offline harness `web/scripts/parity-recompute.ts` could check a reconstruction by recomputing and diffing views. Lossy risk: weekly and 90-day daily series may not be recoverable exactly. Needs an analysis card before any decision; unverified. No new data source, so no coverage change.
-* **B3c. Searching for another copy.** The preview bucket is empty (only `_meta/bucket-identity.json`), so it is no source. Owner-side: local machines, a Parquet or `data/` directory (none found in the repository checkout), cloud storage used for the original bootstrap (`gs://` export bucket from `02-extract.sql`), Vercel dashboard. **To verify by operator.** A found `star_daily.parquet` or exported `v2/canonical/v2` directory would make B2 much cheaper (steps 04, 05, 07 only, no BigQuery spend).
-* **B3d. Not allowed:** fabricating empty frozen pending on production (cold-start is physically gated to `DEPLOY_ENV=pre`); hand-writing `views/latest.json` or `bootstrap/latest.json`; relaxing validation.
+`seam_date` on production canonical and on the frozen views is 2026-05-30 (`pipeline/backfill/07-export-v2.mjs` lines 184-186 sets it to the day after max(`date`)). The backup ending on 2026-05-29 is the matching gross side of that seam. It does not include 2026-05-30.
 
-### B4. Comparison
+### B1. Copy missing kinds from the old Vercel Blob store: not available
 
-| Option | Closes P2 | Closes P3 | Changes coverage (lock-002) | Spend | Main risk |
-|---|---|---|---|---|---|
-| B1 Blob copy | yes, if a copy existed | yes, if recent | no | none | source is gone |
-| B2 BigQuery rebuild | yes | yes with last-month-end cutoff | no, same 10k universe and metrics; backfilling the same coverage is not expansion | BigQuery about $10 per docs, GitHub quota, local compute | blocked commit path, changed numbers, destructive-cleanup temptation |
-| B3a pending only | no | yes | no | small BigQuery | partial, gross vs net |
-| B3b reconstruct from views | maybe | no | no | none | lossy, unproven |
-| B3c find local copy | yes | depends on its date | no | none | may not exist |
+Unchanged from GSC_0027. The store at `cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com` answers 404 `Store not found`. It is not a source for `repo-monthly`, `repo-weekly`, `repo-recent-daily`, or `pending/2026-08`. Cost 0. Whether Vercel can restore it is still **to verify by operator**, and it is no longer on the critical path.
 
-Recommendation: (1) operator read-only checks (section D0), including B3c and the Vercel dashboard; (2) if no copy exists, B2 rehearsed on preview first with a cutoff of the last closed month end, preceded by a decision card for the production commit mechanism and a full R2 backup. Do not start any R2 write before the owner approves.
+### B2. Gap rebuild: backup through 2026-05-29, BigQuery only from 2026-05-30 (recommended)
+
+Cutoff: 2026-09-30, the last closed month end (today in this note is 2026-10-18, so October is open). Do not extend the extract through 2026-10-04 just to finish ISO week W40. Step 07 sets `folded_through.month` to the month of the max day (`07-export-v2.mjs` lines 212-213). A max day in October would mark October folded while most of October is missing, and the next month fold would skip the rest.
+
+Steps, and whether each one runs:
+
+1. `01-whitelist.mjs`: not for this repair. The BigQuery whitelist already has 5,249 rows, the same count as distinct `repo_id` in the Parquet. Row counts match; the id sets were not compared, because that would be a query. A fresh search would return today's `stars>=10000` set. The frozen views meta says `active_repo_count` 5542, which is 293 higher than 5249 as a count, not a measured set difference. Lock-002: do not expand coverage. Joining the gap to the existing whitelist keeps the May universe. At least two repositories in the frozen all-time top 100 are absent from the backup (section B4) and have no gross history there. What to do with repositories tracked only after the seam is a separate decision, not part of this extract.
+2. `02-extract`: yes, narrowed window only. Same SELECT as `02-extract.sql` lines 28-37, with `_TABLE_SUFFIX BETWEEN '260530' AND '260930'`, still `type = 'WatchEvent'`, still joining `gitstarclub.whitelist`. Destination must be a new suffixed table. Export Parquet and place it next to the 20 backup files. Dates do not overlap (backup max 2026-05-29, window min 2026-05-30), so `04-rollup.mjs`'s `star_daily_gross/*.parquet` glob will not double-count.
+3. `03-metadata.mjs`: yes. The Parquet and the BigQuery whitelist have `repo_id` only. Step 03 needs `node_id` plus current GraphQL stars to build `repos.json`. That is GitHub API quota, not a BigQuery charge. Without `repos.json`, steps 04 and 05 cannot write names, all-time ranks, or the anchor discount.
+4. `04-rollup.mjs`: yes, local DuckDB, no cloud spend. Input is the union of the backup and the gap files.
+5. `05-precompute.mjs`: yes, local, after 03 and 04.
+6. `06-upload.mjs`: not required. The v2 path is step 07.
+7. `07-export-v2.mjs`: yes, stage into the chosen bucket. The production commit is still blocked (section B5).
+
+Estimated BigQuery bytes, from `bq query --project_id=gitstarclub --location=US --use_legacy_sql=false --dry_run` on 2026-10-18. Each job was a SELECT (no `CREATE`), `dryRun=true`, `totalBytesBilled=0`, accuracy `PRECISE`. These are estimates of a later real run, not an invoice. List price uses the stated rate of 6.25 USD per TiB, with TiB = 2^40 bytes. The first 1 TiB of on-demand scan per month is free. Month-to-date usage of project `gitstarclub` was not measured, so the "if the free tebibyte is still unused" column assumes this job is the month's only scan.
+
+| Window | Bytes (dry run) | Decimal GB | TiB | List price before free tier | If the 1 TiB free tier is still unused |
+|---|---:|---:|---:|---:|---:|
+| Gap 2026-05-30 .. 2026-09-30 (recommended) | 10,580,215,529 | 10.580 | 0.009623 | 0.06 USD | 0 USD |
+| Same gap through 2026-10-04 (do not use; see cutoff note) | 10,801,283,272 | 10.801 | 0.009824 | 0.06 USD | 0 USD |
+| 2015-01-01 .. 2026-05-31, the window in `02-extract.sql` line 15 ("about 303 GB") | 303,236,025,668 | 303.236 | 0.275792 | 1.72 USD | 0 USD |
+| 2015-01-01 .. 2026-09-30, ignoring the backup | 313,606,985,036 | 313.607 | 0.285224 | 1.78 USD | 0 USD |
+
+The 303.236 GB dry run matches the comment in `02-extract.sql` line 15. Both the gap and a full rescan sit inside one free tebibyte, so the dollar difference is small if the free tier is intact. The reason to use the backup is that it already matches the published history, and that the unsuffixed May table must not be overwritten. It is not a large bill avoidance.
+
+GitHub quota for step 03 and local DuckDB time are extra and were not measured. No figure above is a GitHub or Cloudflare charge.
+
+### B3. What the cutoff does to the fold
+
+`07-export-v2.mjs` lines 188 and 212-215 set `folded_through.week` to the ISO week of the max day and `folded_through.month` to that day's `YYYY-MM`. For a max day of 2026-09-30 (Wednesday, week 2026-W40):
+
+* Month watermark 2026-09. September is complete in the file. The next month fold wants October, which is not closed yet (`fold.ts` lines 193-207), so it does not need `pending/2026-09`.
+* Week watermark 2026-W40. `fold.ts` lines 436-452: the next Monday after Sunday of W40 is 2026-10-05, which is after the end of September, so the week phase returns without reading pending. That is how a generation built this way avoids today's failure (`missing required frozen period(s) 2026-08`, `fold.ts` lines 457-460).
+* Side effect, accepted unless a later reviewed change says otherwise: the W40 weekly shard contains only 2026-09-28, 2026-09-29 and 2026-09-30. October 1 through 4 never join that week, because the watermark has already passed it. Stamping W39 instead would make the first refresh demand `pending/2026-09` and fail closed again. Do not do that without a real pending file.
+
+This is still an inference from `fold.ts` and step 07. Prove it with a local fixture fold before the preview rehearsal. Production cannot use the cold-start empty-pending relaxation (`DEPLOY_ENV=pre` only).
+
+### B4. Number impact versus frozen views `refresh-2026-09-13T06-00-16-398Z`
+
+Compared locally with DuckDB, no BigQuery scan and no pipeline write. The node scripts `04-rollup.mjs` and `05-precompute.mjs` were not executed: they write `pipeline/data/` and step 05 needs `repos.json` from GitHub. The comparisons below use the same aggregation as step 04 (`sum(gross_adds)` by period) and public GETs of the frozen generation. All-time in step 05 is ordered by GraphQL `current_stars`, which this backup does not contain.
+
+View meta and canonical meta both say `seam_date` 2026-05-30, `folded_through` month 2026-08 and week 2026-W35, `generated_at` 2026-09-13T06:25:07.096Z. `active_repo_count` is 5542 and `historical_repo_count` is 10.
+
+Periods entirely inside the backup match the frozen generation on star totals:
+
+* `heatmap/year/{2024,2025}.json` and 2026-01 through 2026-05: every month total equals the backup. Delta 0.
+* `heatmap/month/2024-06.json`, `2026-04.json` and `2026-05.json`: every day matches. 2026-05 has 29 days on both sides. 2026-05-30 and 2026-05-31 are absent from the published May heatmap as well as from the backup.
+* Flow top 100, values: exact match (sum of the published top 100 equals the backup for those same ids, and no id has a different value) for month 2024-06, 2025-12, 2026-01, 2026-04 and 2026-05; week 2026-W20, 2026-W21 and 2026-W22; year 2024 and 2025.
+* Flow top 100, order: identical where there is no tie. Where the order differs, the values are equal. The largest place shift is 2, on a three-way tie in week 2026-W22 (several repos with flow 51). That is not a star-count difference.
+* Entity month curves for `freeCodeCamp/freeCodeCamp` (id 28457823) and `react/react` (id 10270250): all 137 months through 2026-05 match.
+
+So using the backup for history before 2026-05-30 does not move published flow totals through 2026-05-29. Two edge periods will move once the gap is appended, because those two days are missing on both sides today:
+
+* Month 2026-05 gains 2026-05-30 and 2026-05-31.
+* Week 2026-W22 gains Saturday 2026-05-30 and Sunday 2026-05-31 (the backup's W22 is only Monday 2026-05-25 through Friday 2026-05-29, and the published top-100 values match that partial week).
+
+Late-May days in the backup are about 5,000 to 14,000 gross stars per day. Two days is a small add on May's 287,718. That size is an extrapolation, not a measured extract.
+
+All-time is a different metric. The frozen `rank/all-time/repo/stock.json` is `current_stars` as of the 2026-09-13 generation, not the gross sum. Top-100 overlap with a gross-cumsum top 100 is 72 of 100. Among those 72 the largest rank shift is 69 places. Only 2 of the published all-time top 100 are absent from the backup: rank 22, id 1333065091, value 221823; rank 71, id 1266797999, value 136777. The published top-100 `current_stars` sum is 19,261,680. The backup's gross top-100 sum is 16,510,555. A later step 03 will refresh `current_stars` again, so all-time will move even for repositories that are in the backup. That movement is expected and is not a gross-versus-net bug.
+
+June through August are not in the backup. The frozen heatmaps (net, and with holes) are:
+
+| Period | Published site total | Days present | What is missing |
+|---|---:|---:|---|
+| 2026-06 | 2,189,425 | 28 of 30 | 2026-06-29, 2026-06-30 |
+| 2026-07 | 2,545,194 | 20 of 31 | 2026-07-01 through 2026-07-11. 2026-07-12 alone is 1,109,427 (catch-up after the token outage) |
+| 2026-08 | 2,445,113 | 31 of 31 | none |
+| Sum | 7,179,732 | | |
+
+`rank/week/2026-W27/repo/flow.json` on that generation returns HTTP 404. `docs/OPS.md` lines 416-421 already say the W27 base ranks are absent until the fold passes W27, and that a 2026 `WatchEvent` spot check was about 80 times lower than a 2024 sample for the same hour of day.
+
+The backup's own 2026 daily gross, through 2026-05-29, is 20,700.5 stars per day, against 45,085.1 per day in 2024 (about 2.2 times lower, not 80 times). A 30-day month at the 2026 rate is about 621,000 stars. Each published net month above is about 2.2 to 2.5 million, roughly 3.9 times that gross rate. If the gap extract stays near the January-May rate, June through August totals fall from about 7.18 million to something near 1.9 million, and the 2026-07-12 spike disappears (a gross series has no GraphQL catch-up day). If the OPS 80-times warning applies to the gap, the drop is much larger. The dry run does not return row counts, so the gap total was not measured. Owner decision: published June through September numbers will change. The pre-seam months will not, apart from the two May days above.
+
+Sample entity net adds after the seam, for scale, not as a site total: freeCodeCamp June/July/August flows 4657 / 2593 / 1510; react 814 / 628 / 1539. Those are one repository each.
+
+### B5. Production commit path (unchanged blocker, leader decision kept)
+
+`--initial-commit` refuses when any of `bootstrap/latest.json`, `views/latest.json`, or `canonical/v2/meta.json` already exists (`pipeline/lib/bootstrap-publication.mjs` lines 9-13 and 304-308). Production `canonical/v2/meta.json` is 200, so `--initial-commit` refuses.
+
+The normal commit, when no bootstrap pointer exists, calls `verifyLegacyFlatTarget` (same file, lines 350-357). That function requires every path in `LEGACY_FLAT_REQUIRED_PATHS` (lines 17-30): `meta.json`, `lookup/repos.json`, `lookup/orgs.json`, `rank/all-time/repo/stock.json`, `rank/all-time/org/stock.json`, `canonical/v2/meta.json`, and 128 shard files (32 buckets times `repos`, `repo-monthly`, `repo-weekly`, `repo-recent-daily`). Production is missing the three shard families, so the check fails closed.
+
+Leader decision, kept: the production commit goes through a reviewed code change to that gate. Not a destructive cleanup, and not a delete of `canonical/v2/meta.json`. `docs/OPS.md` already says not to delete that object on the populated copy. Rehearse the whole chain into empty `gitstarclub-data-pre` first (`--initial-commit` is allowed there). Take a full backup of `gitstarclub-data-prod` before any production write.
+
+### B6. Other paths
+
+* **B6a. Pending only (former B3a).** A small extract cannot close P2. The shards are still missing. Not sufficient.
+* **B6b. Reconstruct from the frozen views (former B3b).** Still the only no-spend way to keep June through August net totals and the repositories that are not in the May whitelist. Lossy for weekly and 90-day series. Not proven. Use it only if the owner rejects changed June through September numbers.
+* **B6c. Full BigQuery rescan, ignoring the backup.** Dry-run estimate 313.607 GB, list price about 1.78 USD, likely 0 USD inside the free tebibyte. It would redo history that already matches the frozen views, and it risks overwriting `gitstarclub.star_daily_gross` if someone renders the unsuffixed name. Do not.
+* **B6d. Not allowed.** Fabricating empty frozen pending on production. Hand-writing `views/latest.json` or `bootstrap/latest.json`. Relaxing validation in place. Deleting canonical objects to make `--initial-commit` succeed.
+
+### B7. Comparison
+
+Estimates are marked. "Free tier" means the estimate if project `gitstarclub` still has the full 1 TiB monthly on-demand allowance. That usage was not measured.
+
+| Option | Closes P2 | Closes P3 | Coverage (lock-002) | Estimated scan | Estimated list price | If free tier unused | Main risk |
+|---|---|---|---|---|---:|---:|---|
+| B1 Blob copy | no | no | no change | none | 0 | 0 | source is gone |
+| B2-gap, backup plus 2026-05-30 .. 2026-09-30 (recommended) | yes, after 03, 04, 05, 07 | yes, with the W40 partial-week caveat in B3 | no expansion if the join stays on the existing 5,249-row whitelist; frozen `active_repo_count` is 5542, and at least two all-time top-100 repos are absent from the backup | 10,580,215,529 bytes | 0.06 USD | 0 USD | June-September numbers change; commit still needs a reviewed code change |
+| B2-full, rescan 2015 .. 2026-09-30 | yes | yes, same caveat | same | 313,606,985,036 bytes | 1.78 USD | 0 USD | redoes matching history; must not overwrite the May table |
+| B6a pending only | no | yes | no expansion | a subset of the gap, under 10.58 GB | under 0.06 USD | 0 USD | does not restore shards |
+| B6b reconstruct from views | maybe | no | no expansion | none | 0 | 0 | lossy, unproven; the path that preserves net totals |
+| B1 plus a found `star_daily.parquet` | n/a | n/a | | | | | the rolled-up canonical Parquet was not in this bucket; the gross export was |
+
+Recommendation: B2-gap. Keep the May tables and the 20 Parquet files as the source through 2026-05-29. Dry-run the gap again immediately before the real job (the byte cap in `02-extract.sql` line 17 is 400,000,000,000, far above this estimate). Rehearse on the preview bucket. Land on production only through the reviewed commit-gate change, after a backup of `gitstarclub-data-prod`. Do not start any R2 write before the owner approves the changed June through September numbers.
 
 ## C. Re-enabling the production schedule and fallback removal
 
@@ -207,19 +300,19 @@ Legend: [no auth] needs no owner authorization (read-only; operator login only w
    0.1 [no auth] `wrangler whoami`, then `wrangler deployments list|status` and `versions list|view` for `gitstarclub-web` and `gitstarclub-web-pre`: live vars, bindings, triggers, current version ids; record the `daee5fc` version id.
    0.2 [no auth] `wrangler secret list` for both Workers (names only): `CRON_SECRET`, `GITHUB_TOKEN`, `BLOB_READ_WRITE_TOKEN`, `ALERT_WEBHOOK_URL`.
    0.3 [no auth] `wrangler r2 object list`/public listing of `gitstarclub-data-prod`: confirm 0/32 for the three kinds, `site-daily`, `pending/*`, `whitelist/*`, and whether `live/generations/*` or `ops/*` still hold anything useful.
-   0.4 [no auth] Vercel dashboard: is the Blob store `cdv7ejjwmzbbdj8w` deleted, paused or recoverable; any export or backup. Ask whether any local `star_daily` Parquet or `v2/canonical/v2` export exists.
+   0.4 [no auth] Vercel dashboard: is the Blob store `cdv7ejjwmzbbdj8w` deleted, paused or recoverable. The GCS gross export is already found (section B0); a local `star_daily.parquet` or `v2/canonical/v2` tree is still not in the checkout. **To verify by operator** only for the Vercel dashboard.
    0.5 [no auth] Check the Workers request log for any external caller of `/api/workflows/refresh/start` since 2026-09-13.
 1. [no auth] Pre-deploy checks A2 on the exact `main` head; record results.
 2. [no auth] Capture A5 rollback record and A2.7 baseline.
 3. [no auth] Build production shell A3.
 4. [owner authorization needed: deploy] Deploy `main` (A4).
 5. [no auth] Post-deploy smoke A6; on failure [owner authorization needed: deploy] rollback A5.
-6. [no auth] Decision card for the data repair: choose B1/B2/B3 after step 0.3 and 0.4; decide cutoff and gross-versus-net handling; decide the production commit mechanism for B2; request a full backup plan.
+6. [no auth] Decision card for the data repair. GSC_0030 recommends B2-gap (sections B2 and B7): history through 2026-05-29 from the GCS parquet, BigQuery only for 2026-05-30 through 2026-09-30. The production commit stays a reviewed code change, not a destructive cleanup (section B5, leader decision, kept). Request a full backup of `gitstarclub-data-prod` before any repair write.
 7. [owner authorization needed: R2 write] Full backup copy of `gitstarclub-data-prod` before any repair write.
-8. [owner authorization needed: spend] GCP project use and BigQuery run (dry-run first with the byte cap), plus GitHub token use for whitelist and metadata.
+8. [owner authorization needed: spend] Run the gap extract only after a fresh dry run still shows about 10.58 GB (section B2). Do not re-scan 2015 through May. GitHub token use is for step 03 metadata, not for a new whitelist search.
 9. [owner authorization needed: R2 write] Rehearse the whole chain into `gitstarclub-data-pre` (bucket-scoped key kept outside the repo); verify preview rankings.
 10. [no auth] Local fixture fold test proving the rebuilt canonical advances without `pending` (B2 cutoff inference).
-11. [owner authorization needed: R2 write] Stage and commit the rebuilt generation to `gitstarclub-data-prod` with the approved commit mechanism (B2 step 5). Never delete `_meta/`, never hand-write a pointer.
+11. [owner authorization needed: R2 write] Stage and commit the rebuilt generation to `gitstarclub-data-prod` with the reviewed commit-gate change (section B5). Never delete `_meta/`, never hand-write a pointer.
 12. [owner authorization needed: secret] Set `CRON_SECRET` and `GITHUB_TOKEN` on `gitstarclub-web` if step 0.2 shows them missing.
 13. [no auth] Land the C2 PR (wrangler crons, `cf-ci-gates.mjs` and its tests, docs) into `pre` with the local full gate; `.delivery.yml` edit only with explicit owner request.
 14. [owner authorization needed: cron] Approve the production schedule change (start with `0 6 * * SUN`).
@@ -231,6 +324,6 @@ Legend: [no auth] needs no owner authorization (read-only; operator login only w
 
 ## Open questions for the owner
 
-1. Is a rebuild with changed published numbers acceptable, or must the frozen 2026-09-13 numbers be preserved (which favors B3b or B1 over B2)?
-2. Which production commit mechanism is acceptable for B2: a reviewed code change to the commit gate, or a backed-up manual cleanup?
+1. Are changed numbers for 2026-05-30 onward acceptable? Periods through 2026-05-29 already match the frozen views (section B4). June through August cannot keep both the frozen net totals and a GH Archive gross fill.
+2. The production commit mechanism is already decided: a reviewed code change to the commit gate, not a destructive cleanup. The remaining authorization is that code change itself, after a preview rehearsal.
 3. May the roll-out of `main` (section A) happen ahead of the data repair?
