@@ -1,7 +1,7 @@
 # Production rollout and data repair plan
 
 Status: draft for owner decision. References #543 (P0, open). Closes nothing.
-Order: SB-20261018-09. Section B revised by GSC_0030. Evidence date: 2026-10-18.
+Order: SB-20261018-09. Section B revised by GSC_0030 on 2026-10-18. GSC_0029 review findings are applied in this revision.
 
 This plan stops before any production deploy, secret change, cron change, or R2 or Blob write. It is built from the accepted diagnosis on GSC_0017, `docs/OPS.md`, `docs/R2-CUTOVER.md`, `docs/PIPELINE.md`, the repository code, and unauthenticated public GETs. `wrangler` is not authenticated on the authoring machine. Anything that needs live Cloudflare state is marked **to verify by operator**.
 
@@ -13,12 +13,12 @@ Section B was revised by GSC_0030 on 2026-10-18 after a read-only look at `gs://
 |---|---|---|
 | Production code | `daee5fc` (deployed 2026-10-04) | `GET https://gitstarclub.com/.well-known/deployment` |
 | Preview code | `5af183a` | same endpoint on `pre.` |
-| Latest code | `main` = `99cb00e`, tree-identical to `pre` `eb24ac8` | `git diff origin/pre origin/main` is empty |
-| Code delta `daee5fc..main` | 6 runtime files: Worker edge cache (`web/lib/workers-host/edge-cache.ts`, the Worker `src/index.ts` and `src/env.ts` under `workers/`), tests, `web/package.json` pin of `source-map-js` 1.2.2 (#655), plus docs and pipeline tests | `git diff --stat daee5fc origin/main` |
+| Latest code | `origin/main` is `99cb00e`. On 2026-10-18 that tree matched `origin/pre` `eb24ac8`. Checked again for this revision: `origin/pre` is `ba45fc0`, two commits ahead (`210f704` #658, `ba45fc0` #662 / #665). Section A still deploys `main`. Confirm the SHA in A2.1. | `git rev-parse origin/main origin/pre`; `git log --oneline origin/main..origin/pre` |
+| Code delta `daee5fc..main` | 55 files. Worker behaviour: `web/lib/workers-host/edge-cache.ts`, the Worker src index.ts and env.ts, the `source-map-js` pin in `web/package.json` and `web/bun.lock`, plus two edge-cache tests (`web/lib/workers-host/edge-cache.test.ts` and `web/lib/workers-host/worker-entry.test.ts`). The same range also changes `pipeline/backfill/05-precompute.mjs` and `pipeline/backfill/07-export-v2.mjs`, and adds `pipeline/lib/backfill-data.mjs`. A Worker deploy does not ship those pipeline files. A B2 rebuild from this commit does. The rest of the 55 are docs and pipeline tests. | `git diff --stat daee5fc origin/main` |
 | Schedules | none: top-level `triggers.crons: []`, `env.pre` `[]` | the Worker `wrangler.jsonc` under `workers/` |
 | Production views pointer | `views/latest.json` and `bootstrap/latest.json` 404; pages live on `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z` | `https://data.gitstarclub.com/...` |
 | Production canonical | `canonical/v2/meta.json` 200 (`folded_through` month 2026-08, week 2026-W35, `seam_date` 2026-05-30); `repos/0..31` 200; `repo-monthly`, `repo-weekly`, `repo-recent-daily` 0/32; `pending/2026-08.json` 404; `site-daily/{2024,2025,2026}.json` 404; `whitelist/latest.json` 404; `star_daily.parquet` 404 | public GETs, GSC_0017 E4 and this card |
-| Last refresh run | `refresh-2026-09-13T06-00-16-398Z` is the last good publish. The 2026-09-23 run failed with `canonical/v2/pending: missing required frozen period(s) 2026-08` | `ops/workflows/active.json`, `health/workflow-refresh.json` |
+| Last refresh run | The 2026-09-13 generation is `views/refresh-2026-09-13T06-00-16-398Z/meta.json` (200). `ops/workflows/health/workflow-refresh.json` is 200, `last_success` is null, and the error is `canonical/v2/pending: missing required frozen period(s) 2026-08`. | public GETs |
 | Old Vercel Blob store | **gone**: every key on `cdv7ejjwmzbbdj8w.public.blob.vercel-storage.com` returns 404 with body `Store not found` (HTTP server: Vercel), including keys that still exist in R2 | this card |
 
 Note on `site-daily`: the 404 probe used the documented key `canonical/v2/site-daily/<yyyy>.json` for 2024, 2025 and 2026. If confirmed by an operator R2 listing, `site-daily` and `whitelist/latest.json` are also missing, which widens P2. **To verify by operator.**
@@ -70,8 +70,7 @@ Read the printed CF build identity SHA and confirm it equals `git rev-parse HEAD
 Operator only, from `web/`, same checkout:
 
 ```sh
-export WORKER_WRANGLER_CONFIG="../workers/$(ls ../workers)/wrangler.jsonc"  # the single Worker directory under workers/
-bunx wrangler deploy --config "$WORKER_WRANGLER_CONFIG" --env="" \
+bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env="" \
   --var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"
 ```
 
@@ -230,11 +229,17 @@ Sample entity net adds after the seam, for scale, not as a site total: freeCodeC
 
 ### B5. Production commit path (unchanged blocker, leader decision kept)
 
-`--initial-commit` refuses when any of `bootstrap/latest.json`, `views/latest.json`, or `canonical/v2/meta.json` already exists (`pipeline/lib/bootstrap-publication.mjs` lines 9-13 and 304-308). Production `canonical/v2/meta.json` is 200, so `--initial-commit` refuses.
+`--initial-commit` refuses when any of `bootstrap/latest.json`, `views/latest.json`, or `canonical/v2/meta.json` already exists (`pipeline/lib/bootstrap-publication.mjs`, `INITIAL_COMMIT_ABSENT_PATHS` lines 9-13, `assertInitialCommitTarget` lines 304-308). Production `canonical/v2/meta.json` is 200, and both pointers are absent, so `--initial-commit` refuses today.
 
-The normal commit, when no bootstrap pointer exists, calls `verifyLegacyFlatTarget` (same file, lines 350-357). That function requires every path in `LEGACY_FLAT_REQUIRED_PATHS` (lines 17-30): `meta.json`, `lookup/repos.json`, `lookup/orgs.json`, `rank/all-time/repo/stock.json`, `rank/all-time/org/stock.json`, `canonical/v2/meta.json`, and 128 shard files (32 buckets times `repos`, `repo-monthly`, `repo-weekly`, `repo-recent-daily`). Production is missing the three shard families, so the check fails closed.
+`--initial-commit` does not call `verifyLegacyFlatTarget`. Lines 350-357 call that function only when `initialCommit` is false and no bootstrap pointer exists. Missing `repo-monthly`, `repo-weekly`, and `repo-recent-daily` shards therefore do not fail `--initial-commit`. They fail the normal commit.
 
-Leader decision, kept: the production commit goes through a reviewed code change to that gate. Not a destructive cleanup, and not a delete of `canonical/v2/meta.json`. `docs/OPS.md` already says not to delete that object on the populated copy. Rehearse the whole chain into empty `gitstarclub-data-pre` first (`--initial-commit` is allowed there). Take a full backup of `gitstarclub-data-prod` before any production write.
+`verifyLegacyFlatTarget` requires every path in `LEGACY_FLAT_REQUIRED_PATHS` (lines 17-29): root `meta.json`, `lookup/repos.json`, `lookup/orgs.json`, `rank/all-time/repo/stock.json`, `rank/all-time/org/stock.json`, `canonical/v2/meta.json`, and the 128 `canonical/v2/<kind>/<bucket>.json` shards. Those shards are not at the bucket root. The kinds are `repos`, `repo-monthly`, `repo-weekly`, and `repo-recent-daily`, buckets 0 through 31. Public GETs on 2026-10-18: `canonical/v2/repos/0` through `31` are 200; the other three kinds, buckets 0 through 31, are 404; `canonical/v2/meta.json` is 200 with `folded_through` month 2026-08 and week 2026-W35.
+
+Deleting `canonical/v2/meta.json` does not delete `canonical/v2/repos/*`. With both pointers still absent, removing that meta object drops `seam_date` and `folded_through`, leaves the live repos shards in place, and is what makes `--initial-commit` legal. `docs/OPS.md` line 633 forbids initial-commit and bad-first-publish cleanup on the populated production copy. Do not do it.
+
+`pipeline/backfill/07-export-v2.mjs` stages under `bootstrap/generations` and the commit writes `bootstrap/latest.json` (around lines 306-345).
+
+Leader decision, kept: the production commit goes through a reviewed code change to that gate. Not a destructive cleanup. Rehearse the whole chain into empty `gitstarclub-data-pre` first (`--initial-commit` is allowed there). Take a full backup of `gitstarclub-data-prod` before any production write.
 
 ### B6. Other paths
 
@@ -283,7 +288,7 @@ Prefer one manual authenticated run before relying on the schedule [owner author
 curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://gitstarclub.com/api/workflows/refresh/start
 ```
 
-Watch `ops/workflows/<run_id>/steps/*.json`, `health/workflow-refresh.json` and Workers Observability. There is no dry run for managed refresh. Do not call `/api/cron/*` as a substitute. A successful publish writes `views/latest.json` (never hand-write it), then run the data-exports regeneration from `docs/DATA-EXPORTS.md`.
+Watch `ops/workflows/<run_id>/steps/*.json`, `ops/workflows/health/workflow-refresh.json` and Workers Observability. There is no dry run for managed refresh. Do not call `/api/cron/*` as a substitute. A successful publish writes `views/latest.json` (never hand-write it), then run the data-exports regeneration from `docs/DATA-EXPORTS.md`.
 
 ### C4. Fallback removal conditions (per `docs/OPS.md`, separately authorized)
 
