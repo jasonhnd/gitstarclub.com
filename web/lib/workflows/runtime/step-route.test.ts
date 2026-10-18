@@ -592,9 +592,9 @@ describe("publish failures after the pointer commit", () => {
   });
 
   test.each([
-    ["after the pointer write", 2],
-    ["after the recovery write", 3],
-  ])("a lease lost %s is not retried and records the live version", async (_label, failingCheck) => {
+    ["after the pointer write", false],
+    ["after the recovery write", true],
+  ])("a lease lost %s is not retried and records the live version", async (_label, afterRecovery) => {
     const { state, deps } = memoryPublication(async () => {});
     let writes = 0;
     const writePointer = deps.writePointer;
@@ -602,18 +602,19 @@ describe("publish failures after the pointer commit", () => {
       writes++;
       return writePointer(next);
     };
-    let checks = 0;
     deps.ensureOwnership = async () => {
-      checks++;
-      if (checks === failingCheck) throw new lease.WorkflowLeaseOwnershipError(`lost fencing token ${fencingToken}`);
+      const switched = state.pointer?.version === runId;
+      if (switched && (!afterRecovery || state.recoveryVersion === runId)) {
+        throw new lease.WorkflowLeaseOwnershipError(`lost fencing token ${fencingToken}`);
+      }
     };
 
     const response = await runPublish(deps);
 
     expect(response.status).toBe(500);
     expect(writes).toBe(1);
-    expect(checks).toBe(failingCheck);
     expect(state.pointer?.version).toBe(runId);
+    expect(state.recoveryVersion).toBe(afterRecovery ? runId : null);
     expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: runId });
     expect(storedAt("/error.json")).toMatchObject({
       phase: "post_commit",
@@ -624,16 +625,13 @@ describe("publish failures after the pointer commit", () => {
 
   test("a lease lost before the pointer write stays a pre-commit failure", async () => {
     const { state, deps } = memoryPublication(async () => {});
-    let checks = 0;
     deps.ensureOwnership = async () => {
-      checks++;
       throw new lease.WorkflowLeaseOwnershipError("lost fencing token");
     };
 
     const response = await runPublish(deps);
 
     expect(response.status).toBe(500);
-    expect(checks).toBe(1);
     expect(state.pointer?.version).toBe("refresh-previous");
     expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: null });
     expect(storedAt("/error.json")).toMatchObject({ phase: "pre_commit" });
