@@ -22,6 +22,7 @@ import { getWriteObjectStore } from "@/lib/storage";
 import { isUniverseColdStartActive } from "@/lib/workflows/cold-start";
 import { canonicalShardReadConcurrency } from "@/lib/workflows/canonical-validation";
 import { REPO_BUCKETS } from "../buckets";
+import { parseRankCarry, rankCarryPath, type RankCarryFile } from "./carry-codec";
 import { assembleModel, normalizeRepoMeta, seamPeriods, type DailySeries, type Model, type OwnerType, type RepoMeta, type Series } from "./model";
 import type { Window } from "./windows";
 import { putOwnedView, workflowHeartbeat } from "@/lib/workflows/owned-write";
@@ -460,65 +461,15 @@ export async function streamPackedOrgPeriodRows(
   return acc.map(orgRowsFromAbsorbed);
 }
 
-export type RankCarryFile = {
-  v: 1;
-  kind: PackedWindowKind;
-  dim: "repo" | "org";
-  nextPeriod: number;
-  flow: Array<[string, number]>;
-  stock: Array<[string, number]>;
-  orgStock?: Array<[number, number]>;
-};
-
-export function rankCarryPath(runId: string, kind: PackedWindowKind, dim: "repo" | "org"): string {
-  return `ops/workflows/${runId}/recompute/${kind}-${dim}-carry.json`;
-}
-
-function coerceRankCarry(json: unknown, kind: PackedWindowKind, dim: "repo" | "org"): RankCarryFile | null {
-  if (!json || typeof json !== "object") return null;
-  const rec = json as {
-    v?: unknown;
-    kind?: unknown;
-    dim?: unknown;
-    nextPeriod?: unknown;
-    flow?: unknown;
-    stock?: unknown;
-    orgStock?: unknown;
-  };
-  if (rec.v !== 1 || rec.kind !== kind || rec.dim !== dim || typeof rec.nextPeriod !== "number") return null;
-  if (!Array.isArray(rec.flow) || !Array.isArray(rec.stock)) return null;
-  const flow: Array<[string, number]> = [];
-  const stock: Array<[string, number]> = [];
-  for (const row of rec.flow) {
-    if (!Array.isArray(row) || typeof row[0] !== "string" || typeof row[1] !== "number") return null;
-    flow.push([row[0], row[1]]);
-  }
-  for (const row of rec.stock) {
-    if (!Array.isArray(row) || typeof row[0] !== "string" || typeof row[1] !== "number") return null;
-    stock.push([row[0], row[1]]);
-  }
-  let orgStock: Array<[number, number]> | undefined;
-  if (rec.orgStock !== undefined) {
-    if (!Array.isArray(rec.orgStock)) return null;
-    orgStock = [];
-    for (const row of rec.orgStock) {
-      if (!Array.isArray(row) || typeof row[0] !== "number" || typeof row[1] !== "number") return null;
-      orgStock.push([row[0], row[1]]);
-    }
-  }
-  return { v: 1, kind, dim, nextPeriod: rec.nextPeriod, flow, stock, orgStock };
-}
-
 export async function readRankCarry(
   runId: string,
   kind: PackedWindowKind,
   dim: "repo" | "org",
 ): Promise<RankCarryFile | null> {
-  const raw = await readAuthoritativeView(rankCarryPath(runId, kind, dim), UnknownJson, {
-    bust: runId,
-    skipSchemaParse: true,
-  });
-  return coerceRankCarry(raw, kind, dim);
+  const path = rankCarryPath(runId, kind, dim);
+  const raw = await readAuthoritativeView(path, UnknownJson, { bust: runId, skipSchemaParse: true });
+  // Only an absent object is null. A present but malformed carry must fail loudly.
+  return raw === null ? null : parseRankCarry(raw, kind, dim, path);
 }
 
 export async function writeRankCarry(owner: WorkflowOwnership, carry: RankCarryFile): Promise<void> {
