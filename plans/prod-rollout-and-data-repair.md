@@ -191,7 +191,7 @@ This is still an inference from `fold.ts` and step 07. Prove it with a local fix
 
 ### B4. Number impact versus frozen views `refresh-2026-09-13T06-00-16-398Z`
 
-Compared locally with DuckDB, no BigQuery scan and no pipeline write. The node scripts `04-rollup.mjs` and `05-precompute.mjs` were not executed: they write `pipeline/data/` and step 05 needs `repos.json` from GitHub. The comparisons below use the same aggregation as step 04 (`sum(gross_adds)` by period) and public GETs of the frozen generation. All-time in step 05 is ordered by GraphQL `current_stars`, which this backup does not contain.
+Compared locally with DuckDB, no BigQuery scan and no pipeline write. The node scripts `04-rollup.mjs` and `05-precompute.mjs` were not executed: they write the gitignored pipeline data directory, and step 05 needs `repos.json` from GitHub. The comparisons below use the same aggregation as step 04 (`sum(gross_adds)` by period) and public GETs of the frozen generation. All-time in step 05 is ordered by GraphQL `current_stars`, which this backup does not contain.
 
 View meta and canonical meta both say `seam_date` 2026-05-30, `folded_through` month 2026-08 and week 2026-W35, `generated_at` 2026-09-13T06:25:07.096Z. `active_repo_count` is 5542 and `historical_repo_count` is 10.
 
