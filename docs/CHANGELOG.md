@@ -19,6 +19,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Fixed
 
+- **Rank and rest recompute hops are replay-safe (#646).** A rank window below the carry `nextPeriod` returns its persisted result without rewriting views, so a late duplicate no longer turns the first period's `prev_rank` into a value; a window above it fails before writing rank views. Rest ingest marks a bucket done only after the partial and the category shard are written, so a retry after a shard failure writes the shard. Rank carry, rest carry, and rest partial reads fail with the object path and field reason when corrupt; only an absent object is missing.
+
 - **Dependency audit (`braces`, GHSA-vfj7-8cjw-p6xm).** `web/package.json` overrides transitive `braces` to the depth-guard backport at `micromatch/braces@bdb6fda` until npm publishes a fixed `3.0.x` release. Dev-only ESLint glob tooling; production runtime unchanged.
 
 ### Added
