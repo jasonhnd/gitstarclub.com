@@ -237,4 +237,38 @@ describe("sanitizeErrorText", () => {
     const output = sanitizeErrorText(`session check failed ${jwt}`, { env: {} });
     expect(output).toBe("session check failed [redacted]");
   });
+
+  test("is idempotent for assignment redaction across repeated calls", () => {
+    const inputs = [
+      "token=CANARYstart:CANARYtail!",
+      'metadata failed {"token":"CANARYstart:CANARYtail!"}',
+      "password: CANARYpunctuation42 and secret=CANARYtwo",
+      "Authorization: Bearer CANARYheader7",
+    ];
+    for (const input of inputs) {
+      const once = sanitizeErrorText(input, { env: {} });
+      expect(once).not.toContain("CANARY");
+      expect(sanitizeErrorText(once, { env: {} })).toBe(once);
+      expect(sanitizeErrorText(sanitizeErrorText(once, { env: {} }), { env: {} })).toBe(once);
+    }
+    expect(sanitizeErrorText("token=CANARYstart:CANARYtail!", { env: {} })).toBe("token=[redacted]");
+  });
+
+  test("does not trust a redaction marker that is followed by more value text", () => {
+    const output = sanitizeErrorText("token=[redacted]CANARYtail", { env: {} });
+    expect(output).not.toContain("CANARY");
+  });
+
+  test("redacts bearer assignments with a spaced delimiter instead of treating them as headers", () => {
+    for (const input of ["bearer = !CANARYpunctuation42", "bearer: !CANARYpunctuation42", "Bearer =!CANARYpunctuation42"]) {
+      const output = sanitizeErrorText(input, { env: {} });
+      expect(output).not.toContain("CANARY");
+      expect(output).not.toContain("!");
+    }
+  });
+
+  test("keeps bearer header redaction", () => {
+    expect(sanitizeErrorText("Authorization: Bearer CANARYheader7", { env: {} })).not.toContain("CANARY");
+    expect(sanitizeErrorText("sent Bearer CANARYheader7 to api", { env: {} })).toBe("sent Bearer [redacted] to api");
+  });
 });
