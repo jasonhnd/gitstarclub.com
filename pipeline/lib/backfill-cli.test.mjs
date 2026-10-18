@@ -177,6 +177,22 @@ describe("steps 01 through 03 offline entry points", () => {
     expect(value.trace()).toEqual([]);
   });
 
+  test("02 renders only the requested create-only gap with either argument style", () => {
+    const value = fixture();
+    const destination = "gitstarclub.star_daily_gross_gap_260530_260930_20261019";
+    const spaced = succeeds(value.run("02-extract.mjs", [
+      "--start-suffix", "260530", "--cutoff-suffix", "260930", "--destination", destination, "--create-only",
+    ]));
+    expect(succeeds(value.run("02-extract.mjs", [
+      "--start-suffix=260530", "--cutoff-suffix=260930", `--destination=${destination}`, "--create-only",
+    ]))).toBe(spaced);
+    expect(spaced).toContain(`CREATE TABLE \`${destination}\``);
+    expect(spaced).toContain("BETWEEN '260530' AND '260930'");
+    fails(value.run("02-extract.mjs", ["--start-suffix"]), "--start-suffix requires a value");
+    fails(value.run("02-extract.mjs", ["--start-suffix", "--create-only"]), "--start-suffix requires a value");
+    expect(value.trace()).toEqual([]);
+  });
+
   test("03 uses GraphQL metadata over stale Search names and star counts", () => {
     const value = fixture();
     value.configure({ github: true });
