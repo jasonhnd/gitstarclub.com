@@ -52,7 +52,7 @@ export const en = {
       "How GitStarClub charts GitHub star history: data from GH Archive & GitHub API, gross vs net stars, the ≥10k whitelist, and known caveats.",
     privacyTitle: "Privacy",
     privacyDescription:
-      "GitStarClub privacy details: privacy-friendly Vercel Web Analytics, no tracking cookies, and only an essential language preference cookie.",
+      "GitStarClub privacy details: no analytics scripts or tracking cookies, and only an essential language preference cookie.",
   },
   about: {
     heroPre: "A factual ",
@@ -430,7 +430,7 @@ export const en = {
     title: "Privacy-first by default.",
     analyticsTitle: "Analytics",
     analyticsBody:
-      "GitStarClub uses Vercel Web Analytics to count page views in aggregate. It is cookieless and privacy-friendly: it does not set cookies, follow you across sites, fingerprint your device, or collect personal or profile data. There are no advertising pixels or third-party tracking scripts.",
+      "GitStarClub does not use analytics scripts or advertising pixels. It does not track you across sites or fingerprint your device. There are no third-party tracking scripts.",
     cookiesTitle: "Cookies and storage",
     cookiesBody:
       "The only cookie is gsc_lang, which stores your language preference. It is a first-party, functional preference cookie. Theme preference is stored locally in your browser and is not sent to the server.",

@@ -44,7 +44,7 @@ runbooks still live in [OPS.md](./OPS.md). SEO crawl policy still lives in
 | `/api/cron/weekly` | `web/app/api/cron/weekly/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | `LiveRefreshResult` plus route fields |
 | `/api/workflows/refresh/start` | `web/app/api/workflows/refresh/start/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | refresh enqueue result |
 | `/api/workflows/refresh/step` | `web/app/api/workflows/refresh/step/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; no explicit `Cache-Control` | one refresh step result |
-| `/api/workflows/refresh/revalidate` | `web/app/api/workflows/refresh/revalidate/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; internal callback | publication cache invalidation result |
+| `/api/workflows/refresh/revalidate` | `web/app/api/workflows/refresh/revalidate/route.ts` | Bearer `CRON_SECRET` | `force-dynamic`; internal callback that publish / rollback POST on the running deployment (`CF_CRON_ORIGIN` on Cloudflare), never a production fallback | publication cache invalidation result |
 | `/api/workflows/refresh/rollback` | `web/app/api/workflows/refresh/rollback/route.ts` | Bearer `CRON_SECRET` + `idempotency-key` | `force-dynamic`; no explicit `Cache-Control` | fenced pointer rollback result |
 | `/api/lang` | `web/app/api/lang/route.ts` | Public | Redirect plus cookie mutation; no explicit `Cache-Control` | `307` redirect |
 | `/search-index` | `web/app/search-index/route.ts` | Public | CDN `s-maxage=3600`; empty fallback `s-maxage=60` | `SearchIndex` / `SearchDoc` |
