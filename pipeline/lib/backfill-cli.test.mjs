@@ -248,6 +248,19 @@ describe("local DuckDB rollup, precompute, and publication commands", () => {
     return value;
   }
 
+  test("07 retains inactive historical repositories when reusing a metadata snapshot", () => {
+    const value = localFixture();
+    const repos = value.readData("repos.json");
+    repos[1].active = false;
+    value.writeData("repos.json", repos);
+    succeeds(value.run("07-export-v2.mjs", ["--generation", GENERATION, "--stage-only", "--no-upload"]));
+    expect(value.readData("v2/canonical/v2/repos/6.json")["11730342"]).toMatchObject({
+      id: 11730342, active: false, current_stars: 60000,
+    });
+    expect(value.readData("v2/canonical/v2/repos/4.json")["132750724"].active).toBe(true);
+    expect(value.trace()).toEqual([]);
+  });
+
   test("04 preserves gross facts and records the first threshold-crossing dates", async () => {
     expect(rollupOutput).toContain("milestones for 3 repos merged");
     expect(baseline.readData("repos.json")[0]).toMatchObject({
