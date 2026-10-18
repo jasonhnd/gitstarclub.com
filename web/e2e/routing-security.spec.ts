@@ -10,23 +10,30 @@ const NOT_FOUND_TITLES = {
   fr: "Page introuvable",
 } as const;
 
-test("analytics stays same-origin and compatible with the response CSP", async ({ page }) => {
-  const googleTrackingRequests: string[] = [];
-  page.on("request", (request) => {
-    if (/google-analytics\.com|googletagmanager\.com/.test(request.url())) {
-      googleTrackingRequests.push(request.url());
-    }
+for (const locale of Object.keys(NOT_FOUND_TITLES)) {
+  test(`${locale} privacy has no analytics provider or tracking requests`, async ({ page }) => {
+    const trackingRequests: string[] = [];
+    page.on("request", (request) => {
+      if (/google-analytics\.com|googletagmanager\.com|\/_vercel\/(?:insights|speed-insights)|vercel-insights\.com/.test(request.url())) {
+        trackingRequests.push(request.url());
+      }
+    });
+
+    const prefix = locale === "en" ? "" : `/${locale}`;
+    const response = await page.goto(`${prefix}/privacy`, { waitUntil: "networkidle" });
+    expect(response?.status()).toBe(200);
+    const csp = response?.headers()["content-security-policy"] ?? "";
+
+    expect(csp).toContain("script-src 'self' 'unsafe-inline'");
+    expect(csp).toContain("connect-src 'self'");
+    expect(csp).not.toContain("googletagmanager.com");
+    expect(csp).not.toContain("google-analytics.com");
+    await expect(page.locator("main")).not.toContainText(/Vercel|Web Analytics/i);
+    await expect(page.locator('meta[name="description"]')).not.toHaveAttribute("content", /Vercel|Web Analytics/i);
+    await expect(page.locator('script[src*="/_vercel/insights"], script[src*="vercel-insights.com"]')).toHaveCount(0);
+    expect(trackingRequests).toEqual([]);
   });
-
-  const response = await page.goto("/privacy", { waitUntil: "networkidle" });
-  const csp = response?.headers()["content-security-policy"] ?? "";
-
-  expect(csp).toContain("script-src 'self'");
-  expect(csp).toContain("connect-src 'self'");
-  expect(csp).not.toContain("googletagmanager.com");
-  expect(csp).not.toContain("google-analytics.com");
-  expect(googleTrackingRequests).toEqual([]);
-});
+}
 
 test("the language endpoint never redirects cross-origin", async ({ request, baseURL }) => {
   const response = await request.get(
