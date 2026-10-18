@@ -9,10 +9,12 @@ import type {
 import {
   PublicationCommitUnknownError,
   PublicationPostCommitError,
+  PublicationPostCommitLeaseLostError,
   publishVersionWithDeps,
   rollbackVersionWithDeps,
   type PublicationDeps,
 } from "@/lib/workflows/publication-core";
+import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
 
 type WriteName = "intent" | "pointer" | "recovery" | "whitelist";
 type Failure = { write: WriteName; timing: "before" | "after" } | null;
@@ -469,21 +471,52 @@ describe("post-commit publication failures", () => {
     }
   });
 
-  test("lost ownership after the commit is not rewrapped, so the runtime still refuses to retry", async () => {
+  test("lost ownership after the commit stays non-retryable and names the live version", async () => {
     const { state, deps } = fakePublication(pointer("version-old", "version-older"));
     state.snapshots.set("version-new", snapshot("version-new"));
-    const lost = new Error("lost fencing token");
+    const lost = new WorkflowLeaseOwnershipError("lost fencing token");
     let checks = 0;
     deps.ensureOwnership = async () => {
       checks++;
-      if (checks > 2) throw lost;
+      if (checks > 1) throw lost;
     };
 
     const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
 
-    expect(error).toBe(lost);
+    expect(error).toBeInstanceOf(WorkflowLeaseOwnershipError);
+    expect(error).toBeInstanceOf(PublicationPostCommitLeaseLostError);
+    expect(error).toMatchObject({ version: "version-new", step: "ownership", cause: lost });
     expect(state.pointer?.version).toBe("version-new");
     expect(state.recovery).toBeNull();
+  });
+
+  test("a non-lease ownership failure after the commit is a post-commit error", async () => {
+    const { state, deps } = fakePublication(pointer("version-old", "version-older"));
+    state.snapshots.set("version-new", snapshot("version-new"));
+    let checks = 0;
+    deps.ensureOwnership = async () => {
+      checks++;
+      if (checks > 1) throw new Error("lease read 500");
+    };
+
+    const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
+
+    expect(error).toBeInstanceOf(PublicationPostCommitError);
+    expect(error).toMatchObject({ version: "version-new", step: "ownership" });
+  });
+
+  test("lost ownership before the commit stays a plain lease error", async () => {
+    const { state, deps } = fakePublication(pointer("version-old", "version-older"));
+    state.snapshots.set("version-new", snapshot("version-new"));
+    deps.ensureOwnership = async () => {
+      throw new WorkflowLeaseOwnershipError("lost fencing token");
+    };
+
+    const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
+
+    expect(error).toBeInstanceOf(WorkflowLeaseOwnershipError);
+    expect(error).not.toBeInstanceOf(PublicationPostCommitLeaseLostError);
+    expect(state.pointer?.version).toBe("version-old");
   });
 
   test("a replay after a permanent invalidation failure repairs the publication", async () => {

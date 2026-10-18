@@ -9,6 +9,7 @@ import {
   type WhitelistSnapshot as WhitelistSnapshotType,
 } from "@/lib/contracts";
 import { SCHEMA_VER } from "@/lib/data/meta";
+import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
 
 export type PublicationResult = {
   version: string;
@@ -30,7 +31,12 @@ export type PublicationOwner = {
 export type PublicationCommitCheckStep = "invalidate" | "whitelist_snapshot" | "pointer";
 
 /** Steps that can fail while `views/latest.json` already serves the intent's version. */
-export type PublicationPostCommitStep = PublicationCommitCheckStep | "recovery" | "whitelist_pointer" | "indexnow";
+export type PublicationPostCommitStep =
+  | PublicationCommitCheckStep
+  | "recovery"
+  | "whitelist_pointer"
+  | "indexnow"
+  | "ownership";
 
 function causeText(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -51,6 +57,23 @@ export class PublicationPostCommitError extends Error {
     this.name = "PublicationPostCommitError";
     this.version = version;
     this.step = step;
+  }
+}
+
+/**
+ * The run lost its lease after the pointer switched. It is still a
+ * WorkflowLeaseOwnershipError, so the runtime refuses to retry it, and it
+ * carries the live version so the run ledger records a post-commit failure.
+ */
+export class PublicationPostCommitLeaseLostError extends WorkflowLeaseOwnershipError {
+  readonly version: string;
+  readonly step = "ownership" satisfies PublicationPostCommitStep;
+
+  constructor(version: string, cause: WorkflowLeaseOwnershipError) {
+    super(`version ${version} is live; post-commit ownership check failed: ${cause.message}`);
+    this.name = "PublicationPostCommitLeaseLostError";
+    this.version = version;
+    this.cause = cause;
   }
 }
 
@@ -191,6 +214,22 @@ async function afterCommit(
   }
 }
 
+/** Ownership check after the pointer switched: a failure here is a post-commit failure. */
+async function ensureOwnershipAfterCommit(
+  owner: PublicationOwner,
+  intent: PublishIntentType,
+  deps: PublicationDeps,
+): Promise<void> {
+  try {
+    await deps.ensureOwnership(owner);
+  } catch (error) {
+    if (error instanceof WorkflowLeaseOwnershipError) {
+      throw new PublicationPostCommitLeaseLostError(intent.version, error);
+    }
+    throw new PublicationPostCommitError(intent.version, "ownership", error);
+  }
+}
+
 async function applyIntent(
   owner: PublicationOwner,
   intent: PublishIntentType,
@@ -228,13 +267,15 @@ async function applyIntent(
   // pointer advance only after that switch succeeds. If a later write fails,
   // the immutable intent makes the retry reproduce the same rollback metadata.
   // Failures after the switch surface as PublicationPostCommitError so the run
-  // ledger records the live version. Ownership checks stay unwrapped: a lost
-  // lease must keep its non-retryable WorkflowLeaseOwnershipError type.
+  // ledger records the live version. A lease lost after the switch keeps its
+  // non-retryable WorkflowLeaseOwnershipError type through
+  // PublicationPostCommitLeaseLostError. The check before the switch stays a
+  // plain pre-commit error.
   await deps.ensureOwnership(owner);
   await beforeCommit(intent, deps, replay, "pointer", () => deps.writePointer(pointer));
-  await deps.ensureOwnership(owner);
+  await ensureOwnershipAfterCommit(owner, intent, deps);
   await afterCommit(intent, "recovery", () => deps.writeRecovery(recovery));
-  await deps.ensureOwnership(owner);
+  await ensureOwnershipAfterCommit(owner, intent, deps);
   await afterCommit(intent, "whitelist_pointer", () => deps.writeWhitelistPointer(publishedWhitelist));
   await afterCommit(intent, "invalidate", () => deps.invalidate());
   await afterCommit(intent, "indexnow", () =>

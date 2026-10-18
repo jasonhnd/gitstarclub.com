@@ -591,6 +591,54 @@ describe("publish failures after the pointer commit", () => {
     expect(storedAt("/error.json")).not.toHaveProperty("committed_version");
   });
 
+  test.each([
+    ["after the pointer write", 2],
+    ["after the recovery write", 3],
+  ])("a lease lost %s is not retried and records the live version", async (_label, failingCheck) => {
+    const { state, deps } = memoryPublication(async () => {});
+    let writes = 0;
+    const writePointer = deps.writePointer;
+    deps.writePointer = async (next) => {
+      writes++;
+      return writePointer(next);
+    };
+    let checks = 0;
+    deps.ensureOwnership = async () => {
+      checks++;
+      if (checks === failingCheck) throw new lease.WorkflowLeaseOwnershipError(`lost fencing token ${fencingToken}`);
+    };
+
+    const response = await runPublish(deps);
+
+    expect(response.status).toBe(500);
+    expect(writes).toBe(1);
+    expect(checks).toBe(failingCheck);
+    expect(state.pointer?.version).toBe(runId);
+    expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: runId });
+    expect(storedAt("/error.json")).toMatchObject({
+      phase: "post_commit",
+      committed_version: runId,
+      failed_step: "ownership",
+    });
+  });
+
+  test("a lease lost before the pointer write stays a pre-commit failure", async () => {
+    const { state, deps } = memoryPublication(async () => {});
+    let checks = 0;
+    deps.ensureOwnership = async () => {
+      checks++;
+      throw new lease.WorkflowLeaseOwnershipError("lost fencing token");
+    };
+
+    const response = await runPublish(deps);
+
+    expect(response.status).toBe(500);
+    expect(checks).toBe(1);
+    expect(state.pointer?.version).toBe("refresh-previous");
+    expect(storedAt("/manifest.json")).toMatchObject({ status: "failed", published_version: null });
+    expect(storedAt("/error.json")).toMatchObject({ phase: "pre_commit" });
+  });
+
   test("a preview without CF_CRON_ORIGIN fails before the pointer switch and sends nothing", async () => {
     const brokenEnv = { HOSTING_TARGET: "cf", DEPLOY_ENV: "pre", CRON_SECRET: "secret" };
     const calls: string[] = [];
