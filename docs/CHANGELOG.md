@@ -19,6 +19,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Fixed
 
+- **Rank and rest recompute hops are replay-safe (#646).** A rank window below the carry `nextPeriod` returns its persisted result without rewriting views, so a late duplicate no longer turns the first period's `prev_rank` into a value; a window above it fails before writing rank views. Rest ingest marks a bucket done only after the partial and the category shard are written, so a retry after a shard failure writes the shard. Rank carry, rest carry, and rest partial reads fail with the object path and field reason when corrupt; only an absent object is missing.
+
 - **Dependency audit (`braces`, GHSA-vfj7-8cjw-p6xm).** `web/package.json` overrides transitive `braces` to the depth-guard backport at `micromatch/braces@bdb6fda` until npm publishes a fixed `3.0.x` release. Dev-only ESLint glob tooling; production runtime unchanged.
 
 ### Added
@@ -122,6 +124,8 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 - **Repo-page star milestones use frozen exact crossings.** The per-repo milestone list and curve markers now read `entity/repo.milestones.crossed_10k/50k/100k`; higher thresholds are hidden until a frozen first-crossing field exists, so estimated curve-derived dates are not presented as exact newcomer evidence.
 
 ### Fixed
+
+- **Workflow alias and version inventories scan every page (#644).** Folded ObjectStore listings follow `hasMore` and the continuation cursor, de-duplicate folders, and fail closed on missing or repeated cursors. Alias history reads use an eight-worker pool. GC selects the newest four versions only after the complete inventory and retains current, rollback, active, and caller versions. A partial failure preserves completed `deleted` versions, records the failed version and error, and stops further deletion; `kept` includes failed and unattempted versions. Coverage uses only in-memory stores. See [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) and [the plan](../plans/644-paginated-workflow-listings.md).
 
 - **R2 binding bootstrap reads preserve binary bytes (#586).** The local rehearsal exposed that the binding driver lacked `getBytes`, which the bootstrap adapter requires to hash staged parquet. `R2BindingObjectStore.getBytes` now reads `arrayBuffer()` and keeps the same response's quoted ETag and metadata. The workerd regression test includes invalid UTF-8 bytes, a prefixed key, and the bootstrap adapter snapshot.
 - **Deployment identity follows the commit baked by `cf:build` (#587).** `/.well-known/deployment` no longer lets a stale `CF_PREVIEW_COMMIT_SHA` or `VERCEL_GIT_COMMIT_SHA` mask the built SHA. Those vars count only when no SHA was baked, or when they name that same commit. The Worker shell and the Next route share `reportedCommitSha`. Stage 2 of [R2-CUTOVER.md](./R2-CUTOVER.md) requires the public identity to equal the deployed commit. This does not redeploy preview. Plan: [587-deployment-identity.md](../plans/587-deployment-identity.md).
