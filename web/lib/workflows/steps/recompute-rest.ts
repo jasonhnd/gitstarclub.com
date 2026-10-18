@@ -6,6 +6,7 @@ import type { WorkflowOwnership } from "@/lib/workflows/lease";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 import { REPO_BUCKETS } from "../buckets";
 import { categoryAssignmentShardDocument, categoryAssignmentsIndexDocument, categoryViewsFromAggregates } from "../recompute/categories";
+import { parseRestCarry, parseRestPartial } from "../recompute/carry-codec";
 import { loadFullReposBucket, writeVersionAndClear } from "../recompute/io";
 import {
   allTimeViewsFromCarry,
@@ -16,11 +17,7 @@ import {
   orgLookupFromCarry,
   type RestBucketPartial,
   type RestCarry,
-  type RestNewcomer,
-  type RestOrg,
-  type RestTopRepo,
 } from "../recompute/rest-fold";
-import type { OwnerType } from "../recompute/model";
 
 // Rest used to loadCanonicalModel every repo into one isolate. Each hop now
 // reads one repos bucket, or finalizes one already-bounded product.
@@ -47,113 +44,18 @@ function restPartialPath(runId: string, bucket: number): string {
   return `ops/workflows/${runId}/recompute/rest-part/${bucket}.json`;
 }
 
-function isOwnerType(value: unknown): value is OwnerType {
-  return value === "User" || value === "Organization";
-}
-
-function coerceTop(value: unknown): RestTopRepo[] | null {
-  if (!Array.isArray(value)) return null;
-  const rows: RestTopRepo[] = [];
-  for (const row of value) {
-    if (!row || typeof row !== "object") return null;
-    const rec = row as { id?: unknown; stars?: unknown };
-    if (typeof rec.id !== "number" || typeof rec.stars !== "number") return null;
-    rows.push({ id: rec.id, stars: rec.stars });
-  }
-  return rows;
-}
-
-function coerceNewcomers(value: unknown): Record<string, RestNewcomer[]> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const out: Record<string, RestNewcomer[]> = {};
-  for (const [period, rows] of Object.entries(value)) {
-    if (!Array.isArray(rows)) return null;
-    const list: RestNewcomer[] = [];
-    for (const row of rows) {
-      if (!row || typeof row !== "object") return null;
-      const rec = row as { id?: unknown; stars?: unknown; date?: unknown };
-      if (typeof rec.id !== "number" || typeof rec.stars !== "number" || typeof rec.date !== "string") return null;
-      list.push({ id: rec.id, stars: rec.stars, date: rec.date });
-    }
-    out[period] = list;
-  }
-  return out;
-}
-
-function coerceCarry(json: unknown): RestCarry | null {
-  if (!json || typeof json !== "object") return null;
-  const rec = json as {
-    v?: unknown;
-    generatedAt?: unknown;
-    repoTop?: unknown;
-    orgs?: unknown;
-    newcomersMonth?: unknown;
-    newcomersYear?: unknown;
-    doneBuckets?: unknown;
-  };
-  if (rec.v !== 1 || typeof rec.generatedAt !== "string" || !Array.isArray(rec.orgs) || !Array.isArray(rec.doneBuckets)) {
-    return null;
-  }
-  if (!rec.doneBuckets.every((bucket) => typeof bucket === "number")) return null;
-  const repoTop = coerceTop(rec.repoTop);
-  const newcomersMonth = coerceNewcomers(rec.newcomersMonth);
-  const newcomersYear = coerceNewcomers(rec.newcomersYear);
-  if (!repoTop || !newcomersMonth || !newcomersYear) return null;
-  const orgs: RestOrg[] = [];
-  for (const row of rec.orgs) {
-    if (!row || typeof row !== "object") return null;
-    const org = row as {
-      login?: unknown;
-      owner_type?: unknown;
-      repo_count?: unknown;
-      current_stars_sum?: unknown;
-      anchorId?: unknown;
-    };
-    if (typeof org.login !== "string" || !isOwnerType(org.owner_type)) return null;
-    if (typeof org.repo_count !== "number" || typeof org.current_stars_sum !== "number" || typeof org.anchorId !== "number") {
-      return null;
-    }
-    orgs.push({
-      login: org.login,
-      owner_type: org.owner_type,
-      repo_count: org.repo_count,
-      current_stars_sum: org.current_stars_sum,
-      anchorId: org.anchorId,
-    });
-  }
-  return {
-    v: 1,
-    generatedAt: rec.generatedAt,
-    repoTop,
-    orgs,
-    newcomersMonth,
-    newcomersYear,
-    doneBuckets: rec.doneBuckets as number[],
-  };
-}
-
-function coercePartial(json: unknown): RestBucketPartial | null {
-  if (!json || typeof json !== "object") return null;
-  const rec = json as RestBucketPartial;
-  if (rec.v !== 1 || !rec.lookup || typeof rec.lookup !== "object" || !Array.isArray(rec.search)) return null;
-  if (!Array.isArray(rec.active) || !rec.languageLabels || !rec.assignments) return null;
-  return rec;
-}
-
 async function readCarry(runId: string): Promise<RestCarry | null> {
-  const raw = await readAuthoritativeView(restCarryPath(runId), UnknownJson, { bust: runId, skipSchemaParse: true });
-  if (raw === null) return null;
-  const carry = coerceCarry(raw);
-  if (!carry) throw new Error(`${restCarryPath(runId)}: invalid rest carry`);
-  return carry;
+  const path = restCarryPath(runId);
+  const raw = await readAuthoritativeView(path, UnknownJson, { bust: runId, skipSchemaParse: true });
+  // Only an absent object is null. A present but malformed carry must fail loudly.
+  return raw === null ? null : parseRestCarry(raw, path);
 }
 
 async function readPartial(runId: string, bucket: number): Promise<RestBucketPartial> {
   const path = restPartialPath(runId, bucket);
   const raw = await readAuthoritativeView(path, UnknownJson, { bust: runId, skipSchemaParse: true });
-  const partial = coercePartial(raw);
-  if (!partial) throw new Error(`${path}: missing rest partial`);
-  return partial;
+  if (raw === null) throw new Error(`${path}: missing rest partial`);
+  return parseRestPartial(raw, path);
 }
 
 async function ingestBucket(
@@ -171,13 +73,15 @@ async function ingestBucket(
   const partial = foldRestBucket(carry, repos.values());
   repos.clear();
   clearViewParseMemo();
+  // The carry is the commit point: doneBuckets is written last, so a failure at
+  // any earlier write leaves the bucket undone and the retry redoes all three.
   await putOwnedView(owner, restPartialPath(runId, bucket), partial);
-  carry.doneBuckets = [...carry.doneBuckets, bucket].sort((left, right) => left - right);
-  await putOwnedView(owner, restCarryPath(runId), carry);
   const views = new Map<string, unknown>([
     [categoryAssignmentsShardPath(bucket), categoryAssignmentShardDocument(bucket, carry.generatedAt, partial.assignments)],
   ]);
   const files = await writeVersionAndClear(runId, views, owner);
+  const doneBuckets = [...carry.doneBuckets, bucket].sort((left, right) => left - right);
+  await putOwnedView(owner, restCarryPath(runId), { ...carry, doneBuckets });
   return { files, nextRecomputePhase: "rest", nextRecomputeOffset: bucket + 1 };
 }
 
