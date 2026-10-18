@@ -703,8 +703,9 @@ describe("CF CI gates", () => {
     assert.deepEqual(wrangler.env.pre.triggers.crons, []);
     assert.equal(wrangler.env.pre.name, "gitstarclub-web-pre");
     assert.equal(wrangler.env.pre.vars.MIN_TRACKED_STARS, PRODUCTION_MIN_TRACKED_STARS);
-    assert.equal(wrangler.env.pre.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, undefined);
-    assert.equal(wrangler.env.pre.vars.WORKFLOW_COLD_START, undefined);
+    assert.equal(wrangler.env.pre.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, "1");
+    assert.equal(wrangler.env.pre.vars.WORKFLOW_COLD_START, "1");
+    assert.equal(wrangler.env.pre.vars.WORKFLOW_FIXTURE, undefined);
     assert.equal(wrangler.env.pre.vars.DEPLOY_ENV, PREVIEW_DEPLOY_ENV);
     assert.equal(wrangler.env.pre.vars.STORAGE_READ_DRIVER, PREVIEW_STORAGE_READ_DRIVER);
     assert.equal(wrangler.env.pre.vars.STORAGE_WRITE_DRIVER, PREVIEW_STORAGE_WRITE_DRIVER);
@@ -724,6 +725,7 @@ describe("CF CI gates", () => {
     assert.equal(wrangler.vars.MIN_TRACKED_STARS, undefined);
     assert.equal(wrangler.vars.PREFLIGHT_RELAX_EMPTY_SHARDS, undefined);
     assert.equal(wrangler.vars.WORKFLOW_COLD_START, undefined);
+    assert.equal(wrangler.vars.WORKFLOW_FIXTURE, undefined);
     assert.equal(wrangler.workers_dev, false);
     assert.equal(wrangler.preview_urls, false);
     assert.equal(wrangler.env.pre.workers_dev, true);
@@ -812,6 +814,44 @@ describe("CF CI gates", () => {
     );
   });
 
+  test("accepts the preview cold-start flags as \"1\"", () => {
+    const config = JSON.parse(validWrangler);
+    config.env.pre.vars.WORKFLOW_COLD_START = "1";
+    config.env.pre.vars.PREFLIGHT_RELAX_EMPTY_SHARDS = "1";
+    assert.deepEqual(assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) })), []);
+  });
+
+  test("refuses the cold-start flags and WORKFLOW_FIXTURE on production", () => {
+    for (const flag of ["WORKFLOW_COLD_START", "PREFLIGHT_RELAX_EMPTY_SHARDS"]) {
+      for (const value of ["1", "0"]) {
+        const config = JSON.parse(validWrangler);
+        config.vars[flag] = value;
+        const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+        assert.ok(
+          issues.some((issue) => issue.includes(`top-level vars.${flag} must be absent`)),
+          issues.join("\n"),
+        );
+      }
+    }
+    const fixture = JSON.parse(validWrangler);
+    fixture.vars.WORKFLOW_FIXTURE = "1";
+    const fixtureIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(fixture) }));
+    assert.ok(
+      fixtureIssues.some((issue) => issue.includes("top-level vars.WORKFLOW_FIXTURE must be absent")),
+      fixtureIssues.join("\n"),
+    );
+  });
+
+  test("refuses WORKFLOW_FIXTURE on preview", () => {
+    const config = JSON.parse(validWrangler);
+    config.env.pre.vars.WORKFLOW_FIXTURE = "1";
+    const issues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(config) }));
+    assert.ok(
+      issues.some((issue) => issue.includes("env.pre vars.WORKFLOW_FIXTURE must be absent")),
+      issues.join("\n"),
+    );
+  });
+
   test("refuses production PREFLIGHT_RELAX_EMPTY_SHARDS=1", () => {
     const issues = assertCfCiGates(
       alignedSources({
@@ -862,10 +902,10 @@ describe("CF CI gates", () => {
     );
 
     const coldStart = JSON.parse(validWrangler);
-    coldStart.env.pre.vars.WORKFLOW_COLD_START = "1";
+    coldStart.env.pre.vars.WORKFLOW_COLD_START = "true";
     const coldIssues = assertCfCiGates(alignedSources({ wranglerSource: JSON.stringify(coldStart) }));
     assert.ok(
-      coldIssues.some((issue) => issue.includes("env.pre vars.WORKFLOW_COLD_START must be absent")),
+      coldIssues.some((issue) => issue.includes('env.pre vars.WORKFLOW_COLD_START must be absent or "1"')),
       coldIssues.join("\n"),
     );
 
