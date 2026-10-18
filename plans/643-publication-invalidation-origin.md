@@ -31,8 +31,9 @@ Source: GSC_0035 audit findings F01 and F09. Both were re-checked on
       refused. `DEPLOY_ENV=pre` refuses production hosts on either host. A
       Cloudflare deployment that sets `DEPLOY_ENV=production` (or
       `VERCEL_ENV=production`) requires a production host. The production
-      top-level vars do not set `DEPLOY_ENV` today, so there the CI gate
-      remains what pins the value. An invalid `DEPLOY_ENV` or
+      top-level vars set `DEPLOY_ENV=production`, so the callback also
+      refuses a non-production host there, and the CI gate still pins the
+      wrangler value. An invalid `DEPLOY_ENV` or
       `HOSTING_TARGET` throws.
   - `resolvePublicationInvalidationTarget(env)` returns the URL and bearer,
     or throws.
@@ -55,6 +56,11 @@ Source: GSC_0035 audit findings F01 and F09. Both were re-checked on
     cannot be live before its own pointer write. When the pointer already
     holds this intent, the failure is post-commit with that step. If the
     read fails, `PublicationCommitUnknownError` is raised.
+  - An ownership check after the pointer write throws
+    `PublicationPostCommitLeaseLostError` (a `WorkflowLeaseOwnershipError`
+    subclass, so the step is still not retried) for a lost lease, and
+    `PublicationPostCommitError` for any other failure, both with step
+    `ownership`. The check before the pointer write stays a plain error.
 - `web/lib/workflows/checkpoint.ts`
   - `markFailed(..., publication?)` writes `published_version` = the
     committed version for `post_commit`. `error.json` gets `phase`

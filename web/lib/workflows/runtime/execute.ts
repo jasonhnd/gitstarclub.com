@@ -1,7 +1,11 @@
 import { sendAlert } from "@/lib/observability/alert";
 import { markFailed, markPublished, startRun, type PublicationFailure } from "@/lib/workflows/checkpoint";
 import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
-import { PublicationCommitUnknownError, PublicationPostCommitError } from "@/lib/workflows/publication-core";
+import {
+  PublicationCommitUnknownError,
+  PublicationPostCommitError,
+  PublicationPostCommitLeaseLostError,
+} from "@/lib/workflows/publication-core";
 import { buildAliases } from "@/lib/workflows/steps/aliases";
 import { runFoldStep } from "@/lib/workflows/steps/fold";
 import { gcVersions } from "@/lib/workflows/steps/gc";
@@ -87,7 +91,7 @@ function publicationFailure(
   job: Extract<RefreshStepJob, { graph: "full" }>,
   error: unknown,
 ): PublicationFailure | undefined {
-  if (error instanceof PublicationPostCommitError) {
+  if (error instanceof PublicationPostCommitError || error instanceof PublicationPostCommitLeaseLostError) {
     return { phase: "post_commit", version: error.version, step: error.step };
   }
   if (error instanceof PublicationCommitUnknownError) {
