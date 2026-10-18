@@ -12,8 +12,8 @@ This plan stops before any production deploy, secret change, cron change, or R2 
 | Production code | `daee5fc` (deployed 2026-10-04) | `GET https://gitstarclub.com/.well-known/deployment` |
 | Preview code | `5af183a` | same endpoint on `pre.` |
 | Latest code | `main` = `99cb00e`, tree-identical to `pre` `eb24ac8` | `git diff origin/pre origin/main` is empty |
-| Code delta `daee5fc..main` | 6 runtime files: Worker edge cache (`web/lib/workers-host/edge-cache.ts`, `workers/gitstarclub-web/src/{index,env}.ts`), tests, `web/package.json` pin of `source-map-js` 1.2.2 (#655), plus docs and pipeline tests | `git diff --stat daee5fc origin/main` |
-| Schedules | none: top-level `triggers.crons: []`, `env.pre` `[]` | `workers/gitstarclub-web/wrangler.jsonc` |
+| Code delta `daee5fc..main` | 6 runtime files: Worker edge cache (`web/lib/workers-host/edge-cache.ts`, the Worker `src/index.ts` and `src/env.ts` under `workers/`), tests, `web/package.json` pin of `source-map-js` 1.2.2 (#655), plus docs and pipeline tests | `git diff --stat daee5fc origin/main` |
+| Schedules | none: top-level `triggers.crons: []`, `env.pre` `[]` | the Worker `wrangler.jsonc` under `workers/` |
 | Production views pointer | `views/latest.json` and `bootstrap/latest.json` 404; pages live on `VIEWS_VERSION_FALLBACK=refresh-2026-09-13T06-00-16-398Z` | `https://data.gitstarclub.com/...` |
 | Production canonical | `canonical/v2/meta.json` 200 (`folded_through` month 2026-08, week 2026-W35, `seam_date` 2026-05-30); `repos/0..31` 200; `repo-monthly`, `repo-weekly`, `repo-recent-daily` 0/32; `pending/2026-08.json` 404; `site-daily/{2024,2025,2026}.json` 404; `whitelist/latest.json` 404; `star_daily.parquet` 404 | public GETs, GSC_0017 E4 and this card |
 | Last refresh run | `refresh-2026-09-13T06-00-16-398Z` is the last good publish. The 2026-09-23 run failed with `canonical/v2/pending: missing required frozen period(s) 2026-08` | `ops/workflows/active.json`, `health/workflow-refresh.json` |
@@ -68,7 +68,8 @@ Read the printed CF build identity SHA and confirm it equals `git rev-parse HEAD
 Operator only, from `web/`, same checkout:
 
 ```sh
-bunx wrangler deploy --config ../workers/gitstarclub-web/wrangler.jsonc --env="" \
+export WORKER_WRANGLER_CONFIG="../workers/$(ls ../workers)/wrangler.jsonc"  # the single Worker directory under workers/
+bunx wrangler deploy --config "$WORKER_WRANGLER_CONFIG" --env="" \
   --var CF_PREVIEW_COMMIT_SHA="$(git rev-parse HEAD)"
 ```
 
@@ -175,7 +176,7 @@ Recommendation: (1) operator read-only checks (section D0), including B3c and th
 
 ### C2. Config and gate changes (one reviewed PR into `pre`, then promotion)
 
-* `workers/gitstarclub-web/wrangler.jsonc`: top-level `triggers.crons`. Use `SUN`, never `7` (Saturday) or `0`. Suggested sequence: first `["0 6 * * SUN"]` only (managed refresh), after one clean publish add `"0 3 * * *"` and `"0 4 * * SUN"` (daily and weekly live cron depend on `live/latest.json`; the daily skips until a publish). Stage 5 text in `docs/R2-CUTOVER.md` lists all three.
+* the Worker `wrangler.jsonc` under `workers/`: top-level `triggers.crons`. Use `SUN`, never `7` (Saturday) or `0`. Suggested sequence: first `["0 6 * * SUN"]` only (managed refresh), after one clean publish add `"0 3 * * *"` and `"0 4 * * SUN"` (daily and weekly live cron depend on `live/latest.json`; the daily skips until a publish). Stage 5 text in `docs/R2-CUTOVER.md` lists all three.
 * `scripts/cf-ci-gates.mjs`: remove or invert `productionCronsAreEmpty` and its issue message (about lines 306 to 308 and 391 to 394), set the returned `productionCrons` and the final console message (about lines 816 and 827) from the real list, add an exact-match check against the intended production list (mirror `previewCronIssues`), keep the ambiguous-weekday check. Update `scripts/cf-ci-gates.test.mjs`.
 * `.delivery.yml`: line 19 comment and the assertion that production `triggers.crons` is `[]` (`scripts/cf-ci-gates.mjs` about line 723 greps for it). `.github/workflows/ci.yml` also mentions the contract. Editing these files is outside executor scope unless the owner explicitly asks.
 * Docs in the same PR: `docs/OPS.md` (several "stay `[]`" sentences), `docs/R2-CUTOVER.md` stage 5, `docs/PIPELINE.md`, `docs/API.md`, `docs/TESTING.md`, `docs/CODEBASE.md`, `docs/README.md`, `README.md`, and the comment block in `wrangler.jsonc`.
