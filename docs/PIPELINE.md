@@ -63,6 +63,24 @@ bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < 
 
 The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`, so a rerun cannot replace the May extract. The cutoff is a 6-digit YYMMDD suffix. Includes a stable `repo.id` (rename consolidation), and exports Parquet to the local machine. Step 04 still reads the local directory `data/star_daily_gross/`.
 
+For the authorized preview gap rebuild (#668), `--start-suffix` narrows the
+lower bound (default `150101`) and `--create-only` emits `CREATE TABLE`, which
+refuses an existing destination. Keep the original whitelist and do not rerun
+step 01. The gap-specific cap is 20 GB, not the historical full-extract cap:
+
+```bash
+node backfill/02-extract.mjs --start-suffix 260530 --cutoff-suffix 260930 --destination gitstarclub.star_daily_gross_gap_260530_260930_20261019 --create-only > "$KANBAN_TMP/gap.sql"
+bq query --project_id=gitstarclub --location=US --use_legacy_sql=false --dry_run --maximum_bytes_billed=20000000000 < "$KANBAN_TMP/gap.sql"
+```
+
+Review the fresh dry-run bytes before running that same capped command without
+`--dry_run`. Preserve the original May table and exports. The local union ends
+on September 30 and produces month `2026-09` / week `2026-W40` fold watermarks.
+W40 contains September 28–30 only; October 1–4 are not added to that weekly
+baseline. An October fold needs no frozen pending with those watermarks,
+without the preview cold-start relaxation. Local evidence and later preview
+upload instructions belong in [the rebuild plan](../plans/668-preview-gap-rebuild.md).
+
 **03 metadata (GraphQL)** — `nodes(ids:[node_id])` fetches in batches of 100/query `owner.login + owner.__typename + name + description + primaryLanguage + languages + repositoryTopics + createdAt + stargazerCount(=current_stars) + isArchived` → the `repos` dimension (DATA-CONTRACTS §1.2).
 
 **04 rollup (DuckDB)** — read the Parquet from 02:
