@@ -107,3 +107,14 @@ Acceptance:
 - Meaningful offline tests cover pagination, invalid inputs, metadata
   fallback/status preservation, and evidence isolation. Run the full local
   AGENTS.md gate on the exact final head and update PR #669 and the handoff.
+
+Round-1 execution: the committed tools rebuilt 12,466,223 unique rows,
+13,012 views, and all required canonical artifacts in a fresh local output
+directory. Gap Parquet and canonical metadata match the original hashes.
+An independent 39-GET cold metadata download matched every retained source
+fingerprint and reproduced the same 5,249 members, five fallbacks, and eight
+inactive members. The strict 03 failure remains an explicit, explained
+rehearsal exception. Regenerated fold JSON records three empty positive
+pending-read arrays and three separate September negative controls; both
+the replay artifact and original local artifact were corrected. The report
+now gives every step 01–07 command, with remote step 06 explicitly skipped.
