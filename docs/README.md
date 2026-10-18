@@ -16,7 +16,7 @@ This page is the navigation index for `docs/`. For a project overview, start at 
 
 ## Analytics
 
-The Cloudflare Workers host does not load Vercel Web Analytics. `analyticsProvidersForEnvironment` in `web/lib/analytics-policy.ts` returns no provider when `HOSTING_TARGET=cf` and `VERCEL_ENV` is not `production`. Both the production Worker and preview `env.pre` set `HOSTING_TARGET=cf` and do not set `VERCEL_ENV`. Google Analytics and other third-party tracking scripts stay unsupported.
+The application has no analytics provider or analytics scripts. Privacy copy in all seven locales describes this behavior and the essential language-preference cookie. Google Analytics and other third-party tracking scripts stay unsupported.
 
 ## Reading order (new engineer)
 

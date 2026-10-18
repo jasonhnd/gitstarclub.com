@@ -169,7 +169,7 @@ Rules:
 
 Shared UI is in `web/app/_explore/`. These are mostly server components and
 should stay near-zero-client-JS unless a workflow requires client interactivity.
-The explicit global client island for registration is `RegisterSW` in `web/app/_shell/RootShell.tsx`. Vercel Web Analytics is not loaded when `HOSTING_TARGET=cf` and `VERCEL_ENV` is not `production`. Third-party tracking scripts are unsupported.
+The explicit global client island for registration is `RegisterSW` in `web/app/_shell/RootShell.tsx`. The shell contains no analytics provider or analytics scripts. Third-party tracking scripts are unsupported.
 
 Common components:
 
