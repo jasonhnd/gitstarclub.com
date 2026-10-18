@@ -61,6 +61,21 @@ Source: GSC_0035 audit findings F01 and F09. Both were re-checked on
     subclass, so the step is still not retried) for a lost lease, and
     `PublicationPostCommitError` for any other failure, both with step
     `ownership`. The check before the pointer write stays a plain error.
+- `web/lib/workflows/checkpoint.ts` and `runtime/execute.ts`
+  - `markFailed` renews the lease before every write, so a real lease loss
+    after the switch would write neither `manifest.json` nor `error.json`.
+    `failRefreshJob` catches that `WorkflowLeaseOwnershipError`, only for a
+    `PublicationPostCommitLeaseLostError`, and calls
+    `recordPostCommitLeaseLoss`. It writes
+    `ops/workflows/<run_id>/post-commit-failure.json` with `createView`
+    (create-only, no lease renewal): `published_version`, `phase:
+    "post_commit"`, `failed_step: "ownership"`, the sanitized error. It
+    never renews, releases, or overwrites a lease, and writes no shared
+    pointer. An existing record is kept. Alert and health still fire.
+  - Test: `runtime/post-commit-lease-loss.test.ts` uses the real
+    `putOwnedView`, `renewWorkflowLease`, and `createView` on an in-memory
+    store, for a superseded and an expired lease after each of the two
+    post-commit ownership checks.
 - `web/lib/workflows/checkpoint.ts`
   - `markFailed(..., publication?)` writes `published_version` = the
     committed version for `post_commit`. `error.json` gets `phase`

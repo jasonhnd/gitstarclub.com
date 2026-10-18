@@ -214,6 +214,7 @@ blob://
 │   │   ├── canonical-manifest.json           # record counts + SHA-256 integrity receipt of all required canonical shards
 │   │   ├── validation.json                  # validation report (validate step output, see §8)
 │   │   ├── metadata-<bucket>.json           # metadata GraphQL batch progress (resume after 502)
+│   │   ├── post-commit-failure.json         # only when the lease was lost after the pointer switch (create-only; published_version · failed_step ownership)
 │   │   └── error.json                       # written on failure (markFailed: run_id · error · at · phase; post_commit / commit_unknown add committed_version / candidate_version · failed_step)
 │   ├── active.json                          # current lease (ETag CAS + idempotency key + fencing_token + expiry)
 │   ├── latest-unpublished-whitelist.json    # unpublished snapshot pointer (reuse Search after failure)

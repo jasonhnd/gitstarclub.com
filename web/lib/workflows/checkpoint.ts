@@ -3,6 +3,7 @@ import { sendAlert } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
 import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { logViewParseErrorSummary } from "@/lib/data/parse-view";
+import { createView } from "@/lib/data/write";
 import { claimWorkflowLease, releaseWorkflowLease } from "@/lib/workflows/lease";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 
@@ -110,4 +111,41 @@ export async function markFailed(
   );
   await recordHealth("workflow-refresh", "failed", { run_id: runId, error: safeError });
   logViewParseErrorSummary("[workflow-refresh]");
+}
+
+/**
+ * Durable record of a post-commit lease loss. The pointer switched, then this
+ * run lost its lease, so `markFailed` cannot renew it and writes nothing: the
+ * running manifest would keep `published_version: null`. This writes one
+ * create-only file under the run's own prefix. It does not renew, release, or
+ * overwrite any lease, and it touches no shared pointer or successor artifact.
+ * An existing record is kept (returns false). Alert and health still fire.
+ */
+export async function recordPostCommitLeaseLoss(
+  runId: string,
+  startedAt: string,
+  error: string,
+  publication: PublicationFailure,
+): Promise<boolean> {
+  const safeError = sanitizeErrorText(error);
+  const record = {
+    run_id: runId,
+    started_at: startedAt,
+    status: "failed",
+    phase: "post_commit",
+    published_version: publication.version,
+    failed_step: publication.step,
+    error: safeError,
+    at: new Date().toISOString(),
+  };
+  const created = await createView(`ops/workflows/${runId}/post-commit-failure.json`, record);
+  await sendAlert({
+    pipeline: "workflow-refresh",
+    title: failureAlertTitle(publication),
+    run_id: runId,
+    step: publication.step,
+    error: safeError,
+  });
+  await recordHealth("workflow-refresh", "failed", { run_id: runId, error: safeError });
+  return created;
 }
