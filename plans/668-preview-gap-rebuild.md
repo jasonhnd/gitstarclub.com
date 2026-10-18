@@ -86,3 +86,24 @@ GitHub Actions stays off by owner decision.
   [the rehearsal report](../docs/analysis/PREVIEW-GAP-REHEARSAL.md). Current
   artifacts are not publishable. Step 06 is required before a future remote
   step 07 commit because the commit verifies both phase manifests.
+
+## Review round 1
+
+Goal: make the local rehearsal reproducible from the PR after card cleanup,
+and correct the serialized fold proof. Scope: commit read-only table export,
+backup validation, snapshot assembly, local comparison, and fold-probe tools;
+document exact commands starting at the fixed-whitelist step 01; explain the
+strict step 03 exception for repository 18477927. No data, upload, new query
+scan, full-whitelist history fetch, deployment, or production change.
+
+Acceptance:
+
+- A new card-local output directory can be rebuilt using only committed
+  tools, the preserved BigQuery table, verified backup, and public snapshots.
+- A cached-snapshot replay records source hashes and preserves all 5,249 ids
+  and eight historical inactive members. No hidden temporary script is used.
+- Positive fold records keep `pendingReads: []` after the negative controls
+  run; negative records independently show the September pending read.
+- Meaningful offline tests cover pagination, invalid inputs, metadata
+  fallback/status preservation, and evidence isolation. Run the full local
+  AGENTS.md gate on the exact final head and update PR #669 and the handoff.
