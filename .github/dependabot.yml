@@ -26,8 +26,6 @@ updates:
     # Bun lockfiles are supported via the npm ecosystem when bun.lock is present.
     # Ignore intentional pins and major jumps that require a dedicated PR.
     ignore:
-      - dependency-name: "find-up"
-        update-types: ["version-update:semver-major"]
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
       - dependency-name: "eslint"
