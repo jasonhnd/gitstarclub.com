@@ -1,6 +1,17 @@
 import { sendAlert } from "@/lib/observability/alert";
-import { markFailed, markPublished, startRun } from "@/lib/workflows/checkpoint";
+import {
+  markFailed,
+  markPublished,
+  recordPostCommitLeaseLoss,
+  startRun,
+  type PublicationFailure,
+} from "@/lib/workflows/checkpoint";
 import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
+import {
+  PublicationCommitUnknownError,
+  PublicationPostCommitError,
+  PublicationPostCommitLeaseLostError,
+} from "@/lib/workflows/publication-core";
 import { buildAliases } from "@/lib/workflows/steps/aliases";
 import { runFoldStep } from "@/lib/workflows/steps/fold";
 import { gcVersions } from "@/lib/workflows/steps/gc";
@@ -75,8 +86,42 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
   }
 }
 
+/**
+ * Whether the run's version was live, or may be, when this step failed.
+ * publish raises PublicationPostCommitError after the pointer switch and
+ * PublicationCommitUnknownError when the switch cannot be confirmed; gc and
+ * markPublished run only after publish succeeded, and publish uses the run id
+ * as the version.
+ */
+function publicationFailure(
+  job: Extract<RefreshStepJob, { graph: "full" }>,
+  error: unknown,
+): PublicationFailure | undefined {
+  if (error instanceof PublicationPostCommitError || error instanceof PublicationPostCommitLeaseLostError) {
+    return { phase: "post_commit", version: error.version, step: error.step };
+  }
+  if (error instanceof PublicationCommitUnknownError) {
+    return { phase: "commit_unknown", version: error.version, step: error.step };
+  }
+  if (job.name === "gc" || job.name === "markPublished") {
+    return { phase: "post_commit", version: job.runId, step: job.name };
+  }
+  return undefined;
+}
+
 export async function failRefreshJob(job: RefreshStepJob, error: unknown): Promise<void> {
   if (job.graph !== "full" || !job.cursor.startedAt || job.cursor.fencingToken === undefined) return;
   const message = error instanceof Error ? error.message : String(error);
-  await markFailed(job.runId, job.cursor.startedAt, message, job.cursor.fencingToken);
+  const publication = publicationFailure(job, error);
+  try {
+    await markFailed(job.runId, job.cursor.startedAt, message, job.cursor.fencingToken, publication);
+  } catch (checkpointError) {
+    // markFailed renews the lease before every write, so a lease lost after
+    // the pointer switch writes nothing. Keep a run-scoped record of the live
+    // version instead; any other failure still propagates.
+    const leaseLostAfterCommit =
+      error instanceof PublicationPostCommitLeaseLostError && checkpointError instanceof WorkflowLeaseOwnershipError;
+    if (!leaseLostAfterCommit || !publication) throw checkpointError;
+    await recordPostCommitLeaseLoss(job.runId, job.cursor.startedAt, message, publication);
+  }
 }
