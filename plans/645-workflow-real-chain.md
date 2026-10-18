@@ -52,3 +52,32 @@ configuration, protected-branch pushes, and merging.
   `validate.ts`; the cold-start tests fail against the first PR revision.
 - Known, out of scope: an empty-history cold start still fails two older
   `validate` checks (empty top-repo curve, missing prior-year heatmap).
+
+## GSC_0058: integrate the publication contract from #660
+
+Goal: make the real-chain harness on PR #659 satisfy the required Cloudflare
+publication invalidation origin after merging pre at `39f42af`.
+
+Scope: test-only environment and request capture in workflow test support,
+real-chain publication assertions, this plan, and the harness documentation in
+TESTING. Production workflow behavior and the required `CF_CRON_ORIGIN` check
+are out of scope, as are data-coverage changes, deployment, live endpoints,
+Cloudflare configuration, CI configuration, rebases, force pushes, protected
+branch pushes, and PR merges.
+
+1. Fetch the existing PR branch at `44475e4`, bootstrap the pinned toolchain,
+   install frozen dependencies, and reproduce the integration failure.
+2. Configure a test-only `CF_CRON_ORIGIN`, capture the publication request, and
+   assert its target, method, authorization, cache policy, and abort signal.
+3. Keep the cold-start expectations passing and document the harness contract.
+4. Run the full AGENTS bootstrap and static/build block in a fresh detached
+   checkout of the exact new head under `.kanban-work/GSC_0058/`, with TMPDIR
+   and all logs/caches there. Do not enable or wait for GitHub Actions.
+5. Push normally to the existing PR branch, append exact-head results to PR
+   #659, and hand off to the review role without merging.
+
+Acceptance: the complete static job, full isolated web coverage suite, fixture
+production build, and pre Worker dry run all exit zero on the reported head;
+the cold-start tests pass; production files remain unchanged; PR #659 keeps
+`Closes #645`; the handoff includes files, verification, risks, and the full
+head SHA; the editing checkout is clean.
