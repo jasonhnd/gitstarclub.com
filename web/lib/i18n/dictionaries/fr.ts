@@ -47,7 +47,7 @@ const fr: Dict = {
     aboutTitle: "À propos — sources de données et méthodologie",
     aboutDescription: "Comment GitStarClub trace l'historique des étoiles GitHub : GH Archive et GitHub API, étoiles brutes ou nettes, liste ≥10k et limites connues.",
     privacyTitle: "Confidentialité",
-    privacyDescription: "Détails de confidentialité de GitStarClub : Vercel Web Analytics respectueux de la vie privée, aucun cookie de suivi, et seulement un cookie essentiel de préférence linguistique.",
+    privacyDescription: "Détails de confidentialité de GitStarClub : aucun script de mesure d’audience ni cookie de suivi, seulement un cookie essentiel de préférence linguistique.",
   },
   about: {
     heroPre: "Une histoire ",
@@ -382,7 +382,7 @@ const fr: Dict = {
     eyebrow: "Confidentialité",
     title: "Confidentialité par défaut.",
     analyticsTitle: "Analytics",
-    analyticsBody: "GitStarClub utilise Vercel Web Analytics pour compter les pages vues de manière agrégée. C'est sans cookie et respectueux de la vie privée : aucun cookie, pas de suivi entre sites, pas d'empreinte de l'appareil, pas de collecte de données personnelles ou de profil. Il n'y a aucun pixel publicitaire ni script de suivi tiers.",
+    analyticsBody: "GitStarClub n’utilise aucun script de mesure d’audience ni pixel publicitaire. Le site ne vous suit pas entre les sites et ne relève pas l’empreinte de votre appareil. Aucun script de suivi tiers n’est utilisé.",
     cookiesTitle: "Cookies et stockage",
     cookiesBody: "Le seul cookie est gsc_lang, qui stocke votre préférence de langue. C'est un cookie fonctionnel de première partie. La préférence de thème est stockée localement dans votre navigateur et n'est pas envoyée au serveur.",
     dataTitle: "Données affichées sur le site",
