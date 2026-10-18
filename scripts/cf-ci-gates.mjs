@@ -45,6 +45,7 @@ export const PREVIEW_DEPLOY_ENV = "pre";
 export const PREVIEW_STORAGE_READ_DRIVER = "r2";
 export const PREVIEW_STORAGE_WRITE_DRIVER = "r2_binding";
 export const PREVIEW_QUEUE_NAME = "gitstarclub-jobs-pre";
+export const PREVIEW_COLD_START_FLAGS = Object.freeze(["WORKFLOW_COLD_START", "PREFLIGHT_RELAX_EMPTY_SHARDS"]);
 export const PREVIEW_WORKFLOW_RUNTIME = "cf-queue";
 export const PRODUCTION_WORKFLOW_RUNTIME = PREVIEW_WORKFLOW_RUNTIME;
 export const PREVIEW_WORKFLOW_QUEUE_ENQUEUE_URL = "https://pre.gitstarclub.com/enqueue";
@@ -588,9 +589,11 @@ function collectStorageDriverIssues(wrangler, preview, stage4) {
 
 function collectWorkflowRuntimeIssues(wrangler, preview) {
   const issues = [];
-  // The 1k-star cold-start experiment (MIN_TRACKED_STARS=1000, WORKFLOW_COLD_START,
-  // PREFLIGHT_RELAX_EMPTY_SHARDS) is paused. Preview rehearses at the production floor.
-  // Restoring that experiment later is an owner decision.
+  // The 1k-star experiment (MIN_TRACKED_STARS=1000) is paused. Preview rehearses at the
+  // production floor. Restoring that experiment later is an owner decision.
+  // Preview may carry the cold-start flags (#662) so the first real refresh can fill an
+  // empty bucket; they arm only for DEPLOY_ENV=pre. Production must never carry them,
+  // and neither block may carry WORKFLOW_FIXTURE, which turns refresh into a no-op.
   const productionMinTracked = wrangler.vars?.MIN_TRACKED_STARS;
   if (productionMinTracked !== undefined && productionMinTracked !== PRODUCTION_MIN_TRACKED_STARS) {
     issues.push(
@@ -603,25 +606,26 @@ function collectWorkflowRuntimeIssues(wrangler, preview) {
       `wrangler env.${PREVIEW_WRANGLER_ENV} vars.MIN_TRACKED_STARS must equal production (${effectiveProductionMin})`,
     );
   }
-  if (preview?.vars?.WORKFLOW_COLD_START !== undefined) {
+  for (const flag of PREVIEW_COLD_START_FLAGS) {
+    const previewValue = preview?.vars?.[flag];
+    if (previewValue !== undefined && previewValue !== "1") {
+      issues.push(
+        `wrangler env.${PREVIEW_WRANGLER_ENV} vars.${flag} must be absent or "1" (got ${JSON.stringify(previewValue)})`,
+      );
+    }
+    if (wrangler.vars?.[flag] !== undefined) {
+      issues.push(
+        `wrangler top-level vars.${flag} must be absent (cold-start flags are preview-only; production never arms them)`,
+      );
+    }
+  }
+  if (preview?.vars?.WORKFLOW_FIXTURE !== undefined) {
     issues.push(
-      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.WORKFLOW_COLD_START must be absent (1k cold-start experiment is paused; restoring it is an owner decision)`,
+      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.WORKFLOW_FIXTURE must be absent (fixture mode turns /start and the refresh cron into a no-op)`,
     );
   }
-  if (wrangler.vars?.WORKFLOW_COLD_START !== undefined) {
-    issues.push(
-      "wrangler top-level vars.WORKFLOW_COLD_START must be absent (1k cold-start experiment is paused; restoring it is an owner decision)",
-    );
-  }
-  if (preview?.vars?.PREFLIGHT_RELAX_EMPTY_SHARDS !== undefined) {
-    issues.push(
-      `wrangler env.${PREVIEW_WRANGLER_ENV} vars.PREFLIGHT_RELAX_EMPTY_SHARDS must be absent (1k cold-start experiment is paused; restoring it is an owner decision)`,
-    );
-  }
-  if (wrangler.vars?.PREFLIGHT_RELAX_EMPTY_SHARDS !== undefined) {
-    issues.push(
-      "wrangler top-level vars.PREFLIGHT_RELAX_EMPTY_SHARDS must be absent (1k cold-start experiment is paused; restoring it is an owner decision)",
-    );
+  if (wrangler.vars?.WORKFLOW_FIXTURE !== undefined) {
+    issues.push("wrangler top-level vars.WORKFLOW_FIXTURE must be absent");
   }
   const previewWorkflowRuntime = preview?.vars?.WORKFLOW_RUNTIME;
   if (previewWorkflowRuntime !== PREVIEW_WORKFLOW_RUNTIME) {

@@ -152,7 +152,6 @@
       ],
       "vars": {
         "HOSTING_TARGET": "cf",
-        "WORKFLOW_FIXTURE": "1",
         "CF_CRON_ORIGIN": "https://pre.gitstarclub.com",
         "DEPLOY_ENV": "pre",
         // Public reads use the preview R2 domain (no storage keys). Writes use
@@ -169,7 +168,14 @@
         "MIN_TRACKED_STARS": "10000",
         // Jason 2026-09-22: shard Search so one hop stays inside the 15 min Queue wall.
         // Unset / "0" restores the #508 single-hop path.
-        "WHITELIST_SEARCH_SHARDS": "1"
+        "WHITELIST_SEARCH_SHARDS": "1",
+        // First real refresh into the empty bucket gitstarclub-data-pre (#662).
+        // Both flags arm only while DEPLOY_ENV=pre and views/latest.json is
+        // absent, so they disarm after the first publish. Production must never
+        // carry them (scripts/cf-ci-gates.mjs). WORKFLOW_FIXTURE is removed: it
+        // turns /start and the refresh cron into a fixture no-op.
+        "WORKFLOW_COLD_START": "1",
+        "PREFLIGHT_RELAX_EMPTY_SHARDS": "1"
       }
     }
   }
