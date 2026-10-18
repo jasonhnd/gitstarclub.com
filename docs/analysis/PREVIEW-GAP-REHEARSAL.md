@@ -1,3 +1,12 @@
+---
+owner: bootstrap pipeline
+status: draft
+last_reviewed: 2026-10-19
+source_of_truth_for:
+  - GSC_0044 local rehearsal measurements
+  - sampled GitHub star-history feasibility and limitations
+---
+
 # Preview gap rehearsal and GitHub history assessment
 
 Issue #668, card GSC_0044, measured on 2026-10-18 UTC / October 19 JST.

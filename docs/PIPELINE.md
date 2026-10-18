@@ -1,7 +1,7 @@
 ---
 owner: bootstrap pipeline
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-10-19
 source_of_truth_for:
   - one-off bootstrap pipeline
   - archived backfill algorithms
