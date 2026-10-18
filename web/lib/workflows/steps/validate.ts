@@ -215,10 +215,11 @@ async function validatePeriodRanks(
       failures.push(`${manifestPath}: read/schema — ${error instanceof Error ? error.message : String(error)}`);
       continue;
     }
-    if (!manifest || manifest.kind !== kind || manifest.periods.length === 0) {
+    if (!manifest || manifest.kind !== kind) {
       failures.push(`${manifestPath}: missing or invalid period inventory`);
       continue;
     }
+    // A valid, empty inventory (preview cold start with no series shards) lists no periods, so nothing is required.
     // Limit concurrent reads and resident rank JSON; no canonical series reload.
     await mapLimit(manifest.periods, 4, async (period) => {
       for (const dim of ["repo", "org"] as const) {

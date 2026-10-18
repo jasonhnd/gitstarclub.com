@@ -108,9 +108,9 @@ export function workflowSeed(): Record<string, string> {
   return seed;
 }
 
-export function installWorkflowHarness(initial = workflowSeed()) {
+export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Record<string, string> = {}) {
   const store = new WorkflowTestStore(initial);
-  const env = { BLOB_BASE_URL: "https://workflow.test.invalid", STORAGE_READ_DRIVER: "blob", HOSTING_TARGET: "cf", DEPLOY_ENV: "pre", WORKFLOW_RUNTIME: "memory", CRON_SECRET: "workflow-test-only", NEXT_PUBLIC_SITE_URL: "https://workflow.test.invalid", WORKFLOW_STEP_BASE_URL: "https://workflow.test.invalid", WHITELIST_SEARCH_SHARDS: "0" };
+  const env = { BLOB_BASE_URL: "https://workflow.test.invalid", STORAGE_READ_DRIVER: "blob", HOSTING_TARGET: "cf", DEPLOY_ENV: "pre", WORKFLOW_RUNTIME: "memory", CRON_SECRET: "workflow-test-only", NEXT_PUBLIC_SITE_URL: "https://workflow.test.invalid", WORKFLOW_STEP_BASE_URL: "https://workflow.test.invalid", WHITELIST_SEARCH_SHARDS: "0", ...extraEnv };
   const previousEnv = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
   Object.assign(process.env, env);
   setSystemTime(new Date(TEST_NOW));
