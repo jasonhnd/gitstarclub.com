@@ -8,7 +8,7 @@ import { installWorkflowHarness, PREVIOUS_RUN, TEST_RUN, type FullJob } from "..
 type Boundary = { job: FullJob; artifacts: Record<string, string> };
 const boundaries = new Map<string, Boundary>();
 const rankHops: string[] = [];
-let chain: { store: ReturnType<typeof installWorkflowHarness>["store"]; invalidations: string[] };
+let chain: Pick<ReturnType<typeof installWorkflowHarness>, "store" | "invalidations">;
 
 /** Run `fn` against a fresh harness restored to the artifacts present just before `step` first ran. */
 async function atBoundary<T>(step: string, fn: (h: ReturnType<typeof installWorkflowHarness>, boundary: Boundary) => Promise<T>): Promise<T> {
@@ -60,6 +60,12 @@ describe("production refresh chain in memory", () => {
     expect(store.contents[`views/${PREVIOUS_RUN}/meta.json`]).toBeDefined();
     expect(store.deletions.every((path) => path.startsWith("views/refresh-2026-09-"))).toBe(true);
     expect(chain.invalidations).toHaveLength(1);
+    const invalidation = chain.invalidations[0]!;
+    expect(invalidation.url).toBe("https://workflow-cron.test.invalid/api/workflows/refresh/revalidate");
+    expect(invalidation.init?.method).toBe("POST");
+    expect(new Headers(invalidation.init?.headers).get("authorization")).toBe("Bearer workflow-test-only");
+    expect(invalidation.init?.cache).toBe("no-store");
+    expect(invalidation.init?.signal).toBeInstanceOf(AbortSignal);
   });
 
   test("rank hops follow the production successors and write every window's artifacts", () => {
@@ -149,6 +155,8 @@ describe("production refresh chain in memory", () => {
         const { response } = await h.run(job);
         expect(response.status).toBe(500);
         expect(pointerVersion(h.store)).toBe(TEST_RUN);
+        expect(h.invalidations).toHaveLength(1);
+        expect(h.invalidations[0]?.url).toBe("https://workflow-cron.test.invalid/api/workflows/refresh/revalidate");
       }));
   });
 
