@@ -56,7 +56,7 @@ historical status was retained: 5,241 active and eight inactive members.
 Step 07 now preserves inactive status instead of reactivating those members.
 The shared GitHub client's fail-closed behavior is unchanged.
 
-Local `pipeline/data` is an excluded symlink to the card's `pipeline-data/`.
+The local pipeline data directory is an excluded symlink to the card's `pipeline-data/`.
 The executed rebuild commands, using the pinned toolchain, were:
 
 ```bash
@@ -212,7 +212,7 @@ contract, a new generation, a bucket-scoped Cloudflare key, and an eligible
 empty preview bucket with its owner-provisioned identity marker. No action
 here provides that authorization or changes production.
 
-After `pipeline/data` points to that reviewed replacement, use this sequence
+After the pipeline data directory points to that reviewed replacement, use this sequence
 from `pipeline/`. `APPROVED_REPLACEMENT_DATA_DIR` and `GEN` must be supplied
 by that future handoff; they must not identify this rehearsal:
 
