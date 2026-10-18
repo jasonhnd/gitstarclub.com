@@ -23,6 +23,7 @@ Data operations layers:
 - **Daily / weekly live cron**—see §Cron schedule.
 - **History / metadata / canonical full refresh (managed refresh)**—see §Managed refresh runbook (step names see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)).
 - **One-time BigQuery + DuckDB bootstrap backfill**—see §One-time bootstrap Runbook (archived, non-routine path).
+- **Raw gross backfill export**—see §Raw backfill data. The GCS original stays. The private R2 copy is pending the Cloudflare key decision.
 
 ## Current hosting and branch topology
 
@@ -589,6 +590,22 @@ When managed refresh or the daily / weekly route fails, it calls `sendAlert` (`w
 Set `ALERT_WEBHOOK_URL` on the Worker that should send it. Leave it unset to stay in logs-only mode. Do not put the URL in the repository.
 
 > `recordHealth` writes `ops/workflows/health/{workflow-refresh|cron-daily|cron-weekly}.json` separately. The only operator signal for Sunday 06:00 is `ops/workflows/health/workflow-refresh.json`. The flat `ops/workflows/health.json` is retired; do not read it. Each record is updated with an ETag compare-and-set, keeps `last_success`, `last_failure`, and `correlation_id` / `run_id` / `idempotency_key`, and provides `freshness.stale_after`. Every non-dry success and failure of the daily and weekly cron updates its record; `attached` / `rejected` only change that pipeline's latest signal and do not delete historical successes or failures. Concurrent runs of different pipelines cannot overwrite each other.
+
+## Raw backfill data
+
+Owner decision 2026-10-19: the raw daily gross star export is kept in two places. This is the GH Archive gross input for a rebuild. It is not a published view and it is not a public data bucket.
+
+Primary original: `gs://gitstarclub-backfill-746384388303/star_daily_gross/` in GCP project `gitstarclub`. Object versioning is on. Do not delete objects, change ACLs, or rewrite this prefix.
+
+Copy: private Cloudflare R2 bucket `gitstarclub-raw` on the ZKSC.KK account, under `star_daily_gross/`. The bucket is not public. It is not `gitstarclub-data-prod` and it is not `gitstarclub-data-pre`. The R2 copy is pending until the Cloudflare key decision. Do not upload these objects to the public data buckets while that decision is open.
+
+Inventory, for both places once the copy exists: 20 Parquet files, 29.48 MiB (30,907,971 bytes, read-only listing on 2026-10-18). Columns are `repo_id` BIGINT, `day` DATE, and `gross_adds` BIGINT. Days run from 2015-01-01 through 2026-05-29 inclusive. Values are gross `WatchEvent` adds. There is no unstar column.
+
+Verify a copy by comparing each object's byte size and SHA-256 with the manifest. Card GSC_0040 fills that manifest. The table below is a placeholder until that card lands. Do not treat any other hash list as the source of truth.
+
+| name | bytes | sha256 |
+|---|---:|---|
+| pending GSC_0040 | pending GSC_0040 | pending GSC_0040 |
 
 ## One-time bootstrap Runbook (archived / non-routine path)
 

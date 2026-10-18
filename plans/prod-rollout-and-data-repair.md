@@ -126,7 +126,7 @@ Revision (GSC_0030): do not rebuild 2015 through 2026-05-29. That gross history 
 
 ### B0. The GCS backup (read-only, 2026-10-18)
 
-Bucket `gs://gitstarclub-backfill-746384388303/` is in GCP project `gitstarclub`, location US, created 2026-05-30T01:50:50Z. The only prefix is `star_daily_gross/`. `gcloud storage ls -l gs://gitstarclub-backfill-746384388303/**` shows 20 objects, 30,907,971 bytes (29.48 MiB), each created 2026-05-30T01:50:56Z. No write, delete, or ACL change was made. The logged-in account is a project owner on `gitstarclub` (stronger than this check needed). The account name is in the GSC_0030 handoff, not here. The active gcloud config project was left unchanged.
+Bucket `gs://gitstarclub-backfill-746384388303/` is in GCP project `gitstarclub`, location US, created 2026-05-30T01:50:50Z. The only prefix is `star_daily_gross/`. `gcloud storage ls -l gs://gitstarclub-backfill-746384388303/**` shows 20 objects, 30,907,971 bytes (29.48 MiB), each created 2026-05-30T01:50:56Z. No write, delete, or ACL change was made. The logged-in account is a project owner on `gitstarclub` (stronger than this check needed). The account name is in the GSC_0030 handoff, not here. The active gcloud config project was left unchanged. The standing record of the two copies is [OPS.md](../docs/OPS.md) under Raw backfill data. The GCS prefix is the primary original. A private R2 bucket named gitstarclub-raw, on the ZKSC.KK account, is the second copy, and that copy is pending until the Cloudflare key decision.
 
 DuckDB on the 20 files (local copy only):
 
@@ -221,7 +221,7 @@ June through August are not in the backup. The frozen heatmaps (net, and with ho
 | 2026-08 | 2,445,113 | 31 of 31 | none |
 | Sum | 7,179,732 | | |
 
-`rank/week/2026-W27/repo/flow.json` on that generation returns HTTP 404. `docs/OPS.md` lines 416-421 already say the W27 base ranks are absent until the fold passes W27, and that a 2026 `WatchEvent` spot check was about 80 times lower than a 2024 sample for the same hour of day.
+`rank/week/2026-W27/repo/flow.json` on that generation returns HTTP 404. `docs/OPS.md` lines 422 and 424 already say the W27 base ranks are absent until the fold passes W27, and that a 2026 `WatchEvent` spot check was about 80 times lower than a 2024 sample for the same hour of day.
 
 The backup's own 2026 daily gross, through 2026-05-29, is 20,700.5 stars per day, against 45,085.1 per day in 2024 (about 2.2 times lower, not 80 times). A 30-day month at the 2026 rate is about 621,000 stars. Each published net month above is about 2.2 to 2.5 million, roughly 3.9 times that gross rate. If the gap extract stays near the January-May rate, June through August totals fall from about 7.18 million to something near 1.9 million, and the 2026-07-12 spike disappears (a gross series has no GraphQL catch-up day). If the OPS 80-times warning applies to the gap, the drop is much larger. The dry run does not return row counts, so the gap total was not measured. Owner decision: published June through September numbers will change. The pre-seam months will not, apart from the two May days above.
 
@@ -235,7 +235,7 @@ Sample entity net adds after the seam, for scale, not as a site total: freeCodeC
 
 `verifyLegacyFlatTarget` requires every path in `LEGACY_FLAT_REQUIRED_PATHS` (lines 17-29): root `meta.json`, `lookup/repos.json`, `lookup/orgs.json`, `rank/all-time/repo/stock.json`, `rank/all-time/org/stock.json`, `canonical/v2/meta.json`, and the 128 `canonical/v2/<kind>/<bucket>.json` shards. Those shards are not at the bucket root. The kinds are `repos`, `repo-monthly`, `repo-weekly`, and `repo-recent-daily`, buckets 0 through 31. Public GETs on 2026-10-18: `canonical/v2/repos/0` through `31` are 200; the other three kinds, buckets 0 through 31, are 404; `canonical/v2/meta.json` is 200 with `folded_through` month 2026-08 and week 2026-W35.
 
-Deleting `canonical/v2/meta.json` does not delete `canonical/v2/repos/*`. With both pointers still absent, removing that meta object drops `seam_date` and `folded_through`, leaves the live repos shards in place, and is what makes `--initial-commit` legal. `docs/OPS.md` line 633 forbids initial-commit and bad-first-publish cleanup on the populated production copy. Do not do it.
+Deleting `canonical/v2/meta.json` does not delete `canonical/v2/repos/*`. With both pointers still absent, removing that meta object drops `seam_date` and `folded_through`, leaves the live repos shards in place, and is what makes `--initial-commit` legal. `docs/OPS.md` line 650, in the section "R2 rehearsal and empty-bucket first commit", forbids initial-commit and bad-first-publish cleanup on the populated production copy. Do not do it.
 
 `pipeline/backfill/07-export-v2.mjs` stages under `bootstrap/generations` and the commit writes `bootstrap/latest.json` (around lines 306-345).
 
