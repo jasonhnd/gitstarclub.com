@@ -40,3 +40,15 @@ configuration, protected-branch pushes, and merging.
 - Demonstrated regressions fail before the fix and pass afterward.
 - Diff includes only scoped tests/support, demonstrated production corrections,
   and required plan/documentation changes; final git status is clean.
+
+## Rework (review round 1)
+
+- Accept a valid empty period inventory (preview cold start); a missing or
+  unreadable inventory still fails.
+- Add `full-chain-cold-start.test.ts` (WORKFLOW_COLD_START=1, no pointer, no
+  series shards), per-step write-failure injection, rank-hop and carry
+  assertions, and a CHANGELOG entry.
+- Regression proof: the new gate tests fail against `origin/pre`'s
+  `validate.ts`; the cold-start tests fail against the first PR revision.
+- Known, out of scope: an empty-history cold start still fails two older
+  `validate` checks (empty top-repo curve, missing prior-year heatmap).
