@@ -47,7 +47,7 @@ const zhTw: Dict = {
     aboutTitle: "關於 — 資料來源與方法",
     aboutDescription: "說明 GitStarClub 如何用 GH Archive 與 GitHub API 繪製星標歷史、總量與淨增口徑、1 萬星白名單和已知限制。",
     privacyTitle: "隱私",
-    privacyDescription: "GitStarClub 隱私說明：隱私友善的 Vercel Web Analytics、無追蹤 Cookie，只使用必要的語言偏好 Cookie。",
+    privacyDescription: "GitStarClub 隱私說明：不使用分析腳本或追蹤 Cookie，僅使用必要的語言偏好 Cookie。",
   },
   about: {
     heroPre: "一部如實記錄的",
@@ -374,7 +374,7 @@ const zhTw: Dict = {
     eyebrow: "隱私",
     title: "預設優先保護隱私。",
     analyticsTitle: "分析",
-    analyticsBody: "GitStarClub 使用 Vercel Web Analytics 以彙總方式統計頁面瀏覽。它不使用 Cookie，且注重隱私：不會設定 Cookie、跨站追蹤、識別裝置指紋，也不會收集個人或個人資料資料。本站沒有廣告像素或第三方追蹤腳本。",
+    analyticsBody: "GitStarClub 不使用分析腳本或廣告像素，不會跨站追蹤你或識別裝置指紋。本站沒有第三方追蹤腳本。",
     cookiesTitle: "Cookie 與儲存",
     cookiesBody: "唯一的 Cookie 是 gsc_lang，用於保存語言偏好。它是第一方功能性偏好 Cookie。主題偏好儲存在瀏覽器本機，不會傳送到伺服器。",
     dataTitle: "網站顯示的資料",

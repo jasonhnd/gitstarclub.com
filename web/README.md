@@ -25,4 +25,4 @@ Both Worker contracts use R2. Read-only R2 builds need the explicit R2 driver an
 
 ## Analytics
 
-The Cloudflare host does not load Vercel Web Analytics. `web/lib/analytics-policy.ts` returns no provider when `HOSTING_TARGET=cf` and `VERCEL_ENV` is not `production`. Google Analytics and other third-party tracking scripts are intentionally unsupported.
+The application has no analytics provider or analytics scripts. Google Analytics and other third-party tracking scripts are intentionally unsupported. Privacy copy in all seven locales describes this behavior and the essential language-preference cookie.

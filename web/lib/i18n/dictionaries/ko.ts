@@ -47,7 +47,7 @@ const ko: Dict = {
     aboutTitle: "소개 — 데이터 출처와 방법론",
     aboutDescription: "GH Archive와 GitHub API, 총 증가와 순증감, 1만 스타 기준 목록, 알려진 한계를 통해 GitStarClub이 스타 히스토리를 만드는 방식을 설명합니다.",
     privacyTitle: "개인정보",
-    privacyDescription: "GitStarClub 개인정보 안내: 개인정보 친화적인 Vercel Web Analytics, 추적 Cookie 없음, 필수 언어 설정 Cookie만 사용합니다.",
+    privacyDescription: "GitStarClub 개인정보 안내: 분석 스크립트나 추적 Cookie 없이 필수 언어 설정 Cookie만 사용합니다.",
   },
   about: {
     heroPre: "사실에 기반한 ",
@@ -374,7 +374,7 @@ const ko: Dict = {
     eyebrow: "개인정보",
     title: "기본부터 개인정보를 우선합니다.",
     analyticsTitle: "분석",
-    analyticsBody: "GitStarClub은 Vercel Web Analytics로 페이지 조회수를 집계합니다. Cookie를 사용하지 않고 개인정보 친화적입니다. Cookie 설정, 사이트 간 추적, 기기 지문 수집, 개인 또는 프로필 데이터 수집을 하지 않습니다. 광고 픽셀이나 타사 추적 스크립트도 없습니다.",
+    analyticsBody: "GitStarClub은 분석 스크립트나 광고 픽셀을 사용하지 않습니다. 사이트 간 추적이나 기기 지문 수집을 하지 않습니다. 타사 추적 스크립트도 없습니다.",
     cookiesTitle: "Cookie와 저장소",
     cookiesBody: "유일한 Cookie는 언어 설정을 저장하는 gsc_lang입니다. 이는 자사 기능성 설정 Cookie입니다. 테마 설정은 브라우저 로컬에 저장되며 서버로 전송되지 않습니다.",
     dataTitle: "사이트에 표시되는 데이터",
