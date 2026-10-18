@@ -1,5 +1,11 @@
 import { sendAlert } from "@/lib/observability/alert";
-import { markFailed, markPublished, startRun, type PublicationFailure } from "@/lib/workflows/checkpoint";
+import {
+  markFailed,
+  markPublished,
+  recordPostCommitLeaseLoss,
+  startRun,
+  type PublicationFailure,
+} from "@/lib/workflows/checkpoint";
 import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
 import {
   PublicationCommitUnknownError,
@@ -106,5 +112,16 @@ function publicationFailure(
 export async function failRefreshJob(job: RefreshStepJob, error: unknown): Promise<void> {
   if (job.graph !== "full" || !job.cursor.startedAt || job.cursor.fencingToken === undefined) return;
   const message = error instanceof Error ? error.message : String(error);
-  await markFailed(job.runId, job.cursor.startedAt, message, job.cursor.fencingToken, publicationFailure(job, error));
+  const publication = publicationFailure(job, error);
+  try {
+    await markFailed(job.runId, job.cursor.startedAt, message, job.cursor.fencingToken, publication);
+  } catch (checkpointError) {
+    // markFailed renews the lease before every write, so a lease lost after
+    // the pointer switch writes nothing. Keep a run-scoped record of the live
+    // version instead; any other failure still propagates.
+    const leaseLostAfterCommit =
+      error instanceof PublicationPostCommitLeaseLostError && checkpointError instanceof WorkflowLeaseOwnershipError;
+    if (!leaseLostAfterCommit || !publication) throw checkpointError;
+    await recordPostCommitLeaseLoss(job.runId, job.cursor.startedAt, message, publication);
+  }
 }
