@@ -1,7 +1,7 @@
 ---
 owner: bootstrap pipeline
 status: active
-last_reviewed: 2026-07-17
+last_reviewed: 2026-10-19
 source_of_truth_for:
   - one-off bootstrap pipeline
   - archived backfill algorithms
@@ -13,9 +13,13 @@ source_of_truth_for:
 >
 > Architecture is in [ARCHITECTURE.md](./ARCHITECTURE.md), and operations/credentials are in [OPS.md](./OPS.md).
 
+> **Extraction retired on 2026-10-19.** BigQuery / GH Archive is no longer a bootstrap or gap-repair source. GSC_0045 measured 12,761 archive stars against 342,659 in GitHub's own star-history proxy (about 3.7%, or roughly 4%) on 40 repositories in 2026. This is a stratified sample, not a population-weighted site estimate; the proxy counts present-day surviving stars and does not prove exact historical net totals or UTC boundaries. The published frozen net series stays. The replacement source is GitHub's own star history, `GET /repositories/{id}/stargazers/history`, under owner decision d1019-001344-1. That source decision does not authorize collection, a baseline rebuild, or publication. The extraction recipe below is retained only as dated history.
+>
+> Raw data lives only in private R2 `gitstarclub-raw`: `star_daily_gross/data-0000000000{00..19}.parquet` (20 objects, 30,907,971 bytes, 12,375,426 rows), and `bigquery-export/<table>/data-000000000000.parquet` for `whitelist` (5,249 rows) and `star_daily_gross_gap_260530_260930_20261019` (90,797 rows; 2026-05-30 through 2026-09-30). GCP project `gitstarclub` entered deletion at 2026-10-19T11:12:41Z (`DELETE_REQUESTED`); the calculated 30-day recovery deadline is 2026-11-18T11:12:41Z. See [OPS raw-data inventory and read-only cf verification](./OPS.md#raw-backfill-data) and the [SHA-256 manifest](./raw-data.sha256). Use `cf r2 objects list/get` and `shasum -a 256 -c`, never Wrangler.
+
 ## Scope
 
-This document describes the **bootstrap pipeline**: it runs once, executed from the developer's machine, in order to seed `canonical/v2/**` and `views/**` out of blank. Scripts under the `pipeline/` directory are an archived form — they have already been run once, are no longer triggered in day-to-day operations, and are executed again only in the following cases:
+This document describes the **bootstrap pipeline**: it runs once, executed from the developer's machine, in order to seed `canonical/v2/**` and `views/**` out of blank. Scripts under the `pipeline/` directory are an archived form — they have already been run once, are no longer triggered in day-to-day operations, and their non-extraction steps require separate authorization to run again in the following cases. The retired BigQuery / GH Archive step must not be rerun:
 
 - The first cold start of a new environment
 - Disaster rebuild (the configured object store is lost in full)
@@ -29,21 +33,21 @@ Neither Worker lists cron triggers. Production `triggers.crons` and preview `env
 
 | Stage | Where it runs | What it uses | Trigger |
 |---|---|---|---|
-| One-off bootstrap (this document §1) | Local machine / full Node | BigQuery (once) + DuckDB + GraphQL → JSON | Run once manually |
+| Historical bootstrap (this document §1) | Local machine / full Node | Former BigQuery + DuckDB + GraphQL → JSON | Extraction retired 2026-10-19; retained for audit |
 | Daily cron (this document §2) | Cloudflare Worker route `web/app/api/cron/daily` | GraphQL + JSON live tail (**does not touch DuckDB/Parquet**). The production write contract uses the guarded R2 DATA binding | Intended `0 3 * * *`. Both Worker cron lists are `[]`. The production caller is unverified |
 | Weekly cron (this document §3) | Cloudflare Worker route `web/app/api/cron/weekly` | GraphQL + JSON incremental overwrite of the current week/month/hot set. The production write contract uses the guarded R2 DATA binding | Intended `0 4 * * SUN`. Both Worker cron lists are `[]`. The production caller is unverified |
 | Managed refresh (this document §4) | Cloudflare Workers. `WORKFLOW_RUNTIME` is `cf-queue` on both Workers; the code default when unset is `http` | Multi-step checkpoint + JSON shard (**no engine**). The production write contract uses the guarded R2 DATA binding | Intended `0 6 * * SUN`, or a manual authenticated call. Both Worker cron lists are `[]`. The production caller is unverified |
 
-Credentials: `GITHUB_TOKEN` (GraphQL/Search), GCP (**bootstrap only** BigQuery), `BLOB_READ_WRITE_TOKEN` only for the retained Blob write path, `CRON_SECRET`. Both Workers use the guarded `DATA` binding for R2 writes and do not use the Blob token for that path. See [OPS.md](./OPS.md).
+Credentials: `GITHUB_TOKEN` (GraphQL/Search), GCP credentials retired (historical BigQuery extraction only), `BLOB_READ_WRITE_TOKEN` only for the retained Blob write path, `CRON_SECRET`. Both Workers use the guarded `DATA` binding for R2 writes and do not use the Blob token for that path. See [OPS.md](./OPS.md).
 
 ---
 
-## 1. One-off bootstrap (`pipeline/backfill/`, run once manually)
+## 1. Historical bootstrap (`pipeline/backfill/`; extraction retired 2026-10-19)
 
-> **Demotion notice**: this section is a one-off tool for the **first cold start / disaster rebuild**, and it is **not a day-to-day operations runbook**. After the JSON views and canonical it produces are uploaded, the host's managed refresh takes over recurring refresh. Production data uses R2 after the accepted 2026-10-04 cutover. The production caller is unverified. **Day-to-day operations have 0 local dependencies.** These scripts are not deleted, but they are run manually only when a new data source is introduced / the baseline is rebuilt.
+> **Historical recipe, not a current rebuild instruction.** The BigQuery / GH Archive extraction step is retired; do not run it, including for disaster recovery. Any replacement-source rebuild requires separate authorization. This section preserves the original one-off bootstrap sequence. After the JSON views and canonical it produces are uploaded, the host's managed refresh takes over recurring refresh. Production data uses R2 after the accepted 2026-10-04 cutover. The production caller is unverified. **Day-to-day operations have 0 local dependencies.** These scripts are not deleted, but they are run manually only when a new data source is introduced / the baseline is rebuilt.
 
 ```text
-01-whitelist → 02-extract(BigQuery) → 03-metadata(GraphQL)
+01-whitelist → 02-extract(BigQuery; RETIRED) → 03-metadata(GraphQL)
             → 04-rollup(DuckDB) → 05-precompute(DuckDB)
             → 06-upload(immutable base phase)
             → 07-export-v2(immutable canonical phase → validate → one pointer commit)
@@ -53,7 +57,7 @@ Credentials: `GITHUB_TOKEN` (GraphQL/Search), GCP (**bootstrap only** BigQuery),
 
 > **Newcomer baseline (the first v2 run)**: the Workflow whitelist step (`whitelist.ts:24-28`) uses the id set of `canonical/v2/whitelist/latest.json` as the newcomer diff baseline; **when that pointer does not yet exist on the first run, it falls back to the id set of bootstrap `lookup/repos.json`** — otherwise the first run would misjudge every existing repo as a "newcomer". After that, each run writes `latest.json` back as the next run's baseline.
 
-**02 extract (BigQuery, ~$10)** — render `pipeline/backfill/02-extract.sql` locally, then dry-run with a 400 GB cap before any real query:
+**02 extract (BigQuery / GH Archive; retired 2026-10-19)** — historical renderer and 400 GB dry-run-cap example only. Do not execute the query or recreate GCP:
 
 ```bash
 cd pipeline
@@ -61,7 +65,36 @@ node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.st
 bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < rendered.sql
 ```
 
-The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`, so a rerun cannot replace the May extract. The cutoff is a 6-digit YYMMDD suffix. Includes a stable `repo.id` (rename consolidation), and exports Parquet to the local machine. Step 04 still reads the local directory `data/star_daily_gross/`.
+The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`, so a rerun cannot replace the May extract. The cutoff is a 6-digit YYMMDD suffix. Includes a stable `repo.id` (rename consolidation), and originally exported Parquet to a local working directory. That directory is not a retained backup. Raw recovery inputs now live only in private R2 `gitstarclub-raw`, as listed above. Step 04 historically read a local working copy in `data/star_daily_gross/`; do not regenerate it with a new GH Archive scan.
+
+For the authorized preview gap rebuild (#668), `--start-suffix` narrows the
+lower bound (default `150101`) and `--create-only` emits `CREATE TABLE`, which
+refuses an existing destination. Keep the original whitelist and do not rerun
+step 01. The gap-specific cap is 20 GB, not the historical full-extract cap:
+
+```bash
+node backfill/02-extract.mjs --start-suffix 260530 --cutoff-suffix 260930 --destination gitstarclub.star_daily_gross_gap_260530_260930_20261019 --create-only > "$KANBAN_TMP/gap.sql"
+bq query --project_id=gitstarclub --location=US --use_legacy_sql=false --dry_run --maximum_bytes_billed=20000000000 < "$KANBAN_TMP/gap.sql"
+```
+
+Review the fresh dry-run bytes before running that same capped command without
+`--dry_run`. Preserve the original May table and exports. The local union ends
+on September 30 and produces month `2026-09` / week `2026-W40` fold watermarks.
+W40 contains September 28–30 only; October 1–4 are not added to that weekly
+baseline. An October fold needs no frozen pending with those watermarks,
+without the preview cold-start relaxation. Local evidence and later preview
+upload instructions belong in [the rebuild plan](../plans/668-preview-gap-rebuild.md).
+
+The owner subsequently restricted this GH Archive gap to a **local rehearsal
+only** (GSC_0045 sampling found severe undercoverage). Do not upload or publish
+its output. The plan also assesses GitHub's aggregate star-history API with a
+small read-only sample. Owner decision d1019-001344-1 = A subsequently
+authorized GSC_0080's fixed-whitelist, local-only timestamp collection for
+May 30 through September 30, with no upload or publication authority. See
+[the UTC star-history collection report](analysis/STAR-HISTORY-GAP.md) for the
+50-repository pilot, GraphQL access failure, estimates and resume commands.
+When a rehearsal reuses repository metadata snapshots, step 07 preserves
+`active: false` for historical members instead of reactivating them.
 
 **03 metadata (GraphQL)** — `nodes(ids:[node_id])` fetches in batches of 100/query `owner.login + owner.__typename + name + description + primaryLanguage + languages + repositoryTopics + createdAt + stargazerCount(=current_stars) + isArchived` → the `repos` dimension (DATA-CONTRACTS §1.2).
 

@@ -1,4 +1,5 @@
 import { readAuthoritativeView } from "@/lib/data/source";
+import { mapLimit } from "@/lib/data/map-limit";
 import { putView } from "@/lib/data/write";
 import { CATEGORY_RANK_PAGE_SIZE, categoryAllTimeRankPath } from "@/lib/categories/rank-pages";
 import {
@@ -27,7 +28,9 @@ import {
 import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { assertPublishedViewJsonSize } from "@/lib/view-size";
 import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
+import { isUniverseColdStartActive } from "@/lib/workflows/cold-start";
 import { putOwnedView } from "@/lib/workflows/owned-write";
+import { readPackedWindowMeta } from "@/lib/workflows/recompute/io";
 import { validateGeneratedEntities } from "./validate-entities";
 import {
   validateAliases,
@@ -37,6 +40,7 @@ import {
   validateMeta,
   validateRepositoryMembership,
   validateSearchIndex,
+  inspectRank,
   type ValidationInvariantReport,
 } from "./validate-invariants";
 
@@ -51,19 +55,33 @@ export { HIGH_D_FACTOR_WARN_THRESHOLD, inspectAnchoringFactors } from "@/lib/wor
 const MIN_LOOKUP = 1000;
 
 export async function validateVersion(runId: string, fencingToken?: number): Promise<{ ok: boolean; checked: number; failures: string[] }> {
+  const coldStart = await isUniverseColdStartActive(`${runId}-validate`);
   const failures: string[] = [];
-  const invariants: Record<string, boolean | number> = {};
+  const invariants: Record<string, boolean | number> = {
+    cold_start_empty_curve_relaxed: false,
+    cold_start_missing_prior_year_heatmap_relaxed: false,
+  };
   let checked = 0;
   let schemaFailures = 0;
+
+  const relaxHistoryCheck = (invariant: string, check: string) => {
+    invariants[invariant] = true;
+    console.log("[workflow-refresh] cold-start validation relaxed", { run_id: runId, check });
+  };
 
   const read = async <T>(
     rel: string,
     schema: Parameters<typeof readAuthoritativeView<T>>[1],
+    onMissing?: (failure: string) => void,
   ): Promise<T | null> => {
     checked++;
     try {
       const v = await readAuthoritativeView<T>(`views/${runId}/${rel}`, schema, { bust: runId });
-      if (v === null) failures.push(`${rel}: missing`);
+      if (v === null) {
+        const failure = `${rel}: missing`;
+        if (onMissing) onMissing(failure);
+        else failures.push(failure);
+      }
       return v;
     } catch (err) {
       schemaFailures++;
@@ -83,6 +101,7 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   const orgLookup = await read("lookup/orgs.json", OrgsLookup);
 
   mergeValidationReport({ invariants, failures }, validateAllTimeRanks({ allTime, allTimeOrg, lookup, minLookup: MIN_LOOKUP, orgLookup }));
+  mergeValidationReport({ invariants, failures }, await validatePeriodRanks(runId, read, lookup, orgLookup));
   let previousLookup: ReposLookup | null = null;
   try {
     previousLookup = await readAuthoritativeView("lookup/repos.json", ReposLookup, { base: true, bust: runId });
@@ -157,13 +176,17 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   }
   mergeValidationReport({ invariants, failures }, validateCategorySampleRanks({ categoryAssignments, categoryRank, categoryRankPage2, sampleCategory }));
 
-  // sample the top repo's entity — must have a non-empty anchored curve.
+  // Only the first armed preview publish can honestly have no historical curve.
   const topId = allTime?.items[0]?.id;
   if (topId != null) {
     const ent = await read(`entity/repo/${topId}.json`, RepoEntity);
     if (ent) {
       invariants.sample_curve_months = ent.curve.monthly.length;
-      if (ent.curve.monthly.length === 0) failures.push(`entity/repo/${topId}: empty curve`);
+      if (ent.curve.monthly.length === 0) {
+        const failure = `entity/repo/${topId}: empty curve`;
+        if (coldStart) relaxHistoryCheck("cold_start_empty_curve_relaxed", failure);
+        else failures.push(failure);
+      }
       const trackingContract = typeof ent.active === "boolean" && "tracked_since" in ent;
       invariants.sample_entity_tracking_contract = trackingContract;
       if (!trackingContract) failures.push(`entity/repo/${topId}: missing active/tracked_since`);
@@ -173,9 +196,14 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   const entityReport = await validateGeneratedEntities(read, lookup, orgLookup);
   Object.assign(invariants, entityReport.invariants);
 
-  // a heatmap year that must exist (prior calendar year is always complete).
+  // Normal refreshes require the complete prior year. First preview publication
+  // may lack that history, but a present, malformed heatmap still fails its schema.
   const lastYear = String(new Date().getUTCFullYear() - 1);
-  await read(`heatmap/year/${lastYear}.json`, Heatmap);
+  await read(
+    `heatmap/year/${lastYear}.json`,
+    Heatmap,
+    coldStart ? (failure) => relaxHistoryCheck("cold_start_missing_prior_year_heatmap_relaxed", failure) : undefined,
+  );
 
   const ok = failures.length === 0;
   const storedFailures = failures.map((item) => sanitizeErrorText(item));
@@ -190,6 +218,49 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
 function mergeValidationReport(target: ValidationInvariantReport, report: ValidationInvariantReport) {
   Object.assign(target.invariants, report.invariants);
   target.failures.push(...report.failures);
+}
+
+/** The real recompute's persisted period inventory defines required core ranks.
+ * Growth/new views are conditional and are not part of this completeness gate. */
+async function validatePeriodRanks(
+  runId: string,
+  read: <T>(rel: string, schema: Parameters<typeof readAuthoritativeView<T>>[1]) => Promise<T | null>,
+  lookup: ReposLookup | null,
+  orgLookup: OrgsLookup | null,
+): Promise<ValidationInvariantReport> {
+  const failures: string[] = [];
+  let checked = 0;
+  for (const kind of ["month", "week", "year"] as const) {
+    const manifestPath = `ops/workflows/${runId}/recompute/${kind}-win/meta.json`;
+    let manifest;
+    try {
+      manifest = await readPackedWindowMeta(runId, kind);
+    } catch (error) {
+      failures.push(`${manifestPath}: read/schema — ${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
+    if (!manifest || manifest.kind !== kind) {
+      failures.push(`${manifestPath}: missing or invalid period inventory`);
+      continue;
+    }
+    // A valid, empty inventory (preview cold start with no series shards) lists no periods, so nothing is required.
+    // Limit concurrent reads and resident rank JSON; no canonical series reload.
+    await mapLimit(manifest.periods, 4, async (period) => {
+      for (const dim of ["repo", "org"] as const) {
+        for (const metric of ["flow", "stock"] as const) {
+          const path = `rank/${kind}/${period}/${dim}/${metric}.json`;
+          checked++;
+          const rank = await read(path, RankList);
+          if (!rank) continue; // The shared reader records missing/schema failures.
+          if (rank.meta.window !== kind || rank.meta.period !== period || rank.meta.dim !== dim || rank.meta.metric !== metric) {
+            failures.push(`${path}: metadata does not match artifact path`);
+          }
+          failures.push(...inspectRank(path, rank, { lookup: lookup ?? undefined, orgLookup: orgLookup ?? undefined }).failures);
+        }
+      }
+    });
+  }
+  return { invariants: { period_rank_files_checked: checked }, failures };
 }
 
 async function readCategoryAssignments(
