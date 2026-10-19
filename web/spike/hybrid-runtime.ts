@@ -81,7 +81,7 @@ export class HybridCache extends DefaultCdnCacheAdapter {
     }
     const policy = entry.cacheControl;
     const state = proofContext.getStore();
-    if (state) state.revalidate = policy?.revalidate;
+    if (state) { state.revalidate = policy?.revalidate; state.cachedAt = entry.lastModified; }
     const age = (proofNow() - entry.lastModified) / 1000;
     const revalidate = policy?.revalidate;
     if (typeof policy?.expire === "number" && age > policy.expire) {

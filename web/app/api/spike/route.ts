@@ -1,12 +1,33 @@
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { invalidatePublishedViews } from "@/lib/workflows/publication-cache";
 import { corePublicationRevalidatePaths } from "@/lib/data/core-revalidate-paths";
+import { invalidatePublishedVersionMemo } from "@/lib/data/source";
+import { proofContext } from "../../../spike/context";
 
 export const dynamic = "force-dynamic";
 
 // Local proof controls only. Never include this route in the migration.
 export async function POST(request: Request) {
   const input = await request.json();
+  if (input.action === "evict-hot" || input.action === "clear") {
+    const kv = proofContext.getStore()!.env.GSC_CACHE as any;
+    let cursor: string | undefined;
+    let count = 0;
+    do {
+      const page = await kv.list({ cursor });
+      for (const key of page.keys) {
+        if (key.name.startsWith("gsc-0074:pages:v1:entry:")) {
+          const id = key.name.split(":").at(-1);
+          await caches.default.delete("https://gsc-0074-cache.invalid/" + id);
+          count++;
+        }
+        if (input.action === "clear") await kv.delete(key.name);
+      }
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+    invalidatePublishedVersionMemo();
+    return Response.json({ action: input.action, count });
+  }
   if (input.action === "publish" || input.action === "rollback") {
     await fetch("http://127.0.0.1:4074/__control", {
       method: "POST", headers: { "Content-Type": "application/json" },

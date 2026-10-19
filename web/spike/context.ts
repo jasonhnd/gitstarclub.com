@@ -9,6 +9,7 @@ export type ProofContext = {
   path?: string;
   bypass?: boolean;
   revalidate?: number | false;
+  cachedAt?: number;
 };
 export const proofContext = new AsyncLocalStorage<ProofContext>();
 export const proofNow = () => Date.now() + (proofContext.getStore()?.offset ?? 0);
