@@ -78,3 +78,152 @@ checkpoints, summaries and estimates, live only under
 `/Users/ms23m2/AgenticCoder/gitstarclub.com/.kanban-work/leader/star-history/`.
 They survive card cleanup and are excluded from Git. Temporary toolchain,
 logs and isolated verification output use this card's own `.kanban-work/GSC_0080/`.
+
+## Whitelist provenance and pilot
+
+The R2 object was read with the Cloudflare `cf` CLI, not Wrangler, on October
+19. The Parquet SHA-256 is
+`d5a484458cf73942126e7f0d1e10b7f7f30c497069b83eb0913b8e42eac648ec`.
+It has exactly 5,249 unique positive ids; its id set equals the retained
+`leader/gsc0045/whitelist.json` exactly. That JSON's SHA-256 is
+`07f5a3b79bb26fe2d248686c1b064b405d1ddd0124f76746dc7e5bd75f2cb4de`.
+The names and frozen-star bands come from `leader/gsc0045/repos.json`,
+filtered to those ids (that older metadata file also contains other ids;
+none of them enters this collection). Names and bands are not fresh metadata.
+`manifest.json` fingerprints all five source inputs, including the original
+40-member sample and its per-repository reference comparison.
+
+The pilot includes all 40 GSC_0045 samples plus ten other fixed members
+selected by sorting SHA-256(`GSC_0080:<repo id>`) and taking the first ten.
+The original stratified sample is described in
+[the repair plan](../../plans/prod-rollout-and-data-repair.md#b2-gh-archive-gap-fill-not-acceptable).
+It is not a population-weighted random estimate for the whole site.
+
+| Measurement | Result |
+| --- | ---: |
+| Complete stable-id inventory | 5,249 repositories / 53 requests |
+| Public repositories | 5,243 |
+| Not found or inaccessible | 6 |
+| Public `stargazerCount` sum at inventory time | 142,281,103 |
+| Pilot repositories | 50 |
+| Pilot positive-stock, empty connections | 50 |
+| Verified pilot UTC histories / repository-days | 0 / 0 |
+| Pilot requests / measured GraphQL points | 3 / 3 |
+| Pilot API time / wall time | 4.089 s / 4.147 s |
+| Pilot quota/backoff wait / unmetered requests | 0 s / 0 |
+| Prior 40-member surviving-star reference | 342,659 |
+| Prior 40-member GH Archive count | 12,761 |
+| Matched GraphQL total / difference | unavailable / unavailable |
+
+Every pilot connection was empty despite positive `stargazerCount`; its
+`totalCount` was zero and `hasNextPage` was false. There is no valid new total
+to compare with 342,659. In particular, this is not a measured zero or a
+100-percent decrease. Reference histories use aggregate nominal days and an
+earlier query time, so even accessible timestamps would require date/cohort
+caveats in any comparison. Raw pilot evidence remains excluded, along with
+`pilot-summary.json`, `pilot-api.json` and `inventory.json`.
+
+GitHub's [June 30 access-restriction announcement](https://github.blog/changelog/2026-06-30-upcoming-access-restrictions-to-public-api-endpoints-and-ui-views/)
+says star-list access is restricted to admins/collaborators and that empty or
+403 responses can occur. It specifically discusses REST/UI access; attributing
+the observed GraphQL emptiness to that policy is an inference, supported by
+the reproducible responses, not a separate documented GraphQL guarantee.
+The [September aggregate endpoint announcement](https://github.blog/changelog/2026-09-04-new-api-endpoint-provides-privacy-safe-star-history-data/)
+offers counts without identities, but does not resolve the UTC-boundary
+limitation documented in PR #669. This tool does not silently substitute it.
+
+## Request, point and duration estimates
+
+The measured pilot cost is one primary GraphQL point per batched query.
+`rateLimit.limit` reports 5,000 points/hour, shared with other login users.
+The conservative observed request model adds one second to the pilot's mean
+API latency: `4.089 / 3 + 1 = 2.363` seconds/request. Actual pacing only waits
+when needed to keep request starts at least one second apart, so this model
+deliberately overcounts that spacing when latency already exceeds one second.
+
+Under the observed empty-response behavior, an entire public first-page
+access sweep needs `ceil(5243 / 20) = 263` requests/points, about **0.173 hours
+(10.4 minutes)** before retries/shared-quota waits. This estimates an access
+check, not retrieval of 124 days. The inventory adds 53 requests; the pilot
+is reused by the full run, rather than fetched again.
+
+**A valid gap-extraction request/point/hour estimate is unavailable.** No
+pilot timestamp identifies the May 30 stopping depth. For scale only, summing
+`max(1, ceil(stargazerCount / 100))` over all public members gives a conditional
+full-lifetime ceiling of **1,425,431 pages**, approximately **1,425,431 points**
+if future individual-page queries also cost one point. That is **285.09 hourly
+quota allowances**, or **935.64 hours** under the conservative latency model.
+These are hypothetical static-stock bounds and projections, not an observed
+gap ETA or a guarantee of throughput. Initial-page batching can lower this
+ceiling, and reaching May 30 would normally stop far earlier. Other token
+users, secondary limits, changing stocks and unavailable members add uncertainty.
+
+`estimate.json` keeps inaccessible-pilot gap estimates null. For a future fully
+accessible pilot, it can calculate a conditional ratio of pages to current
+stock within each frozen-star band; unsampled bands use their lifetime ceiling.
+That model has no calibrated confidence interval. It must not be described as
+measured completeness or as an assurance that all stars can be fetched.
+
+## Run and resume
+
+Run from this repository root after the archive-verified AGENTS bootstrap and
+the frozen-lockfile web/pipeline installs. Keep `TMPDIR`, `KANBAN_TMP` and caches
+inside this card's `.kanban-work/GSC_0080/`. These initial preparation commands
+are already complete; resume the existing collection instead of replacing it.
+The R2 command is a GET only, uses the existing `cf` login, and is unrelated to
+Wrangler. No GCP or storage-write credential is used.
+
+```bash
+export KANBAN_TMP="$PWD/.kanban-work/GSC_0080"
+export TMPDIR="$KANBAN_TMP/"
+mkdir -p "$KANBAN_TMP"
+export BUN_INSTALL_CACHE_DIR="$KANBAN_TMP/bun-cache"
+export XDG_CACHE_HOME="$KANBAN_TMP/cache"
+export npm_config_cache="$KANBAN_TMP/npm-cache"
+export PATH="$KANBAN_TMP/gitstarclub-toolchain/node-v24.20.0/node-v24.20.0-darwin-arm64/bin:$KANBAN_TMP/gitstarclub-toolchain/bun-1.4.2/bun-darwin-aarch64:$PATH"
+OUT=/Users/ms23m2/AgenticCoder/gitstarclub.com/.kanban-work/leader/star-history
+PRIOR=/Users/ms23m2/AgenticCoder/gitstarclub.com/.kanban-work/leader/gsc0045
+if [ ! -f "$OUT/whitelist.parquet" ]; then
+  mkdir -p "$OUT"
+  : "${CLOUDFLARE_ACCOUNT_ID:?set the owner-provided read account id}"
+  cf r2 objects get bigquery-export/whitelist/data-000000000000.parquet --bucket-name gitstarclub-raw > "$OUT/whitelist.parquet"
+fi
+node pipeline/scripts/star-history.mjs prepare --whitelist "$OUT/whitelist.parquet" --retained-whitelist "$PRIOR/whitelist.json" --metadata "$PRIOR/repos.json" --sample "$PRIOR/sample.json" --reference "$PRIOR/analysis.json"
+node pipeline/scripts/star-history.mjs inventory --max-seconds 600
+node pipeline/scripts/star-history.mjs fetch --pilot --max-seconds 600
+node pipeline/scripts/star-history.mjs report
+```
+
+On this measured run, `fetch --pilot` exits 2 because no valid histories are
+available; that is expected, not a passing extraction. Always inspect the
+summary before proceeding. Initial full-run foreground chunks use:
+
+```bash
+node pipeline/scripts/star-history.mjs fetch --max-seconds 600
+node pipeline/scripts/star-history.mjs report
+```
+
+Exit 2 can mean a time/repository chunk boundary, a persisted quota cooldown,
+or unavailable coverage. Repeating `fetch` resumes pending cursors/members and
+skips final unavailable statuses. It cannot make a restricted history available.
+Exit 1 is a fatal input/transport error; inspect the reported reason. Exit 0
+from `fetch` alone means all selected histories have passed validation;
+`prepare`, `inventory` and `report` returning 0 make no such claim.
+
+After access changes, explicitly retry unavailable histories in bounded
+foreground chunks. The durable `collector.mjs` is an exact source copy of the
+committed fetcher so it survives removal of the executor checkout. Its runtime
+fetch/report commands need Node 24 and `gh`, with no DuckDB dependency.
+
+```bash
+node /Users/ms23m2/AgenticCoder/gitstarclub.com/.kanban-work/leader/star-history/collector.mjs fetch --retry-unavailable --max-seconds 600
+node /Users/ms23m2/AgenticCoder/gitstarclub.com/.kanban-work/leader/star-history/collector.mjs report
+```
+
+Continue that retry command only while `retry_round_remaining` is positive;
+inspect `api-state.json` for a future `not_before` cooldown before restarting.
+At zero remaining, the retry round is finished, even if coverage is still
+unavailable. A further explicit invocation starts another retry round.
+Do not loop repeatedly against unchanged access restrictions. Page evidence
+and checkpoints are local artifacts only, not approved pipeline replacement
+inputs, and no data has been rolled up, uploaded or published.
