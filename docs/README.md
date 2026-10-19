@@ -71,6 +71,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | Document | Status | Owner / topic | Update when | Truth role |
 |---|---|---|---|---|
 | [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md) | active | Track C analytical data-layer option analysis | When a constitution-level revision amends the hard constraints or this comparison. There is no dated auto-review. | Option comparison history and historical must-prove list only. The dated decision (product veto, lock-002; no POC; no auto-review) lives in [ROADMAP.md](./ROADMAP.md) Track C, which remains the iteration index. |
+| [analysis/VINEXT-CACHE-DESIGN.md](./analysis/VINEXT-CACHE-DESIGN.md) | active | Local vinext hybrid cache proof and proposed migration requirements | When implementing GSC_0075 or changing the pinned cache/toolchain design. | GSC_0074 measurements, prototype branch/SHA, publication fence, and migration checklist; deployed architecture remains in ARCHITECTURE. |
 
 ### Historical analyses
 
@@ -117,6 +118,7 @@ Nested Markdown files under `docs/` are appendix documents. They are useful evid
 | analysis/DATA-CORRECTNESS-21 | Historical data-correctness analysis for issue #21 / #36 follow-up planning |
 | analysis/RECONCILE-MAIN-PRE-2026-07-19 | Historical 2026-07-19 main/pre reconciliation inventory; not current required-check policy |
 | analysis/DATA-LAYER-DECISION | Track C data-layer option comparison history and historical must-prove list; the dated lock-002 veto lives in ROADMAP Track C |
+| analysis/VINEXT-CACHE-DESIGN | Local vinext core-snapshot/long-tail cache proof and proposed migration requirements |
 | CHANGELOG | Versioned release history (what shipped and when) |
 | ROADMAP | Open work, architectural decisions, backlog |
 
@@ -158,6 +160,7 @@ A topic lives in exactly one document. Other documents reference it; they do not
 | Historical data-correctness analysis | Current behavior lives in RANKING, DATA-CONTRACTS, and TESTING; appendix evidence in [analysis/DATA-CORRECTNESS-21.md](./analysis/DATA-CORRECTNESS-21.md) |
 | Historical 2026-07-19 main/pre reconciliation | Snapshot only in [analysis/RECONCILE-MAIN-PRE-2026-07-19.md](./analysis/RECONCILE-MAIN-PRE-2026-07-19.md); current required CI in TESTING |
 | Track C data-layer decision | Dated record in [ROADMAP.md](./ROADMAP.md) Track C (product veto, lock-002; no POC; no auto-review); option compare history in [analysis/DATA-LAYER-DECISION.md](./analysis/DATA-LAYER-DECISION.md) |
+| Proposed vinext cache design and local proof | [analysis/VINEXT-CACHE-DESIGN.md](./analysis/VINEXT-CACHE-DESIGN.md); current deployed rendering constraints remain in ARCHITECTURE and FRONTEND |
 | Release history | CHANGELOG |
 | Open work / architectural decisions | ROADMAP |
 

@@ -1,7 +1,7 @@
 ---
 owner: operations / storage
 status: active
-last_reviewed: 2026-10-13
+last_reviewed: 2026-10-19
 source_of_truth_for:
   - R2 cutover runbook
   - current object-storage status
@@ -17,6 +17,12 @@ source_of_truth_for:
 This file is the source of truth for where object storage is going and which stage is current. Historical P0 adapter notes live in [archive/R2-MIGRATION-P0.md](./archive/R2-MIGRATION-P0.md). The Blob publish and refresh design lives in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md). Both are superseded for storage status. Retained Blob rollback layout and the current environment inventory stay in [OPS.md](./OPS.md).
 
 This document does not create buckets, change DNS, deploy a Worker, or write either store.
+
+## Private raw archive and GCP retirement (2026-10-19)
+
+Raw/backfill data lives only in private R2 `gitstarclub-raw`, separate from the public `gitstarclub-data-prod` and `gitstarclub-data-pre` buckets. Its original `star_daily_gross/data-0000000000{00..19}.parquet` set has 20 objects, 30,907,971 bytes, and 12,375,426 rows. The preserved whitelist (5,249 rows) and 2026-05-30 through 2026-09-30 gap table (90,797 rows) live under `bigquery-export/<table>/`. The archive has 22 objects in total. The gap export is retained evidence, not an approved data repair.
+
+GSC_0071 deleted GCP project `gitstarclub` at 2026-10-19T11:12:41Z (observed `DELETE_REQUESTED`; final purge deferred). The calculated 30-day recovery deadline is 2026-11-18T11:12:41Z. GCS and BigQuery are retired; GH Archive extraction is retired in favor of GitHub's own star history (owner decision d1019-001344-1), without authorizing collection or publication. See [OPS raw-data inventory and read-only cf verification](./OPS.md#raw-backfill-data) and its [SHA-256 manifest](./raw-data.sha256). Verification uses `cf r2 objects list/get` and `shasum -a 256 -c`, never Wrangler. The raw archive does not change the production cutover stages or authorize writes.
 
 ## Read-only state check (2026-10-13)
 

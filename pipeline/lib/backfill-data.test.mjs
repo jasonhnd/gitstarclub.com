@@ -138,12 +138,12 @@ describe("step 07 local validation binds to sealed manifest bytes", () => {
 });
 
 describe("step 02 SQL rendering failure paths", () => {
-  const template = "@@DESTINATION_TABLE@@ @@CUTOFF_SUFFIX@@ @@DESTINATION_TABLE@@";
+  const template = "@@DESTINATION_TABLE@@ @@START_SUFFIX@@ @@CUTOFF_SUFFIX@@ @@CREATE_MODE@@ @@DESTINATION_TABLE@@";
   const destination = "gitstarclub.star_daily_gross_260531";
 
   test("trims and unquotes a dated destination and replaces every placeholder", () => {
     expect(renderExtractSql(template, { cutoffSuffix: "260531", destination: ` \`${destination}\` ` })).toBe(
-      `${destination} 260531 ${destination}`,
+      `${destination} 150101 260531 CREATE OR REPLACE ${destination}`,
     );
   });
 
