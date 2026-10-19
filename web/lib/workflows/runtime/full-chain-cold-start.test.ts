@@ -104,6 +104,21 @@ describe("preview cold-start refresh with an empty period inventory", () => {
     expect(relaxedChecks).toEqual(historyFailures.map((check) => ["[workflow-refresh] cold-start validation relaxed", { run_id: TEST_RUN, check }]));
   });
 
+  test("available history passes without reporting either exception", () => atValidate(async (h) => {
+    const entityPath = `views/${TEST_RUN}/entity/repo/1000.json`;
+    const entity = RepoEntity.parse(h.store.json(entityPath));
+    await h.store.set(entityPath, { ...entity, curve: { ...entity.curve, monthly: [["2026-09", 1, 1]] } });
+    await h.store.set(`views/${TEST_RUN}/heatmap/year/2025.json`, { meta: { scope: "year", period: "2025", generated_at: "2026-10-02T00:00:00.000Z" }, cells: [["2025-12", 1]] });
+    const log = spyOn(console, "log");
+    try {
+      expect((await h.run(beforeValidate.job)).response.status).toBe(200);
+      expect(WorkflowValidation.parse(h.store.json(runPath("validation.json")))).toMatchObject({ ok: true, invariants: { cold_start_empty_curve_relaxed: false, cold_start_missing_prior_year_heatmap_relaxed: false } });
+      expect(log.mock.calls.some(([message]) => message === "[workflow-refresh] cold-start validation relaxed")).toBe(false);
+    } finally {
+      log.mockRestore();
+    }
+  }));
+
   for (const [label, env] of [
     ["normal refresh without the flag", { WORKFLOW_COLD_START: "" }],
     ["disabled cold start", { WORKFLOW_COLD_START: "0" }],
