@@ -72,6 +72,12 @@ function text(markup: string) {
 }
 
 describe("aggregate provenance contract and approved boundaries", () => {
+  test("a measured zero remains a labeled daily observation with an accurate accessible count", async () => {
+    const t = await getDictionary("en");
+    const markup = await html(<RepoDailyHistorySection points={[["2026-05-30", 0]]} provenance={provenance} locale="en" t={t} />);
+    expect(markup).toContain("up to 0 stars per day across 1 recorded days");
+    expect(markup).toContain(t.common.starHistoryNote);
+  });
   test("accepts the collector's exact sidecar and retains it through strict and tolerant reads", () => {
     expect(Curve.parse(repo.curve).provenance).toEqual(provenance);
     expect(normalizeRepoPageEntity(repo)?.curve.provenance).toEqual(provenance);

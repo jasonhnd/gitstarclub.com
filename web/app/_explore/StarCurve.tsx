@@ -35,7 +35,8 @@ export function StarCurve({
   const padT = 28;
   const padB = 30;
   const n = series.length;
-  const max = Math.max(1, ...series.map((p) => p.total));
+  const peak = Math.max(0, ...series.map((p) => p.total));
+  const max = Math.max(1, peak);
 
   const x = (i: number) => padL + (i / Math.max(1, n - 1)) * (W - padL - padR);
   const y = (v: number) => H - padB - (v / max) * (H - padT - padB);
@@ -54,7 +55,7 @@ export function StarCurve({
         viewBox={`0 0 ${W} ${H}`}
         className="aspect-[880/300] min-w-[38rem] w-full max-w-none"
         role="img"
-        aria-label={fill(labels.ariaLabel, { stars: fmtK(max, locale), months: String(n), points: String(n) })}
+        aria-label={fill(labels.ariaLabel, { stars: fmtK(peak, locale), months: String(n), points: String(n) })}
         preserveAspectRatio="xMidYMid meet"
       >
         <defs>
