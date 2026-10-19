@@ -70,6 +70,8 @@ test("malformed counts, wrong weekdays, missing weeks, duplicates and wrong page
     [week("2026-09-20"), good], Array(31).fill(good)]) {
     expect(() => consumePage(newCheckpoint(member), page(body))).toThrow();
   }
+  expect(() => consumePage(newCheckpoint(member), page([good], { link: '<https://api.github.com/repositories/99/stargazers/history?page=2>; rel="next"' }))).toThrow("identity");
+  expect(consumePage(newCheckpoint(member), { ...fullPage(), headers: { link: '<https://api.github.com/repositories/33/stargazers/history?page=2>; rel="next"' } }).response_identity).toBe("stable_id_from_pagination_link");
 });
 
 test("paginated repositories checkpoint each page and resume without double counting; complete repos make no extra GET", async () => {
@@ -190,6 +192,8 @@ test("exports fingerprint sparse coverage, preserve shard tuple shape and never 
   expect(read(join(out, "inputs/canonical/v2/repo-recent-daily/2.json"))).toEqual({});
   expect(existsSync(join(out, "inputs/canonical/v2/repo-monthly"))).toBe(false);
   for (const file of manifest.files) expect(sha256(readFileSync(join(out, "inputs", file.path)))).toBe(file.sha256);
+  expect(manifest.raw_responses).toHaveLength(2);
+  for (const file of manifest.raw_responses) expect(sha256(readFileSync(join(out, file.path)))).toBe(file.sha256);
   for (const checkpoint of manifest.checkpoints) {
     expect(sha256(readFileSync(join(out, checkpoint.path)))).toBe(checkpoint.sha256);
     for (const page of checkpoint.pages) expect(sha256(readFileSync(join(out, page.path)))).toBe(page.sha256);

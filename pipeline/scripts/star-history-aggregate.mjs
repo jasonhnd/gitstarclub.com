@@ -1,7 +1,7 @@
 // Local-only gap inputs. GitHub authentication stays inside gh api.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { atomicJson, parseGhResponse, Pause } from "./star-history.mjs";
@@ -152,6 +152,9 @@ export function consumePage(previous, response) {
   if (response.status !== 200) {
     return { ...next, status: response.status === 404 ? "not_found_or_inaccessible" : `http_${response.status}`, daily: null };
   }
+  const linkedIds = [...(response.headers.link ?? "").matchAll(/https:\/\/api\.github\.com\/repositories\/(\d+)\/stargazers\/history/g)].map((match) => Number(match[1]));
+  if (linkedIds.some((id) => id !== next.repo_id)) throw new Error("History pagination identity differs from the fixed repository id");
+  next.response_identity = linkedIds.length ? "stable_id_from_pagination_link" : "same_day_stable_id_inventory_name";
   const weeks = response.body;
   if (!Array.isArray(weeks) || weeks.length > 30) throw new Error("Invalid aggregate response shape");
   if (!weeks.length) return { ...next, status: "unavailable_empty_history", daily: null };
@@ -296,11 +299,17 @@ export function exportInputs(out, members) {
     return { repo_id: member.id, path, sha256: sha256(bytes), status: record.status, pages: record.pages.map((path) => ({ path, sha256: sha256(readFileSync(join(out, path))) })) };
   });
   const source = read(join(out, "manifest.json"));
+  const rawResponses = existsSync(join(out, "pages")) ? readdirSync(join(out, "pages"), { recursive: true })
+    .map(String).filter((path) => path.endsWith(".json")).sort().map((path) => {
+      const relative = `pages/${path}`;
+      const bytes = readFileSync(join(out, relative));
+      return { path: relative, bytes: bytes.length, sha256: sha256(bytes) };
+    }) : [];
   const manifest = { version: VERSION, local_only: true, merge_policy: "gap-only inputs; fill missing dates/weeks only; never replace existing observations",
     ...summary, daily_rows: dailyRows, complete_week_rows: weeklyRows,
     daily_periods: GAP_DAYS, complete_week_periods: [...new Set(GAP_DAYS.map(isoWeek))].filter((week) => GAP_DAYS.filter((day) => isoWeek(day) === week).length === 7),
     partial_week_policy: "Do not publish partial totals as whole weeks; join adjacent existing daily observations in a separate integration",
-    monthly_files: [], files, checkpoints, source_manifest_sha256: sha256(readFileSync(join(out, "manifest.json"))), sources: source.sources,
+    monthly_files: [], files, checkpoints, raw_responses: rawResponses, source_manifest_sha256: sha256(readFileSync(join(out, "manifest.json"))), sources: source.sources,
     measurements: existsSync(join(out, "api-state.json")) ? read(join(out, "api-state.json")) : null };
   atomicJson(join(out, "inputs", "manifest.json"), manifest);
   return { ...summary, daily_rows: dailyRows, complete_week_rows: weeklyRows, files: files.length, manifest_sha256: sha256(readFileSync(join(out, "inputs", "manifest.json"))) };
@@ -356,6 +365,9 @@ export async function main(args = process.argv.slice(2)) {
     const manifest = read(join(OUTPUT_ROOT, "manifest.json"));
     if (manifest.version !== VERSION || manifest.members.length !== 5249 || manifest.sources.whitelist.sha256 !== WHITELIST_SHA256 ||
         JSON.stringify(manifest.provenance) !== JSON.stringify(PROVENANCE) || new Set(manifest.members.map((member) => member.id)).size !== 5249) throw new Error("Manifest contract mismatch");
+    const whitelistBytes = readFileSync(manifest.sources.whitelist.path);
+    if (sha256(whitelistBytes) !== WHITELIST_SHA256 || JSON.stringify(JSON.parse(whitelistBytes.toString()).map((row) => Number(row.repo_id)).sort((a, b) => a - b)) !==
+        JSON.stringify(manifest.members.map((member) => member.id))) throw new Error("Manifest membership differs from the pinned whitelist");
     let result;
     if (command === "fetch") {
       const client = new AggregateClient({ out: OUTPUT_ROOT, deadline: Date.now() + Number(flags["max-seconds"] ?? 540) * 1000 });
