@@ -19,7 +19,7 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ### Changed
 
-- **vinext Worker host (#683).** Replaced the legacy adapter/toolchain with pinned vinext/Vite and typed cf configuration. Preserved production/pre bindings, Queue retries, self-reference, paused schedules, locales, local fonts, CSP, build identity and indexing. Added hybrid core snapshots and seven-day tail caching through Cache API/KV, strong R2 publication fencing across HTML/RSC/data, awaited invalidation and local artifact/graph gates. Updated delivery documentation and verification; Actions stays disabled. This change authorizes no deployment.
+- **vinext Worker host (#683).** Replaced the legacy adapter/toolchain with pinned vinext/Vite and typed cf configuration. Preserved production/pre bindings, Queue retries, self-reference, paused schedules, locales, local fonts, CSP, build identity and indexing. Added hybrid core snapshots and seven-day tail caching through Cache API/KV, strong R2 publication fencing across HTML/RSC/data, awaited invalidation and local artifact/graph gates. Pinned the new font-parser dependency's fflate 0.7 branch to patched 0.7.5. Updated delivery documentation and verification; Actions stays disabled. This change authorizes no deployment.
 
 ### Fixed
 

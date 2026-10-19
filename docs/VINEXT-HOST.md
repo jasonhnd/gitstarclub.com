@@ -17,6 +17,9 @@ React DOM and the server component transport are all 19.3.1. The pinned
 [compatibility patch](../web/patches/vinext@1.2.1.patch) normalizes unsupported
 native fetch cache options after the framework has implemented their cache
 semantics. Frozen installs apply it; builds never modify downloaded packages.
+The new font-parser dependency's fflate 0.7 branch is pinned to patched 0.7.5
+for [GHSA-px8p-9vwx-vf98](https://github.com/advisories/GHSA-px8p-9vwx-vf98);
+the existing 0.8.3 branch remains unchanged.
 
 This PR changes source and local evidence only. It does not claim a live
 cutover. [R2-CUTOVER.md](R2-CUTOVER.md) remains the storage acceptance record;
