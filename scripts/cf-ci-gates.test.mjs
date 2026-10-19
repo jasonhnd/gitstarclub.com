@@ -33,7 +33,7 @@ describe("typed host contract", () => {
   });
   test("cf-only policy permits explicit local builds and owner-run pre deployment", () => assert.deepEqual(commandPolicy(pkg.scripts, ""), []));
   test("rejects platform deploys in CI and alternate/legacy package entrypoints", () => {
-    for (const command of ["cf deploy", "bunx cf deploy --env production", "vinext-cloudflare deploy --env pre", "npx wran" + "gler dev", "opennextjs-cloudflare build"]) {
+    for (const command of ["cf deploy", "cf queues create", "cf workers secrets put", "cf dns records create", "curl https://api.cloudflare.com/client/v4/accounts", "bunx cf deploy --env production", "vinext-cloudflare deploy --env pre", "npx wran" + "gler dev", "opennextjs-cloudflare build"]) {
       assert.ok(commandPolicy({ ...pkg.scripts, unsafe: command }, "").length);
       assert.ok(commandPolicy(pkg.scripts, command).length);
     }
