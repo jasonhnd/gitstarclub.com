@@ -28,6 +28,7 @@ import {
 import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { assertPublishedViewJsonSize } from "@/lib/view-size";
 import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
+import { isUniverseColdStartActive } from "@/lib/workflows/cold-start";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 import { readPackedWindowMeta } from "@/lib/workflows/recompute/io";
 import { validateGeneratedEntities } from "./validate-entities";
@@ -54,19 +55,33 @@ export { HIGH_D_FACTOR_WARN_THRESHOLD, inspectAnchoringFactors } from "@/lib/wor
 const MIN_LOOKUP = 1000;
 
 export async function validateVersion(runId: string, fencingToken?: number): Promise<{ ok: boolean; checked: number; failures: string[] }> {
+  const coldStart = await isUniverseColdStartActive(`${runId}-validate`);
   const failures: string[] = [];
-  const invariants: Record<string, boolean | number> = {};
+  const invariants: Record<string, boolean | number> = {
+    cold_start_empty_curve_relaxed: false,
+    cold_start_missing_prior_year_heatmap_relaxed: false,
+  };
   let checked = 0;
   let schemaFailures = 0;
+
+  const relaxHistoryCheck = (invariant: string, check: string) => {
+    invariants[invariant] = true;
+    console.log("[workflow-refresh] cold-start validation relaxed", { run_id: runId, check });
+  };
 
   const read = async <T>(
     rel: string,
     schema: Parameters<typeof readAuthoritativeView<T>>[1],
+    onMissing?: (failure: string) => void,
   ): Promise<T | null> => {
     checked++;
     try {
       const v = await readAuthoritativeView<T>(`views/${runId}/${rel}`, schema, { bust: runId });
-      if (v === null) failures.push(`${rel}: missing`);
+      if (v === null) {
+        const failure = `${rel}: missing`;
+        if (onMissing) onMissing(failure);
+        else failures.push(failure);
+      }
       return v;
     } catch (err) {
       schemaFailures++;
@@ -161,13 +176,17 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   }
   mergeValidationReport({ invariants, failures }, validateCategorySampleRanks({ categoryAssignments, categoryRank, categoryRankPage2, sampleCategory }));
 
-  // sample the top repo's entity — must have a non-empty anchored curve.
+  // Only the first armed preview publish can honestly have no historical curve.
   const topId = allTime?.items[0]?.id;
   if (topId != null) {
     const ent = await read(`entity/repo/${topId}.json`, RepoEntity);
     if (ent) {
       invariants.sample_curve_months = ent.curve.monthly.length;
-      if (ent.curve.monthly.length === 0) failures.push(`entity/repo/${topId}: empty curve`);
+      if (ent.curve.monthly.length === 0) {
+        const failure = `entity/repo/${topId}: empty curve`;
+        if (coldStart) relaxHistoryCheck("cold_start_empty_curve_relaxed", failure);
+        else failures.push(failure);
+      }
       const trackingContract = typeof ent.active === "boolean" && "tracked_since" in ent;
       invariants.sample_entity_tracking_contract = trackingContract;
       if (!trackingContract) failures.push(`entity/repo/${topId}: missing active/tracked_since`);
@@ -177,9 +196,14 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   const entityReport = await validateGeneratedEntities(read, lookup, orgLookup);
   Object.assign(invariants, entityReport.invariants);
 
-  // a heatmap year that must exist (prior calendar year is always complete).
+  // Normal refreshes require the complete prior year. First preview publication
+  // may lack that history, but a present, malformed heatmap still fails its schema.
   const lastYear = String(new Date().getUTCFullYear() - 1);
-  await read(`heatmap/year/${lastYear}.json`, Heatmap);
+  await read(
+    `heatmap/year/${lastYear}.json`,
+    Heatmap,
+    coldStart ? (failure) => relaxHistoryCheck("cold_start_missing_prior_year_heatmap_relaxed", failure) : undefined,
+  );
 
   const ok = failures.length === 0;
   const storedFailures = failures.map((item) => sanitizeErrorText(item));
