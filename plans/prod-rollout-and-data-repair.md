@@ -1,5 +1,9 @@
 # Production rollout and data repair plan
 
+> **Current update, 2026-10-19 (GSC_0071 / GSC_0073):** raw data lives only in private R2 `gitstarclub-raw`; GCP project `gitstarclub` entered deletion at 2026-10-19T11:12:41Z (`DELETE_REQUESTED`), with a calculated 30-day recovery deadline of 2026-11-18T11:12:41Z. BigQuery / GH Archive extraction is retired. GitHub's own star history is the replacement source under owner decision d1019-001344-1; collection, validation, and publication remain separately authorized. Section B0 and [OPS](../docs/OPS.md#raw-backfill-data) record the current archive.
+>
+> **No Wrangler (owner order, 2026-10-19).** The Wrangler, Cloudflare-build-wrapper, OpenNext, deployment, and rollback commands retained below are historical recipes and must not be run. The current local gate is the AGENTS bootstrap and static block through the fixture production `bun run build`; skip its final `cf:dry-run` subshell. GitHub Actions remains off. This update authorizes no deploy, cron/refresh call, object write, or data coverage expansion (lock-002).
+
 Status: draft for owner decision. References #543 (P0, open). Closes nothing.
 Order: SB-20261018-09. Section B's backup findings are from GSC_0030 on 2026-10-18. GSC_0029 review findings are applied. The GH Archive gap-fill recommendation is withdrawn (leader ruling on the GSC_0052 review, citing GSC_0045).
 
@@ -7,7 +11,7 @@ This plan stops before any production deploy, secret change, cron change, or R2 
 
 Section B was revised by GSC_0030 on 2026-10-18 after a read-only look at `gs://gitstarclub-backfill-746384388303/star_daily_gross/` (20 Parquet files, the 2026-05-30 BigQuery export). History through 2026-05-29 in that backup matches the frozen views. The GH Archive extract GSC_0030 proposed for 2026-05-30 through 2026-09-30 is not the repair (section B2). Dry-run byte figures below are a cost record of that rejected query (`bq query --dry_run`, bytes billed 0). They are not an instruction to run it.
 
-## 0. Starting state
+## 0. Historical starting state (2026-10-18/19; not a new live check)
 
 | Item | State | Evidence |
 |---|---|---|
@@ -29,7 +33,7 @@ Problems from GSC_0017 used below: P1 no scheduler; P2 canonical shards missing;
 
 `web/lib/workflows/steps/fold.ts`: the month phase reads `pending/<next month>`; a missing pending is non-fatal there (`pending_missing`). The week phase starts at the Monday after `folded_through.week` (2026-08-31, ISO week W36), so it needs `pending/2026-08` and throws when it is absent. Cold-start relaxation (empty frozen pending) arms only when `DEPLOY_ENV=pre`, so production can never fabricate it. Once September closed (2026-10-01), `pending/2026-09` is also wanted by the month phase, but its absence only skips the month.
 
-## A. Code rollout: main to production Worker `gitstarclub-web`
+## A. Historical code rollout: main to production Worker `gitstarclub-web` (blocked by no-Wrangler order)
 
 Code rollout is independent of the data repair: it does not read or write R2 differently from `daee5fc` except for the new edge cache, and pages keep rendering the frozen fallback generation.
 
@@ -42,7 +46,7 @@ Code rollout is independent of the data repair: it does not read or write R2 dif
 ### A2. Pre-deploy checks [no auth]
 
 1. Fresh detached checkout of the exact commit (`main` head at deploy time, today `99cb00e`): `git worktree add --detach ../gsc-verify <sha>`.
-2. AGENTS.md bootstrap block, then the full static block (installs, audits, `lint:docs`, lint, three typechecks, `validate:views`, `test:cov`, fixture `bun run build`, fixture `cf:dry-run`). GitHub Actions is off by owner decision, so this local result is the gate. Record every result.
+2. AGENTS.md bootstrap block, then the full static block (installs, audits, `lint:docs`, lint, three typechecks, `validate:views`, `test:cov`, fixture `bun run build`). Skip `cf:dry-run` by owner order (2026-10-19); no Wrangler or OpenNext commands. GitHub Actions is off by owner decision, so this local result is the gate. Record every result.
 3. `node scripts/assert-runtime-versions.mjs` and `node scripts/assert-cf-ci-gates.mjs` on that commit.
 4. Production data identity: `curl -fsS https://data.gitstarclub.com/_meta/bucket-identity.json` must be exactly `{"bucket":"gitstarclub-data-prod","deploy_env":"production"}`.
 5. Pointer state: `views/latest.json` still 404 and `views/refresh-2026-09-13T06-00-16-398Z/meta.json` still 200. If a pointer now exists, stop and re-plan: the fallback and the build shell must be reconsidered per OPS.
@@ -122,11 +126,29 @@ Any failure: roll back (A5), then diagnose.
 
 Goal: make a full managed refresh runnable on production (canonical complete, fold able to proceed) so that the first publish creates `views/latest.json`. Coverage rule (lock-002): the tracked universe stays GitHub repositories with at least 10,000 stars (`MIN_TRACKED_STARS=10000`), same metrics and periods. Rebuilding or backfilling the same coverage is not an expansion. Lowering the floor, adding sources, periods or repositories beyond the weekly whitelist drift would be, and is excluded.
 
-Revision (GSC_0030, then withdrawn for the gap): do not rebuild 2015 through 2026-05-29. That gross history is already in the GCS backup and already matches the frozen views. Do not fill 2026-05-30 through 2026-09-30 from GH Archive either. Keep the published frozen net series. A replacement source, if any, is the GitHub star-history API and is not approved in this plan (section B2).
+Revision (GSC_0030, then withdrawn for the gap): do not rebuild 2015 through 2026-05-29. That gross history is preserved in the private R2 raw archive and already matches the frozen views. Do not fill 2026-05-30 through 2026-09-30 from GH Archive either. Keep the published frozen net series. The replacement source is GitHub's own star-history API under owner decision d1019-001344-1; collection, validation, and publication remain separate work (section B2).
 
-### B0. The GCS backup (read-only, 2026-10-18)
+### B0. Retained raw archive (updated 2026-10-19)
 
-Bucket `gs://gitstarclub-backfill-746384388303/` is in GCP project `gitstarclub`, location US, created 2026-05-30T01:50:50Z. The only prefix is `star_daily_gross/`. `gcloud storage ls -l gs://gitstarclub-backfill-746384388303/**` shows 20 objects, 30,907,971 bytes (29.48 MiB), each created 2026-05-30T01:50:56Z. No write, delete, or ACL change was made. The logged-in account is a project owner on `gitstarclub` (stronger than this check needed). The account name is in the GSC_0030 handoff, not here. The active gcloud config project was left unchanged. The standing record of the two copies is [OPS.md](../docs/OPS.md) under Raw backfill data. The GCS prefix is the primary original. A private R2 bucket named gitstarclub-raw, on the ZKSC.KK account, is the second copy, and that copy is pending until the Cloudflare key decision.
+Raw data lives only in private R2 bucket `gitstarclub-raw` on the ZKSC.KK account, separate from public production and preview data. Its managed `r2.dev` domain is disabled and it has no custom domains.
+
+| Key(s) | Objects | Bytes | Rows |
+| --- | --- | --- | --- |
+| `star_daily_gross/data-0000000000{00..19}.parquet` | 20 | 30,907,971 | 12,375,426 |
+| `bigquery-export/whitelist/data-000000000000.parquet` | 1 | 50,868 | 5,249 |
+| `bigquery-export/star_daily_gross_gap_260530_260930_20261019/data-000000000000.parquet` | 1 | 196,554 | 90,797 |
+
+The original gross archive covers 2015-01-01 through 2026-05-29. The gap export covers 2026-05-30 through 2026-09-30 and is retained evidence, not an approved repair input. The former `gs://gitstarclub-backfill-746384388303/star_daily_gross/` path is historical. A local working directory is not a retained backup.
+
+Use the read-only `cf` CLI, never Wrangler: `cf r2 objects list --bucket-name gitstarclub-raw --per-page 1000`, then `cf r2 objects get <key> --bucket-name gitstarclub-raw` into the active card's temporary directory, followed by `shasum -a 256 -c` against the [versioned manifest](../docs/raw-data.sha256). Require all 22 keys (31,155,393 bytes), exact byte sizes, matching checksums, and the private-domain settings. The complete procedure and hash provenance are in [OPS](../docs/OPS.md#raw-backfill-data).
+
+## GCP retirement and recovery window
+
+GSC_0071 requested deletion of GCP project `gitstarclub` at **2026-10-19T11:12:41Z**, then observed **`DELETE_REQUESTED`**. The calculated Google 30-day recovery deadline is **2026-11-18T11:12:41Z**. This records the deletion request, not a completed purge; any separately authorized recovery must happen well before the deadline. GCS and BigQuery are retired dependencies. Do not recreate the project, re-export tables, or run more queries under this plan.
+
+#### Historical GCS inspection (2026-10-18)
+
+GSC_0030 inspected `gs://gitstarclub-backfill-746384388303/` in GCP project `gitstarclub` before its deletion. The bucket was in US, created 2026-05-30T01:50:50Z; its sole prefix then was `star_daily_gross/`, containing 20 objects created 2026-05-30T01:50:56Z. The inspection made no write, delete, or ACL change. Its account details remain in the GSC_0030 handoff. The results below are dated history, not instructions to access GCS or BigQuery. GSC_0071 subsequently preserved the whitelist and gap table in private R2 and retired GCP as recorded above.
 
 DuckDB on the 20 files (local copy only):
 
@@ -144,7 +166,7 @@ This is gross, not net. `pipeline/backfill/02-extract.sql` lines 1-2 and 28-37 c
 
 `pipeline/backfill/04-rollup.mjs` lines 19-22 reads exactly those three names and writes `repo_id`, `day AS date`, `gross_adds AS delta`. The file is the input step 04 expects. DuckDB's BIGINT is the usual read of BigQuery INT64. No cast is required.
 
-BigQuery metadata (no table contents were queried): dataset `gitstarclub.gitstarclub` in US holds `whitelist` (5,249 rows, `repo_id` INTEGER, created 2026-05-30T01:39:24Z) and unsuffixed `star_daily_gross` (12,375,426 rows, columns `repo_id` INTEGER, `day` DATE, `gross_adds` INTEGER, created 2026-05-30T01:49:05Z). The row count matches the Parquet. `pipeline/lib/extract-sql.mjs` lines 14-17 refuses to render a query that writes that unsuffixed table. Leave both tables in place. Do not create a dated gap table for a GH Archive fill. Section B2 rejects that extract.
+Historical BigQuery metadata from GSC_0030 (no table contents were queried in that inspection): dataset `gitstarclub.gitstarclub` in US holds `whitelist` (5,249 rows, `repo_id` INTEGER, created 2026-05-30T01:39:24Z) and unsuffixed `star_daily_gross` (12,375,426 rows, columns `repo_id` INTEGER, `day` DATE, `gross_adds` INTEGER, created 2026-05-30T01:49:05Z). The row count matches the Parquet. `pipeline/lib/extract-sql.mjs` lines 14-17 refuses to render a query that writes that unsuffixed table. GSC_0071 preserved these tables and the later gap table in R2 before project deletion. There is no current requirement to retain active BigQuery tables. Do not recreate them or run another GH Archive fill. Section B2 rejects that extract.
 
 `seam_date` on production canonical and on the frozen views is 2026-05-30 (`pipeline/backfill/07-export-v2.mjs` lines 184-186 sets it to the day after max(`date`)). The backup ending on 2026-05-29 is the matching gross side of that seam. It does not include 2026-05-30.
 
@@ -169,7 +191,7 @@ Measurement limits, all from that card:
 
 Keep the published frozen net series, including June through August. Do not replace it with an archive gross fill.
 
-Owner decision d1019-001344-1 = A, reconfirmed October 19, authorizes GSC_0080's fixed-whitelist, local-only GitHub timestamp collection for the gap. It does not authorize upload, publication or a new GH Archive scan. PR #669 remains a rehearsal and aggregate-history assessment. The [UTC collection report](../docs/analysis/STAR-HISTORY-GAP.md) records the subsequent 50-repository GraphQL pilot, access failure, cost estimates and resume commands. Any replacement repair still needs valid date/metric evidence, separate preview validation and explicit publication approval; this plan adds no publication command.
+Owner decision d1019-001344-1 = A, reconfirmed 2026-10-19, authorized fixed-whitelist, local-only collection of GitHub star history for the 2026-05-30 through 2026-09-30 gap; it does not authorize upload or publication. GitHub [restricted public stargazer lists on 2026-06-30](https://github.blog/changelog/2026-06-30-upcoming-access-restrictions-to-public-api-endpoints-and-ui-views/); the GSC_0080 run returned empty GraphQL histories for 5,243 of 5,249 repositories and REST 404, independently confirmed by GSC_0086, so per-star timestamps are unavailable. The only remaining source is GitHub's aggregate `GET /repos/{owner}/{repo}/stargazers/history`, with weekly records containing seven daily counts of surviving stars only and day boundaries not guaranteed UTC; whether to use it is a pending owner decision after the 40-repository offset measurement in GSC_0089. The frozen net series stays; no GH Archive fill.
 
 The 2026-10-18 dry run of the rejected window is kept only as a cost record. Each job was a SELECT (no `CREATE`), `dryRun=true`, `totalBytesBilled=0`, accuracy `PRECISE`. List price uses 6.25 USD per TiB, with TiB = 2^40 bytes. The first 1 TiB of on-demand scan per month is free. Month-to-date usage of project `gitstarclub` was not measured.
 
@@ -180,7 +202,7 @@ The 2026-10-18 dry run of the rejected window is kept only as a cost record. Eac
 | 2015-01-01 .. 2026-05-31, the window in `02-extract.sql` line 15 ("about 303 GB") | 303,236,025,668 | 303.236 | 0.275792 | 1.72 USD | 0 USD |
 | 2015-01-01 .. 2026-09-30, ignoring the backup | 313,606,985,036 | 313.607 | 0.285224 | 1.78 USD | 0 USD |
 
-The 303.236 GB dry run matches the comment in `02-extract.sql` line 15. A small bill is not a reason to run the rejected gap. The backup stays because it already matches the published history through 2026-05-29, and because the unsuffixed May table must not be overwritten. No figure above is a GitHub or Cloudflare charge.
+The 303.236 GB dry run matches the comment in `02-extract.sql` line 15. A small bill is not a reason to run the rejected gap. The preserved R2 gross archive stays because it already matches the published history through 2026-05-29. The former unsuffixed BigQuery table is historical; the project is retired. No figure above is a GitHub or Cloudflare charge.
 
 ### B3. What the rejected cutoff would have done to the fold
 
@@ -266,9 +288,9 @@ Estimates are marked. "Free tier" means the estimate if project `gitstarclub` st
 | B6b reconstruct from views | not approved | no | no expansion | none | 0 | 0 | lossy, unproven; frozen net already exists without this |
 | B1 plus a found `star_daily.parquet` | n/a | n/a | | | | | the rolled-up canonical Parquet was not in this bucket; the gross export was |
 
-No GH Archive option is recommended. Keep the May tables and the 20 Parquet files as the record through 2026-05-29, and keep the published frozen net series after that seam. Do not dry-run or run the gap job. Do not rehearse it on the preview bucket. Do not write `gitstarclub-data-prod`.
+No GH Archive option is recommended. Keep the preserved May-table data and the 20 Parquet files in private R2 as the record through 2026-05-29, and keep the published frozen net series after that seam. Do not dry-run or run the gap job. Do not rehearse it on the preview bucket. Do not write `gitstarclub-data-prod`.
 
-The candidate gap source is GitHub's star-history API (`GET /repositories/{id}/stargazers/history`). It is pending owner decision d1019-001344-1 and a separate preview validation. PR #669 is the rehearsal record, not an approval to upload or publish. Any replacement repair method stays pending that validation and an explicit owner approval.
+The replacement source is GitHub's own star-history API (`GET /repositories/{id}/stargazers/history`) under owner decision d1019-001344-1. Collection, preview validation, and publication remain separately authorized. PR #669 is the rehearsal record, not an approval to upload or publish. Any replacement repair method stays pending that validation and an explicit owner approval.
 
 ## C. Re-enabling the production schedule and fallback removal
 
@@ -312,14 +334,14 @@ Legend: [no auth] needs no owner authorization (read-only; operator login only w
    0.1 [no auth] `wrangler whoami`, then `wrangler deployments list|status` and `versions list|view` for `gitstarclub-web` and `gitstarclub-web-pre`: live vars, bindings, triggers, current version ids; record the `daee5fc` version id.
    0.2 [no auth] `wrangler secret list` for both Workers (names only): `CRON_SECRET`, `GITHUB_TOKEN`, `BLOB_READ_WRITE_TOKEN`, `ALERT_WEBHOOK_URL`.
    0.3 [no auth] `wrangler r2 object list`/public listing of `gitstarclub-data-prod`: confirm 0/32 for the three kinds, `site-daily`, `pending/*`, `whitelist/*`, and whether `live/generations/*` or `ops/*` still hold anything useful.
-   0.4 [no auth] Vercel dashboard: is the Blob store `cdv7ejjwmzbbdj8w` deleted, paused or recoverable. The GCS gross export is already found (section B0); a local `star_daily.parquet` or `v2/canonical/v2` tree is still not in the checkout. **To verify by operator** only for the Vercel dashboard.
+   0.4 [no auth] Vercel dashboard: is the Blob store `cdv7ejjwmzbbdj8w` deleted, paused or recoverable. The raw gross export is preserved only in private R2 (section B0); a local `star_daily.parquet` or `v2/canonical/v2` tree is still not in the checkout. **To verify by operator** only for the Vercel dashboard.
    0.5 [no auth] Check the Workers request log for any external caller of `/api/workflows/refresh/start` since 2026-09-13.
 1. [no auth] Pre-deploy checks A2 on the exact `main` head; record results.
 2. [no auth] Capture A5 rollback record and A2.7 baseline.
 3. [no auth] Build production shell A3.
 4. [owner authorization needed: deploy] Deploy `main` (A4).
 5. [no auth] Post-deploy smoke A6; on failure [owner authorization needed: deploy] rollback A5.
-6. [no auth] Data-repair decision, revised. Do not adopt the GH Archive gap fill. Keep the GCS backup as the gross record through 2026-05-29 and keep the published frozen net series. The candidate gap source is the GitHub star-history API, pending owner decision d1019-001344-1 and a separate preview validation. PR #669 is a rehearsal, not a publish approval. The production commit gate in section B5 stays a reviewed code change, not a destructive cleanup, and it is not authorized for this withdrawn fill.
+6. [no auth] Data-repair decision, revised. Do not adopt the GH Archive gap fill. Keep the private R2 raw archive as the gross record through 2026-05-29 and keep the published frozen net series. The replacement source is GitHub's own star-history API under owner decision d1019-001344-1, with collection, validation, and publication separately authorized. PR #669 is a rehearsal, not a publish approval. The production commit gate in section B5 stays a reviewed code change, not a destructive cleanup, and it is not authorized for this withdrawn fill.
 7. [no auth] Do not copy or write `gitstarclub-data-prod` for the withdrawn fill. A full backup is a prerequisite only after a replacement method is approved.
 8. [no auth] Do not run the 2026-05-30 through 2026-09-30 GH Archive extract, and do not re-scan 2015 through May.
 9. [no auth] Do not rehearse or upload that generation to `gitstarclub-data-pre`. PR #669 already records a local rehearsal and says not to publish it.
@@ -336,6 +358,6 @@ Legend: [no auth] needs no owner authorization (read-only; operator login only w
 
 ## Open questions for the owner
 
-1. The GH Archive gap fill is not acceptable (GSC_0045, section B2). The frozen net series stays. Decision d1019-001344-1 = A permits GSC_0080's local-only GitHub timestamp collection; its pilot encountered empty GraphQL history despite positive stock. Replacement data and preview validation remain outstanding (PR #669 is the rehearsal). This plan does not ask the owner to accept changed June through September archive numbers.
+1. Owner decision d1019-001344-1 = A, reconfirmed 2026-10-19, authorized fixed-whitelist, local-only collection of GitHub star history for the 2026-05-30 through 2026-09-30 gap; it does not authorize upload or publication. GitHub [restricted public stargazer lists on 2026-06-30](https://github.blog/changelog/2026-06-30-upcoming-access-restrictions-to-public-api-endpoints-and-ui-views/); the GSC_0080 run returned empty GraphQL histories for 5,243 of 5,249 repositories and REST 404, independently confirmed by GSC_0086, so per-star timestamps are unavailable. The only remaining source is GitHub's aggregate `GET /repos/{owner}/{repo}/stargazers/history`, with weekly records containing seven daily counts of surviving stars only and day boundaries not guaranteed UTC; whether to use it is a pending owner decision after the 40-repository offset measurement in GSC_0089. The frozen net series stays; no GH Archive fill.
 2. The production commit mechanism, for a later approved repair, remains a reviewed code change to the commit gate, not a destructive cleanup. That code change is not authorized for the withdrawn GH Archive fill.
 3. May the roll-out of `main` (section A) happen ahead of the data repair?
