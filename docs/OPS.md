@@ -22,8 +22,8 @@ This document is **gitstarclub's operations runbook**—**deployment, cron / Wor
 Data operations layers:
 - **Daily / weekly live cron**—see §Cron schedule.
 - **History / metadata / canonical full refresh (managed refresh)**—see §Managed refresh runbook (step names see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)).
-- **One-time BigQuery + DuckDB bootstrap backfill**—see §One-time bootstrap Runbook (archived, non-routine path).
-- **Raw gross backfill export**—see §Raw backfill data. The GCS original stays. The private R2 copy is pending the Cloudflare key decision.
+- **Historical BigQuery + DuckDB bootstrap backfill**—extraction retired 2026-10-19; see the archived One-time bootstrap Runbook and [Raw backfill data](#raw-backfill-data).
+- **Raw backfill archive**—private R2 `gitstarclub-raw` only; see [Raw backfill data](#raw-backfill-data) for inventory, checksums, and the GCP retirement record.
 
 ## Current hosting and branch topology
 
@@ -225,8 +225,8 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | `VERCEL_DEPLOY_HOOK_URL` | Not used by the current Cloudflare deploy path | Optional | URL string | Not read by application code. Deploy with the Wrangler commands in this runbook |
 | `ALERT_WEBHOOK_URL` | Failure-alert webhook (Slack / Discord incoming webhook or `https://webhook.site/...`, POST a JSON summary; **if unset, logs only**) | Optional | An `https://…` endpoint that can receive a JSON POST | `web/lib/observability/alert.ts:45`; Workflow `sendAlert` · daily / weekly cron failure delivery |
 | `SITE_INDEXABLE` | Enables public indexing and sitemap discovery | Required for the production Cloudflare build and Worker; absent on preview | `"1"` enables indexing; other values disable it | `web/scripts/cf-opennext-build.ts`, [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | GCP service-account key path | One-time backfill only | Local file path, for example `./gcp-key.json` | **Local backfill script** (one-time BigQuery backfill only) |
-| `GCP_PROJECT_ID` | GCP project ID | One-time backfill only | GCP project ID string | **Local backfill script** (one-time BigQuery backfill only) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Historical GCP service-account key path | Retired 2026-10-19; do not provision | Local file path, for example `./gcp-key.json` | Archived BigQuery extraction only; see [Raw backfill data](#raw-backfill-data) |
+| `GCP_PROJECT_ID` | Historical GCP project ID | Retired 2026-10-19; do not provision | GCP project ID string | Archived BigQuery extraction only; see [Raw backfill data](#raw-backfill-data) |
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin for sitemap, metadata, and structured data | Required for the production Cloudflare build and Worker | `https://gitstarclub.com` without a trailing slash | `web/scripts/cf-opennext-build.ts`, [Worker configuration](../workers/gitstarclub-web/wrangler.jsonc), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
 | `BING_SITE_VERIFICATION` | Bing `msvalidate.01` token | Optional. Set it in the shell that runs the Cloudflare production build | Bing-provided token | `web/scripts/cf-opennext-build.ts` inherits that shell. `web/app/_shell/RootShell.tsx` emits the meta tag when the variable is set. Confirm the tag in the generated HTML. A Vercel project variable does not change Cloudflare output. No XML file is needed |
 | `INDEXNOW_ENABLED` | IndexNow post-commit submission switch | Optional (default off) | The string `1` enables it | live cron calls IndexNow after the pointer is committed; dry-run / pre-commit do not call it |
@@ -288,7 +288,7 @@ A valid pointer already takes priority over the fallback. Do not remove or chang
 - `NEXT_PUBLIC_*` goes into the client bundle; **put only non-sensitive values there**. Everything else is Server-only.
 - Both Worker contracts use the R2 public base and guarded `DATA` binding. Production builds preserve the frozen fallback while the pointer is absent and clear Blob shell vars. Explicit use of the retained Blob driver needs its public base and, for mutation only, the Blob token. Preview must not set `BLOB_*` or the production fallback. `CRON_SECRET` and `GITHUB_TOKEN` stay off the client and out of the repository.
 - Strip leading and trailing whitespace and a BOM from values. Whitespace on `CRON_SECRET` makes the bearer header illegal, and a BOM on `BLOB_BASE_URL` makes the Next.js build report `ERR_INVALID_URL` at the sitemap stage.
-- **The two GCP items are for local one-time backfill only**: query GH Archive with BigQuery (about $10, including a stable repo.id). After one backfill these two variables can be retired—**routine operations are 0 GCP and 0 external bills**. (Why not the free ClickHouse public instance / self-hosted: see ARCHITECTURE "Why backfill uses BigQuery".)
+- **The two GCP items are retired (2026-10-19)**: project `gitstarclub` entered deletion after raw preservation in private R2 `gitstarclub-raw`. Do not provision credentials or run GH Archive extraction. See [Raw backfill data](#raw-backfill-data) for inventory, checksums, and the recovery deadline.
 - At startup, verify that required secrets exist; if any are missing, fail-fast (do not swallow them silently).
 - Current R2 status and the stage plan are in [R2-CUTOVER.md](./R2-CUTOVER.md). Production uses R2 after the accepted 2026-10-04 cutover. Superseded phase notes are in `docs/archive/`. **Do not cut DNS** from this runbook.
 - Both Workers serve the site. A preview fault rolls back Worker `gitstarclub-web-pre` (`--env pre`) only. Do not roll back production Worker `gitstarclub-web` from a preview incident. Production hosting rollback for the R2 cutover is the stage 4 version command later in this runbook. The production trigger remains unverified. Both `triggers.crons` arrays stay `[]` until an owner-approved stage 5 change.
@@ -614,29 +614,53 @@ Set `ALERT_WEBHOOK_URL` on the Worker that should send it. Leave it unset to sta
 
 ## Raw backfill data
 
-Owner decision 2026-10-19: the raw daily gross star export is kept in two places. This is the GH Archive gross input for a rebuild. It is not a published view and it is not a public data bucket.
+**Current as of 2026-10-19 (GSC_0071). Raw data lives only in the private Cloudflare R2 bucket `gitstarclub-raw` on the ZKSC.KK account.** It is separate from the public production and preview data buckets. The managed `r2.dev` domain is disabled and there are no custom domains. Do not make it public or configure the site to read raw Parquet.
 
-Primary original: `gs://gitstarclub-backfill-746384388303/star_daily_gross/` in GCP project `gitstarclub`. Object versioning is on. Do not delete objects, change ACLs, or rewrite this prefix.
+| Object key(s) | Objects | Bytes | Rows | Meaning |
+| --- | --- | --- | --- | --- |
+| `star_daily_gross/data-0000000000{00..19}.parquet` | 20 | 30,907,971 | 12,375,426 total | Original gross archive, 2015-01-01 through 2026-05-29; schema `repo_id` BIGINT, `day` DATE, `gross_adds` BIGINT |
+| `bigquery-export/whitelist/data-000000000000.parquet` | 1 | 50,868 | 5,249 | Preserved whitelist table |
+| `bigquery-export/star_daily_gross_gap_260530_260930_20261019/data-000000000000.parquet` | 1 | 196,554 | 90,797 | Preserved 2026-05-30 through 2026-09-30 gap table; historical evidence, not an approved repair |
+| **Total** | **22** | **31,155,393** | — | Private raw archive only |
 
-Copy: private Cloudflare R2 bucket `gitstarclub-raw` on the ZKSC.KK account, under `star_daily_gross/`. The bucket is not public. It is not `gitstarclub-data-prod` and it is not `gitstarclub-data-pre`. The R2 copy is pending until the Cloudflare key decision. Do not upload these objects to the public data buckets while that decision is open.
+The original 20 files were previously at `gs://gitstarclub-backfill-746384388303/star_daily_gross/` in Google Cloud Storage (GCS). That is a historical location, not a second usable copy. GSC_0071 preserved the whitelist and gap under `bigquery-export/<table>/`, verified their SHA-256 and decoded row counts after the R2 round trip, confirmed the original 20 objects were unchanged, then deleted GCP project `gitstarclub`. The deletion request started at **2026-10-19T11:12:41Z**; the observed lifecycle state was **`DELETE_REQUESTED`**, not final purge. Google's 30-day recovery window ends **2026-11-18T11:12:41Z**, calculated from that recorded start. Recover well before that deadline if separately authorized. GCP is retired and is not an operational data dependency.
 
-Inventory, for both places once the copy exists: 20 Parquet files, 29.48 MiB (30,907,971 bytes, read-only listing on 2026-10-18). Columns are `repo_id` BIGINT, `day` DATE, and `gross_adds` BIGINT. Days run from 2015-01-01 through 2026-05-29 inclusive. Values are gross `WatchEvent` adds. There is no unstar column.
+The versioned [SHA-256 manifest](./raw-data.sha256) contains all 22 keys. The two `bigquery-export/` hashes are the GSC_0071 verified export/round-trip hashes. GSC_0073 recorded the original 20 hashes from read-only R2 downloads on 2026-10-19, checked every byte size against the GSC_0071 inventory, and rechecked both export hashes. Those 20 hashes establish an R2 verification baseline; they are not a newly performed comparison with deleted GCS. Row counts above are the decoded counts recorded in GSC_0071.
 
-Verify a copy by comparing each object's byte size and SHA-256 with the manifest. Card GSC_0040 fills that manifest. The table below is a placeholder until that card lands. Do not treat any other hash list as the source of truth.
+### Read-only raw verification with the cf CLI
 
-| name | bytes | sha256 |
-|---|---:|---|
-| pending GSC_0040 | pending GSC_0040 | pending GSC_0040 |
+Use the Cloudflare `cf` command-line tool, never Wrangler. Select the authorized ZKSC.KK account with `CLOUDFLARE_ACCOUNT_ID` or an existing `cf` profile; do not print or copy credentials. Discover commands with anonymous searches such as `cf cli search "list R2 objects"` and `cf cli search "get R2 object"`, then inspect the returned command's help.
 
-## One-time bootstrap Runbook (archived / non-routine path)
+Set `TMPDIR` and `KANBAN_TMP` to the active card's directory under this checkout's `.kanban-work/`, excluded in local Git metadata. All listings and downloaded files must stay there. From the repository root:
 
-> **Demotion statement**: this is a tool run manually once for **the first cold start / a disaster rebuild / introducing a new data source**, and **not a recurring operations path**. After the artifacts are uploaded, the host's live routes and managed refresh take over. Production data uses R2 after the accepted 2026-10-04 cutover. The production caller is unverified. Routine operations are **0 local dependencies · 0 GCP**.
+```bash
+: "${TMPDIR:?Set TMPDIR to the active card directory first}"
+: "${KANBAN_TMP:?Set KANBAN_TMP to the same card directory}"
+: "${CLOUDFLARE_ACCOUNT_ID:?Select the authorized account first}"
+manifest="$PWD/docs/raw-data.sha256"
+check_dir="$KANBAN_TMP/raw-data-check"
+mkdir -p "$check_dir"
+cf r2 objects list --bucket-name gitstarclub-raw --per-page 1000 > "$check_dir/objects.json"
+cf r2 buckets domains managed list --bucket-name gitstarclub-raw > "$check_dir/managed-domain.json"
+cf r2 buckets domains custom list --bucket-name gitstarclub-raw > "$check_dir/custom-domains.json"
+while read -r digest key; do
+  mkdir -p "$check_dir/$(dirname "$key")"
+  cf r2 objects get "$key" --bucket-name gitstarclub-raw > "$check_dir/$key"
+done < "$manifest"
+(cd "$check_dir" && shasum -a 256 -c "$manifest")
+```
 
-11 years of event-level history are backfilled only once, via **BigQuery** (GCP credentials required, about $10, including a stable repo.id). Free alternatives (the ClickHouse public instance, self-hosted ingestion) were all judged infeasible after evaluation; see ARCHITECTURE "Why backfill uses BigQuery".
+Require all 22 checksum lines to report `OK`. Compare the listing to the table: exactly 20 original keys totaling 30,907,971 bytes, plus the two export keys and sizes (22 objects, 31,155,393 bytes overall). If a list response is paginated, follow its cursor before comparing. Confirm managed-domain `enabled=false` and custom `domains=[]`. A mismatch is a failed check, not permission to overwrite, re-export, enable public access, or recreate GCP. Remove local raw downloads after verification; retain the command results in the handoff rather than relying on temporary files.
 
-**Prerequisites**: GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`) · GitHub PAT (`GITHUB_TOKEN`) · Blob token (`BLOB_READ_WRITE_TOKEN`) only for the retained Blob path. The R2 path uses a bucket-scoped key in the uncommitted pipeline env file (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) plus `R2_BUCKET_PRE` or `R2_BUCKET_PROD`. Run it on a local machine / a full Node environment. See [R2-CUTOVER.md](./R2-CUTOVER.md).
+## One-time bootstrap Runbook (historical; extraction retired 2026-10-19)
 
-Render `pipeline/backfill/02-extract.sql` before any BigQuery job. The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`.
+> **Historical recipe; BigQuery / GH Archive extraction retired on 2026-10-19.** Do not run the extraction commands below. GSC_0045 measured only about 4% capture against GitHub's own star-history proxy in a 40-repository 2026 sample (12,761 / 342,659, about 3.7%; not a population-weighted site estimate). GitHub's own star history is the replacement source under owner decision d1019-001344-1. Collection, rebuild, validation, and publication require separate authorization. The frozen published net series stays. See [Raw backfill data](#raw-backfill-data) for the R2 archive and GCP deletion/recovery record. The following text preserves the original one-off bootstrap design. After the artifacts are uploaded, the host's live routes and managed refresh take over. Production data uses R2 after the accepted 2026-10-04 cutover. The production caller is unverified. Routine operations are **0 local dependencies · 0 GCP**.
+
+The original one-time backfill used **BigQuery** (historical GCP credentials and an approximately $10 cost estimate, including a stable repo.id). Free alternatives (the ClickHouse public instance, self-hosted ingestion) were all judged infeasible after evaluation; see [ARCHITECTURE historical bootstrap rationale](./ARCHITECTURE.md#historical-bigquery-bootstrap-rationale-retired-2026-10-19).
+
+**Historical prerequisites (retired extraction; do not provision GCP credentials)**: GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`) · GitHub PAT (`GITHUB_TOKEN`) · Blob token (`BLOB_READ_WRITE_TOKEN`) only for the retained Blob path. The R2 path uses a bucket-scoped key in the uncommitted pipeline env file (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) plus `R2_BUCKET_PRE` or `R2_BUCKET_PROD`. Run it on a local machine / a full Node environment. See [R2-CUTOVER.md](./R2-CUTOVER.md).
+
+Historical renderer/dry-run example, retained for audit only; do not start a BigQuery job: `pipeline/backfill/02-extract.sql`. The renderer refuses the unsuffixed table `gitstarclub.star_daily_gross`.
 
 ```bash
 cd pipeline
@@ -645,7 +669,7 @@ bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < 
 ```
 
 ```text
-1. Query GH Archive WatchEvents (BigQuery)
+1. RETIRED: Query GH Archive WatchEvents (BigQuery)
    Aggregate WatchEvent by repo + UTC day (from 2015-01; if the volume is large, chunk by year / by batch) → export
 2. Local DuckDB
    Land a per-repo×day fact table → star_daily.parquet
@@ -663,7 +687,7 @@ bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < 
 
 - **Cost**: ~$10 (one-time); after the backfill, never touch GCP again.
 - Metric-definition caveats (gross vs net, survivor bias, start point 2015) see ARCHITECTURE, and are noted on the About page.
-- After the backfill the two GCP variables can be retired, and routine operations return to 0 GCP.
+- The two GCP variables and extraction step were retired on 2026-10-19; they are not prerequisites for a new rebuild.
 - Steps 5 and 6 above are the Blob path (`--store` defaults to blob). Blob still uploads unless `--dry-run` (step 6) or `--no-upload` (step 7).
 
 ### R2 rehearsal and empty-bucket first commit
