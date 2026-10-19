@@ -1,7 +1,7 @@
 ---
 owner: product / requirements
 status: active
-last_reviewed: 2026-07-06
+last_reviewed: 2026-10-19
 source_of_truth_for:
   - product baseline
   - project scope and constraints
@@ -88,7 +88,7 @@ Requirement ID is the stable key for traceability across BRD/PRD/FSD/UX/testing.
 
 ## 5. Data sources and definitions
 
-- **Historical backfill (one-off)**: BigQuery queries GH Archive WatchEvent (including a stable `repo.id`), ~$10. (The free options, a ClickHouse public instance with a 1000-row cap and a self-hosted 4–12TB, were both evaluated and excluded.)
+- **Historical backfill**: BigQuery / GH Archive extraction retired on 2026-10-19. GSC_0045 found about 4% capture against GitHub's own star-history proxy in a 40-repository 2026 sample, not a population-wide estimate. GitHub's own star history is the replacement source under owner decision d1019-001344-1; collection and publication need separate authorization. Raw data lives only in private R2 `gitstarclub-raw`; see [OPS inventory, checksum verification, and GCP deletion/recovery record](./OPS.md#raw-backfill-data).
 - **Membership and daily monitoring**: GitHub Search's open upper bound `stars:>=MIN_TRACKED_STARS` (default 10000; preview wrangler `env.pre` sets 10000, the same floor as production) only discovers the active set (bucketed by the dynamic maximum, with no 600k ceiling); every day GitHub GraphQL batch-queries only active repos' `current_stars` (100 repos per batch) → a diff yields the net daily add. Opening a page does not compute it live.
 - **Metadata**: GraphQL (owner + owner_type, language, topics, createdAt, current_stars, isArchived).
 - **Definition**: history = gross (GH Archive has no unstar events) / after launch = net (includes unstars, and may be negative); the **seam** is the boundary. **`current_stars` is the only number that must be exact**; historical stock = gross accumulation × anchoring factor `d` aligned to current_stars (an estimate, marked as-of; `d >= 0` and it may be `> 1`).
@@ -118,7 +118,7 @@ Requirement ID is the stable key for traceability across BRD/PRD/FSD/UX/testing.
 ## 8. Data form / pipeline
 
 - Production canonical = **JSON shard** (per-repo month/week rollup + site daily totals + the repo dimension); serving = precomputed **JSON views** (read-only at build / runtime). The bootstrap form is a Parquet fact table (archived). Production views come from R2 after the accepted 2026-10-04 cutover. See [R2-CUTOVER.md](./R2-CUTOVER.md).
-- Engines (BigQuery/DuckDB) are used **only in the one-off bootstrap**. Recurring recompute is pure JS plus JSON shards, with no engine. Build, cron, and runtime have zero engine and zero native modules.
+- DuckDB is confined to offline bootstrap tooling; the former BigQuery / GH Archive extraction is retired (2026-10-19). Recurring recompute is pure JS plus JSON shards, with no engine. Build, cron, and runtime have zero engine and zero native modules.
 - Daily and weekly live routes are JSON-only. Full recompute, publish, rollback, fold, and GC are managed refresh steps. See [OPS.md](./OPS.md), [DATA-CONTRACTS](./DATA-CONTRACTS.md), and [PIPELINE](./PIPELINE.md).
 
 ## 8a. Non-functional requirement: production does not depend on local compute ⭐
@@ -138,7 +138,7 @@ Requirement ID is the stable key for traceability across BRD/PRD/FSD/UX/testing.
 ## 11. Deployment / constraints
 
 - **Cloudflare Workers.** Production Worker `gitstarclub-web` serves `gitstarclub.com` / `www.gitstarclub.com`. Preview Worker `gitstarclub-web-pre` serves public `pre.gitstarclub.com` with `noindex,nofollow` and `Disallow: /`. `noindex` is not access control. Production JSON uses R2 after the accepted 2026-10-04 cutover. See [R2-CUTOVER.md](./R2-CUTOVER.md) and [OPS.md](./OPS.md).
-- Avoid a second runtime database or a request-path engine. A one-off BigQuery job is the bootstrap exception.
+- Avoid a second runtime database or a request-path engine. The historical BigQuery bootstrap exception was retired on 2026-10-19; it does not authorize a new scan.
 - Time zone: store UTC, and display UTC + JST. Cron auth, idempotency, monitoring, and rollback are in [OPS.md](./OPS.md). The production trigger source is unverified.
 
 ## 12. Compliance

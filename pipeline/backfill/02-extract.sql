@@ -7,8 +7,10 @@
 --   node backfill/02-extract.mjs --cutoff-suffix 260531 --destination gitstarclub.star_daily_gross_260531 > rendered.sql
 --
 -- Parameters:
+--   @@START_SUFFIX@@        6-digit YYMMDD lower bound (default 150101)
 --   @@CUTOFF_SUFFIX@@       6-digit YYMMDD table suffix, for example 260531
 --   @@DESTINATION_TABLE@@   dated table, for example gitstarclub.star_daily_gross_260531
+--   @@CREATE_MODE@@         CREATE with --create-only; otherwise CREATE OR REPLACE
 -- The renderer refuses the unsuffixed table gitstarclub.star_daily_gross so a
 -- rerun cannot overwrite the May extract.
 --
@@ -24,7 +26,7 @@
 --   bq load --replace --source_format=CSV \
 --     "$GCP_PROJECT_ID:gitstarclub.whitelist" data/whitelist_ids.csv repo_id:INTEGER
 
-CREATE OR REPLACE TABLE `@@DESTINATION_TABLE@@` AS
+@@CREATE_MODE@@ TABLE `@@DESTINATION_TABLE@@` AS
 SELECT
   e.repo.id          AS repo_id,
   DATE(e.created_at) AS day,          -- UTC day boundary (matches GH Archive)
@@ -32,7 +34,7 @@ SELECT
 FROM `githubarchive.day.20*` AS e     -- day.20* (NOT day.*) — prefix-wildcard skips the views (day.yesterday, …)
 JOIN `gitstarclub.whitelist` AS w
   ON e.repo.id = w.repo_id
-WHERE e._TABLE_SUFFIX BETWEEN '150101' AND '@@CUTOFF_SUFFIX@@'  -- suffix is after the day.20 prefix → [2015-01 .. cutoff]
+WHERE e._TABLE_SUFFIX BETWEEN '@@START_SUFFIX@@' AND '@@CUTOFF_SUFFIX@@'  -- suffix is after the day.20 prefix
   AND e.type = 'WatchEvent'
 GROUP BY repo_id, day;
 
