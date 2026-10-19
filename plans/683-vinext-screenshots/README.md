@@ -10,15 +10,20 @@ The exact delivery head is separately rebuilt and verified in the PR body.
 Both applications were built with the empty, read-only CI fixture. For runtime
 captures, the GET/HEAD-only `web/scripts/local-view-fixture.ts` serves only
 `web/scripts/fixtures/views` from loopback, without modifying fixtures or
-expanding data coverage. The home shows the literal empty build snapshot;
-monthly rankings and the example repository render the existing sample JSON.
+expanding data coverage. The migrated home shows the literal empty build
+snapshot. The baseline English home had regenerated from the sample JSON before
+capture, so that pair compares different data states (2039 versus 1667 pixels
+high). The Japanese home is empty in both captures. Monthly rankings and the
+example repository render the existing sample JSON.
 All six routes return 200 in each application. Captures wait for loaded fonts;
 the browser reports zero page-script errors. The temporary profile, local
 servers, caches and build output all stay in the excluded card directory.
 
-No product layout or copy change is intended. Each pair has the same dimensions,
-but the pixel bytes differ across framework renderers. These images provide
-review evidence; the owner still performs visual acceptance before merge.
+No product layout or copy change is intended. The other five pairs have matching
+dimensions; the English ranking and repository pairs also have identical PNG
+bytes. The English home pair cannot establish visual parity for equal data.
+These images provide review evidence; the owner still performs visual acceptance
+before merge.
 No deployment or remote refresh is part of this evidence.
 
 | Page | Before | After |
