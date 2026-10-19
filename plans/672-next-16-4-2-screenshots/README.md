@@ -1,13 +1,21 @@
 # Issue 672: Next.js 16.4.2 screenshot evidence
 
 Captured on 2026-10-19 with agent-browser 0.39.1 and local Chrome, light theme,
-a 1440 x 1000 viewport, and full-page PNG output. Each pair has identical pixels.
-All six routes returned HTTP 200 and the browser reported no page-script errors.
+a 1440 x 1000 viewport, and full-page PNG output. All six after images were
+recaptured for review round 1 with React and React DOM 19.3.1. Five pairs have
+identical pixels. The Japanese home after image now shows the existing bounded
+fixture data after normal cache regeneration; its original before image shows
+the prerendered empty state. All six routes returned HTTP 200 and the browser
+reported no page-script errors. [after-capture.json](after-capture.json) records
+the source commit, installed versions, dimensions, and hashes for all six new
+captures, including the five whose image bytes stayed identical.
 
 - Before: `origin/pre` at `39f42af0e2bf15fb67e9c02c258d5583ee1b4b0e`, Next.js 16.3.8.
-- After: application code and dependencies at `af404a8`, Next.js 16.4.2. The
-  following evidence commit adds only this directory and plan wording.
-- Both builds used Node 24.20.0, Bun 1.3.14, a frozen install, and
+- After: application code and dependencies at `9723d5e4d9a5f783b3b02b77c559742e4144aa17`,
+  Next.js 16.4.2 and React / React DOM 19.3.1. The following evidence commit
+  changes only this directory.
+- Both builds used Node 24.20.0; the original before build used Bun 1.3.14,
+  and the refreshed after build used Bun 1.4.2. Each used a frozen install and
   `BLOB_BASE_URL=http://127.0.0.1:4010 bun run build` against the repository's
   read-only `web/scripts/ci-build-fixture-server.ts`.
 - Each build was served with `bun run start --hostname 127.0.0.1 --port 3000`
@@ -17,8 +25,8 @@ All six routes returned HTTP 200 and the browser reported no page-script errors.
   components, including honest empty sections, without live data or new data
   coverage. Missing fixture files remain 404. The home pages also exercise
   prerendered empty states and normal regeneration against these fixtures.
-- Service workers and browser caches were cleared between versions. Captures
-  waited for network idle and loaded fonts.
+- The refreshed after captures use a fresh browser profile under the current
+  card temporary directory. Captures waited for network idle and loaded fonts.
 
 | Page | Route | Before | After |
 | --- | --- | --- | --- |
