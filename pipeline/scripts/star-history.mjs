@@ -1,6 +1,6 @@
 // Read-only, fixed-whitelist collection. Authentication stays inside gh.
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -149,6 +149,7 @@ export class GraphqlClient {
         await this.wait(duration);
         this.state.wait_ms += duration;
       }
+      if (this.now() >= this.deadline) throw new Pause("Chunk time budget reached after waiting");
       this.state.last_request_at = this.now();
       const response = await this.transport(query, variables);
       this.state.requests++;
@@ -224,7 +225,7 @@ export async function inventory({ out, members, client }) {
 export function newCheckpoint(member) {
   return { version: VERSION, repo_id: member.id, metric: METRIC, start: START, end_exclusive: END,
     status: "fetching", cursor: null, pages: 0, scanned: 0, daily: {}, seen: [],
-    last_time: null, source_total: null, started_at: new Date().toISOString(), name: member.original_name };
+    last_time: null, source_total: null, attempt: randomUUID(), started_at: new Date().toISOString(), name: member.original_name };
 }
 
 export function consumePage(previous, node, member) {
@@ -248,7 +249,8 @@ export function consumePage(previous, node, member) {
   let stopped = false;
   for (const edge of connection.edges) {
     if (typeof edge.cursor !== "string" || !edge.cursor || seen.has(edge.cursor) ||
-        typeof edge.starredAt !== "string" || !/T.*(Z|[+-]\d\d:\d\d)$/.test(edge.starredAt) || !Number.isFinite(Date.parse(edge.starredAt))) {
+        typeof edge.starredAt !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(Z|[+-]\d\d:\d\d)$/.test(edge.starredAt) ||
+        !Number.isFinite(Date.parse(edge.starredAt)) || new Date(`${edge.starredAt.slice(0, 10)}T00:00:00Z`).toISOString().slice(0, 10) !== edge.starredAt.slice(0, 10)) {
       throw new Error("Invalid timestamp or repeated stargazer cursor");
     }
     const time = new Date(edge.starredAt).toISOString();
@@ -289,13 +291,14 @@ function commitPage({ out, member, before, node, errors, response, client }) {
     state = { ...before, status: errors.some((error) => error.type === "FORBIDDEN") ? "forbidden" : "not_found_or_inaccessible", daily: null };
   } else {
     try { state = consumePage(before, node, member); }
-    catch { state = { ...before, status: "invalid_history", daily: null }; }
+    catch (error) { state = { ...before, status: "invalid_history", daily: null,
+      invalid_reason: error instanceof Error ? error.message : "History validation failed" }; }
   }
   state.updated_at = new Date(client.now()).toISOString();
   state.last_rate = response.body.data.rateLimit ?? null;
   state.last_response_date = response.headers.date ?? null;
   // Preserve query-time, identity-free evidence, then advance counts/cursor together.
-  atomicJson(join(out, "pages", String(member.id), `${String(before.pages).padStart(7, "0")}.json`), {
+  atomicJson(join(out, "pages", String(member.id), before.attempt ?? "legacy", `${String(before.pages).padStart(7, "0")}.json`), {
     fetched_at: state.updated_at, after: before.cursor, status: response.status,
     node, error_types: errors.map((error) => error.type), rate: state.last_rate,
     response_date: state.last_response_date,
@@ -411,11 +414,23 @@ export function estimate({ members, inventories, pilot, api, intervalMs = 1000 }
 export async function runFetch({ out, members, client, maxRepos = Infinity, retryUnavailable = false }) {
   let processed = 0;
   let paused = null;
-  const work = members.filter((member) => {
+  const eligible = members.filter((member) => {
     const file = join(out, "repos", `${member.id}.json`);
     const status = existsSync(file) ? read(file).status : "pending";
     return status !== "complete" && (status === "fetching" || status === "pending" || retryUnavailable);
   });
+  // Explicit retries form a resumable round. An unavailable prefix must not
+  // monopolize every bounded chunk and starve the rest of the whitelist.
+  const queueFile = join(out, `retry-${sha(JSON.stringify(members.map((member) => member.id))).slice(0, 12)}.json`);
+  const queue = retryUnavailable && existsSync(queueFile) ? read(queueFile) : { pending: [] };
+  const eligibleIds = new Set(eligible.map((member) => member.id));
+  if (retryUnavailable) {
+    if (!Array.isArray(queue.pending) || new Set(queue.pending).size !== queue.pending.length || queue.pending.some((id) => !members.some((member) => member.id === id))) throw new Error("Invalid retry-round queue");
+    queue.pending = queue.pending.length ? queue.pending.filter((id) => eligibleIds.has(id)) : [...eligibleIds];
+    atomicJson(queueFile, queue);
+  }
+  const retryIds = new Set(queue.pending);
+  const work = eligible.filter((member) => !retryUnavailable || retryIds.has(member.id));
   for (let offset = 0; offset < work.length;) {
     if (processed >= maxRepos) { paused = "Repository chunk limit reached"; break; }
     const batch = work.slice(offset, offset + Math.min(INITIAL_BATCH_SIZE, maxRepos - processed));
@@ -429,11 +444,16 @@ export async function runFetch({ out, members, client, maxRepos = Infinity, retr
         await fetchRepository({ out, member, client });
         processed++;
         offset++;
+        if (retryUnavailable) {
+          queue.pending = queue.pending.filter((id) => id !== member.id);
+          atomicJson(queueFile, queue);
+        }
       }
     }
     catch (error) { if (error instanceof Pause) { paused = error.message; break; } throw error; }
   }
-  return { ...summarize(out, members), processed_this_chunk: processed, paused };
+  return { ...summarize(out, members), processed_this_chunk: processed, paused,
+    retry_round_remaining: retryUnavailable ? queue.pending.length : null };
 }
 
 function assertOutput(out) {

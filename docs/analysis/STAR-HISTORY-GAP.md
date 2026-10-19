@@ -58,6 +58,10 @@ a crash between the two replays the uncommitted page without double-counting.
 A process lock prevents concurrent collectors in the same output directory.
 Completed repositories are skipped; unavailable ones require an explicit
 `--retry-unavailable`. This starts that repository again from its newest page.
+Retry rounds have persisted queues, so bounded retry chunks continue past
+unavailable prefixes. When `retry_round_remaining` reaches zero, that round
+has finished; another explicit retry starts a new round. Old page evidence
+is retained under separate attempt directories rather than overwritten.
 Never run two collectors or manually edit a checkpoint.
 
 The serial client spaces request starts by at least one second, records actual

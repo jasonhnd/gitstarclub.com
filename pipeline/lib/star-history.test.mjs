@@ -72,6 +72,7 @@ test("malformed, duplicate, out-of-order, truncated and non-advancing pages cann
   const cases = [
     node([edge("a", "invalid")]),
     node([edge("a", "2026-07-01")]),
+    node([edge("a", "2026-06-31T00:00:00Z")]),
     node([edge("a", "2026-07-01T00:00:00Z"), edge("a", "2026-06-01T00:00:00Z")]),
     node([edge("a", "2026-06-01T00:00:00Z"), edge("b", "2026-07-01T00:00:00Z")]),
     node([edge("a", "2026-07-01T00:00:00Z")], 2, false),
@@ -101,7 +102,7 @@ test("an interrupted page resumes from the atomic cursor/count checkpoint withou
     return response(node([edge("b", "2026-06-01T00:00:00Z")], 2));
   } };
   expect(await fetchRepository({ out, member, client: resumed })).toMatchObject({ status: "complete", total: 2, pages: 2 });
-  expect(existsSync(join(out, "pages/1/0000001.json"))).toBe(true);
+  expect(existsSync(join(out, "pages/1", partial.attempt, "0000001.json"))).toBe(true);
   resumed.request = () => { throw new Error("completed repos must not refetch"); };
   expect((await fetchRepository({ out, member, client: resumed })).total).toBe(2);
 });
@@ -110,14 +111,18 @@ test("unavailable states are checkpointed and retried only on explicit retry; ma
   const out = fixture();
   let calls = 0;
   const client = { now: Date.now, log() {}, request: async () => { calls++; return response(node([], 100)); } };
-  await fetchRepository({ out, member, client });
+  const firstAttempt = await fetchRepository({ out, member, client });
   await fetchRepository({ out, member, client });
   expect(calls).toBe(1);
   const summary = summarize(out, [member]);
   expect(summary).toMatchObject({ complete: false, verified_repositories: 0, verified_repo_days: 0,
     comparison: { matched_graphql_total: null, matched_reference_total: null } });
   client.request = async () => response(node([edge("a", "bad")]));
-  expect(await fetchRepository({ out, member, client, retryUnavailable: true })).toMatchObject({ status: "invalid_history", daily: null });
+  const retry = await fetchRepository({ out, member, client, retryUnavailable: true });
+  expect(retry).toMatchObject({ status: "invalid_history", daily: null });
+  expect(retry.attempt).not.toBe(firstAttempt.attempt);
+  expect(existsSync(join(out, "pages/1", firstAttempt.attempt, "0000000.json"))).toBe(true);
+  expect(existsSync(join(out, "pages/1", retry.attempt, "0000000.json"))).toBe(true);
 });
 
 test("GraphQL partial errors are rejected, while NOT_FOUND and FORBIDDEN are explicit", async () => {
@@ -214,6 +219,21 @@ test("batched initial pages checkpoint each identity separately, then continue i
   expect(calls).toBe(2);
   expect(summary).toMatchObject({ verified_repositories: 1, statuses: { complete: 1, unavailable_empty_history: 1 } });
   await expect(fetchInitialBatch({ out: fixture(), members, client: { ...client, request: async () => response(null, { body: { data: { nodes: [null] } } }) } })).rejects.toThrow("Truncated initial-page");
+});
+
+test("retry rounds make progress past unavailable prefixes across bounded chunks", async () => {
+  const out = fixture();
+  const members = [member, { ...member, id: 2, node_id: "two", sample: false }];
+  const requested = [];
+  const client = { now: Date.now, log() {}, request: async (_query, variables) => {
+    requested.push(variables.ids);
+    return response(null, { body: { data: { nodes: variables.ids.map((id) => node([], 100, false, { databaseId: id === "two" ? 2 : 1 })), rateLimit: rate } } });
+  } };
+  await runFetch({ out, members, client });
+  requested.length = 0;
+  expect(await runFetch({ out, members, client, retryUnavailable: true, maxRepos: 1 })).toMatchObject({ retry_round_remaining: 1 });
+  expect(await runFetch({ out, members, client, retryUnavailable: true, maxRepos: 1 })).toMatchObject({ retry_round_remaining: 0 });
+  expect(requested).toEqual([["legacy-one"], ["two"]]);
 });
 
 test("pilot membership is fixed at 40 references plus ten deterministic whitelisted extras", () => {
