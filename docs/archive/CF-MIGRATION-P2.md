@@ -59,7 +59,9 @@ Production ISR invalidation is still Next.js on Vercel:
 
 - `CACHE_INVALIDATION_DRIVER` unset or `vercel` → `next/cache`
 - Publication still POSTs `/api/workflows/refresh/revalidate` on the owning
-  Next deployment
+  Next deployment. The origin is `CF_CRON_ORIGIN` on Cloudflare and
+  `VERCEL_URL`, then `NEXT_PUBLIC_SITE_URL`, on Vercel. There is no
+  production fallback, and `DEPLOY_ENV=pre` refuses production hosts
 - Live cron still revalidates `/`, `/pulse`, and current ranking paths after
   the live pointer commits
 - `PREVIEW_TARGET` unset or `vercel` → existing

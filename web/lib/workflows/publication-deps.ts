@@ -8,7 +8,10 @@ import { createView, putView } from "@/lib/data/write";
 import { submitWorkflowPublishIndexNow } from "@/lib/indexnow";
 import { renewWorkflowLease } from "@/lib/workflows/lease";
 import type { PublicationDeps } from "@/lib/workflows/publication-core";
-import { requestPublishedViewsInvalidation } from "@/lib/workflows/publication-invalidation-request";
+import {
+  requestPublishedViewsInvalidation,
+  resolvePublicationInvalidationTarget,
+} from "@/lib/workflows/publication-invalidation-request";
 
 export const productionPublicationDeps: PublicationDeps = {
   readPointer: () => readAuthoritativeView("views/latest.json", ViewsPointer),
@@ -21,7 +24,10 @@ export const productionPublicationDeps: PublicationDeps = {
   writeRecovery: (recovery) => putView("ops/workflows/latest-success.json", recovery),
   writeWhitelistPointer: (pointer) => putView("canonical/v2/whitelist/latest.json", pointer),
   ensureOwnership: (owner) => renewWorkflowLease(owner.runId, owner.fencingToken).then(() => undefined),
-  invalidate: requestPublishedViewsInvalidation,
+  checkInvalidationTarget: () => {
+    resolvePublicationInvalidationTarget();
+  },
+  invalidate: () => requestPublishedViewsInvalidation(),
   notifyIndexNow: submitWorkflowPublishIndexNow,
   now: () => new Date().toISOString(),
 };
