@@ -169,7 +169,7 @@ Measurement limits, all from that card:
 
 Keep the published frozen net series, including June through August. Do not replace it with an archive gross fill.
 
-The candidate replacement for the gap is GitHub's repository star-history API, `GET /repositories/{id}/stargazers/history`, not another GH Archive scan. It is pending owner decision d1019-001344-1 and a separate preview validation. PR #669 records a pipeline rehearsal and a five-repository history sample. It is not approval to upload or publish, and it does not approve a full-whitelist collection. Any replacement repair method stays pending that validation and an explicit owner approval. This plan does not add the collection commands.
+Owner decision d1019-001344-1 = A, reconfirmed October 19, authorizes GSC_0080's fixed-whitelist, local-only GitHub timestamp collection for the gap. It does not authorize upload, publication or a new GH Archive scan. PR #669 remains a rehearsal and aggregate-history assessment. The [UTC collection report](../docs/analysis/STAR-HISTORY-GAP.md) records the subsequent 50-repository GraphQL pilot, access failure, cost estimates and resume commands. Any replacement repair still needs valid date/metric evidence, separate preview validation and explicit publication approval; this plan adds no publication command.
 
 The 2026-10-18 dry run of the rejected window is kept only as a cost record. Each job was a SELECT (no `CREATE`), `dryRun=true`, `totalBytesBilled=0`, accuracy `PRECISE`. List price uses 6.25 USD per TiB, with TiB = 2^40 bytes. The first 1 TiB of on-demand scan per month is free. Month-to-date usage of project `gitstarclub` was not measured.
 
@@ -336,6 +336,6 @@ Legend: [no auth] needs no owner authorization (read-only; operator login only w
 
 ## Open questions for the owner
 
-1. The GH Archive gap fill is not acceptable (GSC_0045, section B2). The frozen net series stays. A replacement that uses the GitHub star-history API is pending decision d1019-001344-1 and separate validation (PR #669 is the rehearsal). This plan does not ask the owner to accept changed June through September archive numbers.
+1. The GH Archive gap fill is not acceptable (GSC_0045, section B2). The frozen net series stays. Decision d1019-001344-1 = A permits GSC_0080's local-only GitHub timestamp collection; its pilot encountered empty GraphQL history despite positive stock. Replacement data and preview validation remain outstanding (PR #669 is the rehearsal). This plan does not ask the owner to accept changed June through September archive numbers.
 2. The production commit mechanism, for a later approved repair, remains a reviewed code change to the commit gate, not a destructive cleanup. That code change is not authorized for the withdrawn GH Archive fill.
 3. May the roll-out of `main` (section A) happen ahead of the data repair?

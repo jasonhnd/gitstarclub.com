@@ -84,7 +84,11 @@ upload instructions belong in [the rebuild plan](../plans/668-preview-gap-rebuil
 The owner subsequently restricted this GH Archive gap to a **local rehearsal
 only** (GSC_0045 sampling found severe undercoverage). Do not upload or publish
 its output. The plan also assesses GitHub's aggregate star-history API with a
-small read-only sample; a complete replacement extraction is not authorized.
+small read-only sample. Owner decision d1019-001344-1 = A subsequently
+authorized GSC_0080's fixed-whitelist, local-only timestamp collection for
+May 30 through September 30, with no upload or publication authority. See
+[the UTC star-history collection report](analysis/STAR-HISTORY-GAP.md) for the
+50-repository pilot, GraphQL access failure, estimates and resume commands.
 When a rehearsal reuses repository metadata snapshots, step 07 preserves
 `active: false` for historical members instead of reactivating them.
 
