@@ -12,7 +12,7 @@ Move the existing web application to vinext on Cloudflare Workers with typed con
 4. Port build identity, local artifact validation, delivery guards and tests; keep schedules paused and Actions disabled.
 5. Update current documentation and preserve historical evidence.
 6. Run the complete offline static gate, explicit production/pre builds and local runtime/browser checks on the exact head; attach English/Japanese home/ranking/repository screenshots.
-7. Push only this feature branch and open one PR against pre with Closes #N; hand off to an independent reviewer.
+7. Push only this feature branch and open one PR against pre with Closes #683; hand off to an independent reviewer.
 
 ## Out of scope and prohibited operations
 
@@ -25,3 +25,5 @@ No new product pages or expanded data coverage. No runtime database or Durable O
 - Lock graph contains no legacy CLI package; executable commands use only cf for Cloudflare.
 - Local runtime proves literal core snapshots, on-demand tail HTML/RSC, cache isolation/expiry/publication/rollback/failure races, valid OG PNG, all locales and language API, self-hosted fonts, unchanged CSP, production indexing and preview noindex, and build identity.
 - PR records commands/results, before/after screenshots, limitations and any remaining external acceptance. Executor does not merge or perform final acceptance.
+
+Issue: https://github.com/jasonhnd/gitstarclub.com/issues/683.
