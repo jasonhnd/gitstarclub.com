@@ -10,8 +10,9 @@ const repoPathPrefixes = ["web/", "pipeline/", "scripts/", ".github/"];
 const ignoredDirectories = new Set([
   ".git",
   ".next",
-  ".open-next",
-  ".wrangler",
+  ".cloudflare",
+  ".vinext",
+  ".kanban-work",
   "coverage",
   "dist",
   "node_modules",
