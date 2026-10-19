@@ -74,6 +74,7 @@
     "brace-expansion@2.1.2": "2.1.7",
     "brace-expansion@5.0.8": "5.0.12",
     "nanoid": "5.1.16",
+    "fflate@0.7.3": "0.7.5",
     "braces": "github:micromatch/braces#bdb6fda18f2aba1ae63d78786cb4460b478459ba"
   },
   "ignoreScripts": [
