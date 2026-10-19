@@ -89,6 +89,7 @@ platform command is part of verification. Keep GitHub Actions disabled.
 ```bash
 env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:?Set a card-local TMPDIR}" \
   BUN_INSTALL_CACHE_DIR="${TMPDIR}/bun-cache" npm_config_cache="${TMPDIR}/npm-cache" XDG_CACHE_HOME="${TMPDIR}/cache" \
+  GSC_FIXTURE_PORT="${GSC_FIXTURE_PORT:-4010}" \
   bash --noprofile --norc -euo pipefail <<'SH'
 tool_root="${TMPDIR}/gitstarclub-toolchain"
 node_ver="v24.20.0"
@@ -181,6 +182,7 @@ Run from the detached clone. The block rechecks the archives, runs the complete 
 ```bash
 env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:?Set a card-local TMPDIR}" \
   BUN_INSTALL_CACHE_DIR="${TMPDIR}/bun-cache" npm_config_cache="${TMPDIR}/npm-cache" XDG_CACHE_HOME="${TMPDIR}/cache" \
+  GSC_FIXTURE_PORT="${GSC_FIXTURE_PORT:-4010}" \
   bash --noprofile --norc -euo pipefail <<'SH'
 tool_root="${TMPDIR}/gitstarclub-toolchain"
 node_ver="v24.20.0"
