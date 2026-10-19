@@ -49,10 +49,11 @@ push pre/main/preview. Prototype code gets no PR. All temporary data stays in
   exact documentation head. The Cloudflare dry run is skipped by owner order;
   GitHub Actions remains disabled. Results are recorded in the PR and handoff.
 
-## Progress
+## Evidence and delivery
 
-- [x] Read the brief, assessment, repository instructions, and cache contracts.
-- [x] Verify Node 24.20.0/Bun 1.4.2 archives and install baseline dependencies.
-- [ ] Build and measure the isolated prototype.
-- [ ] Write the evidence report and migration checklist.
-- [ ] Verify the exact documentation head, open the PR, and hand off to review.
+Issue: [#674](https://github.com/jasonhnd/gitstarclub.com/issues/674).
+The completed local proof and migration checklist are recorded in
+[VINEXT-CACHE-DESIGN.md](../docs/analysis/VINEXT-CACHE-DESIGN.md).
+The documentation PR and kanban handoff record the exact tested documentation
+head, full offline gate results, and remaining review work. Prototype code stays
+on spike/GSC_0074-vinext-cache and has no PR.
