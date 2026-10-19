@@ -22,7 +22,7 @@ This document is **gitstarclub's operations runbook**—**deployment, cron / Wor
 Data operations layers:
 - **Daily / weekly live cron**—see §Cron schedule.
 - **History / metadata / canonical full refresh (managed refresh)**—see §Managed refresh runbook (step names see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)).
-- **One-time BigQuery + DuckDB bootstrap backfill**—see §One-time bootstrap Runbook (archived, non-routine path).
+- **Historical BigQuery + DuckDB bootstrap backfill**—extraction retired 2026-10-19; see the archived One-time bootstrap Runbook and [Raw backfill data](#raw-backfill-data).
 
 ## Current hosting and branch topology
 

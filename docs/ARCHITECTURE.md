@@ -1,7 +1,7 @@
 ---
 owner: architecture
 status: active
-last_reviewed: 2026-10-01
+last_reviewed: 2026-10-19
 source_of_truth_for:
   - system overview
   - tech stack
@@ -45,13 +45,15 @@ The same data layer also operates AI-free: features that look like they would ca
 | Read-side data | Versioned JSON views in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)), served through a publish pointer | `views/<run_id>/**` + `views/latest.json` |
 | Live-overlay data | Immutable `live/generations/<run_id>/**`, selected by `live/latest.json` | Atomic current snapshot; period files use bounded validated manifest history until folded |
 | Recurring data refresh | Cron routes + step runtime (multi-step; no Workflow SDK) | Both Worker cron lists are empty. The production trigger source is unverified; see OPS.md |
-| One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
+| Historical bootstrap | Former BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Extraction retired 2026-10-19; private R2 raw archive only ([OPS](./OPS.md#raw-backfill-data)); replacement source: GitHub's own star history (d1019-001344-1) |
 | Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test` from `web/` on PRs and `main` pushes |
 | Analytics | No analytics provider or analytics scripts are included in the application. | No GA or third-party tracking scripts. |
 
 Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, tRPC, any LLM SDK. The reasoning is the constraints above.
 
 ## Data flow
+
+The bootstrap diagram preserves the historical sequence. BigQuery / GH Archive extraction was retired on 2026-10-19. Its raw input lives only in private R2 `gitstarclub-raw`; the deletion and recovery record, object inventory, and read-only `cf` verification are in [OPS](./OPS.md#raw-backfill-data). GitHub's own star history is the replacement source under d1019-001344-1, with collection and publication separately authorized.
 
 ```text
 ┌─ Bootstrap (one-off, archived) ─────────────────────────────┐
@@ -100,15 +102,11 @@ At runtime, content pages serve as static HTML from the edge. On-demand ISR page
 
 Daily deltas only need `current_stars(today) − current_stars(yesterday)` per repo. GitHub's GraphQL API returns 100 repos per query, so the current tracked set (a few thousand repos; see [REQUIREMENTS.md](./REQUIREMENTS.md) §2 for the live count) costs a handful of queries — a few seconds, well under 1% of the hourly point budget. Pulling 1–3 GB of GH Archive daily is unnecessary, and net deltas (which can be negative when stars are revoked) are a more honest signal than GH Archive's gross adds.
 
-### Why bootstrap uses BigQuery
+### Historical BigQuery bootstrap rationale (retired 2026-10-19)
 
-Eleven years of star event history is only available in GH Archive. Free alternatives were evaluated and rejected:
+The original bootstrap selected BigQuery's GH Archive WatchEvent tables for stable `repo.id`, column-filtered scans, and an approximately $10 one-off cost estimate. The alternatives then considered were a public ClickHouse playground with a 1,000-row response cap and no stable repo id, self-hosted ingestion requiring 4–12 TB of raw downloads, and timestamped GitHub stargazer pagination with a 40,000-star cap. This is the historical selection rationale, not current evidence that GH Archive is complete or the only available source.
 
-- The public ClickHouse playground caps results at 1,000 rows per response and exposes `repo_name` but not `repo.id`, so 8M rows would need tens of thousands of paginated queries and renames break aggregation.
-- Self-hosting ClickHouse or DuckDB would require downloading 4–12 TB of raw archive (the bucket cannot be filtered by event type) before any aggregation runs.
-- GitHub's stargazers API caps at 40,000 stargazers per repo, so large repos cannot be fully reconstructed.
-
-A single BigQuery scan costs about $10 (one-off), returns a stable `repo.id` (rename-safe), and is precise. The `githubarchive.*` columnar tables let `WHERE type='WatchEvent'` scan only the relevant columns.
+GSC_0045 later measured only about 4% archive capture against GitHub's own star-history proxy on a 40-repository 2026 sample (12,761 / 342,659; about 3.7%). It is not a population-weighted total, and the surviving-star proxy is not exact historical net. The old completeness assumption is withdrawn. BigQuery / GH Archive extraction is retired; GitHub's own star history is the replacement source under owner decision d1019-001344-1. Keep the frozen published net series until a separately authorized and validated replacement. GCP project `gitstarclub` entered deletion on 2026-10-19; the private R2 archive and recovery deadline are in [OPS](./OPS.md#raw-backfill-data).
 
 ### Why build reads JSON and ships no engine
 

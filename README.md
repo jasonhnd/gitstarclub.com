@@ -13,7 +13,7 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 | Read path | Static HTML / on-demand ISR from Cloudflare Workers (OpenNext); JSON in Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)); no runtime database, no engine in the request path |
 | Recurring data refresh | Managed refresh (whitelist → rename → metadata → fold → recompute → buildAliases → validate → publish → garbage-collect) |
 | Live overlay | Daily and weekly cron routes (`current_month.json`, `hot-snapshot.json`) |
-| Bootstrap | One-off BigQuery (GH Archive) + local DuckDB → Parquet → Blob; archived after seed |
+| Bootstrap | Historical BigQuery / GH Archive extraction retired 2026-10-19; raw archive only in private R2 `gitstarclub-raw` ([inventory and verification](docs/OPS.md#raw-backfill-data)). Replacement source: GitHub's own star history (d1019-001344-1); collection/publication separately authorized |
 | Target scale | ~10M page views per day |
 | Data scope | Public repos with ≥10,000 stars (current whitelist size in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) §2), 2015-01 to present |
 

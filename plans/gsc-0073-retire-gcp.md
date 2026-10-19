@@ -22,7 +22,7 @@ Runtime code, schemas, new data coverage (lock-002), new collection or publicati
 - Project deletion request and observed `DELETE_REQUESTED` are distinguished from final purge. The recorded request is 2026-10-19T11:12:41Z; the calculated 30-day recovery deadline is 2026-11-18T11:12:41Z.
 - GH Archive extraction is retired with the GSC_0045 sample caveat (~4% of the GitHub history proxy), and the replacement source is documented without authorizing a rebuild or publication.
 - English-only docs pass `lint:docs` and `check-docs`; the full static job and fixture build results on the exact head are in the PR. No Wrangler command is run.
-- PR includes `Closes #N`, unresolved limits, and the overlap with still-open PR #667. The executor leaves acceptance and merge to review.
+- PR includes `Closes #675`, unresolved limits, and the overlap with still-open PR #667. The executor leaves acceptance and merge to review.
 
 ## Initial findings
 
