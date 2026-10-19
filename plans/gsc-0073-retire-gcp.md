@@ -22,8 +22,12 @@ Runtime code, schemas, new data coverage (lock-002), new collection or publicati
 - Project deletion request and observed `DELETE_REQUESTED` are distinguished from final purge. The recorded request is 2026-10-19T11:12:41Z; the calculated 30-day recovery deadline is 2026-11-18T11:12:41Z.
 - GH Archive extraction is retired with the GSC_0045 sample caveat (~4% of the GitHub history proxy), and the replacement source is documented without authorizing a rebuild or publication.
 - English-only docs pass `lint:docs` and `check-docs`; the full static job and fixture build results on the exact head are in the PR. No Wrangler command is run.
-- PR includes `Closes #675`, unresolved limits, and the overlap with still-open PR #667. The executor leaves acceptance and merge to review.
+- PR includes `Closes #675`, unresolved limits, and the reconciliation with merged PR #667. The executor leaves acceptance and merge to review.
 
 ## Initial findings
 
 PR #667 was open at the start of this card. Its proposed OPS raw-data section and rollout/data-repair plan still describe a GCS primary, pending R2 copy/manifest, and a pending source decision. This card starts from `pre` and supplies the current state; the reviewer must preserve that state when reconciling #667.
+
+## Integration update
+
+PR #667 merged into `pre` at 2026-10-19T11:18:33Z while this card was running. This branch synchronizes `origin/pre` at `1d442a3`, preserves the merged full rollout plan and dated diagnosis, and edits its raw-storage and source-decision text in place. The final exact-head local gate is rerun after reconciliation. No shared branch was rebased, no PR was merged by this executor, and no protected branch was pushed.
