@@ -1,5 +1,29 @@
 # Local read-only pipeline tools
 
+## Aggregate gap inputs
+
+`star-history-aggregate.mjs` (issue #682, GSC_0090, owner decision
+d1019-214826-1 = A) is the explicitly approved aggregate alternative to the
+UTC timestamp collector below. It uses serial `gh api` GETs, a pinned
+5,249-member whitelist, >=1.05-second request-start pacing, persisted quota
+cooldowns and atomic checkpoints. Raw responses and daily series stay only in
+the excluded durable `leader/star-history-agg/` directory.
+
+```bash
+node pipeline/scripts/star-history-aggregate.mjs --help
+node pipeline/scripts/star-history-aggregate.mjs fetch --max-seconds 540
+node pipeline/scripts/star-history-aggregate.mjs report
+node pipeline/scripts/star-history-aggregate.mjs export
+```
+
+The [aggregate collection contract](../../docs/analysis/STAR-HISTORY-AGGREGATE.md)
+documents initial preparation, resume, fingerprints and the provenance sidecar.
+It exports gap-only daily tuples and 17 complete ISO Monday-Sunday weeks;
+partial edge weeks remain separate. Counts are surviving stars on approximate
+GitHub day labels, not exact UTC counts or net growth. Monthly published net,
+frozen stocks and anchor factors must remain unchanged. There is no upload,
+preview integration or page-label change in this tool.
+
 ## UTC star history collection
 
 `star-history.mjs` (issue #680, GSC_0080) reads the unchanged R2 whitelist
