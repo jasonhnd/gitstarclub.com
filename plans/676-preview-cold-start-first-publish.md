@@ -80,3 +80,18 @@ the local Git exclude file.
   Omit that subshell and record the omission in the PR. Actions remains OFF.
 - The PR records the exact tested SHA, commands, results, old-code proof, and
   remaining limits. Independent review owns final acceptance and merge.
+
+## Old-code proof
+
+With only the new cold-start tests applied to the unchanged `pre` implementation
+(`d9d0e9d70a26e05fd4b1eb7efdee9b8d817efd4b`), ran from `web/` in a clean
+environment with Node v24.20.0 / Bun 1.4.2:
+
+```sh
+bun test lib/workflows/runtime/full-chain-cold-start.test.ts --test-name-pattern 'publishes the first views pointer'
+```
+
+Exit 1: 0 pass, 1 fail, 15 filtered out. The new `views/latest.json` assertion
+received `undefined`. The real validate handler reported exactly
+`entity/repo/1000: empty curve` and `heatmap/year/2025.json: missing` before that
+assertion. No production workflow code was changed for this proof.
