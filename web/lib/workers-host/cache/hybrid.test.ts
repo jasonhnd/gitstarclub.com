@@ -55,6 +55,7 @@ async function harness(path = "/", hot = new Hot()) {
   const id = await sha256(key);
   const assets = { fetch: async (input: string | Request) => {
     const path = new URL(typeof input === "string" ? input : input.url).pathname;
+    if (path.endsWith("gsc-host.json")) return Response.json({ publication: original.id, tags: { "/": ["_N_T_/layout", "_N_T_/"] } });
     return path.endsWith("index.json") ? Response.json({ [id]: { kind: "html", lastModified: now - 1000, cacheControl: { revalidate: false } } }) : new Response("snapshot");
   } };
   const env = { GSC_CACHE: kv, ASSETS: assets, DEPLOY_ENV: "pre" };

@@ -12,10 +12,24 @@ export class HybridPageCache extends DefaultCdnCacheAdapter {
   readonly hasPrerenderedPages = true;
   readonly store: ArtifactStore;
   readonly snapshots: StaticAssetsCacheAdapter;
+  private metadata?: Promise<{ publication: string; tags: Record<string, string[]> } | null>;
   constructor(env: Env, readonly snapshotFence: string, hot?: HotCache) {
     super(process.env.__VINEXT_RSC_BUILD_IDENTITY || process.env.__VINEXT_BUILD_ID);
     this.store = new ArtifactStore(env.GSC_CACHE, `gsc:${env.DEPLOY_ENV}:pages:v1`, hot);
     this.snapshots = new StaticAssetsCacheAdapter(env.ASSETS);
+  }
+  private snapshotMetadata() {
+    return this.metadata ??= (async () => {
+      try {
+        const response = await this.snapshots.assets.fetch("https://vinext.invalid/_vinext/static-cache/gsc-host.json");
+        if (!response.ok) return null;
+        const text = await response.text();
+        if (text.length > 1024 * 1024) return null;
+        const value = JSON.parse(text) as { publication: string; tags: Record<string, string[]> };
+        if (value.publication !== this.snapshotFence || !value.tags || typeof value.tags !== "object") return null;
+        return value;
+      } catch { return null; }
+    })();
   }
   async get(key: string): Promise<CacheHandlerValue | null> {
     const scope = cacheScope.getStore();
@@ -28,9 +42,10 @@ export class HybridPageCache extends DefaultCdnCacheAdapter {
     try {
       entry = await this.store.get(storageKey);
       if (!entry && !tail && scope.publication.id === this.snapshotFence) {
-        const value = await this.snapshots.get(key);
-        if (value) {
-          entry = { ...value, v: 1, fence, tags: pathTags(scope.path) };
+        const metadata = await this.snapshotMetadata();
+        const value = metadata?.tags[scope.path] ? await this.snapshots.get(key) : null;
+        if (value && metadata) {
+          entry = { ...value, v: 1, fence, tags: boundedTags([...new Set([...metadata.tags[scope.path], ...pathTags(scope.path)])]) };
           if (await this.store.invalid(entry)) entry = null;
           snapshot = entry !== null;
         }

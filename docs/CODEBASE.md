@@ -63,7 +63,7 @@ GitHub APIs
 | `web/lib/cache-invalidation/` | ISR invalidation port (`vercel` \| `memory` \| `cf-stub`); default remains Next `revalidatePath/Tag` |
 | `web/lib/preview/` | Optional preview-target resolver. `pre.gitstarclub.com` is public; `noindex` is not access control |
 | `web/lib/workers-host/` | Worker path classification, smoke origin, step self-fetch, Queue successor after fold (body + `x-gitstarclub-queue-successor`; fold writes `fold-decision.json` then 1-bucket windows + compact plans when there is closed-period work; recomputeRank is month-pack + 8-period month/monthOrg, year derived per month bucket + 8-period year/yearOrg, week-pack + streamed week/weekOrg, then rest one repos bucket at a time) |
-| `web/open-next.config.ts` | OpenNext Cloudflare adapter (static-assets incremental cache) |
+| `web/vite.config.ts` | vinext Cloudflare adapter (hybrid snapshots and publication-fenced Cache API/KV) |
 | `workers/gitstarclub-web/` | CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (`env.pre`) |
 | `scripts/assert-cf-ci-gates.mjs` | CF CI gate: `pre` → `gitstarclub-web-pre`; no live deploy of `gitstarclub-web`; production `triggers.crons` stays `[]` |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
@@ -111,7 +111,7 @@ Important files:
   for `pre.gitstarclub.com`. `preview-e2e` and `product-gates` are optional
   and are not GitHub required checks.
 - `web/lib/workers-host/` + the Worker directory `workers/gitstarclub-web/`:
-  OpenNext on Cloudflare Workers. Production Worker `gitstarclub-web` and
+  vinext on Cloudflare Workers. Production Worker `gitstarclub-web` and
   preview Worker `gitstarclub-web-pre` both serve the site. See [OPS.md](./OPS.md).
 
 Rule: if a page needs a new view, add or extend the Zod schema in

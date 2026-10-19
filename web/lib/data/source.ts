@@ -310,8 +310,10 @@ async function resolveVersion(
   const captured = publicationScope.getStore();
   if (captured) {
     const pointer = captured.views;
-    return { version: pointer?.version ?? (mode === "published" ? getViewsVersionFallback() : null),
-      publishedAt: pointer?.published_at ?? null, confirmedAbsent: pointer === null };
+    if (pointer) return { version: pointer.version, publishedAt: pointer.published_at, confirmedAbsent: false };
+    const fallback = mode === "published" ? getViewsVersionFallback() : null;
+    return { version: fallback, publishedAt: fallback ? await publishedAtForViewsFallback(blobBase, fallback, timeoutMs) : null,
+      confirmedAbsent: fallback === null };
   }
   const now = Date.now();
   const memoKey = `${blobBase}\0${ttlMs}\0${mode}`;

@@ -21,6 +21,15 @@ const ignoredDirectories = new Set([
 // These documents intentionally preserve source paths from a point in time.
 // Current-state docs are never silently exempted from reference validation.
 export const historicalDocumentAllowlist = new Map([
+  ["docs/archive/CF-MIGRATION-P3.md", "completed historical migration record preserves retired host source paths"],
+  ["plans/567-preview-r2-config.md", "completed historical migration record preserves retired host source paths"],
+  ["plans/571-r2-gate-hardening.md", "completed historical migration record preserves retired host source paths"],
+  ["plans/574-r2-runbook-fixes.md", "completed historical migration record preserves retired host source paths"],
+  ["plans/578-r2-stage4-ready.md", "completed historical migration record preserves retired host source paths"],
+  ["plans/590-ops-scripts-tests.md", "completed historical migration record preserves retired host source paths"],
+  ["docs/archive/HOST-BEFORE-VINEXT.md", "retired pre-vinext operations evidence; never current commands"],
+  ["docs/analysis/VINEXT-CACHE-DESIGN.md", "versioned spike report; current host runbook supersedes prototype paths"],
+  ["docs/R2-CUTOVER.md", "accepted storage cutover record preserves historical host paths"],
   ["docs/CHANGELOG.md", "release entries are immutable historical records"],
   ["docs/analysis/DATA-CORRECTNESS-21.md", "closed point-in-time analysis"],
   ["docs/analysis/RECONCILE-MAIN-PRE-2026-07-19.md", "2026-07-19 main/pre reconciliation snapshot, not current required-check policy"],
@@ -250,8 +259,8 @@ function checkApiInventoryFacts(root) {
 function checkStorageDocumentationFacts(root) {
   const issues = [];
   const rootReadme = readFileSync(resolve(root, "README.md"), "utf8");
-  if (!rootReadme.includes("Cloudflare R2 (production still reads Vercel Blob until cutover; see")) {
-    issues.push("README.md: storage must be Cloudflare R2, with production still reading Vercel Blob until cutover");
+  if (!rootReadme.includes("Cloudflare R2 (production cutover accepted 2026-10-04; see")) {
+    issues.push("README.md: storage must record the accepted production R2 cutover");
   }
 
   const ops = readFileSync(resolve(root, "docs/OPS.md"), "utf8");

@@ -17,6 +17,10 @@ For what is not yet built, see [ROADMAP.md](./ROADMAP.md). For the system as it 
 
 ## Unreleased
 
+### Changed
+
+- **vinext Worker host (#683).** Replaced the legacy adapter/toolchain with pinned vinext/Vite and typed cf configuration. Preserved production/pre bindings, Queue retries, self-reference, paused schedules, locales, local fonts, CSP, build identity and indexing. Added hybrid core snapshots and seven-day tail caching through Cache API/KV, strong R2 publication fencing across HTML/RSC/data, awaited invalidation and local artifact/graph gates. Updated delivery documentation and verification; Actions stays disabled. This change authorizes no deployment.
+
 ### Fixed
 
 - **First preview cold-start publication without history (#676).** With `WORKFLOW_COLD_START=1`, `DEPLOY_ENV=pre`, no production signal, and no authoritative `views/latest.json`, `validate` permits exactly an empty sampled repository curve and an absent prior-year heatmap. Each actual exception logs `[workflow-refresh] cold-start validation relaxed` with the run id and check, and sets its dedicated `validation.json` invariant. Existing pointers, disabled cold start, and production retain both blocking checks; malformed heatmaps, missing entities, and all other publication gates still fail. The real empty-history chain now reaches publish, GC, and markPublished and asserts the first pointer plus published manifest/lease status. No historical data is fabricated or added.

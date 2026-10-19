@@ -47,6 +47,7 @@ export function buildVars(mode, env = process.env) {
   const target = hostMode(mode);
   for (const key of ["R2_PUBLIC_BASE_URL", "NEXT_PUBLIC_R2_PUBLIC_BASE_URL", "BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL"]) {
     const value = env[key]?.replace(/\/+$/, "");
+    if (value && key.includes("BLOB") && !loopbackBase(value)) throw new Error(`${mode} refuses nonlocal Blob build variables`);
     if (value && !loopbackBase(value) && value !== target.vars.R2_PUBLIC_BASE_URL) {
       throw new Error(`${mode} refuses conflicting ${key}`);
     }
