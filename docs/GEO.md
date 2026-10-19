@@ -18,7 +18,7 @@ This document is the owning document for GitStarClub's GEO strategy: how the exi
 
 GEO complements [SEO.md](./SEO.md). SEO owns crawlability, canonical URLs, metadata, sitemap, robots policy, and internal links. GEO owns answer-engine citation tactics layered on top of those surfaces: answer capsules, FAQ blocks, dataset schema, AI crawler hygiene, freshness signals, entity authority, and measurement.
 
-Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only precomputed JSON, and implementation stays deterministic. The host is Cloudflare Workers through vinext. Production JSON comes from R2 after the accepted 2026-10-04 cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
+Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only precomputed JSON, and implementation stays deterministic. The source host targets Cloudflare Workers through vinext; live activation requires separate authorization. Production JSON comes from R2 after the accepted 2026-10-04 cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
 
 Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate log-report runbook. The report script accepts the Vercel log-drain field shape as parser compatibility only. It does not parse Cloudflare Worker logs. Current Cloudflare aggregate measurement is pending an input adapter and evidence. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
 

@@ -12,6 +12,10 @@ source_of_truth_for:
 
 # Architecture
 
+This document describes the checked-in source. GSC_0075 changes the host
+implementation without deploying it; live activation needs separate owner
+authorization. See [VINEXT-HOST.md](VINEXT-HOST.md).
+
 ## Scope
 
 This document describes how gitstarclub is built end to end: data flow, rendering model, hard constraints, and the reasons each significant decision points one way rather than the other. Read it before extending the system or proposing a structural change. Product framing is in [PRODUCT.md](./PRODUCT.md); per-layer detail lives in the layer docs ([DATA-CONTRACTS](./DATA-CONTRACTS.md), [PIPELINE](./PIPELINE.md), [VERCEL-DATA-OPERATIONS](./VERCEL-DATA-OPERATIONS.md), [FRONTEND](./FRONTEND.md), [SEO](./SEO.md), [DESIGN-SYSTEM](./DESIGN-SYSTEM.md), [OPS](./OPS.md), [TESTING](./TESTING.md)).
@@ -38,7 +42,7 @@ The same data layer also operates AI-free: features that look like they would ca
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Framework | Next.js 16 (App Router, RSC, Turbopack) | vinext on Cloudflare Workers |
+| Framework | Next.js 16 App Router APIs and RSC, compiled by vinext/Vite | Cloudflare Workers; Next remains for types/lint compatibility |
 | Language / toolchain | TypeScript 6, React 19, Zod 4, Node 24, bun | |
 | Styling | Tailwind 4 + Material 3 Expressive tokens (graphite + amber), hand-authored in `web/app/globals.css` following the M3 system color role taxonomy | |
 | Fonts | Plus Jakarta Sans (variable sans), Geist Mono (numerals, repo names) | |
@@ -280,4 +284,4 @@ The current scope is comfortably static. Several requested capabilities would fo
 - Topic / language / cohort clustering.
 - Semantic / embedding-based search.
 
-These cannot fit a fixed view set or a client-side index. They share an open architectural decision recorded in [ROADMAP.md](./ROADMAP.md): which analytical layer to introduce (managed ClickHouse, vinext on Cloudflare Workers relational, etc.) and how to reconcile that with the Cloudflare-hosted / runtime-zero-engine posture above. No work on those features starts before that decision lands.
+These cannot fit a fixed view set or a client-side index. They share an open architectural decision recorded in [ROADMAP.md](./ROADMAP.md): whether to introduce a managed analytical service and how to reconcile that with the Cloudflare-hosted / runtime-zero-engine posture above. No work on those features starts before that decision lands.

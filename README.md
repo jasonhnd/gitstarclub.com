@@ -6,6 +6,9 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 
 ## At a glance
 
+This README describes the checked-in source host. GSC_0075 does not deploy it;
+live activation requires separate owner authorization. See [the host runbook](docs/VINEXT-HOST.md).
+
 | | |
 |---|---|
 | Site | [gitstarclub.com](https://gitstarclub.com) |

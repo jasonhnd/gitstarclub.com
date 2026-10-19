@@ -60,12 +60,12 @@ GitHub APIs
 | `web/lib/search/` | Search index/query core |
 | `web/lib/observability/` | Health and alert helpers for cron/workflow failure alerting |
 | `web/lib/storage/` | Object-store port. Read drivers: `blob`, `r2_binding`, `r2_s3`, `r2`, `r2_then_blob`. Write drivers: `blob`, `r2_binding`, `r2_s3`, `r2`. `r2` is an alias of `r2_s3`. Unset drivers stay `blob`. Current status is [R2-CUTOVER.md](./R2-CUTOVER.md) |
-| `web/lib/cache-invalidation/` | ISR invalidation port (`vercel` \| `memory` \| `cf-stub`); default remains Next `revalidatePath/Tag` |
+| `web/lib/cache-invalidation/` | Uses native page/data cache invalidation when Worker bindings are present; retains `vercel`, `memory` and `cf-stub` ports for other runtimes/tests |
 | `web/lib/preview/` | Optional preview-target resolver. `pre.gitstarclub.com` is public; `noindex` is not access control |
 | `web/lib/workers-host/` | Worker path classification, smoke origin, step self-fetch, Queue successor after fold (body + `x-gitstarclub-queue-successor`; fold writes `fold-decision.json` then 1-bucket windows + compact plans when there is closed-period work; recomputeRank is month-pack + 8-period month/monthOrg, year derived per month bucket + 8-period year/yearOrg, week-pack + streamed week/weekOrg, then rest one repos bucket at a time) |
 | `web/vite.config.ts` | vinext Cloudflare adapter (hybrid snapshots and publication-fenced Cache API/KV) |
-| `workers/gitstarclub-web/` | CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (`env.pre`) |
-| `scripts/assert-cf-ci-gates.mjs` | CF CI gate: `pre` → `gitstarclub-web-pre`; no live deploy of `gitstarclub-web`; production `triggers.crons` stays `[]` |
+| `workers/gitstarclub-web/` | CF Workers: production `gitstarclub-web` (main) + preview `gitstarclub-web-pre` (mode `pre`) |
+| `scripts/assert-cf-ci-gates.mjs` | CF CI gate: `pre` → `gitstarclub-web-pre`; no live deploy; both modes have no scheduled triggers |
 | `web/lib/integration/` | Cross-module integration and smoke tests, including the offline recompute parity gate |
 | `docs/` | Product, architecture, data, operations, frontend, SEO, testing, and development docs |
 
@@ -111,8 +111,9 @@ Important files:
   for `pre.gitstarclub.com`. `preview-e2e` and `product-gates` are optional
   and are not GitHub required checks.
 - `web/lib/workers-host/` + the Worker directory `workers/gitstarclub-web/`:
-  vinext on Cloudflare Workers. Production Worker `gitstarclub-web` and
-  preview Worker `gitstarclub-web-pre` both serve the site. See [OPS.md](./OPS.md).
+  Checked-in vinext host for Cloudflare Workers, targeting production Worker
+  `gitstarclub-web` and preview Worker `gitstarclub-web-pre`. This migration
+  performs no deployment. See [OPS.md](./OPS.md).
 
 Rule: if a page needs a new view, add or extend the Zod schema in
 `web/lib/contracts/`, then add the read helper in `web/lib/data/`.
