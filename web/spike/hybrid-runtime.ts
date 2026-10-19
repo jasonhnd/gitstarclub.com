@@ -22,7 +22,14 @@ function decode(raw: string): Entry {
     ? new Uint8Array(item.__buffer).buffer : item);
 }
 function pathFromKey(key: string) {
-  return key.match(/:(\/.*):(html|rsc|route)$/)?.[1];
+  return key.match(/:(\/.*?):(?:html|rsc|route)(?::.*)?$/)?.[1] ?? proofContext.getStore()?.path;
+}
+export function isLongTail(path: string | undefined) {
+  const segments = path?.split("/").filter(Boolean) ?? [];
+  if (["ja", "zh", "zh-TW", "ko", "es", "fr"].includes(segments[0])) segments.shift();
+  if (segments[0] === "o") return segments.length === 2 && segments[1] !== "page";
+  if (segments[0] === "categories") return segments.length >= 3;
+  return segments.length === 2 && !["api", "rankings", "data", "search-index", "repo-curve"].includes(segments[0]);
 }
 function mark(status: string, layer: string) {
   const state = proofContext.getStore();
@@ -48,6 +55,7 @@ export class HybridCache extends DefaultCdnCacheAdapter {
     return (await this.markers(entry.tags)).some(marker => marker >= entry.lastModified && marker > 0);
   }
   async get(key: string) {
+    if (proofContext.getStore()?.bypass) return null;
     const id = await digest(key);
     const hotKey = new Request("https://gsc-0074-cache.invalid/" + id);
     let raw = await (await this.hot?.match(hotKey))?.text();
@@ -72,6 +80,8 @@ export class HybridCache extends DefaultCdnCacheAdapter {
       return null;
     }
     const policy = entry.cacheControl;
+    const state = proofContext.getStore();
+    if (state) state.revalidate = policy?.revalidate;
     const age = (proofNow() - entry.lastModified) / 1000;
     const revalidate = policy?.revalidate;
     if (typeof policy?.expire === "number" && age > policy.expire) {
@@ -83,12 +93,18 @@ export class HybridCache extends DefaultCdnCacheAdapter {
     return { ...entry, cacheState: stale ? "stale" as const : "fresh" as const };
   }
   async set(key: string, value: any, context: any = {}) {
-    const tags: string[] = [...new Set<string>(context.tags ?? [])];
+    if (proofContext.getStore()?.bypass) return;
+    const tail = isLongTail(pathFromKey(key));
+    // Keep data pointer invalidation separate from the long-tail page lifetime.
+    const tags: string[] = [...new Set<string>(context.tags ?? [])].filter(tag => !tail ||
+      !["published-views-pointer", "bootstrap-publication-pointer"].includes(tag));
     const now = proofNow();
     // A publish during this render must not allow the old result into the cache.
     const started = proofContext.getStore()?.startedAt ?? now;
     if ((await this.markers(tags)).some(marker => marker >= started && marker > 0)) return;
-    const entry: Entry = { lastModified: now, value, tags, cacheControl: context.cacheControl };
+    const cacheControl = tail ? { ...context.cacheControl, revalidate: REVALIDATE_SECONDS,
+      expire: REVALIDATE_SECONDS + 86400 } : context.cacheControl;
+    const entry: Entry = { lastModified: now, value, tags, cacheControl };
     const id = await digest(key);
     const raw = encode(entry);
     await this.env.GSC_CACHE.put(PREFIX + "entry:" + id, raw, { expirationTtl: RETENTION_SECONDS });

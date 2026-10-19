@@ -6,6 +6,9 @@ export type ProofContext = {
   layer?: string;
   offset: number;
   startedAt: number;
+  path?: string;
+  bypass?: boolean;
+  revalidate?: number | false;
 };
 export const proofContext = new AsyncLocalStorage<ProofContext>();
 export const proofNow = () => Date.now() + (proofContext.getStore()?.offset ?? 0);
