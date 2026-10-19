@@ -51,7 +51,7 @@ Write the task plan as markdown under `plans/` (executable rule 4). A plan state
 
 ## Verification commands
 
-Run the static job from `.github/workflows/ci.yml` on the commit under test. Use Node 24 (`.node-version`; the tarball below is v24.20.0) and Bun 1.3.14 (root `packageManager`). A full `web/` suite is the bar. One test file is not.
+Run the static job from `.github/workflows/ci.yml` on the commit under test. Use Node 24 (`.node-version`; the tarball below is v24.20.0) and Bun 1.4.2 (root `packageManager`). A full `web/` suite is the bar. One test file is not.
 
 Use a fresh detached worktree of that commit. Untracked files in the owner's checkout, including web/.env.local, are not in the new tree. Do not move or delete files there. From the checkout you are editing:
 
@@ -71,7 +71,7 @@ The clean environment has no inherited variables. For an offline run, do not set
 
 Bun reads `.env`, `.env.local`, and `.env.<NODE_ENV>` from the directory it starts in. A fresh worktree has none.
 
-Do not pipe the Bun installer into a shell. It appends to the shell rc. The bootstrap downloads the official archives, checks SHA-256, then extracts. Node sums come from `https://nodejs.org/dist/v24.20.0/SHASUMS256.txt`. Bun sums come from the `bun-v1.3.14` release `SHASUMS256.txt`. macOS uses `shasum -a 256 -c`. Linux uses `sha256sum -c` when `shasum` is absent. The cache is `$TMPDIR/gitstarclub-toolchain/node-v24.20.0` and `$TMPDIR/gitstarclub-toolchain/bun-1.3.14`. A cached binary is used only after that run has verified its archive. If an archive checksum fails, or a cached `node` or `bun` binary does not report v24.20.0 or 1.3.14, the block prints that path and exits non-zero. It does not delete the cache. Remove the named directory by hand, then run the bootstrap again. The only deletion outside the verify worktree is `git worktree remove` of the worktree this flow created. The bootstrap also links `bunx` to `bun`, because `cf:build` and the dry-run wrapper call `bunx`.
+Do not pipe the Bun installer into a shell. It appends to the shell rc. The bootstrap downloads the official archives, checks SHA-256, then extracts. Node sums come from `https://nodejs.org/dist/v24.20.0/SHASUMS256.txt`. Bun sums come from the `bun-v1.4.2` release `SHASUMS256.txt`. macOS uses `shasum -a 256 -c`. Linux uses `sha256sum -c` when `shasum` is absent. The cache is `$TMPDIR/gitstarclub-toolchain/node-v24.20.0` and `$TMPDIR/gitstarclub-toolchain/bun-1.4.2`. A cached binary is used only after that run has verified its archive. If an archive checksum fails, or a cached `node` or `bun` binary does not report v24.20.0 or 1.4.2, the block prints that path and exits non-zero. It does not delete the cache. Remove the named directory by hand, then run the bootstrap again. The only deletion outside the verify worktree is `git worktree remove` of the worktree this flow created. The bootstrap also links `bunx` to `bun`, because `cf:build` and the dry-run wrapper call `bunx`.
 
 The static block follows the CI `static` job: web install and audit, then pipeline install, audit, and test, then `lint:docs`, then web lint and the three typechecks, then view validation and `test:cov`. Pipeline packages have to be installed before `typecheck:scripts`. `test:cov` is `bun test lib/ --coverage --isolate` plus `scripts/check-coverage-threshold.mjs` (line and function coverage at least 80%). Restore a `bun.lock` if an install changes it. Do not commit that churn.
 
@@ -84,7 +84,7 @@ env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:-/tmp}" \
   bash --noprofile --norc -euo pipefail <<'SH'
 tool_root="${TMPDIR}/gitstarclub-toolchain"
 node_ver="v24.20.0"
-bun_ver="1.3.14"
+bun_ver="1.4.2"
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
 mach="$(uname -m)"
 case "$mach" in
@@ -175,7 +175,7 @@ env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:-/tmp}" \
   bash --noprofile --norc -euo pipefail <<'SH'
 tool_root="${TMPDIR}/gitstarclub-toolchain"
 node_ver="v24.20.0"
-bun_ver="1.3.14"
+bun_ver="1.4.2"
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
 mach="$(uname -m)"
 case "$mach" in

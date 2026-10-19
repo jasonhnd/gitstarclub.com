@@ -652,7 +652,7 @@ bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < 
 
 **Historical empty-bucket recipe; stages 2/3 remain unaccepted.** This did not supply the accepted production store: the operator instead copied Blob and completed the separately accepted stage-4 cutover. Do not apply initial-commit or bad-first-publish cleanup to the populated production copy. Any new rehearsal/rebuild requires its own authorized empty target. In the original recipe, rehearse preview first, then load an eligible production target. The owner places `_meta/bucket-identity.json` at the bucket root out of band. `bucket` must equal the target bucket name. `deploy_env` is `pre` for `--target pre` and `production` for `--target prod`. The scripts never write or delete `_meta/`.
 
-Before the real-bucket rehearsal, run the offline local rehearsal first. Use the SHA-256-verified Node v24.20.0 and Bun 1.3.14 bootstrap in [AGENTS.md](../AGENTS.md), with dependencies installed in both `web/` and `pipeline/` using `bun --no-env-file install --frozen-lockfile`. From the repository root:
+Before the real-bucket rehearsal, run the offline local rehearsal first. Use the SHA-256-verified Node v24.20.0 and Bun 1.4.2 bootstrap in [AGENTS.md](../AGENTS.md), with dependencies installed in both `web/` and `pipeline/` using `bun --no-env-file install --frozen-lockfile`. From the repository root:
 
 ```bash
 cd web
