@@ -131,7 +131,7 @@ the JSON data cache's shorter freshness. It is not a claim that merely retaining
 the existing route export yields seven days under vinext.
 
 **Publication and rollback.** The proof calls the real
-`web/lib/workflows/publication-cache.ts::invalidatePublishedViews`, with an awaited
+`invalidatePublishedViews` from `web/lib/workflows/publication-cache.ts`, with an awaited
 port to vinext's `revalidateTag` and `revalidatePath`. Both local transitions
 invalidate `published-views-pointer`, `bootstrap-publication-pointer`, and all
 **56 core paths**, with `{ expire: 0 }` for the two data tags. Core snapshot path
