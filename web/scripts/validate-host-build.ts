@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { hostWorker } from "../cloudflare.config";
 import { assertHostContract } from "../../scripts/cf-ci-gates.mjs";
 import { loopbackBase } from "../host-contract.mjs";
+import { contentSecurityPolicyForEnvironment } from "../lib/csp";
 import { LOCALES } from "../lib/i18n/locales";
 
 const mode = process.argv[process.argv.indexOf("--mode") + 1];
@@ -40,6 +41,9 @@ assert(homeMeta, "English HTML snapshot required");
 const home = readFileSync(resolve(output, `workers/default/assets/_vinext/static-cache/${homeMeta[0]}.html`), "utf8");
 assert.equal(/name="robots" content="[^"]*noindex/.test(home), mode === "pre");
 assert(!/https?:\/\/fonts\.(?:googleapis|gstatic)\.com/.test(home), "fonts must be self-hosted");
+const assetHeaders = readFileSync(resolve(output, "workers/default/assets/_headers"), "utf8");
+assert(assetHeaders.includes(contentSecurityPolicyForEnvironment("production")), "hashed asset CSP required");
+assert(!assetHeaders.includes("unsafe-eval"), "production CSP stays unchanged");
 const fonts = resolve(output, "workers/default/assets/_next/static/_vinext_fonts");
 assert(existsSync(fonts) && readdirSync(fonts).length >= 2, "both font families must be packaged");
 console.log(`Host build validated: ${mode}; ${routes.length} routes; ${Object.keys(index).length} artifacts; ${host.commit}; local fonts/indexing/bindings valid`);

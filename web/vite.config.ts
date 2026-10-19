@@ -3,8 +3,9 @@ import vinext from "vinext";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { staticAssetsAdapter } from "@vinext/cloudflare/cache/static-assets-adapter";
 import { fileURLToPath } from "node:url";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { contentSecurityPolicyForEnvironment, securityHeaders } from "./lib/csp";
 import { buildVars } from "./host-contract.mjs";
 import { readPublication } from "./lib/workers-host/publication-fence";
 import { writeCfBuildIdentity } from "./scripts/cf-build-identity";
@@ -39,6 +40,13 @@ export default defineConfig(async ({ mode }) => {
               const metadata = JSON.stringify({ mode, commit, publication: publication.id, tags });
               writeFileSync(join(output.root, "dist/server/gsc-host-build.json"), metadata);
               writeFileSync(join(output.clientOutDir, "_vinext/static-cache/gsc-host.json"), metadata);
+              // Hashed build assets bypass the Worker; retain the same security
+              // contract there without changing their immutable cache policy.
+              const headerPath = join(output.clientOutDir, "_headers");
+              const prior = existsSync(headerPath) ? readFileSync(headerPath, "utf8") : "";
+              const headers = securityHeaders.map(({ key, value }) => `  ${key}: ${key === "Content-Security-Policy"
+                ? contentSecurityPolicyForEnvironment("production") : value}`).join("\n");
+              writeFileSync(headerPath, `${prior.trimEnd()}\n\n/*\n${headers}\n`);
             } } },
         },
       }),
