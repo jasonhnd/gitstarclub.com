@@ -9,6 +9,13 @@ source_of_truth_for:
 
 # UTC surviving-star gap collection
 
+**October 19 follow-up:** owner decision d1019-214826-1 = A explicitly approves
+a separate aggregate collector for approximate GitHub date labels. See
+[aggregate daily/weekly inputs](STAR-HISTORY-AGGREGATE.md), issue #682 /
+GSC_0090. It preserves published monthly net and does not change this report's
+finding that exact UTC timestamp histories are unavailable. The tool below
+still has no automatic fallback.
+
 Issue #680 / card GSC_0080, owner decision d1019-001344-1 = A.
 Read-only collection only; nothing here authorizes upload or publication.
 
