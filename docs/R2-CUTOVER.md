@@ -157,7 +157,7 @@ Rollback of the code is a revert of those pull requests on `pre`. Do not roll pr
 **Historical recipe; not accepted.** This describes a separately authorized empty-bucket preview rehearsal, not the accepted production copy/cutover. Load an eligible preview bucket, then prove the preview site reads it. Dry run first. `--execute` is an operator action and needs the bucket-scoped key outside the repository.
 
 **Before the real-bucket rehearsal, run the offline local rehearsal first.**
-Use the SHA-256-verified Node v24.20.0 and Bun 1.3.14 bootstrap in
+Use the SHA-256-verified Node v24.20.0 and Bun 1.4.2 bootstrap in
 [AGENTS.md](../AGENTS.md), with dependencies installed in both `web/` and
 `pipeline/` using `bun --no-env-file install --frozen-lockfile`. From the
 repository root:
