@@ -3,6 +3,7 @@ import type { Dict } from "./en";
 const ko: Dict = {
   nav: { home: "홈", pulse: "펄스", rankings: "순위", categories: "카테고리", organizations: "조직", compare: "비교", about: "소개" },
   common: {
+    starHistoryNote: "2026년 5월 30일~9월 30일의 일별·주별 수치는 수집 당시 남아 있던 스타를 집계한 GitHub의 스타 기록을 바탕으로 합니다. 하루의 경계는 대략 UTC 기준이며 몇 시간 차이가 날 수 있습니다.",
     faqHeading: "자주 묻는 질문",
     dataLastUpdated: "데이터 마지막 업데이트",
     dataAsOf: "데이터 기준일",
@@ -176,6 +177,8 @@ const ko: Dict = {
   },
   week: { label: "주", top: "주간 상위 저장소" },
   repo: {
+    dailyStars: "일별 스타 수",
+    dailyStarsAria: "일별 스타 수: 기록된 {points}일 동안 하루 최대 {stars}개",
     starHistory: "스타 히스토리",
     metaTitleSuffix: "스타 히스토리와 타임라인",
     metaFallbackDescription: "{repo}의 GitHub 스타 히스토리입니다.",

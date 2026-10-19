@@ -1,5 +1,6 @@
 import { fmtK } from "@/lib/format";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
+import { useId } from "react";
 
 type Point = { label: string; total: number };
 export type Milestone = { stars: number; label: string; monthIndex: number; date: string };
@@ -17,13 +18,16 @@ export function StarCurve({
   inflections = [],
   labels,
   locale = DEFAULT_LOCALE,
+  daily = false,
 }: {
   series: Point[];
   milestones: Milestone[];
   inflections?: CurveInflection[];
   labels: StarCurveLabels;
   locale?: Locale;
+  daily?: boolean;
 }) {
+  const gradientId = useId();
   const W = 880;
   const H = 300;
   const padL = 6;
@@ -39,10 +43,10 @@ export function StarCurve({
   const line = series.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.total).toFixed(1)}`).join(" ");
   const area = `${line} L${x(n - 1).toFixed(1)},${H - padB} L${x(0).toFixed(1)},${H - padB} Z`;
 
-  // one tick per January present in the series
+  // Monthly curves mark January; daily curves mark month starts and both edges.
   const ticks = series
     .map((p, i) => ({ p, i }))
-    .filter(({ p }) => p.label.endsWith("-01"));
+    .filter(({ p, i }) => daily ? i === 0 || i === n - 1 || p.label.endsWith("-01") : p.label.endsWith("-01"));
 
   return (
     <figure className="m-0 overflow-x-auto pb-2">
@@ -50,11 +54,11 @@ export function StarCurve({
         viewBox={`0 0 ${W} ${H}`}
         className="aspect-[880/300] min-w-[38rem] w-full max-w-none"
         role="img"
-        aria-label={fill(labels.ariaLabel, { stars: fmtK(max, locale), months: String(n) })}
+        aria-label={fill(labels.ariaLabel, { stars: fmtK(max, locale), months: String(n), points: String(n) })}
         preserveAspectRatio="xMidYMid meet"
       >
         <defs>
-          <linearGradient id="amberFade" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" style={{ stopColor: "var(--md-sys-color-primary-container)", stopOpacity: 0.5 }} />
             <stop offset="100%" style={{ stopColor: "var(--md-sys-color-primary-container)", stopOpacity: 0 }} />
           </linearGradient>
@@ -70,7 +74,7 @@ export function StarCurve({
           strokeWidth={1}
         />
 
-        <path d={area} fill="url(#amberFade)" className="curve-area" />
+        <path d={area} fill={`url(#${gradientId})`} className="curve-area" />
         <path
           d={line}
           fill="none"
@@ -139,11 +143,11 @@ export function StarCurve({
             key={p.label}
             x={x(i)}
             y={H - 10}
-            textAnchor="middle"
+            textAnchor={daily && i === 0 ? "start" : daily && i === n - 1 ? "end" : "middle"}
             fontSize={12}
             style={{ fill: "var(--md-sys-color-on-surface-variant)", fontFamily: "var(--font-mono)" }}
           >
-            {p.label.slice(0, 4)}
+            {daily ? p.label : p.label.slice(0, 4)}
           </text>
         ))}
       </svg>

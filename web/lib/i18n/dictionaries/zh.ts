@@ -3,6 +3,7 @@ import type { Dict } from "./en";
 const zh: Dict = {
   nav: { home: "首页", pulse: "脉搏", rankings: "排行榜", categories: "分类", organizations: "组织", compare: "对比", about: "关于" },
   common: {
+    starHistoryNote: "2026年5月30日至9月30日的每日、每周数据采用 GitHub 对采集时仍然存在的星标所做的历史汇总。日界约为 UTC，可能相差几小时。",
     faqHeading: "常见问题",
     dataLastUpdated: "数据最后更新",
     dataAsOf: "数据截至",
@@ -176,6 +177,8 @@ const zh: Dict = {
   },
   week: { label: "周", top: "周度领先仓库" },
   repo: {
+    dailyStars: "每日星标数",
+    dailyStarsAria: "每日星标数：共{points}个有记录的日期，每日最多{stars}个星标",
     starHistory: "星标历史",
     metaTitleSuffix: "星标历史与时间线",
     metaFallbackDescription: "{repo} 的 GitHub 星标历史。",
