@@ -1,7 +1,7 @@
 ---
 owner: data operations / workflows
 status: superseded
-last_reviewed: 2026-09-30
+last_reviewed: 2026-10-19
 source_of_truth_for:
   - production data lifecycle
   - Vercel Blob publish model
@@ -36,7 +36,7 @@ gitstarclub's runtime is **purely static**: user requests only read precomputed 
 ### 1.2 Unchanging constraints
 
 - **Runtime purely static**: Workflow only produces data, and pages do not know it exists.
-- **Vercel-first / avoid scattered bills**: do not introduce GCP / third-party queues / external databases as recurring dependencies. BigQuery is only an optional historical data source during one-time bootstrap (see §10).
+- **Vercel-first / avoid scattered bills**: do not introduce GCP / third-party queues / external databases as recurring dependencies. BigQuery was a one-time historical source; extraction was retired on 2026-10-19 (see §10), and is no longer an option.
 - **Do not do a 16k full build**: publish only switches the pointer + revalidate the core hot set, and the long tail uses on-demand ISR (see [ARCHITECTURE.md](./ARCHITECTURE.md) page layering).
 
 ### 1.3 Key design decision: why a full recompute cannot be stuffed into one Function
@@ -565,7 +565,9 @@ step 11 (`gc`) runs after pointer publish and before the owning refresh lease is
 
 ---
 
-## 10. Newcomer repo history strategy
+## 10. Newcomer repo history strategy (historical comparison)
+
+> **Superseded on 2026-10-19.** Option C below is retired, not an available rerun. The claims of completeness in the original comparison were invalidated by GSC_0045: about 4% archive capture against GitHub's own star-history proxy on a 40-repository 2026 sample, not a population-wide estimate. GitHub's own star history is the replacement source under owner decision d1019-001344-1; no collection, rebuild, or publication is authorized here. Raw data lives only in private R2 `gitstarclub-raw`; [OPS](./OPS.md#raw-backfill-data) owns the inventory, read-only `cf` checksum procedure, and GCP deletion/recovery record. Retain the comparison below as dated design history.
 
 How is the **historical star curve** backfilled for a newcomer repo (the first time star ≥ 10,000 after launch, and not in the bootstrap baseline)? Three options, each with a tradeoff:
 
@@ -573,18 +575,18 @@ How is the **historical star curve** backfilled for a newcomer repo (the first t
 |---|---|---|---|---|---|
 | **A conservative (default)** | track from **the day it enters the whitelist**; the entity page marks `tracked_since`, and there is no curve before that day | only after the discovery day | fast, no external quota | yes, pure Vercel | no |
 | **B GitHub stargazers API** | Workflow paginates `GET /repos/{o}/{r}/stargazers` (`Accept: application/vnd.github.star+json` to get `starred_at`) and aggregates by day to backfill history | fairly complete, but with a hard cap | **slow and limited** (see below) | yes, pure Vercel (slow) | no |
-| **C BigQuery rerun** | rerun the GH Archive extract for the new repo_id (including a stable repo.id and gross adds) | **most complete** | one-time, needs a human | ❌ introduces GCP | **yes (~a small amount + a GCP account)** |
+| **C BigQuery rerun (retired 2026-10-19)** | rerun the GH Archive extract for the new repo_id (including a stable repo.id and gross adds) | **historical completeness claim withdrawn** | retired; do not run | ❌ introduces GCP | **yes (~a small amount + a GCP account)** |
 
 ### 10.1 An honest statement of the limits
 
 - **Hard limit of option B**: GitHub stargazers pagination is **at most about 400 pages × 100 = 40,000 stargazers**—a repo with more than 40,000 stars **cannot fully fetch** its early history. And under the REST **5,000 requests/hour** quota, a 40,000-star repo = 400 requests ≈ one repo consumes 8% of the hourly quota, and is **very slow**; it has to batch across quota windows with Workflow `sleep('1 hour')`, and may take hours to days. It is realistically feasible only for **small / new** repos (stars not far above 10,000).
-- **Option C is the most complete but violates Vercel-first**: querying GH Archive with BigQuery is the only source that can precisely obtain "any repo's gross adds on any historical day + a stable repo.id", but it **introduces a GCP account and cost**, which conflicts with "avoid scattered bills", so it can only be a **manual one-time bootstrap / rebuild** tool (L4), and does not enter the recurring production path.
+- **Historical Option C rationale (withdrawn 2026-10-19)**: querying GH Archive with BigQuery is the only source that can precisely obtain "any repo's gross adds on any historical day + a stable repo.id", but it **introduces a GCP account and cost**, which conflicts with "avoid scattered bills", so it can only be a **manual one-time bootstrap / rebuild** tool (L4), and does not enter the recurring production path.
 
 ### 10.2 Recommended tradeoff
 
 - **Default to option A (conservative)**: the existing bootstrap historical baseline is **kept**; a newly added repo is **tracked from the discovery day**, and the page honestly marks `tracked_since` (the same definition as the About page's "survivorship bias / as-of", see [ARCHITECTURE.md](./ARCHITECTURE.md) data definition).
 - **Option B as an optional best-effort enhancement**: for a newcomer repo whose star count is not too large, Workflow may along the way call the stargazers API to backfill an approximate stretch of history; on failure / hitting the limit it degrades back to option A (mark `tracked_since`), and **never** blocks the main flow in order to backfill history.
-- **Option C is run manually once only when "a large-scale backfill / baseline rebuild" is required** (L4 bootstrap); after the artifact is uploaded, L3 takes over, and it is not made routine.
+- **Historical Option C recommendation withdrawn on 2026-10-19.** Do not run a BigQuery / GH Archive scan for a baseline rebuild; use the separately approved replacement-source process.
 
 ---
 
@@ -614,4 +616,4 @@ How is the **historical star curve** backfilled for a newcomer repo (the first t
 - [x] canonical is redesigned from a single Parquet into JSON shards, and production recompute does not depend on DuckDB / Parquet (§6).
 - [x] The three-option tradeoff for newcomer repo history is written honestly, defaulting to conservative + `tracked_since` (§10).
 - [x] Costs / limits (Cron, Function 800s/4GB/250MB/4.5MB, Workflow, Blob 75/s, GitHub quota) are written clearly (§1.3, §11).
-- [x] BigQuery/GCP is one-time bootstrap only, and is not on the recurring production path.
+- [x] Historical record: BigQuery/GCP was one-time bootstrap only. Extraction and the GCP project were retired on 2026-10-19; see OPS for the deletion and recovery window.
