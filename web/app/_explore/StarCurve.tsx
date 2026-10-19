@@ -47,7 +47,9 @@ export function StarCurve({
   // Monthly curves mark January; daily curves mark month starts and both edges.
   const ticks = series
     .map((p, i) => ({ p, i }))
-    .filter(({ p, i }) => daily ? i === 0 || i === n - 1 || p.label.endsWith("-01") : p.label.endsWith("-01"));
+    .filter(({ p, i }) => daily
+      ? i === 0 || i === n - 1 || (p.label.endsWith("-01") && i > (n - 1) * 0.12 && i < (n - 1) * 0.88)
+      : p.label.endsWith("-01"));
 
   return (
     <figure className="m-0 overflow-x-auto pb-2">

@@ -78,6 +78,15 @@ describe("aggregate provenance contract and approved boundaries", () => {
     expect(markup).toContain("up to 0 stars per day across 1 recorded days");
     expect(markup).toContain(t.common.starHistoryNote);
   });
+  test("daily edge date labels leave room for adjacent month boundaries", async () => {
+    const t = await getDictionary("en");
+    const points: Array<[string, number]> = Array.from({ length: 124 }, (_, i) => [new Date(Date.UTC(2026, 4, 30 + i)).toISOString().slice(0, 10), 1]);
+    const markup = await html(<RepoDailyHistorySection points={points} provenance={provenance} locale="en" t={t} />);
+    expect(markup).toContain(">2026-05-30</text>");
+    expect(markup).not.toContain(">2026-06-01</text>");
+    expect(markup).toContain(">2026-07-01</text>");
+    expect(markup).toContain(">2026-09-30</text>");
+  });
   test("accepts the collector's exact sidecar and retains it through strict and tolerant reads", () => {
     expect(Curve.parse(repo.curve).provenance).toEqual(provenance);
     expect(normalizeRepoPageEntity(repo)?.curve.provenance).toEqual(provenance);
