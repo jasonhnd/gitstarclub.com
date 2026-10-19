@@ -73,8 +73,12 @@ No discovery, search, alternate token or credential lookup is performed.
 ## Pacing, checkpoints and foreground execution
 
 Request starts are serial and at least **1.05 seconds apart**, including across
-chunk restarts. Before each request its start is persisted. The client preserves
-remaining/reset headers and waits before spending the final ten requests. It
+chunk restarts. Before each request an in-flight marker is persisted; the actual
+start is recorded immediately before launching `gh`, after that save, and saved
+with the response. Save latency is excluded from request timing. If a process
+stops before saving its response, reconstruction waits at least 1.05 seconds
+from client creation before another request. The client preserves remaining/reset
+headers and waits before spending the final ten requests. It
 honors `Retry-After` in seconds or HTTP-date form, uses at least a minute for
 secondary limits with exponential backoff, and bounds retries to six attempts.
 The retry counter and cooldown survive restarts. Repeated errors stop the run;
@@ -245,7 +249,8 @@ afterward. Never clear missing entries, sum them as zeros or broaden the window.
 
 Offline fixtures cover pinned membership, renames/reassigned names, response
 shape, date boundaries, pagination, checkpoint/resume, unavailable sources,
-persisted pacing/quota/backoff, retry exhaustion, ISO weeks, partial weeks,
+persisted pacing/quota/backoff, slow-save actual-start spacing, interrupted-request
+restart pacing, retry exhaustion, ISO weeks, partial weeks,
 fingerprints, deterministic export and absence of monthly/stock artifacts.
 They run in the ordinary full `pipeline` test command.
 
