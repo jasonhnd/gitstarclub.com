@@ -47,7 +47,7 @@ From [README.md](../../README.md), [ARCHITECTURE.md](../ARCHITECTURE.md), and [R
 | Zero runtime engine in the request path | Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the serving image. |
 | Zero runtime database | Read-side state is versioned JSON views in R2 behind a publish pointer (`views/<run_id>/**` + `views/latest.json`). No SQL connection to open. |
 | Static content pages | Home, rankings, repo, org, pulse, and categories render as server HTML. Near-zero client JS on content surfaces. Named islands stay in [DESIGN-SYSTEM.md](../DESIGN-SYSTEM.md). |
-| Cloudflare hosting and R2 storage | Pages run on Cloudflare Workers through vinext; production R2 cutover was accepted on 2026-10-04. Production scheduling remains unverified. The historical BigQuery bootstrap exception was retired on 2026-10-19; raw data lives only in private R2 `gitstarclub-raw` (OPS raw-data inventory). See [OPS.md](../OPS.md) and [R2-CUTOVER.md](../R2-CUTOVER.md). |
+| Cloudflare hosting and R2 storage | The source host targets Cloudflare Workers through vinext without a deployment on this card; production R2 cutover was accepted on 2026-10-04. Production scheduling remains unverified. The historical BigQuery bootstrap exception was retired on 2026-10-19; raw data lives only in private R2 `gitstarclub-raw` (OPS raw-data inventory). See [OPS.md](../OPS.md) and [R2-CUTOVER.md](../R2-CUTOVER.md). |
 | AI-free product copy | No LLM-generated summaries or classifications at request time. |
 
 Related operating facts that any option must still explain:

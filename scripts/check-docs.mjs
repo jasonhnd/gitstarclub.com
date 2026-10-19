@@ -21,6 +21,7 @@ const ignoredDirectories = new Set([
 // These documents intentionally preserve source paths from a point in time.
 // Current-state docs are never silently exempted from reference validation.
 export const historicalDocumentAllowlist = new Map([
+  ["plans/prod-rollout-and-data-repair.md", "retired host procedures and dated deployment inventory preserve historical source paths"],
   ["docs/archive/CF-MIGRATION-P3.md", "completed historical migration record preserves retired host source paths"],
   ["plans/567-preview-r2-config.md", "completed historical migration record preserves retired host source paths"],
   ["plans/571-r2-gate-hardening.md", "completed historical migration record preserves retired host source paths"],
