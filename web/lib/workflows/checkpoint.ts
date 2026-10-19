@@ -3,6 +3,7 @@ import { sendAlert } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
 import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { logViewParseErrorSummary } from "@/lib/data/parse-view";
+import { createView } from "@/lib/data/write";
 import { claimWorkflowLease, releaseWorkflowLease } from "@/lib/workflows/lease";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 
@@ -45,18 +46,106 @@ export async function markPublished(runId: string, startedAt: string, fencingTok
   logViewParseErrorSummary("[workflow-refresh]");
 }
 
-/** Mark the run failed; line on Blob does not flip latest-success (line stays at last good run). */
-export async function markFailed(runId: string, startedAt: string, error: string, fencingToken: number): Promise<void> {
+/**
+ * A failure around the publication commit. `post_commit`: `views/latest.json`
+ * already serves `version` and `step` did not finish. `commit_unknown`: `step`
+ * failed and the pointer could not be read to tell whether `version` is live.
+ */
+export type PublicationFailure = {
+  phase: "post_commit" | "commit_unknown";
+  version: string;
+  step: string;
+};
+
+function failureRecord(runId: string, error: string, publication: PublicationFailure | undefined) {
+  const base = { run_id: runId, error, at: new Date().toISOString() };
+  if (!publication) return { ...base, phase: "pre_commit" };
+  const version =
+    publication.phase === "post_commit"
+      ? { committed_version: publication.version }
+      : { candidate_version: publication.version };
+  return { ...base, phase: publication.phase, ...version, failed_step: publication.step };
+}
+
+function failureAlertTitle(publication: PublicationFailure | undefined): string {
+  if (!publication) return "managed refresh failed";
+  if (publication.phase === "post_commit") return "managed refresh published; post-commit step failed";
+  return "managed refresh failed; publication commit state unknown";
+}
+
+/**
+ * Mark the run failed. Before the pointer commit, latest-success stays at the
+ * last good run and `published_version` is null. After it, `published_version`
+ * names the live version and error.json names the step that did not finish:
+ * do not roll back or rerun for it, the next successful run rewrites that
+ * step's artifacts. An unknown commit state keeps `published_version` null and
+ * names the candidate version, so operators check `views/latest.json`.
+ */
+export async function markFailed(
+  runId: string,
+  startedAt: string,
+  error: string,
+  fencingToken: number,
+  publication?: PublicationFailure,
+): Promise<void> {
   const safeError = sanitizeErrorText(error);
-  const manifest = { run_id: runId, started_at: startedAt, status: "failed", steps: STEPS, published_version: null };
+  const manifest = {
+    run_id: runId,
+    started_at: startedAt,
+    status: "failed",
+    steps: STEPS,
+    published_version: publication?.phase === "post_commit" ? publication.version : null,
+  };
   WorkflowManifest.parse(manifest);
   const owner = { runId, fencingToken };
   await putOwnedView(owner, `ops/workflows/${runId}/manifest.json`, manifest);
-  await putOwnedView(owner, `ops/workflows/${runId}/error.json`, { run_id: runId, error: safeError, at: new Date().toISOString() });
+  await putOwnedView(owner, `ops/workflows/${runId}/error.json`, failureRecord(runId, safeError, publication));
   const released = await releaseWorkflowLease(runId, "failed", undefined, undefined, fencingToken);
   if (!released) throw new Error(`workflow ${runId} lost fencing token ${fencingToken} before failed release`);
   // Surface the failure: greppable log + optional webhook + health beacon. None of these throw.
-  await sendAlert({ pipeline: "workflow-refresh", title: "managed refresh failed", run_id: runId, error: safeError });
+  const title = failureAlertTitle(publication);
+  await sendAlert(
+    publication
+      ? { pipeline: "workflow-refresh", title, run_id: runId, step: publication.step, error: safeError }
+      : { pipeline: "workflow-refresh", title, run_id: runId, error: safeError },
+  );
   await recordHealth("workflow-refresh", "failed", { run_id: runId, error: safeError });
   logViewParseErrorSummary("[workflow-refresh]");
+}
+
+/**
+ * Durable record of a post-commit lease loss. The pointer switched, then this
+ * run lost its lease, so `markFailed` cannot renew it and writes nothing: the
+ * running manifest would keep `published_version: null`. This writes one
+ * create-only file under the run's own prefix. It does not renew, release, or
+ * overwrite any lease, and it touches no shared pointer or successor artifact.
+ * An existing record is kept (returns false). Alert and health still fire.
+ */
+export async function recordPostCommitLeaseLoss(
+  runId: string,
+  startedAt: string,
+  error: string,
+  publication: PublicationFailure,
+): Promise<boolean> {
+  const safeError = sanitizeErrorText(error);
+  const record = {
+    run_id: runId,
+    started_at: startedAt,
+    status: "failed",
+    phase: "post_commit",
+    published_version: publication.version,
+    failed_step: publication.step,
+    error: safeError,
+    at: new Date().toISOString(),
+  };
+  const created = await createView(`ops/workflows/${runId}/post-commit-failure.json`, record);
+  await sendAlert({
+    pipeline: "workflow-refresh",
+    title: failureAlertTitle(publication),
+    run_id: runId,
+    step: publication.step,
+    error: safeError,
+  });
+  await recordHealth("workflow-refresh", "failed", { run_id: runId, error: safeError });
+  return created;
 }

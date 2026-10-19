@@ -1,6 +1,8 @@
 import { readAuthoritativeView, readRequiredView } from "@/lib/data/source";
+import { mapLimit } from "@/lib/data/map-limit";
 import { RenameMap, ReposLookup, AliasMap } from "@/lib/contracts";
 import { getWriteObjectStore } from "@/lib/storage";
+import { listObjectFolders } from "@/lib/storage/list-folders";
 import { buildAliasMap } from "../recompute/aliases";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 
@@ -19,6 +21,8 @@ export interface AliasResult {
   runs_scanned: number;
 }
 
+const RENAME_READ_CONCURRENCY = 8;
+
 export async function buildAliases(runId: string, fencingToken: number): Promise<AliasResult> {
   const store = getWriteObjectStore();
 
@@ -29,9 +33,11 @@ export async function buildAliases(runId: string, fencingToken: number): Promise
   // Enumerate every run folder and union its rename delta. A missing renames.json is a normal
   // older-run shape; transport/schema failures must fail the step instead of silently shrinking
   // lookup/aliases.json.
-  const { folders } = await store.list({ prefix: "ops/workflows/", mode: "folded" });
-  const maps = await Promise.all(
-    folders.map((folder) => readAuthoritativeView(`${folder}renames.json`, RenameMap, { bust: runId })),
+  const folders = await listObjectFolders(store, "ops/workflows/");
+  const maps = await mapLimit(
+    folders,
+    RENAME_READ_CONCURRENCY,
+    (folder) => readAuthoritativeView(`${folder}renames.json`, RenameMap, { bust: runId }),
   );
   const renameEntries = maps.flatMap((m) => m?.renames ?? []);
 

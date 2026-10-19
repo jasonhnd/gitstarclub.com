@@ -47,7 +47,7 @@ const ja: Dict = {
     aboutTitle: "このサイトについて — データソースと手法",
     aboutDescription: "GH Archive と GitHub API、総増加と純増減、1 万スター以上の対象リスト、既知の注意点を説明します。",
     privacyTitle: "プライバシー",
-    privacyDescription: "GitStarClub のプライバシー方針：Cookie を使わない Vercel Web Analytics、追跡 Cookie なし、必須の言語設定 Cookie のみ。",
+    privacyDescription: "GitStarClub のプライバシー方針：アクセス解析スクリプトや追跡 Cookie は使わず、必須の言語設定 Cookie のみを使用します。",
   },
   about: {
     heroPre: "誠実な",
@@ -390,7 +390,7 @@ const ja: Dict = {
     title: "最初からプライバシー重視。",
     analyticsTitle: "アナリティクス",
     analyticsBody:
-      "GitStarClub は Vercel Web Analytics を使い、ページビューを集計値として数えます。Cookie を使わずプライバシーに配慮しており、Cookie の設定、サイト横断の追跡、端末フィンガープリント、個人データやプロフィールデータの収集は行いません。広告ピクセルや第三者トラッキングスクリプトもありません。",
+      "GitStarClub はアクセス解析スクリプトや広告ピクセルを使用しません。サイト横断の追跡や端末フィンガープリントの取得は行いません。第三者トラッキングスクリプトもありません。",
     cookiesTitle: "Cookie とストレージ",
     cookiesBody:
       "唯一の Cookie は言語設定を保存する gsc_lang です。これはファーストパーティの機能的な設定 Cookie です。テーマ設定はブラウザ内のローカルストレージに保存され、サーバーには送信されません。",

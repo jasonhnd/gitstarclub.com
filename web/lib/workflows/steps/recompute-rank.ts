@@ -1,6 +1,7 @@
 import { WorkflowStepCheckpoint } from "@/lib/contracts";
 import { putView } from "@/lib/data/write";
 import { putOwnedView } from "@/lib/workflows/owned-write";
+import { rankCarryPath, type RankCarryFile } from "../recompute/carry-codec";
 import {
   ensurePackedWindowPersisted,
   orgStockToMap,
@@ -136,6 +137,43 @@ export async function writeRecomputeHopStart(runId: string, fencingToken: number
 type StreamedRepoPhase = "month" | "week" | "year";
 type StreamedOrgPhase = "monthOrg" | "weekOrg" | "yearOrg";
 
+type RankWindowPlan = { to: number; replay: boolean };
+
+/**
+ * Hops are delivered at least once, and the carry is the only state that moves
+ * between windows. It names the one window that may run next (nextPeriod), so:
+ * an earlier window was already ranked and its views persisted before the carry
+ * advanced (replay: do nothing), the matching window recomputes from that input,
+ * and a later window has no valid input (fail before any rank view is written).
+ */
+function planRankWindow(
+  carry: RankCarryFile | null,
+  path: string,
+  offset: number,
+  periodCount: number,
+): RankWindowPlan {
+  const expected = carry?.nextPeriod ?? 0;
+  if (expected > periodCount) {
+    throw new Error(`${path}: invalid rank carry — nextPeriod ${expected} is past the ${periodCount} persisted periods`);
+  }
+  if (offset > expected) {
+    const have = carry ? `carry nextPeriod ${expected}` : "no carry (nextPeriod 0)";
+    throw new Error(`${path}: ${have} expects window offset ${expected}, got ${offset}`);
+  }
+  return { to: Math.min(offset + WEEK_RANK_PERIODS_PER_HOP, periodCount), replay: offset < expected };
+}
+
+function rankWindowResult(
+  files: number,
+  to: number,
+  periodCount: number,
+  phase: RecomputePhase,
+  done: RecomputeRankStepFields,
+): RecomputeRankStepFields {
+  if (to < periodCount) return { files, nextRecomputePhase: phase, nextRecomputeOffset: to };
+  return { ...done, files };
+}
+
 async function rankStreamedRepos(
   runId: string,
   owner: { runId: string; fencingToken: number },
@@ -148,9 +186,10 @@ async function rankStreamedRepos(
   const meta = await readPackedWindowMeta(runId, kind);
   if (!meta) throw new Error(`ops/workflows/${runId}/recompute/${kind}-win/meta.json: missing persist`);
   if (offset >= meta.periods.length) return { ...done, files: 0 };
-  const to = Math.min(offset + WEEK_RANK_PERIODS_PER_HOP, meta.periods.length);
-  const rows = await streamPackedRepoPeriodRows(runId, kind, offset, to, owner);
   const carry = await readRankCarry(runId, kind, "repo");
+  const { to, replay } = planRankWindow(carry, rankCarryPath(runId, kind, "repo"), offset, meta.periods.length);
+  if (replay) return rankWindowResult(0, to, meta.periods.length, phase, done);
+  const rows = await streamPackedRepoPeriodRows(runId, kind, offset, to, owner);
   let prevFlow = pairsToRankMap(carry?.flow);
   let prevStock = pairsToRankMap(carry?.stock);
   let files = 0;
@@ -161,6 +200,7 @@ async function rankStreamedRepos(
     prevStock = ranked.nextStock;
     rows[i] = [];
   }
+  // The carry advances only after every view of the window is written.
   if (to < meta.periods.length) {
     await writeRankCarry(owner, {
       v: 1,
@@ -170,9 +210,8 @@ async function rankStreamedRepos(
       flow: prevFlow ? [...prevFlow] : [],
       stock: prevStock ? [...prevStock] : [],
     });
-    return { files, nextRecomputePhase: phase, nextRecomputeOffset: to };
   }
-  return { ...done, files };
+  return rankWindowResult(files, to, meta.periods.length, phase, done);
 }
 
 async function rankStreamedOrgs(
@@ -188,8 +227,9 @@ async function rankStreamedOrgs(
   const meta = await readPackedWindowMeta(runId, kind);
   if (!meta) throw new Error(`ops/workflows/${runId}/recompute/${kind}-win/meta.json: missing persist`);
   if (offset >= meta.periods.length) return { ...done, files: 0 };
-  const to = Math.min(offset + WEEK_RANK_PERIODS_PER_HOP, meta.periods.length);
   const carryFile = await readRankCarry(runId, kind, "org");
+  const { to, replay } = planRankWindow(carryFile, rankCarryPath(runId, kind, "org"), offset, meta.periods.length);
+  if (replay) return rankWindowResult(0, to, meta.periods.length, phase, done);
   const orgStock = orgStockToMap(carryFile?.orgStock);
   const rows = await streamPackedOrgPeriodRows(runId, kind, offset, to, orgStock, owner);
   let prevFlow = pairsToRankMap(carryFile?.flow);
@@ -212,9 +252,8 @@ async function rankStreamedOrgs(
       stock: prevStock ? [...prevStock] : [],
       orgStock: [...orgStock],
     });
-    return { files, nextRecomputePhase: phase, nextRecomputeOffset: to };
   }
-  return { ...done, files };
+  return rankWindowResult(files, to, meta.periods.length, phase, done);
 }
 
 export async function runRecomputeRankStep(

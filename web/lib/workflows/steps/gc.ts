@@ -1,6 +1,7 @@
 import { readAuthoritativeView } from "@/lib/data/source";
 import { BootstrapPublicationPointer, ViewsPointer, WorkflowLease } from "@/lib/contracts";
 import { getWriteObjectStore } from "@/lib/storage";
+import { listObjectFolders } from "@/lib/storage/list-folders";
 import {
   executeBlobDeletionPlan,
   planBlobPrefixDeletion,
@@ -16,6 +17,19 @@ import { renewWorkflowLease } from "@/lib/workflows/lease";
 const KEEP = 4;
 const DEL_CHUNK = 100;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export interface GcResult {
+  /** Versions whose deletion plan completed in full. */
+  deleted: string[];
+  /** Listed versions not confirmed fully deleted, including failed/unattempted ones. */
+  kept: number;
+  failed: Array<{ version: string; error: string }>;
+  error?: string;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 async function readProtectionContext(runId: string): Promise<BlobDeletionContext> {
   const [pointer, bootstrap, active] = await Promise.all([
@@ -37,7 +51,8 @@ async function readProtectionContext(runId: string): Promise<BlobDeletionContext
 export async function gcVersions(
   runId: string,
   fencingToken: number,
-): Promise<{ deleted: string[]; kept: number; error?: string }> {
+): Promise<GcResult> {
+  const result: GcResult = { deleted: [], kept: 0, failed: [] };
   try {
     const store = getWriteObjectStore();
     const ensureOwnership = () => renewWorkflowLease(runId, fencingToken).then(() => undefined);
@@ -48,10 +63,11 @@ export async function gcVersions(
     if (protection.rollbackViewVersion) keep.add(protection.rollbackViewVersion);
     if (protection.activeWorkflowRun) keep.add(protection.activeWorkflowRun);
 
-    const { folders } = await store.list({ prefix: "views/", mode: "folded" });
+    const folders = await listObjectFolders(store, "views/");
     const versions = [...new Set(folders.map((f) => f.slice("views/".length).replace(/\/+$/, "")).filter(Boolean))]
       .sort()
       .reverse(); // newest first (run_id timestamps sort lexically)
+    result.kept = versions.length;
     for (const v of versions.slice(0, KEEP)) keep.add(v);
 
     const toDelete = versions.filter((v) => !keep.has(v));
@@ -60,15 +76,23 @@ export async function gcVersions(
       readContext: () => readProtectionContext(runId),
     };
     for (const v of toDelete) {
-      const prefix = `views/${v}/`;
-      const plan = await planBlobPrefixDeletion(prefix, await readProtectionContext(runId), ({ cursor, limit }) =>
-        store.list({ prefix, cursor, limit }),
-      );
-      await executeBlobDeletionPlan(plan, plan.prefix, guard, (urls) => deleteUrls(urls, store), DEL_CHUNK);
+      try {
+        const prefix = `views/${v}/`;
+        const plan = await planBlobPrefixDeletion(prefix, await readProtectionContext(runId), ({ cursor, limit }) =>
+          store.list({ prefix, cursor, limit }),
+        );
+        await executeBlobDeletionPlan(plan, plan.prefix, guard, (urls) => deleteUrls(urls, store), DEL_CHUNK);
+        result.deleted.push(v);
+        result.kept--;
+      } catch (err) {
+        result.failed.push({ version: v, error: errorMessage(err) });
+        throw err; // Stop after a failure; a later retry re-lists the remaining objects.
+      }
     }
-    return { deleted: toDelete, kept: versions.length - toDelete.length };
+    return result;
   } catch (err) {
-    return { deleted: [], kept: 0, error: err instanceof Error ? err.message : String(err) };
+    result.error = errorMessage(err);
+    return result;
   }
 }
 

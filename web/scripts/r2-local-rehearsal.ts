@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 assert.equal(process.argv.length, 2, "the local rehearsal takes no arguments or remote target");
-assert.equal(Bun.version, "1.3.14", "use the repository's pinned Bun 1.3.14");
+assert.equal(Bun.version, "1.4.2", "use the repository's pinned Bun 1.4.2");
 const path = process.env.PATH ?? "/usr/bin:/bin";
 const node = Bun.spawn(["node", "--version"], { env: { PATH: path }, stdout: "pipe", stderr: "pipe" });
 assert.equal(await node.exited, 0, "Node must be available on PATH");
