@@ -11,6 +11,14 @@ import type { Dict, Locale } from ".";
 const dictionaries: Record<Locale, Dict> = { en, ja, zh, "zh-TW": zhTw, ko, es, fr };
 
 describe("locale dictionary contract", () => {
+  test("privacy body and metadata no longer claim an analytics provider", () => {
+    for (const [locale, dictionary] of Object.entries(dictionaries)) {
+      expect(dictionary.privacy.analyticsBody, locale).not.toMatch(/Vercel|Web Analytics/i);
+      expect(dictionary.meta.privacyDescription, locale).not.toMatch(/Vercel|Web Analytics/i);
+      expect(dictionary.privacy.cookiesBody, locale).toContain("gsc_lang");
+    }
+  });
+
   test("every locale has exact recursive key parity with English", () => {
     const expected = dictionaryKeyPaths(en);
     for (const [locale, dictionary] of Object.entries(dictionaries)) {

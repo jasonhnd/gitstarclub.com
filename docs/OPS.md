@@ -23,6 +23,7 @@ Data operations layers:
 - **Daily / weekly live cron**—see §Cron schedule.
 - **History / metadata / canonical full refresh (managed refresh)**—see §Managed refresh runbook (step names see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)).
 - **One-time BigQuery + DuckDB bootstrap backfill**—see §One-time bootstrap Runbook (archived, non-routine path).
+- **Raw gross backfill export**—see §Raw backfill data. The GCS original stays. The private R2 copy is pending the Cloudflare key decision.
 
 ## Current hosting and branch topology
 
@@ -204,7 +205,7 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | `CF_CACHE_PURGE_URL` | CF stub dual-run POST URL (Worker `/preview/invalidate`) | Only when `CACHE_INVALIDATION_DRIVER=cf-stub` | Absolute URL | `web/lib/runtime-config.ts` · `web/lib/cache-invalidation/cf-stub.ts`; not Cloudflare Cache Purge |
 | `PREVIEW_TARGET` | Optional preview-target resolver | Optional (code default `vercel`) | `vercel` \| `cf` | `web/lib/runtime-config.ts` · `web/lib/preview/`. `https://pre.gitstarclub.com` is public either way. This variable is not a login lock |
 | `CF_PREVIEW_ORIGIN` | Preview Worker origin used by probes and deployment identity when `VERCEL_URL` is unset | Optional (default `https://gitstarclub-web-pre.worldgo.workers.dev`) | no-trailing-slash https origin | `web/lib/runtime-config.ts`; default preview Worker `gitstarclub-web-pre`. Do not point it at the closed production `gitstarclub-web.worldgo.workers.dev`. `https://pre.gitstarclub.com` is an allowed public equivalent. This host is not behind a login wall |
-| `CF_CRON_ORIGIN` | CF Worker `scheduled` hits Next cron route HTTP origin | Required for Worker dispatch (wrangler var) | no-trailing-slash https origin; preview `https://pre.gitstarclub.com`, production `https://gitstarclub.com` | Worker `env.CF_CRON_ORIGIN`; do not hardcode the wrong environment, and do not use the already-closed production `workers.dev`; the value is not a secret, but it must be injected per Worker |
+| `CF_CRON_ORIGIN` | CF Worker `scheduled` hits Next cron route HTTP origin. On `HOSTING_TARGET=cf` it is also the origin of the publish / rollback cache-invalidation callback (`POST {CF_CRON_ORIGIN}/api/workflows/refresh/revalidate`) | Required for Worker dispatch and for publish / rollback on Cloudflare (wrangler var) | no-trailing-slash https origin; preview `https://pre.gitstarclub.com`, production `https://gitstarclub.com` | Worker `env.CF_CRON_ORIGIN` · `web/lib/workflows/publication-invalidation-request.ts`; do not hardcode the wrong environment, and do not use the already-closed production `workers.dev`. The callback never falls back to production. Publish / rollback resolve it before the pointer switch, so a missing or invalid value fails them with nothing published. `DEPLOY_ENV=pre` refuses `gitstarclub.com` / `www.gitstarclub.com`. The production top-level vars set `DEPLOY_ENV=production`, so a Worker that sets it must use one of them and the callback also refuses a non-production host there. `scripts/cf-ci-gates.mjs` still pins the wrangler value. The value is not a secret, but it must be injected per Worker |
 | `REFRESH_START_URL` | refresh cron / `/start` override URL | Optional (when unset, `{CF_CRON_ORIGIN}/api/workflows/refresh/start`) | Absolute URL | Worker `env.REFRESH_START_URL`; injected by the platform, not committed to the repo |
 | `REFRESH_STEP_URL` | Queue consumer advances refresh step URL | Required when consuming a refresh step | Absolute URL | Worker `env.REFRESH_STEP_URL`; injected by the platform, not committed to the repo |
 | `CF_ACCESS_CLIENT_ID` | CF Access Service Token id (CI) | Only `PREVIEW_TARGET=cf` / optional `cf-preview` job | Access Service Token Client ID | `web/lib/preview/access.ts`; the GitHub secret name is the same; token name `gitstarclub-cca-ci`, and the secret is not committed to the repo |
@@ -217,7 +218,7 @@ Current Worker configuration is in [Worker configuration](../workers/gitstarclub
 | `PREFLIGHT_RELAX_EMPTY_SHARDS` | Whether preview preflight treats a missing/empty canonical shard as a `{}` placeholder | Optional (default off = missing shard fail closed). Wrangler `env.pre` sets `"1"` (#662); production top-level must not set it (`scripts/cf-ci-gates.mjs`) | The string `"1"` turns it on only when `DEPLOY_ENV=pre`. Unset `DEPLOY_ENV` (including `HOSTING_TARGET=cf`) and `DEPLOY_ENV=production` / `VERCEL_ENV=production` stay fail-closed. Removing it is an owner decision | `web/lib/runtime-config.ts` · `web/lib/workflows/canonical-validation.ts` · `web/lib/workflows/steps/preflight.ts`; policy name `preview-empty-canonical-placeholder`. schema / `d` / identity / wrong bucket / non-404 still fail closed. Rollback = remove it or set `0`. Do not turn off sharded Search to fix a missing shard |
 | `WORKFLOW_COLD_START` | Whether the first preview managed publish may bootstrap canonical / an empty lookup from zero | Optional (default off). Wrangler `env.pre` sets `"1"` (#662); production top-level must not set it (`scripts/cf-ci-gates.mjs`) | The string `"1"` turns it on only when `DEPLOY_ENV=pre`, together with `PREFLIGHT_RELAX_EMPTY_SHARDS=1`. Unset `DEPLOY_ENV` (including `HOSTING_TARGET=cf`) and production stay off. The paused 1k-star experiment stays paused (`MIN_TRACKED_STARS=10000`); lowering the floor is an owner decision | `web/lib/workflows/cold-start.ts` · `web/lib/runtime-config.ts` · refresh start / preflight / whitelist / metadata / recompute I/O. It takes effect only while `views/latest.json` is still 404; written meta uses a real UTC `generated_at` and the bootstrap-day `seam_date` (no GH Archive  gross history), and **forbids** fake `node_id` / fake GraphQL. On conflict with the #515 empty-bucket placeholder, #512 502 recovery, or SafeText, **cold start wins** (see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)). After the first successful publish it automatically returns to fail closed. Rollback = remove it or set `0` |
 | `WHITELIST_SEARCH_HOP_BUDGET_MS` | Single-hop Search wall-clock budget | Optional (default `600000` = 10 min) | Integer milliseconds, `60000..840000` (must stay under the Queue 15 min wall) | `web/lib/runtime-config.ts` · `web/lib/github.ts` `searchWhitelistHop` |
-| `HOSTING_TARGET` | Next hosting target | Optional in code (default `vercel`). Both Workers set `cf` | `vercel` \| `cf` | `web/lib/runtime-config.ts` · `web/lib/analytics-policy.ts`. Production Worker `gitstarclub-web` and preview Worker `gitstarclub-web-pre` both set `cf` |
+| `HOSTING_TARGET` | Next hosting target | Optional in code (default `vercel`). Both Workers set `cf` | `vercel` \| `cf` | `web/lib/runtime-config.ts`. Production Worker `gitstarclub-web` and preview Worker `gitstarclub-web-pre` both set `cf` |
 | `NEXT_PUBLIC_HOSTING_TARGET` | `HOSTING_TARGET` public alias | Optional | Same as `HOSTING_TARGET` | `web/lib/runtime-config.ts`. The Workers set `HOSTING_TARGET=cf` |
 | `CF_WORKERS_HOST_ORIGIN` | P3 Workers host smoke origin | Optional | no-trailing-slash http(s) origin | `web/lib/workers-host/smoke-origin.ts` · `web/scripts/cf-workers-host-smoke.ts` |
 | `CF_WORKERS_HOST_LOCAL` | P3 smoke forces localhost | Optional | String `1` | `web/lib/workers-host/smoke-origin.ts` |
@@ -239,7 +240,7 @@ Platform and development-tool variables also belong to the maintained inventory;
 | Variable | Scope | Purpose |
 |---|---|---|
 | `NEXT_RUNTIME` | Next.js injected | `nodejs` / `edge`; enables the shared Data Cache 404 sentinel for `bootstrap/latest.json` |
-| `VERCEL_ENV` | Not set on either Worker. Analytics stay off when `HOSTING_TARGET=cf` and this is not `production` | `web/lib/analytics-policy.ts` |
+| `VERCEL_ENV` | Legacy production signal; not set on either Worker. Retained for environment-conflict checks and Vercel compatibility | `web/lib/runtime-config.ts` |
 | `VERCEL_URL` | Not set on either Worker. When unset, Cloudflare deployment identity uses the preview origin | `web/lib/deployment-identity.ts` |
 | `VERCEL_GIT_COMMIT_SHA` | Optional commit input for `/.well-known/deployment`. Workers pass `CF_PREVIEW_COMMIT_SHA` or the SHA baked by `cf:build` | `web/lib/deployment-identity.ts` |
 | `NODE_ENV` | runtime/tooling | Next.js and tests standard runtime mode |
@@ -371,11 +372,12 @@ blob://
 │       │   ├── cron-daily.json                      #     updated on every non-dry success/failure
 │       │   └── cron-weekly.json                     #     updated on every non-dry success/failure
 │       └── <run_id>/                                #   Workflow single-run checkpoint
-│           ├── manifest.json                        #     step list + status (running / published / failed)
+│           ├── manifest.json                        #     step list + status (running / published / failed) + published_version
 │           ├── canonical-manifest.json              #     record count, SHA-256, and integrity receipt of the required canonical shard
 │           ├── validation.json                      #     publish gate result (ok · checked · invariants · failures)
 │           ├── renames.json                         #     rename step output (old_full_name → new_full_name, web-layer 308)
-│           └── error.json                           #     written on failure (run_id · error · at)
+│           ├── error.json                           #     written on failure (run_id · error · at · phase; post_commit / commit_unknown add committed_version / candidate_version · failed_step)
+│           └── post-commit-failure.json             #     only when the lease was lost after the pointer switched (create-only; run_id · phase · published_version · failed_step · error · at)
 ├── current_month.json                               # migration-period legacy fallback; the new cron no longer overwrites it
 └── hot-snapshot.json                                # migration-period legacy fallback; the new cron no longer overwrites it
 ```
@@ -468,8 +470,9 @@ Paging already exists — do not invent new alerts. `markFailed` in `web/lib/wor
 1. Read **`ops/workflows/health/workflow-refresh.json`** (`status`, `last_failure`, `freshness.stale_after`). **Do not read** retired `ops/workflows/health.json`.
 2. Read Worker logs for `[ALERT] workflow-refresh` on `gitstarclub-web`. A preview incident uses `gitstarclub-web-pre` logs and must not roll back `gitstarclub-web`.
 3. Check `ops/workflows/active.json` (`run_id`, `expires_at`, `fencing_token`, `idempotency_key`). Default Sunday key is week-scoped (`workflow-refresh:YYYY-Www`). Same-key retries attach; a different active trigger is 409.
-4. Check `ops/workflows/<run_id>/manifest.json`, `error.json`, and `validation.json`. Validate is fail-closed; do not relax invariants.
+4. Check `ops/workflows/<run_id>/manifest.json`, `error.json`, `post-commit-failure.json`, and `validation.json`. Validate is fail-closed; do not relax invariants.
 5. Check `views/latest.json`. If the failure was before publish, the pointer must be unchanged. Do not hand-edit the pointer.
+   A `failed` manifest with a non-null `published_version` (`error.json` `phase: "post_commit"`) means that version is already live and only `failed_step` did not finish. The publish step already retried it in-step by replaying the intent. After the run is marked failed, nothing repairs it automatically. Do not roll back or start a new run because of it; the next successful run rewrites those artifacts. Until then, `recovery` / `whitelist_pointer` leave `latest-success.json` or `canonical/v2/whitelist/latest.json` on the previous version. `invalidate` / `indexnow` leave caches on their normal revalidation window. `gc` / `markPublished` leave old versions or the manifest status. `ownership` means the run lost its lease after the pointer switched. The run cannot renew the lease to write `manifest.json` or `error.json`, so its manifest can still read `running` with `published_version: null`. Read `ops/workflows/<run_id>/post-commit-failure.json` instead (`published_version`, `failed_step: "ownership"`). It is create-only, lives under the run's own prefix, and touches no lease or shared pointer. Another run may now hold the lease; do not release or overwrite it. The next successful run rewrites the unfinished artifacts. `phase: "commit_unknown"` (`candidate_version`, `published_version: null`) means the pointer could not be read after the failure: read `views/latest.json` to see whether the candidate is live. See [DATA-CONTRACTS.md](./DATA-CONTRACTS.md) §2.12.
 6. Enqueue with a **new** Idempotency-Key only after leftover lease `expires_at`, and only if same-week attach is not the right move. How: authenticated `GET /api/workflows/refresh/start` with a new `Idempotency-Key`. There is **no** dry-run for managed refresh.
 7. Hard stops: no validate-invariant relaxation; no inventing `bootstrap/latest.json`; do not push `main` or call production cron unless the user said push main; wait leftover lease; product-gates stay fail-closed.
 8. After a successful publish, static exports still need the [DATA-EXPORTS.md](./DATA-EXPORTS.md) regenerate path (#375). Do not duplicate that runbook here.
@@ -609,6 +612,22 @@ Set `ALERT_WEBHOOK_URL` on the Worker that should send it. Leave it unset to sta
 
 > `recordHealth` writes `ops/workflows/health/{workflow-refresh|cron-daily|cron-weekly}.json` separately. The only operator signal for Sunday 06:00 is `ops/workflows/health/workflow-refresh.json`. The flat `ops/workflows/health.json` is retired; do not read it. Each record is updated with an ETag compare-and-set, keeps `last_success`, `last_failure`, and `correlation_id` / `run_id` / `idempotency_key`, and provides `freshness.stale_after`. Every non-dry success and failure of the daily and weekly cron updates its record; `attached` / `rejected` only change that pipeline's latest signal and do not delete historical successes or failures. Concurrent runs of different pipelines cannot overwrite each other.
 
+## Raw backfill data
+
+Owner decision 2026-10-19: the raw daily gross star export is kept in two places. This is the GH Archive gross input for a rebuild. It is not a published view and it is not a public data bucket.
+
+Primary original: `gs://gitstarclub-backfill-746384388303/star_daily_gross/` in GCP project `gitstarclub`. Object versioning is on. Do not delete objects, change ACLs, or rewrite this prefix.
+
+Copy: private Cloudflare R2 bucket `gitstarclub-raw` on the ZKSC.KK account, under `star_daily_gross/`. The bucket is not public. It is not `gitstarclub-data-prod` and it is not `gitstarclub-data-pre`. The R2 copy is pending until the Cloudflare key decision. Do not upload these objects to the public data buckets while that decision is open.
+
+Inventory, for both places once the copy exists: 20 Parquet files, 29.48 MiB (30,907,971 bytes, read-only listing on 2026-10-18). Columns are `repo_id` BIGINT, `day` DATE, and `gross_adds` BIGINT. Days run from 2015-01-01 through 2026-05-29 inclusive. Values are gross `WatchEvent` adds. There is no unstar column.
+
+Verify a copy by comparing each object's byte size and SHA-256 with the manifest. Card GSC_0040 fills that manifest. The table below is a placeholder until that card lands. Do not treat any other hash list as the source of truth.
+
+| name | bytes | sha256 |
+|---|---:|---|
+| pending GSC_0040 | pending GSC_0040 | pending GSC_0040 |
+
 ## One-time bootstrap Runbook (archived / non-routine path)
 
 > **Demotion statement**: this is a tool run manually once for **the first cold start / a disaster rebuild / introducing a new data source**, and **not a recurring operations path**. After the artifacts are uploaded, the host's live routes and managed refresh take over. Production data uses R2 after the accepted 2026-10-04 cutover. The production caller is unverified. Routine operations are **0 local dependencies · 0 GCP**.
@@ -651,7 +670,7 @@ bq query --use_legacy_sql=false --dry_run --maximum_bytes_billed=400000000000 < 
 
 **Historical empty-bucket recipe; stages 2/3 remain unaccepted.** This did not supply the accepted production store: the operator instead copied Blob and completed the separately accepted stage-4 cutover. Do not apply initial-commit or bad-first-publish cleanup to the populated production copy. Any new rehearsal/rebuild requires its own authorized empty target. In the original recipe, rehearse preview first, then load an eligible production target. The owner places `_meta/bucket-identity.json` at the bucket root out of band. `bucket` must equal the target bucket name. `deploy_env` is `pre` for `--target pre` and `production` for `--target prod`. The scripts never write or delete `_meta/`.
 
-Before the real-bucket rehearsal, run the offline local rehearsal first. Use the SHA-256-verified Node v24.20.0 and Bun 1.3.14 bootstrap in [AGENTS.md](../AGENTS.md), with dependencies installed in both `web/` and `pipeline/` using `bun --no-env-file install --frozen-lockfile`. From the repository root:
+Before the real-bucket rehearsal, run the offline local rehearsal first. Use the SHA-256-verified Node v24.20.0 and Bun 1.4.2 bootstrap in [AGENTS.md](../AGENTS.md), with dependencies installed in both `web/` and `pipeline/` using `bun --no-env-file install --frozen-lockfile`. From the repository root:
 
 ```bash
 cd web

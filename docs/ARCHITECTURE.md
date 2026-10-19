@@ -29,7 +29,7 @@ These are non-negotiable for the production system. New features must respect al
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
 2. **Zero runtime database.** Read-side state lives in versioned JSON views in R2 resolved through a publish pointer; there is no SQL connection to open.
 3. **Cloudflare hosting.** Production and preview use Cloudflare Workers with OpenNext. JSON is in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)). Google Analytics and other third-party tracking scripts are intentionally unsupported.
-4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, and service-worker registration. Vercel Web Analytics is not loaded on this host.
+4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, and service-worker registration. The application contains no analytics provider or analytics scripts.
 5. **Recurring work is hosted, not laptop-bound.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) is driven by scheduled or authenticated triggers and runs as ordinary async steps. Local pipeline runs are reserved for one-off bootstrap.
 
 The same data layer also operates AI-free: features that look like they would call an LLM (summaries, classifications, narratives) ship as deterministic templates instead. The rationale and tradeoff are recorded in the team feedback memory.
@@ -47,7 +47,7 @@ The same data layer also operates AI-free: features that look like they would ca
 | Recurring data refresh | Cron routes + step runtime (multi-step; no Workflow SDK) | Both Worker cron lists are empty. The production trigger source is unverified; see OPS.md |
 | One-off bootstrap | BigQuery (GH Archive) + local DuckDB → Parquet, then Blob upload | Archived; not in the recurring path |
 | Code validation | GitHub Actions + Bun checks | `.github/workflows/ci.yml` runs `bun run lint`, `bun run typecheck`, `bun run typecheck:tests`, `bun run typecheck:scripts`, and `bun run test` from `web/` on PRs and `main` pushes |
-| Analytics | Off on the Cloudflare host. `web/lib/analytics-policy.ts` returns no provider when `HOSTING_TARGET=cf` and `VERCEL_ENV` is not `production`. | No GA or third-party tracking scripts. |
+| Analytics | No analytics provider or analytics scripts are included in the application. | No GA or third-party tracking scripts. |
 
 Deliberately not in the production runtime stack: self-hosted ClickHouse, Tinybird, Neon/Postgres, Redis, Inngest, tRPC, any LLM SDK. The reasoning is the constraints above.
 
