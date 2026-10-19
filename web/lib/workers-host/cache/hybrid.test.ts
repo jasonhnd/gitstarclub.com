@@ -131,6 +131,16 @@ describe("hybrid publication-fenced cache", () => {
     await h.data.revalidateTag("soft");
     expect(await h.run(() => h.data.get("data", { softTags: ["soft"] }))).toBeNull();
   });
+  test("data entries cannot cross deployment or environment namespaces", async () => {
+    const h = await harness("/example/repo");
+    const first = new FencedDataCache(h.env, "build-a");
+    const next = new FencedDataCache(h.env, "build-b");
+    const production = new FencedDataCache({ ...h.env, DEPLOY_ENV: "production" }, "build-a");
+    await h.run(() => first.set("key", page()));
+    expect((await h.run(() => first.get("key")))?.value).toEqual(page());
+    expect(await h.run(() => next.get("key"))).toBeNull();
+    expect(await h.run(() => production.get("key"))).toBeNull();
+  });
   test("credentials bypass page reads/writes and representations remain distinct", async () => {
     const h = await harness("/example/repo");
     await h.run(() => h.pages.set("html", page("html")));

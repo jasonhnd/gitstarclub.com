@@ -5,9 +5,8 @@ import { boundedTags } from "./policy";
 
 /** All pointer-dependent fetch/function data is scoped to the captured strong publication. */
 export class FencedDataCache {
-  private readonly build = process.env.__VINEXT_RSC_BUILD_IDENTITY || process.env.__VINEXT_BUILD_ID || "local";
   readonly store: ArtifactStore;
-  constructor(env: { GSC_CACHE: CacheKV; DEPLOY_ENV?: string }) {
+  constructor(env: { GSC_CACHE: CacheKV; DEPLOY_ENV?: string }, private readonly build = "local") {
     this.store = new ArtifactStore(env.GSC_CACHE, `gsc:${env.DEPLOY_ENV}:data:v1`);
   }
   async get(key: string, ctx: Record<string, unknown> = {}): Promise<CacheHandlerValue | null> {
@@ -38,8 +37,8 @@ export class FencedDataCache {
   }
   async revalidateTag(tags: string | string[]): Promise<void> { await this.store.revalidateTag(tags); }
 }
-export default function dataAdapter({ env }: { env?: { GSC_CACHE: CacheKV; DEPLOY_ENV?: string } } = {}) {
+export default function dataAdapter({ env, options }: { env?: { GSC_CACHE: CacheKV; DEPLOY_ENV?: string }; options?: { buildIdentity?: string } } = {}) {
   if (process.env.VINEXT_PRERENDER === "1") return new MemoryCacheHandler();
   if (!env?.GSC_CACHE) throw new Error("Host data cache binding required");
-  return new FencedDataCache(env);
+  return new FencedDataCache(env, options?.buildIdentity);
 }

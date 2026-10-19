@@ -28,7 +28,7 @@ export default defineConfig(async ({ mode }) => {
       vinext({
         prerender: { routes: "*", concurrency: 2 },
         cache: {
-          data: { adapter: localModule("./lib/workers-host/cache/data-adapter.ts") },
+          data: { adapter: localModule("./lib/workers-host/cache/data-adapter.ts"), options: { buildIdentity: commit } },
           cdn: { ...snapshots, adapter: localModule("./lib/workers-host/cache/page-adapter.ts"), options: { snapshotFence: publication.id },
             output: { async finalizePrerenderOutput(output) {
               await snapshots.output?.finalizePrerenderOutput?.(output);
