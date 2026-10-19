@@ -1,7 +1,7 @@
 ---
 owner: architecture / operations
 status: active
-last_reviewed: 2026-10-19
+last_reviewed: 2026-10-20
 source_of_truth_for:
   - vinext Worker configuration and delivery
   - hybrid page cache implementation
@@ -99,7 +99,7 @@ policy self plus unsafe-inline. Fonts are packaged locally; the language
 switcher still goes through `/api/lang` and all seven locales remain supported.
 
 A publication fence is a strong version check before serving a cached core
-page. Every request captures the existing `views/latest.json`,
+page. Every data-dependent application request captures the existing `views/latest.json`,
 `bootstrap/latest.json` and `live/latest.json` directly from the DATA binding,
 including body, publication timestamps and ETags. Public CDN and KV pointers
 never decide that identity. Missing pointers have a stable explicit absence;
@@ -111,6 +111,46 @@ before serving; a concurrent publication retries once, then returns 503.
 Cache writes also recheck the captured identity. Rollback to an original run
 has a new transition identity, preserving the existing writers' timestamps and
 compare-and-swap safeguards. No writer or source-of-truth storage is replaced.
+
+### Publication-independent routes
+
+Shared page-cache bypass does not establish publication independence. A page
+with cookies, authorization, a range header, a non-GET method, or `refresh` in
+its path still captures its publication before entering the application. The
+explicit method/path allowlist in
+[`shell-routes.ts`](../web/lib/workers-host/shell-routes.ts) admits only the
+following two application handlers without a publication or cache scope. The
+page and data adapters return cache misses and skip writes without that scope.
+Both responses retain the same security headers, `x-gsc-cache: BYPASS`, and
+`Cache-Control: private, no-store`. Trailing slashes use the existing pathname
+normalization; subpaths and unlisted methods receive no exemption.
+
+| Route and method | Entry publication decision | Reason |
+| --- | --- | --- |
+| `/api/lang` GET/HEAD | Skip | Validates an internal destination, writes the locale cookie, and redirects; it consumes no published data. A pointer outage or missing DATA binding cannot turn this handler into a host 503. |
+| `/api/workflows/refresh/revalidate` POST | Skip | Authenticates and invalidates tags/paths after publication; it reads no publication pointers. Authentication and cache-invalidation failures still belong to the existing handler. |
+| `/api/cron/daily` GET | Keep | Refreshes published daily data; it is not a data-independent redirect or callback. |
+| `/api/cron/weekly` GET | Keep | Refreshes published weekly data. |
+| `/api/workflows/refresh/start` GET | Keep | Starts a storage-backed refresh workflow and acquires its lease. |
+| `/api/workflows/refresh/step` POST | Keep | Runs data/publication workflow steps. |
+| `/api/workflows/refresh/rollback` POST | Keep | Reads and switches published versions under its own writer lease. |
+| `/search-index` GET | Keep | Resolves the published search index through the data layer. |
+| `/repo-curve` GET | Keep | Resolves published repository curves. Even invalid-id requests keep the route-level policy. |
+| `/preview/identity` GET | Already skipped | Shell dispatch precedes publication reads; reports deployment identity. |
+| `/preview/health` GET | Already skipped | Shell health response needs no published data. |
+| `/.well-known/deployment` GET | Already skipped | Shell deployment identity response needs no published data. |
+| `/start` GET/POST | Already skipped | Existing authenticated shell control; its refresh operation retains its own storage dependencies. |
+| `/enqueue` POST | Already skipped | Existing authenticated shell queue control. |
+| `/preview/invalidate` POST | Already skipped | Existing authenticated shell cache invalidation. |
+| `/_vinext/static-cache/*` | Already skipped | Private artifact requests are denied with 404 before shell/application dispatch. |
+| Other `/api/*`, `/preview/*`, `/.well-known/*`, `/start/*`, `/enqueue/*`, `/search-index/*`, `/repo-curve/*`, and paths containing `refresh` | Keep | A broad cache-bypass prefix is not permission to skip the publication fence, including unknown routes or unsupported methods. |
+
+All page routes, metadata/sitemap routes, and data-dependent endpoints retain
+their existing publication handling. Worker-entry regressions exercise the
+real language handler for all seven locales during a simulated R2 pointer
+failure, same-origin redirect protection, missing DATA, callback authentication,
+and fail-closed page/data requests. Existing publication race/rollback and
+core/tail cache tests remain part of the full offline suite.
 
 Tail pages stay fresh for 604,800 seconds, may serve stale while regenerating
 for another 86,400 seconds, and then block on regeneration. Ordinary publication
