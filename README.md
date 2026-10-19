@@ -10,7 +10,7 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 |---|---|
 | Site | [gitstarclub.com](https://gitstarclub.com) |
 | Stack | Next.js 16 (App Router, RSC) · TypeScript 6 · React 19 · Zod 4 · Tailwind 4 · bun · Node 24 |
-| Read path | Static HTML / on-demand ISR from Cloudflare Workers (OpenNext); JSON in Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)); no runtime database, no engine in the request path |
+| Read path | Static HTML / on-demand ISR from Cloudflare Workers (vinext); JSON in Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)); no runtime database, no engine in the request path |
 | Recurring data refresh | Managed refresh (whitelist → rename → metadata → fold → recompute → buildAliases → validate → publish → garbage-collect) |
 | Live overlay | Daily and weekly cron routes (`current_month.json`, `hot-snapshot.json`) |
 | Bootstrap | Historical BigQuery / GH Archive extraction retired 2026-10-19; raw archive only in private R2 `gitstarclub-raw` ([inventory and verification](docs/OPS.md#raw-backfill-data)). Replacement source: GitHub's own star history (d1019-001344-1); collection/publication separately authorized |
@@ -22,7 +22,7 @@ Unlike GitHub Trending (only today), star-history.com (one repo at a time), or g
 - **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB / ClickHouse / Postgres / vector index in the runtime image.
 - **Zero runtime database.** Read-side state is versioned JSON views behind a publish pointer.
 - **Static content pages.** A small core is prerendered at deploy. The long tail is generated on demand and then cached. Content pages stay near-zero client JavaScript. Client islands are listed in [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) and [docs/FRONTEND.md](docs/FRONTEND.md).
-- **Cloudflare hosting.** Production and preview pages run on Cloudflare Workers via OpenNext. JSON is in Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)). Keep refresh scheduling evidence separate from route implementation.
+- **Cloudflare hosting.** Production and preview pages run on Cloudflare Workers via vinext. JSON is in Cloudflare R2 (production cutover accepted 2026-10-04; see [docs/R2-CUTOVER.md](docs/R2-CUTOVER.md)). Keep refresh scheduling evidence separate from route implementation.
 - **AI-free.** Features that would normally call an LLM (summaries, classifications) ship as deterministic templates.
 
 The reasoning behind each constraint is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -63,7 +63,7 @@ gitstarclub/
     │   ├── components/            ThemeToggle, LanguageSwitcher (interactive client controls)
     │   ├── opengraph-image.tsx    Site-level OG card (next/og)
     │   ├── robots.ts  sitemap.ts  manifest.ts  layout.tsx  template.tsx  globals.css
-    ├── open-next.config.ts        OpenNext Cloudflare adapter
+    ├── vite.config.ts             vinext and typed Cloudflare adapters
     ├── lib/
     │   ├── contracts/             Zod schemas (build-side type source of truth)
     │   ├── data/                  Read layer: fetch Blob + Zod parse + React cache
@@ -99,10 +99,10 @@ See [docs/OPS.md](docs/OPS.md) for details and the manual-trigger runbook.
 
 | Git branch | Cloudflare Worker | Rule |
 |---|---|---|
-| `main` | `gitstarclub-web` | Production Worker only. GitHub Actions must not `wrangler deploy` this name except `--dry-run`. Production `gitstarclub-web.worldgo.workers.dev` is closed. |
-| `pre` | `gitstarclub-web-pre` | Preview Worker (`wrangler` env `pre`). Optional CI probe / dry-run only. |
+| `main` | `gitstarclub-web` | Production Worker only. No automated deployment; separate owner approval required. Production `gitstarclub-web.worldgo.workers.dev` is closed. |
+| `pre` | `gitstarclub-web-pre` | Preview Worker (Vite mode `pre`). Local build validation; owner-run cf delivery only. |
 
-`CF_PREVIEW_ORIGIN` defaults to `https://gitstarclub-web-pre.worldgo.workers.dev` (equivalent documented preview entry: `https://pre.gitstarclub.com`). Production `triggers.crons` must stay `[]`. `.delivery.yml` and `scripts/assert-cf-ci-gates.mjs` use these Worker names. Optional `verify / cf-preview` and `verify / cf-workers-host` jobs are **not** required checks. See [docs/OPS.md](docs/OPS.md).
+`CF_PREVIEW_ORIGIN` defaults to `https://gitstarclub-web-pre.worldgo.workers.dev` (equivalent documented preview entry: `https://pre.gitstarclub.com`). Both modes must have no scheduled triggers. `.delivery.yml` and `scripts/assert-cf-ci-gates.mjs` use these Worker names. Optional `verify / cf-preview` and `verify / cf-workers-host` jobs are **not** required checks. See [docs/OPS.md](docs/OPS.md).
 
 ## Running locally
 

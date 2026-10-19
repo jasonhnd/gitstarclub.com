@@ -40,7 +40,18 @@ export function decodeEntry(raw: string): StoredEntry | null {
     if (artifact?.kind === "APP_PAGE" && (typeof artifact.html !== "string"
       || (artifact.rscData !== undefined && !(artifact.rscData instanceof ArrayBuffer)))) return null;
     if (artifact?.kind === "APP_ROUTE" && (!(artifact.body instanceof ArrayBuffer) || !Number.isInteger(artifact.status))) return null;
-    if (artifact?.kind === "FETCH" && (!artifact.data || typeof artifact.data.body !== "string")) return null;
+    const record = (input: unknown): input is Record<string, unknown> => !!input && typeof input === "object" && !Array.isArray(input);
+    const status = (input: unknown) => input === undefined || (typeof input === "number" && Number.isInteger(input) && input >= 100 && input <= 599);
+    const headers = (input: unknown) => input === undefined || (record(input) && Object.entries(input).every(([key, item]) =>
+      key.length <= 256 && !/[\r\n]/.test(key) && (typeof item === "string" ? !/[\r\n]/.test(item)
+        : Array.isArray(item) && item.every((part) => typeof part === "string" && !/[\r\n]/.test(part)))));
+    if (artifact && "status" in artifact && !status(artifact.status)) return null;
+    if (artifact && "headers" in artifact && !headers(artifact.headers)) return null;
+    if (artifact?.kind === "FETCH" && (!artifact.data || typeof artifact.data.body !== "string"
+      || typeof artifact.data.url !== "string" || !headers(artifact.data.headers) || !status(artifact.data.status))) return null;
+    if (artifact?.kind === "IMAGE" && (!(artifact.buffer instanceof ArrayBuffer) || typeof artifact.etag !== "string" || typeof artifact.extension !== "string")) return null;
+    if (artifact?.kind === "PAGES" && (typeof artifact.html !== "string" || !record(artifact.pageData))) return null;
+    if (artifact?.kind === "REDIRECT" && !record(artifact.props)) return null;
     if (value.cacheControl && (typeof value.cacheControl !== "object"
       || (value.cacheControl.revalidate !== false && (!Number.isFinite(value.cacheControl.revalidate) || value.cacheControl.revalidate < 0))
       || (value.cacheControl.expire !== undefined && (!Number.isFinite(value.cacheControl.expire) || value.cacheControl.expire < 0)))) return null;
