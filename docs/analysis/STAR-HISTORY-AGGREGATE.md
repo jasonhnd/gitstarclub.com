@@ -150,6 +150,9 @@ The export manifest contains row counts, expected/observed repository-days,
 complete week periods, missing ids/names/statuses, observed survivor totals,
 every exported file's bytes/SHA-256, every repository checkpoint's SHA-256 and
 all raw response fingerprints (including retries and uncommitted page evidence).
+Before sealing the manifest, every checkpoint is independently replayed from
+its referenced raw responses and must reproduce the exact status/daily/total
+values. The manifest records that verification and the source identity evidence.
 It records `monthly_files: []` and this machine-readable provenance for the
 separate label/integration work:
 

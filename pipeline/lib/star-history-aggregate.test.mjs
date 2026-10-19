@@ -195,10 +195,16 @@ test("exports fingerprint sparse coverage, preserve shard tuple shape and never 
   expect(manifest.raw_responses).toHaveLength(2);
   for (const file of manifest.raw_responses) expect(sha256(readFileSync(join(out, file.path)))).toBe(file.sha256);
   for (const checkpoint of manifest.checkpoints) {
+    expect(checkpoint.raw_replay_verified).toBe(true);
     expect(sha256(readFileSync(join(out, checkpoint.path)))).toBe(checkpoint.sha256);
     for (const page of checkpoint.pages) expect(sha256(readFileSync(join(out, page.path)))).toBe(page.sha256);
   }
   expect(exportInputs(out, [member, absent]).manifest_sha256).toBe(exported.manifest_sha256);
+  const changed = loadCheckpoint(out, member);
+  changed.daily[START_DAY]++;
+  changed.total++;
+  atomicJson(join(out, "repos/33.json"), changed);
+  expect(() => exportInputs(out, [member, absent])).toThrow("Raw evidence");
 });
 
 test("pending sweep cannot export; checkpoint identity/metric changes and invalid CLI scope are rejected", async () => {

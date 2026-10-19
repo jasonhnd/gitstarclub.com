@@ -262,6 +262,15 @@ export function gapSeries(record) {
     partialWeeks: [...weeks.values()].filter((week) => week.days.length !== 7) };
 }
 
+export function replayEvidence(out, member, record) {
+  let replayed = newCheckpoint(member);
+  for (const path of record.pages) replayed = consumePage(replayed, { ...read(join(out, path)), evidence: path });
+  if (replayed.status !== record.status || JSON.stringify(replayed.daily) !== JSON.stringify(record.daily) || replayed.total !== record.total) {
+    throw new Error(`Raw evidence does not reproduce checkpoint ${member.id}`);
+  }
+  return replayed.response_identity ?? "unavailable";
+}
+
 export function exportInputs(out, members) {
   const summary = summarize(out, members);
   if (!summary.fetch_finished) throw new Error("Finish the fixed-whitelist sweep before exporting");
@@ -296,7 +305,9 @@ export function exportInputs(out, members) {
     const path = `repos/${member.id}.json`;
     const bytes = readFileSync(join(out, path));
     const record = JSON.parse(bytes.toString());
-    return { repo_id: member.id, path, sha256: sha256(bytes), status: record.status, pages: record.pages.map((path) => ({ path, sha256: sha256(readFileSync(join(out, path))) })) };
+    return { repo_id: member.id, path, sha256: sha256(bytes), status: record.status,
+      raw_replay_verified: true, response_identity: replayEvidence(out, member, record),
+      pages: record.pages.map((path) => ({ path, sha256: sha256(readFileSync(join(out, path))) })) };
   });
   const source = read(join(out, "manifest.json"));
   const rawResponses = existsSync(join(out, "pages")) ? readdirSync(join(out, "pages"), { recursive: true })
