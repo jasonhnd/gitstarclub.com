@@ -169,6 +169,28 @@ describe("bootstrap CLI", () => {
 describe("extract SQL parameters", () => {
   const template = readFileSync(new URL("../backfill/02-extract.sql", import.meta.url), "utf8");
 
+  test("a create-only gap keeps the fixed whitelist and WatchEvent semantics", () => {
+    const sql = renderExtractSql(template, {
+      startSuffix: "260530", cutoffSuffix: "260930",
+      destination: "gitstarclub.star_daily_gross_gap_260530_260930_20261019", createOnly: true,
+    });
+    expect(sql).toContain("CREATE TABLE `gitstarclub.star_daily_gross_gap_260530_260930_20261019`");
+    expect(sql).toContain("BETWEEN '260530' AND '260930'");
+    expect(sql).toContain("JOIN `gitstarclub.whitelist`");
+    expect(sql).toContain("e.type = 'WatchEvent'");
+    expect(sql).not.toContain("@@");
+  });
+
+  test("a malformed or reversed gap cannot render a query", () => {
+    const options = { cutoffSuffix: "260930", destination: "gitstarclub.star_daily_gross_gap_20261019" };
+    for (const startSuffix of ["", "26053x", "260530 OR 1=1"]) {
+      expect(() => renderExtractSql(template, { ...options, startSuffix })).toThrow("6-digit YYMMDD");
+    }
+    for (const startSuffix of ["150100", "261001"]) {
+      expect(() => renderExtractSql(template, { ...options, startSuffix })).toThrow("between 150101 and --cutoff-suffix");
+    }
+  });
+
   test("renders a dated table and refuses the unsuffixed May table", () => {
     const sql = renderExtractSql(template, {
       cutoffSuffix: "260531",
