@@ -164,6 +164,71 @@ stock within each frozen-star band; unsampled bands use their lifetime ceiling.
 That model has no calibrated confidence interval. It must not be described as
 measured completeness or as an assurance that all stars can be fetched.
 
+## Full local run and coverage
+
+The pilot and full access sweep ran on October 19, using collector revision
+`8c85184`. Later hardening preserves retry rounds/attempt evidence and keeps
+uncovered aggregate totals null; the final-head offline gates cover that
+delivered version. No successful live timestamp pagination could be exercised
+with this login because every public connection was empty.
+
+The single full foreground chunk finished without pausing, reusing the pilot's
+50 checkpoints and visiting the remaining 5,199 members. Its log spans about
+355 seconds (5.9 minutes), measured from log creation to final write. Last
+repository evidence is dated `2026-10-19T11:58:21.948Z`.
+
+| Coverage or cost | Final result |
+| --- | ---: |
+| Fixed members with checkpoint and raw first-page evidence | 5,249 / 5,249 |
+| Positive-stock but empty histories | 5,243 |
+| Not found or inaccessible | 6 |
+| Pending members / partial cursors | 0 / 0 |
+| Verified UTC repositories | 0 / 5,249 |
+| Verified UTC repository-days | 0 / 650,876 |
+| Gap surviving-star total | unavailable |
+| Additional full-chunk requests / points | 260 / 260 |
+| Additional full-chunk API time | 349.532 s |
+| Inventory + pilot + full sweep requests / points | 316 / 316 |
+| Combined fetcher API time / pacing wait | 512.973 s / 0.053 s |
+| Unmetered requests / quota or secondary-limit retries | 0 / 0 |
+| Last reported remaining quota / hourly limit | 4,618 / 5,000 |
+
+These fetcher metrics exclude initial manual probes and issue/PR operations;
+they do not measure other uses of the shared login. All public raw responses
+were checked for positive stock, zero connection total, empty edges and false
+`hasNextPage`. Every per-repository daily field is null. A zero coverage count
+is not a zero-star measurement: summaries retain `complete: false` and a null
+surviving-star total. Fetch exited 2, as intended for missing coverage.
+
+The six unresolved members below are historical names from the retained
+metadata, not proof of deletion or of current ownership:
+
+| Stable id | Retained name |
+| --- | --- |
+| 18477927 | segment-boneyard/nightmare |
+| 136780445 | kitao/pyxel |
+| 206462776 | GrowingGit/GitHub-Chinese-Top-Charts |
+| 304766583 | imarvinle/awesome-cs-books |
+| 824301644 | cheahjs/free-llm-api-resources |
+| 888887358 | Max-Eee/NeoPass |
+
+The source window remains **unfilled**. No daily-count replacement file was
+manufactured, no metric was relabeled as gross/net, and no historical status
+or publication pointer changed. Restoring timestamp access, or an explicit
+owner decision on a different source/date contract, is needed before valid
+UTC replacement data can exist. Merely changing the page size or retrying the
+same suppressed connection does not solve that upstream limitation.
+
+Durable evidence includes `manifest.json`, `inventory.json`, `pilot-api.json`,
+`pilot-summary.json`, `full-summary.json`, `estimate.json`, `api-state.json`,
+all `repos/<id>.json` checkpoints, `pages/<id>/...` evidence, and foreground
+logs. They are excluded and retained in the approved leader directory. The
+final collector source copy and `collector-source.json` identify a runnable
+revision independent of executor-workspace cleanup. Verification results for
+the exact final head are recorded in the PR and card handoff. GitHub Actions
+remains off; `cf:dry-run` and all other Wrangler/OpenNext commands are skipped
+by the owner's explicit October 19 order.
+
 ## Run and resume
 
 Run from this repository root after the archive-verified AGENTS bootstrap and

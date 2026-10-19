@@ -57,5 +57,16 @@ outputs use the expressly authorized leader directory.
 
 - Dependencies installed and archive/runtime checks passed.
 - Issue #680 opened. Read-only R2 whitelist download succeeded.
-- Initial three probes returned positive stock but empty GraphQL connections;
-  the pilot must establish whether this prevents timestamp collection.
+- The 50-member pilot includes the exact 40 GSC_0045 references and ten fixed
+  extras. All 50 histories were empty despite positive stock. Three requests
+  cost three points and took 4.147 seconds. The estimate was posted immediately.
+- The full local sweep visited all 5,249 members: 5,243 empty histories and six
+  not found/inaccessible, no pending members and no verified UTC history.
+  Inventory plus pilot plus full sweep used 316 requests and measured points.
+  The gap remains unfilled; coverage and comparison totals are unavailable.
+- Durable raw evidence and resume tooling stay only in the approved excluded
+  leader directory. No data was rolled up, uploaded, published or committed.
+- Full exact-head isolated bootstrap/static/web coverage/fixture build results
+  belong in the PR and handoff; all Wrangler/OpenNext execution is skipped by
+  owner order. The delivery needs independent review and upstream timestamp
+  access or a separate source/date-contract decision before a data repair.
