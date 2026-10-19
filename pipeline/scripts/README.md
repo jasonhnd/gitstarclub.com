@@ -1,4 +1,36 @@
-# Local preview-gap rehearsal tools
+# Local read-only pipeline tools
+
+## UTC star history collection
+
+`star-history.mjs` (issue #680, GSC_0080) reads the unchanged R2 whitelist
+and collects surviving-star timestamps through the existing `gh api graphql`
+login only. It never reads or prints credentials, requests stargazer identities,
+or writes remote objects. Its CLI locks output to the expressly authorized
+excluded `leader/star-history` directory; no data belongs in Git.
+
+```bash
+node pipeline/scripts/star-history.mjs --help
+```
+
+`prepare` validates all 5,249 R2 ids against the retained GSC_0045 whitelist,
+fingerprints inputs and selects the original 40 samples plus ten deterministic
+members. `inventory` checkpoints current stocks in batches of 100 stable ids.
+`fetch --pilot` collects those 50; `fetch` resumes the full whitelist.
+`--max-repos` and `--max-seconds` bound foreground chunks. `report` summarizes
+coverage, the 342,659 reference comparison, and conditional cost estimates.
+Unavailable histories stay null and need `--retry-unavailable` for another
+attempt; missing/private members never imply zero additions. Exit 2 means
+coverage is incomplete or the chunk paused, 1 means a fatal error, and 0 on
+`fetch` means every selected repository has validated history.
+
+Counts include UTC May 30 through September 30, 2026 only. Removed stars are
+unobservable, so these are lower bounds on gross adds and are not net changes.
+Primary quota and secondary backoff persist across restarts. No automatic
+fallback to nominal-day aggregate history, GH Archive, or published snapshots
+is permitted. See the [collection report](../../docs/analysis/STAR-HISTORY-GAP.md)
+for exact commands, access limitations and measured coverage.
+
+## Preview-gap rehearsal
 
 These are offline/bootstrap tools for issue #668. They cannot publish data.
 The only network operations are authenticated BigQuery metadata/tabledata
