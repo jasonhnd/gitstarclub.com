@@ -62,11 +62,11 @@ export function commandPolicy(scripts, ciSource) {
   const legacy = /wran[g]ler|opennextjs-cloudflare|@opennextjs\/cloudflare|cf:(?:build|dry-run|preview)/i;
   for (const [name, command] of Object.entries(scripts)) {
     if (legacy.test(String(command))) errors.push(`Forbidden legacy command: ${name}`);
-    if (/\bdeploy\b|versions\s+upload|schedules\s+(?:put|update|create)|triggers\s+deploy/.test(String(command))
+    if (/\bdeploy\b|versions\s+upload|schedules\s+(?:put|update|create)|triggers\s+deploy|\b(?:cf|cloudflare|vinext-cloudflare)\s+(?!(?:cli\s+(?:search|list)|workers\s+types)\b)|api\.cloudflare\.com/.test(String(command))
       && !(name === "deploy:pre" && command === "vinext-cloudflare deploy --env pre")) errors.push(`Forbidden mutation: ${name}`);
   }
   if (legacy.test(ciSource)) errors.push("CI contains a legacy platform command");
-  if (/\b(?:cf|vinext-cloudflare)\s+(?:deploy|workers\s+(?:deploy|versions|schedules))\b|api\.cloudflare\.com.*(?:PUT|POST|DELETE)/i.test(ciSource)) errors.push("CI must never deploy or mutate Cloudflare");
+  if (/\b(?:cf|cloudflare|vinext-cloudflare)\s+(?!(?:cli\s+(?:search|list)|workers\s+types)\b)|api\.cloudflare\.com/.test(ciSource)) errors.push("CI must never deploy or mutate Cloudflare");
   for (const mode of ["pre", "production"]) {
     if (scripts[`build:${mode}`] !== `vite build --mode ${mode}`) errors.push(`Missing explicit ${mode} build`);
   }
