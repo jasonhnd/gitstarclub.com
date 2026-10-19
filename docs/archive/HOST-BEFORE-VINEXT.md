@@ -146,4 +146,3 @@ live-deploy `gitstarclub-web` or PUT production schedules.
 
 - Production access uses `gitstarclub.com` and `www.gitstarclub.com`.
 - Preview access uses public `https://pre.gitstarclub.com`.
-

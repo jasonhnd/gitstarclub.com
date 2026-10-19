@@ -1,6 +1,6 @@
 --- a/dist/shims/fetch-cache.js
 +++ b/dist/shims/fetch-cache.js
-@@ -855,6 +855,14 @@
+@@ -855,3 +855,11 @@
  * in some environments.
  */
  function stripNextFromInit(init, cacheOverride) {
@@ -12,6 +12,3 @@
 +		const { cache: _nativeCache, ...rest } = init;
 +		init = rest;
 +	}
- 	if (!init) return cacheOverride === void 0 ? void 0 : { cache: cacheOverride };
- 	const { next: _next, _ogBody, ...rest } = init;
- 	if (cacheOverride !== void 0) rest.cache = cacheOverride;
