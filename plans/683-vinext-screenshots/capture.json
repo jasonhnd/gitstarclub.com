@@ -1,0 +1,162 @@
+{
+  "capturedAt": "2026-10-19",
+  "beforeCommit": "ec92c92563407ac2e747436bde49ad9be9bbc5be",
+  "afterCommit": "d821c978cea73f3859c50a4be7315e2a53d9b2c8",
+  "followingCommit": "3ac00c4 adds HTTP headers to static assets only; no rendered content/style changes",
+  "browser": "agent-browser 0.39.1",
+  "node": "24.20.0",
+  "bun": "1.4.2",
+  "react": "19.3.1",
+  "viewport": [
+    1280,
+    720
+  ],
+  "theme": "dark",
+  "fullPage": true,
+  "captures": [
+    {
+      "phase": "after",
+      "page": "home-en",
+      "route": "/",
+      "file": "after-home-en.png",
+      "sha256": "7d560c459d74473452db36ca7b2a8dc1f908473cb0bce6ed91ec9fbd84fa0619",
+      "dimensions": [
+        1280,
+        1667
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "after",
+      "page": "home-ja",
+      "route": "/ja",
+      "file": "after-home-ja.png",
+      "sha256": "410a9e43045dd4835f736785b0c986bcee1b236b1540e9ee7e7025bc21b6bde9",
+      "dimensions": [
+        1280,
+        1649
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "after",
+      "page": "ranking-en",
+      "route": "/rankings/2026/07",
+      "file": "after-ranking-en.png",
+      "sha256": "cdfa3557f39965b0f5c82e9744bf7a6df70aae80d5fc0da17a0d7a92e0070b04",
+      "dimensions": [
+        1280,
+        2781
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "after",
+      "page": "ranking-ja",
+      "route": "/ja/rankings/2026/07",
+      "file": "after-ranking-ja.png",
+      "sha256": "2e73058c3592613647aa56fc8d2b21637b7e84fb342391a10533043c4fffe1d0",
+      "dimensions": [
+        1280,
+        2687
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "after",
+      "page": "repo-en",
+      "route": "/example/repo",
+      "file": "after-repo-en.png",
+      "sha256": "8b6d903449ea36a4996ea945abe1325ea8ca564b548b96d97aee3e07bdc8083c",
+      "dimensions": [
+        1280,
+        2560
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "after",
+      "page": "repo-ja",
+      "route": "/ja/example/repo",
+      "file": "after-repo-ja.png",
+      "sha256": "647865be66e6a58b7ff97fcb6ea11ec5da2f7e4fa14aa8f89b12ef959b05ba51",
+      "dimensions": [
+        1280,
+        2542
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "before",
+      "page": "home-en",
+      "route": "/",
+      "file": "before-home-en.png",
+      "sha256": "f12e516267bd4e610db39b5d925b217d7d173472155cf5729eca7f97877e6b5b",
+      "dimensions": [
+        1280,
+        2039
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "before",
+      "page": "home-ja",
+      "route": "/ja",
+      "file": "before-home-ja.png",
+      "sha256": "b9e79da1c83f163ea881330269092aa9bb37e2a81198fce5ac50046695e2821b",
+      "dimensions": [
+        1280,
+        1649
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "before",
+      "page": "ranking-en",
+      "route": "/rankings/2026/07",
+      "file": "before-ranking-en.png",
+      "sha256": "cdfa3557f39965b0f5c82e9744bf7a6df70aae80d5fc0da17a0d7a92e0070b04",
+      "dimensions": [
+        1280,
+        2781
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "before",
+      "page": "ranking-ja",
+      "route": "/ja/rankings/2026/07",
+      "file": "before-ranking-ja.png",
+      "sha256": "d3325ab3d5b8e758533ff4a5852aec907b3c30f2a91a975d42ed287b89d9b00c",
+      "dimensions": [
+        1280,
+        2687
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "before",
+      "page": "repo-en",
+      "route": "/example/repo",
+      "file": "before-repo-en.png",
+      "sha256": "8b6d903449ea36a4996ea945abe1325ea8ca564b548b96d97aee3e07bdc8083c",
+      "dimensions": [
+        1280,
+        2560
+      ],
+      "pageScriptErrors": 0
+    },
+    {
+      "phase": "before",
+      "page": "repo-ja",
+      "route": "/ja/example/repo",
+      "file": "before-repo-ja.png",
+      "sha256": "22cd52935107faa3d9716d7ec67058a0ebfa0f51c2bd3874ce913f2f0002d0b0",
+      "dimensions": [
+        1280,
+        2542
+      ],
+      "pageScriptErrors": 0
+    }
+  ]
+}
