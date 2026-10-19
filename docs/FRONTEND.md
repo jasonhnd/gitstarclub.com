@@ -13,7 +13,14 @@ source_of_truth_for:
 
 > **Frontend implementation source of truth** — lands [REQUIREMENTS](./REQUIREMENTS.md) (what to do), [ARCHITECTURE](./ARCHITECTURE.md) (page layering / ISR / cadence), [DATA-CONTRACTS](./DATA-CONTRACTS.md) (consumed JSON view schema), [DESIGN-SYSTEM](./DESIGN-SYSTEM.md) (M3E token / components / motion) onto this `web/` **Next.js 16 App Router** application's **rendering config / data consumption / components / i18n**. The route and source-file inventory is maintained only in [UIUX-ROUTE-INVENTORY.md](./UIUX-ROUTE-INVENTORY.md).
 > SEO metadata / sitemap / canonical details are in [SEO.md](./SEO.md); Route Handler and public JSON endpoint contracts are in [API.md](./API.md); Object-storage layout / environment variables / deployment topology are in [OPS.md](./OPS.md).
-> Technical facts are based on **Next.js 16.3.8 · React 19.2.4 · TypeScript 6 · Tailwind 4 · Zod 4 · package manager bun 1.3.14** (see `web/package.json` and the root `package.json`).
+> Technical facts are based on **Next.js 16.4.2 · React 19.3.0 · TypeScript 6 · Tailwind 4 · Zod 4 · package manager bun 1.3.14** (see `web/package.json` and the root `package.json`).
+
+The 16.4 upgrade keeps the existing App Router rendering and revalidation model.
+Cache Components and Partial Prefetching remain opt-in and are not enabled in
+`next.config.ts`. The application retains `next/font/google`, `proxy.ts`, async
+route parameters, and its existing ISR intervals. OpenNext Cloudflare stays at
+the locked 1.20.7 version, whose Next peer range accepts 16.4.2. See the
+[upgrade plan](../plans/672-next-16-4-2.md) for compatibility review and scope.
 
 ---
 
