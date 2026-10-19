@@ -23,6 +23,7 @@ Data operations layers:
 - **Daily / weekly live cron**—see §Cron schedule.
 - **History / metadata / canonical full refresh (managed refresh)**—see §Managed refresh runbook (step names see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)).
 - **Historical BigQuery + DuckDB bootstrap backfill**—extraction retired 2026-10-19; see the archived One-time bootstrap Runbook and [Raw backfill data](#raw-backfill-data).
+- **Raw backfill archive**—private R2 `gitstarclub-raw` only; see [Raw backfill data](#raw-backfill-data) for inventory, checksums, and the GCP retirement record.
 
 ## Current hosting and branch topology
 
@@ -654,7 +655,7 @@ Require all 22 checksum lines to report `OK`. Compare the listing to the table: 
 
 > **Historical recipe; BigQuery / GH Archive extraction retired on 2026-10-19.** Do not run the extraction commands below. GSC_0045 measured only about 4% capture against GitHub's own star-history proxy in a 40-repository 2026 sample (12,761 / 342,659, about 3.7%; not a population-weighted site estimate). GitHub's own star history is the replacement source under owner decision d1019-001344-1. Collection, rebuild, validation, and publication require separate authorization. The frozen published net series stays. See [Raw backfill data](#raw-backfill-data) for the R2 archive and GCP deletion/recovery record. The following text preserves the original one-off bootstrap design. After the artifacts are uploaded, the host's live routes and managed refresh take over. Production data uses R2 after the accepted 2026-10-04 cutover. The production caller is unverified. Routine operations are **0 local dependencies · 0 GCP**.
 
-The original one-time backfill used **BigQuery** (historical GCP credentials and an approximately $10 cost estimate, including a stable repo.id). Free alternatives (the ClickHouse public instance, self-hosted ingestion) were all judged infeasible after evaluation; see ARCHITECTURE "Why backfill uses BigQuery".
+The original one-time backfill used **BigQuery** (historical GCP credentials and an approximately $10 cost estimate, including a stable repo.id). Free alternatives (the ClickHouse public instance, self-hosted ingestion) were all judged infeasible after evaluation; see [ARCHITECTURE historical bootstrap rationale](./ARCHITECTURE.md#historical-bigquery-bootstrap-rationale-retired-2026-10-19).
 
 **Historical prerequisites (retired extraction; do not provision GCP credentials)**: GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` + `GCP_PROJECT_ID`) · GitHub PAT (`GITHUB_TOKEN`) · Blob token (`BLOB_READ_WRITE_TOKEN`) only for the retained Blob path. The R2 path uses a bucket-scoped key in the uncommitted pipeline env file (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) plus `R2_BUCKET_PRE` or `R2_BUCKET_PROD`. Run it on a local machine / a full Node environment. See [R2-CUTOVER.md](./R2-CUTOVER.md).
 
