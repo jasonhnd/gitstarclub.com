@@ -175,6 +175,30 @@ schemas. The later publisher must propagate it to its own metadata and prevent
 overwriting existing measured dates. Neither that publisher nor a UI change is
 part of this card. `local_only: true` is not permission to upload.
 
+## Final run (2026-10-19)
+
+The retained `summary.json` and `inputs/manifest.json` under the output directory
+record a finished sweep of **5,249 repositories**: **5,243 complete** and **6
+`not_found_or_inaccessible`**. Daily coverage is **650,132 of 650,876
+repository-days**, leaving **744 missing repository-days**. The export contains
+**89,131 complete ISO week rows** and **10,486 partial week rows**.
+
+The six unavailable repositories are:
+
+- `segment-boneyard/nightmare` (repository id `18477927`)
+- `kitao/pyxel` (repository id `136780445`)
+- `GrowingGit/GitHub-Chinese-Top-Charts` (repository id `206462776`)
+- `imarvinle/awesome-cs-books` (repository id `304766583`)
+- `cheahjs/free-llm-api-resources` (repository id `824301644`)
+- `Max-Eee/NeoPass` (repository id `888887358`)
+
+The SHA-256 of `inputs/manifest.json` is
+`b9015837a501fa732192f3d43d27114a8f6ef46f627a9c68569d4a0b3fff0f49`.
+A finished sweep does not imply complete coverage: these six repositories remain
+missing, their daily counts are unknown, and the full-whitelist survivor total
+remains null. Partial week rows retain the separate edge-week policy above.
+These are local gap inputs; this run did not publish them.
+
 ## Run, resume and inspect
 
 Use AGENTS.md's archive-verified Node 24.20.0 and Bun 1.4.2 bootstrap and
