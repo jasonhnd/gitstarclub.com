@@ -5,9 +5,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-export function expectedBunVersion(packageManager) {
+export function expectedBunVersion(packageManager, webPackageManager = packageManager) {
   const match = /^bun@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(packageManager.trim());
   if (!match) throw new Error(`root packageManager must pin Bun exactly; received ${JSON.stringify(packageManager)}`);
+  if (webPackageManager.trim() !== packageManager.trim()) {
+    throw new Error(`web packageManager must match root ${packageManager.trim()}; received ${JSON.stringify(webPackageManager)}`);
+  }
   return match[1];
 }
 
@@ -27,7 +30,8 @@ export function assertRuntimeVersions({ expectedNodeMajor, actualNodeVersion, ex
 export function verifyRepositoryRuntimeVersions(root = repoRoot) {
   const expectedNodeMajor = readFileSync(resolve(root, ".node-version"), "utf8").trim();
   const rootPackage = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
-  const expectedBun = expectedBunVersion(rootPackage.packageManager ?? "");
+  const webPackage = JSON.parse(readFileSync(resolve(root, "web/package.json"), "utf8"));
+  const expectedBun = expectedBunVersion(rootPackage.packageManager ?? "", webPackage.packageManager ?? "");
   const actualNodeVersion = process.version;
   const actualBun = execFileSync("bun", ["--version"], { encoding: "utf8" }).trim();
   return assertRuntimeVersions({ expectedNodeMajor, actualNodeVersion, expectedBun, actualBun });
