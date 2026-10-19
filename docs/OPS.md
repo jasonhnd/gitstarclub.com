@@ -1,7 +1,7 @@
 ---
 owner: operations
 status: active
-last_reviewed: 2026-10-13
+last_reviewed: 2026-10-19
 source_of_truth_for:
   - branch topology
   - staging and promotion
@@ -247,6 +247,7 @@ Platform and development-tool variables also belong to the maintained inventory;
 | `CI` | CI | Enables CI-only timeouts, output, and security gates |
 | `PORT` | Local tooling | Port the local fixture/dev server listens on |
 | `PATH` | Local tooling / offline pipeline tests | Locates pinned Node/Bun for offline pipeline tests and the local R2 rehearsal; forwarded into otherwise clean child environments, never a Worker binding |
+| `KANBAN_TMP` | Local preview-gap rehearsal tools only | Required card-local temporary directory; preparation outputs must be in a child directory and fold-proof output must remain beneath it. Set it to the same excluded card path as `TMPDIR`; never a Worker binding or secret |
 | `BACKFILL_FIXTURE_CONFIG` | Offline pipeline tests only | Disposable synthetic transport configuration; never a production setting |
 | `BACKFILL_FIXTURE_TRACE` | Offline pipeline tests only | Local JSONL request trace written by the subprocess network interceptor |
 | `BACKFILL_FIXTURE_REMOTE` | Offline pipeline tests only | Disposable file backing synthetic R2 responses; never a bucket or credential file |
