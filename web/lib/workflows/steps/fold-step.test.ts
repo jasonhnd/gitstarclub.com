@@ -337,6 +337,45 @@ describe("runFoldStep windows", () => {
     });
   });
 
+  test("September bootstrap through W40 needs no pending on the first October refresh", async () => {
+    for (const day of ["2026-10-01", "2026-10-19", "2026-10-31"]) {
+      const io = memoryFoldIo();
+      io.meta = {
+        seam_date: "2026-10-01", schema_ver: 1,
+        folded_through: { month: "2026-09", week: "2026-W40" },
+        generated_at: "2026-10-19T00:00:00.000Z",
+      };
+      io.readPending = async (month) => {
+        io.pendingReads.push(month);
+        throw new Error(`unexpected pending read: ${month}`);
+      };
+      const before = structuredClone(io.meta);
+      expect(await foldCanonical("refresh-preview-gap", 1, {
+        io, now: new Date(`${day}T06:00:00.000Z`), relaxMissingFrozenPending: false,
+      })).toEqual({ folded: [], foldedWeeks: [] });
+      expect(io.pendingReads).toEqual([]);
+      expect(io.monthlyReads).toEqual([]);
+      expect(io.weeklyReads).toEqual([]);
+      expect(io.meta).toEqual(before);
+      expect(io.decision?.reason).toBe("no_closed_month");
+    }
+  });
+
+  test("September bootstrap stamped W39 still fails closed without September pending", async () => {
+    const io = memoryFoldIo();
+    io.meta = {
+      seam_date: "2026-10-01", schema_ver: 1,
+      folded_through: { month: "2026-09", week: "2026-W39" },
+      generated_at: "2026-10-19T00:00:00.000Z",
+    };
+    await expect(foldCanonical("refresh-preview-gap", 1, {
+      io, now: new Date("2026-10-19T06:00:00.000Z"), relaxMissingFrozenPending: false,
+    })).rejects.toThrow("canonical/v2/pending: missing required frozen period(s) 2026-09");
+    expect(io.pendingReads).toEqual(["2026-09"]);
+    expect(io.monthlyReads).toEqual([]);
+    expect(io.weeklyReads).toEqual([]);
+  });
+
   test("first hop with a current-month watermark and remaining weeks writes week_only", async () => {
     const io = memoryFoldIo();
     io.meta = {
