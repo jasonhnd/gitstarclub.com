@@ -116,6 +116,7 @@ test("unavailable states are checkpointed and retried only on explicit retry; ma
   expect(calls).toBe(1);
   const summary = summarize(out, [member]);
   expect(summary).toMatchObject({ complete: false, verified_repositories: 0, verified_repo_days: 0,
+    verified_surviving_stars: null,
     comparison: { matched_graphql_total: null, matched_reference_total: null } });
   client.request = async () => response(node([edge("a", "bad")]));
   const retry = await fetchRepository({ out, member, client, retryUnavailable: true });
