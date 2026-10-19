@@ -17,6 +17,9 @@ const allowedDocStatuses = new Set([
 ]);
 const ignoredDirs = new Set([
   ".git",
+  ".kanban-work",
+  ".cloudflare",
+  ".vinext",
   ".next",
   "coverage",
   "dist",

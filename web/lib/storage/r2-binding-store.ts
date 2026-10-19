@@ -1,4 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { workerBindings } from "../workers-host/runtime-env";
 import { ObjectStorePreconditionFailedError } from "./errors";
 import type {
   ObjectGetResult,
@@ -94,8 +94,7 @@ export function setDataBindingReaderForTests(reader: (() => unknown) | undefined
 
 function readCloudflareDataBinding(): unknown {
   if (dataBindingReaderForTests !== undefined) return dataBindingReaderForTests();
-  const { env } = getCloudflareContext();
-  return (env as { DATA?: unknown }).DATA;
+  return workerBindings().DATA;
 }
 
 /** Live Worker `DATA` binding. Throws a clear error when the binding is absent. */

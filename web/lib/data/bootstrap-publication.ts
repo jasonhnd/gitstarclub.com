@@ -1,3 +1,4 @@
+import { publicationScope } from "../workers-host/publication-fence";
 import { BootstrapPublicationPointer, type BootstrapPublicationPointer as BootstrapPointer } from "@/lib/contracts";
 import {
   readCachedBootstrapPointer,
@@ -121,6 +122,8 @@ function cachedValue(entry: CachedBootstrapPointer): BootstrapPointer | null {
 export async function readBootstrapPublicationPointer(
   options: PointerReadOptions = {},
 ): Promise<BootstrapPointer | null> {
+  const captured = publicationScope.getStore();
+  if (captured) return captured.bootstrap;
   const blobBase = requirePublicReadBase();
   if (options.published) {
     const cached = await readCachedBootstrapPointer(() => fetchPointerFromOrigin(blobBase, options));

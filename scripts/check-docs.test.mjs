@@ -58,7 +58,7 @@ describe("documentation consistency gate", () => {
       "docs/SEO.md": "Next.js 99.0.0",
       "docs/UIUX-ROUTE-INVENTORY.md": "---\nowner: route and source inventory\n---\n",
       "docs/API.md": apiSources.join("\n"),
-      "README.md": "Cloudflare R2 (production still reads Vercel Blob until cutover; see docs)",
+      "README.md": "Cloudflare R2 (production cutover accepted 2026-10-04; see docs)",
       "docs/OPS.md": "Local environment: `web/.env.local`",
       "docs/WORKFLOW.md": "verify / static, verify / production-build; preview-e2e is optional",
     };
@@ -86,7 +86,7 @@ describe("documentation consistency gate", () => {
         "docs/SEO.md: expected Next.js 99.0.0",
         "route/source inventory must have exactly one owner; found: none",
         ...apiSources.map((source) => `docs/API.md: endpoint inventory is missing ${source}`),
-        "README.md: storage must be Cloudflare R2, with production still reading Vercel Blob until cutover",
+        "README.md: storage must record the accepted production R2 cutover",
         "docs/OPS.md: local env location must be web/.env.local",
         "docs/OPS.md: root .env is not loaded by the web scripts",
         "docs/WORKFLOW.md: merge gates must state GitHub required checks are static + production-build",

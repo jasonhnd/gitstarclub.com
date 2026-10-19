@@ -166,7 +166,7 @@ infer a live scheduler from `web/vercel.json`.
 Runs exactly one managed-refresh step, then enqueues the next. The HTTP chain
 can call it. The configured consumers are production queue `gitstarclub-jobs`
 on Worker `gitstarclub-web` and preview queue `gitstarclub-jobs-pre` on Worker
-`gitstarclub-web-pre` (wrangler env `pre`). Both Workers set
+`gitstarclub-web-pre` (Vite mode `pre`). Both Workers set
 `WORKFLOW_RUNTIME=cf-queue`. The Worker queue handler has no non-production
 gate, and `web/lib/workflows/runtime/resolve.ts`
 selects the queue runtime whenever that variable is `cf-queue`. It is not a
@@ -359,7 +359,7 @@ configured Cloudflare preview origin.
 | Success | `200 application/json` |
 | Cache | `Cache-Control: no-store, max-age=0`; `dynamic = "force-dynamic"` |
 | Source | `web/app/.well-known/deployment/route.ts`, `web/lib/deployment-identity.ts`, `web/lib/deployment-commit.ts`; Worker intercept on `workers/gitstarclub-web` |
-| Platform inputs | The SHA baked by `cf:build` is the reported commit when it exists, including when `VERCEL_GIT_COMMIT_SHA` or `CF_PREVIEW_COMMIT_SHA` names a different commit. Those runtime values are used only when no SHA was baked. `commitSha` is `null` only when there is no baked SHA and both runtime SHA values are absent or blank. `VERCEL_URL` and `HOSTING_TARGET` still choose the URL and the CF fields. Tracked changes append `-dirty` to the baked SHA; untracked files do not. |
+| Platform inputs | The SHA baked by `Vite build` is the reported commit when it exists, including when `VERCEL_GIT_COMMIT_SHA` or `CF_PREVIEW_COMMIT_SHA` names a different commit. Those runtime values are used only when no SHA was baked. `commitSha` is `null` only when there is no baked SHA and both runtime SHA values are absent or blank. `VERCEL_URL` and `HOSTING_TARGET` still choose the URL and the CF fields. Tracked changes append `-dirty` to the baked SHA; untracked files do not. |
 
 ```json
 {

@@ -17,7 +17,7 @@ export const CRON_REFRESH_ALIASES = Object.freeze([CRON_REFRESH, CRON_REFRESH_NU
 
 /** Public production origin. Never use this as a preview fallback. */
 export const PRODUCTION_CRON_ORIGIN = "https://gitstarclub.com";
-/** Preview origin. Set on wrangler env `pre`, not on production. */
+/** Preview origin. Set on typed config env `pre`, not on production. */
 export const PREVIEW_CRON_ORIGIN = "https://pre.gitstarclub.com";
 
 export const CLOSED_PRODUCTION_WORKERS_DEV_ORIGIN = "https://gitstarclub-web.worldgo.workers.dev";

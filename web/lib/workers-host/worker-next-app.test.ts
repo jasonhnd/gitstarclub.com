@@ -12,13 +12,13 @@ type ForwardedCall = {
 
 const forwarded: ForwardedCall[] = [];
 
-mock.module("../../.open-next/worker.js", () => ({
+mock.module("vinext/server/fetch-handler", () => ({
   default: {
     fetch(request: Request, env: WorkerEnv, ctx: WaitUntilContext): Response {
       const pending = Promise.resolve("forwarded");
       forwarded.push({ request, env, ctx, pending });
       ctx.waitUntil(pending);
-      return new Response("open-next", { status: 204 });
+      return new Response("vinext", { status: 204 });
     },
   },
 }));
@@ -33,7 +33,7 @@ const { handleNextRequest } = (await import(nextAppSpecifier)) as {
 };
 
 describe("handleNextRequest", () => {
-  test("forwards the same request, env, and waitUntil context to the OpenNext worker", async () => {
+  test("forwards the same request, env, and waitUntil context to the vinext worker", async () => {
     const request = new Request("https://gitstarclub.com/pulse");
     const env = { JOBS: { send: async () => undefined }, MEDIA: null, CRON_SECRET: "cron" } as WorkerEnv;
     const received: Promise<unknown>[] = [];
@@ -46,7 +46,7 @@ describe("handleNextRequest", () => {
     const response = await handleNextRequest(request, env, ctx);
 
     expect(response.status).toBe(204);
-    expect(await response.text()).toBe("open-next");
+    expect(await response.text()).toBe("vinext");
     expect(forwarded).toHaveLength(1);
     expect(forwarded[0].request).toBe(request);
     expect(forwarded[0].env).toBe(env);

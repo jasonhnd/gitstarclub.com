@@ -18,7 +18,7 @@ This document is the owning document for GitStarClub's GEO strategy: how the exi
 
 GEO complements [SEO.md](./SEO.md). SEO owns crawlability, canonical URLs, metadata, sitemap, robots policy, and internal links. GEO owns answer-engine citation tactics layered on top of those surfaces: answer capsules, FAQ blocks, dataset schema, AI crawler hygiene, freshness signals, entity authority, and measurement.
 
-Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only precomputed JSON, and implementation stays deterministic. The host is Cloudflare Workers through OpenNext. Production JSON comes from R2 after the accepted 2026-10-04 cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
+Hard constraints still apply: no runtime AI or LLM calls, content bodies stay server-rendered with zero client JavaScript, pages and metadata read only precomputed JSON, and implementation stays deterministic. The source host targets Cloudflare Workers through vinext; live activation requires separate authorization. Production JSON comes from R2 after the accepted 2026-10-04 cutover; see [R2-CUTOVER.md](./R2-CUTOVER.md).
 
 Operational appendices: [geo/queries.md](./geo/queries.md) is the active target-query registry and citation-review worksheet; [geo/ai-log-reporting.md](./geo/ai-log-reporting.md) is the aggregate log-report runbook. The report script accepts the Vercel log-drain field shape as parser compatibility only. It does not parse Cloudflare Worker logs. Current Cloudflare aggregate measurement is pending an input adapter and evidence. This document remains the source of truth for GEO strategy, metrics, and measurement intent.
 
@@ -661,7 +661,7 @@ Bing Webmaster verification steps:
 1. Add `https://gitstarclub.com` in Bing Webmaster Tools.
 2. Preferred repo-free option: import verification from the already verified Google Search Console property, or use DNS verification in Cloudflare.
 3. Repo-hosted file option: download Bing's verification XML file and commit it under `web/public/` so it is served from the site root. No Bing XML verification file is currently checked in.
-4. Meta-tag option: set `BING_SITE_VERIFICATION` to the Bing `msvalidate.01` token in the shell that runs the Cloudflare production build. `web/scripts/cf-opennext-build.ts` inherits that shell environment and passes it into the OpenNext build. `web/app/_shell/RootShell.tsx` reads the variable while metadata is built and emits `<meta name="msvalidate.01" content="...">` only when it is set. After the build, confirm that tag in the generated HTML. Setting the variable on a Vercel project does not change Cloudflare output.
+4. Meta-tag option: set `BING_SITE_VERIFICATION` to the Bing `msvalidate.01` token in the shell that runs the Cloudflare production build. `web/vite.config.ts` inherits that shell environment and passes it into the vinext build. `web/app/_shell/RootShell.tsx` reads the variable while metadata is built and emits `<meta name="msvalidate.01" content="...">` only when it is set. After the build, confirm that tag in the generated HTML. Setting the variable on a Vercel project does not change Cloudflare output.
 5. After verification, submit `https://gitstarclub.com/sitemap.xml` in Bing Webmaster Tools.
 
 IndexNow runtime configuration:

@@ -9,6 +9,10 @@ source_of_truth_for:
 
 # vinext core snapshots and long-tail cache design
 
+The prototype report below is historical feasibility evidence. GSC_0075 implements
+the source host described in [VINEXT-HOST.md](../VINEXT-HOST.md); the report does
+not claim deployment or replace exact-head migration verification.
+
 This is GSC_0074 / [issue #674](https://github.com/jasonhnd/gitstarclub.com/issues/674),
 the local proof following GSC_0065. It is a migration design and evidence record;
 the deployed site still uses the architecture described in [ARCHITECTURE.md](../ARCHITECTURE.md).

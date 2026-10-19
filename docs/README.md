@@ -14,6 +14,9 @@ A browsable history of GitHub open-source activity. The site is fully static-rea
 
 This page is the navigation index for `docs/`. For a project overview, start at [../README.md](../README.md). For what shipped when, see [CHANGELOG.md](./CHANGELOG.md). For what isn't built yet, see [ROADMAP.md](./ROADMAP.md).
 
+For the vinext source host, pinned toolchain, publication fence and local verification,
+see [VINEXT-HOST.md](VINEXT-HOST.md). No live deployment is implied.
+
 ## Analytics
 
 The application has no analytics provider or analytics scripts. Privacy copy in all seven locales describes this behavior and the essential language-preference cookie. Google Analytics and other third-party tracking scripts stay unsupported.

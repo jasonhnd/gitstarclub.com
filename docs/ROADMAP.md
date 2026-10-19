@@ -46,7 +46,7 @@ From [README.md](../README.md) and [ARCHITECTURE.md](./ARCHITECTURE.md):
 - Zero runtime engine in the request path (no DuckDB / ClickHouse / Postgres / vector index in the serving image).
 - Zero runtime database. Read-side state is versioned JSON views in R2 behind a publish pointer.
 - Static content pages. Near-zero client JavaScript on content surfaces. Named exceptions stay in [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md).
-- Cloudflare Workers hosting through OpenNext. Production JSON uses R2 after the accepted 2026-10-04 cutover recorded in [R2-CUTOVER.md](./R2-CUTOVER.md). Do not add a second runtime database or a request-path engine. Analytics stay off on this host unless a later issue turns a provider on in code.
+- Cloudflare Workers hosting through vinext. Production JSON uses R2 after the accepted 2026-10-04 cutover recorded in [R2-CUTOVER.md](./R2-CUTOVER.md). Do not add a second runtime database or a request-path engine. Analytics stay off on this host unless a later issue turns a provider on in code.
 - AI-free product copy. No LLM-generated summaries or classifications at request time.
 
 A proposal that cannot pass this list is vetoed. It is not a Track A ticket, not a Track C POC, and not a feature PR.

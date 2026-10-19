@@ -136,7 +136,7 @@ describe("Worker shell security headers", () => {
     expect(await health.json()).toEqual({
       ok: true,
       target: "cf",
-      hosting: "opennext",
+      hosting: "vinext",
       observability: true,
     });
     expectSecurityHeaders(health);
