@@ -349,7 +349,7 @@ export function summarize(out, members) {
   return {
     version: VERSION, metric: METRIC, start: START, end_exclusive: END, generated_at: new Date().toISOString(),
     repositories: members.length, statuses, verified_repositories: complete.length, verified_repo_days: complete.length * 124,
-    verified_surviving_stars: complete.reduce((sum, { result }) => sum + result.total, 0),
+    verified_surviving_stars: complete.length ? complete.reduce((sum, { result }) => sum + result.total, 0) : null,
     complete: complete.length === members.length,
     measurements: records.map(({ member, result }) => ({ repo_id: member.id, status: result?.status ?? "pending", pages: result?.pages ?? 0 })),
     comparison: {
