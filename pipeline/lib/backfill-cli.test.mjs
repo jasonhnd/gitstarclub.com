@@ -177,6 +177,22 @@ describe("steps 01 through 03 offline entry points", () => {
     expect(value.trace()).toEqual([]);
   });
 
+  test("02 renders only the requested create-only gap with either argument style", () => {
+    const value = fixture();
+    const destination = "gitstarclub.star_daily_gross_gap_260530_260930_20261019";
+    const spaced = succeeds(value.run("02-extract.mjs", [
+      "--start-suffix", "260530", "--cutoff-suffix", "260930", "--destination", destination, "--create-only",
+    ]));
+    expect(succeeds(value.run("02-extract.mjs", [
+      "--start-suffix=260530", "--cutoff-suffix=260930", `--destination=${destination}`, "--create-only",
+    ]))).toBe(spaced);
+    expect(spaced).toContain(`CREATE TABLE \`${destination}\``);
+    expect(spaced).toContain("BETWEEN '260530' AND '260930'");
+    fails(value.run("02-extract.mjs", ["--start-suffix"]), "--start-suffix requires a value");
+    fails(value.run("02-extract.mjs", ["--start-suffix", "--create-only"]), "--start-suffix requires a value");
+    expect(value.trace()).toEqual([]);
+  });
+
   test("03 uses GraphQL metadata over stale Search names and star counts", () => {
     const value = fixture();
     value.configure({ github: true });
@@ -231,6 +247,19 @@ describe("local DuckDB rollup, precompute, and publication commands", () => {
     cpSync(baseline.data, value.data, { recursive: true });
     return value;
   }
+
+  test("07 retains inactive historical repositories when reusing a metadata snapshot", () => {
+    const value = localFixture();
+    const repos = value.readData("repos.json");
+    repos[1].active = false;
+    value.writeData("repos.json", repos);
+    succeeds(value.run("07-export-v2.mjs", ["--generation", GENERATION, "--stage-only", "--no-upload"]));
+    expect(value.readData("v2/canonical/v2/repos/6.json")["11730342"]).toMatchObject({
+      id: 11730342, active: false, current_stars: 60000,
+    });
+    expect(value.readData("v2/canonical/v2/repos/4.json")["132750724"].active).toBe(true);
+    expect(value.trace()).toEqual([]);
+  });
 
   test("04 preserves gross facts and records the first threshold-crossing dates", async () => {
     expect(rollupOutput).toContain("milestones for 3 repos merged");
