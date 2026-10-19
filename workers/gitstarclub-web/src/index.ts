@@ -24,7 +24,7 @@ export default {
       if (isWorkerShellRequest(url.pathname, request.method)) return headers(await handleShellFetch(request, env), "BYPASS", true);
       emitRunLog({ event: "host.vinext", path: url.pathname, method: request.method });
       // Local unit tests can delegate without platform bindings; real cache factories fail closed.
-      if (!env.GSC_CACHE) return headers(await handleNextRequest(request, env, ctx), "BYPASS", true);
+      if (!env.GSC_CACHE) return headers(await handleNextRequest(request, env, ctx), "BYPASS", bypassPageCache(request));
       if (!env.DATA) return new Response("Publication binding unavailable", { status: 503 });
       const bucket = env.DATA;
       const checkPublication = () => publicationFromBucket(bucket);

@@ -112,5 +112,6 @@ export class ArtifactStore {
 
 export function cacheValue(data: IncrementalCacheValue | null, ctx: Record<string, unknown>, fence: string, tags: string[]): StoredEntry {
   return { v: 1, lastModified: Date.now(), value: data, fence, tags,
-    ...(ctx.cacheControl ? { cacheControl: ctx.cacheControl as CacheHandlerValue["cacheControl"] } : {}) };
+    ...(ctx.cacheControl ? { cacheControl: ctx.cacheControl as CacheHandlerValue["cacheControl"] }
+      : typeof ctx.revalidate === "number" ? { cacheControl: { revalidate: ctx.revalidate } } : {}) };
 }
