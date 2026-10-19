@@ -31,6 +31,7 @@ const server = Bun.serve({
       body.description = "Published fixture repository";
     }
     if (match?.[1] === "run-b" && match[2] === "lookup/repos.json") body["1"].current_stars = 200;
+    if (match?.[1] === "run-b" && match[2] === "meta.json") body.generated_at = "2026-10-19T00:00:00.000Z";
     return Response.json(body, { headers: { "Cache-Control": "no-store" } });
   },
 });

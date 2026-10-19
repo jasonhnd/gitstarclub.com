@@ -16,6 +16,7 @@ export default {
       for (const { key, value } of securityHeaders) result.headers.set(key, value);
       if (bypass) result.headers.set("Cache-Control", "private, no-store");
       if (state.revalidate !== undefined) result.headers.set("x-spike-revalidate", String(state.revalidate));
+      if (state.cachedAt !== undefined) result.headers.set("x-spike-cached-at", String(state.cachedAt));
       result.headers.set("x-gsc-cache", state.status);
       result.headers.set("x-spike-layer", state.layer ?? "none");
       result.headers.set("x-spike-now", String(proofNow()));
