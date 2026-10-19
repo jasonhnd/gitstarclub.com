@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { parseWranglerJsonc } from "../../../scripts/cf-ci-gates.mjs";
+import { hostWorker } from "../../cloudflare.config";
 import {
   CRON_DAILY,
   CRON_DAILY_PATH,
@@ -85,14 +83,10 @@ afterEach(() => {
 });
 
 describe("paused and empty CF crons", () => {
-  test("production and preview wrangler cron lists stay empty while the intended map remains", () => {
-    const wranglerPath = resolve(import.meta.dir, "../../../workers/gitstarclub-web/wrangler.jsonc");
-    const wrangler = parseWranglerJsonc(readFileSync(wranglerPath, "utf8")) as {
-      triggers?: { crons?: string[] };
-      env?: { pre?: { triggers?: { crons?: string[] } } };
-    };
-    expect(wrangler.triggers?.crons).toEqual([]);
-    expect(wrangler.env?.pre?.triggers?.crons).toEqual([]);
+  test("production and preview schedules stay empty while the intended map remains", () => {
+    for (const mode of ["production", "pre"]) {
+      expect(hostWorker(mode).triggers.every((trigger) => trigger.type === "queue")).toBe(true);
+    }
     expect([...PREVIEW_CRON_TRIGGERS]).toEqual([CRON_DAILY, CRON_WEEKLY, CRON_REFRESH]);
     expect(PREVIEW_CRON_TRIGGERS.map((cron) => planCronDispatch(cron))).toEqual([
       { kind: "daily", path: CRON_DAILY_PATH },
@@ -152,7 +146,7 @@ describe("shell fetch routing", () => {
     expect(await health.json()).toEqual({
       ok: true,
       target: "cf",
-      hosting: "opennext",
+      hosting: "vinext",
       observability: true,
     });
 
@@ -294,7 +288,7 @@ describe("Worker entry fetch, scheduled, and queue", () => {
     const env = makeEnv();
     const health = await worker.fetch(shellRequest("/preview/health"), env, ctx);
     expect(health.status).toBe(200);
-    expect(await health.json()).toMatchObject({ ok: true, hosting: "opennext" });
+    expect(await health.json()).toMatchObject({ ok: true, hosting: "vinext" });
     expect(nextCalls).toEqual([]);
     expect(received).toEqual([]);
 

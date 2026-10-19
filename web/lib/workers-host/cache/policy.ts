@@ -24,8 +24,28 @@ export function bypassPageCache(request: Request): boolean {
 /** Match the framework's concrete page plus every ancestor layout tag. */
 export function pathTags(path: string): string[] {
   const parts = path.split("/").filter(Boolean);
-  return [...new Set(["_N_T_/layout", `_N_T_${path}`, `_N_T_${path === "/" ? "" : path}/page`,
-    ...parts.map((_, i) => `_N_T_/${parts.slice(0, i + 1).join("/")}/layout`)])];
+  const localized = LOCALES.includes(parts[0] as typeof LOCALES[number]) && parts[0] !== "en";
+  const segments = localized ? parts.slice(1) : parts.slice();
+  if (segments[0] === "rankings") {
+    if (segments[1]) segments[1] = "[year]";
+    if (segments[2]) segments[2] = "[period]";
+  } else if (segments[0] === "categories") {
+    if (segments[1]) segments[1] = "[dimension]";
+    if (segments[2]) segments[2] = "[slug]";
+    if (segments[4]) segments[4] = "[page]";
+  } else if (segments[0] === "o" && segments[1]) {
+    if (segments[1] === "page") segments[2] = "[page]";
+    else segments[1] = "[login]";
+  } else if (isLongTail(path)) {
+    segments[0] = localized ? "[owner]" : "[locale]";
+    segments[1] = localized ? "[name]" : "[owner]";
+  }
+  const route = localized ? ["(localized)", "[locale]", ...segments] : ["(en)", ...segments];
+  const tags = [path, "_N_T_/layout", `_N_T_${path}`, `_N_T_${path === "/" ? "" : path}/page`,
+    ...parts.map((_, i) => `_N_T_/${parts.slice(0, i + 1).join("/")}/layout`),
+    ...route.map((_, i) => `_N_T_/${route.slice(0, i + 1).join("/")}/layout`),
+    `_N_T_/${route.join("/")}/page`];
+  return [...new Set(tags)].map((tag) => tag.replace(/[^\t\x20-\x7e]+/g, (run) => encodeURIComponent(run)));
 }
 
 export function boundedTags(tags: unknown): string[] {
