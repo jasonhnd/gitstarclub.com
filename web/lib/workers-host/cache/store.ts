@@ -105,7 +105,10 @@ export class ArtifactStore {
         }
       })();
       writes.set(key, record);
-      try { await record.pending; } finally { if (writes.get(key) === record) writes.delete(key); }
+      try { await record.pending; } finally {
+        // Retain the completion time briefly so a subsequent call also respects the per-key rate.
+        setTimeout(() => { if (writes.get(key) === record) writes.delete(key); }, 1100).unref?.();
+      }
     }
   }
 }

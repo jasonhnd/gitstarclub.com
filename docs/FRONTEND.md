@@ -15,12 +15,13 @@ source_of_truth_for:
 > SEO metadata / sitemap / canonical details are in [SEO.md](./SEO.md); Route Handler and public JSON endpoint contracts are in [API.md](./API.md); Object-storage layout / environment variables / deployment topology are in [OPS.md](./OPS.md).
 > Technical facts are based on **Next.js 16.4.2 · React 19.3.1 · TypeScript 6 · Tailwind 4 · Zod 4 · package manager bun 1.4.2** (see `web/package.json` and the root `package.json`).
 
-The 16.4 upgrade keeps the existing App Router rendering and revalidation model.
-Cache Components and Partial Prefetching remain opt-in and are not enabled in
-`next.config.ts`. The application retains `next/font/google`, `proxy.ts`, async
-route parameters, and its existing ISR intervals. OpenNext Cloudflare stays at
-the locked 1.20.7 version, whose Next peer range accepts 16.4.2. See the
-[upgrade plan](../plans/672-next-16-4-2.md) for compatibility review and scope.
+The application keeps Next 16 APIs with vinext 1.2.1 on Vite 8.3.0. Next 16.4.2
+remains for compatible types and linting. React runtime packages all match
+19.3.1. Cache Components and Partial Prefetching stay disabled. The existing
+`next/font/google` declarations produce local fonts under the unchanged CSP;
+`proxy.ts`, async parameters, `/api/lang` and seven locales remain intact.
+The host uses bounded build snapshots plus publication-fenced Cache API/KV,
+with explicit seven-day tail freshness. See [VINEXT-HOST.md](VINEXT-HOST.md).
 
 ---
 

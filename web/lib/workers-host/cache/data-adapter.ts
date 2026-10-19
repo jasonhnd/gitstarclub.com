@@ -5,6 +5,7 @@ import { boundedTags } from "./policy";
 
 /** All pointer-dependent fetch/function data is scoped to the captured strong publication. */
 export class FencedDataCache {
+  private readonly build = process.env.__VINEXT_RSC_BUILD_IDENTITY || process.env.__VINEXT_BUILD_ID || "local";
   readonly store: ArtifactStore;
   constructor(env: { GSC_CACHE: CacheKV; DEPLOY_ENV?: string }) {
     this.store = new ArtifactStore(env.GSC_CACHE, `gsc:${env.DEPLOY_ENV}:data:v1`);
@@ -13,7 +14,7 @@ export class FencedDataCache {
     const scope = cacheScope.getStore();
     if (!scope) return null;
     try {
-      const entry = await this.store.get(`${scope.publication.id}:${key}`);
+      const entry = await this.store.get(`${this.build}:${scope.publication.id}:${key}`);
       if (!entry || entry.fence !== scope.publication.id) return null;
       const softTags = boundedTags(ctx.softTags ?? []);
       if (await this.store.invalid({ ...entry, tags: boundedTags([...new Set([...entry.tags, ...softTags])]) })) return null;
@@ -30,7 +31,7 @@ export class FencedDataCache {
       if ((await scope.checkPublication()).id !== scope.publication.id) return;
       const entry = cacheValue(data, ctx, scope.publication.id, boundedTags([...new Set([...boundedTags(ctx.tags ?? []), ...boundedTags(data && "tags" in data ? data.tags ?? [] : [])])]));
       if (await this.store.invalid({ ...entry, lastModified: scope.startedAt })) return;
-      await this.store.set(`${scope.publication.id}:${key}`, entry);
+      await this.store.set(`${this.build}:${scope.publication.id}:${key}`, entry);
     } catch (error) {
       console.warn("[host-cache] data write failed", error instanceof Error ? error.name : "unknown");
     }

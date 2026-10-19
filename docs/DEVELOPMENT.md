@@ -132,7 +132,7 @@ Docs-only changes are allowed when the code already implements the behavior.
 
 ## Cloudflare Hosting Verification
 
-The production and preview domains are hosted on Cloudflare Workers (OpenNext).
+The production and preview domains are hosted on Cloudflare Workers (vinext).
 Do not rely on a local dev server as the final verification path.
 
 Branch topology and promotion are owned by [OPS.md](./OPS.md) §Branch topology /

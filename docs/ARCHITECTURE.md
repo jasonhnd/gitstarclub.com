@@ -28,7 +28,7 @@ These are non-negotiable for the production system. New features must respect al
 
 1. **Zero runtime engine.** Build, cron, and request paths only read JSON. No DuckDB, ClickHouse, Postgres, or vector index in the runtime image.
 2. **Zero runtime database.** Read-side state lives in versioned JSON views in R2 resolved through a publish pointer; there is no SQL connection to open.
-3. **Cloudflare hosting.** Production and preview use Cloudflare Workers with OpenNext. JSON is in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)). Google Analytics and other third-party tracking scripts are intentionally unsupported.
+3. **Cloudflare hosting.** Production and preview use Cloudflare Workers with vinext. JSON is in Cloudflare R2 (production cutover accepted 2026-10-04; see [R2-CUTOVER.md](./R2-CUTOVER.md)). Google Analytics and other third-party tracking scripts are intentionally unsupported.
 4. **Static content pages.** Content surfaces (home, rankings, repo, organization, pulse) render server-side as static HTML. Chrome is server-rendered; the remaining client JavaScript is limited to explicit islands such as search, language/theme toggles, sharing, compare, and service-worker registration. The application contains no analytics provider or analytics scripts.
 5. **Recurring work is hosted, not laptop-bound.** All recurring data refresh (whitelist diff, metadata, rename detection, canonical fold, full recompute, publish, garbage collection) is driven by scheduled or authenticated triggers and runs as ordinary async steps. Local pipeline runs are reserved for one-off bootstrap.
 
@@ -38,7 +38,7 @@ The same data layer also operates AI-free: features that look like they would ca
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Framework | Next.js 16 (App Router, RSC, Turbopack) | OpenNext on Cloudflare Workers |
+| Framework | Next.js 16 (App Router, RSC, Turbopack) | vinext on Cloudflare Workers |
 | Language / toolchain | TypeScript 6, React 19, Zod 4, Node 24, bun | |
 | Styling | Tailwind 4 + Material 3 Expressive tokens (graphite + amber), hand-authored in `web/app/globals.css` following the M3 system color role taxonomy | |
 | Fonts | Plus Jakarta Sans (variable sans), Geist Mono (numerals, repo names) | |
@@ -133,7 +133,7 @@ GitHub's "watch" semantics changed in late 2012. By 2015 the WatchEvent stream i
 
 ### Whitelist
 
-The active tracked set is the open-ended GitHub Search discovery result for `stars:>=MIN_TRACKED_STARS` (default 10000; preview wrangler `env.pre` sets 10000, the same floor as production). Search membership is snapshotted with an authoritative `count`, but GraphQL supplies every displayed/ranked current total. Preview may split Search across Queue hops (`WHITELIST_SEARCH_SHARDS=1`) so one isolate stays inside the 15 min consumer wall. New entrants are picked up by the workflow diff. Drops become retained historical rows and stop polling; re-entry reactivates the same id while preserving its first `tracked_since`. Pages read precomputed views only.
+The active tracked set is the open-ended GitHub Search discovery result for `stars:>=MIN_TRACKED_STARS` (default 10000; preview typed mode `pre` sets 10000, the same floor as production). Search membership is snapshotted with an authoritative `count`, but GraphQL supplies every displayed/ranked current total. Preview may split Search across Queue hops (`WHITELIST_SEARCH_SHARDS=1`) so one isolate stays inside the 15 min consumer wall. New entrants are picked up by the workflow diff. Drops become retained historical rows and stop polling; re-entry reactivates the same id while preserving its first `tracked_since`. Pages read precomputed views only.
 
 ## Data model
 
@@ -280,4 +280,4 @@ The current scope is comfortably static. Several requested capabilities would fo
 - Topic / language / cohort clustering.
 - Semantic / embedding-based search.
 
-These cannot fit a fixed view set or a client-side index. They share an open architectural decision recorded in [ROADMAP.md](./ROADMAP.md): which analytical layer to introduce (managed ClickHouse, OpenNext on Cloudflare Workers relational, etc.) and how to reconcile that with the Cloudflare-hosted / runtime-zero-engine posture above. No work on those features starts before that decision lands.
+These cannot fit a fixed view set or a client-side index. They share an open architectural decision recorded in [ROADMAP.md](./ROADMAP.md): which analytical layer to introduce (managed ClickHouse, vinext on Cloudflare Workers relational, etc.) and how to reconcile that with the Cloudflare-hosted / runtime-zero-engine posture above. No work on those features starts before that decision lands.
