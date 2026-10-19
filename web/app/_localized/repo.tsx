@@ -39,7 +39,7 @@ import {
   type RepoHubRankingAppearance,
   type RepoLanguage,
 } from "@/lib/repo-page";
-import { RepoHistorySection, RepoMilestonesSection } from "./repo-sections";
+import { RepoDailyHistorySection, RepoHistorySection, RepoMilestonesSection } from "./repo-sections";
 
 const HERO_ACTION_CLASS =
   "text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline";
@@ -220,6 +220,7 @@ export async function RepoPageView({ locale, owner, name }: { locale: Locale; ow
 
         <div className="min-w-0 max-w-full">
           <RepoHistorySection inflections={inflections} milestones={milestones} series={series} locale={locale} t={t} />
+          <RepoDailyHistorySection points={repo.curve.recent_daily} provenance={repo.curve.provenance} locale={locale} t={t} />
           <RepoMilestonesSection locale={locale} milestoneSnippet={milestoneSnippet} milestones={milestones} snippetLabels={snippetLabels} t={t} />
           <RankingAppearancesSection appearances={rankingAppearances} locale={locale} t={t} />
           <RelatedRepositoriesSection
