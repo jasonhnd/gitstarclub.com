@@ -4,8 +4,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  atomicJson, consumePage, estimate, fetchRepository, fixedMembers, ghGraphql, GraphqlClient,
-  HISTORY_QUERY, inventory, METRIC, newCheckpoint, parseGhResponse, Pause, retryDelay, runFetch, summarize,
+  atomicJson, consumePage, estimate, fetchInitialBatch, fetchRepository, fixedMembers, ghGraphql, GraphqlClient,
+  HISTORY_QUERY, INITIAL_HISTORY_QUERY, inventory, METRIC, newCheckpoint, parseGhResponse, Pause, retryDelay, runFetch, summarize,
 } from "../scripts/star-history.mjs";
 
 const directories = [];
@@ -144,7 +144,7 @@ test("the gh parser retains only response headers/body, and arbitrary/mutating q
   const parsed = parseGhResponse('HTTP/2.0 200 OK\r\nX-RateLimit-Remaining: 2\r\nDate: Mon, 19 Oct 2026 12:00:00 GMT\r\n\r\n{"data":{"node":null}}');
   expect(parsed).toMatchObject({ status: 200, headers: { "x-ratelimit-remaining": "2" }, body: { data: { node: null } } });
   expect(parseGhResponse("not HTTP").status).toBe(0);
-  await expect(ghGraphql("mutation { anything }", {})).rejects.toThrow("read-only queries");
+  await expect(ghGraphql("mutation { anything }", {})).rejects.toThrow("read-only collector queries");
 });
 
 test("primary resets and Retry-After are honored without a 60-second cap", () => {
@@ -188,10 +188,32 @@ test("secondary backoff is exponential, bounded by attempts, and waits in at mos
 test("full-fetch chunks checkpoint each repo and can continue remaining members", async () => {
   const out = fixture();
   const members = [member, { ...member, id: 2, sample: false }];
-  const client = { now: Date.now, log() {}, request: async (_query, variables) => response(node([], 0, false, { databaseId: variables.id === "two" ? 2 : 1 })) };
+  const client = { now: Date.now, log() {}, request: async (query, variables) => {
+    expect(query).toBe(INITIAL_HISTORY_QUERY);
+    return response(null, { body: { data: { nodes: variables.ids.map((id) => node([], 0, false, { databaseId: id === "two" ? 2 : 1 })), rateLimit: rate } } });
+  } };
   members[1].node_id = "two";
   expect(await runFetch({ out, members, client, maxRepos: 1 })).toMatchObject({ verified_repositories: 1, statuses: { complete: 1, pending: 1 } });
   expect(await runFetch({ out, members, client })).toMatchObject({ complete: true, verified_repositories: 2 });
+});
+
+test("batched initial pages checkpoint each identity separately, then continue individual cursors", async () => {
+  const out = fixture();
+  const members = [member, { ...member, id: 2, node_id: "two", sample: false }];
+  let calls = 0;
+  const client = { now: Date.now, log() {}, request: async (query, variables) => {
+    calls++;
+    if (query === INITIAL_HISTORY_QUERY) return response(null, { body: { data: { nodes: [
+      node([edge("a", "2026-07-01T00:00:00Z")], 2, true),
+      node([], 1000, false, { databaseId: 2 }),
+    ], rateLimit: rate } } });
+    expect(variables).toEqual({ id: "stable-one", after: "a" });
+    return response(node([edge("b", "2026-06-01T00:00:00Z")], 2));
+  } };
+  const summary = await runFetch({ out, members, client });
+  expect(calls).toBe(2);
+  expect(summary).toMatchObject({ verified_repositories: 1, statuses: { complete: 1, unavailable_empty_history: 1 } });
+  await expect(fetchInitialBatch({ out: fixture(), members, client: { ...client, request: async () => response(null, { body: { data: { nodes: [null] } } }) } })).rejects.toThrow("Truncated initial-page");
 });
 
 test("pilot membership is fixed at 40 references plus ten deterministic whitelisted extras", () => {

@@ -25,6 +25,9 @@ the identity check, so renames do not change whitelist membership.
 The tool requests `stargazers(first:100, after:..., orderBy:{field:STARRED_AT,
 direction:DESC})` through `gh api graphql`, the existing GitHub CLI login.
 It does not retrieve, print or persist tokens or request user identities.
+Initial pages are batched for at most 20 repositories (at most 2,000 edges)
+per serial request; subsequent pages use one repository's own cursor. This
+reduces first-page overhead without conflating repository checkpoints.
 Each timestamp is normalized to UTC. Collection stops after encountering
 `starredAt` before May 30 or validating complete connection exhaustion.
 Newer October stars are traversed but not counted in the approved window.

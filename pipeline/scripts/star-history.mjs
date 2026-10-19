@@ -12,7 +12,15 @@ export const METRIC = "surviving_stars_at_query_time; lower_bound_on_gross_adds;
 const VERSION = 1;
 const RATE = "rateLimit { limit remaining cost resetAt }";
 const FIELDS = "id databaseId nameWithOwner isPrivate stargazerCount";
+export const INITIAL_BATCH_SIZE = 20;
 export const INVENTORY_QUERY = `query($ids:[ID!]!) { nodes(ids:$ids) { ... on Repository { ${FIELDS} } } ${RATE} }`;
+export const INITIAL_HISTORY_QUERY = `query($ids:[ID!]!) {
+  nodes(ids:$ids) { ... on Repository { ${FIELDS}
+    stargazers(first:100,orderBy:{field:STARRED_AT,direction:DESC}) {
+      totalCount edges { cursor starredAt } pageInfo { hasNextPage endCursor }
+    }
+  } } ${RATE}
+}`;
 export const HISTORY_QUERY = `query($id:ID!,$after:String) {
   node(id:$id) { ... on Repository { ${FIELDS}
     stargazers(first:100,after:$after,orderBy:{field:STARRED_AT,direction:DESC}) {
@@ -81,7 +89,7 @@ export function parseGhResponse(stdout, code = 0) {
 }
 
 export async function ghGraphql(query, variables) {
-  if (![INVENTORY_QUERY, HISTORY_QUERY].includes(query)) throw new Error("Only the two read-only queries are permitted");
+  if (![INVENTORY_QUERY, INITIAL_HISTORY_QUERY, HISTORY_QUERY].includes(query)) throw new Error("Only the read-only collector queries are permitted");
   // No shell, token lookup, alternate HTTP client, pagination helper or mutation.
   return new Promise((done) => {
     const child = spawn("gh", ["api", "graphql", "--hostname", "github.com", "--include", "--input", "-"], {
@@ -275,6 +283,43 @@ export function consumePage(previous, node, member) {
   return next;
 }
 
+function commitPage({ out, member, before, node, errors, response, client }) {
+  let state;
+  if (errors.length) {
+    state = { ...before, status: errors.some((error) => error.type === "FORBIDDEN") ? "forbidden" : "not_found_or_inaccessible", daily: null };
+  } else {
+    try { state = consumePage(before, node, member); }
+    catch { state = { ...before, status: "invalid_history", daily: null }; }
+  }
+  state.updated_at = new Date(client.now()).toISOString();
+  state.last_rate = response.body.data.rateLimit ?? null;
+  state.last_response_date = response.headers.date ?? null;
+  // Preserve query-time, identity-free evidence, then advance counts/cursor together.
+  atomicJson(join(out, "pages", String(member.id), `${String(before.pages).padStart(7, "0")}.json`), {
+    fetched_at: state.updated_at, after: before.cursor, status: response.status,
+    node, error_types: errors.map((error) => error.type), rate: state.last_rate,
+    response_date: state.last_response_date,
+  });
+  atomicJson(join(out, "repos", `${member.id}.json`), state);
+  return state;
+}
+
+export async function fetchInitialBatch({ out, members, client }) {
+  if (!members.length || members.length > INITIAL_BATCH_SIZE) throw new Error("Invalid initial-page batch size");
+  const response = await client.request(INITIAL_HISTORY_QUERY, { ids: members.map((member) => member.node_id) });
+  const body = response.body;
+  if (!Array.isArray(body.data.nodes) || body.data.nodes.length !== members.length) throw new Error("Truncated initial-page batch");
+  for (const error of body.errors ?? []) {
+    if (error.path?.[0] !== "nodes" || !Number.isInteger(error.path[1]) || error.path[1] < 0 || error.path[1] >= members.length ||
+        !["NOT_FOUND", "FORBIDDEN"].includes(error.type)) throw new Error("Unexpected initial-page GraphQL error");
+  }
+  for (const [index, member] of members.entries()) {
+    const state = commitPage({ out, member, before: newCheckpoint(member), node: body.data.nodes[index],
+      errors: (body.errors ?? []).filter((error) => error.path[1] === index), response, client });
+    if (state.status !== "fetching") client.log(`${member.id} ${state.name ?? member.original_name ?? "unknown"} ${state.status}`);
+  }
+}
+
 export async function fetchRepository({ out, member, client, retryUnavailable = false }) {
   const file = join(out, "repos", `${member.id}.json`);
   let state = existsSync(file) ? read(file) : newCheckpoint(member);
@@ -285,23 +330,7 @@ export async function fetchRepository({ out, member, client, retryUnavailable = 
   while (state.status === "fetching") {
     const response = await client.request(HISTORY_QUERY, { id: state.node_id ?? member.node_id, after: state.cursor });
     const errors = repositoryErrors(response.body, "node");
-    const before = state;
-    if (errors.length) {
-      state = { ...state, status: errors.some((error) => error.type === "FORBIDDEN") ? "forbidden" : "not_found_or_inaccessible", daily: null };
-    } else {
-      try { state = consumePage(state, response.body.data.node, member); }
-      catch { state = { ...before, status: "invalid_history", daily: null }; }
-    }
-    state.updated_at = new Date(client.now()).toISOString();
-    state.last_rate = response.body.data.rateLimit ?? null;
-    state.last_response_date = response.headers.date ?? null;
-    // Preserve query-time, identity-free evidence, then atomically advance counts/cursor together.
-    atomicJson(join(out, "pages", String(member.id), `${String(before.pages).padStart(7, "0")}.json`), {
-      fetched_at: state.updated_at, after: before.cursor, status: response.status,
-      node: response.body.data.node, error_types: errors.map((error) => error.type), rate: state.last_rate,
-      response_date: state.last_response_date,
-    });
-    atomicJson(file, state);
+    state = commitPage({ out, member, before: state, node: response.body.data.node, errors, response, client });
   }
   client.log(`${member.id} ${state.name ?? member.original_name ?? "unknown"} ${state.status}${state.status === "complete" ? ` ${state.total}` : ""}`);
   return state;
@@ -372,8 +401,9 @@ export function estimate({ members, inventories, pilot, api, intervalMs = 1000 }
     conditional_lifetime_points: pointsPerRequest === null ? null : worstPages * pointsPerRequest,
     conditional_lifetime_serial_hours: worstPages * secondsPerRequest / 3600,
     conditional_lifetime_quota_hours: pointsPerRequest === null ? null : worstPages * pointsPerRequest / (api.rate?.limit ?? 5000),
-    current_access_sweep_requests: publicRepos.length,
-    current_access_sweep_serial_hours: publicRepos.length * secondsPerRequest / 3600,
+    initial_page_batch_size: INITIAL_BATCH_SIZE,
+    current_access_sweep_requests: Math.ceil(publicRepos.length / INITIAL_BATCH_SIZE),
+    current_access_sweep_serial_hours: Math.ceil(publicRepos.length / INITIAL_BATCH_SIZE) * secondsPerRequest / 3600,
     shared_hourly_limit: api.rate?.limit ?? null, rate_reset_at: api.rate?.resetAt ?? null,
   };
 }
@@ -381,14 +411,27 @@ export function estimate({ members, inventories, pilot, api, intervalMs = 1000 }
 export async function runFetch({ out, members, client, maxRepos = Infinity, retryUnavailable = false }) {
   let processed = 0;
   let paused = null;
-  for (const member of members) {
+  const work = members.filter((member) => {
     const file = join(out, "repos", `${member.id}.json`);
     const status = existsSync(file) ? read(file).status : "pending";
-    if (status === "complete" || (status !== "fetching" && status !== "pending" && !retryUnavailable)) continue;
+    return status !== "complete" && (status === "fetching" || status === "pending" || retryUnavailable);
+  });
+  for (let offset = 0; offset < work.length;) {
     if (processed >= maxRepos) { paused = "Repository chunk limit reached"; break; }
-    try { await fetchRepository({ out, member, client, retryUnavailable }); }
+    const batch = work.slice(offset, offset + Math.min(INITIAL_BATCH_SIZE, maxRepos - processed));
+    try {
+      const initial = batch.filter((member) => {
+        const file = join(out, "repos", `${member.id}.json`);
+        return !existsSync(file) || read(file).status !== "fetching";
+      });
+      if (initial.length) await fetchInitialBatch({ out, members: initial, client });
+      for (const member of batch) {
+        await fetchRepository({ out, member, client });
+        processed++;
+        offset++;
+      }
+    }
     catch (error) { if (error instanceof Pause) { paused = error.message; break; } throw error; }
-    processed++;
   }
   return { ...summarize(out, members), processed_this_chunk: processed, paused };
 }
