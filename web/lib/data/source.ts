@@ -1,3 +1,4 @@
+import { publicationScope } from "../workers-host/publication-fence";
 import type { ZodType } from "zod";
 import { LiveGenerationPointer } from "@/lib/contracts";
 import { BLOB_JSON_FETCH_TIMEOUT_MS, FetchTimeoutError, fetchWithTimeout } from "@/lib/fetch-timeout.mjs";
@@ -306,6 +307,14 @@ async function resolveVersion(
   timeoutMs = BLOB_JSON_FETCH_TIMEOUT_MS,
   mode: ReadMode = "published",
 ): Promise<VersionResolution> {
+  const captured = publicationScope.getStore();
+  if (captured) {
+    const pointer = captured.views;
+    if (pointer) return { version: pointer.version, publishedAt: pointer.published_at, confirmedAbsent: false };
+    const fallback = mode === "published" ? getViewsVersionFallback() : null;
+    return { version: fallback, publishedAt: fallback ? await publishedAtForViewsFallback(blobBase, fallback, timeoutMs) : null,
+      confirmedAbsent: fallback === null };
+  }
   const now = Date.now();
   const memoKey = `${blobBase}\0${ttlMs}\0${mode}`;
   const memo = versionMemo.get(memoKey);
@@ -376,6 +385,8 @@ async function resolveLiveGeneration(
   ttlMs = LIVE_POINTER_TTL_MS,
   timeoutMs = BLOB_JSON_FETCH_TIMEOUT_MS,
 ): Promise<string | null> {
+  const captured = publicationScope.getStore();
+  if (captured) return captured.live?.generation ?? null;
   const now = Date.now();
   const memoKey = `${blobBase}\0${ttlMs}`;
   const memo = liveGenerationMemo.get(memoKey);

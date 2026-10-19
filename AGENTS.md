@@ -42,10 +42,10 @@ Write the task plan as markdown under `plans/` (executable rule 4). A plan state
 - Delete branches, or delete files outside the issue scope.
 - Merge any pull request.
 - Push to `pre` or `main`.
-- Live `wrangler deploy` or `wrangler versions upload`.
+- Any legacy platform CLI invocation. Use only pinned cf for Cloudflare; deployments need separate authorization.
 - Change Cloudflare schedules, DNS, routes, or secrets.
 - Call production cron or refresh endpoints, including `gitstarclub.com/api/cron/*`.
-- Edit CI workflows, `.delivery.yml`, the Worker wrangler config, or deploy scripts unless the issue explicitly asks.
+- Edit CI workflows, `.delivery.yml`, the typed Worker config, or deploy scripts unless the issue explicitly asks.
 - Commit incidental `bun.lock` churn from `bun install`.
 - Commit secrets, tokens, or real environment values.
 
@@ -53,34 +53,43 @@ Write the task plan as markdown under `plans/` (executable rule 4). A plan state
 
 Run the static job from `.github/workflows/ci.yml` on the commit under test. Use Node 24 (`.node-version`; the tarball below is v24.20.0) and Bun 1.4.2 (root `packageManager`). A full `web/` suite is the bar. One test file is not.
 
-Use a fresh detached worktree of that commit. Untracked files in the owner's checkout, including web/.env.local, are not in the new tree. Do not move or delete files there. From the checkout you are editing:
+Use a fresh detached checkout of the exact commit under the current card's
+`KANBAN_TMP`. Do not copy owner environment files. A shared local clone avoids
+creating another worktree. Keep all caches, logs and output in this directory:
 
 ```bash
-git worktree add --detach ../gsc-verify HEAD
+git clone --shared --no-checkout . "$KANBAN_TMP/verify"
+git -C "$KANBAN_TMP/verify" checkout --detach HEAD
 ```
 
-Remove it from that same checkout when finished. Install and the builds leave untracked files, so removal needs `--force`:
-
-```bash
-git worktree remove --force ../gsc-verify
-```
+Run the blocks from that clone. Remove only this temporary clone when finished.
+Set `TMPDIR` and `KANBAN_TMP` to the card directory, and exclude `.kanban-work/`
+through the checkout's local Git metadata. Never use an ambient temporary root.
 
 Run the two heredocs with `bash --noprofile --norc` under `env -i`. They do not use the parent shell, so zsh is fine as the parent. Each heredoc is its own process. Do not source it.
 
-The clean environment has no inherited variables. For an offline run, do not set `RUN_LIVE_SMOKE`, `LIVE_SMOKE_SITE_URL`, `RELEASE_GATE_REQUIRE_LIVE`, `RELEASE_GATE_SITE`, or `RELEASE_GATE_BLOB_BASE`. `web/lib/integration/release-gates-live.ts` runs live checks only when `RELEASE_GATE_REQUIRE_LIVE` is `1` or `true`. `web/lib/integration/live-smoke.test.ts` registers its network suite only when `RUN_LIVE_SMOKE` is `1` and `LIVE_SMOKE_SITE_URL` names the target. It has no default site and reads web/.env.local only after that opt-in, so without it the suite skips even when web/.env.local exists. The fresh worktree is still the recommended extra guard. `web/lib/integration/seo.test.ts` treats a missing `SEO_LIVE_BASE` as the production site, so the static block sets it to empty, which is what CI does. It also sets `BLOB_BASE_URL` to `https://blob.example.com`. That value is a placeholder. Do not replace it with a real store, and do not export a Blob write credential.
+The clean environment has no inherited variables. For an offline run, do not set `RUN_LIVE_SMOKE`, `LIVE_SMOKE_SITE_URL`, `RELEASE_GATE_REQUIRE_LIVE`, `RELEASE_GATE_SITE`, or `RELEASE_GATE_BLOB_BASE`. `web/lib/integration/release-gates-live.ts` runs live checks only when `RELEASE_GATE_REQUIRE_LIVE` is `1` or `true`. `web/lib/integration/live-smoke.test.ts` registers its network suite only when `RUN_LIVE_SMOKE` is `1` and `LIVE_SMOKE_SITE_URL` names the target. It has no default site and reads web/.env.local only after that opt-in, so without it the suite skips even when web/.env.local exists. The fresh detached checkout is still the recommended extra guard. `web/lib/integration/seo.test.ts` treats a missing `SEO_LIVE_BASE` as the production site, so the static block sets it to empty, which is what CI does. It also sets `BLOB_BASE_URL` to `https://blob.example.com`. That value is a placeholder. Do not replace it with a real store, and do not export a Blob write credential.
 
-Bun reads `.env`, `.env.local`, and `.env.<NODE_ENV>` from the directory it starts in. A fresh worktree has none.
+Bun reads `.env`, `.env.local`, and `.env.<NODE_ENV>` from the directory it starts in. A fresh detached checkout has none.
 
-Do not pipe the Bun installer into a shell. It appends to the shell rc. The bootstrap downloads the official archives, checks SHA-256, then extracts. Node sums come from `https://nodejs.org/dist/v24.20.0/SHASUMS256.txt`. Bun sums come from the `bun-v1.4.2` release `SHASUMS256.txt`. macOS uses `shasum -a 256 -c`. Linux uses `sha256sum -c` when `shasum` is absent. The cache is `$TMPDIR/gitstarclub-toolchain/node-v24.20.0` and `$TMPDIR/gitstarclub-toolchain/bun-1.4.2`. A cached binary is used only after that run has verified its archive. If an archive checksum fails, or a cached `node` or `bun` binary does not report v24.20.0 or 1.4.2, the block prints that path and exits non-zero. It does not delete the cache. Remove the named directory by hand, then run the bootstrap again. The only deletion outside the verify worktree is `git worktree remove` of the worktree this flow created. The bootstrap also links `bunx` to `bun`, because `cf:build` and the dry-run wrapper call `bunx`.
+Do not pipe the Bun installer into a shell. It appends to the shell rc. The bootstrap downloads the official archives, checks SHA-256, then extracts. Node sums come from `https://nodejs.org/dist/v24.20.0/SHASUMS256.txt`. Bun sums come from the `bun-v1.4.2` release `SHASUMS256.txt`. macOS uses `shasum -a 256 -c`. Linux uses `sha256sum -c` when `shasum` is absent. The cache is `$TMPDIR/gitstarclub-toolchain/node-v24.20.0` and `$TMPDIR/gitstarclub-toolchain/bun-1.4.2`. A cached binary is used only after that run has verified its archive. If an archive checksum fails, or a cached `node` or `bun` binary does not report v24.20.0 or 1.4.2, the block prints that path and exits non-zero. It does not delete the cache. Remove the named directory by hand, then run the bootstrap again. The bootstrap links `bunx` to `bun` for package tools. The shared clone and every generated artifact remain inside the card directory.
 
 The static block follows the CI `static` job: web install and audit, then pipeline install, audit, and test, then `lint:docs`, then web lint and the three typechecks, then view validation and `test:cov`. Pipeline packages have to be installed before `typecheck:scripts`. `test:cov` is `bun test lib/ --coverage --isolate` plus `scripts/check-coverage-threshold.mjs` (line and function coverage at least 80%). Restore a `bun.lock` if an install changes it. Do not commit that churn.
 
-App data for the two builds comes from the local GET/HEAD fixture on `127.0.0.1:4010`. `web/app/_shell/RootShell.tsx` imports `next/font/google`, so a cold build can also download fonts. Eslint ignores `.next` and `.open-next`. Generated OpenNext output can stay on disk while lint runs. The block lints before `cf:dry-run`. `cf:dry-run` is a dry run for wrangler env `pre` only. Do not deploy. Do not run `wrangler versions upload`. `cf:build` must be given `--site-target=production` or `--site-target=pre`. Before OpenNext runs, it compares `R2_PUBLIC_BASE_URL`, `BLOB_BASE_URL`, and their `NEXT_PUBLIC_` copies with the wrangler vars for that target. A loopback fixture is allowed. Any other mismatch fails. Production output is indexable. Preview output is `noindex`.
+App data for both explicit-mode Vite builds comes from the local GET/HEAD fixture.
+The default port is 4010; select another free loopback port if it is busy and never
+stop another card's process. `next/font/google` produces locally packaged fonts.
+ESLint ignores `dist`, `.cloudflare` and `.vinext`. The new non-deploying gate is
+`build:production` / `build:pre` plus `validate:host` and `validate:graph`.
+Production is indexable; pre is noindex. No platform deployment or legacy
+platform command is part of verification. Keep GitHub Actions disabled.
 
 ### Bootstrap
 
 ```bash
-env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:-/tmp}" \
+env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:?Set a card-local TMPDIR}" \
+  BUN_INSTALL_CACHE_DIR="${TMPDIR}/bun-cache" npm_config_cache="${TMPDIR}/npm-cache" XDG_CACHE_HOME="${TMPDIR}/cache" \
+  GSC_FIXTURE_PORT="${GSC_FIXTURE_PORT:-4010}" \
   bash --noprofile --norc -euo pipefail <<'SH'
 tool_root="${TMPDIR}/gitstarclub-toolchain"
 node_ver="v24.20.0"
@@ -168,10 +177,12 @@ SH
 
 ### Static job and local builds
 
-`cd ../gsc-verify` first. The block checks the cached archives again, then runs the static job, the fixture production build, and `cf:dry-run`.
+Run from the detached clone. The block rechecks the archives, runs the complete offline static job and builds/validates both Vite modes without deployment.
 
 ```bash
-env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:-/tmp}" \
+env -i HOME="$HOME" PATH="/usr/bin:/bin" TMPDIR="${TMPDIR:?Set a card-local TMPDIR}" \
+  BUN_INSTALL_CACHE_DIR="${TMPDIR}/bun-cache" npm_config_cache="${TMPDIR}/npm-cache" XDG_CACHE_HOME="${TMPDIR}/cache" \
+  GSC_FIXTURE_PORT="${GSC_FIXTURE_PORT:-4010}" \
   bash --noprofile --norc -euo pipefail <<'SH'
 tool_root="${TMPDIR}/gitstarclub-toolchain"
 node_ver="v24.20.0"
@@ -225,8 +236,8 @@ bun --version
 command -v bunx
 bunx --version
 node scripts/assert-runtime-versions.mjs
+( cd web && bun install --frozen-lockfile && bun run audit:deps && bun run validate:graph )
 node scripts/assert-cf-ci-gates.mjs
-( cd web && bun install --frozen-lockfile && bun run audit:deps )
 ( cd pipeline && bun install --frozen-lockfile && bun run audit:deps && bun run test )
 bun run lint:docs
 (
@@ -239,7 +250,7 @@ bun run lint:docs
   BLOB_BASE_URL="https://blob.example.com" SEO_LIVE_BASE="" bun run test:cov
 )
 start_fixture() {
-  bun scripts/ci-build-fixture-server.ts >"${TMPDIR}/ci-build-fixture.log" 2>&1 &
+  PORT="${GSC_FIXTURE_PORT:-4010}" bun scripts/ci-build-fixture-server.ts >"${TMPDIR}/ci-build-fixture.log" 2>&1 &
   fixture_pid=$!
   ready=0
   for _step in $(seq 1 20); do
@@ -257,21 +268,14 @@ start_fixture() {
 }
 (
   cd web
-  export BLOB_BASE_URL="http://127.0.0.1:4010"
+  export BLOB_BASE_URL="http://127.0.0.1:${GSC_FIXTURE_PORT:-4010}"
   fixture_pid=""
   trap 'if [ -n "${fixture_pid:-}" ]; then kill "$fixture_pid" 2>/dev/null || true; fi' EXIT
   start_fixture
   bun run build
-)
-(
-  cd web
-  export BLOB_BASE_URL="http://127.0.0.1:4010"
-  export HOSTING_TARGET="cf"
-  export NODE_OPTIONS="--max-old-space-size=8192"
-  fixture_pid=""
-  trap 'if [ -n "${fixture_pid:-}" ]; then kill "$fixture_pid" 2>/dev/null || true; fi' EXIT
-  start_fixture
-  bun run cf:dry-run
+  bun run validate:host -- --mode production
+  bun run build:pre
+  bun run validate:host -- --mode pre
 )
 SH
 ```
@@ -282,7 +286,7 @@ Language. The English-only policy is executable rule 5. It covers repository tex
 
 The automated check is narrower than that policy. `checkCjkProse` in `scripts/check-docs.mjs` walks only `docs/`, `plans/`, `.cursor/`, `.grok/`, and `AGENTS.md`. The pattern matches Han ideographs in U+4E00 through U+9FFF, the full-width marks U+3001, U+3002, U+300A, U+300B, U+300C, U+300D, U+3010, U+3011, U+FF01, U+FF08, U+FF09, U+FF0C, U+FF1A, U+FF1B, and U+FF1F, and a double em dash. It does not match hiragana, katakana, or hangul. A single em dash stays allowed. The same function skips the allowlist in rule 5, including the locale helpers `web/lib/format.ts`, `web/lib/narrative.ts`, and `web/lib/shareable-snippets.ts`, so a wider walk would still skip them. Those paths are outside the directories the check walks today. `bun run lint:docs` runs this check. A green run does not prove the rest of the tree is English.
 
-Product. A small core is prerendered at deploy. The long tail is generated on demand and then cached. All data comes from precomputed JSON. Preview Worker `env.pre` reads Cloudflare R2 bucket `gitstarclub-data-pre` at `https://data-pre.gitstarclub.com` (`STORAGE_READ_DRIVER=r2`) and writes through the `DATA` binding (`STORAGE_WRITE_DRIVER=r2_binding`). Production uses R2 after the accepted 2026-10-04 cutover; see `docs/R2-CUTOVER.md`. Stage 6 retires the blob store after that cutover. The site is hosted on Cloudflare Workers through OpenNext. There is no runtime AI, no runtime database, and no live search. Output is deterministic. Content pages stay near-zero client JavaScript, limited to the client islands listed in `docs/FRONTEND.md` and `docs/DESIGN-SYSTEM.md`. Do not add pages unless the issue says so. Follow `docs/GEO.md` for answer capsules and citation strategy.
+Product. A small core is prerendered at deploy. The long tail is generated on demand and then cached. All data comes from precomputed JSON. Preview Worker mode `pre` reads Cloudflare R2 bucket `gitstarclub-data-pre` at `https://data-pre.gitstarclub.com` (`STORAGE_READ_DRIVER=r2`) and writes through the `DATA` binding (`STORAGE_WRITE_DRIVER=r2_binding`). Production uses R2 after the accepted 2026-10-04 cutover; see `docs/R2-CUTOVER.md`. Stage 6 retires the blob store after that cutover. The site is hosted on Cloudflare Workers through vinext. There is no runtime AI, no runtime database, and no live search. Output is deterministic. Content pages stay near-zero client JavaScript, limited to the client islands listed in `docs/FRONTEND.md` and `docs/DESIGN-SYSTEM.md`. Do not add pages unless the issue says so. Follow `docs/GEO.md` for answer capsules and citation strategy.
 
 Reader-facing copy, in every language, does not mention Blob, rank JSON, lookup JSON, or server routes. Keep the signals that the page is precomputed, deterministic, and not live search or AI.
 
@@ -296,7 +300,7 @@ Ranking periods. Navigation periods come from `resolveAvailableRankPeriods` in `
 
 Tests. Bun `mock.module` is process-global. Never mock `@/lib/periods`. Never replace `globalThis.fetch` without restoring it. A change is verified only when the full `web/` suite passes, not when one file passes.
 
-Indexing. Production builds are indexable. Preview (`pre`) builds are `noindex`. Pass `--site-target=production` or `--site-target=pre` to `cf:build`.
+Indexing. Production builds are indexable. Preview (`pre`) builds are `noindex`. Use `bun run build:production` or `bun run build:pre`, then matching local artifact validation.
 
 UI or visual changes need before and after screenshots in the pull request. The owner signs off before merge. Code or design changes update the relevant docs in the same pull request.
 

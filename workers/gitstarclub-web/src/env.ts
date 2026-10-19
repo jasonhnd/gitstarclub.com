@@ -1,3 +1,4 @@
+import type { CacheKV } from "../../../web/lib/workers-host/cache/store";
 import type { R2Bucket } from "../../../web/lib/storage/r2-binding-store";
 
 export type RefreshJob = {
@@ -27,13 +28,11 @@ export type WorkerEnv = {
   JOBS: {
     send(message: RefreshJob): Promise<void>;
   };
-  /**
-   * Native R2 binding for the data bucket. env.pre wires DATA to
-   * gitstarclub-data-pre. The production Worker does not declare DATA;
-   * production reads stay on the public Blob origin until cutover.
-   */
+  /** Native DATA is isolated by mode; MEDIA retains the shared asset bucket. */
   DATA?: R2Bucket;
   MEDIA: unknown;
+  GSC_CACHE?: CacheKV;
+  DEPLOY_ENV?: string;
   ASSETS?: { fetch(request: Request): Promise<Response> };
   WORKER_SELF_REFERENCE?: { fetch(request: Request): Promise<Response> };
   CRON_SECRET?: string;
