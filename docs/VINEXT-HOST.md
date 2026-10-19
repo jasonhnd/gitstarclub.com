@@ -128,7 +128,13 @@ manual tag invalidation still inherits KV's eventual consistency.
 
 The PR records an exact-head detached-checkout bootstrap, full static block,
 full offline web coverage suite, both local Vite builds, artifact validation,
-local HTTP/browser checks and English/Japanese screenshot pairs. Tests cover
+local HTTP/browser checks and English/Japanese screenshot pairs.
+`web/scripts/verify-host-local.ts` checks only a loopback preview origin;
+`web/scripts/local-view-fixture.ts` serves the existing checked-in fixtures
+read-only after the empty build fixture is stopped. Some existing unsuffixed
+repository/ranking metadata image URLs remain 404; generated suffixed handlers
+are verified as real 1200 x 630 PNGs, including known and unknown repository
+fallback behavior. This predates the host migration and remains a separate fix. Tests cover
 publication/rollback, stale regional KV reads, late writes, cache failure,
 HTML/RSC separation, freshness/expiry, tag/layout invalidation, binding isolation,
 R2 conditional writes, Queue retries, scheduled dispatch and self-reference.

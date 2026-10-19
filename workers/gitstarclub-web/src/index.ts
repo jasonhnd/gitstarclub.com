@@ -20,7 +20,7 @@ export default {
   async fetch(request: Request, env: WorkerEnv, ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
     return withWorkerEnv(env, async () => {
       const url = new URL(request.url);
-      if (url.pathname.startsWith("/_vinext/static-cache/")) return new Response("Not found", { status: 404 });
+      if (url.pathname.startsWith("/_vinext/static-cache/")) return headers(new Response("Not found", { status: 404 }), "BYPASS", true);
       if (isWorkerShellRequest(url.pathname, request.method)) return headers(await handleShellFetch(request, env), "BYPASS", true);
       emitRunLog({ event: "host.vinext", path: url.pathname, method: request.method });
       // Local unit tests can delegate without platform bindings; real cache factories fail closed.
