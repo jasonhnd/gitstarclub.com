@@ -1,7 +1,7 @@
 ---
 owner: data contracts
 status: active
-last_reviewed: 2026-10-01
+last_reviewed: 2026-10-19
 source_of_truth_for:
   - canonical JSON shard schemas
   - JSON view schemas
@@ -50,7 +50,11 @@ Physical form, tradeoffs, and the generation pipeline are in [ARCHITECTURE.md](.
 
 ### 1.1 Fact table `canonical/star_daily.parquet` (🗄️ bootstrap archive form)
 
-The sole bootstrap source of truth; in the production phase it is folded into §1.4's month/week JSON shards, and the daily table itself retires to an archive and is not on the production read / recompute path.
+This is the derived bootstrap fact-table contract, folded into §1.4's month/week JSON shards; it is not on the production read / recompute path. It is distinct from the retained raw gross export (`repo_id`, `day`, `gross_adds`).
+
+As of 2026-10-19, raw data lives only in private R2 `gitstarclub-raw`: `star_daily_gross/data-0000000000{00..19}.parquet` (20 objects; 30,907,971 bytes; 12,375,426 rows), plus `bigquery-export/whitelist/` (5,249 rows) and `bigquery-export/star_daily_gross_gap_260530_260930_20261019/` (90,797 rows; 2026-05-30 through 2026-09-30). Each export prefix contains `data-000000000000.parquet`. See [OPS raw-data inventory](./OPS.md#raw-backfill-data) and [SHA-256 manifest](./raw-data.sha256) for read-only `cf r2 objects list/get` and `shasum -a 256 -c` verification, never Wrangler.
+
+GCP project `gitstarclub` entered deletion at 2026-10-19T11:12:41Z (`DELETE_REQUESTED`); its calculated 30-day recovery deadline is 2026-11-18T11:12:41Z. BigQuery / GH Archive extraction is retired. The replacement source is GitHub's own star history (owner decision d1019-001344-1); collecting or publishing a replacement is separate work. GSC_0045's 40-repository 2026 sample found only about 4% archive capture against the GitHub history proxy, not a population-wide estimate. Retaining the gap table does not approve replacing frozen net data or change any canonical schema.
 
 | Column | Type | Description |
 |---|---|---|
