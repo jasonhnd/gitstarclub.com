@@ -16,7 +16,7 @@ source_of_truth_for:
 
 ## Scope
 
-本文档描述**产品本身**——gitstarclub 是什么、给谁看、各页面承载什么、调性、数据诚实立场、i18n 立场。改动产品前先读此文。版本/阶段/状态属于工程进度,不在此处。当前不在范围内的能力见 [ROADMAP.md](./ROADMAP.md)。
+本文档描述**产品本身**——gitstarclub 是什么、给谁看、各页面承载什么、调性、数据诚实立场、i18n 立场。改动产品前先读此文。版本/阶段/状态属于工程进度,不在此处。当前不在范围内的能力见 [ROADMAP.md](./ROADMAP.md)。Cockpit 概念图的内容契约（未上线路由）见 [COCKPIT.md](./COCKPIT.md)。
 
 ## 需求 ID 对照
 
