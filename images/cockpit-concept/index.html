@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>GitStar Cockpit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script>document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark";</script>
+<style>
+  :root {
+    --gold-core: #f2a900;
+    --gold-deep: #614200;
+    --sans: "Plus Jakarta Sans", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  html[data-theme="dark"] { color-scheme: dark; }
+  html[data-theme="light"] { color-scheme: light; }
+  html[data-theme="dark"] {
+    --bg: #121316;
+    --bg-0: #0d0e11;
+    --surf: #1a1c1e;
+    --surf-2: #1e2022;
+    --surf-3: #282a2d;
+    --gold: #ffba3b;
+    --gold-bright: #ffca74;
+    --warm: #eac080;
+    --cyan: #9edaff;
+    --violet: #a78bfa;
+    --green: #4ade80;
+    --rose: #fb7185;
+    --text: #e3e2e6;
+    --muted: #c3c7cf;
+    --faint: #8d9199;
+    --line: rgba(255, 186, 59, 0.14);
+    --line-dim: rgba(141, 145, 153, 0.22);
+    --radar: #0b0c0e;
+    --item-line: rgba(255,255,255,0.035);
+    --shadow: 0 18px 48px rgba(0,0,0,0.28);
+    --star-glow: drop-shadow(0 0 8px rgba(255, 186, 59, 0.45));
+    --wash: radial-gradient(ellipse 80% 70% at 52% 44%, rgba(242, 169, 0, 0.05), transparent 58%),
+            radial-gradient(ellipse 50% 40% at 80% 18%, rgba(158, 218, 255, 0.03), transparent 50%);
+    --playhead-ring: #1a1408;
+    --search-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238d9199' stroke-width='1.6'><circle cx='7' cy='7' r='5'/><path d='M11 11.5 14 14.5'/></svg>");
+  }
+  html[data-theme="light"] {
+    --bg: #fbfbfd;
+    --bg-0: #ffffff;
+    --surf: #ffffff;
+    --surf-2: #f5f5f8;
+    --surf-3: #efeff2;
+    --gold: #7f5700;
+    --gold-bright: #7f5700;
+    --warm: #785923;
+    --cyan: #00668a;
+    --violet: #7c3aed;
+    --green: #15803d;
+    --rose: #be123c;
+    --text: #1a1c1e;
+    --muted: #43474e;
+    --faint: #73777f;
+    --line: rgba(127, 87, 0, 0.16);
+    --line-dim: #c3c7cf;
+    --radar: #f3f4f7;
+    --item-line: #e3e3e7;
+    --shadow: 0 16px 40px rgba(0,0,0,0.10);
+    --star-glow: none;
+    --wash: radial-gradient(ellipse 80% 70% at 52% 44%, rgba(242, 169, 0, 0.08), transparent 58%),
+            radial-gradient(ellipse 50% 40% at 80% 18%, rgba(63, 195, 255, 0.05), transparent 50%);
+    --playhead-ring: #ffffff;
+    --search-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2373777f' stroke-width='1.6'><circle cx='7' cy='7' r='5'/><path d='M11 11.5 14 14.5'/></svg>");
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    display: grid;
+    grid-template-rows: 64px 1fr 96px;
+    background: var(--wash), var(--bg);
+  }
+  header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 28px;
+    border-bottom: 1px solid var(--line-dim);
+    background: color-mix(in oklab, var(--bg) 72%, transparent);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .star {
+    width: 18px;
+    height: 18px;
+    color: var(--gold-core);
+    filter: var(--star-glow);
+  }
+  .wordmark {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--gold-deep);
+    background: var(--gold-core);
+    border-radius: 999px;
+    padding: 4px 10px;
+  }
+  .lede {
+    justify-self: center;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+  .tools {
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .search {
+    width: 280px;
+    height: 36px;
+    border-radius: 999px;
+    border: 1px solid var(--line-dim);
+    background: var(--surf);
+    color: var(--faint);
+    font-family: var(--sans);
+    font-size: 13px;
+    padding: 0 14px 0 36px;
+    background-image: var(--search-icon);
+    background-repeat: no-repeat;
+    background-position: 12px 50%;
+  }
+  main {
+    display: grid;
+    grid-template-columns: 328px 1fr 356px;
+    gap: 16px;
+    padding: 16px 20px 8px;
+    min-height: 0;
+  }
+  .panel {
+    background: color-mix(in oklab, var(--surf) 86%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+  }
+  .intel, .command {
+    padding: 16px 16px 14px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--gold);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 8px var(--gold);
+  }
+  .intel-list {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+  }
+  .intel-item {
+    padding: 10px 12px 11px;
+    border-radius: 14px;
+    background: color-mix(in oklab, var(--surf-2) 88%, transparent);
+    border: 1px solid var(--item-line);
+  }
+  .intel-item.on {
+    border-color: color-mix(in oklab, var(--gold-core) 45%, var(--item-line));
+    background: color-mix(in oklab, var(--gold-core) 8%, var(--surf-2));
+  }
+  .intel-kicker {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--warm);
+    margin-bottom: 4px;
+  }
+  .signal {
+    color: var(--green);
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+  .repo {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .intel-meta {
+    margin-top: 6px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: end;
+  }
+  .stats {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 10px;
+  }
+  .stats b { color: var(--gold-bright); font-weight: 600; }
+  .up { color: var(--green); }
+  .spark { display: block; }
+  .spark-up { stroke: var(--green); }
+  .spark-gold { stroke: var(--gold-core); }
+  .spark-warm { stroke: var(--warm); }
+  .spark-cyan { stroke: var(--cyan); }
+  html[data-theme="light"] .dot { box-shadow: none; }
+  html[data-theme="light"] .play { box-shadow: 0 6px 16px rgba(127, 87, 0, 0.18); }
+  html[data-theme="light"] .event i { box-shadow: none; }
+  .radar-wrap {
+    position: relative;
+    min-width: 0;
+    border-radius: 22px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: var(--radar);
+    box-shadow: inset 0 0 80px color-mix(in oklab, var(--bg) 35%, transparent);
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  .radar-chrome {
+    position: absolute;
+    inset: 16px 18px auto 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+  }
+  .legend {
+    display: flex;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .swatch { width: 7px; height: 7px; border-radius: 50%; }
+  .asof {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--faint);
+    letter-spacing: 0.08em;
+  }
+  .selected-name {
+    position: absolute;
+    right: 28px;
+    top: 42%;
+    transform: translateY(-120%);
+    pointer-events: none;
+    text-align: right;
+  }
+  .hero-metric {
+    margin-top: 14px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .hero-metric strong {
+    font-family: var(--mono);
+    font-size: 42px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-metric em {
+    font-style: normal;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--gold);
+    font-weight: 600;
+  }
+  .splits {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .split {
+    padding: 10px 10px 9px;
+    border-radius: 12px;
+    background: var(--bg-0);
+    border: 1px solid var(--line-dim);
+  }
+  .split small {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 4px;
+  }
+  .split b {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--green);
+    font-weight: 600;
+  }
+  .kv {
+    margin-top: 14px;
+    display: grid;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .kv div { display: flex; justify-content: space-between; color: var(--muted); }
+  .kv b { color: var(--text); font-weight: 600; }
+  .curve-label {
+    margin: 16px 0 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .peers {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .peer {
+    height: 54px;
+    border-radius: 12px;
+    background: var(--bg-0);
+    border: 1px solid var(--line-dim);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .actions {
+    margin-top: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding-top: 14px;
+  }
+  .btn {
+    height: 38px;
+    border-radius: 999px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 700;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--text);
+  }
+  .btn.primary {
+    background: var(--gold-core);
+    color: var(--gold-deep);
+    border-color: transparent;
+  }
+  .time {
+    margin: 0 20px 16px;
+    border-radius: 18px;
+    border: 1px solid var(--line);
+    background: color-mix(in oklab, var(--surf) 90%, transparent);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 18px;
+    padding: 14px 18px;
+  }
+  .transport {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .play {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 0;
+    background: var(--gold-core);
+    color: var(--gold-deep);
+    display: grid;
+    place-items: center;
+    box-shadow: 0 0 18px rgba(242, 169, 0, 0.28);
+  }
+  .ranges { display: flex; gap: 6px; }
+  .chip {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .chip.on {
+    background: color-mix(in oklab, var(--gold-core) 18%, var(--surf-3));
+    color: var(--gold-bright);
+    border-color: var(--line);
+  }
+  .track { position: relative; height: 44px; }
+  .rail {
+    position: absolute;
+    left: 0; right: 0; top: 20px;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(255,186,59,0.15), rgba(255,186,59,0.55) 86%, rgba(141,145,153,0.25));
+    border-radius: 2px;
+  }
+  .event {
+    position: absolute;
+    top: 4px;
+    transform: translateX(-50%);
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .event i {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin: 0 auto 7px;
+    background: var(--gold);
+    box-shadow: 0 0 8px var(--gold);
+  }
+  .playhead {
+    position: absolute;
+    top: 10px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--gold-core);
+    border: 2px solid var(--playhead-ring);
+    box-shadow: 0 0 12px color-mix(in oklab, var(--gold-core) 55%, transparent);
+    transform: translateX(-50%);
+  }
+  .now {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gold-bright);
+    letter-spacing: 0.06em;
+    min-width: 148px;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg class="star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.785 1.401 8.169L12 18.896l-7.335 3.868 1.401-8.169L.132 9.21l8.2-1.192z"/></svg>
+      <span class="wordmark">GitStarClub</span>
+      <span class="tag">Cockpit</span>
+    </div>
+    <div class="lede">Explore how open source moves</div>
+    <div class="tools">
+      <input class="search" placeholder="Search repos or topics" readonly />
+    </div>
+  </header>
+
+  <main>
+    <aside class="panel intel">
+      <div class="eyebrow"><span class="dot"></span>Now</div>
+      <div class="intel-list">
+        <article class="intel-item on">
+          <div class="intel-kicker">Moving now <span class="signal">▲</span></div>
+          <div class="repo">huggingface/transformers</div>
+          <div class="intel-meta">
+            <div class="stats"><b>164.1k</b><span class="up">+9.2k this month</span></div>
+            <svg class="spark" width="72" height="22" viewBox="0 0 72 22"><path class="spark-up" d="M1 17 C12 16 18 14 24 13 C32 11 38 12 46 8 C54 4 62 5 71 3" fill="none" stroke-width="1.6"/></svg>
+          </div>
+        </article>
+        <article class="intel-item">
+          <div class="intel-kicker">Speeding up <span class="signal">faster than last month</span></div>
+          <div class="repo">langchain-ai/langchain</div>
+          <div class="intel-meta">
+            <div class="stats"><b>118.4k</b><span class="up">+11.2k this month</span></div>
+            <svg class="spark" width="72" height="22" viewBox="0 0 72 22"><path class="spark-gold" d="M1 18 C10 17 16 16 22 15 C30 14 36 10 44 7 C54 3 62 4 71 2" fill="none" stroke-width="1.6"/></svg>
+          </div>
+        </article>
+        <article class="intel-item">
+          <div class="intel-kicker">New on the map <span class="signal">▲ 10k</span></div>
+          <div class="repo">diegosouzapw/OmniRoute</div>
+          <div class="intel-meta">
+            <div class="stats"><b>47.5k</b><span class="up">+12.1k this month</span></div>
+            <svg class="spark" width="72" height="22" viewBox="0 0 72 22"><path class="spark-gold" d="M1 20 C12 19 20 18 28 14 C38 8 48 7 58 4 C64 3 71 2 71 2" fill="none" stroke-width="1.6"/></svg>
+          </div>
+        </article>
+      </div>
+    </aside>
+
+    <section class="radar-wrap">
+      <canvas id="radar"></canvas>
+      <div class="radar-chrome">
+        <div>
+          <div class="eyebrow"><span class="dot"></span>Ecosystem Radar</div>
+          <div class="legend" style="margin-top:10px">
+            <span><i class="swatch" style="background:var(--gold-core)"></i>AI</span>
+            <span><i class="swatch" style="background:var(--warm)"></i>Dev Tools</span>
+            <span><i class="swatch" style="background:var(--cyan)"></i>Database</span>
+            <span><i class="swatch" style="background:var(--violet)"></i>Infra</span>
+            <span><i class="swatch" style="background:var(--green)"></i>Web</span>
+          </div>
+        </div>
+        <div class="asof">AS OF 21 AUG 2026</div>
+      </div>
+    </section>
+
+    <aside class="panel command">
+      <div class="eyebrow"><span class="dot"></span>huggingface/transformers</div>
+      <div class="hero-metric"><strong>164.1k</strong><em>stars</em></div>
+      <div class="kv">
+        <div>This month <b class="up">+9.2k</b></div>
+        <div>vs last month <b style="color:var(--green)">faster</b></div>
+        <div>In AI / ML <b>#2  was #4</b></div>
+        <div>3rd month climbing</div>
+      </div>
+      <div class="curve-label">Last 90 days</div>
+      <svg viewBox="0 0 320 92" width="100%" height="92">
+        <defs>
+          <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#f2a900" stop-opacity="0.28"/>
+            <stop offset="1" stop-color="#f2a900" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M8 78 C48 76 78 70 110 62 C150 50 176 44 210 28 C248 12 280 14 312 8 L312 88 L8 88 Z" fill="url(#fill)"/>
+        <path d="M8 78 C48 76 78 70 110 62 C150 50 176 44 210 28 C248 12 280 14 312 8" fill="none" stroke="#f2a900" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="312" cy="8" r="3.4" fill="#f2a900"/>
+      </svg>
+      <div class="curve-label">Nearby</div>
+      <div class="peers">
+        <div class="peer">pytorch</div>
+        <div class="peer">diffusers</div>
+        <div class="peer">datasets</div>
+      </div>
+      <div class="actions">
+        <button class="btn primary">Compare</button>
+        <button class="btn">Full history</button>
+      </div>
+    </aside>
+  </main>
+
+  <div class="time">
+    <div class="transport">
+      <button class="play" aria-label="Play">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M3 1.6v8.8L10.2 6 3 1.6z"/></svg>
+      </button>
+      <div class="ranges">
+        <button class="chip">This week</button>
+        <button class="chip on">This month</button>
+        <button class="chip">This year</button>
+      </div>
+    </div>
+    <div class="track">
+      <div class="rail"></div>
+      <div class="event" style="left:46%"><i></i>Jul 2019 · 10k</div>
+      <div class="event" style="left:65%"><i></i>Jun 2021 · 50k</div>
+      <div class="event" style="left:79%"><i></i>Apr 2023 · 100k</div>
+      <div class="playhead" style="left:96%"></div>
+    </div>
+    <div class="now">21 AUG 2026</div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById("radar");
+  const light = document.documentElement.dataset.theme === "light";
+  const cats = light ? {
+    ai: "#f2a900",
+    tools: "#b8860b",
+    db: "#00668a",
+    infra: "#7c3aed",
+    web: "#15803d",
+    sys: "#be123c"
+  } : {
+    ai: "#ffba3b",
+    tools: "#eac080",
+    db: "#7ec8e8",
+    infra: "#8b78e6",
+    web: "#5ecf8a",
+    sys: "#e08b9a"
+  };
+  const named = [
+    { name: "React", cat: "web", x: 0.36, y: 0.32, stars: 236000, g: 0.46 },
+    { name: "Vue", cat: "web", x: 0.47, y: 0.57, stars: 209929, g: 0.30 },
+    { name: "Kubernetes", cat: "infra", x: 0.27, y: 0.55, stars: 117400, g: 0.38 },
+    { name: "Rust", cat: "sys", x: 0.42, y: 0.74, stars: 108200, g: 0.40 },
+    { name: "Ollama", cat: "ai", x: 0.63, y: 0.48, stars: 174617, g: 0.86 },
+    { name: "LangChain", cat: "ai", x: 0.58, y: 0.64, stars: 118400, g: 0.74 },
+    { name: "Transformers", cat: "ai", x: 0.71, y: 0.36, stars: 164101, g: 0.94, selected: true }
+  ];
+  const mix = ["ai","ai","ai","ai","tools","tools","db","infra","web","sys"];
+  function rng(s) { return () => (s = Math.imul(s ^ (s >>> 15), 0x85ebca6b) >>> 0) / 2 ** 32; }
+  const rand = rng(20260821);
+  const nodes = named.map(n => ({ ...n, named: true }));
+  for (let i = 0; i < 340; i++) {
+    const cat = mix[Math.floor(rand() * mix.length)];
+    const ring = Math.pow(rand(), 0.72) * 0.42;
+    const a = rand() * Math.PI * 2;
+    const wobble = (rand() - 0.5) * 0.05;
+    nodes.push({
+      cat,
+      x: 0.49 + Math.cos(a) * ring + wobble,
+      y: 0.50 + Math.sin(a) * ring * 0.82 + wobble * 0.55,
+      stars: 5000 + rand() ** 2.4 * 160000,
+      g: rand() ** 1.15,
+      vx: Math.cos(a + 0.55) * (0.5 + rand()),
+      vy: Math.sin(a + 0.55) * (0.5 + rand())
+    });
+  }
+
+  function paint() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = light ? "#f3f4f7" : "#0b0c0e";
+    ctx.fillRect(0, 0, w, h);
+
+    const cx = w * 0.5, cy = h * 0.51;
+    const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(w, h) * 0.46);
+    g.addColorStop(0, light ? "rgba(242,169,0,0.10)" : "rgba(242,169,0,0.045)");
+    g.addColorStop(0.42, light ? "rgba(242,169,0,0.03)" : "rgba(242,169,0,0.012)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = light ? "rgba(127,87,0,0.10)" : "rgba(255,186,59,0.055)";
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, w * 0.13 * i, h * 0.155 * i, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = light ? "#7f5700" : "#e3e2e6";
+    for (let i = 0; i < 140; i++) {
+      ctx.globalAlpha = (light ? 0.06 : 0.08) + rand() * (light ? 0.10 : 0.18);
+      ctx.fillRect(rand() * w, rand() * h, 1.1, 1.1);
+    }
+    ctx.globalAlpha = 1;
+
+    const maxS = Math.log(240000);
+    function px(n) { return n.x * w; }
+    function py(n) { return n.y * h; }
+    function rad(n) { return 1.15 + (Math.log(n.stars) / maxS) * (n.named ? 9.5 : 7.2); }
+
+    ctx.lineCap = "round";
+    for (const n of nodes) {
+      if (n.g < 0.48) continue;
+      const x = px(n), y = py(n);
+      const len = 14 + n.g * 34;
+      ctx.strokeStyle = cats[n.cat];
+      ctx.globalAlpha = (light ? 0.28 : 0.16) + n.g * 0.32;
+      ctx.lineWidth = n.selected ? 1.8 : 0.9 + n.g * 0.6;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - (n.vx || 0.7) * len, y - (n.vy || 0.25) * len);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    const giants = nodes.filter(n => n.stars > 90000).slice(0, 18);
+    ctx.strokeStyle = light ? "rgba(127,87,0,0.12)" : "rgba(255,186,59,0.08)";
+    ctx.lineWidth = 0.7;
+    for (let i = 0; i < giants.length; i++) {
+      for (let j = i + 1; j < giants.length; j++) {
+        const dx = giants[i].x - giants[j].x;
+        const dy = giants[i].y - giants[j].y;
+        if (dx * dx + dy * dy < 0.045) {
+          ctx.beginPath();
+          ctx.moveTo(px(giants[i]), py(giants[i]));
+          ctx.lineTo(px(giants[j]), py(giants[j]));
+          ctx.stroke();
+        }
+      }
+    }
+
+    const ordered = [...nodes].sort((a, b) => a.stars - b.stars);
+    for (const n of ordered) {
+      const x = px(n), y = py(n);
+      const r = rad(n);
+      const color = cats[n.cat];
+      const glowR = r * (n.selected ? 3.4 : n.named ? 2.6 : 1.9);
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, glowR);
+      glow.addColorStop(0, color);
+      glow.addColorStop(0.22, color);
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.globalAlpha = (light ? 0.12 : 0.18) + n.g * (light ? 0.18 : 0.28);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, glowR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.82 + n.g * 0.18;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      if (n.g > 0.7 && !n.named) {
+        ctx.globalAlpha = 0.22;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 3 + n.g * 2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    const selected = nodes.find(n => n.selected);
+    if (selected) {
+      const x = px(selected), y = py(selected);
+      ctx.strokeStyle = light ? "rgba(127,87,0,0.85)" : "rgba(255,202,116,0.85)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(x, y, 22, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = light ? "rgba(242,169,0,0.35)" : "rgba(255,186,59,0.28)";
+      ctx.beginPath();
+      ctx.arc(x, y, 34, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = light ? "rgba(127,87,0,0.45)" : "rgba(255,186,59,0.55)";
+      ctx.beginPath();
+      ctx.moveTo(x + 36, y - 6);
+      ctx.bezierCurveTo(x + 90, y - 24, w - 40, y - 10, w - 8, y - 8);
+      ctx.stroke();
+    }
+
+    ctx.font = "600 13px 'Plus Jakarta Sans', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    for (const n of named) {
+      const x = px(n), y = py(n);
+      const labelY = y - rad(n) - 14;
+      ctx.fillStyle = light ? "rgba(255,255,255,0.88)" : "rgba(13,14,17,0.72)";
+      const tw = ctx.measureText(n.name).width;
+      ctx.beginPath();
+      roundRect(ctx, x - tw / 2 - 7, labelY - 12, tw + 14, 20, 10);
+      ctx.fill();
+      ctx.fillStyle = n.selected ? (light ? "#7f5700" : "#ffca74") : (light ? "#1a1c1e" : "#e3e2e6");
+      ctx.fillText(n.name, x, labelY + 2);
+    }
+
+    function roundRect(c, x, y, w, h, r) {
+      c.moveTo(x + r, y);
+      c.arcTo(x + w, y, x + w, y + h, r);
+      c.arcTo(x + w, y + h, x, y + h, r);
+      c.arcTo(x, y + h, x, y, r);
+      c.arcTo(x, y, x + w, y, r);
+    }
+    window.__COCKPIT_READY = true;
+  }
+
+  document.fonts.ready.then(() => requestAnimationFrame(paint));
+})();
+</script>
+</body>
+</html>
