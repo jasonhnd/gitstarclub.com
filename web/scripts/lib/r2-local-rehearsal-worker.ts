@@ -1,3 +1,4 @@
+import { withWorkerEnv } from "../../lib/workers-host/runtime-env";
 // Standalone local Worker: imports the application read/write paths unchanged.
 // This entrypoint is bundled only by the offline rehearsal, never deployed.
 import { commitInitialBootstrapWithLease } from "../../../pipeline/lib/bootstrap-publication.mjs";
@@ -28,9 +29,8 @@ type Input = {
 };
 
 const worker = {
-  async fetch(request: Request, env: Env, ctx: unknown): Promise<Response> {
-    // This is OpenNext's actual context symbol. The driver resolves DATA from it.
-    (globalThis as unknown as Record<symbol, unknown>)[Symbol.for("__cloudflare-context__")] = { env, ctx, cf: {} };
+  async fetch(request: Request, env: Env): Promise<Response> {
+    return withWorkerEnv(env, async () => {
     try {
       const input = await request.json() as Input;
       const path = new URL(request.url).pathname;
@@ -94,6 +94,7 @@ const worker = {
         status: error instanceof ObjectStorePreconditionFailedError ? 412 : 409,
       });
     }
+    });
   },
 };
 

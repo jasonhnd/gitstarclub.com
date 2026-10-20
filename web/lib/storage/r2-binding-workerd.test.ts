@@ -6,7 +6,7 @@ import { R2BindingObjectStore, type R2Bucket } from "./r2-binding-store";
 
 /**
  * Local workerd check. The binary is the `workerd` package already installed
- * with wrangler (1.20260930.2), so this stays inside `bun test` and does not
+ * with typed config (1.20260930.2), so this stays inside `bun test` and does not
  * change CI. Telemetry stays off. No Cloudflare account and no remote bucket.
  */
 let miniflare: Miniflare | undefined;

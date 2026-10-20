@@ -12,7 +12,7 @@ const SECRET = "CANARYCRONSECRET1234567890abcd";
 const PREVIEW_ORIGIN = "https://pre.gitstarclub.com";
 const PRODUCTION_ORIGIN = "https://gitstarclub.com";
 
-// Mirrors wrangler.jsonc: env.pre does not inherit top-level vars, so the
+// Mirrors cloudflare.config.ts: env.pre does not inherit top-level vars, so the
 // preview Worker has CF_CRON_ORIGIN and DEPLOY_ENV but no NEXT_PUBLIC_SITE_URL.
 const previewEnv = {
   HOSTING_TARGET: "cf",

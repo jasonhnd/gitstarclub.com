@@ -1,3 +1,5 @@
+> Historical plan, superseded for host commands by GSC_0075. Do not execute its old platform procedures; use [the vinext host runbook](../docs/VINEXT-HOST.md).
+
 # Production rollout and data repair plan
 
 > **Current update, 2026-10-19 (GSC_0071 / GSC_0073):** raw data lives only in private R2 `gitstarclub-raw`; GCP project `gitstarclub` entered deletion at 2026-10-19T11:12:41Z (`DELETE_REQUESTED`), with a calculated 30-day recovery deadline of 2026-11-18T11:12:41Z. BigQuery / GH Archive extraction is retired. GitHub's own star history is the replacement source under owner decision d1019-001344-1; collection, validation, and publication remain separately authorized. Section B0 and [OPS](../docs/OPS.md#raw-backfill-data) record the current archive.
