@@ -6,9 +6,9 @@ type CommitEnv = {
 };
 
 /**
- * The SHA written by cf:build is the deployment identity.
+ * The SHA written by the Vite build is the deployment identity.
  * A runtime override is accepted only when no SHA was baked, or when it
- * names that same commit. A stale wrangler --var must not mask the build.
+ * names that same commit. A stale runtime binding must not mask the build.
  */
 export function reportedCommitSha(
   env: CommitEnv,

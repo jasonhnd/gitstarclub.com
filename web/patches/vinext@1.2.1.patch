@@ -1,0 +1,14 @@
+--- a/dist/shims/fetch-cache.js
++++ b/dist/shims/fetch-cache.js
+@@ -855,3 +855,11 @@
+ * in some environments.
+ */
+ function stripNextFromInit(init, cacheOverride) {
++	// Native Workers fetch accepts only these two cache modes. Framework caching
++	// has already been resolved; normalize only the native RequestInit copy.
++	const supported = (cache) => cache === "no-store" || cache === "no-cache";
++	if (cacheOverride !== undefined && !supported(cacheOverride)) cacheOverride = undefined;
++	if (init?.cache !== undefined && !supported(init.cache)) {
++		const { cache: _nativeCache, ...rest } = init;
++		init = rest;
++	}

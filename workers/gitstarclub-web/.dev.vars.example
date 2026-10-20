@@ -1,5 +1,5 @@
-# Local wrangler / OpenNext preview only. Copy to .dev.vars — do not commit secrets.
-NEXTJS_ENV=production
+# Historical local shell example. The typed host config owns public values.
+# For local Vite tools use web/.env.local; never commit secrets.
 HOSTING_TARGET=cf
 # Cron HTTP origin for handleScheduled dispatch. Preview host, not production.
 CF_CRON_ORIGIN=https://pre.gitstarclub.com

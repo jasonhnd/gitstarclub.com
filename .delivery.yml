@@ -16,8 +16,8 @@ verifier:
 ci:
   checks: [static, production-build]  # Required = static + production-build. preview-e2e / product-gates optional / skippable (Ignored Build / no Preview). cf-preview / cf-workers-host MUST NOT be added (not ruleset required)
   # Named by scripts/assert-cf-ci-gates.mjs (keep these Worker names in sync):
-  #   main → gitstarclub-web (production; wrangler top-level triggers.crons MUST stay [])
-  #   pre  → gitstarclub-web-pre (wrangler env pre)
+  #   main → gitstarclub-web (production; no scheduled triggers)
+  #   pre  → gitstarclub-web-pre (typed Vite mode pre)
   # GHA/scripts must never live-deploy gitstarclub-web or PUT production schedules.
 verification:
   browser:

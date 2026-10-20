@@ -8,9 +8,9 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "vite --mode pre",
+    "build": "vite build --mode production",
+    "start": "vite preview --mode pre",
     "lint": "eslint",
     "e2e:screenshots": "playwright test e2e/baseline-screenshots.spec.ts",
     "typecheck": "tsc --noEmit",
@@ -23,12 +23,12 @@
     "audit:deps": "bun audit --audit-level=high",
     "test": "bun test lib/ --isolate",
     "test:cov": "bun test lib/ --coverage --isolate && node ../scripts/check-coverage-threshold.mjs coverage/lcov.info",
-    "cf:build": "bun scripts/cf-opennext-build.ts",
-    "cf:build:production": "bun run cf:build --site-target=production",
-    "cf:build:pre": "bun run cf:build --site-target=pre",
-    "cf:preview": "wrangler dev --config ../workers/gitstarclub-web/wrangler.jsonc --env pre --port 8787 --ip 127.0.0.1",
-    "cf:dry-run": "bun run cf:build:pre && node ../scripts/cf-wrangler-dry-run.mjs",
-    "cf:smoke": "bun scripts/cf-workers-host-smoke.ts"
+    "build:production": "vite build --mode production",
+    "build:pre": "vite build --mode pre",
+    "validate:host": "bun scripts/validate-host-build.ts",
+    "validate:graph": "bun scripts/check-host-graph.ts",
+    "deploy:pre": "vinext-cloudflare deploy --env pre",
+    "smoke:workers": "bun scripts/cf-workers-host-smoke.ts"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.1.0",
@@ -38,11 +38,11 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "three": "^0.186.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "react-server-dom-webpack": "19.3.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
-    "@opennextjs/cloudflare": "^1.20.7",
     "@playwright/test": "^1.63.0",
     "@resvg/resvg-wasm": "2.6.2",
     "@tailwindcss/postcss": "^4.3.3",
@@ -55,7 +55,14 @@
     "eslint-config-next": "16.4.2",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
-    "wrangler": "^4.145.0"
+    "vinext": "1.2.1",
+    "@vinext/cloudflare": "1.1.1",
+    "vite": "8.3.0",
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.2",
+    "cf": "1.0.0-beta.18",
+    "@vitejs/plugin-rsc": "0.5.37",
+    "@vitejs/plugin-react": "6.0.1",
+    "miniflare": "5.20261019.0-beta"
   },
   "overrides": {
     "js-yaml": "4.3.2",
@@ -67,6 +74,7 @@
     "brace-expansion@2.1.2": "2.1.7",
     "brace-expansion@5.0.8": "5.0.12",
     "nanoid": "5.1.16",
+    "fflate@0.7.3": "0.7.5",
     "braces": "github:micromatch/braces#bdb6fda18f2aba1ae63d78786cb4460b478459ba"
   },
   "ignoreScripts": [
@@ -76,5 +84,9 @@
   "trustedDependencies": [
     "sharp",
     "unrs-resolver"
-  ]
+  ],
+  "type": "module",
+  "patchedDependencies": {
+    "vinext@1.2.1": "patches/vinext@1.2.1.patch"
+  }
 }
