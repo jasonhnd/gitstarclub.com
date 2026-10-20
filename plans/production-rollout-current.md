@@ -36,7 +36,7 @@ Read-only cf deployment/version queries and public `/.well-known/deployment` GET
 
 Evidence: `cf workers deployments list --worker <name>`, then `cf workers versions get <id> --worker-id <name>`;
 production version metadata also names `daee5fc`. The pinned CLI has no schedule-list command:
-its authenticated GET transport read `/accounts/<account>/workers/scripts/<name>/schedules` for both Workers,
+its authenticated GET transport read each Worker's schedules endpoint,
 using the [schedule GET contract](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/schedules/methods/get/).
 No credential values were printed or copied. Deployment identity is distinct from the Git branch head.
 Target bindings, fallback and indexing policy are in [web/host-contract.mjs](../web/host-contract.mjs)
