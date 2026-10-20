@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { RECOMPUTE_PHASES } from "@/lib/workflows/runtime/types";
+import { REPO_BUCKETS } from "@/lib/workflows/buckets";
+import { nextRefreshJob } from "@/lib/workflows/runtime/graph";
+import { rankCarryPath } from "@/lib/workflows/recompute/io";
+import { RankList } from "@/lib/contracts";
+import { installWorkflowHarness, TEST_RUN, type FullJob } from "../test-support";
+import { REST_INGEST_BUCKETS, REST_OFFSET_RANKS, REST_OFFSET_LOOKUP, REST_OFFSET_SEARCH, REST_OFFSET_CATEGORIES } from "./recompute-rest";
 import {
   extraRecomputeCheckpointSteps,
   hasNextRecomputeWindow,
-  NEXT_RECOMPUTE_PHASE,
-  RECOMPUTE_RANK_FAMILIES,
   WEEK_RANK_PERIODS_PER_HOP,
   recomputeEnqueuedPath,
   recomputePhaseOf,
@@ -42,14 +45,7 @@ describe("recompute rank hops", () => {
     expect(recomputeEnqueuedPath("refresh-1")).toBe("ops/workflows/refresh-1/recompute-enqueued.json");
   });
 
-  test("walks month → monthOrg → year → yearOrg → week → weekOrg → rest", () => {
-    let phase: (typeof RECOMPUTE_PHASES)[number] | undefined = "month";
-    const seen: string[] = [];
-    while (phase) {
-      seen.push(phase);
-      phase = NEXT_RECOMPUTE_PHASE[phase];
-    }
-    expect(seen).toEqual(["month", "monthOrg", "year", "yearOrg", "week", "weekOrg", "rest"]);
+  test("recognizes successor fields and terminal checkpoint aliases", () => {
     expect(hasNextRecomputeWindow({ nextRecomputePhase: "monthOrg" })).toBe(true);
     expect(hasNextRecomputeWindow({ nextRecomputePhase: "rest" })).toBe(true);
     expect(hasNextRecomputeWindow({ nextRecomputePhase: "week", nextRecomputeOffset: 0 })).toBe(true);
@@ -82,12 +78,60 @@ describe("recompute rank hops", () => {
     expect(recomputePhaseOf({ recomputePhase: "yearOrg" })).toBe("yearOrg");
   });
 
-  test("each rank hop still documents only the families it needs", () => {
-    expect(RECOMPUTE_RANK_FAMILIES.month).toEqual(["repos", "monthly"]);
-    expect(RECOMPUTE_RANK_FAMILIES.monthOrg).toEqual(["repos", "monthly"]);
-    expect(RECOMPUTE_RANK_FAMILIES.year).toEqual(["repos", "monthly"]);
-    expect(RECOMPUTE_RANK_FAMILIES.week).toEqual(["repos", "weekly"]);
-    expect(RECOMPUTE_RANK_FAMILIES.weekOrg).toEqual(["repos", "weekly"]);
-    expect(RECOMPUTE_RANK_FAMILIES.rest).toEqual(["repos"]);
-  });
+  test("real rank hops read the required families and persist their actual successors", async () => {
+    const harness = installWorkflowHarness();
+    try {
+      const { executeRefreshStep } = await import("../runtime/execute");
+      const started = await executeRefreshStep({ v: 1, graph: "full", runId: TEST_RUN, name: "startRun", attempt: 0, cursor: {} });
+      let job: FullJob | null = { v: 1, graph: "full", runId: TEST_RUN, name: "recomputeRank", attempt: 0, cursor: { startedAt: started.startedAt, fencingToken: started.fencingToken } };
+      const phases: string[] = [];
+      const restOffsets: number[] = [];
+      let observedCarry = false;
+      for (let hops = 0; job?.name === "recomputeRank" && hops < 100; hops++) {
+        const phase = job.cursor.recomputePhase ?? "month";
+        if (phases.at(-1) !== phase) phases.push(phase);
+        if (phase === "rest") restOffsets.push(job.cursor.recomputeOffset ?? 0);
+        harness.store.reads.length = 0;
+        harness.store.writes.length = 0;
+        const { response, result } = await harness.run(job);
+        expect(response.status).toBe(200);
+        const canonicalReads = harness.store.reads.filter((path) => /^canonical\/v2\/(repos|repo-monthly|repo-weekly|repo-recent-daily)\//.test(path));
+        if ((phase === "month" || phase === "week") && job.cursor.recomputeOffset === undefined) {
+          const series = phase === "month" ? "repo-monthly" : "repo-weekly";
+          expect(new Set(canonicalReads)).toEqual(new Set(Array.from({ length: REPO_BUCKETS }, (_, bucket) => [`canonical/v2/repos/${bucket}.json`, `canonical/v2/${series}/${bucket}.json`]).flat()));
+          const metaPath = `ops/workflows/${TEST_RUN}/recompute/${phase}-win/meta.json`;
+          const before = harness.store.contents[metaPath];
+          // Replay the real pack hop; persisted artifacts are reused unchanged.
+          const replay = await harness.run(job);
+          expect(replay.result).toEqual(result);
+          expect(harness.store.contents[metaPath]).toBe(before);
+        } else if (phase === "rest" && (job.cursor.recomputeOffset ?? 0) < REST_INGEST_BUCKETS) {
+          const bucket = job.cursor.recomputeOffset ?? 0;
+          expect(new Set(canonicalReads)).toEqual(new Set([`canonical/v2/repos/${bucket}.json`]));
+          expect(harness.store.writes).toContain(`views/${TEST_RUN}/categories/assignments/shards/${bucket}.json`);
+        } else {
+          expect(canonicalReads).toEqual([]);
+        }
+        if (phase === "month" && job.cursor.recomputeOffset === 0) {
+          expect(result).toMatchObject({ nextRecomputePhase: "month", nextRecomputeOffset: WEEK_RANK_PERIODS_PER_HOP });
+          const carry = harness.store.json(rankCarryPath(TEST_RUN, "month", "repo"));
+          expect(carry).toMatchObject({ kind: "month", dim: "repo", nextPeriod: WEEK_RANK_PERIODS_PER_HOP });
+          expect(carry.flow).toHaveLength(1000);
+          observedCarry = true;
+        }
+        job = nextRefreshJob(job, result!) as FullJob | null;
+      }
+      expect(phases).toEqual(["month", "monthOrg", "year", "yearOrg", "week", "weekOrg", "rest"]);
+      expect(restOffsets).toEqual([...Array.from({ length: REST_INGEST_BUCKETS }, (_, i) => i), REST_OFFSET_RANKS, REST_OFFSET_LOOKUP, REST_OFFSET_SEARCH, REST_OFFSET_CATEGORIES]);
+      expect(job?.name).toBe("recomputeRepoEntities");
+      expect(observedCarry).toBe(true);
+      const last = RankList.parse(harness.store.json(`views/${TEST_RUN}/rank/month/2026-08/repo/stock.json`));
+      expect(last.items[0]).toMatchObject({ rank: 1, id: 1, value: 180, prev_rank: 1 });
+      for (const path of ["rank/all-time/repo/stock.json", "lookup/repos.json", "search/index.json", "categories/assignments.json"]) {
+        expect(harness.store.contents[`views/${TEST_RUN}/${path}`]).toBeDefined();
+      }
+    } finally {
+      harness.restore();
+    }
+  }, 30000);
 });
