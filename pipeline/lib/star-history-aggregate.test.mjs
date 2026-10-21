@@ -124,6 +124,45 @@ test("serial starts stay at least 1050 ms apart, including resume after a succes
   expect(starts[1] - starts[0]).toBe(1050);
 });
 
+test("actual starts stay 1050 ms apart after a slow save, fast saves and successful reconstruction", async () => {
+  const out = fixture();
+  let time = 100_000;
+  const starts = [];
+  const saveDelays = [2000];
+  class SlowSaveClient extends AggregateClient {
+    save() { time += saveDelays.shift() ?? 0; super.save(); }
+  }
+  const options = { out, now: () => time, wait: async (ms) => { time += ms; }, log() {}, transport: async () => {
+    starts.push(time); time += 10; return page([]);
+  } };
+  const client = new SlowSaveClient(options);
+  await client.request(member, 1);
+  await client.request(member, 2);
+  await new SlowSaveClient(options).request(member, 3);
+  expect(starts).toEqual([102_000, 103_050, 104_100]);
+  for (let index = 1; index < starts.length; index++) expect(starts[index] - starts[index - 1]).toBeGreaterThanOrEqual(1050);
+  for (const [index, start] of starts.entries()) {
+    expect(read(join(out, `pages/33/${index + 1}-page-${index + 1}.json`)).requested_at).toBe(new Date(start).toISOString());
+  }
+  expect(read(join(out, "api-state.json"))).toMatchObject({ last_request_at: starts.at(-1), api_ms: 30 });
+});
+
+test("an interrupted request retains conservative restart pacing even after a slow pre-spawn save", async () => {
+  const out = fixture();
+  let time = 100_000;
+  const starts = [];
+  const options = { out, now: () => time, wait: async (ms) => { time += ms; }, log() {} };
+  const client = new AggregateClient({ ...options, transport: async () => {
+    starts.push(time); throw new Error("simulated interruption before response persistence");
+  } });
+  const save = client.save.bind(client);
+  client.save = () => { time += 2000; save(); };
+  await expect(client.request(member, 1)).rejects.toThrow("simulated interruption");
+  await new AggregateClient({ ...options, transport: async () => { starts.push(time); return page([]); } }).request(member, 1);
+  expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(1050);
+  expect(read(join(out, "api-state.json")).request_pending).toBe(false);
+});
+
 test("primary/secondary Retry-After and transient failures back off, preserving cooldown across chunk deadlines", async () => {
   expect(retryDelay({ status: 429, headers: { "retry-after": "90" } }, 0, 100_000)).toBe(90_000);
   expect(retryDelay({ status: 403, headers: { "retry-after": "Thu, 01 Jan 1970 00:04:00 GMT" } }, 0, 100_000)).toBe(140_000);
