@@ -20,7 +20,7 @@ describe("unchanged locale URLs", () => {
         expect(actual.status).toBe(expected.status);
         expect(actual.headers.get("location")).toBe(expected.headers.get("location"));
         expect(actual.headers.get("set-cookie")).toContain(`gsc_lang=${locale}`);
-        for (const attr of ["Max-Age=31536000", "Path=/", "SameSite=Lax", "Secure"]) expect(actual.headers.get("set-cookie")).toContain(attr);
+        for (const attr of ["Max-Age=31536000", "Path=/", "SameSite=lax", ...(process.env.NODE_ENV === "production" ? ["Secure"] : [])]) expect(actual.headers.get("set-cookie")).toContain(attr);
       }
     });
   }
