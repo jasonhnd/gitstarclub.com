@@ -27,7 +27,7 @@ let gateway: ReturnType<typeof Bun.serve> | undefined;
 const log = openSync(resolve(scratch, "p5-web-preview.log"), "w");
 try {
   prepareWebOutput();
-  if (!process.argv.includes("--reuse-builds")) {
+  {
     await run(["bun", "run", "build:pre"], "web");
     await run(["bun", "run", "build"], "astro");
   }
@@ -53,11 +53,14 @@ try {
   gateway = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const url = new URL(request.url);
     const target = ["/search-index", "/repo-curve"].includes(url.pathname) ? web : astro;
+    console.log(`Gateway GET ${url.pathname}${url.search}`);
     const response = await fetch(new Request(`${target}${url.pathname}${url.search}`, request), { redirect: "manual" });
     // Bun fetch decompresses the body before this local gateway forwards it.
     const headers = new Headers(response.headers);
     headers.delete("content-encoding"); headers.delete("content-length");
-    return new Response(response.body, { status: response.status, headers });
+    const body = await response.arrayBuffer();
+    console.log(`Gateway ${response.status} ${url.pathname}: ${body.byteLength} bytes`);
+    return new Response(body, { status: response.status, headers });
   } });
   for (const locale of LOCALES) {
     for (const route of ["/compare", "/pulse"]) {
