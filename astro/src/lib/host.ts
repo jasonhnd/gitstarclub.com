@@ -2,6 +2,7 @@ import { contentSecurityPolicyForEnvironment, securityHeaders } from "../../../w
 import { type Publication } from "../../../web/lib/workers-host/publication-fence";
 import { ArtifactStore, type StoredEntry } from "../../../web/lib/workers-host/cache/store";
 import { bypassPageCache, isLongTail, MAX_ENTRY_BYTES, TAIL_EXPIRE_SECONDS, TAIL_FRESH_SECONDS } from "../../../web/lib/workers-host/cache/policy";
+import { parsePositiveIntegerParam } from "../../../web/lib/route-utils";
 import { languageRedirect, negotiateLocale } from "./routing";
 
 export type HostOptions = {
@@ -34,6 +35,9 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
   if (path === "/api/workflows/refresh/revalidate" && request.method === "POST" && options.unscopedRender) {
     return finish(await options.unscopedRender());
   }
+  // Invalid curve inputs and framework method responses never read published data.
+  if (path === "/repo-curve" && options.unscopedRender && (!["GET", "HEAD"].includes(request.method)
+    || parsePositiveIntegerParam(url.searchParams.get("id")) === null)) return finish(await options.unscopedRender());
   const redirect = negotiateLocale(request);
   if (redirect) return finish(redirect);
   const bypass = bypassPageCache(request);

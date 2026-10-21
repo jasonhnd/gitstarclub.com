@@ -51,5 +51,11 @@ try {
     const view = new DataView(bytes.buffer);
     assert.equal(view.getUint32(16), 1200); assert.equal(view.getUint32(20), 630);
   }
+  const bucket = await worker.getR2Bucket("DATA");
+  await bucket.put("views/latest.json", "invalid");
+  assert.equal((await get("/repo-curve?id=0")).status, 400);
+  assert.equal((await get("/repo-curve", { method: "OPTIONS" })).status, 204);
+  assert.equal((await get("/repo-curve", { method: "POST" })).status, 405);
+  assert.equal((await get("/repo-curve?id=1")).status, 503);
   console.log("PASS P2 built Worker: 21 locale pages, cache MISS/HIT, 7 aliases/404s, 6 exact GET/HEAD endpoint cases, 2 PNG social images.");
 } finally { await worker.dispose(); }
