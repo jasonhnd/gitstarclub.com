@@ -1,17 +1,18 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { isLocale, type Locale } from "../../../../web/lib/i18n";
-import { withPublishedData } from "../../lib/published-fetch";
+import { withPublishedReaders } from "../../lib/published-readers";
 import { PageNotFound } from "../../lib/navigation";
 import { generatePulseMetadata, PulsePageView } from "./pulse";
 import { generateRankingsMetadata, RankingsPageView } from "./rankings";
 import { generateRankingYearMetadata, generateRankingPeriodMetadata, RankingsYearPageView, RankingsPeriodPageView } from "./ranking-detail";
 
 export type PageKind = "home" | "rankings" | "year" | "period";
-export async function loadPage(kind: PageKind, localeValue = "en", year = "", period = "") {
+export type PublishedData = Parameters<typeof withPublishedReaders>[0];
+export async function loadPage(data: PublishedData, kind: PageKind, localeValue = "en", year = "", period = "") {
   if (!isLocale(localeValue)) return null;
   const locale: Locale = localeValue;
   try {
-    return await withPublishedData(async () => {
+    return await withPublishedReaders(data, async () => {
       const metadata = await (kind === "home" ? generatePulseMetadata({ locale, canonicalPath: "/", absoluteTitle: true })
         : kind === "rankings" ? generateRankingsMetadata(locale)
         : kind === "year" ? generateRankingYearMetadata(locale, year) : generateRankingPeriodMetadata(locale, { year, period }));

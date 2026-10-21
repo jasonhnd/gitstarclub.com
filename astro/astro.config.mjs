@@ -23,7 +23,7 @@ export default defineConfig({
   vite: {
     plugins: [rankingImages(), tailwindcss()],
     resolve: { alias: [
-      { find: /^@\/lib\/fetch-timeout\.mjs$/, replacement: fileURLToPath(new URL("./src/lib/published-fetch.ts", import.meta.url)) },
+      { find: /^@\/lib\/fetch-timeout\.mjs$/, replacement: fileURLToPath(new URL("./src/lib/published-readers.ts", import.meta.url)) },
       { find: /^next\/link$/, replacement: fileURLToPath(new URL("./src/components/Link.tsx", import.meta.url)) },
       { find: /^next\/navigation$/, replacement: fileURLToPath(new URL("./src/lib/navigation.ts", import.meta.url)) },
       { find: "@", replacement: fileURLToPath(new URL("../web/", import.meta.url)) },

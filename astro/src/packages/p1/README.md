@@ -16,11 +16,11 @@ resolvers are imported. These imports must be relocated with the other shared
 imports before the final integration removes `web/`.
 
 `page.ts` renders the body to static HTML inside the captured publication
-scope. `published-fetch.ts` adapts only the existing readers' HTTP transport to
-the native read-only DATA binding for the reserved `astro-data.invalid` origin.
-The existing managed/bootstrap/live-history selection stays in the web readers.
-It never replaces global fetch or mutates process environment. Ordinary HTTP
-keeps its timeout behavior. The Worker remains the sole HTML cache boundary.
+scope, using the shared `withPublishedReaders(Astro.locals.data, run)` interface
+introduced by P5. The unchanged web readers retain managed/bootstrap/live-history
+selection while the shared facade performs native read-only DATA transport.
+P1 adds no second transport or page cache. The Worker remains the sole HTML
+cache boundary.
 
 Home/all-time bodies add no browser code. Year/month/week pages load one small
 native module only for the existing share-link, share-intent and snippet/embed
