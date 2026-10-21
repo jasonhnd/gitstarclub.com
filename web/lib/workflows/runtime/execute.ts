@@ -1,6 +1,8 @@
+import { isSubrequestLimitError } from "./subrequest-limit";
 import { sendAlert } from "@/lib/observability/alert";
 import {
   markFailed,
+  recordDeferredFailure,
   markPublished,
   recordPostCommitLeaseLoss,
   startRun,
@@ -14,15 +16,15 @@ import {
 } from "@/lib/workflows/publication-core";
 import { buildAliases } from "@/lib/workflows/steps/aliases";
 import { runFoldStep } from "@/lib/workflows/steps/fold";
-import { gcVersions } from "@/lib/workflows/steps/gc";
+import { runGcStep } from "@/lib/workflows/steps/gc";
 import { refreshMetadataBucket } from "@/lib/workflows/steps/metadata";
 import { runPreflightStep } from "@/lib/workflows/steps/preflight";
-import { publishVersion } from "@/lib/workflows/steps/publish";
+import { runPublishStep } from "@/lib/workflows/steps/publish";
 import { recomputeOrgEntities, recomputeRepoEntities } from "@/lib/workflows/steps/recompute-entity";
 import { recomputeHeatmap } from "@/lib/workflows/steps/recompute-heatmap";
 import { runRecomputeRankStep } from "@/lib/workflows/steps/recompute-rank";
 import { detectRenames } from "@/lib/workflows/steps/rename";
-import { validateVersion } from "@/lib/workflows/steps/validate";
+import { runValidateStep } from "@/lib/workflows/steps/validate-step";
 import { runWhitelistStep } from "@/lib/workflows/steps/whitelist";
 import type { FullRefreshStepName, RefreshStepJob, RefreshStepResult } from "./types";
 
@@ -35,6 +37,11 @@ function requireToken(job: RefreshStepJob): number {
 
 export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "full" }>): Promise<RefreshStepResult> {
   const runId = job.runId;
+  if (job.cursor.failure) {
+    if (!job.cursor.startedAt) throw new Error(`refresh ${runId}: missing failure start time`);
+    await recordDeferredFailure(runId, job.cursor.startedAt, requireToken(job), job.cursor.failure.message, job.cursor.failure.publication);
+    return { name: job.name, ok: true };
+  }
   const name: FullRefreshStepName = job.name;
   switch (name) {
     case "startRun": {
@@ -56,19 +63,19 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
     case "recomputeRank":
       return { name, ...(await runRecomputeRankStep(runId, requireToken(job), job.cursor)) };
     case "recomputeRepoEntities":
-      return { name, ...(await recomputeRepoEntities(runId, requireToken(job))) };
+      return { name, ...(await recomputeRepoEntities(runId, requireToken(job), job.cursor)) };
     case "recomputeOrgEntities":
-      return { name, ...(await recomputeOrgEntities(runId, requireToken(job))) };
+      return { name, ...(await recomputeOrgEntities(runId, requireToken(job), job.cursor)) };
     case "recomputeHeatmap":
       return { name, ...(await recomputeHeatmap(runId, requireToken(job))) };
     case "aliases":
       return { name, ...(await buildAliases(runId, requireToken(job))) };
     case "validate":
-      return { name, ...(await validateVersion(runId, requireToken(job))) };
+      return { name, ...(await runValidateStep(runId, requireToken(job), job.cursor)) };
     case "publish":
-      return { name, ...(await publishVersion(runId, requireToken(job))) };
+      return { name, ...(await runPublishStep(runId, requireToken(job), job.cursor)) };
     case "gc": {
-      const gc = await gcVersions(runId, requireToken(job));
+      const gc = await runGcStep(runId, requireToken(job), job.cursor);
       if (gc.error) {
         await sendAlert({ pipeline: "workflow-refresh", title: "version gc failed", run_id: runId, step: "gc", error: gc.error });
       }
@@ -93,7 +100,7 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
  * markPublished run only after publish succeeded, and publish uses the run id
  * as the version.
  */
-function publicationFailure(
+export function publicationFailure(
   job: Extract<RefreshStepJob, { graph: "full" }>,
   error: unknown,
 ): PublicationFailure | undefined {
@@ -103,16 +110,19 @@ function publicationFailure(
   if (error instanceof PublicationCommitUnknownError) {
     return { phase: "commit_unknown", version: error.version, step: error.step };
   }
+  if (job.name === "publish" && isSubrequestLimitError(error)) {
+    return { phase: "commit_unknown", version: job.runId, step: job.name };
+  }
   if (job.name === "gc" || job.name === "markPublished") {
     return { phase: "post_commit", version: job.runId, step: job.name };
   }
   return undefined;
 }
 
-export async function failRefreshJob(job: RefreshStepJob, error: unknown): Promise<void> {
+export async function failRefreshJob(job: RefreshStepJob, error: unknown, knownPublication?: PublicationFailure): Promise<void> {
   if (job.graph !== "full" || !job.cursor.startedAt || job.cursor.fencingToken === undefined) return;
   const message = error instanceof Error ? error.message : String(error);
-  const publication = publicationFailure(job, error);
+  const publication = knownPublication ?? publicationFailure(job, error);
   try {
     await markFailed(job.runId, job.cursor.startedAt, message, job.cursor.fencingToken, publication);
   } catch (checkpointError) {

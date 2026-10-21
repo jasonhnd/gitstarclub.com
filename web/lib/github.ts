@@ -89,6 +89,13 @@ export function isTransientGithubError(error: unknown): boolean {
   return /GitHub (?:GraphQL|Search) (429|5\d\d)\b/.test(error.message);
 }
 
+/** gql has already exhausted its normal retries before exposing this error.
+ * Only a nodes-page 502 permits splitting/skipping; auth, throttling, and other
+ * service failures must not turn into missing repository data. */
+export function isMetadataPage502(error: unknown): boolean {
+  return error instanceof GitHubHttpError && error.source === "graphql" && error.status === 502;
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => {
   setTimeout(resolve, ms);
 });

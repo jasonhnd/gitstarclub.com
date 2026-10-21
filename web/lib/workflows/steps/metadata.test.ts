@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { GitHubHttpError, type RepoMetadata } from "@/lib/github";
+import { buildModel } from "../recompute/model";
+import { allTime } from "../recompute/ranks";
+import { repoEntities } from "../recompute/entities";
 import type { MetadataBucketProgress, ReposLookup, ReposShardEntry, WhitelistEntry, WhitelistSnapshot } from "@/lib/contracts";
 import {
   buildMetadataShard,
+  coalesceMetadataBucketProgress,
   MAX_METADATA_TRANSIENT_ATTEMPTS,
   metadataTransientRetryDelayMs,
   refreshMetadataBucketWithDeps,
@@ -163,6 +167,183 @@ function fakeMetadata(ids: number[]) {
 }
 
 describe("metadata GraphQL resume", () => {
+  for (const retained of [false, true]) {
+    test(`persists a completed borrowed ${retained ? "retained" : "missing"} skip before writing the new run shard`, async () => {
+      const { state, deps } = fakeMetadata([1]);
+      deps.readWhitelist = async () => ({ ...whitelistFor([1]), metadata_resume_run_id: "refresh-failed" });
+      const skipped = {
+        id: 1, node_id: "R_1", full_name: "owner/repo-1", reason: "graphql_502" as const,
+        value_status: retained ? "retained" as const : "missing" as const,
+      };
+      deps.readProgress = async (runId) => runId === "refresh-failed" ? {
+        v: 1, bucket: 1, fetched: {}, pending_pages: [], skipped: [skipped], transient_attempts: 0,
+      } : state.progress;
+      deps.readPrevShard = async (): Promise<Record<string, ReposShardEntry>> => retained ? { "1": previous(1, "2025-01-01") } : {};
+      deps.fetchBatch = async () => { throw new Error("completed borrowed pages must not be fetched again"); };
+      const writeShard = deps.writeShard;
+      deps.writeShard = async (owner, bucket, shard) => {
+        expect(state.progress).toMatchObject({ pending_pages: [], skipped: [skipped], transient_attempts: 0 });
+        await writeShard(owner, bucket, shard);
+      };
+      const done = await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
+      expect(done).toMatchObject({ from_github: 0, skipped_count: 1, skipped: [skipped] });
+      expect(state.progress?.skipped).toEqual([skipped]);
+      if (retained) expect(state.shard?.["1"]?.current_stars).toBe(20_001);
+      else expect(state.shard).toEqual({});
+    });
+  }
+
+  test("a failed current-run audit write prevents publishing a borrowed completed shard", async () => {
+    const { state, deps } = fakeMetadata([1]);
+    deps.readWhitelist = async () => ({ ...whitelistFor([1]), metadata_resume_run_id: "refresh-failed" });
+    deps.readProgress = async () => ({
+      v: 1, bucket: 1, fetched: {}, pending_pages: [], transient_attempts: 0,
+      skipped: [{ id: 1, node_id: "R_1", full_name: "owner/repo-1", reason: "graphql_502", value_status: "missing" }],
+    });
+    deps.writeProgress = async () => { throw new Error("audit write unavailable"); };
+    await expect(refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps)).rejects.toThrow("audit write unavailable");
+    expect(state.shard).toBeNull();
+  });
+
+  test("resets borrowed zero-row budgets but preserves an in-run split checkpoint", () => {
+    const borrowed: MetadataBucketProgress = {
+      v: 1, bucket: 1, fetched: {}, transient_attempts: 17, last_error: "GitHub GraphQL 502",
+    };
+    expect(coalesceMetadataBucketProgress(1, null, borrowed)).toMatchObject({
+      fetched: {}, transient_attempts: 0, last_error: null,
+    });
+    const own = { ...borrowed, pending_pages: [[1], [33]], transient_attempts: 2 };
+    expect(coalesceMetadataBucketProgress(1, own, borrowed)).toBe(own);
+  });
+
+  test("checkpoints a 100-id 502 as two 50-id pages and resumes without retrying the parent", async () => {
+    const ids = Array.from({ length: 100 }, (_, i) => 1 + 32 * i);
+    const { state, deps } = fakeMetadata(ids);
+    state.progress = { v: 1, bucket: 1, fetched: {}, transient_attempts: 17 };
+    const fetch = deps.fetchBatch;
+    deps.fetchBatch = async (nodeIds) => {
+      if (nodeIds.length > 50) {
+        state.fetches.push(nodeIds);
+        throw new GitHubHttpError("graphql", 502, "Bad Gateway");
+      }
+      return fetch(nodeIds);
+    };
+    expect(await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps)).toMatchObject({ retryMetadata: true });
+    expect(state.progress?.pending_pages).toEqual([ids.slice(0, 50), ids.slice(50)]);
+    expect(state.progress?.transient_attempts).toBe(0);
+    expect(await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps)).toMatchObject({ from_github: 100, skipped_count: 0 });
+    expect(state.fetches.map((page) => page.length)).toEqual([100, 50, 50]);
+    expect(state.progress?.pending_pages).toEqual([]);
+  });
+
+  test("recursively bisects an offending id, records its skip, and resumes it without refetching", async () => {
+    const { state, deps } = fakeMetadata([1, 33, 65, 97]);
+    const fetch = deps.fetchBatch;
+    deps.fetchBatch = async (nodeIds) => {
+      if (nodeIds.includes("R_33")) {
+        state.fetches.push(nodeIds);
+        throw new GitHubHttpError("graphql", 502, "Bad Gateway");
+      }
+      return fetch(nodeIds);
+    };
+    deps.readPrevShard = async () => ({ "33": previous(33, "2025-01-01") });
+    let result;
+    for (let hop = 0; hop < 8; hop++) {
+      result = await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
+      if (!result.retryMetadata) break;
+    }
+    expect(result).toMatchObject({ from_github: 3, skipped_count: 1, skipped: [{
+      id: 33, node_id: "R_33", full_name: "owner/repo-33", reason: "graphql_502", value_status: "retained",
+    }] });
+    expect(state.fetches).toEqual([
+      ["R_1", "R_33", "R_65", "R_97"], ["R_1", "R_33"], ["R_1"], ["R_33"], ["R_65", "R_97"],
+    ]);
+    expect(state.shard?.["33"]?.current_stars).toBe(20_033);
+    const count = state.fetches.length;
+    await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
+    expect(state.fetches).toHaveLength(count);
+    expect(state.progress?.skipped).toHaveLength(1);
+  });
+
+  test("a successful subpage resets the transient budget before a later failure", async () => {
+    const { state, deps } = fakeMetadata([1, 33]);
+    state.progress = { v: 1, bucket: 1, fetched: {}, pending_pages: [[1], [33]], transient_attempts: 11 };
+    const fetch = deps.fetchBatch;
+    deps.fetchBatch = async (ids) => {
+      if (ids.includes("R_33")) throw new GitHubHttpError("graphql", 503, "unavailable");
+      return fetch(ids);
+    };
+    expect(await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps)).toMatchObject({ retryMetadata: true });
+    expect(state.progress?.transient_attempts).toBe(1);
+    expect(state.progress?.pending_pages).toEqual([[33]]);
+    expect(Object.keys(state.progress?.fetched ?? {})).toEqual(["1"]);
+  });
+
+  test("borrowing an exhausted zero-row checkpoint starts with one attempt rather than failing fast", async () => {
+    const { state, deps } = fakeMetadata([1]);
+    deps.readWhitelist = async () => ({ ...whitelistFor([1]), metadata_resume_run_id: "refresh-failed" });
+    deps.readProgress = async (runId) => runId === "refresh-failed"
+      ? { v: 1, bucket: 1, fetched: {}, transient_attempts: 17 }
+      : state.progress;
+    deps.fetchBatch = async () => { throw new GitHubHttpError("graphql", 503, "unavailable"); };
+    expect(await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps)).toMatchObject({ retryMetadata: true });
+    expect(state.progress?.transient_attempts).toBe(1);
+    expect(state.sleeps).toEqual([]);
+  });
+
+  test("a recorded skip prefers the last published count over an unpublished canonical update", () => {
+    const shard = buildMetadataShard({
+      entries: [entry(1, 90_000)], previous: { "1": previous(1, "2025-01-01") },
+      lookup: { "1": { full_name: "owner/repo-1", owner: "owner", name: "repo-1", owner_type: "Organization", language: null, current_stars: 12_345 } },
+      github: new Map(), skipped: new Set([1]), newcomers: new Set(),
+      trackedSince: "2026-09-21", fetchedAt: "2026-09-22T00:00:00.000Z",
+    });
+    expect(shard["1"].current_stars).toBe(12_345);
+  });
+
+  test("only exhausted GraphQL 502 may skip; auth and unrelated service failures do not", async () => {
+    for (const [source, status] of [["graphql", 401], ["graphql", 503], ["graphql", 429], ["search", 502]] as const) {
+      const { state, deps } = fakeMetadata([1]);
+      deps.fetchBatch = async () => { throw new GitHubHttpError(source, status, "failure"); };
+      if (status === 401) await expect(refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps)).rejects.toThrow("401");
+      else expect(await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps)).toMatchObject({ retryMetadata: true });
+      expect(state.progress?.skipped ?? []).toEqual([]);
+      expect(state.shard).toBeNull();
+    }
+  });
+
+  test("skips keep old entity and ranking values; missing newcomers have no numeric rows", async () => {
+    const { state, deps } = fakeMetadata([1, 33]);
+    const old = { ...previous(1, "2025-01-01"), created_at: "2020-01-01", fetched_at: "2026-09-20T00:00:00.000Z" };
+    deps.readPrevShard = async () => ({ "1": old });
+    deps.fetchBatch = async () => { throw new GitHubHttpError("graphql", 502, "Bad Gateway"); };
+    await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
+    await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
+    const result = await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
+    expect(result).toMatchObject({ skipped_count: 2, from_github: 0 });
+    expect(state.progress?.skipped).toMatchObject([
+      { id: 1, value_status: "retained" }, { id: 33, value_status: "missing" },
+    ]);
+    expect(state.shard?.["1"]).toEqual(old);
+    expect(state.shard?.["33"]).toBeUndefined();
+    const repos = Object.fromEntries(Object.entries(state.shard!).map(([id, row]) => [id, { ...row, d: row.d! }]));
+    const model = buildModel({ repos, monthly: {}, weekly: {}, recentDaily: {}, siteDailyByYear: {} }, "2025-12-31");
+    const entities = repoEntities(model, { byRepo: new Map(), periods: [], rowsByPeriod: new Map() }).views;
+    expect(entities.get("entity/repo/1.json")?.current_stars).toBe(20_001);
+    expect(entities.has("entity/repo/33.json")).toBe(false);
+    const ranks = allTime(model, deps.now());
+    expect(ranks.get("rank/all-time/repo/stock.json")?.items).toEqual([{ rank: 1, id: 1, value: 20_001, prev_rank: null }]);
+    expect(ranks.get("rank/all-time/org/stock.json")?.items[0]?.value).toBe(20_001);
+  });
+
+  test("records null/deleted node results as missing instead of substituting Search stars", async () => {
+    const { state, deps } = fakeMetadata([1]);
+    deps.fetchBatch = async () => new Map();
+    const result = await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
+    expect(result).toMatchObject({ skipped_count: 1, skipped: [{ id: 1, reason: "not_returned", value_status: "missing" }] });
+    expect(state.shard).toEqual({});
+  });
+
   test("metadataTransientRetryDelayMs backs off and caps at 60s", () => {
     expect(metadataTransientRetryDelayMs(1)).toBe(8_000);
     expect(metadataTransientRetryDelayMs(2)).toBe(16_000);
@@ -170,7 +351,7 @@ describe("metadata GraphQL resume", () => {
     expect(metadataTransientRetryDelayMs(4)).toBe(60_000);
   });
 
-  test("persists a successful batch and resumes the same hop after GraphQL 502", async () => {
+  test("persists a successful batch and resumes the same hop after GraphQL 503", async () => {
     const ids = Array.from({ length: 101 }, (_, index) => 1 + index * 32);
     const { state, deps } = fakeMetadata(ids);
     let calls = 0;
@@ -185,12 +366,12 @@ describe("metadata GraphQL resume", () => {
         }
         return out;
       }
-      throw new GitHubHttpError("graphql", 502, "error code: 502");
+      throw new GitHubHttpError("graphql", 503, "error code: 503");
     };
 
     const first = await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
     expect(first).toMatchObject({ retryMetadata: true, from_github: 100, bucket: 1 });
-    expect(first.error).toContain("GitHub GraphQL 502");
+    expect(first.error).toContain("GitHub GraphQL 503");
     expect(state.shard).toBeNull();
     expect(Object.keys(state.progress?.fetched ?? {})).toHaveLength(100);
     expect(state.progress?.transient_attempts).toBe(1);
@@ -248,10 +429,10 @@ describe("metadata GraphQL resume", () => {
       last_error: "GitHub GraphQL 502: error code: 502",
     };
     deps.fetchBatch = async () => {
-      throw new GitHubHttpError("graphql", 502, "error code: 502");
+      throw new GitHubHttpError("graphql", 503, "error code: 503");
     };
 
-    await expect(refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps)).rejects.toThrow("GitHub GraphQL 502");
+    await expect(refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps)).rejects.toThrow("GitHub GraphQL 503");
     expect(state.progress?.transient_attempts).toBe(MAX_METADATA_TRANSIENT_ATTEMPTS);
     expect(state.shard).toBeNull();
   });
@@ -260,13 +441,13 @@ describe("metadata GraphQL resume", () => {
     const canary = "ghp_CANARYMISSEDSINK1234567890abcd";
     const { state, deps } = fakeMetadata([1]);
     deps.fetchBatch = async () => {
-      throw new GitHubHttpError("graphql", 502, `error code: 502 ${canary}`);
+      throw new GitHubHttpError("graphql", 503, `error code: 503 ${canary}`);
     };
 
     const first = await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
     expect(first).toMatchObject({ retryMetadata: true });
     expect(state.progress?.transient_attempts).toBe(1);
-    expect(state.progress?.last_error).toContain("GitHub GraphQL 502");
+    expect(state.progress?.last_error).toContain("GitHub GraphQL 503");
     expect(state.progress?.last_error).not.toContain("CANARY");
   });
 });
