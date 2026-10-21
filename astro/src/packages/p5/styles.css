@@ -1,0 +1,4 @@
+/* Preserve utilities used by the unchanged server components imported by P5. */
+@source "../../../../web/app/_explore";
+@source "../../../../web/app/_localized";
+@source "./";
