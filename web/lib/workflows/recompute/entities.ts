@@ -7,6 +7,7 @@ import type { DailySeries, DateStr, Model, RepoMeta } from "./model";
 import type { OrgRow, RepoRow, RepoWindow, OrgWindow } from "./windows";
 import { detectInflections, type Inflection } from "./inflections";
 import { truncateUnicodeText } from "@/lib/unicode-text";
+import type { StarHistoryProvenance } from "@/lib/contracts/star-history";
 
 const MONTHLY_TABLE_MONTHS = 24;
 
@@ -26,7 +27,7 @@ export interface RepoEntity {
   tracked_since: string | null;
   is_archived: boolean;
   milestones: { crossed_10k: string | null; crossed_50k: string | null; crossed_100k: string | null };
-  curve: { monthly: Array<[string, number, number]>; recent_daily: Array<[string, number]> };
+  curve: { monthly: Array<[string, number, number]>; recent_daily: Array<[string, number]>; provenance?: StarHistoryProvenance };
   monthly_table: Array<{ month: string; adds: number; rank: number }>;
   rank_history: { month: Array<[string, number]> };
   inflections?: Inflection[];
@@ -62,6 +63,7 @@ export function repoEntityFromParts(
     curve: {
       monthly: mrows.map((r) => [r.period, r.flow, r.stock_est] as [string, number, number]),
       recent_daily: drows.map((r) => [r[0], r[1]] as [string, number]),
+      ...(meta.aggregate_history ? { provenance: meta.aggregate_history.provenance } : {}),
     },
     monthly_table: mrows.slice(-MONTHLY_TABLE_MONTHS).map((r) => ({ month: r.period, adds: r.flow, rank: r.flow_rank })),
     rank_history: { month: mrows.map((r) => [r.period, r.flow_rank] as [string, number]) },
@@ -93,7 +95,7 @@ export interface OrgEntity {
   current_stars_sum: number;
   repo_count: number;
   members: number[];
-  curve: { monthly: Array<[string, number, number]>; recent_daily: Array<[string, number]> };
+  curve: { monthly: Array<[string, number, number]>; recent_daily: Array<[string, number]>; provenance?: StarHistoryProvenance };
 }
 
 export function orgEntityFromParts(
@@ -104,6 +106,7 @@ export function orgEntityFromParts(
   members: number[],
   mrows: OrgRow[],
   recentDaily: Array<[DateStr, number]>,
+  provenance?: StarHistoryProvenance,
 ): { entity: OrgEntity; drift: number } {
   const last = mrows.at(-1);
   const drift = last ? Math.abs(last.stock_est - currentStarsSum) : 0;
@@ -116,6 +119,7 @@ export function orgEntityFromParts(
     curve: {
       monthly: mrows.map((r) => [r.period, r.flow, r.stock_est] as [string, number, number]),
       recent_daily: recentDaily,
+      ...(provenance ? { provenance } : {}),
     },
   };
   const parsed = OrgEntitySchema.safeParse(entity);
@@ -145,6 +149,7 @@ export function orgEntities(model: Model, monthOrg: OrgWindow): { views: Map<str
       agg.members,
       monthOrg.byLogin.get(login) ?? [],
       orgRecentDaily(model, agg.members),
+      agg.members.map((id) => model.repos.get(id)?.aggregate_history?.provenance).find(Boolean),
     );
     anchorDrift = Math.max(anchorDrift, built.drift);
     views.set(`entity/org/${login}.json`, built.entity);

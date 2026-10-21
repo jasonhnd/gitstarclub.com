@@ -6,7 +6,7 @@ export const PRODUCTION_WORKER_NAME = "gitstarclub-web";
 export const PREVIEW_WORKER_NAME = "gitstarclub-web-pre";
 export const DEFAULT_CF_PREVIEW_ORIGIN = "https://gitstarclub-web-pre.worldgo.workers.dev";
 export const ALLOWED_CF_PREVIEW_ORIGINS = Object.freeze([DEFAULT_CF_PREVIEW_ORIGIN, "https://pre.gitstarclub.com"]);
-export const PREVIEW_CRONS_PAUSED = true;
+export const PREVIEW_CRONS_PAUSED = false;
 export const PREVIEW_CRON_TRIGGERS = Object.freeze(["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"]);
 export const ASSERT_SCRIPT_REL = "scripts/assert-cf-ci-gates.mjs";
 
@@ -31,7 +31,7 @@ export function assertHostContract(worker, mode) {
     CF_CRON_ORIGIN: site, DEPLOY_ENV: mode, STORAGE_READ_DRIVER: "r2", STORAGE_WRITE_DRIVER: "r2_binding",
     R2_BUCKET: bucket, R2_PUBLIC_BASE_URL: pre ? "https://data-pre.gitstarclub.com" : "https://data.gitstarclub.com",
     WORKFLOW_RUNTIME: "cf-queue", WORKFLOW_QUEUE_ENQUEUE_URL: `${site}/enqueue`,
-    ...(pre ? { MIN_TRACKED_STARS: "10000", WHITELIST_SEARCH_SHARDS: "1", WORKFLOW_COLD_START: "1", PREFLIGHT_RELAX_EMPTY_SHARDS: "1" }
+    ...(pre ? { MIN_TRACKED_STARS: "10000", WHITELIST_SEARCH_SHARDS: "1" }
       : { VIEWS_VERSION_FALLBACK: "refresh-2026-09-13T06-00-16-398Z" }),
   };
   const check = (condition, message) => { if (!condition) errors.push(`${mode}: ${message}`); };
@@ -44,7 +44,13 @@ export function assertHostContract(worker, mode) {
   check(!worker.routes && !worker.domains && !worker.exports, "no routes, domains or database exports");
   check(worker.assets?.htmlHandling === "none" && worker.assets?.notFoundHandling === "none", "asset handling");
   check(JSON.stringify(worker.assets?.runWorkerFirst) === JSON.stringify(["/*", "!/_next/static/*", "!/*/_next/static/*", "!/assets/*"]), "Worker-first private assets");
-  check(JSON.stringify(worker.triggers) === JSON.stringify([{ type: "queue", name: queue, maxBatchSize: 1, maxRetries: 2 }]), "queue consumer and paused schedules");
+  const expectedTriggers = [
+    { type: "queue", name: queue, maxBatchSize: 1, maxRetries: 2 },
+    ...(pre && !PREVIEW_CRONS_PAUSED
+      ? PREVIEW_CRON_TRIGGERS.map((schedule) => ({ type: "scheduled", schedule }))
+      : []),
+  ];
+  check(JSON.stringify(worker.triggers) === JSON.stringify(expectedTriggers), "queue consumer and mode-specific schedules");
   const env = worker.env ?? {};
   for (const [key, value] of Object.entries(vars)) check(env[key]?.type === "text" && env[key]?.value === value, `var ${key}`);
   for (const [key, expected] of Object.entries({

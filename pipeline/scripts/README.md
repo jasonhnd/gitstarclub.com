@@ -24,6 +24,13 @@ GitHub day labels, not exact UTC counts or net growth. Monthly published net,
 frozen stocks and anchor factors must remain unchanged. There is no upload,
 preview integration or page-label change in this tool.
 
+The separate preview-only importer is
+`web/scripts/import-star-history-aggregate.ts`. It defaults to a read-only plan,
+pins the sealed export and uses existing lease-protected immutable publication.
+See the [repair runbook](../../docs/analysis/PREVIEW-AGGREGATE-IMPORT.md) before
+running it after review/merge and leader rework. It preserves monthly history
+and frozen anchors; it cannot rebuild cold-start monthly net values.
+
 ## UTC star history collection
 
 `star-history.mjs` (issue #680, GSC_0080) reads the unchanged R2 whitelist

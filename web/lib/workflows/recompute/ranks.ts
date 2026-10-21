@@ -4,6 +4,8 @@
 
 import { type Model, type Period, type RepoMeta } from "./model";
 import { GROWTH_FLOOR_STARS } from "@/lib/constants";
+import type { StarHistoryProvenance } from "@/lib/contracts/star-history";
+import { flowProvenance, repoFlowSource, type FlowSource } from "./flow-provenance";
 import type { OrgWindow, RepoWindow, Window } from "./windows";
 
 /** Top-N per period. Packed-window hops must use the same cap. */
@@ -11,11 +13,12 @@ export const RANK_TOP_N = 100;
 const TOP_N = RANK_TOP_N;
 
 export interface RankView {
-  meta: { window: string; period: string; dim: string; metric: string; generated_at: string };
+  meta: { window: string; period: string; dim: string; metric: string; generated_at: string; provenance?: StarHistoryProvenance; provenance_scope?: "mixed" };
   items: Array<Record<string, number | string | null>>;
 }
 
 interface Row {
+  flowSource?: FlowSource;
   key: string; // entity identity for prev_rank join (id or login, stringified)
   id?: number;
   login?: string;
@@ -59,7 +62,8 @@ function rankByPeriod(
       else item.login = r.login!;
       items.push(item);
     }
-    out.set(period, { meta: { ...meta, period }, items });
+    const provenance = meta.window === "week" && meta.metric === "flow" ? flowProvenance(rows.slice(0, TOP_N)) : {};
+    out.set(period, { meta: { ...meta, period, ...provenance }, items });
   });
   return out;
 }
@@ -71,17 +75,19 @@ export function repoRankMatrix(rw: RepoWindow, w: Window, gen: string): Map<stri
     for (const [period, bucket] of rw.rowsByPeriod) {
       rows.set(
         period,
-        bucket.map((b) => ({
+        bucket.filter((b) => metric !== "stock" || b.stock_est >= 0).map((b) => ({
           key: String(b.id),
           id: b.id,
+          flowSource: repoFlowSource(b.stock_est),
           val: metric === "flow" ? b.flow : b.stock_est,
           other: metric === "flow" ? b.stock_est : b.flow,
         })),
       );
     }
     const meta = { window: w, dim: "repo", metric, generated_at: gen };
-    for (const [period, view] of rankByPeriod(rw.periods, rows, meta, tieRepo))
+    for (const [period, view] of rankByPeriod(rw.periods, rows, meta, tieRepo)) {
       out.set(`rank/${w}/${period}/repo/${metric}.json`, view);
+    }
   }
   return out;
 }
@@ -93,17 +99,19 @@ export function orgRankMatrix(ow: OrgWindow, w: Window, gen: string): Map<string
     for (const [period, bucket] of ow.rowsByPeriod) {
       rows.set(
         period,
-        bucket.map((b) => ({
+        bucket.filter((b) => metric !== "stock" || b.stock_est >= 0).map((b) => ({
           key: b.login,
           login: b.login,
+          flowSource: b.flowSource,
           val: metric === "flow" ? b.flow : b.stock_est,
           other: metric === "flow" ? b.stock_est : b.flow,
         })),
       );
     }
     const meta = { window: w, dim: "org", metric, generated_at: gen };
-    for (const [period, view] of rankByPeriod(ow.periods, rows, meta, tieOrg))
+    for (const [period, view] of rankByPeriod(ow.periods, rows, meta, tieOrg)) {
       out.set(`rank/${w}/${period}/org/${metric}.json`, view);
+    }
   }
   return out;
 }
