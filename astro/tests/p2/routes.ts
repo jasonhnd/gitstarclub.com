@@ -39,6 +39,9 @@ try {
     assert.equal(head.status, status); assert.equal(await head.text(), "");
     assert.equal(head.headers.get("cache-control"), response.headers.get("cache-control"));
   }
+  const options = await get("/repo-curve", { method: "OPTIONS" });
+  assert.equal(options.status, 204); assert.equal(options.headers.get("allow"), "GET, HEAD, OPTIONS");
+  assert.equal((await get("/repo-curve", { method: "POST" })).status, 405);
   for (const path of ["/example/repo/opengraph-image", "/unknown/repository/opengraph-image"]) {
     const response = await get(path);
     assert.equal(response.status, 200, path);

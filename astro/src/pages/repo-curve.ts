@@ -12,3 +12,6 @@ export const GET: APIRoute = async ({ request, locals }) => {
   return Response.json(curve, { headers: { "Cache-Control": HIT } });
 };
 export const HEAD: APIRoute = GET;
+// Preserve the old framework's automatic OPTIONS and unsupported-method responses.
+export const OPTIONS: APIRoute = () => new Response(null, { status: 204, headers: { Allow: "GET, HEAD, OPTIONS" } });
+export const ALL: APIRoute = ({ request }) => new Response(null, { status: ["POST", "PUT", "DELETE", "PATCH"].includes(request.method) ? 405 : 400 });
