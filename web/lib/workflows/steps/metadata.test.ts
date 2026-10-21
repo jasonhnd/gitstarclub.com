@@ -178,7 +178,7 @@ describe("metadata GraphQL resume", () => {
       deps.readProgress = async (runId) => runId === "refresh-failed" ? {
         v: 1, bucket: 1, fetched: {}, pending_pages: [], skipped: [skipped], transient_attempts: 0,
       } : state.progress;
-      deps.readPrevShard = async () => retained ? { "1": previous(1, "2025-01-01") } : {};
+      deps.readPrevShard = async (): Promise<Record<string, ReposShardEntry>> => retained ? { "1": previous(1, "2025-01-01") } : {};
       deps.fetchBatch = async () => { throw new Error("completed borrowed pages must not be fetched again"); };
       const writeShard = deps.writeShard;
       deps.writeShard = async (owner, bucket, shard) => {
