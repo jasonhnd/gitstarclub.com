@@ -48,3 +48,29 @@ Keep the owner-approved shared toolchain cache and Bun install cache, retain
 HOME, and leave BUN_INSTALL_CACHE_DIR unset. All other temporary artifacts stay
 under this card's excluded `.kanban-work/GSC_0154` directory. Skip cf:dry-run by
 owner order. GitHub Actions remains disabled.
+
+## Recorded verification
+
+- Exact merged integration commit: `6364666f7dfdb6e92378561a511ab7f1e3f9f6d2`.
+  It contains PRs #728 and #729.
+- Official archive checks and runtime version checks passed. The complete
+  isolated static gate passed: pipeline 205 passed, web 2,026 passed with
+  49 intentional offline skips and zero failures; coverage was 89.84% lines
+  and 90.38% functions. Documentation tests passed 44 checks. Lint had zero
+  errors and 14 existing warnings; all three typechecks passed.
+- Both fixture modes built and validated with 234 routes and 467 artifacts.
+  The real preview build and matching host validation passed with 293 routes
+  and 585 artifacts. No fixture override entered the deployable build.
+- The complete generated preview configuration was printed and reviewed.
+  Its SHA-256 was
+  `1a6e0038909bcb4b1d33a620b2723aacf3509e2a74c9d6fb779dab3bf0a0e0de`.
+  Preview resource bindings, noindex, three schedules and removed flags match
+  the brief. Local production configuration has no scheduled triggers.
+- The pinned cf object upload command exposes no conditional write headers.
+  The existing publication lease requires atomic ETag compare-and-set, and
+  immutable staging requires create-only writes. An unconditional upload is
+  not an acceptable replacement. See the official
+  [object upload API](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/objects/methods/upload/).
+  No unsupported write transport has been implemented.
+- Deployment readback, source-plan counts and any resulting continuation
+  requirement will be recorded on the card before temporary output is removed.
