@@ -80,4 +80,3 @@ export function importWorkerHarness(initial: Record<string, string> = {}) {
   };
   return { bucket, env, request, fetchImpl, maximum: () => maximum, calls };
 }
-
