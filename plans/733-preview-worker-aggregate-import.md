@@ -72,3 +72,23 @@ No UI or product copy changes are planned.
 - The PR closes #733, includes a verbatim deployment/import/verification
   runbook, and is handed to the independent review role with `PR merge` as
   `waitingOn`. Actual preview execution remains a follow-up card.
+
+## Review round 1 rework
+
+Goal: make the documented file-only secret invocation work without an ambient
+`CRON_SECRET`, and correct the whitespace verification evidence.
+
+1. Separate `--secret-file` from `--checkpoint` in the argument parser.
+2. Exercise the real CLI entry function with the exact runbook dry-run and
+   execution arguments, both option orders, a temporary fixture secret file
+   and no ambient secret. Replace only source loading and the external fetch
+   port; retain the real parser, file read, Worker authentication and repair.
+3. Remove the added blank line at EOF in test support. Check the full committed
+   base-to-head diff as well as the working tree, then rerun the full isolated
+   AGENTS gate on the exact new head and replace the PR/handoff evidence.
+
+This rework does not deploy, import real data, change credentials or resources,
+merge, or change the existing production/configuration boundary. Acceptance is
+that the runbook argument combinations retain independent file/checkpoint
+values, authenticate from the file alone, and complete both fake-backed modes;
+all required checks and the explicit base-to-head whitespace check must pass.
