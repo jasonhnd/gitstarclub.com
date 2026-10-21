@@ -39,7 +39,7 @@ try {
     await Bun.sleep(500);
   }
   if (!ready) throw new Error("Web preview did not become ready.");
-  worker = await startWorker(records, { STORAGE_READ_DRIVER: "blob", BLOB_BASE_URL: fixture.url.origin });
+  worker = await startWorker(records);
   const paths = JSON.parse(await Bun.file(new URL("./paths.json", import.meta.url)).text()) as string[];
   const report = await compareSites({ web, astro: (await worker.ready).origin, paths, screenshots: process.argv.includes("--screenshots") });
   const endpointResults = [];

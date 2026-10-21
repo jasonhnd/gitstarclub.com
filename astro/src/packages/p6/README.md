@@ -10,8 +10,11 @@ Eight sitemap entries delegate to the unchanged web sitemap implementation.
 That reader preserves category availability, last-modified dates, localized
 alternates and `resolveAvailableRankPeriods`. Search delegates to the existing
 published reader and response builder, including truncation, missing data and
-retryable failures. Those existing readers require the same public read-origin
-runtime configuration as web; the local runner supplies a loopback fixture.
+retryable failures. A narrow Astro alias adapts their timeout fetch transport to the request's
+native DATA binding under a virtual, non-network origin. It leaves pointer,
+overlay, history and schema selection in the existing readers; it never patches
+global fetch. External fetches retain timeouts with Worker-compatible cache
+options. Non-HTML endpoint cache headers survive the shared host boundary.
 No publication, coverage or writer behavior changes.
 
 Robots and manifest reuse the current metadata definitions and preserve their
