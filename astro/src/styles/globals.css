@@ -1,14 +1,14 @@
 @import "../../../web/app/globals.css";
 @import "@fontsource-variable/plus-jakarta-sans";
 @import "@fontsource-variable/geist-mono";
+@source "../../../web/app/_explore";
+@source "../../../web/app/_localized";
 @source "../../../web/app/_explore/SearchBox.tsx";
 @source "../../../web/app/_explore/search-box/SearchPanel.tsx";
 @source "../../../web/app/components/ThemeToggle.tsx";
 @source "../../../web/app/_explore/Star.tsx";
-/* P3 imports the existing static category view and its server components. */
-@source "../../../web/app/_localized/categories.tsx";
-@source "../../../web/app/_localized/comparison-page-data.ts";
-@source "../../../web/app/_explore";
+@source "../../../web/app/_explore/";
+@source "../packages/p4/";
 
 /* The existing stylesheet remains the only source of design token values. */
 :root {
