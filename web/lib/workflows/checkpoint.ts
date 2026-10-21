@@ -1,10 +1,12 @@
-import { WorkflowManifest } from "@/lib/contracts";
+import { readAuthoritativeView } from "@/lib/data/source";
+import { putView } from "@/lib/data/write";
+import { ViewsPointer, WorkflowManifest } from "@/lib/contracts";
 import { sendAlert } from "@/lib/observability/alert";
 import { recordHealth } from "@/lib/observability/health";
 import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { logViewParseErrorSummary } from "@/lib/data/parse-view";
 import { createView } from "@/lib/data/write";
-import { claimWorkflowLease, releaseWorkflowLease } from "@/lib/workflows/lease";
+import { blobWorkflowLeaseStore, claimWorkflowLease, releaseWorkflowLease, WorkflowLeaseCasError } from "@/lib/workflows/lease";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 
 // Business-readable run checkpoints (ops/workflows/<run_id>/...). The refresh
@@ -148,4 +150,45 @@ export async function recordPostCommitLeaseLoss(
   });
   await recordHealth("workflow-refresh", "failed", { run_id: runId, error: safeError });
   return created;
+}
+
+/**
+ * Terminal diagnostics for an exhausted invocation. These are run-scoped only:
+ * no expired lease is renewed and no successor's lease/pointer is overwritten.
+ * Release is conditional on the original run and token, even after expiry.
+ */
+export async function recordDeferredFailure(
+  runId: string,
+  startedAt: string,
+  fencingToken: number,
+  error: string,
+  publication?: PublicationFailure,
+): Promise<void> {
+  const existing = await readAuthoritativeView(`ops/workflows/${runId}/manifest.json`, WorkflowManifest, { bust: runId });
+  if (existing?.status === "published") return;
+  if (publication?.phase === "commit_unknown") {
+    try {
+      const pointer = await readAuthoritativeView("views/latest.json", ViewsPointer, { bust: runId });
+      publication = pointer?.version === publication.version
+        ? { ...publication, phase: "post_commit" }
+        : undefined;
+    } catch {
+      // Retain commit_unknown when the authoritative pointer is unavailable.
+    }
+  }
+  const safeError = sanitizeErrorText(error);
+  await putView(`ops/workflows/${runId}/error.json`, failureRecord(runId, safeError, publication));
+  await putView(`ops/workflows/${runId}/manifest.json`, WorkflowManifest.parse({
+    run_id: runId, started_at: startedAt, status: "failed", steps: STEPS,
+    published_version: publication?.phase === "post_commit" ? publication.version : null,
+  }));
+  const released = await releaseWorkflowLease(runId, "failed", undefined, undefined, fencingToken);
+  if (!released) {
+    const current = await blobWorkflowLeaseStore.read();
+    if (current.lease?.run_id === runId && current.lease.fencing_token === fencingToken && current.lease.status === "running") {
+      throw new WorkflowLeaseCasError(`workflow ${runId}: retry terminal lease release in a fresh invocation`);
+    }
+  }
+  await sendAlert({ pipeline: "workflow-refresh", title: failureAlertTitle(publication), run_id: runId, error: safeError });
+  await recordHealth("workflow-refresh", "failed", { run_id: runId, error: safeError });
 }

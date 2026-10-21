@@ -1,3 +1,4 @@
+import { isSubrequestLimitError } from "./subrequest-limit";
 import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
 
 export type RetryPolicy = {
@@ -11,7 +12,7 @@ export const DEFAULT_STEP_RETRY: RetryPolicy = {
 };
 
 export function isRetryableStepError(error: unknown): boolean {
-  return !(error instanceof WorkflowLeaseOwnershipError);
+  return !(error instanceof WorkflowLeaseOwnershipError) && !isSubrequestLimitError(error);
 }
 
 export async function withStepRetry<T>(

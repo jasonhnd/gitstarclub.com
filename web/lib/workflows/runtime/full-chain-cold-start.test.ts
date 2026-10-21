@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { RepoEntity, ViewsPointer, WorkflowLease, WorkflowManifest, WorkflowValidation } from "@/lib/contracts";
 import { nextRefreshJob } from "./graph";
 import { firstRefreshJob, FULL_REFRESH_STEPS } from "./types";
-import { installWorkflowHarness, TEST_RUN, workflowSeed, type FullJob } from "../test-support";
+import { drainWorkflowStep, installWorkflowHarness, TEST_RUN, workflowSeed, type FullJob } from "../test-support";
 
 /** First preview refresh: WORKFLOW_COLD_START=1, no views pointer, no canonical series history. */
 function coldStartSeed(): Record<string, string> {
@@ -33,7 +33,7 @@ async function atValidate(
 
 async function expectHistoryBlocked(h: ReturnType<typeof installWorkflowHarness>) {
   const pointerBefore = h.store.contents["views/latest.json"];
-  const { response } = await h.run(beforeValidate.job);
+  const { response } = await drainWorkflowStep(h, beforeValidate.job);
   expect(response.status).toBe(500);
   expect(h.store.contents["views/latest.json"]).toBe(pointerBefore);
   const validation = WorkflowValidation.parse(h.store.json(runPath("validation.json")));
@@ -52,7 +52,7 @@ describe("preview cold-start refresh with an empty period inventory", () => {
     try {
       let job = firstRefreshJob(TEST_RUN) as FullJob | null;
       for (let hops = 0; job && hops < 400; hops++) {
-        if (job.name === "validate") beforeValidate = { job: structuredClone(job), artifacts: { ...harness.store.contents } };
+        if (job.name === "validate" && !beforeValidate) beforeValidate = { job: structuredClone(job), artifacts: { ...harness.store.contents } };
         const { response, result } = await harness.run(job);
         if (response.status !== 200) {
           failedStep = job.name;
@@ -111,7 +111,7 @@ describe("preview cold-start refresh with an empty period inventory", () => {
     await h.store.set(`views/${TEST_RUN}/heatmap/year/2025.json`, { meta: { scope: "year", period: "2025", generated_at: "2026-10-02T00:00:00.000Z" }, cells: [["2025-12", 1]] });
     const log = spyOn(console, "log");
     try {
-      expect((await h.run(beforeValidate.job)).response.status).toBe(200);
+      expect((await drainWorkflowStep(h, beforeValidate.job)).response.status).toBe(200);
       expect(WorkflowValidation.parse(h.store.json(runPath("validation.json")))).toMatchObject({ ok: true, invariants: { cold_start_empty_curve_relaxed: false, cold_start_missing_prior_year_heatmap_relaxed: false } });
       expect(log.mock.calls.some(([message]) => message === "[workflow-refresh] cold-start validation relaxed")).toBe(false);
     } finally {
@@ -138,14 +138,14 @@ describe("preview cold-start refresh with an empty period inventory", () => {
   test("a malformed pointer cannot arm the exceptions", () => atValidate(async (h) => {
     await h.store.set("views/latest.json", { version: TEST_RUN });
     const pointerBefore = h.store.contents["views/latest.json"];
-    expect((await h.run(beforeValidate.job)).response.status).toBe(500);
+    expect((await drainWorkflowStep(h, beforeValidate.job)).response.status).toBe(500);
     expect(h.store.contents["views/latest.json"]).toBe(pointerBefore);
     expect(h.store.contents[runPath("validation.json")]).toBeUndefined();
   }));
 
   test("a pointer read failure cannot arm the exceptions", () => atValidate(async (h) => {
     h.store.failRead = true;
-    expect((await h.run(beforeValidate.job)).response.status).toBe(500);
+    expect((await drainWorkflowStep(h, beforeValidate.job)).response.status).toBe(500);
     expect(h.store.contents["views/latest.json"]).toBeUndefined();
     expect(h.store.contents[runPath("validation.json")]).toBeUndefined();
   }));
@@ -159,7 +159,7 @@ describe("preview cold-start refresh with an empty period inventory", () => {
       const path = `views/${TEST_RUN}/${rel}`;
       if (invalidValue === undefined) await h.store.del(path);
       else await h.store.set(path, invalidValue);
-      expect((await h.run(beforeValidate.job)).response.status).toBe(500);
+      expect((await drainWorkflowStep(h, beforeValidate.job)).response.status).toBe(500);
       expect(h.store.contents["views/latest.json"]).toBeUndefined();
       const validation = WorkflowValidation.parse(h.store.json(runPath("validation.json")));
       expect(validation.ok).toBe(false);
