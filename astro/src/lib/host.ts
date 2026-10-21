@@ -20,7 +20,9 @@ export function secureResponse(response: Response, method: string, status: Cache
   const headers = new Headers(response.headers);
   for (const { key, value } of securityHeaders) headers.set(key, key === "Content-Security-Policy" ? contentSecurityPolicyForEnvironment("production") : value);
   // The origin fence must run on every request; no independent browser/CDN page cache.
-  headers.set("Cache-Control", "private, no-store");
+  if (status === "BYPASS" || headers.get("content-type")?.includes("text/html") || !headers.has("cache-control")) {
+    headers.set("Cache-Control", "private, no-store");
+  }
   if (!api) headers.set("X-Robots-Tag", "noindex, nofollow");
   headers.set("x-gsc-cache", status);
   return new Response(method === "HEAD" ? null : response.body, { status: response.status, headers });
