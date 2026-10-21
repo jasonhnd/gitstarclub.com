@@ -51,6 +51,37 @@ remain available without creating or enabling any trigger.
 P7 retains all cron, refresh, lease, publication and rollback implementations.
 No runtime database, AI, live search or alternate writer is introduced.
 
+### Refresh checkpoints and consumer parity
+
+The Astro entry imports `handleQueue` from
+`workers/gitstarclub-web/src/shell.ts`; its P7 `step` handler imports
+`runRefreshStepRoute` from `web/lib/workflows/runtime/step-route.ts`. These are
+the same implementations used by the web Worker, including PR #717/#722/#724.
+No copied graph or Astro-specific successor table needs to be kept in sync.
+
+Validation, repository/organization recomputation, publication and garbage
+collection preserve `cursor.workOffset` across pages and write separate
+`<step>-<offset>` checkpoints. The unnumbered checkpoint is written only when
+the sequence finishes; the next logical step drops the previous offset.
+Publication commits the pointer on page zero, derives notification candidates
+in bounded later pages, and then advances to garbage collection.
+
+The shared consumer calls `WORKER_SELF_REFERENCE` with the consumer-advance
+header, awaits the result body, and sends its successor through `JOBS`. A
+subrequest-limit failure moves diagnostic writes to a fresh delivery. An
+unreadable body can still advance through the successor response header; a
+failed diagnostic delivery propagates for the existing Queue retry policy.
+
+`astro/tests/p7/queue-budget.test.ts` runs that exact imported consumer through
+the real Astro P7 `step` handler with the shared 5,669-repository/owner fixture.
+The service binding and queue are local test ports; physical storage/fetch
+operations are counted by the shared runtime harness. It covers the complete
+chain, page checkpoints, publication, garbage collection, JSON/header failure
+successors and diagnostic-delivery retries. The built-entry Queue dispatch is
+also exercised by `astro/worker-checks/operations.test.ts`. Together these
+tests cover Astro's actual shared consumer path; they do not certify remote
+Cloudflare subrequest accounting or production load.
+
 ## Build, validation and authorized pre deployment
 
 Use Node 24.20.0 and Bun 1.4.2 from the checksum-verified AGENTS bootstrap.
