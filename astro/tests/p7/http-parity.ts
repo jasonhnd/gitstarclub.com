@@ -1,7 +1,8 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { openSync, closeSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
+import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { startWebWorker } from "./web-worker";
 import { startFixture, fixtureRecords } from "../../scripts/fixture";
 import { startWorker } from "../../scripts/local-worker";
 import { prepareWebOutput } from "../../scripts/prepare-web";
@@ -15,28 +16,14 @@ prepareWebOutput();
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const records = fixtureRecords();
 const fixture = startFixture(records);
-const log = openSync(resolve(scratch, "p7-web-preview.log"), "w");
 let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
-let preview: ReturnType<typeof Bun.spawn> | undefined;
+let original: Awaited<ReturnType<typeof startWebWorker>> | undefined;
 const report: { path: string; method: string; passed: boolean; expected: unknown; actual: unknown }[] = [];
 try {
-  const probe = createServer();
-  await new Promise<void>((done) => probe.listen(0, "127.0.0.1", done));
-  const address = probe.address();
-  if (!address || typeof address === "string") throw new Error("No loopback port.");
-  const port = address.port;
-  await new Promise<void>((done, reject) => probe.close((error) => error ? reject(error) : done()));
-  preview = Bun.spawn(["node", "node_modules/vite/bin/vite.js", "preview", "--mode", "pre", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], {
-    cwd: resolve(root, "../web"), env: { ...process.env, BLOB_BASE_URL: fixture.url.origin }, stdin: "ignore", stdout: log, stderr: log,
-  });
-  const web = `http://127.0.0.1:${port}`;
-  let ready = false;
-  for (let attempt = 0; attempt < 60; attempt++) {
-    try { if ((await fetch(`${web}/.well-known/deployment`)).ok) { ready = true; break; } } catch { /* Only this process is polled. */ }
-    if (preview.exitCode !== null) throw new Error("Web preview exited; inspect p7-web-preview.log.");
-    await Bun.sleep(500);
-  }
-  if (!ready) throw new Error("Web preview did not become ready.");
+  original = await startWebWorker(root, scratch, records, fixture.url.origin);
+  const web = (await original.ready).origin;
+  const originalBuild = readFileSync(resolve(root, "../web/dist/server/RSC_BUILD_ID"), "utf8").trim();
+  const astroBuild = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim().slice(0, 32);
   worker = await startWorker(records);
   const astro = (await worker.ready).origin;
   const routes: [string, string][] = [
@@ -52,7 +39,9 @@ try {
   const transport = new Set(["date", "connection", "keep-alive", "transfer-encoding", "content-length", "content-encoding", "server"]);
   async function capture(origin: string, path: string, method: string) {
     const response = await fetch(new URL(path, origin), { method, redirect: "manual" });
-    const headers = [...response.headers].filter(([name]) => !transport.has(name)).map(([name, value]) => [name, name === "location" ? value.replace(origin, "https://comparison.invalid") : value]);
+    const identity = response.headers.get("x-vinext-build-id");
+    if (identity !== (origin === web ? originalBuild : astroBuild)) throw new Error("Response build identity does not match its built artifact.");
+    const headers = [...response.headers].filter(([name]) => !transport.has(name)).map(([name, value]) => [name, name === "location" ? value.replace(origin, "https://comparison.invalid") : name === "x-vinext-build-id" ? "<artifact-build-id>" : value]);
     return { status: response.status, headers, body: Array.from(new Uint8Array(await response.arrayBuffer())) };
   }
   for (const [path, method] of cases) {
@@ -68,10 +57,9 @@ try {
     report.push({ path, method, passed, expected, actual });
     console.log(`${passed ? "PASS" : "DIFF"} ${method} ${path}`);
   }
-  writeFileSync(resolve(scratch, "p7-http-parity.json"), JSON.stringify({ passed: report.every((item) => item.passed), transportExcluded: [...transport], normalizedOrigin: true, cases: report }, null, 2) + "\n");
+  writeFileSync(resolve(scratch, "p7-http-parity.json"), JSON.stringify({ passed: report.every((item) => item.passed), transportExcluded: [...transport], normalizedOrigin: true, buildIdentity: { web: originalBuild, astro: astroBuild, validatedAgainstArtifacts: true }, cases: report }, null, 2) + "\n");
   console.log(`P7 built-host comparison: ${report.filter((item) => item.passed).length}/${report.length} passed`);
   if (report.some((item) => !item.passed)) process.exitCode = 1;
 } finally {
-  if (preview) { preview.kill(); await preview.exited; }
-  await worker?.dispose(); await fixture.stop(true); closeSync(log);
+  await original?.dispose(); await worker?.dispose(); await fixture.stop(true);
 }

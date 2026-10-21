@@ -31,6 +31,8 @@ if (process.env.GSC_P7_WORKER_TEST === "1") describe("P7 actual Worker endpoints
       expect(response.headers.get("x-gsc-cache")).toBe("BYPASS");
       expect(response.headers.get("cache-control")).toBe("private, no-store");
       expect(response.headers.has("x-robots-tag")).toBe(false);
+      expect(response.headers.get("x-vinext-build-id")).toMatch(/^[a-f0-9]{32}$/);
+      expect(response.headers.get("vary")).toContain("Next-Router-State-Tree");
     }
   });
   test("implicit HEAD, OPTIONS and wrong methods retain the old framework behavior", async () => {
@@ -76,7 +78,7 @@ if (process.env.GSC_P7_WORKER_TEST === "1") describe("P7 actual Worker endpoints
     expect((await call("/api/workflows/refresh/revalidate", "POST", true)).status).toBe(200);
     for (const [path, method] of endpoints.filter(([path]) => !path.endsWith("/revalidate"))) {
       const response = await call(path, method);
-      expect(response.status).toBe(503); expect(await response.text()).toBe("Publication changed or unavailable; retry");
+      expect(response.status).toBe(503); expect(response.headers.has("x-vinext-build-id")).toBe(false); expect(await response.text()).toBe("Publication changed or unavailable; retry");
     }
   });
 });

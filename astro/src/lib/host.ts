@@ -2,6 +2,7 @@ import { contentSecurityPolicyForEnvironment, securityHeaders } from "../../../w
 import { type Publication } from "../../../web/lib/workers-host/publication-fence";
 import { ArtifactStore, type StoredEntry } from "../../../web/lib/workers-host/cache/store";
 import { bypassPageCache, isLongTail, MAX_ENTRY_BYTES, TAIL_EXPIRE_SECONDS, TAIL_FRESH_SECONDS } from "../../../web/lib/workers-host/cache/policy";
+import { operationResponse } from "../packages/p7/response";
 import { languageRedirect, negotiateLocale } from "./routing";
 
 export type HostOptions = {
@@ -28,7 +29,10 @@ export function secureResponse(response: Response, method: string, status: Cache
 /** Caches Astro's final HTML, using the existing bounded Cache API/KV artifact store. */
 export async function handleRequest(request: Request, options: HostOptions): Promise<Response> {
   const url = new URL(request.url);
-  const finish = (response: Response, status: CacheStatus = "BYPASS") => secureResponse(response, request.method, status, url.pathname.startsWith("/api/"));
+  const api = url.pathname.startsWith("/api/");
+  const finish = (response: Response, status: CacheStatus = "BYPASS", rendered = true) => secureResponse(
+    api && rendered ? operationResponse(response, request, options.build) : response, request.method, status, api,
+  );
   const path = url.pathname.replace(/\/+$/, "") || "/";
   if (path === "/api/lang" && ["GET", "HEAD"].includes(request.method)) return finish(languageRedirect(request));
   if (path === "/api/workflows/refresh/revalidate" && request.method === "POST" && options.unscopedRender) {
@@ -98,5 +102,5 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
       if (response) return finish(response, bypass ? "BYPASS" : "MISS");
     }
   } catch { /* Unknown/missing/unreadable publication fails closed for data-dependent requests. */ }
-  return finish(new Response(url.pathname.startsWith("/api/") ? "Publication changed or unavailable; retry" : "Published data is temporarily unavailable.", { status: 503 }));
+  return finish(new Response(url.pathname.startsWith("/api/") ? "Publication changed or unavailable; retry" : "Published data is temporarily unavailable.", { status: 503 }), "BYPASS", false);
 }
