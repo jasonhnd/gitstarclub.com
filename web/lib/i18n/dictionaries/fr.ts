@@ -4,6 +4,7 @@ const fr: Dict = {
   nav: { home: "Accueil", pulse: "Activité", rankings: "Classements", categories: "Catégories", organizations: "Organisations", compare: "Comparer", about: "À propos" },
   common: {
     starHistoryNote: "Les chiffres quotidiens et hebdomadaires du 30 mai au 30 septembre 2026 proviennent du récapitulatif de l’historique des étoiles de GitHub et comptent celles encore présentes lors de la collecte. Les jours suivent approximativement UTC, avec un décalage possible de quelques heures.",
+    starHistoryMixedNote: "Ce classement hebdomadaire combine les observations existantes et le récapitulatif de l’historique des étoiles de GitHub du 30 mai au 30 septembre 2026. Seuls les chiffres du récapitulatif comptent les étoiles encore présentes lors de la collecte ; leurs jours suivent approximativement UTC, avec un décalage possible de quelques heures.",
     faqHeading: "Questions fréquentes",
     dataLastUpdated: "Dernière mise à jour des données",
     dataAsOf: "Données au",

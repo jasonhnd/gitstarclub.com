@@ -750,7 +750,7 @@ Every artifact is defined with a Zod schema in `web/lib/contracts/` (schemas for
 ## Aggregate star-history provenance (issue 687)
 
 The optional `entity/{repo,org}.curve.provenance` and
-`rank/week/{period}/repo/flow.json.meta.provenance` fields carry the exact
+`rank/week/{period}/{repo,org}/flow.json.meta.provenance` fields carry the exact
 `provenance` object from GSC_0090's `inputs/manifest.json`, documented in
 [STAR-HISTORY-AGGREGATE.md](analysis/STAR-HISTORY-AGGREGATE.md#output-and-conversion-contract).
 `web/lib/contracts/star-history.ts` validates every field, including the fixed
@@ -762,6 +762,18 @@ values actually incorporate the aggregate source. Dates alone never establish
 provenance. Unknown repositories must remain absent, not measured zero. Edge ISO
 weeks W22/W40 require joining the independently measured adjacent days before a
 whole-week rank can be published; the label does not establish completeness.
+
+Weekly flow boards additionally accept optional `meta.provenance_scope: "mixed"`
+when their displayed top 100 combines existing observations and aggregate
+history. It requires the approved provenance object and a weekly flow metric.
+Absent scope preserves the previous aggregate-note behavior, and artifacts
+without either optional field remain valid. New publishers omit both fields
+for existing-only displayed rows and retain provenance without scope for
+aggregate-only displayed rows. Organization sums combine actual member flow
+sources; carried stock is not a new observation. The internal packed v1/v2
+formats remain unchanged. Weekly ranking pages and Pulse reuse the approved
+note for aggregate-only boards and select mixed-source copy in all seven
+locales when scope is present.
 
 The object describes **daily values only** within `curve`, never
 `curve.monthly`, monthly tables, stocks or milestones. For weekly rankings it

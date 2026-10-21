@@ -14,7 +14,7 @@ import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { buildNarrative } from "@/lib/narrative";
 import { rankingRoutePeriod, rankingYear } from "@/lib/public-params";
 import { FIRST_YEAR } from "@/lib/periods";
-import { hasAggregateWeek } from "@/lib/star-history-provenance";
+import { weeklyRankSourceNote } from "@/lib/star-history-provenance";
 import { fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
 import { RankingCategoryExits } from "./ranking-category-exits";
 import { getRank, getCategoryAssignmentsForRepos } from "@/lib/data";
@@ -343,7 +343,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: rankRows, metric: "gained" });
   const tableLabels = repositoryTableLabels(t);
   const weekNav = await weekNavigation(t, year, week, href);
-  const showProvenance = hasAggregateWeek("week", period, data.flow.meta.provenance);
+  const sourceNote = weeklyRankSourceNote(data.flow.meta, t.common);
 
   return (
     <>
@@ -375,7 +375,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
             />
           }
         />
-        {showProvenance && <p className="mt-4 text-sm leading-relaxed text-on-surface-variant">{t.common.starHistoryNote}</p>}
+        {sourceNote && <p className="mt-4 text-sm leading-relaxed text-on-surface-variant">{sourceNote}</p>}
         <AnswerBlock capsule={capsule} rows={rankRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
         {snippet && <ShareableSnippet snippet={snippet} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={shareableSnippetLabels(t)} />}
 

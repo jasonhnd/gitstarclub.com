@@ -44,6 +44,15 @@ those entries rather than publishing zero. A later ordinary observation resumes
 the unchanged accumulator. Monthly/yearly series and all-time current stocks
 are unaffected; see the [preview repair runbook](analysis/PREVIEW-AGGREGATE-IMPORT.md).
 
+Weekly flow source notes describe the displayed top 100, rather than every row
+in the period. Existing-only boards omit aggregate provenance; aggregate-only
+boards retain the approved gap note. Mixed boards carry the same provenance
+object plus `meta.provenance_scope: "mixed"` and use localized mixed-source copy.
+Organization source composition includes each member's actual observation,
+including a measured zero. An idle member's carried stock contributes no flow
+source, even when that stock is unknown. Object and persisted packed paths use
+the same rule; source metadata never changes ranking values or tie-breaks.
+
 ## 3. stock historical anchoring algorithm (undoing gross being high)
 
 History is gross (GH Archive has no unstar events), so accumulation is **systematically high**; the only exact anchor is today's `current_stars` (GraphQL). The algorithm:

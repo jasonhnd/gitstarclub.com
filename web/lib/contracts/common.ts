@@ -165,12 +165,16 @@ export const RankList = z
         metric: Metric,
         generated_at: TimestampStr,
         provenance: StarHistoryProvenance.optional(),
+        provenance_scope: z.literal("mixed").optional(),
       })
       .strict(),
     items: z.array(RankItem),
   })
   .strict()
   .superRefine((list, ctx) => {
+    if (list.meta.provenance_scope && (!list.meta.provenance || list.meta.window !== "week" || list.meta.metric !== "flow")) {
+      ctx.addIssue({ code: "custom", path: ["meta", "provenance_scope"], message: "mixed provenance requires weekly flow provenance" });
+    }
     for (let i = 0; i < list.items.length; i++) {
       const item = list.items[i];
       if (list.meta.dim === "repo" && item.id == null) {
