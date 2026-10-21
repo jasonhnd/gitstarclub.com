@@ -9,12 +9,13 @@ export async function startWorker(records = fixtureRecords(), strings: Record<st
   if (!scratch) throw new Error("Set KANBAN_TMP before starting the local Worker.");
   const output = resolve(scratch, "astro-cloudflare/output/v0/workers/default");
   const bundle = resolve(output, "bundle");
-  const modules: Record<string, { type: "esm"; contents: string }> = {};
+  const modules: Record<string, { type: "esm"; contents: string } | { type: "wasm"; contents: Uint8Array<ArrayBuffer> }> = {};
   function walk(directory: string) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = resolve(directory, entry.name);
       if (entry.isDirectory()) walk(path);
       else if (entry.name.endsWith(".mjs")) modules[relative(bundle, path)] = { type: "esm", contents: readFileSync(path, "utf8") };
+      else if (entry.name.endsWith(".wasm")) modules[relative(bundle, path)] = { type: "wasm", contents: Uint8Array.from(readFileSync(path)) };
     }
   }
   walk(bundle);
