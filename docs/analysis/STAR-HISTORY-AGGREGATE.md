@@ -73,8 +73,12 @@ No discovery, search, alternate token or credential lookup is performed.
 ## Pacing, checkpoints and foreground execution
 
 Request starts are serial and at least **1.05 seconds apart**, including across
-chunk restarts. Before each request its start is persisted. The client preserves
-remaining/reset headers and waits before spending the final ten requests. It
+chunk restarts. Before each request an in-flight marker is persisted; the actual
+start is recorded immediately before launching `gh`, after that save, and saved
+with the response. Save latency is excluded from request timing. If a process
+stops before saving its response, reconstruction waits at least 1.05 seconds
+from client creation before another request. The client preserves remaining/reset
+headers and waits before spending the final ten requests. It
 honors `Retry-After` in seconds or HTTP-date form, uses at least a minute for
 secondary limits with exponential backoff, and bounds retries to six attempts.
 The retry counter and cooldown survive restarts. Repeated errors stop the run;
@@ -175,6 +179,30 @@ schemas. The later publisher must propagate it to its own metadata and prevent
 overwriting existing measured dates. Neither that publisher nor a UI change is
 part of this card. `local_only: true` is not permission to upload.
 
+## Final run (2026-10-19)
+
+The retained `summary.json` and `inputs/manifest.json` under the output directory
+record a finished sweep of **5,249 repositories**: **5,243 complete** and **6
+`not_found_or_inaccessible`**. Daily coverage is **650,132 of 650,876
+repository-days**, leaving **744 missing repository-days**. The export contains
+**89,131 complete ISO week rows** and **10,486 partial week rows**.
+
+The six unavailable repositories are:
+
+- `segment-boneyard/nightmare` (repository id `18477927`)
+- `kitao/pyxel` (repository id `136780445`)
+- `GrowingGit/GitHub-Chinese-Top-Charts` (repository id `206462776`)
+- `imarvinle/awesome-cs-books` (repository id `304766583`)
+- `cheahjs/free-llm-api-resources` (repository id `824301644`)
+- `Max-Eee/NeoPass` (repository id `888887358`)
+
+The SHA-256 of `inputs/manifest.json` is
+`b9015837a501fa732192f3d43d27114a8f6ef46f627a9c68569d4a0b3fff0f49`.
+A finished sweep does not imply complete coverage: these six repositories remain
+missing, their daily counts are unknown, and the full-whitelist survivor total
+remains null. Partial week rows retain the separate edge-week policy above.
+These are local gap inputs; this run did not publish them.
+
 ## Run, resume and inspect
 
 Use AGENTS.md's archive-verified Node 24.20.0 and Bun 1.4.2 bootstrap and
@@ -221,7 +249,8 @@ afterward. Never clear missing entries, sum them as zeros or broaden the window.
 
 Offline fixtures cover pinned membership, renames/reassigned names, response
 shape, date boundaries, pagination, checkpoint/resume, unavailable sources,
-persisted pacing/quota/backoff, retry exhaustion, ISO weeks, partial weeks,
+persisted pacing/quota/backoff, slow-save actual-start spacing, interrupted-request
+restart pacing, retry exhaustion, ISO weeks, partial weeks,
 fingerprints, deterministic export and absence of monthly/stock artifacts.
 They run in the ordinary full `pipeline` test command.
 

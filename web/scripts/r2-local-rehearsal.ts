@@ -27,7 +27,6 @@ try {
       PATH: path,
       HOME: join(scratch, "home"),
       TMPDIR: join(scratch, "tmp"),
-      WRANGLER_SEND_METRICS: "false",
       CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: "false",
     },
     stdout: "inherit",

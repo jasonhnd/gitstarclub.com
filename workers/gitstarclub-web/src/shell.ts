@@ -175,7 +175,7 @@ export async function handleShellFetch(request: Request, env: WorkerEnv): Promis
     return applySecurityHeaders(Response.json({
       ok: true,
       target: "cf",
-      hosting: "opennext",
+      hosting: "vinext",
       observability: true,
     }));
   }

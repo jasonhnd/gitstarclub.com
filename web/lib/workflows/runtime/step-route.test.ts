@@ -416,7 +416,7 @@ describe("publish failures after the pointer commit", () => {
   const runId = "refresh-643";
   const startedAt = "2026-10-02T00:00:00.000Z";
   const fencingToken = 9;
-  // Preview Worker vars (wrangler env.pre): no NEXT_PUBLIC_SITE_URL, no VERCEL_URL.
+  // Preview Worker vars (typed config env.pre): no NEXT_PUBLIC_SITE_URL, no VERCEL_URL.
   const previewEnv = {
     HOSTING_TARGET: "cf",
     DEPLOY_ENV: "pre",

@@ -1,3 +1,5 @@
+import { WorkerCacheInvalidation } from "../workers-host/cache/invalidation";
+import { workerBindings } from "../workers-host/runtime-env";
 import {
   assertCacheInvalidationAllowed,
   getCacheInvalidationKind,
@@ -19,6 +21,7 @@ export type ResolveCacheInvalidationOptions = {
 export function resolveCacheInvalidation(
   opts: ResolveCacheInvalidationOptions = {},
 ): CacheInvalidationPort {
+  if (!opts.kind && !opts.env && workerBindings().GSC_CACHE) return new WorkerCacheInvalidation();
   const env = opts.env ?? process.env;
   assertCacheInvalidationAllowed(env);
   const kind = opts.kind ?? getCacheInvalidationKind(env);

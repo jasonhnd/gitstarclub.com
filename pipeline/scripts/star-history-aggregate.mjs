@@ -94,8 +94,10 @@ export class AggregateClient {
     this.deadline = deadline;
     this.log = log;
     this.state = existsSync(this.file) ? read(this.file) : {
-      requests: 0, api_ms: 0, wait_ms: 0, last_request_at: 0, not_before: 0, retry_key: null, retries: 0,
+      requests: 0, api_ms: 0, wait_ms: 0, last_request_at: 0, not_before: 0, retry_key: null, retries: 0, request_pending: false,
     };
+    // An interrupted request may have started after the last persisted timestamp.
+    if (this.state.request_pending) this.state.last_request_at = Math.max(this.state.last_request_at, this.now());
   }
   save() { atomicJson(this.file, this.state); }
   async request(member, page) {
@@ -112,10 +114,11 @@ export class AggregateClient {
       }
       if (this.now() >= this.deadline) throw new Pause("Chunk deadline reached after waiting");
       if (this.state.retries >= 6) throw new Error("Repeated GitHub errors; retry budget exhausted and cooldown retained");
-      // Persist the start before launching gh, including across a process crash.
-      this.state.last_request_at = this.now();
+      // Persist an in-flight marker first; save latency must not move the pacing anchor earlier.
+      this.state.request_pending = true;
       this.state.requests++;
       this.save();
+      this.state.last_request_at = this.now();
       const response = await this.transport(member.name, page);
       this.state.api_ms += this.now() - this.state.last_request_at;
       const headers = safeHeaders(response.headers);
@@ -132,6 +135,7 @@ export class AggregateClient {
         this.state.not_before = Math.max(this.state.not_before, reset + 1000);
       }
       this.state.retries = delay === null ? 0 : this.state.retries + 1;
+      this.state.request_pending = false;
       this.save();
       if (delay !== null) continue;
       if (response.status === 401) throw new Error("Existing gh login is unauthorized; no credential changes attempted");

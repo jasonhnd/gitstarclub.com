@@ -102,14 +102,14 @@ export function requireGithubToken(env?: RuntimeEnv): string {
   return value;
 }
 
-/** Search / refresh membership floor. Default 10_000. Preview wrangler uses the same floor. */
+/** Search / refresh membership floor. Default 10_000. Preview typed config uses the same floor. */
 export function getMinTrackedStars(env: RuntimeEnv = process.env): number {
   return resolveMinTrackedStars(env.MIN_TRACKED_STARS);
 }
 
 /**
  * Multi-hop GitHub Search for whitelist. Off by default (single hop).
- * Preview wrangler `env.pre` sets `1` so ≥1k Search stays inside the
+ * Preview typed config `env.pre` sets `1` so ≥1k Search stays inside the
  * `gitstarclub-jobs-pre` 15 min Queue wall. `0` / unset restores #508 single-hop.
  */
 export function isWhitelistSearchSharded(env: RuntimeEnv = process.env): boolean {

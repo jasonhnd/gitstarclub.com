@@ -10,6 +10,11 @@ source_of_truth_for:
 
 # R2 cutover
 
+Host commands below preserve the accepted historical cutover. They are retired
+and must not be executed for the current source host. Use [VINEXT-HOST.md](VINEXT-HOST.md)
+for vinext/cf builds and separately authorized delivery. Storage acceptance dates
+and resource identities below remain unchanged.
+
 > **Current status:** Stage 4 (production cutover) was accepted on 2026-10-04 (Jason, 17:59 JST), as recorded in [PR #649](https://github.com/jasonhnd/gitstarclub.com/pull/649). That record names Worker version `c163a860` and deploy commit `c32b373`; these are historical acceptance identifiers, not the current deployment identity. The accepted operator path copied the Blob store into production R2 and switched the Worker to it. The original empty-bucket bootstrap stages 2/3 remain unaccepted. Stages 5 (production crons) and 6 (Blob retirement) remain unaccepted.
 >
 > Storage sentence used across the current docs: Cloudflare R2 (production cutover accepted 2026-10-04; see docs/R2-CUTOVER.md). Blob remains a retained rollback store and operating dependency until separately authorized retirement.

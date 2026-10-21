@@ -9,9 +9,9 @@ try {
     const origin = assertAllowedCfPreviewOrigin(process.env.CF_PREVIEW_ORIGIN);
     console.log(`CF_PREVIEW_ORIGIN=${origin}`);
   } else {
-    const summary = assertRepositoryCfCiGates(repoRoot);
+    const summary = await assertRepositoryCfCiGates(repoRoot);
     console.log(
-      `CF CI gates ok: ${summary.previewEnv}→${summary.previewWorker}; probe ${summary.previewOrigin}; production ${summary.productionWorker} triggers.crons=[]; no live deploy`,
+      `CF CI gates ok: ${summary.previewEnv}→${summary.previewWorker}; probe ${summary.previewOrigin}; production ${summary.productionWorker} scheduled triggers absent; no live deploy`,
     );
   }
 } catch (error) {
