@@ -24,10 +24,10 @@ import {
   periodAsOfCandidate,
   type PulseListMetaCopy,
 } from "@/lib/rank-period-labels";
-import { repositoryTableLabels } from "../../../../web/app/_localized/routing";
+import { repositoryTableLabels } from "./ui";
 import { buildLocalizedPulseCapsule, buildLocalizedPulseFaqs } from "../../../../web/app/_localized/seo-copy";
 import { answerCapsuleLabels } from "../../../../web/app/_localized/detail-copy";
-import { EmptyState, periodSwitcherLinks } from "../../../../web/app/_localized/ranking-ui";
+import { EmptyState, periodSwitcherLinks } from "./ui";
 import { projectRepoRows, PULSE_MOVER_LIMIT, PULSE_GIANT_LIMIT, PULSE_ANNIVERSARY_LIMIT } from "../../../../web/app/_localized/ranking-page-data";
 
 export function PulseBody({ locale, t, data, now = new Date() }: {
