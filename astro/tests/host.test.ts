@@ -79,6 +79,71 @@ test("a publication during output generation retries once with captured new data
   expect(await (await h.get("/pulse")).text()).toContain("v2");
   expect(count).toBe(2);
 });
+const privateReads = ["cookie", "authorization"].flatMap((header) => ["GET", "HEAD"].flatMap((method) =>
+  ["/pulse", "/example/repo"].map((path) => ({ header, method, path }))));
+test.each(privateReads)("private reads recheck publication after consuming output: %j", async ({ header, method, path }) => {
+  const h = harness();
+  const captured: string[] = [];
+  let consumed = 0;
+  let cacheAccesses = 0;
+  h.store.get = async () => { cacheAccesses++; return null; };
+  h.store.set = async () => { cacheAccesses++; };
+  h.options.render = async (publication) => {
+    captured.push(publication.views!.version);
+    return new Response(new ReadableStream({
+      pull(controller) {
+        if (++consumed === 1) h.publish("v2");
+        controller.enqueue(new TextEncoder().encode(`<html>${publication.views?.version}</html>`));
+        controller.close();
+      },
+    }, { highWaterMark: 0 }), { headers: { "Content-Type": "text/html", "Set-Cookie": "session=renewed; HttpOnly" } });
+  };
+  const response = await h.get(path, { method, headers: { [header]: "private" } });
+  expect(response.status).toBe(200);
+  expect(await response.text()).toBe(method === "HEAD" ? "" : "<html>v2</html>");
+  expect(captured).toEqual(["v1", "v2"]);
+  expect(consumed).toBe(2);
+  expect(response.headers.get("x-gsc-publication")).toBe((await h.options.publication()).id);
+  expect(response.headers.get("x-gsc-cache")).toBe("BYPASS");
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(response.headers.get("set-cookie")).toBe("session=renewed; HttpOnly");
+  expect(cacheAccesses).toBe(0);
+  expect(h.kv.values.size).toBe(0);
+  expect(h.pending).toHaveLength(0);
+});
+test.each(privateReads)("private reads fail closed after two publication races: %j", async ({ header, method, path }) => {
+  const h = harness();
+  let calls = 0;
+  h.options.render = async () => {
+    h.publish(`v${++calls + 1}`);
+    return new Response("obsolete");
+  };
+  const response = await h.get(path, { method, headers: { [header]: "private" } });
+  expect(response.status).toBe(503);
+  expect(await response.text()).toBe(method === "HEAD" ? "" : "Published data is temporarily unavailable.");
+  expect(response.headers.get("x-gsc-cache")).toBe("BYPASS");
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(calls).toBe(2);
+  expect(h.kv.values.size).toBe(0);
+});
+test("a publication outage after private rendering fails closed", async () => {
+  const h = harness();
+  h.options.render = async () => {
+    h.options.publication = async () => { throw new Error("Pointer outage"); };
+    return new Response("obsolete");
+  };
+  expect((await h.get("/pulse", { headers: { cookie: "session=1" } })).status).toBe(503);
+  expect(h.kv.values.size).toBe(0);
+});
+test.each([204, 205, 304])("private reads preserve bodyless responses with status %i", async (status) => {
+  const h = harness();
+  h.options.render = async () => new Response(null, { status });
+  const response = await h.get("/pulse", { headers: { authorization: "Bearer local" } });
+  expect(response.status).toBe(status);
+  expect(await response.text()).toBe("");
+  expect(response.headers.get("x-gsc-cache")).toBe("BYPASS");
+  expect(h.kv.values.size).toBe(0);
+});
 test("repeated publication races and invalid pointers fail closed", async () => {
   const h = harness();
   let version = 1;
