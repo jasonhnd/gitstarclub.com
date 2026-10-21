@@ -53,8 +53,8 @@ No runtime database, AI, live search or alternate writer is introduced.
 
 ### Refresh checkpoints and consumer parity
 
-The Astro entry imports `handleQueue` from
-`workers/gitstarclub-web/src/shell.ts`; its P7 `step` handler imports
+The Astro entry imports `handleQueue` from the
+[shared Worker shell](../workers/gitstarclub-web/src/shell.ts); its P7 `step` handler imports
 `runRefreshStepRoute` from `web/lib/workflows/runtime/step-route.ts`. These are
 the same implementations used by the web Worker, including PR #717/#722/#724.
 No copied graph or Astro-specific successor table needs to be kept in sync.
