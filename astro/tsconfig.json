@@ -1,0 +1,10 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "types": ["bun", "node"],
+    "paths": { "@/*": ["../web/*"] },
+    "noUncheckedIndexedAccess": true
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "worker-tests/**/*.ts", "cloudflare.config.ts"],
+  "exclude": ["node_modules"]
+}

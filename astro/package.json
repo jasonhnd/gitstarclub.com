@@ -1,0 +1,30 @@
+{
+  "name": "gitstarclub-astro",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "bun@1.4.2",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "build": "node scripts/prepare-local.mjs && astro build",
+    "typecheck": "node scripts/prepare-local.mjs && astro check && tsc --noEmit",
+    "test": "bun test tests/ --isolate",
+    "test:worker": "bun test worker-tests/ --isolate",
+    "validate:graph": "node scripts/check-toolchain.mjs"
+  },
+  "dependencies": {
+    "astro": "7.4.1",
+    "@astrojs/cloudflare": "15.0.0-beta.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.11",
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.3",
+    "@types/bun": "1.4.2",
+    "@types/node": "24.19.0",
+    "cf": "1.0.0-beta.18",
+    "miniflare": "5.20261019.1-beta",
+    "typescript": "6.0.3",
+    "vite": "8.3.4"
+  }
+}
