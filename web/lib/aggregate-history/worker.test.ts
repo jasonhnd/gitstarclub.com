@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildBootstrapPhaseManifest } from "../../../pipeline/lib/bootstrap-publication.mjs";
 import { type R2Bucket } from "../storage/r2-binding-store";
 import { classifyWorkerRequest } from "../workers-host/shell-routes";
-import { AGGREGATE_IMPORT_PATH, AGGREGATE_MANIFEST_SHA256, PREVIEW_BUCKET } from "./policy";
+import { AGGREGATE_IMPORT_PATH, PREVIEW_BUCKET } from "./policy";
 import { importDigest } from "./protocol";
 import { handleAggregateImport } from "./worker";
 import { importWorkerHarness as harness } from "./test-support";

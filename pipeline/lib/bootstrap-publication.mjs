@@ -213,7 +213,7 @@ export async function verifyLegacyFlatTarget({ store, concurrency = 12 }) {
  * }} options
  */
 export async function stageBootstrapPhase({ generation, phase, items, store, concurrency = 12, onProgress = (_progress) => {} }) {
-  const prefix = bootstrapGenerationPrefix(generation);
+  assertBootstrapGeneration(generation);
   const manifest = buildBootstrapPhaseManifest(generation, phase, items);
   const expectedManifestBytes = manifestBytes(manifest);
   const manifestPath = bootstrapPhaseManifestPath(generation, phase);
