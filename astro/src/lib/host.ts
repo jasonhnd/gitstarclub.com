@@ -58,7 +58,7 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
     const body = await response.arrayBuffer();
     if ((await options.publication()).id !== publication.id) return null;
     const headers = new Headers(response.headers);
-    headers.set("x-gsc-publication", publication.id);
+    if (!api) headers.set("x-gsc-publication", publication.id);
     const entry: StoredEntry = {
       v: 1, lastModified: now(), fence: tail ? "tail" : publication.id, tags: [url.pathname],
       cacheControl: { revalidate: tail ? TAIL_FRESH_SECONDS : 3600, expire: tail ? TAIL_EXPIRE_SECONDS : 3600 },

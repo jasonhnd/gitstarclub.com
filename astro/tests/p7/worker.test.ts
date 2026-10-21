@@ -30,6 +30,7 @@ if (process.env.GSC_P7_WORKER_TEST === "1") describe("P7 actual Worker endpoints
       expect(response.status).toBe(401); expect(await response.text()).toBe("Unauthorized");
       expect(response.headers.get("x-gsc-cache")).toBe("BYPASS");
       expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.has("x-gsc-publication")).toBe(false);
       expect(response.headers.has("x-robots-tag")).toBe(false);
       expect(response.headers.get("x-vinext-build-id")).toMatch(/^[a-f0-9]{32}$/);
       expect(response.headers.get("vary")).toContain("Next-Router-State-Tree");
@@ -40,11 +41,14 @@ if (process.env.GSC_P7_WORKER_TEST === "1") describe("P7 actual Worker endpoints
       const options = await call(path, "OPTIONS");
       expect(options.status).toBe(204);
       expect(options.headers.get("allow")).toBe(method === "GET" ? "GET, HEAD, OPTIONS" : "OPTIONS, POST");
+      expect(options.headers.has("x-gsc-publication")).toBe(false);
       const wrong = await call(path, method === "GET" ? "POST" : "GET");
       expect(wrong.status).toBe(405); expect(await wrong.text()).toBe("");
+      expect(wrong.headers.has("x-gsc-publication")).toBe(false);
       const head = await call(path, "HEAD");
       expect(head.status).toBe(method === "GET" ? (path === "/api/lang" ? 307 : 401) : 405);
       expect(await head.text()).toBe("");
+      expect(head.headers.has("x-gsc-publication")).toBe(false);
     }
   });
   test("authenticated malformed requests stop before enqueue or data writes", async () => {
@@ -69,6 +73,7 @@ if (process.env.GSC_P7_WORKER_TEST === "1") describe("P7 actual Worker endpoints
     for (const locale of LOCALES) {
       const response = await call(`/api/lang?lang=${locale}&next=/fr/rankings`);
       expect(response.status).toBe(307);
+      expect(response.headers.has("x-gsc-publication")).toBe(false);
       expect(response.headers.get("location")).toBe(`${(await worker.ready).origin}${locale === "en" ? "" : `/${locale}`}/rankings`);
       expect(response.headers.get("set-cookie")).toContain("Expires=");
       expect(response.headers.get("set-cookie")).toContain("SameSite=lax");
