@@ -23,7 +23,7 @@ export async function loadPage(kind: PageKind, localeValue = "en", year = "", pe
       const canonicalPath = canonical.pathname.slice(prefix.length) || "/";
       const title = typeof metadata.title === "string" ? metadata.title : (metadata.title as { absolute: string }).absolute;
       const images = metadata.openGraph?.images as Array<{ url: string }>;
-      return { locale, canonicalPath, title, description: String(metadata.description), ogImage: images[0].url,
+      return { locale, canonicalPath, title, description: String(metadata.description), ogImage: images[0].url, ogUrl: String(metadata.openGraph?.url),
         absoluteTitle: kind === "home", interactive: kind === "year" || kind === "period", html: renderToStaticMarkup(body) };
     });
   } catch (error) {

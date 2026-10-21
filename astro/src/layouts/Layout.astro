@@ -5,8 +5,8 @@ import { localizedPath, toHreflang, toOpenGraphLocale } from "../../../web/lib/i
 import { THEME_INIT_SCRIPT } from "../../../web/lib/theme-script";
 import Chrome from "../components/Chrome.astro";
 import Footer from "../components/Footer.astro";
-interface Props { locale: Locale; canonicalPath: string; title: string; description: string; tag?: string; absoluteTitle?: boolean; ogImage?: string }
-const { locale, canonicalPath, title, description, tag, absoluteTitle = false, ogImage = "/opengraph-image" } = Astro.props;
+interface Props { locale: Locale; canonicalPath: string; title: string; description: string; tag?: string; absoluteTitle?: boolean; ogImage?: string; ogUrl?: string }
+const { locale, canonicalPath, title, description, tag, absoluteTitle = false, ogImage = "/opengraph-image", ogUrl } = Astro.props;
 const t = await getDictionary(locale);
 const origin = "https://gitstarclub.com";
 const canonical = new URL(localizedPath(locale, canonicalPath), origin).href;
@@ -28,7 +28,7 @@ const image = new URL(ogImage, origin).href;
     <link rel="canonical" href={canonical} />
     <link rel="alternate" hreflang="x-default" href={new URL(canonicalPath, origin).href} />
     {LOCALES.map((lang) => <link rel="alternate" hreflang={toHreflang(lang)} href={new URL(localizedPath(lang, canonicalPath), origin).href} />)}
-    <meta property="og:url" content={canonical} /><meta property="og:title" content={title} />
+    <meta property="og:url" content={ogUrl ?? canonical} /><meta property="og:title" content={title} />
     <meta property="og:description" content={description} /><meta property="og:locale" content={toOpenGraphLocale(locale)} />
     <meta property="og:image" content={image} />
     <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} />

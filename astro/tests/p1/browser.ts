@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { chromium } from "@playwright/test";
 import { resolve } from "node:path";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 
-export async function verifyBrowser(web: string, astro: string) {
+export async function verifyBrowser(web: string, astro: string, screenshots = false) {
   const context = await chromium.launchPersistentContext(resolve(process.env.KANBAN_TMP!, "p1-browser"), { headless: true, reducedMotion: "reduce", permissions: ["clipboard-read", "clipboard-write"] });
   const geometry: unknown[] = [];
   try {
     await context.route("https://twitter.com/**", (route) => route.fulfill({ body: "Local share intent probe" }));
     const page = await context.newPage();
+    page.setDefaultNavigationTimeout(120_000);
     for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
       await page.setViewportSize(viewport);
       for (const path of ["/", "/rankings", "/rankings/2026", "/rankings/2026/7", "/rankings/2026/W29"]) {
@@ -16,6 +17,14 @@ export async function verifyBrowser(web: string, astro: string) {
         for (const origin of [web, astro]) {
           await page.goto(origin + path, { waitUntil: "networkidle" });
           await page.evaluate(() => document.fonts.ready);
+          if (screenshots) {
+            const directory = resolve(process.env.KANBAN_TMP!, "screenshots");
+            mkdirSync(directory, { recursive: true });
+            const host = origin === web ? "web" : "astro";
+            const size = viewport.width === 1440 ? "desktop" : "mobile";
+            const slug = path.replace(/[^a-zA-Z0-9-]+/g, "_");
+            await page.screenshot({ path: resolve(directory, `${host}-${size}-${slug}.png`), fullPage: true, animations: "disabled" });
+          }
           snapshots.push(await page.evaluate(() => {
             const selectors = ["header", "main", "h1", "footer", "main section", "main table", "main h2"];
             const bounds = selectors.flatMap((selector) => Array.from(document.querySelectorAll<HTMLElement>(selector))

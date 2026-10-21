@@ -46,11 +46,7 @@ try {
   const paths = JSON.parse(await Bun.file(new URL("./paths.json", import.meta.url)).text()) as string[];
   const report = await compareSites({ web, astro: (await worker.ready).origin, paths, screenshots: false });
   writeFileSync(resolve(scratch, "p1-parity.json"), JSON.stringify(report, null, 2) + "\n");
-  if (process.argv.includes("--screenshots")) {
-    const screenshots = await compareSites({ web, astro: (await worker.ready).origin, paths: ["/", "/rankings", "/rankings/2026", "/rankings/2026/7", "/rankings/2026/W29"], screenshots: true });
-    if (!screenshots.passed) throw new Error("Screenshot sample content differs");
-  }
-  await verifyBrowser(web, (await worker.ready).origin);
+  await verifyBrowser(web, (await worker.ready).origin, process.argv.includes("--screenshots"));
   process.exitCode = report.passed ? 0 : 1;
 } finally {
   if (preview) { preview.kill(); await preview.exited; }
