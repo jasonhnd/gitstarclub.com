@@ -24,7 +24,8 @@ export function parseAggregateImportArgs(argv: string[]): { source: string; gene
       if (flag === "--source") source = value;
       else if (flag === "--generation") generation = value;
       else if (flag === "--worker-url") workerUrl = aggregateWorkerOrigin(value);
-      else if (flag === "--checkpoint" || flag === "--secret-file") checkpoint = value;
+      else if (flag === "--checkpoint") checkpoint = value;
+      else if (flag === "--secret-file") secretFile = value;
       else if (value !== "pre") throw new Error("Only --target pre is supported");
     } else throw new Error(`Unknown argument: ${flag}`);
   }

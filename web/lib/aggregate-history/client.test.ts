@@ -1,13 +1,14 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { AggregateHistoryWorkerClient, aggregateWorkerOrigin } from "../../scripts/lib/aggregate-history-worker-client";
 import { importAggregateHistory } from "../../scripts/lib/aggregate-history-import";
 import { inspectPreviewAggregate } from "../../scripts/inspect-preview-aggregate";
 import { verifyPreviewAggregate } from "../../scripts/verify-preview-aggregate";
-import { parseAggregateImportArgs } from "../../scripts/import-star-history-aggregate";
+import { main, parseAggregateImportArgs } from "../../scripts/import-star-history-aggregate";
 import type { AggregateBundle } from "../../scripts/lib/aggregate-history-input";
+import * as aggregateInput from "../../scripts/lib/aggregate-history-input";
 import { buildBootstrapPhaseManifest } from "../../../pipeline/lib/bootstrap-publication.mjs";
 import { importDigest } from "./protocol";
 import { GAP_DAYS, gapSeries } from "../../../pipeline/scripts/star-history-aggregate.mjs";
@@ -60,7 +61,60 @@ function client(h: ReturnType<typeof importWorkerHarness>, path: string, fetchIm
   return new AggregateHistoryWorkerClient({ origin: ORIGIN, generation: GEN, secret: SECRET, checkpoint: path, fetchImpl });
 }
 
+type RunbookCase = { execute: boolean; secretFirst: boolean };
+const runbookCases: RunbookCase[] = [
+  { execute: false, secretFirst: false }, { execute: false, secretFirst: true },
+  { execute: true, secretFirst: true }, { execute: true, secretFirst: false },
+];
+function runbookArgs(options: RunbookCase, secretFile: string, localCheckpoint: string): string[] {
+  const base = ["--target", "pre", "--source", "private-local", "--generation", GEN];
+  const worker = ["--worker-url", ORIGIN];
+  const secret = ["--secret-file", secretFile];
+  if (!options.execute) return [...base, ...(options.secretFirst ? [...secret, ...worker] : [...worker, ...secret])];
+  const execution = ["--checkpoint", localCheckpoint, "--execute"];
+  return [...base, ...worker, ...(options.secretFirst ? [...secret, ...execution] : [...execution, ...secret])];
+}
+
 describe("operator Worker transport", () => {
+  test.each(runbookCases)("file-only runbook arguments preserve independent options: %j", (options) => {
+    const args = runbookArgs(options, "fixture-secret", "fixture-checkpoint.json");
+    expect(parseAggregateImportArgs(args)).toEqual({ source: "private-local", generation: GEN, workerUrl: ORIGIN, secretFile: "fixture-secret", execute: options.execute, ...(options.execute ? { checkpoint: "fixture-checkpoint.json" } : {}) });
+  });
+
+  test("a secret file cannot substitute for a required execution checkpoint", () => {
+    const args = [...runbookArgs({ execute: false, secretFirst: false }, "fixture-secret", "unused"), "--execute"];
+    expect(() => parseAggregateImportArgs(args)).toThrow("--checkpoint is required");
+    expect(() => parseAggregateImportArgs(["--target", "pre", "--source", "private-local", "--generation", GEN, "--secret-file", "fixture-secret"])).toThrow("--secret-file requires --worker-url");
+  });
+
+  test.each(runbookCases)("file-only runbook CLI authenticates without ambient CRON_SECRET: %j", async (options) => {
+    const { initial, bundle } = fixture(); const h = importWorkerHarness(initial);
+    const localCheckpoint = checkpoint(); const secretFile = join(dirname(localCheckpoint), "fixture-secret");
+    writeFileSync(secretFile, `${SECRET}\n`, { mode: 0o600 });
+    const previousSecret = process.env.CRON_SECRET;
+    const previousFetch = globalThis.fetch;
+    const source = spyOn(aggregateInput, "loadAggregateBundle").mockReturnValue(bundle);
+    const output = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      delete process.env.CRON_SECRET;
+      globalThis.fetch = h.fetchImpl;
+      await main(runbookArgs(options, secretFile, localCheckpoint));
+      expect(source).toHaveBeenCalledWith(resolve("private-local"));
+      expect(output).toHaveBeenCalledTimes(1);
+      const text = String(output.mock.calls[0]![0]);
+      expect(text).not.toContain(SECRET);
+      expect(JSON.parse(text).status).toBe(options.execute ? "published" : "dry-run");
+      if (options.execute) {
+        expect(JSON.parse(readFileSync(localCheckpoint, "utf8"))).toMatchObject({ generation: GEN, status: "published" });
+        expect(await h.bucket.store.get("bootstrap/latest.json")).not.toBeNull();
+      } else expect(h.bucket.writes).toHaveLength(0);
+    } finally {
+      source.mockRestore(); output.mockRestore(); globalThis.fetch = previousFetch;
+      if (previousSecret === undefined) delete process.env.CRON_SECRET;
+      else process.env.CRON_SECRET = previousSecret;
+    }
+  });
+
   test("CLI and client refuse production/redirectable origins and missing execution checkpoints", async () => {
     for (const value of ["https://gitstarclub.com", "https://pre.gitstarclub.com/other", "https://pre.gitstarclub.com?x=1", "https://user@pre.gitstarclub.com"]) expect(() => aggregateWorkerOrigin(value)).toThrow("preview Worker origin");
     const args = ["--target", "pre", "--source", "private-local", "--generation", GEN, "--worker-url", ORIGIN];
