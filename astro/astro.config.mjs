@@ -6,6 +6,8 @@ import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 
+import { ogAliases, ogPlugins } from "./src/packages/p2/og-build.mjs";
+
 const scratch = process.env.KANBAN_TMP;
 if (!scratch) throw new Error("Set KANBAN_TMP to this card's local scratch directory.");
 
@@ -20,8 +22,9 @@ export default defineConfig({
   cacheDir: resolve(scratch, "astro-cache"),
   devToolbar: { enabled: false },
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [tailwindcss(), ...ogPlugins(scratch)],
     resolve: { alias: [
+      ...ogAliases,
       { find: /^next\/link$/, replacement: fileURLToPath(new URL("./src/components/Link.tsx", import.meta.url)) },
       { find: /^next\/navigation$/, replacement: fileURLToPath(new URL("./src/lib/navigation.ts", import.meta.url)) },
       { find: "@", replacement: fileURLToPath(new URL("../web/", import.meta.url)) },

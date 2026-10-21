@@ -1,0 +1,12 @@
+---
+import RepositoryPage from "../../../packages/p2/RepositoryPage.astro";
+import { loadRepository } from "../../../packages/p2/data";
+import { classifyRoute } from "../../../../../web/lib/i18n/routing";
+export const prerender = false;
+const route = classifyRoute(Astro.url.pathname);
+if (route.kind !== "localized-repo-route") return new Response("Not found", { status: 404 });
+const result = await loadRepository(Astro.locals.data, route.locale, Astro.params.owner ?? "", Astro.params.name ?? "");
+if (result.kind === "redirect") return Astro.redirect(result.location, 308);
+if (result.kind === "missing") return new Response("Not found", { status: 404 });
+---
+<RepositoryPage page={result.page} />
