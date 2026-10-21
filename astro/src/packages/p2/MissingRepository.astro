@@ -8,7 +8,6 @@ interface Props { locale: Locale; fullName: string }
 const { locale, fullName } = Astro.props;
 const t = await getDictionary(locale);
 const copy = NOT_FOUND_COPY[locale];
-Astro.response.status = 404;
 ---
 <Layout locale={locale} canonicalPath={`/${fullName}`} title={`${fullName} — ${t.repo.starHistory}`} description={formatTemplate(t.repo.metaFallbackDescription, { repo: fullName })} tag="404">
   <main id="main" tabindex="-1" class="mx-auto w-full max-w-[60rem] py-[clamp(1.5rem,4vw,3rem)] px-[clamp(1.25rem,5vw,2.5rem)] flex flex-1 items-center">

@@ -8,5 +8,6 @@ const route = classifyRoute(Astro.url.pathname);
 if (route.kind !== "repo-route") return new Response("Not found", { status: 404 });
 const result = await loadRepository(Astro.locals.data, "en", Astro.params.owner ?? "", Astro.params.name ?? "");
 if (result.kind === "redirect") return Astro.redirect(result.location, 308);
+if (result.kind === "missing") Astro.response.status = 404;
 ---
 {result.kind === "page" ? <RepositoryPage page={result.page} /> : <MissingRepository locale={"en"} fullName={`${Astro.params.owner}/${Astro.params.name}`} />}
