@@ -50,7 +50,7 @@ try {
       const next = await fetch(astro + path, { method });
       assert.equal(next.status, old.status, `${method} ${path} status`);
       assert.equal(await next.text(), await old.text(), `${method} ${path} bytes`);
-      for (const header of ["cache-control", "content-type", "etag", "last-modified", "vary"]) {
+      for (const header of ["cache-control", "content-type", "etag", "last-modified", "vary", "x-robots-tag", "x-gsc-publication", "x-gsc-cache", "allow"]) {
         assert.equal(next.headers.get(header), old.headers.get(header), `${method} ${path} ${header}`);
       }
     }

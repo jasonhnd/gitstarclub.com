@@ -24,7 +24,9 @@ sources, load emitted image wasm in the local simulator, accept a
 page-specific social-image URL, and match the old Worker curve failure body.
 The effective curve response uses `private, no-store`, matching the old Worker
 which overrides the route module cache header. Every curve request requires a
-readable publication, including invalid IDs and method-only responses. The browser navigation bridge adds
+readable publication, including invalid IDs and method-only responses. The curve
+route retains the old response Vary contract and omits page-only indexing and
+publication headers, matching the old API. The browser navigation bridge adds
 `usePathname` so the existing localized 404 copy can be imported without copying
 translations. No dependency lock or data contract changes.
 
