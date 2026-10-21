@@ -36,7 +36,7 @@ try {
     const response = await get(`/repo-curve${query}`);
     assert.equal(response.status, status, query);
     assert.equal(await response.text(), body, query);
-    assert.equal(response.headers.get("cache-control"), status === 200 ? "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400" : "public, max-age=0, s-maxage=60");
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
     assert.equal(response.headers.get("content-type"), "application/json");
     assert.equal(response.headers.get("x-gsc-cache"), "BYPASS");
     const head = await get(`/repo-curve${query}`, { method: "HEAD" });
@@ -63,9 +63,11 @@ try {
   await bucket.put("views/fixture-v1/entity/repo/4.json", JSON.stringify({ ...JSON.parse(records.get("entity/repo/1.json")!), id: 4, owner: "ja", full_name: "ja/repo" }));
   assert.equal((await get("/ja/repo")).status, 404, "A locale prefix cannot become an English repository owner");
   await bucket.put("views/latest.json", "invalid");
-  assert.equal((await get("/repo-curve?id=0")).status, 400);
-  assert.equal((await get("/repo-curve", { method: "OPTIONS" })).status, 204);
-  assert.equal((await get("/repo-curve", { method: "POST" })).status, 405);
-  assert.equal((await get("/repo-curve?id=1")).status, 503);
+  for (const [path, method] of [["/repo-curve?id=0", "GET"], ["/repo-curve", "OPTIONS"], ["/repo-curve", "POST"], ["/repo-curve?id=1", "GET"]]) {
+    const failed = await get(path, { method });
+    assert.equal(failed.status, 503);
+    assert.equal(failed.headers.get("cache-control"), "private, no-store");
+    assert.equal(await failed.text(), "Publication changed or unavailable; retry");
+  }
   console.log("PASS P2 built Worker: 21 locale pages, cache MISS/HIT, 7 aliases/404s, 6 exact GET/HEAD endpoint cases, 2 PNG social images.");
 } finally { await worker.dispose(); }

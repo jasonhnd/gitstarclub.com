@@ -1,3 +1,4 @@
+import { strict as assert } from "node:assert";
 import { repositoryFixtures, paths } from "./fixture";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +42,20 @@ try {
   }
   if (!ready) throw new Error("Web preview did not become ready.");
   worker = await startWorker(records);
+  // Compare the final built hosts: the old Worker overrides route-module cache headers.
+  const astro = (await worker.ready).origin;
+  for (const path of ["/repo-curve?id=1", "/repo-curve?id=2", "/repo-curve?id=3", "/repo-curve?id=999", "/repo-curve?id=0", "/repo-curve?id=1.2", "/repo-curve"]) {
+    for (const method of ["GET", "HEAD"]) {
+      const old = await fetch(web + path, { method });
+      const next = await fetch(astro + path, { method });
+      assert.equal(next.status, old.status, `${method} ${path} status`);
+      assert.equal(await next.text(), await old.text(), `${method} ${path} bytes`);
+      for (const header of ["cache-control", "content-type", "etag", "last-modified", "vary"]) {
+        assert.equal(next.headers.get(header), old.headers.get(header), `${method} ${path} ${header}`);
+      }
+    }
+  }
+  console.log("PASS P2 built old/new HTTP: 14 GET/HEAD cases, exact status/bytes/cache headers.");
   const report = await compareSites({ web, astro: (await worker.ready).origin, paths, screenshots: process.argv.includes("--screenshots") });
   process.exitCode = report.passed ? 0 : 1;
 } finally {
