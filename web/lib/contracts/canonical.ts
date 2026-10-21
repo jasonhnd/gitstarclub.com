@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AggregateHistory } from "./star-history";
 import {
   DateStr,
   MonthPeriod,
@@ -69,6 +70,7 @@ export const ReposShardEntry = z.object({
   tracked_since: DateStr.nullable().optional(),
   d: z.number().nonnegative().optional(),
   fetched_at: TimestampStr.optional(),
+  aggregate_history: AggregateHistory.optional(),
 }).strict();
 export type ReposShardEntry = z.infer<typeof ReposShardEntry>;
 

@@ -173,8 +173,17 @@ async function mapPool(items, concurrency, worker) {
  * @param {{ store: Pick<BootstrapStore, 'read'>, concurrency?: number }} options
  */
 export async function verifyLegacyFlatTarget({ store, concurrency = 12 }) {
+  // A managed refresh can be the first publisher (preview cold start). Removing
+  // the first bootstrap pointer then recovers that managed base + flat canonical.
+  const managedBody = await store.read("views/latest.json");
+  const managed = managedBody ? parseJson(managedBody, "views/latest.json") : null;
+  if (managed && (typeof managed.version !== "string" || typeof managed.published_at !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(managed.version) || !Number.isFinite(Date.parse(managed.published_at)))) {
+    throw new Error("views/latest.json: invalid managed recovery pointer");
+  }
   const files = await mapPool(LEGACY_FLAT_REQUIRED_PATHS, concurrency, async (path) => {
-    const body = await store.read(path);
+    const physicalPath = managed && !path.startsWith("canonical/") ? `views/${managed.version}/${path}` : path;
+    const body = await store.read(physicalPath);
     if (!body) throw new Error(`${path}: required legacy-flat recovery artifact is missing`);
     const parsed = parseJson(body, path);
     if (parsed === null || typeof parsed !== "object") {
@@ -190,7 +199,7 @@ export async function verifyLegacyFlatTarget({ store, concurrency = 12 }) {
     } else if (path.startsWith("rank/") && !Array.isArray(parsed.items)) {
       throw new Error(`${path}: invalid legacy-flat recovery ranking`);
     }
-    return { path, bytes: body.byteLength, sha256: sha256Bytes(body) };
+    return { path, physicalPath, bytes: body.byteLength, sha256: sha256Bytes(body) };
   });
   return {
     target: LEGACY_FLAT_TARGET,

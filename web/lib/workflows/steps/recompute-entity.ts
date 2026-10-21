@@ -16,6 +16,7 @@ import {
 } from "../recompute/packed-window";
 import type { DailySeries, DateStr, OwnerType } from "../recompute/model";
 import type { OrgRow } from "../recompute/windows";
+import type { StarHistoryProvenance } from "@/lib/contracts/star-history";
 
 // Steps 7a/7b — entity recompute. Repo flow_rank is cross-bucket, so the month
 // window is packed once (prefer the persist from the rank hops) then entities
@@ -33,6 +34,7 @@ type OrgAcc = {
   repo_count: number;
   current_stars_sum: number;
   members: number[];
+  provenance?: StarHistoryProvenance;
 };
 
 export async function recomputeRepoEntities(runId: string, fencingToken: number, cursor?: RefreshCursor): Promise<{ files: number; anchorDrift: number; nextWorkOffset?: number }> {
@@ -94,6 +96,7 @@ export async function recomputeOrgEntities(runId: string, fencingToken: number, 
       acc.repo_count += 1;
       acc.current_stars_sum += meta.current_stars;
       acc.members.push(id);
+      acc.provenance ??= meta.aggregate_history?.provenance;
     }
     repos.clear();
     clearViewParseMemo();
@@ -146,6 +149,7 @@ export async function recomputeOrgEntities(runId: string, fencingToken: number, 
       acc.members,
       byLogin.get(login) ?? [],
       recentDaily,
+      acc.provenance,
     );
     anchorDrift = Math.max(anchorDrift, built.drift);
     batch.set(`entity/org/${login}.json`, built.entity);
