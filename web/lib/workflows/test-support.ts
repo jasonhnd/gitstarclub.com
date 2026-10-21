@@ -5,6 +5,7 @@ import { MemoryObjectStore, type ObjectGetResult, type ObjectHeadResult, type Ob
 import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { invalidatePublishedVersionMemo } from "@/lib/data/source";
 import { INDEXNOW_ENDPOINT, type IndexNowPayload } from "@/lib/indexnow";
+import type { WhitelistSnapshot } from "@/lib/contracts";
 import { REPO_BUCKETS, repoBucket } from "./buckets";
 import { BlobWorkflowLeaseStore, WorkflowLeaseWriteCache, blobWorkflowLeaseStore } from "./lease";
 import type { RefreshStepRouteOptions } from "./runtime/step-route";
@@ -220,13 +221,19 @@ export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Recor
     invalidations,
     indexNowSubmissions,
     setInvalidationStatus: (status: number) => { invalidationStatus = status; },
-    async run(job: FullJob, options: Pick<RefreshStepRouteOptions, "executeFull" | "recordCheckpoint"> & { subrequestLimit?: number; queueConsumer?: boolean } = {}): Promise<{ response: Response; result?: RefreshStepResult }> {
+    async run(job: FullJob, options: Pick<RefreshStepRouteOptions, "executeFull" | "recordCheckpoint"> & {
+      subrequestLimit?: number;
+      queueConsumer?: boolean;
+      request?: Request;
+      route?: (request: Request, options: RefreshStepRouteOptions) => Promise<Response>;
+    } = {}): Promise<{ response: Response; result?: RefreshStepResult }> {
       store.subrequests.reset(options.subrequestLimit);
       leaseCache.forget();
       clearViewParseMemo();
       invalidatePublishedVersionMemo();
       const { runRefreshStepRoute } = await import("./runtime/step-route");
-      const response = await runRefreshStepRoute(new Request(`${env.BLOB_BASE_URL}/api/workflows/refresh/step`, { method: "POST", headers: { authorization: `Bearer ${env.CRON_SECRET}`, "content-type": "application/json", ...(options.queueConsumer ? { "x-gitstarclub-queue-advance": "consumer" } : {}) }, body: JSON.stringify(job) }), { kind: options.queueConsumer ? "cf-queue" : "memory", retry: { retries: 0, delaysMs: [] }, executeFull: options.executeFull, recordCheckpoint: options.recordCheckpoint });
+      const request = options.request ?? new Request(`${env.BLOB_BASE_URL}/api/workflows/refresh/step`, { method: "POST", headers: { authorization: `Bearer ${env.CRON_SECRET}`, "content-type": "application/json", ...(options.queueConsumer ? { "x-gitstarclub-queue-advance": "consumer" } : {}) }, body: JSON.stringify(job) });
+      const response = await (options.route ?? runRefreshStepRoute)(request, { kind: options.queueConsumer ? "cf-queue" : "memory", retry: { retries: 0, delaysMs: [] }, executeFull: options.executeFull, recordCheckpoint: options.recordCheckpoint });
       const body = await response.clone().json() as { result?: RefreshStepResult };
       return { response, result: body.result };
     },
@@ -245,6 +252,24 @@ export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Recor
       invalidatePublishedVersionMemo();
     },
   };
+}
+
+/** Completed metadata keeps large budget scenarios independent of GitHub pacing. */
+export function workflowCompletedMetadataSeed(repoCount = 5669): Record<string, string> {
+  const seed = workflowSeed(repoCount, repoCount);
+  const snapshot = JSON.parse(seed["canonical/v2/whitelist/discovery.json"]!) as WhitelistSnapshot;
+  seed[`canonical/v2/whitelist/${TEST_RUN}.json`] = JSON.stringify({ ...snapshot, run_id: TEST_RUN });
+  seed["ops/workflows/latest-unpublished-whitelist.json"] = JSON.stringify({ run_id: TEST_RUN, count: repoCount, recorded_at: TEST_NOW });
+  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
+    const fetched = Object.fromEntries(snapshot.entries.filter((row) => repoBucket(row.id) === bucket).map((row) => [String(row.id), {
+      owner: row.owner, owner_type: "Organization", name: row.name, full_name: row.full_name,
+      current_stars: row.stars, description: null, language: "TypeScript", languages: [], topics: [], created_at: "2025-01-01", is_archived: false,
+    }]));
+    seed[`ops/workflows/${TEST_RUN}/metadata-${bucket}.json`] = JSON.stringify({ v: 1, bucket, fetched, skipped: [], pending_pages: [], transient_attempts: 0, last_error: null });
+  }
+  // Force garbage collection to yield across multiple deliveries as well.
+  for (let id = 0; id < repoCount; id++) seed[`views/refresh-2026-08-01/entity/repo/${id}.json`] = "{}";
+  return seed;
 }
 
 /** Drain only one logical step while preserving the real invocation boundaries. */
