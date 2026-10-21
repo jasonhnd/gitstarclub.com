@@ -12,13 +12,16 @@ import {
   CategoryRegistry,
   Heatmap,
   Meta,
+  MetadataBucketProgress,
   OrgsLookup,
   RankList,
   RepoEntity,
   ReposLookup,
   SearchIndex,
   WhitelistSnapshot,
+  ViewsPointer,
   WorkflowValidation,
+  type MetadataSkippedRepo,
 } from "@/lib/contracts";
 import {
   assembleCategoryAssignments,
@@ -32,6 +35,8 @@ import { isUniverseColdStartActive } from "@/lib/workflows/cold-start";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 import { readPackedWindowMeta } from "@/lib/workflows/recompute/io";
 import { validateGeneratedEntities } from "./validate-entities";
+import { REPO_BUCKETS, repoBucket } from "../buckets";
+import { metadataProgressPath } from "./metadata";
 import {
   validateAliases,
   validateAllTimeRanks,
@@ -54,7 +59,11 @@ export { HIGH_D_FACTOR_WARN_THRESHOLD, inspectAnchoringFactors } from "@/lib/wor
 
 const MIN_LOOKUP = 1000;
 
-export async function validateVersion(runId: string, fencingToken?: number): Promise<{ ok: boolean; checked: number; failures: string[] }> {
+export async function validateVersion(
+  runId: string,
+  fencingToken?: number,
+  options: { deferBulk?: boolean } = {},
+): Promise<WorkflowValidation> {
   const coldStart = await isUniverseColdStartActive(`${runId}-validate`);
   const failures: string[] = [];
   const invariants: Record<string, boolean | number> = {
@@ -101,7 +110,7 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   const orgLookup = await read("lookup/orgs.json", OrgsLookup);
 
   mergeValidationReport({ invariants, failures }, validateAllTimeRanks({ allTime, allTimeOrg, lookup, minLookup: MIN_LOOKUP, orgLookup }));
-  mergeValidationReport({ invariants, failures }, await validatePeriodRanks(runId, read, lookup, orgLookup));
+  if (!options.deferBulk) mergeValidationReport({ invariants, failures }, await validatePeriodRanks(runId, read, lookup, orgLookup));
   let previousLookup: ReposLookup | null = null;
   try {
     previousLookup = await readAuthoritativeView("lookup/repos.json", ReposLookup, { base: true, bust: runId });
@@ -129,6 +138,35 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   const canonicalManifestPath = `ops/workflows/${runId}/canonical-manifest.json`;
   if (fencingToken === undefined) await putView(canonicalManifestPath, canonicalReport.manifest);
   else await putOwnedView({ runId, fencingToken }, canonicalManifestPath, canonicalReport.manifest);
+  const readMetadataSkipped = async (progressRunId: string): Promise<MetadataSkippedRepo[]> => {
+    const skippedRepos: MetadataSkippedRepo[] = [];
+    await mapLimit(Array.from({ length: REPO_BUCKETS }, (_, bucket) => bucket), 4, async (bucket) => {
+      checked++;
+      try {
+        const progress = await readAuthoritativeView(metadataProgressPath(progressRunId, bucket), MetadataBucketProgress, { bust: runId });
+        for (const skipped of progress?.skipped ?? []) {
+          if (progress!.bucket !== bucket || repoBucket(skipped.id) !== bucket) {
+            failures.push(`metadata skip ${skipped.id}: wrong bucket ${bucket}`);
+          } else {
+            skippedRepos.push(skipped);
+          }
+        }
+      } catch (error) {
+        schemaFailures++;
+        failures.push(`${progressRunId}/metadata-${bucket}: read/schema — ${error instanceof Error ? error.message : String(error)}`);
+      }
+    });
+    return skippedRepos;
+  };
+  const metadataSkipped = await readMetadataSkipped(runId);
+  let previousMetadataSkipped: MetadataSkippedRepo[] = [];
+  try {
+    const previousPointer = await readAuthoritativeView("views/latest.json", ViewsPointer, { bust: runId });
+    if (previousPointer) previousMetadataSkipped = await readMetadataSkipped(previousPointer.run_id);
+  } catch (error) {
+    schemaFailures++;
+    failures.push(`previous metadata pointer: read/schema — ${error instanceof Error ? error.message : String(error)}`);
+  }
   mergeValidationReport(
     { invariants, failures },
     validateRepositoryMembership({
@@ -138,6 +176,8 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
       canonicalRepoIds: canonicalReport.repoIds,
       canonicalActiveRepoIds: canonicalReport.activeRepoIds,
       meta,
+      metadataSkipped,
+      previousMetadataSkipped,
     }),
   );
 
@@ -193,8 +233,10 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
     }
   }
 
-  const entityReport = await validateGeneratedEntities(read, lookup, orgLookup);
-  Object.assign(invariants, entityReport.invariants);
+  if (!options.deferBulk) {
+    const entityReport = await validateGeneratedEntities(read, lookup, orgLookup);
+    Object.assign(invariants, entityReport.invariants);
+  }
 
   // Normal refreshes require the complete prior year. First preview publication
   // may lack that history, but a present, malformed heatmap still fails its schema.
@@ -209,10 +251,11 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   const storedFailures = failures.map((item) => sanitizeErrorText(item));
   const validation = { run_id: runId, ok, checked, schema_failures: schemaFailures, invariants, failures: storedFailures };
   WorkflowValidation.parse(validation);
+  if (options.deferBulk) return validation;
   if (fencingToken === undefined) await putView(`ops/workflows/${runId}/validation.json`, validation);
   else await putOwnedView({ runId, fencingToken }, `ops/workflows/${runId}/validation.json`, validation);
   if (!ok) throw new Error(`validation failed (${failures.length}): ${storedFailures.slice(0, 5).join("; ")}`);
-  return { ok, checked, failures };
+  return validation;
 }
 
 function mergeValidationReport(target: ValidationInvariantReport, report: ValidationInvariantReport) {

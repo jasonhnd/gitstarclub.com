@@ -3,7 +3,7 @@ import { CanonicalGenerationManifest, RankList, ViewsPointer, WorkflowLease, Wor
 import { nextRefreshJob } from "./graph";
 import { firstRefreshJob, FULL_REFRESH_STEPS } from "./types";
 import { refreshStepCheckpointName } from "./step-route";
-import { installWorkflowHarness, PREVIOUS_RUN, TEST_RUN, type FullJob } from "../test-support";
+import { drainWorkflowStep, installWorkflowHarness, PREVIOUS_RUN, TEST_RUN, type FullJob } from "../test-support";
 
 type Boundary = { job: FullJob; artifacts: Record<string, string> };
 const boundaries = new Map<string, Boundary>();
@@ -107,7 +107,7 @@ describe("production refresh chain in memory", () => {
         atBoundary(step, async (h, { job }) => {
           const pointerBefore = h.store.contents["views/latest.json"];
           h.store.failWrite = () => true;
-          const { response, result } = await h.run(job);
+          const { response, result } = await drainWorkflowStep(h, job);
           expect(h.store.contents["views/latest.json"]).toBe(pointerBefore);
           if (step === "gc") {
             // Version GC is best-effort by design: it reports the error instead of failing a published run.
@@ -123,7 +123,7 @@ describe("production refresh chain in memory", () => {
     test("a failed pre-publish step marks the run failed, not published", () =>
       atBoundary("aliases", async (h, { job }) => {
         h.store.failWrite = (path) => path.endsWith("/steps/aliases.json");
-        const { response } = await h.run(job);
+        const { response } = await drainWorkflowStep(h, job);
         expect(response.status).toBe(500);
         expect(WorkflowManifest.parse(h.store.json(runPath("manifest.json"))).status).not.toBe("published");
         expect(pointerVersion(h.store)).toBe(PREVIOUS_RUN);
@@ -134,7 +134,7 @@ describe("production refresh chain in memory", () => {
     test("a corrupt read during validate fails the run before publication", () =>
       atBoundary("validate", async (h, { job }) => {
         h.store.failRead = true;
-        const { response } = await h.run(job);
+        const { response } = await drainWorkflowStep(h, job);
         expect(response.status).toBe(500);
         expect(pointerVersion(h.store)).toBe(PREVIOUS_RUN);
       }));
@@ -142,7 +142,7 @@ describe("production refresh chain in memory", () => {
     test("a failed storage delete during gc is reported but leaves the published run intact", () =>
       atBoundary("gc", async (h, { job }) => {
         h.store.failDelete = true;
-        const { response, result } = await h.run(job);
+        const { response, result } = await drainWorkflowStep(h, job);
         expect(response.status).toBe(200);
         expect(result?.error).toContain("injected delete failure");
         expect(pointerVersion(h.store)).toBe(TEST_RUN);
@@ -152,7 +152,7 @@ describe("production refresh chain in memory", () => {
     test("a failing publication-cache callback does not unpublish", () =>
       atBoundary("publish", async (h, { job }) => {
         h.setInvalidationStatus(500);
-        const { response } = await h.run(job);
+        const { response } = await drainWorkflowStep(h, job);
         expect(response.status).toBe(500);
         expect(pointerVersion(h.store)).toBe(TEST_RUN);
         expect(h.invalidations).toHaveLength(1);
@@ -166,7 +166,7 @@ describe("production refresh chain in memory", () => {
         const path = `views/${TEST_RUN}/rank/month/2026-09/repo/stock.json`;
         expect(h.store.contents[path]).toBeDefined();
         await h.store.del(path);
-        const { response } = await h.run(job);
+        const { response } = await drainWorkflowStep(h, job);
         expect(response.status).toBe(500);
         expect(pointerVersion(h.store)).toBe(PREVIOUS_RUN);
         const validation = WorkflowValidation.parse(h.store.json(runPath("validation.json")));
@@ -179,7 +179,7 @@ describe("production refresh chain in memory", () => {
         const path = `views/${TEST_RUN}/rank/week/2026-W39/org/flow.json`;
         const rank = h.store.json<{ meta: Record<string, string> }>(path);
         await h.store.set(path, { ...rank, meta: { ...rank.meta, period: "2026-W38" } });
-        const { response } = await h.run(job);
+        const { response } = await drainWorkflowStep(h, job);
         expect(response.status).toBe(500);
         expect(WorkflowValidation.parse(h.store.json(runPath("validation.json"))).failures).toContain("rank/week/2026-W39/org/flow.json: metadata does not match artifact path");
       }));
@@ -187,7 +187,7 @@ describe("production refresh chain in memory", () => {
     test("rejects a missing period inventory", () =>
       atBoundary("validate", async (h, { job }) => {
         await h.store.del(runPath("recompute/year-win/meta.json"));
-        const { response } = await h.run(job);
+        const { response } = await drainWorkflowStep(h, job);
         expect(response.status).toBe(500);
         expect(pointerVersion(h.store)).toBe(PREVIOUS_RUN);
         const failures = WorkflowValidation.parse(h.store.json(runPath("validation.json"))).failures;
@@ -200,7 +200,7 @@ describe("production refresh chain in memory", () => {
           const path = runPath(`recompute/${kind}-win/meta.json`);
           await h.store.set(path, { ...h.store.json<Record<string, unknown>>(path), periods: [] });
         }
-        const { response } = await h.run(job);
+        const { response } = await drainWorkflowStep(h, job);
         expect(response.status).toBe(200);
         expect(WorkflowValidation.parse(h.store.json(runPath("validation.json")))).toMatchObject({ ok: true, invariants: { period_rank_files_checked: 0 } });
       }));

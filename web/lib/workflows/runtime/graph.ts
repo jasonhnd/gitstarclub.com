@@ -8,6 +8,7 @@ import {
   type FullRefreshStepName,
   type RecomputePhase,
   type RefreshCursor,
+  type DeferredRefreshFailure,
   type RefreshStepJob,
   type RefreshStepResult,
 } from "./types";
@@ -134,12 +135,22 @@ export function nextRefreshJob(
   result: RefreshStepResult,
   buckets = REPO_BUCKETS,
 ): RefreshStepJob | null {
+  if (job.cursor.failure) return null;
   const cursor = mergeCursor(job, result);
+  if (result.deferredFailure) {
+    return { ...job, attempt: 0, cursor: { ...cursor, failure: result.deferredFailure as DeferredRefreshFailure } };
+  }
   if (job.graph === "fixture") {
     const name = nextFixtureName(job.name);
     if (!name) return null;
     return { v: 1, graph: "fixture", runId: job.runId, name, attempt: 0, cursor };
   }
+
+  if (typeof result.nextWorkOffset === "number") {
+    return { ...job, attempt: 0, cursor: { ...cursor, workOffset: result.nextWorkOffset } };
+  }
+  // A completed page sequence must not leak its offset into the next step.
+  delete cursor.workOffset;
 
   if (job.name === "preflight") {
     if (typeof result.nextPreflightOffset === "number") {

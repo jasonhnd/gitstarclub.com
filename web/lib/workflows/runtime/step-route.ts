@@ -1,3 +1,4 @@
+import type { PublicationFailure } from "../checkpoint";
 import { WorkflowStepCheckpoint } from "@/lib/contracts";
 import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { putView } from "@/lib/data/write";
@@ -16,6 +17,7 @@ import {
   recomputeStepCheckpointName,
   writeRecomputeEnqueued,
 } from "@/lib/workflows/steps/recompute-rank";
+import { isSubrequestLimitError } from "./subrequest-limit";
 import { nextRefreshJob } from "./graph";
 import { withStepRetry, type RetryPolicy } from "./retry";
 import { resolveWorkflowRuntime, type ResolveWorkflowRuntimeOptions } from "./resolve";
@@ -40,6 +42,9 @@ export function refreshStepCheckpointName(job: RefreshStepJob): string {
   if (job.graph === "full" && job.name === "whitelist") return whitelistStepCheckpointName(job.cursor);
   if (job.graph === "full" && job.name === "fold") return foldStepCheckpointName(job.cursor);
   if (job.graph === "full" && job.name === "recomputeRank") return recomputeStepCheckpointName(job.cursor);
+  if (job.graph === "full" && ["validate", "recomputeRepoEntities", "recomputeOrgEntities", "publish", "gc"].includes(job.name)) {
+    return `${job.name}-${job.cursor.workOffset ?? 0}`;
+  }
   return job.name;
 }
 
@@ -55,6 +60,9 @@ async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult)
     error: typeof result.error === "string" ? sanitizeErrorText(result.error) : result.error ?? null,
   });
   await putView(`ops/workflows/${job.runId}/steps/${step}.json`, checkpoint);
+  if (job.graph === "full" && ["validate", "recomputeRepoEntities", "recomputeOrgEntities", "publish", "gc"].includes(job.name) && result.nextWorkOffset === undefined) {
+    await putView(`ops/workflows/${job.runId}/steps/${job.name}.json`, WorkflowStepCheckpoint.parse({ ...checkpoint, step: job.name }));
+  }
   if (job.graph === "full" && job.name === "whitelist" && !hasNextWhitelistSearch(result)) {
     await putView(
       `ops/workflows/${job.runId}/steps/whitelist.json`,
@@ -115,6 +123,7 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
     }
   }
 
+  let committed: PublicationFailure | undefined;
   try {
     const result = await withStepRetry(
       job.name,
@@ -131,8 +140,9 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
       },
       opts.retry,
     );
+    if (job.graph === "full" && job.name === "publish") committed = { phase: "post_commit", version: job.runId, step: "checkpoint" };
     clearViewParseMemo();
-    await (opts.recordCheckpoint ?? defaultCheckpoint)(job, result);
+    if (!job.cursor.failure) await (opts.recordCheckpoint ?? defaultCheckpoint)(job, result);
     const kind = opts.kind ?? getWorkflowRuntimeKind(opts.env);
     const runtime = resolveWorkflowRuntime({
       requestUrl: req.url,
@@ -157,11 +167,27 @@ export async function runRefreshStepRoute(req: Request, opts: RefreshStepRouteOp
     });
   } catch (error) {
     clearViewParseMemo();
+    if (job.cursor.failure) throw error;
     const safeError = sanitizeErrorText(error instanceof Error ? error.message : String(error));
+    const deferFailure = async () => {
+      const { publicationFailure } = await import("./execute");
+      const result = { name: job.name, deferredFailure: {
+        message: safeError,
+        publication: committed ?? (job.graph === "full" ? publicationFailure(job, error) : undefined),
+      } };
+      const headers = new Headers({ "content-type": "application/json" });
+      const successor = encodeSuccessorJobHeader(nextRefreshJob(job, result));
+      if (successor) headers.set(QUEUE_SUCCESSOR_HEADER, successor);
+      // The consumer reads this result and sends the failure job from its own
+      // invocation. Never attempt storage or queue I/O in the exhausted child.
+      return new Response(JSON.stringify({ ok: true, runId: job.runId, step: job.name, result }), { status: 200, headers });
+    };
+    if (isSubrequestLimitError(error) && !job.cursor.failure) return deferFailure();
     try {
       const { failRefreshJob } = await import("./execute");
-      await failRefreshJob(job, error);
+      await failRefreshJob(job, error, committed);
     } catch (checkpointError) {
+      if (isSubrequestLimitError(checkpointError) && !job.cursor.failure) return deferFailure();
       const checkpointMessage = sanitizeErrorText(
         checkpointError instanceof Error ? checkpointError.message : String(checkpointError),
       );
