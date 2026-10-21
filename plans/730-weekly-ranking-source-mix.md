@@ -27,8 +27,7 @@ pushes, shared-branch rebases, merges or final owner acceptance.
 1. Confirm merged PR #729 base, install frozen dependencies with the verified
    Node 24.20.0 / Bun 1.4.2 toolchain, and record this plan. Commit.
 2. Implement source composition and compatible metadata, localized display,
-   regression tests and documentation. Capture before/after fixture screenshots.
-   Run focused checks and commit.
+   regression tests and documentation. Run focused checks and commit.
 3. Verify the exact final commit from one fresh detached shared clone: complete
    AGENTS bootstrap/static/full-web coverage and fixture production/pre builds
    with host validation. Skip cf:dry-run by owner order. Record every result in
@@ -41,5 +40,7 @@ pushes, shared-branch rebases, merges or final owner acceptance.
   locales. Metadata reflects displayed rows, including mixed organization members.
 - Legacy artifacts without the new optional scope still parse and render.
 - Full exact-head local gates pass with Actions disabled and no remote data calls.
-- The PR closes #730 and contains verification, screenshots and remaining risks.
+- The PR closes #730 and contains verification and remaining risks.
   Git status is clean and all commits are pushed only to the card feature branch.
+
+Screenshots were reviewed and removed per owner rule.
