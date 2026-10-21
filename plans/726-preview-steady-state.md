@@ -17,6 +17,9 @@ Production scheduling remains disabled pending owner authorization.
   job is necessary because the daily handler deliberately skips Sunday.
 - Keep the configuration gate strict, update its preview expectations, and cover
   missing/unexpected schedules and reintroduced first-publication flags.
+- Update the existing Worker-entry configuration regression test to connect the
+  enabled preview schedules to the supported dispatch plans, retaining the
+  assertion that production has no scheduled jobs.
 - Confirm the existing dispatcher maps these schedules to daily, weekly, and
   managed-refresh handlers. Update `docs/OPS.md` with the new configuration and
   the separate post-merge deployment procedure.
