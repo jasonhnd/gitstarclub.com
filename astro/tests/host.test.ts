@@ -246,3 +246,22 @@ test("explicit path invalidation refreshes tails independently of publication", 
   h.advance(1);
   expect((await h.get()).headers.get("x-gsc-cache")).toBe("MISS");
 });
+
+test("sitemap GET cache headers survive while HEAD, private requests and HTML stay no-store", async () => {
+  const h = harness();
+  const policy = "public, max-age=0, s-maxage=86400, stale-while-revalidate=86400";
+  h.options.render = async () => new Response("<sitemapindex />", {
+    headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": policy },
+  });
+  const response = await h.get("/sitemap.xml", { headers: { "accept-language": "en" } });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe(policy);
+  expect(response.headers.get("x-gsc-cache")).toBe("MISS");
+  expect(h.kv.values.size).toBe(0);
+  const head = await h.get("/sitemap.xml", { method: "HEAD", headers: { "accept-language": "en" } });
+  expect(head.headers.get("cache-control")).toBe("private, no-store");
+  expect(await head.text()).toBe("");
+  expect((await h.get("/sitemap.xml", { headers: { authorization: "Bearer local" } })).headers.get("cache-control")).toBe("private, no-store");
+  h.options.render = async () => new Response("<html />", { headers: { "Content-Type": "text/html", "Cache-Control": policy } });
+  expect((await h.get("/about")).headers.get("cache-control")).toBe("private, no-store");
+});
