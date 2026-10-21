@@ -15,3 +15,9 @@
   --font-plus-jakarta: "Plus Jakarta Sans Variable", sans-serif;
   --font-geist-mono: "Geist Mono Variable", monospace;
 }
+
+/* P6 reuses these server-rendered components without client hydration. */
+@source "../../../web/app/_explore/AnswerCapsule.tsx";
+@source "../../../web/app/_explore/FaqBlock.tsx";
+@source "../../../web/app/_explore/PageHero.tsx";
+@source "../../../web/app/_explore/RelatedPages.tsx";
