@@ -11,6 +11,10 @@
     "assets:check": "bun ./render-assets.mjs --check",
     "build": "bun ./build.mjs",
     "lint:md": "bun ./scripts/check-markdown-code-fences.mjs",
+    "lint:design": "designmd lint DESIGN.md",
     "lint:docs": "bun run lint:md && node --test ./scripts/check-docs.test.mjs ./scripts/cf-ci-gates.test.mjs && bun ./scripts/check-docs.mjs && node ./scripts/assert-cf-ci-gates.mjs"
+  },
+  "devDependencies": {
+    "@google/design.md": "0.4.0"
   }
 }

@@ -29,7 +29,10 @@ This document records the baseline; it does not authorize visual changes.
 
 [`DESIGN.md`](../DESIGN.md) at the repository root is the machine-readable token
 translation of this document. Change both files in the same commit; if they
-conflict, this document and `web/app/globals.css` take precedence.
+conflict, this document and `web/app/globals.css` take precedence. Run
+`bun install --frozen-lockfile` at the root once, then `bun run lint:design` for
+local validation (errors fail; warnings do not). The linter runs offline after
+installation and is not part of CI or `lint:docs`.
 
 ## Lock Semantics
 
