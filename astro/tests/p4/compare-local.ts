@@ -1,3 +1,4 @@
+import { checkOrganizationControls } from "./controls";
 import { organizationRecords } from "./fixture";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,6 +56,7 @@ try {
   if ((directoryHtml.match(/<astro-island\b/g) ?? []).length !== 2) throw new Error("Directory should hydrate only shared search/theme controls");
   if ((detailHtml.match(/<astro-island\b/g) ?? []).length !== 4) throw new Error("Detail should hydrate only search/theme/share/snippet controls");
   console.log("PASS 49 Worker route/redirect/error cases and bounded island counts");
+  await checkOrganizationControls(origin);
   const paths = JSON.parse(await Bun.file(new URL("./paths.json", import.meta.url)).text()) as string[];
   const report = await compareSites({ web, astro: (await worker.ready).origin, paths, screenshots: process.argv.includes("--screenshots") });
   process.exitCode = report.passed ? 0 : 1;
