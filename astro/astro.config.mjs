@@ -7,6 +7,8 @@ import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 
+import { categoryViewPlugin } from "./src/packages/p3/view-plugin.ts";
+
 const scratch = process.env.KANBAN_TMP;
 if (!scratch) throw new Error("Set KANBAN_TMP to this card's local scratch directory.");
 
@@ -21,7 +23,7 @@ export default defineConfig({
   cacheDir: resolve(scratch, "astro-cache"),
   devToolbar: { enabled: false },
   vite: {
-    plugins: [rankingImages(), tailwindcss()],
+    plugins: [rankingImages(), categoryViewPlugin(), tailwindcss()],
     resolve: { alias: [
       { find: /^@\/lib\/fetch-timeout\.mjs$/, replacement: fileURLToPath(new URL("./src/lib/published-readers.ts", import.meta.url)) },
       { find: /^next\/link$/, replacement: fileURLToPath(new URL("./src/components/Link.tsx", import.meta.url)) },
