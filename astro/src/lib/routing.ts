@@ -28,9 +28,12 @@ export function languageRedirect(request: Request): Response {
   const canonical = safeInternalRedirectPath(stripLocale(next).path, url);
   let destination = new URL(localizedPath(locale, canonical), url);
   if (destination.origin !== url.origin || destination.username || destination.password) destination = new URL(localizedPath(locale, "/"), url);
+  // Match the existing handler's public cookie serialization.
+  const expires = new Date(Date.now() + 31536000 * 1000).toUTCString();
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  const cookie = `${LANG_COOKIE}=${locale}; Path=/; Expires=${expires}; Max-Age=31536000${secure}; SameSite=lax`;
   return new Response(null, { status: 307, headers: {
-    Location: destination.href,
-    "Set-Cookie": `${LANG_COOKIE}=${locale}; Max-Age=31536000; Path=/; Secure; SameSite=Lax`,
+    Location: destination.href, "Set-Cookie": cookie,
   } });
 }
 
