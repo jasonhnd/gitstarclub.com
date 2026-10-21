@@ -16,7 +16,7 @@ source_of_truth_for:
 > Technical facts are based on **Next.js 16.4.2 · React 19.3.1 · TypeScript 6 · Tailwind 4 · Zod 4 · package manager bun 1.4.2** (see `web/package.json` and the root `package.json`).
 
 This document describes the checked-in implementation; live activation requires
-a separately authorized deployment. The application keeps Next 16 APIs with vinext 1.2.1 on Vite 8.3.0. Next 16.4.2
+a separately authorized deployment. The application keeps Next 16 APIs with vinext 1.2.1 on Vite 8.3.3. Next 16.4.2
 remains for compatible types and linting. React runtime packages all match
 19.3.1. Cache Components and Partial Prefetching stay disabled. The existing
 `next/font/google` declarations produce local fonts under the unchanged CSP;
