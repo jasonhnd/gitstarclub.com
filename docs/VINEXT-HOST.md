@@ -10,7 +10,7 @@ source_of_truth_for:
 
 # vinext Worker host
 
-The checked-in host uses vinext 1.2.1, Vite 8.3.0, Cloudflare Vite plugin
+The checked-in host uses vinext 1.2.1, Vite 8.3.3, Cloudflare Vite plugin
 2.0.0-beta.v.2 and cf 1.0.0-beta.18. Next 16.4.2 remains a types/lint
 compatibility dependency; Vite compiles and serves the application. React,
 React DOM and the server component transport are all 19.3.1. The pinned
