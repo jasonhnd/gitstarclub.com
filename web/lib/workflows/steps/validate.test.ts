@@ -39,6 +39,56 @@ describe("validateRepositoryMembership", () => {
     diff: { added: [3], dropped: [2] },
   };
 
+  test("only an audited missing newcomer may be absent from canonical, lookup, and counts", () => {
+    const input = {
+      previousLookup: { "1": repoLookup("owner/one", 100), "2": repoLookup("owner/two", 80) },
+      lookup: { "1": repoLookup("owner/one", 100), "2": { ...repoLookup("owner/two", 80), active: false } },
+      whitelist,
+      canonicalRepoIds: new Set(["1", "2"]), canonicalActiveRepoIds: new Set(["1"]),
+      meta: { seam_date: "2026-01-01", schema_ver: 1, active_repo_count: 1, historical_repo_count: 1 },
+    };
+    expect(validateRepositoryMembership(input).failures.length).toBeGreaterThan(0);
+    const missing = { id: 3, node_id: "R_3", full_name: "owner/three", reason: "graphql_502", value_status: "missing" } as const;
+    const accepted = validateRepositoryMembership({ ...input, metadataSkipped: [missing] });
+    expect(accepted.failures).toEqual([]);
+    expect(accepted.invariants).toMatchObject({ metadata_skipped_repos: 1, metadata_missing_repos: 1 });
+    expect(validateRepositoryMembership({ ...input, metadataSkipped: [{ ...missing, node_id: "wrong" }] }).failures.length).toBeGreaterThan(0);
+    expect(validateRepositoryMembership({ ...input, metadataSkipped: [{ ...missing, id: 1, node_id: "R_1", full_name: "owner/one" }] }).failures).toContain("metadata skip 1: missing status would discard existing values");
+    expect(validateRepositoryMembership({ ...input, metadataSkipped: [{ ...missing, value_status: "retained" }] }).failures).toContain("metadata skip 3: previous values were not retained");
+  });
+
+  test("a retained skip cannot replace a published star count with zero", () => {
+    const report = validateRepositoryMembership({
+      previousLookup: { "1": repoLookup("owner/one", 100), "2": repoLookup("owner/two", 80) },
+      lookup: { "1": repoLookup("owner/one", 0), "2": { ...repoLookup("owner/two", 80), active: false }, "3": repoLookup("owner/three", 100) },
+      whitelist, canonicalRepoIds: new Set(["1", "2", "3"]), canonicalActiveRepoIds: new Set(["1", "3"]), meta: null,
+      metadataSkipped: [{ id: 1, node_id: "R_1", full_name: "owner/one", reason: "graphql_502", value_status: "retained" }],
+    });
+    expect(report.failures).toContain("metadata skip 1: previous values were not retained");
+  });
+
+  test("a previously missing whitelist member may resolve even when it is no longer in diff.added", () => {
+    const report = validateRepositoryMembership({
+      previousLookup: { "1": repoLookup("owner/one", 100), "2": { ...repoLookup("owner/two", 80), active: false } },
+      lookup: { "1": repoLookup("owner/one", 100), "2": { ...repoLookup("owner/two", 80), active: false }, "3": repoLookup("owner/three", 100) },
+      whitelist: { ...whitelist, diff: { added: [], dropped: [] } },
+      canonicalRepoIds: new Set(["1", "2", "3"]), canonicalActiveRepoIds: new Set(["1", "3"]), meta: null,
+      previousMetadataSkipped: [{ id: 3, node_id: "R_3", full_name: "owner/three", reason: "graphql_502", value_status: "missing" }],
+    });
+    expect(report.failures).toEqual([]);
+  });
+
+  test("dropping a previously audited missing newcomer needs no invented historical row", () => {
+    const report = validateRepositoryMembership({
+      previousLookup: { "1": repoLookup("owner/one", 100) },
+      lookup: { "1": repoLookup("owner/one", 100) },
+      whitelist: { ...whitelist, count: 1, entries: [whitelist.entries[0]], diff: { added: [], dropped: [3] } },
+      canonicalRepoIds: new Set(["1"]), canonicalActiveRepoIds: new Set(["1"]), meta: null,
+      previousMetadataSkipped: [{ id: 3, node_id: "R_3", full_name: "owner/three", reason: "graphql_502", value_status: "missing" }],
+    });
+    expect(report.failures).toEqual([]);
+  });
+
   test("accepts approved additions while retaining dropped history", () => {
     const report = validateRepositoryMembership({
       previousLookup: { "1": repoLookup("owner/one", 100), "2": repoLookup("owner/two", 80) },

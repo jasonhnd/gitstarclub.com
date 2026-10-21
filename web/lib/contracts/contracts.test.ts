@@ -679,6 +679,14 @@ describe("canonical shards", () => {
       last_error: "GitHub GraphQL 502: error code: 502",
     });
     expect(progress.fetched["1"]?.current_stars).toBe(12_000);
+    expect(progress.pending_pages).toBeUndefined();
+    const split = MetadataBucketProgress.parse({
+      ...progress, pending_pages: [[32], [64]],
+      skipped: [{ id: 96, node_id: "R_96", full_name: "owner/missing", reason: "graphql_502", value_status: "missing" }],
+    });
+    expect(split.pending_pages).toEqual([[32], [64]]);
+    expect(split.skipped?.[0]).toMatchObject({ id: 96, value_status: "missing" });
+    expect(rejects(MetadataBucketProgress, { ...split, skipped: [{ ...split.skipped![0], reason: "auth_failed" }] })).toBe(true);
     expect(rejects(MetadataBucketProgress, { v: 2, bucket: 0, fetched: {}, transient_attempts: 0 })).toBe(true);
   });
 

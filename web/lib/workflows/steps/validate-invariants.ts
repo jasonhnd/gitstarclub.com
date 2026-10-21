@@ -7,6 +7,7 @@ import type {
   CategoryRegistry,
   CategoryRegistryEntry,
   Meta,
+  MetadataSkippedRepo,
   OrgsLookup,
   RankItem,
   RankList,
@@ -107,6 +108,8 @@ export function validateRepositoryMembership({
   canonicalRepoIds,
   canonicalActiveRepoIds,
   meta,
+  metadataSkipped = [],
+  previousMetadataSkipped = [],
 }: {
   lookup: ReposLookup | null;
   previousLookup: ReposLookup | null;
@@ -114,6 +117,8 @@ export function validateRepositoryMembership({
   canonicalRepoIds: ReadonlySet<string>;
   canonicalActiveRepoIds: ReadonlySet<string>;
   meta: Meta | null;
+  metadataSkipped?: readonly MetadataSkippedRepo[];
+  previousMetadataSkipped?: readonly MetadataSkippedRepo[];
 }): ValidationInvariantReport {
   const invariants: ValidationInvariants = {};
   const failures: string[] = [];
@@ -150,7 +155,30 @@ export function validateRepositoryMembership({
   }
 
   if (whitelist) {
-    const activeIds = new Set(whitelist.entries.map((entry) => String(entry.id)));
+    const previouslyMissing = new Set(previousMetadataSkipped
+      .filter((row) => row.value_status === "missing" && !previousLookup?.[String(row.id)])
+      .map((row) => String(row.id)));
+    const whitelistIds = new Set(whitelist.entries.map((entry) => String(entry.id)));
+    const missingMetadata = new Set<string>();
+    for (const skipped of metadataSkipped) {
+      const id = String(skipped.id);
+      const entry = whitelist.entries.find((row) => row.id === skipped.id);
+      if (!entry || entry.node_id !== skipped.node_id || entry.full_name !== skipped.full_name) {
+        failures.push(`metadata skip ${id}: identity does not match whitelist`);
+      } else if (skipped.value_status === "missing") {
+        if (previousLookup?.[id] || lookup[id] || canonicalRepoIds.has(id)) {
+          failures.push(`metadata skip ${id}: missing status would discard existing values`);
+        } else {
+          missingMetadata.add(id);
+        }
+      } else if (!lookup[id] || !canonicalRepoIds.has(id) ||
+        (previousLookup?.[id] && previousLookup[id].current_stars !== lookup[id].current_stars)) {
+        failures.push(`metadata skip ${id}: previous values were not retained`);
+      }
+    }
+    const activeIds = new Set([...whitelistIds].filter((id) => !missingMetadata.has(id)));
+    invariants.metadata_skipped_repos = metadataSkipped.length;
+    invariants.metadata_missing_repos = missingMetadata.size;
     const activeMissing = [...activeIds].filter((id) => !lookupActiveIds.has(id));
     const activeUnexpected = [...lookupActiveIds].filter((id) => !activeIds.has(id));
     const canonicalActiveMissing = [...activeIds].filter((id) => !canonicalActiveRepoIds.has(id));
@@ -187,9 +215,9 @@ export function validateRepositoryMembership({
 
     const added = new Set(whitelist.diff.added.map(String));
     const dropped = new Set(whitelist.diff.dropped.map(String));
-    const addedNotActive = [...added].filter((id) => !activeIds.has(id));
-    const droppedStillActive = [...dropped].filter((id) => activeIds.has(id));
-    const droppedNotHistorical = [...dropped].filter((id) => lookup[id]?.active !== false);
+    const addedNotActive = [...added].filter((id) => !whitelistIds.has(id));
+    const droppedStillActive = [...dropped].filter((id) => whitelistIds.has(id));
+    const droppedNotHistorical = [...dropped].filter((id) => lookup[id]?.active !== false && !previouslyMissing.has(id));
     invariants.membership_added_not_active = addedNotActive.length;
     invariants.membership_dropped_still_active = droppedStillActive.length;
     invariants.membership_dropped_not_historical = droppedNotHistorical.length;
@@ -200,7 +228,11 @@ export function validateRepositoryMembership({
     if (previousLookup) {
       const previousIds = new Set(Object.keys(previousLookup));
       const expectedIds = new Set(previousIds);
-      for (const id of added) expectedIds.add(id);
+      for (const id of added) if (!missingMetadata.has(id)) expectedIds.add(id);
+      // An unresolved newcomer may have appeared in an earlier discovery
+      // snapshot without ever having a numeric row. Its recorded recovery is
+      // still approved membership, even when the latest diff no longer adds it.
+      for (const id of previouslyMissing) if (activeIds.has(id)) expectedIds.add(id);
       // Dropped repositories remain in the Chronicle read model; only active polling stops.
       const missingExpected = [...expectedIds].filter((id) => !currentIds.has(id));
       const unapproved = [...currentIds].filter((id) => !expectedIds.has(id));
