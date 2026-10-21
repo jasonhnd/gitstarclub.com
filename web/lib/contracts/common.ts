@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { StarHistoryProvenance } from "./star-history";
 import { isWellFormedUnicode, truncateUnicodeText, unicodeCodePointLength } from "../unicode-text";
 
 // Shared primitives + ranking shapes. See docs/DATA-CONTRACTS.md.
@@ -163,6 +164,7 @@ export const RankList = z
         dim: Dim,
         metric: Metric,
         generated_at: TimestampStr,
+        provenance: StarHistoryProvenance.optional(),
       })
       .strict(),
     items: z.array(RankItem),

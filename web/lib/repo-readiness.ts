@@ -1,5 +1,6 @@
 import { githubRepoFullName } from "@/lib/public-params";
 import { safeExternalHref } from "@/lib/external-url";
+import { StarHistoryProvenance } from "@/lib/contracts/star-history";
 
 const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -37,6 +38,7 @@ export type RepoPageEntity = {
   curve: {
     monthly: Array<[string, number, number]>;
     recent_daily: Array<[string, number]>;
+    provenance?: StarHistoryProvenance;
   };
   monthly_table: Array<{ month: string; adds: number; rank: number | null }>;
   rank_history: { month?: Array<[string, number]> };
@@ -59,6 +61,7 @@ export function normalizeRepoPageEntity(value: unknown, expectedId?: number): Re
   if (!isRenderableRepoFullName(fullName) || fullName.toLowerCase() !== `${owner}/${name}`.toLowerCase()) return null;
 
   const curve = isRecord(value.curve) ? value.curve : {};
+  const provenance = StarHistoryProvenance.safeParse(curve.provenance);
 
   return {
     id,
@@ -82,6 +85,7 @@ export function normalizeRepoPageEntity(value: unknown, expectedId?: number): Re
     curve: {
       monthly: normalizeMonthlyPoints(curve.monthly),
       recent_daily: normalizeDailyPoints(curve.recent_daily),
+      ...(provenance.success ? { provenance: provenance.data } : {}),
     },
     monthly_table: normalizeMonthlyTable(value.monthly_table),
     rank_history: normalizeRankHistory(value.rank_history),

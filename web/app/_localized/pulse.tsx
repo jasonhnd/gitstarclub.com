@@ -17,6 +17,7 @@ import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { webSiteLd, collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine, siteOrganizationLd } from "@/lib/jsonld";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { currentUtcPeriods } from "@/lib/periods";
+import { hasAggregateWeek } from "@/lib/star-history-provenance";
 import { localizedPulseBoardHrefs } from "@/lib/pulse-board-links";
 import {
   availablePeriodLabel,
@@ -163,6 +164,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
             title={t.week.top}
             href={boards.week}
             meta={weekMeta}
+            note={activeWeekRank && weekRows.length > 0 && hasAggregateWeek(activeWeekRank.meta.window, activeWeekRank.meta.period, activeWeekRank.meta.provenance) ? t.common.starHistoryNote : undefined}
             rows={weekRows}
             labels={repoLabels}
             openLabel={fullBoardLabel}
@@ -270,6 +272,7 @@ function PulsePanel({
   title,
   href,
   meta,
+  note,
   rows,
   labels,
   openLabel,
@@ -280,6 +283,7 @@ function PulsePanel({
   title: ReactNode;
   href: string;
   meta?: string;
+  note?: string;
   rows: Row[];
   labels: ReturnType<typeof repositoryTableLabels>;
   openLabel: string;
@@ -298,6 +302,7 @@ function PulsePanel({
           </Link>
         </div>
       </div>
+      {note && <p className="mb-3 text-sm leading-relaxed text-on-surface-variant">{note}</p>}
       {rows.length > 0 ? (
         <RankingList rows={rows} variant="gained" labels={labels} locale={locale} compact />
       ) : (

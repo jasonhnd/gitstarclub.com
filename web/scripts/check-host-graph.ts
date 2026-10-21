@@ -9,7 +9,7 @@ for (const [key, value] of entries) {
   if (forbidden.test(key) || forbidden.test(String(value[0]))) throw new Error(`Forbidden host dependency: ${key}`);
 }
 const pins: Record<string, string> = {
-  vinext: "1.2.1", "@vinext/cloudflare": "1.1.1", vite: "8.3.0",
+  vinext: "1.2.1", "@vinext/cloudflare": "1.1.1", vite: "8.3.3",
   "@cloudflare/vite-plugin": "2.0.0-beta.v.2", cf: "1.0.0-beta.18",
   react: "19.3.1", "react-dom": "19.3.1", "react-server-dom-webpack": "19.3.1",
 };
