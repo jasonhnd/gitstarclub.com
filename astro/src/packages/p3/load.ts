@@ -2,9 +2,10 @@ import { CategoriesPageView, CategoryDimensionPageView, CategoryDetailPageView, 
 import { localizedPath, type Locale } from "../../lib/i18n";
 import { parsePositivePage } from "../../../../web/lib/pagination";
 import type { pageData } from "../../lib/data";
-import { CategoryNotFound, withCategoryData } from "./data";
+import { withPublishedReaders } from "../../lib/published-readers";
+import { CategoryNotFound } from "./navigation";
 
-export async function loadCategoryPage(reader: Pick<ReturnType<typeof pageData>, "base">, params: { locale: Locale; dimension?: string; slug?: string; rawPage?: string }) {
+export async function loadCategoryPage(reader: ReturnType<typeof pageData>, params: { locale: Locale; dimension?: string; slug?: string; rawPage?: string }) {
   const { locale, dimension, slug, rawPage } = params;
   const page = rawPage === undefined ? 1 : parsePositivePage(rawPage);
   if (!page) return new Response("Not found", { status: 404 });
@@ -12,7 +13,7 @@ export async function loadCategoryPage(reader: Pick<ReturnType<typeof pageData>,
   if (rawPage !== undefined && page === 1) return new Response(null, { status: 308, headers: { Location: localizedPath(locale, detailPath) } });
   const canonicalPath = slug ? `${detailPath}${page > 1 ? `/page/${page}` : ""}` : dimension ? `/categories/${dimension}` : "/categories";
   try {
-    return await withCategoryData(reader, async () => {
+    return await withPublishedReaders(reader, async () => {
       const metadata = slug && dimension
         ? await generateCategoryDetailMetadataForLocale(locale, { dimension, slug, page: String(page) })
         : dimension ? await generateCategoryDimensionMetadata(locale, dimension) : await generateCategoriesMetadata(locale);

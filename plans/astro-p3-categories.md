@@ -11,10 +11,11 @@ localized copy, published-data contracts or coverage. Base this package on
 
 1. Install checksum-verified Node 24.20.0 / Bun 1.4.2 dependencies. Reuse the
    existing category server views and pure components through a package-scoped
-   build adapter, replacing only their data reads, navigation errors and chrome.
+   build adapter, replacing only navigation errors and chrome. Use the shared
+   published-reader scope for original data and availability imports.
    Keep localized copy import-only rather than duplicating it into Astro.
 2. Add explicit root/localized category entries and request-scoped native R2
-   reads through P0's captured-publication facade. Preserve sparse pagination,
+   reads through the common published-reader scope. Preserve sparse pagination,
    canonical page-one redirects, private/unknown 404s, metadata and JSON-LD.
 3. Add package tests, fixture route coverage and full-page parity tooling.
    Compare at least three representative pages in all locales at desktop/mobile
@@ -25,10 +26,11 @@ localized copy, published-data contracts or coverage. Base this package on
 ## Boundaries
 
 Only P3 package/pages/tests and this plan are owned here. A small additive Vite
-plugin registration and additive shared CSS source scanning are needed to import the unchanged category views with
-request-scoped readers; disclose that shared configuration/style-source changes in the PR.
+plugin registration is needed to import the unchanged category views; disclose
+that shared configuration change in the PR. The integration stylesheet already
+covers P3 through its existing directory scans.
 Do not edit `web/`, dictionaries, locks, pipeline, Worker configuration, CI or
-other packages. No merge, deployment, Wrangler, live refresh, remote resource
+other packages. No PR merge, deployment, Wrangler, live refresh, remote resource
 write, protected-branch push or data expansion is authorized. Cockpit is out of
 scope. GitHub Actions stays disabled.
 

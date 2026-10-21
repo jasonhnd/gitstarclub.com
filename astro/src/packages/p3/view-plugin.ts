@@ -3,16 +3,14 @@ import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 
 const original = fileURLToPath(new URL("../../../../web/app/_localized/categories.tsx", import.meta.url));
-const reader = fileURLToPath(new URL("./data.ts", import.meta.url));
+const navigation = fileURLToPath(new URL("./navigation.ts", import.meta.url));
 const routing = fileURLToPath(new URL("../../../../web/app/_localized/routing.ts", import.meta.url));
 const webDirectory = fileURLToPath(new URL("../../../../web/app/_localized/", import.meta.url));
 
 /** Reuse the original server view and translations without a second copy. */
 export function adaptCategoryView(source: string): string {
   return source
-    .replace('from "@/lib/data"', `from ${JSON.stringify(reader)}`)
-    .replace('from "@/lib/categories/availability"', `from ${JSON.stringify(reader)}`)
-    .replace('from "next/navigation"', `from ${JSON.stringify(reader)}`)
+    .replace('from "next/navigation"', `from ${JSON.stringify(navigation)}`)
     .replace(/^import \{ Chrome \} from .*;\n/m, "")
     .replace(/^\s*<Chrome [^\n]+\/>\n/gm, "\n")
     .replace(/from "\.\/([^"\n]+)"/g, (_, path: string) => `from ${JSON.stringify(path === "routing" ? `${routing}?astro-p3` : `${webDirectory}${path}`)}`);
