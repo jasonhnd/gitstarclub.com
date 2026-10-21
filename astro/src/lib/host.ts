@@ -15,12 +15,12 @@ export type HostOptions = {
 };
 type CacheStatus = "BYPASS" | "MISS" | "HIT" | "STALE";
 
-export function secureResponse(response: Response, method: string, status: CacheStatus): Response {
+export function secureResponse(response: Response, method: string, status: CacheStatus, api = false): Response {
   const headers = new Headers(response.headers);
   for (const { key, value } of securityHeaders) headers.set(key, key === "Content-Security-Policy" ? contentSecurityPolicyForEnvironment("production") : value);
   // The origin fence must run on every request; no independent browser/CDN page cache.
   headers.set("Cache-Control", "private, no-store");
-  headers.set("X-Robots-Tag", "noindex, nofollow");
+  if (!api) headers.set("X-Robots-Tag", "noindex, nofollow");
   headers.set("x-gsc-cache", status);
   return new Response(method === "HEAD" ? null : response.body, { status: response.status, headers });
 }
@@ -28,7 +28,7 @@ export function secureResponse(response: Response, method: string, status: Cache
 /** Caches Astro's final HTML, using the existing bounded Cache API/KV artifact store. */
 export async function handleRequest(request: Request, options: HostOptions): Promise<Response> {
   const url = new URL(request.url);
-  const finish = (response: Response, status: CacheStatus = "BYPASS") => secureResponse(response, request.method, status);
+  const finish = (response: Response, status: CacheStatus = "BYPASS") => secureResponse(response, request.method, status, url.pathname.startsWith("/api/"));
   const path = url.pathname.replace(/\/+$/, "") || "/";
   if (path === "/api/lang" && ["GET", "HEAD"].includes(request.method)) return finish(languageRedirect(request));
   if (path === "/api/workflows/refresh/revalidate" && request.method === "POST" && options.unscopedRender) {
@@ -98,5 +98,5 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
       if (response) return finish(response, bypass ? "BYPASS" : "MISS");
     }
   } catch { /* Unknown/missing/unreadable publication fails closed for data-dependent requests. */ }
-  return finish(new Response("Published data is temporarily unavailable.", { status: 503 }));
+  return finish(new Response(url.pathname.startsWith("/api/") ? "Publication changed or unavailable; retry" : "Published data is temporarily unavailable.", { status: 503 }));
 }
