@@ -1,187 +1,32 @@
 ---
 owner: architecture / operations
-status: active
-last_reviewed: 2026-10-20
+status: superseded
+last_reviewed: 2026-10-22
 source_of_truth_for:
-  - vinext Worker configuration and delivery
-  - hybrid page cache implementation
-  - local host verification
+  - retained vinext comparison host
 ---
 
-# vinext Worker host
+# Retained vinext comparison host
 
-The checked-in host uses vinext 1.2.1, Vite 8.3.3, Cloudflare Vite plugin
-2.0.0-beta.v.2 and cf 1.0.0-beta.18. Next 16.4.2 remains a types/lint
-compatibility dependency; Vite compiles and serves the application. React,
-React DOM and the server component transport are all 19.3.1. The pinned
-[compatibility patch](../web/patches/vinext@1.2.1.patch) normalizes unsupported
-native fetch cache options after the framework has implemented their cache
-semantics. Frozen installs apply it; builds never modify downloaded packages.
-The new font-parser dependency's fflate 0.7 branch is pinned to patched 0.7.5
-for [GHSA-px8p-9vwx-vf98](https://github.com/advisories/GHSA-px8p-9vwx-vf98);
-the existing 0.8.3 branch remains unchanged.
+[ASTRO-HOST.md](ASTRO-HOST.md) supersedes this document for the current integrated
+site source. This source change does not claim a live deployment or cutover.
+`web/` remains buildable as the parity baseline and supplies shared data,
+operational and presentation modules until the migration's after-cutover move.
 
-This PR changes source and local evidence only. It does not claim a live
-cutover. [R2-CUTOVER.md](R2-CUTOVER.md) remains the storage acceptance record;
-its older host commands are historical. GitHub Actions remains disabled by
-owner decision. Required job names remain `static` and `production-build`.
+The retained host uses vinext 1.2.1, Vite 8.3.3 and the exact pins in
+[web/package.json](../web/package.json). Its independent HTML/RSC core snapshots
+and publication-fenced Cache API/KV adapter remain unchanged. Astro does not
+serve its RSC payloads or private snapshot assets.
 
-## Configuration and commands
+From `web/`, the existing `build:production`, `build:pre` and matching
+`validate:host -- --mode ...` commands remain the offline AGENTS verification
+and comparison gate. Use only the local read-only fixture and a fresh detached
+checkout; do not copy owner environment files. Skip cf:dry-run and every legacy
+platform command by owner order. Actions stays disabled.
 
-[Typed configuration](../web/cloudflare.config.ts) uses
-[the public contract](../web/host-contract.mjs) and rejects implicit modes.
-The account is configured at the top level. Both modes retain `nodejs_compat`,
-strict public fetch compatibility and observability.
-
-| Contract | production | pre |
-| --- | --- | --- |
-| Worker and self-reference | gitstarclub-web | gitstarclub-web-pre |
-| DATA bucket | gitstarclub-data-prod | gitstarclub-data-pre |
-| MEDIA bucket | gitstarclub-assets | gitstarclub-assets |
-| Queue producer and consumer | gitstarclub-jobs | gitstarclub-jobs-pre |
-| Queue maximum batch / retries | 1 / 2 | 1 / 2 |
-| Public data origin | data.gitstarclub.com | data-pre.gitstarclub.com |
-| Public Worker / version URLs | disabled / disabled | enabled / enabled |
-| Indexing | indexable | noindex, nofollow |
-| Scheduled triggers | absent | absent |
-
-KV means Cloudflare's persistent key/value cache. The `GSC_CACHE` namespace is
-provisioned by cf per Worker/binding, with no shared namespace ID in source.
-Local builds simulate all resources; no remote binding is selected. No cache
-bucket, runtime database, Durable Object, routes, DNS or schedules are added.
-Secrets remain platform-managed and are never copied into the public contract.
-
-From `web/`, after the checksum-verified AGENTS bootstrap:
-
-```bash
-bun install --frozen-lockfile
-bun run validate:graph
-bun run build:production
-bun run validate:host -- --mode production
-bun run build:pre
-bun run validate:host -- --mode pre
-bun run start -- --host 127.0.0.1 --port 4176
-```
-
-Use the read-only fixture and clean environment from [AGENTS.md](../AGENTS.md)
-for offline builds. The selected mode supplies its public vars and indexing
-policy. Shell read origins must match the mode; a loopback HTTP fixture is the
-only exception. A loopback build is for local verification and must never be
-deployed. Rebuild each mode before its matching operation: output is shared.
-`bun run build` is exactly the production Vite build.
-
-`deploy:pre` invokes the pinned adapter's `vinext-cloudflare deploy --env pre`,
-which selects typed config and cf. It is an owner-run operation requiring
-separate authorization. It was not run on GSC_0075. There is no production
-deploy script and CI contains no deployment command. Do not use legacy
-platform tools, stale logins, schedule APIs or remote refreshes to verify a build.
-Before an authorized deployment, review the complete generated Worker config,
-bindings and secrets, reject any loopback fixture, and check the tested commit.
-Production promotion and deployment remain separate owner decisions.
-
-## Rendering and publication correctness
-
-ISR means generating a page on demand, then refreshing it after its freshness
-interval. RSC is the server component payload used for client navigation.
-The bounded core is rendered during the build; empty long-tail static-parameter
-lists stay empty. The official static-assets packager emits literal HTML/RSC
-snapshots. The build adds a private host manifest containing mode, commit,
-authoritative publication identity and the complete framework-generated tags.
-The Worker denies public access to this private asset directory.
-
-A single origin-managed adapter reads regional Workers Cache, persistent KV,
-then build snapshots. Routing and locale negotiation happen before adapter
-lookup. HTML/RSC/query/build/locale identities use the framework keys. There is
-no independent outer response cache. Cookies, authorization, ranges, non-GET,
-API and refresh requests bypass shared page reads and writes. Snapshots and
-rendered responses receive the original security headers, including script
-policy self plus unsafe-inline. Fonts are packaged locally; the language
-switcher still goes through `/api/lang` and all seven locales remain supported.
-
-A publication fence is a strong version check before serving a cached core
-page. Every data-dependent application request captures the existing `views/latest.json`,
-`bootstrap/latest.json` and `live/latest.json` directly from the DATA binding,
-including body, publication timestamps and ETags. Public CDN and KV pointers
-never decide that identity. Missing pointers have a stable explicit absence;
-unreadable or invalid pointers fail closed. Rendering reads the same captured
-pointers instead of process/shared pointer memos. Cached data is namespaced by
-publication identity, so lagged positive/negative KV values cannot refill a new
-publication with old pointer data. Core output is fully consumed and rechecked
-before serving; a concurrent publication retries once, then returns 503.
-Cache writes also recheck the captured identity. Rollback to an original run
-has a new transition identity, preserving the existing writers' timestamps and
-compare-and-swap safeguards. No writer or source-of-truth storage is replaced.
-
-### Publication-independent routes
-
-Shared page-cache bypass does not establish publication independence. A page
-with cookies, authorization, a range header, a non-GET method, or `refresh` in
-its path still captures its publication before entering the application. The
-explicit method/path allowlist in
-[`shell-routes.ts`](../web/lib/workers-host/shell-routes.ts) admits only the
-following two application handlers without a publication or cache scope. The
-page and data adapters return cache misses and skip writes without that scope.
-Both responses retain the same security headers, `x-gsc-cache: BYPASS`, and
-`Cache-Control: private, no-store`. Trailing slashes use the existing pathname
-normalization; subpaths and unlisted methods receive no exemption.
-
-| Route and method | Entry publication decision | Reason |
-| --- | --- | --- |
-| `/api/lang` GET/HEAD | Skip | Validates an internal destination, writes the locale cookie, and redirects; it consumes no published data. A pointer outage or missing DATA binding cannot turn this handler into a host 503. |
-| `/api/workflows/refresh/revalidate` POST | Skip | Authenticates and invalidates tags/paths after publication; it reads no publication pointers. Authentication and cache-invalidation failures still belong to the existing handler. |
-| `/api/cron/daily` GET | Keep | Refreshes published daily data; it is not a data-independent redirect or callback. |
-| `/api/cron/weekly` GET | Keep | Refreshes published weekly data. |
-| `/api/workflows/refresh/start` GET | Keep | Starts a storage-backed refresh workflow and acquires its lease. |
-| `/api/workflows/refresh/step` POST | Keep | Runs data/publication workflow steps. |
-| `/api/workflows/refresh/rollback` POST | Keep | Reads and switches published versions under its own writer lease. |
-| `/search-index` GET | Keep | Resolves the published search index through the data layer. |
-| `/repo-curve` GET | Keep | Resolves published repository curves. Even invalid-id requests keep the route-level policy. |
-| `/preview/identity` GET | Already skipped | Shell dispatch precedes publication reads; reports deployment identity. |
-| `/preview/health` GET | Already skipped | Shell health response needs no published data. |
-| `/.well-known/deployment` GET | Already skipped | Shell deployment identity response needs no published data. |
-| `/start` GET/POST | Already skipped | Existing authenticated shell control; its refresh operation retains its own storage dependencies. |
-| `/enqueue` POST | Already skipped | Existing authenticated shell queue control. |
-| `/preview/invalidate` POST | Already skipped | Existing authenticated shell cache invalidation. |
-| `/_vinext/static-cache/*` | Already skipped | Private artifact requests are denied with 404 before shell/application dispatch. |
-| Other `/api/*`, `/preview/*`, `/.well-known/*`, `/start/*`, `/enqueue/*`, `/search-index/*`, `/repo-curve/*`, and paths containing `refresh` | Keep | A broad cache-bypass prefix is not permission to skip the publication fence, including unknown routes or unsupported methods. |
-
-All page routes, metadata/sitemap routes, and data-dependent endpoints retain
-their existing publication handling. Worker-entry regressions exercise the
-real language handler for all seven locales during a simulated R2 pointer
-failure, same-origin redirect protection, missing DATA, callback authentication,
-and fail-closed page/data requests. Existing publication race/rollback and
-core/tail cache tests remain part of the full offline suite.
-
-Tail pages stay fresh for 604,800 seconds, may serve stale while regenerating
-for another 86,400 seconds, and then block on regeneration. Ordinary publication
-does not flush warm tail pages. An explicit path/tag still invalidates them.
-The actual publication operation awaits two global tags and all 56 core paths
-across both cache layers, including outside a framework fetch lifecycle.
-
-Artifact keys are hashed; entry sizes, codecs and tag counts are bounded.
-Binary payloads use base64, tag reads batch at 100 keys, regional retention is
-capped at one day, and KV entries retain for 30 days. Regional read/write errors
-fall back to KV; persistent failures fall back to rendering. Invalidation writes
-serialize per key, retry with backoff, and report a final error to the publisher.
-The strong publication fence covers distributed KV lag for publication; targeted
-manual tag invalidation still inherits KV's eventual consistency.
-`x-gsc-cache` reports `SNAPSHOT`, `HIT`, `MISS`, `STALE` or `BYPASS`.
-
-## Verification and delivery boundary
-
-The PR records an exact-head detached-checkout bootstrap, full static block,
-full offline web coverage suite, both local Vite builds, artifact validation,
-local HTTP/browser checks and English/Japanese screenshot pairs.
-`web/scripts/verify-host-local.ts` checks only a loopback preview origin;
-`web/scripts/local-view-fixture.ts` serves the existing checked-in fixtures
-read-only after the empty build fixture is stopped. Some existing unsuffixed
-repository/ranking metadata image URLs remain 404; generated suffixed handlers
-are verified as real 1200 x 630 PNGs, including known and unknown repository
-fallback behavior. This predates the host migration and remains a separate fix. Tests cover
-publication/rollback, stale regional KV reads, late writes, cache failure,
-HTML/RSC separation, freshness/expiry, tag/layout invalidation, binding isolation,
-R2 conditional writes, Queue retries, scheduled dispatch and self-reference.
-Local fixtures do not certify multi-region service latency, service limits or
-production load. The two beta toolchain packages remain a release risk.
-The executor hands off for independent review and owner visual acceptance;
-this card authorizes neither merge nor deployment.
+The original [Worker shell](../workers/gitstarclub-web/src/shell.ts),
+[queue/scheduled entry](../workers/gitstarclub-web/src/index.ts) and
+[typed configuration](../web/cloudflare.config.ts) remain shared sources for
+Astro integration. All resource names, secrets, schedules and production/preview
+activation decisions remain unchanged. The old cockpit source stays here;
+Astro returns 404 until its separately authorized migration.
