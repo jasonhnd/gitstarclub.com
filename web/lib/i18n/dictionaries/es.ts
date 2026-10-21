@@ -3,6 +3,7 @@ import type { Dict } from "./en";
 const es: Dict = {
   nav: { home: "Inicio", pulse: "Pulso", rankings: "Rankings", categories: "Categorías", organizations: "Organizaciones", compare: "Comparar", about: "Acerca de" },
   common: {
+    starHistoryNote: "Las cifras diarias y semanales del 30 de mayo al 30 de septiembre de 2026 proceden del resumen del historial de estrellas de GitHub y cuentan las que seguían presentes al recopilar los datos. Los días siguen aproximadamente UTC, con posibles diferencias de unas horas.",
     faqHeading: "Preguntas frecuentes",
     dataLastUpdated: "Datos actualizados por última vez",
     dataAsOf: "Datos al",
@@ -176,6 +177,8 @@ const es: Dict = {
   },
   week: { label: "Semana", top: "Repositorios principales semanales" },
   repo: {
+    dailyStars: "Estrellas por día",
+    dailyStarsAria: "Estrellas diarias: hasta {stars} por día en {points} días registrados",
     starHistory: "Historial de estrellas",
     metaTitleSuffix: "Historial de estrellas y línea de tiempo",
     metaFallbackDescription: "Historial de estrellas de GitHub para {repo}.",

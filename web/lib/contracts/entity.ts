@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { StarHistoryProvenance } from "./star-history";
 import { DateStr, NonNegativeInt, Period, OwnerType, SafeText, TimestampStr } from "./common";
 
 // entity/repo/{id}.json, entity/org/{login}.json, heatmap/*.json.
@@ -12,6 +13,7 @@ export const DailyPoint = z.tuple([DateStr, z.number().int()]);
 export const Curve = z.object({
   monthly: z.array(MonthlyPoint),
   recent_daily: z.array(DailyPoint),
+  provenance: StarHistoryProvenance.optional(),
 }).strict();
 export type Curve = z.infer<typeof Curve>;
 
