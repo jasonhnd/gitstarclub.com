@@ -10,9 +10,11 @@ export function negotiateLocale(request: Request): Response | undefined {
   if (first === DEFAULT_LOCALE) return redirect(request, (url.pathname.slice(3) || "/") + url.search, 308);
   if (isNonDefaultLocale(first)) return;
   const cookie = request.headers.get("cookie")?.split(";").map((value) => value.trim()).find((value) => value.startsWith(`${LANG_COOKIE}=`));
-  const locale = cookie?.slice(LANG_COOKIE.length + 1);
+  let locale = cookie?.slice(LANG_COOKIE.length + 1);
+  let cookiePresent = cookie !== undefined;
+  try { if (locale) locale = decodeURIComponent(locale); } catch { locale = undefined; cookiePresent = false; }
   if (locale && isNonDefaultLocale(locale)) return redirect(request, localizedPath(locale, url.pathname + url.search), 307);
-  if (url.pathname === "/" && !cookie) {
+  if (url.pathname === "/" && !cookiePresent) {
     const preferred = preferredLocale(request.headers.get("accept-language"));
     if (preferred && isNonDefaultLocale(preferred)) return redirect(request, localizedPath(preferred, "/" + url.search), 307);
   }

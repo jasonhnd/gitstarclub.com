@@ -41,7 +41,8 @@ export async function compareSites(options: { web: string; astro: string; paths:
               const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
               const sortedJson = (value: unknown): unknown => Array.isArray(value) ? value.map(sortedJson) : value && typeof value === "object"
                 ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, sortedJson(item)])) : value;
-              const meta = Array.from(document.head.querySelectorAll<HTMLMetaElement>("meta[name],meta[property]"))
+              // The existing host can stream metadata into the document body.
+              const meta = Array.from(document.querySelectorAll<HTMLMetaElement>("meta[name],meta[property]"))
                 .map((element) => [element.name || element.getAttribute("property"), element.media || "", element.content]).sort();
               const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href ?? null;
               const hreflang = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="alternate"][hreflang]')).map((element) => [element.hreflang, element.href]).sort();

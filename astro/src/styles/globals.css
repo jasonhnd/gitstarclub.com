@@ -4,6 +4,7 @@
 @source "../../../web/app/_explore/SearchBox.tsx";
 @source "../../../web/app/_explore/search-box/SearchPanel.tsx";
 @source "../../../web/app/components/ThemeToggle.tsx";
+@source "../../../web/app/_explore/Star.tsx";
 
 /* The existing stylesheet remains the only source of design token values. */
 :root {
