@@ -1,0 +1,11 @@
+---
+import CategoryPage from "../../../../packages/p3/CategoryPage.astro";
+import { pageRoute } from "../../../../lib/routing";
+import { loadCategoryPage } from "../../../../packages/p3/load";
+export const prerender = false;
+const route = pageRoute(Astro.url.pathname);
+if (!route) return new Response("Not found", { status: 404 });
+const result = await loadCategoryPage(Astro.locals.data, { locale: route.locale, dimension: Astro.params.dimension, slug: Astro.params.slug, rawPage: Astro.params.page });
+if (result instanceof Response) return result;
+---
+<CategoryPage {...result} />
