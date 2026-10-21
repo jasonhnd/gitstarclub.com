@@ -41,7 +41,7 @@ Minimal shared P0 corrections required for public response parity:
   internal middleware cookie header before returning the public response.
 - `astro/src/lib/host.ts`: preserve the API header set and original pointer-outage
   response body while retaining the skeleton's page indexing policy.
-- `astro/scripts/local-worker.ts`: optional synthetic text bindings for local tests;
+- [astro/scripts/local-worker.ts](../../../scripts/local-worker.ts): optional synthetic text bindings for local tests;
   existing callers and defaults are unchanged. No Worker config changes.
 - `astro/tests/routing.test.ts`: match the original cookie casing/environment rules.
 
