@@ -60,4 +60,3 @@ export function repositoryTableLabels(t: Dict) {
     rowStarsAdded: t.tables.rowStarsAdded,
   };
 }
-
