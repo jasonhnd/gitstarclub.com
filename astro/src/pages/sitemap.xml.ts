@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
 import { sitemapIndexRoute } from "../../../web/lib/sitemap-routes";
-import { withPublishedReads } from "../packages/p6/published-reads";
+import { withPublishedReaders } from "../lib/published-readers";
 export const prerender = false;
-export const GET: APIRoute = () => withPublishedReads(sitemapIndexRoute);
+export const GET: APIRoute = ({ locals }) => withPublishedReaders(locals.data, sitemapIndexRoute, { cloudflareReadPolicy: true });
