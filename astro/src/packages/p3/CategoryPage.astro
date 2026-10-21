@@ -2,7 +2,6 @@
 import Layout from "../../layouts/Layout.astro";
 import Body from "./Body";
 import type { loadCategoryPage } from "./load";
-import "./categories.css";
 type Props = Exclude<Awaited<ReturnType<typeof loadCategoryPage>>, Response>;
 const { locale, canonicalPath, title, description, body } = Astro.props;
 ---
