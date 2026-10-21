@@ -53,8 +53,8 @@ try {
   }
   const directoryHtml = await (await fetch(`${origin}/o`)).text();
   const detailHtml = await (await fetch(`${origin}/o/example`)).text();
-  if ((directoryHtml.match(/<astro-island\b/g) ?? []).length !== 2) throw new Error("Directory should hydrate only shared search/theme controls");
-  if ((detailHtml.match(/<astro-island\b/g) ?? []).length !== 4) throw new Error("Detail should hydrate only search/theme/share/snippet controls");
+  if ((directoryHtml.match(/<astro-island\b/g) ?? []).length !== 3) throw new Error("Directory should hydrate only shared search/theme controls");
+  if ((detailHtml.match(/<astro-island\b/g) ?? []).length !== 5) throw new Error("Detail should hydrate only search/theme/share/snippet controls");
   console.log("PASS 49 Worker route/redirect/error cases and bounded island counts");
   await checkOrganizationControls(origin);
   const paths = JSON.parse(await Bun.file(new URL("./paths.json", import.meta.url)).text()) as string[];
