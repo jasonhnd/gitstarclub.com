@@ -19,6 +19,9 @@ try {
       if (path.startsWith("/example/")) assert.ok(html.includes((await getDictionary("en")).common.starHistoryNote));
     }
   }
+  for (const path of ["/ja/privacy", "/zh/rankings", "/categories/language/typescript", "/rankings/2024/06", "/o/example"]) {
+    assert.equal((await get(path)).status, 200, `P2 must preserve the P0 fallback at ${path}`);
+  }
   const cold = await get("/example/history?cache-proof=p2");
   assert.equal(cold.headers.get("x-gsc-cache"), "MISS");
   const warm = await get("/example/history?cache-proof=p2");
