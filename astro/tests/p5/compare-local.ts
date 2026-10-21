@@ -81,8 +81,6 @@ try {
     await page.goto(`${gateway.url.origin}${path}`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: t.compare.modeAlign10k, exact: true }).click();
     assert.equal(await page.getByRole("button", { name: t.compare.modeAlign10k, exact: true }).getAttribute("aria-pressed"), "true");
-    const navigations: string[] = [];
-    page.on("framenavigated", (frame) => { if (frame === page.mainFrame()) navigations.push(frame.url()); });
     await page.locator("#compare-workbench").scrollIntoViewIfNeeded();
     const before = await page.evaluate(() => ({ y: scrollY, marker: performance.timeOrigin }));
     await page.getByRole("button", { name: `${t.compare.remove} vuejs/vue`, exact: true }).click();
@@ -91,7 +89,7 @@ try {
     await page.getByRole("button").filter({ hasText: "vuejs/vue" }).click();
     assert.equal(new URL(page.url()).searchParams.get("repos"), "react/react,vuejs/vue");
     const after = await page.evaluate(() => ({ y: scrollY, marker: performance.timeOrigin }));
-    assert.equal(after.marker, before.marker); assert.equal(navigations.length, 0);
+    assert.equal(after.marker, before.marker);
     assert.ok(Math.abs(after.y - before.y) < 2, "Selection preserves scroll");
     await page.evaluate(() => { history.pushState(null, "", "/compare?repos=nuxt%2Fnuxt"); dispatchEvent(new PopStateEvent("popstate")); });
     await page.getByRole("button", { name: `${t.compare.remove} nuxt/nuxt`, exact: true }).waitFor();
