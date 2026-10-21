@@ -126,8 +126,47 @@ test.each(privateReads)("private reads fail closed after two publication races: 
   expect(calls).toBe(2);
   expect(h.kv.values.size).toBe(0);
 });
+const legacyMutationReads = ["/api/cron/daily", "/api/cron/weekly", "/api/workflows/refresh/start"]
+  .flatMap((path) => ["GET", "HEAD"].map((method) => ({ path, method })));
+test.each(legacyMutationReads)("legacy refresh GET/HEAD executes once across its own publication change: %j", async ({ path, method }) => {
+  const h = harness();
+  const initial = await h.options.publication();
+  let reads = 0;
+  let calls = 0;
+  h.options.publication = async () => {
+    if (++reads > 1) throw new Error("Post-write pointer read must not replace a successful mutation");
+    return initial;
+  };
+  h.options.render = async () => {
+    calls++;
+    h.publish("v2");
+    return Response.json({ published: true }, { status: 202 });
+  };
+  const response = await h.get(path, { method });
+  expect(response.status).toBe(202);
+  expect(await response.text()).toBe(method === "HEAD" ? "" : '{"published":true}');
+  expect(calls).toBe(1);
+  expect(reads).toBe(1);
+  expect(response.headers.has("x-gsc-publication")).toBe(false);
+  expect(response.headers.get("x-gsc-cache")).toBe("BYPASS");
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(h.kv.values.size).toBe(0);
+});
+test.each(legacyMutationReads)("legacy refresh GET/HEAD never replays a handler that publishes: %j", async ({ path, method }) => {
+  const h = harness();
+  let calls = 0;
+  h.options.render = async () => {
+    h.publish(`v${++calls + 1}`);
+    return Response.json({ published: true }, { status: 202 });
+  };
+  const response = await h.get(path, { method });
+  expect(calls).toBe(1);
+  expect(response.status).toBe(202);
+  expect(await response.text()).toBe(method === "HEAD" ? "" : '{"published":true}');
+  expect(response.headers.has("x-gsc-publication")).toBe(false);
+  expect(h.kv.values.size).toBe(0);
+});
 const apiReads = [
-  "/api/cron/daily", "/api/cron/weekly", "/api/workflows/refresh/start",
   "/api/workflows/refresh/step", "/api/workflows/refresh/revalidate", "/api/workflows/refresh/rollback",
 ].flatMap((path) => ["GET", "HEAD"].map((method) => ({ path, method })));
 test.each(apiReads)("API reads recheck publication without adding a page header: %j", async ({ path, method }) => {
@@ -166,7 +205,7 @@ test.each(["GET", "HEAD"])("API %s fails closed after two publication races with
     h.publish(`v${++calls + 1}`);
     return new Response("obsolete");
   };
-  const response = await h.get("/api/workflows/refresh/start", { method });
+  const response = await h.get("/api/unknown", { method });
   expect(response.status).toBe(503);
   expect(await response.text()).toBe(method === "HEAD" ? "" : "Publication changed or unavailable; retry");
   expect(response.headers.has("x-gsc-publication")).toBe(false);

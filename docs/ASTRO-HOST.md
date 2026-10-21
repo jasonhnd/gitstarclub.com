@@ -97,8 +97,11 @@ shared HTML storage. A bypass does not waive publication correctness.
 
 Capture `views/latest.json`, `bootstrap/latest.json` and `live/latest.json`
 directly through DATA, including body, ETags and transition timestamps. Readers
-use that captured publication. Fully consume GET/HEAD output and recheck before
-serving/writing; retry one race, then return 503. Mutations execute once.
+use that captured publication. Fully consume read-only GET/HEAD output and
+recheck before serving/writing; retry one race, then return 503. Mutations
+execute once, including the legacy daily/weekly cron and refresh-start GET/HEAD
+handlers. Their own publish or a post-write pointer outage must preserve the
+original operation result instead of retrying or reporting a false failure.
 Unreadable/invalid pointers fail closed. Language GET/HEAD and revalidation POST
 remain explicitly publication-independent; shell controls dispatch first.
 Manual KV invalidation retains eventual-consistency limits. The old vinext

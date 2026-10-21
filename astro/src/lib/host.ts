@@ -16,6 +16,7 @@ export type HostOptions = {
   now?: () => number;
 };
 type CacheStatus = "BYPASS" | "MISS" | "HIT" | "STALE";
+const MUTATING_GET_PATHS = new Set(["/api/cron/daily", "/api/cron/weekly", "/api/workflows/refresh/start"]);
 
 export function secureResponse(response: Response, method: string, status: CacheStatus, api = false, indexable = siteIndexable): Response {
   const headers = new Headers(response.headers);
@@ -53,6 +54,9 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
   const redirect = negotiateLocale(request);
   if (redirect) return finish(redirect);
   const bypass = bypassPageCache(request);
+  // These legacy GET handlers (including implicit HEAD) publish or enqueue work.
+  // Their own successful publication must not replay the action or replace its result.
+  const mutation = !["GET", "HEAD"].includes(request.method) || MUTATING_GET_PATHS.has(path);
   const tail = isLongTail(path);
   const now = options.now ?? Date.now;
   const key = (publication: Publication) => JSON.stringify([options.build, url.origin, url.pathname, url.search, "html", tail ? "tail" : publication.id]);
@@ -92,7 +96,7 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
       const startedAt = now();
       const publication = await options.publication();
       // P7 handlers own their methods/auth. Never retry a mutating request after publication.
-      if (bypass && !["GET", "HEAD"].includes(request.method)) return finish(await options.render(publication));
+      if (bypass && mutation) return finish(await options.render(publication));
       const entry = await read(publication);
       if (entry) {
         const age = (now() - entry.lastModified) / 1000;

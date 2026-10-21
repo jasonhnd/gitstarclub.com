@@ -48,8 +48,8 @@ The Worker captures the publication once, scopes data readers to it and owns
 all shared HTML caching. Core pages use publication-specific keys. Long tails
 render on first visit, stay fresh seven days and can serve stale for one day.
 Core GET/HEAD output is buffered and checked for publication races before
-serving; mutations are never replayed. API cache bypass does not waive that
-check. P7 awaits explicit invalidation after publication. See the host document
+serving; mutations are never replayed, including the legacy cron and refresh-start
+GET/HEAD handlers. Read-only API cache bypass does not waive that check. P7 awaits explicit invalidation after publication. See the host document
 for pointer-outage behavior, exceptions and operational dispatch.
 
 ## Shared data and deterministic output
