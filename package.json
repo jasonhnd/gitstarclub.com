@@ -12,7 +12,11 @@
     "build": "bun ./build.mjs",
     "lint:md": "bun ./scripts/check-markdown-code-fences.mjs",
     "lint:design": "designmd lint DESIGN.md",
-    "lint:docs": "bun run lint:md && node --test ./scripts/check-docs.test.mjs ./scripts/cf-ci-gates.test.mjs && bun ./scripts/check-docs.mjs && node ./scripts/assert-cf-ci-gates.mjs"
+    "lint:docs": "bun run lint:md && node --test ./scripts/check-docs.test.mjs ./scripts/cf-ci-gates.test.mjs && bun ./scripts/check-docs.mjs && node ./scripts/assert-cf-ci-gates.mjs",
+    "build:production": "bun run --cwd astro build:production",
+    "build:pre": "bun run --cwd astro build:pre",
+    "validate:host": "bun run --cwd astro validate:host",
+    "deploy:pre": "bun run --cwd astro deploy:pre"
   },
   "devDependencies": {
     "@google/design.md": "0.4.0"

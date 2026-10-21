@@ -5,9 +5,11 @@
   "type": "module",
   "license": "MIT",
   "packageManager": "bun@1.4.2",
-  "engines": { "node": ">=24 <25" },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
-    "build": "node scripts/prepare-local.mjs && astro build",
+    "build": "bun run build:production",
     "typecheck": "node scripts/prepare-local.mjs && astro check && tsc --noEmit",
     "test": "bun test tests/ --isolate",
     "test:worker": "bun test worker-checks/ --isolate",
@@ -16,7 +18,12 @@
     "fixture": "bun scripts/fixture.ts",
     "preview:local": "bun scripts/local-worker.ts",
     "compare": "bun scripts/compare.ts",
-    "compare:local": "bun scripts/compare-local.ts"
+    "compare:local": "bun scripts/compare-local.ts",
+    "build:production": "node scripts/build.mjs --mode production",
+    "build:pre": "node scripts/build.mjs --mode pre",
+    "validate:host": "bun scripts/validate-host.ts",
+    "deploy:pre": "bun scripts/deploy-pre.ts",
+    "crawl:local": "bun scripts/crawl-local.ts"
   },
   "dependencies": {
     "astro": "7.4.1",

@@ -23,13 +23,12 @@ async function run(command: string[], directory: string) {
 }
 let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
 let preview: ReturnType<typeof Bun.spawn> | undefined;
-let gateway: ReturnType<typeof Bun.serve> | undefined;
 const log = openSync(resolve(scratch, "p5-web-preview.log"), "w");
 try {
   prepareWebOutput();
   {
     await run(["bun", "run", "build:pre"], "web");
-    await run(["bun", "run", "build"], "astro");
+    await run(["bun", "run", "build:pre"], "astro");
   }
   const probe = createServer();
   await new Promise<void>((done) => probe.listen(0, "127.0.0.1", done));
@@ -48,18 +47,6 @@ try {
   if (!ready) throw new Error("Web preview did not become ready.");
   worker = await startWorker(records);
   const astro = (await worker.ready).origin;
-  // P2/P6 own these endpoints. Delegate only their APIs to the unchanged local
-  // web fixture host until those packages land; all page and island assets are Astro.
-  gateway = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
-    const url = new URL(request.url);
-    const target = ["/search-index", "/repo-curve"].includes(url.pathname) ? web : astro;
-    const response = await fetch(new Request(`${target}${url.pathname}${url.search}`, request), { redirect: "manual" });
-    // Bun fetch decompresses the body before this local gateway forwards it.
-    const headers = new Headers(response.headers);
-    headers.delete("content-encoding"); headers.delete("content-length");
-    const body = await response.arrayBuffer();
-    return new Response(body, { status: response.status, headers });
-  } });
   for (const locale of LOCALES) {
     for (const route of ["/compare", "/pulse"]) {
       const response = await fetch(`${astro}${localizedPath(locale, route)}`, { headers: { "accept-language": "en" } });
@@ -72,13 +59,21 @@ try {
   }
   console.log("PASS: 14 direct Worker page/locale responses, structured data and body island boundary");
   const paths = JSON.parse(await Bun.file(new URL("./paths.json", import.meta.url)).text()) as string[];
-  const report = await compareSites({ web, astro: gateway.url.origin, paths, screenshots: process.argv.includes("--screenshots") });
+  const report = await compareSites({ web, astro, paths, screenshots: process.argv.includes("--screenshots") });
   const browser = await chromium.launchPersistentContext(resolve(scratch, "p5-interaction-browser"), { headless: true, viewport: { width: 1440, height: 1000 }, serviceWorkers: "block" });
   try {
     const page = await browser.newPage();
+    const endpointResponses: { path: string; status: number }[] = [];
+    page.on("response", (response) => {
+      const url = new URL(response.url());
+      if (["/repo-curve", "/search-index"].includes(url.pathname)) {
+        assert.equal(url.origin, astro, "Interactive data stays on the Astro Worker");
+        endpointResponses.push({ path: url.pathname, status: response.status() });
+      }
+    });
     const t = await getDictionary("en");
     const path = "/compare?repos=react%2Freact%2Cvuejs%2Fvue";
-    await page.goto(`${gateway.url.origin}${path}`, { waitUntil: "networkidle" });
+    await page.goto(`${astro}${path}`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: t.compare.modeAlign10k, exact: true }).click();
     assert.equal(await page.getByRole("button", { name: t.compare.modeAlign10k, exact: true }).getAttribute("aria-pressed"), "true");
     await page.locator("#compare-workbench").scrollIntoViewIfNeeded();
@@ -93,18 +88,22 @@ try {
     assert.ok(Math.abs(after.y - before.y) < 2, "Selection preserves scroll");
     await page.evaluate(() => { history.pushState(null, "", "/compare?repos=nuxt%2Fnuxt"); dispatchEvent(new PopStateEvent("popstate")); });
     await page.getByRole("button", { name: `${t.compare.remove} nuxt/nuxt`, exact: true }).waitFor();
-    await page.goto(`${gateway.url.origin}/ja/compare`, { waitUntil: "networkidle" });
+    await page.goto(`${astro}/ja/compare`, { waitUntil: "networkidle" });
     const ja = await getDictionary("ja");
     await page.getByRole("searchbox", { name: ja.compare.pickerPlaceholder, exact: true }).fill("react");
     await page.getByRole("button").filter({ hasText: "react/react" }).click();
     assert.equal(new URL(page.url()).pathname, "/ja/compare");
     assert.equal(new URL(page.url()).searchParams.get("repos"), "react/react");
+    for (const endpoint of ["/repo-curve", "/search-index"]) {
+      assert.ok(endpointResponses.some(({ path, status }) => path === endpoint && status === 200), `Direct ${endpoint} response required`);
+    }
+    assert.ok(endpointResponses.every(({ status }) => status === 200), "No failed interactive data responses");
+    console.log("PASS: unproxied Astro search-index/repo-curve responses");
     console.log("PASS: hydrated comparison mode, add/remove, shareable URL, no reload/scroll, popstate and localized selection");
   } finally { await browser.close(); }
-  writeFileSync(resolve(scratch, "p5-verification.json"), JSON.stringify({ directLocalePages: 14, interaction: "passed", endpointDependency: "P2 /repo-curve and P6 /search-index delegated to the same local web fixture host", parityPassed: report.passed, cases: report.results.length }, null, 2) + "\n");
+  writeFileSync(resolve(scratch, "p5-verification.json"), JSON.stringify({ directLocalePages: 14, interaction: "passed", endpointDependency: "P2 /repo-curve and P6 /search-index served directly by the Astro Worker; no proxy", parityPassed: report.passed, cases: report.results.length }, null, 2) + "\n");
   process.exitCode = report.passed ? 0 : 1;
 } finally {
-  await gateway?.stop(true);
   if (preview) { preview.kill(); await preview.exited; }
   await worker?.dispose(); await fixture.stop(true); closeSync(log);
 }

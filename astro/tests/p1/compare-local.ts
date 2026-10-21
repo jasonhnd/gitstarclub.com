@@ -26,7 +26,7 @@ const log = openSync(resolve(scratch, "web-comparison-preview.log"), "w");
 try {
   prepareWebOutput();
   await run(["bun", "run", "build:pre"], "web");
-  await run(["bun", "run", "build"], "astro");
+  await run(["bun", "run", "build:pre"], "astro");
   const probe = createServer();
   await new Promise<void>((done) => probe.listen(0, "127.0.0.1", done));
   const address = probe.address();
