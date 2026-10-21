@@ -12,8 +12,5 @@
   "/es/compare",
   "/es/pulse",
   "/fr/compare",
-  "/fr/pulse",
-  "/compare?repos=react%2Freact%2Cvuejs%2Fvue",
-  "/ja/compare?repos=react%2Freact%2Cvuejs%2Fvue",
-  "/fr/compare?repos=react%2Freact%2Cvuejs%2Fvue"
+  "/fr/pulse"
 ]

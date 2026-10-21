@@ -38,7 +38,8 @@ push. This package's explicit integration target is `feat/astro-site`.
 
 Both routes return HTTP 200 in seven locales. Strict full-page parity checks
 status, visible text, title/meta/canonical/hreflang and JSON-LD for at least
-three representative URL samples (including a selected comparison). Desktop
+three representative URL samples, including localized forms. Selected comparison
+behavior is checked separately in the browser. Desktop
 and mobile screenshots preserve layout; only font rendering may differ.
 Pulse adds no hydrated page body; compare hydrates only its existing picker
 and curve workbench. Design lint has zero errors. Full offline web coverage,

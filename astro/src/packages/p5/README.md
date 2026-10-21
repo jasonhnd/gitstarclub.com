@@ -30,3 +30,11 @@ Use the checksum-verified toolchain and card-local TMPDIR/KANBAN_TMP from
 AGENTS.md. Run full web checks and `astro` verify:local from one fresh detached
 clone of the exact head. Do not deploy or run Wrangler. Record local parity and
 visual results, then delete screenshots as required by the Product brief.
+
+The strict parity path list covers both unselected pages in every locale.
+Selected comparison behavior is tested separately against the same fixture:
+mode switching, URL add/remove, reload-free updates, popstate and locale paths.
+The current web host's static snapshot does not hydrate initial `?repos`
+selections in local comparison, while the Astro island honors URL selection
+as specified by the existing CompareClient source. Query-state parity with
+that host limitation is not claimed; include it in the review handoff.
