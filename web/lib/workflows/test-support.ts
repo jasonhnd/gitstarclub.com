@@ -4,6 +4,7 @@ import * as storage from "@/lib/storage";
 import { MemoryObjectStore, type ObjectGetResult, type ObjectHeadResult, type ObjectListOptions, type ObjectPutOptions } from "@/lib/storage";
 import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { invalidatePublishedVersionMemo } from "@/lib/data/source";
+import { INDEXNOW_ENDPOINT, type IndexNowPayload } from "@/lib/indexnow";
 import { REPO_BUCKETS, repoBucket } from "./buckets";
 import { BlobWorkflowLeaseStore, WorkflowLeaseWriteCache, blobWorkflowLeaseStore } from "./lease";
 import type { RefreshStepRouteOptions } from "./runtime/step-route";
@@ -185,9 +186,15 @@ export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Recor
   });
   const originalFetch = globalThis.fetch;
   const invalidations: Array<{ url: string; init?: RequestInit }> = [];
+  const indexNowSubmissions: IndexNowPayload[] = [];
   let invalidationStatus = 200;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.href === INDEXNOW_ENDPOINT && init?.method === "POST") {
+      store.subrequests.use("fetchIndexNow");
+      indexNowSubmissions.push(JSON.parse(String(init.body)) as IndexNowPayload);
+      return new Response(null, { status: 200 });
+    }
     if (url.pathname === "/api/workflows/refresh/revalidate") {
       store.subrequests.use("fetchInvalidation");
       invalidations.push({ url: url.href, init });
@@ -211,6 +218,7 @@ export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Recor
   return {
     store,
     invalidations,
+    indexNowSubmissions,
     setInvalidationStatus: (status: number) => { invalidationStatus = status; },
     async run(job: FullJob, options: Pick<RefreshStepRouteOptions, "executeFull" | "recordCheckpoint"> & { subrequestLimit?: number; queueConsumer?: boolean } = {}): Promise<{ response: Response; result?: RefreshStepResult }> {
       store.subrequests.reset(options.subrequestLimit);

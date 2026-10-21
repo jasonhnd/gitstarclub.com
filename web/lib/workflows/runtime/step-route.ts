@@ -42,7 +42,7 @@ export function refreshStepCheckpointName(job: RefreshStepJob): string {
   if (job.graph === "full" && job.name === "whitelist") return whitelistStepCheckpointName(job.cursor);
   if (job.graph === "full" && job.name === "fold") return foldStepCheckpointName(job.cursor);
   if (job.graph === "full" && job.name === "recomputeRank") return recomputeStepCheckpointName(job.cursor);
-  if (job.graph === "full" && ["validate", "recomputeRepoEntities", "recomputeOrgEntities", "gc"].includes(job.name)) {
+  if (job.graph === "full" && ["validate", "recomputeRepoEntities", "recomputeOrgEntities", "publish", "gc"].includes(job.name)) {
     return `${job.name}-${job.cursor.workOffset ?? 0}`;
   }
   return job.name;
@@ -60,7 +60,7 @@ async function defaultCheckpoint(job: RefreshStepJob, result: RefreshStepResult)
     error: typeof result.error === "string" ? sanitizeErrorText(result.error) : result.error ?? null,
   });
   await putView(`ops/workflows/${job.runId}/steps/${step}.json`, checkpoint);
-  if (job.graph === "full" && ["validate", "recomputeRepoEntities", "recomputeOrgEntities", "gc"].includes(job.name) && result.nextWorkOffset === undefined) {
+  if (job.graph === "full" && ["validate", "recomputeRepoEntities", "recomputeOrgEntities", "publish", "gc"].includes(job.name) && result.nextWorkOffset === undefined) {
     await putView(`ops/workflows/${job.runId}/steps/${job.name}.json`, WorkflowStepCheckpoint.parse({ ...checkpoint, step: job.name }));
   }
   if (job.graph === "full" && job.name === "whitelist" && !hasNextWhitelistSearch(result)) {

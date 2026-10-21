@@ -19,7 +19,7 @@ import { runFoldStep } from "@/lib/workflows/steps/fold";
 import { runGcStep } from "@/lib/workflows/steps/gc";
 import { refreshMetadataBucket } from "@/lib/workflows/steps/metadata";
 import { runPreflightStep } from "@/lib/workflows/steps/preflight";
-import { publishVersion } from "@/lib/workflows/steps/publish";
+import { runPublishStep } from "@/lib/workflows/steps/publish";
 import { recomputeOrgEntities, recomputeRepoEntities } from "@/lib/workflows/steps/recompute-entity";
 import { recomputeHeatmap } from "@/lib/workflows/steps/recompute-heatmap";
 import { runRecomputeRankStep } from "@/lib/workflows/steps/recompute-rank";
@@ -73,7 +73,7 @@ export async function executeRefreshStep(job: Extract<RefreshStepJob, { graph: "
     case "validate":
       return { name, ...(await runValidateStep(runId, requireToken(job), job.cursor)) };
     case "publish":
-      return { name, ...(await publishVersion(runId, requireToken(job))) };
+      return { name, ...(await runPublishStep(runId, requireToken(job), job.cursor)) };
     case "gc": {
       const gc = await runGcStep(runId, requireToken(job), job.cursor);
       if (gc.error) {
