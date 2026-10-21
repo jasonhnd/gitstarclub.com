@@ -3,6 +3,8 @@
 The English and six localized entries render the existing repository body as
 server HTML. The old English source's `[locale]/[owner]` parameters mean
 owner/name, as clarified by the P0 plan; no single-owner page is introduced.
+Generic repository entries delegate recognized non-repository URLs to P0's
+shell fallback until their concrete package entries land.
 Dictionaries, schemas, normalization, route resolution, metadata facts, Star,
 StarCurve and provenance calculations are imported from `web/` unchanged.
 P2's read-only adapter consumes P0's captured base publication. Category
