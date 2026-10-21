@@ -16,7 +16,8 @@ retains P0's search/theme islands and native language menu.
 Repository social images reuse the old pinned image renderer and only its
 image/wasm build plugins. The compatibility bridge is import-only and must move
 with the other shared imports before `web/` is eventually removed. Shared
-configuration changes are additive: register that image bridge, accept a
+configuration changes are additive: register that image bridge and P2 style
+sources, load emitted image wasm in the local simulator, accept a
 page-specific social-image URL, and preserve explicit non-HTML cache headers
 while keeping HTML private. No dependency lock or data contract changes.
 

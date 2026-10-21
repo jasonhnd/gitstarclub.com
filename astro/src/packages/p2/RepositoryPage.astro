@@ -2,7 +2,6 @@
 import Layout from "../../layouts/Layout.astro";
 import { RepoPageView } from "./repo";
 import { repositoryMetadata, type RepositoryPage } from "./data";
-import "./styles.css";
 interface Props { page: RepositoryPage }
 const { page } = Astro.props;
 const metadata = repositoryMetadata(page);
