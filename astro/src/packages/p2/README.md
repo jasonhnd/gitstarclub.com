@@ -26,7 +26,9 @@ The effective curve response uses `private, no-store`, matching the old Worker
 which overrides the route module cache header. Every curve request requires a
 readable publication, including invalid IDs and method-only responses. The curve
 route retains the old response Vary contract and omits page-only indexing and
-publication headers, matching the old API. The browser navigation bridge adds
+publication headers, matching the old API. The shared host preserves P7
+operation-response wrapping and publication-failure behavior only for `/api/`;
+curve responses keep their own existing headers and error bytes. The browser navigation bridge adds
 `usePathname` so the existing localized 404 copy can be imported without copying
 translations. No dependency lock or data contract changes.
 

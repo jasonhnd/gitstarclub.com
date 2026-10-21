@@ -2,6 +2,7 @@ import { contentSecurityPolicyForEnvironment, securityHeaders } from "../../../w
 import { type Publication } from "../../../web/lib/workers-host/publication-fence";
 import { ArtifactStore, type StoredEntry } from "../../../web/lib/workers-host/cache/store";
 import { bypassPageCache, isLongTail, MAX_ENTRY_BYTES, TAIL_EXPIRE_SECONDS, TAIL_FRESH_SECONDS } from "../../../web/lib/workers-host/cache/policy";
+import { operationResponse } from "../packages/p7/response";
 import { languageRedirect, negotiateLocale } from "./routing";
 
 export type HostOptions = {
@@ -15,12 +16,12 @@ export type HostOptions = {
 };
 type CacheStatus = "BYPASS" | "MISS" | "HIT" | "STALE";
 
-export function secureResponse(response: Response, method: string, status: CacheStatus): Response {
+export function secureResponse(response: Response, method: string, status: CacheStatus, api = false): Response {
   const headers = new Headers(response.headers);
   for (const { key, value } of securityHeaders) headers.set(key, key === "Content-Security-Policy" ? contentSecurityPolicyForEnvironment("production") : value);
   // The origin fence must run on every request; no independent browser/CDN page cache.
   headers.set("Cache-Control", "private, no-store");
-  headers.set("X-Robots-Tag", "noindex, nofollow");
+  if (!api) headers.set("X-Robots-Tag", "noindex, nofollow");
   headers.set("x-gsc-cache", status);
   return new Response(method === "HEAD" ? null : response.body, { status: response.status, headers });
 }
@@ -28,9 +29,12 @@ export function secureResponse(response: Response, method: string, status: Cache
 /** Caches Astro's final HTML, using the existing bounded Cache API/KV artifact store. */
 export async function handleRequest(request: Request, options: HostOptions): Promise<Response> {
   const url = new URL(request.url);
+  const api = url.pathname.startsWith("/api/");
   const path = url.pathname.replace(/\/+$/, "") || "/";
-  const finish = (response: Response, status: CacheStatus = "BYPASS") => {
-    const result = secureResponse(response, request.method, status);
+  const finish = (response: Response, status: CacheStatus = "BYPASS", rendered = true) => {
+    const result = secureResponse(
+      api && rendered ? operationResponse(response, request, options.build) : response, request.method, status, api,
+    );
     if (path === "/repo-curve") {
       // The old Worker does not add page indexing/publication metadata to this API.
       result.headers.delete("X-Robots-Tag");
@@ -62,7 +66,7 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
     const body = await response.arrayBuffer();
     if ((await options.publication()).id !== publication.id) return null;
     const headers = new Headers(response.headers);
-    headers.set("x-gsc-publication", publication.id);
+    if (!api) headers.set("x-gsc-publication", publication.id);
     const entry: StoredEntry = {
       v: 1, lastModified: now(), fence: tail ? "tail" : publication.id, tags: [url.pathname],
       cacheControl: { revalidate: tail ? TAIL_FRESH_SECONDS : 3600, expire: tail ? TAIL_EXPIRE_SECONDS : 3600 },
@@ -106,5 +110,5 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
       if (response) return finish(response, bypass ? "BYPASS" : "MISS");
     }
   } catch { /* Unknown/missing/unreadable publication fails closed for data-dependent requests. */ }
-  return finish(new Response(path === "/repo-curve" ? "Publication changed or unavailable; retry" : "Published data is temporarily unavailable.", { status: 503 }));
+  return finish(new Response(api || path === "/repo-curve" ? "Publication changed or unavailable; retry" : "Published data is temporarily unavailable.", { status: 503 }), "BYPASS", false);
 }
