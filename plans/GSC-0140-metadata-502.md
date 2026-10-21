@@ -1,5 +1,7 @@
 # Recover metadata pages that repeatedly return GitHub 502
 
+Issue: [#716](https://github.com/jasonhnd/gitstarclub.com/issues/716).
+
 ## Goal
 
 Allow a refresh to finish when a repository metadata page repeatedly returns

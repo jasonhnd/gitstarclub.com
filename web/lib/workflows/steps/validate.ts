@@ -12,13 +12,16 @@ import {
   CategoryRegistry,
   Heatmap,
   Meta,
+  MetadataBucketProgress,
   OrgsLookup,
   RankList,
   RepoEntity,
   ReposLookup,
   SearchIndex,
   WhitelistSnapshot,
+  ViewsPointer,
   WorkflowValidation,
+  type MetadataSkippedRepo,
 } from "@/lib/contracts";
 import {
   assembleCategoryAssignments,
@@ -32,6 +35,8 @@ import { isUniverseColdStartActive } from "@/lib/workflows/cold-start";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 import { readPackedWindowMeta } from "@/lib/workflows/recompute/io";
 import { validateGeneratedEntities } from "./validate-entities";
+import { REPO_BUCKETS, repoBucket } from "../buckets";
+import { metadataProgressPath } from "./metadata";
 import {
   validateAliases,
   validateAllTimeRanks,
@@ -129,6 +134,29 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
   const canonicalManifestPath = `ops/workflows/${runId}/canonical-manifest.json`;
   if (fencingToken === undefined) await putView(canonicalManifestPath, canonicalReport.manifest);
   else await putOwnedView({ runId, fencingToken }, canonicalManifestPath, canonicalReport.manifest);
+  const readMetadataSkipped = async (progressRunId: string): Promise<MetadataSkippedRepo[]> => {
+    const skippedRepos: MetadataSkippedRepo[] = [];
+    await mapLimit(Array.from({ length: REPO_BUCKETS }, (_, bucket) => bucket), 4, async (bucket) => {
+      checked++;
+      try {
+        const progress = await readAuthoritativeView(metadataProgressPath(progressRunId, bucket), MetadataBucketProgress, { bust: runId });
+        for (const skipped of progress?.skipped ?? []) {
+          if (progress!.bucket !== bucket || repoBucket(skipped.id) !== bucket) {
+            failures.push(`metadata skip ${skipped.id}: wrong bucket ${bucket}`);
+          } else {
+            skippedRepos.push(skipped);
+          }
+        }
+      } catch (error) {
+        schemaFailures++;
+        failures.push(`${progressRunId}/metadata-${bucket}: read/schema — ${error instanceof Error ? error.message : String(error)}`);
+      }
+    });
+    return skippedRepos;
+  };
+  const metadataSkipped = await readMetadataSkipped(runId);
+  const previousPointer = await readAuthoritativeView("views/latest.json", ViewsPointer, { bust: runId });
+  const previousMetadataSkipped = previousPointer ? await readMetadataSkipped(previousPointer.run_id) : [];
   mergeValidationReport(
     { invariants, failures },
     validateRepositoryMembership({
@@ -138,6 +166,8 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
       canonicalRepoIds: canonicalReport.repoIds,
       canonicalActiveRepoIds: canonicalReport.activeRepoIds,
       meta,
+      metadataSkipped,
+      previousMetadataSkipped,
     }),
   );
 
