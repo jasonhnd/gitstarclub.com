@@ -2,8 +2,7 @@
 import Page from "../../packages/p1/Page.astro";
 import { loadPage } from "../../packages/p1/page";
 export const prerender = false;
-if (Astro.params.locale === "en") return new Response("Not found", { status: 404 });
-const page = await loadPage("home", Astro.params.locale, Astro.params.year, Astro.params.period);
+const page = await loadPage("home", "fr");
 if (!page) return new Response("Not found", { status: 404 });
 ---
 <Page page={page} />
