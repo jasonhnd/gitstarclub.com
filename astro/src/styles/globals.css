@@ -5,6 +5,8 @@
 @source "../../../web/app/_explore/search-box/SearchPanel.tsx";
 @source "../../../web/app/components/ThemeToggle.tsx";
 @source "../../../web/app/_explore/Star.tsx";
+@source "../../../web/app/_explore";
+@source "../../../web/app/_localized/ranking-category-exits.tsx";
 
 /* The existing stylesheet remains the only source of design token values. */
 :root {
