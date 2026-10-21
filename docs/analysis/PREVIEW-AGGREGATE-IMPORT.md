@@ -126,13 +126,14 @@ the remaining blocks):
 set -euo pipefail
 : "${KANBAN_TMP:?Set this to the follow-up card directory}"
 export TMPDIR="$KANBAN_TMP"
-GSC_TOOLCHAIN_ROOT="/Users/ms23m2/AgenticCoder/gitstarclub.com/.kanban-work/shared-tmp/gitstarclub-toolchain"
+GSC_PROJECT_ROOT="$HOME/AgenticCoder/gitstarclub.com"
+GSC_TOOLCHAIN_ROOT="$GSC_PROJECT_ROOT/.kanban-work/shared-tmp/gitstarclub-toolchain"
 export PATH="$GSC_TOOLCHAIN_ROOT/node-v24.20.0/node-v24.20.0-darwin-arm64/bin:$GSC_TOOLCHAIN_ROOT/bun-1.4.2/bun-darwin-aarch64:/usr/bin:/bin"
 GSC_EXPECTED_SHA="$(git rev-parse HEAD)"
 test "$GSC_EXPECTED_SHA" = "$(git rev-parse origin/pre)"
 test -z "$(git status --short)"
-export AGGREGATE_SOURCE="/Users/ms23m2/AgenticCoder/gitstarclub.com/.kanban-work/leader/star-history-agg"
-export GSC_SECRET_FILE="/Users/ms23m2/AgenticCoder/gitstarclub.com/.kanban-work/secrets/pre-cron-secret"
+export AGGREGATE_SOURCE="$GSC_PROJECT_ROOT/.kanban-work/leader/star-history-agg"
+export GSC_SECRET_FILE="$GSC_PROJECT_ROOT/.kanban-work/secrets/pre-cron-secret"
 export GSC_IMPORT_GENERATION="bootstrap-aggregate-gap-$(date -u +%Y%m%dT%H%M%SZ)"
 node --version
 bun --version
