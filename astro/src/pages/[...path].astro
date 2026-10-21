@@ -1,7 +1,20 @@
 ---
+import { getDictionary } from "../../../web/lib/i18n";
+import { pageRoute } from "../lib/routing";
+import Layout from "../layouts/Layout.astro";
+import { Meta } from "../lib/contracts";
 export const prerender = false;
+const route = pageRoute(Astro.url.pathname);
+if (!route) return new Response("Not found", { status: 404 });
+const t = await getDictionary(route.locale);
+const title = route.path === "/privacy" ? t.meta.privacyTitle : t.meta.homeTitle;
+const description = route.path === "/privacy" ? t.meta.privacyDescription : t.meta.homeDescription;
+const meta = await Astro.locals.data.base("meta.json", Meta);
 ---
-<html lang="en">
-  <head><title>Gate 0 mechanism fixture</title><meta name="robots" content="noindex, nofollow" /></head>
-  <body><main><h1>Gate 0 mechanism fixture</h1></main></body>
-</html>
+<!-- Concrete P1-P6 page entries replace this shell fallback without editing it. -->
+<Layout locale={route.locale} canonicalPath={route.path} title={title} description={description}>
+  <main id="main" tabindex="-1" data-locale={route.locale} data-path={route.path} class="mx-auto w-full max-w-[60rem] py-[clamp(2rem,5vw,4rem)] px-[clamp(1.25rem,5vw,2.5rem)]">
+    <h1 class="mt-3 max-w-[16ch] text-[clamp(2.2rem,6vw,4rem)] font-extrabold leading-[1.04] text-on-surface">{title}</h1>
+    {meta?.generated_at && <p class="mt-4 font-mono text-on-surface-variant">{t.common.dataAsOf} <time datetime={meta.generated_at}>{meta.generated_at}</time></p>}
+  </main>
+</Layout>

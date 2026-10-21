@@ -1,0 +1,43 @@
+---
+import { type Dict, type Locale } from "../../../web/lib/i18n";
+import { localizedPath } from "../../../web/lib/i18n/routing";
+import { resolveChromePath, type ChromeKey } from "../../../web/lib/i18n/client";
+import { SearchBox } from "../../../web/app/_explore/SearchBox";
+import { ThemeToggle } from "../../../web/app/components/ThemeToggle";
+import { Star } from "../../../web/app/_explore/Star";
+import LanguageSwitcher from "./LanguageSwitcher.astro";
+interface Props { locale: Locale; canonicalPath: string; dictionary: Dict; tag?: string }
+const { locale, canonicalPath, dictionary: t, tag } = Astro.props;
+const label = (key: ChromeKey) => resolveChromePath(t, key);
+const items = [["/pulse", "nav.pulse"], ["/rankings", "nav.rankings"], ["/categories", "nav.categories"], ["/compare", "nav.compare"], ["/about", "nav.about"]] as const;
+const active = (path: string) => path === "/pulse" ? canonicalPath === "/" || canonicalPath === path : canonicalPath === path || canonicalPath.startsWith(`${path}/`);
+const navBase = "inline-flex min-h-11 shrink-0 items-center rounded-full border px-3 font-mono text-[0.78rem] font-semibold transition-[background,border-color,color,box-shadow,transform] duration-200 ease-[var(--ease-emphasized)] hover:-translate-y-0.5 lg:min-h-10";
+---
+<header class="app-bar sticky top-0 z-20 border-b border-outline-variant bg-surface/80 pb-[0.85rem] shadow-[var(--elev-1)] backdrop-blur-lg backdrop-saturate-150 px-[clamp(1.25rem,5vw,2.5rem)]">
+  <div class="grid w-full min-w-0 gap-3 lg:grid-cols-[auto_minmax(13rem,26rem)_minmax(0,1fr)] lg:items-center lg:gap-4">
+    <div class="flex min-w-0 items-center justify-between gap-3">
+      <a href={localizedPath(locale, "/")} class="inline-flex min-w-0 shrink-0 items-center gap-2 text-[1.15rem] font-extrabold text-on-surface">
+        <span class="text-[1.05em]" aria-hidden="true"><Star /></span><span class="truncate">GitStarClub</span>
+        {tag && <span class="ml-1 shrink-0 rounded-full bg-primary-container px-2 py-0.5 font-mono text-[0.7rem] font-semibold text-on-primary-container">{tag}</span>}
+      </a>
+      <div class="flex shrink-0 items-center gap-1.5 lg:hidden">
+        <LanguageSwitcher locale={locale} canonicalPath={canonicalPath} label={label("a11y.language")} />
+        <ThemeToggle client:load label={label("a11y.switchTheme")} />
+      </div>
+    </div>
+    <div class="min-w-0 lg:justify-self-start">
+      <SearchBox client:load locale={locale} labels={{ label: label("search.label"), placeholder: label("search.placeholder"), empty: label("search.empty"), loading: label("search.loading"), error: label("search.error"), retry: label("search.retry"), historical: label("search.historical"), addToCompare: label("compare.addToCompare"), removeFromCompare: label("compare.remove"), openCompare: label("compare.openCompare") }} />
+    </div>
+    <div class="flex min-w-0 items-center gap-2 lg:justify-end">
+      <nav class="nav-scroll-affordance min-w-0 flex-1 overflow-x-auto overscroll-x-contain py-1 pr-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-none lg:overflow-visible lg:py-0 lg:pr-0" aria-label={label("a11y.primary")}>
+        <div class="flex min-w-max items-center gap-1.5 lg:min-w-0 lg:flex-wrap lg:justify-end lg:gap-x-2 lg:gap-y-1.5">
+          {items.map(([path, key]) => <a href={localizedPath(locale, path)} aria-current={active(path) ? "page" : undefined} class={`${navBase} ${active(path) ? "border-primary-container bg-primary-container text-on-primary-container shadow-[var(--elev-1)]" : "border-transparent text-on-surface-variant hover:border-outline-variant hover:bg-surface-container-high hover:text-on-surface"}`}>{label(key)}</a>)}
+        </div>
+      </nav>
+      <div class="hidden shrink-0 items-center gap-1.5 lg:flex">
+        <LanguageSwitcher locale={locale} canonicalPath={canonicalPath} label={label("a11y.language")} />
+        <ThemeToggle client:load label={label("a11y.switchTheme")} />
+      </div>
+    </div>
+  </div>
+</header>
