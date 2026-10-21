@@ -1,0 +1,8 @@
+---
+import { organizationIndex } from "../../../packages/p4/data";
+import OrgIndexPage from "../../../packages/p4/OrgIndexPage.astro";
+export const prerender = false;
+const result = await organizationIndex(Astro.locals.data, Astro.url.pathname, Astro.params.page);
+if (result instanceof Response) return result;
+---
+<OrgIndexPage {...result} />
