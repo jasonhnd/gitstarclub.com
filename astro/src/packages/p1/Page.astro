@@ -1,0 +1,11 @@
+---
+import controlsUrl from "./controls.js?url&no-inline";
+import Layout from "../../layouts/Layout.astro";
+import type { LoadedPage } from "./page";
+interface Props { page: LoadedPage }
+const { page } = Astro.props;
+---
+<Layout {...page}>
+  <Fragment set:html={page.html} />
+  {page.interactive && <script is:inline type="module" src={controlsUrl}></script>}
+</Layout>
