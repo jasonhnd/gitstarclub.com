@@ -1,4 +1,5 @@
 @import "../../../web/app/globals.css";
+@import "../packages/p2/styles.css";
 @import "@fontsource-variable/plus-jakarta-sans";
 @import "@fontsource-variable/geist-mono";
 @source "../../../web/app/_explore";
