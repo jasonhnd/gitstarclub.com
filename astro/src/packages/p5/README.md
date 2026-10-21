@@ -15,7 +15,10 @@ base/bootstrap selection, live generation history, schema validation and
 folded-period discovery. Reads stay scoped to the captured publication and
 native DATA facade. The adapter never changes global fetch or process.env,
 never writes storage, and keeps original timeout/cancellation behavior.
-Publication identity separates the existing history memo keys.
+Publication identity separates the existing history memo keys. Pulse invokes
+the existing availability resolver with its exported Cloudflare lookback limits.
+The shared stylesheet adds source discovery for the imported web presentation
+components so Tailwind emits their original utilities. No design values change.
 
 `/search-index` belongs to P6; `/repo-curve` belongs to P2. Until those packages
 land, a local comparison gateway can delegate these two endpoints to the
