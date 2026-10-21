@@ -1,16 +1,16 @@
-function feedback(button: HTMLButtonElement, label: string) {
+function feedback(button, label) {
   const text = Array.from(button.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
   if (!text) return;
   const previous = text.textContent;
   text.textContent = label;
   window.setTimeout(() => { text.textContent = previous; }, 1600);
 }
-async function copy(button: HTMLButtonElement, value: string, label: string) {
+async function copy(button, value, label) {
   try { await navigator.clipboard.writeText(value); feedback(button, label); } catch { /* Match existing clipboard permission behavior. */ }
 }
-for (const island of document.querySelectorAll<HTMLElement>("p1-share,p1-snippet")) {
+for (const island of document.querySelectorAll("p1-share,p1-snippet")) {
   const props = JSON.parse(island.dataset.props ?? "{}");
-  const buttons = island.querySelectorAll<HTMLButtonElement>("button");
+  const buttons = island.querySelectorAll("button");
   if (island.localName === "p1-share") {
     buttons[0]?.addEventListener("click", () => { void copy(buttons[0], props.url ?? window.location.href, props.labels.copied); });
     buttons[1]?.addEventListener("click", () => {
