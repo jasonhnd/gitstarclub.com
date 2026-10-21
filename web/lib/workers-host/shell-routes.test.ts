@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   classifyWorkerRequest,
+  isPublicationIndependentRequest,
   isWorkerShellRequest,
   normalizeWorkerPathname,
 } from "./shell-routes";
@@ -29,5 +30,27 @@ describe("worker host routing", () => {
     expect(classifyWorkerRequest("/preview/health", "POST")).toBe("next");
     expect(classifyWorkerRequest("/enqueue", "GET")).toBe("next");
     expect(normalizeWorkerPathname("/preview/health/")).toBe("/preview/health");
+  });
+
+  test("only explicit non-data handlers bypass publication reads", () => {
+    for (const [path, method] of [
+      ["/api/lang", "GET"],
+      ["/api/lang/", "HEAD"],
+      ["/api/workflows/refresh/revalidate/", "post"],
+    ]) expect(isPublicationIndependentRequest(path, method)).toBe(true);
+
+    for (const [path, method] of [
+      ["/api/lang/extra", "GET"],
+      ["/api/lang", "POST"],
+      ["/api/workflows/refresh/revalidate", "GET"],
+      ["/api/cron/daily", "GET"],
+      ["/api/cron/weekly", "GET"],
+      ["/api/workflows/refresh/start", "GET"],
+      ["/api/workflows/refresh/step", "POST"],
+      ["/api/workflows/refresh/rollback", "POST"],
+      ["/search-index", "GET"],
+      ["/repo-curve", "GET"],
+      ["/rankings", "HEAD"],
+    ]) expect(isPublicationIndependentRequest(path, method)).toBe(false);
   });
 });

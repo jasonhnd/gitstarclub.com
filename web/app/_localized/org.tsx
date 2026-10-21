@@ -11,6 +11,7 @@ import { JsonLd } from "@/app/_explore/JsonLd";
 import { PageHero } from "@/app/_explore/PageHero";
 import { RelatedPages } from "@/app/_explore/RelatedPages";
 import { StarCurve } from "@/app/_explore/StarCurve";
+import { aggregateDailyPoints } from "@/lib/star-history-provenance";
 import { Star } from "@/app/_explore/Star";
 import type { Row } from "@/app/_explore/RankingList";
 import { RepositoryRankingTable } from "@/app/_explore/SemanticDataTable";
@@ -241,6 +242,7 @@ export async function OrgPageView({ locale, login: raw }: { locale: Locale; logi
             <div className="mb-3 max-w-[64ch]">
               <h2 className="text-[1.2rem] font-extrabold tracking-tight text-on-surface">{t.org.recentMovement}</h2>
               <p className="mt-1 text-[0.9rem] text-on-surface-variant">{t.org.recentMovementDescription}</p>
+              {aggregateDailyPoints(recentMovement, org.curve.provenance).length > 0 && <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">{t.common.starHistoryNote}</p>}
             </div>
             <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {recentMovement.map(([date, adds]) => (

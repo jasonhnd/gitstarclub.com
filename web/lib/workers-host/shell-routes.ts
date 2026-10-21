@@ -39,3 +39,11 @@ export function classifyWorkerRequest(pathname: string, method: string): WorkerR
 export function isWorkerShellRequest(pathname: string, method: string): boolean {
   return classifyWorkerRequest(pathname, method) === "shell";
 }
+
+/** These handlers do not consume published data or use shared page/data caches. */
+export function isPublicationIndependentRequest(pathname: string, method: string): boolean {
+  const path = normalizeWorkerPathname(pathname);
+  const verb = method.toUpperCase();
+  return (path === "/api/lang" && (verb === "GET" || verb === "HEAD"))
+    || (path === "/api/workflows/refresh/revalidate" && verb === "POST");
+}
