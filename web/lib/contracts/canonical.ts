@@ -159,12 +159,25 @@ export const RepoMetadataRecord = z.object({
 export type RepoMetadataRecord = z.infer<typeof RepoMetadataRecord>;
 
 /** ops/workflows/<run_id>/metadata-<bucket>.json — resumable GraphQL batch progress. */
+export const MetadataSkippedRepo = z.object({
+  id: NonNegativeInt,
+  node_id: SafeText,
+  full_name: SafeText,
+  reason: z.enum(["graphql_502", "not_returned"]),
+  value_status: z.enum(["retained", "missing"]),
+}).strict();
+export type MetadataSkippedRepo = z.infer<typeof MetadataSkippedRepo>;
+
 export const MetadataBucketProgress = z.object({
   v: z.literal(1),
   bucket: NonNegativeInt,
   fetched: z.record(z.string(), RepoMetadataRecord),
   transient_attempts: NonNegativeInt,
   last_error: SafeText.nullable().optional(),
+  // Optional so pre-split checkpoints remain readable. An empty queue means
+  // complete; omitted means reconstruct the original pages from the whitelist.
+  pending_pages: z.array(z.array(NonNegativeInt).min(1).max(100)).optional(),
+  skipped: z.array(MetadataSkippedRepo).optional(),
 }).strict();
 export type MetadataBucketProgress = z.infer<typeof MetadataBucketProgress>;
 

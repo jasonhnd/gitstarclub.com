@@ -46,9 +46,18 @@ export type FoldCursorAcc = {
   foldedThroughWeek: string;
 };
 
+export type DeferredRefreshFailure = {
+  message: string;
+  publication?: { phase: "post_commit" | "commit_unknown"; version: string; step: string };
+};
+
 export type RefreshCursor = {
+  /** Only terminal diagnostics run in this fresh queue invocation. */
+  failure?: DeferredRefreshFailure;
   startedAt?: string;
   fencingToken?: number;
+  /** Durable page number for steps whose work grows with the snapshot. */
+  workOffset?: number;
   bucket?: number;
   metadata?: {
     repos: number;
