@@ -72,5 +72,15 @@ owner order. GitHub Actions remains disabled.
   not an acceptable replacement. See the official
   [object upload API](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/objects/methods/upload/).
   No unsupported write transport has been implemented.
-- Deployment readback, source-plan counts and any resulting continuation
-  requirement will be recorded on the card before temporary output is removed.
+- Deployment succeeded at 23:19:18 UTC on 2026-10-21. Version
+  `2a7ad7b8-7bd4-41eb-aaa9-3c09af609999` receives 100% of preview traffic;
+  deployment `68a6a2ec-1fa6-4dc8-93f2-31e9c3112ef7` and the public deployment
+  identity confirm the exact tested commit. Post-deployment artifact validation
+  passed and the reviewed Worker configuration remained byte-identical.
+- The CLI acknowledged applying all three preview schedules. The pinned CLI
+  has no independent live schedule read/list operation, so no scheduled
+  invocation is claimed. CRON_SECRET remains in the secret-name inventory;
+  no secret values were requested.
+- Source-plan counts and any resulting continuation requirement will be
+  recorded on the card before temporary output is removed. This card has not
+  called a cron/refresh endpoint or written an R2 data object.
