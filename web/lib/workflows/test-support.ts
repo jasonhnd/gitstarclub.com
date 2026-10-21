@@ -1,17 +1,39 @@
 import { setSystemTime, spyOn } from "bun:test";
 import * as github from "@/lib/github";
 import * as storage from "@/lib/storage";
-import { MemoryObjectStore, type ObjectPutOptions } from "@/lib/storage";
+import { MemoryObjectStore, type ObjectGetResult, type ObjectHeadResult, type ObjectListOptions, type ObjectPutOptions } from "@/lib/storage";
 import { clearViewParseMemo } from "@/lib/data/parse-view";
 import { invalidatePublishedVersionMemo } from "@/lib/data/source";
 import { REPO_BUCKETS, repoBucket } from "./buckets";
 import { BlobWorkflowLeaseStore, WorkflowLeaseWriteCache, blobWorkflowLeaseStore } from "./lease";
+import type { RefreshStepRouteOptions } from "./runtime/step-route";
 import type { RefreshStepJob, RefreshStepResult } from "./runtime/types";
 
 export const TEST_RUN = "refresh-2026-10-02-test";
 export const PREVIOUS_RUN = "refresh-2025-01-01-test";
 export const TEST_NOW = "2026-10-02T00:00:00.000Z";
 export type FullJob = Extract<RefreshStepJob, { graph: "full" }>;
+
+export const SUBREQUEST_LIMIT_ERROR = "Too many API requests by single Worker invocation";
+
+/** Counts physical service operations, including failed attempts, per invocation. */
+export class WorkflowSubrequestCounter {
+  readonly counts: Record<string, number> = {};
+  limit = Infinity;
+  total = 0;
+
+  reset(limit = Infinity): void {
+    this.limit = limit;
+    this.total = 0;
+    for (const key of Object.keys(this.counts)) delete this.counts[key];
+  }
+
+  use(kind: string): void {
+    this.total++;
+    this.counts[kind] = (this.counts[kind] ?? 0) + 1;
+    if (this.total > this.limit) throw new Error(SUBREQUEST_LIMIT_ERROR);
+  }
+}
 
 /** Track the real object-store port, including CAS and physical deletions. */
 export class WorkflowTestStore extends MemoryObjectStore {
@@ -20,6 +42,7 @@ export class WorkflowTestStore extends MemoryObjectStore {
   readonly writes: string[] = [];
   readonly deletions: string[] = [];
   failWrite?: (path: string) => boolean;
+  readonly subrequests = new WorkflowSubrequestCounter();
   failRead = false;
   failDelete = false;
 
@@ -29,6 +52,7 @@ export class WorkflowTestStore extends MemoryObjectStore {
   }
 
   override async put(path: string, body: string | Uint8Array, options?: ObjectPutOptions) {
+    this.subrequests.use("put");
     if (this.failWrite?.(path)) {
       this.failWrite = undefined;
       throw new Error(`injected write failure: ${path}`);
@@ -40,6 +64,7 @@ export class WorkflowTestStore extends MemoryObjectStore {
   }
 
   override async del(paths: string | string[]) {
+    this.subrequests.use("delete");
     if (this.failDelete) {
       this.failDelete = false;
       throw new Error("injected delete failure");
@@ -49,6 +74,30 @@ export class WorkflowTestStore extends MemoryObjectStore {
       delete this.contents[path];
       this.deletions.push(path);
     }
+  }
+
+  override async get(path: string): Promise<ObjectGetResult | null> {
+    this.subrequests.use("get");
+    return super.get(path);
+  }
+
+  async readPublic(path: string): Promise<ObjectGetResult | null> {
+    this.subrequests.use("fetchRead");
+    return super.get(path);
+  }
+
+  async getOrigin(path: string): Promise<ObjectGetResult | null> {
+    return this.get(path);
+  }
+
+  override async head(path: string): Promise<ObjectHeadResult | null> {
+    this.subrequests.use("head");
+    return super.head(path);
+  }
+
+  override async list(options: ObjectListOptions) {
+    this.subrequests.use("list");
+    return super.list(options);
   }
 
   json<T = Record<string, unknown>>(path: string): T {
@@ -62,7 +111,7 @@ export class WorkflowTestStore extends MemoryObjectStore {
   }
 }
 
-export function workflowSeed(): Record<string, string> {
+export function workflowSeed(repoCount = 1000, ownerCount = 1): Record<string, string> {
   const seed: Record<string, string> = {};
   const set = (path: string, value: unknown) => { seed[path] = JSON.stringify(value); };
   const repos = Array.from({ length: REPO_BUCKETS }, () => ({} as Record<string, unknown>));
@@ -74,9 +123,10 @@ export function workflowSeed(): Record<string, string> {
   const pending: Record<string, unknown> = {};
   // The real gate requires at least 1000 repositories. Ten final periods cross
   // the actual eight-period carry boundary; no gate threshold is overridden.
-  for (let id = 1; id <= 1000; id++) {
+  for (let id = 1; id <= repoCount; id++) {
     const name = `repo-${id}`;
-    const entry = { owner: "example", name, full_name: `example/${name}`, owner_type: "Organization", language: "TypeScript", current_stars: 10000 + id, active: true, tracked_since: null };
+    const repoOwner = ownerCount === 1 ? "example" : `owner-${id % ownerCount}`;
+    const entry = { owner: repoOwner, name, full_name: `${repoOwner}/${name}`, owner_type: "Organization", language: "TypeScript", current_stars: 10000 + id, active: true, tracked_since: null };
     lookup[String(id)] = entry;
     entries.push({ id, node_id: `R_${id}`, owner: entry.owner, name, full_name: entry.full_name, stars: entry.current_stars });
     repos[repoBucket(id)]![String(id)] = { ...entry, id, node_id: `R_${id}`, d: 1, topics: [], created_at: "2025-01-01" };
@@ -92,10 +142,10 @@ export function workflowSeed(): Record<string, string> {
   }
   const meta = { seam_date: "2025-12-31", schema_ver: 1, folded_through: { month: "2026-08", week: "2026-W36" }, generated_at: TEST_NOW };
   set("canonical/v2/meta.json", meta);
-  set(`views/${PREVIOUS_RUN}/meta.json`, { ...meta, active_repo_count: 1000, historical_repo_count: 0 });
+  set(`views/${PREVIOUS_RUN}/meta.json`, { ...meta, active_repo_count: repoCount, historical_repo_count: 0 });
   set(`views/${PREVIOUS_RUN}/lookup/repos.json`, lookup);
   set(`views/${PREVIOUS_RUN}/lookup/aliases.json`, {});
-  set("canonical/v2/pending/2026-09.json", { period: "2026-09", frozen_at: TEST_NOW, per_repo: pending, daily_totals: [["2026-09-07", 1000], ["2026-09-14", 1000], ["2026-09-21", 1000], ["2026-09-27", 1000]] });
+  set("canonical/v2/pending/2026-09.json", { period: "2026-09", frozen_at: TEST_NOW, per_repo: pending, daily_totals: [["2026-09-07", repoCount], ["2026-09-14", repoCount], ["2026-09-21", repoCount], ["2026-09-27", repoCount]] });
   set("canonical/v2/site-daily/2025.json", { year: "2025", cells: [["2025-12-31", 100000]] });
   set("views/latest.json", { version: PREVIOUS_RUN, run_id: PREVIOUS_RUN, published_at: "2025-01-01T00:00:00.000Z", prev_version: null, schema_ver: 1 });
   const snapshot = { generated_at: TEST_NOW, count: entries.length, entries, diff: { added: [], dropped: [] } };
@@ -111,7 +161,7 @@ export function workflowSeed(): Record<string, string> {
 export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Record<string, string> = {}) {
   const store = new WorkflowTestStore(initial);
   // A distinct test-only callback origin exposes accidental site-URL fallbacks.
-  const env = { BLOB_BASE_URL: "https://workflow.test.invalid", STORAGE_READ_DRIVER: "blob", HOSTING_TARGET: "cf", DEPLOY_ENV: "pre", CF_CRON_ORIGIN: "https://workflow-cron.test.invalid", WORKFLOW_RUNTIME: "memory", CRON_SECRET: "workflow-test-only", NEXT_PUBLIC_SITE_URL: "https://workflow.test.invalid", WORKFLOW_STEP_BASE_URL: "https://workflow.test.invalid", WHITELIST_SEARCH_SHARDS: "0", ...extraEnv };
+  const env = { BLOB_BASE_URL: "https://workflow.test.invalid", STORAGE_READ_DRIVER: "blob", HOSTING_TARGET: "cf", DEPLOY_ENV: "pre", CF_CRON_ORIGIN: "https://workflow-cron.test.invalid", WORKFLOW_RUNTIME: "memory", WORKFLOW_QUEUE_ENQUEUE_URL: "https://workflow.test.invalid/api/workflows/refresh/enqueue", CRON_SECRET: "workflow-test-only", NEXT_PUBLIC_SITE_URL: "https://workflow.test.invalid", WORKFLOW_STEP_BASE_URL: "https://workflow.test.invalid", WHITELIST_SEARCH_SHARDS: "0", ...extraEnv };
   const previousEnv = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
   Object.assign(process.env, env);
   setSystemTime(new Date(TEST_NOW));
@@ -119,22 +169,27 @@ export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Recor
   let clock = Date.parse(TEST_NOW);
   const clockSpy = spyOn(Date, "now").mockImplementation(() => (clock += 20));
   const storeSpy = spyOn(storage, "getWriteObjectStore").mockReturnValue(store);
-  const lease = new BlobWorkflowLeaseStore(new WorkflowLeaseWriteCache(), store);
+  const leaseCache = new WorkflowLeaseWriteCache();
+  const lease = new BlobWorkflowLeaseStore(leaseCache, store);
   const leaseSpies = [
     spyOn(blobWorkflowLeaseStore, "read").mockImplementation(() => lease.read()),
     spyOn(blobWorkflowLeaseStore, "create").mockImplementation((value) => lease.create(value)),
     spyOn(blobWorkflowLeaseStore, "compareAndSet").mockImplementation((etag, value) => lease.compareAndSet(etag, value)),
   ];
-  const metadataSpy = spyOn(github, "fetchRepositoryMetadata").mockImplementation(async (nodeIds) => new Map(nodeIds.map((nodeId) => {
-    const id = Number(nodeId.slice(2));
-    return [id, { owner: "example", owner_type: "Organization" as const, name: `repo-${id}`, full_name: `example/repo-${id}`, current_stars: 10000 + id, description: null, language: "TypeScript", languages: [], topics: [], created_at: "2025-01-01", is_archived: false }];
-  })));
+  const metadataSpy = spyOn(github, "fetchRepositoryMetadata").mockImplementation(async (nodeIds) => {
+    store.subrequests.use("fetchGithub");
+    return new Map(nodeIds.map((nodeId) => {
+      const id = Number(nodeId.slice(2));
+      return [id, { owner: "example", owner_type: "Organization" as const, name: `repo-${id}`, full_name: `example/repo-${id}`, current_stars: 10000 + id, description: null, language: "TypeScript", languages: [], topics: [], created_at: "2025-01-01", is_archived: false }];
+    }));
+  });
   const originalFetch = globalThis.fetch;
   const invalidations: Array<{ url: string; init?: RequestInit }> = [];
   let invalidationStatus = 200;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.pathname === "/api/workflows/refresh/revalidate") {
+      store.subrequests.use("fetchInvalidation");
       invalidations.push({ url: url.href, init });
       return new Response(null, { status: invalidationStatus });
     }
@@ -147,7 +202,7 @@ export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Recor
       store.failRead = false;
       return new Response("{", { status: 200 });
     }
-    const object = await store.get(path);
+    const object = await store.readPublic(path);
     return object ? new Response(object.body, { headers: { "content-type": "application/json", etag: object.etag! } }) : new Response(null, { status: 404 });
   }) as typeof fetch;
   clearViewParseMemo();
@@ -157,10 +212,14 @@ export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Recor
     store,
     invalidations,
     setInvalidationStatus: (status: number) => { invalidationStatus = status; },
-    async run(job: FullJob): Promise<{ response: Response; result?: RefreshStepResult }> {
+    async run(job: FullJob, options: Pick<RefreshStepRouteOptions, "executeFull" | "recordCheckpoint"> & { subrequestLimit?: number; queueConsumer?: boolean } = {}): Promise<{ response: Response; result?: RefreshStepResult }> {
+      store.subrequests.reset(options.subrequestLimit);
+      leaseCache.forget();
+      clearViewParseMemo();
+      invalidatePublishedVersionMemo();
       const { runRefreshStepRoute } = await import("./runtime/step-route");
-      const response = await runRefreshStepRoute(new Request(`${env.BLOB_BASE_URL}/api/workflows/refresh/step`, { method: "POST", headers: { authorization: `Bearer ${env.CRON_SECRET}`, "content-type": "application/json" }, body: JSON.stringify(job) }), { kind: "memory", retry: { retries: 0, delaysMs: [] } });
-      const body = await response.json() as { result?: RefreshStepResult };
+      const response = await runRefreshStepRoute(new Request(`${env.BLOB_BASE_URL}/api/workflows/refresh/step`, { method: "POST", headers: { authorization: `Bearer ${env.CRON_SECRET}`, "content-type": "application/json", ...(options.queueConsumer ? { "x-gitstarclub-queue-advance": "consumer" } : {}) }, body: JSON.stringify(job) }), { kind: options.queueConsumer ? "cf-queue" : "memory", retry: { retries: 0, delaysMs: [] }, executeFull: options.executeFull, recordCheckpoint: options.recordCheckpoint });
+      const body = await response.clone().json() as { result?: RefreshStepResult };
       return { response, result: body.result };
     },
     restore() {
@@ -178,4 +237,18 @@ export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Recor
       invalidatePublishedVersionMemo();
     },
   };
+}
+
+/** Drain only one logical step while preserving the real invocation boundaries. */
+export async function drainWorkflowStep(harness: ReturnType<typeof installWorkflowHarness>, first: FullJob) {
+  const { nextRefreshJob } = await import("./runtime/graph");
+  let job: FullJob | null = first;
+  for (let hop = 0; job && hop < 1000; hop++) {
+    const output = await harness.run(job);
+    if (!output.response.ok || !output.result) return output;
+    const next = nextRefreshJob(job, output.result) as FullJob | null;
+    if (!next || next.name !== first.name) return output;
+    job = next;
+  }
+  throw new Error(`step ${first.name} did not finish`);
 }
