@@ -39,3 +39,14 @@ represent owner/name; no new single-segment owner page is introduced.
   detached clone of the exact final commit, using owner-ordered shared caches.
 - One issue and one PR into `feat/astro-site`, with `Closes #N`, commands/results,
   shared-file changes and limitations. Independent review performs acceptance.
+
+## Review round 1 integration
+
+Merge the current `feat/astro-site` base containing P7 before re-verification.
+Resolve only the shared host response conflict: retain P7's API operation
+wrapper, authentication responses, page-only header rules and unwrapped
+publication failures, alongside P2's curve headers and exact failure bytes.
+Keep every integrated P7 route and test. Re-run the complete exact-head local
+gates, both packages' actual Worker checks, P2 page/API parity and sampled
+screenshots. Update the existing PR and confirm GitHub reports it mergeable.
+No other package behavior, data, deployment or delivery policy changes.
