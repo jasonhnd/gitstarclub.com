@@ -3,25 +3,31 @@
 About and Privacy use the shared Astro layout and server-rendered React bodies.
 They import existing dictionaries and presentational components without client
 hydration. Only P0's shared search and theme controls load JavaScript. About
-reads captured base metadata through the P0 facade and preserves Dataset/FAQ
-structured data, data dates, citation links and missing-data presentation.
+reads captured base metadata through the shared withPublishedReaders adapter
+and preserves Dataset/FAQ structured data, data dates, citation links and
+missing-data presentation.
 
 Eight sitemap entries delegate to the unchanged web sitemap implementation.
 That reader preserves category availability, last-modified dates, localized
 alternates and `resolveAvailableRankPeriods`. Search delegates to the existing
 published reader and response builder, including truncation, missing data and
-retryable failures. A narrow Astro alias adapts their timeout fetch transport to the request's
-native DATA binding under a virtual, non-network origin. It leaves pointer,
+retryable failures. The same Astro fetch-timeout alias used by P5 adapts their
+transport to the captured request data through src/lib/published-readers.ts and
+withPublishedReaders. A publication-specific virtual origin isolates reader
+memoization and prevents network access to published objects. It leaves pointer,
 overlay, history and schema selection in the existing readers; it never patches
 global fetch. External fetches retain timeouts with Worker-compatible cache
 options. Sitemap cache headers survive the shared host boundary; bypassed search
-responses retain the existing private/no-store host policy. The existing
-request-scoped Cloudflare read-policy helper keeps ranking lookback limits
-identical to the current Worker.
+responses retain the existing private/no-store host policy. The
+optional Cloudflare read policy is enabled explicitly by P6 for ranking
+discovery, keeping its lookback limits identical to the current Worker without
+changing P5 defaults. HEAD reads use the same facade and return no body. No P6
+transport module or independent origin remains.
 No publication, coverage or writer behavior changes.
 
 Robots and manifest reuse the current metadata definitions and preserve their
-text/JSON serialization. P0 remains a noindex skeleton; production activation
+text/JSON serialization. Privacy, robots and manifest have no published reads
+to scope. P0 remains a noindex skeleton; production activation
 and the shared default social card belong to final integration. Neither About
 nor Privacy defines a page-level social image.
 
@@ -34,3 +40,6 @@ About and Privacy at both sizes (0.5 CSS pixel tolerance). Explicit shared
 component style sources preserve the hero grid, capsule and related links. Inspect
 the generated screenshots and delete them after recording results. The route
 list is `tests/p6/paths.json`; package unit tests run with `bun run test`.
+
+For a transport-only conflict fix, run the comparison without --screenshots;
+all strict page, endpoint and layout assertions still run.

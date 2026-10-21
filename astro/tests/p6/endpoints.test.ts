@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { startFixture, fixtureRecords } from "../../scripts/fixture";
 import { withWorkerEnv } from "../../../web/lib/workers-host/runtime-env";
-import { GET as search } from "../../src/pages/search-index";
-import { GET as sitemap } from "../../src/pages/sitemap-en.xml";
+import { getSearchIndex } from "../../../web/lib/data/search";
+import { buildSearchIndexResponse } from "../../../web/lib/search-index-response";
+import { localeSitemapRoute } from "../../../web/lib/sitemap-routes";
 import { GET as manifest } from "../../src/pages/manifest.webmanifest";
 import { GET as robots } from "../../src/pages/robots.txt";
 import { SearchIndex } from "../../../web/lib/contracts";
@@ -10,14 +11,16 @@ import { LOCALES } from "../../../web/lib/i18n";
 import { serializeRobots } from "../../src/packages/p6/robots";
 import type { APIContext } from "astro";
 
+// Direct Bun tests cover reused builders; compare-local checks the built Worker
+// with the actual Vite transport alias and request locals.
 const context = {} as APIContext;
 
-test("P6 search uses the existing published response", async () => {
+test("P6 reused search builder preserves the existing published response", async () => {
   const records = fixtureRecords();
   const fixture = startFixture(records);
   try {
     await withWorkerEnv({ STORAGE_READ_DRIVER: "blob", BLOB_BASE_URL: fixture.url.origin }, async () => {
-      const response = await search(context);
+      const response = await buildSearchIndexResponse(getSearchIndex);
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(SearchIndex.safeParse(body).success).toBe(true);
@@ -27,11 +30,11 @@ test("P6 search uses the existing published response", async () => {
   } finally { await fixture.stop(true); }
 });
 
-test("P6 sitemap serves every language and omits unpublished ranking periods", async () => {
+test("P6 reused sitemap builder serves every language and omits unpublished ranking periods", async () => {
   const fixture = startFixture();
   try {
     await withWorkerEnv({ STORAGE_READ_DRIVER: "blob", BLOB_BASE_URL: fixture.url.origin }, async () => {
-      const response = await sitemap(context);
+      const response = await localeSitemapRoute("en")();
       const xml = await response.text();
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe("application/xml; charset=utf-8");
@@ -60,27 +63,30 @@ test("the Worker preserves endpoint cache headers while keeping HTML behind its 
   expect(html.headers.get("cache-control")).toBe("private, no-store");
 });
 
-test("published native transport is read-only and uses the request binding without changing global fetch", async () => {
-  const { fetchWithTimeout } = await import("../../src/packages/p6/published-fetch");
-  const { PUBLISHED_READ_ORIGIN, withPublishedReads } = await import("../../src/packages/p6/published-reads");
-  const { resolveRuntimeEnv } = await import("../../../web/lib/workers-host/runtime-env");
+test("published native transport uses captured request data without changing global fetch", async () => {
+  const { fetchWithTimeout, withPublishedReaders } = await import("../../src/lib/published-readers");
+  const { pageData } = await import("../../src/lib/data");
+  const { workerBindings } = await import("../../../web/lib/workers-host/runtime-env");
   const original = globalThis.fetch;
   const reads: string[] = [];
-  const DATA = { async get(key: string) {
+  const bucket = { async get(key: string) {
     reads.push(key);
     if (key === "missing.json") return null;
     return { text: async () => '{"fixture":true}', etag: "fixture" };
-  } };
-  await withWorkerEnv({ DATA }, () => withPublishedReads(async () => {
-    expect(resolveRuntimeEnv().R2_PUBLIC_BASE_URL).toBe(PUBLISHED_READ_ORIGIN);
-    const { rankPeriodLookbackLimits } = await import("../../../web/lib/data/rank-periods");
-    expect(rankPeriodLookbackLimits()).toEqual({ monthLookback: 1, weekLookback: 1 });
-    const response = await fetchWithTimeout(`${PUBLISHED_READ_ORIGIN}/views/v1/meta.json?v=v1`, { cache: "force-cache" });
+  } } as unknown as Parameters<typeof pageData>[0];
+  const data = pageData(bucket, { id: "p6", views: null, bootstrap: null, live: null });
+  await withPublishedReaders(data, async () => {
+    const origin = workerBindings().BLOB_BASE_URL;
+    expect(origin).toBe("https://p6.astro-data.invalid");
+    const response = await fetchWithTimeout(`${origin}/views/v1/meta.json?v=v1`, { cache: "force-cache" });
     expect(await response.json()).toEqual({ fixture: true });
-    const absent = await fetchWithTimeout(`${PUBLISHED_READ_ORIGIN}/missing.json`);
+    const absent = await fetchWithTimeout(`${origin}/missing.json`);
     expect(absent.status).toBe(404);
-    expect(fetchWithTimeout(`${PUBLISHED_READ_ORIGIN}/meta.json`, { method: "POST" })).rejects.toThrow("read-only");
-  }));
-  expect(reads).toEqual(["views/v1/meta.json", "missing.json"]);
+    const head = await fetchWithTimeout(new Request(`${origin}/views/v1/meta.json`, { method: "HEAD" }));
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    await expect(fetchWithTimeout(`${origin}/meta.json`, { method: "POST" })).rejects.toThrow("read-only");
+  }, { cloudflareReadPolicy: true });
+  expect(reads).toEqual(["views/v1/meta.json", "missing.json", "views/v1/meta.json"]);
   expect(globalThis.fetch).toBe(original);
 });
