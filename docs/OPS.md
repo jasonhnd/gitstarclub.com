@@ -51,7 +51,10 @@ Preserve the frozen fallback until the storage runbook authorizes removal.
 
 Run `bun run build:pre` and `bun run validate:host -- --mode pre`.
 `deploy:pre` is available for a separately authorized operator, using the pinned
-adapter and cf. Do not deploy a loopback fixture build. No schedules are enabled.
+adapter and cf. Do not deploy a loopback fixture build. Mode `pre` now declares
+the three [preview schedules](#cron-route-and-schedule-reference); they take
+effect with the separately authorized preview deployment. Production schedules
+remain off pending owner authorization.
 Both modes preserve DATA/MEDIA/JOBS and same-mode self-reference. Production
 and preview have separate cache namespaces. GitHub Actions remains OFF;
 `static` and `production-build` remain the required job names if automation is
@@ -111,8 +114,8 @@ Current Worker configuration is in [Worker configuration](../web/cloudflare.conf
 | `CF_BUILD_COMMIT_SHA` | Optional CI SHA override for `Vite build` | Optional | 40 to 64 hexadecimal characters | `web/scripts/cf-build-identity.ts`; Git HEAD is used when unset. Tracked changes append `-dirty`; untracked files do not. Missing Git yields `null`. |
 | `MIN_TRACKED_STARS` | Whitelist / refresh discovery floor (star count) | Optional (default `10000`). Preview typed configuration `env.pre` is `10000`, the same floor as production | Positive-integer string. Production top-level must stay unset or `10000`. The 1k experiment is paused; restoring it is an owner decision | `web/lib/runtime-config.ts` · `web/lib/github.ts` · `web/lib/constants.mjs`; GitHub Search `stars:>=N` |
 | `WHITELIST_SEARCH_SHARDS` | whitelist GitHub Search whether sharded by hop | Optional (default off = single hop) | The string `"1"` turns it on; preview typed configuration `env.pre` is `1` | `web/lib/runtime-config.ts` · `web/lib/workflows/steps/whitelist.ts` · `web/lib/github.ts`; each hop writes `ops/workflows/<run_id>/whitelist-search.json`, and the snapshot is written only when complete. Rollback = remove it or set `0` to restore a single hop. Do not turn shards off to fix a metadata 502 |
-| `PREFLIGHT_RELAX_EMPTY_SHARDS` | Whether preview preflight treats a missing/empty canonical shard as a `{}` placeholder | Optional (default off = missing shard fail closed). typed configuration `env.pre` sets `"1"` (#662); production top-level must not set it (`scripts/cf-ci-gates.mjs`) | The string `"1"` turns it on only when `DEPLOY_ENV=pre`. Unset `DEPLOY_ENV` (including `HOSTING_TARGET=cf`) and `DEPLOY_ENV=production` / `VERCEL_ENV=production` stay fail-closed. Removing it is an owner decision | `web/lib/runtime-config.ts` · `web/lib/workflows/canonical-validation.ts` · `web/lib/workflows/steps/preflight.ts`; policy name `preview-empty-canonical-placeholder`. schema / `d` / identity / wrong bucket / non-404 still fail closed. Rollback = remove it or set `0`. Do not turn off sharded Search to fix a missing shard |
-| `WORKFLOW_COLD_START` | Whether the first preview managed publish may bootstrap canonical / an empty lookup from zero | Optional (default off). typed configuration `env.pre` sets `"1"` (#662); production top-level must not set it (`scripts/cf-ci-gates.mjs`) | The string `"1"` turns it on only when `DEPLOY_ENV=pre`, together with `PREFLIGHT_RELAX_EMPTY_SHARDS=1`. Unset `DEPLOY_ENV` (including `HOSTING_TARGET=cf`) and production stay off. The paused 1k-star experiment stays paused (`MIN_TRACKED_STARS=10000`); lowering the floor is an owner decision | `web/lib/workflows/cold-start.ts` · `web/lib/runtime-config.ts` · refresh start / preflight / whitelist / metadata / recompute I/O. It takes effect only while `views/latest.json` is still 404; written meta uses a real UTC `generated_at` and the bootstrap-day `seam_date` (no GH Archive  gross history), and **forbids** fake `node_id` / fake GraphQL. On conflict with the #515 empty-bucket placeholder, #512 502 recovery, or SafeText, **cold start wins** (see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)). After the first successful publish it automatically returns to fail closed. Rollback = remove it or set `0` |
+| `PREFLIGHT_RELAX_EMPTY_SHARDS` | Whether preview preflight treats a missing/empty canonical shard as a `{}` placeholder | Optional in code (default off = missing shard fail closed). Absent from both Worker contracts after the first preview publication; the configuration gate rejects reintroduction | The string `"1"` turns it on only when `DEPLOY_ENV=pre`. Unset `DEPLOY_ENV` (including `HOSTING_TARGET=cf`) and `DEPLOY_ENV=production` / `VERCEL_ENV=production` stay fail-closed. Steady-state preview removes it under GSC_0149 | `web/lib/runtime-config.ts` · `web/lib/workflows/canonical-validation.ts` · `web/lib/workflows/steps/preflight.ts`; policy name `preview-empty-canonical-placeholder`. schema / `d` / identity / wrong bucket / non-404 still fail closed. Historical rollback was to remove it or set `0`; the current contract requires absence. Do not turn off sharded Search to fix a missing shard |
+| `WORKFLOW_COLD_START` | Whether the first preview managed publish may bootstrap canonical / an empty lookup from zero | Optional in code (default off). Removed from the preview contract after the first publication; forbidden on both Workers by `scripts/cf-ci-gates.mjs` | The string `"1"` turns it on only when `DEPLOY_ENV=pre`, together with `PREFLIGHT_RELAX_EMPTY_SHARDS=1`. Unset `DEPLOY_ENV` (including `HOSTING_TARGET=cf`) and production stay off. The paused 1k-star experiment stays paused (`MIN_TRACKED_STARS=10000`); lowering the floor is an owner decision | `web/lib/workflows/cold-start.ts` · `web/lib/runtime-config.ts` · refresh start / preflight / whitelist / metadata / recompute I/O. It takes effect only while `views/latest.json` is still 404; written meta uses a real UTC `generated_at` and the bootstrap-day `seam_date` (no GH Archive  gross history), and **forbids** fake `node_id` / fake GraphQL. On conflict with the #515 empty-bucket placeholder, #512 502 recovery, or SafeText, **cold start wins** (see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md)). After the first successful publish it automatically returns to fail closed. The current Worker contracts omit the flag |
 | `WHITELIST_SEARCH_HOP_BUDGET_MS` | Single-hop Search wall-clock budget | Optional (default `600000` = 10 min) | Integer milliseconds, `60000..840000` (must stay under the Queue 15 min wall) | `web/lib/runtime-config.ts` · `web/lib/github.ts` `searchWhitelistHop` |
 | `HOSTING_TARGET` | Next hosting target | Optional in code (default `vercel`). Both Workers set `cf` | `vercel` \| `cf` | `web/lib/runtime-config.ts`. Production Worker `gitstarclub-web` and preview Worker `gitstarclub-web-pre` both set `cf` |
 | `NEXT_PUBLIC_HOSTING_TARGET` | `HOSTING_TARGET` public alias | Optional | Same as `HOSTING_TARGET` | `web/lib/runtime-config.ts`. The Workers set `HOSTING_TARGET=cf` |
@@ -120,7 +123,7 @@ Current Worker configuration is in [Worker configuration](../web/cloudflare.conf
 | `CF_WORKERS_HOST_LOCAL` | P3 smoke forces localhost | Optional | String `1` | `web/lib/workers-host/smoke-origin.ts` |
 | `VERCEL_DEPLOY_HOOK_URL` | Not used by the current Cloudflare deploy path | Optional | URL string | Not read by application code. Deploy with the typed configuration commands in this runbook |
 | `ALERT_WEBHOOK_URL` | Failure-alert webhook (Slack / Discord incoming webhook or `https://webhook.site/...`, POST a JSON summary; **if unset, logs only**) | Optional | An `https://…` endpoint that can receive a JSON POST | `web/lib/observability/alert.ts:45`; Workflow `sendAlert` · daily / weekly cron failure delivery |
-| `SITE_INDEXABLE` | Enables public indexing and sitemap discovery | Required for the production Cloudflare build and Worker; absent on preview | `"1"` enables indexing; other values disable it | `web/vite.config.ts`, [Worker configuration](../web/cloudflare.config.ts), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
+| `SITE_INDEXABLE` | Enables public indexing and sitemap discovery | Required on both Worker contracts: production `1`, preview `0` | `"1"` enables indexing; other values disable it | `web/vite.config.ts`, [Worker configuration](../web/cloudflare.config.ts), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Historical GCP service-account key path | Retired 2026-10-19; do not provision | Local file path, for example `./gcp-key.json` | Archived BigQuery extraction only; see [Raw backfill data](#raw-backfill-data) |
 | `GCP_PROJECT_ID` | Historical GCP project ID | Retired 2026-10-19; do not provision | GCP project ID string | Archived BigQuery extraction only; see [Raw backfill data](#raw-backfill-data) |
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin for sitemap, metadata, and structured data | Required for the production Cloudflare build and Worker | `https://gitstarclub.com` without a trailing slash | `web/vite.config.ts`, [Worker configuration](../web/cloudflare.config.ts), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
@@ -338,11 +341,11 @@ bun run scripts/backfill-live-week.ts --week 2026-W27 --finalize
 
 Endpoint method, auth, query, response, cache, and status contract see [API.md](./API.md). This section maintains the intended cadence, idempotency, and the operations runbook.
 
-Neither checked-in Worker declares cron triggers. Production `triggers.crons` and preview `env.pre` `triggers.crons` are both `[]`. The production caller is unverified. `web/vercel.json` is in the repository and is not proof of a live caller. Do not infer the caller from that file.
+Preview mode `pre` in `web/cloudflare.config.ts` declares the three scheduled triggers below, authorized for steady-state operation by GSC_0149 after the first managed publication. Production declares no scheduled triggers and must remain off pending owner authorization for stage 5. These are checked-in configuration facts; activation and the deployed version must be verified after the separate preview deployment. The production caller is unverified. `web/vercel.json` is not proof of a live caller. Do not infer the caller from that file.
 
-Intended cadence when an owner later enables schedules. Cloudflare numbers Sunday as `SUN` or `1` and rejects `0`. `7` is Saturday.
+The preview configuration enables this cadence; it remains intended cadence only for production. All times are UTC. Cloudflare numbers Sunday as `SUN` or `1` and rejects `0`. `7` is Saturday.
 
-| Job | Intended schedule (UTC) | Action | Triggers a deploy? |
+| Job | Preview schedule / production intended cadence (UTC) | Action | Triggers a deploy? |
 |---|---|---|---|
 | **Daily** | `0 3 * * *` (~03:00) | JSON-only: GraphQL looks up current_stars, then generate and validate a complete immutable live generation, switch `live/latest.json`, and `revalidatePath` the hot-set pages | **No** |
 | **Weekly** | `0 4 * * SUN` (Sunday ~04:00) | Incremental live overlay. Reuse the same generation and pointer protocol, and write `ops/sync-runs.json` | **No** |
@@ -350,7 +353,52 @@ Intended cadence when an owner later enables schedules. Cloudflare numbers Sunda
 
 `web/vercel.json` still lists Sunday as `0`. That file is not the Worker schedule.
 
-The Worker `scheduled` handler dispatches by `event.cron` to the three paths in the table. Cloudflare Cron Triggers number weekdays `1` = Sunday through `7` = Saturday and reject `0` ([Cloudflare docs](https://developers.cloudflare.com/workers/configuration/cron-triggers/)). Weekly and refresh accept `SUN` (or Cloudflare `1`); `7` is Saturday and dispatches as unknown. Daily stays `0 3 * * *`. Production `triggers.crons` **must stay `[]`** until stage 5. Preview `env.pre` `triggers.crons` **must stay `[]`** while preview schedules are paused (#543); the CI gate enforces it through `PREVIEW_CRONS_PAUSED` in `scripts/cf-ci-gates.mjs`. The intended preview expressions, when the owner re-enables them, are `0 3 * * *`, `0 4 * * SUN`, and `0 6 * * SUN`. A cron string in the Worker config does not by itself turn platform schedules on. This repo does not enable platform schedules.
+The Worker `scheduled` handler uses `planCronDispatch` in the [cron dispatcher](../workers/gitstarclub-web/src/cron-dispatch.ts): daily routes to `/api/cron/daily`, weekly to `/api/cron/weekly`, and managed refresh to `/api/workflows/refresh/start` (or its configured `REFRESH_START_URL`). Existing dispatch tests cover all three without a runtime change. Cloudflare Cron Triggers number weekdays `1` = Sunday through `7` = Saturday and reject `0` ([Cloudflare docs](https://developers.cloudflare.com/workers/configuration/cron-triggers/)). Weekly and refresh accept `SUN` (or Cloudflare `1`); `7` is Saturday and dispatches as unknown. Daily stays `0 3 * * *`. The Sunday 04:00 live job is required because daily deliberately skips Sunday; managed refresh publishes views rather than the separate live hot layer. `PREVIEW_CRONS_PAUSED` is now false in `scripts/cf-ci-gates.mjs`. The gate requires the exact three preview expressions and the existing queue consumer, rejects both first-publication flags and `WORKFLOW_FIXTURE`, and continues to require a queue-only production contract. Production must have no scheduled triggers until separately authorized; preview authorization does not enable production.
+
+### Preview steady-state activation (GSC_0149)
+
+GSC_0100 completed the first managed publication on 2026-10-21:
+`refresh-2026-10-21T21-01-25-223Z`, published at `2026-10-21T22:08:08.586Z`.
+Its one manual daily initialization published the independent live generation
+`daily-2026-10-21T22-17-18-254Z` at `2026-10-21T22:23:41.221Z`.
+The steady-state preview contract removes `WORKFLOW_COLD_START` and
+`PREFLIGHT_RELAX_EMPTY_SHARDS` from `web/host-contract.mjs`; their default behavior
+is strict. `MIN_TRACKED_STARS=10000`, preview R2 resources, and `SITE_INDEXABLE=0`
+remain in place. Production variables and its empty schedule are unchanged.
+
+The executor first submits the configuration PR into `pre` for independent
+review and completes with `waitingOn: PR merge`. Do not deploy unmerged code.
+After merge and the leader resumes GSC_0149:
+
+1. Use a fresh detached checkout of the exact merged commit. Build with
+   `bun run build:pre` against the real preview read source, without a loopback
+   fixture override, then run `bun run validate:host -- --mode pre`. Inspect
+   `.cloudflare/output/v0/workers/default/worker.config.json`: Worker
+   `gitstarclub-web-pre`, DATA `gitstarclub-data-pre`, JOBS `gitstarclub-jobs-pre`,
+   same-preview self-reference, exactly the three schedules above, neither
+   first-publication flag, and `SITE_INDEXABLE=0`. Reject production Worker,
+   data-bucket, or queue bindings.
+2. Deploy only that reviewed artifact with pinned
+   `bun run deploy:pre --skip-build`. Read back the version and
+   `https://pre.gitstarclub.com/.well-known/deployment` commit. Read schedules
+   through pinned cf if supported, and confirm the secret name `CRON_SECRET`
+   remains. If cf cannot read live schedules, record that limitation explicitly;
+   generated configuration and a manual request do not prove scheduler execution.
+3. Record the current `https://data-pre.gitstarclub.com/live/latest.json`, then
+   issue the single authorized `GET https://pre.gitstarclub.com/api/cron/daily`.
+   Read the designated `.kanban-work/secrets/pre-cron-secret` into a stdin header
+   with `printf | curl --header @-`; never print or place its value in arguments,
+   logs, or evidence. Record the resulting generation and pointer advancement,
+   and verify real data on `/`, `/ja`, `/react/react`, and `/ja/react/react`.
+   Retain preview noindex behavior.
+4. Leave the next managed refresh to the Sunday 06:00 cron. Do not send another
+   `/start`, rotate secrets, edit R2 objects, or operate on production. Report
+   merged SHA, deployed version, schedule readback or limitation, and daily run id.
+
+The dataset still has no historical backfill. A later managed refresh can fail
+normal strict validation for missing history; record its health/checkpoints
+without restoring cold-start exceptions or inventing data. Scheduler success
+requires observing a scheduled run, separately from deployment and manual smoke.
 
 Both Worker write contracts use `r2_binding` through their own guarded `DATA` bindings. The retained Blob driver uses `web/lib/storage/vercel-blob-fetch-client.ts`; it is not the current production contract. `?dry=1` writes no objects.
 
@@ -407,7 +455,7 @@ A full recompute stays in managed-refresh steps. Do not put a DuckDB or Parquet 
 >
 > Inspect `ops/workflows/<run_id>/metadata-<bucket>.json`: optional `pending_pages` preserves splits; `skipped` lists each repository's numeric id, node id, owner/name (`full_name`), reason (`graphql_502` / `not_returned`), and value status (`retained` / `missing`). Legacy checkpoints remain readable. A new run borrows rows and split progress with a fresh transient budget, including zero-row checkpoints. Completed borrowed progress is written into the new run before its shard, even when no query remains, so publication retains its skip audit and counts. A completed subpage or split resets that budget. The workflow log event `metadata skipped repositories` repeats the list and its count per bucket; sum the 32 bucket lists for the refresh total. The publication manifest is unchanged. A skipped existing repository keeps its previous values and timestamp (the published lookup count takes precedence over an unpublished canonical update). A skipped first-time repository is explicitly marked `missing` in progress, has no numeric entity/lookup/rank row, and its page uses the existing not-found response. Publication accepts only these identity-checked, recorded omissions; other missing data still fails validation. Subsequent fresh refreshes retry missing repositories.
 >
-> Intended cadence is `0 6 * * SUN`, independent of daily and weekly. Neither checked-in Worker declares that cron. The production caller is unverified.
+> Preview declares `0 6 * * SUN`, independent of daily and weekly. Production does not declare that cron, and its caller is unverified. Preview activation follows the separate deployment procedure above.
 
 **Subrequest checkpoints:** validation writes `validate/plan.json` and `validate/progress-<page>.json` under the run prefix, then reads at most 128 rank/entity files per invocation. Repo/org entity generation writes at most 128 entities per invocation; category output is also paged. GC lists one inventory page or deletes at most 100 objects per invocation, rechecking ownership and protected versions before each batch. Numbered `steps/<step>-<offset>.json` checkpoints accompany the existing terminal step names. Publication stays gated on the final complete `validation.json`.
 
@@ -431,7 +479,7 @@ The regression budget is conservatively 1,000 operations per invocation. The [cu
 2. Read `ops/workflows/active.json` and `ops/workflows/<run_id>/steps/<step>.json`. Compare that run log and the health JSON with Workers Observability on the Worker that ran the refresh. A preview incident uses `gitstarclub-web-pre` and must not roll back `gitstarclub-web`.
 3. Read `(run_id, fencing_token, expires_at)` on `ops/workflows/active.json`, `ops/workflows/<run_id>/manifest.json` (status running / published / failed), plus artifacts `canonical/v2/whitelist/<run_id>.json`, `canonical/v2/repos/<bucket>.json`, `renames.json`, `views/<run_id>/lookup/aliases.json`, `publish-intent.json`, and `latest-success.json`.
 4. Check the whitelist count, that repos shard buckets are complete, and that diff / rename look reasonable.
-5. The route exists. Neither Worker cron list includes it, and the production caller is unverified. This managed refresh **has no dry-run mode**; any `dry` query returns `400` before a lease is acquired or state is written. A no-write probe can only use `/api/cron/daily?dry=1` or `/api/cron/weekly?dry=1`. A manual refresh is not proof of a scheduler. Watch a real run through the steps above.
+5. The route exists and preview now declares its Sunday 06:00 trigger. Production has no scheduled trigger, and its caller is unverified. This managed refresh **has no dry-run mode**; any `dry` query returns `400` before a lease is acquired or state is written. A no-write probe can only use `/api/cron/daily?dry=1` or `/api/cron/weekly?dry=1`. A manual refresh is not proof of a scheduler. Watch a real run through the steps above.
 
 > Full-chain steps: `preflight` (validate every canonical shard again) → `fold` (month + week; each time `fold-decision.json` is written first. When there is closed pending, also write compact `fold-month-plan.json` / `fold-week-plan.json`, split by 1-bucket windows into `fold-month-*` / `fold-week-*`, and still write `fold.json` at the end. If already folded through the current month and no weeks remain, then `reason=no_closed_month`; missing a month plan is not a stall) → `recomputeRank` (on CF: month-pack + 8-period month/monthOrg, then year derived from month buckets followed by 8-period year/yearOrg, then week-pack + 8-period week/weekOrg, and finally rest by repos bucket; after fold, write `recompute-enqueued.json`, and each hop first writes `recomputeRank-<phase>-start.json`. The #497 whole-window week OOM has been split by bucket; month/year/rest likewise no longer load a whole window, see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md)) → `buildAliases` (→ `lookup/aliases.json`) → `validate` publish gate → `publish` switches the `views/latest.json` pointer / rollback → `gc` version reclamation (design see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7). CF preview Blob filenames are runtime steps: after fold, `recompute-enqueued.json`, `recomputeRank-month-pack.json` / `recomputeRank-month-*.json` should appear through the terminal `recomputeRank-month.json`, plus year-pack / week-pack / `recomputeRank-rest-*.json` and the terminal `recomputeRank.json` (not the manifest alias `recompute.json`). When `WORKFLOW_RUNTIME=cf-queue`, the Queue consumer reads the step JSON (or `x-gitstarclub-queue-successor`) and then `JOBS.send`s the next step; writing only `fold-decision`+`fold.json` and then a silent queue, a fetch source of `Worker exceeded memory limit`, no `error.json`, and an expired lease is a stall that is still not closed after #486 (the root cause is that the month hop still loads an object window, not that fold-decision failed to enqueue; see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md)). `/` `/rankings` returning 500 while `/preview/health` returns 200 is the same isolate OOM (application vs shell), not a published pointer written corrupt. The pass/fail table for a preview Bearer full refresh see [archive/CF-MIGRATION-P1.md](./archive/CF-MIGRATION-P1.md#preview-bearer-full-refresh-acceptance-matrix). An OOM or a silent Queue counts as failure, not "still running".
 
@@ -439,14 +487,14 @@ The regression budget is conservatively 1,000 operations per invocation. The [cu
 
 ### Preview cold-start first run (one time, #662)
 
-`env.pre` sets `WORKFLOW_COLD_START=1` and `PREFLIGHT_RELAX_EMPTY_SHARDS=1` and no longer sets `WORKFLOW_FIXTURE`, so a Bearer `GET /start` on `gitstarclub-web-pre` starts the real refresh instead of a fixture no-op. `triggers.crons` stays `[]` and `PREVIEW_CRONS_PAUSED` stays true: nothing runs until the owner calls it. Re-enabling the preview schedule is a separate owner decision. `scripts/cf-ci-gates.mjs` allows the two flags only as `"1"` on `env.pre`, refuses them on the production top level, and refuses `WORKFLOW_FIXTURE` in both blocks. Fixture mode stays testable by passing `WORKFLOW_FIXTURE` in a test env object (`web/lib/workers-host/*.test.ts`).
+Completed on 2026-10-21 by GSC_0100; the procedure below is historical and must not be repeated on the published preview store. At that time preview set `WORKFLOW_COLD_START=1` and `PREFLIGHT_RELAX_EMPTY_SHARDS=1`, did not set `WORKFLOW_FIXTURE`, and kept schedules paused. The real Bearer `/start` published the first managed generation. GSC_0149 supersedes that configuration with the steady-state schedules above and removes both flags. `scripts/cf-ci-gates.mjs` now rejects those flags and `WORKFLOW_FIXTURE` on both Workers. Fixture mode stays testable by passing `WORKFLOW_FIXTURE` in a test env object (`web/lib/workers-host/*.test.ts`).
 
 What this run is: a **rehearsal dataset**. Membership comes from GitHub Search and stars from GraphQL only. There is no GH Archive history: `seam_date` is the bootstrap UTC day, stars history and monthly/weekly series start empty, and `MIN_TRACKED_STARS` stays `10000`. Do not read the result as production data.
 
 First-publication validation (#676) permits exactly an empty sampled repository curve and a missing prior-calendar-year heatmap when `WORKFLOW_COLD_START=1`, `DEPLOY_ENV=pre`, no production signal is present, and an authoritative read confirms `views/latest.json` is absent. It never invents historical rows. A present but malformed heatmap, a missing entity, or any other publication-gate failure still blocks. An unreadable or malformed pointer cannot enable the exception. Each actual exception logs `[workflow-refresh] cold-start validation relaxed` with `run_id` and `check`; `ops/workflows/<run_id>/validation.json` records `cold_start_empty_curve_relaxed` and `cold_start_missing_prior_year_heatmap_relaxed` as booleans (false when unused). After a pointer exists, both historical checks are strict again even if the flags remain set. A later refresh without the required history can therefore fail validation; this exception supports only the first preview publication, never production.
 
-Preconditions (check read-only; an agent must not change them):
-1. The deployed `gitstarclub-web-pre` carries the #662 config. `typed configuration.jsonc` does not deploy itself. The owner deploys `--env pre` as a separate step.
+Historical first-run preconditions (not the current steady-state contract):
+1. The deployed `gitstarclub-web-pre` carried the #662 config. Configuration does not deploy itself; that preview deployment was separately authorized.
 2. `_meta/bucket-identity.json` exists in `gitstarclub-data-pre` (`bucket=gitstarclub-data-pre`, `deploy_env=pre`; public read at `https://data-pre.gitstarclub.com/_meta/bucket-identity.json`). Guarded R2 writes refuse without it.
 3. `views/latest.json` and `canonical/v2/meta.json` are both still 404 (cold start only arms in that state).
 4. `CRON_SECRET` and `GITHUB_TOKEN` are set on the preview Worker.
@@ -455,7 +503,7 @@ Who runs it: the owner, or an agent the owner names for that run. One call only:
 
 What to watch: `ops/workflows/active.json` (run id, lease `expires_at`), `ops/workflows/<run_id>/manifest.json` and the per-step files, in the order `preflight` → `fold` → `recomputeRank` → `buildAliases` → `validate` → `publish`, plus Workers Observability logs for `gitstarclub-web-pre` (look for `preview-empty-canonical-placeholder`, `error.json`, `Worker exceeded memory limit`, an expired lease). A silent queue or an OOM counts as failure, not "still running" (see the full-chain note above). Success is `views/latest.json` appearing and `manifest.json` status `published`.
 
-After the first publish, cold start disarms by itself (`views/latest.json` exists), so the flags are inert, and later runs go through the normal fail-closed preflight against the new store. To remove the flags, delete both vars from `env.pre` (the gate accepts absent). On failure, do not hand-write pointers; remove bad generation objects only under the owner authorization described in the bad-first-publish recipe above, then ask the owner before a second attempt.
+After the first publish, cold start disarms by itself (`views/latest.json` exists), and later runs use normal fail-closed preflight against the published store. The steady-state contract now removes both vars and the gate requires their absence. Reintroducing a first-run configuration needs separate owner authorization. On failure, do not hand-write pointers or retry `/start`; any bad-generation repair requires the separate owner authorization described in the bad-first-publish recipe above.
 
 ### Preview fault rollback
 
