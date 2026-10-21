@@ -51,3 +51,8 @@ KANBAN_TMP until their results are recorded in the PR and handoff.
 The P1 fixture populates only the checked-in synthetic `example/repo` and
 `example` organization. Additional rank windows/provenance are local test data;
 they do not change real data coverage or publish any object.
+
+The social-card build plugin selects the existing renderer's Worker entry,
+packages its fallback font and imports precompiled Wasm modules. The local
+Worker loader recognizes those modules as Wasm. No dynamic Wasm compilation,
+remote font fetch or image service is needed.
