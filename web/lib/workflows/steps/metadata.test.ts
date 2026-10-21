@@ -256,7 +256,7 @@ describe("metadata GraphQL resume", () => {
   test("a recorded skip prefers the last published count over an unpublished canonical update", () => {
     const shard = buildMetadataShard({
       entries: [entry(1, 90_000)], previous: { "1": previous(1, "2025-01-01") },
-      lookup: { "1": { full_name: "owner/repo-1", owner: "owner", name: "repo-1", owner_type: "Organization", current_stars: 12_345 } },
+      lookup: { "1": { full_name: "owner/repo-1", owner: "owner", name: "repo-1", owner_type: "Organization", language: null, current_stars: 12_345 } },
       github: new Map(), skipped: new Set([1]), newcomers: new Set(),
       trackedSince: "2026-09-21", fetchedAt: "2026-09-22T00:00:00.000Z",
     });
