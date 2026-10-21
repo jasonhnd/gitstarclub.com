@@ -28,6 +28,7 @@ Run with the checksum-verified Node 24.20.0/Bun 1.4.2 and card-local
 cd astro
 bun run verify:local
 bun tests/p2/routes.ts
+bun tests/p2/browser.ts
 bun tests/p2/compare-local.ts --screenshots
 ```
 
