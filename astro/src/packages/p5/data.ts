@@ -1,4 +1,5 @@
-import { getHotSnapshot, getMeta, getRank, getRepoIdByFullName, getReposLookup, resolveAvailableRankPeriods } from "../../../../web/lib/data";
+import { getHotSnapshot, getMeta, getRank, getRepoIdByFullName, getReposLookup } from "../../../../web/lib/data";
+import { resolveAvailableRankPeriodsForTest, rankPeriodLookbackLimits } from "../../../../web/lib/data/rank-periods";
 import { loadPairConclusions } from "../../../../web/app/_localized/comparison-page-data";
 import type { Dict, Locale } from "../../../../web/lib/i18n";
 import type { pageData } from "../../lib/data";
@@ -16,7 +17,7 @@ export function loadCompare(data: Data, locale: Locale, t: Dict) {
 export function loadPulse(data: Data, now = new Date()) {
   return withPublishedReaders(data, async () => {
     const [snap, lookup, availablePeriods] = await Promise.all([
-      getHotSnapshot(), getReposLookup(), resolveAvailableRankPeriods(now),
+      getHotSnapshot(), getReposLookup(), resolveAvailableRankPeriodsForTest({ now, ...rankPeriodLookbackLimits({ HOSTING_TARGET: "cf" }) }),
     ]);
     const [activeWeekRank, activeMonthRank] = await Promise.all([
       availablePeriods.week.kind === "week" ? getRank("week", availablePeriods.week.period, "repo", "flow") : null,
