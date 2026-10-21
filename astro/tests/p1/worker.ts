@@ -25,6 +25,9 @@ try {
       results.push({ path: localizedPath(locale, path), status: response.status, populated: true, provenance: path.endsWith("W29") || path === "/" });
     }
   }
+  for (const path of ["/privacy", "/pulse"]) {
+    assert.equal((await fetch(origin + path)).status, 200, `${path}: P1 must preserve the shared fallback`);
+  }
   for (const path of ["/rankings/invalid", "/rankings/2026/13", "/rankings/2026/W54", "/rankings/2025/1", "/de/rankings", "/en/rankings"]) {
     const response = await fetch(origin + path, { redirect: "manual", headers: { "accept-language": "en" } });
     assert.equal(response.status, 404, path);

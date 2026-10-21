@@ -4,6 +4,8 @@ The Astro entries serve the existing English and six localized home, all-time,
 year, month and ISO-week pages. Daily movement remains inside month pages;
 there is no new daily route. Invalid/unpublished periods retain 404 behavior.
 Ranking social-image endpoints reuse the existing deterministic card renderer.
+Localized home entries use concrete locale prefixes so unrelated one-segment
+paths still reach P0's catch-all until their packages land.
 
 The page-layer JSX in `pulse.tsx`, `rankings.tsx`, `ranking-detail.tsx` and
 `ranking-ui.tsx` follows the corresponding `web/app/_localized/` views. It keeps
