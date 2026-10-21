@@ -8,3 +8,11 @@ const { locale, canonicalPath, title, description, body } = Astro.props;
 <Layout locale={locale} canonicalPath={canonicalPath} title={title} description={description}>
   <Body content={body} />
 </Layout>
+
+<style is:global>
+  /* Keep the original system-ui/ui-monospace fallbacks after the packaged families. */
+  :root {
+    --font-plus-jakarta: "Plus Jakarta Sans Variable";
+    --font-geist-mono: "Geist Mono Variable";
+  }
+</style>

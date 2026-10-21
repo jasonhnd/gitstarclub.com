@@ -14,7 +14,10 @@ removes its duplicate chrome and resolves its relative imports. The routing
 helper receives the same navigation substitution under a private module query;
 ordinary imports used by other packages are unchanged. The shared stylesheet
 adds only source scanning for these existing components; no design tokens or
-utility values change. No translated copy,
+utility values change. P3's own page stylesheet preserves the original font
+fallback order: packaged families first, then the existing system-ui and
+ui-monospace fallbacks from web globals. An early generic fallback in the P0
+alias otherwise changes Chinese mobile line wrapping. No typeface changes. No translated copy,
 markup, metadata or structured data is copied or edited. Tests assert that the
 entire original view body survives the adapter except its chrome elements.
 
