@@ -10,12 +10,12 @@ unchanged URLs, data contracts, appearance, localized copy and cache semantics.
 - Own `astro/src/packages/p2/`, repository page entries, `/repo-curve`, repository
   social images and `astro/tests/p2/`.
 - Import existing dictionaries, schemas, normalization, chart and Star components.
-  Read published base views through P0's request-scoped read-only facade.
+  Read only through shared `withPublishedReaders` and the unchanged web readers.
 - Preserve aliases, missing/invalid paths, daily provenance, structured data,
   metadata and the share/copy controls as small interactive islands.
 - Compare three fixture repositories in seven locales, desktop and mobile.
 - Make only minimal additive shared changes required for page-specific social
-  metadata and preservation of non-HTML endpoint cache headers; document them.
+  metadata and exact curve publication-failure bytes; document them.
 
 ## Out of scope and prohibitions
 

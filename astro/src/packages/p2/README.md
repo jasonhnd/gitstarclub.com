@@ -7,7 +7,8 @@ Generic repository entries delegate recognized non-repository URLs to P0's
 shell fallback until their concrete package entries land.
 Dictionaries, schemas, normalization, route resolution, metadata facts, Star,
 StarCurve and provenance calculations are imported from `web/` unchanged.
-P2's read-only adapter consumes P0's captured base publication. Category
+P2 uses the shared `withPublishedReaders` transport and the unchanged web readers
+against the request's captured publication. Category
 assignment fan-out stays disabled, matching the current Cloudflare host.
 
 The page body and both SVG curves ship no hydration script. The share control
@@ -20,9 +21,10 @@ image/wasm build plugins. The compatibility bridge is import-only and must move
 with the other shared imports before `web/` is eventually removed. Shared
 configuration changes are additive: register that image bridge and P2 style
 sources, load emitted image wasm in the local simulator, accept a
-page-specific social-image URL, and preserve explicit non-HTML cache headers
-while keeping HTML private. Invalid curve inputs and method-only responses
-remain independent of publication pointers. The browser navigation bridge adds
+page-specific social-image URL, and match the old Worker curve failure body.
+The effective curve response uses `private, no-store`, matching the old Worker
+which overrides the route module cache header. Every curve request requires a
+readable publication, including invalid IDs and method-only responses. The browser navigation bridge adds
 `usePathname` so the existing localized 404 copy can be imported without copying
 translations. No dependency lock or data contract changes.
 

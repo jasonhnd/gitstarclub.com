@@ -2,12 +2,17 @@ import { expect, test } from "bun:test";
 import { pageData } from "../../src/lib/data";
 import { readPublication, publicationScope } from "../../../web/lib/workers-host/publication-fence";
 import { withWorkerEnv } from "../../../web/lib/workers-host/runtime-env";
-import { getRepoPageEntityDaily } from "../../../web/lib/data/entity";
-import { getRepoCurve } from "../../../web/lib/data/compare";
-import { GET } from "../../../web/app/repo-curve/route";
 import { startFixture } from "../../scripts/fixture";
 import { repositoryFixtures } from "./fixture";
-import { loadRepository, repositoryCurve } from "../../src/packages/p2/data";
+// Match the single production Vite transport alias without mutating global fetch.
+const transport = new URL("../../src/lib/published-readers.ts", import.meta.url).pathname;
+Bun.plugin({ name: "published-reader-test", setup(build) {
+  build.onResolve({ filter: /^@\/lib\/fetch-timeout\.mjs$/ }, () => ({ path: transport }));
+} });
+const { getRepoPageEntityDaily } = await import("../../../web/lib/data/entity");
+const { getRepoCurve } = await import("../../../web/lib/data/compare");
+const { GET } = await import("../../../web/app/repo-curve/route");
+const { loadRepository, repositoryCurve } = await import("../../src/packages/p2/data");
 import type { R2Bucket } from "../../../web/lib/storage/r2-binding-store";
 import { secureResponse } from "../../src/lib/host";
 
@@ -28,7 +33,7 @@ test("P2 native reads match existing entity normalization and exact curve respon
       expect(curve).toEqual(await old(() => getRepoCurve(id)));
       const expected = await old(() => GET(new Request(`http://127.0.0.1/repo-curve?id=${id}`)));
       expect(JSON.stringify(curve)).toBe(await expected.text());
-      expect(secureResponse(Response.json(curve, { headers: expected.headers }), "GET", "BYPASS").headers.get("cache-control")).toBe(expected.headers.get("cache-control"));
+      expect(secureResponse(Response.json(curve, { headers: expected.headers }), "GET", "BYPASS").headers.get("cache-control")).toBe("private, no-store");
     }
     expect(await loadRepository(data, "ja", "example", "old-repo")).toEqual({ kind: "redirect", location: "/ja/example/repo" });
     expect(await loadRepository(data, "en", "missing", "repo")).toEqual({ kind: "missing" });
