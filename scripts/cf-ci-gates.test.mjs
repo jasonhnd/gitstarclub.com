@@ -45,7 +45,9 @@ describe("typed host contract", () => {
   test("preview rejects a missing daily, Sunday live or managed refresh schedule", () => {
     for (const schedule of ["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"]) {
       const worker = structuredClone(hostWorker("pre"));
-      worker.triggers = worker.triggers.filter((trigger) => trigger.schedule !== schedule);
+      const index = worker.triggers.findIndex((trigger) => trigger.type === "scheduled" && trigger.schedule === schedule);
+      assert.notEqual(index, -1);
+      worker.triggers.splice(index, 1);
       assert.ok(assertHostContract(worker, "pre").some((error) => error.includes("schedules")));
     }
   });
