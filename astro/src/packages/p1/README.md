@@ -24,8 +24,8 @@ Home/all-time bodies add no browser code. Year/month/week pages load one small
 native module only for the existing share-link, share-intent and snippet/embed
 copy controls. It enhances the existing control HTML with two custom-element
 islands; it does not hydrate the body. The shared search/theme islands are
-unchanged. Metadata uses the existing helpers and optional shared Layout title
-and image inputs. Tailwind also scans the reused server presentation components.
+unchanged. Metadata uses the existing helpers and optional shared Layout title,
+social URL and image inputs. Tailwind also scans the reused server presentation components.
 
 ## Verification
 
