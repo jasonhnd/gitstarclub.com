@@ -1,5 +1,7 @@
 # Refresh publication operation headroom
 
+Issue: #723. Base: `pre` at `6bd2728e30a5ab956cb28702d461db072cd329c1`.
+
 ## Goal
 
 Reduce the peak per-invocation publish cost at 5,669 repositories and owners,
@@ -41,3 +43,17 @@ or merges. The executor only opens a PR against `pre` for independent review.
   production/pre builds and host validations pass on the exact head.
 - The PR includes `Closes #N`, before/after counts, commands/results and risks;
   the card is handed to review with a clean working tree and no merge.
+
+## Implementation evidence
+
+The baseline publish peak was 863 modeled operations (865 with two IndexNow
+POSTs): 850 reads, one lease read, nine writes, one invalidation and two queue
+operations. Up to 800 reads compare 200 repository and 200 organization entities
+across the old and new versions. The three new runtime invocations measure 23,
+452 and 455 operations, including both simulated submission POSTs. The retained
+serial helper and rollback still use the existing publication core.
+
+The focused budget suite passes 20 tests. It checks candidate/payload equivalence,
+all three page replays, lost progress after commit, best-effort derivation failure,
+missing predecessors and lease takeover before/during post-commit work. Final
+delivery still requires the full exact-head gate described above.
