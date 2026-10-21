@@ -28,7 +28,7 @@ try {
     assert.equal(alias.status, 308); assert.equal(new URL(alias.headers.get("location")!, origin).pathname, `${prefix}/example/repo`);
     assert.equal((await get(`${prefix}/absent/repository`)).status, 404);
   }
-  for (const [query, status, body] of [["", 400, '{"error":"invalid id"}'], ["?id=0", 400, '{"error":"invalid id"}'], ["?id=1.2", 400, '{"error":"invalid id"}'], ["?id=9007199254740992", 400, '{"error":"invalid id"}'], ["?id=999", 404, '{"error":"not found"}'], ["?id=1", 200, '{"id":1,"full_name":"example/repo","current_stars":100,"crossed_10k":null,"points":[]}']] as const) {
+  for (const [query, status, body] of [["", 400, '{"error":"invalid id"}'], ["?id=0", 400, '{"error":"invalid id"}'], ["?id=1.2", 400, '{"error":"invalid id"}'], ["?id=9007199254740992", 404, '{"error":"not found"}'], ["?id=999", 404, '{"error":"not found"}'], ["?id=1", 200, '{"id":1,"full_name":"example/repo","current_stars":100,"crossed_10k":null,"points":[]}']] as const) {
     const response = await get(`/repo-curve${query}`);
     assert.equal(response.status, status, query);
     assert.equal(await response.text(), body, query);
