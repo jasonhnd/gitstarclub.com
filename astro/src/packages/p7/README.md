@@ -18,6 +18,10 @@ existing vinext route dispatcher. API responses retain the original security, ro
 and private/no-store headers. The build-identity header identifies the new Astro
 commit, as it identified the original artifact before migration. No localized API copies or HTML pages are added.
 There are no new client islands or client JavaScript.
+The host adds `x-gsc-publication` only to page responses, never to `/api/*`.
+API GET/HEAD still consume output and recheck the captured publication before
+returning it: one publication change retries, and a second change returns 503.
+These internal checks do not add a public API header or use shared page storage.
 
 ## Framework boundary
 
