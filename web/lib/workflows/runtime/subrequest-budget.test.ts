@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as github from "@/lib/github";
 import * as source from "@/lib/data/source";
+import * as indexnow from "@/lib/indexnow";
 import { buildIndexNowPayloads, workflowPublishCanonicalPaths } from "@/lib/indexnow";
 import { WorkflowLease, WorkflowManifest, WorkflowValidation, type WhitelistSnapshot } from "@/lib/contracts";
 import { successorJobAfterRefreshStep, successorJobFromResponseHeaders } from "@/lib/workers-host/queue-advance";
@@ -197,6 +198,18 @@ describe("refresh subrequest budget at 5,669 repositories and owners", () => {
       } finally { read.mockRestore(); h.restore(); }
     });
   }
+
+  test("an unexpected submission error retains best-effort publication", async () => {
+    const h = installWorkflowHarness(publication.artifacts, { INDEXNOW_ENABLED: "1" });
+    const submit = spyOn(indexnow, "submitIndexNowUrls").mockRejectedValue(new Error("injected submission setup failure"));
+    try {
+      const { drainWorkflowStep } = await import("../test-support");
+      expect((await drainWorkflowStep(h, publication.job)).response.status).toBe(200);
+      expect(h.store.json("views/latest.json")).toMatchObject({ version: TEST_RUN });
+      expect(h.store.json(path("steps/publish.json"))).toMatchObject({ status: "ok" });
+      expect(submit).toHaveBeenCalledTimes(1);
+    } finally { submit.mockRestore(); h.restore(); }
+  });
 
   test("a missing publish predecessor fails after commit without repointing the version", async () => {
     const h = installWorkflowHarness(publication.artifacts);

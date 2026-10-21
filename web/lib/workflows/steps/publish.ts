@@ -29,9 +29,20 @@ async function postCommit<T>(runId: string, work: () => Promise<T>): Promise<T> 
   }
 }
 
-async function derivePaths(publication: PublicationResult, dimension: "repo" | "org"): Promise<string[] | null> {
+async function bestEffortIndexNow<T>(runId: string, work: () => Promise<T>): Promise<T | null> {
   try {
-    return await workflowPublishCanonicalPaths({
+    return await work();
+  } catch (error) {
+    console.warn("[indexnow]", "workflow publish derivation failed", {
+      source: "workflow-publish", runId,
+      error: sanitizeErrorText(error instanceof Error ? error.message : String(error)),
+    });
+    return null;
+  }
+}
+
+async function derivePaths(publication: PublicationResult, dimension: "repo" | "org"): Promise<string[] | null> {
+  return bestEffortIndexNow(publication.version, () => workflowPublishCanonicalPaths({
       runId: publication.version, prevVersion: publication.prev_version, publishedAt: publication.published_at,
       reader: async <T>(version: string, rel: string, schema: z.ZodType<T>): Promise<T | null> => {
         // Each pass uses the original selector, comparing only one entity kind.
@@ -40,14 +51,7 @@ async function derivePaths(publication: PublicationResult, dimension: "repo" | "
         if (rel === `lookup/${dimension === "repo" ? "orgs" : "repos"}.json`) return null;
         return readView(`views/${version}/${rel}`, schema, { bust: version });
       },
-    });
-  } catch (error) {
-    console.warn("[indexnow]", "workflow publish derivation failed", {
-      source: "workflow-publish", runId: publication.version,
-      error: sanitizeErrorText(error instanceof Error ? error.message : String(error)),
-    });
-    return null;
-  }
+  }));
 }
 
 /** Retained serial caller; the Worker runtime uses runPublishStep below. */
@@ -89,7 +93,7 @@ export async function runPublishStep(
     const paths = derived === null ? null : [...new Set([...(previous.paths ?? []), ...derived])].sort((a, b) => a.localeCompare(b));
     await productionPublicationDeps.ensureOwnership(owner);
     if (page === 2 && paths !== null) {
-      await submitIndexNowUrls(paths, { source: "workflow-publish", runId });
+      await bestEffortIndexNow(runId, () => submitIndexNowUrls(paths, { source: "workflow-publish", runId }));
     }
     await putOwnedView(owner, progressPath(runId, page), { publication: previous.publication, paths });
     return { ...previous.publication, ...(page < 2 ? { nextWorkOffset: page + 1 } : {}) };
