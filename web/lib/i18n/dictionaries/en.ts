@@ -4,6 +4,7 @@ export const en = {
   nav: { home: "Home", pulse: "Pulse", rankings: "Rankings", categories: "Categories", organizations: "Organizations", compare: "Compare", about: "About" },
   common: {
     starHistoryNote: "Daily and weekly figures for May 30–September 30, 2026 use GitHub’s star-history summary of stars still present when collected. Day boundaries are approximately UTC and may differ by a few hours.",
+    starHistoryMixedNote: "This weekly ranking combines existing observations with GitHub’s star-history summary for May 30–September 30, 2026. Only the summary figures count stars still present when collected; their day boundaries are approximately UTC and may differ by a few hours.",
     faqHeading: "Frequently asked questions",
     dataLastUpdated: "Data last updated",
     dataAsOf: "Data as of",

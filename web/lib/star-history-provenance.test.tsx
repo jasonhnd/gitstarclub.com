@@ -3,7 +3,7 @@ import { renderToReadableStream } from "react-dom/server";
 import type { ReactElement } from "react";
 import { PROVENANCE } from "../../pipeline/scripts/star-history-aggregate.mjs";
 import { Curve, RankList, StarHistoryProvenance } from "@/lib/contracts";
-import { aggregateDailyPoints, hasAggregateWeek } from "@/lib/star-history-provenance";
+import { aggregateDailyPoints, hasAggregateWeek, weeklyRankSourceNote } from "@/lib/star-history-provenance";
 import { normalizeRepoPageEntity } from "@/lib/repo-readiness";
 import { getDictionary, LOCALES } from "@/lib/i18n";
 import { RepoDailyHistorySection } from "@/app/_localized/repo-sections";
@@ -25,6 +25,7 @@ const repo = { id: 42, ...entry, topics: [], created_at: "2020-01-01", is_archiv
   curve: { monthly, recent_daily: days, provenance }, monthly_table: [], rank_history: {} };
 
 let marked = true;
+let mixed = false;
 const savedFetch = globalThis.fetch;
 const savedEnv = { BLOB_BASE_URL: process.env.BLOB_BASE_URL, NEXT_PUBLIC_BLOB_BASE_URL: process.env.NEXT_PUBLIC_BLOB_BASE_URL };
 beforeAll(() => {
@@ -43,7 +44,7 @@ beforeAll(() => {
     const rank = /^rank\/(year|month|week)\/([^/]+)\/repo\/(flow|growth|new)\.json$/.exec(key);
     if (rank) {
       const [, window, period, metric] = rank;
-      body = { meta: { window, period, metric, dim: "repo", generated_at: "2026-10-20T00:00:00.000Z", ...flag },
+      body = { meta: { window, period, metric, dim: "repo", generated_at: "2026-10-20T00:00:00.000Z", ...flag, ...(mixed && window === "week" ? { provenance_scope: "mixed" } : {}) },
         items: metric === "flow" ? [{ rank: 1, id: 42, value: 1000, prev_rank: null }] : [] };
     }
     return body === null ? new Response("absent", { status: 404 }) : Response.json(body);
@@ -113,6 +114,7 @@ describe("aggregate provenance contract and approved boundaries", () => {
 for (const locale of LOCALES) {
   test(`${locale}: renders the daily curve, weekly ranking and other daily/weekly surfaces; never labels monthly totals`, async () => {
     marked = true;
+    mixed = false;
     const t = await getDictionary(locale);
     expect(t.common.starHistoryNote).toContain("GitHub");
     expect(t.common.starHistoryNote).toContain("UTC");
@@ -139,5 +141,31 @@ for (const locale of LOCALES) {
     expect(text(await html(await RankingsPeriodPageView({ locale, year: "2026", period: "W39" })))).not.toContain(t.common.starHistoryNote);
     expect(text(await html(await RepoPageView({ locale, owner: "example", name: "history" })))).not.toContain(t.common.starHistoryNote);
     expect(await html(<RepoDailyHistorySection points={days} provenance={undefined} locale={locale} t={t} />)).toBe("");
+  });
+}
+
+for (const locale of LOCALES) {
+  test(`${locale}: mixed weekly ranking and Pulse use scoped copy while legacy notes remain valid`, async () => {
+    marked = true;
+    mixed = true;
+    const t = await getDictionary(locale);
+    expect(t.common.starHistoryMixedNote).toContain("GitHub");
+    expect(t.common.starHistoryMixedNote).toContain("UTC");
+    expect(t.common.starHistoryMixedNote).not.toBe(t.common.starHistoryNote);
+    expect(t.common.starHistoryMixedNote).not.toMatch(/\b(?:Blob|JSON|R2|servers?|APIs?)\b/i);
+    for (const markup of [
+      await html(await RankingsPeriodPageView({ locale, year: "2026", period: "W39" })),
+      await html(await PulsePageView({ locale, canonicalPath: "/pulse", now: new Date("2026-06-04T00:00:00Z") })),
+    ]) {
+      expect(text(markup)).toContain(t.common.starHistoryMixedNote);
+      expect(text(markup)).not.toContain(t.common.starHistoryNote);
+    }
+    const meta = { window: "week", period: "2026-W39", provenance };
+    expect(weeklyRankSourceNote(meta, t.common)).toBe(t.common.starHistoryNote);
+    expect(weeklyRankSourceNote({ ...meta, provenance: undefined, provenance_scope: "mixed" }, t.common)).toBeUndefined();
+    for (const window of ["month", "year", "all"]) {
+      expect(weeklyRankSourceNote({ ...meta, window, provenance_scope: "mixed" }, t.common)).toBeUndefined();
+    }
+    mixed = false;
   });
 }

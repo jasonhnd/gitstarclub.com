@@ -5,6 +5,7 @@
 // data is pre-seam the post-seam branch is inert, so output is unchanged. Org stock
 // forward-fills idle periods so the org curve endpoint sums to current_stars_sum (RANKING §5).
 
+import { mergeFlowSources, repoFlowSource, type FlowSource } from "./flow-provenance";
 import { byPeriod, type Model, type Period } from "./model";
 
 export type Window = "month" | "week" | "year";
@@ -18,22 +19,21 @@ export interface RepoRow {
 }
 
 export interface RepoWindow {
-  aggregatePeriods?: Set<string>;
   byRepo: Map<number, RepoRow[]>; // period-asc, flow_rank filled
   rowsByPeriod: Map<Period, Array<{ id: number; flow: number; cumgross: number; stock_est: number }>>;
   periods: Period[]; // sorted asc
 }
 
 export interface OrgRow {
+  flowSource?: FlowSource;
   period: Period;
   flow: number;
   stock_est: number;
 }
 
 export interface OrgWindow {
-  aggregatePeriods?: Set<string>;
   byLogin: Map<string, OrgRow[]>;
-  rowsByPeriod: Map<Period, Array<{ login: string; flow: number; stock_est: number }>>;
+  rowsByPeriod: Map<Period, Array<{ login: string; flow: number; stock_est: number; flowSource?: FlowSource }>>;
   periods: Period[];
 }
 
@@ -104,7 +104,6 @@ function finalizeWindow(byRepo: Map<number, RepoRow[]>, rowsByPeriod: Map<Period
  *  `cumgross` is the running total used only as the flow_rank tiebreak; it equals the gross
  *  cumsum while all data is pre-seam. */
 export function computeRepoWindow(model: Model, w: "month" | "week"): RepoWindow {
-  const aggregatePeriods = new Set<string>();
   const seamPeriod = model.seam[w];
   const byRepo = new Map<number, RepoRow[]>();
   const rowsByPeriod = new Map<Period, PeriodCell[]>();
@@ -120,7 +119,6 @@ export function computeRepoWindow(model: Model, w: "month" | "week"): RepoWindow
     const acc = createSeamStockAcc();
     const rows: RepoRow[] = [];
     for (const [period, flow] of series) {
-      if (imported.has(period)) aggregatePeriods.add(period);
       const { stock_est, cumgross } = advanceSeamStock(period, flow, seamPeriod, d, acc, imported.has(period));
       rows.push({ period, flow, cumgross, stock_est, flow_rank: 0 });
       let bucket = rowsByPeriod.get(period);
@@ -129,9 +127,7 @@ export function computeRepoWindow(model: Model, w: "month" | "week"): RepoWindow
     }
     byRepo.set(id, rows);
   }
-  const result = finalizeWindow(byRepo, rowsByPeriod);
-  if (aggregatePeriods.size) result.aggregatePeriods = aggregatePeriods;
-  return result;
+  return finalizeWindow(byRepo, rowsByPeriod);
 }
 
 /** Year repo window derived from the seam-aware monthly window: year flow = Σ months; year stock =
@@ -182,7 +178,7 @@ export function computeOrgWindow(
   globalPeriods.forEach((p, i) => periodIndex.set(p, i));
 
   // accumulator: login -> period -> { flow, stock }
-  const acc = new Map<string, Map<Period, { flow: number; stock_est: number }>>();
+  const acc = new Map<string, Map<Period, { flow: number; stock_est: number; flowSource: FlowSource }>>();
   const ownerOf = (id: number) => model.repos.get(id)!.owner;
 
   for (const [id, rows] of repoWindow.byRepo) {
@@ -203,28 +199,30 @@ export function computeOrgWindow(
       const own = rowByPeriod.get(period);
       const flow = own ? own.flow : 0;
       if (own) carry = own.stock_est; // refresh on real rows; else keep carry
+      const flowSource = own ? repoFlowSource(own.stock_est) : "none";
       const cell = bucket.get(period);
       if (cell) {
         cell.flow += flow;
+        cell.flowSource = mergeFlowSources(cell.flowSource, flowSource);
         cell.stock_est = sumHistoricalStock(cell.stock_est, carry);
       } else {
-        bucket.set(period, { flow, stock_est: carry });
+        bucket.set(period, { flow, stock_est: carry, flowSource });
       }
     }
   }
 
   const byLogin = new Map<string, OrgRow[]>();
-  const rowsByPeriod = new Map<Period, Array<{ login: string; flow: number; stock_est: number }>>();
+  const rowsByPeriod = new Map<Period, Array<{ login: string; flow: number; stock_est: number; flowSource?: FlowSource }>>();
   for (const [login, bucket] of acc) {
     const rows: OrgRow[] = [...bucket.entries()]
       .sort((a, b) => byPeriod(a[0], b[0]))
-      .map(([period, v]) => ({ period, flow: v.flow, stock_est: v.stock_est }));
+      .map(([period, v]) => ({ period, flow: v.flow, stock_est: v.stock_est, ...(v.flowSource !== "existing" ? { flowSource: v.flowSource } : {}) }));
     byLogin.set(login, rows);
     for (const r of rows) {
       let pb = rowsByPeriod.get(r.period);
       if (!pb) rowsByPeriod.set(r.period, (pb = []));
-      pb.push({ login, flow: r.flow, stock_est: r.stock_est });
+      pb.push({ login, flow: r.flow, stock_est: r.stock_est, ...(r.flowSource ? { flowSource: r.flowSource } : {}) });
     }
   }
-  return { byLogin, rowsByPeriod, periods: globalPeriods, ...(repoWindow.aggregatePeriods ? { aggregatePeriods: repoWindow.aggregatePeriods } : {}) };
+  return { byLogin, rowsByPeriod, periods: globalPeriods };
 }

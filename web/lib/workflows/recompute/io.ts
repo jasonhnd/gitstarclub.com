@@ -446,7 +446,7 @@ export async function streamPackedOrgPeriodRows(
   carry: Map<number, number>,
   owner?: WorkflowOwnership,
 ): Promise<PackedPeriodOrgRow[][]> {
-  const acc = Array.from({ length: Math.max(0, periodTo - periodFrom) }, () => new Map<string, { flow: number; stock_est: number }>());
+  const acc = Array.from({ length: Math.max(0, periodTo - periodFrom) }, () => new Map<string, Omit<PackedPeriodOrgRow, "login">>());
   if (acc.length === 0) return [];
   const heartbeat = owner ? workflowHeartbeat(owner) : async () => {};
   for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
