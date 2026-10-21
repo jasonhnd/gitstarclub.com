@@ -1,0 +1,8 @@
+---
+import Page from "../../packages/p1/Page.astro";
+import { loadPage } from "../../packages/p1/page";
+export const prerender = false;
+const page = await loadPage(Astro.locals.data, "home", "zh-TW");
+if (!page) return new Response("Not found", { status: 404 });
+---
+<Page page={page} />
