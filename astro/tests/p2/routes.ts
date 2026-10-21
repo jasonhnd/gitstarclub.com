@@ -38,6 +38,9 @@ try {
     assert.equal(await response.text(), body, query);
     assert.equal(response.headers.get("cache-control"), "private, no-store");
     assert.equal(response.headers.get("content-type"), "application/json");
+    assert.ok(response.headers.get("vary")?.includes("Next-Router-State-Tree"));
+    assert.equal(response.headers.get("x-robots-tag"), null);
+    assert.equal(response.headers.get("x-gsc-publication"), null);
     assert.equal(response.headers.get("x-gsc-cache"), "BYPASS");
     const head = await get(`/repo-curve${query}`, { method: "HEAD" });
     assert.equal(head.status, status); assert.equal(await head.text(), "");

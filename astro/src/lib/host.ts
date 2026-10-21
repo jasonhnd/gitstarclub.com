@@ -28,8 +28,16 @@ export function secureResponse(response: Response, method: string, status: Cache
 /** Caches Astro's final HTML, using the existing bounded Cache API/KV artifact store. */
 export async function handleRequest(request: Request, options: HostOptions): Promise<Response> {
   const url = new URL(request.url);
-  const finish = (response: Response, status: CacheStatus = "BYPASS") => secureResponse(response, request.method, status);
   const path = url.pathname.replace(/\/+$/, "") || "/";
+  const finish = (response: Response, status: CacheStatus = "BYPASS") => {
+    const result = secureResponse(response, request.method, status);
+    if (path === "/repo-curve") {
+      // The old Worker does not add page indexing/publication metadata to this API.
+      result.headers.delete("X-Robots-Tag");
+      result.headers.delete("x-gsc-publication");
+    }
+    return result;
+  };
   if (path === "/api/lang" && ["GET", "HEAD"].includes(request.method)) return finish(languageRedirect(request));
   if (path === "/api/workflows/refresh/revalidate" && request.method === "POST" && options.unscopedRender) {
     return finish(await options.unscopedRender());
