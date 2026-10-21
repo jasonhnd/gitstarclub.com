@@ -8,7 +8,7 @@ islands. Category bodies are static server-rendered React with no hydration.
 ## Import-only view reuse
 
 `view-plugin.ts` is registered additively in `astro.config.mjs`. Its explicit
-`astro-p3:categories` import loads the unchanged `web/app/_localized/categories`
+`astro-p3:categories` import loads the unchanged `web/app/_localized/categories.tsx`
 server view, redirects its data/availability/navigation imports to `data.ts`,
 removes its duplicate chrome and resolves its relative imports. The routing
 helper receives the same navigation substitution under a private module query;
