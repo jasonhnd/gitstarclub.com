@@ -23,7 +23,6 @@ export const hostModes = Object.freeze({
       R2_BUCKET: "gitstarclub-data-pre", R2_PUBLIC_BASE_URL: "https://data-pre.gitstarclub.com",
       WORKFLOW_RUNTIME: "cf-queue", WORKFLOW_QUEUE_ENQUEUE_URL: "https://pre.gitstarclub.com/enqueue",
       MIN_TRACKED_STARS: "10000", WHITELIST_SEARCH_SHARDS: "1",
-      WORKFLOW_COLD_START: "1", PREFLIGHT_RELAX_EMPTY_SHARDS: "1",
     },
   },
 });
