@@ -43,6 +43,7 @@ test("only confirmed missing objects become 404; native storage errors propagate
 test("published transport refuses writes and invalid object paths", async () => {
   await withPublishedReaders(data("readonly", async () => { throw new Error("must not read"); }), async () => {
     await expect(fetchWithTimeout(`${origin("readonly")}/meta.json`, { method: "POST" })).rejects.toThrow("read-only");
+    await expect(fetchWithTimeout(new Request(`${origin("readonly")}/meta.json`, { method: "DELETE" }))).rejects.toThrow("read-only");
     await expect(fetchWithTimeout(`${origin("readonly")}/%2E%2E%2Fmeta.json`)).rejects.toThrow("Invalid published DATA key");
   });
 });

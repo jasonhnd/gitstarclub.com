@@ -29,7 +29,8 @@ export function fetchWithTimeout(input: Parameters<typeof originalFetchWithTimeo
     ...init,
     fetcher: async (_input, options) => {
       options?.signal?.throwIfAborted();
-      if (options?.method && options.method !== "GET" && options.method !== "HEAD") {
+      const method = options?.method ?? (input instanceof Request ? input.method : "GET");
+      if (method !== "GET" && method !== "HEAD") {
         throw new Error("Published DATA transport is read-only");
       }
       const key = decodeURIComponent(url.pathname.slice(1));
@@ -38,7 +39,7 @@ export function fetchWithTimeout(input: Parameters<typeof originalFetchWithTimeo
       }
       const value = await captured.data.raw(key, json);
       options?.signal?.throwIfAborted();
-      return new Response(options?.method === "HEAD" ? null : JSON.stringify(value), {
+      return new Response(method === "HEAD" ? null : JSON.stringify(value), {
         status: value === null ? 404 : 200, headers: { "Content-Type": "application/json" },
       });
     },
