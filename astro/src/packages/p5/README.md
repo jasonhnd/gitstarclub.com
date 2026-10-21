@@ -20,9 +20,9 @@ the existing availability resolver with its exported Cloudflare lookback limits.
 The shared stylesheet adds source discovery for the imported web presentation
 components so Tailwind emits their original utilities. No design values change.
 
-`/search-index` belongs to P6; `/repo-curve` belongs to P2. Until those packages
-land, a local comparison gateway can delegate these two endpoints to the
-unchanged web fixture host. This dependency must be explicit in reports.
+`/search-index` belongs to P6; `/repo-curve` belongs to P2. The integrated comparison runs directly against the Astro Worker, including
+these two endpoints. It asserts successful same-origin data requests without
+a gateway or fallback to the old web host.
 No API endpoint or production data change belongs to P5.
 
 Package tests and all-locale comparison paths live in `tests/p5/`.

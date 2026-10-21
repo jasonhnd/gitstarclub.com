@@ -1,10 +1,10 @@
-# Astro P0 foundation
+# Astro site host
 
-P0 supplies the shared shell and host tools for the seven parallel packages in
+The integrated host supplies the shared shell and seven migrated packages in
 [the migration plan](../plans/astro-migration.md). The Product specification is
-`astro-migration-spec.md` v1 (2026-10-21). `web/` remains unchanged. The catch-all
-page is a shell fallback with a minimal published-data example; product bodies
-belong to P1-P6. No deployment or merge is authorized.
+`astro-migration-spec.md` v1 (2026-10-21). `web/` remains unchanged. All migrated page bodies have concrete entries; unknown and deferred cockpit
+URLs return 404. See [ASTRO-HOST.md](../docs/ASTRO-HOST.md) for explicit modes,
+resource preservation and deployment boundaries. No deployment or merge is authorized.
 
 ## Local commands
 
@@ -18,7 +18,7 @@ bun run verify:local
 ```
 
 This installs frozen web/Astro dependencies, checks the dependency graph and
-Astro/TypeScript sources, runs every unit test, builds the actual Worker, then
+Astro/TypeScript sources, runs every unit test, builds the actual pre Worker, then
 runs Worker/browser-tool tests. The fixture accepts GET/HEAD only and contains
 only the existing checked-in web fixtures. No owner env file, real bucket,
 write credential, live cron, remote refresh or runtime database is used.
@@ -82,9 +82,9 @@ browser test proves body, metadata and structured-fact regressions are detected.
   Mutating methods are delegated once, never replayed after a pointer switch.
   The revalidate POST callback and language redirect do not depend on pointers.
 - `/.well-known/deployment` reports the baked commit and local deployment
-  origin without reading DATA. Skeleton output is always noindex. Explicit
-  production/pre activation, bounded snapshots, shared media/static endpoints,
-  operational hooks and removing web belong to final integration.
+  origin without reading DATA. Production output is indexable; pre is noindex. Final integration retains
+  the original shell, Queue and scheduled handlers and adds the default social
+  card and export aliases. Removing web remains a post-cutover task.
 
 Astro 7.4.1 is stable. The official cf adapter 15.0.0-beta.3 and Vite plugin
 2.0.0-beta.v.3 are prereleases; cf 1.0.0-beta.18 matches the existing host and
