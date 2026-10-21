@@ -3,6 +3,7 @@
 export const en = {
   nav: { home: "Home", pulse: "Pulse", rankings: "Rankings", categories: "Categories", organizations: "Organizations", compare: "Compare", about: "About" },
   common: {
+    starHistoryNote: "Daily and weekly figures for May 30–September 30, 2026 use GitHub’s star-history summary of stars still present when collected. Day boundaries are approximately UTC and may differ by a few hours.",
     faqHeading: "Frequently asked questions",
     dataLastUpdated: "Data last updated",
     dataAsOf: "Data as of",
@@ -213,6 +214,8 @@ export const en = {
   },
   week: { label: "Week", top: "Top weekly repositories" },
   repo: {
+    dailyStars: "Daily stars",
+    dailyStarsAria: "Daily stars: up to {stars} stars per day across {points} recorded days",
     starHistory: "Star history",
     metaTitleSuffix: "Star History & Timeline",
     metaFallbackDescription: "GitHub star history for {repo}.",

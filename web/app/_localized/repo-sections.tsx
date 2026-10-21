@@ -6,8 +6,26 @@ import type { Dict, Locale } from "@/lib/i18n";
 import { localizedPath } from "@/lib/i18n/routing";
 import type { ShareableSnippetContent } from "@/lib/shareable-snippets";
 import { rankingMonthHrefIfRoutable } from "@/lib/repo-page";
+import { aggregateDailyPoints } from "@/lib/star-history-provenance";
 
 type RepoSeriesPoint = { label: string; total: number };
+
+export function RepoDailyHistorySection({ points, provenance, locale, t }: {
+  points: ReadonlyArray<readonly [string, number]>;
+  provenance: unknown;
+  locale: Locale;
+  t: Dict;
+}) {
+  const daily = aggregateDailyPoints(points, provenance);
+  if (daily.length === 0) return null;
+  return (
+    <section className="mt-[clamp(2rem,4vw,3rem)]">
+      <h2 className="mb-3 font-mono text-[0.78rem] uppercase tracking-wider text-on-surface-variant">{t.repo.dailyStars}</h2>
+      <p className="mb-3 text-sm leading-relaxed text-on-surface-variant">{t.common.starHistoryNote}</p>
+      <StarCurve series={daily.map(([label, total]) => ({ label, total }))} milestones={[]} daily labels={{ ariaLabel: t.repo.dailyStarsAria }} locale={locale} />
+    </section>
+  );
+}
 
 export function RepoHistorySection({
   inflections,

@@ -3,6 +3,7 @@ import type { Dict } from "./en";
 const ja: Dict = {
   nav: { home: "ホーム", pulse: "動向", rankings: "ランキング", categories: "カテゴリ", organizations: "組織", compare: "比較", about: "このサイトについて" },
   common: {
+    starHistoryNote: "2026年5月30日〜9月30日の日別・週別の数値は、集計時点で残っているスターをまとめた GitHub のスター履歴に基づきます。日の区切りはおおむね UTC ですが、数時間ずれる場合があります。",
     faqHeading: "よくある質問",
     dataLastUpdated: "データ最終更新",
     dataAsOf: "データ基準日",
@@ -176,6 +177,8 @@ const ja: Dict = {
   },
   week: { label: "週", top: "週次の上位リポジトリ" },
   repo: {
+    dailyStars: "日別スター数",
+    dailyStarsAria: "日別スター数：記録のある{points}日間で1日最大{stars}スター",
     starHistory: "スター履歴",
     metaTitleSuffix: "スター履歴とタイムライン",
     metaFallbackDescription: "{repo} の GitHub スター履歴。",

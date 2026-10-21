@@ -738,3 +738,30 @@ Every artifact is defined with a Zod schema in `web/lib/contracts/` (schemas for
 - After bootstrap / Workflow produces each JSON, it **validates** it with the corresponding schema (dirty data is not published and does not switch the pointer, see TESTING §1.2/§1.3).
 - When the build / runtime reads, `schema.parse(json)` → yields a typed object; the type is inferred from Zod, and **no separate interface is written**.
 - Changing the schema = changing Zod = changing the contract, the validation, and the types at the same time — the three cannot drift.
+
+## Aggregate star-history provenance (issue 687)
+
+The optional `entity/{repo,org}.curve.provenance` and
+`rank/week/{period}/repo/flow.json.meta.provenance` fields carry the exact
+`provenance` object from GSC_0090's `inputs/manifest.json`, documented in
+[STAR-HISTORY-AGGREGATE.md](analysis/STAR-HISTORY-AGGREGATE.md#output-and-conversion-contract).
+`web/lib/contracts/star-history.ts` validates every field, including the fixed
+2026-05-30 through 2026-09-30 boundaries. This is view metadata; canonical tuples
+remain unchanged. Legacy views without the optional object remain valid.
+
+A publisher must propagate that object only when the displayed daily/weekly
+values actually incorporate the aggregate source. Dates alone never establish
+provenance. Unknown repositories must remain absent, not measured zero. Edge ISO
+weeks W22/W40 require joining the independently measured adjacent days before a
+whole-week rank can be published; the label does not establish completeness.
+
+The object describes **daily values only** within `curve`, never
+`curve.monthly`, monthly tables, stocks or milestones. For weekly rankings it
+describes the overlapping gap contribution to the whole ISO Monday-Sunday week.
+The optional rank field is readable on the shared rank schema, but monthly/yearly
+and all-time displays deliberately ignore it. No schema addition publishes data
+or authorizes widening the gap. No monthly arithmetic is changed.
+
+The reader note describes stars still present at collection time and GitHub's
+approximately UTC day boundaries, which may differ by a few hours. It does not
+claim exact UTC reconstruction, historical net growth or a live count.
