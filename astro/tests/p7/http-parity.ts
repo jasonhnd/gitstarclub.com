@@ -6,6 +6,7 @@ import { startWebWorker } from "./web-worker";
 import { startFixture, fixtureRecords } from "../../scripts/fixture";
 import { startWorker } from "../../scripts/local-worker";
 import { prepareWebOutput } from "../../scripts/prepare-web";
+import type { R2Bucket } from "../../../web/lib/storage/r2-binding-store";
 import { LOCALES } from "../../src/lib/i18n";
 
 // Run only after the exact-head fixture web pre build and Astro build.
@@ -18,7 +19,7 @@ const records = fixtureRecords();
 const fixture = startFixture(records);
 let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
 let original: Awaited<ReturnType<typeof startWebWorker>> | undefined;
-const report: { path: string; method: string; passed: boolean; expected: unknown; actual: unknown }[] = [];
+const report: { scenario: string; path: string; method: string; passed: boolean; expected: unknown; actual: unknown }[] = [];
 try {
   original = await startWebWorker(root, scratch, records, fixture.url.origin);
   const web = (await original.ready).origin;
@@ -40,22 +41,30 @@ try {
   async function capture(origin: string, path: string, method: string) {
     const response = await fetch(new URL(path, origin), { method, redirect: "manual" });
     const identity = response.headers.get("x-vinext-build-id");
-    if (identity !== (origin === web ? originalBuild : astroBuild)) throw new Error("Response build identity does not match its built artifact.");
+    if (identity !== (response.status === 503 ? null : origin === web ? originalBuild : astroBuild)) throw new Error("Response build identity does not match its built artifact.");
     const headers = [...response.headers].filter(([name]) => !transport.has(name)).map(([name, value]) => [name, name === "location" ? value.replace(origin, "https://comparison.invalid") : name === "x-vinext-build-id" ? "<artifact-build-id>" : value]);
     return { status: response.status, headers, body: Array.from(new Uint8Array(await response.arrayBuffer())) };
   }
-  for (const [path, method] of cases) {
-    let expected: Awaited<ReturnType<typeof capture>>;
-    let actual: Awaited<ReturnType<typeof capture>>;
-    // Avoid a wall-clock second boundary changing the one-year Cookie expiry.
-    // The final successful attempt must still match the entire header bytes.
-    for (let attempt = 0; ; attempt++) {
-      [expected, actual] = await Promise.all([capture(web, path, method), capture(astro, path, method)]);
-      if (JSON.stringify(expected) === JSON.stringify(actual) || attempt === 2 || !path.startsWith("/api/lang")) break;
+  for (const scenario of ["published", "pointer-outage"]) {
+    if (scenario === "pointer-outage") {
+      for (const host of [original, worker]) {
+        const bucket = await host.getR2Bucket("DATA") as unknown as R2Bucket;
+        await bucket.put("views/latest.json", "invalid");
+      }
     }
-    const passed = JSON.stringify(expected) === JSON.stringify(actual);
-    report.push({ path, method, passed, expected, actual });
-    console.log(`${passed ? "PASS" : "DIFF"} ${method} ${path}`);
+    for (const [path, method] of cases) {
+      let expected: Awaited<ReturnType<typeof capture>>;
+      let actual: Awaited<ReturnType<typeof capture>>;
+      // Avoid a wall-clock second boundary changing the one-year Cookie expiry.
+      // The final successful attempt must still match the entire header bytes.
+      for (let attempt = 0; ; attempt++) {
+        [expected, actual] = await Promise.all([capture(web, path, method), capture(astro, path, method)]);
+        if (JSON.stringify(expected) === JSON.stringify(actual) || attempt === 2 || !path.startsWith("/api/lang")) break;
+      }
+      const passed = JSON.stringify(expected) === JSON.stringify(actual);
+      report.push({ scenario, path, method, passed, expected, actual });
+      console.log(`${passed ? "PASS" : "DIFF"} ${scenario} ${method} ${path}`);
+    }
   }
   writeFileSync(resolve(scratch, "p7-http-parity.json"), JSON.stringify({ passed: report.every((item) => item.passed), transportExcluded: [...transport], normalizedOrigin: true, buildIdentity: { web: originalBuild, astro: astroBuild, validatedAgainstArtifacts: true }, cases: report }, null, 2) + "\n");
   console.log(`P7 built-host comparison: ${report.filter((item) => item.passed).length}/${report.length} passed`);

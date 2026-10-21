@@ -14,8 +14,9 @@ The unprefixed endpoints preserve their existing public methods and contracts:
 
 `OPTIONS` returns 204 with the original sorted `Allow` header; other recognized
 unsupported methods return 405 and unrecognized methods return 400, as in the
-existing vinext route dispatcher. API responses retain the original security
-and private/no-store headers. No localized API copies or HTML pages are added.
+existing vinext route dispatcher. API responses retain the original security, router-selector Vary, build-identity
+and private/no-store headers. The build-identity header identifies the new Astro
+commit, as it identified the original artifact before migration. No localized API copies or HTML pages are added.
 There are no new client islands or client JavaScript.
 
 ## Framework boundary
@@ -39,7 +40,7 @@ Minimal shared P0 corrections required for public response parity:
 - `astro/src/lib/routing.ts`: preserve the original cookie's expiry, attribute order,
   casing and production-only Secure flag. The old framework removes its
   internal middleware cookie header before returning the public response.
-- `astro/src/lib/host.ts`: preserve the API header set and original pointer-outage
+- `astro/src/lib/host.ts`: preserve the API header set (including router-selector Vary and build identity) and original pointer-outage
   response body while retaining the skeleton's page indexing policy.
 - [astro/scripts/local-worker.ts](../../../scripts/local-worker.ts): optional synthetic text bindings for local tests;
   existing callers and defaults are unchanged. No Worker config changes.
@@ -71,11 +72,15 @@ After the full AGENTS fixture pre build and Astro build in the detached clone:
 bun tests/p7/http-parity.ts
 ```
 
-This compares the actual two built hosts on loopback for all seven endpoints,
-all seven language choices, implicit HEAD/OPTIONS and unsupported methods. The
+This directly loads both actual built Workers on loopback, without Vite preview
+server middleware. It compares all seven endpoints,
+all seven language choices, implicit HEAD/OPTIONS and unsupported methods, both
+with valid pointers and during a pointer outage. The
 report is `KANBAN_TMP/p7-http-parity.json`. It compares application headers and
-body bytes, normalizing only the different loopback origin in Location and
-excluding documented HTTP transport framing/compression/server timestamps.
+body bytes, normalizing the different loopback origin in Location and the
+deployment-specific build identity only after validating each against its own
+built artifact. It excludes documented HTTP transport framing/compression/server
+timestamps. All other application header bytes must match.
 Cookie expiry is compared byte for byte; a second-boundary mismatch is retried.
 It sends no authenticated operational HTTP requests. Success/lease/publication
 branches use the isolated in-process comparison and synthetic Worker bindings.
