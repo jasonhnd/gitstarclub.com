@@ -283,6 +283,10 @@ export async function refreshMetadataBucketWithDeps(
     });
   };
 
+  // Completed borrowed buckets never enter the fetch loop. Publish validation
+  // reads this run's audit ledger, so materialize it before writing the shard.
+  if (pages.length === 0) await save();
+
   if (attempts > 0) {
     await deps.sleep(metadataTransientRetryDelayMs(attempts));
   }

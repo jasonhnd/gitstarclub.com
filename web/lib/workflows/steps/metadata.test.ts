@@ -167,6 +167,44 @@ function fakeMetadata(ids: number[]) {
 }
 
 describe("metadata GraphQL resume", () => {
+  for (const retained of [false, true]) {
+    test(`persists a completed borrowed ${retained ? "retained" : "missing"} skip before writing the new run shard`, async () => {
+      const { state, deps } = fakeMetadata([1]);
+      deps.readWhitelist = async () => ({ ...whitelistFor([1]), metadata_resume_run_id: "refresh-failed" });
+      const skipped = {
+        id: 1, node_id: "R_1", full_name: "owner/repo-1", reason: "graphql_502" as const,
+        value_status: retained ? "retained" as const : "missing" as const,
+      };
+      deps.readProgress = async (runId) => runId === "refresh-failed" ? {
+        v: 1, bucket: 1, fetched: {}, pending_pages: [], skipped: [skipped], transient_attempts: 0,
+      } : state.progress;
+      deps.readPrevShard = async () => retained ? { "1": previous(1, "2025-01-01") } : {};
+      deps.fetchBatch = async () => { throw new Error("completed borrowed pages must not be fetched again"); };
+      const writeShard = deps.writeShard;
+      deps.writeShard = async (owner, bucket, shard) => {
+        expect(state.progress).toMatchObject({ pending_pages: [], skipped: [skipped], transient_attempts: 0 });
+        await writeShard(owner, bucket, shard);
+      };
+      const done = await refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps);
+      expect(done).toMatchObject({ from_github: 0, skipped_count: 1, skipped: [skipped] });
+      expect(state.progress?.skipped).toEqual([skipped]);
+      if (retained) expect(state.shard?.["1"]?.current_stars).toBe(20_001);
+      else expect(state.shard).toEqual({});
+    });
+  }
+
+  test("a failed current-run audit write prevents publishing a borrowed completed shard", async () => {
+    const { state, deps } = fakeMetadata([1]);
+    deps.readWhitelist = async () => ({ ...whitelistFor([1]), metadata_resume_run_id: "refresh-failed" });
+    deps.readProgress = async () => ({
+      v: 1, bucket: 1, fetched: {}, pending_pages: [], transient_attempts: 0,
+      skipped: [{ id: 1, node_id: "R_1", full_name: "owner/repo-1", reason: "graphql_502", value_status: "missing" }],
+    });
+    deps.writeProgress = async () => { throw new Error("audit write unavailable"); };
+    await expect(refreshMetadataBucketWithDeps("refresh-test", 1, 4, deps)).rejects.toThrow("audit write unavailable");
+    expect(state.shard).toBeNull();
+  });
+
   test("resets borrowed zero-row budgets but preserves an in-run split checkpoint", () => {
     const borrowed: MetadataBucketProgress = {
       v: 1, bucket: 1, fetched: {}, transient_attempts: 17, last_error: "GitHub GraphQL 502",
