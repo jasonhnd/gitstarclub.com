@@ -1,0 +1,30 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { OrgContent, buildLocalizedOrgTotalSnippet } from "./OrgContent";
+import type { organizationDetail } from "./data";
+import { ShareButton } from "../../../../web/app/_explore/ShareButton";
+import { SnippetActions } from "../../../../web/app/_explore/SnippetActions";
+import { absoluteSnippetUrl } from "../../../../web/lib/shareable-snippets";
+import { localizedPath } from "../../../../web/lib/i18n/routing";
+import { resolveDataAsOfFromMeta } from "../../../../web/lib/geo-capsules";
+import { formatTemplate } from "../../../../web/lib/template-format";
+
+type Props = Exclude<Awaited<ReturnType<typeof organizationDetail>>, Response>;
+const props = Astro.props;
+const { org, lookup, meta, locale, t } = props;
+const asOf = resolveDataAsOfFromMeta(meta, org.curve.recent_daily.at(-1)?.[0], org.curve.monthly.at(-1)?.[0], { locale });
+const members = org.members.flatMap((id) => {
+  const row = lookup?.[String(id)];
+  return row ? [{ owner: row.owner, name: row.name, lang: row.language, total: row.current_stars }] : [];
+}).sort((a, b) => b.total - a.total);
+const snippet = buildLocalizedOrgTotalSnippet({ t, locale, org, asOf, members });
+const ownerType = org.owner_type === "Organization" ? t.org.organization : org.owner_type === "User" ? t.org.developer : t.tables.unknown;
+const shareText = formatTemplate(t.org.metaTitle, { login: org.login, kind: ownerType });
+const shareUrl = absoluteSnippetUrl(localizedPath(locale, props.canonicalPath));
+---
+<Layout locale={locale} canonicalPath={props.canonicalPath} title={props.title} description={props.description}>
+  <OrgContent {...props}>
+    <ShareButton slot="share-button" text={shareText} url={shareUrl} labels={t.share} client:load />
+    {snippet && <SnippetActions slot="snippet-actions" copyText={snippet.copyText} embedHtml={snippet.embedHtml} labels={t.share} client:load />}
+  </OrgContent>
+</Layout>
