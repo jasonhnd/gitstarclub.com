@@ -10,7 +10,7 @@ const BOOTSTRAP_LEASE_TTL_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
 
 /** @param {Buffer | null} body @returns {BootstrapLease | null} */
-function parseLease(body) {
+export function parseBootstrapLease(body) {
   if (!body) return null;
   let lease;
   try {
@@ -43,7 +43,7 @@ export async function acquireBootstrapLease({ store, generation, operation, now 
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const snapshot = await store.readSnapshot(ACTIVE_WORKFLOW_PATH);
-    const active = parseLease(snapshot.body);
+    const active = parseBootstrapLease(snapshot.body);
     if (active?.status === "running" && Date.parse(active.expires_at) > now) {
       throw new Error(`bootstrap ${operation} blocked by active workflow ${active.run_id} until ${active.expires_at}`);
     }
@@ -69,7 +69,7 @@ export async function acquireBootstrapLease({ store, generation, operation, now 
 export async function releaseBootstrapLease({ store, lease, status, now = Date.now() }) {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const snapshot = await store.readSnapshot(ACTIVE_WORKFLOW_PATH);
-    const current = parseLease(snapshot.body);
+    const current = parseBootstrapLease(snapshot.body);
     if (
       !current ||
       current.run_id !== lease.run_id ||
@@ -94,7 +94,7 @@ export async function releaseBootstrapLease({ store, lease, status, now = Date.n
 export async function renewBootstrapLease({ store, lease, now = Date.now() }) {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const snapshot = await store.readSnapshot(ACTIVE_WORKFLOW_PATH);
-    const current = parseLease(snapshot.body);
+    const current = parseBootstrapLease(snapshot.body);
     if (
       !current ||
       current.status !== "running" ||

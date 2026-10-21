@@ -1,3 +1,5 @@
+import { AGGREGATE_IMPORT_PATH } from "../aggregate-history/policy";
+
 /**
  * Paths the P1–P2 Worker shell still owns after P3 hosts the Next app.
  * `/` is the Next homepage — start refresh only at `/start`.
@@ -24,6 +26,8 @@ export function classifyWorkerRequest(pathname: string, method: string): WorkerR
   if ((WORKER_SHELL_PUBLIC_GET_PATHS as readonly string[]).includes(path) && verb === "GET") {
     return "shell";
   }
+  // Own every verb so production always refuses here, including GET/HEAD.
+  if (path === AGGREGATE_IMPORT_PATH) return "shell";
   if (path === "/start" && (verb === "GET" || verb === "POST")) {
     return "shell";
   }
