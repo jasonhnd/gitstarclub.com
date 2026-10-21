@@ -1,0 +1,11 @@
+---
+import "./styles.css";
+import Layout from "../../layouts/Layout.astro";
+import { OrgIndexContent } from "./OrgIndexContent";
+import type { organizationIndex } from "./data";
+type Props = Exclude<Awaited<ReturnType<typeof organizationIndex>>, Response>;
+const props = Astro.props;
+---
+<Layout locale={props.locale} canonicalPath={props.canonicalPath} title={props.title} description={props.description}>
+  <OrgIndexContent locale={props.locale} page={props.page} orgs={props.orgs} t={props.t} />
+</Layout>

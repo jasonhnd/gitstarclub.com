@@ -1,0 +1,79 @@
+import type { OrgsLookup } from "@/lib/contracts";
+import { JsonLd } from "@/app/_explore/JsonLd";
+import { OrganizationRankingTable } from "@/app/_explore/SemanticDataTable";
+import { PaginationNav } from "@/app/_explore/PaginationNav";
+import { PAD_X } from "@/app/_explore/layout-tokens";
+import { collectionLd, itemListLd } from "@/lib/jsonld";
+import { type Dict, type Locale } from "@/lib/i18n";
+import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
+import { ORG_INDEX_PAGE_SIZE } from "@/lib/pagination";
+import { orgIndexPageCount, orgIndexPageRows, orgIndexPath, orgIndexRows } from "@/app/o/org-index-data";
+import { organizationTableLabels } from "./labels";
+
+/** Same static directory body as web; data and shell are supplied by Astro. */
+export function OrgIndexContent({ locale, page, orgs, t }: { locale: Locale; page: number; orgs: OrgsLookup | null; t: Dict }) {
+  const language = toBcp47Locale(locale);
+  const canonicalPath = orgIndexPath(page);
+  const routePath = localizedPath(locale, canonicalPath);
+  const rows = orgIndexRows(orgs);
+  const totalPages = orgIndexPageCount(rows.length);
+  const pageRows = orgIndexPageRows(rows, page);
+  const first = rows.length > 0 ? (page - 1) * ORG_INDEX_PAGE_SIZE + 1 : 0;
+  const last = first + pageRows.length - 1;
+  const labels = organizationTableLabels(t);
+
+  return (
+    <>
+      <JsonLd data={collectionLd(t.org.indexTitle, routePath, language)} />
+      <JsonLd
+        data={itemListLd(
+          t.org.indexTitle,
+          routePath,
+          language,
+          pageRows.map((org) => ({ name: org.login, path: localizedPath(locale, `/o/${org.login}`) })),
+          first || 1,
+        )}
+      />
+      <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[68rem] py-[clamp(1.5rem,4vw,3rem)] ${PAD_X}`}>
+        <section>
+          <p className="font-mono text-[0.75rem] uppercase text-on-surface-variant">{t.org.indexEyebrow}</p>
+          <h1 className="mt-2 text-[clamp(2rem,6vw,3.5rem)] font-extrabold leading-none text-on-surface">{t.org.indexTitle}</h1>
+          <p className="mt-3 max-w-[54ch] text-[clamp(0.95rem,1.6vw,1.15rem)] text-on-surface-variant">
+            {t.org.indexDescription}
+          </p>
+          {rows.length > 0 && (
+            <p className="mt-4 font-mono text-[0.78rem] text-on-surface-variant">
+              {fill(t.org.indexShowing, { first: String(first), last: String(last), total: rows.length.toLocaleString(language) })}
+            </p>
+          )}
+        </section>
+
+        {rows.length === 0 && (
+          <p className="mt-[clamp(1rem,2vw,1.5rem)] rounded-lg border border-dashed border-outline-variant bg-surface-container px-4 py-4 text-[0.9rem] text-on-surface-variant">
+            {t.categories.rankingPending}
+          </p>
+        )}
+
+        <OrganizationRankingTable
+          rows={pageRows}
+          startRank={first || 1}
+          caption={fill(t.org.indexCaption, { page: String(page) })}
+          labels={labels}
+          locale={locale}
+        />
+
+        <PaginationNav
+          currentPage={page}
+          pageCount={totalPages}
+          hrefForPage={(nextPage) => localizedPath(locale, orgIndexPath(nextPage))}
+          label={t.org.indexPagination}
+          labels={{ previous: t.common.previous, next: t.common.next }}
+        />
+      </main>
+    </>
+  );
+}
+
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? `{${key}}`);
+}
