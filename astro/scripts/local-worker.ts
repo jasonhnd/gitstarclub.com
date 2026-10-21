@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, mkdirSync } from "node:fs";
 import { fixtureRecords } from "./fixture";
 import type { R2Bucket } from "../../web/lib/storage/r2-binding-store";
 
-export async function startWorker(records = fixtureRecords(), bindings: Record<string, string> = {}) {
+export async function startWorker(records = fixtureRecords()) {
   const scratch = process.env.KANBAN_TMP;
   if (!scratch) throw new Error("Set KANBAN_TMP before starting the local Worker.");
   const output = resolve(scratch, "astro-cloudflare/output/v0/workers/default");
@@ -26,7 +26,7 @@ export async function startWorker(records = fixtureRecords(), bindings: Record<s
       compatibilityDate: "2026-09-17", compatibilityFlags: ["nodejs_compat"],
       triggers: [{ type: "fetch", pattern: "*/*" }],
       manifest: { mainModule: "entry.mjs", modules },
-      env: { ...bindings, DATA: { type: "r2", name: "astro-fixture" }, GSC_CACHE: { type: "kv" }, ASSETS: { type: "assets" } },
+      env: { DATA: { type: "r2", name: "astro-fixture" }, GSC_CACHE: { type: "kv" }, ASSETS: { type: "assets" } },
       assets: { directory: resolve(output, "assets"), htmlHandling: "none", notFoundHandling: "none" },
     } }],
     resourceTmpPath, telemetry: { enabled: false },

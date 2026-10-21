@@ -12,7 +12,7 @@ import type { APIContext } from "astro";
 
 const context = {} as APIContext;
 
-test("P6 search uses the existing published response and missing-index behavior", async () => {
+test("P6 search uses the existing published response", async () => {
   const records = fixtureRecords();
   const fixture = startFixture(records);
   try {
@@ -49,4 +49,35 @@ test("P6 metadata endpoints preserve the existing manifest and preview crawl pol
   expect(await manifestResponse.json()).toMatchObject({ start_url: "/", display: "standalone", short_name: "GitStarClub" });
   expect(await (await robots(context)).text()).toBe("User-Agent: *\nDisallow: /\n\n");
   expect(serializeRobots({ rules: [{ userAgent: "*", allow: "/", disallow: ["/api/"] }], host: "https://gitstarclub.com", sitemap: "https://gitstarclub.com/sitemap.xml" })).toBe("User-Agent: *\nAllow: /\nDisallow: /api/\n\nHost: https://gitstarclub.com\nSitemap: https://gitstarclub.com/sitemap.xml\n");
+});
+
+test("the Worker preserves endpoint cache headers while keeping HTML behind its publication fence", async () => {
+  const { secureResponse } = await import("../../src/lib/host");
+  const endpoint = secureResponse(Response.json({}, { headers: { "Cache-Control": "public, max-age=0, s-maxage=3600" } }), "GET", "BYPASS");
+  expect(endpoint.headers.get("cache-control")).toBe("public, max-age=0, s-maxage=3600");
+  const html = secureResponse(new Response("<main />", { headers: { "Content-Type": "text/html", "Cache-Control": "public, max-age=999" } }), "GET", "MISS");
+  expect(html.headers.get("cache-control")).toBe("private, no-store");
+});
+
+test("published native transport is read-only and uses the request binding without changing global fetch", async () => {
+  const { fetchWithTimeout } = await import("../../src/packages/p6/published-fetch");
+  const { PUBLISHED_READ_ORIGIN, withPublishedReads } = await import("../../src/packages/p6/published-reads");
+  const { resolveRuntimeEnv } = await import("../../../web/lib/workers-host/runtime-env");
+  const original = globalThis.fetch;
+  const reads: string[] = [];
+  const DATA = { async get(key: string) {
+    reads.push(key);
+    if (key === "missing.json") return null;
+    return { text: async () => '{"fixture":true}', etag: "fixture" };
+  } };
+  await withWorkerEnv({ DATA }, () => withPublishedReads(async () => {
+    expect(resolveRuntimeEnv().R2_PUBLIC_BASE_URL).toBe(PUBLISHED_READ_ORIGIN);
+    const response = await fetchWithTimeout(`${PUBLISHED_READ_ORIGIN}/views/v1/meta.json?v=v1`, { cache: "force-cache" });
+    expect(await response.json()).toEqual({ fixture: true });
+    const absent = await fetchWithTimeout(`${PUBLISHED_READ_ORIGIN}/missing.json`);
+    expect(absent.status).toBe(404);
+    expect(fetchWithTimeout(`${PUBLISHED_READ_ORIGIN}/meta.json`, { method: "POST" })).rejects.toThrow("read-only");
+  }));
+  expect(reads).toEqual(["views/v1/meta.json", "missing.json"]);
+  expect(globalThis.fetch).toBe(original);
 });
