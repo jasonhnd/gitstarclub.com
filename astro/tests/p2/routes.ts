@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { getDictionary } from "../../src/lib/i18n";
+import type { R2Bucket } from "../../../web/lib/storage/r2-binding-store";
 import { startWorker } from "../../scripts/local-worker";
 import { paths, repositoryFixtures } from "./fixture";
 
@@ -51,7 +52,7 @@ try {
     const view = new DataView(bytes.buffer);
     assert.equal(view.getUint32(16), 1200); assert.equal(view.getUint32(20), 630);
   }
-  const bucket = await worker.getR2Bucket("DATA");
+  const bucket = await worker.getR2Bucket("DATA") as unknown as R2Bucket;
   await bucket.put("views/latest.json", "invalid");
   assert.equal((await get("/repo-curve?id=0")).status, 400);
   assert.equal((await get("/repo-curve", { method: "OPTIONS" })).status, 204);
