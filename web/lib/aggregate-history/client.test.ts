@@ -4,8 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AggregateHistoryWorkerClient, aggregateWorkerOrigin } from "../../scripts/lib/aggregate-history-worker-client";
 import { importAggregateHistory } from "../../scripts/lib/aggregate-history-import";
+import { inspectPreviewAggregate } from "../../scripts/inspect-preview-aggregate";
+import { verifyPreviewAggregate } from "../../scripts/verify-preview-aggregate";
 import { parseAggregateImportArgs } from "../../scripts/import-star-history-aggregate";
 import type { AggregateBundle } from "../../scripts/lib/aggregate-history-input";
+import { buildBootstrapPhaseManifest } from "../../../pipeline/lib/bootstrap-publication.mjs";
+import { importDigest } from "./protocol";
 import { GAP_DAYS, gapSeries } from "../../../pipeline/scripts/star-history-aggregate.mjs";
 import { lookupRepoEntry, orgEntityFromParts, repoEntityFromParts } from "../workflows/recompute/entities";
 import { AGGREGATE_MANIFEST_SHA256 } from "./policy";
@@ -28,7 +32,7 @@ function fixture(repoCount = 1, sourceCount = repoCount, owners = 1) {
   const bundle: AggregateBundle = { sha256: AGGREGATE_MANIFEST_SHA256, daily: {}, weekly: {}, missing: [] };
   for (let id = 1; id <= repoCount; id++) {
     const owner = `owner${id % owners}`;
-    const repo = { id, node_id: `R_${id}`, owner, owner_type: "Organization" as const, name: `repo${id}`, full_name: `${owner}/repo${id}`, current_stars: 10000 + id, created_at: "2020-01-01", d: 2, active: true, tracked_since: null };
+    const repo = { id, node_id: `R_${id}`, owner, owner_type: "Organization" as const, name: id === 1 ? "react" : `repo${id}`, full_name: `${owner}/${id === 1 ? "react" : `repo${id}`}`, current_stars: 10000 + id, created_at: "2020-01-01", d: 2, active: true, tracked_since: null };
     const bucket = raw[id % 32]!;
     bucket.repos![String(id)] = repo;
     bucket.daily![String(id)] = [["2026-10-21", 3]];
@@ -123,6 +127,58 @@ describe("operator Worker transport", () => {
       expect(await h.bucket.store.get("bootstrap/latest.json")).toBeNull();
       if (mode === "takeover") expect(JSON.parse((await h.bucket.store.get("ops/workflows/active.json"))!.body).run_id).toBe("successor");
     }
+  });
+
+  test("an existing bootstrap uses a conditional replacement and a raced first pointer is never overwritten", async () => {
+    for (const existing of [false, true]) {
+      const { initial, bundle } = fixture();
+      if (existing) {
+        const prior = "bootstrap-prior-fixture";
+        const digests: Record<string, string> = {};
+        for (const phase of ["base", "canonical"] as const) {
+          const objects = Object.entries(initial).filter(([path]) => path.startsWith(phase === "base" ? "views/refresh-fixture/" : "canonical/v2/")).map(([path, body]) => ({ path: phase === "base" ? `views/${path.slice("views/refresh-fixture/".length)}` : path, body: Buffer.from(body) }));
+          for (const item of objects) initial[`bootstrap/generations/${prior}/${item.path}`] = item.body.toString();
+          const body = encode(buildBootstrapPhaseManifest(prior, phase, objects));
+          initial[`bootstrap/generations/${prior}/manifests/${phase}.json`] = body;
+          digests[phase] = importDigest(body);
+        }
+        initial["bootstrap/latest.json"] = encode({ schema_ver: 1, generation: prior, prefix: `bootstrap/generations/${prior}`, previous_generation: null, published_at: "2026-10-22T00:01:00.000Z", base_manifest_sha256: digests.base, canonical_manifest_sha256: digests.canonical });
+      }
+      const h = importWorkerHarness(initial); const c = client(h, checkpoint());
+      if (existing) {
+        expect((await importAggregateHistory({ store: c.store, publisher: c, generation: GEN, bundle, execute: true })).status).toBe("published");
+        const write = h.bucket.writes.find((item) => item.path === "bootstrap/latest.json")!;
+        expect(write.onlyIf!.etagMatches).toBeTruthy();
+        expect(JSON.parse((await h.bucket.store.get("bootstrap/latest.json"))!.body).previous_generation).toBe("bootstrap-prior-fixture");
+      } else {
+        h.bucket.beforePut = async (path) => { if (path === "bootstrap/latest.json") await h.bucket.store.put(path, encode({ successor: "preserve this race winner" })); };
+        await expect(importAggregateHistory({ store: c.store, publisher: c, generation: GEN, bundle, execute: true })).rejects.toThrow();
+        expect(JSON.parse((await h.bucket.store.get("bootstrap/latest.json"))!.body).successor).toBe("preserve this race winner");
+      }
+    }
+  });
+
+  test("operator inspection and verification are read-only and detect changed daily history", async () => {
+    const { initial, bundle } = fixture(3); const h = importWorkerHarness(initial); const c = client(h, checkpoint());
+    expect((await inspectPreviewAggregate("unused", GEN, c)).active).toBe(false);
+    await importAggregateHistory({ store: c.store, publisher: c, generation: GEN, bundle, execute: true });
+    const writes = h.bucket.writes.length;
+    const pages: string[] = [];
+    const fetchImpl = (async (url: RequestInfo | URL) => {
+      pages.push(String(url));
+      const locale = String(url).includes("/ja/") ? "ja" : "en";
+      return new Response(`<html lang="${locale}"><meta name="robots" content="noindex,nofollow">`, { status: 200 });
+    }) as typeof fetch;
+    const verified = await verifyPreviewAggregate("unused", "unused", GEN, { client: c, bundle, fetchImpl });
+    expect(verified.samples).toHaveLength(3);
+    expect(pages).toHaveLength(6);
+    expect(h.bucket.writes.length).toBe(writes);
+    expect((await inspectPreviewAggregate("unused", GEN, c)).lease.status).toBe("published");
+    const path = `bootstrap/generations/${GEN}/views/entity/repo/1.json`;
+    const entity = JSON.parse((await h.bucket.store.get(path))!.body);
+    entity.curve.recent_daily[0][1]++;
+    await h.bucket.store.put(path, encode(entity));
+    await expect(verifyPreviewAggregate("unused", "unused", GEN, { client: c, bundle, fetchImpl })).rejects.toThrow();
   });
 
   test("5,669 repositories: full repair, recovery, staging, verification and commit stay within every invocation budget", async () => {
