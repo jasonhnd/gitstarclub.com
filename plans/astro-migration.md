@@ -61,7 +61,10 @@ public assets and operational Worker shell during final integration.
 - **Publication refresh:** capture the three authoritative DATA pointers before
   reads; existing readers use that request's captured publication. Core keys
   include its identity (body/ETags/timestamps/absence). Consume output and
-  recheck before serving/writing; retry once, then 503 on a race. Ordinary
+  recheck before serving/writing; retry once, then 503 on a race. Cache-bypassing
+  GET/HEAD requests (including cookie/auth) follow the same buffered output
+  check and retry rule without reading or writing shared page storage. Mutating
+  requests execute once and are never replayed after a publication change. Ordinary
   publication preserves warm tail HTML under current policy. P7 must await
   explicit path invalidation when tails need refreshing; manual KV invalidation
   retains eventual-consistency limits. No runtime database or writer change.
