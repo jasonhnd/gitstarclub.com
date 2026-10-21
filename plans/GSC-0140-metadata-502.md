@@ -44,3 +44,19 @@ GitHub diagnosis uses read-only queries and never prints credentials.
 - Open one issue and one PR into pre, report verification and remaining risks,
   leave a clean worktree, remove temporary verification artifacts, and hand off
   to the board-selected independent reviewer without merging.
+
+## Review round 1: persist completed borrowed buckets
+
+The reviewer found that an exhausted page queue bypasses all progress writes.
+After a later bucket fails, a new run can borrow completed skipped rows without
+creating its own audit ledger, so publication rejects missing repositories or
+undercounts retained skips.
+
+- Materialize completed progress in the current run before writing its shard,
+  even when no GitHub query remains. A failed audit write must stop the shard.
+- Test empty fetched rows with both missing and retained borrowed skips.
+- Exercise two real in-memory runs: A completes bucket 1 with a missing newcomer,
+  fails at bucket 26, and B resumes A through publication. Cover first preview
+  publication and an existing publication; verify B's ledger and report counts.
+- Repeat the complete clean exact-head local gate and update the existing PR.
+  The original forbidden actions and independent review requirement still apply.
