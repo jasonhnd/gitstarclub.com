@@ -10,8 +10,9 @@ member-language chips and the existing data scope.
 `OrgIndexContent` and `OrgContent` preserve the current web page markup and
 reuse its static table, pagination, chart, capsule, FAQ, breadcrumb and related
 page components. Existing dictionaries and pure page helpers are imported.
-`styles.css` includes the unchanged shared components' Tailwind utilities; it
-adds no design values. The shared layout supplies search/theme islands.
+Two additive `@source` entries in the shared stylesheet include the unchanged
+shared components and P4 utilities in the single Tailwind compilation. They add
+no design values. The shared layout supplies search/theme islands.
 Directory bodies have no client JavaScript. Detail pages additionally hydrate
 only the existing `ShareButton` (copy/share link) and `SnippetActions`
 (copy text/embed). The body, SVG chart and structured data remain server HTML.
