@@ -347,4 +347,3 @@ function PeriodNavigationCard({ link }: { link: PeriodNavLink }) {
     </Link>
   );
 }
-
