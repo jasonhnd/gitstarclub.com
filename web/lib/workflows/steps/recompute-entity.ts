@@ -1,4 +1,5 @@
 import { clearViewParseMemo } from "@/lib/data/parse-view";
+import type { RefreshCursor } from "../runtime/types";
 import { REPO_BUCKETS } from "../buckets";
 import {
   ENTITY_WRITE_CHUNK,
@@ -24,6 +25,8 @@ import type { OrgRow } from "../recompute/windows";
 // load so validate sees a consistent stock snapshot.
 // See docs/VERCEL-DATA-OPERATIONS.md §3.1 / §3.3.
 
+export const ENTITIES_PER_HOP = 128;
+
 type OrgAcc = {
   login: string;
   owner_type: OwnerType;
@@ -32,18 +35,23 @@ type OrgAcc = {
   members: number[];
 };
 
-export async function recomputeRepoEntities(runId: string, fencingToken: number): Promise<{ files: number; anchorDrift: number }> {
+export async function recomputeRepoEntities(runId: string, fencingToken: number, cursor?: RefreshCursor): Promise<{ files: number; anchorDrift: number; nextWorkOffset?: number }> {
   const owner = { runId, fencingToken };
   const { packed } = await loadPackedRepoWindow(runId, "month", { owner, persist: true });
   const flowRank = assignPackedFlowRanks(packed);
   const byId = new Map(packed.ids.map((id, index) => [id, index]));
   let files = 0;
   let anchorDrift = 0;
+  const from = cursor?.workOffset ?? 0;
+  const to = cursor ? from + ENTITIES_PER_HOP : Infinity;
+  let position = 0;
   const batch = new Map<string, unknown>();
   for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
     const repos = await loadFullReposBucket(runId, bucket);
-    const daily = await loadRecentDailyBucket(runId, bucket);
+    const daily = position < to && position + repos.size > from ? await loadRecentDailyBucket(runId, bucket) : new Map<number, DailySeries>();
     for (const [id, meta] of repos) {
+      const index = position++;
+      if (index < from || index >= to) continue;
       const idx = byId.get(id);
       const mrows = idx === undefined ? [] : packedRepoRows(packed, idx, flowRank);
       const built = repoEntityFromParts(meta, mrows, daily.get(id) ?? []);
@@ -59,10 +67,10 @@ export async function recomputeRepoEntities(runId: string, fencingToken: number)
     clearViewParseMemo();
   }
   if (batch.size > 0) files += await writeVersion(runId, batch, owner);
-  return { files, anchorDrift };
+  return { files, anchorDrift, ...(position > to ? { nextWorkOffset: to } : {}) };
 }
 
-export async function recomputeOrgEntities(runId: string, fencingToken: number): Promise<{ files: number; anchorDrift: number }> {
+export async function recomputeOrgEntities(runId: string, fencingToken: number, cursor?: RefreshCursor): Promise<{ files: number; anchorDrift: number; nextWorkOffset?: number }> {
   const owner = { runId, fencingToken };
   const { packed } = await loadPackedRepoWindow(runId, "month", { owner, persist: true });
   const orgs = new Map<string, OrgAcc>();
@@ -123,7 +131,9 @@ export async function recomputeOrgEntities(runId: string, fencingToken: number):
   let files = 0;
   let anchorDrift = 0;
   const batch = new Map<string, unknown>();
-  for (const [login, acc] of orgs) {
+  const from = cursor?.workOffset ?? 0;
+  const to = cursor ? from + ENTITIES_PER_HOP : orgs.size;
+  for (const [login, acc] of [...orgs].slice(from, to)) {
     const days = orgDaily.get(login);
     const recentDaily = days
       ? [...days.entries()].sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0))
@@ -145,5 +155,5 @@ export async function recomputeOrgEntities(runId: string, fencingToken: number):
     }
   }
   if (batch.size > 0) files += await writeVersion(runId, batch, owner);
-  return { files, anchorDrift };
+  return { files, anchorDrift, ...(orgs.size > to ? { nextWorkOffset: to } : {}) };
 }

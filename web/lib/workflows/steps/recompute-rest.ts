@@ -125,7 +125,7 @@ async function writeSearch(runId: string, owner: WorkflowOwnership): Promise<Res
   return { files, nextRecomputePhase: "rest", nextRecomputeOffset: REST_OFFSET_CATEGORIES };
 }
 
-async function writeCategories(runId: string, owner: WorkflowOwnership): Promise<RestHopResult> {
+async function writeCategories(runId: string, owner: WorkflowOwnership, offset: number): Promise<RestHopResult> {
   const carry = await readCarry(runId);
   if (!carry) throw new Error(`${restCarryPath(runId)}: missing rest carry`);
   const counts = new Map<string, number>();
@@ -145,8 +145,10 @@ async function writeCategories(runId: string, owner: WorkflowOwnership): Promise
   }
   const views = categoryViewsFromAggregates(carry.generatedAt, counts, languageLabels, members);
   views.set(CATEGORY_ASSIGNMENTS_INDEX_PATH, categoryAssignmentsIndexDocument(carry.generatedAt));
-  const files = await writeVersionAndClear(runId, views, owner);
-  return { files };
+  const from = (offset - REST_OFFSET_CATEGORIES) * 128;
+  const page = new Map([...views].slice(from, from + 128));
+  const files = await writeVersionAndClear(runId, page, owner);
+  return { files, ...(from + files < views.size ? { nextRecomputePhase: "rest" as const, nextRecomputeOffset: offset + 1 } : {}) };
 }
 
 export async function runRestRankHop(
@@ -159,6 +161,6 @@ export async function runRestRankHop(
   if (offset === REST_OFFSET_RANKS) return writeRankViews(runId, owner);
   if (offset === REST_OFFSET_LOOKUP) return writeRepoLookup(runId, owner);
   if (offset === REST_OFFSET_SEARCH) return writeSearch(runId, owner);
-  if (offset === REST_OFFSET_CATEGORIES) return writeCategories(runId, owner);
+  if (offset >= REST_OFFSET_CATEGORIES) return writeCategories(runId, owner, offset);
   return { files: 0 };
 }
