@@ -33,7 +33,7 @@ try {
   await snippet.nth(1).click();
   await snippet.nth(1).filter({ hasText: t.share.embedCopied }).waitFor();
   assert.ok((await page.evaluate(() => (window as unknown as { copied: string[] }).copied.at(-1)))?.includes("<"));
-  await snippet.nth(1).filter({ hasText: t.share.embed }).waitFor();
+  await page.waitForFunction((label) => document.querySelectorAll("gsc-repo-share")[1]?.querySelectorAll("button")[1]?.textContent?.trim() === label, t.share.embed);
   assert.equal(await page.locator('main svg[role="img"]').count(), 1, "Monthly chart stays static without daily provenance");
   assert.equal(await page.locator("main astro-island").count(), 0, "Repository facts/charts do not hydrate");
   console.log("PASS P2 browser controls: link copy, X intent, snippet copy/embed, feedback reset, static chart/body.");
