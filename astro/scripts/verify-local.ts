@@ -16,5 +16,5 @@ async function run(command: string[], directory: string) {
 try {
   await run(["bun", "install", "--frozen-lockfile"], "web");
   await run(["bun", "install", "--frozen-lockfile"], "astro");
-  for (const script of ["validate:graph", "typecheck", "test", "build", "test:worker"]) await run(["bun", "run", script], "astro");
+  for (const script of ["validate:graph", "typecheck", "test", "build:pre", "test:worker"]) await run(["bun", "run", script], "astro");
 } finally { await fixture.stop(true); }

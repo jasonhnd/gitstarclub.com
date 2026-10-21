@@ -2,6 +2,7 @@ import { contentSecurityPolicyForEnvironment, securityHeaders } from "../../../w
 import { type Publication } from "../../../web/lib/workers-host/publication-fence";
 import { ArtifactStore, type StoredEntry } from "../../../web/lib/workers-host/cache/store";
 import { bypassPageCache, isLongTail, MAX_ENTRY_BYTES, TAIL_EXPIRE_SECONDS, TAIL_FRESH_SECONDS } from "../../../web/lib/workers-host/cache/policy";
+import { siteIndexable } from "./mode";
 import { operationResponse } from "../packages/p7/response";
 import { languageRedirect, negotiateLocale } from "./routing";
 
@@ -15,15 +16,17 @@ export type HostOptions = {
   now?: () => number;
 };
 type CacheStatus = "BYPASS" | "MISS" | "HIT" | "STALE";
+const MUTATING_GET_PATHS = new Set(["/api/cron/daily", "/api/cron/weekly", "/api/workflows/refresh/start"]);
 
-export function secureResponse(response: Response, method: string, status: CacheStatus, api = false): Response {
+export function secureResponse(response: Response, method: string, status: CacheStatus, api = false, indexable = siteIndexable): Response {
   const headers = new Headers(response.headers);
   for (const { key, value } of securityHeaders) headers.set(key, key === "Content-Security-Policy" ? contentSecurityPolicyForEnvironment("production") : value);
   // The origin fence must run on every request; no independent browser/CDN page cache.
   if (status === "BYPASS" || headers.get("content-type")?.includes("text/html") || !headers.has("cache-control")) {
     headers.set("Cache-Control", "private, no-store");
   }
-  if (!api) headers.set("X-Robots-Tag", "noindex, nofollow");
+  if (!api && !indexable) headers.set("X-Robots-Tag", "noindex, nofollow");
+  else headers.delete("X-Robots-Tag");
   headers.set("x-gsc-cache", status);
   return new Response(method === "HEAD" ? null : response.body, { status: response.status, headers });
 }
@@ -51,6 +54,9 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
   const redirect = negotiateLocale(request);
   if (redirect) return finish(redirect);
   const bypass = bypassPageCache(request);
+  // These legacy GET handlers (including implicit HEAD) publish or enqueue work.
+  // Their own successful publication must not replay the action or replace its result.
+  const mutation = !["GET", "HEAD"].includes(request.method) || MUTATING_GET_PATHS.has(path);
   const tail = isLongTail(path);
   const now = options.now ?? Date.now;
   const key = (publication: Publication) => JSON.stringify([options.build, url.origin, url.pathname, url.search, "html", tail ? "tail" : publication.id]);
@@ -90,7 +96,7 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
       const startedAt = now();
       const publication = await options.publication();
       // P7 handlers own their methods/auth. Never retry a mutating request after publication.
-      if (bypass && !["GET", "HEAD"].includes(request.method)) return finish(await options.render(publication));
+      if (bypass && mutation) return finish(await options.render(publication));
       const entry = await read(publication);
       if (entry) {
         const age = (now() - entry.lastModified) / 1000;

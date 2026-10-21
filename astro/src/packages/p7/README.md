@@ -19,8 +19,12 @@ and private/no-store headers. The build-identity header identifies the new Astro
 commit, as it identified the original artifact before migration. No localized API copies or HTML pages are added.
 There are no new client islands or client JavaScript.
 The host adds `x-gsc-publication` only to page responses, never to `/api/*`.
-API GET/HEAD still consume output and recheck the captured publication before
+Read-only API GET/HEAD consume output and recheck the captured publication before
 returning it: one publication change retries, and a second change returns 503.
+The legacy daily/weekly cron and refresh-start GET handlers also mutate data or
+enqueue work, including their implicit HEAD dispatch. They capture publication
+before dispatch but execute once, preserving the original response after their
+own publish or a subsequent pointer outage. Never retry these operations.
 These internal checks do not add a public API header or use shared page storage.
 
 ## Framework boundary
