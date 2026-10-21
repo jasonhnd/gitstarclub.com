@@ -1,9 +1,11 @@
 import { GROWTH_FLOOR_STARS } from "@/lib/constants";
 import { RANK_TOP_N, type RankView } from "./ranks";
+import { AGGREGATE_HISTORY_PROVENANCE } from "@/lib/contracts/star-history";
 import type { Period, Series } from "./model";
 import {
   advanceSeamStock,
   createSeamStockAcc,
+  sumHistoricalStock,
   type RepoRow,
   type Window,
 } from "./windows";
@@ -88,7 +90,7 @@ type RankRow = {
 };
 
 export type PackedWindowBuilder = {
-  absorb(id: number, owner: string, active: boolean, d: number, series: Series): void;
+  absorb(id: number, owner: string, active: boolean, d: number, series: Series, aggregateWeeks?: ReadonlySet<string>): void;
   finalize(): PackedRepoWindow;
 };
 
@@ -140,14 +142,14 @@ export function createPackedWindowBuilder(seamPeriod: Period, knownPeriods?: rea
   };
 
   return {
-    absorb(id, owner, isActive, d, series) {
+    absorb(id, owner, isActive, d, series, aggregateWeeks) {
       const acc = createSeamStockAcc();
       const start = n;
       for (const cell of series) {
         const period = cell[0];
         const cellFlow = cell[1];
         if (typeof period !== "string" || typeof cellFlow !== "number") continue;
-        const stepped = advanceSeamStock(period, cellFlow, seamPeriod, d, acc);
+        const stepped = advanceSeamStock(period, cellFlow, seamPeriod, d, acc, aggregateWeeks?.has(period));
         if (n >= cap) grow();
         periodIdx[n] = internPeriod(period);
         flow[n] = cellFlow;
@@ -311,7 +313,7 @@ export function absorbOrgPeriodRowsFromBucket(
       const cur = slot.get(repo.owner);
       if (cur) {
         cur.flow += flow;
-        cur.stock_est += stock;
+        cur.stock_est = sumHistoricalStock(cur.stock_est, stock);
       } else {
         slot.set(repo.owner, { flow, stock_est: stock });
       }
@@ -346,7 +348,7 @@ export function packedOrgPeriodRows(
     const cur = acc.get(login);
     if (cur) {
       cur.flow += flow;
-      cur.stock_est += carry[repo]!;
+      cur.stock_est = sumHistoricalStock(cur.stock_est, carry[repo]!);
     } else {
       acc.set(login, { flow, stock_est: carry[repo]! });
     }
@@ -507,7 +509,7 @@ export function repoRankViewsFromPeriodRows(
     val: row.flow,
     other: row.stock_est,
   }));
-  const stockRows: RankRow[] = rows.map((row) => ({
+  const stockRows: RankRow[] = rows.filter((row) => row.stock_est >= 0).map((row) => ({
     key: String(row.id),
     id: row.id,
     val: row.stock_est,
@@ -519,6 +521,7 @@ export function repoRankViewsFromPeriodRows(
     dim: "repo",
     metric: "flow",
     generated_at: gen,
+    ...(w === "week" && rows.some((row) => row.stock_est < 0) ? { provenance: AGGREGATE_HISTORY_PROVENANCE } : {}),
   });
   const stock = rankTopN(stockRows, tieRepo, prevStock, {
     window: w,
@@ -577,7 +580,7 @@ export function orgRankViewsFromPeriodRows(
     val: row.flow,
     other: row.stock_est,
   }));
-  const stockRows: RankRow[] = rows.map((row) => ({
+  const stockRows: RankRow[] = rows.filter((row) => row.stock_est >= 0).map((row) => ({
     key: row.login,
     login: row.login,
     val: row.stock_est,
@@ -589,6 +592,7 @@ export function orgRankViewsFromPeriodRows(
     dim: "org",
     metric: "flow",
     generated_at: gen,
+    ...(w === "week" && rows.some((row) => row.stock_est < 0) ? { provenance: AGGREGATE_HISTORY_PROVENANCE } : {}),
   });
   const stock = rankTopN(stockRows, tieOrg, prevStock, {
     window: w,
