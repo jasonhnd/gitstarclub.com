@@ -9,7 +9,7 @@ islands. Category bodies are static server-rendered React with no hydration.
 
 `view-plugin.ts` is registered additively in `astro.config.mjs`. Its explicit
 `astro-p3:categories` import loads the unchanged `web/app/_localized/categories.tsx`
-server view, redirects its data/availability/navigation imports to `data.ts`,
+server view, redirects only its navigation errors to `navigation.ts`,
 removes its duplicate chrome and resolves its relative imports. The routing
 helper receives the same navigation substitution under a private module query;
 ordinary imports used by other packages are unchanged. The shared stylesheet
@@ -21,10 +21,12 @@ alias otherwise changes Chinese mobile line wrapping. No typeface changes. No tr
 markup, metadata or structured data is copied or edited. Tests assert that the
 entire original view body survives the adapter except its chrome elements.
 
-`withCategoryData` supplies request-local readers backed by P0's native R2
-facade. Metadata and body share a read memo within one captured publication.
-There is no second HTML cache or module-global data cache. Availability retains
-the original contiguous-page rule: stop at the first absent or empty published
+`withPublishedReaders` from the common `astro/src/lib/published-readers.ts`
+wraps metadata and body in one captured native DATA publication. Original data
+and availability imports remain unchanged and reuse the integration-owned
+timeout alias. P3 adds no timeout replacement, alias, reader implementation,
+availability algorithm or second HTML cache. Original availability retains
+the contiguous-page rule: stop at the first absent or empty published
 rank page. Unknown/private categories, missing populated ranks and malformed
 page numbers return 404; `/page/1` redirects permanently to its canonical base.
 Zero-count public categories retain the original pending-data page.
