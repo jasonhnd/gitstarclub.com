@@ -155,8 +155,14 @@ export async function validateVersion(runId: string, fencingToken?: number): Pro
     return skippedRepos;
   };
   const metadataSkipped = await readMetadataSkipped(runId);
-  const previousPointer = await readAuthoritativeView("views/latest.json", ViewsPointer, { bust: runId });
-  const previousMetadataSkipped = previousPointer ? await readMetadataSkipped(previousPointer.run_id) : [];
+  let previousMetadataSkipped: MetadataSkippedRepo[] = [];
+  try {
+    const previousPointer = await readAuthoritativeView("views/latest.json", ViewsPointer, { bust: runId });
+    if (previousPointer) previousMetadataSkipped = await readMetadataSkipped(previousPointer.run_id);
+  } catch (error) {
+    schemaFailures++;
+    failures.push(`previous metadata pointer: read/schema — ${error instanceof Error ? error.message : String(error)}`);
+  }
   mergeValidationReport(
     { invariants, failures },
     validateRepositoryMembership({
