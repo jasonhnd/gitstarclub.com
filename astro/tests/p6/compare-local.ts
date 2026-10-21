@@ -6,6 +6,7 @@ import { startFixture, fixtureRecords } from "../../scripts/fixture";
 import { startWorker } from "../../scripts/local-worker";
 import { prepareWebOutput } from "../../scripts/prepare-web";
 import { compareSites } from "../../scripts/compare";
+import { comparePageLayouts } from "./layout";
 
 const scratch = process.env.KANBAN_TMP;
 if (!scratch || resolve(process.env.TMPDIR ?? "") !== resolve(scratch)) throw new Error("Set TMPDIR and KANBAN_TMP to the current card directory.");
@@ -53,7 +54,8 @@ try {
     console.log(`${passed ? "PASS" : "DIFF"} endpoint headers/body/HEAD ${path}`);
   }
   await Bun.write(resolve(scratch, "p6-endpoints.json"), JSON.stringify(endpointResults, null, 2) + "\n");
-  process.exitCode = report.passed && endpointResults.every((result) => result.passed) ? 0 : 1;
+  const layoutsMatch = await comparePageLayouts(web, (await worker.ready).origin);
+  process.exitCode = report.passed && endpointResults.every((result) => result.passed) && layoutsMatch ? 0 : 1;
 } finally {
   if (preview) { preview.kill(); await preview.exited; }
   await worker?.dispose(); await fixture.stop(true); closeSync(log);
