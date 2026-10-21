@@ -3,21 +3,31 @@ import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { hostWorker } from "../web/cloudflare.config.ts";
 import { buildVars } from "../web/host-contract.mjs";
-import { assertHostContract, assertAllowedCfPreviewOrigin, assertRepositoryCfCiGates, commandPolicy } from "./cf-ci-gates.mjs";
+import { assertHostContract, assertAllowedCfPreviewOrigin, assertRepositoryCfCiGates, commandPolicy, PREVIEW_CRONS_PAUSED } from "./cf-ci-gates.mjs";
 const pkg = JSON.parse(readFileSync(new URL("../web/package.json", import.meta.url), "utf8"));
 
 describe("typed host contract", () => {
   for (const mode of ["pre", "production"]) {
-    test(`${mode} preserves every binding, public var and paused trigger`, () => assert.deepEqual(assertHostContract(hostWorker(mode), mode), []));
+    test(`${mode} preserves every binding, public var and authorized trigger`, () => assert.deepEqual(assertHostContract(hostWorker(mode), mode), []));
     for (const mutate of [
       (w) => { w.name = "wrong"; }, (w) => { w.env.DATA.name = "wrong"; },
       (w) => { w.env.WORKER_SELF_REFERENCE.worker = "other"; }, (w) => { w.env.JOBS.name = "wrong"; },
-      (w) => { w.triggers.push({ type: "scheduled", cron: "0 4 * * SUN" }); },
+      (w) => { w.triggers.push({ type: "scheduled", schedule: "0 4 * * SUN" }); },
       (w) => { w.triggers[0].maxRetries = 3; }, (w) => { w.env.EXTRA = { type: "d1" }; },
       (w) => { w.workersDev = !w.workersDev; }, (w) => { w.env.SITE_INDEXABLE.value = "wrong"; },
     ]) test(`${mode} rejects a host-contract mutation ${String(mutate)}`, () => {
       const worker = structuredClone(hostWorker(mode)); mutate(worker); assert.ok(assertHostContract(worker, mode).length);
     });
+    for (const flag of ["WORKFLOW_COLD_START", "PREFLIGHT_RELAX_EMPTY_SHARDS", "WORKFLOW_FIXTURE"]) {
+      test(`${mode} rejects first-publication and fixture flag ${flag}`, () => {
+        assert.equal(Object.hasOwn(hostWorker(mode).env, flag), false);
+        for (const value of ["0", "1"]) {
+          const worker = structuredClone(hostWorker(mode));
+          worker.env[flag] = { type: "text", value };
+          assert.ok(assertHostContract(worker, mode).some((error) => error.includes(flag)));
+        }
+      });
+    }
     test(`${mode} rejects opposite-mode and unknown read origins`, () => {
       for (const key of ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL", "R2_PUBLIC_BASE_URL", "NEXT_PUBLIC_R2_PUBLIC_BASE_URL"]) {
         assert.throws(() => buildVars(mode, { [key]: mode === "pre" ? "https://data.gitstarclub.com" : "https://data-pre.gitstarclub.com" }));
@@ -26,6 +36,28 @@ describe("typed host contract", () => {
       assert.equal(buildVars(mode, { BLOB_BASE_URL: "http://127.0.0.1:4075" }).STORAGE_READ_DRIVER, "blob");
     });
   }
+  test("preview schedules cover daily, Sunday live and managed refresh; production stays paused", () => {
+    assert.equal(PREVIEW_CRONS_PAUSED, false);
+    const schedules = (worker) => worker.triggers.filter((trigger) => trigger.type === "scheduled").map((trigger) => trigger.schedule);
+    assert.deepEqual(schedules(hostWorker("pre")), ["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"]);
+    assert.deepEqual(schedules(hostWorker("production")), []);
+  });
+  test("preview rejects a missing daily, Sunday live or managed refresh schedule", () => {
+    for (const schedule of ["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"]) {
+      const worker = structuredClone(hostWorker("pre"));
+      const index = worker.triggers.findIndex((trigger) => trigger.type === "scheduled" && trigger.schedule === schedule);
+      assert.notEqual(index, -1);
+      worker.triggers.splice(index, 1);
+      assert.ok(assertHostContract(worker, "pre").some((error) => error.includes("schedules")));
+    }
+  });
+  test("preview rejects Saturday, Unix Sunday and unexpected schedules", () => {
+    for (const schedule of ["0 6 * * 7", "0 6 * * 0", "0 1 * * *"]) {
+      const worker = structuredClone(hostWorker("pre"));
+      worker.triggers[3].schedule = schedule;
+      assert.ok(assertHostContract(worker, "pre").some((error) => error.includes("schedules")));
+    }
+  });
   test("requires an explicit mode", () => assert.throws(() => hostWorker("staging")));
   test("only public preview origins are accepted", () => {
     assert.equal(assertAllowedCfPreviewOrigin("https://pre.gitstarclub.com"), "https://pre.gitstarclub.com");
