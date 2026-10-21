@@ -1,0 +1,8 @@
+---
+import { organizationDetail } from "../../../packages/p4/data";
+import OrgPage from "../../../packages/p4/OrgPage.astro";
+export const prerender = false;
+const result = await organizationDetail(Astro.locals.data, Astro.url.pathname, Astro.params.login ?? "");
+if (result instanceof Response) return result;
+---
+<OrgPage {...result} />
