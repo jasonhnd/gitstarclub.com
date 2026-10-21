@@ -316,6 +316,7 @@ export async function assertInitialCommitTarget({ store }) {
  *   assertCanCommit?: () => Promise<void>,
  *   now?: () => string,
  *   initialCommit?: boolean,
+ *   recoveryGeneration?: string,
  * }} options
  */
 export async function commitBootstrapGeneration({
@@ -325,8 +326,10 @@ export async function commitBootstrapGeneration({
   assertCanCommit = async () => {},
   now = () => new Date().toISOString(),
   initialCommit = false,
+  recoveryGeneration,
 }) {
   assertBootstrapGeneration(generation);
+  if (initialCommit && recoveryGeneration) throw new Error("--initial-commit cannot name a recovery generation");
   const verified = await verifyBootstrapGeneration({ generation, store });
   await validate(verified);
   await assertCanCommit();
@@ -353,14 +356,21 @@ export async function commitBootstrapGeneration({
     await assertCanCommit();
     await assertInitialCommitTarget({ store });
   } else if (!current) {
-    await verifyLegacyFlatTarget({ store });
+    if (recoveryGeneration) {
+      // An operator can seal the existing managed cold-start snapshot before
+      // repairing it. This gives a complete recovery edge even when legacy
+      // flat views or historical series never existed. The caller snapshots
+      // and stages both generations while holding this same writer lease.
+      if (recoveryGeneration === generation) throw new Error("recovery generation must differ from the publication");
+      await verifyBootstrapGeneration({ generation: recoveryGeneration, store });
+    } else await verifyLegacyFlatTarget({ store });
     await assertCanCommit();
   }
   const pointer = {
     schema_ver: BOOTSTRAP_SCHEMA_VER,
     generation,
     prefix: bootstrapGenerationPrefix(generation),
-    previous_generation: current?.generation ?? null,
+    previous_generation: current?.generation ?? recoveryGeneration ?? null,
     published_at: now(),
     base_manifest_sha256: verified.base.sha256,
     canonical_manifest_sha256: verified.canonical.sha256,
