@@ -9,8 +9,10 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
-    // Generated OpenNext output from cf:build and cf:dry-run.
-    ".open-next/**",
+    // Generated vinext / Cloudflare build output.
+    "dist/**",
+    ".cloudflare/**",
+    ".vinext/**",
     "out/**",
     "build/**",
     "next-env.d.ts",

@@ -9,7 +9,7 @@ describe("workersHostSmokeOrigin", () => {
     ).toBe("https://preview.example.workers.dev");
   });
 
-  test("defaults to local wrangler when Access is not configured", () => {
+  test("defaults to local typed config when Access is not configured", () => {
     expect(workersHostSmokeOrigin({})).toBe("http://127.0.0.1:8787");
     expect(workersHostSmokeOrigin({ CF_WORKERS_HOST_LOCAL: "1" })).toBe("http://127.0.0.1:8787");
   });
