@@ -14,7 +14,8 @@ URLs, localized copy, metadata, structured data and layout. Target the dedicated
   ranking-period resolution and search response generation from `web/`.
 - Preserve eight global sitemap URLs, robots.txt, manifest.webmanifest and
   search-index. About and Privacy have seven locale variants.
-- Minimal additive shared local-tool support only when needed for fixture parity.
+- Minimal additive shared fetch alias, response-cache handling, presentational
+  style sources and smoke assertion updates needed for faithful Worker parity.
 
 ## Out of scope
 
@@ -42,7 +43,8 @@ All 14 localized page URLs and the global endpoints return HTTP 200 on the
 fixture. Compare About and Privacy across all locales plus a representative
 index response (at least three sampled URLs); status, visible text, title/meta,
 canonical/hreflang, JSON-LD and response bodies must match the unchanged web
-build. Desktop/mobile screenshots retain layout. Body components add no client
+build. Desktop/mobile screenshots retain layout. The package runner also compares
+body element geometry and computed layout on three representative URLs. Body components add no client
 JavaScript; only existing shared search/theme islands hydrate. Design lint has
 zero errors. Full offline web/pipeline gates, both local web build modes and
 Astro verification pass on the exact committed head; cf:dry-run is skipped by

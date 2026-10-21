@@ -53,8 +53,9 @@ test("P6 metadata endpoints preserve the existing manifest and preview crawl pol
 
 test("the Worker preserves endpoint cache headers while keeping HTML behind its publication fence", async () => {
   const { secureResponse } = await import("../../src/lib/host");
-  const endpoint = secureResponse(Response.json({}, { headers: { "Cache-Control": "public, max-age=0, s-maxage=3600" } }), "GET", "BYPASS");
+  const endpoint = secureResponse(Response.json({}, { headers: { "Cache-Control": "public, max-age=0, s-maxage=3600" } }), "GET", "MISS");
   expect(endpoint.headers.get("cache-control")).toBe("public, max-age=0, s-maxage=3600");
+  expect(secureResponse(endpoint, "GET", "BYPASS").headers.get("cache-control")).toBe("private, no-store");
   const html = secureResponse(new Response("<main />", { headers: { "Content-Type": "text/html", "Cache-Control": "public, max-age=999" } }), "GET", "MISS");
   expect(html.headers.get("cache-control")).toBe("private, no-store");
 });
@@ -72,6 +73,8 @@ test("published native transport is read-only and uses the request binding witho
   } };
   await withWorkerEnv({ DATA }, () => withPublishedReads(async () => {
     expect(resolveRuntimeEnv().R2_PUBLIC_BASE_URL).toBe(PUBLISHED_READ_ORIGIN);
+    const { rankPeriodLookbackLimits } = await import("../../../web/lib/data/rank-periods");
+    expect(rankPeriodLookbackLimits()).toEqual({ monthLookback: 1, weekLookback: 1 });
     const response = await fetchWithTimeout(`${PUBLISHED_READ_ORIGIN}/views/v1/meta.json?v=v1`, { cache: "force-cache" });
     expect(await response.json()).toEqual({ fixture: true });
     const absent = await fetchWithTimeout(`${PUBLISHED_READ_ORIGIN}/missing.json`);
