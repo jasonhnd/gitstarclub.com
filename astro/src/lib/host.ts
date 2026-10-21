@@ -69,14 +69,14 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
       } catch { /* Cache loss cannot prevent rendering or weaken the publication fence. */ }
     }
     if ((await options.publication()).id !== publication.id) return null;
-    return new Response(body, { status: response.status, headers });
+    return new Response(response.body === null ? null : body, { status: response.status, headers });
   };
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
       const startedAt = now();
       const publication = await options.publication();
       // P7 handlers own their methods/auth. Never retry a mutating request after publication.
-      if (bypass) return finish(await options.render(publication));
+      if (bypass && !["GET", "HEAD"].includes(request.method)) return finish(await options.render(publication));
       const entry = await read(publication);
       if (entry) {
         const age = (now() - entry.lastModified) / 1000;
