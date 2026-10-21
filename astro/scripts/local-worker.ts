@@ -15,7 +15,7 @@ export async function startWorker(records = fixtureRecords(), strings: Record<st
       const path = resolve(directory, entry.name);
       if (entry.isDirectory()) walk(path);
       else if (entry.name.endsWith(".mjs")) modules[relative(bundle, path)] = { type: "esm", contents: readFileSync(path, "utf8") };
-      else if (entry.name.endsWith(".wasm")) modules[relative(bundle, path)] = { type: "wasm", contents: new Uint8Array(readFileSync(path)) };
+      else if (entry.name.endsWith(".wasm")) modules[relative(bundle, path)] = { type: "wasm", contents: Uint8Array.from(readFileSync(path)) };
     }
   }
   walk(bundle);

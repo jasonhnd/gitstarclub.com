@@ -16,21 +16,21 @@ and milestone snippet copy controls use one small custom-element island with
 the existing markup, clipboard feedback and X share behavior. The shared shell
 retains P0's search/theme islands and native language menu.
 
-Repository social images reuse the old pinned image renderer and only its
-image/wasm build plugins. The compatibility bridge is import-only and must move
-with the other shared imports before `web/` is eventually removed. Shared
-configuration changes are additive: register that image bridge and P2 style
-sources, load emitted image wasm in the local simulator, accept a
-page-specific social-image URL, and match the old Worker curve failure body.
+Repository social images reuse the integrated P1 image build bridge and the
+existing pinned renderer; no second renderer plugin or alias is registered.
+The bridge and other shared imports must move before `web/` is eventually
+removed. P2 reuses P1's shared Layout image input and simulator Wasm loading.
+P2's remaining shared additions register its style sources, add a browser
+pathname getter for the imported localized 404 copy, and preserve curve
+response semantics in the host.
+
 The effective curve response uses `private, no-store`, matching the old Worker
 which overrides the route module cache header. Every curve request requires a
-readable publication, including invalid IDs and method-only responses. The curve
-route retains the old response Vary contract and omits page-only indexing and
-publication headers, matching the old API. The shared host preserves P7
-operation-response wrapping and publication-failure behavior only for `/api/`;
-curve responses keep their own existing headers and error bytes. The browser navigation bridge adds
-`usePathname` so the existing localized 404 copy can be imported without copying
-translations. No dependency lock or data contract changes.
+readable publication, including invalid IDs and method-only responses. The
+curve route retains the old Vary contract and omits page-only indexing and
+publication headers. The shared host preserves P7 operation-response wrapping
+and publication-failure behavior only for `/api/`; curve responses keep their
+own existing headers and error bytes. No lock or data contract changes.
 
 Run with the checksum-verified Node 24.20.0/Bun 1.4.2 and card-local
 `TMPDIR=KANBAN_TMP`:
