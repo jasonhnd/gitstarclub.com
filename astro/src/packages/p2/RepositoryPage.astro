@@ -1,0 +1,14 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { RepoPageView } from "./repo";
+import { repositoryMetadata, type RepositoryPage } from "./data";
+interface Props { page: RepositoryPage }
+const { page } = Astro.props;
+const metadata = repositoryMetadata(page);
+---
+<Layout locale={page.locale} {...metadata}>
+  <RepoPageView {...page} />
+</Layout>
+<script>
+  import "./share";
+</script>

@@ -32,10 +32,18 @@ export function secureResponse(response: Response, method: string, status: Cache
 export async function handleRequest(request: Request, options: HostOptions): Promise<Response> {
   const url = new URL(request.url);
   const api = url.pathname.startsWith("/api/");
-  const finish = (response: Response, status: CacheStatus = "BYPASS", rendered = true) => secureResponse(
-    api && rendered ? operationResponse(response, request, options.build) : response, request.method, status, api,
-  );
   const path = url.pathname.replace(/\/+$/, "") || "/";
+  const finish = (response: Response, status: CacheStatus = "BYPASS", rendered = true) => {
+    const result = secureResponse(
+      api && rendered ? operationResponse(response, request, options.build) : response, request.method, status, api,
+    );
+    if (path === "/repo-curve") {
+      // The old Worker does not add page indexing/publication metadata to this API.
+      result.headers.delete("X-Robots-Tag");
+      result.headers.delete("x-gsc-publication");
+    }
+    return result;
+  };
   if (path === "/api/lang" && ["GET", "HEAD"].includes(request.method)) return finish(languageRedirect(request));
   if (path === "/api/workflows/refresh/revalidate" && request.method === "POST" && options.unscopedRender) {
     return finish(await options.unscopedRender());
@@ -104,5 +112,5 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
       if (response) return finish(response, bypass ? "BYPASS" : "MISS");
     }
   } catch { /* Unknown/missing/unreadable publication fails closed for data-dependent requests. */ }
-  return finish(new Response(url.pathname.startsWith("/api/") ? "Publication changed or unavailable; retry" : "Published data is temporarily unavailable.", { status: 503 }), "BYPASS", false);
+  return finish(new Response(api || path === "/repo-curve" ? "Publication changed or unavailable; retry" : "Published data is temporarily unavailable.", { status: 503 }), "BYPASS", false);
 }
