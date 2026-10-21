@@ -7,7 +7,7 @@ import { loadRepository } from "../../packages/p2/data";
 import { classifyRoute } from "../../../../web/lib/i18n/routing";
 export const prerender = false;
 const route = classifyRoute(Astro.url.pathname);
-if (route.kind !== "repo-route" && !pageRoute(Astro.url.pathname)) return new Response("Not found", { status: 404 });
+if (!pageRoute(Astro.url.pathname)) return new Response("Not found", { status: 404 });
 const result = route.kind === "repo-route" ? await loadRepository(Astro.locals.data, "en", Astro.params.owner ?? "", Astro.params.name ?? "") : null;
 if (result?.kind === "redirect") return Astro.redirect(result.location, 308);
 if (result?.kind === "missing") Astro.response.status = 404;

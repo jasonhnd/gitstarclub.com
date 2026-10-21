@@ -56,6 +56,12 @@ try {
     assert.equal(view.getUint32(16), 1200); assert.equal(view.getUint32(20), 630);
   }
   const bucket = await worker.getR2Bucket("DATA") as unknown as R2Bucket;
+  const records = repositoryFixtures();
+  const lookup = JSON.parse(records.get("lookup/repos.json")!);
+  lookup["4"] = { ...lookup["1"], owner: "ja", full_name: "ja/repo" };
+  await bucket.put("views/fixture-v1/lookup/repos.json", JSON.stringify(lookup));
+  await bucket.put("views/fixture-v1/entity/repo/4.json", JSON.stringify({ ...JSON.parse(records.get("entity/repo/1.json")!), id: 4, owner: "ja", full_name: "ja/repo" }));
+  assert.equal((await get("/ja/repo")).status, 404, "A locale prefix cannot become an English repository owner");
   await bucket.put("views/latest.json", "invalid");
   assert.equal((await get("/repo-curve?id=0")).status, 400);
   assert.equal((await get("/repo-curve", { method: "OPTIONS" })).status, 204);
