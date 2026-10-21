@@ -106,6 +106,24 @@ const items = (phase, suffix = "") => {
   ];
 };
 
+test("a first repair commit requires a sealed distinct recovery generation", async () => {
+  const store = new MemoryStore();
+  const generation = "bootstrap-aggregate-repaired";
+  const recovery = "bootstrap-aggregate-recovery";
+  await stageComplete(store, generation);
+  await expect(commitBootstrapGeneration({ generation, store, recoveryGeneration: recovery })).rejects.toThrow("required phase manifest is missing");
+  expect(await store.read(BOOTSTRAP_POINTER_PATH)).toBeNull();
+  await expect(commitBootstrapGeneration({ generation, store, recoveryGeneration: generation })).rejects.toThrow("must differ");
+  await expect(commitBootstrapGeneration({ generation, store, recoveryGeneration: recovery, initialCommit: true })).rejects.toThrow("cannot name a recovery");
+  await stageComplete(store, recovery);
+  const published = await withBootstrapPublicationLease({ store, generation, operation: "publish",
+    run: (assertCanCommit) => commitBootstrapGeneration({ generation, store, recoveryGeneration: recovery, assertCanCommit }) });
+  expect(published.pointer.previous_generation).toBe(recovery);
+  await withBootstrapPublicationLease({ store, generation, operation: "rollback",
+    run: (assertCanCommit) => rollbackBootstrapGeneration({ store, targetGeneration: recovery, assertCanCommit }) });
+  expect(JSON.parse((await store.read(BOOTSTRAP_POINTER_PATH)).toString()).generation).toBe(recovery);
+});
+
 async function stageComplete(store, generation) {
   await stageBootstrapPhase({ generation, phase: "base", items: items("views"), store, concurrency: 1 });
   await stageBootstrapPhase({ generation, phase: "canonical", items: items("canonical"), store, concurrency: 1 });

@@ -158,10 +158,40 @@ describe("lease-protected immutable preview publication", () => {
     expect(parse(await store.get(`${prefix}/views/rank/week/2026-W23/repo/stock.json`)).items).toEqual([]);
     expect((await store.get(`${prefix}/views/aggregate-history-import.json`))!.body).not.toMatch(/\/Users\/|sources|measurements/);
     expect((await importAggregateHistory({ store, bundle: bundle(), generation: GEN, execute: true })).status).toBe("already-published");
+    const previous = parse(await store.get("bootstrap/latest.json")).previous_generation;
+    expect(previous).toStartWith("bootstrap-aggregate-recovery-");
     await withBootstrapPublicationLease({ store: createObjectStoreBootstrapAdapter(store), generation: GEN, operation: "rollback",
-      run: (assertCanCommit: () => Promise<void>) => rollbackBootstrapGeneration({ store: createObjectStoreBootstrapAdapter(store), targetGeneration: "legacy-flat", assertCanCommit }) });
-    expect(await store.get("bootstrap/latest.json")).toBeNull();
+      run: (assertCanCommit: () => Promise<void>) => rollbackBootstrapGeneration({ store: createObjectStoreBootstrapAdapter(store), targetGeneration: previous, assertCanCommit }) });
+    expect(parse(await store.get("bootstrap/latest.json")).generation).toBe(previous);
     expect(parse(await store.get("views/latest.json")).version).toBe("refresh-fixture");
+  });
+
+  test("a real cold-start layout with missing history families gets a sealed empty recovery generation", async () => {
+    const store = fixture();
+    for (let bucket = 0; bucket < 32; bucket++) {
+      for (const family of ["repo-monthly", "repo-weekly", "repo-recent-daily"]) await store.del(`canonical/v2/${family}/${bucket}.json`);
+    }
+    const entity = parse(await store.get("views/refresh-fixture/entity/repo/1.json"));
+    entity.curve.monthly = []; entity.monthly_table = []; entity.rank_history.month = [];
+    await store.put("views/refresh-fixture/entity/repo/1.json", json(entity));
+    const org = parse(await store.get("views/refresh-fixture/entity/org/owner.json")); org.curve.monthly = [];
+    await store.put("views/refresh-fixture/entity/org/owner.json", json(org));
+    const result = await importAggregateHistory({ store, bundle: bundle(), generation: GEN, execute: true });
+    expect(result.status).toBe("published");
+    const previous = parse(await store.get("bootstrap/latest.json")).previous_generation;
+    const recoveryPrefix = `bootstrap/generations/${previous}`;
+    expect(parse(await store.get(`${recoveryPrefix}/canonical/v2/repo-monthly/1.json`))).toEqual({});
+    expect(parse(await store.get(`${recoveryPrefix}/canonical/v2/repo-weekly/1.json`))).toEqual({});
+    expect((await store.get(`${recoveryPrefix}/views/entity/repo/1.json`))!.body).toBe((await store.get("views/refresh-fixture/entity/repo/1.json"))!.body);
+    expect(await store.get("canonical/v2/repo-monthly/1.json")).toBeNull();
+    expect(parse(await store.get(`bootstrap/generations/${GEN}/canonical/v2/repo-monthly/1.json`))).toEqual({});
+    expect(parse(await store.get(`bootstrap/generations/${GEN}/canonical/v2/repo-recent-daily/1.json`))["1"].at(-1)).toEqual(["2026-10-21", 3]);
+  });
+
+  test("missing canonical monthly history cannot silently erase a published monthly curve", async () => {
+    const store = fixture(); await store.del("canonical/v2/repo-monthly/1.json");
+    await expect(importAggregateHistory({ store, bundle: bundle(), generation: GEN, execute: true })).rejects.toThrow("no canonical source");
+    expect(await store.get("bootstrap/latest.json")).toBeNull();
   });
 
   test("active, corrupt or wrong-bucket leases refuse before staging", async () => {

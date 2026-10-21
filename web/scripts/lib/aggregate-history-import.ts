@@ -154,6 +154,18 @@ export function repairSnapshot(snapshot: Snapshot, bundle: AggregateBundle, gene
     for (const [id, meta] of Object.entries(repos)) {
       if (Number(id) !== meta.id || meta.id % 32 !== bucket) throw new Error("Invalid canonical repository bucket");
       if (!lookup[id]) throw new Error(`Canonical repository ${id} is absent from the published lookup`);
+      const entity = RepoEntity.parse(readRequired(snapshot.base, `entity/repo/${id}.json`));
+      if (!snapshot.canonical.has(monthlyPath) && entity.curve.monthly.length) {
+        throw new Error(`Published monthly history for ${id} has no canonical source; repair it separately`);
+      }
+      // A published tail is an existing observation too, even if a cold-start
+      // canonical shard was never materialized. Preserve it before gap merging.
+      const observed = new Map(daily[id] ?? []);
+      for (const [day, count] of entity.curve.recent_daily) {
+        if (observed.has(day) && observed.get(day) !== count) throw new Error(`Published daily history differs from canonical for ${id}`);
+        observed.set(day, count);
+      }
+      daily[id] = sorted(observed);
     }
     mergeAggregateBucket(repos, daily, weekly, bundle, report);
     Object.assign(raw.repos, repos); Object.assign(raw.weekly, weekly); Object.assign(raw.recentDaily, daily);
@@ -254,10 +266,32 @@ export async function importAggregateHistory(options: {
   const run = async (assertCanCommit?: () => Promise<void>) => {
     if (assertCanCommit) await assertCanCommit();
     let nextRenew = Date.now() + 30_000;
+    let pendingRenew: Promise<void> | undefined;
     const renew = async () => {
-      if (assertCanCommit && Date.now() >= nextRenew) { await assertCanCommit(); nextRenew = Date.now() + 30_000; }
+      if (!assertCanCommit || Date.now() < nextRenew) return;
+      pendingRenew ??= assertCanCommit().then(() => { nextRenew = Date.now() + 30_000; }).finally(() => { pendingRenew = undefined; });
+      await pendingRenew;
     };
     const snapshot = await captureSnapshot(store, renew);
+    // A managed cold start has neither legacy flat views nor historical shard
+    // files. Seal its unchanged published base plus explicit empty families as
+    // the prior generation, without switching any pointer to it first.
+    const recovery = !snapshot.bootstrap ? { base: new Map(snapshot.base), canonical: new Map(snapshot.canonical) } : null;
+    if (recovery) {
+      for (let bucket = 0; bucket < 32; bucket++) {
+        for (const family of ["repo-monthly", "repo-weekly", "repo-recent-daily"]) {
+          const path = `${family}/${bucket}.json`;
+          if (!recovery.canonical.has(path)) recovery.canonical.set(path, encoded({}));
+        }
+        const dailyPath = `repo-recent-daily/${bucket}.json`;
+        const priorDaily = RepoRecentDailyShard.parse(readRequired(recovery.canonical, dailyPath));
+        for (const id of Object.keys(ReposShard.parse(readRequired(recovery.canonical, `repos/${bucket}.json`)))) {
+          const entity = RepoEntity.parse(readRequired(recovery.base, `entity/repo/${id}.json`));
+          priorDaily[id] = sorted(new Map([...(priorDaily[id] ?? []), ...entity.curve.recent_daily]));
+        }
+        recovery.canonical.set(dailyPath, encoded(priorDaily));
+      }
+    }
     const report = repairSnapshot(snapshot, bundle, generation);
     for (const [path, before] of [["bootstrap/latest.json", snapshot.bootstrap], ["views/latest.json", snapshot.managed]] as const) {
       const after = await adapter.read(path);
@@ -272,11 +306,14 @@ export async function importAggregateHistory(options: {
       read: async (path: string) => { await renew(); return adapter.read(path); },
       create: async (path: string, body: Buffer, contentType?: string) => { await renew(); return adapter.create(path, body, contentType); },
     };
-    for (const [phase, files] of [["canonical", snapshot.canonical], ["base", snapshot.base]] as const) {
-      const items = [...files].map(([path, body]) => ({ path: phase === "base" ? `views/${path}` : `canonical/v2/${path}`, body, contentType: "application/json" }));
-      await stageBootstrapPhase({ generation, phase, items, store: guarded });
+    const recoveryGeneration = recovery ? `bootstrap-aggregate-recovery-${digest(generation).slice(0, 16)}` : undefined;
+    for (const [target, data] of [...(recovery ? [[recoveryGeneration!, recovery] as const] : []), [generation, snapshot] as const]) {
+      for (const [phase, files] of [["canonical", data.canonical], ["base", data.base]] as const) {
+        const items = [...files].map(([path, body]) => ({ path: phase === "base" ? `views/${path}` : `canonical/v2/${path}`, body, contentType: "application/json" }));
+        await stageBootstrapPhase({ generation: target, phase, items, store: guarded });
+      }
     }
-    await commitBootstrapGeneration({ generation, store: guarded, assertCanCommit });
+    await commitBootstrapGeneration({ generation, store: guarded, assertCanCommit, recoveryGeneration });
     return { status: "published", report };
   };
   return execute ? withBootstrapPublicationLease({ store: adapter, generation, operation: "publish", run }) : run();
