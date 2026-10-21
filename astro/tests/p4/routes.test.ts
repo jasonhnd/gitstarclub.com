@@ -44,6 +44,8 @@ describe("P4 route loaders", () => {
     for (const login of ["-bad", "bad-", "a/b", "%65xample", "a".repeat(40)]) {
       expect((await organizationDetail(data, `/o/${login}`, login) as Response).status).toBe(404);
     }
+    expect((await organizationIndex(data, "/xx/o") as Response).status).toBe(404);
+    expect((await organizationDetail(data, "/xx/o/example", "example") as Response).status).toBe(404);
     expect(data.reads).toEqual([]);
   });
   test("missing entities and out-of-range pages are 404; an empty directory still renders", async () => {

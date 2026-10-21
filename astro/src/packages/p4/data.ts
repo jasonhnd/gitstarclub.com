@@ -14,7 +14,7 @@ const missing = () => new Response("Not found", { status: 404 });
 export async function organizationIndex(data: Data, pathname: string, rawPage?: string) {
   const route = pageRoute(pathname);
   const page = rawPage === undefined ? 1 : parsePositivePage(rawPage);
-  if (!route || !page) return missing();
+  if (!route || !/^\/o(?:\/page\/[^/]+)?$/.test(route.path) || !page) return missing();
   const { locale } = route;
   if (rawPage !== undefined && page === 1) {
     return new Response(null, { status: 308, headers: { Location: localizedPath(locale, orgIndexPath()) } });
@@ -32,7 +32,7 @@ export async function organizationIndex(data: Data, pathname: string, rawPage?: 
 export async function organizationDetail(data: Data, pathname: string, rawLogin: string) {
   const route = pageRoute(pathname);
   const login = githubLogin(rawLogin);
-  if (!route || !login) return missing();
+  if (!route || !/^\/o\/[^/]+$/.test(route.path) || !login) return missing();
   const { locale } = route;
   const [org, lookup, registry, meta, t] = await Promise.all([
     data.base(`entity/org/${login}.json`, OrgEntity),
