@@ -43,6 +43,7 @@ export async function verifyBrowser(web: string, astro: string, screenshots = fa
           });
         });
         geometry.push({ path, viewport, differences, web: first, astro: second });
+        assert.deepEqual(differences, [], `${path} at ${viewport.width}px: layout geometry differs`);
         assert.ok(second.width <= second.viewport, `${path}: horizontal overflow`);
       }
     }
