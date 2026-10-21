@@ -58,3 +58,6 @@ The social-card build plugin selects the existing renderer's Worker entry,
 packages its fallback font and imports precompiled Wasm modules. The local
 Worker loader recognizes those modules as Wasm. No dynamic Wasm compilation,
 remote font fetch or image service is needed.
+
+The control module is explicitly emitted as a self-origin asset rather than an
+executable data URL, preserving the existing script policy without changes.
