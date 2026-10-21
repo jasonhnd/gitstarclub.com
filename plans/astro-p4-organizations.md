@@ -7,9 +7,12 @@ locales without changing URLs, content, metadata, appearance or data coverage.
 Use `feat/astro-site` as the base and PR target under the explicit migration
 brief. Keep `web/` available and unchanged as the comparison baseline.
 
-P4 owns only `astro/src/packages/p4/`, root/localized `o/` page entries,
+P4 owns `astro/src/packages/p4/`, root/localized `o/` page entries,
 `astro/tests/p4/`, and this plan. Reuse existing dictionaries, contracts,
-organization helpers and static React components. Read published base views
+organization helpers and static React components. The sole shared-file exception
+is two additive source-scan declarations in `astro/src/styles/globals.css`,
+needed to compile unchanged shared and P4 component utilities together. No
+shared component, design token or configuration is refactored. Read published base views
 through P0's request-local facade and retain its sole HTML cache boundary.
 
 ## Steps
