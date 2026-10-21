@@ -81,6 +81,25 @@ owner order. GitHub Actions remains disabled.
   has no independent live schedule read/list operation, so no scheduled
   invocation is claimed. CRON_SECRET remains in the secret-name inventory;
   no secret values were requested.
-- Source-plan counts and any resulting continuation requirement will be
-  recorded on the card before temporary output is removed. This card has not
-  called a cron/refresh endpoint or written an R2 data object.
+- The sealed source passed all checks: 5,243 complete repositories, 650,132
+  daily rows, 89,131 complete-week rows, and six unavailable repositories.
+- The original CLI without `--execute` stopped with `R2_ACCESS_KEY_ID is unset`.
+  An excluded temporary adapter then ran the unchanged import algorithm with
+  `execute: false`, authenticated cf origin inventories and checksum-matched
+  preview bytes. Every mutation method throws. That read-only target plan
+  completed with 5,238 eligible repositories, 649,512 daily additions and
+  89,046 weekly additions. It skips 441 repositories: 430 outside the sealed
+  whitelist, five outside preview membership and six unavailable. It preserves
+  10,476 incomplete edge-week joins as unknown. The complete planned skip list
+  is recorded on the card.
+- The read-only process exited zero. Bun emitted an internal directory mismatch
+  warning after the scan; parsed result counts, arithmetic and disjoint/unique
+  repository ids were independently checked. No publication occurred.
+- Actual import and its page checks remain blocked by the missing conditional
+  write interface in the pinned CLI. An unconditional adapter cannot preserve
+  the existing lease. This needs an owner decision on an approved conditional
+  interface using existing authentication; no new credential is requested.
+  No write-transport PR was opened because that primitive is unavailable.
+- This card has called no cron/refresh endpoint and written no R2 data object.
+  Its import generation and post-import daily generation remain unexecuted.
+  The observed daily generation ending `23-09-32-126Z` belongs to GSC_0149.
