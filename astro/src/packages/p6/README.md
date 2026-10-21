@@ -27,9 +27,9 @@ No publication, coverage or writer behavior changes.
 
 Robots and manifest reuse the current metadata definitions and preserve their
 text/JSON serialization. Privacy, robots and manifest have no published reads
-to scope. P0 remains a noindex skeleton; production activation
-and the shared default social card belong to final integration. Neither About
-nor Privacy defines a page-level social image.
+to scope. F1 activates the explicit production/pre indexing policy and the shared default
+social card; see docs/ASTRO-HOST.md. Neither About nor Privacy defines a
+page-level social image.
 
 Run `bun tests/p6/compare-local.ts --screenshots` from `astro/` in the fresh
 AGENTS verification clone. It builds both hosts, compares all 14 page URLs and

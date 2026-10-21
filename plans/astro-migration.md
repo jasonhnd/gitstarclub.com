@@ -64,7 +64,8 @@ public assets and operational Worker shell during final integration.
   recheck before serving/writing; retry once, then 503 on a race. Cache-bypassing
   GET/HEAD requests (including cookie/auth) follow the same buffered output
   check and retry rule without reading or writing shared page storage. Mutating
-  requests execute once and are never replayed after a publication change. Ordinary
+  requests execute once and are never replayed after a publication change,
+  including the legacy daily/weekly cron and refresh-start GET/HEAD operations. Ordinary
   publication preserves warm tail HTML under current policy. P7 must await
   explicit path invalidation when tails need refreshing; manual KV invalidation
   retains eventual-consistency limits. No runtime database or writer change.
@@ -86,3 +87,37 @@ metadata/assets, queue/scheduled shell behavior, full-route parity, performance
 and JS-size evidence, and docs. Move shared imports with tests before removing
 `web/`, and remove it only at the end. Preview deployment and test refresh/
 rollback require separate authorization; main and production remain untouched.
+
+## F1 integration
+
+F1 branches from `c09e49c` and targets `feat/astro-site` (the migration-specific
+exception to pre-only). Root `build:pre` / `build:production` and `validate:host`
+now select Astro; `web/` still passes its separate full AGENTS gate. Astro reuses
+the existing Queue/scheduled/shell handlers and all typed binding identities.
+No schedules, routes, DNS, secrets, CI or delivery configuration change.
+The pre deploy script uses only pinned cf and is not run by this card.
+P5 comparison and interaction requests go directly to Astro's P2/P6 endpoints.
+Production indexing and the shared default social PNG are enabled explicitly.
+The source host is documented in `docs/ASTRO-HOST.md`; no live cutover is claimed.
+Cockpit remains in `web/` and returns **404 on the Astro host**, including locale
+forms. Unknown catch-all URLs no longer render the P0 demonstration shell.
+
+## After cutover
+
+Keep `web/lib` as the single shared library for the first cutover; do not copy
+its readers, contracts, workflows or dictionaries. The exact direct imports,
+shared views/components, seven dictionaries, stylesheet/public assets and
+`web/node_modules` image-renderer paths are listed in
+[astro-web-imports.md](astro-web-imports.md). It also separates verification-only
+baseline imports and the shared operational shell outside `web/`.
+
+After independent cutover acceptance, move that library to `shared/lib` in one
+follow-up with import rewrites and the complete web/Astro regression suites.
+Move reusable `_explore`, localized category/detail/ranking views and route-data
+helpers to `shared/ui`, and move tokens/public assets to shared asset roots.
+Promote the exact pinned image renderer, its existing Wasm/font packaging and
+compatible build bridge into Astro-owned dependencies before removing the
+`web/node_modules` paths. Move operational shell modules to a framework-neutral
+shared host directory. Retain the old comparison host and deferred cockpit until
+the owner separately approves their retirement. No relocation or deletion of
+`web/` belongs to F1.
