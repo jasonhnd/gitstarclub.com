@@ -1,4 +1,4 @@
-import { isWorkerShellRequest } from "../../../web/lib/workers-host/shell-routes";
+import { isPublicationIndependentRequest, isWorkerShellRequest } from "../../../web/lib/workers-host/shell-routes";
 import { withWorkerEnv } from "../../../web/lib/workers-host/runtime-env";
 import { cacheScope } from "../../../web/lib/workers-host/cache/context";
 import { bypassPageCache, isLongTail } from "../../../web/lib/workers-host/cache/policy";
@@ -23,6 +23,8 @@ export default {
       if (url.pathname.startsWith("/_vinext/static-cache/")) return headers(new Response("Not found", { status: 404 }), "BYPASS", true);
       if (isWorkerShellRequest(url.pathname, request.method)) return headers(await handleShellFetch(request, env), "BYPASS", true);
       emitRunLog({ event: "host.vinext", path: url.pathname, method: request.method });
+      // Cache bypass alone does not imply publication independence (for example, cookie-bearing pages).
+      if (isPublicationIndependentRequest(url.pathname, request.method)) return headers(await handleNextRequest(request, env, ctx), "BYPASS", true);
       // Local unit tests can delegate without platform bindings; real cache factories fail closed.
       if (!env.GSC_CACHE) return headers(await handleNextRequest(request, env, ctx), "BYPASS", bypassPageCache(request));
       if (!env.DATA) return new Response("Publication binding unavailable", { status: 503 });
