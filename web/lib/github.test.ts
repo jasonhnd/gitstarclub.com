@@ -14,6 +14,7 @@ import {
   githubRepositorySearch,
   isTransientGithubError,
   isTransientGithubStatus,
+  isMetadataPage502,
   retryDelayMs,
   searchWhitelistHop,
   searchWhitelistWithSearch,
@@ -65,6 +66,19 @@ function blockRealFetch(): void {
 const repo = { id: 1, owner: "acme", name: "widget" };
 
 describe("secondaryLimitDelayMs (pure)", () => {
+  test("metadata exposes a typed 502 only after all five normal attempts", async () => {
+    process.env.GITHUB_TOKEN = "test-token";
+    blockRealFetch();
+    const transport = scripted(Array.from({ length: GITHUB_MAX_RETRIES + 1 }, () => response(502, "Bad Gateway")));
+    const error = await fetchRepositoryMetadata(["R_1"], transport.opts).catch((caught: unknown) => caught);
+    expect(isMetadataPage502(error)).toBe(true);
+    expect(transport.calls).toHaveLength(5);
+    expect(transport.sleeps).toEqual([1_000, 2_000, 4_000, 8_000]);
+    expect(isMetadataPage502(new GitHubHttpError("search", 502, "failure"))).toBe(false);
+    expect(isMetadataPage502(new GitHubHttpError("graphql", 503, "failure"))).toBe(false);
+    expect(isMetadataPage502(new Error("GitHub GraphQL 502"))).toBe(false);
+  });
+
   test("returns null for any non-403 status", () => {
     expect(secondaryLimitDelayMs(200, "secondary rate limit")).toBeNull();
     expect(secondaryLimitDelayMs(429, "abuse detection")).toBeNull();
