@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { startWorker } from "../scripts/local-worker";
 import { fixtureRecords } from "../scripts/fixture";
-import { LOCALES, localizedPath, toHreflang } from "../src/lib/i18n";
+import { LOCALES, localizedPath, toHreflang, getDictionary } from "../src/lib/i18n";
 import type { R2Bucket } from "../../web/lib/storage/r2-binding-store";
 
 let worker: Awaited<ReturnType<typeof startWorker>>;
@@ -17,7 +17,7 @@ test("the built Astro Worker renders all seven URL locales and existing shell tr
     expect(response.status).toBe(200);
     expect(html).toContain(`<html lang="${toHreflang(locale)}"`);
     expect(html).toContain("/api/lang?lang=ja");
-    expect(html).toContain("2026-07-17T00:00:00.000Z");
+    expect(html).toContain((await getDictionary(locale)).privacy.title);
     expect(html).toContain("<header"); expect(html).toContain("<footer");
     expect(response.headers.get("content-security-policy")).toContain("script-src 'self' 'unsafe-inline'");
   }

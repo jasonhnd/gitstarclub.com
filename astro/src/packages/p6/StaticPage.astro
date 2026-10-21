@@ -1,0 +1,17 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { getDictionary, type Locale } from "../../../../web/lib/i18n";
+import { getMeta } from "../../../../web/lib/data";
+import { withPublishedReaders } from "../../lib/published-readers";
+import { AboutBody } from "./AboutBody";
+import { PrivacyBody } from "./PrivacyBody";
+interface Props { locale: Locale; page: "about" | "privacy" }
+const { locale, page } = Astro.props;
+const t = await getDictionary(locale);
+const meta = page === "about" ? await withPublishedReaders(Astro.locals.data, getMeta, { cloudflareReadPolicy: true }) : null;
+const title = page === "about" ? t.meta.aboutTitle : t.meta.privacyTitle;
+const description = page === "about" ? t.meta.aboutDescription : t.meta.privacyDescription;
+---
+<Layout locale={locale} canonicalPath={`/${page}`} title={title} description={description}>
+  {page === "about" ? <AboutBody locale={locale} dictionary={t} meta={meta} /> : <PrivacyBody dictionary={t} />}
+</Layout>
