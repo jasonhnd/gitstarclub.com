@@ -125,11 +125,11 @@ describe("weekly source composition", () => {
     for (const view of views.values()) expect(view.meta.provenance).toBeUndefined();
   });
   test("optional scope preserves old reads and rejects unsupported or unscoped mixes", () => {
-    const legacy = { meta: { window: "week", period: WEEK, dim: "repo", metric: "flow", generated_at: GEN }, items: [] };
+    const legacy: RankList = { meta: { window: "week", period: WEEK, dim: "repo", metric: "flow", generated_at: GEN }, items: [] };
     expect(RankList.parse(legacy)).toEqual(legacy);
-    const aggregate = { ...legacy, meta: { ...legacy.meta, provenance } };
+    const aggregate: RankList = { ...legacy, meta: { ...legacy.meta, provenance } };
     expect(RankList.parse(aggregate)).toEqual(aggregate);
-    const mixed = { ...aggregate, meta: { ...aggregate.meta, provenance_scope: "mixed" } };
+    const mixed: RankList = { ...aggregate, meta: { ...aggregate.meta, provenance_scope: "mixed" } };
     expect(RankList.parse(mixed)).toEqual(mixed);
     for (const meta of [
       { ...legacy.meta, provenance_scope: "mixed" },
