@@ -36,6 +36,14 @@ Let an entity be in a window `[t0, t1]`:
 
 > An entity with **no events at all** inside the window does not enter that window's ranking (flow=0 may still enter but ranks at the tail; no data ≠ 0, see §8).
 
+The approved 2026 aggregate gap is a separate surviving-star **flow** source.
+Imported weeks marked by canonical `aggregate_history.weeks` never advance the
+gross/net stock accumulator or its frozen anchor. Their repo stock is unknown;
+an org total containing an unknown member is also unknown. Stock rankings omit
+those entries rather than publishing zero. A later ordinary observation resumes
+the unchanged accumulator. Monthly/yearly series and all-time current stocks
+are unaffected; see the [preview repair runbook](analysis/PREVIEW-AGGREGATE-IMPORT.md).
+
 ## 3. stock historical anchoring algorithm (undoing gross being high)
 
 History is gross (GH Archive has no unstar events), so accumulation is **systematically high**; the only exact anchor is today's `current_stars` (GraphQL). The algorithm:

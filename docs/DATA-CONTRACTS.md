@@ -130,6 +130,14 @@ They **do not belong to** `canonical/v2/meta.json` (`CanonicalMeta` stays `.stri
 
 **`canonical/v2/repos/{bucket}.json`** — repo-dimension buckets (fields same as §1.2, including `tracked_since` and `fetched_at` (metadata fetch time); plus `d` = the frozen anchor factor (`>= 0`, and it may be `> 1` when GitHub Archive undercounts), computed by bootstrap and **stored as a full-precision IEEE double** — rounding would make the JS-recomputed `stock_est` differ from DuckDB by ±1):
 
+Preview aggregate repair can additionally store `aggregate_history: { provenance,
+weeks }`. `provenance` is the strict `StarHistoryProvenance` object and `weeks`
+lists the imported complete ISO weeks in W22–W40 of 2026. Metadata refresh keeps
+this marker. Daily entity curves carry its provenance; imported weekly flow
+ranks carry the same source. Those weeks do not advance stock accumulators and
+unknown repo/org stocks are omitted from stock ranks. Monthly data and `d`
+remain unchanged. See the [preview import runbook](analysis/PREVIEW-AGGREGATE-IMPORT.md).
+
 ```json
 { "1296269": { "id": 1296269, "node_id": "...", "owner": "vuejs", "owner_type": "Organization",
                "name": "vue", "full_name": "vuejs/vue", "language": "TypeScript",
