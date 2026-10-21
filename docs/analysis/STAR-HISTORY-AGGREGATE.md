@@ -13,6 +13,8 @@ Owner decision d1019-214826-1 = A authorizes this separately labeled source for
 **2026-05-30 through 2026-09-30 only**. Issue #682 / card GSC_0090 supplies the
 collector, offline tests and local inputs. Preview publication and reader-facing
 labels are separate cards. No output here is a publishable replacement baseline.
+Issue #727 adds a separate [preview snapshot repair](PREVIEW-AGGREGATE-IMPORT.md),
+with review/merge and a matching preview deployment required before execution.
 
 The [earlier UTC collector](STAR-HISTORY-GAP.md) remains a distinct tool. Its
 empty timestamp connections do not become measured zeros and are not reused as

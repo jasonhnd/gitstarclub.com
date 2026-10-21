@@ -3,6 +3,8 @@
 // offline parity harness both build a Model and feed it to the compute functions.
 // No I/O here: callers pass already-parsed shard records. See VERCEL-DATA-OPERATIONS §3/§6.
 
+import type { AggregateHistory } from "@/lib/contracts/star-history";
+
 export type Period = string; // "YYYY-MM" | "YYYY-Www" | "YYYY"
 export type DateStr = string; // "YYYY-MM-DD"
 export type OwnerType = "User" | "Organization";
@@ -28,6 +30,7 @@ export interface RepoMeta {
   tracked_since?: string | null;
   /** Frozen anchoring factor d = current_stars@seam / cumgross@seam_date (bootstrap-fixed). */
   d: number;
+  aggregate_history?: AggregateHistory;
 }
 
 export type Series = ReadonlyArray<readonly [Period, number]>; // [[period, flow], ...] period-asc

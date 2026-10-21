@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AggregateHistory } from "@/lib/contracts/star-history";
 import {
   CategoryAssignmentsDocument,
   CategoryAssignmentsShard,
@@ -124,6 +125,7 @@ export function slimRankRepoMeta(id: number, value: unknown): RepoMeta {
     crossed_50k: raw.crossed_50k === null || typeof raw.crossed_50k === "string" ? raw.crossed_50k : undefined,
     crossed_100k: raw.crossed_100k === null || typeof raw.crossed_100k === "string" ? raw.crossed_100k : undefined,
     tracked_since: raw.tracked_since === null || typeof raw.tracked_since === "string" ? raw.tracked_since : undefined,
+    ...(raw.aggregate_history ? { aggregate_history: AggregateHistory.parse(raw.aggregate_history) } : {}),
   });
 }
 
@@ -218,7 +220,7 @@ async function buildPackedWindowFromShards(
       if (!meta) {
         throw new Error(`${seriesPath}: repo ${id} missing from ${reposPath}`);
       }
-      builder.absorb(id, meta.owner, meta.active !== false, meta.d, asSeries(value));
+      builder.absorb(id, meta.owner, meta.active !== false, meta.d, asSeries(value), kind === "week" ? new Set(meta.aggregate_history?.weeks) : undefined);
     }
     slim.clear();
     clearViewParseMemo();
@@ -321,7 +323,7 @@ async function packOneSeriesBucket(
     if (!meta) {
       throw new Error(`${seriesPath}: repo ${id} missing from ${reposPath}`);
     }
-    builder.absorb(id, meta.owner, meta.active !== false, meta.d, asSeries(value));
+    builder.absorb(id, meta.owner, meta.active !== false, meta.d, asSeries(value), kind === "week" ? new Set(meta.aggregate_history?.weeks) : undefined);
   }
   slim.clear();
   clearViewParseMemo();
