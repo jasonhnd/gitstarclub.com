@@ -21,6 +21,10 @@ try {
       assert.ok(body.includes('type="application/ld+json"'), `${url}: structured facts missing`);
       if (path.endsWith("W29") || path === "/") assert.ok(body.includes(t.common.starHistoryNote), `${url}: provenance missing`);
       if (path === "/" || path === "/rankings") assert.ok(!body.includes("controls."), `${url}: unnecessary P1 browser code`);
+      if (path.startsWith("/rankings/2026")) {
+        assert.ok(/src="\/_astro\/controls[^" ]+\.js"/.test(body), `${url}: controls must load from self under the existing CSP`);
+        assert.ok(!body.includes('src="data:text/javascript'), `${url}: executable data URLs violate the shared CSP`);
+      }
       assert.equal((body.match(/<header/g) ?? []).length, 1, `${url}: duplicate chrome`);
       results.push({ path: localizedPath(locale, path), status: response.status, populated: true, provenance: path.endsWith("W29") || path === "/" });
     }
