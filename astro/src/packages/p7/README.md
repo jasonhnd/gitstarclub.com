@@ -36,14 +36,14 @@ The P0 `invalidatePaths` hook remains available for explicit invalidation.
 
 Minimal shared P0 corrections required for public response parity:
 
-- `src/lib/routing.ts`: preserve the original cookie's expiry, attribute order,
+- `astro/src/lib/routing.ts`: preserve the original cookie's expiry, attribute order,
   casing and production-only Secure flag. The old framework removes its
   internal middleware cookie header before returning the public response.
-- `src/lib/host.ts`: preserve the API header set and original pointer-outage
+- `astro/src/lib/host.ts`: preserve the API header set and original pointer-outage
   response body while retaining the skeleton's page indexing policy.
-- `scripts/local-worker.ts`: optional synthetic text bindings for local tests;
+- `astro/scripts/local-worker.ts`: optional synthetic text bindings for local tests;
   existing callers and defaults are unchanged. No Worker config changes.
-- `tests/routing.test.ts`: match the original cookie casing/environment rules.
+- `astro/tests/routing.test.ts`: match the original cookie casing/environment rules.
 
 ## Verification
 
@@ -57,7 +57,7 @@ GSC_P7_WORKER_TEST=1 bun test tests/p7/worker.test.ts
 ```
 
 The ordinary suite ports the complete cron handler, workflow start, workflow step
-and rollback-route tests. `tests/p7/parity.test.ts` compares original handlers
+and rollback-route tests. `astro/tests/p7/parity.test.ts` compares original handlers
 with the new route entrypoints: status, every public response header and every
 body byte, with a fixed clock and no network. It also compares deferred HTTP
 successors and tests awaited invalidation/error propagation. The original
