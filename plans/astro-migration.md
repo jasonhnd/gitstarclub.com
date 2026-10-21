@@ -8,8 +8,9 @@ pipeline, R2 publication and JSON contracts stay unchanged. `web/` remains
 buildable for comparison. English is prefixless; ja/zh/zh-TW/ko/es/fr use their
 existing prefixes. Cockpit is deferred; preserve its old implementation.
 
-`feat/astro-site` starts at `29ef525` from origin/pre. P0-P7 branches and PRs
-target it; only the final integration PR targets `pre`. No protected-branch
+`feat/astro-site` starts at `29ef525` from origin/pre. P0-P7, F1 and performance follow-up branches and PRs
+target `feat/astro-site`; only the final integration PR
+`feat/astro-site` -> `pre` targets `pre`. No protected-branch
 push, merge, deployment, Actions, Wrangler, legacy packaging, remote resource
 change or live refresh is authorized. Astro 7.4.1 builds with the official cf
 adapter 15.0.0-beta.3 and Vite plugin 2.0.0-beta.v.3 without Wrangler. Beta pins

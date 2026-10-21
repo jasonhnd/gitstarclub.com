@@ -8,6 +8,8 @@ import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 
+import { productionBundles } from "./scripts/production-bundles.mjs";
+
 import { categoryViewPlugin } from "./src/packages/p3/view-plugin.ts";
 
 const hostMode = process.env.GSC_HOST_MODE ?? "pre";
@@ -38,8 +40,8 @@ export default defineConfig({
   devToolbar: { enabled: false },
   vite: {
     mode: hostMode,
-    plugins: [identityPlugin, rankingImages(), categoryViewPlugin(), tailwindcss()],
-    resolve: { alias: [
+    plugins: [identityPlugin, rankingImages(), categoryViewPlugin(), tailwindcss(), productionBundles(scratch)],
+    resolve: { dedupe: ["react", "react-dom"], alias: [
       { find: /^@\/lib\/fetch-timeout\.mjs$/, replacement: fileURLToPath(new URL("./src/lib/published-readers.ts", import.meta.url)) },
       { find: /^next\/link$/, replacement: fileURLToPath(new URL("./src/components/Link.tsx", import.meta.url)) },
       { find: /^next\/navigation$/, replacement: fileURLToPath(new URL("./src/lib/navigation.ts", import.meta.url)) },
@@ -52,6 +54,6 @@ export default defineConfig({
       "process.env.SITE_INDEXABLE": JSON.stringify(hostMode === "production" ? "1" : "0"),
     },
     cacheDir: resolve(scratch, "astro-vite"),
-    build: { minify: false },
+    build: { minify: "oxc" },
   },
 });

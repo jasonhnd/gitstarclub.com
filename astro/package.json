@@ -23,7 +23,8 @@
     "build:pre": "node scripts/build.mjs --mode pre",
     "validate:host": "bun scripts/validate-host.ts",
     "deploy:pre": "bun scripts/deploy-pre.ts",
-    "crawl:local": "bun scripts/crawl-local.ts"
+    "crawl:local": "bun scripts/crawl-local.ts",
+    "perf:local": "bun scripts/perf-local.ts"
   },
   "dependencies": {
     "astro": "7.4.1",
