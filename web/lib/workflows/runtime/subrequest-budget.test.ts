@@ -1,10 +1,14 @@
 import { beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as github from "@/lib/github";
+import * as source from "@/lib/data/source";
+import * as indexnow from "@/lib/indexnow";
+import { buildIndexNowPayloads, workflowPublishCanonicalPaths } from "@/lib/indexnow";
 import { WorkflowLease, WorkflowManifest, WorkflowValidation, type WhitelistSnapshot } from "@/lib/contracts";
 import { successorJobAfterRefreshStep, successorJobFromResponseHeaders } from "@/lib/workers-host/queue-advance";
 import { repoBucket, REPO_BUCKETS } from "../buckets";
 import { startRefreshWorkflowRoute } from "../start";
 import { validateVersion } from "../steps/validate";
+import { runPublishStep } from "../steps/publish";
 import { installWorkflowHarness, SUBREQUEST_LIMIT_ERROR, TEST_NOW, TEST_RUN, workflowSeed, type FullJob } from "../test-support";
 import { nextRefreshJob } from "./graph";
 import { firstRefreshJob } from "./types";
@@ -15,7 +19,9 @@ const path = (rel: string) => `ops/workflows/${TEST_RUN}/${rel}`;
 type Boundary = { job: FullJob; artifacts: Record<string, string> };
 let validation: Boundary;
 let afterMetadata: Record<string, string>;
+let publication: Boundary;
 const counts = new Map<string, { hops: number; max: number; operations: Record<string, number> }>();
+const publishCounts: Array<{ page: number; total: number; entityReads: number; operations: Record<string, number> }> = [];
 
 /** Completed real-format metadata avoids unrelated GitHub pacing in the budget test. */
 function completedMetadataSeed(): Record<string, string> {
@@ -57,19 +63,26 @@ async function exhaust(h: ReturnType<typeof installWorkflowHarness>, job: FullJo
 
 describe("refresh subrequest budget at 5,669 repositories and owners", () => {
   beforeAll(async () => {
-    const h = installWorkflowHarness(completedMetadataSeed());
+    const h = installWorkflowHarness(completedMetadataSeed(), { INDEXNOW_ENABLED: "1" });
     try {
       let job = firstRefreshJob(TEST_RUN) as FullJob | null;
       for (let hop = 0; job && hop < 1000; hop++) {
         if (job.name === "fold" && !afterMetadata) afterMetadata = { ...h.store.contents };
         if (job.name === "validate" && !validation) validation = { job: structuredClone(job), artifacts: { ...h.store.contents } };
+        if (job.name === "publish" && !publication) publication = { job: structuredClone(job), artifacts: { ...h.store.contents } };
+        const readsBefore = h.store.reads.length;
         const { response, result } = await h.run(job, { subrequestLimit: 1000, queueConsumer: true });
         expect(response.status, `${job.name}@${job.cursor.workOffset ?? 0}`).toBe(200);
         expect(result?.deferredFailure).toBeUndefined();
         // Parent queue consumer: one service fetch and one JOBS.send. Its
         // budget is separate, but include both as conservative overhead here.
         const total = h.store.subrequests.total + 2;
-        expect(total, `${job.name}@${job.cursor.recomputePhase ?? job.cursor.workOffset ?? 0}`).toBeLessThan(job.name === "publish" ? 900 : 600);
+        expect(total, `${job.name}@${job.cursor.recomputePhase ?? job.cursor.workOffset ?? 0}`).toBeLessThan(600);
+        if (job.name === "publish") publishCounts.push({
+          page: job.cursor.workOffset ?? 0, total,
+          entityReads: h.store.reads.slice(readsBefore).filter((rel) => rel.includes("/entity/")).length,
+          operations: { ...h.store.subrequests.counts, fetchStep: 1, queueSend: 1 },
+        });
         const summary = counts.get(job.name) ?? { hops: 0, max: 0, operations: {} };
         summary.hops++;
         if (total > summary.max) {
@@ -86,7 +99,7 @@ describe("refresh subrequest budget at 5,669 repositories and owners", () => {
       expect(WorkflowManifest.parse(h.store.json(path("manifest.json")))).toMatchObject({ status: "published" });
       expect(WorkflowLease.parse(h.store.json("ops/workflows/active.json")).status).toBe("published");
       expect(h.store.deletions.filter((p) => p.startsWith("views/refresh-2026-08-01/"))).toHaveLength(REPOS);
-      console.log("SUBREQUEST_BUDGET", JSON.stringify(Object.fromEntries(counts)));
+      expect(h.indexNowSubmissions).toHaveLength(2);
     } finally {
       h.restore();
     }
@@ -98,13 +111,171 @@ describe("refresh subrequest budget at 5,669 repositories and owners", () => {
     }
   });
 
+  test("publish leaves transport headroom, including both IndexNow POSTs", () => {
+    expect(counts.get("publish")!.hops).toBe(3);
+    expect(counts.get("publish")!.max).toBeLessThan(500);
+    expect(publishCounts.map(({ page, total, entityReads }) => ({ page, total, entityReads }))).toEqual([
+      { page: 0, total: 23, entityReads: 0 },
+      { page: 1, total: 452, entityReads: 400 },
+      { page: 2, total: 455, entityReads: 400 },
+    ]);
+    expect(publishCounts[0]!.operations.fetchInvalidation).toBe(1);
+    expect(publishCounts[2]!.operations.fetchIndexNow).toBe(2);
+  });
+
+  test("publish pages reproduce the original notification candidates and replay without side effects", async () => {
+    const h = installWorkflowHarness(publication.artifacts, { INDEXNOW_ENABLED: "1" });
+    try {
+      let job = publication.job;
+      const pointerBefore = h.store.contents["views/latest.json"];
+      let committed: string | undefined;
+      for (let page = 0; page < 3; page++) {
+        const first = await h.run(job, { subrequestLimit: 500 });
+        expect(first.response.status).toBe(200);
+        expect(h.store.json(path(`steps/publish-${page}.json`))).toMatchObject({ status: "ok" });
+        if (page === 0) {
+          committed = h.store.contents["views/latest.json"];
+          expect(committed).not.toBe(pointerBefore);
+          expect(h.indexNowSubmissions).toHaveLength(0);
+          expect(h.store.contents[path("steps/publish.json")]).toBeUndefined();
+        }
+        const progress = h.store.contents[path(`publish/progress-${page}.json`)];
+        const writes = h.store.writes.length;
+        const submissions = h.indexNowSubmissions.length;
+        const invalidations = h.invalidations.length;
+        const replay = await h.run(job, { subrequestLimit: 30 });
+        expect(replay.result).toEqual(first.result);
+        expect(h.store.contents[path(`publish/progress-${page}.json`)]).toBe(progress);
+        expect(h.store.writes.slice(writes).every((rel) => rel.endsWith("/active.json") || rel.includes("/steps/"))).toBe(true);
+        expect(h.indexNowSubmissions).toHaveLength(submissions);
+        expect(h.invalidations).toHaveLength(invalidations);
+        expect(h.store.contents["views/latest.json"]).toBe(committed!);
+        job = nextRefreshJob(job, first.result!) as FullJob;
+      }
+      expect(job.name).toBe("gc");
+      h.store.subrequests.reset();
+      const pointer = JSON.parse(committed!);
+      const expectedPaths = await workflowPublishCanonicalPaths({ runId: TEST_RUN, prevVersion: pointer.prev_version, publishedAt: pointer.published_at });
+      expect(h.store.json(path("publish/progress-2.json"))).toMatchObject({ paths: expectedPaths });
+      expect(h.indexNowSubmissions).toEqual(buildIndexNowPayloads(expectedPaths).payloads);
+    } finally { h.restore(); }
+  });
+
+  test("a lost first-page progress write replays the immutable intent and rollback target", async () => {
+    const h = installWorkflowHarness(publication.artifacts);
+    try {
+      h.store.failWrite = (rel) => rel.endsWith("/publish/progress-0.json");
+      const token = publication.job.cursor.fencingToken!;
+      await expect(runPublishStep(TEST_RUN, token)).rejects.toThrow("is live; post-commit");
+      const pointer = h.store.contents["views/latest.json"];
+      const intent = h.store.contents[path("publish-intent.json")];
+      h.store.failWrite = undefined;
+      expect(await runPublishStep(TEST_RUN, token)).toMatchObject({ version: TEST_RUN, nextWorkOffset: 1 });
+      expect(h.store.contents["views/latest.json"]).toBe(pointer);
+      expect(h.store.contents[path("publish-intent.json")]).toBe(intent);
+    } finally { h.restore(); }
+  });
+
+  for (const failedPage of [1, 2]) {
+    test(`a derivation failure on page ${failedPage} preserves best-effort publication without partial submission`, async () => {
+      const h = installWorkflowHarness(publication.artifacts, { INDEXNOW_ENABLED: "1" });
+      const readView = source.readView;
+      const read = spyOn(source, "readView").mockImplementation(async (rel, schema, opts) => {
+        if (rel.includes(`/entity/${failedPage === 1 ? "repo" : "org"}/`)) throw new Error("injected entity read failure");
+        return readView(rel, schema, opts);
+      });
+      try {
+        let job = publication.job;
+        for (let page = 0; page < 3; page++) {
+          const output = await h.run(job, { subrequestLimit: 500 });
+          expect(output.response.status).toBe(200);
+          job = nextRefreshJob(job, output.result!) as FullJob;
+        }
+        expect(job.name).toBe("gc");
+        expect(h.store.json(path("publish/progress-2.json"))).toMatchObject({ paths: null });
+        expect(h.store.json("views/latest.json")).toMatchObject({ version: TEST_RUN });
+        expect(h.indexNowSubmissions).toHaveLength(0);
+      } finally { read.mockRestore(); h.restore(); }
+    });
+  }
+
+  test("an unexpected submission error retains best-effort publication", async () => {
+    const h = installWorkflowHarness(publication.artifacts, { INDEXNOW_ENABLED: "1" });
+    const submit = spyOn(indexnow, "submitIndexNowUrls").mockRejectedValue(new Error("injected submission setup failure"));
+    try {
+      const { drainWorkflowStep } = await import("../test-support");
+      expect((await drainWorkflowStep(h, publication.job)).response.status).toBe(200);
+      expect(h.store.json("views/latest.json")).toMatchObject({ version: TEST_RUN });
+      expect(h.store.json(path("steps/publish.json"))).toMatchObject({ status: "ok" });
+      expect(submit).toHaveBeenCalledTimes(1);
+    } finally { submit.mockRestore(); h.restore(); }
+  });
+
+  test("a missing publish predecessor fails after commit without repointing the version", async () => {
+    const h = installWorkflowHarness(publication.artifacts);
+    try {
+      const first = await h.run(publication.job);
+      const page = nextRefreshJob(publication.job, first.result!) as FullJob;
+      const pointer = h.store.contents["views/latest.json"];
+      await h.store.del(path("publish/progress-0.json"));
+      expect((await h.run(page)).response.status).toBe(500);
+      expect(h.store.contents["views/latest.json"]).toBe(pointer);
+      expect(h.store.json(path("manifest.json"))).toMatchObject({ status: "failed", published_version: TEST_RUN });
+      expect(h.store.json(path("error.json"))).toMatchObject({ phase: "post_commit", committed_version: TEST_RUN });
+      expect(h.indexNowSubmissions).toHaveLength(0);
+    } finally { h.restore(); }
+  });
+
+  test("a successor's fencing token prevents post-commit derivation and submission", async () => {
+    const h = installWorkflowHarness(publication.artifacts);
+    try {
+      const first = await h.run(publication.job);
+      const page = nextRefreshJob(publication.job, first.result!) as FullJob;
+      const lease = h.store.json<Record<string, unknown>>("ops/workflows/active.json");
+      await h.store.set("ops/workflows/active.json", { ...lease, run_id: "successor", fencing_token: 99 });
+      const successor = h.store.contents["ops/workflows/active.json"];
+      expect((await h.run(page)).response.status).toBe(500);
+      expect(h.store.contents["ops/workflows/active.json"]).toBe(successor);
+      expect(h.store.contents[path("publish/progress-1.json")]).toBeUndefined();
+      expect(h.store.json(path("post-commit-failure.json"))).toMatchObject({ phase: "post_commit", published_version: TEST_RUN });
+      expect(h.indexNowSubmissions).toHaveLength(0);
+    } finally { h.restore(); }
+  });
+
+  test("lease takeover during organization comparison prevents submission", async () => {
+    const h = installWorkflowHarness(publication.artifacts, { INDEXNOW_ENABLED: "1" });
+    let read: ReturnType<typeof spyOn> | undefined;
+    try {
+      const committed = await h.run(publication.job);
+      const repoJob = nextRefreshJob(publication.job, committed.result!) as FullJob;
+      const repos = await h.run(repoJob);
+      const orgJob = nextRefreshJob(repoJob, repos.result!) as FullJob;
+      const lease = h.store.json<Record<string, unknown>>("ops/workflows/active.json");
+      let successor: string | undefined;
+      const readView = source.readView;
+      read = spyOn(source, "readView").mockImplementation(async (rel, schema, opts) => {
+        if (rel.includes("/entity/org/") && !successor) {
+          successor = JSON.stringify({ ...lease, run_id: "successor", fencing_token: 99 });
+          await h.store.put("ops/workflows/active.json", successor, { allowOverwrite: true });
+        }
+        return readView(rel, schema, opts);
+      });
+      expect((await h.run(orgJob, { subrequestLimit: 500 })).response.status).toBe(500);
+      expect(successor).toBeDefined();
+      expect(h.store.contents["ops/workflows/active.json"]).toBe(successor!);
+      expect(h.store.contents[path("publish/progress-2.json")]).toBeUndefined();
+      expect(h.store.json(path("post-commit-failure.json"))).toMatchObject({ phase: "post_commit", published_version: TEST_RUN });
+      expect(h.indexNowSubmissions).toHaveLength(0);
+    } finally { read?.mockRestore(); h.restore(); }
+  });
+
   test("the original unsliced validation needs more than 10,000 physical operations", async () => {
     const h = installWorkflowHarness(validation.artifacts);
     try {
       h.store.subrequests.reset();
       await validateVersion(TEST_RUN, validation.job.cursor.fencingToken);
-      console.log("UNSLICED_VALIDATE", JSON.stringify({ total: h.store.subrequests.total, operations: h.store.subrequests.counts }));
       expect(h.store.subrequests.total).toBeGreaterThan(10_000);
+      expect(h.store.subrequests.counts.fetchRead).toBeGreaterThan(10_000);
     } finally { h.restore(); }
   });
 
