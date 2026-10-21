@@ -53,7 +53,11 @@ try {
   gateway = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const url = new URL(request.url);
     const target = ["/search-index", "/repo-curve"].includes(url.pathname) ? web : astro;
-    return fetch(new Request(`${target}${url.pathname}${url.search}`, request), { redirect: "manual" });
+    const response = await fetch(new Request(`${target}${url.pathname}${url.search}`, request), { redirect: "manual" });
+    // Bun fetch decompresses the body before this local gateway forwards it.
+    const headers = new Headers(response.headers);
+    headers.delete("content-encoding"); headers.delete("content-length");
+    return new Response(response.body, { status: response.status, headers });
   } });
   for (const locale of LOCALES) {
     for (const route of ["/compare", "/pulse"]) {
