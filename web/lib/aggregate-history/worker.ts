@@ -75,7 +75,7 @@ export async function runAggregateImportRequest(input: AggregateImportRequest, s
   if (input.action === "begin") {
     const current = parseBootstrapLease((await adapter.readSnapshot(ACTIVE)).body);
     // Lost begin responses may resume only this same unexpired fencing token.
-    const lease = current?.status === "running" && current.run_id === `bootstrap-publish-${generation}`
+    const lease = current?.status === "running" && current.run_id === `bootstrap-publish-${generation}` && Date.parse(current.expires_at) > Date.now()
       ? await renewBootstrapLease({ store: adapter, lease: current })
       : await acquireBootstrapLease({ store: adapter, generation, operation: "publish" });
     const path = sessionPath(generation, lease.fencing_token);

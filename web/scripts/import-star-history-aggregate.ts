@@ -30,6 +30,7 @@ export function parseAggregateImportArgs(argv: string[]): { source: string; gene
   }
   if (!source || !generation || !argv.includes("--target")) throw new Error("Required: --target pre --source DIR --generation bootstrap-aggregate-<id> [--execute]");
   if (workerUrl && execute && !checkpoint) throw new Error("--checkpoint is required for Worker execution");
+  if (secretFile && !workerUrl) throw new Error("--secret-file requires --worker-url");
   if (checkpoint && !workerUrl) throw new Error("--checkpoint requires --worker-url");
   return { source, generation, execute, ...(workerUrl ? { workerUrl } : {}), ...(checkpoint ? { checkpoint } : {}), ...(secretFile ? { secretFile } : {}) };
 }

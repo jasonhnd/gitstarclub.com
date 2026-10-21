@@ -63,6 +63,19 @@ describe("preview Worker aggregate protocol", () => {
     expect(h.bucket.writes.filter((w) => w.path.startsWith("bootstrap/generations/"))).toHaveLength(0);
   });
 
+  test("rejects unpinned sources and oversized requests/chunks before generation writes", async () => {
+    const h = harness();
+    expect((await h.request({ action: "begin", sourceSha256: "0".repeat(64) })).status).toBe(409);
+    const token = await begin(h);
+    expect((await h.request({ action: "stage", token, target: GEN, phase: "base", items: Array.from({ length: 17 }, (_, i) => items(`views/${i}.json`)[0]) })).status).toBe(409);
+    const huge = encode({ padding: "x".repeat(4 * 1024 * 1024) });
+    const item = { path: "views/large.json", data: Buffer.from(huge).toString("base64"), sha256: importDigest(huge) };
+    expect((await h.request({ action: "stage", token, target: GEN, phase: "base", items: [item] })).status).toBe(409);
+    const overflow = encode({ padding: "x".repeat(8 * 1024 * 1024) });
+    expect((await handleAggregateImport(new Request(`https://pre.gitstarclub.com${AGGREGATE_IMPORT_PATH}`, { method: "POST", headers: { authorization: `Bearer ${SECRET}`, "x-gsc-sha256": importDigest(overflow) }, body: overflow }), h.env)).status).toBe(409);
+    expect(h.bucket.writes.filter((w) => w.path.startsWith("bootstrap/generations/"))).toHaveLength(0);
+  });
+
   test("begin response loss, chunk replay, interrupted transfer and immutable conflicts are safe", async () => {
     const h = harness();
     const token = await begin(h);
@@ -103,6 +116,17 @@ describe("preview Worker aggregate protocol", () => {
     expect((await h.request({ action: "commit", token, recovery: true })).status).toBe(409);
     expect(await h.bucket.store.get("bootstrap/latest.json")).toBeNull();
     expect(h.maximum()).toBeLessThan(128);
+  });
+
+  test("expired sessions acquire a new token and cannot revive the old owner", async () => {
+    const h = harness(); const token = await begin(h);
+    const current = JSON.parse((await h.bucket.store.get("ops/workflows/active.json"))!.body);
+    await h.bucket.store.put("ops/workflows/active.json", encode({ ...current, expires_at: "2020-01-01T00:00:00Z" }));
+    expect((await h.request({ action: "renew", token })).status).toBe(409);
+    const successor = await begin(h);
+    expect(successor).toBe(token + 1);
+    expect((await h.request({ action: "stage", token, target: GEN, phase: "base", items: items() })).status).toBe(409);
+    expect((await h.request({ action: "stage", token: successor, target: GEN, phase: "base", items: items() })).status).toBe(200);
   });
 
   test("a successor fences every old mutation and cannot be released by the old client", async () => {
