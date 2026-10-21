@@ -82,13 +82,13 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-describe("paused and empty CF crons", () => {
-  test("production and preview schedules stay empty while the intended map remains", () => {
-    for (const mode of ["production", "pre"]) {
-      expect(hostWorker(mode).triggers.every((trigger) => trigger.type === "queue")).toBe(true);
-    }
+describe("CF cron configuration and dispatch", () => {
+  test("only preview enables the three supported schedules", () => {
+    expect(hostWorker("production").triggers.every((trigger) => trigger.type === "queue")).toBe(true);
+    const configuredCrons = hostWorker("pre").triggers.flatMap((trigger) => trigger.type === "scheduled" ? [trigger.schedule] : []);
     expect([...PREVIEW_CRON_TRIGGERS]).toEqual([CRON_DAILY, CRON_WEEKLY, CRON_REFRESH]);
-    expect(PREVIEW_CRON_TRIGGERS.map((cron) => planCronDispatch(cron))).toEqual([
+    expect(configuredCrons).toEqual([...PREVIEW_CRON_TRIGGERS]);
+    expect(configuredCrons.map((cron) => planCronDispatch(cron))).toEqual([
       { kind: "daily", path: CRON_DAILY_PATH },
       { kind: "weekly", path: CRON_WEEKLY_PATH },
       { kind: "refresh", path: CRON_REFRESH_PATH },
