@@ -1,0 +1,20 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { getDictionary, localizedPath, type Locale } from "../../lib/i18n";
+import { CompareBody } from "./CompareBody";
+import { CompareClient } from "./CompareClient";
+import { loadCompare } from "./data";
+interface Props { locale: Locale }
+const { locale } = Astro.props;
+const t = await getDictionary(locale);
+const data = await loadCompare(Astro.locals.data, locale, t);
+const labels = {
+  ...t.compare, pickerEmpty: t.search.empty, pickerLoading: t.search.loading,
+  compareModesAria: t.a11y.compareModes, starHistoryOverlayAria: t.a11y.starHistoryOverlay,
+};
+---
+<Layout locale={locale} canonicalPath="/compare" title={t.meta.compareTitle} description={t.meta.compareDescription}>
+  <CompareBody locale={locale} t={t} {...data}>
+    <CompareClient client:load labels={labels} comparePath={localizedPath(locale, "/compare")} locale={locale} initialSearch={Astro.url.search} />
+  </CompareBody>
+</Layout>

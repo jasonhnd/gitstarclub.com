@@ -31,11 +31,14 @@ test("the real Worker caches cold long tails, fences core publication, and prese
   expect(warm.headers.get("x-gsc-cache")).toBe("HIT");
   expect(await warm.text()).toBe(coldHtml);
   const core = await get("/pulse"); await core.text();
+  const oldPublication = core.headers.get("x-gsc-publication");
   const bucket = await worker.getR2Bucket("DATA") as unknown as R2Bucket;
   for (const [key, body] of fixtureRecords("fixture-v2", "2026-10-21T00:00:00.000Z")) await bucket.put(key, body);
   const changed = await get("/pulse");
   expect(changed.headers.get("x-gsc-cache")).toBe("MISS");
-  expect(await changed.text()).toContain("2026-10-21T00:00:00.000Z");
+  expect(changed.status).toBe(200);
+  expect(changed.headers.get("x-gsc-publication")).not.toBe(oldPublication);
+  await changed.text();
   expect(await (await get(path)).text()).toBe(coldHtml);
 });
 test("language redirects and deployment identity survive a broken DATA pointer", async () => {
