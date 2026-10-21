@@ -14,9 +14,10 @@ and structured-data builders. Preserve PR #690's weekly provenance notes.
 The existing site has year/month/week ranking URLs; daily movement is shown
 inside monthly pages rather than a separate day route. Do not invent URLs.
 
-Minimal additive shared changes supply native read transport for the unchanged
-readers, Layout title/social-image options, missing-route signaling and CSS
-source discovery. Document each shared change for integration ordering.
+Reuse the integration branch's native published-reader facade introduced by P5.
+Minimal additive shared changes supply Layout metadata inputs, missing-route
+signaling, image build integration and local Wasm loading. Document each shared
+change for integration ordering.
 
 ## Out of scope and prohibited actions
 
