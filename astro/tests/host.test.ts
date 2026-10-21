@@ -126,6 +126,54 @@ test.each(privateReads)("private reads fail closed after two publication races: 
   expect(calls).toBe(2);
   expect(h.kv.values.size).toBe(0);
 });
+const apiReads = [
+  "/api/cron/daily", "/api/cron/weekly", "/api/workflows/refresh/start",
+  "/api/workflows/refresh/step", "/api/workflows/refresh/revalidate", "/api/workflows/refresh/rollback",
+].flatMap((path) => ["GET", "HEAD"].map((method) => ({ path, method })));
+test.each(apiReads)("API reads recheck publication without adding a page header: %j", async ({ path, method }) => {
+  const h = harness();
+  const captured: string[] = [];
+  let consumed = 0;
+  let cacheAccesses = 0;
+  h.store.get = async () => { cacheAccesses++; return null; };
+  h.store.set = async () => { cacheAccesses++; };
+  h.options.render = async (publication) => {
+    captured.push(publication.views!.version);
+    return new Response(new ReadableStream({
+      pull(controller) {
+        if (++consumed === 1) h.publish("v2");
+        controller.enqueue(new TextEncoder().encode(publication.views!.version));
+        controller.close();
+      },
+    }, { highWaterMark: 0 }), { headers: { "Content-Type": "text/plain" } });
+  };
+  const response = await h.get(path, { method });
+  expect(response.status).toBe(200);
+  expect(await response.text()).toBe(method === "HEAD" ? "" : "v2");
+  expect(captured).toEqual(["v1", "v2"]);
+  expect(consumed).toBe(2);
+  expect(response.headers.has("x-gsc-publication")).toBe(false);
+  expect(response.headers.get("x-gsc-cache")).toBe("BYPASS");
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(cacheAccesses).toBe(0);
+  expect(h.kv.values.size).toBe(0);
+  expect(h.pending).toHaveLength(0);
+});
+test.each(["GET", "HEAD"])("API %s fails closed after two publication races without a page header", async (method) => {
+  const h = harness();
+  let calls = 0;
+  h.options.render = async () => {
+    h.publish(`v${++calls + 1}`);
+    return new Response("obsolete");
+  };
+  const response = await h.get("/api/workflows/refresh/start", { method });
+  expect(response.status).toBe(503);
+  expect(await response.text()).toBe(method === "HEAD" ? "" : "Publication changed or unavailable; retry");
+  expect(response.headers.has("x-gsc-publication")).toBe(false);
+  expect(response.headers.has("x-vinext-build-id")).toBe(false);
+  expect(calls).toBe(2);
+  expect(h.kv.values.size).toBe(0);
+});
 test("a publication outage after private rendering fails closed", async () => {
   const h = harness();
   h.options.render = async () => {
