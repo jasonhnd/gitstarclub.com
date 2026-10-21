@@ -1,0 +1,17 @@
+---
+import { LANGUAGE_LABELS, LOCALES, type Locale } from "../../../web/lib/i18n/locales";
+import { stripLocale } from "../../../web/lib/i18n/routing";
+interface Props { locale: Locale; canonicalPath: string; label: string }
+const { locale, canonicalPath, label } = Astro.props;
+const canonical = stripLocale(canonicalPath).path;
+---
+<details class="group relative shrink-0">
+  <summary class="flex h-11 w-11 cursor-pointer list-none items-center justify-center gap-1.5 rounded-full border border-outline-variant bg-surface-container px-0 font-mono text-[0.72rem] font-medium text-on-surface-variant transition-colors marker:content-none hover:bg-surface-container-high hover:text-on-surface sm:w-auto sm:justify-start sm:px-3 [&::-webkit-details-marker]:hidden" aria-label={label}>
+    <span class="font-semibold uppercase sm:hidden">{locale === "zh-TW" ? "TW" : locale.toUpperCase()}</span>
+    <span class="hidden max-w-[6rem] truncate sm:inline">{LANGUAGE_LABELS[locale]}</span>
+    <span class="hidden text-[0.65rem] opacity-70 transition-transform group-open:rotate-180 sm:inline" aria-hidden="true">v</span>
+  </summary>
+  <div class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-44 max-w-[min(12rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-outline-variant bg-surface/95 p-1.5 shadow-[var(--elev-2)] backdrop-blur-lg">
+    {LOCALES.map((lang) => <a href={`/api/lang?lang=${encodeURIComponent(lang)}&next=${encodeURIComponent(canonical)}`} rel="nofollow" lang={lang} aria-current={lang === locale ? "true" : undefined} class={`flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 font-mono text-[0.75rem] transition-colors hover:bg-surface-container-high hover:text-on-surface ${lang === locale ? "text-on-surface" : "text-on-surface-variant"}`}>{LANGUAGE_LABELS[lang]}</a>)}
+  </div>
+</details>
