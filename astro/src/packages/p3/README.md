@@ -12,7 +12,9 @@ islands. Category bodies are static server-rendered React with no hydration.
 server view, redirects its data/availability/navigation imports to `data.ts`,
 removes its duplicate chrome and resolves its relative imports. The routing
 helper receives the same navigation substitution under a private module query;
-ordinary imports used by other packages are unchanged. No translated copy,
+ordinary imports used by other packages are unchanged. The shared stylesheet
+adds only source scanning for these existing components; no design tokens or
+utility values change. No translated copy,
 markup, metadata or structured data is copied or edited. Tests assert that the
 entire original view body survives the adapter except its chrome elements.
 
