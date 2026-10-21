@@ -1,5 +1,5 @@
 import { p1FixtureRecords } from "../tests/p1/fixture";
-import { FIRST_YEAR } from "../../web/lib/periods";
+import { FIRST_YEAR, isoWeek } from "../../web/lib/periods";
 import { CATEGORY_DIMENSIONS } from "../../web/lib/categories/rules";
 
 /** Complete the checked-in synthetic fixture's declared link graph, never real data. */
@@ -15,6 +15,19 @@ export function crawlFixtureRecords() {
   for (let value = FIRST_YEAR; value <= 2026; value++) put(`rank/year/${value}/repo/flow.json`, {
     ...year, meta: { ...year.meta, period: String(value) },
   });
+  // The same published bounds also declare all earlier month/week archives.
+  for (let value = FIRST_YEAR; value <= 2026; value++) {
+    const months = value === 2026 ? 7 : 12;
+    for (let month = 1; month <= months; month++) {
+      const period = `${value}-${String(month).padStart(2, "0")}`;
+      put(`rank/month/${period}/repo/flow.json`, { ...year, meta: { ...year.meta, window: "month", period } });
+    }
+    const weeks = value === 2026 ? 29 : isoWeek(new Date(Date.UTC(value, 11, 28))).week;
+    for (let week = 1; week <= weeks; week++) {
+      const period = `${value}-W${String(week).padStart(2, "0")}`;
+      put(`rank/week/${period}/repo/flow.json`, { ...year, meta: { ...year.meta, window: "week", period } });
+    }
+  }
   // The category index always exposes all seven dimensions; the base fixture has one.
   const registry = JSON.parse(records.get("categories/registry.json")!);
   for (const dimension of CATEGORY_DIMENSIONS) if (!registry.dimensions.some((entry: { id: string }) => entry.id === dimension)) {

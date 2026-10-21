@@ -50,6 +50,16 @@ try {
   const png = new DataView(await card.arrayBuffer());
   assert.equal(png.getUint32(0), 0x89504e47); assert.equal(png.getUint32(16), 1200); assert.equal(png.getUint32(20), 630);
   for (const path of ["/cockpit", "/ja/cockpit", "/cockpit/jobs", "/unknown-page"]) assert.equal((await get(path)).status, 404, path);
+  const exportDate = readdirSync(resolve(assets, "data/exports/v1"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name)).map((entry) => entry.name).sort().at(-1);
+  assert(exportDate, "dated static exports required");
+  for (const file of ["manifest.json", "top-rankings.csv", "top-rankings.json", "top-repo-milestones.csv", "top-repo-milestones.json", "top-org-aggregates.csv", "top-org-aggregates.json"]) {
+    const alias = `/data/exports/v1/latest/${file}`;
+    const response = await get(alias);
+    assert.equal(response.status, 200, alias);
+    assert.equal(await response.text(), readFileSync(resolve(assets, "data/exports/v1", exportDate, file), "utf8"), alias);
+    const head = await fetch(new URL(alias, origin), { method: "HEAD" });
+    assert.equal(head.status, 200, `HEAD ${alias}`); assert.equal(await head.text(), "");
+  }
   assert.equal((await (await get("/.well-known/deployment")).json()).commitSha, commit);
   assert.equal((await (await get("/preview/identity")).json()).commitSha, commit);
   assert.equal((await (await get("/preview/health")).json()).hosting, "astro");

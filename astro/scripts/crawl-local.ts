@@ -11,6 +11,7 @@ try {
   const origin = (await worker.ready).origin;
   const pending = ["/", "/sitemap.xml", "/robots.txt", "/manifest.webmanifest", "/opengraph-image", "/search-index"];
   for (const locale of LOCALES) for (const path of ["/", "/rankings", "/categories", "/o", "/compare", "/pulse", "/about", "/privacy", "/example/repo"]) pending.push(localizedPath(locale, path));
+  const queued = new Set(pending);
   const seen = new Set<string>();
   const failures: { path: string; status: number }[] = [];
   const results: { path: string; status: number; bytes: number }[] = [];
@@ -21,13 +22,14 @@ try {
     if (/^\/(?:api\/(?:cron|workflows)|start|enqueue|preview\/invalidate)(?:\/|$)/.test(url.pathname)) throw new Error(`Unexpected operational link: ${url.pathname}`);
     // Language links are verified as redirects, then their target pages are crawled.
     const key = url.pathname + url.search;
-    if (!seen.has(key)) pending.push(key);
+    if (!queued.has(key)) { queued.add(key); pending.push(key); }
   }
-  while (pending.length) {
-    const path = pending.shift()!;
+  for (let cursor = 0; cursor < pending.length; cursor++) {
+    const path = pending[cursor];
     if (seen.has(path)) continue;
     seen.add(path);
-    assert(seen.size <= 10000, "bounded fixture crawl; investigate an unbounded link graph");
+    if (seen.size % 1000 === 0) console.log(`Crawl progress: ${seen.size} visited; ${failures.length} errors; ${pending.length - cursor - 1} queued`);
+    assert(seen.size <= 60000, "bounded fixture crawl; investigate an unbounded link graph");
     const response = await fetch(new URL(path, origin), { redirect: "manual", headers: { "accept-language": "en" } });
     const body = await response.arrayBuffer();
     results.push({ path, status: response.status, bytes: body.byteLength });
