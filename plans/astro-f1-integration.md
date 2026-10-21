@@ -37,7 +37,7 @@ archives use the owner-authorized shared cache. Bun uses its shared HOME cache.
 - Astro `verify:local`, `bun audit`, both explicit builds/host validation, and
   root `lint:design` pass without platform deployment commands.
 - P1 worker and 70 comparisons; P2 routes/browser and 42 comparisons plus 14
-  geometry checks; P3 routes and 56 comparisons; P4 comparisons; P5 28 direct,
+  HTTP GET/HEAD checks; P3 routes and 56 comparisons; P4 comparisons; P5 28 direct,
   unproxied comparisons and interaction checks; P6 50 comparisons; P7 built
   Worker and 68 HTTP parity cases pass.
 - Whole-site fixture link crawl reports zero internal 404s. Both modes preserve
@@ -45,3 +45,14 @@ archives use the owner-authorized shared cache. Bun uses its shared HOME cache.
 - PR records commands/results, remaining risks, the exact tested commit and
   deferred deployment/performance/live-refresh acceptance. Clean Git status and
   small card scratch directory at handoff to the review role.
+
+## Operational replay regression
+
+Final integration exposed that HTTP GET does not imply a read-only operation:
+daily/weekly refresh and refresh start can publish or enqueue work. The old
+Worker dispatched these bypassed handlers once. F1 explicitly keeps that
+behavior for GET and implicit HEAD. Twelve host regressions first failed:
+success could become 503 after a post-write pointer outage, and a publication
+change replayed the handler twice. The fix preserves the initial publication
+capture and original response while retaining read-only GET/HEAD race fences.
+All exact-head gates and package runners are rerun after this correction.

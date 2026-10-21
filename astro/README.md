@@ -36,8 +36,8 @@ bun run compare:local -- --screenshots
 
 This builds both hosts with one read-only fixture, starts their loopback
 servers, checks seven locale privacy URLs at desktop/mobile sizes in shell
-mode, and shuts all processes down. It intentionally compares header/footer
-text, not the unimplemented P6 privacy body. Title, all named/property meta,
+mode, and shuts all processes down. It intentionally compares header/footer text; P6 now verifies the complete
+Privacy/About bodies through its own package runner. Title, all named/property meta,
 canonical/hreflang and JSON-LD are still checked. Reports and screenshot pairs
 are under KANBAN_TMP; record results before deleting artifacts. The Cloudflare
 portable-output validator rejects a symlinked web build directory, which is
@@ -79,7 +79,8 @@ browser test proves body, metadata and structured-fact regressions are detected.
 - P7 authenticates operational requests and awaits
   `Astro.locals.invalidatePaths(["/example/repo", "/ja/example/repo"])` for
   explicit tail invalidation. Core publication changes invalidate by identity.
-  Mutating methods are delegated once, never replayed after a pointer switch.
+  Mutations are delegated once, never replayed after a pointer switch, including
+  the legacy daily/weekly cron and refresh-start GET/HEAD handlers.
   The revalidate POST callback and language redirect do not depend on pointers.
 - `/.well-known/deployment` reports the baked commit and local deployment
   origin without reading DATA. Production output is indexable; pre is noindex. Final integration retains
