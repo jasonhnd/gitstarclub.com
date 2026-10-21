@@ -2,6 +2,7 @@ import { defineConfig } from "astro/config";
 import cloudflare from "@astrojs/cloudflare";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { rankingImages } from "./src/packages/p1/image-build.mjs";
 import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
@@ -20,7 +21,7 @@ export default defineConfig({
   cacheDir: resolve(scratch, "astro-cache"),
   devToolbar: { enabled: false },
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [rankingImages(), tailwindcss()],
     resolve: { alias: [
       { find: /^@\/lib\/fetch-timeout\.mjs$/, replacement: fileURLToPath(new URL("./src/lib/published-fetch.ts", import.meta.url)) },
       { find: /^next\/link$/, replacement: fileURLToPath(new URL("./src/components/Link.tsx", import.meta.url)) },
