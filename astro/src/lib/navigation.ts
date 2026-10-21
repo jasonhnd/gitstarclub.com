@@ -7,3 +7,4 @@ const router = {
   forward() { window.history.forward(); },
 };
 export function useRouter() { return router; }
+export function usePathname(): string | null { return typeof window === "undefined" ? null : window.location.pathname; }

@@ -19,7 +19,10 @@ with the other shared imports before `web/` is eventually removed. Shared
 configuration changes are additive: register that image bridge and P2 style
 sources, load emitted image wasm in the local simulator, accept a
 page-specific social-image URL, and preserve explicit non-HTML cache headers
-while keeping HTML private. No dependency lock or data contract changes.
+while keeping HTML private. Invalid curve inputs and method-only responses
+remain independent of publication pointers. The browser navigation bridge adds
+`usePathname` so the existing localized 404 copy can be imported without copying
+translations. No dependency lock or data contract changes.
 
 Run with the checksum-verified Node 24.20.0/Bun 1.4.2 and card-local
 `TMPDIR=KANBAN_TMP`:
