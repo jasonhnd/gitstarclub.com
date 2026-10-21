@@ -4,6 +4,7 @@
 
 import { type Model, type Period, type RepoMeta } from "./model";
 import { GROWTH_FLOOR_STARS } from "@/lib/constants";
+import { AGGREGATE_HISTORY_PROVENANCE, type StarHistoryProvenance } from "@/lib/contracts/star-history";
 import type { OrgWindow, RepoWindow, Window } from "./windows";
 
 /** Top-N per period. Packed-window hops must use the same cap. */
@@ -11,7 +12,7 @@ export const RANK_TOP_N = 100;
 const TOP_N = RANK_TOP_N;
 
 export interface RankView {
-  meta: { window: string; period: string; dim: string; metric: string; generated_at: string };
+  meta: { window: string; period: string; dim: string; metric: string; generated_at: string; provenance?: StarHistoryProvenance };
   items: Array<Record<string, number | string | null>>;
 }
 
@@ -71,7 +72,7 @@ export function repoRankMatrix(rw: RepoWindow, w: Window, gen: string): Map<stri
     for (const [period, bucket] of rw.rowsByPeriod) {
       rows.set(
         period,
-        bucket.map((b) => ({
+        bucket.filter((b) => metric !== "stock" || b.stock_est >= 0).map((b) => ({
           key: String(b.id),
           id: b.id,
           val: metric === "flow" ? b.flow : b.stock_est,
@@ -80,8 +81,10 @@ export function repoRankMatrix(rw: RepoWindow, w: Window, gen: string): Map<stri
       );
     }
     const meta = { window: w, dim: "repo", metric, generated_at: gen };
-    for (const [period, view] of rankByPeriod(rw.periods, rows, meta, tieRepo))
+    for (const [period, view] of rankByPeriod(rw.periods, rows, meta, tieRepo)) {
+      if (metric === "flow" && rw.aggregatePeriods?.has(period)) view.meta.provenance = AGGREGATE_HISTORY_PROVENANCE;
       out.set(`rank/${w}/${period}/repo/${metric}.json`, view);
+    }
   }
   return out;
 }
@@ -93,7 +96,7 @@ export function orgRankMatrix(ow: OrgWindow, w: Window, gen: string): Map<string
     for (const [period, bucket] of ow.rowsByPeriod) {
       rows.set(
         period,
-        bucket.map((b) => ({
+        bucket.filter((b) => metric !== "stock" || b.stock_est >= 0).map((b) => ({
           key: b.login,
           login: b.login,
           val: metric === "flow" ? b.flow : b.stock_est,
@@ -102,8 +105,10 @@ export function orgRankMatrix(ow: OrgWindow, w: Window, gen: string): Map<string
       );
     }
     const meta = { window: w, dim: "org", metric, generated_at: gen };
-    for (const [period, view] of rankByPeriod(ow.periods, rows, meta, tieOrg))
+    for (const [period, view] of rankByPeriod(ow.periods, rows, meta, tieOrg)) {
+      if (metric === "flow" && ow.aggregatePeriods?.has(period)) view.meta.provenance = AGGREGATE_HISTORY_PROVENANCE;
       out.set(`rank/${w}/${period}/org/${metric}.json`, view);
+    }
   }
   return out;
 }

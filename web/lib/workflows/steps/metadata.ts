@@ -213,6 +213,7 @@ export function buildMetadataShard(input: BuildMetadataShardInput): Record<strin
         lookup?.tracked_since ??
         (input.newcomers.has(entry.id) ? input.trackedSince : null),
       d: previous?.d,
+      ...(previous?.aggregate_history ? { aggregate_history: previous.aggregate_history } : {}),
       fetched_at: input.fetchedAt,
     };
   }
