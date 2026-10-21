@@ -95,7 +95,10 @@ export async function runAggregateImportRequest(input: AggregateImportRequest, s
   if (session.generation !== generation || session.lease.fencing_token !== input.token) throw new Error("Import session token mismatch");
   if (input.action === "release") {
     const current = parseBootstrapLease((await adapter.readSnapshot(ACTIVE)).body);
-    if (current?.run_id === session.lease.run_id && current.fencing_token === input.token && current.status === input.status) return { released: true };
+    if (current?.run_id === session.lease.run_id && current.fencing_token === input.token && current.status !== "running") {
+      // A second same-generation client must not regress a completed release.
+      return { released: true, status: current.status };
+    }
     if (!await releaseBootstrapLease({ store: adapter, lease: session.lease, status: input.status })) throw new Error("Import lost its lease before release");
     return { released: true };
   }

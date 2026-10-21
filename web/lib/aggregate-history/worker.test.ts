@@ -118,6 +118,13 @@ describe("preview Worker aggregate protocol", () => {
     expect(h.maximum()).toBeLessThan(128);
   });
 
+  test("a repeated release cannot regress a terminal same-token status", async () => {
+    const h = harness(); const token = await begin(h);
+    expect((await h.request({ action: "release", token, status: "published" })).status).toBe(200);
+    expect((await h.request({ action: "release", token, status: "failed" })).status).toBe(200);
+    expect(JSON.parse((await h.bucket.store.get("ops/workflows/active.json"))!.body).status).toBe("published");
+  });
+
   test("expired sessions acquire a new token and cannot revive the old owner", async () => {
     const h = harness(); const token = await begin(h);
     const current = JSON.parse((await h.bucket.store.get("ops/workflows/active.json"))!.body);
