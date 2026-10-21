@@ -50,3 +50,9 @@ Keep every integrated P7 route and test. Re-run the complete exact-head local
 gates, both packages' actual Worker checks, P2 page/API parity and sampled
 screenshots. Update the existing PR and confirm GitHub reports it mergeable.
 No other package behavior, data, deployment or delivery policy changes.
+
+P1 landed while the first review-fix verification was running. Merge its current
+base as well. Reuse P1's integrated image plugin, Layout inputs and Wasm loader;
+remove the superseded P2 image bridge instead of registering two renderers.
+Preserve both P1's not-found exports and P2's pathname bridge. Include the P1
+actual Worker page/image probe in the final new-head checks.
