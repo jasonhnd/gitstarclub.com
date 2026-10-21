@@ -56,3 +56,6 @@ base as well. Reuse P1's integrated image plugin, Layout inputs and Wasm loader;
 remove the superseded P2 image bridge instead of registering two renderers.
 Preserve both P1's not-found exports and P2's pathname bridge. Include the P1
 actual Worker page/image probe in the final new-head checks.
+
+The P2 route probe must preserve P1's real unavailable-period 404 response;
+it must no longer expect P0's temporary 200 shell at that ranking URL.
