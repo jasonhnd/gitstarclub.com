@@ -104,14 +104,21 @@ weekly ranks change. Monthly canonical bytes, entity monthly curves/tables,
 monthly/yearly/all-time ranks, metadata and lookups are preserved. Absent
 cold-start monthly shards become honest empty objects, with no observations
 invented. No live overlay or pending month is folded.
+If a published monthly curve exists without its canonical source, the command
+refuses the repair. Published daily observations are preserved even when the
+corresponding cold-start canonical tail has not yet been materialized.
 
 Existing `stageBootstrapPhase` helpers create immutable canonical/base objects
 and sealed manifests. `commitBootstrapGeneration` verifies their bytes and
 switches the normal `bootstrap/latest.json` pointer under the shared lease.
 No live canonical object is overwritten and no pointer is hand-edited. The
-first bootstrap commit can retain a managed-refresh publication plus flat
-canonical history as its verified recovery target. Later generation rollback
-continues to use the prior immutable generation and its overlay.
+first bootstrap commit seals the unchanged managed-refresh base and canonical
+snapshot as a separate recovery generation. Any absent history shards in that
+recovery snapshot are explicit empty objects; any already published daily tail
+is retained as observed data. Both generations are prepared and
+verified under the same lease; only the repaired generation becomes visible,
+with the recovery generation recorded as `previous_generation`. Later rollback
+uses that sealed snapshot or a prior immutable generation and its overlay.
 
 If execution fails before commit, the old publication remains visible; staged
 objects are unreachable. Retry the same generation only against the unchanged
