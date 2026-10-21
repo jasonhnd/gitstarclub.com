@@ -1,0 +1,8 @@
+---
+import Page from "../../packages/p5/ComparePage.astro";
+import { isLocale } from "../../lib/i18n";
+export const prerender = false;
+const locale = Astro.params.locale;
+if (!locale || !isLocale(locale) || locale === "en") return new Response("Not found", { status: 404 });
+---
+<Page locale={locale} />
