@@ -39,6 +39,7 @@ describe("unchanged locale URLs", () => {
       ["/", { "accept-language": "zh-Hant;q=1,fr;q=.5" }], ["/", { "accept-language": "invalid;q=1,fr;q=.8" }],
       ["/", { "accept-language": "ja;q=0,en;q=.1" }], ["/pulse", { cookie: "gsc_lang=fr" }],
       ["/ja/pulse", { cookie: "gsc_lang=fr" }], ["/", { cookie: "gsc_lang=en", "accept-language": "ja" }],
+      ["/pulse", { cookie: "gsc_lang=%66%72" }], ["/", { cookie: "gsc_lang=%ZZ", "accept-language": "ja" }],
       ["/search-index", { cookie: "gsc_lang=ja" }], ["/api/lang", { cookie: "gsc_lang=ja" }],
       ["/sitemap-fr.xml", { cookie: "gsc_lang=ja" }], ["/cockpit", { cookie: "gsc_lang=ja" }],
       ["/en/pulse", { purpose: "prefetch" }], ["/en/pulse", { "next-router-prefetch": "1" }],

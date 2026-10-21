@@ -30,7 +30,7 @@ try {
   if (!address || typeof address === "string") throw new Error("Could not select local preview port.");
   const port = address.port;
   await new Promise<void>((done, reject) => probe.close((error) => error ? reject(error) : done()));
-  preview = Bun.spawn(["bun", "run", "start", "--", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: resolve(root, "web"), env, stdin: "ignore", stdout: log, stderr: log });
+  preview = Bun.spawn(["node", "node_modules/vite/bin/vite.js", "preview", "--mode", "pre", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: resolve(root, "web"), env, stdin: "ignore", stdout: log, stderr: log });
   const web = `http://127.0.0.1:${port}`;
   let ready = false;
   for (let attempt = 0; attempt < 60; attempt++) {
