@@ -1,7 +1,7 @@
 import { bindings, defineConfig, defineWorker, triggers } from "cf/config";
 import { accountId, buildVars, hostMode } from "./host-contract.mjs";
 
-/** Full host contract. Schedules deliberately remain absent in both modes. */
+/** Full host contract. Only preview declares scheduled jobs. */
 export function hostWorker(mode: string, shell: Record<string, string | undefined> = {}) {
   const target = hostMode(mode);
   const vars = buildVars(mode, shell);
@@ -26,7 +26,12 @@ export function hostWorker(mode: string, shell: Record<string, string | undefine
       WORKER_SELF_REFERENCE: bindings.worker({ worker: target.name }),
       GSC_CACHE: bindings.kv(),
     },
-    triggers: [triggers.queue({ name: target.queue, maxBatchSize: 1, maxRetries: 2 })],
+    triggers: [
+      triggers.queue({ name: target.queue, maxBatchSize: 1, maxRetries: 2 }),
+      ...(mode === "pre"
+        ? ["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"].map((schedule) => triggers.scheduled({ schedule }))
+        : []),
+    ],
   });
 }
 
