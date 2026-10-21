@@ -315,6 +315,26 @@ Benefit ([DATA-CONTRACTS](./DATA-CONTRACTS.md)): ranking files stay small, and a
 
 ---
 
+### 3.6 Aggregate star-history labels
+
+Issue #687 accepts GSC_0090's optional provenance object on entity curves and
+weekly rank metadata (see [DATA-CONTRACTS](./DATA-CONTRACTS.md#aggregate-star-history-provenance-issue-687)).
+Both the source contract and overlap with displayed dates are required. A repo
+with marked daily gap observations gets a separate daily-count `StarCurve`,
+using the existing SVG, Material tokens and server-rendered dictionary copy.
+It displays the available marked gap dates only; missing dates are not filled
+with zero. Its accessible name describes daily counts and recorded days; date
+labels use the existing ISO date format. The monthly cumulative curve remains
+separate and unchanged. Unmarked repos keep their previous presentation.
+
+Weekly detail pages and the home/pulse weekly panel show the same localized
+source note. Organization recent activity checks only its seven displayed daily
+rows. No note is shown beside monthly/yearly totals or on monthly ranking pages.
+W22 and W40 overlap the approved gap, but the reader never creates those periods:
+existing published-period resolution still controls routing and navigation.
+All seven locales keep the new reader copy solely in the dictionary files.
+No client island, network read or data reconstruction is added.
+
 ## 4. Zero Client JS Content Pages
 
 ### 4.1 Charts = server-rendered SVG / DOM
@@ -417,7 +437,7 @@ All pure CSS, zero JS ([DESIGN-SYSTEM](./DESIGN-SYSTEM.md) §Motion), and the to
 | Component | Argument source (DATA-CONTRACTS) |
 |---|---|
 | `RankingList` | rows after `rank.items` (`{rank,id,value,prev_rank}`) **join** `lookup/*` (see §3.4); `prev_rank` drives ↑↓/enter-leave TOP |
-| `StarCurve` | `entity/repo.curve.monthly` (`[period,adds,total_end]`) takes `total_end` as `total`; `milestones` reads only the frozen exact dates of `entity/repo.milestones.crossed_10k/50k/100k`, and thresholds such as 150k+ with no frozen field are not reverse-inferred from the curve; `inflections` come from `entity.inflections` (period→monthIndex mapping); the tail appends `curve.recent_daily` |
+| `StarCurve` | `entity/repo.curve.monthly` (`[period,adds,total_end]`) takes `total_end` as `total`; `milestones` reads only the frozen exact dates of `entity/repo.milestones.crossed_10k/50k/100k`, and thresholds such as 150k+ with no frozen field are not reverse-inferred from the curve; `inflections` come from `entity.inflections` (period→monthIndex mapping); aggregate-marked `curve.recent_daily` is shown separately as daily counts, never appended to cumulative monthly totals |
 | `CompareCurve` | The client fetches concurrently from `/repo-curve?id=` ([DATA-CONTRACTS](./DATA-CONTRACTS.md) §2.15); `points=[period,total]` draws the line, and `crossed_10k` is for "align to 10k" x-axis remapping; normalization/colors are in `lib/compare/core.ts` |
 | `Heatmap` | `heatmap/{scope}/{period}.cells` (`[date|period, total]`); the current month merges `current_month.json.daily_totals` |
 | Spine (YearSpine) | `hot-snapshot.home.year_spine` (`[year, total]`) |
