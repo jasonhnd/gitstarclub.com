@@ -5,18 +5,18 @@ import { localizedPath, toHreflang, toOpenGraphLocale } from "../../../web/lib/i
 import { THEME_INIT_SCRIPT } from "../../../web/lib/theme-script";
 import Chrome from "../components/Chrome.astro";
 import Footer from "../components/Footer.astro";
-interface Props { locale: Locale; canonicalPath: string; title: string; description: string; tag?: string }
-const { locale, canonicalPath, title, description, tag } = Astro.props;
+interface Props { locale: Locale; canonicalPath: string; title: string; description: string; tag?: string; absoluteTitle?: boolean; ogImage?: string }
+const { locale, canonicalPath, title, description, tag, absoluteTitle = false, ogImage = "/opengraph-image" } = Astro.props;
 const t = await getDictionary(locale);
 const origin = "https://gitstarclub.com";
 const canonical = new URL(localizedPath(locale, canonicalPath), origin).href;
-const image = new URL("/opengraph-image", origin).href;
+const image = new URL(ogImage, origin).href;
 ---
 <html lang={toHreflang(locale)}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>{title} · GitStarClub</title>
+    <title>{absoluteTitle ? title : `${title} · GitStarClub`}</title>
     <meta name="description" content={description} />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="mobile-web-app-capable" content="yes" />
