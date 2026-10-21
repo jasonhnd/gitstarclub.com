@@ -27,6 +27,10 @@ with Tailwind utility classes in that component.
 
 This document records the baseline; it does not authorize visual changes.
 
+[`DESIGN.md`](../DESIGN.md) at the repository root is the machine-readable token
+translation of this document. Change both files in the same commit; if they
+conflict, this document and `web/app/globals.css` take precedence.
+
 ## Lock Semantics
 
 The values in this document are locked. Any change to palette, chart colors,
