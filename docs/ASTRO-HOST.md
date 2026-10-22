@@ -59,7 +59,9 @@ and resource names are unchanged.
 Both modes omit `WORKFLOW_COLD_START`, `PREFLIGHT_RELAX_EMPTY_SHARDS` and
 `WORKFLOW_FIXTURE`. The shared host-contract gate validates the Astro entry and
 asset paths as well as the web host; `validate:host` also checks the built
-mode-specific schedules and absence of the flags.
+mode-specific schedules and absence of the flags. The adapter-free
+`astro/host-contract.ts` factory lets the existing web static job perform that
+check after its web install, without an additional Astro dependency install.
 
 The scheduled entry delegates to the same `handleScheduled`/`planCronDispatch`
 as web: daily calls `/api/cron/daily`, Sunday 04:00 calls `/api/cron/weekly`,

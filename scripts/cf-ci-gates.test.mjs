@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { hostWorker } from "../web/cloudflare.config.ts";
-import { astroHostWorker } from "../astro/cloudflare.config.ts";
+import { astroHostWorker } from "../astro/host-contract.ts";
 import { buildVars } from "../web/host-contract.mjs";
 import { assertHostContract, assertAllowedCfPreviewOrigin, assertRepositoryCfCiGates, commandPolicy, PREVIEW_CRONS_PAUSED } from "./cf-ci-gates.mjs";
 const pkg = JSON.parse(readFileSync(new URL("../web/package.json", import.meta.url), "utf8"));
