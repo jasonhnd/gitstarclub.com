@@ -268,3 +268,12 @@ objects to 6406/10775. This confirms the restart reread/immutable replay passed
 and new staging resumed under the same token 6, without an immutable conflict.
 The lease was renewed through `06:52:05.618Z`; the bootstrap pointer remained
 null. Publication and after-page evidence are still pending.
+
+### Recovery base write phase sealed
+
+Readback at `08:11:16.525Z` confirms the recovery base manifest is sealed with
+10775 objects, alongside its sealed 134-object canonical phase. This records
+write-stage completion, not completion of the bounded verification pass.
+The importer remains running under token 6; the repaired canonical prefix still
+has zero staged objects at this observation, and the bootstrap pointer is null.
+No publication or after-page evidence is claimed from this milestone.

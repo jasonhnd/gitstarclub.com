@@ -3,7 +3,7 @@
   "card": "GSC_0161",
   "issue": 736,
   "status": "import_running_not_published",
-  "recorded_at": "2026-10-22T04:17:12.677Z",
+  "recorded_at": "2026-10-22T08:11:16.525Z",
   "resume_after": "2026-10-22T03:30:00Z",
   "deployment": {
     "identity": {
@@ -355,12 +355,12 @@
     "plan_matches_original": true,
     "plan_sha256": "23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1",
     "progress": {
-      "at": "2026-10-22T06:42:19.170Z",
+      "at": "2026-10-22T08:11:16.525Z",
       "lease": {
         "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
         "status": "running",
         "acquired_at": "2026-10-22T03:44:08.277Z",
-        "expires_at": "2026-10-22T06:52:05.618Z",
+        "expires_at": "2026-10-22T08:21:10.702Z",
         "fencing_token": 6,
         "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
         "trigger": "bootstrap-cli"
@@ -376,8 +376,8 @@
         {
           "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
           "phase": "base",
-          "sealed": false,
-          "objects": null
+          "sealed": true,
+          "objects": 10775
         },
         {
           "target": "bootstrap-aggregate-gap-20261022T001946Z",
@@ -393,15 +393,12 @@
         }
       ],
       "active": {
-        "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
-        "phase": "base",
-        "prefix": "bootstrap/generations/bootstrap-aggregate-recovery-8adece3468c17fa8/views/",
-        "bytes_staged": 3979951,
-        "groups": {
-          "categories": 34,
-          "entity": 6372
-        },
-        "objects_staged": 6406
+        "target": "bootstrap-aggregate-gap-20261022T001946Z",
+        "phase": "canonical",
+        "prefix": "bootstrap/generations/bootstrap-aggregate-gap-20261022T001946Z/canonical/v2/",
+        "bytes_staged": 0,
+        "groups": {},
+        "objects_staged": 0
       }
     }
   },
@@ -451,5 +448,10 @@
     "resumed_token": 6,
     "replay_passed_new_staging_at": "2026-10-22T06:42:19.170Z",
     "recovery_base_objects": 6406
+  },
+  "recovery_base": {
+    "seal_observed_at": "2026-10-22T08:11:16.525Z",
+    "objects": 10775,
+    "verification_complete_confirmed": false
   }
 }
