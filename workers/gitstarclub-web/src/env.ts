@@ -33,6 +33,7 @@ export type WorkerEnv = {
   MEDIA: unknown;
   GSC_CACHE?: CacheKV;
   DEPLOY_ENV?: string;
+  R2_BUCKET?: string;
   ASSETS?: { fetch(request: Request): Promise<Response> };
   WORKER_SELF_REFERENCE?: { fetch(request: Request): Promise<Response> };
   CRON_SECRET?: string;
