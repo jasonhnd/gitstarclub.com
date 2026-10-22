@@ -113,3 +113,9 @@ checkpoint, before/pause/plan JSON, sample screenshots and operator/verification
 helpers. The source bundle and secret remain at their original owner-managed
 locations. The detached clone can be removed while waiting and recreated for
 continuation; never delete the checkpoint or partial remote generations.
+
+The 03:30 UTC resumed preflight confirms the same deployment and bootstrap/views
+source pointers, a released workflow lease and a null live lease after the
+successful daily job. The fresh full read-only plan is byte-identical to the
+original checked plan. Draft PR #740 records the deployment/local gate and
+unfinished execution; same-generation resume follows this successful recheck.
