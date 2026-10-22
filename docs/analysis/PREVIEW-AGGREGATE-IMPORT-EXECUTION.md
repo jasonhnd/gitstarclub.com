@@ -14,13 +14,14 @@ Issue #736 / card GSC_0161 executes the separately authorized preview
 scope and acceptance. This report supplies evidence to the independent
 reviewer; it does not record owner acceptance.
 
-**Current status: deployed, import running but not published.** After the
-scheduled exclusion window, a fresh complete read-only plan and immediate
-source/identity/idle checks passed. The exact same-generation command resumed
-with token 6. The public bootstrap pointer remains absent while immutable
-recovery/repaired objects are staged and verified. Counts below remain planned
-until publication succeeds. The structured [execution evidence](preview-aggregate-import-evidence.json)
-retains both the deliberate pause and current resume state.
+**Current status: bootstrap published; page views still use the prior refresh.**
+The GSC_0161 progress record ends after all four recovery/repaired phases were
+sealed, before it confirmed bounded verification or the conditional pointer
+commit. The later GSC_0169 public readback observed the bootstrap generation
+published, while `views/latest.json` still names the previous refresh. Thus the
+plan counts remain planned, not confirmed publication counts. The structured
+[execution evidence](preview-aggregate-import-evidence.json) records the final
+readback and its remaining page visibility gap.
 
 ## Exact deployment candidate and local gate
 
@@ -155,9 +156,9 @@ The completed plan confirms the three page-baseline sample selections below.
 
 ### Page baseline
 
-Headless Google Chrome captured all six ordinary English/Japanese repository
-pages before import. All returned 200 and lacked the imported-history source
-note. The screenshots were inspected; the current-star cards remain positive.
+Read-only checks of all six ordinary English/Japanese repository pages before
+import returned 200 and lacked the imported-history source note. The reported
+current-star cards remained positive.
 The exact current-star values below are from the unchanged published lookup.
 
 | Repository | Current stars | English page | Japanese page |
@@ -202,8 +203,9 @@ After fresh idle/source checks, use the original runbook's same-generation
 `--checkpoint` / `--execute` command. Do not reset the checkpoint or delete
 immutable partial objects. A changed source pointer or immutable conflict
 requires investigation as the original runbook specifies. Actual publication
-counts, after screenshots, source/weekly labels, unavailable-repository checks
-and the final delivery-head gate/PR remain unfinished.
+counts, post-publication source/weekly labels,
+unavailable-repository checks and the final delivery-head gate/PR remained
+unfinished at this checkpoint.
 
 ### Resumed preflight after the scheduled window
 
@@ -299,3 +301,25 @@ Token 6 remains running and renewed; the bootstrap pointer is still null.
 The 10844 repaired base objects are an observed manifest count, rather than
 an inferred count from the recovery snapshot. Publication and after evidence
 remain pending.
+
+### Final public readback
+
+The later GSC_0169 verification used public HTTPS GETs only. At
+`2026-10-22T12:49:05.410Z`, `bootstrap/latest.json` returned HTTP 200 and named
+generation `bootstrap-aggregate-gap-20261022T001946Z`.
+`views/latest.json` also returned HTTP 200 but still named
+`refresh-2026-10-21T21-01-25-223Z`, so the aggregate generation had not flowed
+into the page views checked then. `live/latest.json` returned HTTP 200 with
+`daily-2026-10-22T03-02-23-495Z` and a null lease; the published workflow
+lease was expired/released, and both workflow health endpoints returned HTTP
+200 with status `ok`.
+
+All requested page URLs returned HTTP 200, but the sampled React and two
+homepage-linked repositories did not show June–September 2026 history markers
+or a visible history-source note in English; the Japanese React page showed no
+month-history/source content. No checked page displayed a literal zero-star
+count. The unavailable `kitao/pyxel` page showed current stars without history,
+so no history was invented. These page results do not show that the imported
+history is available through the current views pointer. The 5238/441 allocation
+and daily/weekly/edge counts above remain read-only plan counts; the final
+readback did not report actual publication counts.

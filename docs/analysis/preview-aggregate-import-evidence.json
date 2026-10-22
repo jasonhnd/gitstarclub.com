@@ -2,8 +2,8 @@
   "schema_version": 1,
   "card": "GSC_0161",
   "issue": 736,
-  "status": "import_running_not_published",
-  "recorded_at": "2026-10-22T11:59:46.667Z",
+  "status": "bootstrap_published_views_not_refreshed",
+  "recorded_at": "2026-10-22T12:49:05.410Z",
   "resume_after": "2026-10-22T03:30:00Z",
   "deployment": {
     "identity": {
@@ -200,62 +200,6 @@
       "unchanged": true
     }
   ],
-  "baseline_captures": [
-    {
-      "phase": "before",
-      "repo": "react/react",
-      "locale": "en",
-      "url": "https://pre.gitstarclub.com/react/react",
-      "status": 200,
-      "file": "preview-aggregate-import-evidence/before-react-react-en.jpg",
-      "sha256": "05abe22f1226a152b7fd4b2fa60d403d1f65ad3740c6969bf6c2f40c99883b2c"
-    },
-    {
-      "phase": "before",
-      "repo": "react/react",
-      "locale": "ja",
-      "url": "https://pre.gitstarclub.com/ja/react/react",
-      "status": 200,
-      "file": "preview-aggregate-import-evidence/before-react-react-ja.jpg",
-      "sha256": "02be92ec04cdfba6c891ff5ba30f5d76cc1b03cdab158c5ac463f3c7adee98da"
-    },
-    {
-      "phase": "before",
-      "repo": "facebook/jscodeshift",
-      "locale": "en",
-      "url": "https://pre.gitstarclub.com/facebook/jscodeshift",
-      "status": 200,
-      "file": "preview-aggregate-import-evidence/before-facebook-jscodeshift-en.jpg",
-      "sha256": "db656acde15dc113519dba7ba25cebe795aa01b38469abe5a7175cf7a783bd42"
-    },
-    {
-      "phase": "before",
-      "repo": "facebook/jscodeshift",
-      "locale": "ja",
-      "url": "https://pre.gitstarclub.com/ja/facebook/jscodeshift",
-      "status": 200,
-      "file": "preview-aggregate-import-evidence/before-facebook-jscodeshift-ja.jpg",
-      "sha256": "a551877c205d983736da04d45c1643a9b2d78eed4fe9dace0ec214919fa4474d"
-    },
-    {
-      "phase": "before",
-      "repo": "MSWorkers/support.996.ICU",
-      "locale": "en",
-      "url": "https://pre.gitstarclub.com/MSWorkers/support.996.ICU",
-      "status": 200,
-      "file": "preview-aggregate-import-evidence/before-MSWorkers-support.996.ICU-en.jpg",
-      "sha256": "791322a8dcda8138485df512288d6f45408da1d2f6aafe7a607e2d9b837fac97"
-    },
-    {
-      "phase": "before",
-      "repo": "MSWorkers/support.996.ICU",
-      "locale": "ja",
-      "url": "https://pre.gitstarclub.com/ja/MSWorkers/support.996.ICU",
-      "status": 200,
-      "file": "preview-aggregate-import-evidence/before-MSWorkers-support.996.ICU-ja.jpg",
-      "sha256": "38325d8fd2a32e5bef34afc6558e0265d1af286c72b902f9c4c4affcc9017d6b"
-    }
-  ],
   "reason": {
     "observations": [
       {
@@ -272,19 +216,19 @@
     "cannot_finish_before_daily_forbidden_window": "02:50-03:30 UTC"
   },
   "remaining": [
-    "Fresh idle preflight and source-pointer review after 03:30 UTC; preserve the same generation and checkpoint.",
-    "Resume the approved Worker import and run the exact verifier, extra data/page checks and after screenshots.",
-    "Record actual publication counts and page evidence, then run the complete exact-delivery-head gate and open one PR against pre."
+    "The published aggregate generation is not yet visible through the checked pages because views/latest.json still points to the prior refresh.",
+    "Actual publication counts were not reported in the final public readback."
   ],
   "boundaries": {
-    "public_import_published": false,
+    "public_import_published": true,
     "manual_pointer_or_object_edits": false,
     "production_operations": false,
     "cron_refresh_start_calls": 0,
     "credentials_created_requested_rotated": false,
     "wrangler_opennext_invoked": false,
     "actions_enabled": false,
-    "final_acceptance_or_merge": false
+    "final_acceptance_or_merge": false,
+    "pages_show_imported_history": false
   },
   "resume": {
     "preflight": {
@@ -458,5 +402,50 @@
     "seal_observed_at": "2026-10-22T11:59:46.667Z",
     "objects": 10844,
     "verification_complete_confirmed": false
+  },
+  "final_verification": {
+    "source_card": "GSC_0169",
+    "method": "Public HTTPS GET only; no writes, start, cron, deploy or secrets.",
+    "bootstrap": {
+      "status": "pass",
+      "http_status": 200,
+      "generation": "bootstrap-aggregate-gap-20261022T001946Z",
+      "published_at": "2026-10-22T12:49:05.410Z"
+    },
+    "views": {
+      "status": "not_updated",
+      "http_status": 200,
+      "version": "refresh-2026-10-21T21-01-25-223Z",
+      "detail": "The import generation had not flowed into the views pointer."
+    },
+    "live": {
+      "status": "pass",
+      "http_status": 200,
+      "generation": "daily-2026-10-22T03-02-23-495Z",
+      "lease": null
+    },
+    "workflow_lease": {
+      "status": "published_and_released",
+      "expires_at_equals_acquired_at": true
+    },
+    "health": {
+      "workflow_refresh": {
+        "status": "ok",
+        "http_status": 200
+      },
+      "cron_daily": {
+        "status": "ok",
+        "http_status": 200
+      }
+    },
+    "pages": {
+      "http_status": "200 for all checked routes",
+      "requested_history_visible": false,
+      "english_react_and_two_homepage_linked_repositories": "No June–September 2026 date/history markers or visible source note.",
+      "japanese_react": "No visible month-history/source content.",
+      "literal_zero_star_count_seen": false,
+      "unavailable_kitao_pyxel": "Current stars shown without history."
+    },
+    "publication_counts": "not reported by this readback; plan counts remain unconfirmed"
   }
 }

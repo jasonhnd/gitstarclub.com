@@ -101,15 +101,15 @@ Do not run during 02:50-03:30 UTC daily or Sunday 03:50-08:00 UTC.
    rule and never claim that publication has finished without its result.
 6. After a real successful publication, the retained `post-verify.sh` wraps
    the original verifier/inspection, extra unavailable/positive-star/weekly
-   page checks, health reads, six after screenshots and evidence recording.
-   Read these temporary scripts before use. Preserve the six before captures.
+   page checks, health reads and evidence recording.
+   Read these temporary scripts before use.
 7. Update actual counts/pointers/page evidence, commit, run the complete
    AGENTS gate on the exact final delivery head in one fresh detached clone,
    clean temporary output, push only this card branch and open one PR into
    `pre` with `Closes #736`. No PR or final acceptance is complete yet.
 
 Retained operational state lives only in `.kanban-work/GSC_0161/`: generation,
-checkpoint, before/pause/plan JSON, sample screenshots and operator/verification
+checkpoint, before/pause/plan JSON and operator/verification
 helpers. The source bundle and secret remain at their original owner-managed
 locations. The detached clone can be removed while waiting and recreated for
 continuation; never delete the checkpoint or partial remote generations.
