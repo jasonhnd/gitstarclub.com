@@ -2,7 +2,7 @@ import { fixtureRecords } from "../../scripts/fixture";
 import { HotSnapshot, RankList, StarHistoryProvenance } from "../../../web/lib/contracts";
 
 /** Populate only the existing synthetic example repository; never extend real coverage. */
-export function p1FixtureRecords() {
+export function p1FixtureRecords(provenanceScope?: "mixed") {
   const records = fixtureRecords();
   const set = (key: string, value: unknown) => {
     const body = JSON.stringify(value);
@@ -16,7 +16,7 @@ export function p1FixtureRecords() {
   for (const [window, period] of [["year", "2026"], ["month", "2026-07"], ["week", "2026-W29"]] as const) {
     for (const metric of window === "week" ? ["flow"] as const : ["flow", "growth", "new"] as const) {
       set(`rank/${window}/${period}/repo/${metric}.json`, RankList.parse({
-        meta: { window, period, dim: "repo", metric, generated_at: "2026-07-17T00:00:00.000Z", ...(window === "week" ? { provenance } : {}) },
+        meta: { window, period, dim: "repo", metric, generated_at: "2026-07-17T00:00:00.000Z", ...(window === "week" ? { provenance, ...(provenanceScope ? { provenance_scope: provenanceScope } : {}) } : {}) },
         items: [{ ...item, ...(metric === "growth" ? { rate: 10 } : {}), ...(metric === "new" ? { date: "2026-07-17" } : {}) }],
       }));
     }
