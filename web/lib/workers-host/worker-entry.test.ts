@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { cfBuildCommitSha } from "../cf-build-identity";
 import { hostWorker } from "../../cloudflare.config";
 import {
   CRON_DAILY,
@@ -156,7 +157,7 @@ describe("shell fetch routing", () => {
     );
     expect(identity.status).toBe(200);
     expect(await identity.json()).toMatchObject({
-      commitSha: "abc123",
+      commitSha: cfBuildCommitSha ?? "abc123",
       deploymentUrl: "https://pre.gitstarclub.com",
       target: "cf",
       host: "pre.gitstarclub.com",
