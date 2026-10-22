@@ -3,7 +3,7 @@
   "card": "GSC_0161",
   "issue": 736,
   "status": "import_running_not_published",
-  "recorded_at": "2026-10-22T08:11:16.525Z",
+  "recorded_at": "2026-10-22T09:00:29.356Z",
   "resume_after": "2026-10-22T03:30:00Z",
   "deployment": {
     "identity": {
@@ -355,12 +355,12 @@
     "plan_matches_original": true,
     "plan_sha256": "23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1",
     "progress": {
-      "at": "2026-10-22T08:11:16.525Z",
+      "at": "2026-10-22T09:00:29.356Z",
       "lease": {
         "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
         "status": "running",
         "acquired_at": "2026-10-22T03:44:08.277Z",
-        "expires_at": "2026-10-22T08:21:10.702Z",
+        "expires_at": "2026-10-22T09:10:25.048Z",
         "fencing_token": 6,
         "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
         "trigger": "bootstrap-cli"
@@ -382,8 +382,8 @@
         {
           "target": "bootstrap-aggregate-gap-20261022T001946Z",
           "phase": "canonical",
-          "sealed": false,
-          "objects": null
+          "sealed": true,
+          "objects": 134
         },
         {
           "target": "bootstrap-aggregate-gap-20261022T001946Z",
@@ -394,11 +394,14 @@
       ],
       "active": {
         "target": "bootstrap-aggregate-gap-20261022T001946Z",
-        "phase": "canonical",
-        "prefix": "bootstrap/generations/bootstrap-aggregate-gap-20261022T001946Z/canonical/v2/",
-        "bytes_staged": 0,
-        "groups": {},
-        "objects_staged": 0
+        "phase": "base",
+        "prefix": "bootstrap/generations/bootstrap-aggregate-gap-20261022T001946Z/views/",
+        "bytes_staged": 1671820,
+        "groups": {
+          "categories": 34,
+          "entity": 2
+        },
+        "objects_staged": 36
       }
     }
   },
@@ -452,6 +455,13 @@
   "recovery_base": {
     "seal_observed_at": "2026-10-22T08:11:16.525Z",
     "objects": 10775,
-    "verification_complete_confirmed": false
+    "verification_complete_confirmed": true,
+    "verification_observed_at": "2026-10-22T09:00:29.356Z"
+  },
+  "repaired_canonical": {
+    "objects": 134,
+    "sealed": true,
+    "verification_complete_confirmed": true,
+    "observed_at": "2026-10-22T09:00:29.356Z"
   }
 }
