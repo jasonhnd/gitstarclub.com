@@ -111,7 +111,39 @@ has `lease=null` and generation `daily-2026-10-21T23-09-32-126Z`.
 The old bootstrap pointer is absent. The managed views pointer is
 `refresh-2026-10-21T21-01-25-223Z`, published at
 `2026-10-21T22:08:08.586Z`. The read-only plan is running for
-`bootstrap-aggregate-gap-20261022T001946Z`; no import execution has started.
+`bootstrap-aggregate-gap-20261022T001946Z`. The read-only plan completed with
+exit 0 before any execution.
+
+### Complete read-only plan
+
+The exact runbook command with `--target pre`, the fixed source,
+`--worker-url https://pre.gitstarclub.com` and `--secret-file` returned
+`status=dry-run`. The pinned manifest/65-file inventory, source membership,
+124 daily labels and complete-week arithmetic passed validation.
+
+| Result | Count |
+| --- | ---: |
+| Eligible repositories | 5238 |
+| Skipped repositories | 441 |
+| Daily additions | 649512 |
+| Complete-week additions | 89046 |
+| Incomplete edge joins retained as incomplete | 10476 |
+| Outside the fixed source whitelist | 430 |
+| Absent from preview membership | 5 |
+| Source not found or inaccessible | 6 |
+
+Every one of the 5238 import entries has 124 daily additions and 17 complete
+weeks. All 10476 edge joins were checked: W22 lacks May 25-29 and W40 lacks
+October 1-4. They are skipped, not published as complete weeks. Imported and
+skipped ids are unique and disjoint. The complete 441-entry skipped list
+matches GSC_0154 exactly, including every id, name and reason; there is no
+target-plan drift. See the [complete skipped list](preview-aggregate-import-skipped.csv).
+Blank names on the five absent-membership entries preserve the original
+report's id-only representation.
+
+The captured dry-run JSON SHA-256 is
+`23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1`.
+The completed plan confirms the three page-baseline sample selections below.
 
 ### Page baseline
 
@@ -126,6 +158,6 @@ The exact current-star values below are from the unchanged published lookup.
 | `facebook/jscodeshift` | 10040 | `https://pre.gitstarclub.com/facebook/jscodeshift` | `https://pre.gitstarclub.com/ja/facebook/jscodeshift` |
 | `MSWorkers/support.996.ICU` | 10042 | `https://pre.gitstarclub.com/MSWorkers/support.996.ICU` | `https://pre.gitstarclub.com/ja/MSWorkers/support.996.ICU` |
 
-React plus the two smallest eligible retained repositories are selected from
-the prior plan and immutable lookup; the completed current dry-run and final
-verifier must confirm the same selection before this becomes import evidence.
+React plus the two smallest eligible retained repositories were selected from
+the prior plan and immutable lookup. The completed current dry-run confirms
+the same selection; final source/page verification follows publication.
