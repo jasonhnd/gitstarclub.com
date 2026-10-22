@@ -156,6 +156,7 @@ export function AboutBody({ locale, dictionary: t, meta }: { locale: Locale; dic
       <JsonLd data={dataset} />
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
         <PageHero
+          animateTitle={false}
           eyebrow={t.nav.about}
           title={
             <>
