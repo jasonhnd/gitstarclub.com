@@ -56,6 +56,31 @@ Those commands are the current PR/`pre`/`main` static blockers; production build
 
 The managed-refresh `validate` step is a separate production-data publish gate: it samples `views/<run_id>/**` after recompute and blocks the `views/latest.json` pointer cut on validation failure. It is not a page-rendering or PR CI gate.
 
+### Fresh-machine test entry points
+
+Install each independent package with `bun install --frozen-lockfile`: root,
+`web/`, and `pipeline/`; also install `astro/` on `feat/astro-site`.
+Web tests import pipeline helpers, so installing only `web/` is insufficient.
+Use the complete clean-checkout gate in [AGENTS.md](../AGENTS.md), including
+`BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE="" bun run test:cov`
+from `web/`. `bun run test` is the quick isolated `lib/` suite. Bare `bun test`
+also discovers Playwright files and script tests and shares module mocks; its
+result is not a substitute for the documented gate.
+
+SEO acceptance requires an explicit nonblank `SEO_LIVE_BASE`; missing, empty,
+and whitespace values skip all live SEO suites without fetching. Existing
+sitemap assertions remain active when an origin is explicitly supplied. Request
+hooks and network tests allow the 30-second request abort to finish before Bun's
+outer timeout. Offline regression tests use only a loopback sitemap fixture,
+including a response slower than Bun's default five-second hook timeout, and
+confirm that an incomplete sitemap locale set still fails.
+
+Worker shell HTTP tests assert the generated build SHA when one exists, and the
+synthetic runtime binding in a source-only checkout. Building first must not make
+identity assertions assume that the runtime binding overrides the baked commit.
+The pure identity tests separately require baked-commit precedence and explicit
+no-build fallback behavior.
+
 ### Offline backfill command coverage
 
 Issue 589 adds 88 tests through the unchanged `pipeline/` command
@@ -69,6 +94,10 @@ They run the real DuckDB rollup/precompute/export and real view/canonical
 validators. GitHub and R2 transport responses are intercepted inside each child
 process; all other fetches and network sockets are refused. Environment files and
 owner data are never copied. Test credentials are literal synthetic strings.
+
+The suite gives final fixture disposal 30 seconds: removing all offline CLI
+fixtures can exceed Bun's five-second hook default on a busy disk after every
+assertion has passed. This does not change command assertions or their budgets.
 
 The guards cover both R2 targets, default dry run, write opt-in, explicit dry run,
 no-upload, stage-only, empty-bucket initial commit and its shared lease, conflicting
