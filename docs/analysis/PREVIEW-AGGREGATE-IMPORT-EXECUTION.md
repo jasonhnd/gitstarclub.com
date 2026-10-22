@@ -45,7 +45,35 @@ The official archive bootstrap and complete static/build block both exited
 `cf:dry-run` was skipped by owner order. No Wrangler/OpenNext command ran.
 GitHub Actions readback was `enabled=false`; automation remains disabled.
 
+## Real-source preview artifact
+
+Under a fresh `env -i`, with no fixture override or owner environment file,
+`cd web && bun run build:pre && bun run validate:host -- --mode pre` exited 0.
+The real-source artifact contains 293 routes / 585 artifacts and the same
+exact candidate SHA. Local fonts, indexing and bindings validate.
+
+The complete generated `worker.config.json` was printed and inspected, then
+checked with assertions:
+
+- Worker and self-reference: `gitstarclub-web-pre`.
+- DATA: `gitstarclub-data-pre`; JOBS: `gitstarclub-jobs-pre`, batch size 1,
+  two retries. Existing shared MEDIA and per-Worker cache are preserved.
+- `DEPLOY_ENV=pre`, `SITE_INDEXABLE=0`, R2 reads from
+  `https://data-pre.gitstarclub.com`, binding writes, preview cron/queue origins.
+- Exactly `0 3 * * *`, `0 4 * * SUN`, `0 6 * * SUN` scheduled triggers, only
+  on pre. Production schedules remain absent from production configuration.
+- No cold-start/relax flags, Blob/loopback overrides, production Worker/data/
+  queue binding or inherited live-smoke setting. The existing canonical site
+  URL is metadata, not a production operation target.
+
+Before deployment, the provider still served version
+`2a7ad7b8-7bd4-41eb-aaa9-3c09af609999` at 100%, with public identity
+`6364666f7dfdb6e92378561a511ab7f1e3f9f6d2`. React's current canonical pages
+are `/react/react` and `/ja/react/react`; both return 200 before import and
+have positive current stars but no aggregate-history section. The former
+`facebook/react` paths return 404 and are not the sample URLs.
+
 ## Execution progress
 
-The offline gate is complete. Real-source preview build, deployment, import
-and post-publication evidence are recorded in subsequent completed steps.
+The isolated gate and real-source artifact checks are complete. Deployment,
+import and post-publication evidence follow in subsequent completed steps.
