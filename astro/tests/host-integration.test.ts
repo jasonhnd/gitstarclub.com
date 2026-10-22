@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { astroHostWorker } from "../cloudflare.config";
 import { hostWorker } from "../../web/cloudflare.config";
 import { secureResponse } from "../src/lib/host";
+import { assertHostContract } from "../../scripts/cf-ci-gates.mjs";
 
 test("both Astro modes preserve existing resources, vars, queue policy and compatibility", () => {
   for (const mode of ["pre", "production"]) {
@@ -12,7 +13,12 @@ test("both Astro modes preserve existing resources, vars, queue policy and compa
     expect(actual.name).toBe(expected.name);
     expect(actual.compatibilityFlags).toEqual(expected.compatibilityFlags);
     expect(actual.entrypoint).toBe("src/worker.ts");
-    expect(actual.triggers?.every((trigger) => trigger.type === "queue")).toBe(true);
+    expect(assertHostContract(actual, mode, "astro")).toEqual([]);
+    expect(actual.triggers?.filter((trigger) => trigger.type === "scheduled")).toEqual(mode === "pre"
+      ? ["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"].map((schedule) => ({ type: "scheduled", schedule })) : []);
+    for (const flag of ["WORKFLOW_COLD_START", "PREFLIGHT_RELAX_EMPTY_SHARDS", "WORKFLOW_FIXTURE"]) {
+      expect(Object.hasOwn(actual.env, flag)).toBe(false);
+    }
   }
   expect(() => astroHostWorker("development")).toThrow("explicit mode");
 });

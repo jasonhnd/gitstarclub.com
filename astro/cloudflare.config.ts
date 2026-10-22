@@ -2,7 +2,7 @@ import { defineConfig } from "cf/config";
 import { hostWorker } from "../web/cloudflare.config.ts";
 import { accountId } from "../web/host-contract.mjs";
 
-/** Preserve the existing resource identities and queue policy; add no schedules. */
+/** Reuse web's preview schedules and steady-state vars; production stays queue-only. */
 export function astroHostWorker(mode: string, shell: Record<string, string | undefined> = {}) {
   return {
     ...hostWorker(mode, shell),
