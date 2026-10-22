@@ -2,7 +2,7 @@
   "schema_version": 1,
   "card": "GSC_0161",
   "issue": 736,
-  "status": "import_running_not_published",
+  "status": "restart_recovery_pending",
   "recorded_at": "2026-10-22T04:17:12.677Z",
   "resume_after": "2026-10-22T03:30:00Z",
   "deployment": {
@@ -355,12 +355,12 @@
     "plan_matches_original": true,
     "plan_sha256": "23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1",
     "progress": {
-      "at": "2026-10-22T04:17:12.677Z",
+      "at": "2026-10-22T05:40:03.240Z",
       "lease": {
         "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
         "status": "running",
         "acquired_at": "2026-10-22T03:44:08.277Z",
-        "expires_at": "2026-10-22T04:27:07.751Z",
+        "expires_at": "2026-10-22T05:49:41.598Z",
         "fencing_token": 6,
         "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
         "trigger": "bootstrap-cli"
@@ -396,13 +396,18 @@
         "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
         "phase": "base",
         "prefix": "bootstrap/generations/bootstrap-aggregate-recovery-8adece3468c17fa8/views/",
-        "bytes_staged": 1860565,
+        "bytes_staged": 3468976,
         "groups": {
           "categories": 34,
-          "entity": 1275
+          "entity": 5780
         },
-        "objects_staged": 1309
+        "objects_staged": 5814
       }
     }
+  },
+  "restart": {
+    "last_completed_monitor": "2026-10-22T05:40:03.240Z",
+    "publication_confirmed": false,
+    "checkpoint_retained": true
   }
 }
