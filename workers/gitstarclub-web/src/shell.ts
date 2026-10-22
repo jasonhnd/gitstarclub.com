@@ -1,3 +1,5 @@
+import { AGGREGATE_IMPORT_PATH } from "../../../web/lib/aggregate-history/policy";
+import { handleAggregateImport } from "../../../web/lib/aggregate-history/worker";
 import { securityHeaders } from "../../../web/lib/csp";
 import { reportedCommitSha } from "../../../web/lib/deployment-commit";
 import { sanitizeErrorText } from "../../../web/lib/observability/sanitize-error-text";
@@ -169,6 +171,8 @@ export async function consumeJob(env: WorkerEnv, job: RefreshJob): Promise<void>
 export async function handleShellFetch(request: Request, env: WorkerEnv): Promise<Response> {
   const url = new URL(request.url);
   const pathname = url.pathname.replace(/\/+$/, "") || "/";
+
+  if (pathname === AGGREGATE_IMPORT_PATH) return applySecurityHeaders(await handleAggregateImport(request, env));
 
   if (pathname === "/preview/health" && request.method === "GET") {
     emitRunLog({ event: "preview.health", host: url.host, hosting: "cf" });

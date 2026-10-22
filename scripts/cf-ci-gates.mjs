@@ -83,10 +83,16 @@ export function commandPolicy(scripts, ciSource) {
 
 export async function assertRepositoryCfCiGates(root) {
   const { hostWorker } = await import(pathToFileURL(resolve(root, "web/cloudflare.config.ts")).href);
+  const { aggregateImportEnabled } = await import(pathToFileURL(resolve(root, "web/lib/aggregate-history/policy.ts")).href);
   const ci = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8");
   const delivery = readFileSync(resolve(root, ".delivery.yml"), "utf8");
   const pkg = JSON.parse(readFileSync(resolve(root, "web/package.json"), "utf8"));
   const errors = ["pre", "production"].flatMap((mode) => assertHostContract(hostWorker(mode), mode));
+  for (const mode of ["pre", "production"]) {
+    const env = Object.fromEntries(Object.entries(hostWorker(mode).env).filter(([, value]) => value.type === "text").map(([key, value]) => [key, value.value]));
+    if (aggregateImportEnabled(env) !== (mode === "pre")) errors.push(`${mode}: aggregate import environment gate`);
+    if (aggregateImportEnabled({ ...env, R2_BUCKET: "gitstarclub-data-prod" })) errors.push(`${mode}: aggregate import must refuse a production bucket`);
+  }
   errors.push(...commandPolicy(pkg.scripts, ci));
   if (!/checks:\s*\[static, production-build\]/.test(delivery)) errors.push("Required checks must remain static and production-build");
   for (const job of ["static", "production-build"]) if (!ci.includes(`  ${job}:`)) errors.push(`Missing job ${job}`);

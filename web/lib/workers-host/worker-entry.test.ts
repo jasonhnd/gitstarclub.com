@@ -278,6 +278,15 @@ describe("shell fetch routing", () => {
 });
 
 describe("Worker entry fetch, scheduled, and queue", () => {
+  test("production aggregate import is a no-store 404 without Next or storage calls", async () => {
+    for (const method of ["POST", "GET", "HEAD", "PUT", "DELETE"]) {
+      const response = await worker.fetch(shellRequest("/preview/aggregate-history-import/", method), makeEnv({ DEPLOY_ENV: "production", R2_BUCKET: "gitstarclub-data-prod" }), { waitUntil() {} });
+      expect(response.status).toBe(404);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(nextCalls).toHaveLength(0);
+    }
+  });
+
   test("shell paths stay on the shell and other paths go to Next", async () => {
     const received: Promise<unknown>[] = [];
     const ctx: WaitUntilContext = {
