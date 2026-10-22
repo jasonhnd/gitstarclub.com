@@ -217,4 +217,7 @@ The normal daily job completed successfully at `03:08:36.645Z`, advancing
 Both workflow health records are ok. Authenticated readback still finds no
 bootstrap pointer, the original managed views pointer, and terminal/inactive
 token 5. The separately saved resume preflight preserves the original evidence;
-a fresh read-only plan is in progress before same-generation execution.
+the fresh read-only plan completed with exit 0 before same-generation execution.
+Its full JSON is byte-identical to the original plan (SHA-256
+`23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1`),
+including all imported/skipped entries and incomplete edge joins.
