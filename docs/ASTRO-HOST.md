@@ -83,6 +83,26 @@ remain available without creating or enabling any trigger.
 P7 retains all cron, refresh, lease, publication and rollback implementations.
 No runtime database, AI, live search or alternate writer is introduced.
 
+### Preview aggregate import
+
+`/preview/aggregate-history-import` delegates every HTTP method (including the
+trailing-slash form) to the shared Worker classifier and `handleShellFetch`
+before Astro asset rendering, publication reads or page caching. PR #734's
+handler is reused directly: only `DEPLOY_ENV=pre` together with
+`R2_BUCKET=gitstarclub-data-pre` enables it. Other configurations return 404
+before authentication, body parsing or DATA access. Enabled preview accepts
+only POST, requires the explicit Worker `CRON_SECRET` bearer, and checks the
+bound bucket's `_meta/bucket-identity.json` on every authenticated call. Missing
+or mismatched identity returns 404; checksum/protocol failures retain the
+shared 409 response. The endpoint remains independent of publication pointers.
+
+Both-mode `validate:host`, the actual P7 Worker tests and built web/Astro HTTP
+parity exercise these guards with synthetic local bindings, including a marker
+change after a successful read. They compare status, security/cache headers and
+body bytes. No test acquires an import lease or calls a deployed host. The
+[import runbook](analysis/PREVIEW-AGGREGATE-IMPORT.md) still requires separate
+operator authorization for deployment or remote execution.
+
 ### Refresh checkpoints and consumer parity
 
 The Astro entry imports `handleQueue` from the
