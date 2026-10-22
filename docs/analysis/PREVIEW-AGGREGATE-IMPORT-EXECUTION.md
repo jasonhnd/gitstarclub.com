@@ -242,3 +242,14 @@ verification finish under the new token. This confirms that the previously
 sealed canonical snapshot was accepted unchanged during resume. The normal
 daily live-pointer advance did not cause an immutable canonical conflict.
 Publication remains pending until both complete generations are verified.
+
+### Backend restart recovery
+
+The completed deployment, complete unchanged read-only plan and new-token
+canonical verification were already committed and pushed at `a1b79e4` before
+the backend restart. The last completed monitor at `05:40:03.240Z` observed
+5814/10775 recovery base objects, token 6 renewing and no bootstrap pointer.
+The restart interrupted the local operator process; publication is unconfirmed
+and the same generation/checkpoint is retained. Fresh process/lease/pointer
+inspection precedes any retry, and no second writer will be started alongside
+an existing process.
