@@ -3,6 +3,7 @@ import { startWorker } from "../../scripts/local-worker";
 import { fixtureRecords } from "../../scripts/fixture";
 import { LOCALES } from "../../src/lib/i18n";
 import type { R2Bucket } from "../../../web/lib/storage/r2-binding-store";
+import { assertAggregateImportGuards, IMPORT_GUARD_CONFIGS, IMPORT_TEST_SECRET } from "./aggregate-import";
 
 // Run after building: GSC_P7_WORKER_TEST=1 bun test tests/p7/worker.test.ts
 // The ordinary suite runs before the build, so it only registers these cases.
@@ -86,4 +87,12 @@ if (process.env.GSC_P7_WORKER_TEST === "1") describe("P7 actual Worker endpoints
       expect(response.status).toBe(503); expect(response.headers.has("x-vinext-build-id")).toBe(false); expect(await response.text()).toBe("Publication changed or unavailable; retry");
     }
   });
+});
+
+if (process.env.GSC_P7_WORKER_TEST === "1") describe("P7 built aggregate import shell boundary", () => {
+  for (const config of IMPORT_GUARD_CONFIGS) test(config.name, async () => {
+    const worker = await startWorker(fixtureRecords(), { CRON_SECRET: IMPORT_TEST_SECRET, ...config.strings });
+    try { await assertAggregateImportGuards(worker, config.enabled, config.secretConfigured); }
+    finally { await worker.dispose(); }
+  }, 30_000);
 });

@@ -8,9 +8,11 @@ import { startWorker } from "../../scripts/local-worker";
 import { prepareWebOutput } from "../../scripts/prepare-web";
 import type { R2Bucket } from "../../../web/lib/storage/r2-binding-store";
 import { LOCALES } from "../../src/lib/i18n";
+import { assertAggregateImportGuards, IMPORT_GUARD_CONFIGS, IMPORT_TEST_SECRET } from "./aggregate-import";
 
 // Run only after the exact-head fixture web pre build and Astro build.
-// All operational HTTP calls below are unauthorized and loopback-only.
+// All operational HTTP calls below are loopback-only. Import probes read only
+// synthetic DATA; they never begin, stage or commit an import.
 const scratch = process.env.KANBAN_TMP;
 if (!scratch || resolve(process.env.TMPDIR ?? "") !== resolve(scratch)) throw new Error("Set card-local TMPDIR=KANBAN_TMP.");
 prepareWebOutput();
@@ -65,6 +67,24 @@ try {
       report.push({ scenario, path, method, passed, expected, actual });
       console.log(`${passed ? "PASS" : "DIFF"} ${scenario} ${method} ${path}`);
     }
+  }
+  await original.dispose(); original = undefined;
+  await worker.dispose(); worker = undefined;
+  for (const config of IMPORT_GUARD_CONFIGS) {
+    const strings = { CRON_SECRET: IMPORT_TEST_SECRET, ...config.strings };
+    original = await startWebWorker(root, scratch, records, fixture.url.origin, strings);
+    worker = await startWorker(records, strings);
+    const expected = await assertAggregateImportGuards(original, config.enabled, config.secretConfigured);
+    const actual = await assertAggregateImportGuards(worker, config.enabled, config.secretConfigured);
+    for (let index = 0; index < expected.length; index++) {
+      const passed = JSON.stringify(expected[index]) === JSON.stringify(actual[index]);
+      const { path, method, scenario } = expected[index];
+      report.push({ scenario: `aggregate-${config.name}-${scenario}`, path, method, passed, expected: expected[index], actual: actual[index] });
+      console.log(`${passed ? "PASS" : "DIFF"} aggregate-${config.name}-${scenario} ${method} ${path}`);
+    }
+    if (actual.length !== expected.length) throw new Error("Aggregate guard case count differs");
+    await original.dispose(); original = undefined;
+    await worker.dispose(); worker = undefined;
   }
   writeFileSync(resolve(scratch, "p7-http-parity.json"), JSON.stringify({ passed: report.every((item) => item.passed), transportExcluded: [...transport], normalizedOrigin: true, buildIdentity: { web: originalBuild, astro: astroBuild, validatedAgainstArtifacts: true }, cases: report }, null, 2) + "\n");
   console.log(`P7 built-host comparison: ${report.filter((item) => item.passed).length}/${report.length} passed`);

@@ -7,6 +7,7 @@ import { startWorker } from "./local-worker";
 import { fixtureRecords } from "./fixture";
 import { contentSecurityPolicyForEnvironment } from "../../web/lib/csp";
 import { assertHostContract } from "../../scripts/cf-ci-gates.mjs";
+import { assertAggregateImportGuards, IMPORT_TEST_SECRET } from "../tests/p7/aggregate-import";
 
 const mode = process.argv[process.argv.indexOf("--mode") + 1];
 assert(["production", "pre"].includes(mode), "--mode production or pre required");
@@ -35,7 +36,7 @@ const assets = resolve(output, "workers/default/assets");
 const fontFiles = readdirSync(resolve(assets, "_astro")).filter((path) => /\.(?:woff2?|ttf)$/.test(path));
 assert(fontFiles.some((path) => path.includes("jakarta")) && fontFiles.some((path) => path.includes("geist")), "both local font families packaged");
 assert(readFileSync(resolve(assets, "_headers"), "utf8").includes(contentSecurityPolicyForEnvironment("production")), "static assets retain CSP");
-const worker = await startWorker(fixtureRecords());
+const worker = await startWorker(fixtureRecords(), { CRON_SECRET: IMPORT_TEST_SECRET });
 try {
   const origin = (await worker.ready).origin;
   const get = (path: string) => fetch(new URL(path, origin), { headers: { "accept-language": "en" }, redirect: "manual" });
@@ -70,5 +71,7 @@ try {
   assert.equal((await (await get("/.well-known/deployment")).json()).commitSha, commit);
   assert.equal((await (await get("/preview/identity")).json()).commitSha, commit);
   assert.equal((await (await get("/preview/health")).json()).hosting, "astro");
+  const importGuards = await assertAggregateImportGuards(worker, mode === "pre");
+  console.log(`Aggregate import guards: ${mode}; ${importGuards.length} local cases passed`);
   console.log(`Astro host validated: ${mode}; ${commit}; schedules=${JSON.stringify(config.triggers.filter((trigger: { type: string }) => trigger.type === "scheduled"))}; bindings/queue/indexing/CSP/local fonts/default PNG/cockpit 404`);
 } finally { await worker.dispose(); }
