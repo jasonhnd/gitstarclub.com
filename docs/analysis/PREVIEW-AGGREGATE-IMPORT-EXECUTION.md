@@ -288,3 +288,14 @@ passed under token 6. The original recovery holds 134 canonical and 10775 base
 objects; its immutable snapshot remains available for the eventual pointer's
 previous generation. Repaired base staging and its verification/publication
 remain pending, and the bootstrap pointer is still null.
+
+### Repaired base write phase sealed
+
+Readback at `11:59:46.667Z` confirms all four phase manifests are sealed:
+recovery 134 canonical / 10775 base objects, and repaired 134 canonical / 10844
+base objects. The final base write stage is complete. Its bounded readback
+verification and the conditional pointer commit have not yet completed.
+Token 6 remains running and renewed; the bootstrap pointer is still null.
+The 10844 repaired base objects are an observed manifest count, rather than
+an inferred count from the recovery snapshot. Publication and after evidence
+remain pending.
