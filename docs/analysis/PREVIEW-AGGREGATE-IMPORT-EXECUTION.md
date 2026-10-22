@@ -253,3 +253,12 @@ The restart interrupted the local operator process; publication is unconfirmed
 and the same generation/checkpoint is retained. Fresh process/lease/pointer
 inspection precedes any retry, and no second writer will be started alongside
 an existing process.
+
+Fresh restart readback matched the original deployment, bootstrap/views source
+pointers and reviewed live generation with a null live lease. The only active
+workflow lease was this import's still-unexpired token 6, with no surviving
+local writer. Official archive checks and runtime versions passed again.
+The exact runbook execution command resumed at `05:47:37.695Z` and retained
+token 6; snapshot rereading and immutable replay precede further new writes.
+No checkpoint/generation reset, new writer, object overwrite or pointer edit
+was used. The publication and post-verification remain pending.

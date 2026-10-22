@@ -2,7 +2,7 @@
   "schema_version": 1,
   "card": "GSC_0161",
   "issue": 736,
-  "status": "restart_recovery_pending",
+  "status": "import_running_not_published",
   "recorded_at": "2026-10-22T04:17:12.677Z",
   "resume_after": "2026-10-22T03:30:00Z",
   "deployment": {
@@ -408,6 +408,46 @@
   "restart": {
     "last_completed_monitor": "2026-10-22T05:40:03.240Z",
     "publication_confirmed": false,
-    "checkpoint_retained": true
+    "checkpoint_retained": true,
+    "preflight": {
+      "active": true,
+      "lease": {
+        "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+        "status": "running",
+        "acquired_at": "2026-10-22T03:44:08.277Z",
+        "expires_at": "2026-10-22T05:51:21.844Z",
+        "fencing_token": 6,
+        "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+        "trigger": "bootstrap-cli"
+      },
+      "bootstrap": null,
+      "views": {
+        "version": "refresh-2026-10-21T21-01-25-223Z",
+        "run_id": "refresh-2026-10-21T21-01-25-223Z",
+        "published_at": "2026-10-21T22:08:08.586Z",
+        "prev_version": null,
+        "schema_ver": 1
+      }
+    },
+    "live_before": {
+      "schema_ver": 1,
+      "generation": "daily-2026-10-22T03-02-23-495Z",
+      "run_id": "daily-2026-10-22T03-02-23-495Z",
+      "idempotency_key": "daily:2026-10-22",
+      "job": "daily",
+      "day": "2026-10-22",
+      "month": "2026-10",
+      "week": "2026-W43",
+      "published_at": "2026-10-22T03:08:33.270Z",
+      "previous_generation": "daily-2026-10-21T23-09-32-126Z",
+      "lease": null
+    },
+    "identity": {
+      "commitSha": "96b618933baadab7ebb622580c3da05efbb15f5f",
+      "deploymentUrl": "https://pre.gitstarclub.com",
+      "target": "cf",
+      "host": "pre.gitstarclub.com"
+    },
+    "resumed_token": 6
   }
 }
