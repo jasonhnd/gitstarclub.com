@@ -5,7 +5,8 @@ import { AGGREGATE_HISTORY_PROVENANCE, StarHistoryProvenance } from "../../lib/c
 import { RepoRecentDailyShard, RepoWeeklyShard } from "../../lib/contracts/canonical";
 import { GAP_DAYS, gapSeries } from "../../../pipeline/scripts/star-history-aggregate.mjs";
 
-export const AGGREGATE_MANIFEST_SHA256 = "b9015837a501fa732192f3d43d27114a8f6ef46f627a9c68569d4a0b3fff0f49";
+import { AGGREGATE_MANIFEST_SHA256 } from "../../lib/aggregate-history/policy";
+export { AGGREGATE_MANIFEST_SHA256 };
 export const digest = (body: string | Uint8Array): string => createHash("sha256").update(body).digest("hex");
 export type GapSeries = Array<[string, number]>;
 export type MissingRepository = { repo_id: number; name: string; status: string };
