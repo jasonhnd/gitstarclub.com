@@ -4,7 +4,7 @@ import { resolve, relative } from "node:path";
 import type { R2Bucket } from "../../../web/lib/storage/r2-binding-store";
 
 /** Load the built original Worker directly, without Vite preview's CORS wrapper. */
-export async function startWebWorker(root: string, scratch: string, records: Map<string, string>, fixtureOrigin: string) {
+export async function startWebWorker(root: string, scratch: string, records: Map<string, string>, fixtureOrigin: string, strings: Record<string, string> = {}) {
   const output = resolve(root, "../web/.cloudflare/output/v0/workers/default");
   const bundle = resolve(output, "bundle");
   const modules: Record<string, { type: "esm" | "wasm"; contents: string | Uint8Array<ArrayBuffer> }> = {};
@@ -29,6 +29,7 @@ export async function startWebWorker(root: string, scratch: string, records: Map
         DATA: { type: "r2", name: "p7-original-fixture" }, GSC_CACHE: { type: "kv" }, ASSETS: { type: "assets" },
         HOSTING_TARGET: { type: "text", value: "cf" }, DEPLOY_ENV: { type: "text", value: "pre" },
         BLOB_BASE_URL: { type: "text", value: fixtureOrigin }, R2_PUBLIC_BASE_URL: { type: "text", value: fixtureOrigin },
+        ...Object.fromEntries(Object.entries(strings).map(([key, value]) => [key, { type: "text" as const, value }])),
       },
     } }],
     resourceTmpPath, telemetry: { enabled: false }, host: "127.0.0.1", port: 0, log: new Log(LogLevel.ERROR),

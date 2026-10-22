@@ -7,7 +7,7 @@ import { handleRequest, secureResponse } from "./lib/host";
 import { pageData } from "./lib/data";
 import { pageCache, invalidatePagePaths } from "./lib/cache";
 import { withWorkerEnv } from "../../web/lib/workers-host/runtime-env";
-import { isWorkerShellRequest } from "../../web/lib/workers-host/shell-routes";
+import { isWorkerShellRequest, normalizeWorkerPathname } from "../../web/lib/workers-host/shell-routes";
 import { handleQueue, handleScheduled, handleShellFetch } from "../../workers/gitstarclub-web/src/shell";
 import type { RefreshJob, WorkerEnv } from "../../workers/gitstarclub-web/src/env";
 
@@ -20,6 +20,23 @@ export default {
   async fetch(request: Request, env: GateEnv, ctx: GateContext): Promise<Response> {
     return withWorkerEnv(env, async () => {
       const assetUrl = new URL(request.url);
+      const pathname = normalizeWorkerPathname(assetUrl.pathname);
+      if (new URL(request.url).pathname === "/.well-known/deployment" && ["GET", "HEAD"].includes(request.method)) {
+        const url = new URL(request.url);
+        const response = secureResponse(Response.json({ commitSha: __GSC_ASTRO_BUILD__, deploymentUrl: (env.CF_PREVIEW_ORIGIN ?? url.origin).replace(/\/+$/, ""), target: "cf", host: url.host }), request.method, "BYPASS");
+        response.headers.set("Cache-Control", "no-store, max-age=0");
+        return response;
+      }
+      // The shared classifier owns every aggregate-import verb, including
+      // production refusals, before publication reads or Astro asset routing.
+      if (isWorkerShellRequest(pathname, request.method)) {
+        const shellEnv = { ...env, CF_PREVIEW_COMMIT_SHA: __GSC_ASTRO_BUILD__ };
+        const response = await handleShellFetch(request, shellEnv);
+        if (pathname === "/preview/health" && response.ok) {
+          return secureResponse(Response.json({ ...await response.json() as object, hosting: "astro" }), request.method, "BYPASS", true);
+        }
+        return secureResponse(response, request.method, "BYPASS", true);
+      }
       if (__GSC_ASTRO_EXPORT_DATE__ && assetUrl.pathname.startsWith("/data/exports/v1/latest/") && ["GET", "HEAD"].includes(request.method) && env.ASSETS) {
         // Preserve Next's beforeFiles rewrite without copying dated export payloads.
         assetUrl.pathname = assetUrl.pathname.replace("/data/exports/v1/latest/", `/data/exports/v1/${__GSC_ASTRO_EXPORT_DATE__}/`);
@@ -27,20 +44,6 @@ export default {
         const response = secureResponse(asset, request.method, "BYPASS");
         if (asset.headers.has("cache-control")) response.headers.set("cache-control", asset.headers.get("cache-control")!);
         return response;
-      }
-      if (new URL(request.url).pathname === "/.well-known/deployment" && ["GET", "HEAD"].includes(request.method)) {
-        const url = new URL(request.url);
-        const response = secureResponse(Response.json({ commitSha: __GSC_ASTRO_BUILD__, deploymentUrl: (env.CF_PREVIEW_ORIGIN ?? url.origin).replace(/\/+$/, ""), target: "cf", host: url.host }), request.method, "BYPASS");
-        response.headers.set("Cache-Control", "no-store, max-age=0");
-        return response;
-      }
-      if (isWorkerShellRequest(new URL(request.url).pathname, request.method)) {
-        const shellEnv = { ...env, CF_PREVIEW_COMMIT_SHA: __GSC_ASTRO_BUILD__ };
-        const response = await handleShellFetch(request, shellEnv);
-        if (new URL(request.url).pathname.replace(/\/+$/, "") === "/preview/health" && response.ok) {
-          return secureResponse(Response.json({ ...await response.json() as object, hosting: "astro" }), request.method, "BYPASS", true);
-        }
-        return secureResponse(response, request.method, "BYPASS", true);
       }
       const store = pageCache(env.GSC_CACHE, __GSC_ASTRO_BUILD__, (caches as unknown as { default: HotCache }).default);
       async function render(publication?: Publication) {
