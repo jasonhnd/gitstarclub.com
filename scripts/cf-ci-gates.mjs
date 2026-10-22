@@ -86,7 +86,7 @@ export function commandPolicy(scripts, ciSource) {
 
 export async function assertRepositoryCfCiGates(root) {
   const { hostWorker } = await import(pathToFileURL(resolve(root, "web/cloudflare.config.ts")).href);
-  const { astroHostWorker } = await import(pathToFileURL(resolve(root, "astro/cloudflare.config.ts")).href);
+  const { astroHostWorker } = await import(pathToFileURL(resolve(root, "astro/host-contract.ts")).href);
   const ci = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8");
   const delivery = readFileSync(resolve(root, ".delivery.yml"), "utf8");
   const pkg = JSON.parse(readFileSync(resolve(root, "web/package.json"), "utf8"));
