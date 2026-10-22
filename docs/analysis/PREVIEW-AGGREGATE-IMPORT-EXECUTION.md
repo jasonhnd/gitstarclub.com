@@ -232,6 +232,6 @@ immutable conflict. The bootstrap pointer remained null. No publication or
 post-publication verification is claimed from this progress observation.
 Pinned cf independently confirmed the original deployment/version at 100%.
 
-All 5674 current-star values in the original published lookup are positive.
+All 5669 current-star values in the original published lookup are positive.
 After publication, the verifier must prove that the complete lookup remains
 identical and unavailable history remains unobserved, rather than zero-filled.
