@@ -14,6 +14,14 @@ Issue #736 / card GSC_0161 executes the separately authorized preview
 scope and acceptance. This report supplies evidence to the independent
 reviewer; it does not record owner acceptance.
 
+**Current status: deployed, import not published.** Execution is safely paused
+for continuation after `2026-10-22T03:30:00Z`. The public bootstrap pointer is
+still absent, the managed views pointer is unchanged, the owned writer lease
+has been released, and both health records remain ok. Counts below describe
+the checked read-only plan, not a completed publication. The structured
+[pause evidence](preview-aggregate-import-evidence.json) records the exact
+state and six baseline screenshots.
+
 ## Exact deployment candidate and local gate
 
 The fresh detached shared clone checked out exact `origin/pre`
@@ -37,7 +45,7 @@ The official archive bootstrap and complete static/build block both exited
 | `bun run lint:docs` | Pass |
 | `cd web && bun run lint` | 0 errors; 14 existing warnings |
 | `cd web && bun run typecheck && bun run typecheck:tests && bun run typecheck:scripts` | All three pass |
-| `cd web && bun run validate:views -- scripts/fixtures/views` | Pass |
+| cd web && bun run validate:views -- scripts/fixtures/views | Pass; fixture: `web/scripts/fixtures/views` |
 | `cd web && BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE='' bun run test:cov` | 2068 pass, 49 intentional offline skips, 0 fail; lines 90.01%, functions 90.62% |
 | Loopback GET/HEAD fixture: `cd web && bun run build && bun run validate:host -- --mode production && bun run build:pre && bun run validate:host -- --mode pre` | Both modes: 234 routes / 467 artifacts; exact candidate SHA; fonts, indexing and bindings valid; fixture stopped |
 | `git status --short` in detached clone; lockfile checks | Empty; lockfiles unchanged |
@@ -161,3 +169,38 @@ The exact current-star values below are from the unchanged published lookup.
 React plus the two smallest eligible retained repositories were selected from
 the prior plan and immutable lookup. The completed current dry-run confirms
 the same selection; final source/page verification follows publication.
+
+### Scheduled continuation
+
+The actual CLI acquired token 5 at `2026-10-22T00:35:28.763Z` and completed
+snapshot capture. It sealed the 134-object canonical phase of recovery
+generation `bootstrap-aggregate-recovery-8adece3468c17fa8`, then staged 220
+of 10775 recovery base objects before the controlled pause. The repaired
+generation has not been published.
+
+Measured recovery base progress was 62 objects at `00:51:12.096Z` and 141
+at `00:52:33.964Z`: approximately 0.96 objects/second. At that observed
+rate, even the remaining recovery base alone cannot finish before the
+forbidden daily `02:50-03:30 UTC` window. A second base plus verification is
+also required. Continue after the window; do not let this attempt overlap it.
+
+The owned CLI was interrupted with SIGINT (exit 130). Its normal reviewed
+`AggregateHistoryWorkerClient.withLease` cleanup then resumed the owned
+session only to throw a deliberate deferral and execute its `finally`
+release/checkpoint path. Cleanup exited 0. No pointer/object was hand-edited,
+no remote object was deleted, and no credential was created or exported.
+
+Readback at `00:54:01.318Z` shows token 5 terminal/released with
+`status=failed`, `active=false`; the local checkpoint also says `failed`.
+That status records an intentional pause, not a published import. Preserve
+the generation and checkpoint for the documented new-token resume. The
+original bootstrap/views/live pointers and both health records are unchanged.
+Local import and cleanup commands have exited; no import is left running.
+
+Resume from the [plan's continuation checklist](../../plans/736-preview-aggregate-import-execution.md).
+After fresh idle/source checks, use the original runbook's same-generation
+`--checkpoint` / `--execute` command. Do not reset the checkpoint or delete
+immutable partial objects. A changed source pointer or immutable conflict
+requires investigation as the original runbook specifies. Actual publication
+counts, after screenshots, source/weekly labels, unavailable-repository checks
+and the final delivery-head gate/PR remain unfinished.

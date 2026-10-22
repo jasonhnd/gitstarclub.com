@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "card": "GSC_0161",
+  "issue": 736,
+  "status": "scheduled_continuation_import_not_published",
+  "recorded_at": "2026-10-22T00:55:35.427073+00:00",
+  "resume_after": "2026-10-22T03:30:00Z",
+  "deployment": {
+    "identity": {
+      "commitSha": "96b618933baadab7ebb622580c3da05efbb15f5f",
+      "deploymentUrl": "https://pre.gitstarclub.com",
+      "target": "cf",
+      "host": "pre.gitstarclub.com"
+    },
+    "provider": {
+      "id": "b46ca600-d1d1-4e01-8ba8-dad20baee17c",
+      "source": "cf_cli",
+      "strategy": "percentage",
+      "versions": [
+        {
+          "version_id": "5907d936-3ec4-43b1-9d0e-d5f20f45b3df",
+          "percentage": 100
+        }
+      ],
+      "created_on": "2026-10-22T00:19:31.328676Z"
+    },
+    "config_sha256": "1a6e0038909bcb4b1d33a620b2723aacf3509e2a74c9d6fb779dab3bf0a0e0de",
+    "secret_name_verified": "CRON_SECRET"
+  },
+  "generation": "bootstrap-aggregate-gap-20261022T001946Z",
+  "plan_checks": {
+    "counts": {
+      "repositories_imported": 5238,
+      "repositories_skipped": 441,
+      "daily_added": 649512,
+      "weekly_added": 89046,
+      "edge_weeks_skipped": 10476
+    },
+    "skip_reasons": {
+      "outside_fixed_source_whitelist": 430,
+      "not_in_preview_membership": 5,
+      "not_found_or_inaccessible": 6
+    },
+    "prior_skipped_list_exact_match": true,
+    "all_imported_rows_checked": true,
+    "all_edge_joins_checked": true,
+    "samples": [
+      {
+        "repo_id": 10270250,
+        "name": "react/react",
+        "current_stars": 251609
+      },
+      {
+        "repo_id": 31795422,
+        "name": "facebook/jscodeshift",
+        "current_stars": 10040
+      },
+      {
+        "repo_id": 182034748,
+        "name": "MSWorkers/support.996.ICU",
+        "current_stars": 10042
+      }
+    ],
+    "dry_run_sha256": "23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1"
+  },
+  "paused": {
+    "status": "paused",
+    "generation": "bootstrap-aggregate-gap-20261022T001946Z",
+    "token": 5,
+    "checkpoint_status": "failed",
+    "cleanup": "normal publisher withLease finally/release; no pointer or object editing"
+  },
+  "before": {
+    "active": false,
+    "lease": {
+      "run_id": "refresh-2026-10-21T21-01-25-223Z",
+      "status": "published",
+      "acquired_at": "2026-10-21T22:08:43.781Z",
+      "expires_at": "2026-10-21T22:08:43.781Z",
+      "fencing_token": 4,
+      "idempotency_key": "workflow-refresh:2026-W43",
+      "trigger": "manual-or-cron"
+    },
+    "bootstrap": null,
+    "views": {
+      "version": "refresh-2026-10-21T21-01-25-223Z",
+      "run_id": "refresh-2026-10-21T21-01-25-223Z",
+      "published_at": "2026-10-21T22:08:08.586Z",
+      "prev_version": null,
+      "schema_ver": 1
+    }
+  },
+  "after_pause": {
+    "active": false,
+    "lease": {
+      "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+      "status": "failed",
+      "acquired_at": "2026-10-22T00:54:01.318Z",
+      "expires_at": "2026-10-22T00:54:01.318Z",
+      "fencing_token": 5,
+      "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+      "trigger": "bootstrap-cli"
+    },
+    "bootstrap": null,
+    "views": {
+      "version": "refresh-2026-10-21T21-01-25-223Z",
+      "run_id": "refresh-2026-10-21T21-01-25-223Z",
+      "published_at": "2026-10-21T22:08:08.586Z",
+      "prev_version": null,
+      "schema_ver": 1
+    }
+  },
+  "live_before": {
+    "schema_ver": 1,
+    "generation": "daily-2026-10-21T23-09-32-126Z",
+    "run_id": "daily-2026-10-21T23-09-32-126Z",
+    "idempotency_key": "GSC_0149:steady-state:fba1f4d:20261021T230931Z",
+    "job": "daily",
+    "day": "2026-10-21",
+    "month": "2026-10",
+    "week": "2026-W43",
+    "published_at": "2026-10-21T23:15:47.480Z",
+    "previous_generation": "daily-2026-10-21T22-17-18-254Z",
+    "lease": null
+  },
+  "live_paused": {
+    "schema_ver": 1,
+    "generation": "daily-2026-10-21T23-09-32-126Z",
+    "run_id": "daily-2026-10-21T23-09-32-126Z",
+    "idempotency_key": "GSC_0149:steady-state:fba1f4d:20261021T230931Z",
+    "job": "daily",
+    "day": "2026-10-21",
+    "month": "2026-10",
+    "week": "2026-W43",
+    "published_at": "2026-10-21T23:15:47.480Z",
+    "previous_generation": "daily-2026-10-21T22-17-18-254Z",
+    "lease": null
+  },
+  "monitor_at_pause": {
+    "at": "2026-10-22T00:54:30.439Z",
+    "lease": {
+      "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+      "status": "failed",
+      "acquired_at": "2026-10-22T00:54:01.318Z",
+      "expires_at": "2026-10-22T00:54:01.318Z",
+      "fencing_token": 5,
+      "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+      "trigger": "bootstrap-cli"
+    },
+    "current_generation": null,
+    "phases": [
+      {
+        "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+        "phase": "canonical",
+        "sealed": true,
+        "objects": 134
+      },
+      {
+        "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+        "phase": "base",
+        "sealed": false,
+        "objects": null
+      },
+      {
+        "target": "bootstrap-aggregate-gap-20261022T001946Z",
+        "phase": "canonical",
+        "sealed": false,
+        "objects": null
+      },
+      {
+        "target": "bootstrap-aggregate-gap-20261022T001946Z",
+        "phase": "base",
+        "sealed": false,
+        "objects": null
+      }
+    ],
+    "active": {
+      "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+      "phase": "base",
+      "prefix": "bootstrap/generations/bootstrap-aggregate-recovery-8adece3468c17fa8/views/",
+      "bytes_staged": 1694324,
+      "groups": {
+        "categories": 34,
+        "entity": 186
+      },
+      "objects_staged": 220
+    }
+  },
+  "health": [
+    {
+      "pipeline": "workflow-refresh",
+      "status": "ok",
+      "at": "2026-10-21T22:08:44.103Z",
+      "unchanged": true
+    },
+    {
+      "pipeline": "cron-daily",
+      "status": "ok",
+      "at": "2026-10-21T23:15:51.541Z",
+      "unchanged": true
+    }
+  ],
+  "baseline_captures": [
+    {
+      "phase": "before",
+      "repo": "react/react",
+      "locale": "en",
+      "url": "https://pre.gitstarclub.com/react/react",
+      "status": 200,
+      "file": "preview-aggregate-import-evidence/before-react-react-en.jpg",
+      "sha256": "05abe22f1226a152b7fd4b2fa60d403d1f65ad3740c6969bf6c2f40c99883b2c"
+    },
+    {
+      "phase": "before",
+      "repo": "react/react",
+      "locale": "ja",
+      "url": "https://pre.gitstarclub.com/ja/react/react",
+      "status": 200,
+      "file": "preview-aggregate-import-evidence/before-react-react-ja.jpg",
+      "sha256": "02be92ec04cdfba6c891ff5ba30f5d76cc1b03cdab158c5ac463f3c7adee98da"
+    },
+    {
+      "phase": "before",
+      "repo": "facebook/jscodeshift",
+      "locale": "en",
+      "url": "https://pre.gitstarclub.com/facebook/jscodeshift",
+      "status": 200,
+      "file": "preview-aggregate-import-evidence/before-facebook-jscodeshift-en.jpg",
+      "sha256": "db656acde15dc113519dba7ba25cebe795aa01b38469abe5a7175cf7a783bd42"
+    },
+    {
+      "phase": "before",
+      "repo": "facebook/jscodeshift",
+      "locale": "ja",
+      "url": "https://pre.gitstarclub.com/ja/facebook/jscodeshift",
+      "status": 200,
+      "file": "preview-aggregate-import-evidence/before-facebook-jscodeshift-ja.jpg",
+      "sha256": "a551877c205d983736da04d45c1643a9b2d78eed4fe9dace0ec214919fa4474d"
+    },
+    {
+      "phase": "before",
+      "repo": "MSWorkers/support.996.ICU",
+      "locale": "en",
+      "url": "https://pre.gitstarclub.com/MSWorkers/support.996.ICU",
+      "status": 200,
+      "file": "preview-aggregate-import-evidence/before-MSWorkers-support.996.ICU-en.jpg",
+      "sha256": "791322a8dcda8138485df512288d6f45408da1d2f6aafe7a607e2d9b837fac97"
+    },
+    {
+      "phase": "before",
+      "repo": "MSWorkers/support.996.ICU",
+      "locale": "ja",
+      "url": "https://pre.gitstarclub.com/ja/MSWorkers/support.996.ICU",
+      "status": 200,
+      "file": "preview-aggregate-import-evidence/before-MSWorkers-support.996.ICU-ja.jpg",
+      "sha256": "38325d8fd2a32e5bef34afc6558e0265d1af286c72b902f9c4c4affcc9017d6b"
+    }
+  ],
+  "reason": {
+    "observations": [
+      {
+        "at": "2026-10-22T00:51:12.096Z",
+        "recovery_base_objects": 62
+      },
+      {
+        "at": "2026-10-22T00:52:33.964Z",
+        "recovery_base_objects": 141
+      }
+    ],
+    "approximate_objects_per_second": 0.9649679972638883,
+    "recovery_base_target_objects": 10775,
+    "cannot_finish_before_daily_forbidden_window": "02:50-03:30 UTC"
+  },
+  "remaining": [
+    "Fresh idle preflight and source-pointer review after 03:30 UTC; preserve the same generation and checkpoint.",
+    "Resume the approved Worker import and run the exact verifier, extra data/page checks and after screenshots.",
+    "Record actual publication counts and page evidence, then run the complete exact-delivery-head gate and open one PR against pre."
+  ],
+  "boundaries": {
+    "public_import_published": false,
+    "manual_pointer_or_object_edits": false,
+    "production_operations": false,
+    "cron_refresh_start_calls": 0,
+    "credentials_created_requested_rotated": false,
+    "wrangler_opennext_invoked": false,
+    "actions_enabled": false,
+    "final_acceptance_or_merge": false
+  }
+}
