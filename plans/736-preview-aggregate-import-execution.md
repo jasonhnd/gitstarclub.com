@@ -59,5 +59,8 @@ Do not run during 02:50-03:30 UTC daily or Sunday 03:50-08:00 UTC.
 
 ## Progress
 
-- Plan committed before deployment or import. Execution evidence follows in
-  a separate completed step.
+- Exact merged pre `96b6189` passed the isolated AGENTS gate and both fixture
+  builds, then the real-source pre build and artifact validation.
+- Preview deployed as version `5907d936-3ec4-43b1-9d0e-d5f20f45b3df` at 100%;
+  public identity/config/secret-name readback passed. No active workflow/live
+  writer is present. The read-only import plan is running.

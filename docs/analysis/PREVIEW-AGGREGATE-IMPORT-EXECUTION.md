@@ -75,5 +75,40 @@ have positive current stars but no aggregate-history section. The former
 
 ## Execution progress
 
-The isolated gate and real-source artifact checks are complete. Deployment,
-import and post-publication evidence follow in subsequent completed steps.
+### Preview deployment
+
+`cd web && bun run deploy:pre --skip-build` and the subsequent
+`bun run validate:host -- --mode pre` exited 0 through pinned
+`cf@1.0.0-beta.18`. The adapter packaged the real-source pages and invoked
+`cf deploy --prebuilt --mode pre`; it did not invoke a legacy platform CLI.
+
+| Readback | Value |
+| --- | --- |
+| Deployed commit | `96b618933baadab7ebb622580c3da05efbb15f5f` |
+| Worker | `gitstarclub-web-pre` |
+| Version | `5907d936-3ec4-43b1-9d0e-d5f20f45b3df` |
+| Deployment | `b46ca600-d1d1-4e01-8ba8-dad20baee17c` |
+| Provider creation | `2026-10-22T00:19:31.328676Z` |
+| Traffic | 100% on that version, independently read with pinned cf |
+| Public identity | `https://pre.gitstarclub.com/.well-known/deployment`, matching commit |
+| Existing secret | `CRON_SECRET` name present; values never printed/exported |
+| Generated config SHA-256 | `1a6e0038909bcb4b1d33a620b2723aacf3509e2a74c9d6fb779dab3bf0a0e0de`, identical before/after deploy |
+
+The deployment acknowledgement lists the same three preview schedules and
+preview queue producer/consumer. No schedule/DNS/route/secret change was
+requested. The pinned CLI does not offer independent schedule-list readback;
+this evidence is generated-config review plus the deployment acknowledgement,
+not a scheduled invocation claim.
+
+### Import preflight
+
+At `2026-10-22T00:19:46.861Z`, the UTC cron-window guard passed.
+`inspect-preview-aggregate.ts` exited 0: `active=false`; the workflow lease
+is the historical released/published token 4, expired at
+`2026-10-21T22:08:43.781Z`. It is not a running writer. `live/latest.json`
+has `lease=null` and generation `daily-2026-10-21T23-09-32-126Z`.
+
+The old bootstrap pointer is absent. The managed views pointer is
+`refresh-2026-10-21T21-01-25-223Z`, published at
+`2026-10-21T22:08:08.586Z`. The read-only plan is running for
+`bootstrap-aggregate-gap-20261022T001946Z`; no import execution has started.
