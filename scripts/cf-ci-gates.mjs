@@ -19,8 +19,9 @@ export function assertAllowedCfPreviewOrigin(value = DEFAULT_CF_PREVIEW_ORIGIN) 
 }
 
 /** Validate evaluated typed configuration, never a textual approximation of bindings. */
-export function assertHostContract(worker, mode) {
+export function assertHostContract(worker, mode, host = "web") {
   const errors = [];
+  const astro = host === "astro";
   const pre = mode === "pre";
   const name = pre ? PREVIEW_WORKER_NAME : PRODUCTION_WORKER_NAME;
   const bucket = pre ? "gitstarclub-data-pre" : "gitstarclub-data-prod";
@@ -36,14 +37,16 @@ export function assertHostContract(worker, mode) {
   };
   const check = (condition, message) => { if (!condition) errors.push(`${mode}: ${message}`); };
   check(worker.name === name, "Worker name");
-  check(worker.entrypoint === "../workers/gitstarclub-web/src/index.ts", "custom entrypoint");
+  check(worker.entrypoint === (astro ? "src/worker.ts" : "../workers/gitstarclub-web/src/index.ts"), "custom entrypoint");
   check(worker.compatibilityDate === "2026-09-17", "compatibility date");
   check(JSON.stringify(worker.compatibilityFlags) === JSON.stringify(["nodejs_compat", "global_fetch_strictly_public"]), "compatibility flags");
   check(worker.observability?.enabled === true, "observability");
   check(worker.workersDev === pre && worker.previewUrls === pre, "public endpoint policy");
   check(!worker.routes && !worker.domains && !worker.exports, "no routes, domains or database exports");
   check(worker.assets?.htmlHandling === "none" && worker.assets?.notFoundHandling === "none", "asset handling");
-  check(JSON.stringify(worker.assets?.runWorkerFirst) === JSON.stringify(["/*", "!/_next/static/*", "!/*/_next/static/*", "!/assets/*"]), "Worker-first private assets");
+  check(JSON.stringify(worker.assets?.runWorkerFirst) === JSON.stringify(astro
+    ? ["/*", "!/_astro/*", "!/assets/*"]
+    : ["/*", "!/_next/static/*", "!/*/_next/static/*", "!/assets/*"]), "Worker-first private assets");
   const expectedTriggers = [
     { type: "queue", name: queue, maxBatchSize: 1, maxRetries: 2 },
     ...(pre && !PREVIEW_CRONS_PAUSED
@@ -83,10 +86,14 @@ export function commandPolicy(scripts, ciSource) {
 
 export async function assertRepositoryCfCiGates(root) {
   const { hostWorker } = await import(pathToFileURL(resolve(root, "web/cloudflare.config.ts")).href);
+  const { astroHostWorker } = await import(pathToFileURL(resolve(root, "astro/cloudflare.config.ts")).href);
   const ci = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8");
   const delivery = readFileSync(resolve(root, ".delivery.yml"), "utf8");
   const pkg = JSON.parse(readFileSync(resolve(root, "web/package.json"), "utf8"));
-  const errors = ["pre", "production"].flatMap((mode) => assertHostContract(hostWorker(mode), mode));
+  const errors = ["pre", "production"].flatMap((mode) => [
+    ...assertHostContract(hostWorker(mode), mode),
+    ...assertHostContract(astroHostWorker(mode), mode, "astro").map((error) => `Astro ${error}`),
+  ]);
   errors.push(...commandPolicy(pkg.scripts, ci));
   if (!/checks:\s*\[static, production-build\]/.test(delivery)) errors.push("Required checks must remain static and production-build");
   for (const job of ["static", "production-build"]) if (!ci.includes(`  ${job}:`)) errors.push(`Missing job ${job}`);

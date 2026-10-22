@@ -23,7 +23,10 @@ required job names, `static` and `production-build`, are unchanged.
 [Astro configuration](../astro/cloudflare.config.ts) reuses the existing
 [typed resource contract](../web/cloudflare.config.ts) and
 [public mode vars](../web/host-contract.mjs), changing the entry and asset paths.
-No schedules, DNS, routes, secrets or resource names change.
+The second integration sync (#735) carries the web host's preview-only schedules
+and removal of first-publication flags. Source configuration does not activate
+remote schedules; deployment remains separately authorized. DNS, routes, secrets
+and resource names are unchanged.
 
 | Contract | production | pre |
 | --- | --- | --- |
@@ -36,7 +39,19 @@ No schedules, DNS, routes, secrets or resource names change.
 | Public data origin | data.gitstarclub.com | data-pre.gitstarclub.com |
 | workers.dev / version URLs | disabled / disabled | enabled / enabled |
 | Indexing | index, follow | noindex, nofollow |
-| Scheduled triggers | absent | absent |
+| Scheduled triggers | absent | `0 3 * * *`, `0 4 * * SUN`, `0 6 * * SUN` |
+
+Both modes omit `WORKFLOW_COLD_START`, `PREFLIGHT_RELAX_EMPTY_SHARDS` and
+`WORKFLOW_FIXTURE`. The shared host-contract gate validates the Astro entry and
+asset paths as well as the web host; `validate:host` also checks the built
+mode-specific schedules and absence of the flags.
+
+The scheduled entry delegates to the same `handleScheduled`/`planCronDispatch`
+as web: daily calls `/api/cron/daily`, Sunday 04:00 calls `/api/cron/weekly`,
+and Sunday 06:00 starts managed refresh at `/api/workflows/refresh/start`.
+The built-entry regression test intercepts those authenticated GETs at a local
+synthetic HTTP server, including Cloudflare numeric Sunday aliases and failure
+propagation. It never invokes a deployed operational endpoint.
 
 KV is the persistent key/value page cache. DATA is the native R2 data binding;
 MEDIA stays the shared asset bucket. JOBS is the refresh task queue.
