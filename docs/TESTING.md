@@ -95,6 +95,10 @@ validators. GitHub and R2 transport responses are intercepted inside each child
 process; all other fetches and network sockets are refused. Environment files and
 owner data are never copied. Test credentials are literal synthetic strings.
 
+The suite gives final fixture disposal 30 seconds: removing all offline CLI
+fixtures can exceed Bun's five-second hook default on a busy disk after every
+assertion has passed. This does not change command assertions or their budgets.
+
 The guards cover both R2 targets, default dry run, write opt-in, explicit dry run,
 no-upload, stage-only, empty-bucket initial commit and its shared lease, conflicting
 markers, corruption, and rollback. Current-generation rollback deliberately
