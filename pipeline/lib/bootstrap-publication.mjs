@@ -110,7 +110,7 @@ function parseJson(body, path) {
   }
 }
 
-function parsePhaseManifest(body, generation, phase) {
+export function parseBootstrapPhaseManifest(body, generation, phase) {
   const path = bootstrapPhaseManifestPath(generation, phase);
   const manifest = parseJson(body, path);
   const seen = new Set();
@@ -213,7 +213,7 @@ export async function verifyLegacyFlatTarget({ store, concurrency = 12 }) {
  * }} options
  */
 export async function stageBootstrapPhase({ generation, phase, items, store, concurrency = 12, onProgress = (_progress) => {} }) {
-  const prefix = bootstrapGenerationPrefix(generation);
+  assertBootstrapGeneration(generation);
   const manifest = buildBootstrapPhaseManifest(generation, phase, items);
   const expectedManifestBytes = manifestBytes(manifest);
   const manifestPath = bootstrapPhaseManifestPath(generation, phase);
@@ -226,6 +226,15 @@ export async function stageBootstrapPhase({ generation, phase, items, store, con
     return { status: "resumed", created: 0, reused: manifest.object_count, manifest };
   }
 
+  const result = await stageBootstrapObjects({ generation, phase, items, store, concurrency, onProgress });
+  await sealBootstrapPhase({ generation, phase, body: expectedManifestBytes, store });
+  return result;
+}
+
+/** Stage a bounded subset without sealing the full phase. All objects are create-only. */
+export async function stageBootstrapObjects({ generation, phase, items, store, concurrency = 4, onProgress = (_progress) => {} }) {
+  const prefix = bootstrapGenerationPrefix(generation);
+  const manifest = buildBootstrapPhaseManifest(generation, phase, items);
   const sourceByPath = new Map(items.map((item) => [normalizeItemPath(item.path), item]));
   let completed = 0;
   const results = await mapPool(manifest.objects, concurrency, async (expected) => {
@@ -246,13 +255,38 @@ export async function stageBootstrapPhase({ generation, phase, items, store, con
     return created;
   });
 
-  const sealed = await store.create(manifestPath, expectedManifestBytes, "application/json");
-  if (!sealed) {
-    const raced = await store.read(manifestPath);
-    if (!raced?.equals(expectedManifestBytes)) throw new Error(`${manifestPath}: manifest create conflict`);
-  }
   const created = results.filter(Boolean).length;
   return { status: "staged", created, reused: manifest.object_count - created, manifest };
+}
+
+/** Seal exact manifest bytes after chunk transfer; publication still requires verification. */
+export async function sealBootstrapPhase({ generation, phase, body, store }) {
+  const manifest = parseBootstrapPhaseManifest(body, generation, phase);
+  const path = bootstrapPhaseManifestPath(generation, phase);
+  if (!await store.create(path, body, "application/json")) {
+    const existing = await store.read(path);
+    if (!existing?.equals(body)) throw new Error(`${path}: manifest create conflict`);
+  }
+  return { manifest, sha256: sha256Bytes(body) };
+}
+
+/** Verify one bounded slice. The caller persists nextCursor with the manifest digest. */
+export async function verifyBootstrapPhaseBatch({ generation, phase, store, cursor = 0, limit = 32 }) {
+  if (!Number.isInteger(cursor) || cursor < 0 || !Number.isInteger(limit) || limit < 1 || limit > 128) {
+    throw new Error("invalid bootstrap verification cursor/limit");
+  }
+  const manifestPath = bootstrapPhaseManifestPath(generation, phase);
+  const body = await store.read(manifestPath);
+  if (!body) throw new Error(`${manifestPath}: required phase manifest is missing`);
+  const manifest = parseBootstrapPhaseManifest(body, generation, phase);
+  if (cursor > manifest.objects.length) throw new Error("bootstrap verification cursor exceeds manifest");
+  const prefix = bootstrapGenerationPrefix(generation);
+  const nextCursor = Math.min(cursor + limit, manifest.objects.length);
+  for (const expected of manifest.objects.slice(cursor, nextCursor)) {
+    const path = `${prefix}/${expected.path}`;
+    assertExactObject(path, await store.read(path), expected);
+  }
+  return { manifest, sha256: sha256Bytes(body), nextCursor, complete: nextCursor === manifest.objects.length };
 }
 
 /** @param {{ generation: string | undefined, phase: string, store: Pick<BootstrapStore, 'read'>, concurrency?: number }} options */
@@ -260,7 +294,7 @@ export async function verifyBootstrapPhase({ generation, phase, store, concurren
   const manifestPath = bootstrapPhaseManifestPath(generation, phase);
   const rawManifest = await store.read(manifestPath);
   if (!rawManifest) throw new Error(`${manifestPath}: required phase manifest is missing`);
-  const manifest = parsePhaseManifest(rawManifest, generation, phase);
+  const manifest = parseBootstrapPhaseManifest(rawManifest, generation, phase);
   const prefix = bootstrapGenerationPrefix(generation);
   await mapPool(manifest.objects, concurrency, async (expected) => {
     const path = `${prefix}/${expected.path}`;
@@ -317,6 +351,7 @@ export async function assertInitialCommitTarget({ store }) {
  *   now?: () => string,
  *   initialCommit?: boolean,
  *   recoveryGeneration?: string,
+ *   verifyGeneration?: (target: string | undefined) => Promise<Awaited<ReturnType<typeof verifyBootstrapGeneration>>>,
  * }} options
  */
 export async function commitBootstrapGeneration({
@@ -327,10 +362,11 @@ export async function commitBootstrapGeneration({
   now = () => new Date().toISOString(),
   initialCommit = false,
   recoveryGeneration,
+  verifyGeneration = (target) => verifyBootstrapGeneration({ generation: target, store }),
 }) {
   assertBootstrapGeneration(generation);
   if (initialCommit && recoveryGeneration) throw new Error("--initial-commit cannot name a recovery generation");
-  const verified = await verifyBootstrapGeneration({ generation, store });
+  const verified = await verifyGeneration(generation);
   await validate(verified);
   await assertCanCommit();
   const current = parsePointer(await store.read(BOOTSTRAP_POINTER_PATH));
@@ -362,7 +398,7 @@ export async function commitBootstrapGeneration({
       // flat views or historical series never existed. The caller snapshots
       // and stages both generations while holding this same writer lease.
       if (recoveryGeneration === generation) throw new Error("recovery generation must differ from the publication");
-      await verifyBootstrapGeneration({ generation: recoveryGeneration, store });
+      await verifyGeneration(recoveryGeneration);
     } else await verifyLegacyFlatTarget({ store });
     await assertCanCommit();
   }
