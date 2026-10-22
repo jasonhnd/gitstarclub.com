@@ -4,6 +4,7 @@ const ja: Dict = {
   nav: { home: "ホーム", pulse: "動向", rankings: "ランキング", categories: "カテゴリ", organizations: "組織", compare: "比較", about: "このサイトについて" },
   common: {
     starHistoryNote: "2026年5月30日〜9月30日の日別・週別の数値は、集計時点で残っているスターをまとめた GitHub のスター履歴に基づきます。日の区切りはおおむね UTC ですが、数時間ずれる場合があります。",
+    starHistoryMixedNote: "この週次ランキングには、既存の観測値と2026年5月30日〜9月30日の GitHub スター履歴の集計値が混在しています。集計値のみ、収集時点で残っているスターを数えます。その日の区切りはおおむね UTC ですが、数時間ずれる場合があります。",
     faqHeading: "よくある質問",
     dataLastUpdated: "データ最終更新",
     dataAsOf: "データ基準日",

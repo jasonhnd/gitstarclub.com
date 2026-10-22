@@ -23,8 +23,8 @@ export const PREVIEW_CRON_ORIGIN = "https://pre.gitstarclub.com";
 export const CLOSED_PRODUCTION_WORKERS_DEV_ORIGIN = "https://gitstarclub-web.worldgo.workers.dev";
 
 /**
- * Intended env.pre schedule once preview is re-enabled. The repo keeps
- * env.pre triggers.crons [] while preview is paused (#543).
+ * Preview source schedules; production remains unscheduled. Activation still
+ * requires a separately authorized preview deployment.
  */
 export const PREVIEW_CRON_TRIGGERS = Object.freeze([CRON_DAILY, CRON_WEEKLY, CRON_REFRESH]);
 

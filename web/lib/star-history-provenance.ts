@@ -22,3 +22,12 @@ export function hasAggregateWeek(window: string, period: string, provenance: unk
   return monday.toISOString().slice(0, 10) <= parsed.data.end_inclusive &&
     sunday.toISOString().slice(0, 10) >= parsed.data.start;
 }
+
+/** Legacy provenance remains aggregate-only unless an explicit mixed scope is present. */
+export function weeklyRankSourceNote(
+  meta: { window: string; period: string; provenance?: unknown; provenance_scope?: "mixed" },
+  copy: { starHistoryNote: string; starHistoryMixedNote: string },
+): string | undefined {
+  if (!hasAggregateWeek(meta.window, meta.period, meta.provenance)) return undefined;
+  return meta.provenance_scope === "mixed" ? copy.starHistoryMixedNote : copy.starHistoryNote;
+}

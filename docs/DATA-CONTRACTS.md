@@ -130,6 +130,14 @@ They **do not belong to** `canonical/v2/meta.json` (`CanonicalMeta` stays `.stri
 
 **`canonical/v2/repos/{bucket}.json`** — repo-dimension buckets (fields same as §1.2, including `tracked_since` and `fetched_at` (metadata fetch time); plus `d` = the frozen anchor factor (`>= 0`, and it may be `> 1` when GitHub Archive undercounts), computed by bootstrap and **stored as a full-precision IEEE double** — rounding would make the JS-recomputed `stock_est` differ from DuckDB by ±1):
 
+Preview aggregate repair can additionally store `aggregate_history: { provenance,
+weeks }`. `provenance` is the strict `StarHistoryProvenance` object and `weeks`
+lists the imported complete ISO weeks in W22–W40 of 2026. Metadata refresh keeps
+this marker. Daily entity curves carry its provenance; imported weekly flow
+ranks carry the same source. Those weeks do not advance stock accumulators and
+unknown repo/org stocks are omitted from stock ranks. Monthly data and `d`
+remain unchanged. See the [preview import runbook](analysis/PREVIEW-AGGREGATE-IMPORT.md).
+
 ```json
 { "1296269": { "id": 1296269, "node_id": "...", "owner": "vuejs", "owner_type": "Organization",
                "name": "vue", "full_name": "vuejs/vue", "language": "TypeScript",
@@ -742,7 +750,7 @@ Every artifact is defined with a Zod schema in `web/lib/contracts/` (schemas for
 ## Aggregate star-history provenance (issue 687)
 
 The optional `entity/{repo,org}.curve.provenance` and
-`rank/week/{period}/repo/flow.json.meta.provenance` fields carry the exact
+`rank/week/{period}/{repo,org}/flow.json.meta.provenance` fields carry the exact
 `provenance` object from GSC_0090's `inputs/manifest.json`, documented in
 [STAR-HISTORY-AGGREGATE.md](analysis/STAR-HISTORY-AGGREGATE.md#output-and-conversion-contract).
 `web/lib/contracts/star-history.ts` validates every field, including the fixed
@@ -754,6 +762,18 @@ values actually incorporate the aggregate source. Dates alone never establish
 provenance. Unknown repositories must remain absent, not measured zero. Edge ISO
 weeks W22/W40 require joining the independently measured adjacent days before a
 whole-week rank can be published; the label does not establish completeness.
+
+Weekly flow boards additionally accept optional `meta.provenance_scope: "mixed"`
+when their displayed top 100 combines existing observations and aggregate
+history. It requires the approved provenance object and a weekly flow metric.
+Absent scope preserves the previous aggregate-note behavior, and artifacts
+without either optional field remain valid. New publishers omit both fields
+for existing-only displayed rows and retain provenance without scope for
+aggregate-only displayed rows. Organization sums combine actual member flow
+sources; carried stock is not a new observation. The internal packed v1/v2
+formats remain unchanged. Weekly ranking pages and Pulse reuse the approved
+note for aggregate-only boards and select mixed-source copy in all seven
+locales when scope is present.
 
 The object describes **daily values only** within `curve`, never
 `curve.monthly`, monthly tables, stocks or milestones. For weekly rankings it
