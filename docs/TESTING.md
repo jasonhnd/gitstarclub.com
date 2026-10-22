@@ -56,6 +56,25 @@ Those commands are the current PR/`pre`/`main` static blockers; production build
 
 The managed-refresh `validate` step is a separate production-data publish gate: it samples `views/<run_id>/**` after recompute and blocks the `views/latest.json` pointer cut on validation failure. It is not a page-rendering or PR CI gate.
 
+### Fresh-machine test entry points
+
+Install each independent package with `bun install --frozen-lockfile`: root,
+`web/`, and `pipeline/`; also install `astro/` on `feat/astro-site`.
+Web tests import pipeline helpers, so installing only `web/` is insufficient.
+Use the complete clean-checkout gate in [AGENTS.md](../AGENTS.md), including
+`BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE="" bun run test:cov`
+from `web/`. `bun run test` is the quick isolated `lib/` suite. Bare `bun test`
+also discovers Playwright files and script tests and shares module mocks; its
+result is not a substitute for the documented gate.
+
+SEO acceptance requires an explicit nonblank `SEO_LIVE_BASE`; missing, empty,
+and whitespace values skip all live SEO suites without fetching. Existing
+sitemap assertions remain active when an origin is explicitly supplied. Request
+hooks and network tests allow the 30-second request abort to finish before Bun's
+outer timeout. Offline regression tests use only a loopback sitemap fixture,
+including a response slower than Bun's default five-second hook timeout, and
+confirm that malformed XML still fails.
+
 ### Offline backfill command coverage
 
 Issue 589 adds 88 tests through the unchanged `pipeline/` command
