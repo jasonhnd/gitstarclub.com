@@ -73,7 +73,7 @@ sitemap assertions remain active when an origin is explicitly supplied. Request
 hooks and network tests allow the 30-second request abort to finish before Bun's
 outer timeout. Offline regression tests use only a loopback sitemap fixture,
 including a response slower than Bun's default five-second hook timeout, and
-confirm that malformed XML still fails.
+confirm that an incomplete sitemap locale set still fails.
 
 Worker shell HTTP tests assert the generated build SHA when one exists, and the
 synthetic runtime binding in a source-only checkout. Building first must not make

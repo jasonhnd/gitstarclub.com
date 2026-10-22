@@ -32,11 +32,35 @@ shared toolchain per the owner's disk policy; keep other artifacts card-local.
 
 - Every reported failure has evidence and a clear classification; any unavoidable
   reproduction differences (external network blocked) are recorded.
-- Plain offline `bun test` succeeds with all package dependencies installed,
-  including after a local fixture build; existing assertions remain intact.
-- Full web coverage, pipeline tests, lint, all typechecks, fixture validation,
-  graph validation, and production/pre builds and host validation pass on the
-  exact PR head. `cf:dry-run` is skipped by owner order; Actions stays disabled.
+- The four reported tests behave correctly in plain Bun runs, including after
+  a fixture build. Record unrelated bare-run discovery/mock failures and retain
+  the documented isolated `lib/` gate; existing assertions remain intact.
+- Run full web coverage, pipeline tests, lint, all typechecks, fixture validation,
+  graph validation, production/pre builds, and host validation on the exact PR
+  head. Record any unchanged baseline failure under the external-network ban
+  explicitly; never weaken the font or host assertions. `cf:dry-run` is skipped
+  by owner order; Actions stays disabled.
 - PR contains `Closes #N`, commands/results, limitations, and independent review
   handoff. The current branch is clean and scratch output is removed except
   small referenced evidence and the cloud procedure.
+
+## Confirmed findings
+
+Issue #741 tracks this change. The two sitemap hooks use Bun's five-second
+outer timeout despite a 30-second request budget, and live SEO was enabled by
+default. A synthetic six-second sitemap reproduces both timeouts without a
+network request. Explicit opt-in and aligned outer timeouts fix that test setup.
+
+Both shell HTTP failures appear after a build writes the generated commit
+module. The runtime correctly prefers that baked identity to the synthetic
+`abc123` binding; tests must assert that precedence. Security-header assertions
+remain unchanged. Missing pipeline/web dependencies and missing Astro scratch
+configuration are installation/invocation problems rather than product defects.
+
+Bare Bun discovery also collects Playwright files and permits module mocks to
+leak between files. The supported full-suite entry remains `bun run test:cov`.
+Under the card's external-network ban, a separate pre-existing limitation is
+that an empty Google font cache produces remote stylesheet links; the unchanged
+host validator correctly refuses that artifact even when the Vite build exits
+successfully. Record this limitation separately from the four reported tests;
+no font-delivery, deploy-script, or host-config change belongs to this fix.
