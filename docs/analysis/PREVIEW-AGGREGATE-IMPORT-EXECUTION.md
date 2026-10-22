@@ -112,3 +112,20 @@ The old bootstrap pointer is absent. The managed views pointer is
 `refresh-2026-10-21T21-01-25-223Z`, published at
 `2026-10-21T22:08:08.586Z`. The read-only plan is running for
 `bootstrap-aggregate-gap-20261022T001946Z`; no import execution has started.
+
+### Page baseline
+
+Headless Google Chrome captured all six ordinary English/Japanese repository
+pages before import. All returned 200 and lacked the imported-history source
+note. The screenshots were inspected; the current-star cards remain positive.
+The exact current-star values below are from the unchanged published lookup.
+
+| Repository | Current stars | English page | Japanese page |
+| --- | ---: | --- | --- |
+| `react/react` | 251609 | `https://pre.gitstarclub.com/react/react` | `https://pre.gitstarclub.com/ja/react/react` |
+| `facebook/jscodeshift` | 10040 | `https://pre.gitstarclub.com/facebook/jscodeshift` | `https://pre.gitstarclub.com/ja/facebook/jscodeshift` |
+| `MSWorkers/support.996.ICU` | 10042 | `https://pre.gitstarclub.com/MSWorkers/support.996.ICU` | `https://pre.gitstarclub.com/ja/MSWorkers/support.996.ICU` |
+
+React plus the two smallest eligible retained repositories are selected from
+the prior plan and immutable lookup; the completed current dry-run and final
+verifier must confirm the same selection before this becomes import evidence.
