@@ -355,12 +355,12 @@
     "plan_matches_original": true,
     "plan_sha256": "23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1",
     "progress": {
-      "at": "2026-10-22T05:40:03.240Z",
+      "at": "2026-10-22T06:42:19.170Z",
       "lease": {
         "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
         "status": "running",
         "acquired_at": "2026-10-22T03:44:08.277Z",
-        "expires_at": "2026-10-22T05:49:41.598Z",
+        "expires_at": "2026-10-22T06:52:05.618Z",
         "fencing_token": 6,
         "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
         "trigger": "bootstrap-cli"
@@ -396,12 +396,12 @@
         "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
         "phase": "base",
         "prefix": "bootstrap/generations/bootstrap-aggregate-recovery-8adece3468c17fa8/views/",
-        "bytes_staged": 3468976,
+        "bytes_staged": 3979951,
         "groups": {
           "categories": 34,
-          "entity": 5780
+          "entity": 6372
         },
-        "objects_staged": 5814
+        "objects_staged": 6406
       }
     }
   },
@@ -448,6 +448,8 @@
       "target": "cf",
       "host": "pre.gitstarclub.com"
     },
-    "resumed_token": 6
+    "resumed_token": 6,
+    "replay_passed_new_staging_at": "2026-10-22T06:42:19.170Z",
+    "recovery_base_objects": 6406
   }
 }
