@@ -14,13 +14,13 @@ Issue #736 / card GSC_0161 executes the separately authorized preview
 scope and acceptance. This report supplies evidence to the independent
 reviewer; it does not record owner acceptance.
 
-**Current status: deployed, import not published.** Execution is safely paused
-for continuation after `2026-10-22T03:30:00Z`. The public bootstrap pointer is
-still absent, the managed views pointer is unchanged, the owned writer lease
-has been released, and both health records remain ok. Counts below describe
-the checked read-only plan, not a completed publication. The structured
-[pause evidence](preview-aggregate-import-evidence.json) records the exact
-state and six baseline screenshots.
+**Current status: deployed, import running but not published.** After the
+scheduled exclusion window, a fresh complete read-only plan and immediate
+source/identity/idle checks passed. The exact same-generation command resumed
+with token 6. The public bootstrap pointer remains absent while immutable
+recovery/repaired objects are staged and verified. Counts below remain planned
+until publication succeeds. The structured [execution evidence](preview-aggregate-import-evidence.json)
+retains both the deliberate pause and current resume state.
 
 ## Exact deployment candidate and local gate
 
@@ -221,3 +221,17 @@ the fresh read-only plan completed with exit 0 before same-generation execution.
 Its full JSON is byte-identical to the original plan (SHA-256
 `23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1`),
 including all imported/skipped entries and incomplete edge joins.
+
+### Same-generation resume in progress
+
+The immediate checks passed at `03:44:04.181Z`, and the original runbook
+`--execute` command acquired token 6 using the retained generation/checkpoint.
+At `04:17:12.677Z`, the lease was still running and renewed through
+`04:27:07.751Z`; recovery base had advanced to 1309/10775 objects without an
+immutable conflict. The bootstrap pointer remained null. No publication or
+post-publication verification is claimed from this progress observation.
+Pinned cf independently confirmed the original deployment/version at 100%.
+
+All 5674 current-star values in the original published lookup are positive.
+After publication, the verifier must prove that the complete lookup remains
+identical and unavailable history remains unobserved, rather than zero-filled.

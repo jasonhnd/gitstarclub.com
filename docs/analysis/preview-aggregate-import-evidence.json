@@ -2,8 +2,8 @@
   "schema_version": 1,
   "card": "GSC_0161",
   "issue": 736,
-  "status": "scheduled_continuation_import_not_published",
-  "recorded_at": "2026-10-22T00:55:35.427073+00:00",
+  "status": "import_running_not_published",
+  "recorded_at": "2026-10-22T04:17:12.677Z",
   "resume_after": "2026-10-22T03:30:00Z",
   "deployment": {
     "identity": {
@@ -285,5 +285,124 @@
     "wrangler_opennext_invoked": false,
     "actions_enabled": false,
     "final_acceptance_or_merge": false
+  },
+  "resume": {
+    "preflight": {
+      "active": false,
+      "lease": {
+        "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+        "status": "failed",
+        "acquired_at": "2026-10-22T00:54:01.318Z",
+        "expires_at": "2026-10-22T00:54:01.318Z",
+        "fencing_token": 5,
+        "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+        "trigger": "bootstrap-cli"
+      },
+      "bootstrap": null,
+      "views": {
+        "version": "refresh-2026-10-21T21-01-25-223Z",
+        "run_id": "refresh-2026-10-21T21-01-25-223Z",
+        "published_at": "2026-10-21T22:08:08.586Z",
+        "prev_version": null,
+        "schema_ver": 1
+      }
+    },
+    "immediate_before": {
+      "active": false,
+      "lease": {
+        "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+        "status": "failed",
+        "acquired_at": "2026-10-22T00:54:01.318Z",
+        "expires_at": "2026-10-22T00:54:01.318Z",
+        "fencing_token": 5,
+        "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+        "trigger": "bootstrap-cli"
+      },
+      "bootstrap": null,
+      "views": {
+        "version": "refresh-2026-10-21T21-01-25-223Z",
+        "run_id": "refresh-2026-10-21T21-01-25-223Z",
+        "published_at": "2026-10-21T22:08:08.586Z",
+        "prev_version": null,
+        "schema_ver": 1
+      }
+    },
+    "live_before": {
+      "schema_ver": 1,
+      "generation": "daily-2026-10-22T03-02-23-495Z",
+      "run_id": "daily-2026-10-22T03-02-23-495Z",
+      "idempotency_key": "daily:2026-10-22",
+      "job": "daily",
+      "day": "2026-10-22",
+      "month": "2026-10",
+      "week": "2026-W43",
+      "published_at": "2026-10-22T03:08:33.270Z",
+      "previous_generation": "daily-2026-10-21T23-09-32-126Z",
+      "lease": null
+    },
+    "provider": {
+      "id": "b46ca600-d1d1-4e01-8ba8-dad20baee17c",
+      "source": "cf_cli",
+      "strategy": "percentage",
+      "versions": [
+        {
+          "version_id": "5907d936-3ec4-43b1-9d0e-d5f20f45b3df",
+          "percentage": 100
+        }
+      ],
+      "created_on": "2026-10-22T00:19:31.328676Z"
+    },
+    "plan_matches_original": true,
+    "plan_sha256": "23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1",
+    "progress": {
+      "at": "2026-10-22T04:17:12.677Z",
+      "lease": {
+        "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+        "status": "running",
+        "acquired_at": "2026-10-22T03:44:08.277Z",
+        "expires_at": "2026-10-22T04:27:07.751Z",
+        "fencing_token": 6,
+        "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+        "trigger": "bootstrap-cli"
+      },
+      "current_generation": null,
+      "phases": [
+        {
+          "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+          "phase": "canonical",
+          "sealed": true,
+          "objects": 134
+        },
+        {
+          "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+          "phase": "base",
+          "sealed": false,
+          "objects": null
+        },
+        {
+          "target": "bootstrap-aggregate-gap-20261022T001946Z",
+          "phase": "canonical",
+          "sealed": false,
+          "objects": null
+        },
+        {
+          "target": "bootstrap-aggregate-gap-20261022T001946Z",
+          "phase": "base",
+          "sealed": false,
+          "objects": null
+        }
+      ],
+      "active": {
+        "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+        "phase": "base",
+        "prefix": "bootstrap/generations/bootstrap-aggregate-recovery-8adece3468c17fa8/views/",
+        "bytes_staged": 1860565,
+        "groups": {
+          "categories": 34,
+          "entity": 1275
+        },
+        "objects_staged": 1309
+      }
+    }
   }
 }
