@@ -262,3 +262,9 @@ The exact runbook execution command resumed at `05:47:37.695Z` and retained
 token 6; snapshot rereading and immutable replay precede further new writes.
 No checkpoint/generation reset, new writer, object overwrite or pointer edit
 was used. The publication and post-verification remain pending.
+
+At `06:42:19.170Z`, the recovery base had advanced from the retained 5872
+objects to 6406/10775. This confirms the restart reread/immutable replay passed
+and new staging resumed under the same token 6, without an immutable conflict.
+The lease was renewed through `06:52:05.618Z`; the bootstrap pointer remained
+null. Publication and after-page evidence are still pending.
