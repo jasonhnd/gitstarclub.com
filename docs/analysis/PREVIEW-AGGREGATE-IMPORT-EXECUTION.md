@@ -277,3 +277,14 @@ write-stage completion, not completion of the bounded verification pass.
 The importer remains running under token 6; the repaired canonical prefix still
 has zero staged objects at this observation, and the bootstrap pointer is null.
 No publication or after-page evidence is claimed from this milestone.
+
+### Recovery and repaired canonical verification complete
+
+At `09:00:29.356Z`, the repaired base prefix contained 36 staged objects and
+the repaired 134-object canonical manifest was sealed. The reviewed client
+enters base staging only after the recovery canonical/base verification and
+repaired canonical stage/seal/verification complete. Those phases therefore
+passed under token 6. The original recovery holds 134 canonical and 10775 base
+objects; its immutable snapshot remains available for the eventual pointer's
+previous generation. Repaired base staging and its verification/publication
+remain pending, and the bootstrap pointer is still null.
