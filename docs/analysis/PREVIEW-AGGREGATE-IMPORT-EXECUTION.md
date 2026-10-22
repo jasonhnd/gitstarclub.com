@@ -15,13 +15,18 @@ scope and acceptance. This report supplies evidence to the independent
 reviewer; it does not record owner acceptance.
 
 **Current status: bootstrap published; page views still use the prior refresh.**
-The GSC_0161 progress record ends after all four recovery/repaired phases were
-sealed, before it confirmed bounded verification or the conditional pointer
-commit. The later GSC_0169 public readback observed the bootstrap generation
-published, while `views/latest.json` still names the previous refresh. Thus the
-plan counts remain planned, not confirmed publication counts. The structured
-[execution evidence](preview-aggregate-import-evidence.json) records the final
-readback and its remaining page visibility gap.
+The import process exited successfully at `2026-10-22T12:49:07Z`. The
+published `bootstrap/latest.json` names generation
+`bootstrap-aggregate-gap-20261022T001946Z` (published at
+`2026-10-22T12:49:05.410Z`), following
+`bootstrap-aggregate-recovery-8adece3468c17fa8`. The report status is
+published: 5238 repositories imported, 441 skipped, 649512 daily and 89046
+weekly records added, and 10476 edge weeks skipped. The lease was published
+and released. `views/latest.json` still names
+`refresh-2026-10-21T21-01-25-223Z`; pages can show the history only after a
+later managed refresh, which GSC_0171 will check after `2026-10-25 06:00 UTC`.
+The structured [execution evidence](preview-aggregate-import-evidence.json)
+records these results and the remaining page visibility gap.
 
 ## Exact deployment candidate and local gate
 
@@ -251,10 +256,10 @@ The completed deployment, complete unchanged read-only plan and new-token
 canonical verification were already committed and pushed at `a1b79e4` before
 the backend restart. The last completed monitor at `05:40:03.240Z` observed
 5814/10775 recovery base objects, token 6 renewing and no bootstrap pointer.
-The restart interrupted the local operator process; publication is unconfirmed
-and the same generation/checkpoint is retained. Fresh process/lease/pointer
-inspection precedes any retry, and no second writer will be started alongside
-an existing process.
+The restart interrupted the local operator process; at this observation
+publication was unconfirmed and the same generation/checkpoint was retained.
+Fresh process/lease/pointer inspection preceded continuation, and no second
+writer was started alongside an existing process.
 
 Fresh restart readback matched the original deployment, bootstrap/views source
 pointers and reviewed live generation with a null live lease. The only active
@@ -320,6 +325,9 @@ or a visible history-source note in English; the Japanese React page showed no
 month-history/source content. No checked page displayed a literal zero-star
 count. The unavailable `kitao/pyxel` page showed current stars without history,
 so no history was invented. These page results do not show that the imported
-history is available through the current views pointer. The 5238/441 allocation
-and daily/weekly/edge counts above remain read-only plan counts; the final
-readback did not report actual publication counts.
+history is available through the current views pointer. Import execution
+exited successfully at `2026-10-22T12:49:07Z`; the published report confirms
+5238 imported, 441 skipped, 649512 daily and 89046 weekly records added, and
+10476 edge weeks skipped. The published lease was released. Pages can show the
+history only after a later managed refresh; GSC_0171 will check after
+`2026-10-25 06:00 UTC`.
