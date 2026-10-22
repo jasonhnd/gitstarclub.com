@@ -13,7 +13,8 @@ import { withBootstrapPublicationLease } from "../../../pipeline/lib/bootstrap-l
 import { assertBootstrapGeneration, commitBootstrapGeneration, stageBootstrapPhase, verifyBootstrapGeneration } from "../../../pipeline/lib/bootstrap-publication.mjs";
 import { digest, type AggregateBundle, type GapSeries } from "./aggregate-history-input";
 
-export const PREVIEW_BUCKET = "gitstarclub-data-pre";
+export { PREVIEW_BUCKET } from "../../lib/aggregate-history/policy";
+import { PREVIEW_BUCKET } from "../../lib/aggregate-history/policy";
 const SOURCE = AGGREGATE_HISTORY_PROVENANCE;
 const START = SOURCE.start;
 const END = SOURCE.end_inclusive;
@@ -28,6 +29,13 @@ export type ImportReport = {
   skipped: Array<{ repo_id: number; name: string; reason: string }>;
   edge_weeks_skipped: Array<{ repo_id: number; week: string; missing_days: string[] }>;
   counts?: { repositories_imported: number; repositories_skipped: number; daily_added: number; weekly_added: number; edge_weeks_skipped: number };
+};
+
+export type AggregateImportResult = { status: string; report?: ImportReport };
+export type AggregateImportPublisher = {
+  withLease(run: (renew: () => Promise<void>) => Promise<AggregateImportResult>): Promise<AggregateImportResult>;
+  stage(generation: string, phase: "canonical" | "base", items: Array<{ path: string; body: Buffer; contentType?: string }>): Promise<void>;
+  commit(recoveryGeneration?: string): Promise<void>;
 };
 
 export function weekDays(week: string): string[] {
@@ -91,12 +99,14 @@ async function readPrefix(store: ObjectStore, prefix: string, into: Map<string, 
   do {
     await renew();
     const page = await store.list({ prefix, cursor, limit: 1000 });
-    for (const item of page.blobs) {
-      if (!item.pathname.startsWith(prefix)) throw new Error("Object listing escaped the snapshot prefix");
-      await renew();
-      const value = await store.getBytes!(item.pathname);
-      if (!value) throw new Error(`Snapshot object disappeared: ${item.pathname}`);
-      into.set(item.pathname.slice(prefix.length), Buffer.from(value.body));
+    for (let offset = 0; offset < page.blobs.length; offset += 8) {
+      await Promise.all(page.blobs.slice(offset, offset + 8).map(async (item) => {
+        if (!item.pathname.startsWith(prefix)) throw new Error("Object listing escaped the snapshot prefix");
+        await renew();
+        const value = await store.getBytes!(item.pathname);
+        if (!value) throw new Error(`Snapshot object disappeared: ${item.pathname}`);
+        into.set(item.pathname.slice(prefix.length), Buffer.from(value.body));
+      }));
     }
     if (!page.hasMore) break;
     if (!page.cursor || cursors.has(page.cursor)) throw new Error("Truncated or repeated snapshot listing");
@@ -230,27 +240,28 @@ export function repairSnapshot(snapshot: Snapshot, bundle: AggregateBundle, gene
   return report;
 }
 
-async function assertIdle(store: ObjectStore): Promise<void> {
+async function assertIdle(store: ObjectStore, resumableGeneration?: string): Promise<void> {
   const lease = await store.get("ops/workflows/active.json");
   if (!lease) return;
-  const value = JSON.parse(lease.body) as { status: string; expires_at: string; fencing_token: number };
+  const value = JSON.parse(lease.body) as { status: string; expires_at: string; fencing_token: number; run_id?: string };
   if (!["running", "published", "failed"].includes(value.status) || !Number.isFinite(Date.parse(value.expires_at)) || !Number.isInteger(value.fencing_token)) {
     throw new Error("Invalid preview workflow lease");
   }
+  if (resumableGeneration && value.run_id === `bootstrap-publish-${resumableGeneration}`) return;
   if (value.status === "running" && Date.parse(value.expires_at) > Date.now()) throw new Error("Preview refresh lease is active; retry after it finishes");
 }
 
 export async function importAggregateHistory(options: {
-  store: ObjectStore; bundle: AggregateBundle; generation: string; execute: boolean;
-}): Promise<{ status: string; report?: ImportReport }> {
-  const { store, bundle, generation, execute } = options;
+  store: ObjectStore; bundle: AggregateBundle; generation: string; execute: boolean; publisher?: AggregateImportPublisher;
+}): Promise<AggregateImportResult> {
+  const { store, bundle, generation, execute, publisher } = options;
   assertBootstrapGeneration(generation);
   if (!generation.startsWith("bootstrap-aggregate-")) throw new Error("Use a dedicated bootstrap-aggregate-<id> generation");
   const identity = await store.get("_meta/bucket-identity.json");
   const marker = identity ? JSON.parse(identity.body) as { bucket: string; deploy_env: string } : null;
   if (marker?.bucket !== PREVIEW_BUCKET || marker.deploy_env !== "pre") throw new Error("Aggregate import requires the exact preview bucket identity");
   if (!store.getBytes) throw new Error("Aggregate import requires binary snapshot reads");
-  await assertIdle(store);
+  await assertIdle(store, execute && publisher ? generation : undefined);
   const adapter = createObjectStoreBootstrapAdapter(store);
   const current = await adapter.read("bootstrap/latest.json");
   if (current && BootstrapPublicationPointer.parse(json(current)).generation === generation) {
@@ -310,11 +321,14 @@ export async function importAggregateHistory(options: {
     for (const [target, data] of [...(recovery ? [[recoveryGeneration!, recovery] as const] : []), [generation, snapshot] as const]) {
       for (const [phase, files] of [["canonical", data.canonical], ["base", data.base]] as const) {
         const items = [...files].map(([path, body]) => ({ path: phase === "base" ? `views/${path}` : `canonical/v2/${path}`, body, contentType: "application/json" }));
-        await stageBootstrapPhase({ generation: target, phase, items, store: guarded });
+        if (publisher) await publisher.stage(target, phase, items);
+        else await stageBootstrapPhase({ generation: target, phase, items, store: guarded });
       }
     }
-    await commitBootstrapGeneration({ generation, store: guarded, assertCanCommit, recoveryGeneration });
+    if (publisher) await publisher.commit(recoveryGeneration);
+    else await commitBootstrapGeneration({ generation, store: guarded, assertCanCommit, recoveryGeneration });
     return { status: "published", report };
   };
+  if (execute && publisher) return publisher.withLease(run);
   return execute ? withBootstrapPublicationLease({ store: adapter, generation, operation: "publish", run }) : run();
 }
