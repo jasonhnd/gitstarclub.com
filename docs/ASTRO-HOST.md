@@ -18,6 +18,21 @@ integration does not claim a live cutover. Deployment requires separate owner
 authorization. GitHub Actions stays disabled. CI configuration and the two
 required job names, `static` and `production-build`, are unchanged.
 
+## About-page paint timing
+
+The #735 local diagnostic identified the shared 620 ms `animate-rise` title
+animation as the English About page's late largest contentful paint (LCP).
+The title became the largest candidate at 680-700 ms while the local fonts
+completed around 36 ms; the Japanese page's larger paragraph painted earlier.
+The same five-run diagnostic reported web at 704 ms, so the earlier 244 ms web
+comparison is sensitive to animation/renderer timing rather than a stable
+font or network difference. Astro About opts out of the shared hero's title
+animation, making its final text visible immediately without changing the
+settled layout, content or client JavaScript. Other hero callers retain their
+existing default. The five-run follow-up reduced Astro English About LCP from
+684 ms to 64 ms (FCP stayed 32 ms); Japanese LCP was 64 ms before and 68 ms
+after. Final exact-head full performance results are recorded in the PR.
+
 ## Host and operational contract
 
 [Astro configuration](../astro/cloudflare.config.ts) reuses the existing
