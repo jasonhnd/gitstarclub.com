@@ -204,3 +204,17 @@ immutable partial objects. A changed source pointer or immutable conflict
 requires investigation as the original runbook specifies. Actual publication
 counts, after screenshots, source/weekly labels, unavailable-repository checks
 and the final delivery-head gate/PR remain unfinished.
+
+### Resumed preflight after the scheduled window
+
+The scheduled continuation resumed at `2026-10-22T03:30:00Z`. The sole detached
+operator clone was recreated at the deployed `96b6189`; official archive
+checksums and Node/Bun versions were reverified and both frozen dependency
+installs passed with a clean tree. The deployment identity remains unchanged.
+
+The normal daily job completed successfully at `03:08:36.645Z`, advancing
+`live/latest.json` to `daily-2026-10-22T03-02-23-495Z` with `lease=null`.
+Both workflow health records are ok. Authenticated readback still finds no
+bootstrap pointer, the original managed views pointer, and terminal/inactive
+token 5. The separately saved resume preflight preserves the original evidence;
+a fresh read-only plan is in progress before same-generation execution.
