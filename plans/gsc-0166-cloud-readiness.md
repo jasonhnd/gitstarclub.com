@@ -64,3 +64,8 @@ that an empty Google font cache produces remote stylesheet links; the unchanged
 host validator correctly refuses that artifact even when the Vite build exits
 successfully. Record this limitation separately from the four reported tests;
 no font-delivery, deploy-script, or host-config change belongs to this fix.
+
+The original Astro baseline also passed all 205 pipeline command tests but failed
+its final synchronous fixture-disposal hook after 8.1 seconds on the shared disk.
+Give that cleanup hook 30 seconds without changing any command assertion; the
+exact-head full gate will verify it with the other test fixes.
