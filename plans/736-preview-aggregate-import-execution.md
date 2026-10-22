@@ -66,7 +66,7 @@ Do not run during 02:50-03:30 UTC daily or Sunday 03:50-08:00 UTC.
 - Complete read-only plan passed: 5238 imports, 441 skips, 649512 daily and
   89046 weekly additions, 10476 incomplete edge joins. Every import, skip and
   edge join was checked; the full skip list exactly matches GSC_0154.
-- The actual import is intentionally paused/unpublished for continuation at
+- The first actual import attempt was intentionally paused/unpublished for continuation at
   `2026-10-22T03:30:00Z`. The observed base-write rate cannot finish before
   the forbidden daily window. Token 5 is released; the same checkpoint is
   retained with terminal `failed` status through normal publisher cleanup.
@@ -119,3 +119,8 @@ source pointers, a released workflow lease and a null live lease after the
 successful daily job. The fresh full read-only plan is byte-identical to the
 original checked plan. Draft PR #740 records the deployment/local gate and
 unfinished execution; same-generation resume follows this successful recheck.
+
+The same-generation resume acquired token 6 at 03:44 UTC. Recovery canonical
+stage/seal/verification accepted the original immutable bytes under that token;
+recovery base is progressing. Publication, after evidence and final delivery
+verification remain pending.

@@ -235,3 +235,10 @@ Pinned cf independently confirmed the original deployment/version at 100%.
 All 5669 current-star values in the original published lookup are positive.
 After publication, the verifier must prove that the complete lookup remains
 identical and unavailable history remains unobserved, rather than zero-filled.
+
+By `04:52:54.277Z`, recovery base reached 3397/10775 objects. The client
+enters that phase only after the recovery canonical stage, seal and bounded
+verification finish under the new token. This confirms that the previously
+sealed canonical snapshot was accepted unchanged during resume. The normal
+daily live-pointer advance did not cause an immutable canonical conflict.
+Publication remains pending until both complete generations are verified.
