@@ -75,6 +75,12 @@ outer timeout. Offline regression tests use only a loopback sitemap fixture,
 including a response slower than Bun's default five-second hook timeout, and
 confirm that malformed XML still fails.
 
+Worker shell HTTP tests assert the generated build SHA when one exists, and the
+synthetic runtime binding in a source-only checkout. Building first must not make
+identity assertions assume that the runtime binding overrides the baked commit.
+The pure identity tests separately require baked-commit precedence and explicit
+no-build fallback behavior.
+
 ### Offline backfill command coverage
 
 Issue 589 adds 88 tests through the unchanged `pipeline/` command
