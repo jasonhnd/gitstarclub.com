@@ -4,6 +4,7 @@ const zhTw: Dict = {
   nav: { home: "首頁", pulse: "脈搏", rankings: "排行榜", categories: "分類", organizations: "組織", compare: "對比", about: "關於" },
   common: {
     starHistoryNote: "2026年5月30日至9月30日的每日、每週資料採用 GitHub 對蒐集時仍然存在的星標所做的歷史彙總。日界約為 UTC，可能相差幾小時。",
+    starHistoryMixedNote: "此每週榜單混合了既有觀測值與2026年5月30日至9月30日的 GitHub 星標歷史彙總值。只有彙總值統計蒐集時仍然存在的星標；其日界約為 UTC，可能相差幾小時。",
     faqHeading: "常見問題",
     dataLastUpdated: "資料最後更新",
     dataAsOf: "資料截至",

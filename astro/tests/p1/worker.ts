@@ -47,3 +47,20 @@ try {
   writeFileSync(resolve(process.env.KANBAN_TMP!, "p1-routes.json"), JSON.stringify({ passed: true, results }, null, 2) + "\n");
   console.log(`P1 Worker: ${results.length} populated route/locale cases passed; invalid and missing periods rejected.`);
 } finally { await worker.dispose(); }
+
+const mixedWorker = await startWorker(p1FixtureRecords("mixed"));
+try {
+  const origin = (await mixedWorker.ready).origin;
+  for (const locale of LOCALES) {
+    const t = await getDictionary(locale);
+    for (const path of ["/", "/rankings/2026/W29", "/pulse"]) {
+      const url = origin + localizedPath(locale, path);
+      const response = await fetch(url, { headers: { "accept-language": "en" } });
+      const html = await response.text();
+      assert.equal(response.status, 200, url);
+      assert.ok(html.includes(t.common.starHistoryMixedNote), `${url}: mixed-source note missing`);
+      assert.ok(!html.includes(t.common.starHistoryNote), `${url}: aggregate-only note must not label mixed rows`);
+    }
+  }
+  console.log("P1 mixed-source Worker: weekly ranking, home and pulse notes passed in all seven locales (21 cases).");
+} finally { await mixedWorker.dispose(); }

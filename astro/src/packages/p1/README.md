@@ -1,5 +1,11 @@
 # P1 home and rankings
 
+Weekly ranking and home/pulse boards use the shared `weeklyRankSourceNote`
+selector. Explicit mixed provenance renders `starHistoryMixedNote`; legacy
+aggregate provenance retains `starHistoryNote`. The dictionaries remain shared
+across all seven locales. The Worker runner checks both scopes, including
+weekly ranking, home and P5 pulse output for each locale.
+
 The Astro entries serve the existing English and six localized home, all-time,
 year, month and ISO-week pages. Daily movement remains inside month pages;
 there is no new daily route. Invalid/unpublished periods retain 404 behavior.

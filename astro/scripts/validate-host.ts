@@ -6,6 +6,7 @@ import { astroHostWorker } from "../cloudflare.config";
 import { startWorker } from "./local-worker";
 import { fixtureRecords } from "./fixture";
 import { contentSecurityPolicyForEnvironment } from "../../web/lib/csp";
+import { assertHostContract } from "../../scripts/cf-ci-gates.mjs";
 
 const mode = process.argv[process.argv.indexOf("--mode") + 1];
 assert(["production", "pre"].includes(mode), "--mode production or pre required");
@@ -23,7 +24,13 @@ const expected = astroHostWorker(mode, config.env.BLOB_BASE_URL ? { BLOB_BASE_UR
 for (const field of ["name", "compatibilityDate", "compatibilityFlags", "workersDev", "previewUrls", "observability", "triggers", "env", "assets"] as const) {
   assert.deepEqual(config[field], expected[field], `preserve ${field}`);
 }
-assert(config.triggers.every((trigger: { type: string }) => trigger.type === "queue"), "no schedules/routes added");
+assert.deepEqual(assertHostContract(astroHostWorker(mode), mode, "astro"), [], "source host contract");
+assert.deepEqual(config.triggers.filter((trigger: { type: string }) => trigger.type === "scheduled"),
+  mode === "pre" ? ["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"].map((schedule) => ({ type: "scheduled", schedule })) : [],
+  "preview schedules only; production remains queue-only");
+for (const flag of ["WORKFLOW_COLD_START", "PREFLIGHT_RELAX_EMPTY_SHARDS", "WORKFLOW_FIXTURE"]) {
+  assert(!Object.hasOwn(config.env, flag), `${flag} must stay absent`);
+}
 const assets = resolve(output, "workers/default/assets");
 const fontFiles = readdirSync(resolve(assets, "_astro")).filter((path) => /\.(?:woff2?|ttf)$/.test(path));
 assert(fontFiles.some((path) => path.includes("jakarta")) && fontFiles.some((path) => path.includes("geist")), "both local font families packaged");
@@ -63,5 +70,5 @@ try {
   assert.equal((await (await get("/.well-known/deployment")).json()).commitSha, commit);
   assert.equal((await (await get("/preview/identity")).json()).commitSha, commit);
   assert.equal((await (await get("/preview/health")).json()).hosting, "astro");
-  console.log(`Astro host validated: ${mode}; ${commit}; bindings/queue/indexing/CSP/local fonts/default PNG/cockpit 404`);
+  console.log(`Astro host validated: ${mode}; ${commit}; schedules=${JSON.stringify(config.triggers.filter((trigger: { type: string }) => trigger.type === "scheduled"))}; bindings/queue/indexing/CSP/local fonts/default PNG/cockpit 404`);
 } finally { await worker.dispose(); }

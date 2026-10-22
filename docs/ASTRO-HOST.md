@@ -18,12 +18,30 @@ integration does not claim a live cutover. Deployment requires separate owner
 authorization. GitHub Actions stays disabled. CI configuration and the two
 required job names, `static` and `production-build`, are unchanged.
 
+## About-page paint timing
+
+The #735 local diagnostic identified the shared 620 ms `animate-rise` title
+animation as the English About page's late largest contentful paint (LCP).
+The title became the largest candidate at 680-700 ms while the local fonts
+completed around 36 ms; the Japanese page's larger paragraph painted earlier.
+The same five-run diagnostic reported web at 704 ms, so the earlier 244 ms web
+comparison is sensitive to animation/renderer timing rather than a stable
+font or network difference. Astro About opts out of the shared hero's title
+animation, making its final text visible immediately without changing the
+settled layout, content or client JavaScript. Other hero callers retain their
+existing default. The five-run follow-up reduced Astro English About LCP from
+684 ms to 64 ms (FCP stayed 32 ms); Japanese LCP was 64 ms before and 68 ms
+after. Final exact-head full performance results are recorded in the PR.
+
 ## Host and operational contract
 
 [Astro configuration](../astro/cloudflare.config.ts) reuses the existing
 [typed resource contract](../web/cloudflare.config.ts) and
 [public mode vars](../web/host-contract.mjs), changing the entry and asset paths.
-No schedules, DNS, routes, secrets or resource names change.
+The second integration sync (#735) carries the web host's preview-only schedules
+and removal of first-publication flags. Source configuration does not activate
+remote schedules; deployment remains separately authorized. DNS, routes, secrets
+and resource names are unchanged.
 
 | Contract | production | pre |
 | --- | --- | --- |
@@ -36,7 +54,21 @@ No schedules, DNS, routes, secrets or resource names change.
 | Public data origin | data.gitstarclub.com | data-pre.gitstarclub.com |
 | workers.dev / version URLs | disabled / disabled | enabled / enabled |
 | Indexing | index, follow | noindex, nofollow |
-| Scheduled triggers | absent | absent |
+| Scheduled triggers | absent | `0 3 * * *`, `0 4 * * SUN`, `0 6 * * SUN` |
+
+Both modes omit `WORKFLOW_COLD_START`, `PREFLIGHT_RELAX_EMPTY_SHARDS` and
+`WORKFLOW_FIXTURE`. The shared host-contract gate validates the Astro entry and
+asset paths as well as the web host; `validate:host` also checks the built
+mode-specific schedules and absence of the flags. The adapter-free
+`astro/host-contract.ts` factory lets the existing web static job perform that
+check after its web install, without an additional Astro dependency install.
+
+The scheduled entry delegates to the same `handleScheduled`/`planCronDispatch`
+as web: daily calls `/api/cron/daily`, Sunday 04:00 calls `/api/cron/weekly`,
+and Sunday 06:00 starts managed refresh at `/api/workflows/refresh/start`.
+The built-entry regression test intercepts those authenticated GETs at a local
+synthetic HTTP server, including Cloudflare numeric Sunday aliases and failure
+propagation. It never invokes a deployed operational endpoint.
 
 KV is the persistent key/value page cache. DATA is the native R2 data binding;
 MEDIA stays the shared asset bucket. JOBS is the refresh task queue.

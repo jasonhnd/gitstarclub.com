@@ -14,7 +14,7 @@ import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, datasetTemporalCoverageFromYearSpine } from "@/lib/jsonld";
 import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { currentUtcPeriods } from "@/lib/periods";
-import { hasAggregateWeek } from "@/lib/star-history-provenance";
+import { weeklyRankSourceNote } from "@/lib/star-history-provenance";
 import { localizedPulseBoardHrefs } from "@/lib/pulse-board-links";
 import {
   availablePeriodLabel,
@@ -125,7 +125,7 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
             title={t.week.top}
             href={boards.week}
             meta={weekMeta}
-            note={activeWeekRank && weekRows.length > 0 && hasAggregateWeek(activeWeekRank.meta.window, activeWeekRank.meta.period, activeWeekRank.meta.provenance) ? t.common.starHistoryNote : undefined}
+            note={activeWeekRank && weekRows.length > 0 ? weeklyRankSourceNote(activeWeekRank.meta, t.common) : undefined}
             rows={weekRows}
             labels={repoLabels}
             openLabel={fullBoardLabel}
