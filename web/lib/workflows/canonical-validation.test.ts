@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { FetchTimeoutError } from "@/lib/fetch-timeout.mjs";
 import { withWorkerEnv } from "@/lib/workers-host/runtime-env";
 import { HISTORY_AVAILABILITY_KEY, readHistoryAvailability } from "./history-availability";
 import {
@@ -57,6 +58,20 @@ describe("validateCanonicalGeneration", () => {
     expect(result.placeholders).toEqual([]);
     expect(result.manifest.shards.filter(({ kind }) => kind === "repo-monthly").every(({ records }) => records === 0)).toBe(true);
     expect(emptySeriesPreflightFailures(result.acc, "fail-closed", readHistoryAvailability(unavailableHistory, { DEPLOY_ENV: "pre" }))).toEqual([]);
+  });
+
+  test.each([
+    ["403", new Error("view fetch canonical/v2/history-availability.json -> 403")],
+    ["timeout", new FetchTimeoutError("https://blob.example.com/canonical/v2/history-availability.json", 5)],
+    ["invalid JSON", new SyntaxError("JSON Parse error: Unexpected EOF")],
+  ] as const)("a thrown marker read (%s) rejects canonical validation", async (_label, error) => {
+    const reader = historyReader(unavailableHistory);
+    await expect(withWorkerEnv({ DEPLOY_ENV: "pre" }, () => validateCanonicalGeneration("marker-throw", {
+      reader: async (path, schema) => {
+        if (path === HISTORY_AVAILABILITY_KEY) throw error;
+        return reader(path, schema);
+      },
+    }))).rejects.toThrow(error.message);
   });
 
   test.each([null, {}, { ...unavailableHistory, monthly: "available" }, { ...unavailableHistory, seed_date: "2026-02-30" }])(
