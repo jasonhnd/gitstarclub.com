@@ -4,7 +4,7 @@ import { resolveWorkflowRuntime } from "../../../../web/lib/workflows/runtime/re
 import { runRefreshStepRoute } from "../../../../web/lib/workflows/runtime/step-route";
 import { startRefreshWorkflowRoute } from "../../../../web/lib/workflows/start";
 import { invalidatePublishedViews } from "../../../../web/lib/workflows/publication-cache";
-import { corePublicationRevalidatePaths } from "../../../../web/lib/data/core-revalidate-paths";
+import { resolveCacheInvalidation } from "../../../../web/lib/cache-invalidation";
 import { requireBearerToken } from "../../../../web/lib/security";
 
 // The workflow/data layer stays shared with web; only its framework boundary moves.
@@ -49,7 +49,7 @@ export async function step(context: OperationContext): Promise<Response> {
   });
 }
 
-/** Auth first; invalidate the shared data caches and await the Astro page hook. */
+/** Auth first; invalidate pointer caches. HTML switches by publication namespace. */
 export async function revalidate(
   context: Pick<OperationContext, "request"> & {
     locals: Pick<App.Locals, "invalidatePaths">;
@@ -57,7 +57,11 @@ export async function revalidate(
 ): Promise<Response> {
   const unauthorized = requireBearerToken(context.request.headers.get("authorization"));
   if (unauthorized) return unauthorized;
-  await invalidatePublishedViews();
-  await context.locals.invalidatePaths(corePublicationRevalidatePaths());
+  const cache = resolveCacheInvalidation();
+  await invalidatePublishedViews({
+    revalidateTag: (tag, options) => cache.revalidateTag(tag, options),
+    // Astro does not consume web framework path tags; all HTML is publication-keyed.
+    revalidatePath: async () => {},
+  });
   return Response.json({ ok: true });
 }

@@ -160,15 +160,16 @@ test("step: malformed JSON/job/fixture and a full step successor match", async (
   expect(posts).toHaveLength(2); expect(posts[0]).toEqual(posts[1]);
 });
 
-test("revalidate: identical response, original cache tags and awaited Astro invalidation", async () => {
+test("revalidate: identical response, pointer cache tags without page invalidation", async () => {
   const tags: string[] = [];
   await withWorkerEnv({ DEPLOY_ENV: "pre", GSC_CACHE: { put: async (key: string) => { tags.push(key); } } }, async () => {
     const response = await compare(legacy.revalidate, revalidate, request("/api/workflows/refresh/revalidate", "POST"));
     expect(response.status).toBe(200);
   });
   expect(tags.length).toBeGreaterThan(0);
-  expect(tags.slice(0, tags.length / 2)).toEqual(tags.slice(tags.length / 2));
-  expect(paths).toEqual([corePublicationRevalidatePaths()]);
+  expect(tags).toHaveLength(116 + 4);
+  expect(tags.slice(0, 4)).toEqual(tags.slice(-4));
+  expect(paths).toEqual([]);
   expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
@@ -188,20 +189,38 @@ test("rollback: request validation, lease conflicts, success and sanitized failu
 });
 
 
-test("revalidation waits for the page hook and propagates either invalidation failure", async () => {
-  const invalidation = spyOn(cache, "invalidatePublishedViews").mockResolvedValue(undefined); spies.push(invalidation);
+test("revalidation awaits pointer invalidation and propagates its failure", async () => {
   let release!: () => void;
   const gate = new Promise<void>((done) => { release = done; });
+  const invalidation = spyOn(cache, "invalidatePublishedViews").mockReturnValue(gate); spies.push(invalidation);
   const ctx = context(request("/api/workflows/refresh/revalidate", "POST"));
-  ctx.locals.invalidatePaths = async () => gate;
+  ctx.locals.invalidatePaths = async () => { throw new Error("publication must not invalidate page paths"); };
   let completed = false;
   const response = Promise.resolve(revalidate(ctx)).then((value) => { completed = true; return value; });
   await Bun.sleep(0);
   expect(completed).toBe(false);
   release(); expect((await response).status).toBe(200);
-  ctx.locals.invalidatePaths = async () => { throw new Error("page cache unavailable"); };
-  await expect(Promise.resolve(revalidate(ctx))).rejects.toThrow("page cache unavailable");
   invalidation.mockRejectedValue(new Error("data cache unavailable"));
   await expect(Promise.resolve(legacy.revalidate(ctx.request.clone()))).rejects.toThrow("data cache unavailable");
   await expect(Promise.resolve(revalidate(ctx))).rejects.toThrow("data cache unavailable");
 });
+
+test("full core publication callback uses four delayed KV writes within five seconds", async () => {
+  // At 200 ms/put, the old 172 serial writes require at least 34.4 seconds.
+  expect(corePublicationRevalidatePaths()).toHaveLength(56);
+  const tags: string[] = [];
+  const started = performance.now();
+  await withWorkerEnv({ DEPLOY_ENV: "pre", GSC_CACHE: { put: async (key: string) => {
+    tags.push(key);
+    await Bun.sleep(200);
+  } } }, async () => {
+    const ctx = context(request("/api/workflows/refresh/revalidate", "POST"));
+    ctx.locals.invalidatePaths = async () => { throw new Error("unexpected page invalidation"); };
+    const response = await revalidate(ctx);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+  });
+  expect(tags).toHaveLength(4);
+  expect(new Set(tags).size).toBe(4);
+  expect(performance.now() - started).toBeLessThan(5000);
+}, 6000);
