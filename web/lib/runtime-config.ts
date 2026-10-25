@@ -145,8 +145,9 @@ export function isProductionDeployment(env?: RuntimeEnv): boolean {
 }
 
 /** Preview-only arm. Production signals and an unset DEPLOY_ENV stay off. */
-function isPreDeployment(env: RuntimeEnv): boolean {
-  return normalizedDeployEnv(env) === "pre" && env.VERCEL_ENV !== "production";
+export function isPreDeployment(env?: RuntimeEnv): boolean {
+  const runtime = configuredEnv(env);
+  return normalizedDeployEnv(runtime) === "pre" && runtime.VERCEL_ENV !== "production";
 }
 
 /**

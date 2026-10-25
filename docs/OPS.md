@@ -60,6 +60,49 @@ and preview have separate cache namespaces. GitHub Actions remains OFF;
 `static` and `production-build` remain the required job names if automation is
 separately re-enabled. Optional jobs remain optional and never deploy.
 
+### Preview seed history availability
+
+`canonical/v2/history-availability.json` declares history that the preview seed
+does not have: monthly net history and the prior-calendar-year heatmap. Its strict
+schema is `PreviewHistoryAvailability` in `web/lib/contracts/canonical.ts`:
+
+```json
+{
+  "seed_date": "2026-10-19",
+  "monthly": "unavailable",
+  "prior_year_heatmap": "unavailable",
+  "set_at": "2026-10-25T00:00:00Z"
+}
+```
+
+These dates are illustrative; an authorized setter must record the actual seed
+date and the actual time the marker was set. Only the owner or an operator with
+explicit owner authorization for the preview bucket write may set or replace
+it, after confirming the seed's missing history. Production must never contain
+this marker.
+
+`readHistoryAvailability` in `web/lib/workflows/history-availability.ts` accepts
+the decoded marker and returns its validated declaration only when
+`DEPLOY_ENV=pre` and there is no production signal, using the existing runtime
+preview guard. Missing or malformed markers, unknown fields, unset deployment,
+and production return `strict` (all existing history requirements apply).
+Eligibility is never inferred from an empty family or `folded_through`. This
+declaration does not create history, restore cold-start flags, or derive monthly
+net values from aggregate history. Canonical preflight and final canonical
+validation use this declaration only to permit zero monthly repository keys;
+required files and all other canonical checks remain enforced. Publication
+history validation uses it only to permit an empty sampled monthly curve and
+a confirmed absent prior-calendar-year heatmap, as described with the
+first-publication exception below. Present malformed data still fails; weekly
+and recent-daily history requirements remain strict. Setting the marker does
+not publish a refresh by itself.
+
+Both validators load the marker through the canonical overlay and then the
+sealed bootstrap generation. Only HTTP 404 permits that fallback; HTTP 200
+with JSON `null` or a malformed marker stays strict without selecting a sealed
+declaration. Read or JSON decoding errors block validation. A present `null`
+heatmap fails its schema instead of using the missing-file exception.
+
 ## Environment variables and secrets
 
 Current Worker configuration is in [Worker configuration](../web/cloudflare.config.ts), with secrets stored on the Cloudflare platform. For local development, copy the repository root `.env.example` to `web/.env.local`; `web/scripts/lib/env.ts` loads only that file. **Never commit real secret values.** Follow least privilege for read and write paths: browsing or building does not require a write token.
@@ -129,7 +172,7 @@ Current Worker configuration is in [Worker configuration](../web/cloudflare.conf
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin for sitemap, metadata, and structured data | Required for the production Cloudflare build and Worker | `https://gitstarclub.com` without a trailing slash | `web/vite.config.ts`, [Worker configuration](../web/cloudflare.config.ts), `web/app/robots.ts`, `web/app/_shell/RootShell.tsx` |
 | `BING_SITE_VERIFICATION` | Bing `msvalidate.01` token | Optional. Set it in the shell that runs the Cloudflare production build | Bing-provided token | `web/vite.config.ts` inherits that shell. `web/app/_shell/RootShell.tsx` emits the meta tag when the variable is set. Confirm the tag in the generated HTML. A Vercel project variable does not change Cloudflare output. No XML file is needed |
 | `INDEXNOW_ENABLED` | IndexNow post-commit submission switch | Optional (default off) | The string `1` enables it | live cron calls IndexNow after the pointer is committed; dry-run / pre-commit do not call it |
-| `SEO_LIVE_BASE` | Live-line origin fetched by integration tests (default `https://www.gitstarclub.com`; leave empty to skip the test) | Tests only | `https://www.gitstarclub.com` or an empty string | `web/lib/integration/seo.test.ts:23` |
+| `SEO_LIVE_BASE` | Explicitly opted-in origin fetched by SEO integration tests (no default; missing or blank skips) | Tests only | `https://www.gitstarclub.com` or an empty string | `web/lib/integration/seo.test.ts:23` |
 | `SEO_EXPECT_INDEXABLE` | Live SEO acceptance environment policy (Preview `0`, Production `1`; when unset, inferred from the canonical host) | Tests only | `0` or `1` | `web/lib/integration/seo.test.ts` · `.github/workflows/ci.yml` |
 | `SEO_CANON_ORIGIN` | canonical origin asserted by integration tests (default `https://gitstarclub.com`) | Tests only | Absolute origin (**no trailing slash**) | `web/lib/integration/seo.test.ts:25` |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | Optional header secret read by `web/lib/vercel-protection-bypass.ts`. `https://pre.gitstarclub.com` is public and does not use this as a login lock | Optional | Token string | `web/lib/vercel-protection-bypass.ts` · `web/scripts/resolve-vercel-preview.ts`; not sent to the browser, and not put on production pages |
@@ -492,6 +535,8 @@ Completed on 2026-10-21 by GSC_0100; the procedure below is historical and must 
 What this run is: a **rehearsal dataset**. Membership comes from GitHub Search and stars from GraphQL only. There is no GH Archive history: `seam_date` is the bootstrap UTC day, stars history and monthly/weekly series start empty, and `MIN_TRACKED_STARS` stays `10000`. Do not read the result as production data.
 
 First-publication validation (#676) permits exactly an empty sampled repository curve and a missing prior-calendar-year heatmap when `WORKFLOW_COLD_START=1`, `DEPLOY_ENV=pre`, no production signal is present, and an authoritative read confirms `views/latest.json` is absent. It never invents historical rows. A present but malformed heatmap, a missing entity, or any other publication-gate failure still blocks. An unreadable or malformed pointer cannot enable the exception. Each actual exception logs `[workflow-refresh] cold-start validation relaxed` with `run_id` and `check`; `ops/workflows/<run_id>/validation.json` records `cold_start_empty_curve_relaxed` and `cold_start_missing_prior_year_heatmap_relaxed` as booleans (false when unused). After a pointer exists, both historical checks are strict again even if the flags remain set. A later refresh without the required history can therefore fail validation; this exception supports only the first preview publication, never production.
+
+Preview seed history (#745) is the later-refresh exception for those same two checks. It uses the shared `readCanonicalHistoryAvailability` loader for `canonical/v2/history-availability.json` and applies after `views/latest.json` exists, without `WORKFLOW_COLD_START`. `validate` accepts an empty sampled repository monthly curve when that reader returns `monthly: "unavailable"`, and a missing prior-calendar-year heatmap when it returns `prior_year_heatmap: "unavailable"`. The reader returns that declaration only when `DEPLOY_ENV=pre` and no production signal is present. A missing marker, or a decoded marker the reader rejects, stays strict, so those two checks fail exactly as they do with no marker and no cold start. An unreadable marker is recorded as a schema failure and blocks publication; it cannot open the exception. A present but malformed heatmap, a missing entity, and every other publication-gate failure still block. Each actual exception logs `[workflow-refresh] history-unavailable validation relaxed` with `run_id` and `check`; `ops/workflows/<run_id>/validation.json` records `history_unavailable_empty_curve_relaxed` and `history_unavailable_missing_prior_year_heatmap_relaxed` as booleans (false when unused). Canonical completeness separately permits only zero monthly repository keys under this declaration, with required files and weekly/recent-daily history checks still strict. The marker does not invent rows or write monthly zeros. Production stays strict even when the object is present.
 
 Historical first-run preconditions (not the current steady-state contract):
 1. The deployed `gitstarclub-web-pre` carried the #662 config. Configuration does not deploy itself; that preview deployment was separately authorized.

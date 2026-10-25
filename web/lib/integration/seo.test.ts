@@ -13,15 +13,15 @@ import { fetchWithVercelProtectionBypass, vercelProtectionBypassHeaders } from "
 //   - /sitemap.xml indexes per-locale URL sets, which enumerate the long tail (SEO §4)
 //   - preview remains noindex while production is indexable (SEO §5 / §11)
 //
-// Because the suite hits the network, it is opt-out via SEO_LIVE_BASE="". Set
+// The suite is opt-in: set SEO_LIVE_BASE to the explicitly authorized origin. Set
 // SEO_EXPECT_INDEXABLE=0 for preview or =1 for production; when omitted, the suite infers the
 // expectation by comparing SEO_LIVE_BASE with SEO_CANON_ORIGIN.
 //
-// Run: cd web && bun test lib/integration/seo.test.ts
+// Run: cd web && SEO_LIVE_BASE=http://127.0.0.1:4010 bun test lib/integration/seo.test.ts
 
-// Canonical host is the apex (no www); we fetch over www and follow no redirects for HTML so
-// the served (pre-redirect) markup is asserted. SEO_LIVE_BASE overrides the fetch origin.
-const BASE = process.env.SEO_LIVE_BASE ?? "https://www.gitstarclub.com";
+// Canonical host is the apex (no www). The fetch origin has no default; an
+// ordinary offline test run must never contact a deployed site implicitly.
+const BASE = process.env.SEO_LIVE_BASE?.trim() ?? "";
 const LIVE_SEO_ENABLED = BASE.trim().length > 0;
 const describeLive = LIVE_SEO_ENABLED ? describe : describe.skip;
 // The page's *own* canonical URL is built against the apex host the site canonicalizes to.
@@ -44,6 +44,8 @@ const PAGES: SeoPage[] = [
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;
+// Let the request abort report its error before Bun times out the enclosing hook/test.
+const LIVE_TEST_TIMEOUT_MS = FETCH_TIMEOUT_MS + 1_000;
 
 type Fetched = { status: number; html: string; contentType: string };
 
@@ -234,7 +236,7 @@ beforeAll(async () => {
       fetched.set(p.path, await get(p.path));
     }),
   );
-});
+}, LIVE_TEST_TIMEOUT_MS);
 
 const page = (path: string): Fetched => {
   const f = fetched.get(path);
@@ -356,7 +358,7 @@ describeLive("sitemap-index acceptance", () => {
     xml = r.html;
     status = r.status;
     ctype = r.contentType;
-  });
+  }, LIVE_TEST_TIMEOUT_MS);
 
   test("responds 200 as XML", () => {
     expect(status).toBe(200);
@@ -398,7 +400,7 @@ describeLive("child-sitemap URL acceptance", () => {
       CHILD_SITEMAP_LOCALES.map(async (locale) => [locale, await get(`/sitemap-${locale}.xml`)] as const),
     );
     for (const [locale, result] of results) childSitemaps.set(locale, result);
-  });
+  }, LIVE_TEST_TIMEOUT_MS);
 
   test.each(CHILD_SITEMAP_LOCALES)("sitemap-%s.xml is a complete XML urlset", (locale) => {
     const sitemap = childSitemaps.get(locale);
@@ -428,7 +430,7 @@ describeLive("child-sitemap URL acceptance", () => {
     expect(locations.filter((url) => hasFutureRankingPeriod(url))).toEqual([]);
     expect(unavailablePage.status).toBe(404);
     expect(locations).not.toContain(canonicalUrl(unavailablePath));
-  });
+  }, LIVE_TEST_TIMEOUT_MS);
 });
 
 // --------------------------------------------------------------------------------------------
@@ -442,7 +444,7 @@ beforeAll(async () => {
   if (!LIVE_SEO_ENABLED) return;
   const result = await get("/robots.txt");
   robotsResponse = { txt: result.html, status: result.status };
-});
+}, LIVE_TEST_TIMEOUT_MS);
 
 describeLive("robots endpoint acceptance", () => {
   test("responds 200 with a declared user agent", () => {

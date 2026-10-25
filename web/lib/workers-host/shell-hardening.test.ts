@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { cfBuildCommitSha } from "../cf-build-identity";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { securityHeaders } from "../csp";
 import type { RefreshJob, WorkerEnv } from "../../../workers/gitstarclub-web/src/env";
@@ -143,7 +144,7 @@ describe("Worker shell security headers", () => {
 
     const deployment = await handleShellFetch(shellRequest("/.well-known/deployment"), env);
     expect(deployment.status).toBe(200);
-    expect(await deployment.json()).toMatchObject({ commitSha: "abc123", target: "cf" });
+    expect(await deployment.json()).toMatchObject({ commitSha: cfBuildCommitSha ?? "abc123", target: "cf" });
     expectSecurityHeaders(deployment);
 
     const identity = await handleShellFetch(shellRequest("/preview/identity"), env);

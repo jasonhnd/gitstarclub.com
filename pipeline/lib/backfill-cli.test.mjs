@@ -14,7 +14,9 @@ function fixture() {
   fixtures.push(value);
   return value;
 }
-afterAll(() => { for (const value of fixtures) value.dispose(); });
+// Disposal removes every offline CLI fixture and can exceed Bun's five-second
+// hook default on a busy disk even when every command assertion has passed.
+afterAll(() => { for (const value of fixtures) value.dispose(); }, 30_000);
 
 function succeeds(result) {
   expect(result.error, result.stderr).toBeUndefined();
