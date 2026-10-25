@@ -97,6 +97,12 @@ first-publication exception below. Present malformed data still fails; weekly
 and recent-daily history requirements remain strict. Setting the marker does
 not publish a refresh by itself.
 
+Both validators load the marker through the canonical overlay and then the
+sealed bootstrap generation. Only HTTP 404 permits that fallback; HTTP 200
+with JSON `null` or a malformed marker stays strict without selecting a sealed
+declaration. Read or JSON decoding errors block validation. A present `null`
+heatmap fails its schema instead of using the missing-file exception.
+
 ## Environment variables and secrets
 
 Current Worker configuration is in [Worker configuration](../web/cloudflare.config.ts), with secrets stored on the Cloudflare platform. For local development, copy the repository root `.env.example` to `web/.env.local`; `web/scripts/lib/env.ts` loads only that file. **Never commit real secret values.** Follow least privilege for read and write paths: browsing or building does not require a write token.
