@@ -52,7 +52,7 @@ export function fetchWithTimeout(input: Parameters<typeof originalFetchWithTimeo
       }
       const value = await captured.data.raw(key, json);
       options?.signal?.throwIfAborted();
-      return new Response(method === "HEAD" ? null : JSON.stringify(value?.value), {
+      return new Response(method === "HEAD" ? null : JSON.stringify(value === null ? null : value.value), {
         status: value === null ? 404 : 200, headers: { "Content-Type": "application/json" },
       });
     },

@@ -27,7 +27,9 @@ test("native transport preserves present JSON null for shared-reader validation"
     const head = await fetchWithTimeout(new Request(`${origin}/meta.json`, { method: "HEAD" }));
     expect(head.status).toBe(200);
     expect(await head.text()).toBe("");
-    expect((await fetchWithTimeout(`${origin}/missing.json`)).status).toBe(404);
+    const missing = await fetchWithTimeout(`${origin}/missing.json`);
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toBeNull();
   });
 });
 
