@@ -58,6 +58,9 @@ Astro imports the existing `web/lib/contracts/` schemas, `web/lib/data/` readers
 normalization, availability, SEO and presentation helpers. The native DATA
 facade reads precomputed R2 views; `withPublishedReaders` preserves the existing
 base/bootstrap/live-generation choices and schema checks within that scope.
+Only an absent native object becomes HTTP 404. A present JSON `null` remains a
+successful transport read so the shared schema checks reject malformed data
+without trying older generations or treating it as unavailable preview history.
 It never replaces global fetch or copies secrets into process.env. No database,
 runtime AI, live search, data-coverage expansion or alternate writer is added.
 Rankings still join ids against lookup data; dictionaries translate interface

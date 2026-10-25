@@ -8,7 +8,8 @@ export { DEFAULT_FETCH_TIMEOUT_MS, BLOB_JSON_FETCH_TIMEOUT_MS, GITHUB_FETCH_TIME
 
 type Data = ReturnType<typeof pageData>;
 const scope = new AsyncLocalStorage<{ data: Data; origin: string }>();
-const json = { parse: (value: unknown) => value };
+// Preserve a present JSON null so only a missing native object becomes HTTP 404.
+const json = { parse: (value: unknown) => ({ value }) };
 
 /** Run the unchanged web readers against this request's captured native DATA. */
 export function withPublishedReaders<T>(data: Data, run: () => T, options: { cloudflareReadPolicy?: boolean } = {}): T {
@@ -51,7 +52,7 @@ export function fetchWithTimeout(input: Parameters<typeof originalFetchWithTimeo
       }
       const value = await captured.data.raw(key, json);
       options?.signal?.throwIfAborted();
-      return new Response(method === "HEAD" ? null : JSON.stringify(value), {
+      return new Response(method === "HEAD" ? null : JSON.stringify(value?.value), {
         status: value === null ? 404 : 200, headers: { "Content-Type": "application/json" },
       });
     },

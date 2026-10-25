@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { fetchWithTimeout, withPublishedReaders } from "../src/lib/published-readers";
 import type { pageData } from "../src/lib/data";
+import { pageData as nativePageData } from "../src/lib/data";
+import { Meta } from "../src/lib/contracts";
 import { runWithCloudflareWorkersHostForTests as withCloudflareReadPolicy } from "../../web/lib/runtime-config";
 import { rankPeriodLookbackLimits } from "../../web/lib/data/rank-periods";
 
@@ -9,6 +11,25 @@ const data: ReturnType<typeof pageData> = {
   base: async () => { throw new Error("Unexpected base read"); },
   raw: async () => { throw new Error("Unexpected native read"); },
 };
+
+test("native transport preserves present JSON null for shared-reader validation", async () => {
+  const bucket = { async get(key: string) {
+    return key === "meta.json" ? { text: async () => "null", etag: "null-fixture" } : null;
+  } } as unknown as Parameters<typeof pageData>[0];
+  const captured = nativePageData(bucket, { id: "null-fixture", views: null, bootstrap: null, live: null });
+  await withPublishedReaders(captured, async () => {
+    const origin = "https://null-fixture.astro-data.invalid";
+    const present = await fetchWithTimeout(`${origin}/meta.json`);
+    expect(present.status).toBe(200);
+    const value = await present.json();
+    expect(value).toBeNull();
+    expect(() => Meta.parse(value)).toThrow();
+    const head = await fetchWithTimeout(new Request(`${origin}/meta.json`, { method: "HEAD" }));
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    expect((await fetchWithTimeout(`${origin}/missing.json`)).status).toBe(404);
+  });
+});
 
 test("P6 Cloudflare discovery policy is opt-in, async-scoped and restored for P5", async () => {
   await withCloudflareReadPolicy(false, async () => {
