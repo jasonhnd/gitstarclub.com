@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { FetchTimeoutError } from "@/lib/fetch-timeout.mjs";
+import { withWorkerEnv } from "@/lib/workers-host/runtime-env";
+import { HISTORY_AVAILABILITY_KEY, readHistoryAvailability } from "./history-availability";
 import {
   CANONICAL_SHARD_READ_CONCURRENCY,
   CANONICAL_SHARD_READ_CONCURRENCY_CF,
@@ -26,7 +29,113 @@ const historicalRepo = {
   d: 0.8,
 };
 
+const unavailableHistory = {
+  seed_date: "2026-10-19",
+  monthly: "unavailable",
+  prior_year_heatmap: "unavailable",
+  set_at: "2026-10-25T09:00:00Z",
+} as const;
+
+function historyReader(marker: unknown, overrides: Record<string, unknown> = {}): CanonicalShardReader {
+  return async (path) => {
+    if (Object.hasOwn(overrides, path)) return overrides[path];
+    if (path === HISTORY_AVAILABILITY_KEY) return marker ?? null;
+    if (path.endsWith("repos/1.json")) return { "1": historicalRepo };
+    if (path.endsWith("repo-weekly/1.json")) return { "1": [["2026-W43", 1]] };
+    if (path.endsWith("repo-recent-daily/1.json")) return { "1": [["2026-10-25", 1]] };
+    return {};
+  };
+}
+
 describe("validateCanonicalGeneration", () => {
+  test("valid preview marker accepts empty monthly shards without creating records or placeholders", async () => {
+    const result = await withWorkerEnv({ DEPLOY_ENV: "pre" }, () => validateCanonicalGeneration("marked", {
+      reader: historyReader(unavailableHistory),
+    }));
+    expect(result.failures).toEqual([]);
+    expect(result.manifest.complete).toBe(true);
+    expect(result.acc.monthlyRecords).toBe(0);
+    expect(result.placeholders).toEqual([]);
+    expect(result.manifest.shards.filter(({ kind }) => kind === "repo-monthly").every(({ records }) => records === 0)).toBe(true);
+    expect(emptySeriesPreflightFailures(result.acc, "fail-closed", readHistoryAvailability(unavailableHistory, { DEPLOY_ENV: "pre" }))).toEqual([]);
+  });
+
+  test.each([
+    ["403", new Error("view fetch canonical/v2/history-availability.json -> 403")],
+    ["timeout", new FetchTimeoutError("https://blob.example.com/canonical/v2/history-availability.json", 5)],
+    ["invalid JSON", new SyntaxError("JSON Parse error: Unexpected EOF")],
+  ] as const)("a thrown marker read (%s) rejects canonical validation", async (_label, error) => {
+    const reader = historyReader(unavailableHistory);
+    await expect(withWorkerEnv({ DEPLOY_ENV: "pre" }, () => validateCanonicalGeneration("marker-throw", {
+      reader: async (path, schema) => {
+        if (path === HISTORY_AVAILABILITY_KEY) throw error;
+        return reader(path, schema);
+      },
+    }))).rejects.toThrow(error.message);
+  });
+
+  test.each([null, {}, { ...unavailableHistory, monthly: "available" }, { ...unavailableHistory, seed_date: "2026-02-30" }])(
+    "absent or malformed preview marker retains monthly failure: %p", async (marker) => {
+      const result = await withWorkerEnv({ DEPLOY_ENV: "pre" }, () => validateCanonicalGeneration("unmarked", {
+        reader: historyReader(marker),
+      }));
+      expect(result.failures).toEqual(["canonical/v2/repo-monthly: no repository records for 1 canonical repo(s)"]);
+      expect(result.manifest.complete).toBe(false);
+      expect(result.schemaFailures).toBe(0);
+    },
+  );
+
+  test.each([{}, { DEPLOY_ENV: "production" }, { DEPLOY_ENV: "pre", VERCEL_ENV: "production" }])(
+    "valid marker cannot relax completeness outside preview: %p", async (env) => {
+      const reads: string[] = [];
+      const reader = historyReader(unavailableHistory);
+      const result = await withWorkerEnv(env, () => validateCanonicalGeneration("strict", {
+        reader: async (path, schema) => { reads.push(path); return reader(path, schema); },
+      }));
+      expect(result.failures).toEqual(["canonical/v2/repo-monthly: no repository records for 1 canonical repo(s)"]);
+      expect(reads).not.toContain(HISTORY_AVAILABILITY_KEY);
+    },
+  );
+
+  test("valid preview marker preserves weekly, daily, and repository family requirements", async () => {
+    const result = await withWorkerEnv({ DEPLOY_ENV: "pre" }, () => validateCanonicalGeneration("marked-empty-series", {
+      reader: historyReader(unavailableHistory, {
+        "canonical/v2/repo-weekly/1.json": {},
+        "canonical/v2/repo-recent-daily/1.json": {},
+      }),
+    }));
+    const expected = [
+      "canonical/v2/repo-weekly: no repository records for 1 canonical repo(s)",
+      "canonical/v2/repo-recent-daily: no repository records for 1 canonical repo(s)",
+    ];
+    expect(result.failures).toEqual(expected);
+    const availability = readHistoryAvailability(unavailableHistory, { DEPLOY_ENV: "pre" });
+    expect(emptySeriesPreflightFailures(result.acc, "fail-closed", availability)).toEqual(expected);
+    expect(emptySeriesPreflightFailures(emptyCanonicalPreflightAcc(), "fail-closed", availability)).toEqual([
+      "canonical/v2/repos: no repository records",
+    ]);
+  });
+
+  test("valid preview marker preserves missing files, schemas, identity, anchoring, buckets, and orphan checks", async () => {
+    const result = await withWorkerEnv({ DEPLOY_ENV: "pre" }, () => validateCanonicalGeneration("marked-invalid", {
+      reader: historyReader(unavailableHistory, {
+        "canonical/v2/repo-monthly/0.json": null,
+        "canonical/v2/repo-monthly/2.json": { broken: true },
+        "canonical/v2/repos/1.json": { "1": { ...historicalRepo, id: 2, d: undefined } },
+        "canonical/v2/repo-monthly/3.json": { "999": [["2026-09", 1]] },
+      }),
+    }));
+    expect(result.manifest.complete).toBe(false);
+    expect(result.failures).toEqual(expect.arrayContaining([
+      "canonical/v2/repo-monthly/0.json: missing",
+      expect.stringContaining("canonical/v2/repo-monthly/2.json: schema"),
+      "canonical/v2/repos: 1 historical repo(s) are missing a finite anchoring factor d",
+      "canonical/v2/repos: 1 record key(s) do not match their repository id",
+      "canonical/v2: 1 record(s) are stored in the wrong bucket",
+      "canonical/v2/repo-monthly: 1 record(s) reference repositories absent from canonical/v2/repos",
+    ]));
+  });
+
   test("produces a complete checksummed receipt for every required shard", async () => {
     const reader: CanonicalShardReader = async (path) => {
       if (path.endsWith("repos/1.json")) return { "1": historicalRepo };

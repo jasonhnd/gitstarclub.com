@@ -692,7 +692,7 @@ A retry of the same operation must replay that object; it must not reread the po
 
 ### 2.13 `ops/workflows/{run_id}/validation.json` — validation report
 
-Step `validate` runs Zod + sanity on `views/<run_id>/**`, and runs schema / ID / anchoring integrity on every required canonical bucket; it also checks repo key/id/bucket, that time series are non-empty, and that there is no orphan repo ID; if `ok=false` it does not switch the pointer.
+Step `validate` runs Zod + sanity on `views/<run_id>/**`, and runs schema / ID / anchoring integrity on every required canonical bucket; it also checks repo key/id/bucket, that time series are non-empty, and that there is no orphan repo ID; if `ok=false` it does not switch the pointer. Only in preview, a valid `canonical/v2/history-availability.json` marker declaring monthly history unavailable permits zero `repo-monthly` keys in preflight and canonical validation; required shard files and all other checks remain enforced, and production stays strict.
 **`checked` = the sample-read count of key derived views + the count of every required canonical shard**. Derived views are still spot-checked for `meta` / `rank/all-time` / lookup / search / categories / the top-repo entity / last year's heatmap; canonical `repos`, `repo-monthly`, `repo-weekly`, and `repo-recent-daily` are read in full, bucket by bucket, and `canonical-manifest.json` is written as well.
 
 ```json
