@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { assertPreTriggers } from "./pre-triggers";
+import { preparePrebuiltDeploy } from "./prebuilt-deploy";
 
 // Owner-run only after separate deployment authorization. Never called by builds/CI.
 const scratch = process.env.KANBAN_TMP;
@@ -22,5 +23,10 @@ const check = Bun.spawn(["bun", "scripts/validate-host.ts", "--mode", "pre"], { 
 assert.equal(await check.exited, 0, "validate the reviewed artifact before deployment");
 const cli = resolve("node_modules/cf/bin/cf");
 assert.equal(JSON.parse(readFileSync("node_modules/cf/package.json", "utf8")).version, "1.0.0-beta.18");
-const child = Bun.spawn(["node", cli, "deploy", "--prebuilt", "--mode", "pre", "--no-provision"], { stdout: "inherit", stderr: "inherit" });
-process.exitCode = await child.exited;
+const deployment = preparePrebuiltDeploy(scratch, cli);
+try {
+  const child = Bun.spawn(deployment.cmd, { cwd: deployment.cwd, stdout: "inherit", stderr: "inherit" });
+  process.exitCode = await child.exited;
+} finally {
+  rmSync(deployment.cwd, { recursive: true, force: true });
+}
