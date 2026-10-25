@@ -279,11 +279,13 @@ test("stale tails regenerate and expired tails block on a new render", async () 
   expect(stale.headers.get("x-gsc-cache")).toBe("STALE");
   expect(await stale.text()).toContain("v1");
   await Promise.all(h.pending);
+  expect(h.renders()).toBe(2);
   expect(await (await h.get()).text()).toContain("v1");
   h.advance(TAIL_EXPIRE_SECONDS + 1);
   const expired = await h.get();
   expect(expired.headers.get("x-gsc-cache")).toBe("MISS");
   expect(await expired.text()).toContain("v1");
+  expect(h.renders()).toBe(3);
 });
 test("cache loss degrades to rendering; private and HEAD requests never share storage", async () => {
   const h = harness();

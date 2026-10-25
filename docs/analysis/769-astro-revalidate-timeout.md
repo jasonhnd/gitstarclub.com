@@ -13,22 +13,22 @@ source_of_truth_for:
 ### 1. Why the Astro callback can exceed 30 seconds
 
 - **Verified (code, incident baseline b13f13a):**
-  `web/lib/data/core-revalidate-paths.ts:corePublicationRevalidatePaths` expands
+  `web/lib/data/core-revalidate-paths.ts` (`corePublicationRevalidatePaths`) expands
   eight suffixes across seven locales into 56 unique paths. The suffixes are
   home, pulse, rankings, categories, about, organizations, compare and privacy.
 - **Verified:** Both handlers await
-  `web/lib/workflows/publication-cache.ts:invalidatePublishedViews`: clear the
+  `web/lib/workflows/publication-cache.ts` (`invalidatePublishedViews`): clear the
   process-local pointer memo, invalidate two pointer tags, then invalidate all
   56 paths sequentially. With the deployed `GSC_CACHE` binding,
-  `web/lib/cache-invalidation/resolve.ts:resolveCacheInvalidation` selects
-  `web/lib/workers-host/cache/invalidation.ts:WorkerCacheInvalidation`.
+  `web/lib/cache-invalidation/resolve.ts` (`resolveCacheInvalidation`) selects
+  `web/lib/workers-host/cache/invalidation.ts` (`WorkerCacheInvalidation`).
   Each tag/path writes one timestamp in each of the data and pages stores,
   sequentially: 4 pointer writes + 112 path writes = 116 KV puts.
 - **Verified:** Astro's
-  `astro/src/packages/p7/operations.ts:revalidate` additionally awaits
+  `astro/src/packages/p7/operations.ts` (`revalidate`) additionally awaits
   `locals.invalidatePaths` with all 56 paths, wired by `astro/src/worker.ts` to
-  `astro/src/lib/cache.ts:invalidatePagePaths`. The shared
-  `web/lib/workers-host/cache/store.ts:ArtifactStore.revalidateTag` loops over
+  `astro/src/lib/cache.ts` (`invalidatePagePaths`). The shared
+  `web/lib/workers-host/cache/store.ts` (`ArtifactStore.revalidateTag`) loops over
   tags sequentially, adding 56 Astro timestamp puts: **172 total**, versus
   **116** on web. These are timestamp writes, not HTML deletions. This call
   chain performs **zero KV gets, deletes, or list operations**, and no cache
@@ -49,8 +49,8 @@ source_of_truth_for:
 
 ### 2. Why the repository page retains the previous publication
 
-- **Verified (baseline):** `astro/src/lib/host.ts:handleRequest` classifies
-  `/react/react` through `web/lib/workers-host/cache/policy.ts:isLongTail`.
+- **Verified (baseline):** `astro/src/lib/host.ts` (`handleRequest`) classifies
+  `/react/react` through `web/lib/workers-host/cache/policy.ts` (`isLongTail`).
   Its key ends in the literal `"tail"`, and its entry fence is also `"tail"`,
   rather than the captured publication identity. A warm hit does not compare
   the current publication with the cached response's `x-gsc-publication`.
