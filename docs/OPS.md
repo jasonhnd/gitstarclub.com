@@ -88,8 +88,11 @@ preview guard. Missing or malformed markers, unknown fields, unset deployment,
 and production return `strict` (all existing history requirements apply).
 Eligibility is never inferred from an empty family or `folded_through`. This
 declaration does not create history, restore cold-start flags, or derive monthly
-net values from aggregate history. The reader is not yet connected to validation
-or publication gates; setting a marker alone does not relax those gates.
+net values from aggregate history. A valid marker relaxes only the two publication
+history gates described with the first-publication exception below: an empty
+sampled monthly curve and a missing prior-calendar-year heatmap. It does not
+relax canonical completeness or preflight. Setting the marker does not publish
+a refresh by itself.
 
 ## Environment variables and secrets
 
@@ -523,6 +526,8 @@ Completed on 2026-10-21 by GSC_0100; the procedure below is historical and must 
 What this run is: a **rehearsal dataset**. Membership comes from GitHub Search and stars from GraphQL only. There is no GH Archive history: `seam_date` is the bootstrap UTC day, stars history and monthly/weekly series start empty, and `MIN_TRACKED_STARS` stays `10000`. Do not read the result as production data.
 
 First-publication validation (#676) permits exactly an empty sampled repository curve and a missing prior-calendar-year heatmap when `WORKFLOW_COLD_START=1`, `DEPLOY_ENV=pre`, no production signal is present, and an authoritative read confirms `views/latest.json` is absent. It never invents historical rows. A present but malformed heatmap, a missing entity, or any other publication-gate failure still blocks. An unreadable or malformed pointer cannot enable the exception. Each actual exception logs `[workflow-refresh] cold-start validation relaxed` with `run_id` and `check`; `ops/workflows/<run_id>/validation.json` records `cold_start_empty_curve_relaxed` and `cold_start_missing_prior_year_heatmap_relaxed` as booleans (false when unused). After a pointer exists, both historical checks are strict again even if the flags remain set. A later refresh without the required history can therefore fail validation; this exception supports only the first preview publication, never production.
+
+Preview seed history (#745) is the later-refresh exception for those same two checks. It uses `readHistoryAvailability` on `canonical/v2/history-availability.json` and applies after `views/latest.json` exists, without `WORKFLOW_COLD_START`. `validate` accepts an empty sampled repository monthly curve when that reader returns `monthly: "unavailable"`, and a missing prior-calendar-year heatmap when it returns `prior_year_heatmap: "unavailable"`. The reader returns that declaration only when `DEPLOY_ENV=pre` and no production signal is present. A missing marker, or a decoded marker the reader rejects, stays strict, so those two checks fail exactly as they do with no marker and no cold start. An unreadable marker is recorded as a schema failure and blocks publication; it cannot open the exception. A present but malformed heatmap, a missing entity, and every other publication-gate failure still block. Each actual exception logs `[workflow-refresh] history-unavailable validation relaxed` with `run_id` and `check`; `ops/workflows/<run_id>/validation.json` records `history_unavailable_empty_curve_relaxed` and `history_unavailable_missing_prior_year_heatmap_relaxed` as booleans (false when unused). The marker does not invent rows, write monthly zeros, or relax canonical completeness. Production stays strict even when the object is present.
 
 Historical first-run preconditions (not the current steady-state contract):
 1. The deployed `gitstarclub-web-pre` carried the #662 config. Configuration does not deploy itself; that preview deployment was separately authorized.

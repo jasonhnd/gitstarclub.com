@@ -1,5 +1,10 @@
-import { describe, expect, test } from "bun:test";
-import { HIGH_D_FACTOR_WARN_THRESHOLD, inspectAnchoringFactors } from "./validate";
+import { describe, expect, spyOn, test } from "bun:test";
+import * as source from "@/lib/data/source";
+import * as write from "@/lib/data/write";
+import * as canonical from "@/lib/workflows/canonical-validation";
+import { HISTORY_AVAILABILITY_KEY } from "@/lib/workflows/history-availability";
+import { REPO_BUCKETS } from "../buckets";
+import { HIGH_D_FACTOR_WARN_THRESHOLD, inspectAnchoringFactors, validateVersion } from "./validate";
 import { validateAliases, validateAllTimeRanks, validateCategories, validateMeta, validateRepositoryMembership, validateSearchIndex } from "./validate-invariants";
 
 describe("inspectAnchoringFactors", () => {
@@ -335,3 +340,380 @@ function repoLookup(full_name: string, current_stars: number) {
   const [owner, name] = full_name.split("/");
   return { owner, name, full_name, owner_type: "Organization" as const, language: "TypeScript", current_stars, active: true, tracked_since: null };
 }
+
+const HISTORY_RUN = "refresh-history-marker";
+const HISTORY_AT = "2026-10-25T00:00:00.000Z";
+const HISTORY_REPO_COUNT = 1000;
+const PRIOR_YEAR = String(new Date().getUTCFullYear() - 1);
+const HISTORY_MARKER = {
+  seed_date: "2026-10-19",
+  monthly: "unavailable",
+  prior_year_heatmap: "unavailable",
+  set_at: "2026-10-25T00:00:00.000Z",
+} as const;
+const EMPTY_CURVE_FAILURE = "entity/repo/1: empty curve";
+const MISSING_HEATMAP_FAILURE = `heatmap/year/${PRIOR_YEAR}.json: missing`;
+
+const historyUniverse = (() => {
+  const lookup: Record<string, ReturnType<typeof repoLookup>> = {};
+  const searchRepos = [];
+  const assignments: Record<string, Record<string, string[]>> = {};
+  const entries = [];
+  for (let id = 1; id <= HISTORY_REPO_COUNT; id++) {
+    const fullName = `example/repo-${id}`;
+    lookup[String(id)] = repoLookup(fullName, 10000);
+    searchRepos.push({ id, full_name: fullName, owner: "example", language: "TypeScript", current_stars: 10000, description: null, active: true, tracked_since: "2026-10-19" });
+    assignments[String(id)] = {
+      language: ["language/typescript"],
+      language_family: ["language_family/typed"],
+      domain: ["domain/tools"],
+      project_type: ["project_type/library"],
+      ecosystem: ["ecosystem/node"],
+      owner_kind: ["owner_kind/organization"],
+      maturity: ["maturity/established"],
+    };
+    entries.push({ id, node_id: `R_${id}`, full_name: fullName, owner: "example", name: `repo-${id}`, stars: 10000 });
+  }
+  return { lookup, searchRepos, assignments, entries, starsSum: HISTORY_REPO_COUNT * 10000 };
+})();
+
+function historyCategory(dimension: string, slug: string, isPublic = false) {
+  return {
+    id: `${dimension}/${slug}`,
+    dimension,
+    slug,
+    label: slug,
+    count: isPublic ? 1 : HISTORY_REPO_COUNT,
+    public: isPublic,
+    sitemap: false,
+    minimum_repo_count: 0,
+  };
+}
+
+function historyEntity(id: number, monthly: Array<[string, number, number]>) {
+  return {
+    id,
+    full_name: `example/repo-${id}`,
+    owner: "example",
+    owner_type: "Organization" as const,
+    name: `repo-${id}`,
+    description: null,
+    language: "TypeScript",
+    topics: [],
+    created_at: "2020-01-01",
+    current_stars: 10000,
+    active: true,
+    tracked_since: "2026-10-19",
+    is_archived: false,
+    milestones: { crossed_10k: null, crossed_50k: null, crossed_100k: null },
+    curve: { monthly, recent_daily: [] },
+    monthly_table: [],
+  };
+}
+
+type HistoryGateCase = {
+  env?: Record<string, string | undefined>;
+  marker?: "absent" | "valid" | "malformed" | "unreadable";
+  heatmap?: "missing" | "malformed" | "present";
+  topEntity?: "empty" | "present" | "missing";
+  pointer?: boolean;
+};
+
+async function runHistoryGate(options: HistoryGateCase = {}) {
+  const marker = options.marker ?? "absent";
+  const heatmap = options.heatmap ?? "missing";
+  const topEntity = options.topEntity ?? "empty";
+  const pointer = options.pointer ?? true;
+  const envKeys = ["DEPLOY_ENV", "VERCEL_ENV", "WORKFLOW_COLD_START"] as const;
+  const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  for (const key of envKeys) delete process.env[key];
+  Object.assign(process.env, options.env ?? { DEPLOY_ENV: "pre" });
+  const logs: unknown[][] = [];
+  const log = spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].startsWith("[workflow-refresh] ")) logs.push(args);
+  });
+  const readView = spyOn(source, "readAuthoritativeView").mockImplementation(async (path: string, schema: { parse: (data: unknown) => unknown }) => {
+    if (path === HISTORY_AVAILABILITY_KEY && marker === "unreadable") throw new Error("history marker unreadable");
+    const value = historyArtifact(path, { marker, heatmap, topEntity, pointer });
+    if (value == null) return null;
+    return schema.parse(value);
+  });
+  const validateCanonical = spyOn(canonical, "validateCanonicalGeneration").mockResolvedValue({
+    manifest: {
+      run_id: HISTORY_RUN,
+      generated_at: HISTORY_AT,
+      expected_shards: 0,
+      validated_shards: 0,
+      total_records: HISTORY_REPO_COUNT,
+      complete: true,
+      shards: [],
+    },
+    checked: 0,
+    schemaFailures: 0,
+    invariants: {},
+    failures: [],
+    placeholders: [],
+    repoIds: new Set(Object.keys(historyUniverse.lookup)),
+    activeRepoIds: new Set(Object.keys(historyUniverse.lookup)),
+    acc: canonical.emptyCanonicalPreflightAcc(),
+  });
+  let stored: unknown;
+  const writeView = spyOn(write, "putView").mockImplementation(async (path: string, data: unknown) => {
+    if (path === `ops/workflows/${HISTORY_RUN}/validation.json`) stored = data;
+  });
+  try {
+    const validation = await validateVersion(HISTORY_RUN);
+    return { validation, logs };
+  } catch (error) {
+    if (stored) return { validation: stored as Awaited<ReturnType<typeof validateVersion>>, logs };
+    throw error;
+  } finally {
+    readView.mockRestore();
+    validateCanonical.mockRestore();
+    writeView.mockRestore();
+    log.mockRestore();
+    for (const key of envKeys) {
+      if (previousEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEnv[key];
+    }
+  }
+}
+
+function historyArtifact(
+  path: string,
+  options: Required<Pick<HistoryGateCase, "marker" | "heatmap" | "topEntity" | "pointer">>,
+): unknown {
+  if (path === HISTORY_AVAILABILITY_KEY) {
+    if (options.marker === "absent" || options.marker === "unreadable") return null;
+    if (options.marker === "malformed") return { monthly: "unavailable" };
+    return HISTORY_MARKER;
+  }
+  const packed = /recompute\/(month|week|year)-win\/meta\.json$/.exec(path);
+  if (packed) return { v: 1, kind: packed[1], seamPeriod: "2026-09", periods: [], buckets: REPO_BUCKETS, complete: true };
+  if (path === "views/latest.json") {
+    return options.pointer
+      ? { version: "refresh-prev", run_id: "refresh-prev", published_at: HISTORY_AT, prev_version: null, schema_ver: 1 }
+      : null;
+  }
+  if (path === `views/${HISTORY_RUN}/meta.json`) {
+    return {
+      seam_date: "2026-10-19",
+      schema_ver: 1,
+      active_repo_count: HISTORY_REPO_COUNT,
+      historical_repo_count: 0,
+      generated_at: HISTORY_AT,
+      folded_through: { month: "2026-09", week: "2026-W39" },
+    };
+  }
+  if (path === `views/${HISTORY_RUN}/rank/all-time/repo/stock.json`) {
+    return {
+      meta: { window: "all", period: "all", dim: "repo", metric: "stock", generated_at: HISTORY_AT },
+      items: [{ rank: 1, id: 1, value: 10000, prev_rank: null }],
+    };
+  }
+  if (path === `views/${HISTORY_RUN}/rank/all-time/org/stock.json`) {
+    return {
+      meta: { window: "all", period: "all", dim: "org", metric: "stock", generated_at: HISTORY_AT },
+      items: [{ rank: 1, login: "example", value: historyUniverse.starsSum, prev_rank: null }],
+    };
+  }
+  if (path === `views/${HISTORY_RUN}/lookup/repos.json`) return historyUniverse.lookup;
+  if (path === `views/${HISTORY_RUN}/lookup/orgs.json`) {
+    return { example: { login: "example", owner_type: "Organization", repo_count: HISTORY_REPO_COUNT, current_stars_sum: historyUniverse.starsSum } };
+  }
+  if (path === `canonical/v2/whitelist/${HISTORY_RUN}.json`) {
+    return { run_id: HISTORY_RUN, generated_at: HISTORY_AT, count: HISTORY_REPO_COUNT, entries: historyUniverse.entries, diff: { added: [], dropped: [] } };
+  }
+  if (path === `views/${HISTORY_RUN}/lookup/aliases.json`) return {};
+  if (path === `views/${HISTORY_RUN}/search/index.json`) {
+    return { generated_at: HISTORY_AT, count: HISTORY_REPO_COUNT, repos: historyUniverse.searchRepos };
+  }
+  if (path === `views/${HISTORY_RUN}/categories/registry.json`) {
+    return {
+      rules_version: "test",
+      generated_at: HISTORY_AT,
+      dimensions: [
+        ["language", "typescript", true],
+        ["language_family", "typed", false],
+        ["domain", "tools", false],
+        ["project_type", "library", false],
+        ["ecosystem", "node", false],
+        ["owner_kind", "organization", false],
+        ["maturity", "established", false],
+      ].map(([dimension, slug, isPublic]) => ({
+        id: dimension,
+        label: String(dimension),
+        categories: [historyCategory(String(dimension), String(slug), isPublic === true)],
+      })),
+    };
+  }
+  if (path === `views/${HISTORY_RUN}/categories/assignments.json`) {
+    return { rules_version: "test", generated_at: HISTORY_AT, repositories: historyUniverse.assignments };
+  }
+  if (path === `views/${HISTORY_RUN}/lookup/categories.json`) {
+    return {
+      rules_version: "test",
+      generated_at: HISTORY_AT,
+      dimensions: [{ id: "language", label: "Language", categories: [{ id: "language/typescript", slug: "typescript", label: "TypeScript", count: 1, sitemap: false }] }],
+    };
+  }
+  if (path === "views/" + HISTORY_RUN + "/rank/category/language/typescript/all-time/repo/stock.json") {
+    return {
+      meta: {
+        window: "all",
+        period: "all",
+        dim: "repo",
+        metric: "stock",
+        generated_at: HISTORY_AT,
+        category: { id: "language/typescript", dimension: "language", slug: "typescript" },
+      },
+      items: [],
+    };
+  }
+  const repoEntity = new RegExp(`^views/${HISTORY_RUN}/entity/repo/(\\d+)\\.json$`).exec(path);
+  if (repoEntity) {
+    const id = Number(repoEntity[1]);
+    if (id === 1 && options.topEntity === "missing") return null;
+    const monthly = id === 1 && options.topEntity === "present" ? [["2026-09", 1, 10000] as [string, number, number]] : [];
+    return historyEntity(id, id === 1 ? monthly : []);
+  }
+  if (path === `views/${HISTORY_RUN}/entity/org/example.json`) {
+    return {
+      login: "example",
+      owner_type: "Organization",
+      current_stars_sum: historyUniverse.starsSum,
+      repo_count: HISTORY_REPO_COUNT,
+      members: [1],
+      curve: { monthly: [], recent_daily: [] },
+    };
+  }
+  if (path === `views/${HISTORY_RUN}/heatmap/year/${PRIOR_YEAR}.json`) {
+    if (options.heatmap === "missing") return null;
+    if (options.heatmap === "malformed") return { cells: [] };
+    return {
+      meta: { scope: "year", period: PRIOR_YEAR, generated_at: HISTORY_AT },
+      cells: [[`${PRIOR_YEAR}-12`, 1]],
+    };
+  }
+  return null;
+}
+
+describe("publication history gates and the preview history marker", () => {
+  test("a valid preview marker accepts an empty sampled monthly curve and a missing prior-year heatmap", async () => {
+    const { validation, logs } = await runHistoryGate({ marker: "valid" });
+    expect(validation.ok).toBe(true);
+    expect(validation.failures).toEqual([]);
+    expect(validation.schema_failures).toBe(0);
+    expect(validation.invariants).toMatchObject({
+      sample_curve_months: 0,
+      history_unavailable_empty_curve_relaxed: true,
+      history_unavailable_missing_prior_year_heatmap_relaxed: true,
+      cold_start_empty_curve_relaxed: false,
+      cold_start_missing_prior_year_heatmap_relaxed: false,
+    });
+    expect(logs).toEqual([
+      ["[workflow-refresh] history-unavailable validation relaxed", { run_id: HISTORY_RUN, check: EMPTY_CURVE_FAILURE }],
+      ["[workflow-refresh] history-unavailable validation relaxed", { run_id: HISTORY_RUN, check: MISSING_HEATMAP_FAILURE }],
+    ]);
+  });
+
+  test("an absent marker keeps today's empty-curve and missing-heatmap failures", async () => {
+    const { validation, logs } = await runHistoryGate({ marker: "absent" });
+    expect(validation.ok).toBe(false);
+    expect(validation.failures).toEqual([EMPTY_CURVE_FAILURE, MISSING_HEATMAP_FAILURE]);
+    expect(validation.invariants).toMatchObject({
+      history_unavailable_empty_curve_relaxed: false,
+      history_unavailable_missing_prior_year_heatmap_relaxed: false,
+      cold_start_empty_curve_relaxed: false,
+      cold_start_missing_prior_year_heatmap_relaxed: false,
+    });
+    expect(logs).toEqual([]);
+  });
+
+  test("a malformed marker stays strict", async () => {
+    const { validation } = await runHistoryGate({ marker: "malformed" });
+    expect(validation.ok).toBe(false);
+    expect(validation.failures).toEqual([EMPTY_CURVE_FAILURE, MISSING_HEATMAP_FAILURE]);
+  });
+
+  test("an unreadable marker fails the gate and does not open either exception", async () => {
+    const { validation } = await runHistoryGate({ marker: "unreadable" });
+    expect(validation.ok).toBe(false);
+    expect(validation.schema_failures).toBeGreaterThan(0);
+    expect(validation.failures).toEqual([
+      `${HISTORY_AVAILABILITY_KEY}: schema — history marker unreadable`,
+      EMPTY_CURVE_FAILURE,
+      MISSING_HEATMAP_FAILURE,
+    ]);
+    expect(validation.invariants).toMatchObject({
+      history_unavailable_empty_curve_relaxed: false,
+      history_unavailable_missing_prior_year_heatmap_relaxed: false,
+    });
+  });
+
+  test("a malformed prior-year heatmap still fails when the marker is valid", async () => {
+    const { validation } = await runHistoryGate({ marker: "valid", heatmap: "malformed" });
+    expect(validation.ok).toBe(false);
+    expect(validation.schema_failures).toBeGreaterThan(0);
+    expect(validation.failures.some((failure) => failure.startsWith(`heatmap/year/${PRIOR_YEAR}.json: schema`))).toBe(true);
+    expect(validation.failures).not.toContain(EMPTY_CURVE_FAILURE);
+    expect(validation.invariants.history_unavailable_missing_prior_year_heatmap_relaxed).toBe(false);
+    expect(validation.invariants.history_unavailable_empty_curve_relaxed).toBe(true);
+  });
+
+  test("a missing sampled entity still fails when the marker is valid", async () => {
+    const { validation } = await runHistoryGate({ marker: "valid", topEntity: "missing" });
+    expect(validation.ok).toBe(false);
+    expect(validation.failures).toContain("entity/repo/1.json: missing");
+    expect(validation.failures).not.toContain(EMPTY_CURVE_FAILURE);
+    expect(validation.invariants.history_unavailable_empty_curve_relaxed).toBe(false);
+    expect(validation.invariants.history_unavailable_missing_prior_year_heatmap_relaxed).toBe(true);
+  });
+
+  test.each([
+    ["production", { DEPLOY_ENV: "production" }],
+    ["a production signal on preview", { DEPLOY_ENV: "pre", VERCEL_ENV: "production" }],
+    ["an unset deployment", {}],
+  ] as const)("%s stays strict with a valid marker", async (_label, env) => {
+    const { validation, logs } = await runHistoryGate({ marker: "valid", env });
+    expect(validation.ok).toBe(false);
+    expect(validation.failures).toEqual([EMPTY_CURVE_FAILURE, MISSING_HEATMAP_FAILURE]);
+    expect(validation.invariants).toMatchObject({
+      history_unavailable_empty_curve_relaxed: false,
+      history_unavailable_missing_prior_year_heatmap_relaxed: false,
+    });
+    expect(logs).toEqual([]);
+  });
+
+  test("present history does not record either marker exception", async () => {
+    const { validation, logs } = await runHistoryGate({ marker: "valid", heatmap: "present", topEntity: "present" });
+    expect(validation.ok).toBe(true);
+    expect(validation.failures).toEqual([]);
+    expect(validation.invariants).toMatchObject({
+      sample_curve_months: 1,
+      history_unavailable_empty_curve_relaxed: false,
+      history_unavailable_missing_prior_year_heatmap_relaxed: false,
+    });
+    expect(logs).toEqual([]);
+  });
+
+  test("first publication without a marker still uses the cold-start exception", async () => {
+    const { validation, logs } = await runHistoryGate({
+      marker: "absent",
+      pointer: false,
+      env: { DEPLOY_ENV: "pre", WORKFLOW_COLD_START: "1" },
+    });
+    expect(validation.ok).toBe(true);
+    expect(validation.failures).toEqual([]);
+    expect(validation.invariants).toMatchObject({
+      cold_start_empty_curve_relaxed: true,
+      cold_start_missing_prior_year_heatmap_relaxed: true,
+      history_unavailable_empty_curve_relaxed: false,
+      history_unavailable_missing_prior_year_heatmap_relaxed: false,
+    });
+    expect(logs).toEqual([
+      ["[workflow-refresh] cold-start validation relaxed", { run_id: HISTORY_RUN, check: EMPTY_CURVE_FAILURE }],
+      ["[workflow-refresh] cold-start validation relaxed", { run_id: HISTORY_RUN, check: MISSING_HEATMAP_FAILURE }],
+    ]);
+  });
+});
