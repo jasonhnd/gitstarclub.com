@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { withWorkerEnv } from "@/lib/workers-host/runtime-env";
+import { HISTORY_AVAILABILITY_KEY } from "../history-availability";
 
 let value: unknown = null;
 let repoValue: Record<string, unknown> | null = null;
 let seriesPresent = true;
+let monthlyPresent = true;
+let historyMarker: unknown = null;
 let missingPaths = new Set<string>();
 let reads: Array<{ path: string; bust?: string }> = [];
 
@@ -27,14 +31,15 @@ async function mockRead(
   reads.push({ path, bust: opts.bust });
   if (missingPaths.has(path)) return null;
   let raw: unknown;
-  if (path === "canonical/v2/meta.json") raw = value;
+  if (path === HISTORY_AVAILABILITY_KEY) raw = historyMarker;
+  else if (path === "canonical/v2/meta.json") raw = value;
   else if (path.endsWith("repos/1.json")) raw = repoValue ? { "1": repoValue } : {};
   else if (
     path.endsWith("repo-monthly/1.json") ||
     path.endsWith("repo-weekly/1.json") ||
     path.endsWith("repo-recent-daily/1.json")
   ) {
-    raw = seriesPresent ? { "1": [] } : {};
+    raw = seriesPresent && (monthlyPresent || !path.includes("repo-monthly/")) ? { "1": [] } : {};
   } else raw = {};
   return raw == null ? null : schema.parse(raw);
 }
@@ -57,6 +62,8 @@ beforeEach(() => {
   value = null;
   repoValue = { ...validRepo };
   seriesPresent = true;
+  monthlyPresent = true;
+  historyMarker = null;
   missingPaths = new Set();
   reads = [];
   delete process.env.PREFLIGHT_RELAX_EMPTY_SHARDS;
@@ -71,7 +78,72 @@ beforeEach(() => {
 const { preflightCanonical, runPreflightStep, PREFLIGHT_BUCKETS_PER_JOB } = await import("./preflight");
 const { readCanonicalPreflight } = await import("../canonical-preflight");
 
+const unavailableHistory = {
+  seed_date: "2026-10-19",
+  monthly: "unavailable",
+  prior_year_heatmap: "unavailable",
+  set_at: "2026-10-25T09:00:00Z",
+} as const;
+
+function markMonthlyUnavailable(marker: unknown = unavailableHistory) {
+  value = {
+    seam_date: "2026-05-30",
+    schema_ver: 1,
+    folded_through: { month: "2026-05", week: "2026-W22" },
+  };
+  monthlyPresent = false;
+  historyMarker = marker;
+}
+
 describe("preflightCanonical", () => {
+  test("valid preview marker accepts zero monthly keys after all windows and reads coverage only once", async () => {
+    markMonthlyUnavailable();
+    await expect(withWorkerEnv({ DEPLOY_ENV: "pre" }, () => preflightCanonical("marked"))).resolves.toMatchObject({
+      seam_date: "2026-05-30",
+    });
+    expect(reads.filter(({ path }) => path === HISTORY_AVAILABILITY_KEY)).toEqual([
+      { path: HISTORY_AVAILABILITY_KEY, bust: "marked-workflow-preflight" },
+    ]);
+    expect(reads.findIndex(({ path }) => path === HISTORY_AVAILABILITY_KEY)).toBeGreaterThan(
+      reads.findIndex(({ path }) => path === "canonical/v2/repo-monthly/31.json"),
+    );
+  });
+
+  test.each([null, {}, { ...unavailableHistory, monthly: "available" }])(
+    "absent or malformed preview marker retains the same preflight failure: %p", async (marker) => {
+      markMonthlyUnavailable(marker);
+      await expect(withWorkerEnv({ DEPLOY_ENV: "pre" }, () => preflightCanonical("unmarked"))).rejects.toThrow(
+        "canonical preflight failed (1): canonical/v2/repo-monthly: no repository records for 1 canonical repo(s)",
+      );
+    },
+  );
+
+  test.each([{}, { DEPLOY_ENV: "production" }, { DEPLOY_ENV: "pre", VERCEL_ENV: "production" }])(
+    "valid marker stays strict outside preview: %p", async (env) => {
+      markMonthlyUnavailable();
+      await expect(withWorkerEnv(env, () => preflightCanonical("production"))).rejects.toThrow(
+        "canonical preflight failed (1): canonical/v2/repo-monthly: no repository records for 1 canonical repo(s)",
+      );
+      expect(reads.some(({ path }) => path === HISTORY_AVAILABILITY_KEY)).toBe(false);
+    },
+  );
+
+  test("valid preview marker still requires weekly and recent-daily families", async () => {
+    markMonthlyUnavailable();
+    seriesPresent = false;
+    await expect(withWorkerEnv({ DEPLOY_ENV: "pre" }, () => preflightCanonical("marked-empty-series"))).rejects.toThrow(
+      "canonical preflight failed (2): canonical/v2/repo-weekly: no repository records for 1 canonical repo(s); canonical/v2/repo-recent-daily: no repository records for 1 canonical repo(s)",
+    );
+  });
+
+  test("valid preview marker cannot replace a required monthly file", async () => {
+    markMonthlyUnavailable();
+    missingPaths.add("canonical/v2/repo-monthly/31.json");
+    await expect(withWorkerEnv({ DEPLOY_ENV: "pre" }, () => preflightCanonical("marked-missing"))).rejects.toThrow(
+      "canonical/v2/repo-monthly/31.json: missing",
+    );
+  });
+
   test("route preflight uses a cache key distinct from the workflow step", async () => {
     value = {
       seam_date: "2026-05-30",

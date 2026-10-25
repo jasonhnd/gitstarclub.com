@@ -88,8 +88,10 @@ preview guard. Missing or malformed markers, unknown fields, unset deployment,
 and production return `strict` (all existing history requirements apply).
 Eligibility is never inferred from an empty family or `folded_through`. This
 declaration does not create history, restore cold-start flags, or derive monthly
-net values from aggregate history. The reader is not yet connected to validation
-or publication gates; setting a marker alone does not relax those gates.
+net values from aggregate history. Canonical preflight and final canonical
+validation use this declaration only to permit zero monthly repository keys;
+required files and all other canonical checks remain enforced. Publication
+history gates do not yet use this declaration.
 
 ## Environment variables and secrets
 
