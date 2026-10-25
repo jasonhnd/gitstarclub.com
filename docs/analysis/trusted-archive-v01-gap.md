@@ -66,3 +66,5 @@ No public refresh-history index was found in `astro/src/pages/`, inspected page 
 ## Verification
 
 Documentation-only audit; no page, component, data, or configuration changes. `bun run lint:docs` was run with Node 24.20.0 and Bun 1.4.2. The command is blocked by pre-existing missing documentation metadata in `docs/analysis/743-preview-empty-monthly.md`; that unrelated file was left unchanged. This report includes the required metadata.
+
+Separate checks: `bun ./scripts/check-docs.mjs` passed, as did this report's code-fence and metadata validators. The documentation-consistency tests passed all eight cases. The combined documentation/Cloudflare test invocation could not pass because the installed workspace lacks package `cf`, imported by `web/cloudflare.config.ts`; no dependency or configuration changes were made.
