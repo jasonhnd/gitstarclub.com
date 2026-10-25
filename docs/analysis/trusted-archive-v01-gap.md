@@ -1,3 +1,11 @@
+---
+owner: product
+status: draft
+last_reviewed: 2026-10-25
+source_of_truth_for:
+  - Issue 765 Astro trusted archive v0.1 gap audit
+---
+
 # Trusted archive v0.1: Astro gap audit
 
 Audit for issue #765, observed on 2026-10-25 (UTC). A data layer is a separately produced dataset, such as current totals, period rankings, or historical curves. A release is the publication of a particular refresh version, rather than a repository's own GitHub release.
@@ -57,4 +65,4 @@ No public refresh-history index was found in `astro/src/pages/`, inspected page 
 
 ## Verification
 
-Documentation-only audit; no page, component, data, or configuration changes. Validation command: `bun run lint:docs`.
+Documentation-only audit; no page, component, data, or configuration changes. `bun run lint:docs` was run with Node 24.20.0 and Bun 1.4.2. The command is blocked by pre-existing missing documentation metadata in `docs/analysis/743-preview-empty-monthly.md`; that unrelated file was left unchanged. This report includes the required metadata.
