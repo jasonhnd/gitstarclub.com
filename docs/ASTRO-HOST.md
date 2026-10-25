@@ -208,7 +208,8 @@ prebuilt directory as preview with
 `cf deploy --prebuilt --mode production --no-provision`. The copy is removed
 afterward. No resource provisioning or deployment is part of verification.
 For a local guard-only check, import `assertProductionArtifact` from
-`astro/scripts/production-deploy-guards.ts`; importing it never invokes cf.
+the [production guards](../astro/scripts/production-deploy-guards.ts);
+importing that module never invokes cf.
 
 ## Caching and publication
 
