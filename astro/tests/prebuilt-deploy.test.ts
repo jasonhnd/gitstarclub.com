@@ -8,8 +8,8 @@ import { preparePrebuiltDeploy } from "../scripts/prebuilt-deploy";
 
 test("both preview hosts reuse the existing KV namespace; production binding stays unchanged", () => {
   for (const factory of [hostWorker, astroHostWorker]) {
-    expect(factory("pre").env.GSC_CACHE).toEqual({ type: "kv", id: "4c3107414bad4a0386fedfcf96dde6e2" });
-    expect(factory("production").env.GSC_CACHE).toEqual({ type: "kv" });
+    assert.deepEqual(factory("pre").env.GSC_CACHE, { type: "kv", id: "4c3107414bad4a0386fedfcf96dde6e2" });
+    assert.deepEqual(factory("production").env.GSC_CACHE, { type: "kv" });
   }
 });
 
