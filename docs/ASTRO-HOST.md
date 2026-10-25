@@ -181,10 +181,14 @@ Wrangler, legacy packaging aliases and cf:dry-run remain forbidden by owner orde
 
 The Worker is the sole HTML cache boundary. It reuses the bounded Cache API/KV
 artifact store. Cache keys separate build, origin, path/query and locale.
-Core HTML is cached for one hour and namespaced by publication identity.
-Long tails stay fresh for seven days, serve stale during one further day while
-regenerating, then block. Ordinary publication keeps warm tails; explicit path
-invalidation is awaited. Cookies, auth, ranges, non-GET, APIs and controls bypass
+All HTML, including repository, organization and category pages, is namespaced
+by publication identity. Core HTML is cached for one hour. Within a publication,
+long tails stay fresh for seven days, serve stale during one further day while
+regenerating, then block. A publish or rollback selects a new namespace for every
+page; old entries expire through normal retention. The authenticated publication
+callback clears the pointer memo and two shared pointer tags (four KV writes),
+without listing or invalidating individual page paths. Explicit path invalidation
+remains available and awaited. Cookies, auth, ranges, non-GET, APIs and controls bypass
 shared HTML storage. A bypass does not waive publication correctness.
 
 Capture `views/latest.json`, `bootstrap/latest.json` and `live/latest.json`
