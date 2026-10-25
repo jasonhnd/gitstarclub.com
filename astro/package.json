@@ -23,6 +23,7 @@
     "build:pre": "node scripts/build.mjs --mode pre",
     "validate:host": "bun scripts/validate-host.ts",
     "deploy:pre": "bun scripts/deploy-pre.ts",
+    "deploy:production": "bun scripts/deploy-production.ts",
     "crawl:local": "bun scripts/crawl-local.ts",
     "perf:local": "bun scripts/perf-local.ts"
   },

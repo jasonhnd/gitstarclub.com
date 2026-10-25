@@ -13,14 +13,14 @@ test("both preview hosts reuse the existing KV namespace; production binding sta
   }
 });
 
-test("cf receives a self-contained copy through cwd, preserving reviewed output and disabling provisioning", () => {
+for (const mode of ["pre", "production"] as const) test(`cf receives a self-contained ${mode} copy through cwd, preserving reviewed output and disabling provisioning`, () => {
   assert(process.env.KANBAN_TMP, "Set card-local KANBAN_TMP");
   const scratch = mkdtempSync(resolve(process.env.KANBAN_TMP, "prebuilt-deploy-test-"));
   try {
     const source = resolve(scratch, "astro-cloudflare");
     const worker = "output/v0/workers/default";
     mkdirSync(resolve(source, worker, "bundle"), { recursive: true });
-    const config = JSON.stringify(astroHostWorker("pre"));
+    const config = JSON.stringify(astroHostWorker(mode));
     writeFileSync(resolve(source, worker, "worker.config.json"), config);
     writeFileSync(resolve(source, worker, "bundle/entry.mjs"), "export default {};");
     mkdirSync(resolve(scratch, "astro"));
@@ -30,8 +30,8 @@ test("cf receives a self-contained copy through cwd, preserving reviewed output 
     symlinkSync(resolve(scratch, "linked-assets"), resolve(source, worker, "assets"), "dir");
 
     const cli = resolve("node_modules/cf/bin/cf");
-    const deployment = preparePrebuiltDeploy(scratch, cli);
-    expect(deployment.cmd).toEqual(["node", cli, "deploy", "--prebuilt", "--mode", "pre", "--no-provision"]);
+    const deployment = mode === "pre" ? preparePrebuiltDeploy(scratch, cli) : preparePrebuiltDeploy(scratch, cli, mode);
+    expect(deployment.cmd).toEqual(["node", cli, "deploy", "--prebuilt", "--mode", mode, "--no-provision"]);
     expect(deployment.cwd.startsWith(`${scratch}/astro-deploy-`)).toBe(true);
     function assertNoSymlinks(path: string) {
       const stat = lstatSync(path);
