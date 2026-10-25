@@ -60,6 +60,37 @@ and preview have separate cache namespaces. GitHub Actions remains OFF;
 `static` and `production-build` remain the required job names if automation is
 separately re-enabled. Optional jobs remain optional and never deploy.
 
+### Preview seed history availability
+
+`canonical/v2/history-availability.json` declares history that the preview seed
+does not have: monthly net history and the prior-calendar-year heatmap. Its strict
+schema is `PreviewHistoryAvailability` in `web/lib/contracts/canonical.ts`:
+
+```json
+{
+  "seed_date": "2026-10-19",
+  "monthly": "unavailable",
+  "prior_year_heatmap": "unavailable",
+  "set_at": "2026-10-25T00:00:00Z"
+}
+```
+
+These dates are illustrative; an authorized setter must record the actual seed
+date and the actual time the marker was set. Only the owner or an operator with
+explicit owner authorization for the preview bucket write may set or replace
+it, after confirming the seed's missing history. Production must never contain
+this marker.
+
+`readHistoryAvailability` in `web/lib/workflows/history-availability.ts` accepts
+the decoded marker and returns its validated declaration only when
+`DEPLOY_ENV=pre` and there is no production signal, using the existing runtime
+preview guard. Missing or malformed markers, unknown fields, unset deployment,
+and production return `strict` (all existing history requirements apply).
+Eligibility is never inferred from an empty family or `folded_through`. This
+declaration does not create history, restore cold-start flags, or derive monthly
+net values from aggregate history. The reader is not yet connected to validation
+or publication gates; setting a marker alone does not relax those gates.
+
 ## Environment variables and secrets
 
 Current Worker configuration is in [Worker configuration](../web/cloudflare.config.ts), with secrets stored on the Cloudflare platform. For local development, copy the repository root `.env.example` to `web/.env.local`; `web/scripts/lib/env.ts` loads only that file. **Never commit real secret values.** Follow least privilege for read and write paths: browsing or building does not require a write token.
