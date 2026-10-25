@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ArtifactStore, type CacheKV } from "../../web/lib/workers-host/cache/store";
+import { ArtifactStore, type CacheKV, type HotCache } from "../../web/lib/workers-host/cache/store";
 import { readPublication, type PointerRead, type Publication } from "../../web/lib/workers-host/publication-fence";
 import { TAIL_EXPIRE_SECONDS, TAIL_FRESH_SECONDS } from "../../web/lib/workers-host/cache/policy";
 import { handleRequest, type HostOptions } from "../src/lib/host";
@@ -15,9 +15,9 @@ class MemoryKV implements CacheKV {
   }
   async put(key: string, value: string) { if (this.fail) throw new Error("Cache offline"); this.values.set(key, value); }
 }
-function harness() {
+function harness(hot?: HotCache) {
   const kv = new MemoryKV();
-  const store = new ArtifactStore(kv, "astro-test");
+  const store = new ArtifactStore(kv, "astro-test", hot);
   const pointers = new Map<string, PointerRead>();
   const pending: Promise<unknown>[] = [];
   let time = Date.now();
@@ -57,17 +57,42 @@ test("cache keys separate locale, query, origin and build", async () => {
   await h.get();
   expect(h.renders()).toBe(5);
 });
-test("core publication and rollback fence cached HTML; warm tails retain their policy", async () => {
-  const h = harness();
-  const old = await h.get("/pulse");
-  await h.get();
+const publicationPaths = ["/pulse", "/react/react", "/ja/react/react", "/o/react", "/categories/language/typescript"];
+test.each(publicationPaths)("publication and rollback fence every cached HTML page: %s", async (path) => {
+  const entries = new Map<string, Response>();
+  const h = harness({
+    match: async (request) => entries.get(request.url)?.clone(),
+    put: async (request, response) => { entries.set(request.url, response.clone()); },
+  });
+  const old = await h.get(path);
+  expect((await h.get(path)).headers.get("x-gsc-cache")).toBe("HIT");
   h.publish("v2");
-  expect(await (await h.get("/pulse")).text()).toContain("v2");
-  expect(await (await h.get()).text()).toContain("v1");
+  const changed = await h.get(path);
+  expect(changed.headers.get("x-gsc-cache")).toBe("MISS");
+  expect(await changed.text()).toContain("v2");
+  expect(changed.headers.get("x-gsc-publication")).not.toBe(old.headers.get("x-gsc-publication"));
+  expect((await h.get(path)).headers.get("x-gsc-cache")).toBe("HIT");
   h.publish("v1", "2026-10-21T02:00:00.000Z");
-  const rollback = await h.get("/pulse");
+  const rollback = await h.get(path);
   expect(rollback.headers.get("x-gsc-cache")).toBe("MISS");
+  expect(await rollback.text()).toContain("v1");
   expect(rollback.headers.get("x-gsc-publication")).not.toBe(old.headers.get("x-gsc-publication"));
+  expect(entries.size).toBe(3);
+  expect(h.kv.values.size).toBe(3);
+});
+test.each(publicationPaths)("a publication change while reading cached HTML retries: %s", async (path) => {
+  const h = harness();
+  await h.get(path);
+  const get = h.store.get.bind(h.store);
+  let raced = false;
+  h.store.get = async (key) => {
+    const entry = await get(key);
+    if (!raced) { raced = true; h.publish("v2"); }
+    return entry;
+  };
+  const response = await h.get(path);
+  expect(await response.text()).toContain("v2");
+  expect(response.headers.get("x-gsc-publication")).toBe((await h.options.publication()).id);
 });
 test("a publication during output generation retries once with captured new data", async () => {
   const h = harness();
@@ -244,16 +269,16 @@ test("repeated publication races and invalid pointers fail closed", async () => 
 test("stale tails regenerate and expired tails block on a new render", async () => {
   const h = harness();
   await h.get();
-  h.publish("v2"); h.advance(TAIL_FRESH_SECONDS + 1);
+  h.advance(TAIL_FRESH_SECONDS + 1);
   const stale = await h.get();
   expect(stale.headers.get("x-gsc-cache")).toBe("STALE");
   expect(await stale.text()).toContain("v1");
   await Promise.all(h.pending);
-  expect(await (await h.get()).text()).toContain("v2");
-  h.publish("v3"); h.advance(TAIL_EXPIRE_SECONDS + 1);
+  expect(await (await h.get()).text()).toContain("v1");
+  h.advance(TAIL_EXPIRE_SECONDS + 1);
   const expired = await h.get();
   expect(expired.headers.get("x-gsc-cache")).toBe("MISS");
-  expect(await expired.text()).toContain("v3");
+  expect(await expired.text()).toContain("v1");
 });
 test("cache loss degrades to rendering; private and HEAD requests never share storage", async () => {
   const h = harness();

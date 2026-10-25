@@ -39,8 +39,10 @@ consumer successor behavior and runtime configuration remain shared.
 P0's host captures publication for operational routes and never retries their
 mutations. Only language GET/HEAD and revalidation POST bypass pointer reads,
 matching PR #691. Revalidation authenticates first, clears the existing pointer
-memo/data cache tags, then awaits Astro invalidation of the same core paths.
-Long-tail pages retain the existing lifetime policy; no new tail purge is added.
+memo/data cache tags. All Astro HTML keys include publication identity, so the
+callback skips web framework path tags and the Astro core-path pass. Four KV
+writes replace the former 172; publishes and rollbacks also refresh long tails
+without a page purge. Tail lifetimes apply within each publication.
 The P0 `invalidatePaths` hook remains available for explicit invalidation.
 
 Minimal shared P0 corrections required for public response parity:

@@ -22,7 +22,7 @@ test("the built Astro Worker renders all seven URL locales and existing shell tr
     expect(response.headers.get("content-security-policy")).toContain("script-src 'self' 'unsafe-inline'");
   }
 }, 30_000);
-test("the real Worker caches cold long tails, fences core publication, and preserves warm tails", async () => {
+test("the real Worker caches cold long tails, fences core and tail publication", async () => {
   const path = "/example/repo?worker-proof=1";
   const cold = await get(path);
   const coldHtml = await cold.text();
@@ -39,7 +39,10 @@ test("the real Worker caches cold long tails, fences core publication, and prese
   expect(changed.status).toBe(200);
   expect(changed.headers.get("x-gsc-publication")).not.toBe(oldPublication);
   await changed.text();
-  expect(await (await get(path)).text()).toBe(coldHtml);
+  const changedTail = await get(path);
+  expect(changedTail.headers.get("x-gsc-cache")).toBe("MISS");
+  expect(changedTail.headers.get("x-gsc-publication")).toBe(changed.headers.get("x-gsc-publication"));
+  await changedTail.text();
 });
 test("language redirects and deployment identity survive a broken DATA pointer", async () => {
   const bucket = await worker.getR2Bucket("DATA") as unknown as R2Bucket;
