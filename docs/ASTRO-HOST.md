@@ -1,7 +1,7 @@
 ---
 owner: architecture / operations
 status: active
-last_reviewed: 2026-10-22
+last_reviewed: 2026-10-25
 source_of_truth_for:
   - Astro Worker configuration and delivery
   - publication-fenced page caching
@@ -161,8 +161,16 @@ Static `/data/exports/v1/latest/*` URLs internally resolve to the newest
 checked-in dated export, preserving the old rewrite without duplicate payloads.
 
 After separate owner authorization, `bun run deploy:pre` validates a clean,
-exact-commit, non-fixture pre artifact, then calls the pinned
-`cf deploy --prebuilt --mode pre --no-provision`. It cannot select production.
+exact-commit, non-fixture pre artifact, including `validate:host`, then copies
+the reviewed output into a temporary directory under `KANBAN_TMP`, resolving
+symlinks. The pinned cf 1.0.0-beta.18 reads `.cloudflare/output` from its working
+directory and has no output-directory option, so deployment runs
+`cf deploy --prebuilt --mode pre --no-provision` from that self-contained copy.
+The copy is removed afterward; the original artifact remains in place.
+The shared web/Astro configuration pins preview `GSC_CACHE` to the existing
+`gitstarclub-web-pre-gsc-cache` namespace (`4c3107414bad4a0386fedfcf96dde6e2`)
+because this cf version accepts a KV id but no title. Production's binding is
+unchanged. Provisioning stays disabled, and the script cannot select production.
 The generated preview contract contains no routes and exactly the schedules
 `0 3 * * *`, `0 4 * * SUN`, and `0 6 * * SUN`; production has no scheduled triggers. Review that
 contract and existing bindings before authorized deployment. No deployment

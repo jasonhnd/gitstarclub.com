@@ -58,7 +58,8 @@ export function assertHostContract(worker, mode, host = "web") {
   for (const [key, value] of Object.entries(vars)) check(env[key]?.type === "text" && env[key]?.value === value, `var ${key}`);
   for (const [key, expected] of Object.entries({
     ASSETS: { type: "assets" }, DATA: { type: "r2", name: bucket }, MEDIA: { type: "r2", name: "gitstarclub-assets" },
-    JOBS: { type: "queue", name: queue }, WORKER_SELF_REFERENCE: { type: "worker", worker: name }, GSC_CACHE: { type: "kv" },
+    JOBS: { type: "queue", name: queue }, WORKER_SELF_REFERENCE: { type: "worker", worker: name },
+    GSC_CACHE: pre ? { type: "kv", id: "4c3107414bad4a0386fedfcf96dde6e2" } : { type: "kv" },
   })) check(JSON.stringify(env[key]) === JSON.stringify(expected), `binding ${key}`);
   const extra = Object.keys(env).filter((key) => !(key in vars) && !["ASSETS", "DATA", "MEDIA", "JOBS", "WORKER_SELF_REFERENCE", "GSC_CACHE"].includes(key));
   check(extra.length === 0, `undeclared bindings/vars ${extra.join(",")}`);
