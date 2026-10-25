@@ -4,7 +4,14 @@ import type { pageData } from "../src/lib/data";
 import { pageData as nativePageData } from "../src/lib/data";
 import { Meta } from "../src/lib/contracts";
 import { runWithCloudflareWorkersHostForTests as withCloudflareReadPolicy } from "../../web/lib/runtime-config";
-import { rankPeriodLookbackLimits } from "../../web/lib/data/rank-periods";
+
+// Match the production transport alias without replacing global fetch.
+const transport = new URL("../src/lib/published-readers.ts", import.meta.url).pathname;
+Bun.plugin({ name: "published-reader-test", setup(build) {
+  build.onResolve({ filter: /^@\/lib\/fetch-timeout\.mjs$/ }, () => ({ path: transport }));
+} });
+const { readAuthoritativeView } = await import("../../web/lib/data/source");
+const { rankPeriodLookbackLimits } = await import("../../web/lib/data/rank-periods");
 
 const data: ReturnType<typeof pageData> = {
   publication: { id: "shared", views: null, bootstrap: null, live: null },
@@ -31,6 +38,38 @@ test("native transport preserves present JSON null for shared-reader validation"
     expect(missing.status).toBe(404);
     expect(await missing.json()).toBeNull();
   });
+});
+
+test("authoritative native reads fall back only on 404, not on present JSON null", async () => {
+  const path = "canonical/v2/meta.json";
+  const generation = "authoritative-null-fixture";
+  const overlayKey = `bootstrap/overlays/${generation}/${path}`;
+  const sealedKey = `bootstrap/generations/${generation}/${path}`;
+  const sealed = { schema_ver: 1, seam_date: "2026-07-17" };
+  for (const present of [false, true]) {
+    const calls: string[] = [];
+    const bucket = { async get(key: string) {
+      calls.push(key);
+      const body = key === sealedKey ? JSON.stringify(sealed) : key === overlayKey && present ? "null" : undefined;
+      return body === undefined ? null : { text: async () => body, etag: key };
+    } } as unknown as Parameters<typeof pageData>[0];
+    const captured = nativePageData(bucket, {
+      id: `${generation}-${present}`, views: null, live: null,
+      bootstrap: {
+        schema_ver: 1, generation, prefix: `bootstrap/generations/${generation}`,
+        previous_generation: null, published_at: "2026-07-17T12:00:00.000Z",
+        base_manifest_sha256: "a".repeat(64), canonical_manifest_sha256: "b".repeat(64),
+      },
+    });
+    await withPublishedReaders(captured, async () => {
+      if (present) {
+        await expect(readAuthoritativeView(path, Meta)).rejects.toMatchObject({ name: "ZodError" });
+      } else {
+        expect(await readAuthoritativeView(path, Meta)).toEqual(sealed);
+      }
+    });
+    expect(calls).toEqual(present ? [overlayKey] : [overlayKey, sealedKey]);
+  }
 });
 
 test("P6 Cloudflare discovery policy is opt-in, async-scoped and restored for P5", async () => {
