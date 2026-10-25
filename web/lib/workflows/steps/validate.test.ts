@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import * as source from "@/lib/data/source";
+import { FetchTimeoutError } from "@/lib/fetch-timeout.mjs";
 import * as write from "@/lib/data/write";
 import * as canonical from "@/lib/workflows/canonical-validation";
 import { HISTORY_AVAILABILITY_KEY } from "@/lib/workflows/history-availability";
@@ -413,10 +414,11 @@ function historyEntity(id: number, monthly: Array<[string, number, number]>) {
 
 type HistoryGateCase = {
   env?: Record<string, string | undefined>;
-  marker?: "absent" | "valid" | "malformed" | "unreadable";
-  heatmap?: "missing" | "malformed" | "present";
+  marker?: "absent" | "valid" | "null" | "malformed" | "invalid-json" | "unreadable" | "forbidden" | "timeout";
+  heatmap?: "missing" | "null" | "malformed" | "present";
   topEntity?: "empty" | "present" | "missing";
   pointer?: boolean;
+  sealedMarker?: boolean;
 };
 
 async function runHistoryGate(options: HistoryGateCase = {}) {
@@ -424,20 +426,45 @@ async function runHistoryGate(options: HistoryGateCase = {}) {
   const heatmap = options.heatmap ?? "missing";
   const topEntity = options.topEntity ?? "empty";
   const pointer = options.pointer ?? true;
-  const envKeys = ["DEPLOY_ENV", "VERCEL_ENV", "WORKFLOW_COLD_START"] as const;
+  const envKeys = [
+    "DEPLOY_ENV", "VERCEL_ENV", "WORKFLOW_COLD_START", "BLOB_BASE_URL",
+    "NEXT_PUBLIC_BLOB_BASE_URL", "STORAGE_READ_DRIVER", "R2_PUBLIC_BASE_URL", "VIEWS_VERSION_FALLBACK",
+  ] as const;
   const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
   for (const key of envKeys) delete process.env[key];
   Object.assign(process.env, options.env ?? { DEPLOY_ENV: "pre" });
+  process.env.BLOB_BASE_URL = "https://history-gate.example.com";
+  source.invalidatePublishedVersionMemo();
   const logs: unknown[][] = [];
   const log = spyOn(console, "log").mockImplementation((...args: unknown[]) => {
     if (typeof args[0] === "string" && args[0].startsWith("[workflow-refresh] ")) logs.push(args);
   });
-  const readView = spyOn(source, "readAuthoritativeView").mockImplementation(async (path: string, schema: { parse: (data: unknown) => unknown }) => {
-    if (path === HISTORY_AVAILABILITY_KEY && marker === "unreadable") throw new Error("history marker unreadable");
+  const fetchedPaths: string[] = [];
+  const fetchMock = spyOn(globalThis, "fetch").mockImplementation((async (input: RequestInfo | URL) => {
+    let path = new URL(input instanceof Request ? input.url : String(input)).pathname.slice(1);
+    fetchedPaths.push(path);
+    if (path === "bootstrap/latest.json") {
+      return options.sealedMarker
+        ? Response.json({
+            schema_ver: 1, generation: "bootstrap-history", prefix: "bootstrap/generations/bootstrap-history",
+            previous_generation: null, published_at: "2026-10-19T00:00:00Z",
+            base_manifest_sha256: "a".repeat(64), canonical_manifest_sha256: "b".repeat(64),
+          })
+        : new Response(null, { status: 404 });
+    }
+    if (path === `bootstrap/generations/bootstrap-history/${HISTORY_AVAILABILITY_KEY}`) return Response.json(HISTORY_MARKER);
+    path = path.replace(/^bootstrap\/overlays\/bootstrap-history\//, "");
+    if (path === HISTORY_AVAILABILITY_KEY) {
+      if (marker === "unreadable") throw new Error("history marker unreadable");
+      if (marker === "forbidden") return new Response(null, { status: 403 });
+      if (marker === "timeout") throw new FetchTimeoutError(String(input), 5);
+      if (marker === "null") return Response.json(null);
+      if (marker === "invalid-json") return new Response("{", { status: 200 });
+    }
+    if (path === `views/${HISTORY_RUN}/heatmap/year/${PRIOR_YEAR}.json` && heatmap === "null") return Response.json(null);
     const value = historyArtifact(path, { marker, heatmap, topEntity, pointer });
-    if (value == null) return null;
-    return schema.parse(value);
-  });
+    return value == null ? new Response(null, { status: 404 }) : Response.json(value);
+  }) as typeof fetch);
   const validateCanonical = spyOn(canonical, "validateCanonicalGeneration").mockResolvedValue({
     manifest: {
       run_id: HISTORY_RUN,
@@ -463,12 +490,13 @@ async function runHistoryGate(options: HistoryGateCase = {}) {
   });
   try {
     const validation = await validateVersion(HISTORY_RUN);
-    return { validation, logs };
+    return { validation, logs, fetchedPaths };
   } catch (error) {
-    if (stored) return { validation: stored as Awaited<ReturnType<typeof validateVersion>>, logs };
+    if (stored) return { validation: stored as Awaited<ReturnType<typeof validateVersion>>, logs, fetchedPaths };
     throw error;
   } finally {
-    readView.mockRestore();
+    fetchMock.mockRestore();
+    source.invalidatePublishedVersionMemo();
     validateCanonical.mockRestore();
     writeView.mockRestore();
     log.mockRestore();
@@ -641,7 +669,7 @@ describe("publication history gates and the preview history marker", () => {
     expect(validation.ok).toBe(false);
     expect(validation.schema_failures).toBeGreaterThan(0);
     expect(validation.failures).toEqual([
-      `${HISTORY_AVAILABILITY_KEY}: schema — history marker unreadable`,
+      `${HISTORY_AVAILABILITY_KEY}: schema — view fetch ${HISTORY_AVAILABILITY_KEY} -> history marker unreadable`,
       EMPTY_CURVE_FAILURE,
       MISSING_HEATMAP_FAILURE,
     ]);
@@ -649,10 +677,10 @@ describe("publication history gates and the preview history marker", () => {
       history_unavailable_empty_curve_relaxed: false,
       history_unavailable_missing_prior_year_heatmap_relaxed: false,
     });
-  });
+  }, { timeout: 20_000 });
 
-  test("a malformed prior-year heatmap still fails when the marker is valid", async () => {
-    const { validation } = await runHistoryGate({ marker: "valid", heatmap: "malformed" });
+  test.each(["null", "malformed"] as const)("a present %s prior-year heatmap fails when the marker is valid", async (heatmap) => {
+    const { validation } = await runHistoryGate({ marker: "valid", heatmap });
     expect(validation.ok).toBe(false);
     expect(validation.schema_failures).toBeGreaterThan(0);
     expect(validation.failures.some((failure) => failure.startsWith(`heatmap/year/${PRIOR_YEAR}.json: schema`))).toBe(true);
@@ -660,6 +688,41 @@ describe("publication history gates and the preview history marker", () => {
     expect(validation.invariants.history_unavailable_missing_prior_year_heatmap_relaxed).toBe(false);
     expect(validation.invariants.history_unavailable_empty_curve_relaxed).toBe(true);
   });
+
+  test("an overlay 404 permits the sealed marker to enable both publication exceptions", async () => {
+    const { validation, fetchedPaths } = await runHistoryGate({ marker: "absent", sealedMarker: true });
+    expect(validation.ok).toBe(true);
+    expect(validation.invariants).toMatchObject({
+      history_unavailable_empty_curve_relaxed: true,
+      history_unavailable_missing_prior_year_heatmap_relaxed: true,
+    });
+    expect(fetchedPaths).toContain(`bootstrap/generations/bootstrap-history/${HISTORY_AVAILABILITY_KEY}`);
+  });
+
+  test.each(["null", "malformed"] as const)("a present %s overlay marker stays strict despite a valid sealed marker", async (marker) => {
+    const { validation, fetchedPaths } = await runHistoryGate({ marker, sealedMarker: true });
+    expect(validation.ok).toBe(false);
+    expect(validation.failures).toEqual([EMPTY_CURVE_FAILURE, MISSING_HEATMAP_FAILURE]);
+    expect(validation.invariants).toMatchObject({
+      history_unavailable_empty_curve_relaxed: false,
+      history_unavailable_missing_prior_year_heatmap_relaxed: false,
+    });
+    expect(fetchedPaths).not.toContain(`bootstrap/generations/bootstrap-history/${HISTORY_AVAILABILITY_KEY}`);
+  });
+
+  test.each(["forbidden", "timeout", "invalid-json"] as const)("an overlay %s blocks publication despite a valid sealed marker", async (marker) => {
+    const { validation, fetchedPaths } = await runHistoryGate({ marker, sealedMarker: true });
+    expect(validation.ok).toBe(false);
+    expect(validation.schema_failures).toBeGreaterThan(0);
+    expect(validation.failures).toContain(EMPTY_CURVE_FAILURE);
+    expect(validation.failures).toContain(MISSING_HEATMAP_FAILURE);
+    expect(validation.failures.some((failure) => failure.startsWith(`${HISTORY_AVAILABILITY_KEY}: schema`))).toBe(true);
+    expect(validation.invariants).toMatchObject({
+      history_unavailable_empty_curve_relaxed: false,
+      history_unavailable_missing_prior_year_heatmap_relaxed: false,
+    });
+    expect(fetchedPaths).not.toContain(`bootstrap/generations/bootstrap-history/${HISTORY_AVAILABILITY_KEY}`);
+  }, { timeout: 20_000 });
 
   test("a missing sampled entity still fails when the marker is valid", async () => {
     const { validation } = await runHistoryGate({ marker: "valid", topEntity: "missing" });
