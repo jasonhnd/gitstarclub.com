@@ -134,7 +134,7 @@ also exercised by `astro/worker-checks/operations.test.ts`. Together these
 tests cover Astro's actual shared consumer path; they do not certify remote
 Cloudflare subrequest accounting or production load.
 
-## Build, validation and authorized pre deployment
+## Build, validation and authorized deployment
 
 Use Node 24.20.0 and Bun 1.4.2 from the checksum-verified AGENTS bootstrap.
 Set card-local `TMPDIR=KANBAN_TMP`; keep HOME and the shared Bun cache.
@@ -176,6 +176,40 @@ The generated preview contract contains no routes and exactly the schedules
 contract and existing bindings before authorized deployment. No deployment
 command is part of local verification, CI, or this integration card.
 Wrangler, legacy packaging aliases and cf:dry-run remain forbidden by owner order.
+
+### Guarded production entry point
+
+After separate owner authorization, `bun run deploy:production` is available
+from the root or `astro/`. It requires `KANBAN_TMP/astro-host-build.json` to
+identify a production, non-fixture build of the exact current commit and a
+clean checkout, including untracked files. It checks the built production
+mode, Worker `gitstarclub-web`, DATA/R2 `gitstarclub-data-prod`, JOBS producer
+and consumer `gitstarclub-jobs`, public data origin
+`https://data.gitstarclub.com`, R2 read/write drivers, and enabled indexing.
+Blob fixture bindings are forbidden. The only trigger is the production queue;
+schedules, routes and domains are refused. Production schedules require a
+separate, later owner decision.
+
+The production `GSC_CACHE` binding must have an explicit existing namespace ID;
+the preview ID is refused. Resolve the current `gitstarclub-web` binding
+read-only and pin that same ID in the reviewed production host contract before
+building. If the Worker has no such binding, stop and report; never create one.
+The #773 sandbox has no Cloudflare authentication (`cf auth whoami` reports
+`authenticated: false`, `Not logged in`), so the production namespace could
+not be resolved. The production source binding remains unpinned and this
+entry point deliberately refuses it. Account access and the read-only KV
+resolution remain required before production deployment can be accepted.
+
+Once those guards pass, the script runs `validate:host -- --mode production`,
+which also compares the artifact's bindings against the reviewed host contract
+and checks actual HTML, headers and robots indexing. It rechecks the local
+guards, verifies cf 1.0.0-beta.18, and uses the same temporary, non-symlink
+prebuilt directory as preview with
+`cf deploy --prebuilt --mode production --no-provision`. The copy is removed
+afterward. No resource provisioning or deployment is part of verification.
+For a local guard-only check, import `assertProductionArtifact` from
+the [production guards](../astro/scripts/production-deploy-guards.ts);
+importing that module never invokes cf.
 
 ## Caching and publication
 

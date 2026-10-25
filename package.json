@@ -16,7 +16,8 @@
     "build:production": "bun run --cwd astro build:production",
     "build:pre": "bun run --cwd astro build:pre",
     "validate:host": "bun run --cwd astro validate:host",
-    "deploy:pre": "bun run --cwd astro deploy:pre"
+    "deploy:pre": "bun run --cwd astro deploy:pre",
+    "deploy:production": "bun run --cwd astro deploy:production"
   },
   "devDependencies": {
     "@google/design.md": "0.4.0"
