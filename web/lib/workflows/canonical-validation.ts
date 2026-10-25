@@ -1,6 +1,6 @@
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import { mapLimit } from "@/lib/data/map-limit";
-import { isCloudflareWorkersHost, isPreviewPreflightEmptyShardRelaxed } from "@/lib/runtime-config";
+import { isCloudflareWorkersHost, isPreDeployment, isPreviewPreflightEmptyShardRelaxed } from "@/lib/runtime-config";
 import { readAuthoritativeView } from "@/lib/data/source";
 import {
   CanonicalGenerationManifest,
@@ -11,6 +11,7 @@ import {
   type ReposShardEntry,
 } from "@/lib/contracts";
 import { REPO_BUCKETS, repoBucket } from "./buckets";
+import { HISTORY_AVAILABILITY_KEY, readHistoryAvailability, type HistoryAvailability } from "./history-availability";
 
 export const HIGH_D_FACTOR_WARN_THRESHOLD = 2;
 
@@ -60,6 +61,15 @@ function isPreviewPlaceholderPolicy(policy: CanonicalEmptyShardPolicy): boolean 
 }
 
 export type CanonicalShardReader = (path: string, schema: ZodType) => Promise<unknown | null>;
+
+/** Read optional coverage without treating malformed declarations as shard schema failures. */
+export async function readCanonicalHistoryAvailability(
+  runId: string,
+  reader: CanonicalShardReader = (path, schema) => readAuthoritativeView(path, schema, { bust: runId }),
+): Promise<HistoryAvailability> {
+  if (!isPreDeployment()) return "strict";
+  return readHistoryAvailability(await reader(HISTORY_AVAILABILITY_KEY, z.unknown()));
+}
 
 export type CanonicalPreflightAcc = {
   repoRecords: number;
@@ -176,6 +186,7 @@ export function mergeCanonicalPreflightAcc(
 export function emptySeriesPreflightFailures(
   acc: CanonicalPreflightAcc,
   policy: CanonicalEmptyShardPolicy = "fail-closed",
+  historyAvailability: HistoryAvailability = "strict",
 ): string[] {
   if (isPreviewPlaceholderPolicy(policy)) return [];
   const failures: string[] = [];
@@ -183,7 +194,8 @@ export function emptySeriesPreflightFailures(
     failures.push("canonical/v2/repos: no repository records");
   }
   if (acc.repoRecords > 0) {
-    if (acc.monthlyRecords === 0) {
+    const monthlyUnavailable = historyAvailability !== "strict" && historyAvailability.monthly === "unavailable";
+    if (acc.monthlyRecords === 0 && !monthlyUnavailable) {
       failures.push(`canonical/v2/repo-monthly: no repository records for ${acc.repoRecords} canonical repo(s)`);
     }
     if (acc.weeklyRecords === 0) {
@@ -336,9 +348,12 @@ export async function validateCanonicalGeneration(
   }
 
   if (options.scope !== "repositories") {
+    const historyAvailability = finalize ? await readCanonicalHistoryAvailability(runId, reader) : "strict";
     for (const spec of SHARD_SPECS.slice(1)) {
       const records = recordsByKind.get(spec.kind) ?? 0;
-      if (finalize && repoIds.size > 0 && records === 0 && !allowPlaceholder) {
+      const monthlyUnavailable = spec.kind === "repo-monthly" && historyAvailability !== "strict"
+        && historyAvailability.monthly === "unavailable";
+      if (finalize && repoIds.size > 0 && records === 0 && !allowPlaceholder && !monthlyUnavailable) {
         failures.push(`canonical/v2/${spec.kind}: no repository records for ${repoIds.size} canonical repo(s)`);
       }
       const orphanRecords = [...(seriesRepoIds.get(spec.kind) ?? [])].filter((id) => !repoIds.has(id)).length;
