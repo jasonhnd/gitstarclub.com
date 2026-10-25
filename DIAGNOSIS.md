@@ -1,14 +1,42 @@
 # Preview empty monthly history: issue 743
 
 Evidence baseline: `8071b170a9564bb58668f92a4e72c92fb41a2530` (`pre`).
-**Verified** means code, test or committed operational-document read; tests were
-not executed. **Inferred** means a conclusion from those sources and the card's
-2026-10-25 09:00Z observations. Four public GETs attempted here on 2026-10-25
-(`bootstrap/latest.json`, `views/latest.json`, `canonical/v2/meta.json`, and
-`ops/workflows/health/workflow-refresh.json`) all returned HTTP 403; current
-remote contents were not independently verified. No live mutations were made.
+**Verified** means code, test, committed operational-document or public-data
+read; tests were not executed. **Inferred** means a conclusion from those sources
+and the card's 2026-10-25 09:00Z observations. No live mutations were made.
 
-**Inferred conclusion:** monthly history was never populated, rather than lost
+**Verified public reads (2026-10-25):** plain `curl -s` GETs returned HTTP 200
+for the four paths below on `https://data-pre.gitstarclub.com`. A generation is
+a published data snapshot; the active and previous generations are identified
+by `bootstrap/latest.json`.
+
+| Public path | Observed body fields |
+| --- | --- |
+| [bootstrap/latest.json](https://data-pre.gitstarclub.com/bootstrap/latest.json) | `generation`: `bootstrap-aggregate-gap-20261022T001946Z`; `previous_generation`: `bootstrap-aggregate-recovery-8adece3468c17fa8`; `published_at`: `2026-10-22T12:49:05.410Z`. |
+| [views/latest.json](https://data-pre.gitstarclub.com/views/latest.json) | `version` and `run_id`: `refresh-2026-10-21T21-01-25-223Z`; `published_at`: `2026-10-21T22:08:08.586Z`; `prev_version`: `null`; `schema_ver`: `1`. |
+| [canonical/v2/meta.json](https://data-pre.gitstarclub.com/canonical/v2/meta.json) | `{"seam_date":"2026-10-21","schema_ver":2,"folded_through":{"month":"2026-09","week":"2026-W40"},"generated_at":"2026-10-21T13:50:06.021Z"}`. |
+| [ops/workflows/health/workflow-refresh.json](https://data-pre.gitstarclub.com/ops/workflows/health/workflow-refresh.json) | `status`: `failed`; `at`: `2026-10-25T06:02:05.272Z`; `run_id`: `refresh-2026-10-25T06-01-12-515Z`; `error`: `canonical preflight failed (1): canonical/v2/repo-monthly: no repository records for 5669 canonical repo(s)`. |
+
+**Verified:** the [sealed active-generation metadata](https://data-pre.gitstarclub.com/bootstrap/generations/bootstrap-aggregate-gap-20261022T001946Z/canonical/v2/meta.json)
+(the immutable seed) returns the same body as the flat metadata above. Its
+[overlay metadata](https://data-pre.gitstarclub.com/bootstrap/overlays/bootstrap-aggregate-gap-20261022T001946Z/canonical/v2/meta.json)
+(mutable updates) is absent, HTTP 404. Under each generation's
+`bootstrap/generations/<generation>/canonical/v2/` prefix, sampled monthly
+files have these bodies:
+
+| Sealed generation | `repo-monthly/0.json` | `repo-monthly/1.json` | `repo-monthly/7.json` |
+| --- | --- | --- | --- |
+| [Active: bootstrap-aggregate-gap-20261022T001946Z](https://data-pre.gitstarclub.com/bootstrap/generations/bootstrap-aggregate-gap-20261022T001946Z/canonical/v2/repo-monthly/0.json) | `{}` | `{}` | `{}` |
+| [Recovery: bootstrap-aggregate-recovery-8adece3468c17fa8](https://data-pre.gitstarclub.com/bootstrap/generations/bootstrap-aggregate-recovery-8adece3468c17fa8/canonical/v2/repo-monthly/0.json) | `{}` | `{}` | `{}` |
+
+The active overlay and flat `canonical/v2/repo-monthly` paths for buckets
+(file groups) 0, 1 and 7 return HTTP 404. The active sealed `repo-weekly` and
+`repo-recent-daily` files in those same buckets contain repository keys.
+These October 22 snapshots already contain empty monthly history, so the
+emptiness predates Sunday's failure and is directly read, not merely inferred
+from that failure.
+
+**Verified conclusion:** monthly history was never populated, rather than lost
 by Sunday's weekly job. Cold start intentionally published without archive
 history; the aggregate import retained that state. Removing the initialization
 exceptions exposed an unsupported transition to strict steady-state validation.
@@ -16,15 +44,25 @@ exceptions exposed an unsupported transition to strict steady-state validation.
 ## 1. Who writes monthly, and did cold start skip it?
 
 **Verified:** the historical bootstrap exporter (the initial archive-data loader)
-aggregates daily archive rows by month and emits all 32 monthly files:
+aggregates daily archive rows by month and emits all 32 monthly files.
+`BACKFILL_BUCKETS` defines 32 in
+[backfill-data.mjs:4](pipeline/lib/backfill-data.mjs#L4); `writeBucketSeries`
+writes every bucket in
+[07-export-v2.mjs:175–177](pipeline/backfill/07-export-v2.mjs#L175).
+The exporter header states `id % 32` (the repository ID's remainder after
+division by 32), and the monthly aggregation calls that writer:
+[07-export-v2.mjs:5–8](pipeline/backfill/07-export-v2.mjs#L5),
 [pipeline/backfill/07-export-v2.mjs:199–220](pipeline/backfill/07-export-v2.mjs#L199).
 The recurring writer is managed refresh's **fold**, which moves closed months'
 frozen net star changes into canonical history:
 [fold.ts:193–264](web/lib/workflows/steps/fold.ts#L193),
 [fold.ts:309–320](web/lib/workflows/steps/fold.ts#L309), and
 [fold.ts:580–619](web/lib/workflows/steps/fold.ts#L580).
-It reads `pending/<month>.json`, not imported daily history; see the documented
-handoff in [VERCEL-DATA-OPERATIONS.md:382–392](docs/VERCEL-DATA-OPERATIONS.md#L382).
+Its `readPending` at [fold.ts:328](web/lib/workflows/steps/fold.ts#L328) calls
+`readPendingForFold` at [fold.ts:332–338](web/lib/workflows/steps/fold.ts#L332),
+which reads only `canonical/v2/pending/<month>.json`, not imported daily history.
+The documented handoff states the same:
+[VERCEL-DATA-OPERATIONS.md:389](docs/VERCEL-DATA-OPERATIONS.md#L389).
 Neither the weekly cron nor the aggregate importer creates monthly observations.
 
 **Verified:** cold start writes minimal metadata with the start day as
@@ -59,7 +97,9 @@ aggregate surviving-star counts must not become monthly net history or stocks.
 `bootstrap-aggregate-gap-20261022T001946Z`, with 5,238 repositories imported,
 649,512 daily additions and 89,046 weekly additions:
 [preview-aggregate-import-evidence.json:406–420,451–457](docs/analysis/preview-aggregate-import-evidence.json#L406).
-This verifies the recorded operation, not the store's present contents.
+The [sealed import report](https://data-pre.gitstarclub.com/bootstrap/generations/bootstrap-aggregate-gap-20261022T001946Z/views/aggregate-history-import.json),
+independently read on 2026-10-25, confirms `repositories_imported: 5238`,
+`daily_added: 649512` and `weekly_added: 89046`.
 
 **Verified:** publication stages a complete snapshot and commits its pointer,
 a small JSON file selecting the active generation:
