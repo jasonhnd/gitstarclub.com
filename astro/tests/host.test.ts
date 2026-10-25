@@ -3,6 +3,8 @@ import { ArtifactStore, type CacheKV, type HotCache } from "../../web/lib/worker
 import { readPublication, type PointerRead, type Publication } from "../../web/lib/workers-host/publication-fence";
 import { TAIL_EXPIRE_SECONDS, TAIL_FRESH_SECONDS } from "../../web/lib/workers-host/cache/policy";
 import { handleRequest, type HostOptions } from "../src/lib/host";
+import { corePublicationRevalidatePaths } from "../../web/lib/data/core-revalidate-paths";
+import { LOCALES } from "../src/lib/i18n";
 
 class MemoryKV implements CacheKV {
   values = new Map<string, string>();
@@ -57,7 +59,10 @@ test("cache keys separate locale, query, origin and build", async () => {
   await h.get();
   expect(h.renders()).toBe(5);
 });
-const publicationPaths = ["/pulse", "/react/react", "/ja/react/react", "/o/react", "/categories/language/typescript"];
+const publicationPaths = [...corePublicationRevalidatePaths(), ...LOCALES.flatMap((locale) => {
+  const prefix = locale === "en" ? "" : `/${locale}`;
+  return ["/react/react", "/o/react", "/categories/language/typescript"].map((path) => `${prefix}${path}`);
+})];
 test.each(publicationPaths)("publication and rollback fence every cached HTML page: %s", async (path) => {
   const entries = new Map<string, Response>();
   const h = harness({
