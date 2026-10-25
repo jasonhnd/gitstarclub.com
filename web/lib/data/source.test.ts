@@ -12,6 +12,9 @@ import { PUBLISHED_VIEWS_CACHE_TAG } from "./publication-cache-contract";
 import { resolveCanonicalBlobPath } from "./bootstrap-publication";
 import { resetBootstrapPointerCacheForTests } from "./bootstrap-pointer-cache";
 import { resetViewParseStateForTests } from "./parse-view";
+import { HISTORY_AVAILABILITY_KEY, readCanonicalHistoryAvailability } from "@/lib/workflows/history-availability";
+import { withWorkerEnv } from "@/lib/workers-host/runtime-env";
+import { FetchTimeoutError } from "@/lib/fetch-timeout.mjs";
 
 // Route a mocked global fetch by URL to simulate pointer + view fetches.
 // Date.now() is driven forward past the 1h TTL between scenarios to invalidate
@@ -37,6 +40,8 @@ const advancePastTtl = () => {
 interface FakeRoute {
   status?: number;
   json?: unknown;
+  body?: string;
+  error?: Error;
 }
 
 function livePointer(generation: string, lease: unknown = null) {
@@ -81,7 +86,7 @@ let fetchCalls: string[] = [];
 let fetchInits: Array<RequestInit & { next?: { revalidate?: number; tags?: string[] } }> = [];
 
 const makeRes = (route: FakeRoute): Response =>
-  ({
+  route.body !== undefined ? new Response(route.body, { status: route.status ?? 200 }) : ({
     ok: (route.status ?? 200) >= 200 && (route.status ?? 200) < 300,
     status: route.status ?? 200,
     headers: new Headers(),
@@ -124,7 +129,8 @@ beforeEach(() => {
     const url = typeof input === "string" ? input : input.toString();
     fetchCalls.push(url);
     fetchInits.push((init ?? {}) as RequestInit & { next?: { revalidate?: number; tags?: string[] } });
-    return Promise.resolve(makeRes(routeFor(url)));
+    const route = routeFor(url);
+    return route.error ? Promise.reject(route.error) : Promise.resolve(makeRes(route));
   }) as unknown as typeof fetch;
 });
 
@@ -672,6 +678,31 @@ describe("readView — non-base (flat) reads", () => {
     );
   });
 
+  test.each([null, { ok: "malformed" }])("present malformed canonical JSON %p cannot select sealed data", async (json) => {
+    routes = {
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-malformed") },
+      "/bootstrap/overlays/bootstrap-malformed/canonical/v2/meta.json": { status: 200, json },
+      "/bootstrap/generations/bootstrap-malformed/canonical/v2/meta.json": { json: { ok: true, tag: "sealed" } },
+    };
+
+    for (const reader of [readView, readAuthoritativeView]) {
+      await expect(reader("canonical/v2/meta.json", Doc)).rejects.toThrow();
+    }
+    expect(fetchCalls.some((url) => url.includes("/bootstrap/generations/"))).toBe(false);
+  });
+
+  test("successful JSON null cannot select a secondary read origin", async () => {
+    process.env.STORAGE_READ_DRIVER = "r2_then_blob";
+    process.env.R2_PUBLIC_BASE_URL = "https://r2.example.com";
+    routes = {
+      "https://r2.example.com/flat/null.json": { status: 200, json: null },
+      "https://blob.example.com/flat/null.json": { json: { ok: true, tag: "stale" } },
+    };
+
+    await expect(readAuthoritativeView("flat/null.json", Doc)).rejects.toThrow();
+    expect(fetchCalls).toEqual(["https://r2.example.com/flat/null.json"]);
+  });
+
   test("observes a canonical write in the same run while immutable views stay cacheable", async () => {
     const backing = new Map<string, FakeRoute>([
       ["/canonical/v2/state.json", { json: { ok: true, tag: "canonical-before" } }],
@@ -796,7 +827,82 @@ describe("readView — non-base (flat) reads", () => {
   });
 });
 
+describe("canonical history marker HTTP reads", () => {
+  const marker = {
+    seed_date: "2026-10-19",
+    monthly: "unavailable",
+    prior_year_heatmap: "unavailable",
+    set_at: "2026-10-25T09:00:00Z",
+  } as const;
+  const overlay = `/bootstrap/overlays/bootstrap-marker/${HISTORY_AVAILABILITY_KEY}`;
+  const sealed = `/bootstrap/generations/bootstrap-marker/${HISTORY_AVAILABILITY_KEY}`;
+
+  function markerRoutes(current: FakeRoute, fallback: FakeRoute = { json: marker }) {
+    routes = {
+      "/bootstrap/latest.json": { json: bootstrapPointer("bootstrap-marker") },
+      [overlay]: current,
+      [sealed]: fallback,
+    };
+  }
+
+  const load = () => withWorkerEnv({ DEPLOY_ENV: "pre" }, () => readCanonicalHistoryAvailability("marker-http"));
+
+  test("only an overlay HTTP 404 selects the sealed marker", async () => {
+    markerRoutes({ status: 404 });
+    expect(await load()).toEqual(marker);
+    expect(fetchCalls.map((url) => new URL(url).pathname)).toEqual(["/bootstrap/latest.json", overlay, sealed]);
+  });
+
+  test("confirmed 404 in both canonical layers stays strict", async () => {
+    markerRoutes({ status: 404 }, { status: 404 });
+    expect(await load()).toBe("strict");
+    expect(fetchCalls.some((url) => new URL(url).pathname === sealed)).toBe(true);
+  });
+
+  test.each([marker, null, { monthly: "unavailable" }, [], "malformed"])(
+    "HTTP 200 marker %p never selects a sealed declaration", async (json) => {
+      markerRoutes({ status: 200, json });
+      expect(await load()).toEqual(json === marker ? marker : "strict");
+      expect(fetchCalls.some((url) => new URL(url).pathname === sealed)).toBe(false);
+    },
+  );
+
+  test.each([
+    ["403", { status: 403 }, "403"],
+    ["timeout throw", { error: new FetchTimeoutError("https://blob.example.com/marker", 5) }, "timeout after 5ms"],
+  ] as const)("overlay %s blocks without selecting a sealed marker", async (_label, response, message) => {
+    markerRoutes(response);
+    await expect(load()).rejects.toThrow(message);
+    expect(fetchCalls.filter((url) => new URL(url).pathname === overlay)).toHaveLength(5);
+    expect(fetchCalls.some((url) => new URL(url).pathname === sealed)).toBe(false);
+  }, { timeout: 20_000 });
+
+  test("an undecodable HTTP 200 overlay blocks without selecting a sealed marker", async () => {
+    markerRoutes({ status: 200, body: "{" });
+    await expect(load()).rejects.toThrow();
+    expect(fetchCalls.some((url) => new URL(url).pathname === sealed)).toBe(false);
+  });
+
+  test.each([null, { monthly: "unavailable" }])("malformed sealed marker %p stays strict after overlay 404", async (json) => {
+    markerRoutes({ status: 404 }, { status: 200, json });
+    expect(await load()).toBe("strict");
+  });
+});
+
 describe("readView — atomic live generation resolution", () => {
+  test("a present null live artifact cannot select an older generation", async () => {
+    const path = "rank/week/2026-W29/repo/flow.json";
+    routes = {
+      "/live/latest.json": { json: livePointer("history-null") },
+      [`/live/generations/history-null/${path}`]: { status: 200, json: null },
+      "/live/generations/history-null/manifest.json": { json: liveManifest("history-null", "history-valid", []) },
+      [`/live/generations/history-valid/${path}`]: { json: { ok: true, tag: "older" } },
+    };
+
+    await expect(readAuthoritativeView(path, Doc, { live: true, liveHistory: true })).rejects.toThrow("unexpected JSON null");
+    expect(fetchCalls.some((url) => url.includes("/manifest.json") || url.includes("/history-valid/"))).toBe(false);
+  });
+
   test("all concurrent live reads share one pointer and one complete generation", async () => {
     routes = {
       "/live/latest.json": { status: 200, json: livePointer("generation-a") },

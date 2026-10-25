@@ -1,6 +1,6 @@
-import { z, type ZodType } from "zod";
+import type { ZodType } from "zod";
 import { mapLimit } from "@/lib/data/map-limit";
-import { isCloudflareWorkersHost, isPreDeployment, isPreviewPreflightEmptyShardRelaxed } from "@/lib/runtime-config";
+import { isCloudflareWorkersHost, isPreviewPreflightEmptyShardRelaxed } from "@/lib/runtime-config";
 import { readAuthoritativeView } from "@/lib/data/source";
 import {
   CanonicalGenerationManifest,
@@ -11,7 +11,9 @@ import {
   type ReposShardEntry,
 } from "@/lib/contracts";
 import { REPO_BUCKETS, repoBucket } from "./buckets";
-import { HISTORY_AVAILABILITY_KEY, readHistoryAvailability, type HistoryAvailability } from "./history-availability";
+import { readCanonicalHistoryAvailability, type HistoryAvailability } from "./history-availability";
+
+export { readCanonicalHistoryAvailability } from "./history-availability";
 
 export const HIGH_D_FACTOR_WARN_THRESHOLD = 2;
 
@@ -61,15 +63,6 @@ function isPreviewPlaceholderPolicy(policy: CanonicalEmptyShardPolicy): boolean 
 }
 
 export type CanonicalShardReader = (path: string, schema: ZodType) => Promise<unknown | null>;
-
-/** Read optional coverage without treating malformed declarations as shard schema failures. */
-export async function readCanonicalHistoryAvailability(
-  runId: string,
-  reader: CanonicalShardReader = (path, schema) => readAuthoritativeView(path, schema, { bust: runId }),
-): Promise<HistoryAvailability> {
-  if (!isPreDeployment()) return "strict";
-  return readHistoryAvailability(await reader(HISTORY_AVAILABILITY_KEY, z.unknown()));
-}
 
 export type CanonicalPreflightAcc = {
   repoRecords: number;
