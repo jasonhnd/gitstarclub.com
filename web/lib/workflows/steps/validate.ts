@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { readAuthoritativeView } from "@/lib/data/source";
 import { mapLimit } from "@/lib/data/map-limit";
 import { putView } from "@/lib/data/write";
@@ -32,6 +33,7 @@ import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { assertPublishedViewJsonSize } from "@/lib/view-size";
 import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
 import { isUniverseColdStartActive } from "@/lib/workflows/cold-start";
+import { HISTORY_AVAILABILITY_KEY, readHistoryAvailability, type HistoryAvailability } from "@/lib/workflows/history-availability";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 import { readPackedWindowMeta } from "@/lib/workflows/recompute/io";
 import { validateGeneratedEntities } from "./validate-entities";
@@ -58,6 +60,20 @@ export { HIGH_D_FACTOR_WARN_THRESHOLD, inspectAnchoringFactors } from "@/lib/wor
 // NOT assert last_stock == current_stars here. See docs/VERCEL-DATA-OPERATIONS.md §8.
 
 const MIN_LOOKUP = 1000;
+const COLD_START_RELAXED = "[workflow-refresh] cold-start validation relaxed";
+const HISTORY_UNAVAILABLE_RELAXED = "[workflow-refresh] history-unavailable validation relaxed";
+
+/**
+ * Decode the preview history marker. A confirmed absence or a decoded value
+ * the reader rejects stays strict. Transport and JSON failures propagate so
+ * a corrupt read cannot be treated as "no marker".
+ */
+async function readPublicationHistoryMarker(runId: string): Promise<unknown> {
+  return readAuthoritativeView(HISTORY_AVAILABILITY_KEY, z.unknown(), {
+    bust: runId,
+    skipSchemaParse: true,
+  });
+}
 
 export async function validateVersion(
   runId: string,
@@ -69,13 +85,24 @@ export async function validateVersion(
   const invariants: Record<string, boolean | number> = {
     cold_start_empty_curve_relaxed: false,
     cold_start_missing_prior_year_heatmap_relaxed: false,
+    history_unavailable_empty_curve_relaxed: false,
+    history_unavailable_missing_prior_year_heatmap_relaxed: false,
   };
   let checked = 0;
   let schemaFailures = 0;
+  let historyAvailability: HistoryAvailability = "strict";
+  try {
+    historyAvailability = readHistoryAvailability(await readPublicationHistoryMarker(runId));
+  } catch (error) {
+    schemaFailures++;
+    failures.push(`${HISTORY_AVAILABILITY_KEY}: schema — ${sanitizeErrorText(error instanceof Error ? error.message : String(error))}`);
+  }
+  const monthlyUnavailable = historyAvailability !== "strict" && historyAvailability.monthly === "unavailable";
+  const priorYearHeatmapUnavailable = historyAvailability !== "strict" && historyAvailability.prior_year_heatmap === "unavailable";
 
-  const relaxHistoryCheck = (invariant: string, check: string) => {
+  const noteHistoryException = (event: string, invariant: string, check: string) => {
     invariants[invariant] = true;
-    console.log("[workflow-refresh] cold-start validation relaxed", { run_id: runId, check });
+    console.log(event, { run_id: runId, check });
   };
 
   const read = async <T>(
@@ -216,7 +243,8 @@ export async function validateVersion(
   }
   mergeValidationReport({ invariants, failures }, validateCategorySampleRanks({ categoryAssignments, categoryRank, categoryRankPage2, sampleCategory }));
 
-  // Only the first armed preview publish can honestly have no historical curve.
+  // An empty sampled monthly curve is honest only for the first armed preview
+  // publish, or when the preview history marker declares monthly coverage unavailable.
   const topId = allTime?.items[0]?.id;
   if (topId != null) {
     const ent = await read(`entity/repo/${topId}.json`, RepoEntity);
@@ -224,7 +252,8 @@ export async function validateVersion(
       invariants.sample_curve_months = ent.curve.monthly.length;
       if (ent.curve.monthly.length === 0) {
         const failure = `entity/repo/${topId}: empty curve`;
-        if (coldStart) relaxHistoryCheck("cold_start_empty_curve_relaxed", failure);
+        if (coldStart) noteHistoryException(COLD_START_RELAXED, "cold_start_empty_curve_relaxed", failure);
+        else if (monthlyUnavailable) noteHistoryException(HISTORY_UNAVAILABLE_RELAXED, "history_unavailable_empty_curve_relaxed", failure);
         else failures.push(failure);
       }
       const trackingContract = typeof ent.active === "boolean" && "tracked_since" in ent;
@@ -239,12 +268,19 @@ export async function validateVersion(
   }
 
   // Normal refreshes require the complete prior year. First preview publication
-  // may lack that history, but a present, malformed heatmap still fails its schema.
+  // and a marker that declares that heatmap unavailable may lack the file.
+  // A present, malformed heatmap still fails its schema.
   const lastYear = String(new Date().getUTCFullYear() - 1);
+  const priorYearHeatmapException = coldStart || priorYearHeatmapUnavailable;
   await read(
     `heatmap/year/${lastYear}.json`,
     Heatmap,
-    coldStart ? (failure) => relaxHistoryCheck("cold_start_missing_prior_year_heatmap_relaxed", failure) : undefined,
+    priorYearHeatmapException
+      ? (failure) => {
+          if (coldStart) noteHistoryException(COLD_START_RELAXED, "cold_start_missing_prior_year_heatmap_relaxed", failure);
+          else noteHistoryException(HISTORY_UNAVAILABLE_RELAXED, "history_unavailable_missing_prior_year_heatmap_relaxed", failure);
+        }
+      : undefined,
   );
 
   const ok = failures.length === 0;
