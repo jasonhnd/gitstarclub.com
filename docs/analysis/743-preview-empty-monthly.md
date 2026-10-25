@@ -46,38 +46,38 @@ exceptions exposed an unsupported transition to strict steady-state validation.
 **Verified:** the historical bootstrap exporter (the initial archive-data loader)
 aggregates daily archive rows by month and emits all 32 monthly files.
 `BACKFILL_BUCKETS` defines 32 in
-[backfill-data.mjs:4](pipeline/lib/backfill-data.mjs#L4); `writeBucketSeries`
+[backfill-data.mjs:4](../../pipeline/lib/backfill-data.mjs#L4); `writeBucketSeries`
 writes every bucket in
-[07-export-v2.mjs:175–177](pipeline/backfill/07-export-v2.mjs#L175).
+[07-export-v2.mjs:175–177](../../pipeline/backfill/07-export-v2.mjs#L175).
 The exporter header states `id % 32` (the repository ID's remainder after
 division by 32), and the monthly aggregation calls that writer:
-[07-export-v2.mjs:5–8](pipeline/backfill/07-export-v2.mjs#L5),
-[pipeline/backfill/07-export-v2.mjs:199–220](pipeline/backfill/07-export-v2.mjs#L199).
+[07-export-v2.mjs:5–8](../../pipeline/backfill/07-export-v2.mjs#L5),
+[pipeline/backfill/07-export-v2.mjs:199–220](../../pipeline/backfill/07-export-v2.mjs#L199).
 The recurring writer is managed refresh's **fold**, which moves closed months'
 frozen net star changes into canonical history:
-[fold.ts:193–264](web/lib/workflows/steps/fold.ts#L193),
-[fold.ts:309–320](web/lib/workflows/steps/fold.ts#L309), and
-[fold.ts:580–619](web/lib/workflows/steps/fold.ts#L580).
-Its `readPending` at [fold.ts:328](web/lib/workflows/steps/fold.ts#L328) calls
-`readPendingForFold` at [fold.ts:332–338](web/lib/workflows/steps/fold.ts#L332),
+[fold.ts:193–264](../../web/lib/workflows/steps/fold.ts#L193),
+[fold.ts:309–320](../../web/lib/workflows/steps/fold.ts#L309), and
+[fold.ts:580–619](../../web/lib/workflows/steps/fold.ts#L580).
+Its `readPending` at [fold.ts:328](../../web/lib/workflows/steps/fold.ts#L328) calls
+`readPendingForFold` at [fold.ts:332–338](../../web/lib/workflows/steps/fold.ts#L332),
 which reads only `canonical/v2/pending/<month>.json`, not imported daily history.
 The documented handoff states the same:
-[VERCEL-DATA-OPERATIONS.md:389](docs/VERCEL-DATA-OPERATIONS.md#L389).
+[VERCEL-DATA-OPERATIONS.md:389](../VERCEL-DATA-OPERATIONS.md#L389).
 Neither the weekly cron nor the aggregate importer creates monthly observations.
 
 **Verified:** cold start writes minimal metadata with the start day as
 `seam_date` (the boundary between archive history and observed net changes), and
 `folded_through.month` (the completed-month watermark) set to the previous month:
-[cold-start.ts:48–60,91–105](web/lib/workflows/cold-start.ts#L48).
-[OPS.md:490–494](docs/OPS.md#L490) explicitly records the 2026-10-21 run as a
+[cold-start.ts:48–60,91–105](../../web/lib/workflows/cold-start.ts#L48).
+[OPS.md:490–494](../OPS.md#L490) explicitly records the 2026-10-21 run as a
 rehearsal with no archive history and initially empty monthly/weekly series.
 The full-chain test expects publication with an empty monthly curve:
-[full-chain-cold-start.test.ts:72–90](web/lib/workflows/runtime/full-chain-cold-start.test.ts#L72).
+[full-chain-cold-start.test.ts:72–90](../../web/lib/workflows/runtime/full-chain-cold-start.test.ts#L72).
 
 **Inferred:** with September already marked completed and October still open on
 both October 21 and 25, the fold has no eligible month. That is intentional;
-[fold.ts:193–207](web/lib/workflows/steps/fold.ts#L193) and
-[fold-step.test.ts:340–360](web/lib/workflows/steps/fold-step.test.ts#L340)
+[fold.ts:193–207](../../web/lib/workflows/steps/fold.ts#L193) and
+[fold-step.test.ts:340–360](../../web/lib/workflows/steps/fold-step.test.ts#L340)
 confirm this no-op. The watermark does not prove September rows ever existed.
 
 ## 2. What did the aggregate import write, and how does it reach canonical?
@@ -85,33 +85,33 @@ confirm this no-op. The watermark does not prove September rows ever existed.
 **Verified:** it adds daily/weekly observations, preserves existing monthly
 bytes, and materializes `{}` for absent monthly files. It does not synthesize
 monthly totals:
-[aggregate-history-import.ts:146–187](web/scripts/lib/aggregate-history-import.ts#L146).
+[aggregate-history-import.ts:146–187](../../web/scripts/lib/aggregate-history-import.ts#L146).
 The cold-start import test explicitly expects `{}` in the new generation while
 the old flat monthly file remains absent:
-[aggregate-history-import.test.ts:169–188](web/lib/aggregate-history-import.test.ts#L169).
+[aggregate-history-import.test.ts:169–188](../../web/lib/aggregate-history-import.test.ts#L169).
 This follows the owner policy in
-[STAR-HISTORY-AGGREGATE.md:145–173](docs/analysis/STAR-HISTORY-AGGREGATE.md#L145):
+[STAR-HISTORY-AGGREGATE.md:145–173](STAR-HISTORY-AGGREGATE.md#L145):
 aggregate surviving-star counts must not become monthly net history or stocks.
 
 **Verified:** committed execution evidence records publication of
 `bootstrap-aggregate-gap-20261022T001946Z`, with 5,238 repositories imported,
 649,512 daily additions and 89,046 weekly additions:
-[preview-aggregate-import-evidence.json:406–420,451–457](docs/analysis/preview-aggregate-import-evidence.json#L406).
+[preview-aggregate-import-evidence.json:406–420,451–457](preview-aggregate-import-evidence.json#L406).
 The [sealed import report](https://data-pre.gitstarclub.com/bootstrap/generations/bootstrap-aggregate-gap-20261022T001946Z/views/aggregate-history-import.json),
 independently read on 2026-10-25, confirms `repositories_imported: 5238`,
 `daily_added: 649512` and `weekly_added: 89046`.
 
 **Verified:** publication stages a complete snapshot and commits its pointer,
 a small JSON file selecting the active generation:
-[aggregate-history-import.ts:320–330](web/scripts/lib/aggregate-history-import.ts#L320).
+[aggregate-history-import.ts:320–330](../../web/scripts/lib/aggregate-history-import.ts#L320).
 There is no later copy into flat `canonical/v2`. Logical canonical reads consult
 `bootstrap/latest.json`, then try `bootstrap/overlays/<generation>/canonical/...`
 (the mutable updates), followed by `bootstrap/generations/<generation>/canonical/...`
 (the sealed seed); writes target the overlay:
-[bootstrap-publication.ts:149–168](web/lib/data/bootstrap-publication.ts#L149),
-[source.ts:569–593](web/lib/data/source.ts#L569),
-[write.ts:8–14](web/lib/data/write.ts#L8).
-[VERCEL-DATA-OPERATIONS.md:453–471](docs/VERCEL-DATA-OPERATIONS.md#L453)
+[bootstrap-publication.ts:149–168](../../web/lib/data/bootstrap-publication.ts#L149),
+[source.ts:569–593](../../web/lib/data/source.ts#L569),
+[write.ts:8–14](../../web/lib/data/write.ts#L8).
+[VERCEL-DATA-OPERATIONS.md:453–471](../VERCEL-DATA-OPERATIONS.md#L453)
 documents this design. A flat-path GET alone cannot establish active contents;
 `views/latest.json` being unchanged does not mean canonical import is unpublished.
 
@@ -119,11 +119,11 @@ documents this design. A flat-path GET alone cannot establish active contents;
 
 **Verified:** no. The 04:00 job updates the live layer; the distinct 06:00 job
 runs managed refresh:
-[OPS.md:350–356](docs/OPS.md#L350),
-[cron-dispatch.ts:4–12,53–60](workers/gitstarclub-web/src/cron-dispatch.ts#L4).
+[OPS.md:350–356](../OPS.md#L350),
+[cron-dispatch.ts:4–12,53–60](../../workers/gitstarclub-web/src/cron-dispatch.ts#L4).
 Weekly/daily refresh publishes current-month state, rankings and heatmap; it
 freezes a pending month only when the month rolls over:
-[live-refresh.ts:190–199,283–310](web/lib/cron/live-refresh.ts#L190).
+[live-refresh.ts:190–199,283–310](../../web/lib/cron/live-refresh.ts#L190).
 It never writes `repo-monthly`. **Inferred:** October 25 required no October
 closeout, so the reported weekly success is consistent with empty canonical
 monthly history. There is no evidence here of a missed monthly write.
@@ -134,11 +134,11 @@ monthly history. There is no evidence here of a missed monthly write.
 the importer explicitly supports preserving it. Current strict validation,
 however, deliberately rejects it: repository-key counts are summed across all
 buckets, and zero monthly keys triggers the failure regardless of history age:
-[canonical-validation.ts:160–196,271](web/lib/workflows/canonical-validation.ts#L160).
+[canonical-validation.ts:160–196,271](../../web/lib/workflows/canonical-validation.ts#L160).
 This counts repository keys, not observation tuples. Adding empty arrays under
 repository keys could evade that check without supplying history.
 The test asserts strict rejection:
-[canonical-validation.test.ts:57–73](web/lib/workflows/canonical-validation.test.ts#L57).
+[canonical-validation.test.ts:57–73](../../web/lib/workflows/canonical-validation.test.ts#L57).
 
 **Inferred:** this is a lifecycle-policy gap, not evidence of deleted data.
 The check is too strict for continuing this intentionally history-free preview,
@@ -147,14 +147,14 @@ monthly observations are absent; they were never promised by the import.
 
 **Verified:** waiting or retrying alone is insufficient: preflight rejects before
 fold in the actual job graph
-[graph.ts:79–92](web/lib/workflows/runtime/graph.ts#L79), and its final window
-rejects empty families in [preflight.ts:108–109](web/lib/workflows/steps/preflight.ts#L108).
+[graph.ts:79–92](../../web/lib/workflows/runtime/graph.ts#L79), and its final window
+rejects empty families in [preflight.ts:108–109](../../web/lib/workflows/steps/preflight.ts#L108).
 There are later blockers too: final canonical validation repeats the family
 check; sampled empty monthly curves and a missing prior-year heatmap also block
 ordinary publication:
-[canonical-validation.ts:338–343](web/lib/workflows/canonical-validation.ts#L338),
-[validate.ts:133–137,219–247](web/lib/workflows/steps/validate.ts#L133).
-[OPS.md:494](docs/OPS.md#L494) explicitly warns of later history failures.
+[canonical-validation.ts:338–343](../../web/lib/workflows/canonical-validation.ts#L338),
+[validate.ts:133–137,219–247](../../web/lib/workflows/steps/validate.ts#L133).
+[OPS.md:494](../OPS.md#L494) explicitly warns of later history failures.
 **Inferred:** bypassing only preflight would move the failure downstream.
 
 ## 5. Proposed follow-up cards
