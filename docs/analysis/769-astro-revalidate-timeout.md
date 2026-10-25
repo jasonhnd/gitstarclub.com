@@ -1,3 +1,11 @@
+---
+owner: architecture / operations
+status: active
+last_reviewed: 2026-10-25
+source_of_truth_for:
+  - Issue 769 Astro publication invalidation diagnosis
+---
+
 # Issue 769: Astro publication callback timeout
 
 ## DIAGNOSIS
