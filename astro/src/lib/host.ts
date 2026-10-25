@@ -59,7 +59,7 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
   const mutation = !["GET", "HEAD"].includes(request.method) || MUTATING_GET_PATHS.has(path);
   const tail = isLongTail(path);
   const now = options.now ?? Date.now;
-  const key = (publication: Publication) => JSON.stringify([options.build, url.origin, url.pathname, url.search, "html", tail ? "tail" : publication.id]);
+  const key = (publication: Publication) => JSON.stringify([options.build, url.origin, url.pathname, url.search, "html", publication.id]);
   const read = async (publication: Publication): Promise<StoredEntry | null> => {
     if (bypass) return null;
     try { return await options.store.get(key(publication)); } catch { return null; }
@@ -76,7 +76,7 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
     const headers = new Headers(response.headers);
     if (!api) headers.set("x-gsc-publication", publication.id);
     const entry: StoredEntry = {
-      v: 1, lastModified: now(), fence: tail ? "tail" : publication.id, tags: [url.pathname],
+      v: 1, lastModified: now(), fence: publication.id, tags: [url.pathname],
       cacheControl: { revalidate: tail ? TAIL_FRESH_SECONDS : 3600, expire: tail ? TAIL_EXPIRE_SECONDS : 3600 },
       value: { kind: "APP_ROUTE", body, status: response.status, headers: Object.fromEntries(headers) },
     };
@@ -102,8 +102,8 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
         const age = (now() - entry.lastModified) / 1000;
         const expire = tail ? TAIL_EXPIRE_SECONDS : 3600;
         const hit = responseFor(entry);
-        if (hit && age >= 0 && age < expire && entry.fence === (tail ? "tail" : publication.id)) {
-          if (!tail && (await options.publication()).id !== publication.id) continue;
+        if (hit && age >= 0 && age < expire && entry.fence === publication.id) {
+          if ((await options.publication()).id !== publication.id) continue;
           if (tail && age >= TAIL_FRESH_SECONDS) {
             options.waitUntil((async () => {
               const current = await options.publication();
