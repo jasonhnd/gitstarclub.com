@@ -34,6 +34,15 @@ export const CanonicalMeta = z.object({
 }).strict();
 export type CanonicalMeta = z.infer<typeof CanonicalMeta>;
 
+/** canonical/v2/history-availability.json — explicit preview seed coverage only. */
+export const PreviewHistoryAvailability = z.object({
+  seed_date: DateStr,
+  monthly: z.literal("unavailable"),
+  prior_year_heatmap: z.literal("unavailable"),
+  set_at: TimestampStr,
+}).strict();
+export type PreviewHistoryAvailability = z.infer<typeof PreviewHistoryAvailability>;
+
 /** One repo's dimension row in canonical/v2/repos/<bucket>.json.
  *  `d` = frozen anchoring factor (current_stars@seam / cumgross@seam_date), bootstrap-fixed. */
 export const ReposShardEntry = z.object({

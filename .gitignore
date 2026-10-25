@@ -22,3 +22,4 @@ gcp-key.json
 # loopcoder run state (local only)
 .loopcoder/
 
+.ktmp/

@@ -56,6 +56,31 @@ Those commands are the current PR/`pre`/`main` static blockers; production build
 
 The managed-refresh `validate` step is a separate production-data publish gate: it samples `views/<run_id>/**` after recompute and blocks the `views/latest.json` pointer cut on validation failure. It is not a page-rendering or PR CI gate.
 
+### Fresh-machine test entry points
+
+Install each independent package with `bun install --frozen-lockfile`: root,
+`web/`, and `pipeline/`; also install `astro/` on `feat/astro-site`.
+Web tests import pipeline helpers, so installing only `web/` is insufficient.
+Use the complete clean-checkout gate in [AGENTS.md](../AGENTS.md), including
+`BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE="" bun run test:cov`
+from `web/`. `bun run test` is the quick isolated `lib/` suite. Bare `bun test`
+also discovers Playwright files and script tests and shares module mocks; its
+result is not a substitute for the documented gate.
+
+SEO acceptance requires an explicit nonblank `SEO_LIVE_BASE`; missing, empty,
+and whitespace values skip all live SEO suites without fetching. Existing
+sitemap assertions remain active when an origin is explicitly supplied. Request
+hooks and network tests allow the 30-second request abort to finish before Bun's
+outer timeout. Offline regression tests use only a loopback sitemap fixture,
+including a response slower than Bun's default five-second hook timeout, and
+confirm that an incomplete sitemap locale set still fails.
+
+Worker shell HTTP tests assert the generated build SHA when one exists, and the
+synthetic runtime binding in a source-only checkout. Building first must not make
+identity assertions assume that the runtime binding overrides the baked commit.
+The pure identity tests separately require baked-commit precedence and explicit
+no-build fallback behavior.
+
 ### Offline backfill command coverage
 
 Issue 589 adds 88 tests through the unchanged `pipeline/` command
@@ -69,6 +94,10 @@ They run the real DuckDB rollup/precompute/export and real view/canonical
 validators. GitHub and R2 transport responses are intercepted inside each child
 process; all other fetches and network sockets are refused. Environment files and
 owner data are never copied. Test credentials are literal synthetic strings.
+
+The suite gives final fixture disposal 30 seconds: removing all offline CLI
+fixtures can exceed Bun's five-second hook default on a busy disk after every
+assertion has passed. This does not change command assertions or their budgets.
 
 The guards cover both R2 targets, default dry run, write opt-in, explicit dry run,
 no-upload, stage-only, empty-bucket initial commit and its shared lease, conflicting
@@ -174,7 +203,7 @@ Requirement IDs are defined in [REQUIREMENTS.md §0](./REQUIREMENTS.md#0-require
 | CF live history >64 page 500 (#495) | Period-scoped liveHistory truncates at 64 hops (null, no throw, no unverified legacy); a requested week/month newer than the hop stops without walking the rest of the chain; cycle / schema / listed-but-missing still fail closed; production `triggers.crons` stays `[]` | `web/lib/data/live-generation-history.test.ts`, `web/lib/data/source.test.ts` | After CF preview deploy of this PR: `GET /preview/health` 200; `GET /` and `GET /rankings` 200 (base / previous period / empty is OK). Do not PUT production schedules or stop Vercel cron |
 | CF migrate P3 Workers host (#452) | vinext replaces the legacy adapter; `/` is Next; shell keeps `/preview/*` + `/start`; no analytics provider is included | `web/lib/workers-host/*.test.ts`, `web/lib/i18n/dictionary-parity.test.ts`, `web/e2e/routing-security.spec.ts`, `web/lib/deployment-identity.test.ts`, `web/lib/runtime-config.test.ts` | Optional `verify / cf-workers-host` dry-run; local `bun run smoke:workers`; production and preview run on Cloudflare Workers; production JSON uses R2 after the accepted 2026-10-04 cutover; the production caller is unverified; see [archive/CF-MIGRATION-P3.md](./archive/CF-MIGRATION-P3.md) |
 | Cloudflare R2 P0 adapter (#444, #557) | Default Blob drivers; R2 CAS 412 / list prefix; R2 writes require `DEPLOY_ENV` plus `_meta/bucket-identity.json`; no real production bucket token | `web/lib/storage/*.test.ts`, `web/lib/runtime-config.test.ts`, `web/lib/blob-deletion.test.ts` | Dry-run `web/scripts/sync-blob-to-r2.ts` only with `DEPLOY_ENV=pre` or `production` against a bucket whose identity marker matches |
-| Real refresh chain and publication gates (#645, F16/F17/F18) | Production handlers run in memory from `firstRefreshJob` through `nextRefreshJob` to publish and GC (default checkpoints, pointer swap, orphan reap); publication makes exactly one invalidation POST to the harness's test-only `CF_CRON_ORIGIN`, distinct from its site/data origin, with bearer authorization, `no-store`, and an abort signal (#660); the harness captures the request without network access and restores the environment afterward; `validate` requires every `rank/{month,week,year}/<period>/{repo,org}/{flow,stock}.json` listed in the persisted `recompute/<kind>-win/meta.json` inventory (a valid empty inventory requires nothing; a missing one fails) and fails before the pointer moves when one is missing or its metadata disagrees with the path; rank hops and carry state are asserted across the eight-period boundary; one injected write failure per `FULL_REFRESH_STEPS` boundary leaves the pointer untouched (`gc` is best-effort and reports instead) | `web/lib/workflows/runtime/full-chain.test.ts`, `web/lib/workflows/runtime/full-chain-cold-start.test.ts` (harness in `web/lib/workflows/test-support.ts`), `web/lib/workflows/steps/validate.ts` | The armed, unpublished preview cold-start test now completes its first publication without history (#676). Validation records `cold_start_empty_curve_relaxed` and `cold_start_missing_prior_year_heatmap_relaxed` and logs each relaxed check. Regressions prove both historical failures still block without the flag, in production, or with an existing pointer; unreadable/malformed pointers, missing entities/search, and malformed heatmaps also block. The new pointer assertion fails against the pre-fix implementation (recorded in the #676 plan). A run whose recompute did not finish fails closed. Do **not** Bearer-trigger a refresh from a PR. |
+| Real refresh chain and publication gates (#645, F16/F17/F18) | Production handlers run in memory from `firstRefreshJob` through `nextRefreshJob` to publish and GC (default checkpoints, pointer swap, orphan reap); publication makes exactly one invalidation POST to the harness's test-only `CF_CRON_ORIGIN`, distinct from its site/data origin, with bearer authorization, `no-store`, and an abort signal (#660); the harness captures the request without network access and restores the environment afterward; `validate` requires every `rank/{month,week,year}/<period>/{repo,org}/{flow,stock}.json` listed in the persisted `recompute/<kind>-win/meta.json` inventory (a valid empty inventory requires nothing; a missing one fails) and fails before the pointer moves when one is missing or its metadata disagrees with the path; rank hops and carry state are asserted across the eight-period boundary; one injected write failure per `FULL_REFRESH_STEPS` boundary leaves the pointer untouched (`gc` is best-effort and reports instead). A history-free preview chain (#748) publishes again after aggregate import when cold-start flags are gone and `canonical/v2/history-availability.json` declares monthly history unavailable; removing that marker restores the strict empty-monthly failure, and a closed month still folds from its pending snapshot | `web/lib/workflows/runtime/full-chain.test.ts`, `web/lib/workflows/runtime/full-chain-cold-start.test.ts`, `web/lib/workflows/runtime/full-chain-history-free-preview.test.ts` (harness in `web/lib/workflows/test-support.ts`), `web/lib/workflows/steps/validate.ts` | The armed, unpublished preview cold-start test now completes its first publication without history (#676). Validation records `cold_start_empty_curve_relaxed` and `cold_start_missing_prior_year_heatmap_relaxed` and logs each relaxed check. Regressions prove both historical failures still block without the flag, in production, or with an existing pointer; unreadable/malformed pointers, missing entities/search, and malformed heatmaps also block. The history-free steady-state chain keeps `repo-monthly` empty through aggregate import, then publishes a second refresh only while the preview marker is present. A run whose recompute did not finish fails closed. Do **not** Bearer-trigger a refresh from a PR. |
 | View parse-once + Zod fingerprints | Same path+generation is parsed once; unrecognized lifecycle keys are not `.passthrough()`; old and new Meta/lookup/entity shapes both parse | `web/lib/data/parse-view.test.ts`, `web/lib/contracts/contracts.test.ts` | 24h `ZodError` volume drops; no per-request repeat of the same fingerprint |
 | current_month shards under Data Cache limit | Writer emits index + 32 shards; reader accepts v1 monolith and v2 index; Sunday daily does not claim live lease | `web/lib/cron/current-month-shards.test.ts`, `web/lib/cron/live-refresh.test.ts`, `web/lib/cron/handlers.test.ts` | `items over 2MB can not be cached` is 0 after the next live publish |
 | category assignments shards under Data Cache limit | Writer emits index + 32 repo-id shards; reader accepts v1 monolith; publish gate checks UTF-8 JSON byte length < 1.50 MiB; ISR stays cached | `web/lib/data/category-assignment-shards.test.ts`, `web/lib/workflows/recompute/categories.test.ts`, `web/lib/view-size.test.ts` | `items over 2MB can not be cached` is 0 after the next base publish |

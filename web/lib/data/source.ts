@@ -76,6 +76,9 @@ const LIVE_HISTORY_FORBIDDEN_RETRIES = 1;
 const LIVE_HISTORY_FORBIDDEN_TTL_MS = 60_000;
 type VersionResolution = { version: string | null; publishedAt: string | null; confirmedAbsent: boolean };
 type ReadMode = "published" | "authoritative";
+// A successful JSON body may itself be null. Keep it separate from absence
+// until schema validation, including while choosing canonical overlay keys.
+type BlobJsonRead = { value: unknown } | null;
 const versionMemo = new Map<string, VersionResolution & { at: number }>();
 let mutableReadSequence = 0;
 const liveGenerationMemo = new Map<string, { generation: string | null; at: number }>();
@@ -160,7 +163,7 @@ async function readBlobJsonKeyOnce(args: {
   skipNextDataCache?: boolean;
   allowForbiddenAsMissing?: boolean;
   forbiddenRetries?: number;
-}): Promise<unknown | null> {
+}): Promise<BlobJsonRead> {
   const {
     blobBase,
     key,
@@ -203,7 +206,7 @@ async function readBlobJsonKeyOnce(args: {
     const detail = res ? String(res.status) : fetchErrorDetail(lastError);
     throw new Error(`view fetch ${key} -> ${detail}`);
   }
-  return res.json();
+  return { value: await res.json() };
 }
 
 async function readBlobJsonKey(args: {
@@ -216,7 +219,7 @@ async function readBlobJsonKey(args: {
   skipNextDataCache?: boolean;
   allowForbiddenAsMissing?: boolean;
   forbiddenRetries?: number;
-}): Promise<unknown | null> {
+}): Promise<BlobJsonRead> {
   const bases = [args.blobBase, ...(args.fallbackBases ?? [])].filter((base, index, all) => all.indexOf(base) === index);
   for (let index = 0; index < bases.length; index++) {
     try {
@@ -244,7 +247,7 @@ async function readLiveHistoryJsonKey(args: {
     liveHistoryForbiddenMemo.delete(memoKey);
   }
   try {
-    return await readBlobJsonKey({
+    const result = await readBlobJsonKey({
       blobBase,
       fallbackBases,
       key,
@@ -254,6 +257,11 @@ async function readLiveHistoryJsonKey(args: {
       allowForbiddenAsMissing: false,
       forbiddenRetries: LIVE_HISTORY_FORBIDDEN_RETRIES,
     });
+    if (result === null) return null;
+    // The live-history reader uses null for absence too; never walk older
+    // generations after a present malformed artifact or manifest.
+    if (result.value === null) throw new Error(`view fetch ${key} -> unexpected JSON null`);
+    return result.value;
   } catch (error) {
     if (error instanceof StrictBlobReadForbiddenError) {
       liveHistoryForbiddenMemo.set(memoKey, Date.now() + LIVE_HISTORY_FORBIDDEN_TTL_MS);
@@ -453,7 +461,7 @@ async function resolveLiveGeneration(
   return resolving;
 }
 
-async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<unknown | null> {
+async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<BlobJsonRead> {
   const readBases = getPublicReadBases();
   const blobBase = readBases[0];
   const fallbackBases = readBases.slice(1);
@@ -550,7 +558,7 @@ async function rawRead(path: string, opts: ViewOpts, mode: ReadMode): Promise<un
               }),
           },
         });
-        return resolved?.value ?? null;
+        return resolved === null ? null : { value: resolved.value };
       } catch (error) {
         // A persistent public-CDN WAF denial during high-concurrency SSG is not
         // confirmed absence and therefore must never advance to an older live
@@ -607,7 +615,7 @@ function parsedOrRaw<T>(json: unknown, schema: ZodType<T>, path: string, opts: V
 /** Read + Zod-validate a view. Returns null when the view is absent (caller → notFound()). */
 export async function readView<T>(path: string, schema: ZodType<T>, opts: ViewOpts = {}): Promise<T | null> {
   const json = await rawRead(path, opts, "published");
-  return json === null ? null : parsedOrRaw(json, schema, path, opts);
+  return json === null ? null : parsedOrRaw(json.value, schema, path, opts);
 }
 
 /**
@@ -621,7 +629,7 @@ export async function readAuthoritativeView<T>(
   opts: ViewOpts = {},
 ): Promise<T | null> {
   const json = await rawRead(path, opts, "authoritative");
-  return json === null ? null : parsedOrRaw(json, schema, path, opts);
+  return json === null ? null : parsedOrRaw(json.value, schema, path, opts);
 }
 
 /** Authoritative read for a workflow artifact that must already exist. */

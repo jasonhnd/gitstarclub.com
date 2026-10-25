@@ -1,0 +1,479 @@
+{
+  "schema_version": 1,
+  "card": "GSC_0161",
+  "issue": 736,
+  "status": "bootstrap_published_views_not_refreshed",
+  "recorded_at": "2026-10-22T12:49:07Z",
+  "resume_after": "2026-10-22T03:30:00Z",
+  "deployment": {
+    "identity": {
+      "commitSha": "96b618933baadab7ebb622580c3da05efbb15f5f",
+      "deploymentUrl": "https://pre.gitstarclub.com",
+      "target": "cf",
+      "host": "pre.gitstarclub.com"
+    },
+    "provider": {
+      "id": "b46ca600-d1d1-4e01-8ba8-dad20baee17c",
+      "source": "cf_cli",
+      "strategy": "percentage",
+      "versions": [
+        {
+          "version_id": "5907d936-3ec4-43b1-9d0e-d5f20f45b3df",
+          "percentage": 100
+        }
+      ],
+      "created_on": "2026-10-22T00:19:31.328676Z"
+    },
+    "config_sha256": "1a6e0038909bcb4b1d33a620b2723aacf3509e2a74c9d6fb779dab3bf0a0e0de",
+    "secret_name_verified": "CRON_SECRET"
+  },
+  "generation": "bootstrap-aggregate-gap-20261022T001946Z",
+  "plan_checks": {
+    "counts": {
+      "repositories_imported": 5238,
+      "repositories_skipped": 441,
+      "daily_added": 649512,
+      "weekly_added": 89046,
+      "edge_weeks_skipped": 10476
+    },
+    "skip_reasons": {
+      "outside_fixed_source_whitelist": 430,
+      "not_in_preview_membership": 5,
+      "not_found_or_inaccessible": 6
+    },
+    "prior_skipped_list_exact_match": true,
+    "all_imported_rows_checked": true,
+    "all_edge_joins_checked": true,
+    "samples": [
+      {
+        "repo_id": 10270250,
+        "name": "react/react",
+        "current_stars": 251609
+      },
+      {
+        "repo_id": 31795422,
+        "name": "facebook/jscodeshift",
+        "current_stars": 10040
+      },
+      {
+        "repo_id": 182034748,
+        "name": "MSWorkers/support.996.ICU",
+        "current_stars": 10042
+      }
+    ],
+    "dry_run_sha256": "23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1"
+  },
+  "paused": {
+    "status": "paused",
+    "generation": "bootstrap-aggregate-gap-20261022T001946Z",
+    "token": 5,
+    "checkpoint_status": "failed",
+    "cleanup": "normal publisher withLease finally/release; no pointer or object editing"
+  },
+  "before": {
+    "active": false,
+    "lease": {
+      "run_id": "refresh-2026-10-21T21-01-25-223Z",
+      "status": "published",
+      "acquired_at": "2026-10-21T22:08:43.781Z",
+      "expires_at": "2026-10-21T22:08:43.781Z",
+      "fencing_token": 4,
+      "idempotency_key": "workflow-refresh:2026-W43",
+      "trigger": "manual-or-cron"
+    },
+    "bootstrap": null,
+    "views": {
+      "version": "refresh-2026-10-21T21-01-25-223Z",
+      "run_id": "refresh-2026-10-21T21-01-25-223Z",
+      "published_at": "2026-10-21T22:08:08.586Z",
+      "prev_version": null,
+      "schema_ver": 1
+    }
+  },
+  "after_pause": {
+    "active": false,
+    "lease": {
+      "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+      "status": "failed",
+      "acquired_at": "2026-10-22T00:54:01.318Z",
+      "expires_at": "2026-10-22T00:54:01.318Z",
+      "fencing_token": 5,
+      "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+      "trigger": "bootstrap-cli"
+    },
+    "bootstrap": null,
+    "views": {
+      "version": "refresh-2026-10-21T21-01-25-223Z",
+      "run_id": "refresh-2026-10-21T21-01-25-223Z",
+      "published_at": "2026-10-21T22:08:08.586Z",
+      "prev_version": null,
+      "schema_ver": 1
+    }
+  },
+  "live_before": {
+    "schema_ver": 1,
+    "generation": "daily-2026-10-21T23-09-32-126Z",
+    "run_id": "daily-2026-10-21T23-09-32-126Z",
+    "idempotency_key": "GSC_0149:steady-state:fba1f4d:20261021T230931Z",
+    "job": "daily",
+    "day": "2026-10-21",
+    "month": "2026-10",
+    "week": "2026-W43",
+    "published_at": "2026-10-21T23:15:47.480Z",
+    "previous_generation": "daily-2026-10-21T22-17-18-254Z",
+    "lease": null
+  },
+  "live_paused": {
+    "schema_ver": 1,
+    "generation": "daily-2026-10-21T23-09-32-126Z",
+    "run_id": "daily-2026-10-21T23-09-32-126Z",
+    "idempotency_key": "GSC_0149:steady-state:fba1f4d:20261021T230931Z",
+    "job": "daily",
+    "day": "2026-10-21",
+    "month": "2026-10",
+    "week": "2026-W43",
+    "published_at": "2026-10-21T23:15:47.480Z",
+    "previous_generation": "daily-2026-10-21T22-17-18-254Z",
+    "lease": null
+  },
+  "monitor_at_pause": {
+    "at": "2026-10-22T00:54:30.439Z",
+    "lease": {
+      "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+      "status": "failed",
+      "acquired_at": "2026-10-22T00:54:01.318Z",
+      "expires_at": "2026-10-22T00:54:01.318Z",
+      "fencing_token": 5,
+      "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+      "trigger": "bootstrap-cli"
+    },
+    "current_generation": null,
+    "phases": [
+      {
+        "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+        "phase": "canonical",
+        "sealed": true,
+        "objects": 134
+      },
+      {
+        "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+        "phase": "base",
+        "sealed": false,
+        "objects": null
+      },
+      {
+        "target": "bootstrap-aggregate-gap-20261022T001946Z",
+        "phase": "canonical",
+        "sealed": false,
+        "objects": null
+      },
+      {
+        "target": "bootstrap-aggregate-gap-20261022T001946Z",
+        "phase": "base",
+        "sealed": false,
+        "objects": null
+      }
+    ],
+    "active": {
+      "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+      "phase": "base",
+      "prefix": "bootstrap/generations/bootstrap-aggregate-recovery-8adece3468c17fa8/views/",
+      "bytes_staged": 1694324,
+      "groups": {
+        "categories": 34,
+        "entity": 186
+      },
+      "objects_staged": 220
+    }
+  },
+  "health": [
+    {
+      "pipeline": "workflow-refresh",
+      "status": "ok",
+      "at": "2026-10-21T22:08:44.103Z",
+      "unchanged": true
+    },
+    {
+      "pipeline": "cron-daily",
+      "status": "ok",
+      "at": "2026-10-21T23:15:51.541Z",
+      "unchanged": true
+    }
+  ],
+  "reason": {
+    "observations": [
+      {
+        "at": "2026-10-22T00:51:12.096Z",
+        "recovery_base_objects": 62
+      },
+      {
+        "at": "2026-10-22T00:52:33.964Z",
+        "recovery_base_objects": 141
+      }
+    ],
+    "approximate_objects_per_second": 0.9649679972638883,
+    "recovery_base_target_objects": 10775,
+    "cannot_finish_before_daily_forbidden_window": "02:50-03:30 UTC"
+  },
+  "remaining": [
+    "views/latest.json still points to refresh-2026-10-21T21-01-25-223Z, so imported history is not visible through the checked pages yet.",
+    "Pages can show imported history only after a later managed refresh; GSC_0171 will check after 2026-10-25 06:00 UTC."
+  ],
+  "boundaries": {
+    "public_import_published": true,
+    "manual_pointer_or_object_edits": false,
+    "production_operations": false,
+    "cron_refresh_start_calls": 0,
+    "credentials_created_requested_rotated": false,
+    "wrangler_opennext_invoked": false,
+    "actions_enabled": false,
+    "final_acceptance_or_merge": false,
+    "pages_show_imported_history": false
+  },
+  "resume": {
+    "preflight": {
+      "active": false,
+      "lease": {
+        "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+        "status": "failed",
+        "acquired_at": "2026-10-22T00:54:01.318Z",
+        "expires_at": "2026-10-22T00:54:01.318Z",
+        "fencing_token": 5,
+        "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+        "trigger": "bootstrap-cli"
+      },
+      "bootstrap": null,
+      "views": {
+        "version": "refresh-2026-10-21T21-01-25-223Z",
+        "run_id": "refresh-2026-10-21T21-01-25-223Z",
+        "published_at": "2026-10-21T22:08:08.586Z",
+        "prev_version": null,
+        "schema_ver": 1
+      }
+    },
+    "immediate_before": {
+      "active": false,
+      "lease": {
+        "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+        "status": "failed",
+        "acquired_at": "2026-10-22T00:54:01.318Z",
+        "expires_at": "2026-10-22T00:54:01.318Z",
+        "fencing_token": 5,
+        "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+        "trigger": "bootstrap-cli"
+      },
+      "bootstrap": null,
+      "views": {
+        "version": "refresh-2026-10-21T21-01-25-223Z",
+        "run_id": "refresh-2026-10-21T21-01-25-223Z",
+        "published_at": "2026-10-21T22:08:08.586Z",
+        "prev_version": null,
+        "schema_ver": 1
+      }
+    },
+    "live_before": {
+      "schema_ver": 1,
+      "generation": "daily-2026-10-22T03-02-23-495Z",
+      "run_id": "daily-2026-10-22T03-02-23-495Z",
+      "idempotency_key": "daily:2026-10-22",
+      "job": "daily",
+      "day": "2026-10-22",
+      "month": "2026-10",
+      "week": "2026-W43",
+      "published_at": "2026-10-22T03:08:33.270Z",
+      "previous_generation": "daily-2026-10-21T23-09-32-126Z",
+      "lease": null
+    },
+    "provider": {
+      "id": "b46ca600-d1d1-4e01-8ba8-dad20baee17c",
+      "source": "cf_cli",
+      "strategy": "percentage",
+      "versions": [
+        {
+          "version_id": "5907d936-3ec4-43b1-9d0e-d5f20f45b3df",
+          "percentage": 100
+        }
+      ],
+      "created_on": "2026-10-22T00:19:31.328676Z"
+    },
+    "plan_matches_original": true,
+    "plan_sha256": "23b3b17ca6c8e147b616abd442982fa86e7badf22f1b22804ace0ce1f228c4c1",
+    "progress": {
+      "at": "2026-10-22T11:59:46.667Z",
+      "lease": {
+        "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+        "status": "running",
+        "acquired_at": "2026-10-22T03:44:08.277Z",
+        "expires_at": "2026-10-22T12:09:43.422Z",
+        "fencing_token": 6,
+        "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+        "trigger": "bootstrap-cli"
+      },
+      "current_generation": null,
+      "phases": [
+        {
+          "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+          "phase": "canonical",
+          "sealed": true,
+          "objects": 134
+        },
+        {
+          "target": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+          "phase": "base",
+          "sealed": true,
+          "objects": 10775
+        },
+        {
+          "target": "bootstrap-aggregate-gap-20261022T001946Z",
+          "phase": "canonical",
+          "sealed": true,
+          "objects": 134
+        },
+        {
+          "target": "bootstrap-aggregate-gap-20261022T001946Z",
+          "phase": "base",
+          "sealed": true,
+          "objects": 10844
+        }
+      ],
+      "active": null
+    }
+  },
+  "restart": {
+    "last_completed_monitor": "2026-10-22T05:40:03.240Z",
+    "publication_confirmed": true,
+    "checkpoint_retained": true,
+    "preflight": {
+      "active": true,
+      "lease": {
+        "run_id": "bootstrap-publish-bootstrap-aggregate-gap-20261022T001946Z",
+        "status": "running",
+        "acquired_at": "2026-10-22T03:44:08.277Z",
+        "expires_at": "2026-10-22T05:51:21.844Z",
+        "fencing_token": 6,
+        "idempotency_key": "bootstrap:publish:bootstrap-aggregate-gap-20261022T001946Z",
+        "trigger": "bootstrap-cli"
+      },
+      "bootstrap": null,
+      "views": {
+        "version": "refresh-2026-10-21T21-01-25-223Z",
+        "run_id": "refresh-2026-10-21T21-01-25-223Z",
+        "published_at": "2026-10-21T22:08:08.586Z",
+        "prev_version": null,
+        "schema_ver": 1
+      }
+    },
+    "live_before": {
+      "schema_ver": 1,
+      "generation": "daily-2026-10-22T03-02-23-495Z",
+      "run_id": "daily-2026-10-22T03-02-23-495Z",
+      "idempotency_key": "daily:2026-10-22",
+      "job": "daily",
+      "day": "2026-10-22",
+      "month": "2026-10",
+      "week": "2026-W43",
+      "published_at": "2026-10-22T03:08:33.270Z",
+      "previous_generation": "daily-2026-10-21T23-09-32-126Z",
+      "lease": null
+    },
+    "identity": {
+      "commitSha": "96b618933baadab7ebb622580c3da05efbb15f5f",
+      "deploymentUrl": "https://pre.gitstarclub.com",
+      "target": "cf",
+      "host": "pre.gitstarclub.com"
+    },
+    "resumed_token": 6,
+    "replay_passed_new_staging_at": "2026-10-22T06:42:19.170Z",
+    "recovery_base_objects": 6406
+  },
+  "recovery_base": {
+    "seal_observed_at": "2026-10-22T08:11:16.525Z",
+    "objects": 10775,
+    "verification_complete_confirmed": true,
+    "verification_observed_at": "2026-10-22T09:00:29.356Z"
+  },
+  "repaired_canonical": {
+    "objects": 134,
+    "sealed": true,
+    "verification_complete_confirmed": true,
+    "observed_at": "2026-10-22T09:00:29.356Z"
+  },
+  "repaired_base": {
+    "seal_observed_at": "2026-10-22T11:59:46.667Z",
+    "objects": 10844,
+    "verification_complete_confirmed": true
+  },
+  "final_verification": {
+    "source_card": "GSC_0169",
+    "method": "Public HTTPS GET only; no writes, start, cron, deploy or secrets.",
+    "bootstrap": {
+      "status": "pass",
+      "http_status": 200,
+      "generation": "bootstrap-aggregate-gap-20261022T001946Z",
+      "published_at": "2026-10-22T12:49:05.410Z",
+      "previous_generation": "bootstrap-aggregate-recovery-8adece3468c17fa8"
+    },
+    "views": {
+      "status": "not_updated",
+      "http_status": 200,
+      "version": "refresh-2026-10-21T21-01-25-223Z",
+      "detail": "Still points to refresh-2026-10-21T21-01-25-223Z; page history visibility awaits a later managed refresh."
+    },
+    "live": {
+      "status": "pass",
+      "http_status": 200,
+      "generation": "daily-2026-10-22T03-02-23-495Z",
+      "lease": null
+    },
+    "workflow_lease": {
+      "status": "published_and_released",
+      "expires_at_equals_acquired_at": true
+    },
+    "health": {
+      "workflow_refresh": {
+        "status": "ok",
+        "http_status": 200
+      },
+      "cron_daily": {
+        "status": "ok",
+        "http_status": 200
+      }
+    },
+    "pages": {
+      "http_status": "200 for all checked routes",
+      "requested_history_visible": false,
+      "english_react_and_two_homepage_linked_repositories": "No June–September 2026 date/history markers or visible source note.",
+      "japanese_react": "No visible month-history/source content.",
+      "literal_zero_star_count_seen": false,
+      "unavailable_kitao_pyxel": "Current stars shown without history.",
+      "next_check": "GSC_0171 after 2026-10-25 06:00 UTC, following a later managed refresh."
+    },
+    "publication_counts": {
+      "status": "confirmed_by_published_report",
+      "repositories_imported": 5238,
+      "repositories_skipped": 441,
+      "daily_added": 649512,
+      "weekly_added": 89046,
+      "edge_weeks_skipped": 10476
+    },
+    "process_exit": {
+      "status": "success",
+      "exited_at": "2026-10-22T12:49:07Z"
+    }
+  },
+  "publication": {
+    "process_exited_successfully_at": "2026-10-22T12:49:07Z",
+    "report_status": "published",
+    "generation": "bootstrap-aggregate-gap-20261022T001946Z",
+    "published_at": "2026-10-22T12:49:05.410Z",
+    "previous_generation": "bootstrap-aggregate-recovery-8adece3468c17fa8",
+    "counts": {
+      "repositories_imported": 5238,
+      "repositories_skipped": 441,
+      "daily_added": 649512,
+      "weekly_added": 89046,
+      "edge_weeks_skipped": 10476
+    },
+    "lease": "published_and_released"
+  }
+}
