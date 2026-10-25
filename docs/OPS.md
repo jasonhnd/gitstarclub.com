@@ -88,11 +88,14 @@ preview guard. Missing or malformed markers, unknown fields, unset deployment,
 and production return `strict` (all existing history requirements apply).
 Eligibility is never inferred from an empty family or `folded_through`. This
 declaration does not create history, restore cold-start flags, or derive monthly
-net values from aggregate history. A valid marker relaxes only the two publication
-history gates described with the first-publication exception below: an empty
-sampled monthly curve and a missing prior-calendar-year heatmap. It does not
-relax canonical completeness or preflight. Setting the marker does not publish
-a refresh by itself.
+net values from aggregate history. Canonical preflight and final canonical
+validation use this declaration only to permit zero monthly repository keys;
+required files and all other canonical checks remain enforced. Publication
+history validation uses it only to permit an empty sampled monthly curve and
+a confirmed absent prior-calendar-year heatmap, as described with the
+first-publication exception below. Present malformed data still fails; weekly
+and recent-daily history requirements remain strict. Setting the marker does
+not publish a refresh by itself.
 
 ## Environment variables and secrets
 
