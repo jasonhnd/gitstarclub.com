@@ -175,6 +175,11 @@ export function mergeCanonicalPreflightAcc(
   };
 }
 
+/** Preview marker exempts only a zero repo-monthly key count. Files, schemas, and other families stay strict. */
+function repoMonthlyExempt(kind: string, historyAvailability: HistoryAvailability): boolean {
+  return kind === "repo-monthly" && historyAvailability !== "strict" && historyAvailability.monthly === "unavailable";
+}
+
 /** Family-wide emptiness is only meaningful after every bucket window has been counted. */
 export function emptySeriesPreflightFailures(
   acc: CanonicalPreflightAcc,
@@ -187,8 +192,7 @@ export function emptySeriesPreflightFailures(
     failures.push("canonical/v2/repos: no repository records");
   }
   if (acc.repoRecords > 0) {
-    const monthlyUnavailable = historyAvailability !== "strict" && historyAvailability.monthly === "unavailable";
-    if (acc.monthlyRecords === 0 && !monthlyUnavailable) {
+    if (acc.monthlyRecords === 0 && !repoMonthlyExempt("repo-monthly", historyAvailability)) {
       failures.push(`canonical/v2/repo-monthly: no repository records for ${acc.repoRecords} canonical repo(s)`);
     }
     if (acc.weeklyRecords === 0) {
@@ -344,9 +348,7 @@ export async function validateCanonicalGeneration(
     const historyAvailability = finalize ? await readCanonicalHistoryAvailability(runId, reader) : "strict";
     for (const spec of SHARD_SPECS.slice(1)) {
       const records = recordsByKind.get(spec.kind) ?? 0;
-      const monthlyUnavailable = spec.kind === "repo-monthly" && historyAvailability !== "strict"
-        && historyAvailability.monthly === "unavailable";
-      if (finalize && repoIds.size > 0 && records === 0 && !allowPlaceholder && !monthlyUnavailable) {
+      if (finalize && repoIds.size > 0 && records === 0 && !allowPlaceholder && !repoMonthlyExempt(spec.kind, historyAvailability)) {
         failures.push(`canonical/v2/${spec.kind}: no repository records for ${repoIds.size} canonical repo(s)`);
       }
       const orphanRecords = [...(seriesRepoIds.get(spec.kind) ?? [])].filter((id) => !repoIds.has(id)).length;

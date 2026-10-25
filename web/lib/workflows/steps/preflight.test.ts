@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { FetchTimeoutError } from "@/lib/fetch-timeout.mjs";
 import { withWorkerEnv } from "@/lib/workers-host/runtime-env";
 import { HISTORY_AVAILABILITY_KEY } from "../history-availability";
 
@@ -7,6 +8,7 @@ let repoValue: Record<string, unknown> | null = null;
 let seriesPresent = true;
 let monthlyPresent = true;
 let historyMarker: unknown = null;
+let historyReadError: Error | null = null;
 let missingPaths = new Set<string>();
 let reads: Array<{ path: string; bust?: string }> = [];
 
@@ -31,7 +33,10 @@ async function mockRead(
   reads.push({ path, bust: opts.bust });
   if (missingPaths.has(path)) return null;
   let raw: unknown;
-  if (path === HISTORY_AVAILABILITY_KEY) raw = historyMarker;
+  if (path === HISTORY_AVAILABILITY_KEY) {
+    if (historyReadError) throw historyReadError;
+    raw = historyMarker;
+  }
   else if (path === "canonical/v2/meta.json") raw = value;
   else if (path.endsWith("repos/1.json")) raw = repoValue ? { "1": repoValue } : {};
   else if (
@@ -64,6 +69,7 @@ beforeEach(() => {
   seriesPresent = true;
   monthlyPresent = true;
   historyMarker = null;
+  historyReadError = null;
   missingPaths = new Set();
   reads = [];
   delete process.env.PREFLIGHT_RELAX_EMPTY_SHARDS;
@@ -107,6 +113,16 @@ describe("preflightCanonical", () => {
     expect(reads.findIndex(({ path }) => path === HISTORY_AVAILABILITY_KEY)).toBeGreaterThan(
       reads.findIndex(({ path }) => path === "canonical/v2/repo-monthly/31.json"),
     );
+  });
+
+  test.each([
+    ["403", new Error("view fetch canonical/v2/history-availability.json -> 403")],
+    ["timeout", new FetchTimeoutError("https://blob.example.com/canonical/v2/history-availability.json", 5)],
+    ["invalid JSON", new SyntaxError("JSON Parse error: Unexpected EOF")],
+  ] as const)("a thrown marker read (%s) rejects the preflight run", async (_label, error) => {
+    markMonthlyUnavailable();
+    historyReadError = error;
+    await expect(withWorkerEnv({ DEPLOY_ENV: "pre" }, () => preflightCanonical("marker-throw"))).rejects.toThrow(error.message);
   });
 
   test.each([null, {}, { ...unavailableHistory, monthly: "available" }])(
