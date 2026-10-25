@@ -33,7 +33,7 @@ import { sanitizeErrorText } from "@/lib/observability/sanitize-error";
 import { assertPublishedViewJsonSize } from "@/lib/view-size";
 import { validateCanonicalGeneration } from "@/lib/workflows/canonical-validation";
 import { isUniverseColdStartActive } from "@/lib/workflows/cold-start";
-import { HISTORY_AVAILABILITY_KEY, readHistoryAvailability, type HistoryAvailability } from "@/lib/workflows/history-availability";
+import { HISTORY_AVAILABILITY_KEY, readCanonicalHistoryAvailability, type HistoryAvailability } from "@/lib/workflows/history-availability";
 import { putOwnedView } from "@/lib/workflows/owned-write";
 import { readPackedWindowMeta } from "@/lib/workflows/recompute/io";
 import { validateGeneratedEntities } from "./validate-entities";
@@ -63,18 +63,6 @@ const MIN_LOOKUP = 1000;
 const COLD_START_RELAXED = "[workflow-refresh] cold-start validation relaxed";
 const HISTORY_UNAVAILABLE_RELAXED = "[workflow-refresh] history-unavailable validation relaxed";
 
-/**
- * Decode the preview history marker. A confirmed absence or a decoded value
- * the reader rejects stays strict. Transport and JSON failures propagate so
- * a corrupt read cannot be treated as "no marker".
- */
-async function readPublicationHistoryMarker(runId: string): Promise<unknown> {
-  return readAuthoritativeView(HISTORY_AVAILABILITY_KEY, z.unknown(), {
-    bust: runId,
-    skipSchemaParse: true,
-  });
-}
-
 export async function validateVersion(
   runId: string,
   fencingToken?: number,
@@ -92,7 +80,7 @@ export async function validateVersion(
   let schemaFailures = 0;
   let historyAvailability: HistoryAvailability = "strict";
   try {
-    historyAvailability = readHistoryAvailability(await readPublicationHistoryMarker(runId));
+    historyAvailability = await readCanonicalHistoryAvailability(runId);
   } catch (error) {
     schemaFailures++;
     failures.push(`${HISTORY_AVAILABILITY_KEY}: schema — ${sanitizeErrorText(error instanceof Error ? error.message : String(error))}`);
