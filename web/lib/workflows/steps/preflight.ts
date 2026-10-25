@@ -3,6 +3,7 @@ import {
   emptyCanonicalPreflightAcc,
   emptySeriesPreflightFailures,
   mergeCanonicalPreflightAcc,
+  readCanonicalHistoryAvailability,
   resolveCanonicalEmptyShardPolicy,
   validateCanonicalGeneration,
   type CanonicalPreflightAcc,
@@ -105,7 +106,8 @@ export async function runPreflightStep(runId: string, cursor: RefreshCursor = {}
     };
   }
 
-  const familyFailures = emptySeriesPreflightFailures(acc, emptyShardPolicy);
+  const historyAvailability = await readCanonicalHistoryAvailability(bust);
+  const familyFailures = emptySeriesPreflightFailures(acc, emptyShardPolicy, historyAvailability);
   if (familyFailures.length > 0) throwPreflightFailures(familyFailures);
 
   return {
