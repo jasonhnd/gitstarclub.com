@@ -69,21 +69,40 @@ source_of_truth_for:
   policy independently of the callback timeout. New core MISS responses are
   also consistent with the existing core publication namespace.
 
-### 3. Smallest proposed fix
+### 3. Smallest fix and verification
 
-- **Proposal:** Namespace every Astro HTML key and entry fence by the captured
-  publication identity, and check that identity again before every cache hit.
-  Preserve tail freshness durations inside one publication. A changed publish
+- **Verified (implemented in `astro/src/lib/host.ts`):** Every Astro HTML key
+  and entry fence now contains the captured publication identity. Cache hits
+  recheck that identity. Tail freshness durations apply inside one publication. A changed publish
   or rollback selects a different key without enumerating or deleting pages;
   old cache entries can expire through existing retention. A new publication
   will make previously warm tails cold on their next visit.
-- **Proposal:** Keep shared pointer memo/tag invalidation in the Astro callback,
-  but provide an Astro adapter that skips the web framework's 56 path tags.
-  Remove the additional Astro core-path invalidation pass. Publication-keyed
+- **Verified (implemented in `astro/src/packages/p7/operations.ts`):** The Astro
+  callback retains shared pointer memo/tag invalidation through an adapter
+  that skips the web framework's 56 path tags. The additional Astro core-path
+  invalidation pass is removed. Publication-keyed
   HTML already makes both path passes unnecessary. The authenticated callback
   then performs four KV puts, independent of the number of core or tail pages.
-  Keep explicit `invalidatePaths` available for manual invalidation.
+  Explicit `invalidatePaths` remains available for manual invalidation.
 - **Inferred performance expectation:** Four serial puts have substantial margin
   inside 30 s at the incident's plausible latency. No finite local test can
   guarantee a remote service's latency; regression tests must state their
   modeled delay and bound, and preserve storage-error propagation.
+
+- **Verified (local regression):** `astro/tests/p7/parity.test.ts` runs the real
+  authenticated callback with synthetic credentials and a simulated 200 ms delay
+  for each KV put. The complete 56-path core configuration completes in about
+  1.8 seconds, under a five-second assertion, with exactly four unique writes.
+  The old 172-write chain would need at least 34.4 seconds at this modeled
+  latency. The test also refuses any Astro path-invalidation call. Existing
+  unauthorized-response and awaited-invalidation/error-propagation tests pass.
+- **Verified (local regression):** `astro/tests/host.test.ts` exercises all 56
+  core paths and repository, organization and category pages in all seven
+  locales. Each switches body and publication header on publish and rollback
+  while prior entries remain in both persistent and regional cache layers.
+  A publication change during cache lookup retries before serving old HTML.
+  Same-publication stale regeneration and explicit path invalidation still pass.
+- **Verified (local built Worker):** The preview build's
+  `astro/worker-checks/worker.test.ts` passes all three tests, including a cold
+  tail, warm hit and publication-switch miss against simulated local bindings.
+  No live callback or Cloudflare service was used.
