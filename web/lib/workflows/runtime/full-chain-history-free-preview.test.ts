@@ -12,11 +12,18 @@ import { installWorkflowHarness, TEST_NOW, TEST_RUN, workflowSeed, type FullJob 
 
 const IMPORT_GENERATION = "bootstrap-aggregate-history-free";
 const STEADY_RUN = "refresh-2026-10-25-steady";
+const MARKED_RUN = "refresh-2026-10-25-marked";
+const AVAILABLE_RUN = "refresh-2026-10-25-available";
 const STRICT_RUN = "refresh-2026-10-25-strict";
 const FOLD_RUN = "refresh-2026-11-02-fold";
 const FOLD_NOW = "2026-11-02T00:00:00.000Z";
 const CLOSED_MONTH = "2026-10";
 const FOLDED_FLOW = 7;
+const PRIOR_YEAR = String(new Date(TEST_NOW).getUTCFullYear() - 1);
+const OBSERVED_MONTH = `${PRIOR_YEAR}-12`;
+const OBSERVED_FLOW = 100;
+const OBSERVED_SITE_DAY = `${PRIOR_YEAR}-12-31`;
+const OBSERVED_SITE_TOTAL = 100000;
 const HISTORY_MARKER = {
   seed_date: "2026-10-02",
   monthly: "unavailable",
@@ -58,6 +65,33 @@ function withMarker(contents: Record<string, string>, generation: string): Recor
     ...readyForRefresh(contents),
     [`bootstrap/overlays/${generation}/canonical/v2/history-availability.json`]: JSON.stringify(HISTORY_MARKER),
   };
+}
+
+function withoutMarker(contents: Record<string, string>, generation: string): Record<string, string> {
+  const next = { ...contents };
+  delete next[`bootstrap/overlays/${generation}/canonical/v2/history-availability.json`];
+  delete next[`bootstrap/generations/${generation}/canonical/v2/history-availability.json`];
+  return next;
+}
+
+function publishedTopRepoId(contents: Record<string, string>): number {
+  const version = ViewsPointer.parse(JSON.parse(contents["views/latest.json"]!)).version;
+  const rank = JSON.parse(contents[`views/${version}/rank/all-time/repo/stock.json`]!) as { items: Array<{ id?: number }> };
+  const id = rank.items[0]?.id;
+  if (id == null) throw new Error("published all-time rank has no repository");
+  return id;
+}
+
+/** Observed monthly point and prior-year site total. Recompute turns the site total into the heatmap publication checks. */
+function supplyObservedHistory(contents: Record<string, string>, generation: string, repoId: number): void {
+  const bucket = repoBucket(repoId);
+  const shard = monthlyShard(contents, generation, bucket);
+  shard[String(repoId)] = [[OBSERVED_MONTH, OBSERVED_FLOW]];
+  contents[`bootstrap/overlays/${generation}/canonical/v2/repo-monthly/${bucket}.json`] = JSON.stringify(shard);
+  contents[`bootstrap/overlays/${generation}/canonical/v2/site-daily/${PRIOR_YEAR}.json`] = JSON.stringify({
+    year: PRIOR_YEAR,
+    cells: [[OBSERVED_SITE_DAY, OBSERVED_SITE_TOTAL]],
+  });
 }
 
 function canonicalBody(contents: Record<string, string>, generation: string, path: string): unknown {
@@ -189,6 +223,67 @@ describe("history-free preview steady state", () => {
       run.harness.restore();
     }
   }, 120_000);
+
+  test("history becomes available and the next refresh publishes with every exception indicator false", async () => {
+    const marked = await drainRefresh(withMarker(seeded, generation), MARKED_RUN);
+    let available: Awaited<ReturnType<typeof drainRefresh>> | undefined;
+    let releasedMarked = false;
+    try {
+      expect({ failedStep: marked.failedStep, status: marked.status, body: marked.body }).toEqual({
+        failedStep: null,
+        status: 200,
+        body: null,
+      });
+      const published = { ...marked.harness.store.contents };
+      expect(canonicalBody(published, generation, "canonical/v2/history-availability.json")).toEqual(HISTORY_MARKER);
+      const topId = publishedTopRepoId(published);
+      supplyObservedHistory(published, generation, topId);
+      const contents = readyForRefresh(withoutMarker(published, generation));
+      expect(contents[`bootstrap/overlays/${generation}/canonical/v2/history-availability.json`]).toBeUndefined();
+      expect(contents[`bootstrap/generations/${generation}/canonical/v2/history-availability.json`]).toBeUndefined();
+      marked.harness.restore();
+      releasedMarked = true;
+      available = await drainRefresh(contents, AVAILABLE_RUN);
+      expect({
+        failedStep: available.failedStep,
+        status: available.status,
+        body: available.body,
+        remaining: available.remaining?.name ?? null,
+      }).toEqual({ failedStep: null, status: 200, body: null, remaining: null });
+      expect([...new Set(available.steps)]).toEqual([...FULL_REFRESH_STEPS]);
+      expect(ViewsPointer.parse(available.harness.store.json("views/latest.json"))).toMatchObject({
+        version: AVAILABLE_RUN,
+        run_id: AVAILABLE_RUN,
+        prev_version: MARKED_RUN,
+      });
+      expect(WorkflowManifest.parse(available.harness.store.json(`ops/workflows/${AVAILABLE_RUN}/manifest.json`))).toMatchObject({
+        status: "published",
+        published_version: AVAILABLE_RUN,
+      });
+      const validation = WorkflowValidation.parse(available.harness.store.json(`ops/workflows/${AVAILABLE_RUN}/validation.json`));
+      expect(validation).toMatchObject({
+        ok: true,
+        failures: [],
+        invariants: {
+          cold_start_empty_curve_relaxed: false,
+          cold_start_missing_prior_year_heatmap_relaxed: false,
+          history_unavailable_empty_curve_relaxed: false,
+          history_unavailable_missing_prior_year_heatmap_relaxed: false,
+        },
+      });
+      expect(validation.invariants.sample_curve_months).toBeGreaterThan(0);
+      const heatmap = available.harness.store.json<{ cells: unknown[] }>(`views/${AVAILABLE_RUN}/heatmap/year/${PRIOR_YEAR}.json`);
+      expect(heatmap.cells.length).toBeGreaterThan(0);
+      expect(monthlyShard(available.harness.store.contents, generation, repoBucket(topId))[String(topId)]).toEqual([
+        [OBSERVED_MONTH, OBSERVED_FLOW],
+      ]);
+      expect(available.harness.store.contents[`bootstrap/overlays/${generation}/canonical/v2/history-availability.json`]).toBeUndefined();
+      expect(available.harness.store.contents[`bootstrap/generations/${generation}/canonical/v2/history-availability.json`]).toBeUndefined();
+    } finally {
+      if (!releasedMarked) marked.harness.restore();
+      available?.harness.restore();
+    }
+  }, 600_000);
 
   test("a closed month still folds from its pending snapshot while the marker is set", async () => {
     const pending = {
