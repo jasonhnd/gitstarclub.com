@@ -159,15 +159,20 @@ export function workflowSeed(repoCount = 1000, ownerCount = 1): Record<string, s
   return seed;
 }
 
-export function installWorkflowHarness(initial = workflowSeed(), extraEnv: Record<string, string> = {}) {
+export function installWorkflowHarness(
+  initial = workflowSeed(),
+  extraEnv: Record<string, string> = {},
+  options: { now?: string } = {},
+) {
   const store = new WorkflowTestStore(initial);
   // A distinct test-only callback origin exposes accidental site-URL fallbacks.
   const env = { BLOB_BASE_URL: "https://workflow.test.invalid", STORAGE_READ_DRIVER: "blob", HOSTING_TARGET: "cf", DEPLOY_ENV: "pre", CF_CRON_ORIGIN: "https://workflow-cron.test.invalid", WORKFLOW_RUNTIME: "memory", WORKFLOW_QUEUE_ENQUEUE_URL: "https://workflow.test.invalid/api/workflows/refresh/enqueue", CRON_SECRET: "workflow-test-only", NEXT_PUBLIC_SITE_URL: "https://workflow.test.invalid", WORKFLOW_STEP_BASE_URL: "https://workflow.test.invalid", WHITELIST_SEARCH_SHARDS: "0", ...extraEnv };
   const previousEnv = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
   Object.assign(process.env, env);
-  setSystemTime(new Date(TEST_NOW));
+  const now = options.now ?? TEST_NOW;
+  setSystemTime(new Date(now));
   // Advance the rate-budget clock instead of waiting on real write throttles.
-  let clock = Date.parse(TEST_NOW);
+  let clock = Date.parse(now);
   const clockSpy = spyOn(Date, "now").mockImplementation(() => (clock += 20));
   const storeSpy = spyOn(storage, "getWriteObjectStore").mockReturnValue(store);
   const leaseCache = new WorkflowLeaseWriteCache();
