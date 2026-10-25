@@ -163,7 +163,8 @@ checked-in dated export, preserving the old rewrite without duplicate payloads.
 After separate owner authorization, `bun run deploy:pre` validates a clean,
 exact-commit, non-fixture pre artifact, then calls the pinned
 `cf deploy --prebuilt --mode pre --no-provision`. It cannot select production.
-The generated contract contains no route or scheduled trigger. Review that
+The generated preview contract contains no routes and exactly the schedules
+`0 3 * * *`, `0 4 * * SUN`, and `0 6 * * SUN`; production has no scheduled triggers. Review that
 contract and existing bindings before authorized deployment. No deployment
 command is part of local verification, CI, or this integration card.
 Wrangler, legacy packaging aliases and cf:dry-run remain forbidden by owner order.

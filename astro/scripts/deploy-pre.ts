@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { assertPreTriggers } from "./pre-triggers";
 
 // Owner-run only after separate deployment authorization. Never called by builds/CI.
 const scratch = process.env.KANBAN_TMP;
@@ -13,7 +14,7 @@ assert.equal(stamp.commit, execFileSync("git", ["rev-parse", "HEAD"], { encoding
 assert.equal(execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim(), "", "clean reviewed checkout required");
 const config = JSON.parse(readFileSync(resolve(scratch, "astro-cloudflare/output/v0/workers/default/worker.config.json"), "utf8"));
 assert.equal(config.name, "gitstarclub-web-pre");
-assert(config.triggers.every((trigger: { type: string }) => trigger.type === "queue"));
+assertPreTriggers(config);
 for (const key of ["BLOB_BASE_URL", "NEXT_PUBLIC_BLOB_BASE_URL"]) assert(!config.env[key], "no local fixture bindings");
 assert.equal(config.env.R2_PUBLIC_BASE_URL.value, "https://data-pre.gitstarclub.com");
 assert.equal(config.env.STORAGE_READ_DRIVER.value, "r2");
