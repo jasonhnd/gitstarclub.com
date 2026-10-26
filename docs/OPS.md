@@ -970,13 +970,18 @@ The package command disables environment-file loading. The shared runner sets
 
 Recovery sealing and new-generation staging both default to **four concurrent
 uploads**; `--concurrency` accepts 1 through 10. Four is Tech's tested value for copying roughly 14,000 objects with
-the pinned cf; twelve concurrent calls produced about 11% failures. The shared
-cf layer automatically waits out HTTP 429 (Too Many Requests): it honors an
-exposed `Retry-After` value, otherwise waits 30 seconds, and adds less than one
-second of random jitter. The pinned beta.18 error renderer currently omits
-response headers, so the 30-second fallback normally applies. Every wait logs
-the key, retry attempt, and seconds. Each call allows at most six rate-limit
-retries and then fails hard.
+the pinned cf; twelve concurrent calls produced about 11% failures. A rehearsal
+dry run at concurrency 10 measured about two objects per second overall once
+HTTP 429s began. At that rate, a full publication of about 14,000 recovery
+reads, 14,000 recovery puts, and 14,000 new puts takes about six hours.
+The shared cf layer automatically retries boxed HTTP 429 (Too Many Requests),
+502 (Bad Gateway), 503 (Service Unavailable), and 504 (Gateway Timeout).
+For 429 it honors an exposed `Retry-After` value; otherwise it waits 30 seconds.
+Gateway errors always wait 30 seconds. Each wait adds less than one second of
+random jitter and logs the key, retry attempt, and seconds. The pinned beta.18
+error renderer currently omits response headers, so the 30-second fallback
+normally applies to 429. Each call shares at most six retries across these
+transient statuses, then fails hard.
 Recovery and staging print progress every 500 objects with phase, completed
 count, total, elapsed time, and estimated remaining time.
 
@@ -992,19 +997,23 @@ refresh, wait, and retry of the same call. Only the final HTTP status in cf's
 boxed API error counts; a body that merely mentions 401 does not. A repeated
 401 fails hard: run `cf auth login` and rerun the publisher; rerunning is safe.
 A failed refresh also stops with that login guidance. Each call gets at most
-one authentication retry, independently of its six HTTP 429 retries. HTTP 403
-(Forbidden) and all other HTTP errors still fail immediately.
+one authentication retry, independently of its six transient HTTP retries.
+For troubleshooting a boxed 502, 503, or 504, inspect the logged key and retry
+count. Exhausting six retries stops the publisher; rerun it after the upstream
+error clears. A response body that merely mentions one of these codes does not
+trigger a retry. HTTP 400 (Bad Request), 403 (Forbidden), 500 (Internal Server
+Error), and all other HTTP errors still fail immediately.
 
-After either kind of wait, a put rechecks the exact key before resending: matching size
+After an authentication or transient wait, a put rechecks the exact key before resending: matching size
 and SHA-256 means it is already done, different bytes refuse the write, and
 proven absence allows the same put again. An ambiguous full listing or failed
 read also refuses the retry. This check applies to lease and pointer writes as
 well, so a rate-limited attempt to replace an existing control object can fail
 closed on its old bytes. The single-writer window remains required. Recovery
 and staging drain in-flight uploads before reporting a transfer failure. A
-matching object discovered after a 429 or 401 wait counts as skipped (already present),
+matching object discovered after a 429, 502, 503, 504, or 401 wait counts as skipped (already present),
 not created. Generation verification waits for both base and canonical phases
-to settle before reporting the first failure, including rate-limit waits and
+to settle before reporting the first failure, including transient waits and
 later failures in the other phase. Release stops new heartbeats and waits for
 any pending heartbeat write before marking an owned lease failed or published.
 The command removes its working directory only after workers and release settle.

@@ -99,17 +99,20 @@ function apiErrorLines(stderr: string): string[] {
     ? lines.map((line) => line.replace(/^│ ?/, "").trim()) : [];
 }
 
-/** Gr omits response headers, so real beta.18 usually needs 30 seconds. */
-function rateLimitDelay(lines: string[], now: () => number): number | null {
-  if (!/^429 Too Many Requests(?: · HTTP .+)?$/.test(lines.at(-1) ?? "")) return null;
+/** Gr omits response headers; gateway errors always use the 30-second fallback. */
+function transientDelay(lines: string[], now: () => number): { status: string; milliseconds: number } | null {
+  const match = /^(429 Too Many Requests|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout)(?: · HTTP .+)?$/.exec(lines.at(-1) ?? "");
+  if (!match) return null;
+  const status = match[1].slice(0, 3);
+  if (status !== "429") return { status, milliseconds: 30_000 };
   const retryAfter = lines.map((line) => /^Retry-After:\s*(.+)$/i.exec(line)?.[1]).find((value) => value !== undefined);
   if (retryAfter !== undefined) {
     const milliseconds = Number(retryAfter) * 1000;
-    if (/^\d+(?:\.\d+)?$/.test(retryAfter) && Number.isFinite(milliseconds)) return milliseconds;
+    if (/^\d+(?:\.\d+)?$/.test(retryAfter) && Number.isFinite(milliseconds)) return { status, milliseconds };
     const date = /^[A-Za-z]{3}, /.test(retryAfter) ? Date.parse(retryAfter) : NaN;
-    if (Number.isFinite(date)) return Math.max(0, date - now());
+    if (Number.isFinite(date)) return { status, milliseconds: Math.max(0, date - now()) };
   }
-  return 30_000;
+  return { status, milliseconds: 30_000 };
 }
 
 // Keep the cooldown inside the shared promise so parallel 401s also join while
@@ -159,7 +162,7 @@ export async function cfResult(runner: CfRunner, args: string[], retry: CfRetryO
   // Snapshot the intended bytes before the first attempt, including control puts.
   const body = operation === "put" && fileAt >= 0 ? await readFile(args[fileAt + 1]) : undefined;
   const sha256 = (value: Buffer) => createHash("sha256").update(value).digest("hex");
-  let rateLimitRetries = 0, authRetried = false;
+  let transientRetries = 0, authRetried = false;
   for (;;) {
     const result = await runner(args, cfChild());
     if (result.code === 0) return result;
@@ -173,11 +176,11 @@ export async function cfResult(runner: CfRunner, args: string[], retry: CfRetryO
       catch (error) { throw new Error(`cf ${operation} ${key} authentication refresh failed. ${loginHint}`, { cause: error }); }
       log(`cf ${operation} key=${key} HTTP 401; retry 1/1 after authentication refresh`);
     } else {
-      const delay = rateLimitDelay(lines, now);
-      if (delay === null) throw new Error(`cf ${operation} failed (${result.code}): ${result.stderr}`);
-      if (rateLimitRetries === 6) throw new Error(`cf ${operation} ${key} failed: HTTP 429 after 6 retries: ${result.stderr}`);
-      const milliseconds = delay + Math.floor(random() * 1000);
-      log(`cf ${operation} key=${key} HTTP 429; retry ${++rateLimitRetries}/6; waiting ${(milliseconds / 1000).toFixed(3)} seconds`);
+      const transient = transientDelay(lines, now);
+      if (transient === null) throw new Error(`cf ${operation} failed (${result.code}): ${result.stderr}`);
+      if (transientRetries === 6) throw new Error(`cf ${operation} ${key} failed: HTTP ${transient.status} after 6 retries: ${result.stderr}`);
+      const milliseconds = transient.milliseconds + Math.floor(random() * 1000);
+      log(`cf ${operation} key=${key} HTTP ${transient.status}; retry ${++transientRetries}/6; waiting ${(milliseconds / 1000).toFixed(3)} seconds`);
       await sleep(milliseconds);
     }
     if (operation === "put") {

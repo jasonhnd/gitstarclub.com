@@ -13,14 +13,16 @@ const ok = (stdout: string | Buffer = "") => ({ code: 0, stdout, stderr: "" });
 // cf beta.18 src Gr + blocks.l: raw APIError box, optional code and ANSI,
 // authoritative status LAST. Gr omits headers; Retry-After below models an
 // exposed header in the message, not a header that beta.18 normally prints.
-function boxedCfError({ status = 429, colour = false, fallback = false, retryAfter,
+function boxedCfError({ status = 429, colour = false, fallback = false, html = false, retryAfter,
   message = "Rate limit exceeded", code = 10000, http = true }: {
-  status?: number; colour?: boolean; fallback?: boolean; retryAfter?: string;
+  status?: number; colour?: boolean; fallback?: boolean; html?: boolean; retryAfter?: string;
   message?: string; code?: number; http?: boolean;
 } = {}) {
   const paint = (text: string) => colour ? `\u001b[31m\u001b[1m${text}\u001b[22m\u001b[39m` : text;
-  const reason = ({ 401: "Unauthorized", 403: "Forbidden", 429: "Too Many Requests", 500: "Internal Server Error" })[status] ?? "Not Found";
-  const body = fallback ? `Status code: ${status}\nBody: {"message":${JSON.stringify(message)}}` : `[${code}] ${message}`;
+  const reason = ({ 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 429: "Too Many Requests",
+    500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable", 504: "Gateway Timeout" })[status] ?? "Not Found";
+  const body = html ? `Status code: ${status}\nBody: ${JSON.stringify(message)}`
+    : fallback ? `Status code: ${status}\nBody: {"message":${JSON.stringify(message)}}` : `[${code}] ${message}`;
   return `\n${paint("┌")} ${paint("APIError")}\n`
     + [body, ...(retryAfter === undefined ? [] : [`Retry-After: ${retryAfter}`]),
       `${status} ${reason}${http ? " · HTTP /accounts/fake/r2/buckets/fake/objects/key" : ""}`]
@@ -256,6 +258,45 @@ describe("shared repair cf rate limits with fake runners only", () => {
     expect(calls).toBe(7); expect(t.waits).toHaveLength(6); expect(t.logs).toHaveLength(6);
   });
 
+  for (const status of [502, 503, 504]) for (const html of [false, true]) for (const colour of [false, true]) {
+    test(`retries boxed HTTP ${status} with ${html ? "HTML" : "JSON"} body: colour=${colour}`, async () => {
+      const t = timing(), calls: string[][] = [];
+      const message = html ? "<!DOCTYPE html><html><body><h1>Gateway error</h1></body></html>" : "Upstream error";
+      const runner: CfRunner = async (args) => {
+        calls.push([...args]);
+        return calls.length === 1 ? rejected({ status, html, colour, message, code: 10001 }) : ok("done");
+      };
+      expect(await cfBytes(runner, get, t.retry)).toEqual(Buffer.from("done"));
+      expect(calls).toEqual([get, get]); expect(t.waits).toEqual([30_250]);
+      expect(t.logs).toEqual([`cf get key=key HTTP ${status}; retry 1/6; waiting 30.250 seconds`]);
+    });
+  }
+
+  for (const status of [502, 503, 504]) test(`HTTP ${status} stops after six retries`, async () => {
+    const t = timing(); let calls = 0;
+    await expect(cfBytes(async () => { calls++; return rejected({ status, html: true, message: "<html>Gateway error</html>" }); },
+      get, t.retry)).rejects.toThrow(`HTTP ${status} after 6 retries`);
+    expect(calls).toBe(7); expect(t.waits).toEqual(Array<number>(6).fill(30_250));
+  });
+
+  test("429 and gateway errors consume one six-retry budget", async () => {
+    const t = timing(), statuses = [429, 502, 503, 504, 429, 502, 503]; let calls = 0;
+    await expect(cfBytes(async () => rejected({ status: statuses[calls++] }), get, t.retry))
+      .rejects.toThrow("HTTP 503 after 6 retries");
+    expect(calls).toBe(7); expect(t.waits).toEqual(Array<number>(6).fill(30_250));
+    expect(t.logs.map((line) => line.match(/retry (\d)\/6/)?.[1])).toEqual(["1", "2", "3", "4", "5", "6"]);
+  });
+
+  for (const status of [400, 403, 500]) for (const colour of [false, true]) {
+    test(`HTTP ${status} with 504 in HTML body fails immediately: colour=${colour}`, async () => {
+      const t = timing(); let calls = 0;
+      await expect(cfBytes(async () => { calls++; return rejected({ status, colour, html: true,
+        message: "<!DOCTYPE html><html><body>504 Gateway Timeout</body></html>" }); }, get, t.retry))
+        .rejects.toThrow("cf get failed (1)");
+      expect(calls).toBe(1); expect(t.waits).toEqual([]); expect(t.logs).toEqual([]);
+    });
+  }
+
   for (const status of [404, 500]) for (const colour of [false, true]) for (const fallback of [false, true]) {
     test(`${status} with 429 in its code and body fails immediately: colour=${colour}, fallback=${fallback}`, async () => {
       const t = timing(); let calls = 0;
@@ -272,7 +313,7 @@ describe("shared repair cf rate limits with fake runners only", () => {
     expect(t.waits).toEqual([]);
   });
 
-  for (const status of [429, 401]) for (const appearance of ["absent", "identical", "different", "different size", "prefix children", "ambiguous", "malformed", "get fails"]) {
+  for (const status of [429, 401, 502, 503, 504]) for (const appearance of ["absent", "identical", "different", "different size", "prefix children", "ambiguous", "malformed", "get fails"]) {
     test(`put checks the exact key after ${status} waiting: ${appearance}`, async () => {
       const path = mkdtempSync(join(tmpdir(), "cf-retry-")); scratch.push(path);
       const file = join(path, "body"); writeFileSync(file, "data");
@@ -281,7 +322,7 @@ describe("shared repair cf rate limits with fake runners only", () => {
       const runner: CfRunner = async (args) => {
         calls.push([...args]);
         if (args[0] === "auth") { expect(args).toEqual(whoami); return authenticated(); }
-        if (args[2] === "put") return ++puts === 1 ? (status === 401 ? unauthorized() : rejected()) : ok();
+        if (args[2] === "put") return ++puts === 1 ? (status === 401 ? unauthorized() : rejected({ status })) : ok();
         expect(t.waits).toEqual([status === 401 ? 3250 : 30_250]);
         if (args[2] === "list") {
           expect(args).toEqual(["r2", "objects", "list", "--bucket-name", "fake", "--prefix", "key", "--per-page", "1000"]);
