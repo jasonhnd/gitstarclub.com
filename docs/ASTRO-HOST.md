@@ -1,7 +1,7 @@
 ---
 owner: architecture / operations
 status: active
-last_reviewed: 2026-10-25
+last_reviewed: 2026-10-26
 source_of_truth_for:
   - Astro Worker configuration and delivery
   - publication-fenced page caching
@@ -50,7 +50,7 @@ and resource names are unchanged.
 | MEDIA | gitstarclub-assets | gitstarclub-assets |
 | JOBS producer / consumer | gitstarclub-jobs | gitstarclub-jobs-pre |
 | Queue max batch / retries | 1 / 2 | 1 / 2 |
-| GSC_CACHE | Existing Worker KV binding | Existing Worker KV binding |
+| GSC_CACHE | `e25483e6f01d4c68a7b014906f247a37` | `4c3107414bad4a0386fedfcf96dde6e2` |
 | Public data origin | data.gitstarclub.com | data-pre.gitstarclub.com |
 | workers.dev / version URLs | disabled / disabled | enabled / enabled |
 | Indexing | index, follow | noindex, nofollow |
@@ -169,8 +169,9 @@ directory and has no output-directory option, so deployment runs
 The copy is removed afterward; the original artifact remains in place.
 The shared web/Astro configuration pins preview `GSC_CACHE` to the existing
 `gitstarclub-web-pre-gsc-cache` namespace (`4c3107414bad4a0386fedfcf96dde6e2`)
-because this cf version accepts a KV id but no title. Production's binding is
-unchanged. Provisioning stays disabled, and the script cannot select production.
+because this cf version accepts a KV id but no title. Production pins the separate
+`gitstarclub-web-gsc-cache` namespace (`e25483e6f01d4c68a7b014906f247a37`).
+Provisioning stays disabled, and the preview script cannot select production.
 The generated preview contract contains no routes and exactly the schedules
 `0 3 * * *`, `0 4 * * SUN`, and `0 6 * * SUN`; production has no scheduled triggers. Review that
 contract and existing bindings before authorized deployment. No deployment
@@ -190,15 +191,14 @@ Blob fixture bindings are forbidden. The only trigger is the production queue;
 schedules, routes and domains are refused. Production schedules require a
 separate, later owner decision.
 
-The production `GSC_CACHE` binding must have an explicit existing namespace ID;
-the preview ID is refused. Resolve the current `gitstarclub-web` binding
-read-only and pin that same ID in the reviewed production host contract before
-building. If the Worker has no such binding, stop and report; never create one.
-The #773 sandbox has no Cloudflare authentication (`cf auth whoami` reports
-`authenticated: false`, `Not logged in`), so the production namespace could
-not be resolved. The production source binding remains unpinned and this
-entry point deliberately refuses it. Account access and the read-only KV
-resolution remain required before production deployment can be accepted.
+The production `GSC_CACHE` binding pins `e25483e6f01d4c68a7b014906f247a37`
+(`gitstarclub-web-gsc-cache`), created by Tech on 2026-10-26 under the owner's
+decision to give production its own initially empty page-cache namespace.
+It stores cache only, not source data, and is separate from preview's
+`4c3107414bad4a0386fedfcf96dde6e2`. Both IDs are pinned in the shared host
+contract and must never be exchanged between modes. The #773 production
+guard now accepts this production binding; missing, malformed and preview
+IDs remain refused. No namespace provisioning is part of the build or guard.
 
 Once those guards pass, the script runs `validate:host -- --mode production`,
 which also compares the artifact's bindings against the reviewed host contract

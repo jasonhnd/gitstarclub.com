@@ -3,16 +3,11 @@ import { astroHostWorker } from "../host-contract";
 import { assertProductionBuild, assertProductionConfig } from "../scripts/production-deploy-guards";
 import type { ProductionConfig } from "../scripts/production-deploy-guards";
 
-// Synthetic namespace for local guard tests, never used in the host contract.
-const testKvId = "0123456789abcdef0123456789abcdef";
-const production = (): ProductionConfig => {
-  const config = structuredClone(astroHostWorker("production"));
-  return { ...config, env: { ...config.env, GSC_CACHE: { type: "kv", id: testKvId } } };
-};
+const production = (): ProductionConfig => structuredClone(astroHostWorker("production"));
 const commit = "a".repeat(40);
 const stamp = () => ({ mode: "production", fixture: false, commit });
 
-test("production guards accept the production host contract with an explicit KV id", () => {
+test("production guards accept the actual production host contract with its pinned KV id", () => {
   expect(() => assertProductionBuild(stamp(), commit, "")).not.toThrow();
   expect(() => assertProductionConfig(production())).not.toThrow();
 });
@@ -69,7 +64,7 @@ test("production guards reject a missing, malformed, or preview KV id", () => {
     expect(() => assertProductionConfig(config)).toThrow();
   }
   const config = production();
-  expect(() => assertProductionConfig({ ...config, env: { ...config.env, GSC_CACHE: { type: "text", value: testKvId } } })).toThrow();
+  expect(() => assertProductionConfig({ ...config, env: { ...config.env, GSC_CACHE: { type: "text", value: config.env.GSC_CACHE.id } } })).toThrow();
   const { GSC_CACHE: _cache, ...env } = config.env;
   expect(() => assertProductionConfig({ ...config, env })).toThrow();
 });
