@@ -279,6 +279,10 @@ The top bar baseline from commit `689605c` is:
 Changing the top bar background, blur, border, spacing, text sizes, responsive
 visibility, controls, or logo treatment is a visual change.
 
+The shared search input fills the available field width below `sm` (640 px).
+Placeholder text stays complete when it fits and uses an ellipsis on overflow.
+At `sm` and `lg`, the existing input widths remain 11rem and 14rem respectively.
+
 ## Base CSS Behavior
 
 The baseline includes these global behaviors:

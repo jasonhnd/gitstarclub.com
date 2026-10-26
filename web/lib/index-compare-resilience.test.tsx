@@ -59,39 +59,39 @@ afterAll(() => {
 // SHA-256 of the shared chrome HTML. Refreshed when the header search classes change (#819).
 const baseline: Record<string, Record<string, string>> = {
   "en": {
-    "org": "5fb6afc8ac6d379d84981cdf8e6bd96f015d0b8b472bfd3e38e7f60990d3df29",
-    "compare": "148ec3ca31fd74a629a4123dfd8fc6387a50fa81ae07501f027d0004c1fea8a6",
-    "categories": "bfc406e0e94f3f121618f94cc3f4ea20845665817002971fa5d5775e3ad043cb"
+    "org": "b64f7069b6fc8f4caf81f1956ab8e2b0ffd28620ca22465087ef79729bb20d5a",
+    "compare": "4f45dccb3b1dfa880deb1dacafa9743bd3bae3abaef1ea6485ab8d62a4fc0323",
+    "categories": "7f1e9723d313363c48d63beb7ed206ed551f4592f39f43da054eeee9c25813c0"
   },
   "ja": {
-    "org": "7e338cace646b2b86af49df9a09d0fa9fc16a6201fbd62b8fbdc0334896c4a1e",
-    "compare": "6082e415bf6e503167151108977d36b3227a9e8cb7b600980e2de8aae2fa432a",
-    "categories": "e9d37216a338ee7d2c3c9e3ab9a807431b451122aa5fa38ab517b8e2ecd1b67f"
+    "org": "c6d336868f9b234cc9842b2a483a7c7c5aa4c51b95a3d7d33c115940cf898412",
+    "compare": "520c013b961ef95b334540cd12dafd6b61c1bdeed87f17a519c342864a533d6f",
+    "categories": "1891f9ea5cedad24da62f350ce76a012f88e5c74a3ef1e6499c78247cb1f38e6"
   },
   "zh": {
-    "org": "0133bfc9b5e46250a408676db637a60834dbeb73d5171067dfc98590314be70e",
-    "compare": "9d26e9091b398a7e1b60892018166f521064c1a3495ddca6e5f748bb46519833",
-    "categories": "f64bd734a0062af0a434db9c86f046e81c9767bef6ecc0696b5a9b54171784f5"
+    "org": "5e3f478678430c527118dba1047c52fdfe78cd669df78b6fd26f73f7e239f9da",
+    "compare": "09c2b2b73721ce43244b16b544ce8ca3afe4fb81c3ecc55ba29c281871300437",
+    "categories": "d73fbab2279be6d86deadbc1ad62012d9fb8f3b1fd815fce9077ef9b8f92a8be"
   },
   "zh-TW": {
-    "org": "79f7e153f662554ce141fde69a4b755d984558e1efe29c7609ce6834a4c48cec",
-    "compare": "6190d3d1c9e901693d43201238f214baa0e4bd6df83e07420d15c85fa39dd7d9",
-    "categories": "97b1d82aa3260d126f8e62e57e8abb6d799fcbe4507bcaa62a3a25fbf1da67a8"
+    "org": "fb221fc3ae3fa348c2f4f9d5e74afb21c7a064d9b370c089db704c35547634ee",
+    "compare": "39dfd1f72f9d260483b41edf9a49f82bb81bd3610a1cf21d86ad192c239c80cf",
+    "categories": "a708c5e5863748b3b6ccc3ad9130653ac1dadf64840e4d28e9dc708c3a8f5ce9"
   },
   "ko": {
-    "org": "24f88f6f0aa8fa10693406c35e2efce7a20824c2dca99c114fbe659c67931866",
-    "compare": "34afdc1207a1a021a447a80c2064e816de9ac4de5d9b6ac3f5dd7382ad5fcf89",
-    "categories": "f26775de90f26f13f908c7a7d2dcc5e6ed64e65042b46f6ed687ab0fcabbec1d"
+    "org": "bcb4618ed24ef14c17cdfa27364194c98ea396e0baf05e9432ed4791c4d35958",
+    "compare": "95a997a185240ebcef76a671cd2e45738ff33c9617e090da63fbb81b4a2285bd",
+    "categories": "ea83de89700978bd059b064752010bb3ba516c001589371aead6015a9be51316"
   },
   "es": {
-    "org": "0eda3511e673dda07e0b38445fc5c6c3288e92d5c9113f5dd8b8c3ac7a1ec1ff",
-    "compare": "0236740a0636c6ddfca4bf149eeb6c6142733f0f441369e96c4a2c55eafb2527",
-    "categories": "02da624fa4d3669a0f280c0c30c978eb96794fc00e15c4bf45abccc1b6c1a9fb"
+    "org": "a260ddfc31f2bfaa2388e22770035a8a18168deefaef6ff1b3526a103a1018f9",
+    "compare": "b2e4838419d27b7e929bc9ffadefbb78a0890b4e75a94573c2f69dde9244d11b",
+    "categories": "1afd8d2fc0aff484db6771251229278994af6676b8e0b820f70c230c6a194557"
   },
   "fr": {
-    "org": "9828349551eb706ceb749ece65fc770443b52335bb278e01a1cf87d5a7dae9ea",
-    "compare": "982c58011f5591391b318a1c9e7616e3b997a24b5726fe1ac0fb4396aa840bd8",
-    "categories": "c46b4d379cd9925a79b0d74192a35b02ecea991aea0bf3a1a22eef5f4ed7c516"
+    "org": "982ed504d1ac44265585cb3b4fa732f66a0aacdcf6ac4705fd324b0639f0c08f",
+    "compare": "9d7acc96cd8739299bd9784baa1a02dc8a5160e0614dd83d6f3a6687b004e65e",
+    "categories": "3fe0d1e6c1ef9fe0a95b4ca6b6466b69b9d46084cf8b4b18ecc8311a9c1dd3a9"
   }
 };
 
