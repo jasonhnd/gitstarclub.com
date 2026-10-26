@@ -1,3 +1,4 @@
+import { pageIdentity } from "../../lib/page-identity";
 import type { ReactNode } from "react";
 import Link from "../../components/Link";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
@@ -67,12 +68,12 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
   const routePath = localizedPath(locale, canonicalPath);
   const href = (path: string) => localizedPath(locale, path);
   const periods = currentUtcPeriods(now);
-  const [snap, lookup, availablePeriods] = await Promise.all([
+  const [snap, lookup, availablePeriods, aboutMeta] = await Promise.all([
     getHotSnapshot(),
     getReposLookup(),
     resolveAvailableRankPeriods(now),
+    getMeta(),
   ]);
-  const aboutMeta = await getMeta();
   const [activeWeekRank, activeMonthRank] = await Promise.all([
     availablePeriods.week.kind === "week" ? getRank("week", availablePeriods.week.period, "repo", "flow") : Promise.resolve(null),
     availablePeriods.month.kind === "month" ? getRank("month", availablePeriods.month.period, "repo", "flow") : Promise.resolve(null),
@@ -167,8 +168,8 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           meta={aboutMeta}
           releaseId={releaseId}
           layer="periodGains"
-          pageTitle={canonicalPath === "/" ? `${t.meta.homeTitle} · GitStarClub` : t.meta.pulseTitle}
-          canonicalUrl={`https://gitstarclub.com${routePath === "/" ? "" : routePath}`}
+          additionalLayers={["currentTotals"]}
+          {...pageIdentity(locale, canonicalPath, canonicalPath === "/" ? `${t.meta.homeTitle} · GitStarClub` : t.meta.pulseTitle, canonicalPath === "/")}
         />
 
         <div className="mt-[clamp(1.25rem,3vw,2rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
