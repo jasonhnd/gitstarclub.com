@@ -1,6 +1,6 @@
 ---
 owner: data
-status: ready
+status: active
 last_reviewed: 2026-10-26
 source_of_truth_for:
   - issue 786 offline option B repair builder
