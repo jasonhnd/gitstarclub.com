@@ -130,6 +130,7 @@ export async function withBootstrapPublicationLease({ store, generation, operati
   /** @type {{ lease: BootstrapLease | null }} */
   const state = { lease: null };
   let succeeded = false;
+  let operationError;
   try {
     const result = await run(async () => {
       state.lease = state.lease
@@ -139,15 +140,27 @@ export async function withBootstrapPublicationLease({ store, generation, operati
     if (!state.lease) throw new Error(`bootstrap ${operation} did not acquire the shared workflow lease`);
     succeeded = true;
     return /** @type {Awaited<ReturnType<TRun>>} */ (result);
+  } catch (error) {
+    operationError = error;
+    throw error;
   } finally {
     const lease = state.lease;
     if (lease) {
-      const released = await releaseBootstrapLease({
-        store,
-        lease,
-        status: succeeded ? "published" : "failed",
-      });
-      if (!released) throw new Error(`bootstrap ${operation} lost workflow lease ${lease.fencing_token} before release`);
+      try {
+        const released = await releaseBootstrapLease({
+          store,
+          lease,
+          status: succeeded ? "published" : "failed",
+        });
+        if (!released) throw new Error(`bootstrap ${operation} lost workflow lease ${lease.fencing_token} before release`);
+      } catch (releaseError) {
+        if (!succeeded) {
+          throw new AggregateError([operationError, releaseError],
+            `bootstrap ${operation} failed: ${operationError instanceof Error ? operationError.message : String(operationError)}; lease release also failed`,
+            { cause: operationError });
+        }
+        throw new Error(`bootstrap ${operation} completed; lease release failed; pointer may have moved`, { cause: releaseError });
+      }
     }
   }
 }

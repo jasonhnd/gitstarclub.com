@@ -235,7 +235,7 @@ A valid pointer already takes priority over the fallback. Do not remove or chang
 - **The two GCP items are retired (2026-10-19)**: project `gitstarclub` entered deletion after raw preservation in private R2 `gitstarclub-raw`. Do not provision credentials or run GH Archive extraction. See [Raw backfill data](#raw-backfill-data) for inventory, checksums, and the recovery deadline.
 - At startup, verify that required secrets exist; if any are missing, fail-fast (do not swallow them silently).
 - Current R2 status and the stage plan are in [R2-CUTOVER.md](./R2-CUTOVER.md). Production uses R2 after the accepted 2026-10-04 cutover. Superseded phase notes are in `docs/archive/`. **Do not cut DNS** from this runbook.
-- Both Workers serve the site. A preview fault rolls back Worker `gitstarclub-web-pre` (`--env pre`) only. Do not roll back production Worker `gitstarclub-web` from a preview incident. Production hosting rollback for the R2 cutover is the stage 4 version command later in this runbook. The production trigger remains unverified. Both `triggers.crons` arrays stay `[]` until an owner-approved stage 5 change.
+- Both Workers serve the site. A preview fault rolls back Worker `gitstarclub-web-pre` (`--env pre`) only. Do not roll back production Worker `gitstarclub-web` from a preview incident. Production hosting rollback for the R2 cutover is the stage 4 version command later in this runbook. The live production trigger remains unverified. Production `hostWorker` declares no scheduled triggers in source; preview mode `pre` declares `0 3 * * *`, `0 4 * * SUN`, and `0 6 * * SUN` against the preview Worker and bucket.
 
 ## Vercel Blob rollback layout (retained until stage 6)
 
@@ -553,7 +553,7 @@ After the first publish, cold start disarms by itself (`views/latest.json` exist
 
 ### Preview fault rollback
 
-A preview fault rolls back Worker `gitstarclub-web-pre` (Vite mode `pre`) only. Do not apply that rollback to production Worker `gitstarclub-web`. Do not empty production `triggers.crons` as a preview fix; they are already `[]`. Do not set `HOSTING_TARGET=vercel`. Do not add a login wall on `https://pre.gitstarclub.com`. Do not cut DNS. Do not delete production Blob.
+A preview fault rolls back Worker `gitstarclub-web-pre` (Vite mode `pre`) only. Do not apply that rollback to production Worker `gitstarclub-web`. Do not change production schedules as a preview fix; production `hostWorker` declares none in source, and the live production scheduler remains unverified. Do not set `HOSTING_TARGET=vercel`. Do not add a login wall on `https://pre.gitstarclub.com`. Do not cut DNS. Do not delete production Blob.
 
 The historical production cutover rollback reference, requiring operator checks and separate authorization, is recorded later in this runbook: the retired version rollback recorded in [R2-CUTOVER.md](R2-CUTOVER.md).
 
@@ -899,6 +899,79 @@ appeared in that window. It renews the lease again immediately before the
 create-only write, so a valid takeover during those reads does not publish. Creating a pointer is not the root-cost fix: a missing pointer is a
 normal long-lived legacy state and must stay negatively cached with coalesced
 reads even if the object disappears again.
+
+Card #824-B adds the library-only `web/scripts/repair-publish-commit.ts` for
+staged repair integration. `publishRepairGeneration` takes an injected `CfRunner`,
+a guarded bucket, generation IDs, a card-local work directory and
+`recoveryBaseKeysFile`. The runner must pass the supplied child environment to
+the pinned cf process; it includes `CF_DELEGATION=1`. This library supplies no
+CLI, target authorization or default runner. Tests authorize no bucket access.
+
+Tech's recovery-source decision (2026-10-26) is explicit and independent of
+pointer selection. Seal exactly these two sources:
+
+- Base: `RECOVERY_BASE_PREFIX`, exactly
+  `views/refresh-2026-09-13T06-00-16-398Z/`, the frozen tree served by
+  `VIEWS_VERSION_FALLBACK` (about 14,000 objects / 71 MB). If there is no retained
+  manifest, supply a reviewed complete JSON array of full source keys as
+  `recoveryBaseKeysFile`. A retained inventory manifest can instead supply array
+  records `{ "key": "views/refresh-2026-09-13T06-00-16-398Z/meta.json", "bytes": 123, "sha256": "<64 lowercase hex characters>" }`;
+  those lengths and digests are checked. The file must contain only keys from
+  this exact tree, without duplicates, including meta, both lookups and both
+  all-time stock rankings. The caller is responsible for the complete inventory;
+  the CLI cannot discover or prove omitted keys. Do not synthesize an inventory
+  from a prefix response. Missing keys or required layout artifacts refuse.
+- Canonical: `RECOVERY_CANONICAL_KEYS`, exactly `canonical/v2/meta.json` and
+  `canonical/v2/repos/0.json` through `canonical/v2/repos/31.json` (33 objects).
+  No whitelist, history families, overlays or other pointer-selected data belongs
+  in this recovery source. A missing one of these 33 objects refuses publication.
+
+Both `bootstrap/latest.json` and `views/latest.json` are absent in today's
+production layout; pages serve the frozen fallback. That absence is supported:
+recovery reads the two fixed sources above. Neither pointer chooses the source.
+The library acquires `ops/workflows/active.json`, stages recovery create-only,
+checks every copied object's SHA-256 and size against its source, and verifies
+both sealed manifests. Publication verifies both target phase manifests and the
+repair builder's fixed canonical layout (meta, all 32 shards of each of the four
+families, and site-daily years from base month heatmaps). It verifies recovery
+again even when an older bootstrap pointer exists. It then writes only
+`bootstrap/latest.json`, with recovery as `previous_generation`, and releases
+the lease. Rollback means pointing `bootstrap/latest.json` at that verified
+recovery generation. Never change `VIEWS_VERSION_FALLBACK` for this operation.
+`views/latest.json` is never written.
+
+Pinned `cf@1.0.0-beta.18` lists output only an array of records, with no cursor
+or truncation flag. Never enumerate prefixes. Every generation key comes from
+its phase manifest; fixed layouts and the explicit frozen inventory supply the
+remaining keys. For each object, list with the full key as prefix and
+`--per-page 1000`: an exact match proves presence; no exact match on a short page
+proves absence; a full page without that key is ambiguous and refuses. Get the
+raw body and verify length and SHA-256 against the manifest. Lease and pointer
+reads use the same full-key existence check before get. Every non-zero get exit
+is a hard failure, including a key disappearing between list and get. Error
+output never establishes absence.
+The string runner supports UTF-8 JSON, including legitimate U+FFFD; binary and
+lossy size/hash mismatches refuse. Puts carry **no Cache-Control** because the
+pinned cf put command has no such flag. Tech verified public R2 JSON is served
+DYNAMIC; this behavior is accepted for this repair and does not inherit the R2
+bootstrap store adapter's cache policy.
+
+The lease is advisory: readback and an increasing ownership number cannot make
+cf puts conditional. A human single-writer maintenance window is required.
+The preview Worker `gitstarclub-web-pre` (mode `pre`) declares three cron
+triggers (scheduled tasks): `0 3 * * *`, `0 4 * * SUN`, and `0 6 * * SUN`, using
+the preview Worker and preview bucket. Production `hostWorker` declares no
+scheduled triggers in source, but the root README still marks the live
+production trigger unverified. Source is not proof that the live production
+scheduler is off; the human single-writer window remains required. Heartbeats
+renew during long operations; failed acquisition after a put releases a record
+still owned by this invocation. Cleanup failures preserve the original error.
+`RepairPublicationError` reports `phase`, `pointerMayHaveMoved`, and any separate
+`releaseError`. A `release` failure after successful commit, or a `commit` failure
+with `pointerMayHaveMoved=true`, must not be treated as an intact old pointer:
+read the pointer under the guarded operational procedure before retry or rollback.
+See [the card plan](../plans/824b-lease.md) for the remaining write races. The
+guarded publisher and rehearsal remain separate cards.
 
 ## Rollback
 

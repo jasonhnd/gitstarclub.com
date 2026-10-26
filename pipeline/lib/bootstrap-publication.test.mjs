@@ -427,6 +427,37 @@ describe("bootstrap publication", () => {
     });
   });
 
+  test("lease release failure preserves the primary operation error", async () => {
+    const store = new LeaseStore();
+    const original = new Error("primary validation failure");
+    let failure;
+    try {
+      await withBootstrapPublicationLease({ store, generation: "bootstrap-failed", operation: "publish",
+        run: async (assertCanCommit) => {
+          await assertCanCommit();
+          store.readSnapshot = async () => { throw new Error("cleanup read failed"); };
+          throw original;
+        },
+      });
+    } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure.cause).toBe(original);
+    expect(failure.errors[0]).toBe(original);
+    expect(failure.errors[1].message).toBe("cleanup read failed");
+    expect(failure.message).toContain("primary validation failure");
+  });
+
+  test("release failure after successful operation reports possible pointer movement", async () => {
+    const store = new LeaseStore();
+    await expect(withBootstrapPublicationLease({ store, generation: "bootstrap-success", operation: "publish",
+      run: async (assertCanCommit) => {
+        await assertCanCommit();
+        store.readSnapshot = async () => { throw new Error("cleanup unavailable"); };
+        return { published: true };
+      },
+    })).rejects.toThrow("completed; lease release failed; pointer may have moved");
+  });
+
   test("a callback cannot return a result without acquiring the publication lease", async () => {
     const store = new LeaseStore();
     await expect(withBootstrapPublicationLease({
@@ -457,7 +488,7 @@ describe("bootstrap publication", () => {
         await assertCanCommit();
         throw new Error("stale owner must not continue");
       },
-    })).rejects.toThrow("lost workflow lease 1 before release");
+    })).rejects.toThrow("no longer owns workflow lease 1");
     expect(JSON.parse(store.body.toString())).toEqual(takeover);
     expect(store.etag).toBe("takeover");
   });
