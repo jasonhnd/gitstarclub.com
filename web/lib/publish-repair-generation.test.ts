@@ -82,6 +82,23 @@ test("default staging concurrency is four and a rejected put rechecks before res
   expect(calls.filter((args) => args[2] === "list" && args[args.indexOf("--prefix") + 1] === key)).toHaveLength(2);
 });
 
+test("an identical object found after a 429 counts as skipped, including through a guarded runner", async () => {
+  const { options } = fixture(), cf = fakeCf();
+  const key = `${prefix}/views/0.json`;
+  const runner: CfRunner = async (args, child) => {
+    if (args[2] === "put" && args[3] === key) {
+      cf.objects.set(key, readFileSync(args[args.indexOf("--file") + 1]));
+      return { code: 1, stdout: "", stderr: "\n┌ APIError\n│ [10000] Rate limit exceeded\n│ 429 Too Many Requests\n└\n" };
+    }
+    return cf.runner(args, child);
+  };
+  const { cfResult } = await import("../scripts/repair-publish-cf");
+  const retry = { sleep: async () => {}, random: () => 0, log: () => {} };
+  const guarded: CfRunner = (args) => cfResult(runner, args, retry);
+  expect(await publishRepairGeneration({ ...options, retry }, guarded)).toEqual({ created: 13, skipped: 1, planned: 0 });
+  expect(cf.calls.some((args) => args[2] === "put" && args[3] === key)).toBe(false);
+});
+
 for (const mutation of ["missing manifest", "wrong phase", "wrong generation", "duplicate object", "bad total", "bad sha", "missing object", "same-size changed bytes", "changed size", "traversal", "symlink"]) {
   test(`refuses ${mutation} before any cf call`, async () => {
     const { options, write } = fixture(), cf = fakeCf();

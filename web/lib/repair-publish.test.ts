@@ -123,6 +123,66 @@ for (const target of ["production", "pre", "rehearsal"] as const) test(`complete
   expect(h.read(POINTER)).toEqual(pointerBeforeRetry);
 });
 
+for (const rollback of [false, true]) for (const releaseFails of [false, true]) {
+  test(`command keeps workDir until failed verification and release settle: rollback=${rollback}, releaseFails=${releaseFails}`, async () => {
+    const h = fixture("pre");
+    if (rollback) await h.run();
+    const prefix = bootstrapGenerationPrefix(RECOVERY);
+    const waiting = Promise.withResolvers<void>(), finishRead = Promise.withResolvers<void>();
+    const releasing = Promise.withResolvers<void>(), finishRelease = Promise.withResolvers<void>();
+    let workDir = "", settled = false;
+    const gets = new Map<string, number>();
+    const events: string[] = [];
+    const runner: CfRunner = async (args, child) => {
+      const op = args[2], key = args[3];
+      if (op === "put" && key === LEASE) {
+        const file = args[args.indexOf("--file") + 1];
+        workDir = dirname(dirname(file));
+        const status = JSON.parse(readFileSync(file, "utf8")).status;
+        if (status === "failed") {
+          events.push("release started"); releasing.resolve(); await finishRelease.promise;
+          expect(existsSync(workDir)).toBe(true);
+          expect(readFileSync(file).length).toBeGreaterThan(0);
+          events.push("release settled");
+          if (releaseFails) throw new Error("release failed after draining");
+        }
+      }
+      if (op === "get" && key.startsWith(`${prefix}/manifests/`)) {
+        const count = (gets.get(key) ?? 0) + 1; gets.set(key, count);
+        // Publishing first reads each manifest back after staging its bytes.
+        if (count === (rollback ? 1 : 2)) {
+          if (key.endsWith("canonical.json")) {
+            events.push("sibling reading"); waiting.resolve(); await finishRead.promise;
+            expect(existsSync(workDir)).toBe(true);
+            events.push("sibling settled"); throw new Error("later sibling read failed");
+          }
+          await waiting.promise;
+          events.push("first phase failed"); throw new Error("first verification phase failed");
+        }
+      }
+      return h.runner(args, child);
+    };
+    const args = rollback ? ["--target", "pre", "--bucket", h.bucket, "--rollback", RECOVERY] : h.args;
+    const command = main(args, runner, h.log);
+    const outcome = command.then(() => { settled = true; return null; }, (error: unknown) => { settled = true; return error; });
+    try {
+      await waiting.promise; await Bun.sleep(1);
+      expect(existsSync(workDir)).toBe(true); expect(settled).toBe(false);
+      expect(events).not.toContain("release started");
+      finishRead.resolve(); await releasing.promise;
+      expect(events.indexOf("sibling settled")).toBeLessThan(events.indexOf("release started"));
+      expect(existsSync(workDir)).toBe(true); expect(settled).toBe(false);
+      finishRelease.resolve();
+      const error = await outcome;
+      expect(error).toBeInstanceOf(RepairPublicationError);
+      expect(String(error)).toContain("first verification phase failed");
+      expect((error as RepairPublicationError).releaseError !== undefined).toBe(releaseFails);
+      expect(events.at(-1)).toBe("release settled");
+      expect(existsSync(workDir)).toBe(false);
+    } finally { finishRead.resolve(); finishRelease.resolve(); await outcome; }
+  });
+}
+
 for (const target of ["production", "rehearsal"] as const) describe(`${target} production-path scenarios`, () => {
   test("retry after mid-upload failure resumes matching objects without changing the pointer early", async () => {
     const h = fixture(target); let count = 0;

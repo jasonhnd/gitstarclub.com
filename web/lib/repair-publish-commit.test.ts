@@ -95,6 +95,53 @@ function fixture() {
 }
 
 describe("repair publication with fake cf only", () => {
+  test("a publication can reacquire and heartbeat after releasing its previous lease", async () => {
+    const h = fixture(), p = h.publication();
+    await p.acquire(); await p.releaseIfOwned("failed");
+    await p.acquire(); h.advance(31_000);
+    await p.store.read(`${BASE}meta.json`);
+    await p.release("published");
+    expect(h.writes.filter(({ key }) => key === ACTIVE).map(({ body }) => JSON.parse(body.toString()).status))
+      .toEqual(["running", "failed", "running", "running", "published"]);
+  });
+
+  for (const status of ["failed", "published"] as const) for (const renewalFails of [false, true]) {
+    test(`${status} release drains pending heartbeat before writing, renewalFails=${renewalFails}`, async () => {
+      const h = fixture(), p = h.publication();
+      await p.acquire(); h.advance(31_000);
+      const started = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+      const events: string[] = [];
+      h.hook(async (args) => {
+        if (args[2] !== "put" || args[3] !== ACTIVE) return;
+        const body = JSON.parse(readFileSync(args[args.indexOf("--file") + 1], "utf8"));
+        if (body.status !== "running") return;
+        events.push("heartbeat started"); started.resolve(); await resume.promise;
+        if (renewalFails) { events.push("heartbeat failed"); throw new Error("heartbeat put failed"); }
+      });
+      h.afterPut((key) => {
+        if (key === ACTIVE) events.push(`${JSON.parse(h.objects.get(ACTIVE)!.toString()).status} put`);
+      });
+      const reading = p.store.read(`${BASE}meta.json`).then(() => null, (error: unknown) => error);
+      await started.promise;
+      let settled = false;
+      const release = (status === "failed" ? p.releaseIfOwned(status) : p.release(status))
+        .then(() => { settled = true; }, (error) => { settled = true; throw error; });
+      // Attach rejection handling immediately, even while the heartbeat is blocked.
+      const outcome = release.then(() => null, (error: unknown) => error);
+      try {
+        await Bun.sleep(1);
+        expect(settled).toBe(false);
+        expect(events).toEqual(["heartbeat started"]);
+      } finally { resume.resolve(); }
+      expect(await outcome).toBeNull();
+      const readError = await reading;
+      if (renewalFails) expect(String(readError)).toContain("heartbeat put failed");
+      else expect(readError).toBeNull();
+      expect(events).toEqual(["heartbeat started", renewalFails ? "heartbeat failed" : "running put", `${status} put`]);
+      expect(JSON.parse(h.objects.get(ACTIVE)!.toString()).status).toBe(status);
+    });
+  }
+
   test("recovery puts retry through the shared layer with at most four cf children", async () => {
     const h = fixture(); let limited = false, active = 0, peak = 0, checks = 0;
     const key = `${bootstrapGenerationPrefix(RECOVERY)}/views/meta.json`;

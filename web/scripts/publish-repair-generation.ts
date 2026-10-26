@@ -11,7 +11,7 @@ import {
   BOOTSTRAP_PHASES, bootstrapGenerationPrefix, sha256Bytes, verifyBootstrapGeneration,
 } from "../../pipeline/lib/bootstrap-publication.mjs";
 
-import { cfBytes, cfObjectExists, repairConcurrency, runCf, type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
+import { cfBytes, cfObjectExists, cfResult, repairConcurrency, runCf, type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
 export { runCf, type CfRunner } from "./repair-publish-cf";
 export type PublishOptions = { built: string; generation: string; bucket: string; concurrency?: number; dryRun?: boolean; retry?: CfRetryOptions };
 type ObjectBytes = { key: string; size: number; sha256: string; body: Buffer };
@@ -107,9 +107,10 @@ export async function stagePreparedRepairGeneration(options: PublishOptions,
     const file = join(scratch, `${sequence++}`);
     writeFileSync(file, item.body, { flag: "wx" });
     try {
-      await cfBytes(runner, ["r2", "objects", "put", item.key, "--bucket-name", options.bucket, "--file", file,
+      const put = await cfResult(runner, ["r2", "objects", "put", item.key, "--bucket-name", options.bucket, "--file", file,
         "--content-type", item.key.endsWith(".json") ? "application/json" : "application/octet-stream"], { log, ...options.retry });
-      result.created++;
+      if (put.alreadyPresent) result.skipped++;
+      else result.created++;
     } finally { rmSync(file, { force: true }); }
   }
   async function pool(items: ObjectBytes[]) {

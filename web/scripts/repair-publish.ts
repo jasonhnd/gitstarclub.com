@@ -107,7 +107,11 @@ export async function main(argv = process.argv.slice(2), runner: CfRunner = runC
     } });
     log(`${options.dryRun ? "DRY RUN " : ""}${result.status}: ${options.generation}; recoveryGeneration: ${options.recoveryGeneration}`);
     return result;
-  } finally { rmSync(workDir, { recursive: true, force: true }); }
+  } finally {
+    // Both verification phases and lease release settle inside the awaited
+    // publication/rollback calls before any scratch files can be removed.
+    rmSync(workDir, { recursive: true, force: true });
+  }
 }
 
 export function reportRepairError(error: unknown, log: (line: string) => void = console.error) {

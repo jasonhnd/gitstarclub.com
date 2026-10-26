@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cfBytes, limitCfConcurrency, type CfRetryOptions, type CfRunner } from "../scripts/repair-publish-cf";
 import { resolvePublishTarget } from "../scripts/repair-publish-target";
+import { bootstrapGenerationPrefix, buildBootstrapPhaseManifest, verifyBootstrapGeneration } from "../../pipeline/lib/bootstrap-publication.mjs";
 
 const scratch: string[] = [];
 afterEach(() => { for (const path of scratch.splice(0)) rmSync(path, { recursive: true, force: true }); });
@@ -36,6 +37,48 @@ function timing() {
 const get = ["r2", "objects", "get", "key", "--bucket-name", "fake"];
 
 describe("shared repair cf rate limits with fake runners only", () => {
+  for (const retryFails of [false, true]) test(`verification waits for a sibling's 429 wait and consumes its result: retryFails=${retryFails}`, async () => {
+    const generation = "bootstrap-429-drain", prefix = bootstrapGenerationPrefix(generation);
+    const body = Buffer.from("{}"), objects = new Map<string, Buffer>();
+    for (const phase of ["base", "canonical"] as const) {
+      const path = phase === "base" ? "views/meta.json" : "canonical/v2/meta.json";
+      objects.set(`${prefix}/${path}`, body);
+      objects.set(`${prefix}/manifests/${phase}.json`, Buffer.from(JSON.stringify(
+        buildBootstrapPhaseManifest(generation, phase, [{ path, body }]))));
+    }
+    const waiting = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+    const first = new Error("base failed during sibling retry wait");
+    let attempts = 0, settled = false;
+    const unhandled: unknown[] = [];
+    const onUnhandled = (error: unknown) => { unhandled.push(error); };
+    process.on("unhandledRejection", onUnhandled);
+    const runner: CfRunner = async (args) => {
+      const key = args[3];
+      if (key === `${prefix}/views/meta.json`) { await waiting.promise; throw first; }
+      if (key === `${prefix}/canonical/v2/meta.json`) {
+        if (++attempts === 1) return rejected();
+        if (retryFails) throw new Error("canonical retry failed later");
+      }
+      return ok(objects.get(key)!);
+    };
+    const verification = verifyBootstrapGeneration({ generation, concurrency: 1, store: { read: (key: string) =>
+      cfBytes(runner, ["r2", "objects", "get", key, "--bucket-name", "fake"], {
+        random: () => 0, log: () => {}, sleep: async (ms) => {
+          expect(ms).toBe(30_000); waiting.resolve(); await resume.promise;
+        },
+      }) } });
+    const outcome = verification.then(() => { settled = true; }, (error: unknown) => { settled = true; return error; });
+    try {
+      await waiting.promise; await Bun.sleep(1);
+      expect(settled).toBe(false); expect(attempts).toBe(1);
+      resume.resolve(); expect(await outcome).toBe(first);
+      expect(attempts).toBe(2);
+      await Bun.sleep(1); expect(unhandled).toEqual([]);
+    } finally {
+      resume.resolve(); await outcome;
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
   for (const operation of ["get", "list"]) for (const colour of [false, true]) for (const fallback of [false, true]) {
     test(`${operation} retries the identical call: colour=${colour}, fallback=${fallback}`, async () => {
       const t = timing(), calls: string[][] = [];

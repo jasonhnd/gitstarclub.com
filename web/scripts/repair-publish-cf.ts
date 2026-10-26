@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify, stripVTControlCharacters } from "node:util";
 
 export type CfRunner = (args: string[], child: { env: NodeJS.ProcessEnv }) => Promise<{
-  code: number; stdout: string | Buffer; stderr: string;
+  code: number; stdout: string | Buffer; stderr: string; alreadyPresent?: boolean;
 }>;
 const execute = promisify(execFile);
 export const cfChild = () => ({ env: { ...process.env, CF_DELEGATION: "1" } });
@@ -112,7 +112,7 @@ export async function cfResult(runner: CfRunner, args: string[], retry: CfRetryO
       if (await cfObjectExists(runner, key, bucket, retry)) {
         const actual = await cfBytes(runner, ["r2", "objects", "get", key, "--bucket-name", bucket], retry);
         if (actual.length !== body.length || sha256(actual) !== sha256(body)) throw new Error(`Existing object differs: ${key}`);
-        return { code: 0, stdout: Buffer.alloc(0), stderr: "" };
+        return { code: 0, stdout: Buffer.alloc(0), stderr: "", alreadyPresent: true };
       }
       const current = await readFile(args[fileAt + 1]);
       if (!current.equals(body)) throw new Error(`Local put bytes changed during retry: ${key}`);

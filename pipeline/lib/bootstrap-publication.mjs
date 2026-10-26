@@ -310,9 +310,18 @@ export async function verifyBootstrapPhase({ generation, phase, store, concurren
 
 /** @param {{ generation: string | undefined, store: Pick<BootstrapStore, 'read'>, concurrency?: number }} options */
 export async function verifyBootstrapGeneration({ generation, store, concurrency = 12 }) {
-  const [base, canonical] = await Promise.all(
-    BOOTSTRAP_PHASES.map((phase) => verifyBootstrapPhase({ generation, phase, store, concurrency })),
+  let failed = false, firstError;
+  const phases = BOOTSTRAP_PHASES.map((phase) =>
+    verifyBootstrapPhase({ generation, phase, store, concurrency }).catch((error) => {
+      if (!failed) firstError = error;
+      failed = true;
+      throw error;
+    }),
   );
+  // A sibling may still be retrying reads or renewing the caller's lease.
+  await Promise.allSettled(phases);
+  if (failed) throw firstError;
+  const [base, canonical] = await Promise.all(phases);
   return {
     base,
     canonical,

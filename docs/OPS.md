@@ -984,7 +984,13 @@ proven absence allows the same put again. An ambiguous full listing or failed
 read also refuses the retry. This check applies to lease and pointer writes as
 well, so a rate-limited attempt to replace an existing control object can fail
 closed on its old bytes. The single-writer window remains required. Recovery
-and staging drain in-flight uploads before reporting a transfer failure.
+and staging drain in-flight uploads before reporting a transfer failure. A
+matching object discovered after a 429 wait counts as skipped (already present),
+not created. Generation verification waits for both base and canonical phases
+to settle before reporting the first failure, including rate-limit waits and
+later failures in the other phase. Release stops new heartbeats and waits for
+any pending heartbeat write before marking an owned lease failed or published.
+The command removes its working directory only after workers and release settle.
 
 To undo a completed publication, run the exact printed rollback line from the
 repository root (add `--dry-run` to rehearse). It uses the same bucket/identity

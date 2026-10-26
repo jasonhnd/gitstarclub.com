@@ -8,6 +8,7 @@ import {
   rollbackBootstrapGeneration,
   stageBootstrapPhase,
   stageBootstrapObjects,
+  verifyBootstrapGeneration,
 } from "./bootstrap-publication.mjs";
 import {
   ACTIVE_WORKFLOW_PATH,
@@ -153,6 +154,45 @@ test("a first repair commit requires a sealed distinct recovery generation", asy
 async function stageComplete(store, generation) {
   await stageBootstrapPhase({ generation, phase: "base", items: items("views"), store, concurrency: 1 });
   await stageBootstrapPhase({ generation, phase: "canonical", items: items("canonical"), store, concurrency: 1 });
+}
+
+for (const firstPhase of ["base", "canonical"]) {
+  test(`generation verification drains both phases and preserves the first ${firstPhase} error`, async () => {
+    const store = new MemoryStore(), generation = "bootstrap-verify-drain";
+    await stageComplete(store, generation);
+    const waiting = Promise.withResolvers(), resume = Promise.withResolvers();
+    const first = new Error(`${firstPhase} failed first`), later = new Error("sibling failed later");
+    let settled = false;
+    const unhandled = [];
+    const onUnhandled = (error) => unhandled.push(error);
+    process.on("unhandledRejection", onUnhandled);
+    const verification = verifyBootstrapGeneration({ generation, concurrency: 1, store: { read: async (path) => {
+      if (!path.includes("/manifests/")) {
+        if (path.includes(firstPhase === "base" ? "/views/" : "/canonical/")) {
+          await waiting.promise;
+          throw first;
+        }
+        waiting.resolve();
+        await resume.promise;
+        throw later;
+      }
+      return store.read(path);
+    } } });
+    const outcome = verification.then(() => { settled = true; }, (error) => { settled = true; return error; });
+    try {
+      await waiting.promise;
+      await Bun.sleep(1);
+      expect(settled).toBe(false);
+      resume.resolve();
+      expect(await outcome).toBe(first);
+      await Bun.sleep(1);
+      expect(unhandled).toEqual([]);
+    } finally {
+      resume.resolve();
+      await outcome;
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 }
 
 function seedLegacyFlat(store) {

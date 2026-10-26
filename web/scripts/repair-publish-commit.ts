@@ -52,6 +52,7 @@ export class RepairPublication {
   private lease: ReturnType<typeof parseBootstrapLease> = null;
   private lastRenew = 0;
   private renewal?: Promise<void>;
+  private releasing = false;
   private source?: { bootstrap: Buffer | null; managed: Buffer | null };
   pointerWriteAttempted = false;
   private rollingBack = false;
@@ -163,6 +164,7 @@ export class RepairPublication {
 
   async acquire(): Promise<void> {
     if (this.lease) throw new Error("Publication already holds a lease");
+    this.releasing = false;
     const before = await this.controlRead(ACTIVE_WORKFLOW_PATH);
     const active = parseBootstrapLease(before);
     if (active?.status === "running" && Date.parse(active.expires_at) > this.now()) throw new Error("Publication blocked by active workflow lease");
@@ -189,7 +191,7 @@ export class RepairPublication {
 
   private async heartbeat(): Promise<void> {
     // Lease reads/listings must not recursively trigger renewal.
-    if (!this.lease) return;
+    if (!this.lease || this.releasing) return;
     if (this.renewal) return this.renewal;
     if (this.now() - this.lastRenew < 30_000) return;
     this.renewal = (async () => {
@@ -221,6 +223,9 @@ export class RepairPublication {
   }
 
   async release(status: "published" | "failed"): Promise<void> {
+    this.releasing = true;
+    // Workers report renewal failures; they must not prevent owned-lease cleanup.
+    await Promise.allSettled([this.renewal]);
     await this.assertOwned();
     const at = new Date(this.now()).toISOString();
     const released = { ...this.lease!, status, acquired_at: at, expires_at: at };
@@ -232,6 +237,8 @@ export class RepairPublication {
   }
 
   async releaseIfOwned(status: "published" | "failed"): Promise<void> {
+    this.releasing = true;
+    await Promise.allSettled([this.renewal]);
     if (!this.lease) return;
     const current = parseBootstrapLease(await this.controlRead(ACTIVE_WORKFLOW_PATH));
     if (this.owns(current)) await this.release(status);
