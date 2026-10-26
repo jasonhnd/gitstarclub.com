@@ -10,6 +10,16 @@ const pkg = JSON.parse(readFileSync(new URL("../web/package.json", import.meta.u
 describe("typed host contract", () => {
   for (const mode of ["pre", "production"]) {
     test(`${mode} preserves every binding, public var and authorized trigger`, () => assert.deepEqual(assertHostContract(hostWorker(mode), mode), []));
+    test(`${mode} rejects the other mode's page-cache namespace and an unpinned binding`, () => {
+      for (const factory of [hostWorker, astroHostWorker]) {
+        const worker = structuredClone(factory(mode));
+        const host = factory === hostWorker ? "web" : "astro";
+        for (const binding of [factory(mode === "pre" ? "production" : "pre").env.GSC_CACHE, { type: "kv" }]) {
+          worker.env.GSC_CACHE = binding;
+          assert.ok(assertHostContract(worker, mode, host).includes(`${mode}: binding GSC_CACHE`));
+        }
+      }
+    });
     for (const mutate of [
       (w) => { w.name = "wrong"; }, (w) => { w.env.DATA.name = "wrong"; },
       (w) => { w.env.WORKER_SELF_REFERENCE.worker = "other"; }, (w) => { w.env.JOBS.name = "wrong"; },
