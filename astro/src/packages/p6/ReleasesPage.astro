@@ -1,0 +1,17 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { getDictionary, type Locale } from "../../../../web/lib/i18n";
+import { ReleaseDetailBody, ReleasesBody } from "./ReleasesBody";
+import { findRelease, readReleaseHistory } from "./releases";
+
+interface Props { locale: Locale; id?: string }
+const { locale, id } = Astro.props;
+const t = await getDictionary(locale);
+const history = await readReleaseHistory(Astro.locals.data);
+const record = id === undefined ? null : findRelease(history, id);
+if (id !== undefined && !record) Astro.response.status = 404;
+const canonicalPath = id === undefined ? "/releases" : `/releases/${encodeURIComponent(id)}`;
+---
+<Layout locale={locale} canonicalPath={canonicalPath} title={t.meta.releasesTitle} description={t.meta.releasesDescription}>
+  {id === undefined ? <ReleasesBody locale={locale} dictionary={t} history={history} /> : <ReleaseDetailBody locale={locale} dictionary={t} record={record} requestedId={id} />}
+</Layout>

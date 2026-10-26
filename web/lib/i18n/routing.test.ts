@@ -98,7 +98,7 @@ describe("locale metadata mappings", () => {
 
 describe("reserved localized top-level routes", () => {
   test("covers localized public top-level routes", () => {
-    expect(RESERVED_LOCALIZED_TOP_LEVEL_ROUTES).toEqual(["about", "categories", "compare", "o", "privacy", "pulse", "rankings"]);
+    expect(RESERVED_LOCALIZED_TOP_LEVEL_ROUTES).toEqual(["about", "categories", "compare", "o", "privacy", "pulse", "rankings", "releases"]);
     expect(isReservedLocalizedTopLevelRoute("rankings")).toBe(true);
     expect(isReservedLocalizedTopLevelRoute("categories")).toBe(true);
     expect(isReservedLocalizedTopLevelRoute("repo-curve")).toBe(false);
@@ -137,6 +137,14 @@ describe("classifyRoute", () => {
       route: "o",
       segments: ["o", "vercel"],
     });
+    expect(classifyRoute("/releases/refresh-2026-10-25T11-36-27-410Z")).toEqual({
+      kind: "reserved-route",
+      locale: "en",
+      path: "/releases/refresh-2026-10-25T11-36-27-410Z",
+      route: "releases",
+      segments: ["releases", "refresh-2026-10-25T11-36-27-410Z"],
+    });
+    expect(isRepoRoutePath("/releases/refresh-2026-10-25T11-36-27-410Z")).toBe(false);
   });
 
   test("classifies localized reserved routes", () => {

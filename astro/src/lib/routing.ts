@@ -43,7 +43,8 @@ export function pageRoute(path: string): { locale: Locale; path: string } | null
   if (route.kind === "repo-route" && isNonDefaultLocale(path.split("/").filter(Boolean)[0] ?? "")) return null;
   if (["root", "localized-root", "repo-route", "localized-repo-route"].includes(route.kind)) return { locale: route.locale, path: route.path };
   if (route.kind !== "reserved-route" && route.kind !== "localized-reserved-route") return null;
-  const valid = /^\/(?:about|privacy|pulse|compare|rankings|categories|o)$/.test(route.path)
+  const valid = /^\/(?:about|privacy|pulse|compare|rankings|categories|o|releases)$/.test(route.path)
+    || /^\/releases\/[^/]+$/.test(route.path)
     || /^\/rankings\/\d{4}(?:\/(?:\d{1,2}|W\d{1,2}))?$/.test(route.path)
     || /^\/categories\/[^/]+(?:\/[^/]+(?:\/page\/[1-9]\d*)?)?$/.test(route.path)
     || /^\/o\/(?:page\/[1-9]\d*|[^/]+)$/.test(route.path);

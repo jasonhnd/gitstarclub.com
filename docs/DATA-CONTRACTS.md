@@ -613,8 +613,9 @@ The shared publisher in `web/lib/workflows` writes this public key beside
 `ReleaseRecord` / `Releases` Zod contracts in `web/lib/contracts/releases.ts`.
 Consumers resolve the key directly against the configured public data origin,
 for example `https://data-pre.gitstarclub.com/views/releases.json` in preview.
-It is not a version-relative view. No host route or configuration change is
-required.
+It is not a version-relative view. The Astro host reads this key for `/releases`
+and `/releases/<id>` (and the same paths under each non-default locale). No
+other host configuration change is required.
 
 ```json
 {

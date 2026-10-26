@@ -1,0 +1,9 @@
+---
+import ReleasesPage from "../../packages/p6/ReleasesPage.astro";
+import { findRelease, readReleaseHistory } from "../../packages/p6/releases";
+export const prerender = false;
+const id = Astro.params.id;
+if (!id) return new Response("Not found", { status: 404 });
+if (!findRelease(await readReleaseHistory(Astro.locals.data), id)) Astro.response.status = 404;
+---
+<ReleasesPage locale="en" id={id} />

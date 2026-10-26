@@ -78,6 +78,9 @@ export const en = {
     privacyTitle: "Privacy",
     privacyDescription:
       "GitStarClub privacy details: no analytics scripts or tracking cookies, and only an essential language preference cookie.",
+    releasesTitle: "Published refreshes",
+    releasesDescription:
+      "Public history of GitStarClub managed data refreshes, with publication time, previous version, and tracked and skipped repository counts.",
   },
   about: {
     heroPre: "A factual ",
@@ -186,6 +189,8 @@ export const en = {
       "The website reads only that published data at request and build time. It does not run a database, scoring engine, AI model, or external paid service while serving content pages.",
     cadenceP:
       "Data dates are shown only when real metadata is available. Missing metadata does not invent freshness; the page falls back to the static methodology and visible source links.",
+    refreshHistoryLead: "Each committed managed refresh is listed with its publication time, previous version, and repository counts.",
+    refreshHistoryLink: "Published refresh history",
     sampleHeading: "Sample questions GitStarClub answers",
     sample1: "When did react/react first cross 100k GitHub stars?",
     sample2: "Which repositories gained the most GitHub stars this month?",
@@ -449,10 +454,26 @@ export const en = {
     fullBoard: "Full board",
     datasetName: "Open-source activity dataset",
   },
+  releases: {
+    eyebrow: "Releases",
+    title: "Published refreshes",
+    lede: "Managed refreshes that committed a public data version, newest first. This is the public refresh history, not a repository's GitHub releases.",
+    empty: "No published refresh history is available yet.",
+    missing: "This release is not in the published history.",
+    columnId: "Release",
+    columnPublished: "Published",
+    columnPrevious: "Previous version",
+    columnTracked: "Tracked repositories",
+    columnSkipped: "Skipped repositories",
+    previousNone: "None",
+    caption: "Managed refresh releases",
+    back: "All releases",
+  },
   footer: {
     madeIn: "Made in Tokyo",
     dataThrough: "Data updated through",
     privacy: "Privacy",
+    releases: "Releases",
     dataFrom: "Data from",
     licensedUnder: "licensed under",
     attributionSuffix:
