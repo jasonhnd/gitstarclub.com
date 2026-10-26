@@ -15,9 +15,28 @@ import { availablePeriodLabel, isFallbackMonthPeriod, isFallbackWeekPeriod } fro
 import { repositoryTableLabels } from "@/app/_localized/routing";
 import { fill } from "@/app/_localized/detail-copy";
 import { RANKING_FEATURED_LIMIT, type NewcomerRow } from "@/app/_localized/ranking-page-data";
+import { AboutThisDataContent } from "../../components/AboutThisDataContent";
+import { getMeta } from "@/lib/data";
+import { publicationScope } from "../../../../web/lib/workers-host/publication-fence";
 
 export type HeatmapCell = { label: string; gained: number; href?: string };
 export type PeriodNavLink = { href: string; label: string; eyebrow: string };
+export type RankingCitation = { pageTitle: string; canonicalUrl: string };
+
+/** Period-gains disclosure for the current captured publication. Await it in the page function; renderToStaticMarkup does not resolve async components. */
+export async function rankingAboutData({ locale, dictionary, pageTitle, canonicalUrl }: RankingCitation & { locale: Locale; dictionary: Dict }) {
+  return (
+    <AboutThisDataContent
+      locale={locale}
+      dictionary={dictionary}
+      meta={await getMeta()}
+      releaseId={publicationScope.getStore()?.views?.version ?? null}
+      layer="periodGains"
+      pageTitle={pageTitle}
+      canonicalUrl={canonicalUrl}
+    />
+  );
+}
 
 export function EmptyState({ message, className = "", variant = "overview" }: { message: string; className?: string; variant?: "overview" | "detail" }) {
   const shape = variant === "detail" ? "rounded-lg" : "mt-[clamp(1rem,2vw,1.5rem)] rounded-2xl";

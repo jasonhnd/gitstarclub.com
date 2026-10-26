@@ -10,6 +10,8 @@ Compare pages mount the disclosure after the answer capsule and before the FAQ, 
 
 Repository pages render the shared `AboutThisDataContent` after the answer capsule and before repository history and the FAQ. Their Astro page entry loads the Copy enhancement.
 
+Rankings pages (`/rankings`, `/rankings/<year>`, `/rankings/<year>/<period>`, every locale) render `AboutThisDataContent` with the `periodGains` layer, the current publication `meta` and `views.version`, and that page's own title and canonical URL. Rankings bodies are static HTML, so those pages load `about-this-data.js` directly. That file is plain JavaScript: a `?url` import is copied as-is and is not transpiled.
+
 Pass `locale`, `dictionary`, `meta`, `releaseId`, `layer`, `pageTitle` and the absolute `canonicalUrl`. Read `meta` from the current request's published data and `releaseId` from that same request's captured `publication.views.version`. Metadata does not itself contain the release identifier. Do not fetch the latest publication again while rendering.
 
 `layer` is one of `currentTotals`, `periodGains` or `historyCurve`. Each selects a translated layer label, method sentence and stable section of localized `/about`. The date comes from `meta.generated_at`, with `backfilled_at` as the bootstrap fallback. It is formatted in UTC and is the publication metadata date, not a promise of complete observations through that date. Coverage uses only `active_repo_count`, never historical membership or visible rows. Missing values are explicitly unavailable; zero is preserved.
