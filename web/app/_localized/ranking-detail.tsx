@@ -1,4 +1,5 @@
 import { RepairRemovalNotice } from "@/app/_explore/RepairRemovalNotice";
+import { repairRemovalNoticeText } from "@/lib/repair-removal-notice";
 import { SourceNote } from "@/app/_explore/SourceNote";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -229,6 +230,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const movementCells = (heat?.cells ?? []).map(([date, total]) => ({ label: String(Number(String(date).slice(8, 10))), gained: total }));
   const movementTotal = movementCells.reduce((sum, cell) => sum + cell.gained, 0);
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: flowRows, metric: "gained" }) : null;
+  const removalNotice = repairRemovalNoticeText("month", "repo", period, t.rankings.repairRemovalNotice, locale);
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: flowRows, metric: "gained" });
   const narrative = buildNarrative({
     locale,
@@ -273,9 +275,9 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
           }
         />
 
-        <RepairRemovalNotice window="month" entity="repo" period={period} copy={t.rankings} />
-
-        <AnswerBlock capsule={capsule} rows={flowRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
+        <AnswerBlock capsule={capsule} rows={flowRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending}>
+          {removalNotice ? <RepairRemovalNotice locale={locale} window="month" entity="repo" period={period} copy={t.rankings} /> : null}
+        </AnswerBlock>
 
         {narrative && (
           <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)]">

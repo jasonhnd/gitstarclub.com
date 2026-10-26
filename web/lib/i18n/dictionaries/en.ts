@@ -407,7 +407,7 @@ export const en = {
       "Only {count} tracked repositories match this {label} rule. That is the size of the whitelist slice, not the size of {label} on GitHub.",
   },
   rankings: {
-    repairRemovalNotice: "As of {date}, {count} repositories that were deleted from GitHub were removed from these rankings; ranks moved up accordingly.",
+    repairRemovalNotice: "On {date}, {count}\u00a0repositories deleted from GitHub were removed from this ranking; the ranks below them moved up.",
     title: "All-time rankings",
     subtitle: "Repositories and organizations ranked by current star count.",
     repositories: "Repositories",

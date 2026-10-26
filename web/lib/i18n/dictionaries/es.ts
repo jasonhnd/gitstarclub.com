@@ -362,7 +362,7 @@ const es: Dict = {
       "Solo {count} repositorios rastreados coinciden con esta regla de {label}. Ese es el tamaño del corte de la lista blanca, no el de {label} en GitHub.",
   },
   rankings: {
-    repairRemovalNotice: "Desde el {date}, se han retirado de estos rankings {count} repositorios eliminados de GitHub; las posiciones han subido en consecuencia.",
+    repairRemovalNotice: "El {date}, se retiraron de este ranking {count}\u00a0repositorios eliminados de GitHub; las posiciones inferiores subieron.",
     title: "Rankings históricos",
     subtitle: "Repositorios y organizaciones ordenados por su conteo actual de estrellas.",
     repositories: "Repositorios",

@@ -78,11 +78,14 @@ remote font fetch or image service is needed.
 The control module is explicitly emitted as a self-origin asset rather than an
 executable data URL, preserving the existing script policy without changes.
 
-Monthly repository rankings reuse the weekly source-note presentation for the
-repair removal notice (issue 816), directly below the page hero and above the
-ranking content. Both renderers import `REPAIR_REMOVAL_NOTICE` through the shared
+Monthly repository rankings show the repair removal notice (issue 816) as a
+16 px info strip using the existing muted surface and contrasting outline tokens
+in both themes, with the same rounded-2xl corners as the adjacent cards. Dates
+use the shared long-month date formatter in the page locale; no-break spaces
+keep counts attached to their counter words.
+It sits directly after the Answer capsule and before the first ranked cards. Both renderers import `REPAIR_REMOVAL_NOTICE` through the shared
 notice component. Its publish date is null until the go-live PR sets an ISO date
-(`YYYY-MM-DD`); that date also bounds the last affected month, inclusively. The
+(`YYYY-MM-DD`); null, malformed, or impossible dates render nothing. The date also bounds the last affected month, inclusively. The
 notice uses counts only, covers all seven dictionaries, and never appears for
 later months, weekly/yearly/all-time rankings, or organization rankings. The
 removed repository identities remain documented in

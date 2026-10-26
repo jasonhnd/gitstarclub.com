@@ -1,3 +1,5 @@
+import { dateLabel } from "../../../web/lib/format";
+import type { Locale } from "../../../web/lib/i18n/locales";
 import * as React from "react";
 import { expect, mock, test } from "bun:test";
 import { pageData } from "../../src/lib/data";
@@ -33,13 +35,13 @@ const selectNotice = noticeModule.repairRemovalNoticeText;
 let publishDate: string | null = null;
 mock.module("../../../web/lib/repair-removal-notice", () => ({
   ...noticeModule,
-  repairRemovalNoticeText: (window: string, entity: string, period: string, template: string) =>
-    selectNotice(window, entity, period, template, { date: publishDate, count: 4 }),
+  repairRemovalNoticeText: (window: string, entity: string, period: string, template: string, locale: Locale) =>
+    selectNotice(window, entity, period, template, locale, { date: publishDate, count: 4 }),
 }));
 
 const { loadPage } = await import("../../src/packages/p1/page");
 
-test("monthly pages place the enabled notice after the hero and before the ranking content in all locales", async () => {
+test("monthly pages place the enabled notice directly after the Answer capsule and before the first ranked cards in all locales", async () => {
   const records = p1FixtureRecords();
   const bucket = { async get(key: string) {
     const value = records.get(key);
@@ -50,18 +52,27 @@ test("monthly pages place the enabled notice after the hero and before the ranki
   try {
     for (const locale of LOCALES) {
       const dictionary = await getDictionary(locale);
-      const sentence = dictionary.rankings.repairRemovalNotice.replace("{date}", "2026-07-26").replace("{count}", "4");
+      const sentence = dictionary.rankings.repairRemovalNotice.replace("{date}", dateLabel(locale, "2026-07-26", "long")).replace("{count}", "4");
       publishDate = null;
       const disabled = await loadPage(data, "period", locale, "2026", "7");
       expect(disabled).not.toBeNull();
       expect(disabled!.html).not.toContain(sentence);
+      publishDate = "invalid";
+      const malformed = await loadPage(data, "period", locale, "2026", "7");
+      expect(malformed!.html).not.toContain("invalid");
       publishDate = "2026-07-26";
       const enabled = await loadPage(data, "period", locale, "2026", "7");
       expect(enabled).not.toBeNull();
       const html = enabled!.html;
       expect(html.split(sentence)).toHaveLength(2);
       expect(html.indexOf(sentence)).toBeGreaterThan(html.indexOf("</h1>"));
-      expect(html.indexOf(sentence)).toBeLessThan(html.indexOf('data-testid="answer-capsule"'));
+      const capsuleStart = html.indexOf('data-testid="answer-capsule"');
+      const capsuleEnd = html.indexOf("</section>", capsuleStart);
+      expect(capsuleStart).toBeGreaterThan(-1);
+      expect(html.slice(capsuleEnd + "</section>".length)).toStartWith('<p class="mt-3 border-l-2');
+      expect(html.indexOf(sentence)).toBeGreaterThan(capsuleEnd);
+      expect(html.slice(html.indexOf(sentence) + sentence.length)).toStartWith('</p><nav');
+      expect(html.indexOf(sentence)).toBeLessThan(html.indexOf(">#1</span>"));
       expect(html.indexOf(sentence)).toBeLessThan(html.indexOf('<table'));
       for (const [kind, year, period] of [["rankings", "", ""], ["year", "2026", ""], ["period", "2026", "W29"]] as const) {
         const page = await loadPage(data, kind, locale, year, period);
@@ -71,7 +82,7 @@ test("monthly pages place the enabled notice after the hero and before the ranki
       publishDate = "2026-06-30";
       const later = await loadPage(data, "period", locale, "2026", "7");
       expect(later).not.toBeNull();
-      expect(later!.html).not.toContain(dictionary.rankings.repairRemovalNotice.replace("{date}", publishDate).replace("{count}", "4"));
+      expect(later!.html).not.toContain(dictionary.rankings.repairRemovalNotice.replace("{date}", dateLabel(locale, publishDate, "long")).replace("{count}", "4"));
     }
   } finally {
     publishDate = null;

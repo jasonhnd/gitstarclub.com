@@ -356,7 +356,7 @@ const ko: Dict = {
     thinSliceNotice: "이 {label} 규칙에 맞는 추적 저장소는 {count}개뿐입니다. 화이트리스트 슬라이스 크기이지 GitHub의 {label} 크기가 아닙니다.",
   },
   rankings: {
-    repairRemovalNotice: "{date}부터 GitHub에서 삭제된 저장소 {count}개를 이 순위에서 제외했으며, 이에 따라 순위가 올라갔습니다.",
+    repairRemovalNotice: "{date}에 GitHub에서 삭제된 저장소 {count}\u00a0개를 이 순위에서 제외했으며, 그 아래 순위가 올라갔습니다.",
     title: "역대 순위",
     subtitle: "현재 스타 수를 기준으로 정렬한 저장소와 조직 순위입니다.",
     repositories: "저장소",

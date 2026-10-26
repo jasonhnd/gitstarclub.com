@@ -362,7 +362,7 @@ const fr: Dict = {
       "Seuls {count} dépôts suivis correspondent à cette règle {label}. C'est la taille de la tranche de liste blanche, pas celle de {label} sur GitHub.",
   },
   rankings: {
-    repairRemovalNotice: "Depuis le {date}, {count} dépôts supprimés de GitHub ont été retirés de ces classements ; les positions ont été avancées en conséquence.",
+    repairRemovalNotice: "Le {date}, {count}\u00a0dépôts supprimés de GitHub ont été retirés de ce classement ; les rangs suivants ont été avancés.",
     title: "Classements historiques",
     subtitle: "Dépôts et organisations classés selon leur nombre actuel d'étoiles.",
     repositories: "Dépôts",
