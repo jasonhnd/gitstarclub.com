@@ -412,6 +412,7 @@ const ja: Dict = {
     crossed: "突破",
     open: "開く",
     fullBoard: "全順位",
+    observedSince: "この期間のデータは {date} から観測されています。",
     datasetName: "オープンソース活動データセット",
   },
   releases: {

@@ -405,6 +405,7 @@ const es: Dict = {
     crossed: "superó",
     open: "Abrir",
     fullBoard: "Tabla completa",
+    observedSince: "Los datos de este período se observan desde el {date}.",
     datasetName: "Conjunto de datos de actividad de código abierto",
   },
   releases: {

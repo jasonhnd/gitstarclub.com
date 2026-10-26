@@ -398,6 +398,7 @@ const ko: Dict = {
     crossed: "돌파",
     open: "열기",
     fullBoard: "전체 순위",
+    observedSince: "이 기간의 데이터는 {date}부터 관측되었습니다.",
     datasetName: "오픈소스 활동 데이터세트",
   },
   releases: {

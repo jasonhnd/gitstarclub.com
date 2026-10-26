@@ -398,6 +398,7 @@ const zh: Dict = {
     crossed: "突破",
     open: "打开",
     fullBoard: "完整榜单",
+    observedSince: "此期间的数据自 {date} 起开始观测。",
     datasetName: "开源活动数据集",
   },
   releases: {

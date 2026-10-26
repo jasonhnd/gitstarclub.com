@@ -30,6 +30,7 @@ import { repositoryTableLabels } from "./ui";
 import { buildLocalizedPulseCapsule, buildLocalizedPulseFaqs } from "../../../../web/app/_localized/seo-copy";
 import { answerCapsuleLabels } from "../../../../web/app/_localized/detail-copy";
 import { EmptyState, periodSwitcherLinks } from "./ui";
+import { partialPeriodObservationStart } from "../p1/period-observation";
 import { pulseYearRows } from "./year-state";
 import { projectRepoRows, PULSE_MOVER_LIMIT, PULSE_GIANT_LIMIT, PULSE_ANNIVERSARY_LIMIT } from "../../../../web/app/_localized/ranking-page-data";
 import { onThisDayEmptyMessage } from "../../../../web/lib/on-this-day-empty";
@@ -48,7 +49,7 @@ export function PulseBody({ locale, t, data, releaseId, now = new Date() }: {
   const routePath = localizedPath(locale, canonicalPath);
   const href = (path: string) => localizedPath(locale, path);
   const periods = currentUtcPeriods(now);
-  const { snap, lookup, availablePeriods, activeWeekRank, activeMonthRank } = data;
+  const { snap, lookup, availablePeriods, activeWeekRank, activeMonthRank, currentMonth, monthHeat } = data;
 
   const labelCopy = { fullHistory: t.rankings.fullHistory };
   const metaCopy = pulseListMetaCopy(t);
@@ -58,6 +59,12 @@ export function PulseBody({ locale, t, data, releaseId, now = new Date() }: {
   const yearUnavailable = availablePeriods.yearLink.kind !== "year" || snap?.freshness?.current_year === null;
   const weekRows = lookup && activeWeekRank ? projectRepoRows(activeWeekRank.items.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
   const monthRows = lookup && activeMonthRank ? projectRepoRows(activeMonthRank.items.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
+  const weekObservationStart = availablePeriods.week.kind === "week"
+    ? partialPeriodObservationStart("week", availablePeriods.week.period, { currentMonth })
+    : null;
+  const monthObservationStart = availablePeriods.month.kind === "month"
+    ? partialPeriodObservationStart("month", availablePeriods.month.period, { currentMonth, heat: monthHeat })
+    : null;
   const yearRows = pulseYearRows(yearUnavailable, snap && lookup ? projectRepoRows(snap.current_year.flow.slice(0, PULSE_MOVER_LIMIT), lookup) : []);
   const giants = snap && lookup ? projectRepoRows(snap.all_time.repo.slice(0, PULSE_GIANT_LIMIT), lookup, "total") : [];
   const asOf = pulseSummaryAsOf(data, locale);
@@ -148,6 +155,7 @@ export function PulseBody({ locale, t, data, releaseId, now = new Date() }: {
             href={boards.week}
             meta={weekMeta}
             note={activeWeekRank && weekRows.length > 0 ? weeklyRankSourceNote(activeWeekRank.meta, t.common) : undefined}
+            coverageNote={weekObservationStart ? t.pulse.observedSince.replace("{date}", dateLabel(locale, weekObservationStart, "long")) : undefined}
             rows={weekRows}
             labels={repoLabels}
             openLabel={fullBoardLabel}
@@ -159,6 +167,7 @@ export function PulseBody({ locale, t, data, releaseId, now = new Date() }: {
             title={t.pulse.surging}
             href={boards.month}
             meta={monthMeta}
+            coverageNote={monthObservationStart ? t.pulse.observedSince.replace("{date}", dateLabel(locale, monthObservationStart, "long")) : undefined}
             rows={monthRows}
             labels={repoLabels}
             openLabel={fullBoardLabel}
@@ -256,6 +265,7 @@ function PulsePanel({
   href,
   meta,
   note,
+  coverageNote,
   rows,
   labels,
   openLabel,
@@ -267,6 +277,7 @@ function PulsePanel({
   href: string;
   meta?: string;
   note?: string;
+  coverageNote?: string;
   rows: Row[];
   labels: ReturnType<typeof repositoryTableLabels>;
   openLabel: string;
@@ -291,6 +302,7 @@ function PulsePanel({
       ) : (
         <EmptyState message={emptyMessage} />
       )}
+      {coverageNote && <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">{coverageNote}</p>}
     </section>
   );
 }

@@ -405,6 +405,7 @@ const fr: Dict = {
     crossed: "a dépassé",
     open: "Ouvrir",
     fullBoard: "Classement complet",
+    observedSince: "Les données de cette période sont observées depuis le {date}.",
     datasetName: "Jeu de données de l'activité open source",
   },
   releases: {

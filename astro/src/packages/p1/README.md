@@ -21,6 +21,15 @@ components, dictionaries, schemas, data readers and availability/navigation
 resolvers are imported. These imports must be relocated with the other shared
 imports before the final integration removes `web/`.
 
+P1 home Pulse, the P5 `/pulse` route, and weekly/monthly ranking pages show a
+localized observation-start line only when the first published day inside the
+period is after its first day. The open month and overlapping ISO weeks use
+`current_month.daily_totals`; older months use their matching heatmap cells.
+Older weeks without a daily series omit it. Repository admission dates and
+`meta.seam_date` do not establish observation coverage. Zero and negative daily
+totals still count as published observations. Fully observed periods omit it.
+The line follows each Pulse list and the complete list on ranking detail pages.
+
 `page.ts` renders the body to static HTML inside the captured publication
 scope, using the shared `withPublishedReaders(Astro.locals.data, run)` interface
 introduced by P5. The unchanged web readers retain managed/bootstrap/live-history

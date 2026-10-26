@@ -15,9 +15,9 @@ import { buildNarrative } from "@/lib/narrative";
 import { rankingRoutePeriod, rankingYear } from "@/lib/public-params";
 import { FIRST_YEAR } from "@/lib/periods";
 import { weeklyRankSourceNote } from "@/lib/star-history-provenance";
-import { fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
+import { dateLabel, fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
 import { RankingCategoryExits } from "@/app/_localized/ranking-category-exits";
-import { getRank, getCategoryAssignmentsForRepos } from "@/lib/data";
+import { getCurrentMonth, getRank, getCategoryAssignmentsForRepos } from "@/lib/data";
 import { HeroActions, PeriodStats, AnswerBlock, MovementSection, RankingMetricGrid, CompleteRankingSection, PeriodNavigation, rankingAboutData, type PeriodNavLink, type RankingCitation } from "./ranking-ui";
 import { loadRankingDetailData, rankingDetailStructuredData, RANKING_FEATURED_LIMIT } from "@/app/_localized/ranking-page-data";
 import { resolveAdjacentRankPeriod, resolveAdjacentRankYear, resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
@@ -35,6 +35,7 @@ import {
   shareableSnippetLabels,
 } from "@/app/_localized/detail-copy";
 import { generateCoreLocaleStaticParams } from "@/app/_localized/routing";
+import { partialPeriodObservationStart } from "./period-observation";
 
 type YearParam = { year: string };
 type PeriodParam = { year: string; period: string };
@@ -218,8 +219,9 @@ async function MonthRankings({ locale, t, year, month, pageTitle, canonicalUrl }
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = `${year}-${String(month).padStart(2, "0")}`;
-  const data = await loadPageRankingData("month", period, locale);
+  const [data, currentMonth] = await Promise.all([loadPageRankingData("month", period, locale), getCurrentMonth()]);
   if (!data) notFound();
+  const observationStart = partialPeriodObservationStart("month", period, { currentMonth, heat: data.heat });
   const { newc, heat, rows: flowRows, most, categoryLinks, fastest, newcomers, asOf, dateModified } = data;
 
   const pageLabel = monthYearLabel(locale, year, month);
@@ -316,6 +318,8 @@ async function MonthRankings({ locale, t, year, month, pageTitle, canonicalUrl }
           emptyMessage={t.categories.rankingPending}
         />
 
+        {observationStart && <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">{t.pulse.observedSince.replace("{date}", dateLabel(locale, observationStart, "long"))}</p>}
+
         <PeriodNavigation title={t.rankings.periodNavigation} previous={monthNav.previous} next={monthNav.next} />
         <RankingCategoryExits locale={locale} links={categoryLinks} t={t} />
         <RelatedPages
@@ -339,8 +343,9 @@ async function WeekRankings({ locale, t, year, week, pageTitle, canonicalUrl }: 
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = isoWeekLabel(year, week);
-  const data = await loadPageRankingData("week", period, locale);
+  const [data, currentMonth] = await Promise.all([loadPageRankingData("week", period, locale), getCurrentMonth()]);
   if (!data) notFound();
+  const observationStart = partialPeriodObservationStart("week", period, { currentMonth });
   const { rows: rankRows, most, categoryLinks, asOf, dateModified } = data;
 
   const pagePath = `/rankings/${year}/W${String(week).padStart(2, "0")}`;
@@ -416,6 +421,8 @@ async function WeekRankings({ locale, t, year, week, pageTitle, canonicalUrl }: 
           title={text.completeRanking}
           emptyMessage={t.categories.rankingPending}
         />
+        {observationStart && <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">{t.pulse.observedSince.replace("{date}", dateLabel(locale, observationStart, "long"))}</p>}
+
         <PeriodNavigation title={t.rankings.periodNavigation} previous={weekNav.previous} next={weekNav.next} />
         <RankingCategoryExits locale={locale} links={categoryLinks} t={t} />
         <RelatedPages

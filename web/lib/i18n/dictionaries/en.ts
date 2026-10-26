@@ -453,6 +453,7 @@ export const en = {
     crossed: "crossed",
     open: "Open",
     fullBoard: "Full board",
+    observedSince: "Data for this period has been observed since {date}.",
     datasetName: "Open-source activity dataset",
   },
   releases: {
