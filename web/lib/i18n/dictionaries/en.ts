@@ -4,7 +4,7 @@ export const en = {
   nav: { home: "Home", pulse: "Pulse", rankings: "Rankings", categories: "Categories", organizations: "Organizations", compare: "Compare", about: "About" },
   aboutData: {
     heading: "About this data",
-    dataAsOf: "Data as of",
+    dataAsOf: "Published",
     coverage: "Coverage",
     method: "Method",
     citeAs: "Cite as",
@@ -19,7 +19,7 @@ export const en = {
     methodHistoryCurve: "History curves combine GH Archive history with GitHub observations and available star-history summaries.",
     methodLink: "How we compute",
     dailyHistory: "daily history {start} – {end}",
-    citation: "{title}, {url}, data as of {date}, release {release}",
+    citation: "{title}, {url}, published {date}, release {release}",
     copy: "Copy",
     copied: "Copied",
     copyUnavailable: "Copy unavailable. Select and copy the citation.",
@@ -443,6 +443,8 @@ export const en = {
     archiveStarsAdded: "{stars} stars added",
   },
   pulse: {
+    topYearlyRepositories: "Top yearly repositories",
+    noYearlyPeriodYet: "No yearly period yet",
     noYearlyDataYet: "No yearly data yet",
     title: "Open-source activity",
     subtitle: "Latest available weekly, monthly, and yearly movers across tracked open-source repositories from GitStarClub's precomputed rankings.",

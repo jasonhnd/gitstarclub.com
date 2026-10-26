@@ -116,10 +116,10 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
     locale,
     copy: metaCopy,
   });
-  const yearMeta = formatPulseListMeta({
+  const yearMeta = yearUnavailable ? t.pulse.noYearlyPeriodYet : formatPulseListMeta({
     periodLabel: activeYearLabel,
     isFallback: availablePeriods.yearLink.kind !== "year" || availablePeriods.yearLink.year !== periods.year,
-    asOf: yearUnavailable ? undefined : periodAsOfCandidate(availablePeriods.yearLink) ?? snap?.freshness?.current_year ?? snap?.generated_at,
+    asOf: periodAsOfCandidate(availablePeriods.yearLink) ?? snap?.freshness?.current_year ?? snap?.generated_at,
     locale,
     copy: metaCopy,
   });
@@ -169,7 +169,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
         <PageHero eyebrow={t.nav.pulse} title={t.pulse.title} lede={t.pulse.subtitle} />
 
         <div className="mt-[clamp(1rem,2.5vw,1.5rem)]">
-          <PeriodSwitcher links={periodSwitcherLinks(availablePeriods, periods, href, locale, t)} activePeriod={availablePeriods.week.kind === "week" ? "week" : "all-time"} ariaLabel={t.a11y.rankingPeriod} />
+          <PeriodSwitcher links={periodSwitcherLinks(availablePeriods, periods, href, locale, t, yearUnavailable)} activePeriod={availablePeriods.week.kind === "week" ? "week" : "all-time"} ariaLabel={t.a11y.rankingPeriod} />
         </div>
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.25rem,3vw,2rem)]" labels={answerCapsuleLabels(locale, t)} />}
@@ -213,10 +213,10 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           <PulsePanel
             title={
               <>
-                {t.year.top} {activeYearLabel}
+                {yearUnavailable ? t.pulse.topYearlyRepositories : <>{t.year.top} {activeYearLabel}</>}
               </>
             }
-            href={boards.year}
+            href={yearUnavailable ? undefined : boards.year}
             meta={yearMeta}
             rows={yearRows}
             labels={repoLabels}
@@ -309,7 +309,7 @@ function PulsePanel({
   locale,
 }: {
   title: ReactNode;
-  href: string;
+  href?: string;
   meta?: string;
   note?: string;
   coverageNote?: string;
@@ -326,9 +326,9 @@ function PulsePanel({
         <h2 className="min-w-0 text-[1.15rem] font-extrabold tracking-tight text-on-surface">{title}</h2>
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           {meta && <PulsePeriodMeta>{meta}</PulsePeriodMeta>}
-          <Link href={href} aria-label={linkLabel} className="text-readable-gold shrink-0 font-mono text-[0.72rem] hover:underline">
+          {href && <Link href={href} aria-label={linkLabel} className="text-readable-gold shrink-0 font-mono text-[0.72rem] hover:underline">
             {openLabel}
-          </Link>
+          </Link>}
         </div>
       </div>
       {note && <p className="mb-3 text-sm leading-relaxed text-on-surface-variant">{note}</p>}

@@ -4,7 +4,7 @@ const zh: Dict = {
   nav: { home: "首页", pulse: "脉搏", rankings: "排行榜", categories: "分类", organizations: "组织", compare: "对比", about: "关于" },
   aboutData: {
     heading: "关于此数据",
-    dataAsOf: "数据截至",
+    dataAsOf: "发布日期",
     coverage: "覆盖范围",
     method: "计算方法",
     citeAs: "引用格式",
@@ -19,7 +19,7 @@ const zh: Dict = {
     methodHistoryCurve: "历史曲线结合 GH Archive 历史、GitHub 观测值及可用的星标历史汇总。",
     methodLink: "了解计算方法",
     dailyHistory: "每日历史 {start} 至 {end}",
-    citation: "{title}，{url}，数据截至 {date}，发布版本 {release}",
+    citation: "{title}，{url}，发布于 {date}，发布版本 {release}",
     copy: "复制",
     copied: "已复制",
     copyUnavailable: "无法复制。请选中引用文本并复制。",
@@ -388,6 +388,8 @@ const zh: Dict = {
     archiveStarsAdded: "新增 {stars} 星",
   },
   pulse: {
+    topYearlyRepositories: "年度领先仓库",
+    noYearlyPeriodYet: "暂无年度统计期",
     noYearlyDataYet: "暂无年度数据",
     title: "开源脉搏",
     subtitle: "基于 GitStarClub 预计算排名，展示最新可用的周度、月度与年度上涨。",

@@ -4,7 +4,7 @@ const ja: Dict = {
   nav: { home: "ホーム", pulse: "動向", rankings: "ランキング", categories: "カテゴリ", organizations: "組織", compare: "比較", about: "このサイトについて" },
   aboutData: {
     heading: "このデータについて",
-    dataAsOf: "データ基準日",
+    dataAsOf: "公開日",
     coverage: "対象範囲",
     method: "集計方法",
     citeAs: "引用表記",
@@ -19,7 +19,7 @@ const ja: Dict = {
     methodHistoryCurve: "履歴曲線は GH Archive の履歴、GitHub の観測値、利用可能なスター履歴の集計値を組み合わせています。",
     methodLink: "集計方法の詳細",
     dailyHistory: "日別履歴 {start} ～ {end}",
-    citation: "{title}、{url}、データ基準日 {date}、リリース {release}",
+    citation: "{title}、{url}、公開日 {date}、リリース {release}",
     copy: "コピー",
     copied: "コピーしました",
     copyUnavailable: "コピーできません。引用文を選択してコピーしてください。",
@@ -402,6 +402,8 @@ const ja: Dict = {
     archiveStarsAdded: "{stars} スター獲得",
   },
   pulse: {
+    topYearlyRepositories: "年次の上位リポジトリ",
+    noYearlyPeriodYet: "年次の集計期間はまだありません",
     noYearlyDataYet: "年次データはまだありません",
     title: "オープンソースの動向",
     subtitle: "GitStarClub の事前計算ランキングから、利用可能な最新の週次・月次・年次上昇を示します。",

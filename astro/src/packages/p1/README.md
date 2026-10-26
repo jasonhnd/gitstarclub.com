@@ -96,3 +96,9 @@ with the `/pulse` page. A non-year navigation fallback or explicitly null
 `freshness.current_year` suppresses saved first-day fragments; both placements
 reuse the dictionary's `pulse.noYearlyDataYet` copy. Published annual rows remain
 visible. Week, month, and all-time figures are independent of this display rule.
+
+When yearly data is unavailable, home and Pulse use a generic yearly heading,
+explicit missing-period labels in the pill, period card, and leader metadata,
+and hide the year column full-board link. Populated yearly labels stay unchanged.
+The shared About this data block labels its metadata timestamp as publication;
+the footer continues to describe data coverage. All copy uses the seven dictionaries.

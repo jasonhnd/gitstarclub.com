@@ -129,3 +129,6 @@ Astro release details at `/releases/<id>` use the shared layout and seven-locale
 release copy. Publication details, repository counts, layer dates and available
 public record links render on the server. They add no client island or page
 script. Previous-version links and language switching preserve the release path.
+
+About this data citations identify the publication date, matching the metadata row.
+The footer separately describes the date through which data was updated.

@@ -153,3 +153,15 @@ describe("shared GEO capsule dates and live localized builders", () => {
     expect(capsule.text).not.toMatch(/react\/react|vuejs\/vue|\?repos=|selected repositor/i);
   });
 });
+
+test("citations use publication wording in every locale", async () => {
+  const publicationPhrases = {
+    en: "published {date}", ja: "公開日 {date}", zh: "发布于 {date}",
+    "zh-TW": "發布於 {date}", ko: "게시일 {date}",
+    es: "publicado el {date}", fr: "publié le {date}",
+  };
+  for (const locale of LOCALES) {
+    const dictionary = await getDictionary(locale);
+    expect(dictionary.aboutData.citation).toContain(publicationPhrases[locale]);
+  }
+});

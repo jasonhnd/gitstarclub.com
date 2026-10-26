@@ -16,12 +16,31 @@ for (const state of ["fallback", "unavailable", "populated"] as const) {
           const response = await fetch(origin + localizedPath(locale, path), { headers: { "accept-language": "en" } });
           expect(response.status).toBe(200);
           const html = (await response.text()).replace(/<!--[\s\S]*?-->/g, "");
-          const heading = html.indexOf(`${t.year.top} `);
+          const heading = html.indexOf(state === "populated" ? `${t.year.top} ` : t.pulse.topYearlyRepositories);
           expect(heading).toBeGreaterThan(-1);
           const yearPanel = html.slice(heading, html.indexOf("</section>", heading));
           const label = html.indexOf(`>${t.year.label}</span>`, heading);
           expect(label).toBeGreaterThan(-1);
           const yearLeader = html.slice(label, html.indexOf("</a>", label));
+          const nav = html.slice(html.indexOf(`<nav aria-label="${t.a11y.rankingPeriod}"`));
+          const yearCardStart = nav.indexOf(`>${t.year.label}</span>`);
+          expect(yearCardStart).toBeGreaterThan(-1);
+          const yearCard = nav.slice(yearCardStart, nav.indexOf("</a>", yearCardStart));
+          if (state === "populated") {
+            expect(yearCard).not.toContain(t.pulse.noYearlyPeriodYet);
+            expect(yearPanel).toContain(t.pulse.fullBoard);
+          } else {
+            for (const placement of [yearPanel, yearLeader, yearCard]) {
+              expect(placement).toContain(t.pulse.noYearlyPeriodYet);
+              expect(placement).not.toContain(t.rankings.fullHistory);
+            }
+            expect(yearPanel).not.toContain(t.pulse.fullBoard);
+          }
+          const aboutStart = html.indexOf("<gsc-about-data");
+          const about = html.slice(aboutStart, html.indexOf("</gsc-about-data>", aboutStart));
+          expect(about).toContain(`>${t.aboutData.dataAsOf}</dt>`);
+          expect(about).toContain('<time dateTime="2026-07-17">');
+          expect(t.aboutData.dataAsOf).toBe(locale === "en" ? "Published" : "公開日");
           for (const placement of [yearPanel, yearLeader]) {
             if (state === "populated") {
               expect(placement).toContain("example/repo");

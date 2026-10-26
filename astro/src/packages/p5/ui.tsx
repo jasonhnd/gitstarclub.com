@@ -21,11 +21,12 @@ export function periodSwitcherLinks(
   href: (path: string) => string,
   locale: Locale,
   t: Dict,
+  yearUnavailable = false,
 ): Record<"all-time" | "year" | "month" | "week", PeriodSwitcherTarget> {
   const labelCopy = { fullHistory: t.rankings.fullHistory };
   return {
     "all-time": { href: href(periods.allTime.href), label: t.rankings.allTime, value: t.rankings.fullHistory },
-    year: { href: href(periods.yearLink.href), label: t.year.label, value: availablePeriodLabel(locale, periods.yearLink, labelCopy) },
+    year: { href: href(periods.yearLink.href), label: t.year.label, value: yearUnavailable ? t.pulse.noYearlyPeriodYet : availablePeriodLabel(locale, periods.yearLink, labelCopy) },
     month: {
       href: href(periods.month.href),
       label: t.month.label,

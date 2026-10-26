@@ -36,6 +36,8 @@ describe("About this data static render", () => {
       const props = await fixtureProps(locale);
       for (const [layer, anchor] of [["currentTotals", "current-totals"], ["periodGains", "period-gains"], ["historyCurve", "history-curve"]] as [DataLayer, string][]) {
         const html = render({ ...props, layer });
+        expect(html).toContain(`>${props.dictionary.aboutData.dataAsOf}</dt>`);
+        expect(props.dictionary.aboutData.dataAsOf).not.toBe(props.dictionary.common.dataAsOf);
         expect(html).toContain(props.dictionary.aboutData[layer]);
         expect(html).toContain(`/about#${anchor}`);
         expect(html).not.toMatch(/\{(?:count|start|end|title|url|date|release)\}|undefined/);

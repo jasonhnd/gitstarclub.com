@@ -4,7 +4,7 @@ const fr: Dict = {
   nav: { home: "Accueil", pulse: "Activité", rankings: "Classements", categories: "Catégories", organizations: "Organisations", compare: "Comparer", about: "À propos" },
   aboutData: {
     heading: "À propos de ces données",
-    dataAsOf: "Données au",
+    dataAsOf: "Publié le",
     coverage: "Couverture",
     method: "Méthode",
     citeAs: "Citation",
@@ -19,7 +19,7 @@ const fr: Dict = {
     methodHistoryCurve: "Les courbes combinent les données historiques de GH Archive, les observations de GitHub et les résumés historiques des étoiles disponibles.",
     methodLink: "Notre méthode de calcul",
     dailyHistory: "historique quotidien du {start} au {end}",
-    citation: "{title}, {url}, données au {date}, version {release}",
+    citation: "{title}, {url}, publié le {date}, version {release}",
     copy: "Copier",
     copied: "Copié",
     copyUnavailable: "Copie indisponible. Sélectionnez et copiez la citation.",
@@ -395,6 +395,8 @@ const fr: Dict = {
     archiveStarsAdded: "{stars} étoiles gagnées",
   },
   pulse: {
+    topYearlyRepositories: "Dépôts principaux annuels",
+    noYearlyPeriodYet: "Aucune période annuelle disponible",
     noYearlyDataYet: "Aucune donnée annuelle pour le moment",
     title: "Activité open source",
     subtitle: "Progressions hebdomadaires, mensuelles et annuelles les plus récentes disponibles dans les dépôts open source suivis, d'après les classements précalculés de GitStarClub.",

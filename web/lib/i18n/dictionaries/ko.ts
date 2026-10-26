@@ -4,7 +4,7 @@ const ko: Dict = {
   nav: { home: "홈", pulse: "펄스", rankings: "순위", categories: "카테고리", organizations: "조직", compare: "비교", about: "소개" },
   aboutData: {
     heading: "이 데이터에 대하여",
-    dataAsOf: "데이터 기준일",
+    dataAsOf: "게시일",
     coverage: "수집 범위",
     method: "집계 방법",
     citeAs: "인용 표기",
@@ -19,7 +19,7 @@ const ko: Dict = {
     methodHistoryCurve: "기록 곡선은 GH Archive 기록, GitHub 관측값, 이용 가능한 스타 기록 요약을 결합합니다.",
     methodLink: "집계 방법 보기",
     dailyHistory: "일별 기록 {start} ~ {end}",
-    citation: "{title}, {url}, 데이터 기준일 {date}, 릴리스 {release}",
+    citation: "{title}, {url}, 게시일 {date}, 릴리스 {release}",
     copy: "복사",
     copied: "복사됨",
     copyUnavailable: "복사할 수 없습니다. 인용문을 선택하여 복사하세요.",
@@ -388,6 +388,8 @@ const ko: Dict = {
     archiveStarsAdded: "{stars} 스타 증가",
   },
   pulse: {
+    topYearlyRepositories: "연간 상위 저장소",
+    noYearlyPeriodYet: "아직 연간 집계 기간이 없습니다",
     noYearlyDataYet: "아직 연간 데이터가 없습니다",
     title: "오픈소스 펄스",
     subtitle: "GitStarClub 사전 계산 순위에서 사용 가능한 최신 주간·월간·연간 상승을 보여줍니다.",
