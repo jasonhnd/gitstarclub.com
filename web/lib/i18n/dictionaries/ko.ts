@@ -388,6 +388,8 @@ const ko: Dict = {
     subtitle: "GitStarClub 사전 계산 순위에서 사용 가능한 최신 주간·월간·연간 상승을 보여줍니다.",
     surging: "월간 상위 저장소",
     onThisDay: "오늘의 기록",
+    milestoneHistoryUnavailable: "이정표 기록이 아직 제공되지 않습니다",
+    noMilestonesToday: "오늘 기록된 이정표가 없습니다",
     crossed: "돌파",
     open: "열기",
     fullBoard: "전체 순위",

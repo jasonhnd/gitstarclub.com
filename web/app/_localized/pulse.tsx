@@ -33,6 +33,7 @@ import { buildLocalizedPulseCapsule, buildLocalizedPulseFaqs } from "./seo-copy"
 import { answerCapsuleLabels } from "./detail-copy";
 import { EmptyState, periodSwitcherLinks } from "./ranking-ui";
 import { projectRepoRows, PULSE_MOVER_LIMIT, PULSE_GIANT_LIMIT, PULSE_ANNIVERSARY_LIMIT } from "./ranking-page-data";
+import { onThisDayEmptyMessage } from "@/lib/on-this-day-empty";
 
 export async function generatePulseMetadata({
   locale,
@@ -115,9 +116,10 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
     copy: metaCopy,
   });
   const todayIso = now.toISOString().slice(0, 10);
+  const onThisDayAsOf = snap?.freshness?.on_this_day ?? null;
   const onThisDayMeta = formatPulseListMeta({
     periodLabel: dateLabel(locale, todayIso, "long"),
-    asOf: snap?.freshness?.on_this_day ?? snap?.generated_at,
+    asOf: onThisDayAsOf,
     locale,
     copy: metaCopy,
   });
@@ -257,7 +259,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
                 ))}
               </ul>
             ) : (
-              <EmptyState message={t.categories.rankingPending} className="mt-0" />
+              <EmptyState message={onThisDayEmptyMessage(onThisDayAsOf, { unavailable: t.pulse.milestoneHistoryUnavailable, noneToday: t.pulse.noMilestonesToday })} className="mt-0" />
             )}
           </aside>
         </section>

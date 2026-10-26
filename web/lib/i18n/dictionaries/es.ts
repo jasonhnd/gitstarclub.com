@@ -395,6 +395,8 @@ const es: Dict = {
     subtitle: "Movimientos semanales, mensuales y anuales más recientes disponibles en repositorios de código abierto monitoreados, según los rankings precalculados de GitStarClub.",
     surging: "Repositorios principales mensuales",
     onThisDay: "En este día",
+    milestoneHistoryUnavailable: "El historial de hitos aún no está disponible",
+    noMilestonesToday: "No hay hitos registrados hoy",
     crossed: "superó",
     open: "Abrir",
     fullBoard: "Tabla completa",

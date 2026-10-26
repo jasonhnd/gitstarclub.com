@@ -395,6 +395,8 @@ const fr: Dict = {
     subtitle: "Progressions hebdomadaires, mensuelles et annuelles les plus récentes disponibles dans les dépôts open source suivis, d'après les classements précalculés de GitStarClub.",
     surging: "Dépôts principaux mensuels",
     onThisDay: "En ce jour",
+    milestoneHistoryUnavailable: "L'historique des jalons n'est pas encore disponible",
+    noMilestonesToday: "Aucun jalon enregistré aujourd'hui",
     crossed: "a dépassé",
     open: "Ouvrir",
     fullBoard: "Classement complet",

@@ -388,6 +388,8 @@ const zhTw: Dict = {
     subtitle: "基於 GitStarClub 預計算排名，展示最新可用的週度、月度與年度上升。",
     surging: "月度領先倉庫",
     onThisDay: "歷史上的今天",
+    milestoneHistoryUnavailable: "里程碑歷史尚不可用",
+    noMilestonesToday: "今天沒有已記錄的里程碑",
     crossed: "突破",
     open: "開啟",
     fullBoard: "完整榜單",

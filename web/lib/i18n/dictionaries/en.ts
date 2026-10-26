@@ -442,6 +442,8 @@ export const en = {
     subtitle: "Latest available weekly, monthly, and yearly movers across tracked open-source repositories from GitStarClub's precomputed rankings.",
     surging: "Top monthly repositories",
     onThisDay: "On this day",
+    milestoneHistoryUnavailable: "Milestone history not available yet",
+    noMilestonesToday: "No recorded milestones today",
     crossed: "crossed",
     open: "Open",
     fullBoard: "Full board",
