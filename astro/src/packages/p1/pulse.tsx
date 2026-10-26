@@ -142,7 +142,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
   const boards = localizedPulseBoardHrefs(locale, availablePeriods);
   const fullBoardLabel = t.pulse.fullBoard;
 
-  return (
+  return { asOf, body: (
     <>
       {includeWebsiteLd && <JsonLd data={siteOrganizationLd()} />}
       {includeWebsiteLd && <JsonLd data={webSiteLd(language, routePath, { dateModified, about: datasetRef(routePath) })} />}
@@ -264,7 +264,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
     </>
-  );
+  ) };
 }
 
 function PulsePanel({

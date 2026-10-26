@@ -84,7 +84,7 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
   const repoLabels = repositoryTableLabels(t);
   const orgLabels = organizationTableLabels(t);
 
-  return (
+  return { asOf, body: (
     <>
       <JsonLd data={collectionLd(t.rankings.title, routePath, language, { dateModified, about: datasetRef(routePath) })} />
       <JsonLd data={dataset} />
@@ -155,7 +155,7 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
     </>
-  );
+  ) };
 }
 
 function MobileRepositoryRankingCards({

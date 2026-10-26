@@ -16,16 +16,16 @@ export async function loadPage(data: PublishedData, kind: PageKind, localeValue 
       const metadata = await (kind === "home" ? generatePulseMetadata({ locale, canonicalPath: "/", absoluteTitle: true })
         : kind === "rankings" ? generateRankingsMetadata(locale)
         : kind === "year" ? generateRankingYearMetadata(locale, year) : generateRankingPeriodMetadata(locale, { year, period }));
-      const body = await (kind === "home" ? PulsePageView({ locale, canonicalPath: "/", includeWebsiteLd: true })
+      const rendered = await (kind === "home" ? PulsePageView({ locale, canonicalPath: "/", includeWebsiteLd: true })
         : kind === "rankings" ? RankingsPageView({ locale })
-        : kind === "year" ? RankingsYearPageView({ locale, year }) : RankingsPeriodPageView({ locale, year, period }));
+        : { body: await (kind === "year" ? RankingsYearPageView({ locale, year }) : RankingsPeriodPageView({ locale, year, period })), asOf: undefined });
       const canonical = new URL(String(metadata.alternates?.canonical));
       const prefix = locale === "en" ? "" : `/${locale}`;
       const canonicalPath = canonical.pathname.slice(prefix.length) || "/";
       const title = typeof metadata.title === "string" ? metadata.title : (metadata.title as { absolute: string }).absolute;
       const images = metadata.openGraph?.images as Array<{ url: string }>;
       return { locale, canonicalPath, title, description: String(metadata.description), ogImage: images[0].url, ogUrl: String(metadata.openGraph?.url),
-        absoluteTitle: kind === "home", interactive: kind === "year" || kind === "period", html: renderToStaticMarkup(body) };
+        asOf: rendered.asOf, absoluteTitle: kind === "home", interactive: kind === "year" || kind === "period", html: renderToStaticMarkup(rendered.body) };
     });
   } catch (error) {
     if (error instanceof PageNotFound) return null;
