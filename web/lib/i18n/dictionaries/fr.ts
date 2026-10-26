@@ -390,6 +390,7 @@ const fr: Dict = {
     archiveStarsAdded: "{stars} étoiles gagnées",
   },
   pulse: {
+    noYearlyDataYet: "Aucune donnée annuelle pour le moment",
     title: "Activité open source",
     subtitle: "Progressions hebdomadaires, mensuelles et annuelles les plus récentes disponibles dans les dépôts open source suivis, d'après les classements précalculés de GitStarClub.",
     surging: "Dépôts principaux mensuels",

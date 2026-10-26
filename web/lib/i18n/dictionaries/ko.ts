@@ -383,6 +383,7 @@ const ko: Dict = {
     archiveStarsAdded: "{stars} 스타 증가",
   },
   pulse: {
+    noYearlyDataYet: "아직 연간 데이터가 없습니다",
     title: "오픈소스 펄스",
     subtitle: "GitStarClub 사전 계산 순위에서 사용 가능한 최신 주간·월간·연간 상승을 보여줍니다.",
     surging: "월간 상위 저장소",

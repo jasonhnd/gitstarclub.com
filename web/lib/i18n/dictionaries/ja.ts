@@ -397,6 +397,7 @@ const ja: Dict = {
     archiveStarsAdded: "{stars} スター獲得",
   },
   pulse: {
+    noYearlyDataYet: "年次データはまだありません",
     title: "オープンソースの動向",
     subtitle: "GitStarClub の事前計算ランキングから、利用可能な最新の週次・月次・年次上昇を示します。",
     surging: "月次の上位リポジトリ",

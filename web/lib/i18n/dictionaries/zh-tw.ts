@@ -383,6 +383,7 @@ const zhTw: Dict = {
     archiveStarsAdded: "新增 {stars} 星",
   },
   pulse: {
+    noYearlyDataYet: "尚無年度資料",
     title: "開源脈搏",
     subtitle: "基於 GitStarClub 預計算排名，展示最新可用的週度、月度與年度上升。",
     surging: "月度領先倉庫",
