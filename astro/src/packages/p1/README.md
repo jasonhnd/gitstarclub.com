@@ -90,3 +90,9 @@ notice uses counts only, covers all seven dictionaries, and never appears for
 later months, weekly/yearly/all-time rankings, or organization rankings. The
 removed repository identities remain documented in
 `docs/analysis/PRODUCTION-REPAIR-BUILDER.md`.
+
+Home's yearly Pulse column and leader card share `src/lib/pulse-year-state.ts`
+with the `/pulse` page. A non-year navigation fallback or explicitly null
+`freshness.current_year` suppresses saved first-day fragments; both placements
+reuse the dictionary's `pulse.noYearlyDataYet` copy. Published annual rows remain
+visible. Week, month, and all-time figures are independent of this display rule.

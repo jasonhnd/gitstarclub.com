@@ -31,7 +31,7 @@ import { buildLocalizedPulseCapsule, buildLocalizedPulseFaqs } from "../../../..
 import { answerCapsuleLabels } from "../../../../web/app/_localized/detail-copy";
 import { EmptyState, periodSwitcherLinks } from "./ui";
 import { partialPeriodObservationStart } from "../p1/period-observation";
-import { pulseYearRows } from "./year-state";
+import { pulseYearRows, pulseYearUnavailable } from "../../lib/pulse-year-state";
 import { projectRepoRows, PULSE_MOVER_LIMIT, PULSE_GIANT_LIMIT, PULSE_ANNIVERSARY_LIMIT } from "../../../../web/app/_localized/ranking-page-data";
 import { onThisDayEmptyMessage } from "../../../../web/lib/on-this-day-empty";
 
@@ -56,7 +56,7 @@ export function PulseBody({ locale, t, data, releaseId, now = new Date() }: {
   const activeWeekLabel = availablePeriodLabel(locale, availablePeriods.week, labelCopy);
   const activeMonthLabel = availablePeriodLabel(locale, availablePeriods.month, labelCopy);
   const activeYearLabel = availablePeriodLabel(locale, availablePeriods.yearLink, labelCopy);
-  const yearUnavailable = availablePeriods.yearLink.kind !== "year" || snap?.freshness?.current_year === null;
+  const yearUnavailable = pulseYearUnavailable(availablePeriods.yearLink, snap);
   const weekRows = lookup && activeWeekRank ? projectRepoRows(activeWeekRank.items.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
   const monthRows = lookup && activeMonthRank ? projectRepoRows(activeMonthRank.items.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
   const weekObservationStart = availablePeriods.week.kind === "week"

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { pulseYearRows } from "../../src/packages/p5/year-state";
+import { pulseYearRows } from "../../src/lib/pulse-year-state";
 
 test("Pulse hides saved year fragments when no annual ranking is published", () => {
   const firstDayFragments = [{ full_name: "example/fragment", gained: 1782 }];

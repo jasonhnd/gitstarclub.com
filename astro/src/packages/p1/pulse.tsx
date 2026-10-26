@@ -1,3 +1,4 @@
+import { pulseYearRows, pulseYearUnavailable } from "../../lib/pulse-year-state";
 import { pageIdentity } from "../../lib/page-identity";
 import type { ReactNode } from "react";
 import Link from "../../components/Link";
@@ -88,6 +89,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
   const activeWeekLabel = availablePeriodLabel(locale, availablePeriods.week, labelCopy);
   const activeMonthLabel = availablePeriodLabel(locale, availablePeriods.month, labelCopy);
   const activeYearLabel = availablePeriodLabel(locale, availablePeriods.yearLink, labelCopy);
+  const yearUnavailable = pulseYearUnavailable(availablePeriods.yearLink, snap);
   const weekRows = lookup && activeWeekRank ? projectRepoRows(activeWeekRank.items.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
   const monthRows = lookup && activeMonthRank ? projectRepoRows(activeMonthRank.items.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
   const weekObservationStart = availablePeriods.week.kind === "week"
@@ -96,7 +98,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
   const monthObservationStart = availablePeriods.month.kind === "month"
     ? partialPeriodObservationStart("month", availablePeriods.month.period, { currentMonth, heat: monthHeat })
     : null;
-  const yearRows = snap && lookup ? projectRepoRows(snap.current_year.flow.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
+  const yearRows = pulseYearRows(yearUnavailable, snap && lookup ? projectRepoRows(snap.current_year.flow.slice(0, PULSE_MOVER_LIMIT), lookup) : []);
   const giants = snap && lookup ? projectRepoRows(snap.all_time.repo.slice(0, PULSE_GIANT_LIMIT), lookup, "total") : [];
   const asOf = resolveDataAsOfLabel(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at, { locale });
   const dateModified = resolveDataAsOfValue(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at);
@@ -117,7 +119,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
   const yearMeta = formatPulseListMeta({
     periodLabel: activeYearLabel,
     isFallback: availablePeriods.yearLink.kind !== "year" || availablePeriods.yearLink.year !== periods.year,
-    asOf: periodAsOfCandidate(availablePeriods.yearLink) ?? snap?.freshness?.current_year ?? snap?.generated_at,
+    asOf: yearUnavailable ? undefined : periodAsOfCandidate(availablePeriods.yearLink) ?? snap?.freshness?.current_year ?? snap?.generated_at,
     locale,
     copy: metaCopy,
   });
@@ -220,7 +222,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
             labels={repoLabels}
             openLabel={fullBoardLabel}
             linkLabel={`${fullBoardLabel}: ${activeYearLabel}`}
-            emptyMessage={t.categories.rankingPending}
+            emptyMessage={t.pulse.noYearlyDataYet}
             locale={locale}
           />
         </div>
@@ -229,7 +231,7 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
           links={[
             { label: t.week.label, href: boards.week, period: weekMeta, row: weekRows[0] },
             { label: t.month.label, href: boards.month, period: monthMeta, row: monthRows[0] },
-            { label: t.year.label, href: boards.year, period: yearMeta, row: yearRows[0] },
+            { label: t.year.label, href: boards.year, period: yearMeta, row: yearRows[0], emptyLabel: t.pulse.noYearlyDataYet },
           ]}
           pendingLabel={t.categories.rankingPending}
           locale={locale}
@@ -346,7 +348,7 @@ function PulseLeaderLinks({
   locale,
   className = "mt-3",
 }: {
-  links: Array<{ label: ReactNode; href: string; period: string; row?: Row }>;
+  links: Array<{ label: ReactNode; href: string; period: string; row?: Row; emptyLabel?: string }>;
   pendingLabel: string;
   locale: Locale;
   className?: string;
@@ -361,7 +363,7 @@ function PulseLeaderLinks({
         >
           <span className="font-mono text-[0.7rem] uppercase tracking-wider text-on-surface-variant">{link.label}</span>
           <span className="mt-1 block truncate font-mono text-[0.92rem] font-extrabold text-on-surface">
-            {link.row ? `${link.row.owner}/${link.row.name}` : pendingLabel}
+            {link.row ? `${link.row.owner}/${link.row.name}` : link.emptyLabel ?? pendingLabel}
           </span>
           <span className="mt-1 block max-w-full break-words font-mono text-[0.76rem] text-on-surface-variant [overflow-wrap:anywhere]">
             {link.row?.gained == null ? link.period : `${link.period} · +${fmtStars(link.row.gained, locale)}`}
