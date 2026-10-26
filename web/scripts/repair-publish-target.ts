@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import { assertBootstrapGeneration } from "../../pipeline/lib/bootstrap-publication.mjs";
 
-export type CfRunner = (args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>;
+import { cfChild, type CfRunner } from "./repair-publish-cf";
+export type { CfRunner } from "./repair-publish-cf";
 export type PublishTarget = "pre" | "production";
 export type PublishTargetOptions = {
   target: string;
@@ -37,13 +38,13 @@ export async function resolvePublishTarget(options: PublishTargetOptions, runner
   let result: Awaited<ReturnType<CfRunner>>;
   try {
     // cf 1.0.0-beta.18: --text returns the object's body, not a metadata envelope.
-    result = await runner(["r2", "objects", "get", IDENTITY_KEY, "--bucket-name", bucket, "--text"]);
+    result = await runner(["r2", "objects", "get", IDENTITY_KEY, "--bucket-name", bucket, "--text"], cfChild());
   } catch {
     throw new Error(`Cannot read ${bucket}/${IDENTITY_KEY}; publication refused`);
   }
   assert(result.code === 0, `Cannot read ${bucket}/${IDENTITY_KEY} (cf exit ${result.code}); publication refused`);
   let marker: unknown;
-  try { marker = JSON.parse(result.stdout); }
+  try { marker = JSON.parse(result.stdout.toString()); }
   catch { throw new Error(`Invalid JSON in ${bucket}/${IDENTITY_KEY}; publication refused`); }
   assert(marker !== null && typeof marker === "object" && !Array.isArray(marker), `Invalid identity marker: ${bucket}/${IDENTITY_KEY}`);
   const identity = marker as Record<string, unknown>;

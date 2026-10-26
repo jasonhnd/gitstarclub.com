@@ -190,7 +190,7 @@ Platform and development-tool variables also belong to the maintained inventory;
 | `CI` | CI | Enables CI-only timeouts, output, and security gates |
 | `PORT` | Local tooling | Port the local fixture/dev server listens on |
 | `PATH` | Local tooling / offline pipeline tests | Locates pinned Node/Bun for offline pipeline tests and the local R2 rehearsal; forwarded into otherwise clean child environments, never a Worker binding |
-| `CF_DELEGATION` | Repair publisher child process only | `web/scripts/publish-repair-generation.ts` sets `1` in the cf child environment to prevent delegation to another package install; no operator configuration or Worker binding |
+| `CF_DELEGATION` | Repair publisher child process only | `web/scripts/repair-publish-cf.ts` sets `1` in the cf child environment to prevent delegation to another package install; no operator configuration or Worker binding |
 | `KANBAN_TMP` | Local preview-gap rehearsal tools only | Required card-local temporary directory; preparation outputs must be in a child directory and fold-proof output must remain beneath it. Set it to the same excluded card path as `TMPDIR`; never a Worker binding or secret |
 | `BACKFILL_FIXTURE_CONFIG` | Offline pipeline tests only | Disposable synthetic transport configuration; never a production setting |
 | `BACKFILL_FIXTURE_TRACE` | Offline pipeline tests only | Local JSONL request trace written by the subprocess network interceptor |
@@ -900,6 +900,70 @@ create-only write, so a valid takeover during those reads does not publish. Crea
 normal long-lived legacy state and must stay negatively cached with coalesced
 reads even if the object disappears again.
 
+## Publishing a repaired generation from the Mac
+
+Use Node 24 and Bun 1.4.2, frozen-lockfile dependencies in the root, `web/`
+and `pipeline/`, and the repository-pinned `cf@1.0.0-beta.18`, already logged
+in to the approved account. No S3 keys, Wrangler, deployment, or credential
+copying is involved. These are operator commands for a separately authorized
+bucket write; this card tests only a local fake bucket.
+
+Reserve a single-writer window (only this publisher may write). Confirm live
+production has **no running refresh and no scheduler before and after** the
+operation; source configuration alone is not proof. Exclude preview refreshes
+and scheduled tasks during the pre rehearsal too. The lease is advisory (it
+cannot prevent a competing writer because cf has no conditional put).
+
+From the repository root, select the reviewed builder output and the reviewed,
+complete frozen base inventory described below. The generation is inferred from
+the sole directory under `bootstrap/generations/`; `--generation` can select it
+explicitly. Keep the same generation and recovery IDs when resuming.
+
+```bash
+REPAIRED=/absolute/path/to/repaired-builder-output
+BASE_KEYS=/absolute/path/to/reviewed-frozen-base-keys.json
+GEN=bootstrap-prod-repair-786
+RECOVERY=bootstrap-prod-repair-786-recovery
+
+# Rehearse pre first. Dry-run reads the bucket but makes no write calls.
+bun run repair:publish -- --target pre --bucket gitstarclub-data-pre \
+  --generation-dir "$REPAIRED" --generation "$GEN" \
+  --recovery-generation "$RECOVERY" --recovery-base-keys "$BASE_KEYS" --dry-run
+bun run repair:publish -- --target pre --bucket gitstarclub-data-pre \
+  --generation-dir "$REPAIRED" --generation "$GEN" \
+  --recovery-generation "$RECOVERY" --recovery-base-keys "$BASE_KEYS"
+
+# Production: recheck the single-writer window, then dry-run and publish.
+bun run repair:publish -- --target production --bucket gitstarclub-data-prod \
+  --generation-dir "$REPAIRED" --generation "$GEN" \
+  --recovery-generation "$RECOVERY" --recovery-base-keys "$BASE_KEYS" \
+  --confirm-production "publish $GEN to gitstarclub-data-prod" --dry-run
+bun run repair:publish -- --target production --bucket gitstarclub-data-prod \
+  --generation-dir "$REPAIRED" --generation "$GEN" \
+  --recovery-generation "$RECOVERY" --recovery-base-keys "$BASE_KEYS" \
+  --confirm-production "publish $GEN to gitstarclub-data-prod"
+```
+
+The command checks the exact bucket/identity/confirmation, prints the executable
+rollback command **before any write**, verifies both local manifests and all
+object digests/sizes with no symlinks, then acquires the lease, seals and verifies
+recovery, stages matching-or-absent new keys, verifies the staged generation,
+commits `bootstrap/latest.json` with recovery as `previous_generation`, and
+releases the lease. It prints each step and counts; dry-run additionally prints
+`WOULD WRITE` for every prospective key, including lease and pointer writes.
+The package command disables environment-file loading. The shared runner sets
+`CF_DELEGATION=1` on every child. No command writes `views/latest.json`.
+
+To undo a completed publication, run the exact printed rollback line from the
+repository root (add `--dry-run` to rehearse). It guards the target, acquires the
+same lease, verifies both sealed recovery phases, and swaps only the bootstrap
+pointer. Recovery must have finished sealing; a printed command alone does not
+prove it exists. A failed command exits nonzero and reports the phase and
+`pointerMayHaveMoved`; inspect the pointer if true. A post-commit lease release
+failure is reported separately and does not mean the publication was undone.
+Do not delete generations or hand-write pointers. Recheck the production
+refresh/scheduler state after finishing.
+
 Card #824-B adds the library-only `web/scripts/repair-publish-commit.ts` for
 staged repair integration. `publishRepairGeneration` takes an injected `CfRunner`,
 a guarded bucket, generation IDs, a card-local work directory and
@@ -950,8 +1014,9 @@ raw body and verify length and SHA-256 against the manifest. Lease and pointer
 reads use the same full-key existence check before get. Every non-zero get exit
 is a hard failure, including a key disappearing between list and get. Error
 output never establishes absence.
-The string runner supports UTF-8 JSON, including legitimate U+FFFD; binary and
-lossy size/hash mismatches refuse. Puts carry **no Cache-Control** because the
+The shared runner preserves raw bytes. The recovery/commit library accepts
+UTF-8 JSON snapshots only, including legitimate U+FFFD; binary and lossy
+size/hash mismatches refuse. Puts carry **no Cache-Control** because the
 pinned cf put command has no such flag. Tech verified public R2 JSON is served
 DYNAMIC; this behavior is accepted for this repair and does not inherit the R2
 bootstrap store adapter's cache policy.

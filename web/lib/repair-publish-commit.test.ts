@@ -518,4 +518,36 @@ describe("repair publication with fake cf only", () => {
     await p.release("failed");
   });
 
+  test("staging renews the lease during a slow upload and preserves raw runner results", async () => {
+    const h = fixture(), p = h.publication(); await p.acquire(); await p.seal();
+    const key = `${bootstrapGenerationPrefix(GEN)}/views/slow.json`, file = join(h.options.workDir, "slow.json");
+    writeFileSync(file, encode({ slow: true }));
+    const blocked = Promise.withResolvers<void>(), unblock = Promise.withResolvers<void>();
+    const renewed = Promise.withResolvers<void>();
+    const timer = spyOn(globalThis, "setInterval");
+    h.hook(async (args) => {
+      if (args[2] === "put" && args[3] === key) { blocked.resolve(); await unblock.promise; }
+    });
+    h.afterPut((key) => { if (key === ACTIVE) renewed.resolve(); });
+    let settled = false;
+    const upload = p.stageRunner(["r2", "objects", "put", key, "--bucket-name", "fake-bucket", "--file", file],
+      { env: process.env }).finally(() => { settled = true; });
+    try {
+      await blocked.promise; h.advance(31_000);
+      const [tick, delay] = timer.mock.calls.at(-1)!;
+      expect(delay).toBe(30_000);
+      if (typeof tick !== "function") throw new Error("Expected interval heartbeat callback");
+      tick(); await renewed.promise;
+      expect(settled).toBe(false);
+      expect(Date.parse(JSON.parse(h.objects.get(ACTIVE)!.toString()).expires_at)).toBe(NOW + 631_000);
+    } finally {
+      unblock.resolve();
+      try { expect((await upload).code).toBe(0); } finally { timer.mockRestore(); }
+    }
+    expect(h.objects.get(key)).toEqual(encode({ slow: true }));
+    await expect(p.stageRunner(["r2", "objects", "get", key, "--bucket-name", "other"], { env: process.env }))
+      .rejects.toThrow("escaped guarded bucket");
+    await p.release("failed");
+  });
+
 });

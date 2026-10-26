@@ -8,6 +8,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "repair:publish": "bun --no-env-file scripts/repair-publish.ts",
     "dev": "vite --mode pre",
     "build": "vite build --mode production",
     "start": "vite preview --mode pre",

@@ -3,29 +3,20 @@
  * cf put has no conditional write: callers must exclude concurrent writers.
  */
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { closeSync, constants, fstatSync, lstatSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import {
   BOOTSTRAP_PHASES, bootstrapGenerationPrefix, sha256Bytes, verifyBootstrapGeneration,
 } from "../../pipeline/lib/bootstrap-publication.mjs";
 
-export type CfRunner = (args: string[]) => Promise<Buffer>;
+import { cfBytes, runCf, type CfRunner } from "./repair-publish-cf";
+export { runCf, type CfRunner } from "./repair-publish-cf";
 export type PublishOptions = { built: string; generation: string; bucket: string; concurrency?: number; dryRun?: boolean };
 type ObjectBytes = { key: string; size: number; sha256: string; body: Buffer };
-const execute = promisify(execFile);
 // cf r2 objects put documents a 300 MB request body limit.
 const MAX_OBJECT_BYTES = 300_000_000;
-
-/** Invoke only the repository-pinned cf, never a global CLI or package download. */
-export const runCf: CfRunner = async (args) => {
-  const { stdout } = await execute(fileURLToPath(new URL("../node_modules/.bin/cf", import.meta.url)), args,
-    { encoding: "buffer", maxBuffer: 320 * 1024 * 1024, env: { ...process.env, CF_DELEGATION: "1" } });
-  return stdout;
-};
 
 function parallelism(value = 4): number {
   assert(Number.isSafeInteger(value) && value >= 1 && value <= 32, "Concurrency must be an integer from 1 to 32");
@@ -53,7 +44,7 @@ export function parsePublishArgs(argv: string[]): PublishOptions {
 /** Snapshot all verified bytes before the first cf call, including both manifests.
  * The snapshot prevents a subsequent local edit from changing uploaded content.
  */
-async function verifiedObjects({ built, generation }: PublishOptions) {
+export async function prepareRepairGeneration({ built, generation }: PublishOptions) {
   const root = resolve(built), prefix = bootstrapGenerationPrefix(generation);
   const snapshot = new Map<string, Buffer>();
   const read = async (key: string): Promise<Buffer> => {
@@ -92,7 +83,7 @@ async function verifiedObjects({ built, generation }: PublishOptions) {
 async function exists(key: string, bucket: string, runner: CfRunner): Promise<boolean> {
   const perPage = 1000;
   const args = ["r2", "objects", "list", "--bucket-name", bucket, "--prefix", key, "--per-page", String(perPage)];
-  const page = JSON.parse((await runner(args)).toString("utf8"));
+  const page = JSON.parse((await cfBytes(runner, args)).toString("utf8"));
   assert(Array.isArray(page) &&
     page.every((entry: { key?: unknown }) => typeof entry?.key === "string" && entry.key.startsWith(key)), "Invalid cf object listing");
   if (page.some((entry: { key: string }) => entry.key === key)) return true;
@@ -102,12 +93,16 @@ async function exists(key: string, bucket: string, runner: CfRunner): Promise<bo
 
 export async function publishRepairGeneration(options: PublishOptions, runner: CfRunner = runCf,
   log: (line: string) => void = console.log) {
-  const concurrency = parallelism(options.concurrency);
+  parallelism(options.concurrency);
   assert(/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(options.bucket), "Expected bucket name");
-  // TODO(target-guards): validate target, bucket identity, and production confirmation.
-  const phases = await verifiedObjects(options);
-  // TODO(recovery-generation): seal today's bytes before committing any pointer.
-  // TODO(writer-lease): exclude other writers; cf list + put is not atomic.
+  const phases = await prepareRepairGeneration(options);
+  return stagePreparedRepairGeneration(options, phases, runner, log);
+}
+
+/** Stage only the immutable snapshot verified before lease acquisition. */
+export async function stagePreparedRepairGeneration(options: PublishOptions,
+  phases: Awaited<ReturnType<typeof prepareRepairGeneration>>, runner: CfRunner, log: (line: string) => void = console.log) {
+  const concurrency = parallelism(options.concurrency);
   const result = { created: 0, skipped: 0, planned: 0 };
   if (options.dryRun) {
     for (const phase of phases) for (const { key, size, sha256 } of [...phase.objects, phase.manifest]) {
@@ -121,7 +116,7 @@ export async function publishRepairGeneration(options: PublishOptions, runner: C
     const present = await exists(item.key, options.bucket, runner);
     if (stopped) return;
     if (present) {
-      const body = await runner(["r2", "objects", "get", item.key, "--bucket-name", options.bucket]);
+      const body = await cfBytes(runner, ["r2", "objects", "get", item.key, "--bucket-name", options.bucket]);
       assert(body.length === item.size && sha256Bytes(body) === item.sha256, `Existing object differs: ${item.key}`);
       result.skipped++; return;
     }
@@ -129,7 +124,7 @@ export async function publishRepairGeneration(options: PublishOptions, runner: C
     const file = join(scratch, `${sequence++}`);
     writeFileSync(file, item.body, { flag: "wx" });
     try {
-      await runner(["r2", "objects", "put", item.key, "--bucket-name", options.bucket, "--file", file,
+      await cfBytes(runner, ["r2", "objects", "put", item.key, "--bucket-name", options.bucket, "--file", file,
         "--content-type", item.key.endsWith(".json") ? "application/json" : "application/octet-stream"]);
       result.created++;
     } finally { rmSync(file, { force: true }); }
@@ -149,7 +144,6 @@ export async function publishRepairGeneration(options: PublishOptions, runner: C
       await pool(phase.objects);
       await pool([phase.manifest]);
     }
-    // TODO(pointer-commit): use commitBootstrapGeneration with recoveryGeneration under the lease.
     return result;
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }
@@ -159,5 +153,6 @@ export async function main(argv = process.argv.slice(2), runner: CfRunner = runC
   log(JSON.stringify(result));
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch((error: unknown) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });
+  console.error("Required: use the guarded repair:publish command (web/scripts/repair-publish.ts)");
+  process.exitCode = 1;
 }

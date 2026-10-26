@@ -5,6 +5,8 @@ import { dirname, join } from "node:path";
 import { bootstrapGenerationPrefix, buildBootstrapPhaseManifest, sha256Bytes } from "../../pipeline/lib/bootstrap-publication.mjs";
 import { main, parsePublishArgs, publishRepairGeneration, type CfRunner } from "../scripts/publish-repair-generation";
 
+const ok = (stdout: Buffer) => ({ code: 0, stdout, stderr: "" });
+const child = { env: { ...process.env, CF_DELEGATION: "1" } };
 const scratch: string[] = [];
 afterEach(() => { for (const path of scratch.splice(0)) rmSync(path, { recursive: true, force: true }); });
 const generation = "bootstrap-publish-fixture", prefix = bootstrapGenerationPrefix(generation);
@@ -35,9 +37,9 @@ function fakeCf(seed = new Map<string, Buffer>(), delay = 0) {
         const prefix = args[args.indexOf("--prefix") + 1];
         expect(args[args.indexOf("--per-page") + 1]).toBe("1000");
         expect(args).not.toContain("--cursor");
-        return Buffer.from(JSON.stringify([...objects.keys()].filter((key) => key.startsWith(prefix)).slice(0, 1000).map((key) => ({ key }))));
+        return ok(Buffer.from(JSON.stringify([...objects.keys()].filter((key) => key.startsWith(prefix)).slice(0, 1000).map((key) => ({ key })))));
       }
-      if (operation === "get") { const body = objects.get(key); if (!body) throw new Error("not found"); return body; }
+      if (operation === "get") { const body = objects.get(key); if (!body) throw new Error("not found"); return ok(body); }
       if (operation === "put") {
         // A put to an existing key is a test failure, even for identical bytes.
         expect(objects.has(key)).toBe(false);
@@ -46,7 +48,7 @@ function fakeCf(seed = new Map<string, Buffer>(), delay = 0) {
           const manifest = JSON.parse(readFileSync(args[args.indexOf("--file") + 1], "utf8"));
           for (const item of manifest.objects) expect(objects.has(`${prefix}/${item.path}`)).toBe(true);
         }
-        objects.set(key, readFileSync(args[args.indexOf("--file") + 1])); return Buffer.from("{}");
+        objects.set(key, readFileSync(args[args.indexOf("--file") + 1])); return ok(Buffer.from("{}"));
       }
       throw new Error(`Unexpected cf operation ${operation}`);
     } finally { active--; }
@@ -128,7 +130,7 @@ test("command errors and malformed listings never cause a put", async () => {
   const { options } = fixture();
   for (const response of [null, "not JSON", "null", "{}", '{"objects":[],"truncated":false}', '[null]', '[{}]', '[{"key":1}]', '[{"key":"outside-prefix"}]']) {
     const calls: string[][] = [];
-    const runner: CfRunner = async (args) => { calls.push(args); if (response === null) throw new Error("access denied"); return Buffer.from(response); };
+    const runner: CfRunner = async (args) => { calls.push(args); if (response === null) throw new Error("access denied"); return ok(Buffer.from(response)); };
     await expect(publishRepairGeneration(options, runner)).rejects.toThrow();
     expect(calls.every((call) => call[2] === "list")).toBe(true);
   }
@@ -148,7 +150,7 @@ test("a full page without the exact key is ambiguous and never causes a put", as
   const runner: CfRunner = async (args) => {
     calls.push(args);
     const key = args[args.indexOf("--prefix") + 1];
-    return Buffer.from(JSON.stringify(Array.from({ length: 1000 }, (_, i) => ({ key: `${key}/child-${i}` }))));
+    return ok(Buffer.from(JSON.stringify(Array.from({ length: 1000 }, (_, i) => ({ key: `${key}/child-${i}` })))));
   };
   await expect(publishRepairGeneration(options, runner)).rejects.toThrow("Incomplete cf object listing");
   expect(calls.length).toBeGreaterThan(0);
@@ -158,9 +160,9 @@ test("a full page without the exact key is ambiguous and never causes a put", as
 test("exact presence on a full page is sufficient to compare existing bytes", async () => {
   const { options, bytes } = fixture(), cf = fakeCf(bytes);
   const runner: CfRunner = async (args) => {
-    if (args[2] !== "list") return cf.runner(args);
+    if (args[2] !== "list") return cf.runner(args, child);
     const key = args[args.indexOf("--prefix") + 1];
-    return Buffer.from(JSON.stringify([{ key }, ...Array.from({ length: 999 }, (_, i) => ({ key: `${key}/child-${i}` }))]));
+    return ok(Buffer.from(JSON.stringify([{ key }, ...Array.from({ length: 999 }, (_, i) => ({ key: `${key}/child-${i}` }))])));
   };
   expect((await publishRepairGeneration(options, runner)).skipped).toBe(14);
   expect(cf.calls.every((call) => call[2] === "get")).toBe(true);
@@ -171,7 +173,7 @@ test("validates every listing entry even after finding the exact key", async () 
   const runner: CfRunner = async (args) => {
     calls.push(args);
     const key = args[args.indexOf("--prefix") + 1];
-    return Buffer.from(JSON.stringify([{ key }, { key: "outside-prefix" }]));
+    return ok(Buffer.from(JSON.stringify([{ key }, { key: "outside-prefix" }])));
   };
   await expect(publishRepairGeneration(options, runner)).rejects.toThrow("Invalid cf object listing");
   expect(calls.every((call) => call[2] === "list")).toBe(true);
@@ -196,12 +198,12 @@ test("runCf pins its child environment and preserves argv without invoking cf", 
     const execFile = () => { throw new Error("Unexpected real execFile"); };
     execFile[promisify.custom] = async (file, args, options) => {
       console.log(JSON.stringify({ file, args, delegation: options.env.CF_DELEGATION, inherited: options.env.PUBLISHER_TEST_MARKER }));
-      return { stdout: Buffer.from("[]") };
+      return { stdout: Buffer.from("[]"), stderr: Buffer.alloc(0) };
     };
     childProcess.execFile = execFile;
     syncBuiltinESMExports();
-    const { runCf } = await import(${JSON.stringify(join(import.meta.dir, "../scripts/publish-repair-generation.ts"))});
-    console.log((await runCf(["r2", "objects", "get", "key with spaces; literal"])).toString());
+    const { runCf } = await import(${JSON.stringify(join(import.meta.dir, "../scripts/repair-publish-cf.ts"))});
+    console.log((await runCf(["r2", "objects", "get", "key with spaces; literal"], { env: process.env })).stdout.toString());
     if (process.env.CF_DELEGATION !== "0") throw new Error("Changed parent environment");
   `;
   const child = Bun.spawnSync(["node", "--input-type=module", "--eval", code], {
@@ -220,7 +222,7 @@ test("runCf pins its child environment and preserves argv without invoking cf", 
 test("uses verified snapshot bytes if local input changes after verification", async () => {
   const { options, bytes, write } = fixture(), cf = fakeCf();
   const key = `${prefix}/views/0.json`, original = bytes.get(key)!;
-  const runner: CfRunner = async (args) => { write(key, Buffer.from("changed")); return cf.runner(args); };
+  const runner: CfRunner = async (args) => { write(key, Buffer.from("changed")); return cf.runner(args, child); };
   await publishRepairGeneration(options, runner);
   expect(cf.objects.get(key)).toEqual(original);
 });
@@ -240,7 +242,7 @@ test("an interrupted put leaves the phase unsealed and can resume", async () => 
     if (args[2] === "put" && args[3].endsWith("views/3.json") && !injected) {
       injected = true; throw new Error("injected upload failure");
     }
-    return cf.runner(args);
+    return cf.runner(args, child);
   };
   await expect(publishRepairGeneration(options, runner)).rejects.toThrow("injected upload failure");
   expect(cf.objects.has(`${prefix}/manifests/base.json`)).toBe(false);

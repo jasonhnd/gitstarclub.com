@@ -1,8 +1,8 @@
 /**
  * Issue #824-B: library only; no default runner, CLI, credentials or target
  * authorization. The integration caller supplies a guarded bucket and workDir.
- * cf 1.0.0-beta.18 get returns raw bytes; this string-runner boundary supports
- * UTF-8 JSON snapshots only; source digests and byte lengths guard every copy.
+ * cf 1.0.0-beta.18 get returns raw bytes; recovery and commit accept UTF-8
+ * JSON snapshots only; source digests and byte lengths guard every copy.
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -10,12 +10,13 @@ import { join } from "node:path";
 import { ACTIVE_WORKFLOW_PATH, parseBootstrapLease } from "../../pipeline/lib/bootstrap-lease.mjs";
 import {
   BOOTSTRAP_POINTER_PATH, bootstrapGenerationPrefix, commitBootstrapGeneration,
-  sha256Bytes, stageBootstrapPhase, verifyBootstrapGeneration,
+  sha256Bytes, stageBootstrapPhase, verifyBootstrapGeneration, rollbackBootstrapGeneration,
 } from "../../pipeline/lib/bootstrap-publication.mjs";
 import { BootstrapPublicationPointer } from "../lib/contracts/workflow";
 
 /** The injected runner must pass env to its child process unchanged. */
-export type CfRunner = (args: string[], child: { env: NodeJS.ProcessEnv }) => Promise<{ code: number; stdout: string; stderr: string }>;
+import { cfChild, type CfRunner } from "./repair-publish-cf";
+export type { CfRunner } from "./repair-publish-cf";
 export const RECOVERY_BASE_PREFIX = "views/refresh-2026-09-13T06-00-16-398Z/";
 export const RECOVERY_CANONICAL_KEYS = Object.freeze(["canonical/v2/meta.json",
   ...Array.from({ length: 32 }, (_, shard) => `canonical/v2/repos/${shard}.json`)]);
@@ -25,6 +26,7 @@ const PER_PAGE = 1000;
 export type RepairCommitOptions = {
   bucket: string; runCf: CfRunner; workDir: string;
   generation: string; recoveryGeneration: string; recoveryBaseKeysFile: string; now?: () => number;
+  stage?: (publication: RepairPublication) => Promise<void>;
 };
 const encode = (value: unknown): Buffer => Buffer.from(JSON.stringify(value));
 const equal = (a: Buffer | null, b: Buffer | null) => a === null || b === null ? a === b : a.equals(b);
@@ -32,7 +34,7 @@ const TTL = 600_000;
 type SourceEntry = { key: string; bytes?: number; sha256?: string };
 
 export class RepairPublicationError extends Error {
-  constructor(readonly phase: "acquire" | "seal" | "commit" | "release", readonly pointerMayHaveMoved: boolean,
+  constructor(readonly phase: "acquire" | "seal" | "stage" | "commit" | "release", readonly pointerMayHaveMoved: boolean,
     cause: unknown, readonly releaseError?: unknown) {
     super(`${phase}: ${cause instanceof Error ? cause.message : String(cause)}${pointerMayHaveMoved ? "; bootstrap pointer may have moved" : ""}`,
       { cause });
@@ -52,6 +54,7 @@ export class RepairPublication {
   private renewal?: Promise<void>;
   private source?: { bootstrap: Buffer | null; managed: Buffer | null };
   pointerWriteAttempted = false;
+  private rollingBack = false;
   private readonly now: () => number;
   private readonly owner = randomUUID();
   constructor(readonly options: RepairCommitOptions) {
@@ -63,10 +66,10 @@ export class RepairPublication {
 
   private run(args: string[]) {
     return this.options.runCf(["r2", "objects", ...args, "--bucket-name", this.options.bucket],
-      { env: { ...process.env, CF_DELEGATION: "1" } });
+      cfChild());
   }
 
-  private async cf(args: string[]): Promise<string> {
+  private async cfResult(args: string[]) {
     let heartbeatError: unknown;
     let pending: Promise<void> | undefined;
     const leaseCommand = args[0] === "list"
@@ -80,12 +83,29 @@ export class RepairPublication {
       if (result.code !== 0) throw new Error(`cf ${args[0]} failed (${result.code}): ${result.stderr}`);
       await pending;
       if (heartbeatError) throw heartbeatError;
-      return result.stdout;
+      return result;
     } finally {
       clearInterval(timer);
       await pending;
     }
   }
+
+  private async cf(args: string[]): Promise<string> {
+    return (await this.cfResult(args)).stdout.toString();
+  }
+
+  /** A's uploads share B's renewal timer, including a single slow cf call. */
+  readonly stageRunner: CfRunner = async (args) => {
+    await this.guardStage();
+    const bucketAt = args.indexOf("--bucket-name");
+    if (args[0] !== "r2" || args[1] !== "objects" || bucketAt < 3 || args[bucketAt + 1] !== this.options.bucket) {
+      throw new Error("Staging command escaped guarded bucket");
+    }
+    const command = [...args.slice(2, bucketAt), ...args.slice(bucketAt + 2)];
+    const result = await this.cfResult(command);
+    await this.assertOwned();
+    return result;
+  };
 
   private jsonBody(path: string, text: string, size?: number): Buffer {
     const body = Buffer.from(text);
@@ -181,6 +201,23 @@ export class RepairPublication {
     return this.renewal;
   }
 
+  async guardStage(): Promise<void> {
+    await this.heartbeat();
+    await this.assertOwned();
+    await this.assertSourceUnchanged();
+  }
+
+  async rollback() {
+    await this.assertOwned();
+    this.source = { bootstrap: await this.controlRead(BOOTSTRAP_POINTER_PATH), managed: await this.controlRead("views/latest.json") };
+    this.rollingBack = true;
+    const result = await rollbackBootstrapGeneration({ targetGeneration: this.options.generation, store: this.store,
+      assertCanCommit: () => this.assertOwned(), now: () => new Date(this.now()).toISOString() });
+    const actual = await this.store.read(BOOTSTRAP_POINTER_PATH);
+    if (!actual || !actual.equals(encode(result.pointer))) throw new Error("Rollback pointer readback mismatch");
+    return result;
+  }
+
   async release(status: "published" | "failed"): Promise<void> {
     await this.assertOwned();
     const at = new Date(this.now()).toISOString();
@@ -214,7 +251,8 @@ export class RepairPublication {
       // The helper prefers an existing bootstrap pointer over recoveryGeneration.
       // Preserve the explicitly approved frozen recovery edge even when an
       // older bootstrap pointer exists.
-      const pointer = { ...JSON.parse(body.toString()), previous_generation: this.options.recoveryGeneration };
+      const pointer = this.rollingBack ? JSON.parse(body.toString())
+        : { ...JSON.parse(body.toString()), previous_generation: this.options.recoveryGeneration };
       this.pointerWriteAttempted = true;
       await this.rawPut(path, encode(pointer));
     },
@@ -227,7 +265,7 @@ export class RepairPublication {
     }
   }
 
-  private async baseInventory(): Promise<SourceEntry[]> {
+  async baseInventory(): Promise<SourceEntry[]> {
     if (!this.options.recoveryBaseKeysFile) throw new Error("Recovery base requires an explicit complete key inventory file");
     const input: unknown = JSON.parse(await readFile(this.options.recoveryBaseKeysFile, "utf8"));
     if (!Array.isArray(input) || !input.length) throw new Error("Recovery base key inventory must be a nonempty JSON array");
@@ -332,14 +370,35 @@ export async function commitPointer(publication: RepairPublication) {
 
 export async function publishRepairGeneration(options: RepairCommitOptions) {
   const publication = new RepairPublication(options);
-  let phase: "acquire" | "seal" | "commit" = "acquire";
+  let phase: "acquire" | "seal" | "stage" | "commit" = "acquire";
   let result: Awaited<ReturnType<typeof commitPointer>>;
   try {
     await publication.acquire();
     phase = "seal";
     await sealRecoveryGeneration(publication);
+    phase = "stage";
+    await options.stage?.(publication);
     phase = "commit";
     result = await commitPointer(publication);
+  } catch (error) {
+    try { await publication.releaseIfOwned("failed"); }
+    catch (releaseError) { throw new RepairPublicationError(phase, publication.pointerWriteAttempted, error, releaseError); }
+    throw new RepairPublicationError(phase, publication.pointerWriteAttempted, error);
+  }
+  try { await publication.release("published"); }
+  catch (error) { throw new RepairPublicationError("release", true, error); }
+  return result;
+}
+
+/** Guarded CLI owns target authorization; rollback keeps the same lease errors. */
+export async function rollbackRepairGeneration(options: RepairCommitOptions) {
+  const publication = new RepairPublication(options);
+  let phase: "acquire" | "commit" = "acquire";
+  let result: Awaited<ReturnType<RepairPublication["rollback"]>>;
+  try {
+    await publication.acquire();
+    phase = "commit";
+    result = await publication.rollback();
   } catch (error) {
     try { await publication.releaseIfOwned("failed"); }
     catch (releaseError) { throw new RepairPublicationError(phase, publication.pointerWriteAttempted, error, releaseError); }
