@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { ArtifactStore, type CacheKV, type HotCache } from "../../web/lib/workers-host/cache/store";
 import { readPublication, type PointerRead, type Publication } from "../../web/lib/workers-host/publication-fence";
 import { TAIL_EXPIRE_SECONDS, TAIL_FRESH_SECONDS } from "../../web/lib/workers-host/cache/policy";
-import { handleRequest, type HostOptions } from "../src/lib/host";
+import { handleRequest, releaseHistoryPage, type HostOptions } from "../src/lib/host";
 import { corePublicationRevalidatePaths } from "../../web/lib/data/core-revalidate-paths";
-import { LOCALES } from "../src/lib/i18n";
+import { LOCALES, localizedPath } from "../src/lib/i18n";
 
 class MemoryKV implements CacheKV {
   values = new Map<string, string>();
@@ -335,4 +335,52 @@ test("sitemap GET cache headers survive while HEAD, private requests and HTML st
   expect((await h.get("/sitemap.xml", { headers: { authorization: "Bearer local" } })).headers.get("cache-control")).toBe("private, no-store");
   h.options.render = async () => new Response("<html />", { headers: { "Content-Type": "text/html", "Cache-Control": policy } });
   expect((await h.get("/about")).headers.get("cache-control")).toBe("private, no-store");
+});
+
+test("release list pages bypass the shared HTML cache and other routes keep 3600 seconds", async () => {
+  const h = harness();
+  let body = "empty-history";
+  h.options.render = async () => new Response(`<html>${body}</html>`, { headers: { "Content-Type": "text/html" } });
+  for (const locale of LOCALES) {
+    const path = localizedPath(locale, "/releases");
+    expect(releaseHistoryPage(path), path).toBe("list");
+    expect(releaseHistoryPage(`${path}/`), path).toBe("list");
+    expect((await h.get(path)).headers.get("x-gsc-cache"), path).toBe("BYPASS");
+    expect(await (await h.get(path)).text(), path).toContain("empty-history");
+    expect((await h.get(`${path}?case=rows`)).headers.get("x-gsc-cache"), path).toBe("BYPASS");
+  }
+  body = "refresh-2026-10-25T11-36-27-410Z";
+  for (const locale of LOCALES) {
+    const path = localizedPath(locale, "/releases");
+    const response = await h.get(path);
+    expect(response.headers.get("x-gsc-cache"), path).toBe("BYPASS");
+    expect(await response.text(), path).toContain("refresh-2026-10-25T11-36-27-410Z");
+  }
+  expect(h.kv.values.size).toBe(0);
+
+  body = "about-page";
+  expect((await h.get("/about")).headers.get("x-gsc-cache")).toBe("MISS");
+  const about = await h.get("/about");
+  expect(about.headers.get("x-gsc-cache")).toBe("HIT");
+  expect(await about.text()).toContain("about-page");
+  h.advance(3599);
+  expect((await h.get("/about")).headers.get("x-gsc-cache")).toBe("HIT");
+  h.advance(2);
+  expect((await h.get("/about")).headers.get("x-gsc-cache")).toBe("MISS");
+
+  body = "detail-page";
+  const detail = "/releases/managed-2026-10-25";
+  expect(releaseHistoryPage(detail)).toBe("detail");
+  expect((await h.get(detail)).headers.get("x-gsc-cache")).toBe("MISS");
+  const cached = await h.get(detail);
+  expect(cached.headers.get("x-gsc-cache")).toBe("HIT");
+  expect(await cached.text()).toContain("detail-page");
+  body = "changed-detail";
+  const still = await h.get(detail);
+  expect(still.headers.get("x-gsc-cache")).toBe("HIT");
+  expect(await still.text()).toContain("detail-page");
+  for (const locale of LOCALES) expect(releaseHistoryPage(localizedPath(locale, detail))).toBe("detail");
+  expect(releaseHistoryPage("/about")).toBeNull();
+  expect(releaseHistoryPage("/releases/a/b")).toBeNull();
+  expect(releaseHistoryPage("/privacy")).toBeNull();
 });

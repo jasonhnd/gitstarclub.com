@@ -4,6 +4,7 @@ import { ArtifactStore, type StoredEntry } from "../../../web/lib/workers-host/c
 import { bypassPageCache, isLongTail, MAX_ENTRY_BYTES, TAIL_EXPIRE_SECONDS, TAIL_FRESH_SECONDS } from "../../../web/lib/workers-host/cache/policy";
 import { siteIndexable } from "./mode";
 import { operationResponse } from "../packages/p7/response";
+import { classifyRoute } from "../../../web/lib/i18n/routing";
 import { languageRedirect, negotiateLocale } from "./routing";
 
 export type HostOptions = {
@@ -17,6 +18,18 @@ export type HostOptions = {
 };
 type CacheStatus = "BYPASS" | "MISS" | "HIT" | "STALE";
 const MUTATING_GET_PATHS = new Set(["/api/cron/daily", "/api/cron/weekly", "/api/workflows/refresh/start"]);
+// List indexes read views/releases.json after the pointer switches. §2.11b allows 60s; this cache is 3600s.
+// Add "detail" so existing /releases/<id> routes share the same bypass. Other routes stay on the shared cache.
+const RELEASE_HISTORY_PAGE_CACHE_BYPASS = new Set<"list" | "detail">(["list"]);
+
+/** Localized `/releases` index (`list`) or `/releases/<id>` (`detail`). */
+export function releaseHistoryPage(pathname: string): "list" | "detail" | null {
+  const route = classifyRoute(pathname);
+  if ((route.kind !== "reserved-route" && route.kind !== "localized-reserved-route") || route.route !== "releases") return null;
+  if (route.segments.length === 1) return "list";
+  if (route.segments.length === 2) return "detail";
+  return null;
+}
 
 export function secureResponse(response: Response, method: string, status: CacheStatus, api = false, indexable = siteIndexable): Response {
   const headers = new Headers(response.headers);
@@ -53,7 +66,8 @@ export async function handleRequest(request: Request, options: HostOptions): Pro
   }
   const redirect = negotiateLocale(request);
   if (redirect) return finish(redirect);
-  const bypass = bypassPageCache(request);
+  const historyPage = releaseHistoryPage(path);
+  const bypass = bypassPageCache(request) || (historyPage !== null && RELEASE_HISTORY_PAGE_CACHE_BYPASS.has(historyPage));
   // These legacy GET handlers (including implicit HEAD) publish or enqueue work.
   // Their own successful publication must not replay the action or replace its result.
   const mutation = !["GET", "HEAD"].includes(request.method) || MUTATING_GET_PATHS.has(path);

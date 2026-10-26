@@ -26,7 +26,7 @@ export const OPEN_GRAPH_LOCALE_BY_LOCALE: Record<Locale, string> = {
   fr: "fr_FR",
 };
 
-export const RESERVED_LOCALIZED_TOP_LEVEL_ROUTES = ["about", "categories", "compare", "o", "privacy", "pulse", "rankings"] as const;
+export const RESERVED_LOCALIZED_TOP_LEVEL_ROUTES = ["about", "categories", "compare", "o", "privacy", "pulse", "rankings", "releases"] as const;
 
 export type ReservedLocalizedTopLevelRoute = (typeof RESERVED_LOCALIZED_TOP_LEVEL_ROUTES)[number];
 

@@ -4,7 +4,7 @@ export const TAIL_EXPIRE_SECONDS = TAIL_FRESH_SECONDS + 86_400;
 export const RETENTION_SECONDS = 30 * 86_400;
 export const MAX_TAGS = 128;
 export const MAX_ENTRY_BYTES = 16 * 1024 * 1024;
-const reserved = new Set(["api", "rankings", "categories", "o", "data", "search-index", "repo-curve", "preview", ".well-known"]);
+const reserved = new Set(["api", "rankings", "categories", "o", "data", "search-index", "repo-curve", "preview", ".well-known", "releases"]);
 
 export function isLongTail(path: string): boolean {
   const segments = path.split("/").filter(Boolean);

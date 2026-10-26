@@ -262,6 +262,12 @@ export function AboutBody({ locale, dictionary: t, meta }: { locale: Locale; dic
           <p>{t.about.refreshP1}</p>
           <p>{t.about.refreshP2}</p>
           <p>{t.about.cadenceP}</p>
+          <p>
+            {t.about.refreshHistoryLead}{" "}
+            <Link className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href={href("/releases")}>
+              {t.about.refreshHistoryLink}
+            </Link>
+          </p>
         </Section>
 
         <Section heading={t.about.limitationsHeading}>

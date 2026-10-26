@@ -8,7 +8,7 @@ import { languageRedirect, negotiateLocale, pageRoute } from "../src/lib/routing
 describe("unchanged locale URLs", () => {
   for (const locale of LOCALES) {
     test(`${locale} resolves every shared page family`, () => {
-      for (const path of ["/", "/pulse", "/rankings", "/rankings/2026", "/rankings/2026/7", "/rankings/2026/W27", "/categories", "/categories/language", "/categories/language/typescript", "/categories/language/typescript/page/2", "/o", "/o/page/2", "/o/example", "/example/repo", "/compare", "/about", "/privacy"]) {
+      for (const path of ["/", "/pulse", "/rankings", "/rankings/2026", "/rankings/2026/7", "/rankings/2026/W27", "/categories", "/categories/language", "/categories/language/typescript", "/categories/language/typescript/page/2", "/o", "/o/page/2", "/o/example", "/example/repo", "/compare", "/about", "/privacy", "/releases", "/releases/refresh-2026-10-25T11-36-27-410Z"]) {
         expect(pageRoute(localizedPath(locale, path))).toEqual({ locale, path });
       }
     });
@@ -51,6 +51,6 @@ describe("unchanged locale URLs", () => {
     }
   });
   test("control endpoints and unknown nested routes are not page fallbacks", () => {
-    for (const path of ["/api/unknown", "/.well-known/deployment", "/de/example/repo", "/ja/cockpit", "/too/many/path/parts"]) expect(pageRoute(path)).toBeNull();
+    for (const path of ["/api/unknown", "/.well-known/deployment", "/de/example/repo", "/ja/cockpit", "/too/many/path/parts", "/releases/a/b"]) expect(pageRoute(path)).toBeNull();
   });
 });

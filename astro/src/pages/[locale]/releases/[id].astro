@@ -1,0 +1,11 @@
+---
+import ReleasesPage from "../../../packages/p6/ReleasesPage.astro";
+import { findRelease, readReleaseHistory } from "../../../packages/p6/releases";
+import { isLocale } from "../../../../../web/lib/i18n";
+export const prerender = false;
+const { locale } = Astro.params;
+const id = Astro.params.id;
+if (!isLocale(locale) || locale === "en" || !id) return new Response("Not found", { status: 404 });
+if (!findRelease(await readReleaseHistory(Astro.locals.data), id)) Astro.response.status = 404;
+---
+<ReleasesPage locale={locale} id={id} />
