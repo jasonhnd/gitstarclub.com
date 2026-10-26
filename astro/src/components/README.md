@@ -1,10 +1,6 @@
 # About this data
 
-<<<<<<< 201bdb62be8a963404cda5ee41aa3432985827ac
-`AboutThisData.astro` is a server-rendered disclosure for use after a page summary and before its FAQ. It is not placed on any product page yet. Importing it includes a small Copy enhancement; the content does not hydrate React.
-=======
 `AboutThisData.astro` is a server-rendered disclosure for use after a page summary and before its FAQ. Rankings pages (`/rankings`, `/rankings/<year>`, `/rankings/<year>/<period>`, every locale) render `AboutThisDataContent` with the `periodGains` layer, the current publication `meta` and `views.version`, and that page's own title and canonical URL. Importing the Astro component includes the Copy enhancement. Rankings bodies are static HTML, so those pages load `about-this-data.js` directly. That file is plain JavaScript: a `?url` import is copied as-is and is not transpiled. The content does not hydrate React.
->>>>>>> ib/gsc-797
 
 Pass `locale`, `dictionary`, `meta`, `releaseId`, `layer`, `pageTitle` and the absolute `canonicalUrl`. Read `meta` from the current request's published data and `releaseId` from that same request's captured `publication.views.version`. Metadata does not itself contain the release identifier. Do not fetch the latest publication again while rendering.
 
