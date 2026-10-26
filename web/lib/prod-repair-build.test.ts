@@ -11,6 +11,7 @@ import { buildModel, type RawShards } from "./workflows/recompute/model";
 import { computeRepoWindow } from "./workflows/recompute/windows";
 import { repoEntityFromParts, lookupRepoEntry, orgEntityFromParts } from "./workflows/recompute/entities";
 import { assertFrozenMonths, buildProductionRepair, DROP_IDS, frozenDiscount, parseRepairArgs } from "../scripts/prod-repair-build";
+import { inspectLocalBootstrapCanonical } from "../scripts/lib/validate-bootstrap-canonical";
 
 const GEN = "bootstrap-prod-repair-fixture";
 const NOW = "2026-09-13T06:00:16.398Z";
@@ -23,8 +24,8 @@ async function fixture() {
   const root = mkdtempSync(join(tmpdir(), "prod-repair-")); scratch.push(root);
   const options = { frozenViews: join(root, "frozen"), whitelist: join(root, "whitelist.json"), restRepos: join(root, "rest"),
     gross: join(root, "gross"), aggregate: join(root, "aggregate"), out: join(root, "output"), generation: GEN };
-  const raw: RawShards = { repos: {}, monthly: { "1": [["2026-04", 10], ["2026-05", 10], ["2026-06", 4]], "2": [["2026-06", 7]], "3": [], [DROP_IDS[0]]: [["2026-05", 8]] }, weekly: {}, recentDaily: { "1": [["2026-05-29", 4]] }, siteDailyByYear: {} };
-  for (const id of [1, 2, 3, DROP_IDS[0]]) raw.repos[String(id)] = {
+  const raw: RawShards = { repos: {}, monthly: { "1": [["2026-04", 10], ["2026-05", 10], ["2026-06", 4]], "2": [["2026-06", 7]], "3": [], ...Object.fromEntries(DROP_IDS.map((id) => [id, [["2026-05", 8]] as Array<[string, number]>])) }, weekly: {}, recentDaily: { "1": [["2026-05-29", 4]] }, siteDailyByYear: {} };
+  for (const id of [1, 2, 3, ...DROP_IDS]) raw.repos[String(id)] = {
     id, owner: "owner", owner_type: "Organization", name: `repo${id}`, full_name: `owner/repo${id}`,
     current_stars: 10000 + id, created_at: "2020-01-01", d: id === 1 ? 0.5 : id === 2 || id === 3 ? 0 : 1,
     active: id !== 3, tracked_since: id === 3 ? "2026-08-30" : null,
@@ -65,10 +66,10 @@ describe("offline option B repair builder", () => {
     let report: Awaited<ReturnType<typeof buildProductionRepair>>;
     try { report = await buildProductionRepair(options); expect(network).not.toHaveBeenCalled(); }
     finally { network.mockRestore(); }
-    expect(report.repo_count).toBe(3); expect(report.frozen_repo_count).toBe(4);
+    expect(report.repo_count).toBe(3); expect(report.frozen_repo_count).toBe(7);
     expect(report.phases).toEqual(BOOTSTRAP_PHASES);
     expect(report.rows).toEqual({ monthly: 4, weekly: 18, daily: 125, site_daily: 1 });
-    expect(report.dropped).toEqual([{ id: DROP_IDS[0], full_name: `owner/repo${DROP_IDS[0]}`, reason: "github_rest_404_owner_approved" }]);
+    expect(report.dropped).toEqual(DROP_IDS.map((id) => ({ id, full_name: `owner/repo${id}`, reason: "github_rest_404_owner_approved" })));
     expect(Object.keys(report.node_id_sources)).toEqual(["1", "2", "3"]);
     expect(report.node_id_sources["1"].kind).toBe("retained_whitelist"); expect(report.node_id_sources["2"].kind).toBe("github_rest");
     expect(report.node_id_sources["2"].sha256).toMatch(/^[a-f0-9]{64}$/);
@@ -83,6 +84,7 @@ describe("offline option B repair builder", () => {
     }
     expect(existsSync(join(options.out, "bootstrap/latest.json"))).toBe(false);
     const canonical = join(prefix, "canonical/v2");
+    expect(await inspectLocalBootstrapCanonical(canonical)).toMatchObject({ exitCode: 0, failures: [] });
     for (let bucket = 0; bucket < 32; bucket++) {
       for (const [family, schema] of [["repos", ReposShard], ["repo-monthly", RepoMonthlyShard], ["repo-weekly", RepoWeeklyShard], ["repo-recent-daily", RepoRecentDailyShard]] as const) {
         expect(schema.safeParse(read(join(canonical, `${family}/${bucket}.json`))).success).toBe(true);
