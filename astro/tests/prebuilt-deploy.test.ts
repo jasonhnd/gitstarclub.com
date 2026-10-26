@@ -6,10 +6,14 @@ import { hostWorker } from "../../web/cloudflare.config";
 import { astroHostWorker } from "../host-contract";
 import { preparePrebuiltDeploy } from "../scripts/prebuilt-deploy";
 
-test("both preview hosts reuse the existing KV namespace; production binding stays unchanged", () => {
+test("both hosts pin separate production and preview page-cache namespaces", () => {
   for (const factory of [hostWorker, astroHostWorker]) {
     assert.deepEqual(factory("pre").env.GSC_CACHE, { type: "kv", id: "4c3107414bad4a0386fedfcf96dde6e2" });
-    assert.deepEqual(factory("production").env.GSC_CACHE, { type: "kv" });
+    assert.deepEqual(factory("production").env.GSC_CACHE, { type: "kv", id: "e25483e6f01d4c68a7b014906f247a37" });
+    assert.notDeepEqual(factory("production").env.GSC_CACHE, factory("pre").env.GSC_CACHE);
+    for (const mode of ["", "development", "test"]) {
+      assert.throws(() => factory(mode), /explicit mode/);
+    }
   }
 });
 
