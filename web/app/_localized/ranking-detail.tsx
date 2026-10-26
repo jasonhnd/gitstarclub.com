@@ -1,3 +1,5 @@
+import { RepairRemovalNotice } from "@/app/_explore/RepairRemovalNotice";
+import { SourceNote } from "@/app/_explore/SourceNote";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Chrome } from "@/app/_explore/Chrome";
@@ -270,6 +272,8 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
           }
         />
 
+        <RepairRemovalNotice window="month" entity="repo" period={period} copy={t.rankings} />
+
         <AnswerBlock capsule={capsule} rows={flowRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
 
         {narrative && (
@@ -375,7 +379,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
             />
           }
         />
-        {sourceNote && <p className="mt-4 text-sm leading-relaxed text-on-surface-variant">{sourceNote}</p>}
+        <SourceNote text={sourceNote} />
         <AnswerBlock capsule={capsule} rows={rankRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
         {snippet && <ShareableSnippet snippet={snippet} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={shareableSnippetLabels(t)} />}
 

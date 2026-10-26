@@ -1,3 +1,5 @@
+import { RepairRemovalNotice } from "@/app/_explore/RepairRemovalNotice";
+import { SourceNote } from "@/app/_explore/SourceNote";
 import { notFound } from "../../lib/navigation";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
@@ -274,6 +276,8 @@ async function MonthRankings({ locale, t, year, month, pageTitle, canonicalUrl }
           }
         />
 
+        <RepairRemovalNotice window="month" entity="repo" period={period} copy={t.rankings} />
+
         <AnswerBlock capsule={capsule} rows={flowRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
         {aboutData}
 
@@ -382,7 +386,7 @@ async function WeekRankings({ locale, t, year, week, pageTitle, canonicalUrl }: 
             />
           }
         />
-        {sourceNote && <p className="mt-4 text-sm leading-relaxed text-on-surface-variant">{sourceNote}</p>}
+        <SourceNote text={sourceNote} />
         <AnswerBlock capsule={capsule} rows={rankRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
         {aboutData}
         {snippet && <ShareableSnippet snippet={snippet} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={shareableSnippetLabels(t)} />}

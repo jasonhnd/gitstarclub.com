@@ -369,6 +369,7 @@ const ja: Dict = {
       "この {label} ルールに一致する追跡リポジトリは {count} 件だけです。これはホワイトリスト切片の大きさであり、GitHub 上の {label} 全体の大きさではありません。",
   },
   rankings: {
+    repairRemovalNotice: "{date} より、GitHub で削除された {count} 件のリポジトリをこのランキングから除外し、順位を繰り上げました。",
     title: "通算ランキング",
     subtitle: "現在のスター数にもとづく、リポジトリと組織のランキングです。",
     repositories: "リポジトリ",

@@ -356,6 +356,7 @@ const zh: Dict = {
     thinSliceNotice: "只有 {count} 个已追踪仓库符合此 {label} 规则。这是白名单切片的规模，不是 GitHub 上 {label} 的规模。",
   },
   rankings: {
+    repairRemovalNotice: "{date} 起已移除 {count} 个已在 GitHub 删除的项目，名次随之前移。",
     title: "历史总榜",
     subtitle: "按当前星标数排序的仓库与组织排行榜。",
     repositories: "仓库",
