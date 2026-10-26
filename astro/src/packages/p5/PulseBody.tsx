@@ -32,6 +32,11 @@ import { pulseYearRows } from "./year-state";
 import { projectRepoRows, PULSE_MOVER_LIMIT, PULSE_GIANT_LIMIT, PULSE_ANNIVERSARY_LIMIT } from "../../../../web/app/_localized/ranking-page-data";
 import { onThisDayEmptyMessage } from "../../../../web/lib/on-this-day-empty";
 
+/** Pulse capsules prefer the snapshot timestamp, then the active week and month rankings. */
+export function pulseSummaryAsOf(data: Pick<PulseData, "snap" | "activeWeekRank" | "activeMonthRank">, locale: Locale) {
+  return resolveDataAsOfLabel(data.snap?.generated_at, data.activeWeekRank?.meta.generated_at, data.activeMonthRank?.meta.generated_at, { locale });
+}
+
 export function PulseBody({ locale, t, data, now = new Date() }: {
   locale: Locale; t: Dict; data: PulseData; now?: Date;
 }) {
@@ -52,7 +57,7 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
   const monthRows = lookup && activeMonthRank ? projectRepoRows(activeMonthRank.items.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
   const yearRows = pulseYearRows(yearUnavailable, snap && lookup ? projectRepoRows(snap.current_year.flow.slice(0, PULSE_MOVER_LIMIT), lookup) : []);
   const giants = snap && lookup ? projectRepoRows(snap.all_time.repo.slice(0, PULSE_GIANT_LIMIT), lookup, "total") : [];
-  const asOf = resolveDataAsOfLabel(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at, { locale });
+  const asOf = pulseSummaryAsOf(data, locale);
   const dateModified = resolveDataAsOfValue(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at);
   const weekMeta = formatPulseListMeta({
     periodLabel: activeWeekLabel,

@@ -54,16 +54,21 @@ describe("footer data-through date", () => {
           }
         }
       }
+      const registryDate = JSON.parse(records.get("categories/registry.json")!).generated_at as string;
+      const pages: Array<[string, string]> = [
+        ["/", snapshotDate],
+        ["/rankings", hasRankings ? rankingDate : snapshotDate],
+        ["/about", globalDate],
+        ["/pulse", snapshotDate],
+        ["/categories", registryDate],
+      ];
+      if (hasRankings) pages.push(["/rankings/2026", rankingDate], ["/rankings/2026/7", rankingDate], ["/categories/language/typescript", rankingDate]);
       const worker = await startWorker(records);
       try {
         const origin = (await worker.ready).origin;
         for (const locale of ["en", "ja"] as const) {
           const dictionary = await getDictionary(locale);
-          for (const [path, expectedDate] of [
-            ["/", snapshotDate],
-            ["/rankings", hasRankings ? rankingDate : snapshotDate],
-            ["/about", globalDate],
-          ]) {
+          for (const [path, expectedDate] of pages) {
             const url = origin + localizedPath(locale, path);
             const response = await fetch(url, { headers: { "accept-language": "en" } });
             const html = await response.text();

@@ -1,14 +1,15 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import { getDictionary, type Locale } from "../../lib/i18n";
-import { PulseBody } from "./PulseBody";
+import { PulseBody, pulseSummaryAsOf } from "./PulseBody";
 import { loadPulse } from "./data";
 interface Props { locale: Locale }
 const { locale } = Astro.props;
 const t = await getDictionary(locale);
 const now = new Date();
 const data = await loadPulse(Astro.locals.data, now);
+const asOf = pulseSummaryAsOf(data, locale);
 ---
-<Layout locale={locale} canonicalPath="/pulse" title={t.meta.pulseTitle} description={t.meta.pulseDescription}>
+<Layout locale={locale} canonicalPath="/pulse" title={t.meta.pulseTitle} description={t.meta.pulseDescription} asOf={asOf}>
   <PulseBody locale={locale} t={t} data={data} now={now} />
 </Layout>
