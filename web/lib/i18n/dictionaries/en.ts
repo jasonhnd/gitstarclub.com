@@ -182,6 +182,9 @@ export const en = {
     topRankingsCsv: "Top rankings CSV",
     repoMilestonesCsv: "Repository milestones CSV",
     orgAggregatesCsv: "Organization aggregates CSV",
+    downloadFileMeta: "{date} · {rows}",
+    downloadRowCount: "{count} rows",
+    downloadExportedOn: "This download was exported on {date}.",
     dataExportsDocPrefix: "See DATA-EXPORTS.md for fields, source views, and regeneration notes.",
     faqWhatQ: "What does GitStarClub track?",
     faqWhatA:
