@@ -32,6 +32,7 @@ import {
   type RepoLanguage,
 } from "@/lib/repo-page";
 import { RepoDailyHistorySection, RepoHistorySection, RepoMilestonesSection } from "./repo-sections";
+import { AboutThisDataContent } from "../../components/AboutThisDataContent";
 
 const HERO_ACTION_CLASS =
   "text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline";
@@ -42,7 +43,7 @@ const CHIP_CLASS =
 type RepoLanguageFact = RepoLanguage & { href?: string | null };
 
 // The body retains the existing page markup; only its server data boundary moves.
-export function RepoPageView({ locale, t, repo, lookup, registry, meta }: import("./data").RepositoryPage) {
+export function RepoPageView({ locale, t, repo, lookup, registry, meta, releaseId }: import("./data").RepositoryPage) {
   const language = toBcp47Locale(locale);
   const id = repo.id;
   const assignments = null;
@@ -85,6 +86,8 @@ export function RepoPageView({ locale, t, repo, lookup, registry, meta }: import
   const githubHref = `https://github.com/${repo.full_name}`;
   const relatedItems = buildRepoRelatedItems({ locale, owner: repo.owner, categories: categoryLinks, related, rankingAppearances });
   const capsuleLabels = { ariaLabel: t.common.answerCapsule, eyebrow: t.common.answerCapsule, dataAsOf: t.common.dataAsOf, source: t.common.source };
+  const pageTitle = `${repo.full_name} — ${t.repo.metaTitleSuffix} · GitStarClub`;
+  const canonicalUrl = `https://gitstarclub.com${routePath}`;
   const snippetLabels = {
     eyebrow: t.share.snippet,
     copy: t.share.copy,
@@ -155,6 +158,17 @@ export function RepoPageView({ locale, t, repo, lookup, registry, meta }: import
         />
 
         {capsule && <AnswerCapsule capsule={capsule} labels={capsuleLabels} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
+
+        <AboutThisDataContent
+          locale={locale}
+          dictionary={t}
+          meta={meta}
+          releaseId={releaseId}
+          layer="historyCurve"
+          pageTitle={pageTitle}
+          canonicalUrl={canonicalUrl}
+          historyCoverage={repo.curve.provenance ? { start: repo.curve.provenance.start, end_inclusive: repo.curve.provenance.end_inclusive } : undefined}
+        />
 
         <div className="min-w-0 max-w-full">
           <RepoHistorySection inflections={inflections} milestones={milestones} series={series} locale={locale} t={t} />
