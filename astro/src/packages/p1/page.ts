@@ -16,7 +16,7 @@ export async function loadPage(data: PublishedData, kind: PageKind, localeValue 
       const metadata = await (kind === "home" ? generatePulseMetadata({ locale, canonicalPath: "/", absoluteTitle: true })
         : kind === "rankings" ? generateRankingsMetadata(locale)
         : kind === "year" ? generateRankingYearMetadata(locale, year) : generateRankingPeriodMetadata(locale, { year, period }));
-      const body = await (kind === "home" ? PulsePageView({ locale, canonicalPath: "/", includeWebsiteLd: true })
+      const body = await (kind === "home" ? PulsePageView({ locale, canonicalPath: "/", includeWebsiteLd: true, releaseId: data.publication.views?.version ?? null })
         : kind === "rankings" ? RankingsPageView({ locale })
         : kind === "year" ? RankingsYearPageView({ locale, year }) : RankingsPeriodPageView({ locale, year, period }));
       const canonical = new URL(String(metadata.alternates?.canonical));

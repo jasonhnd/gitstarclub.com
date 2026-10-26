@@ -10,5 +10,5 @@ const now = new Date();
 const data = await loadPulse(Astro.locals.data, now);
 ---
 <Layout locale={locale} canonicalPath="/pulse" title={t.meta.pulseTitle} description={t.meta.pulseDescription}>
-  <PulseBody locale={locale} t={t} data={data} now={now} />
+  <PulseBody locale={locale} t={t} data={data} releaseId={Astro.locals.data.publication.views?.version ?? null} now={now} />
 </Layout>

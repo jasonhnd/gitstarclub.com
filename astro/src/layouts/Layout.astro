@@ -6,6 +6,7 @@ import { THEME_INIT_SCRIPT } from "../../../web/lib/theme-script";
 import { siteIndexable } from "../lib/mode";
 import Chrome from "../components/Chrome.astro";
 import Footer from "../components/Footer.astro";
+import "../components/about-this-data";
 interface Props { locale: Locale; canonicalPath: string; title: string; description: string; tag?: string; absoluteTitle?: boolean; ogImage?: string; ogUrl?: string }
 const { locale, canonicalPath, title, description, tag, absoluteTitle = false, ogImage = "/opengraph-image", ogUrl } = Astro.props;
 const t = await getDictionary(locale);

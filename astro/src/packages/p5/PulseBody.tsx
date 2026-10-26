@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "../../components/Link";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
+import { AboutThisDataContent } from "../../components/AboutThisDataContent";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { PageHero } from "@/app/_explore/PageHero";
 import { PeriodSwitcher } from "@/app/_explore/PeriodSwitcher";
@@ -32,8 +33,9 @@ import { pulseYearRows } from "./year-state";
 import { projectRepoRows, PULSE_MOVER_LIMIT, PULSE_GIANT_LIMIT, PULSE_ANNIVERSARY_LIMIT } from "../../../../web/app/_localized/ranking-page-data";
 import { onThisDayEmptyMessage } from "../../../../web/lib/on-this-day-empty";
 
-export function PulseBody({ locale, t, data, now = new Date() }: {
+export function PulseBody({ locale, t, data, releaseId, now = new Date() }: {
   locale: Locale; t: Dict; data: PulseData; now?: Date;
+  releaseId: string | null;
 }) {
   const canonicalPath = "/pulse";
   const language = toBcp47Locale(locale);
@@ -123,6 +125,16 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
         </div>
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.25rem,3vw,2rem)]" labels={answerCapsuleLabels(locale, t)} />}
+
+        <AboutThisDataContent
+          locale={locale}
+          dictionary={t}
+          meta={data.meta}
+          releaseId={releaseId}
+          layer="periodGains"
+          pageTitle={t.meta.pulseTitle}
+          canonicalUrl={`https://gitstarclub.com${routePath}`}
+        />
 
         <div className="mt-[clamp(1.25rem,3vw,2rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel
