@@ -1,5 +1,15 @@
 # Local read-only pipeline tools
 
+## Offline production repair builder
+
+Issue #786 adds `web/scripts/prod-repair-build.ts`, a local-only option B
+builder. It restores canonical history from retained frozen views, gross
+Parquet, aggregate backup checkpoints, and retained GitHub node IDs, then
+seals both local bootstrap phases and a JSON report. It refuses missing
+identities and any monthly curve mismatch. See the
+[input layout and exact Mac commands](../../docs/analysis/PRODUCTION-REPAIR-BUILDER.md).
+The comparison command and all publication work are separate cards.
+
 ## Aggregate gap inputs
 
 `star-history-aggregate.mjs` (issue #682, GSC_0090, owner decision
