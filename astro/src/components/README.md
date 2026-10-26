@@ -1,6 +1,10 @@
 # About this data
 
-`AboutThisData.astro` is a server-rendered disclosure for use after a page summary and before its FAQ. Organization pages (`/o/<login>`, every locale) render `AboutThisDataContent` inside the existing React body, once for current totals and once for the history curve, then load this Copy enhancement from `OrgPage.astro`. Importing `AboutThisData.astro` directly includes the same enhancement; the content does not hydrate React.
+`AboutThisData.astro` is a server-rendered disclosure for use after a page summary and before its FAQ. Importing it directly includes the small Copy enhancement; the content does not hydrate React.
+
+Organization pages (`/o/<login>`, every locale) render `AboutThisDataContent` inside the existing React body, once for current totals and once for the history curve, then load the Copy enhancement from `OrgPage.astro`.
+
+Category pages use the shared `AboutThisDataContent` renderer inside their static React view so it can sit between the answer capsule and FAQ. Their Astro page wrapper imports the same Copy enhancement.
 
 Pass `locale`, `dictionary`, `meta`, `releaseId`, `layer`, `pageTitle` and the absolute `canonicalUrl`. Read `meta` from the current request's published data and `releaseId` from that same request's captured `publication.views.version`. Metadata does not itself contain the release identifier. Do not fetch the latest publication again while rendering.
 

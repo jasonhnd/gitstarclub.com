@@ -9,6 +9,10 @@ const { locale, canonicalPath, title, description, body, asOf } = Astro.props;
   <Body content={body} />
 </Layout>
 
+<script>
+  import "../../components/about-this-data";
+</script>
+
 <style is:global>
   /* Keep the original system-ui/ui-monospace fallbacks after the packaged families. */
   :root {

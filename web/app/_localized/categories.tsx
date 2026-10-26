@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
@@ -190,7 +191,7 @@ export async function generateCategoryDetailMetadataForLocale(locale: Locale, pa
   });
 }
 
-export async function CategoriesPageView({ locale }: { locale: Locale }) {
+export async function CategoriesPageView({ locale, aboutThisData }: { locale: Locale; aboutThisData?: ReactNode }) {
   const t = await getDictionary(locale);
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
@@ -253,6 +254,8 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" labels={answerCapsuleLabels(locale, t)} />}
 
+        {aboutThisData}
+
         <section className="mt-[clamp(2.5rem,5vw,4rem)]">
           <SectionIntro title={text.categorySummaryCaption} description={text.categoryIndexDatasetDescription} />
           {categoryRows.length > 0 ? (
@@ -295,7 +298,7 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
   );
 }
 
-export async function CategoryDimensionPageView({ locale, dimension }: { locale: Locale; dimension: string }) {
+export async function CategoryDimensionPageView({ locale, dimension, aboutThisData }: { locale: Locale; dimension: string; aboutThisData?: ReactNode }) {
   if (!isCategoryDimension(dimension)) notFound();
 
   const t = await getDictionary(locale);
@@ -363,6 +366,8 @@ export async function CategoryDimensionPageView({ locale, dimension }: { locale:
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" labels={answerCapsuleLabels(locale, t)} />}
 
+        {aboutThisData}
+
         <section className="mt-[clamp(2.5rem,5vw,4rem)]">
           <SectionIntro title={fill(text.categoryDimensionSummaryCaption, { label: entryLabel })} description={fill(text.categoryLinksA, { label: entryLabel })} />
           {categoryRows.length > 0 ? (
@@ -384,7 +389,7 @@ export async function CategoryDimensionPageView({ locale, dimension }: { locale:
   );
 }
 
-export async function CategoryDetailPageView({ locale, dimension, slug, page }: { locale: Locale; dimension: string; slug: string; page: number }) {
+export async function CategoryDetailPageView({ locale, dimension, slug, page, aboutThisData }: { locale: Locale; dimension: string; slug: string; page: number; aboutThisData?: ReactNode }) {
   if (page < 1) notFound();
 
   const t = await getDictionary(locale);
@@ -492,6 +497,8 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
         />
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" labels={answerCapsuleLabels(locale, t)} />}
+
+        {aboutThisData}
 
         <section id="category-ranking" className="mt-[clamp(2.5rem,5vw,4rem)] scroll-mt-24">
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
