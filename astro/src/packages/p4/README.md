@@ -15,7 +15,12 @@ shared components and P4 utilities in the single Tailwind compilation. They add
 no design values. The shared layout supplies search/theme islands.
 Directory bodies have no client JavaScript. Detail pages additionally hydrate
 only the existing `ShareButton` (copy/share link) and `SnippetActions`
-(copy text/embed). The body, SVG chart and structured data remain server HTML.
+(copy text/embed), and load the About this data Copy enhancement. The body,
+SVG chart, disclosure and structured data remain server HTML. The disclosure
+sits below the answer capsule and above the FAQ. It describes current totals
+and the history curve from this request's meta, release id, canonical URL and
+document title. Daily-history coverage is passed only when the page shows
+published daily points that carry that provenance.
 Native language links keep the P0 `/api/lang` behavior.
 
 ## Local verification

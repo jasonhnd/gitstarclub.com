@@ -1,4 +1,6 @@
 import { OrgSnippet } from "./OrgSnippet";
+import { AboutThisDataContent } from "../../components/AboutThisDataContent";
+import { organizationAboutData } from "./about-data";
 import { formatConjunction as listLabels, formatSignedStars as signedStars, formatTemplate as fill } from "@/lib/template-format";
 import type { ReactNode } from "react";
 import Link from "../../components/Link";
@@ -29,9 +31,10 @@ const ORG_HERO_ACTION_CLASS =
   "text-readable-gold rounded-full border border-outline-variant bg-surface-container px-3 py-2 font-mono text-[0.78rem] transition-colors hover:bg-surface-container-high hover:underline";
 
 /** Server-only page body. Astro hydrates only the two supplied control slots. */
-export function OrgContent({ locale, org, lookup, registry, meta, t, shareButton, snippetActions }: {
+export function OrgContent({ locale, org, lookup, registry, meta, t, shareButton, snippetActions, releaseId, pageTitle, canonicalUrl }: {
   locale: Locale; org: OrgEntity; lookup: ReposLookup | null; registry: CategoryRegistry | null;
   meta: Meta | null; t: Dict; shareButton?: ReactNode; snippetActions?: ReactNode;
+  releaseId: string | null; pageTitle: string; canonicalUrl: string;
 }) {
   const language = toBcp47Locale(locale);
   // Both baseline and Astro run on the Workers host, where assignment shards are skipped.
@@ -85,6 +88,7 @@ export function OrgContent({ locale, org, lookup, registry, meta, t, shareButton
     }),
     ...members.slice(0, 4).map((row) => relatedItem(localizedPath(locale, `/${repoName(row)}`), repoName(row))),
   ];
+  const aboutData = organizationAboutData({ locale, dictionary: t, meta, releaseId, pageTitle, canonicalUrl, org });
   const capsuleLabels = { ariaLabel: t.common.answerCapsule, eyebrow: t.common.answerCapsule, dataAsOf: t.common.dataAsOf, source: t.common.source };
   const snippetLabels = {
     eyebrow: t.share.snippet,
@@ -152,6 +156,7 @@ export function OrgContent({ locale, org, lookup, registry, meta, t, shareButton
         )}
 
         {capsule && <AnswerCapsule capsule={capsule} labels={capsuleLabels} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
+        {aboutData.map((props) => <AboutThisDataContent key={props.layer} {...props} />)}
         {snippet && <OrgSnippet actions={snippetActions} snippet={snippet} labels={snippetLabels} className="mt-[clamp(1.75rem,3.5vw,2.5rem)]" />}
 
         <section className="mt-[clamp(2rem,4vw,3rem)]">

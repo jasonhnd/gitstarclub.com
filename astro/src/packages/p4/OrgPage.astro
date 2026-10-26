@@ -6,6 +6,7 @@ import { ShareButton } from "../../../../web/app/_explore/ShareButton";
 import { SnippetActions } from "../../../../web/app/_explore/SnippetActions";
 import { absoluteSnippetUrl } from "../../../../web/lib/shareable-snippets";
 import { localizedPath } from "../../../../web/lib/i18n/routing";
+import { organizationCanonicalUrl, organizationPageTitle } from "./about-data";
 import { resolveDataAsOfFromMeta } from "../../../../web/lib/geo-capsules";
 import { formatTemplate } from "../../../../web/lib/template-format";
 
@@ -21,10 +22,16 @@ const snippet = buildLocalizedOrgTotalSnippet({ t, locale, org, asOf, members })
 const ownerType = org.owner_type === "Organization" ? t.org.organization : org.owner_type === "User" ? t.org.developer : t.tables.unknown;
 const shareText = formatTemplate(t.org.metaTitle, { login: org.login, kind: ownerType });
 const shareUrl = absoluteSnippetUrl(localizedPath(locale, props.canonicalPath));
+const pageTitle = organizationPageTitle(props.title);
+const canonicalUrl = organizationCanonicalUrl(locale, props.canonicalPath);
+const releaseId = Astro.locals.publication?.views?.version ?? null;
 ---
 <Layout locale={locale} canonicalPath={props.canonicalPath} title={props.title} description={props.description}>
-  <OrgContent {...props}>
+  <OrgContent {...props} releaseId={releaseId} pageTitle={pageTitle} canonicalUrl={canonicalUrl}>
     <ShareButton slot="share-button" text={shareText} url={shareUrl} labels={t.share} client:load />
     {snippet && <SnippetActions slot="snippet-actions" copyText={snippet.copyText} embedHtml={snippet.embedHtml} labels={t.share} client:load />}
   </OrgContent>
 </Layout>
+<script>
+  import "../../components/about-this-data";
+</script>
