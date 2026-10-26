@@ -975,17 +975,32 @@ cf layer automatically waits out HTTP 429 (Too Many Requests): it honors an
 exposed `Retry-After` value, otherwise waits 30 seconds, and adds less than one
 second of random jitter. The pinned beta.18 error renderer currently omits
 response headers, so the 30-second fallback normally applies. Every wait logs
-the key, retry attempt, and seconds. Each call allows at most six retries and
-then fails hard; other HTTP errors fail immediately.
+the key, retry attempt, and seconds. Each call allows at most six rate-limit
+retries and then fails hard.
 
-After each wait, a put rechecks the exact key before resending: matching size
+For troubleshooting authentication: a single boxed HTTP 401 (Unauthorized) with
+API error code 10000 is retried automatically. The shared cf layer runs
+`cf auth whoami` once. cf refreshes and rewrites its token only when the stored
+access token has already expired. If `whoami` reports `authenticated: false`,
+the publisher stops with `cf auth login` guidance. Running with
+`CLOUDFLARE_API_TOKEN` set skips the OAuth refresh entirely. Concurrent 401
+failures share the `whoami` call and a
+three-second wait plus less than one second of random jitter. It logs the
+refresh, wait, and retry of the same call. Only the final HTTP status in cf's
+boxed API error counts; a body that merely mentions 401 does not. A repeated
+401 fails hard: run `cf auth login` and rerun the publisher; rerunning is safe.
+A failed refresh also stops with that login guidance. Each call gets at most
+one authentication retry, independently of its six HTTP 429 retries. HTTP 403
+(Forbidden) and all other HTTP errors still fail immediately.
+
+After either kind of wait, a put rechecks the exact key before resending: matching size
 and SHA-256 means it is already done, different bytes refuse the write, and
 proven absence allows the same put again. An ambiguous full listing or failed
 read also refuses the retry. This check applies to lease and pointer writes as
 well, so a rate-limited attempt to replace an existing control object can fail
 closed on its old bytes. The single-writer window remains required. Recovery
 and staging drain in-flight uploads before reporting a transfer failure. A
-matching object discovered after a 429 wait counts as skipped (already present),
+matching object discovered after a 429 or 401 wait counts as skipped (already present),
 not created. Generation verification waits for both base and canonical phases
 to settle before reporting the first failure, including rate-limit waits and
 later failures in the other phase. Release stops new heartbeats and waits for

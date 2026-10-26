@@ -51,16 +51,21 @@ export const runCf: CfRunner = async (args, child) => {
   }
 };
 
-/** beta.18 Gr appends the authoritative status as the LAST line of its APIError
- * box (blocks.l). Body messages and numeric API error codes are not statuses.
- * Gr currently omits response headers, so real beta.18 usually needs 30 seconds.
+/** beta.18 Gr + blocks.l: the LAST box line is the authoritative HTTP status.
+ * Body messages, numeric API error codes, and hints outside it are not statuses.
  */
-function rateLimitDelay(stderr: string, now: () => number): number | null {
+function apiErrorLines(stderr: string): string[] {
   const plain = stripVTControlCharacters(stderr).replace(/\r/g, "");
   const boxes = [...plain.matchAll(/^┌ APIError\n([\s\S]*?)\n└\s*$/gm)];
   const box = boxes.at(-1);
-  if (!box) return null;
-  const lines = box[1].split("\n").map((line) => line.replace(/^│ ?/, "").trim());
+  if (!box) return [];
+  const lines = box[1].split("\n");
+  return lines.every((line) => /^│(?: |$)/.test(line))
+    ? lines.map((line) => line.replace(/^│ ?/, "").trim()) : [];
+}
+
+/** Gr omits response headers, so real beta.18 usually needs 30 seconds. */
+function rateLimitDelay(lines: string[], now: () => number): number | null {
   if (!/^429 Too Many Requests(?: · HTTP .+)?$/.test(lines.at(-1) ?? "")) return null;
   const retryAfter = lines.map((line) => /^Retry-After:\s*(.+)$/i.exec(line)?.[1]).find((value) => value !== undefined);
   if (retryAfter !== undefined) {
@@ -70,6 +75,28 @@ function rateLimitDelay(stderr: string, now: () => number): number | null {
     if (Number.isFinite(date)) return Math.max(0, date - now());
   }
   return 30_000;
+}
+
+// Keep the cooldown inside the shared promise so parallel 401s also join while
+// cf's refreshed credentials settle. Never retry whoami recursively.
+let authRefresh: Promise<void> | undefined;
+function refreshCfAuth(runner: CfRunner, sleep: NonNullable<CfRetryOptions["sleep"]>,
+  random: () => number, log: (line: string) => void): Promise<void> {
+  if (!authRefresh) {
+    authRefresh = Promise.resolve().then(async () => {
+      log("cf HTTP 401; refreshing authentication with cf auth whoami (shared across parallel calls)");
+      const result = await runner(["auth", "whoami"], cfChild());
+      if (result.code !== 0) throw new Error(`cf auth whoami failed (${result.code}): ${result.stderr}`);
+      let authenticated: unknown;
+      try { authenticated = JSON.parse(result.stdout.toString()).authenticated; }
+      catch { throw new Error("cf auth whoami returned invalid authentication status"); }
+      if (authenticated !== true) throw new Error("cf auth whoami is not authenticated");
+      const milliseconds = 3000 + Math.floor(random() * 1000);
+      log(`cf authentication refresh complete; waiting ${(milliseconds / 1000).toFixed(3)} seconds before retry`);
+      await sleep(milliseconds);
+    }).finally(() => { authRefresh = undefined; });
+  }
+  return authRefresh;
 }
 
 /** Pinned cf lists an array without pagination metadata. Only exact matches
@@ -97,15 +124,27 @@ export async function cfResult(runner: CfRunner, args: string[], retry: CfRetryO
   // Snapshot the intended bytes before the first attempt, including control puts.
   const body = operation === "put" && fileAt >= 0 ? await readFile(args[fileAt + 1]) : undefined;
   const sha256 = (value: Buffer) => createHash("sha256").update(value).digest("hex");
-  for (let attempt = 0; ; attempt++) {
+  let rateLimitRetries = 0, authRetried = false;
+  for (;;) {
     const result = await runner(args, cfChild());
     if (result.code === 0) return result;
-    const delay = rateLimitDelay(result.stderr, now);
-    if (delay === null) throw new Error(`cf ${operation} failed (${result.code}): ${result.stderr}`);
-    if (attempt === 6) throw new Error(`cf ${operation} ${key} failed: HTTP 429 after 6 retries: ${result.stderr}`);
-    const milliseconds = delay + Math.floor(random() * 1000);
-    log(`cf ${operation} key=${key} HTTP 429; retry ${attempt + 1}/6; waiting ${(milliseconds / 1000).toFixed(3)} seconds`);
-    await sleep(milliseconds);
+    const lines = apiErrorLines(result.stderr);
+    if (/^\[10000\](?:\s|$)/.test(lines[0] ?? "") &&
+        /^401 Unauthorized(?: · HTTP .+)?$/.test(lines.at(-1) ?? "")) {
+      const loginHint = "Run cf auth login and rerun the publisher (rerun is safe).";
+      if (authRetried) throw new Error(`cf ${operation} ${key} failed: HTTP 401 after authentication retry. ${loginHint}\n${result.stderr}`);
+      authRetried = true;
+      try { await refreshCfAuth(runner, sleep, random, log); }
+      catch (error) { throw new Error(`cf ${operation} ${key} authentication refresh failed. ${loginHint}`, { cause: error }); }
+      log(`cf ${operation} key=${key} HTTP 401; retry 1/1 after authentication refresh`);
+    } else {
+      const delay = rateLimitDelay(lines, now);
+      if (delay === null) throw new Error(`cf ${operation} failed (${result.code}): ${result.stderr}`);
+      if (rateLimitRetries === 6) throw new Error(`cf ${operation} ${key} failed: HTTP 429 after 6 retries: ${result.stderr}`);
+      const milliseconds = delay + Math.floor(random() * 1000);
+      log(`cf ${operation} key=${key} HTTP 429; retry ${++rateLimitRetries}/6; waiting ${(milliseconds / 1000).toFixed(3)} seconds`);
+      await sleep(milliseconds);
+    }
     if (operation === "put") {
       if (!body || bucketAt < 0 || !args[bucketAt + 1]) throw new Error(`Cannot safely retry cf put: ${key}`);
       const bucket = args[bucketAt + 1];

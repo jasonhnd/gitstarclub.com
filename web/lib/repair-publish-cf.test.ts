@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cfBytes, limitCfConcurrency, type CfRetryOptions, type CfRunner } from "../scripts/repair-publish-cf";
+import { cfBytes, cfResult, limitCfConcurrency, type CfRetryOptions, type CfRunner } from "../scripts/repair-publish-cf";
 import { resolvePublishTarget } from "../scripts/repair-publish-target";
 import { bootstrapGenerationPrefix, buildBootstrapPhaseManifest, verifyBootstrapGeneration } from "../../pipeline/lib/bootstrap-publication.mjs";
 
@@ -19,13 +19,13 @@ function boxedCfError({ status = 429, colour = false, fallback = false, retryAft
   message?: string; code?: number; http?: boolean;
 } = {}) {
   const paint = (text: string) => colour ? `\u001b[31m\u001b[1m${text}\u001b[22m\u001b[39m` : text;
-  const reason = status === 429 ? "Too Many Requests" : status === 500 ? "Internal Server Error" : "Not Found";
+  const reason = ({ 401: "Unauthorized", 403: "Forbidden", 429: "Too Many Requests", 500: "Internal Server Error" })[status] ?? "Not Found";
   const body = fallback ? `Status code: ${status}\nBody: {"message":${JSON.stringify(message)}}` : `[${code}] ${message}`;
   return `\n${paint("┌")} ${paint("APIError")}\n`
     + [body, ...(retryAfter === undefined ? [] : [`Retry-After: ${retryAfter}`]),
       `${status} ${reason}${http ? " · HTTP /accounts/fake/r2/buckets/fake/objects/key" : ""}`]
       .join("\n").split("\n").map((line) => `${paint("│")} ${paint(line)}`).join("\n")
-    + `\n${paint("└")}\n`;
+    + `\n${paint("└")}\n` + (status === 401 ? `\n${paint("→ Try running: cf auth login")}\n` : "");
 }
 const rejected = (options?: Parameters<typeof boxedCfError>[0]) => ({ code: 1, stdout: "", stderr: boxedCfError(options) });
 function timing() {
@@ -35,6 +35,147 @@ function timing() {
   return { retry, waits, logs };
 }
 const get = ["r2", "objects", "get", "key", "--bucket-name", "fake"];
+const whoami = ["auth", "whoami"];
+const authenticated = () => ok(JSON.stringify({ authenticated: true, tokenValid: false }));
+const unauthorized = (options: Parameters<typeof boxedCfError>[0] = {}) =>
+  rejected({ status: 401, message: "Authentication error", ...options });
+
+describe("shared repair cf authentication with fake runners only", () => {
+  for (const operation of ["get", "list"]) for (const colour of [false, true]) for (const http of [false, true]) {
+    test(`${operation} refreshes and retries the identical call: colour=${colour}, http=${http}`, async () => {
+      const t = timing(), calls: string[][] = [];
+      const args = operation === "get" ? get : ["r2", "objects", "list", "--prefix", "key", "--bucket-name", "fake"];
+      const runner: CfRunner = async (args, child) => {
+        expect(child.env.CF_DELEGATION).toBe("1");
+        calls.push([...args]);
+        return calls.length === 1 ? unauthorized({ colour, http }) : args[0] === "auth" ? authenticated() : ok("done");
+      };
+      expect(await cfBytes(runner, args, t.retry)).toEqual(Buffer.from("done"));
+      expect(calls).toEqual([args, whoami, args]); expect(t.waits).toEqual([3250]);
+      expect(t.logs).toEqual([
+        "cf HTTP 401; refreshing authentication with cf auth whoami (shared across parallel calls)",
+        "cf authentication refresh complete; waiting 3.250 seconds before retry",
+        `cf ${operation} key=key HTTP 401; retry 1/1 after authentication refresh`,
+      ]);
+    });
+  }
+
+  test("four parallel 401s share one whoami and cooldown, including a late rejection", async () => {
+    const t = timing(), cooling = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+    const attempts = new Map<string, number>();
+    let refreshes = 0;
+    const runner = limitCfConcurrency(async (args) => {
+      if (args[0] === "auth") { expect(args).toEqual(whoami); refreshes++; return authenticated(); }
+      const key = args[3], attempt = (attempts.get(key) ?? 0) + 1;
+      attempts.set(key, attempt);
+      if (attempt === 1) { if (key === "3") await cooling.promise; return unauthorized(); }
+      return ok(key);
+    });
+    const pending = Promise.all(Array.from({ length: 4 }, (_, i) => cfBytes(runner,
+      ["r2", "objects", "get", String(i), "--bucket-name", "fake"], {
+        ...t.retry, sleep: async (ms) => { t.waits.push(ms); cooling.resolve(); await resume.promise; },
+      })));
+    try {
+      await cooling.promise; await Bun.sleep(1);
+      expect(refreshes).toBe(1); expect([...attempts.values()]).toEqual([1, 1, 1, 1]);
+      resume.resolve();
+      expect((await pending).map((body) => body.toString())).toEqual(["0", "1", "2", "3"]);
+      expect([...attempts.values()]).toEqual([2, 2, 2, 2]);
+      expect(refreshes).toBe(1); expect(t.waits).toEqual([3250]);
+    } finally { resume.resolve(); await pending; }
+  });
+
+  test("a second 401 fails hard with a safe-rerun login hint", async () => {
+    const t = timing(), calls: string[][] = [];
+    await expect(cfBytes(async (args) => {
+      calls.push([...args]); return args[0] === "auth" ? authenticated() : unauthorized();
+    }, get, t.retry)).rejects.toThrow("HTTP 401 after authentication retry. Run cf auth login and rerun the publisher (rerun is safe).");
+    expect(calls).toEqual([get, whoami, get]); expect(t.waits).toEqual([3250]);
+  });
+
+  for (const throws of [false, true]) test(`failed whoami does not retry or poison later refreshes: throws=${throws}`, async () => {
+    const t = timing(), calls: string[][] = [];
+    const runner: CfRunner = async (args) => {
+      calls.push([...args]);
+      if (args[0] !== "auth") return unauthorized();
+      if (throws) throw new Error("refresh runner failed");
+      return unauthorized();
+    };
+    for (let i = 0; i < 2; i++) await expect(cfBytes(runner, get, t.retry)).rejects.toThrow(
+      "authentication refresh failed. Run cf auth login and rerun the publisher (rerun is safe).");
+    expect(calls).toEqual([get, whoami, get, whoami]); expect(t.waits).toEqual([]);
+  });
+
+  for (const stdout of [JSON.stringify({ authenticated: false, error: "Not logged in" }), "", "not JSON"]) {
+    test(`exit-zero whoami without authenticated true fails without retry: ${JSON.stringify(stdout)}`, async () => {
+      const t = timing(), calls: string[][] = [];
+      await expect(cfBytes(async (args) => {
+        calls.push([...args]); return args[0] === "auth" ? ok(stdout) : unauthorized();
+      }, get, t.retry)).rejects.toThrow("Run cf auth login and rerun the publisher");
+      expect(calls).toEqual([get, whoami]); expect(t.waits).toEqual([]);
+    });
+  }
+
+  for (const colour of [false, true]) test(`401 with another API code fails immediately: colour=${colour}`, async () => {
+    const t = timing(); let calls = 0;
+    await expect(cfBytes(async () => { calls++; return unauthorized({ code: 10001, colour }); }, get, t.retry))
+      .rejects.toThrow("cf get failed (1)");
+    expect(calls).toBe(1); expect(t.waits).toEqual([]);
+  });
+
+  for (const status of [403, 404, 500]) for (const colour of [false, true]) {
+    test(`${status} with 401 body lines and authentication code fails immediately: colour=${colour}`, async () => {
+      const t = timing(); let calls = 0;
+      await expect(cfBytes(async () => {
+        calls++; return rejected({ status, colour,
+          message: "Authentication error\n401 Unauthorized\n401 Unauthorized · HTTP /body\nTry running: cf auth login" });
+      }, get, t.retry)).rejects.toThrow("cf get failed (1)");
+      expect(calls).toBe(1); expect(t.waits).toEqual([]); expect(t.logs).toEqual([]);
+    });
+  }
+
+  for (const stderr of ["[10000] Authentication error\n401 Unauthorized\nTry running: cf auth login",
+    "\n┌ APIError\n│ [10000] Authentication error\n│ 401 Unauthorized\n│ 500 Internal Server Error\n└\n",
+    boxedCfError({ status: 401, message: "Authentication error" }) + boxedCfError({ status: 403 })]) {
+    test(`unboxed or nonauthoritative 401 fails immediately: ${JSON.stringify(stderr)}`, async () => {
+      const t = timing(); let calls = 0;
+      await expect(cfBytes(async () => { calls++; return { code: 1, stdout: "", stderr }; }, get, t.retry)).rejects.toThrow("cf get failed");
+      expect(calls).toBe(1); expect(t.waits).toEqual([]);
+    });
+  }
+
+  for (const authAt of [0, 3, 6]) test(`401 at attempt ${authAt} leaves all six 429 retries available`, async () => {
+    const t = timing(), calls: string[][] = []; let reads = 0;
+    await cfBytes(async (args) => {
+      calls.push([...args]);
+      if (args[0] === "auth") return authenticated();
+      const attempt = reads++;
+      return attempt === authAt ? unauthorized() : attempt < 7 ? rejected() : ok();
+    }, get, t.retry);
+    expect(reads).toBe(8); expect(calls.filter((args) => args[0] === "auth")).toEqual([whoami]);
+    expect(t.waits.filter((ms) => ms === 30_250)).toHaveLength(6);
+    expect(t.waits.filter((ms) => ms === 3250)).toHaveLength(1);
+  });
+
+  test("429s between two 401s do not allow a second authentication retry", async () => {
+    const t = timing(); let reads = 0, refreshes = 0;
+    await expect(cfBytes(async (args) => {
+      if (args[0] === "auth") { refreshes++; return authenticated(); }
+      return ++reads === 2 ? rejected() : unauthorized();
+    }, get, t.retry)).rejects.toThrow("HTTP 401 after authentication retry");
+    expect(reads).toBe(3); expect(refreshes).toBe(1); expect(t.waits).toEqual([3250, 30_250]);
+  });
+
+  test("a 401 refresh does not extend the six-retry 429 limit", async () => {
+    const t = timing(); let reads = 0, refreshes = 0;
+    await expect(cfBytes(async (args) => {
+      if (args[0] === "auth") { refreshes++; return authenticated(); }
+      return ++reads === 1 ? unauthorized() : rejected();
+    }, get, t.retry)).rejects.toThrow("HTTP 429 after 6 retries");
+    expect(reads).toBe(8); expect(refreshes).toBe(1);
+    expect(t.waits).toEqual([3250, ...Array<number>(6).fill(30_250)]);
+  });
+});
 
 describe("shared repair cf rate limits with fake runners only", () => {
   for (const retryFails of [false, true]) test(`verification waits for a sibling's 429 wait and consumes its result: retryFails=${retryFails}`, async () => {
@@ -131,16 +272,17 @@ describe("shared repair cf rate limits with fake runners only", () => {
     expect(t.waits).toEqual([]);
   });
 
-  for (const appearance of ["absent", "identical", "different", "different size", "prefix children", "ambiguous", "malformed", "get fails"]) {
-    test(`put checks the exact key after waiting: ${appearance}`, async () => {
+  for (const status of [429, 401]) for (const appearance of ["absent", "identical", "different", "different size", "prefix children", "ambiguous", "malformed", "get fails"]) {
+    test(`put checks the exact key after ${status} waiting: ${appearance}`, async () => {
       const path = mkdtempSync(join(tmpdir(), "cf-retry-")); scratch.push(path);
       const file = join(path, "body"); writeFileSync(file, "data");
       const args = ["r2", "objects", "put", "key", "--bucket-name", "fake", "--file", file];
       const t = timing(), calls: string[][] = []; let puts = 0;
       const runner: CfRunner = async (args) => {
         calls.push([...args]);
-        if (args[2] === "put") return ++puts === 1 ? rejected() : ok();
-        expect(t.waits).toEqual([30_250]);
+        if (args[0] === "auth") { expect(args).toEqual(whoami); return authenticated(); }
+        if (args[2] === "put") return ++puts === 1 ? (status === 401 ? unauthorized() : rejected()) : ok();
+        expect(t.waits).toEqual([status === 401 ? 3250 : 30_250]);
         if (args[2] === "list") {
           expect(args).toEqual(["r2", "objects", "list", "--bucket-name", "fake", "--prefix", "key", "--per-page", "1000"]);
           return ok(JSON.stringify(appearance === "absent" ? [] : appearance === "malformed" ? {}
@@ -151,14 +293,14 @@ describe("shared repair cf rate limits with fake runners only", () => {
         return appearance === "get fails" ? rejected({ status: 500 })
           : ok(appearance === "different" ? "DATA" : appearance === "different size" ? "data-longer" : "data");
       };
-      const result = cfBytes(runner, args, t.retry);
+      const result = cfResult(runner, args, t.retry);
       if (appearance.startsWith("different")) await expect(result).rejects.toThrow("Existing object differs: key");
       else if (appearance === "ambiguous") await expect(result).rejects.toThrow("Incomplete cf object listing");
       else if (appearance === "malformed") await expect(result).rejects.toThrow("Invalid cf object listing");
       else if (appearance === "get fails") await expect(result).rejects.toThrow("cf get failed");
-      else await result;
+      else expect((await result).alreadyPresent).toBe(appearance === "identical" ? true : undefined);
       expect(puts).toBe(["absent", "prefix children"].includes(appearance) ? 2 : 1);
-      expect(calls.map((args) => args[2])).toEqual(["put", "list",
+      expect(calls.map((args) => args[0] === "auth" ? "whoami" : args[2])).toEqual(["put", ...(status === 401 ? ["whoami"] : []), "list",
         ...(["absent", "prefix children"].includes(appearance) ? ["put"] : ["ambiguous", "malformed"].includes(appearance) ? [] : ["get"])]);
       if (puts === 2) expect(calls.at(-1)).toEqual(args);
     });
@@ -173,12 +315,13 @@ describe("shared repair cf rate limits with fake runners only", () => {
     expect(calls).toEqual(["put", ...Array.from({ length: 6 }, () => ["list", "put"]).flat()]);
   });
 
-  test("refuses local file changes during a put wait", async () => {
+  for (const status of [429, 401]) test(`refuses local file changes during a put ${status} wait`, async () => {
     const path = mkdtempSync(join(tmpdir(), "cf-retry-")); scratch.push(path);
     const file = join(path, "body"); writeFileSync(file, "data");
     const t = timing(); let puts = 0;
     await expect(cfBytes(async (args) => {
-      if (args[2] === "put") { puts++; return rejected(); }
+      if (args[0] === "auth") return authenticated();
+      if (args[2] === "put") { puts++; return status === 401 ? unauthorized() : rejected(); }
       return ok("[]");
     }, ["r2", "objects", "put", "key", "--bucket-name", "fake", "--file", file],
     { ...t.retry, sleep: async () => { writeFileSync(file, "EDIT"); } })).rejects.toThrow("Local put bytes changed");
