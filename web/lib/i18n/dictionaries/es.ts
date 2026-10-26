@@ -367,7 +367,7 @@ const es: Dict = {
     subtitle: "Repositorios y organizaciones ordenados por su conteo actual de estrellas.",
     repositories: "Repositorios",
     organizations: "Organizaciones",
-    repos: "repositorios",
+    repos: { one: "repositorio", other: "repositorios" },
     allTime: "Histórico",
     datasetName: "Conjunto de datos de rankings históricos",
     fullHistory: "Historial completo",

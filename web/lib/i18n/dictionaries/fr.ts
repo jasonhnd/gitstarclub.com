@@ -367,7 +367,7 @@ const fr: Dict = {
     subtitle: "Dépôts et organisations classés selon leur nombre actuel d'étoiles.",
     repositories: "Dépôts",
     organizations: "Organisations",
-    repos: "dépôts",
+    repos: { one: "dépôt", other: "dépôts" },
     allTime: "Historique",
     datasetName: "Jeu de données des classements historiques",
     fullHistory: "Historique complet",

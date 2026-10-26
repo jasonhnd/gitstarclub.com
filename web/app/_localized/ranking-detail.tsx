@@ -12,12 +12,13 @@ import { RelatedPages } from "@/app/_explore/RelatedPages";
 import { ShareableSnippet } from "@/app/_explore/ShareableSnippet";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
+import { countWithNoun } from "@/lib/i18n/plural";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { buildNarrative } from "@/lib/narrative";
 import { rankingRoutePeriod, rankingYear } from "@/lib/public-params";
 import { FIRST_YEAR } from "@/lib/periods";
 import { weeklyRankSourceNote } from "@/lib/star-history-provenance";
-import { fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
+import { fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
 import { RankingCategoryExits } from "./ranking-category-exits";
 import { getRank, getCategoryAssignmentsForRepos } from "@/lib/data";
 import { HeroActions, PeriodStats, AnswerBlock, MovementSection, RankingMetricGrid, CompleteRankingSection, PeriodNavigation, type PeriodNavLink } from "./ranking-ui";
@@ -143,7 +144,7 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
             <PeriodStats
               items={[
                 { label: t.tables.starsGained, value: movementCells.length > 0 ? `+${fmtStars(movementTotal, locale)}` : t.rankings.noMovement },
-                { label: t.rankings.visibleRows, value: `${formatInteger(locale, rankRows.length)} ${t.rankings.repos}` },
+                { label: t.rankings.visibleRows, value: countWithNoun(locale, rankRows.length, t.rankings.repos) },
               ]}
             />
           }
@@ -266,7 +267,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
             <PeriodStats
               items={[
                 { label: t.tables.starsGained, value: movementCells.length > 0 ? `+${fmtStars(movementTotal, locale)}` : t.rankings.noMovement },
-                { label: t.rankings.visibleRows, value: `${formatInteger(locale, flowRows.length)} ${t.rankings.repos}` },
+                { label: t.rankings.visibleRows, value: countWithNoun(locale, flowRows.length, t.rankings.repos) },
               ]}
             />
           }
@@ -374,7 +375,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
             <PeriodStats
               items={[
                 { label: t.week.label, value: period },
-                { label: t.rankings.visibleRows, value: `${formatInteger(locale, rankRows.length)} ${t.rankings.repos}` },
+                { label: t.rankings.visibleRows, value: countWithNoun(locale, rankRows.length, t.rankings.repos) },
               ]}
             />
           }

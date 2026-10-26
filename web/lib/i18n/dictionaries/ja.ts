@@ -374,7 +374,7 @@ const ja: Dict = {
     subtitle: "現在のスター数にもとづく、リポジトリと組織のランキングです。",
     repositories: "リポジトリ",
     organizations: "組織",
-    repos: "リポジトリ",
+    repos: { one: "リポジトリ", other: "リポジトリ" },
     allTime: "通算",
     datasetName: "通算ランキングデータセット",
     fullHistory: "全履歴",

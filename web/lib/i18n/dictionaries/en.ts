@@ -412,7 +412,7 @@ export const en = {
     subtitle: "Repositories and organizations ranked by current star count.",
     repositories: "Repositories",
     organizations: "Organizations",
-    repos: "repositories",
+    repos: { one: "repository", other: "repositories" },
     allTime: "All-time",
     datasetName: "All-time rankings dataset",
     fullHistory: "Full history",

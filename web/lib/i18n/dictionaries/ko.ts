@@ -361,7 +361,7 @@ const ko: Dict = {
     subtitle: "현재 스타 수를 기준으로 정렬한 저장소와 조직 순위입니다.",
     repositories: "저장소",
     organizations: "조직",
-    repos: "저장소",
+    repos: { one: "저장소", other: "저장소" },
     allTime: "역대",
     datasetName: "역대 순위 데이터세트",
     fullHistory: "전체 기록",

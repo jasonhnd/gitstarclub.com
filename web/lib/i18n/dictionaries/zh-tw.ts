@@ -361,7 +361,7 @@ const zhTw: Dict = {
     subtitle: "依目前星標數排序的倉庫與組織排行榜。",
     repositories: "倉庫",
     organizations: "組織",
-    repos: "個倉庫",
+    repos: { one: "個倉庫", other: "個倉庫" },
     allTime: "歷史總榜",
     datasetName: "歷史總榜資料集",
     fullHistory: "完整歷史",
