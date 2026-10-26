@@ -144,7 +144,7 @@ export function SearchBox({ labels, locale = DEFAULT_LOCALE }: { labels: SearchB
           }}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onInputKeyDown}
-          className="w-20 bg-transparent font-mono text-[0.8rem] text-on-surface placeholder:text-on-surface-variant min-[360px]:w-24 sm:w-44 lg:w-56"
+          className="header-search-input w-20 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap bg-transparent font-mono text-[0.8rem] text-on-surface placeholder:truncate placeholder:text-on-surface-variant min-[360px]:w-24 sm:w-44 lg:w-56"
         />
       </div>
 

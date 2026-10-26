@@ -11,6 +11,14 @@
 @source "../../../web/app/_explore/";
 @source "../packages/p4/";
 
+/* Narrow header search (ja/zh/ko placeholders) must end on a glyph or an ellipsis. */
+.header-search-input::placeholder,
+.header-search-input::-webkit-input-placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The existing stylesheet remains the only source of design token values. */
 :root {
   --font-plus-jakarta: "Plus Jakarta Sans Variable", sans-serif;
