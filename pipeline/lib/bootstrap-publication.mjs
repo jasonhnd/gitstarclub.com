@@ -505,7 +505,7 @@ export async function rollbackBootstrapGeneration({
   // Sealed target verification is read-only and can be expensive, so do it
   // before taking the lease. Once acquired, re-read the live pointer and keep
   // ownership through the single write and every no-op retry decision.
-  const verified = await verifyBootstrapGeneration({ generation: target, store });
+  const verified = await verifyBootstrapGeneration({ generation: target, store, concurrency: 1 });
   await assertCanCommit();
   const current = parsePointer(await store.read(BOOTSTRAP_POINTER_PATH));
   if (!current) throw new Error("cannot roll back before the first bootstrap publication");

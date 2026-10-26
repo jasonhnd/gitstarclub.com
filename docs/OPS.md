@@ -969,14 +969,37 @@ The package command disables environment-file loading. The shared runner sets
 `CF_DELEGATION=1` on every child. No command writes `views/latest.json`.
 
 To undo a completed publication, run the exact printed rollback line from the
-repository root (add `--dry-run` to rehearse). It guards the target, acquires the
-same lease, verifies both sealed recovery phases, and swaps only the bootstrap
-pointer. Recovery must have finished sealing; a printed command alone does not
-prove it exists. A failed command exits nonzero and reports the phase and
-`pointerMayHaveMoved`; inspect the pointer if true. A post-commit lease release
-failure is reported separately and does not mean the publication was undone.
-Do not delete generations or hand-write pointers. Recheck the production
-refresh/scheduler state after finishing.
+repository root (add `--dry-run` to rehearse). It uses the same bucket/identity
+guard and typed production confirmation (`publish <rollback-id> to <bucket>`);
+pre still rejects a confirmation flag. A target-guard refusal (bucket, identity
+read/JSON, or confirmation) exits nonzero without a `phase=` line, while failures
+after the guard report the phase and `pointerMayHaveMoved`. It acquires the same lease and writes
+`ops/workflows/active.json` on acquisition (`running`), heartbeat renewal, and
+release (`published`, or `failed` if this invocation still owns the lease).
+While holding that lease, it verifies the named generation's own base and
+canonical phase manifests and every object's digest and size. It does not
+re-read the original fallback tree or the live canonical keys. Recovery must
+have finished sealing; a printed command alone does not prove it exists.
+
+After verification, it puts `bootstrap/latest.json` only if a pointer already
+exists and names a different generation. The pointer names the rollback ID,
+records the generation that was current as `previous_generation`, and includes
+both manifest SHA-256 digests. An already-current target with matching manifest
+digests leaves the pointer unchanged. If the rollback target is already the current
+generation but its manifest digests differ, the command refuses with
+`bootstrap/latest.json: current generation manifest digest changed` and writes no pointer.
+It writes no generation objects, deletes
+nothing, and does not write `views/latest.json`. It cannot create the first
+pointer: before the first successful publication there is nothing to roll back
+to. Editing `--rollback` to name a different ID is a different retarget, not an
+undo of this publication.
+
+A publication failure reported as `RepairPublicationError` exits nonzero and
+reports the phase and `pointerMayHaveMoved`; inspect the pointer if true. Guard
+refusals exit nonzero with the guard assertion, without a phase report. A
+post-commit lease release failure is reported separately and does not mean the
+publication was undone. Do not delete generations or hand-write pointers.
+Recheck the production refresh/scheduler state after finishing.
 
 Card #824-B adds the library-only `web/scripts/repair-publish-commit.ts` for
 staged repair integration. `publishRepairGeneration` takes an injected `CfRunner`,
@@ -1049,13 +1072,14 @@ still owned by this invocation. Cleanup failures preserve the original error.
 `releaseError`. A `release` failure after successful commit, or a `commit` failure
 with `pointerMayHaveMoved=true`, must not be treated as an intact old pointer:
 read the pointer under the guarded operational procedure before retry or rollback.
-See [the card plan](../plans/824b-lease.md) for the remaining write races. The
-guarded publisher and rehearsal remain separate cards.
+See [the card plan](../plans/824b-lease.md) for the remaining write races. Use
+`bun run repair:publish` above for the guarded publisher and pre rehearsal.
 
 ## Rollback
 
 - **Pointer rollback (Workflow publish)**: do not overwrite Blob directly. Call the protected rollback API with a stable idempotency key; it acquires a fenced lease, pins the rollback intent, syncs the recovery / whitelist pointers, and invalidates pages and the pointer cache. Example: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Idempotency-Key: rollback-<incident>" -H "Content-Type: application/json" --data '{"target_version":"<views/latest.prev_version>"}' https://www.gitstarclub.com/api/workflows/refresh/rollback`. After a successful return, check the pages and `views/latest.json` within the **≤60s** visibility SLA. Design see [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §7.
-- **bootstrap generation / legacy rollback**: first read `bootstrap/latest.previous_generation`. When the value is a generation, run `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute` for the Blob store. On Blob, a first publish stores null, and that null means `cd pipeline && node backfill/07-export-v2.mjs --rollback legacy-flat --execute`. On R2, `--initial-commit` also stores null, and that null means there is no prior generation. `--rollback` of the generation just committed returns `already-rolled-back` and is not an undo. `--rollback legacy-flat` fails closed because the flat files were never uploaded. A bad first R2 publish (`previous_generation` null) has no rollback. On bucket `gitstarclub-data-pre` (Worker `gitstarclub-web-pre`, Vite mode `pre`), stop, record the failure, and under the same owner authorization as a bucket write remove `bootstrap/generations/<bad-id>/` plus `bootstrap/latest.json` (and `canonical/v2/meta.json` or `views/latest.json` when present). Never delete `_meta/`. Then rerun that stage and redeploy preview the normal way. The original empty-bucket production stage 3 was never accepted and was superseded by the copied-store cutover. Its bad-first-publish cleanup must not be applied to current `gitstarclub-data-prod`. `web/scripts/blob-del-prefix.ts` refuses the current generation and `_meta/`. The same rule is in the R2 rehearsal section and in [R2-CUTOVER.md](./R2-CUTOVER.md). The accepted cutover has a separate historical Worker rollback reference; do not confuse it with bootstrap publication rollback. An R2 rollback after a later publish names `previous_generation`: `cd pipeline && node backfill/07-export-v2.mjs --store r2 --target pre --rollback <previous-generation> --execute` for Worker `gitstarclub-web-pre`, Vite mode `pre`, bucket `gitstarclub-data-pre` (use `--target prod` for Worker `gitstarclub-web`, top-level production with no `--env`, bucket `gitstarclub-data-prod`). Do not pass the current generation. A generation target rechecks sealed manifests and every object before the lease; a mutable legacy target, after acquiring the same Workflow CAS lease, verifies the key flat base artifacts and all `4 × 32` canonical shards. The command then rereads the pointer inside the lease and overwrites the pointer only once; a legacy target atomically deletes `bootstrap/latest.json`. If the pointer write/delete succeeded but the response was lost, retrying the same target returns `already-rolled-back`. Do not hand-edit the pointer. After a later publish, roll back to `previous_generation` and do not delete that current or previous generation or overlay.
+- **Repaired bootstrap generation**: copy the exact printed line: `bun --no-env-file web/scripts/repair-publish.ts --target <target> --bucket <bucket> --rollback <id>`, with `--confirm-production "publish <id> to <bucket>"` appended for production. See [Publishing a repaired generation from the Mac](#publishing-a-repaired-generation-from-the-mac) for verification, lease writes, pointer updates, and the first-publication limitation. Do not use the export rollback command below for this repair.
+- **Export bootstrap generation / legacy rollback (older `07-export-v2.mjs` publications only)**: first read `bootstrap/latest.previous_generation`. When the value is a generation, run `cd pipeline && node backfill/07-export-v2.mjs --rollback <bootstrap-generation> --execute` for the Blob store. On Blob, a first publish stores null, and that null means `cd pipeline && node backfill/07-export-v2.mjs --rollback legacy-flat --execute`. On R2, `--initial-commit` also stores null, and that null means there is no prior generation. `--rollback` of the generation just committed returns `already-rolled-back` and is not an undo. `--rollback legacy-flat` fails closed because the flat files were never uploaded. A bad first R2 publish (`previous_generation` null) has no rollback. On bucket `gitstarclub-data-pre` (Worker `gitstarclub-web-pre`, Vite mode `pre`), stop, record the failure, and under the same owner authorization as a bucket write remove `bootstrap/generations/<bad-id>/` plus `bootstrap/latest.json` (and `canonical/v2/meta.json` or `views/latest.json` when present). Never delete `_meta/`. Then rerun that stage and redeploy preview the normal way. The original empty-bucket production stage 3 was never accepted and was superseded by the copied-store cutover. Its bad-first-publish cleanup must not be applied to current `gitstarclub-data-prod`. `web/scripts/blob-del-prefix.ts` refuses the current generation and `_meta/`. The same rule is in the R2 rehearsal section and in [R2-CUTOVER.md](./R2-CUTOVER.md). The accepted cutover has a separate historical Worker rollback reference; do not confuse it with bootstrap publication rollback. An R2 rollback after a later publish names `previous_generation`: `cd pipeline && node backfill/07-export-v2.mjs --store r2 --target pre --rollback <previous-generation> --execute` for Worker `gitstarclub-web-pre`, Vite mode `pre`, bucket `gitstarclub-data-pre` (use `--target prod` for Worker `gitstarclub-web`, top-level production with no `--env`, bucket `gitstarclub-data-prod`). Do not pass the current generation. A generation target rechecks sealed manifests and every object before the lease; a mutable legacy target, after acquiring the same Workflow CAS lease, verifies the key flat base artifacts and all `4 × 32` canonical shards. The command then rereads the pointer inside the lease and overwrites the pointer only once; a legacy target atomically deletes `bootstrap/latest.json`. If the pointer write/delete succeeded but the response was lost, retrying the same target returns `already-rolled-back`. Do not hand-edit the pointer. After a later publish, roll back to `previous_generation` and do not delete that current or previous generation or overlay.
 - **Deploy rollback**: roll back the Worker that served the bad version. A preview incident rolls back `gitstarclub-web-pre` (Vite mode `pre`) and must not roll back production Worker `gitstarclub-web`. The retained historical R2 cutover version command above requires operator verification of availability/security suitability and separate authorization: the retired version rollback recorded in [R2-CUTOVER.md](R2-CUTOVER.md). Do not pass `--env pre`. That command does not write bucket `gitstarclub-data-prod` and does not write the blob store.
 - **Daily live tail**: `live/generations/<run_id>/**` is immutable, and `live/latest.json` is the only publish switch. A failure before commit needs no data rollback (the pointer still points at the old generation); if bad data is found after commit, point the pointer's `generation` back at `previous_generation`. Rollback must also first confirm there is no active `lease` and use an ETag conditional write, so it does not overwrite a cron that is publishing.
 - **Order**: roll the published pointer back first, then roll back the matching Worker version, then check that `sync_runs` and drift are back to normal. Do not roll back `gitstarclub-web` for a preview-only fault.
