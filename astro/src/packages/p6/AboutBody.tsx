@@ -12,6 +12,7 @@ import { type Dict, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { datasetLd, type FaqItem } from "@/lib/jsonld";
 import { answerCapsuleLabels } from "@/app/_localized/detail-copy";
+import { exportDownloadModel, publishedExportManifest, type ExportDownloadItem } from "./export-downloads";
 
 const ABOUT_PATH = "/about";
 const ABOUT_DATASET_VARIABLES = [
@@ -139,6 +140,7 @@ export function AboutBody({ locale, dictionary: t, meta }: { locale: Locale; dic
     { href: href("/categories") as `/${string}`, label: t.nav.categories },
     { href: href("/compare") as `/${string}`, label: t.nav.compare },
   ];
+  const downloads = exportDownloadModel(publishedExportManifest(), dateModified, locale, t);
   const dataset = datasetLd({
     name: t.meta.aboutTitle,
     path: routePath,
@@ -291,7 +293,7 @@ export function AboutBody({ locale, dictionary: t, meta }: { locale: Locale; dic
           />
         </Section>
 
-        <Section heading={t.about.exportsHeading}>
+        <Section heading={t.about.exportsHeading} id="downloads">
           <p>{t.about.exportsP1}</p>
           <p>{t.about.exportsP2}</p>
           <p>
@@ -299,39 +301,21 @@ export function AboutBody({ locale, dictionary: t, meta }: { locale: Locale; dic
             <ExternalLink href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</ExternalLink>
             . {t.about.exportsAttribution}
           </p>
+          {downloads.mismatchNote ? <p>{downloads.mismatchNote}</p> : null}
           <ul className="list-disc space-y-2 pl-6">
-            <li>
-              <a className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href="/data/exports/v1/latest/manifest.json">
-                {t.about.exportManifest}
-              </a>
-            </li>
-            <li>
-              <a className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href="/data/exports/v1/latest/top-rankings.csv">
-                {t.about.topRankingsCsv}
-              </a>{" "}
-              ·{" "}
-              <a className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href="/data/exports/v1/latest/top-rankings.json">
-                {t.common.json}
-              </a>
-            </li>
-            <li>
-              <a className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href="/data/exports/v1/latest/top-repo-milestones.csv">
-                {t.about.repoMilestonesCsv}
-              </a>{" "}
-              ·{" "}
-              <a className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href="/data/exports/v1/latest/top-repo-milestones.json">
-                {t.common.json}
-              </a>
-            </li>
-            <li>
-              <a className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href="/data/exports/v1/latest/top-org-aggregates.csv">
-                {t.about.orgAggregatesCsv}
-              </a>{" "}
-              ·{" "}
-              <a className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href="/data/exports/v1/latest/top-org-aggregates.json">
-                {t.common.json}
-              </a>
-            </li>
+            {(downloads.items.length > 0 ? downloads.items : fallbackDownloads(t)).map((item) => (
+              <li key={item.id}>
+                {item.links.map((link, index) => (
+                  <span key={link.href}>
+                    {index > 0 ? " · " : null}
+                    <a className="font-semibold text-tertiary hover:text-primary hover:underline hover:underline-offset-[3px]" href={link.href}>
+                      {link.label}
+                    </a>
+                  </span>
+                ))}
+                {item.detail ? <span className="text-on-surface"> · {item.detail}</span> : null}
+              </li>
+            ))}
           </ul>
           <p>
             <ExternalLink href="https://github.com/jasonhnd/gitstarclub.com/blob/main/docs/DATA-EXPORTS.md">
@@ -381,6 +365,16 @@ export function AboutBody({ locale, dictionary: t, meta }: { locale: Locale; dic
       </main>
     </>
   );
+}
+
+function fallbackDownloads(t: Dict): ExportDownloadItem[] {
+  const link = (href: string, label: string) => ({ href, label });
+  return [
+    { id: "manifest", rows: null, exportDate: "", dataAsOf: "", detail: "", links: [link("/data/exports/v1/latest/manifest.json", t.about.exportManifest)] },
+    { id: "top-rankings", rows: null, exportDate: "", dataAsOf: "", detail: "", links: [link("/data/exports/v1/latest/top-rankings.csv", t.about.topRankingsCsv), link("/data/exports/v1/latest/top-rankings.json", t.common.json)] },
+    { id: "top-repo-milestones", rows: null, exportDate: "", dataAsOf: "", detail: "", links: [link("/data/exports/v1/latest/top-repo-milestones.csv", t.about.repoMilestonesCsv), link("/data/exports/v1/latest/top-repo-milestones.json", t.common.json)] },
+    { id: "top-org-aggregates", rows: null, exportDate: "", dataAsOf: "", detail: "", links: [link("/data/exports/v1/latest/top-org-aggregates.csv", t.about.orgAggregatesCsv), link("/data/exports/v1/latest/top-org-aggregates.json", t.common.json)] },
+  ];
 }
 
 function buildAboutFaqs(t: Dict): FaqItem[] {
