@@ -28,8 +28,9 @@ selection while the shared facade performs native read-only DATA transport.
 P1 adds no second transport or page cache. The Worker remains the sole HTML
 cache boundary.
 
-Home/all-time bodies add no browser code. Year/month/week pages load one small
-native module only for the existing share-link, share-intent and snippet/embed
+Home bodies add no browser code. All-time, year, month and week rankings load
+the About this data copy module. Year/month/week pages also load one small
+native module for the existing share-link, share-intent and snippet/embed
 copy controls. It enhances the existing control HTML with two custom-element
 islands; it does not hydrate the body. The shared search/theme islands are
 unchanged. Metadata uses the existing helpers and optional shared Layout title,
