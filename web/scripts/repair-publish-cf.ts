@@ -99,11 +99,12 @@ function apiErrorLines(stderr: string): string[] {
     ? lines.map((line) => line.replace(/^│ ?/, "").trim()) : [];
 }
 
-/** Gr omits response headers; gateway errors always use the 30-second fallback. */
+/** Gr omits response headers; gateway and 500/10500 errors use the 30-second fallback. */
 function transientDelay(lines: string[], now: () => number): { status: string; milliseconds: number } | null {
-  const match = /^(429 Too Many Requests|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout)(?: · HTTP .+)?$/.exec(lines.at(-1) ?? "");
+  const match = /^(429 Too Many Requests|500 Internal Server Error|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout)(?: · HTTP .+)?$/.exec(lines.at(-1) ?? "");
   if (!match) return null;
   const status = match[1].slice(0, 3);
+  if (status === "500" && !/^\[10500\](?:\s|$)/.test(lines[0] ?? "")) return null;
   if (status !== "429") return { status, milliseconds: 30_000 };
   const retryAfter = lines.map((line) => /^Retry-After:\s*(.+)$/i.exec(line)?.[1]).find((value) => value !== undefined);
   if (retryAfter !== undefined) {
@@ -140,16 +141,34 @@ function refreshCfAuth(runner: CfRunner, sleep: NonNullable<CfRetryOptions["slee
 /** Pinned cf lists an array without pagination metadata. Only exact matches
  * prove presence; a full page without the key cannot prove absence.
  */
-export async function cfObjectExists(runner: CfRunner, key: string, bucket: string, retry: CfRetryOptions = {}): Promise<boolean> {
+async function cfObjectListing(runner: CfRunner, key: string, bucket: string, retry: CfRetryOptions): Promise<Array<{ key: string; size?: unknown; etag?: unknown }>> {
   const page = JSON.parse((await cfBytes(runner, ["r2", "objects", "list", "--bucket-name", bucket,
     "--prefix", key, "--per-page", "1000"], retry)).toString("utf8"));
   if (!Array.isArray(page) || page.length > 1000 ||
       page.some((entry) => typeof entry?.key !== "string" || !entry.key.startsWith(key))) {
     throw new Error("Invalid cf object listing");
   }
+  return page;
+}
+
+export async function cfObjectExists(runner: CfRunner, key: string, bucket: string, retry: CfRetryOptions = {}): Promise<boolean> {
+  const page = await cfObjectListing(runner, key, bucket, retry);
   if (page.some((entry) => entry.key === key)) return true;
   if (page.length === 1000) throw new Error(`Incomplete cf object listing: ${key}`);
   return false;
+}
+
+async function cfObjectAtKey(runner: CfRunner, key: string, bucket: string, retry: CfRetryOptions): Promise<ListedObject | undefined> {
+  const page = await cfObjectListing(runner, key, bucket, retry);
+  const exact = page.filter((entry) => entry.key === key);
+  if (exact.length > 1 || exact.length === 1 &&
+      (!Number.isSafeInteger(exact[0].size) || (exact[0].size as number) < 0 ||
+       typeof exact[0].etag !== "string" || exact[0].etag.length === 0)) {
+    throw new Error(`Invalid cf object listing: ${key}`);
+  }
+  if (exact.length === 1) return exact[0] as ListedObject;
+  if (page.length === 1000) throw new Error(`Incomplete cf object listing: ${key}`);
+  return undefined;
 }
 
 /** One retry boundary for every publisher caller, including injected runners. */
@@ -167,6 +186,7 @@ export async function cfResult(runner: CfRunner, args: string[], retry: CfRetryO
     const result = await runner(args, cfChild());
     if (result.code === 0) return result;
     const lines = apiErrorLines(result.stderr);
+    let recheckEtag = false;
     if (/^\[10000\](?:\s|$)/.test(lines[0] ?? "") &&
         /^401 Unauthorized(?: · HTTP .+)?$/.test(lines.at(-1) ?? "")) {
       const loginHint = "Run cf auth login and rerun the publisher (rerun is safe).";
@@ -179,6 +199,7 @@ export async function cfResult(runner: CfRunner, args: string[], retry: CfRetryO
       const transient = transientDelay(lines, now);
       if (transient === null) throw new Error(`cf ${operation} failed (${result.code}): ${result.stderr}`);
       if (transientRetries === 6) throw new Error(`cf ${operation} ${key} failed: HTTP ${transient.status} after 6 retries: ${result.stderr}`);
+      recheckEtag = transient.status === "500";
       const milliseconds = transient.milliseconds + Math.floor(random() * 1000);
       log(`cf ${operation} key=${key} HTTP ${transient.status}; retry ${++transientRetries}/6; waiting ${(milliseconds / 1000).toFixed(3)} seconds`);
       await sleep(milliseconds);
@@ -186,7 +207,13 @@ export async function cfResult(runner: CfRunner, args: string[], retry: CfRetryO
     if (operation === "put") {
       if (!body || bucketAt < 0 || !args[bucketAt + 1]) throw new Error(`Cannot safely retry cf put: ${key}`);
       const bucket = args[bucketAt + 1];
-      if (await cfObjectExists(runner, key, bucket, retry)) {
+      if (recheckEtag) {
+        const present = await cfObjectAtKey(runner, key, bucket, retry);
+        if (present) {
+          if (!matchesListedObject(present, body)) throw new Error(`Existing object differs: ${key}`);
+          return { code: 0, stdout: Buffer.alloc(0), stderr: "", alreadyPresent: true };
+        }
+      } else if (await cfObjectExists(runner, key, bucket, retry)) {
         const actual = await cfBytes(runner, ["r2", "objects", "get", key, "--bucket-name", bucket], retry);
         if (actual.length !== body.length || sha256(actual) !== sha256(body)) throw new Error(`Existing object differs: ${key}`);
         return { code: 0, stdout: Buffer.alloc(0), stderr: "", alreadyPresent: true };

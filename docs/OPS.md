@@ -975,9 +975,10 @@ dry run at concurrency 10 measured about two objects per second overall once
 HTTP 429s began. At that rate, a full publication of about 14,000 recovery
 reads, 14,000 recovery puts, and 14,000 new puts takes about six hours.
 The shared cf layer automatically retries boxed HTTP 429 (Too Many Requests),
+500 (Internal Server Error) only when the API errors line carries code 10500,
 502 (Bad Gateway), 503 (Service Unavailable), and 504 (Gateway Timeout).
 For 429 it honors an exposed `Retry-After` value; otherwise it waits 30 seconds.
-Gateway errors always wait 30 seconds. Each wait adds less than one second of
+500/10500 and gateway errors always wait 30 seconds. Each wait adds less than one second of
 random jitter and logs the key, retry attempt, and seconds. The pinned beta.18
 error renderer currently omits response headers, so the 30-second fallback
 normally applies to 429. Each call shares at most six retries across these
@@ -998,20 +999,23 @@ boxed API error counts; a body that merely mentions 401 does not. A repeated
 401 fails hard: run `cf auth login` and rerun the publisher; rerunning is safe.
 A failed refresh also stops with that login guidance. Each call gets at most
 one authentication retry, independently of its six transient HTTP retries.
-For troubleshooting a boxed 502, 503, or 504, inspect the logged key and retry
+For troubleshooting a boxed 500/10500, 502, 503, or 504, inspect the logged key and retry
 count. Exhausting six retries stops the publisher; rerun it after the upstream
 error clears. A response body that merely mentions one of these codes does not
-trigger a retry. HTTP 400 (Bad Request), 403 (Forbidden), 500 (Internal Server
-Error), and all other HTTP errors still fail immediately.
+trigger a retry. A 500 with another API code, no API code, or body text that
+merely mentions 10500 fails immediately. HTTP 400 (Bad Request), 403
+(Forbidden), and all other HTTP errors also fail immediately.
 
-After an authentication or transient wait, a put rechecks the exact key before resending: matching size
-and SHA-256 means it is already done, different bytes refuse the write, and
+After an authentication or transient wait, a put rechecks the exact key before resending.
+For 500/10500, matching size and MD5 etag mean it is already done; the other
+retry paths compare the existing object's size and SHA-256 with the source bytes.
+Different content refuses the write, and
 proven absence allows the same put again. An ambiguous full listing or failed
 read also refuses the retry. This check applies to lease and pointer writes as
 well, so a rate-limited attempt to replace an existing control object can fail
 closed on its old bytes. The single-writer window remains required. Recovery
 and staging drain in-flight uploads before reporting a transfer failure. A
-matching object discovered after a 429, 502, 503, 504, or 401 wait counts as skipped (already present),
+matching object discovered after a 429, 500/10500, 502, 503, 504, or 401 wait counts as skipped (already present),
 not created. Generation verification waits for both base and canonical phases
 to settle before reporting the first failure, including transient waits and
 later failures in the other phase. Release stops new heartbeats and waits for

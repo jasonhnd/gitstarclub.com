@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,6 +42,7 @@ const whoami = ["auth", "whoami"];
 const authenticated = () => ok(JSON.stringify({ authenticated: true, tokenValid: false }));
 const unauthorized = (options: Parameters<typeof boxedCfError>[0] = {}) =>
   rejected({ status: 401, message: "Authentication error", ...options });
+const md5 = (body: string) => createHash("md5").update(body).digest("hex");
 
 describe("shared repair cf authentication with fake runners only", () => {
   for (const operation of ["get", "list"]) for (const colour of [false, true]) for (const http of [false, true]) {
@@ -277,6 +279,70 @@ describe("shared repair cf rate limits with fake runners only", () => {
     await expect(cfBytes(async () => { calls++; return rejected({ status, html: true, message: "<html>Gateway error</html>" }); },
       get, t.retry)).rejects.toThrow(`HTTP ${status} after 6 retries`);
     expect(calls).toBe(7); expect(t.waits).toEqual(Array<number>(6).fill(30_250));
+  });
+
+  for (const operation of ["get", "list"]) for (const colour of [false, true]) {
+    test(`boxed HTTP 500/10500 retries ${operation}: colour=${colour}`, async () => {
+      const t = timing(), calls: string[][] = [];
+      const args = operation === "get" ? get : ["r2", "objects", "list", "--prefix", "key", "--bucket-name", "fake"];
+      const runner: CfRunner = async (call) => {
+        calls.push([...call]);
+        return calls.length === 1 ? rejected({ status: 500, code: 10500, colour,
+          message: "Internal authentication error: internal server error" }) : ok("done");
+      };
+      expect(await cfBytes(runner, args, t.retry)).toEqual(Buffer.from("done"));
+      expect(calls).toEqual([args, args]); expect(t.waits).toEqual([30_250]);
+      expect(t.logs).toEqual([`cf ${operation} key=key HTTP 500; retry 1/6; waiting 30.250 seconds`]);
+    });
+  }
+
+  for (const options of [
+    { code: 10000, message: "[10500] mentioned in another error" },
+    { code: 105001, message: "similar code" },
+    { fallback: true, message: "{\"code\":10500,\"message\":\"internal error\"}" },
+    { html: true, message: "<html><body>[10500] internal error</body></html>" },
+  ]) test(`other boxed HTTP 500 fails immediately: ${JSON.stringify(options)}`, async () => {
+    const t = timing(); let calls = 0;
+    await expect(cfBytes(async () => { calls++; return rejected({ status: 500, ...options }); }, get, t.retry))
+      .rejects.toThrow("cf get failed (1)");
+    expect(calls).toBe(1); expect(t.waits).toEqual([]); expect(t.logs).toEqual([]);
+  });
+
+  for (const appearance of ["absent", "identical", "quoted etag", "different", "different size", "prefix children", "ambiguous", "malformed"]) {
+    test(`put rechecks size and MD5 etag after HTTP 500/10500: ${appearance}`, async () => {
+      const path = mkdtempSync(join(tmpdir(), "cf-retry-")); scratch.push(path);
+      const file = join(path, "body"); writeFileSync(file, "data");
+      const args = ["r2", "objects", "put", "key", "--bucket-name", "fake", "--file", file];
+      const t = timing(), calls: string[][] = []; let puts = 0;
+      const runner: CfRunner = async (call) => {
+        calls.push([...call]);
+        if (call[2] === "put") return ++puts === 1 ? rejected({ status: 500, code: 10500,
+          message: "Internal authentication error: internal server error" }) : ok();
+        expect(call).toEqual(["r2", "objects", "list", "--bucket-name", "fake", "--prefix", "key", "--per-page", "1000"]);
+        const entry = { key: appearance === "prefix children" ? "key/child" : "key",
+          size: appearance === "different size" ? 5 : 4,
+          etag: appearance === "different" ? md5("DATA") : appearance === "quoted etag" ? `"${md5("data")}"` : md5("data") };
+        return ok(JSON.stringify(appearance === "absent" ? [] : appearance === "malformed" ? [{ key: "key" }]
+          : appearance === "ambiguous" ? Array.from({ length: 1000 }, (_, i) => ({ ...entry, key: `key/${i}` }))
+            : [entry]));
+      };
+      const result = cfResult(runner, args, t.retry);
+      if (appearance.startsWith("different")) await expect(result).rejects.toThrow("Existing object differs: key");
+      else if (appearance === "ambiguous") await expect(result).rejects.toThrow("Incomplete cf object listing");
+      else if (appearance === "malformed") await expect(result).rejects.toThrow("Invalid cf object listing");
+      else expect((await result).alreadyPresent).toBe(["identical", "quoted etag"].includes(appearance) ? true : undefined);
+      expect(puts).toBe(["absent", "prefix children"].includes(appearance) ? 2 : 1);
+      expect(calls.map((call) => call[2])).toEqual(["put", "list", ...(puts === 2 ? ["put"] : [])]);
+      expect(t.waits).toEqual([30_250]);
+    });
+  }
+
+  test("500/10500 and 429/gateway errors share six retries", async () => {
+    const t = timing(), statuses = [429, 500, 502, 500, 503, 504, 500]; let calls = 0;
+    await expect(cfBytes(async () => rejected({ status: statuses[calls++], code: 10500 }), get, t.retry))
+      .rejects.toThrow("HTTP 500 after 6 retries");
+    expect(calls).toBe(7); expect(t.waits).toEqual(Array<number>(6).fill(30_250));
+    expect(t.logs.map((line) => line.match(/retry (\d)\/6/)?.[1])).toEqual(["1", "2", "3", "4", "5", "6"]);
   });
 
   test("429 and gateway errors consume one six-retry budget", async () => {
