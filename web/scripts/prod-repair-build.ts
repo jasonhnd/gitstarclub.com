@@ -25,7 +25,8 @@
  * Gross files are the 22 verified star_daily_gross/*.parquet parts, not a gap
  * export. Frozen views must be the complete locally retained snapshot.
  * Output has both BOOTSTRAP_PHASES and sealed manifests, but no latest pointer.
- * Comparison, rehearsal, backup sealing and publication are separate cards.
+ * Use prod-repair-compare.ts (#787) for the separate offline comparison.
+ * Rehearsal, backup sealing and publication remain separate cards.
  */
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";

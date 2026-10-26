@@ -12,6 +12,8 @@ import { computeRepoWindow } from "./workflows/recompute/windows";
 import { repoEntityFromParts, lookupRepoEntry, orgEntityFromParts } from "./workflows/recompute/entities";
 import { assertFrozenMonths, buildProductionRepair, DROP_IDS, frozenDiscount, parseRepairArgs } from "../scripts/prod-repair-build";
 import { inspectLocalBootstrapCanonical } from "../scripts/lib/validate-bootstrap-canonical";
+import { compareProductionRepair } from "../scripts/prod-repair-compare";
+import { computeAllViews } from "./workflows/recompute";
 
 const GEN = "bootstrap-prod-repair-fixture";
 const NOW = "2026-09-13T06:00:16.398Z";
@@ -106,6 +108,22 @@ describe("offline option B repair builder", () => {
   test("CLI succeeds using only supplied local files", async () => {
     const { options } = await fixture(); const result = cli(options);
     expect(result.exitCode).toBe(0); expect(JSON.parse(result.stdout.toString()).repo_count).toBe(3);
+  });
+
+  test("comparison consumes actual builder output and reports the approved drops' monthly effects", async () => {
+    const { options, raw, root } = await fixture();
+    raw.siteDailyByYear = { "2026": { year: "2026", cells: [["2026-05-29", 123]] } };
+    const frozen = computeAllViews(buildModel(raw, "2026-05-30"), {
+      gen: NOW, seamDate: "2026-05-30", foldedThrough: { month: "2026-08", week: "2026-W35" },
+    });
+    for (const [path, value] of frozen.views) write(join(options.frozenViews, path), value);
+    await buildProductionRepair(options);
+    const comparison = await compareProductionRepair({ built: options.out, generation: GEN, out: join(root, "comparison.json") });
+    expect(comparison.monthly_matches_frozen).toBe(false);
+    expect(comparison.monthly.monthly_repo_ranks.differences.length).toBeGreaterThan(0);
+    expect(comparison.monthly.organization_monthly_curves.differences.length).toBeGreaterThan(0);
+    expect(comparison.monthly.month_heatmaps.differences).toEqual([]);
+    expect(comparison.weekly.survivor_sum_files).toContain("rank/week/2026-W39/repo/flow.json");
   });
 
   test.each([1, 2])("CLI refuses missing retained node_id %i without synthesizing it or writing output", async (id) => {
