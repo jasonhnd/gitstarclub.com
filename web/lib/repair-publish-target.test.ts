@@ -53,7 +53,7 @@ describe("repair publication target guards", () => {
     test(`${target}: refuses missing identity and command failures even with valid stdout`, async () => {
       for (const code of [1, 404]) {
         const { runner, calls } = fake(identity(target), code);
-        await expect(resolvePublishTarget(options(target), runner)).rejects.toThrow(`cf exit ${code}`);
+        await expect(resolvePublishTarget(options(target), runner)).rejects.toThrow(`cf get failed (${code})`);
         expect(calls).toEqual([readArgs(target)]);
       }
     });

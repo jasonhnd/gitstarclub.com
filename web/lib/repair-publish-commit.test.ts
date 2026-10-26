@@ -19,7 +19,7 @@ function boxedError(key: string, status = 404, fallback = false, colour = false)
   const muted = (text: string) => colour ? `\u001b[2m${text}\u001b[22m` : text;
   const message = fallback ? red(bold(`Status code: ${status}\nBody: {"message":"404 in upstream body"}`))
     : `${red(bold(status === 404 ? "[10007]" : "[10000]"))} ${bold(status === 404 ? "The specified key does not exist." : "Upstream body mentions 404")}`;
-  const http = `${status} ${status === 404 ? "Not Found" : "Internal Server Error"} · HTTP /accounts/fake/r2/buckets/fake-bucket/objects/${key}`;
+  const http = `${status} ${status === 429 ? "Too Many Requests" : status === 404 ? "Not Found" : "Internal Server Error"} · HTTP /accounts/fake/r2/buckets/fake-bucket/objects/${key}`;
   return `\n${red("┌")} ${red(bold("APIError"))}\n${`${message}\n${muted(http)}`.split("\n").map((line) => `${red("│")} ${line}`).join("\n")}\n${red("└")}\n`;
 }
 
@@ -95,6 +95,30 @@ function fixture() {
 }
 
 describe("repair publication with fake cf only", () => {
+  test("recovery puts retry through the shared layer with at most four cf children", async () => {
+    const h = fixture(); let limited = false, active = 0, peak = 0, checks = 0;
+    const key = `${bootstrapGenerationPrefix(RECOVERY)}/views/meta.json`;
+    const waits: number[] = [];
+    const runCf: CfRunner = async (args, child) => {
+      active++; peak = Math.max(peak, active);
+      try {
+        await Bun.sleep(1);
+        if (args[2] === "list" && args[args.indexOf("--prefix") + 1] === key) checks++;
+        if (!limited && args[2] === "put" && args[3] === key) {
+          limited = true; checks = 0;
+          return { code: 1, stdout: "", stderr: boxedError(key, 429, false, true) };
+        }
+        if (limited && args[2] === "put" && args[3] === key) expect(checks).toBeGreaterThan(0);
+        return await h.options.runCf(args, child);
+      } finally { active--; }
+    };
+    const p = new RepairPublication({ ...h.options, runCf,
+      retry: { sleep: async (ms) => { waits.push(ms); }, random: () => 0, log: () => {} } });
+    await p.acquire(); await p.seal(); await p.release("failed");
+    expect(limited).toBe(true); expect(waits).toEqual([30_000]); expect(peak).toBe(4); expect(active).toBe(0);
+    expect(h.writes.filter((write) => write.key === key)).toHaveLength(1);
+  });
+
   test("lease -> complete recovery -> pointer with recovery edge -> release; never writes views/latest", async () => {
     const h = fixture(), beforeViews = h.objects.get("views/latest.json")!;
     const result = await publishRepairGeneration(h.options);

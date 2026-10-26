@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { assertBootstrapGeneration } from "../../pipeline/lib/bootstrap-publication.mjs";
 
-import { cfChild, type CfRunner } from "./repair-publish-cf";
+import { cfResult, type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
 export type { CfRunner } from "./repair-publish-cf";
 export type PublishTarget = "pre" | "production" | "rehearsal";
 export type PublishTargetOptions = {
@@ -26,7 +26,7 @@ function confirmationForTarget(target: PublishTarget, generation: string, bucket
 }
 
 /** All refusals throw: callers must exit nonzero and never continue to writes. */
-export async function resolvePublishTarget(options: PublishTargetOptions, runner: CfRunner): Promise<ResolvedPublishTarget> {
+export async function resolvePublishTarget(options: PublishTargetOptions, runner: CfRunner, retry?: CfRetryOptions): Promise<ResolvedPublishTarget> {
   // Capture values before awaiting the runner so caller mutation cannot change approval.
   const { target, bucket, generation, confirmProduction } = options;
   const expectedBucket = bucketForTarget(target);
@@ -42,11 +42,10 @@ export async function resolvePublishTarget(options: PublishTargetOptions, runner
   let result: Awaited<ReturnType<CfRunner>>;
   try {
     // cf 1.0.0-beta.18: --text returns the object's body, not a metadata envelope.
-    result = await runner(["r2", "objects", "get", IDENTITY_KEY, "--bucket-name", bucket, "--text"], cfChild());
-  } catch {
-    throw new Error(`Cannot read ${bucket}/${IDENTITY_KEY}; publication refused`);
+    result = await cfResult(runner, ["r2", "objects", "get", IDENTITY_KEY, "--bucket-name", bucket, "--text"], retry);
+  } catch (cause) {
+    throw new Error(`Cannot read ${bucket}/${IDENTITY_KEY}; publication refused: ${cause instanceof Error ? cause.message : String(cause)}`);
   }
-  assert(result.code === 0, `Cannot read ${bucket}/${IDENTITY_KEY} (cf exit ${result.code}); publication refused`);
   let marker: unknown;
   try { marker = JSON.parse(result.stdout.toString()); }
   catch { throw new Error(`Invalid JSON in ${bucket}/${IDENTITY_KEY}; publication refused`); }

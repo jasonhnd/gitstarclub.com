@@ -968,6 +968,24 @@ releases the lease. It prints each step and counts; dry-run additionally prints
 The package command disables environment-file loading. The shared runner sets
 `CF_DELEGATION=1` on every child. No command writes `views/latest.json`.
 
+Recovery sealing and new-generation staging both default to **four concurrent
+uploads**. Four is Tech's tested value for copying roughly 14,000 objects with
+the pinned cf; twelve concurrent calls produced about 11% failures. The shared
+cf layer automatically waits out HTTP 429 (Too Many Requests): it honors an
+exposed `Retry-After` value, otherwise waits 30 seconds, and adds less than one
+second of random jitter. The pinned beta.18 error renderer currently omits
+response headers, so the 30-second fallback normally applies. Every wait logs
+the key, retry attempt, and seconds. Each call allows at most six retries and
+then fails hard; other HTTP errors fail immediately.
+
+After each wait, a put rechecks the exact key before resending: matching size
+and SHA-256 means it is already done, different bytes refuse the write, and
+proven absence allows the same put again. An ambiguous full listing or failed
+read also refuses the retry. This check applies to lease and pointer writes as
+well, so a rate-limited attempt to replace an existing control object can fail
+closed on its old bytes. The single-writer window remains required. Recovery
+and staging drain in-flight uploads before reporting a transfer failure.
+
 To undo a completed publication, run the exact printed rollback line from the
 repository root (add `--dry-run` to rehearse). It uses the same bucket/identity
 guard and typed production confirmation (`publish <rollback-id> to <bucket>`);

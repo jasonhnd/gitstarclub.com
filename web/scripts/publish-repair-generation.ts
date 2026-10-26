@@ -11,17 +11,12 @@ import {
   BOOTSTRAP_PHASES, bootstrapGenerationPrefix, sha256Bytes, verifyBootstrapGeneration,
 } from "../../pipeline/lib/bootstrap-publication.mjs";
 
-import { cfBytes, runCf, type CfRunner } from "./repair-publish-cf";
+import { cfBytes, cfObjectExists, repairConcurrency, runCf, type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
 export { runCf, type CfRunner } from "./repair-publish-cf";
-export type PublishOptions = { built: string; generation: string; bucket: string; concurrency?: number; dryRun?: boolean };
+export type PublishOptions = { built: string; generation: string; bucket: string; concurrency?: number; dryRun?: boolean; retry?: CfRetryOptions };
 type ObjectBytes = { key: string; size: number; sha256: string; body: Buffer };
 // cf r2 objects put documents a 300 MB request body limit.
 const MAX_OBJECT_BYTES = 300_000_000;
-
-function parallelism(value = 4): number {
-  assert(Number.isSafeInteger(value) && value >= 1 && value <= 32, "Concurrency must be an integer from 1 to 32");
-  return value;
-}
 
 export function parsePublishArgs(argv: string[]): PublishOptions {
   const fields = { "--built": "built", "--generation": "generation", "--bucket": "bucket", "--concurrency": "concurrency" } as const;
@@ -38,7 +33,7 @@ export function parsePublishArgs(argv: string[]): PublishOptions {
   assert(values["--built"] && values["--generation"] && values["--bucket"], "Required: --built DIRECTORY --generation BOOTSTRAP_ID --bucket BUCKET");
   assert(!values["--built"].includes("://"), "Expected local builder output directory");
   return { built: values["--built"], generation: values["--generation"], bucket: values["--bucket"],
-    concurrency: parallelism(values["--concurrency"] === undefined ? undefined : Number(values["--concurrency"])), dryRun };
+    concurrency: repairConcurrency(values["--concurrency"] === undefined ? undefined : Number(values["--concurrency"])), dryRun };
 }
 
 /** Snapshot all verified bytes before the first cf call, including both manifests.
@@ -79,21 +74,9 @@ export async function prepareRepairGeneration({ built, generation }: PublishOpti
   }));
 }
 
-/** Pinned cf prints only the result array, without pagination metadata. */
-async function exists(key: string, bucket: string, runner: CfRunner): Promise<boolean> {
-  const perPage = 1000;
-  const args = ["r2", "objects", "list", "--bucket-name", bucket, "--prefix", key, "--per-page", String(perPage)];
-  const page = JSON.parse((await cfBytes(runner, args)).toString("utf8"));
-  assert(Array.isArray(page) &&
-    page.every((entry: { key?: unknown }) => typeof entry?.key === "string" && entry.key.startsWith(key)), "Invalid cf object listing");
-  if (page.some((entry: { key: string }) => entry.key === key)) return true;
-  assert(page.length < perPage, "Incomplete cf object listing");
-  return false;
-}
-
 export async function publishRepairGeneration(options: PublishOptions, runner: CfRunner = runCf,
   log: (line: string) => void = console.log) {
-  parallelism(options.concurrency);
+  repairConcurrency(options.concurrency);
   assert(/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(options.bucket), "Expected bucket name");
   const phases = await prepareRepairGeneration(options);
   return stagePreparedRepairGeneration(options, phases, runner, log);
@@ -102,7 +85,7 @@ export async function publishRepairGeneration(options: PublishOptions, runner: C
 /** Stage only the immutable snapshot verified before lease acquisition. */
 export async function stagePreparedRepairGeneration(options: PublishOptions,
   phases: Awaited<ReturnType<typeof prepareRepairGeneration>>, runner: CfRunner, log: (line: string) => void = console.log) {
-  const concurrency = parallelism(options.concurrency);
+  const concurrency = repairConcurrency(options.concurrency);
   const result = { created: 0, skipped: 0, planned: 0 };
   if (options.dryRun) {
     for (const phase of phases) for (const { key, size, sha256 } of [...phase.objects, phase.manifest]) {
@@ -113,10 +96,10 @@ export async function stagePreparedRepairGeneration(options: PublishOptions,
   const scratch = mkdtempSync(join(tmpdir(), "publish-repair-"));
   let failure: unknown, stopped = false, sequence = 0;
   async function stage(item: ObjectBytes) {
-    const present = await exists(item.key, options.bucket, runner);
+    const present = await cfObjectExists(runner, item.key, options.bucket, options.retry);
     if (stopped) return;
     if (present) {
-      const body = await cfBytes(runner, ["r2", "objects", "get", item.key, "--bucket-name", options.bucket]);
+      const body = await cfBytes(runner, ["r2", "objects", "get", item.key, "--bucket-name", options.bucket], options.retry);
       assert(body.length === item.size && sha256Bytes(body) === item.sha256, `Existing object differs: ${item.key}`);
       result.skipped++; return;
     }
@@ -125,7 +108,7 @@ export async function stagePreparedRepairGeneration(options: PublishOptions,
     writeFileSync(file, item.body, { flag: "wx" });
     try {
       await cfBytes(runner, ["r2", "objects", "put", item.key, "--bucket-name", options.bucket, "--file", file,
-        "--content-type", item.key.endsWith(".json") ? "application/json" : "application/octet-stream"]);
+        "--content-type", item.key.endsWith(".json") ? "application/json" : "application/octet-stream"], { log, ...options.retry });
       result.created++;
     } finally { rmSync(file, { force: true }); }
   }

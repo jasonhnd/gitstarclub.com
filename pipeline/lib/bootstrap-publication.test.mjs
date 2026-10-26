@@ -7,12 +7,38 @@ import {
   commitBootstrapGeneration,
   rollbackBootstrapGeneration,
   stageBootstrapPhase,
+  stageBootstrapObjects,
 } from "./bootstrap-publication.mjs";
 import {
   ACTIVE_WORKFLOW_PATH,
   acquireBootstrapLease,
   withBootstrapPublicationLease,
 } from "./bootstrap-lease.mjs";
+
+test("a failed staging pool stops scheduling and drains in-flight creates before returning", async () => {
+  const items = Array.from({ length: 10 }, (_, i) => ({ path: `views/${i}.json`, body: Buffer.from("{}") }));
+  let finishSlow;
+  const slow = new Promise((resolve) => { finishSlow = resolve; });
+  let announceFailure;
+  const failed = new Promise((resolve) => { announceFailure = resolve; });
+  const started = [], completed = [];
+  let settled = false;
+  const stage = stageBootstrapObjects({ generation: "bootstrap-drain", phase: "base", items, concurrency: 4,
+    store: { read: async () => null, create: async (path) => {
+      started.push(path);
+      if (path.endsWith("/0.json")) { announceFailure(); throw new Error("rejected upload"); }
+      await slow; completed.push(path); return true;
+    } } });
+  const outcome = stage.then(() => { settled = true; return null; }, (error) => { settled = true; return error; });
+  await failed;
+  await Bun.sleep(1);
+  expect(settled).toBe(false);
+  expect(started).toHaveLength(4);
+  finishSlow();
+  expect((await outcome).message).toBe("rejected upload");
+  expect(completed).toHaveLength(3);
+  expect(started).toHaveLength(4);
+});
 
 class MemoryStore {
   objects = new Map();

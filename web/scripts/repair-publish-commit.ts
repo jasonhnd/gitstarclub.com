@@ -15,7 +15,7 @@ import {
 import { BootstrapPublicationPointer } from "../lib/contracts/workflow";
 
 /** The injected runner must pass env to its child process unchanged. */
-import { cfChild, type CfRunner } from "./repair-publish-cf";
+import { cfResult, limitCfConcurrency, repairConcurrency, type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
 export type { CfRunner } from "./repair-publish-cf";
 export const RECOVERY_BASE_PREFIX = "views/refresh-2026-09-13T06-00-16-398Z/";
 export const RECOVERY_CANONICAL_KEYS = Object.freeze(["canonical/v2/meta.json",
@@ -24,7 +24,7 @@ const REQUIRED_BASE_PATHS = ["meta.json", "lookup/repos.json", "lookup/orgs.json
   "rank/all-time/repo/stock.json", "rank/all-time/org/stock.json"];
 const PER_PAGE = 1000;
 export type RepairCommitOptions = {
-  bucket: string; runCf: CfRunner; workDir: string;
+  bucket: string; runCf: CfRunner; workDir: string; concurrency?: number; retry?: CfRetryOptions;
   generation: string; recoveryGeneration: string; recoveryBaseKeysFile: string; now?: () => number;
   stage?: (publication: RepairPublication) => Promise<void>;
 };
@@ -57,16 +57,19 @@ export class RepairPublication {
   private rollingBack = false;
   private readonly now: () => number;
   private readonly owner = randomUUID();
+  private readonly runner: CfRunner;
+  private readonly concurrency: number;
   constructor(readonly options: RepairCommitOptions) {
     bootstrapGenerationPrefix(options.generation);
     bootstrapGenerationPrefix(options.recoveryGeneration);
     if (options.generation === options.recoveryGeneration) throw new Error("Recovery generation must differ from publication");
     this.now = options.now ?? Date.now;
+    this.concurrency = repairConcurrency(options.concurrency);
+    this.runner = limitCfConcurrency(options.runCf, this.concurrency);
   }
 
   private run(args: string[]) {
-    return this.options.runCf(["r2", "objects", ...args, "--bucket-name", this.options.bucket],
-      cfChild());
+    return cfResult(this.runner, ["r2", "objects", ...args, "--bucket-name", this.options.bucket], this.options.retry);
   }
 
   private async cfResult(args: string[]) {
@@ -80,7 +83,6 @@ export class RepairPublication {
     }, 30_000);
     try {
       const result = await this.run(args);
-      if (result.code !== 0) throw new Error(`cf ${args[0]} failed (${result.code}): ${result.stderr}`);
       await pending;
       if (heartbeatError) throw heartbeatError;
       return result;
@@ -305,7 +307,7 @@ export class RepairPublication {
         items.push({ path: phase === "base" ? `views/${entry.key.slice(RECOVERY_BASE_PREFIX.length)}` : entry.key, body });
       }
       await stageBootstrapPhase({ generation: this.options.recoveryGeneration, phase,
-        items, store: this.store, concurrency: 1 });
+        items, store: this.store, concurrency: this.concurrency });
       // Check source again against the actual create-only copies, not just
       // against the manifest generated from the first source read.
       for (let i = 0; i < entries.length; i++) {

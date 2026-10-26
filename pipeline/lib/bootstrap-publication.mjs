@@ -154,14 +154,19 @@ function assertExactObject(path, actual, expected) {
 
 async function mapPool(items, concurrency, worker) {
   let index = 0;
+  let stopped = false;
+  let failure;
   const outputs = [];
   async function run() {
-    while (index < items.length) {
+    while (!stopped && index < items.length) {
       const current = index++;
-      outputs[current] = await worker(items[current], current);
+      try { outputs[current] = await worker(items[current], current); }
+      catch (error) { if (!stopped) failure = error; stopped = true; }
     }
   }
   await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, items.length || 1)) }, run));
+  // Let in-flight workers finish before callers release their publication lease.
+  if (stopped) throw failure;
   return outputs;
 }
 
