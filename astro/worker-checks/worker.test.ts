@@ -20,6 +20,11 @@ test("the built Astro Worker renders all seven URL locales and existing shell tr
     expect(html).toContain((await getDictionary(locale)).privacy.title);
     expect(html).toContain("<header"); expect(html).toContain("<footer");
     expect(response.headers.get("content-security-policy")).toContain("script-src 'self' 'unsafe-inline'");
+    const pulse = await get(localizedPath(locale, "/pulse"));
+    const pulseHtml = await pulse.text();
+    const noYearlyData = (await getDictionary(locale)).pulse.noYearlyDataYet;
+    expect(pulse.status).toBe(200);
+    expect(pulseHtml.split(noYearlyData).length - 1).toBe(2);
   }
 }, 30_000);
 test("the real Worker caches cold long tails, fences core and tail publication", async () => {

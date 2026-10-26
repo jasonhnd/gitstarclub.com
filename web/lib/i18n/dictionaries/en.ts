@@ -437,6 +437,7 @@ export const en = {
     archiveStarsAdded: "{stars} stars added",
   },
   pulse: {
+    noYearlyDataYet: "No yearly data yet",
     title: "Open-source activity",
     subtitle: "Latest available weekly, monthly, and yearly movers across tracked open-source repositories from GitStarClub's precomputed rankings.",
     surging: "Top monthly repositories",

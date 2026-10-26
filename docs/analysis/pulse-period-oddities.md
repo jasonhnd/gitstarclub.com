@@ -154,6 +154,12 @@ snapshot date for explicit unknown annual freshness. A fuller repair can
 couple the column's rows directly to its resolved annual rank. Relabeling the
 current saved rows “2026” alone would still misrepresent them.
 
+Issue #783 applies the display-only part of this fix in the Astro Pulse page:
+saved year-flow rows are hidden when no annual ranking period is available or
+annual freshness is explicitly null, and the YEAR column and leader card use
+localized “No yearly data yet” copy. The all-time navigation fallback remains
+unchanged.
+
 ## 3. “On this day” says it is waiting for the next recompute
 
 **Cause: (a) unavailable milestone history; (c) misleading empty-state copy.**
