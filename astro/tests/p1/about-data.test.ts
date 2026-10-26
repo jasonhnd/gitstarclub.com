@@ -51,7 +51,7 @@ test("rankings pages render About this data from the current meta with the perio
   for (const locale of ["en", "ja"] as const) {
     const dictionary = await getDictionary(locale);
     const home = await loadPage(data, "home", locale);
-    expect(home?.html).not.toContain("<gsc-about-data");
+    expect(home?.html).toContain("<gsc-about-data");
     for (const [kind, year, period] of cases) {
       const page = await loadPage(data, kind, locale, year, period);
       expect(page, `${locale} ${kind} ${year} ${period}`).not.toBeNull();

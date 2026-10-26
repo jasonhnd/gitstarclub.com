@@ -11,5 +11,9 @@ const data = await loadPulse(Astro.locals.data, now);
 const asOf = pulseSummaryAsOf(data, locale);
 ---
 <Layout locale={locale} canonicalPath="/pulse" title={t.meta.pulseTitle} description={t.meta.pulseDescription} asOf={asOf}>
-  <PulseBody locale={locale} t={t} data={data} now={now} />
+  <PulseBody locale={locale} t={t} data={data} releaseId={Astro.locals.data.publication.views?.version ?? null} now={now} />
 </Layout>
+
+<script>
+  import "../../components/about-this-data";
+</script>

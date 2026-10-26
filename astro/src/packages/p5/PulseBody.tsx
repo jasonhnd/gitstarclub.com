@@ -1,6 +1,8 @@
+import { pageIdentity } from "../../lib/page-identity";
 import type { ReactNode } from "react";
 import Link from "../../components/Link";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
+import { AboutThisDataContent } from "../../components/AboutThisDataContent";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { PageHero } from "@/app/_explore/PageHero";
 import { PeriodSwitcher } from "@/app/_explore/PeriodSwitcher";
@@ -37,8 +39,9 @@ export function pulseSummaryAsOf(data: Pick<PulseData, "snap" | "activeWeekRank"
   return resolveDataAsOfLabel(data.snap?.generated_at, data.activeWeekRank?.meta.generated_at, data.activeMonthRank?.meta.generated_at, { locale });
 }
 
-export function PulseBody({ locale, t, data, now = new Date() }: {
+export function PulseBody({ locale, t, data, releaseId, now = new Date() }: {
   locale: Locale; t: Dict; data: PulseData; now?: Date;
+  releaseId: string | null;
 }) {
   const canonicalPath = "/pulse";
   const language = toBcp47Locale(locale);
@@ -128,6 +131,16 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
         </div>
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.25rem,3vw,2rem)]" labels={answerCapsuleLabels(locale, t)} />}
+
+        <AboutThisDataContent
+          locale={locale}
+          dictionary={t}
+          meta={data.meta}
+          releaseId={releaseId}
+          layer="periodGains"
+          additionalLayers={["currentTotals"]}
+          {...pageIdentity(locale, canonicalPath, t.meta.pulseTitle)}
+        />
 
         <div className="mt-[clamp(1.25rem,3vw,2rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel
