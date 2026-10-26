@@ -190,6 +190,7 @@ Platform and development-tool variables also belong to the maintained inventory;
 | `CI` | CI | Enables CI-only timeouts, output, and security gates |
 | `PORT` | Local tooling | Port the local fixture/dev server listens on |
 | `PATH` | Local tooling / offline pipeline tests | Locates pinned Node/Bun for offline pipeline tests and the local R2 rehearsal; forwarded into otherwise clean child environments, never a Worker binding |
+| `CF_DELEGATION` | Repair publisher child process only | `web/scripts/publish-repair-generation.ts` sets `1` in the cf child environment to prevent delegation to another package install; no operator configuration or Worker binding |
 | `KANBAN_TMP` | Local preview-gap rehearsal tools only | Required card-local temporary directory; preparation outputs must be in a child directory and fold-proof output must remain beneath it. Set it to the same excluded card path as `TMPDIR`; never a Worker binding or secret |
 | `BACKFILL_FIXTURE_CONFIG` | Offline pipeline tests only | Disposable synthetic transport configuration; never a production setting |
 | `BACKFILL_FIXTURE_TRACE` | Offline pipeline tests only | Local JSONL request trace written by the subprocess network interceptor |

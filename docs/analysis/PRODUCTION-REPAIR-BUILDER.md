@@ -195,3 +195,55 @@ omitted from those stock ranks. Weekly presence and every weekly difference
 against the frozen reference are recorded separately and are informational:
 they cannot fail or override the monthly gate. W22 and W40 are outside this
 complete-week report.
+
+## Publisher core (issue 824-A)
+
+`web/scripts/publish-repair-generation.ts` exports `publishRepairGeneration` and
+provides the matching command-line entry. It consumes the builder directory and
+an explicit generation and bucket name. Both phase manifests and every listed
+object's size and SHA-256 fingerprint must verify before the first cf command.
+Verified bytes are retained in memory so subsequent local edits cannot change
+the upload. Only listed generation objects and the two manifests are staged;
+`repair-report.json` is not uploaded.
+
+The following local dry-run performs no cf calls and writes nothing. Each output
+line lists a key, size, and SHA-256; the last line contains summary counts.
+
+```bash
+bun --no-env-file web/scripts/publish-repair-generation.ts \
+  --built "$PWD/.kanban-work/786-real/repaired" \
+  --generation bootstrap-prod-repair-786 --bucket fake-bucket \
+  --concurrency 4 --dry-run
+```
+
+The core sends `cf r2 objects list --bucket-name BUCKET --prefix KEY --per-page 1000`
+and parses the pinned CLI's JSON array of object records. Every record must have
+a string key within the requested full-key prefix. Only an exact key match counts
+as present. Without an exact match, a page shorter than 1000 entries proves absence;
+a full page is ambiguous and stops the run without uploading that key. The pinned
+CLI omits pagination metadata, so the core cannot follow a cursor safely.
+An existing key is read with
+`cf r2 objects get` and skipped only when its size and SHA-256 match. Different
+bytes, command errors, and invalid listings stop the run with a nonzero exit.
+Absent keys are sent with `cf r2 objects put KEY --bucket-name BUCKET --file FILE`
+using private temporary files containing the verified bytes. Each phase manifest
+is uploaded only after all its objects complete. Parallelism defaults to four
+and accepts integers from one through 32. On failure, outstanding commands drain
+and no further work is scheduled. A rerun can reuse matching objects.
+
+All commands pass through the exported `CfRunner` function argument; tests inject
+a fake runner that records calls and stores bytes in memory. The default runner
+uses only the repository-pinned cf package, with `CF_DELEGATION=1` in its child
+environment to prevent delegation to another install. Local inputs are opened
+with `O_NOFOLLOW` to reject a file replaced by a symbolic link. The opened file
+must be regular and no larger than the documented 300 MB (300,000,000 bytes)
+upload cap before it is read; the snapshot size is checked again after reading.
+All these local checks finish before any cf call. No real bucket access is part
+of this card's verification.
+
+This is staging machinery, not the complete guarded publisher. cf has no atomic
+conditional put; the existence check and upload require exclusion of concurrent
+writers. Named TODO hooks reserve `recovery-generation`, `pointer-commit`,
+`writer-lease`, and `target-guards` for later cards. None is implemented here,
+and no pointer is written. Do not use this core against a real bucket before
+those cards supply the required safeguards and publication authorization.
