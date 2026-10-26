@@ -19,13 +19,19 @@ import { answerCapsuleLabels } from "../../../../web/app/_localized/detail-copy"
 import { buildLocalizedCompareCapsule, buildLocalizedCompareFaqs } from "../../../../web/app/_localized/seo-copy";
 
 import { HeroFacts, loadPairConclusions } from "../../../../web/app/_localized/comparison-page-data";
+import { AboutThisDataContent } from "../../components/AboutThisDataContent";
+import type { ViewsPointer } from "../../lib/contracts";
 
 const COMPARE_PATH = "/compare";
 
-export function CompareBody({ locale, t, meta, pairs, children }: {
+export function CompareBody({ locale, t, meta, pairs, releaseId, pageTitle, canonicalUrl, children }: {
   locale: Locale; t: Awaited<ReturnType<typeof getDictionary>>;
   meta: Awaited<ReturnType<typeof getMeta>>;
   pairs: Awaited<ReturnType<typeof loadPairConclusions>>;
+  /** Same captured publication as `meta`; views version only. */
+  releaseId: ViewsPointer["version"] | null;
+  pageTitle: string;
+  canonicalUrl: string;
   children?: ReactNode;
 }) {
   const language = toBcp47Locale(locale);
@@ -65,6 +71,7 @@ export function CompareBody({ locale, t, meta, pairs, children }: {
           }
         />
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={answerCapsuleLabels(locale, t)} />}
+        <AboutThisDataContent locale={locale} dictionary={t} meta={meta} releaseId={releaseId} layer="historyCurve" pageTitle={pageTitle} canonicalUrl={canonicalUrl} />
         {hasServerSummary && (
           <section aria-labelledby="server-compare-title" className="mt-[clamp(1.5rem,3vw,2.25rem)] rounded-lg border border-outline-variant bg-surface-container px-4 py-4">
             <p className="font-mono text-[0.72rem] uppercase tracking-wider text-on-surface-variant">{t.compare.serverEyebrow}</p>
