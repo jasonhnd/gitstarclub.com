@@ -1,10 +1,6 @@
 # About this data
 
-<<<<<<< 201bdb62be8a963404cda5ee41aa3432985827ac
-`AboutThisData.astro` is a server-rendered disclosure for use after a page summary and before its FAQ. It is not placed on any product page yet. Importing it includes a small Copy enhancement; the content does not hydrate React.
-=======
-`AboutThisData.astro` is a server-rendered disclosure for use after a page summary and before its FAQ. The home and Pulse pages use the shared content in their React renderers. The shared layout loads the small Copy enhancement; the content does not hydrate React.
->>>>>>> ib/gsc-796
+`AboutThisData.astro` is a server-rendered disclosure for use after a page summary and before its FAQ. Home and Pulse render its shared content. Their page templates load the small Copy enhancement; the content does not hydrate React.
 
 Pass `locale`, `dictionary`, `meta`, `releaseId`, `layer`, `pageTitle` and the absolute `canonicalUrl`. Read `meta` from the current request's published data and `releaseId` from that same request's captured `publication.views.version`. Metadata does not itself contain the release identifier. Do not fetch the latest publication again while rendering.
 
