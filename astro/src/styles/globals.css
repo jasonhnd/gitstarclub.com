@@ -23,5 +23,9 @@
 @source "../../../web/app/_explore/PageHero.tsx";
 @source "../../../web/app/_explore/RelatedPages.tsx";
 
+<<<<<<< 201bdb62be8a963404cda5ee41aa3432985827ac
 /* Shared disclosure is rendered only by its isolated acceptance fixture for now. */
+=======
+/* Shared disclosure: rankings pages and the isolated acceptance fixture. */
+>>>>>>> ib/gsc-797
 @source "../components/AboutThisDataContent.tsx";

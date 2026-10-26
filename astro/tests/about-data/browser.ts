@@ -16,7 +16,11 @@ mkdirSync(evidence, { recursive: true });
 const assets = resolve(scratch, "astro-cloudflare/output/v0/workers/default/assets");
 const css = readdirSync(resolve(assets, "_astro")).filter((file) => file.endsWith(".css"));
 assert.ok(css.length, "Build Astro first");
+<<<<<<< 201bdb62be8a963404cda5ee41aa3432985827ac
 const bundle = await Bun.build({ entrypoints: [resolve(import.meta.dir, "../../src/components/about-this-data.ts")], target: "browser", minify: true });
+=======
+const bundle = await Bun.build({ entrypoints: [resolve(import.meta.dir, "../../src/components/about-this-data.js")], target: "browser", minify: true });
+>>>>>>> ib/gsc-797
 assert.ok(bundle.success);
 const script = await bundle.outputs[0].text();
 const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

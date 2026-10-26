@@ -12,7 +12,7 @@ import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getAllTime, getCategoryAssignmentsForRepos, getCategoryRegistry, getHotSnapshot, getOrgsLookup, getReposLookup, joinOrgRank, joinRepoRank } from "@/lib/data";
 import { RANKING_CATEGORY_LEAD_LIMIT, rankingCategoryExits } from "@/lib/ranking-category-exits";
 import { RankingCategoryExits } from "@/app/_localized/ranking-category-exits";
-import { EmptyState, periodSwitcherLinks } from "./ranking-ui";
+import { EmptyState, periodSwitcherLinks, rankingAboutData, type RankingCitation } from "./ranking-ui";
 import { projectRepoRows, loadArchiveChildPeriods } from "@/app/_localized/ranking-page-data";
 import { resolveAvailableRankPeriods, type AvailableRankPeriods } from "@/lib/data/rank-periods";
 import { isCloudflareWorkersHost } from "@/lib/runtime-config";
@@ -42,7 +42,7 @@ export async function generateRankingsMetadata(locale: Locale) {
   });
 }
 
-export async function RankingsPageView({ locale, now = new Date() }: { locale: Locale; now?: Date }) {
+export async function RankingsPageView({ locale, now = new Date(), pageTitle, canonicalUrl }: { locale: Locale; now?: Date } & RankingCitation) {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
   const routePath = localizedPath(locale, RANKINGS_PATH);
@@ -83,6 +83,7 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
   const faqItems = buildLocalizedAllTimeRankingFaqs(locale, { asOf, repoRows, orgRows: orgs });
   const repoLabels = repositoryTableLabels(t);
   const orgLabels = organizationTableLabels(t);
+  const aboutData = await rankingAboutData({ locale, dictionary: t, pageTitle, canonicalUrl });
 
   return (
     <>
@@ -120,6 +121,7 @@ export async function RankingsPageView({ locale, now = new Date() }: { locale: L
         </section>
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" labels={answerCapsuleLabels(locale, t)} />}
+        {aboutData}
         <RankingCategoryExits locale={locale} links={categoryLinks} t={t} />
 
         <div className="mt-[clamp(2.5rem,5vw,4rem)] grid gap-x-10 gap-y-10 lg:grid-cols-2">
