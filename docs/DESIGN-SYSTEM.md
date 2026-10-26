@@ -208,6 +208,10 @@ The locked global CSS defines only a small set of spacing behavior:
 The baseline does not define global `--space-*` tokens. Adding them or changing
 page spacing changes the visual baseline.
 
+The mobile header navigation scroll fade uses `--md-sys-color-surface` in both
+background layers, matching the header surface in light and dark themes. At the
+desktop breakpoint (64rem), the fade background is removed.
+
 ## Radius
 
 The locked global CSS does not define global `--radius-*` or `--shape-*`

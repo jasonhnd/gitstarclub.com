@@ -400,7 +400,7 @@ footer span a[href] {
 .nav-scroll-affordance {
   background:
     linear-gradient(to left, color-mix(in oklab, var(--md-sys-color-surface) 92%, transparent) 30%, transparent) right center / 2.75rem 100% local,
-    linear-gradient(to left, color-mix(in oklab, var(--md-sys-color-primary-container) 42%, transparent), transparent) right center / 2.75rem 100% scroll;
+    linear-gradient(to left, color-mix(in oklab, var(--md-sys-color-surface) 42%, transparent), transparent) right center / 2.75rem 100% scroll;
   background-repeat: no-repeat;
 }
 
