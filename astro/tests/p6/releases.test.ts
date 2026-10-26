@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { RELEASES_PATH, Releases, type ReleaseRecord } from "../../../web/lib/contracts";
 import { dateLabel, formatInteger } from "../../../web/lib/format";
 import { getDictionary, LOCALES } from "../../../web/lib/i18n";
+import { releaseCopy } from "../../../web/lib/i18n/dictionaries/releases";
 import { localizedPath } from "../../../web/lib/i18n/routing";
 import { isLongTail } from "../../../web/lib/workers-host/cache/policy";
 import type { R2Bucket } from "../../../web/lib/storage/r2-binding-store";
@@ -175,7 +176,7 @@ test("the releases page renders fixture rows, an empty history, and an unknown i
     const detailJa = await get(`${localizedPath("ja", releasePath(older.id))}?case=detail`);
     const detailJaHtml = await detailJa.text();
     expect(detailJa.status).toBe(200);
-    expect(detailJaHtml).toContain(japanese.releases.previousNone);
+    expect(detailJaHtml).toContain(releaseCopy.ja.none);
     expect(detailJaHtml).toContain(formatInteger("ja", 5669));
     expect(detailJaHtml).toContain(`href="${localizedPath("ja", "/releases")}"`);
 

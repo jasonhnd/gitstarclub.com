@@ -124,3 +124,8 @@ fixture. Report all text, metadata and structured-fact differences. Product
 appearance remains unchanged; independent review and owner acceptance precede
 merge/cutover. Shared imports and renderer dependencies are inventoried in the
 migration plan before any eventual removal of `web/`.
+
+Astro release details at `/releases/<id>` use the shared layout and seven-locale
+release copy. Publication details, repository counts, layer dates and available
+public record links render on the server. They add no client island or page
+script. Previous-version links and language switching preserve the release path.

@@ -866,3 +866,25 @@ or authorizes widening the gap. No monthly arithmetic is changed.
 The reader note describes stars still present at collection time and GitHub's
 approximately UTC day boundaries, which may differ by a few hours. It does not
 claim exact UTC reconstruction, historical net growth or a live count.
+
+### Public release detail pages
+
+Astro serves retained records at `/releases/<id>` and the corresponding six
+non-English locale paths. The About this data release link uses this same path.
+The page reads the global `views/releases.json`, not a version-prefixed history.
+An absent or empty history, or an unknown/unretained id, returns HTTP 404.
+Invalid history fails closed rather than presenting invented release values.
+
+Publication timestamps are displayed in UTC. Missing optional layer dates are
+labelled as not recorded; monthly and weekly cutoffs preserve the stored periods.
+The previous-version link preserves the current locale; it may return 404 if that
+version predates the public history or has fallen outside retention.
+
+Raw public links use the configured `R2_PUBLIC_BASE_URL`. Only existing, valid
+records are linked: version metadata, the current published pointer, the latest
+successful publication and refresh health. Mutable pointers must identify the
+requested run; health must identify it in the current, last-success or
+last-failure signal. These documents describe their current state, not immutable
+historical copies. Optional records that are missing or unreadable are omitted.
+There is no storage listing, operational intent link, network search or client
+fetch to build the detail page.

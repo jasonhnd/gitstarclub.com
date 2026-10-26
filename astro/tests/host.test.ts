@@ -337,7 +337,7 @@ test("sitemap GET cache headers survive while HEAD, private requests and HTML st
   expect((await h.get("/about")).headers.get("cache-control")).toBe("private, no-store");
 });
 
-test("release list pages bypass the shared HTML cache and other routes keep 3600 seconds", async () => {
+test("release lists and details bypass the shared HTML cache and other routes keep 3600 seconds", async () => {
   const h = harness();
   let body = "empty-history";
   h.options.render = async () => new Response(`<html>${body}</html>`, { headers: { "Content-Type": "text/html" } });
@@ -368,18 +368,21 @@ test("release list pages bypass the shared HTML cache and other routes keep 3600
   h.advance(2);
   expect((await h.get("/about")).headers.get("x-gsc-cache")).toBe("MISS");
 
-  body = "detail-page";
   const detail = "/releases/managed-2026-10-25";
-  expect(releaseHistoryPage(detail)).toBe("detail");
-  expect((await h.get(detail)).headers.get("x-gsc-cache")).toBe("MISS");
-  const cached = await h.get(detail);
-  expect(cached.headers.get("x-gsc-cache")).toBe("HIT");
-  expect(await cached.text()).toContain("detail-page");
-  body = "changed-detail";
-  const still = await h.get(detail);
-  expect(still.headers.get("x-gsc-cache")).toBe("HIT");
-  expect(await still.text()).toContain("detail-page");
-  for (const locale of LOCALES) expect(releaseHistoryPage(localizedPath(locale, detail))).toBe("detail");
+  for (const locale of LOCALES) {
+    const path = localizedPath(locale, detail);
+    expect(releaseHistoryPage(path)).toBe("detail");
+    expect(releaseHistoryPage(`${path}/`)).toBe("detail");
+    body = "detail-page";
+    const first = await h.get(path);
+    expect(first.headers.get("x-gsc-cache"), path).toBe("BYPASS");
+    expect(await first.text(), path).toContain("detail-page");
+    body = "changed-detail";
+    const changed = await h.get(path);
+    expect(changed.headers.get("x-gsc-cache"), path).toBe("BYPASS");
+    expect(await changed.text(), path).toContain("changed-detail");
+    expect((await h.get(`${path}/`)).headers.get("x-gsc-cache"), path).toBe("BYPASS");
+  }
   expect(releaseHistoryPage("/about")).toBeNull();
   expect(releaseHistoryPage("/releases/a/b")).toBeNull();
   expect(releaseHistoryPage("/privacy")).toBeNull();

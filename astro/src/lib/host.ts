@@ -18,9 +18,9 @@ export type HostOptions = {
 };
 type CacheStatus = "BYPASS" | "MISS" | "HIT" | "STALE";
 const MUTATING_GET_PATHS = new Set(["/api/cron/daily", "/api/cron/weekly", "/api/workflows/refresh/start"]);
-// List indexes read views/releases.json after the pointer switches. §2.11b allows 60s; this cache is 3600s.
-// Add "detail" so existing /releases/<id> routes share the same bypass. Other routes stay on the shared cache.
-const RELEASE_HISTORY_PAGE_CACHE_BYPASS = new Set<"list" | "detail">(["list"]);
+// Release lists and details read views/releases.json after the pointer switches.
+// §2.11b allows 60s; the shared page cache is 3600s.
+const RELEASE_HISTORY_PAGE_CACHE_BYPASS = new Set<"list" | "detail">(["list", "detail"]);
 
 /** Localized `/releases` index (`list`) or `/releases/<id>` (`detail`). */
 export function releaseHistoryPage(pathname: string): "list" | "detail" | null {

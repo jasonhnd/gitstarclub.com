@@ -1,0 +1,45 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { type Locale, getDictionary, localizedPath, toBcp47Locale } from "../../lib/i18n";
+import { releaseCopy } from "../../../../web/lib/i18n/dictionaries/releases";
+import { getR2PublicBaseUrl } from "../../../../web/lib/runtime-config";
+import { type loadRelease, publicRecordUrl, releasePath } from "./data";
+interface Props { locale: Locale; loaded: NonNullable<Awaited<ReturnType<typeof loadRelease>>> }
+const { locale, loaded } = Astro.props;
+const id = loaded.release.id;
+const { release, records } = loaded;
+const t = releaseCopy[locale];
+const dictionary = await getDictionary(locale);
+const number = new Intl.NumberFormat(toBcp47Locale(locale));
+const timestamp = (value: string) => new Intl.DateTimeFormat(toBcp47Locale(locale), { dateStyle: "long", timeStyle: "long", timeZone: "UTC" }).format(new Date(value));
+const dates = [
+  { label: t.seam, value: release.data_as_of.seam_date },
+  { label: t.generated, value: release.data_as_of.generated_at, time: true },
+  { label: t.backfilled, value: release.data_as_of.backfilled_at, time: true },
+  { label: t.month, value: release.data_as_of.folded_through?.month },
+  { label: t.week, value: release.data_as_of.folded_through?.week },
+];
+const links = records.map((record) => ({ ...record, href: publicRecordUrl(getR2PublicBaseUrl(), record.key) })).filter((record) => record.href);
+---
+<Layout locale={locale} canonicalPath={releasePath(id)} title={`${t.title} · ${id}`} description={t.description}>
+  <main id="main" class="mx-auto w-full max-w-5xl flex-1 px-5 py-10 sm:px-10 sm:py-14">
+    <h1 class="text-4xl font-extrabold tracking-tight text-on-surface">{t.title}</h1>
+    <p class="mt-3 max-w-[68ch] leading-relaxed text-on-surface-variant">{t.description}</p>
+    <dl class="mt-8 grid gap-5 rounded-2xl border border-outline-variant bg-surface-container p-5 sm:grid-cols-2 sm:p-7">
+      <div class="min-w-0 sm:col-span-2"><dt class="text-sm text-on-surface-variant">{t.id}</dt><dd class="mt-1 break-all font-mono text-lg font-semibold">{release.id}</dd></div>
+      <div><dt class="text-sm text-on-surface-variant">{t.published}</dt><dd class="mt-1"><time datetime={release.published_at}>{timestamp(release.published_at)}</time></dd></div>
+      <div class="min-w-0"><dt class="text-sm text-on-surface-variant">{t.previous}</dt><dd class="mt-1 break-all">{release.prev_version ? <a class="text-primary underline underline-offset-4" href={localizedPath(locale, releasePath(release.prev_version))}>{release.prev_version}</a> : t.none}</dd></div>
+      <div><dt class="text-sm text-on-surface-variant">{t.tracked}</dt><dd class="mt-1 font-mono text-2xl font-bold">{number.format(release.tracked_repo_count)}</dd></div>
+      <div><dt class="text-sm text-on-surface-variant">{t.skipped}</dt><dd class="mt-1 font-mono text-2xl font-bold">{number.format(release.skipped_repo_count)}</dd></div>
+    </dl>
+    <section class="mt-9" aria-labelledby="layer-dates">
+      <h2 id="layer-dates" class="text-xl font-bold">{t.dates}</h2>
+      <dl class="mt-3 divide-y divide-outline-variant">{dates.map(({ label, value, time }) => <div class="grid gap-1 py-3 sm:grid-cols-2 sm:gap-5"><dt class="text-on-surface-variant">{label}</dt><dd>{value ? time ? <time datetime={value}>{timestamp(value)}</time> : <span class="font-mono">{value}</span> : t.unavailable}</dd></div>)}</dl>
+    </section>
+    <section class="mt-9" aria-labelledby="public-records">
+      <h2 id="public-records" class="text-xl font-bold">{t.records}</h2>
+      {links.length ? <ul class="mt-3 flex flex-wrap gap-x-6 gap-y-3">{links.map(({ href, kind }) => <li><a href={href!} class="inline-flex min-h-11 items-center text-primary underline underline-offset-4">{t[kind]}</a></li>)}</ul> : <p class="mt-3 text-on-surface-variant">{t.noRecords}</p>}
+    </section>
+    <p class="mt-8"><a href={localizedPath(locale, "/releases")} class="font-semibold text-tertiary hover:text-primary hover:underline underline-offset-4">{dictionary.releases.back}</a></p>
+  </main>
+</Layout>
